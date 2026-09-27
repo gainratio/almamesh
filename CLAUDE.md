@@ -50,7 +50,9 @@ This repo builds against `~/dev/project-ideas/oss/ENGINEERING-STANDARDS.md`
     checks compose the hooked exit gate, i18n, precache, Chromium/WebKit engine,
     parity, real no-hooks onboarding/recovery, returning-visitor engine boot
     (`playwright.returning-visitor.config.ts`: a prior deploy's precache must
-    not stop the engine booting within 60 s), backup/reset, and report-PDF
+    not stop the engine booting within 60 s — the precache is keyed on a hash
+    of `public/_headers`, `src/lib/precacheHeadersKey.ts`, so a header-only
+    deploy re-fetches the app shell), backup/reset, and report-PDF
     journeys. `.github/workflows/dagger.yml` is only the pinned GitHub trigger;
     `dagger/src/index.ts` is the portable gate contract.
   - **Service-worker update lane** (`playwright.sw-update.config.ts`): the only
