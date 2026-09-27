@@ -23,7 +23,7 @@
     "@almamesh/llm": "workspace:*",
     "@almamesh/shared-types": "workspace:*",
     "@edgeproc/browser": "github:hseshadr/edgeproc-browser#02171df60afc8b09d6439112ea7ea3202338d46a",
-    "dayjs": "^1.11.21",
+    "dayjs": "^1.11.23",
     "idb-keyval": "^6.3.0",
     "mitt": "^3.0.1",
     "zustand": "^5.0.14"
@@ -38,7 +38,7 @@
   },
   "devDependencies": {
     "fake-indexeddb": "^6.2.5",
-    "typescript": "~5.7.3",
-    "vitest": "^4.1.10"
+    "typescript": "~7.0.2",
+    "vitest": "^5.0.1"
   }
 }
