@@ -24,6 +24,7 @@ import type { BootStage, BundleMeta, ChartEngine, OnStage, RuntimeConfig } from 
 import { ChartEngineContext } from './chartEngineContext'
 import { hasLocalChart } from '../lib/localChart'
 import { recordEngineBootFailure, registerEngineTeardown } from '../lib/engineLifecycle'
+import { recoverSeveredServiceWorkerChannel } from '../lib/swSelfHeal'
 import {
   clearRuntimeError,
   clearRuntimeGenerator,
@@ -230,6 +231,9 @@ export function AlmaMeshRuntimeProvider({ children, runtime }: ProviderProps) {
           bootstrapFailedRef.current = true
           retryableFailureRef.current = isTransientBootFailure(e)
           retryWithoutConnectivityRef.current = isTransientLocalWorkerFailure(e)
+          // A WebKit network-process restart severs this document from its
+          // service worker; retries here can never succeed, a reload can.
+          if (retryableFailureRef.current) void recoverSeveredServiceWorkerChannel()
           setError(e)
           // Recorded (never acted on) so the global ErrorBoundary can guard its
           // reset behind the rollback warning. Integrity/rollback failures are

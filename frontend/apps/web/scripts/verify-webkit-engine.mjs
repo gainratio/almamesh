@@ -9,7 +9,10 @@
  * service-worker path cannot silently lose SharedArrayBuffer-backed OPFS.
  */
 
+import { mkdtemp, rm } from 'node:fs/promises'
 import { createServer, request as httpRequest } from 'node:http'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { devices, webkit } from '@playwright/test'
 
 const BASE_URL = process.argv[2] ?? 'http://localhost:4200'
@@ -314,14 +317,36 @@ async function startCutoffProxy(upstreamUrl) {
   }
 }
 
-async function verifyFirstSessionOffline() {
-  const browser = await webkit.launch({ headless: true })
-  const proxy = await startCutoffProxy(BASE_URL)
-  let transientCacheReadInjected = false
-  const context = await browser.newContext({
+// The first-session offline claim is about DURABLE storage, so the profile must
+// be on disk like a real Safari/iOS profile. A default browser.newContext() is
+// an ephemeral WebsiteDataStore: its service-worker registrations, CacheStorage,
+// IndexedDB, OPFS and sessionStorage live only in the WebKit network process.
+// When that process restarts mid-run (CI memory pressure; iOS does it routinely),
+// the ephemeral store is wiped and the offline reload fails with an empty
+// origin: controller still set, no active registration, zero caches/databases.
+// A persistent profile survives the restart, so the gate measures the app, not
+// the harness's in-memory storage.
+async function launchDurableProfile() {
+  const userDataDir = await mkdtemp(join(tmpdir(), 'almamesh-webkit-first-session-'))
+  const context = await webkit.launchPersistentContext(userDataDir, {
     ...devices['iPhone 13'],
+    headless: true,
     serviceWorkers: 'allow',
   })
+  return {
+    context,
+    close: async () => {
+      await context.close()
+      await rm(userDataDir, { recursive: true, force: true })
+    },
+  }
+}
+
+async function verifyFirstSessionOffline() {
+  const profile = await launchDurableProfile()
+  const { context } = profile
+  const proxy = await startCutoffProxy(BASE_URL)
+  let transientCacheReadInjected = false
   const workerUrls = new Set()
   if (TRANSIENT_CACHE_VISIBILITY) {
     await context.exposeBinding('__almameshRecordTransientCacheRead', () => {
@@ -477,9 +502,8 @@ async function verifyFirstSessionOffline() {
     console.log(JSON.stringify({ firstSessionOffline: evidence }, null, 2))
     return evidence
   } finally {
-    await context.close()
+    await profile.close()
     proxy.close()
-    await browser.close()
   }
 }
 
