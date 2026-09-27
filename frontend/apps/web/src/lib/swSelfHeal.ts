@@ -178,6 +178,46 @@ export function healStrandedServiceWorker(): Promise<void> {
   return serviceWorkerHealInFlight;
 }
 
+/** One non-destructive channel-recovery reload per tab session. */
+const CHANNEL_RELOAD_KEY = 'almamesh:sw-channel-reload';
+
+/** True when the controller can no longer serve even the precached shell. */
+async function isControllerChannelSevered(): Promise<boolean> {
+  try {
+    await fetch('/', { cache: 'no-store' });
+    return false;
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * Re-attach a document whose service-worker channel was severed. When WebKit
+ * restarts its network process (iOS memory pressure, a loaded CI runner) the
+ * registration and caches survive, but the already-loaded document's
+ * controlled fetches all reject, including the precached shell, so an engine
+ * boot in flight fails forever in that document. The shell being in cache
+ * while a controlled fetch for it fails is that signature; a real outage still
+ * gets the cached shell. A fresh navigation re-attaches the page to its
+ * worker. Nothing is unregistered or deleted. Loop-guarded to one reload per
+ * session. Resolves true when a reload was started; never throws.
+ */
+export async function recoverSeveredServiceWorkerChannel(): Promise<boolean> {
+  try {
+    if (!('serviceWorker' in navigator) || typeof caches === 'undefined') return false;
+    if (!navigator.serviceWorker.controller) return false;
+    if (healAlreadyAttempted(CHANNEL_RELOAD_KEY)) return false;
+    if (!(await hasHealthyPrecache())) return false;
+    if (!(await isControllerChannelSevered())) return false;
+    markHealAttempted(CHANNEL_RELOAD_KEY);
+    window.location.reload();
+    return true;
+  } catch (err) {
+    safeWarn('sw.heal_failed', err);
+    return false;
+  }
+}
+
 /**
  * Deliberate "swap the stale shell and reload" — used when a code-split chunk
  * fails to load (a stale precache served an old/missing chunk). Unregisters the
