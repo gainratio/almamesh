@@ -1,4 +1,4 @@
-import { describe, expect, spyOn, test } from "bun:test"
+import { describe, expect, test } from "bun:test"
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -10,7 +10,6 @@ import {
   liveVerificationScript,
   parseGreenMainEvidence,
   releaseIdentities,
-  RETURNING_PASS_NOT_WIRED,
   validateProviderEvidence,
   type DeliveryPort,
   type SmokePass,
@@ -203,11 +202,18 @@ describe("single-transaction delivery orchestration", () => {
         events.push("live-static-bundle-feedback")
         return "live proof"
       },
+      previousProduction: async () => {
+        events.push("previous-production")
+        return PREVIOUS
+      },
       smokeLive: async (passes, previousUrl) => {
-        expect(passes).toEqual(["fresh"])
-        expect(previousUrl).toBeUndefined()
+        expect(passes).toEqual(["fresh", "returning"])
+        expect(previousUrl).toBe(PREVIOUS.deploymentUrl)
         events.push("live-smoke")
-        return [{ pass: "fresh", passed: true, output: "fresh ok" }]
+        return passes.map((pass) => ({ pass, passed: true, output: `${pass} ok` }))
+      },
+      rollbackTo: async () => {
+        throw new Error("rollback must not run on a green smoke")
       },
     }, commitSha, "781", 3, centralSha)
 
@@ -220,6 +226,7 @@ describe("single-transaction delivery orchestration", () => {
       "signed-build",
       "preview",
       "envelope",
+      "previous-production",
       "deploy",
       "evidence-id",
       "reload",
@@ -230,7 +237,7 @@ describe("single-transaction delivery orchestration", () => {
     expect(result).toEqual({
       deploymentId: "deployment-id",
       deploymentUrl: "https://deployment.pages.dev",
-      liveProof: `live proof\n${RETURNING_PASS_NOT_WIRED}\nLive smoke passed: fresh`,
+      liveProof: "live proof\nLive smoke passed: fresh, returning",
     })
   })
 
@@ -350,35 +357,31 @@ function failClosedPort(events: string[]) {
       deploymentUrl: "https://deployment.pages.dev",
     }),
     verifyLive: async () => "live proof",
+    previousProduction: async () => {
+      events.push("previous-production")
+      return PREVIOUS
+    },
     smokeLive: async (passes: readonly SmokePass[]): Promise<SmokeRun[]> => {
       events.push(`live-smoke:${passes.join(",")}`)
       return passes.map((pass) => ({ pass, passed: true, output: `${pass} ok` }))
     },
+    rollbackTo: async (deploymentId: string) => {
+      events.push(`rollback:${deploymentId}`)
+      return { fromDeploymentId: "deployment-id", toDeploymentId: deploymentId, liveDeploymentId: deploymentId }
+    },
   } as DeliveryPort<string, string, string, string, string>
 }
 
-const PREVIOUS_URL = "https://11111111.almamesh.pages.dev"
+const PREVIOUS = {
+  deploymentId: "11111111-1111-4111-8111-111111111111",
+  deploymentUrl: "https://11111111.almamesh.pages.dev",
+}
 
-describe("post-deploy live smoke", () => {
-  test("without a previous deployment only the fresh pass runs, and the proof says so loudly", async () => {
-    const events: string[] = []
-    const warn = spyOn(console, "warn").mockImplementation(() => undefined)
-    const result = await deliverProduction(failClosedPort(events), commitSha, "781", 3, centralSha)
-    expect(warn).toHaveBeenCalledWith(RETURNING_PASS_NOT_WIRED)
-    warn.mockRestore()
-    expect(events.at(-1)).toBe("live-smoke:fresh")
-    expect(result.liveProof).toContain(RETURNING_PASS_NOT_WIRED)
-    expect(RETURNING_PASS_NOT_WIRED).toContain("returning-visitor pass NOT RUN")
-  })
-
-  test("a supplied previous deployment is read before the upload and drives the returning pass", async () => {
+describe("post-deploy live smoke and rollback through the central module", () => {
+  test("the pre-release deployment is read before the upload and drives the returning pass", async () => {
     const events: string[] = []
     const port = failClosedPort(events)
     let smokedWith: string | undefined
-    port.previousProductionUrl = async () => {
-      events.push("previous-production")
-      return PREVIOUS_URL
-    }
     const smoke = port.smokeLive
     port.smokeLive = async (passes, previousUrl) => {
       smokedWith = previousUrl
@@ -388,26 +391,136 @@ describe("post-deploy live smoke", () => {
     const result = await deliverProduction(port, commitSha, "781", 3, centralSha)
     expect(events.indexOf("previous-production")).toBeLessThan(events.indexOf("deploy"))
     expect(events.at(-1)).toBe("live-smoke:fresh,returning")
-    expect(smokedWith).toBe(PREVIOUS_URL)
+    expect(smokedWith).toBe(PREVIOUS.deploymentUrl)
     expect(result.liveProof).toEndWith("Live smoke passed: fresh, returning")
+    expect(events.some((event) => event.startsWith("rollback"))).toBe(false)
   })
 
-  test("a failed pass fails the delivery naming the pass and the live deployment", async () => {
+  test("a failed pass rolls production back to the pre-release deployment, then fails loudly", async () => {
     const events: string[] = []
     const port = failClosedPort(events)
-    port.smokeLive = async () => [{ pass: "fresh", passed: false, output: "engine ready within 30000 ms" }]
+    let smokeCalls = 0
+    port.smokeLive = async (passes) => {
+      smokeCalls += 1
+      if (smokeCalls > 1) {
+        events.push(`recovery-smoke:${passes.join(",")}`)
+        return [{ pass: "fresh", passed: true, output: "fresh ok" }]
+      }
+      return [
+        { pass: "fresh", passed: true, output: "fresh ok" },
+        { pass: "returning", passed: false, output: "engine ready within 30000 ms" },
+      ]
+    }
 
     const failure = deliverProduction(port, commitSha, "781", 3, centralSha)
-    await expect(failure).rejects.toThrow("Live smoke failed (fresh) on deployment deployment-id")
+    await expect(failure).rejects.toThrow(
+      `Live smoke failed (returning) on deployment deployment-id; production rolled back from deployment-id to ${PREVIOUS.deploymentId}; recovery smoke (fresh) passed`,
+    )
     await expect(failure).rejects.toThrow("engine ready within 30000 ms")
+    expect(events.slice(-2)).toEqual([`rollback:${PREVIOUS.deploymentId}`, "recovery-smoke:fresh"])
+  })
+
+  test("a recovery smoke that fails after the rollback is reported loudly", async () => {
+    const events: string[] = []
+    const port = failClosedPort(events)
+    let calls = 0
+    port.smokeLive = async (passes) => {
+      calls += 1
+      if (calls === 1) return [
+        { pass: "fresh", passed: false, output: "worker refused" },
+        { pass: "returning", passed: true, output: "returning ok" },
+      ]
+      expect(passes).toEqual(["fresh"])
+      return [{ pass: "fresh", passed: false, output: "still broken" }]
+    }
+
+    await expect(deliverProduction(port, commitSha, "781", 3, centralSha)).rejects.toThrow(
+      `production rolled back from deployment-id to ${PREVIOUS.deploymentId}; recovery smoke (fresh) FAILED`,
+    )
+    expect(calls).toBe(2)
+  })
+
+  test("no recovery smoke runs when the rollback itself failed", async () => {
+    const events: string[] = []
+    const port = failClosedPort(events)
+    let calls = 0
+    port.smokeLive = async () => {
+      calls += 1
+      return [
+        { pass: "fresh", passed: false, output: "worker refused" },
+        { pass: "returning", passed: true, output: "returning ok" },
+      ]
+    }
+    port.rollbackTo = async () => {
+      throw new Error("module refused")
+    }
+    await expect(deliverProduction(port, commitSha, "781", 3, centralSha)).rejects.toThrow("rollback FAILED")
+    expect(calls).toBe(1)
+  })
+
+  test("a rollback the module refuses is reported with the smoke failure", async () => {
+    const port = failClosedPort([])
+    port.smokeLive = async () => [
+      { pass: "fresh", passed: false, output: "worker refused" },
+      { pass: "returning", passed: true, output: "returning ok" },
+    ]
+    port.rollbackTo = async () => {
+      throw new Error("rollback target is already live")
+    }
+
+    await expect(deliverProduction(port, commitSha, "781", 3, centralSha)).rejects.toThrow(
+      "Live smoke failed (fresh) on deployment deployment-id; rollback FAILED, deployment-id may still be live: rollback target is already live",
+    )
+  })
+
+  test("rollback evidence that does not show the pre-release deployment live is a failed rollback", async () => {
+    const port = failClosedPort([])
+    port.smokeLive = async () => [
+      { pass: "fresh", passed: false, output: "worker refused" },
+      { pass: "returning", passed: true, output: "returning ok" },
+    ]
+    port.rollbackTo = async (deploymentId) => ({
+      fromDeploymentId: "deployment-id",
+      toDeploymentId: deploymentId,
+      liveDeploymentId: "deployment-id",
+    })
+
+    await expect(deliverProduction(port, commitSha, "781", 3, centralSha)).rejects.toThrow(
+      "rollback FAILED, deployment-id may still be live: rollback evidence differs",
+    )
+  })
+
+  test("rollback evidence from a different release is a failed rollback", async () => {
+    const port = failClosedPort([])
+    port.smokeLive = async () => [
+      { pass: "fresh", passed: false, output: "worker refused" },
+      { pass: "returning", passed: true, output: "returning ok" },
+    ]
+    port.rollbackTo = async (deploymentId) => ({
+      fromDeploymentId: "someone-elses-deployment",
+      toDeploymentId: deploymentId,
+      liveDeploymentId: deploymentId,
+    })
+
+    await expect(deliverProduction(port, commitSha, "781", 3, centralSha)).rejects.toThrow(
+      "rollback evidence differs",
+    )
+  })
+
+  test("a pre-release deployment on a foreign host stops delivery before the upload", async () => {
+    const events: string[] = []
+    const port = failClosedPort(events)
+    port.previousProduction = async () => ({ deploymentId: "x", deploymentUrl: "https://evil.example" })
+
+    await expect(deliverProduction(port, commitSha, "781", 3, centralSha)).rejects.toThrow(
+      "previous production deployment differs",
+    )
+    expect(events).not.toContain("deploy")
   })
 
   test("a requested pass that never reported is a failure, not a success", async () => {
-    const events: string[] = []
-    const port = failClosedPort(events)
-    port.previousProductionUrl = async () => PREVIOUS_URL
+    const port = failClosedPort([])
     port.smokeLive = async () => [{ pass: "fresh", passed: true, output: "fresh ok" }]
-
     await expect(deliverProduction(port, commitSha, "781", 3, centralSha)).rejects.toThrow(
       "Live smoke failed (returning)",
     )
@@ -420,12 +533,9 @@ describe("post-deploy live smoke", () => {
       return source.includes("api.cloudflare.com") || source.includes("/rollback")
     })
     expect(direct).toEqual([])
-  })
-
-  test("an empty smoke report fails", async () => {
-    const port = failClosedPort([])
-    port.smokeLive = async () => []
-    await expect(deliverProduction(port, commitSha, "781", 3, centralSha)).rejects.toThrow("Live smoke failed (fresh)")
+    const index = readFileSync(join(dir, "index.ts"), "utf8")
+    expect(index).toContain(".previousProductionDeployment(")
+    expect(index).toContain(".rollback(")
   })
 })
 

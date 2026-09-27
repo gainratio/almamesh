@@ -72,14 +72,14 @@ This repo builds against `~/dev/project-ideas/oss/ENGINEERING-STANDARDS.md`
     of the deterministic surface.
   - **Live lane** (`playwright.live-smoke.config.ts`, `e2e/live/`): drives the
     DEPLOYED origin, so no PR/nightly config can match it. Dagger `deploy` runs
-    it right after the live identity proof: `@fresh` (pristine profile) and,
-    once the ci cloudflare-pages module supplies the pre-release deployment,
-    `@returning` (that deployment's service worker installed under the live
-    origin via Playwright routing, then upgraded). Each requires engine boot
-    within 30 s, a rendered chart, and a clean console; a failure fails the
-    workflow naming the pass and deployment. Production changes (including the
-    planned automatic rollback) go only through the central module — no
-    repository code calls the Cloudflare API. `live-probe.yml` runs
+    it right after the live identity proof: `@fresh` (pristine profile) and
+    `@returning` (the pre-release production deployment, recorded via the ci
+    cloudflare-pages module's `previousProductionDeployment` before the upload,
+    installed under the live origin via Playwright routing, then upgraded).
+    Each requires engine boot within 30 s, a rendered chart, and a clean
+    console. A failure calls the module's `rollback` to that deployment, re-runs
+    `@fresh` to confirm recovery, and fails the workflow. No repository code
+    calls the Cloudflare API. `live-probe.yml` runs
     `@fresh` every 4 h; a red probe is a red repository.
 - **Release discipline:** Keep-a-Changelog + annotated tags, tag-forward-only.
   Tags start at v0.4.0 (v0.1.0–v0.3.0 were never cut; never backfill). Cut the

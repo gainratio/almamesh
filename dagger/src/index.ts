@@ -19,7 +19,9 @@ import {
   liveVerificationScript as releaseLiveVerificationScript,
   validateProviderEvidence,
   type GreenMainEvidence,
+  type ProviderIdentity,
   type ProviderRequest,
+  type RollbackEvidence,
   type SmokePass,
   type SmokeRun,
 } from "./deployment.js"
@@ -34,7 +36,7 @@ const LIVE_ORIGIN = "https://almamesh.com"
 const REPOSITORY = "hseshadr/almamesh"
 const EDGEPROC_BROWSER_SHA = "02171df60afc8b09d6439112ea7ea3202338d46a"
 const CONTRACT_SHA = "1111111111111111111111111111111111111111"
-const CENTRAL_MODULE_SHA = "9d491851fc5c65ad4a388ed2dd7bb4def4e1f007"
+const CENTRAL_MODULE_SHA = "363be0b98c753c027353f35db0f6cc5b24402f78"
 const BUN_IMAGE =
   "oven/bun:1.3.5@sha256:e90cdbaf9ccdb3d4bd693aa335c3310a6004286a880f62f79b18f9b1312a8ec3"
 const NODE_IMAGE =
@@ -508,7 +510,13 @@ export class AlmameshCi {
       ),
       providerIdentity: async (provider, source) => this.providerIdentity(provider, source),
       verifyLive: async (artifact, evidence) => this.verifyReleased(artifact, evidence),
+      previousProduction: async () => this.previousProduction(cloudflareApiToken, cloudflareAccountId),
       smokeLive: async (passes, previousUrl) => this.liveSmoke(passes, previousUrl),
+      rollbackTo: async (deploymentId) => this.rollbackProduction(
+        cloudflareApiToken,
+        cloudflareAccountId,
+        deploymentId,
+      ),
     }, expectedSha, workflowRunId, runAttempt, CENTRAL_MODULE_SHA)
     return [
       `Cloudflare Pages deployment verified: ${result.deploymentId} ${result.deploymentUrl}`,
@@ -848,7 +856,7 @@ ${commands.join("\n")}`])
       ],
     })
   }
-  private async liveSmoke(passes: readonly SmokePass[], previousUrl?: string): Promise<SmokeRun[]> {
+  private async liveSmoke(passes: readonly SmokePass[], previousUrl: string): Promise<SmokeRun[]> {
     const runs: SmokeRun[] = []
     for (const pass of passes) runs.push(await this.liveSmokePass(pass, previousUrl))
     return runs
@@ -867,5 +875,23 @@ ${commands.join("\n")}`])
     const [exitCode, stdout, stderr] = await Promise.all([run.exitCode(), run.stdout(), run.stderr()])
     const output = `${stdout}\n${stderr}`.split("\n").slice(-SMOKE_OUTPUT_LINES).join("\n")
     return { pass, passed: exitCode === 0, output }
+  }
+  private async previousProduction(token: Secret, accountId: Secret): Promise<ProviderIdentity> {
+    const previous = dag.cloudflarePages().previousProductionDeployment(token, accountId, PAGES_TARGET.project)
+    const [deploymentId, deploymentUrl] = await Promise.all([previous.deploymentId(), previous.deploymentUrl()])
+    return { deploymentId, deploymentUrl }
+  }
+  private async rollbackProduction(
+    token: Secret,
+    accountId: Secret,
+    deploymentId: string,
+  ): Promise<RollbackEvidence> {
+    const evidence = dag.cloudflarePages().rollback(token, accountId, PAGES_TARGET.project, { deploymentId })
+    const [fromDeploymentId, toDeploymentId, liveDeploymentId] = await Promise.all([
+      evidence.fromDeploymentId(),
+      evidence.toDeploymentId(),
+      evidence.liveDeploymentId(),
+    ])
+    return { fromDeploymentId, toDeploymentId, liveDeploymentId }
   }
 }
