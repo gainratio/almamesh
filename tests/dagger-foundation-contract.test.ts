@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from "node:fs"
 import { resolve } from "node:path"
 
 const root = resolve(import.meta.dir, "..")
-const centralSha = "cd2858547b301c3c21ddcf24a538aebdb5cfbc52"
+const centralSha = "363be0b98c753c027353f35db0f6cc5b24402f78"
 const repository = "hseshadr/almamesh"
 const providerMarkers = [
   "CLOUDFLARE_API_TOKEN",
@@ -224,6 +224,7 @@ describe("Foundation guard composition", () => {
       CacheVolume: class {},
       Container: class {},
       Directory: class {},
+      ReturnType: { Any: "ANY", Success: "SUCCESS" },
       Secret: class {},
       Service: class {},
       Workspace: class {},

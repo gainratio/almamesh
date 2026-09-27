@@ -133,7 +133,7 @@ TRUST_KEY_B64="$(base64 < "${KEYS_DIR}/public.key" | tr -d '\n')"
 TRUST_KEY_CONFIG="engine-trust-config-${TRUST_KEY_HASH}.js"
 if [[ ! -f "${DIST}/${TRUST_KEY_CONFIG}" ]] || \
    ! grep -Fq "__ALMAMESH_TRUST_KEY_B64__=\"${TRUST_KEY_B64}\"" "${DIST}/${TRUST_KEY_CONFIG}" || \
-   ! grep -Fq "importScripts(\"${TRUST_KEY_CONFIG}\",\"engine-trust-install.js\",\"precache-isolation-heal.js\")" "${DIST}/sw.js"; then
+   ! grep -Fq "importScripts(\"${TRUST_KEY_CONFIG}\",\"engine-trust-install.js\")" "${DIST}/sw.js"; then
   echo "!! service worker trust fallback is not bound to the production public key" >&2
   exit 1
 fi

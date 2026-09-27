@@ -1,6 +1,6 @@
 import { createLogger, defineConfig, Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
-import { VitePWA } from 'vite-plugin-pwa'
+import { VitePWA, type VitePluginPWAAPI } from 'vite-plugin-pwa'
 import { vitePrerenderPlugin } from 'vite-prerender-plugin'
 import path from 'path'
 import { existsSync, writeFileSync, readFileSync, readdirSync } from 'fs'
@@ -13,6 +13,11 @@ import {
   cspForLocalHttpPreview,
 } from './src/lib/previewHeaders'
 import { selectSourcemapArtifacts, sourcemapLeakMessage } from './src/lib/noSourcemaps'
+import {
+  keyPrecacheByResponseHeaders,
+  readPrecacheHeaderSources,
+  responseHeadersKey,
+} from './src/lib/precacheHeadersKey'
 
 // App version injected into the bundle (see `define` below) so client code can
 // report which release it is — e.g. submitFeedback's `X-App-Version` header.
@@ -20,6 +25,10 @@ import { selectSourcemapArtifacts, sourcemapLeakMessage } from './src/lib/noSour
 const APP_VERSION: string = JSON.parse(
   readFileSync(path.resolve(__dirname, 'package.json'), 'utf-8'),
 ).version
+
+// Precache key: a hash of every file that sets response headers. Changing
+// public/_headers re-keys (and so re-fetches) the whole app-shell precache.
+const PRECACHE_HEADERS_KEY = responseHeadersKey(readPrecacheHeaderSources(__dirname))
 
 // Version the offline trust-root cache by the exact release key in THIS build.
 // A waiting service worker can warm the new cache without mutating the active
@@ -224,6 +233,29 @@ function previewProdBrowserHeadersPlugin(): Plugin {
   }
 }
 
+// Workbox appends vite-plugin-pwa's own entries (manifest icons + the
+// webmanifest) AFTER manifestTransforms run, so key those here through the
+// plugin's public API. Together with the manifest transform in pwaPlugin this
+// keys EVERY precache entry on the response headers (verify-precache-redirect
+// asserts it on the built sw.js).
+function precacheHeadersKeyedExtrasPlugin(): Plugin {
+  let pwa: VitePluginPWAAPI | undefined
+  return {
+    name: 'almamesh-precache-headers-keyed-extras',
+    configResolved(config) {
+      pwa = config.plugins.find((plugin) => plugin.name === 'vite-plugin-pwa')?.api as VitePluginPWAAPI | undefined
+    },
+    buildStart() {
+      pwa?.extendManifestEntries((entries) =>
+        keyPrecacheByResponseHeaders(
+          entries.map((entry) => (typeof entry === 'string' ? { url: entry, revision: null } : entry)),
+          PRECACHE_HEADERS_KEY,
+        ),
+      )
+    },
+  }
+}
+
 // PWA + Service Worker (Workbox via vite-plugin-pwa).
 //
 // Cache discipline — the whole point of P6:
@@ -265,12 +297,11 @@ function pwaPlugin(): Plugin[] {
       // Activation-time warm of the VERSIONED NetworkFirst fallback. This is not
       // a precache entry: /public.key must keep reaching the NetworkFirst route
       // online so key rotation and bundle-pointer updates stay paired.
-      // precache-isolation-heal.js restamps precache entries cached before the
-      // app became cross-origin isolated; without it a returning visitor's
-      // chart Worker is refused under COEP and the engine never boots.
+      // Stale precached HEADERS (the #157 COEP incident) are handled
+      // structurally by the headers-keyed manifest transform below, not by a
+      // repair script: see src/lib/precacheHeadersKey.ts.
       importScripts: [
         ...(TRUST_KEY_CONFIG === null ? [] : [TRUST_KEY_CONFIG, 'engine-trust-install.js']),
-        'precache-isolation-heal.js',
       ],
       // `wasm` covers the small hashed yoga-layout asset and the SQLite runtime
       // used by local semantic memory. The giant engine/model wasms stay out
@@ -282,7 +313,6 @@ function pwaPlugin(): Plugin[] {
         '**/*.map',
         'engine-trust-install.js',
         'engine-trust-config-*.js',
-        'precache-isolation-heal.js',
         'public.key',
         'planets/**',
         // The self-hosted RAG embedding model + onnxruntime-web wasm (~25 MB).
@@ -347,6 +377,14 @@ function pwaPlugin(): Plugin[] {
           })
           return { manifest, warnings: [] as string[] }
         },
+        // Re-key EVERY precache entry on the files that set response headers
+        // (src/lib/precacheHeadersKey.ts). A deploy that changes only headers
+        // (#157's COOP/COEP) must not leave returning visitors on precached
+        // responses carrying the old headers.
+        (entries: { url: string; revision: string | null; integrity?: string; size: number }[]) => ({
+          manifest: keyPrecacheByResponseHeaders(entries, PRECACHE_HEADERS_KEY),
+          warnings: [] as string[],
+        }),
       ],
       runtimeCaching: [
         {
@@ -561,6 +599,7 @@ export default defineConfig({
     flattenPrerenderedRoutesPlugin(),
     previewPublicRoutesMiddleware(),
     ...pwaPlugin(),
+    precacheHeadersKeyedExtrasPlugin(),
   ],
   // Inline the app version at build time so client code (e.g. the feedback
   // widget's X-App-Version header) reports the running release. Absent in

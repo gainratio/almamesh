@@ -269,7 +269,9 @@ describe('repository truth', () => {
     expect(config).not.toContain('ALMAMESH_TRUST_KEY_PATH');
     expect(config).toContain("return { name: 'trust-key-config-unconfigured' }");
     expect(config).toMatch(/importScripts: \[\s*\.\.\.\(TRUST_KEY_CONFIG === null \? \[\] :/);
-    expect(config).toContain("'precache-isolation-heal.js',\n      ],");
+    expect(config).not.toContain('precache-isolation-heal');
+    expect(config).toContain('manifest: keyPrecacheByResponseHeaders(entries, PRECACHE_HEADERS_KEY)');
+    expect(config).toContain('precacheHeadersKeyedExtrasPlugin(),');
 
     const generateAssets = testWorkflow.indexOf('["bash", "apps/web/scripts/setup-dev-assets.sh"]');
     const buildExitGate = testWorkflow.indexOf('private builtBrowser(');
@@ -292,7 +294,7 @@ describe('repository truth', () => {
     expect(productionBuild).toContain('engine-trust-config-${TRUST_KEY_HASH}.js');
     expect(productionBuild).toContain('__ALMAMESH_TRUST_KEY_B64__=\\"${TRUST_KEY_B64}\\"');
     expect(productionBuild).toContain(
-      'importScripts(\\"${TRUST_KEY_CONFIG}\\",\\"engine-trust-install.js\\",\\"precache-isolation-heal.js\\")',
+      'importScripts(\\"${TRUST_KEY_CONFIG}\\",\\"engine-trust-install.js\\")',
     );
   });
 

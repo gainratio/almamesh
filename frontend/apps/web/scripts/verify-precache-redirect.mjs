@@ -25,6 +25,7 @@
  *   node scripts/verify-precache-redirect.mjs
  */
 
+import { createHash } from 'node:crypto'
 import { createServer } from 'node:http'
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import { dirname, join, extname, resolve } from 'node:path'
@@ -126,18 +127,35 @@ function verifyTrustRootRouting(urls, failures) {
   if (!existsSync(installerPath) || !sw.includes('engine-trust-install.js')) {
     failures.push('service worker is missing the activation-time trust-root cache warmer')
   }
-  if (urls.includes('/precache-isolation-heal.js')) {
-    failures.push('imported precache isolation heal must not also be precached')
-  }
-  if (!existsSync(join(DIST, 'precache-isolation-heal.js')) || !sw.includes('precache-isolation-heal.js')) {
-    failures.push('service worker is missing the precache COEP heal (returning visitors cannot start Workers)')
-  }
   if (!configMatch || !existsSync(join(DIST, configMatch[0]))) {
     failures.push('service worker is missing its build-bound trust-root config')
   }
   if (!/almamesh-pubkey-[0-9a-f]{16}/.test(sw)) {
     failures.push('public.key NetworkFirst cache is not versioned by its pinned key hash')
   }
+}
+
+/**
+ * Every precache entry must be keyed on the response headers this dist ships
+ * (src/lib/precacheHeadersKey.ts, re-derived here independently from
+ * dist/_headers). An unkeyed entry survives a header-only deploy with its OLD
+ * headers — the #157 COEP incident: returning visitors' chart Worker refused.
+ */
+function verifyHeadersKeyedPrecache(failures) {
+  const sw = readFileSync(join(DIST, 'sw.js'), 'utf-8')
+  const headers = readFileSync(join(DIST, '_headers'), 'utf-8')
+  const key = createHash('sha256')
+    .update(JSON.stringify([['public/_headers', headers]]))
+    .digest('hex')
+    .slice(0, 16)
+  const entries = [...sw.matchAll(/\{url:"([^"]+)",revision:(null|"[^"]*")\}/g)]
+  if (entries.length === 0) failures.push('could not parse any {url,revision} precache entries from sw.js')
+  for (const [, url, revision] of entries) {
+    if (!revision.endsWith(`headers-${key}"`)) {
+      failures.push(`precache entry ${url} (revision ${revision}) is not keyed on this dist's _headers (headers-${key})`)
+    }
+  }
+  return entries.length
 }
 
 async function main() {
@@ -175,6 +193,7 @@ async function main() {
     failures.push('precache manifest is MISSING the canonical shell "/" (navigateFallback target)')
   }
   verifyTrustRootRouting(urls, failures)
+  const keyed = verifyHeadersKeyedPrecache(failures)
   // Negative assertion: no redirecting `.html` shell may be precached.
   const leaked = urls.filter((u) => CANONICAL[u])
   for (const u of leaked) {
@@ -187,10 +206,11 @@ async function main() {
   console.log(`Precache-redirect gate: checked ${urls.length} precache URLs against a Cloudflare-like server`)
   if (failures.length) {
     for (const f of failures) console.log(`  [FAIL] ${f}`)
-    console.log(`\n❌ ${failures.length} precache entr${failures.length === 1 ? 'y' : 'ies'} would break a fresh SW install on Cloudflare Pages (${redirected} redirecting).`)
+    console.log(`\n❌ ${failures.length} precache failure${failures.length === 1 ? '' : 's'} (${redirected} redirecting on a Cloudflare-like server).`)
     process.exit(1)
   }
   console.log(`  [PASS] every precache URL resolves 200 with no redirect on a CF-like server`)
+  console.log(`  [PASS] all ${keyed} precache entries keyed on this dist's _headers (a header change re-fetches them)`)
   console.log(`  [PASS] canonical shell "/" precached; public.key keeps NetworkFirst + release-matched offline fallback`)
   console.log('\n✅ precache is robust to Cloudflare Pages clean-URL redirects.')
   process.exit(0)

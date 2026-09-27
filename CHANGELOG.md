@@ -7,6 +7,15 @@ All notable changes to AlmaMesh are documented here. Format follows
 ## [Unreleased]
 
 ### Fixed
+- **A header-only deploy can no longer strand returning visitors on old
+  headers.** The service-worker precache is now keyed on a hash of
+  `public/_headers`: every entry's revision carries `headers-<sha256[:16]>`, so
+  changing the headers re-fetches the app shell (with `cache: 'reload'`, past
+  the year-long immutable HTTP cache) and Workbox deletes the old-header
+  entries on activation. The `*-immutable` engine caches and OPFS are untouched.
+  This replaces the #164 `precache-isolation-heal.js` repair script: the
+  returning-visitor e2e now upgrades from both a pre-keyed service worker (no
+  heal) and one keyed on different headers, and the engine boots in both.
 - **The live `verify-pro-ui` and `verify-wave-d` journeys keyed predictive data
   to the UTC calendar day.** They seeded the chart's `referenceDate` from
   `toISOString()`, the same bug fixed in the unit tests below. They now use

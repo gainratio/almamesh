@@ -48,6 +48,17 @@ export interface DeliveryResult extends ProviderIdentity {
   liveProof: string
 }
 
+/** The two post-deploy smoke passes, in the order they run. */
+export const SMOKE_PASSES = Object.freeze(["fresh", "returning"] as const)
+export type SmokePass = (typeof SMOKE_PASSES)[number]
+
+/** One Playwright smoke pass against the live origin. */
+export interface SmokeRun {
+  pass: SmokePass
+  passed: boolean
+  output: string
+}
+
 export interface DeliveryPort<Source, Artifact, Envelope, LazyEvidence, StoredEvidence> {
   greenMain(): Promise<string>
   bindSource(evidence: GreenMainEvidence): Promise<Source>
@@ -71,6 +82,19 @@ export interface DeliveryPort<Source, Artifact, Envelope, LazyEvidence, StoredEv
     evidence: GreenMainEvidence,
     provider: ProviderIdentity,
   ): Promise<string>
+  /** The production deployment live BEFORE this release (central module, read-only). */
+  previousProduction(): Promise<ProviderIdentity>
+  /** Run the given smoke passes against the live origin, in order. */
+  smokeLive(passes: readonly SmokePass[], previousUrl: string): Promise<SmokeRun[]>
+  /** Roll production back to `deploymentId` through the central module. */
+  rollbackTo(deploymentId: string): Promise<RollbackEvidence>
+}
+
+/** The central module's non-secret proof of a completed rollback. */
+export interface RollbackEvidence {
+  fromDeploymentId: string
+  toDeploymentId: string
+  liveDeploymentId: string
 }
 
 export const PAGES_TARGET = Object.freeze({
@@ -159,12 +183,58 @@ export async function deliverProduction<Source, Artifact, Envelope, LazyEvidence
   const artifact = await port.buildRelease(source, evidence)
   await port.verifyPreview(artifact, evidence)
   const envelope = await port.createEnvelope(artifact, identities, PAGES_TARGET.allowedRoots)
+  const previous = await port.previousProduction()
+  if (previous.deploymentId.length === 0 || !validDeploymentUrl(previous.deploymentUrl)) {
+    throw new Error("previous production deployment differs")
+  }
   const lazyEvidence = port.deployPages(envelope, providerRequest(evidence, identities))
   const evidenceId = await port.evidenceId(lazyEvidence)
   const storedEvidence = port.reloadEvidence(evidenceId)
   const provider = await port.providerIdentity(storedEvidence, evidence)
   const liveProof = await port.verifyLive(artifact, evidence, provider)
-  return { ...provider, liveProof }
+  const smoke = await port.smokeLive(SMOKE_PASSES, previous.deploymentUrl)
+  const failed = failedSmokePasses(SMOKE_PASSES, smoke)
+  if (failed.length > 0) await rollBackAndFail(port, previous, provider.deploymentId, failed, smoke)
+  return { ...provider, liveProof: `${liveProof}\nLive smoke passed: ${SMOKE_PASSES.join(", ")}` }
+}
+
+async function rollBackAndFail<S, A, E, L, T>(
+  port: DeliveryPort<S, A, E, L, T>,
+  previous: ProviderIdentity,
+  releasedId: string,
+  failed: readonly SmokePass[],
+  runs: readonly SmokeRun[],
+): Promise<never> {
+  const detail = runs.filter((run) => !run.passed).map((run) => `--- ${run.pass} ---\n${run.output}`).join("\n")
+  const outcome = await rollBack(port, previous, releasedId)
+  throw new Error(`Live smoke failed (${failed.join(", ")}) on deployment ${releasedId}; ${outcome}\n${detail}`)
+}
+
+/** Roll back through the central module, then prove recovery with a fresh smoke. */
+async function rollBack<S, A, E, L, T>(
+  port: DeliveryPort<S, A, E, L, T>,
+  previous: ProviderIdentity,
+  releasedId: string,
+): Promise<string> {
+  try {
+    const evidence = await port.rollbackTo(previous.deploymentId)
+    const restored = evidence.fromDeploymentId === releasedId
+      && evidence.toDeploymentId === previous.deploymentId
+      && evidence.liveDeploymentId === previous.deploymentId
+    if (!restored) throw new Error("rollback evidence differs")
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error)
+    return `rollback FAILED, ${releasedId} may still be live: ${reason}`
+  }
+  const rolledBack = `production rolled back from ${releasedId} to ${previous.deploymentId}`
+  const recovery = await port.smokeLive(["fresh"], previous.deploymentUrl)
+  if (failedSmokePasses(["fresh"], recovery).length === 0) return `${rolledBack}; recovery smoke (fresh) passed`
+  return `${rolledBack}; recovery smoke (fresh) FAILED\n${recovery.map((run) => run.output).join("\n")}`
+}
+
+/** Requested passes that did not run green; a pass that never reported counts as failed. */
+export function failedSmokePasses(passes: readonly SmokePass[], runs: readonly SmokeRun[]): SmokePass[] {
+  return passes.filter((pass) => !runs.some((run) => run.pass === pass && run.passed))
 }
 
 export function liveVerificationScript(

@@ -7,13 +7,13 @@
   "dependencies": [
     {
       "name": "cloudflare-pages",
-      "source": "github.com/hseshadr/ci/modules/cloudflare-pages@cd2858547b301c3c21ddcf24a538aebdb5cfbc52",
-      "pin": "cd2858547b301c3c21ddcf24a538aebdb5cfbc52"
+      "source": "github.com/hseshadr/ci/modules/cloudflare-pages@363be0b98c753c027353f35db0f6cc5b24402f78",
+      "pin": "363be0b98c753c027353f35db0f6cc5b24402f78"
     },
     {
       "name": "foundation",
-      "source": "github.com/hseshadr/ci/modules/portfolio-foundation@cd2858547b301c3c21ddcf24a538aebdb5cfbc52",
-      "pin": "cd2858547b301c3c21ddcf24a538aebdb5cfbc52"
+      "source": "github.com/hseshadr/ci/modules/portfolio-foundation@363be0b98c753c027353f35db0f6cc5b24402f78",
+      "pin": "363be0b98c753c027353f35db0f6cc5b24402f78"
     }
   ],
   "source": "dagger"

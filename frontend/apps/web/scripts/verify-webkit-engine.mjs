@@ -9,7 +9,10 @@
  * service-worker path cannot silently lose SharedArrayBuffer-backed OPFS.
  */
 
+import { mkdtemp, rm } from 'node:fs/promises'
 import { createServer, request as httpRequest } from 'node:http'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { devices, webkit } from '@playwright/test'
 
 const BASE_URL = process.argv[2] ?? 'http://localhost:4200'
@@ -104,6 +107,62 @@ async function waitForEngine(page) {
     error: window.__ALMAMESH_ERROR__ ?? null,
     hasGenerator: typeof window.__almameshGenerate === 'function',
   }))
+}
+
+// The provider's own classification of a retryable boot failure
+// (AlmaMeshRuntimeProvider TRANSIENT_BOOT_FAILURE plus the worker crash/timeout
+// classes). Anything else, such as an integrity failure, is terminal.
+const SELF_RECOVERING_BOOT_FAILURE =
+  /network unreachable|failed to fetch|load failed|networkerror|timed out after|importing a module script failed|worker crashed/i
+const MAX_SELF_RECOVERIES_PER_BOOT = 1
+
+/**
+ * Wait for a boot to reach a TERMINAL state. A published transient error is not
+ * terminal: the provider retries it on its own, with no reload or user action.
+ * WebKit can leave a boot fetch with headers but no body after its network
+ * process restarts, so the chart-worker boot times out after 60s and the retry
+ * spawns a fresh worker that boots. The gate allows exactly one such automatic
+ * recovery and records it. A second one, or any non-transient error, fails.
+ * Every bootstrap attempt spawns exactly one sync Worker, so attempts are
+ * counted from Worker spawns (the published error text repeats verbatim).
+ */
+function trackBootAttempts(page) {
+  let attempts = 0
+  const countAttempt = (worker) => {
+    if (/\/edgeproc\.worker-[^/]+\.js(?:\?|$)/.test(worker.url())) attempts += 1
+  }
+  page.on('worker', countAttempt)
+  return {
+    attempts: () => attempts,
+    stop: () => page.off('worker', countAttempt),
+  }
+}
+
+/** Start counting BEFORE the boot is triggered, then call with the tracker. */
+async function waitForSettledEngine(page, label, tracker) {
+  let evidence = '{}'
+  try {
+    const deadline = Date.now() + 300_000
+    while (Date.now() < deadline) {
+      const state = await page.evaluate(() => ({
+        stage: window.__ALMAMESH_STAGE__ ?? null,
+        error: window.__ALMAMESH_ERROR__ ?? null,
+        hasGenerator: typeof window.__almameshGenerate === 'function',
+      }))
+      const attempts = tracker.attempts()
+      const selfRecoveries = Math.max(0, attempts - 1)
+      evidence = JSON.stringify({ ...state, attempts })
+      invariant(selfRecoveries <= MAX_SELF_RECOVERIES_PER_BOOT, `${label} needed more than one automatic recovery: ${evidence}`)
+      if (state.stage === 'ready' && state.hasGenerator) return { ...state, selfRecoveries }
+      if (typeof state.error === 'string') {
+        invariant(SELF_RECOVERING_BOOT_FAILURE.test(state.error), `${label} failed: ${evidence}`)
+      }
+      await new Promise((resolve) => setTimeout(resolve, 250))
+    }
+    throw new Error(`${label} did not settle within 300000ms: ${evidence}`)
+  } finally {
+    tracker.stop()
+  }
 }
 
 async function runtimeEvidence(page) {
@@ -258,14 +317,36 @@ async function startCutoffProxy(upstreamUrl) {
   }
 }
 
-async function verifyFirstSessionOffline() {
-  const browser = await webkit.launch({ headless: true })
-  const proxy = await startCutoffProxy(BASE_URL)
-  let transientCacheReadInjected = false
-  const context = await browser.newContext({
+// The first-session offline claim is about DURABLE storage, so the profile must
+// be on disk like a real Safari/iOS profile. A default browser.newContext() is
+// an ephemeral WebsiteDataStore: its service-worker registrations, CacheStorage,
+// IndexedDB, OPFS and sessionStorage live only in the WebKit network process.
+// When that process restarts mid-run (CI memory pressure; iOS does it routinely),
+// the ephemeral store is wiped and the offline reload fails with an empty
+// origin: controller still set, no active registration, zero caches/databases.
+// A persistent profile survives the restart, so the gate measures the app, not
+// the harness's in-memory storage.
+async function launchDurableProfile() {
+  const userDataDir = await mkdtemp(join(tmpdir(), 'almamesh-webkit-first-session-'))
+  const context = await webkit.launchPersistentContext(userDataDir, {
     ...devices['iPhone 13'],
+    headless: true,
     serviceWorkers: 'allow',
   })
+  return {
+    context,
+    close: async () => {
+      await context.close()
+      await rm(userDataDir, { recursive: true, force: true })
+    },
+  }
+}
+
+async function verifyFirstSessionOffline() {
+  const profile = await launchDurableProfile()
+  const { context } = profile
+  const proxy = await startCutoffProxy(BASE_URL)
+  let transientCacheReadInjected = false
   const workerUrls = new Set()
   if (TRANSIENT_CACHE_VISIBILITY) {
     await context.exposeBinding('__almameshRecordTransientCacheRead', () => {
@@ -421,9 +502,8 @@ async function verifyFirstSessionOffline() {
     console.log(JSON.stringify({ firstSessionOffline: evidence }, null, 2))
     return evidence
   } finally {
-    await context.close()
+    await profile.close()
     proxy.close()
-    await browser.close()
   }
 }
 
@@ -442,13 +522,14 @@ async function main() {
     const workerUrls = new Set()
     page.on('worker', (worker) => workerUrls.add(worker.url()))
 
+    const coldAttempts = trackBootAttempts(page)
     const forcedFallbackUrl = new URL(BASE_URL)
     forcedFallbackUrl.searchParams.set(FALLBACK_PARAMETER, '1')
     await page.goto(forcedFallbackUrl.href, { waitUntil: 'domcontentloaded' })
     const coldIsolation = await assertBrowserIsolation(page, 'WebKit forced-fallback navigation')
     await openEngineRoute(page)
-    const cold = await waitForEngine(page)
-    invariant(cold.stage === 'ready' && cold.hasGenerator, `WebKit cold boot failed: ${JSON.stringify(cold)}`)
+    const cold = await waitForSettledEngine(page, 'WebKit cold boot', coldAttempts)
+    invariant(coldAttempts.attempts() >= 1, 'WebKit cold boot attempt count was vacuous')
     const syncWorkerAssets = assertSingleSyncWorker(workerUrls, 'WebKit forced-fallback boot')
 
     const storage = await storageEvidence(page)
@@ -467,11 +548,12 @@ async function main() {
       blocked.push(url)
       return route.abort('failed')
     })
+    const cachedAttempts = trackBootAttempts(page)
     await page.evaluate(() => window.history.replaceState({}, '', `/${window.location.search}`))
     await page.reload({ waitUntil: 'domcontentloaded' })
     await openEngineRoute(page)
-    const cached = await waitForEngine(page)
-    invariant(cached.stage === 'ready' && cached.hasGenerator, `WebKit cached boot failed: ${JSON.stringify(cached)}`)
+    const cached = await waitForSettledEngine(page, 'WebKit cached boot', cachedAttempts)
+    invariant(cachedAttempts.attempts() >= 1, 'WebKit cached boot attempt count was vacuous')
     invariant(
       blocked.some((u) => u.includes('/bundle/latest')),
       'cached boot was vacuous: /bundle/latest was not blocked',
@@ -501,7 +583,14 @@ async function main() {
     )
     invariant(blockedKeys.length > 0, 'transport-failure recovery was vacuous: public.key was not blocked')
 
-    await new Promise((resolve) => setTimeout(resolve, 500))
+    // Hold the block until the provider's first automatic retry has actually
+    // hit it. A fixed sleep raced that retry: on a loaded runner the retry's
+    // public.key request can land after the sleep, which fails the gate below
+    // with nothing wrong in the app.
+    const firstRetryDeadline = Date.now() + 30_000
+    while (blockedKeys.length < 2 && Date.now() < firstRetryDeadline) {
+      await new Promise((resolve) => setTimeout(resolve, 100))
+    }
     await context.unroute('**/public.key')
     const recovered = await waitForRecoveredEngine(page, 'forced-cache transport recovery')
     const recoveredChart = await generateReferenceChart(page)
