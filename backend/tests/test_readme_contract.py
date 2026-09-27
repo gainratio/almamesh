@@ -121,3 +121,63 @@ def test_every_in_page_anchor_names_a_heading() -> None:
     assert "runtime-network-and-data-flow" in anchors
     dangling = [t for t in _links() if t.startswith("#") and t[1:] not in anchors]
     assert dangling == []
+
+
+# --- Technical docs line + "More detail" index -------------------------------
+# Every technical doc must be reachable from the README. Top-level files under
+# docs/ are linked one by one; each docs/ subfolder is linked as a folder or
+# through a file inside it. Root-level docs are listed explicitly.
+MORE_DETAIL = "## More detail"
+ROOT_DOCS = (
+    "CHANGELOG.md",
+    "CONTRIBUTING.md",
+    "SECURITY.md",
+    "CODE_OF_CONDUCT.md",
+    "THIRD_PARTY_NOTICES.md",
+    "frontend/README.md",
+    "backend/docs/predictive-engine-plan.md",
+)
+
+
+def _section(heading: str) -> str:
+    text = FENCE.sub("", _readme())
+    start = text.index(heading)
+    end = text.find("\n## ", start + len(heading))
+    return text[start : end if end != -1 else len(text)]
+
+
+def _more_detail_links() -> set[str]:
+    return {t.rstrip("/") for t in LINK.findall(_section(MORE_DETAIL))}
+
+
+def test_technical_docs_line_sits_in_the_intro() -> None:
+    intro = _readme()[: _readme().index("## At a glance")]
+    line = next(line for line in intro.splitlines() if line.startswith("**Technical docs:**"))
+    targets = LINK.findall(line)
+    assert targets[0] == "docs/ARCHITECTURE.md"
+    assert "docs/GETTING_STARTED.md" in targets
+    assert 3 <= len(targets) <= 5, targets
+
+
+def test_developer_section_links_getting_started() -> None:
+    assert "docs/GETTING_STARTED.md" in LINK.findall(_section("## Contributing / development"))
+    assert (REPO_ROOT / "docs/GETTING_STARTED.md").is_file()
+
+
+def test_more_detail_links_every_technical_doc() -> None:
+    docs = REPO_ROOT / "docs"
+    linked = _more_detail_links()
+    expected = {f"docs/{p.name}" for p in docs.iterdir() if p.suffix == ".md"}
+    expected |= set(ROOT_DOCS)
+    missing = sorted(expected - linked)
+    folders = [p.name for p in docs.iterdir() if p.is_dir() and p.name not in {"assets"}]
+    for folder in folders:
+        if not any(t.startswith(f"docs/{folder}") for t in linked):
+            missing.append(f"docs/{folder}/")
+    assert missing == []
+
+
+def test_more_detail_comes_right_before_the_license() -> None:
+    text = _readme()
+    assert text.index(MORE_DETAIL) < text.index("## License")
+    assert "\n## " not in text[text.index(MORE_DETAIL) + 3 : text.index("## License")]

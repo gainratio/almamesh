@@ -8,6 +8,8 @@ Your Vedic (traditional Indian) astrology chart, free and computed in your own b
 
 **[Live demo](https://almamesh.com)** · [Docs](docs/README.md) · [Quickstart](docs/QUICKSTART.md)
 
+**Technical docs:** [Architecture](docs/ARCHITECTURE.md) · [Getting started for developers](docs/GETTING_STARTED.md) · [In-browser engine](docs/edgeproc-browser.md) · [Security policy](SECURITY.md)
+
 ![AlmaMesh home screen: "Your real sky. Computed on your device. Free, forever." with a "Generate my chart — free" button](docs/assets/landing.png)
 <sub>Real output of the example below — the home screen `make demo` opens at http://localhost:4173 (the same app runs at almamesh.com).</sub>
 
@@ -520,7 +522,38 @@ commands CI runs. The required native Dagger checks also generate the signed
 browser assets and drive real onboarding, parity, offline, privacy/reset,
 Chromium/WebKit, and report-PDF journeys; run them locally with `dagger check`.
 
+New here? [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) takes you from a
+fresh clone to a green local build and your first change.
+
 See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## More detail
+
+- [docs/README.md](docs/README.md) — the docs index: where each part of the code lives.
+- [docs/QUICKSTART.md](docs/QUICKSTART.md) — `make demo` to a rendered chart, in one page.
+- [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) — developer setup: prerequisites, local traps, the full check, a code map, and a first change.
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — how the signed bundle, browser storage, and the Python engine in the tab fit together.
+- [docs/architecture/](docs/architecture/index.html) — the interactive architecture map and its data file.
+- [docs/tech-stack.md](docs/tech-stack.md) — the libraries and tools, and why each one.
+- [docs/edgeproc-browser.md](docs/edgeproc-browser.md) — where the browser engine library comes from and how it is pinned.
+- [docs/code-guidelines.md](docs/code-guidelines.md) — coding standards for this repo.
+- [docs/dependency-policy.md](docs/dependency-policy.md) — which dependencies are held back on purpose, and why.
+- [docs/CLEVERNESS-DEBT.md](docs/CLEVERNESS-DEBT.md) — unusual design choices we kept, removed, or plan to revisit.
+- [docs/rigor-upgrade-spec.md](docs/rigor-upgrade-spec.md) — the plan for calibrated, explainable readings, and what has shipped.
+- [docs/feedback-setup.md](docs/feedback-setup.md) — how the anonymous feedback endpoint is set up.
+- [docs/deploy/almamesh-com.md](docs/deploy/almamesh-com.md) — how almamesh.com is deployed on Cloudflare Pages.
+- [docs/deploy/GO-LIVE-almamesh-com.md](docs/deploy/GO-LIVE-almamesh-com.md) — the checklist that turned on auto-deploy.
+- [docs/releases/](docs/releases/v0.4.0.md) — plain-language release notes ([v0.4.0](docs/releases/v0.4.0.md), [v0.3.0](docs/releases/v0.3.0.md)).
+- [docs/specs/](docs/specs/) — feature specs, active and completed (some are historical).
+- [docs/design/](docs/design/) — the landing page design and its build plan.
+- [docs/superpowers/](docs/superpowers/) — the Milestone A design and plan (historical).
+- [backend/docs/predictive-engine-plan.md](backend/docs/predictive-engine-plan.md) — the design for transits and timing in the engine.
+- [frontend/README.md](frontend/README.md) — the frontend packages and every dev, build, and test command.
+- [CHANGELOG.md](CHANGELOG.md) — what changed in each release.
+- [CONTRIBUTING.md](CONTRIBUTING.md) — project rules and what a pull request needs.
+- [SECURITY.md](SECURITY.md) — how to report a security problem privately.
+- [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) — how we expect people to treat each other.
+- [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) — licenses of the third-party work AlmaMesh ships.
 
 ## License / Citation
 

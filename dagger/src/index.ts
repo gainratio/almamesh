@@ -174,9 +174,11 @@ export class AlmameshCi {
           // description it must equal, and every file the README links to.
           "README.md",
           "CHANGELOG.md",
+          "CODE_OF_CONDUCT.md",
           "CONTRIBUTING.md",
           "LICENSE",
           "SECURITY.md",
+          "THIRD_PARTY_NOTICES.md",
           "docs/**",
           "examples/**",
           "frontend/README.md",
