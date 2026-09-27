@@ -1,5 +1,5 @@
-import { describe, expect, test } from "bun:test"
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { describe, expect, spyOn, test } from "bun:test"
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import {
@@ -10,7 +10,11 @@ import {
   liveVerificationScript,
   parseGreenMainEvidence,
   releaseIdentities,
+  RETURNING_PASS_NOT_WIRED,
   validateProviderEvidence,
+  type DeliveryPort,
+  type SmokePass,
+  type SmokeRun,
 } from "../dagger/src/deployment.ts"
 
 const commitSha = "1".repeat(40)
@@ -199,6 +203,12 @@ describe("single-transaction delivery orchestration", () => {
         events.push("live-static-bundle-feedback")
         return "live proof"
       },
+      smokeLive: async (passes, previousUrl) => {
+        expect(passes).toEqual(["fresh"])
+        expect(previousUrl).toBeUndefined()
+        events.push("live-smoke")
+        return [{ pass: "fresh", passed: true, output: "fresh ok" }]
+      },
     }, commitSha, "781", 3, centralSha)
 
     expect(evidenceIdCalls).toBe(1)
@@ -215,11 +225,12 @@ describe("single-transaction delivery orchestration", () => {
       "reload",
       "provider-identity",
       "live-static-bundle-feedback",
+      "live-smoke",
     ])
     expect(result).toEqual({
       deploymentId: "deployment-id",
       deploymentUrl: "https://deployment.pages.dev",
-      liveProof: "live proof",
+      liveProof: `live proof\n${RETURNING_PASS_NOT_WIRED}\nLive smoke passed: fresh`,
     })
   })
 
@@ -339,8 +350,84 @@ function failClosedPort(events: string[]) {
       deploymentUrl: "https://deployment.pages.dev",
     }),
     verifyLive: async () => "live proof",
-  }
+    smokeLive: async (passes: readonly SmokePass[]): Promise<SmokeRun[]> => {
+      events.push(`live-smoke:${passes.join(",")}`)
+      return passes.map((pass) => ({ pass, passed: true, output: `${pass} ok` }))
+    },
+  } as DeliveryPort<string, string, string, string, string>
 }
+
+const PREVIOUS_URL = "https://11111111.almamesh.pages.dev"
+
+describe("post-deploy live smoke", () => {
+  test("without a previous deployment only the fresh pass runs, and the proof says so loudly", async () => {
+    const events: string[] = []
+    const warn = spyOn(console, "warn").mockImplementation(() => undefined)
+    const result = await deliverProduction(failClosedPort(events), commitSha, "781", 3, centralSha)
+    expect(warn).toHaveBeenCalledWith(RETURNING_PASS_NOT_WIRED)
+    warn.mockRestore()
+    expect(events.at(-1)).toBe("live-smoke:fresh")
+    expect(result.liveProof).toContain(RETURNING_PASS_NOT_WIRED)
+    expect(RETURNING_PASS_NOT_WIRED).toContain("returning-visitor pass NOT RUN")
+  })
+
+  test("a supplied previous deployment is read before the upload and drives the returning pass", async () => {
+    const events: string[] = []
+    const port = failClosedPort(events)
+    let smokedWith: string | undefined
+    port.previousProductionUrl = async () => {
+      events.push("previous-production")
+      return PREVIOUS_URL
+    }
+    const smoke = port.smokeLive
+    port.smokeLive = async (passes, previousUrl) => {
+      smokedWith = previousUrl
+      return smoke(passes, previousUrl)
+    }
+
+    const result = await deliverProduction(port, commitSha, "781", 3, centralSha)
+    expect(events.indexOf("previous-production")).toBeLessThan(events.indexOf("deploy"))
+    expect(events.at(-1)).toBe("live-smoke:fresh,returning")
+    expect(smokedWith).toBe(PREVIOUS_URL)
+    expect(result.liveProof).toEndWith("Live smoke passed: fresh, returning")
+  })
+
+  test("a failed pass fails the delivery naming the pass and the live deployment", async () => {
+    const events: string[] = []
+    const port = failClosedPort(events)
+    port.smokeLive = async () => [{ pass: "fresh", passed: false, output: "engine ready within 30000 ms" }]
+
+    const failure = deliverProduction(port, commitSha, "781", 3, centralSha)
+    await expect(failure).rejects.toThrow("Live smoke failed (fresh) on deployment deployment-id")
+    await expect(failure).rejects.toThrow("engine ready within 30000 ms")
+  })
+
+  test("a requested pass that never reported is a failure, not a success", async () => {
+    const events: string[] = []
+    const port = failClosedPort(events)
+    port.previousProductionUrl = async () => PREVIOUS_URL
+    port.smokeLive = async () => [{ pass: "fresh", passed: true, output: "fresh ok" }]
+
+    await expect(deliverProduction(port, commitSha, "781", 3, centralSha)).rejects.toThrow(
+      "Live smoke failed (returning)",
+    )
+  })
+
+  test("production changes go only through the central module: no repository code calls the Cloudflare API", () => {
+    const dir = join(import.meta.dir, "..", "dagger", "src")
+    const direct = readdirSync(dir).filter((name) => {
+      const source = readFileSync(join(dir, name), "utf8")
+      return source.includes("api.cloudflare.com") || source.includes("/rollback")
+    })
+    expect(direct).toEqual([])
+  })
+
+  test("an empty smoke report fails", async () => {
+    const port = failClosedPort([])
+    port.smokeLive = async () => []
+    await expect(deliverProduction(port, commitSha, "781", 3, centralSha)).rejects.toThrow("Live smoke failed (fresh)")
+  })
+})
 
 describe("non-writing live release proof", () => {
   test("rejects unsafe live-proof bounds before constructing a command", () => {

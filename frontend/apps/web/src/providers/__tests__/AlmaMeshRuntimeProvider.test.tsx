@@ -19,6 +19,11 @@ import {
   teardownLiveEngine,
 } from '../../lib/engineLifecycle';
 
+const { recoverSeveredServiceWorkerChannel } = vi.hoisted(() => ({
+  recoverSeveredServiceWorkerChannel: vi.fn().mockResolvedValue(false),
+}));
+vi.mock('../../lib/swSelfHeal', () => ({ recoverSeveredServiceWorkerChannel }));
+
 // The provider gates its mount auto-boot off the marketing landing route
 // (path "/" with no saved chart). These tests assert the auto-boot / recovery
 // contract, so they must render on a NON-landing route — otherwise the gate
@@ -406,6 +411,27 @@ describe('AlmaMeshRuntimeProvider — retryable bootstrap', () => {
     expect(runtime.bootstrapCalls).toBe(2);
   });
 
+  it('retries a chart-worker module import that WebKit failed mid-boot', async () => {
+    // WebKit's wording when a worker's dynamic import() loses its network
+    // process mid-load (Chromium says "Failed to fetch dynamically imported
+    // module", which the transport pattern already covers).
+    const runtime = makeFakeRuntime([
+      () => Promise.reject(new TypeError('Importing a module script failed.')),
+      () => Promise.resolve(makeFakeEngine('after-import-failure')),
+    ]);
+
+    render(
+      <AlmaMeshRuntimeProvider runtime={runtime}>
+        <Probe capture={() => {}} />
+      </AlmaMeshRuntimeProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId('engine').textContent).toBe('engine-ready'), {
+      timeout: 2_000,
+    });
+    expect(runtime.bootstrapCalls).toBe(2);
+  });
+
   it('recovers when transport returns later without an online event', async () => {
     vi.useFakeTimers();
     let transportAvailable = false;
@@ -629,5 +655,39 @@ describe('AlmaMeshRuntimeProvider — recovery seams', () => {
     await waitFor(() => expect(screen.getByTestId('engine').textContent).toBe('engine-ready'));
     await teardownLiveEngine();
     expect(dispose).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('AlmaMeshRuntimeProvider — severed service-worker channel', () => {
+  beforeEach(() => recoverSeveredServiceWorkerChannel.mockClear());
+
+  it('checks for a severed service-worker channel after a transport failure', async () => {
+    const runtime = makeFakeRuntime([
+      () => Promise.reject(new Error('fetch http://localhost/public.key failed: network unreachable')),
+      () => Promise.resolve(makeFakeEngine('after-channel-check')),
+    ]);
+
+    render(
+      <AlmaMeshRuntimeProvider runtime={runtime}>
+        <Probe capture={() => {}} />
+      </AlmaMeshRuntimeProvider>,
+    );
+
+    await waitFor(() => expect(recoverSeveredServiceWorkerChannel).toHaveBeenCalledTimes(1));
+  });
+
+  it('never treats an integrity failure as a severed channel', async () => {
+    const runtime = makeFakeRuntime([
+      () => Promise.reject(new Error('signature verification failed')),
+    ]);
+
+    render(
+      <AlmaMeshRuntimeProvider runtime={runtime}>
+        <Probe capture={() => {}} />
+      </AlmaMeshRuntimeProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId('error').textContent).toBe('signature verification failed'));
+    expect(recoverSeveredServiceWorkerChannel).not.toHaveBeenCalled();
   });
 });

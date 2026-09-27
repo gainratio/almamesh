@@ -7,6 +7,7 @@ vi.mock('@almamesh/browser', () => ({ clearAlmaBundleCache }));
 
 import {
   healStrandedServiceWorker,
+  recoverSeveredServiceWorkerChannel,
   reloadForUpdate,
   installChunkErrorRecovery,
 } from '../swSelfHeal';
@@ -280,5 +281,77 @@ describe('automatic self-heal never touches OPFS (bundle cache + rollback floor)
     expect(reload).toHaveBeenCalledTimes(2);
     expect(getDirectory).not.toHaveBeenCalled();
     expect(clearAlmaBundleCache).not.toHaveBeenCalled();
+  });
+});
+
+// WebKit restarts its network process under memory pressure (iOS jetsam, a
+// loaded CI runner). The SW registration and caches survive on disk, but the
+// ALREADY-LOADED document's channel to its service worker is severed: every
+// controlled fetch — even the precached shell — rejects with "Load failed", so
+// an engine boot in flight can never recover in that document. Only a fresh
+// navigation re-attaches it. Evidence: scripts/verify-webkit-engine.mjs
+// --first-session with the network process SIGKILLed at offline boot.
+describe('recoverSeveredServiceWorkerChannel', () => {
+  const CHANNEL_KEY = 'almamesh:sw-channel-reload';
+  const HEALTHY = {
+    cacheNames: [...IMMUTABLE, ...RUNTIME, PRECACHE],
+    precacheEntries: ['https://almamesh.com/?__WB_REVISION__=abc'],
+  };
+
+  function stubShellFetch(outcome: 'resolves' | 'rejects') {
+    const fetchShell = outcome === 'resolves'
+      ? vi.fn().mockResolvedValue({ ok: true, status: 200 })
+      : vi.fn().mockRejectedValue(new TypeError('Load failed'));
+    vi.stubGlobal('fetch', fetchShell);
+    return fetchShell;
+  }
+
+  it('reloads once, non-destructively, when the cached shell is unreachable through the controller', async () => {
+    const { unregister, cacheDelete, reload } = stubEnv(HEALTHY);
+    const fetchShell = stubShellFetch('rejects');
+    await expect(recoverSeveredServiceWorkerChannel()).resolves.toBe(true);
+    expect(fetchShell).toHaveBeenCalledWith('/', { cache: 'no-store' });
+    expect(reload).toHaveBeenCalledTimes(1);
+    expect(unregister).not.toHaveBeenCalled();
+    expect(cacheDelete).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem(CHANNEL_KEY)).toBe('1');
+    expect(sessionStorage.getItem(HEAL_KEY)).toBeNull();
+  });
+
+  it('does nothing when the controller still serves the shell (a real outage, not a severed channel)', async () => {
+    const { reload } = stubEnv(HEALTHY);
+    stubShellFetch('resolves');
+    await expect(recoverSeveredServiceWorkerChannel()).resolves.toBe(false);
+    expect(reload).not.toHaveBeenCalled();
+  });
+
+  it('does nothing for an uncontrolled page', async () => {
+    const { reload } = stubEnv({ ...HEALTHY, controller: null });
+    const fetchShell = stubShellFetch('rejects');
+    await expect(recoverSeveredServiceWorkerChannel()).resolves.toBe(false);
+    expect(fetchShell).not.toHaveBeenCalled();
+    expect(reload).not.toHaveBeenCalled();
+  });
+
+  it('leaves a missing precache to the stranded-worker heal', async () => {
+    const { reload } = stubEnv({ cacheNames: [...IMMUTABLE, ...RUNTIME] });
+    stubShellFetch('rejects');
+    await expect(recoverSeveredServiceWorkerChannel()).resolves.toBe(false);
+    expect(reload).not.toHaveBeenCalled();
+  });
+
+  it('reloads at most once per tab session', async () => {
+    const { reload } = stubEnv(HEALTHY);
+    stubShellFetch('rejects');
+    await recoverSeveredServiceWorkerChannel();
+    await expect(recoverSeveredServiceWorkerChannel()).resolves.toBe(false);
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('never throws when CacheStorage itself fails', async () => {
+    const { reload } = stubEnv({ cacheNames: [], cachesThrows: true });
+    stubShellFetch('rejects');
+    await expect(recoverSeveredServiceWorkerChannel()).resolves.toBe(false);
+    expect(reload).not.toHaveBeenCalled();
   });
 });

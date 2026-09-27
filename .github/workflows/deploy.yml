@@ -44,6 +44,11 @@ jobs:
           BUNDLE_PRIVATE_KEY_B64: ${{ secrets.BUNDLE_PRIVATE_KEY_B64 }}
           BUNDLE_PUBLIC_KEY_B64: ${{ secrets.BUNDLE_PUBLIC_KEY_B64 }}
           GITHUB_TOKEN: ${{ github.token }}
+          # Event values reach dagger-for-github only through env: the action
+          # pastes `args` into bash (fleet rule dagger-args-expression, hseshadr/ci#50).
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          WORKFLOW_RUN_ID: ${{ github.event.workflow_run.id }}
+          RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
         with:
           version: "0.21.8"
           verb: call
@@ -54,6 +59,6 @@ jobs:
             --cloudflare-account-id=env:CLOUDFLARE_ACCOUNT_ID
             --bundle-private-key-b-64=env:BUNDLE_PRIVATE_KEY_B64
             --bundle-public-key-b-64=env:BUNDLE_PUBLIC_KEY_B64
-            --expected-sha=${{ github.event.workflow_run.head_sha }}
-            --workflow-run-id=${{ github.event.workflow_run.id }}
-            --run-attempt=${{ github.event.workflow_run.run_attempt }}
+            --expected-sha="$HEAD_SHA"
+            --workflow-run-id="$WORKFLOW_RUN_ID"
+            --run-attempt="$RUN_ATTEMPT"
