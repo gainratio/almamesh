@@ -77,6 +77,24 @@ function ingressViolations(ingressSteps: Array<Record<string, unknown>>): string
   return violations
 }
 
+/**
+ * Fleet rule `dagger-args-expression` (hseshadr/ci#50): dagger-for-github pastes
+ * these inputs into bash, so an attacker-influenced `${{ }}` value there is shell
+ * injection. Such values must reach the step only through `env:` and be quoted.
+ */
+const BASH_PASTED_DAGGER_INPUTS = ["args", "call", "shell", "dagger-flags", "workdir", "cloud-token"]
+const FORBIDDEN_EXPRESSION = /\$\{\{\s*(inputs\.|github\.event\.|github\.head_ref\b)/
+
+function daggerArgsExpressionViolations(workflowSteps: Array<Record<string, unknown>>): string[] {
+  return workflowSteps
+    .filter((step) => step.uses === daggerAction)
+    .flatMap((step) => {
+      const inputs = (step.with ?? {}) as Record<string, unknown>
+      return BASH_PASTED_DAGGER_INPUTS.filter((key) =>
+        typeof inputs[key] === "string" && FORBIDDEN_EXPRESSION.test(inputs[key] as string))
+    })
+}
+
 function expectThinDaggerIngress(name: string): void {
   expect(ingressViolations(steps(name))).toEqual([])
 }
@@ -92,6 +110,7 @@ describe("Dagger public orchestration contract", () => {
         "deploy",
         "deploy-dry-run",
         "frontend",
+        "live-probe",
         "nightly",
         "pdf",
         "privacy",
@@ -231,7 +250,17 @@ describe("canonical GitHub ingress contract", () => {
       "security-audit.yml",
       "nightly-e2e.yml",
       "deploy.yml",
+      "live-probe.yml",
     ]) expectThinDaggerIngress(name)
+  })
+
+  test("the scheduled live probe runs its native function read-only and without secrets", () => {
+    const source = workflowSource("live-probe.yml")
+    const on = workflow("live-probe.yml").on as Record<string, unknown>
+    expect(Object.keys(on).sort()).toEqual(["schedule", "workflow_dispatch"])
+    expect(source).toContain("args: live-probe")
+    expect(source).not.toContain("secrets.")
+    expect(workflow("live-probe.yml").permissions).toEqual({ contents: "read" })
   })
 
   test.each([
@@ -257,6 +286,33 @@ describe("canonical GitHub ingress contract", () => {
   ])("rejects $name in the protected Dagger ingress", ({ mutate }) => {
     const mutant = mutate(structuredClone(steps("dagger.yml")))
     expect(ingressViolations(mutant)).not.toEqual([])
+  })
+
+  test("no workflow pastes an event, input, or head_ref expression into a dagger-for-github bash input", () => {
+    const violations = workflowNames().flatMap((name) =>
+      daggerArgsExpressionViolations(steps(name)).map((key) => `${name}:${key}`))
+    expect(violations).toEqual([])
+  })
+
+  test.each([
+    ["an inputs expression in args", "args", "live-probe --tag=${{ inputs.tag }}"],
+    ["an event expression in call", "call", "ci --commit-sha=${{ github.event.pull_request.head.sha }}"],
+    ["head_ref in dagger-flags", "dagger-flags", "--progress=${{ github.head_ref }}"],
+    ["a spaced event expression in workdir", "workdir", "${{  github.event.workflow_run.head_branch }}"],
+  ])("the fleet rule rejects %s", (_name, key, value) => {
+    const mutant = structuredClone(steps("live-probe.yml"))
+    const dagger = mutant.find((step) => step.uses === daggerAction) as Record<string, unknown>
+    dagger.with = { ...(dagger.with as Record<string, unknown>), [key]: value }
+    expect(daggerArgsExpressionViolations(mutant)).toEqual([key])
+  })
+
+  test("the fleet rule allows env-quoted values and non-event contexts", () => {
+    const allowed = [{
+      uses: daggerAction,
+      env: { HEAD_SHA: "${{ github.event.workflow_run.head_sha }}" },
+      with: { args: 'deploy --expected-sha="$HEAD_SHA"', call: "ci --commit-sha=${{ github.sha }}" },
+    }]
+    expect(daggerArgsExpressionViolations(allowed)).toEqual([])
   })
 
   test("the security audit invokes its native Dagger function", () => {
@@ -285,9 +341,19 @@ describe("canonical GitHub ingress contract", () => {
     expect(source).toContain("github.event.workflow_run.event == 'push'")
     expect(source).toContain("github.event.workflow_run.head_repository.full_name == github.repository")
     expect(source).toContain("ref: ${{ github.event.workflow_run.head_sha }}")
-    expect(source).toContain("--expected-sha=${{ github.event.workflow_run.head_sha }}")
-    expect(source).toContain("--workflow-run-id=${{ github.event.workflow_run.id }}")
-    expect(source).toContain("--run-attempt=${{ github.event.workflow_run.run_attempt }}")
+    // INVERTED CONTRACT (hseshadr/ci#50, fleet rule dagger-args-expression): this
+    // used to REQUIRE `--expected-sha=${{ github.event.workflow_run.head_sha }}` (and
+    // the run id / attempt) inside `args`, which dagger-for-github pastes into bash.
+    // The event values now reach the step only through env and are quoted.
+    expect(source).not.toContain("--expected-sha=${{ github.event.workflow_run.head_sha }}")
+    expect(source).not.toContain("--workflow-run-id=${{ github.event.workflow_run.id }}")
+    expect(source).not.toContain("--run-attempt=${{ github.event.workflow_run.run_attempt }}")
+    expect(source).toContain("HEAD_SHA: ${{ github.event.workflow_run.head_sha }}")
+    expect(source).toContain("WORKFLOW_RUN_ID: ${{ github.event.workflow_run.id }}")
+    expect(source).toContain("RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}")
+    expect(source).toContain('--expected-sha="$HEAD_SHA"')
+    expect(source).toContain('--workflow-run-id="$WORKFLOW_RUN_ID"')
+    expect(source).toContain('--run-attempt="$RUN_ATTEMPT"')
     expect(source).toContain("--github-token=env:GITHUB_TOKEN")
     expect(source).toContain("environment: production")
     expect(source).not.toMatch(/args:[\s\S]*\$\{\{ secrets\./)

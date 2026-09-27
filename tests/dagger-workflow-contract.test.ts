@@ -150,11 +150,14 @@ function exactDeployWorkflowViolations(source: string): string[] {
           CLOUDFLARE_ACCOUNT_ID: "${{ secrets.CLOUDFLARE_ACCOUNT_ID }}",
           CLOUDFLARE_API_TOKEN: "${{ secrets.CLOUDFLARE_API_TOKEN }}",
           GITHUB_TOKEN: "${{ github.token }}",
+          HEAD_SHA: "${{ github.event.workflow_run.head_sha }}",
+          RUN_ATTEMPT: "${{ github.event.workflow_run.run_attempt }}",
+          WORKFLOW_RUN_ID: "${{ github.event.workflow_run.id }}",
         },
         with: {
           version: "0.21.8",
           verb: "call",
-          args: "deploy --github-token=env:GITHUB_TOKEN --cloudflare-api-token=env:CLOUDFLARE_API_TOKEN --cloudflare-account-id=env:CLOUDFLARE_ACCOUNT_ID --bundle-private-key-b-64=env:BUNDLE_PRIVATE_KEY_B64 --bundle-public-key-b-64=env:BUNDLE_PUBLIC_KEY_B64 --expected-sha=${{ github.event.workflow_run.head_sha }} --workflow-run-id=${{ github.event.workflow_run.id }} --run-attempt=${{ github.event.workflow_run.run_attempt }}",
+          args: "deploy --github-token=env:GITHUB_TOKEN --cloudflare-api-token=env:CLOUDFLARE_API_TOKEN --cloudflare-account-id=env:CLOUDFLARE_ACCOUNT_ID --bundle-private-key-b-64=env:BUNDLE_PRIVATE_KEY_B64 --bundle-public-key-b-64=env:BUNDLE_PUBLIC_KEY_B64 --expected-sha=\"$HEAD_SHA\" --workflow-run-id=\"$WORKFLOW_RUN_ID\" --run-attempt=\"$RUN_ATTEMPT\"",
         },
       },
     ],
@@ -238,6 +241,9 @@ const canonicalDeployFixture = [
   "          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}",
   "          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}",
   "          GITHUB_TOKEN: ${{ github.token }}",
+  "          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}",
+  "          WORKFLOW_RUN_ID: ${{ github.event.workflow_run.id }}",
+  "          RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}",
   "        with:",
   "          version: \"0.21.8\"",
   "          verb: call",
@@ -248,9 +254,9 @@ const canonicalDeployFixture = [
   "            --cloudflare-account-id=env:CLOUDFLARE_ACCOUNT_ID",
   "            --bundle-private-key-b-64=env:BUNDLE_PRIVATE_KEY_B64",
   "            --bundle-public-key-b-64=env:BUNDLE_PUBLIC_KEY_B64",
-  "            --expected-sha=${{ github.event.workflow_run.head_sha }}",
-  "            --workflow-run-id=${{ github.event.workflow_run.id }}",
-  "            --run-attempt=${{ github.event.workflow_run.run_attempt }}",
+  "            --expected-sha=\"$HEAD_SHA\"",
+  "            --workflow-run-id=\"$WORKFLOW_RUN_ID\"",
+  "            --run-attempt=\"$RUN_ATTEMPT\"",
   "",
 ].join("\n")
 
@@ -346,6 +352,7 @@ describe("privileged production delivery workflow", () => {
       canonicalDeployFixture.replace("private-key-b-64", ["private-key-b", "64"].join("")),
     ],
     ["missing run attempt", canonicalDeployFixture.replace(/\s+--run-attempt=\S+/, "")],
+
     ["unexpected argument", canonicalDeployFixture.replace("deploy\n", "deploy --project=almamesh\n")],
   ])("rejects %s in the static deploy flag contract", (_name, source) => {
     expect(deployArgumentFlags(source)).not.toEqual(expectedDeployFlags)
@@ -382,18 +389,31 @@ describe("privileged production delivery workflow", () => {
       violation: "deploy-job",
     },
     {
+      name: "an event expression pasted back into bash-pasted args (hseshadr/ci#50)",
+      source: canonicalDeployFixture.replace(
+        '--expected-sha="$HEAD_SHA"',
+        "--expected-sha=${{ github.event.workflow_run.head_sha }}",
+      ),
+      violation: "deploy-job",
+    },
+    {
+      name: "unquoted env reference",
+      source: canonicalDeployFixture.replace('--expected-sha="$HEAD_SHA"', "--expected-sha=$HEAD_SHA"),
+      violation: "deploy-job",
+    },
+    {
       name: "deploy workflow run id",
       source: canonicalDeployFixture.replace(
-        "--workflow-run-id=${{ github.event.workflow_run.id }}",
-        "--workflow-run-id=${{ github.run_id }}",
+        "WORKFLOW_RUN_ID: ${{ github.event.workflow_run.id }}",
+        "WORKFLOW_RUN_ID: ${{ github.run_id }}",
       ),
       violation: "deploy-job",
     },
     {
       name: "deploy workflow attempt",
       source: canonicalDeployFixture.replace(
-        "--run-attempt=${{ github.event.workflow_run.run_attempt }}",
-        "--run-attempt=${{ github.run_attempt }}",
+        "RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}",
+        "RUN_ATTEMPT: ${{ github.run_attempt }}",
       ),
       violation: "deploy-job",
     },
@@ -408,8 +428,8 @@ describe("privileged production delivery workflow", () => {
     {
       name: "terminal deploy subcommand",
       source: canonicalDeployFixture.replace(
-        "--run-attempt=${{ github.event.workflow_run.run_attempt }}",
-        "--run-attempt=${{ github.event.workflow_run.run_attempt }} sync",
+        '--run-attempt="$RUN_ATTEMPT"',
+        '--run-attempt="$RUN_ATTEMPT" sync',
       ),
       violation: "deploy-job",
     },

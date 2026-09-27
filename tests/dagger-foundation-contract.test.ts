@@ -224,6 +224,7 @@ describe("Foundation guard composition", () => {
       CacheVolume: class {},
       Container: class {},
       Directory: class {},
+      ReturnType: { Any: "ANY", Success: "SUCCESS" },
       Secret: class {},
       Service: class {},
       Workspace: class {},

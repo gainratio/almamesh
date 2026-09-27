@@ -1,0 +1,32 @@
+# Scheduled production probe: a fresh browser profile opens https://almamesh.com,
+# the chart engine must boot within the pinned budget, a chart must render, and
+# the console must stay clean. Read-only and credential-free. A red run is a red
+# repository: the live site is broken for new visitors.
+name: Live Probe (almamesh.com)
+
+on:
+  schedule:
+    - cron: "41 */4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  live-probe:
+    name: Fresh-visitor smoke against production (Dagger)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77 # v8.4.1
+        with:
+          version: "0.21.8"
+          verb: call
+          args: live-probe
