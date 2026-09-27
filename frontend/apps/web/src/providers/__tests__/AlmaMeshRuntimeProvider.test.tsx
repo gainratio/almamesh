@@ -411,6 +411,27 @@ describe('AlmaMeshRuntimeProvider — retryable bootstrap', () => {
     expect(runtime.bootstrapCalls).toBe(2);
   });
 
+  it('retries a chart-worker module import that WebKit failed mid-boot', async () => {
+    // WebKit's wording when a worker's dynamic import() loses its network
+    // process mid-load (Chromium says "Failed to fetch dynamically imported
+    // module", which the transport pattern already covers).
+    const runtime = makeFakeRuntime([
+      () => Promise.reject(new TypeError('Importing a module script failed.')),
+      () => Promise.resolve(makeFakeEngine('after-import-failure')),
+    ]);
+
+    render(
+      <AlmaMeshRuntimeProvider runtime={runtime}>
+        <Probe capture={() => {}} />
+      </AlmaMeshRuntimeProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId('engine').textContent).toBe('engine-ready'), {
+      timeout: 2_000,
+    });
+    expect(runtime.bootstrapCalls).toBe(2);
+  });
+
   it('recovers when transport returns later without an online event', async () => {
     vi.useFakeTimers();
     let transportAvailable = false;

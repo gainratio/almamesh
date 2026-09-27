@@ -132,7 +132,7 @@ export interface BootstrapRuntime {
   dispose?(): Promise<void> | void
 }
 
-const TRANSIENT_BOOT_FAILURE = /network unreachable|failed to fetch|load failed|networkerror|timed out after/i
+const TRANSIENT_BOOT_FAILURE = /network unreachable|failed to fetch|load failed|networkerror|timed out after|importing a module script failed/i
 const REPORTED_ONLINE_RETRY_DELAYS_MS = [250, 1_000, 5_000, 15_000] as const
 
 function isTransientBootFailure(error: Error): boolean {
