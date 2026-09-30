@@ -306,6 +306,7 @@ export class AlmameshCi {
           "dagger.json",
           "dagger/scripts/**",
           "dagger/src/**",
+          "frontend/apps/web/vitest.config.ts",
           ...CONTRACT_TESTS,
         ]),
       )
