@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import type { SiderealChart } from '@almamesh/browser/types';
 import type { DivisionalChartId, VargaCtxFull } from '@almamesh/shared-types';
 import { FOUNDER_DASHAS } from '../src/test/dashaFixtures';
+import { filterExpectedOfflineAbortErrors } from '../src/lib/consoleErrorFilters';
 import {
   DOMAINS_CTX,
   STRENGTH_CTX,
@@ -1175,14 +1176,7 @@ test('REAL onboarding -> rectify -> offline reload -> predictive PDF is correct'
   }
 
   const offlineErrors = errors.splice(offlineConsoleStart);
-  // Chromium reports the same intentional context-offline abort as either
-  // ERR_INTERNET_DISCONNECTED or ERR_FAILED across Playwright browser builds.
-  const unexpectedOfflineErrors = offlineErrors.filter(
-    (message) =>
-      !/^\[console\.error\] Failed to load resource: net::ERR_(?:INTERNET_DISCONNECTED|FAILED)$/.test(
-        message,
-      ),
-  );
+  const unexpectedOfflineErrors = filterExpectedOfflineAbortErrors(offlineErrors);
   expect(
     unexpectedOfflineErrors,
     `unexpected console errors during hard-offline reload:\n${unexpectedOfflineErrors.join('\n')}`,
@@ -1437,8 +1431,18 @@ test('REAL onboarding -> rectify -> offline reload -> predictive PDF is correct'
   ).toBeGreaterThan(0);
   console.log('[report-pdf] yoga wasm asset   :', wasmAssetUrls[0]);
 
-  // Final clean-console gate across the whole journey.
-  expect(errors, `console errors during the full journey:\n${errors.join('\n')}`).toEqual([]);
+  // Final clean-console gate across the whole journey. Apply the same
+  // offline-abort content filter here too: Playwright's console event for a
+  // request that failed WHILE the context was offline can be delivered
+  // asynchronously, sometimes after the offline block above already spliced
+  // its window out of `errors` (CI CPU contention widens this race). Without
+  // this, a benign, already-accounted-for offline abort can land late and
+  // trip this gate as if it were a real, unexplained journey error.
+  const unexpectedJourneyErrors = filterExpectedOfflineAbortErrors(errors);
+  expect(
+    unexpectedJourneyErrors,
+    `console errors during the full journey:\n${unexpectedJourneyErrors.join('\n')}`,
+  ).toEqual([]);
 });
 
 test('synthetic maximal state -> real browser download preserves report families without the separate timeline', async ({
