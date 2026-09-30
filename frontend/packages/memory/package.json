@@ -20,7 +20,7 @@
   },
   "dependencies": {
     "@edgeproc/browser": "github:hseshadr/edgeproc-browser#02171df60afc8b09d6439112ea7ea3202338d46a",
-    "@huggingface/transformers": "^4.3.0"
+    "@huggingface/transformers": "3.8.1"
   },
   "devDependencies": {
     "typescript": "~5.7.3",
