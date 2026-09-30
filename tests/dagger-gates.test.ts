@@ -102,3 +102,15 @@ describe("almamesh ci wiring", () => {
     }
   })
 })
+
+describe("frontend unit tests survive a loaded runner", () => {
+  // The frontend gate now shares 4 vCPUs with the browser, pdf and backend gates. On the
+  // first concurrent CI run vitest's default 5s test / 10s hook limits fired on two heavy
+  // tests (renderToBytes, reportSectionParity) that pass in ~1s on an idle box.
+  const config = readFileSync(resolve(root, "frontend/apps/web/vitest.config.ts"), "utf8")
+
+  test("vitest limits are 30s so CPU contention is not read as a failing test", () => {
+    expect(config).toContain("testTimeout: 30_000")
+    expect(config).toContain("hookTimeout: 30_000")
+  })
+})

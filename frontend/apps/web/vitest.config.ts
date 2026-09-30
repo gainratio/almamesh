@@ -19,6 +19,10 @@ export default defineConfig({
     // ESM-only modules that fail with "require() of ES Module not supported".
     environment: 'happy-dom',
     setupFiles: ['./src/test/setup.ts'],
+    // The CI gate runs beside the browser/pdf/backend gates on 4 vCPUs. The 5s/10s defaults
+    // read CPU contention as a failing test; these limits only stop that false alarm.
+    testTimeout: 30_000,
+    hookTimeout: 30_000,
     include: ['src/**/*.{test,spec}.{ts,tsx}', 'functions/**/*.{test,spec}.ts'],
     exclude: ['node_modules', 'e2e'],
     coverage: {
