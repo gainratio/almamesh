@@ -93,7 +93,7 @@ async function poppler(path: string, args: readonly string[]): Promise<string> {
     return String(result.stdout);
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
-    throw new Error(`pdftotext is required for maximal PDF acceptance: ${detail}`);
+    throw new Error(`pdftotext is required for maximal PDF acceptance: ${detail}`, { cause: error });
   }
 }
 

@@ -172,7 +172,7 @@ async function main() {
   // Persist the chart through the app's own store + adapter, then navigate to
   // the dashboard and assert the chart UI renders (no error boundary).
   let renderPass = false
-  let renderDetail = ''
+  let renderDetail
   if (correct) {
     try {
       // Reuse the booted engine's chart and build a legacy backup at the
@@ -358,7 +358,7 @@ async function main() {
   // JS/CSS) is allowed through (in a real deploy P6's SW serves it from cache).
   // If the engine still reaches "ready", it MUST have re-used the OPFS bytes.
   let offlinePass = false
-  let offlineDetail = ''
+  let offlineDetail
   try {
     const abortedDuringOffline = []
     await context.route('**/*', (route) => {
@@ -466,7 +466,7 @@ async function main() {
   // (the sync tier falls back to the cached active version because /latest is
   // unreachable). Finally the saved chart must still render.
   let hardOfflinePass = false
-  let hardOfflineDetail = ''
+  let hardOfflineDetail
   try {
     // Give the Service Worker a beat to claim the page + finish precaching.
     await page.bringToFront().catch(() => {})

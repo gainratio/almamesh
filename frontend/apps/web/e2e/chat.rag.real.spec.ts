@@ -47,7 +47,7 @@ test('[real] chat: single-pass streaming + self-hosted RAG + persistence + searc
       const body = req.postData() ?? '';
       const m = body.match(/"role":"user"[^}]*"content":"([^"]{0,80})/g);
       llmPosts.push(`POST#${llmPosts.length + 1} users=[${(m ?? []).map((s) => s.slice(-60)).join(' | ')}]`);
-      let isStream = false;
+      let isStream: boolean;
       try {
         isStream = JSON.parse(body)?.stream === true;
       } catch {
