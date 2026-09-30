@@ -43,3 +43,22 @@ export async function runConcurrently(gates: readonly Gate[]): Promise<void> {
   const outcomes = await Promise.all(gates.map((gate) => startGate(gate.name, gate.run)))
   assertAllPassed(outcomes)
 }
+
+/**
+ * Runs gates through `limit` lanes, starting them in the order given. Independent does not
+ * mean free: on a 4 vCPU runner, too many heavy gates at once turn CPU contention into
+ * timeouts. Like startGate it never rejects; every gate finishes and reports an outcome.
+ */
+export async function runPool(gates: readonly Gate[], limit: number): Promise<GateOutcome[]> {
+  if (!Number.isInteger(limit) || limit < 1) throw new Error(`gate pool limit must be >= 1, got ${limit}`)
+  const outcomes: GateOutcome[] = new Array(gates.length)
+  let next = 0
+  const lane = async (): Promise<void> => {
+    while (next < gates.length) {
+      const index = next++
+      outcomes[index] = await startGate(gates[index].name, gates[index].run)
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, gates.length) }, lane))
+  return outcomes
+}

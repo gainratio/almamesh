@@ -25,7 +25,7 @@ import {
   type SmokePass,
   type SmokeRun,
 } from "./deployment.js"
-import { assertAllPassed, startGate } from "./gates.js"
+import { assertAllPassed, runPool, startGate } from "./gates.js"
 
 const ROOT = "/workspace"
 const FRONTEND = `${ROOT}/frontend`
@@ -67,6 +67,11 @@ const CONTRACT_TESTS = [
   "tests/dagger-workflow-contract.test.ts",
 ]
 const SMOKE_OUTPUT_LINES = 60
+// The product gates are independent, but they are heavy (real browsers, Pyodide, vitest
+// workers) and the GitHub runner has 4 vCPUs. Six at once turned CPU contention into
+// timeouts in three CI runs, so they share two lanes: the 18-minute browser gate in one,
+// the rest one after another in the other.
+const PRODUCT_GATE_LANES = 2
 
 interface ReleaseArtifact {
   dist: Directory
@@ -385,19 +390,23 @@ export class AlmameshCi {
   @func()
   async ci(commitSha: string): Promise<string> {
     // The gates below are independent containers (own filesystem layers, own
-    // network namespace, no artifact handed from one to another), so they run
-    // together. Contracts start first and overlap the source guard; the guard
+    // network namespace, no artifact handed from one to another), so they can
+    // overlap. Contracts start first and overlap the source guard; the guard
     // must pass before any product gate starts (fail closed on a bad source).
+    // Product gates go longest first through PRODUCT_GATE_LANES lanes.
     const contracts = startGate("contracts", async () => (await this.contracts()).sync())
     await this.secretScan(commitSha).sync()
-    const product = [
-      startGate("backend", () => this.backend().sync()),
-      startGate("frontend", () => this.frontend().sync()),
-      startGate("browser", () => this.browser().sync()),
-      startGate("pdf", () => this.pdf().sync()),
-      startGate("privacy", () => this.privacy().sync()),
-    ]
-    assertAllPassed([await contracts, ...(await Promise.all(product))])
+    const product = await runPool(
+      [
+        { name: "browser", run: () => this.browser().sync() },
+        { name: "backend", run: () => this.backend().sync() },
+        { name: "frontend", run: () => this.frontend().sync() },
+        { name: "pdf", run: () => this.pdf().sync() },
+        { name: "privacy", run: () => this.privacy().sync() },
+      ],
+      PRODUCT_GATE_LANES,
+    )
+    assertAllPassed([await contracts, ...product])
     return "Contract, secret, backend, frontend, browser, PDF, and privacy gates passed."
   }
   @func()

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
-import { assertAllPassed, runConcurrently, startGate } from "../dagger/src/gates.ts"
+import { assertAllPassed, runConcurrently, runPool, startGate } from "../dagger/src/gates.ts"
 
 const root = resolve(import.meta.dir, "..")
 
@@ -88,12 +88,62 @@ describe("concurrent gate runner", () => {
   })
 })
 
+describe("bounded gate pool", () => {
+  // Six heavy gates at once on 4 vCPUs made real-browser and vitest tests time out (three CI
+  // runs, three different timeouts), so the product gates run through a pool of N lanes.
+  function tracker() {
+    let inFlight = 0
+    let peak = 0
+    const order: string[] = []
+    const gate = (name: string, fail = false) => ({
+      name,
+      run: async () => {
+        order.push(name)
+        inFlight += 1
+        peak = Math.max(peak, inFlight)
+        await new Promise((done) => setTimeout(done, 5))
+        inFlight -= 1
+        if (fail) throw new Error(`${name} red`)
+      },
+    })
+    return { gate, order, peak: () => peak }
+  }
+
+  test("never runs more than `limit` gates at once, and runs them all", async () => {
+    const t = tracker()
+    const outcomes = await runPool(["a", "b", "c", "d", "e"].map((n) => t.gate(n)), 2)
+    expect(t.peak()).toBe(2)
+    expect(outcomes.map((o) => o.gate).sort()).toEqual(["a", "b", "c", "d", "e"])
+  })
+
+  test("starts gates in the order given, so the longest can go first", async () => {
+    const t = tracker()
+    await runPool(["slow", "b", "c"].map((n) => t.gate(n)), 2)
+    expect(t.order[0]).toBe("slow")
+  })
+
+  test("a red gate is reported, never swallowed, and does not stop the rest", async () => {
+    const t = tracker()
+    const outcomes = await runPool([t.gate("a", true), t.gate("b"), t.gate("c")], 1)
+    expect(outcomes.filter((o) => o.failed).map((o) => o.gate)).toEqual(["a"])
+    expect(t.order).toEqual(["a", "b", "c"])
+    expect(() => assertAllPassed(outcomes)).toThrow("a: a red")
+  })
+
+  test("a limit below 1 is refused rather than silently running nothing", async () => {
+    await expect(runPool([{ name: "a", run: async () => undefined }], 0)).rejects.toThrow("limit")
+  })
+})
+
 describe("almamesh ci wiring", () => {
   const source = readFileSync(resolve(root, "dagger/src/index.ts"), "utf8")
   const ci = source.slice(source.indexOf("async ci("), source.indexOf("secretScan(commitSha: string)"))
 
-  test("guards the source first, then runs the product gates through the concurrent runner", () => {
-    expect(ci).toContain("startGate(")
+  test("guards the source first, then runs the product gates through a 2-lane pool, browser first", () => {
+    expect(ci).toContain("runPool(")
+    expect(ci).toContain("PRODUCT_GATE_LANES")
+    expect(source).toContain("const PRODUCT_GATE_LANES = 2")
+    expect(ci.indexOf('"browser"')).toBeLessThan(ci.indexOf('"backend"'))
     expect(ci).toContain("assertAllPassed(")
     expect(ci.indexOf("this.secretScan(commitSha)")).toBeLessThan(ci.indexOf("assertAllPassed("))
     expect(ci).not.toContain("for (const gate of gates) await")

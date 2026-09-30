@@ -304,28 +304,28 @@ describe("ci runs independent gates concurrently", () => {
     return module
   }
 
-  test("starts every product gate before any of them finishes", async () => {
+  test("runs product gates two at a time, longest (browser) first, and finishes them all", async () => {
     const started: string[] = []
-    let open!: () => void
-    const allStarted = new Promise<void>((resolveAll) => {
-      open = resolveAll
-    })
-    const meet = (name: string) => async () => {
+    let inFlight = 0
+    let peak = 0
+    const gate = (name: string) => async () => {
       started.push(name)
-      if (started.length === 5) open()
-      await Promise.race([
-        allStarted,
-        new Promise((_, reject) => setTimeout(() => reject(new Error(`serial: only ${started}`)), 1500)),
-      ])
+      inFlight += 1
+      peak = Math.max(peak, inFlight)
+      await new Promise((done) => setTimeout(done, 5))
+      inFlight -= 1
     }
     const module = await ciModule({
-      backend: meet("backend"),
-      frontend: meet("frontend"),
-      browser: meet("browser"),
-      pdf: meet("pdf"),
-      privacy: meet("privacy"),
+      backend: gate("backend"),
+      frontend: gate("frontend"),
+      browser: gate("browser"),
+      pdf: gate("pdf"),
+      privacy: gate("privacy"),
     })
     await expect(module.ci("1".repeat(40))).resolves.toContain("gates passed")
+    expect(started[0]).toBe("browser")
+    expect(started.sort()).toEqual(["backend", "browser", "frontend", "pdf", "privacy"])
+    expect(peak).toBe(2)
   })
 
   test("one red gate fails ci by name after the others finish", async () => {
