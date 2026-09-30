@@ -975,20 +975,6 @@ test('REAL onboarding -> rectify -> offline reload -> predictive PDF is correct'
   const { errors } = collectConsole(page);
   await mkdir(OUT_DIR, { recursive: true });
 
-  // DIAGNOSTIC (temporary): the main-CI investigation needs to know WHICH url
-  // fails and WHEN (relative to the offline window below) before deciding how
-  // -- or whether -- to filter it. Remove once the root cause is confirmed.
-  const testStartedAt = Date.now();
-  const requestFailures: string[] = [];
-  page.on('requestfailed', (request) => {
-    const failure = request.failure();
-    requestFailures.push(
-      `[requestfailed t+${Date.now() - testStartedAt}ms] ${request.url()} :: ${
-        failure?.errorText ?? 'unknown'
-      }`,
-    );
-  });
-
   // The PDF layout engine (yoga, inside @react-pdf) must load its wasm from an
   // own-origin hashed asset (yogaWasmAssetPlugin) — never by fetch()ing a
   // data: URI, which production CSP blocks. Collect the evidence here; the
@@ -1162,7 +1148,6 @@ test('REAL onboarding -> rectify -> offline reload -> predictive PDF is correct'
     .toBe(true);
 
   const offlineConsoleStart = errors.length;
-  const offlineStartedAt = Date.now();
   try {
     await page.context().setOffline(true);
     await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 });
@@ -1188,7 +1173,23 @@ test('REAL onboarding -> rectify -> offline reload -> predictive PDF is correct'
   } finally {
     await page.context().setOffline(false);
   }
-  const offlineEndedAt = Date.now();
+
+  // Chromium's offline->online transition is not instantaneous: CI evidence
+  // (main run 36732631421, rerun identical) showed a request issued ~40ms
+  // AFTER this setOffline(false) already resolved still failing with
+  // net::ERR_FAILED, and its console.error can be delivered to this process
+  // later still. Proving the network is GENUINELY back -- a real request
+  // that actually succeeds -- before computing the splice boundary below
+  // means every offline-triggered console event, however late Chromium
+  // delivers it, lands inside the window this test already filters. This
+  // can only make the window that gets filtered LARGER by waiting, never
+  // hide an unrelated failure: it resolves only once a real fetch succeeds.
+  await expect(async () => {
+    const status = await page.evaluate(() =>
+      fetch(location.href, { cache: 'no-store' }).then((r) => r.status),
+    );
+    expect(status).toBe(200);
+  }).toPass({ timeout: 10_000 });
 
   const offlineErrors = errors.splice(offlineConsoleStart);
   // Chromium reports the same intentional context-offline abort as either
@@ -1452,20 +1453,6 @@ test('REAL onboarding -> rectify -> offline reload -> predictive PDF is correct'
     'the PDF layout wasm must load from an own-origin /assets/*.wasm asset',
   ).toBeGreaterThan(0);
   console.log('[report-pdf] yoga wasm asset   :', wasmAssetUrls[0]);
-
-  // DIAGNOSTIC (temporary): dump every requestfailed event plus the offline
-  // window bounds, so a failing CI run tells us the exact URL and phase
-  // instead of us guessing. Remove once the root cause is confirmed.
-  console.log(
-    `[report-pdf] offline window: t+${offlineStartedAt - testStartedAt}ms -> t+${
-      offlineEndedAt - testStartedAt
-    }ms (test start = t+0ms)`,
-  );
-  console.log(
-    requestFailures.length > 0
-      ? `[report-pdf] requestfailed events:\n${requestFailures.join('\n')}`
-      : '[report-pdf] requestfailed events: none',
-  );
 
   // Final clean-console gate across the whole journey.
   expect(errors, `console errors during the full journey:\n${errors.join('\n')}`).toEqual([]);
