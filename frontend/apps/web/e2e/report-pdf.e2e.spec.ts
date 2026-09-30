@@ -8,7 +8,6 @@ import { fileURLToPath } from 'node:url';
 import type { SiderealChart } from '@almamesh/browser/types';
 import type { DivisionalChartId, VargaCtxFull } from '@almamesh/shared-types';
 import { FOUNDER_DASHAS } from '../src/test/dashaFixtures';
-import { filterExpectedOfflineAbortErrors } from '../src/lib/consoleErrorFilters';
 import {
   DOMAINS_CTX,
   STRENGTH_CTX,
@@ -976,6 +975,20 @@ test('REAL onboarding -> rectify -> offline reload -> predictive PDF is correct'
   const { errors } = collectConsole(page);
   await mkdir(OUT_DIR, { recursive: true });
 
+  // DIAGNOSTIC (temporary): the main-CI investigation needs to know WHICH url
+  // fails and WHEN (relative to the offline window below) before deciding how
+  // -- or whether -- to filter it. Remove once the root cause is confirmed.
+  const testStartedAt = Date.now();
+  const requestFailures: string[] = [];
+  page.on('requestfailed', (request) => {
+    const failure = request.failure();
+    requestFailures.push(
+      `[requestfailed t+${Date.now() - testStartedAt}ms] ${request.url()} :: ${
+        failure?.errorText ?? 'unknown'
+      }`,
+    );
+  });
+
   // The PDF layout engine (yoga, inside @react-pdf) must load its wasm from an
   // own-origin hashed asset (yogaWasmAssetPlugin) — never by fetch()ing a
   // data: URI, which production CSP blocks. Collect the evidence here; the
@@ -1149,6 +1162,7 @@ test('REAL onboarding -> rectify -> offline reload -> predictive PDF is correct'
     .toBe(true);
 
   const offlineConsoleStart = errors.length;
+  const offlineStartedAt = Date.now();
   try {
     await page.context().setOffline(true);
     await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 });
@@ -1174,9 +1188,17 @@ test('REAL onboarding -> rectify -> offline reload -> predictive PDF is correct'
   } finally {
     await page.context().setOffline(false);
   }
+  const offlineEndedAt = Date.now();
 
   const offlineErrors = errors.splice(offlineConsoleStart);
-  const unexpectedOfflineErrors = filterExpectedOfflineAbortErrors(offlineErrors);
+  // Chromium reports the same intentional context-offline abort as either
+  // ERR_INTERNET_DISCONNECTED or ERR_FAILED across Playwright browser builds.
+  const unexpectedOfflineErrors = offlineErrors.filter(
+    (message) =>
+      !/^\[console\.error\] Failed to load resource: net::ERR_(?:INTERNET_DISCONNECTED|FAILED)$/.test(
+        message,
+      ),
+  );
   expect(
     unexpectedOfflineErrors,
     `unexpected console errors during hard-offline reload:\n${unexpectedOfflineErrors.join('\n')}`,
@@ -1431,18 +1453,22 @@ test('REAL onboarding -> rectify -> offline reload -> predictive PDF is correct'
   ).toBeGreaterThan(0);
   console.log('[report-pdf] yoga wasm asset   :', wasmAssetUrls[0]);
 
-  // Final clean-console gate across the whole journey. Apply the same
-  // offline-abort content filter here too: Playwright's console event for a
-  // request that failed WHILE the context was offline can be delivered
-  // asynchronously, sometimes after the offline block above already spliced
-  // its window out of `errors` (CI CPU contention widens this race). Without
-  // this, a benign, already-accounted-for offline abort can land late and
-  // trip this gate as if it were a real, unexplained journey error.
-  const unexpectedJourneyErrors = filterExpectedOfflineAbortErrors(errors);
-  expect(
-    unexpectedJourneyErrors,
-    `console errors during the full journey:\n${unexpectedJourneyErrors.join('\n')}`,
-  ).toEqual([]);
+  // DIAGNOSTIC (temporary): dump every requestfailed event plus the offline
+  // window bounds, so a failing CI run tells us the exact URL and phase
+  // instead of us guessing. Remove once the root cause is confirmed.
+  console.log(
+    `[report-pdf] offline window: t+${offlineStartedAt - testStartedAt}ms -> t+${
+      offlineEndedAt - testStartedAt
+    }ms (test start = t+0ms)`,
+  );
+  console.log(
+    requestFailures.length > 0
+      ? `[report-pdf] requestfailed events:\n${requestFailures.join('\n')}`
+      : '[report-pdf] requestfailed events: none',
+  );
+
+  // Final clean-console gate across the whole journey.
+  expect(errors, `console errors during the full journey:\n${errors.join('\n')}`).toEqual([]);
 });
 
 test('synthetic maximal state -> real browser download preserves report families without the separate timeline', async ({
