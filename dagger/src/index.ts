@@ -25,6 +25,7 @@ import {
   type SmokePass,
   type SmokeRun,
 } from "./deployment.js"
+import { assertAllPassed, startGate } from "./gates.js"
 
 const ROOT = "/workspace"
 const FRONTEND = `${ROOT}/frontend`
@@ -62,6 +63,7 @@ const SOURCE_EXCLUDES = [
 const CONTRACT_TESTS = [
   "tests/dagger-deployment-contract.test.ts",
   "tests/dagger-foundation-contract.test.ts",
+  "tests/dagger-gates.test.ts",
   "tests/dagger-workflow-contract.test.ts",
 ]
 const SMOKE_OUTPUT_LINES = 60
@@ -381,17 +383,21 @@ export class AlmameshCi {
   }
   @func()
   async ci(commitSha: string): Promise<string> {
-    await (await this.contracts()).sync()
-    const gates = [
-      this.secretScan(commitSha),
-      this.backend(),
-      this.frontend(),
-      this.browser(),
-      this.pdf(),
-      this.privacy(),
+    // The gates below are independent containers (own filesystem layers, own
+    // network namespace, no artifact handed from one to another), so they run
+    // together. Contracts start first and overlap the source guard; the guard
+    // must pass before any product gate starts (fail closed on a bad source).
+    const contracts = startGate("contracts", async () => (await this.contracts()).sync())
+    await this.secretScan(commitSha).sync()
+    const product = [
+      startGate("backend", () => this.backend().sync()),
+      startGate("frontend", () => this.frontend().sync()),
+      startGate("browser", () => this.browser().sync()),
+      startGate("pdf", () => this.pdf().sync()),
+      startGate("privacy", () => this.privacy().sync()),
     ]
-    for (const gate of gates) await gate.sync()
-    return "Contract, secret, backend, frontend, browser, PDF, and privacy gates passed in sequence."
+    assertAllPassed([await contracts, ...(await Promise.all(product))])
+    return "Contract, secret, backend, frontend, browser, PDF, and privacy gates passed."
   }
   @func()
   secretScan(commitSha: string): Container {
