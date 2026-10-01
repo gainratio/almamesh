@@ -78,6 +78,7 @@ const NIGHTLY_REPORTED_E2E = [
   "interp:heal:real",
   "chat:rag:real",
   "dashboard:agentic:real",
+  "timeline:real",
 ]
 // The product gates are independent, but they are heavy (real browsers, Pyodide, vitest
 // workers) and the GitHub runner has 4 vCPUs. Six at once turned CPU contention into

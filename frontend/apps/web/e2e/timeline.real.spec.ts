@@ -13,10 +13,18 @@ import { bootEngine, seedChart, LLM_SETTINGS_KEY } from './interpretation.helper
  * Every OpenRouter response for the upcoming_periods section is saved to
  * test-results/ so a failure carries the raw model output, not just a symptom.
  *
+ * The sections STREAM: something must appear on screen within
+ * TIMELINE_TTFT_BUDGET_MS of the click (a reasoning model's "Thinking… N words"
+ * or the prose itself), not only when the whole section lands minutes later.
+ * Time-to-first-progress, time-to-first-prose and total time are written to
+ * test-results/timeline-real-timing-<model>.json.
+ *
  * Run:  OPENROUTER_API_KEY=... bunx playwright test --config=playwright.timeline.real.config.ts
  */
 
 const MODEL = process.env.TIMELINE_REAL_MODEL ?? 'deepseek/deepseek-v4-pro';
+const TTFT_BUDGET_MS = Number(process.env.TIMELINE_TTFT_BUDGET_MS ?? 60_000);
+const LIVE = '[data-testid^="timeline-live-"]';
 
 test('[real] current timeline generates The road ahead against live OpenRouter', async ({ page }) => {
   const KEY = process.env.OPENROUTER_API_KEY;
@@ -63,6 +71,25 @@ test('[real] current timeline generates The road ahead against live OpenRouter',
   const generate = page.getByTestId('generate-timeline').or(page.getByTestId('regenerate-timeline'));
   await expect(generate).toBeEnabled({ timeout: 120_000 });
   await generate.click();
+  const t0 = Date.now();
+
+  // Time to first text: live progress must show up long before the section lands.
+  await expect(page.locator(LIVE).first()).toBeVisible({ timeout: TTFT_BUDGET_MS });
+  const firstProgressMs = Date.now() - t0;
+  // First real prose (after any thinking). Recorded, not asserted: a reasoning
+  // model may legitimately think for minutes before writing.
+  const firstProse = page
+    .waitForFunction(
+      (selector) => [...document.querySelectorAll(selector)].some((el) => /Writing/.test(el.textContent ?? '')),
+      LIVE,
+      { timeout: 1_200_000, polling: 250 },
+    )
+    .then(async () => {
+      const ms = Date.now() - t0;
+      await page.screenshot({ path: 'test-results/timeline-real-live.png', fullPage: true });
+      return ms;
+    })
+    .catch(() => null);
 
   const settled = page
     .getByTestId('current-timeline-section')
@@ -71,7 +98,14 @@ test('[real] current timeline generates The road ahead against live OpenRouter',
   await expect(settled.first()).toBeVisible({ timeout: 1_200_000 });
   await expect(page.getByTestId('timeline-progress')).toHaveCount(0, { timeout: 1_200_000 });
 
+  const totalMs = Date.now() - t0;
+  // Never wait on prose that streamed past the poller: settled means done.
+  const firstProseMs = await Promise.race([firstProse, Promise.resolve(null)]);
   mkdirSync('test-results', { recursive: true });
+  writeFileSync(
+    `test-results/timeline-real-timing-${MODEL.replace(/\W/g, '_')}.json`,
+    JSON.stringify({ model: MODEL, firstProgressMs, firstProseMs, totalMs }),
+  );
   writeFileSync('test-results/timeline-real-road-ahead-responses.txt', roadAheadResponses.join('\n\n----\n\n'));
   writeFileSync('test-results/timeline-real-console.txt', errors.join('\n'));
   await page.screenshot({ path: 'test-results/timeline-real-openrouter.png', fullPage: true });

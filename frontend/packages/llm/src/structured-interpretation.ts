@@ -32,6 +32,8 @@ import type { SiderealChart } from "@almamesh/browser/types";
 
 import { estimateTokens } from "./budget";
 import { chatCompletionJson, LlmRequestError, type ChatMessage } from "./client";
+import { createJsonProseExtractor, createWordCounter } from "./json-prose";
+import { streamChatCompletionJson } from "./json-stream";
 import { ensurePrivacy, isLocalEndpoint, type ProviderConfig } from "./config";
 import { withLanguage, type PromptLanguage } from "./language";
 import { buildPredictiveFactsBlock } from "./predictive-facts";
@@ -102,6 +104,25 @@ export interface StructuredInterpretationParams {
   readonly now?: Date;
   /** Injectable for tests; defaults to the global `fetch`. */
   readonly fetchImpl?: typeof fetch;
+  /**
+   * When set, each section STREAMS (`stream: true`) and this is called with
+   * the section's live prose as it is written. The final JSON is still
+   * validated before the section completes. Unset: one non-streaming call.
+   */
+  readonly onSectionProgress?: (
+    section: InterpretationSectionKey,
+    progress: SectionProgressSnapshot,
+  ) => void;
+}
+
+/** A section's live, still-unvalidated prose while it streams. */
+export interface SectionProgressSnapshot {
+  /** Words written so far (JSON string values only). */
+  readonly words: number;
+  /** The last few hundred characters of prose, for a live preview. */
+  readonly preview: string;
+  /** Reasoning ("thinking") words so far; the text itself is not kept. */
+  readonly thinkingWords: number;
 }
 
 export type NatalInterpretationParams = StructuredInterpretationParams;
@@ -1035,6 +1056,44 @@ function outcomeStatus(err: unknown): number | undefined {
   return err instanceof LlmRequestError ? err.status : undefined;
 }
 
+/**
+ * One section completion. With a progress listener it streams and reports the
+ * decoded prose per delta (a fresh extractor per attempt, so a retry restarts
+ * the count); otherwise it is the single non-streaming JSON call.
+ */
+function requestSection(
+  section: InterpretationSectionKey,
+  messages: ChatMessage[],
+  params: StructuredInterpretationParams,
+): Promise<string> {
+  const base = {
+    config: params.config,
+    messages,
+    ...(params.signal ? { signal: params.signal } : {}),
+    ...(params.fetchImpl ? { fetchImpl: params.fetchImpl } : {}),
+  };
+  const report = params.onSectionProgress;
+  if (!report) return chatCompletionJson(base);
+  const prose = createJsonProseExtractor();
+  const thinking = createWordCounter();
+  const snapshot = (): SectionProgressSnapshot => ({
+    words: prose.words(),
+    preview: prose.preview(),
+    thinkingWords: thinking.words(),
+  });
+  return streamChatCompletionJson({
+    ...base,
+    onDelta: (delta) => {
+      prose.push(delta);
+      report(section, snapshot());
+    },
+    onReasoning: (delta) => {
+      thinking.push(delta);
+      report(section, snapshot());
+    },
+  });
+}
+
 function runOneSection<Section extends InterpretationSectionKey>(
   section: Section,
   chart: SanitizedChart,
@@ -1048,13 +1107,7 @@ function runOneSection<Section extends InterpretationSectionKey>(
     lite,
     params.language ?? "en",
   );
-  const request = () =>
-    chatCompletionJson({
-      config: params.config,
-      messages,
-      ...(params.signal ? { signal: params.signal } : {}),
-      ...(params.fetchImpl ? { fetchImpl: params.fetchImpl } : {}),
-    });
+  const request = () => requestSection(section, messages, params);
   return request()
     .catch((err: unknown) => {
       if (params.signal?.aborted || !isTransientFailure(err)) throw err;

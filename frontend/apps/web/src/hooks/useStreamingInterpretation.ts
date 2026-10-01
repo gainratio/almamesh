@@ -18,7 +18,7 @@
  * view-state the UI needs (status, per-section progress, error, isStreaming).
  */
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   applyInterpretationSettings,
   configProvenance,
@@ -32,6 +32,7 @@ import {
   type LlmEnv,
   type ProviderConfig,
   type RawEvidenceAnnotationPayload,
+  type SectionProgressSnapshot,
 } from '@almamesh/llm';
 import {
   useChartLibraryStore,
@@ -51,6 +52,7 @@ import type { SiderealChart } from '@almamesh/browser/types';
 import type { ProcessedBirthData, VedicInterpretation } from '@almamesh/shared-types';
 
 import { aiErrorRegistry, chatErrorMessage, classifyConnectionError } from '../lib/errors';
+import { createFrameBatcher, type FrameBatcher } from '../lib/frameBatcher';
 import { whenDataLifecycleReady } from '../lib/profileDataLifecycle';
 import { buildEnsurePredictiveInput, predictiveReferenceInstant } from '../lib/predictive';
 import { fetchEvidenceAnnotations } from './evidenceAnnotations';
@@ -123,6 +125,12 @@ export interface UseStreamingInterpretationResult {
   failedTimelineSections: readonly CurrentTimelineSectionKey[];
   /** Canonical error code (e.g. `ai.provider.server_error`) per failed timeline section. */
   failedTimelineSectionCodes: Readonly<Partial<Record<CurrentTimelineSectionKey, string>>>;
+  /**
+   * Live, unvalidated prose per timeline section while it streams (words so
+   * far + a bounded tail), updated at most once per animation frame. Empty
+   * when no timeline run is in flight.
+   */
+  timelineProgress: TimelineProgress;
   timelineError: string | null;
   timelineErrorKind: InterpretationErrorKind | null;
   isTimelineStreaming: boolean;
@@ -368,6 +376,15 @@ function describeError(err: unknown): InterpretationFailure {
   return { message: chatErrorMessage(err), kind };
 }
 
+export type TimelineProgress = Readonly<
+  Partial<Record<CurrentTimelineSectionKey, SectionProgressSnapshot>>
+>;
+
+interface TimelineRun {
+  readonly chartId: string;
+  readonly runToken: number;
+}
+
 export function useStreamingInterpretation(chartId?: string | null): UseStreamingInterpretationResult {
   // Subscribe to the store so the component re-renders as events land.
   const entry = useInterpretationStore((s) => (chartId ? s.byChart[chartId] : undefined));
@@ -391,6 +408,7 @@ export function useStreamingInterpretation(chartId?: string | null): UseStreamin
   const setCurrentTimeline = useInterpretationStore((s) => s.setCurrentTimeline);
   const setCurrentTimelineError = useInterpretationStore((s) => s.setCurrentTimelineError);
   const resetEntry = useInterpretationStore((s) => s.reset);
+  const abandonCurrentTimeline = useInterpretationStore((s) => s.abandonCurrentTimeline);
 
   // The persisted UI language threads into the prompt so the reading is narrated
   // in the user's chosen language; the engine math is untouched. Read as a hook
@@ -399,6 +417,23 @@ export function useStreamingInterpretation(chartId?: string | null): UseStreamin
 
   const abortControllerRef = useRef<AbortController | null>(null);
   const timelineAbortControllerRef = useRef<AbortController | null>(null);
+  const timelineRunRef = useRef<TimelineRun | null>(null);
+  const progressBatcherRef = useRef<FrameBatcher<SectionProgressSnapshot> | null>(null);
+  const [timelineProgress, setTimelineProgress] = useState<TimelineProgress>({});
+
+  // Leaving the page cancels the timeline stream: nobody is watching it, and a
+  // slow model would otherwise keep a connection (and tokens) running for
+  // minutes. The store run is closed so it never reads as 'generating' again.
+  useEffect(
+    () => () => {
+      progressBatcherRef.current?.cancel();
+      const run = timelineRunRef.current;
+      timelineAbortControllerRef.current?.abort();
+      timelineAbortControllerRef.current = null;
+      if (run) abandonCurrentTimeline(run.chartId, run.runToken);
+    },
+    [abandonCurrentTimeline],
+  );
   // `setInterpretation` publishes to the zustand store synchronously but its
   // Promise resolves only after the IndexedDB snapshot commits. Keep that new
   // reading behind a local durability gate so a user-visible completion can
@@ -580,6 +615,13 @@ export function useStreamingInterpretation(chartId?: string | null): UseStreamin
       const controller = new AbortController();
       timelineAbortControllerRef.current = controller;
       const runToken = startCurrentTimeline(id, stored.profile_id);
+      timelineRunRef.current = { chartId: id, runToken };
+      progressBatcherRef.current?.cancel();
+      const progress = createFrameBatcher<SectionProgressSnapshot>((latest) =>
+        setTimelineProgress((previous) => ({ ...previous, ...latest })),
+      );
+      progressBatcherRef.current = progress;
+      setTimelineProgress({});
 
       try {
         for await (const event of streamCurrentTimeline({
@@ -588,6 +630,7 @@ export function useStreamingInterpretation(chartId?: string | null): UseStreamin
           mode: options.view_mode === 'expert' ? 'expert' : 'layman',
           language,
           signal: controller.signal,
+          onSectionProgress: (section, snapshot) => progress.push(section, snapshot),
         })) {
           if (controller.signal.aborted) return;
           if (event.type === 'section_complete') {
@@ -619,6 +662,13 @@ export function useStreamingInterpretation(chartId?: string | null): UseStreamin
         if (err instanceof Error && err.name === 'AbortError') return;
         const failure = describeError(err);
         setCurrentTimelineError(id, failure.message, failure.kind, runToken);
+      } finally {
+        progress.cancel();
+        if (progressBatcherRef.current === progress) {
+          progressBatcherRef.current = null;
+          setTimelineProgress({});
+        }
+        if (timelineRunRef.current?.runToken === runToken) timelineRunRef.current = null;
       }
     },
     [
@@ -677,6 +727,7 @@ export function useStreamingInterpretation(chartId?: string | null): UseStreamin
       .filter((section) => section.failed)
       .map((section) => section.key as CurrentTimelineSectionKey),
     failedTimelineSectionCodes: entry?.timeline?.failedSectionCodes ?? {},
+    timelineProgress,
     timelineError: entry?.timeline?.error ?? null,
     timelineErrorKind: entry?.timeline?.errorKind ?? null,
     isTimelineStreaming: timelineStatus === 'generating',
