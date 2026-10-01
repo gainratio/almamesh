@@ -83,6 +83,12 @@
     "title": "Gerando seu mapa",
     "subtitle": "Isso pode levar um minuto...",
     "step_counter": "Etapa {{current}} de {{total}}",
+    "engine_download_start": "Preparando o download do motor…",
+    "engine_download": "Baixando dados do motor: {{done}} de {{total}} MB",
+    "engine_retry": "Conexão interrompida — tentando novamente…",
+    "engine_verify": "Verificando os dados do motor…",
+    "engine_runtime": "Carregando o ambiente do motor: {{done}} MB",
+    "engine_boot": "Iniciando o motor…",
     "steps": {
       "positions": "Calculando posições planetárias",
       "houses": "Calculando a posição das casas",

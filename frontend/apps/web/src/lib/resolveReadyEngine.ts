@@ -9,8 +9,12 @@
  *   - `error` (bootstrap failed)      -> `reboot()` (a FRESH sync + boot) and use the result.
  *   - neither (still warming, in race)-> `whenReady()` (await the in-flight boot) and use it.
  *
- * A generous timeout bounds the wait so a wedged boot still surfaces a clear,
- * retryable failure rather than hanging the Generate button forever.
+ * A generous IDLE budget bounds the wait so a wedged boot still surfaces a
+ * clear, retryable failure rather than hanging the Generate button forever.
+ * It is an idle budget, not a wall clock: while the bootstrap keeps reporting
+ * progress (bundle bytes arriving, files verified, Pyodide loading) the wait
+ * continues. On slow 4G the cold sync alone takes about two minutes and the
+ * old fixed 90 s wait rejected it every time, 30 s before the engine was ready.
  */
 
 import type { ChartEngine } from '@almamesh/browser';
@@ -23,9 +27,15 @@ export interface EngineReadiness {
   reboot: () => Promise<ChartEngine>;
   /** Resolve when the CURRENT in-flight bootstrap finishes (shared, no extra boot). */
   whenReady: () => Promise<ChartEngine>;
+  /**
+   * When the bootstrap last reported progress (`Date.now()` ms). Each report
+   * restarts the idle budget. Absent (no progress signal), the budget counts
+   * from the call.
+   */
+  readonly lastProgressAt?: () => number;
 }
 
-/** Default readiness budget: a cold 38 MB bundle sync + Pyodide boot can be slow. */
+/** Default readiness IDLE budget: how long the bootstrap may go without any progress. */
 export const DEFAULT_READY_TIMEOUT_MS = 90_000;
 
 class EngineNotReadyError extends Error {
@@ -35,9 +45,25 @@ class EngineNotReadyError extends Error {
   }
 }
 
-function withTimeout(work: Promise<ChartEngine>, ms: number): Promise<ChartEngine> {
+function withIdleBudget(
+  work: Promise<ChartEngine>,
+  idleMs: number,
+  lastProgressAt: (() => number) | undefined,
+): Promise<ChartEngine> {
   return new Promise<ChartEngine>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new EngineNotReadyError()), ms);
+    const started = Date.now();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    // Wake up when the budget WOULD expire; if progress moved it, sleep again.
+    const check = (): void => {
+      const latest = Math.max(started, lastProgressAt?.() ?? started);
+      const remaining = idleMs - (Date.now() - latest);
+      if (remaining <= 0) {
+        reject(new EngineNotReadyError());
+        return;
+      }
+      timer = setTimeout(check, remaining);
+    };
+    check();
     work.then(
       (engine) => {
         clearTimeout(timer);
@@ -59,5 +85,5 @@ export async function resolveReadyEngine(
     return readiness.engine;
   }
   const work = readiness.error ? readiness.reboot() : readiness.whenReady();
-  return withTimeout(work, timeoutMs);
+  return withIdleBudget(work, timeoutMs, readiness.lastProgressAt);
 }

@@ -132,7 +132,9 @@ export interface BootstrapRuntime {
   dispose?(): Promise<void> | void
 }
 
-const TRANSIENT_BOOT_FAILURE = /network unreachable|failed to fetch|load failed|networkerror|timed out after|importing a module script failed/i
+// `stalled`: the sync transport's stall error (no bytes for 30 s) after its
+// own bounded retries. A network condition, so it gets the same online retry.
+const TRANSIENT_BOOT_FAILURE = /network unreachable|failed to fetch|load failed|networkerror|timed out after|stalled|importing a module script failed/i
 const REPORTED_ONLINE_RETRY_DELAYS_MS = [250, 1_000, 5_000, 15_000] as const
 
 function isTransientBootFailure(error: Error): boolean {
@@ -174,7 +176,14 @@ export function AlmaMeshRuntimeProvider({ children, runtime }: ProviderProps) {
   const consumedOnlineEpochRef = useRef(0)
   const reportedOnlineRetryCountRef = useRef(0)
 
+  // Every bootstrap report (stage change, bundle or Pyodide bytes arriving, a
+  // file verified) is progress. Readiness waits measure their idle budget from
+  // here, so a slow link that keeps moving is never declared stuck.
+  const progressAtRef = useRef(0)
+  const lastProgressAt = useCallback((): number => progressAtRef.current, [])
+
   const onStage = useCallback<OnStage>((next) => {
+    progressAtRef.current = Date.now()
     setStage(next)
     // Dev-only observability hook: expose the latest boot stage on window so a
     // Playwright harness can poll readiness without UI scraping.
@@ -355,8 +364,8 @@ export function AlmaMeshRuntimeProvider({ children, runtime }: ProviderProps) {
   }, [])
 
   const value = useMemo(
-    () => ({ engine, stage, error, meta, reboot, whenReady, startBootstrap }),
-    [engine, stage, error, meta, reboot, whenReady, startBootstrap],
+    () => ({ engine, stage, lastProgressAt, error, meta, reboot, whenReady, startBootstrap }),
+    [engine, stage, lastProgressAt, error, meta, reboot, whenReady, startBootstrap],
   )
 
   return <ChartEngineContext.Provider value={value}>{children}</ChartEngineContext.Provider>

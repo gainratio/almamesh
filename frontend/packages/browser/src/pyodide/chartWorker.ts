@@ -19,6 +19,8 @@ import { sealDomainStrengths } from "./strengthReceipt";
 import type {
   BirthInput,
   BootConfig,
+  BootProgress,
+  BootProgressStage,
   ChartWorkerRequest,
   ChartWorkerResponse,
   MeshEdgeInput,
@@ -202,9 +204,14 @@ interface PyRectificationFn {
 
 let enginePyodide: PyodideInterface | undefined;
 
-async function installEngine(pyodide: PyodideInterface, config: BootConfig): Promise<void> {
+async function installEngine(
+  pyodide: PyodideInterface,
+  config: BootConfig,
+  onWheels: () => void = () => {},
+): Promise<void> {
   // loadPackage resolves the whole list from the self-hosted lock — offline.
   await pyodide.loadPackage([...LOAD_PACKAGES]);
+  onWheels();
   const micropip = pyodide.pyimport("micropip") as unknown as Micropip;
   // Install bundled wheels in order, each deps:false: their deps are already
   // loaded above, and deps:true would make micropip resolve against PyPI.
@@ -221,12 +228,89 @@ function seedSkyfieldData(pyodide: PyodideInterface, config: BootConfig): void {
   }
 }
 
-async function boot(config: BootConfig): Promise<void> {
-  const pyodide = await loadPyodide({ indexURL: config.pyodideIndexUrl });
-  await installEngine(pyodide, config);
-  seedSkyfieldData(pyodide, config);
-  await pyodide.runPythonAsync(PY_BOOTSTRAP);
-  enginePyodide = pyodide;
+/** Boot progress sink: a stage change, or bytes of a Pyodide asset arriving. */
+type ReportBoot = (progress: BootProgress) => void;
+
+/** Byte-level progress reports are rate-limited to this interval. */
+const BOOT_PROGRESS_INTERVAL_MS = 250;
+
+function requestUrl(input: RequestInfo | URL): string {
+  if (typeof input === "string") return input;
+  if (input instanceof URL) return input.href;
+  return input.url;
+}
+
+/**
+ * A `fetch` that counts the bytes of every Pyodide asset as they stream in.
+ * `loadPyodide` and `loadPackage` fetch ~17 MB through the global `fetch`
+ * with no progress hook of their own; on slow 4G that download alone outlives
+ * a 60 s wall clock. Teeing the body keeps the main thread's boot deadline
+ * honest (slow is not dead) and gives the UI a real number to show. Headers
+ * are preserved so `WebAssembly.instantiateStreaming` still sees
+ * `application/wasm`.
+ */
+function countingFetch(
+  native: typeof fetch,
+  indexUrl: string,
+  onBytes: (received: number, total: number | null) => void,
+): typeof fetch {
+  const prefix = new URL(indexUrl, self.location.href).href;
+  let cumulative = 0;
+  return async (input, init) => {
+    const response = await native(input, init);
+    const url = new URL(requestUrl(input), self.location.href).href;
+    if (response.body === null || !url.startsWith(prefix)) return response;
+    const declared = Number(response.headers.get("content-length"));
+    const total = Number.isFinite(declared) && declared > 0 ? declared : null;
+    const counted = response.body.pipeThrough(
+      new TransformStream<Uint8Array, Uint8Array>({
+        transform(chunk, controller) {
+          cumulative += chunk.byteLength;
+          onBytes(cumulative, total);
+          controller.enqueue(chunk);
+        },
+      }),
+    );
+    return new Response(counted, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: response.headers,
+    });
+  };
+}
+
+async function boot(config: BootConfig, report: ReportBoot): Promise<void> {
+  let stage: BootProgressStage = "pyodide";
+  let bytesReceived = 0;
+  let lastByteReport = Number.NEGATIVE_INFINITY;
+  const progress = (bytesTotal: number | null = null): void =>
+    report({ stage, bytesReceived, bytesTotal });
+  const enter = (next: BootProgressStage): void => {
+    stage = next;
+    progress();
+  };
+  const scope = self as unknown as { fetch: typeof fetch };
+  const nativeFetch = scope.fetch;
+  scope.fetch = countingFetch(nativeFetch, config.pyodideIndexUrl, (received, total) => {
+    bytesReceived = received;
+    const now = Date.now();
+    if (now - lastByteReport < BOOT_PROGRESS_INTERVAL_MS) return;
+    lastByteReport = now;
+    progress(total);
+  });
+  try {
+    progress();
+    const pyodide = await loadPyodide({ indexURL: config.pyodideIndexUrl });
+    enter("packages");
+    await installEngine(pyodide, config, () => enter("wheels"));
+    enter("data");
+    seedSkyfieldData(pyodide, config);
+    enter("engine");
+    await pyodide.runPythonAsync(PY_BOOTSTRAP);
+    enginePyodide = pyodide;
+  } finally {
+    scope.fetch = nativeFetch;
+  }
 }
 
 function generateChart(birth: BirthInput): SiderealChart {
@@ -316,7 +400,14 @@ function computeRectification(input: RectificationInput): RectificationResultRaw
 async function handle(request: ChartWorkerRequest): Promise<ChartWorkerResponse> {
   try {
     if (request.kind === "boot") {
-      await boot(request.config);
+      await boot(request.config, (progress) => {
+        workerScope?.postMessage({
+          ok: true,
+          kind: "bootProgress",
+          id: request.id,
+          progress,
+        } satisfies ChartWorkerResponse);
+      });
       return { ok: true, kind: "boot", id: request.id };
     }
     if (request.kind === "computePredictive") {

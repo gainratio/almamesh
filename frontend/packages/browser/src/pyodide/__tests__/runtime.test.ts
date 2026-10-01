@@ -5,9 +5,16 @@ import type { ChartEnginePort, EnginePort, RuntimeConfig } from "../runtime";
 import type { SiderealChart } from "../chart";
 import type { MeshEdgeContext } from "../mesh";
 import type { PredictiveContexts } from "../predictive";
-import type { BirthInput, BootConfig, MeshEdgeInput, PredictiveInput } from "../protocol";
+import type {
+  BirthInput,
+  BootConfig,
+  BootProgress,
+  MeshEdgeInput,
+  PredictiveInput,
+} from "../protocol";
 import type { RectificationInput, RectificationResultRaw } from "../rectification";
-import type { SyncResult } from "@edgeproc/browser";
+import type { SyncProgress, SyncResult } from "@edgeproc/browser";
+import type { BootStage } from "../runtime";
 
 const CONFIG: RuntimeConfig = {
   bundleBaseUrl: "https://cdn.test/almamesh",
@@ -37,6 +44,17 @@ const SYNC_RESULT: SyncResult = {
   bytesFetched: 1024,
 };
 
+const SYNC_PROGRESS: SyncProgress = {
+  phase: "chunks",
+  fetchedChunks: 1,
+  totalChunks: 3,
+  bytesFetched: 512,
+  bytesTotal: 3_000,
+  bytesDone: 1_000,
+};
+
+const BOOT_PROGRESS: BootProgress = { stage: "pyodide", bytesReceived: 4_096, bytesTotal: null };
+
 class FakeSyncEngine implements EnginePort {
   public readonly syncCalls: Array<readonly [string, string, string, string]> = [];
   public readonly readPaths: string[] = [];
@@ -49,8 +67,10 @@ class FakeSyncEngine implements EnginePort {
     pubkeyUrl: string,
     expectedBundleId: string,
     expectedChannel: string,
+    onProgress?: (progress: SyncProgress) => void,
   ): Promise<SyncResult> {
     this.syncCalls.push([baseUrl, pubkeyUrl, expectedBundleId, expectedChannel]);
+    onProgress?.(SYNC_PROGRESS);
     return SYNC_RESULT;
   }
 
@@ -73,9 +93,13 @@ class FakeChartEngine implements ChartEnginePort {
   public bootCount = 0;
   public terminated = false;
 
-  public async boot(config: BootConfig): Promise<void> {
+  public async boot(
+    config: BootConfig,
+    onProgress?: (progress: BootProgress) => void,
+  ): Promise<void> {
     this.bootConfig = config;
     this.bootCount += 1;
+    onProgress?.(BOOT_PROGRESS);
   }
 
   public async generateChart(birth: BirthInput): Promise<SiderealChart> {
@@ -137,6 +161,26 @@ const makeRuntime = () => {
 };
 
 describe("AlmaMeshRuntime.bootstrap", () => {
+  // Both Workers report progress (bundle bytes, Pyodide bytes); bootstrap must
+  // surface it as stages, because the provider's idle budgets and the
+  // onboarding progress bar are fed from `onStage` and nothing else.
+  it("re-reports the syncing and booting-engine stages with each Worker's progress", async () => {
+    const { runtime } = makeRuntime();
+    const stages: BootStage[] = [];
+
+    await runtime.bootstrap(CONFIG, (stage) => stages.push(stage));
+
+    expect(stages).toEqual([
+      { kind: "syncing" },
+      { kind: "syncing", progress: SYNC_PROGRESS },
+      { kind: "synced", result: SYNC_RESULT },
+      { kind: "reassembling" },
+      { kind: "booting-engine" },
+      { kind: "booting-engine", progress: BOOT_PROGRESS },
+      { kind: "ready" },
+    ]);
+  });
+
   it("syncs the signed bundle with the configured origin + pinned key", async () => {
     const { runtime, sync } = makeRuntime();
 
@@ -174,7 +218,10 @@ describe("AlmaMeshRuntime.bootstrap", () => {
     const { runtime } = makeRuntime();
     const stages: string[] = [];
 
-    await runtime.bootstrap(CONFIG, (stage) => stages.push(stage.kind));
+    await runtime.bootstrap(CONFIG, (stage) => {
+      // A stage is re-reported with progress; the ORDER of kinds is the contract.
+      if (stages.at(-1) !== stage.kind) stages.push(stage.kind);
+    });
 
     expect(stages).toEqual(["syncing", "synced", "reassembling", "booting-engine", "ready"]);
   });

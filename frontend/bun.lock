@@ -106,7 +106,7 @@
       "dependencies": {
         "@edgeproc/assay": "0.5.0-dev.3",
         "@edgeproc/avow": "0.1.1",
-        "@edgeproc/browser": "github:hseshadr/edgeproc-browser#02171df60afc8b09d6439112ea7ea3202338d46a",
+        "@edgeproc/browser": "github:hseshadr/edgeproc-browser#31a7ced7a788b52042f1c85432c06db7798ebf3e",
         "pyodide": "^0.29.4",
       },
       "devDependencies": {
@@ -468,7 +468,7 @@
 
     "@edgeproc/avow": ["@edgeproc/avow@0.1.1", "", { "dependencies": { "@noble/ed25519": "^3.1.0", "canonicalize": "^3.0.0" } }, "sha512-BgqgxPox/PpLSNL7gKN8tovrOBSuLBVk2uAnYu8+5ZXq7KKQBPvSZCA/qF9vkAVE6ubRXm4TcOPJBicy51sALg=="],
 
-    "@edgeproc/browser": ["@edgeproc/browser@github:hseshadr/edgeproc-browser#02171df", { "dependencies": { "@hpcc-js/wasm-zstd": "^1.15.0", "@noble/ed25519": "^3.1.0", "idb-keyval": "^6.3.0" } }, "hseshadr-edgeproc-browser-02171df"],
+    "@edgeproc/browser": ["@edgeproc/browser@github:hseshadr/edgeproc-browser#31a7ced", { "dependencies": { "@hpcc-js/wasm-zstd": "^1.15.0", "@noble/ed25519": "^3.1.0", "idb-keyval": "^6.3.0" } }, "hseshadr-edgeproc-browser-31a7ced"],
 
     "@edgeproc/errors": ["@edgeproc/errors@0.1.3", "", {}, "sha512-KHlQIVwhAZ+NLKN/D7P0q6joVTGpttHuhFZ5mLLmOc9SatMVtUVkFCcy3Tyt/61ZX/BHzgDqDtKDkwrqNwGg1A=="],
 
@@ -2375,6 +2375,10 @@
     "zustand": ["zustand@5.0.15", "", { "peerDependencies": { "@types/react": ">=18.0.0", "immer": ">=9.0.6", "react": ">=18.0.0", "use-sync-external-store": ">=1.2.0" }, "optionalPeers": ["@types/react", "immer", "react", "use-sync-external-store"] }, "sha512-MpSEjRiBkA9crSYeOUH32rJC7SVqAbm0Fqcqge/bUi2PPoLcBWKOsG+C8mevmpr8TwXHBVkChbbJiyvkE+i/3A=="],
 
     "zwitch": ["zwitch@2.0.4", "", {}, "sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A=="],
+
+    "@almamesh/memory/@edgeproc/browser": ["@edgeproc/browser@github:hseshadr/edgeproc-browser#02171df", { "dependencies": { "@hpcc-js/wasm-zstd": "^1.15.0", "@noble/ed25519": "^3.1.0", "idb-keyval": "^6.3.0" } }, "hseshadr-edgeproc-browser-02171df"],
+
+    "@almamesh/store/@edgeproc/browser": ["@edgeproc/browser@github:hseshadr/edgeproc-browser#02171df", { "dependencies": { "@hpcc-js/wasm-zstd": "^1.15.0", "@noble/ed25519": "^3.1.0", "idb-keyval": "^6.3.0" } }, "hseshadr-edgeproc-browser-02171df"],
 
     "@almamesh/web/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
 

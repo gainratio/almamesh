@@ -23,6 +23,7 @@ export type {
   CacheStore,
   FetchBytes,
   IndexManifest,
+  SyncProgress,
   SyncResult,
   Verify,
   VersionPointer,
@@ -70,6 +71,8 @@ export type {
 export type {
   BirthInput,
   BootConfig,
+  BootProgress,
+  BootProgressStage,
   MeshBirthInput,
   MeshEdgeInput,
   PredictiveInput,
