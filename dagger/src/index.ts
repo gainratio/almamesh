@@ -347,6 +347,7 @@ export class AlmameshCi {
     checked = this.localPreview(checked, "dist-verify", [
       "node scripts/verify-cross-origin-isolation.mjs http://127.0.0.1:4199 --browser=chromium",
       "node scripts/verify-sqlite-memory.mjs http://127.0.0.1:4199 --browser=chromium",
+      "node scripts/verify-storage-blocked.mjs http://127.0.0.1:4199 --browser=chromium --journey",
       "PORTABLE_SQLITE_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:portable-sqlite",
       "node scripts/verify-exit-gate.mjs http://127.0.0.1:4199",
       "node scripts/verify-i18n.mjs http://127.0.0.1:4199",
@@ -359,6 +360,7 @@ export class AlmameshCi {
       [
         "node scripts/verify-cross-origin-isolation.mjs http://127.0.0.1:4200 --browser=webkit",
         "node scripts/verify-sqlite-memory.mjs http://127.0.0.1:4200 --browser=webkit",
+        "node scripts/verify-storage-blocked.mjs http://127.0.0.1:4200 --browser=webkit",
         "node scripts/verify-webkit-engine.mjs http://127.0.0.1:4200",
         "node scripts/verify-webkit-engine.mjs http://127.0.0.1:4200 --first-session --transient-cache-visibility",
       ],
