@@ -1003,10 +1003,11 @@ export default function DashboardPage() {
                                   })}
                             </p>
                             {/* Unvalidated live text: shown as a preview only, never saved. */}
+                            {/* Bottom-anchored: the newest words stay in view as the tail grows. */}
                             {live.preview && (
-                              <p className="mt-1 line-clamp-4 whitespace-pre-line text-text-secondary">
-                                {live.preview}
-                              </p>
+                              <div className="mt-1 flex max-h-24 flex-col justify-end overflow-hidden">
+                                <p className="whitespace-pre-line text-text-secondary">{live.preview}</p>
+                              </div>
                             )}
                           </div>
                         )}
