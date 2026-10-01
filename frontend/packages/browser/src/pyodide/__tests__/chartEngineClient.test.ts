@@ -158,6 +158,41 @@ describe("ChartEngineClient", () => {
     expect(worker.posted[0]).toMatchObject({ kind: "boot", config: BOOT_CONFIG });
   });
 
+  it("prewarm posts the Pyodide index URL as a one-way message", () => {
+    const client = withReply(() => null);
+
+    client.prewarm(BOOT_CONFIG.pyodideIndexUrl);
+
+    expect(worker.posted[0]).toMatchObject({
+      kind: "prewarm",
+      pyodideIndexUrl: BOOT_CONFIG.pyodideIndexUrl,
+    });
+  });
+
+  it("prewarm never arms the request timeout: a slow download must not kill the worker", async () => {
+    worker = new FakeChartWorker(() => null);
+    const client = new ChartEngineClient(worker, { requestTimeoutMs: 5 });
+
+    client.prewarm(BOOT_CONFIG.pyodideIndexUrl);
+    await new Promise((resolve) => setTimeout(resolve, 25));
+
+    expect(worker.terminated).toBe(false);
+    const booting = client.boot(BOOT_CONFIG);
+    worker.respond({ ok: true, kind: "boot", id: (worker.posted[1] as { id: number }).id });
+    await expect(booting).resolves.toBeUndefined();
+  });
+
+  it("ignores a late prewarm reply or error (boot reports any warm-up failure)", async () => {
+    const client = withReply((req) =>
+      req.kind === "prewarm"
+        ? { ok: false, id: req.id, error: "pyodide fetch failed" }
+        : { ok: true, kind: "boot", id: req.id },
+    );
+
+    client.prewarm(BOOT_CONFIG.pyodideIndexUrl);
+    await expect(client.boot(BOOT_CONFIG)).resolves.toBeUndefined();
+  });
+
   it("generates a chart, returning the worker's chart payload", async () => {
     const client = withReply((req) => ({
       ok: true,

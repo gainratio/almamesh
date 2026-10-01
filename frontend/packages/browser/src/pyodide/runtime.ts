@@ -17,6 +17,7 @@ import type { SyncResult } from "@edgeproc/browser";
 import { spawnAlmaSyncEngine } from "../edgeprocClient";
 import type { SiderealChart } from "./chart";
 import { ChartEngineClient } from "./chartEngineClient";
+import { memoizeChartEngine } from "./engineMemo";
 import type { MeshEdgeContext } from "./mesh";
 import type { PredictiveContexts } from "./predictive";
 import type {
@@ -67,6 +68,12 @@ export interface EnginePort {
 
 /** The Pyodide-Worker surface bootstrap needs: boot the engine, compute charts. */
 export interface ChartEnginePort {
+  /**
+   * Start the Pyodide runtime + its stdlib packages from the self-hosted index
+   * while the bundle is still syncing; `boot` then reuses it. Needs no bundle
+   * bytes. Optional so a port without it simply boots cold.
+   */
+  prewarm?(pyodideIndexUrl: string): void;
   boot(config: BootConfig): Promise<void>;
   generateChart(birth: BirthInput): Promise<SiderealChart>;
   computePredictive(input: PredictiveInput): Promise<PredictiveContexts>;
@@ -212,6 +219,15 @@ export class AlmaMeshRuntime {
     let chartEngine: ChartEnginePort | null = null;
     try {
       this.#assertCurrent(generation);
+      // Overlap the two independent cold costs: Pyodide's own runtime + stdlib
+      // packages need nothing from the bundle, so they load while the bundle
+      // syncs and verifies. Only the engine install waits for the synced bytes.
+      // A warm-up failure is not lost: `boot` awaits the same warm-up in the
+      // Worker and reports it.
+      chartEngine = this.#deps.spawnChartEngine();
+      this.#chartEngine = chartEngine;
+      chartEngine.prewarm?.(config.pyodideIndexUrl);
+
       onStage({ kind: "syncing" });
       const result = await syncEngine.sync(
         config.bundleBaseUrl,
@@ -230,23 +246,27 @@ export class AlmaMeshRuntime {
       this.#assertCurrent(generation);
 
       // The sync Worker is only needed to materialize the boot assets. Release
-      // it before Pyodide starts so OPFS handles and wasm memory do not overlap.
+      // its OPFS handles and wasm memory as soon as they are in hand.
       syncEngine.terminate?.();
       if (this.#syncEngine === syncEngine) this.#syncEngine = null;
 
       onStage({ kind: "booting-engine" });
-      chartEngine = this.#deps.spawnChartEngine();
-      this.#chartEngine = chartEngine;
-      await chartEngine.boot(bootConfig);
+      const booted = chartEngine;
+      await booted.boot(bootConfig);
       this.#assertCurrent(generation);
 
-      const engine: ChartEngine = {
-        generateChart: (birth) => chartEngine!.generateChart(birth),
-        computePredictive: (input) => chartEngine!.computePredictive(input),
-        computeMeshEdge: (input) => chartEngine!.computeMeshEdge(input),
-        computeRectification: (input) => chartEngine!.computeRectification(input),
-        meta: () => meta,
-      };
+      // Identical inputs are computed once per booted engine, keyed on the
+      // signed bundle's content-addressed manifest (see ./engineMemo.ts).
+      const engine: ChartEngine = memoizeChartEngine(
+        {
+          generateChart: (birth) => booted.generateChart(birth),
+          computePredictive: (input) => booted.computePredictive(input),
+          computeMeshEdge: (input) => booted.computeMeshEdge(input),
+          computeRectification: (input) => booted.computeRectification(input),
+          meta: () => meta,
+        },
+        result.manifestHash,
+      );
       this.#ready = engine;
       onStage({ kind: "ready" });
       return engine;

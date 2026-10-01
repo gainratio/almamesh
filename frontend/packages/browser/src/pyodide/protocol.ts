@@ -84,6 +84,13 @@ export interface BootConfig {
   readonly skyfieldData: readonly PyodideAsset[];
 }
 
+/** Start Pyodide + its stdlib packages early; needs no bundle bytes. */
+export interface PrewarmRequest {
+  readonly kind: "prewarm";
+  readonly id: number;
+  readonly pyodideIndexUrl: string;
+}
+
 export interface BootRequest {
   readonly kind: "boot";
   readonly id: number;
@@ -115,11 +122,18 @@ export interface ComputeRectificationRequest {
 }
 
 export type ChartWorkerRequest =
+  | PrewarmRequest
   | BootRequest
   | GenerateChartRequest
   | ComputePredictiveRequest
   | ComputeMeshEdgeRequest
   | ComputeRectificationRequest;
+
+export interface PrewarmOk {
+  readonly ok: true;
+  readonly kind: "prewarm";
+  readonly id: number;
+}
 
 export interface BootOk {
   readonly ok: true;
@@ -162,6 +176,7 @@ export interface WorkerErr {
 }
 
 export type ChartWorkerResponse =
+  | PrewarmOk
   | BootOk
   | ChartOk
   | PredictiveOk

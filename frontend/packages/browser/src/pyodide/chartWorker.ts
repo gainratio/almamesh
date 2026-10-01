@@ -202,9 +202,23 @@ interface PyRectificationFn {
 
 let enginePyodide: PyodideInterface | undefined;
 
-async function installEngine(pyodide: PyodideInterface, config: BootConfig): Promise<void> {
+// The one Pyodide runtime this Worker owns, started by `prewarm` (while the
+// bundle is still syncing on the main thread's sync Worker) or else by `boot`.
+let runtimePyodide: Promise<PyodideInterface> | undefined;
+
+async function startRuntime(pyodideIndexUrl: string): Promise<PyodideInterface> {
+  const pyodide = await loadPyodide({ indexURL: pyodideIndexUrl });
   // loadPackage resolves the whole list from the self-hosted lock — offline.
   await pyodide.loadPackage([...LOAD_PACKAGES]);
+  return pyodide;
+}
+
+function warmRuntime(pyodideIndexUrl: string): Promise<PyodideInterface> {
+  runtimePyodide ??= startRuntime(pyodideIndexUrl);
+  return runtimePyodide;
+}
+
+async function installEngine(pyodide: PyodideInterface, config: BootConfig): Promise<void> {
   const micropip = pyodide.pyimport("micropip") as unknown as Micropip;
   // Install bundled wheels in order, each deps:false: their deps are already
   // loaded above, and deps:true would make micropip resolve against PyPI.
@@ -222,7 +236,7 @@ function seedSkyfieldData(pyodide: PyodideInterface, config: BootConfig): void {
 }
 
 async function boot(config: BootConfig): Promise<void> {
-  const pyodide = await loadPyodide({ indexURL: config.pyodideIndexUrl });
+  const pyodide = await warmRuntime(config.pyodideIndexUrl);
   await installEngine(pyodide, config);
   seedSkyfieldData(pyodide, config);
   await pyodide.runPythonAsync(PY_BOOTSTRAP);
@@ -315,6 +329,10 @@ function computeRectification(input: RectificationInput): RectificationResultRaw
 
 async function handle(request: ChartWorkerRequest): Promise<ChartWorkerResponse> {
   try {
+    if (request.kind === "prewarm") {
+      await warmRuntime(request.pyodideIndexUrl);
+      return { ok: true, kind: "prewarm", id: request.id };
+    }
     if (request.kind === "boot") {
       await boot(request.config);
       return { ok: true, kind: "boot", id: request.id };

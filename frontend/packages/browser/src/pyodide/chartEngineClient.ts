@@ -75,6 +75,22 @@ export class ChartEngineClient {
     return new ChartEngineClient(worker as unknown as WorkerLike);
   }
 
+  /**
+   * Start loading Pyodide + its stdlib packages from `pyodideIndexUrl` before
+   * the bundle bytes exist; `boot` then reuses the warm runtime.
+   *
+   * ONE-WAY on purpose: no pending entry and no timeout. The warm-up overlaps
+   * the bundle download, so on a slow link it can legitimately outlast the
+   * request budget — and a timed-out request closes the Worker. `boot` stays
+   * the single bounded request and awaits (and reports) the same warm-up.
+   */
+  public prewarm(pyodideIndexUrl: string): void {
+    if (this.#closed !== null) {
+      return;
+    }
+    this.#worker.postMessage({ kind: "prewarm", id: this.#allocId(), pyodideIndexUrl });
+  }
+
   /** Boot Pyodide and load the AlmaMesh engine + ephemeris from `config`. */
   public async boot(config: BootConfig): Promise<void> {
     const response = await this.#send({ kind: "boot", id: this.#allocId(), config });
