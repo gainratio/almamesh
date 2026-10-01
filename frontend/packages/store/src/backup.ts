@@ -31,6 +31,7 @@ import {
   requirePortableStateRepository,
 } from './deletionTombstones';
 import { PORTABLE_STATE_KEYS, readPortableStateDatabase } from './portableState';
+import { browserLocalStorage } from './webStorage';
 
 /** Compatibility tier labels retained by the legacy JSON backup envelope. */
 export type BackupTier = 'local' | 'idb';
@@ -299,7 +300,7 @@ export async function importPortableBrowserState(bytes: Uint8Array): Promise<voi
       { memoryRebuildPending: true },
     );
     const language = imported.values.get('almamesh-language') ?? null;
-    const storage = (globalThis as { localStorage?: Partial<Storage> }).localStorage;
+    const storage = browserLocalStorage();
     if (language === null) storage?.removeItem?.('almamesh-language');
     else storage?.setItem?.('almamesh-language', language);
   } catch (error) {

@@ -45,6 +45,11 @@
     "home": "Inicio de AlmaMesh"
   },
   "loading": "Cargando",
+  "storage_blocked": {
+    "title": "Tu navegador está bloqueando el almacenamiento del sitio",
+    "body": "AlmaMesh calcula y guarda tu carta solo en este dispositivo, así que necesita permiso para almacenar datos de este sitio. Tu navegador lo está rechazando ahora mismo.",
+    "fix": "En Safari, abre Ajustes > Privacidad y desactiva \"Bloquear todas las cookies\"; luego recarga esta página. En otros navegadores, permite las cookies y los datos del sitio para almamesh.com."
+  },
   "error_boundary": {
     "title": "Algo salió mal",
     "body": "Se produjo un error inesperado. Intenta actualizar la página.",

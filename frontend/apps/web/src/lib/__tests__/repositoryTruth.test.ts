@@ -186,6 +186,23 @@ describe('repository truth', () => {
     expect(chromium).toContain('exactly one consumer-owned edgeproc Worker asset');
   });
 
+  it('runs the blocked-storage probe in PR CI, in WebKit and Chromium', () => {
+    // Safari "Block all cookies" made a module-init localStorage read throw and
+    // blanked every app route (2026-10-01). WebKit allows storage by default,
+    // so only an explicit blocked-storage probe catches that class of bug.
+    const workflow = readRoot('dagger/src/index.ts');
+    const probe = readRoot('frontend/apps/web/scripts/verify-storage-blocked.mjs');
+
+    expect(workflow).toContain(
+      'node scripts/verify-storage-blocked.mjs http://127.0.0.1:4200 --browser=webkit',
+    );
+    expect(workflow).toContain(
+      'node scripts/verify-storage-blocked.mjs http://127.0.0.1:4199 --browser=chromium',
+    );
+    expect(probe).toContain("throw refuse('The operation is insecure.')");
+    expect(probe).toContain("getByTestId('storage-blocked-notice')");
+  });
+
   it('pins the standalone browser Lego and removes the vendored workspace copy', () => {
     const browserPackage = JSON.parse(readRoot('frontend/packages/browser/package.json')) as {
       dependencies: Record<string, string>;
