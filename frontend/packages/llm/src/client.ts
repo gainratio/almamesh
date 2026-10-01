@@ -155,7 +155,16 @@ export async function chatCompletionJson(
   if (!response.ok) {
     throw await requestErrorFor(response);
   }
-  const payload = (await response.json()) as OpenAiMessage;
+  return completionJsonContent(await response.json());
+}
+
+/**
+ * The fence-stripped content of one non-streaming completion body, or the
+ * typed failure it reports in-band (#192). Shared with the streamed variant
+ * for endpoints that ignore `stream: true`.
+ */
+export function completionJsonContent(body: unknown): string {
+  const payload = body as OpenAiMessage;
   const failure = inBandFailure(payload);
   if (failure) throw failure;
   const content = payload.choices?.[0]?.message?.content;

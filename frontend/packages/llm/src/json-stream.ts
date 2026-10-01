@@ -10,6 +10,7 @@
 
 import {
   buildHeaders,
+  completionJsonContent,
   joinUrl,
   LlmRequestError,
   requestErrorFor,
@@ -73,6 +74,13 @@ export async function streamChatCompletionJson(
 ): Promise<string> {
   ensurePrivacy(options.config);
   const response = await openJsonStream(options);
+  // Some OpenAI-compatible servers ignore `stream: true` and answer one JSON
+  // body (the agent chat tolerates the same). Treat it as a single delta.
+  if (response.headers.get("content-type")?.includes("application/json")) {
+    const content = completionJsonContent(await response.json());
+    options.onDelta?.(content);
+    return validatedJson([content]);
+  }
   // Deltas are kept as a list and joined once at the end: no per-token copy of
   // the growing document.
   const parts: string[] = [];

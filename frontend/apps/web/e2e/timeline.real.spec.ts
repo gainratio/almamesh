@@ -86,7 +86,10 @@ test('[real] current timeline generates The road ahead against live OpenRouter',
     )
     .then(async () => {
       const ms = Date.now() - t0;
-      await page.screenshot({ path: 'test-results/timeline-real-live.png', fullPage: true });
+      await page
+        .getByTestId('timeline-progress')
+        .screenshot({ path: 'test-results/timeline-real-live.png' })
+        .catch(() => undefined);
       return ms;
     })
     .catch(() => null);

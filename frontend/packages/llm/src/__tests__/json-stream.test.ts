@@ -94,6 +94,22 @@ describe("streamChatCompletionJson", () => {
     expect(raw).toBe('{"a":1}');
   });
 
+  it("accepts an endpoint that ignores stream:true and answers one JSON body", async () => {
+    const body = JSON.stringify({ choices: [{ finish_reason: "stop", message: { content: '{"a":1}' } }] });
+    const { fetchImpl } = fetchOnce(new Response(body, { headers: { "Content-Type": "application/json" } }));
+    const seen: string[] = [];
+    const raw = await streamChatCompletionJson({ config: CFG, messages: MESSAGES, fetchImpl, onDelta: (d) => seen.push(d) });
+    expect(raw).toBe('{"a":1}');
+    expect(seen).toEqual(['{"a":1}']);
+  });
+
+  it("maps an in-band error in a non-streamed JSON answer like #192", async () => {
+    const body = JSON.stringify({ choices: [{ finish_reason: "error", message: { content: "" } }] });
+    const { fetchImpl } = fetchOnce(new Response(body, { headers: { "Content-Type": "application/json" } }));
+    const err = await failure(streamChatCompletionJson({ config: CFG, messages: MESSAGES, fetchImpl }));
+    expect(err.status).toBe(502);
+  });
+
   it("strips a ```json fence from the assembled content", async () => {
     const { fetchImpl } = fetchOnce(streamResponse(sse(delta('```json\n{"a":1}\n```')) + sse("[DONE]")));
     await expect(streamChatCompletionJson({ config: CFG, messages: MESSAGES, fetchImpl })).resolves.toBe('{"a":1}');
