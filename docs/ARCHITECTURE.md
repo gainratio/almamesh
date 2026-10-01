@@ -91,11 +91,14 @@ silently overwrite a newer dataset. On first eligible launch, the old
 idb-keyval records are copied, integrity-checked, and only then removed. A crash
 before cleanup leaves a redundant source copy and the migration safely resumes.
 
-Settings exports the actual SQLite bytes and stages every restore in an
-isolated in-memory database before replacing the live generation. Legacy JSON
-backups remain importable. Provider credentials, semantic vectors, predictive
-caches, and route-guard mirrors are not canonical rows: credentials never enter
-an export, while derived data is rebuilt from the restored source records.
+Settings exports the actual SQLite bytes, sealed with the user's password
+together with device settings (AI provider, models, API key) into one
+encrypted backup file (format v2: PBKDF2-SHA256 600k + AES-GCM, header
+authenticated). Every restore is staged in an isolated in-memory database
+before replacing the live generation, and settings are applied only after that
+commit. v1 SQLite and legacy JSON backups remain importable. Semantic vectors,
+predictive caches, and route-guard mirrors are not exported; they are rebuilt
+from the restored source records.
 
 ## Where things live
 

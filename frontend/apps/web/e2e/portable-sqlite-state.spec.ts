@@ -9,7 +9,8 @@ import {
 
 const PROFILE_ID = "portable-profile-ada";
 const PROFILE_NAME = "Portable Ada";
-const API_KEY_SENTINEL = "sk-local-portable-e2e-never-export";
+const API_KEY_SENTINEL = "sk-local-portable-e2e-never-plaintext";
+const PASSPHRASE = "portable e2e passphrase";
 const SQLITE_HEADER = Buffer.from("SQLite format 3\0", "binary");
 const CANONICAL_IDB_KEYS = [
   "almamesh-profiles",
@@ -188,10 +189,16 @@ async function expectProfileAndLanguage(page: Page): Promise<void> {
   await expect.poll(() => page.locator("html").getAttribute("lang")).toBe("es");
 }
 
-function sqliteBytes(path: string): Buffer {
-  const bytes = readFileSync(path);
-  expect(bytes.subarray(0, 16)).toEqual(SQLITE_HEADER);
-  return bytes;
+async function expectAiSettingsRestored(page: Page): Promise<void> {
+  const saved = await page.evaluate(() =>
+    JSON.parse(localStorage.getItem("almamesh-llm-settings") ?? "{}"),
+  );
+  expect(saved).toMatchObject({
+    apiBase: "http://127.0.0.1:11434/v1",
+    apiKey: API_KEY_SENTINEL,
+    model: "synthetic/local-tool-model",
+    privacyMode: "strict",
+  });
 }
 
 test("migrates, exports, reloads, and restores canonical OPFS SQLite through Settings", async ({
@@ -245,18 +252,28 @@ test("migrates, exports, reloads, and restores canonical OPFS SQLite through Set
   await peer.close();
 
   await page.goto("/settings/data", { waitUntil: "domcontentloaded" });
+  await page.getByTestId("backup-passphrase-input").fill(PASSPHRASE);
   const [download] = await Promise.all([
     page.waitForEvent("download"),
     page.getByTestId("backup-export-button").click(),
   ]);
   expect(download.suggestedFilename()).toMatch(
-    /^almamesh-backup-\d{4}-\d{2}-\d{2}\.sqlite3$/,
+    /^almamesh-backup-\d{4}-\d{2}-\d{2}\.json$/,
   );
-  const exportedPath = testInfo.outputPath("portable-almamesh-export.sqlite3");
+  const exportedPath = testInfo.outputPath("portable-almamesh-export.json");
   await download.saveAs(exportedPath);
-  const exported = sqliteBytes(exportedPath);
+  // Format v2: the whole file is sealed. Neither the API key nor the setting
+  // names nor the SQLite database appear in the bytes on disk.
+  const exported = readFileSync(exportedPath);
+  expect(JSON.parse(exported.toString("utf8"))).toMatchObject({
+    format: "almamesh-backup",
+    formatVersion: 2,
+    encryption: "aes-gcm",
+    kdf: { name: "PBKDF2", hash: "SHA-256", iterations: 600_000 },
+  });
   expect(exported.includes(Buffer.from(API_KEY_SENTINEL))).toBe(false);
   expect(exported.includes(Buffer.from("almamesh-llm-settings"))).toBe(false);
+  expect(exported.includes(SQLITE_HEADER)).toBe(false);
 
   await page.reload({ waitUntil: "domcontentloaded" });
   await expectProfileAndLanguage(page);
@@ -279,6 +296,16 @@ test("migrates, exports, reloads, and restores canonical OPFS SQLite through Set
     restoredPage.getByTestId("backup-import-button").click(),
   ]);
   await chooser.setFiles(exportedPath);
+  // A wrong password is refused with a specific message and imports nothing.
+  const promptInput = restoredPage.getByTestId("backup-passphrase-prompt-input");
+  await promptInput.fill("not the passphrase");
+  await restoredPage.getByTestId("backup-passphrase-prompt-submit").click();
+  await expect(restoredPage.getByRole("alert")).toContainText("Wrong password");
+  expect(
+    await restoredPage.evaluate(() => localStorage.getItem("almamesh-llm-settings")),
+  ).toBeNull();
+  await promptInput.fill(PASSPHRASE);
+  await restoredPage.getByTestId("backup-passphrase-prompt-submit").click();
   const confirm = restoredPage.getByTestId("backup-confirm-import");
   await expect(confirm).toBeVisible();
 
@@ -288,15 +315,16 @@ test("migrates, exports, reloads, and restores canonical OPFS SQLite through Set
     confirm.click(),
   ]);
   expect(safetyDownload.suggestedFilename()).toMatch(
-    /^almamesh-backup-before-import-\d{4}-\d{2}-\d{2}\.sqlite3$/,
+    /^almamesh-backup-before-import-\d{4}-\d{2}-\d{2}\.json$/,
   );
-  const safetyPath = testInfo.outputPath(
-    "portable-almamesh-safety-net.sqlite3",
-  );
+  const safetyPath = testInfo.outputPath("portable-almamesh-safety-net.json");
   await safetyDownload.saveAs(safetyPath);
-  sqliteBytes(safetyPath);
+  expect(JSON.parse(readFileSync(safetyPath, "utf8"))).toMatchObject({
+    formatVersion: 2,
+  });
 
   await expectProfileAndLanguage(restoredPage);
+  await expectAiSettingsRestored(restoredPage);
   expectCleanBrowser(restoredProblems);
   await restoredContext.close();
 });
