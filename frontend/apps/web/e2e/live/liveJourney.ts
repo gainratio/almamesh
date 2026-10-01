@@ -6,7 +6,7 @@
  * observed through the page's own Worker traffic (production builds carry no
  * exit-gate hooks).
  */
-import { expect, type APIRequestContext, type BrowserContext, type Page } from '@playwright/test';
+import { expect, type APIRequestContext, type BrowserContext, type Page, type Request } from '@playwright/test';
 
 /** What the in-page probe records: engine boot time and refused Workers. */
 export interface EngineProbe {
@@ -142,21 +142,50 @@ export async function workerState(): Promise<string> {
  * interception of the service worker half-detached: the next worker hung in
  * `activating` forever, while the same upgrade through a pass-through route
  * activated within seconds — a harness artifact, not a site defect.
+ *
+ * `requestTimeoutMs` bounds each proxied fetch. Playwright's default is 30 s,
+ * which cut off the previous build's cold engine download (its 47 MB bundle
+ * takes ~34 s on the runner's link) and left that build's worker to fetch it
+ * again during the upgrade.
+ *
+ * `inFlightServiceWorkerRequests()` counts requests the context's service
+ * workers have started and not yet finished or failed, through the proxy and
+ * after it. Chromium activates a worker that called `skipWaiting()` only once
+ * the active worker has no in-flight work, so the returning pass drains this
+ * to 0 before the previous visit ends (see the spec's PREVIOUS_VISIT_BUDGET_MS).
  */
 export async function serveOriginFrom(
   context: BrowserContext,
   origin: string,
   previous: string,
-): Promise<{ serviceWorkerRequests: () => number; switchToLive: () => void }> {
+  options: { requestTimeoutMs?: number } = {},
+): Promise<{
+  serviceWorkerRequests: () => number;
+  inFlightServiceWorkerRequests: () => number;
+  switchToLive: () => void;
+}> {
   const previousOrigin = new URL(previous).origin;
   let live = false;
   let serviceWorkerRequests = 0;
+  let inFlightServiceWorkerRequests = 0;
+  const settled = (request: Request) => {
+    if (request.serviceWorker()) inFlightServiceWorkerRequests -= 1;
+  };
+  context.on('request', (request) => {
+    if (request.serviceWorker()) inFlightServiceWorkerRequests += 1;
+  });
+  context.on('requestfinished', settled);
+  context.on('requestfailed', settled);
   await context.route(`${origin}/**`, async (route) => {
     if (live) return route.continue();
     const requested = new URL(route.request().url());
     if (route.request().serviceWorker()) serviceWorkerRequests += 1;
     const target = new URL(`${requested.pathname}${requested.search}`, previousOrigin);
-    const response = await route.fetch({ url: target.toString(), maxRedirects: 0 });
+    const response = await route.fetch({
+      url: target.toString(),
+      maxRedirects: 0,
+      timeout: options.requestTimeoutMs,
+    });
     const headers = response.headers();
     if (headers.location?.startsWith(previousOrigin)) {
       headers.location = `${origin}${headers.location.slice(previousOrigin.length)}`;
@@ -165,6 +194,7 @@ export async function serveOriginFrom(
   });
   return {
     serviceWorkerRequests: () => serviceWorkerRequests,
+    inFlightServiceWorkerRequests: () => inFlightServiceWorkerRequests,
     switchToLive: () => {
       live = true;
     },
