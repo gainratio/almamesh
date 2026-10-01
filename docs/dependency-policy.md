@@ -18,10 +18,19 @@ a bug in this file.
 | `@mui/material` | `^7` | `frontend/apps/web/package.json` | The v9 migration is its own validated effort (theme + component API churn across every picker/modal surface). |
 | `@mui/x-date-pickers` | `^8` | `frontend/apps/web/package.json` | Same v9 effort as MUI core — and the pickers carry a hard-won controlled-input scar (typed dates corrupted by controlled-value resync; only a real-browser probe reproduces it), so any bump needs live-browser validation of onboarding date/time entry. |
 | `typescript` | `~5.7` | root + all `frontend/packages/*` and `apps/web` | TS6+ needs ecosystem alignment (typescript-eslint, `tsc -b` project references) across all workspace packages at once — a single-package bump breaks the shared toolchain. The standalone browser Lego ships compiled ESM/types, so its newer build compiler does not enter this workspace. |
-| `@huggingface/transformers` | `3.8.1` (exact) | `frontend/apps/web/package.json`, `frontend/packages/memory/package.json` | 4.x pulls `onnxruntime-web` 1.31.0-dev, whose WASM (26.86 MB bundled asyncify, 28.35 MB jsep in `public/models/ort/`) is over Cloudflare Pages' 25 MiB per-file upload limit; Dependabot PR #175 broke the prod deploy with it. 3.8.1 ships `onnxruntime-web` 1.22.0-dev (21.6 MB jsep). Lift only when the new major's WASM fits under 26,214,400 B — `deployDryRun`'s `assertPagesUploadLimits` gates it. |
 | `three` (+ `@types/three`) | `^0.172` | `frontend/apps/web/package.json` | three's 0.x minors are de-facto majors; a bump must be validated live against `@react-three/fiber` in the 3D force-field hero, not just typechecked. |
 | `pyodide` | `^0.29` | `frontend/packages/browser/package.json` (mirrored by `PYODIDE_VERSION` in `frontend/apps/web/scripts/setup-dev-assets.sh`) | The version-pinned WASM runtime inside the signed bundle: a bump must re-pass the Pyodide==CPython byte-parity gate and re-ships the immutable `pyodide/*` CDN assets — see `docs/deploy/almamesh-com.md`. |
 | `tailwindcss` | `^3.4` | `frontend/apps/web/package.json` | The v3→v4 migration replaces the config model (JS `tailwind.config` → CSS-first `@theme`) and the build integration (PostCSS plugin → `@tailwindcss/vite`), and this app's theme rides a shared preset (`@almamesh/constants` `tailwind.preset.js`); the whole visual surface must be re-validated live on its own branch, not ride into auto-deploy. |
+
+**Lifted 2026-10-01: `@huggingface/transformers`** (was held at 3.8.1). 4.x
+imports `onnxruntime-web/webgpu`, whose bundle makes Vite emit the 26.86 MB
+asyncify wasm, over Cloudflare Pages' 25 MiB per-file limit. `ortWasmOnlyPlugin`
+(`frontend/apps/web/src/lib/ortWasmOnly.ts`) points that import at ORT's
+wasm-only export with the `onnxruntime-web-use-extern-wasm` condition, so the
+build emits no wasm and the embedder loads the plain 14.3 MB build from
+`/models/ort/`. `ortWasmOnly.test.ts` builds the real package and fails if a
+future transformers/ORT release brings a bundled wasm back; `deployDryRun`'s
+`assertPagesUploadLimits` is the backstop.
 
 ## Never cap a security floor
 
