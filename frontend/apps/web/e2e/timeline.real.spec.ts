@@ -57,10 +57,9 @@ test('[real] current timeline generates The road ahead against live OpenRouter',
   await bootEngine(page);
   await seedChart(page);
   await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
-  await page.getByTestId('generate-reading').click();
-  await expect(page.getByTestId('reading-section')).toBeVisible({ timeout: 1_200_000 });
-  await expect(page.getByTestId('interpretation-progress')).toHaveCount(0, { timeout: 1_200_000 });
 
+  // The timeline is generated on its own (explicit button), independent of the
+  // natal reading, so the journey does not wait on the five natal sections.
   const generate = page.getByTestId('generate-timeline').or(page.getByTestId('regenerate-timeline'));
   await expect(generate).toBeEnabled({ timeout: 120_000 });
   await generate.click();
