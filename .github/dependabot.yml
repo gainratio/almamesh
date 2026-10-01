@@ -29,3 +29,13 @@ updates:
     groups:
       frontend:
         patterns: ["*"]
+    ignore:
+      # Held major, see docs/dependency-policy.md. transformers 4.x pulls an
+      # onnxruntime-web whose WASM binaries are over Cloudflare Pages' 25 MiB
+      # (26,214,400 B) per-file upload limit: 26.86 MB bundled asyncify wasm and
+      # 28.35 MB jsep wasm copied into public/models/ort/ by setup-dev-assets.sh.
+      # Dependabot PR #175 bumped 3.8.1 -> 4.3.0 inside a grouped PR and broke the
+      # next prod deploy. Lift only once the new major's WASM fits under the cap
+      # (dagger/src/pagesUploadLimits.ts gates this in deployDryRun).
+      - dependency-name: "@huggingface/transformers"
+        update-types: ["version-update:semver-major"]

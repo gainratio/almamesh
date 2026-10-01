@@ -25,6 +25,7 @@ import {
   type SmokePass,
   type SmokeRun,
 } from "./deployment.js"
+import { pagesUploadLimitsCheckScript as releasePagesUploadLimitsScript } from "./pagesUploadLimits.js"
 
 const ROOT = "/workspace"
 const FRONTEND = `${ROOT}/frontend`
@@ -62,6 +63,7 @@ const SOURCE_EXCLUDES = [
 const CONTRACT_TESTS = [
   "tests/dagger-deployment-contract.test.ts",
   "tests/dagger-foundation-contract.test.ts",
+  "tests/dagger-pages-upload-contract.test.ts",
   "tests/dagger-workflow-contract.test.ts",
 ]
 const SMOKE_OUTPUT_LINES = 60
@@ -448,7 +450,8 @@ export class AlmameshCi {
       this.releaseBase(this.source)
         .withMountedTemp(KEYS)
         .withEnvVariable("EXPECTED_SHA", expectedSha)
-        .withExec(["bash", "-c", this.dryRunBuildScript()]),
+        .withExec(["bash", "-c", this.dryRunBuildScript()])
+        .withExec(["bun", "-e", this.pagesUploadLimitsScript("dist")]),
     )
     const functions = dag.directory().withFile(
       "api/feedback.ts",
@@ -804,6 +807,9 @@ for _ in $(seq 1 60); do
 done
 test "$feedback_verified" = "1"
 echo "Wrangler Pages Functions dry-run verified closed feedback route for $EXPECTED_SHA"`
+  }
+  private pagesUploadLimitsScript(dir: string): string {
+    return releasePagesUploadLimitsScript(dir)
   }
   private indexNowScript(artifact: string): string {
     return releaseIndexNowScript(artifact)
