@@ -162,7 +162,7 @@
         "@almamesh/constants": "workspace:*",
         "@almamesh/llm": "workspace:*",
         "@almamesh/shared-types": "workspace:*",
-        "@edgeproc/browser": "github:hseshadr/edgeproc-browser#02171df60afc8b09d6439112ea7ea3202338d46a",
+        "@edgeproc/browser": "github:hseshadr/edgeproc-browser#3146a2adaa41f4358af99239f3b415e3a5e99ca0",
         "dayjs": "^1.11.23",
         "idb-keyval": "^6.3.0",
         "mitt": "^3.0.1",
@@ -2376,7 +2376,7 @@
 
     "zwitch": ["zwitch@2.0.4", "", {}, "sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A=="],
 
-    "@almamesh/store/@edgeproc/browser": ["@edgeproc/browser@github:hseshadr/edgeproc-browser#02171df", { "dependencies": { "@hpcc-js/wasm-zstd": "^1.15.0", "@noble/ed25519": "^3.1.0", "idb-keyval": "^6.3.0" } }, "hseshadr-edgeproc-browser-02171df"],
+    "@almamesh/memory/@edgeproc/browser": ["@edgeproc/browser@github:hseshadr/edgeproc-browser#3146a2a", { "dependencies": { "@hpcc-js/wasm-zstd": "^1.15.0", "@noble/ed25519": "^3.1.0", "idb-keyval": "^6.3.0" } }, "hseshadr-edgeproc-browser-3146a2a"],
 
     "@almamesh/web/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
 
