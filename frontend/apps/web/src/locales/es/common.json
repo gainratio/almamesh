@@ -50,6 +50,16 @@
     "body": "AlmaMesh calcula y guarda tu carta solo en este dispositivo, así que necesita permiso para almacenar datos de este sitio. Tu navegador lo está rechazando ahora mismo.",
     "fix": "En Safari, abre Ajustes > Privacidad y desactiva \"Bloquear todas las cookies\"; luego recarga esta página. En otros navegadores, permite las cookies y los datos del sitio para almamesh.com."
   },
+  "storage_ephemeral": {
+    "title": "Este navegador no está guardando tus datos.",
+    "body": "Aquí rechaza el almacenamiento en el dispositivo (por ejemplo, en navegación privada), así que tu carta funciona pero desaparece al cerrar esta pestaña.",
+    "export": "Exporta una copia de seguridad para conservarla."
+  },
+  "storage_unavailable": {
+    "title": "AlmaMesh no puede iniciar su base de datos en el dispositivo",
+    "body": "AlmaMesh calcula y guarda tu carta solo en este dispositivo, y este navegador no puede ejecutar la base de datos local que necesita.",
+    "fix": "Prueba una versión actual de Safari, Chrome, Firefox o Edge en una ventana normal (no privada) y vuelve a cargar esta página."
+  },
   "error_boundary": {
     "title": "Algo salió mal",
     "body": "Se produjo un error inesperado. Intenta actualizar la página.",

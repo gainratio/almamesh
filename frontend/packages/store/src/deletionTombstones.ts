@@ -14,8 +14,14 @@ import {
   PORTABLE_LEDGER_KEY,
   PORTABLE_STATE_KEYS,
   resolvePortableStateMode,
+  type LegacyStateStorage,
   type PortableStateRepository,
 } from './portableState';
+import {
+  markPortableStateUnavailable,
+  nonDestructiveLegacyStorage,
+  openPortableStateWithFallback,
+} from './portablePersistence';
 import { browserLocalStorage } from './webStorage';
 
 export const DELETION_TOMBSTONES_KEY = 'almamesh-deletion-tombstones';
@@ -87,29 +93,39 @@ export function setPortableStateRepositoryForTests(
 
 async function portableRepository(): Promise<PortableStateRepository | null> {
   if (portableRepositoryOverride !== undefined) return portableRepositoryOverride;
-  if (resolvePortableStateMode() === 'node-test-fallback') return null;
-  portableRepositoryPromise ??= openPortableStateRepository().then(async (repository) => {
+  let mode: ReturnType<typeof resolvePortableStateMode>;
+  try {
+    mode = resolvePortableStateMode();
+  } catch (error) {
+    markPortableStateUnavailable();
+    throw error;
+  }
+  if (mode === 'node-test-fallback') return null;
+  portableRepositoryPromise ??= openPortableStateWithFallback({
+    open: openPortableStateRepository,
+  }).then(async ({ repository, persistence }) => {
+    const legacy: LegacyStateStorage = {
+      get: async (key) => {
+        if (key === 'almamesh-language') {
+          const storage = browserLocalStorage();
+          return typeof storage?.getItem === 'function' ? storage.getItem(key) : null;
+        }
+        const value = await idbGet<unknown>(key, useKeyvalStore);
+        if (value === undefined) return null;
+        return typeof value === 'string' ? value : JSON.stringify(value);
+      },
+      delete: async (key) => {
+        if (key === 'almamesh-language') {
+          const storage = browserLocalStorage();
+          storage?.removeItem?.(key);
+          return;
+        }
+        await idbDel(key, useKeyvalStore);
+      },
+    };
     await migrateLegacyState(
       repository,
-      {
-        get: async (key) => {
-          if (key === 'almamesh-language') {
-            const storage = browserLocalStorage();
-            return typeof storage?.getItem === 'function' ? storage.getItem(key) : null;
-          }
-          const value = await idbGet<unknown>(key, useKeyvalStore);
-          if (value === undefined) return null;
-          return typeof value === 'string' ? value : JSON.stringify(value);
-        },
-        delete: async (key) => {
-          if (key === 'almamesh-language') {
-            const storage = browserLocalStorage();
-            storage?.removeItem?.(key);
-            return;
-          }
-          await idbDel(key, useKeyvalStore);
-        },
-      },
+      persistence === 'memory' ? nonDestructiveLegacyStorage(legacy) : legacy,
       [...PORTABLE_STATE_KEYS, PORTABLE_LEDGER_KEY],
     );
     return repository;

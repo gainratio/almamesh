@@ -38,6 +38,11 @@ export * from './rectification';
 export * from './rectificationRecords';
 export * from './contentMode';
 export * from './language';
+export {
+  portableStatePersistence,
+  subscribePortableStatePersistence,
+  type PortableStatePersistence,
+} from './portablePersistence';
 export * from './interpretation';
 export * from './settings';
 export * from './events';
