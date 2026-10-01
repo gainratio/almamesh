@@ -71,6 +71,7 @@
     "insufficient_credits": "Your AI account is out of credits. Add credits with your provider (for OpenRouter: openrouter.ai → Credits), or pick a cheaper model in Settings → AI.",
     "auth_failed": "Your AI key was rejected. Check that your OpenRouter key is pasted correctly in Settings → AI.",
     "rate_limited": "The AI provider is rate-limiting requests. Wait a moment and try again.",
+    "reasoning_timeout": "The model thought for over 3 minutes without starting its answer. Try again, or pick a faster model in Settings → AI.",
     "server_error": "The AI provider is having trouble right now. Try again shortly.",
     "request_failed": "The AI request failed — try again in a moment, or check your model and endpoint in Settings → AI."
   },

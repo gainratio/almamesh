@@ -34,6 +34,7 @@ import { estimateTokens } from "./budget";
 import { chatCompletionJson, LlmRequestError, type ChatMessage } from "./client";
 import { createJsonProseExtractor, createWordCounter } from "./json-prose";
 import { streamChatCompletionJson } from "./json-stream";
+import { SECTION_REASONING_MAX_TOKENS } from "./reasoning";
 import { ensurePrivacy, isLocalEndpoint, type ProviderConfig } from "./config";
 import { withLanguage, type PromptLanguage } from "./language";
 import { buildPredictiveFactsBlock } from "./predictive-facts";
@@ -104,6 +105,11 @@ export interface StructuredInterpretationParams {
   readonly now?: Date;
   /** Injectable for tests; defaults to the global `fetch`. */
   readonly fetchImpl?: typeof fetch;
+  /**
+   * Runaway-reasoning cap for streamed sections, in ms (default
+   * REASONING_TIMEOUT_MS). Injectable so tests need not wait three minutes.
+   */
+  readonly reasoningTimeoutMs?: number;
   /**
    * When set, each section STREAMS (`stream: true`) and this is called with
    * the section's live prose as it is written. The final JSON is still
@@ -1069,6 +1075,7 @@ function requestSection(
   const base = {
     config: params.config,
     messages,
+    reasoningMaxTokens: SECTION_REASONING_MAX_TOKENS,
     ...(params.signal ? { signal: params.signal } : {}),
     ...(params.fetchImpl ? { fetchImpl: params.fetchImpl } : {}),
   };
@@ -1083,6 +1090,7 @@ function requestSection(
   });
   return streamChatCompletionJson({
     ...base,
+    ...(params.reasoningTimeoutMs === undefined ? {} : { reasoningTimeoutMs: params.reasoningTimeoutMs }),
     onDelta: (delta) => {
       prose.push(delta);
       report(section, snapshot());

@@ -14,11 +14,13 @@ import {
   joinUrl,
   LlmRequestError,
   requestErrorFor,
+  reasoningField,
   requireBaseUrl,
   stripJsonFence,
   type ChatCompletionJsonOptions,
 } from "./client";
 import { ensurePrivacy } from "./config";
+import { REASONING_TIMEOUT_MS } from "./reasoning";
 import { sseChunks } from "./sse";
 
 /** Status for a generation the provider dropped or truncated (matches #192). */
@@ -33,6 +35,12 @@ export interface StreamChatCompletionJsonOptions extends ChatCompletionJsonOptio
    * meanwhile. Never part of the returned JSON.
    */
   readonly onReasoning?: (delta: string) => void;
+  /**
+   * Runaway-reasoning cap: no answer text this many ms after the stream opens
+   * fails with a ReasoningTimeoutError (504, so the section runner retries
+   * once). Default REASONING_TIMEOUT_MS.
+   */
+  readonly reasoningTimeoutMs?: number;
 }
 
 function abortError(): DOMException {
@@ -49,6 +57,7 @@ async function openJsonStream(options: StreamChatCompletionJsonOptions): Promise
       messages: options.messages,
       stream: true,
       response_format: { type: "json_object" },
+      ...reasoningField(options.config, options.reasoningMaxTokens),
     }),
     signal: options.signal,
   });
@@ -84,7 +93,11 @@ export async function streamChatCompletionJson(
   // Deltas are kept as a list and joined once at the end: no per-token copy of
   // the growing document.
   const parts: string[] = [];
-  for await (const chunk of sseChunks(response, { inBandFallbackStatus: DROPPED_GENERATION_STATUS })) {
+  const sse = {
+    inBandFallbackStatus: DROPPED_GENERATION_STATUS,
+    answerDeadlineMs: options.reasoningTimeoutMs ?? REASONING_TIMEOUT_MS,
+  };
+  for await (const chunk of sseChunks(response, sse)) {
     const delta = chunk.choices?.[0]?.delta;
     const content = delta?.content;
     if (typeof content === "string" && content) {

@@ -120,6 +120,24 @@ export interface ChatCompletionJsonOptions {
   readonly signal?: AbortSignal;
   /** Optional fetch override for testing; defaults to the global `fetch`. */
   readonly fetchImpl?: typeof fetch;
+  /**
+   * Reasoning budget sent as OpenRouter's `reasoning.max_tokens` (OpenRouter
+   * endpoints only; see reasoning.ts). Unset: the model's own default.
+   */
+  readonly reasoningMaxTokens?: number;
+}
+
+/**
+ * The `reasoning` request field for a budget, OpenRouter only (a strict
+ * OpenAI-compatible server may reject an unknown field). Lives here, not in
+ * reasoning.ts, so client.ts has no import cycle.
+ */
+export function reasoningField(
+  config: ProviderConfig,
+  maxTokens: number | undefined,
+): { readonly reasoning?: { readonly max_tokens: number } } {
+  if (maxTokens === undefined || !config.baseUrl?.startsWith(OPENROUTER_API_BASE)) return {};
+  return { reasoning: { max_tokens: maxTokens } };
 }
 
 /** Strip a ```json … ``` (or plain ```) fence some models wrap JSON in. */
@@ -149,6 +167,7 @@ export async function chatCompletionJson(
       messages: options.messages,
       stream: false,
       response_format: { type: "json_object" },
+      ...reasoningField(options.config, options.reasoningMaxTokens),
     }),
     signal: options.signal,
   });

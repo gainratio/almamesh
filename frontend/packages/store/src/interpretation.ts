@@ -39,8 +39,8 @@ export type InterpretationStatus = 'idle' | 'generating' | 'complete' | 'error';
  * once, at the point of failure, so consumers can switch on it.
  *
  * The provider-side kinds mirror the shared `@edgeproc/errors` classification
- * (credits / auth / model / privacy / rate_limited / server / network /
- * unknown); `needs_regeneration` is the app-state failure where a stored chart
+ * (credits / auth / model / privacy / rate_limited / reasoning_timeout /
+ * server / network / unknown); `needs_regeneration` is the app-state failure where a stored chart
  * carries no raw engine output to interpret.
  */
 export type InterpretationErrorKind =
@@ -49,6 +49,7 @@ export type InterpretationErrorKind =
   | 'model'
   | 'privacy'
   | 'rate_limited'
+  | 'reasoning_timeout'
   | 'server'
   | 'network'
   | 'needs_regeneration'
