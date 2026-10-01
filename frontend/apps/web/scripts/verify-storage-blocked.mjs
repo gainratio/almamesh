@@ -15,13 +15,17 @@
  * This script reproduces that browser state with an init script, then
  * requires: no uncaught page error on /welcome or /onboarding, and a visible
  * explanation on /onboarding and /dashboard. A control pass with storage
- * allowed onboards for real and requires the dashboard chart, no notice, and
- * no page errors. The control uses a persistent profile: Playwright's
- * ephemeral WebKit contexts refuse OPFS (UnknownError), which is not what a
- * normal Safari window does.
+ * allowed requires the normal onboarding form, no notice, and no page errors.
+ *
+ * `--journey` additionally onboards for real and requires the dashboard chart
+ * (persistent profile). Dagger passes it to the Chromium run only: Linux
+ * Playwright WebKit has no working OPFS even in a persistent profile
+ * (UnknownError, see verify-sqlite-memory.mjs), so the chart can never load
+ * there. macOS WebKit passes it.
  *
  * Usage:
  *   node scripts/verify-storage-blocked.mjs http://127.0.0.1:4200 --browser=webkit
+ *   node scripts/verify-storage-blocked.mjs http://127.0.0.1:4199 --browser=chromium --journey
  */
 
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -34,6 +38,7 @@ const BASE_URL = process.argv.find((argument) => /^https?:\/\//.test(argument))
   ?? 'http://127.0.0.1:4199'
 const BROWSER_NAME = process.argv.find((argument) => argument.startsWith('--browser='))
   ?.slice('--browser='.length) ?? 'webkit'
+const RUN_JOURNEY = process.argv.includes('--journey')
 const BROWSERS = { chromium, webkit }
 
 function invariant(condition, message) {
@@ -123,17 +128,19 @@ try {
       !(await control.page.getByTestId('storage-blocked-notice').isVisible()),
       'storage-blocked notice shown although storage is allowed',
     )
-    await onboard(control.page)
-    await control.page.waitForURL('**/dashboard', { timeout: 60_000 })
-    await control.page.getByTestId('identity-strip').waitFor({ state: 'visible', timeout: 60_000 })
-    await control.page.getByTestId('chart-visualization').first().waitFor({ state: 'visible', timeout: 30_000 })
+    if (RUN_JOURNEY) {
+      await onboard(control.page)
+      await control.page.waitForURL('**/dashboard', { timeout: 60_000 })
+      await control.page.getByTestId('identity-strip').waitFor({ state: 'visible', timeout: 60_000 })
+      await control.page.getByTestId('chart-visualization').first().waitFor({ state: 'visible', timeout: 30_000 })
+    }
     invariant(control.pageErrors.length === 0, `control run threw: ${control.pageErrors.join(' | ')}`)
   } finally {
     await allowed.close()
     rmSync(profile, { recursive: true, force: true })
   }
 
-  console.log(`storage-blocked: ${BROWSER_NAME} renders /welcome, explains /onboarding + /dashboard when blocked, renders the dashboard chart when allowed, no page errors`)
+  console.log(`storage-blocked: ${BROWSER_NAME} renders /welcome, explains /onboarding + /dashboard when blocked, ${RUN_JOURNEY ? 'renders the dashboard chart' : 'renders onboarding'} when allowed, no page errors`)
 } finally {
   await browser.close()
 }

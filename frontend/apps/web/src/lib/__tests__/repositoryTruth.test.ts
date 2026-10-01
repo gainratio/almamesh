@@ -197,7 +197,7 @@ describe('repository truth', () => {
       'node scripts/verify-storage-blocked.mjs http://127.0.0.1:4200 --browser=webkit',
     );
     expect(workflow).toContain(
-      'node scripts/verify-storage-blocked.mjs http://127.0.0.1:4199 --browser=chromium',
+      'node scripts/verify-storage-blocked.mjs http://127.0.0.1:4199 --browser=chromium --journey',
     );
     expect(probe).toContain("throw refuse('The operation is insecure.')");
     expect(probe).toContain("getByTestId('storage-blocked-notice')");
