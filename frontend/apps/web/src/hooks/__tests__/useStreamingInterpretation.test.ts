@@ -835,6 +835,52 @@ describe('useStreamingInterpretation (structured, store-backed)', () => {
     expect(result.current.timelineSections.every((section) => section.complete)).toBe(true);
   });
 
+  it('records a canonical error code for a failed timeline section', async () => {
+    usePredictiveStore.setState({
+      status: 'ready',
+      profileKey: 'profile-123',
+      requestKey: CURRENT_PREDICTIVE_KEY,
+      rawContexts: {
+        transit_context: { instant: '2026-07-12T00:00:00Z' },
+        varga_context_full: { charts: {} },
+        strength_context: {},
+        domains_context: { forecasts: {} },
+      },
+    } as never);
+    await useInterpretationStore.getState().setInterpretation(
+      'chart-123',
+      SAMPLE_INTERPRETATION,
+      '2026-07-11T00:00:00Z',
+      undefined,
+      { predictiveRequestKey: null },
+    );
+    mockedTimelineStream.mockImplementation(
+      timelineEventStream([
+        {
+          type: 'error',
+          section: 'upcoming_periods',
+          message: 'LLM provider failed mid-generation',
+          status: 502,
+        },
+        { type: 'section_complete', section: 'current_sky' },
+        { type: 'complete', timeline: { upcoming_periods: [], current_sky: [] } },
+      ]),
+    );
+
+    const { result } = renderHook(() => useStreamingInterpretation('chart-123'));
+    await act(async () => {
+      await result.current.streamCurrentTimeline('chart-123', {
+        intent: 'user-request',
+        view_mode: 'layman',
+      });
+    });
+
+    expect(result.current.failedTimelineSections).toEqual(['upcoming_periods']);
+    expect(result.current.failedTimelineSectionCodes).toEqual({
+      upcoming_periods: 'ai.provider.server_error',
+    });
+  });
+
   it('does not spend timeline calls before exact-day predictive facts are ready', async () => {
     const { result } = renderHook(() => useStreamingInterpretation('chart-123'));
 

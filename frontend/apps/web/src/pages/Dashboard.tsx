@@ -196,6 +196,7 @@ export default function DashboardPage() {
     currentTimeline,
     timelineSections,
     failedTimelineSections,
+    failedTimelineSectionCodes,
     isTimelineStreaming,
     timelineStatus,
     timelineError,
@@ -1111,7 +1112,11 @@ export default function DashboardPage() {
               <p className="text-sm text-text-secondary" data-testid="timeline-partial-failure">
                 {t('dashboard:generation.timeline_partial_failure', {
                   sections: failedTimelineSections
-                    .map((key) => t(`dashboard:sections.${key}`))
+                    .map((key) => {
+                      const name = t(`dashboard:sections.${key}`);
+                      const code = failedTimelineSectionCodes[key];
+                      return code ? `${name} (${code})` : name;
+                    })
                     .join(', '),
                 })}
               </p>

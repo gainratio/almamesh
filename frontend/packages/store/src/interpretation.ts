@@ -81,6 +81,12 @@ export interface CurrentTimelineEntry {
   readonly errorKind?: InterpretationErrorKind;
   readonly sections: Readonly<Record<string, boolean>>;
   readonly failedSections?: Readonly<Record<string, boolean>>;
+  /**
+   * Section key -> canonical error code (e.g. `ai.provider.server_error`) of a
+   * failed section, so the partial-failure notice can name the cause instead
+   * of a bare "could not be generated". Optional; cleared on each new run.
+   */
+  readonly failedSectionCodes?: Readonly<Record<string, string>>;
   readonly updatedAt?: string;
   readonly provenance?: ReadingProvenance;
   readonly inputProvenance?: InterpretationInputProvenance;
@@ -218,6 +224,8 @@ export interface InterpretationStore {
     chartId: string,
     section: string,
     runToken?: InterpretationRunToken,
+    /** Canonical error code of the failure, shown next to the section name. */
+    code?: string,
   ) => void;
   setCurrentTimeline: (
     chartId: string,
@@ -712,7 +720,7 @@ export const interpretationStoreCreator: StateCreator<InterpretationStore> = (se
       });
     },
 
-    markCurrentTimelineSectionFailed: (chartId, section, runToken) => {
+    markCurrentTimelineSectionFailed: (chartId, section, runToken, code) => {
       set((state) => {
         if (!acceptsTimelineRun(chartId, runToken)) return state;
         const current = entryOf(state.byChart, chartId);
@@ -723,6 +731,9 @@ export const interpretationStoreCreator: StateCreator<InterpretationStore> = (se
             timeline: {
               ...timeline,
               failedSections: { ...timeline.failedSections, [section]: true },
+              ...(code === undefined
+                ? {}
+                : { failedSectionCodes: { ...timeline.failedSectionCodes, [section]: code } }),
             },
           }),
         };
@@ -750,6 +761,9 @@ export const interpretationStoreCreator: StateCreator<InterpretationStore> = (se
               sections: previous?.sections ?? {},
               ...(previous?.failedSections !== undefined
                 ? { failedSections: previous.failedSections }
+                : {}),
+              ...(previous?.failedSectionCodes !== undefined
+                ? { failedSectionCodes: previous.failedSectionCodes }
                 : {}),
               updatedAt,
               provenance,

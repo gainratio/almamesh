@@ -22,6 +22,7 @@ import { useCallback, useRef, useState } from 'react';
 import {
   applyInterpretationSettings,
   configProvenance,
+  LlmRequestError,
   PrivacyViolationError,
   resolveProviderConfig,
   streamCurrentTimeline,
@@ -49,7 +50,7 @@ import { safeError } from '@almamesh/shared-types';
 import type { SiderealChart } from '@almamesh/browser/types';
 import type { ProcessedBirthData, VedicInterpretation } from '@almamesh/shared-types';
 
-import { chatErrorMessage, classifyConnectionError } from '../lib/errors';
+import { aiErrorRegistry, chatErrorMessage, classifyConnectionError } from '../lib/errors';
 import { whenDataLifecycleReady } from '../lib/profileDataLifecycle';
 import { buildEnsurePredictiveInput, predictiveReferenceInstant } from '../lib/predictive';
 import { fetchEvidenceAnnotations } from './evidenceAnnotations';
@@ -120,6 +121,8 @@ export interface UseStreamingInterpretationResult {
   timelineStatus: InterpretationStatus;
   timelineSections: readonly SectionProgress[];
   failedTimelineSections: readonly CurrentTimelineSectionKey[];
+  /** Canonical error code (e.g. `ai.provider.server_error`) per failed timeline section. */
+  failedTimelineSectionCodes: Readonly<Partial<Record<CurrentTimelineSectionKey, string>>>;
   timelineError: string | null;
   timelineErrorKind: InterpretationErrorKind | null;
   isTimelineStreaming: boolean;
@@ -327,6 +330,18 @@ interface InterpretationFailure {
   readonly message: string;
   /** The typed verdict the UI switches on to choose its treatment. */
   readonly kind: InterpretationErrorKind;
+}
+
+/**
+ * The canonical error code for one failed section (e.g. `ai.provider.server_error`
+ * for an upstream provider dropping the generation), shown beside the section
+ * name so a partial failure is diagnosable instead of a bare "could not be
+ * generated". Classified by the same registry as every other AI error.
+ */
+function sectionErrorCode(message: string, status: number | undefined): string {
+  return aiErrorRegistry.classify(
+    new LlmRequestError(message, status === undefined ? undefined : { status }),
+  );
 }
 
 function describeError(err: unknown): InterpretationFailure {
@@ -578,7 +593,12 @@ export function useStreamingInterpretation(chartId?: string | null): UseStreamin
           if (event.type === 'section_complete') {
             markCurrentTimelineSectionComplete(id, event.section, runToken);
           } else if (event.type === 'error') {
-            markCurrentTimelineSectionFailed(id, event.section, runToken);
+            markCurrentTimelineSectionFailed(
+              id,
+              event.section,
+              runToken,
+              sectionErrorCode(event.message, event.status),
+            );
           } else if (event.type === 'complete') {
             setTimelineDurabilityPendingRun(runToken);
             await setCurrentTimeline(
@@ -656,6 +676,7 @@ export function useStreamingInterpretation(chartId?: string | null): UseStreamin
     failedTimelineSections: timelineSections
       .filter((section) => section.failed)
       .map((section) => section.key as CurrentTimelineSectionKey),
+    failedTimelineSectionCodes: entry?.timeline?.failedSectionCodes ?? {},
     timelineError: entry?.timeline?.error ?? null,
     timelineErrorKind: entry?.timeline?.errorKind ?? null,
     isTimelineStreaming: timelineStatus === 'generating',

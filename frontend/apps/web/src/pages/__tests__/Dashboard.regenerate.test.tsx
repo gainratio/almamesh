@@ -435,6 +435,26 @@ describe('Dashboard — regenerate reading', () => {
     expect(mockedStream).not.toHaveBeenCalled();
   });
 
+  it('names the error code of a failed timeline section in the partial-failure notice', async () => {
+    configureCloudAi();
+    seedCompleteReading(currentProvenance());
+    const store = useInterpretationStore.getState();
+    const run = store.startCurrentTimeline('chart-1');
+    store.markCurrentTimelineSectionFailed('chart-1', 'upcoming_periods', run, 'ai.provider.server_error');
+    await store.setCurrentTimeline(
+      'chart-1',
+      { upcoming_periods: [], current_sky: [{ title: 'Now', layman: 'Active', technical: 'Saturn' }] },
+      '2026-06-21T00:00:00Z',
+      currentProvenance(),
+      NATAL_ONLY_INPUT,
+      run,
+    );
+    renderDashboard();
+
+    const notice = await screen.findByTestId('timeline-partial-failure');
+    expect(notice.textContent).toContain('The road ahead (ai.provider.server_error)');
+  });
+
   it('queues an explicit timeline click without spending until current facts are ready', async () => {
     configureCloudAi();
     seedCompleteReading(currentProvenance());
