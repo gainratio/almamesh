@@ -63,6 +63,8 @@ function getPipeline(): Promise<FeatureExtractionPipeline> {
     pipelinePromise = pipeline("feature-extraction", MODEL_ID, {
       // Quantized weights keep the on-device download/footprint small.
       dtype: "q8",
+      // The build ships only ORT's wasm (CPU) backend (vite ortWasmOnlyPlugin).
+      device: "wasm",
     }) as unknown as Promise<FeatureExtractionPipeline>;
   }
   return pipelinePromise;

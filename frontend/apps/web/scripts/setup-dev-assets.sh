@@ -159,13 +159,14 @@ ORT_DIST="$(find "${WEB_DIR}/.." "${REPO_ROOT}/frontend" -type d -path '*onnxrun
 echo "==> Publishing onnxruntime-web wasm into ${ORT_DEST}"
 mkdir -p "${ORT_DEST}"
 if [[ -n "${ORT_DIST:-}" && -d "${ORT_DIST}" ]]; then
-  # The JSEP build (WebGPU + WASM) is what Transformers.js v3 loads; copy the
-  # wasm + its loader .mjs siblings so both the threaded + non-threaded paths work.
-  for f in ort-wasm-simd-threaded.jsep.wasm ort-wasm-simd-threaded.jsep.mjs \
-           ort-wasm-simd-threaded.wasm ort-wasm-simd-threaded.mjs; do
-    if [[ -f "${ORT_DIST}/${f}" && ! -f "${ORT_DEST}/${f}" ]]; then
-      cp "${ORT_DIST}/${f}" "${ORT_DEST}/${f}"
-    fi
+  # Only the plain CPU build: vite.config.ts's ortWasmOnlyPlugin points ORT at its
+  # wasm-only export, which loads exactly these two files. The jsep (28.35 MB)
+  # and asyncify (26.86 MB) builds are over Cloudflare Pages' 25 MiB per-file
+  # limit, so they must never land in public/. Always overwrite: a stale copy
+  # from an older onnxruntime-web would not match the bundled ORT JS.
+  rm -f "${ORT_DEST}"/ort-wasm-simd-threaded.{jsep,asyncify,jspi}.{wasm,mjs}
+  for f in ort-wasm-simd-threaded.wasm ort-wasm-simd-threaded.mjs; do
+    cp "${ORT_DIST}/${f}" "${ORT_DEST}/${f}"
   done
 else
   echo "    !! onnxruntime-web not found in node_modules — run 'bun install' first."
