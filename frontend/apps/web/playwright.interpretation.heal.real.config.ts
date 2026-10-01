@@ -13,7 +13,7 @@ const __dirname = resolve(__filename, '..');
  * production bundle with VITE_EXIT_GATE_HOOKS=1 so window.__almameshGenerate
  * exists), but runs interpretation.heal.real.spec.ts — which seeds the STALE
  * `anthropic/claude-3.5-sonnet` config the user had, then proves the app
- * self-heals it to `deepseek/deepseek-v4-pro` and renders a real reading
+ * self-heals it to `deepseek/deepseek-v4.1-flash` and renders a real reading
  * against a LIVE OpenRouter endpoint.
  *
  * Runs on its own port (4174) so it never collides with the other real config.

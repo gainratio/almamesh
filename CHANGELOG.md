@@ -6,6 +6,22 @@ All notable changes to AlmaMesh are documented here. Format follows
 
 ## [Unreleased]
 
+### Changed
+- **New users now get `deepseek/deepseek-v4.1-flash` for the reading and the
+  timeline.** Live timeline benchmark (3 runs each): v4.1-flash finished 3/3 in
+  49-65 s; deepseek-v4-pro 3/3 in 111-170 s; z-ai/glm-5.3-flash 1/3 (two runs
+  showed nothing for over a minute, the third took 200 s). A saved model is
+  never rewritten. Users on glm-5.3-flash see a one-time, dismissible
+  suggestion in Settings → AI with those numbers.
+
+### Added
+- **Runaway-reasoning cap.** Each timeline/reading section asks OpenRouter for
+  at most 12k reasoning tokens (chat: 6k), and any streamed request with no
+  answer text after 3 minutes is cancelled with `ai.reasoning_timeout`. A
+  section gets #192's one retry first; the message suggests retrying or a
+  faster model. The budget alone is not trusted: live probes showed upstreams
+  overshooting it.
+
 ### Fixed
 - **A header-only deploy can no longer strand returning visitors on old
   headers.** The service-worker precache is now keyed on a hash of
