@@ -25,7 +25,6 @@ import type {
 import type { TitledPersona, VedicInterpretation } from '@almamesh/shared-types';
 import { deletionAwareIdbStorage } from './deletionTombstones';
 import { whenHydrated } from './hydrationBarrier';
-import { browserLocalStorage } from './webStorage';
 
 /** Lifecycle of a chart's interpretation generation. */
 export type InterpretationStatus = 'idle' | 'generating' | 'complete' | 'error';
@@ -470,7 +469,7 @@ const interpretationStorage: StateStorage = {
   getItem: async (name) => {
     const durable = await deletionAwareIdbStorage.getItem(name);
     if (durable !== null) return durable;
-    const storage = browserLocalStorage();
+    const storage = (globalThis as { localStorage?: Partial<Storage> }).localStorage;
     const legacy = typeof storage?.getItem === 'function' ? storage.getItem(name) : null;
     if (legacy === null) return null;
     await deletionAwareIdbStorage.setItem(name, legacy);
@@ -480,7 +479,7 @@ const interpretationStorage: StateStorage = {
   setItem: (name, value) => deletionAwareIdbStorage.setItem(name, value),
   removeItem: async (name) => {
     await deletionAwareIdbStorage.removeItem(name);
-    const storage = browserLocalStorage();
+    const storage = (globalThis as { localStorage?: Partial<Storage> }).localStorage;
     if (typeof storage?.removeItem === 'function') storage.removeItem(name);
   },
 };

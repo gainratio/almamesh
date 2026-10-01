@@ -45,7 +45,6 @@ export * from './regenerate';
 export * from './durablePersistence';
 export * from './deletionTombstones';
 export * from './portableState';
-export * from './webStorage';
 // Backup & Restore (Spec 061): export/import all user data. `backup` = storage
 // collect/apply + registry; `backupCrypto` = optional passphrase encrypt/decode.
 export * from './backup';

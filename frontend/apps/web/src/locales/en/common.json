@@ -42,11 +42,6 @@
     "home": "AlmaMesh home"
   },
   "loading": "Loading",
-  "storage_blocked": {
-    "title": "Your browser is blocking site storage",
-    "body": "AlmaMesh computes and keeps your chart only on this device, so it needs permission to store data for this site. Your browser is refusing that right now.",
-    "fix": "In Safari, open Settings > Privacy and turn off \"Block all cookies\", then reload this page. In other browsers, allow cookies and site data for almamesh.com."
-  },
   "error_boundary": {
     "title": "Something went wrong",
     "body": "We encountered an unexpected error. Please try refreshing the page.",

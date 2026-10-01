@@ -7,7 +7,6 @@ import { ErrorBoundary } from './components/ErrorBoundary'
 import { AnimatedRoutes } from './components/AnimatedRoutes'
 import { AnimatedPage } from './components/AnimatedPage'
 import { AppLayout } from './components/features/layout/AppLayout'
-import { StorageGate } from './components/StorageGate'
 import { Spinner } from './components/ui'
 import { useOnboardingStatus } from './hooks/useOnboardingStatus'
 import { useChatScopeSync } from './hooks/useChatScopeSync'
@@ -17,11 +16,6 @@ import { useRegenerationSubscription } from './hooks/useRegenerationSubscription
 /** Wrap a page element in the animated-page transition wrapper. */
 function page(element: ReactNode): ReactNode {
   return <AnimatedPage>{element}</AnimatedPage>
-}
-
-/** A page that reads or writes on-device state: explain, don't hang, when storage is blocked. */
-function storagePage(element: ReactNode): ReactNode {
-  return page(<StorageGate>{element}</StorageGate>)
 }
 
 // Lazy-loaded page components for code splitting. `lazyWithRetry` makes a failed
@@ -139,20 +133,20 @@ function AppRoutes() {
   return (
     <AppLayout>
       <AnimatedRoutes>
-        <Route path="/onboarding" element={storagePage(<OnboardingPage />)} />
-        <Route path="/dashboard" element={storagePage(<DashboardPage />)} />
-        <Route path="/predictive" element={storagePage(<PredictivePage />)} />
-        <Route path="/life/:domain" element={storagePage(<LifeDomainPage />)} />
-        <Route path="/mesh" element={storagePage(<MeshPage />)} />
-        <Route path="/mesh/:memberId" element={storagePage(<MeshEdgePage />)} />
-        <Route path="/rectify/:profileId" element={storagePage(<RectifyPage />)} />
-        <Route path="/report" element={storagePage(<ReportViewPage />)} />
+        <Route path="/onboarding" element={page(<OnboardingPage />)} />
+        <Route path="/dashboard" element={page(<DashboardPage />)} />
+        <Route path="/predictive" element={page(<PredictivePage />)} />
+        <Route path="/life/:domain" element={page(<LifeDomainPage />)} />
+        <Route path="/mesh" element={page(<MeshPage />)} />
+        <Route path="/mesh/:memberId" element={page(<MeshEdgePage />)} />
+        <Route path="/rectify/:profileId" element={page(<RectifyPage />)} />
+        <Route path="/report" element={page(<ReportViewPage />)} />
 
         {/* Legacy route redirect */}
         <Route path="/edit-birth-details" element={<Navigate to="/settings/profile" replace />} />
 
         {/* Settings routes */}
-        <Route path="/settings" element={<StorageGate><SettingsLayout /></StorageGate>}>
+        <Route path="/settings" element={<SettingsLayout />}>
           <Route path="profile" element={<ProfileSettings />} />
           <Route path="people" element={<PeopleSettings />} />
           <Route path="ai" element={<AiSettings />} />

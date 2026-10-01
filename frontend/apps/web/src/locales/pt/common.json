@@ -45,11 +45,6 @@
     "home": "Início do AlmaMesh"
   },
   "loading": "Carregando",
-  "storage_blocked": {
-    "title": "Seu navegador está bloqueando o armazenamento do site",
-    "body": "O AlmaMesh calcula e guarda seu mapa apenas neste dispositivo, então precisa de permissão para armazenar dados deste site. Seu navegador está recusando isso agora.",
-    "fix": "No Safari, abra Ajustes > Privacidade e desative \"Bloquear todos os cookies\"; depois recarregue esta página. Em outros navegadores, permita cookies e dados do site para almamesh.com."
-  },
   "error_boundary": {
     "title": "Algo deu errado",
     "body": "Ocorreu um erro inesperado. Tente atualizar a página.",

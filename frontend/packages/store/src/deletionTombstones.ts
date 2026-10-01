@@ -16,7 +16,6 @@ import {
   resolvePortableStateMode,
   type PortableStateRepository,
 } from './portableState';
-import { browserLocalStorage } from './webStorage';
 
 export const DELETION_TOMBSTONES_KEY = 'almamesh-deletion-tombstones';
 const RESTORE_EPOCH_MIRROR_KEY = 'almamesh-restore-epoch';
@@ -94,7 +93,7 @@ async function portableRepository(): Promise<PortableStateRepository | null> {
       {
         get: async (key) => {
           if (key === 'almamesh-language') {
-            const storage = browserLocalStorage();
+            const storage = (globalThis as { localStorage?: Partial<Storage> }).localStorage;
             return typeof storage?.getItem === 'function' ? storage.getItem(key) : null;
           }
           const value = await idbGet<unknown>(key, useKeyvalStore);
@@ -103,7 +102,7 @@ async function portableRepository(): Promise<PortableStateRepository | null> {
         },
         delete: async (key) => {
           if (key === 'almamesh-language') {
-            const storage = browserLocalStorage();
+            const storage = (globalThis as { localStorage?: Partial<Storage> }).localStorage;
             storage?.removeItem?.(key);
             return;
           }
@@ -140,7 +139,7 @@ function serializeDeletionTombstones(value: DeletionTombstones): string {
 }
 
 function mirroredRestoreEpoch(): number | undefined {
-  const storage = browserLocalStorage();
+  const storage = (globalThis as { localStorage?: Partial<Storage> }).localStorage;
   if (typeof storage?.getItem !== 'function') {
     return undefined;
   }
@@ -153,7 +152,7 @@ function mirroredRestoreEpoch(): number | undefined {
 }
 
 function mirrorRestoreEpoch(epoch: number, restoreInProgress?: boolean): void {
-  const storage = browserLocalStorage();
+  const storage = (globalThis as { localStorage?: Partial<Storage> }).localStorage;
   if (typeof storage?.setItem === 'function') {
     storage.setItem(RESTORE_EPOCH_MIRROR_KEY, String(epoch));
     if (restoreInProgress !== undefined) {
@@ -163,7 +162,7 @@ function mirrorRestoreEpoch(epoch: number, restoreInProgress?: boolean): void {
 }
 
 function mirroredRestoreInProgress(): boolean {
-  const storage = browserLocalStorage();
+  const storage = (globalThis as { localStorage?: Partial<Storage> }).localStorage;
   return (
     typeof storage?.getItem === 'function' && storage.getItem(RESTORE_PROGRESS_MIRROR_KEY) === '1'
   );
@@ -972,21 +971,21 @@ export const portablePreferenceStorage: StateStorage = {
   getItem: async (name) => {
     const repository = await portableRepository();
     if (repository !== null && isPortableStateKey(name)) return repository.read(name);
-    const storage = browserLocalStorage();
+    const storage = (globalThis as { localStorage?: Partial<Storage> }).localStorage;
     return typeof storage?.getItem === 'function' ? storage.getItem(name) : null;
   },
   setItem: (name, value) =>
     enqueuePersistenceMutation(name, async () => {
       const repository = await portableRepository();
       if (repository !== null && isPortableStateKey(name)) await repository.write(name, value);
-      const storage = browserLocalStorage();
+      const storage = (globalThis as { localStorage?: Partial<Storage> }).localStorage;
       storage?.setItem?.(name, value);
     }),
   removeItem: (name) =>
     enqueuePersistenceMutation(name, async () => {
       const repository = await portableRepository();
       if (repository !== null && isPortableStateKey(name)) await repository.delete(name);
-      const storage = browserLocalStorage();
+      const storage = (globalThis as { localStorage?: Partial<Storage> }).localStorage;
       storage?.removeItem?.(name);
     }),
 };
