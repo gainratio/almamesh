@@ -51,7 +51,7 @@
     "@fontsource-variable/fraunces": "^5.3.0",
     "@fontsource-variable/hanken-grotesk": "^5.3.0",
     "@fontsource-variable/spline-sans-mono": "^5.3.0",
-    "@huggingface/transformers": "3.8.1",
+    "@huggingface/transformers": "^4.3.0",
     "@mui/material": "^7.3.11",
     "@mui/x-date-pickers": "^8.29.2",
     "@react-pdf/renderer": "^4.9.0",
@@ -116,6 +116,6 @@
     "vite-prerender-plugin": "^0.5.13",
     "vitest": "^5.0.1",
     "workbox-window": "^7.4.1",
-    "wrangler": "4.138.0"
+    "wrangler": "4.145.0"
   }
 }
