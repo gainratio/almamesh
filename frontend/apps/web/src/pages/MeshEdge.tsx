@@ -435,6 +435,7 @@ function MeshEdgeContent({
           err instanceof Error ? err.message : undefined,
           t('dashboard:chat.not_configured_notice'),
         ),
+        { cause: err },
       );
     }
     return { answer, timing_guidance: null, remedies: null as string[] | null };

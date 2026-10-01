@@ -26,6 +26,7 @@ import {
   type SmokeRun,
 } from "./deployment.js"
 import { assertAllPassed, runPool, startGate } from "./gates.js"
+import { pagesUploadLimitsCheckScript as releasePagesUploadLimitsScript } from "./pagesUploadLimits.js"
 
 const ROOT = "/workspace"
 const FRONTEND = `${ROOT}/frontend`
@@ -37,7 +38,7 @@ const LIVE_ORIGIN = "https://almamesh.com"
 const REPOSITORY = "hseshadr/almamesh"
 const EDGEPROC_BROWSER_SHA = "02171df60afc8b09d6439112ea7ea3202338d46a"
 const CONTRACT_SHA = "1111111111111111111111111111111111111111"
-const CENTRAL_MODULE_SHA = "363be0b98c753c027353f35db0f6cc5b24402f78"
+const CENTRAL_MODULE_SHA = "73329cb501989bc65c63525f19feaa35f0e7c0a6"
 const BUN_IMAGE =
   "oven/bun:1.3.5@sha256:e90cdbaf9ccdb3d4bd693aa335c3310a6004286a880f62f79b18f9b1312a8ec3"
 const NODE_IMAGE =
@@ -64,6 +65,7 @@ const CONTRACT_TESTS = [
   "tests/dagger-deployment-contract.test.ts",
   "tests/dagger-foundation-contract.test.ts",
   "tests/dagger-gates.test.ts",
+  "tests/dagger-pages-upload-contract.test.ts",
   "tests/dagger-workflow-contract.test.ts",
 ]
 const SMOKE_OUTPUT_LINES = 60
@@ -464,7 +466,8 @@ export class AlmameshCi {
       this.releaseBase(this.source)
         .withMountedTemp(KEYS)
         .withEnvVariable("EXPECTED_SHA", expectedSha)
-        .withExec(["bash", "-c", this.dryRunBuildScript()]),
+        .withExec(["bash", "-c", this.dryRunBuildScript()])
+        .withExec(["bun", "-e", this.pagesUploadLimitsScript("dist")]),
     )
     const functions = dag.directory().withFile(
       "api/feedback.ts",
@@ -820,6 +823,9 @@ for _ in $(seq 1 60); do
 done
 test "$feedback_verified" = "1"
 echo "Wrangler Pages Functions dry-run verified closed feedback route for $EXPECTED_SHA"`
+  }
+  private pagesUploadLimitsScript(dir: string): string {
+    return releasePagesUploadLimitsScript(dir)
   }
   private indexNowScript(artifact: string): string {
     return releaseIndexNowScript(artifact)

@@ -427,7 +427,7 @@ export default function DashboardPage() {
       // failures) must reach useChatThread intact so `describeChatStreamError`
       // can give the user an actionable message instead of the generic QA_001.
       if (isMappedChatStreamError(err)) throw err;
-      throw new Error(getUserFriendlyError('QA_001', err instanceof Error ? err.message : undefined, t('dashboard:chat.not_configured_notice')));
+      throw new Error(getUserFriendlyError('QA_001', err instanceof Error ? err.message : undefined, t('dashboard:chat.not_configured_notice')), { cause: err });
     }
     return {
       answer,

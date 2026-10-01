@@ -1174,6 +1174,45 @@ test('REAL onboarding -> rectify -> offline reload -> predictive PDF is correct'
     await page.context().setOffline(false);
   }
 
+  // Chromium's offline->online transition is not instantaneous: CI evidence
+  // (main run 36732631421, rerun identical) showed a request issued ~40ms
+  // AFTER this setOffline(false) already resolved still failing with
+  // net::ERR_FAILED, and its console.error can be delivered to this process
+  // later still. Prove the network is GENUINELY back before computing the
+  // splice boundary below, so every offline-triggered console event,
+  // however late Chromium delivers it, lands inside the window this test
+  // already filters.
+  //
+  // The probe must bypass the service worker's CACHE, not just the HTTP
+  // cache -- `fetch(location.href)` would NOT prove this: `/dashboard` (or
+  // whatever the current route is) could be answered by the SW's
+  // `navigateFallback: '/'` shell fallback, and known signal routes like
+  // `/version.json` are NetworkFirst (see `runtimeCaching` in
+  // vite.config.ts) which falls back to its `almamesh-signals` cache on
+  // ANY fetch error -- exactly the still-offline case this probe needs to
+  // detect, not mask. Instead hit a path that matches NONE of the SW's
+  // routes at all, so its fetch handler never calls `respondWith()` and the
+  // request goes straight to the real network (vite.config.ts
+  // `runtimeCaching`: only `/bundle/(chunk|chunks|manifest|manifests)/`,
+  // `/pyodide/`, `/models/`, `/public.key`, `/bundle/latest`, and
+  // `/version.json` are routed; `navigateFallbackAllowlist` only covers the
+  // app's real client routes, none of which match this path; the precache
+  // manifest only contains real built files, which this path is not).
+  // A RESOLVED fetch (any HTTP status, even a 404) proves a real network
+  // round-trip completed; a REJECTED fetch (net::ERR_FAILED /
+  // net::ERR_INTERNET_DISCONNECTED) proves it didn't -- `toPass` retries
+  // until one genuinely succeeds.
+  await expect(async () => {
+    const reachedRealNetwork = await page.evaluate(() =>
+      fetch(`${location.origin}/__offline-recovery-probe__?t=${Date.now()}`, {
+        cache: 'no-store',
+      })
+        .then(() => true)
+        .catch(() => false),
+    );
+    expect(reachedRealNetwork).toBe(true);
+  }).toPass({ timeout: 10_000 });
+
   const offlineErrors = errors.splice(offlineConsoleStart);
   // Chromium reports the same intentional context-offline abort as either
   // ERR_INTERNET_DISCONNECTED or ERR_FAILED across Playwright browser builds.

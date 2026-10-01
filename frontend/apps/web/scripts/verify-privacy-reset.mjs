@@ -267,6 +267,7 @@ try {
   } catch (error) {
     throw new Error(
       `Reset postcondition failed: ${error instanceof Error ? error.message : String(error)} :: ${JSON.stringify(await resetDiagnostics())}`,
+      { cause: error },
     );
   }
 
