@@ -39,6 +39,21 @@ export interface ChartEngineClientOptions {
   readonly rectificationRequestTimeoutMs?: number;
 }
 
+/**
+ * The distinct ArrayBuffers behind the boot assets (wheels + ~20 MB of
+ * ephemeris), each once: transferring moves them into the Worker instead of
+ * structured-cloning a second copy, and a duplicate transferable throws.
+ * SharedArrayBuffers are not transferable and are left to be cloned.
+ */
+function bootTransferables(config: BootConfig): readonly ArrayBuffer[] {
+  const buffers = new Set<ArrayBuffer>();
+  for (const asset of [...config.wheels, ...config.skyfieldData]) {
+    const buffer = asset.bytes.buffer;
+    if (buffer instanceof ArrayBuffer) buffers.add(buffer);
+  }
+  return [...buffers];
+}
+
 export class ChartEngineClient {
   readonly #worker: WorkerLike;
   readonly #pending = new Map<number, Pending>();
@@ -93,7 +108,10 @@ export class ChartEngineClient {
 
   /** Boot Pyodide and load the AlmaMesh engine + ephemeris from `config`. */
   public async boot(config: BootConfig): Promise<void> {
-    const response = await this.#send({ kind: "boot", id: this.#allocId(), config });
+    const response = await this.#send(
+      { kind: "boot", id: this.#allocId(), config },
+      bootTransferables(config),
+    );
     if (!response.ok) {
       throw new Error(response.error);
     }
@@ -158,7 +176,10 @@ export class ChartEngineClient {
     return this.#nextId;
   }
 
-  #send(request: ChartWorkerRequest): Promise<ChartWorkerResponse> {
+  #send(
+    request: ChartWorkerRequest,
+    transfer?: readonly Transferable[],
+  ): Promise<ChartWorkerResponse> {
     if (this.#closed !== null) {
       return Promise.reject(this.#closed);
     }
@@ -185,7 +206,8 @@ export class ChartEngineClient {
       }, timeoutMs);
       this.#pending.set(request.id, { kind: request.kind, resolve, reject, timer });
       try {
-        this.#worker.postMessage(request);
+        if (transfer === undefined) this.#worker.postMessage(request);
+        else this.#worker.postMessage(request, transfer);
       } catch (error) {
         this.#pending.delete(request.id);
         if (longRequest) {

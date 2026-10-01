@@ -189,7 +189,8 @@ export type ChartWorkerResponse =
  * worker without a real thread (the worker is an I/O boundary).
  */
 export interface WorkerLike {
-  postMessage(message: ChartWorkerRequest): void;
+  /** `transfer` moves ArrayBuffers into the Worker (boot assets) instead of cloning them. */
+  postMessage(message: ChartWorkerRequest, transfer?: readonly Transferable[]): void;
   addEventListener(
     type: "message",
     listener: (event: MessageEvent<ChartWorkerResponse>) => void,
