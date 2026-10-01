@@ -221,12 +221,16 @@ test('[contract/stubbed] chat reuses the reading + sends the fast chat model on 
       if (!toolResult) {
         if (!isClockQuestion) {
           initialAgentRequestBodies.push(parsed as Record<string, unknown>);
+          // The decision round streams (SSE), like the real provider: a no-tool
+          // answer must reach the screen delta by delta, not as one late chunk.
+          const deltas = ['Your strengths ', 'shine through ', 'this chart.'];
           return route.fulfill({
             status: 200,
-            contentType: 'application/json',
-            body: JSON.stringify({
-              choices: [{ message: { content: 'Your strengths shine through this chart.' } }],
-            }),
+            contentType: 'text/event-stream',
+            body:
+              deltas
+                .map((content) => `data: ${JSON.stringify({ choices: [{ delta: { content } }] })}\n\n`)
+                .join('') + 'data: [DONE]\n\n',
           });
         }
         return route.fulfill({
@@ -342,7 +346,10 @@ test('[contract/stubbed] chat reuses the reading + sends the fast chat model on 
   expect(chatBody.model, 'chat model must not still be the deep interpretation model').not.toBe(
     LLM_CONFIG.model,
   );
-  expect(chatBody.stream, 'agent decision request is bounded and non-streaming').toBe(false);
+  // INVERTED CONTRACT (fix/agent-chat-streaming): this asserted `false`, which
+  // was the regression since 2df38b8 that delivered no-tool answers as one chunk
+  // after the whole completion. The decision round must stream.
+  expect(chatBody.stream, 'agent decision request is bounded and streaming').toBe(true);
   expect(chatBody.tool_choice).toBe('auto');
 
   // ---- ASSERTION (c): the chat prompt reused the already-generated reading ----
@@ -393,7 +400,7 @@ test('[contract/stubbed] chat reuses the reading + sends the fast chat model on 
     tool_choice: string;
     tools: Array<{ function: { name: string } }>;
   };
-  expect(firstAgentRequest.stream).toBe(false);
+  expect(firstAgentRequest.stream).toBe(true);
   expect(firstAgentRequest.tool_choice).toBe('auto');
   expect(firstAgentRequest.tools.map((tool) => tool.function.name)).toEqual([
     'get_current_datetime',
