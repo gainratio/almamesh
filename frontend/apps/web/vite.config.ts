@@ -8,6 +8,7 @@ import { createHash } from 'crypto'
 import { PUBLIC_ROUTE_PATHS, prerenderOutputFile } from './src/seo/routeHead'
 import { createBuildIdentity } from './src/lib/buildIdentity'
 import { extractYogaWasm, isYogaWasmModuleId } from './src/lib/yogaWasmAsset'
+import { ortWasmOnlyPlugin } from './src/lib/ortWasmOnly'
 import {
   browserIsolationHeadersFromHeadersFile,
   cspForLocalHttpPreview,
@@ -593,6 +594,9 @@ export default defineConfig({
     versionPlugin(),
     trustKeyConfigPlugin(),
     yogaWasmAssetPlugin(),
+    // transformers 4.x -> ORT wasm-only build, binary served from /models/ort/
+    // (keeps the 26.86 MB asyncify wasm out of the Pages upload).
+    ortWasmOnlyPlugin(),
     noSourcemapsPlugin(),
     previewProdBrowserHeadersPlugin(),
     ...prerenderPublicRoutesPlugin(),
