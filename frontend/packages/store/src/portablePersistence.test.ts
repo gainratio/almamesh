@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   OPFS_PROBE_TIMEOUT_MS,
-  PORTABLE_STATE_OPEN_TIMEOUT_MS,
   PortableStateStartupError,
   markPortableStateUnavailable,
   nonDestructiveLegacyStorage,
@@ -29,11 +28,15 @@ const refusingStorage = {
 };
 const workingStorage = { getDirectory: () => Promise.resolve({ kind: 'directory' }) };
 const hangingStorage = { getDirectory: () => new Promise<never>(() => undefined) };
+/** OPFS that works but answers late: a busy low-end phone, or OPFS contended by the engine sync. */
+const slowStorage = (delayMs: number) => ({
+  getDirectory: () =>
+    new Promise<{ kind: string }>((resolve) => setTimeout(() => resolve({ kind: 'directory' }), delayMs)),
+});
 
 describe('startup time bounds', () => {
-  it('pins the documented budgets', () => {
+  it('pins the documented probe budget', () => {
     expect(OPFS_PROBE_TIMEOUT_MS).toBe(5_000);
-    expect(PORTABLE_STATE_OPEN_TIMEOUT_MS).toBe(30_000);
   });
 
   it('rejects a step that never settles with an error naming the step', async () => {
@@ -100,8 +103,10 @@ describe('selectPortablePersistence', () => {
     expect(selectPortablePersistence({ status: 'refused', reason: 'x' })).toBe('memory');
   });
 
-  it('falls back to in-memory SQLite when the OPFS probe times out', () => {
-    expect(selectPortablePersistence({ status: 'timed-out' })).toBe('memory');
+  it('keeps durable OPFS SQLite when the probe is merely slow: slow is not refused', () => {
+    // A memory session here would silently lose everything the user enters,
+    // on a browser whose OPFS works fine. Only an explicit refusal may do that.
+    expect(selectPortablePersistence({ status: 'timed-out' })).toBe('opfs');
   });
 });
 
@@ -131,16 +136,35 @@ describe('openPortableStateWithFallback', () => {
     expect(portableStatePersistence()).toBe('pending');
   });
 
-  it('fails with a specific error, and reports unavailable, when the open never settles', async () => {
+  it('never selects memory mode for OPFS that is available but slow to answer', async () => {
     vi.useFakeTimers();
-    const open = vi.fn(() => new Promise<never>(() => undefined));
-    const opening = openPortableStateWithFallback({ storage: refusingStorage, open });
-    const assertion = expect(opening).rejects.toThrow(
-      `AlmaMesh startup step "open the in-memory state database" did not finish within ${PORTABLE_STATE_OPEN_TIMEOUT_MS} ms.`,
+    const open = vi.fn(async (persistence: 'opfs' | 'memory') => ({ persistence }));
+    const opening = openPortableStateWithFallback({
+      storage: slowStorage(OPFS_PROBE_TIMEOUT_MS + 1_000),
+      open,
+    });
+    await vi.advanceTimersByTimeAsync(OPFS_PROBE_TIMEOUT_MS + 1_000);
+    const opened = await opening;
+    expect(open).toHaveBeenCalledExactlyOnceWith('opfs');
+    expect(opened.persistence).toBe('opfs');
+    expect(portableStatePersistence()).toBe('opfs');
+  });
+
+  it('waits for a slow open instead of failing it on a wall clock', async () => {
+    // On slow 4G the SQLite Worker's wasm download alone can take minutes while
+    // it shares the link with the engine sync. A fixed budget turned that
+    // success into "database unavailable"; the Worker reports its own failures.
+    vi.useFakeTimers();
+    const open = vi.fn(
+      (persistence: 'opfs' | 'memory') =>
+        new Promise<{ persistence: string }>((resolve) =>
+          setTimeout(() => resolve({ persistence }), 180_000),
+        ),
     );
-    await vi.advanceTimersByTimeAsync(PORTABLE_STATE_OPEN_TIMEOUT_MS);
-    await assertion;
-    expect(portableStatePersistence()).toBe('unavailable');
+    const opening = openPortableStateWithFallback({ storage: workingStorage, open });
+    await vi.advanceTimersByTimeAsync(180_000);
+    await expect(opening).resolves.toEqual({ repository: { persistence: 'opfs' }, persistence: 'opfs' });
+    expect(portableStatePersistence()).toBe('opfs');
   });
 
   it('reports unavailable and rethrows when the open itself fails', async () => {

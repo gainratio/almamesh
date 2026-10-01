@@ -13,14 +13,21 @@
  * the app works, nothing persists past the tab, and the UI says so and points
  * at export. Memory use is bounded by the canonical row cap (1,000 JSON rows of
  * this session's data, typically a few hundred KB), not by anything on disk.
+ *
+ * Only an explicit refusal may do that. OPFS that is merely slow to answer (a
+ * busy low-end phone, or OPFS contended by the engine's chunk sync) stays on
+ * OPFS: a memory session there would silently lose everything the user enters
+ * on a browser whose storage works fine. The open itself has no wall clock
+ * either. On slow 4G the SQLite Worker's wasm download alone can take minutes
+ * while it shares the link with the sync; a fixed budget turned that success
+ * into "database unavailable". The Worker reports its own failures (a rejected
+ * open, or a crashed Worker), and those still fail closed with a visible card.
  */
 
 import { safeError, safeWarn } from '@almamesh/shared-types';
 
-/** OPFS normally answers in milliseconds; a probe slower than this is treated as refused. */
+/** OPFS normally answers in milliseconds; past this the open starts without waiting for the probe. */
 export const OPFS_PROBE_TIMEOUT_MS = 5_000;
-/** Opening SQLite includes loading its wasm; generous for low-end phones, still finite. */
-export const PORTABLE_STATE_OPEN_TIMEOUT_MS = 30_000;
 
 export type OpfsProbe =
   | { readonly status: 'available' }
@@ -74,8 +81,9 @@ export async function probeOpfs(
   }
 }
 
+/** Memory only on an explicit refusal; slow is not refused. */
 export function selectPortablePersistence(probe: OpfsProbe): PortablePersistence {
-  return probe.status === 'available' ? 'opfs' : 'memory';
+  return probe.status === 'refused' ? 'memory' : 'opfs';
 }
 
 let currentPersistence: PortableStatePersistence = 'pending';
@@ -106,12 +114,7 @@ export function resetPortableStatePersistenceForTests(): void {
   listeners.clear();
 }
 
-const OPEN_STEP: Record<PortablePersistence, string> = {
-  opfs: 'open the on-device state database',
-  memory: 'open the in-memory state database',
-};
-
-/** Pick OPFS or memory from a real probe, open within a bound, and publish the outcome. */
+/** Pick OPFS or memory from a real probe, open (however long that takes), and publish the outcome. */
 export async function openPortableStateWithFallback<Repository>(options: {
   readonly open: (persistence: PortablePersistence) => Promise<Repository>;
   readonly storage?: OpfsEntrypoint;
@@ -121,11 +124,7 @@ export async function openPortableStateWithFallback<Repository>(options: {
   // Code-only diagnostic: the browser's refusal text never reaches the console.
   if (probe.status !== 'available') safeWarn('storage.opfs_unavailable', probe);
   try {
-    const repository = await withStartupTimeout(
-      options.open(persistence),
-      PORTABLE_STATE_OPEN_TIMEOUT_MS,
-      OPEN_STEP[persistence],
-    );
+    const repository = await options.open(persistence);
     reportPersistence(persistence);
     return { repository, persistence };
   } catch (error) {
