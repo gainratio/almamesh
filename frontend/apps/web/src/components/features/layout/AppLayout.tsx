@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Footer } from '../../Footer';
 import { ProfileSwitcher } from '../profiles/ProfileSwitcher';
 import { AiStatusBadge } from './AiStatusBadge';
+import { MeshNavButton } from './MeshNavButton';
 
 export interface AppLayoutProps {
   children: ReactNode;
@@ -31,7 +32,7 @@ export function AppLayout({ children, showFooter = false }: AppLayoutProps) {
     <div className="flex min-h-dvh flex-col bg-observatory">
       <header className="sticky top-0 z-40 border-b border-ui-border bg-background-primary/80 backdrop-blur-sm">
         <div className="app-gutter mx-auto flex h-14 w-full max-w-7xl items-center justify-between">
-          <div className="flex items-baseline gap-3 sm:gap-5">
+          <div className="flex items-center gap-3 sm:gap-5">
             {/* Wordmark — manuscript display face. Links to the shareable
                 `/welcome` splash so a returning visitor can always revisit the
                 landing (the bare `/` would just bounce them to /dashboard). */}
@@ -44,14 +45,9 @@ export function AppLayout({ children, showFooter = false }: AppLayoutProps) {
             </Link>
 
             {/* The namesake surface — always reachable; /mesh itself renders
-                the invitation state until an anchor + members exist. */}
-            <Link
-              to="/mesh"
-              className="text-sm tracking-wide text-text-secondary transition-colors hover:text-accent-gold-bright"
-              data-testid="nav-mesh-link"
-            >
-              {t('nav.mesh')}
-            </Link>
+                the invitation state until an anchor + members exist. Drawn as a mesh
+                glyph, not the word, so it reads as something to press. */}
+            <MeshNavButton />
           </div>
 
           <div className="flex min-w-0 items-center gap-1.5 sm:gap-2">
