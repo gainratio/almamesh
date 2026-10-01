@@ -116,6 +116,6 @@
     "vite-prerender-plugin": "^0.5.13",
     "vitest": "^5.0.1",
     "workbox-window": "^7.4.1",
-    "wrangler": "4.138.0"
+    "wrangler": "4.145.0"
   }
 }
