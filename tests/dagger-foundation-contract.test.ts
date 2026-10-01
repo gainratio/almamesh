@@ -266,8 +266,101 @@ describe("Foundation guard composition", () => {
     }
 
     await expect(module.ci(commitSha)).rejects.toBe(guardFailure)
-    expect(orchestration).toEqual(["contracts", "foundation"])
+    // Contracts now start alongside the guard (they used to run strictly before
+    // it), so order is not part of the contract: both run, product gates never do.
+    expect([...orchestration].sort()).toEqual(["contracts", "foundation"])
     expect(guardCalls).toEqual([{ source, repository, commitSha }])
     expect(productGates).toEqual([])
+  })
+})
+
+describe("ci runs independent gates concurrently", () => {
+  async function ciModule(gates: Record<string, () => Promise<void>>) {
+    const noOpDecorator = () => () => undefined
+    const inert: unknown = new Proxy({}, { get: () => () => inert })
+    mock.module("@dagger.io/dagger", () => ({
+      CacheVolume: class {},
+      Container: class {},
+      Directory: class {},
+      ReturnType: { Any: "ANY", Success: "SUCCESS" },
+      Secret: class {},
+      Service: class {},
+      Workspace: class {},
+      check: noOpDecorator,
+      func: noOpDecorator,
+      object: noOpDecorator,
+      dag: { cacheVolume: () => ({}), container: () => inert },
+    }))
+    const { AlmameshCi } = await import("../dagger/src/index.ts")
+    const module = new AlmameshCi({ directory: () => ({}) } as never)
+    const stub = (run: () => Promise<void>) => () => ({ sync: run })
+    Object.assign(module, {
+      contracts: stub(gates.contracts ?? (async () => undefined)),
+      secretScan: stub(gates.secretScan ?? (async () => undefined)),
+    })
+    for (const gate of ["backend", "frontend", "browser", "pdf", "privacy"] as const) {
+      module[gate] = stub(gates[gate] ?? (async () => undefined)) as never
+    }
+    return module
+  }
+
+  test("runs product gates two at a time, longest (browser) first, and finishes them all", async () => {
+    const started: string[] = []
+    let inFlight = 0
+    let peak = 0
+    const gate = (name: string) => async () => {
+      started.push(name)
+      inFlight += 1
+      peak = Math.max(peak, inFlight)
+      await new Promise((done) => setTimeout(done, 5))
+      inFlight -= 1
+    }
+    const module = await ciModule({
+      backend: gate("backend"),
+      frontend: gate("frontend"),
+      browser: gate("browser"),
+      pdf: gate("pdf"),
+      privacy: gate("privacy"),
+    })
+    await expect(module.ci("1".repeat(40))).resolves.toContain("gates passed")
+    expect(started[0]).toBe("browser")
+    expect(started.sort()).toEqual(["backend", "browser", "frontend", "pdf", "privacy"])
+    expect(peak).toBe(2)
+  })
+
+  test("one red gate fails ci by name after the others finish", async () => {
+    const finished: string[] = []
+    const module = await ciModule({
+      backend: async () => void finished.push("backend"),
+      browser: async () => {
+        throw new Error("verify-exit-gate exited 1")
+      },
+      privacy: async () => void finished.push("privacy"),
+    })
+    await expect(module.ci("1".repeat(40))).rejects.toThrow("browser: verify-exit-gate exited 1")
+    expect(finished.sort()).toEqual(["backend", "privacy"])
+  })
+
+  test("a failing contracts gate fails ci too", async () => {
+    const module = await ciModule({
+      contracts: async () => {
+        throw new Error("bun test red")
+      },
+    })
+    await expect(module.ci("1".repeat(40))).rejects.toThrow("contracts: bun test red")
+  })
+
+  test("a failing source guard stops before any product gate starts", async () => {
+    const started: string[] = []
+    const record = (name: string) => async () => void started.push(name)
+    const module = await ciModule({
+      secretScan: async () => {
+        throw new Error("secret found")
+      },
+      backend: record("backend"),
+      browser: record("browser"),
+    })
+    await expect(module.ci("1".repeat(40))).rejects.toThrow("secret found")
+    expect(started).toEqual([])
   })
 })
