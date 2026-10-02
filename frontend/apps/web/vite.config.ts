@@ -332,6 +332,14 @@ function pwaPlugin(): Plugin[] {
         // imports it — index.html carries no reference — so precaching it would
         // ship ~200 KB of dead code to every client at SW install.
         'assets/prerender-entry-*.js',
+        // The host's not-found page. Cloudflare Pages 308-redirects `/404.html`
+        // to `/404` like every other `.html` path, and a precache key that
+        // redirects is the returning-visitor wedge described below. The service
+        // worker never serves it: an unknown URL is outside the
+        // navigateFallbackAllowlist, so it goes to the network and gets the
+        // host's real 404. verify-precache-redirect.mjs fails the build if any
+        // precache URL redirects.
+        '404.html',
       ],
       // App-shell SPA fallback: an offline navigation to a registered client
       // route serves the precached shell (then React Router takes over). The shell is precached

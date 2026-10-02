@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { CHAT_CLOUD_MODEL, RECOMMENDED_CLOUD_MODEL, type LlmEnv } from "../config";
+import { CHAT_CLOUD_MODEL, openRouterPreset, RECOMMENDED_CLOUD_MODEL, type LlmEnv } from "../config";
 import {
   applyChatSettings,
   applyInterpretationSettings,
@@ -89,6 +89,21 @@ describe("applyInterpretationSettings / applyChatSettings — explicit env resol
   it("chat puts the resolved chat model on VITE_LLM_MODEL (explicit, not a silent swap)", () => {
     const out = applyChatSettings(ENV, {});
     expect(out.VITE_LLM_MODEL).toBe(CHAT_CLOUD_MODEL);
+  });
+
+  it("chat on the OpenRouter preset defaults to deepseek-v4.1-flash, the literal id sent on the wire", () => {
+    // Pinned as a literal on purpose: asserting CHAT_CLOUD_MODEL against itself
+    // passes for any value. The previous default (minimax/minimax-m2.7) measured
+    // 26.7 s to first token on the live site (2026-10-02).
+    expect(applyChatSettings(ENV, {}).VITE_LLM_MODEL).toBe("deepseek/deepseek-v4.1-flash");
+  });
+
+  it("the one-click OpenRouter preset seeds chat with deepseek-v4.1-flash", () => {
+    expect(openRouterPreset("sk-or-x", "any/interp").chatModel).toBe("deepseek/deepseek-v4.1-flash");
+  });
+
+  it("chat and interpretation share ONE default model id (no second literal to drift)", () => {
+    expect(CHAT_CLOUD_MODEL).toBe(RECOMMENDED_CLOUD_MODEL);
   });
 
   it("each path uses the user's explicit per-tier override", () => {

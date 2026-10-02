@@ -83,6 +83,8 @@ describe('LlmModelSettings — OpenRouter-first, test-on-save', () => {
     expect(saved.apiKey).toBe('sk-or-abc');
     expect(saved.interpretationModel).toBe(RECOMMENDED_CLOUD_MODEL);
     expect(saved.chatModel).toBe(CHAT_CLOUD_MODEL);
+    // Literal on purpose — the constant asserted against itself guards nothing.
+    expect(saved.chatModel).toBe('deepseek/deepseek-v4.1-flash');
     expect(saved.privacyMode).toBe('cloud_premium');
   });
 
