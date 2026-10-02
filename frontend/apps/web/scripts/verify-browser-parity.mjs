@@ -302,6 +302,7 @@ async function main() {
 
     // --- CHECK 3: every golden fixture is byte-identical in the browser ---
     let mismatches = 0
+    const freshRaw = new Map()
     for (const iso of Object.keys(golden)) {
       const { label } = FIXTURE_COORDS[iso]
       const fxT0 = Date.now()
@@ -318,6 +319,7 @@ async function main() {
         console.log(`   [FAIL] ${iso} (${label}) — generate threw: ${err ?? 'null chart'}`)
         continue
       }
+      freshRaw.set(iso, JSON.stringify(chart))
       const actual = canonicalize(chart)
       const expected = canonicalize(golden[iso])
       if (deepEqual(actual, expected)) {
@@ -335,6 +337,30 @@ async function main() {
       'CHECK 3 — every golden fixture is byte-identical in the browser',
       mismatches === 0,
       `fixtures=${goldenKeys.size} mismatches=${mismatches} referenceDate=${REFERENCE_DATE}`,
+    )
+
+    // --- CHECK 3b: a memoized repeat is byte-identical to the fresh compute ---
+    // The runtime computes an identical input once per booted engine
+    // (packages/browser/src/pyodide/engineMemo.ts). Determinism is the contract
+    // that makes that safe, so prove it on the real engine: the repeat (a cache
+    // hit) must serialize to EXACTLY the fresh compute's bytes — raw JSON, no
+    // canonicalization.
+    let memoMismatches = 0
+    for (const [iso, fresh] of freshRaw) {
+      const t0 = Date.now()
+      const repeat = JSON.stringify(await generate(iso, REFERENCE_DATE))
+      const ms = Date.now() - t0
+      if (repeat === fresh) {
+        console.log(`   [ok]   ${iso} repeat byte-identical to fresh  ${ms}ms`)
+      } else {
+        memoMismatches += 1
+        console.log(`   [FAIL] ${iso} repeat DIVERGED from the fresh compute`)
+      }
+    }
+    record(
+      'CHECK 3b — a repeated (memoized) compute is byte-identical to the fresh one',
+      memoMismatches === 0 && freshRaw.size === goldenKeys.size,
+      `fixtures=${freshRaw.size} mismatches=${memoMismatches}`,
     )
 
     // --- CHECK 4: SENSITIVITY CONTROL — the gate reacts to the reference date ---

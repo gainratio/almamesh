@@ -71,7 +71,14 @@ class FakeSyncEngine implements EnginePort {
 class FakeChartEngine implements ChartEnginePort {
   public bootConfig: BootConfig | undefined;
   public bootCount = 0;
+  public chartCalls = 0;
+  public predictiveCalls = 0;
+  public readonly prewarmUrls: string[] = [];
   public terminated = false;
+
+  public prewarm(pyodideIndexUrl: string): void {
+    this.prewarmUrls.push(pyodideIndexUrl);
+  }
 
   public async boot(config: BootConfig): Promise<void> {
     this.bootConfig = config;
@@ -79,10 +86,12 @@ class FakeChartEngine implements ChartEnginePort {
   }
 
   public async generateChart(birth: BirthInput): Promise<SiderealChart> {
+    this.chartCalls += 1;
     return { ayanamsa_value: birth.latitude } as unknown as SiderealChart;
   }
 
   public async computePredictive(input: PredictiveInput): Promise<PredictiveContexts> {
+    this.predictiveCalls += 1;
     return {
       transit_context: { instant: input.referenceInstant },
     } as unknown as PredictiveContexts;
@@ -324,5 +333,170 @@ describe("AlmaMeshRuntime.bootstrap", () => {
     await expect(pending).rejects.toThrow(/superseded|terminated/);
     expect(runtime.engine()).toBeNull();
     expect(chart.bootCount).toBe(0);
+  });
+
+  it("overlap mode starts warming Pyodide before the bundle sync settles", async () => {
+    let releaseSync!: () => void;
+    const sync = new FakeSyncEngine(FILES);
+    const originalSync = sync.sync.bind(sync);
+    sync.sync = async (...args) => {
+      await new Promise<void>((resolve) => {
+        releaseSync = resolve;
+      });
+      return originalSync(...args);
+    };
+    const chart = new FakeChartEngine();
+    const runtime = new AlmaMeshRuntime({
+      spawnSyncEngine: () => sync,
+      spawnChartEngine: () => chart,
+      decideBootMode: () => ({ mode: "overlap", reason: "test" }),
+    });
+
+    const pending = runtime.bootstrap(CONFIG);
+    await Promise.resolve();
+    expect(chart.prewarmUrls).toEqual([CONFIG.pyodideIndexUrl]);
+    expect(chart.bootCount).toBe(0);
+
+    releaseSync();
+    await pending;
+    expect(chart.bootCount).toBe(1);
+  });
+
+  it("terminates the warming chart worker when the bundle sync fails", async () => {
+    const sync = new FakeSyncEngine(FILES);
+    sync.sync = async () => {
+      throw new Error("signature verification failed");
+    };
+    const chart = new FakeChartEngine();
+    const runtime = new AlmaMeshRuntime({
+      spawnSyncEngine: () => sync,
+      spawnChartEngine: () => chart,
+      decideBootMode: () => ({ mode: "overlap", reason: "test" }),
+    });
+
+    await expect(runtime.bootstrap(CONFIG)).rejects.toThrow("signature verification failed");
+    expect(chart.terminated).toBe(true);
+    expect(sync.terminated).toBe(true);
+  });
+
+  it("surfaces a failed warm-up through boot", async () => {
+    const chart = new FakeChartEngine();
+    chart.boot = async () => {
+      throw new Error("pyodide fetch failed");
+    };
+    const runtime = new AlmaMeshRuntime({
+      spawnSyncEngine: () => new FakeSyncEngine(FILES),
+      spawnChartEngine: () => chart,
+    });
+
+    await expect(runtime.bootstrap(CONFIG)).rejects.toThrow("pyodide fetch failed");
+  });
+
+  it("sequential mode never prewarms and spawns the chart Worker only after the sync Worker is gone", async () => {
+    const sync = new FakeSyncEngine(FILES);
+    const chart = new FakeChartEngine();
+    let syncTerminatedAtSpawn: boolean | null = null;
+    const runtime = new AlmaMeshRuntime({
+      spawnSyncEngine: () => sync,
+      spawnChartEngine: () => {
+        syncTerminatedAtSpawn = sync.terminated;
+        return chart;
+      },
+      decideBootMode: () => ({ mode: "sequential", reason: "test" }),
+    });
+
+    await runtime.bootstrap(CONFIG);
+
+    expect(chart.prewarmUrls).toEqual([]);
+    expect(syncTerminatedAtSpawn).toBe(true);
+    expect(chart.bootCount).toBe(1);
+  });
+
+  it("overlap mode still releases the sync Worker before `boot` is sent", async () => {
+    const sync = new FakeSyncEngine(FILES);
+    const chart = new FakeChartEngine();
+    let syncTerminatedAtBoot = false;
+    const originalBoot = chart.boot.bind(chart);
+    chart.boot = async (config) => {
+      syncTerminatedAtBoot = sync.terminated;
+      return originalBoot(config);
+    };
+    const runtime = new AlmaMeshRuntime({
+      spawnSyncEngine: () => sync,
+      spawnChartEngine: () => chart,
+      decideBootMode: () => ({ mode: "overlap", reason: "test" }),
+    });
+
+    await runtime.bootstrap(CONFIG);
+
+    expect(syncTerminatedAtBoot).toBe(true);
+  });
+
+  it("logs the boot policy decision once per boot", async () => {
+    const lines: string[] = [];
+    const runtime = new AlmaMeshRuntime({
+      spawnSyncEngine: () => new FakeSyncEngine(FILES),
+      spawnChartEngine: () => new FakeChartEngine(),
+      decideBootMode: () => ({ mode: "sequential", reason: "2 GB < 4 GB" }),
+      log: (line) => lines.push(line),
+    });
+
+    await runtime.bootstrap(CONFIG);
+    await runtime.bootstrap(CONFIG);
+
+    expect(lines).toEqual(["[almamesh] engine boot policy: sequential (2 GB < 4 GB)"]);
+  });
+
+  it("without an injected decision the real policy runs over navigator (no deviceMemory here → sequential)", async () => {
+    const chart = new FakeChartEngine();
+    const lines: string[] = [];
+    const runtime = new AlmaMeshRuntime({
+      spawnSyncEngine: () => new FakeSyncEngine(FILES),
+      spawnChartEngine: () => chart,
+      log: (line) => lines.push(line),
+    });
+
+    await runtime.bootstrap(CONFIG);
+
+    expect(chart.prewarmUrls).toEqual([]);
+    expect(lines[0]).toMatch(/^\[almamesh\] engine boot policy: sequential \(no deviceMemory/);
+  });
+
+  it("computes an identical chart or predictive input once per booted engine", async () => {
+    const { runtime, chart } = makeRuntime();
+    const engine = await runtime.bootstrap(CONFIG);
+    const predictive: PredictiveInput = {
+      datetimeUtc: BIRTH.datetimeUtc,
+      latitude: BIRTH.latitude,
+      longitude: BIRTH.longitude,
+      referenceInstant: "2025-01-01T00:00:00+00:00",
+    };
+
+    const first = await engine.generateChart(BIRTH);
+    const second = await engine.generateChart({ ...BIRTH });
+    await engine.computePredictive(predictive);
+    await engine.computePredictive({ ...predictive });
+
+    expect(chart.chartCalls).toBe(1);
+    expect(chart.predictiveCalls).toBe(1);
+    expect(JSON.stringify(second)).toBe(JSON.stringify(first));
+  });
+
+  it("recomputes after a re-boot onto a different bundle manifest", async () => {
+    const chart = new FakeChartEngine();
+    const syncA = new FakeSyncEngine(FILES);
+    const syncB = new FakeSyncEngine(FILES);
+    syncB.sync = async () => ({ ...SYNC_RESULT, manifestHash: "def" });
+    const syncs = [syncA, syncB];
+    const runtime = new AlmaMeshRuntime({
+      spawnSyncEngine: () => syncs.shift() ?? syncB,
+      spawnChartEngine: () => chart,
+    });
+
+    await (await runtime.bootstrap(CONFIG)).generateChart(BIRTH);
+    runtime.dispose();
+    await (await runtime.bootstrap(CONFIG)).generateChart(BIRTH);
+
+    expect(chart.chartCalls).toBe(2);
   });
 });
