@@ -2,7 +2,9 @@ import { AnimatePresence } from 'framer-motion';
 import { Routes, useLocation } from 'react-router-dom';
 import type { ComponentProps } from 'react';
 import { useReducedMotion } from '../hooks/useReducedMotion';
-import { killAllScrollTriggers } from '../animations/storytelling';
+// Not the storytelling barrel: importing ScrollTrigger enables it, which runs a
+// 250 ms interval for the life of the page even though no route uses it.
+import { killLoadedScrollTriggers } from '../animations/storytelling/lazyLoad';
 
 type RoutesChildren = ComponentProps<typeof Routes>['children'];
 
@@ -66,7 +68,7 @@ export function AnimatedRoutes({
     // Clean up GSAP ScrollTrigger instances on route change
     // This prevents memory leaks and stale scroll animations
     if (cleanupScrollTriggers) {
-      killAllScrollTriggers();
+      killLoadedScrollTriggers();
     }
 
     // Scroll to top on page change

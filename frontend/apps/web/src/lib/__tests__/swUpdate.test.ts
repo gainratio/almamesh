@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 
 import { applyServiceWorkerUpdate } from '../swUpdate';
 
@@ -52,6 +52,13 @@ function stubEnv(opts: {
     takeControl: () => controllerChange.forEach((fn) => fn()),
   };
 }
+
+// applyServiceWorkerUpdate arms a fallback reload timer. On the fake clock it
+// is dropped with the clock; on the real one it would fire after the DOM
+// environment is gone and touch the unstubbed `navigator`.
+beforeEach(() => {
+  vi.useFakeTimers();
+});
 
 afterEach(() => {
   vi.unstubAllGlobals();
