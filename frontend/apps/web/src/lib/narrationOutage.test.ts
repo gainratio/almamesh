@@ -17,6 +17,8 @@ describe('narrationOutage', () => {
     expect(narrationOutage('server')).toBe('provider_down');
     expect(narrationOutage('network')).toBe('provider_down');
     expect(narrationOutage('rate_limited')).toBe('provider_down');
+    // A model that thought past the 3-minute cap: retry or a faster model fixes it.
+    expect(narrationOutage('reasoning_timeout')).toBe('provider_down');
   });
 
   it('keeps a rejected key and a retired model as their own actionable modes', () => {

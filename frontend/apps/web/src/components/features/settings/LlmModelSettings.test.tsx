@@ -372,3 +372,91 @@ describe('LlmModelSettings — live OpenRouter model picker', () => {
     expect(screen.queryByTestId('llm-catalog-status')).toBeNull();
   });
 });
+
+// A user still on z-ai/glm-5.3-flash gets a one-time, dismissible suggestion to
+// switch to the new default. Their saved model is never changed without a click.
+describe('LlmModelSettings — one-time switch suggestion for glm-5.3-flash users', () => {
+  const GLM = 'z-ai/glm-5.3-flash';
+  const seed = (models: Record<string, string>) =>
+    window.localStorage.setItem(
+      LLM_SETTINGS_KEY,
+      JSON.stringify({
+        apiBase: 'https://openrouter.ai/api/v1',
+        apiKey: 'sk-or-kept',
+        privacyMode: 'cloud_premium',
+        ...models,
+      }),
+    );
+  const renderSettings = (testConnection = vi.fn().mockResolvedValue(undefined)) =>
+    render(
+      <LlmModelSettings
+        resolveConfig={resolveConfig}
+        fetchCredits={fetchCredits}
+        fetchModels={fetchModels}
+        testConnection={testConnection}
+      />,
+    );
+
+  beforeEach(() => window.localStorage.clear());
+  afterEach(() => window.localStorage.clear());
+
+  it('pins the new default: deepseek-v4.1-flash', () => {
+    expect(RECOMMENDED_CLOUD_MODEL).toBe('deepseek/deepseek-v4.1-flash');
+  });
+
+  it('suggests the switch with the measured reason, and switching keeps the key and chat model', async () => {
+    seed({ model: GLM, interpretationModel: GLM, chatModel: 'minimax/minimax-m2.7' });
+    const testConnection = vi.fn().mockResolvedValue(undefined);
+    renderSettings(testConnection);
+
+    const card = screen.getByTestId('model-switch-suggestion');
+    expect(card.textContent).toContain('DeepSeek V4.1 Flash');
+    expect(card.textContent).toMatch(/GLM 5\.3 Flash/);
+    expect(card.textContent).toMatch(/\d+ s/);
+    expect(readSaved().interpretationModel).toBe(GLM);
+
+    fireEvent.click(screen.getByTestId('model-switch-accept'));
+    await waitFor(() => expect(testConnection).toHaveBeenCalled());
+    const saved = readSaved();
+    expect(saved.interpretationModel).toBe('deepseek/deepseek-v4.1-flash');
+    expect(saved.model).toBe('deepseek/deepseek-v4.1-flash');
+    expect(saved.chatModel).toBe('minimax/minimax-m2.7');
+    expect(saved.apiKey).toBe('sk-or-kept');
+    expect(screen.queryByTestId('model-switch-suggestion')).toBeNull();
+  });
+
+  it('switches a glm chat model too, but leaves a non-glm tier alone', async () => {
+    seed({ model: 'openai/gpt-5.6-sol', interpretationModel: 'openai/gpt-5.6-sol', chatModel: GLM });
+    renderSettings();
+    fireEvent.click(screen.getByTestId('model-switch-accept'));
+    await waitFor(() => expect(readSaved().chatModel).toBe('deepseek/deepseek-v4.1-flash'));
+    expect(readSaved().interpretationModel).toBe('openai/gpt-5.6-sol');
+  });
+
+  it('stays dismissed after "Keep GLM", across remounts, and changes nothing', () => {
+    seed({ model: GLM, interpretationModel: GLM });
+    const first = renderSettings();
+    fireEvent.click(screen.getByTestId('model-switch-dismiss'));
+    expect(screen.queryByTestId('model-switch-suggestion')).toBeNull();
+    first.unmount();
+    renderSettings();
+    expect(screen.queryByTestId('model-switch-suggestion')).toBeNull();
+    expect(readSaved().interpretationModel).toBe(GLM);
+  });
+
+  it('never suggests (or rewrites) for a user on another model, e.g. the old v4-pro default', () => {
+    seed({ model: 'deepseek/deepseek-v4-pro', interpretationModel: 'deepseek/deepseek-v4-pro' });
+    renderSettings();
+    expect(screen.queryByTestId('model-switch-suggestion')).toBeNull();
+    expect(readSaved().interpretationModel).toBe('deepseek/deepseek-v4-pro');
+  });
+
+  it('does not suggest a cloud model to a local endpoint user', () => {
+    window.localStorage.setItem(
+      LLM_SETTINGS_KEY,
+      JSON.stringify({ apiBase: 'http://localhost:11434/v1', model: GLM, interpretationModel: GLM }),
+    );
+    renderSettings();
+    expect(screen.queryByTestId('model-switch-suggestion')).toBeNull();
+  });
+});

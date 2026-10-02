@@ -30,9 +30,10 @@ export interface LlmSettings {
    */
   readonly model?: string;
   /**
-   * The model for the one-time, in-depth chart interpretation. A strong/frontier
-   * model is advised here. Resolved onto `VITE_LLM_MODEL` by
-   * {@link applyInterpretationSettings} (default {@link RECOMMENDED_CLOUD_MODEL}).
+   * The model for the one-time, in-depth chart interpretation (and the
+   * timeline sections). Resolved onto `VITE_LLM_MODEL` by
+   * {@link applyInterpretationSettings} (default {@link RECOMMENDED_CLOUD_MODEL},
+   * a fast reasoning model).
    */
   readonly interpretationModel?: string;
   /**

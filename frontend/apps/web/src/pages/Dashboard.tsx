@@ -1147,6 +1147,9 @@ export default function DashboardPage() {
                     })
                     .join(', '),
                 })}
+                {Object.values(failedTimelineSectionCodes).includes('ai.reasoning_timeout')
+                  ? ` ${t('chat:errors.reasoning_timeout')}`
+                  : null}
               </p>
             ) : null}
             <DashboardCurrentTimeline

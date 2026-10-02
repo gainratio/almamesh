@@ -6,8 +6,9 @@
 // or storage access through this module. Tool arguments/results stay inside the
 // request transcript and are never surfaced through status events.
 
-import { LlmRequestError, type ChatMessage } from "./client";
+import { LlmRequestError, reasoningField, type ChatMessage } from "./client";
 import { ensurePrivacy, type ProviderConfig } from "./config";
+import { CHAT_REASONING_MAX_TOKENS, REASONING_TIMEOUT_MS } from "./reasoning";
 import { sseChunks } from "./sse";
 
 export const AGENT_LIMITS = Object.freeze({
@@ -69,6 +70,12 @@ export interface StreamAgentChatOptions {
   readonly signal?: AbortSignal;
   /** Injectable for deterministic tests; defaults to global `fetch`. */
   readonly fetchImpl?: typeof fetch;
+  /**
+   * Runaway-reasoning cap per request, in ms (default REASONING_TIMEOUT_MS):
+   * no answer text or tool call by then fails the turn with a
+   * ReasoningTimeoutError.
+   */
+  readonly reasoningTimeoutMs?: number;
 }
 
 interface OpenAiFunctionCall {
@@ -351,6 +358,7 @@ async function* decisionRequest(
       stream: true,
       tools: definitions,
       tool_choice: "auto",
+      ...reasoningField(options.config, CHAT_REASONING_MAX_TOKENS),
     }),
     signal: options.signal,
   });
@@ -364,7 +372,7 @@ async function* decisionRequest(
 
   const drafts = new Map<number, ToolCallDraft>();
   let content = "";
-  for await (const chunk of sseChunks(response)) {
+  for await (const chunk of sseChunks(response, capOf(options))) {
     const delta = chunk.choices?.[0]?.delta;
     if (!delta) continue;
     if (typeof delta.content === "string" && delta.content) {
@@ -519,11 +527,12 @@ async function* finalRequest(
       stream: true,
       tools: definitions,
       tool_choice: "none",
+      ...reasoningField(options.config, CHAT_REASONING_MAX_TOKENS),
     }),
     signal: options.signal,
   });
   if (!response.ok || !response.body) throw await requestError(response);
-  yield* streamContent(response);
+  yield* streamContent(response, options);
 }
 
 /** Compatibility path for OpenAI-compatible endpoints without function calling. */
@@ -540,15 +549,21 @@ async function* streamWithoutTools(
       model: options.config.model,
       messages,
       stream: true,
+      ...reasoningField(options.config, CHAT_REASONING_MAX_TOKENS),
     }),
     signal: options.signal,
   });
   if (!response.ok || !response.body) throw await requestError(response);
-  yield* streamContent(response);
+  yield* streamContent(response, options);
 }
 
-async function* streamContent(response: Response): AsyncGenerator<string> {
-  for await (const chunk of sseChunks(response)) {
+/** The runaway-reasoning cap for one chat request (see reasoning.ts). */
+function capOf(options: StreamAgentChatOptions): { readonly answerDeadlineMs: number } {
+  return { answerDeadlineMs: options.reasoningTimeoutMs ?? REASONING_TIMEOUT_MS };
+}
+
+async function* streamContent(response: Response, options: StreamAgentChatOptions): AsyncGenerator<string> {
+  for await (const chunk of sseChunks(response, capOf(options))) {
     const content = chunk.choices?.[0]?.delta?.content;
     if (typeof content === "string" && content) yield content;
   }

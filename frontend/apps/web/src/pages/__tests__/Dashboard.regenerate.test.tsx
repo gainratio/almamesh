@@ -526,6 +526,29 @@ describe('Dashboard — regenerate reading', () => {
     expect(notice.textContent).toContain('The road ahead (ai.provider.server_error)');
   });
 
+  it('tells the user to retry or pick a faster model when a section hit the reasoning cap', async () => {
+    configureCloudAi();
+    seedCompleteReading(currentProvenance());
+    const store = useInterpretationStore.getState();
+    const run = store.startCurrentTimeline('chart-1');
+    store.markCurrentTimelineSectionFailed('chart-1', 'upcoming_periods', run, 'ai.reasoning_timeout');
+    await store.setCurrentTimeline(
+      'chart-1',
+      { upcoming_periods: [], current_sky: [{ title: 'Now', layman: 'Active', technical: 'Saturn' }] },
+      '2026-06-21T00:00:00Z',
+      currentProvenance(),
+      NATAL_ONLY_INPUT,
+      run,
+    );
+    renderDashboard();
+
+    const notice = await screen.findByTestId('timeline-partial-failure');
+    expect(notice.textContent).toContain('The road ahead (ai.reasoning_timeout)');
+    expect(notice.textContent).toContain(
+      'The model thought for over 3 minutes without starting its answer. Try again, or pick a faster model in Settings → AI.',
+    );
+  });
+
   it('queues an explicit timeline click without spending until current facts are ready', async () => {
     configureCloudAi();
     seedCompleteReading(currentProvenance());

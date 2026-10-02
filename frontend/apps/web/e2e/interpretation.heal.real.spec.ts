@@ -13,15 +13,15 @@ import { bootEngine, seedChart, LLM_SETTINGS_KEY } from './interpretation.helper
  *
  * THE FIX (two parts, both exercised here):
  *   1. `@almamesh/llm` `readLlmSettings()` self-heals a saved
- *      `anthropic/claude-3.5-sonnet` on an OpenRouter base → `deepseek/deepseek-v4-pro`
+ *      `anthropic/claude-3.5-sonnet` on an OpenRouter base → `deepseek/deepseek-v4.1-flash`
  *      (a real OpenRouter slug) AND persists the rewrite back to localStorage.
- *   2. The Dashboard shows an actionable "Switch to recommended (DeepSeek V4)"
+ *   2. The Dashboard shows an actionable "Switch to recommended (DeepSeek V4.1 Flash)"
  *      button on a model-not-found error (belt-and-suspenders recovery).
  *
  * This spec installs the STALE Sonnet config (the bricking blob), boots the real
  * in-browser engine, seeds a real Delhi chart, then lets the LIVE OpenRouter
  * endpoint actually answer. It asserts:
- *   (a) the persisted model self-healed to `deepseek/deepseek-v4-pro`;
+ *   (a) the persisted model self-healed to `deepseek/deepseek-v4.1-flash`;
  *   (b) a real reading renders (no "could not be generated");
  *   (c) the console is clean — no 404 / "No endpoints found".
  *
@@ -32,7 +32,7 @@ import { bootEngine, seedChart, LLM_SETTINGS_KEY } from './interpretation.helper
  *       (set OPENROUTER_API_KEY=... to exercise it.)
  */
 
-const RECOMMENDED_MODEL = 'deepseek/deepseek-v4-pro';
+const RECOMMENDED_MODEL = 'deepseek/deepseek-v4.1-flash';
 const RETIRED_MODEL = 'anthropic/claude-3.5-sonnet';
 
 /** Strings that signal a non-real / placeholder summary (case-insensitive). */
@@ -64,7 +64,7 @@ function assertRealSummary(text: string | null): void {
  */
 const FORBIDDEN_LLM_ERROR_FRAGMENTS = ['No endpoints found', RETIRED_MODEL, 'LlmRequestError'];
 
-test('[real][self-heal] stale anthropic/claude-3.5-sonnet self-heals to DeepSeek V4 and renders a real reading', async ({
+test('[real][self-heal] stale anthropic/claude-3.5-sonnet self-heals to DeepSeek V4.1 Flash and renders a real reading', async ({
   page,
 }) => {
   const KEY = process.env.OPENROUTER_API_KEY;

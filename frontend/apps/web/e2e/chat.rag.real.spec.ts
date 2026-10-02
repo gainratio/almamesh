@@ -1,5 +1,7 @@
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { test, expect, type Request } from '@playwright/test';
 import { bootEngine, LLM_SETTINGS_KEY, seedChart } from './interpretation.helpers';
+import { completionUsage } from './openrouterUsage';
 
 /**
  * LIVE end-to-end validation of the overhauled "Ask About Your Chart" chat.
@@ -17,6 +19,13 @@ import { bootEngine, LLM_SETTINGS_KEY, seedChart } from './interpretation.helper
  */
 
 const SHOT = '/tmp/almamesh-verify/chat';
+/**
+ * The chat-tier model under test. Defaults to the app's fast chat default; set
+ * CHAT_REAL_MODEL to benchmark another one. Time to first token, time to the
+ * finished first answer, and the turn's cost (OpenRouter `usage`) are written
+ * to test-results/chat-real-timing-<model>.json.
+ */
+const CHAT_MODEL = process.env.CHAT_REAL_MODEL ?? 'minimax/minimax-m2.7';
 
 test('[real] chat: single-pass streaming + self-hosted RAG + persistence + search', async ({
   page,
@@ -59,14 +68,19 @@ test('[real] chat: single-pass streaming + self-hosted RAG + persistence + searc
   page.on('requestfailed', (req: Request) =>
     failedRequests.push(`${req.method()} ${req.url()} :: ${req.failure()?.errorText ?? 'failed'}`),
   );
+  const chatResponses: Promise<string>[] = [];
   page.on('response', (res) => {
     if (res.status() >= 400) failedRequests.push(`HTTP ${res.status()} ${res.url()}`);
+    if (res.url().includes('openrouter.ai/api/v1/chat/completions')) {
+      chatResponses.push(res.text().catch(() => ''));
+    }
   });
 
   const config = JSON.stringify({
     apiBase: 'https://openrouter.ai/api/v1',
     apiKey: KEY,
     model: 'deepseek/deepseek-v4-pro',
+    chatModel: CHAT_MODEL,
     privacyMode: 'cloud_premium',
     engine: 'openai-http',
   });
@@ -164,12 +178,30 @@ test('[real] chat: single-pass streaming + self-hosted RAG + persistence + searc
       { timeout: 300_000, intervals: [2_500] },
     )
     .toBe(true);
+  const answerMs = Date.now() - tSend;
   await page.screenshot({ path: `${SHOT}/B-answer-complete.png`, fullPage: true });
+  const firstTurn = (await Promise.all(chatResponses)).map(completionUsage);
+  mkdirSync('test-results', { recursive: true });
+  writeFileSync(
+    `test-results/chat-real-timing-${CHAT_MODEL.replace(/\W/g, '_')}.json`,
+    JSON.stringify({
+      model: CHAT_MODEL,
+      firstTokenMs,
+      answerMs,
+      requests: firstTurn.length,
+      costUsd: firstTurn.reduce((sum, u) => sum + u.cost, 0),
+      reasoningWords: firstTurn.reduce((sum, u) => sum + u.reasoningWords, 0),
+      reasoningTokens: firstTurn.reduce((sum, u) => sum + u.reasoningTokens, 0),
+      promptTokens: firstTurn.reduce((sum, u) => sum + u.promptTokens, 0),
+      completionTokens: firstTurn.reduce((sum, u) => sum + u.completionTokens, 0),
+      providers: [...new Set(firstTurn.map((u) => u.provider))],
+    }),
+  );
   console.log(`[evidence] careerAnswer=${careerAnswer.replace(/\s+/g, ' ').trim().slice(0, 500)}`);
 
   // ===========================================================================
   // B2) ON-THE-WIRE MODEL — the chat turn must use the FAST chat model
-  //     `minimax/minimax-m2.7` (NOT the deeper `deepseek/deepseek-v4-pro` that
+  //     (CHAT_MODEL, default `minimax/minimax-m2.7`; NOT the deeper `deepseek/deepseek-v4-pro` that
   //     the preset seeds for interpretation), stream:true, and carry the chart
   //     facts + reused-reading grounding blocks. applyChatModelPreference swaps
   //     the model ONLY on the default OpenRouter cloud preset (the one seeded).
@@ -182,10 +214,7 @@ test('[real] chat: single-pass streaming + self-hosted RAG + persistence + searc
     messages: { role: string; content: string }[];
   };
   console.log(`[evidence] chat_wire_model=${chatParsed.model} stream=${chatParsed.stream}`);
-  expect(chatParsed.model, 'chat must use the FAST minimax model on the wire').toBe('minimax/minimax-m2.7');
-  expect(chatParsed.model, 'chat must NOT use the deep interpretation model').not.toBe(
-    'deepseek/deepseek-v4-pro',
-  );
+  expect(chatParsed.model, 'chat must use the configured chat model on the wire').toBe(CHAT_MODEL);
   expect(chatParsed.stream, 'chat request must stream').toBe(true);
   // Grounding: the system/context messages carry the chart-facts block. (The
   // reused-reading block is present only once an interpretation has completed;
@@ -195,7 +224,7 @@ test('[real] chat: single-pass streaming + self-hosted RAG + persistence + searc
   const hasChartFacts =
     /lagna|ascendant|nakshatra|sidereal|dasha|placement|house|chart facts|whole sign/.test(wireText);
   expect(hasChartFacts, 'outbound chat body must carry chart-facts grounding').toBe(true);
-  console.log('[B2] chat on-the-wire model=minimax/minimax-m2.7, stream=true, chart-grounded.');
+  console.log(`[B2] chat on-the-wire model=${CHAT_MODEL}, stream=true, chart-grounded.`);
 
   // ===========================================================================
   // C) NETWORK ASSERTION — embedding model loads SAME-ORIGIN; zero HF/jsdelivr.

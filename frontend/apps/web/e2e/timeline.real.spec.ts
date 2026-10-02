@@ -1,6 +1,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { test, expect } from '@playwright/test';
 import { bootEngine, seedChart, LLM_SETTINGS_KEY } from './interpretation.helpers';
+import { completionUsage, type CompletionUsage } from './openrouterUsage';
 
 /**
  * Current-timeline REAL integration test — REAL chart, LIVE OpenRouter.
@@ -16,8 +17,9 @@ import { bootEngine, seedChart, LLM_SETTINGS_KEY } from './interpretation.helper
  * The sections STREAM: something must appear on screen within
  * TIMELINE_TTFT_BUDGET_MS of the click (a reasoning model's "Thinking… N words"
  * or the prose itself), not only when the whole section lands minutes later.
- * Time-to-first-progress, time-to-first-prose and total time are written to
- * test-results/timeline-real-timing-<model>.json.
+ * Time-to-first-progress, time-to-first-prose, total time, and the run's cost
+ * and reasoning (from OpenRouter's `usage` on every section response) are
+ * written to test-results/timeline-real-timing-<model>.json.
  *
  * Run:  OPENROUTER_API_KEY=... bunx playwright test --config=playwright.timeline.real.config.ts
  */
@@ -52,13 +54,23 @@ test('[real] current timeline generates The road ahead against live OpenRouter',
   page.on('pageerror', (e) => errors.push(`[pageerror] ${String(e)}`));
 
   const roadAheadResponses: string[] = [];
+  const sectionUsage: (CompletionUsage & { section: string; status: number })[] = [];
   page.on('response', async (res) => {
     const body = res.request().postData() ?? '';
-    if (!res.url().includes('openrouter.ai') || !body.includes('upcoming_periods')) return;
+    if (!res.url().includes('openrouter.ai/api/v1/chat/completions')) return;
+    const section = body.includes('upcoming_periods') ? 'upcoming_periods' : 'current_sky';
+    let text: string;
     try {
-      roadAheadResponses.push(`HTTP ${res.status()}\nREQUEST ${body}\nRESPONSE ${await res.text()}`);
+      text = await res.text();
     } catch (err) {
-      roadAheadResponses.push(`HTTP ${res.status()} (body unreadable: ${String(err)})`);
+      if (section === 'upcoming_periods') {
+        roadAheadResponses.push(`HTTP ${res.status()} (body unreadable: ${String(err)})`);
+      }
+      return;
+    }
+    sectionUsage.push({ section, status: res.status(), ...completionUsage(text) });
+    if (section === 'upcoming_periods') {
+      roadAheadResponses.push(`HTTP ${res.status()}\nREQUEST ${body}\nRESPONSE ${text}`);
     }
   });
 
@@ -107,7 +119,20 @@ test('[real] current timeline generates The road ahead against live OpenRouter',
   mkdirSync('test-results', { recursive: true });
   writeFileSync(
     `test-results/timeline-real-timing-${MODEL.replace(/\W/g, '_')}.json`,
-    JSON.stringify({ model: MODEL, firstProgressMs, firstProseMs, totalMs }),
+    JSON.stringify({
+      model: MODEL,
+      firstProgressMs,
+      firstProseMs,
+      totalMs,
+      requests: sectionUsage.length,
+      costUsd: sectionUsage.reduce((sum, u) => sum + u.cost, 0),
+      reasoningWords: sectionUsage.reduce((sum, u) => sum + u.reasoningWords, 0),
+      reasoningTokens: sectionUsage.reduce((sum, u) => sum + u.reasoningTokens, 0),
+      promptTokens: sectionUsage.reduce((sum, u) => sum + u.promptTokens, 0),
+      completionTokens: sectionUsage.reduce((sum, u) => sum + u.completionTokens, 0),
+      providers: [...new Set(sectionUsage.map((u) => u.provider))],
+      roadAhead: sectionUsage.filter((u) => u.section === 'upcoming_periods').at(-1)?.content ?? null,
+    }),
   );
   writeFileSync('test-results/timeline-real-road-ahead-responses.txt', roadAheadResponses.join('\n\n----\n\n'));
   writeFileSync('test-results/timeline-real-console.txt', errors.join('\n'));

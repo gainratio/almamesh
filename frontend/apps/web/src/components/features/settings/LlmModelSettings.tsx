@@ -40,6 +40,11 @@ import {
 import { Badge, Button, ModelCombobox } from '../../ui';
 import { classifyConnectionError, connectionErrorDetail } from '../../../lib/errors';
 import { notifyLlmSettingsChanged } from '../../../lib/llmSettingsEvents';
+import {
+  dismissSlowModelSuggestion,
+  isSlowModelSuggestionDismissed,
+  slowModelSwitch,
+} from '../../../lib/modelSuggestion';
 import { resolveInterpretationConfig } from '../../../hooks/useStreamingInterpretation';
 
 const OPENROUTER_KEYS_URL = 'https://openrouter.ai/keys';
@@ -286,12 +291,26 @@ export default function LlmModelSettings({
     }
   };
 
-  // Guided OpenRouter: apply the cloud preset (recommended frontier/fast pair +
+  // Guided OpenRouter: apply the cloud preset (recommended interpretation/chat pair +
   // cloud_premium so the fail-closed gate passes) with the user's key, then test.
   const saveOpenRouter = () => {
     const interp = settings.interpretationModel || settings.model || RECOMMENDED_CLOUD_MODEL;
     const chat = settings.chatModel || CHAT_CLOUD_MODEL;
     return saveAndTest(openRouterPreset(settings.apiKey?.trim() ?? '', interp, chat), 'guided');
+  };
+
+  // One-time "switch off glm-5.3-flash" card. Computed from the SAVED settings
+  // (not the unsaved form) so typing never makes it flicker.
+  const [suggestOpen, setSuggestOpen] = useState(() => !isSlowModelSuggestionDismissed());
+  const savedSwitch = slowModelSwitch(readLlmSettings());
+  const acceptSwitch = () => {
+    dismissSlowModelSuggestion();
+    setSuggestOpen(false);
+    if (savedSwitch) void saveAndTest(savedSwitch, 'guided');
+  };
+  const keepModel = () => {
+    dismissSlowModelSuggestion();
+    setSuggestOpen(false);
   };
 
   const hasKey = Boolean(settings.apiKey?.trim());
@@ -353,6 +372,30 @@ export default function LlmModelSettings({
         <p className="text-text-secondary text-xs mt-1" data-testid="tier-cloud-honesty">
           {t('tiers.cloud_body')}
         </p>
+
+        {suggestOpen && savedSwitch && (
+          <div
+            role="note"
+            className="mt-4 rounded-lg border border-accent-gold/40 bg-accent-gold/10 p-4"
+            data-testid="model-switch-suggestion"
+          >
+            <p className="text-text-primary text-sm font-medium">{t('aiModels.switch_title')}</p>
+            <p className="text-text-secondary text-xs mt-1">{t('aiModels.switch_body')}</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button onClick={acceptSwitch} disabled={conn.phase === 'testing'} data-testid="model-switch-accept">
+                {t('aiModels.switch_accept')}
+              </Button>
+              <button
+                type="button"
+                onClick={keepModel}
+                className="rounded-md border border-ui-border px-3 py-1.5 text-sm text-text-secondary transition-colors hover:text-text-primary"
+                data-testid="model-switch-dismiss"
+              >
+                {t('aiModels.switch_dismiss')}
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Guided OpenRouter — the recommended path: get a key, paste, test. */}
         <div className="mt-4 space-y-3 rounded-lg border border-accent-gold/30 bg-accent-gold/5 p-4">

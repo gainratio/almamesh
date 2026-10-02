@@ -5,6 +5,7 @@
 // same way. Moved here unchanged from agent.ts (restored in #186).
 
 import { LlmRequestError } from "./client";
+import { ReasoningTimeoutError } from "./reasoning";
 
 const MAX_ERROR_BODY_CHARS = 500;
 
@@ -28,6 +29,29 @@ export interface SseOptions {
    * generation classifies exactly like the non-streaming path (#192).
    */
   readonly inBandFallbackStatus?: number;
+  /**
+   * Runaway-reasoning cap (see reasoning.ts): when set, the stream is cancelled
+   * with a ReasoningTimeoutError if no answer text (content or a tool call) has
+   * arrived this many ms after it opened. Reasoning deltas do not count.
+   */
+  readonly answerDeadlineMs?: number;
+}
+
+function carriesAnswer(chunk: StreamChunk): boolean {
+  const delta = chunk.choices?.[0]?.delta;
+  const content = delta?.content;
+  return (typeof content === "string" && content !== "") || (delta?.tool_calls !== undefined && delta.tool_calls !== null);
+}
+
+/** Rejects once `ms` elapse; `clear` disarms it. Never an unhandled rejection. */
+function answerDeadline(ms: number | undefined): { readonly expired: Promise<never> | null; readonly clear: () => void } {
+  if (ms === undefined) return { expired: null, clear: () => undefined };
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const expired = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new ReasoningTimeoutError(ms)), ms);
+  });
+  expired.catch(() => undefined);
+  return { expired, clear: () => clearTimeout(timer) };
 }
 
 /** Parse an OpenAI-compatible SSE body into JSON chunks, failing on in-band errors. */
@@ -40,21 +64,32 @@ export async function* sseChunks(
   }
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
+  const deadline = answerDeadline(options.answerDeadlineMs);
+  let waiting = deadline.expired;
   let buffer = "";
   let finished = false;
   try {
     while (true) {
-      const { done, value } = await reader.read();
+      const { done, value } = await (waiting ? Promise.race([reader.read(), waiting]) : reader.read());
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
       const events = buffer.split(/\r?\n\r?\n/);
       buffer = events.pop() ?? "";
-      for (const event of events) yield* parseSseEvent(event, options);
+      for (const event of events) {
+        for (const chunk of parseSseEvent(event, options)) {
+          if (waiting && carriesAnswer(chunk)) {
+            deadline.clear();
+            waiting = null;
+          }
+          yield chunk;
+        }
+      }
     }
     buffer += decoder.decode();
     if (buffer.trim()) yield* parseSseEvent(buffer, options);
     finished = true;
   } finally {
+    deadline.clear();
     if (!finished) reader.cancel().catch(() => undefined);
   }
 }

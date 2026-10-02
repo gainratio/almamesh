@@ -8,11 +8,10 @@ import { bootEngine, seedChart, LLM_SETTINGS_KEY } from './interpretation.helper
  * previously had only unit coverage:
  *
  *   (b) the chat request that goes out on the wire uses the FAST chat model
- *       `minimax/minimax-m2.7`. This is applied by `applyChatModelPreference`
- *       ONLY on the default OpenRouter cloud preset (base startsWith
- *       OPENROUTER_API_BASE AND model === RECOMMENDED_CLOUD_MODEL). So this test
- *       seeds the OpenRouter preset and asserts the OUTBOUND chat body's
- *       `model` is the override — NOT the deeper `deepseek/deepseek-v4-pro`.
+ *       `minimax/minimax-m2.7` (CHAT_CLOUD_MODEL, applied by `applyChatSettings`
+ *       when no explicit chatModel is saved). So this test seeds an OpenRouter
+ *       config with only an interpretation model and asserts the OUTBOUND chat
+ *       body's `model` is the chat default — NOT the seeded interpretation model.
  *
  *   (c) the chat prompt REUSES the already-generated structured interpretation:
  *       `serializeInterpretationForChat` injects a "Your chart reading
@@ -32,20 +31,19 @@ import { bootEngine, seedChart, LLM_SETTINGS_KEY } from './interpretation.helper
  */
 
 // The OpenRouter cloud preset that makes describeLlmStatus().configured === true
-// AND triggers applyChatModelPreference (base startsWith OPENROUTER_API_BASE,
-// model === RECOMMENDED_CLOUD_MODEL "deepseek/deepseek-v4-pro"). Installed via
+// with no chatModel, so chat falls back to CHAT_CLOUD_MODEL. Installed via
 // addInitScript BEFORE load so the dashboard can explicitly generate the
 // reading and the chat override fires. Mirrors interpretation.spec.ts's config.
 const LLM_CONFIG = {
   apiBase: 'https://openrouter.ai/api/v1', // === OPENROUTER_API_BASE
   apiKey: 'test-key',
-  model: 'deepseek/deepseek-v4-pro', // === RECOMMENDED_CLOUD_MODEL
+  model: 'deepseek/deepseek-v4.1-flash', // === RECOMMENDED_CLOUD_MODEL
   privacyMode: 'cloud_premium',
   engine: 'openai-http',
 };
 
-// The model the chat override (applyChatModelPreference → CHAT_CLOUD_MODEL) must
-// produce on the wire. NOT the seeded deepseek deep model; NOT a bare "minimax".
+// The model the chat tier default (applyChatSettings → CHAT_CLOUD_MODEL) must
+// produce on the wire. NOT the seeded interpretation model; NOT a bare "minimax".
 const EXPECTED_CHAT_MODEL = 'minimax/minimax-m2.7';
 
 // The exact label `interpretationBlock` (prompt.ts) prefixes the reused reading
