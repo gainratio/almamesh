@@ -370,7 +370,11 @@ describe('encrypted bundle round-trip (format v2)', () => {
 
   it('a tampered file is rejected', async () => {
     const parsed = JSON.parse(await exportFromA());
-    const tampered = JSON.stringify({ ...parsed, ciphertext: `A${parsed.ciphertext.slice(1)}` });
+    // Flip the first character to a DIFFERENT one: the ciphertext is random, so a fixed 'A'
+    // left the file unchanged 1 time in 64 and the "tamper" test silently tested nothing.
+    const first = parsed.ciphertext[0] === 'A' ? 'B' : 'A';
+    const tampered = JSON.stringify({ ...parsed, ciphertext: `${first}${parsed.ciphertext.slice(1)}` });
+    expect(tampered).not.toBe(JSON.stringify(parsed));
 
     await expect(stageBackupImport(tampered, PASSPHRASE)).rejects.toMatchObject({
       code: 'bad_passphrase',
