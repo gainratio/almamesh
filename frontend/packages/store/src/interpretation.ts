@@ -242,6 +242,13 @@ export interface InterpretationStore {
     kind?: InterpretationErrorKind,
     runToken?: InterpretationRunToken,
   ) => void;
+  /**
+   * End a timeline run nobody is waiting for any more (the page unmounted and
+   * aborted its stream). Without this the entry stays 'generating' with no
+   * stream behind it. A previous timeline is kept as 'complete'; a first run
+   * leaves no timeline. A superseded run token is ignored.
+   */
+  abandonCurrentTimeline: (chartId: string, runToken: InterpretationRunToken) => void;
   /** Read one chart's entry, or `undefined` if none exists. */
   getEntry: (chartId: string) => ChartInterpretationEntry | undefined;
   /** Drop one chart's entry entirely. */
@@ -790,6 +797,22 @@ export const interpretationStoreCreator: StateCreator<InterpretationStore> = (se
               error,
               ...(kind !== undefined ? { errorKind: kind } : {}),
             },
+          }),
+        };
+      });
+    },
+
+    abandonCurrentTimeline: (chartId, runToken) => {
+      if (!acceptsTimelineRun(chartId, runToken)) return;
+      activeTimelineRuns.delete(chartId);
+      set((state) => {
+        const current = state.byChart[chartId];
+        if (current?.timeline?.status !== 'generating') return state;
+        const { content } = current.timeline;
+        return {
+          byChart: withEntry(state.byChart, chartId, {
+            ...current,
+            timeline: content ? { ...current.timeline, status: 'complete', sections: {} } : undefined,
           }),
         };
       });

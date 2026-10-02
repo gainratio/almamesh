@@ -178,6 +178,7 @@ export type {
   NatalInterpretationEvent,
   NatalInterpretationParams,
   NatalInterpretationSectionKey,
+  SectionProgressSnapshot,
   StructuredInterpretationParams,
 } from "./structured-interpretation";
 

@@ -881,6 +881,85 @@ describe('useStreamingInterpretation (structured, store-backed)', () => {
     });
   });
 
+  async function seedTimelineReady(): Promise<void> {
+    usePredictiveStore.setState({
+      status: 'ready',
+      profileKey: 'profile-123',
+      requestKey: CURRENT_PREDICTIVE_KEY,
+      rawContexts: {
+        transit_context: { instant: '2026-07-12T00:00:00Z' },
+        varga_context_full: { charts: {} },
+        strength_context: {},
+        domains_context: { forecasts: {} },
+      },
+    } as never);
+    await useInterpretationStore.getState().setInterpretation(
+      'chart-123',
+      SAMPLE_INTERPRETATION,
+      '2026-07-11T00:00:00Z',
+      undefined,
+      { predictiveRequestKey: null },
+    );
+  }
+
+  it('exposes live timeline prose while a section streams, then clears it on completion', async () => {
+    await seedTimelineReady();
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    mockedTimelineStream.mockImplementation(async function* (params) {
+      params.onSectionProgress?.('upcoming_periods', { words: 3, preview: 'A season of', thinkingWords: 12 });
+      params.onSectionProgress?.('upcoming_periods', { words: 4, preview: 'A season of growth', thinkingWords: 12 });
+      await gate;
+      yield { type: 'section_complete', section: 'upcoming_periods' };
+      yield { type: 'complete', timeline: { upcoming_periods: [], current_sky: [] } };
+    });
+
+    const { result } = renderHook(() => useStreamingInterpretation('chart-123'));
+    let run!: Promise<void>;
+    act(() => {
+      run = result.current.streamCurrentTimeline('chart-123', { intent: 'user-request', view_mode: 'layman' });
+    });
+    await waitFor(() =>
+      expect(result.current.timelineProgress).toEqual({
+        upcoming_periods: { words: 4, preview: 'A season of growth', thinkingWords: 12 },
+      }),
+    );
+    await act(async () => {
+      release();
+      await run;
+    });
+    expect(result.current.timelineProgress).toEqual({});
+  });
+
+  it('aborts the timeline stream on unmount and does not leave it generating', async () => {
+    await seedTimelineReady();
+    let seenSignal: AbortSignal | undefined;
+    mockedTimelineStream.mockImplementation(async function* (params) {
+      seenSignal = params.signal;
+      await new Promise<void>((resolve) => params.signal?.addEventListener('abort', () => resolve()));
+      if (params.signal?.aborted) {
+        const err = new Error('aborted');
+        err.name = 'AbortError';
+        throw err;
+      }
+      yield { type: 'complete', timeline: { upcoming_periods: [], current_sky: [] } };
+    });
+
+    const { result, unmount } = renderHook(() => useStreamingInterpretation('chart-123'));
+    act(() => {
+      void result.current.streamCurrentTimeline('chart-123', { intent: 'user-request', view_mode: 'layman' });
+    });
+    await waitFor(() => expect(seenSignal).toBeDefined());
+    expect(useInterpretationStore.getState().getEntry('chart-123')?.timeline?.status).toBe('generating');
+
+    unmount();
+
+    expect(seenSignal?.aborted).toBe(true);
+    expect(useInterpretationStore.getState().getEntry('chart-123')?.timeline).toBeUndefined();
+  });
+
   it('does not spend timeline calls before exact-day predictive facts are ready', async () => {
     const { result } = renderHook(() => useStreamingInterpretation('chart-123'));
 

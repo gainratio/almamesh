@@ -56,7 +56,7 @@ async function readErrorBody(response: Response): Promise<string | undefined> {
 }
 
 /** Build a diagnosable LlmRequestError for a non-2xx response. */
-async function requestErrorFor(response: Response): Promise<LlmRequestError> {
+export async function requestErrorFor(response: Response): Promise<LlmRequestError> {
   const body = await readErrorBody(response);
   const suffix = body ? `: ${body}` : "";
   return new LlmRequestError(
@@ -123,7 +123,7 @@ export interface ChatCompletionJsonOptions {
 }
 
 /** Strip a ```json … ``` (or plain ```) fence some models wrap JSON in. */
-function stripJsonFence(text: string): string {
+export function stripJsonFence(text: string): string {
   const trimmed = text.trim();
   const fenced = /^```(?:json)?\s*([\s\S]*?)\s*```$/i.exec(trimmed);
   return fenced ? fenced[1].trim() : trimmed;
@@ -155,7 +155,16 @@ export async function chatCompletionJson(
   if (!response.ok) {
     throw await requestErrorFor(response);
   }
-  const payload = (await response.json()) as OpenAiMessage;
+  return completionJsonContent(await response.json());
+}
+
+/**
+ * The fence-stripped content of one non-streaming completion body, or the
+ * typed failure it reports in-band (#192). Shared with the streamed variant
+ * for endpoints that ignore `stream: true`.
+ */
+export function completionJsonContent(body: unknown): string {
+  const payload = body as OpenAiMessage;
   const failure = inBandFailure(payload);
   if (failure) throw failure;
   const content = payload.choices?.[0]?.message?.content;
@@ -365,7 +374,7 @@ export async function fetchOpenRouterModels(
   return models;
 }
 
-function buildHeaders(config: ProviderConfig): Record<string, string> {
+export function buildHeaders(config: ProviderConfig): Record<string, string> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (config.apiKey) {
     headers.Authorization = `Bearer ${config.apiKey}`;
@@ -373,7 +382,7 @@ function buildHeaders(config: ProviderConfig): Record<string, string> {
   return headers;
 }
 
-function joinUrl(baseUrl: string): string {
+export function joinUrl(baseUrl: string): string {
   return `${baseUrl.replace(/\/$/, "")}/chat/completions`;
 }
 
@@ -392,7 +401,7 @@ function modelsUrl(baseUrl: string): string {
  * an empty string is guarded here so a misconfiguration is a clean, diagnosable
  * error rather than a URL crash.
  */
-function requireBaseUrl(config: ProviderConfig): string {
+export function requireBaseUrl(config: ProviderConfig): string {
   if (!config.baseUrl) {
     throw new LlmRequestError("No OpenAI-compatible base URL configured");
   }

@@ -562,6 +562,30 @@ describe('interpretationStore — independent current timeline', () => {
     expect(store.getState().getEntry('c1')?.timeline?.failedSectionCodes).toBeUndefined();
   });
 
+  it('an abandoned timeline run (unmount) ends generating: keeps the old timeline, or clears a first run', async () => {
+    const store = newStore();
+    const first = store.getState().startCurrentTimeline('c1');
+    store.getState().abandonCurrentTimeline('c1', first);
+    expect(store.getState().getEntry('c1')?.timeline).toBeUndefined();
+
+    await store
+      .getState()
+      .setCurrentTimeline('c1', TIMELINE, '2026-07-02T00:00:00Z', PROVENANCE, undefined, store.getState().startCurrentTimeline('c1'));
+    const refresh = store.getState().startCurrentTimeline('c1');
+    store.getState().abandonCurrentTimeline('c1', refresh);
+    const timeline = store.getState().getEntry('c1')?.timeline;
+    expect(timeline?.status).toBe('complete');
+    expect(timeline?.content).toEqual(TIMELINE);
+  });
+
+  it('abandoning a superseded run leaves the newer run generating', () => {
+    const store = newStore();
+    const stale = store.getState().startCurrentTimeline('c1');
+    store.getState().startCurrentTimeline('c1');
+    store.getState().abandonCurrentTimeline('c1', stale);
+    expect(store.getState().getEntry('c1')?.timeline?.status).toBe('generating');
+  });
+
   it('a natal regeneration cannot erase or update the saved current timeline', async () => {
     const store = newStore();
     await store.getState().setCurrentTimeline(

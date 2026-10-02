@@ -23,6 +23,7 @@ import {
   RECOMMENDED_CLOUD_MODEL,
   type ChatTurn,
   type AgentStatusEvent,
+  type CurrentTimelineSectionKey,
   type LlmEnv,
 } from "@almamesh/llm";
 import {
@@ -197,6 +198,7 @@ export default function DashboardPage() {
     timelineSections,
     failedTimelineSections,
     failedTimelineSectionCodes,
+    timelineProgress,
     isTimelineStreaming,
     timelineStatus,
     timelineError,
@@ -969,23 +971,49 @@ export default function DashboardPage() {
                     elapsed: formatElapsed(timelineElapsed),
                   })}
                 </p>
-                <ul className="mt-4 max-w-sm space-y-1 text-sm text-text-secondary">
-                  {timelineSections.map((section) => (
-                    <li key={section.key} className="flex items-center justify-between">
-                      <span>{t(`dashboard:sections.${section.key}`)}</span>
-                      <span
-                        className={
-                          section.failed
-                            ? 'text-status-error'
-                            : section.complete
-                              ? 'text-status-success'
-                              : 'text-text-tertiary'
-                        }
-                      >
-                        {section.failed ? '✗' : section.complete ? '✓' : '…'}
-                      </span>
-                    </li>
-                  ))}
+                <ul className="mt-4 max-w-prose space-y-3 text-sm text-text-secondary">
+                  {timelineSections.map((section) => {
+                    const live =
+                      section.complete || section.failed
+                        ? undefined
+                        : timelineProgress[section.key as CurrentTimelineSectionKey];
+                    return (
+                      <li key={section.key}>
+                        <div className="flex max-w-sm items-center justify-between">
+                          <span>{t(`dashboard:sections.${section.key}`)}</span>
+                          <span
+                            className={
+                              section.failed
+                                ? 'text-status-error'
+                                : section.complete
+                                  ? 'text-status-success'
+                                  : 'text-text-tertiary'
+                            }
+                          >
+                            {section.failed ? '✗' : section.complete ? '✓' : '…'}
+                          </span>
+                        </div>
+                        {live && (live.words > 0 || live.thinkingWords > 0) && (
+                          <div data-testid={`timeline-live-${section.key}`} className="mt-1">
+                            <p className="text-xs text-text-tertiary">
+                              {live.words > 0
+                                ? t('dashboard:generation.timeline_writing', { words: live.words })
+                                : t('dashboard:generation.timeline_thinking', {
+                                    words: live.thinkingWords,
+                                  })}
+                            </p>
+                            {/* Unvalidated live text: shown as a preview only, never saved. */}
+                            {/* Bottom-anchored: the newest words stay in view as the tail grows. */}
+                            {live.preview && (
+                              <div className="mt-1 flex max-h-24 flex-col justify-end overflow-hidden">
+                                <p className="whitespace-pre-line text-text-secondary">{live.preview}</p>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </li>
+                    );
+                  })}
                 </ul>
               </>
             ) : (

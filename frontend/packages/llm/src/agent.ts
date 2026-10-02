@@ -8,6 +8,7 @@
 
 import { LlmRequestError, type ChatMessage } from "./client";
 import { ensurePrivacy, type ProviderConfig } from "./config";
+import { sseChunks } from "./sse";
 
 export const AGENT_LIMITS = Object.freeze({
   maxDecisionRounds: 2,
@@ -107,14 +108,6 @@ interface ToolCallDraft {
   type: string;
   name: string;
   arguments: string;
-}
-
-interface StreamChunk {
-  readonly error?: unknown;
-  readonly choices?: ReadonlyArray<{
-    readonly delta?: { readonly content?: unknown; readonly tool_calls?: unknown };
-    readonly finish_reason?: unknown;
-  }>;
 }
 
 /** Whether any answer text has reached the caller yet this turn. */
@@ -558,78 +551,6 @@ async function* streamContent(response: Response): AsyncGenerator<string> {
   for await (const chunk of sseChunks(response)) {
     const content = chunk.choices?.[0]?.delta?.content;
     if (typeof content === "string" && content) yield content;
-  }
-}
-
-/** Parse an OpenAI-compatible SSE body into JSON chunks, failing on in-band errors. */
-async function* sseChunks(response: Response): AsyncGenerator<StreamChunk> {
-  if (!response.body) {
-    throw new LlmRequestError("LLM endpoint returned an empty streaming response");
-  }
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  let finished = false;
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const events = buffer.split(/\r?\n\r?\n/);
-      buffer = events.pop() ?? "";
-      for (const event of events) yield* parseSseEvent(event);
-    }
-    buffer += decoder.decode();
-    if (buffer.trim()) yield* parseSseEvent(buffer);
-    finished = true;
-  } finally {
-    if (!finished) reader.cancel().catch(() => undefined);
-  }
-}
-
-/**
- * After a 200 is committed, OpenRouter (and other OpenAI-compatible relays)
- * report failures in-band: a chunk with a top-level `error` and/or
- * `finish_reason: "error"`. Surface it as the same typed error as an HTTP
- * failure so the chat maps it to the same code instead of ending silently.
- */
-function midStreamError(payload: StreamChunk): LlmRequestError {
-  const raw = payload.error;
-  const row = typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>) : {};
-  const detail = typeof row.message === "string" && row.message ? row.message : "unknown error";
-  const status =
-    typeof row.code === "number" && Number.isInteger(row.code) && row.code >= 400 && row.code <= 599
-      ? row.code
-      : undefined;
-  const body = JSON.stringify({ error: raw ?? null }).slice(0, MAX_ERROR_BODY_CHARS);
-  return new LlmRequestError(
-    `LLM endpoint failed mid-stream: ${detail.slice(0, MAX_ERROR_BODY_CHARS)}`,
-    { status, body },
-  );
-}
-
-function* parseSseEvent(event: string): Generator<StreamChunk> {
-  for (const line of event.split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed.startsWith("data:")) continue;
-    const data = trimmed.slice(5).trim();
-    if (!data || data === "[DONE]") continue;
-    let payload: StreamChunk;
-    try {
-      payload = JSON.parse(data) as StreamChunk;
-    } catch {
-      throw new LlmRequestError("LLM endpoint returned invalid streaming JSON");
-    }
-    if (typeof payload !== "object" || payload === null) {
-      throw new LlmRequestError("LLM endpoint returned invalid streaming JSON");
-    }
-    if (
-      (payload.error !== undefined && payload.error !== null) ||
-      payload.choices?.[0]?.finish_reason === "error"
-    ) {
-      throw midStreamError(payload);
-    }
-    yield payload;
   }
 }
 
