@@ -250,7 +250,7 @@ describe("ChartEngineClient", () => {
       worker = new FakeChartWorker(() => null);
       const client = new ChartEngineClient(worker, { requestTimeoutMs: 50 });
       const seen: BootProgress[] = [];
-      const pending = client.boot(BOOT_CONFIG, (progress) => seen.push(progress));
+      const pending = client.boot(bootConfig(), (progress) => seen.push(progress));
       let settled = false;
       pending.then(
         () => {
