@@ -2,7 +2,7 @@
  * Tests for useReducedMotion (Spec 032).
  *
  * The only live animation hook: it drives motion-reduction across AnimatedPage,
- * AnimatedRoutes, HeroForceField, and the storytelling useGSAP layer. (The
+ * AnimatedRoutes and HeroForceField. (The
  * former sibling hooks useMediaQuery / useAnimationPerformance / useScrollReveal
  * were unused product code kept green only by their own tests, and were removed.)
  */
