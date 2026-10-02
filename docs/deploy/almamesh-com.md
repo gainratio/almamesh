@@ -198,6 +198,24 @@ production) — re-run the probe if Cloudflare semantics are ever in doubt:
    origin header rule. After deployment, the release operator must verify the
    effective live header and run the live no-third-party-request/clean-console
    acceptance checks before declaring the release complete.
+6. **A `503` on an app route in a browser trace is a refused prefetch, not an
+   outage.** The zone has Cloudflare Speed Brain on (the Free-plan default). It
+   adds `speculation-rules: "/cdn-cgi/speculation"` to every HTML response, so a
+   supporting browser prefetches a same-origin link on pointer-down. Cloudflare
+   only answers a prefetch from its cache; our HTML is never cached, so the edge
+   replies `503` with `cf-speculation-refused: prefetch refused: not eligible`
+   and no body. The real navigation is unaffected. Measured live 2026-10-02:
+
+   ```bash
+   curl -s -o /dev/null -w '%{http_code}\n' https://almamesh.com/onboarding                         # 200
+   curl -s -o /dev/null -w '%{http_code}\n' -H 'Sec-Purpose: prefetch' https://almamesh.com/onboarding  # 503
+   ```
+
+   Nothing in this repo sets that header. To stop the refused prefetches, turn
+   Speed Brain off for the zone (dashboard: Speed > Settings > Content
+   Optimization, or `PATCH zones/$ZONE_ID/settings/speed_brain {"value":"off"}`).
+   It is still on as of this note; `curl -sI https://almamesh.com/ | grep -i
+   speculation-rules` printing nothing is the proof it is off.
 
 ## Verifying an artifact before deploy
 
