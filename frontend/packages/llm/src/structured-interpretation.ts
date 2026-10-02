@@ -34,6 +34,7 @@ import { estimateTokens } from "./budget";
 import { chatCompletionJson, LlmRequestError, type ChatMessage } from "./client";
 import { createJsonProseExtractor, createWordCounter } from "./json-prose";
 import { streamChatCompletionJson } from "./json-stream";
+import { LAYMAN_JARGON_TERMS, stripLaymanJargon } from "./layman-jargon";
 import { SECTION_REASONING_MAX_TOKENS } from "./reasoning";
 import { ensurePrivacy, isLocalEndpoint, type ProviderConfig } from "./config";
 import { withLanguage, type PromptLanguage } from "./language";
@@ -168,6 +169,14 @@ export const ALL_SECTIONS: readonly InterpretationSectionKey[] = [
 // (per-planet shadbala_ratio, birth date/age, transits, graha aspects/drishti,
 // Neechabhanga, navamsa). Those instructions are REWRITTEN or DROPPED here, never
 // copied — the LLM narrates only from fields that actually exist in the chart JSON.
+// The layman voice is repaired against the shared banned list when accepted
+// (asLayman below); naming the exact list to the model keeps that repair rare.
+const LAYMAN_GUARD_RULE = [
+  `    The layman text is checked word by word: any sentence using ${LAYMAN_JARGON_TERMS.join(", ")}`,
+  "    is DELETED — even in an everyday sense (say 'a signal', not 'a sign'; 'stretching',",
+  "    not 'yoga'; 'home', not 'house').",
+].join("\n");
+
 const SYSTEM_PROMPT = [
   "You are a grand master Vedic Astrologer (Sidereal / Lahiri ayanamsa) and a",
   "positive, empowering life guide. You produce STRUCTURED interpretation data.",
@@ -180,6 +189,7 @@ const SYSTEM_PROMPT = [
   "    conjunction, dasha, yoga, nakshatra, zodiac-sign names, Sanskrit terms. Speak",
   "    only of the LIVED THEMES (creativity, security, communication, partnership,",
   "    discipline, growth). Warm, practical, caring — a wise friend over coffee.",
+  LAYMAN_GUARD_RULE,
   '  - "technical": for a practicing Jyotish scholar. Cite exact placements from the',
   "    data: degree-within-sign (sign + sign_degrees), nakshatra + nakshatra_pada +",
   "    nakshatra_lord, dignity, retrograde/combust flags, house-lord (dispositor)",
@@ -262,6 +272,7 @@ const SYSTEM_PROMPT_LITE = [
   '  - "layman": everyday words for someone who has NEVER heard of astrology. NO',
   "    planet names, NO house numbers, NO sign names, NO Sanskrit, NO jargon — speak",
   "    only of lived themes (creativity, security, communication, partnership, growth).",
+  LAYMAN_GUARD_RULE,
   '  - "technical": for an astrologer. Name the actual placements from the data',
   "    (planet, sign, house, dignity, nakshatra, dasha lord). One or two specifics is enough.",
   "",
@@ -328,7 +339,8 @@ const CORE_TASK = [
   "DEBILITY HONESTY: a debilitated/combust/retrograde-strained planet is never plainly",
   "  'strong' — name the condition and the growth-through-effort theme.",
   "Every challenge MUST end with a BRIDGE sentence linking it to a NAMED strength or",
-  "  yoga from this same reading. Give each item a distinct emotional flavor and fresh",
+  "  yoga from this same reading (name the yoga only in the technical field; the layman",
+  "  field says it in plain words). Give each item a distinct emotional flavor and fresh",
   "  vocabulary. Only reference yogas in the provided list.",
 ].join("\n");
 
@@ -396,7 +408,8 @@ const GUIDANCE2_TASK = [
   "LIFE EVOLUTION: describe the enduring developmental arc from the ascendant lord,",
   "  lunar nodes, and 9th/12th-house lord chains. Keep it time-independent: never name",
   "  a current/next period, dated window, age, transit, or months remaining.",
-  "  Every challenge mentioned MUST end with a BRIDGE to a NAMED strength or yoga.",
+  "  Every challenge mentioned MUST end with a BRIDGE to a NAMED strength or yoga",
+  "  (name the yoga only in the technical field; the layman field says it in plain words).",
   "DEBILITY HONESTY throughout; give each section a distinct voice. Convey how money",
   "  anxiety/abundance and inner seeking FEEL. Only reference yogas in the provided list.",
   "Speak only to stable natal placements. Current timing belongs to the separate timeline.",
@@ -407,7 +420,7 @@ const REMEDIAL_TASK = [
   'Return JSON: { "remedial_measures": { "layman": string, "technical": string } }.',
   "",
   "  - layman: UNIVERSAL-FIRST and culture-neutral ONLY — meditation & mindfulness,",
-  "    breathing, yoga postures by ENGLISH name (warrior pose, tree pose), walking /",
+  "    breathing, gentle stretches by plain English name (warrior pose, tree pose), walking /",
   "    nature immersion, journaling & reflection, color/environment & decluttering,",
   "    sleep & general wellness, service & connection, creative expression. FORBIDDEN",
   "    here: Sanskrit mantras, pujas, temple/deity worship, gemstone prescriptions,",
@@ -785,6 +798,15 @@ function asString(value: unknown): string {
 }
 
 /**
+ * The layman ("For You") voice as ACCEPTED: any sentence carrying a banned
+ * astrology term is dropped, so the plain-language promise holds whatever the
+ * model wrote. The prompt asks for plain words; this does not trust it to.
+ */
+function asLayman(value: unknown): string {
+  return stripLaymanJargon(asString(value));
+}
+
+/**
  * Coerce an unknown summary value into a dual-mode `Persona`. A `{ layman,
  * technical }` object is taken as-is; a BARE STRING (what LITE / small local
  * models often emit) is mapped to both voices so the summary never blanks; any
@@ -792,7 +814,7 @@ function asString(value: unknown): string {
  */
 function asPersona(value: unknown): Persona {
   if (typeof value === "string") {
-    return { layman: value, technical: value };
+    return { layman: stripLaymanJargon(value), technical: value };
   }
   const persona = parsePersona(value);
   return persona ?? { layman: "", technical: "" };
@@ -810,7 +832,7 @@ function parsePersona(value: unknown): { layman: string; technical: string } | n
     return null;
   }
   const rec = value as Record<string, unknown>;
-  return { layman: asString(rec.layman), technical: asString(rec.technical) };
+  return { layman: asLayman(rec.layman), technical: asString(rec.technical) };
 }
 
 function parseTitledPersonas(value: unknown): TitledPersona[] {
@@ -822,7 +844,7 @@ function parseTitledPersonas(value: unknown): TitledPersona[] {
     const rec = asRecord(item);
     out.push({
       title: asString(rec.title),
-      layman: asString(rec.layman),
+      layman: asLayman(rec.layman),
       technical: asString(rec.technical),
     });
   }

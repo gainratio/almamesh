@@ -80,7 +80,7 @@
     "intro": "Sem exageros — apenas como funciona. Eis por que você pode confiar no que está lendo:",
     "point_engine": "Seu mapa natal é astronomia determinística, calculada no seu dispositivo: os mesmos dados de nascimento produzem sempre exatamente o mesmo mapa.",
     "point_validated": "As posições planetárias vêm do Skyfield e da efeméride JPL DE421 da NASA, verificadas com precisão de subarcossegundo em relação ao astropy e ao JPL Horizons — sem Swiss Ephemeris, sem fatores de ajuste.",
-    "point_grounded": "A narração da IA se baseia no seu mapa: ela repete suas posições exatas calculadas pelo motor — seu lagna, planetas, dashā e yogas —, então é genuinamente seu, não um horóscopo genérico pré-escrito.",
+    "point_grounded": "A narração da IA se baseia no seu mapa: ela repete suas posições exatas calculadas pelo motor — seus planetas, fases da vida e padrões planetários —, então é genuinamente seu, não um horóscopo genérico pré-escrito.",
     "point_privacy": "Seu mapa permanece privado. Nada dele sai do seu dispositivo; à IA opcional envia-se apenas um mapa redigido, sem nome e sem data de nascimento."
   },
   "interpretation": {

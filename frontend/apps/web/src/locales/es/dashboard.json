@@ -80,7 +80,7 @@
     "intro": "Sin exageraciones, solo cómo funciona. Por esto puedes confiar en lo que lees:",
     "point_engine": "Tu carta natal es astronomía determinista, calculada en tu dispositivo: los mismos datos de nacimiento producen siempre exactamente la misma carta.",
     "point_validated": "Las posiciones planetarias provienen de Skyfield y de la efeméride JPL DE421 de la NASA, verificadas con precisión de subarcosegundo frente a astropy y JPL Horizons, sin Swiss Ephemeris ni factores de ajuste.",
-    "point_grounded": "La narración de la IA se apoya en tu carta: repite tus posiciones exactas calculadas por el motor —tu lagna, planetas, dashā y yogas—, así que es genuinamente tuya, no un horóscopo genérico preescrito.",
+    "point_grounded": "La narración de la IA se apoya en tu carta: repite tus posiciones exactas calculadas por el motor —tus planetas, etapas de vida y patrones planetarios—, así que es genuinamente tuya, no un horóscopo genérico preescrito.",
     "point_privacy": "Tu carta permanece privada. Nada de ella sale de tu dispositivo; a la IA opcional solo se envía una carta redactada, sin nombre ni fecha de nacimiento."
   },
   "interpretation": {

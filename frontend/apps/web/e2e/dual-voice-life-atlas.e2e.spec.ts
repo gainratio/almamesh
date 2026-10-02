@@ -4,6 +4,7 @@ import { promisify } from 'node:util';
 import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { LAYMAN_JARGON } from '@almamesh/llm/layman-jargon';
 
 const execFileAsync = promisify(execFile);
 
@@ -35,9 +36,10 @@ const __filename2 = fileURLToPath(import.meta.url);
 const OUT_DIR = resolve(dirname(__filename2), '../test-results/dual-voice-life-atlas');
 
 // Astrology-jargon tokens. The layman ("For You") voice must contain NONE of
-// these; the technical ("For Astrologer") voice must contain at least one.
-const JARGON =
-  /\b(house|lord|dasha|saturn|jupiter|rahu|ketu|nakshatra|lagna|exalted|debilitated|conjunct|retrograde|combust|ascendant|sign|degree|navamsa|yoga)\b/i;
+// these; the technical ("For Astrologer") voice must contain at least one. The
+// list is the PRODUCT's own (the reading is repaired against it when accepted),
+// so this gate and the guard it checks cannot drift apart.
+const JARGON = LAYMAN_JARGON;
 
 // ---------------------------------------------------------------------------
 // Onboarding helpers (reused verbatim from report-pdf.e2e.spec.ts).
