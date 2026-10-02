@@ -23,6 +23,15 @@
  * (UnknownError, see verify-sqlite-memory.mjs), so the chart can never load
  * there. macOS WebKit passes it.
  *
+ * A second blocked realm refuses ONLY the Origin Private File System while
+ * localStorage and IndexedDB keep working: Safari Private Browsing, older iOS,
+ * some embedded WebViews, and every throwaway Playwright WebKit context. Until
+ * 2026-10-01 the dashboard hung there forever on "Loading Your Chart": the
+ * SQLite Worker refused to open, zustand persist never finished hydrating, and
+ * nothing said why. This pass onboards for real and, within a fixed time
+ * bound, requires the dashboard chart plus a visible "won't be saved" note.
+ * It runs in every browser (no --journey needed): it never touches OPFS.
+ *
  * Usage:
  *   node scripts/verify-storage-blocked.mjs http://127.0.0.1:4200 --browser=webkit
  *   node scripts/verify-storage-blocked.mjs http://127.0.0.1:4199 --browser=chromium --journey
@@ -65,6 +74,20 @@ function blockSiteStorage() {
     }
   }
 }
+
+/** Runs before any app script: OPFS refuses, Web Storage and IndexedDB still work. */
+function refuseOpfsOnly() {
+  if (typeof globalThis.StorageManager === 'undefined') return
+  globalThis.StorageManager.prototype.getDirectory = function getDirectory() {
+    return Promise.reject(new globalThis.DOMException(
+      'The operation failed for an unknown transient reason (e.g. out of memory).',
+      'UnknownError',
+    ))
+  }
+}
+
+/** Total budget from finishing onboarding to a rendered chart in an OPFS-less realm. */
+const OPFS_REFUSED_CHART_BUDGET_MS = 120_000
 
 async function typeSections(page, testId, digits, trailing) {
   await page.locator(`[data-testid="${testId}"] [role="spinbutton"]`).first().click()
@@ -119,6 +142,43 @@ try {
   }
   await blocked.close()
 
+  const opfsRefused = await browser.newContext({ serviceWorkers: 'block' })
+  await opfsRefused.addInitScript(refuseOpfsOnly)
+  try {
+    const visited = await visit(opfsRefused, '/onboarding')
+    await visited.page.getByTestId('name-input').waitFor({ state: 'visible', timeout: 30_000 })
+    await onboard(visited.page)
+    const started = Date.now()
+    const chart = visited.page.getByTestId('chart-visualization').first()
+    const outcome = await Promise.race([
+      chart.waitFor({ state: 'visible', timeout: OPFS_REFUSED_CHART_BUDGET_MS }).then(() => 'chart'),
+      visited.page.getByTestId('storage-blocked-notice')
+        .waitFor({ state: 'visible', timeout: OPFS_REFUSED_CHART_BUDGET_MS }).then(() => 'notice'),
+    ]).catch(() => 'hang')
+    const seconds = ((Date.now() - started) / 1000).toFixed(1)
+    if (process.env.STORAGE_BLOCKED_SCREENSHOT_DIR) {
+      await visited.page.screenshot({
+        path: join(process.env.STORAGE_BLOCKED_SCREENSHOT_DIR, `opfs-refused-${BROWSER_NAME}.png`),
+      })
+    }
+    const bodyText = (await visited.page.locator('body').innerText()).replace(/\s+/g, ' ').slice(0, 300)
+    invariant(outcome !== 'hang', `OPFS refused: no chart and no notice after ${seconds}s (hang): ${bodyText}`)
+    invariant(outcome === 'chart', `OPFS refused: expected the in-memory fallback chart, got the blocked notice: ${bodyText}`)
+    const note = visited.page.getByTestId('ephemeral-storage-notice')
+    invariant(await note.isVisible(), 'OPFS refused: chart rendered without the "will not be saved" note')
+    invariant(/export/i.test(await note.innerText()), 'OPFS refused: the ephemeral note does not suggest exporting')
+    await note.getByRole('link').click()
+    await visited.page.waitForURL('**/settings/data', { timeout: 15_000 })
+    invariant(
+      !(await visited.page.getByTestId('storage-blocked-notice').isVisible()),
+      'OPFS refused: the export link led to a blocked-storage notice',
+    )
+    invariant(visited.pageErrors.length === 0, `OPFS refused run threw: ${visited.pageErrors.join(' | ')}`)
+    console.log(`storage-blocked: ${BROWSER_NAME} OPFS refused -> chart + ephemeral note in ${seconds}s`)
+  } finally {
+    await opfsRefused.close()
+  }
+
   const profile = mkdtempSync(join(tmpdir(), 'almamesh-storage-allowed-'))
   const allowed = await browserType.launchPersistentContext(profile, { headless: true })
   try {
@@ -127,6 +187,10 @@ try {
     invariant(
       !(await control.page.getByTestId('storage-blocked-notice').isVisible()),
       'storage-blocked notice shown although storage is allowed',
+    )
+    invariant(
+      !(await control.page.getByTestId('ephemeral-storage-notice').isVisible()),
+      'ephemeral "not saving" note shown although storage is allowed',
     )
     if (RUN_JOURNEY) {
       await onboard(control.page)
