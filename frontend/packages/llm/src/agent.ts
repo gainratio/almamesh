@@ -6,8 +6,10 @@
 // or storage access through this module. Tool arguments/results stay inside the
 // request transcript and are never surfaced through status events.
 
-import { LlmRequestError, type ChatMessage } from "./client";
+import { LlmRequestError, reasoningField, type ChatMessage } from "./client";
 import { ensurePrivacy, type ProviderConfig } from "./config";
+import { CHAT_REASONING_MAX_TOKENS, REASONING_TIMEOUT_MS } from "./reasoning";
+import { sseChunks } from "./sse";
 
 export const AGENT_LIMITS = Object.freeze({
   maxDecisionRounds: 2,
@@ -68,6 +70,12 @@ export interface StreamAgentChatOptions {
   readonly signal?: AbortSignal;
   /** Injectable for deterministic tests; defaults to global `fetch`. */
   readonly fetchImpl?: typeof fetch;
+  /**
+   * Runaway-reasoning cap per request, in ms (default REASONING_TIMEOUT_MS):
+   * no answer text or tool call by then fails the turn with a
+   * ReasoningTimeoutError.
+   */
+  readonly reasoningTimeoutMs?: number;
 }
 
 interface OpenAiFunctionCall {
@@ -107,14 +115,6 @@ interface ToolCallDraft {
   type: string;
   name: string;
   arguments: string;
-}
-
-interface StreamChunk {
-  readonly error?: unknown;
-  readonly choices?: ReadonlyArray<{
-    readonly delta?: { readonly content?: unknown; readonly tool_calls?: unknown };
-    readonly finish_reason?: unknown;
-  }>;
 }
 
 /** Whether any answer text has reached the caller yet this turn. */
@@ -358,6 +358,7 @@ async function* decisionRequest(
       stream: true,
       tools: definitions,
       tool_choice: "auto",
+      ...reasoningField(options.config, CHAT_REASONING_MAX_TOKENS),
     }),
     signal: options.signal,
   });
@@ -371,7 +372,7 @@ async function* decisionRequest(
 
   const drafts = new Map<number, ToolCallDraft>();
   let content = "";
-  for await (const chunk of sseChunks(response)) {
+  for await (const chunk of sseChunks(response, capOf(options))) {
     const delta = chunk.choices?.[0]?.delta;
     if (!delta) continue;
     if (typeof delta.content === "string" && delta.content) {
@@ -526,11 +527,12 @@ async function* finalRequest(
       stream: true,
       tools: definitions,
       tool_choice: "none",
+      ...reasoningField(options.config, CHAT_REASONING_MAX_TOKENS),
     }),
     signal: options.signal,
   });
   if (!response.ok || !response.body) throw await requestError(response);
-  yield* streamContent(response);
+  yield* streamContent(response, options);
 }
 
 /** Compatibility path for OpenAI-compatible endpoints without function calling. */
@@ -547,89 +549,23 @@ async function* streamWithoutTools(
       model: options.config.model,
       messages,
       stream: true,
+      ...reasoningField(options.config, CHAT_REASONING_MAX_TOKENS),
     }),
     signal: options.signal,
   });
   if (!response.ok || !response.body) throw await requestError(response);
-  yield* streamContent(response);
+  yield* streamContent(response, options);
 }
 
-async function* streamContent(response: Response): AsyncGenerator<string> {
-  for await (const chunk of sseChunks(response)) {
+/** The runaway-reasoning cap for one chat request (see reasoning.ts). */
+function capOf(options: StreamAgentChatOptions): { readonly answerDeadlineMs: number } {
+  return { answerDeadlineMs: options.reasoningTimeoutMs ?? REASONING_TIMEOUT_MS };
+}
+
+async function* streamContent(response: Response, options: StreamAgentChatOptions): AsyncGenerator<string> {
+  for await (const chunk of sseChunks(response, capOf(options))) {
     const content = chunk.choices?.[0]?.delta?.content;
     if (typeof content === "string" && content) yield content;
-  }
-}
-
-/** Parse an OpenAI-compatible SSE body into JSON chunks, failing on in-band errors. */
-async function* sseChunks(response: Response): AsyncGenerator<StreamChunk> {
-  if (!response.body) {
-    throw new LlmRequestError("LLM endpoint returned an empty streaming response");
-  }
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  let finished = false;
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const events = buffer.split(/\r?\n\r?\n/);
-      buffer = events.pop() ?? "";
-      for (const event of events) yield* parseSseEvent(event);
-    }
-    buffer += decoder.decode();
-    if (buffer.trim()) yield* parseSseEvent(buffer);
-    finished = true;
-  } finally {
-    if (!finished) reader.cancel().catch(() => undefined);
-  }
-}
-
-/**
- * After a 200 is committed, OpenRouter (and other OpenAI-compatible relays)
- * report failures in-band: a chunk with a top-level `error` and/or
- * `finish_reason: "error"`. Surface it as the same typed error as an HTTP
- * failure so the chat maps it to the same code instead of ending silently.
- */
-function midStreamError(payload: StreamChunk): LlmRequestError {
-  const raw = payload.error;
-  const row = typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>) : {};
-  const detail = typeof row.message === "string" && row.message ? row.message : "unknown error";
-  const status =
-    typeof row.code === "number" && Number.isInteger(row.code) && row.code >= 400 && row.code <= 599
-      ? row.code
-      : undefined;
-  const body = JSON.stringify({ error: raw ?? null }).slice(0, MAX_ERROR_BODY_CHARS);
-  return new LlmRequestError(
-    `LLM endpoint failed mid-stream: ${detail.slice(0, MAX_ERROR_BODY_CHARS)}`,
-    { status, body },
-  );
-}
-
-function* parseSseEvent(event: string): Generator<StreamChunk> {
-  for (const line of event.split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed.startsWith("data:")) continue;
-    const data = trimmed.slice(5).trim();
-    if (!data || data === "[DONE]") continue;
-    let payload: StreamChunk;
-    try {
-      payload = JSON.parse(data) as StreamChunk;
-    } catch {
-      throw new LlmRequestError("LLM endpoint returned invalid streaming JSON");
-    }
-    if (typeof payload !== "object" || payload === null) {
-      throw new LlmRequestError("LLM endpoint returned invalid streaming JSON");
-    }
-    if (
-      (payload.error !== undefined && payload.error !== null) ||
-      payload.choices?.[0]?.finish_reason === "error"
-    ) {
-      throw midStreamError(payload);
-    }
-    yield payload;
   }
 }
 

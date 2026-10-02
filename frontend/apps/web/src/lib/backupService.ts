@@ -33,7 +33,14 @@ import {
   exportPortableBrowserState,
   finalizeBackupRestore,
   importPortableBrowserState,
+  applyPortableSettings,
+  collectPortableSettings,
+  isPortableBundle,
+  openPortableBundle,
   PORTABLE_STATE_KEYS,
+  PortableStateUnavailableError,
+  sealPortableBundle,
+  type PortableSettings,
   readDeletionTombstones,
   readPortableStateDatabase,
   type BackupDeps,
@@ -93,6 +100,28 @@ export interface BackupDepsOverride {
   readPortableState?: (bytes: Uint8Array) => Promise<PortableStateSnapshot>;
   importPortableState?: (bytes: Uint8Array) => Promise<void>;
   readActiveEpoch?: () => Promise<number>;
+  /** Device settings (incl. the AI key) to seal into a v2 export. */
+  readSettings?: () => PortableSettings;
+  /** Replace this device's settings with an imported bundle's. */
+  applySettings?: (settings: PortableSettings) => void;
+}
+
+/** How long staging waits for the local SQLite runtime before giving up. */
+export const STAGE_DATABASE_TIMEOUT_MS = 30_000;
+
+/** Reject with PortableStateUnavailableError when the SQLite runtime never answers. */
+function withinStageTimeout<T>(operation: Promise<T>): Promise<T> {
+  return new Promise((resolvePromise, rejectPromise) => {
+    const timeout = setTimeout(
+      () => rejectPromise(new PortableStateUnavailableError()),
+      STAGE_DATABASE_TIMEOUT_MS,
+    );
+    void operation.then(resolvePromise, rejectPromise).finally(() => clearTimeout(timeout));
+  });
+}
+
+function browserLocalStorage(): Storage {
+  return window.localStorage;
 }
 
 interface RestoreIds {
@@ -173,21 +202,26 @@ export interface BackupExport {
 }
 
 /**
- * Passing no passphrase in the browser yields the real canonical SQLite file.
- * Passphrase exports and dependency-injected pure-tier tests retain the legacy
- * JSON envelope so existing encrypted and test-only paths stay compatible.
+ * The user-facing export takes a passphrase and yields format v2: the canonical
+ * SQLite database plus device settings (AI provider, models, API key), all
+ * sealed with AES-GCM under a PBKDF2-derived key. Without a passphrase it yields
+ * the data-only SQLite file (no settings, no secrets) — used for the pre-import
+ * safety net. Dependency-injected pure-tier tests keep the legacy JSON envelope.
  */
 export async function buildBackupExport(
   passphrase?: string,
   override?: BackupDepsOverride,
 ): Promise<BackupExport> {
   const deps = resolveDeps(override);
-  if (passphrase === undefined && override?.tiers === undefined) {
-    const content = await (override?.exportPortableState ?? exportPortableBrowserState)();
-    return {
-      filename: `almamesh-backup-${deps.now.slice(0, 10)}.sqlite3`,
-      content,
-    };
+  if (override?.tiers === undefined) {
+    const database = await (override?.exportPortableState ?? exportPortableBrowserState)();
+    const day = deps.now.slice(0, 10);
+    if (!passphrase) {
+      return { filename: `almamesh-backup-${day}.sqlite3`, content: database };
+    }
+    const settings = (override?.readSettings ?? (() => collectPortableSettings(browserLocalStorage())))();
+    const content = await sealPortableBundle({ database, settings }, passphrase, deps);
+    return { filename: `almamesh-backup-${day}.json`, content };
   }
   const plain = await collectBackup(deps);
   const encoded = await encodeEnvelope(plain, passphrase);
@@ -207,6 +241,14 @@ export type StagedImport =
       readonly envelope: BackupEnvelopePlain;
       readonly wasEncrypted: false;
       readonly bytes: Uint8Array;
+    }
+  | {
+      /** Format v2: database plus device settings and secrets. */
+      readonly kind: 'bundle';
+      readonly envelope: BackupEnvelopePlain;
+      readonly wasEncrypted: true;
+      readonly bytes: Uint8Array;
+      readonly settings: PortableSettings;
     };
 
 const SQLITE_HEADER = new Uint8Array([
@@ -252,7 +294,7 @@ function envelopeFromPortableSnapshot(snapshot: PortableStateSnapshot): BackupEn
  * Failure modes are typed so the UI can message the exact reason:
  *  - invalid SQLite/JSON, not an AlmaMesh backup, or a below-range version
  *    ⇒ {@link BackupError} `bad_format`
- *  - made by a newer app (`formatVersion > 1`) ⇒ {@link BackupError} `too_new`
+ *  - made by a newer app (`formatVersion > 2`) ⇒ {@link BackupError} `too_new`
  *  - encrypted but no passphrase given ⇒ {@link BackupCryptoError}
  *    `bad_passphrase` (so the UI knows to prompt), and a wrong passphrase
  *    surfaces the same error from `decodeEnvelope`.
@@ -267,17 +309,8 @@ export async function stageBackupImport(
       throw new BackupError('bad_format', 'This file is not an AlmaMesh backup.');
     }
     const bytes = content.slice();
-    try {
-      const snapshot = await (override?.readPortableState ?? readPortableStateDatabase)(bytes);
-      return {
-        kind: 'sqlite',
-        envelope: envelopeFromPortableSnapshot(snapshot),
-        wasEncrypted: false,
-        bytes,
-      };
-    } catch {
-      throw new BackupError('bad_format', 'This SQLite file is not a valid AlmaMesh backup.');
-    }
+    const envelope = await readPortableEnvelope(bytes, override);
+    return { kind: 'sqlite', envelope, wasEncrypted: false, bytes };
   }
   let parsed: unknown;
   try {
@@ -295,13 +328,22 @@ export async function stageBackupImport(
   ) {
     throw new BackupError('bad_format', 'This file is not an AlmaMesh backup.');
   }
-  if (record.formatVersion > 1) {
+  if (isPortableBundle(parsed)) {
+    // Validates the header first (bad_format), then asks for the passphrase.
+    const { database, settings } = await openPortableBundle(parsed, passphrase ?? '');
+    if (!hasSqliteHeader(database)) {
+      throw new BackupError('corrupt', 'The backup unlocked but holds no AlmaMesh database.');
+    }
+    const envelope = await readPortableEnvelope(database, override);
+    return { kind: 'bundle', envelope, wasEncrypted: true, bytes: database, settings };
+  }
+  if (record.formatVersion > 2) {
     throw new BackupError(
       'too_new',
       'This backup was made by a newer version of AlmaMesh. Update the app first.',
     );
   }
-  if (record.formatVersion < 1) {
+  if (record.formatVersion < 1 || record.formatVersion === 2) {
     throw new BackupError('bad_format', 'This backup has an invalid format version.');
   }
 
@@ -315,6 +357,24 @@ export async function stageBackupImport(
 
   const envelope = await decodeEnvelope(parsed as BackupEnvelope, passphrase);
   return { kind: 'json', envelope, wasEncrypted };
+}
+
+/**
+ * Validate canonical SQLite bytes in an isolated in-memory database. A runtime
+ * that cannot start (no OPFS/worker support) surfaces as
+ * PortableStateUnavailableError instead of hanging or posing as a bad file.
+ */
+async function readPortableEnvelope(
+  bytes: Uint8Array,
+  override?: Pick<BackupDepsOverride, 'readPortableState'>,
+): Promise<BackupEnvelopePlain> {
+  try {
+    const read = override?.readPortableState ?? readPortableStateDatabase;
+    return envelopeFromPortableSnapshot(await withinStageTimeout(read(bytes)));
+  } catch (error) {
+    if (error instanceof PortableStateUnavailableError) throw error;
+    throw new BackupError('bad_format', 'This SQLite file is not a valid AlmaMesh backup.');
+  }
 }
 
 /**
@@ -347,7 +407,7 @@ export async function commitBackupImport(
   const abortRestore =
     override?.abortBackupRestore ?? (browserEffects ? abortBackupRestore : async () => undefined);
   const deps = resolveDeps(override);
-  if (staged.kind === 'sqlite') {
+  if (staged.kind === 'sqlite' || staged.kind === 'bundle') {
     const presentStoreKeys = Object.keys(plain.stores);
     publish({ kind: 'dataset', operation: 'replace', phase: 'begin', presentStoreKeys });
     try {
@@ -355,6 +415,14 @@ export async function commitBackupImport(
     } catch (error) {
       publish({ kind: 'dataset', operation: 'replace', phase: 'abort', presentStoreKeys });
       throw error;
+    }
+    if (staged.kind === 'bundle') {
+      // Settings land only after the database commit succeeded: a failed
+      // import never leaves this device with another device's AI key.
+      const apply =
+        override?.applySettings ??
+        ((settings: PortableSettings) => applyPortableSettings(browserLocalStorage(), settings));
+      apply(staged.settings);
     }
     try {
       await withinMemoryRebuildSla(rebuild(restoredChatMessages(plain)));

@@ -83,6 +83,12 @@
     "title": "Generando tu carta",
     "subtitle": "Esto puede tardar un minuto...",
     "step_counter": "Paso {{current}} de {{total}}",
+    "engine_download_start": "Preparando la descarga del motor…",
+    "engine_download": "Descargando datos del motor: {{done}} de {{total}} MB",
+    "engine_retry": "Conexión interrumpida — reintentando…",
+    "engine_verify": "Verificando los datos del motor…",
+    "engine_runtime": "Cargando el entorno del motor: {{done}} MB",
+    "engine_boot": "Iniciando el motor…",
     "steps": {
       "positions": "Calculando posiciones planetarias",
       "houses": "Calculando la ubicación de las casas",

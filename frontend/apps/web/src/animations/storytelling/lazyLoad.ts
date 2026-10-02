@@ -95,6 +95,17 @@ export function isGSAPLoaded(): boolean {
 }
 
 /**
+ * Kill every ScrollTrigger if a page has loaded GSAP; otherwise do nothing.
+ *
+ * Shared UI such as route transitions calls this instead of importing
+ * ScrollTrigger: importing it enables it, which arms a page-lifetime 250 ms
+ * interval plus scroll/wheel/pointer listeners on every page.
+ */
+export function killLoadedScrollTriggers(): void {
+  cachedScrollTrigger?.getAll().forEach((trigger) => trigger.kill());
+}
+
+/**
  * Get cached GSAP instance (throws if not loaded).
  * Use after ensuring GSAP is loaded via loadGSAP() or useGSAPLazy.
  */

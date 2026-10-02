@@ -56,7 +56,7 @@ async function readErrorBody(response: Response): Promise<string | undefined> {
 }
 
 /** Build a diagnosable LlmRequestError for a non-2xx response. */
-async function requestErrorFor(response: Response): Promise<LlmRequestError> {
+export async function requestErrorFor(response: Response): Promise<LlmRequestError> {
   const body = await readErrorBody(response);
   const suffix = body ? `: ${body}` : "";
   return new LlmRequestError(
@@ -69,8 +69,40 @@ interface OpenAiDelta {
   readonly choices?: ReadonlyArray<{ readonly delta?: { readonly content?: string } }>;
 }
 
+interface InBandError {
+  readonly code?: unknown;
+  readonly message?: unknown;
+}
+
 interface OpenAiMessage {
-  readonly choices?: ReadonlyArray<{ readonly message?: { readonly content?: string } }>;
+  readonly error?: InBandError;
+  readonly choices?: ReadonlyArray<{
+    readonly finish_reason?: string | null;
+    readonly error?: InBandError;
+    readonly message?: { readonly content?: string };
+  }>;
+}
+
+/** HTTP status for an in-band failure: its numeric code when it is one, else 502. */
+function inBandStatus(code: unknown): number {
+  return typeof code === "number" && code >= 400 && code <= 599 ? code : 502;
+}
+
+/**
+ * OpenRouter answers HTTP 200 even when the upstream provider dies part-way
+ * through a long non-streaming completion: the failure is in the body
+ * (`finish_reason: "error"`, often no content, sometimes an `error` object).
+ * Turn that into a status-carrying `LlmRequestError` so callers can classify
+ * it as a provider failure and retry, instead of an anonymous empty answer.
+ */
+function inBandFailure(payload: OpenAiMessage): LlmRequestError | undefined {
+  const choice = payload.choices?.[0];
+  const error = payload.error ?? choice?.error;
+  if (error === undefined && choice?.finish_reason !== "error") return undefined;
+  const detail = typeof error?.message === "string" ? `: ${error.message}` : "";
+  return new LlmRequestError(`LLM provider failed mid-generation${detail}`, {
+    status: inBandStatus(error?.code),
+  });
 }
 
 function buildRequestBody(options: StreamChatOptions): string {
@@ -88,10 +120,28 @@ export interface ChatCompletionJsonOptions {
   readonly signal?: AbortSignal;
   /** Optional fetch override for testing; defaults to the global `fetch`. */
   readonly fetchImpl?: typeof fetch;
+  /**
+   * Reasoning budget sent as OpenRouter's `reasoning.max_tokens` (OpenRouter
+   * endpoints only; see reasoning.ts). Unset: the model's own default.
+   */
+  readonly reasoningMaxTokens?: number;
+}
+
+/**
+ * The `reasoning` request field for a budget, OpenRouter only (a strict
+ * OpenAI-compatible server may reject an unknown field). Lives here, not in
+ * reasoning.ts, so client.ts has no import cycle.
+ */
+export function reasoningField(
+  config: ProviderConfig,
+  maxTokens: number | undefined,
+): { readonly reasoning?: { readonly max_tokens: number } } {
+  if (maxTokens === undefined || !config.baseUrl?.startsWith(OPENROUTER_API_BASE)) return {};
+  return { reasoning: { max_tokens: maxTokens } };
 }
 
 /** Strip a ```json … ``` (or plain ```) fence some models wrap JSON in. */
-function stripJsonFence(text: string): string {
+export function stripJsonFence(text: string): string {
   const trimmed = text.trim();
   const fenced = /^```(?:json)?\s*([\s\S]*?)\s*```$/i.exec(trimmed);
   return fenced ? fenced[1].trim() : trimmed;
@@ -117,13 +167,25 @@ export async function chatCompletionJson(
       messages: options.messages,
       stream: false,
       response_format: { type: "json_object" },
+      ...reasoningField(options.config, options.reasoningMaxTokens),
     }),
     signal: options.signal,
   });
   if (!response.ok) {
     throw await requestErrorFor(response);
   }
-  const payload = (await response.json()) as OpenAiMessage;
+  return completionJsonContent(await response.json());
+}
+
+/**
+ * The fence-stripped content of one non-streaming completion body, or the
+ * typed failure it reports in-band (#192). Shared with the streamed variant
+ * for endpoints that ignore `stream: true`.
+ */
+export function completionJsonContent(body: unknown): string {
+  const payload = body as OpenAiMessage;
+  const failure = inBandFailure(payload);
+  if (failure) throw failure;
   const content = payload.choices?.[0]?.message?.content;
   if (typeof content !== "string" || content.trim() === "") {
     throw new LlmRequestError("LLM endpoint returned an empty completion");
@@ -331,7 +393,7 @@ export async function fetchOpenRouterModels(
   return models;
 }
 
-function buildHeaders(config: ProviderConfig): Record<string, string> {
+export function buildHeaders(config: ProviderConfig): Record<string, string> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (config.apiKey) {
     headers.Authorization = `Bearer ${config.apiKey}`;
@@ -339,7 +401,7 @@ function buildHeaders(config: ProviderConfig): Record<string, string> {
   return headers;
 }
 
-function joinUrl(baseUrl: string): string {
+export function joinUrl(baseUrl: string): string {
   return `${baseUrl.replace(/\/$/, "")}/chat/completions`;
 }
 
@@ -358,7 +420,7 @@ function modelsUrl(baseUrl: string): string {
  * an empty string is guarded here so a misconfiguration is a clean, diagnosable
  * error rather than a URL crash.
  */
-function requireBaseUrl(config: ProviderConfig): string {
+export function requireBaseUrl(config: ProviderConfig): string {
   if (!config.baseUrl) {
     throw new LlmRequestError("No OpenAI-compatible base URL configured");
   }

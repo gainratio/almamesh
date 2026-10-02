@@ -18,6 +18,7 @@ import {
   BackupCryptoError,
   BackupError,
   CHART_FLAG_KEY,
+  PortableStateUnavailableError,
   CHAT_VECTORS_KEY,
   type PortableStateSnapshot,
   type StorageTier,
@@ -264,6 +265,185 @@ describe('portable SQLite import', () => {
   });
 });
 
+
+// --- format v2: encrypted bundle with settings and secrets -------------------
+
+describe('encrypted bundle round-trip (format v2)', () => {
+  const SENTINEL_CREDENTIAL = 'synthetic-roundtrip-credential';
+  const PASSPHRASE = 'synthetic passphrase';
+  const databaseA = new Uint8Array([...new TextEncoder().encode('SQLite format 3\0'), 9, 8, 7]);
+  const settingsA = {
+    'almamesh-llm-settings': JSON.stringify({
+      apiBase: 'https://openrouter.ai/api/v1',
+      apiKey: SENTINEL_CREDENTIAL,
+      interpretationModel: 'synthetic/frontier',
+      chatModel: 'synthetic/fast',
+      privacyMode: 'standard',
+    }),
+  };
+  const chatEnvelope = snapshot(
+    { threads: { t1: { id: 't1', profile_id: 'p1' } }, messages: { t1: [{ id: 'm1', content: 'hi' }] } },
+    3,
+  );
+  const snapshotA: PortableStateSnapshot = {
+    epoch: 4,
+    values: new Map([
+      ['almamesh-chat-history', chatEnvelope],
+      ['almamesh-chart-library', snapshot(CHART_LIBRARY_STATE, 0)],
+    ]),
+  };
+
+  async function exportFromA(): Promise<string> {
+    const result = await buildBackupExport(PASSPHRASE, {
+      now: FIXED_NOW,
+      appVersion: FIXED_VERSION,
+      exportPortableState: vi.fn().mockResolvedValue(databaseA),
+      readSettings: () => settingsA,
+    });
+    expect(result.filename).toBe('almamesh-backup-2026-07-01.json');
+    return result.content as string;
+  }
+
+  function browserB() {
+    return {
+      importPortableState: vi.fn().mockResolvedValue(undefined),
+      applySettings: vi.fn(),
+      rebuildChatMemory: vi.fn().mockResolvedValue(undefined),
+      completeMemoryRebuild: vi.fn().mockResolvedValue(undefined),
+      readActiveEpoch: vi.fn().mockResolvedValue(1),
+      publishDatasetNotice: vi.fn(),
+    };
+  }
+
+  it('A → file → B restores the same database bytes and settings, including the API key', async () => {
+    const file = await exportFromA();
+    const readPortableState = vi.fn().mockResolvedValue(snapshotA);
+
+    const staged = await stageBackupImport(file, PASSPHRASE, { readPortableState });
+    const b = browserB();
+    await commitBackupImport(staged, b);
+
+    expect(staged.kind).toBe('bundle');
+    expect([...readPortableState.mock.calls[0][0]]).toEqual([...databaseA]);
+    expect([...b.importPortableState.mock.calls[0][0]]).toEqual([...databaseA]);
+    expect(b.applySettings).toHaveBeenCalledWith(settingsA);
+    expect(JSON.parse(b.applySettings.mock.calls[0][0]['almamesh-llm-settings']).apiKey).toBe(SENTINEL_CREDENTIAL);
+  });
+
+  it('the exported file never contains the plaintext API key', async () => {
+    const file = await exportFromA();
+
+    expect(file).not.toContain(SENTINEL_CREDENTIAL);
+    expect(file).not.toContain('apiKey');
+  });
+
+  it('without a passphrase never reads settings: data-only SQLite (the safety-net path)', async () => {
+    const readSettings = vi.fn(() => settingsA);
+    const result = await buildBackupExport('', {
+      now: FIXED_NOW,
+      exportPortableState: vi.fn().mockResolvedValue(databaseA),
+      readSettings,
+    });
+
+    expect(result.filename).toBe('almamesh-backup-2026-07-01.sqlite3');
+    expect(readSettings).not.toHaveBeenCalled();
+  });
+
+  it('prompts for a passphrase when a bundle is opened without one', async () => {
+    const file = await exportFromA();
+
+    await expect(stageBackupImport(file)).rejects.toMatchObject({
+      name: 'BackupCryptoError',
+      code: 'bad_passphrase',
+    });
+  });
+
+  it('a wrong passphrase is rejected before anything in B is touched', async () => {
+    const file = await exportFromA();
+    const readPortableState = vi.fn();
+
+    await expect(stageBackupImport(file, 'wrong', { readPortableState })).rejects.toBeInstanceOf(
+      BackupCryptoError,
+    );
+    expect(readPortableState).not.toHaveBeenCalled();
+  });
+
+  it('a tampered file is rejected', async () => {
+    const parsed = JSON.parse(await exportFromA());
+    const tampered = JSON.stringify({ ...parsed, ciphertext: `A${parsed.ciphertext.slice(1)}` });
+
+    await expect(stageBackupImport(tampered, PASSPHRASE)).rejects.toMatchObject({
+      code: 'bad_passphrase',
+    });
+  });
+
+  it('keeps B settings untouched when the database commit fails', async () => {
+    const staged = await stageBackupImport(await exportFromA(), PASSPHRASE, {
+      readPortableState: vi.fn().mockResolvedValue(snapshotA),
+    });
+    const b = browserB();
+    b.importPortableState.mockRejectedValue(new Error('commit refused'));
+
+    await expect(commitBackupImport(staged, b)).rejects.toThrow('commit refused');
+    expect(b.applySettings).not.toHaveBeenCalled();
+  });
+
+  it('still imports a previous-format (v1) SQLite export and leaves B settings alone', async () => {
+    const staged = await stageBackupImport(databaseA, undefined, {
+      readPortableState: vi.fn().mockResolvedValue(snapshotA),
+    });
+    const b = browserB();
+
+    await commitBackupImport(staged, b);
+
+    expect(staged.kind).toBe('sqlite');
+    expect(b.importPortableState).toHaveBeenCalled();
+    expect(b.applySettings).not.toHaveBeenCalled();
+  });
+
+  it('refuses an authentic bundle whose database is not SQLite as corrupt', async () => {
+    const { content } = await buildBackupExport(PASSPHRASE, {
+      exportPortableState: vi.fn().mockResolvedValue(new Uint8Array([1, 2, 3])),
+      readSettings: () => settingsA,
+    });
+
+    await expect(stageBackupImport(content as string, PASSPHRASE)).rejects.toMatchObject({
+      name: 'BackupError',
+      code: 'corrupt',
+    });
+  });
+
+  it('maps a SQLite file the validator rejects to bad_format', async () => {
+    await expect(
+      stageBackupImport(databaseA, undefined, {
+        readPortableState: vi.fn().mockRejectedValue(new Error('foreign row')),
+      }),
+    ).rejects.toMatchObject({ name: 'BackupError', code: 'bad_format' });
+  });
+
+  it('refuses a bundle from a newer format version', async () => {
+    const parsed = JSON.parse(await exportFromA());
+
+    await expect(
+      stageBackupImport(JSON.stringify({ ...parsed, formatVersion: 3 }), PASSPHRASE),
+    ).rejects.toMatchObject({ code: 'too_new' });
+  });
+
+  it('fails with PortableStateUnavailableError when the local database never answers', async () => {
+    vi.useFakeTimers();
+    try {
+      const pending = stageBackupImport(databaseA, undefined, {
+        readPortableState: () => new Promise(() => undefined),
+      });
+      const assertion = expect(pending).rejects.toBeInstanceOf(PortableStateUnavailableError);
+      await vi.advanceTimersByTimeAsync(30_000);
+      await assertion;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
 // --- encrypted export -> stage import round-trip -----------------------------
 
 describe('stageBackupImport (encrypted round-trip)', () => {
@@ -343,7 +523,7 @@ describe('stageBackupImport (validation)', () => {
   it('refuses a too-new formatVersion with BackupError too_new', async () => {
     const text = JSON.stringify({
       format: 'almamesh-backup',
-      formatVersion: 2,
+      formatVersion: 3,
       app: { version: 'x' },
       exportedAt: FIXED_NOW,
       encryption: 'none',
@@ -355,7 +535,22 @@ describe('stageBackupImport (validation)', () => {
     });
   });
 
-  // ITEM 5b — only formatVersion 1 is valid today; below-range is malformed.
+  it('refuses an unencrypted formatVersion 2 file as bad_format (v2 is always sealed)', async () => {
+    const text = JSON.stringify({
+      format: 'almamesh-backup',
+      formatVersion: 2,
+      app: { version: 'x' },
+      exportedAt: FIXED_NOW,
+      encryption: 'none',
+      stores: {},
+    });
+    await expect(stageBackupImport(text)).rejects.toMatchObject({
+      name: 'BackupError',
+      code: 'bad_format',
+    });
+  });
+
+  // ITEM 5b — formatVersions 1 and 2 are valid today; below-range is malformed.
   it('refuses a below-range formatVersion with BackupError bad_format', async () => {
     const text = JSON.stringify({
       format: 'almamesh-backup',

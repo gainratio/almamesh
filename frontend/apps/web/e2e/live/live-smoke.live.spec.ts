@@ -7,11 +7,12 @@
  *
  *   @fresh      a pristine browser profile opens the site, the engine boots
  *               within ENGINE_READY_BUDGET_MS, a chart renders, console clean.
- *   @returning  a profile that first ran the PREVIOUS production deployment
- *               (its service worker and precache installed under the live
- *               origin), then upgrades to the new deploy — the path that broke
- *               on 2026-09-24, when returning visitors sat on "The chart engine
- *               is still starting up" and every fresh-profile gate stayed green.
+ *   @returning  a profile that first ran the PREVIOUS production deployment to
+ *               completion (its service worker and precache installed under
+ *               the live origin, engine ready, worker idle), then upgrades to
+ *               the new deploy — the path that broke on 2026-09-24, when
+ *               returning visitors sat on "The chart engine is still starting
+ *               up" and every fresh-profile gate stayed green.
  *
  * Same-origin simulation (the previous deployment only exists at its own
  * `<id>.almamesh.pages.dev` origin): Playwright routes every request for the
@@ -58,6 +59,33 @@ const PREVIOUS_URL = process.env.LIVE_SMOKE_PREVIOUS_URL ?? '';
  */
 const ENGINE_READY_BUDGET_MS = 30_000;
 
+/**
+ * The previous visit must COMPLETE before the visitor leaves it: engine ready,
+ * service worker idle. A real returning visitor's last visit did finish, and
+ * the upgrade depends on it: Chromium activates a worker that called
+ * `skipWaiting()` only once the active worker has no in-flight work
+ * (`ServiceWorkerRegistration::IsReadyToActivate`: `active->HasNoWork()`,
+ * else a five-minute lame-duck limit), and a Workbox CacheFirst fetch event
+ * lives until the whole body is written to the cache. This pass used to leave
+ * at `controller !== null`, mid engine download (bundle + Pyodide, ~68 MB),
+ * and the next page, still the previous build under the previous worker,
+ * started that download again through it. The deploy of fe5b447c
+ * (2026-10-01, rolled back) failed here with the new worker in `waiting` for
+ * the whole 120 s poll; the same upgrade settles in ~20 s from an idle worker
+ * (3/3 against the same two deployments), and holding one of the old
+ * worker's responses open for 60 s held activation for exactly that long
+ * after SKIP_WAITING. Reproduced red locally with one engine file throttled
+ * (scripts/serve-returning-pair.ts).
+ *
+ * Budget: a precondition bound, not a product measurement (the live build's
+ * engine is still held to ENGINE_READY_BUDGET_MS). The cold download runs
+ * through the Playwright proxy: the fresh pass booted cold in 13.5 s on the
+ * runner on 2026-10-01 (~5 MB/s); x13 for the proxy's buffering and a busy
+ * runner. A previous build that cannot boot in this budget fails here,
+ * explicitly, rather than as a stalled upgrade.
+ */
+const PREVIOUS_VISIT_BUDGET_MS = 180_000;
+
 test.describe('live smoke', () => {
   test('fresh visitor: engine ready within budget, chart renders, console clean', { tag: '@fresh' }, async ({ context }) => {
     await context.addInitScript(probeEngineBoot);
@@ -81,14 +109,33 @@ test.describe('live smoke', () => {
     const previousEntry = await servedEntryChunk(request, PREVIOUS_URL);
     const liveEntry = await servedEntryChunk(request, ORIGIN);
 
-    const proxy = await serveOriginFrom(context, ORIGIN, PREVIOUS_URL);
+    const proxy = await serveOriginFrom(context, ORIGIN, PREVIOUS_URL, {
+      requestTimeoutMs: PREVIOUS_VISIT_BUDGET_MS,
+    });
     const previous = await context.newPage();
+    await previous.addInitScript(probeEngineBoot);
     await previous.goto(`${ORIGIN}/welcome`);
+    // The worker claims the page on activation (clientsClaim + clients.claim()
+    // in engine-trust-install.js), so one load ends controlled; no reload.
+    // Chromium still re-checks sw.js on its own during this visit and finds the
+    // LIVE worker (see serveOriginFrom, which keeps that worker from caching the
+    // previous shell under live keys).
     await previous.evaluate(() => navigator.serviceWorker.ready.then(() => undefined));
-    await previous.reload();
     await previous.waitForFunction(() => navigator.serviceWorker.controller !== null, null, { timeout: 60_000 });
     expect(await executingEntryChunk(previous), 'the visitor starts on the previous deploy').toBe(previousEntry);
     expect(proxy.serviceWorkerRequests(), 'the previous service worker installed through the proxy').toBeGreaterThan(0);
+
+    // The previous visit completes before the visitor leaves (PREVIOUS_VISIT_BUDGET_MS).
+    const previousVisitDeadline = Date.now() + PREVIOUS_VISIT_BUDGET_MS;
+    const previousProbe = await engineProbeAfter(previous, PREVIOUS_VISIT_BUDGET_MS);
+    console.log(`live-smoke previous engine_boot_ms=${previousProbe.bootMs ?? 'timeout'}`);
+    expect(previousProbe.bootMs, `the previous deploy's engine is ready within ${PREVIOUS_VISIT_BUDGET_MS} ms`).not.toBeNull();
+    await expect
+      .poll(() => proxy.inFlightServiceWorkerRequests(), {
+        message: 'the previous service worker has no request in flight when the visitor leaves',
+        timeout: Math.max(10_000, previousVisitDeadline - Date.now()),
+      })
+      .toBe(0);
     await previous.close();
     proxy.switchToLive();
 

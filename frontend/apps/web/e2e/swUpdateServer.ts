@@ -17,7 +17,7 @@
 //     `public/_headers` (plain static servers omit these headers and cannot
 //     exercise SharedArrayBuffer/OPFS).
 
-import { createServer, type Server } from 'node:http';
+import { createServer, type Server, type ServerResponse } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { existsSync, statSync } from 'node:fs';
 import path from 'node:path';
@@ -76,6 +76,24 @@ function resolveFile(root: string, pathname: string): string | null {
   return path.extname(relative) ? null : path.join(root, 'index.html');
 }
 
+const TRICKLE_TICK_MS = 500;
+
+/** Write a small body in ticks so the response stays open for `durationMs`. */
+function trickle(res: ServerResponse, headers: Record<string, string>, durationMs: number): void {
+  res.writeHead(200, { ...headers, 'content-type': 'application/octet-stream', 'cache-control': 'no-cache' });
+  const ticks = Math.max(1, Math.ceil(durationMs / TRICKLE_TICK_MS));
+  let sent = 0;
+  const timer = setInterval(() => {
+    sent += 1;
+    res.write(Buffer.alloc(1024));
+    if (sent >= ticks) {
+      clearInterval(timer);
+      res.end();
+    }
+  }, TRICKLE_TICK_MS);
+  res.on('close', () => clearInterval(timer));
+}
+
 export interface TwoBuildServer {
   readonly origin: string;
   /** Point the origin at a different build directory — i.e. ship a deploy. */
@@ -91,6 +109,13 @@ export interface TwoBuildServer {
     isolation?: boolean;
     rewriteServiceWorker?: ((source: string) => string) | null;
   }): void;
+  /**
+   * Serve `pathname` as a 200 body that trickles out over `durationMs`. Under
+   * a CacheFirst route (`/pyodide/*`), the active worker's fetch event stays
+   * alive until the whole body is cached: the busy engine download that
+   * defers activation of a waiting worker on a slow link.
+   */
+  slowBody(pathname: string, durationMs: number): void;
   close(): Promise<void>;
 }
 
@@ -102,6 +127,7 @@ export async function startTwoBuildServer(
   let root = initialBuildDir;
   let isolation = true;
   let rewriteServiceWorker: ((source: string) => string) | null = null;
+  const slowBodies = new Map<string, number>();
   const headersFile = await readFile(path.join(initialBuildDir, '_headers'), 'utf8');
   const csp = cspForLocalHttpPreview(headersFile);
   const isolationHeaders = browserIsolationHeadersFromHeadersFile(headersFile);
@@ -112,7 +138,13 @@ export async function startTwoBuildServer(
 
   const server: Server = createServer((req, res) => {
     const baseHeaders = isolation ? isolatedHeaders : {};
-    const file = resolveFile(root, (req.url ?? '/').split('?')[0]);
+    const pathname = (req.url ?? '/').split('?')[0];
+    const slowMs = slowBodies.get(pathname);
+    if (slowMs !== undefined) {
+      trickle(res, baseHeaders, slowMs);
+      return;
+    }
+    const file = resolveFile(root, pathname);
     if (!file) {
       res.writeHead(404, { ...baseHeaders, 'content-type': 'text/plain' });
       res.end('not found');
@@ -152,6 +184,12 @@ export async function startTwoBuildServer(
       isolation = options.isolation ?? isolation;
       if (options.rewriteServiceWorker !== undefined) rewriteServiceWorker = options.rewriteServiceWorker;
     },
-    close: () => new Promise<void>((resolve) => server.close(() => resolve())),
+    slowBody(pathname, durationMs) {
+      slowBodies.set(pathname, durationMs);
+    },
+    close: () => {
+      server.closeAllConnections();
+      return new Promise<void>((resolve) => server.close(() => resolve()));
+    },
   };
 }

@@ -38,6 +38,7 @@
     "dashboard": "Panel",
     "astrologer_view": "Vista de astrólogo",
     "mesh": "Malla",
+    "mesh_open": "Abrir tu Malla",
     "report": "Informe",
     "settings": "Ajustes",
     "menu": "Menú de navegación",
@@ -49,6 +50,16 @@
     "title": "Tu navegador está bloqueando el almacenamiento del sitio",
     "body": "AlmaMesh calcula y guarda tu carta solo en este dispositivo, así que necesita permiso para almacenar datos de este sitio. Tu navegador lo está rechazando ahora mismo.",
     "fix": "En Safari, abre Ajustes > Privacidad y desactiva \"Bloquear todas las cookies\"; luego recarga esta página. En otros navegadores, permite las cookies y los datos del sitio para almamesh.com."
+  },
+  "storage_ephemeral": {
+    "title": "Este navegador no está guardando tus datos.",
+    "body": "Aquí rechaza el almacenamiento en el dispositivo (por ejemplo, en navegación privada), así que tu carta funciona pero desaparece al cerrar esta pestaña.",
+    "export": "Exporta una copia de seguridad para conservarla."
+  },
+  "storage_unavailable": {
+    "title": "AlmaMesh no puede iniciar su base de datos en el dispositivo",
+    "body": "AlmaMesh calcula y guarda tu carta solo en este dispositivo, y este navegador no puede ejecutar la base de datos local que necesita.",
+    "fix": "Prueba una versión actual de Safari, Chrome, Firefox o Edge en una ventana normal (no privada) y vuelve a cargar esta página."
   },
   "error_boundary": {
     "title": "Algo salió mal",
@@ -66,7 +77,11 @@
   "update": {
     "available": "¡Hay una nueva versión disponible!",
     "reload_cta": "Recargar para actualizar",
-    "dismiss_aria": "Descartar aviso de actualización"
+    "dismiss_aria": "Descartar aviso de actualización",
+    "finishing_previous": "Terminando la descarga anterior… se actualizará al acabar.",
+    "activating": "Actualizando…",
+    "stalled": "La actualización no pudo terminar. Cierra las demás pestañas de AlmaMesh y vuelve a cargar.",
+    "reload_now": "Recargar ahora"
   },
   "footer": {
     "privacy": "Política de privacidad",

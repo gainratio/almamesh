@@ -17,7 +17,7 @@
     "generate_timeline": "Gerar linha do tempo atual",
     "refresh_timeline": "Atualizar linha do tempo atual",
     "connect_ai": "Conectar um modelo de IA",
-    "switch_recommended": "Mudar para o recomendado (DeepSeek V4)",
+    "switch_recommended": "Mudar para o recomendado (DeepSeek V4.1 Flash)",
     "ai_settings": "Configurações de IA",
     "dismiss": "Dispensar"
   },
@@ -56,6 +56,8 @@
     "title_failed": "Não foi possível gerar a interpretação",
     "elapsed": "Gerando a partir do seu modelo — {{elapsed}} decorridos. Uma leitura completa pode levar de 1 a 3 minutos em um modelo na nuvem.",
     "timeline_elapsed": "Gerando o momento atual a partir do seu modelo — {{elapsed}} decorridos.",
+    "timeline_writing": "Escrevendo… {{words}} palavras até agora",
+    "timeline_thinking": "Pensando… {{words}} palavras de raciocínio até agora",
     "partial_failure": "Algumas seções não puderam ser geradas desta vez: {{sections}}. O restante da leitura está completo — gere novamente para preencher a lacuna.",
     "timeline_partial_failure": "Algumas seções da linha do tempo não puderam ser geradas: {{sections}}. Sua leitura natal salva não foi alterada.",
     "regen_failed": "Não foi possível regenerar a leitura ({{error}}). Sua leitura anterior está mantida abaixo."

@@ -44,7 +44,7 @@ import type {
 import type { TimeConfidence } from '@almamesh/constants';
 import type { RectificationInput } from '@almamesh/browser/types';
 import { engineErrorCode as engineErrorCodeOf } from '../lib/engineLifecycle';
-import { useOptionalChartEngine } from '../providers/chartEngineContext';
+import { useEngineBootProgress, useOptionalChartEngine } from '../providers/chartEngineContext';
 import { predictiveReferenceInstant } from '../lib/predictive';
 import { useRectificationGate } from '../lib/rectificationGate';
 
@@ -295,7 +295,13 @@ export function useRectification(profileId: string): UseRectificationResult {
   // timeout without booting — the cue to offer reset-and-reload. The single
   // serial Pyodide worker can take a minute or two on a cold first boot, so the
   // wait is honest until this flips.
+  // The budget is an IDLE budget: every bootstrap report arrives as a new
+  // `stage` object (bundle bytes, a verified file, Pyodide bytes), and each one
+  // restarts the timer. A slow link that keeps moving never reads as stuck.
   const [warmingTimedOut, setWarmingTimedOut] = useState(false);
+  // The byte-level context (coalesced to <= 4/s): the coarse `stage` on the
+  // engine context changes only when the bootstrap enters a new stage.
+  const latestStage = useEngineBootProgress();
   useEffect(() => {
     if (engine !== null) {
       setWarmingTimedOut(false);
@@ -303,7 +309,7 @@ export function useRectification(profileId: string): UseRectificationResult {
     }
     const id = setTimeout(() => setWarmingTimedOut(true), ENGINE_WARM_TIMEOUT_MS);
     return () => clearTimeout(id);
-  }, [engine]);
+  }, [engine, latestStage]);
 
   // Gate + cancel-on-unmount lifecycle + fresh-visit hygiene + eager warm.
   useEffect(() => {

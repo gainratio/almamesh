@@ -37,7 +37,7 @@ const KEYS = "/run/almamesh-keys"
 const BUN_INSTALLER = "/opt/almamesh/install-bun.sh"
 const LIVE_ORIGIN = "https://almamesh.com"
 const REPOSITORY = "hseshadr/almamesh"
-const EDGEPROC_BROWSER_SHA = "02171df60afc8b09d6439112ea7ea3202338d46a"
+const EDGEPROC_BROWSER_SHA = "0749e66b4260ffcd02b1d039eb2eaa26cd970da7"
 const CONTRACT_SHA = "1111111111111111111111111111111111111111"
 const CENTRAL_MODULE_SHA = "73329cb501989bc65c63525f19feaa35f0e7c0a6"
 const BUN_IMAGE =
@@ -78,6 +78,7 @@ const NIGHTLY_REPORTED_E2E = [
   "interp:heal:real",
   "chat:rag:real",
   "dashboard:agentic:real",
+  "timeline:real",
 ]
 // The product gates are independent, but they are heavy (real browsers, Pyodide, vitest
 // workers) and the GitHub runner has 4 vCPUs. Six at once turned CPU contention into

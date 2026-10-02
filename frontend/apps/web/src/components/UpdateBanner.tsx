@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { useServiceWorker } from '../hooks/useServiceWorker'
 import { useVersionCheck } from '../hooks/useVersionCheck'
+import { reloadPage, type UpdateStatus } from '../lib/swUpdate'
 
 /**
  * Banner shown when a new version of the app is available.
@@ -19,6 +20,12 @@ import { useVersionCheck } from '../hooks/useVersionCheck'
  * worker — so the reload landed on the same stale build, forever. Since the
  * poller was the only trigger that ever fired, there was no working path at all.
  *
+ * After the click the banner stays up and reports what the update is doing.
+ * Activation can wait up to five minutes for the previous service worker to
+ * finish an engine download (see lib/swUpdate.ts); a banner that vanished
+ * there, or a reload that landed on the old build, read as a failed update.
+ * "Reload now" is always offered while we wait, so the click is never a trap.
+ *
  * The cached engine data in OPFS is untouched by an update.
  */
 
@@ -31,13 +38,40 @@ const BANNER_CLASS =
   'fixed top-0 left-0 right-0 z-[60] bg-accent-gold text-background-primary ' +
   'px-4 py-2 flex items-center justify-center gap-4 animate-fade-in'
 
+const BUTTON_CLASS =
+  'px-3 py-1 bg-background-primary text-accent-gold rounded-md text-sm font-semibold ' +
+  'hover:bg-background-secondary transition-colors'
+
+const STATUS_KEY: Record<UpdateStatus, string> = {
+  activating: 'update.activating',
+  'finishing-previous': 'update.finishing_previous',
+  stalled: 'update.stalled',
+}
+
+/** The banner after the click: what the update is doing, plus the escape hatch. */
+function UpdateProgress({ status }: { status: UpdateStatus }) {
+  const { t } = useTranslation()
+  return (
+    <div role="status" aria-live="polite" className={BANNER_CLASS}>
+      <span className="text-sm font-medium">{t(STATUS_KEY[status])}</span>
+      <button onClick={reloadPage} className={BUTTON_CLASS}>
+        {t('update.reload_now')}
+      </button>
+    </div>
+  )
+}
+
 export function UpdateBanner() {
   const { t } = useTranslation()
-  const { needRefresh, update, dismiss: dismissSw } = useServiceWorker()
+  const { needRefresh, updateStatus, update, dismiss: dismissSw } = useServiceWorker()
   const { hasNewVersion, dismissUpdate: dismissVersion } = useVersionCheck({
     pollInterval: 5 * 60 * 1000,
     checkOnFocus: true,
   })
+
+  if (updateStatus) {
+    return <UpdateProgress status={updateStatus} />
+  }
 
   const show = needRefresh || hasNewVersion
   if (!show) {
@@ -65,7 +99,7 @@ export function UpdateBanner() {
       <span className="text-sm font-medium">{t('update.available')}</span>
       <button
         onClick={reload}
-        className="px-3 py-1 bg-background-primary text-accent-gold rounded-md text-sm font-semibold hover:bg-background-secondary transition-colors"
+        className={BUTTON_CLASS}
       >
         {t('update.reload_cta')}
       </button>

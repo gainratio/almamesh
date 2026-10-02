@@ -19,9 +19,19 @@ const requestedBrowser = arguments_
 const ORIGIN = new URL(BASE_URL).origin
 const EXPECTED_MESSAGE = 'sqlite-proof-message'
 
+/**
+ * SQLite's own OPFS / OPFS-WL async-proxy Workers, an internal of the vendored
+ * runtime rather than an app Worker. Since @edgeproc/browser 3146a2a the
+ * runtime spawns them inline from a same-origin Blob URL, so the install never
+ * waits on a network fetch (on slow 4G that fetch lost a 4 s race and the
+ * durable store refused to open). Nothing in this app spawns a Worker from a
+ * Blob URL, so a same-origin blob: Worker is that proxy. Older builds spawned
+ * it from the emitted asset with a ?vfs= query; keep recognising those.
+ */
 function isDocumentedSqliteProxyWorker(url) {
   try {
     const parsed = new URL(url)
+    if (parsed.protocol === 'blob:') return new URL(parsed.pathname).origin === ORIGIN
     return (
       /\/assets\/sqlite3-opfs-async-proxy(?:-[^/]+)?\.js$/.test(parsed.pathname) &&
       ['opfs', 'opfs-wl'].includes(parsed.searchParams.get('vfs'))

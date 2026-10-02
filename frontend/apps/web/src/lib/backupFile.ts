@@ -160,9 +160,11 @@ function pickFileViaInput(): Promise<BackupFileContent | null> {
     input.accept = 'application/vnd.sqlite3,application/json,.sqlite3,.sqlite,.db,.json';
 
     let settled = false;
+    let focusTimer: ReturnType<typeof setTimeout> | undefined;
     const settle = (value: BackupFileContent | null) => {
       if (settled) return;
       settled = true;
+      clearTimeout(focusTimer);
       window.removeEventListener('focus', onFocus);
       resolve(value);
     };
@@ -174,7 +176,11 @@ function pickFileViaInput(): Promise<BackupFileContent | null> {
       }
       void readBackupFile(file).then(settle, reject);
     };
-    const onFocus = () => setTimeout(() => settle(null), 0);
+    // Refocus without a `change` means the dialog was dismissed. If a real
+    // selection wins the race, settle() cancels this timer.
+    const onFocus = () => {
+      focusTimer = setTimeout(() => settle(null), 0);
+    };
 
     input.addEventListener('change', onChange, { once: true });
     input.addEventListener('cancel', () => settle(null), { once: true });

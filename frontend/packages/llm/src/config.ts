@@ -185,8 +185,12 @@ export function resolveProviderConfig(env: LlmEnv = {}): ProviderConfig {
  * The recommended OpenRouter cloud model — the SINGLE source of truth for the
  * one-click preset, the settings UI default, and the "switch to recommended"
  * self-heal. A real OpenRouter slug (verified against the live models catalog).
+ *
+ * deepseek-v4.1-flash since 2026-10-01: in the live timeline benchmark (3 runs
+ * each) it finished all 3 in 49-65 s, vs 111-170 s for deepseek-v4-pro and 1 of
+ * 3 for z-ai/glm-5.3-flash. Changing this never rewrites a model a user saved.
  */
-export const RECOMMENDED_CLOUD_MODEL = "deepseek/deepseek-v4-pro";
+export const RECOMMENDED_CLOUD_MODEL = "deepseek/deepseek-v4.1-flash";
 
 /**
  * The default cloud model the CHAT panel prefers: a fast-streaming
@@ -218,7 +222,7 @@ export const RETIRED_CLOUD_MODELS: readonly string[] = ["anthropic/claude-3.5-so
  *
  * `model` seeds the INTERPRETATION tier (and the legacy `model` field for
  * back-compat); `chatModel` (default the fast {@link CHAT_CLOUD_MODEL}) seeds the
- * chat tier, so the one-click preset lands the recommended frontier/fast pair.
+ * chat tier, so the one-click preset lands the recommended interpretation/chat pair.
  */
 export function openRouterPreset(
   apiKey: string,

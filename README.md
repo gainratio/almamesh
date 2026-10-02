@@ -194,9 +194,9 @@ full set of dev/build/test commands.
   [spec](docs/specs/062-robust-rectifier-comprehensive-report.md).
 - Use it in English, Spanish, or Portuguese, bundled for offline use.
 - Keep everything in one portable, on-device SQLite database: canonical profiles,
-  charts, life events, chat, interpretations, and language. Settings can export the real
-  database file and restore it on another device; provider API keys and
-  rebuildable caches are deliberately excluded —
+  charts, life events, chat, interpretations, and language. Settings exports it,
+  together with your AI settings and API key, as one password-encrypted file you
+  can restore on another device. Rebuildable caches are left out —
   [spec](docs/specs/061-backup-restore-your-data.md).
 - Optionally turn on AI interpretation and chat. AI is off by default. If you enable it,
   requests go directly from your browser to the endpoint you configure. Asking
@@ -444,7 +444,7 @@ Nothing needs configuring to draw a chart. The knobs that exist:
 - **In the app (Settings):** AI provider (off by default; OpenRouter preset or any
   OpenAI-compatible loopback endpoint), model, and `local_only` mode; language;
   profiles and people; backup and restore. Your AI key is stored only in this
-  browser and is excluded from backups.
+  browser; a backup carries it only inside the password-encrypted file.
 - **Build-time (`VITE_` env vars for the web app):** `VITE_BUNDLE_BASE_URL`
   (overrides where the signed bundle is synced from; default is this origin),
   `VITE_TURNSTILE_SITE_KEY` (enables the feedback anti-bot check), and the

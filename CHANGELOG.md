@@ -6,7 +6,51 @@ All notable changes to AlmaMesh are documented here. Format follows
 
 ## [Unreleased]
 
+### Changed
+- **New users now get `deepseek/deepseek-v4.1-flash` for the reading and the
+  timeline.** Live timeline benchmark (3 runs each): v4.1-flash finished 3/3 in
+  49-65 s; deepseek-v4-pro 3/3 in 111-170 s; z-ai/glm-5.3-flash 1/3 (two runs
+  showed nothing for over a minute, the third took 200 s). A saved model is
+  never rewritten. Users on glm-5.3-flash see a one-time, dismissible
+  suggestion in Settings → AI with those numbers.
+
+### Added
+- **Runaway-reasoning cap.** Each timeline/reading section asks OpenRouter for
+  at most 12k reasoning tokens (chat: 6k), and any streamed request with no
+  answer text after 3 minutes is cancelled with `ai.reasoning_timeout`. A
+  section gets #192's one retry first; the message suggests retrying or a
+  faster model. The budget alone is not trusted: live probes showed upstreams
+  overshooting it.
+
 ### Fixed
+- **Typing the birth date no longer loses digits while the engine downloads.**
+  On a busy CPU (a budget phone, or the release gate's 4-core runner) typing
+  `08/08/1988` could end as `MM/DD/1988` with Continue disabled. Two causes,
+  both fixed: the date field (MUI X) restores a half-typed year through a ref
+  that any unrelated re-render of the field can clear, and this release's
+  byte-level boot progress re-rendered the whole onboarding page hundreds of
+  times a second. The field is now isolated from unrelated re-renders and
+  settles React before each keystroke; boot progress lives on its own context,
+  coalesced to at most 4 updates a second, and the overlap-mode Pyodide warm-up
+  waits for an idle slot instead of competing with the first keystrokes.
+  `verify-storage-blocked.mjs` takes `STORAGE_BLOCKED_CPU_THROTTLE=6` to
+  reproduce the budget-phone case on a laptop.
+- **A slow mobile connection no longer leaves a new user on the "Connection
+  Issue" card.** Measured on Chrome's Slow 4G profile (180 KB/s, 562 ms RTT):
+  the cold engine sync took 124 s and Pyodide was ready at 127 s, but
+  onboarding's `resolveReadyEngine` gave up at a fixed 90 s and showed the
+  Retry card, every time. Three wall clocks became idle budgets that every
+  progress report restarts: the onboarding readiness wait (90 s *without
+  progress*), the rectification wizard's warming cue (75 s without progress),
+  and the chart Worker's boot deadline (60 s without progress, with the Pyodide
+  download now reporting bytes as they arrive). The onboarding screen shows a
+  real download bar ("Downloading engine data: 8.4 of 24.3 MB", then
+  verifying, then the runtime) instead of a spinner, fed by the sync Worker's
+  byte-level progress. `@edgeproc/browser` is bumped to the build whose
+  transport declares a stall only after 30 s with no bytes (a transfer that
+  keeps moving is never cut off) and retries a stalled chunk without
+  re-downloading verified ones; `stalled` now counts as a transient boot
+  failure for the provider's online retry.
 - **A header-only deploy can no longer strand returning visitors on old
   headers.** The service-worker precache is now keyed on a hash of
   `public/_headers`: every entry's revision carries `headers-<sha256[:16]>`, so

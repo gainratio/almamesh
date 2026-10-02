@@ -32,6 +32,9 @@ import type { SiderealChart } from "@almamesh/browser/types";
 
 import { estimateTokens } from "./budget";
 import { chatCompletionJson, LlmRequestError, type ChatMessage } from "./client";
+import { createJsonProseExtractor, createWordCounter } from "./json-prose";
+import { streamChatCompletionJson } from "./json-stream";
+import { SECTION_REASONING_MAX_TOKENS } from "./reasoning";
 import { ensurePrivacy, isLocalEndpoint, type ProviderConfig } from "./config";
 import { withLanguage, type PromptLanguage } from "./language";
 import { buildPredictiveFactsBlock } from "./predictive-facts";
@@ -75,19 +78,19 @@ export type InterpretationEvent =
   | { type: "section_start"; section: InterpretationSectionKey }
   | { type: "section_complete"; section: InterpretationSectionKey }
   | { type: "complete"; interpretation: VedicInterpretation }
-  | { type: "error"; section?: InterpretationSectionKey; message: string };
+  | { type: "error"; section?: InterpretationSectionKey; message: string; status?: number };
 
 export type NatalInterpretationEvent =
   | { type: "section_start"; section: NatalInterpretationSectionKey }
   | { type: "section_complete"; section: NatalInterpretationSectionKey }
   | { type: "complete"; interpretation: NatalInterpretation }
-  | { type: "error"; section: NatalInterpretationSectionKey; message: string };
+  | { type: "error"; section: NatalInterpretationSectionKey; message: string; status?: number };
 
 export type CurrentTimelineEvent =
   | { type: "section_start"; section: CurrentTimelineSectionKey }
   | { type: "section_complete"; section: CurrentTimelineSectionKey }
   | { type: "complete"; timeline: CurrentTimelineContent }
-  | { type: "error"; section: CurrentTimelineSectionKey; message: string };
+  | { type: "error"; section: CurrentTimelineSectionKey; message: string; status?: number };
 
 export interface StructuredInterpretationParams {
   /** The engine chart (same type `streamChartInterpretation` takes). */
@@ -102,6 +105,30 @@ export interface StructuredInterpretationParams {
   readonly now?: Date;
   /** Injectable for tests; defaults to the global `fetch`. */
   readonly fetchImpl?: typeof fetch;
+  /**
+   * Runaway-reasoning cap for streamed sections, in ms (default
+   * REASONING_TIMEOUT_MS). Injectable so tests need not wait three minutes.
+   */
+  readonly reasoningTimeoutMs?: number;
+  /**
+   * When set, each section STREAMS (`stream: true`) and this is called with
+   * the section's live prose as it is written. The final JSON is still
+   * validated before the section completes. Unset: one non-streaming call.
+   */
+  readonly onSectionProgress?: (
+    section: InterpretationSectionKey,
+    progress: SectionProgressSnapshot,
+  ) => void;
+}
+
+/** A section's live, still-unvalidated prose while it streams. */
+export interface SectionProgressSnapshot {
+  /** Words written so far (JSON string values only). */
+  readonly words: number;
+  /** The last few hundred characters of prose, for a live preview. */
+  readonly preview: string;
+  /** Reasoning ("thinking") words so far; the text itself is not kept. */
+  readonly thinkingWords: number;
 }
 
 export type NatalInterpretationParams = StructuredInterpretationParams;
@@ -1006,7 +1033,7 @@ type SectionOutcome<Section extends InterpretationSectionKey = InterpretationSec
 type SectionLifecycleEvent<Section extends InterpretationSectionKey> =
   | { type: "section_start"; section: Section }
   | { type: "section_complete"; section: Section }
-  | { type: "error"; section: Section; message: string };
+  | { type: "error"; section: Section; message: string; status?: number };
 
 /**
  * The LITE-prompt gate: a local OpenAI-compatible endpoint (Ollama et al.) means
@@ -1014,6 +1041,65 @@ type SectionLifecycleEvent<Section extends InterpretationSectionKey> =
  */
 export function usesLitePrompt(config: ProviderConfig): boolean {
   return isLocalEndpoint(config.baseUrl);
+}
+
+/**
+ * A failure worth one more attempt: the provider dropped the generation
+ * (in-band error / 5xx), rate-limited us (429), timed out (408), or the
+ * connection died (a fetch TypeError, no status). A rejected key, missing
+ * credits, or a bad model would fail the same way again, so those are final.
+ */
+function isTransientFailure(err: unknown): boolean {
+  if (err instanceof LlmRequestError) {
+    const status = err.status;
+    return status === undefined || status === 408 || status === 429 || status >= 500;
+  }
+  return err instanceof TypeError;
+}
+
+/** HTTP status of a section failure, when the endpoint reported one. */
+function outcomeStatus(err: unknown): number | undefined {
+  return err instanceof LlmRequestError ? err.status : undefined;
+}
+
+/**
+ * One section completion. With a progress listener it streams and reports the
+ * decoded prose per delta (a fresh extractor per attempt, so a retry restarts
+ * the count); otherwise it is the single non-streaming JSON call.
+ */
+function requestSection(
+  section: InterpretationSectionKey,
+  messages: ChatMessage[],
+  params: StructuredInterpretationParams,
+): Promise<string> {
+  const base = {
+    config: params.config,
+    messages,
+    reasoningMaxTokens: SECTION_REASONING_MAX_TOKENS,
+    ...(params.signal ? { signal: params.signal } : {}),
+    ...(params.fetchImpl ? { fetchImpl: params.fetchImpl } : {}),
+  };
+  const report = params.onSectionProgress;
+  if (!report) return chatCompletionJson(base);
+  const prose = createJsonProseExtractor();
+  const thinking = createWordCounter();
+  const snapshot = (): SectionProgressSnapshot => ({
+    words: prose.words(),
+    preview: prose.preview(),
+    thinkingWords: thinking.words(),
+  });
+  return streamChatCompletionJson({
+    ...base,
+    ...(params.reasoningTimeoutMs === undefined ? {} : { reasoningTimeoutMs: params.reasoningTimeoutMs }),
+    onDelta: (delta) => {
+      prose.push(delta);
+      report(section, snapshot());
+    },
+    onReasoning: (delta) => {
+      thinking.push(delta);
+      report(section, snapshot());
+    },
+  });
 }
 
 function runOneSection<Section extends InterpretationSectionKey>(
@@ -1029,12 +1115,12 @@ function runOneSection<Section extends InterpretationSectionKey>(
     lite,
     params.language ?? "en",
   );
-  return chatCompletionJson({
-    config: params.config,
-    messages,
-    ...(params.signal ? { signal: params.signal } : {}),
-    ...(params.fetchImpl ? { fetchImpl: params.fetchImpl } : {}),
-  })
+  const request = () => requestSection(section, messages, params);
+  return request()
+    .catch((err: unknown) => {
+      if (params.signal?.aborted || !isTransientFailure(err)) throw err;
+      return request();
+    })
     .then((raw): SectionOutcome<Section> => ({ section, ok: true, raw }))
     // Keep the ORIGINAL error (not just its message) so the aggregation can
     // preserve the HTTP status/body of a representative failure — the caller
@@ -1101,7 +1187,8 @@ async function* streamSections<Section extends InterpretationSectionKey>(
       }
       const message = outcomeErrorMessage(outcome.error);
       failures.push(message);
-      yield { type: "error", section: outcome.section, message };
+      const status = outcomeStatus(outcome.error);
+      yield { type: "error", section: outcome.section, message, ...(status === undefined ? {} : { status }) };
       continue;
     }
     try {

@@ -15,7 +15,7 @@
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { BackupCryptoError, BackupError } from '@almamesh/store';
+import { BackupCryptoError, BackupError, PortableStateUnavailableError } from '@almamesh/store';
 import type { BackupEnvelopePlain } from '@almamesh/shared-types';
 
 import '../../../i18n/config';
@@ -87,32 +87,68 @@ describe('DataSettings — Backup & Restore panel', () => {
     expect(screen.getByTestId('backup-import-button')).toBeTruthy();
   });
 
-  it('exports with no passphrase and shows the downloaded status', async () => {
+  // CONTRACT REVERSAL: export used to work with no password and silently left
+  // out settings and the AI key. The file now carries them, so a password is
+  // required to seal it.
+  it('refuses to export without a password and says why', async () => {
     render(<DataSettings />);
 
     fireEvent.click(screen.getByTestId('backup-export-button'));
 
-    await waitFor(() =>
-      expect(vi.mocked(buildBackupExport)).toHaveBeenCalledWith(undefined),
-    );
-    expect(vi.mocked(saveBackupFile)).toHaveBeenCalledWith(
-      'almamesh-backup-2026-07-01.sqlite3',
-      new Uint8Array([1, 2, 3]),
-    );
-    expect(await screen.findByText('Backup downloaded.')).toBeTruthy();
+    expect(
+      await screen.findByText(
+        'Choose a password of at least 8 characters. It encrypts the file, including your AI key.',
+      ),
+    ).toBeTruthy();
+    expect(vi.mocked(buildBackupExport)).not.toHaveBeenCalled();
   });
 
-  it('passes the entered passphrase to the export', async () => {
+  it('refuses a password shorter than 8 characters', async () => {
     render(<DataSettings />);
 
     fireEvent.change(screen.getByTestId('backup-passphrase-input'), {
-      target: { value: 'hunter2' },
+      target: { value: 'short' },
+    });
+    fireEvent.click(screen.getByTestId('backup-export-button'));
+
+    expect(await screen.findByTestId('backup-error')).toBeTruthy();
+    expect(vi.mocked(buildBackupExport)).not.toHaveBeenCalled();
+  });
+
+  it('passes the entered passphrase to the export and shows the downloaded status', async () => {
+    vi.mocked(buildBackupExport).mockResolvedValue({
+      filename: 'almamesh-backup-2026-07-01.json',
+      content: '{"formatVersion":2}',
+    });
+    render(<DataSettings />);
+
+    fireEvent.change(screen.getByTestId('backup-passphrase-input'), {
+      target: { value: 'hunter2-long' },
     });
     fireEvent.click(screen.getByTestId('backup-export-button'));
 
     await waitFor(() =>
-      expect(vi.mocked(buildBackupExport)).toHaveBeenCalledWith('hunter2'),
+      expect(vi.mocked(buildBackupExport)).toHaveBeenCalledWith('hunter2-long'),
     );
+    expect(vi.mocked(saveBackupFile)).toHaveBeenCalledWith(
+      'almamesh-backup-2026-07-01.json',
+      '{"formatVersion":2}',
+    );
+    expect(await screen.findByText('Backup downloaded.')).toBeTruthy();
+  });
+
+  it('shows the export failure reason instead of a generic error', async () => {
+    vi.mocked(buildBackupExport).mockRejectedValueOnce(new PortableStateUnavailableError());
+    render(<DataSettings />);
+
+    fireEvent.change(screen.getByTestId('backup-passphrase-input'), {
+      target: { value: 'hunter2-long' },
+    });
+    fireEvent.click(screen.getByTestId('backup-export-button'));
+
+    expect(
+      await screen.findByText(/This browser can't open AlmaMesh's local database/),
+    ).toBeTruthy();
   });
 
   // ITEM 5a — the passphrase must not linger in the field after a saved export.
@@ -120,8 +156,8 @@ describe('DataSettings — Backup & Restore panel', () => {
     render(<DataSettings />);
     const input = screen.getByTestId('backup-passphrase-input') as HTMLInputElement;
 
-    fireEvent.change(input, { target: { value: 'hunter2' } });
-    expect(input.value).toBe('hunter2');
+    fireEvent.change(input, { target: { value: 'hunter2-long' } });
+    expect(input.value).toBe('hunter2-long');
 
     fireEvent.click(screen.getByTestId('backup-export-button'));
 
@@ -252,6 +288,107 @@ describe('DataSettings — Backup & Restore panel', () => {
     expect(
       await screen.findByText("That file isn't an AlmaMesh backup."),
     ).toBeTruthy();
+  });
+
+  it('a v2 bundle: unlock with the password, then the safety net is sealed with it too', async () => {
+    vi.mocked(pickBackupFile).mockResolvedValue('BUNDLE_TEXT');
+    vi.mocked(buildBackupExport).mockResolvedValue({
+      filename: 'almamesh-backup-2026-07-01.json',
+      content: 'SEALED',
+    });
+    vi.mocked(stageBackupImport)
+      .mockRejectedValueOnce(new BackupCryptoError('bad_passphrase', 'encrypted'))
+      .mockResolvedValueOnce({
+        kind: 'bundle',
+        envelope: SAMPLE_ENVELOPE,
+        wasEncrypted: true,
+        bytes: new Uint8Array([1]),
+        settings: {},
+      });
+    render(<DataSettings />);
+    fireEvent.click(screen.getByTestId('backup-import-button'));
+    fireEvent.change(await screen.findByTestId('backup-passphrase-prompt-input'), {
+      target: { value: 'bundle-pass' },
+    });
+    fireEvent.click(screen.getByTestId('backup-passphrase-prompt-submit'));
+
+    fireEvent.click(await screen.findByTestId('backup-confirm-import'));
+
+    await waitFor(() => expect(vi.mocked(commitBackupImport)).toHaveBeenCalled());
+    expect(vi.mocked(buildBackupExport)).toHaveBeenCalledWith('bundle-pass');
+    expect(vi.mocked(saveBackupFile)).toHaveBeenCalledWith(
+      'almamesh-backup-before-import-2026-07-01.json',
+      'SEALED',
+    );
+  });
+
+  it('a wrong password keeps the prompt open with a specific message and commits nothing', async () => {
+    vi.mocked(pickBackupFile).mockResolvedValue('BUNDLE_TEXT');
+    vi.mocked(stageBackupImport)
+      .mockRejectedValueOnce(new BackupCryptoError('bad_passphrase', 'encrypted'))
+      .mockRejectedValueOnce(new BackupCryptoError('bad_passphrase', 'wrong'));
+    render(<DataSettings />);
+    fireEvent.click(screen.getByTestId('backup-import-button'));
+    fireEvent.change(await screen.findByTestId('backup-passphrase-prompt-input'), {
+      target: { value: 'wrong-pass' },
+    });
+    fireEvent.click(screen.getByTestId('backup-passphrase-prompt-submit'));
+
+    expect(
+      await screen.findByText(
+        "Wrong password, or the file was changed after export. Nothing was imported.",
+      ),
+    ).toBeTruthy();
+    expect(vi.mocked(commitBackupImport)).not.toHaveBeenCalled();
+  });
+
+  it('warns before restoring an older backup that carries no AI settings', async () => {
+    vi.mocked(pickBackupFile).mockResolvedValue(new Uint8Array([1]));
+    vi.mocked(stageBackupImport).mockResolvedValue({
+      kind: 'sqlite',
+      envelope: SAMPLE_ENVELOPE,
+      wasEncrypted: false,
+      bytes: new Uint8Array([1]),
+    });
+    render(<DataSettings />);
+
+    fireEvent.click(screen.getByTestId('backup-import-button'));
+
+    expect(await screen.findByTestId('backup-legacy-note')).toBeTruthy();
+  });
+
+  it('maps an unavailable local database to an actionable message', async () => {
+    vi.mocked(pickBackupFile).mockResolvedValue(new Uint8Array([1]));
+    vi.mocked(stageBackupImport).mockRejectedValueOnce(new PortableStateUnavailableError());
+    render(<DataSettings />);
+
+    fireEvent.click(screen.getByTestId('backup-import-button'));
+
+    expect(
+      await screen.findByText(/This browser can't open AlmaMesh's local database/),
+    ).toBeTruthy();
+  });
+
+  it('shows the reason when a backup cannot be read for an unexpected cause', async () => {
+    vi.mocked(pickBackupFile).mockResolvedValue('FILE_TEXT');
+    vi.mocked(stageBackupImport).mockRejectedValueOnce(new Error('worker crashed'));
+    render(<DataSettings />);
+
+    fireEvent.click(screen.getByTestId('backup-import-button'));
+
+    expect(await screen.findByText("Couldn't read that backup: worker crashed")).toBeTruthy();
+  });
+
+  it('shows the reason when the restore itself fails', async () => {
+    vi.mocked(pickBackupFile).mockResolvedValue('FILE_TEXT');
+    vi.mocked(commitBackupImport).mockRejectedValueOnce(new Error('disk full'));
+    render(<DataSettings />);
+
+    fireEvent.click(screen.getByTestId('backup-import-button'));
+    fireEvent.click(await screen.findByTestId('backup-confirm-import'));
+
+    expect(await screen.findByText(/Restore failed: disk full/)).toBeTruthy();
+    expect(reloadSpy).not.toHaveBeenCalled();
   });
 
   it('does nothing when the file picker is cancelled', async () => {

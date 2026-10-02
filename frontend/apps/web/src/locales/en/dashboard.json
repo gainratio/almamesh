@@ -14,7 +14,7 @@
     "generate_timeline": "Generate current timeline",
     "refresh_timeline": "Refresh current timeline",
     "connect_ai": "Connect an AI model",
-    "switch_recommended": "Switch to recommended (DeepSeek V4)",
+    "switch_recommended": "Switch to recommended (DeepSeek V4.1 Flash)",
     "ai_settings": "AI settings",
     "dismiss": "Dismiss"
   },
@@ -53,6 +53,8 @@
     "title_failed": "Interpretation could not be generated",
     "elapsed": "Generating from your model — {{elapsed}} elapsed. A full reading can take 1–3 minutes on a cloud model.",
     "timeline_elapsed": "Generating current timing from your model — {{elapsed}} elapsed.",
+    "timeline_writing": "Writing… {{words}} words so far",
+    "timeline_thinking": "Thinking… {{words}} words of reasoning so far",
     "partial_failure": "Some sections could not be generated this time: {{sections}}. The rest of the reading is complete — regenerate to fill the gap.",
     "timeline_partial_failure": "Some timeline sections could not be generated: {{sections}}. Your saved natal reading is unchanged.",
     "regen_failed": "The reading could not be regenerated ({{error}}). Your previous reading is kept below."

@@ -17,7 +17,7 @@
  */
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { BackupCryptoError, BackupError } from '@almamesh/store';
+import { BackupCryptoError, BackupError, PortableStateUnavailableError } from '@almamesh/store';
 import { Button, Card, Dialog, Input } from '../../components/ui';
 import {
   buildBackupExport,
@@ -31,6 +31,13 @@ import {
   type BackupFileContent,
 } from '../../lib/backupFile';
 import { suppressNextServiceWorkerHeal } from '../../lib/swSelfHeal';
+
+/** Minimum export password length; the file carries the AI key, so it is required. */
+const MIN_PASSPHRASE_LENGTH = 8;
+
+function reasonOf(error: unknown): string {
+  return error instanceof Error && error.message ? error.message : String(error);
+}
 
 export default function DataSettings() {
   const { t } = useTranslation('settings');
@@ -50,6 +57,8 @@ export default function DataSettings() {
 
   // Passphrase prompt (encrypted backups)
   const [pendingContent, setPendingContent] = useState<BackupFileContent | null>(null);
+  // The password that unlocked the staged file; reused to seal the safety net.
+  const [stagedPassphrase, setStagedPassphrase] = useState<string | undefined>(undefined);
   const [promptPassphrase, setPromptPassphrase] = useState('');
   const [promptError, setPromptError] = useState<string | null>(null);
 
@@ -60,16 +69,24 @@ export default function DataSettings() {
 
   async function handleExport() {
     clearBanners();
+    if (password.length < MIN_PASSPHRASE_LENGTH) {
+      setError(t('backup.error_passphrase_required'));
+      return;
+    }
     setExporting(true);
     try {
-      const { filename, content } = await buildBackupExport(password || undefined);
+      const { filename, content } = await buildBackupExport(password);
       const result = await saveBackupFile(filename, content);
       if (result === 'saved') {
         setStatus(t('backup.status_exported'));
         setPassword(''); // don't leave the passphrase lingering in the field
       }
-    } catch {
-      setError(t('backup.error_generic'));
+    } catch (err) {
+      setError(
+        err instanceof PortableStateUnavailableError
+          ? t('backup.error_storage_unavailable')
+          : t('backup.error_export_failed', { reason: reasonOf(err) }),
+      );
     } finally {
       setExporting(false);
     }
@@ -77,14 +94,18 @@ export default function DataSettings() {
 
   /** Stage a picked file; open the passphrase prompt on encryption, else confirm. */
   async function stageFile(content: BackupFileContent, passphrase?: string) {
+    setStatus(t('backup.status_checking'));
     try {
       const result = await stageBackupImport(content, passphrase);
+      setStatus(null);
+      setStagedPassphrase(passphrase);
       setPendingContent(null);
       setPromptPassphrase('');
       setPromptError(null);
       setStaged(result);
       setConfirmOpen(true);
     } catch (err) {
+      setStatus(null);
       if (err instanceof BackupCryptoError && err.code === 'bad_passphrase') {
         // Encrypted (or a wrong passphrase): (re)open the prompt to collect one.
         setPendingContent(content);
@@ -99,7 +120,11 @@ export default function DataSettings() {
         setError(t('backup.error_bad_format'));
         return;
       }
-      setError(t('backup.error_generic'));
+      if (err instanceof PortableStateUnavailableError) {
+        setError(t('backup.error_storage_unavailable'));
+        return;
+      }
+      setError(t('backup.error_stage_failed', { reason: reasonOf(err) }));
     }
   }
 
@@ -126,7 +151,10 @@ export default function DataSettings() {
     setImporting(true);
     try {
       // Safety net FIRST: download a copy of the CURRENT data so Replace is undoable.
-      const current = await buildBackupExport();
+      // When the backup was unlocked with a password, the safety copy is sealed
+      // with the same password so it carries this browser's settings and key too.
+      const current =
+        staged.kind === 'bundle' ? await buildBackupExport(stagedPassphrase) : await buildBackupExport();
       const safetyFilename = current.filename.startsWith('almamesh-backup-')
         ? current.filename.replace('almamesh-backup-', 'almamesh-backup-before-import-')
         : `almamesh-backup-before-import-${current.filename}`;
@@ -145,9 +173,9 @@ export default function DataSettings() {
       // stacking a second reload while the fresh realm hydrates its stores.
       suppressNextServiceWorkerHeal();
       window.location.reload();
-    } catch {
+    } catch (err) {
       setConfirmOpen(false);
-      setError(t('backup.error_generic'));
+      setError(t('backup.error_import_failed', { reason: reasonOf(err) }));
     } finally {
       setImporting(false);
     }
@@ -229,6 +257,11 @@ export default function DataSettings() {
       >
         <div className="space-y-4">
           <p className="text-text-secondary text-sm">{t('backup.confirm_body')}</p>
+          {staged?.kind === 'sqlite' && (
+            <p data-testid="backup-legacy-note" className="text-sm text-status-warning">
+              {t('backup.confirm_legacy_note')}
+            </p>
+          )}
           <div className="flex gap-3 pt-2">
             <button
               type="button"

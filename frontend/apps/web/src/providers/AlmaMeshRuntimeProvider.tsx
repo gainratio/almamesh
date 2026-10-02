@@ -21,7 +21,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { AlmaMeshRuntime, WorkerCrashError, WorkerTimeoutError } from '@almamesh/browser'
 import type { BootStage, BundleMeta, ChartEngine, OnStage, RuntimeConfig } from '@almamesh/browser'
-import { ChartEngineContext } from './chartEngineContext'
+import {
+  ChartEngineContext,
+  EngineBootProgressContext,
+  PROGRESS_COALESCE_MS,
+} from './chartEngineContext'
 import { hasLocalChart } from '../lib/localChart'
 import { recordEngineBootFailure, registerEngineTeardown } from '../lib/engineLifecycle'
 import { recoverSeveredServiceWorkerChannel } from '../lib/swSelfHeal'
@@ -132,7 +136,9 @@ export interface BootstrapRuntime {
   dispose?(): Promise<void> | void
 }
 
-const TRANSIENT_BOOT_FAILURE = /network unreachable|failed to fetch|load failed|networkerror|timed out after|importing a module script failed/i
+// `stalled`: the sync transport's stall error (no bytes for 30 s) after its
+// own bounded retries. A network condition, so it gets the same online retry.
+const TRANSIENT_BOOT_FAILURE = /network unreachable|failed to fetch|load failed|networkerror|timed out after|stalled|importing a module script failed/i
 const REPORTED_ONLINE_RETRY_DELAYS_MS = [250, 1_000, 5_000, 15_000] as const
 
 function isTransientBootFailure(error: Error): boolean {
@@ -159,7 +165,10 @@ export function AlmaMeshRuntimeProvider({ children, runtime }: ProviderProps) {
   }
 
   const [engine, setEngine] = useState<ChartEngine | null>(null)
+  // Coarse stage (kind changes only) — on the engine context every page reads.
   const [stage, setStage] = useState<BootStage | null>(null)
+  // Every report, coalesced — on its own context for the progress line only.
+  const [bootProgress, setBootProgress] = useState<BootStage | null>(null)
   const [error, setError] = useState<Error | null>(null)
   const [meta, setMeta] = useState<BundleMeta | null>(null)
   const [onlineEpoch, setOnlineEpoch] = useState(0)
@@ -174,14 +183,65 @@ export function AlmaMeshRuntimeProvider({ children, runtime }: ProviderProps) {
   const consumedOnlineEpochRef = useRef(0)
   const reportedOnlineRetryCountRef = useRef(0)
 
+  // Every bootstrap report (stage change, bundle or Pyodide bytes arriving, a
+  // file verified) is progress. Readiness waits measure their idle budget from
+  // here, so a slow link that keeps moving is never declared stuck.
+  const progressAtRef = useRef(0)
+  const lastProgressAt = useCallback((): number => progressAtRef.current, [])
+
+  // Byte-level reports arrive hundreds of times a second during the sync. A
+  // React update per report re-rendered every engine consumer — the onboarding
+  // form included — and starved typing. Coalesce: a stage CHANGE passes at
+  // once; same-stage reports publish at most every PROGRESS_COALESCE_MS,
+  // trailing-edge so the last report of a burst always lands.
+  const coarseKindRef = useRef<BootStage['kind'] | null>(null)
+  const progressPublishedAtRef = useRef(0)
+  const progressHeldRef = useRef<BootStage | null>(null)
+  const progressTimerRef = useRef<number | null>(null)
+
+  const dropHeldProgress = useCallback(() => {
+    if (progressTimerRef.current !== null) {
+      window.clearTimeout(progressTimerRef.current)
+      progressTimerRef.current = null
+    }
+    progressHeldRef.current = null
+  }, [])
+
+  const publishProgress = useCallback((next: BootStage, now: number) => {
+    progressPublishedAtRef.current = now
+    progressHeldRef.current = null
+    setBootProgress(next)
+  }, [])
+
   const onStage = useCallback<OnStage>((next) => {
-    setStage(next)
+    const now = Date.now()
+    progressAtRef.current = now
     // Dev-only observability hook: expose the latest boot stage on window so a
     // Playwright harness can poll readiness without UI scraping.
     if (EXIT_GATE_HOOKS) {
       publishRuntimeStage(next.kind)
     }
-  }, [])
+    if (coarseKindRef.current !== next.kind) {
+      coarseKindRef.current = next.kind
+      dropHeldProgress()
+      setStage(next)
+      publishProgress(next, now)
+      return
+    }
+    const elapsed = now - progressPublishedAtRef.current
+    if (progressTimerRef.current === null && elapsed >= PROGRESS_COALESCE_MS) {
+      publishProgress(next, now)
+      return
+    }
+    progressHeldRef.current = next
+    if (progressTimerRef.current === null) {
+      progressTimerRef.current = window.setTimeout(() => {
+        progressTimerRef.current = null
+        const held = progressHeldRef.current
+        if (held !== null) publishProgress(held, Date.now())
+      }, Math.max(0, PROGRESS_COALESCE_MS - elapsed))
+    }
+  }, [dropHeldProgress, publishProgress])
 
   // Run (or re-run) the bootstrap, wiring engine/meta/error and sharing the
   // promise via the ref. Returns the promise so callers can await readiness.
@@ -283,13 +343,16 @@ export function AlmaMeshRuntimeProvider({ children, runtime }: ProviderProps) {
     setEngine(null)
     setError(null)
     setStage(null)
+    coarseKindRef.current = null
+    dropHeldProgress()
+    setBootProgress(null)
     reportedOnlineRetryCountRef.current = 0
     retryWithoutConnectivityRef.current = false
     // Drop the stale verify key / update pointer first: a CacheFirst-pinned dev
     // key is the classic cause of a fail-closed "signature verification failed",
     // and a plain reboot would just re-read the same stale key. Best-effort.
     return clearStaleEngineCaches().then(() => runBootstrap())
-  }, [runBootstrap])
+  }, [dropHeldProgress, runBootstrap])
 
   // Initial mount bootstrap — auto-run once, EXCEPT on the marketing landing
   // route. A fresh visitor sitting on `/` (no saved chart) only reads the pitch;
@@ -351,13 +414,18 @@ export function AlmaMeshRuntimeProvider({ children, runtime }: ProviderProps) {
     consumedOnlineEpochRef.current = 0
     reportedOnlineRetryCountRef.current = 0
     inFlightRef.current = null
+    dropHeldProgress()
     void runtimeRef.current?.dispose?.()
-  }, [])
+  }, [dropHeldProgress])
 
   const value = useMemo(
-    () => ({ engine, stage, error, meta, reboot, whenReady, startBootstrap }),
-    [engine, stage, error, meta, reboot, whenReady, startBootstrap],
+    () => ({ engine, stage, lastProgressAt, error, meta, reboot, whenReady, startBootstrap }),
+    [engine, stage, lastProgressAt, error, meta, reboot, whenReady, startBootstrap],
   )
 
-  return <ChartEngineContext.Provider value={value}>{children}</ChartEngineContext.Provider>
+  return (
+    <ChartEngineContext.Provider value={value}>
+      <EngineBootProgressContext.Provider value={bootProgress}>{children}</EngineBootProgressContext.Provider>
+    </ChartEngineContext.Provider>
+  )
 }

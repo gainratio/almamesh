@@ -17,6 +17,7 @@ import { useChartEngine } from "../providers/AlmaMeshRuntimeProvider";
 import { LocationSearch, type LocationResult } from "../components/shared/LocationSearch";
 import { Logo } from "../components/ui/Logo";
 import { BirthDatePicker } from "../components/BirthDatePicker";
+import { EngineBootProgress } from "../components/EngineBootProgress";
 import { TimePicker } from "../components/TimePicker";
 import { useOnboardingStore } from "../stores/onboarding";
 import { getUserFriendlyError, getEngineWarmingMessage } from "../lib/errors";
@@ -97,7 +98,11 @@ export default function OnboardingPage() {
   // fail-closed: `resolveReadyEngine` awaits the in-flight boot (warming race)
   // or reboots (re-syncs) a failed one, so the user no longer has to manually
   // retry. The slow path simply waits behind the existing progress UI.
-  const { engine, error: engineError, reboot, whenReady, startBootstrap } = useChartEngine();
+  // `stage` is deliberately NOT read here: byte-level progress is drawn by
+  // <EngineBootProgress>, which subscribes on its own, so a progress report
+  // never re-renders this page (or the birth-date field on it).
+  const { engine, error: engineError, reboot, whenReady, startBootstrap, lastProgressAt } =
+    useChartEngine();
 
   // Engine-dependent route: ensure the bootstrap is running on entry. The
   // provider gates its mount auto-boot off the marketing landing route, so a
@@ -351,7 +356,7 @@ export default function OnboardingPage() {
       // the slow path simply WAITS behind the progress UI, then proceeds. A
       // wedged boot eventually times out into the retryable warming message.
       try {
-        await resolveReadyEngine({ engine, error: engineError, reboot, whenReady });
+        await resolveReadyEngine({ engine, error: engineError, reboot, whenReady, lastProgressAt });
       } catch (readyErr) {
         if (readyErr instanceof Error && readyErr.name === "EngineNotReadyError") {
           // Bounded wait elapsed — transient, retryable. Distinct from a compute
@@ -586,6 +591,10 @@ export default function OnboardingPage() {
                 {t("error.still_warming")}
               </p>
             )}
+            {/* A real number while the engine downloads (bundle bytes, then the
+                Pyodide runtime): on a slow link this takes minutes, and a bar
+                that moves reads as slow, not stuck. */}
+            {!engine && <EngineBootProgress />}
           </div>
 
           {/* Progress Bar */}

@@ -116,8 +116,15 @@ export function ChatPanel({
   const handleOpenResult = useCallback((messageId: string, threadId: string) => {
     openThread(threadId);
     setHighlightedMessageId(messageId);
-    window.setTimeout(() => setHighlightedMessageId(null), 2000);
   }, [openThread]);
+
+  // The highlight fades after 2s. Owned by an effect so unmounting (or opening
+  // another result) cancels the pending timer instead of leaking it.
+  useEffect(() => {
+    if (highlightedMessageId === null) return;
+    const timer = window.setTimeout(() => setHighlightedMessageId(null), 2000);
+    return () => window.clearTimeout(timer);
+  }, [highlightedMessageId]);
 
   useEffect(() => {
     if (highlightedMessageId === null) return;

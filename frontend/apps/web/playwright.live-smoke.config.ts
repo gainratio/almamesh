@@ -18,7 +18,8 @@ export default defineConfig({
   forbidOnly: true,
   retries: 0,
   reporter: 'list',
-  timeout: 300_000,
+  // @returning: previous visit (<= 180 s) + upgrade (<= 120 s) + engine (<= 30 s) + chart.
+  timeout: 480_000,
   expect: { timeout: 30_000 },
   use: {
     headless: true,

@@ -2,6 +2,7 @@ import {
   EngineClient,
   type EngineSyncResult,
   type EngineWorkerLike,
+  type SyncProgress,
 } from "@edgeproc/browser";
 import EdgeProcWorker from "./edgeproc.worker?worker";
 
@@ -24,6 +25,8 @@ export interface AlmaSyncEngine {
     pubkeyUrl: string,
     expectedBundleId: string,
     expectedChannel: string,
+    /** The library's sync progress (per phase, per network read, per retry). */
+    onProgress?: (progress: SyncProgress) => void,
   ): Promise<EngineSyncResult>;
   readFile(path: string): Promise<Uint8Array>;
   /**
@@ -38,7 +41,7 @@ export interface AlmaSyncEngine {
 export function createAlmaSyncEngine(worker: EngineWorkerLike): AlmaSyncEngine {
   const client = new EngineClient(worker);
   return {
-    async sync(baseUrl, pubkeyUrl, expectedBundleId, expectedChannel) {
+    async sync(baseUrl, pubkeyUrl, expectedBundleId, expectedChannel, onProgress) {
       const hooks = globalThis as ExitGateGlobals;
       const forceIndexedDb = hooks.__EDGEPROC_FORCE_INDEXEDDB_CACHE__ === true;
       const result = await client.sync(baseUrl, pubkeyUrl, {
@@ -47,6 +50,7 @@ export function createAlmaSyncEngine(worker: EngineWorkerLike): AlmaSyncEngine {
         cacheNamespace: CACHE_NAMESPACE,
         indexedDbLayout: LEGACY_INDEXED_DB_LAYOUT,
         ...(forceIndexedDb ? { storageBackend: "indexeddb" as const } : {}),
+        ...(onProgress === undefined ? {} : { onProgress }),
       });
       if (forceIndexedDb) hooks.__EDGEPROC_SELECTED_CACHE__ = result.cacheBackend;
       return result;

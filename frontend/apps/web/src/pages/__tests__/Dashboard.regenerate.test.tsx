@@ -435,6 +435,120 @@ describe('Dashboard — regenerate reading', () => {
     expect(mockedStream).not.toHaveBeenCalled();
   });
 
+  it('shows the road ahead as it is written, with a live word count', async () => {
+    configureCloudAi();
+    seedCompleteReading(currentProvenance());
+    const today = predictiveReferenceInstant(new Date(), 'Asia/Kolkata').slice(0, 10);
+    usePredictiveStore.setState({
+      status: 'ready',
+      profileKey: 'profile-1',
+      requestKey: predictiveRequestKey({
+        profileKey: 'profile-1',
+        datetimeUtc: '1990-03-30T06:30:00Z',
+        latitude: 12.97,
+        longitude: 77.59,
+        referenceInstant: `${today}T00:00:00Z`,
+      }),
+      rawContexts: {
+        transit_context: { instant: `${today}T00:00:00Z` },
+        varga_context_full: { charts: {} },
+        strength_context: {},
+        domains_context: { forecasts: {} },
+      } as never,
+    });
+    mockedTimelineStream.mockImplementation(async function* (params) {
+      params.onSectionProgress?.('upcoming_periods', { words: 42, preview: 'Jupiter period\nA season of growth', thinkingWords: 300 });
+      await new Promise<never>(() => {});
+      yield* [] as CurrentTimelineEvent[];
+    });
+    renderDashboard();
+
+    fireEvent.click(await screen.findByTestId('generate-timeline'));
+
+    const live = await screen.findByTestId('timeline-live-upcoming_periods');
+    expect(live.textContent).toContain('A season of growth');
+    expect(live.textContent).toContain('42 words');
+    expect(screen.queryByTestId('timeline-live-current_sky')).toBeNull();
+  });
+
+  it('shows a reasoning model is thinking before the first prose arrives', async () => {
+    configureCloudAi();
+    seedCompleteReading(currentProvenance());
+    const today = predictiveReferenceInstant(new Date(), 'Asia/Kolkata').slice(0, 10);
+    usePredictiveStore.setState({
+      status: 'ready',
+      profileKey: 'profile-1',
+      requestKey: predictiveRequestKey({
+        profileKey: 'profile-1',
+        datetimeUtc: '1990-03-30T06:30:00Z',
+        latitude: 12.97,
+        longitude: 77.59,
+        referenceInstant: `${today}T00:00:00Z`,
+      }),
+      rawContexts: {
+        transit_context: { instant: `${today}T00:00:00Z` },
+        varga_context_full: { charts: {} },
+        strength_context: {},
+        domains_context: { forecasts: {} },
+      } as never,
+    });
+    mockedTimelineStream.mockImplementation(async function* (params) {
+      params.onSectionProgress?.('upcoming_periods', { words: 0, preview: '', thinkingWords: 215 });
+      await new Promise<never>(() => {});
+      yield* [] as CurrentTimelineEvent[];
+    });
+    renderDashboard();
+
+    fireEvent.click(await screen.findByTestId('generate-timeline'));
+
+    const live = await screen.findByTestId('timeline-live-upcoming_periods');
+    expect(live.textContent).toContain('Thinking');
+    expect(live.textContent).toContain('215 words');
+  });
+
+  it('names the error code of a failed timeline section in the partial-failure notice', async () => {
+    configureCloudAi();
+    seedCompleteReading(currentProvenance());
+    const store = useInterpretationStore.getState();
+    const run = store.startCurrentTimeline('chart-1');
+    store.markCurrentTimelineSectionFailed('chart-1', 'upcoming_periods', run, 'ai.provider.server_error');
+    await store.setCurrentTimeline(
+      'chart-1',
+      { upcoming_periods: [], current_sky: [{ title: 'Now', layman: 'Active', technical: 'Saturn' }] },
+      '2026-06-21T00:00:00Z',
+      currentProvenance(),
+      NATAL_ONLY_INPUT,
+      run,
+    );
+    renderDashboard();
+
+    const notice = await screen.findByTestId('timeline-partial-failure');
+    expect(notice.textContent).toContain('The road ahead (ai.provider.server_error)');
+  });
+
+  it('tells the user to retry or pick a faster model when a section hit the reasoning cap', async () => {
+    configureCloudAi();
+    seedCompleteReading(currentProvenance());
+    const store = useInterpretationStore.getState();
+    const run = store.startCurrentTimeline('chart-1');
+    store.markCurrentTimelineSectionFailed('chart-1', 'upcoming_periods', run, 'ai.reasoning_timeout');
+    await store.setCurrentTimeline(
+      'chart-1',
+      { upcoming_periods: [], current_sky: [{ title: 'Now', layman: 'Active', technical: 'Saturn' }] },
+      '2026-06-21T00:00:00Z',
+      currentProvenance(),
+      NATAL_ONLY_INPUT,
+      run,
+    );
+    renderDashboard();
+
+    const notice = await screen.findByTestId('timeline-partial-failure');
+    expect(notice.textContent).toContain('The road ahead (ai.reasoning_timeout)');
+    expect(notice.textContent).toContain(
+      'The model thought for over 3 minutes without starting its answer. Try again, or pick a faster model in Settings → AI.',
+    );
+  });
+
   it('queues an explicit timeline click without spending until current facts are ready', async () => {
     configureCloudAi();
     seedCompleteReading(currentProvenance());
