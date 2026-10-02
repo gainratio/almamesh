@@ -75,19 +75,19 @@ export type InterpretationEvent =
   | { type: "section_start"; section: InterpretationSectionKey }
   | { type: "section_complete"; section: InterpretationSectionKey }
   | { type: "complete"; interpretation: VedicInterpretation }
-  | { type: "error"; section?: InterpretationSectionKey; message: string };
+  | { type: "error"; section?: InterpretationSectionKey; message: string; status?: number };
 
 export type NatalInterpretationEvent =
   | { type: "section_start"; section: NatalInterpretationSectionKey }
   | { type: "section_complete"; section: NatalInterpretationSectionKey }
   | { type: "complete"; interpretation: NatalInterpretation }
-  | { type: "error"; section: NatalInterpretationSectionKey; message: string };
+  | { type: "error"; section: NatalInterpretationSectionKey; message: string; status?: number };
 
 export type CurrentTimelineEvent =
   | { type: "section_start"; section: CurrentTimelineSectionKey }
   | { type: "section_complete"; section: CurrentTimelineSectionKey }
   | { type: "complete"; timeline: CurrentTimelineContent }
-  | { type: "error"; section: CurrentTimelineSectionKey; message: string };
+  | { type: "error"; section: CurrentTimelineSectionKey; message: string; status?: number };
 
 export interface StructuredInterpretationParams {
   /** The engine chart (same type `streamChartInterpretation` takes). */
@@ -1006,7 +1006,7 @@ type SectionOutcome<Section extends InterpretationSectionKey = InterpretationSec
 type SectionLifecycleEvent<Section extends InterpretationSectionKey> =
   | { type: "section_start"; section: Section }
   | { type: "section_complete"; section: Section }
-  | { type: "error"; section: Section; message: string };
+  | { type: "error"; section: Section; message: string; status?: number };
 
 /**
  * The LITE-prompt gate: a local OpenAI-compatible endpoint (Ollama et al.) means
@@ -1014,6 +1014,25 @@ type SectionLifecycleEvent<Section extends InterpretationSectionKey> =
  */
 export function usesLitePrompt(config: ProviderConfig): boolean {
   return isLocalEndpoint(config.baseUrl);
+}
+
+/**
+ * A failure worth one more attempt: the provider dropped the generation
+ * (in-band error / 5xx), rate-limited us (429), timed out (408), or the
+ * connection died (a fetch TypeError, no status). A rejected key, missing
+ * credits, or a bad model would fail the same way again, so those are final.
+ */
+function isTransientFailure(err: unknown): boolean {
+  if (err instanceof LlmRequestError) {
+    const status = err.status;
+    return status === undefined || status === 408 || status === 429 || status >= 500;
+  }
+  return err instanceof TypeError;
+}
+
+/** HTTP status of a section failure, when the endpoint reported one. */
+function outcomeStatus(err: unknown): number | undefined {
+  return err instanceof LlmRequestError ? err.status : undefined;
 }
 
 function runOneSection<Section extends InterpretationSectionKey>(
@@ -1029,12 +1048,18 @@ function runOneSection<Section extends InterpretationSectionKey>(
     lite,
     params.language ?? "en",
   );
-  return chatCompletionJson({
-    config: params.config,
-    messages,
-    ...(params.signal ? { signal: params.signal } : {}),
-    ...(params.fetchImpl ? { fetchImpl: params.fetchImpl } : {}),
-  })
+  const request = () =>
+    chatCompletionJson({
+      config: params.config,
+      messages,
+      ...(params.signal ? { signal: params.signal } : {}),
+      ...(params.fetchImpl ? { fetchImpl: params.fetchImpl } : {}),
+    });
+  return request()
+    .catch((err: unknown) => {
+      if (params.signal?.aborted || !isTransientFailure(err)) throw err;
+      return request();
+    })
     .then((raw): SectionOutcome<Section> => ({ section, ok: true, raw }))
     // Keep the ORIGINAL error (not just its message) so the aggregation can
     // preserve the HTTP status/body of a representative failure — the caller
@@ -1101,7 +1126,8 @@ async function* streamSections<Section extends InterpretationSectionKey>(
       }
       const message = outcomeErrorMessage(outcome.error);
       failures.push(message);
-      yield { type: "error", section: outcome.section, message };
+      const status = outcomeStatus(outcome.error);
+      yield { type: "error", section: outcome.section, message, ...(status === undefined ? {} : { status }) };
       continue;
     }
     try {

@@ -538,6 +538,30 @@ describe('interpretationStore — independent current timeline', () => {
     expect(entry?.timeline?.updatedAt).toBe('2026-07-02T00:00:00Z');
   });
 
+  it('records the error code of a failed timeline section and clears it on the next run', async () => {
+    const store = newStore();
+    const run = store.getState().startCurrentTimeline('c1');
+    store
+      .getState()
+      .markCurrentTimelineSectionFailed('c1', 'upcoming_periods', run, 'ai.provider.server_error');
+
+    const timeline = store.getState().getEntry('c1')?.timeline;
+    expect(timeline?.failedSections).toEqual({ upcoming_periods: true });
+    expect(timeline?.failedSectionCodes).toEqual({ upcoming_periods: 'ai.provider.server_error' });
+
+    // The run still completes with the surviving section; the code must survive
+    // completion, because the notice renders from the completed entry.
+    await store
+      .getState()
+      .setCurrentTimeline('c1', TIMELINE, '2026-07-02T00:00:00Z', PROVENANCE, undefined, run);
+    expect(store.getState().getEntry('c1')?.timeline?.failedSectionCodes).toEqual({
+      upcoming_periods: 'ai.provider.server_error',
+    });
+
+    store.getState().startCurrentTimeline('c1');
+    expect(store.getState().getEntry('c1')?.timeline?.failedSectionCodes).toBeUndefined();
+  });
+
   it('a natal regeneration cannot erase or update the saved current timeline', async () => {
     const store = newStore();
     await store.getState().setCurrentTimeline(

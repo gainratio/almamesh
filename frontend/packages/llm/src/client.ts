@@ -69,8 +69,40 @@ interface OpenAiDelta {
   readonly choices?: ReadonlyArray<{ readonly delta?: { readonly content?: string } }>;
 }
 
+interface InBandError {
+  readonly code?: unknown;
+  readonly message?: unknown;
+}
+
 interface OpenAiMessage {
-  readonly choices?: ReadonlyArray<{ readonly message?: { readonly content?: string } }>;
+  readonly error?: InBandError;
+  readonly choices?: ReadonlyArray<{
+    readonly finish_reason?: string | null;
+    readonly error?: InBandError;
+    readonly message?: { readonly content?: string };
+  }>;
+}
+
+/** HTTP status for an in-band failure: its numeric code when it is one, else 502. */
+function inBandStatus(code: unknown): number {
+  return typeof code === "number" && code >= 400 && code <= 599 ? code : 502;
+}
+
+/**
+ * OpenRouter answers HTTP 200 even when the upstream provider dies part-way
+ * through a long non-streaming completion: the failure is in the body
+ * (`finish_reason: "error"`, often no content, sometimes an `error` object).
+ * Turn that into a status-carrying `LlmRequestError` so callers can classify
+ * it as a provider failure and retry, instead of an anonymous empty answer.
+ */
+function inBandFailure(payload: OpenAiMessage): LlmRequestError | undefined {
+  const choice = payload.choices?.[0];
+  const error = payload.error ?? choice?.error;
+  if (error === undefined && choice?.finish_reason !== "error") return undefined;
+  const detail = typeof error?.message === "string" ? `: ${error.message}` : "";
+  return new LlmRequestError(`LLM provider failed mid-generation${detail}`, {
+    status: inBandStatus(error?.code),
+  });
 }
 
 function buildRequestBody(options: StreamChatOptions): string {
@@ -124,6 +156,8 @@ export async function chatCompletionJson(
     throw await requestErrorFor(response);
   }
   const payload = (await response.json()) as OpenAiMessage;
+  const failure = inBandFailure(payload);
+  if (failure) throw failure;
   const content = payload.choices?.[0]?.message?.content;
   if (typeof content !== "string" || content.trim() === "") {
     throw new LlmRequestError("LLM endpoint returned an empty completion");
