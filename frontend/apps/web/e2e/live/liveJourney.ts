@@ -6,7 +6,15 @@
  * observed through the page's own Worker traffic (production builds carry no
  * exit-gate hooks).
  */
-import { expect, type APIRequestContext, type BrowserContext, type Page } from '@playwright/test';
+import { expect, type APIRequestContext, type BrowserContext, type Page, type Request, type Worker } from '@playwright/test';
+
+/**
+ * A service worker's script and what it pulls in with importScripts (the
+ * Workbox runtime and the engine-trust pair). Fetched before the worker has an
+ * execution context, so a route must never evaluate in the worker for these:
+ * the evaluate waits for the script, which waits for the route.
+ */
+const SERVICE_WORKER_SCRIPT = /^\/(sw\.js|workbox-[^/]+\.js|engine-trust-[^/]+\.js)$/;
 
 /** What the in-page probe records: engine boot time and refused Workers. */
 export interface EngineProbe {
@@ -142,21 +150,84 @@ export async function workerState(): Promise<string> {
  * interception of the service worker half-detached: the next worker hung in
  * `activating` forever, while the same upgrade through a pass-through route
  * activated within seconds — a harness artifact, not a site defect.
+ *
+ * `requestTimeoutMs` bounds each proxied fetch. Playwright's default is 30 s,
+ * which cut off the previous build's cold engine download (its 47 MB bundle
+ * takes ~34 s on the runner's link) and left that build's worker to fetch it
+ * again during the upgrade.
+ *
+ * `inFlightServiceWorkerRequests()` counts requests the context's service
+ * workers have started and not yet finished or failed, through the proxy and
+ * after it. Chromium activates a worker that called `skipWaiting()` only once
+ * the active worker has no in-flight work, so the returning pass drains this
+ * to 0 before the previous visit ends (see the spec's PREVIOUS_VISIT_BUDGET_MS).
+ *
+ * Only the previous deployment's own worker is served. Chromium re-checks
+ * sw.js on its own during the visit, in the browser process where no route
+ * sees it, so it finds the LIVE deploy's worker and starts installing it
+ * while the previous deployment is being served. Workbox writes each precache
+ * entry as it arrives, so that install cached the previous shell under the
+ * live revision key before a live-only chunk 404'd it, and the real live
+ * install later kept that key: the upgrade "settled" on the previous entry
+ * chunk with 404s (2026-10-01). A worker that is not the registration's active
+ * one gets its precache fetches aborted, so its install fails before it caches
+ * anything; its script and imports (workbox + engine-trust, present in every
+ * deploy) are let through, because a worker whose import fails still reaches
+ * `installed` without its module body and then ignores SKIP_WAITING.
  */
 export async function serveOriginFrom(
   context: BrowserContext,
   origin: string,
   previous: string,
-): Promise<{ serviceWorkerRequests: () => number; switchToLive: () => void }> {
+  options: { requestTimeoutMs?: number } = {},
+): Promise<{
+  serviceWorkerRequests: () => number;
+  inFlightServiceWorkerRequests: () => number;
+  switchToLive: () => void;
+}> {
   const previousOrigin = new URL(previous).origin;
   let live = false;
   let serviceWorkerRequests = 0;
+  let inFlightServiceWorkerRequests = 0;
+  const settled = (request: Request) => {
+    if (request.serviceWorker()) inFlightServiceWorkerRequests -= 1;
+  };
+  context.on('request', (request) => {
+    if (request.serviceWorker()) inFlightServiceWorkerRequests += 1;
+  });
+  context.on('requestfinished', settled);
+  context.on('requestfailed', settled);
+  const foreignInstaller = new Map<Worker, Promise<boolean>>();
+  const isForeignInstaller = (worker: Worker): Promise<boolean> => {
+    let verdict = foreignInstaller.get(worker);
+    if (!verdict) {
+      verdict = worker
+        .evaluate(() => {
+          // ServiceWorkerGlobalScope; the e2e tsconfig has no WebWorker lib.
+          const scope = self as unknown as { registration: { active: unknown }; serviceWorker: unknown };
+          return scope.registration.active !== null && scope.registration.active !== scope.serviceWorker;
+        })
+        .catch(() => false);
+      foreignInstaller.set(worker, verdict);
+    }
+    return verdict;
+  };
   await context.route(`${origin}/**`, async (route) => {
     if (live) return route.continue();
     const requested = new URL(route.request().url());
-    if (route.request().serviceWorker()) serviceWorkerRequests += 1;
+    const worker = route.request().serviceWorker();
+    if (worker) {
+      serviceWorkerRequests += 1;
+      if (!SERVICE_WORKER_SCRIPT.test(requested.pathname) && (await isForeignInstaller(worker))) {
+        return route.abort('failed');
+      }
+    }
     const target = new URL(`${requested.pathname}${requested.search}`, previousOrigin);
-    const response = await route.fetch({ url: target.toString(), maxRedirects: 0 });
+    const response = await route.fetch({
+      url: target.toString(),
+      maxRedirects: 0,
+      timeout: options.requestTimeoutMs,
+    });
     const headers = response.headers();
     if (headers.location?.startsWith(previousOrigin)) {
       headers.location = `${origin}${headers.location.slice(previousOrigin.length)}`;
@@ -165,6 +236,7 @@ export async function serveOriginFrom(
   });
   return {
     serviceWorkerRequests: () => serviceWorkerRequests,
+    inFlightServiceWorkerRequests: () => inFlightServiceWorkerRequests,
     switchToLive: () => {
       live = true;
     },
