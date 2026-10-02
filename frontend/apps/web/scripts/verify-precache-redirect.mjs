@@ -82,14 +82,28 @@ const MIME = {
   '.svg': 'image/svg+xml',
 }
 
+/**
+ * Cloudflare Pages' clean-URL rule: `/x.html` -> `/x`, `/a/index.html` -> `/a/`.
+ * Returns the redirect target, or null when the path is not an `.html` file.
+ */
+function cfHtmlRedirect(pathname) {
+  if (CANONICAL[pathname]) return CANONICAL[pathname]
+  if (pathname.endsWith('/index.html')) return pathname.slice(0, -'index.html'.length)
+  if (pathname.endsWith('.html')) return pathname.slice(0, -'.html'.length)
+  return null
+}
+
 /** A static server that mimics Cloudflare Pages clean-URL redirects over dist/. */
 function cloudflareLikeServer() {
   return createServer((req, res) => {
     const pathname = decodeURIComponent(new URL(req.url, 'http://x').pathname)
 
-    // 1. `.html` shells 308-redirect to their canonical URL (as CF Pages does).
-    if (CANONICAL[pathname]) {
-      res.writeHead(308, { location: CANONICAL[pathname] })
+    // 1. EVERY `.html` path 308-redirects to its extensionless URL, as CF Pages
+    //    does — not only the prerendered shells. Keying this on the shell list
+    //    alone hid `/404.html` (live: 308 -> /404) from this gate.
+    const htmlTarget = cfHtmlRedirect(pathname)
+    if (htmlTarget) {
+      res.writeHead(308, { location: htmlTarget })
       return res.end()
     }
     // 2. Extensionless canonical URLs serve the matching flat prerendered file.
@@ -194,10 +208,13 @@ async function main() {
   }
   verifyTrustRootRouting(urls, failures)
   const keyed = verifyHeadersKeyedPrecache(failures)
-  // Negative assertion: no redirecting `.html` shell may be precached.
-  const leaked = urls.filter((u) => CANONICAL[u])
-  for (const u of leaked) {
-    failures.push(`precache entry ${u} is a CF-redirecting .html shell (should be its canonical URL ${CANONICAL[u]})`)
+  // Negative assertion, independent of the mimic server above: no precache URL
+  // may be an `.html` path at all, because Cloudflare Pages redirects every one.
+  for (const u of urls) {
+    const target = cfHtmlRedirect(u)
+    if (target) {
+      failures.push(`precache entry ${u} is a CF-redirecting .html path (precache its canonical URL ${target}, or keep it out of the precache)`)
+    }
   }
 
   await new Promise((r) => server.close(r))
