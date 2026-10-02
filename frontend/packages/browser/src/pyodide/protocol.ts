@@ -141,6 +141,30 @@ export interface BootOk {
   readonly id: number;
 }
 
+/** Where a boot is: the Pyodide runtime download, its packages, the bundled
+ * wheels, the ephemeris data, or the engine's own Python bootstrap. */
+export type BootProgressStage = "pyodide" | "packages" | "wheels" | "data" | "engine";
+
+/**
+ * Boot progress, posted by the Worker while a `boot` request is in flight.
+ * `bytesReceived` counts every Pyodide asset byte fetched so far (cumulative
+ * across files); `bytesTotal` is the current file's declared size, or null.
+ * Each report re-arms the client's boot deadline: a slow download is not a
+ * dead Worker.
+ */
+export interface BootProgress {
+  readonly stage: BootProgressStage;
+  readonly bytesReceived: number;
+  readonly bytesTotal: number | null;
+}
+
+export interface BootProgressResponse {
+  readonly ok: true;
+  readonly kind: "bootProgress";
+  readonly id: number;
+  readonly progress: BootProgress;
+}
+
 export interface ChartOk {
   readonly ok: true;
   readonly kind: "generateChart";
@@ -178,6 +202,7 @@ export interface WorkerErr {
 export type ChartWorkerResponse =
   | PrewarmOk
   | BootOk
+  | BootProgressResponse
   | ChartOk
   | PredictiveOk
   | MeshEdgeOk

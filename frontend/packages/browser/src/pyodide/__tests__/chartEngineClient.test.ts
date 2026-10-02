@@ -6,6 +6,7 @@ import type { MeshEdgeContext } from "../mesh";
 import type { PredictiveContexts } from "../predictive";
 import type {
   BootConfig,
+  BootProgress,
   BirthInput,
   ChartWorkerRequest,
   ChartWorkerResponse,
@@ -238,6 +239,48 @@ describe("ChartEngineClient", () => {
 
     client.prewarm(PYODIDE_INDEX_URL);
     await expect(client.boot(bootConfig())).resolves.toBeUndefined();
+  });
+
+  // The boot deadline is an IDLE deadline. Pyodide is ~17 MB; on slow 4G the
+  // download alone outlives a 60 s wall clock, so the Worker reports progress
+  // (download bytes, then each install stage) and each report re-arms it.
+  it("re-arms the boot deadline on each bootProgress message and forwards it", async () => {
+    vi.useFakeTimers();
+    try {
+      worker = new FakeChartWorker(() => null);
+      const client = new ChartEngineClient(worker, { requestTimeoutMs: 50 });
+      const seen: BootProgress[] = [];
+      const pending = client.boot(BOOT_CONFIG, (progress) => seen.push(progress));
+      let settled = false;
+      pending.then(
+        () => {
+          settled = true;
+        },
+        () => {
+          settled = true;
+        },
+      );
+      const id = worker.posted[0]?.id ?? 0;
+      for (let tick = 0; tick < 5; tick += 1) {
+        await vi.advanceTimersByTimeAsync(40);
+        worker.respond({
+          ok: true,
+          kind: "bootProgress",
+          id,
+          progress: { stage: "pyodide", bytesReceived: tick * 1_000, bytesTotal: 5_000 },
+        });
+      }
+      // 200 ms: four deadlines' worth, but never 50 ms without progress.
+      expect(settled).toBe(false);
+      expect(worker.terminated).toBe(false);
+      expect(seen).toHaveLength(5);
+      expect(seen[4]).toEqual({ stage: "pyodide", bytesReceived: 4_000, bytesTotal: 5_000 });
+
+      worker.respond({ ok: true, kind: "boot", id });
+      await expect(pending).resolves.toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("generates a chart, returning the worker's chart payload", async () => {

@@ -82,6 +82,12 @@
     "title": "Generating Your Chart",
     "subtitle": "This may take a minute...",
     "step_counter": "Step {{current}} of {{total}}",
+    "engine_download_start": "Preparing the engine download…",
+    "engine_download": "Downloading engine data: {{done}} of {{total}} MB",
+    "engine_retry": "Connection stalled — retrying…",
+    "engine_verify": "Verifying engine data…",
+    "engine_runtime": "Loading the engine runtime: {{done}} MB",
+    "engine_boot": "Starting the engine…",
     "steps": {
       "positions": "Calculating planetary positions",
       "houses": "Computing house placements",

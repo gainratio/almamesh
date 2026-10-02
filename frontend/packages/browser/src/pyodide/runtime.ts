@@ -16,7 +16,7 @@
 // once per boot by ./bootPolicy.ts (default: sequential — low-end hardware is
 // the primary target; overlap only on a Chromium deviceMemory/cores reading).
 
-import type { SyncResult } from "@edgeproc/browser";
+import type { SyncProgress, SyncResult } from "@edgeproc/browser";
 
 import { spawnAlmaSyncEngine } from "../edgeprocClient";
 import { decideBootPolicy, readBootSignals } from "./bootPolicy";
@@ -29,18 +29,22 @@ import type { PredictiveContexts } from "./predictive";
 import type {
   BirthInput,
   BootConfig,
+  BootProgress,
   MeshEdgeInput,
   PredictiveInput,
   PyodideAsset,
 } from "./protocol";
 import type { RectificationInput, RectificationResultRaw } from "./rectification";
 
-/** A bootstrap stage, surfaced to the UI for a real progress story. */
+/** A bootstrap stage, surfaced to the UI for a real progress story. The
+ * `syncing` and `booting-engine` stages are re-reported with `progress` as
+ * bytes arrive (rate-limited by the Workers), so a consumer can draw a bar
+ * and an idle budget can tell "slow" from "stuck". */
 export type BootStage =
-  | { readonly kind: "syncing" }
+  | { readonly kind: "syncing"; readonly progress?: SyncProgress }
   | { readonly kind: "synced"; readonly result: SyncResult }
   | { readonly kind: "reassembling" }
-  | { readonly kind: "booting-engine" }
+  | { readonly kind: "booting-engine"; readonly progress?: BootProgress }
   | { readonly kind: "ready" };
 
 /** Progress sink; called as bootstrap advances through its stages. */
@@ -66,6 +70,7 @@ export interface EnginePort {
     pubkeyUrl: string,
     expectedBundleId: string,
     expectedChannel: string,
+    onProgress?: (progress: SyncProgress) => void,
   ): Promise<SyncResult>;
   readFile(path: string): Promise<Uint8Array>;
   /** Stop the sync Worker and release its OPFS/wasm resources. */
@@ -80,7 +85,7 @@ export interface ChartEnginePort {
    * bytes. Optional so a port without it simply boots cold.
    */
   prewarm?(pyodideIndexUrl: string): void;
-  boot(config: BootConfig): Promise<void>;
+  boot(config: BootConfig, onProgress?: (progress: BootProgress) => void): Promise<void>;
   generateChart(birth: BirthInput): Promise<SiderealChart>;
   computePredictive(input: PredictiveInput): Promise<PredictiveContexts>;
   computeMeshEdge(input: MeshEdgeInput): Promise<MeshEdgeContext>;
@@ -256,6 +261,7 @@ export class AlmaMeshRuntime {
         config.pubkeyUrl,
         config.expectedBundleId,
         config.expectedChannel,
+        (progress) => onStage({ kind: "syncing", progress }),
       );
       this.#assertCurrent(generation);
       onStage({ kind: "synced", result });
@@ -277,7 +283,7 @@ export class AlmaMeshRuntime {
       const booted = chartEngine ?? this.#deps.spawnChartEngine();
       chartEngine = booted;
       this.#chartEngine = booted;
-      await booted.boot(bootConfig);
+      await booted.boot(bootConfig, (progress) => onStage({ kind: "booting-engine", progress }));
       this.#assertCurrent(generation);
 
       // Identical inputs are computed once per booted engine, keyed on the

@@ -9,6 +9,7 @@ import type { PredictiveContexts } from "./predictive";
 import type {
   BirthInput,
   BootConfig,
+  BootProgress,
   ChartWorkerRequest,
   ChartWorkerResponse,
   MeshEdgeInput,
@@ -21,10 +22,15 @@ interface Pending {
   readonly kind: ChartWorkerRequest["kind"];
   readonly resolve: (response: ChartWorkerResponse) => void;
   readonly reject: (error: Error) => void;
-  readonly timer: ReturnType<typeof setTimeout>;
+  readonly timeoutMs: number;
+  readonly onProgress?: (progress: BootProgress) => void;
+  /** Re-armed by boot progress; a boot's deadline is an idle deadline. */
+  timer: ReturnType<typeof setTimeout>;
 }
 
-/** Maximum time a normal chart-worker request may remain unresolved. */
+/** Maximum time a normal chart-worker request may remain unresolved. For a
+ * `boot`, the time it may go WITHOUT PROGRESS: the ~17 MB Pyodide download
+ * reports bytes as they arrive, so a slow link does not look like a hang. */
 export const DEFAULT_REQUEST_TIMEOUT_MS = 60_000;
 
 /** Predictive contexts can occupy the serial Pyodide worker for several minutes. */
@@ -106,10 +112,16 @@ export class ChartEngineClient {
     this.#worker.postMessage({ kind: "prewarm", id: this.#allocId(), pyodideIndexUrl });
   }
 
-  /** Boot Pyodide and load the AlmaMesh engine + ephemeris from `config`. */
-  public async boot(config: BootConfig): Promise<void> {
+  /** Boot Pyodide and load the AlmaMesh engine + ephemeris from `config`.
+   * `onProgress` receives the Worker's boot progress (download bytes, then
+   * each install stage); every report also re-arms the boot deadline. */
+  public async boot(
+    config: BootConfig,
+    onProgress?: (progress: BootProgress) => void,
+  ): Promise<void> {
     const response = await this.#send(
       { kind: "boot", id: this.#allocId(), config },
+      onProgress,
       bootTransferables(config),
     );
     if (!response.ok) {
@@ -178,6 +190,7 @@ export class ChartEngineClient {
 
   #send(
     request: ChartWorkerRequest,
+    onProgress?: (progress: BootProgress) => void,
     transfer?: readonly Transferable[],
   ): Promise<ChartWorkerResponse> {
     if (this.#closed !== null) {
@@ -197,14 +210,15 @@ export class ChartEngineClient {
       if (longRequest) {
         this.#longPending += 1;
       }
-      const timer = setTimeout(() => {
-        this.#close(
-          new Error(
-            `chart worker request ${request.id} (${request.kind}) timed out after ${timeoutMs}ms`,
-          ),
-        );
-      }, timeoutMs);
-      this.#pending.set(request.id, { kind: request.kind, resolve, reject, timer });
+      const pending: Pending = {
+        kind: request.kind,
+        resolve,
+        reject,
+        timeoutMs,
+        ...(onProgress === undefined ? {} : { onProgress }),
+        timer: this.#deadline(request.id, request.kind, timeoutMs),
+      };
+      this.#pending.set(request.id, pending);
       try {
         if (transfer === undefined) this.#worker.postMessage(request);
         else this.#worker.postMessage(request, transfer);
@@ -213,15 +227,43 @@ export class ChartEngineClient {
         if (longRequest) {
           this.#longPending -= 1;
         }
-        clearTimeout(timer);
+        clearTimeout(pending.timer);
         reject(error instanceof Error ? error : new Error(String(error)));
       }
     });
   }
 
+  #deadline(
+    id: number,
+    kind: ChartWorkerRequest["kind"],
+    timeoutMs: number,
+  ): ReturnType<typeof setTimeout> {
+    return setTimeout(() => {
+      this.#close(
+        new Error(
+          `chart worker request ${id} (${kind}) timed out after ${timeoutMs}ms${
+            kind === "boot" ? " without progress" : ""
+          }`,
+        ),
+      );
+    }, timeoutMs);
+  }
+
   #onMessage(response: ChartWorkerResponse): void {
     const pending = this.#pending.get(response.id);
     if (pending === undefined) {
+      return;
+    }
+    if (response.ok && response.kind === "bootProgress") {
+      if (pending.kind === "boot") {
+        clearTimeout(pending.timer);
+        pending.timer = this.#deadline(response.id, pending.kind, pending.timeoutMs);
+        try {
+          pending.onProgress?.(response.progress);
+        } catch {
+          // Observability must not fail or settle the boot.
+        }
+      }
       return;
     }
     this.#pending.delete(response.id);

@@ -14,6 +14,13 @@ export interface ChartEngineContextValue {
   readonly engine: ChartEngine | null
   /** Latest bootstrap stage, for progress UI. */
   readonly stage: BootStage | null
+  /**
+   * When the bootstrap last reported progress (`Date.now()` ms): a stage
+   * change, bundle bytes arriving, a file verified, Pyodide bytes arriving.
+   * Readiness waits are IDLE budgets measured from this, not wall clocks, so a
+   * slow link that keeps moving is never declared stuck. 0 before any report.
+   */
+  readonly lastProgressAt?: () => number
   /** Bootstrap failure, if any (the shell stays alive regardless). */
   readonly error: Error | null
   /** Synced bundle provenance (from `almamesh_meta.json`), for the report footer. */

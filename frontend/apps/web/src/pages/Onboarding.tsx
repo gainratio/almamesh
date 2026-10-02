@@ -14,6 +14,7 @@ import {
   type TimeConfidence,
 } from "@almamesh/constants";
 import { useChartEngine } from "../providers/AlmaMeshRuntimeProvider";
+import type { BootStage } from "@almamesh/browser";
 import { LocationSearch, type LocationResult } from "../components/shared/LocationSearch";
 import { Logo } from "../components/ui/Logo";
 import { BirthDatePicker } from "../components/BirthDatePicker";
@@ -37,6 +38,56 @@ import {
  * genuine compute failure so the catch can show a retryable message instead of
  * the generic CHART_GEN_001.
  */
+/** A bootstrap report rendered as an i18n key + params and an optional 0..1 fraction. */
+interface EngineProgressLine {
+  readonly key: string;
+  readonly params: Record<string, string>;
+  readonly fraction: number | null;
+}
+
+const megabytes = (bytes: number): string => (bytes / 1_000_000).toFixed(1);
+
+/**
+ * What the engine bootstrap is doing, from the provider's latest stage: the
+ * signed bundle downloading (exact bytes from the signed manifest), a stalled
+ * connection being retried, files being verified, or the Pyodide runtime
+ * loading. Null when there is nothing byte-level to say.
+ */
+function describeEngineProgress(stage: BootStage | null): EngineProgressLine | null {
+  if (stage === null) return null;
+  if (stage.kind === "syncing") {
+    const progress = stage.progress;
+    if (progress === undefined) {
+      return { key: "generating.engine_download_start", params: {}, fraction: null };
+    }
+    if (progress.phase === "chunks") {
+      return {
+        key: "generating.engine_download",
+        params: { done: megabytes(progress.bytesDone), total: megabytes(progress.bytesTotal) },
+        fraction: progress.bytesTotal > 0 ? progress.bytesDone / progress.bytesTotal : null,
+      };
+    }
+    if (progress.phase === "chunkRetry") {
+      return { key: "generating.engine_retry", params: {}, fraction: null };
+    }
+    if (progress.phase === "verify") {
+      return {
+        key: "generating.engine_verify",
+        params: {},
+        fraction: progress.totalFiles > 0 ? progress.verifiedFiles / progress.totalFiles : null,
+      };
+    }
+    return { key: "generating.engine_download_start", params: {}, fraction: null };
+  }
+  if (stage.kind === "booting-engine") {
+    const received = stage.progress?.bytesReceived ?? 0;
+    return received > 0
+      ? { key: "generating.engine_runtime", params: { done: megabytes(received) }, fraction: null }
+      : { key: "generating.engine_boot", params: {}, fraction: null };
+  }
+  return null;
+}
+
 class EngineWarmingError extends Error {
   constructor(message = "The on-device engine is still warming up.") {
     super(message);
@@ -97,7 +148,10 @@ export default function OnboardingPage() {
   // fail-closed: `resolveReadyEngine` awaits the in-flight boot (warming race)
   // or reboots (re-syncs) a failed one, so the user no longer has to manually
   // retry. The slow path simply waits behind the existing progress UI.
-  const { engine, error: engineError, reboot, whenReady, startBootstrap } = useChartEngine();
+  const { engine, error: engineError, reboot, whenReady, startBootstrap, stage, lastProgressAt } =
+    useChartEngine();
+  // What the engine bootstrap is doing right now, for the generating screen.
+  const engineProgress = describeEngineProgress(stage);
 
   // Engine-dependent route: ensure the bootstrap is running on entry. The
   // provider gates its mount auto-boot off the marketing landing route, so a
@@ -351,7 +405,7 @@ export default function OnboardingPage() {
       // the slow path simply WAITS behind the progress UI, then proceeds. A
       // wedged boot eventually times out into the retryable warming message.
       try {
-        await resolveReadyEngine({ engine, error: engineError, reboot, whenReady });
+        await resolveReadyEngine({ engine, error: engineError, reboot, whenReady, lastProgressAt });
       } catch (readyErr) {
         if (readyErr instanceof Error && readyErr.name === "EngineNotReadyError") {
           // Bounded wait elapsed — transient, retryable. Distinct from a compute
@@ -585,6 +639,24 @@ export default function OnboardingPage() {
               <p className="text-text-muted text-xs mt-2" data-testid="still-warming-hint">
                 {t("error.still_warming")}
               </p>
+            )}
+            {/* A real number while the engine downloads (bundle bytes, then the
+                Pyodide runtime): on a slow link this takes minutes, and a bar
+                that moves reads as slow, not stuck. */}
+            {!engine && engineProgress && (
+              <div className="mt-3" data-testid="engine-progress">
+                {engineProgress.fraction !== null && (
+                  <div className="h-1.5 bg-background-tertiary rounded-full overflow-hidden mb-1">
+                    <div
+                      className="h-full bg-accent-gold/70 transition-all duration-300 ease-out"
+                      style={{ width: `${Math.round(engineProgress.fraction * 100)}%` }}
+                    />
+                  </div>
+                )}
+                <p className="text-text-muted text-xs">
+                  {t(engineProgress.key, engineProgress.params)}
+                </p>
+              </div>
             )}
           </div>
 
