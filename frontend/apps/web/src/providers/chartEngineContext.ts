@@ -9,10 +9,22 @@
 import { createContext, useContext } from 'react'
 import type { BootStage, BundleMeta, ChartEngine } from '@almamesh/browser'
 
+/**
+ * Byte-level boot progress is published at most this often (<= 4 updates/s).
+ * The Workers report hundreds of times a second during the bundle sync; a
+ * re-render per report starved typing on the onboarding form (2026-10-02).
+ */
+export const PROGRESS_COALESCE_MS = 250
+
 export interface ChartEngineContextValue {
   /** The ready engine, or null until bootstrap completes. */
   readonly engine: ChartEngine | null
-  /** Latest bootstrap stage, for progress UI. */
+  /**
+   * COARSE bootstrap stage: changes when the bootstrap enters a new stage
+   * (syncing -> synced -> reassembling -> booting-engine -> ready), never on a
+   * byte-level progress report. Progress bars read `useEngineBootProgress()`
+   * instead, so a consumer of this context is not re-rendered per report.
+   */
   readonly stage: BootStage | null
   /**
    * When the bootstrap last reported progress (`Date.now()` ms): a stage
@@ -69,4 +81,17 @@ export function useChartEngine(): ChartEngineContextValue {
  */
 export function useOptionalChartEngine(): ChartEngineContextValue | null {
   return useContext(ChartEngineContext)
+}
+
+/**
+ * The latest bootstrap report INCLUDING byte-level progress (bundle bytes,
+ * files verified, Pyodide bytes), coalesced to one update per
+ * `PROGRESS_COALESCE_MS`. Kept on its own context so only the components that
+ * draw progress re-render for it; everything else reads the coarse `stage`.
+ */
+export const EngineBootProgressContext = createContext<BootStage | null>(null)
+
+/** Null before the first report and outside the provider (prerender, tests). */
+export function useEngineBootProgress(): BootStage | null {
+  return useContext(EngineBootProgressContext)
 }

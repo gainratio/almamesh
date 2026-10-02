@@ -110,8 +110,19 @@ async function onboard(page) {
   await page.getByTestId('skip-life-events-button').click()
 }
 
+/**
+ * STORAGE_BLOCKED_CPU_THROTTLE=6 slows Chromium's CPU 6x (CDP), the budget
+ * phone this product targets. The 2026-10-02 release lost birth-date
+ * keystrokes only under load; this knob reproduces that on a fast laptop.
+ */
+const CPU_THROTTLE = Number(process.env.STORAGE_BLOCKED_CPU_THROTTLE ?? '1')
+
 async function visit(context, path) {
   const page = await context.newPage()
+  if (CPU_THROTTLE > 1 && BROWSER_NAME === 'chromium') {
+    const cdp = await context.newCDPSession(page)
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: CPU_THROTTLE })
+  }
   const pageErrors = []
   page.on('pageerror', (error) => pageErrors.push(`${path}: ${error.message}`))
   const response = await page.goto(new URL(path, BASE_URL).href, { waitUntil: 'load' })

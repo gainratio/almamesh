@@ -14,7 +14,7 @@ import type {
 } from "../protocol";
 import type { RectificationInput, RectificationResultRaw } from "../rectification";
 import type { SyncProgress, SyncResult } from "@edgeproc/browser";
-import type { BootStage } from "../runtime";
+import type { BootStage, IdleScheduler } from "../runtime";
 
 const CONFIG: RuntimeConfig = {
   bundleBaseUrl: "https://cdn.test/almamesh",
@@ -168,6 +168,33 @@ const makeRuntime = () => {
   });
   return { runtime, sync, chart };
 };
+
+/** An idle scheduler that grants the slot at once (the pre-idle behaviour). */
+const runIdleNow: IdleScheduler = (task) => {
+  task();
+  return () => {};
+};
+
+/** An idle scheduler the test drives by hand. */
+class FakeIdleScheduler {
+  public readonly pending: Array<() => void> = [];
+  public requested = 0;
+  public cancelled = 0;
+
+  public readonly schedule: IdleScheduler = (task) => {
+    this.requested += 1;
+    this.pending.push(task);
+    return () => {
+      this.cancelled += 1;
+      const index = this.pending.indexOf(task);
+      if (index >= 0) this.pending.splice(index, 1);
+    };
+  };
+
+  public runPending(): void {
+    for (const task of this.pending.splice(0)) task();
+  }
+}
 
 describe("AlmaMeshRuntime.bootstrap", () => {
   // Both Workers report progress (bundle bytes, Pyodide bytes); bootstrap must
@@ -397,6 +424,7 @@ describe("AlmaMeshRuntime.bootstrap", () => {
       spawnSyncEngine: () => sync,
       spawnChartEngine: () => chart,
       decideBootMode: () => ({ mode: "overlap", reason: "test" }),
+      scheduleIdle: runIdleNow,
     });
 
     const pending = runtime.bootstrap(CONFIG);
@@ -407,6 +435,75 @@ describe("AlmaMeshRuntime.bootstrap", () => {
     releaseSync();
     await pending;
     expect(chart.bootCount).toBe(1);
+  });
+
+  // The warm-up is Worker work, but on few cores it competes with the sync
+  // Worker AND the UI thread while the user is typing the onboarding form.
+  // Low-end hardware is the primary target, so the warm-up waits for an idle
+  // slot instead of starting the instant the boot does.
+  it("overlap mode waits for an idle slot before warming Pyodide", async () => {
+    let releaseSync!: () => void;
+    const sync = new FakeSyncEngine(FILES);
+    const originalSync = sync.sync.bind(sync);
+    sync.sync = async (...args) => {
+      await new Promise<void>((resolve) => {
+        releaseSync = resolve;
+      });
+      return originalSync(...args);
+    };
+    const chart = new FakeChartEngine();
+    const idle = new FakeIdleScheduler();
+    const runtime = new AlmaMeshRuntime({
+      spawnSyncEngine: () => sync,
+      spawnChartEngine: () => chart,
+      decideBootMode: () => ({ mode: "overlap", reason: "test" }),
+      scheduleIdle: idle.schedule,
+    });
+
+    const pending = runtime.bootstrap(CONFIG);
+    await Promise.resolve();
+    expect(idle.pending).toHaveLength(1);
+    expect(chart.prewarmUrls).toEqual([]);
+
+    idle.runPending();
+    expect(chart.prewarmUrls).toEqual([CONFIG.pyodideIndexUrl]);
+
+    releaseSync();
+    await pending;
+    expect(chart.bootCount).toBe(1);
+  });
+
+  it("cancels a warm-up whose idle slot never came before the sync settled; boot proceeds cold", async () => {
+    const sync = new FakeSyncEngine(FILES);
+    const chart = new FakeChartEngine();
+    const idle = new FakeIdleScheduler();
+    const runtime = new AlmaMeshRuntime({
+      spawnSyncEngine: () => sync,
+      spawnChartEngine: () => chart,
+      decideBootMode: () => ({ mode: "overlap", reason: "test" }),
+      scheduleIdle: idle.schedule,
+    });
+
+    await runtime.bootstrap(CONFIG);
+    expect(idle.cancelled).toBe(1);
+    expect(chart.prewarmUrls).toEqual([]);
+    expect(chart.bootCount).toBe(1);
+    // A slot arriving after cancellation must not touch the booted Worker.
+    idle.runPending();
+    expect(chart.prewarmUrls).toEqual([]);
+  });
+
+  it("sequential mode never asks for an idle slot", async () => {
+    const sync = new FakeSyncEngine(FILES);
+    const idle = new FakeIdleScheduler();
+    const runtime = new AlmaMeshRuntime({
+      spawnSyncEngine: () => sync,
+      spawnChartEngine: () => new FakeChartEngine(),
+      decideBootMode: () => ({ mode: "sequential", reason: "test" }),
+      scheduleIdle: idle.schedule,
+    });
+    await runtime.bootstrap(CONFIG);
+    expect(idle.requested).toBe(0);
   });
 
   it("terminates the warming chart worker when the bundle sync fails", async () => {

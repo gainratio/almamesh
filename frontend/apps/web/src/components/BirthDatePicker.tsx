@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useLayoutEffect, useReducer, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { DatePicker as MuiDatePicker } from '@mui/x-date-pickers/DatePicker';
@@ -172,13 +173,34 @@ const MIN_DATE = dayjs('1900-01-01');
  * the day section (typed 08 -> committed 07) and swallowed the first
  * Continue click via the forced re-render. jsdom's synchronous flush hides
  * the race; the Playwright probe against a preview build reproduces it.
+ *
+ * SECOND RACE (2026-10-02 release, "typing lost while the engine boots"):
+ * MUI X 8.29's field publishes an INVALID Dayjs for a half-typed year (its
+ * strict parse rejects "0001") and restores the typed section on the next
+ * render through a ref that its own every-commit `useEffect` clears. If a
+ * keystroke lands after an unrelated commit of the field (a progress report
+ * re-rendering the page) but before that commit's passive effects have run,
+ * React flushes the stale effect first, the ref is gone, and the resync from
+ * the invalid value empties every section: "08/08/YYYY" -> "MM/DD/YYYY".
+ * Two guards close it: the picker is memoized so unrelated parent commits
+ * never include the field (no stale effect to flush), and every keystroke
+ * first settles React (`flushSync`) so nothing is pending when MUI arms the
+ * ref. Covered by "survives re-renders mid-typing" in the unit suite and the
+ * CPU-throttled Playwright probe.
  */
-export function BirthDatePicker({ value, onChange, className }: BirthDatePickerProps) {
+function BirthDatePickerImpl({ value, onChange, className }: BirthDatePickerProps) {
   // Draft buffer: the field renders from this, never from a mid-edit echo.
   const [draft, setDraft] = useState<Dayjs | null>(() => (value ? dayjs(value) : null));
   // Timestamp of the last value THIS picker emitted upward, so a parent
   // re-render echoing our own emission is never treated as an external reset.
   const lastEmittedMs = useRef<number | null>(value ? value.getTime() : null);
+  // The latest onChange, read at emission time. Parents (Onboarding) pass a
+  // fresh closure on every render; holding it in a ref lets the memo below
+  // ignore it, so a parent re-render alone never reaches the MUI field.
+  const onChangeRef = useRef(onChange);
+  useLayoutEffect(() => {
+    onChangeRef.current = onChange;
+  });
 
   // Sync parent -> draft ONLY for genuine external changes (profile reset,
   // store rehydration), i.e. when the parent value differs from what we
@@ -191,6 +213,17 @@ export function BirthDatePicker({ value, onChange, className }: BirthDatePickerP
       setDraft(value ? dayjs(value) : null);
     }
   }, [value]);
+
+  // Settle React before MUI handles a keystroke: flushing a (trivial) sync
+  // update first runs any passive effects still pending from an earlier
+  // commit, so the every-commit effect inside MUI's field cannot fire between
+  // this keystroke arming its section-restore ref and the render that reads
+  // it. keydown precedes the browser's text insertion (and MUI's `input`
+  // handler) in the same task, so nothing can be pending by then.
+  const [, settle] = useReducer((n: number) => n + 1, 0);
+  const settleBeforeKeystroke = () => {
+    flushSync(() => settle());
+  };
 
   // A date is committable when it is parseable AND within the picker's own
   // bounds; mid-typing years like 0198 fail this and stay draft-only.
@@ -205,14 +238,14 @@ export function BirthDatePicker({ value, onChange, className }: BirthDatePickerP
     if (newValue !== null && isCommittable(newValue)) {
       const date = newValue.toDate();
       lastEmittedMs.current = date.getTime();
-      onChange(date);
+      onChangeRef.current(date);
     }
   };
 
   return (
     <ThemeProvider theme={darkTheme}>
       <LocalizationProvider dateAdapter={AdapterDayjs}>
-        <div className={className || "w-full"}>
+        <div className={className || "w-full"} onKeyDownCapture={settleBeforeKeystroke}>
           <MuiDatePicker
             value={draft}
             onChange={handleChange}
@@ -276,3 +309,16 @@ export function BirthDatePicker({ value, onChange, className }: BirthDatePickerP
     </ThemeProvider>
   );
 }
+
+const sameDate = (a: Date | null, b: Date | null): boolean =>
+  a === null ? b === null : b !== null && a.getTime() === b.getTime();
+
+/**
+ * Re-renders only when the committed date or the className changes. A parent
+ * re-render with the same date (engine progress, i18n, store churn) stops
+ * here, so the MUI field inside is never part of an unrelated commit.
+ */
+export const BirthDatePicker = memo(
+  BirthDatePickerImpl,
+  (prev, next) => sameDate(prev.value, next.value) && prev.className === next.className,
+);

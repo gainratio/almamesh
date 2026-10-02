@@ -23,6 +23,18 @@ All notable changes to AlmaMesh are documented here. Format follows
   overshooting it.
 
 ### Fixed
+- **Typing the birth date no longer loses digits while the engine downloads.**
+  On a busy CPU (a budget phone, or the release gate's 4-core runner) typing
+  `08/08/1988` could end as `MM/DD/1988` with Continue disabled. Two causes,
+  both fixed: the date field (MUI X) restores a half-typed year through a ref
+  that any unrelated re-render of the field can clear, and this release's
+  byte-level boot progress re-rendered the whole onboarding page hundreds of
+  times a second. The field is now isolated from unrelated re-renders and
+  settles React before each keystroke; boot progress lives on its own context,
+  coalesced to at most 4 updates a second, and the overlap-mode Pyodide warm-up
+  waits for an idle slot instead of competing with the first keystrokes.
+  `verify-storage-blocked.mjs` takes `STORAGE_BLOCKED_CPU_THROTTLE=6` to
+  reproduce the budget-phone case on a laptop.
 - **A slow mobile connection no longer leaves a new user on the "Connection
   Issue" card.** Measured on Chrome's Slow 4G profile (180 KB/s, 562 ms RTT):
   the cold engine sync took 124 s and Pyodide was ready at 127 s, but

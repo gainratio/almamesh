@@ -131,6 +131,17 @@ export interface ChartEngine {
   meta(): BundleMeta | null;
 }
 
+/**
+ * Grants `task` an idle slot of the UI thread and returns a cancel. The
+ * overlap-mode warm-up goes through this: it is Worker work, but on few cores
+ * it competes with the sync Worker and the UI thread while the user is typing
+ * the onboarding form, so it waits until the page has nothing more urgent.
+ */
+export type IdleScheduler = (task: () => void) => () => void;
+
+/** The warm-up never waits longer than this for an idle slot. */
+const PREWARM_IDLE_TIMEOUT_MS = 1_500;
+
 /** The seams bootstrap depends on; defaulted to the real Workers, faked in tests. */
 export interface RuntimeDeps {
   readonly spawnSyncEngine: () => EnginePort;
@@ -139,16 +150,27 @@ export interface RuntimeDeps {
   readonly decideBootMode?: () => BootDecision;
   /** Where the one boot-policy line per boot goes; defaults to console.info. */
   readonly log?: (line: string) => void;
+  /** When the overlap-mode warm-up may start; defaults to `requestIdleCallback`. */
+  readonly scheduleIdle?: IdleScheduler;
 }
 
 const defaultDecideBootMode = (): BootDecision => decideBootPolicy(readBootSignals(navigator));
 const defaultLog = (line: string): void => console.info(line);
+const defaultScheduleIdle: IdleScheduler = (task) => {
+  if (typeof requestIdleCallback === "function") {
+    const id = requestIdleCallback(() => task(), { timeout: PREWARM_IDLE_TIMEOUT_MS });
+    return () => cancelIdleCallback(id);
+  }
+  const id = setTimeout(task, 0);
+  return () => clearTimeout(id);
+};
 
 const defaultDeps: RuntimeDeps = {
   spawnSyncEngine: spawnAlmaSyncEngine,
   spawnChartEngine: () => ChartEngineClient.spawn(),
   decideBootMode: defaultDecideBootMode,
   log: defaultLog,
+  scheduleIdle: defaultScheduleIdle,
 };
 
 /** Build the production runtime deps (real sync Worker + real Pyodide Worker). */
@@ -237,6 +259,7 @@ export class AlmaMeshRuntime {
     const syncEngine = this.#deps.spawnSyncEngine();
     this.#syncEngine = syncEngine;
     let chartEngine: ChartEnginePort | null = null;
+    let cancelPrewarm: (() => void) | null = null;
     try {
       this.#assertCurrent(generation);
       const decision = (this.#deps.decideBootMode ?? defaultDecideBootMode)();
@@ -249,10 +272,16 @@ export class AlmaMeshRuntime {
         // syncs and verifies. Only the engine install waits for the synced bytes.
         // A warm-up failure is not lost: `boot` awaits the same warm-up in the
         // Worker and reports it. The price is two wasm heaps alive at once,
-        // which is why the policy grants this only on roomy hardware.
-        chartEngine = this.#deps.spawnChartEngine();
-        this.#chartEngine = chartEngine;
-        chartEngine.prewarm?.(config.pyodideIndexUrl);
+        // which is why the policy grants this only on roomy hardware — and even
+        // then the warm-up waits for an idle slot, so the first keystrokes of
+        // the onboarding form are never competing with it for cores.
+        const warming = this.#deps.spawnChartEngine();
+        chartEngine = warming;
+        this.#chartEngine = warming;
+        cancelPrewarm = (this.#deps.scheduleIdle ?? defaultScheduleIdle)(() => {
+          cancelPrewarm = null;
+          if (this.#chartEngine === warming) warming.prewarm?.(config.pyodideIndexUrl);
+        });
       }
 
       onStage({ kind: "syncing" });
@@ -264,6 +293,10 @@ export class AlmaMeshRuntime {
         (progress) => onStage({ kind: "syncing", progress }),
       );
       this.#assertCurrent(generation);
+      // The sync settled before an idle slot came: `boot` warms the runtime
+      // itself (cold), which is exactly the sequential path.
+      cancelPrewarm?.();
+      cancelPrewarm = null;
       onStage({ kind: "synced", result });
 
       onStage({ kind: "reassembling" });
@@ -302,6 +335,7 @@ export class AlmaMeshRuntime {
       onStage({ kind: "ready" });
       return engine;
     } catch (error) {
+      cancelPrewarm?.();
       syncEngine.terminate?.();
       chartEngine?.terminate?.();
       if (this.#syncEngine === syncEngine) this.#syncEngine = null;

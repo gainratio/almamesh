@@ -44,7 +44,7 @@ import type {
 import type { TimeConfidence } from '@almamesh/constants';
 import type { RectificationInput } from '@almamesh/browser/types';
 import { engineErrorCode as engineErrorCodeOf } from '../lib/engineLifecycle';
-import { useOptionalChartEngine } from '../providers/chartEngineContext';
+import { useEngineBootProgress, useOptionalChartEngine } from '../providers/chartEngineContext';
 import { predictiveReferenceInstant } from '../lib/predictive';
 import { useRectificationGate } from '../lib/rectificationGate';
 
@@ -299,7 +299,9 @@ export function useRectification(profileId: string): UseRectificationResult {
   // `stage` object (bundle bytes, a verified file, Pyodide bytes), and each one
   // restarts the timer. A slow link that keeps moving never reads as stuck.
   const [warmingTimedOut, setWarmingTimedOut] = useState(false);
-  const latestStage = engineCtx?.stage ?? null;
+  // The byte-level context (coalesced to <= 4/s): the coarse `stage` on the
+  // engine context changes only when the bootstrap enters a new stage.
+  const latestStage = useEngineBootProgress();
   useEffect(() => {
     if (engine !== null) {
       setWarmingTimedOut(false);
