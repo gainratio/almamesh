@@ -50,3 +50,6 @@ export * from './webStorage';
 // collect/apply + registry; `backupCrypto` = optional passphrase encrypt/decode.
 export * from './backup';
 export * from './backupCrypto';
+// Backup format v2: passphrase-encrypted SQLite + device settings and secrets.
+export * from './portableBundle';
+export * from './portableSettings';
