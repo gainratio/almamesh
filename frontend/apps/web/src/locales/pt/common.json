@@ -77,7 +77,11 @@
   "update": {
     "available": "Uma nova versão está disponível!",
     "reload_cta": "Recarregar para atualizar",
-    "dismiss_aria": "Dispensar aviso de atualização"
+    "dismiss_aria": "Dispensar aviso de atualização",
+    "finishing_previous": "Concluindo o download anterior… a atualização acontece quando terminar.",
+    "activating": "Atualizando…",
+    "stalled": "A atualização não pôde ser concluída. Feche as outras abas do AlmaMesh e recarregue.",
+    "reload_now": "Recarregar agora"
   },
   "footer": {
     "privacy": "Política de privacidade",

@@ -74,7 +74,11 @@
   "update": {
     "available": "A new version is available!",
     "reload_cta": "Reload to update",
-    "dismiss_aria": "Dismiss update notice"
+    "dismiss_aria": "Dismiss update notice",
+    "finishing_previous": "Finishing the previous download… updating when it's done.",
+    "activating": "Updating…",
+    "stalled": "The update couldn't finish. Close other AlmaMesh tabs, then reload.",
+    "reload_now": "Reload now"
   },
   "footer": {
     "privacy": "Privacy Policy",
