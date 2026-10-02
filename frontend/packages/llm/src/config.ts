@@ -193,17 +193,21 @@ export function resolveProviderConfig(env: LlmEnv = {}): ProviderConfig {
 export const RECOMMENDED_CLOUD_MODEL = "deepseek/deepseek-v4.1-flash";
 
 /**
- * The default cloud model the CHAT panel prefers: a fast-streaming
- * OpenAI-compatible OpenRouter slug (verified against the live models catalog).
- * Chat trades the deeper structured-interpretation model
- * ({@link RECOMMENDED_CLOUD_MODEL}) for snappier first-token latency in the
- * conversational flow. Used as the chat-tier default by `applyChatSettings`
- * (applied on the OpenRouter cloud preset only when the user has set no explicit
- * `chatModel`) and as the `chatModel` default in {@link openRouterPreset}. A
- * deliberately-chosen `chatModel`, or a local/custom endpoint's own model, is
- * never overridden.
+ * The default cloud model the CHAT panel uses. Deliberately the SAME id as
+ * {@link RECOMMENDED_CLOUD_MODEL} — an alias, not a second literal — so the two
+ * defaults cannot drift apart.
+ *
+ * Chat used to default to `minimax/minimax-m2.7` for first-token latency. On the
+ * live site (2026-10-02) that model took 26.7 s to produce a first token, so chat
+ * now takes the same fast default as readings.
+ *
+ * Used as the chat-tier default by `applyChatSettings` (applied on the OpenRouter
+ * cloud preset only when the user has set no explicit `chatModel`) and as the
+ * `chatModel` default in {@link openRouterPreset}. A `chatModel` already saved in
+ * a user's settings — including one an earlier preset wrote — and a local/custom
+ * endpoint's own model are never overridden.
  */
-export const CHAT_CLOUD_MODEL = "minimax/minimax-m2.7";
+export const CHAT_CLOUD_MODEL = RECOMMENDED_CLOUD_MODEL;
 
 /**
  * Model ids AlmaMesh itself once shipped as a DEFAULT OpenRouter preset and that
