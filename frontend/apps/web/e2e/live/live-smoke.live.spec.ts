@@ -116,15 +116,10 @@ test.describe('live smoke', () => {
     await previous.addInitScript(probeEngineBoot);
     await previous.goto(`${ORIGIN}/welcome`);
     // The worker claims the page on activation (clientsClaim + clients.claim()
-    // in engine-trust-install.js), so one load ends controlled. No reload here:
-    // a second load registers again, and Chromium's register-time update check
-    // fetches sw.js in the browser process, outside this context's routes, so
-    // it finds the LIVE deploy's worker during the previous visit. Workbox
-    // installs it one precache entry at a time through the proxy, caching the
-    // previous deploy's shell under the live revision keys before a live-only
-    // chunk 404s the install; the later live install then trusts those keys and
-    // serves the previous shell with 404 chunks ("settled" on the previous
-    // entry, 2026-10-01).
+    // in engine-trust-install.js), so one load ends controlled; no reload.
+    // Chromium still re-checks sw.js on its own during this visit and finds the
+    // LIVE worker (see serveOriginFrom, which keeps that worker from caching the
+    // previous shell under live keys).
     await previous.evaluate(() => navigator.serviceWorker.ready.then(() => undefined));
     await previous.waitForFunction(() => navigator.serviceWorker.controller !== null, null, { timeout: 60_000 });
     expect(await executingEntryChunk(previous), 'the visitor starts on the previous deploy').toBe(previousEntry);
