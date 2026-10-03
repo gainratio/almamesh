@@ -21,6 +21,7 @@
 import type { SiderealChart, YogaData } from '@almamesh/browser/types';
 
 import { combustionOrbDeg } from './combustionOrbs';
+import { resolveCuspProximity } from '../lagnaCusp';
 
 /**
  * How a factor was computed. This sets the CEILING on any confidence resting
@@ -139,7 +140,7 @@ export function factorPlanets(factor: ChartFactor): readonly string[] {
  * defined purely by sign dignity (e.g. an exaltation) reads identically in both
  * candidate charts and must not be penalised for a cusp it does not touch.
  */
-function yogaTouchesHouses(yoga: YogaData): boolean {
+export function yogaDependsOnHouses(yoga: YogaData): boolean {
   return (
     yoga.houses_involved.length > 0 ||
     yoga.strength_factors.some((factor) => factor.factor_type === 'house_class')
@@ -153,6 +154,7 @@ export function yogaFactorId(name: string): string {
 
 function lagnaFactor(chart: SiderealChart): ChartFactor {
   const { lagna } = chart;
+  const proximity = resolveCuspProximity(lagna.sign, lagna.sign_degrees, lagna);
   return {
     kind: 'lagna',
     id: 'lagna',
@@ -162,8 +164,8 @@ function lagnaFactor(chart: SiderealChart): ChartFactor {
     cuspInvariant: false,
     sign: lagna.sign,
     signDegrees: lagna.sign_degrees,
-    cuspDistanceDeg: lagna.lagna_cusp_distance_deg ?? null,
-    adjacentSign: lagna.lagna_adjacent_sign ?? null,
+    cuspDistanceDeg: proximity?.degrees ?? null,
+    adjacentSign: proximity?.neighbourSign ?? null,
   };
 }
 
@@ -302,7 +304,7 @@ function dashaFactors(chart: SiderealChart): ChartFactor[] {
 function yogaFactors(chart: SiderealChart): ChartFactor[] {
   const factors: ChartFactor[] = [];
   for (const yoga of chart.yogas) {
-    const forks = yogaTouchesHouses(yoga);
+    const forks = yogaDependsOnHouses(yoga);
     factors.push({
       kind: 'yoga',
       id: yogaFactorId(yoga.name),

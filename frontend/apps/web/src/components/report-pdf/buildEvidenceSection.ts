@@ -29,6 +29,7 @@ import {
   type EvidenceLedger,
   type EvidenceRow,
   type FactorClass,
+  type LagnaSensitivity,
 } from '../../lib/evidence';
 import type {
   ReportPdfEvidence,
@@ -292,6 +293,11 @@ function alternativeCell(copy: Copy, alternative: Alternative): string {
             degrees: degrees(alternative.cuspDistanceDeg),
             shifts: alternative.shifts.map((shift) => shiftLine(copy, shift)).join('; '),
           });
+    case 'lagnaForkUnavailable':
+      return line(copy, 'alternative_lagna_fork_unavailable', {
+        sign: alternative.alternateSign,
+        degrees: degrees(alternative.cuspDistanceDeg),
+      });
     case 'orbRobustness':
       return line(copy, 'alternative_orb_robustness', {
         orb: degrees(alternative.orbDeg),
@@ -370,14 +376,26 @@ function deductionRules(copy: Copy): readonly string[] {
   ];
 }
 
-/** The full second chart — every graha's move, plus what is NOT claimed. */
+/** The verified second chart, or an explicit projection-unavailable disclosure. */
 function alternateBlock(
   copy: Copy,
-  alternate: AlternateLagna,
+  sensitivity: LagnaSensitivity,
+  alternate: AlternateLagna | null,
 ): Pick<
   ReportPdfEvidence,
   'alternateHeading' | 'alternateLead' | 'alternateShifts' | 'alternateMinutesNote'
 > {
+  if (alternate === null) {
+    return {
+      alternateHeading: line(copy, 'alternate_heading'),
+      alternateLead: line(copy, 'alternate_lead_unavailable', {
+        sign: sensitivity.alternateSign,
+        degrees: degrees(sensitivity.cuspDistanceDeg),
+      }),
+      alternateShifts: [],
+      alternateMinutesNote: line(copy, 'alternate_projection_unavailable'),
+    };
+  }
   return {
     alternateHeading: line(copy, 'alternate_heading'),
     alternateLead: line(copy, 'alternate_lead', {
@@ -427,7 +445,9 @@ export function buildEvidenceSection(
     deductionHeading: line(copy, 'deduction_heading'),
     deductionRules: deductionRules(copy),
     formula: line(copy, 'formula'),
-    ...(ledger.alternateLagna ? alternateBlock(copy, ledger.alternateLagna) : {}),
+    ...(ledger.lagnaSensitivity
+      ? alternateBlock(copy, ledger.lagnaSensitivity, ledger.alternateLagna)
+      : {}),
     cellLabels: {
       observation: line(copy, 'cell_observation'),
       evidence: line(copy, 'cell_evidence'),

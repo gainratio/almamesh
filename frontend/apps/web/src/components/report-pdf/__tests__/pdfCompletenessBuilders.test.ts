@@ -275,8 +275,14 @@ describe('Defect 2 — narrative section titles are injected, not hardcoded', ()
 
 describe('Defect 3 — stability markers survive the reshape', () => {
   const stability = reportStabilityMarkers(
-    [yogaClaimId('gaja_kesari'), ...Object.keys(DOMAINS_CTX.forecasts).map(domainClaimId)],
-    true, // near-cusp → every verdict is birth-time SENSITIVE
+    [
+      { claimId: yogaClaimId('gaja_kesari'), houseDependent: true },
+      ...Object.keys(DOMAINS_CTX.forecasts).map((domain) => ({
+        claimId: domainClaimId(domain),
+        houseDependent: true,
+      })),
+    ],
+    true, // near-cusp → every house-dependent verdict is birth-time SENSITIVE
   );
   const formatStability = (marker: { readonly holdsUnderBoth: boolean }): string =>
     i18n.t(marker.holdsUnderBoth ? 'report:stability.stable' : 'report:stability.sensitive');

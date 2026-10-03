@@ -52,7 +52,13 @@ describe('diffMarkers — exact stability diff (mirror of yoga_markers/domain_ma
 
 describe('reportStabilityMarkers — render-time conservative default', () => {
   it('marks every claim STABLE when the lagna is not near a cusp', () => {
-    const markers = reportStabilityMarkers(['yoga:a', 'domain:career'], false);
+    const markers = reportStabilityMarkers(
+      [
+        { claimId: 'yoga:a', houseDependent: true },
+        { claimId: 'domain:career', houseDependent: true },
+      ],
+      false,
+    );
     expect(markers.get('yoga:a')).toEqual({ claimId: 'yoga:a', holdsUnderBoth: true });
     expect(markers.get('domain:career')).toEqual({
       claimId: 'domain:career',
@@ -60,9 +66,17 @@ describe('reportStabilityMarkers — render-time conservative default', () => {
     });
   });
 
-  it('marks every claim BIRTH-TIME-SENSITIVE when the lagna is on a cusp', () => {
-    const markers = reportStabilityMarkers(['yoga:a', 'domain:career'], true);
-    expect(markers.get('yoga:a')?.holdsUnderBoth).toBe(false);
+  it('marks only HOUSE-DEPENDENT claims sensitive when the lagna is on a cusp', () => {
+    const markers = reportStabilityMarkers(
+      [
+        { claimId: 'yoga:house-based', houseDependent: true },
+        { claimId: 'yoga:sign-only', houseDependent: false },
+        { claimId: 'domain:career', houseDependent: true },
+      ],
+      true,
+    );
+    expect(markers.get('yoga:house-based')?.holdsUnderBoth).toBe(false);
+    expect(markers.get('yoga:sign-only')?.holdsUnderBoth).toBe(true);
     expect(markers.get('domain:career')?.holdsUnderBoth).toBe(false);
   });
 });

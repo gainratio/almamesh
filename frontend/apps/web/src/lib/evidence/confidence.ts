@@ -55,7 +55,7 @@
  * authoritative.
  */
 
-import type { AlternateLagna } from './alternateLagna';
+import type { LagnaSensitivity } from './alternateLagna';
 import type { ChartFactor, FactorClass } from './factors';
 
 export type ConfidenceLevel = 'high' | 'moderate' | 'low';
@@ -134,15 +134,15 @@ function ceilingOf(factors: readonly ChartFactor[]): {
 
 function collectDeductions(
   factors: readonly ChartFactor[],
-  alternate: AlternateLagna | null,
+  sensitivity: LagnaSensitivity | null,
 ): ConfidenceDeduction[] {
   const deductions: ConfidenceDeduction[] = [];
 
-  if (alternate !== null && factors.some((factor) => !factor.cuspInvariant)) {
+  if (sensitivity !== null && factors.some((factor) => !factor.cuspInvariant)) {
     deductions.push({
       code: 'lagna-fork',
       subject: 'lagna',
-      marginDeg: alternate.cuspDistanceDeg,
+      marginDeg: sensitivity.cuspDistanceDeg,
     });
   }
 
@@ -181,13 +181,13 @@ function collectDeductions(
  */
 export function assessConfidence(
   factors: readonly ChartFactor[],
-  alternate: AlternateLagna | null,
+  sensitivity: LagnaSensitivity | null,
 ): ConfidenceVerdict {
   if (factors.length === 0) {
     throw new Error('assessConfidence: a claim citing no factors has no derivable confidence');
   }
   const { ceiling, ceilingClass, ceilingFactorId } = ceilingOf(factors);
-  const deductions = collectDeductions(factors, alternate);
+  const deductions = collectDeductions(factors, sensitivity);
   const raw = LEVEL_VALUE[ceiling] - deductions.length;
   return {
     level: LEVEL_BY_VALUE[Math.max(1, Math.min(3, raw))],

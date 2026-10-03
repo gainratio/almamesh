@@ -13,8 +13,46 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { alternateLagna, wholeSignHouse } from '../alternateLagna';
+import type { SiderealChart } from '@almamesh/browser/types';
+
+import {
+  alternateLagna,
+  resolveLagnaSensitivity,
+  wholeSignHouse,
+} from '../alternateLagna';
 import { nearCuspChart, secureLagnaChart } from './evidenceFixtures';
+
+function withoutCuspMetadata(chart: SiderealChart): SiderealChart {
+  return {
+    ...chart,
+    lagna: {
+      ...chart.lagna,
+      lagna_cusp_distance_deg: undefined,
+      lagna_adjacent_sign: undefined,
+      is_near_cusp: undefined,
+    },
+  };
+}
+
+function legacyLowerBoundaryChart(): SiderealChart {
+  const chart = withoutCuspMetadata(nearCuspChart());
+  const lagnaSign = 'Pisces';
+  return {
+    ...chart,
+    lagna: {
+      ...chart.lagna,
+      longitude: 330.8,
+      sign: lagnaSign,
+      sign_degrees: 0.8,
+    },
+    planets: Object.fromEntries(
+      Object.entries(chart.planets).map(([name, planet]) => [
+        name,
+        { ...planet, house: wholeSignHouse(lagnaSign, planet.sign) ?? planet.house },
+      ]),
+    ),
+  };
+}
 
 describe('wholeSignHouse', () => {
   it('counts houses from the rising sign, wrapping the zodiac', () => {
@@ -44,6 +82,52 @@ describe('alternateLagna', () => {
     expect(alternate?.currentSign).toBe('Aquarius');
     expect(alternate?.alternateSign).toBe('Pisces');
     expect(alternate?.cuspDistanceDeg).toBeCloseTo(1.18, 2);
+  });
+
+  it('derives an upper-boundary fork for a legacy chart without cusp metadata', () => {
+    const legacy = withoutCuspMetadata(nearCuspChart());
+    const sensitivity = resolveLagnaSensitivity(legacy, 3);
+    const alternate = alternateLagna(legacy, 3);
+
+    expect(sensitivity).toEqual({
+      currentSign: 'Aquarius',
+      alternateSign: 'Pisces',
+      cuspDistanceDeg: expect.closeTo(1.183, 6),
+    });
+    expect(alternate?.alternateSign).toBe('Pisces');
+    expect(alternate?.cuspDistanceDeg).toBeCloseTo(1.183, 6);
+  });
+
+  it('derives the previous sign at a legacy lower boundary for any rising sign', () => {
+    const legacy = legacyLowerBoundaryChart();
+    const sensitivity = resolveLagnaSensitivity(legacy, 3);
+    const alternate = alternateLagna(legacy, 3);
+
+    expect(sensitivity).toEqual({
+      currentSign: 'Pisces',
+      alternateSign: 'Aquarius',
+      cuspDistanceDeg: 0.8,
+    });
+    expect(alternate?.alternateSign).toBe('Aquarius');
+    expect(alternate?.shifts.every((shift) => shift.from !== shift.to)).toBe(true);
+  });
+
+  it('treats exactly 3 degrees as sensitive and anything farther away as secure', () => {
+    const exactly = withoutCuspMetadata(secureLagnaChart());
+    const outside = withoutCuspMetadata(secureLagnaChart());
+
+    expect(
+      resolveLagnaSensitivity(
+        { ...exactly, lagna: { ...exactly.lagna, sign_degrees: 3 } },
+        3,
+      ),
+    ).not.toBeNull();
+    expect(
+      resolveLagnaSensitivity(
+        { ...outside, lagna: { ...outside.lagna, sign_degrees: 3.01 } },
+        3,
+      ),
+    ).toBeNull();
   });
 
   it('moves every planet by exactly one house, and names each move', () => {
@@ -76,6 +160,7 @@ describe('alternateLagna', () => {
         sun: { ...chart.planets.sun, house: 7 },
       },
     };
+    expect(resolveLagnaSensitivity(tampered, 3)).not.toBeNull();
     expect(alternateLagna(tampered, 3)).toBeNull();
   });
 });

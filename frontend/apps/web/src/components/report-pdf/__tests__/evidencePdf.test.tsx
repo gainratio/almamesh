@@ -27,9 +27,17 @@ import { renderToBuffer } from '@react-pdf/renderer';
 import { act } from 'react';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { ReportDocument } from '../ReportDocument';
+import { buildEvidenceSection } from '../buildEvidenceSection';
+import { glyphSafe } from '../glyphSafe';
 import { registerReportFonts } from '../theme';
 import type { ReportPdfData, ReportPdfEvidence } from '../types';
-import { buildMaximalReportPdfData, EVIDENCE_GUIDANCE_SENTINEL } from './maximalReportFixture';
+import { buildEvidenceLedger } from '../../../lib/evidence';
+import {
+  buildMaximalReportPdfData,
+  CHART,
+  EVIDENCE_GUIDANCE_SENTINEL,
+  maximalReportT,
+} from './maximalReportFixture';
 import { inspectPdfWithPoppler, normalizePdfText, type InspectedPdf } from './pdfPoppler';
 
 vi.hoisted(() => {
@@ -175,4 +183,44 @@ describe('Evidence & Confidence — the exported PDF', () => {
     expect(data.evidence?.rejectedNote, 'the fixture must exercise a rejection').toBeTruthy();
     expect(text).toContain(folded(evidence.rejectedNote ?? ''));
   });
+
+  it('keeps a legacy near-cusp chart consistent in the durable PDF bytes', async () => {
+    const legacyChart = {
+      ...CHART,
+      lagna: {
+        ...CHART.lagna,
+        lagna_cusp_distance_deg: undefined,
+        lagna_adjacent_sign: undefined,
+        is_near_cusp: undefined,
+      },
+    };
+    const legacyEvidence = buildEvidenceSection(
+      buildEvidenceLedger(legacyChart),
+      maximalReportT(),
+      glyphSafe,
+    );
+    const rulership = legacyEvidence.rows.find(
+      (row) => row.observationId === 'rulership:saturn',
+    );
+    expect(rulership, 'fixture must carry a house-dependent yogakaraka').toBeDefined();
+    if (!rulership) return;
+
+    let bytes: Uint8Array | undefined;
+    await act(async () => {
+      bytes = await renderToBuffer(
+        <ReportDocument data={{ ...buildMaximalReportPdfData(), evidence: legacyEvidence }} />,
+      );
+    });
+    if (!bytes) throw new Error('The legacy-cusp report did not render bytes');
+    const legacyPdf = await inspectPdfWithPoppler(bytes);
+    const legacyText = folded(legacyPdf.text);
+
+    expect(legacyText).toContain(folded(legacyEvidence.alternateLead ?? ''));
+    expect(legacyText).toContain(folded(rulership.confidence));
+    expect(legacyText).toContain(folded(rulership.alternative));
+    expect(rulership.confidence).toContain('Low');
+    expect(rulership.confidence.toLowerCase()).toContain('lagna fork');
+    expect(rulership.alternative).not.toContain('sign placement alone');
+    expect(legacyText).not.toContain('the ascendant sits well inside its sign');
+  }, 90_000);
 });

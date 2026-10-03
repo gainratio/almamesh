@@ -22,6 +22,7 @@
  */
 
 import type { SiderealChart } from '@almamesh/browser/types';
+import { cuspInfo } from '../lagnaCusp';
 
 /** Aries..Pisces in zodiacal order (engine Title-Case names). */
 const ZODIAC_ORDER: readonly string[] = [
@@ -66,25 +67,56 @@ export interface AlternateLagna {
 }
 
 /**
+ * The measured near-boundary state, independent of whether an exact alternate
+ * house projection can be verified. Keeping these states separate prevents a
+ * failed projection (or legacy payload) from being mislabeled "secure".
+ */
+export interface LagnaSensitivity {
+  readonly currentSign: string;
+  readonly alternateSign: string;
+  readonly cuspDistanceDeg: number;
+}
+
+/**
+ * Resolve the canonical near-cusp state for current and legacy charts. Engine
+ * metadata wins when complete; otherwise `cuspInfo` derives the same nearest
+ * boundary from the sign and degree that the cover/provenance path uses.
+ */
+export function resolveLagnaSensitivity(
+  chart: SiderealChart,
+  thresholdDeg = 3,
+): LagnaSensitivity | null {
+  const { lagna } = chart;
+  const cusp = cuspInfo(lagna.sign, lagna.sign_degrees, thresholdDeg, lagna);
+  return cusp === null
+    ? null
+    : {
+        currentSign: lagna.sign,
+        alternateSign: cusp.neighbourSign,
+        cuspDistanceDeg: cusp.degrees,
+      };
+}
+
+/**
  * The alternate chart when the ascendant sits within `thresholdDeg` of a sign
  * boundary, else null — a mid-sign ascendant has no live second chart and must
  * not have one cluttering its report.
  *
- * Returns null (never a guess) when the engine omits its cusp fields, when a
- * sign name is unrecognised, or when the whole-sign self-check fails.
+ * Legacy charts without engine cusp fields are measured from their stored sign
+ * degree. Returns null (never a guess) when a sign name is unrecognised or when
+ * the whole-sign self-check fails.
  */
 export function alternateLagna(chart: SiderealChart, thresholdDeg = 3): AlternateLagna | null {
   const { lagna } = chart;
-  const distance = lagna.lagna_cusp_distance_deg;
-  const adjacent = lagna.lagna_adjacent_sign;
-  if (typeof distance !== 'number' || adjacent == null || distance > thresholdDeg) {
+  const sensitivity = resolveLagnaSensitivity(chart, thresholdDeg);
+  if (sensitivity === null) {
     return null;
   }
 
   const shifts: HouseShift[] = [];
   for (const [key, planet] of Object.entries(chart.planets)) {
     const current = wholeSignHouse(lagna.sign, planet.sign);
-    const projected = wholeSignHouse(adjacent, planet.sign);
+    const projected = wholeSignHouse(sensitivity.alternateSign, planet.sign);
     if (current === null || projected === null) {
       return null;
     }
@@ -98,9 +130,9 @@ export function alternateLagna(chart: SiderealChart, thresholdDeg = 3): Alternat
   }
 
   return {
-    currentSign: lagna.sign,
-    alternateSign: adjacent,
-    cuspDistanceDeg: distance,
+    currentSign: sensitivity.currentSign,
+    alternateSign: sensitivity.alternateSign,
+    cuspDistanceDeg: sensitivity.cuspDistanceDeg,
     shifts,
   };
 }

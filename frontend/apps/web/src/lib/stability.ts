@@ -14,10 +14,9 @@
  *     charts and identical. Used when the alternate-lagna verdicts are in hand.
  *   • {@link reportStabilityMarkers} — the RENDER-TIME conservative default: the
  *     report is computed for ONE lagna, so when that lagna sits on a sign cusp
- *     (a live alternate ascendant, whole-sign houses would rotate) every
- *     house-based verdict is flagged birth-time-sensitive; otherwise the
- *     ascendant is unambiguous and every verdict is stable. It never claims a
- *     stability it cannot back.
+ *     (a live alternate ascendant, whole-sign houses would rotate) each claim
+ *     carrying house-dependency metadata is flagged birth-time-sensitive;
+ *     sign-only claims remain stable. It never claims a stability it cannot back.
  *
  * The claim-id format (`yoga:<name>` / `domain:<domain>`) is byte-identical to
  * the Python module, so a future live dual pass can feed either producer.
@@ -29,6 +28,12 @@ export interface StabilityMarker {
   readonly claimId: string;
   /** True iff the verdict is identical under both candidate ascendants. */
   readonly holdsUnderBoth: boolean;
+}
+
+/** The only dependency fact the conservative render-time marker needs. */
+export interface ReportStabilityClaim {
+  readonly claimId: string;
+  readonly houseDependent: boolean;
 }
 
 /** Namespaced stability id for a yoga claim (mirror of `yoga_claim_id`). */
@@ -61,16 +66,19 @@ export function diffMarkers<V>(
 /**
  * The render-time conservative markers for a report computed at ONE lagna.
  * `nearCusp` = the ascendant sits within the cusp threshold, so an adjacent-sign
- * ascendant is a live alternative and every house-based verdict is birth-time-
- * sensitive; otherwise the ascendant is unambiguous and every verdict is stable.
+ * ascendant is a live alternative and every house-dependent verdict is birth-
+ * time-sensitive; otherwise the ascendant is unambiguous and every verdict is stable.
  */
 export function reportStabilityMarkers(
-  claimIds: readonly string[],
+  claims: readonly ReportStabilityClaim[],
   nearCusp: boolean,
 ): Map<string, StabilityMarker> {
   const markers = new Map<string, StabilityMarker>();
-  for (const claimId of claimIds) {
-    markers.set(claimId, { claimId, holdsUnderBoth: !nearCusp });
+  for (const claim of claims) {
+    markers.set(claim.claimId, {
+      claimId: claim.claimId,
+      holdsUnderBoth: !nearCusp || !claim.houseDependent,
+    });
   }
   return markers;
 }

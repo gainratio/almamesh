@@ -17,7 +17,7 @@
 import { validateAnnotations, type RawAnnotationPayload } from './annotations';
 import { buildObservations, type Observation } from './observations';
 
-import type { AlternateLagna } from './alternateLagna';
+import type { AlternateLagna, LagnaSensitivity } from './alternateLagna';
 import type { SiderealChart } from '@almamesh/browser/types';
 
 /** One rendered row: the computed observation plus, maybe, the model's prose. */
@@ -32,6 +32,8 @@ export interface EvidenceRow {
 export interface EvidenceLedger {
   readonly rows: readonly EvidenceRow[];
   readonly alternateLagna: AlternateLagna | null;
+  /** Canonical near-cusp state, independent of alternate projection success. */
+  readonly lagnaSensitivity: LagnaSensitivity | null;
   /**
    * Statements the model DECLARED ungrounded. Rendered in their own section
    * with no evidence, confidence or alternative beside them.
@@ -77,6 +79,7 @@ export function buildEvidenceLedger(
   return {
     rows,
     alternateLagna: ledger.alternateLagna,
+    lagnaSensitivity: ledger.lagnaSensitivity,
     generalGuidance: validated.generalGuidance,
     rejectedCount: validated.rejected.length,
     rejectedCitations: [...new Set(validated.rejected.map((r) => r.citedId))]

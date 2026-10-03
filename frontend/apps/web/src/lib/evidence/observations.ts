@@ -12,7 +12,12 @@
  * invent an observation because it does not author the list — it annotates it.
  */
 
-import { alternateLagna, type AlternateLagna } from './alternateLagna';
+import {
+  alternateLagna,
+  resolveLagnaSensitivity,
+  type AlternateLagna,
+  type LagnaSensitivity,
+} from './alternateLagna';
 import { alternativeFor, type Alternative } from './alternatives';
 import { assessConfidence, CUSP_THRESHOLD_DEG, type ConfidenceVerdict } from './confidence';
 import { chartFactors, type ChartFactor } from './factors';
@@ -111,14 +116,17 @@ export interface ObservationLedger {
   /** Every citable id in this chart — the validator's allowlist. */
   readonly factorIds: ReadonlySet<string>;
   readonly observationIds: ReadonlySet<string>;
-  /** The second chart, when this ascendant has one. */
+  /** The verified second chart, when exact projection passes its self-check. */
   readonly alternateLagna: AlternateLagna | null;
+  /** Near-boundary state, even if exact alternate projection fails closed. */
+  readonly lagnaSensitivity: LagnaSensitivity | null;
 }
 
 /** Build the deterministic observation ledger. No model, no network, pure. */
 export function buildObservations(chart: SiderealChart): ObservationLedger {
   const factors = chartFactors(chart);
   const byId = new Map(factors.map((factor) => [factor.id, factor]));
+  const sensitivity = resolveLagnaSensitivity(chart, CUSP_THRESHOLD_DEG);
   const alternate = alternateLagna(chart, CUSP_THRESHOLD_DEG);
 
   const observations: Observation[] = [];
@@ -132,8 +140,8 @@ export function buildObservations(chart: SiderealChart): ObservationLedger {
       id,
       primary,
       supporting,
-      confidence: assessConfidence(supporting, alternate),
-      alternative: alternativeFor(primary, alternate),
+      confidence: assessConfidence(supporting, sensitivity),
+      alternative: alternativeFor(primary, sensitivity, alternate),
     });
   }
 
@@ -142,5 +150,6 @@ export function buildObservations(chart: SiderealChart): ObservationLedger {
     factorIds: new Set(byId.keys()),
     observationIds: new Set(observations.map((observation) => observation.id)),
     alternateLagna: alternate,
+    lagnaSensitivity: sensitivity,
   };
 }

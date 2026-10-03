@@ -443,7 +443,7 @@ describe('repository truth', () => {
     ]) expect(existsSync(resolve(root, path))).toBe(true);
 
     const reportView = readRoot('frontend/apps/web/src/pages/ReportView.tsx');
-    expect(reportView).toContain('reportStabilityMarkers(claimIds, nearCusp)');
+    expect(reportView).toContain('reportStabilityMarkers(stabilityClaims, nearCusp)');
     expect(reportView).not.toContain('diffMarkers(');
 
     const rectificationPdfTypes = readRoot(

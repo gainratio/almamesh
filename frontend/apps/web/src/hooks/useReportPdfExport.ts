@@ -39,7 +39,7 @@ import { rectificationDelta } from '../lib/rectification';
 import { sectionNumeral } from '../lib/reportSections';
 import { domainClaimId, reportStabilityMarkers, yogaClaimId } from '../lib/stability';
 import { downloadReportPdf, type ReportPdfChrome } from '../lib/downloadReportPdf';
-import { buildEvidenceLedger } from '../lib/evidence';
+import { buildEvidenceLedger, yogaDependsOnHouses } from '../lib/evidence';
 import { buildEvidenceSection } from '../components/report-pdf/buildEvidenceSection';
 import { buildRectificationPdf } from '../components/report-pdf/buildRectificationPdf';
 import { glyphSafe } from '../components/report-pdf/glyphSafe';
@@ -117,7 +117,7 @@ export function useReportPdfExport(audience: ReportAudience): UseReportPdfExport
           .filter((event): event is LifeEvent => event !== undefined)
       : [];
 
-    const cusp = cuspInfo(titleCaseSign(lagna.sign), lagna.sign_degrees);
+    const cusp = cuspInfo(titleCaseSign(lagna.sign), lagna.sign_degrees, 3, lagna);
     const chrome: ReportPdfChrome = {
       personName,
       audienceLabel: t(`audience.${audience}`),
@@ -210,11 +210,19 @@ export function useReportPdfExport(audience: ReportAudience): UseReportPdfExport
     // carry that caveat, not just the screen.
     const nearCusp = cuspInfo(titleCaseSign(lagna.sign), lagna.sign_degrees, 3, lagna) !== null;
     const domainsCtx = predictive.status === 'ready' ? predictive.domainsCtx : undefined;
-    const claimIds = [
-      ...sidereal.yogas.map((yoga) => yogaClaimId(yoga.name)),
-      ...(domainsCtx ? Object.keys(domainsCtx.forecasts).map(domainClaimId) : []),
+    const stabilityClaims = [
+      ...sidereal.yogas.map((yoga) => ({
+        claimId: yogaClaimId(yoga.name),
+        houseDependent: yogaDependsOnHouses(yoga),
+      })),
+      ...(domainsCtx
+        ? Object.keys(domainsCtx.forecasts).map((domain) => ({
+            claimId: domainClaimId(domain),
+            houseDependent: true,
+          }))
+        : []),
     ];
-    const stability = reportStabilityMarkers(claimIds, nearCusp);
+    const stability = reportStabilityMarkers(stabilityClaims, nearCusp);
 
     const assumptionsDelta = rectificationDelta(birth);
     const assumptions = {

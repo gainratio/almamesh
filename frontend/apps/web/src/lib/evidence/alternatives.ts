@@ -28,7 +28,7 @@
  * rather than inventing a hedge.
  */
 
-import type { AlternateLagna, HouseShift } from './alternateLagna';
+import type { AlternateLagna, HouseShift, LagnaSensitivity } from './alternateLagna';
 import { BOUNDARY_MARGIN_DEG } from './confidence';
 import type { ChartFactor } from './factors';
 
@@ -57,6 +57,12 @@ export type Alternative =
       readonly cuspDistanceDeg: number;
       /** Only the grahas this claim actually rests on. */
       readonly shifts: readonly HouseShift[];
+    }
+  | {
+      /** Near-cusp is measured, but exact shifts failed the whole-sign self-check. */
+      readonly kind: 'lagnaForkUnavailable';
+      readonly alternateSign: string;
+      readonly cuspDistanceDeg: number;
     }
   | {
       readonly kind: 'orbRobustness';
@@ -127,30 +133,48 @@ function forkFor(
   };
 }
 
+function unavailableFork(
+  sensitivity: LagnaSensitivity,
+): Extract<Alternative, { kind: 'lagnaForkUnavailable' }> {
+  return {
+    kind: 'lagnaForkUnavailable',
+    alternateSign: sensitivity.alternateSign,
+    cuspDistanceDeg: sensitivity.cuspDistanceDeg,
+  };
+}
+
+function houseDependentAlternative(
+  sensitivity: LagnaSensitivity | null,
+  alternate: AlternateLagna | null,
+  planets: readonly string[],
+): Alternative {
+  if (sensitivity === null) {
+    return { kind: 'none', reason: 'ascendant-secure' };
+  }
+  return alternate === null
+    ? unavailableFork(sensitivity)
+    : forkFor(alternate, planets);
+}
+
 /**
  * The alternative reading for one observation, chosen by its PRIMARY factor.
- * `alternate` is this chart's second ascendant, or null when the lagna is
- * securely inside its sign.
+ * `sensitivity` answers whether the lagna can fork; `alternate` separately
+ * answers whether exact house shifts passed the whole-sign self-check.
  */
 export function alternativeFor(
   primary: ChartFactor,
+  sensitivity: LagnaSensitivity | null,
   alternate: AlternateLagna | null,
 ): Alternative {
   switch (primary.kind) {
     case 'lagna':
-      return alternate === null
-        ? { kind: 'none', reason: 'ascendant-secure' }
-        : forkFor(alternate, []);
+      return houseDependentAlternative(sensitivity, alternate, []);
 
     case 'housePlacement':
-      return alternate === null
-        ? { kind: 'none', reason: 'ascendant-secure' }
-        : forkFor(alternate, [primary.planet]);
+      return houseDependentAlternative(sensitivity, alternate, [primary.planet]);
 
     case 'rulership':
-      return alternate === null
-        ? { kind: 'none', reason: 'ascendant-secure' }
-        : forkFor(alternate, [primary.planet]);
+      return houseDependentAlternative(sensitivity, alternate, [primary.planet]);
 
     case 'dasha':
       return {
@@ -186,9 +210,9 @@ export function alternativeFor(
       return { kind: 'none', reason: 'apparent-motion' };
 
     case 'yoga':
-      return alternate !== null && !primary.cuspInvariant
-        ? forkFor(alternate, primary.planetsInvolved)
-        : { kind: 'none', reason: 'dignity-by-sign' };
+      return primary.cuspInvariant
+        ? { kind: 'none', reason: 'dignity-by-sign' }
+        : houseDependentAlternative(sensitivity, alternate, primary.planetsInvolved);
 
     case 'yogaStrength':
       if (primary.netMarks === 0) {
@@ -199,6 +223,9 @@ export function alternativeFor(
           maxFavorable: primary.maxFavorable,
           maxUnfavorable: primary.maxUnfavorable,
         };
+      }
+      if (!primary.cuspInvariant) {
+        return houseDependentAlternative(sensitivity, alternate, []);
       }
       return { kind: 'none', reason: 'structural-declared' };
   }
