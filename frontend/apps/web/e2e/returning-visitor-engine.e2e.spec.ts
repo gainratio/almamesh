@@ -153,9 +153,20 @@ async function engineCacheSurvived(context: BrowserContext, origin: string): Pro
  * `page.waitForFunction` does not await an async predicate (the returned
  * Promise is truthy), which made the first version of this gate racy. The
  * app reloads on controllerchange, so a destroyed context just means "again".
+ *
+ * The splash must not download the engine. Chromium promotes a worker that
+ * called skipWaiting() only once the ACTIVE worker has no fetch in flight, and
+ * an engine download through the previous worker's CacheFirst routes kept it
+ * busy: on a loaded CI runner the new worker sat in `waiting` past the 90 s
+ * poll (run 37146730486). So the precondition is asserted, not assumed.
  */
 async function acceptUpdate(context: BrowserContext, origin: string, marker: string | null): Promise<void> {
   const page = await context.newPage();
+  const engineRequests: string[] = [];
+  page.on('request', (request) => {
+    const { pathname } = new URL(request.url());
+    if (/^\/(pyodide|bundle|models)\//.test(pathname)) engineRequests.push(pathname);
+  });
   await page.goto(`${origin}/welcome`);
   await page.evaluate(() => navigator.serviceWorker.getRegistration().then((r) => r?.update()));
   await expect.poll(() => page.evaluate(async (previousMarker) => {
@@ -177,6 +188,7 @@ async function acceptUpdate(context: BrowserContext, origin: string, marker: str
     return 'updated';
     // Accepting the update reloads the page (controllerchange); poll again.
   }, marker).catch(() => 'reloading'), { timeout: 90_000, intervals: [500, 1_000] }).toBe('updated');
+  expect(engineRequests, 'the /welcome splash must not download the engine').toEqual([]);
   await page.close();
 }
 
