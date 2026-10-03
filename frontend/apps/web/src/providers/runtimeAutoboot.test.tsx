@@ -152,6 +152,25 @@ describe('AlmaMeshRuntimeProvider — auto-boot gating', () => {
     await waitFor(() => expect(runtime.bootstrapCalls).toBe(1))
   })
 
+  // `/welcome` is the shareable splash: it ALWAYS renders the pitch, even for a
+  // visitor with a saved chart, and is documented engine-free like `/`. Booting
+  // it on mount downloaded the whole engine for a page that never uses it, and
+  // those downloads kept the previous service worker busy, so an accepted
+  // update sat in `waiting` until they finished (CI run 37146730486).
+  it.each([
+    ['/welcome', false],
+    ['/welcome', true],
+    ['/welcome/', true],
+  ])('does NOT auto-boot on the splash %s (saved chart: %s)', async (path, hasChart) => {
+    vi.mocked(hasLocalChart).mockReturnValue(hasChart)
+    setPath(path)
+    const { runtime } = renderRuntimeProvider()
+
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(runtime.bootstrapCalls).toBe(0)
+  })
+
   it('exposes an idempotent startBootstrap() on the context', () => {
     setPath('/')
     const runtime = makeFakeRuntime()

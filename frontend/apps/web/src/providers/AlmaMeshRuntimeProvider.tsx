@@ -149,6 +149,13 @@ function isTransientLocalWorkerFailure(error: Error): boolean {
   return error instanceof WorkerCrashError || error instanceof WorkerTimeoutError
 }
 
+/** The marketing splash: `/welcome` always, `/` only before a chart exists. */
+function isEngineFreeSplash(pathname: string): boolean {
+  const path = pathname.replace(/\/+$/, '') || '/'
+  if (path === '/welcome') return true
+  return path === '/' && !hasLocalChart()
+}
+
 interface ProviderProps {
   children: ReactNode
   /** Injectable for tests; defaults to a real `AlmaMeshRuntime`. */
@@ -354,15 +361,16 @@ export function AlmaMeshRuntimeProvider({ children, runtime }: ProviderProps) {
     return clearStaleEngineCaches().then(() => runBootstrap())
   }, [dropHeldProgress, runBootstrap])
 
-  // Initial mount bootstrap — auto-run once, EXCEPT on the marketing landing
-  // route. A fresh visitor sitting on `/` (no saved chart) only reads the pitch;
-  // they must NOT pay the ~38 MB engine download. Every other case (direct
-  // /onboarding, /dashboard, a returning visitor with a chart redirected to
-  // /dashboard, etc.) boots on mount exactly as before. The provider sits ABOVE
-  // the router (see main.tsx), so we read the initial path from window.location.
-  // Intent on the landing CTA (and entry to engine routes) calls startBootstrap.
+  // Initial mount bootstrap — auto-run once, EXCEPT on the marketing splash.
+  // A visitor reading the pitch must NOT pay the ~38 MB engine download: that is
+  // `/` with no saved chart, and `/welcome` always (it renders the splash even
+  // when a chart exists). Every other case (direct /onboarding, /dashboard, a
+  // returning visitor with a chart redirected to /dashboard, etc.) boots on
+  // mount. The provider sits ABOVE the router (see main.tsx), so we read the
+  // initial path from window.location. Intent on the landing CTA (and entry to
+  // engine routes) calls startBootstrap.
   useEffect(() => {
-    if (window.location.pathname === '/' && !hasLocalChart()) return
+    if (isEngineFreeSplash(window.location.pathname)) return
     startBootstrap()
   }, [startBootstrap])
 
