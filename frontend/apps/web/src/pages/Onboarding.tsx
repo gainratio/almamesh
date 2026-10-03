@@ -630,7 +630,7 @@ export default function OnboardingPage() {
                     }`}
                 >
                   {/* Status Icon */}
-                  <div className="flex-shrink-0">
+                  <div className="shrink-0">
                     {isComplete ? (
                       <svg className="h-5 w-5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
@@ -676,7 +676,7 @@ export default function OnboardingPage() {
               value={data.name}
               onChange={(e) => handleNameChange(e.target.value)}
               placeholder={t("name.placeholder")}
-              className="w-full px-4 py-4 bg-background-tertiary border border-ui-border rounded-lg text-text-primary text-lg placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-accent-gold/50"
+              className="w-full px-4 py-4 bg-background-tertiary border border-ui-border rounded-lg text-text-primary text-lg placeholder-text-muted focus:outline-hidden focus:ring-2 focus:ring-accent-gold/50"
               autoFocus
               data-testid="name-input"
             />
@@ -824,7 +824,7 @@ export default function OnboardingPage() {
                 }}
                 placeholder={t("life_events.textarea_placeholder")}
                 maxLength={5000}
-                className="w-full px-4 py-4 bg-background-tertiary border border-ui-border rounded-lg text-text-primary text-base placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-accent-gold/50 resize-none"
+                className="w-full px-4 py-4 bg-background-tertiary border border-ui-border rounded-lg text-text-primary text-base placeholder-text-muted focus:outline-hidden focus:ring-2 focus:ring-accent-gold/50 resize-none"
                 rows={5}
                 disabled={isExtracting}
                 data-testid="life-events-input"
@@ -999,8 +999,9 @@ export default function OnboardingPage() {
         {/* Central purple glow — capped to the viewport so a phone gets a
             centred, proportional wash instead of a clipped 600px disc. */}
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[min(600px,130vw)] h-[min(600px,130vw)] bg-accent-purple/15 rounded-full blur-[120px]" />
-        {/* Secondary gold accent */}
-        <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[min(400px,90vw)] h-[min(400px,90vw)] bg-accent-gold/8 rounded-full blur-[100px]" />
+        {/* (A "secondary gold accent" disc used `bg-accent-gold/8`, which Tailwind
+            v3 never generated, so it never painted. Tailwind v4 would have turned
+            it on; it was removed in the v4 migration to keep the page unchanged.) */}
       </div>
 
       {/* NOTE: no page-level <Header> here — `/onboarding` renders inside

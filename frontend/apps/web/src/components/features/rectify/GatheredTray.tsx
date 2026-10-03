@@ -72,7 +72,7 @@ export function GatheredTray({
         onClick={onToggle}
         aria-expanded={expanded}
         aria-label={reviewLabel}
-        className="flex w-full items-center justify-between px-4 py-3 text-sm text-text-primary hover:bg-surface-secondary focus:outline-none focus:ring-1 focus:ring-inset focus:ring-accent-primary"
+        className="flex w-full items-center justify-between px-4 py-3 text-sm text-text-primary hover:bg-surface-secondary focus:outline-hidden focus:ring-1 focus:ring-inset focus:ring-accent-primary"
       >
         <span className="flex items-center gap-2">
           <span
@@ -112,7 +112,7 @@ export function GatheredTray({
                     aria-label={t('summary.label')}
                     placeholder={t('summary.placeholder')}
                     data-testid="event-summary-input"
-                    className="rounded border border-border-subtle bg-surface-primary px-3 py-2 text-sm font-medium text-text-primary placeholder:font-normal placeholder:text-text-tertiary focus:outline-none focus:ring-1 focus:ring-accent-primary"
+                    className="rounded-sm border border-border-subtle bg-surface-primary px-3 py-2 text-sm font-medium text-text-primary placeholder:font-normal placeholder:text-text-tertiary focus:outline-hidden focus:ring-1 focus:ring-accent-primary"
                   />
                 </div>
                 <EventRow
@@ -135,7 +135,7 @@ export function GatheredTray({
           <button
             type="button"
             onClick={handleAdd}
-            className="w-fit rounded-lg border border-dashed border-border-subtle px-4 py-2 text-sm text-text-secondary hover:border-accent-primary hover:text-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary"
+            className="w-fit rounded-lg border border-dashed border-border-subtle px-4 py-2 text-sm text-text-secondary hover:border-accent-primary hover:text-accent-primary focus:outline-hidden focus:ring-1 focus:ring-accent-primary"
           >
             {t('entry.add')}
           </button>
@@ -148,7 +148,7 @@ export function GatheredTray({
             type="button"
             onClick={onContinue}
             disabled={!hasStructured || continueDisabled}
-            className="w-fit rounded-lg bg-accent-primary px-6 py-2 text-sm font-medium text-white focus:outline-none focus:ring-2 focus:ring-accent-primary focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-40"
+            className="w-fit rounded-lg bg-accent-primary px-6 py-2 text-sm font-medium text-white focus:outline-hidden focus:ring-2 focus:ring-accent-primary focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {t('tray.cta')}
           </button>

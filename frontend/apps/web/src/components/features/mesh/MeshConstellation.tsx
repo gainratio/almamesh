@@ -130,7 +130,7 @@ function MemberNode({
   const position = { left: `${xPct}%`, top: `${yPct}%` };
   const base =
     'absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center rounded-lg p-2 ' +
-    'transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-gold/60';
+    'transition-opacity focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent-gold/60';
 
   if (!node.hasChart) {
     return (
@@ -193,7 +193,7 @@ function AddPersonNode({
       style={{ left: `${xPct}%`, top: `${yPct}%` }}
       className={
         'group absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center rounded-lg p-2 ' +
-        'opacity-75 transition-opacity hover:opacity-100 focus-visible:outline-none ' +
+        'opacity-75 transition-opacity hover:opacity-100 focus-visible:outline-hidden ' +
         'focus-visible:ring-2 focus-visible:ring-accent-gold/60'
       }
       onClick={onAddPerson}
@@ -306,7 +306,7 @@ export function MeshConstellation({
         ) : (
           <button
             type="button"
-            className="flex flex-col items-center rounded-lg opacity-75 transition-opacity hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-gold/60"
+            className="flex flex-col items-center rounded-lg opacity-75 transition-opacity hover:opacity-100 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent-gold/60"
             onClick={() => onGenerateChart(anchor.profile.id)}
             aria-label={t('graph.generate_for', { name: anchor.profile.name })}
             data-testid={`mesh-node-generate-${anchor.profile.id}`}

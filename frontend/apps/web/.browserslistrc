@@ -6,9 +6,11 @@
 # support WASM + service workers + native ES modules. Anything that can't run the
 # engine is out of scope — there is no server-rendered fallback to degrade to.
 #
-# Consumed automatically by autoprefixer (via postcss.config.mjs) and any other
-# browserslist-aware tooling. Keeping an explicit list here (rather than relying on
-# the implicit `defaults`) makes the support floor reviewable and intentional.
+# Consumed by browserslist-aware tooling. Tailwind v4 (via @tailwindcss/vite)
+# does its own vendor prefixing and targets Safari 16.4+, Chrome 111+ and
+# Firefox 128+, so autoprefixer is no longer in the pipeline. Keeping an
+# explicit list here (rather than relying on the implicit `defaults`) makes the
+# support floor reviewable and intentional.
 
 # Evergreen browsers, recent and still-maintained.
 last 2 versions

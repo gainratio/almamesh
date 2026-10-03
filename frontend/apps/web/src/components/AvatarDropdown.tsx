@@ -62,7 +62,7 @@ export function AvatarDropdown() {
       {/* Menu trigger */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="w-10 h-10 rounded-full overflow-hidden border-2 border-transparent hover:border-accent-gold transition-colors focus:outline-none focus:border-accent-gold"
+        className="w-10 h-10 rounded-full overflow-hidden border-2 border-transparent hover:border-accent-gold transition-colors focus:outline-hidden focus:border-accent-gold"
         aria-expanded={isOpen}
         aria-haspopup="true"
         aria-label={t('nav.menu_aria')}

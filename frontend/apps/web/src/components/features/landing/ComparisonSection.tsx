@@ -24,7 +24,7 @@ export function ComparisonSection(): ReactElement {
         <p className="mb-3 text-xs uppercase tracking-[0.24em] text-accent-gold">03 — The difference</p>
         <h2
           id="why-title"
-          className="max-w-3xl font-display text-3xl font-light leading-tight text-text-primary sm:text-4xl"
+          className="max-w-3xl font-display text-3xl font-light leading-tight text-text-primary sm:text-4xl/10"
         >
           {t('why.title')}
         </h2>

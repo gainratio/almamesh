@@ -104,7 +104,7 @@ const SETTINGS_NAV_ITEMS: SettingsNavItem[] = [
 export function SettingsSidebar() {
   const { t } = useTranslation('settings');
   return (
-    <nav className="w-64 flex-shrink-0" aria-label={t('layout.sidebar_aria')}>
+    <nav className="w-64 shrink-0" aria-label={t('layout.sidebar_aria')}>
       <ul className="space-y-1">
         {SETTINGS_NAV_ITEMS.map((item) => (
           <li key={item.path}>
@@ -119,7 +119,7 @@ export function SettingsSidebar() {
               }
               data-testid={`settings-nav-${item.testid}`}
             >
-              <span className="flex-shrink-0 mt-0.5">{item.icon}</span>
+              <span className="shrink-0 mt-0.5">{item.icon}</span>
               <div className="flex-1 min-w-0">
                 <span className="block font-medium">{t(item.labelKey)}</span>
                 <span className="block text-xs text-text-muted mt-0.5">

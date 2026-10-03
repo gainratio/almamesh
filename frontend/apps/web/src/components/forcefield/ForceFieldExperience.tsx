@@ -254,7 +254,7 @@ export function ForceFieldExperience({
       <p className="sr-only">{ariaLabel}</p>
 
       {reducedMotion && (
-        <div className="absolute bottom-3 left-3 rounded bg-background-elevated/80 px-2 py-1 text-xs text-text-muted">
+        <div className="absolute bottom-3 left-3 rounded-sm bg-background-elevated/80 px-2 py-1 text-xs text-text-muted">
           {t('accessibility.reduced_motion')}
         </div>
       )}

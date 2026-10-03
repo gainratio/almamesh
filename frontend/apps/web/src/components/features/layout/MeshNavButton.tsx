@@ -72,7 +72,7 @@ export function MeshNavButton() {
         aria-label={label}
         data-testid="nav-mesh-link"
         onKeyDown={onKeyDown}
-        className="group inline-flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-full border border-ui-border bg-background-elevated/60 text-text-secondary transition-[color,border-color,background-color,transform] duration-200 hover:border-accent-gold/60 hover:bg-accent-gold/10 hover:text-accent-gold-bright focus-visible:border-accent-gold/60 focus-visible:text-accent-gold-bright focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-gold/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background-primary active:scale-95 motion-reduce:transition-none motion-reduce:active:scale-100"
+        className="group inline-flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-full border border-ui-border bg-background-elevated/60 text-text-secondary transition-[color,border-color,background-color,transform] duration-200 hover:border-accent-gold/60 hover:bg-accent-gold/10 hover:text-accent-gold-bright focus-visible:border-accent-gold/60 focus-visible:text-accent-gold-bright focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent-gold/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background-primary active:scale-95 motion-reduce:transition-none motion-reduce:active:scale-100"
       >
         <MeshGlyph />
       </Link>

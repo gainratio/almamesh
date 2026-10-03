@@ -239,7 +239,7 @@ export function ChatPanel({
         <ComposerPrimitive.Root className="flex gap-2">
           <ComposerPrimitive.Input
             placeholder={t('input.placeholder')}
-            className="flex-1 min-w-0 px-4 py-3 bg-background-primary border border-ui-border rounded-xl text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-accent-gold/50 resize-none text-sm disabled:opacity-50"
+            className="flex-1 min-w-0 px-4 py-3 bg-background-primary border border-ui-border rounded-xl text-text-primary placeholder-text-muted focus:outline-hidden focus:ring-2 focus:ring-accent-gold/50 resize-none text-sm disabled:opacity-50"
             rows={1}
             data-testid="chat-input"
           />

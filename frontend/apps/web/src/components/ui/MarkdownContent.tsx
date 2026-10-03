@@ -74,7 +74,7 @@ export function MarkdownContent({
         'prose-a:transition-colors prose-a:duration-150',
         'hover:prose-a:text-accent-gold hover:prose-a:underline',
         // Code blocks - using accent gold for inline code
-        'prose-code:text-accent-gold prose-code:bg-background-darker prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded',
+        'prose-code:text-accent-gold prose-code:bg-background-darker prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded-sm',
         // Pre blocks - using darkest background; scroll long code lines and
         // break long inline tokens/URLs so they never overflow a 390px column.
         'prose-pre:bg-background-darkest prose-pre:border prose-pre:border-ui-border-dark',

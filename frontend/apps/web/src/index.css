@@ -1,6 +1,110 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import 'tailwindcss';
+
+/*
+ * Tailwind v4, CSS-first entry. The palette still comes from the JS config
+ * (`tailwind.config.ts` spreads `@almamesh/constants` colors), loaded through
+ * the v4 compatibility directive so the design-token source stays single.
+ * https://tailwindcss.com/docs/upgrade-guide#using-a-javascript-config-file
+ */
+@config '../tailwind.config.ts';
+
+/*
+ * v3 preflight compatibility (upgrade guide, "Default border color",
+ * "Default placeholder color", "Buttons use the default cursor"). These keep
+ * v4's new defaults from changing what the app looks like. The `*` rule below
+ * (`border-ui-border`) still wins for real elements; this block covers the
+ * pseudo-elements v3 also painted gray-200.
+ */
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentColor);
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--color-gray-400);
+  }
+
+  button:not(:disabled),
+  [role='button']:not(:disabled) {
+    cursor: pointer;
+  }
+
+  /*
+   * v4's preflight zeroes padding on every element; v3 left the browser's
+   * default on table cells (1px, the implicit `cellpadding`, which
+   * `revert` cannot restore) and options. Without this the predictive tables
+   * shift 1px.
+   */
+  th,
+  td {
+    padding: 1px;
+  }
+
+  option {
+    padding: revert;
+  }
+}
+
+/*
+ * v3 palette values for the few default Tailwind colors the app uses. v4
+ * redefined its palette in OKLCH (slightly more saturated), so without these
+ * pins the amber "Set up AI" chip, status dots and the gray-200/400
+ * compatibility defaults above would shift hue. The brand palette itself
+ * comes from @almamesh/constants and is unaffected.
+ */
+@theme {
+  --color-amber-300: #fcd34d;
+  --color-amber-400: #fbbf24;
+  --color-gray-200: #e5e7eb;
+  --color-gray-400: #9ca3af;
+  --color-green-400: #4ade80;
+  --color-green-500: #22c55e;
+  --color-red-400: #f87171;
+  --color-red-500: #ef4444;
+  --color-yellow-400: #facc15;
+  --color-yellow-500: #eab308;
+
+  /*
+   * v3 font-size line-heights. v4 expresses these as unitless ratios
+   * (`calc(1.25 / 0.875)`), which inherit differently: a smaller inline badge
+   * inside a `text-sm` line then gets a shorter line box, and AI settings
+   * rows lost 2px. v3's absolute values keep inheritance identical.
+   */
+  --text-xs--line-height: 1rem;
+  --text-sm--line-height: 1.25rem;
+  --text-base--line-height: 1.5rem;
+  --text-lg--line-height: 1.75rem;
+  --text-xl--line-height: 1.75rem;
+  --text-2xl--line-height: 2rem;
+  --text-3xl--line-height: 2.25rem;
+  --text-4xl--line-height: 2.5rem;
+}
+
+/*
+ * v3 `space-y-*` semantics. v4 changed the selector from
+ * `> :not([hidden]) ~ :not([hidden])` (margin-top on every child after the
+ * first) to `> :not(:last-child)` (margin-bottom). That moves real layouts in
+ * this app, e.g. an inline-block <input> under a heading with its own `mb-8`
+ * lost 24px in onboarding. This restores the v3 rule and neutralises v4's
+ * zero-specificity rule with `revert-layer` (at type-selector specificity, so
+ * a child's own `mt-*`/`mb-*` still wins exactly as it did in v3).
+ * Upgrade guide, "Space-between selector".
+ */
+@utility space-y-* {
+  & > :not([hidden]) ~ :not([hidden]) {
+    margin-top: --spacing(--value(number));
+    margin-bottom: 0;
+  }
+  :where(& > :not(:last-child)):not(html) {
+    margin-block-start: revert-layer;
+    margin-block-end: revert-layer;
+  }
+}
 
 /*
  * Observatory design tokens — font families + atmospheric primitives.

@@ -20,7 +20,7 @@ export function TrustSection(): ReactElement {
           <p className="mb-3 text-xs uppercase tracking-[0.24em] text-accent-gold">07 — The engine</p>
           <h2
             id="trust-title"
-            className="font-display text-3xl font-light leading-tight text-text-primary sm:text-4xl"
+            className="font-display text-3xl font-light leading-tight text-text-primary sm:text-4xl/10"
           >
             {t('trust.title')}
           </h2>

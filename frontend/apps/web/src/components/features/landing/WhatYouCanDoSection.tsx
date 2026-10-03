@@ -31,7 +31,7 @@ export function WhatYouCanDoSection(): ReactElement {
         <p className="mb-3 text-xs uppercase tracking-[0.24em] text-accent-gold">02 — What you can do</p>
         <h2
           id="features-title"
-          className="font-display text-3xl font-light leading-tight text-text-primary sm:text-4xl"
+          className="font-display text-3xl font-light leading-tight text-text-primary sm:text-4xl/10"
         >
           {t('features.title')}
         </h2>
@@ -54,7 +54,7 @@ export function WhatYouCanDoSection(): ReactElement {
             <span className="h-1.5 w-1.5 rounded-full bg-accent-gold" aria-hidden="true" />
             {t('features.rectify.badge')}
           </p>
-          <h3 className="max-w-3xl font-display text-2xl font-light leading-snug text-text-primary sm:text-3xl">
+          <h3 className="max-w-3xl font-display text-2xl font-light leading-snug text-text-primary sm:text-3xl/9">
             {t('features.rectify.title')}
           </h3>
           <p className="mt-5 max-w-3xl border-l-2 border-accent-gold/40 pl-5 text-base leading-relaxed text-text-secondary">

@@ -25,7 +25,7 @@ export function FinalCta(): ReactElement {
       <div className="relative mx-auto flex w-full max-w-3xl flex-col items-center px-5 text-center md:px-8">
         <h2
           id="finalcta-title"
-          className="max-w-2xl font-display text-4xl font-light leading-tight text-text-primary sm:text-5xl"
+          className="max-w-2xl font-display text-4xl font-light leading-tight text-text-primary sm:text-5xl/none"
         >
           {t('finalCta.title')}
         </h2>

@@ -341,12 +341,12 @@ export function ConversationalAccelerator({
           disabled={busy}
           placeholder={t('chat.input_placeholder')}
           aria-label={t('chat.input_label')}
-          className="min-w-0 flex-1 resize-none rounded-xl border border-ui-border bg-background-primary px-4 py-3 text-sm text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-accent-gold/50 disabled:opacity-50"
+          className="min-w-0 flex-1 resize-none rounded-xl border border-ui-border bg-background-primary px-4 py-3 text-sm text-text-primary placeholder-text-muted focus:outline-hidden focus:ring-2 focus:ring-accent-gold/50 disabled:opacity-50"
         />
         <button
           type="submit"
           disabled={busy || !input.trim()}
-          className="self-end rounded-xl bg-accent-gold px-4 py-3 text-sm font-semibold text-background-primary transition-colors hover:bg-accent-gold/90 focus:outline-none focus:ring-2 focus:ring-accent-gold/50 disabled:cursor-not-allowed disabled:opacity-50"
+          className="self-end rounded-xl bg-accent-gold px-4 py-3 text-sm font-semibold text-background-primary transition-colors hover:bg-accent-gold/90 focus:outline-hidden focus:ring-2 focus:ring-accent-gold/50 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {t('chat.send')}
         </button>

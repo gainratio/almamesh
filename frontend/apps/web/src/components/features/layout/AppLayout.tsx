@@ -30,7 +30,7 @@ export function AppLayout({ children, showFooter = false }: AppLayoutProps) {
     // `min-h-dvh` tracks the visible viewport so the shell is not left sitting
     // behind mobile Safari's collapsing URL bar.
     <div className="flex min-h-dvh flex-col bg-observatory">
-      <header className="sticky top-0 z-40 border-b border-ui-border bg-background-primary/80 backdrop-blur-sm">
+      <header className="sticky top-0 z-40 border-b border-ui-border bg-background-primary/80 backdrop-blur-xs">
         <div className="app-gutter mx-auto flex h-14 w-full max-w-7xl items-center justify-between">
           <div className="flex items-center gap-3 sm:gap-5">
             {/* Wordmark — manuscript display face. Links to the shareable

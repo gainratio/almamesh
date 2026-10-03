@@ -254,7 +254,7 @@ export function LocationSearch({
                     onKeyDown={handleKeyDown}
                     onFocus={() => results.length > 0 && setIsOpen(true)}
                     placeholder={resolvedPlaceholder}
-                    className="w-full px-4 py-4 pl-12 bg-background-tertiary border border-ui-border rounded-lg text-text-primary text-lg placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-accent-gold/50"
+                    className="w-full px-4 py-4 pl-12 bg-background-tertiary border border-ui-border rounded-lg text-text-primary text-lg placeholder-text-muted focus:outline-hidden focus:ring-2 focus:ring-accent-gold/50"
                     autoComplete="off"
                     role="combobox"
                     aria-expanded={isOpen}
@@ -384,7 +384,7 @@ export function LocationSearch({
                                         {match.country}
                                     </p>
                                 </div>
-                                <div className="text-right flex-shrink-0">
+                                <div className="text-right shrink-0">
                                     <p className="text-text-muted text-xs font-mono">
                                         {formatCoords(match.latitude, match.longitude)}
                                     </p>
@@ -445,7 +445,7 @@ export function LocationSearch({
                                     value={latInput}
                                     onChange={(e) => setLatInput(e.target.value)}
                                     placeholder={t('location.coordinates.latitude_placeholder')}
-                                    className="w-full px-3 py-2 bg-background-secondary border border-ui-border rounded-lg text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-accent-gold/50"
+                                    className="w-full px-3 py-2 bg-background-secondary border border-ui-border rounded-lg text-text-primary placeholder-text-muted focus:outline-hidden focus:ring-2 focus:ring-accent-gold/50"
                                     data-testid="coordinate-lat-input"
                                 />
                             </div>
@@ -466,7 +466,7 @@ export function LocationSearch({
                                     value={lonInput}
                                     onChange={(e) => setLonInput(e.target.value)}
                                     placeholder={t('location.coordinates.longitude_placeholder')}
-                                    className="w-full px-3 py-2 bg-background-secondary border border-ui-border rounded-lg text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-accent-gold/50"
+                                    className="w-full px-3 py-2 bg-background-secondary border border-ui-border rounded-lg text-text-primary placeholder-text-muted focus:outline-hidden focus:ring-2 focus:ring-accent-gold/50"
                                     data-testid="coordinate-lon-input"
                                 />
                             </div>
@@ -484,7 +484,7 @@ export function LocationSearch({
                                 value={labelInput}
                                 onChange={(e) => setLabelInput(e.target.value)}
                                 placeholder={t('location.coordinates.place_placeholder')}
-                                className="w-full px-3 py-2 bg-background-secondary border border-ui-border rounded-lg text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-accent-gold/50"
+                                className="w-full px-3 py-2 bg-background-secondary border border-ui-border rounded-lg text-text-primary placeholder-text-muted focus:outline-hidden focus:ring-2 focus:ring-accent-gold/50"
                                 data-testid="coordinate-label-input"
                             />
                         </div>

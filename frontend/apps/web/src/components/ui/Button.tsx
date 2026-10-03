@@ -9,7 +9,7 @@ import { cn } from './cn';
 const buttonVariants = cva(
   'inline-flex items-center justify-center gap-2 rounded-md font-sans font-medium ' +
     'whitespace-nowrap transition-colors duration-200 ease-orbital ' +
-    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-focus ' +
+    'focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ui-focus ' +
     'focus-visible:ring-offset-2 focus-visible:ring-offset-background-primary ' +
     'disabled:pointer-events-none disabled:opacity-50',
   {

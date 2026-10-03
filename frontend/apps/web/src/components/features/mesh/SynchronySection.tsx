@@ -46,7 +46,7 @@ function WindowControl({
           aria-pressed={years === option}
           onClick={() => onYearsChange(option)}
           data-testid={`mesh-window-${option}y`}
-          className={`px-3 py-1 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-gold/60 ${
+          className={`px-3 py-1 text-xs transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent-gold/60 ${
             years === option
               ? 'bg-accent-gold/10 font-medium text-accent-gold'
               : 'text-text-secondary hover:text-text-primary'

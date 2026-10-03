@@ -46,11 +46,11 @@ export function Hero(): ReactElement {
           {t('hero.microcopy')}
         </p>
 
-        <h1 className="max-w-4xl font-display text-4xl font-light leading-[1.08] tracking-tight text-text-primary sm:text-5xl md:text-6xl lg:text-7xl">
+        <h1 className="max-w-4xl font-display text-4xl font-light leading-[1.08] tracking-tight text-text-primary sm:text-5xl/none md:text-6xl/none lg:text-7xl/none">
           {t('hero.headline')}
         </h1>
 
-        <p className="mt-7 max-w-2xl text-base leading-relaxed text-text-secondary sm:text-lg">
+        <p className="mt-7 max-w-2xl text-base leading-relaxed text-text-secondary sm:text-lg/7">
           {t('hero.subhead')}
         </p>
 
@@ -72,7 +72,7 @@ export function Hero(): ReactElement {
             href={GITHUB_URL}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex items-center gap-2 rounded-full border border-ui-border/60 bg-background-primary/40 px-4 py-1.5 text-xs text-text-secondary backdrop-blur-sm transition-colors hover:border-accent-gold/60 hover:text-accent-gold-bright"
+            className="inline-flex items-center gap-2 rounded-full border border-ui-border/60 bg-background-primary/40 px-4 py-1.5 text-xs text-text-secondary backdrop-blur-xs transition-colors hover:border-accent-gold/60 hover:text-accent-gold-bright"
             data-testid="hero-github-badge"
           >
             <GithubMark className="h-3.5 w-3.5" />

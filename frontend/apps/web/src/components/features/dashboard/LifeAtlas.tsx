@@ -86,7 +86,7 @@ function DomainCardFace({ forecast }: { forecast: LifeDomainForecastData }): Rea
       to={`/life/${forecast.domain}`}
       aria-label={t('life:atlas.open_domain', { domain: domainName })}
       data-testid={`life-atlas-card-${forecast.domain}`}
-      className={`${CARD_FRAME} group transition-colors hover:border-accent-gold/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-gold/60`}
+      className={`${CARD_FRAME} group transition-colors hover:border-accent-gold/50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent-gold/60`}
     >
       <div className="flex items-baseline justify-between gap-3">
         <h3 className="font-display text-base text-text-primary transition-colors group-hover:text-accent-gold-bright">

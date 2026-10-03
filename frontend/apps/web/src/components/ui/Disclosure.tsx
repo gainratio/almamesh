@@ -64,7 +64,7 @@ export function Disclosure({
         aria-controls={panelId}
         className={cn(
           'flex w-full items-center justify-between gap-4 text-left',
-          'rounded-lg outline-none transition-colors',
+          'rounded-lg outline-hidden transition-colors',
           'focus-visible:ring-2 focus-visible:ring-accent-gold/60',
           triggerClassName,
         )}

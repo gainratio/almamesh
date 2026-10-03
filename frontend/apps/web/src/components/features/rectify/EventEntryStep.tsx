@@ -47,7 +47,7 @@ export function EventEntryStep({ profileId, onContinue }: EventEntryStepProps): 
       <button
         type="button"
         onClick={() => setTrayExpanded(true)}
-        className="w-fit text-xs text-text-tertiary underline hover:text-text-secondary focus:outline-none focus:ring-1 focus:ring-accent-primary"
+        className="w-fit text-xs text-text-tertiary underline hover:text-text-secondary focus:outline-hidden focus:ring-1 focus:ring-accent-primary"
       >
         {t('entry.manual_toggle')}
       </button>

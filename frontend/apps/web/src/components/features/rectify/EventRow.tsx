@@ -57,7 +57,7 @@ export function EventRow({
           value={event.date}
           onChange={(e) => onDateChange(e.target.value)}
           aria-label={t('entry.date_label')}
-          className="rounded border border-border-subtle bg-surface-primary px-2 py-1 text-sm text-text-primary focus:outline-none focus:ring-1 focus:ring-accent-primary"
+          className="rounded-sm border border-border-subtle bg-surface-primary px-2 py-1 text-sm text-text-primary focus:outline-hidden focus:ring-1 focus:ring-accent-primary"
         />
       </div>
 
@@ -74,7 +74,7 @@ export function EventRow({
           value={event.category ?? ''}
           onChange={handleCategoryChange}
           aria-label={t('entry.category_label')}
-          className="rounded border border-border-subtle bg-surface-primary px-2 py-1 text-sm text-text-primary focus:outline-none focus:ring-1 focus:ring-accent-primary"
+          className="rounded-sm border border-border-subtle bg-surface-primary px-2 py-1 text-sm text-text-primary focus:outline-hidden focus:ring-1 focus:ring-accent-primary"
         >
           <option value="">{t('entry.category_placeholder')}</option>
           {LIFE_EVENT_CATEGORIES.map((cat) => (
@@ -98,7 +98,7 @@ export function EventRow({
           value={event.precision ?? 'exact'}
           onChange={(e) => onPrecisionChange(e.target.value as EventDatePrecision)}
           aria-label={t('entry.precision_label')}
-          className="rounded border border-border-subtle bg-surface-primary px-2 py-1 text-sm text-text-primary focus:outline-none focus:ring-1 focus:ring-accent-primary"
+          className="rounded-sm border border-border-subtle bg-surface-primary px-2 py-1 text-sm text-text-primary focus:outline-hidden focus:ring-1 focus:ring-accent-primary"
         >
           <option value="exact">{t('entry.precision_exact')}</option>
           <option value="month">{t('entry.precision_month')}</option>
@@ -122,7 +122,7 @@ export function EventRow({
           onChange={(e) => onNoteChange(e.target.value)}
           aria-label={t('entry.note_label')}
           placeholder={t('entry.note_label')}
-          className="rounded border border-border-subtle bg-surface-primary px-2 py-1 text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-1 focus:ring-accent-primary"
+          className="rounded-sm border border-border-subtle bg-surface-primary px-2 py-1 text-sm text-text-primary placeholder:text-text-tertiary focus:outline-hidden focus:ring-1 focus:ring-accent-primary"
         />
       </div>
 
@@ -132,7 +132,7 @@ export function EventRow({
           type="button"
           onClick={onDelete}
           aria-label={t('entry.delete')}
-          className="rounded px-2 py-1 text-xs text-status-error hover:bg-status-error/10 focus:outline-none focus:ring-1 focus:ring-status-error"
+          className="rounded-sm px-2 py-1 text-xs text-status-error hover:bg-status-error/10 focus:outline-hidden focus:ring-1 focus:ring-status-error"
         >
           {t('entry.delete')}
         </button>

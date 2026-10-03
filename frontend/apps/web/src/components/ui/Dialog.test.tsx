@@ -5,7 +5,7 @@
  * ancestor establishes a containing block for it. Any ancestor with a
  * non-`none` `backdrop-filter` (or `filter` / `transform` / `perspective`)
  * does establish one — and the app shell's sticky header is exactly that
- * (`sticky top-0 … backdrop-blur-sm`, inner bar `h-14` = 56px).
+ * (`sticky top-0 … backdrop-blur-xs`, inner bar `h-14` = 56px).
  *
  * The header renders `ProfileSwitcher`, which renders a `Dialog`. Without a
  * portal, `fixed inset-0` resolved against the header's 56px box and the

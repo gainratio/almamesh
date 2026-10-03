@@ -19,7 +19,7 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
         'px-3 pr-9 py-2 font-sans text-sm text-text-primary',
         'bg-no-repeat [background-position:right_0.75rem_center]',
         'transition-colors duration-200 ease-orbital',
-        'focus-visible:outline-none focus-visible:border-accent-gold/60',
+        'focus-visible:outline-hidden focus-visible:border-accent-gold/60',
         'focus-visible:ring-2 focus-visible:ring-ui-focus/40',
         'disabled:cursor-not-allowed disabled:opacity-50',
         className,

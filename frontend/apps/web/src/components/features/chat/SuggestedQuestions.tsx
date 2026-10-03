@@ -41,7 +41,7 @@ export function SuggestedQuestions({
               key={key}
               onClick={() => onSelect(question)}
               disabled={disabled}
-              className="flex-shrink-0 px-3 py-2 bg-background-tertiary border border-ui-border rounded-full text-xs text-text-secondary hover:bg-background-secondary hover:border-accent-gold hover:text-text-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+              className="shrink-0 px-3 py-2 bg-background-tertiary border border-ui-border rounded-full text-xs text-text-secondary hover:bg-background-secondary hover:border-accent-gold hover:text-text-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
             >
               {question}
             </button>

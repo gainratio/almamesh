@@ -77,7 +77,7 @@ export function TabsTrigger({ value, children, className, 'data-testid': testId 
       onClick={() => ctx.setValue(value)}
       className={cn(
         'relative -mb-px border-b-2 px-3 py-2 font-sans text-sm transition-colors duration-200 ease-orbital',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-focus/40',
+        'focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ui-focus/40',
         active
           ? 'border-accent-gold text-text-primary'
           : 'border-transparent text-text-secondary hover:text-text-primary',

@@ -93,31 +93,31 @@ function MobileSettingsNav() {
     <nav className="flex gap-2 overflow-x-auto pb-2" aria-label={t('layout.mobile_nav_aria')}>
       <Link
         to="/settings/profile"
-        className="flex-shrink-0 px-4 py-2 rounded-lg text-sm font-medium transition-colors bg-background-secondary border border-ui-border text-text-secondary hover:text-text-primary"
+        className="shrink-0 px-4 py-2 rounded-lg text-sm font-medium transition-colors bg-background-secondary border border-ui-border text-text-secondary hover:text-text-primary"
       >
         {t('nav.profile')}
       </Link>
       <Link
         to="/settings/people"
-        className="flex-shrink-0 px-4 py-2 rounded-lg text-sm font-medium transition-colors bg-background-secondary border border-ui-border text-text-secondary hover:text-text-primary"
+        className="shrink-0 px-4 py-2 rounded-lg text-sm font-medium transition-colors bg-background-secondary border border-ui-border text-text-secondary hover:text-text-primary"
       >
         {t('nav.people')}
       </Link>
       <Link
         to="/settings/ai"
-        className="flex-shrink-0 px-4 py-2 rounded-lg text-sm font-medium transition-colors bg-background-secondary border border-ui-border text-text-secondary hover:text-text-primary"
+        className="shrink-0 px-4 py-2 rounded-lg text-sm font-medium transition-colors bg-background-secondary border border-ui-border text-text-secondary hover:text-text-primary"
       >
         {t('nav.ai')}
       </Link>
       <Link
         to="/settings/preferences"
-        className="flex-shrink-0 px-4 py-2 rounded-lg text-sm font-medium transition-colors bg-background-secondary border border-ui-border text-text-secondary hover:text-text-primary"
+        className="shrink-0 px-4 py-2 rounded-lg text-sm font-medium transition-colors bg-background-secondary border border-ui-border text-text-secondary hover:text-text-primary"
       >
         {t('nav.preferences')}
       </Link>
       <Link
         to="/settings/data"
-        className="flex-shrink-0 px-4 py-2 rounded-lg text-sm font-medium transition-colors bg-background-secondary border border-ui-border text-text-secondary hover:text-text-primary"
+        className="shrink-0 px-4 py-2 rounded-lg text-sm font-medium transition-colors bg-background-secondary border border-ui-border text-text-secondary hover:text-text-primary"
       >
         {t('nav.data')}
       </Link>

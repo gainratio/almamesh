@@ -86,7 +86,7 @@ export function ChatSearch({ profileId, onOpenResult }: ChatSearchProps) {
           placeholder={t('search.placeholder')}
           aria-label={t('search.aria_label')}
           data-testid="chat-search-input"
-          className="w-full rounded-xl border border-ui-border bg-background-primary py-2 pl-9 pr-3 text-sm text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-accent-gold/50"
+          className="w-full rounded-xl border border-ui-border bg-background-primary py-2 pl-9 pr-3 text-sm text-text-primary placeholder-text-muted focus:outline-hidden focus:ring-2 focus:ring-accent-gold/50"
         />
       </div>
 
@@ -113,7 +113,7 @@ export function ChatSearch({ profileId, onOpenResult }: ChatSearchProps) {
                       <span className="truncate text-xs font-medium text-text-secondary">
                         {threadLabel(threadsById[hit.thread_id]?.title ?? null)}
                       </span>
-                      <span className="flex-shrink-0 text-[10px] tabular-nums text-text-muted">
+                      <span className="shrink-0 text-[10px] tabular-nums text-text-muted">
                         {t('search.match', { percent: Math.round(hit.score * 100) })}
                       </span>
                     </div>

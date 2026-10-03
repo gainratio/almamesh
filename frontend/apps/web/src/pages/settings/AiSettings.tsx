@@ -25,7 +25,7 @@ export default function AiSettings() {
       {/* Info Box */}
       <div className="flex items-start gap-3 p-4 bg-background-tertiary border border-ui-border rounded-lg">
         <svg
-          className="h-5 w-5 text-accent-gold flex-shrink-0 mt-0.5"
+          className="h-5 w-5 text-accent-gold shrink-0 mt-0.5"
           fill="none"
           viewBox="0 0 24 24"
           stroke="currentColor"

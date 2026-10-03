@@ -192,7 +192,7 @@ export function PlanetaryTable(props: PlanetaryTableProps): ReactElement {
                   <td className={cn(TD, 'whitespace-nowrap')}>
                     <span className="inline-flex items-center gap-2">
                       <span
-                        className="inline-flex h-5 w-7 items-center justify-center rounded-sm font-mono text-[11px] font-semibold"
+                        className="inline-flex h-5 w-7 items-center justify-center rounded-xs font-mono text-[11px] font-semibold"
                         style={{ color: planet.color, backgroundColor: `${planet.color}1A` }}
                       >
                         {planet.label}

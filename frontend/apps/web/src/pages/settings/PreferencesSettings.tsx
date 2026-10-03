@@ -109,7 +109,7 @@ export default function PreferencesSettings() {
               <div className="flex-1">
                 <div className="flex items-center gap-2">
                   <p className="text-text-primary font-medium">{t('preferences.theme')}</p>
-                  <span className="px-2 py-0.5 text-xs bg-background-secondary text-text-muted rounded">
+                  <span className="px-2 py-0.5 text-xs bg-background-secondary text-text-muted rounded-sm">
                     {t('preferences.coming_soon')}
                   </span>
                 </div>
@@ -180,7 +180,7 @@ export default function PreferencesSettings() {
             </svg>
             <div>
               <p className="text-text-primary font-medium">{t('preferences.email_notifications')}</p>
-              <span className="px-2 py-0.5 text-xs bg-background-secondary text-text-muted rounded">
+              <span className="px-2 py-0.5 text-xs bg-background-secondary text-text-muted rounded-sm">
                 {t('preferences.coming_soon')}
               </span>
             </div>
@@ -192,7 +192,7 @@ export default function PreferencesSettings() {
               <input
                 type="checkbox"
                 disabled
-                className="rounded border-ui-border text-accent-gold focus:ring-accent-gold/50"
+                className="rounded-sm border-ui-border text-accent-gold focus:ring-accent-gold/50"
               />
             </label>
             <label className="flex items-center justify-between cursor-not-allowed">
@@ -200,7 +200,7 @@ export default function PreferencesSettings() {
               <input
                 type="checkbox"
                 disabled
-                className="rounded border-ui-border text-accent-gold focus:ring-accent-gold/50"
+                className="rounded-sm border-ui-border text-accent-gold focus:ring-accent-gold/50"
               />
             </label>
             <label className="flex items-center justify-between cursor-not-allowed">
@@ -208,7 +208,7 @@ export default function PreferencesSettings() {
               <input
                 type="checkbox"
                 disabled
-                className="rounded border-ui-border text-accent-gold focus:ring-accent-gold/50"
+                className="rounded-sm border-ui-border text-accent-gold focus:ring-accent-gold/50"
               />
             </label>
           </div>
@@ -218,7 +218,7 @@ export default function PreferencesSettings() {
       {/* Info Box */}
       <div className="flex items-start gap-3 p-4 bg-background-tertiary border border-ui-border rounded-lg">
         <svg
-          className="h-5 w-5 text-accent-gold flex-shrink-0 mt-0.5"
+          className="h-5 w-5 text-accent-gold shrink-0 mt-0.5"
           fill="none"
           viewBox="0 0 24 24"
           stroke="currentColor"

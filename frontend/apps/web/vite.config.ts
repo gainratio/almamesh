@@ -1,5 +1,6 @@
 import { createLogger, defineConfig, Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite'
 import { VitePWA, type VitePluginPWAAPI } from 'vite-plugin-pwa'
 import { vitePrerenderPlugin } from 'vite-prerender-plugin'
 import path from 'path'
@@ -599,6 +600,9 @@ export default defineConfig({
   customLogger: quietLogger,
   plugins: [
     react(),
+    // Tailwind v4's first-party Vite plugin (replaces the v3 PostCSS plugin +
+    // autoprefixer; see https://tailwindcss.com/docs/upgrade-guide).
+    tailwindcss(),
     versionPlugin(),
     trustKeyConfigPlugin(),
     yogaWasmAssetPlugin(),

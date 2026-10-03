@@ -196,7 +196,7 @@ export function RegenerationConfirmModal({
                     checked={acknowledged}
                     onChange={(e) => setAcknowledged(e.target.checked)}
                     disabled={isProcessing}
-                    className="mt-0.5 h-4 w-4 flex-shrink-0 accent-status-warning"
+                    className="mt-0.5 h-4 w-4 shrink-0 accent-status-warning"
                   />
                   <span className="text-xs leading-relaxed text-status-warning">
                     {t('regen_modal.flip_ack', { from: signFlip.from, to: signFlip.to })}

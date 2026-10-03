@@ -228,7 +228,7 @@ export function RectifyResults({
         type="button"
         data-testid="keep-recorded-button"
         onClick={onKeepRecorded}
-        className="w-full rounded-md border border-border-subtle px-4 py-2 text-sm text-text-secondary transition-colors hover:border-text-tertiary hover:text-text-primary focus:outline-none focus:ring-2 focus:ring-accent-primary focus:ring-offset-2 focus:ring-offset-background-primary"
+        className="w-full rounded-md border border-border-subtle px-4 py-2 text-sm text-text-secondary transition-colors hover:border-text-tertiary hover:text-text-primary focus:outline-hidden focus:ring-2 focus:ring-accent-primary focus:ring-offset-2 focus:ring-offset-background-primary"
       >
         {t('results.keep_recorded')}
       </button>

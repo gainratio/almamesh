@@ -154,7 +154,7 @@ export function FloatingChatPanel({
   }) => (
     <button
       onClick={onClick}
-      className="flex items-center justify-center w-7 h-7 text-text-secondary hover:text-text-primary hover:bg-background-tertiary rounded transition-colors"
+      className="flex items-center justify-center w-7 h-7 text-text-secondary hover:text-text-primary hover:bg-background-tertiary rounded-sm transition-colors"
       aria-label={ariaLabel}
       data-testid={testId}
     >
@@ -268,7 +268,7 @@ export function FloatingChatPanel({
       {/* Backdrop for mobile when maximized */}
       {panelState === 'maximized' && (
         <div
-          className="fixed inset-0 z-40 bg-black/30 backdrop-blur-sm lg:bg-black/20"
+          className="fixed inset-0 z-40 bg-black/30 backdrop-blur-xs lg:bg-black/20"
           onClick={() => setPanelState('normal')}
           aria-hidden="true"
         />

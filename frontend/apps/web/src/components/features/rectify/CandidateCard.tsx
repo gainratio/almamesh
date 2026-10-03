@@ -140,7 +140,7 @@ export function CandidateCard({ candidate, rank, onConfirm }: CandidateCardProps
         type="button"
         data-testid="confirm-button"
         onClick={() => onConfirm(candidate)}
-        className="mt-1 w-full rounded-md bg-accent-gold px-4 py-2 text-sm font-semibold text-background-primary transition-opacity hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-accent-gold focus:ring-offset-2 focus:ring-offset-surface-secondary"
+        className="mt-1 w-full rounded-md bg-accent-gold px-4 py-2 text-sm font-semibold text-background-primary transition-opacity hover:opacity-90 focus:outline-hidden focus:ring-2 focus:ring-accent-gold focus:ring-offset-2 focus:ring-offset-surface-secondary"
       >
         {t('results.confirm')}
       </button>

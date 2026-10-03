@@ -20,7 +20,12 @@
  * pulled in with `@apply`. The verdict pill is deliberately the same recipe as
  * `components/ui/Badge.tsx` so it reads as a sibling of the BandBadge that sits
  * beside it, and the panel is the nested-well counterpart of `ui/Card.tsx`.
+ *
+ * `@reference` (Tailwind v4): this file is bundled separately from index.css,
+ * so it must reference the main stylesheet to see the theme for `@apply`
+ * without emitting a second copy of it.
  */
+@reference '../../../index.css';
 
 /* ---------------------------------------------------------------------------
  * The block: our heading + hint above the vendored panel.

@@ -298,7 +298,7 @@ export function FeedbackWidget({ page, className, cooldownMs = DEFAULT_COOLDOWN_
               ref={dialogRef}
               tabIndex={-1}
               onKeyDown={trapFocus}
-              className="w-full max-w-md rounded-xl border border-ui-border bg-background-secondary p-5 shadow-2xl focus:outline-none"
+              className="w-full max-w-md rounded-xl border border-ui-border bg-background-secondary p-5 shadow-2xl focus:outline-hidden"
               data-testid="feedback-widget"
             >
               {status === 'thanks' ? (
@@ -371,7 +371,7 @@ export function FeedbackWidget({ page, className, cooldownMs = DEFAULT_COOLDOWN_
                         'w-full rounded-md border border-ui-border bg-background-darker px-3 py-2',
                         'font-sans text-sm text-text-primary placeholder:text-text-muted',
                         'transition-colors duration-200 ease-orbital resize-none',
-                        'focus-visible:outline-none focus-visible:border-accent-gold/60',
+                        'focus-visible:outline-hidden focus-visible:border-accent-gold/60',
                         'focus-visible:ring-2 focus-visible:ring-ui-focus/40',
                       )}
                     />
@@ -456,7 +456,7 @@ function SentimentButton({ testId, label, selected, onClick, children }: Sentime
       className={cn(
         'inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm',
         'transition-colors duration-200 ease-orbital',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-focus/40',
+        'focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ui-focus/40',
         selected
           ? 'border-accent-gold/60 bg-accent-gold/10 text-text-primary'
           : 'border-ui-border bg-background-darker text-text-secondary hover:border-accent-gold/40 hover:text-text-primary',

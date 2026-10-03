@@ -47,14 +47,14 @@ function LoadingState(): ReactElement {
   return (
     <div className="space-y-6">
       <div className="bg-background-darker border border-ui-border-dark rounded-2xl p-6 animate-pulse">
-        <div className="h-6 w-48 bg-ui-border-dark rounded mb-6" />
+        <div className="h-6 w-48 bg-ui-border-dark rounded-sm mb-6" />
         <div className="bg-background-darkest border border-ui-border-dark rounded-xl p-5 h-[400px] relative overflow-hidden">
           <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-white/5 to-transparent" />
         </div>
       </div>
       <div className="bg-background-darker border border-ui-border-dark rounded-xl p-6 animate-pulse">
-        <div className="h-6 w-64 bg-ui-border-dark rounded mb-4" />
-        <div className="h-48 bg-ui-border-dark rounded relative overflow-hidden">
+        <div className="h-6 w-64 bg-ui-border-dark rounded-sm mb-4" />
+        <div className="h-48 bg-ui-border-dark rounded-sm relative overflow-hidden">
           <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-white/5 to-transparent" />
         </div>
       </div>
@@ -67,7 +67,7 @@ function ErrorState({ message }: { readonly message: string }): ReactElement {
   return (
     <div className="bg-background-darker border border-status-debilitated/30 rounded-2xl p-6 animate-pulse">
       <div className="flex items-center gap-3 text-status-debilitated">
-        <svg className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <svg className="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path
             strokeLinecap="round"
             strokeLinejoin="round"

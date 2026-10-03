@@ -383,11 +383,11 @@ export default function ProfileSettings() {
   if (isLoading) {
     return (
       <div className="animate-pulse space-y-6">
-        <div className="h-6 bg-background-tertiary rounded w-1/3" />
+        <div className="h-6 bg-background-tertiary rounded-sm w-1/3" />
         <div className="space-y-4">
-          <div className="h-16 bg-background-tertiary rounded" />
-          <div className="h-16 bg-background-tertiary rounded" />
-          <div className="h-16 bg-background-tertiary rounded" />
+          <div className="h-16 bg-background-tertiary rounded-sm" />
+          <div className="h-16 bg-background-tertiary rounded-sm" />
+          <div className="h-16 bg-background-tertiary rounded-sm" />
         </div>
       </div>
     );
@@ -450,7 +450,7 @@ export default function ProfileSettings() {
             type="text"
             value={currentDetails.name}
             onChange={(e) => handleFieldChange('name', e.target.value)}
-            className="w-full px-4 py-2.5 bg-background-tertiary border border-ui-border rounded-lg text-text-primary focus:ring-2 focus:ring-accent-gold/50 outline-none"
+            className="w-full px-4 py-2.5 bg-background-tertiary border border-ui-border rounded-lg text-text-primary focus:ring-2 focus:ring-accent-gold/50 outline-hidden"
             placeholder={t('settings:profile.full_name_placeholder')}
           />
         </div>
@@ -463,7 +463,7 @@ export default function ProfileSettings() {
               type="date"
               value={currentDetails.birth_date}
               onChange={(e) => handleFieldChange('birth_date', e.target.value)}
-              className="w-full px-4 py-2.5 bg-background-tertiary border border-ui-border rounded-lg text-text-primary focus:ring-2 focus:ring-accent-gold/50 outline-none"
+              className="w-full px-4 py-2.5 bg-background-tertiary border border-ui-border rounded-lg text-text-primary focus:ring-2 focus:ring-accent-gold/50 outline-hidden"
             />
           </div>
           <div>
@@ -472,7 +472,7 @@ export default function ProfileSettings() {
               type="time"
               value={currentDetails.birth_time}
               onChange={(e) => handleFieldChange('birth_time', e.target.value)}
-              className="w-full px-4 py-2.5 bg-background-tertiary border border-ui-border rounded-lg text-text-primary focus:ring-2 focus:ring-accent-gold/50 outline-none"
+              className="w-full px-4 py-2.5 bg-background-tertiary border border-ui-border rounded-lg text-text-primary focus:ring-2 focus:ring-accent-gold/50 outline-hidden"
             />
           </div>
         </div>
@@ -494,7 +494,7 @@ export default function ProfileSettings() {
                 type="time"
                 value={currentDetails.rectified_time}
                 onChange={(e) => handleFieldChange('rectified_time', e.target.value)}
-                className="w-full px-4 py-2.5 bg-background-tertiary border border-ui-border rounded-lg text-text-primary focus:ring-2 focus:ring-accent-gold/50 outline-none"
+                className="w-full px-4 py-2.5 bg-background-tertiary border border-ui-border rounded-lg text-text-primary focus:ring-2 focus:ring-accent-gold/50 outline-hidden"
               />
               <div className="mt-2 flex gap-2">
                 {MINUTE_STEPS.map((delta) => (
@@ -519,7 +519,7 @@ export default function ProfileSettings() {
               <select
                 value={currentDetails.time_confidence}
                 onChange={(e) => handleFieldChange('time_confidence', e.target.value)}
-                className="w-full px-4 py-2.5 bg-background-tertiary border border-ui-border rounded-lg text-text-primary focus:ring-2 focus:ring-accent-gold/50 outline-none"
+                className="w-full px-4 py-2.5 bg-background-tertiary border border-ui-border rounded-lg text-text-primary focus:ring-2 focus:ring-accent-gold/50 outline-hidden"
               >
                 {CONFIDENCE_KEYS.map((key) => (
                   <option key={key} value={key}>
@@ -727,7 +727,7 @@ export default function ProfileSettings() {
         {isDirty && (
           <div className="p-4 bg-status-warning/10 border border-status-warning/30 rounded-lg">
             <div className="flex gap-3">
-              <svg className="h-5 w-5 text-status-warning flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg className="h-5 w-5 text-status-warning shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
               </svg>
               <div>

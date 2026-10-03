@@ -16,7 +16,7 @@ export function WhatSection(): ReactElement {
         <p className="mb-3 text-xs uppercase tracking-[0.24em] text-accent-gold">01 — The chart</p>
         <h2
           id="what-title"
-          className="font-display text-3xl font-light leading-tight text-text-primary sm:text-4xl"
+          className="font-display text-3xl font-light leading-tight text-text-primary sm:text-4xl/10"
         >
           {t('what.title')}
         </h2>

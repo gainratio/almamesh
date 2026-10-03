@@ -25,7 +25,7 @@ export interface DialogProps {
  * against the viewport only while no ancestor establishes a containing block
  * for it — and any non-`none` `backdrop-filter` / `filter` / `transform` /
  * `perspective` on an ancestor does exactly that. The app shell's sticky,
- * blurred header (`backdrop-blur-sm`, inner bar `h-14`) hosts the profile
+ * blurred header (`backdrop-blur-xs`, inner bar `h-14`) hosts the profile
  * switcher, so its dialog resolved `fixed inset-0` against a 56px box and
  * rendered clipped above the fold. Portalling fixes the RELATIONSHIP, at one
  * file, for every dialog present and future — never patch the coordinates.
@@ -72,7 +72,7 @@ export function Dialog({ open, onClose, title, children, className }: DialogProp
           <button
             type="button"
             aria-label={t('dialog.close_aria')}
-            className="absolute inset-0 cursor-default bg-ui-overlay backdrop-blur-sm"
+            className="absolute inset-0 cursor-default bg-ui-overlay backdrop-blur-xs"
             onClick={onClose}
           />
           <motion.div

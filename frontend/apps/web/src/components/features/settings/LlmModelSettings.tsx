@@ -513,7 +513,7 @@ export default function LlmModelSettings({
                 type="checkbox"
                 checked={isCloud}
                 onChange={(e) => patch({ privacyMode: e.target.checked ? 'cloud_premium' : 'local_only' })}
-                className="rounded border-ui-border text-accent-gold focus:ring-accent-gold/50"
+                className="rounded-sm border-ui-border text-accent-gold focus:ring-accent-gold/50"
                 data-testid="llm-allow-cloud"
               />
             </label>
