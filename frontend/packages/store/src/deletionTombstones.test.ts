@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { IDBFactory } from 'fake-indexeddb';
 import { createStore, get as idbGet, set as idbSet } from 'idb-keyval';
 import type {
@@ -11,6 +11,7 @@ import { SqliteStateConflictError } from '@gainratio/browser/sqlite';
 import {
   mergeDeletionTombstones,
   abortBackupRestore,
+  adoptLatestDatasetEpoch,
   beginBackupRestore,
   beginDatasetMutation,
   clearMemoryRebuildPending,
@@ -929,6 +930,104 @@ describe('deletion tombstones', () => {
     } finally {
       setPortableStateRepositoryForTests(undefined);
     }
+  });
+});
+
+describe('derived IndexedDB caches beside the SQLite ledger', () => {
+  // Production keeps the canonical ledger in SQLite; the IndexedDB keyval
+  // store holds only derived caches (the predictive store) and has no ledger.
+  // Reading such a cache used to publish the EMPTY IndexedDB ledger (epoch 0)
+  // as this realm's observed restore epoch, so after any restore or deletion:
+  // - every startup/visibility reconcile saw a "newer dataset" and replayed a
+  //   full dataset replace (CI run 37098561922: a click on Generate waited
+  //   behind it past the 30 s budget, 0 provider calls), and
+  // - portable writes were refused as stale until the next ledger read.
+  async function withSqliteAtEpochOne(run: (repository: PortableStateRepository) => Promise<void>) {
+    const originalIndexedDb = globalThis.indexedDB;
+    Object.defineProperty(globalThis, 'indexedDB', { value: new IDBFactory(), configurable: true });
+    const repository = new PortableStateRepository(new PortableMemoryStore());
+    setPortableStateRepositoryForTests(repository);
+    try {
+      const epoch = await beginDatasetMutation();
+      await commitDatasetGeneration(epoch, []);
+      expect(epoch).toBe(1);
+      // idb-keyval binds its keyval store once per module, so clear the cache row.
+      await deletionAwareIdbStorage.removeItem('almamesh-predictive');
+      await run(repository);
+    } finally {
+      setPortableStateRepositoryForTests(undefined);
+      Object.defineProperty(globalThis, 'indexedDB', { value: originalIndexedDb, configurable: true });
+    }
+  }
+
+  it('reading a derived cache does not make the current dataset look newer', async () => {
+    await withSqliteAtEpochOne(async () => {
+      expect((await adoptLatestDatasetEpoch()).changed).toBe(false);
+      await deletionAwareIdbStorage.getItem('almamesh-predictive');
+      expect(await adoptLatestDatasetEpoch()).toEqual({ changed: false, epoch: 1 });
+    });
+  });
+
+  it('a portable write after a derived-cache read is persisted, not refused as stale', async () => {
+    await withSqliteAtEpochOne(async () => {
+      await deletionAwareIdbStorage.getItem('almamesh-profiles');
+      await deletionAwareIdbStorage.getItem('almamesh-predictive');
+      await deletionAwareIdbStorage.setItem('almamesh-profiles', envelope({ kept: true }));
+      expect(
+        stateOf((await deletionAwareIdbStorage.getItem('almamesh-profiles')) as string),
+      ).toMatchObject({ kept: true });
+    });
+  });
+
+  it('a derived cache still round-trips after a restore', async () => {
+    await withSqliteAtEpochOne(async () => {
+      await deletionAwareIdbStorage.getItem('almamesh-predictive');
+      await deletionAwareIdbStorage.setItem('almamesh-predictive', envelope({ cached: 1 }));
+      expect(
+        stateOf((await deletionAwareIdbStorage.getItem('almamesh-predictive')) as string),
+      ).toEqual({ cached: 1 });
+    });
+  });
+
+  it('a fresh realm adopting an untouched ledger does not replay a dataset replace', async () => {
+    // A first visit has no restore-epoch mirror. Before any store read, the
+    // startup reconcile adopts the ledger; generation 0 with no restore in
+    // progress is the dataset this realm is already showing. Treating the
+    // unset epoch as "changed" replays a full replace that rehydrates every
+    // store mid-boot (Dagger pdf: the synthetic report lost its reading).
+    // main hid this only because the predictive cache read happened to set 0.
+    vi.resetModules();
+    const fresh = await import('./deletionTombstones');
+    fresh.setPortableStateRepositoryForTests(new PortableStateRepository(new PortableMemoryStore()));
+    try {
+      expect(await fresh.adoptLatestDatasetEpoch()).toEqual({ changed: false, epoch: 0 });
+    } finally {
+      fresh.setPortableStateRepositoryForTests(undefined);
+    }
+  });
+
+  it('a fresh realm whose ledger already moved past generation 0 still reconciles', async () => {
+    vi.resetModules();
+    const fresh = await import('./deletionTombstones');
+    const repository = new PortableStateRepository(new PortableMemoryStore());
+    await repository.write(PORTABLE_LEDGER_KEY, JSON.stringify({ ...TOMBSTONES, profileIds: [] }));
+    fresh.setPortableStateRepositoryForTests(repository);
+    try {
+      expect(await fresh.adoptLatestDatasetEpoch()).toEqual({ changed: true, epoch: 2 });
+    } finally {
+      fresh.setPortableStateRepositoryForTests(undefined);
+    }
+  });
+
+  it.each([
+    ['another tab committed a newer dataset', { restoreEpoch: 2, activeEpoch: 2, restoreInProgress: false }],
+    ['a restore is in progress', { restoreEpoch: 1, activeEpoch: 1, restoreInProgress: true }],
+  ])('refuses a derived-cache write when %s', async (_case, ledger) => {
+    await withSqliteAtEpochOne(async (repository) => {
+      await repository.write(PORTABLE_LEDGER_KEY, JSON.stringify({ ...TOMBSTONES, ...ledger }));
+      await deletionAwareIdbStorage.setItem('almamesh-predictive', envelope({ stale: true }));
+      expect(await deletionAwareIdbStorage.getItem('almamesh-predictive')).toBeNull();
+    });
   });
 });
 
