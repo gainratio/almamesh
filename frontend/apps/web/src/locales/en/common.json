@@ -35,6 +35,7 @@
     "dashboard": "Dashboard",
     "astrologer_view": "Astrologer View",
     "mesh": "Mesh",
+    "mesh_open": "Open your Mesh",
     "report": "Report",
     "settings": "Settings",
     "menu": "Navigation menu",
@@ -42,6 +43,21 @@
     "home": "AlmaMesh home"
   },
   "loading": "Loading",
+  "storage_blocked": {
+    "title": "Your browser is blocking site storage",
+    "body": "AlmaMesh computes and keeps your chart only on this device, so it needs permission to store data for this site. Your browser is refusing that right now.",
+    "fix": "In Safari, open Settings > Privacy and turn off \"Block all cookies\", then reload this page. In other browsers, allow cookies and site data for almamesh.com."
+  },
+  "storage_ephemeral": {
+    "title": "This browser is not saving your data.",
+    "body": "It refuses on-device storage here (for example, Private Browsing), so your chart works but disappears when you close this tab.",
+    "export": "Export a backup to keep it."
+  },
+  "storage_unavailable": {
+    "title": "AlmaMesh cannot start its on-device database",
+    "body": "AlmaMesh computes and keeps your chart only on this device, and this browser cannot run the local database it needs.",
+    "fix": "Try a current version of Safari, Chrome, Firefox or Edge in a normal (not private) window, then reload this page."
+  },
   "error_boundary": {
     "title": "Something went wrong",
     "body": "We encountered an unexpected error. Please try refreshing the page.",
@@ -58,7 +74,11 @@
   "update": {
     "available": "A new version is available!",
     "reload_cta": "Reload to update",
-    "dismiss_aria": "Dismiss update notice"
+    "dismiss_aria": "Dismiss update notice",
+    "finishing_previous": "Finishing the previous download… updating when it's done.",
+    "activating": "Updating…",
+    "stalled": "The update couldn't finish. Close other AlmaMesh tabs, then reload.",
+    "reload_now": "Reload now"
   },
   "footer": {
     "privacy": "Privacy Policy",

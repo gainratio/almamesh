@@ -13,6 +13,20 @@
 > instance, and commits them as a fresh generation. Existing plaintext and
 > encrypted JSON backups remain importable. API keys and derived caches are
 > excluded from both formats.
+>
+> **Format v2 (2026-10, supersedes the API-key exclusion above):** Export now
+> requires a password (8+ characters) and writes one encrypted `.json` file
+> (`formatVersion: 2`) holding the canonical SQLite database **and** device
+> settings, including the AI provider, models, and API key
+> (`almamesh-llm-settings`). Nothing but the header is plaintext: PBKDF2-SHA256
+> (600,000 iterations) derives an AES-GCM-256 key; the random salt and IV live
+> in the header, and the header is bound to the ciphertext as AES-GCM additional
+> data. Import asks for the password; a wrong password or any edit to the file
+> is refused before anything is written, and settings are applied only after
+> the database commit succeeds. v1 `.sqlite3` and legacy JSON backups still
+> import (their data restores; AI settings must be reconnected). Derived caches
+> are still rebuilt rather than exported. Code: `packages/store/src/portableBundle.ts`,
+> `packages/store/src/portableSettings.ts`.
 
 ## Goal
 

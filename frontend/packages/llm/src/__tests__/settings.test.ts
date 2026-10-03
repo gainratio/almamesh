@@ -78,11 +78,24 @@ describe("readLlmSettings — self-heals AlmaMesh's retired default cloud model"
         privacyMode: "cloud_premium",
       }),
     );
-    expect(readLlmSettings().model).toBe("deepseek/deepseek-v4-pro");
+    expect(readLlmSettings().model).toBe("deepseek/deepseek-v4.1-flash");
     // Persisted, so every other caller (and a reload) sees the healed value.
     const persisted = JSON.parse(localStorage.getItem(LLM_SETTINGS_KEY) as string);
-    expect(persisted.model).toBe("deepseek/deepseek-v4-pro");
+    expect(persisted.model).toBe("deepseek/deepseek-v4.1-flash");
     expect(persisted.apiKey).toBe("sk-or-123"); // key + base preserved
+  });
+
+  it("keeps a user on the previous default (deepseek-v4-pro): a default change never rewrites a saved model", () => {
+    const saved = {
+      apiBase: "https://openrouter.ai/api/v1",
+      apiKey: "sk-or-123",
+      model: "deepseek/deepseek-v4-pro",
+      interpretationModel: "deepseek/deepseek-v4-pro",
+      privacyMode: "cloud_premium",
+    };
+    localStorage.setItem(LLM_SETTINGS_KEY, JSON.stringify(saved));
+    expect(readLlmSettings().interpretationModel).toBe("deepseek/deepseek-v4-pro");
+    expect(JSON.parse(localStorage.getItem(LLM_SETTINGS_KEY) as string)).toEqual(saved);
   });
 
   it("leaves a model the user deliberately chose untouched", () => {

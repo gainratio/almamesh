@@ -29,14 +29,27 @@
  *      is a no-op, and was the second half of the same defect.
  *   3. reload on `controllerchange`, once the new worker takes over.
  *
- * Two invariants worth stating because they are easy to break later:
+ * Three invariants worth stating because they are easy to break later:
  *
- *   - The click ALWAYS ends in a reload. The timeout is armed before anything
- *     else, so a hung update check, a stalled install or a dropped message
- *     still moves the user. A dead button is the one outcome we cannot ship.
+ *   - The click NEVER silently lands on the old build. Chromium promotes a
+ *     worker that called skipWaiting() only once the ACTIVE worker has no work
+ *     in flight (`ServiceWorkerRegistration::IsReadyToActivate`), and a Workbox
+ *     CacheFirst fetch of the ~68 MB engine keeps it busy until the body is in
+ *     the cache, for up to five minutes (`kMaxLameDuckTime`). A reload before
+ *     then is served by the OLD worker. So we wait for `controllerchange`, the
+ *     one reliable signal, and report status instead of reloading on a timer.
+ *     This used to reload after a fixed 10 s, which on a slow link put the
+ *     user straight back on the old build looking at a "failed" update.
+ *   - The click is never a dead button. The banner always offers "Reload now"
+ *     while we wait, and at ACTIVATION_CAP_MS we report `stalled` so the UI
+ *     can say plainly that the update did not finish.
  *   - The `controllerchange` listener is per click, NOT global at boot. A new
  *     worker takes over every open tab; reloading tabs whose user did not ask
  *     for it would throw away whatever they were doing.
+ *
+ * Aborting the old worker's in-flight engine download on SKIP_WAITING is not
+ * possible from here: that worker is the PREVIOUS deploy's code, and Workbox's
+ * CacheFirst strategy exposes no abort for a fetch it is writing to the cache.
  *
  * This does NOT change `registerType: 'prompt'` semantics. Nothing activates
  * without a user click; we only make the click do what it always claimed to.
@@ -48,33 +61,55 @@ import { safeWarn } from '@almamesh/shared-types';
 const SKIP_WAITING_MESSAGE = { type: 'SKIP_WAITING' } as const;
 
 /**
- * The never-a-dead-button bound, not the expected path: the normal click
- * reloads on `controllerchange` in a second or two. This only fires when the
- * update check, the install or the message goes nowhere, and it is deliberately
- * generous so a slow precache install is not cut short into a pointless reload.
+ * How long the click may plausibly take on its own (update check, install,
+ * activation from an idle worker) before we tell the user we are waiting on
+ * the previous worker's download.
  */
-const ACTIVATION_TIMEOUT_MS = 10_000;
+const FINISHING_PREVIOUS_AFTER_MS = 3_000;
+
+/**
+ * Chromium's lame-duck limit is five minutes; past it the old worker is
+ * dropped and the new one activates anyway. A little slack on top, then we
+ * stop pretending and say the update did not finish.
+ */
+const ACTIVATION_CAP_MS = 5 * 60_000 + 15_000;
+
+/** What the click is doing, for the banner. */
+export type UpdateStatus = 'activating' | 'finishing-previous' | 'stalled';
 
 export interface ServiceWorkerUpdateOptions {
   /** Injected by tests; defaults to a real page reload. */
   reload?: () => void;
-  /** Injected by tests; how long to wait for `controllerchange`. */
-  timeoutMs?: number;
+  /** Told each time the status changes while we wait for the new worker. */
+  onStatus?: (status: UpdateStatus) => void;
 }
 
-/** A one-shot reload that fires on `controllerchange`, on timeout, or on demand. */
-function armReload(reload: () => void, timeoutMs: number): { now: () => void } {
+/**
+ * Reload once, on `controllerchange` or on demand. Status timers run alongside;
+ * the listener stays armed past the cap, since a late takeover is still the
+ * update the user asked for.
+ */
+function armReload(reload: () => void, onStatus: (status: UpdateStatus) => void): { now: () => void } {
   let fired = false;
+  const timers = [
+    setTimeout(() => onStatus('finishing-previous'), FINISHING_PREVIOUS_AFTER_MS),
+    setTimeout(() => onStatus('stalled'), ACTIVATION_CAP_MS),
+  ];
   const fire = () => {
     if (fired) return;
     fired = true;
-    clearTimeout(timer);
+    timers.forEach(clearTimeout);
     navigator.serviceWorker.removeEventListener('controllerchange', fire);
     reload();
   };
-  const timer = setTimeout(fire, timeoutMs);
   navigator.serviceWorker.addEventListener('controllerchange', fire);
+  onStatus('activating');
   return { now: fire };
+}
+
+/** The manual escape hatch: a plain reload, whatever build it lands on. */
+export function reloadPage(): void {
+  window.location.reload();
 }
 
 async function currentRegistration(): Promise<ServiceWorkerRegistration | null> {
@@ -122,20 +157,20 @@ async function waitingWorker(reg: ServiceWorkerRegistration): Promise<ServiceWor
 }
 
 /**
- * Activate the waiting service worker, then reload onto the new build.
- * Never rejects, and never leaves the page without reloading.
+ * Activate the waiting service worker, then reload onto the new build once it
+ * has taken control. Never rejects.
  */
 export async function applyServiceWorkerUpdate(
   options: ServiceWorkerUpdateOptions = {},
 ): Promise<void> {
-  const reload = options.reload ?? (() => window.location.reload());
+  const reload = options.reload ?? reloadPage;
   const registration = await currentRegistration();
   if (!registration) {
     reload();
     return;
   }
-  // Armed BEFORE we touch the worker, so every path below still ends in a reload.
-  const reloader = armReload(reload, options.timeoutMs ?? ACTIVATION_TIMEOUT_MS);
+  // Armed BEFORE we touch the worker, so a hung update check still reports.
+  const reloader = armReload(reload, options.onStatus ?? (() => undefined));
   const waiting = await waitingWorker(registration);
   if (!waiting) {
     reloader.now();

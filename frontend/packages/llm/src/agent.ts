@@ -6,8 +6,10 @@
 // or storage access through this module. Tool arguments/results stay inside the
 // request transcript and are never surfaced through status events.
 
-import { LlmRequestError, type ChatMessage } from "./client";
+import { LlmRequestError, reasoningField, type ChatMessage } from "./client";
 import { ensurePrivacy, type ProviderConfig } from "./config";
+import { CHAT_REASONING_MAX_TOKENS, REASONING_TIMEOUT_MS } from "./reasoning";
+import { sseChunks } from "./sse";
 
 export const AGENT_LIMITS = Object.freeze({
   maxDecisionRounds: 2,
@@ -68,6 +70,12 @@ export interface StreamAgentChatOptions {
   readonly signal?: AbortSignal;
   /** Injectable for deterministic tests; defaults to global `fetch`. */
   readonly fetchImpl?: typeof fetch;
+  /**
+   * Runaway-reasoning cap per request, in ms (default REASONING_TIMEOUT_MS):
+   * no answer text or tool call by then fails the turn with a
+   * ReasoningTimeoutError.
+   */
+  readonly reasoningTimeoutMs?: number;
 }
 
 interface OpenAiFunctionCall {
@@ -101,6 +109,19 @@ interface DecisionMessage {
   readonly toolCalls: readonly OpenAiToolCall[];
 }
 
+/** One tool call being reassembled from `delta.tool_calls` fragments. */
+interface ToolCallDraft {
+  id: string;
+  type: string;
+  name: string;
+  arguments: string;
+}
+
+/** Whether any answer text has reached the caller yet this turn. */
+interface EmitState {
+  emitted: boolean;
+}
+
 interface OpenAiDecisionPayload {
   readonly choices?: ReadonlyArray<{
     readonly message?: {
@@ -110,11 +131,9 @@ interface OpenAiDecisionPayload {
   }>;
 }
 
-interface OpenAiDeltaPayload {
-  readonly choices?: ReadonlyArray<{ readonly delta?: { readonly content?: unknown } }>;
-}
-
 const MAX_ERROR_BODY_CHARS = 500;
+/** Upper bound on distinct streamed tool-call indices in one decision. */
+const MAX_STREAMED_TOOL_CALLS = 16;
 const TOOL_NAME = /^[A-Za-z0-9_-]{1,64}$/;
 const MAX_TOOL_CALL_ID_CHARS = 128;
 const FINALIZATION_INSTRUCTION =
@@ -247,11 +266,85 @@ function parseDecision(payload: unknown): DecisionMessage {
   return { content, toolCalls: message.tool_calls.map(parseToolCall) };
 }
 
-async function decisionRequest(
+function malformedToolCalls(): LlmRequestError {
+  return new LlmRequestError("LLM endpoint returned malformed tool calls");
+}
+
+/**
+ * Fold one `delta.tool_calls` array into the drafts. OpenAI-compatible streams
+ * send `id`/`type`/`function.name` on a call's first fragment and then
+ * `function.arguments` in pieces, all keyed by `index`.
+ */
+function mergeToolCallDeltas(drafts: Map<number, ToolCallDraft>, raw: unknown): void {
+  if (!Array.isArray(raw)) throw malformedToolCalls();
+  raw.forEach((item: unknown, position) => {
+    if (typeof item !== "object" || item === null) throw malformedToolCalls();
+    const row = item as Record<string, unknown>;
+    const index =
+      typeof row.index === "number" && Number.isInteger(row.index) && row.index >= 0
+        ? row.index
+        : position;
+    let draft = drafts.get(index);
+    if (!draft) {
+      if (drafts.size >= MAX_STREAMED_TOOL_CALLS) throw malformedToolCalls();
+      draft = { id: "", type: "", name: "", arguments: "" };
+      drafts.set(index, draft);
+    }
+    if (typeof row.id === "string" && row.id && !draft.id) draft.id = row.id;
+    if (typeof row.type === "string" && row.type) draft.type = row.type;
+    const fn = row.function;
+    if (typeof fn !== "object" || fn === null) return;
+    const fnRow = fn as Record<string, unknown>;
+    // Most providers send the name once; some repeat it on every fragment.
+    if (typeof fnRow.name === "string" && fnRow.name && fnRow.name !== draft.name) {
+      draft.name += fnRow.name;
+    }
+    if (typeof fnRow.arguments === "string") {
+      // Keep one char past the limit so the size guard still trips, without
+      // letting a hostile stream grow the buffer without bound.
+      draft.arguments = (draft.arguments + fnRow.arguments).slice(
+        0,
+        AGENT_LIMITS.maxArgumentChars + 1,
+      );
+    }
+  });
+}
+
+function assembleToolCalls(drafts: Map<number, ToolCallDraft>): OpenAiToolCall[] {
+  return [...drafts.entries()]
+    .sort(([left], [right]) => left - right)
+    .map(([, draft]) =>
+      parseToolCall({
+        id: draft.id,
+        type: draft.type || "function",
+        function: { name: draft.name, arguments: draft.arguments },
+      }),
+    );
+}
+
+function isJsonResponse(response: Response): boolean {
+  return /\bapplication\/json\b/i.test(response.headers.get("content-type") ?? "");
+}
+
+async function parseJsonDecision(response: Response): Promise<DecisionMessage> {
+  try {
+    return parseDecision(await response.json());
+  } catch (error) {
+    if (error instanceof LlmRequestError) throw error;
+    throw new LlmRequestError("LLM endpoint returned invalid JSON for an agent completion");
+  }
+}
+
+/**
+ * The tool-decision round, streamed. Content deltas are yielded as they arrive
+ * (a no-tool answer is the common case and must not wait for the whole
+ * completion); tool-call deltas are reassembled and returned for execution.
+ */
+async function* decisionRequest(
   options: StreamAgentChatOptions,
   messages: readonly AgentWireMessage[],
   definitions: ReadonlyArray<Record<string, unknown>>,
-): Promise<DecisionMessage> {
+): AsyncGenerator<string, DecisionMessage> {
   throwIfAborted(options.signal);
   // Re-check immediately before every request; callers can retain/mutate a
   // config object and a later turn must still fail closed.
@@ -262,18 +355,64 @@ async function decisionRequest(
     body: JSON.stringify({
       model: options.config.model,
       messages,
-      stream: false,
+      stream: true,
       tools: definitions,
       tool_choice: "auto",
+      ...reasoningField(options.config, CHAT_REASONING_MAX_TOKENS),
     }),
     signal: options.signal,
   });
   if (!response.ok) throw await requestError(response);
+  // Compatibility: a server that ignores `stream:true` answers with one JSON body.
+  if (isJsonResponse(response)) {
+    const decision = await parseJsonDecision(response);
+    if (decision.toolCalls.length === 0 && decision.content?.trim()) yield decision.content;
+    return decision;
+  }
+
+  const drafts = new Map<number, ToolCallDraft>();
+  let content = "";
+  for await (const chunk of sseChunks(response, capOf(options))) {
+    const delta = chunk.choices?.[0]?.delta;
+    if (!delta) continue;
+    if (typeof delta.content === "string" && delta.content) {
+      content += delta.content;
+      yield delta.content;
+    }
+    if (delta.tool_calls !== undefined && delta.tool_calls !== null) {
+      mergeToolCallDeltas(drafts, delta.tool_calls);
+    }
+  }
+  return { content: content || null, toolCalls: assembleToolCalls(drafts) };
+}
+
+/**
+ * Relay a token source, separating it from earlier answer text this turn with
+ * a paragraph break (a streamed tool-round preamble must not run into the
+ * answer) and reporting the first token. Returns the source's return value.
+ */
+async function* relayTokens<T>(
+  source: AsyncGenerator<string, T>,
+  state: EmitState,
+  onFirstToken?: () => void,
+): AsyncGenerator<string, T> {
+  const needsBreak = state.emitted;
+  let first = true;
   try {
-    return parseDecision(await response.json());
-  } catch (error) {
-    if (error instanceof LlmRequestError) throw error;
-    throw new LlmRequestError("LLM endpoint returned invalid JSON for an agent completion");
+    while (true) {
+      const step = await source.next();
+      if (step.done) return step.value;
+      if (first) {
+        first = false;
+        onFirstToken?.();
+        if (needsBreak) yield "\n\n";
+      }
+      state.emitted = true;
+      yield step.value;
+    }
+  } finally {
+    // Propagate an early consumer exit so the underlying reader is cancelled.
+    await source.return(undefined as never);
   }
 }
 
@@ -388,24 +527,12 @@ async function* finalRequest(
       stream: true,
       tools: definitions,
       tool_choice: "none",
+      ...reasoningField(options.config, CHAT_REASONING_MAX_TOKENS),
     }),
     signal: options.signal,
   });
   if (!response.ok || !response.body) throw await requestError(response);
-
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const events = buffer.split(/\r?\n\r?\n/);
-    buffer = events.pop() ?? "";
-    for (const event of events) yield* parseSseEvent(event);
-  }
-  buffer += decoder.decode();
-  if (buffer.trim()) yield* parseSseEvent(buffer);
+  yield* streamContent(response, options);
 }
 
 /** Compatibility path for OpenAI-compatible endpoints without function calling. */
@@ -422,39 +549,22 @@ async function* streamWithoutTools(
       model: options.config.model,
       messages,
       stream: true,
+      ...reasoningField(options.config, CHAT_REASONING_MAX_TOKENS),
     }),
     signal: options.signal,
   });
   if (!response.ok || !response.body) throw await requestError(response);
-
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const events = buffer.split(/\r?\n\r?\n/);
-    buffer = events.pop() ?? "";
-    for (const event of events) yield* parseSseEvent(event);
-  }
-  buffer += decoder.decode();
-  if (buffer.trim()) yield* parseSseEvent(buffer);
+  yield* streamContent(response, options);
 }
 
-function* parseSseEvent(event: string): Generator<string> {
-  for (const line of event.split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed.startsWith("data:")) continue;
-    const data = trimmed.slice(5).trim();
-    if (!data || data === "[DONE]") continue;
-    let payload: OpenAiDeltaPayload;
-    try {
-      payload = JSON.parse(data) as OpenAiDeltaPayload;
-    } catch {
-      throw new LlmRequestError("LLM endpoint returned invalid streaming JSON");
-    }
-    const content = payload.choices?.[0]?.delta?.content;
+/** The runaway-reasoning cap for one chat request (see reasoning.ts). */
+function capOf(options: StreamAgentChatOptions): { readonly answerDeadlineMs: number } {
+  return { answerDeadlineMs: options.reasoningTimeoutMs ?? REASONING_TIMEOUT_MS };
+}
+
+async function* streamContent(response: Response, options: StreamAgentChatOptions): AsyncGenerator<string> {
+  for await (const chunk of sseChunks(response, capOf(options))) {
+    const content = chunk.choices?.[0]?.delta?.content;
     if (typeof content === "string" && content) yield content;
   }
 }
@@ -462,7 +572,10 @@ function* parseSseEvent(event: string): Generator<string> {
 /**
  * Run a bounded OpenAI-compatible tool loop and yield only the final answer.
  *
- * A normal no-tool answer is returned directly from a decision response. When
+ * Every request streams. A normal no-tool answer is yielded delta by delta
+ * straight from the decision round; tool-call deltas are reassembled by index,
+ * executed, and the loop continues. Content that precedes a tool call is shown
+ * as it arrives and separated from the eventual answer. When
  * the model uses the full round/call budget (or makes a rejected call), a final
  * streaming request is forced with `tool_choice: "none"` so the turn always
  * converges instead of looping.
@@ -481,17 +594,22 @@ export async function* streamAgentChat(
   let executedCalls = 0;
   let aggregateResultChars = 0;
   let forceFinal = false;
+  const emit: EmitState = { emitted: false };
 
   for (let round = 1; round <= AGENT_LIMITS.maxDecisionRounds; round += 1) {
     options.onStatus?.({ phase: "deciding", round });
     let decision: DecisionMessage;
     try {
-      decision = await decisionRequest(options, transcript, definitions);
+      decision = yield* relayTokens(
+        decisionRequest(options, transcript, definitions),
+        emit,
+        () => options.onStatus?.({ phase: "answering" }),
+      );
     } catch (error) {
       // Some otherwise-valid Ollama/llama.cpp/OpenAI-compatible models reject
       // the tools fields outright. On the first request only, retain privacy
       // and grounded messages while degrading to their ordinary SSE contract.
-      if (round === 1 && explicitlyRejectsTools(error)) {
+      if (round === 1 && !emit.emitted && explicitlyRejectsTools(error)) {
         options.onStatus?.({ phase: "answering" });
         yield* streamWithoutTools(options, [
           { role: "system", content: TOOLS_UNAVAILABLE_INSTRUCTION },
@@ -506,8 +624,6 @@ export async function* streamAgentChat(
       if (!decision.content?.trim()) {
         throw new LlmRequestError("LLM endpoint returned an empty agent completion");
       }
-      options.onStatus?.({ phase: "answering" });
-      yield decision.content;
       options.onStatus?.({ phase: "complete" });
       return;
     }
@@ -604,6 +720,6 @@ export async function* streamAgentChat(
   }
 
   options.onStatus?.({ phase: "answering" });
-  yield* finalRequest(options, transcript, definitions);
+  yield* relayTokens(finalRequest(options, transcript, definitions), emit);
   options.onStatus?.({ phase: "complete" });
 }

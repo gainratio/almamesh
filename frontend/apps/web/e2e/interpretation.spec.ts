@@ -385,8 +385,11 @@ test('a failing endpoint degrades calmly with Retry, never a blank dashboard', a
 
   // All five independent sections must reach the provider. This also proves an
   // immediate click cannot disappear behind asynchronous SQLite hydration.
-  await expect.poll(() => providerCalls, { timeout: 30_000 }).toBe(5);
-  await expect.poll(() => providerResponses, { timeout: 30_000 }).toBe(5);
+  // A 500 is transient, so each section is retried exactly once (#192):
+  // 5 sections x 2 attempts. A poll for 5 passed only when it happened to
+  // sample between the first wave and the retries.
+  await expect.poll(() => providerCalls, { timeout: 30_000 }).toBe(10);
+  await expect.poll(() => providerResponses, { timeout: 30_000 }).toBe(10);
 
   // The unavailability panel is shown (status === 'error'), NOT hidden (which is
   // what a silent empty 'complete' produced — the blank-dashboard bug).

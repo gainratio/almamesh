@@ -433,3 +433,34 @@ describe('ERROR_CODES default messages', () => {
     expect(ERROR_CODES('CHART_GEN_001')).toBe('Error al generar la carta');
   });
 });
+
+describe('runaway reasoning (ai.reasoning_timeout)', () => {
+  // The @almamesh/llm cap aborts a model that thinks for 3 minutes without
+  // writing. It must not read as a generic provider outage: the user's fix is
+  // "retry, or pick a faster model", which the copy has to say.
+  it('classifies the cap error, and the section event rebuilt from its message + 504', async () => {
+    const { ReasoningTimeoutError } = await import('@almamesh/llm');
+    const capped = new ReasoningTimeoutError(180_000);
+    expect(aiErrorRegistry.classify(capped)).toBe('ai.reasoning_timeout');
+    // useStreamingInterpretation rebuilds a section failure from message+status.
+    expect(aiErrorRegistry.classify(new FakeLlmRequestError(capped.message, 504))).toBe('ai.reasoning_timeout');
+    // A plain gateway timeout is still a provider outage.
+    expect(aiErrorRegistry.classify(new FakeLlmRequestError('returned 504', 504))).toBe('ai.provider.server_error');
+    expect(classifyConnectionError(capped)).toBe('reasoning_timeout');
+  });
+
+  it('tells the user to retry or pick a faster model, in every shipped language', async () => {
+    const { ReasoningTimeoutError } = await import('@almamesh/llm');
+    const capped = new ReasoningTimeoutError(180_000);
+    expect(chatErrorMessage(capped)).toBe(
+      'The model thought for over 3 minutes without starting its answer. Try again, or pick a faster model in Settings → AI.',
+    );
+    for (const lang of ['es', 'pt']) {
+      await i18n.changeLanguage(lang);
+      const text = chatErrorMessage(capped);
+      expect(text).not.toBe('');
+      expect(text).not.toContain('errors.');
+      expect(text).toMatch(/3/);
+    }
+  });
+});

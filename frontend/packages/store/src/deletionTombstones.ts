@@ -14,8 +14,15 @@ import {
   PORTABLE_LEDGER_KEY,
   PORTABLE_STATE_KEYS,
   resolvePortableStateMode,
+  type LegacyStateStorage,
   type PortableStateRepository,
 } from './portableState';
+import {
+  markPortableStateUnavailable,
+  nonDestructiveLegacyStorage,
+  openPortableStateWithFallback,
+} from './portablePersistence';
+import { browserLocalStorage } from './webStorage';
 
 export const DELETION_TOMBSTONES_KEY = 'almamesh-deletion-tombstones';
 const RESTORE_EPOCH_MIRROR_KEY = 'almamesh-restore-epoch';
@@ -86,29 +93,39 @@ export function setPortableStateRepositoryForTests(
 
 async function portableRepository(): Promise<PortableStateRepository | null> {
   if (portableRepositoryOverride !== undefined) return portableRepositoryOverride;
-  if (resolvePortableStateMode() === 'node-test-fallback') return null;
-  portableRepositoryPromise ??= openPortableStateRepository().then(async (repository) => {
+  let mode: ReturnType<typeof resolvePortableStateMode>;
+  try {
+    mode = resolvePortableStateMode();
+  } catch (error) {
+    markPortableStateUnavailable();
+    throw error;
+  }
+  if (mode === 'node-test-fallback') return null;
+  portableRepositoryPromise ??= openPortableStateWithFallback({
+    open: openPortableStateRepository,
+  }).then(async ({ repository, persistence }) => {
+    const legacy: LegacyStateStorage = {
+      get: async (key) => {
+        if (key === 'almamesh-language') {
+          const storage = browserLocalStorage();
+          return typeof storage?.getItem === 'function' ? storage.getItem(key) : null;
+        }
+        const value = await idbGet<unknown>(key, useKeyvalStore);
+        if (value === undefined) return null;
+        return typeof value === 'string' ? value : JSON.stringify(value);
+      },
+      delete: async (key) => {
+        if (key === 'almamesh-language') {
+          const storage = browserLocalStorage();
+          storage?.removeItem?.(key);
+          return;
+        }
+        await idbDel(key, useKeyvalStore);
+      },
+    };
     await migrateLegacyState(
       repository,
-      {
-        get: async (key) => {
-          if (key === 'almamesh-language') {
-            const storage = (globalThis as { localStorage?: Partial<Storage> }).localStorage;
-            return typeof storage?.getItem === 'function' ? storage.getItem(key) : null;
-          }
-          const value = await idbGet<unknown>(key, useKeyvalStore);
-          if (value === undefined) return null;
-          return typeof value === 'string' ? value : JSON.stringify(value);
-        },
-        delete: async (key) => {
-          if (key === 'almamesh-language') {
-            const storage = (globalThis as { localStorage?: Partial<Storage> }).localStorage;
-            storage?.removeItem?.(key);
-            return;
-          }
-          await idbDel(key, useKeyvalStore);
-        },
-      },
+      persistence === 'memory' ? nonDestructiveLegacyStorage(legacy) : legacy,
       [...PORTABLE_STATE_KEYS, PORTABLE_LEDGER_KEY],
     );
     return repository;
@@ -139,7 +156,7 @@ function serializeDeletionTombstones(value: DeletionTombstones): string {
 }
 
 function mirroredRestoreEpoch(): number | undefined {
-  const storage = (globalThis as { localStorage?: Partial<Storage> }).localStorage;
+  const storage = browserLocalStorage();
   if (typeof storage?.getItem !== 'function') {
     return undefined;
   }
@@ -152,7 +169,7 @@ function mirroredRestoreEpoch(): number | undefined {
 }
 
 function mirrorRestoreEpoch(epoch: number, restoreInProgress?: boolean): void {
-  const storage = (globalThis as { localStorage?: Partial<Storage> }).localStorage;
+  const storage = browserLocalStorage();
   if (typeof storage?.setItem === 'function') {
     storage.setItem(RESTORE_EPOCH_MIRROR_KEY, String(epoch));
     if (restoreInProgress !== undefined) {
@@ -162,7 +179,7 @@ function mirrorRestoreEpoch(epoch: number, restoreInProgress?: boolean): void {
 }
 
 function mirroredRestoreInProgress(): boolean {
-  const storage = (globalThis as { localStorage?: Partial<Storage> }).localStorage;
+  const storage = browserLocalStorage();
   return (
     typeof storage?.getItem === 'function' && storage.getItem(RESTORE_PROGRESS_MIRROR_KEY) === '1'
   );
@@ -971,21 +988,21 @@ export const portablePreferenceStorage: StateStorage = {
   getItem: async (name) => {
     const repository = await portableRepository();
     if (repository !== null && isPortableStateKey(name)) return repository.read(name);
-    const storage = (globalThis as { localStorage?: Partial<Storage> }).localStorage;
+    const storage = browserLocalStorage();
     return typeof storage?.getItem === 'function' ? storage.getItem(name) : null;
   },
   setItem: (name, value) =>
     enqueuePersistenceMutation(name, async () => {
       const repository = await portableRepository();
       if (repository !== null && isPortableStateKey(name)) await repository.write(name, value);
-      const storage = (globalThis as { localStorage?: Partial<Storage> }).localStorage;
+      const storage = browserLocalStorage();
       storage?.setItem?.(name, value);
     }),
   removeItem: (name) =>
     enqueuePersistenceMutation(name, async () => {
       const repository = await portableRepository();
       if (repository !== null && isPortableStateKey(name)) await repository.delete(name);
-      const storage = (globalThis as { localStorage?: Partial<Storage> }).localStorage;
+      const storage = browserLocalStorage();
       storage?.removeItem?.(name);
     }),
 };

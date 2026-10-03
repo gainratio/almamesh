@@ -7,12 +7,13 @@ import { bootEngine, seedChart, LLM_SETTINGS_KEY } from './interpretation.helper
  * This is the fast, deterministic, CI-runnable proof of two branch changes that
  * previously had only unit coverage:
  *
- *   (b) the chat request that goes out on the wire uses the FAST chat model
- *       `minimax/minimax-m2.7`. This is applied by `applyChatModelPreference`
- *       ONLY on the default OpenRouter cloud preset (base startsWith
- *       OPENROUTER_API_BASE AND model === RECOMMENDED_CLOUD_MODEL). So this test
- *       seeds the OpenRouter preset and asserts the OUTBOUND chat body's
- *       `model` is the override — NOT the deeper `deepseek/deepseek-v4-pro`.
+ *   (b) the chat request that goes out on the wire uses the chat-tier default
+ *       `deepseek/deepseek-v4.1-flash` (CHAT_CLOUD_MODEL, applied by
+ *       `applyChatSettings` when no explicit chatModel is saved). So this test
+ *       seeds an OpenRouter config with only an interpretation model — a
+ *       DIFFERENT one, so the two tiers are distinguishable — and asserts the
+ *       OUTBOUND chat body's `model` is the chat default, NOT the seeded
+ *       interpretation model.
  *
  *   (c) the chat prompt REUSES the already-generated structured interpretation:
  *       `serializeInterpretationForChat` injects a "Your chart reading
@@ -32,21 +33,25 @@ import { bootEngine, seedChart, LLM_SETTINGS_KEY } from './interpretation.helper
  */
 
 // The OpenRouter cloud preset that makes describeLlmStatus().configured === true
-// AND triggers applyChatModelPreference (base startsWith OPENROUTER_API_BASE,
-// model === RECOMMENDED_CLOUD_MODEL "deepseek/deepseek-v4-pro"). Installed via
+// with no chatModel, so chat falls back to CHAT_CLOUD_MODEL. Installed via
 // addInitScript BEFORE load so the dashboard can explicitly generate the
 // reading and the chat override fires. Mirrors interpretation.spec.ts's config.
 const LLM_CONFIG = {
   apiBase: 'https://openrouter.ai/api/v1', // === OPENROUTER_API_BASE
   apiKey: 'test-key',
-  model: 'deepseek/deepseek-v4-pro', // === RECOMMENDED_CLOUD_MODEL
+  // Deliberately NOT the chat default: chat and readings now share one default
+  // id, so seeding that id here would let "chat reused the interpretation model"
+  // pass as "chat applied its own default".
+  model: 'deepseek/deepseek-v4-pro',
   privacyMode: 'cloud_premium',
   engine: 'openai-http',
 };
 
-// The model the chat override (applyChatModelPreference → CHAT_CLOUD_MODEL) must
-// produce on the wire. NOT the seeded deepseek deep model; NOT a bare "minimax".
-const EXPECTED_CHAT_MODEL = 'minimax/minimax-m2.7';
+// The model the chat tier default (applyChatSettings → CHAT_CLOUD_MODEL) must
+// produce on the wire. NOT the seeded interpretation model. Pinned as a literal.
+// REVERSED CONTRACT (fix/live-check-followups): this asserted
+// 'minimax/minimax-m2.7', which measured 26.7 s to first token on the live site.
+const EXPECTED_CHAT_MODEL = 'deepseek/deepseek-v4.1-flash';
 
 // The exact label `interpretationBlock` (prompt.ts) prefixes the reused reading
 // with. Asserting on this proves change (c) end-to-end.
@@ -221,12 +226,16 @@ test('[contract/stubbed] chat reuses the reading + sends the fast chat model on 
       if (!toolResult) {
         if (!isClockQuestion) {
           initialAgentRequestBodies.push(parsed as Record<string, unknown>);
+          // The decision round streams (SSE), like the real provider: a no-tool
+          // answer must reach the screen delta by delta, not as one late chunk.
+          const deltas = ['Your strengths ', 'shine through ', 'this chart.'];
           return route.fulfill({
             status: 200,
-            contentType: 'application/json',
-            body: JSON.stringify({
-              choices: [{ message: { content: 'Your strengths shine through this chart.' } }],
-            }),
+            contentType: 'text/event-stream',
+            body:
+              deltas
+                .map((content) => `data: ${JSON.stringify({ choices: [{ delta: { content } }] })}\n\n`)
+                .join('') + 'data: [DONE]\n\n',
           });
         }
         return route.fulfill({
@@ -333,16 +342,19 @@ test('[contract/stubbed] chat reuses the reading + sends the fast chat model on 
   // ---- ASSERTION (b): the fast chat model went out on the wire ----------------
   expect(
     chatBody.model,
-    `outbound chat model must be the fast chat override "${EXPECTED_CHAT_MODEL}" ` +
-      `(applyChatModelPreference fired on the OpenRouter preset), not the seeded ` +
-      `deep model "${LLM_CONFIG.model}". Got "${chatBody.model}".`,
+    `outbound chat model must be the chat-tier default "${EXPECTED_CHAT_MODEL}" ` +
+      `(applyChatSettings fired on the OpenRouter preset), not the seeded ` +
+      `interpretation model "${LLM_CONFIG.model}". Got "${chatBody.model}".`,
   ).toBe(EXPECTED_CHAT_MODEL);
-  // Guard against a bare/partial slug regression.
-  expect(chatBody.model, 'chat model must not be a bare "minimax" slug').not.toBe('minimax');
+  // Guard against the retired slow default coming back.
+  expect(chatBody.model, 'chat must not default to the slow minimax model').not.toMatch(/minimax/);
   expect(chatBody.model, 'chat model must not still be the deep interpretation model').not.toBe(
     LLM_CONFIG.model,
   );
-  expect(chatBody.stream, 'agent decision request is bounded and non-streaming').toBe(false);
+  // INVERTED CONTRACT (fix/agent-chat-streaming): this asserted `false`, which
+  // was the regression since 2df38b8 that delivered no-tool answers as one chunk
+  // after the whole completion. The decision round must stream.
+  expect(chatBody.stream, 'agent decision request is bounded and streaming').toBe(true);
   expect(chatBody.tool_choice).toBe('auto');
 
   // ---- ASSERTION (c): the chat prompt reused the already-generated reading ----
@@ -393,7 +405,7 @@ test('[contract/stubbed] chat reuses the reading + sends the fast chat model on 
     tool_choice: string;
     tools: Array<{ function: { name: string } }>;
   };
-  expect(firstAgentRequest.stream).toBe(false);
+  expect(firstAgentRequest.stream).toBe(true);
   expect(firstAgentRequest.tool_choice).toBe('auto');
   expect(firstAgentRequest.tools.map((tool) => tool.function.name)).toEqual([
     'get_current_datetime',

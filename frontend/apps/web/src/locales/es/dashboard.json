@@ -17,7 +17,7 @@
     "generate_timeline": "Generar cronología actual",
     "refresh_timeline": "Actualizar cronología actual",
     "connect_ai": "Conectar un modelo de IA",
-    "switch_recommended": "Cambiar al recomendado (DeepSeek V4)",
+    "switch_recommended": "Cambiar al recomendado (DeepSeek V4.1 Flash)",
     "ai_settings": "Configuración de IA",
     "dismiss": "Descartar"
   },
@@ -56,6 +56,8 @@
     "title_failed": "No se pudo generar la interpretación",
     "elapsed": "Generando desde tu modelo: {{elapsed}} transcurridos. Una lectura completa puede tardar entre 1 y 3 minutos en un modelo en la nube.",
     "timeline_elapsed": "Generando el momento actual desde tu modelo: {{elapsed}} transcurridos.",
+    "timeline_writing": "Escribiendo… {{words}} palabras hasta ahora",
+    "timeline_thinking": "Pensando… {{words}} palabras de razonamiento hasta ahora",
     "partial_failure": "Algunas secciones no se pudieron generar esta vez: {{sections}}. El resto de la lectura está completa — regenérala para completar lo que falta.",
     "timeline_partial_failure": "No se pudieron generar algunas secciones de la cronología: {{sections}}. Tu lectura natal guardada no ha cambiado.",
     "regen_failed": "No se pudo regenerar la lectura ({{error}}). Tu lectura anterior se conserva abajo."

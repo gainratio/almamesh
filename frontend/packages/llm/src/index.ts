@@ -178,6 +178,7 @@ export type {
   NatalInterpretationEvent,
   NatalInterpretationParams,
   NatalInterpretationSectionKey,
+  SectionProgressSnapshot,
   StructuredInterpretationParams,
 } from "./structured-interpretation";
 
@@ -352,3 +353,12 @@ export async function* streamChartChat(
     ...(params.fetchImpl ? { fetchImpl: params.fetchImpl } : {}),
   });
 }
+
+// Runaway-reasoning cap: budget sent to OpenRouter + thinking-time abort.
+export {
+  CHAT_REASONING_MAX_TOKENS,
+  REASONING_TIMEOUT_CODE,
+  REASONING_TIMEOUT_MS,
+  ReasoningTimeoutError,
+  SECTION_REASONING_MAX_TOKENS,
+} from "./reasoning";

@@ -74,6 +74,7 @@
     "insufficient_credits": "Sua conta de IA está sem créditos. Adicione créditos com seu provedor (para OpenRouter: openrouter.ai → Credits) ou escolha um modelo mais barato em Configurações → IA.",
     "auth_failed": "Sua chave de IA foi rejeitada. Verifique se você colou corretamente a sua chave do OpenRouter em Configurações → IA.",
     "rate_limited": "O provedor de IA está limitando as solicitações. Espere um momento e tente novamente.",
+    "reasoning_timeout": "O modelo pensou por mais de 3 minutos sem começar a resposta. Tente novamente ou escolha um modelo mais rápido em Configurações → IA.",
     "server_error": "O provedor de IA está com problemas no momento. Tente novamente em breve.",
     "request_failed": "A solicitação à IA falhou. Tente novamente em instantes ou verifique seu modelo e endpoint em Configurações → IA."
   },

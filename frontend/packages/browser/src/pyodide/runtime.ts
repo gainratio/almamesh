@@ -11,29 +11,40 @@
 // bootstrap() drives both with a progress callback and is idempotent: the engine
 // is booted once and cached. After the first run everything needed lives in
 // OPFS, so reloads are offline-capable.
+//
+// Whether the Pyodide Worker may warm up WHILE the sync Worker runs is decided
+// once per boot by ./bootPolicy.ts (default: sequential — low-end hardware is
+// the primary target; overlap only on a Chromium deviceMemory/cores reading).
 
-import type { SyncResult } from "@edgeproc/browser";
+import type { SyncProgress, SyncResult } from "@edgeproc/browser";
 
 import { spawnAlmaSyncEngine } from "../edgeprocClient";
+import { decideBootPolicy, readBootSignals } from "./bootPolicy";
+import type { BootDecision } from "./bootPolicy";
 import type { SiderealChart } from "./chart";
 import { ChartEngineClient } from "./chartEngineClient";
+import { memoizeChartEngine } from "./engineMemo";
 import type { MeshEdgeContext } from "./mesh";
 import type { PredictiveContexts } from "./predictive";
 import type {
   BirthInput,
   BootConfig,
+  BootProgress,
   MeshEdgeInput,
   PredictiveInput,
   PyodideAsset,
 } from "./protocol";
 import type { RectificationInput, RectificationResultRaw } from "./rectification";
 
-/** A bootstrap stage, surfaced to the UI for a real progress story. */
+/** A bootstrap stage, surfaced to the UI for a real progress story. The
+ * `syncing` and `booting-engine` stages are re-reported with `progress` as
+ * bytes arrive (rate-limited by the Workers), so a consumer can draw a bar
+ * and an idle budget can tell "slow" from "stuck". */
 export type BootStage =
-  | { readonly kind: "syncing" }
+  | { readonly kind: "syncing"; readonly progress?: SyncProgress }
   | { readonly kind: "synced"; readonly result: SyncResult }
   | { readonly kind: "reassembling" }
-  | { readonly kind: "booting-engine" }
+  | { readonly kind: "booting-engine"; readonly progress?: BootProgress }
   | { readonly kind: "ready" };
 
 /** Progress sink; called as bootstrap advances through its stages. */
@@ -59,6 +70,7 @@ export interface EnginePort {
     pubkeyUrl: string,
     expectedBundleId: string,
     expectedChannel: string,
+    onProgress?: (progress: SyncProgress) => void,
   ): Promise<SyncResult>;
   readFile(path: string): Promise<Uint8Array>;
   /** Stop the sync Worker and release its OPFS/wasm resources. */
@@ -67,7 +79,13 @@ export interface EnginePort {
 
 /** The Pyodide-Worker surface bootstrap needs: boot the engine, compute charts. */
 export interface ChartEnginePort {
-  boot(config: BootConfig): Promise<void>;
+  /**
+   * Start the Pyodide runtime + its stdlib packages from the self-hosted index
+   * while the bundle is still syncing; `boot` then reuses it. Needs no bundle
+   * bytes. Optional so a port without it simply boots cold.
+   */
+  prewarm?(pyodideIndexUrl: string): void;
+  boot(config: BootConfig, onProgress?: (progress: BootProgress) => void): Promise<void>;
   generateChart(birth: BirthInput): Promise<SiderealChart>;
   computePredictive(input: PredictiveInput): Promise<PredictiveContexts>;
   computeMeshEdge(input: MeshEdgeInput): Promise<MeshEdgeContext>;
@@ -113,15 +131,46 @@ export interface ChartEngine {
   meta(): BundleMeta | null;
 }
 
+/**
+ * Grants `task` an idle slot of the UI thread and returns a cancel. The
+ * overlap-mode warm-up goes through this: it is Worker work, but on few cores
+ * it competes with the sync Worker and the UI thread while the user is typing
+ * the onboarding form, so it waits until the page has nothing more urgent.
+ */
+export type IdleScheduler = (task: () => void) => () => void;
+
+/** The warm-up never waits longer than this for an idle slot. */
+const PREWARM_IDLE_TIMEOUT_MS = 1_500;
+
 /** The seams bootstrap depends on; defaulted to the real Workers, faked in tests. */
 export interface RuntimeDeps {
   readonly spawnSyncEngine: () => EnginePort;
   readonly spawnChartEngine: () => ChartEnginePort;
+  /** Sequential or overlapped Worker start-up; defaults to the navigator-driven policy. */
+  readonly decideBootMode?: () => BootDecision;
+  /** Where the one boot-policy line per boot goes; defaults to console.info. */
+  readonly log?: (line: string) => void;
+  /** When the overlap-mode warm-up may start; defaults to `requestIdleCallback`. */
+  readonly scheduleIdle?: IdleScheduler;
 }
+
+const defaultDecideBootMode = (): BootDecision => decideBootPolicy(readBootSignals(navigator));
+const defaultLog = (line: string): void => console.info(line);
+const defaultScheduleIdle: IdleScheduler = (task) => {
+  if (typeof requestIdleCallback === "function") {
+    const id = requestIdleCallback(() => task(), { timeout: PREWARM_IDLE_TIMEOUT_MS });
+    return () => cancelIdleCallback(id);
+  }
+  const id = setTimeout(task, 0);
+  return () => clearTimeout(id);
+};
 
 const defaultDeps: RuntimeDeps = {
   spawnSyncEngine: spawnAlmaSyncEngine,
   spawnChartEngine: () => ChartEngineClient.spawn(),
+  decideBootMode: defaultDecideBootMode,
+  log: defaultLog,
+  scheduleIdle: defaultScheduleIdle,
 };
 
 /** Build the production runtime deps (real sync Worker + real Pyodide Worker). */
@@ -210,16 +259,44 @@ export class AlmaMeshRuntime {
     const syncEngine = this.#deps.spawnSyncEngine();
     this.#syncEngine = syncEngine;
     let chartEngine: ChartEnginePort | null = null;
+    let cancelPrewarm: (() => void) | null = null;
     try {
       this.#assertCurrent(generation);
+      const decision = (this.#deps.decideBootMode ?? defaultDecideBootMode)();
+      (this.#deps.log ?? defaultLog)(
+        `[almamesh] engine boot policy: ${decision.mode} (${decision.reason})`,
+      );
+      if (decision.mode === "overlap") {
+        // Overlap the two independent cold costs: Pyodide's own runtime + stdlib
+        // packages need nothing from the bundle, so they load while the bundle
+        // syncs and verifies. Only the engine install waits for the synced bytes.
+        // A warm-up failure is not lost: `boot` awaits the same warm-up in the
+        // Worker and reports it. The price is two wasm heaps alive at once,
+        // which is why the policy grants this only on roomy hardware — and even
+        // then the warm-up waits for an idle slot, so the first keystrokes of
+        // the onboarding form are never competing with it for cores.
+        const warming = this.#deps.spawnChartEngine();
+        chartEngine = warming;
+        this.#chartEngine = warming;
+        cancelPrewarm = (this.#deps.scheduleIdle ?? defaultScheduleIdle)(() => {
+          cancelPrewarm = null;
+          if (this.#chartEngine === warming) warming.prewarm?.(config.pyodideIndexUrl);
+        });
+      }
+
       onStage({ kind: "syncing" });
       const result = await syncEngine.sync(
         config.bundleBaseUrl,
         config.pubkeyUrl,
         config.expectedBundleId,
         config.expectedChannel,
+        (progress) => onStage({ kind: "syncing", progress }),
       );
       this.#assertCurrent(generation);
+      // The sync settled before an idle slot came: `boot` warms the runtime
+      // itself (cold), which is exactly the sequential path.
+      cancelPrewarm?.();
+      cancelPrewarm = null;
       onStage({ kind: "synced", result });
 
       onStage({ kind: "reassembling" });
@@ -230,27 +307,35 @@ export class AlmaMeshRuntime {
       this.#assertCurrent(generation);
 
       // The sync Worker is only needed to materialize the boot assets. Release
-      // it before Pyodide starts so OPFS handles and wasm memory do not overlap.
+      // its OPFS handles and wasm memory as soon as they are in hand — in
+      // sequential mode the Pyodide Worker does not even exist until this point.
       syncEngine.terminate?.();
       if (this.#syncEngine === syncEngine) this.#syncEngine = null;
 
       onStage({ kind: "booting-engine" });
-      chartEngine = this.#deps.spawnChartEngine();
-      this.#chartEngine = chartEngine;
-      await chartEngine.boot(bootConfig);
+      const booted = chartEngine ?? this.#deps.spawnChartEngine();
+      chartEngine = booted;
+      this.#chartEngine = booted;
+      await booted.boot(bootConfig, (progress) => onStage({ kind: "booting-engine", progress }));
       this.#assertCurrent(generation);
 
-      const engine: ChartEngine = {
-        generateChart: (birth) => chartEngine!.generateChart(birth),
-        computePredictive: (input) => chartEngine!.computePredictive(input),
-        computeMeshEdge: (input) => chartEngine!.computeMeshEdge(input),
-        computeRectification: (input) => chartEngine!.computeRectification(input),
-        meta: () => meta,
-      };
+      // Identical inputs are computed once per booted engine, keyed on the
+      // signed bundle's content-addressed manifest (see ./engineMemo.ts).
+      const engine: ChartEngine = memoizeChartEngine(
+        {
+          generateChart: (birth) => booted.generateChart(birth),
+          computePredictive: (input) => booted.computePredictive(input),
+          computeMeshEdge: (input) => booted.computeMeshEdge(input),
+          computeRectification: (input) => booted.computeRectification(input),
+          meta: () => meta,
+        },
+        result.manifestHash,
+      );
       this.#ready = engine;
       onStage({ kind: "ready" });
       return engine;
     } catch (error) {
+      cancelPrewarm?.();
       syncEngine.terminate?.();
       chartEngine?.terminate?.();
       if (this.#syncEngine === syncEngine) this.#syncEngine = null;

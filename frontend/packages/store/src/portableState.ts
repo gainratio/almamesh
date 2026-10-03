@@ -177,12 +177,15 @@ export class PortableStateRepository {
   }
 }
 
-export async function openPortableStateRepository(): Promise<PortableStateRepository> {
+/** 'memory' is the session-only fallback for browsers that refuse OPFS (see portablePersistence.ts). */
+export async function openPortableStateRepository(
+  persistence: 'opfs' | 'memory' = 'opfs',
+): Promise<PortableStateRepository> {
   return new PortableStateRepository(
     await createSqliteStateStore({
       name: PORTABLE_STATE_DATABASE,
       initialSchemaVersion: PORTABLE_STATE_SCHEMA_VERSION,
-      persistence: 'opfs',
+      persistence,
     }),
   );
 }

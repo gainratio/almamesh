@@ -15,6 +15,7 @@ import type { ChartData } from '@almamesh/shared-types';
 import type { SiderealChart } from '@almamesh/browser/types';
 import { deletionAwareIdbStorage } from './deletionTombstones';
 import { whenHydrated } from './hydrationBarrier';
+import { browserLocalStorage } from './webStorage';
 
 /** A chart as held on-device: the rendered shape plus its identity + primacy. */
 export interface StoredChart extends ChartData {
@@ -78,17 +79,17 @@ export function migrateChartLibraryPersistedState(
 export const CHART_LIBRARY_FLAG_KEY = 'almamesh-chart';
 
 function setLibraryFlag(hasAny: boolean): void {
-  if (typeof localStorage === 'undefined') {
+  // Absent (Node/Bun SSR), partial, or browser-blocked storage all yield
+  // undefined. The flag is only a synchronous routing optimization; never let
+  // that optional mirror break prerender or the authoritative SQLite store.
+  const storage = browserLocalStorage();
+  if (storage === undefined) {
     return;
   }
-  // Node/Bun SSR can expose a partial localStorage global without the complete
-  // browser Storage API. The flag is only a synchronous routing optimization;
-  // never let that optional mirror break prerender or the authoritative SQLite store.
-  const storage: Partial<Storage> = localStorage;
   if (hasAny) {
-    storage.setItem?.(CHART_LIBRARY_FLAG_KEY, '1');
+    storage.setItem(CHART_LIBRARY_FLAG_KEY, '1');
   } else {
-    storage.removeItem?.(CHART_LIBRARY_FLAG_KEY);
+    storage.removeItem(CHART_LIBRARY_FLAG_KEY);
   }
 }
 

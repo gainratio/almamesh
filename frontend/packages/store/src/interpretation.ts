@@ -25,6 +25,7 @@ import type {
 import type { TitledPersona, VedicInterpretation } from '@almamesh/shared-types';
 import { deletionAwareIdbStorage } from './deletionTombstones';
 import { whenHydrated } from './hydrationBarrier';
+import { browserLocalStorage } from './webStorage';
 
 /** Lifecycle of a chart's interpretation generation. */
 export type InterpretationStatus = 'idle' | 'generating' | 'complete' | 'error';
@@ -39,8 +40,8 @@ export type InterpretationStatus = 'idle' | 'generating' | 'complete' | 'error';
  * once, at the point of failure, so consumers can switch on it.
  *
  * The provider-side kinds mirror the shared `@edgeproc/errors` classification
- * (credits / auth / model / privacy / rate_limited / server / network /
- * unknown); `needs_regeneration` is the app-state failure where a stored chart
+ * (credits / auth / model / privacy / rate_limited / reasoning_timeout /
+ * server / network / unknown); `needs_regeneration` is the app-state failure where a stored chart
  * carries no raw engine output to interpret.
  */
 export type InterpretationErrorKind =
@@ -49,6 +50,7 @@ export type InterpretationErrorKind =
   | 'model'
   | 'privacy'
   | 'rate_limited'
+  | 'reasoning_timeout'
   | 'server'
   | 'network'
   | 'needs_regeneration'
@@ -81,6 +83,12 @@ export interface CurrentTimelineEntry {
   readonly errorKind?: InterpretationErrorKind;
   readonly sections: Readonly<Record<string, boolean>>;
   readonly failedSections?: Readonly<Record<string, boolean>>;
+  /**
+   * Section key -> canonical error code (e.g. `ai.provider.server_error`) of a
+   * failed section, so the partial-failure notice can name the cause instead
+   * of a bare "could not be generated". Optional; cleared on each new run.
+   */
+  readonly failedSectionCodes?: Readonly<Record<string, string>>;
   readonly updatedAt?: string;
   readonly provenance?: ReadingProvenance;
   readonly inputProvenance?: InterpretationInputProvenance;
@@ -218,6 +226,8 @@ export interface InterpretationStore {
     chartId: string,
     section: string,
     runToken?: InterpretationRunToken,
+    /** Canonical error code of the failure, shown next to the section name. */
+    code?: string,
   ) => void;
   setCurrentTimeline: (
     chartId: string,
@@ -233,6 +243,13 @@ export interface InterpretationStore {
     kind?: InterpretationErrorKind,
     runToken?: InterpretationRunToken,
   ) => void;
+  /**
+   * End a timeline run nobody is waiting for any more (the page unmounted and
+   * aborted its stream). Without this the entry stays 'generating' with no
+   * stream behind it. A previous timeline is kept as 'complete'; a first run
+   * leaves no timeline. A superseded run token is ignored.
+   */
+  abandonCurrentTimeline: (chartId: string, runToken: InterpretationRunToken) => void;
   /** Read one chart's entry, or `undefined` if none exists. */
   getEntry: (chartId: string) => ChartInterpretationEntry | undefined;
   /** Drop one chart's entry entirely. */
@@ -469,7 +486,7 @@ const interpretationStorage: StateStorage = {
   getItem: async (name) => {
     const durable = await deletionAwareIdbStorage.getItem(name);
     if (durable !== null) return durable;
-    const storage = (globalThis as { localStorage?: Partial<Storage> }).localStorage;
+    const storage = browserLocalStorage();
     const legacy = typeof storage?.getItem === 'function' ? storage.getItem(name) : null;
     if (legacy === null) return null;
     await deletionAwareIdbStorage.setItem(name, legacy);
@@ -479,7 +496,7 @@ const interpretationStorage: StateStorage = {
   setItem: (name, value) => deletionAwareIdbStorage.setItem(name, value),
   removeItem: async (name) => {
     await deletionAwareIdbStorage.removeItem(name);
-    const storage = (globalThis as { localStorage?: Partial<Storage> }).localStorage;
+    const storage = browserLocalStorage();
     if (typeof storage?.removeItem === 'function') storage.removeItem(name);
   },
 };
@@ -712,7 +729,7 @@ export const interpretationStoreCreator: StateCreator<InterpretationStore> = (se
       });
     },
 
-    markCurrentTimelineSectionFailed: (chartId, section, runToken) => {
+    markCurrentTimelineSectionFailed: (chartId, section, runToken, code) => {
       set((state) => {
         if (!acceptsTimelineRun(chartId, runToken)) return state;
         const current = entryOf(state.byChart, chartId);
@@ -723,6 +740,9 @@ export const interpretationStoreCreator: StateCreator<InterpretationStore> = (se
             timeline: {
               ...timeline,
               failedSections: { ...timeline.failedSections, [section]: true },
+              ...(code === undefined
+                ? {}
+                : { failedSectionCodes: { ...timeline.failedSectionCodes, [section]: code } }),
             },
           }),
         };
@@ -751,6 +771,9 @@ export const interpretationStoreCreator: StateCreator<InterpretationStore> = (se
               ...(previous?.failedSections !== undefined
                 ? { failedSections: previous.failedSections }
                 : {}),
+              ...(previous?.failedSectionCodes !== undefined
+                ? { failedSectionCodes: previous.failedSectionCodes }
+                : {}),
               updatedAt,
               provenance,
               inputProvenance,
@@ -775,6 +798,22 @@ export const interpretationStoreCreator: StateCreator<InterpretationStore> = (se
               error,
               ...(kind !== undefined ? { errorKind: kind } : {}),
             },
+          }),
+        };
+      });
+    },
+
+    abandonCurrentTimeline: (chartId, runToken) => {
+      if (!acceptsTimelineRun(chartId, runToken)) return;
+      activeTimelineRuns.delete(chartId);
+      set((state) => {
+        const current = state.byChart[chartId];
+        if (current?.timeline?.status !== 'generating') return state;
+        const { content } = current.timeline;
+        return {
+          byChart: withEntry(state.byChart, chartId, {
+            ...current,
+            timeline: content ? { ...current.timeline, status: 'complete', sections: {} } : undefined,
           }),
         };
       });

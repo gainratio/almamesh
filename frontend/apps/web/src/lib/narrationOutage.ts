@@ -22,7 +22,10 @@ export type NarrationOutage =
   | 'no_key'
   /** The provider account has no balance left: add credits or go cheaper. */
   | 'credits'
-  /** Rate-limited / 5xx / unreachable — transient and not the user's doing. */
+  /**
+   * Rate-limited / 5xx / unreachable / a model that thought past the reasoning
+   * cap — transient and not the user's doing.
+   */
   | 'provider_down'
   /** The saved API key was rejected. */
   | 'auth'
@@ -47,6 +50,7 @@ export function narrationOutage(kind: InterpretationErrorKind | null): Narration
     case 'model':
       return 'model';
     case 'rate_limited':
+    case 'reasoning_timeout':
     case 'server':
     case 'network':
       return 'provider_down';

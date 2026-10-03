@@ -132,9 +132,11 @@ describe("streamAgentChat", () => {
     expect(answer).toBe("It is 11:37 in the chart timezone.");
     expect(execute).toHaveBeenCalledTimes(1);
     expect(execute.mock.calls[0]?.[1].now).toEqual(NOW);
+    // Inverted 2026-10: this asserted `stream: false`, which is the regression
+    // that made no-tool answers arrive as one chunk (~49 s TTFT live).
     expect(bodies[0]).toMatchObject({
       model: "test-model",
-      stream: false,
+      stream: true,
       tool_choice: "auto",
       tools: [
         {

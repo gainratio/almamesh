@@ -26,6 +26,7 @@ import {
   type SmokeRun,
 } from "./deployment.js"
 import { assertAllPassed, runPool, startGate } from "./gates.js"
+import { nightlyRealSkipCheckScript } from "./nightlyRealSkips.js"
 import { pagesUploadLimitsCheckScript as releasePagesUploadLimitsScript } from "./pagesUploadLimits.js"
 
 const ROOT = "/workspace"
@@ -36,7 +37,7 @@ const KEYS = "/run/almamesh-keys"
 const BUN_INSTALLER = "/opt/almamesh/install-bun.sh"
 const LIVE_ORIGIN = "https://almamesh.com"
 const REPOSITORY = "hseshadr/almamesh"
-const EDGEPROC_BROWSER_SHA = "02171df60afc8b09d6439112ea7ea3202338d46a"
+const EDGEPROC_BROWSER_SHA = "0749e66b4260ffcd02b1d039eb2eaa26cd970da7"
 const CONTRACT_SHA = "1111111111111111111111111111111111111111"
 const CENTRAL_MODULE_SHA = "73329cb501989bc65c63525f19feaa35f0e7c0a6"
 const BUN_IMAGE =
@@ -65,10 +66,20 @@ const CONTRACT_TESTS = [
   "tests/dagger-deployment-contract.test.ts",
   "tests/dagger-foundation-contract.test.ts",
   "tests/dagger-gates.test.ts",
+  "tests/dagger-nightly-real-skips.test.ts",
   "tests/dagger-pages-upload-contract.test.ts",
   "tests/dagger-workflow-contract.test.ts",
 ]
 const SMOKE_OUTPUT_LINES = 60
+const NIGHTLY_REPORTS_DIR = "nightly-reports"
+const NIGHTLY_REPORTED_E2E = [
+  "dual-voice",
+  "interp:real",
+  "interp:heal:real",
+  "chat:rag:real",
+  "dashboard:agentic:real",
+  "timeline:real",
+]
 // The product gates are independent, but they are heavy (real browsers, Pyodide, vitest
 // workers) and the GitHub runner has 4 vCPUs. Six at once turned CPU contention into
 // timeouts in three CI runs, so they share two lanes: the 18-minute browser gate in one,
@@ -337,6 +348,7 @@ export class AlmameshCi {
     checked = this.localPreview(checked, "dist-verify", [
       "node scripts/verify-cross-origin-isolation.mjs http://127.0.0.1:4199 --browser=chromium",
       "node scripts/verify-sqlite-memory.mjs http://127.0.0.1:4199 --browser=chromium",
+      "node scripts/verify-storage-blocked.mjs http://127.0.0.1:4199 --browser=chromium --journey",
       "PORTABLE_SQLITE_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:portable-sqlite",
       "node scripts/verify-exit-gate.mjs http://127.0.0.1:4199",
       "node scripts/verify-i18n.mjs http://127.0.0.1:4199",
@@ -349,6 +361,7 @@ export class AlmameshCi {
       [
         "node scripts/verify-cross-origin-isolation.mjs http://127.0.0.1:4200 --browser=webkit",
         "node scripts/verify-sqlite-memory.mjs http://127.0.0.1:4200 --browser=webkit",
+        "node scripts/verify-storage-blocked.mjs http://127.0.0.1:4200 --browser=webkit",
         "node scripts/verify-webkit-engine.mjs http://127.0.0.1:4200",
         "node scripts/verify-webkit-engine.mjs http://127.0.0.1:4200 --first-session --transient-cache-visibility",
       ],
@@ -579,7 +592,7 @@ export class AlmameshCi {
   nightly(openrouterApiKey?: Secret): Container {
     const runner = this.browserBase(["chromium"])
       .withoutMount("/root/.cache/uv").withoutMount("/root/.bun/install/cache").withoutMount("/root/.skyfield-data")
-    return (openrouterApiKey ? runner.withSecretVariable("OPENROUTER_API_KEY", openrouterApiKey) : runner)
+    const base = (openrouterApiKey ? runner.withSecretVariable("OPENROUTER_API_KEY", openrouterApiKey) : runner)
       .withExec(["node", "scripts/build-sw-update-fixtures.mjs"])
       .withExec(["bun", "run", "test:e2e:sw-update"])
       .withExec(["bun", "run", "test:e2e:ai"])
@@ -588,11 +601,16 @@ export class AlmameshCi {
       .withExec(["bun", "run", "test:e2e:rectification"])
       .withExec(["bun", "run", "test:e2e:wizard"])
       .withExec(["bun", "run", "test:e2e:report:pdf"])
-      .withExec(["bun", "run", "test:e2e:dual-voice"])
-      .withExec(["bun", "run", "test:e2e:interp:real"])
-      .withExec(["bun", "run", "test:e2e:interp:heal:real"])
-      .withExec(["bun", "run", "test:e2e:chat:rag:real"])
-      .withExec(["bun", "run", "test:e2e:dashboard:agentic:real"])
+    // Specs that need OPENROUTER_API_KEY write a JSON report too; a [real] test
+    // that skipped instead of running then fails the nightly (see nightlyRealSkips.ts).
+    return NIGHTLY_REPORTED_E2E
+      .reduce((container, suite) => this.reportedE2e(container, suite), base)
+      .withExec(["bun", "-e", nightlyRealSkipCheckScript(NIGHTLY_REPORTS_DIR)])
+  }
+  private reportedE2e(container: Container, suite: string): Container {
+    return container
+      .withEnvVariable("PLAYWRIGHT_JSON_OUTPUT_FILE", `${NIGHTLY_REPORTS_DIR}/${suite.replaceAll(":", "-")}.json`)
+      .withExec(["bun", "run", `test:e2e:${suite}`, "--reporter=list,json"])
   }
   private publicSource(commitSha: string): Directory {
     const history = dag

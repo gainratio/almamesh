@@ -84,6 +84,13 @@ export interface BootConfig {
   readonly skyfieldData: readonly PyodideAsset[];
 }
 
+/** Start Pyodide + its stdlib packages early; needs no bundle bytes. */
+export interface PrewarmRequest {
+  readonly kind: "prewarm";
+  readonly id: number;
+  readonly pyodideIndexUrl: string;
+}
+
 export interface BootRequest {
   readonly kind: "boot";
   readonly id: number;
@@ -115,16 +122,47 @@ export interface ComputeRectificationRequest {
 }
 
 export type ChartWorkerRequest =
+  | PrewarmRequest
   | BootRequest
   | GenerateChartRequest
   | ComputePredictiveRequest
   | ComputeMeshEdgeRequest
   | ComputeRectificationRequest;
 
+export interface PrewarmOk {
+  readonly ok: true;
+  readonly kind: "prewarm";
+  readonly id: number;
+}
+
 export interface BootOk {
   readonly ok: true;
   readonly kind: "boot";
   readonly id: number;
+}
+
+/** Where a boot is: the Pyodide runtime download, its packages, the bundled
+ * wheels, the ephemeris data, or the engine's own Python bootstrap. */
+export type BootProgressStage = "pyodide" | "packages" | "wheels" | "data" | "engine";
+
+/**
+ * Boot progress, posted by the Worker while a `boot` request is in flight.
+ * `bytesReceived` counts every Pyodide asset byte fetched so far (cumulative
+ * across files); `bytesTotal` is the current file's declared size, or null.
+ * Each report re-arms the client's boot deadline: a slow download is not a
+ * dead Worker.
+ */
+export interface BootProgress {
+  readonly stage: BootProgressStage;
+  readonly bytesReceived: number;
+  readonly bytesTotal: number | null;
+}
+
+export interface BootProgressResponse {
+  readonly ok: true;
+  readonly kind: "bootProgress";
+  readonly id: number;
+  readonly progress: BootProgress;
 }
 
 export interface ChartOk {
@@ -162,7 +200,9 @@ export interface WorkerErr {
 }
 
 export type ChartWorkerResponse =
+  | PrewarmOk
   | BootOk
+  | BootProgressResponse
   | ChartOk
   | PredictiveOk
   | MeshEdgeOk
@@ -174,7 +214,8 @@ export type ChartWorkerResponse =
  * worker without a real thread (the worker is an I/O boundary).
  */
 export interface WorkerLike {
-  postMessage(message: ChartWorkerRequest): void;
+  /** `transfer` moves ArrayBuffers into the Worker (boot assets) instead of cloning them. */
+  postMessage(message: ChartWorkerRequest, transfer?: readonly Transferable[]): void;
   addEventListener(
     type: "message",
     listener: (event: MessageEvent<ChartWorkerResponse>) => void,

@@ -122,6 +122,7 @@ export type ConnectionErrorKind =
   | 'model'
   | 'privacy'
   | 'rate_limited'
+  | 'reasoning_timeout'
   | 'server'
   | 'network'
   | 'unknown';
@@ -152,6 +153,13 @@ function nameOf(err: unknown): string {
  * unreachable. Mirrors the interpretation path's NETWORK_FAILURE_PATTERN.
  */
 const NETWORK_MESSAGE_PATTERN = /failed to fetch|load failed|networkerror|network error|unreachable/i;
+
+/**
+ * The @almamesh/llm runaway-reasoning cap (`ReasoningTimeoutError`). Matched
+ * by name AND by its message code, because a timeline section failure reaches
+ * the classifier rebuilt from its message + status (504), without the class.
+ */
+const REASONING_TIMEOUT_PATTERN = /\(ai\.reasoning_timeout\)/;
 
 /**
  * AlmaMesh's AI connection-error catalog, expressed in the shared
@@ -190,6 +198,14 @@ const AI_ERROR_CATALOG = {
     ...starterPack['ai.provider.rate_limited'],
     match: (raw: unknown) => httpStatusOf(raw) === 429,
   },
+  // Before server_error: the cap carries a 504 so the section runner retries it.
+  'ai.reasoning_timeout': {
+    category: 'timeout',
+    params: [],
+    en: 'The model thought for too long without answering. Try again, or pick a faster model.',
+    match: (raw: unknown) =>
+      nameOf(raw) === 'ReasoningTimeoutError' || REASONING_TIMEOUT_PATTERN.test(messageOf(raw)),
+  },
   'ai.provider.server_error': {
     ...starterPack['ai.provider.server_error'],
     match: (raw: unknown) => {
@@ -226,6 +242,7 @@ const CODE_TO_KIND: Readonly<Record<string, ConnectionErrorKind>> = {
   'ai.provider.unauthorized': 'auth',
   'ai.model.unavailable': 'model',
   'ai.provider.rate_limited': 'rate_limited',
+  'ai.reasoning_timeout': 'reasoning_timeout',
   'ai.provider.server_error': 'server',
   'net.unreachable': 'network',
   'internal.unknown': 'unknown',
@@ -272,6 +289,8 @@ export function chatErrorMessage(error: unknown): string {
       return i18n.t('chat:errors.model_unavailable');
     case 'rate_limited':
       return i18n.t('chat:errors.rate_limited');
+    case 'reasoning_timeout':
+      return i18n.t('chat:errors.reasoning_timeout');
     case 'server':
       return i18n.t('chat:errors.server_error');
     case 'network':

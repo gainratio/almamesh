@@ -38,6 +38,11 @@ export * from './rectification';
 export * from './rectificationRecords';
 export * from './contentMode';
 export * from './language';
+export {
+  portableStatePersistence,
+  subscribePortableStatePersistence,
+  type PortableStatePersistence,
+} from './portablePersistence';
 export * from './interpretation';
 export * from './settings';
 export * from './events';
@@ -45,7 +50,11 @@ export * from './regenerate';
 export * from './durablePersistence';
 export * from './deletionTombstones';
 export * from './portableState';
+export * from './webStorage';
 // Backup & Restore (Spec 061): export/import all user data. `backup` = storage
 // collect/apply + registry; `backupCrypto` = optional passphrase encrypt/decode.
 export * from './backup';
 export * from './backupCrypto';
+// Backup format v2: passphrase-encrypted SQLite + device settings and secrets.
+export * from './portableBundle';
+export * from './portableSettings';

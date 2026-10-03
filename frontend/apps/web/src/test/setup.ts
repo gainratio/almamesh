@@ -3,7 +3,11 @@
  */
 import '@testing-library/react';
 import { cleanup } from '@testing-library/react';
-import { afterEach, vi } from 'vitest';
+import { afterAll, afterEach, vi } from 'vitest';
+import { describeLiveTimers, installLiveTimerTracking, teardownHazards } from './liveTimers';
+
+// Before any module under test loads: some libraries arm timers at import time.
+installLiveTimerTracking();
 
 function isUsableStorage(value: unknown): value is Storage {
   if (value === null || typeof value !== 'object') {
@@ -64,6 +68,22 @@ if (!isUsableStorage(hostStorage)) {
 // Automatically cleanup after each test
 afterEach(() => {
   cleanup();
+});
+
+// A timer still pending when a file finishes fires after Vitest tears the DOM
+// down, where `window`/`requestAnimationFrame` are gone. Every test passes,
+// Vitest reports an unhandled error, and the gate goes red at random. Fail the
+// file that leaked it instead, with the stack that armed the timer.
+afterAll(() => {
+  const hazards = teardownHazards();
+  if (hazards.length > 0) {
+    throw new Error(
+      `${hazards.length} timer(s) still pending when this test file finished. ` +
+        'They would fire after the DOM environment is torn down. Clear them on ' +
+        'unmount, or settle them inside the test.\n\n' +
+        describeLiveTimers(hazards),
+    );
+  }
 });
 
 // Mock window.matchMedia. Guarded: a few suites (e.g. the Spec 064 prerender

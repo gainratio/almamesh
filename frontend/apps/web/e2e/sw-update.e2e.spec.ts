@@ -36,6 +36,12 @@ const PORT = Number(process.env.SW_UPDATE_E2E_PORT ?? 4198);
 
 const BANNER_TEXT = 'A new version is available!';
 const RELOAD_CTA = 'Reload to update';
+const FINISHING_TEXT = 'Finishing the previous download';
+
+/** Under the `/pyodide/*` CacheFirst route, like the real engine wasm. */
+const BUSY_ENGINE_FILE = '/pyodide/busy-engine-download.bin';
+/** Well past the 10 s fixed reload the click used to take. */
+const BUSY_FOR_MS = 30_000;
 
 /** The hashed entry chunk a built shell points at — the build's fingerprint. */
 function entryChunkOf(buildDir: string): string {
@@ -200,5 +206,45 @@ test.describe('service worker update path', () => {
       .toBe('installed');
 
     await expectClickLandsOnNewBuild(page);
+  });
+
+  test('a click while the previous worker is mid-download still lands on the new build', async ({
+    page,
+  }) => {
+    // Low-end device, slow link: the visitor clicks "Reload to update" while
+    // the OLD worker is still writing an engine file into its CacheFirst cache.
+    // Chromium will not promote the new worker until that fetch finishes (up
+    // to 5 min). The click used to reload after a fixed 10 s, which the OLD
+    // worker served: the user landed back on the old build. Hold the download
+    // for 30 s, well past that 10 s, and require the NEW build anyway.
+    test.setTimeout(120_000);
+    await bootAsReturningVisitor(page, ENTRY_A);
+    server.slowBody(BUSY_ENGINE_FILE, BUSY_FOR_MS);
+    await page.evaluate((url) => {
+      void fetch(url).then((r) => r.arrayBuffer()).catch(() => undefined);
+    }, BUSY_ENGINE_FILE);
+
+    server.deploy(BUILD_B);
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+    const landedOn: string[] = [];
+    page.on('load', () => {
+      void entryChunkOrNavigating(page).then((entry) => landedOn.push(entry));
+    });
+    await page.getByRole('button', { name: RELOAD_CTA }).click();
+
+    // While the old worker is busy, the user is told why nothing happens yet.
+    await expect.soft(page.getByRole('status').filter({ hasText: FINISHING_TEXT })).toBeVisible();
+    await expect.soft(page.getByRole('button', { name: 'Reload now' })).toBeVisible();
+
+    await expect
+      .poll(() => entryChunkOrNavigating(page), {
+        message: 'a click during a busy download must still end on the NEWLY DEPLOYED build',
+        timeout: BUSY_FOR_MS + 30_000,
+      })
+      .toBe(ENTRY_B);
+    // Ending on B is not enough: the old click reloaded at 10 s, the OLD
+    // worker served that reload, and the user sat on the old build until a
+    // later takeover reloaded them again. Every load after the click is B.
+    expect(landedOn, 'no reload after the click may land on the old build').toEqual([ENTRY_B]);
   });
 });

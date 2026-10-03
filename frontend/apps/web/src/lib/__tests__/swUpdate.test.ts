@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 
 import { applyServiceWorkerUpdate } from '../swUpdate';
 
@@ -52,6 +52,13 @@ function stubEnv(opts: {
     takeControl: () => controllerChange.forEach((fn) => fn()),
   };
 }
+
+// applyServiceWorkerUpdate arms a fallback reload timer. On the fake clock it
+// is dropped with the clock; on the real one it would fire after the DOM
+// environment is gone and touch the unstubbed `navigator`.
+beforeEach(() => {
+  vi.useFakeTimers();
+});
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -115,28 +122,76 @@ describe('applyServiceWorkerUpdate', () => {
     expect(env.reload).toHaveBeenCalledTimes(1);
   });
 
-  it('reloads anyway when the worker never takes control — no dead button', async () => {
+  it('keeps waiting past 10 s while the previous worker finishes its download', async () => {
+    // THE REGRESSION. Chromium promotes a skipWaiting() worker only once the
+    // active worker is idle (up to 5 min, kMaxLameDuckTime). A fixed 10 s
+    // reload landed the user back on the OLD build, under the OLD worker.
+    // CONTRACT REVERSED: this test used to assert a reload at the timeout.
     vi.useFakeTimers();
     const waiting = stubWorker();
     const env = stubEnv({ registration: { waiting, update: vi.fn() } });
 
-    await applyServiceWorkerUpdate({ reload: env.reload, timeoutMs: 5_000 });
+    await applyServiceWorkerUpdate({ reload: env.reload });
+    vi.advanceTimersByTime(60_000);
     expect(env.reload).not.toHaveBeenCalled();
 
-    vi.advanceTimersByTime(5_000);
+    env.takeControl();
     expect(env.reload).toHaveBeenCalledTimes(1);
   });
 
-  it('reloads exactly once when control changes AND the timeout fires', async () => {
+  it('reports the activating, then finishing-previous status while it waits', async () => {
+    vi.useFakeTimers();
+    const waiting = stubWorker();
+    const env = stubEnv({ registration: { waiting, update: vi.fn() } });
+    const onStatus = vi.fn();
+
+    await applyServiceWorkerUpdate({ reload: env.reload, onStatus });
+    expect(onStatus).toHaveBeenLastCalledWith('activating');
+
+    vi.advanceTimersByTime(3_000);
+    expect(onStatus).toHaveBeenLastCalledWith('finishing-previous');
+  });
+
+  it('stops at the 5-minute bound with a stalled status instead of a silent reload', async () => {
+    vi.useFakeTimers();
+    const waiting = stubWorker();
+    const env = stubEnv({ registration: { waiting, update: vi.fn() } });
+    const onStatus = vi.fn();
+
+    await applyServiceWorkerUpdate({ reload: env.reload, onStatus });
+    vi.advanceTimersByTime(5 * 60_000);
+    expect(onStatus).not.toHaveBeenCalledWith('stalled');
+
+    vi.advanceTimersByTime(15_000);
+    expect(onStatus).toHaveBeenLastCalledWith('stalled');
+    // Reloading here would land on the old build, which is the bug.
+    expect(env.reload).not.toHaveBeenCalled();
+  });
+
+  it('still reloads if the new worker takes over after the bound', async () => {
     vi.useFakeTimers();
     const waiting = stubWorker();
     const env = stubEnv({ registration: { waiting, update: vi.fn() } });
 
-    await applyServiceWorkerUpdate({ reload: env.reload, timeoutMs: 5_000 });
+    await applyServiceWorkerUpdate({ reload: env.reload });
+    vi.advanceTimersByTime(10 * 60_000);
     env.takeControl();
-    vi.advanceTimersByTime(10_000);
+    env.takeControl();
 
     expect(env.reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports stalled when the update check itself never settles', async () => {
+    vi.useFakeTimers();
+    const registration = { waiting: null, update: vi.fn(() => new Promise(() => {})) };
+    const env = stubEnv({ registration });
+    const onStatus = vi.fn();
+
+    void applyServiceWorkerUpdate({ reload: env.reload, onStatus });
+    await vi.advanceTimersByTimeAsync(5 * 60_000 + 15_000);
+
+    expect(onStatus).toHaveBeenLastCalledWith('stalled');
+    expect(env.reload).not.toHaveBeenCalled();
   });
 
   it('falls back to a plain reload when there is nothing to activate', async () => {

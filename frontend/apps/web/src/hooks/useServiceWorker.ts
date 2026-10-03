@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { registerSW } from 'virtual:pwa-register'
 
 import { healStrandedServiceWorker } from '../lib/swSelfHeal'
-import { applyServiceWorkerUpdate } from '../lib/swUpdate'
+import { applyServiceWorkerUpdate, type UpdateStatus } from '../lib/swUpdate'
 
 /**
  * Registers the PWA Service Worker and surfaces its update lifecycle.
@@ -27,6 +27,9 @@ import { applyServiceWorkerUpdate } from '../lib/swUpdate'
 export function useServiceWorker() {
   const [needRefresh, setNeedRefresh] = useState(false)
   const [offlineReady, setOfflineReady] = useState(false)
+  // Non-null once the user clicked: the banner stays up and reports progress
+  // until the new worker takes over (see applyServiceWorkerUpdate).
+  const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null)
 
   useEffect(() => {
     void navigator.storage?.persist?.().catch(() => false)
@@ -50,12 +53,12 @@ export function useServiceWorker() {
 
   const update = useCallback(() => {
     setNeedRefresh(false)
-    void applyServiceWorkerUpdate()
+    void applyServiceWorkerUpdate({ onStatus: setUpdateStatus })
   }, [])
 
   const dismiss = useCallback(() => {
     setNeedRefresh(false)
   }, [])
 
-  return { needRefresh, offlineReady, update, dismiss }
+  return { needRefresh, offlineReady, updateStatus, update, dismiss }
 }
