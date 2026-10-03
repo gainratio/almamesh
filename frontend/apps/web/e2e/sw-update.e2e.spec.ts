@@ -245,6 +245,14 @@ test.describe('service worker update path', () => {
     // Ending on B is not enough: the old click reloaded at 10 s, the OLD
     // worker served that reload, and the user sat on the old build until a
     // later takeover reloaded them again. Every load after the click is B.
+    //
+    // The poll above can see B's <script> tag before B's `load` event fires,
+    // and the listener records asynchronously, so wait for the landing to be
+    // recorded before judging the list. Asserting immediately read `[]` on a
+    // nightly run that had in fact landed on B.
+    await expect
+      .poll(() => landedOn.length, { message: 'the landing load must be recorded' })
+      .toBeGreaterThan(0);
     expect(landedOn, 'no reload after the click may land on the old build').toEqual([ENTRY_B]);
   });
 });
