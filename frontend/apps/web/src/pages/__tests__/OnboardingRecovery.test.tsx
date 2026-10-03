@@ -162,7 +162,7 @@ describe('Onboarding — in-app bootstrap recovery', () => {
   });
 
   it('a RollbackError boot lands on the recovery card, warns, and clears only after a two-step confirm', async () => {
-    // @edgeproc/browser surfaces a durable-floor refusal as an EngineOperationError
+    // @gainratio/browser surfaces a durable-floor refusal as an EngineOperationError
     // with code 'rollback'. Recovery must stay a deliberate click: auto-wiping the
     // bundle cache (and with it the rollback floor) would defeat rollback protection.
     const rollback = Object.assign(

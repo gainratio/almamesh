@@ -7,13 +7,13 @@
 import type {
   Metadata,
   VectorRecord as SharedVectorRecord,
-} from "@edgeproc/browser/vector";
+} from "@gainratio/browser/vector";
 import {
   createSqliteVectorIndex,
   type SqliteVectorRuntimeInfo,
   type SqliteVectorWorkerOptions,
   type SqliteWorkerVectorIndex,
-} from "@edgeproc/browser/vector/sqlite";
+} from "@gainratio/browser/vector/sqlite";
 
 /** One indexed chat chunk plus the metadata needed to retrieve it. */
 export interface VectorRecord {

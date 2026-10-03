@@ -63,7 +63,7 @@ cd frontend/apps/web && node scripts/verify-exit-gate.mjs   # live headless-Chro
 ```
 
 CI secrets: only `OPENROUTER_API_KEY` (for the optional real-LLM e2e step).
-`edge-proc` resolves from PyPI and `@edgeproc/browser` is vendored in-repo, so CI
+`edge-proc` resolves from PyPI and `@gainratio/browser` is vendored in-repo, so CI
 runs from a single checkout with no fetch token. No
 `DATABASE_URL`/`SUPABASE_*`/`REDIS_URL` — those are gone.
 

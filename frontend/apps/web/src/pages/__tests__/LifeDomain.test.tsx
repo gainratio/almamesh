@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { generateSeedHex, publicKeyHex } from '@edgeproc/avow';
+import { generateSeedHex, publicKeyHex } from '@gainratio/avow';
 import { signDomainStrength } from '@almamesh/browser';
 import type { PredictiveContexts, StrengthSummary } from '@almamesh/browser/types';
 import {

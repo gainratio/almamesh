@@ -4,13 +4,15 @@ import { dirname, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
-  ReplayMismatch,
+  PayloadHashMismatch,
+  RECEIPT_SCHEMA,
+  ReceiptSchemaMismatch,
   SignatureBytesInvalid,
   SignatureInvalid,
   SignerMismatch,
   generateSeedHex,
   publicKeyHex,
-} from "@edgeproc/avow";
+} from "@gainratio/avow";
 
 import {
   sealDomainStrengths,
@@ -33,6 +35,7 @@ interface ReceiptVector {
   readonly signature: string;
 }
 interface VectorFile {
+  readonly receipt_schema: string;
   readonly seed_hex: string;
   readonly public_key: string;
   readonly receipts: readonly ReceiptVector[];
@@ -92,6 +95,7 @@ describe("golden vectors: TS signing is byte-identical to the Python avow kernel
         vectors.seed_hex,
       );
 
+      expect(receipt.schema).toBe(vectors.receipt_schema);
       expect(receipt.payload_hash).toBe(vector.payload_hash);
       expect(receipt.signature).toBe(vector.signature);
       expect(receipt.public_key).toBe(vectors.public_key);
@@ -103,6 +107,7 @@ describe("golden vectors: TS signing is byte-identical to the Python avow kernel
       await expect(
         verifyDomainStrength(
           {
+            schema: RECEIPT_SCHEMA,
             payload: vector.subject,
             payload_hash: vector.payload_hash,
             public_key: vectors.public_key,
@@ -113,6 +118,30 @@ describe("golden vectors: TS signing is byte-identical to the Python avow kernel
       ).resolves.toBeUndefined();
     });
   }
+
+  it("pins the receipt envelope schema both kernels emit", () => {
+    // avow 0.5 made the envelope self-describing. The vectors record the schema
+    // Python's sign_payload emitted, so a schema bump in either kernel fails here.
+    expect(vectors.receipt_schema).toBe("avow.receipt/v1");
+    expect(RECEIPT_SCHEMA).toBe(vectors.receipt_schema);
+  });
+
+  it("refuses a schema-less (avow 0.1-format) receipt", async () => {
+    // AlmaMesh never persists receipts (the per-boot signer dies with the Worker,
+    // and the predictive store strips them), so no stored 0.1 receipt can reach
+    // this path. Pin the refusal so a future persistence change cannot quietly
+    // start verifying a format the kernel rejects.
+    const [vector] = vectors.receipts;
+    const legacy = {
+      payload: vector.subject,
+      payload_hash: vector.payload_hash,
+      public_key: vectors.public_key,
+      signature: vector.signature,
+    } as unknown as Parameters<typeof verifyDomainStrength>[0];
+    await expect(verifyDomainStrength(legacy, vectors.public_key)).rejects.toBeInstanceOf(
+      ReceiptSchemaMismatch,
+    );
+  });
 
   it("derives the vector's public key from the vector's seed", async () => {
     expect(await publicKeyHex(vectors.seed_hex)).toBe(vectors.public_key);
@@ -233,10 +262,10 @@ describe("verifyDomainStrength fails closed", () => {
     };
 
     // `payload_hash` is left stale, so this dies at the content-hash compare.
-    // ReplayMismatch is NOT a SignatureInvalid — asserted explicitly so this
+    // PayloadHashMismatch is NOT a SignatureInvalid — asserted explicitly so this
     // case can never be miscounted as coverage of the signature check.
     const error = await verifyDomainStrength(tampered, expected).catch((e: unknown) => e);
-    expect(error).toBeInstanceOf(ReplayMismatch);
+    expect(error).toBeInstanceOf(PayloadHashMismatch);
     expect(error).not.toBeInstanceOf(SignatureInvalid);
   });
 

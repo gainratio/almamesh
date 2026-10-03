@@ -3,12 +3,12 @@
  * the pinned per-boot signer, in isolation: one bad receipt must never abort
  * verification of the others, and the function must never throw. Receipts are
  * built with the REAL `@almamesh/browser` signer (`signDomainStrength`) and
- * REAL `@edgeproc/avow` keys — never a hand-rolled fake signature — so these
+ * REAL `@gainratio/avow` keys — never a hand-rolled fake signature — so these
  * tests exercise the exact byte-compatible envelope the Worker mints.
  */
 
 import { describe, expect, it } from 'vitest';
-import { generateSeedHex, publicKeyHex } from '@edgeproc/avow';
+import { generateSeedHex, publicKeyHex } from '@gainratio/avow';
 import { signDomainStrength } from '@almamesh/browser';
 import type { DomainStrengthReceipt, StrengthSummary } from '@almamesh/browser/types';
 

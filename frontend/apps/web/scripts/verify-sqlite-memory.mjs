@@ -21,7 +21,7 @@ const EXPECTED_MESSAGE = 'sqlite-proof-message'
 
 /**
  * SQLite's own OPFS / OPFS-WL async-proxy Workers, an internal of the vendored
- * runtime rather than an app Worker. Since @edgeproc/browser 3146a2a the
+ * runtime rather than an app Worker. Since @gainratio/browser 3146a2a the
  * runtime spawns them inline from a same-origin Blob URL, so the install never
  * waits on a network fetch (on slow 4G that fetch lost a 4 s race and the
  * durable store refused to open). Nothing in this app spawns a Worker from a

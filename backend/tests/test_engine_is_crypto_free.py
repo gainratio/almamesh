@@ -11,7 +11,7 @@ The third failure retired the lazy-import strategy altogether: PyNaCl's compiled
 ``_sodium`` extension does not register under this app's Pyodide boot AT ALL (plain
 ``nacl``, ``cffi`` and ``_cffi_backend`` load fine; only the dylib fails), so no
 amount of deferring could make in-Pyodide signing work. Signing therefore moved OUT
-of Python into the Worker's TypeScript (``@edgeproc/avow``, pure JS Ed25519), and
+of Python into the Worker's TypeScript (``@gainratio/avow``, pure JS Ed25519), and
 the invariant hardened from "import crypto lazily" to:
 
     NOTHING under ``almamesh`` may import ``avow`` or ``nacl``. Ever. Anywhere.
@@ -125,7 +125,7 @@ def test_worker_python_glue_never_imports_crypto() -> None:
     glue = _CHART_WORKER.read_text(encoding="utf-8")
     assert not _CRYPTO_IMPORT_RE.search(glue), (
         "chartWorker.ts's Python glue imports avow/nacl — signing belongs in "
-        "TypeScript (@edgeproc/avow), not in Pyodide"
+        "TypeScript (@gainratio/avow), not in Pyodide"
     )
 
 
@@ -138,7 +138,7 @@ def test_signing_moved_to_typescript_rather_than_vanishing() -> None:
     and the Worker actually calls it."""
     assert _STRENGTH_RECEIPT_TS.is_file(), f"missing TS signer at {_STRENGTH_RECEIPT_TS}"
     signer = _STRENGTH_RECEIPT_TS.read_text(encoding="utf-8")
-    assert "@edgeproc/avow" in signer, "the TS signer must use the shared Avow envelope"
+    assert "@gainratio/avow" in signer, "the TS signer must use the shared Avow envelope"
     assert "sealDomainStrengths" in signer
 
     worker = _CHART_WORKER.read_text(encoding="utf-8")

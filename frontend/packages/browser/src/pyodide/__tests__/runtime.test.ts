@@ -13,7 +13,7 @@ import type {
   PredictiveInput,
 } from "../protocol";
 import type { RectificationInput, RectificationResultRaw } from "../rectification";
-import type { SyncProgress, SyncResult } from "@edgeproc/browser";
+import type { SyncProgress, SyncResult } from "@gainratio/browser";
 import type { BootStage, IdleScheduler } from "../runtime";
 
 const CONFIG: RuntimeConfig = {

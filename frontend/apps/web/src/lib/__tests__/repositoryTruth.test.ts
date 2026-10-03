@@ -138,7 +138,7 @@ describe('repository truth', () => {
 
     expect(workflow).toContain('["chromium", "webkit"]');
     expect(workflow).toContain('"playwright", "install", "--with-deps", ...browsers');
-    expect(frontendPackage).not.toContain('@edgeproc/browser test:coverage');
+    expect(frontendPackage).not.toContain('@gainratio/browser test:coverage');
     expect(workflow).toContain(
       'node scripts/verify-webkit-engine.mjs http://127.0.0.1:4200',
     );
@@ -177,7 +177,7 @@ describe('repository truth', () => {
       "if (typeof window !== 'undefined' && EXIT_GATE_HOOKS)",
     );
     const worker = readRoot('frontend/packages/browser/src/edgeproc.worker.ts');
-    expect(worker.trim()).toBe('import "@edgeproc/browser/worker";');
+    expect(worker.trim()).toBe('import "@gainratio/browser/worker";');
     const adapter = readRoot('frontend/packages/browser/src/edgeprocClient.ts');
     expect(adapter).toContain('database: "edgeproc-browser-cache"');
     expect(adapter).toContain('store: "content-addressed-cache"');
@@ -213,13 +213,13 @@ describe('repository truth', () => {
     const frontendPackage = JSON.parse(readRoot('frontend/package.json')) as {
       trustedDependencies?: string[];
     };
-    expect(browserPackage.dependencies['@edgeproc/browser']).toBe(
+    expect(browserPackage.dependencies['@gainratio/browser']).toBe(
       `github:hseshadr/edgeproc-browser#${EDGEPROC_BROWSER_SHA}`,
     );
-    expect(memoryPackage.dependencies['@edgeproc/browser']).toBe(
+    expect(memoryPackage.dependencies['@gainratio/browser']).toBe(
       `github:hseshadr/edgeproc-browser#${EDGEPROC_BROWSER_SHA}`,
     );
-    expect(frontendPackage.trustedDependencies ?? []).not.toContain('@edgeproc/browser');
+    expect(frontendPackage.trustedDependencies ?? []).not.toContain('@gainratio/browser');
     expect(readRoot('frontend/bun.lock')).toContain(EDGEPROC_BROWSER_SHA);
     expect(existsSync(resolve(root, 'frontend/packages/edgeproc-browser/package.json'))).toBe(false);
     expect(readRoot('frontend/apps/web/vite.config.ts')).not.toMatch(

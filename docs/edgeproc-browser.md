@@ -1,4 +1,4 @@
-# Standalone `@edgeproc/browser` provenance
+# Standalone `@gainratio/browser` provenance
 
 **TL;DR:** AlmaMesh consumes the generic signed-bundle browser engine from its
 public repository at one exact Git commit. This repository keeps only a thin
@@ -10,7 +10,7 @@ and exit-gate observability.
 | Field | Value |
 |---|---|
 | Repository | `https://github.com/hseshadr/edgeproc-browser` |
-| Package | `@edgeproc/browser` |
+| Package | `@gainratio/browser` |
 | Commit | `a94e7f2a0237a7144658351c07cb296fcb0540fb` |
 | License | MIT |
 | Consumer manifests | `frontend/packages/browser/package.json`, `frontend/packages/memory/package.json` |
@@ -39,7 +39,7 @@ live only in the standalone package.
 `frontend/packages/memory/src/vectorStore.ts` is a second thin domain adapter:
 it maps chat chunks to flat SQLite metadata, applies the durable dataset
 generation fence, and delegates all live similarity, scoped deletion, and OPFS
-persistence to `@edgeproc/browser/vector/sqlite`.
+persistence to `@gainratio/browser/vector/sqlite`.
 
 ## Upgrade gate
 

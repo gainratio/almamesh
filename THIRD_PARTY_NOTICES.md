@@ -102,7 +102,7 @@ notices (the `OFL*.txt` files above) travel with them.
 
 | Path | Package | License | Copyright |
 |------|---------|---------|-----------|
-| `frontend/packages/edgeproc-browser/` | @edgeproc/browser (edge-reco) | MIT | © 2026 Harish Seshadri |
+| `frontend/packages/edgeproc-browser/` | @gainratio/browser (edge-reco) | MIT | © 2026 Harish Seshadri |
 
 `edge-proc` (MIT, © 2026 Harish Seshadri) and its `edgeproc-core` dependency (MIT,
 © 2025 Vector Management Team) were vendored under `backend/vendor/` until
@@ -139,7 +139,7 @@ the authoritative terms. In particular:
   SOFTWARE.
   ```
 
-- **`@edgeproc/browser`** is the owner's own code (from the edge-reco project),
+- **`@gainratio/browser`** is the owner's own code (from the edge-reco project),
   relicensed to **MIT** for this release — see
   [`frontend/packages/edgeproc-browser/LICENSE`](./frontend/packages/edgeproc-browser/LICENSE).
 

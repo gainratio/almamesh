@@ -50,7 +50,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "avow", marker = "extra == 'dev'", specifier = ">=0.1.1,<0.2" },
+    { name = "avow", marker = "extra == 'dev'", specifier = ">=0.5.2" },
     { name = "edge-proc", extras = ["bundles"], specifier = ">=0.5.0" },
     { name = "httpx", specifier = ">=0.28.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=2.3.0" },
@@ -181,17 +181,16 @@ wheels = [
 
 [[package]]
 name = "avow"
-version = "0.1.1"
+version = "0.5.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pydantic" },
-    { name = "pydantic-settings" },
     { name = "pynacl" },
     { name = "rfc8785" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ff/f1/54174faec8e2a0b58a2c9e1c452479bdf290aaa6bdf791d74c0f5c6db92e/avow-0.1.1.tar.gz", hash = "sha256:d05ca59cf3e9df824c96f9acc1c5e0d8d0f483fefa3d2f0cb8328825b794fe9d", size = 55593, upload-time = "2026-07-22T02:56:23.12Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/d3/c5/86bee1bcf2aec4e5e3587eec02bfcf34b943ac12b863a6401184e11be56c/avow-0.5.2.tar.gz", hash = "sha256:561c9404b218948ac4229a1683ad21c21e2809211fdfaf956d9cb315c7d94aa0", size = 23067, upload-time = "2026-10-02T22:35:07.678Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/08/4b/a59033caa3c9bbf2b27d9aeb13d445e076a0eb38bedba9afb217909afc21/avow-0.1.1-py3-none-any.whl", hash = "sha256:0c4db9d6d6c90504c2aad2d9eda86ace6f685686bf3c2abf8ab5c1708430ad99", size = 34909, upload-time = "2026-07-22T02:56:21.9Z" },
+    { url = "https://files.pythonhosted.org/packages/f8/b6/53db122c111b8e3db57cd315c6fa5db8635210360b26684f6c06ccfc0c69/avow-0.5.2-py3-none-any.whl", hash = "sha256:ffbc8d733fbd851b2652f63d2599f8b636b35617d49cf5d66a8cc7eb308cee84", size = 27428, upload-time = "2026-10-02T22:35:06.547Z" },
 ]
 
 [[package]]

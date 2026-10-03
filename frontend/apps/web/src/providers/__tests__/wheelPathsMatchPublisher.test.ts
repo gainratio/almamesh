@@ -63,7 +63,7 @@ describe('wheelPaths matches what the publisher actually bundles', () => {
   });
 
   it('asks for no crypto wheels — the Python engine is crypto-free', () => {
-    // Receipts are signed in TypeScript (@edgeproc/avow). If a wheel chain ever
+    // Receipts are signed in TypeScript (@gainratio/avow). If a wheel chain ever
     // comes back into this list, it must come back into the publisher too.
     const joined = readRuntimeConfig().wheelPaths.join(' ');
 

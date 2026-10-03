@@ -5,7 +5,7 @@
  * tamper-evidence check on screen.
  *
  * Receipts are minted with the REAL `@almamesh/browser` signer + REAL
- * `@edgeproc/avow` keys — never a hand-rolled fake signature — so the badge runs
+ * `@gainratio/avow` keys — never a hand-rolled fake signature — so the badge runs
  * the exact fail-closed verification a real visitor's device runs. The covenant
  * check is load-bearing: the panel must render the calibrated BAND/tier and
  * never a fabricated percentage.
@@ -16,7 +16,7 @@ import { resolve } from 'node:path';
 
 import { describe, expect, it, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { generateSeedHex, publicKeyHex } from '@edgeproc/avow';
+import { generateSeedHex, publicKeyHex } from '@gainratio/avow';
 import { signDomainStrength } from '@almamesh/browser';
 import type { DomainStrengthReceipt, StrengthSummary } from '@almamesh/browser/types';
 import { useLanguageStore } from '@almamesh/store';
@@ -115,7 +115,7 @@ describe('StrengthReceiptPanel — covenant: band/tier, never a fabricated %', (
 // ===========================================================================
 // The SKIN contract.
 //
-// `@edgeproc/receipt-ui` is a deliberately unstyled Lego: it publishes markup
+// `@gainratio/receipt-ui` is a deliberately unstyled Lego: it publishes markup
 // with stable BEM hooks and NO stylesheet, so every consumer paints it in its
 // own design system. AlmaMesh had never supplied that skin, so the flagship
 // trust surface shipped to almamesh.com as a raw <dl> — an unstyled stack of

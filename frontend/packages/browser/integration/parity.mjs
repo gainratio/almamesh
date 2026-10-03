@@ -89,7 +89,7 @@ const TRANSIT_FIXTURES = [
 const PREDICTIVE_GOLDEN_PATH = join(REPO_ROOT, "backend/tests/fixtures/predictive_golden_de421.json");
 const PREDICTIVE_REFERENCE_INSTANT = "2026-06-09T12:00:00+00:00";
 // NOTE: this gate compares the ENGINE's four contexts. It does NOT cover strength
-// receipts — those are minted in TypeScript by @edgeproc/avow, outside Pyodide.
+// receipts — those are minted in TypeScript by @gainratio/avow, outside Pyodide.
 // Their CPython<->TypeScript byte-compatibility is proven by the shared golden
 // vectors in testdata/vectors/, not here.
 //

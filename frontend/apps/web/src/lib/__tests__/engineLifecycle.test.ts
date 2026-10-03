@@ -9,7 +9,7 @@ import {
   teardownLiveEngine,
 } from '../engineLifecycle';
 
-/** The main-thread shape @edgeproc/browser uses for a Worker refusal. */
+/** The main-thread shape @gainratio/browser uses for a Worker refusal. */
 function engineOperationError(code: string): Error {
   return Object.assign(new Error(`refused (${code})`), { name: 'EngineOperationError', code });
 }

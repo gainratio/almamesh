@@ -645,7 +645,7 @@ export default defineConfig({
       // `/types` must precede the bare alias so the more specific one wins.
       '@almamesh/browser/types': path.resolve(__dirname, '../../packages/browser/src/types'),
       '@almamesh/browser': path.resolve(__dirname, '../../packages/browser/src'),
-      // `@edgeproc/browser/*` resolves through its exact-Git package exports.
+      // `@gainratio/browser/*` resolves through its exact-Git package exports.
       // AlmaMesh owns the one-line Vite Worker entry in @almamesh/browser; the
       // standalone package owns the compiled sync/storage implementation.
     },

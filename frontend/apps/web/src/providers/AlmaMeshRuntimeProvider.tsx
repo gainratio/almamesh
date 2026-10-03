@@ -53,7 +53,7 @@ const WHEEL_PATHS = [
   'wheels/sgp4-2.25-py3-none-any.whl',
   'wheels/skyfield-1.53-py3-none-any.whl',
   // NO avow / rfc8785 wheels. Strength receipts are signed in TypeScript by
-  // `@edgeproc/avow` (see packages/browser/src/pyodide/strengthReceipt.ts), so
+  // `@gainratio/avow` (see packages/browser/src/pyodide/strengthReceipt.ts), so
   // the Python engine is crypto-free and the signed bundle no longer carries
   // that wheel chain. This list must stay byte-identical to the publisher's
   // vendored-wheel set (backend/tests/test_edge_offline_bundle.py) — a path
