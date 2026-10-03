@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
-import { openRouterPreset, writeLlmSettings } from '@almamesh/llm';
+import { hydrateLlmSettings, openRouterPreset, writeLlmSettings } from '@almamesh/llm';
 import { useLlmStatus } from './useLlmStatus';
 import { notifyLlmSettingsChanged } from '../lib/llmSettingsEvents';
 
 describe('useLlmStatus — live AI-provider status', () => {
-  beforeEach(() => window.localStorage.clear());
-  afterEach(() => window.localStorage.clear());
+  beforeEach(() => hydrateLlmSettings(null));
+  afterEach(() => hydrateLlmSettings(null));
 
   it('starts from the saved status', () => {
     const { result } = renderHook(() => useLlmStatus());
@@ -39,6 +39,16 @@ describe('useLlmStatus — live AI-provider status', () => {
       });
       notifyLlmSettingsChanged();
     });
+    expect(result.current.kind).toBe('none');
+    expect(result.current.configured).toBe(false);
+  });
+
+  it('does not treat a localStorage event as authoritative settings state', () => {
+    const { result } = renderHook(() => useLlmStatus());
+    window.localStorage.setItem('almamesh-llm-settings', '{"apiKey":"not-authoritative"}');
+
+    act(() => window.dispatchEvent(new StorageEvent('storage')));
+
     expect(result.current.kind).toBe('none');
     expect(result.current.configured).toBe(false);
   });

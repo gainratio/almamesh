@@ -7,7 +7,10 @@ engine runs entirely on the user's device (the unchanged Python `almamesh`
 package under Pyodide/WASM in a Web Worker), delivered as a signed,
 content-addressed bundle. **There is no backend, server-side database, account,
 or API.** Canonical user data lives in one portable SQLite database inside the
-browser and can be exported as a real database file.
+browser. Export seals the exact SQLite bytes in a timestamped,
+password-encrypted `.almamesh` transport file; import decrypts that file once
+and installs normal SQLite in another browser, including Chrome → iOS Safari.
+The live database does not prompt for a password on later launches.
 
 Start with the top-level docs:
 
@@ -35,7 +38,8 @@ Browser (the product, an installable PWA)
          ├─ edge-proc bundle sync ─▶ verify ed25519+sha256 fail-closed ─▶ OPFS
          └─ Pyodide Web Worker    ─▶ unchanged almamesh wheel ─▶ SiderealChart
               └─ @almamesh/store adapter ─▶ ChartData ─▶ UI
-    └─ @almamesh/store ─▶ OPFS SQLite (canonical user data + deletion ledger)
+    └─ @almamesh/store ─▶ OPFS SQLite (all canonical user state + deletion ledger)
+         └─ encrypted .almamesh transport ─▶ import once in another browser
     (optional) @almamesh/llm ─ client-side, PII-redacted, fail-closed local_only
 
 Build-time (Python, no server)

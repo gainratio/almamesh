@@ -32,6 +32,7 @@ import { chromium } from '@playwright/test';
 import { Buffer } from 'node:buffer';
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, existsSync, readdirSync, unlinkSync } from 'node:fs';
+import { confirmLegacyBackupImport } from './confirmLegacyBackupImport.mjs';
 
 const BASE_URL = process.argv[2] ?? 'http://localhost:4317';
 // Output dir + per-page PNG prefix are overridable so the same harness can
@@ -240,14 +241,7 @@ async function restoreBackup(page, backup) {
     mimeType: 'application/json',
     buffer: Buffer.from(backup, 'utf8'),
   });
-  const confirm = page.getByTestId('backup-confirm-import');
-  await confirm.waitFor({ state: 'visible' });
-  const [safetyDownload] = await Promise.all([
-    page.waitForEvent('download'),
-    page.waitForEvent('domcontentloaded'),
-    confirm.click(),
-  ]);
-  await safetyDownload.cancel();
+  await confirmLegacyBackupImport(page);
 }
 
 /**

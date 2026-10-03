@@ -15,8 +15,26 @@
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { BackupCryptoError, BackupError, PortableStateUnavailableError } from '@almamesh/store';
+import {
+  armPortableImportRevision,
+  BackupCryptoError,
+  BackupError,
+  clearPortableImportRevisionFence,
+  PortableImportRevisionConflictError,
+  PortableStateUnavailableError,
+  readPortableStateRevision,
+} from '@almamesh/store';
 import type { BackupEnvelopePlain } from '@almamesh/shared-types';
+
+vi.mock('@almamesh/store', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@almamesh/store')>();
+  return {
+    ...actual,
+    readPortableStateRevision: vi.fn(),
+    armPortableImportRevision: vi.fn(),
+    clearPortableImportRevisionFence: vi.fn(),
+  };
+});
 
 import '../../../i18n/config';
 
@@ -39,7 +57,7 @@ import {
   commitBackupImport,
 } from '../../../lib/backupService';
 import { saveBackupFile, pickBackupFile } from '../../../lib/backupFile';
-import DataSettings from '../DataSettings';
+import DataSettings, { DataSettingsPanel } from '../DataSettings';
 
 const SAMPLE_ENVELOPE: BackupEnvelopePlain = {
   format: 'almamesh-backup',
@@ -58,7 +76,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   sessionStorage.clear();
   vi.mocked(buildBackupExport).mockResolvedValue({
-    filename: 'almamesh-backup-2026-07-01.sqlite3',
+    filename: 'almamesh-backup-2026-07-01T12-34-56-000Z.almamesh',
     content: new Uint8Array([1, 2, 3]),
   });
   vi.mocked(saveBackupFile).mockResolvedValue('saved');
@@ -69,6 +87,7 @@ beforeEach(() => {
     wasEncrypted: false,
   });
   vi.mocked(commitBackupImport).mockResolvedValue(undefined);
+  vi.mocked(readPortableStateRevision).mockResolvedValue(17);
 
   // Stub reload — the panel reloads after a commit; happy-dom's is a no-op we spy.
   reloadSpy = vi.fn();
@@ -85,6 +104,17 @@ describe('DataSettings — Backup & Restore panel', () => {
     expect(screen.getByTestId('settings-data-panel')).toBeTruthy();
     expect(screen.getByTestId('backup-export-button')).toBeTruthy();
     expect(screen.getByTestId('backup-import-button')).toBeTruthy();
+    expect(screen.getByText('Import / Restore')).toBeTruthy();
+    expect(screen.getByText('Import a backup')).toBeTruthy();
+  });
+
+  it('disables restore when SQLite is session-only because reload would erase it', () => {
+    render(<DataSettingsPanel persistence="memory" />);
+
+    expect((screen.getByTestId('backup-import-button') as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByTestId('backup-import-memory-warning').textContent).toContain(
+      'Import needs durable browser storage',
+    );
   });
 
   // CONTRACT REVERSAL: export used to work with no password and silently left
@@ -174,6 +204,9 @@ describe('DataSettings — Backup & Restore panel', () => {
     const confirmBtn = await screen.findByTestId('backup-confirm-import');
     expect(vi.mocked(stageBackupImport)).toHaveBeenCalledWith('FILE_TEXT', undefined);
 
+    fireEvent.change(screen.getByTestId('backup-safety-passphrase-input'), {
+      target: { value: 'safety-password' },
+    });
     fireEvent.click(confirmBtn);
 
     await waitFor(() =>
@@ -181,12 +214,19 @@ describe('DataSettings — Backup & Restore panel', () => {
         expect.objectContaining({ kind: 'json', envelope: SAMPLE_ENVELOPE }),
       ),
     );
-    // Safety-net export happened first (no passphrase), using the service's
-    // filename and byte content without forcing a legacy JSON extension.
-    expect(vi.mocked(buildBackupExport)).toHaveBeenCalledWith();
+    expect(vi.mocked(buildBackupExport)).toHaveBeenCalledWith('safety-password');
     expect(vi.mocked(saveBackupFile)).toHaveBeenCalledWith(
-      'almamesh-backup-before-import-2026-07-01.sqlite3',
+      'almamesh-backup-before-import-2026-07-01T12-34-56-000Z.almamesh',
       new Uint8Array([1, 2, 3]),
+    );
+    expect(vi.mocked(readPortableStateRevision)).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(armPortableImportRevision)).toHaveBeenCalledExactlyOnceWith(17);
+    expect(vi.mocked(clearPortableImportRevisionFence)).toHaveBeenCalledOnce();
+    expect(vi.mocked(saveBackupFile).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(armPortableImportRevision).mock.invocationCallOrder[0]!,
+    );
+    expect(vi.mocked(armPortableImportRevision).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(commitBackupImport).mock.invocationCallOrder[0]!,
     );
     expect(sessionStorage.getItem('almamesh:restore-reload')).toBe('1');
     expect(reloadSpy).toHaveBeenCalled();
@@ -209,6 +249,20 @@ describe('DataSettings — Backup & Restore panel', () => {
     expect(vi.mocked(stageBackupImport)).toHaveBeenCalledWith(bytes, undefined);
   });
 
+  it('refuses a raw or unencrypted legacy import until its safety backup has a password', async () => {
+    vi.mocked(pickBackupFile).mockResolvedValue('LEGACY_TEXT');
+    render(<DataSettings />);
+    fireEvent.click(screen.getByTestId('backup-import-button'));
+
+    fireEvent.click(await screen.findByTestId('backup-confirm-import'));
+
+    expect(await screen.findByText(
+      'Choose a password of at least 8 characters for the encrypted safety backup.',
+    )).toBeTruthy();
+    expect(vi.mocked(buildBackupExport)).not.toHaveBeenCalled();
+    expect(vi.mocked(commitBackupImport)).not.toHaveBeenCalled();
+  });
+
   // ITEM 1 — if the user cancels the safety-net save, the import must ABORT: no
   // commit, no reload, and a clear "nothing was changed" message.
   it('aborts the import when the safety-net save is cancelled', async () => {
@@ -219,12 +273,15 @@ describe('DataSettings — Backup & Restore panel', () => {
 
     fireEvent.click(screen.getByTestId('backup-import-button'));
     const confirmBtn = await screen.findByTestId('backup-confirm-import');
+    fireEvent.change(screen.getByTestId('backup-safety-passphrase-input'), {
+      target: { value: 'safety-password' },
+    });
     fireEvent.click(confirmBtn);
 
     // The safety net was attempted, then the import bailed out entirely.
     await waitFor(() =>
       expect(vi.mocked(saveBackupFile)).toHaveBeenCalledWith(
-        'almamesh-backup-before-import-2026-07-01.sqlite3',
+        'almamesh-backup-before-import-2026-07-01T12-34-56-000Z.almamesh',
         new Uint8Array([1, 2, 3]),
       ),
     );
@@ -234,6 +291,83 @@ describe('DataSettings — Backup & Restore panel', () => {
       ),
     ).toBeTruthy();
     expect(vi.mocked(commitBackupImport)).not.toHaveBeenCalled();
+    expect(reloadSpy).not.toHaveBeenCalled();
+  });
+
+  it('requires explicit confirmation after an unverified fallback safety download', async () => {
+    vi.mocked(pickBackupFile).mockResolvedValue('FILE_TEXT');
+    vi.mocked(saveBackupFile).mockResolvedValue('unverified');
+    render(<DataSettings />);
+
+    fireEvent.click(screen.getByTestId('backup-import-button'));
+    const confirmBtn = await screen.findByTestId('backup-confirm-import');
+    fireEvent.change(screen.getByTestId('backup-safety-passphrase-input'), {
+      target: { value: 'safety-password' },
+    });
+    fireEvent.click(confirmBtn);
+
+    expect(
+      await screen.findByText(
+        'Confirm that the encrypted safety backup appears in Downloads, then continue.',
+      ),
+    ).toBeTruthy();
+    expect(vi.mocked(commitBackupImport)).not.toHaveBeenCalled();
+    expect(reloadSpy).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByTestId('backup-confirm-import'));
+
+    await waitFor(() => expect(vi.mocked(commitBackupImport)).toHaveBeenCalledOnce());
+    expect(vi.mocked(saveBackupFile)).toHaveBeenCalledOnce();
+    expect(vi.mocked(readPortableStateRevision)).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(armPortableImportRevision)).toHaveBeenCalledExactlyOnceWith(17);
+    expect(reloadSpy).toHaveBeenCalledOnce();
+  });
+
+  it('does not save or replace when canonical SQLite changes during the safety snapshot', async () => {
+    vi.mocked(pickBackupFile).mockResolvedValue('FILE_TEXT');
+    vi.mocked(readPortableStateRevision)
+      .mockResolvedValueOnce(17)
+      .mockResolvedValueOnce(18);
+    render(<DataSettings />);
+
+    fireEvent.click(screen.getByTestId('backup-import-button'));
+    fireEvent.change(await screen.findByTestId('backup-safety-passphrase-input'), {
+      target: { value: 'safety-password' },
+    });
+    fireEvent.click(screen.getByTestId('backup-confirm-import'));
+
+    expect((await screen.findByTestId('backup-error')).textContent).toContain(
+      'Your AlmaMesh data changed while the safety backup was being prepared',
+    );
+    expect(vi.mocked(saveBackupFile)).not.toHaveBeenCalled();
+    expect(vi.mocked(armPortableImportRevision)).not.toHaveBeenCalled();
+    expect(vi.mocked(commitBackupImport)).not.toHaveBeenCalled();
+    expect(reloadSpy).not.toHaveBeenCalled();
+  });
+
+  it('refuses the second-confirm Replace when another tab changed SQLite after download', async () => {
+    vi.mocked(pickBackupFile).mockResolvedValue('FILE_TEXT');
+    vi.mocked(saveBackupFile).mockResolvedValue('unverified');
+    vi.mocked(commitBackupImport).mockRejectedValueOnce(
+      new PortableImportRevisionConflictError(17, 19),
+    );
+    render(<DataSettings />);
+
+    fireEvent.click(screen.getByTestId('backup-import-button'));
+    fireEvent.change(await screen.findByTestId('backup-safety-passphrase-input'), {
+      target: { value: 'safety-password' },
+    });
+    fireEvent.click(screen.getByTestId('backup-confirm-import'));
+    await screen.findByTestId('backup-safety-confirmation');
+
+    fireEvent.click(screen.getByTestId('backup-confirm-import'));
+
+    expect((await screen.findByTestId('backup-error')).textContent).toContain(
+      'Your AlmaMesh data changed after the safety backup',
+    );
+    expect(vi.mocked(saveBackupFile)).toHaveBeenCalledOnce();
+    expect(vi.mocked(armPortableImportRevision)).toHaveBeenCalledExactlyOnceWith(17);
+    expect(vi.mocked(clearPortableImportRevisionFence)).toHaveBeenCalledOnce();
     expect(reloadSpy).not.toHaveBeenCalled();
   });
 
@@ -290,11 +424,11 @@ describe('DataSettings — Backup & Restore panel', () => {
     ).toBeTruthy();
   });
 
-  it('a v2 bundle: unlock with the password, then the safety net is sealed with it too', async () => {
+  it('an encrypted bundle reuses its password to seal the safety backup', async () => {
     vi.mocked(pickBackupFile).mockResolvedValue('BUNDLE_TEXT');
     vi.mocked(buildBackupExport).mockResolvedValue({
-      filename: 'almamesh-backup-2026-07-01.json',
-      content: 'SEALED',
+      filename: 'almamesh-backup-2026-07-01T12-34-56-000Z.almamesh',
+      content: new Uint8Array([9]),
     });
     vi.mocked(stageBackupImport)
       .mockRejectedValueOnce(new BackupCryptoError('bad_passphrase', 'encrypted'))
@@ -303,7 +437,6 @@ describe('DataSettings — Backup & Restore panel', () => {
         envelope: SAMPLE_ENVELOPE,
         wasEncrypted: true,
         bytes: new Uint8Array([1]),
-        settings: {},
       });
     render(<DataSettings />);
     fireEvent.click(screen.getByTestId('backup-import-button'));
@@ -317,8 +450,8 @@ describe('DataSettings — Backup & Restore panel', () => {
     await waitFor(() => expect(vi.mocked(commitBackupImport)).toHaveBeenCalled());
     expect(vi.mocked(buildBackupExport)).toHaveBeenCalledWith('bundle-pass');
     expect(vi.mocked(saveBackupFile)).toHaveBeenCalledWith(
-      'almamesh-backup-before-import-2026-07-01.json',
-      'SEALED',
+      'almamesh-backup-before-import-2026-07-01T12-34-56-000Z.almamesh',
+      new Uint8Array([9]),
     );
   });
 
@@ -385,6 +518,9 @@ describe('DataSettings — Backup & Restore panel', () => {
     render(<DataSettings />);
 
     fireEvent.click(screen.getByTestId('backup-import-button'));
+    fireEvent.change(await screen.findByTestId('backup-safety-passphrase-input'), {
+      target: { value: 'safety-password' },
+    });
     fireEvent.click(await screen.findByTestId('backup-confirm-import'));
 
     expect(await screen.findByText(/Restore failed: disk full/)).toBeTruthy();

@@ -1,16 +1,40 @@
 /**
- * Content Mode Store - Zustand state for interpretation display preferences (in-memory, no persistence)
+ * Content Mode Store - Zustand state for interpretation display preferences.
  *
  * Manages the global "For You" (layman) vs "For Astrologer" (technical) toggle
  * that applies to all interpretation sections across the app.
  *
- * Spec 036 (Cache Consolidation): Removed persist middleware.
- * Default to "For You", let user toggle per session.
+ * SQLite owns the preference. A synchronous in-memory view is hydrated before
+ * the app renders; Web Storage is not a fallback or mirror.
  */
 
 import { create, StateCreator } from 'zustand';
+import { portablePreferenceStorage } from './deletionTombstones';
 
 export type ContentMode = 'layman' | 'technical';
+export const CONTENT_MODE_PREFERENCE_KEY = 'almamesh-content-mode';
+
+function decodeContentMode(raw: string | null): ContentMode | null {
+  if (raw === null) return null;
+  try {
+    const mode = (JSON.parse(raw) as { contentMode?: unknown }).contentMode;
+    return mode === 'layman' || mode === 'technical' ? mode : null;
+  } catch {
+    return null;
+  }
+}
+
+function persistContentMode(mode: ContentMode): void {
+  try {
+    const pending = portablePreferenceStorage.setItem(
+      CONTENT_MODE_PREFERENCE_KEY,
+      JSON.stringify({ contentMode: mode }),
+    );
+    void Promise.resolve(pending).catch(() => undefined);
+  } catch {
+    // The in-memory UI preference remains usable for this session.
+  }
+}
 
 export interface ContentModeStore {
   // State
@@ -25,22 +49,28 @@ export interface ContentModeStore {
  * Content mode store state creator (without persistence)
  */
 export const contentModeStoreCreator: StateCreator<ContentModeStore> = (set) => ({
-  // Initial state - default to layman (For You) mode
   contentMode: 'layman',
 
-  // Actions
-  setContentMode: (mode) => set({ contentMode: mode }),
+  setContentMode: (mode) => {
+    set({ contentMode: mode });
+    persistContentMode(mode);
+  },
 
   toggleContentMode: () =>
-    set((state) => ({
-      contentMode: state.contentMode === 'layman' ? 'technical' : 'layman',
-    })),
+    set((state) => {
+      const contentMode = state.contentMode === 'layman' ? 'technical' : 'layman';
+      persistContentMode(contentMode);
+      return { contentMode };
+    }),
 });
 
-/**
- * Content mode store (in-memory only, no persistence)
- *
- * Spec 036 (Cache Consolidation): Removed persistence.
- * Default to "For You" (layman), user toggles per session.
- */
+/** Content mode store with canonical SQLite persistence and an in-memory view. */
 export const useContentModeStore = create<ContentModeStore>()(contentModeStoreCreator);
+
+/** Hydrate from SQLite after mirror migration and before application render. */
+export async function hydrateContentModePreference(): Promise<ContentMode> {
+  const raw = await portablePreferenceStorage.getItem(CONTENT_MODE_PREFERENCE_KEY);
+  const contentMode = decodeContentMode(raw) ?? 'layman';
+  useContentModeStore.setState({ contentMode });
+  return contentMode;
+}

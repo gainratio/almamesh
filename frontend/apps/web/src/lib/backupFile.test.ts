@@ -15,7 +15,7 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { pickBackupFile, saveBackupFile } from './backupFile';
+import { MAX_BACKUP_FILE_BYTES, pickBackupFile, saveBackupFile } from './backupFile';
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -93,6 +93,24 @@ describe('saveBackupFile', () => {
     );
   });
 
+  it('writes encrypted .almamesh bytes with the dedicated file type', async () => {
+    const write = vi.fn().mockResolvedValue(undefined);
+    const showSaveFilePicker = vi.fn().mockResolvedValue({
+      createWritable: vi.fn().mockResolvedValue({ write, close: vi.fn() }),
+    });
+    vi.stubGlobal('showSaveFilePicker', showSaveFilePicker);
+    const bytes = new Uint8Array([...new TextEncoder().encode('ALMAMESH'), 3, 0xff]);
+
+    await saveBackupFile('almamesh-backup-2026-07-01T12-34-56-000Z.almamesh', bytes);
+
+    expect(write).toHaveBeenCalledWith(bytes);
+    expect(showSaveFilePicker).toHaveBeenCalledWith(expect.objectContaining({
+      types: [expect.objectContaining({
+        accept: { 'application/vnd.almamesh.backup': ['.almamesh'] },
+      })],
+    }));
+  });
+
   it('returns "cancelled" (no throw) when the picker is aborted', async () => {
     const showSaveFilePicker = vi.fn().mockRejectedValue(abortError());
     vi.stubGlobal('showSaveFilePicker', showSaveFilePicker);
@@ -108,6 +126,7 @@ describe('saveBackupFile', () => {
   });
 
   it('falls back to an <a download> when the File System Access API is absent', async () => {
+    vi.useFakeTimers();
     // No showSaveFilePicker stub → the fallback download path runs.
     const createObjectURL = vi
       .spyOn(URL, 'createObjectURL')
@@ -128,11 +147,17 @@ describe('saveBackupFile', () => {
 
     const result = await saveBackupFile('almamesh-backup-2026-07-01.json', 'PAYLOAD');
 
-    expect(result).toBe('saved');
+    // An anchor click starts a download, but the browser offers no completion
+    // signal. Callers performing a destructive restore must ask the user to
+    // confirm the safety file actually appeared before proceeding.
+    expect(result).toBe('unverified');
     expect(createObjectURL).toHaveBeenCalledTimes(1);
     expect(anchor?.download).toBe('almamesh-backup-2026-07-01.json');
     expect(clickSpy).toHaveBeenCalledTimes(1);
+    expect(revokeObjectURL).not.toHaveBeenCalled();
+    await vi.runAllTimersAsync();
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:mock-url');
+    vi.useRealTimers();
   });
 
   it('preserves SQLite bytes and MIME type in the download fallback', async () => {
@@ -158,6 +183,22 @@ describe('saveBackupFile', () => {
 });
 
 describe('pickBackupFile', () => {
+  it('rejects an oversized file before reading it into memory', async () => {
+    const arrayBuffer = vi.fn();
+    const file = {
+      name: 'huge.almamesh',
+      type: 'application/vnd.almamesh.backup',
+      size: MAX_BACKUP_FILE_BYTES + 1,
+      arrayBuffer,
+    } as unknown as File;
+    vi.stubGlobal('showOpenFilePicker', vi.fn().mockResolvedValue([
+      { getFile: vi.fn().mockResolvedValue(file) },
+    ]));
+
+    await expect(pickBackupFile()).rejects.toThrow('too large');
+    expect(arrayBuffer).not.toHaveBeenCalled();
+  });
+
   it('reads the text of the picked file via the File System Access API', async () => {
     const file = new File(['HELLO'], 'backup.json', { type: 'application/json' });
     const handle = { getFile: vi.fn().mockResolvedValue(file) };
@@ -182,6 +223,24 @@ describe('pickBackupFile', () => {
 
     expect(picked).toBeInstanceOf(Uint8Array);
     expect([...(picked as Uint8Array)]).toEqual([...bytes]);
+  });
+
+  it('returns an encrypted .almamesh file as binary and offers it in the picker', async () => {
+    const bytes = new Uint8Array([...new TextEncoder().encode('ALMAMESH'), 3, 0xff]);
+    const file = new File([bytes], 'backup.almamesh', { type: 'application/vnd.almamesh.backup' });
+    const showOpenFilePicker = vi.fn().mockResolvedValue([
+      { getFile: vi.fn().mockResolvedValue(file) },
+    ]);
+    vi.stubGlobal('showOpenFilePicker', showOpenFilePicker);
+
+    const picked = await pickBackupFile();
+
+    expect([...(picked as Uint8Array)]).toEqual([...bytes]);
+    expect(showOpenFilePicker).toHaveBeenCalledWith(expect.objectContaining({
+      types: expect.arrayContaining([
+        expect.objectContaining({ accept: { 'application/vnd.almamesh.backup': ['.almamesh'] } }),
+      ]),
+    }));
   });
 
   it('keeps unknown binary as bytes instead of decoding it as JSON', async () => {
@@ -253,7 +312,7 @@ describe('pickBackupFile', () => {
     const promise = pickBackupFile();
     // The dialog closes → the window regains focus with no `change` fired.
     window.dispatchEvent(new Event('focus'));
-    await vi.advanceTimersByTimeAsync(0);
+    await vi.runAllTimersAsync();
 
     await expect(promise).resolves.toBeNull();
     vi.useRealTimers();
@@ -271,5 +330,36 @@ describe('pickBackupFile', () => {
     window.dispatchEvent(new Event('focus'));
 
     await expect(promise).resolves.toBe('REAL');
+  });
+
+  it('lets a later file change win when Safari refocuses before dispatching change', async () => {
+    vi.useFakeTimers();
+    const file = new File(['SAFARI'], 'backup.almamesh', {
+      type: 'application/vnd.almamesh.backup',
+    });
+    const handlers: Record<string, Array<() => void>> = {};
+    const safariInput = {
+      type: '',
+      accept: '',
+      files: [file],
+      addEventListener(name: string, cb: () => void) {
+        (handlers[name] ??= []).push(cb);
+      },
+      click() {
+        window.dispatchEvent(new Event('focus'));
+        setTimeout(() => {
+          for (const cb of handlers.change ?? []) cb();
+        }, 1);
+      },
+    };
+    vi.spyOn(document, 'createElement').mockReturnValue(
+      safariInput as unknown as HTMLElement,
+    );
+
+    const promise = pickBackupFile();
+    await vi.advanceTimersByTimeAsync(1);
+
+    await expect(promise).resolves.toEqual(expect.any(Uint8Array));
+    vi.useRealTimers();
   });
 });

@@ -94,6 +94,7 @@ vi.mock('../../components/features/dashboard', () => ({
 
 import {
   configProvenance,
+  hydrateLlmSettings,
   LlmRequestError,
   openRouterPreset,
   streamCurrentTimeline,
@@ -272,7 +273,7 @@ describe('Dashboard — regenerate reading', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     lifecycleGate.wait = null;
-    localStorage.clear();
+    hydrateLlmSettings(null);
     vi.mocked(readLocalPrimaryChart).mockResolvedValue(primaryChartResponse());
     useChartLibraryStore.setState({ charts: { 'chart-1': storedChart() }, hydrated: true });
     useContentModeStore.setState({ contentMode: 'layman' });

@@ -14,12 +14,13 @@ import { test, expect, type Page } from '@playwright/test';
  * The OpenRouter endpoints (probe, credits, model catalog) are STUBBED via
  * page.route — deterministic and CI-safe, no key and no real egress (the
  * chat.grounding pattern). What stays real: the production build, the router,
- * the settings UI, localStorage persistence, and the badge.
+ * the settings UI, canonical SQLite persistence, and the badge.
  *
- * This test deliberately exercises ONLY the settings UI + localStorage — it
- * never generates a chart, so it does not need the Pyodide engine / OPFS (which
- * crashes under headless Chromium in this environment). It runs against a
- * production build served by `vite preview` (see playwright.ai-settings.config.ts).
+ * This test deliberately exercises only the settings UI. It never generates a
+ * chart, but it does prove that the secret is rehydrated from canonical OPFS
+ * SQLite after a reload and that the retired localStorage copy stays absent.
+ * It runs against a production build served by `vite preview` (see
+ * playwright.ai-settings.config.ts).
  *
  * Run:  bun run test:e2e:ai
  */
@@ -130,16 +131,18 @@ test.describe('AI settings — discover and connect OpenRouter (guided, test-on-
     await page.waitForLoadState('domcontentloaded');
     await expect(page.getByTestId('ai-status-badge')).toHaveText(/AI:\s*OpenRouter/);
 
-    // --- Step 5b: localStorage persisted the OpenRouter settings ------------
-    const saved = await page.evaluate((key) => {
-      const raw = window.localStorage.getItem(key);
-      return raw ? (JSON.parse(raw) as Record<string, unknown>) : null;
-    }, LLM_SETTINGS_KEY);
+    // --- Step 5b: canonical SQLite rehydrates every user-facing setting -----
+    await expect(page.getByTestId('tier-cloud-active')).toBeVisible();
+    await expect(keyField).toHaveValue(DUMMY_KEY);
+    await page.getByTestId('llm-advanced-summary').click();
+    await expect(page.getByTestId('llm-api-base')).toHaveValue(
+      new RegExp(OPENROUTER_BASE.replace('.', '\\.')),
+    );
+    await expect(page.getByTestId('llm-allow-cloud')).toBeChecked();
+    await expect(page.getByTestId('llm-model')).toHaveValue(RECOMMENDED_CLOUD_MODEL);
 
-    expect(saved).not.toBeNull();
-    expect(String(saved?.apiBase)).toContain(OPENROUTER_BASE);
-    expect(saved?.apiKey).toBe(DUMMY_KEY);
-    expect(saved?.privacyMode).toBe('cloud_premium');
-    expect(saved?.interpretationModel).toBe(RECOMMENDED_CLOUD_MODEL);
+    // The old browser-store copy is migration input only, never a second source
+    // of truth. A reload working while this stays null is the portability claim.
+    expect(await page.evaluate((key) => window.localStorage.getItem(key), LLM_SETTINGS_KEY)).toBeNull();
   });
 });

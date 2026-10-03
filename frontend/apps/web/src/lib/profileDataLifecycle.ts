@@ -3,9 +3,11 @@ import {
   abortBackupRestore,
   beginDatasetMutation,
   clearMemoryRebuildPending,
+  refreshPortablePreferenceMirrors,
   whenChartLibraryHydrated,
   whenChatHydrated,
   whenLifeEventsHydrated,
+  whenMeshReadingsHydrated,
   whenPredictiveHydrated,
   whenProfilesHydrated,
   whenRectificationRecordsHydrated,
@@ -18,7 +20,9 @@ import {
   useChatStore,
   useInterpretationStore,
   useLifeEventsStore,
+  useLanguageStore,
   useMeshStore,
+  useMeshReadingsStore,
   usePredictiveStore,
   useProfilesStore,
   useRectificationRecordsStore,
@@ -35,6 +39,8 @@ import {
   rebuildMemory,
 } from './chatMemory';
 import { publishDeletionNotice, subscribeDeletionNotices } from './deletionPropagation';
+import { notifyLlmSettingsChanged } from './llmSettingsEvents';
+import { rehydratePortablePreferences } from './portablePreferences';
 
 export interface ProfileDataLifecycleDeps {
   deleteMemoryForProfile: (profileId: string) => Promise<void>;
@@ -66,6 +72,7 @@ async function waitForProfileStoresHydrated(): Promise<void> {
     whenProfilesHydrated(),
     whenChartLibraryHydrated(),
     whenLifeEventsHydrated(),
+    whenMeshReadingsHydrated(),
     whenChatHydrated(),
     whenRectificationRecordsHydrated(),
     whenPredictiveHydrated(),
@@ -133,6 +140,7 @@ export interface RemoteDeletionDeps {
   deleteMemoryForThread: (threadId: string) => Promise<void>;
   clearMemory?: () => Promise<void>;
   invalidateMemoryRuntime?: () => void;
+  refreshPreferences?: () => Promise<void>;
 }
 
 const DEFAULT_CHAT_DEPS: ChatThreadDataLifecycleDeps = {
@@ -150,6 +158,7 @@ const PERSONAL_STORE_KEYS = [
   'almamesh-life-events',
   'almamesh-chat-history',
   'almamesh-interpretations',
+  'almamesh-mesh-readings',
   'almamesh-rectification-records',
   'almamesh-predictive',
 ] as const;
@@ -235,6 +244,7 @@ export async function deleteProfileData(
       usePredictiveStore.getState().reset();
     }
     useMeshStore.getState().invalidateEdgesFor(profileId);
+    useMeshReadingsStore.getState().deleteForProfile(profileId);
     useProfilesStore.getState().deleteProfile(profileId);
     await persistProfileDeletion();
     publishDeletionNotice({ kind: 'profile', profileId, chartIds, threadIds });
@@ -287,6 +297,7 @@ function purgeLocalProfile(profileId: string, chartIds: readonly string[]): void
     usePredictiveStore.getState().reset();
   }
   useMeshStore.getState().invalidateEdgesFor(profileId);
+  useMeshReadingsStore.getState().deleteForProfile(profileId);
   useChartLibraryStore.getState().deleteChartsForProfile(profileId);
   const profiles = useProfilesStore.getState().profiles;
   if (!(profileId in profiles)) {
@@ -333,6 +344,11 @@ async function replaceLiveDataset(
       clear: () => useInterpretationStore.getState().clearAll(),
     },
     {
+      key: 'almamesh-mesh-readings',
+      rehydrate: () => useMeshReadingsStore.persist.rehydrate(),
+      clear: () => useMeshReadingsStore.getState().clearAll(),
+    },
+    {
       key: 'almamesh-rectification-records',
       rehydrate: () => useRectificationRecordsStore.persist.rehydrate(),
       clear: () => useRectificationRecordsStore.getState().clearAll(),
@@ -350,6 +366,11 @@ async function replaceLiveDataset(
     }),
   );
   if (persist) await persistProfileDeletion();
+}
+
+async function refreshLivePreferences(): Promise<void> {
+  await refreshPortablePreferenceMirrors();
+  await Promise.all([useLanguageStore.persist.rehydrate(), rehydratePortablePreferences()]);
 }
 
 /** Apply a deletion broadcast from another live tab/PWA realm without echoing it. */
@@ -370,6 +391,10 @@ export async function applyRemoteDeletionNotice(
         deps.invalidateMemoryRuntime?.();
         return;
       }
+      if (notice.phase === 'complete' || notice.phase === undefined) {
+        await (deps.refreshPreferences ?? refreshLivePreferences)();
+        notifyLlmSettingsChanged({ replace: true });
+      }
       if (notice.operation === 'reset') {
         await deps.clearMemory?.();
         useChartLibraryStore.getState().clearAll();
@@ -377,6 +402,7 @@ export async function applyRemoteDeletionNotice(
         useLifeEventsStore.getState().clearAll();
         useChatStore.getState().clearAll();
         useInterpretationStore.getState().clearAll();
+        useMeshReadingsStore.getState().clearAll();
         useRectificationRecordsStore.getState().clearAll();
         usePredictiveStore.getState().reset();
         useMeshStore.getState().reset();

@@ -29,6 +29,7 @@
  */
 import { chromium } from '@playwright/test'
 import { Buffer } from 'node:buffer'
+import { confirmLegacyBackupImport } from './confirmLegacyBackupImport.mjs'
 
 const BASE_URL = process.argv[2] ?? 'http://localhost:4173'
 const SHOT_DIR = 'test-results/mesh-live'
@@ -123,14 +124,7 @@ async function restoreBackup(backup) {
     mimeType: 'application/json',
     buffer: Buffer.from(backup, 'utf8'),
   })
-  const confirm = page.getByTestId('backup-confirm-import')
-  await confirm.waitFor({ state: 'visible' })
-  const [safetyDownload] = await Promise.all([
-    page.waitForEvent('download'),
-    page.waitForEvent('domcontentloaded'),
-    confirm.click(),
-  ])
-  await safetyDownload.cancel()
+  await confirmLegacyBackupImport(page)
 }
 
 try {

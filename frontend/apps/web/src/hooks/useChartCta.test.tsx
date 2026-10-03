@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook } from '@testing-library/react'
+import { useChartLibraryStore } from '@almamesh/store'
 
 // The prewarm hook reads the engine context; stub it so useChartCta resolves
 // without a real provider mounted.
@@ -8,23 +9,21 @@ vi.mock('../providers/chartEngineContext', () => ({
   useOptionalChartEngine: () => null,
 }))
 
-vi.mock('../lib/localChart', () => ({
-  hasLocalChart: vi.fn(() => false),
-}))
-
-import { hasLocalChart } from '../lib/localChart'
 import { useChartCta } from './useChartCta'
 
-const mockHasLocalChart = vi.mocked(hasLocalChart)
+const setHasChart = (hasChart: boolean) =>
+  useChartLibraryStore.setState({
+    charts: hasChart
+      ? ({ saved: { chart_id: 'saved', person_name: 'Saved', is_primary: true } } as never)
+      : {},
+  })
 
 describe('useChartCta', () => {
   beforeEach(() => {
-    mockHasLocalChart.mockReset()
+    setHasChart(false)
   })
 
   it('routes a first-time visitor (no local chart) to onboarding with the generate label + prewarm intent', () => {
-    mockHasLocalChart.mockReturnValue(false)
-
     const { result } = renderHook(() => useChartCta())
 
     expect(result.current.to).toBe('/onboarding')
@@ -35,7 +34,7 @@ describe('useChartCta', () => {
   })
 
   it('routes a returning visitor (has a local chart) straight to the dashboard with the returning label and no prewarm intent', () => {
-    mockHasLocalChart.mockReturnValue(true)
+    setHasChart(true)
 
     const { result } = renderHook(() => useChartCta())
 

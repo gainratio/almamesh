@@ -101,7 +101,7 @@
       }
     ],
     "zeroEgress": "The chart engine makes no network calls; your birth date and time never leave your device. Two things reach the network — the birthplace you search, and (only if you turn on the optional AI) a privacy-redacted chart with no name or birth date.",
-    "portability": "There's no server holding your data, so it's yours to carry: export everything — profiles, charts, and chat — to a single file and restore it in another browser or device. Nothing is uploaded; only you can move it."
+    "portability": "There's no server holding your data, so it's yours to carry: export the complete SQLite state to one encrypted file and restore it in another browser or device — for example, Chrome to iOS Safari. The file password is used once during import; normal launches need no password. Nothing is uploaded; only you can move it."
   },
   "who": {
     "title": "Who it's for",

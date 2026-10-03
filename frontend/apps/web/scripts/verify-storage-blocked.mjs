@@ -190,32 +190,42 @@ try {
     await opfsRefused.close()
   }
 
-  const profile = mkdtempSync(join(tmpdir(), 'almamesh-storage-allowed-'))
-  const allowed = await browserType.launchPersistentContext(profile, { headless: true })
-  try {
-    const control = await visit(allowed, '/onboarding')
-    await control.page.getByTestId('name-input').waitFor({ state: 'visible', timeout: 30_000 })
-    invariant(
-      !(await control.page.getByTestId('storage-blocked-notice').isVisible()),
-      'storage-blocked notice shown although storage is allowed',
-    )
-    invariant(
-      !(await control.page.getByTestId('ephemeral-storage-notice').isVisible()),
-      'ephemeral "not saving" note shown although storage is allowed',
-    )
-    if (RUN_JOURNEY) {
-      await onboard(control.page)
-      await control.page.waitForURL('**/dashboard', { timeout: 60_000 })
-      await control.page.getByTestId('identity-strip').waitFor({ state: 'visible', timeout: 60_000 })
-      await control.page.getByTestId('chart-visualization').first().waitFor({ state: 'visible', timeout: 30_000 })
+  // Playwright's Linux WebKit port exposes document OPFS in a persistent
+  // context, but not functional OPFS inside SQLite's nested Worker. It is not
+  // a Safari durability oracle. Chromium exercises this control in Linux CI;
+  // real macOS WebKit exercises it locally. Both Linux WebKit blocked/fallback
+  // realms above still run.
+  const canProveDurableStorage = BROWSER_NAME !== 'webkit' || process.platform !== 'linux'
+  if (canProveDurableStorage) {
+    const profile = mkdtempSync(join(tmpdir(), 'almamesh-storage-allowed-'))
+    const allowed = await browserType.launchPersistentContext(profile, { headless: true })
+    try {
+      const control = await visit(allowed, '/onboarding')
+      await control.page.getByTestId('name-input').waitFor({ state: 'visible', timeout: 30_000 })
+      invariant(
+        !(await control.page.getByTestId('storage-blocked-notice').isVisible()),
+        'storage-blocked notice shown although storage is allowed',
+      )
+      invariant(
+        !(await control.page.getByTestId('ephemeral-storage-notice').isVisible()),
+        'ephemeral "not saving" note shown although storage is allowed',
+      )
+      if (RUN_JOURNEY) {
+        await onboard(control.page)
+        await control.page.waitForURL('**/dashboard', { timeout: 60_000 })
+        await control.page.getByTestId('identity-strip').waitFor({ state: 'visible', timeout: 60_000 })
+        await control.page.getByTestId('chart-visualization').first().waitFor({ state: 'visible', timeout: 30_000 })
+      }
+      invariant(control.pageErrors.length === 0, `control run threw: ${control.pageErrors.join(' | ')}`)
+    } finally {
+      await allowed.close()
+      rmSync(profile, { recursive: true, force: true })
     }
-    invariant(control.pageErrors.length === 0, `control run threw: ${control.pageErrors.join(' | ')}`)
-  } finally {
-    await allowed.close()
-    rmSync(profile, { recursive: true, force: true })
+  } else {
+    console.log('storage-blocked: skipped Linux WebKit durable-storage control (nested-Worker OPFS unsupported)')
   }
 
-  console.log(`storage-blocked: ${BROWSER_NAME} renders /welcome, explains /onboarding + /dashboard when blocked, ${RUN_JOURNEY ? 'renders the dashboard chart' : 'renders onboarding'} when allowed, no page errors`)
+  console.log(`storage-blocked: ${BROWSER_NAME} renders /welcome, explains /onboarding + /dashboard when blocked, ${canProveDurableStorage ? (RUN_JOURNEY ? 'renders the dashboard chart' : 'renders onboarding') : 'leaves durable-storage proof to a supported engine'}, no page errors`)
 } finally {
   await browser.close()
 }

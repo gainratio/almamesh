@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { IDBFactory } from 'fake-indexeddb';
 import { createStore, get as idbGet, set as idbSet } from 'idb-keyval';
 import type {
@@ -9,6 +9,7 @@ import type {
 import { SqliteStateConflictError } from '@gainratio/browser/sqlite';
 
 import {
+  adoptLatestDatasetEpoch,
   mergeDeletionTombstones,
   abortBackupRestore,
   beginBackupRestore,
@@ -16,8 +17,12 @@ import {
   clearMemoryRebuildPending,
   commitDatasetGeneration,
   deletionAwareIdbStorage,
+  flushPortablePersistence,
+  migrateLegacyPreferencesToRepository,
   portablePreferenceStorage,
+  readCanonicalDatasetValue,
   readDeletionTombstones,
+  refreshPortablePreferenceMirrors,
   recordDeletionTombstones,
   sanitizePersistedValue,
   setPortableStateRepositoryForTests,
@@ -50,6 +55,9 @@ class PortableMemoryStore implements SqliteStateStore {
   activeBatches = 0;
   maxActiveBatches = 0;
   failNext: Error | undefined;
+  beforeBatch:
+    | ((mutations: readonly SqliteStateMutation[]) => Promise<void>)
+    | undefined;
 
   async get(namespace: string, key: string) {
     const row = this.values.get(`${namespace}/${key}`);
@@ -71,6 +79,7 @@ class PortableMemoryStore implements SqliteStateStore {
     this.activeBatches += 1;
     this.maxActiveBatches = Math.max(this.maxActiveBatches, this.activeBatches);
     try {
+      await this.beforeBatch?.(mutations);
       if (this.batchDelayMs > 0) {
         await new Promise((resolve) => globalThis.setTimeout(resolve, this.batchDelayMs));
       }
@@ -381,7 +390,7 @@ describe('deletion tombstones', () => {
     }
   });
 
-  it('filters a victim vector before promoting a stale cached index into the new generation', async () => {
+  it('deletes the stale vector index when committing a deletion generation', async () => {
     const originalIndexedDb = globalThis.indexedDB;
     Object.defineProperty(globalThis, 'indexedDB', {
       value: TEST_INDEXED_DB,
@@ -422,26 +431,14 @@ describe('deletion tombstones', () => {
             value: envelope({ profiles: { survivor: { id: 'survivor' } } }),
           },
         ],
-        [],
-        { retagGenerationKeys: ['almamesh-chat-vectors'] },
+        ['almamesh-chat-vectors'],
+        { memoryRebuildPending: true },
       );
 
-      const vectors = await idbGet<{
-        generation: number;
-        records: { id: string }[];
-      }>('almamesh-chat-vectors', store);
-      expect(vectors).toEqual({
-        generation: ledger!.restoreEpoch,
-        records: [
-          {
-            id: 'survivor#0',
-            profile_id: 'survivor',
-            thread_id: 'survivor-thread',
-          },
-        ],
-      });
+      expect(await idbGet('almamesh-chat-vectors', store)).toBeUndefined();
       const settled = await idbGet<DeletionTombstones>('almamesh-deletion-tombstones', store);
       expect(settled).toMatchObject({
+        memoryRebuildPending: true,
         profileIds: [],
         threadIds: [],
         chartIds: [],
@@ -636,6 +633,11 @@ describe('deletion tombstones', () => {
           'profile-thread': [{}],
           survivor: [{}],
         },
+        summaries: {
+          'deleted-thread': { summary: 'deleted thread summary' },
+          'profile-thread': { summary: 'deleted profile summary' },
+          survivor: { summary: 'surviving summary' },
+        },
       },
       'almamesh-predictive': {
         status: 'ready',
@@ -652,6 +654,18 @@ describe('deletion tombstones', () => {
             profileId: 'deleted-profile',
           },
           survivor: { status: 'complete', sections: {}, profileId: 'survivor' },
+        },
+      },
+      'almamesh-mesh-readings': {
+        byPair: {
+          'deleted-profile|survivor': {
+            profileIds: ['deleted-profile', 'survivor'],
+            reading: { private: true },
+          },
+          'survivor|friend': {
+            profileIds: ['survivor', 'friend'],
+            reading: { safe: true },
+          },
         },
       },
     } as const;
@@ -706,6 +720,9 @@ describe('deletion tombstones', () => {
       survivor: { id: 'survivor', profile_id: 'survivor' },
     });
     expect(chat.messages).toEqual({ survivor: [{}] });
+    expect(chat.summaries).toEqual({
+      survivor: { summary: 'surviving summary' },
+    });
 
     const predictive = stateOf(
       sanitizePersistedValue(
@@ -726,6 +743,48 @@ describe('deletion tombstones', () => {
     expect(interpretations.byChart).toEqual({
       survivor: { status: 'complete', sections: {}, profileId: 'survivor' },
     });
+
+    const meshReadings = stateOf(
+      sanitizePersistedValue(
+        'almamesh-mesh-readings',
+        envelope(snapshots['almamesh-mesh-readings']),
+        TOMBSTONES,
+      ),
+    );
+    expect(meshReadings.byPair).toEqual({
+      'survivor|friend': {
+        profileIds: ['survivor', 'friend'],
+        reading: { safe: true },
+      },
+    });
+  });
+
+  it('reassigns a deleted active profile to the earliest-created survivor', () => {
+    const profiles = stateOf(
+      sanitizePersistedValue(
+        'almamesh-profiles',
+        envelope({
+          profiles: {
+            'deleted-profile': {
+              id: 'deleted-profile',
+              createdAt: '2024-01-01T00:00:00.000Z',
+            },
+            'inserted-first': {
+              id: 'inserted-first',
+              createdAt: '2026-01-01T00:00:00.000Z',
+            },
+            'created-first': {
+              id: 'created-first',
+              createdAt: '2025-01-01T00:00:00.000Z',
+            },
+          },
+          activeProfileId: 'deleted-profile',
+        }),
+        TOMBSTONES,
+      ),
+    );
+
+    expect(profiles.activeProfileId).toBe('created-first');
   });
 
   it('commits the canonical snapshot and generation ledger atomically through SQLite', async () => {
@@ -766,6 +825,96 @@ describe('deletion tombstones', () => {
     }
   });
 
+  it('adopts a newer durable generation after this realm misses its broadcast', async () => {
+    const repository = new PortableStateRepository(new PortableMemoryStore());
+    setPortableStateRepositoryForTests(repository);
+    try {
+      await repository.write(PORTABLE_LEDGER_KEY, JSON.stringify({
+        version: 1,
+        activeEpoch: 0,
+        restoreEpoch: 0,
+        restoreInProgress: false,
+        memoryRebuildPending: false,
+        profileIds: [],
+        threadIds: [],
+        chartIds: [],
+      }));
+      await readDeletionTombstones();
+      await repository.write(PORTABLE_LEDGER_KEY, JSON.stringify({
+        version: 1,
+        activeEpoch: 1,
+        restoreEpoch: 1,
+        restoreInProgress: false,
+        memoryRebuildPending: false,
+        profileIds: [],
+        threadIds: [],
+        chartIds: [],
+      }));
+
+      await expect(adoptLatestDatasetEpoch()).resolves.toEqual({ changed: true, epoch: 1 });
+      await expect(adoptLatestDatasetEpoch()).resolves.toEqual({ changed: false, epoch: 1 });
+    } finally {
+      setPortableStateRepositoryForTests(undefined);
+    }
+  });
+
+  it('does not treat the initial empty generation as a missed Replace', async () => {
+    const repository = new PortableStateRepository(new PortableMemoryStore());
+    setPortableStateRepositoryForTests(repository);
+    try {
+      await repository.write(PORTABLE_LEDGER_KEY, JSON.stringify({
+        version: 1,
+        activeEpoch: 0,
+        restoreEpoch: 0,
+        restoreInProgress: false,
+        memoryRebuildPending: false,
+        profileIds: [],
+        threadIds: [],
+        chartIds: [],
+      }));
+
+      await expect(adoptLatestDatasetEpoch()).resolves.toEqual({ changed: false, epoch: 0 });
+    } finally {
+      setPortableStateRepositoryForTests(undefined);
+    }
+  });
+
+  it('deletes from the latest canonical row without losing another tab\'s paid artifact', async () => {
+    const repository = new PortableStateRepository(new PortableMemoryStore());
+    setPortableStateRepositoryForTests(repository);
+    const canonical = envelope({
+      byPair: {
+        'victim|friend': { profileIds: ['victim', 'friend'], reading: { remove: true } },
+        'survivor|friend': { profileIds: ['survivor', 'friend'], reading: { paid: true } },
+      },
+    });
+    const staleTab = envelope({
+      byPair: {
+        'victim|friend': { profileIds: ['victim', 'friend'], reading: { remove: true } },
+      },
+    });
+    try {
+      await repository.write('almamesh-mesh-readings', tagPersistedValue(canonical, 0));
+      const epoch = await beginDatasetMutation();
+      await recordDeletionTombstones({ profileIds: ['victim'] }, epoch);
+      await commitDatasetGeneration(
+        epoch,
+        [{ key: 'almamesh-mesh-readings', value: staleTab }],
+        [],
+        { sanitizeCanonicalKeys: ['almamesh-mesh-readings'] },
+      );
+
+      expect(stateOf((await repository.read('almamesh-mesh-readings')) as string).byPair).toEqual({
+        'survivor|friend': {
+          profileIds: ['survivor', 'friend'],
+          reading: { paid: true },
+        },
+      });
+    } finally {
+      setPortableStateRepositoryForTests(undefined);
+    }
+  });
+
   it('stores language portably without mixing it into dataset generations', async () => {
     const repository = new PortableStateRepository(new PortableMemoryStore());
     setPortableStateRepositoryForTests(repository);
@@ -778,6 +927,270 @@ describe('deletion tombstones', () => {
       );
     } finally {
       setPortableStateRepositoryForTests(undefined);
+    }
+  });
+
+  it('flushes an in-flight preference write before the export boundary proceeds', async () => {
+    const sqlite = new PortableMemoryStore();
+    sqlite.batchDelayMs = 20;
+    const repository = new PortableStateRepository(sqlite);
+    setPortableStateRepositoryForTests(repository);
+    try {
+      void portablePreferenceStorage.setItem(
+        'almamesh-content-mode',
+        JSON.stringify({ contentMode: 'technical' }),
+      );
+
+      await flushPortablePersistence();
+
+      expect(await repository.read('almamesh-preferences')).toContain('technical');
+    } finally {
+      setPortableStateRepositoryForTests(undefined);
+    }
+  });
+
+  it('verifies legacy preferences in SQLite before deleting every Web Storage copy', async () => {
+    const repository = new PortableStateRepository(new PortableMemoryStore());
+    const originalStorage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+    const legacy = new Map<string, string>([
+      ['almamesh-llm-settings', JSON.stringify({ apiKey: 'synthetic-migration-key' })],
+      ['almamesh-content-mode', JSON.stringify({ contentMode: 'technical' })],
+      ['almamesh-chart', '1'],
+      ['almamesh-restore-epoch', '7'],
+    ]);
+    Object.defineProperty(globalThis, 'localStorage', {
+      configurable: true,
+      value: {
+        getItem: (key: string) => legacy.get(key) ?? null,
+        setItem: (key: string, value: string) => void legacy.set(key, value),
+        removeItem: (key: string) => void legacy.delete(key),
+      },
+    });
+    try {
+      await migrateLegacyPreferencesToRepository(repository);
+
+      expect(await repository.read('almamesh-preferences')).toContain(
+        'synthetic-migration-key',
+      );
+      expect(await repository.read('almamesh-preferences')).toContain('technical');
+      expect(legacy.size).toBe(0);
+    } finally {
+      if (originalStorage === undefined) delete (globalThis as { localStorage?: unknown }).localStorage;
+      else Object.defineProperty(globalThis, 'localStorage', originalStorage);
+    }
+  });
+
+  it('keeps legacy preferences when SQLite is only an in-memory session fallback', async () => {
+    const repository = new PortableStateRepository(new PortableMemoryStore());
+    const originalStorage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+    const legacy = new Map<string, string>([
+      ['almamesh-llm-settings', JSON.stringify({ apiKey: 'synthetic-memory-key' })],
+      ['almamesh-content-mode', JSON.stringify({ contentMode: 'technical' })],
+    ]);
+    Object.defineProperty(globalThis, 'localStorage', {
+      configurable: true,
+      value: {
+        getItem: (key: string) => legacy.get(key) ?? null,
+        setItem: (key: string, value: string) => void legacy.set(key, value),
+        removeItem: (key: string) => void legacy.delete(key),
+      },
+    });
+    try {
+      await migrateLegacyPreferencesToRepository(repository, false);
+
+      expect(await repository.read('almamesh-preferences')).toContain('synthetic-memory-key');
+      expect(legacy.has('almamesh-llm-settings')).toBe(true);
+      expect(legacy.has('almamesh-content-mode')).toBe(true);
+    } finally {
+      if (originalStorage === undefined) delete (globalThis as { localStorage?: unknown }).localStorage;
+      else Object.defineProperty(globalThis, 'localStorage', originalStorage);
+    }
+  });
+
+  it('uses an existing SQLite preference row as the migration marker and cannot resurrect stale legacy values', async () => {
+    const repository = new PortableStateRepository(new PortableMemoryStore());
+    const originalStorage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+    const canonical = JSON.stringify({
+      version: 1,
+      values: { 'almamesh-llm-settings': JSON.stringify({ apiKey: 'canonical-key' }) },
+    });
+    await repository.write('almamesh-preferences', canonical);
+    const legacy = new Map<string, string>([
+      ['almamesh-llm-settings', JSON.stringify({ apiKey: 'stale-key' })],
+    ]);
+    Object.defineProperty(globalThis, 'localStorage', {
+      configurable: true,
+      value: {
+        getItem: (key: string) => legacy.get(key) ?? null,
+        setItem: (key: string, value: string) => void legacy.set(key, value),
+        removeItem: (key: string) => void legacy.delete(key),
+      },
+    });
+    try {
+      await migrateLegacyPreferencesToRepository(repository);
+
+      expect(await repository.read('almamesh-preferences')).toBe(canonical);
+      expect(legacy.size).toBe(0);
+    } finally {
+      if (originalStorage === undefined) delete (globalThis as { localStorage?: unknown }).localStorage;
+      else Object.defineProperty(globalThis, 'localStorage', originalStorage);
+    }
+  });
+
+  it('fences a delayed preference write from a stale browser realm after Replace commits', async () => {
+    const sqlite = new PortableMemoryStore();
+    const repository = new PortableStateRepository(sqlite);
+    const staleWriteEntered = Promise.withResolvers<void>();
+    const releaseStaleWrite = Promise.withResolvers<void>();
+    const originalStorage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+    const mirror = new Map<string, string>();
+    let blockStaleWrite = true;
+    let importingRealm:
+      | typeof import('./deletionTombstones')
+      | undefined;
+    setPortableStateRepositoryForTests(repository);
+    try {
+      // Realm B has hydrated the old preference generation and begins a write,
+      // but its SQLite CAS is delayed until after Realm A completes Replace.
+      Object.defineProperty(globalThis, 'localStorage', {
+        configurable: true,
+        value: {
+          getItem: (key: string) => mirror.get(key) ?? null,
+          setItem: (key: string, value: string) => void mirror.set(key, value),
+          removeItem: (key: string) => void mirror.delete(key),
+        },
+      });
+      await portablePreferenceStorage.getItem('almamesh-llm-settings');
+      sqlite.beforeBatch = async (mutations) => {
+        const stalePreference = mutations.some(
+          (mutation) =>
+            mutation.type === 'put' &&
+            mutation.key === 'almamesh-preferences' &&
+            new TextDecoder().decode(mutation.value).includes('stale-key'),
+        );
+        if (!blockStaleWrite || !stalePreference) return;
+        staleWriteEntered.resolve();
+        await releaseStaleWrite.promise;
+      };
+      const staleSettings = JSON.stringify({ apiKey: 'stale-key' });
+      // The existing synchronous LLM API updates its disposable mirror before
+      // its configured SQLite writer settles.
+      mirror.set('almamesh-llm-settings', staleSettings);
+      const staleWrite = portablePreferenceStorage.setItem(
+        'almamesh-llm-settings',
+        staleSettings,
+      );
+      await staleWriteEntered.promise;
+
+      vi.resetModules();
+      importingRealm = await import('./deletionTombstones');
+      importingRealm.setPortableStateRepositoryForTests(repository);
+      const epoch = await importingRealm.beginBackupRestore({});
+      await importingRealm.commitDatasetGeneration(epoch, [
+        {
+          key: 'almamesh-preferences',
+          value: JSON.stringify({
+            version: 1,
+            values: {
+              'almamesh-llm-settings': JSON.stringify({ apiKey: 'imported-key' }),
+            },
+          }),
+        },
+      ]);
+
+      blockStaleWrite = false;
+      releaseStaleWrite.resolve();
+      await staleWrite;
+
+      expect(await repository.read('almamesh-preferences')).toContain('imported-key');
+      expect(await repository.read('almamesh-preferences')).not.toContain('stale-key');
+      // The stale Web Storage copy is never repaired or trusted. Canonical
+      // SQLite remains imported-key and boot hydration reconstructs memory.
+      expect(mirror.get('almamesh-llm-settings')).toContain('stale-key');
+    } finally {
+      blockStaleWrite = false;
+      releaseStaleWrite.resolve();
+      importingRealm?.setPortableStateRepositoryForTests(undefined);
+      setPortableStateRepositoryForTests(undefined);
+      if (originalStorage === undefined) delete (globalThis as { localStorage?: unknown }).localStorage;
+      else Object.defineProperty(globalThis, 'localStorage', originalStorage);
+    }
+  });
+
+  it('adopts a replaced preference generation and permits a fresh canonical write', async () => {
+    const sqlite = new PortableMemoryStore();
+    const repository = new PortableStateRepository(sqlite);
+    const importedSettings = JSON.stringify({ apiKey: 'imported-key' });
+    sqlite.setPortableValue(
+      PORTABLE_LEDGER_KEY,
+      JSON.stringify({
+        version: 1,
+        activeEpoch: 1,
+        restoreEpoch: 1,
+        restoreInProgress: false,
+        memoryRebuildPending: false,
+        profileIds: [],
+        threadIds: [],
+        chartIds: [],
+      }),
+    );
+    sqlite.setPortableValue(
+      'almamesh-preferences',
+      JSON.stringify({
+        version: 1,
+        values: { 'almamesh-llm-settings': importedSettings },
+      }),
+    );
+    setPortableStateRepositoryForTests(repository);
+    try {
+      await refreshPortablePreferenceMirrors();
+
+      await expect(portablePreferenceStorage.getItem('almamesh-llm-settings')).resolves.toBe(
+        importedSettings,
+      );
+      await portablePreferenceStorage.setItem(
+        'almamesh-llm-settings',
+        JSON.stringify({ apiKey: 'fresh-key' }),
+      );
+      expect(await repository.read('almamesh-preferences')).toContain('fresh-key');
+    } finally {
+      setPortableStateRepositoryForTests(undefined);
+    }
+  });
+
+  it('keeps canonical SQLite writable when Web Storage is blocked', async () => {
+    const repository = new PortableStateRepository(new PortableMemoryStore());
+    const originalStorage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+    const canonical = JSON.stringify({
+      version: 1,
+      values: { 'almamesh-llm-settings': JSON.stringify({ apiKey: 'canonical-key' }) },
+    });
+    await repository.write('almamesh-preferences', canonical);
+    Object.defineProperty(globalThis, 'localStorage', {
+      configurable: true,
+      value: {
+        getItem: () => null,
+        setItem: () => {
+          throw new DOMException('Storage blocked', 'SecurityError');
+        },
+        removeItem: () => {
+          throw new DOMException('Storage blocked', 'SecurityError');
+        },
+      },
+    });
+    setPortableStateRepositoryForTests(repository);
+    try {
+      await expect(refreshPortablePreferenceMirrors()).resolves.toBeUndefined();
+      expect(await repository.read('almamesh-preferences')).toBe(canonical);
+      await portablePreferenceStorage.setItem(
+        'almamesh-llm-settings',
+        JSON.stringify({ apiKey: 'stale-ui-key' }),
+      );
+      expect(await repository.read('almamesh-preferences')).toContain('stale-ui-key');
+    } finally {
+      setPortableStateRepositoryForTests(undefined);
+      if (originalStorage === undefined) delete (globalThis as { localStorage?: unknown }).localStorage;
+      else Object.defineProperty(globalThis, 'localStorage', originalStorage);
     }
   });
 
@@ -809,6 +1222,7 @@ describe('deletion tombstones', () => {
     setPortableStateRepositoryForTests(repository);
     try {
       await deletionAwareIdbStorage.getItem('almamesh-profiles');
+      await deletionAwareIdbStorage.getItem('almamesh-chat-history');
       await Promise.all([
         deletionAwareIdbStorage.setItem('almamesh-profiles', envelope({ profiles: {} })),
         deletionAwareIdbStorage.setItem(
@@ -820,6 +1234,299 @@ describe('deletion tombstones', () => {
       expect(sqlite.maxActiveBatches).toBe(2);
       expect(await repository.read('almamesh-profiles')).not.toBeNull();
       expect(await repository.read('almamesh-chat-history')).not.toBeNull();
+    } finally {
+      setPortableStateRepositoryForTests(undefined);
+    }
+  });
+
+  it('merges independent same-generation additions from another tab', async () => {
+    const repository = new PortableStateRepository(new PortableMemoryStore());
+    setPortableStateRepositoryForTests(repository);
+    const initial = envelope({
+      profiles: {
+        original: { id: 'original', name: 'Original' },
+      },
+      activeProfileId: 'original',
+    });
+    try {
+      await repository.write('almamesh-profiles', tagPersistedValue(initial, 0));
+      await deletionAwareIdbStorage.getItem('almamesh-profiles');
+
+      await repository.write(
+        'almamesh-profiles',
+        tagPersistedValue(
+          envelope({
+            profiles: {
+              original: { id: 'original', name: 'Original' },
+              'tab-a': { id: 'tab-a', name: 'From tab A' },
+            },
+            activeProfileId: 'original',
+          }),
+          0,
+        ),
+      );
+      await deletionAwareIdbStorage.setItem(
+        'almamesh-profiles',
+        envelope({
+          profiles: {
+            original: { id: 'original', name: 'Original' },
+            'tab-b': { id: 'tab-b', name: 'From tab B' },
+          },
+          activeProfileId: 'original',
+        }),
+      );
+
+      expect(
+        stateOf((await repository.read('almamesh-profiles')) as string).profiles,
+      ).toEqual({
+        original: { id: 'original', name: 'Original' },
+        'tab-a': { id: 'tab-a', name: 'From tab A' },
+        'tab-b': { id: 'tab-b', name: 'From tab B' },
+      });
+    } finally {
+      setPortableStateRepositoryForTests(undefined);
+    }
+  });
+
+  it('does not let an export read replace the live store merge base', async () => {
+    const repository = new PortableStateRepository(new PortableMemoryStore());
+    setPortableStateRepositoryForTests(repository);
+    const initial = envelope({ profiles: { original: { id: 'original' } } });
+    try {
+      await repository.write('almamesh-profiles', tagPersistedValue(initial, 0));
+      await deletionAwareIdbStorage.getItem('almamesh-profiles');
+      await repository.write(
+        'almamesh-profiles',
+        tagPersistedValue(
+          envelope({
+            profiles: { original: { id: 'original' }, remote: { id: 'remote' } },
+          }),
+          0,
+        ),
+      );
+
+      await expect(readCanonicalDatasetValue('almamesh-profiles')).resolves.toContain('remote');
+      await deletionAwareIdbStorage.setItem(
+        'almamesh-profiles',
+        envelope({ profiles: { original: { id: 'original' }, local: { id: 'local' } } }),
+      );
+
+      expect(
+        stateOf((await repository.read('almamesh-profiles')) as string).profiles,
+      ).toEqual({ original: { id: 'original' }, remote: { id: 'remote' }, local: { id: 'local' } });
+    } finally {
+      setPortableStateRepositoryForTests(undefined);
+    }
+  });
+
+  it('keeps one anchor and one primary chart under conflicting tab changes', async () => {
+    const repository = new PortableStateRepository(new PortableMemoryStore());
+    setPortableStateRepositoryForTests(repository);
+    try {
+      const profiles = envelope({
+        profiles: {
+          a: { id: 'a', name: 'A' },
+          b: { id: 'b', name: 'B' },
+        },
+        activeProfileId: 'a',
+      });
+      await repository.write('almamesh-profiles', tagPersistedValue(profiles, 0));
+      await deletionAwareIdbStorage.getItem('almamesh-profiles');
+      await repository.write(
+        'almamesh-profiles',
+        tagPersistedValue(
+          envelope({
+            profiles: {
+              a: { id: 'a', name: 'A', relationship: 'self' },
+              b: { id: 'b', name: 'B' },
+            },
+            activeProfileId: 'a',
+          }),
+          0,
+        ),
+      );
+      await deletionAwareIdbStorage.setItem(
+        'almamesh-profiles',
+        envelope({
+          profiles: {
+            a: { id: 'a', name: 'A' },
+            b: { id: 'b', name: 'B', relationship: 'self' },
+          },
+          activeProfileId: 'a',
+        }),
+      );
+      const mergedProfiles = stateOf((await repository.read('almamesh-profiles')) as string)
+        .profiles as Record<string, Record<string, unknown>>;
+      expect(Object.values(mergedProfiles).filter((profile) => profile.relationship === 'self'))
+        .toHaveLength(1);
+      expect(mergedProfiles.b.relationship).toBe('self');
+
+      const charts = envelope({
+        charts: {
+          original: { chart_id: 'original', profile_id: 'a', is_primary: false },
+        },
+      });
+      await repository.write('almamesh-chart-library', tagPersistedValue(charts, 0));
+      await deletionAwareIdbStorage.getItem('almamesh-chart-library');
+      await repository.write(
+        'almamesh-chart-library',
+        tagPersistedValue(
+          envelope({
+            charts: {
+              original: { chart_id: 'original', profile_id: 'a', is_primary: false },
+              remote: { chart_id: 'remote', profile_id: 'a', is_primary: true },
+            },
+          }),
+          0,
+        ),
+      );
+      await deletionAwareIdbStorage.setItem(
+        'almamesh-chart-library',
+        envelope({
+          charts: {
+            original: { chart_id: 'original', profile_id: 'a', is_primary: false },
+            local: { chart_id: 'local', profile_id: 'a', is_primary: true },
+          },
+        }),
+      );
+      const mergedCharts = stateOf((await repository.read('almamesh-chart-library')) as string)
+        .charts as Record<string, Record<string, unknown>>;
+      expect(Object.values(mergedCharts).filter((chart) => chart.is_primary === true))
+        .toHaveLength(1);
+      expect(mergedCharts.local.is_primary).toBe(true);
+      expect(mergedCharts.remote.is_primary).toBe(false);
+    } finally {
+      setPortableStateRepositoryForTests(undefined);
+    }
+  });
+
+  it('allows the committing realm to persist immediately after a local deletion generation', async () => {
+    const repository = new PortableStateRepository(new PortableMemoryStore());
+    setPortableStateRepositoryForTests(repository);
+    try {
+      const before = envelope({ threads: { deleted: { id: 'deleted' } }, messages: {}, summaries: {} });
+      await repository.write('almamesh-chat-history', tagPersistedValue(before, 0));
+      await deletionAwareIdbStorage.getItem('almamesh-chat-history');
+      const epoch = await beginDatasetMutation();
+      const after = envelope({ threads: {}, messages: {}, summaries: {} });
+      await commitDatasetGeneration(
+        epoch,
+        [{ key: 'almamesh-chat-history', value: after }],
+        [],
+        { adoptLocalWrites: true },
+      );
+
+      await deletionAwareIdbStorage.setItem(
+        'almamesh-chat-history',
+        envelope({
+          threads: { fresh: { id: 'fresh', title: null, updated_at: '2026-01-01T00:00:00Z' } },
+          messages: { fresh: [] },
+          summaries: {},
+        }),
+      );
+      expect(
+        stateOf((await repository.read('almamesh-chat-history')) as string).threads,
+      ).toHaveProperty('fresh');
+    } finally {
+      setPortableStateRepositoryForTests(undefined);
+    }
+  });
+
+  it('merges concurrent chat appends without reviving a remotely deleted thread', async () => {
+    const repository = new PortableStateRepository(new PortableMemoryStore());
+    setPortableStateRepositoryForTests(repository);
+    const thread = {
+      id: 'thread',
+      profile_id: 'profile',
+      title: 'Original',
+      updated_at: '2026-01-01T00:00:00.000Z',
+      message_count: 1,
+    };
+    const first = {
+      id: 'first',
+      thread_id: 'thread',
+      role: 'user',
+      content: 'First',
+      created_at: '2026-01-01T00:00:00.000Z',
+    };
+    const initial = envelope({
+      threads: { thread },
+      messages: { thread: [first] },
+      summaries: {},
+    });
+    try {
+      await repository.write('almamesh-chat-history', tagPersistedValue(initial, 0));
+      await deletionAwareIdbStorage.getItem('almamesh-chat-history');
+
+      const fromTabA = {
+        id: 'tab-a',
+        thread_id: 'thread',
+        role: 'assistant',
+        content: 'From A',
+        created_at: '2026-01-01T00:00:01.000Z',
+      };
+      await repository.write(
+        'almamesh-chat-history',
+        tagPersistedValue(
+          envelope({
+            threads: {
+              thread: {
+                ...thread,
+                updated_at: fromTabA.created_at,
+                message_count: 2,
+              },
+            },
+            messages: { thread: [first, fromTabA] },
+            summaries: {},
+          }),
+          0,
+        ),
+      );
+      const fromTabB = {
+        id: 'tab-b',
+        thread_id: 'thread',
+        role: 'assistant',
+        content: 'From B',
+        created_at: '2026-01-01T00:00:02.000Z',
+      };
+      await deletionAwareIdbStorage.setItem(
+        'almamesh-chat-history',
+        envelope({
+          threads: {
+            thread: {
+              ...thread,
+              updated_at: fromTabB.created_at,
+              message_count: 2,
+            },
+          },
+          messages: { thread: [first, fromTabB] },
+          summaries: {},
+        }),
+      );
+
+      const merged = stateOf((await repository.read('almamesh-chat-history')) as string);
+      expect((merged.messages as Record<string, Array<{ id: string }>>).thread.map(({ id }) => id))
+        .toEqual(['first', 'tab-a', 'tab-b']);
+      expect((merged.threads as Record<string, { message_count: number }>).thread.message_count)
+        .toBe(3);
+
+      await deletionAwareIdbStorage.getItem('almamesh-chat-history');
+      await repository.write(
+        'almamesh-chat-history',
+        tagPersistedValue(envelope({ threads: {}, messages: {}, summaries: {} }), 0),
+      );
+      await deletionAwareIdbStorage.setItem(
+        'almamesh-chat-history',
+        envelope({
+          threads: { thread },
+          messages: { thread: [first, fromTabB] },
+          summaries: {},
+        }),
+      );
+      expect(stateOf((await repository.read('almamesh-chat-history')) as string)).toMatchObject({
+        threads: {},
+        messages: {},
+      });
     } finally {
       setPortableStateRepositoryForTests(undefined);
     }
@@ -841,6 +1548,35 @@ describe('deletion tombstones', () => {
       expect(
         stateOf((await deletionAwareIdbStorage.getItem('almamesh-profiles')) as string),
       ).toMatchObject({ sequence: 2 });
+    } finally {
+      setPortableStateRepositoryForTests(undefined);
+    }
+  });
+
+  it('keeps a rejected canonical preference write visible to the export flush until retried', async () => {
+    const sqlite = new PortableMemoryStore();
+    sqlite.failNext = new Error('simulated canonical settings failure');
+    const repository = new PortableStateRepository(sqlite);
+    setPortableStateRepositoryForTests(repository);
+    try {
+      await expect(
+        portablePreferenceStorage.setItem(
+          'almamesh-llm-settings',
+          JSON.stringify({ apiKey: 'synthetic-key' }),
+        ),
+      ).rejects.toThrow('simulated canonical settings failure');
+
+      await expect(flushPortablePersistence()).rejects.toThrow(
+        'simulated canonical settings failure',
+      );
+      expect(await repository.read('almamesh-preferences')).toBeNull();
+
+      await portablePreferenceStorage.setItem(
+        'almamesh-llm-settings',
+        JSON.stringify({ apiKey: 'synthetic-key' }),
+      );
+      await expect(flushPortablePersistence()).resolves.toBeUndefined();
+      expect(await repository.read('almamesh-preferences')).toContain('synthetic-key');
     } finally {
       setPortableStateRepositoryForTests(undefined);
     }
@@ -929,6 +1665,247 @@ describe('deletion tombstones', () => {
     } finally {
       setPortableStateRepositoryForTests(undefined);
     }
+  });
+
+  it('does not let stale same-realm Zustand state overwrite a completed backup import', async () => {
+    const repository = new PortableStateRepository(new PortableMemoryStore());
+    setPortableStateRepositoryForTests(repository);
+    const imported = envelope({
+      profiles: { imported: { id: 'imported', name: 'Imported' } },
+      activeProfileId: 'imported',
+    });
+    const stale = envelope({
+      profiles: { stale: { id: 'stale', name: 'Pre-import state' } },
+      activeProfileId: 'stale',
+    });
+    try {
+      // Zustand hydrated this row before the user started the import.
+      await deletionAwareIdbStorage.getItem('almamesh-profiles');
+      await deletionAwareIdbStorage.setItem('almamesh-profiles', stale);
+      await portablePreferenceStorage.getItem('almamesh-llm-settings');
+
+      const epoch = await beginBackupRestore({ profileIds: ['imported'] });
+      await commitDatasetGeneration(epoch, [
+        { key: 'almamesh-profiles', value: imported },
+        {
+          key: 'almamesh-preferences',
+          value: JSON.stringify({
+            version: 1,
+            values: {
+              'almamesh-llm-settings': JSON.stringify({ apiKey: 'imported-key' }),
+            },
+          }),
+        },
+      ]);
+
+      // A render/effect from the still-live pre-import tree must be fenced until
+      // this store explicitly rehydrates the newly committed generation.
+      await deletionAwareIdbStorage.setItem('almamesh-profiles', stale);
+      expect(stateOf((await repository.read('almamesh-profiles')) as string).profiles).toEqual({
+        imported: { id: 'imported', name: 'Imported' },
+      });
+      await portablePreferenceStorage.setItem(
+        'almamesh-llm-settings',
+        JSON.stringify({ apiKey: 'stale-key' }),
+      );
+      expect(await repository.read('almamesh-preferences')).toContain('imported-key');
+      expect(await repository.read('almamesh-preferences')).not.toContain('stale-key');
+
+      // Once this realm explicitly adopts the imported preference generation,
+      // new user changes remain possible without requiring a process restart.
+      expect(await portablePreferenceStorage.getItem('almamesh-llm-settings')).toContain(
+        'imported-key',
+      );
+      await portablePreferenceStorage.setItem(
+        'almamesh-llm-settings',
+        JSON.stringify({ apiKey: 'fresh-key' }),
+      );
+      expect(await repository.read('almamesh-preferences')).toContain('fresh-key');
+      await deletionAwareIdbStorage.removeItem('almamesh-profiles');
+      expect(await repository.read('almamesh-profiles')).not.toBeNull();
+
+      await deletionAwareIdbStorage.getItem('almamesh-profiles');
+      const fresh = envelope({
+        profiles: { imported: { id: 'imported', name: 'Freshly edited' } },
+        activeProfileId: 'imported',
+      });
+      await deletionAwareIdbStorage.setItem('almamesh-profiles', fresh);
+      expect(stateOf((await repository.read('almamesh-profiles')) as string).profiles).toEqual({
+        imported: { id: 'imported', name: 'Freshly edited' },
+      });
+    } finally {
+      setPortableStateRepositoryForTests(undefined);
+    }
+  });
+
+  it('commits a restore without reading or writing blocked Web Storage', async () => {
+    const repository = new PortableStateRepository(new PortableMemoryStore());
+    const originalStorage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+    Object.defineProperty(globalThis, 'localStorage', {
+      configurable: true,
+      value: {
+        getItem: () => null,
+        removeItem: () => undefined,
+        setItem: () => {
+          throw new Error('localStorage blocked');
+        },
+      },
+    });
+    setPortableStateRepositoryForTests(repository);
+    try {
+      const epoch = await beginBackupRestore({ profileIds: ['imported'] });
+      await expect(
+        commitDatasetGeneration(epoch, [
+          { key: 'almamesh-profiles', value: envelope({ profiles: {} }) },
+        ]),
+      ).resolves.toBeUndefined();
+      expect(JSON.parse((await repository.read(PORTABLE_LEDGER_KEY)) as string)).toMatchObject({
+        activeEpoch: epoch,
+        restoreEpoch: epoch,
+        restoreInProgress: false,
+      });
+    } finally {
+      setPortableStateRepositoryForTests(undefined);
+      if (originalStorage === undefined) delete (globalThis as { localStorage?: unknown }).localStorage;
+      else Object.defineProperty(globalThis, 'localStorage', originalStorage);
+    }
+  });
+
+  it('does not report import failure when derived cache cleanup fails after the SQLite flip', async () => {
+    const repository = new PortableStateRepository(new PortableMemoryStore());
+    const originalIndexedDb = globalThis.indexedDB;
+    setPortableStateRepositoryForTests(repository);
+    Object.defineProperty(globalThis, 'indexedDB', {
+      configurable: true,
+      value: {
+        open: () => {
+          throw new Error('derived IndexedDB is blocked');
+        },
+      },
+    });
+    try {
+      const epoch = await beginBackupRestore({ profileIds: ['imported'] });
+      await expect(
+        commitDatasetGeneration(
+          epoch,
+          [{ key: 'almamesh-profiles', value: envelope({ profiles: { imported: {} } }) }],
+          ['almamesh-chat-vectors'],
+          { memoryRebuildPending: true },
+        ),
+      ).resolves.toBeUndefined();
+      expect(stateOf((await repository.read('almamesh-profiles')) as string).profiles).toEqual({
+        imported: {},
+      });
+      expect(JSON.parse((await repository.read(PORTABLE_LEDGER_KEY)) as string)).toMatchObject({
+        activeEpoch: epoch,
+        restoreInProgress: false,
+        memoryRebuildPending: true,
+      });
+    } finally {
+      setPortableStateRepositoryForTests(undefined);
+      Object.defineProperty(globalThis, 'indexedDB', {
+        configurable: true,
+        value: originalIndexedDb,
+      });
+    }
+  });
+});
+
+describe('derived IndexedDB caches beside the SQLite ledger', () => {
+  // Production keeps the canonical ledger in SQLite; the IndexedDB keyval
+  // store holds only derived caches (the predictive store) and has no ledger.
+  // Reading such a cache used to publish the EMPTY IndexedDB ledger (epoch 0)
+  // as this realm's observed restore epoch, so after any restore or deletion:
+  // - every startup/visibility reconcile saw a "newer dataset" and replayed a
+  //   full dataset replace (CI run 37098561922: a click on Generate waited
+  //   behind it past the 30 s budget, 0 provider calls), and
+  // - portable writes were refused as stale until the next ledger read.
+  async function withSqliteAtEpochOne(run: (repository: PortableStateRepository) => Promise<void>) {
+    const originalIndexedDb = globalThis.indexedDB;
+    Object.defineProperty(globalThis, 'indexedDB', { value: new IDBFactory(), configurable: true });
+    const repository = new PortableStateRepository(new PortableMemoryStore());
+    setPortableStateRepositoryForTests(repository);
+    try {
+      const epoch = await beginDatasetMutation();
+      await commitDatasetGeneration(epoch, []);
+      expect(epoch).toBe(1);
+      // idb-keyval binds its keyval store once per module, so clear the cache row.
+      await deletionAwareIdbStorage.removeItem('almamesh-predictive');
+      await run(repository);
+    } finally {
+      setPortableStateRepositoryForTests(undefined);
+      Object.defineProperty(globalThis, 'indexedDB', { value: originalIndexedDb, configurable: true });
+    }
+  }
+
+  it('reading a derived cache does not make the current dataset look newer', async () => {
+    await withSqliteAtEpochOne(async () => {
+      expect((await adoptLatestDatasetEpoch()).changed).toBe(false);
+      await deletionAwareIdbStorage.getItem('almamesh-predictive');
+      expect(await adoptLatestDatasetEpoch()).toEqual({ changed: false, epoch: 1 });
+    });
+  });
+
+  it('a portable write after a derived-cache read is persisted, not refused as stale', async () => {
+    await withSqliteAtEpochOne(async () => {
+      await deletionAwareIdbStorage.getItem('almamesh-profiles');
+      await deletionAwareIdbStorage.getItem('almamesh-predictive');
+      await deletionAwareIdbStorage.setItem('almamesh-profiles', envelope({ kept: true }));
+      expect(
+        stateOf((await deletionAwareIdbStorage.getItem('almamesh-profiles')) as string),
+      ).toMatchObject({ kept: true });
+    });
+  });
+
+  it('a derived cache still round-trips after a restore', async () => {
+    await withSqliteAtEpochOne(async () => {
+      await deletionAwareIdbStorage.getItem('almamesh-predictive');
+      await deletionAwareIdbStorage.setItem('almamesh-predictive', envelope({ cached: 1 }));
+      expect(
+        stateOf((await deletionAwareIdbStorage.getItem('almamesh-predictive')) as string),
+      ).toEqual({ cached: 1 });
+    });
+  });
+
+  it('a fresh realm adopting an untouched ledger does not replay a dataset replace', async () => {
+    // A first visit has no restore-epoch mirror. Before any store read, the
+    // startup reconcile adopts the ledger; generation 0 with no restore in
+    // progress is the dataset this realm is already showing. Treating the
+    // unset epoch as "changed" replays a full replace that rehydrates every
+    // store mid-boot (Dagger pdf: the synthetic report lost its reading).
+    // main hid this only because the predictive cache read happened to set 0.
+    vi.resetModules();
+    const fresh = await import('./deletionTombstones');
+    fresh.setPortableStateRepositoryForTests(new PortableStateRepository(new PortableMemoryStore()));
+    try {
+      expect(await fresh.adoptLatestDatasetEpoch()).toEqual({ changed: false, epoch: 0 });
+    } finally {
+      fresh.setPortableStateRepositoryForTests(undefined);
+    }
+  });
+
+  it('a fresh realm whose ledger already moved past generation 0 still reconciles', async () => {
+    vi.resetModules();
+    const fresh = await import('./deletionTombstones');
+    const repository = new PortableStateRepository(new PortableMemoryStore());
+    await repository.write(PORTABLE_LEDGER_KEY, JSON.stringify({ ...TOMBSTONES, profileIds: [] }));
+    fresh.setPortableStateRepositoryForTests(repository);
+    try {
+      expect(await fresh.adoptLatestDatasetEpoch()).toEqual({ changed: true, epoch: 2 });
+    } finally {
+      fresh.setPortableStateRepositoryForTests(undefined);
+    }
+  });
+
+  it.each([
+    ['another tab committed a newer dataset', { restoreEpoch: 2, activeEpoch: 2, restoreInProgress: false }],
+    ['a restore is in progress', { restoreEpoch: 1, activeEpoch: 1, restoreInProgress: true }],
+  ])('refuses a derived-cache write when %s', async (_case, ledger) => {
+    await withSqliteAtEpochOne(async (repository) => {
+      await repository.write(PORTABLE_LEDGER_KEY, JSON.stringify({ ...TOMBSTONES, ...ledger }));
+      await deletionAwareIdbStorage.setItem('almamesh-predictive', envelope({ stale: true }));
+      expect(await deletionAwareIdbStorage.getItem('almamesh-predictive')).toBeNull();
+    });
   });
 });
 

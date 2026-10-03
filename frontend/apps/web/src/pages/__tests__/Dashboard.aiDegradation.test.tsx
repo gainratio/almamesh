@@ -61,6 +61,7 @@ vi.mock('../../components/features/dashboard', () => ({
 }));
 
 import {
+  hydrateLlmSettings,
   LlmRequestError,
   openRouterPreset,
   streamNatalInterpretation,
@@ -164,7 +165,7 @@ const PROVIDER_DOWN = new LlmRequestError(
 describe('Dashboard — AI narration degrades gracefully', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    localStorage.clear();
+    hydrateLlmSettings(null);
     vi.spyOn(console, 'error').mockImplementation(() => {});
     vi.mocked(readLocalPrimaryChart).mockResolvedValue(primaryChartResponse());
     useChartLibraryStore.setState({ charts: { 'chart-1': storedChart() }, hydrated: true });
@@ -258,7 +259,7 @@ describe('Dashboard — AI narration degrades gracefully', () => {
     down.unmount();
 
     // --- mode 3: nothing connected yet -> setup, not failure.
-    localStorage.clear();
+    hydrateLlmSettings(null);
     useInterpretationStore.setState({ byChart: {} });
     renderDashboard();
     const setup = await screen.findByTestId('interpretation-cta', undefined, { timeout: 5000 });

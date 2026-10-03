@@ -9,8 +9,8 @@
  * `document.documentElement.lang`, and threads `language` into the LLM prompts so
  * readings/chat answer in the chosen language.
  *
- * Persistence is a browser-only enhancement. Node-based SSR/tests use the
- * explicit fallback seam and the store otherwise runs in memory.
+ * Production persistence is canonical SQLite. Node-based SSR/tests use the
+ * explicit in-memory fallback seam.
  */
 
 import { create, type StateCreator } from 'zustand';
@@ -93,8 +93,8 @@ const languageStoreCreator: StateCreator<LanguageStore> = (set) => ({
 
 /**
  * Persisted language store. Only the `language` field is written; the actions
- * are recreated on rehydrate. Production uses portable SQLite; localStorage is
- * retained only as a disposable mirror and as the non-browser test seam.
+ * are recreated on rehydrate. Production uses portable SQLite exclusively;
+ * legacy Web Storage is read only by the one-time migration boundary.
  */
 export const useLanguageStore = create<LanguageStore>()(
   persist<LanguageStore, [], [], PersistedLanguageState>(languageStoreCreator, {

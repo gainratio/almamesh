@@ -203,7 +203,7 @@ RectificationResult {
   honesty_note_key: str                      # i18n key, not baked prose
 }
 
-# Frontend store (IndexedDB, per profile) — extended
+# Frontend store (canonical OPFS SQLite row, per profile) — extended
 LifeEvent { id: string; date: string; category: LifeEventCategory; note?: string; createdAt: string }
 ```
 

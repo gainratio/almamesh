@@ -281,12 +281,16 @@ export async function seedChart(
   });
   const confirm = page.getByTestId('backup-confirm-import');
   await confirm.waitFor({ state: 'visible' });
+  await page
+    .getByTestId('backup-safety-passphrase-input')
+    .fill('almamesh-test-safety-passphrase');
   const [safetyDownload] = await Promise.all([
     page.waitForEvent('download'),
-    page.waitForEvent('domcontentloaded'),
     confirm.click(),
   ]);
   await safetyDownload.cancel();
+  await page.getByTestId('backup-safety-confirmation').waitFor({ state: 'visible' });
+  await Promise.all([page.waitForEvent('domcontentloaded'), confirm.click()]);
 
   return {
     lagna: result.lagna,

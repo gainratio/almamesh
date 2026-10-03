@@ -211,14 +211,21 @@ export type {
 
 export {
   readLlmSettings,
+  hydrateLlmSettings,
   writeLlmSettings,
   applyLlmSettings,
   applyInterpretationSettings,
   applyChatSettings,
   describeLlmStatus,
+  configureLlmSettingsPersistence,
   LLM_SETTINGS_KEY,
 } from "./settings";
-export type { LlmSettings, LlmStatus, LlmProviderKind } from "./settings";
+export type {
+  LlmSettings,
+  LlmStatus,
+  LlmProviderKind,
+  LlmSettingsPersistence,
+} from "./settings";
 
 // --- The one-call convenience used by the store/hook layer. ---
 
