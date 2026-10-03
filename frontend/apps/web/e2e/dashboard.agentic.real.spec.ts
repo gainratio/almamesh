@@ -15,9 +15,11 @@ import { bootEngine, seedChart, LLM_SETTINGS_KEY } from './interpretation.helper
  *      Also proves the typing indicator (`chat-loading`) appears before output.
  *
  * This is a REAL integration test: real in-browser Pyodide engine, a real Delhi
- * sidereal chart generated in-tab, and a LIVE OpenRouter round-trip with a
- * tool-capable model (deepseek/deepseek-v4-pro). The OpenRouter key is read ONLY
- * from process.env (never bundled).
+ * sidereal chart generated in-tab, and a LIVE OpenRouter round-trip. The reading
+ * uses the seeded `model` (deepseek/deepseek-v4-pro); chat has no `chatModel`
+ * saved, so it runs on the default chat tier (CHAT_CLOUD_MODEL,
+ * deepseek/deepseek-v4.1-flash). The OpenRouter key is read ONLY from
+ * process.env (never bundled).
  *
  * Run:  bun run test:e2e:dashboard:agentic:real   (from apps/web)
  *       (set OPENROUTER_API_KEY=... or the test self-skips.)
@@ -130,6 +132,7 @@ test('[real] dashboard: timer + life phase + exact-day agentic chat', async ({
   await expect(page.getByTestId('chat-agent-mode')).toHaveCount(0);
   await chatInput.fill('What planetary influences matter most for me today?');
   await page.getByTestId('chat-send-button').click();
+  const sentAt = Date.now();
 
   // (i) The typing indicator (chat-loading dots) must show BEFORE any answer
   //     text streams in — this also covers the agentic tool-lookup pause.
@@ -150,6 +153,7 @@ test('[real] dashboard: timer + life phase + exact-day agentic chat', async ({
     timeout: 480_000,
   });
   const answerText = (await assistantMessage.textContent()) ?? '';
+  console.log(`[chat timing] send -> grounded answer ${Date.now() - sentAt} ms`);
 
   await page.screenshot({
     path: '/tmp/almamesh-verify/chat-local-time.png',
@@ -176,12 +180,18 @@ test('[real] dashboard: timer + life phase + exact-day agentic chat', async ({
     .toBeGreaterThanOrEqual(1);
 
   const firstAgentRequest = agentRequestBodies[0] as {
+    model?: unknown;
     stream?: unknown;
     tool_choice?: unknown;
     tools?: Array<{ function?: { name?: string } }>;
     messages?: unknown[];
   };
-  expect(firstAgentRequest.stream).toBe(false);
+  // Chat runs on the default chat tier, not the seeded reading model.
+  expect(firstAgentRequest.model).toBe('deepseek/deepseek-v4.1-flash');
+  // Inverted 2026-10: this asserted `stream: false`. Since 5c99027 the
+  // tool-decision round streams so a no-tool answer shows token by token
+  // (agent.test.ts and chat.grounding.spec.ts already pin `stream: true`).
+  expect(firstAgentRequest.stream).toBe(true);
   expect(firstAgentRequest.tool_choice).toBe('auto');
   expect(firstAgentRequest.tools?.map((tool) => tool.function?.name)).toEqual([
     'get_current_datetime',
