@@ -37,6 +37,31 @@ vi.mock('@almamesh/llm', async () => {
   };
 });
 
+// Startup gate: paid generation waits for the data lifecycle to settle. Tests
+// can hold it closed to reproduce clicks that land while the app is starting.
+const lifecycleGate = vi.hoisted(() => ({ wait: null as Promise<void> | null }));
+vi.mock('../../lib/profileDataLifecycle', async () => {
+  const actual = await vi.importActual<typeof import('../../lib/profileDataLifecycle')>(
+    '../../lib/profileDataLifecycle',
+  );
+  return {
+    ...actual,
+    whenDataLifecycleReady: () => lifecycleGate.wait ?? actual.whenDataLifecycleReady(),
+  };
+});
+
+/** Hold the startup gate closed; call the returned function to open it. */
+function holdStartup(): () => void {
+  let open!: () => void;
+  lifecycleGate.wait = new Promise<void>((resolve) => {
+    open = resolve;
+  });
+  return () => {
+    lifecycleGate.wait = null;
+    open();
+  };
+}
+
 // The dashboard reads its primary chart through this helper (via react-query).
 vi.mock('../../lib/localChartRead', () => ({
   readLocalPrimaryChart: vi.fn(),
@@ -246,6 +271,7 @@ async function settle(): Promise<void> {
 describe('Dashboard — regenerate reading', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    lifecycleGate.wait = null;
     localStorage.clear();
     vi.mocked(readLocalPrimaryChart).mockResolvedValue(primaryChartResponse());
     useChartLibraryStore.setState({ charts: { 'chart-1': storedChart() }, hydrated: true });
@@ -403,9 +429,65 @@ describe('Dashboard — regenerate reading', () => {
     expect(mockedTimelineStream).not.toHaveBeenCalled();
   });
 
+  it('REGRESSION: a second Generate click while the app is still starting spends exactly one paid run', async () => {
+    configureCloudAi();
+    useInterpretationStore.setState({ byChart: {} });
+    mockedStream.mockImplementation(pendingStream());
+    const openStartup = holdStartup();
+    renderDashboard();
+
+    const generate = await screen.findByTestId<HTMLButtonElement>('generate-reading');
+    // Double activation while startup is still pending (double-click, impatient
+    // second press): the second must attach to the first run, never buy another.
+    fireEvent.click(generate);
+    fireEvent.click(generate);
+    await settle();
+    // The in-flight run is visible before startup finishes: the button is
+    // disabled and shows progress instead of inviting a third press.
+    expect(generate.disabled).toBe(true);
+    openStartup();
+
+    await waitFor(() => expect(mockedStream).toHaveBeenCalledTimes(1));
+    await settle();
+    expect(mockedStream).toHaveBeenCalledTimes(1);
+  });
+
+  it('REGRESSION: a second timeline click while the app is still starting spends exactly one paid run', async () => {
+    configureCloudAi();
+    seedCompleteReading(currentProvenance());
+    seedReadyPredictiveFacts();
+    mockedTimelineStream.mockImplementation(pendingTimelineStream());
+    const openStartup = holdStartup();
+    renderDashboard();
+
+    const generate = await screen.findByTestId<HTMLButtonElement>('generate-timeline');
+    fireEvent.click(generate);
+    fireEvent.click(generate);
+    await settle();
+    expect(generate.disabled).toBe(true);
+    openStartup();
+
+    await waitFor(() => expect(mockedTimelineStream).toHaveBeenCalledTimes(1));
+    await settle();
+    expect(mockedTimelineStream).toHaveBeenCalledTimes(1);
+  });
+
   it('shows independent timeline progress and never replaces the retained natal reading', async () => {
     configureCloudAi();
     seedCompleteReading(currentProvenance());
+    seedReadyPredictiveFacts();
+    mockedTimelineStream.mockImplementation(pendingTimelineStream());
+    renderDashboard();
+
+    fireEvent.click(await screen.findByTestId('generate-timeline'));
+
+    await waitFor(() => expect(mockedTimelineStream).toHaveBeenCalledTimes(1));
+    expect(await screen.findByTestId('timeline-progress')).toBeTruthy();
+    expect(screen.getByTestId('reading-section').textContent ?? '').toContain(LAYMAN_SUMMARY);
+    expect(mockedStream).not.toHaveBeenCalled();
+  });
+
+  function seedReadyPredictiveFacts(): void {
     const today = predictiveReferenceInstant(new Date(), 'Asia/Kolkata').slice(0, 10);
     usePredictiveStore.setState({
       status: 'ready',
@@ -424,16 +506,7 @@ describe('Dashboard — regenerate reading', () => {
         domains_context: { forecasts: {} },
       } as never,
     });
-    mockedTimelineStream.mockImplementation(pendingTimelineStream());
-    renderDashboard();
-
-    fireEvent.click(await screen.findByTestId('generate-timeline'));
-
-    await waitFor(() => expect(mockedTimelineStream).toHaveBeenCalledTimes(1));
-    expect(await screen.findByTestId('timeline-progress')).toBeTruthy();
-    expect(screen.getByTestId('reading-section').textContent ?? '').toContain(LAYMAN_SUMMARY);
-    expect(mockedStream).not.toHaveBeenCalled();
-  });
+  }
 
   it('shows the road ahead as it is written, with a live word count', async () => {
     configureCloudAi();

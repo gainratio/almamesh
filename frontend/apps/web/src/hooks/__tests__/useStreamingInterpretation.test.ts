@@ -246,7 +246,10 @@ describe('useStreamingInterpretation (structured, store-backed)', () => {
     await act(async () => Promise.resolve());
 
     expect(mockedStream).not.toHaveBeenCalled();
-    expect(result.current.status).toBe('idle');
+    // INVERTED (was 'idle'): a requested paid run is in flight from the click,
+    // not only once startup finishes — 'idle' here is what let a second click
+    // buy a second provider run.
+    expect(result.current.status).toBe('generating');
 
     releaseHydration?.();
     await act(async () => generation);
@@ -273,7 +276,10 @@ describe('useStreamingInterpretation (structured, store-backed)', () => {
 
     expect(mockedInterpretationHydration).not.toHaveBeenCalled();
     expect(mockedStream).not.toHaveBeenCalled();
-    expect(result.current.status).toBe('idle');
+    // INVERTED (was 'idle'): a requested paid run is in flight from the click,
+    // not only once startup finishes — 'idle' here is what let a second click
+    // buy a second provider run.
+    expect(result.current.status).toBe('generating');
 
     releaseLifecycle?.();
     await act(async () => generation);

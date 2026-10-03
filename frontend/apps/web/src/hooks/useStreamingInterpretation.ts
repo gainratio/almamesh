@@ -56,6 +56,7 @@ import { createFrameBatcher, type FrameBatcher } from '../lib/frameBatcher';
 import { whenDataLifecycleReady } from '../lib/profileDataLifecycle';
 import { buildEnsurePredictiveInput, predictiveReferenceInstant } from '../lib/predictive';
 import { fetchEvidenceAnnotations } from './evidenceAnnotations';
+import { useSingleFlight } from './useSingleFlight';
 
 /** The structured sections, in the order the generator announces them. */
 export const INTERPRETATION_SECTIONS: readonly InterpretationSectionKey[] = [
@@ -88,7 +89,10 @@ export interface StreamInterpretationOptions {
 }
 
 export interface UseStreamingInterpretationResult {
-  /** Begin (or restart) generation for a chart; resolves when done/aborted. */
+  /**
+   * Begin generation for a chart; resolves when done/aborted. A call while a
+   * run for the same chart is starting or streaming attaches to that run.
+   */
   streamInterpretation: (chartId: string, options: StreamInterpretationOptions) => Promise<void>;
   /** Explicitly refresh the date-sensitive timeline; never called on mount/day rollover. */
   streamCurrentTimeline: (chartId: string, options: StreamInterpretationOptions) => Promise<void>;
@@ -469,11 +473,13 @@ export function useStreamingInterpretation(chartId?: string | null): UseStreamin
     }
   }, []);
 
-  const streamInterpretation = useCallback(
-    async (id: string, options: StreamInterpretationOptions) => {
-      if (options.intent !== 'user-request') {
-        return;
-      }
+  // One paid run per chart per kind: a repeat click while a run is starting
+  // or streaming attaches to it (see useSingleFlight).
+  const natalFlight = useSingleFlight();
+  const timelineFlight = useSingleFlight();
+
+  const runNatal = useCallback(
+    async (id: string, options: StreamInterpretationOptions, release: () => void) => {
       // Startup may reconcile a newer portable dataset after Zustand's first
       // hydration. Both phases can replace the live map, so paid work must wait
       // for the whole lifecycle boundary before reading or mutating the store.
@@ -545,6 +551,10 @@ export function useStreamingInterpretation(chartId?: string | null): UseStreamin
         const failure = describeError(err);
         setError(id, failure.message, failure.kind, runToken);
         return;
+      } finally {
+        // The reading phase ends here: annotations below are background work
+        // and must not swallow a deliberate new request.
+        release();
       }
 
       // ---------------------------------------------------------------------
@@ -580,9 +590,17 @@ export function useStreamingInterpretation(chartId?: string | null): UseStreamin
     ]
   );
 
-  const streamTimeline = useCallback(
+  const runNatalFlight = natalFlight.run;
+  const streamInterpretation = useCallback(
+    (id: string, options: StreamInterpretationOptions): Promise<void> => {
+      if (options.intent !== 'user-request') return Promise.resolve();
+      return runNatalFlight(id, (release) => runNatal(id, options, release), cancel);
+    },
+    [cancel, runNatal, runNatalFlight],
+  );
+
+  const runTimeline = useCallback(
     async (id: string, options: StreamInterpretationOptions) => {
-      if (options.intent !== 'user-request') return;
       await whenDataLifecycleReady();
       await whenInterpretationHydrated();
       const stored = useChartLibraryStore.getState().getChart(id);
@@ -681,9 +699,19 @@ export function useStreamingInterpretation(chartId?: string | null): UseStreamin
     ],
   );
 
+  const runTimelineFlight = timelineFlight.run;
+  const streamTimeline = useCallback(
+    (id: string, options: StreamInterpretationOptions): Promise<void> => {
+      if (options.intent !== 'user-request') return Promise.resolve();
+      return runTimelineFlight(id, () => runTimeline(id, options), cancelCurrentTimeline);
+    },
+    [cancelCurrentTimeline, runTimeline, runTimelineFlight],
+  );
+
   const storedStatus: InterpretationStatus = entry?.status ?? 'idle';
   const waitingForDurability = durabilityPendingRun !== null;
-  const status: InterpretationStatus = waitingForDurability
+  const natalInFlight = chartId != null && natalFlight.activeKey === chartId;
+  const status: InterpretationStatus = waitingForDurability || natalInFlight
     ? 'generating'
     : storedStatus;
   const completed = entry?.sections ?? {};
@@ -695,7 +723,8 @@ export function useStreamingInterpretation(chartId?: string | null): UseStreamin
   }));
   const storedTimelineStatus: InterpretationStatus = entry?.timeline?.status ?? 'idle';
   const waitingForTimelineDurability = timelineDurabilityPendingRun !== null;
-  const timelineStatus: InterpretationStatus = waitingForTimelineDurability
+  const timelineInFlight = chartId != null && timelineFlight.activeKey === chartId;
+  const timelineStatus: InterpretationStatus = waitingForTimelineDurability || timelineInFlight
     ? 'generating'
     : storedTimelineStatus;
   const timelineCompleted = entry?.timeline?.sections ?? {};

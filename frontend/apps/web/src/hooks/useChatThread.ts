@@ -228,6 +228,9 @@ export function useChatThread(
   const [streamingDraft, setStreamingDraft] = useState('');
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const ownedSummaryControllers = useRef(new Set<AbortController>());
+  // `isStreaming` state only reaches `submit` after a re-render; this ref closes
+  // the gap so two sends from the same render never buy two paid answers.
+  const sendInFlight = useRef(false);
 
   useEffect(() => {
     const abortOwned = () => {
@@ -263,7 +266,7 @@ export function useChatThread(
   const submit = useCallback(
     async (question: string, stream: ChatStreamFn): Promise<void> => {
       const q = question.trim();
-      if (!q || !profileId || isStreaming) {
+      if (!q || !profileId || isStreaming || sendInFlight.current) {
         return;
       }
       const store = useChatStore.getState();
@@ -275,6 +278,9 @@ export function useChatThread(
       const userMessage = store.appendMessage(tid, 'user', q);
       void indexChatMessage({ id: userMessage.id, thread_id: tid, profile_id: profileId, content: q });
 
+      // Everything above is synchronous, so no second send can interleave
+      // before this flag is set.
+      sendInFlight.current = true;
       setIsStreaming(true);
       setStreamingDraft('');
       try {
@@ -330,6 +336,7 @@ export function useChatThread(
         // the model-visible history (see `toHistory`), never indexed for RAG.
         store.appendMessage(tid, 'assistant', describeChatStreamError(error), { error: true });
       } finally {
+        sendInFlight.current = false;
         setIsStreaming(false);
         setStreamingDraft('');
       }
