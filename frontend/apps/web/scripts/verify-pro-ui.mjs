@@ -32,6 +32,7 @@ import { mkdirSync } from 'node:fs'
 import { Buffer } from 'node:buffer'
 import { chromium } from '@playwright/test'
 import { chartDayReferenceInstant } from './predictiveReference.mjs'
+import { confirmLegacyBackupImport } from './confirmLegacyBackupImport.mjs'
 
 const BASE_URL = process.argv[2] ?? 'http://localhost:4173'
 const PROOF_DIR = '/tmp/almamesh-proof-pro-ui'
@@ -127,14 +128,7 @@ async function restoreBackup(page, backup) {
     mimeType: 'application/json',
     buffer: Buffer.from(backup, 'utf8'),
   })
-  const confirm = page.getByTestId('backup-confirm-import')
-  await confirm.waitFor({ state: 'visible' })
-  const [safetyDownload] = await Promise.all([
-    page.waitForEvent('download'),
-    page.waitForEvent('domcontentloaded'),
-    confirm.click(),
-  ])
-  await safetyDownload.cancel()
+  await confirmLegacyBackupImport(page)
 }
 
 /** Innermost elements whose entire visible text is exactly "AlmaMesh" — the

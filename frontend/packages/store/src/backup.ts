@@ -16,7 +16,6 @@
  * legacy JSON exports stay deterministic in tests.
  */
 
-import { safeWarn } from '@almamesh/shared-types';
 import type {
   BackupEnvelopePlain,
   BackupStoreSnapshot,
@@ -27,11 +26,17 @@ import {
   beginBackupRestore,
   commitDatasetGeneration,
   deletionAwareIdbStorage,
+  flushPortablePersistence,
   portablePreferenceStorage,
+  readCanonicalDatasetValue,
   requirePortableStateRepository,
 } from './deletionTombstones';
-import { PORTABLE_STATE_KEYS, readPortableStateDatabase } from './portableState';
-import { browserLocalStorage } from './webStorage';
+import {
+  decodePortablePreferences,
+  PORTABLE_PREFERENCES_KEY,
+  PORTABLE_STATE_KEYS,
+  readPortableStateDatabase,
+} from './portableState';
 
 /** Compatibility tier labels retained by the legacy JSON backup envelope. */
 export type BackupTier = 'local' | 'idb';
@@ -58,16 +63,15 @@ export const BACKUP_STORES: ReadonlyArray<{ key: string; tier: BackupTier }> = [
   { key: 'almamesh-rectification-records', tier: 'idb' },
   { key: 'almamesh-chat-history', tier: 'idb' },
   { key: 'almamesh-interpretations', tier: 'idb' },
+  { key: 'almamesh-mesh-readings', tier: 'idb' },
+  { key: 'almamesh-predictive', tier: 'idb' },
   { key: 'almamesh-language', tier: 'local' },
 ];
-
-/** localStorage route-guard flag — re-set on import iff charts were restored. */
-export const CHART_FLAG_KEY = 'almamesh-chart';
 
 /** idb-keyval RAG-embeddings key — deleted on import so vectors rebuild from chat. */
 export const CHAT_VECTORS_KEY = 'almamesh-chat-vectors';
 
-/** idb-keyval predictive cache — deleted on import so forecasts rebuild from restored charts. */
+/** Canonical completed predictive results; the historical name remains API-compatible. */
 export const PREDICTIVE_CACHE_KEY = 'almamesh-predictive';
 
 /** A typed, code-tagged failure so the UI can message the exact refusal reason. */
@@ -79,6 +83,69 @@ export class BackupError extends Error {
     super(message);
     this.name = 'BackupError';
   }
+}
+
+/**
+ * The destination changed after its pre-import safety snapshot. Replace must
+ * stop so data created in another tab is never absent from both the live
+ * database and the safety file.
+ */
+export class PortableImportRevisionConflictError extends Error {
+  public override readonly name = 'PortableImportRevisionConflictError';
+
+  public constructor(
+    public readonly safetyRevision: number,
+    public readonly fencedRevision: number,
+  ) {
+    super(
+      'Your AlmaMesh data changed after the safety backup. Start the import again so a fresh safety backup includes those changes.',
+    );
+  }
+}
+
+let armedPortableImportRevision: number | undefined;
+
+/** Read the exact monotonic SQLite revision after all writes in this realm settle. */
+export async function readPortableStateRevision(): Promise<number> {
+  await flushPortablePersistence();
+  const repository = await requirePortableStateRepository();
+  return (await repository.runtimeInfo()).epoch;
+}
+
+/** Arm the next production Replace with the revision protected by its safety file. */
+export function armPortableImportRevision(revision: number): void {
+  if (!Number.isSafeInteger(revision) || revision < 0) {
+    throw new Error('Portable import safety revision is invalid.');
+  }
+  armedPortableImportRevision = revision;
+}
+
+/** Clear an unconsumed fence when orchestration exits before Replace starts. */
+export function clearPortableImportRevisionFence(): void {
+  armedPortableImportRevision = undefined;
+}
+
+/**
+ * Acquiring the restore lease is exactly one SQLite transaction. Therefore its
+ * revision must be the safety revision plus one. Any larger value proves that a
+ * canonical write landed after the safety snapshot and before the lease.
+ */
+export function assertPortableImportRevision(
+  safetyRevision: number,
+  fencedRevision: number,
+): void {
+  if (fencedRevision !== safetyRevision + 1) {
+    throw new PortableImportRevisionConflictError(safetyRevision, fencedRevision);
+  }
+}
+
+async function enforceArmedPortableImportRevision(): Promise<void> {
+  const safetyRevision = armedPortableImportRevision;
+  armedPortableImportRevision = undefined;
+  if (safetyRevision === undefined) return;
+  const repository = await requirePortableStateRepository();
+  const fencedRevision = (await repository.runtimeInfo()).epoch;
+  assertPortableImportRevision(safetyRevision, fencedRevision);
 }
 
 /**
@@ -150,10 +217,10 @@ interface StagedWrite {
  *
  * This is a TRUE "Replace all": a known store the envelope OMITS is DELETED, so
  * no stale local data survives an import of a sparse backup. Unknown store keys
- * are ignored (forward-compatible). After the writes it sets the chart route-guard
- * flag iff charts came back (else clears it) and deletes derived RAG/predictive
- * caches so they rebuild from the restored source data. Zustand `persist` + each
- * store's `migrate` run on the next app load.
+ * are ignored (forward-compatible). After the writes it deletes derived RAG
+ * vectors so they rebuild from restored chat. Predictive results are canonical
+ * and restored with their chart. Zustand `persist` + each store's `migrate` run
+ * on the next app load.
  */
 export async function applyBackup(envelope: BackupEnvelopePlain, deps: BackupDeps): Promise<void> {
   if (envelope.format !== 'almamesh-backup') {
@@ -173,7 +240,6 @@ export async function applyBackup(envelope: BackupEnvelopePlain, deps: BackupDep
 
   // STAGE — serialize every known store up front; any throw aborts before writes.
   const staged: StagedWrite[] = [];
-  let chartLibraryPresent = false;
   for (const [key, snapshot] of Object.entries(envelope.stores)) {
     const tier = tierByKey.get(key);
     if (tier === undefined) continue; // unknown/future key — ignore, don't fail
@@ -188,7 +254,6 @@ export async function applyBackup(envelope: BackupEnvelopePlain, deps: BackupDep
           : {}),
       }),
     });
-    if (key === 'almamesh-chart-library') chartLibraryPresent = true;
   }
 
   // WRITE — reached only once every present store staged cleanly. Not atomic
@@ -203,35 +268,8 @@ export async function applyBackup(envelope: BackupEnvelopePlain, deps: BackupDep
     if (!presentKeys.has(entry.key)) await deps.tiers[entry.tier].del(entry.key);
   }
 
-  // Post-write housekeeping: the route-guard flag tracks charts-present.
-  if (chartLibraryPresent) await deps.tiers.local.set(CHART_FLAG_KEY, '1');
-  else await deps.tiers.local.del(CHART_FLAG_KEY);
-  await Promise.all([
-    deps.tiers.idb.del(CHAT_VECTORS_KEY),
-    deps.tiers.idb.del(PREDICTIVE_CACHE_KEY),
-  ]);
-}
-
-/**
- * Update the two synchronous browser mirrors after the authoritative SQLite
- * generation commits. They are routing/preferences conveniences, not source
- * data. A quota or privacy-mode failure therefore reports `false` without
- * turning a durable personal-data restore into a false failure.
- */
-export async function applyLocalRestoreMirrors(
-  local: StorageTier,
-  languageSerialized: string | null,
-  hasCharts: boolean,
-): Promise<boolean> {
-  try {
-    if (languageSerialized === null) await local.del('almamesh-language');
-    else await local.set('almamesh-language', languageSerialized);
-    if (hasCharts) await local.set(CHART_FLAG_KEY, '1');
-    else await local.del(CHART_FLAG_KEY);
-    return true;
-  } catch {
-    return false;
-  }
+  // Derived semantic memory never travels as user data; it rebuilds from chat.
+  await deps.tiers.idb.del(CHAT_VECTORS_KEY);
 }
 
 /** Production Replace: commit every canonical store and generation pointer atomically in SQLite. */
@@ -244,6 +282,7 @@ export async function applyBrowserBackupAtomically(
     await applyBackup(envelope, deps);
     return;
   }
+  await enforceArmedPortableImportRevision();
   const writes = BACKUP_STORES.map((entry) => {
     const snapshot = envelope.stores[entry.key];
     return {
@@ -257,25 +296,14 @@ export async function applyBrowserBackupAtomically(
             }),
     };
   });
-  await commitDatasetGeneration(epoch, writes, [CHAT_VECTORS_KEY, PREDICTIVE_CACHE_KEY], {
+  await commitDatasetGeneration(epoch, writes, [CHAT_VECTORS_KEY], {
     memoryRebuildPending: true,
   });
-
-  const language = envelope.stores['almamesh-language'];
-  const mirrorsApplied = await applyLocalRestoreMirrors(
-    deps.tiers.local,
-    language === undefined
-      ? null
-      : JSON.stringify({ state: language.state, version: language.version }),
-    envelope.stores['almamesh-chart-library'] !== undefined,
-  );
-  if (!mirrorsApplied) {
-    safeWarn('backup.local_mirror_deferred');
-  }
 }
 
 /** Export the canonical browser dataset as a real, standard SQLite database. */
 export async function exportPortableBrowserState(): Promise<Uint8Array> {
+  await flushPortablePersistence();
   return (await requirePortableStateRepository()).exportBytes();
 }
 
@@ -285,24 +313,39 @@ export async function exportPortableBrowserState(): Promise<Uint8Array> {
  * cannot resurrect the pre-import dataset. Legacy JSON imports remain handled
  * by applyBrowserBackupAtomically.
  */
-export async function importPortableBrowserState(bytes: Uint8Array): Promise<void> {
+export interface PortableBrowserImportOptions {
+  /** Historical raw SQLite files predate canonical settings; keep the destination row if absent. */
+  readonly preserveMissingPreferences?: boolean;
+}
+
+export async function importPortableBrowserState(
+  bytes: Uint8Array,
+  options: PortableBrowserImportOptions = {},
+): Promise<void> {
   const imported = await readPortableStateDatabase(bytes);
   const restored = restoredIdsFromPortableRows(imported.values);
+  const importedPreferences = imported.values.get(PORTABLE_PREFERENCES_KEY);
+  const preservedPreferences =
+    importedPreferences === undefined && options.preserveMissingPreferences === true
+      ? await (await requirePortableStateRepository()).read(PORTABLE_PREFERENCES_KEY)
+      : null;
+  const preferencesRaw = importedPreferences ?? preservedPreferences ?? undefined;
+  if (preferencesRaw !== undefined) decodePortablePreferences(preferencesRaw);
   const epoch = await beginBackupRestore(restored);
   try {
+    await enforceArmedPortableImportRevision();
     await commitDatasetGeneration(
       epoch,
       PORTABLE_STATE_KEYS.map((key) => ({
         key,
-        value: imported.values.get(key) ?? null,
+        value:
+          key === PORTABLE_PREFERENCES_KEY
+            ? (preferencesRaw ?? null)
+            : (imported.values.get(key) ?? null),
       })),
-      [CHAT_VECTORS_KEY, PREDICTIVE_CACHE_KEY],
+      [CHAT_VECTORS_KEY],
       { memoryRebuildPending: true },
     );
-    const language = imported.values.get('almamesh-language') ?? null;
-    const storage = browserLocalStorage();
-    if (language === null) storage?.removeItem?.('almamesh-language');
-    else storage?.setItem?.('almamesh-language', language);
   } catch (error) {
     await abortBackupRestore(epoch);
     throw error;
@@ -338,34 +381,22 @@ function restoredIdsFromPortableRows(values: ReadonlyMap<string, string>): {
 }
 
 /**
- * Real browser tiers. Canonical state resolves through SQLite-backed adapters;
- * route flags remain disposable localStorage mirrors and derived caches remain
- * in their rebuildable stores. Window access is lazy so module import is safe.
+ * Real browser tiers. Both historical tier names resolve to canonical SQLite;
+ * derived caches remain outside the export and are rebuilt from canonical rows.
  */
 export function createBrowserTiers(): Record<BackupTier, StorageTier> {
   return {
     local: {
-      get: async (key) =>
-        key === 'almamesh-language'
-          ? await portablePreferenceStorage.getItem(key)
-          : window.localStorage.getItem(key),
+      get: async (key) => await portablePreferenceStorage.getItem(key),
       set: async (key, value) => {
-        if (key === 'almamesh-language') {
-          await portablePreferenceStorage.setItem(key, value);
-          return;
-        }
-        window.localStorage.setItem(key, value);
+        await portablePreferenceStorage.setItem(key, value);
       },
       del: async (key) => {
-        if (key === 'almamesh-language') {
-          await portablePreferenceStorage.removeItem(key);
-          return;
-        }
-        window.localStorage.removeItem(key);
+        await portablePreferenceStorage.removeItem(key);
       },
     },
     idb: {
-      get: async (key) => await deletionAwareIdbStorage.getItem(key),
+      get: async (key) => await readCanonicalDatasetValue(key),
       set: async (key, value) => {
         await deletionAwareIdbStorage.setItem(key, value);
       },

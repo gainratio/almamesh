@@ -8,7 +8,7 @@ import {
 } from '@almamesh/store'
 
 /**
- * AlmaMesh keeps the chart on this device (OPFS SQLite + IndexedDB). Three
+ * AlmaMesh keeps durable product data in one OPFS SQLite database. Three
  * browser states need saying out loud rather than a page that can only hang:
  *
  * - all site storage refused (Safari "Block all cookies" throws SecurityError

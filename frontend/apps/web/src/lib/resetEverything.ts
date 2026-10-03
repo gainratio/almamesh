@@ -4,7 +4,7 @@
  * next start fast and personal.
  *
  * CLEARED (chart + everything derived from it):
- *  - the chart library + the `almamesh-chart` route-guard flag
+ *  - the chart library
  *  - profiles (and the mesh people they hold)
  *  - life events
  *  - chat history (threads + messages)
@@ -17,13 +17,13 @@
  * PRESERVED on purpose:
  *  - the OPFS engine bundle (~38 MB, cached for offline) — never touched, so the
  *    next chart computes immediately without a re-download
- *  - `almamesh-language` and `almamesh-llm-settings` (device preferences)
+ *  - the canonical SQLite language and AI settings (portable preferences)
  *
  * This is deliberately NOT `resetAppData` (the nuclear "wedged client" hatch that
  * unregisters service workers + clears ALL caches/IndexedDB/OPFS). Start-fresh
  * keeps the engine and your preferences; it only forgets your chart and its data.
  *
- * After the clear, the route guard reads no chart flag and `RootRoute` falls back
+ * After the clear, the route guard reads the empty hydrated chart store and `RootRoute` falls back
  * to the Landing splash, so the caller should navigate to `/`.
  */
 
@@ -35,6 +35,7 @@ import {
   whenChartLibraryHydrated,
   whenChatHydrated,
   whenLifeEventsHydrated,
+  whenMeshReadingsHydrated,
   whenPredictiveHydrated,
   whenProfilesHydrated,
   whenRectificationRecordsHydrated,
@@ -43,6 +44,7 @@ import {
   useInterpretationStore,
   useLifeEventsStore,
   useMeshStore,
+  useMeshReadingsStore,
   usePredictiveStore,
   useProfilesStore,
   useRectificationRecordsStore,
@@ -52,8 +54,18 @@ import { createStore, del as idbDel } from 'idb-keyval';
 import { clearMemory } from './chatMemory';
 import { publishDeletionNotice } from './deletionPropagation';
 
-/** The interpretation store's persist key (mirrors interpretation.ts PERSIST_NAME). */
+/** Legacy browser keys removed after canonical SQLite has taken authority. */
 const INTERPRETATIONS_KEY = 'almamesh-interpretations';
+const LEGACY_LOCAL_STORAGE_KEYS = [
+  CHART_LIBRARY_FLAG_KEY,
+  INTERPRETATIONS_KEY,
+  'almamesh-language',
+  'almamesh-llm-settings',
+  'almamesh-content-mode',
+  'almamesh-model-suggestion-dismissed',
+  'almamesh-restore-epoch',
+  'almamesh-restore-in-progress',
+] as const;
 const RESET_IDB_KEYS = [
   'almamesh-chart-library',
   'almamesh-profiles',
@@ -62,6 +74,7 @@ const RESET_IDB_KEYS = [
   'almamesh-rectification-records',
   'almamesh-predictive',
   'almamesh-interpretations',
+  'almamesh-mesh-readings',
 ] as const;
 const legacyKeyvalStore = createStore('keyval-store', 'keyval');
 
@@ -100,6 +113,7 @@ async function waitForResetStoresHydrated(): Promise<void> {
     whenChartLibraryHydrated(),
     whenProfilesHydrated(),
     whenLifeEventsHydrated(),
+    whenMeshReadingsHydrated(),
     whenChatHydrated(),
     whenRectificationRecordsHydrated(),
     whenPredictiveHydrated(),
@@ -124,9 +138,10 @@ const DEFAULT_DEPS: ResetEverythingDeps = {
 
 /**
  * Wipe the chart and everything derived from it, then resolve so the caller can
- * navigate to `/`. Each store is cleared in memory, then its IndexedDB record is
- * deleted through an awaited persistence seam, so even a hard reload re-hydrates
- * from nothing. Preserves the OPFS engine bundle and the device-preference keys.
+ * navigate to `/`. Each store is cleared in memory, then its canonical SQLite
+ * row is deleted through an awaited persistence seam, so even a hard reload
+ * re-hydrates from nothing. Legacy IndexedDB mirrors are retired as cleanup.
+ * Preserves the OPFS engine bundle and canonical SQLite preferences.
  */
 export async function resetEverything(deps: ResetEverythingDeps = DEFAULT_DEPS): Promise<void> {
   await deps.waitForHydration();
@@ -154,6 +169,7 @@ export async function resetEverything(deps: ResetEverythingDeps = DEFAULT_DEPS):
     useLifeEventsStore.getState().clearAll();
     useChatStore.getState().clearAll();
     useInterpretationStore.getState().clearAll();
+    useMeshReadingsStore.getState().clearAll();
     useRectificationRecordsStore.getState().clearAll();
     usePredictiveStore.getState().reset();
     useMeshStore.getState().reset();
@@ -161,8 +177,7 @@ export async function resetEverything(deps: ResetEverythingDeps = DEFAULT_DEPS):
     await deps.clearPersisted(epoch);
     await clearLegacyPersistedRows();
     const storage = getUsableLocalStorage();
-    storage?.removeItem(CHART_LIBRARY_FLAG_KEY);
-    storage?.removeItem(INTERPRETATIONS_KEY);
+    for (const key of LEGACY_LOCAL_STORAGE_KEYS) storage?.removeItem(key);
     await deps.finalizeDatasetReset?.(epoch);
     publishReset({ kind: 'dataset', operation: 'reset', phase: 'complete' });
   } catch (error) {

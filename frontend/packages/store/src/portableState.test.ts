@@ -8,13 +8,20 @@ import {
 
 import {
   LEGACY_MIGRATION_MARKER,
+  decodePortablePreferences,
+  mergeLegacyPreferencesIntoPortableState,
   migrateLegacyState,
+  PORTABLE_DATASET_KEYS,
+  PORTABLE_PREFERENCES_KEY,
+  PORTABLE_STORE_MAX_VERSIONS,
   PORTABLE_STATE_NAMESPACE,
   PORTABLE_STATE_UNAVAILABLE_MESSAGE,
   PortableStateRepository,
+  PortableStateTooNewError,
   PortableStateUnavailableError,
   resolvePortableStateMode,
   supportsPortableState,
+  assertSupportedPortableStateSchema,
 } from './portableState';
 
 class MemorySqliteStore implements SqliteStateStore {
@@ -23,6 +30,8 @@ class MemorySqliteStore implements SqliteStateStore {
   epoch = 0;
   conflictOnce = false;
   integrityChecks = 0;
+  exportCalls = 0;
+  exportHook: (() => Promise<Uint8Array>) | undefined;
 
   async get(namespace: string, key: string) {
     const row = this.values.get(`${namespace}/${key}`);
@@ -91,7 +100,8 @@ class MemorySqliteStore implements SqliteStateStore {
   }
 
   async exportBytes() {
-    return new Uint8Array([1]);
+    this.exportCalls += 1;
+    return this.exportHook === undefined ? new Uint8Array([this.epoch]) : this.exportHook();
   }
   async stageImport(): Promise<SqliteStateImportStage> {
     return {
@@ -118,6 +128,17 @@ class MemorySqliteStore implements SqliteStateStore {
 }
 
 describe('PortableStateRepository', () => {
+  it('classifies a future physical SQLite schema as too new', () => {
+    expect(() => assertSupportedPortableStateSchema(2)).toThrowError(
+      expect.objectContaining({
+        name: 'PortableStateTooNewError',
+        key: 'sqlite-schema',
+        version: 2,
+        maxVersion: 1,
+      }),
+    );
+  });
+
   it('requires every SQLite opfs-wl browser capability explicitly', () => {
     const capable = {
       crossOriginIsolated: true,
@@ -176,18 +197,60 @@ describe('PortableStateRepository', () => {
     expect(sqlite.epoch).toBe(2);
   });
 
-  it('refuses credentials and derived caches at the portable-state boundary', async () => {
+  it('stores predictive results and settings while refusing only derived vector caches', async () => {
     const repository = new PortableStateRepository(new MemorySqliteStore());
 
-    await expect(repository.write('almamesh-llm-settings', 'secret')).rejects.toThrow(
-      /not canonical AlmaMesh data/,
-    );
+    const llmSettings = JSON.stringify({
+      apiBase: 'https://openrouter.ai/api/v1',
+      apiKey: 'sk-synthetic',
+      interpretationModel: 'example/model',
+      privacyMode: 'cloud_premium',
+    });
+    const contentMode = JSON.stringify({ contentMode: 'technical' });
+    const preferences = JSON.stringify({
+      version: 1,
+      values: {
+        'almamesh-llm-settings': llmSettings,
+        'almamesh-content-mode': contentMode,
+      },
+    });
+
+    await expect(repository.write(PORTABLE_PREFERENCES_KEY, preferences)).resolves.toBe(1);
+    await expect(repository.read(PORTABLE_PREFERENCES_KEY)).resolves.toBe(preferences);
     await expect(repository.write('almamesh-chat-vectors', 'derived')).rejects.toThrow(
       /not canonical AlmaMesh data/,
     );
-    await expect(repository.write('almamesh-predictive', 'derived')).rejects.toThrow(
-      /not canonical AlmaMesh data/,
-    );
+    const predictive = JSON.stringify({
+      state: { status: 'ready', profileKey: 'profile-1', requestKey: 'request-1' },
+      version: 3,
+      datasetEpoch: 0,
+    });
+    await expect(repository.write('almamesh-predictive', predictive)).resolves.toBe(2);
+    await expect(repository.read('almamesh-predictive')).resolves.toBe(predictive);
+    expect(PORTABLE_DATASET_KEYS).toContain('almamesh-predictive');
+  });
+
+  it('rejects oversized or unknown portable setting fields at the SQLite boundary', async () => {
+    const repository = new PortableStateRepository(new MemorySqliteStore());
+
+    await expect(
+      repository.write(
+        PORTABLE_PREFERENCES_KEY,
+        JSON.stringify({
+          version: 1,
+          values: { 'almamesh-llm-settings': JSON.stringify({ apiKey: 'x'.repeat(8_193) }) },
+        }),
+      ),
+    ).rejects.toThrow(/invalid/);
+    await expect(
+      repository.write(
+        PORTABLE_PREFERENCES_KEY,
+        JSON.stringify({
+          version: 1,
+          values: { 'almamesh-llm-settings': JSON.stringify({ surprise: 'value' }) },
+        }),
+      ),
+    ).rejects.toThrow(/unknown|invalid/);
   });
 
   it('migrates legacy rows once, verifies SQLite, then removes the redundant IDB copy', async () => {
@@ -196,6 +259,10 @@ describe('PortableStateRepository', () => {
     const source = new Map<string, string>([
       ['almamesh-profiles', '{"state":{},"version":1}'],
       ['almamesh-chat-history', '{"state":{},"version":2}'],
+      [
+        'almamesh-predictive',
+        '{"state":{"status":"ready","profileKey":"profile-1"},"version":3}',
+      ],
     ]);
     const deleted: string[] = [];
     const legacy = {
@@ -207,20 +274,37 @@ describe('PortableStateRepository', () => {
     };
 
     await expect(
-      migrateLegacyState(repository, legacy, ['almamesh-profiles', 'almamesh-chat-history']),
+      migrateLegacyState(repository, legacy, [
+        'almamesh-profiles',
+        'almamesh-chat-history',
+        'almamesh-predictive',
+      ]),
     ).resolves.toEqual({
       imported: true,
-      importedKeys: ['almamesh-profiles', 'almamesh-chat-history'],
+      importedKeys: ['almamesh-profiles', 'almamesh-chat-history', 'almamesh-predictive'],
     });
     expect(await repository.read(LEGACY_MIGRATION_MARKER)).toBe('complete');
     expect(sqlite.integrityChecks).toBe(1);
-    expect(deleted).toEqual(['almamesh-profiles', 'almamesh-chat-history']);
+    expect(deleted).toEqual([
+      'almamesh-profiles',
+      'almamesh-chat-history',
+      'almamesh-predictive',
+    ]);
+    expect(await repository.read('almamesh-predictive')).toContain('profile-1');
 
     deleted.length = 0;
     await expect(
-      migrateLegacyState(repository, legacy, ['almamesh-profiles', 'almamesh-chat-history']),
+      migrateLegacyState(repository, legacy, [
+        'almamesh-profiles',
+        'almamesh-chat-history',
+        'almamesh-predictive',
+      ]),
     ).resolves.toEqual({ imported: false, importedKeys: [] });
-    expect(deleted).toEqual(['almamesh-profiles', 'almamesh-chat-history']);
+    expect(deleted).toEqual([
+      'almamesh-profiles',
+      'almamesh-chat-history',
+      'almamesh-predictive',
+    ]);
   });
 
   it('reports only the migration CAS attempt that wins after a competing write', async () => {
@@ -245,7 +329,10 @@ describe('PortableStateRepository', () => {
   });
 
   it('initializes a settled ledger for a fresh browser so its SQLite file is exportable', async () => {
-    const repository = new PortableStateRepository(new MemorySqliteStore());
+    const repository = new PortableStateRepository(
+      new MemorySqliteStore(),
+      async (bytes) => bytes[0]!,
+    );
 
     await expect(
       migrateLegacyState(repository, { get: async () => null, delete: async () => undefined }, []),
@@ -258,5 +345,330 @@ describe('PortableStateRepository', () => {
       restoreEpoch: 0,
       restoreInProgress: false,
     });
+  });
+
+  it('retries when another runtime changes the live epoch during export', async () => {
+    const sqlite = new MemorySqliteStore();
+    const repository = new PortableStateRepository(sqlite, async (bytes) => bytes[0]!);
+    await migrateLegacyState(
+      repository,
+      { get: async () => null, delete: async () => undefined },
+      [],
+    );
+    let firstExport = true;
+    sqlite.exportHook = async () => {
+      if (!firstExport) return new Uint8Array([sqlite.epoch]);
+      firstExport = false;
+      const ledgerKey = `${PORTABLE_STATE_NAMESPACE}/almamesh-deletion-tombstones`;
+      const current = JSON.parse(
+        new TextDecoder().decode(sqlite.values.get(ledgerKey)!.value),
+      ) as Record<string, unknown>;
+      await sqlite.put(
+        PORTABLE_STATE_NAMESPACE,
+        'almamesh-deletion-tombstones',
+        new TextEncoder().encode(JSON.stringify({ ...current, restoreInProgress: true })),
+      );
+      const invalidExportEpoch = sqlite.epoch;
+      await sqlite.put(
+        PORTABLE_STATE_NAMESPACE,
+        'almamesh-deletion-tombstones',
+        new TextEncoder().encode(JSON.stringify({ ...current, restoreInProgress: false })),
+      );
+      return new Uint8Array([invalidExportEpoch]);
+    };
+
+    await expect(repository.exportBytes()).resolves.toEqual(new Uint8Array([3]));
+    expect(sqlite.exportCalls).toBe(2);
+  });
+
+  it('validates the exact serialized bytes before returning an export', async () => {
+    const sqlite = new MemorySqliteStore();
+    const repository = new PortableStateRepository(sqlite, async () => {
+      throw new Error('serialized SQLite is not importable');
+    });
+    await migrateLegacyState(
+      repository,
+      { get: async () => null, delete: async () => undefined },
+      [],
+    );
+
+    await expect(repository.exportBytes()).rejects.toThrow('serialized SQLite is not importable');
+  });
+
+  it.each([
+    [
+      'null profile records',
+      'almamesh-profiles',
+      { profiles: { p1: null }, activeProfileId: 'p1' },
+      /profile "p1" is not an object/,
+    ],
+    [
+      'dangling chart owners',
+      'almamesh-chart-library',
+      { charts: { c1: { chart_id: 'c1', profile_id: 'missing' } } },
+      /references missing profile "missing"/,
+    ],
+    [
+      'messages for a missing chat thread',
+      'almamesh-chat-history',
+      { threads: {}, messages: { missing: [] }, summaries: {} },
+      /messages reference missing thread "missing"/,
+    ],
+    [
+      'relationship readings with a missing owner',
+      'almamesh-mesh-readings',
+      {
+        byPair: {
+          'p1|missing': { pairKey: 'p1|missing', profileIds: ['p1', 'missing'] },
+        },
+      },
+      /references missing profile "missing"/,
+    ],
+  ] as const)(
+    'rejects hostile canonical state with %s',
+    async (_label, key, state, expected) => {
+      const sqlite = new MemorySqliteStore();
+      const repository = new PortableStateRepository(sqlite, async (bytes) => bytes[0]!);
+      await migrateLegacyState(
+        repository,
+        { get: async () => null, delete: async () => undefined },
+        [],
+      );
+      await repository.write(
+        'almamesh-profiles',
+        JSON.stringify({
+          state: { profiles: { p1: { id: 'p1' } }, activeProfileId: 'p1' },
+          version: 1,
+          datasetEpoch: 0,
+        }),
+      );
+      await repository.write(
+        key,
+        JSON.stringify({ state, version: PORTABLE_STORE_MAX_VERSIONS[key], datasetEpoch: 0 }),
+      );
+
+      await expect(repository.exportBytes()).rejects.toThrow(expected);
+    },
+  );
+
+  it.each([
+    [
+      'object entries',
+      {
+        profiles: Object.fromEntries(
+          Array.from({ length: 10_001 }, (_, index) => [
+            `p${index}`,
+            { id: `p${index}` },
+          ]),
+        ),
+        activeProfileId: null,
+      },
+      /more than 10000 entries/,
+    ],
+    [
+      'array entries',
+      { eventsByProfile: { p1: Array.from({ length: 10_001 }, () => ({})) } },
+      /more than 10000 entries/,
+    ],
+    [
+      'string length',
+      {
+        profiles: { p1: { id: 'p1', name: 'x'.repeat(1_000_001) } },
+        activeProfileId: 'p1',
+      },
+      /string exceeds 1000000 characters/,
+    ],
+  ] as const)('rejects canonical rows beyond the %s limit', async (_label, state, expected) => {
+    const sqlite = new MemorySqliteStore();
+    const repository = new PortableStateRepository(sqlite, async (bytes) => bytes[0]!);
+    await migrateLegacyState(
+      repository,
+      { get: async () => null, delete: async () => undefined },
+      [],
+    );
+    const key = 'eventsByProfile' in state ? 'almamesh-life-events' : 'almamesh-profiles';
+    await repository.write(
+      key,
+      JSON.stringify({ state, version: PORTABLE_STORE_MAX_VERSIONS[key], datasetEpoch: 0 }),
+    );
+
+    await expect(repository.exportBytes()).rejects.toThrow(expected);
+  });
+
+  it('accepts a predictive result keyed by a known chart fallback', async () => {
+    const sqlite = new MemorySqliteStore();
+    const repository = new PortableStateRepository(sqlite, async (bytes) => bytes[0]!);
+    await migrateLegacyState(
+      repository,
+      { get: async () => null, delete: async () => undefined },
+      [],
+    );
+    await repository.write(
+      'almamesh-profiles',
+      JSON.stringify({
+        state: { profiles: { p1: { id: 'p1' } }, activeProfileId: 'p1' },
+        version: 1,
+        datasetEpoch: 0,
+      }),
+    );
+    await repository.write(
+      'almamesh-chart-library',
+      JSON.stringify({
+        state: { charts: { c1: { chart_id: 'c1', profile_id: 'p1' } } },
+        version: 1,
+        datasetEpoch: 0,
+      }),
+    );
+    await repository.write(
+      'almamesh-predictive',
+      JSON.stringify({
+        state: { status: 'ready', profileKey: 'c1', requestKey: 'request-1' },
+        version: 3,
+        datasetEpoch: 0,
+      }),
+    );
+
+    await expect(repository.exportBytes()).resolves.toEqual(new Uint8Array([4]));
+  });
+
+  it('accepts a legacy chat envelope from before summaries were persisted', async () => {
+    const sqlite = new MemorySqliteStore();
+    const repository = new PortableStateRepository(sqlite, async (bytes) => bytes[0]!);
+    await migrateLegacyState(
+      repository,
+      { get: async () => null, delete: async () => undefined },
+      [],
+    );
+    await repository.write(
+      'almamesh-chat-history',
+      JSON.stringify({
+        state: {
+          threads: { t1: { id: 't1' } },
+          messages: { t1: [] },
+        },
+        version: 1,
+        datasetEpoch: 0,
+      }),
+    );
+
+    await expect(repository.exportBytes()).resolves.toEqual(new Uint8Array([2]));
+  });
+
+  it('fails clearly after bounded retries when the live epoch never settles', async () => {
+    const sqlite = new MemorySqliteStore();
+    const repository = new PortableStateRepository(sqlite, async (bytes) => bytes[0]!);
+    await migrateLegacyState(
+      repository,
+      { get: async () => null, delete: async () => undefined },
+      [],
+    );
+    sqlite.exportHook = async () => {
+      const exportedEpoch = sqlite.epoch;
+      await sqlite.put(
+        PORTABLE_STATE_NAMESPACE,
+        'almamesh-deletion-tombstones',
+        sqlite.values.get(
+          `${PORTABLE_STATE_NAMESPACE}/almamesh-deletion-tombstones`,
+        )!.value,
+      );
+      return new Uint8Array([exportedEpoch]);
+    };
+
+    await expect(repository.exportBytes()).rejects.toThrow(
+      'Portable state remained busy while exporting a consistent snapshot.',
+    );
+    expect(sqlite.exportCalls).toBe(8);
+  });
+
+  it.each(
+    Object.entries(PORTABLE_STORE_MAX_VERSIONS).filter(
+      ([key]) => key !== PORTABLE_PREFERENCES_KEY && key !== 'almamesh-deletion-tombstones',
+    ),
+  )(
+    'rejects a future %s Zustand envelope with a typed compatibility error',
+    async (key, maxVersion) => {
+      const sqlite = new MemorySqliteStore();
+      const repository = new PortableStateRepository(sqlite, async (bytes) => bytes[0]!);
+      await migrateLegacyState(
+        repository,
+        { get: async () => null, delete: async () => undefined },
+        [],
+      );
+      await repository.write(
+        key,
+        JSON.stringify({ state: {}, version: maxVersion + 1, datasetEpoch: 0 }),
+      );
+
+      await expect(repository.exportBytes()).rejects.toMatchObject({
+        name: 'PortableStateTooNewError',
+        key,
+        version: maxVersion + 1,
+        maxVersion,
+      } satisfies Partial<PortableStateTooNewError>);
+    },
+  );
+
+  it.each([
+    [
+      PORTABLE_PREFERENCES_KEY,
+      JSON.stringify({ version: 2, values: {} }),
+    ],
+    [
+      'almamesh-deletion-tombstones',
+      JSON.stringify({
+        version: 2,
+        activeEpoch: 0,
+        restoreEpoch: 0,
+        restoreInProgress: false,
+      }),
+    ],
+  ] as const)('rejects a future %s row through the typed compatibility path', async (key, value) => {
+    const sqlite = new MemorySqliteStore();
+    const repository = new PortableStateRepository(sqlite, async (bytes) => bytes[0]!);
+    await migrateLegacyState(
+      repository,
+      { get: async () => null, delete: async () => undefined },
+      [],
+    );
+    await sqlite.put(PORTABLE_STATE_NAMESPACE, key, new TextEncoder().encode(value));
+
+    await expect(repository.exportBytes()).rejects.toMatchObject({
+      name: 'PortableStateTooNewError',
+      key,
+      version: 2,
+      maxVersion: 1,
+    } satisfies Partial<PortableStateTooNewError>);
+  });
+
+  it('upgrades legacy encrypted settings into staged SQLite bytes without touching live state', async () => {
+    const sqlite = new MemorySqliteStore();
+    const staged = new PortableStateRepository(sqlite);
+    await migrateLegacyState(
+      staged,
+      { get: async () => null, delete: async () => undefined },
+      [],
+    );
+    const live = new PortableStateRepository(new MemorySqliteStore());
+
+    await expect(
+      mergeLegacyPreferencesIntoPortableState(
+        new Uint8Array([1]),
+        {
+        'almamesh-llm-settings': JSON.stringify({
+          apiBase: 'https://openrouter.ai/api/v1',
+          apiKey: 'sk-legacy-synthetic',
+        }),
+        evil: 'drop-me',
+        },
+        { createStore: async () => sqlite, validateExport: async (bytes) => bytes[0]! },
+      ),
+    ).resolves.toEqual(new Uint8Array([2]));
+
+    expect(await live.read(PORTABLE_PREFERENCES_KEY)).toBeNull();
+    expect(
+      decodePortablePreferences((await staged.read(PORTABLE_PREFERENCES_KEY))!).values[
+        'almamesh-llm-settings'
+      ],
+    ).toContain('sk-legacy-synthetic');
   });
 });

@@ -46,11 +46,11 @@ vi.mock('../../lib/profileDataLifecycle', () => ({
 
 import {
   configProvenance,
+  hydrateLlmSettings,
   streamCurrentTimeline,
   streamNatalInterpretation,
   requestEvidenceAnnotations,
   openRouterPreset,
-  LLM_SETTINGS_KEY,
   PrivacyViolationError,
   LlmRequestError,
   type CurrentTimelineEvent,
@@ -192,7 +192,7 @@ describe('useStreamingInterpretation (structured, store-backed)', () => {
     mockedInterpretationHydration.mockResolvedValue(undefined);
     getChart.mockReturnValue(CHART_WITH_RAW);
     // Deterministic LLM settings: no browser-local overrides between tests.
-    localStorage.clear();
+    hydrateLlmSettings(null);
     // Reset any persisted interpretation between tests.
     useInterpretationStore.setState({ byChart: {} });
     // Reset the language preference to the English default for each test.
@@ -1113,8 +1113,7 @@ describe('useStreamingInterpretation (structured, store-backed)', () => {
   describe('evidence annotations', () => {
     /** Opt into a configured cloud provider (the only state that may annotate). */
     function configureProvider(): void {
-      localStorage.setItem(
-        LLM_SETTINGS_KEY,
+      hydrateLlmSettings(
         JSON.stringify(openRouterPreset('test-key', 'deepseek/deepseek-v4-pro')),
       );
     }
@@ -1227,7 +1226,7 @@ describe('useStreamingInterpretation (structured, store-backed)', () => {
     });
 
     it('makes NO annotation call at all when no provider is configured', async () => {
-      // localStorage was cleared in beforeEach: the resolved config is the
+      // The hydrated settings snapshot was cleared in beforeEach: the resolved config is the
       // unconfigured local_only loopback default, with no key.
       const { result } = renderHook(() => useStreamingInterpretation('chart-777'));
       await act(async () => {

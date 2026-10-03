@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { useLanguageStore } from '@almamesh/store';
+import { useChartLibraryStore, useLanguageStore } from '@almamesh/store';
 
 import '../i18n/config';
 
@@ -18,16 +18,15 @@ vi.mock('../components/forcefield', () => ({
   ForceFieldExperience: () => <div data-testid="forcefield-stub" />,
 }));
 
-// The CTAs route on whether a chart already exists — control that signal.
-vi.mock('../lib/localChart', () => ({
-  hasLocalChart: vi.fn(() => false),
-}));
-
-import { hasLocalChart } from '../lib/localChart';
 import { GITHUB_URL } from '../components/features/landing';
 import Landing from './Landing';
 
-const mockHasLocalChart = vi.mocked(hasLocalChart);
+const setHasChart = (hasChart: boolean) =>
+  useChartLibraryStore.setState({
+    charts: hasChart
+      ? ({ saved: { chart_id: 'saved', person_name: 'Saved', is_primary: true } } as never)
+      : {},
+  });
 
 function renderLanding(variant: 'home' | 'welcome' = 'welcome') {
   return render(
@@ -40,7 +39,7 @@ function renderLanding(variant: 'home' | 'welcome' = 'welcome') {
 describe('Landing', () => {
   beforeEach(() => {
     useLanguageStore.setState({ language: 'en' });
-    mockHasLocalChart.mockReturnValue(false);
+    setHasChart(false);
   });
 
   it('renders the hero headline', () => {
@@ -74,7 +73,7 @@ describe('Landing', () => {
   });
 
   it('routes the primary CTAs to /dashboard for a returning visitor with a saved chart', () => {
-    mockHasLocalChart.mockReturnValue(true);
+    setHasChart(true);
     renderLanding();
     expect(screen.getByTestId('hero-cta').getAttribute('href')).toBe('/dashboard');
     expect(screen.getByTestId('landing-nav-cta').getAttribute('href')).toBe('/dashboard');

@@ -123,7 +123,7 @@ export function predictiveRequestKey(input: EnsurePredictiveInput): string {
   ]);
 }
 
-// --- Persistence (IndexedDB via idb-keyval) ---------------------------------
+// --- Persistence (canonical OPFS SQLite) ------------------------------------
 //
 // The predictive superset takes ~30s under Pyodide. Without persistence the
 // store reset to `idle` on every page reload / PWA relaunch, so the auto-kickoff
@@ -140,7 +140,7 @@ export function predictiveRequestKey(input: EnsurePredictiveInput): string {
  */
 export const PREDICTIVE_PERSIST_VERSION = 3;
 
-/** The single IndexedDB key holding the persisted predictive slice. */
+/** The canonical SQLite key holding the persisted predictive slice. */
 export const PREDICTIVE_PERSIST_NAME = 'almamesh-predictive';
 
 /**
@@ -356,7 +356,7 @@ export const usePredictiveStore = create<PredictiveStore>()(
   }),
 );
 
-/** Resolve once the persisted predictive cache has finished IndexedDB hydration. */
+/** Resolve once the persisted predictive results have finished SQLite hydration. */
 export function whenPredictiveHydrated(): Promise<void> {
   return whenHydrated(usePredictiveStore.persist);
 }

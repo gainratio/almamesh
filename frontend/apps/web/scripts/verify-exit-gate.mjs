@@ -31,6 +31,7 @@
 import { chromium } from '@playwright/test'
 import { Buffer } from 'node:buffer'
 import { isActivePointerName } from './exitGateDurability.mjs'
+import { confirmLegacyBackupImport } from './confirmLegacyBackupImport.mjs'
 
 const BASE_URL = process.argv[2] ?? 'http://localhost:4199'
 const ORIGIN = new URL(BASE_URL).host
@@ -266,16 +267,7 @@ async function main() {
         mimeType: 'application/json',
         buffer: Buffer.from(backup, 'utf8'),
       })
-      const confirm = page.getByTestId('backup-confirm-import')
-      await confirm.waitFor({ state: 'visible' })
-      const safetyDownloadPromise = page.waitForEvent('download')
-      const restoredDocumentPromise = page.waitForEvent('domcontentloaded')
-      await confirm.click()
-      const [safetyDownload] = await Promise.all([
-        safetyDownloadPromise,
-        restoredDocumentPromise,
-      ])
-      await safetyDownload.cancel()
+      await confirmLegacyBackupImport(page)
 
       // Navigate to the dashboard. The chart visuals (3D force-field hero +
       // 2D kundli) are a SCREEN feature of the "For Astrologer" (technical)

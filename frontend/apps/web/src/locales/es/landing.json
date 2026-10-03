@@ -102,7 +102,7 @@
       }
     ],
     "zeroEgress": "El motor de cartas no hace llamadas de red; tu fecha y hora de nacimiento nunca salen de tu dispositivo. Dos cosas usan la red: el lugar de nacimiento que buscas y (solo si activas la IA opcional) una carta sin datos personales, sin nombre ni fecha de nacimiento.",
-    "portability": "No hay ningún servidor que guarde tus datos, así que son tuyos para llevar: exporta todo — perfiles, cartas y chat — a un solo archivo y restáuralo en otro navegador o dispositivo. Nada se sube; solo tú puedes moverlos."
+    "portability": "No hay ningún servidor que guarde tus datos, así que son tuyos para llevar: exporta todo el estado SQLite a un archivo cifrado y restáuralo en otro navegador o dispositivo, por ejemplo, de Chrome a Safari de iOS. La contraseña del archivo se usa una vez al importarlo; los inicios normales no la necesitan. Nada se sube; solo tú puedes moverlo."
   },
   "who": {
     "title": "Para quién es",

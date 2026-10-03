@@ -9,15 +9,22 @@
  * voice mode follows the global content mode. The generation NEVER auto-starts;
  * `generate()` is an explicit human action.
  *
- * The reading is page-local state (not persisted): edges re-derive in seconds
- * and the narration is regenerable on demand.
+ * Deterministic edges re-derive in seconds. Successfully completed narrations
+ * are user-paid artifacts, so they persist in canonical SQLite and are reused
+ * only for the exact edge request + language that produced them.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { useContentModeStore, useLanguageStore } from '@almamesh/store';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useContentModeStore,
+  useLanguageStore,
+  useMeshReadingsStore,
+  type MeshReadingIdentity,
+} from '@almamesh/store';
 import type { MeshEdgeCtx } from '@almamesh/shared-types';
 import {
   applyInterpretationSettings,
+  configProvenance,
   resolveProviderConfig,
   streamMeshReading,
   type LlmEnv,
@@ -25,6 +32,7 @@ import {
   type MeshReading,
   type MeshReadingSectionKey,
 } from '@almamesh/llm';
+import { whenDataLifecycleReady } from '../lib/profileDataLifecycle';
 
 export type MeshReadingStatus = 'idle' | 'streaming' | 'complete' | 'error';
 
@@ -59,41 +67,85 @@ interface ReadingState {
 
 const IDLE_STATE: ReadingState = { status: 'idle', completed: new Set() };
 
-export function useMeshReading(edge: MeshEdgeCtx | undefined): MeshReadingLayer {
+export interface MeshReadingContext {
+  readonly pairKey: string;
+  readonly profileIds: readonly [string, string];
+  readonly edgeRequestKey: string;
+}
+
+export function useMeshReading(
+  edge: MeshEdgeCtx | undefined,
+  context: MeshReadingContext | undefined,
+): MeshReadingLayer {
   const [state, setState] = useState<ReadingState>(IDLE_STATE);
   const abortRef = useRef<AbortController | null>(null);
   const contentMode = useContentModeStore((s) => s.contentMode);
+  const language = useLanguageStore((s) => s.language);
+  const pairKey = context?.pairKey;
+  const firstProfileId = context?.profileIds[0];
+  const secondProfileId = context?.profileIds[1];
+  const edgeRequestKey = context?.edgeRequestKey;
+  const identity = useMemo<MeshReadingIdentity | undefined>(
+    () =>
+      pairKey === undefined ||
+      firstProfileId === undefined ||
+      secondProfileId === undefined ||
+      edgeRequestKey === undefined
+        ? undefined
+        : {
+            pairKey,
+            profileIds: [firstProfileId, secondProfileId],
+            edgeRequestKey,
+            language,
+          },
+    [pairKey, firstProfileId, secondProfileId, edgeRequestKey, language],
+  );
+  const saved = useMeshReadingsStore((store) =>
+    identity === undefined ? undefined : store.getExact(identity),
+  );
 
-  // A new edge (window/roles recomputed, member switched) resets the narration
-  // — the old text described different facts. In-flight requests are aborted.
+  // A new exact edge/language identity loads its durable reading if one exists.
+  // In-flight requests are aborted; no stale text crosses an identity boundary.
   useEffect(() => {
     abortRef.current?.abort();
     abortRef.current = null;
-    setState(IDLE_STATE);
+    setState(
+      saved === undefined
+        ? IDLE_STATE
+        : { status: 'complete', reading: saved.reading, completed: new Set() },
+    );
     return () => {
       abortRef.current?.abort();
     };
-  }, [edge]);
+  }, [identity?.pairKey, identity?.edgeRequestKey, identity?.language, saved]);
 
   const generate = useCallback(() => {
-    if (!edge) {
+    if (!edge || !identity) {
       return;
     }
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
-    setState({ status: 'streaming', completed: new Set() });
+    setState((previous) => ({
+      status: 'streaming',
+      completed: new Set(),
+      ...(previous.reading !== undefined ? { reading: previous.reading } : {}),
+    }));
 
     // The UI edge mirrors the engine's serialized MeshEdgeContext shape; the
     // llm package types the same wire shape locally (structural by design).
     const llmEdge: LlmMeshEdgeContext = edge;
     const run = async (): Promise<void> => {
+      await whenDataLifecycleReady();
+      if (controller.signal.aborted) return;
+      const config = resolveProviderConfig(readMeshLlmEnv());
+      const generationMode = contentMode === 'technical' ? 'expert' : 'layman';
       const events = streamMeshReading({
         edge: llmEdge,
-        config: resolveProviderConfig(readMeshLlmEnv()),
+        config,
         relationship: edge.relationship,
-        mode: contentMode === 'technical' ? 'expert' : 'layman',
-        language: useLanguageStore.getState().language,
+        mode: generationMode,
+        language: identity.language,
         signal: controller.signal,
       });
       for await (const event of events) {
@@ -106,6 +158,13 @@ export function useMeshReading(edge: MeshEdgeCtx | undefined): MeshReadingLayer 
             completed: new Set([...prev.completed, event.section]),
           }));
         } else if (event.type === 'complete') {
+          await useMeshReadingsStore.getState().saveCompleted({
+            ...identity,
+            generationMode,
+            provider: configProvenance(config),
+            generatedAt: new Date().toISOString(),
+            reading: event.reading,
+          });
           setState((prev) => ({ ...prev, status: 'complete', reading: event.reading }));
         }
         // Per-section errors degrade quietly (the merged reading still lands);
@@ -122,7 +181,7 @@ export function useMeshReading(edge: MeshEdgeCtx | undefined): MeshReadingLayer 
         error: err instanceof Error ? err.message : String(err),
       }));
     });
-  }, [edge, contentMode]);
+  }, [edge, identity, contentMode]);
 
   return { ...state, generate };
 }

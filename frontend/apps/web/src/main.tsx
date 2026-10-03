@@ -8,9 +8,10 @@ import { I18nextProvider } from 'react-i18next'
 import i18n from './i18n/config'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { AlmaMeshRuntimeProvider } from './providers/AlmaMeshRuntimeProvider'
-import { runProfileMigration } from '@almamesh/store'
+import { runProfileMigration, useLanguageStore } from '@almamesh/store'
 import { safeWarn } from '@almamesh/shared-types'
 import { installChunkErrorRecovery } from './lib/swSelfHeal'
+import { initializePortableState } from './lib/portablePreferences'
 import App from './App'
 // Self-hosted observatory typography (no external font CDN — keeps the app
 // fully offline and free of cross-origin requests). Variable fonts: one woff2
@@ -50,11 +51,6 @@ queryClient = new QueryClient({
   },
 })
 
-// Named-profiles migration (no data loss): on first boot after profiles
-// shipped, assign any pre-existing charts to a default "Me" profile. Idempotent
-// and hydration-aware, so it is safe to fire-and-forget here.
-void runProfileMigration()
-
 // Auto-recover from a failed code-split import (a stale/poisoned SW cache after a
 // deploy). Installed before render so a chunk error anywhere — including dynamic
 // imports inside a page — reloads once to the fresh build instead of stranding
@@ -62,18 +58,38 @@ void runProfileMigration()
 // wedge (empty precache) is healed in useServiceWorker.
 installChunkErrorRecovery()
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <ErrorBoundary>
-      <I18nextProvider i18n={i18n}>
-        <QueryClientProvider client={queryClient}>
-          <AlmaMeshRuntimeProvider>
-            <BrowserRouter>
-              <App />
-            </BrowserRouter>
-          </AlmaMeshRuntimeProvider>
-        </QueryClientProvider>
-      </I18nextProvider>
-    </ErrorBoundary>
-  </React.StrictMode>,
-)
+async function bootstrap(): Promise<void> {
+  try {
+    await initializePortableState()
+
+    // Named-profiles migration (no data loss) reads the now-hydrated chart,
+    // profile, and chat stores. Complete it before any route guard renders.
+    await runProfileMigration()
+
+    const language = useLanguageStore.getState().language
+    await i18n.changeLanguage(language)
+    document.documentElement.lang = language
+  } catch (error) {
+    // The persistence-status UI handles unavailable SQLite. Render the app so
+    // it can explain the degraded state instead of leaving a blank document.
+    safeWarn('storage.state_open_failed', error)
+  }
+
+  ReactDOM.createRoot(document.getElementById('root')!).render(
+    <React.StrictMode>
+      <ErrorBoundary>
+        <I18nextProvider i18n={i18n}>
+          <QueryClientProvider client={queryClient}>
+            <AlmaMeshRuntimeProvider>
+              <BrowserRouter>
+                <App />
+              </BrowserRouter>
+            </AlmaMeshRuntimeProvider>
+          </QueryClientProvider>
+        </I18nextProvider>
+      </ErrorBoundary>
+    </React.StrictMode>,
+  )
+}
+
+void bootstrap()

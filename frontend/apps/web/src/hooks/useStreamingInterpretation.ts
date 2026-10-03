@@ -151,7 +151,7 @@ export const READING_MODEL_UNAVAILABLE = 'reading_model_unavailable';
 
 /**
  * Resolve the LLM env for the INTERPRETATION path: build-time Vite env, with any
- * browser-local Settings overrides (localStorage) taking precedence, and the
+ * browser-local Settings overrides (canonical SQLite) taking precedence, and the
  * EXPLICIT interpretation model resolved via applyInterpretationSettings (the
  * frontier default, distinct from the chat tier). Centralized so the privacy
  * default (local_only) is explicit and the override layer is the single source
@@ -435,7 +435,7 @@ export function useStreamingInterpretation(chartId?: string | null): UseStreamin
     [abandonCurrentTimeline],
   );
   // `setInterpretation` publishes to the zustand store synchronously but its
-  // Promise resolves only after the IndexedDB snapshot commits. Keep that new
+  // Promise resolves only after the SQLite snapshot commits. Keep that new
   // reading behind a local durability gate so a user-visible completion can
   // never be followed immediately by a hard reload that loses the prose.
   const [durabilityPendingRun, setDurabilityPendingRun] = useState<number | null>(null);

@@ -4,6 +4,7 @@ import { useChartLibraryStore } from './chartLibrary';
 import { useChatStore } from './chat';
 import { useInterpretationStore } from './interpretation';
 import { useLifeEventsStore } from './lifeEvents';
+import { useMeshReadingsStore } from './meshReadings';
 import { usePredictiveStore } from './predictive';
 import { useProfilesStore } from './profiles';
 import { useRectificationRecordsStore } from './rectificationRecords';
@@ -70,11 +71,25 @@ async function commitPendingDeletionGeneration(): Promise<boolean> {
       currentDatasetSnapshot(useLifeEventsStore),
       currentDatasetSnapshot(useChatStore),
       currentDatasetSnapshot(useInterpretationStore),
+      currentDatasetSnapshot(useMeshReadingsStore),
       currentDatasetSnapshot(useRectificationRecordsStore),
       currentDatasetSnapshot(usePredictiveStore),
     ],
-    [],
-    { retagGenerationKeys: ['almamesh-chat-vectors'] },
+    ['almamesh-chat-vectors'],
+    {
+      adoptLocalWrites: true,
+      memoryRebuildPending: true,
+      sanitizeCanonicalKeys: [
+        'almamesh-profiles',
+        'almamesh-chart-library',
+        'almamesh-life-events',
+        'almamesh-chat-history',
+        'almamesh-interpretations',
+        'almamesh-mesh-readings',
+        'almamesh-rectification-records',
+        'almamesh-predictive',
+      ],
+    },
   );
   return true;
 }
@@ -88,6 +103,7 @@ export async function persistProfileDeletion(): Promise<void> {
     persistCurrentSnapshot(useLifeEventsStore),
     persistCurrentSnapshot(useChatStore),
     persistCurrentSnapshot(useInterpretationStore),
+    persistCurrentSnapshot(useMeshReadingsStore),
     persistCurrentSnapshot(useRectificationRecordsStore),
     persistCurrentSnapshot(usePredictiveStore),
   ]);

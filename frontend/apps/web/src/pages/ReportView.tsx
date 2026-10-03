@@ -146,7 +146,7 @@ export default function ReportView(): ReactElement {
   const [searchParams] = useSearchParams();
   const { contentMode } = useContentModeStore();
 
-  // Subscribe to the chart map so the page re-renders once IndexedDB rehydrates.
+  // Subscribe to the chart map so the page re-renders once SQLite rehydrates.
   const activeProfileId = useProfilesStore((s) => s.activeProfileId);
   const charts = useChartLibraryStore((s) => s.charts);
   const storedChart = selectPrimaryStoredChart(charts, activeProfileId);

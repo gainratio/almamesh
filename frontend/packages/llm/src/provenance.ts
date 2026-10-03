@@ -6,7 +6,7 @@
 // different engine/model/endpoint than the one now configured" and regenerate.
 // It deliberately covers only the identity of the producer (engine, model,
 // base URL) — NEVER the apiKey or any other secret, since it is persisted
-// alongside the reading in localStorage.
+// alongside the reading in canonical SQLite.
 
 import type { ProviderConfig } from "./config";
 

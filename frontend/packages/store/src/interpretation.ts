@@ -25,6 +25,7 @@ import type {
 import type { TitledPersona, VedicInterpretation } from '@almamesh/shared-types';
 import { deletionAwareIdbStorage } from './deletionTombstones';
 import { whenHydrated } from './hydrationBarrier';
+import { portableStatePersistence } from './portablePersistence';
 import { browserLocalStorage } from './webStorage';
 
 /** Lifecycle of a chart's interpretation generation. */
@@ -478,26 +479,66 @@ function normalizeEntrySummary(entry: unknown): ChartInterpretationEntry {
 }
 
 /**
- * Zustand `StateStorage` backed by portable SQLite, with a one-time legacy
- * localStorage read. Outside a browser (SSR, unit tests), the durable adapter's
- * test seam lets the store run in memory.
+ * Zustand `StateStorage` backed by portable SQLite. A verified, one-time legacy
+ * localStorage migration retires the old row. Outside a browser (SSR, unit
+ * tests), the durable adapter's test seam lets the store run in memory.
  */
+function retireLegacyInterpretation(
+  storage: Pick<Storage, 'removeItem'> | undefined,
+  name: string,
+): void {
+  try {
+    storage?.removeItem(name);
+  } catch {
+    // SQLite is authoritative. A blocked disposable mirror must not make
+    // hydration or a durable delete fail.
+  }
+}
+
+/**
+ * Read the authoritative interpretation row and retire the legacy mirror once
+ * a durable read proves SQLite owns it. Exported to keep the migration contract
+ * directly regression-testable without replacing the Zustand storage adapter.
+ */
+export async function readInterpretationPersistedValue(
+  name: string,
+  durable: Pick<StateStorage, 'getItem' | 'setItem'> = deletionAwareIdbStorage,
+  legacyStorage: Pick<Storage, 'getItem' | 'removeItem'> | undefined = browserLocalStorage(),
+  retireLegacy: boolean | (() => boolean) = true,
+): Promise<string | null> {
+  const shouldRetireLegacy = () =>
+    typeof retireLegacy === 'function' ? retireLegacy() : retireLegacy;
+  const durableValue = await durable.getItem(name);
+  if (durableValue !== null) {
+    if (shouldRetireLegacy()) retireLegacyInterpretation(legacyStorage, name);
+    return durableValue;
+  }
+
+  let legacy: string | null = null;
+  try {
+    legacy = legacyStorage?.getItem(name) ?? null;
+  } catch {
+    return null;
+  }
+  if (legacy === null) return null;
+
+  await durable.setItem(name, legacy);
+  const verified = await durable.getItem(name);
+  if (verified !== null && shouldRetireLegacy()) retireLegacyInterpretation(legacyStorage, name);
+  return verified;
+}
+
 const interpretationStorage: StateStorage = {
-  getItem: async (name) => {
-    const durable = await deletionAwareIdbStorage.getItem(name);
-    if (durable !== null) return durable;
-    const storage = browserLocalStorage();
-    const legacy = typeof storage?.getItem === 'function' ? storage.getItem(name) : null;
-    if (legacy === null) return null;
-    await deletionAwareIdbStorage.setItem(name, legacy);
-    if (typeof storage?.removeItem === 'function') storage.removeItem(name);
-    return deletionAwareIdbStorage.getItem(name);
-  },
+  getItem: (name) => readInterpretationPersistedValue(
+    name,
+    deletionAwareIdbStorage,
+    browserLocalStorage(),
+    () => portableStatePersistence() === 'opfs',
+  ),
   setItem: (name, value) => deletionAwareIdbStorage.setItem(name, value),
   removeItem: async (name) => {
     await deletionAwareIdbStorage.removeItem(name);
-    const storage = browserLocalStorage();
-    if (typeof storage?.removeItem === 'function') storage.removeItem(name);
+    retireLegacyInterpretation(browserLocalStorage(), name);
   },
 };
 
