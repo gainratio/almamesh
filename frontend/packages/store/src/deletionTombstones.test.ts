@@ -858,6 +858,27 @@ describe('deletion tombstones', () => {
     }
   });
 
+  it('does not treat the initial empty generation as a missed Replace', async () => {
+    const repository = new PortableStateRepository(new PortableMemoryStore());
+    setPortableStateRepositoryForTests(repository);
+    try {
+      await repository.write(PORTABLE_LEDGER_KEY, JSON.stringify({
+        version: 1,
+        activeEpoch: 0,
+        restoreEpoch: 0,
+        restoreInProgress: false,
+        memoryRebuildPending: false,
+        profileIds: [],
+        threadIds: [],
+        chartIds: [],
+      }));
+
+      await expect(adoptLatestDatasetEpoch()).resolves.toEqual({ changed: false, epoch: 0 });
+    } finally {
+      setPortableStateRepositoryForTests(undefined);
+    }
+  });
+
   it('deletes from the latest canonical row without losing another tab\'s paid artifact', async () => {
     const repository = new PortableStateRepository(new PortableMemoryStore());
     setPortableStateRepositoryForTests(repository);

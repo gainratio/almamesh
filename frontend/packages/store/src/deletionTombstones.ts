@@ -433,8 +433,10 @@ export async function adoptLatestDatasetEpoch(): Promise<{
   const previousRestoreInProgress = observedRestoreInProgress;
   const ledger = await readDeletionTombstones();
   const changed =
-    previousRestoreEpoch !== ledger.restoreEpoch ||
-    previousRestoreInProgress !== ledger.restoreInProgress;
+    previousRestoreEpoch === undefined
+      ? ledger.restoreEpoch > 0 || ledger.restoreInProgress
+      : previousRestoreEpoch !== ledger.restoreEpoch ||
+        previousRestoreInProgress !== ledger.restoreInProgress;
   return { changed, epoch: ledger.restoreEpoch };
 }
 
