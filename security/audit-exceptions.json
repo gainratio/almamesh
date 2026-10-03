@@ -1,0 +1,16 @@
+{
+  "$comment": "Advisories `bun audit` is told to ignore. Each entry is scoped to ONE GitHub advisory id (bun matches GHSA or numeric ids, not CVE ids: https://bun.com/docs/pm/cli/audit#filtering-options), needs a reason, an owner and an expiry at most 90 days after it was added. dagger/src/auditExceptions.ts refuses the whole list if any entry breaks those rules or has expired, so the weekly Security Audit goes red on the expiry date instead of silently ignoring forever. Renew only after re-checking the advisory.",
+  "exceptions": [
+    {
+      "id": "GHSA-vfj7-8cjw-p6xm",
+      "cve": "CVE-2026-93687",
+      "package": "braces",
+      "vulnerableRange": "<=3.0.3 (no patched release)",
+      "path": "workspace:@almamesh/web > tailwindcss@3.4.19 (devDependency) > fast-glob / micromatch / chokidar > braces",
+      "reason": "Build-time only. Tailwind 3 expands the repo's own `content` globs with braces while building CSS; no user input reaches braces and nothing from it ships to the browser. The fix is Tailwind 4 (PR #225), which is on hold because it raises the browser floor to Safari 16.4 / Chrome 111 and the owner chose to keep supporting older iPhones (iOS 15) for now.",
+      "owner": "hseshadr",
+      "added": "2026-10-03",
+      "expires": "2027-01-01"
+    }
+  ]
+}

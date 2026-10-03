@@ -88,7 +88,11 @@ This repo builds against `~/dev/project-ideas/oss/ENGINEERING-STANDARDS.md`
   Dagger `dependency-audit`, which runs both
   `pip-audit` against the exported uv lock and `bun audit` against the frozen
   frontend lock. A red schedule is a red repository; update or floor the
-  vulnerable dependency and rerun the product gates before release.
+  vulnerable dependency and rerun the product gates before release. When no
+  patched release exists, the only escape hatch is a scoped, expiring entry in
+  `security/audit-exceptions.json` (one GHSA id, reason, dependency path, owner,
+  expiry at most 90 days out); `dagger/src/auditExceptions.ts` turns it into
+  `bun audit --ignore=<GHSA>` and fails the audit once an entry expires.
 
 ---
 
