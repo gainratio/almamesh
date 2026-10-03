@@ -305,8 +305,10 @@ export async function adoptLatestDatasetEpoch(): Promise<{
   readonly epoch: number;
 }> {
   const ledger = await readDeletionTombstones();
+  // An unset epoch (first visit, no mirror) against generation 0 is the
+  // dataset this realm already shows, the same rule writes use.
   const changed =
-    observedRestoreEpoch !== ledger.restoreEpoch ||
+    !shouldAcceptRestoreEpoch(observedRestoreEpoch, ledger.restoreEpoch) ||
     observedRestoreInProgress !== ledger.restoreInProgress;
   observedRestoreEpoch = ledger.restoreEpoch;
   observedRestoreInProgress = ledger.restoreInProgress;
@@ -899,7 +901,16 @@ async function readIdbValueAndLedger(
   });
 }
 
-function setSanitizedIdbValue(name: string, value: string): Promise<void> {
+/**
+ * `ledgerIsRealmAuthority` is true only when IndexedDB holds this runtime's
+ * canonical ledger (no SQLite). Beside SQLite, the realm's observed epoch
+ * belongs to the SQLite ledger and is checked by `sqliteLedgerAcceptsWrite`.
+ */
+function setSanitizedIdbValue(
+  name: string,
+  value: string,
+  ledgerIsRealmAuthority: boolean,
+): Promise<void> {
   return useKeyvalStore(
     'readwrite',
     (store) =>
@@ -911,7 +922,8 @@ function setSanitizedIdbValue(name: string, value: string): Promise<void> {
             const tombstones = mergeDeletionTombstones(ledgerRequest.result, {});
             if (
               !tombstones.restoreInProgress &&
-              shouldAcceptRestoreEpoch(observedRestoreEpoch, tombstones.restoreEpoch)
+              (!ledgerIsRealmAuthority ||
+                shouldAcceptRestoreEpoch(observedRestoreEpoch, tombstones.restoreEpoch))
             ) {
               const sanitized = sanitizePersistedValue(name, value, tombstones);
               store.put(tagPersistedValue(sanitized, tombstones.activeEpoch), name);
@@ -923,6 +935,12 @@ function setSanitizedIdbValue(name: string, value: string): Promise<void> {
         };
       }),
   );
+}
+
+/** A derived-cache write from this realm is current against the SQLite ledger. */
+async function sqliteLedgerAcceptsWrite(repository: PortableStateRepository): Promise<boolean> {
+  const ledger = parseDeletionTombstones(await repository.read(PORTABLE_LEDGER_KEY));
+  return !ledger.restoreInProgress && shouldAcceptRestoreEpoch(observedRestoreEpoch, ledger.restoreEpoch);
 }
 
 /**
@@ -948,10 +966,15 @@ export const deletionAwareIdbStorage: StateStorage = {
       return null;
     }
     const { value, ledger: tombstones } = await readIdbValueAndLedger(name);
-    observedRestoreEpoch = tombstones.restoreEpoch;
-    observedRestoreInProgress = tombstones.restoreInProgress;
-    mirrorRestoreEpoch(tombstones.restoreEpoch, tombstones.restoreInProgress);
-    scheduleAbandonedRestoreRecovery(tombstones);
+    // Beside SQLite this is a derived cache and its keyval store carries no
+    // ledger: publishing that empty ledger (epoch 0) as the realm's epoch made
+    // the current dataset look newer and refused portable writes as stale.
+    if (repository === null) {
+      observedRestoreEpoch = tombstones.restoreEpoch;
+      observedRestoreInProgress = tombstones.restoreInProgress;
+      mirrorRestoreEpoch(tombstones.restoreEpoch, tombstones.restoreInProgress);
+      scheduleAbandonedRestoreRecovery(tombstones);
+    }
     if (typeof value !== 'string' || persistedEpoch(value) !== tombstones.activeEpoch) {
       return null;
     }
@@ -980,9 +1003,9 @@ export const deletionAwareIdbStorage: StateStorage = {
         });
         return;
       }
-      if (typeof indexedDB !== 'undefined') {
-        await setSanitizedIdbValue(name, value);
-      }
+      if (typeof indexedDB === 'undefined') return;
+      if (repository !== null && !(await sqliteLedgerAcceptsWrite(repository))) return;
+      await setSanitizedIdbValue(name, value, repository === null);
     }),
   removeItem: (name) =>
     enqueuePersistenceMutation(name, async () => {
