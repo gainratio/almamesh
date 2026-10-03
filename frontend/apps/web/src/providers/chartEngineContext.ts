@@ -1,7 +1,7 @@
 /**
  * The chart-engine React context — split from `AlmaMeshRuntimeProvider` so
  * CONSUMERS (pages, hooks, tests) can read the booted engine without pulling
- * the runtime/sync value graph (`AlmaMeshRuntime` → `@edgeproc/browser`) into
+ * the runtime/sync value graph (`AlmaMeshRuntime` → `@gainratio/browser`) into
  * their module graph. All `@almamesh/browser` imports here are TYPE-ONLY and
  * erased at build time; only the provider module touches the runtime values.
  */

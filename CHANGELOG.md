@@ -7,6 +7,18 @@ All notable changes to AlmaMesh are documented here. Format follows
 ## [Unreleased]
 
 ### Changed
+- **Own libraries moved to the `@gainratio` npm scope at their newest releases.**
+  `@gainratio/avow ^0.5.2` (was `@edgeproc/avow 0.1.1`), `@gainratio/receipt-ui
+  0.3.0` (was 0.2.0), `@gainratio/errors ^0.2.1` (was 0.1.3), `@gainratio/assay
+  0.5.0-dev.6` (was dev.3), and the pinned `edgeproc-browser` git dependency is
+  now imported under its own package name, `@gainratio/browser` (same commit
+  `edd9971`). The Python test oracle moves from the yanked `avow 0.1.1` to
+  `avow >=0.5.2`. avow 0.5 receipts carry a required `schema: "avow.receipt/v1"`
+  and the hash-mismatch error is now `PayloadHashMismatch`; the shared
+  strength-receipt vectors were re-minted with the new
+  `backend/tools/mint_strength_receipt_vectors.py` (signed bytes, hashes and
+  signatures are unchanged). Returning users are unaffected: strength receipts
+  are signed per Worker boot and are never persisted or backed up.
 - **New users now get `deepseek/deepseek-v4.1-flash` for the reading and the
   timeline.** Live timeline benchmark (3 runs each): v4.1-flash finished 3/3 in
   49-65 s; deepseek-v4-pro 3/3 in 111-170 s; z-ai/glm-5.3-flash 1/3 (two runs

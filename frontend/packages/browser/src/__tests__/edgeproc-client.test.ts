@@ -3,7 +3,7 @@ import type {
   EngineRequest,
   EngineResponse,
   EngineWorkerLike,
-} from "@edgeproc/browser";
+} from "@gainratio/browser";
 import {
   type AlmaSyncEngine,
   clearAlmaBundleCache,

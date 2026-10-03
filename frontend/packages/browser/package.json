@@ -24,9 +24,9 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@edgeproc/assay": "0.5.0-dev.3",
-    "@edgeproc/avow": "0.1.1",
-    "@edgeproc/browser": "github:hseshadr/edgeproc-browser#edd99713ddf6e700c384f8981dcfc25341cc20a7",
+    "@gainratio/assay": "0.5.0-dev.6",
+    "@gainratio/avow": "^0.5.2",
+    "@gainratio/browser": "github:hseshadr/edgeproc-browser#edd99713ddf6e700c384f8981dcfc25341cc20a7",
     "pyodide": "^0.29.4"
   },
   "devDependencies": {

@@ -42,7 +42,7 @@ def verify_pointer(
 ) -> VersionPointer:
     """Verify a pointer exactly as a syncing device would, then its production identity.
 
-    Delegates to edge-proc's own pointer checks, the ones ``@edgeproc/browser`` mirrors: a
+    Delegates to edge-proc's own pointer checks, the ones ``@gainratio/browser`` mirrors: a
     named ``key_id`` must be the pinned key, the signature must verify, and a signed
     ``expires_at`` must not have passed (judged against ``clock``, Unix seconds). A candidate
     every device would refuse is refused here, before it ships.

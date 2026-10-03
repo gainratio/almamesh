@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { render, screen, within, fireEvent } from '@testing-library/react';
-import { generateSeedHex, publicKeyHex } from '@edgeproc/avow';
+import { generateSeedHex, publicKeyHex } from '@gainratio/avow';
 import { signDomainStrength } from '@almamesh/browser';
 import type { StrengthSummary } from '@almamesh/browser/types';
 import { useLanguageStore } from '@almamesh/store';

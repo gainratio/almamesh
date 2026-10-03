@@ -1,5 +1,5 @@
 # Weekly grouped dependency PRs (ENGINEERING-STANDARDS §4, Published tier).
-# No generic browser substrate is vendored. `@edgeproc/browser` is an exact Git
+# No generic browser substrate is vendored. `@gainratio/browser` is an exact Git
 # commit with an explicit provenance/live-browser upgrade gate, while
 # `edge-proc` resolves from PyPI and rides the `uv` group below.
 version: 2

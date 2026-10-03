@@ -3,7 +3,7 @@ import {
   type EngineSyncResult,
   type EngineWorkerLike,
   type SyncProgress,
-} from "@edgeproc/browser";
+} from "@gainratio/browser";
 import EdgeProcWorker from "./edgeproc.worker?worker";
 
 const CACHE_NAMESPACE = "edgeproc-browser";

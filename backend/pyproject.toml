@@ -29,7 +29,7 @@ dependencies = [
     # unparseable versions and missing sequences. Proven by
     # tests/test_bundle_rollback_guard.py, which fails on any older edge-proc.
     # 0.5.0 (raised from 0.3.0) adds the signed key_id/expires_at pointer fields that
-    # @edgeproc/browser 02171df honors; release_guard delegates to its verify_pointer so
+    # @gainratio/browser 02171df honors; release_guard delegates to its verify_pointer so
     # the preflight refuses exactly what a device would. It also requires
     # edgeproc-core>=0.4.3 (RFC 9457 wire-safety fix), which the lock resolves.
     "edge-proc[bundles]>=0.5.0",
@@ -39,7 +39,7 @@ dependencies = [
 
 # NOTE: `avow` is deliberately NOT a runtime dependency. The engine computes
 # strength summaries; the browser Worker SIGNS them in TypeScript
-# (`@edgeproc/avow`), because PyNaCl's compiled `_sodium` extension does not
+# (`@gainratio/avow`), because PyNaCl's compiled `_sodium` extension does not
 # register under this app's Pyodide boot. Keeping the engine crypto-free is what
 # lets the browser drop `pynacl` (and its cffi/pycparser chain) from every boot.
 # `avow` survives below as a TEST-ONLY conformance oracle: it mints the golden
@@ -61,7 +61,7 @@ dev = [
     # dependencies): the Python Avow kernel that produced testdata/vectors/.
     # Never imported by `src/almamesh` — tests/test_engine_is_crypto_free.py
     # fails the build if it ever is.
-    "avow>=0.1.1,<0.2",
+    "avow>=0.5.2",
 ]
 
 [project.scripts]

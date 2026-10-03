@@ -16,7 +16,7 @@ significator registry and ``backend/docs/predictive-engine-plan.md`` (Phase 4).
 
 Strength receipts are NOT minted here. The engine computes each domain's
 ``StrengthSummary``; the browser Worker's TypeScript seals it with
-``@edgeproc/avow`` outside Pyodide. This package therefore stays crypto-free —
+``@gainratio/avow`` outside Pyodide. This package therefore stays crypto-free —
 no ``avow``, no ``pynacl``, no lazy-import dance to keep a dylib off the hot
 path.
 """

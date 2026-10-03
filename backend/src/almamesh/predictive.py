@@ -12,7 +12,7 @@ import it directly; ``edge/chart_runtime.py`` wraps it for task payloads.
 
 CRYPTO-FREE BY DESIGN. This module computes; it does not sign. Each domain's
 ``StrengthSummary`` is sealed into an Ed25519 receipt by the Worker's TypeScript
-(``@edgeproc/avow``), outside Pyodide — see
+(``@gainratio/avow``), outside Pyodide — see
 ``frontend/packages/browser/src/pyodide/strengthReceipt.ts`` for why, and
 ``tests/test_engine_is_crypto_free.py`` for the guard that keeps it that way.
 """

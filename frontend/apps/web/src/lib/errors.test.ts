@@ -1,4 +1,4 @@
-import { starterPack } from '@edgeproc/errors';
+import { starterPack } from '@gainratio/errors';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import i18n from '../i18n/config';
 import {
@@ -331,17 +331,17 @@ describe('connectionErrorDetail', () => {
   });
 });
 
-describe('@edgeproc/errors adoption (canonical-errors standard)', () => {
-  // classifyConnectionError routes through the PUBLISHED @edgeproc/errors
+describe('@gainratio/errors adoption (canonical-errors standard)', () => {
+  // classifyConnectionError routes through the PUBLISHED @gainratio/errors
   // registry (installed from npm) instead of an ad-hoc if-chain. These
   // tests prove two things: (1) the published library is really what does the
-  // work — `aiErrorRegistry` is a genuine @edgeproc/errors Registry built from
+  // work — `aiErrorRegistry` is a genuine @gainratio/errors Registry built from
   // its `starterPack` codes; and (2) the coded classification is UNCHANGED —
   // the same HTTP status → the same canonical code → the same
   // ConnectionErrorKind the app already rendered, so no user-visible string or
   // i18n key moved.
 
-  it('exposes a genuine @edgeproc/errors Registry built from the published starterPack', () => {
+  it('exposes a genuine @gainratio/errors Registry built from the published starterPack', () => {
     // The Registry method surface from the library (proves we imported IT).
     for (const method of ['classify', 'describe', 'toProblemDetails', 'create'] as const) {
       expect(typeof (aiErrorRegistry as unknown as Record<string, unknown>)[method]).toBe('function');

@@ -4,7 +4,7 @@ import {
   type SqliteStateMutation,
   type SqliteStateRuntimeInfo,
   type SqliteStateStore,
-} from '@edgeproc/browser/sqlite';
+} from '@gainratio/browser/sqlite';
 
 export const PORTABLE_STATE_DATABASE = 'almamesh-user-state';
 export const PORTABLE_STATE_NAMESPACE = 'canonical';

@@ -11,9 +11,9 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const BUNFIG_PATH = resolve(HERE, '../../../../bunfig.toml');
 const BROWSER_PACKAGE_PATH = resolve(HERE, '../../../../packages/browser/package.json');
 const BUN_LOCK_PATH = resolve(HERE, '../../../../bun.lock');
-const ASSAY_VERSION = '0.5.0-dev.3';
+const ASSAY_VERSION = '0.5.0-dev.6';
 const ASSAY_SRI =
-  'sha512-s0NBvvTvbc7Y6z50oqaIPraN0hd6RRd9vY4dPXkWpB3DTGKCuJ8c4Kz2eX1KjEqF7PecQ4FyqzAYvgxIrJsQYg==';
+  'sha512-VOH1brU6gHHOZ1jRO4DXRPseSCnOLAlKewlfuzYumG3Kswb9KvrngoN5mPv7rdw61O3EuqGQO+WFPON8AV3NzQ==';
 
 function activeLines(toml: string): string[] {
   return toml
@@ -37,8 +37,50 @@ describe('registry dependency timing policy', () => {
   it('pins the reviewed Assay npm artifact and registry integrity', () => {
     const manifest = JSON.parse(readFileSync(BROWSER_PACKAGE_PATH, 'utf8'));
     const lock = readFileSync(BUN_LOCK_PATH, 'utf8');
-    expect(manifest.dependencies?.['@edgeproc/assay']).toBe(ASSAY_VERSION);
-    expect(lock).toContain(`"@edgeproc/assay": ["@edgeproc/assay@${ASSAY_VERSION}"`);
+    expect(manifest.dependencies?.['@gainratio/assay']).toBe(ASSAY_VERSION);
+    expect(lock).toContain(`"@gainratio/assay": ["@gainratio/assay@${ASSAY_VERSION}"`);
     expect(lock).toContain(`"${ASSAY_SRI}"`);
+  });
+});
+
+// The owner's own Legos moved from the deprecated @edgeproc npm scope to
+// @gainratio (avow 0.5.2 changed the receipt envelope: `schema` is now
+// required and ReplayMismatch became PayloadHashMismatch). A manifest that
+// still names an @edgeproc package would install a deprecated, frozen copy.
+const WORKSPACE_MANIFESTS = [
+  '../../../../package.json',
+  '../../package.json',
+  '../../../../packages/browser/package.json',
+  '../../../../packages/memory/package.json',
+  '../../../../packages/store/package.json',
+] as const;
+
+type Manifest = {
+  dependencies?: Record<string, string>;
+  devDependencies?: Record<string, string>;
+};
+
+function readManifest(relative: string): Manifest {
+  return JSON.parse(readFileSync(resolve(HERE, relative), 'utf8')) as Manifest;
+}
+
+describe('own-library dependency policy', () => {
+  it('names no deprecated @edgeproc package in any workspace manifest', () => {
+    const stale = WORKSPACE_MANIFESTS.flatMap((relative) => {
+      const manifest = readManifest(relative);
+      return Object.keys({ ...manifest.dependencies, ...manifest.devDependencies })
+        .filter((name) => name.startsWith('@edgeproc/'))
+        .map((name) => `${relative}: ${name}`);
+    });
+    expect(stale).toEqual([]);
+  });
+
+  it('tracks the newest avow, receipt-ui, and errors releases', () => {
+    const web = readManifest('../../package.json');
+    const browser = readManifest('../../../../packages/browser/package.json');
+    expect(web.dependencies?.['@gainratio/errors']).toBe('^0.2.1');
+    expect(web.dependencies?.['@gainratio/receipt-ui']).toBe('0.3.0');
+    expect(web.devDependencies?.['@gainratio/avow']).toBe('^0.5.2');
+    expect(browser.dependencies?.['@gainratio/avow']).toBe('^0.5.2');
   });
 });

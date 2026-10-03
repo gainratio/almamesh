@@ -1,7 +1,7 @@
 /*
- * StrengthReceiptBadge.css — the Observatory skin for `@edgeproc/receipt-ui`.
+ * StrengthReceiptBadge.css — the Observatory skin for `@gainratio/receipt-ui`.
  *
- * WHY THIS FILE EXISTS. `@edgeproc/receipt-ui` is a deliberately unstyled Lego:
+ * WHY THIS FILE EXISTS. `@gainratio/receipt-ui` is a deliberately unstyled Lego:
  * it publishes framework-agnostic markup with stable BEM hooks (`receipt-panel`,
  * `receipt-panel__meta/__row/__payload`, `receipt-status` + a `data-status`
  * state attribute) and ships NO stylesheet, so each consumer paints it in its

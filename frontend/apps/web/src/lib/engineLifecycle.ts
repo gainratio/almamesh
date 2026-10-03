@@ -11,7 +11,7 @@
  * Nothing here clears anything. Clearing stays an explicit user action.
  */
 
-/** The @edgeproc/browser Worker code for a refusal against the durable floor. */
+/** The @gainratio/browser Worker code for a refusal against the durable floor. */
 export const ROLLBACK_CODE = 'rollback';
 
 /**

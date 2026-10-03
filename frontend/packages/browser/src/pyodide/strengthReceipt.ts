@@ -6,7 +6,7 @@
  * PyNaCl, whose `_sodium` compiled extension does not register under this app's
  * Pyodide boot (plain `nacl`, `cffi` and `_cffi_backend` all load; only the
  * compiled dylib fails, immediately after `loadPackage`). Rather than fight an
- * unresolved loader defect, signing moves to `@edgeproc/avow` — the same envelope,
+ * unresolved loader defect, signing moves to `@gainratio/avow` — the same envelope,
  * pure JS (`@noble/ed25519` + RFC-8785 JCS), byte-compatible with the Python
  * kernel. The engine stays pure computation in both runtimes and the browser boot
  * stops paying for a crypto dylib it cannot load anyway.
@@ -35,7 +35,7 @@ import {
   type SignedReceipt,
   signPayload,
   verifySignature,
-} from "@edgeproc/avow";
+} from "@gainratio/avow";
 
 import type { LifeDomainsContext, StrengthSummary } from "./predictive";
 import { composeDomainStrength, type DomainStrengthAssayResult } from "./strengthAssay";
@@ -107,9 +107,12 @@ export async function sealDomainStrengths(
 
 /**
  * Verify a strength receipt offline against a pinned signer. Throws a coded
- * `avow` error on any failure, naming WHICH of the three gates rejected it:
+ * `avow` error on any failure, naming WHICH gate rejected it:
  *
- * - `ReplayMismatch` — the payload was edited, so its recomputed content-hash
+ * - `ReceiptSchemaMismatch` — the receipt does not declare `avow.receipt/v1`
+ *   (avow 0.5+). Receipts never outlive their Worker boot, so no stored
+ *   schema-less 0.1-format receipt can reach this check.
+ * - `PayloadHashMismatch` — the payload was edited, so its recomputed content-hash
  *   no longer matches the hash stored in the receipt.
  * - `SignerMismatch` — a PROVENANCE failure: the receipt's embedded key is not
  *   the key the caller pinned, so the signature is never even checked.
@@ -119,7 +122,7 @@ export async function sealDomainStrengths(
  * The latter two both extend `SignatureInvalid`, so a caller that only needs
  * "did not verify, for any reason" still catches a single base class and
  * nothing about WHICH receipts are rejected changes. The distinction matters
- * for testing as much as for alerting: the first two cases short-circuit
+ * for testing as much as for alerting: the first three cases short-circuit
  * BEFORE the signature check, so only `SignatureBytesInvalid` can prove
  * Ed25519 actually ran (see `__tests__/strengthReceipt.test.ts`).
  */

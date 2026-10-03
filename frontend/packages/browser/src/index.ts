@@ -6,7 +6,7 @@
 // engine under Pyodide. No backend, no account.
 //
 // The signed-bundle sync + OPFS + Worker tier comes from the independently
-// versioned @edgeproc/browser package; this package owns only AlmaMesh's thin
+// versioned @gainratio/browser package; this package owns only AlmaMesh's thin
 // cache/exit-gate adapter and Pyodide chart compute.
 
 // --- the reused sync foundation (edge-proc browser tier) ---
@@ -18,7 +18,7 @@ export {
   syncIndex,
   WorkerCrashError,
   WorkerTimeoutError,
-} from "@edgeproc/browser";
+} from "@gainratio/browser";
 export type {
   CacheStore,
   FetchBytes,
@@ -27,7 +27,7 @@ export type {
   SyncResult,
   Verify,
   VersionPointer,
-} from "@edgeproc/browser";
+} from "@gainratio/browser";
 
 // --- explicit user reset only: wipe the synced bundle cache + rollback floor ---
 export { clearAlmaBundleCache } from "./edgeprocClient";

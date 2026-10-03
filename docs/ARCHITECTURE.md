@@ -11,7 +11,7 @@ and language live together in one standard SQLite database in OPFS. The network 
 delivery metadata and the explicitly disclosed city-search/optional-AI flows;
 birth details and computed charts are not sent by the engine or geocoder.
 Optional chat memory is also derived entirely on-device: a self-hosted MiniLM
-Worker produces embeddings, then the shared `@edgeproc/browser/vector/sqlite`
+Worker produces embeddings, then the shared `@gainratio/browser/vector/sqlite`
 Worker performs exact cosine search with profile and generation filters. Its
 SQLite database persists in OPFS; no in-memory JavaScript similarity loop or
 IndexedDB vector copy participates in live retrieval.

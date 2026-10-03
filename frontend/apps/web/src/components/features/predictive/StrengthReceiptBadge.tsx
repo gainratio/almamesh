@@ -3,7 +3,7 @@
  * verifiable per-domain strength receipt ON SCREEN, not only on the silent PDF
  * export path.
  *
- * These wrap the shared, framework-agnostic `@edgeproc/receipt-ui` views as the
+ * These wrap the shared, framework-agnostic `@gainratio/receipt-ui` views as the
  * engine and add exactly the almamesh-specific layer: the injected
  * `verifyDomainStrength` verifier, the pinned per-boot signer key, and a
  * covenant-respecting payload body that shows the calibrated BAND + tier — never
@@ -22,7 +22,7 @@
  * published component — the type-level twin of `@almamesh/browser`'s value-level
  * `asJsonSubject` seam.
  *
- * THE SKIN. `@edgeproc/receipt-ui` publishes markup and NO stylesheet, so the
+ * THE SKIN. `@gainratio/receipt-ui` publishes markup and NO stylesheet, so the
  * consumer owns the look. `StrengthReceiptBadge.css` is that half of the seam —
  * the Observatory palette applied to the library's BEM hooks. Importing it here
  * (rather than from a global stylesheet) keeps the library's class names inside
@@ -31,8 +31,8 @@
 
 import type { ReactElement, ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { JsonValue, SignedReceipt } from '@edgeproc/avow';
-import { ReceiptBadge, ReceiptPanel, type VerifyFn } from '@edgeproc/receipt-ui';
+import type { JsonValue, SignedReceipt } from '@gainratio/avow';
+import { ReceiptBadge, ReceiptPanel, type VerifyFn } from '@gainratio/receipt-ui';
 import { verifyDomainStrength } from '@almamesh/browser';
 import type { DomainStrengthReceipt, DomainStrengthSubject } from '@almamesh/browser/types';
 

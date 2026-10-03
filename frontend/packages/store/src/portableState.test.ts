@@ -4,7 +4,7 @@ import {
   type SqliteStateImportStage,
   type SqliteStateMutation,
   type SqliteStateStore,
-} from '@edgeproc/browser/sqlite';
+} from '@gainratio/browser/sqlite';
 
 import {
   LEGACY_MIGRATION_MARKER,

@@ -152,7 +152,7 @@ Browser (the product) ─ installable PWA, offline after first load
 │    ├─ MiniLM Web Worker              self-hosted, on-device embeddings
 │    └─ SQLite vector Worker           sqlite-vector exact search; OPFS persistence
 
-External Lego: @edgeproc/browser       signed-bundle sync plus SQLite/vector browser substrate
+External Lego: @gainratio/browser       signed-bundle sync plus SQLite/vector browser substrate
 
 Build-time (Python, no server)
 │
@@ -331,7 +331,7 @@ asserted by SHA-256 in `e2e/report-pdf.e2e.spec.ts`.
 **TL;DR: one clone and the locked package installs build everything.** The
 Python side resolves [`edge-proc`](https://pypi.org/project/edge-proc/) from
 PyPI. The browser consumes the public
-[`@edgeproc/browser`](https://github.com/hseshadr/edgeproc-browser) Lego at an
+[`@gainratio/browser`](https://github.com/hseshadr/edgeproc-browser) Lego at an
 exact Git commit recorded in `frontend/packages/browser/package.json` and
 `frontend/bun.lock`; no copied sync/storage implementation remains here. See
 [`docs/edgeproc-browser.md`](docs/edgeproc-browser.md) for provenance and the

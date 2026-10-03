@@ -2,7 +2,7 @@
  * The bulletproof escape hatch for a stranded client: wipe every source of
  * stale state that can strand a returning visitor or a fail-closed engine boot —
  * a stale service worker, a stale precache, persisted stores written by an older
- * schema, and the synced signed bundle: the @edgeproc/browser OPFS cache
+ * schema, and the synced signed bundle: the @gainratio/browser OPFS cache
  * (chunks, manifests, the durable active pointer) plus its IndexedDB rollback
  * floor. Everything else in the origin's OPFS (e.g. the chat-memory SQLite
  * file) is swept too, consistent with this reset deleting every IndexedDB
@@ -56,7 +56,7 @@ export async function resetAppData(): Promise<void> {
 
 /**
  * Clear ONLY the synced signed-bundle cache (OPFS primary + IndexedDB rollback
- * floor) through @edgeproc/browser's own `EngineClient.clear()`, which runs
+ * floor) through @gainratio/browser's own `EngineClient.clear()`, which runs
  * under the same Web Lock as sync, so it cannot race an in-flight boot. User
  * data (charts, profiles, chat) is untouched. Explicit user action only — see
  * the SECURITY note above.

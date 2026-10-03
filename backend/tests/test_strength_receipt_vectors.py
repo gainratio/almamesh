@@ -1,7 +1,7 @@
 """The Python half of the cross-language strength-receipt conformance proof.
 
 The engine computes each domain's ``StrengthSummary`` in Python; the browser
-Worker SIGNS it in TypeScript (``@edgeproc/avow``). That split is only sound if
+Worker SIGNS it in TypeScript (``@gainratio/avow``). That split is only sound if
 both sides canonicalize a subject to the SAME bytes and sign it to the SAME
 Ed25519 signature.
 
@@ -23,7 +23,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from avow import canonical_bytes, content_hash, public_key_hex
+from avow import RECEIPT_SCHEMA, canonical_bytes, content_hash, public_key_hex, sign_payload
 from nacl.signing import SigningKey
 
 _VECTORS = (
@@ -69,6 +69,24 @@ def test_python_kernel_reproduces_every_vector() -> None:
         assert message.hex() == vector["canonical_hex"], subject["domain"]
         assert content_hash(subject) == vector["payload_hash"], subject["domain"]
         assert key.sign(message).signature.hex() == vector["signature"], subject["domain"]
+
+
+def test_vectors_are_full_receipts_from_python_sign_payload() -> None:
+    """Each vector is the complete envelope Python's ``sign_payload`` emits.
+
+    avow 0.5 made receipts self-describing (a required ``schema`` field that
+    ``verify_signature`` checks first). Pinning the whole envelope, not just the
+    signed bytes, means a future envelope change fails here and forces a re-mint
+    with ``tools/mint_strength_receipt_vectors.py`` instead of drifting."""
+    data = _load()
+    assert data["receipt_schema"] == RECEIPT_SCHEMA
+    key = SigningKey(bytes.fromhex(data["seed_hex"]))
+    for vector in data["receipts"]:
+        receipt = sign_payload(vector["subject"], key).model_dump(mode="json", by_alias=True)
+        assert receipt["schema"] == data["receipt_schema"], vector["subject"]["domain"]
+        assert receipt["payload_hash"] == vector["payload_hash"]
+        assert receipt["public_key"] == data["public_key"]
+        assert receipt["signature"] == vector["signature"]
 
 
 def test_vector_subjects_match_the_real_strength_summary_schema() -> None:

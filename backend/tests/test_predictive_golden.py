@@ -26,7 +26,7 @@ from almamesh.predictive import PredictiveContexts, compute_predictive_contexts
 FIXED_REFERENCE_INSTANT = datetime(2026, 6, 9, 12, 0, 0, tzinfo=UTC)
 
 # NOTE: this golden pins the ENGINE's four contexts only. Domain-strength
-# receipts are minted by the browser Worker's TypeScript (@edgeproc/avow), not
+# receipts are minted by the browser Worker's TypeScript (@gainratio/avow), not
 # here, so they are not part of the CPython<->Pyodide byte-parity surface. Their
 # cross-language byte-compatibility is proven separately by the shared golden
 # vectors in testdata/vectors/ (backend/tests/test_strength_receipt_vectors.py

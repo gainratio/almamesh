@@ -2,7 +2,7 @@ import {
   compose,
   type MinimumRequest,
   type ScoreResult,
-} from "@edgeproc/assay";
+} from "@gainratio/assay";
 
 import type {
   LifeDomainsContext,

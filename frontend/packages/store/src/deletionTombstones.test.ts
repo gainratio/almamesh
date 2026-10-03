@@ -5,8 +5,8 @@ import type {
   SqliteStateImportStage,
   SqliteStateMutation,
   SqliteStateStore,
-} from '@edgeproc/browser/sqlite';
-import { SqliteStateConflictError } from '@edgeproc/browser/sqlite';
+} from '@gainratio/browser/sqlite';
+import { SqliteStateConflictError } from '@gainratio/browser/sqlite';
 
 import {
   mergeDeletionTombstones,

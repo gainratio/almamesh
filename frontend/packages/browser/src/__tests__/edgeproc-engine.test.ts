@@ -5,11 +5,11 @@ import {
   EngineClient,
   MemoryCacheStore,
   syncIndex,
-} from "@edgeproc/browser";
+} from "@gainratio/browser";
 
 // Proves the pinned standalone browser Lego resolves through its supported root
 // API. Worker construction stays consumer-owned so Vite emits one Worker asset.
-describe("@edgeproc/browser dependency", () => {
+describe("@gainratio/browser dependency", () => {
   it("exposes the injected-worker client and the sync state machine", () => {
     expect(typeof EngineClient).toBe("function");
     expect("spawn" in EngineClient).toBe(false);

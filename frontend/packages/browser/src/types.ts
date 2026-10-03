@@ -1,6 +1,6 @@
 // Pure type-only entrypoint for the engine's data contracts.
 //
-// These modules import nothing from the runtime/sync tier (`@edgeproc/browser`),
+// These modules import nothing from the runtime/sync tier (`@gainratio/browser`),
 // so consumers that only need the engine's *shapes* (e.g. the store's pure
 // translation layer) can depend on this barrel without pulling the Pyodide
 // worker, OPFS sync, or the edge-proc path dependency into their type graph.
@@ -125,7 +125,7 @@ import type { RectificationInput, RectificationResultRaw } from "./pyodide/recti
 /**
  * The ready-engine surface a consumer calls. Declared here (not re-exported from
  * `./pyodide/runtime`) so type-only consumers — e.g. the hooks layer — get the
- * shape WITHOUT pulling the runtime/sync graph (`@edgeproc/browser`) into their
+ * shape WITHOUT pulling the runtime/sync graph (`@gainratio/browser`) into their
  * build. Kept structurally identical to the `ChartEngine` the runtime returns.
  */
 export interface ChartEngine {

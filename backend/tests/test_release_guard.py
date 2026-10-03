@@ -233,7 +233,7 @@ def test_verify_pointer_accepts_a_pointer_naming_the_pinned_key() -> None:
 
 def test_verify_pointer_rejects_a_pointer_naming_another_key() -> None:
     # The signature is genuine, but the pointer names a key the pinned trust root does not
-    # hold. @edgeproc/browser refuses it (a named key is the only key tried), so the release
+    # hold. @gainratio/browser refuses it (a named key is the only key tried), so the release
     # preflight must refuse it before it ships rather than after every device rejects it.
     private_key, public_key = generate_keypair()
     pointer = _stamped_pointer(Ed25519Signer(private_key), sequence=3, key_id="0" * 16)

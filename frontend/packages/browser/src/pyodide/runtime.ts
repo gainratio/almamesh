@@ -16,7 +16,7 @@
 // once per boot by ./bootPolicy.ts (default: sequential — low-end hardware is
 // the primary target; overlap only on a Chromium deviceMemory/cores reading).
 
-import type { SyncProgress, SyncResult } from "@edgeproc/browser";
+import type { SyncProgress, SyncResult } from "@gainratio/browser";
 
 import { spawnAlmaSyncEngine } from "../edgeprocClient";
 import { decideBootPolicy, readBootSignals } from "./bootPolicy";

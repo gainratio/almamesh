@@ -13,7 +13,7 @@
  * exactly like the React surfaces, so error text is localized offline too.
  */
 
-import { type Catalog, defineErrors, httpStatusOf, starterPack } from '@edgeproc/errors';
+import { type Catalog, defineErrors, httpStatusOf, starterPack } from '@gainratio/errors';
 import { safeError } from '@almamesh/shared-types';
 import i18n from '../i18n/config';
 
@@ -130,7 +130,7 @@ export type ConnectionErrorKind =
 /**
  * How a raw failure's searchable message is derived — the thrown `Error`'s
  * `.message`, or the stringified value for a non-Error. Kept identical to the
- * pre-@edgeproc/errors logic so classification stays byte-for-byte unchanged.
+ * pre-@gainratio/errors logic so classification stays byte-for-byte unchanged.
  */
 function messageOf(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -163,7 +163,7 @@ const REASONING_TIMEOUT_PATTERN = /\(ai\.reasoning_timeout\)/;
 
 /**
  * AlmaMesh's AI connection-error catalog, expressed in the shared
- * `@edgeproc/errors` vocabulary (the portfolio canonical-errors standard,
+ * `@gainratio/errors` vocabulary (the portfolio canonical-errors standard,
  * installed from npm — this file is the ONE seam through which the library
  * enters the app). Each code is REUSED from the library's
  * `starterPack`; on top of the starter data we attach the exact `match` predicate
@@ -222,7 +222,7 @@ const AI_ERROR_CATALOG = {
 
 /**
  * The AlmaMesh AI error registry — the single place raw LLM/transport failures
- * are classified into canonical codes, built with the shared `@edgeproc/errors`
+ * are classified into canonical codes, built with the shared `@gainratio/errors`
  * library. Exported so the classification is inspectable and testable as the
  * library's own `Registry` (and so a server surface can later reuse the same
  * codes for RFC 9457 Problem Details without re-deriving them).
@@ -230,7 +230,7 @@ const AI_ERROR_CATALOG = {
 export const aiErrorRegistry = defineErrors(AI_ERROR_CATALOG);
 
 /**
- * Map a canonical `@edgeproc/errors` code to the local `ConnectionErrorKind` the
+ * Map a canonical `@gainratio/errors` code to the local `ConnectionErrorKind` the
  * settings / chat / reading call sites already switch on. Keeping
  * `ConnectionErrorKind` as the public type at those call sites makes this
  * adoption a zero-churn internal swap: the registry replaces the if-chain, the
@@ -251,7 +251,7 @@ const CODE_TO_KIND: Readonly<Record<string, ConnectionErrorKind>> = {
 /**
  * Classify a caught connectivity-test error (from `testProviderConnection`) into
  * one actionable kind, so the settings UI can show a specific fix instead of a
- * raw error body. Delegates to the shared `@edgeproc/errors` registry
+ * raw error body. Delegates to the shared `@gainratio/errors` registry
  * (`aiErrorRegistry`) — the same coded behavior as before, now expressed in the
  * portfolio's canonical-errors vocabulary — then maps the canonical code back to
  * the local `ConnectionErrorKind`. Duck-typed end-to-end (the registry reads
@@ -274,7 +274,7 @@ export function classifyConnectionError(err: unknown): ConnectionErrorKind {
  * retrying could never fix. Duck-typed via `classifyConnectionError`, so it
  * works across the @almamesh/llm boundary without `instanceof` coupling.
  *
- * Built on the shared @edgeproc/errors library: `classifyConnectionError` now
+ * Built on the shared @gainratio/errors library: `classifyConnectionError` now
  * classifies through the `aiErrorRegistry` (canonical codes), and this mapper
  * renders each resulting kind to the app's existing `chat:errors.*` i18n string
  * — the coded behavior is unchanged, only its vocabulary is now the shared one.

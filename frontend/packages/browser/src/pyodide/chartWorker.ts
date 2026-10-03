@@ -8,7 +8,7 @@
 // Exercised end-to-end by the P2.6 harness; the main-thread client that drives
 // it (ChartEngineClient) is unit-tested separately against a fake worker.
 
-import { generateSeedHex, publicKeyHex } from "@edgeproc/avow";
+import { generateSeedHex, publicKeyHex } from "@gainratio/avow";
 import { loadPyodide, type PyodideInterface } from "pyodide";
 
 import type { SiderealChart } from "./chart";
@@ -35,7 +35,7 @@ const SKYFIELD_DATA_DIR = "/home/pyodide/.skyfield-data";
 // need no network. Only the pure-Python bundle wheels (jplephem/sgp4/skyfield,
 // almamesh) travel in the signed bundle.
 //
-// NO `pynacl`. Strength receipts are signed in TypeScript by `@edgeproc/avow`
+// NO `pynacl`. Strength receipts are signed in TypeScript by `@gainratio/avow`
 // (see ./strengthReceipt.ts), so the Ed25519 WASM dylib — and its cffi ->
 // pycparser chain — is off EVERY boot, including natal-only sessions that never
 // compute a Life Atlas. It is also the one package that would not register under
