@@ -19,9 +19,9 @@ const __dirname = resolve(__filename, '..');
  *
  * WHY a build+preview (not `vite dev`):
  *   The app's module Workers only resolve in a production build. This test does
- *   NOT touch the chart engine (settings UI + localStorage only), so the build
- *   is belt-and-suspenders — but it keeps the harness identical to how the app
- *   actually ships, and avoids the dev-server worker-resolution caveat entirely.
+ *   does not touch the chart engine, but it does exercise the canonical OPFS
+ *   SQLite adapter. The production build therefore keeps the harness identical
+ *   to the shipped runtime and avoids the dev-server Worker-resolution caveat.
  *
  * Run:  bun run test:e2e:ai   (from apps/web)
  */

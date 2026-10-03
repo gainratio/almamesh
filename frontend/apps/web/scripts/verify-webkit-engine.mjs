@@ -348,6 +348,22 @@ async function verifyFirstSessionOffline() {
   const proxy = await startCutoffProxy(BASE_URL)
   let transientCacheReadInjected = false
   const workerUrls = new Set()
+  if (process.platform === 'linux') {
+    // Playwright's Linux WebKit port cannot open SQLite's nested-Worker OPFS.
+    // This gate owns the durable service-worker + IndexedDB engine-cache path,
+    // not canonical-state durability (Chromium CI and macOS WebKit own that).
+    // Force the app's documented in-memory SQLite fallback so React can mount
+    // and register the service worker this gate is meant to exercise.
+    await context.addInitScript(() => {
+      if (typeof globalThis.StorageManager === 'undefined') return
+      globalThis.StorageManager.prototype.getDirectory = function getDirectory() {
+        return Promise.reject(new globalThis.DOMException(
+          'Linux Playwright WebKit has no nested-Worker OPFS.',
+          'UnknownError',
+        ))
+      }
+    })
+  }
   if (TRANSIENT_CACHE_VISIBILITY) {
     await context.exposeBinding('__almameshRecordTransientCacheRead', () => {
       transientCacheReadInjected = true
