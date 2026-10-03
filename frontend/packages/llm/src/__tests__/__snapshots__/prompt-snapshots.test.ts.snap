@@ -329,6 +329,9 @@ DUAL-MODE OUTPUT (MANDATORY): every persona object has TWO fields with ZERO over
     conjunction, dasha, yoga, nakshatra, zodiac-sign names, Sanskrit terms. Speak
     only of the LIVED THEMES (creativity, security, communication, partnership,
     discipline, growth). Warm, practical, caring — a wise friend over coffee.
+    The layman text is checked word by word: any sentence using house, lord, dasha, saturn, jupiter, rahu, ketu, nakshatra, lagna, exalted, debilitated, conjunct, retrograde, combust, ascendant, sign, degree, navamsa, yoga
+    is DELETED — even in an everyday sense (say 'a signal', not 'a sign'; 'stretching',
+    not 'yoga'; 'home', not 'house').
   - "technical": for a practicing Jyotish scholar. Cite exact placements from the
     data: degree-within-sign (sign + sign_degrees), nakshatra + nakshatra_pada +
     nakshatra_lord, dignity, retrograde/combust flags, house-lord (dispositor)
@@ -440,7 +443,8 @@ DEGREE & NAKSHATRA DEPTH (technical fields): cite sign + sign_degrees, and weave
 DEBILITY HONESTY: a debilitated/combust/retrograde-strained planet is never plainly
   'strong' — name the condition and the growth-through-effort theme.
 Every challenge MUST end with a BRIDGE sentence linking it to a NAMED strength or
-  yoga from this same reading. Give each item a distinct emotional flavor and fresh
+  yoga from this same reading (name the yoga only in the technical field; the layman
+  field says it in plain words). Give each item a distinct emotional flavor and fresh
   vocabulary. Only reference yogas in the provided list.
 
 The reader is a layperson; make the layman fields especially warm and clear. Write 2-4 substantive paragraphs per persona field — depth over length; never pad.
