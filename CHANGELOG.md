@@ -23,6 +23,14 @@ All notable changes to AlmaMesh are documented here. Format follows
   overshooting it.
 
 ### Fixed
+- **A second tab no longer fails to open the saved-state store.** Bumped
+  `@edgeproc/browser` to `edd9971` (edgeproc-browser #28). Every SQLite store
+  operation, including open and close, now runs inside one exclusive per-store
+  Web Lock, so two tabs take turns instead of the second one logging
+  `GetSyncHandleError ... NoModificationAllowedError` and getting
+  `SQLITE_BUSY`. Reads in two tabs are now serialized, not concurrent. The
+  `@hpcc-js/wasm-zstd` override moves 1.15.0 -> 1.16.2 to stay on the exact
+  version that edgeproc-browser's own gate now proves.
 - **Typing the birth date no longer loses digits while the engine downloads.**
   On a busy CPU (a budget phone, or the release gate's 4-core runner) typing
   `08/08/1988` could end as `MM/DD/1988` with Continue disabled. Two causes,
