@@ -25,6 +25,7 @@ import {
   type SmokePass,
   type SmokeRun,
 } from "./deployment.js"
+import { AUDIT_EXCEPTIONS_FILE, auditIgnoreArgs, parseAuditExceptions } from "./auditExceptions.js"
 import { assertAllPassed, runPool, startGate } from "./gates.js"
 import { nightlyRealSkipCheckScript } from "./nightlyRealSkips.js"
 import { pagesUploadLimitsCheckScript as releasePagesUploadLimitsScript } from "./pagesUploadLimits.js"
@@ -63,6 +64,7 @@ const SOURCE_EXCLUDES = [
   "dagger/sdk/**",
 ]
 const CONTRACT_TESTS = [
+  "tests/dagger-audit-exceptions-contract.test.ts",
   "tests/dagger-deployment-contract.test.ts",
   "tests/dagger-foundation-contract.test.ts",
   "tests/dagger-gates.test.ts",
@@ -325,6 +327,7 @@ export class AlmameshCi {
           "dagger/scripts/**",
           "dagger/src/**",
           "frontend/apps/web/vitest.config.ts",
+          AUDIT_EXCEPTIONS_FILE,
           ...CONTRACT_TESTS,
         ]),
       )
@@ -451,7 +454,10 @@ export class AlmameshCi {
         "/tmp/requirements.txt",
       ])
       .withExec(["uvx", "pip-audit", "-r", "/tmp/requirements.txt", "--disable-pip", "--no-deps"])
-    const frontend = this.bunBase().withExec(["bun", "audit"])
+    // Scoped, expiring exceptions only (security/audit-exceptions.json); an
+    // invalid or expired entry throws here and fails the audit.
+    const exceptions = parseAuditExceptions(await this.source.file(AUDIT_EXCEPTIONS_FILE).contents(), new Date())
+    const frontend = this.bunBase().withExec(["bun", "audit", ...auditIgnoreArgs(exceptions)])
     await Promise.all([python.sync(), frontend.sync()])
     return "Python and Bun locked dependency graphs passed their advisory audits."
   }

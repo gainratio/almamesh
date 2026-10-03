@@ -27,6 +27,7 @@ import {
   type LlmEnv,
 } from "@almamesh/llm";
 import {
+  flushPortablePersistence,
   useChartLibraryStore,
   useInterpretationStore,
   useLanguageStore,
@@ -124,8 +125,8 @@ export default function DashboardPage() {
   const [searchParams] = useSearchParams();
   const chatInitiallyOpen = searchParams.get('chat') === 'open';
 
-  // Local-first read: the primary chart comes from the on-device chart library
-  // (IndexedDB), not the backend. We wrap the persisted ChartData in the
+  // Local-first read: the primary chart comes from canonical on-device SQLite,
+  // not the backend. We wrap the persisted ChartData in the
   // BirthChartGenerationResponse shape the dashboard already consumes.
   const { data: queryData, error: queryError } = useQuery<BirthChartGenerationResponse>({
     queryKey: ['primary-chart'],
@@ -175,7 +176,7 @@ export default function DashboardPage() {
   // SiderealChart, persisted on-device in the chart library. Thread it to
   // ChartVisualization (which reshapes it once via buildChartGeometry).
   // Read it via the store HOOK (not getState()) so the component re-renders
-  // once the library rehydrates from IndexedDB on a cold load.
+  // once the library rehydrates from SQLite on a cold load.
   const siderealChart = useChartLibraryStore((s) =>
     chartId ? (s.charts[chartId]?.sidereal_chart ?? null) : null,
   );
@@ -481,10 +482,16 @@ export default function DashboardPage() {
 
   // Recover from a dead/typo'd cloud model after the user asks: re-point settings at the recommended
   // OpenRouter model (keeping the user's saved key), then re-run generation.
-  const handleSwitchToRecommendedModel = () => {
+  const handleSwitchToRecommendedModel = async () => {
     const current = readLlmSettings();
-    writeLlmSettings(openRouterPreset(current.apiKey ?? '', RECOMMENDED_CLOUD_MODEL));
-    handleGenerateSeparatedInterpretation();
+    try {
+      writeLlmSettings(openRouterPreset(current.apiKey ?? '', RECOMMENDED_CLOUD_MODEL));
+      await flushPortablePersistence();
+      await handleGenerateSeparatedInterpretation();
+    } catch (err) {
+      // Never spend tokens with a model choice that was not durably saved.
+      safeError('dashboard.interpretation_failed', err);
+    }
   };
 
   // Manual natal regeneration keeps the current reading on screen until — and unless

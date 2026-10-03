@@ -22,19 +22,106 @@ export class PortableStateUnavailableError extends Error {
   }
 }
 
-/**
- * Canonical personal-data snapshots. Derived vector/predictive caches and
- * provider credentials are deliberately absent from this allowlist.
- */
-export const PORTABLE_STATE_KEYS = [
+/** Canonical dataset snapshots which participate in the deletion generation. */
+export const PORTABLE_DATASET_KEYS = [
   'almamesh-profiles',
   'almamesh-chart-library',
   'almamesh-life-events',
   'almamesh-rectification-records',
   'almamesh-chat-history',
   'almamesh-interpretations',
-  'almamesh-language',
+  'almamesh-mesh-readings',
+  'almamesh-predictive',
 ] as const;
+
+/** Preferences travel in SQLite, but do not participate in a dataset epoch. */
+export const PORTABLE_PREFERENCES_KEY = 'almamesh-preferences';
+export const PORTABLE_PREFERENCE_KEYS = [
+  'almamesh-language',
+  PORTABLE_PREFERENCES_KEY,
+] as const;
+
+/**
+ * Canonical rows in the portable SQLite file. Derived embedding/vector caches
+ * remain deliberately absent; expensive predictive results are durable user
+ * data and travel with the chart that produced them. The single preferences
+ * row is versioned and extensible, so adding a setting does not create a
+ * growing table of ad-hoc rows.
+ */
+export const PORTABLE_STATE_KEYS = [
+  ...PORTABLE_DATASET_KEYS,
+  ...PORTABLE_PREFERENCE_KEYS,
+] as const;
+
+type PortableStoreEnvelopeKey = Exclude<
+  (typeof PORTABLE_STATE_KEYS)[number],
+  typeof PORTABLE_PREFERENCES_KEY
+>;
+type PortableVersionedRowKey =
+  | (typeof PORTABLE_STATE_KEYS)[number]
+  | typeof PORTABLE_LEDGER_KEY;
+
+/**
+ * Highest canonical row version this build can migrate or hydrate. Zustand
+ * entries mirror each store's `persist({ version })`; the custom preferences
+ * and generation-ledger rows have their own format version. The complete key
+ * type makes a newly portable row a compile-time addition.
+ */
+export const PORTABLE_STORE_MAX_VERSIONS = {
+  'almamesh-profiles': 1,
+  'almamesh-chart-library': 1,
+  'almamesh-life-events': 4,
+  'almamesh-rectification-records': 2,
+  'almamesh-chat-history': 2,
+  'almamesh-interpretations': 6,
+  'almamesh-mesh-readings': 1,
+  'almamesh-predictive': 3,
+  'almamesh-language': 1,
+  'almamesh-preferences': 1,
+  'almamesh-deletion-tombstones': 1,
+} as const satisfies Readonly<Record<PortableVersionedRowKey, number>>;
+
+/** A structurally valid backup whose store schema requires a newer AlmaMesh. */
+export class PortableStateTooNewError extends Error {
+  public override readonly name = 'PortableStateTooNewError';
+
+  public constructor(
+    public readonly key: PortableVersionedRowKey | 'sqlite-schema',
+    public readonly version: number,
+    public readonly maxVersion: number,
+  ) {
+    super(
+      `Portable state row "${key}" uses store version ${version}; this build supports through ${maxVersion}.`,
+    );
+  }
+}
+
+/** Distinguish a valid future database from malformed or obsolete bytes. */
+export function assertSupportedPortableStateSchema(schemaVersion: number): void {
+  if (schemaVersion > PORTABLE_STATE_SCHEMA_VERSION) {
+    throw new PortableStateTooNewError(
+      'sqlite-schema',
+      schemaVersion,
+      PORTABLE_STATE_SCHEMA_VERSION,
+    );
+  }
+  if (schemaVersion !== PORTABLE_STATE_SCHEMA_VERSION) {
+    throw new Error(`Unsupported portable state schema version ${schemaVersion}.`);
+  }
+}
+
+/** Preference keys stored inside the single versioned SQLite preference row. */
+export const PORTABLE_PREFERENCE_MIRROR_KEYS = [
+  'almamesh-llm-settings',
+  'almamesh-content-mode',
+  'almamesh-model-suggestion-dismissed',
+] as const;
+export type PortablePreferenceMirrorKey = (typeof PORTABLE_PREFERENCE_MIRROR_KEYS)[number];
+
+export interface PortablePreferences {
+  readonly version: 1;
+  readonly values: Readonly<Partial<Record<PortablePreferenceMirrorKey, string>>>;
+}
 
 const ALLOWED_PORTABLE_KEYS = new Set<string>([
   ...PORTABLE_STATE_KEYS,
@@ -46,8 +133,17 @@ export function isPortableStateKey(key: string): boolean {
   return ALLOWED_PORTABLE_KEYS.has(key);
 }
 
+export function isPortablePreferenceKey(key: string): boolean {
+  return (PORTABLE_PREFERENCE_KEYS as readonly string[]).includes(key);
+}
+
 const MAX_TRANSACTION_ATTEMPTS = 8;
 const MAX_CANONICAL_ROWS = 1_000;
+const MAX_COLLECTION_ENTRIES = 10_000;
+const MAX_STRING_CHARACTERS = 1_000_000;
+const MAX_JSON_NODES = 200_000;
+const MAX_JSON_DEPTH = 64;
+const MAX_IDENTIFIER_CHARACTERS = 512;
 const encoder = new TextEncoder();
 const decoder = new TextDecoder('utf-8', { fatal: true });
 const INITIAL_PORTABLE_LEDGER = JSON.stringify({
@@ -82,9 +178,14 @@ export interface LegacyStateStorage {
  */
 export class PortableStateRepository {
   readonly #store: SqliteStateStore;
+  readonly #validateExport: (bytes: Uint8Array) => Promise<number>;
 
-  public constructor(store: SqliteStateStore) {
+  public constructor(
+    store: SqliteStateStore,
+    validateExport: (bytes: Uint8Array) => Promise<number> = validatePortableExportDatabase,
+  ) {
     this.#store = store;
+    this.#validateExport = validateExport;
   }
 
   public async read(key: string): Promise<string | null> {
@@ -164,8 +265,25 @@ export class PortableStateRepository {
   }
 
   public async exportBytes(): Promise<Uint8Array> {
-    validatePortableSnapshot(await this.snapshot());
-    return this.#store.exportBytes();
+    for (let attempt = 0; attempt < MAX_TRANSACTION_ATTEMPTS; attempt += 1) {
+      const before = await this.#store.runtimeInfo();
+      const bytes = await this.#store.exportBytes();
+      // This validates the exact byte array that would leave the browser and
+      // returns the SQLite epoch embedded in that file.
+      const exportedEpoch = await this.#validateExport(bytes);
+      const snapshot = await this.snapshot();
+      const after = await this.#store.runtimeInfo();
+      if (
+        before.epoch !== exportedEpoch ||
+        before.epoch !== snapshot.epoch ||
+        before.epoch !== after.epoch
+      ) {
+        continue;
+      }
+      validatePortableSnapshot(snapshot);
+      return bytes;
+    }
+    throw new Error('Portable state remained busy while exporting a consistent snapshot.');
   }
 
   public async checkIntegrity(): Promise<void> {
@@ -174,6 +292,30 @@ export class PortableStateRepository {
 
   public dispose(): Promise<void> {
     return this.#store.dispose();
+  }
+}
+
+/** Validate the exact export in an isolated store without touching live state. */
+async function validatePortableExportDatabase(bytes: Uint8Array): Promise<number> {
+  const store = await createSqliteStateStore({
+    name: 'almamesh-export-validation',
+    initialSchemaVersion: PORTABLE_STATE_SCHEMA_VERSION,
+    persistence: 'memory',
+  });
+  let stageId: string | undefined;
+  try {
+    const stage = await store.stageImport(bytes);
+    stageId = stage.stageId;
+    if (stage.schemaVersion !== PORTABLE_STATE_SCHEMA_VERSION) {
+      throw new Error(`Unsupported portable state schema version ${stage.schemaVersion}.`);
+    }
+    return stage.epoch;
+  } finally {
+    try {
+      if (stageId !== undefined) await store.discardImport(stageId);
+    } finally {
+      await store.dispose();
+    }
   }
 }
 
@@ -244,14 +386,70 @@ export async function readPortableStateDatabase(bytes: Uint8Array): Promise<Port
   const repository = new PortableStateRepository(store);
   try {
     const stage = await store.stageImport(bytes);
-    if (stage.schemaVersion !== PORTABLE_STATE_SCHEMA_VERSION) {
-      throw new Error(`Unsupported portable state schema version ${stage.schemaVersion}.`);
-    }
+    assertSupportedPortableStateSchema(stage.schemaVersion);
     await store.commitImport(stage.stageId, { expectedEpoch: 0 });
     await repository.checkIntegrity();
     const snapshot = await repository.snapshot();
     validatePortableSnapshot(snapshot);
     return snapshot;
+  } finally {
+    await repository.dispose();
+  }
+}
+
+/**
+ * Upgrade an encrypted legacy-v2 `{ database, settings }` payload entirely in
+ * memory. The live browser database is untouched: callers receive a new,
+ * revalidated SQLite file which can go through the normal atomic import path.
+ */
+export async function mergeLegacyPreferencesIntoPortableState(
+  bytes: Uint8Array,
+  candidate: unknown,
+  options: {
+    /** Unit-test seam; production always uses the EdgeProc in-memory store. */
+    readonly createStore?: () => Promise<SqliteStateStore>;
+    /** Unit-test seam for fake SQLite bytes; production re-opens exact bytes. */
+    readonly validateExport?: (bytes: Uint8Array) => Promise<number>;
+  } = {},
+): Promise<Uint8Array> {
+  if (candidate === null || typeof candidate !== 'object' || Array.isArray(candidate)) {
+    throw new Error('Legacy portable settings are not an object.');
+  }
+  const legacy: Partial<Record<PortablePreferenceMirrorKey, string>> = {};
+  for (const key of PORTABLE_PREFERENCE_MIRROR_KEYS) {
+    const value = (candidate as Record<string, unknown>)[key];
+    if (value === undefined) continue;
+    validatePortablePreferenceMirror(key, value);
+    legacy[key] = value;
+  }
+
+  const store = await (options.createStore?.() ??
+    createSqliteStateStore({
+      name: 'almamesh-legacy-preference-upgrade',
+      initialSchemaVersion: PORTABLE_STATE_SCHEMA_VERSION,
+      persistence: 'memory',
+    }));
+  const repository = new PortableStateRepository(store, options.validateExport);
+  try {
+    const stage = await store.stageImport(bytes);
+    if (stage.schemaVersion !== PORTABLE_STATE_SCHEMA_VERSION) {
+      throw new Error(`Unsupported portable state schema version ${stage.schemaVersion}.`);
+    }
+    await store.commitImport(stage.stageId, { expectedEpoch: 0 });
+    await repository.checkIntegrity();
+    validatePortableSnapshot(await repository.snapshot());
+
+    const current = await readPortablePreferences(repository);
+    await repository.write(
+      PORTABLE_PREFERENCES_KEY,
+      JSON.stringify({
+        version: 1,
+        // The separate settings section was the authority in legacy v2, so it
+        // wins if a transitional database happened to contain the same field.
+        values: { ...current.values, ...legacy },
+      }),
+    );
+    return await repository.exportBytes();
   } finally {
     await repository.dispose();
   }
@@ -274,20 +472,7 @@ export async function migrateLegacyState(
     keys.map(async (key) => [key, await legacy.get(key)] as const),
   );
   const transaction = await repository.transactWithResult(({ values }) => {
-    if (values.has(LEGACY_MIGRATION_MARKER)) {
-      return {
-        mutations: values.has(PORTABLE_LEDGER_KEY)
-          ? []
-          : ([
-              {
-                type: 'put',
-                key: PORTABLE_LEDGER_KEY,
-                value: INITIAL_PORTABLE_LEDGER,
-              },
-            ] as const),
-        result: { imported: false, importedKeys: [] as string[] },
-      };
-    }
+    const migrationAlreadyComplete = values.has(LEGACY_MIGRATION_MARKER);
     const importedKeys: string[] = [];
     const mutations: PortableStateMutation[] = [];
     for (const [key, value] of legacyValues) {
@@ -302,12 +487,17 @@ export async function migrateLegacyState(
         value: INITIAL_PORTABLE_LEDGER,
       });
     }
-    mutations.push({
-      type: 'put',
-      key: LEGACY_MIGRATION_MARKER,
-      value: 'complete',
-    });
-    return { mutations, result: { imported: true, importedKeys } };
+    if (!migrationAlreadyComplete) {
+      mutations.push({
+        type: 'put',
+        key: LEGACY_MIGRATION_MARKER,
+        value: 'complete',
+      });
+    }
+    return {
+      mutations,
+      result: { imported: !migrationAlreadyComplete || importedKeys.length > 0, importedKeys },
+    };
   });
   const { imported, importedKeys } = transaction.result;
   await repository.checkIntegrity();
@@ -320,8 +510,24 @@ export async function migrateLegacyState(
   return { imported, importedKeys };
 }
 
+/** Read the versioned canonical preference row, tolerating a fresh database. */
+export async function readPortablePreferences(
+  repository: PortableStateRepository,
+): Promise<PortablePreferences> {
+  const raw = await repository.read(PORTABLE_PREFERENCES_KEY);
+  return raw === null ? { version: 1, values: {} } : decodePortablePreferences(raw);
+}
+
+/** Decode one canonical preferences row after enforcing its typed size limits. */
+export function decodePortablePreferences(value: string): PortablePreferences {
+  return parsePortablePreferences(value);
+}
+
 function toSqliteMutation(mutation: PortableStateMutation): SqliteStateMutation {
   assertPortableKey(mutation.key);
+  if (mutation.type === 'put' && mutation.key === PORTABLE_PREFERENCES_KEY) {
+    parsePortablePreferences(mutation.value);
+  }
   return mutation.type === 'put'
     ? {
         type: 'put',
@@ -347,6 +553,16 @@ function validatePortableSnapshot(snapshot: PortableStateSnapshot): void {
   if (ledgerRaw === undefined) throw new Error('Portable state is missing its generation ledger.');
   const ledger = parseJsonRecord(ledgerRaw, PORTABLE_LEDGER_KEY);
   if (
+    Number.isSafeInteger(ledger.version) &&
+    (ledger.version as number) > PORTABLE_STORE_MAX_VERSIONS[PORTABLE_LEDGER_KEY]
+  ) {
+    throw new PortableStateTooNewError(
+      PORTABLE_LEDGER_KEY,
+      ledger.version as number,
+      PORTABLE_STORE_MAX_VERSIONS[PORTABLE_LEDGER_KEY],
+    );
+  }
+  if (
     ledger.version !== 1 ||
     !Number.isSafeInteger(ledger.activeEpoch) ||
     !Number.isSafeInteger(ledger.restoreEpoch) ||
@@ -354,20 +570,422 @@ function validatePortableSnapshot(snapshot: PortableStateSnapshot): void {
   ) {
     throw new Error('Portable state generation ledger is not settled or valid.');
   }
+  const envelopes = new Map<PortableStoreEnvelopeKey, Record<string, unknown>>();
   for (const [key, value] of snapshot.values) {
     if (key === PORTABLE_LEDGER_KEY) continue;
     if (key === LEGACY_MIGRATION_MARKER) {
       if (value !== 'complete') throw new Error('Portable migration marker is invalid.');
       continue;
     }
+    if (key === PORTABLE_PREFERENCES_KEY) {
+      parsePortablePreferences(value);
+      continue;
+    }
     const envelope = parseJsonRecord(value, key);
-    if (typeof envelope.version !== 'number' || !('state' in envelope)) {
+    if (
+      !Number.isSafeInteger(envelope.version) ||
+      (envelope.version as number) < 0 ||
+      !('state' in envelope)
+    ) {
       throw new Error(`Portable state row "${key}" is not a Zustand envelope.`);
     }
-    if (key !== 'almamesh-language' && envelope.datasetEpoch !== ledger.activeEpoch) {
+    const envelopeKey = key as PortableStoreEnvelopeKey;
+    const maxVersion = PORTABLE_STORE_MAX_VERSIONS[envelopeKey];
+    if ((envelope.version as number) > maxVersion) {
+      throw new PortableStateTooNewError(envelopeKey, envelope.version as number, maxVersion);
+    }
+    validateBoundedJson(envelope.state, envelopeKey);
+    if (!isPlainRecord(envelope.state)) {
+      throw new Error(`Portable state row "${envelopeKey}" has a non-object state.`);
+    }
+    if (
+      !isPortablePreferenceKey(key) &&
+      (envelope.datasetEpoch ?? 0) !== ledger.activeEpoch
+    ) {
       throw new Error(`Portable state row "${key}" is outside the active generation.`);
     }
+    envelopes.set(envelopeKey, envelope);
   }
+  validateCanonicalDataset(envelopes);
+}
+
+/** Bound hostile JSON before store migrations or React ever see it. */
+function validateBoundedJson(value: unknown, row: string): void {
+  const stack: Array<{ readonly value: unknown; readonly depth: number }> = [
+    { value, depth: 0 },
+  ];
+  let nodes = 0;
+  while (stack.length > 0) {
+    const current = stack.pop()!;
+    nodes += 1;
+    if (nodes > MAX_JSON_NODES) {
+      throw new Error(`Portable state row "${row}" exceeds ${MAX_JSON_NODES} JSON nodes.`);
+    }
+    if (current.depth > MAX_JSON_DEPTH) {
+      throw new Error(`Portable state row "${row}" exceeds JSON depth ${MAX_JSON_DEPTH}.`);
+    }
+    if (typeof current.value === 'string') {
+      if (current.value.length > MAX_STRING_CHARACTERS) {
+        throw new Error(
+          `Portable state row "${row}" string exceeds ${MAX_STRING_CHARACTERS} characters.`,
+        );
+      }
+      continue;
+    }
+    if (Array.isArray(current.value)) {
+      if (current.value.length > MAX_COLLECTION_ENTRIES) {
+        throw new Error(
+          `Portable state row "${row}" contains an array with more than ${MAX_COLLECTION_ENTRIES} entries.`,
+        );
+      }
+      for (const child of current.value) stack.push({ value: child, depth: current.depth + 1 });
+      continue;
+    }
+    if (!isPlainRecord(current.value)) continue;
+    const entries = Object.entries(current.value);
+    if (entries.length > MAX_COLLECTION_ENTRIES) {
+      throw new Error(
+        `Portable state row "${row}" contains an object with more than ${MAX_COLLECTION_ENTRIES} entries.`,
+      );
+    }
+    for (const [key, child] of entries) {
+      if (key.length > MAX_IDENTIFIER_CHARACTERS) {
+        throw new Error(`Portable state row "${row}" contains an oversized object key.`);
+      }
+      stack.push({ value: child, depth: current.depth + 1 });
+    }
+  }
+}
+
+function requireStateMap(
+  envelopes: ReadonlyMap<PortableStoreEnvelopeKey, Record<string, unknown>>,
+  row: PortableStoreEnvelopeKey,
+  field: string,
+): Record<string, unknown> | undefined {
+  const envelope = envelopes.get(row);
+  if (envelope === undefined) return undefined;
+  const state = envelope.state as Record<string, unknown>;
+  const value = state[field];
+  if (!isPlainRecord(value)) {
+    throw new Error(`Portable state row "${row}" has invalid ${field}.`);
+  }
+  return value;
+}
+
+function assertIdentifier(value: string, row: string): void {
+  if (value.length === 0 || value.length > MAX_IDENTIFIER_CHARACTERS) {
+    throw new Error(`Portable state row "${row}" contains an invalid identifier.`);
+  }
+}
+
+function assertMapEntriesAreRecords(map: Record<string, unknown>, row: string, noun: string): void {
+  for (const [id, entry] of Object.entries(map)) {
+    assertIdentifier(id, row);
+    if (!isPlainRecord(entry)) {
+      throw new Error(`Portable state row "${row}" ${noun} "${id}" is not an object.`);
+    }
+  }
+}
+
+function assertKnownReference(
+  candidate: unknown,
+  known: ReadonlySet<string> | undefined,
+  row: string,
+  noun: string,
+): void {
+  if (candidate === undefined) return;
+  if (typeof candidate !== 'string') {
+    throw new Error(`Portable state row "${row}" has a non-string ${noun} reference.`);
+  }
+  assertIdentifier(candidate, row);
+  if (known !== undefined && !known.has(candidate)) {
+    throw new Error(`Portable state row "${row}" references missing ${noun} "${candidate}".`);
+  }
+}
+
+/** Validate the small cross-row domain graph without importing application stores. */
+function validateCanonicalDataset(
+  envelopes: ReadonlyMap<PortableStoreEnvelopeKey, Record<string, unknown>>,
+): void {
+  const profiles = requireStateMap(envelopes, 'almamesh-profiles', 'profiles');
+  const profileIds = profiles === undefined ? undefined : new Set(Object.keys(profiles));
+  if (profiles !== undefined) {
+    assertMapEntriesAreRecords(profiles, 'almamesh-profiles', 'profile');
+    for (const [profileId, value] of Object.entries(profiles)) {
+      const profile = value as Record<string, unknown>;
+      if (profile.id !== profileId) {
+        throw new Error(`Portable state row "almamesh-profiles" profile "${profileId}" has a mismatched id.`);
+      }
+      assertKnownReference(profile.relatedTo, profileIds, 'almamesh-profiles', 'profile');
+    }
+    const state = envelopes.get('almamesh-profiles')!.state as Record<string, unknown>;
+    const active = state.activeProfileId;
+    if (active !== null && active !== undefined) {
+      assertKnownReference(active, profileIds, 'almamesh-profiles', 'profile');
+    }
+  }
+
+  const charts = requireStateMap(envelopes, 'almamesh-chart-library', 'charts');
+  const chartIds = charts === undefined ? undefined : new Set(Object.keys(charts));
+  if (charts !== undefined) {
+    assertMapEntriesAreRecords(charts, 'almamesh-chart-library', 'chart');
+    for (const [chartId, value] of Object.entries(charts)) {
+      const chart = value as Record<string, unknown>;
+      if (chart.chart_id !== chartId) {
+        throw new Error(`Portable state row "almamesh-chart-library" chart "${chartId}" has a mismatched id.`);
+      }
+      assertKnownReference(chart.profile_id, profileIds, 'almamesh-chart-library', 'profile');
+    }
+  }
+
+  for (const [row, field] of [
+    ['almamesh-life-events', 'eventsByProfile'],
+    ['almamesh-rectification-records', 'recordsByProfile'],
+  ] as const) {
+    const byProfile = requireStateMap(envelopes, row, field);
+    if (byProfile === undefined) continue;
+    for (const [profileId, value] of Object.entries(byProfile)) {
+      assertKnownReference(profileId, profileIds, row, 'profile');
+      if (row === 'almamesh-life-events' && !Array.isArray(value)) {
+        throw new Error(`Portable state row "${row}" events for "${profileId}" are not an array.`);
+      }
+      if (row === 'almamesh-life-events' && Array.isArray(value)) {
+        const version = envelopes.get(row)!.version as number;
+        if (version >= 2) {
+          for (const event of value) {
+            if (!isPlainRecord(event) || typeof event.id !== 'string') {
+              throw new Error(`Portable state row "${row}" has an invalid life event.`);
+            }
+            assertIdentifier(event.id, row);
+          }
+        }
+      }
+      if (row === 'almamesh-rectification-records' && !isPlainRecord(value)) {
+        throw new Error(`Portable state row "${row}" record for "${profileId}" is not an object.`);
+      }
+      if (
+        row === 'almamesh-rectification-records' &&
+        isPlainRecord(value) &&
+        value.profileId !== undefined &&
+        value.profileId !== profileId
+      ) {
+        throw new Error(`Portable state row "${row}" has a mismatched profile id.`);
+      }
+    }
+  }
+
+  const threads = requireStateMap(envelopes, 'almamesh-chat-history', 'threads');
+  const threadIds = threads === undefined ? undefined : new Set(Object.keys(threads));
+  if (threads !== undefined) {
+    assertMapEntriesAreRecords(threads, 'almamesh-chat-history', 'thread');
+    for (const [threadId, value] of Object.entries(threads)) {
+      const thread = value as Record<string, unknown>;
+      if (thread.id !== threadId) {
+        throw new Error(`Portable state row "almamesh-chat-history" thread "${threadId}" has a mismatched id.`);
+      }
+      assertKnownReference(thread.profile_id, profileIds, 'almamesh-chat-history', 'profile');
+      assertKnownReference(thread.chart_id, chartIds, 'almamesh-chat-history', 'chart');
+    }
+    const chat = envelopes.get('almamesh-chat-history')!.state as Record<string, unknown>;
+    const chatVersion = envelopes.get('almamesh-chat-history')!.version as number;
+    for (const field of ['messages', 'summaries'] as const) {
+      const map = chat[field];
+      if (field === 'summaries' && map === undefined && chatVersion < 2) continue;
+      if (!isPlainRecord(map)) {
+        throw new Error(`Portable state row "almamesh-chat-history" has invalid ${field}.`);
+      }
+      for (const [threadId, value] of Object.entries(map)) {
+        if (!threadIds!.has(threadId)) {
+          throw new Error(`Portable state row "almamesh-chat-history" ${field} reference missing thread "${threadId}".`);
+        }
+        if (field === 'messages' ? !Array.isArray(value) : !isPlainRecord(value)) {
+          throw new Error(`Portable state row "almamesh-chat-history" has invalid ${field} for "${threadId}".`);
+        }
+        if (field === 'messages' && Array.isArray(value)) {
+          for (const message of value) {
+            if (
+              !isPlainRecord(message) ||
+              typeof message.id !== 'string' ||
+              message.thread_id !== threadId
+            ) {
+              throw new Error('Portable state row "almamesh-chat-history" has an invalid message.');
+            }
+            assertIdentifier(message.id, 'almamesh-chat-history');
+          }
+        }
+        if (field === 'summaries' && isPlainRecord(value)) {
+          if (value.thread_id !== threadId) {
+            throw new Error('Portable state row "almamesh-chat-history" has a mismatched summary thread.');
+          }
+          const owner = (threads[threadId] as Record<string, unknown>).profile_id;
+          if (value.profile_id !== owner) {
+            throw new Error('Portable state row "almamesh-chat-history" has a mismatched summary owner.');
+          }
+        }
+      }
+    }
+  }
+
+  const interpretations = requireStateMap(envelopes, 'almamesh-interpretations', 'byChart');
+  if (interpretations !== undefined) {
+    assertMapEntriesAreRecords(interpretations, 'almamesh-interpretations', 'interpretation');
+    for (const [chartId, value] of Object.entries(interpretations)) {
+      assertKnownReference(chartId, chartIds, 'almamesh-interpretations', 'chart');
+      assertKnownReference(
+        (value as Record<string, unknown>).profileId,
+        profileIds,
+        'almamesh-interpretations',
+        'profile',
+      );
+    }
+  }
+
+  const readings = requireStateMap(envelopes, 'almamesh-mesh-readings', 'byPair');
+  if (readings !== undefined) {
+    assertMapEntriesAreRecords(readings, 'almamesh-mesh-readings', 'reading');
+    for (const [pairKey, value] of Object.entries(readings)) {
+      const reading = value as Record<string, unknown>;
+      if (reading.pairKey !== pairKey) {
+        throw new Error('Portable state row "almamesh-mesh-readings" has a mismatched pair key.');
+      }
+      const owners = reading.profileIds;
+      if (!Array.isArray(owners) || owners.length !== 2) {
+        throw new Error('Portable state row "almamesh-mesh-readings" has invalid profileIds.');
+      }
+      for (const owner of owners) {
+        assertKnownReference(owner, profileIds, 'almamesh-mesh-readings', 'profile');
+      }
+    }
+  }
+
+  const predictive = envelopes.get('almamesh-predictive')?.state as
+    | Record<string, unknown>
+    | undefined;
+  if (predictive !== undefined) {
+    if (predictive.status !== 'idle' && predictive.status !== 'ready') {
+      throw new Error('Portable state row "almamesh-predictive" has invalid status.');
+    }
+    if (predictive.status === 'ready' && typeof predictive.requestKey !== 'string') {
+      throw new Error('Portable state row "almamesh-predictive" has an invalid request key.');
+    }
+    const profileKey = predictive.profileKey;
+    if (profileKey !== undefined) {
+      if (typeof profileKey !== 'string') {
+        throw new Error('Portable state row "almamesh-predictive" has a non-string identity reference.');
+      }
+      assertIdentifier(profileKey, 'almamesh-predictive');
+      if (
+        profileIds !== undefined &&
+        chartIds !== undefined &&
+        !profileIds.has(profileKey) &&
+        !chartIds.has(profileKey)
+      ) {
+        throw new Error(
+          `Portable state row "almamesh-predictive" references missing profile or chart "${profileKey}".`,
+        );
+      }
+    }
+  }
+
+  const language = envelopes.get('almamesh-language')?.state as
+    | Record<string, unknown>
+    | undefined;
+  if (
+    language !== undefined &&
+    language.language !== 'en' &&
+    language.language !== 'es' &&
+    language.language !== 'pt'
+  ) {
+    throw new Error('Portable state row "almamesh-language" has an invalid language.');
+  }
+}
+
+function parsePortablePreferences(value: string): PortablePreferences {
+  if (value.length > 65_536) {
+    throw new Error('Portable preferences row exceeds 64 KiB.');
+  }
+  const row = parseJsonRecord(value, PORTABLE_PREFERENCES_KEY);
+  if (
+    Number.isSafeInteger(row.version) &&
+    (row.version as number) > PORTABLE_STORE_MAX_VERSIONS[PORTABLE_PREFERENCES_KEY]
+  ) {
+    throw new PortableStateTooNewError(
+      PORTABLE_PREFERENCES_KEY,
+      row.version as number,
+      PORTABLE_STORE_MAX_VERSIONS[PORTABLE_PREFERENCES_KEY],
+    );
+  }
+  if (row.version !== 1 || !isPlainRecord(row.values)) {
+    throw new Error('Portable preferences row has an unsupported shape or version.');
+  }
+  const values: Partial<Record<PortablePreferenceMirrorKey, string>> = {};
+  for (const [key, raw] of Object.entries(row.values)) {
+    if (!(PORTABLE_PREFERENCE_MIRROR_KEYS as readonly string[]).includes(key)) {
+      throw new Error(`Portable preferences contain unknown key "${key}".`);
+    }
+    validatePortablePreferenceMirror(key as PortablePreferenceMirrorKey, raw);
+    values[key as PortablePreferenceMirrorKey] = raw as string;
+  }
+  return { version: 1, values };
+}
+
+function validatePortablePreferenceMirror(
+  key: PortablePreferenceMirrorKey,
+  value: unknown,
+): asserts value is string {
+  if (typeof value !== 'string') {
+    throw new Error(`Portable preference "${key}" is not a string.`);
+  }
+  if (key === 'almamesh-model-suggestion-dismissed') {
+    if (value.length === 0 || value.length > 512) {
+      throw new Error('Portable model-suggestion preference is invalid.');
+    }
+    return;
+  }
+  if (value.length > 16_384) {
+    throw new Error(`Portable preference "${key}" exceeds 16 KiB.`);
+  }
+  const parsed = parseJsonRecord(value, key);
+  if (key === 'almamesh-content-mode') {
+    if (
+      Object.keys(parsed).length !== 1 ||
+      (parsed.contentMode !== 'layman' && parsed.contentMode !== 'technical')
+    ) {
+      throw new Error('Portable content mode is invalid.');
+    }
+    return;
+  }
+  const allowed = new Set([
+    'apiBase',
+    'apiKey',
+    'model',
+    'interpretationModel',
+    'chatModel',
+    'privacyMode',
+    'engine',
+  ]);
+  const maximumLength: Readonly<Record<string, number>> = {
+    apiBase: 2_048,
+    apiKey: 8_192,
+    model: 512,
+    interpretationModel: 512,
+    chatModel: 512,
+    privacyMode: 128,
+    engine: 128,
+  };
+  for (const [setting, settingValue] of Object.entries(parsed)) {
+    if (
+      !allowed.has(setting) ||
+      typeof settingValue !== 'string' ||
+      settingValue.length > maximumLength[setting]!
+    ) {
+      throw new Error(`Portable LLM setting "${setting}" is invalid.`);
+    }
+  }
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
 function parseJsonRecord(value: string, key: string): Record<string, unknown> {

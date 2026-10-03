@@ -6,15 +6,18 @@
  * and "Turn AI off" returns a configured cloud tier to the None default.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 import '../../../i18n/config';
-import { LLM_SETTINGS_KEY } from '@almamesh/llm';
+import {
+  configureLlmSettingsPersistence,
+  hydrateLlmSettings,
+  readLlmSettings,
+} from '@almamesh/llm';
 import LlmModelSettings from './LlmModelSettings';
 
 function readSaved(): Record<string, unknown> {
-  const raw = window.localStorage.getItem(LLM_SETTINGS_KEY);
-  return raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
+  return { ...readLlmSettings() };
 }
 
 // Stub the balance + model-catalog reads so a pre-seeded OpenRouter tier can't
@@ -28,11 +31,15 @@ function renderTiers() {
 
 describe('LlmModelSettings — tiers', () => {
   beforeEach(() => {
-    window.localStorage.clear();
+    hydrateLlmSettings(null);
+    configureLlmSettingsPersistence(undefined);
     fetchCredits.mockClear();
     fetchModels.mockClear();
   });
-  afterEach(() => window.localStorage.clear());
+  afterEach(() => {
+    hydrateLlmSettings(null);
+    configureLlmSettingsPersistence(undefined);
+  });
 
   it('renders the None + Cloud tiers', () => {
     renderTiers();
@@ -56,9 +63,8 @@ describe('LlmModelSettings — tiers', () => {
     expect(honesty.textContent).toMatch(/leaves your device/);
   });
 
-  it('"Turn AI off" returns a configured cloud tier to the None default', () => {
-    window.localStorage.setItem(
-      LLM_SETTINGS_KEY,
+  it('"Turn AI off" returns a configured cloud tier to the None default', async () => {
+    hydrateLlmSettings(
       JSON.stringify({
         apiBase: 'https://openrouter.ai/api/v1',
         apiKey: 'sk-or-xyz',
@@ -71,7 +77,7 @@ describe('LlmModelSettings — tiers', () => {
     expect(screen.getByTestId('tier-cloud-active')).toBeTruthy();
     fireEvent.click(screen.getByTestId('tier-none-select'));
 
-    expect(screen.getByTestId('tier-none-active')).toBeTruthy();
+    await waitFor(() => expect(screen.getByTestId('tier-none-active')).toBeTruthy());
     expect(screen.queryByTestId('tier-cloud-active')).toBeNull();
     const saved = readSaved();
     expect(saved.engine).toBe('');

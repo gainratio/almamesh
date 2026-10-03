@@ -4,15 +4,18 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import '../../../i18n/config';
 import {
   CHAT_CLOUD_MODEL,
-  LLM_SETTINGS_KEY,
+  configureLlmSettingsPersistence,
+  hydrateLlmSettings,
+  readLlmSettings,
   RECOMMENDED_CLOUD_MODEL,
   type ProviderConfig,
 } from '@almamesh/llm';
 import LlmModelSettings from './LlmModelSettings';
+import { notifyLlmSettingsChanged } from '../../../lib/llmSettingsEvents';
+import { hydrateSlowModelSuggestion } from '../../../lib/modelSuggestion';
 
 function readSaved(): Record<string, unknown> {
-  const raw = window.localStorage.getItem(LLM_SETTINGS_KEY);
-  return raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
+  return { ...readLlmSettings() };
 }
 
 const STUB_CONFIG: ProviderConfig = {
@@ -37,11 +40,17 @@ function requestError(message: string, status: number): Error {
 
 describe('LlmModelSettings — OpenRouter-first, test-on-save', () => {
   beforeEach(() => {
-    window.localStorage.clear();
+    hydrateLlmSettings(null);
+    hydrateSlowModelSuggestion(null);
+    configureLlmSettingsPersistence(undefined);
     fetchCredits.mockClear();
     fetchModels.mockClear();
   });
-  afterEach(() => window.localStorage.clear());
+  afterEach(() => {
+    hydrateLlmSettings(null);
+    hydrateSlowModelSuggestion(null);
+    configureLlmSettingsPersistence(undefined);
+  });
 
   it('renders the two choices: AI off, and a guided Connect-AI card with an Advanced panel', () => {
     render(<LlmModelSettings resolveConfig={resolveConfig} fetchCredits={fetchCredits} fetchModels={fetchModels} testConnection={vi.fn()} />);
@@ -63,6 +72,32 @@ describe('LlmModelSettings — OpenRouter-first, test-on-save', () => {
     expect((screen.getByTestId('llm-save') as HTMLButtonElement).disabled).toBe(true);
     fireEvent.change(screen.getByTestId('llm-openrouter-key'), { target: { value: 'sk-or-abc' } });
     expect((screen.getByTestId('llm-save') as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('rehydrates an open form when another realm replaces AI settings', async () => {
+    hydrateLlmSettings(
+      JSON.stringify({ apiKey: 'old-key', apiBase: 'https://openrouter.ai/api/v1' }),
+    );
+    render(
+      <LlmModelSettings
+        resolveConfig={resolveConfig}
+        fetchCredits={fetchCredits}
+        fetchModels={fetchModels}
+        testConnection={vi.fn()}
+      />,
+    );
+    expect((screen.getByTestId('llm-openrouter-key') as HTMLInputElement).value).toBe('old-key');
+
+    hydrateLlmSettings(
+      JSON.stringify({ apiKey: 'imported-key', apiBase: 'https://openrouter.ai/api/v1' }),
+    );
+    notifyLlmSettingsChanged({ replace: true });
+
+    await waitFor(() =>
+      expect((screen.getByTestId('llm-openrouter-key') as HTMLInputElement).value).toBe(
+        'imported-key',
+      ),
+    );
   });
 
   it('guided save persists the OpenRouter preset and, on a passing test, shows Connected', async () => {
@@ -172,24 +207,30 @@ describe('LlmModelSettings — OpenRouter-first, test-on-save', () => {
     expect(saved.chatModel).toBe('llama3.1');
   });
 
-  it('surfaces a storage failure as a verdict instead of a silent no-op — and never probes', async () => {
+  it('does not report success when the canonical SQLite settings write fails', async () => {
     const testConnection = vi.fn().mockResolvedValue(undefined);
-    const setItem = vi.spyOn(window.localStorage, 'setItem').mockImplementation(() => {
-      throw new DOMException('quota exceeded', 'QuotaExceededError');
-    });
-    try {
-      render(<LlmModelSettings resolveConfig={resolveConfig} fetchCredits={fetchCredits} fetchModels={fetchModels} testConnection={testConnection} />);
-      fireEvent.change(screen.getByTestId('llm-openrouter-key'), { target: { value: 'sk-or-abc' } });
-      fireEvent.click(screen.getByTestId('llm-save'));
+    const flushSettings = vi.fn().mockRejectedValue(new Error('canonical SQLite write failed'));
+    render(
+      <LlmModelSettings
+        resolveConfig={resolveConfig}
+        fetchCredits={fetchCredits}
+        fetchModels={fetchModels}
+        testConnection={testConnection}
+        flushSettings={flushSettings}
+      />,
+    );
 
-      await waitFor(() =>
-        expect(screen.getByTestId('llm-connection-result').textContent).toContain("Couldn't save"),
-      );
-      // A config we couldn't persist must not be probed.
-      expect(testConnection).not.toHaveBeenCalled();
-    } finally {
-      setItem.mockRestore();
-    }
+    fireEvent.change(screen.getByTestId('llm-openrouter-key'), {
+      target: { value: 'sk-or-abc' },
+    });
+    fireEvent.click(screen.getByTestId('llm-save'));
+
+    await waitFor(() =>
+      expect(screen.getByTestId('llm-connection-result').textContent).toContain("Couldn't save"),
+    );
+    expect(flushSettings).toHaveBeenCalledOnce();
+    expect(testConnection).not.toHaveBeenCalled();
+    expect(screen.getByTestId('llm-connection-result').textContent).not.toContain('Connected');
   });
 
   it('ignores a stale probe result after the config is edited mid-test (no false Connected)', async () => {
@@ -223,11 +264,12 @@ describe('LlmModelSettings — OpenRouter-first, test-on-save', () => {
 
 describe('LlmModelSettings — OpenRouter credits balance', () => {
   beforeEach(() => {
-    window.localStorage.clear();
+    hydrateLlmSettings(null);
+    hydrateSlowModelSuggestion(null);
     fetchCredits.mockClear();
     fetchModels.mockClear();
   });
-  afterEach(() => window.localStorage.clear());
+  afterEach(() => hydrateLlmSettings(null));
 
   it('reads the balance after a guided OpenRouter connect and shows dollars remaining', async () => {
     const testConnection = vi.fn().mockResolvedValue(undefined);
@@ -315,15 +357,15 @@ describe('LlmModelSettings — OpenRouter credits balance', () => {
 
 describe('LlmModelSettings — live OpenRouter model picker', () => {
   beforeEach(() => {
-    window.localStorage.clear();
+    hydrateLlmSettings(null);
+    hydrateSlowModelSuggestion(null);
     fetchCredits.mockClear();
     fetchModels.mockClear();
   });
-  afterEach(() => window.localStorage.clear());
+  afterEach(() => hydrateLlmSettings(null));
 
   it('reads the OpenRouter catalog and offers real models in the picker', async () => {
-    window.localStorage.setItem(
-      LLM_SETTINGS_KEY,
+    hydrateLlmSettings(
       JSON.stringify({
         apiBase: 'https://openrouter.ai/api/v1',
         apiKey: 'sk-or-xyz',
@@ -357,8 +399,7 @@ describe('LlmModelSettings — live OpenRouter model picker', () => {
   });
 
   it('never reads the catalog for a LOCAL endpoint (no request to loopback)', () => {
-    window.localStorage.setItem(
-      LLM_SETTINGS_KEY,
+    hydrateLlmSettings(
       JSON.stringify({ apiBase: 'http://localhost:11434/v1', privacyMode: 'local_only' }),
     );
     const catalog = vi.fn().mockResolvedValue([]);
@@ -380,8 +421,7 @@ describe('LlmModelSettings — live OpenRouter model picker', () => {
 describe('LlmModelSettings — one-time switch suggestion for glm-5.3-flash users', () => {
   const GLM = 'z-ai/glm-5.3-flash';
   const seed = (models: Record<string, string>) =>
-    window.localStorage.setItem(
-      LLM_SETTINGS_KEY,
+    hydrateLlmSettings(
       JSON.stringify({
         apiBase: 'https://openrouter.ai/api/v1',
         apiKey: 'sk-or-kept',
@@ -399,8 +439,14 @@ describe('LlmModelSettings — one-time switch suggestion for glm-5.3-flash user
       />,
     );
 
-  beforeEach(() => window.localStorage.clear());
-  afterEach(() => window.localStorage.clear());
+  beforeEach(() => {
+    hydrateLlmSettings(null);
+    hydrateSlowModelSuggestion(null);
+  });
+  afterEach(() => {
+    hydrateLlmSettings(null);
+    hydrateSlowModelSuggestion(null);
+  });
 
   it('pins the new default: deepseek-v4.1-flash', () => {
     expect(RECOMMENDED_CLOUD_MODEL).toBe('deepseek/deepseek-v4.1-flash');
@@ -454,8 +500,7 @@ describe('LlmModelSettings — one-time switch suggestion for glm-5.3-flash user
   });
 
   it('does not suggest a cloud model to a local endpoint user', () => {
-    window.localStorage.setItem(
-      LLM_SETTINGS_KEY,
+    hydrateLlmSettings(
       JSON.stringify({ apiBase: 'http://localhost:11434/v1', model: GLM, interpretationModel: GLM }),
     );
     renderSettings();

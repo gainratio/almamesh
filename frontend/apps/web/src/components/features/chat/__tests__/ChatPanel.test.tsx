@@ -4,7 +4,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 
 import { ChatPanel } from '../ChatPanel';
 import { useChatStore } from '@almamesh/store';
-import { openRouterPreset, writeLlmSettings } from '@almamesh/llm';
+import { hydrateLlmSettings, openRouterPreset, writeLlmSettings } from '@almamesh/llm';
 import { __setMemoryForTest, __resetMemoryForTest } from '../../../../lib/chatMemory';
 
 /** Configure a synthetic cloud tier so the panel's send affordance is live. */
@@ -22,7 +22,7 @@ function deferred<T>() {
 
 describe('ChatPanel — typing indicator vs streamed text', () => {
   beforeEach(() => {
-    localStorage.clear();
+    hydrateLlmSettings(null);
     // These tests exercise the live-send path, which requires a configured AI
     // tier (the panel replaces the input with the Connect-AI CTA otherwise).
     configureCloudAi();
@@ -38,7 +38,7 @@ describe('ChatPanel — typing indicator vs streamed text', () => {
   });
 
   afterEach(() => {
-    localStorage.clear();
+    hydrateLlmSettings(null);
     useChatStore.setState({ threads: {}, messages: {} });
     __resetMemoryForTest();
     vi.restoreAllMocks();
@@ -283,7 +283,7 @@ describe('ChatPanel — typing indicator vs streamed text', () => {
 
 describe('ChatPanel — no-AI-configured gate (never invite a doomed question)', () => {
   beforeEach(() => {
-    localStorage.clear();
+    hydrateLlmSettings(null);
     useChatStore.setState({ threads: {}, messages: {} });
     __setMemoryForTest({
       indexMessage: vi.fn().mockResolvedValue(undefined),
@@ -295,7 +295,7 @@ describe('ChatPanel — no-AI-configured gate (never invite a doomed question)',
   });
 
   afterEach(() => {
-    localStorage.clear();
+    hydrateLlmSettings(null);
     useChatStore.setState({ threads: {}, messages: {} });
     __resetMemoryForTest();
     vi.restoreAllMocks();

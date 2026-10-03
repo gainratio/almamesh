@@ -1,11 +1,6 @@
-// Light, local-first LLM settings: a localStorage-backed override layer over the
-// build-time Vite env. This lets a user point AlmaMesh at their own local model
-// (or, opt-in, a cloud endpoint + key) WITHOUT rebuilding — and without any
-// backend or account. The key, if set, lives only in the browser's localStorage.
-//
-// Precedence: explicit localStorage value > Vite env > safe defaults (resolved
-// downstream by `resolveProviderConfig`). Pure + storage-guarded so it is a
-// no-op (returns the env unchanged) in SSR / tests where localStorage is absent.
+// Light, local-first LLM settings. AlmaMesh hydrates this synchronous in-memory
+// view from canonical OPFS SQLite before React renders. No API key or provider
+// setting is duplicated into Web Storage.
 
 import {
   CHAT_CLOUD_MODEL,
@@ -16,8 +11,34 @@ import {
   type LlmEnv,
 } from "./config";
 
-/** localStorage key holding the JSON-encoded LLM override settings. */
+/** Legacy migration key and canonical preference-map key. */
 export const LLM_SETTINGS_KEY = "almamesh-llm-settings";
+
+/**
+ * Browser integration seam. The LLM package stays storage-backend agnostic;
+ * AlmaMesh configures this writer to commit the versioned SQLite preferences
+ * row while synchronous consumers read the boot-hydrated memory snapshot.
+ */
+export type LlmSettingsPersistence = (serialized: string) => void | Promise<void>;
+let durableSettingsWriter: LlmSettingsPersistence | undefined;
+let settingsSnapshot: LlmSettings = {};
+
+export function configureLlmSettingsPersistence(
+  writer: LlmSettingsPersistence | undefined,
+): void {
+  durableSettingsWriter = writer;
+}
+
+function persistDurably(serialized: string): void {
+  try {
+    const pending = durableSettingsWriter?.(serialized);
+    if (pending instanceof Promise) void pending.catch(() => undefined);
+  } catch {
+    // The UI still has its synchronous in-memory value for this session.
+    // Startup reconstructs it from SQLite, so a failed durable write cannot
+    // become authority on the next load.
+  }
+}
 
 /** User-editable LLM settings (the subset a Settings UI would expose). */
 export interface LlmSettings {
@@ -89,21 +110,6 @@ export function describeLlmStatus(settings: LlmSettings = readLlmSettings()): Ll
     : { kind: "cloud", label: "Cloud", configured };
 }
 
-function hasLocalStorage(): boolean {
-  try {
-    if (typeof localStorage === "undefined") {
-      return false;
-    }
-    // Node/Bun SSR hosts can expose a partial `localStorage` global without the
-    // browser Storage methods. Treat that shell as unavailable instead of
-    // crashing prerender, tests, or command-line report generation.
-    const storage: Partial<Storage> = localStorage;
-    return typeof storage.getItem === "function" && typeof storage.setItem === "function";
-  } catch {
-    return false;
-  }
-}
-
 /**
  * Heal a saved blob that still pins one of AlmaMesh's OWN retired default cloud
  * models (e.g. the long-dead `anthropic/claude-3.5-sonnet` OpenRouter preset that
@@ -133,41 +139,37 @@ function migrateLegacyModel(settings: LlmSettings): { settings: LlmSettings; cha
   return { settings, changed: false };
 }
 
-/** Read the stored override settings, or `{}` if none / unavailable / corrupt. */
-export function readLlmSettings(): LlmSettings {
-  if (!hasLocalStorage()) {
-    return {};
-  }
-  const raw = localStorage.getItem(LLM_SETTINGS_KEY);
+/** Replace the synchronous view from the canonical SQLite preference row. */
+export function hydrateLlmSettings(raw: string | null): LlmSettings {
   if (!raw) {
-    return {};
+    settingsSnapshot = {};
+    return settingsSnapshot;
   }
   let parsed: LlmSettings;
   try {
     parsed = JSON.parse(raw) as LlmSettings;
   } catch {
-    return {};
+    settingsSnapshot = {};
+    return settingsSnapshot;
   }
   const healed = healRetiredModel(parsed);
   const migrated = migrateLegacyModel(healed.settings);
-  const settings = migrated.settings;
+  settingsSnapshot = migrated.settings;
   if (healed.changed || migrated.changed) {
-    try {
-      localStorage.setItem(LLM_SETTINGS_KEY, JSON.stringify(settings));
-    } catch {
-      // Best-effort persistence; the healed/migrated value is still returned this call.
-    }
+    persistDurably(JSON.stringify(settingsSnapshot));
   }
-  return settings;
+  return settingsSnapshot;
 }
 
-/** Persist override settings (merging over any existing). No-op without storage. */
+/** Read the boot-hydrated in-memory override settings. */
+export function readLlmSettings(): LlmSettings {
+  return settingsSnapshot;
+}
+
+/** Persist override settings (merging over the hydrated in-memory snapshot). */
 export function writeLlmSettings(settings: LlmSettings): void {
-  if (!hasLocalStorage()) {
-    return;
-  }
-  const merged = { ...readLlmSettings(), ...settings };
-  localStorage.setItem(LLM_SETTINGS_KEY, JSON.stringify(merged));
+  settingsSnapshot = { ...settingsSnapshot, ...settings };
+  persistDurably(JSON.stringify(settingsSnapshot));
 }
 
 /**

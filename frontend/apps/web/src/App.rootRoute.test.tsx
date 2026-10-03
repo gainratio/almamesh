@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
+import { useChartLibraryStore } from '@almamesh/store';
 
 import './i18n/config';
 
@@ -43,12 +44,14 @@ vi.mock('./hooks/useRegenerationSubscription', () => ({
   useRegenerationSubscription: () => {},
 }));
 
-const hasLocalChart = vi.fn();
-vi.mock('./lib/localChart', () => ({
-  hasLocalChart: () => hasLocalChart(),
-}));
-
 import App from './App';
+
+const setHasChart = (hasChart: boolean) =>
+  useChartLibraryStore.setState({
+    charts: hasChart
+      ? ({ saved: { chart_id: 'saved', person_name: 'Saved', is_primary: true } } as never)
+      : {},
+  });
 
 function renderAt(path: string) {
   return render(
@@ -60,17 +63,15 @@ function renderAt(path: string) {
 
 describe('RootRoute (/)', () => {
   beforeEach(() => {
-    hasLocalChart.mockReset();
+    setHasChart(false);
   });
 
   it('renders the LandingPage for a first-time visitor with no chart', async () => {
-    hasLocalChart.mockReturnValue(false);
     renderAt('/');
     expect((await screen.findByTestId('landing-page')).getAttribute('data-variant')).toBe('home');
   });
 
   it('renders the landing OUTSIDE the AppLayout chrome', async () => {
-    hasLocalChart.mockReturnValue(false);
     renderAt('/');
     await screen.findByTestId('landing-page');
     // The profile-switcher / AI-status app shell must NOT wrap the splash.
@@ -78,7 +79,7 @@ describe('RootRoute (/)', () => {
   });
 
   it('redirects a returning visitor with a chart to /dashboard', async () => {
-    hasLocalChart.mockReturnValue(true);
+    setHasChart(true);
     renderAt('/');
     // The redirect lands on the dashboard, inside the AppLayout chrome.
     expect(await screen.findByTestId('dashboard-page')).toBeTruthy();
@@ -90,7 +91,6 @@ describe('RootRoute (/)', () => {
 
 describe('unknown routes', () => {
   it('renders a noindex not-found page instead of redirecting to the root landing', async () => {
-    hasLocalChart.mockReturnValue(false);
     renderAt('/definitely-not-a-route');
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Page not found' })).toBeTruthy();

@@ -2,7 +2,7 @@
  * useChatThread — store-backed, per-profile chat with RAG memory.
  *
  * Replaces ChatPanel's old ephemeral React-local message array. The chat store
- * (`@almamesh/store`, IndexedDB-backed) is the single source of truth, so a
+ * (`@almamesh/store`, backed by canonical SQLite) is the single source of truth, so a
  * conversation survives reload / PWA reopen. This hook:
  *
  *  - resolves the active thread for `(profileId, chartId)` reactively (rendering

@@ -264,6 +264,13 @@ describe('repository truth', () => {
   it('proves destructive reset through durable storage and landing-page postconditions', () => {
     const proof = readRoot('frontend/apps/web/scripts/verify-privacy-reset.mjs');
     const dagger = readRoot('dagger/src/index.ts');
+    expect(proof).toContain('BUNDLE_FORMAT_VERSION = 3');
+    expect(proof).toContain('application/vnd.almamesh.backup');
+    expect(proof).toContain('plaintext is exactly the');
+    expect(proof).toContain('canonical SQLite file, with no second settings payload');
+    expect(proof).toContain('exported.hasPrivateCredential !== expectCredential');
+    expect(proof).toContain('exported.fileHasPlaintextCredential');
+    expect(proof).not.toContain('carriesCredentialSealed');
     expect(proof).toContain("localStorage.setItem('almamesh-chart', '1')");
     expect(proof).toContain("putIdbValue('almamesh-chart-library'");
     expect(proof).toContain("getByTestId('landing-nav-cta')");

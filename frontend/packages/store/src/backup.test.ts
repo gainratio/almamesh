@@ -2,17 +2,21 @@ import { describe, expect, it } from 'vitest';
 import type { BackupEnvelopePlain, BackupStores } from '@almamesh/shared-types';
 import {
   applyBackup,
-  applyLocalRestoreMirrors,
+  applyBrowserBackupAtomically,
+  armPortableImportRevision,
   BACKUP_STORES,
   BackupError,
-  CHART_FLAG_KEY,
   CHAT_VECTORS_KEY,
   collectBackup,
+  assertPortableImportRevision,
   PREDICTIVE_CACHE_KEY,
+  PortableImportRevisionConflictError,
   type BackupDeps,
   type BackupTier,
   type StorageTier,
 } from './backup';
+import { setPortableStateRepositoryForTests } from './deletionTombstones';
+import type { PortableStateRepository } from './portableState';
 import { migrateInterpretationPersistedState } from './interpretation';
 
 /**
@@ -61,7 +65,7 @@ function makeDeps(overrides?: {
 }
 
 describe('BACKUP_STORES registry', () => {
-  it('lists exactly the 7 export stores in order with correct tiers', () => {
+  it('lists every portable user-data store in order with correct tiers', () => {
     expect(BACKUP_STORES.map((e) => [e.key, e.tier])).toEqual([
       ['almamesh-profiles', 'idb'],
       ['almamesh-chart-library', 'idb'],
@@ -69,8 +73,57 @@ describe('BACKUP_STORES registry', () => {
       ['almamesh-rectification-records', 'idb'],
       ['almamesh-chat-history', 'idb'],
       ['almamesh-interpretations', 'idb'],
+      ['almamesh-mesh-readings', 'idb'],
+      ['almamesh-predictive', 'idb'],
       ['almamesh-language', 'local'],
     ]);
+  });
+});
+
+describe('portable import safety revision', () => {
+  it('accepts only the single SQLite revision created by the restore lease', () => {
+    expect(() => assertPortableImportRevision(41, 42)).not.toThrow();
+
+    expect(() => assertPortableImportRevision(41, 43)).toThrow(
+      PortableImportRevisionConflictError,
+    );
+  });
+
+  it('refuses a stale or non-monotonic destination revision', () => {
+    expect(() => assertPortableImportRevision(41, 41)).toThrow(
+      PortableImportRevisionConflictError,
+    );
+    expect(() => assertPortableImportRevision(41, 40)).toThrow(
+      PortableImportRevisionConflictError,
+    );
+  });
+
+  it('consumes the armed revision before a legacy Replace can write', async () => {
+    const repository = {
+      runtimeInfo: async () => ({ epoch: 43 }),
+    } as unknown as PortableStateRepository;
+    setPortableStateRepositoryForTests(repository);
+    armPortableImportRevision(41);
+    const deps = makeDeps();
+    const envelope: BackupEnvelopePlain = {
+      format: 'almamesh-backup',
+      formatVersion: 1,
+      app: { version: 'test' },
+      exportedAt: '2026-07-01T12:00:00.000Z',
+      encryption: 'none',
+      stores: {
+        'almamesh-profiles': { version: 1, state: { profiles: {} } },
+      },
+    };
+
+    try {
+      await expect(applyBrowserBackupAtomically(envelope, deps, 9)).rejects.toBeInstanceOf(
+        PortableImportRevisionConflictError,
+      );
+      expect(deps.tiers.idb.map.size).toBe(0);
+    } finally {
+      setPortableStateRepositoryForTests(undefined);
+    }
   });
 });
 
@@ -206,8 +259,8 @@ describe('applyBackup', () => {
     };
   }
 
-  /** An envelope carrying all 7 known stores (fresh, non-stale replacement data). */
-  function fullSevenStoreEnvelope(): BackupEnvelopePlain {
+  /** A representative envelope carrying every canonical persisted slice. */
+  function fullPortableStoreEnvelope(): BackupEnvelopePlain {
     return {
       format: 'almamesh-backup',
       formatVersion: 1,
@@ -221,6 +274,11 @@ describe('applyBackup', () => {
         'almamesh-rectification-records': { version: 1, state: { records: {} } },
         'almamesh-chat-history': { version: 1, state: { threads: {} } },
         'almamesh-interpretations': { version: 2, state: { readings: {} } },
+        'almamesh-mesh-readings': { version: 1, state: { byPair: {} } },
+        'almamesh-predictive': {
+          version: 3,
+          state: { status: 'ready', profileKey: 'p2', requestKey: 'request-p2' },
+        },
         'almamesh-language': { version: 1, state: { language: 'es' } },
       },
     };
@@ -232,6 +290,10 @@ describe('applyBackup', () => {
       'almamesh-chart-library': persisted({ charts: { c1: { id: 'c1' } } }, 1),
       'almamesh-chat-history': persisted({ threads: {} }, 1),
       'almamesh-interpretations': persisted({ readings: { c1: 'hi' } }, 2),
+      'almamesh-predictive': persisted(
+        { status: 'ready', profileKey: 'p1', requestKey: 'request-p1' },
+        3,
+      ),
     });
     const localA = makeTier({
       'almamesh-language': persisted({ language: 'pt' }, 1),
@@ -253,24 +315,40 @@ describe('applyBackup', () => {
     }
   });
 
-  it('sets the chart route-guard flag when chart-library is present and deletes RAG vectors', async () => {
+  it('does not create a chart mirror and deletes rebuildable RAG vectors', async () => {
     const idb = makeTier({ [CHAT_VECTORS_KEY]: 'stale-embeddings' });
     const local = makeTier();
     await applyBackup(seededEnvelope(), makeDeps({ idb, local }));
 
-    expect(local.map.get(CHART_FLAG_KEY)).toBe('1');
+    expect(local.map.has('almamesh-chart')).toBe(false);
     expect(idb.map.has(CHAT_VECTORS_KEY)).toBe(false);
   });
 
-  it('deletes stale predictive cache on restore without making it portable', async () => {
+  it('does not write any route flag when the restored chart library is empty', async () => {
+    const idb = makeTier();
+    const local = makeTier();
+    const envelope = seededEnvelope();
+    envelope.stores['almamesh-chart-library'] = { version: 1, state: { charts: {} } };
+
+    await applyBackup(envelope, makeDeps({ idb, local }));
+
+    expect(local.map.has('almamesh-chart')).toBe(false);
+  });
+
+  it('replaces stale predictive results with the portable restored snapshot', async () => {
     const idb = makeTier({
       [PREDICTIVE_CACHE_KEY]: persisted({ profileKey: 'before-restore' }, 2),
     });
 
-    await applyBackup(fullSevenStoreEnvelope(), makeDeps({ idb }));
+    await applyBackup(fullPortableStoreEnvelope(), makeDeps({ idb }));
 
-    expect(idb.map.has(PREDICTIVE_CACHE_KEY)).toBe(false);
-    expect(BACKUP_STORES.some((entry) => entry.key === PREDICTIVE_CACHE_KEY)).toBe(false);
+    expect(idb.map.get(PREDICTIVE_CACHE_KEY)).toBe(
+      persisted(
+        { status: 'ready', profileKey: 'p2', requestKey: 'request-p2' },
+        3,
+      ),
+    );
+    expect(BACKUP_STORES.some((entry) => entry.key === PREDICTIVE_CACHE_KEY)).toBe(true);
   });
 
   it('ignores unknown store keys without failing', async () => {
@@ -356,7 +434,7 @@ describe('applyBackup', () => {
       'almamesh-language': persisted({ language: 'en' }, 1),
     });
 
-    const env = fullSevenStoreEnvelope();
+    const env = fullPortableStoreEnvelope();
     delete env.stores['almamesh-chat-history'];
 
     await applyBackup(env, makeDeps({ idb, local }));
@@ -367,17 +445,16 @@ describe('applyBackup', () => {
     expect(idb.map.get('almamesh-profiles')).toBe(persisted({ activeProfileId: 'p2' }, 1));
   });
 
-  it('replace: deletes the chart route-guard flag when chart-library is absent', async () => {
+  it('replace: deletes an omitted canonical chart library without creating a route flag', async () => {
     const idb = makeTier({ 'almamesh-chart-library': persisted({ charts: { old: {} } }, 1) });
-    const local = makeTier({ [CHART_FLAG_KEY]: '1' });
+    const local = makeTier();
 
-    const env = fullSevenStoreEnvelope();
+    const env = fullPortableStoreEnvelope();
     delete env.stores['almamesh-chart-library'];
 
     await applyBackup(env, makeDeps({ idb, local }));
 
-    // No charts after the replace → the route-guard flag is cleared.
-    expect(local.map.has(CHART_FLAG_KEY)).toBe(false);
+    expect(local.map.has('almamesh-chart')).toBe(false);
     // The stale chart-library store itself is cleared too.
     expect(idb.map.has('almamesh-chart-library')).toBe(false);
   });
@@ -433,28 +510,5 @@ describe('applyBackup', () => {
     });
     expect(idb.map.size).toBe(0);
     expect(local.map.size).toBe(0);
-  });
-});
-
-describe('applyLocalRestoreMirrors', () => {
-  it('reports a mirror failure without throwing after the authoritative IDB commit', async () => {
-    const local = makeTier();
-    local.set = async (key) => {
-      if (key === CHART_FLAG_KEY) throw new Error('localStorage quota exceeded');
-    };
-
-    await expect(
-      applyLocalRestoreMirrors(local, persisted({ language: 'es' }, 1), true),
-    ).resolves.toBe(false);
-  });
-
-  it('applies language and chart mirrors when the optional tier is healthy', async () => {
-    const local = makeTier();
-
-    await expect(
-      applyLocalRestoreMirrors(local, persisted({ language: 'pt' }, 1), true),
-    ).resolves.toBe(true);
-    expect(local.map.get('almamesh-language')).toBe(persisted({ language: 'pt' }, 1));
-    expect(local.map.get(CHART_FLAG_KEY)).toBe('1');
   });
 });

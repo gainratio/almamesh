@@ -212,7 +212,7 @@ export function RectifyPage(): ReactElement {
     // alongside the structured events that informed the fit. v2 (Spec 062) also
     // snapshots the full in-memory adapted result and the events' own summaries
     // so the evidence story survives revisits — everything stays on-device
-    // (IndexedDB, local-first) and the record never feeds the engine.
+    // (canonical SQLite, local-first) and the record never feeds the engine.
     if (state.result != null) {
       const structuredEvents = useLifeEventsStore
         .getState()

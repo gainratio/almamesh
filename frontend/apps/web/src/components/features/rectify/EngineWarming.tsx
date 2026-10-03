@@ -90,7 +90,7 @@ export function EngineWarming({
     setResetting(true);
     await resetEverything();
     // Hard navigation to the landing splash: the most reliable escape from a
-    // wedged boot, and `resetEverything` cleared the chart flag so it re-onboards.
+    // wedged boot; `resetEverything` cleared the canonical chart row, so it re-onboards.
     window.location.assign('/');
   };
 

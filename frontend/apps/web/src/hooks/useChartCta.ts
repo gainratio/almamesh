@@ -1,4 +1,4 @@
-import { hasLocalChart } from '../lib/localChart'
+import { useChartLibraryStore } from '@almamesh/store'
 import { usePrewarmEngineOnIntent, type PrewarmEngineHandlers } from './usePrewarmEngineOnIntent'
 
 /**
@@ -13,10 +13,9 @@ import { usePrewarmEngineOnIntent, type PrewarmEngineHandlers } from './usePrewa
  *   `/dashboard` to open the existing chart, show the "Open my chart" label, and
  *   DO NOT prewarm — there is no engine work to warm up for a saved chart.
  *
- * `hasLocalChart()` reads a synchronous localStorage flag at render. The landing
- * page is static (engine-free) and never mutates that flag while mounted, so a
- * render-time read is correct here — the same signal the `/` route guard and
- * `ProfileSwitcher` already use to decide dashboard-vs-onboarding.
+ * The boot barrier hydrates chart state from SQLite before this hook renders.
+ * Subscribing to the chart map keeps every mounted CTA correct after an import,
+ * reset, or cross-tab refresh without a second durable route flag.
  */
 export interface ChartCta {
   /** Route target: `/dashboard` for a returning visitor, else `/onboarding`. */
@@ -31,8 +30,9 @@ export function useChartCta(): ChartCta {
   // Rules of hooks: always call the prewarm hook; only SPREAD it when warming
   // up actually helps (a first-time visitor about to generate a chart).
   const prewarm = usePrewarmEngineOnIntent()
+  const hasChart = useChartLibraryStore((state) => Object.keys(state.charts).length > 0)
 
-  if (hasLocalChart()) {
+  if (hasChart) {
     return { to: '/dashboard', labelKey: 'ctaReturning', intentProps: {} }
   }
   return { to: '/onboarding', labelKey: 'cta', intentProps: prewarm }

@@ -138,7 +138,8 @@ Browser (the product) ─ installable PWA, offline after first load
 │    ├─ buildEnergyFrame(SiderealChart, t)  (3D force-field frame)
 │    ├─ profiles + members                  (named, password-less people; typed relationships)
 │    ├─ portable SQLite state               canonical user data in one OPFS database;
-│    │                                           legacy IndexedDB migrates once, API keys stay out
+│    │                                      portable choices + AI key included; legacy storage
+│    │                                      is verified, migrated once, and then deleted
 │    └─ mesh                                (MeshEdgeContext per pair → the /mesh edge view)
 ├─ frontend/packages/llm         optional interpretation + chat, NO AI by default;
 │                                opt-in, BYO OpenAI-compatible endpoint (one-click
@@ -194,9 +195,15 @@ full set of dev/build/test commands.
   [spec](docs/specs/062-robust-rectifier-comprehensive-report.md).
 - Use it in English, Spanish, or Portuguese, bundled for offline use.
 - Keep everything in one portable, on-device SQLite database: canonical profiles,
-  charts, life events, chat, interpretations, and language. Settings exports it,
-  together with your AI settings and API key, as one password-encrypted file you
-  can restore on another device. Rebuildable caches are left out —
+  charts, life events, chat, chart and relationship readings, language, content
+  mode, and AI settings. Settings exposes both **Export data** and **Import
+  data**. Export writes one timestamped, passphrase-encrypted `.almamesh` file—including the
+  optional API key—that you can restore in another browser. For example, export
+  in Chrome, move the file to an iPhone, and import it in Safari to recreate the
+  same durable AlmaMesh state. You enter the transfer password once during
+  import; the installed live OPFS database then opens normally without a
+  password prompt. The decrypted payload is standard SQLite; rebuildable caches
+  and signed engine assets are left out —
   [spec](docs/specs/061-backup-restore-your-data.md).
 - Optionally turn on AI interpretation and chat. AI is off by default. If you enable it,
   requests go directly from your browser to the endpoint you configure. Asking
@@ -260,7 +267,8 @@ use a loopback endpoint or OpenRouter.
   compromised `almamesh.com` origin (the verification key is delivered from that
   same origin); what the AI provider you opt into, or Open-Meteo, does with what
   you send it. Data inside the browser is not encrypted by AlmaMesh — anyone with
-  access to your browser profile can read it (exports can be password-protected).
+  access to your browser profile can read it (every current export is
+  password-encrypted).
 - **Verify a release:** build and sign it yourself (`make demo` signs a local
   bundle with a throwaway key), run the accuracy and parity checks in
   [What this proves](#what-this-proves--what-it-does-not-prove), and compare
@@ -443,8 +451,14 @@ Nothing needs configuring to draw a chart. The knobs that exist:
 
 - **In the app (Settings):** AI provider (off by default; OpenRouter preset or any
   OpenAI-compatible loopback endpoint), model, and `local_only` mode; language;
-  profiles and people; backup and restore. Your AI key is stored only in this
-  browser; a backup carries it only inside the password-encrypted file.
+  profiles and people; backup and restore. One OPFS SQLite database is
+  authoritative for durable user state, including your optional AI key;
+  localStorage and IndexedDB are not ongoing user-data mirrors. Older values are
+  read only for a verified one-time migration and are then deleted. A backup
+  carries the key only inside the password-encrypted `.almamesh` transport file.
+  The live OPFS database is not password-encrypted, so normal launches never ask
+  for the transfer password. AlmaMesh has no account passwords, and the backup
+  passphrase is never stored or exported.
 - **Build-time (`VITE_` env vars for the web app):** `VITE_BUNDLE_BASE_URL`
   (overrides where the signed bundle is synced from; default is this origin),
   `VITE_TURNSTILE_SITE_KEY` (enables the feedback anti-bot check), and the

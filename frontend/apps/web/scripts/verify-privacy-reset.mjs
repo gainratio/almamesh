@@ -7,6 +7,9 @@ const PROFILE_ID = 'privacy-reset-sqlite-profile';
 const PROFILE_NAME = 'SQLite Reset Proof';
 const PRIVATE_CREDENTIAL = 'sk-privacy-reset-never-plaintext';
 const PASSPHRASE = 'privacy reset passphrase';
+const BUNDLE_MAGIC = [0x41, 0x4c, 0x4d, 0x41, 0x4d, 0x45, 0x53, 0x48];
+const BUNDLE_FORMAT_VERSION = 3;
+const BUNDLE_PBKDF2_ITERATIONS = 600_000;
 const SQLITE_HEADER = [
   0x53, 0x51, 0x4c, 0x69, 0x74, 0x65, 0x20, 0x66,
   0x6f, 0x72, 0x6d, 0x61, 0x74, 0x20, 0x33, 0x00,
@@ -21,27 +24,25 @@ await context.addInitScript(({ profileId, privateCredential, passphrase }) => {
     target = Object.getPrototypeOf(target);
   }
   const createObjectUrl = URL.createObjectURL.bind(URL);
-  const fromB64 = (text) => Uint8Array.from(window.atob(text), (char) => char.charCodeAt(0));
-  // Independent format-v2 opener: PBKDF2-SHA256 + AES-GCM with the header as
-  // additional data. Returns the sealed database bytes and settings.
+  // Independent format-v3 opener. The authenticated 64-byte header carries the
+  // format, KDF, salt, IV, timestamp and lengths; the plaintext is exactly the
+  // canonical SQLite file, with no second settings payload.
   const openBundle = async (file) => {
-    const header = [
-      file.format, file.formatVersion, file.app.version, file.exportedAt, file.encryption,
-      file.kdf.name, file.kdf.hash, file.kdf.iterations, file.kdf.salt, file.iv,
-    ];
+    const header = file.slice(0, 64);
+    const view = new DataView(header.buffer, header.byteOffset, header.byteLength);
+    const iterations = view.getUint32(16, false);
     const base = await window.crypto.subtle.importKey(
       'raw', new window.TextEncoder().encode(passphrase), 'PBKDF2', false, ['deriveKey'],
     );
     const key = await window.crypto.subtle.deriveKey(
-      { name: 'PBKDF2', hash: 'SHA-256', salt: fromB64(file.kdf.salt), iterations: file.kdf.iterations },
+      { name: 'PBKDF2', hash: 'SHA-256', salt: header.slice(36, 52), iterations },
       base, { name: 'AES-GCM', length: 256 }, false, ['decrypt'],
     );
     const plain = await window.crypto.subtle.decrypt(
-      { name: 'AES-GCM', iv: fromB64(file.iv), additionalData: new window.TextEncoder().encode(JSON.stringify(header)) },
-      key, fromB64(file.ciphertext),
+      { name: 'AES-GCM', iv: header.slice(52, 64), additionalData: header },
+      key, file.slice(64),
     );
-    const payload = JSON.parse(new window.TextDecoder().decode(plain));
-    return { database: fromB64(payload.database), settings: payload.settings };
+    return { database: new Uint8Array(plain), header, iterations };
   };
   const includes = (haystack, text) => {
     const needle = new window.TextEncoder().encode(text);
@@ -53,8 +54,7 @@ await context.addInitScript(({ profileId, privateCredential, passphrase }) => {
   URL.createObjectURL = (blob) => {
     window.__almameshBackupEvidence = blob.arrayBuffer().then(async (buffer) => {
       const file = new Uint8Array(buffer);
-      const outer = JSON.parse(new window.TextDecoder().decode(file));
-      const { database: bytes, settings } = await openBundle(outer);
+      const { database: bytes, header, iterations } = await openBundle(file);
       const contains = (text) => {
         const needle = new window.TextEncoder().encode(text);
         return bytes.some((_, offset) =>
@@ -64,9 +64,10 @@ await context.addInitScript(({ profileId, privateCredential, passphrase }) => {
       };
       return {
         type: blob.type,
-        formatVersion: outer.formatVersion,
+        magic: [...header.slice(0, 8)],
+        formatVersion: header[8],
+        iterations,
         fileHasPlaintextCredential: includes(file, privateCredential),
-        carriesCredentialSealed: (settings['almamesh-llm-settings'] ?? '').includes(privateCredential),
         size: bytes.length,
         header: [...bytes.slice(0, 16)],
         pageSizeField: (bytes[16] << 8) | bytes[17],
@@ -182,11 +183,19 @@ async function exportBackup() {
 }
 
 function assertPortableBackup(exported, { expectProfile, expectCredential }) {
-  if (!/^almamesh-backup-\d{4}-\d{2}-\d{2}\.json$/.test(exported.filename)) {
+  if (!/^almamesh-backup-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z\.almamesh$/.test(exported.filename)) {
     throw new Error(`Backup filename contract failed: ${exported.filename}`);
   }
-  if (exported.type !== 'application/json' || exported.formatVersion !== 2) {
-    throw new Error(`Backup MIME contract failed: ${exported.type}`);
+  if (
+    exported.type !== 'application/vnd.almamesh.backup' ||
+    exported.formatVersion !== BUNDLE_FORMAT_VERSION ||
+    exported.iterations !== BUNDLE_PBKDF2_ITERATIONS ||
+    JSON.stringify(exported.magic) !== JSON.stringify(BUNDLE_MAGIC)
+  ) {
+    throw new Error(
+      `Backup envelope contract failed: type=${exported.type}, version=${exported.formatVersion}, ` +
+        `iterations=${exported.iterations}`,
+    );
   }
   if (JSON.stringify(exported.header) !== JSON.stringify(SQLITE_HEADER)) {
     throw new Error(`Backup is not SQLite: ${JSON.stringify(exported.header)}`);
@@ -211,23 +220,21 @@ function assertPortableBackup(exported, { expectProfile, expectCredential }) {
       `Backup profile content differs: expected=${expectProfile}, actual=${exported.hasProfile}`,
     );
   }
-  if (exported.hasPrivateCredential) {
-    throw new Error('The sealed SQLite database holds the LLM credential (it belongs in settings)');
-  }
   if (exported.fileHasPlaintextCredential) {
     throw new Error('Backup file leaked the LLM provider credential in plaintext');
   }
-  if (exported.carriesCredentialSealed !== expectCredential) {
+  if (exported.hasPrivateCredential !== expectCredential) {
     throw new Error(
-      `Sealed AI settings differ: expected credential=${expectCredential}, actual=${exported.carriesCredentialSealed}`,
+      `Canonical SQLite AI settings differ: expected credential=${expectCredential}, actual=${exported.hasPrivateCredential}`,
     );
   }
 }
 
 try {
   // Seed a real pre-migration user row before any application JavaScript boots.
-  // The export must prove that row reached canonical SQLite, while excluding
-  // device-only provider credentials.
+  // The export must prove that every row reached canonical SQLite, including
+  // the AI credential needed to recreate the same app on another browser. The
+  // outer transport must keep all of those bytes confidential.
   await page.goto(`${baseUrl}/robots.txt`, { waitUntil: 'domcontentloaded' });
   await putIdbValue(
     'almamesh-profiles',
@@ -320,12 +327,12 @@ try {
   // only logically, but also from the portable bytes a user can download.
   await page.goto(`${baseUrl}/settings/data`, { waitUntil: 'networkidle' });
   const afterReset = await exportBackup();
-  // "Start fresh" keeps device preferences (resetEverything.ts), so the sealed key remains.
+  // "Start fresh" keeps portable preferences (resetEverything.ts), so the key remains.
   assertPortableBackup(afterReset, { expectProfile: false, expectCredential: true });
   if (offOrigin.size > 0) throw new Error(`Off-origin requests: ${[...offOrigin].join(', ')}`);
   if (errors.length > 0) throw new Error(`Browser errors: ${errors.join(' | ')}`);
   console.log(
-    `privacy: sealed v2 export of portable SQLite (${exported.size} bytes), key carried only encrypted, ` +
+    `privacy: sealed v3 exact SQLite export (${exported.size} bytes), all portable state encrypted, ` +
       'durable canonical + legacy reset, landing, zero egress, clean console',
   );
 } finally {

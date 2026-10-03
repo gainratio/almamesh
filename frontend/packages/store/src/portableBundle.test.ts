@@ -1,11 +1,6 @@
-/**
- * Encrypted portable bundle (backup format v2): the whole export — canonical
- * SQLite bytes plus device settings and secrets — sealed with a passphrase.
- * All fixtures are synthetic.
- */
 import { describe, expect, it, vi } from 'vitest';
 import { BackupError } from './backup';
-import { BackupCryptoError } from './backupCrypto';
+import { BackupCryptoError, bytesToB64 } from './backupCrypto';
 import {
   BUNDLE_FORMAT_VERSION,
   BUNDLE_PBKDF2_ITERATIONS,
@@ -14,160 +9,158 @@ import {
   sealPortableBundle,
 } from './portableBundle';
 
-const SECRET = 'sk-or-v1-synthetic-secret-never-plaintext';
 const PASSPHRASE = 'correct horse battery';
 const DATABASE = new Uint8Array([...new TextEncoder().encode('SQLite format 3\0'), 1, 2, 3, 250]);
-const SETTINGS = {
-  'almamesh-llm-settings': JSON.stringify({
-    apiBase: 'https://openrouter.ai/api/v1',
-    apiKey: SECRET,
-    interpretationModel: 'synthetic/model-a',
-    chatModel: 'synthetic/model-b',
-  }),
-};
 const META = { appVersion: 'test-1.0.0', now: '2026-10-01T00:00:00.000Z' };
 
-async function sealed(): Promise<Record<string, unknown>> {
-  const text = await sealPortableBundle({ database: DATABASE, settings: SETTINGS }, PASSPHRASE, META);
-  return JSON.parse(text) as Record<string, unknown>;
+async function sealed(): Promise<Uint8Array> {
+  return sealPortableBundle(DATABASE, PASSPHRASE, META);
 }
 
-describe('sealPortableBundle / openPortableBundle', () => {
-  it('round-trips the database bytes and settings, including the API key', async () => {
-    const opened = await openPortableBundle(await sealed(), PASSPHRASE);
+describe('binary portable bundle', () => {
+  it('round-trips the exact SQLite bytes without JSON or base64', async () => {
+    const file = await sealed();
+    const opened = await openPortableBundle(file, PASSPHRASE);
 
-    expect([...opened.database]).toEqual([...DATABASE]);
-    expect(opened.settings).toEqual(SETTINGS);
+    expect(opened.database).toEqual(DATABASE);
+    expect(opened.settings).toEqual({});
+    expect(file).toBeInstanceOf(Uint8Array);
+    expect(new TextDecoder().decode(file)).not.toContain('SQLite format');
+    expect(new TextDecoder().decode(file)).not.toContain('database');
   });
 
-  it('never writes the plaintext key, settings, or SQLite header into the file', async () => {
-    const text = await sealPortableBundle({ database: DATABASE, settings: SETTINGS }, PASSPHRASE, META);
-
-    expect(text).not.toContain(SECRET);
-    expect(text).not.toContain('apiKey');
-    expect(text).not.toContain('openrouter');
-    expect(text).not.toContain('SQLite format');
-  });
-
-  it('writes a versioned header with a 600k-iteration PBKDF2 and random salt and IV', async () => {
+  it('uses a compact v3 header, the exact work factor, and random salt and IV', async () => {
     const first = await sealed();
     const second = await sealed();
 
-    expect(BUNDLE_FORMAT_VERSION).toBe(2);
+    expect(BUNDLE_FORMAT_VERSION).toBe(3);
     expect(BUNDLE_PBKDF2_ITERATIONS).toBe(600_000);
-    expect(first).toMatchObject({
-      format: 'almamesh-backup',
-      formatVersion: 2,
-      encryption: 'aes-gcm',
-      app: { version: 'test-1.0.0' },
-      exportedAt: META.now,
-      kdf: { name: 'PBKDF2', hash: 'SHA-256', iterations: 600_000 },
-    });
-    expect((first.kdf as { salt: string }).salt).not.toBe((second.kdf as { salt: string }).salt);
-    expect(first.iv).not.toBe(second.iv);
     expect(isPortableBundle(first)).toBe(true);
+    expect(first.slice(0, 8)).toEqual(new TextEncoder().encode('ALMAMESH'));
+    expect(first[8]).toBe(3);
+    expect(first).not.toEqual(second);
   });
 
-  it('rejects a wrong passphrase as bad_passphrase', async () => {
-    const bundle = await sealed();
+  it('rejects missing and short passphrases at the crypto boundary', async () => {
+    await expect(sealPortableBundle(DATABASE, '', META)).rejects.toMatchObject({ code: 'bad_passphrase' });
+    await expect(sealPortableBundle(DATABASE, 'short', META)).rejects.toMatchObject({ code: 'bad_passphrase' });
+    await expect(openPortableBundle(await sealed(), 'short')).rejects.toMatchObject({ code: 'bad_passphrase' });
+  });
 
-    await expect(openPortableBundle(bundle, 'wrong passphrase')).rejects.toMatchObject({
+  it('rejects wrong passwords and tampering without yielding bytes', async () => {
+    const file = await sealed();
+    await expect(openPortableBundle(file, 'wrong password')).rejects.toMatchObject({
       name: 'BackupCryptoError',
       code: 'bad_passphrase',
     });
+    const ciphertextTamper = file.slice();
+    ciphertextTamper[ciphertextTamper.length - 1] ^= 1;
+    await expect(openPortableBundle(ciphertextTamper, PASSPHRASE)).rejects.toMatchObject({ code: 'bad_passphrase' });
+    const headerTamper = file.slice();
+    headerTamper[24] ^= 1;
+    await expect(openPortableBundle(headerTamper, PASSPHRASE)).rejects.toMatchObject({ code: 'bad_passphrase' });
   });
 
-  it('rejects a missing passphrase as bad_passphrase so the UI prompts', async () => {
-    await expect(openPortableBundle(await sealed(), '')).rejects.toBeInstanceOf(BackupCryptoError);
-  });
-
-  it('rejects tampered ciphertext through GCM authentication', async () => {
-    const bundle = await sealed();
-    const bytes = Uint8Array.from(atob(bundle.ciphertext as string), (c) => c.charCodeAt(0));
-    bytes[5] ^= 0x01;
-    const tampered = { ...bundle, ciphertext: btoa(String.fromCharCode(...bytes)) };
-
-    await expect(openPortableBundle(tampered, PASSPHRASE)).rejects.toMatchObject({
-      code: 'bad_passphrase',
-    });
-  });
-
-  it('rejects a tampered header because the header is authenticated data', async () => {
-    const bundle = await sealed();
-    const tampered = { ...bundle, exportedAt: '2020-01-01T00:00:00.000Z' };
-
-    await expect(openPortableBundle(tampered, PASSPHRASE)).rejects.toMatchObject({
-      code: 'bad_passphrase',
-    });
-  });
-
-  it('refuses a downgraded KDF work factor before deriving any key', async () => {
-    const bundle = await sealed();
-    const weak = { ...bundle, kdf: { ...(bundle.kdf as object), iterations: 1_000 } };
-
-    await expect(openPortableBundle(weak, PASSPHRASE)).rejects.toBeInstanceOf(BackupError);
-    await expect(openPortableBundle(weak, PASSPHRASE)).rejects.toMatchObject({ code: 'bad_format' });
-  });
-
-  it('refuses a malformed header as bad_format', async () => {
-    await expect(openPortableBundle({ format: 'almamesh-backup', formatVersion: 2 }, PASSPHRASE))
-      .rejects.toMatchObject({ code: 'bad_format' });
-  });
-
-  it('drops settings keys outside the portable allowlist when opening', async () => {
-    const text = await sealPortableBundle(
-      { database: DATABASE, settings: { ...SETTINGS, 'evil-key': 'x' } },
-      PASSPHRASE,
-      META,
-    );
-
-    const opened = await openPortableBundle(JSON.parse(text), PASSPHRASE);
-
-    expect(Object.keys(opened.settings)).toEqual(['almamesh-llm-settings']);
-  });
-
-  it('refuses to seal without a passphrase', async () => {
-    await expect(
-      sealPortableBundle({ database: DATABASE, settings: SETTINGS }, '', META),
-    ).rejects.toMatchObject({ code: 'bad_passphrase' });
-  });
-
-  it('reports an authentic but unreadable payload as corrupt', async () => {
-    const subtle = globalThis.crypto.subtle;
-    const realEncrypt = subtle.encrypt.bind(subtle);
-    const spy = vi
-      .spyOn(subtle, 'encrypt')
-      .mockImplementationOnce((algorithm, key) =>
-        realEncrypt(algorithm, key, new TextEncoder().encode('{"not":"a payload"}')),
-      );
-    try {
-      const bundle = await sealed();
-      await expect(openPortableBundle(bundle, PASSPHRASE)).rejects.toMatchObject({
-        name: 'BackupError',
-        code: 'corrupt',
-      });
-    } finally {
-      spy.mockRestore();
+  it('rejects malformed lengths, non-exact work factors, oversized declarations, and trailing bytes', async () => {
+    const file = await sealed();
+    for (const mutate of [
+      (value: Uint8Array) => { value[11] = 15; },
+      (value: Uint8Array) => { new DataView(value.buffer).setUint32(16, 599_999, false); },
+      (value: Uint8Array) => { new DataView(value.buffer).setUint32(32, 0xffff_ffff, false); },
+    ]) {
+      const malformed = file.slice();
+      mutate(malformed);
+      await expect(openPortableBundle(malformed, PASSPHRASE)).rejects.toMatchObject({ code: 'bad_format' });
     }
+    const trailing = new Uint8Array(file.length + 1);
+    trailing.set(file);
+    await expect(openPortableBundle(trailing, PASSPHRASE)).rejects.toMatchObject({ code: 'bad_format' });
   });
 
   it('fails closed with unsupported when Web Crypto is missing', async () => {
-    const bundle = await sealed();
+    const file = await sealed();
     vi.stubGlobal('crypto', { getRandomValues: globalThis.crypto.getRandomValues.bind(globalThis.crypto) });
     try {
-      await expect(openPortableBundle(bundle, PASSPHRASE)).rejects.toMatchObject({
-        code: 'unsupported',
-      });
-      await expect(
-        sealPortableBundle({ database: DATABASE, settings: SETTINGS }, PASSPHRASE, META),
-      ).rejects.toMatchObject({ name: 'BackupCryptoError', code: 'unsupported' });
+      await expect(openPortableBundle(file, PASSPHRASE)).rejects.toMatchObject({ code: 'unsupported' });
+      await expect(sealPortableBundle(DATABASE, PASSPHRASE, META)).rejects.toMatchObject({ code: 'unsupported' });
     } finally {
       vi.unstubAllGlobals();
     }
   });
+});
 
-  it('does not treat a v1 envelope as a bundle', () => {
+describe('legacy v2 compatibility', () => {
+  async function legacyV2(passphrase = PASSPHRASE): Promise<Record<string, unknown>> {
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const header = {
+      format: 'almamesh-backup' as const,
+      formatVersion: 2 as const,
+      app: { version: 'legacy' },
+      exportedAt: META.now,
+      encryption: 'aes-gcm' as const,
+      kdf: { name: 'PBKDF2' as const, hash: 'SHA-256' as const, iterations: 600_000, salt: bytesToB64(salt) },
+      iv: bytesToB64(iv),
+    };
+    const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(passphrase), 'PBKDF2', false, ['deriveKey']);
+    const key = await crypto.subtle.deriveKey(
+      { name: 'PBKDF2', hash: 'SHA-256', salt, iterations: 600_000 }, base,
+      { name: 'AES-GCM', length: 256 }, false, ['encrypt'],
+    );
+    const aad = new TextEncoder().encode(JSON.stringify([
+      header.format, header.formatVersion, header.app.version, header.exportedAt,
+      header.encryption, header.kdf.name, header.kdf.hash, header.kdf.iterations,
+      header.kdf.salt, header.iv,
+    ]));
+    const plaintext = new TextEncoder().encode(JSON.stringify({
+      database: bytesToB64(DATABASE),
+      settings: { 'almamesh-llm-settings': '{"apiKey":"legacy-secret"}', evil: 'drop-me' },
+    }));
+    const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData: aad }, key, plaintext);
+    return { ...header, ciphertext: bytesToB64(new Uint8Array(ciphertext)) };
+  }
+
+  it('still recognizes and opens old JSON/base64 bundles with allowlisted settings', async () => {
+    const legacy = await legacyV2();
+    expect(isPortableBundle(legacy)).toBe(true);
+    await expect(openPortableBundle(legacy, PASSPHRASE)).resolves.toEqual({
+      database: DATABASE,
+      settings: { 'almamesh-llm-settings': '{"apiKey":"legacy-secret"}' },
+    });
+  });
+
+  it('opens a valid legacy v2 backup made with a pre-v3 short passphrase', async () => {
+    const legacyPassphrase = 'short';
+    const legacy = await legacyV2(legacyPassphrase);
+
+    await expect(openPortableBundle(legacy, legacyPassphrase)).resolves.toMatchObject({
+      database: DATABASE,
+    });
+  });
+
+  it('does not mistake v1 JSON or arbitrary bytes for a bundle', () => {
     expect(isPortableBundle({ format: 'almamesh-backup', formatVersion: 1 })).toBe(false);
+    expect(isPortableBundle(new Uint8Array([1, 2, 3]))).toBe(false);
     expect(isPortableBundle(null)).toBe(false);
+  });
+
+  it('refuses malformed legacy headers', async () => {
+    await expect(openPortableBundle({ format: 'almamesh-backup', formatVersion: 2 }, PASSPHRASE))
+      .rejects.toBeInstanceOf(BackupError);
+    await expect(openPortableBundle({ format: 'almamesh-backup', formatVersion: 2 }, PASSPHRASE))
+      .rejects.not.toBeInstanceOf(BackupCryptoError);
+    const oversizedHeader = {
+      format: 'almamesh-backup',
+      formatVersion: 2,
+      app: { version: 'x'.repeat(257) },
+      exportedAt: META.now,
+      encryption: 'aes-gcm',
+      kdf: { name: 'PBKDF2', hash: 'SHA-256', iterations: 600_000, salt: 'AA==' },
+      iv: 'AA==',
+      ciphertext: 'AA==',
+    };
+    await expect(openPortableBundle(oversizedHeader, PASSPHRASE)).rejects.toMatchObject({
+      code: 'bad_format',
+    });
   });
 });

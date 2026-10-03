@@ -3,11 +3,10 @@
  * `clearAll` actions it composes.
  *
  * Reset semantics under test:
- *  - CLEARED: chart library + the `almamesh-chart` route-guard flag, profiles,
+ *  - CLEARED: chart library, profiles,
  *    life events, chat history, interpretations, in-memory mesh edges.
- *  - PRESERVED: the device preference keys `almamesh-language` and
- *    `almamesh-llm-settings`, and the OPFS engine bundle (never touched — we
- *    assert `navigator.storage.getDirectory` is never called).
+ *  - PRESERVED: canonical SQLite device preferences and the OPFS engine bundle.
+ *    Obsolete Web Storage duplicates are removed.
  *
  * All fixtures are synthetic.
  */
@@ -24,6 +23,7 @@ import {
   useInterpretationStore,
   useLifeEventsStore,
   useMeshStore,
+  useMeshReadingsStore,
   usePredictiveStore,
   useProfilesStore,
   useRectificationRecordsStore,
@@ -50,6 +50,7 @@ const LEGACY_IDB_KEYS = [
   'almamesh-rectification-records',
   'almamesh-predictive',
   'almamesh-interpretations',
+  'almamesh-mesh-readings',
 ] as const;
 
 function deferred(): { promise: Promise<void>; resolve: () => void } {
@@ -93,6 +94,9 @@ function seedEverything(): { profileId: string; chartId: string } {
     .getState()
     .setInterpretation(chartId, makeInterpretation(), '2026-06-29T00:00:00.000Z');
   useMeshStore.setState({ edges: { [`${profileId}|other`]: { status: 'idle' } } });
+  useMeshReadingsStore.setState({
+    byPair: { [`${profileId}|other`]: { profileIds: [profileId, 'other'] } },
+  } as never);
   useRectificationRecordsStore.setState({
     recordsByProfile: { [profileId]: { profileId } },
   } as never);
@@ -110,6 +114,7 @@ beforeEach(() => {
   useChatStore.setState({ threads: {}, messages: {} });
   useInterpretationStore.setState({ byChart: {} });
   useMeshStore.setState({ edges: {} });
+  useMeshReadingsStore.setState({ byPair: {} });
   useRectificationRecordsStore.setState({ recordsByProfile: {} });
   usePredictiveStore.getState().reset();
   vi.mocked(clearMemory).mockClear();
@@ -117,9 +122,9 @@ beforeEach(() => {
 });
 
 describe('store clearAll actions', () => {
-  it('chartLibrary.clearAll empties charts and removes the route-guard flag', () => {
+  it('chartLibrary.clearAll empties charts without creating a route-guard flag', () => {
     useChartLibraryStore.getState().saveChart(makeChart('c1'));
-    expect(localStorage.getItem(CHART_LIBRARY_FLAG_KEY)).toBe('1');
+    expect(localStorage.getItem(CHART_LIBRARY_FLAG_KEY)).toBeNull();
 
     useChartLibraryStore.getState().clearAll();
 
@@ -322,12 +327,12 @@ describe('resetEverything', () => {
     expect(abortDatasetReset).toHaveBeenCalledWith(11);
   });
 
-  it('clears every owned store and the chart flag, preserving device prefs', async () => {
+  it('clears every owned store and obsolete Web Storage duplicates', async () => {
     localStorage.setItem(LANGUAGE_KEY, JSON.stringify({ state: { language: 'es' }, version: 0 }));
     localStorage.setItem(LLM_SETTINGS_KEY, JSON.stringify({ endpoint: 'https://example' }));
     const { profileId, chartId } = seedEverything();
 
-    expect(localStorage.getItem(CHART_LIBRARY_FLAG_KEY)).toBe('1');
+    expect(localStorage.getItem(CHART_LIBRARY_FLAG_KEY)).toBeNull();
     expect(useInterpretationStore.getState().getEntry(chartId)).toBeDefined();
 
     await resetEverything();
@@ -339,6 +344,7 @@ describe('resetEverything', () => {
     expect(useChatStore.getState().threads).toEqual({});
     expect(useInterpretationStore.getState().getEntry(chartId)).toBeUndefined();
     expect(useMeshStore.getState().edges).toEqual({});
+    expect(useMeshReadingsStore.getState().byPair).toEqual({});
     expect(useRectificationRecordsStore.getState().recordsByProfile).toEqual({});
     expect(usePredictiveStore.getState().status).toBe('idle');
     expect(usePredictiveStore.getState().profileKey).toBeUndefined();
@@ -346,16 +352,12 @@ describe('resetEverything', () => {
     expect(localStorage.getItem(CHART_LIBRARY_FLAG_KEY)).toBeNull();
     expect(localStorage.getItem(INTERPRETATIONS_KEY)).toBeNull();
 
-    // Preserved:
-    expect(localStorage.getItem(LANGUAGE_KEY)).toBe(
-      JSON.stringify({ state: { language: 'es' }, version: 0 }),
-    );
-    expect(localStorage.getItem(LLM_SETTINGS_KEY)).toBe(
-      JSON.stringify({ endpoint: 'https://example' }),
-    );
+    // Canonical preferences live in SQLite; obsolete browser duplicates go.
+    expect(localStorage.getItem(LANGUAGE_KEY)).toBeNull();
+    expect(localStorage.getItem(LLM_SETTINGS_KEY)).toBeNull();
   });
 
-  it('removes every legacy keyval row while preserving device prefs and the OPFS engine', async () => {
+  it('removes every legacy row and Web Storage duplicate while preserving the OPFS engine', async () => {
     localStorage.setItem(LANGUAGE_KEY, JSON.stringify({ state: { language: 'pt' }, version: 0 }));
     localStorage.setItem(LLM_SETTINGS_KEY, JSON.stringify({ model: 'local' }));
     const legacyRows = new Map<string, { stale: boolean }>(
@@ -378,10 +380,8 @@ describe('resetEverything', () => {
 
     expect(legacyRows.size).toBe(0);
     expect(vi.mocked(idbDel).mock.calls.map(([key]) => key)).toEqual(LEGACY_IDB_KEYS);
-    expect(localStorage.getItem(LANGUAGE_KEY)).toBe(
-      JSON.stringify({ state: { language: 'pt' }, version: 0 }),
-    );
-    expect(localStorage.getItem(LLM_SETTINGS_KEY)).toBe(JSON.stringify({ model: 'local' }));
+    expect(localStorage.getItem(LANGUAGE_KEY)).toBeNull();
+    expect(localStorage.getItem(LLM_SETTINGS_KEY)).toBeNull();
     expect(getDirectory).not.toHaveBeenCalled();
   });
 
