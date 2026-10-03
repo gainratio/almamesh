@@ -7,11 +7,13 @@ import { bootEngine, seedChart, LLM_SETTINGS_KEY } from './interpretation.helper
  * This is the fast, deterministic, CI-runnable proof of two branch changes that
  * previously had only unit coverage:
  *
- *   (b) the chat request that goes out on the wire uses the FAST chat model
- *       `minimax/minimax-m2.7` (CHAT_CLOUD_MODEL, applied by `applyChatSettings`
- *       when no explicit chatModel is saved). So this test seeds an OpenRouter
- *       config with only an interpretation model and asserts the OUTBOUND chat
- *       body's `model` is the chat default — NOT the seeded interpretation model.
+ *   (b) the chat request that goes out on the wire uses the chat-tier default
+ *       `deepseek/deepseek-v4.1-flash` (CHAT_CLOUD_MODEL, applied by
+ *       `applyChatSettings` when no explicit chatModel is saved). So this test
+ *       seeds an OpenRouter config with only an interpretation model — a
+ *       DIFFERENT one, so the two tiers are distinguishable — and asserts the
+ *       OUTBOUND chat body's `model` is the chat default, NOT the seeded
+ *       interpretation model.
  *
  *   (c) the chat prompt REUSES the already-generated structured interpretation:
  *       `serializeInterpretationForChat` injects a "Your chart reading
@@ -37,14 +39,19 @@ import { bootEngine, seedChart, LLM_SETTINGS_KEY } from './interpretation.helper
 const LLM_CONFIG = {
   apiBase: 'https://openrouter.ai/api/v1', // === OPENROUTER_API_BASE
   apiKey: 'test-key',
-  model: 'deepseek/deepseek-v4.1-flash', // === RECOMMENDED_CLOUD_MODEL
+  // Deliberately NOT the chat default: chat and readings now share one default
+  // id, so seeding that id here would let "chat reused the interpretation model"
+  // pass as "chat applied its own default".
+  model: 'deepseek/deepseek-v4-pro',
   privacyMode: 'cloud_premium',
   engine: 'openai-http',
 };
 
 // The model the chat tier default (applyChatSettings → CHAT_CLOUD_MODEL) must
-// produce on the wire. NOT the seeded interpretation model; NOT a bare "minimax".
-const EXPECTED_CHAT_MODEL = 'minimax/minimax-m2.7';
+// produce on the wire. NOT the seeded interpretation model. Pinned as a literal.
+// REVERSED CONTRACT (fix/live-check-followups): this asserted
+// 'minimax/minimax-m2.7', which measured 26.7 s to first token on the live site.
+const EXPECTED_CHAT_MODEL = 'deepseek/deepseek-v4.1-flash';
 
 // The exact label `interpretationBlock` (prompt.ts) prefixes the reused reading
 // with. Asserting on this proves change (c) end-to-end.
@@ -335,12 +342,12 @@ test('[contract/stubbed] chat reuses the reading + sends the fast chat model on 
   // ---- ASSERTION (b): the fast chat model went out on the wire ----------------
   expect(
     chatBody.model,
-    `outbound chat model must be the fast chat override "${EXPECTED_CHAT_MODEL}" ` +
-      `(applyChatModelPreference fired on the OpenRouter preset), not the seeded ` +
-      `deep model "${LLM_CONFIG.model}". Got "${chatBody.model}".`,
+    `outbound chat model must be the chat-tier default "${EXPECTED_CHAT_MODEL}" ` +
+      `(applyChatSettings fired on the OpenRouter preset), not the seeded ` +
+      `interpretation model "${LLM_CONFIG.model}". Got "${chatBody.model}".`,
   ).toBe(EXPECTED_CHAT_MODEL);
-  // Guard against a bare/partial slug regression.
-  expect(chatBody.model, 'chat model must not be a bare "minimax" slug').not.toBe('minimax');
+  // Guard against the retired slow default coming back.
+  expect(chatBody.model, 'chat must not default to the slow minimax model').not.toMatch(/minimax/);
   expect(chatBody.model, 'chat model must not still be the deep interpretation model').not.toBe(
     LLM_CONFIG.model,
   );

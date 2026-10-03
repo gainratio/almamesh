@@ -25,7 +25,7 @@ const SHOT = '/tmp/almamesh-verify/chat';
  * finished first answer, and the turn's cost (OpenRouter `usage`) are written
  * to test-results/chat-real-timing-<model>.json.
  */
-const CHAT_MODEL = process.env.CHAT_REAL_MODEL ?? 'minimax/minimax-m2.7';
+const CHAT_MODEL = process.env.CHAT_REAL_MODEL ?? 'deepseek/deepseek-v4.1-flash';
 
 test('[real] chat: single-pass streaming + self-hosted RAG + persistence + search', async ({
   page,
@@ -201,7 +201,7 @@ test('[real] chat: single-pass streaming + self-hosted RAG + persistence + searc
 
   // ===========================================================================
   // B2) ON-THE-WIRE MODEL — the chat turn must use the FAST chat model
-  //     (CHAT_MODEL, default `minimax/minimax-m2.7`; NOT the deeper `deepseek/deepseek-v4-pro` that
+  //     (CHAT_MODEL, default `deepseek/deepseek-v4.1-flash`; NOT the deeper `deepseek/deepseek-v4-pro` that
   //     the preset seeds for interpretation), stream:true, and carry the chart
   //     facts + reused-reading grounding blocks. applyChatModelPreference swaps
   //     the model ONLY on the default OpenRouter cloud preset (the one seeded).
