@@ -67,9 +67,9 @@ This repo builds against `~/dev/project-ideas/oss/ENGINEERING-STANDARDS.md`
     `e2e/*.spec.ts` suites — including the sw-update lane above, which is what
     makes it a gate rather than a command someone remembers to type — with the
     same native Dagger toolchain and caches as the PR lane. The five `*.real.*` specs and the
-    dual-voice B/C checks self-skip unless the optional `OPENROUTER_API_KEY`
-    repo secret is configured — a keyless nightly is still a green, honest run
-    of the deterministic surface.
+    dual-voice B/C checks skip without the `OPENROUTER_API_KEY` repo secret, and
+    since PR #187 (`dagger/src/nightlyRealSkips.ts`) a skipped real test FAILS
+    the nightly — the secret is required for a green nightly.
   - **Live lane** (`playwright.live-smoke.config.ts`, `e2e/live/`): drives the
     DEPLOYED origin, so no PR/nightly config can match it. Dagger `deploy` runs
     it right after the live identity proof: `@fresh` (pristine profile) and

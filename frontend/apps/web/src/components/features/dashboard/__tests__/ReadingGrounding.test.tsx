@@ -1,7 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen, fireEvent, within } from '@testing-library/react';
 
+import { findLaymanJargon } from '@almamesh/llm/layman-jargon';
+
 import '../../../../i18n/config';
+import enDashboard from '../../../../locales/en/dashboard.json';
+import esDashboard from '../../../../locales/es/dashboard.json';
+import ptDashboard from '../../../../locales/pt/dashboard.json';
 import { ReadingGrounding } from '../ReadingGrounding';
 
 /**
@@ -58,5 +63,16 @@ describe('ReadingGrounding', () => {
     const text = (screen.getByTestId('reading-grounding').textContent ?? '').toLowerCase();
     expect(text).not.toContain('most accurate');
     expect(text).not.toContain('best ai');
+  });
+
+  // The explainer is mounted INSIDE the reading section, so "For You" readers
+  // see it too. It must keep the plain-language promise in every language
+  // (the nightly dual-voice gate failed on its "your lagna, ... dashā and yogas").
+  it.each([
+    ['en', enDashboard],
+    ['es', esDashboard],
+    ['pt', ptDashboard],
+  ])('uses no astrology jargon (%s)', (_lang, locale) => {
+    expect(findLaymanJargon(Object.values(locale.grounding).join(' '))).toEqual([]);
   });
 });
