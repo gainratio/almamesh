@@ -8,6 +8,7 @@ import {
   interpretationStoreCreator,
   mergeInterpretationPersistedState,
   migrateInterpretationPersistedState,
+  readInterpretationPersistedValue,
   useInterpretationStore,
   type InterpretationStore,
 } from './interpretation';
@@ -25,6 +26,93 @@ function makeInterpretation(summary = 'A bright Jupiter year.'): VedicInterpreta
     life_themes: [],
   };
 }
+
+describe('interpretation portable storage migration', () => {
+  it('retires a stale legacy mirror when SQLite already owns the durable row', async () => {
+    let durable: string | null = '{"state":{"byChart":{"current":{}}}}';
+    const legacy = new Map([['almamesh-interpretations', '{"state":{"byChart":{"stale":{}}}}']]);
+    const durableStorage = {
+      getItem: async () => durable,
+      setItem: async (_name: string, value: string) => {
+        durable = value;
+      },
+    };
+    const legacyStorage = {
+      getItem: (name: string) => legacy.get(name) ?? null,
+      removeItem: (name: string) => void legacy.delete(name),
+    };
+
+    await expect(
+      readInterpretationPersistedValue(
+        'almamesh-interpretations',
+        durableStorage,
+        legacyStorage,
+      ),
+    ).resolves.toBe(durable);
+    expect(legacy.has('almamesh-interpretations')).toBe(false);
+
+    // A later Replace may intentionally delete the durable row. The retired
+    // mirror must not be able to restore the pre-Replace interpretation.
+    durable = null;
+    await expect(
+      readInterpretationPersistedValue(
+        'almamesh-interpretations',
+        durableStorage,
+        legacyStorage,
+      ),
+    ).resolves.toBeNull();
+    expect(durable).toBeNull();
+  });
+
+  it('keeps the legacy reading when SQLite is only an in-memory session fallback', async () => {
+    let durable: string | null = null;
+    const legacyValue = '{"state":{"byChart":{"paid":{"status":"complete"}}}}';
+    const legacy = new Map([['almamesh-interpretations', legacyValue]]);
+    const durableStorage = {
+      getItem: async () => durable,
+      setItem: async (_name: string, value: string) => {
+        durable = value;
+      },
+    };
+    const legacyStorage = {
+      getItem: (name: string) => legacy.get(name) ?? null,
+      removeItem: (name: string) => void legacy.delete(name),
+    };
+
+    await expect(
+      readInterpretationPersistedValue(
+        'almamesh-interpretations',
+        durableStorage,
+        legacyStorage,
+        false,
+      ),
+    ).resolves.toBe(legacyValue);
+    expect(legacy.get('almamesh-interpretations')).toBe(legacyValue);
+  });
+
+  it('checks durability after the repository has opened before retiring the legacy reading', async () => {
+    let repositoryIsDurable = false;
+    const legacy = new Map([['almamesh-interpretations', 'legacy']]);
+    const durableStorage = {
+      getItem: async () => {
+        repositoryIsDurable = true;
+        return 'canonical';
+      },
+      setItem: async () => undefined,
+    };
+
+    await expect(readInterpretationPersistedValue(
+      'almamesh-interpretations',
+      durableStorage,
+      {
+        getItem: (name) => legacy.get(name) ?? null,
+        removeItem: (name) => void legacy.delete(name),
+      },
+      () => repositoryIsDurable,
+    )).resolves.toBe('canonical');
+    expect(legacy.has('almamesh-interpretations')).toBe(false);
+  });
+});
 
 describe('migrateInterpretationPersistedState (defensive hydration)', () => {
   it('passes a valid previous-shape blob through unchanged', () => {

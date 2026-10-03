@@ -102,7 +102,7 @@
       }
     ],
     "zeroEgress": "O motor de mapas não faz chamadas de rede; sua data e hora de nascimento nunca saem do seu dispositivo. Duas coisas usam a rede: o local de nascimento que você busca e (apenas se você ativar a IA opcional) um mapa sem dados pessoais, sem nome nem data de nascimento.",
-    "portability": "Não há nenhum servidor guardando seus dados, então eles são seus para levar: exporte tudo — perfis, mapas e chat — para um único arquivo e restaure em outro navegador ou dispositivo. Nada é enviado; só você pode movê-los."
+    "portability": "Não há nenhum servidor guardando seus dados, então eles são seus para levar: exporte todo o estado SQLite para um arquivo criptografado e restaure em outro navegador ou dispositivo, por exemplo, do Chrome para o Safari do iOS. A senha do arquivo é usada uma vez na importação; as inicializações normais não precisam dela. Nada é enviado; só você pode movê-lo."
   },
   "who": {
     "title": "Para quem é",

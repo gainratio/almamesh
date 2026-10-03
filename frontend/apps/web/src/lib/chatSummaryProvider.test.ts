@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { LLM_SETTINGS_KEY } from '@almamesh/llm';
+import { hydrateLlmSettings } from '@almamesh/llm';
 import type { ChatSummaryPlan } from '@almamesh/llm';
 import { prepareProviderChatSummary } from './chatSummaryProvider';
 
@@ -29,16 +29,16 @@ function settings(model: string): string {
 }
 
 describe('prepareProviderChatSummary', () => {
-  beforeEach(() => localStorage.setItem(LLM_SETTINGS_KEY, settings('model-before')));
+  beforeEach(() => hydrateLlmSettings(settings('model-before')));
 
   afterEach(() => {
-    localStorage.removeItem(LLM_SETTINGS_KEY);
+    hydrateLlmSettings(null);
     vi.restoreAllMocks();
   });
 
   it('fails before fetch when provider settings changed after binding', async () => {
     const prepared = prepareProviderChatSummary();
-    localStorage.setItem(LLM_SETTINGS_KEY, settings('model-after'));
+    hydrateLlmSettings(settings('model-after'));
     const fetchSpy = vi.spyOn(globalThis, 'fetch');
 
     await expect(prepared(PLAN)).rejects.toMatchObject({ name: 'AbortError' });

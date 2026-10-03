@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import {
   test,
   expect,
@@ -9,12 +9,17 @@ import {
 
 const PROFILE_ID = "portable-profile-ada";
 const PROFILE_NAME = "Portable Ada";
+const MEMBER_ID = "portable-profile-grace";
+const MESH_READING_SENTINEL = "Portable relationship narration restored from SQLite";
+const INTERPRETATION_SENTINEL = "Portable paid natal interpretation restored from SQLite";
 const API_KEY_SENTINEL = "sk-local-portable-e2e-never-plaintext";
 const PASSPHRASE = "portable e2e passphrase";
 const SQLITE_HEADER = Buffer.from("SQLite format 3\0", "binary");
 const CANONICAL_IDB_KEYS = [
   "almamesh-profiles",
+  "almamesh-chart-library",
   "almamesh-life-events",
+  "almamesh-mesh-readings",
 ] as const;
 
 interface BrowserProblems {
@@ -47,6 +52,15 @@ function watchBrowser(
   for (const page of context.pages()) watchPage(page);
   context.on("page", watchPage);
   context.on("requestfailed", (request) => {
+    // Navigating between Settings routes can cancel the background engine
+    // prewarm. Chromium reports that intentional cancellation as a failed
+    // request even though no response failed and the app handles it normally.
+    if (
+      request.failure()?.errorText === "net::ERR_ABORTED" &&
+      new URL(request.url()).pathname.startsWith("/pyodide/")
+    ) {
+      return;
+    }
     problems.failedRequests.push(
       `${request.method()} ${request.url()} — ${request.failure()?.errorText}`,
     );
@@ -85,7 +99,15 @@ async function installPlaywrightFileChooserFallback(
 
 async function seedLegacyState(page: Page): Promise<void> {
   await page.evaluate(
-    async ({ profileId, profileName, apiKey, canonicalKeys }) => {
+    async ({
+      profileId,
+      profileName,
+      memberId,
+      meshReadingSentinel,
+      interpretationSentinel,
+      apiKey,
+      canonicalKeys,
+    }) => {
       const profileEnvelope = JSON.stringify({
         state: {
           profiles: {
@@ -96,6 +118,14 @@ async function seedLegacyState(page: Page): Promise<void> {
               avatarTint: "#3A4FB0",
               relationship: "self",
             },
+            [memberId]: {
+              id: memberId,
+              name: "Portable Grace",
+              createdAt: "2026-01-03T03:04:05.000Z",
+              avatarTint: "#7A4FB0",
+              relationship: "friend",
+              relatedTo: profileId,
+            },
           },
           activeProfileId: profileId,
         },
@@ -105,6 +135,121 @@ async function seedLegacyState(page: Page): Promise<void> {
       const lifeEventsEnvelope = JSON.stringify({
         state: { eventsByProfile: { [profileId]: [] } },
         version: 4,
+        datasetEpoch: 0,
+      });
+      const chartLibraryEnvelope = JSON.stringify({
+        state: {
+          charts: {
+            ["portable-chart-ada"]: {
+              chart_id: "portable-chart-ada",
+              person_name: profileName,
+              profile_id: profileId,
+              is_primary: true,
+              birth_data: {
+                birth_datetime_utc: "1990-01-15T12:00:00+00:00",
+                birth_datetime_local: "1990-01-15T17:30:00",
+                birth_location_details: {
+                  city: "Delhi",
+                  latitude: 28.6139,
+                  longitude: 77.209,
+                  timezone: "Asia/Kolkata",
+                },
+              },
+              astronomical_calculations: {
+                sidereal_ctx: { lagna: { sign: "Aquarius", longitude: 328.84 } },
+              },
+              sidereal_chart: {
+                ayanamsa_value: 23.86,
+                lagna: { sign: "Aquarius", sign_degrees: 28.84 },
+                planets: {},
+                houses: {},
+                yogas: [],
+              },
+            },
+            ["portable-chart-grace"]: {
+              chart_id: "portable-chart-grace",
+              person_name: "Portable Grace",
+              profile_id: memberId,
+              is_primary: true,
+              birth_data: {
+                birth_datetime_utc: "1992-06-20T09:30:00+00:00",
+                birth_datetime_local: "1992-06-20T15:00:00",
+                birth_location_details: {
+                  city: "Mumbai",
+                  latitude: 19.076,
+                  longitude: 72.8777,
+                  timezone: "Asia/Kolkata",
+                },
+              },
+              astronomical_calculations: {
+                sidereal_ctx: { lagna: { sign: "Leo", longitude: 140.2 } },
+              },
+              sidereal_chart: {
+                ayanamsa_value: 23.86,
+                lagna: { sign: "Leo", sign_degrees: 20.2 },
+                planets: {},
+                houses: {},
+                yogas: [],
+              },
+            },
+          },
+        },
+        version: 1,
+        datasetEpoch: 0,
+      });
+      const now = new Date();
+      const referenceInstant = `${String(now.getUTCFullYear()).padStart(4, "0")}-${String(
+        now.getUTCMonth() + 1,
+      ).padStart(2, "0")}-${String(now.getUTCDate()).padStart(2, "0")}T00:00:00Z`;
+      const windowEnd = new Date(referenceInstant);
+      windowEnd.setUTCFullYear(windowEnd.getUTCFullYear() + 2);
+      const edgeRequestKey = JSON.stringify({
+        a: {
+          datetimeUtc: "1990-01-15T12:00:00+00:00",
+          latitude: 28.6139,
+          longitude: 77.209,
+        },
+        b: {
+          datetimeUtc: "1992-06-20T09:30:00+00:00",
+          latitude: 19.076,
+          longitude: 72.8777,
+        },
+        relationship: "friend",
+        roleA: "bride",
+        roleB: "groom",
+        windowStart: referenceInstant,
+        windowEnd: windowEnd.toISOString().replace(/\.\d{3}Z$/, "Z"),
+        referenceInstant,
+      });
+      const pairKey = `${profileId}|${memberId}`;
+      const persona = (title: string) => ({
+        title,
+        layman: meshReadingSentinel,
+        technical: meshReadingSentinel,
+      });
+      const meshReadingsEnvelope = JSON.stringify({
+        state: {
+          byPair: {
+            [pairKey]: {
+              pairKey,
+              profileIds: [profileId, memberId],
+              edgeRequestKey,
+              language: "es",
+              generationMode: "expert",
+              provider: {
+                engine: "openai-http",
+                model: "synthetic/local-tool-model",
+              },
+              generatedAt: "2026-01-04T03:04:05.000Z",
+              reading: {
+                connection: persona("Connection"),
+                timing_together: persona("Timing"),
+                care: persona("Care"),
+              },
+            },
+          },
+        },
+        version: 1,
         datasetEpoch: 0,
       });
 
@@ -118,7 +263,9 @@ async function seedLegacyState(page: Page): Promise<void> {
           const tx = db.transaction("keyval", "readwrite");
           const store = tx.objectStore("keyval");
           store.put(profileEnvelope, canonicalKeys[0]);
-          store.put(lifeEventsEnvelope, canonicalKeys[1]);
+          store.put(chartLibraryEnvelope, canonicalKeys[1]);
+          store.put(lifeEventsEnvelope, canonicalKeys[2]);
+          store.put(meshReadingsEnvelope, canonicalKeys[3]);
           tx.oncomplete = () => {
             db.close();
             resolve();
@@ -140,10 +287,42 @@ async function seedLegacyState(page: Page): Promise<void> {
           privacyMode: "strict",
         }),
       );
+      localStorage.setItem(
+        "almamesh-content-mode",
+        JSON.stringify({ contentMode: "technical" }),
+      );
+      localStorage.setItem(
+        "almamesh-interpretations",
+        JSON.stringify({
+          state: {
+            byChart: {
+              "portable-chart-ada": {
+                status: "complete",
+                sections: { core: true },
+                profileId,
+                updatedAt: "2026-01-04T03:04:05.000Z",
+                interpretation: {
+                  summary: {
+                    layman: interpretationSentinel,
+                    technical: interpretationSentinel,
+                  },
+                  strengths: [],
+                  challenges: [],
+                  life_themes: [],
+                },
+              },
+            },
+          },
+          version: 6,
+        }),
+      );
     },
     {
       profileId: PROFILE_ID,
       profileName: PROFILE_NAME,
+      memberId: MEMBER_ID,
+      meshReadingSentinel: MESH_READING_SENTINEL,
+      interpretationSentinel: INTERPRETATION_SENTINEL,
       apiKey: API_KEY_SENTINEL,
       canonicalKeys: CANONICAL_IDB_KEYS,
     },
@@ -190,14 +369,49 @@ async function expectProfileAndLanguage(page: Page): Promise<void> {
 }
 
 async function expectAiSettingsRestored(page: Page): Promise<void> {
-  const saved = await page.evaluate(() =>
-    JSON.parse(localStorage.getItem("almamesh-llm-settings") ?? "{}"),
+  await page.goto("/settings/ai", { waitUntil: "domcontentloaded" });
+  await expect(page.getByTestId("llm-api-base")).toHaveValue(
+    "http://127.0.0.1:11434/v1",
   );
-  expect(saved).toMatchObject({
-    apiBase: "http://127.0.0.1:11434/v1",
-    apiKey: API_KEY_SENTINEL,
-    model: "synthetic/local-tool-model",
-    privacyMode: "strict",
+  await expect(page.getByTestId("llm-openrouter-key")).toHaveValue(
+    API_KEY_SENTINEL,
+  );
+  await expect(page.getByTestId("llm-model")).toHaveValue(
+    "synthetic/local-tool-model",
+  );
+}
+
+async function expectPortablePreferencesRestored(page: Page): Promise<void> {
+  await page.goto("/settings/preferences", { waitUntil: "domcontentloaded" });
+  await expect(page.getByTestId("content-mode-technical")).toHaveClass(
+    /bg-accent-gold/,
+  );
+}
+
+async function expectInterpretationRestored(page: Page): Promise<void> {
+  await page.goto("/dashboard", { waitUntil: "domcontentloaded" });
+  await expect(page.getByText(INTERPRETATION_SENTINEL)).toBeVisible({ timeout: 60_000 });
+}
+
+async function expectLegacyBrowserCopiesRemoved(page: Page): Promise<void> {
+  expect(
+    await page.evaluate(() => ({
+      settings: localStorage.getItem("almamesh-llm-settings"),
+      mode: localStorage.getItem("almamesh-content-mode"),
+      chart: localStorage.getItem("almamesh-chart"),
+      language: localStorage.getItem("almamesh-language"),
+      restoreEpoch: localStorage.getItem("almamesh-restore-epoch"),
+      restoreProgress: localStorage.getItem("almamesh-restore-in-progress"),
+      interpretations: localStorage.getItem("almamesh-interpretations"),
+    })),
+  ).toEqual({
+    settings: null,
+    mode: null,
+    chart: null,
+    language: null,
+    restoreEpoch: null,
+    restoreProgress: null,
+    interpretations: null,
   });
 }
 
@@ -243,8 +457,12 @@ test("migrates, exports, reloads, and restores canonical OPFS SQLite through Set
     .poll(() => readLegacyRows(page))
     .toEqual({
       "almamesh-profiles": null,
+      "almamesh-chart-library": null,
       "almamesh-life-events": null,
+      "almamesh-mesh-readings": null,
     });
+  await expectLegacyBrowserCopiesRemoved(page);
+  await expectInterpretationRestored(page);
 
   // A second page in the same browser context observes the same canonical file.
   const peer = await context.newPage();
@@ -252,25 +470,20 @@ test("migrates, exports, reloads, and restores canonical OPFS SQLite through Set
   await peer.close();
 
   await page.goto("/settings/data", { waitUntil: "domcontentloaded" });
+  await expect(page.getByTestId("backup-import-button")).toBeVisible();
   await page.getByTestId("backup-passphrase-input").fill(PASSPHRASE);
   const [download] = await Promise.all([
     page.waitForEvent("download"),
     page.getByTestId("backup-export-button").click(),
   ]);
   expect(download.suggestedFilename()).toMatch(
-    /^almamesh-backup-\d{4}-\d{2}-\d{2}\.json$/,
+    /^almamesh-backup-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z\.almamesh$/,
   );
-  const exportedPath = testInfo.outputPath("portable-almamesh-export.json");
+  const exportedPath = testInfo.outputPath("portable-almamesh-export.almamesh");
   await download.saveAs(exportedPath);
-  // Format v2: the whole file is sealed. Neither the API key nor the setting
-  // names nor the SQLite database appear in the bytes on disk.
+  // The binary transport is fully sealed. Neither secrets, setting names, nor
+  // the decrypted SQLite payload appear in the bytes on disk.
   const exported = readFileSync(exportedPath);
-  expect(JSON.parse(exported.toString("utf8"))).toMatchObject({
-    format: "almamesh-backup",
-    formatVersion: 2,
-    encryption: "aes-gcm",
-    kdf: { name: "PBKDF2", hash: "SHA-256", iterations: 600_000 },
-  });
   expect(exported.includes(Buffer.from(API_KEY_SENTINEL))).toBe(false);
   expect(exported.includes(Buffer.from("almamesh-llm-settings"))).toBe(false);
   expect(exported.includes(SQLITE_HEADER)).toBe(false);
@@ -278,6 +491,41 @@ test("migrates, exports, reloads, and restores canonical OPFS SQLite through Set
   await page.reload({ waitUntil: "domcontentloaded" });
   await expectProfileAndLanguage(page);
   expectCleanBrowser(firstProblems);
+
+  // A one-byte modification must fail authentication before any destination
+  // state changes. Use a separate empty browser so the successful restore below
+  // remains a faithful Browser A -> Browser B scenario.
+  const tamperedPath = testInfo.outputPath(
+    "portable-almamesh-tampered.almamesh",
+  );
+  const tampered = Buffer.from(exported);
+  tampered[tampered.length - 1] ^= 0x01;
+  const tamperedContext = await browser.newContext({
+    baseURL,
+    acceptDownloads: true,
+  });
+  await installPlaywrightFileChooserFallback(tamperedContext);
+  const tamperedPage = await tamperedContext.newPage();
+  await tamperedPage.goto("/settings/data", { waitUntil: "domcontentloaded" });
+  writeFileSync(tamperedPath, tampered);
+  const [tamperedChooser] = await Promise.all([
+    tamperedPage.waitForEvent("filechooser"),
+    tamperedPage.getByTestId("backup-import-button").click(),
+  ]);
+  await tamperedChooser.setFiles(tamperedPath);
+  await tamperedPage
+    .getByTestId("backup-passphrase-prompt-input")
+    .fill(PASSPHRASE);
+  await tamperedPage.getByTestId("backup-passphrase-prompt-submit").click();
+  await expect(tamperedPage.getByRole("alert")).toContainText("Wrong password");
+  expect(
+    await tamperedPage.evaluate(() => ({
+      settings: localStorage.getItem("almamesh-llm-settings"),
+      mode: localStorage.getItem("almamesh-content-mode"),
+      chart: localStorage.getItem("almamesh-chart"),
+    })),
+  ).toEqual({ settings: null, mode: null, chart: null });
+  await tamperedContext.close();
 
   // A fresh browser context has its own empty OPFS root. Restore only through
   // Settings: real file input, real staged validation, safety-net download,
@@ -290,6 +538,7 @@ test("migrates, exports, reloads, and restores canonical OPFS SQLite through Set
   await installPlaywrightFileChooserFallback(restoredContext);
   const restoredPage = await restoredContext.newPage();
   await restoredPage.goto("/settings/data", { waitUntil: "domcontentloaded" });
+  await expect(restoredPage.getByTestId("backup-import-button")).toBeVisible();
 
   const [chooser] = await Promise.all([
     restoredPage.waitForEvent("filechooser"),
@@ -297,13 +546,19 @@ test("migrates, exports, reloads, and restores canonical OPFS SQLite through Set
   ]);
   await chooser.setFiles(exportedPath);
   // A wrong password is refused with a specific message and imports nothing.
-  const promptInput = restoredPage.getByTestId("backup-passphrase-prompt-input");
+  const promptInput = restoredPage.getByTestId(
+    "backup-passphrase-prompt-input",
+  );
   await promptInput.fill("not the passphrase");
   await restoredPage.getByTestId("backup-passphrase-prompt-submit").click();
   await expect(restoredPage.getByRole("alert")).toContainText("Wrong password");
   expect(
-    await restoredPage.evaluate(() => localStorage.getItem("almamesh-llm-settings")),
-  ).toBeNull();
+    await restoredPage.evaluate(() => ({
+      settings: localStorage.getItem("almamesh-llm-settings"),
+      mode: localStorage.getItem("almamesh-content-mode"),
+      chart: localStorage.getItem("almamesh-chart"),
+    })),
+  ).toEqual({ settings: null, mode: null, chart: null });
   await promptInput.fill(PASSPHRASE);
   await restoredPage.getByTestId("backup-passphrase-prompt-submit").click();
   const confirm = restoredPage.getByTestId("backup-confirm-import");
@@ -311,20 +566,44 @@ test("migrates, exports, reloads, and restores canonical OPFS SQLite through Set
 
   const [safetyDownload] = await Promise.all([
     restoredPage.waitForEvent("download"),
-    restoredPage.waitForEvent("domcontentloaded"),
     confirm.click(),
   ]);
   expect(safetyDownload.suggestedFilename()).toMatch(
-    /^almamesh-backup-before-import-\d{4}-\d{2}-\d{2}\.json$/,
+    /^almamesh-backup-before-import-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z\.almamesh$/,
   );
-  const safetyPath = testInfo.outputPath("portable-almamesh-safety-net.json");
+  const safetyPath = testInfo.outputPath(
+    "portable-almamesh-safety-net.almamesh",
+  );
   await safetyDownload.saveAs(safetyPath);
-  expect(JSON.parse(readFileSync(safetyPath, "utf8"))).toMatchObject({
-    formatVersion: 2,
-  });
+  const safetyBytes = readFileSync(safetyPath);
+  expect(safetyBytes.includes(Buffer.from(API_KEY_SENTINEL))).toBe(false);
+  expect(safetyBytes.includes(SQLITE_HEADER)).toBe(false);
+
+  // Chromium's anchor-download fallback cannot observe completion. The first
+  // click must pause Replace until the user explicitly confirms the safety file.
+  await expect(restoredPage.getByTestId("backup-safety-confirmation")).toBeVisible();
+  await Promise.all([
+    restoredPage.waitForEvent("domcontentloaded"),
+    confirm.click(),
+  ]);
 
   await expectProfileAndLanguage(restoredPage);
   await expectAiSettingsRestored(restoredPage);
+  await expectPortablePreferencesRestored(restoredPage);
+  await expectInterpretationRestored(restoredPage);
+  await expectLegacyBrowserCopiesRemoved(restoredPage);
+  await restoredPage.goto(`/mesh/${MEMBER_ID}`, { waitUntil: "domcontentloaded" });
+  await expect(restoredPage.getByTestId("mesh-reading")).toContainText(
+    MESH_READING_SENTINEL,
+    { timeout: 60_000 },
+  );
+  // The compact fixture is intentionally sufficient for persistence/routing,
+  // not a complete astronomy result. Assert console hygiene before asking the
+  // root guard to route it to a chart-dependent page.
   expectCleanBrowser(restoredProblems);
+  await restoredPage.goto("/", { waitUntil: "domcontentloaded" });
+  await expect
+    .poll(() => new URL(restoredPage.url()).pathname)
+    .toBe("/dashboard");
   await restoredContext.close();
 });

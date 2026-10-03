@@ -9,6 +9,7 @@ import {
   useInterpretationStore,
   useLifeEventsStore,
   useMeshStore,
+  useMeshReadingsStore,
   usePredictiveStore,
   useProfilesStore,
   useRectificationRecordsStore,
@@ -21,6 +22,7 @@ import {
   deleteProfileData,
   resumePendingMemoryRebuild,
 } from './profileDataLifecycle';
+import { LLM_SETTINGS_CHANGED_EVENT } from './llmSettingsEvents';
 
 function chart(chartId: string, profileId: string): StoredChart {
   return { chart_id: chartId, profile_id: profileId, person_name: profileId, is_primary: true } as StoredChart;
@@ -40,6 +42,7 @@ beforeEach(() => {
   useRectificationRecordsStore.setState({ recordsByProfile: {} });
   usePredictiveStore.getState().reset();
   useMeshStore.setState({ edges: {} });
+  useMeshReadingsStore.setState({ byPair: {} });
 });
 
 describe('deleteProfileData', () => {
@@ -222,6 +225,12 @@ describe('deleteProfileData', () => {
         [`${survivor}|other`]: { status: 'idle' },
       },
     });
+    useMeshReadingsStore.setState({
+      byPair: {
+        [`${target}|${survivor}`]: { profileIds: [target, survivor] },
+        [`${survivor}|other`]: { profileIds: [survivor, 'other'] },
+      },
+    } as never);
     const deleteMemoryForProfile = vi.fn().mockResolvedValue(undefined);
 
     await deleteProfileData(target, { deleteMemoryForProfile });
@@ -242,6 +251,8 @@ describe('deleteProfileData', () => {
     expect(usePredictiveStore.getState().status).toBe('idle');
     expect(useMeshStore.getState().edges[`${target}|${survivor}`]).toBeUndefined();
     expect(useMeshStore.getState().edges[`${survivor}|other`]).toBeDefined();
+    expect(useMeshReadingsStore.getState().byPair[`${target}|${survivor}`]).toBeUndefined();
+    expect(useMeshReadingsStore.getState().byPair[`${survivor}|other`]).toBeDefined();
     const settledLedger = await readDeletionTombstones();
     expect(settledLedger.profileIds).not.toContain(target);
     expect(settledLedger.chartIds).not.toContain('target-chart');
@@ -612,21 +623,40 @@ describe('cross-realm deletion propagation', () => {
     const threadId = useChatStore.getState().ensureThread(target, 'target-chart');
     useChatStore.getState().appendMessage(threadId, 'user', 'private question');
     const clearMemory = vi.fn().mockResolvedValue(undefined);
+    const refreshPreferences = vi.fn().mockResolvedValue(undefined);
 
     await applyRemoteDeletionNotice(
-      { kind: 'dataset', operation: 'reset' },
+      { kind: 'dataset', operation: 'reset', phase: 'complete' },
       {
         clearMemory,
+        refreshPreferences,
         deleteMemoryForProfile: vi.fn(),
         deleteMemoryForThread: vi.fn(),
       },
     );
 
     expect(clearMemory).toHaveBeenCalledTimes(1);
+    expect(refreshPreferences).toHaveBeenCalledTimes(1);
     expect(useProfilesStore.getState().profiles).toEqual({});
     expect(useChartLibraryStore.getState().charts).toEqual({});
     expect(useLifeEventsStore.getState().eventsByProfile).toEqual({});
     expect(useChatStore.getState().threads).toEqual({});
+  });
+
+  it('notifies open AI consumers after a remote Replace refreshes preferences', async () => {
+    const refreshed = vi.fn();
+    window.addEventListener(LLM_SETTINGS_CHANGED_EVENT, refreshed, { once: true });
+
+    await applyRemoteDeletionNotice(
+      { kind: 'dataset', operation: 'replace', phase: 'complete', presentStoreKeys: [] },
+      {
+        refreshPreferences: vi.fn().mockResolvedValue(undefined),
+        deleteMemoryForProfile: vi.fn(),
+        deleteMemoryForThread: vi.fn(),
+      },
+    );
+
+    expect(refreshed).toHaveBeenCalledOnce();
   });
 
   it('purges an already-open realm when another tab deletes a profile', async () => {

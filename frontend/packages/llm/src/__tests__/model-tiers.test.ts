@@ -1,29 +1,18 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { CHAT_CLOUD_MODEL, openRouterPreset, RECOMMENDED_CLOUD_MODEL, type LlmEnv } from "../config";
 import {
   applyChatSettings,
   applyInterpretationSettings,
-  LLM_SETTINGS_KEY,
+  configureLlmSettingsPersistence,
+  hydrateLlmSettings,
   readLlmSettings,
   writeLlmSettings,
 } from "../settings";
 
-// Minimal in-memory localStorage so the storage-backed settings are testable in
-// the `node` environment (no DOM).
-function installMemoryStorage(): void {
-  const store = new Map<string, string>();
-  vi.stubGlobal("localStorage", {
-    getItem: (k: string) => store.get(k) ?? null,
-    setItem: (k: string, v: string) => void store.set(k, v),
-    removeItem: (k: string) => void store.delete(k),
-    clear: () => store.clear(),
-  });
-}
-
 describe("tiered model settings — interpretationModel + chatModel", () => {
-  beforeEach(() => installMemoryStorage());
-  afterEach(() => vi.unstubAllGlobals());
+  beforeEach(() => hydrateLlmSettings(null));
+  afterEach(() => configureLlmSettingsPersistence(undefined));
 
   it("round-trips the two explicit model fields", () => {
     writeLlmSettings({ interpretationModel: "deepseek/deepseek-v4-pro", chatModel: "minimax/minimax-m2.7" });
@@ -33,8 +22,9 @@ describe("tiered model settings — interpretationModel + chatModel", () => {
   });
 
   it("migrates a legacy single `model` into `interpretationModel` on read (and persists)", () => {
-    localStorage.setItem(
-      LLM_SETTINGS_KEY,
+    const persisted: string[] = [];
+    configureLlmSettingsPersistence((serialized) => void persisted.push(serialized));
+    hydrateLlmSettings(
       JSON.stringify({
         apiBase: "https://openrouter.ai/api/v1",
         apiKey: "sk-or-123",
@@ -48,13 +38,11 @@ describe("tiered model settings — interpretationModel + chatModel", () => {
     // Legacy `model` is preserved for back-compat (no destructive rewrite).
     expect(out.model).toBe("openai/gpt-4o");
     // Persisted so a reload / other callers see the migrated shape.
-    const persisted = JSON.parse(localStorage.getItem(LLM_SETTINGS_KEY) as string);
-    expect(persisted.interpretationModel).toBe("openai/gpt-4o");
+    expect(JSON.parse(persisted.at(-1)!).interpretationModel).toBe("openai/gpt-4o");
   });
 
   it("does not overwrite an existing interpretationModel from the legacy model", () => {
-    localStorage.setItem(
-      LLM_SETTINGS_KEY,
+    hydrateLlmSettings(
       JSON.stringify({
         apiBase: "https://openrouter.ai/api/v1",
         model: "legacy/old-model",

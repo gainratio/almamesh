@@ -28,7 +28,7 @@ The plumbing to pass predictive context to the LLM **already exists and works** 
 3. **No predictive/"current sky" section is rendered** in the dashboard reading (`DashboardInterpretation.tsx:137-143` renders natal-shaped fields + `upcoming_periods`, which draws on the natal dasha tree, not `transit_context`/`domains_context`).
 4. **Chat is not actually richer** in predictive — it composes the *same* `buildPredictiveFactsBlock`. It merely *feels* better because it layers the finished reading + history + RAG on top. So the readiness fix helps chat too.
 
-The predictive store **is persisted** (`@almamesh/store` `predictive.ts`, IndexedDB `almamesh-predictive`, v2 persists raw `rawContexts`), idempotent per `profileKey@referenceInstant`, so once computed it survives reloads and is cheap to reuse.
+The predictive store **is persisted** (`@almamesh/store` `predictive.ts`, canonical OPFS SQLite row `almamesh-predictive`, v3 persists raw `rawContexts`), idempotent per `profileKey@referenceInstant`, so once computed it survives reloads, travels in an AlmaMesh backup, and is cheap to reuse. IndexedDB is migration-only for older installations and is deleted after the SQLite write is verified.
 
 ---
 

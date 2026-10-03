@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createStore } from 'zustand/vanilla';
 
 import {
@@ -8,21 +8,6 @@ import {
   type ChartLibraryStore,
   type StoredChart,
 } from './chartLibrary';
-
-// Minimal localStorage shim so the routing-flag mirror has somewhere to write
-// (the creator guards `typeof localStorage`, but we want to assert the mirror).
-function installLocalStorage(): Map<string, string> {
-  const backing = new Map<string, string>();
-  (globalThis as { localStorage?: Storage }).localStorage = {
-    getItem: (k: string) => backing.get(k) ?? null,
-    setItem: (k: string, v: string) => void backing.set(k, v),
-    removeItem: (k: string) => void backing.delete(k),
-    clear: () => backing.clear(),
-    key: () => null,
-    length: 0,
-  } as Storage;
-  return backing;
-}
 
 function makeChart(id: string, primary: boolean, profileId?: string): StoredChart {
   return {
@@ -65,12 +50,11 @@ describe('migrateChartLibraryPersistedState (defensive hydration)', () => {
 });
 
 describe('chartLibraryStore', () => {
-  let flags: Map<string, string>;
-
   beforeEach(() => {
-    flags = installLocalStorage();
     setActiveProfileScope(null); // default: show-all (back-compat / pre-migration)
   });
+
+  afterEach(() => vi.unstubAllGlobals());
 
   it('saves and retrieves a chart by id', () => {
     const store = newStore();
@@ -79,22 +63,17 @@ describe('chartLibraryStore', () => {
     expect(store.getState().listCharts()).toHaveLength(1);
   });
 
-  it('mirrors a routing flag into localStorage on save and clears it when empty', () => {
+  it('does not persist a localStorage routing mirror when charts change', () => {
+    const setItem = vi.fn();
+    const removeItem = vi.fn();
+    vi.stubGlobal('localStorage', { getItem: vi.fn(), setItem, removeItem });
     const store = newStore();
+
     store.getState().saveChart(makeChart('a', true));
-    expect(flags.get('almamesh-chart')).toBe('1');
     store.getState().deleteChart('a');
-    expect(flags.has('almamesh-chart')).toBe(false);
-  });
 
-  it('ignores a partial SSR localStorage global instead of throwing during render cleanup', () => {
-    (globalThis as { localStorage?: Storage }).localStorage = {
-      getItem: () => null,
-    } as Storage;
-    const store = newStore();
-
-    expect(() => store.getState().saveChart(makeChart('ssr', true))).not.toThrow();
-    expect(() => store.getState().deleteChart('ssr')).not.toThrow();
+    expect(setItem).not.toHaveBeenCalled();
+    expect(removeItem).not.toHaveBeenCalled();
   });
 
   it('keeps exactly one primary chart', () => {

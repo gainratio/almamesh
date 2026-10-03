@@ -4,22 +4,22 @@
  * Matrix: the interview is actionable on every configured provider, including
  * private local endpoints, and stays gated only when no usable provider exists.
  *
- * These tests drive the REAL settings pipeline (localStorage blob →
+ * These tests drive the REAL settings pipeline (boot-hydrated SQLite value →
  * readLlmSettings → describeLlmStatus) — no mocks — so the matrix proves the
  * production wiring, not a stub.
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { LLM_SETTINGS_KEY, OPENROUTER_API_BASE } from '@almamesh/llm';
+import { hydrateLlmSettings, OPENROUTER_API_BASE } from '@almamesh/llm';
 
 import { isAiUsable } from './rectifyLlmConfig';
 
 function seedSettings(blob: Record<string, unknown>): void {
-  window.localStorage.setItem(LLM_SETTINGS_KEY, JSON.stringify(blob));
+  hydrateLlmSettings(JSON.stringify(blob));
 }
 
 describe('isAiUsable — provider gate matrix', () => {
-  beforeEach(() => window.localStorage.clear());
-  afterEach(() => window.localStorage.clear());
+  beforeEach(() => hydrateLlmSettings(null));
+  afterEach(() => hydrateLlmSettings(null));
 
   it('none (no settings saved) → gated', () => {
     expect(isAiUsable()).toBe(false);

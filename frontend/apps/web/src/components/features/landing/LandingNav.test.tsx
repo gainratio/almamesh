@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { useLanguageStore } from '@almamesh/store';
+import { useChartLibraryStore, useLanguageStore } from '@almamesh/store';
 
 import '../../../i18n/config';
 
@@ -10,15 +10,15 @@ vi.mock('../../../providers/chartEngineContext', () => ({
   useOptionalChartEngine: () => null,
 }));
 
-vi.mock('../../../lib/localChart', () => ({
-  hasLocalChart: vi.fn(() => false),
-}));
-
-import { hasLocalChart } from '../../../lib/localChart';
 import { GITHUB_URL } from './LandingFooter';
 import { LandingNav } from './LandingNav';
 
-const mockHasLocalChart = vi.mocked(hasLocalChart);
+const setHasChart = (hasChart: boolean) =>
+  useChartLibraryStore.setState({
+    charts: hasChart
+      ? ({ saved: { chart_id: 'saved', person_name: 'Saved', is_primary: true } } as never)
+      : {},
+  });
 
 function renderNav() {
   return render(
@@ -31,7 +31,7 @@ function renderNav() {
 describe('LandingNav', () => {
   beforeEach(() => {
     useLanguageStore.setState({ language: 'en' });
-    mockHasLocalChart.mockReturnValue(false);
+    setHasChart(false);
   });
 
   describe('open-source GitHub link (goodwill signal)', () => {
@@ -62,7 +62,7 @@ describe('LandingNav', () => {
     });
 
     it('routes a returning visitor straight to /dashboard with the returning label', () => {
-      mockHasLocalChart.mockReturnValue(true);
+      setHasChart(true);
       renderNav();
       const cta = screen.getByTestId('landing-nav-cta');
       expect(cta.getAttribute('href')).toBe('/dashboard');

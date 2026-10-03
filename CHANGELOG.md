@@ -27,6 +27,14 @@ All notable changes to AlmaMesh are documented here. Format follows
   suggestion in Settings → AI with those numbers.
 
 ### Added
+- **Portable, encrypted browser-to-browser backup and restore.** Settings now
+  shows explicit **Export data** and **Import data** actions. Export flushes the
+  canonical OPFS SQLite database into a passphrase-encrypted, timestamped
+  `.almamesh` file; Import validates and stages that database before replacing
+  local data. Profiles, charts, life events, chats and summaries, chart and
+  relationship readings, language, content mode, AI settings, and the optional
+  provider API key travel together. Rebuildable caches and downloaded runtime
+  assets do not. Legacy JSON and raw SQLite backups remain import-only.
 - **Runaway-reasoning cap.** Each timeline/reading section asks OpenRouter for
   at most 12k reasoning tokens (chat: 6k), and any streamed request with no
   answer text after 3 minutes is cancelled with `ai.reasoning_timeout`. A

@@ -24,7 +24,7 @@ import {
   type VectorStore,
 } from '@almamesh/memory';
 import { safeWarn } from '@almamesh/shared-types';
-import { browserLocalStorage, readDeletionTombstones } from '@almamesh/store';
+import { readDeletionTombstones, readObservedDatasetEpoch } from '@almamesh/store';
 
 /** The slice of `ChatMemory` the UI depends on — keeps tests honest + injectable. */
 export type ChatMemoryFacade = Pick<
@@ -39,7 +39,7 @@ const SQLITE_PROOF_INDEX = 'almamesh-chat-memory-browser-proof-v1';
 let singleton: ChatMemoryFacade | null = null;
 
 function datasetGeneration(): string {
-  return browserLocalStorage()?.getItem('almamesh-restore-epoch') ?? '0';
+  return String(readObservedDatasetEpoch());
 }
 
 async function acceptsVectorWrite(generation: string | number): Promise<boolean> {

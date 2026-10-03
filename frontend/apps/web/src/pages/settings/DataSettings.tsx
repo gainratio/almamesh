@@ -2,8 +2,8 @@
  * DataSettings — the "Backup & Restore" settings panel (Spec 061).
  *
  * Lets a user move ALL their on-device data to another browser with a single
- * file. There is no server: Export saves the canonical state as portable SQLite,
- * or as encrypted JSON when a passphrase is supplied; Restore picks a
+ * file. There is no server: Export seals canonical SQLite into an encrypted
+ * `.almamesh` file; Import picks a
  * backup file, stages it in memory, downloads a safety-net copy of the CURRENT
  * data (so Replace is undoable), then — on confirm — replaces this browser's data
  * and reloads. Nothing is uploaded; the only bytes that leave the device are the
@@ -15,9 +15,19 @@
  * It reshapes the typed refusals (BackupError / BackupCryptoError) into i18n
  * messages and owns the confirm + passphrase-prompt dialogs.
  */
-import { useState } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
-import { BackupCryptoError, BackupError, PortableStateUnavailableError } from '@almamesh/store';
+import {
+  armPortableImportRevision,
+  BackupCryptoError,
+  BackupError,
+  clearPortableImportRevisionFence,
+  PortableStateUnavailableError,
+  portableStatePersistence,
+  readPortableStateRevision,
+  subscribePortableStatePersistence,
+  type PortableStatePersistence,
+} from '@almamesh/store';
 import { Button, Card, Dialog, Input } from '../../components/ui';
 import {
   buildBackupExport,
@@ -39,7 +49,11 @@ function reasonOf(error: unknown): string {
   return error instanceof Error && error.message ? error.message : String(error);
 }
 
-export default function DataSettings() {
+export interface DataSettingsProps {
+  readonly persistence: PortableStatePersistence;
+}
+
+export function DataSettingsPanel({ persistence }: DataSettingsProps) {
   const { t } = useTranslation('settings');
 
   // Export
@@ -54,6 +68,8 @@ export default function DataSettings() {
   const [staged, setStaged] = useState<StagedImport | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [safetyDownloadUnverified, setSafetyDownloadUnverified] = useState(false);
+  const [safetyRevision, setSafetyRevision] = useState<number | null>(null);
 
   // Passphrase prompt (encrypted backups)
   const [pendingContent, setPendingContent] = useState<BackupFileContent | null>(null);
@@ -61,6 +77,10 @@ export default function DataSettings() {
   const [stagedPassphrase, setStagedPassphrase] = useState<string | undefined>(undefined);
   const [promptPassphrase, setPromptPassphrase] = useState('');
   const [promptError, setPromptError] = useState<string | null>(null);
+  // Raw SQLite and unencrypted legacy imports have no password to reuse. The
+  // user supplies one here so the mandatory pre-import safety copy is encrypted.
+  const [safetyPassphrase, setSafetyPassphrase] = useState('');
+  const [safetyPassphraseError, setSafetyPassphraseError] = useState<string | null>(null);
 
   const clearBanners = () => {
     setStatus(null);
@@ -80,6 +100,9 @@ export default function DataSettings() {
       if (result === 'saved') {
         setStatus(t('backup.status_exported'));
         setPassword(''); // don't leave the passphrase lingering in the field
+      } else if (result === 'unverified') {
+        setStatus(t('backup.status_export_started'));
+        setPassword('');
       }
     } catch (err) {
       setError(
@@ -98,10 +121,18 @@ export default function DataSettings() {
     try {
       const result = await stageBackupImport(content, passphrase);
       setStatus(null);
-      setStagedPassphrase(passphrase);
+      setStagedPassphrase(
+        passphrase !== undefined && passphrase.length >= MIN_PASSPHRASE_LENGTH
+          ? passphrase
+          : undefined,
+      );
       setPendingContent(null);
       setPromptPassphrase('');
       setPromptError(null);
+      setSafetyPassphrase('');
+      setSafetyPassphraseError(null);
+      setSafetyDownloadUnverified(false);
+      setSafetyRevision(null);
       setStaged(result);
       setConfirmOpen(true);
     } catch (err) {
@@ -130,11 +161,17 @@ export default function DataSettings() {
 
   async function handleImport() {
     clearBanners();
-    const content = await pickBackupFile();
-    if (content == null) {
+    if (persistence === 'memory') {
+      setError(t('backup.error_import_requires_durable_storage'));
       return;
     }
-    await stageFile(content);
+    try {
+      const content = await pickBackupFile();
+      if (content == null) return;
+      await stageFile(content);
+    } catch (err) {
+      setError(t('backup.error_stage_failed', { reason: reasonOf(err) }));
+    }
   }
 
   async function handleUnlock() {
@@ -148,26 +185,57 @@ export default function DataSettings() {
     if (staged == null) {
       return;
     }
+    const safetyPassword = stagedPassphrase ?? safetyPassphrase;
+    if (safetyPassword.length < MIN_PASSPHRASE_LENGTH) {
+      setSafetyPassphraseError(t('backup.error_safety_passphrase_required'));
+      return;
+    }
     setImporting(true);
     try {
-      // Safety net FIRST: download a copy of the CURRENT data so Replace is undoable.
-      // When the backup was unlocked with a password, the safety copy is sealed
-      // with the same password so it carries this browser's settings and key too.
-      const current =
-        staged.kind === 'bundle' ? await buildBackupExport(stagedPassphrase) : await buildBackupExport();
-      const safetyFilename = current.filename.startsWith('almamesh-backup-')
-        ? current.filename.replace('almamesh-backup-', 'almamesh-backup-before-import-')
-        : `almamesh-backup-before-import-${current.filename}`;
-      const saved = await saveBackupFile(safetyFilename, current.content);
-      if (saved !== 'saved') {
-        // The user cancelled the safety-net save — abort WITHOUT touching any
-        // data (no commit, no reload), so the promised undo backup is never skipped.
-        setConfirmOpen(false);
-        setError(t('backup.error_safety_cancelled'));
-        return;
+      let protectedRevision = safetyRevision;
+      if (!safetyDownloadUnverified) {
+        // Safety net FIRST: always encrypted, using the imported file's password
+        // when available or the explicit safety password entered below.
+        const revisionBeforeExport = await readPortableStateRevision();
+        const current = await buildBackupExport(safetyPassword);
+        const revisionAfterExport = await readPortableStateRevision();
+        if (revisionAfterExport !== revisionBeforeExport) {
+          throw new Error(
+            'Your AlmaMesh data changed while the safety backup was being prepared. Start the import again.',
+          );
+        }
+        const safetyFilename = current.filename.startsWith('almamesh-backup-')
+          ? current.filename.replace('almamesh-backup-', 'almamesh-backup-before-import-')
+          : `almamesh-backup-before-import-${current.filename}`;
+        const saved = await saveBackupFile(safetyFilename, current.content);
+        if (saved === 'unverified') {
+          // The <a download> fallback cannot prove completion. Keep the staged
+          // import untouched and require a second, explicit confirmation.
+          setSafetyDownloadUnverified(true);
+          setSafetyRevision(revisionAfterExport);
+          return;
+        }
+        if (saved === 'cancelled') {
+          // The user cancelled the safety-net save — abort WITHOUT touching any
+          // data (no commit, no reload), so the promised undo backup is never skipped.
+          setConfirmOpen(false);
+          setSafetyRevision(null);
+          setError(t('backup.error_safety_cancelled'));
+          return;
+        }
+        protectedRevision = revisionAfterExport;
       }
-      await commitBackupImport(staged);
+      if (protectedRevision === null) {
+        throw new Error('The safety backup revision is unavailable. Start the import again.');
+      }
+      armPortableImportRevision(protectedRevision);
+      try {
+        await commitBackupImport(staged);
+      } finally {
+        clearPortableImportRevisionFence();
+      }
       setConfirmOpen(false);
+      setSafetyRevision(null);
       setStatus(t('backup.status_imported'));
       // The restore owns the next reload. Prevent the SW self-heal check from
       // stacking a second reload while the fresh realm hydrates its stores.
@@ -175,6 +243,8 @@ export default function DataSettings() {
       window.location.reload();
     } catch (err) {
       setConfirmOpen(false);
+      setSafetyDownloadUnverified(false);
+      setSafetyRevision(null);
       setError(t('backup.error_import_failed', { reason: reasonOf(err) }));
     } finally {
       setImporting(false);
@@ -242,30 +312,87 @@ export default function DataSettings() {
             type="button"
             variant="outline"
             onClick={() => void handleImport()}
+            disabled={persistence === 'memory'}
             data-testid="backup-import-button"
           >
             {t('backup.import_button')}
           </Button>
+          {persistence === 'memory' && (
+            <p
+              role="note"
+              data-testid="backup-import-memory-warning"
+              className="text-sm text-status-warning"
+            >
+              {t('backup.error_import_requires_durable_storage')}
+            </p>
+          )}
         </div>
       </Card>
 
       {/* Confirm "replace all data" dialog */}
       <Dialog
         open={confirmOpen}
-        onClose={() => !importing && setConfirmOpen(false)}
+        onClose={() => {
+          if (!importing) {
+            setConfirmOpen(false);
+            setSafetyDownloadUnverified(false);
+            setSafetyRevision(null);
+          }
+        }}
         title={t('backup.confirm_title')}
       >
         <div className="space-y-4">
           <p className="text-text-secondary text-sm">{t('backup.confirm_body')}</p>
-          {staged?.kind === 'sqlite' && (
+          {staged?.kind !== 'bundle' && (
             <p data-testid="backup-legacy-note" className="text-sm text-status-warning">
               {t('backup.confirm_legacy_note')}
             </p>
           )}
+          {safetyDownloadUnverified && (
+            <p
+              role="status"
+              className="text-sm text-accent-gold"
+              data-testid="backup-safety-confirmation"
+            >
+              {t('backup.confirm_safety_download')}
+            </p>
+          )}
+          {stagedPassphrase === undefined && (
+            <div className="space-y-2">
+              <label
+                htmlFor="backup-safety-passphrase"
+                className="block text-sm font-medium text-text-primary"
+              >
+                {t('backup.safety_passphrase_label')}
+              </label>
+              <Input
+                id="backup-safety-passphrase"
+                type="password"
+                value={safetyPassphrase}
+                onChange={(event) => {
+                  setSafetyPassphrase(event.target.value);
+                  setSafetyPassphraseError(null);
+                }}
+                placeholder={t('backup.passphrase_placeholder')}
+                data-testid="backup-safety-passphrase-input"
+                autoComplete="new-password"
+              />
+              <p className="text-text-muted text-xs">{t('backup.safety_passphrase_hint')}</p>
+              {safetyPassphraseError && (
+                <p role="alert" className="text-sm text-status-error">
+                  {safetyPassphraseError}
+                </p>
+              )}
+            </div>
+          )}
           <div className="flex gap-3 pt-2">
             <button
               type="button"
-              onClick={() => setConfirmOpen(false)}
+              onClick={() => {
+                setConfirmOpen(false);
+                setSafetyDownloadUnverified(false);
+                setSafetyRevision(null);
+              }}
               disabled={importing}
               className="flex-1 px-4 py-2.5 bg-background-tertiary border border-ui-border text-text-primary rounded-md hover:bg-ui-border transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
             >
@@ -278,7 +405,9 @@ export default function DataSettings() {
               disabled={importing}
               className="flex-1 px-4 py-2.5 bg-status-error text-background-primary rounded-md hover:bg-status-error/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-bold"
             >
-              {t('backup.confirm_ok')}
+              {safetyDownloadUnverified
+                ? t('backup.confirm_safety_ok')
+                : t('backup.confirm_ok')}
             </button>
           </div>
         </div>
@@ -332,4 +461,13 @@ export default function DataSettings() {
       </Dialog>
     </div>
   );
+}
+
+export default function DataSettings() {
+  const persistence = useSyncExternalStore(
+    subscribePortableStatePersistence,
+    portableStatePersistence,
+    portableStatePersistence,
+  );
+  return <DataSettingsPanel persistence={persistence} />;
 }

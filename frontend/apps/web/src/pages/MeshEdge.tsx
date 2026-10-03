@@ -58,6 +58,7 @@ import {
   SynchronySection,
 } from '../components/features/mesh';
 import { useElapsedSeconds, formatElapsed } from '../hooks/useElapsedSeconds';
+import type { MeshReadingContext } from '../hooks/useMeshReading';
 import { isMappedChatStreamError } from '../hooks/useChatThread';
 import { useOptionalChartEngine } from '../providers/chartEngineContext';
 import { getUserFriendlyError } from '../lib/errors';
@@ -199,6 +200,7 @@ function EdgeSections({
   years,
   onYearsChange,
   onDiscuss,
+  readingContext,
 }: {
   edge: MeshEdgeCtx;
   memberName: string;
@@ -208,6 +210,7 @@ function EdgeSections({
   years: MeshWindowYears;
   onYearsChange: (years: MeshWindowYears) => void;
   onDiscuss: () => void;
+  readingContext: MeshReadingContext;
 }): ReactElement {
   return (
     <div className="space-y-8">
@@ -229,7 +232,7 @@ function EdgeSections({
         onYearsChange={onYearsChange}
       />
       <SignificatorsSection edge={edge} memberName={memberName} />
-      <MeshReadingSection edge={edge} onDiscuss={onDiscuss} />
+      <MeshReadingSection edge={edge} readingContext={readingContext} onDiscuss={onDiscuss} />
       <IntegrityFoot note={edge.integrity_note} />
     </div>
   );
@@ -467,7 +470,7 @@ function MeshEdgeContent({
     );
   } else if (entry.status === 'error') {
     body = <EdgeError error={entry.error} onRetry={ensure} />;
-  } else if (entry.status !== 'ready' || !entry.edge) {
+  } else if (entry.status !== 'ready' || !entry.edge || !entry.requestKey) {
     body = <EdgePending engineReady={engine !== null} />;
   } else {
     body = (
@@ -480,6 +483,11 @@ function MeshEdgeContent({
         years={years}
         onYearsChange={setYears}
         onDiscuss={() => setDiscussRequested(true)}
+        readingContext={{
+          pairKey,
+          profileIds: [anchor.id, member.id],
+          edgeRequestKey: entry.requestKey,
+        }}
       />
     );
   }

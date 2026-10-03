@@ -9,9 +9,14 @@
  */
 export const LLM_SETTINGS_CHANGED_EVENT = 'almamesh-llm-settings-changed';
 
+export interface LlmSettingsChangedDetail {
+  /** A remote Replace reconstructed the mirror; open editors must reload it. */
+  readonly replace?: boolean;
+}
+
 /** Fire the same-tab "AI settings changed" signal. No-op without a window. */
-export function notifyLlmSettingsChanged(): void {
+export function notifyLlmSettingsChanged(detail: LlmSettingsChangedDetail = {}): void {
   if (typeof window !== 'undefined') {
-    window.dispatchEvent(new Event(LLM_SETTINGS_CHANGED_EVENT));
+    window.dispatchEvent(new CustomEvent(LLM_SETTINGS_CHANGED_EVENT, { detail }));
   }
 }

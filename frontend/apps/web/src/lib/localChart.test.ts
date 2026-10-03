@@ -1,49 +1,55 @@
-import { describe, it, expect, afterEach, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { hasLocalChart, LOCAL_CHART_KEY } from './localChart';
+const mocks = vi.hoisted(() => ({
+  getState: vi.fn(),
+}));
 
-function installTestStorage(): void {
-  const values = new Map<string, string>();
-  vi.stubGlobal('localStorage', {
-    getItem: (key: string) => values.get(key) ?? null,
-    setItem: (key: string, value: string) => values.set(key, value),
-    removeItem: (key: string) => values.delete(key),
-    clear: () => values.clear(),
-  } satisfies Pick<Storage, 'getItem' | 'setItem' | 'removeItem' | 'clear'>);
-}
+vi.mock('@almamesh/store', () => ({
+  CHART_LIBRARY_FLAG_KEY: 'almamesh-chart',
+  useChartLibraryStore: { getState: mocks.getState },
+}));
+
+import { hasLocalChart } from './localChart';
 
 describe('hasLocalChart', () => {
-  afterEach(() => {
-    vi.unstubAllGlobals();
-    installTestStorage();
-  });
-
-  it('is true when the chart-library flag is set', () => {
-    localStorage.setItem(LOCAL_CHART_KEY, '1');
-    expect(hasLocalChart()).toBe(true);
-  });
-
-  it('is false when the flag is absent', () => {
-    localStorage.removeItem(LOCAL_CHART_KEY);
-    expect(hasLocalChart()).toBe(false);
-  });
-
-  it('is false (not a crash) when localStorage is missing entirely — Node prerender', () => {
-    vi.stubGlobal('localStorage', undefined);
-    expect(hasLocalChart()).toBe(false);
-  });
-
-  it('is false (not a crash) when an SSR host exposes a partial storage shell', () => {
-    vi.stubGlobal('localStorage', {});
-    expect(hasLocalChart()).toBe(false);
-  });
-
-  it('is false (not a crash) when storage access throws — e.g. Chrome "block all cookies"', () => {
-    vi.stubGlobal('localStorage', {
-      getItem: () => {
-        throw new DOMException('Access is denied for this document.', 'SecurityError');
-      },
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.getState.mockReturnValue({
+      listAllCharts: () => [],
+      listCharts: () => [],
     });
+  });
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('reads the already-hydrated chart library without touching localStorage', () => {
+    const getItem = vi.fn(() => {
+      throw new DOMException('Access is denied for this document.', 'SecurityError');
+    });
+    vi.stubGlobal('localStorage', { getItem });
+    mocks.getState.mockReturnValue({
+      listAllCharts: () => [{ chart_id: 'persisted' }],
+      listCharts: () => [{ chart_id: 'persisted' }],
+    });
+
+    expect(hasLocalChart()).toBe(true);
+    expect(getItem).not.toHaveBeenCalled();
+  });
+
+  it('ignores a stale legacy flag when the hydrated chart library is empty', () => {
+    const getItem = vi.fn(() => '1');
+    vi.stubGlobal('localStorage', { getItem });
+
     expect(hasLocalChart()).toBe(false);
+    expect(getItem).not.toHaveBeenCalled();
+  });
+
+  it('uses all charts rather than the active-profile filtered list for returning-visitor routing', () => {
+    mocks.getState.mockReturnValue({
+      listAllCharts: () => [{ chart_id: 'another-profile' }],
+      listCharts: () => [],
+    });
+
+    expect(hasLocalChart()).toBe(true);
   });
 });

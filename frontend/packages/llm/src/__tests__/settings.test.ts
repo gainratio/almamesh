@@ -1,29 +1,20 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { LlmEnv } from "../config";
 import {
   applyLlmSettings,
+  configureLlmSettingsPersistence,
   describeLlmStatus,
-  LLM_SETTINGS_KEY,
+  hydrateLlmSettings,
   readLlmSettings,
   writeLlmSettings,
 } from "../settings";
 
-// Minimal in-memory localStorage so the storage-backed settings are testable in
-// the `node` environment (no DOM).
-function installMemoryStorage(): void {
-  const store = new Map<string, string>();
-  vi.stubGlobal("localStorage", {
-    getItem: (k: string) => store.get(k) ?? null,
-    setItem: (k: string, v: string) => void store.set(k, v),
-    removeItem: (k: string) => void store.delete(k),
-    clear: () => store.clear(),
+describe("llm settings — boot-hydrated SQLite view", () => {
+  beforeEach(() => hydrateLlmSettings(null));
+  afterEach(() => {
+    configureLlmSettingsPersistence(undefined);
   });
-}
-
-describe("llm settings — localStorage override layer", () => {
-  beforeEach(() => installMemoryStorage());
-  afterEach(() => vi.unstubAllGlobals());
 
   it("returns {} when nothing is stored", () => {
     expect(readLlmSettings()).toEqual({});
@@ -32,17 +23,29 @@ describe("llm settings — localStorage override layer", () => {
   it("round-trips written settings (merging over existing)", () => {
     writeLlmSettings({ apiBase: "http://localhost:1234/v1" });
     writeLlmSettings({ model: "phi3" });
-    // A legacy single `model` is preserved AND migrated into the per-tier
-    // `interpretationModel` on read (see migrateLegacyModel) — back-compat.
     expect(readLlmSettings()).toEqual({
       apiBase: "http://localhost:1234/v1",
       model: "phi3",
-      interpretationModel: "phi3",
+    });
+  });
+
+  it("sends the complete merged settings, including the API key, to durable persistence", () => {
+    const persisted: string[] = [];
+    configureLlmSettingsPersistence((serialized) => void persisted.push(serialized));
+
+    writeLlmSettings({ apiBase: "https://openrouter.ai/api/v1", apiKey: "sk-synthetic" });
+    writeLlmSettings({ interpretationModel: "example/model", privacyMode: "cloud_premium" });
+
+    expect(JSON.parse(persisted.at(-1)!)).toEqual({
+      apiBase: "https://openrouter.ai/api/v1",
+      apiKey: "sk-synthetic",
+      interpretationModel: "example/model",
+      privacyMode: "cloud_premium",
     });
   });
 
   it("tolerates corrupt JSON", () => {
-    localStorage.setItem(LLM_SETTINGS_KEY, "{not json");
+    expect(hydrateLlmSettings("{not json")).toEqual({});
     expect(readLlmSettings()).toEqual({});
   });
 
@@ -57,20 +60,23 @@ describe("llm settings — localStorage override layer", () => {
     expect(merged.VITE_LLM_API_BASE).toBe("http://localhost:11434/v1");
   });
 
-  it("is a no-op when an SSR host exposes only a partial localStorage global", () => {
-    vi.stubGlobal("localStorage", {});
+  it("does not depend on Web Storage in an SSR host", () => {
     expect(readLlmSettings()).toEqual({});
     expect(() => writeLlmSettings({ model: "x" })).not.toThrow();
   });
 });
 
 describe("readLlmSettings — self-heals AlmaMesh's retired default cloud model", () => {
-  beforeEach(() => installMemoryStorage());
-  afterEach(() => vi.unstubAllGlobals());
+  const persisted: string[] = [];
+  beforeEach(() => {
+    persisted.length = 0;
+    hydrateLlmSettings(null);
+    configureLlmSettingsPersistence((serialized) => void persisted.push(serialized));
+  });
+  afterEach(() => configureLlmSettingsPersistence(undefined));
 
   it("upgrades a saved dead anthropic/claude-3.5-sonnet OpenRouter preset to the recommended model AND persists it", () => {
-    localStorage.setItem(
-      LLM_SETTINGS_KEY,
+    hydrateLlmSettings(
       JSON.stringify({
         apiBase: "https://openrouter.ai/api/v1",
         apiKey: "sk-or-123",
@@ -79,10 +85,9 @@ describe("readLlmSettings — self-heals AlmaMesh's retired default cloud model"
       }),
     );
     expect(readLlmSettings().model).toBe("deepseek/deepseek-v4.1-flash");
-    // Persisted, so every other caller (and a reload) sees the healed value.
-    const persisted = JSON.parse(localStorage.getItem(LLM_SETTINGS_KEY) as string);
-    expect(persisted.model).toBe("deepseek/deepseek-v4.1-flash");
-    expect(persisted.apiKey).toBe("sk-or-123"); // key + base preserved
+    const healed = JSON.parse(persisted.at(-1)!);
+    expect(healed.model).toBe("deepseek/deepseek-v4.1-flash");
+    expect(healed.apiKey).toBe("sk-or-123"); // key + base preserved
   });
 
   it("keeps a user on the previous default (deepseek-v4-pro): a default change never rewrites a saved model", () => {
@@ -93,14 +98,13 @@ describe("readLlmSettings — self-heals AlmaMesh's retired default cloud model"
       interpretationModel: "deepseek/deepseek-v4-pro",
       privacyMode: "cloud_premium",
     };
-    localStorage.setItem(LLM_SETTINGS_KEY, JSON.stringify(saved));
+    hydrateLlmSettings(JSON.stringify(saved));
     expect(readLlmSettings().interpretationModel).toBe("deepseek/deepseek-v4-pro");
-    expect(JSON.parse(localStorage.getItem(LLM_SETTINGS_KEY) as string)).toEqual(saved);
+    expect(persisted).toEqual([]);
   });
 
   it("leaves a model the user deliberately chose untouched", () => {
-    localStorage.setItem(
-      LLM_SETTINGS_KEY,
+    hydrateLlmSettings(
       JSON.stringify({
         apiBase: "https://openrouter.ai/api/v1",
         apiKey: "sk-or-123",
@@ -112,8 +116,7 @@ describe("readLlmSettings — self-heals AlmaMesh's retired default cloud model"
   });
 
   it("does not rewrite the dead id on a non-OpenRouter base", () => {
-    localStorage.setItem(
-      LLM_SETTINGS_KEY,
+    hydrateLlmSettings(
       JSON.stringify({ apiBase: "https://api.example.com/v1", model: "anthropic/claude-3.5-sonnet" }),
     );
     expect(readLlmSettings().model).toBe("anthropic/claude-3.5-sonnet");

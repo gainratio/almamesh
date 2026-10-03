@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { useLanguageStore } from '@almamesh/store';
+import { useChartLibraryStore, useLanguageStore } from '@almamesh/store';
 
 import '../../../i18n/config';
 
@@ -15,16 +15,15 @@ vi.mock('../../forcefield', () => ({
   ForceFieldExperience: () => <div data-testid="forcefield-stub" />,
 }));
 
-// The CTA routes on whether a chart already exists — control that signal.
-vi.mock('../../../lib/localChart', () => ({
-  hasLocalChart: vi.fn(() => false),
-}));
-
-import { hasLocalChart } from '../../../lib/localChart';
 import { GITHUB_URL } from './LandingFooter';
 import { Hero } from './Hero';
 
-const mockHasLocalChart = vi.mocked(hasLocalChart);
+const setHasChart = (hasChart: boolean) =>
+  useChartLibraryStore.setState({
+    charts: hasChart
+      ? ({ saved: { chart_id: 'saved', person_name: 'Saved', is_primary: true } } as never)
+      : {},
+  });
 
 function renderHero() {
   return render(
@@ -37,7 +36,7 @@ function renderHero() {
 describe('Hero', () => {
   beforeEach(() => {
     useLanguageStore.setState({ language: 'en' });
-    mockHasLocalChart.mockReturnValue(false);
+    setHasChart(false);
   });
 
   it('renders the approved headline', () => {
@@ -69,7 +68,7 @@ describe('Hero', () => {
 
   describe('returning visitor (a chart already exists locally)', () => {
     beforeEach(() => {
-      mockHasLocalChart.mockReturnValue(true);
+      setHasChart(true);
     });
 
     it('routes the CTA straight to /dashboard', () => {

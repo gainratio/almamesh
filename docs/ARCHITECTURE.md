@@ -6,8 +6,10 @@ chart engine — the same `almamesh` package you can run on your laptop — runs
 an ed25519-signed, content-addressed bundle cached in durable browser storage.
 OPFS is the fast path for the signed engine cache; IndexedDB is that cache's
 persistent fallback when a browser exposes OPFS but cannot open it. Canonical
-user data is separate: profiles, charts, life events, chat, interpretations,
-and language live together in one standard SQLite database in OPFS. The network carries
+user data is separate: profiles, charts, life events, predictive results, chat,
+interpretations, portable preferences, and the optional AI key live together in
+one standard SQLite database in OPFS. Neither localStorage nor IndexedDB is an
+ongoing user-data mirror. The network carries
 delivery metadata and the explicitly disclosed city-search/optional-AI flows;
 birth details and computed charts are not sent by the engine or geocoder.
 Optional chat memory is also derived entirely on-device: a self-hosted MiniLM
@@ -86,19 +88,40 @@ implementation is unavailable.
 
 `@almamesh/store` maps each existing, versioned Zustand envelope to a row in a
 single `almamesh-user-state` SQLite database. The deletion ledger and those
-rows commit through one compare-and-swap transaction, so two tabs cannot
-silently overwrite a newer dataset. On first eligible launch, the old
+rows commit through compare-and-swap transactions. Generation fencing prevents
+a stale tab from crossing a Replace/delete boundary. Ordinary same-generation
+writes use a three-way merge at the SQLite boundary: independent record and
+stable-ID list changes survive, either side's deletion wins, and only a true
+same-field conflict is local-wins. Paid relationship narrations additionally
+use a pair-key CAS merge so separate pairs completed in different tabs are
+preserved. On first eligible launch, the old
 idb-keyval records are copied, integrity-checked, and only then removed. A crash
 before cleanup leaves a redundant source copy and the migration safely resumes.
+Legacy localStorage preferences follow the same verify-before-delete rule. Once
+migration completes, live reads and writes use SQLite only; in-memory snapshots
+serve synchronous UI reads without creating another durable authority.
 
-Settings exports the actual SQLite bytes, sealed with the user's password
-together with device settings (AI provider, models, API key) into one
-encrypted backup file (format v2: PBKDF2-SHA256 600k + AES-GCM, header
-authenticated). Every restore is staged in an isolated in-memory database
-before replacing the live generation, and settings are applied only after that
-commit. v1 SQLite and legacy JSON backups remain importable. Semantic vectors,
-predictive caches, and route-guard mirrors are not exported; they are rebuilt
-from the restored source records.
+Settings exports one timestamped `.almamesh` file: format v3 seals the exact
+canonical SQLite bytes with the user's password (PBKDF2-SHA256 600k +
+AES-256-GCM, authenticated binary header). AI provider, models, API key,
+language, and content preferences already live in versioned SQLite rows, so
+there is no second settings payload to apply after the database commit. Every
+restore is staged in an isolated in-memory database before atomically replacing
+the live generation. Raw SQLite, encrypted v2, and legacy JSON backups remain
+importable. The password protects the transport file only: import decrypts it
+once and installs ordinary SQLite into the destination browser's OPFS, so later
+launches do not ask for that password. Predictive results travel in canonical
+SQLite. Semantic vectors, embedding assets, and signed engine-delivery caches
+are not exported; they are rebuilt or downloaded from restored source records.
+Restore is disabled
+when SQLite is running in session-only memory mode because the required reload
+would otherwise erase the imported database.
+
+The key portability path is deliberately browser-independent: Chrome exports
+one encrypted `.almamesh` file, the user transfers it to an iPhone, and iOS
+Safari imports it. After validation and Replace, Safari hydrates every durable
+surface from its newly installed canonical SQLite database. Browser-specific
+cache files are neither required nor copied.
 
 ## Where things live
 

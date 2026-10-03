@@ -17,8 +17,8 @@ import type { BackupEnvelopePlain } from '@almamesh/shared-types';
 import {
   BackupCryptoError,
   BackupError,
-  CHART_FLAG_KEY,
   PortableStateUnavailableError,
+  PortableStateTooNewError,
   CHAT_VECTORS_KEY,
   type PortableStateSnapshot,
   type StorageTier,
@@ -87,39 +87,27 @@ function seededSource() {
 // --- buildBackupExport -------------------------------------------------------
 
 describe('buildBackupExport', () => {
-  it('names the file by the injected date and emits a valid plain envelope', async () => {
+  it('rejects missing or short passphrases at the service boundary', async () => {
     const { override } = seededSource();
-
-    const result = await buildBackupExport(undefined, override);
-
-    expect(result.filename).toBe('almamesh-backup-2026-07-01.json');
-
-    const parsed = JSON.parse(result.content as string);
-    expect(parsed.format).toBe('almamesh-backup');
-    expect(parsed.formatVersion).toBe(1);
-    expect(parsed.encryption).toBe('none');
-    expect(parsed.app).toEqual({ version: FIXED_VERSION });
-    expect(parsed.exportedAt).toBe(FIXED_NOW);
-    expect(parsed.stores['almamesh-profiles']).toEqual({ state: PROFILES_STATE, version: 1 });
-    expect(parsed.stores['almamesh-language']).toEqual({ state: LANGUAGE_STATE, version: 0 });
+    await expect(buildBackupExport(undefined, override)).rejects.toMatchObject({ code: 'bad_passphrase' });
+    await expect(buildBackupExport('short', override)).rejects.toMatchObject({ code: 'bad_passphrase' });
   });
 
-  it('exports production plaintext as byte-exact standard SQLite', async () => {
+  it('exports production SQLite as encrypted binary with a collision-safe UTC timestamp', async () => {
     const bytes = new Uint8Array([
       ...new TextEncoder().encode('SQLite format 3\0'),
       0xaa,
       0xbb,
     ]);
 
-    const result = await buildBackupExport(undefined, {
+    const result = await buildBackupExport('test passphrase', {
       now: FIXED_NOW,
       exportPortableState: vi.fn().mockResolvedValue(bytes),
     });
 
-    expect(result.filename).toBe('almamesh-backup-2026-07-01.sqlite3');
-    expect(result.content).toBe(bytes);
+    expect(result.filename).toBe('almamesh-backup-2026-07-01T12-34-56-000Z.almamesh');
     expect(result.content).toBeInstanceOf(Uint8Array);
-    expect([...result.content as Uint8Array]).toEqual([...bytes]);
+    expect(result.content).not.toEqual(bytes);
   });
 
   it('exports a completed interpretation immediately after its durability promise resolves', async () => {
@@ -152,13 +140,13 @@ describe('buildBackupExport', () => {
       run,
     );
     try {
-      const result = await buildBackupExport(undefined, {
+      const result = await buildBackupExport('test passphrase', {
         tiers: { local: memTier(), idb },
         now: FIXED_NOW,
         appVersion: FIXED_VERSION,
       });
 
-      const parsed = JSON.parse(result.content as string) as BackupEnvelopePlain;
+      const parsed = (await stageBackupImport(result.content, 'test passphrase')).envelope;
       expect(
         (parsed.stores['almamesh-interpretations']?.state as { byChart: Record<string, unknown> })
           .byChart['chart-now'],
@@ -217,6 +205,19 @@ describe('portable SQLite import', () => {
     expect(readPortableState).not.toHaveBeenCalled();
   });
 
+  it('reports a valid SQLite backup with a future store version as too_new', async () => {
+    await expect(
+      stageBackupImport(sqliteBytes, undefined, {
+        readPortableState: vi
+          .fn()
+          .mockRejectedValue(new PortableStateTooNewError('almamesh-profiles', 999, 1)),
+      }),
+    ).rejects.toMatchObject({
+      name: 'BackupError',
+      code: 'too_new',
+    });
+  });
+
   it('imports SQLite bytes, rebuilds restored chat, clears the marker, and publishes lifecycle notices', async () => {
     const readPortableState = vi.fn().mockResolvedValue(portableSnapshot);
     const staged = await stageBackupImport(sqliteBytes, undefined, { readPortableState });
@@ -233,7 +234,10 @@ describe('portable SQLite import', () => {
       publishDatasetNotice,
     });
 
-    expect(importPortableState).toHaveBeenCalledWith(staged.kind === 'sqlite' ? staged.bytes : null);
+    expect(importPortableState).toHaveBeenCalledWith(
+      staged.kind === 'sqlite' ? staged.bytes : null,
+      { preserveMissingPreferences: true },
+    );
     expect(rebuildChatMemory).toHaveBeenCalledWith([
       expect.objectContaining({ id: 'm1', profile_id: 'p1', content: 'portable message' }),
     ]);
@@ -266,21 +270,17 @@ describe('portable SQLite import', () => {
 });
 
 
-// --- format v2: encrypted bundle with settings and secrets -------------------
+// --- format v3: encrypted exact-SQLite bundle -------------------------------
 
-describe('encrypted bundle round-trip (format v2)', () => {
+describe('encrypted bundle round-trip (format v3)', () => {
   const SENTINEL_CREDENTIAL = 'synthetic-roundtrip-credential';
   const PASSPHRASE = 'synthetic passphrase';
-  const databaseA = new Uint8Array([...new TextEncoder().encode('SQLite format 3\0'), 9, 8, 7]);
-  const settingsA = {
-    'almamesh-llm-settings': JSON.stringify({
-      apiBase: 'https://openrouter.ai/api/v1',
-      apiKey: SENTINEL_CREDENTIAL,
-      interpretationModel: 'synthetic/frontier',
-      chatModel: 'synthetic/fast',
-      privacyMode: 'standard',
-    }),
-  };
+  const databaseA = new Uint8Array([
+    ...new TextEncoder().encode(`SQLite format 3\0${SENTINEL_CREDENTIAL}`),
+    9,
+    8,
+    7,
+  ]);
   const chatEnvelope = snapshot(
     { threads: { t1: { id: 't1', profile_id: 'p1' } }, messages: { t1: [{ id: 'm1', content: 'hi' }] } },
     3,
@@ -293,21 +293,20 @@ describe('encrypted bundle round-trip (format v2)', () => {
     ]),
   };
 
-  async function exportFromA(): Promise<string> {
+  async function exportFromA(): Promise<Uint8Array> {
     const result = await buildBackupExport(PASSPHRASE, {
       now: FIXED_NOW,
       appVersion: FIXED_VERSION,
       exportPortableState: vi.fn().mockResolvedValue(databaseA),
-      readSettings: () => settingsA,
     });
-    expect(result.filename).toBe('almamesh-backup-2026-07-01.json');
-    return result.content as string;
+    expect(result.filename).toBe('almamesh-backup-2026-07-01T12-34-56-000Z.almamesh');
+    expect(result.content).toBeInstanceOf(Uint8Array);
+    return result.content as Uint8Array;
   }
 
   function browserB() {
     return {
       importPortableState: vi.fn().mockResolvedValue(undefined),
-      applySettings: vi.fn(),
       rebuildChatMemory: vi.fn().mockResolvedValue(undefined),
       completeMemoryRebuild: vi.fn().mockResolvedValue(undefined),
       readActiveEpoch: vi.fn().mockResolvedValue(1),
@@ -315,7 +314,7 @@ describe('encrypted bundle round-trip (format v2)', () => {
     };
   }
 
-  it('A → file → B restores the same database bytes and settings, including the API key', async () => {
+  it('A → file → B restores the same canonical database bytes without a side-channel settings payload', async () => {
     const file = await exportFromA();
     const readPortableState = vi.fn().mockResolvedValue(snapshotA);
 
@@ -326,27 +325,24 @@ describe('encrypted bundle round-trip (format v2)', () => {
     expect(staged.kind).toBe('bundle');
     expect([...readPortableState.mock.calls[0][0]]).toEqual([...databaseA]);
     expect([...b.importPortableState.mock.calls[0][0]]).toEqual([...databaseA]);
-    expect(b.applySettings).toHaveBeenCalledWith(settingsA);
-    expect(JSON.parse(b.applySettings.mock.calls[0][0]['almamesh-llm-settings']).apiKey).toBe(SENTINEL_CREDENTIAL);
   });
 
   it('the exported file never contains the plaintext API key', async () => {
     const file = await exportFromA();
 
-    expect(file).not.toContain(SENTINEL_CREDENTIAL);
-    expect(file).not.toContain('apiKey');
+    const onDisk = new TextDecoder().decode(file);
+    expect(onDisk).not.toContain(SENTINEL_CREDENTIAL);
+    expect(onDisk).not.toContain('apiKey');
   });
 
-  it('without a passphrase never reads settings: data-only SQLite (the safety-net path)', async () => {
-    const readSettings = vi.fn(() => settingsA);
-    const result = await buildBackupExport('', {
+  it('without a passphrase refuses export before reading the database', async () => {
+    const exportPortableState = vi.fn().mockResolvedValue(databaseA);
+    await expect(buildBackupExport('', {
       now: FIXED_NOW,
-      exportPortableState: vi.fn().mockResolvedValue(databaseA),
-      readSettings,
-    });
+      exportPortableState,
+    })).rejects.toMatchObject({ code: 'bad_passphrase' });
 
-    expect(result.filename).toBe('almamesh-backup-2026-07-01.sqlite3');
-    expect(readSettings).not.toHaveBeenCalled();
+    expect(exportPortableState).not.toHaveBeenCalled();
   });
 
   it('prompts for a passphrase when a bundle is opened without one', async () => {
@@ -362,19 +358,15 @@ describe('encrypted bundle round-trip (format v2)', () => {
     const file = await exportFromA();
     const readPortableState = vi.fn();
 
-    await expect(stageBackupImport(file, 'wrong', { readPortableState })).rejects.toBeInstanceOf(
+    await expect(stageBackupImport(file, 'wrong password', { readPortableState })).rejects.toBeInstanceOf(
       BackupCryptoError,
     );
     expect(readPortableState).not.toHaveBeenCalled();
   });
 
   it('a tampered file is rejected', async () => {
-    const parsed = JSON.parse(await exportFromA());
-    // Flip the first character to a DIFFERENT one: the ciphertext is random, so a fixed 'A'
-    // left the file unchanged 1 time in 64 and the "tamper" test silently tested nothing.
-    const first = parsed.ciphertext[0] === 'A' ? 'B' : 'A';
-    const tampered = JSON.stringify({ ...parsed, ciphertext: `${first}${parsed.ciphertext.slice(1)}` });
-    expect(tampered).not.toBe(JSON.stringify(parsed));
+    const tampered = (await exportFromA()).slice();
+    tampered[tampered.length - 1] ^= 1;
 
     await expect(stageBackupImport(tampered, PASSPHRASE)).rejects.toMatchObject({
       code: 'bad_passphrase',
@@ -389,7 +381,6 @@ describe('encrypted bundle round-trip (format v2)', () => {
     b.importPortableState.mockRejectedValue(new Error('commit refused'));
 
     await expect(commitBackupImport(staged, b)).rejects.toThrow('commit refused');
-    expect(b.applySettings).not.toHaveBeenCalled();
   });
 
   it('still imports a previous-format (v1) SQLite export and leaves B settings alone', async () => {
@@ -401,17 +392,17 @@ describe('encrypted bundle round-trip (format v2)', () => {
     await commitBackupImport(staged, b);
 
     expect(staged.kind).toBe('sqlite');
-    expect(b.importPortableState).toHaveBeenCalled();
-    expect(b.applySettings).not.toHaveBeenCalled();
+    expect(b.importPortableState).toHaveBeenCalledWith(databaseA, {
+      preserveMissingPreferences: true,
+    });
   });
 
   it('refuses an authentic bundle whose database is not SQLite as corrupt', async () => {
     const { content } = await buildBackupExport(PASSPHRASE, {
       exportPortableState: vi.fn().mockResolvedValue(new Uint8Array([1, 2, 3])),
-      readSettings: () => settingsA,
     });
 
-    await expect(stageBackupImport(content as string, PASSPHRASE)).rejects.toMatchObject({
+    await expect(stageBackupImport(content, PASSPHRASE)).rejects.toMatchObject({
       name: 'BackupError',
       code: 'corrupt',
     });
@@ -426,11 +417,9 @@ describe('encrypted bundle round-trip (format v2)', () => {
   });
 
   it('refuses a bundle from a newer format version', async () => {
-    const parsed = JSON.parse(await exportFromA());
-
-    await expect(
-      stageBackupImport(JSON.stringify({ ...parsed, formatVersion: 3 }), PASSPHRASE),
-    ).rejects.toMatchObject({ code: 'too_new' });
+    const future = (await exportFromA()).slice();
+    future[8] = 4;
+    await expect(stageBackupImport(future, PASSPHRASE)).rejects.toMatchObject({ code: 'too_new' });
   });
 
   it('fails with PortableStateUnavailableError when the local database never answers', async () => {
@@ -827,7 +816,7 @@ describe('commitBackupImport (full round-trip)', () => {
 
   it('restores every store into fresh tiers and runs the post-write housekeeping', async () => {
     const { override } = seededSource();
-    const exported = await buildBackupExport(undefined, override);
+    const exported = await buildBackupExport('test passphrase', override);
 
     // Wipe: brand-new destination tiers, pre-seeded with stale RAG vectors that
     // the restore must delete (they rebuild from restored chat history).
@@ -835,7 +824,7 @@ describe('commitBackupImport (full round-trip)', () => {
     const destLocal = memTier();
     const destTiers = { local: destLocal, idb: destIdb } as Record<'local' | 'idb', StorageTier>;
 
-    const staged = await stageBackupImport(exported.content);
+    const staged = await stageBackupImport(exported.content, 'test passphrase');
     await commitBackupImport(staged.envelope, { tiers: destTiers });
 
     // Stores landed verbatim in their tiers.
@@ -853,9 +842,8 @@ describe('commitBackupImport (full round-trip)', () => {
       JSON.stringify({ state: LANGUAGE_STATE, version: 0 }),
     );
 
-    // Housekeeping: chart route-guard flag set (charts were restored) + stale
-    // vectors deleted.
-    expect(destLocal.map.get(CHART_FLAG_KEY)).toBe('1');
+    // Housekeeping: no duplicate route flag is created; stale vectors rebuild.
+    expect(destLocal.map.has('almamesh-chart')).toBe(false);
     expect(destIdb.map.has(CHAT_VECTORS_KEY)).toBe(false);
   });
 });

@@ -4,8 +4,8 @@
  * `chart_id`, persisted in the canonical OPFS SQLite database.
  *
  * No backend, no account: charts the in-browser engine computes are saved here
- * and survive reloads. Routing's "has a chart?" check reads this store (mirrored
- * to a localStorage flag for synchronous route guards — see lib/localChart.ts).
+ * and survive reloads. Routing's synchronous "has a chart?" check reads this
+ * store after the application boot barrier has awaited SQLite hydration.
  */
 
 import { create, type StateCreator } from 'zustand';
@@ -15,7 +15,6 @@ import type { ChartData } from '@almamesh/shared-types';
 import type { SiderealChart } from '@almamesh/browser/types';
 import { deletionAwareIdbStorage, whenPersistenceSettled } from './deletionTombstones';
 import { whenHydrated } from './hydrationBarrier';
-import { browserLocalStorage } from './webStorage';
 
 /** A chart as held on-device: the rendered shape plus its identity + primacy. */
 export interface StoredChart extends ChartData {
@@ -71,27 +70,8 @@ export function migrateChartLibraryPersistedState(
   return { charts: isPlainRecord(charts) ? (charts as PersistedChartLibraryState['charts']) : {} };
 }
 
-/**
- * The localStorage flag routing reads synchronously. Portable SQLite is async, so we
- * mirror "a chart exists" into localStorage on every mutation; lib/localChart.ts
- * reads this key. Kept in sync here so the two never disagree.
- */
+/** Legacy localStorage key retained for one-time cleanup readers only. */
 export const CHART_LIBRARY_FLAG_KEY = 'almamesh-chart';
-
-function setLibraryFlag(hasAny: boolean): void {
-  // Absent (Node/Bun SSR), partial, or browser-blocked storage all yield
-  // undefined. The flag is only a synchronous routing optimization; never let
-  // that optional mirror break prerender or the authoritative SQLite store.
-  const storage = browserLocalStorage();
-  if (storage === undefined) {
-    return;
-  }
-  if (hasAny) {
-    storage.setItem(CHART_LIBRARY_FLAG_KEY, '1');
-  } else {
-    storage.removeItem(CHART_LIBRARY_FLAG_KEY);
-  }
-}
 
 /**
  * The active profile scope used to filter chart listing + primacy. Held as a
@@ -143,10 +123,9 @@ export interface ChartLibraryStore {
   assignOrphanChartsToProfile: (profileId: string) => number;
   getPrimaryChart: () => StoredChart | undefined;
   /**
-   * Wipe every chart on the device and clear the route-guard flag — the
-   * "start fresh" reset. Unlike `deleteChartsForProfile` this is unconditional
-   * and profile-agnostic; pair it with the other stores' `clearAll` to return a
-   * returning visitor to a clean onboarding.
+   * Wipe every chart on the device. Unlike `deleteChartsForProfile` this is
+   * unconditional and profile-agnostic; pair it with the other stores' `clearAll`
+   * to return a returning visitor to a clean onboarding.
    */
   clearAll: () => void;
 }
@@ -168,7 +147,6 @@ export const chartLibraryStoreCreator: StateCreator<ChartLibraryStore> = (set, g
       next[chart.chart_id] = chart;
       return { charts: next };
     });
-    setLibraryFlag(get().listCharts().length > 0);
   },
 
   getChart: (chartId) => get().charts[chartId],
@@ -184,7 +162,6 @@ export const chartLibraryStoreCreator: StateCreator<ChartLibraryStore> = (set, g
       delete next[chartId];
       return { charts: next };
     });
-    setLibraryFlag(get().listCharts().length > 0);
   },
 
   deleteChartsForProfile: (profileId) => {
@@ -197,7 +174,6 @@ export const chartLibraryStoreCreator: StateCreator<ChartLibraryStore> = (set, g
       }
       return { charts: next };
     });
-    setLibraryFlag(get().listCharts().length > 0);
   },
 
   assignOrphanChartsToProfile: (profileId) => {
@@ -214,9 +190,6 @@ export const chartLibraryStoreCreator: StateCreator<ChartLibraryStore> = (set, g
       }
       return { charts: next };
     });
-    if (claimed > 0) {
-      setLibraryFlag(get().listCharts().length > 0);
-    }
     return claimed;
   },
 
@@ -227,7 +200,6 @@ export const chartLibraryStoreCreator: StateCreator<ChartLibraryStore> = (set, g
 
   clearAll: () => {
     set({ charts: {} });
-    setLibraryFlag(false);
   },
 });
 
@@ -238,9 +210,7 @@ export const useChartLibraryStore = create<ChartLibraryStore>()(
     migrate: migrateChartLibraryPersistedState,
     storage: createJSONStorage(() => deletionAwareIdbStorage),
     partialize: (state) => ({ charts: state.charts }),
-    onRehydrateStorage: () => (state) => {
-      // Re-sync the synchronous routing flag from the rehydrated truth.
-      setLibraryFlag(!!state && Object.keys(state.charts).length > 0);
+    onRehydrateStorage: () => () => {
       useChartLibraryStore.setState({ hydrated: true });
     },
   }),

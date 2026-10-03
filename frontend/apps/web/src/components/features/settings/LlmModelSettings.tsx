@@ -12,12 +12,14 @@
  * the reading will use, and reports an honest **Connected** or a specific error
  * (bad key / bad model / out of credits / unreachable) right here — so the user
  * never has to leave the screen to discover their config is broken. Everything is
- * stored ONLY in the browser's localStorage via @almamesh/llm; no backend.
+ * stored in canonical browser-local SQLite; synchronous reads use a boot-hydrated
+ * memory snapshot and no user setting is duplicated in Web Storage.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { safeError } from '@almamesh/shared-types';
+import { flushPortablePersistence } from '@almamesh/store';
 import {
   CHAT_CLOUD_MODEL,
   describeLlmStatus,
@@ -39,7 +41,10 @@ import {
 } from '@almamesh/llm';
 import { Badge, Button, ModelCombobox } from '../../ui';
 import { classifyConnectionError, connectionErrorDetail } from '../../../lib/errors';
-import { notifyLlmSettingsChanged } from '../../../lib/llmSettingsEvents';
+import {
+  LLM_SETTINGS_CHANGED_EVENT,
+  notifyLlmSettingsChanged,
+} from '../../../lib/llmSettingsEvents';
 import {
   dismissSlowModelSuggestion,
   isSlowModelSuggestionDismissed,
@@ -59,8 +64,8 @@ type ConnSource = 'guided' | 'advanced';
 
 /**
  * The verdict kinds: every connection-error class, plus `'storage'` for the case
- * where persisting to localStorage itself failed (quota / private mode) — a save
- * no-op the user must be told about, never swallowed.
+ * where persisting canonical SQLite failed — a save no-op the user must be told
+ * about, never swallowed.
  */
 type ResultKind = ReturnType<typeof classifyConnectionError> | 'storage';
 
@@ -101,6 +106,8 @@ export interface LlmModelSettingsProps {
     config: ProviderConfig;
     signal?: AbortSignal;
   }) => Promise<OpenRouterModel[]>;
+  /** Await the canonical SQLite write before reporting a saved configuration. */
+  flushSettings?: () => Promise<void>;
 }
 
 export default function LlmModelSettings({
@@ -108,6 +115,7 @@ export default function LlmModelSettings({
   testConnection = testProviderConnection,
   fetchCredits = fetchOpenRouterCredits,
   fetchModels = fetchOpenRouterModels,
+  flushSettings = flushPortablePersistence,
 }: LlmModelSettingsProps = {}) {
   const { t } = useTranslation('settings');
   const [status, setStatus] = useState<LlmStatus>(() => describeLlmStatus());
@@ -117,6 +125,24 @@ export default function LlmModelSettings({
   // fetch, so a stale verdict from a superseded config can never land on screen.
   const probeGen = useRef(0);
   const probeAbort = useRef<AbortController | null>(null);
+
+  // A remote Replace reconstructs the synchronous memory snapshot, then emits the same
+  // settings signal used by local saves. Re-read the whole form so a tab left
+  // open on Settings cannot later submit its pre-restore React snapshot.
+  useEffect(() => {
+    const refreshFromCanonicalState = (event: Event) => {
+      if (!(event instanceof CustomEvent) || event.detail?.replace !== true) return;
+      probeGen.current += 1;
+      probeAbort.current?.abort();
+      const restored = readLlmSettings();
+      setSettings(restored);
+      setStatus(describeLlmStatus(restored));
+      setConn({ phase: 'idle' });
+    };
+    window.addEventListener(LLM_SETTINGS_CHANGED_EVENT, refreshFromCanonicalState);
+    return () =>
+      window.removeEventListener(LLM_SETTINGS_CHANGED_EVENT, refreshFromCanonicalState);
+  }, []);
 
   const noneActive = status.kind === 'none';
   const aiOn =
@@ -218,7 +244,7 @@ export default function LlmModelSettings({
   // by a prior OpenRouter connect) would otherwise stay and keep `ensurePrivacy`
   // inert for this browser. Reset to `local_only` and drop the per-tier models so
   // nothing sensitive lingers; describeLlmStatus reads "none" again.
-  const turnAiOff = () => {
+  const turnAiOff = async () => {
     probeGen.current += 1;
     probeAbort.current?.abort();
     try {
@@ -231,11 +257,12 @@ export default function LlmModelSettings({
         chatModel: '',
         privacyMode: 'local_only',
       });
+      await flushSettings();
     } catch (err) {
-      // The localStorage write can throw (quota / private mode). Surface it in
-      // the console and bail rather than crash the click handler; the badge
-      // stays "on" so the user can retry, never a swallowed no-op.
+      // Canonical SQLite can reject. Keep
+      // the active badge and surface a retryable storage verdict.
       safeError('provider.disable_failed', err);
+      setConn({ phase: 'error', source: 'guided', kind: 'storage' });
       return;
     }
     setSettings(readLlmSettings());
@@ -255,10 +282,10 @@ export default function LlmModelSettings({
 
     try {
       writeLlmSettings({ ...next, engine: '' });
+      await flushSettings();
     } catch (err) {
-      // A localStorage write can throw (quota exceeded, Safari private mode) —
-      // that's a silent Save no-op unless we surface it. Don't probe a config we
-      // couldn't persist.
+      // A canonical SQLite write can fail. Do not
+      // probe or report a configuration that will disappear on reload.
       safeError('provider.settings_save_failed', err);
       setConn({ phase: 'error', source, kind: 'storage' });
       return;
@@ -343,7 +370,7 @@ export default function LlmModelSettings({
           ) : (
             <button
               type="button"
-              onClick={turnAiOff}
+              onClick={() => void turnAiOff()}
               className="rounded-md border border-ui-border px-3 py-1.5 text-sm text-text-secondary transition-colors hover:text-text-primary"
               data-testid="tier-none-select"
             >
