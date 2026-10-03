@@ -13,7 +13,7 @@ import { createJSONStorage, persist } from 'zustand/middleware';
 
 import type { ChartData } from '@almamesh/shared-types';
 import type { SiderealChart } from '@almamesh/browser/types';
-import { deletionAwareIdbStorage } from './deletionTombstones';
+import { deletionAwareIdbStorage, whenPersistenceSettled } from './deletionTombstones';
 import { whenHydrated } from './hydrationBarrier';
 import { browserLocalStorage } from './webStorage';
 
@@ -261,6 +261,17 @@ export const useChartLibraryStore = create<ChartLibraryStore>()(
  */
 export function whenChartLibraryHydrated(): Promise<void> {
   return whenHydrated(useChartLibraryStore.persist);
+}
+
+/**
+ * Resolve once every queued chart-library write has reached SQLite.
+ *
+ * `saveChart` updates memory synchronously and persists asynchronously. A
+ * surface that shows a chart must await this, or a reload in that window brings
+ * back the old chart (a rectified Cancer lagna reverting to Leo).
+ */
+export function whenChartLibraryPersisted(): Promise<void> {
+  return whenPersistenceSettled(PERSIST_NAME);
 }
 
 /**
