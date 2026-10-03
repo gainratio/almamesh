@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { IDBFactory } from 'fake-indexeddb';
 import { createStore, get as idbGet, set as idbSet } from 'idb-keyval';
 import type {
@@ -987,6 +987,36 @@ describe('derived IndexedDB caches beside the SQLite ledger', () => {
         stateOf((await deletionAwareIdbStorage.getItem('almamesh-predictive')) as string),
       ).toEqual({ cached: 1 });
     });
+  });
+
+  it('a fresh realm adopting an untouched ledger does not replay a dataset replace', async () => {
+    // A first visit has no restore-epoch mirror. Before any store read, the
+    // startup reconcile adopts the ledger; generation 0 with no restore in
+    // progress is the dataset this realm is already showing. Treating the
+    // unset epoch as "changed" replays a full replace that rehydrates every
+    // store mid-boot (Dagger pdf: the synthetic report lost its reading).
+    // main hid this only because the predictive cache read happened to set 0.
+    vi.resetModules();
+    const fresh = await import('./deletionTombstones');
+    fresh.setPortableStateRepositoryForTests(new PortableStateRepository(new PortableMemoryStore()));
+    try {
+      expect(await fresh.adoptLatestDatasetEpoch()).toEqual({ changed: false, epoch: 0 });
+    } finally {
+      fresh.setPortableStateRepositoryForTests(undefined);
+    }
+  });
+
+  it('a fresh realm whose ledger already moved past generation 0 still reconciles', async () => {
+    vi.resetModules();
+    const fresh = await import('./deletionTombstones');
+    const repository = new PortableStateRepository(new PortableMemoryStore());
+    await repository.write(PORTABLE_LEDGER_KEY, JSON.stringify({ ...TOMBSTONES, profileIds: [] }));
+    fresh.setPortableStateRepositoryForTests(repository);
+    try {
+      expect(await fresh.adoptLatestDatasetEpoch()).toEqual({ changed: true, epoch: 2 });
+    } finally {
+      fresh.setPortableStateRepositoryForTests(undefined);
+    }
   });
 
   it.each([

@@ -305,8 +305,10 @@ export async function adoptLatestDatasetEpoch(): Promise<{
   readonly epoch: number;
 }> {
   const ledger = await readDeletionTombstones();
+  // An unset epoch (first visit, no mirror) against generation 0 is the
+  // dataset this realm already shows, the same rule writes use.
   const changed =
-    observedRestoreEpoch !== ledger.restoreEpoch ||
+    !shouldAcceptRestoreEpoch(observedRestoreEpoch, ledger.restoreEpoch) ||
     observedRestoreInProgress !== ledger.restoreInProgress;
   observedRestoreEpoch = ledger.restoreEpoch;
   observedRestoreInProgress = ledger.restoreInProgress;
