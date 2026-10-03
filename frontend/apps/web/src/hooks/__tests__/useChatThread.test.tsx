@@ -81,6 +81,23 @@ describe('useChatThread', () => {
     expect(result.current.messages).toEqual([]);
   });
 
+  it('REGRESSION: a second send before the first re-renders spends exactly one paid answer', async () => {
+    const { memory } = fakeMemory();
+    __setMemoryForTest(memory);
+    const stream = makeStreamFn('One answer.');
+    const { result } = renderHook(() => useChatThread(PROFILE, CHART));
+
+    // Both sends use the same render's `submit` (double Enter, Enter + click
+    // landing before React commits): the second must not buy another answer.
+    const submit = result.current.submit;
+    await act(async () => {
+      await Promise.all([submit('Hello?', stream), submit('Hello?', stream)]);
+    });
+
+    expect(stream).toHaveBeenCalledTimes(1);
+    expect(result.current.messages.filter((m) => m.role === 'user')).toHaveLength(1);
+  });
+
   it('persists the user question and the streamed assistant answer to the store', async () => {
     const { memory } = fakeMemory();
     __setMemoryForTest(memory);

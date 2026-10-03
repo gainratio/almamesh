@@ -193,7 +193,6 @@ export default function DashboardPage() {
     status: interpretationStatus,
     error: streamingError,
     errorKind: streamingErrorKind,
-    cancel: cancelStreaming,
     streamCurrentTimeline,
     currentTimeline,
     timelineSections,
@@ -203,7 +202,6 @@ export default function DashboardPage() {
     isTimelineStreaming,
     timelineStatus,
     timelineError,
-    cancelCurrentTimeline,
   } = useStreamingInterpretation(chartId);
   const predictiveRequestIdentity = usePredictiveStore((s) => s.requestKey);
   const predictiveStatus = usePredictiveStore((s) => s.status);
@@ -458,11 +456,10 @@ export default function DashboardPage() {
     // A fresh attempt re-arms the regeneration-failure strip (it was for the
     // PREVIOUS failure; a new one must be visible again).
     setRegenErrorDismissed(false);
-    // Abort any in-flight run WITHOUT deleting the stored entry: the store
-    // keeps a previously completed reading through a regeneration
-    // (keep-old-until-success), so a failed run never leaves the user with
-    // nothing. Only a successful new reading replaces the old one.
-    cancelStreaming();
+    // The hook allows one paid run per chart: a repeat click while a run is
+    // starting or streaming attaches to it instead of buying a second run. A
+    // new run never deletes the stored entry (keep-old-until-success), so a
+    // failed run never leaves the user with nothing.
 
     const sepViewMode = viewMode === "astrologer" ? "expert" : "layman";
 
@@ -478,7 +475,7 @@ export default function DashboardPage() {
     } catch (err) {
       safeError('dashboard.interpretation_failed', err);
     }
-  }, [cancelStreaming, chartId, streamInterpretation, viewMode]);
+  }, [chartId, streamInterpretation, viewMode]);
 
   // Recover from a dead/typo'd cloud model after the user asks: re-point settings at the recommended
   // OpenRouter model (keeping the user's saved key), then re-run generation.
@@ -507,7 +504,6 @@ export default function DashboardPage() {
       return;
     }
     setTimelineRegenerationQueued(false);
-    cancelCurrentTimeline();
     try {
       await streamCurrentTimeline(chartId, {
         intent: 'user-request',
@@ -516,7 +512,7 @@ export default function DashboardPage() {
     } catch (err) {
       safeError('dashboard.interpretation_failed', err);
     }
-  }, [cancelCurrentTimeline, chartId, streamCurrentTimeline, viewMode]);
+  }, [chartId, streamCurrentTimeline, viewMode]);
   const astronomicalData = chartDetails || chartData?.chart_data?.astronomical_calculations;
 
   // Check if interpretation has actual content (not just placeholders).
