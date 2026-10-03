@@ -4,6 +4,11 @@
  * store is still empty when a page first renders. `readLocalPrimaryChart()`
  * must WAIT for hydration before reading — reading early returns a false
  * "no chart" miss that strands the dashboard on an infinite loading spinner.
+ *
+ * Regression 2: `saveChart` updates memory before its SQLite write commits. A
+ * dashboard that showed the in-memory chart let a reload in that window revert a
+ * rectified chart (CI: report-pdf.e2e.spec.ts:973, "after reload the rectified
+ * lagna (Cancer) must persist", received Leo). The read must wait for the write.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -20,6 +25,7 @@ const onFinishHydration = vi.fn((cb: () => void) => {
   };
 });
 const getPrimaryChart = vi.fn<() => StoredChart | undefined>();
+const persisted = { current: Promise.resolve() as Promise<void> };
 
 vi.mock('@almamesh/store', () => ({
   useChartLibraryStore: {
@@ -39,6 +45,7 @@ vi.mock('@almamesh/store', () => ({
       });
     });
   },
+  whenChartLibraryPersisted: (): Promise<void> => persisted.current,
 }));
 
 function makePrimaryChart(): StoredChart {
@@ -68,6 +75,7 @@ describe('readLocalPrimaryChart hydration race', () => {
     onFinishHydration.mockClear();
     getPrimaryChart.mockReset();
     finishHydrationCallbacks.length = 0;
+    persisted.current = Promise.resolve();
   });
 
   afterEach(() => {
@@ -117,5 +125,33 @@ describe('readLocalPrimaryChart hydration race', () => {
 
     expect(res.success).toBe(false);
     expect(res.message).toBe('No chart found on this device.');
+  });
+});
+
+describe('readLocalPrimaryChart durable-write barrier', () => {
+  afterEach(() => {
+    persisted.current = Promise.resolve();
+    vi.resetModules();
+  });
+
+  it('does not return a chart whose write has not reached durable storage', async () => {
+    hasHydrated.mockReturnValue(true);
+    getPrimaryChart.mockReturnValue(makePrimaryChart());
+    let commit = (): void => {};
+    persisted.current = new Promise<void>((resolve) => {
+      commit = resolve;
+    });
+
+    const { readLocalPrimaryChart } = await import('../localChartRead');
+    let settled = false;
+    const pending = readLocalPrimaryChart().then((res) => {
+      settled = true;
+      return res;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(settled, 'the dashboard read resolved before the chart was durable').toBe(false);
+
+    commit();
+    await expect(pending).resolves.toMatchObject({ success: true, chart_id: 'chart-123' });
   });
 });

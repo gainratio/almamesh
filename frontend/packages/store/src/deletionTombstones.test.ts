@@ -21,6 +21,7 @@ import {
   recordDeletionTombstones,
   sanitizePersistedValue,
   setPortableStateRepositoryForTests,
+  whenPersistenceSettled,
   shouldAcceptRestoreEpoch,
   subtractRestoredTombstones,
   tagPersistedValue,
@@ -31,6 +32,11 @@ import {
   PORTABLE_STATE_NAMESPACE,
   PortableStateRepository,
 } from './portableState';
+import {
+  useChartLibraryStore,
+  whenChartLibraryPersisted,
+  type StoredChart,
+} from './chartLibrary';
 
 const TEST_INDEXED_DB = new IDBFactory();
 
@@ -920,6 +926,78 @@ describe('deletion tombstones', () => {
         commitDatasetGeneration(epoch, [{ key: 'almamesh-profiles', value: envelope({}) }]),
       ).rejects.toThrow(/generation is no longer active/);
       expect(await repository.read('almamesh-profiles')).toBeNull();
+    } finally {
+      setPortableStateRepositoryForTests(undefined);
+    }
+  });
+});
+
+describe('whenPersistenceSettled (durable-write barrier)', () => {
+  const chart = (id: string): StoredChart =>
+    ({
+      chart_id: id,
+      person_name: id,
+      is_primary: true,
+      astronomical_calculations: {
+        sidereal_ctx: {
+          julian_day: 0,
+          ayanamsa_value: 24,
+          ayanamsa_type: 'lahiri',
+          house_system: 'whole_sign',
+          sidereal_time: 0,
+          lagna: {},
+          planets: {},
+        },
+        calculation_timestamp: '1970-01-01T00:00:00.000Z',
+        software_version: 'test',
+      },
+    }) as StoredChart;
+
+  const storedChartIds = async (repository: PortableStateRepository): Promise<string[]> => {
+    const stored = await repository.read('almamesh-chart-library');
+    if (stored === null) return [];
+    return Object.keys((stateOf(stored) as { charts: Record<string, unknown> }).charts);
+  };
+
+  it('resolves only after a rectified chart swap has committed to SQLite', async () => {
+    const sqlite = new PortableMemoryStore();
+    const repository = new PortableStateRepository(sqlite);
+    setPortableStateRepositoryForTests(repository);
+    try {
+      // A fresh document load: hydrate from this repository, as the app does.
+      await useChartLibraryStore.persist.rehydrate();
+      useChartLibraryStore.getState().saveChart(chart('entered-0644'));
+      await whenChartLibraryPersisted();
+      sqlite.batchDelayMs = 25;
+
+      // The regenerate sequence: save the new primary, then delete the orphan.
+      useChartLibraryStore.getState().saveChart(chart('rectified-0614'));
+      useChartLibraryStore.getState().deleteChart('entered-0644');
+      // The in-memory store already shows the new chart; SQLite does not yet.
+      expect(await storedChartIds(repository)).toEqual(['entered-0644']);
+
+      await whenChartLibraryPersisted();
+      expect(await storedChartIds(repository)).toEqual(['rectified-0614']);
+    } finally {
+      useChartLibraryStore.getState().clearAll();
+      await whenChartLibraryPersisted();
+      setPortableStateRepositoryForTests(undefined);
+    }
+  });
+
+  it('resolves immediately when nothing is queued for the key', async () => {
+    await expect(whenPersistenceSettled('almamesh-nothing-queued')).resolves.toBeUndefined();
+  });
+
+  it('settles rather than rejects when the queued write fails', async () => {
+    const sqlite = new PortableMemoryStore();
+    sqlite.failNext = new Error('disk full');
+    setPortableStateRepositoryForTests(new PortableStateRepository(sqlite));
+    try {
+      await deletionAwareIdbStorage.getItem('almamesh-profiles');
+      const write = deletionAwareIdbStorage.setItem('almamesh-profiles', envelope({}));
+      await expect(whenPersistenceSettled('almamesh-profiles')).resolves.toBeUndefined();
+      await expect(write).rejects.toThrow('disk full');
     } finally {
       setPortableStateRepositoryForTests(undefined);
     }

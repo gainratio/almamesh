@@ -8,7 +8,11 @@
  * page that used to call `getUserPrimaryChart()` now calls this instead.
  */
 
-import { useChartLibraryStore, whenChartLibraryHydrated } from '@almamesh/store'
+import {
+  useChartLibraryStore,
+  whenChartLibraryHydrated,
+  whenChartLibraryPersisted,
+} from '@almamesh/store'
 import type { BirthChartGenerationResponse } from '@almamesh/shared-types'
 
 /** The "no chart on this device" response, shaped like the backend's miss. */
@@ -29,10 +33,13 @@ function emptyPrimaryChart(): BirthChartGenerationResponse {
  * document load (PWA reopen / hard refresh) it is still empty at first render.
  * We `await whenChartLibraryHydrated()` before reading — otherwise the read
  * returns a false "no chart" miss that strands the dashboard on an infinite
- * loading spinner. Returns a benign "no chart" response when none exists.
+ * loading spinner. It then awaits any queued library write, so the dashboard
+ * never shows a chart that a reload would lose. Returns a benign "no chart"
+ * response when none exists.
  */
 export async function readLocalPrimaryChart(): Promise<BirthChartGenerationResponse> {
   await whenChartLibraryHydrated()
+  await whenChartLibraryPersisted()
   const primary = useChartLibraryStore.getState().getPrimaryChart()
   if (!primary) {
     return emptyPrimaryChart()

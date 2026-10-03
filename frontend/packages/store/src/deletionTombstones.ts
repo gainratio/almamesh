@@ -84,6 +84,23 @@ function enqueuePersistenceMutation(name: string, mutation: () => Promise<void>)
   return current;
 }
 
+/**
+ * Resolve once every write queued for `name` has finished (committed or failed).
+ * Zustand's persist middleware fires `setItem` without awaiting it, so a store's
+ * in-memory state runs ahead of SQLite. A reader that must not show state a
+ * reload would lose awaits this first. Failures settle too: the writer's own
+ * promise still rejects, and the reader never hangs on a broken disk.
+ */
+export async function whenPersistenceSettled(name: string): Promise<void> {
+  for (
+    let pending = persistenceMutationQueues.get(name);
+    pending !== undefined;
+    pending = persistenceMutationQueues.get(name)
+  ) {
+    await pending.catch(() => undefined);
+  }
+}
+
 /** Unit-test seam. Production always opens the OPFS-backed EdgeProc store. */
 export function setPortableStateRepositoryForTests(
   repository: PortableStateRepository | null | undefined,
