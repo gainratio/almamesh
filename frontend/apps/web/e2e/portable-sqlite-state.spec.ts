@@ -137,6 +137,21 @@ async function seedLegacyState(page: Page): Promise<void> {
         version: 4,
         datasetEpoch: 0,
       });
+      const signs = [
+        "Aries", "Taurus", "Gemini", "Cancer", "Leo", "Virgo",
+        "Libra", "Scorpio", "Sagittarius", "Capricorn", "Aquarius", "Pisces",
+      ];
+      const housesFrom = (lagnaIndex: number) => Object.fromEntries(
+        Array.from({ length: 12 }, (_, index) => [
+          String(index + 1),
+          {
+            house: index + 1,
+            sign: signs[(lagnaIndex + index) % 12],
+            longitude: ((lagnaIndex + index) % 12) * 30,
+            sign_lord: "synthetic",
+          },
+        ]),
+      );
       const chartLibraryEnvelope = JSON.stringify({
         state: {
           charts: {
@@ -156,13 +171,22 @@ async function seedLegacyState(page: Page): Promise<void> {
                 },
               },
               astronomical_calculations: {
-                sidereal_ctx: { lagna: { sign: "Aquarius", longitude: 328.84 } },
+                sidereal_ctx: {
+                  lagna: { sign: "Aquarius", longitude: 328.84 },
+                  planets: {},
+                },
               },
               sidereal_chart: {
                 ayanamsa_value: 23.86,
                 lagna: { sign: "Aquarius", sign_degrees: 28.84 },
                 planets: {},
-                houses: {},
+                houses: housesFrom(10),
+                dashas: {
+                  maha_dasha_sequence: [],
+                  current_maha: null,
+                  current_antar: null,
+                  current_pratyantar: null,
+                },
                 yogas: [],
               },
             },
@@ -182,13 +206,22 @@ async function seedLegacyState(page: Page): Promise<void> {
                 },
               },
               astronomical_calculations: {
-                sidereal_ctx: { lagna: { sign: "Leo", longitude: 140.2 } },
+                sidereal_ctx: {
+                  lagna: { sign: "Leo", longitude: 140.2 },
+                  planets: {},
+                },
               },
               sidereal_chart: {
                 ayanamsa_value: 23.86,
                 lagna: { sign: "Leo", sign_degrees: 20.2 },
                 planets: {},
-                houses: {},
+                houses: housesFrom(4),
+                dashas: {
+                  maha_dasha_sequence: [],
+                  current_maha: null,
+                  current_antar: null,
+                  current_pratyantar: null,
+                },
                 yogas: [],
               },
             },
@@ -388,9 +421,17 @@ async function expectPortablePreferencesRestored(page: Page): Promise<void> {
   );
 }
 
-async function expectInterpretationRestored(page: Page): Promise<void> {
+async function expectInterpretationRestored(
+  page: Page,
+  problems: BrowserProblems,
+): Promise<void> {
   await page.goto("/dashboard", { waitUntil: "domcontentloaded" });
-  await expect(page.getByText(INTERPRETATION_SENTINEL)).toBeVisible({ timeout: 60_000 });
+  try {
+    await expect(page.getByText(INTERPRETATION_SENTINEL)).toBeVisible({ timeout: 60_000 });
+  } catch (error) {
+    expectCleanBrowser(problems);
+    throw error;
+  }
 }
 
 async function expectLegacyBrowserCopiesRemoved(page: Page): Promise<void> {
@@ -462,7 +503,7 @@ test("migrates, exports, reloads, and restores canonical OPFS SQLite through Set
       "almamesh-mesh-readings": null,
     });
   await expectLegacyBrowserCopiesRemoved(page);
-  await expectInterpretationRestored(page);
+  await expectInterpretationRestored(page, firstProblems);
 
   // A second page in the same browser context observes the same canonical file.
   const peer = await context.newPage();
@@ -590,7 +631,7 @@ test("migrates, exports, reloads, and restores canonical OPFS SQLite through Set
   await expectProfileAndLanguage(restoredPage);
   await expectAiSettingsRestored(restoredPage);
   await expectPortablePreferencesRestored(restoredPage);
-  await expectInterpretationRestored(restoredPage);
+  await expectInterpretationRestored(restoredPage, restoredProblems);
   await expectLegacyBrowserCopiesRemoved(restoredPage);
   await restoredPage.goto(`/mesh/${MEMBER_ID}`, { waitUntil: "domcontentloaded" });
   await expect(restoredPage.getByTestId("mesh-reading")).toContainText(
