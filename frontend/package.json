@@ -24,7 +24,7 @@
   },
   "devDependencies": {
     "husky": "^9.1.7",
-    "lint-staged": "^17.5.1",
+    "lint-staged": "^17.6.0",
     "typescript": "~5.7.3"
   },
   "//engines": "Bun is the sanctioned toolchain exception (ENGINEERING-STANDARDS §2) — pinned exactly in .bun-version (CI reads it via setup-bun's bun-version-file); engines.bun is the floor for humans.",
@@ -33,8 +33,19 @@
     "bun": ">=1.3.5"
   },
   "dependencies": {
+    "@cloudflare/workers-types": "^5.20261003.1",
+    "@react-three/drei": "^10.7.9",
+    "@react-three/fiber": "^9.8.1",
+    "@react-three/postprocessing": "^3.1.3",
+    "@tanstack/react-query": "^5.104.1",
+    "@types/node": "^26.6.4",
+    "@typescript-eslint/eslint-plugin": "^8.71.0",
+    "@typescript-eslint/parser": "^8.71.0",
+    "@vitest/coverage-v8": "^5.0.3",
     "baseline-browser-mapping": "^2.11.25",
-    "caniuse-lite": "^1.0.30001812"
+    "caniuse-lite": "^1.0.30001814",
+    "vite-prerender-plugin": "^0.5.14",
+    "vitest": "^5.0.3"
   },
   "//overrides": "Force a single fresh caniuse-lite across the tree: autoprefixer + browserslist otherwise each pin their own nested (stale) copy, which trips the 'caniuse-lite is N months old' build notice even after `update-browserslist-db`. Refresh both this range and the DB periodically (a `bunx update-browserslist-db@latest` step in release/CI keeps it current).",
   "//overrides.protobufjs": "RUNTIME security floor. protobufjs arrives transitively via @huggingface/transformers > onnxruntime-web and had resolved to 7.6.2, which is vulnerable to GHSA-j3f2-48v5-ccww (moderate: DoS via infinite loop in .proto option parsing; vulnerable >=7.5.0 <=7.6.4, patched >=7.6.5). The `<8` bound is deliberate: onnxruntime-web declares `protobufjs: ^7.2.4`, and 8.x carries its own live advisories (GHSA-jfj6-75fj-8934; j3f2 again through <=8.6.5). 7.6.5 is the patched 7.x line (npm `latest-7`).",
