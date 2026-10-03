@@ -11,6 +11,7 @@ updates:
     groups:
       actions:
         patterns: ["*"]
+        update-types: ["minor", "patch"]
 
   # Python engine + bundle publisher (uv.lock).
   - package-ecosystem: "uv"
@@ -20,6 +21,7 @@ updates:
     groups:
       python:
         patterns: ["*"]
+        update-types: ["minor", "patch"]
 
   # Bun workspace (bun.lock) — dependabot's bun ecosystem.
   - package-ecosystem: "bun"
@@ -29,3 +31,4 @@ updates:
     groups:
       frontend:
         patterns: ["*"]
+        update-types: ["minor", "patch"]
