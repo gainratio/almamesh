@@ -13,7 +13,7 @@
     "typecheck": "bun run --filter '*' typecheck",
     "lint": "bun run --filter '*' lint",
     "knip": "bunx knip@6.26.0 --no-progress",
-    "gate": "bunx tsc -b packages/shared-types packages/constants packages/store packages/llm --force && bun run --filter '*' typecheck && bun run --filter @almamesh/web lint && bun run knip && bun run --filter @almamesh/browser test && bun run --filter @almamesh/store test && bun run --filter @almamesh/llm test && bun run --filter @almamesh/web test:unit && bun run --filter @almamesh/web build && node apps/web/scripts/verify-prerender-dist.mjs apps/web/dist",
+    "gate": "node scripts/check-tsc-native.mjs && bunx tsc -b packages/shared-types packages/constants packages/store packages/llm --force && bun run --filter '*' typecheck && bun run --filter @almamesh/web lint && bun run knip && bun run --filter @almamesh/browser test && bun run --filter @almamesh/store test && bun run --filter @almamesh/llm test && bun run --filter @almamesh/web test:unit && bun run --filter @almamesh/web build && node apps/web/scripts/verify-prerender-dist.mjs apps/web/dist",
     "clean": "bun run --filter '*' clean && rm -rf node_modules",
     "prepare": "cd .. && husky frontend/.husky"
   },
@@ -22,7 +22,7 @@
   "lint-staged": {
     "apps/web/**/*.{ts,tsx}": "bun run --filter @almamesh/web lint"
   },
-  "//typescript": "TypeScript 7 is the native compiler and ships no JS API. `@typescript/native` provides `tsc` (7.x); `typescript` stays on 6.x ONLY so typescript-eslint (peer <6.1) can load its API. Both packages install a `tsc` bin and bun links the native one first, so run `npx tsc --version` after any lockfile change (must say 7.x). Drop the 6.x pin when typescript-eslint supports TS 7.1+.",
+  "//typescript": "TypeScript 7 is the native compiler and ships no JS API. `@typescript/native` provides `tsc` (7.x); `typescript` stays on 6.x ONLY so typescript-eslint (peer <6.1) can load its API. Both packages install a `tsc` bin and bun links the native one first, so the gate runs scripts/check-tsc-native.mjs first and fails unless tsc is 7.x. Drop the 6.x pin when typescript-eslint supports TS 7.1+.",
   "devDependencies": {
     "husky": "^9.1.7",
     "lint-staged": "^17.6.0",
