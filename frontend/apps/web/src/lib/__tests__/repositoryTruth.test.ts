@@ -5,7 +5,41 @@ import { describe, expect, it } from 'vitest';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '../../../../../..');
-const EDGEPROC_BROWSER_SHA = 'edd99713ddf6e700c384f8981dcfc25341cc20a7';
+// Our own libraries ship from npm and track their newest release: a caret range,
+// never a Git commit alias and never the retired `@edgeproc/` scope.
+const OWN_LIBRARY_SCOPE = '@gainratio/';
+const BROWSER_LEGO_RANGE = '^0.2.0';
+const DEPENDENCY_FIELDS = [
+  'dependencies',
+  'devDependencies',
+  'peerDependencies',
+  'optionalDependencies',
+  'overrides',
+  'resolutions',
+] as const;
+type DependencyMap = Record<string, unknown>;
+const manifestFiles = (directory: string): string[] =>
+  readdirSync(directory).flatMap((entry) => {
+    if (['node_modules', 'dist', 'site-packages'].includes(entry) || entry.startsWith('.')) return [];
+    const path = resolve(directory, entry);
+    if (statSync(path).isDirectory()) return manifestFiles(path);
+    return entry === 'package.json' ? [path] : [];
+  });
+const ownLibraryViolations = (relativePath: string, manifestText: string): string[] => {
+  const manifest = JSON.parse(manifestText) as Partial<Record<string, DependencyMap>>;
+  return DEPENDENCY_FIELDS.flatMap((field) =>
+    Object.entries(manifest[field] ?? {}).flatMap(([name, spec]) => {
+      const value = typeof spec === 'string' ? spec : JSON.stringify(spec);
+      const where = `${relativePath} ${field}.${name} = ${value}`;
+      if (name.startsWith('@edgeproc/') || value.includes('@edgeproc/')) return [`retired scope: ${where}`];
+      const ownGitAlias = /^(github:|git\+|git:|https:\/\/github\.com\/)/.test(value) && /hseshadr\//.test(value);
+      if (ownGitAlias || (name.startsWith(OWN_LIBRARY_SCOPE) && /^(github:|git)/.test(value))) {
+        return [`git dependency on own library: ${where}`];
+      }
+      return [];
+    }),
+  );
+};
 const readRoot = (path: string): string => readFileSync(resolve(root, path), 'utf8');
 const readSection = (document: string, heading: string): string => {
   const start = document.indexOf(heading);
@@ -203,31 +237,56 @@ describe('repository truth', () => {
     expect(probe).toContain("getByTestId('storage-blocked-notice')");
   });
 
-  it('pins the standalone browser Lego and removes the vendored workspace copy', () => {
-    const browserPackage = JSON.parse(readRoot('frontend/packages/browser/package.json')) as {
-      dependencies: Record<string, string>;
-    };
-    const memoryPackage = JSON.parse(readRoot('frontend/packages/memory/package.json')) as {
-      dependencies: Record<string, string>;
-    };
+  it('consumes the standalone browser Lego from npm at its latest release, never a Git alias', () => {
+    for (const path of [
+      'frontend/packages/browser/package.json',
+      'frontend/packages/memory/package.json',
+      'frontend/packages/store/package.json',
+    ]) {
+      const manifest = JSON.parse(readRoot(path)) as { dependencies: Record<string, string> };
+      expect(manifest.dependencies['@gainratio/browser'], path).toBe(BROWSER_LEGO_RANGE);
+    }
     const frontendPackage = JSON.parse(readRoot('frontend/package.json')) as {
       trustedDependencies?: string[];
     };
-    expect(browserPackage.dependencies['@gainratio/browser']).toBe(
-      `github:hseshadr/edgeproc-browser#${EDGEPROC_BROWSER_SHA}`,
-    );
-    expect(memoryPackage.dependencies['@gainratio/browser']).toBe(
-      `github:hseshadr/edgeproc-browser#${EDGEPROC_BROWSER_SHA}`,
-    );
     expect(frontendPackage.trustedDependencies ?? []).not.toContain('@gainratio/browser');
-    expect(readRoot('frontend/bun.lock')).toContain(EDGEPROC_BROWSER_SHA);
+    const lock = readRoot('frontend/bun.lock');
+    expect(lock).toMatch(/"@gainratio\/browser": \["@gainratio\/browser@0\.\d+\.\d+", ""/);
+    expect(lock).not.toContain('github:hseshadr/');
     expect(existsSync(resolve(root, 'frontend/packages/edgeproc-browser/package.json'))).toBe(false);
     expect(readRoot('frontend/apps/web/vite.config.ts')).not.toMatch(
       /vendored at packages\/edgeproc-browser|vendored packages\/edgeproc-browser/,
     );
-    expect(readRoot('dagger/src/index.ts')).toContain(
-      `const EDGEPROC_BROWSER_SHA = "${EDGEPROC_BROWSER_SHA}"`,
+    expect(readRoot('dagger/src/index.ts')).not.toContain('EDGEPROC_BROWSER_SHA');
+  });
+
+  it('has no package.json that references @edgeproc/ or a github: dependency on our own libraries', () => {
+    const manifests = manifestFiles(root);
+    expect(manifests.map((path) => path.slice(root.length + 1))).toEqual(
+      expect.arrayContaining([
+        'dagger/package.json',
+        'frontend/package.json',
+        'frontend/apps/web/package.json',
+        'frontend/packages/browser/package.json',
+        'frontend/packages/memory/package.json',
+        'frontend/packages/store/package.json',
+      ]),
     );
+    const violations = manifests.flatMap((path) =>
+      ownLibraryViolations(path.slice(root.length + 1), readFileSync(path, 'utf8')),
+    );
+    expect(violations).toEqual([]);
+  });
+
+  it('flags each forbidden own-library dependency form', () => {
+    const check = (dependencies: Record<string, string>): string[] =>
+      ownLibraryViolations('x/package.json', JSON.stringify({ dependencies }));
+    expect(check({ '@gainratio/browser': '^0.2.0', react: '^19.0.0' })).toEqual([]);
+    expect(check({ '@edgeproc/browser': '^0.1.0' })).toHaveLength(1);
+    expect(check({ x: 'npm:@edgeproc/avow@0.1.1' })).toHaveLength(1);
+    expect(check({ '@gainratio/browser': 'github:hseshadr/edgeproc-browser#edd9971' })).toHaveLength(1);
+    expect(check({ other: 'git+https://github.com/hseshadr/errors.git' })).toHaveLength(1);
+    expect(check({ '@gainratio/avow': 'git+ssh://git@example.com/fork.git' })).toHaveLength(1);
   });
 
   it('keeps live semantic search entirely on SQLite + sqlite-vector in an OPFS Worker', () => {
@@ -259,6 +318,25 @@ describe('repository truth', () => {
     expect(readRoot('dagger/src/index.ts')).toContain(
       'node scripts/verify-sqlite-memory.mjs http://127.0.0.1:4200 --browser=webkit',
     );
+  });
+
+  it('attributes Workers to the memory proof only after boot storage settles', () => {
+    // Boot's canonical-state SQLite Worker once started inside the proof window
+    // on loaded CI runners and failed WebKit with noFallbackWorker (run 37219036375).
+    const browserProof = readRoot('frontend/apps/web/scripts/verify-sqlite-memory.mjs');
+    const provider = readRoot('frontend/apps/web/src/providers/AlmaMeshRuntimeProvider.tsx');
+    const dagger = readRoot('dagger/src/index.ts');
+    expect(provider).toContain('window.__almameshPortableStatePersistence = portableStatePersistence');
+    expect(browserProof).toContain("persistence() !== 'pending'");
+    expect(browserProof.indexOf("persistence() !== 'pending'")).toBeLessThan(
+      browserProof.indexOf('const workerStart = workers.length'),
+    );
+    for (const command of [
+      'node scripts/verify-sqlite-memory.mjs http://127.0.0.1:4199 --browser=chromium --slow-boot-storage-ms=1500',
+      'node scripts/verify-sqlite-memory.mjs http://127.0.0.1:4200 --browser=webkit --slow-boot-storage-ms=1500',
+    ]) {
+      expect(dagger).toContain(command);
+    }
   });
 
   it('proves destructive reset through durable storage and landing-page postconditions', () => {

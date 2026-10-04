@@ -7,6 +7,10 @@
  * sqlite-vector Worker, writes, queries, closes, reopens, and queries the same
  * durable index again. A browser engine whose OPFS entrypoint refuses instead
  * proves the stable fail-closed path: no Worker and no storage fallback.
+ *
+ * Workers are attributed to the proof only after boot's canonical-state store
+ * has settled (window.__almameshPortableStatePersistence !== 'pending'); that
+ * store's Worker belongs to boot and is reported separately as bootWorkers.
  */
 
 import { chromium, webkit } from '@playwright/test'
@@ -18,6 +22,42 @@ const requestedBrowser = arguments_
   ?.slice('--browser='.length) ?? 'chromium'
 const ORIGIN = new URL(BASE_URL).origin
 const EXPECTED_MESSAGE = 'sqlite-proof-message'
+
+// Fault injection for the regression run (--slow-boot-storage-ms=N). A loaded
+// CI runner stretches two things at once: the boot-time canonical-state open,
+// which probes OPFS before it spawns its SQLite Worker, and the proof call
+// itself. Hold the page's first OPFS request for N ms and the proof for 2N ms,
+// so the boot Worker deterministically starts while the proof is in flight.
+const slowBootStorageMs = Number(
+  arguments_
+    .find((argument) => argument.startsWith('--slow-boot-storage-ms='))
+    ?.slice('--slow-boot-storage-ms='.length) ?? '0',
+)
+
+function injectSlowBootStorage(delayMs) {
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+  const storage = globalThis.navigator?.storage
+  const original = storage?.getDirectory
+  if (typeof original === 'function') {
+    let first = true
+    storage.getDirectory = function getDirectory() {
+      if (!first) return original.call(this)
+      first = false
+      return sleep(delayMs).then(() => original.call(this))
+    }
+  }
+  let proof
+  Object.defineProperty(window, '__almameshVerifySqliteMemory', {
+    configurable: true,
+    get: () => proof,
+    set: (value) => {
+      proof = async () => {
+        await sleep(delayMs * 2)
+        return value()
+      }
+    },
+  })
+}
 
 /**
  * SQLite's own OPFS / OPFS-WL async-proxy Workers, an internal of the vendored
@@ -45,6 +85,9 @@ async function runBrowser(browserType, browserName) {
   const browser = await browserType.launch({ headless: true })
   try {
     const context = await browser.newContext({ serviceWorkers: 'block' })
+    if (slowBootStorageMs > 0) {
+      await context.addInitScript(injectSlowBootStorage, slowBootStorageMs)
+    }
     const page = await context.newPage()
     const pageErrors = []
     const requests = []
@@ -60,6 +103,19 @@ async function runBrowser(browserType, browserName) {
       undefined,
       { timeout: 20_000 },
     )
+    // Boot opens the canonical SQLite state store and spawns its own Worker
+    // (in memory when OPFS is refused). Take the Worker baseline only after
+    // that open has settled; otherwise, on a loaded runner, the boot Worker
+    // starts inside the proof window and is miscounted as a memory Worker.
+    await page.waitForFunction(
+      () => {
+        const persistence = window.__almameshPortableStatePersistence
+        return typeof persistence === 'function' && persistence() !== 'pending'
+      },
+      undefined,
+      { timeout: 20_000 },
+    )
+    const bootWorkers = [...workers]
 
     const capability = await page.evaluate(async () => {
       try {
@@ -130,6 +186,7 @@ async function runBrowser(browserType, browserName) {
       proof,
       proofError,
       assertions,
+      bootWorkers,
       workers: proofWorkers,
       appWorkers,
       sqliteProxyWorkers,

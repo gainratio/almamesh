@@ -119,7 +119,7 @@
       "dependencies": {
         "@gainratio/assay": "0.5.0-dev.6",
         "@gainratio/avow": "^0.5.2",
-        "@gainratio/browser": "github:hseshadr/edgeproc-browser#edd99713ddf6e700c384f8981dcfc25341cc20a7",
+        "@gainratio/browser": "^0.2.0",
         "pyodide": "^0.29.4",
       },
       "devDependencies": {
@@ -154,7 +154,7 @@
       "name": "@almamesh/memory",
       "version": "0.0.1",
       "dependencies": {
-        "@gainratio/browser": "github:hseshadr/edgeproc-browser#edd99713ddf6e700c384f8981dcfc25341cc20a7",
+        "@gainratio/browser": "^0.2.0",
         "@huggingface/transformers": "^4.3.0",
       },
       "devDependencies": {
@@ -180,7 +180,7 @@
         "@almamesh/constants": "workspace:*",
         "@almamesh/llm": "workspace:*",
         "@almamesh/shared-types": "workspace:*",
-        "@gainratio/browser": "github:hseshadr/edgeproc-browser#edd99713ddf6e700c384f8981dcfc25341cc20a7",
+        "@gainratio/browser": "^0.2.0",
         "dayjs": "^1.11.23",
         "idb-keyval": "^6.3.0",
         "mitt": "^3.0.1",
@@ -596,7 +596,7 @@
 
     "@gainratio/avow": ["@gainratio/avow@0.5.2", "", { "dependencies": { "@noble/ed25519": "^3.1.0", "canonicalize": "^3.0.0" } }, "sha512-a4vtiKx9Dbb5HNFKvwWNOzuZk6EY7pq6vFPKM/vwTSaVmEQ4Ym+GJSJ3u6vnLbsAxZJgBfr0JWpGUmdB5Oqkww=="],
 
-    "@gainratio/browser": ["@gainratio/browser@github:hseshadr/edgeproc-browser#edd9971", { "dependencies": { "@hpcc-js/wasm-zstd": "^1.16.1", "@noble/ed25519": "^3.2.0", "idb-keyval": "^6.3.0" } }, "hseshadr-edgeproc-browser-edd9971", "sha512-SDjyLRDYHrRzqA4lFlPocT6CFRdgAX8hw8PRuNl63m++fDDZfuTRXq6B6wBXia8IoFhPKaFd7d7FNlKtk8AWRg=="],
+    "@gainratio/browser": ["@gainratio/browser@0.2.0", "", { "dependencies": { "@hpcc-js/wasm-zstd": "^1.16.1", "@noble/ed25519": "^3.2.0", "idb-keyval": "^6.3.0" } }, "sha512-IZHx4QKak4fXys3yzRw+o2nyyrsuetKGIJEDLbuGwoXM2bHAHCNhtueHWlhbhbmFS7O+CzYhfkqiGc26ExDMeg=="],
 
     "@gainratio/errors": ["@gainratio/errors@0.2.1", "", {}, "sha512-f1XOpswhbypRe2u8sJ2rRuh8BADbddkSSRONO5DRk3u5g7M+s8aaQ4vuPdk813GkLuvkQo1HMEwTj92TjT1ySQ=="],
 

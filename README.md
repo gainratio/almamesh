@@ -339,9 +339,8 @@ asserted by SHA-256 in `e2e/report-pdf.e2e.spec.ts`.
 **TL;DR: one clone and the locked package installs build everything.** The
 Python side resolves [`edge-proc`](https://pypi.org/project/edge-proc/) from
 PyPI. The browser consumes the public
-[`@gainratio/browser`](https://github.com/hseshadr/edgeproc-browser) Lego at an
-exact Git commit recorded in `frontend/packages/browser/package.json` and
-`frontend/bun.lock`; no copied sync/storage implementation remains here. See
+[`@gainratio/browser`](https://www.npmjs.com/package/@gainratio/browser) Lego
+from npm at its latest release (`^0.2.0`, locked in `frontend/bun.lock`); no copied sync/storage implementation remains here. See
 [`docs/edgeproc-browser.md`](docs/edgeproc-browser.md) for provenance and the
 consumer boundary.
 
@@ -553,7 +552,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — how the signed bundle, browser storage, and the Python engine in the tab fit together.
 - [docs/architecture/](docs/architecture/index.html) — the interactive architecture map and its data file.
 - [docs/tech-stack.md](docs/tech-stack.md) — the libraries and tools, and why each one.
-- [docs/edgeproc-browser.md](docs/edgeproc-browser.md) — where the browser engine library comes from and how it is pinned.
+- [docs/edgeproc-browser.md](docs/edgeproc-browser.md) — where the browser engine library comes from and how it is upgraded.
 - [docs/code-guidelines.md](docs/code-guidelines.md) — coding standards for this repo.
 - [docs/dependency-policy.md](docs/dependency-policy.md) — which dependencies are held back on purpose, and why.
 - [docs/CLEVERNESS-DEBT.md](docs/CLEVERNESS-DEBT.md) — unusual design choices we kept, removed, or plan to revisit.
