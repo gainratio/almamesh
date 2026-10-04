@@ -143,6 +143,7 @@
   },
   "storage": {
     "interpretations_set_aside": "Algunas interpretaciones guardadas no se pudieron leer y se apartaron en este dispositivo. Se conservan 30 días y luego se eliminan. Para borrarlas ahora, ve a Ajustes → Preferencias → Restablecer carta / empezar de cero.",
+    "interpretations_unreadable_paused": "Algunas interpretaciones guardadas no se pudieron leer y este dispositivo no pudo apartarlas. Para protegerlas, las nuevas lecturas están en pausa. Recarga la página para intentarlo de nuevo.",
     "dismiss_aria": "Cerrar aviso"
   }
 }
