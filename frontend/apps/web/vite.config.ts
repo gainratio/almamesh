@@ -544,6 +544,9 @@ function prerenderPublicRoutesPlugin(): Plugin[] {
 // so this generateBundle runs once the prerendered assets exist and before the
 // SW precache manifest is computed — the manifest then lists `welcome.html`,
 // never the stale nested path. Root `index.html` is left untouched.
+//
+// Vite 8 / Rolldown: the bundle object is read-only apart from `delete`, so
+// the rename is `this.emitFile(flat)` + `delete bundle[nested]`.
 function flattenPrerenderedRoutesPlugin(): Plugin {
   const renames = NON_ROOT_PUBLIC_ROUTES.map((route) => {
     const slug = route.replace(/^\//, '')
@@ -557,9 +560,11 @@ function flattenPrerenderedRoutesPlugin(): Plugin {
       for (const { nested, flat } of renames) {
         const asset = bundle[nested]
         if (asset && asset.type === 'asset') {
+          // Rolldown (Vite 8) rejects assigning to `bundle`, so re-emit the
+          // asset under its flat name with the supported API and drop the
+          // nested entry (`delete` is the one bundle mutation both bundlers allow).
+          this.emitFile({ type: 'asset', fileName: flat, source: asset.source })
           delete bundle[nested]
-          asset.fileName = flat
-          bundle[flat] = asset
         } else {
           this.warn(
             `flatten-prerendered-routes: expected prerendered asset "${nested}" not found — ` +
