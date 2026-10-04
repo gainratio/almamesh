@@ -179,6 +179,7 @@ export interface LegacyStateStorage {
 export class PortableStateRepository {
   readonly #store: SqliteStateStore;
   readonly #validateExport: (bytes: Uint8Array) => Promise<number>;
+  #writeQueue: Promise<void> = Promise.resolve();
 
   public constructor(
     store: SqliteStateStore,
@@ -228,6 +229,25 @@ export class PortableStateRepository {
 
   /** Return attempt-local metadata only from the CAS attempt that actually won. */
   public async transactWithResult<Result>(
+    transform: (snapshot: PortableStateSnapshot) => {
+      readonly mutations: readonly PortableStateMutation[];
+      readonly result: Result;
+    },
+  ): Promise<{ readonly epoch: number; readonly result: Result }> {
+    // One writer at a time per realm. The SQLite epoch covers the whole file,
+    // so two of this tab's writes to different keys conflict with each other;
+    // left concurrent, boot hydration lost most CAS attempts to itself and a
+    // ninth concurrent writer failed outright. Other tabs still race through
+    // the epoch CAS below.
+    const turn = this.#writeQueue.then(() => this.#compareAndSwap(transform));
+    this.#writeQueue = turn.then(
+      () => undefined,
+      () => undefined,
+    );
+    return turn;
+  }
+
+  async #compareAndSwap<Result>(
     transform: (snapshot: PortableStateSnapshot) => {
       readonly mutations: readonly PortableStateMutation[];
       readonly result: Result;

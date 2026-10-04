@@ -1084,7 +1084,8 @@ describe('deletion tombstones', () => {
 
       vi.resetModules();
       importingRealm = await import('./deletionTombstones');
-      importingRealm.setPortableStateRepositoryForTests(repository);
+      // A second realm has its own repository over the same SQLite file.
+      importingRealm.setPortableStateRepositoryForTests(new PortableStateRepository(sqlite));
       const epoch = await importingRealm.beginBackupRestore({});
       await importingRealm.commitDatasetGeneration(epoch, [
         {
@@ -1215,7 +1216,13 @@ describe('deletion tombstones', () => {
     }
   });
 
-  it('keeps different SQLite store keys concurrent', async () => {
+  // INVERTED 2026-10-04 (feat/browser-matrix): this test used to require two
+  // in-flight batches from one realm. The SQLite epoch covers the whole file,
+  // so those two batches always raced each other's CAS: boot lost ~10 CAS
+  // attempts to itself (Firefox logged each as SqliteStateConflictError) and a
+  // ninth concurrent writer failed outright. One realm now commits one batch
+  // at a time; both writes still land.
+  it('serializes different SQLite store keys within one realm and commits both', async () => {
     const sqlite = new PortableMemoryStore();
     sqlite.batchDelayMs = 5;
     const repository = new PortableStateRepository(sqlite);
@@ -1231,7 +1238,7 @@ describe('deletion tombstones', () => {
         ),
       ]);
 
-      expect(sqlite.maxActiveBatches).toBe(2);
+      expect(sqlite.maxActiveBatches).toBe(1);
       expect(await repository.read('almamesh-profiles')).not.toBeNull();
       expect(await repository.read('almamesh-chat-history')).not.toBeNull();
     } finally {
