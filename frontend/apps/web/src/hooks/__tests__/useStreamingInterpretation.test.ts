@@ -189,7 +189,7 @@ describe('useStreamingInterpretation (structured, store-backed)', () => {
     vi.setSystemTime(new Date('2026-07-12T12:00:00Z'));
     vi.clearAllMocks();
     mockedDataLifecycleReady.mockResolvedValue(undefined);
-    mockedInterpretationHydration.mockResolvedValue(undefined);
+    mockedInterpretationHydration.mockResolvedValue({ status: 'hydrated' });
     getChart.mockReturnValue(CHART_WITH_RAW);
     // Deterministic LLM settings: no browser-local overrides between tests.
     hydrateLlmSettings(null);
@@ -230,8 +230,8 @@ describe('useStreamingInterpretation (structured, store-backed)', () => {
   it('waits for canonical SQLite hydration before an immediate provider failure', async () => {
     let releaseHydration: (() => void) | undefined;
     mockedInterpretationHydration.mockImplementationOnce(
-      () => new Promise<void>((resolve) => {
-        releaseHydration = resolve;
+      () => new Promise((resolve) => {
+        releaseHydration = () => resolve({ status: 'hydrated' });
       }),
     );
     mockedStream.mockImplementation(failingStream(new LlmRequestError('HTTP 500')));
