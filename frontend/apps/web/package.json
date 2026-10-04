@@ -54,7 +54,7 @@
     "@fontsource-variable/hanken-grotesk": "^5.3.0",
     "@fontsource-variable/spline-sans-mono": "^5.3.0",
     "@huggingface/transformers": "^4.3.0",
-    "@mui/material": "^7.3.11",
+    "@mui/material": "^9.4.0",
     "@mui/x-date-pickers": "^9.14.0",
     "@react-pdf/renderer": "^4.9.0",
     "@react-three/drei": "^10.7.9",
