@@ -1,7 +1,8 @@
 # Weekly grouped dependency PRs (ENGINEERING-STANDARDS §4, Published tier).
-# No generic browser substrate is vendored. `@gainratio/browser` is an exact Git
-# commit with an explicit provenance/live-browser upgrade gate, while
-# `edge-proc` resolves from PyPI and rides the `uv` group below.
+# Our own `@gainratio/*` libraries come from npm and must track their newest
+# release, so they get their own DAILY job (below) that opens a bump PR right
+# after each release; the weekly frontend group ignores them. `edge-proc`
+# resolves from PyPI and rides the `uv` group below.
 version: 2
 updates:
   - package-ecosystem: "github-actions"
@@ -32,3 +33,19 @@ updates:
       frontend:
         patterns: ["*"]
         update-types: ["minor", "patch"]
+    ignore:
+      - dependency-name: "@gainratio/*"
+
+  # Own libraries, daily and separate from everything else. Dependabot rejects
+  # two jobs with the same ecosystem + directory + target-branch, so this one
+  # names `target-branch: main` explicitly to be a distinct job on the same branch.
+  - package-ecosystem: "bun"
+    directory: "/frontend"
+    target-branch: "main"
+    schedule:
+      interval: "daily"
+    allow:
+      - dependency-name: "@gainratio/*"
+    groups:
+      gainratio:
+        patterns: ["@gainratio/*"]
