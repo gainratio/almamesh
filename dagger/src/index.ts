@@ -91,6 +91,20 @@ const NIGHTLY_REPORTED_E2E = [
 // timeouts in three CI runs, so they share two lanes: the 18-minute browser gate in one,
 // the rest one after another in the other.
 const PRODUCT_GATE_LANES = 2
+// The low-end lane (browserMatrix): CDP slows the page's main thread 4x and
+// `taskset -c 0` pins the whole browser, Workers included, to one core. The
+// budgets are wall-clock and end to end; see verify-browser-journey.mjs.
+const LOW_END_CPU_THROTTLE = 4
+const LOW_END_READY_BUDGET_MS = 15_000
+const LOW_END_CHART_BUDGET_MS = 90_000
+// Microsoft publishes Edge for Linux x86_64 only; Playwright installs it from
+// Microsoft's apt repository.
+const EDGE_SMOKE = `if [ "$(uname -m)" = x86_64 ]; then
+  bun x playwright install --with-deps msedge
+  node scripts/verify-browser-journey.mjs http://127.0.0.1:4199 --browser=chromium --channel=msedge
+else
+  echo "edge: skipped on $(uname -m): Microsoft publishes no Linux arm64 build of Edge (GitHub's x86_64 runner runs it)"
+fi`
 
 interface ReleaseArtifact {
   dist: Directory
@@ -398,6 +412,21 @@ export class AlmameshCi {
       "node scripts/verify-onboarding-recovery.mjs http://127.0.0.1:4199",
     ])
   }
+  /**
+   * Firefox, Edge, and a low-end device. The browser gate above covers
+   * Chromium and Linux WebKit; Firefox and Edge had no lane, and nothing ran
+   * slowed down. Each run is the real no-hooks journey with a clean console.
+   */
+  @func()
+  browserMatrix(): Container {
+    const built = this.builtBrowser("dist-matrix", false, ["chromium", "firefox"])
+    return this.localPreview(built, "dist-matrix", [
+      "node scripts/verify-browser-journey.mjs http://127.0.0.1:4199 --browser=firefox",
+      EDGE_SMOKE,
+      `taskset -c 0 node scripts/verify-browser-journey.mjs http://127.0.0.1:4199 --browser=chromium --cpu-throttle=${LOW_END_CPU_THROTTLE} --ready-budget-ms=${LOW_END_READY_BUDGET_MS} --chart-budget-ms=${LOW_END_CHART_BUDGET_MS}`,
+      `STORAGE_BLOCKED_CPU_THROTTLE=${LOW_END_CPU_THROTTLE} taskset -c 0 node scripts/verify-storage-blocked.mjs http://127.0.0.1:4199 --browser=chromium --journey`,
+    ])
+  }
   @func()
   pdf(): Container {
     return this.browserBase(["chromium"])
@@ -425,6 +454,7 @@ export class AlmameshCi {
     const product = await runPool(
       [
         { name: "browser", run: () => this.browser().sync() },
+        { name: "browserMatrix", run: () => this.browserMatrix().sync() },
         { name: "backend", run: () => this.backend().sync() },
         { name: "frontend", run: () => this.frontend().sync() },
         { name: "pdf", run: () => this.pdf().sync() },
@@ -433,7 +463,7 @@ export class AlmameshCi {
       PRODUCT_GATE_LANES,
     )
     assertAllPassed([await contracts, ...product])
-    return "Contract, secret, backend, frontend, browser, PDF, and privacy gates passed."
+    return "Contract, secret, backend, frontend, browser, browser-matrix, PDF, and privacy gates passed."
   }
   @func()
   secretScan(commitSha: string): Container {
