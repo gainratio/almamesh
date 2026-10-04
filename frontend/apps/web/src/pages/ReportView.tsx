@@ -42,6 +42,7 @@ import { useContentModeStore } from '../stores/contentMode';
 import { resolveReportAudience } from '../lib/reportSelectors';
 import { selectPrimaryStoredChart } from '../lib/predictive';
 import { cuspInfo } from '../lib/lagnaCusp';
+import { yogaDependsOnHouses } from '../lib/evidence';
 import { rectificationDelta } from '../lib/rectification';
 import { domainClaimId, reportStabilityMarkers, yogaClaimId } from '../lib/stability';
 import { useReportPdfExport } from '../hooks/useReportPdfExport';
@@ -217,13 +218,19 @@ export default function ReportView(): ReactElement {
   // engine's `rectification.stability`; the chip here never over-claims stability.
   const nearCusp = cuspInfo(titleCaseSign(lagna.sign), lagna.sign_degrees, 3, lagna) !== null;
   const domainsReady = predictive.status === 'ready' && predictive.domainsCtx;
-  const claimIds = [
-    ...sidereal.yogas.map((yoga) => yogaClaimId(yoga.name)),
+  const stabilityClaims = [
+    ...sidereal.yogas.map((yoga) => ({
+      claimId: yogaClaimId(yoga.name),
+      houseDependent: yogaDependsOnHouses(yoga),
+    })),
     ...(domainsReady
-      ? Object.keys(predictive.domainsCtx.forecasts).map(domainClaimId)
+      ? Object.keys(predictive.domainsCtx.forecasts).map((domain) => ({
+          claimId: domainClaimId(domain),
+          houseDependent: true,
+        }))
       : []),
   ];
-  const stability = reportStabilityMarkers(claimIds, nearCusp);
+  const stability = reportStabilityMarkers(stabilityClaims, nearCusp);
 
   return (
     <div className="report-screen">

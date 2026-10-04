@@ -684,7 +684,7 @@ async function advanceStep(page: Page, nextStepLocator: () => ReturnType<Page['l
  * Drive REAL onboarding from a clean state through to /dashboard, returning when
  * a chart has rendered. NO seed hooks — this is the genuine first-run journey.
  */
-async function driveRealOnboarding(page: Page): Promise<void> {
+async function driveRealOnboarding(page: Page, consoleErrors: readonly string[]): Promise<void> {
   await page.goto('/onboarding', { waitUntil: 'domcontentloaded' });
 
   const hookGlobals = await page.evaluate(() => {
@@ -736,7 +736,20 @@ async function driveRealOnboarding(page: Page): Promise<void> {
 
   // The generating screen now WAITS for the ~38MB engine bootstrap, then
   // navigates to /dashboard. Be patient (cold Pyodide boot + OPFS bundle sync).
-  await page.waitForURL('**/dashboard', { timeout: 180_000 });
+  await page.waitForFunction(
+    () =>
+      window.location.pathname === '/dashboard' ||
+      document.body.innerText.includes('CHART_GEN_001'),
+    { timeout: 180_000 },
+  );
+  if (new URL(page.url()).pathname !== '/dashboard') {
+    throw new Error(
+      [
+        'Real onboarding stopped on CHART_GEN_001 before reaching /dashboard.',
+        ...consoleErrors,
+      ].join('\n'),
+    );
+  }
 }
 
 /** Poll the dashboard until the real chart has rendered (no seed hook). */
@@ -1015,7 +1028,7 @@ test('REAL onboarding -> rectify -> offline reload -> predictive PDF is correct'
   const chartGenerationStartedAt = new Date();
 
   // ---- 1. REAL onboarding through the live engine bootstrap to /dashboard ----
-  await driveRealOnboarding(page);
+  await driveRealOnboarding(page, errors);
   await waitForDashboardChart(page);
   await page.screenshot({ path: DASHBOARD_SHOT, fullPage: true });
 

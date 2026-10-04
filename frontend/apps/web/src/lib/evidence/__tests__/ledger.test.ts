@@ -14,6 +14,19 @@ import { validateAnnotations } from '../annotations';
 import { buildObservations } from '../observations';
 import { nearCuspChart, secureLagnaChart } from './evidenceFixtures';
 
+function legacyNearCuspChart() {
+  const chart = nearCuspChart();
+  return {
+    ...chart,
+    lagna: {
+      ...chart.lagna,
+      lagna_cusp_distance_deg: undefined,
+      lagna_adjacent_sign: undefined,
+      is_near_cusp: undefined,
+    },
+  };
+}
+
 const REAL_YOGA_OBSERVATION = 'yoga:Test House Yoga';
 const FABRICATED_YOGA_OBSERVATION = 'yoga:Gaja Kesari Yoga';
 const HALLUCINATED_PROSE =
@@ -151,6 +164,74 @@ describe('the keyless report is complete without any model', () => {
       cuspDistanceDeg: 1.183,
       shifts: [{ planet: 'venus', from: 2, to: 1 }],
     });
+  });
+
+  it('keeps legacy near-cusp charts consistent across evidence, confidence and alternatives', () => {
+    const ledger = buildEvidenceLedger(legacyNearCuspChart());
+    const lagna = ledger.rows.find((candidate) => candidate.observation.id === 'lagna');
+    const rulership = ledger.rows.find(
+      (candidate) => candidate.observation.id === 'rulership:venus',
+    );
+    const houseYoga = ledger.rows.find(
+      (candidate) => candidate.observation.id === 'yoga:Test House Yoga',
+    );
+    const signYoga = ledger.rows.find(
+      (candidate) => candidate.observation.id === 'yoga:Test Sign Yoga',
+    );
+
+    expect(ledger.lagnaSensitivity).toEqual({
+      currentSign: 'Aquarius',
+      alternateSign: 'Pisces',
+      cuspDistanceDeg: expect.closeTo(1.183, 6),
+    });
+    expect(ledger.alternateLagna?.alternateSign).toBe('Pisces');
+    expect(lagna?.observation.primary).toMatchObject({
+      cuspDistanceDeg: expect.closeTo(1.183, 6),
+      adjacentSign: 'Pisces',
+    });
+    expect(lagna?.observation.alternative.kind).toBe('lagnaFork');
+
+    expect(rulership?.observation.confidence.level).toBe('low');
+    expect(rulership?.observation.confidence.deductions).toEqual([
+      { code: 'lagna-fork', subject: 'lagna', marginDeg: expect.closeTo(1.183, 6) },
+    ]);
+    expect(rulership?.observation.alternative.kind).toBe('lagnaFork');
+
+    expect(houseYoga?.observation.confidence.deductions.map((item) => item.code)).toContain(
+      'lagna-fork',
+    );
+    expect(houseYoga?.observation.alternative.kind).toBe('lagnaFork');
+    expect(signYoga?.observation.confidence.deductions).toEqual([]);
+    expect(signYoga?.observation.alternative).toEqual({
+      kind: 'none',
+      reason: 'dignity-by-sign',
+    });
+  });
+
+  it('never calls a near-cusp chart secure when alternate projection fails closed', () => {
+    const chart = legacyNearCuspChart();
+    const inconsistent = {
+      ...chart,
+      planets: {
+        ...chart.planets,
+        sun: { ...chart.planets.sun, house: 7 },
+      },
+    };
+    const ledger = buildEvidenceLedger(inconsistent);
+    const rulership = ledger.rows.find(
+      (candidate) => candidate.observation.id === 'rulership:venus',
+    );
+    const houseYoga = ledger.rows.find(
+      (candidate) => candidate.observation.id === 'yoga:Test House Yoga',
+    );
+
+    expect(ledger.lagnaSensitivity).not.toBeNull();
+    expect(ledger.alternateLagna).toBeNull();
+    expect(rulership?.observation.confidence.deductions.map((item) => item.code)).toContain(
+      'lagna-fork',
+    );
+    expect(rulership?.observation.alternative.kind).toBe('lagnaForkUnavailable');
+    expect(houseYoga?.observation.alternative.kind).toBe('lagnaForkUnavailable');
   });
 
   it('says plainly when a claim has NO material alternative, instead of hedging', () => {

@@ -127,7 +127,7 @@ function CuspCallout({
 }): ReactElement | null {
   const { t } = useTranslation(['report', 'astrology']);
   const sign = titleCase(lagna.sign);
-  const cusp = cuspInfo(sign, lagna.sign_degrees);
+  const cusp = cuspInfo(sign, lagna.sign_degrees, 3, lagna);
   if (!cusp) {
     return null;
   }

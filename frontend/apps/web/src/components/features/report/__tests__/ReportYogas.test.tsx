@@ -125,7 +125,10 @@ const YOGA = {
 
 describe('ReportYogas — stability chip', () => {
   it('marks a yoga birth-time STABLE when the lagna is clear of a cusp', () => {
-    const stability = reportStabilityMarkers([yogaClaimId('gaja_kesari')], false);
+    const stability = reportStabilityMarkers(
+      [{ claimId: yogaClaimId('gaja_kesari'), houseDependent: true }],
+      false,
+    );
     render(<ReportYogas yogas={[YOGA]} audience="you" stability={stability} />);
     const chip = screen.getByTestId('report-stability-chip');
     expect(chip.getAttribute('data-variant')).toBe('stable');
@@ -133,7 +136,10 @@ describe('ReportYogas — stability chip', () => {
   });
 
   it('marks a yoga birth-time SENSITIVE when the lagna sits on a cusp', () => {
-    const stability = reportStabilityMarkers([yogaClaimId('gaja_kesari')], true);
+    const stability = reportStabilityMarkers(
+      [{ claimId: yogaClaimId('gaja_kesari'), houseDependent: true }],
+      true,
+    );
     render(<ReportYogas yogas={[YOGA]} audience="you" stability={stability} />);
     const chip = screen.getByTestId('report-stability-chip');
     expect(chip.getAttribute('data-variant')).toBe('sensitive');

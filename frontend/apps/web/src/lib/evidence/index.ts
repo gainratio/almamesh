@@ -7,7 +7,7 @@
  */
 
 export { alternateLagna, wholeSignHouse } from './alternateLagna';
-export type { AlternateLagna, HouseShift } from './alternateLagna';
+export type { AlternateLagna, HouseShift, LagnaSensitivity } from './alternateLagna';
 
 export { alternativeFor, DASHA_YEAR_DAYS } from './alternatives';
 export type { Alternative, ConventionShift } from './alternatives';
@@ -26,7 +26,13 @@ export { COMBUSTION_ORBS_DEG, RETROGRADE_COMBUSTION_ORBS_DEG, combustionOrbDeg }
 export { assessConfidence, BOUNDARY_MARGIN_DEG, CUSP_THRESHOLD_DEG } from './confidence';
 export type { ConfidenceDeduction, ConfidenceLevel, ConfidenceVerdict, DeductionCode } from './confidence';
 
-export { chartFactors, factorIndex, factorPlanets, yogaFactorId } from './factors';
+export {
+  chartFactors,
+  factorIndex,
+  factorPlanets,
+  yogaDependsOnHouses,
+  yogaFactorId,
+} from './factors';
 export type { ChartFactor, FactorClass } from './factors';
 
 export { buildEvidenceLedger } from './ledger';

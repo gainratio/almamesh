@@ -2,6 +2,21 @@ import { describe, expect, it } from 'vitest';
 
 import { cuspInfo, degreesToNearestCusp } from '../lagnaCusp';
 
+const ZODIAC = [
+  'Aries',
+  'Taurus',
+  'Gemini',
+  'Cancer',
+  'Leo',
+  'Virgo',
+  'Libra',
+  'Scorpio',
+  'Sagittarius',
+  'Capricorn',
+  'Aquarius',
+  'Pisces',
+] as const;
+
 // --- degreesToNearestCusp ---------------------------------------------------
 describe('degreesToNearestCusp', () => {
   it('is the distance to the lower boundary near the start of a sign', () => {
@@ -69,6 +84,15 @@ describe('cuspInfo', () => {
     const info = cuspInfo('Pisces', 29.5);
     expect(info?.neighbourSign).toBe('Aries');
     expect(info?.degrees).toBeCloseTo(0.5, 6);
+  });
+
+  it.each(ZODIAC)('derives both neighbouring signs for any %s legacy chart', (sign) => {
+    const index = ZODIAC.indexOf(sign);
+    const previous = ZODIAC[(index - 1 + ZODIAC.length) % ZODIAC.length];
+    const next = ZODIAC[(index + 1) % ZODIAC.length];
+
+    expect(cuspInfo(sign, 0.75)).toEqual({ neighbourSign: previous, degrees: 0.75 });
+    expect(cuspInfo(sign, 29.25)).toEqual({ neighbourSign: next, degrees: 0.75 });
   });
 
   it('accepts a custom threshold', () => {

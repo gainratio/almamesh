@@ -76,6 +76,56 @@ describe('ReportEvidence — the on-screen evidence ledger', () => {
     expect(alternate.toLowerCase()).toContain('minute');
   });
 
+  it('prints the same cusp fork and deduction for a legacy chart without cusp metadata', () => {
+    const chart = nearCuspChart();
+    const legacy = {
+      ...chart,
+      lagna: {
+        ...chart.lagna,
+        lagna_cusp_distance_deg: undefined,
+        lagna_adjacent_sign: undefined,
+        is_near_cusp: undefined,
+      },
+    };
+    render(<ReportEvidence chart={legacy} />);
+
+    const alternate = screen.getByTestId('report-evidence-alternate').textContent ?? '';
+    const lagna = screen.getByTestId('report-evidence-row-lagna').textContent ?? '';
+    const rulership = screen.getByTestId('report-evidence-row-rulership:venus').textContent ?? '';
+    const houseYoga = screen.getByTestId('report-evidence-row-yoga:Test House Yoga').textContent ?? '';
+
+    expect(alternate).toContain('Pisces');
+    expect(alternate).toContain('1.18°');
+    expect(lagna).not.toContain('well inside its sign');
+    expect(rulership).toContain('Low');
+    expect(rulership).toContain('lagna fork');
+    expect(rulership).not.toContain('no deductions apply');
+    expect(houseYoga).toContain('lagna fork');
+    expect(houseYoga).not.toContain('sign placement alone');
+  });
+
+  it('keeps the cusp warning when exact alternate-house projection fails closed', () => {
+    const chart = nearCuspChart();
+    const inconsistent = {
+      ...chart,
+      planets: {
+        ...chart.planets,
+        sun: { ...chart.planets.sun, house: 7 },
+      },
+    };
+    render(<ReportEvidence chart={inconsistent} />);
+
+    const alternate = screen.getByTestId('report-evidence-alternate').textContent ?? '';
+    const rulership = screen.getByTestId('report-evidence-row-rulership:venus').textContent ?? '';
+
+    expect(alternate).toContain('every house-dependent finding must be recomputed');
+    expect(alternate).toContain('Exact house shifts are withheld');
+    expect(alternate).toContain('does not make the ascendant secure');
+    expect(rulership).toContain('must be recomputed');
+    expect(rulership).toContain('Exact shifts are withheld');
+    expect(rulership).not.toContain('well inside its sign');
+  });
+
   it('omits the alternate-chart table when the ascendant sits well inside its sign', () => {
     render(<ReportEvidence chart={secureLagnaChart()} />);
     expect(screen.queryByTestId('report-evidence-alternate')).toBeNull();
