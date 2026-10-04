@@ -75,6 +75,8 @@
          instead of flashing the public landing page. The helper is external so
          the enforced CSP does not need unsafe-inline executable scripts. -->
     <script src="/app-shell-bootstrap.js"></script>
+    <!-- Before any module: lets Reset & reload delete IndexedDB (see the file). -->
+    <script src="/idb-connection-hygiene.js"></script>
     <!--
       The PWA Service Worker (vite-plugin-pwa / Workbox) is registered from
       main.tsx with a prompt-driven update flow. Do NOT unregister it here:

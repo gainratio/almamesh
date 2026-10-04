@@ -180,15 +180,43 @@ describe('resetAppData', () => {
     expect(deleteDatabase).toHaveBeenCalledWith('edgeproc-browser-cache');
   });
 
-  it('bounds a blocked IndexedDB delete so Reset & reload can never hang', async () => {
+  // INVERTED 2026-10-04 (feat/browser-matrix): this test required a blocked
+  // delete to resolve, and every caller then reloaded as if the data were gone.
+  // In Chromium, WebKit and Firefox the page's own idb-keyval connection blocked
+  // keyval-store, so user rows could survive "Reset & reload". A blocked delete
+  // is still bounded, but it now fails visibly, naming the database.
+  it('bounds a blocked IndexedDB delete and reports it instead of claiming success', async () => {
     vi.useFakeTimers();
     vi.stubGlobal('navigator', {});
     vi.stubGlobal('caches', undefined);
-    stubIndexedDb(['edgeproc-browser-cache'], [], 'blocked-forever');
+    stubIndexedDb(['keyval-store'], [], 'blocked-forever');
+
+    const pending = resetAppData();
+    const outcome = expect(pending).rejects.toThrowError(
+      expect.objectContaining({ name: 'ResetIncompleteError', databases: ['keyval-store'] }),
+    );
+    await vi.advanceTimersByTimeAsync(10_000);
+    await outcome;
+  });
+
+  it('reports a database whose delete errors', async () => {
+    vi.stubGlobal('navigator', {});
+    vi.stubGlobal('caches', undefined);
+    stubIndexedDb(['almamesh-user'], [], 'error');
+
+    await expect(resetAppData()).rejects.toThrowError(
+      expect.objectContaining({ name: 'ResetIncompleteError', databases: ['almamesh-user'] }),
+    );
+  });
+
+  it('does not fail on the service worker\'s cache-expiry database, which holds no user data', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('navigator', {});
+    vi.stubGlobal('caches', undefined);
+    stubIndexedDb(['workbox-expiration'], [], 'blocked-forever');
 
     const pending = resetAppData();
     await vi.advanceTimersByTimeAsync(10_000);
-
     await expect(pending).resolves.toBeUndefined();
   });
 

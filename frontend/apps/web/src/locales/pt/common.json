@@ -145,5 +145,6 @@
     "interpretations_set_aside": "Algumas interpretações salvas não puderam ser lidas e foram separadas neste dispositivo. Elas são mantidas por 30 dias e depois excluídas. Para removê-las agora, vá em Configurações → Preferências → Redefinir mapa / começar do zero.",
     "interpretations_unreadable_paused": "Algumas interpretações salvas não puderam ser lidas e este dispositivo não conseguiu separá-las. Para protegê-las, novas leituras estão pausadas. Recarregue a página para tentar novamente.",
     "dismiss_aria": "Fechar aviso"
-  }
+  },
+  "reset_incomplete": "A redefinição não conseguiu apagar todos os dados salvos, porque este navegador ainda os está usando. Feche todas as abas do AlmaMesh e tente de novo. Se continuar acontecendo, limpe os dados do site do AlmaMesh nas configurações do navegador."
 }

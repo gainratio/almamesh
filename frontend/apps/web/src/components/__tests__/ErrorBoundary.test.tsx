@@ -223,6 +223,33 @@ describe('ErrorBoundary', () => {
     await waitFor(() => expect(reload).toHaveBeenCalledTimes(1));
   });
 
+  it('does not reload when a user database could not be deleted, and says why', async () => {
+    vi.stubGlobal('navigator', {});
+    vi.stubGlobal('caches', undefined);
+    vi.stubGlobal('indexedDB', {
+      databases: vi.fn().mockResolvedValue([{ name: 'keyval-store' }]),
+      deleteDatabase: vi.fn(() => {
+        const request: { onerror: (() => void) | null } = { onerror: null };
+        queueMicrotask(() => request.onerror?.());
+        return request;
+      }),
+    });
+    const reload = vi.fn();
+    vi.stubGlobal('location', { reload });
+
+    render(
+      <ErrorBoundary>
+        <Boom />
+      </ErrorBoundary>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /reset app data/i }));
+
+    const alert = await screen.findByTestId('reset-incomplete');
+    expect(alert.textContent).toContain('Close every AlmaMesh tab');
+    expect(alert.getAttribute('data-databases')).toBe('keyval-store');
+    expect(reload).not.toHaveBeenCalled();
+  });
+
   it('after a ROLLBACK boot refusal, warns of tampering and needs a two-step confirm before the reset', async () => {
     recordEngineBootFailure(
       Object.assign(new Error('refusing rollback: sequence is not fresher'), {

@@ -161,6 +161,36 @@ describe('Onboarding — in-app bootstrap recovery', () => {
     await waitFor(() => expect(resetAppDataSpy).toHaveBeenCalledTimes(1));
   });
 
+  it('does not reload when Reset could not delete the data, and says why', async () => {
+    const reload = vi.fn();
+    vi.stubGlobal('location', { ...window.location, reload });
+    resetAppDataSpy.mockRejectedValueOnce(
+      Object.assign(new Error('Reset could not delete: keyval-store'), { name: 'ResetIncompleteError' }),
+    );
+    engineValue = {
+      engine: null,
+      error: new Error('bundle chunk 404'),
+      stage: null,
+      meta: null,
+      reboot: vi.fn().mockRejectedValue(new Error('still broken')),
+      whenReady: vi.fn().mockRejectedValue(new Error('still broken')),
+      startBootstrap: vi.fn(),
+    };
+    seedReadyToGenerate();
+    renderPage();
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('skip-life-events-button'));
+    });
+
+    fireEvent.click(await screen.findByTestId('reset-app-data-button'));
+
+    const alert = await screen.findByTestId('reset-incomplete');
+    expect(alert.getAttribute('role')).toBe('alert');
+    expect(alert.textContent).toContain('Close every AlmaMesh tab');
+    expect(reload).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
+
   it('a RollbackError boot lands on the recovery card, warns, and clears only after a two-step confirm', async () => {
     // @gainratio/browser surfaces a durable-floor refusal as an EngineOperationError
     // with code 'rollback'. Recovery must stay a deliberate click: auto-wiping the
