@@ -35,16 +35,7 @@ export type OpfsProbe =
   | { readonly status: 'timed-out' };
 
 export type PortablePersistence = 'opfs' | 'memory';
-/**
- * 'session-mirror': SQLite runs in memory (OPFS refused) and its file is copied
- * to IndexedDB after every commit, so a reload keeps the data; the browser may
- * still erase IndexedDB when the window closes (Private Browsing).
- */
-export type PortableStatePersistence =
-  | 'pending'
-  | PortablePersistence
-  | 'session-mirror'
-  | 'unavailable';
+export type PortableStatePersistence = 'pending' | PortablePersistence | 'unavailable';
 
 interface OpfsEntrypoint {
   readonly getDirectory?: () => Promise<unknown>;
@@ -103,12 +94,7 @@ function reportPersistence(next: PortableStatePersistence): void {
   for (const listener of listeners) listener();
 }
 
-/** The IndexedDB copy stopped working: from now on this tab's data dies with it. */
-export function reportSessionMirrorLost(): void {
-  if (currentPersistence === 'session-mirror') reportPersistence('memory');
-}
-
-/** 'memory' means this session's data disappears on reload or when the tab closes. */
+/** 'memory' means this session's data disappears when the tab closes. */
 export function portableStatePersistence(): PortableStatePersistence {
   return currentPersistence;
 }
@@ -129,9 +115,7 @@ export function resetPortableStatePersistenceForTests(): void {
 }
 
 /** Pick OPFS or memory from a real probe, open (however long that takes), and publish the outcome. */
-export async function openPortableStateWithFallback<
-  Repository extends { readonly sessionMirrored?: boolean },
->(options: {
+export async function openPortableStateWithFallback<Repository>(options: {
   readonly open: (persistence: PortablePersistence) => Promise<Repository>;
   readonly storage?: OpfsEntrypoint;
 }): Promise<{ readonly repository: Repository; readonly persistence: PortablePersistence }> {
@@ -141,9 +125,7 @@ export async function openPortableStateWithFallback<
   if (probe.status !== 'available') safeWarn('storage.opfs_unavailable', probe);
   try {
     const repository = await options.open(persistence);
-    reportPersistence(
-      persistence === 'memory' && repository.sessionMirrored === true ? 'session-mirror' : persistence,
-    );
+    reportPersistence(persistence);
     return { repository, persistence };
   } catch (error) {
     safeError('storage.state_open_failed', error);

@@ -54,9 +54,7 @@
   "storage_ephemeral": {
     "title": "Este navegador não está salvando seus dados.",
     "body": "Aqui ele recusa o armazenamento no dispositivo (por exemplo, na navegação privada), então seu mapa funciona, mas desaparece quando você recarrega ou fecha esta aba.",
-    "export": "Exporte um backup para guardá-lo.",
-    "mirror_title": "Este navegador está guardando seus dados só temporariamente.",
-    "mirror_body": "Aqui ele recusa o armazenamento principal no dispositivo (por exemplo, na navegação privada), então seu mapa sobrevive a um recarregamento, mas o navegador pode apagá-lo quando você fechar a janela."
+    "export": "Exporte um backup para guardá-lo."
   },
   "storage_unavailable": {
     "title": "O AlmaMesh não consegue iniciar seu banco de dados no dispositivo",

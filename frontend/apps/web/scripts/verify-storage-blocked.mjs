@@ -86,6 +86,40 @@ function refuseOpfsOnly() {
   }
 }
 
+const ONBOARDED_NAME = 'Reference Native'
+
+/**
+ * Runs in the page: every IndexedDB record and localStorage value that
+ * contains the onboarded name. SQLite (here in memory) is the only allowed home.
+ */
+async function findUserDataOutsideSqlite(needle) {
+  const leaks = []
+  for (let index = 0; index < localStorage.length; index += 1) {
+    const key = localStorage.key(index)
+    if (String(localStorage.getItem(key)).includes(needle)) leaks.push(`localStorage:${key}`)
+  }
+  const settle = (request) => new Promise((resolve, reject) => {
+    request.onsuccess = () => resolve(request.result)
+    request.onerror = () => reject(request.error)
+  })
+  for (const { name } of await indexedDB.databases()) {
+    if (!name) continue
+    const database = await settle(indexedDB.open(name))
+    try {
+      for (const storeName of database.objectStoreNames) {
+        const values = await settle(database.transaction(storeName).objectStore(storeName).getAll())
+        const text = (value) => {
+          try { return typeof value === 'string' ? value : JSON.stringify(value) } catch { return '' }
+        }
+        if (values.some((value) => text(value).includes(needle))) leaks.push(`indexedDB:${name}/${storeName}`)
+      }
+    } finally {
+      database.close()
+    }
+  }
+  return leaks
+}
+
 /** Total budget from finishing onboarding to a rendered chart in an OPFS-less realm. */
 const OPFS_REFUSED_CHART_BUDGET_MS = 120_000
 
@@ -97,7 +131,7 @@ async function typeSections(page, testId, digits, trailing) {
 
 /** The real onboarding journey (mirrors e2e/live/liveJourney.ts generateChart). */
 async function onboard(page) {
-  await page.getByTestId('name-input').fill('Reference Native')
+  await page.getByTestId('name-input').fill(ONBOARDED_NAME)
   await page.getByTestId('next-button').click()
   await typeSections(page, 'birth-date-input', '08081988')
   await page.getByTestId('next-button').click()
@@ -178,20 +212,21 @@ try {
     const note = visited.page.getByTestId('ephemeral-storage-notice')
     invariant(await note.isVisible(), 'OPFS refused: chart rendered without the "will not be saved" note')
     invariant(/export/i.test(await note.innerText()), 'OPFS refused: the ephemeral note does not suggest exporting')
-    // A reload is not "closing the tab". IndexedDB still works in this realm,
-    // so the session mirror must bring the chart back (WebKit audit
-    // 2026-10-04: the chart vanished on reload).
-    await visited.page.reload({ waitUntil: 'load' })
-    const reloaded = Date.now()
-    const survived = await chart.waitFor({ state: 'visible', timeout: OPFS_REFUSED_CHART_BUDGET_MS })
-      .then(() => true, () => false)
-    const reloadBody = (await visited.page.locator('body').innerText()).replace(/\s+/g, ' ').slice(0, 300)
-    invariant(survived, `OPFS refused: the chart did not survive a reload: ${reloadBody}`)
     invariant(
-      (await note.getAttribute('data-durability')) === 'session-mirror',
-      'OPFS refused: after a reload the note does not say the chart is kept in temporary browser storage',
+      (await note.getAttribute('data-durability')) === 'memory',
+      'OPFS refused: the app does not report in-memory SQLite as its storage mode',
     )
-    console.log(`storage-blocked: ${BROWSER_NAME} OPFS refused -> chart back ${((Date.now() - reloaded) / 1000).toFixed(1)}s after reload`)
+    // SQLite is the only store. In memory mode nothing may quietly land in
+    // IndexedDB or localStorage instead (Harish, 2026-10-04).
+    const leaks = await visited.page.evaluate(findUserDataOutsideSqlite, ONBOARDED_NAME)
+    invariant(leaks.length === 0, `OPFS refused: user data written outside SQLite: ${leaks.join(', ')}`)
+    // Honest, not hopeful: a reload loses the session and still says so.
+    await visited.page.reload({ waitUntil: 'load' })
+    await note.waitFor({ state: 'visible', timeout: 30_000 })
+    invariant(
+      !(await visited.page.getByText(ONBOARDED_NAME).first().isVisible().catch(() => false)),
+      'OPFS refused: data survived a reload although the note says it does not',
+    )
     await note.getByRole('link').click()
     await visited.page.waitForURL('**/settings/data', { timeout: 15_000 })
     invariant(

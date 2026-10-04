@@ -5,10 +5,6 @@ import {
   type SqliteStateRuntimeInfo,
   type SqliteStateStore,
 } from '@gainratio/browser/sqlite';
-import { safeWarn } from '@almamesh/shared-types';
-
-import { claimSessionMirror, type PortableSnapshotMirror } from './portableMirror';
-import { reportSessionMirrorLost } from './portablePersistence';
 
 export const PORTABLE_STATE_DATABASE = 'almamesh-user-state';
 export const PORTABLE_STATE_NAMESPACE = 'canonical';
@@ -184,40 +180,13 @@ export class PortableStateRepository {
   readonly #store: SqliteStateStore;
   readonly #validateExport: (bytes: Uint8Array) => Promise<number>;
   #writeQueue: Promise<void> = Promise.resolve();
-  #mirror: PortableSnapshotMirror | undefined;
 
   public constructor(
     store: SqliteStateStore,
     validateExport: (bytes: Uint8Array) => Promise<number> = validatePortableExportDatabase,
-    mirror?: PortableSnapshotMirror,
   ) {
     this.#store = store;
     this.#validateExport = validateExport;
-    this.#mirror = mirror;
-  }
-
-  /** True while every commit is also copied to the IndexedDB session mirror. */
-  public get sessionMirrored(): boolean {
-    return this.#mirror !== undefined;
-  }
-
-  /**
-   * Copy the committed file before the write resolves, so a caller that saw
-   * its write (or deletion) finish also sees it after a reload. A copy that
-   * cannot be written is erased rather than left stale: a stale copy could
-   * bring back a profile the user just deleted.
-   */
-  async #saveMirror(): Promise<void> {
-    const mirror = this.#mirror;
-    if (mirror === undefined) return;
-    try {
-      await mirror.save(await this.#store.exportBytes());
-    } catch (error) {
-      this.#mirror = undefined;
-      safeWarn('storage.session_mirror_lost', error);
-      await mirror.clear().catch(() => undefined);
-      reportSessionMirrorLost();
-    }
   }
 
   public async read(key: string): Promise<string | null> {
@@ -292,7 +261,6 @@ export class PortableStateRepository {
         const result = await this.#store.batch(mutations.map(toSqliteMutation), {
           expectedEpoch: snapshot.epoch,
         });
-        await this.#saveMirror();
         return { epoch: result.epoch, result: attemptResult };
       } catch (error) {
         if (error instanceof SqliteStateConflictError) continue;
@@ -371,41 +339,17 @@ async function validatePortableExportDatabase(bytes: Uint8Array): Promise<number
   }
 }
 
-/**
- * 'memory' is the fallback for browsers that refuse OPFS (see
- * portablePersistence.ts). It reloads and keeps an IndexedDB session mirror
- * when this tab can own one (portableMirror.ts).
- */
+/** 'memory' is the session-only fallback for browsers that refuse OPFS (see portablePersistence.ts). */
 export async function openPortableStateRepository(
   persistence: 'opfs' | 'memory' = 'opfs',
-  claimMirror: () => Promise<PortableSnapshotMirror | undefined> = claimSessionMirror,
 ): Promise<PortableStateRepository> {
-  const store = await createSqliteStateStore({
-    name: PORTABLE_STATE_DATABASE,
-    initialSchemaVersion: PORTABLE_STATE_SCHEMA_VERSION,
-    persistence,
-  });
-  if (persistence !== 'memory') return new PortableStateRepository(store);
-  const mirror = await claimMirror();
-  if (mirror !== undefined) await restoreFromMirror(store, mirror);
-  return new PortableStateRepository(store, validatePortableExportDatabase, mirror);
-}
-
-/** Load the previous page's copy into the fresh in-memory store; drop a copy that will not import. */
-export async function restoreFromMirror(
-  store: SqliteStateStore,
-  mirror: PortableSnapshotMirror,
-): Promise<void> {
-  try {
-    const bytes = await mirror.load();
-    if (bytes === undefined) return;
-    const stage = await store.stageImport(bytes);
-    assertSupportedPortableStateSchema(stage.schemaVersion);
-    await store.commitImport(stage.stageId, { expectedEpoch: 0 });
-  } catch (error) {
-    safeWarn('storage.session_mirror_unreadable', error);
-    await mirror.clear().catch(() => undefined);
-  }
+  return new PortableStateRepository(
+    await createSqliteStateStore({
+      name: PORTABLE_STATE_DATABASE,
+      initialSchemaVersion: PORTABLE_STATE_SCHEMA_VERSION,
+      persistence,
+    }),
+  );
 }
 
 export interface PortableStateCapabilities {

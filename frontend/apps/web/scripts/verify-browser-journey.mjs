@@ -103,7 +103,7 @@ async function bodyText(page) {
   return (await page.locator('body').innerText().catch(() => '')).replace(/\s+/g, ' ').slice(0, 300)
 }
 
-/** Which storage the app says it is on: none (OPFS), memory, or session-mirror. */
+/** Which storage the app says it is on: opfs (no note) or memory. */
 async function storageNote(page) {
   const note = page.getByTestId('ephemeral-storage-notice')
   return (await note.isVisible().catch(() => false)) ? await note.getAttribute('data-durability') : 'opfs'
