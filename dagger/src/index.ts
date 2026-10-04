@@ -420,7 +420,23 @@ export class AlmameshCi {
   @func()
   browserMatrix(): Container {
     const built = this.builtBrowser("dist-matrix", false, ["chromium", "firefox"])
-    return this.localPreview(built, "dist-matrix", [
+    // Reset & reload is reachable from the engine recovery card, so serve a
+    // copy without the engine bundle (no Playwright routing: in WebKit it kept
+    // the page's classic scripts from taking effect).
+    const starved = this.localServer(
+      built.withExec([
+        "sh",
+        "-c",
+        "cp -R dist-matrix dist-starved && rm -rf dist-starved/bundle dist-starved/pyodide dist-starved/public.key",
+      ]),
+      "./node_modules/.bin/vite preview --outDir dist-starved --host 127.0.0.1 --port 4198 --strictPort",
+      4198,
+      [
+        "node scripts/verify-reset-deletes.mjs http://127.0.0.1:4198 --browser=chromium",
+        "node scripts/verify-reset-deletes.mjs http://127.0.0.1:4198 --browser=firefox",
+      ],
+    )
+    return this.localPreview(starved, "dist-matrix", [
       "node scripts/verify-browser-journey.mjs http://127.0.0.1:4199 --browser=firefox",
       EDGE_SMOKE,
       `taskset -c 0 node scripts/verify-browser-journey.mjs http://127.0.0.1:4199 --browser=chromium --cpu-throttle=${LOW_END_CPU_THROTTLE} --ready-budget-ms=${LOW_END_READY_BUDGET_MS} --chart-budget-ms=${LOW_END_CHART_BUDGET_MS}`,

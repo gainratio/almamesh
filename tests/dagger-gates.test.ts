@@ -193,4 +193,11 @@ describe("browser matrix lane", () => {
     expect(lane).toMatch(/--chart-budget-ms=\$\{LOW_END_CHART_BUDGET_MS\}/)
     expect(lane).toContain("STORAGE_BLOCKED_CPU_THROTTLE=${LOW_END_CPU_THROTTLE}")
   })
+
+  test("Reset & reload must delete IndexedDB, proven on a build without its engine bundle", () => {
+    expect(lane).toContain("rm -rf dist-starved/bundle dist-starved/pyodide dist-starved/public.key")
+    for (const browser of ["chromium", "firefox"]) {
+      expect(lane).toContain(`verify-reset-deletes.mjs http://127.0.0.1:4198 --browser=${browser}`)
+    }
+  })
 })
