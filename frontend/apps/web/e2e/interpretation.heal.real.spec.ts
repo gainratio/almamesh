@@ -111,26 +111,29 @@ test('[real][self-heal] stale anthropic/claude-3.5-sonnet self-heals to DeepSeek
   // Sanity: the REAL engine ran (Delhi 1990-01-15 12:00Z lagna == Gemini).
   expect(String(seeded.lagna).toLowerCase()).toBe('gemini');
 
-  await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
-  await page.getByTestId('generate-reading').click();
-
-  // The explicit Generate path reads settings and runs readLlmSettings(),
-  // which heals the retired model AND persists the rewrite. Assert the persisted
-  // model is now the recommended slug — proving the self-heal fired and stuck.
+  // The heal runs when boot hydrates settings from SQLite, before any Generate.
+  // Settings now live in canonical SQLite (localStorage is one-time migration
+  // input and is removed after it), so the heal is observed where the user sees
+  // it: reload onto Settings -> AI and read the persisted model from the form.
+  // The init script re-seeds the stale localStorage blob on every load; the
+  // already-migrated SQLite row must win, so a healed field proves the rewrite
+  // reached SQLite and stuck.
   await expect
     .poll(
       async () => {
-        const raw = await page.evaluate((k) => window.localStorage.getItem(k), LLM_SETTINGS_KEY);
-        if (!raw) return null;
-        try {
-          return (JSON.parse(raw) as { model?: string }).model ?? null;
-        } catch {
-          return null;
-        }
+        await page.goto('/settings/ai', { waitUntil: 'domcontentloaded' });
+        await page.getByTestId('llm-advanced-summary').click();
+        return page.getByTestId('llm-model').inputValue();
       },
       { timeout: 60_000, message: 'persisted model should self-heal to the recommended slug' },
     )
     .toBe(RECOMMENDED_MODEL);
+  expect(
+    await page.evaluate((k) => window.localStorage.getItem(k), LLM_SETTINGS_KEY),
+    'retired localStorage copy must not become a second source of truth',
+  ).toBeNull();
+  await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+  await page.getByTestId('generate-reading').click();
 
   // A REAL reading renders: the redesigned dashboard shows the summary as open
   // editorial prose under "The reading" (data-testid="reading-section") — the
