@@ -290,6 +290,10 @@ try {
   assertPortableBackup(exported, { expectProfile: true, expectCredential: true });
 
   await page.goto(`${baseUrl}/settings/preferences`, { waitUntil: 'networkidle' });
+  // networkidle is not app-ready: boot awaits SQLite hydration, not the network.
+  // Seed residue only once the rendered page proves boot finished, so this
+  // proof measures reset, not a write racing the legacy-row migration.
+  await page.getByTestId('reset-start-fresh').waitFor({ state: 'visible', timeout: 30_000 });
   await page.evaluate(() => {
     localStorage.setItem('almamesh-chart', '1');
     localStorage.setItem('almamesh-interpretations', 'reset-proof');

@@ -29,7 +29,7 @@ import type {
 import { create, type StateCreator } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import { deletionAwareIdbStorage } from './deletionTombstones';
-import { whenHydrated } from './hydrationBarrier';
+import { whenHydrated, type HydrationOutcome } from './hydrationBarrier';
 
 /** One canonical SQLite row holding all profiles' rectification records. */
 const PERSIST_NAME = 'almamesh-rectification-records';
@@ -203,6 +203,6 @@ export const useRectificationRecordsStore = create<RectificationRecordsStore>()(
  * portable storage. Mirrors `whenLifeEventsHydrated` — await before any read that must
  * reflect the persisted truth (avoids the async-rehydrate false-empty race).
  */
-export function whenRectificationRecordsHydrated(): Promise<void> {
+export function whenRectificationRecordsHydrated(): Promise<HydrationOutcome> {
   return whenHydrated(useRectificationRecordsStore.persist);
 }
