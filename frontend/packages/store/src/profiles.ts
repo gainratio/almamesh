@@ -29,7 +29,7 @@ import {
 } from './chartLibrary';
 import { assignOrphanChatThreads, whenChatHydrated } from './chat';
 import { deletionAwareIdbStorage } from './deletionTombstones';
-import { whenHydrated } from './hydrationBarrier';
+import { whenHydrated, type HydrationOutcome } from './hydrationBarrier';
 
 /** A named person on this device. No credentials — local-first by design. */
 export interface Profile {
@@ -436,7 +436,7 @@ export function useMeshReady(): boolean {
  * Mirrors `whenChartLibraryHydrated` — await before any read that must reflect
  * the persisted truth (avoids the async-rehydrate false-empty race).
  */
-export function whenProfilesHydrated(): Promise<void> {
+export function whenProfilesHydrated(): Promise<HydrationOutcome> {
   return whenHydrated(useProfilesStore.persist);
 }
 

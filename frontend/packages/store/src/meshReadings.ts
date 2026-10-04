@@ -19,7 +19,7 @@ import {
   deletionAwareIdbStorage,
   mergeDeletionAwarePersistedValue,
 } from './deletionTombstones';
-import { whenHydrated } from './hydrationBarrier';
+import { whenHydrated, type HydrationOutcome } from './hydrationBarrier';
 
 export const MESH_READINGS_PERSIST_KEY = 'almamesh-mesh-readings';
 export const MESH_READINGS_PERSIST_VERSION = 1;
@@ -241,6 +241,6 @@ export const useMeshReadingsStore = create<MeshReadingsStore>()(
   ),
 );
 
-export function whenMeshReadingsHydrated(): Promise<void> {
+export function whenMeshReadingsHydrated(): Promise<HydrationOutcome> {
   return whenHydrated(useMeshReadingsStore.persist);
 }

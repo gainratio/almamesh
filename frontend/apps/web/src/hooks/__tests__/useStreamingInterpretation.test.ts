@@ -37,6 +37,7 @@ vi.mock('@almamesh/store', async () => {
     ...actual,
     useChartLibraryStore: { getState: () => ({ getChart }) },
     whenInterpretationHydrated: vi.fn(async () => {}),
+    interpretationWriteRefusal: vi.fn(() => undefined),
   };
 });
 
@@ -62,6 +63,7 @@ import {
   useLanguageStore,
   usePredictiveStore,
   useProfilesStore,
+  interpretationWriteRefusal,
   whenInterpretationHydrated,
 } from '@almamesh/store';
 import type { VedicInterpretation } from '@almamesh/shared-types';
@@ -72,6 +74,7 @@ const mockedStream = vi.mocked(streamNatalInterpretation);
 const mockedTimelineStream = vi.mocked(streamCurrentTimeline);
 const mockedAnnotate = vi.mocked(requestEvidenceAnnotations);
 const mockedInterpretationHydration = vi.mocked(whenInterpretationHydrated);
+const mockedWriteRefusal = vi.mocked(interpretationWriteRefusal);
 const mockedDataLifecycleReady = vi.mocked(whenDataLifecycleReady);
 
 // A chart that carries the raw engine output the sanitizer needs.
@@ -189,7 +192,8 @@ describe('useStreamingInterpretation (structured, store-backed)', () => {
     vi.setSystemTime(new Date('2026-07-12T12:00:00Z'));
     vi.clearAllMocks();
     mockedDataLifecycleReady.mockResolvedValue(undefined);
-    mockedInterpretationHydration.mockResolvedValue(undefined);
+    mockedInterpretationHydration.mockResolvedValue({ status: 'hydrated' });
+    mockedWriteRefusal.mockReturnValue(undefined);
     getChart.mockReturnValue(CHART_WITH_RAW);
     // Deterministic LLM settings: no browser-local overrides between tests.
     hydrateLlmSettings(null);
@@ -230,8 +234,8 @@ describe('useStreamingInterpretation (structured, store-backed)', () => {
   it('waits for canonical SQLite hydration before an immediate provider failure', async () => {
     let releaseHydration: (() => void) | undefined;
     mockedInterpretationHydration.mockImplementationOnce(
-      () => new Promise<void>((resolve) => {
-        releaseHydration = resolve;
+      () => new Promise((resolve) => {
+        releaseHydration = () => resolve({ status: 'hydrated' });
       }),
     );
     mockedStream.mockImplementation(failingStream(new LlmRequestError('HTTP 500')));
@@ -254,6 +258,38 @@ describe('useStreamingInterpretation (structured, store-backed)', () => {
     releaseHydration?.();
     await act(async () => generation);
     expect(result.current.status).toBe('error');
+  });
+
+  it('refuses a paid natal run while an unreadable saved row is not held', async () => {
+    const blocked = new Error('saving is paused');
+    mockedInterpretationHydration.mockResolvedValueOnce({ status: 'failed', error: blocked });
+    mockedWriteRefusal.mockReturnValue(blocked as never);
+    mockedStream.mockImplementation(eventStream([{ type: 'complete', interpretation: SAMPLE_INTERPRETATION }]));
+    const { result } = renderHook(() => useStreamingInterpretation('chart-123'));
+
+    await act(async () => {
+      await result.current.streamInterpretation('chart-123', { intent: 'user-request' });
+    });
+
+    expect(mockedStream).not.toHaveBeenCalled();
+    expect(result.current.status).toBe('error');
+    expect(result.current.error).toMatch(/could not be read/);
+  });
+
+  it('refuses a paid timeline run while an unreadable saved row is not held', async () => {
+    const blocked = new Error('saving is paused');
+    mockedInterpretationHydration.mockResolvedValueOnce({ status: 'failed', error: blocked });
+    mockedWriteRefusal.mockReturnValue(blocked as never);
+    const { result } = renderHook(() => useStreamingInterpretation('chart-123'));
+
+    await act(async () => {
+      await result.current.streamCurrentTimeline('chart-123', { intent: 'user-request' });
+    });
+
+    expect(mockedTimelineStream).not.toHaveBeenCalled();
+    expect(useInterpretationStore.getState().byChart['chart-123']?.timeline?.error).toMatch(
+      /could not be read/,
+    );
   });
 
   it('waits for startup dataset reconciliation before hydrating or calling the provider', async () => {

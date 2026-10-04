@@ -32,7 +32,7 @@ import {
   toVargaCtx,
 } from './adapters/predictive';
 import { deletionAwareIdbStorage } from './deletionTombstones';
-import { whenHydrated } from './hydrationBarrier';
+import { whenHydrated, type HydrationOutcome } from './hydrationBarrier';
 
 export type PredictiveStatus = 'idle' | 'loading' | 'ready' | 'error';
 
@@ -357,6 +357,6 @@ export const usePredictiveStore = create<PredictiveStore>()(
 );
 
 /** Resolve once the persisted predictive results have finished SQLite hydration. */
-export function whenPredictiveHydrated(): Promise<void> {
+export function whenPredictiveHydrated(): Promise<HydrationOutcome> {
   return whenHydrated(usePredictiveStore.persist);
 }

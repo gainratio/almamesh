@@ -29,6 +29,7 @@
 
 import {
   CHART_LIBRARY_FLAG_KEY,
+  INTERPRETATION_QUARANTINE_KEY,
   abortBackupRestore,
   bumpRestoreEpoch,
   commitDatasetGeneration,
@@ -59,6 +60,8 @@ const INTERPRETATIONS_KEY = 'almamesh-interpretations';
 const LEGACY_LOCAL_STORAGE_KEYS = [
   CHART_LIBRARY_FLAG_KEY,
   INTERPRETATIONS_KEY,
+  // Unreadable interpretations set aside at boot are still user data: erase them too.
+  INTERPRETATION_QUARANTINE_KEY,
   'almamesh-language',
   'almamesh-llm-settings',
   'almamesh-content-mode',

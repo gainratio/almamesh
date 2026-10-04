@@ -18,7 +18,7 @@ import { createJSONStorage, persist } from 'zustand/middleware';
 import type { ChatMessage, ChatThread, ChatThreadSummary } from '@almamesh/shared-types';
 import { hasValidChatSummaryShape, summaryMatchesMessages } from '@almamesh/llm';
 import { deletionAwareIdbStorage } from './deletionTombstones';
-import { whenHydrated } from './hydrationBarrier';
+import { whenHydrated, type HydrationOutcome } from './hydrationBarrier';
 
 type ChatRole = ChatMessage['role'];
 
@@ -362,7 +362,7 @@ export const useChatStore = create<ChatStore>()(
  * `whenChartLibraryHydrated` / `whenProfilesHydrated` — await before any read
  * that must reflect the persisted truth (avoids the async-rehydrate race).
  */
-export function whenChatHydrated(): Promise<void> {
+export function whenChatHydrated(): Promise<HydrationOutcome> {
   return whenHydrated(useChatStore.persist);
 }
 

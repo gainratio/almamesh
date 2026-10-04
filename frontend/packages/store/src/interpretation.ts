@@ -22,9 +22,9 @@ import type {
   RawEvidenceAnnotationPayload,
   ReadingProvenance,
 } from '@almamesh/llm';
-import type { TitledPersona, VedicInterpretation } from '@almamesh/shared-types';
+import { safeWarn, type TitledPersona, type VedicInterpretation } from '@almamesh/shared-types';
 import { deletionAwareIdbStorage } from './deletionTombstones';
-import { whenHydrated } from './hydrationBarrier';
+import { reportHydrationFailure, whenHydrated, type HydrationOutcome } from './hydrationBarrier';
 import { portableStatePersistence } from './portablePersistence';
 import { browserLocalStorage } from './webStorage';
 
@@ -505,11 +505,24 @@ export async function readInterpretationPersistedValue(
   durable: Pick<StateStorage, 'getItem' | 'setItem'> = deletionAwareIdbStorage,
   legacyStorage: Pick<Storage, 'getItem' | 'removeItem'> | undefined = browserLocalStorage(),
   retireLegacy: boolean | (() => boolean) = true,
+  quarantine: (entry: UnreadableInterpretation) => boolean = quarantineUnreadableInterpretation,
+  quarantineStorage: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> | undefined =
+    browserLocalStorage(),
 ): Promise<string | null> {
+  pruneExpiredInterpretationQuarantine(quarantineStorage);
   const shouldRetireLegacy = () =>
     typeof retireLegacy === 'function' ? retireLegacy() : retireLegacy;
   const durableValue = await durable.getItem(name);
   if (durableValue !== null) {
+    // A row a previous build copied in unparsed would fail JSON.parse on every
+    // boot. Set it aside and start from empty; the next save replaces it.
+    if (!isPersistedEnvelope(durableValue)) {
+      if (!setAside(quarantine, { source: 'canonical-sqlite', raw: durableValue })) {
+        throw new InterpretationSetAsideError('failed');
+      }
+      return null;
+    }
+    hydratingRaw = durableValue;
     if (shouldRetireLegacy()) retireLegacyInterpretation(legacyStorage, name);
     return durableValue;
   }
@@ -521,11 +534,177 @@ export async function readInterpretationPersistedValue(
     return null;
   }
   if (legacy === null) return null;
+  if (!isPersistedEnvelope(legacy)) {
+    // Never copy an unreadable row into canonical SQLite. Retire the legacy
+    // copy only once the quarantine provably holds it.
+    if (!setAside(quarantine, { source: 'legacy-local-storage', raw: legacy })) {
+      throw new InterpretationSetAsideError('failed');
+    }
+    if (shouldRetireLegacy()) retireLegacyInterpretation(legacyStorage, name);
+    return null;
+  }
 
   await durable.setItem(name, legacy);
   const verified = await durable.getItem(name);
+  hydratingRaw = verified;
   if (verified !== null && shouldRetireLegacy()) retireLegacyInterpretation(legacyStorage, name);
   return verified;
+}
+
+/** Where unreadable interpretation rows are kept instead of being destroyed. */
+export const INTERPRETATION_QUARANTINE_KEY = 'almamesh-interpretations.quarantine';
+
+/**
+ * Bounded lifetime: a quarantined row is dropped this many days after it was
+ * set aside. It never enters canonical SQLite, so backups exclude it; Start
+ * fresh, Reset & reload and clearing site data erase it sooner. Profile delete
+ * cannot attribute an unparseable blob to a profile, so it leaves it alone.
+ */
+export const INTERPRETATION_QUARANTINE_TTL_DAYS = 30;
+const QUARANTINE_TTL_MS = INTERPRETATION_QUARANTINE_TTL_DAYS * 24 * 60 * 60 * 1000;
+
+/** Drop expired (or unreadable) quarantine records; remove the key once empty. Never throws. */
+export function pruneExpiredInterpretationQuarantine(
+  storage: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> | undefined = browserLocalStorage(),
+  now: () => Date = () => new Date(),
+): void {
+  try {
+    if (storage === undefined || storage.getItem(INTERPRETATION_QUARANTINE_KEY) === null) return;
+    const cutoff = now().getTime() - QUARANTINE_TTL_MS;
+    const kept = readQuarantine(storage).filter((r) => Date.parse(r.quarantinedAt) >= cutoff);
+    if (kept.length === 0) storage.removeItem(INTERPRETATION_QUARANTINE_KEY);
+    else storage.setItem(INTERPRETATION_QUARANTINE_KEY, JSON.stringify(kept));
+  } catch {
+    // Best-effort housekeeping; hydration must never fail on it.
+  }
+}
+
+export interface UnreadableInterpretation {
+  readonly source: 'legacy-local-storage' | 'canonical-sqlite';
+  readonly raw: string;
+}
+
+interface QuarantinedInterpretation extends UnreadableInterpretation {
+  readonly quarantinedAt: string;
+}
+
+let interpretationsSetAside = false;
+
+/**
+ * Where this page load stands with an unreadable saved row. `pending`: a
+ * hydration is reading the row and has not yet proven it readable or held it.
+ * `failed`: the row could not be read or held. In both, the saved row may be
+ * the only copy, so persisting the (empty) live map would destroy it.
+ */
+export type InterpretationSetAsideStatus = 'none' | 'pending' | 'held' | 'failed';
+
+/** Typed refusal: interpretation writes are blocked to protect an unheld saved row. */
+export class InterpretationSetAsideError extends Error {
+  override readonly name = 'InterpretationSetAsideError';
+
+  constructor(readonly status: 'pending' | 'failed') {
+    super(
+      status === 'failed'
+        ? 'Saved interpretations could not be read or set aside; saving is paused to protect them.'
+        : 'Saved interpretations are still loading; saving is paused until they are read.',
+    );
+  }
+}
+
+let setAsideStatus: InterpretationSetAsideStatus = 'none';
+/** The exact bytes the current hydration handed to zustand (held if it then fails). */
+let hydratingRaw: string | null = null;
+
+/** Why interpretation writes are refused right now, or undefined when they are safe. */
+export function interpretationWriteRefusal(): InterpretationSetAsideError | undefined {
+  return setAsideStatus === 'pending' || setAsideStatus === 'failed'
+    ? new InterpretationSetAsideError(setAsideStatus)
+    : undefined;
+}
+
+function beginInterpretationHydration(): void {
+  hydratingRaw = null;
+  setAsideStatus = 'pending';
+}
+
+function finishInterpretationHydration(): void {
+  hydratingRaw = null;
+  if (setAsideStatus === 'pending') setAsideStatus = 'none';
+}
+
+/**
+ * Hydration threw after the row was read (or while reading it). Hold the raw
+ * bytes before anything else can touch the key; if nothing can be held, keep
+ * writes refused for this page load.
+ */
+function holdRowAfterHydrationFailure(
+  quarantine: (entry: UnreadableInterpretation) => boolean = quarantineUnreadableInterpretation,
+): void {
+  const raw = hydratingRaw;
+  hydratingRaw = null;
+  interpretationsSetAside = true;
+  if (setAsideStatus === 'failed') return;
+  const held = raw !== null && quarantine({ source: 'canonical-sqlite', raw });
+  setAsideStatus = held ? 'held' : 'failed';
+}
+
+/** True once this page load set aside unreadable saved interpretations (drives the boot notice). */
+export function interpretationsWereSetAside(): boolean {
+  return interpretationsSetAside;
+}
+
+function setAside(
+  quarantine: (entry: UnreadableInterpretation) => boolean,
+  entry: UnreadableInterpretation,
+): boolean {
+  interpretationsSetAside = true;
+  safeWarn('storage.interpretation_quarantined');
+  setAsideStatus = 'pending';
+  const held = quarantine(entry);
+  setAsideStatus = held ? 'held' : 'failed';
+  return held;
+}
+
+/** A zustand persist envelope: parseable JSON whose top level is an object. */
+function isPersistedEnvelope(raw: string): boolean {
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed);
+  } catch {
+    return false;
+  }
+}
+
+function readQuarantine(storage: Pick<Storage, 'getItem'>): QuarantinedInterpretation[] {
+  try {
+    const parsed: unknown = JSON.parse(storage.getItem(INTERPRETATION_QUARANTINE_KEY) ?? '[]');
+    return Array.isArray(parsed) ? (parsed as QuarantinedInterpretation[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Append an unreadable row to the quarantine (de-duplicated by source + bytes).
+ * Returns true only when the row is provably held, so callers never drop the
+ * only copy.
+ */
+export function quarantineUnreadableInterpretation(
+  entry: UnreadableInterpretation,
+  storage: Pick<Storage, 'getItem' | 'setItem'> | undefined = browserLocalStorage(),
+  now: () => Date = () => new Date(),
+): boolean {
+  if (storage === undefined) return false;
+  try {
+    const records = readQuarantine(storage);
+    const held = records.some((r) => r.source === entry.source && r.raw === entry.raw);
+    if (held) return true;
+    const record = { quarantinedAt: now().toISOString(), source: entry.source, raw: entry.raw };
+    storage.setItem(INTERPRETATION_QUARANTINE_KEY, JSON.stringify([...records, record]));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 const interpretationStorage: StateStorage = {
@@ -535,7 +714,14 @@ const interpretationStorage: StateStorage = {
     browserLocalStorage(),
     () => portableStatePersistence() === 'opfs',
   ),
-  setItem: (name, value) => deletionAwareIdbStorage.setItem(name, value),
+  setItem: (name, value) => {
+    // Never overwrite a saved row that is still pending or failed to be held.
+    if (interpretationWriteRefusal() !== undefined) {
+      safeWarn('storage.interpretation_write_refused');
+      return Promise.resolve();
+    }
+    return deletionAwareIdbStorage.setItem(name, value);
+  },
   removeItem: async (name) => {
     await deletionAwareIdbStorage.removeItem(name);
     retireLegacyInterpretation(browserLocalStorage(), name);
@@ -924,13 +1110,27 @@ export const useInterpretationStore = create<InterpretationStore>()(
     name: INTERPRETATION_PERSIST_NAME,
     version: INTERPRETATION_PERSIST_VERSION,
     migrate: migrateInterpretationPersistedState,
-    merge: mergeInterpretationPersistedState,
+    merge: (persisted, current) => {
+      const merged = mergeInterpretationPersistedState(persisted, current);
+      // The row parsed and merged: the live map now holds it, so saves are safe.
+      finishInterpretationHydration();
+      return merged;
+    },
     storage: createJSONStorage(() => interpretationStorage),
     partialize: (state) => ({ byChart: state.byChart }),
+    onRehydrateStorage: () => {
+      beginInterpretationHydration();
+      return (_state, error) => {
+        if (error === undefined) return;
+        holdRowAfterHydrationFailure();
+        safeWarn('storage.hydration_failed');
+        reportHydrationFailure(useInterpretationStore.persist, error);
+      };
+    },
   }),
 );
 
 /** Wait until canonical SQLite state has rehydrated before starting a paid run. */
-export function whenInterpretationHydrated(): Promise<void> {
+export function whenInterpretationHydrated(): Promise<HydrationOutcome> {
   return whenHydrated(useInterpretationStore.persist);
 }

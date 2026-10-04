@@ -320,6 +320,25 @@ describe('repository truth', () => {
     );
   });
 
+  it('attributes Workers to the memory proof only after boot storage settles', () => {
+    // Boot's canonical-state SQLite Worker once started inside the proof window
+    // on loaded CI runners and failed WebKit with noFallbackWorker (run 37219036375).
+    const browserProof = readRoot('frontend/apps/web/scripts/verify-sqlite-memory.mjs');
+    const provider = readRoot('frontend/apps/web/src/providers/AlmaMeshRuntimeProvider.tsx');
+    const dagger = readRoot('dagger/src/index.ts');
+    expect(provider).toContain('window.__almameshPortableStatePersistence = portableStatePersistence');
+    expect(browserProof).toContain("persistence() !== 'pending'");
+    expect(browserProof.indexOf("persistence() !== 'pending'")).toBeLessThan(
+      browserProof.indexOf('const workerStart = workers.length'),
+    );
+    for (const command of [
+      'node scripts/verify-sqlite-memory.mjs http://127.0.0.1:4199 --browser=chromium --slow-boot-storage-ms=1500',
+      'node scripts/verify-sqlite-memory.mjs http://127.0.0.1:4200 --browser=webkit --slow-boot-storage-ms=1500',
+    ]) {
+      expect(dagger).toContain(command);
+    }
+  });
+
   it('proves destructive reset through durable storage and landing-page postconditions', () => {
     const proof = readRoot('frontend/apps/web/scripts/verify-privacy-reset.mjs');
     const dagger = readRoot('dagger/src/index.ts');
