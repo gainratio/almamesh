@@ -41,7 +41,8 @@
     "searching": "Buscando em suas conversas…",
     "no_results": "Nenhuma mensagem anterior corresponde.",
     "thread_fallback": "Conversa",
-    "match": "{{percent}}% de correspondência"
+    "match": "{{percent}}% de correspondência",
+    "loading_model": "Carregando a busca no seu dispositivo (só na primeira vez)…"
   },
   "suggested": {
     "label": "Perguntas sugeridas:",
@@ -81,5 +82,8 @@
   "not_configured": {
     "notice": "Conecte um modelo de IA para fazer perguntas sobre seu mapa — seu mapa já está calculado no seu dispositivo.",
     "cta": "Conectar um modelo de IA"
+  },
+  "memory": {
+    "loading_model": "Carregando a memória no seu dispositivo (só na primeira vez)…"
   }
 }

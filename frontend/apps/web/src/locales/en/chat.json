@@ -38,7 +38,8 @@
     "searching": "Searching your conversations…",
     "no_results": "No matching past messages.",
     "thread_fallback": "Conversation",
-    "match": "{{percent}}% match"
+    "match": "{{percent}}% match",
+    "loading_model": "Loading on-device search (first time only)…"
   },
   "suggested": {
     "label": "Suggested questions:",
@@ -78,5 +79,8 @@
   "not_configured": {
     "notice": "Connect an AI model to ask questions about your chart — your chart itself is already calculated on your device.",
     "cta": "Connect an AI model"
+  },
+  "memory": {
+    "loading_model": "Loading on-device memory (first time only)…"
   }
 }

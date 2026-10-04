@@ -364,3 +364,16 @@ describe("ci runs independent gates concurrently", () => {
     expect(started).toEqual([])
   })
 })
+
+describe("memory-budget lane", () => {
+  test("the browser gate runs it on the hooks-off production build", () => {
+    const source = readFileSync(resolve(root, "dagger/src/index.ts"), "utf8")
+    const browser = source.slice(source.indexOf("  browser(): Container {"), source.indexOf("  pdf(): Container {"))
+    const lane = "MEMORY_BUDGET_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:memory-budget"
+    expect(browser).toContain(lane)
+    // After the hooks-off dist-real build, inside its preview — not the dist-verify (hooks on) one.
+    expect(browser.indexOf(lane)).toBeGreaterThan(browser.indexOf('this.localPreview(real, "dist-real"'))
+    const scripts = JSON.parse(readFileSync(resolve(root, "frontend/apps/web/package.json"), "utf8")).scripts
+    expect(scripts["test:e2e:memory-budget"]).toBe("playwright test --config=playwright.memory-budget.config.ts")
+  })
+})
