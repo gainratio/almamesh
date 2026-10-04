@@ -42,7 +42,7 @@ const KEYS = "/run/almamesh-keys"
 const BUN_INSTALLER = "/opt/almamesh/install-bun.sh"
 const LIVE_ORIGIN = "https://almamesh.com"
 const REPOSITORY = "hseshadr/almamesh"
-const EDGEPROC_BROWSER_SHA = "edd99713ddf6e700c384f8981dcfc25341cc20a7"
+const BROWSER_LEGO_SPEC = '"@gainratio/browser": "^0.2.0"'
 const CONTRACT_SHA = "1111111111111111111111111111111111111111"
 const CENTRAL_MODULE_SHA = "a895f726e9786bcfd2bdf68f87d3d5c4b411f702"
 const BUN_IMAGE =
@@ -292,12 +292,14 @@ export class AlmameshCi {
       .withExec(["sh", BUN_INSTALLER])
   }
 
+  // Our own libraries come from npm at a caret range (they track the newest
+  // release); a Git alias for any of them must never re-enter the manifests or lock.
   private edgeprocPinCheck(): string[] {
-    const pin = `github:hseshadr/edgeproc-browser#${EDGEPROC_BROWSER_SHA}`
+    const spec = JSON.stringify(BROWSER_LEGO_SPEC)
     return [
       "sh",
       "-c",
-      `grep -F ${JSON.stringify(pin)} packages/browser/package.json >/dev/null && grep -F ${JSON.stringify(pin)} packages/memory/package.json >/dev/null && grep -F ${JSON.stringify(pin)} packages/store/package.json >/dev/null && grep -F ${JSON.stringify(EDGEPROC_BROWSER_SHA)} bun.lock >/dev/null`,
+      `grep -F ${spec} packages/browser/package.json >/dev/null && grep -F ${spec} packages/memory/package.json >/dev/null && grep -F ${spec} packages/store/package.json >/dev/null && ! grep -F "github:hseshadr/" bun.lock >/dev/null`,
     ]
   }
 

@@ -19,7 +19,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@gainratio/browser": "github:hseshadr/edgeproc-browser#edd99713ddf6e700c384f8981dcfc25341cc20a7",
+    "@gainratio/browser": "^0.2.0",
     "@huggingface/transformers": "^4.3.0"
   },
   "devDependencies": {

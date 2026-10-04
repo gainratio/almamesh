@@ -50,7 +50,7 @@ frontend/
 | `@almamesh/shared-types` | The UI contract (`ChartData` and friends). UI code depends on this, not on the engine's raw shapes. |
 | `@almamesh/constants` | The **single design-token source** (colors, typography, astrology constants); also exports a Tailwind preset (`@almamesh/constants/tailwind.preset`). |
 | `@almamesh/browser` | The in-browser engine. Bundle sync + Pyodide chart Worker + `AlmaMeshRuntime`. |
-| `@gainratio/browser` | Standalone browser sync Lego, pinned to an exact public Git commit: signed-bundle sync into OPFS/IndexedDB with ed25519 + sha256 fail-closed. See `../docs/edgeproc-browser.md`. |
+| `@gainratio/browser` | Standalone browser sync Lego from npm, tracking its latest release (`^0.2.0`): signed-bundle sync into OPFS/IndexedDB with ed25519 + sha256 fail-closed. See `../docs/edgeproc-browser.md`. |
 | `@almamesh/store` | Zustand stores + **pure** adapters, all reshape-only with **no astrology math**: `chart.ts` (`SiderealChart → ChartData`), `chartGeometry.ts` (`buildChartGeometry` → N/S kundli geometry), `energy.ts` (`buildEnergyFrame(chart, t)` → 3D force-field frame), plus the `profiles` store (named, password-less people; each owns its charts). |
 | `@almamesh/llm` | Optional narration + multi-turn chat — **no AI by default** (the chart is pure calculation). Opt-in **cloud/BYO** only: any OpenAI-compatible endpoint (`engine:'openai-http'`) — a one-click OpenRouter preset (stronger) or a local Ollama. Saving runs a real connectivity probe (`testProviderConnection`); PII-redacted, fail-closed `local_only`. Never required to draw a chart. |
 | `@almamesh/memory` | Zero-egress semantic chat memory: self-hosted MiniLM embeddings plus the shared `@gainratio/browser/vector/sqlite` Worker. Exact cosine search and profile/generation filtering run in SQLite; derived vectors persist in OPFS. |
@@ -83,8 +83,8 @@ The Worker emits a `SiderealChart` (a TS mirror of the Python `SiderealContext`)
 first bootstrap everything needed lives in OPFS, so reloads are offline.
 
 > **No sibling checkout required:** `@almamesh/browser` resolves the public
-> `@gainratio/browser` repository at the exact commit pinned in its manifest and
-> the frozen Bun lock. AlmaMesh owns a one-line Worker entry plus a thin cache
+> `@gainratio/browser` package from npm at the version recorded in the frozen
+> Bun lock. AlmaMesh owns a one-line Worker entry plus a thin cache
 > compatibility/exit-gate adapter; generic sync, crypto, storage, and vector
 > code remain upstream. A fresh clone typechecks and builds with `bun install`
 > alone.

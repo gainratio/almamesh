@@ -1,25 +1,25 @@
 # Standalone `@gainratio/browser` provenance
 
-**TL;DR:** AlmaMesh consumes the generic signed-bundle browser engine from its
-public repository at one exact Git commit. This repository keeps only a thin
-AlmaMesh adapter: a consumer-owned Worker entry, the historical cache layout,
-and exit-gate observability.
+**TL;DR:** AlmaMesh consumes the generic signed-bundle browser engine from npm
+as `@gainratio/browser`, at a caret range that tracks the newest release. This
+repository keeps only a thin AlmaMesh adapter: a consumer-owned Worker entry,
+the historical cache layout, and exit-gate observability.
 
-## Pinned source
+## Source
 
 | Field | Value |
 |---|---|
-| Repository | `https://github.com/hseshadr/edgeproc-browser` |
-| Package | `@gainratio/browser` |
-| Commit | `a94e7f2a0237a7144658351c07cb296fcb0540fb` |
+| Package | [`@gainratio/browser`](https://www.npmjs.com/package/@gainratio/browser) |
+| Range | `^0.2.0` (no upper cap; never a Git alias, never `"latest"`) |
+| Source repository | `https://github.com/hseshadr/edgeproc-browser` |
 | License | MIT |
-| Consumer manifests | `frontend/packages/browser/package.json`, `frontend/packages/memory/package.json` |
-| Reproducible lock | `frontend/bun.lock` |
+| Consumer manifests | `frontend/packages/browser/package.json`, `frontend/packages/memory/package.json`, `frontend/packages/store/package.json` |
+| Reproducible lock | `frontend/bun.lock` (a deploy builds exactly what CI tested) |
 
-The Git commit includes deterministic `dist/` output for Bun's exact-Git
-bootstrap path. The upstream gate rebuilds it and fails if the committed output
-differs. Registry publication can replace this bootstrap path later without
-changing the public API.
+A Dependabot job (`.github/dependabot.yml`, group `gainratio`) checks
+`@gainratio/*` daily and opens a bump PR right after each release.
+`repositoryTruth.test.ts` fails if any `package.json` names the retired
+`@edgeproc/` scope or a Git dependency on our own libraries.
 
 ## Boundary owned here
 
@@ -43,8 +43,8 @@ persistence to `@gainratio/browser/vector/sqlite`.
 
 ## Upgrade gate
 
-1. Pin a reviewed 40-character upstream commit in the manifest, Bun lock, and
-   Dagger contract.
+1. Take the Dependabot `gainratio` PR (or bump the caret floor and run
+   `bun install` in `frontend/`) so the Bun lock records the new release.
 2. Run the complete frontend gate.
 3. Build the real Vite app and confirm it emits one signed-bundle Worker asset
    and one SQLite-vector Worker asset.
@@ -54,8 +54,8 @@ persistence to `@gainratio/browser/vector/sqlite`.
 5. Run the security audit and secret scan before merge.
 
 The browser gate also writes, searches, disposes, reopens, and searches a real
-OPFS SQLite vector index in Chromium. That is the consumer proof that the exact
-Git artifact contains runnable SQLite and sqlite-vector assets, not merely
+OPFS SQLite vector index in Chromium. That is the consumer proof that the published
+npm artifact contains runnable SQLite and sqlite-vector assets, not merely
 passing mocked adapter tests. The WebKit leg capability-probes OPFS: Playwright
 WebKit currently throws `UnknownError` while opening the root, so AlmaMesh must
 return the stable `memory.opfs_unavailable` refusal without spawning a Worker or
