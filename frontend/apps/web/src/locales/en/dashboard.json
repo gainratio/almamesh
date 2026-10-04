@@ -117,6 +117,7 @@
     "empty_title": "Chart Data Not Available",
     "empty_body": "Please generate your birth chart to view the technical analysis.",
     "force_field_title": "Planetary Force Field",
+    "force_field_unavailable": "This browser can't draw the 3D view here. Your chart below has everything.",
     "kundli_title": "Kundli & Planetary Position"
   }
 }

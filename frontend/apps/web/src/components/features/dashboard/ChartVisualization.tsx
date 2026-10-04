@@ -16,6 +16,7 @@ import { ChartStyleToggle } from '../../chart/ChartStyleToggle';
 import { NorthIndianChartSVG } from '../../chart/NorthIndianChartSVG';
 import { SouthIndianChartSVG } from '../../chart/SouthIndianChartSVG';
 import { PlanetaryTable } from '../astrologer-view';
+import { supportsWebGl, WebGlGate } from '../../WebGlGate';
 
 // Lazy so three.js + the force-field chunk stay out of first paint.
 const ForceFieldExperience = lazy(() =>
@@ -126,6 +127,8 @@ export function ChartVisualization({
   const selectedPlanet = useChartStore((state) => state.selectedPlanet);
   const setSelectedPlanet = useChartStore((state) => state.setSelectedPlanet);
 
+  // Asked once per mount; the gate also catches a scene that throws later.
+  const webGl = useMemo(() => supportsWebGl(), []);
   const geometry = useMemo(
     () => (siderealChart ? buildChartGeometry(siderealChart) : null),
     [siderealChart],
@@ -139,13 +142,22 @@ export function ChartVisualization({
     <div className="space-y-6" data-testid="chart-visualization">
       {/* Hero: the 3D planetary force field (centerpiece, lazy-loaded). */}
       <Card title={t('dashboard:chart_visualization.force_field_title')} className="print-no-break">
-        <Suspense fallback={<ForceFieldSkeleton />}>
-          <ForceFieldExperience
-            chart={siderealChart}
-            selectedPlanet={selectedPlanet}
-            onSelectPlanet={setSelectedPlanet}
-          />
-        </Suspense>
+        <WebGlGate
+          available={webGl}
+          fallback={
+            <p className="text-sm text-text-secondary" data-testid="force-field-unavailable">
+              {t('dashboard:chart_visualization.force_field_unavailable')}
+            </p>
+          }
+        >
+          <Suspense fallback={<ForceFieldSkeleton />}>
+            <ForceFieldExperience
+              chart={siderealChart}
+              selectedPlanet={selectedPlanet}
+              onSelectPlanet={setSelectedPlanet}
+            />
+          </Suspense>
+        </WebGlGate>
       </Card>
 
       <Card

@@ -120,6 +120,7 @@
     "empty_title": "Datos de la carta no disponibles",
     "empty_body": "Genera tu carta natal para ver el análisis técnico.",
     "force_field_title": "Campo de fuerza planetario",
+    "force_field_unavailable": "Este navegador no puede dibujar aquí la vista 3D. Tu carta, más abajo, lo tiene todo.",
     "kundli_title": "Kundli y posición planetaria"
   }
 }

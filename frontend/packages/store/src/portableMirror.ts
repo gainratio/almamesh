@@ -1,3 +1,5 @@
+import { safeWarn } from '@almamesh/shared-types';
+
 /**
  * A copy of the in-memory SQLite file in IndexedDB, for browsers that refuse
  * OPFS but still allow IndexedDB (Safari Private Browsing, some WebViews,
@@ -118,7 +120,9 @@ export async function claimSessionMirror(
   try {
     if (!(await claimOwnership(locks))) return undefined;
     return mirrorOver(await openDatabase(factory, environment.name ?? SESSION_MIRROR_DATABASE));
-  } catch {
+  } catch (error) {
+    // Expected where IndexedDB is refused too (Safari "Block all cookies").
+    safeWarn('storage.session_mirror_unavailable', error);
     return undefined;
   }
 }
