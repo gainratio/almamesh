@@ -184,6 +184,8 @@ export type PortableStateMutation =
 export interface PortableStateSnapshot {
   readonly epoch: number;
   readonly values: ReadonlyMap<string, string>;
+  /** Quarantine rows read at the same epoch, so a CAS transform can fence them too. */
+  readonly quarantine: ReadonlyMap<string, string>;
 }
 
 export interface LegacyStateStorage {
@@ -221,6 +223,7 @@ export class PortableStateRepository {
         namespace: PORTABLE_STATE_NAMESPACE,
         limit: MAX_CANONICAL_ROWS,
       });
+      const quarantine = await this.listQuarantine();
       const after = await this.#store.runtimeInfo();
       if (page.nextKey !== undefined) {
         throw new Error('Portable state exceeds the supported canonical row count.');
@@ -230,6 +233,7 @@ export class PortableStateRepository {
       return {
         epoch: before.epoch,
         values: new Map(page.rows.map((row) => [row.key, decode(row.value, row.key)])),
+        quarantine,
       };
     }
     throw new Error('Portable state remained busy while reading a consistent snapshot.');

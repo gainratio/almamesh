@@ -23,6 +23,7 @@ import {
   openPortableStateWithFallback,
 } from './portablePersistence';
 import {
+  absorbLegacyQuarantine,
   memoryQuarantineRows,
   quarantineKeysOwnedBy,
   repositoryQuarantineRows,
@@ -87,6 +88,12 @@ const sessionRows = new Map<string, unknown>();
 /** Test seam: the in-memory session rows used when no SQLite repository exists. */
 export function sessionRowsForTests(): Map<string, unknown> {
   return sessionRows;
+}
+
+/** Test seam: forget the session dataset, ledger and quarantine (a new page load). */
+export function resetSessionStateForTests(): void {
+  sessionRows.clear();
+  sessionQuarantine.clear();
 }
 
 /** Session-only quarantine rows for the same runtimes (see interpretationQuarantine.ts). */
@@ -187,6 +194,7 @@ export function setPortableStateRepositoryForTests(
   repository: PortableStateRepository | null | undefined,
 ): void {
   portableRepositoryOverride = repository;
+  resetSessionStateForTests();
   locallyHydratedDatasetEpochs.clear();
   locallyAcknowledgedDatasetValues.clear();
   locallyHydratedPreferenceEpochs.clear();
@@ -802,14 +810,17 @@ export async function commitDatasetGeneration(
     }
   }
   const repository = await portableRepository();
+  await absorbLegacyQuarantine(
+    browserLocalStorage(),
+    repository === null ? memoryQuarantineRows(sessionQuarantine) : repositoryQuarantineRows(repository),
+    await pendingDeletedProfileIds(repository),
+    options.clearInterpretationQuarantine === true,
+  );
   if (repository === null) {
     commitSessionGeneration(epoch, writes, options);
   } else {
     for (const [index] of writes.entries()) options.afterWrite?.(index);
-    // Read outside the CAS: quarantine rows are only added at boot hydration,
-    // and a row added after this list is still bounded by its 30-day expiry.
-    const heldQuarantine = await repository.listQuarantine();
-    await repository.transactWithResult(({ values }) => {
+    await repository.transactWithResult(({ values, quarantine }) => {
       const ledger = parseDeletionTombstones(values.get(PORTABLE_LEDGER_KEY) ?? null);
       if (!ledger.restoreInProgress || ledger.restoreEpoch !== epoch) {
         throw new Error('Dataset Replace generation is no longer active.');
@@ -859,7 +870,7 @@ export async function commitDatasetGeneration(
         }),
       });
       mutations.push(
-        ...quarantineDeletes(heldQuarantine, effectiveLedger.profileIds, options).map(
+        ...quarantineDeletes(quarantine, effectiveLedger.profileIds, options).map(
           (key) => ({ type: 'delete', namespace: PORTABLE_QUARANTINE_NAMESPACE, key }) as const,
         ),
       );
@@ -877,6 +888,18 @@ export async function commitDatasetGeneration(
     }
   }
   if (localBackupRestoreEpoch === epoch) localBackupRestoreEpoch = undefined;
+}
+
+/** Profiles the pending generation deletes (tombstones not revived by a restore). */
+async function pendingDeletedProfileIds(
+  repository: PortableStateRepository | null,
+): Promise<readonly string[]> {
+  const ledger =
+    repository === null
+      ? mergeDeletionTombstones(sessionRows.get(DELETION_TOMBSTONES_KEY), {})
+      : parseDeletionTombstones(await repository.read(PORTABLE_LEDGER_KEY));
+  const revived = new Set(ledger.reviveProfileIds ?? []);
+  return ledger.profileIds.filter((id) => !revived.has(id));
 }
 
 /** Quarantine keys a generation commit must delete alongside its dataset rows. */

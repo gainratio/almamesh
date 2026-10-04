@@ -80,10 +80,19 @@ const RESET_IDB_KEYS = [
   'almamesh-interpretations',
   'almamesh-mesh-readings',
 ] as const;
+/**
+ * Pre-SQLite idb-keyval rows an older build may have left behind. Reset only
+ * deletes them; nothing writes IndexedDB any more.
+ */
+const LEGACY_IDB_KEYS = [
+  ...RESET_IDB_KEYS,
+  // Older builds kept RAG vectors here; vectors now live in SqliteVectorIndex.
+  'almamesh-chat-vectors',
+] as const;
 const legacyKeyvalStore = createStore('keyval-store', 'keyval');
 
 async function clearLegacyPersistedRows(): Promise<void> {
-  await Promise.all(RESET_IDB_KEYS.map((key) => idbDel(key, legacyKeyvalStore)));
+  await Promise.all(LEGACY_IDB_KEYS.map((key) => idbDel(key, legacyKeyvalStore)));
 }
 
 function getUsableLocalStorage(): Pick<Storage, 'removeItem'> | null {

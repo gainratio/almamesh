@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { VedicInterpretation } from '@almamesh/shared-types';
 import {
-  sessionRowsForTests,
+  resetSessionStateForTests,
   setActiveProfileScope,
   readDeletionTombstones,
   useChartLibraryStore,
@@ -35,7 +35,7 @@ function interpretation(summary: string): VedicInterpretation {
 
 beforeEach(() => {
   // Node has no SQLite Worker: the dataset ledger lives in session memory.
-  sessionRowsForTests().clear();
+  resetSessionStateForTests();
   setActiveProfileScope(null);
   useProfilesStore.setState({ profiles: {}, activeProfileId: null });
   useChartLibraryStore.setState({ charts: {} });

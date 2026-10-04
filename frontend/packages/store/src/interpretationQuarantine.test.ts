@@ -63,7 +63,7 @@ describe('legacy localStorage quarantine migrates into SQLite (copy, verify, ret
       [INTERPRETATION_QUARANTINE_KEY]: JSON.stringify(LEGACY_RECORDS),
     });
 
-    await migrateLegacyInterpretationQuarantine(legacy, rows, true, now);
+    await migrateLegacyInterpretationQuarantine(legacy, rows, now);
 
     const held = await readInterpretationQuarantine(rows);
     expect(held.map(({ source, raw, quarantinedAt }) => ({ quarantinedAt, source, raw }))).toEqual(
@@ -79,14 +79,14 @@ describe('legacy localStorage quarantine migrates into SQLite (copy, verify, ret
     });
     legacy.failRemove = 1;
 
-    await expect(migrateLegacyInterpretationQuarantine(legacy, rows, true, now)).rejects.toThrow(
+    await expect(migrateLegacyInterpretationQuarantine(legacy, rows, now)).rejects.toThrow(
       'simulated crash',
     );
     // SQLite already holds the copy; the source is still there too.
     expect(legacy.map.has(INTERPRETATION_QUARANTINE_KEY)).toBe(true);
     expect(quarantineRowCount(sqlite)).toBe(2);
 
-    await migrateLegacyInterpretationQuarantine(legacy, rows, true, now);
+    await migrateLegacyInterpretationQuarantine(legacy, rows, now);
 
     expect(quarantineRowCount(sqlite)).toBe(2);
     expect(legacy.map.has(INTERPRETATION_QUARANTINE_KEY)).toBe(false);
@@ -98,7 +98,7 @@ describe('legacy localStorage quarantine migrates into SQLite (copy, verify, ret
     const legacy = legacyStorage({ [INTERPRETATION_QUARANTINE_KEY]: source });
     sqlite.failNext = new Error('disk full');
 
-    await expect(migrateLegacyInterpretationQuarantine(legacy, rows, true, now)).rejects.toThrow(
+    await expect(migrateLegacyInterpretationQuarantine(legacy, rows, now)).rejects.toThrow(
       'disk full',
     );
 
@@ -106,28 +106,18 @@ describe('legacy localStorage quarantine migrates into SQLite (copy, verify, ret
     expect(quarantineRowCount(sqlite)).toBe(0);
   });
 
-  it('keeps the localStorage source while SQLite is session-only (memory persistence)', async () => {
+  // Contract reversed (northstar review of #240): keeping the source while
+  // SQLite was session-only re-copied it every boot and resurrected readings of
+  // profiles deleted since. The key is retired once the session holds the copy.
+  it('retires the localStorage source even while SQLite is session-only', async () => {
     const { rows } = setup();
     const legacy = legacyStorage({
       [INTERPRETATION_QUARANTINE_KEY]: JSON.stringify(LEGACY_RECORDS),
     });
 
-    await migrateLegacyInterpretationQuarantine(legacy, rows, false, now);
+    await migrateLegacyInterpretationQuarantine(legacy, rows, now);
 
     expect(await readInterpretationQuarantine(rows)).toHaveLength(2);
-    expect(legacy.map.has(INTERPRETATION_QUARANTINE_KEY)).toBe(true);
-  });
-
-  it('decides whether to retire only after SQLite holds the copy (persistence is known by then)', async () => {
-    const { sqlite, rows } = setup();
-    const legacy = legacyStorage({
-      [INTERPRETATION_QUARANTINE_KEY]: JSON.stringify(LEGACY_RECORDS),
-    });
-    // Like portableStatePersistence(): 'pending' until SQLite has opened.
-    const retireOnceDurable = () => quarantineRowCount(sqlite) > 0;
-
-    await migrateLegacyInterpretationQuarantine(legacy, rows, retireOnceDurable, now);
-
     expect(legacy.map.has(INTERPRETATION_QUARANTINE_KEY)).toBe(false);
   });
 
@@ -135,7 +125,7 @@ describe('legacy localStorage quarantine migrates into SQLite (copy, verify, ret
     const { rows } = setup();
     const legacy = legacyStorage({ [INTERPRETATION_QUARANTINE_KEY]: 'not json' });
 
-    await migrateLegacyInterpretationQuarantine(legacy, rows, true, now);
+    await migrateLegacyInterpretationQuarantine(legacy, rows, now);
 
     const held = await readInterpretationQuarantine(rows);
     expect(held.map((record) => record.raw)).toEqual(['not json']);

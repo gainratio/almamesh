@@ -140,6 +140,33 @@ test.describe('live smoke', () => {
     expect(consoleErrors).toEqual([]);
   });
 
+  test('memory-mode visitor (OPFS refused) holding an old localStorage quarantine row: the key is retired', { tag: '@memory-quarantine' }, async ({ context }) => {
+    test.skip(!SEED_LEGACY_QUARANTINE, 'opt-in: LIVE_SMOKE_SEED_LEGACY_QUARANTINE=1');
+    // Refuse OPFS the way some browsers do, so SQLite runs session-only.
+    await context.addInitScript(() => {
+      const storage = navigator.storage as StorageManager & { getDirectory: () => Promise<FileSystemDirectoryHandle> };
+      storage.getDirectory = () => Promise.reject(new DOMException('refused for the smoke', 'SecurityError'));
+    });
+    const page = await context.newPage();
+    const pageErrors: string[] = [];
+    page.on('pageerror', (error) => pageErrors.push(error.message));
+    await page.goto(`${ORIGIN}/robots.txt`);
+    await page.evaluate(([key, marker]) => {
+      window.localStorage.setItem(key, JSON.stringify([
+        { quarantinedAt: new Date().toISOString(), source: 'legacy-local-storage', raw: marker },
+      ]));
+    }, [LEGACY_QUARANTINE_KEY, LEGACY_QUARANTINE_MARKER] as const);
+    await page.goto(`${ORIGIN}/welcome`);
+    await expect
+      .poll(() => page.evaluate((key) => window.localStorage.getItem(key), LEGACY_QUARANTINE_KEY), {
+        message: 'memory mode still retires the legacy key (no copy-back on the next boot)',
+      })
+      .toBeNull();
+    await page.reload();
+    expect(await page.evaluate((key) => window.localStorage.getItem(key), LEGACY_QUARANTINE_KEY)).toBeNull();
+    expect(pageErrors).toEqual([]);
+  });
+
   test('returning visitor: previous deploy upgrades, engine ready, chart renders', { tag: '@returning' }, async ({ context, request }) => {
     expect(PREVIOUS_URL, 'LIVE_SMOKE_PREVIOUS_URL is required for the returning pass').not.toBe('');
     const previousEntry = await servedEntryChunk(request, PREVIOUS_URL);

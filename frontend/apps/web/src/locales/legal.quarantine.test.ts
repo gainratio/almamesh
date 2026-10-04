@@ -24,6 +24,14 @@ const QUARANTINE_STORAGE = {
   pt: 'Se uma interpretação salva não puder ser lida, ela é separada neste dispositivo em uma tabela de quarentena dentro desse mesmo banco SQLite por até 30 dias em vez de ser perdida.',
 } as const;
 
+// Pinned: what profile delete does to set-aside rows, including the rows it
+// cannot touch (northstar review of #240: "removes every" overstated it).
+const QUARANTINE_PROFILE_DELETE = {
+  en: "Deleting a profile removes the set-aside records that hold that profile's readings; a record that matches no profile stays until Reset chart / start fresh, Reset & reload, clearing site data, or the 30-day expiry removes it.",
+  es: 'Eliminar un perfil borra los registros apartados que contienen lecturas de ese perfil; un registro que no corresponde a ningún perfil permanece hasta que lo eliminen Restablecer carta / empezar de cero, Restablecer y recargar, borrar los datos del sitio o el vencimiento de 30 días.',
+  pt: 'Excluir um perfil remove os registros separados que contêm leituras desse perfil; um registro que não corresponde a nenhum perfil permanece até ser apagado por Redefinir mapa / começar do zero, Redefinir e recarregar, limpar os dados do site ou o prazo de 30 dias.',
+} as const;
+
 // Contract reversed (2026-10-04): profile delete used to leave the quarantine
 // alone. It now removes every set-aside record holding that profile's readings;
 // only a record matched to no profile waits for reset, site-data clear or expiry.
@@ -40,6 +48,11 @@ describe.each(Object.keys(LEGAL) as (keyof typeof LEGAL)[])('[%s] quarantine dis
   it('says the quarantine is a SQLite table, kept 30 days, never a localStorage key', () => {
     expect(privacyStorage).toContain(QUARANTINE_STORAGE[lang]);
     expect(privacyStorage).not.toMatch(/localStorage[^.]*almamesh-interpretations\.quarantine[^.]*30/);
+  });
+
+  it('says profile delete removes only that profile’s rows; unmatched rows wait for reset or expiry', () => {
+    expect(privacyStorage).toContain(QUARANTINE_PROFILE_DELETE[lang]);
+    expect(privacyStorage).not.toMatch(/removes every set-aside|borra todos los registros apartados|remove todos os registros separados/);
   });
 
   it('keeps the profile list item free of the legacy key', () => {

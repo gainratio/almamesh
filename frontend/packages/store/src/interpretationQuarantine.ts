@@ -11,6 +11,8 @@
  * them; deleting a profile removes every row holding that profile's readings
  * (in the same SQLite transaction as the deletion). Backups exclude them.
  */
+import { safeWarn } from '@almamesh/shared-types';
+
 import type {
   PortableQuarantineMutation,
   PortableStateRepository,
@@ -164,7 +166,9 @@ export async function holdUnreadableInterpretation(
       ]);
     }
     return (await rows.list()).has(key);
-  } catch {
+  } catch (error) {
+    // Not held: the caller keeps writes refused so the only copy survives.
+    safeWarn('storage.interpretation_quarantine_hold_failed', error);
     return false;
   }
 }
@@ -184,8 +188,9 @@ export async function pruneExpiredInterpretationQuarantine(
     await rows.apply(
       expired.map((key) => ({ type: 'delete', namespace: PORTABLE_QUARANTINE_NAMESPACE, key })),
     );
-  } catch {
-    // Best-effort housekeeping; hydration must never fail on it.
+  } catch (error) {
+    // Hydration must not fail on housekeeping; the next boot retries expiry.
+    safeWarn('storage.interpretation_quarantine_prune_failed', error);
   }
 }
 
@@ -225,23 +230,17 @@ function legacyRecords(raw: string, now: () => Date): QuarantinedInterpretation[
  * SQLite: copy every record in ONE batch, verify SQLite holds each, and only
  * then remove the localStorage key. Re-running is idempotent (digest keys). A
  * failure before the verified commit leaves the source untouched, so an older
- * build rolled back to still finds it. `retire` is false while SQLite is
- * session-only (memory persistence): the source then stays the durable copy.
- * It is evaluated after the verified copy, once SQLite's persistence is known.
+ * build rolled back to still finds it. The key is retired even when SQLite is
+ * session-only (OPFS refused): a key kept as the durable copy would be copied
+ * back on every boot and resurrect readings of a profile deleted since.
  * TODO(remove after 2026-11-04, one release after the SQLite move).
  */
 export async function migrateLegacyInterpretationQuarantine(
   legacy: LegacyWebStorage | undefined,
   rows: InterpretationQuarantineRows,
-  retire: boolean | (() => boolean),
   now: () => Date = () => new Date(),
 ): Promise<void> {
-  let raw: string | null;
-  try {
-    raw = legacy?.getItem(INTERPRETATION_QUARANTINE_KEY) ?? null;
-  } catch {
-    return;
-  }
+  const raw = readLegacyQuarantine(legacy);
   if (raw === null) return;
   const copies = await Promise.all(
     legacyRecords(raw, now).map((record) => rowFor(record, record.quarantinedAt)),
@@ -258,12 +257,59 @@ export async function migrateLegacyInterpretationQuarantine(
       })),
   );
   const verified = await rows.list();
-  const missing = copies.filter(({ key, record }) => parseRecord(verified.get(key) ?? '')?.raw !== record.raw);
+  const missing = copies.filter(
+    ({ key, record }) => parseRecord(verified.get(key) ?? '')?.raw !== record.raw,
+  );
   if (missing.length > 0) {
     throw new Error('Interpretation quarantine migration did not verify in SQLite.');
   }
-  // Decided only now: whether SQLite is durable (OPFS) is known once it opened.
-  if (typeof retire === 'function' ? retire() : retire) {
-    legacy?.removeItem(INTERPRETATION_QUARANTINE_KEY);
+  legacy?.removeItem(INTERPRETATION_QUARANTINE_KEY);
+}
+
+function readLegacyQuarantine(legacy: LegacyWebStorage | undefined): string | null {
+  try {
+    return legacy?.getItem(INTERPRETATION_QUARANTINE_KEY) ?? null;
+  } catch (error) {
+    // Blocked site storage: nothing can be read, so nothing is copied or retired.
+    safeWarn('storage.interpretation_quarantine_legacy_unreadable', error);
+    return null;
+  }
+}
+
+/** Expiry for a legacy source that could not be migrated: drop it once every record is past 30 days. */
+export function retireExpiredLegacyQuarantine(
+  legacy: LegacyWebStorage | undefined,
+  now: () => Date = () => new Date(),
+): void {
+  const raw = readLegacyQuarantine(legacy);
+  if (raw === null) return;
+  const cutoff = now().getTime() - QUARANTINE_TTL_MS;
+  const live = legacyRecords(raw, now).some((record) => Date.parse(record.quarantinedAt) >= cutoff);
+  if (!live) legacy?.removeItem(INTERPRETATION_QUARANTINE_KEY);
+}
+
+/**
+ * Before a deletion generation commits: bring any legacy source into SQLite so
+ * the commit purges it with everything else. If that copy fails, a source that
+ * holds readings of a deleted profile (or any source, on Start fresh) is
+ * removed outright: the user asked for that data to be erased.
+ */
+export async function absorbLegacyQuarantine(
+  legacy: LegacyWebStorage | undefined,
+  rows: InterpretationQuarantineRows,
+  deletedProfileIds: readonly string[],
+  clearAll: boolean,
+): Promise<void> {
+  try {
+    await migrateLegacyInterpretationQuarantine(legacy, rows);
+  } catch (error) {
+    safeWarn('storage.interpretation_quarantine_migration_failed', error);
+    const raw = readLegacyQuarantine(legacy);
+    if (raw === null) return;
+    const deleted = new Set(deletedProfileIds);
+    const owned = legacyRecords(raw, () => new Date()).some((record) =>
+      profileIdsIn(record.raw).some((id) => deleted.has(id)),
+    );
+    if (clearAll || owned) legacy?.removeItem(INTERPRETATION_QUARANTINE_KEY);
   }
 }

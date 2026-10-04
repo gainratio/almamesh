@@ -20,7 +20,7 @@ import {
   holdUnreadableInterpretation,
   interpretationQuarantineRows,
   readInterpretationQuarantine,
-  sessionRowsForTests,
+  resetSessionStateForTests,
   setActiveProfileScope,
   useChartLibraryStore,
   useChatStore,
@@ -55,6 +55,8 @@ const LEGACY_IDB_KEYS = [
   'almamesh-predictive',
   'almamesh-interpretations',
   'almamesh-mesh-readings',
+  // Older builds kept RAG vectors here; vectors now live in SqliteVectorIndex.
+  'almamesh-chat-vectors',
 ] as const;
 
 function deferred(): { promise: Promise<void>; resolve: () => void } {
@@ -112,7 +114,7 @@ beforeEach(() => {
   // Clean slate WITHOUT exercising the code under test.
   localStorage.clear();
   // Node has no SQLite Worker: the dataset ledger lives in session memory.
-  sessionRowsForTests().clear();
+  resetSessionStateForTests();
   setActiveProfileScope(null);
   useChartLibraryStore.setState({ charts: {} });
   useProfilesStore.setState({ profiles: {}, activeProfileId: null });

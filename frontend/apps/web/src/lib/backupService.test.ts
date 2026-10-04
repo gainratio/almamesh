@@ -172,6 +172,7 @@ describe('portable SQLite import', () => {
   );
   const portableSnapshot: PortableStateSnapshot = {
     epoch: 7,
+    quarantine: new Map(),
     values: new Map([
       ['almamesh-chat-history', chatEnvelope],
       ['almamesh-deletion-tombstones', JSON.stringify({ version: 1 })],
@@ -286,6 +287,7 @@ describe('encrypted bundle round-trip (format v3)', () => {
   );
   const snapshotA: PortableStateSnapshot = {
     epoch: 4,
+    quarantine: new Map(),
     values: new Map([
       ['almamesh-chat-history', chatEnvelope],
       ['almamesh-chart-library', snapshot(CHART_LIBRARY_STATE, 0)],

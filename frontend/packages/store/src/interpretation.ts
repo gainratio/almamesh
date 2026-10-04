@@ -29,6 +29,7 @@ import {
   holdUnreadableInterpretation,
   migrateLegacyInterpretationQuarantine,
   pruneExpiredInterpretationQuarantine,
+  retireExpiredLegacyQuarantine,
   type UnreadableInterpretation,
 } from './interpretationQuarantine';
 import { portableStatePersistence } from './portablePersistence';
@@ -521,7 +522,7 @@ export async function readInterpretationPersistedValue(
 ): Promise<string | null> {
   const shouldRetireLegacy = () =>
     typeof retireLegacy === 'function' ? retireLegacy() : retireLegacy;
-  await prepareInterpretationQuarantine(legacyStorage, shouldRetireLegacy);
+  await prepareInterpretationQuarantine(legacyStorage);
   const durableValue = await durable.getItem(name);
   if (durableValue !== null) {
     // A row a previous build copied in unparsed would fail JSON.parse on every
@@ -565,20 +566,20 @@ export async function readInterpretationPersistedValue(
 
 /**
  * Before reading: move an older build's localStorage quarantine into SQLite
- * (copy, verify, then retire; the source is kept while SQLite is session-only)
- * and drop rows past their 30-day expiry. A failed move keeps the source and
- * never blocks hydration.
+ * (copy, verify, then retire — also when SQLite is session-only) and drop rows
+ * past their 30-day expiry. A failed move keeps the source until it expires
+ * and never blocks hydration: the boot notice and app must still load.
  */
 async function prepareInterpretationQuarantine(
   legacyStorage: LegacyWebStorage | undefined,
-  retire: () => boolean,
 ): Promise<void> {
   try {
     const rows = await interpretationQuarantineRows();
-    await migrateLegacyInterpretationQuarantine(legacyStorage, rows, retire);
+    await migrateLegacyInterpretationQuarantine(legacyStorage, rows);
     await pruneExpiredInterpretationQuarantine(rows);
-  } catch {
-    safeWarn('storage.interpretation_quarantine_migration_failed');
+  } catch (error) {
+    safeWarn('storage.interpretation_quarantine_migration_failed', error);
+    retireExpiredLegacyQuarantine(legacyStorage);
   }
 }
 
@@ -588,7 +589,9 @@ export async function quarantineUnreadableInterpretation(
 ): Promise<boolean> {
   try {
     return await holdUnreadableInterpretation(entry, await interpretationQuarantineRows());
-  } catch {
+  } catch (error) {
+    // SQLite itself could not be opened: not held, so writes stay refused.
+    safeWarn('storage.interpretation_quarantine_hold_failed', error);
     return false;
   }
 }
