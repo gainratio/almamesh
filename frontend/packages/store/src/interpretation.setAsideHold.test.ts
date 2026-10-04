@@ -1,16 +1,16 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { IDBFactory } from 'fake-indexeddb';
-import { createStore, get as idbGet, set as idbSet } from 'idb-keyval';
 
-import { whenPersistenceSettled } from './deletionTombstones';
+import { setPortableStateRepositoryForTests, whenPersistenceSettled } from './deletionTombstones';
+import { useInterpretationStore, whenInterpretationHydrated } from './interpretation';
 import {
-  INTERPRETATION_QUARANTINE_KEY,
-  useInterpretationStore,
-  whenInterpretationHydrated,
-} from './interpretation';
+  readInterpretationQuarantine,
+  repositoryQuarantineRows,
+} from './interpretationQuarantine';
+import { PORTABLE_QUARANTINE_NAMESPACE, PortableStateRepository } from './portableState';
+import { PortableMemoryStore } from './portableMemoryStore.testkit';
 
 // Own file: the set-aside state is page-load (module) state, and these tests
-// drive the real persisted store against a real (fake) IndexedDB row.
+// drive the real persisted store against a real SQLite repository row.
 const NAME = 'almamesh-interpretations';
 
 // A row an older build wrote: a valid persist envelope whose pre-v6 entry has a
@@ -20,38 +20,28 @@ const POISONED = JSON.stringify({
   version: 6,
 });
 
-function memoryStorage(failWrites = false) {
-  const map = new Map<string, string>();
-  return {
-    map,
-    getItem: (name: string) => map.get(name) ?? null,
-    setItem: (name: string, value: string) => {
-      if (failWrites) throw new Error('QuotaExceededError');
-      map.set(name, value);
-    },
-    removeItem: (name: string) => void map.delete(name),
-  };
-}
+const sqlite = new PortableMemoryStore();
+const repository = new PortableStateRepository(sqlite);
+const quarantine = repositoryQuarantineRows(repository);
+let quarantineRefusesWrites = false;
 
-const globals = globalThis as { indexedDB?: unknown; localStorage?: unknown };
-let originalIdb: unknown;
-let originalLocal: unknown;
-
-// One IndexedDB for the file: the durable adapter caches its connection.
 beforeAll(() => {
-  originalIdb = globals.indexedDB;
-  originalLocal = globals.localStorage;
-  globals.indexedDB = new IDBFactory();
+  setPortableStateRepositoryForTests(repository);
+  sqlite.beforeBatch = async (mutations) => {
+    if (
+      quarantineRefusesWrites &&
+      mutations.some((m) => m.namespace === PORTABLE_QUARANTINE_NAMESPACE)
+    ) {
+      throw new Error('QuotaExceededError');
+    }
+  };
 });
 
-afterAll(() => {
-  globals.indexedDB = originalIdb;
-  globals.localStorage = originalLocal;
-});
+afterAll(() => setPortableStateRepositoryForTests(undefined));
 
-async function seedAndRehydrate(raw: string, local: ReturnType<typeof memoryStorage>) {
-  globals.localStorage = local;
-  await idbSet(NAME, raw, createStore('keyval-store', 'keyval'));
+async function seedAndRehydrate(raw: string, refuseQuarantine = false) {
+  quarantineRefusesWrites = refuseQuarantine;
+  await repository.write(NAME, raw);
   // Await this hydration itself: a failure stays reported for the page load,
   // so the barrier alone would settle before a later hydration finishes.
   await Promise.race([
@@ -63,14 +53,23 @@ async function seedAndRehydrate(raw: string, local: ReturnType<typeof memoryStor
 
 async function durableRow(): Promise<unknown> {
   await whenPersistenceSettled(NAME);
-  return idbGet(NAME, createStore('keyval-store', 'keyval'));
+  return repository.read(NAME);
+}
+
+async function heldRaw(): Promise<string[]> {
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    const held = await readInterpretationQuarantine(quarantine);
+    if (held.length > 0) return held.map((record) => record.raw);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  return [];
 }
 
 describe('an unreadable saved row is actually held, never overwritten', () => {
   // Runs first: a failed hydration stays reported as failed for the page load.
   it('control: a readable row is overwritten by the next save (the harness sees writes)', async () => {
     const healthy = JSON.stringify({ state: { byChart: {} }, version: 6 });
-    expect(await seedAndRehydrate(healthy, memoryStorage())).toEqual({ status: 'hydrated' });
+    expect(await seedAndRehydrate(healthy)).toEqual({ status: 'hydrated' });
     useInterpretationStore.getState().startInterpretation('c2', 'p2');
     expect(String(await durableRow())).toContain('"c2"');
   });
@@ -80,8 +79,7 @@ describe('an unreadable saved row is actually held, never overwritten', () => {
       state: { byChart: { c1: { status: 'complete', sections: {} } } },
       version: 6,
     });
-    globals.localStorage = memoryStorage();
-    await idbSet(NAME, saved, createStore('keyval-store', 'keyval'));
+    await repository.write(NAME, saved);
     const hydrating = useInterpretationStore.persist.rehydrate();
     useInterpretationStore.getState().startInterpretation('c9', 'p9');
     await hydrating;
@@ -90,25 +88,21 @@ describe('an unreadable saved row is actually held, never overwritten', () => {
   });
 
   it('fails closed and refuses writes when an unparseable row cannot be set aside', async () => {
-    const outcome = await seedAndRehydrate('reset-proof', memoryStorage(true));
+    const outcome = await seedAndRehydrate('reset-proof', true);
     expect(outcome).toMatchObject({ status: 'failed' });
     useInterpretationStore.getState().startInterpretation('c2', 'p2');
     expect(await durableRow()).toBe('reset-proof');
   });
 
-  it('stores the raw row in the quarantine when hydration cannot read it', async () => {
-    const local = memoryStorage();
-    await seedAndRehydrate(POISONED, local);
-    const held = JSON.parse(local.map.get(INTERPRETATION_QUARANTINE_KEY) ?? '[]') as {
-      raw: string;
-      quarantinedAt: string;
-    }[];
-    expect(held.map((r) => r.raw)).toContain(POISONED);
-    expect(Number.isNaN(Date.parse(held[0]?.quarantinedAt ?? ''))).toBe(false);
+  it('stores the raw row in the SQLite quarantine when hydration cannot read it', async () => {
+    await seedAndRehydrate(POISONED);
+    expect(await heldRaw()).toContain(POISONED);
+    const [record] = await readInterpretationQuarantine(quarantine);
+    expect(Number.isNaN(Date.parse(record?.quarantinedAt ?? ''))).toBe(false);
   });
 
   it('refuses to overwrite the saved row while the set-aside failed', async () => {
-    const outcome = await seedAndRehydrate(POISONED, memoryStorage(true));
+    const outcome = await seedAndRehydrate(POISONED, true);
     expect(outcome).toMatchObject({ status: 'failed' });
     useInterpretationStore.getState().startInterpretation('c2', 'p2');
     expect(await durableRow()).toBe(POISONED);

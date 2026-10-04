@@ -12,6 +12,7 @@
  *  - confirmed rectification records
  *  - persisted predictive contexts
  *  - semantic chat-memory vectors
+ *  - quarantined (unreadable) interpretations held in SQLite
  *  - in-memory mesh edges
  *
  * PRESERVED on purpose:
@@ -60,7 +61,7 @@ const INTERPRETATIONS_KEY = 'almamesh-interpretations';
 const LEGACY_LOCAL_STORAGE_KEYS = [
   CHART_LIBRARY_FLAG_KEY,
   INTERPRETATIONS_KEY,
-  // Unreadable interpretations set aside at boot are still user data: erase them too.
+  // An older build's localStorage quarantine (now migrated into SQLite): erase it too.
   INTERPRETATION_QUARANTINE_KEY,
   'almamesh-language',
   'almamesh-llm-settings',
@@ -127,11 +128,12 @@ const DEFAULT_DEPS: ResetEverythingDeps = {
   waitForHydration: waitForResetStoresHydrated,
   clearPersisted: async (epoch) => {
     if (epoch === undefined) return;
+    // One SQLite batch: dataset rows, the quarantine of unreadable
+    // interpretations (personal data too), and the generation flip.
     await commitDatasetGeneration(
       epoch,
       RESET_IDB_KEYS.map((key) => ({ key, value: null })),
-      ['almamesh-chat-vectors'],
-      { memoryRebuildPending: false },
+      { memoryRebuildPending: false, clearInterpretationQuarantine: true },
     );
   },
   beginDatasetReset: bumpRestoreEpoch,
