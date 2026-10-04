@@ -44,7 +44,7 @@
     "@typescript-eslint/eslint-plugin": "^8.71.0",
     "@typescript-eslint/parser": "^8.71.0",
     "@vitest/coverage-v8": "^5.0.3",
-    "baseline-browser-mapping": "^2.11.25",
+    "baseline-browser-mapping": "^2.11.27",
     "caniuse-lite": "^1.0.30001814",
     "vite-prerender-plugin": "^0.5.14",
     "vitest": "^5.0.3"
