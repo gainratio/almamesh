@@ -506,7 +506,10 @@ export async function readInterpretationPersistedValue(
   legacyStorage: Pick<Storage, 'getItem' | 'removeItem'> | undefined = browserLocalStorage(),
   retireLegacy: boolean | (() => boolean) = true,
   quarantine: (entry: UnreadableInterpretation) => boolean = quarantineUnreadableInterpretation,
+  quarantineStorage: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> | undefined =
+    browserLocalStorage(),
 ): Promise<string | null> {
+  pruneExpiredInterpretationQuarantine(quarantineStorage);
   const shouldRetireLegacy = () =>
     typeof retireLegacy === 'function' ? retireLegacy() : retireLegacy;
   const durableValue = await durable.getItem(name);
@@ -544,6 +547,31 @@ export async function readInterpretationPersistedValue(
 
 /** Where unreadable interpretation rows are kept instead of being destroyed. */
 export const INTERPRETATION_QUARANTINE_KEY = 'almamesh-interpretations.quarantine';
+
+/**
+ * Bounded lifetime: a quarantined row is dropped this many days after it was
+ * set aside. It never enters canonical SQLite, so backups exclude it; Start
+ * fresh, Reset & reload and clearing site data erase it sooner. Profile delete
+ * cannot attribute an unparseable blob to a profile, so it leaves it alone.
+ */
+export const INTERPRETATION_QUARANTINE_TTL_DAYS = 30;
+const QUARANTINE_TTL_MS = INTERPRETATION_QUARANTINE_TTL_DAYS * 24 * 60 * 60 * 1000;
+
+/** Drop expired (or unreadable) quarantine records; remove the key once empty. Never throws. */
+export function pruneExpiredInterpretationQuarantine(
+  storage: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> | undefined = browserLocalStorage(),
+  now: () => Date = () => new Date(),
+): void {
+  try {
+    if (storage === undefined || storage.getItem(INTERPRETATION_QUARANTINE_KEY) === null) return;
+    const cutoff = now().getTime() - QUARANTINE_TTL_MS;
+    const kept = readQuarantine(storage).filter((r) => Date.parse(r.quarantinedAt) >= cutoff);
+    if (kept.length === 0) storage.removeItem(INTERPRETATION_QUARANTINE_KEY);
+    else storage.setItem(INTERPRETATION_QUARANTINE_KEY, JSON.stringify(kept));
+  } catch {
+    // Best-effort housekeeping; hydration must never fail on it.
+  }
+}
 
 export interface UnreadableInterpretation {
   readonly source: 'legacy-local-storage' | 'canonical-sqlite';
