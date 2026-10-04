@@ -10,7 +10,11 @@ import {
   func,
   object,
 } from "@dagger.io/dagger"
-import type { CloudflarePagesDeploymentEvidenceID, Platform } from "@dagger.io/dagger"
+import type {
+  CloudflarePagesDeploymentEvidenceID,
+  CloudflarePagesProductionRollbackEvidenceID,
+  Platform,
+} from "@dagger.io/dagger"
 import { randomUUID } from "node:crypto"
 import {
   PAGES_TARGET,
@@ -934,7 +938,14 @@ ${commands.join("\n")}`])
     accountId: Secret,
     deploymentId: string,
   ): Promise<RollbackEvidence> {
-    const evidence = dag.cloudflarePages().rollback(token, accountId, PAGES_TARGET.project, { deploymentId })
+    // rollback is cache="never" and each field read is its own query: read the
+    // fields off the lazy call and the rollback runs once per field. Materialize
+    // it once by ID, then read the stored result (as the upload does).
+    const lazy = dag.cloudflarePages().rollback(token, accountId, PAGES_TARGET.project, { deploymentId })
+    const id: string = await lazy.id()
+    const evidence = dag.loadCloudflarePagesProductionRollbackEvidenceFromID(
+      id as CloudflarePagesProductionRollbackEvidenceID,
+    )
     const [fromDeploymentId, toDeploymentId, liveDeploymentId] = await Promise.all([
       evidence.fromDeploymentId(),
       evidence.toDeploymentId(),

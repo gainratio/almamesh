@@ -114,7 +114,12 @@ test.describe('live smoke', () => {
     });
     const previous = await context.newPage();
     await previous.addInitScript(probeEngineBoot);
-    await previous.goto(`${ORIGIN}/welcome`);
+    // /onboarding, not /welcome: since #227 /welcome never boots the engine (so
+    // an accepted update can activate), and a previous deploy that contains
+    // #227 would leave this visit waiting the whole budget for an engine that
+    // was never asked to start (deploy of 0c800e6, 2026-10-03, run 37162823046).
+    // /onboarding boots it, the same page the fresh pass holds to the budget.
+    await previous.goto(`${ORIGIN}/onboarding`);
     // The worker claims the page on activation (clientsClaim + clients.claim()
     // in engine-trust-install.js), so one load ends controlled; no reload.
     // Chromium still re-checks sw.js on its own during this visit and finds the

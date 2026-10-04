@@ -537,6 +537,23 @@ describe("post-deploy live smoke and rollback through the central module", () =>
     expect(index).toContain(".previousProductionDeployment(")
     expect(index).toContain(".rollback(")
   })
+
+  // Every field read on a lazy Dagger object is its own query, and the module's
+  // rollback is cache="never", so reading three fields off the lazy call ran
+  // three concurrent rollbacks. On the deploy of 0c800e6 (run 37162823046) one
+  // succeeded and two got HTTP 400 from Cloudflare, and the workflow reported
+  // "rollback FAILED" while production was in fact restored. The rollback must
+  // run once: materialize its ID, then read every field from the stored result
+  // (the same id()+load pattern the upload already uses).
+  test("the rollback runs exactly once: fields are read from its materialized ID, never off the lazy call", () => {
+    const index = readFileSync(join(import.meta.dir, "..", "dagger", "src", "index.ts"), "utf8")
+    const body = index.slice(index.indexOf("private async rollbackProduction("))
+    const method = body.slice(0, body.indexOf("\n  }\n") + 4)
+    expect(method).toMatch(/const lazy = dag\.cloudflarePages\(\)\.rollback\(/)
+    expect(method).toContain("await lazy.id()")
+    expect(method).toContain("dag.loadCloudflarePagesProductionRollbackEvidenceFromID(")
+    expect(method).not.toMatch(/lazy\.(fromDeploymentId|toDeploymentId|liveDeploymentId)\(/)
+  })
 })
 
 describe("non-writing live release proof", () => {
