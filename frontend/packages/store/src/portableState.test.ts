@@ -405,6 +405,27 @@ describe('PortableStateRepository', () => {
     expect(sqlite.exportCalls).toBe(2);
   });
 
+  it('returns a compacted copy of the validated file, so deleted rows cannot ride along in free pages', async () => {
+    const sqlite = new MemorySqliteStore();
+    const compacted: number[][] = [];
+    const repository = new PortableStateRepository(
+      sqlite,
+      async (bytes) => bytes[0] ?? -1,
+      async (bytes) => {
+        compacted.push(Array.from(bytes));
+        return new Uint8Array([99]);
+      },
+    );
+    await migrateLegacyState(repository, { get: async () => null, delete: async () => undefined }, []);
+
+    const exported = await repository.exportBytes();
+
+    // MemorySqliteStore exports one byte: its epoch. The compactor saw exactly
+    // that validated file, and its output is what leaves the browser.
+    expect(compacted).toEqual([[sqlite.epoch]]);
+    expect(Array.from(exported)).toEqual([99]);
+  });
+
   it('validates the exact serialized bytes before returning an export', async () => {
     const sqlite = new MemorySqliteStore();
     const repository = new PortableStateRepository(sqlite, async () => {

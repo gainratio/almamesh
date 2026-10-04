@@ -87,6 +87,46 @@ function refuseOpfsOnly() {
 }
 
 const ONBOARDED_NAME = 'Reference Native'
+const BACKUP_PASSPHRASE = 'storage blocked passphrase'
+
+/**
+ * Runs in the page before any app script: decrypt every exported backup
+ * (format v3: authenticated 64-byte header, PBKDF2 + AES-GCM, plaintext is the
+ * SQLite file) and record whether the onboarded name's bytes are in it.
+ */
+function captureBackups({ passphrase, needle }) {
+  // Chromium would open its native save picker; force the download path.
+  for (let target = window; target; target = Object.getPrototypeOf(target)) {
+    Reflect.deleteProperty(target, 'showSaveFilePicker')
+  }
+  const createObjectUrl = URL.createObjectURL.bind(URL)
+  URL.createObjectURL = (blob) => {
+    window.__backupHasNeedle = blob.arrayBuffer().then(async (buffer) => {
+      const file = new Uint8Array(buffer)
+      const header = file.slice(0, 64)
+      const iterations = new DataView(header.buffer).getUint32(16, false)
+      const base = await window.crypto.subtle.importKey('raw', new window.TextEncoder().encode(passphrase), 'PBKDF2', false, ['deriveKey'])
+      const key = await window.crypto.subtle.deriveKey(
+        { name: 'PBKDF2', hash: 'SHA-256', salt: header.slice(36, 52), iterations },
+        base, { name: 'AES-GCM', length: 256 }, false, ['decrypt'],
+      )
+      const bytes = new Uint8Array(await window.crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv: header.slice(52, 64), additionalData: header }, key, file.slice(64),
+      ))
+      const target = new window.TextEncoder().encode(needle)
+      return bytes.some((_, offset) => target.every((value, index) => bytes[offset + index] === value))
+    })
+    return createObjectUrl(blob)
+  }
+}
+
+/** Client-side navigation: a full load would start a new in-memory database. */
+async function navigateInApp(page, path) {
+  await page.evaluate((target) => {
+    window.history.pushState({}, '', target)
+    window.dispatchEvent(new window.PopStateEvent('popstate'))
+  }, path)
+}
 
 /**
  * Runs in the page: every IndexedDB record and localStorage value that
@@ -189,6 +229,7 @@ try {
 
   const opfsRefused = await browser.newContext({ serviceWorkers: 'block' })
   await opfsRefused.addInitScript(refuseOpfsOnly)
+  await opfsRefused.addInitScript(captureBackups, { passphrase: BACKUP_PASSPHRASE, needle: ONBOARDED_NAME })
   try {
     const visited = await visit(opfsRefused, '/onboarding')
     await visited.page.getByTestId('name-input').waitFor({ state: 'visible', timeout: 30_000 })
@@ -220,6 +261,20 @@ try {
     // IndexedDB or localStorage instead (Harish, 2026-10-04).
     const leaks = await visited.page.evaluate(findUserDataOutsideSqlite, ONBOARDED_NAME)
     invariant(leaks.length === 0, `OPFS refused: user data written outside SQLite: ${leaks.join(', ')}`)
+    // Deleted data must not survive inside the SQLite file a backup carries.
+    // In memory SQLite has no secure_delete, so the freed pages kept the bytes.
+    await navigateInApp(visited.page, '/settings/preferences')
+    await visited.page.getByTestId('reset-start-fresh').click()
+    await visited.page.getByTestId('reset-confirm').click()
+    await visited.page.getByTestId('landing-nav-cta').waitFor({ state: 'visible', timeout: 30_000 })
+    await navigateInApp(visited.page, '/settings/data')
+    await visited.page.getByTestId('backup-passphrase-input').fill(BACKUP_PASSPHRASE)
+    await visited.page.getByTestId('backup-export-button').click()
+    await visited.page.waitForFunction(() => window.__backupHasNeedle !== undefined, null, { timeout: 60_000 })
+    invariant(
+      !(await visited.page.evaluate(() => window.__backupHasNeedle)),
+      'OPFS refused: a backup exported after Start fresh still contains the deleted profile name',
+    )
     // Honest, not hopeful: a reload loses the session and still says so.
     await visited.page.reload({ waitUntil: 'load' })
     await note.waitFor({ state: 'visible', timeout: 30_000 })

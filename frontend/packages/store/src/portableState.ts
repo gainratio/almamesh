@@ -179,14 +179,18 @@ export interface LegacyStateStorage {
 export class PortableStateRepository {
   readonly #store: SqliteStateStore;
   readonly #validateExport: (bytes: Uint8Array) => Promise<number>;
+  readonly #compactExport: (bytes: Uint8Array) => Promise<Uint8Array>;
   #writeQueue: Promise<void> = Promise.resolve();
 
   public constructor(
     store: SqliteStateStore,
     validateExport: (bytes: Uint8Array) => Promise<number> = validatePortableExportDatabase,
+    /** Production passes compactPortableExport; unit tests' fake bytes pass through. */
+    compactExport: (bytes: Uint8Array) => Promise<Uint8Array> = async (bytes) => bytes,
   ) {
     this.#store = store;
     this.#validateExport = validateExport;
+    this.#compactExport = compactExport;
   }
 
   public async read(key: string): Promise<string | null> {
@@ -301,7 +305,7 @@ export class PortableStateRepository {
         continue;
       }
       validatePortableSnapshot(snapshot);
-      return bytes;
+      return this.#compactExport(bytes);
     }
     throw new Error('Portable state remained busy while exporting a consistent snapshot.');
   }
@@ -349,7 +353,32 @@ export async function openPortableStateRepository(
       initialSchemaVersion: PORTABLE_STATE_SCHEMA_VERSION,
       persistence,
     }),
+    validatePortableExportDatabase,
+    compactPortableExport,
   );
+}
+
+/**
+ * Rewrite an exported file so it holds only live rows. A deleted row's bytes
+ * otherwise stay in SQLite's free pages: the OPFS database runs with
+ * secure_delete, but the in-memory fallback (OPFS refused) does not, and a
+ * backup taken there after Start fresh still carried the deleted profile.
+ * Importing into a fresh in-memory database writes live rows to new pages
+ * only; the copy's own epoch differs by the import and nothing reads it.
+ */
+async function compactPortableExport(bytes: Uint8Array): Promise<Uint8Array> {
+  const store = await createSqliteStateStore({
+    name: 'almamesh-export-compaction',
+    initialSchemaVersion: PORTABLE_STATE_SCHEMA_VERSION,
+    persistence: 'memory',
+  });
+  try {
+    const stage = await store.stageImport(bytes);
+    await store.commitImport(stage.stageId, { expectedEpoch: 0 });
+    return await store.exportBytes();
+  } finally {
+    await store.dispose();
+  }
 }
 
 export interface PortableStateCapabilities {
