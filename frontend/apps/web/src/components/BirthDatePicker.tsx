@@ -257,16 +257,7 @@ function BirthDatePickerImpl({ value, onChange, className }: BirthDatePickerProp
             yearsOrder="desc"
             slotProps={{
               textField: {
-                placeholder: 'Select your birth date',
                 fullWidth: true,
-                InputProps: {
-                  sx: {
-                    '& input::placeholder': {
-                      color: colors.text.muted,
-                      opacity: 1,
-                    },
-                  },
-                },
               },
               popper: {
                 sx: {

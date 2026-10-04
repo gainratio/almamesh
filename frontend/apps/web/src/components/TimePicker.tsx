@@ -5,7 +5,6 @@ import { TimePicker as MuiTimePicker } from '@mui/x-date-pickers/TimePicker';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import dayjs, { Dayjs } from 'dayjs';
 import customParseFormat from 'dayjs/plugin/customParseFormat';
-import { useTranslation } from 'react-i18next';
 import { colors } from '@almamesh/constants';
 
 // Enable custom parse format plugin for parsing HH:mm strings
@@ -15,7 +14,6 @@ interface TimePickerProps {
   value: string; // HH:mm format
   onChange: (time: string) => void; // Returns HH:mm format
   className?: string;
-  placeholder?: string;
 }
 
 // Custom dark theme matching the app's design
@@ -199,12 +197,7 @@ const timeToDayjs = (timeStr: string): Dayjs | null => {
  * flush hides the race; the Playwright probe against a preview build
  * reproduces it.
  */
-export function TimePicker({ value, onChange, className, placeholder }: TimePickerProps) {
-  const { t } = useTranslation();
-  // `placeholder` is an optional override; default to the translated value
-  // resolved at render (a prop default can't call a hook).
-  const resolvedPlaceholder = placeholder ?? t('time_picker.placeholder');
-
+export function TimePicker({ value, onChange, className }: TimePickerProps) {
   // Draft buffer: the field renders from this, never from a mid-edit echo.
   const [draft, setDraft] = useState<Dayjs | null>(() => timeToDayjs(value));
   // The last "HH:mm" THIS picker emitted upward, so a parent re-render
@@ -245,16 +238,7 @@ export function TimePicker({ value, onChange, className, placeholder }: TimePick
             timeSteps={{ minutes: 1 }}
             slotProps={{
               textField: {
-                placeholder: resolvedPlaceholder,
                 fullWidth: true,
-                InputProps: {
-                  sx: {
-                    '& input::placeholder': {
-                      color: colors.text.muted,
-                      opacity: 1,
-                    },
-                  },
-                },
               },
               popper: {
                 sx: {

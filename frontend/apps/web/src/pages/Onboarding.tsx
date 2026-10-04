@@ -731,7 +731,6 @@ export default function OnboardingPage() {
               <TimePicker
                 value={data.birthTime}
                 onChange={(time) => handleBirthTimeChange(time)}
-                placeholder={t("birth_time.placeholder")}
               />
             </div>
 
