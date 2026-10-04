@@ -20,9 +20,15 @@ import {
   PortableStateTooNewError,
   PortableStateUnavailableError,
   resolvePortableStateMode,
+  restoreFromMirror,
   supportsPortableState,
   assertSupportedPortableStateSchema,
 } from './portableState';
+import {
+  openPortableStateWithFallback,
+  portableStatePersistence,
+  resetPortableStatePersistenceForTests,
+} from './portablePersistence';
 
 class MemorySqliteStore implements SqliteStateStore {
   readonly name = 'test';
@@ -219,6 +225,102 @@ describe('PortableStateRepository', () => {
     for (const key of PORTABLE_DATASET_KEYS) {
       expect(await repository.read(key)).toBe(`${key}-b`);
     }
+  });
+
+  it('saves the committed SQLite file to the session mirror before the write resolves', async () => {
+    const sqlite = new MemorySqliteStore();
+    const saved: number[][] = [];
+    const release = Promise.withResolvers<void>();
+    const mirror = {
+      load: async () => undefined,
+      save: async (bytes: Uint8Array) => {
+        await release.promise;
+        saved.push(Array.from(bytes));
+      },
+      clear: async () => undefined,
+    };
+    const repository = new PortableStateRepository(sqlite, undefined, mirror);
+    expect(repository.sessionMirrored).toBe(true);
+
+    let settled = false;
+    const write = repository.write('almamesh-profiles', '1').then(() => {
+      settled = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(settled).toBe(false);
+    release.resolve();
+    await write;
+
+    // MemorySqliteStore exports one byte: its epoch after the commit.
+    expect(saved).toEqual([[1]]);
+  });
+
+  it('drops a failing session mirror, erases its stale copy, and reports memory-only', async () => {
+    resetPortableStatePersistenceForTests();
+    const sqlite = new MemorySqliteStore();
+    let cleared = 0;
+    let saves = 0;
+    const mirror = {
+      load: async () => undefined,
+      save: async () => {
+        saves += 1;
+        throw new DOMException('quota', 'QuotaExceededError');
+      },
+      clear: async () => {
+        cleared += 1;
+      },
+    };
+    const { repository } = await openPortableStateWithFallback({
+      open: async () => new PortableStateRepository(sqlite, undefined, mirror),
+      storage: { getDirectory: () => Promise.reject(new DOMException('no', 'UnknownError')) },
+    });
+    expect(portableStatePersistence()).toBe('session-mirror');
+
+    await repository.write('almamesh-profiles', '1');
+    await repository.write('almamesh-profiles', '2');
+
+    expect(await repository.read('almamesh-profiles')).toBe('2');
+    expect(saves).toBe(1);
+    expect(cleared).toBe(1);
+    expect(repository.sessionMirrored).toBe(false);
+    expect(portableStatePersistence()).toBe('memory');
+  });
+
+  it('imports the previous page\'s mirrored file into the fresh in-memory store', async () => {
+    const sqlite = new MemorySqliteStore();
+    const imported: string[] = [];
+    sqlite.commitImport = async (stageId: string) => {
+      imported.push(stageId);
+      return { changed: 1, epoch: 1, schemaVersion: 1 };
+    };
+    let cleared = false;
+    await restoreFromMirror(sqlite, {
+      load: async () => new Uint8Array([7]),
+      save: async () => undefined,
+      clear: async () => {
+        cleared = true;
+      },
+    });
+    expect(imported).toEqual(['stage']);
+    expect(cleared).toBe(false);
+  });
+
+  it('erases a mirrored file that will not import instead of failing startup', async () => {
+    const sqlite = new MemorySqliteStore();
+    sqlite.stageImport = async () => {
+      throw new Error('file is not a database');
+    };
+    let cleared = false;
+    await expect(
+      restoreFromMirror(sqlite, {
+        load: async () => new Uint8Array([0]),
+        save: async () => undefined,
+        clear: async () => {
+          cleared = true;
+        },
+      }),
+    ).resolves.toBeUndefined();
+    expect(cleared).toBe(true);
   });
 
   it('stores predictive results and settings while refusing only derived vector caches', async () => {

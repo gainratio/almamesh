@@ -50,8 +50,10 @@
   },
   "storage_ephemeral": {
     "title": "This browser is not saving your data.",
-    "body": "It refuses on-device storage here (for example, Private Browsing), so your chart works but disappears when you close this tab.",
-    "export": "Export a backup to keep it."
+    "body": "It refuses on-device storage here (for example, Private Browsing), so your chart works but disappears when you reload or close this tab.",
+    "export": "Export a backup to keep it.",
+    "mirror_title": "This browser is keeping your data only temporarily.",
+    "mirror_body": "It refuses its main on-device storage here (for example, Private Browsing), so your chart survives a reload but the browser may erase it when you close the window."
   },
   "storage_unavailable": {
     "title": "AlmaMesh cannot start its on-device database",

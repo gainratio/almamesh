@@ -178,6 +178,20 @@ try {
     const note = visited.page.getByTestId('ephemeral-storage-notice')
     invariant(await note.isVisible(), 'OPFS refused: chart rendered without the "will not be saved" note')
     invariant(/export/i.test(await note.innerText()), 'OPFS refused: the ephemeral note does not suggest exporting')
+    // A reload is not "closing the tab". IndexedDB still works in this realm,
+    // so the session mirror must bring the chart back (WebKit audit
+    // 2026-10-04: the chart vanished on reload).
+    await visited.page.reload({ waitUntil: 'load' })
+    const reloaded = Date.now()
+    const survived = await chart.waitFor({ state: 'visible', timeout: OPFS_REFUSED_CHART_BUDGET_MS })
+      .then(() => true, () => false)
+    const reloadBody = (await visited.page.locator('body').innerText()).replace(/\s+/g, ' ').slice(0, 300)
+    invariant(survived, `OPFS refused: the chart did not survive a reload: ${reloadBody}`)
+    invariant(
+      (await note.getAttribute('data-durability')) === 'session-mirror',
+      'OPFS refused: after a reload the note does not say the chart is kept in temporary browser storage',
+    )
+    console.log(`storage-blocked: ${BROWSER_NAME} OPFS refused -> chart back ${((Date.now() - reloaded) / 1000).toFixed(1)}s after reload`)
     await note.getByRole('link').click()
     await visited.page.waitForURL('**/settings/data', { timeout: 15_000 })
     invariant(
