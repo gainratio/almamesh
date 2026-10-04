@@ -13,8 +13,15 @@ function readGlobalLocalStorage(): Partial<Storage> | undefined {
   return (globalThis as { localStorage?: Partial<Storage> }).localStorage;
 }
 
-/** The browser's Storage, or undefined when absent, partial, or blocked. Never throws. */
-export function browserLocalStorage(): Storage | undefined {
+/**
+ * localStorage as this app may use it: read a legacy value, or retire it. No
+ * `setItem` — SQLite is the only store for app data (sessionStorage reload
+ * flags in apps/web are the one allowed browser-storage write).
+ */
+export type LegacyWebStorage = Pick<Storage, 'getItem' | 'removeItem'>;
+
+/** The browser's Storage (read/retire only), or undefined when absent, partial, or blocked. Never throws. */
+export function browserLocalStorage(): LegacyWebStorage | undefined {
   let storage: Partial<Storage> | undefined;
   try {
     storage = readGlobalLocalStorage();
@@ -28,7 +35,7 @@ export function browserLocalStorage(): Storage | undefined {
   ) {
     return undefined;
   }
-  return storage as Storage;
+  return storage as LegacyWebStorage;
 }
 
 /**

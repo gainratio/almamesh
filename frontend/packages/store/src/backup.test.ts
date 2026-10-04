@@ -6,7 +6,6 @@ import {
   armPortableImportRevision,
   BACKUP_STORES,
   BackupError,
-  CHAT_VECTORS_KEY,
   collectBackup,
   assertPortableImportRevision,
   PREDICTIVE_CACHE_KEY,
@@ -315,13 +314,20 @@ describe('applyBackup', () => {
     }
   });
 
-  it('does not create a chart mirror and deletes rebuildable RAG vectors', async () => {
-    const idb = makeTier({ [CHAT_VECTORS_KEY]: 'stale-embeddings' });
+  // Contract reversed (2026-10-04, SQLite-only): applyBackup used to delete an
+  // idb-keyval `almamesh-chat-vectors` key. Vectors live in SqliteVectorIndex and
+  // rebuild from chat via memoryRebuildPending, so a restore touches only the
+  // canonical store keys it carries.
+  it('does not create a chart mirror and writes only canonical store keys', async () => {
+    const idb = makeTier();
     const local = makeTier();
     await applyBackup(seededEnvelope(), makeDeps({ idb, local }));
 
     expect(local.map.has('almamesh-chart')).toBe(false);
-    expect(idb.map.has(CHAT_VECTORS_KEY)).toBe(false);
+    const canonical = new Set(BACKUP_STORES.map((entry) => entry.key));
+    for (const key of [...idb.map.keys(), ...local.map.keys()]) {
+      expect(canonical.has(key)).toBe(true);
+    }
   });
 
   it('does not write any route flag when the restored chart library is empty', async () => {
@@ -407,14 +413,14 @@ describe('applyBackup', () => {
         'almamesh-chart-library': { version: 1, state: circular },
       },
     };
-    const idb = makeTier({ [CHAT_VECTORS_KEY]: 'still-here' });
+    const idb = makeTier({ 'almamesh-unrelated': 'still-here' });
     const local = makeTier();
 
     await expect(applyBackup(env, makeDeps({ idb, local }))).rejects.toBeInstanceOf(Error);
 
-    // Nothing was written: no store keys, no chart flag, and RAG vectors survive.
+    // Nothing was written or removed: no store keys, no chart flag.
     expect(local.map.size).toBe(0);
-    expect(idb.map.get(CHAT_VECTORS_KEY)).toBe('still-here');
+    expect(idb.map.get('almamesh-unrelated')).toBe('still-here');
     expect(idb.map.size).toBe(1);
   });
 

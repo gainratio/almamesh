@@ -68,9 +68,6 @@ export const BACKUP_STORES: ReadonlyArray<{ key: string; tier: BackupTier }> = [
   { key: 'almamesh-language', tier: 'local' },
 ];
 
-/** idb-keyval RAG-embeddings key — deleted on import so vectors rebuild from chat. */
-export const CHAT_VECTORS_KEY = 'almamesh-chat-vectors';
-
 /** Canonical completed predictive results; the historical name remains API-compatible. */
 export const PREDICTIVE_CACHE_KEY = 'almamesh-predictive';
 
@@ -268,8 +265,9 @@ export async function applyBackup(envelope: BackupEnvelopePlain, deps: BackupDep
     if (!presentKeys.has(entry.key)) await deps.tiers[entry.tier].del(entry.key);
   }
 
-  // Derived semantic memory never travels as user data; it rebuilds from chat.
-  await deps.tiers.idb.del(CHAT_VECTORS_KEY);
+  // Derived semantic memory never travels as user data. It lives in the
+  // SqliteVectorIndex and is rebuilt from chat via the memoryRebuildPending
+  // marker the atomic Replace sets; there is no IndexedDB vector key to clear.
 }
 
 /** Production Replace: commit every canonical store and generation pointer atomically in SQLite. */
@@ -296,9 +294,7 @@ export async function applyBrowserBackupAtomically(
             }),
     };
   });
-  await commitDatasetGeneration(epoch, writes, [CHAT_VECTORS_KEY], {
-    memoryRebuildPending: true,
-  });
+  await commitDatasetGeneration(epoch, writes, { memoryRebuildPending: true });
 }
 
 /** Export the canonical browser dataset as a real, standard SQLite database. */
@@ -343,7 +339,6 @@ export async function importPortableBrowserState(
             ? (preferencesRaw ?? null)
             : (imported.values.get(key) ?? null),
       })),
-      [CHAT_VECTORS_KEY],
       { memoryRebuildPending: true },
     );
   } catch (error) {

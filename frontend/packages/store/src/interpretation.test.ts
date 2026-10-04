@@ -3,6 +3,8 @@ import { createStore } from 'zustand/vanilla';
 
 import type { VedicInterpretation } from '@almamesh/shared-types';
 
+import { interpretationQuarantineRows } from './deletionTombstones';
+import { readInterpretationQuarantine } from './interpretationQuarantine';
 import { isPortableStateKey } from './portableState';
 import {
   INTERPRETATION_PERSIST_VERSION,
@@ -10,8 +12,6 @@ import {
   INTERPRETATION_QUARANTINE_TTL_DAYS,
   InterpretationSetAsideError,
   interpretationStoreCreator,
-  pruneExpiredInterpretationQuarantine,
-  quarantineUnreadableInterpretation,
   mergeInterpretationPersistedState,
   migrateInterpretationPersistedState,
   readInterpretationPersistedValue,
@@ -221,68 +221,15 @@ describe('unreadable interpretation rows are quarantined, never migrated or hung
     expect(legacy.map.has(NAME)).toBe(false);
   });
 
-  it('writes a timestamped, de-duplicated quarantine record under a clearly named key', () => {
-    const storage = memoryStorage();
-    const now = () => new Date('2026-10-04T12:00:00.000Z');
-    const entry = { source: 'legacy-local-storage' as const, raw: 'reset-proof' };
-
-    expect(INTERPRETATION_QUARANTINE_KEY).toBe('almamesh-interpretations.quarantine');
-    expect(quarantineUnreadableInterpretation(entry, storage, now)).toBe(true);
-    expect(quarantineUnreadableInterpretation(entry, storage, now)).toBe(true);
-
-    expect(JSON.parse(storage.map.get(INTERPRETATION_QUARANTINE_KEY) ?? 'null')).toEqual([
-      { quarantinedAt: '2026-10-04T12:00:00.000Z', source: 'legacy-local-storage', raw: 'reset-proof' },
-    ]);
-  });
-
-  it('reports failure when there is no usable storage to hold the row', () => {
-    const entry = { source: 'canonical-sqlite' as const, raw: 'x' };
-    expect(quarantineUnreadableInterpretation(entry, undefined)).toBe(false);
-    const full = {
-      ...memoryStorage(),
-      setItem: () => {
-        throw new Error('QuotaExceededError');
-      },
-    };
-    expect(quarantineUnreadableInterpretation(entry, full)).toBe(false);
-  });
 });
 
 describe('quarantine lifetime and scope', () => {
-  const DAY = 24 * 60 * 60 * 1000;
-  const at = (iso: string) => () => new Date(iso);
 
   it('keeps quarantined rows for exactly 30 days', () => {
     expect(INTERPRETATION_QUARANTINE_TTL_DAYS).toBe(30);
   });
 
-  it('drops rows older than the lifetime and removes the key once empty', () => {
-    const now = new Date('2026-10-04T12:00:00.000Z');
-    const old = new Date(now.getTime() - 30 * DAY - 1).toISOString();
-    const fresh = new Date(now.getTime() - 30 * DAY + 1).toISOString();
-    const storage = memoryStorage({
-      [INTERPRETATION_QUARANTINE_KEY]: JSON.stringify([
-        { quarantinedAt: old, source: 'legacy-local-storage', raw: 'old' },
-        { quarantinedAt: fresh, source: 'canonical-sqlite', raw: 'fresh' },
-      ]),
-    });
-
-    pruneExpiredInterpretationQuarantine(storage, () => now);
-    expect(JSON.parse(storage.map.get(INTERPRETATION_QUARANTINE_KEY) ?? '[]')).toEqual([
-      { quarantinedAt: fresh, source: 'canonical-sqlite', raw: 'fresh' },
-    ]);
-
-    pruneExpiredInterpretationQuarantine(storage, at('2026-12-01T00:00:00.000Z'));
-    expect(storage.map.has(INTERPRETATION_QUARANTINE_KEY)).toBe(false);
-  });
-
-  it('drops an unreadable quarantine record set instead of keeping it forever', () => {
-    const storage = memoryStorage({ [INTERPRETATION_QUARANTINE_KEY]: 'not json' });
-    pruneExpiredInterpretationQuarantine(storage, at('2026-10-04T12:00:00.000Z'));
-    expect(storage.map.has(INTERPRETATION_QUARANTINE_KEY)).toBe(false);
-  });
-
-  it('prunes expired rows on every hydration read', async () => {
+  it('moves an old build’s localStorage quarantine into SQLite on hydration, then prunes it', async () => {
     const storage = memoryStorage({
       [INTERPRETATION_QUARANTINE_KEY]: JSON.stringify([
         { quarantinedAt: '2020-01-01T00:00:00.000Z', source: 'legacy-local-storage', raw: 'x' },
@@ -293,13 +240,37 @@ describe('quarantine lifetime and scope', () => {
       durableDouble(),
       storage,
       true,
-      () => true,
+      async () => true,
+    );
+    // Copied to SQLite (then expired there); the localStorage source is retired.
+    expect(storage.map.has(INTERPRETATION_QUARANTINE_KEY)).toBe(false);
+    expect(await readInterpretationQuarantine(await interpretationQuarantineRows())).toEqual([]);
+  });
+
+  // Regression (local old -> new smoke, 2026-10-04): the retire decision was
+  // read before SQLite opened, while persistence was still 'pending', so the
+  // migrated key was never removed in a real browser.
+  it('retires the old localStorage quarantine once SQLite persistence is known', async () => {
+    const storage = memoryStorage({
+      [INTERPRETATION_QUARANTINE_KEY]: JSON.stringify([
+        { quarantinedAt: new Date().toISOString(), source: 'legacy-local-storage', raw: 'late' },
+      ]),
+    });
+    let persistenceKnown = false;
+    void Promise.resolve().then(() => {
+      persistenceKnown = true;
+    });
+    await readInterpretationPersistedValue(
+      'almamesh-interpretations',
+      durableDouble(),
       storage,
+      () => persistenceKnown,
+      async () => true,
     );
     expect(storage.map.has(INTERPRETATION_QUARANTINE_KEY)).toBe(false);
   });
 
-  it('never enters canonical SQLite, so backups exclude it (as the privacy policy states)', () => {
+  it('is never a canonical dataset row, so restores and backups exclude it (as the privacy policy states)', () => {
     expect(isPortableStateKey(INTERPRETATION_QUARANTINE_KEY)).toBe(false);
   });
 });

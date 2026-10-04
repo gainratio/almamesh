@@ -17,6 +17,10 @@ import { SemanticMemoryStorageUnavailableError } from '@almamesh/memory';
 import type { VedicInterpretation } from '@almamesh/shared-types';
 import {
   CHART_LIBRARY_FLAG_KEY,
+  holdUnreadableInterpretation,
+  interpretationQuarantineRows,
+  readInterpretationQuarantine,
+  sessionRowsForTests,
   setActiveProfileScope,
   useChartLibraryStore,
   useChatStore,
@@ -107,6 +111,8 @@ function seedEverything(): { profileId: string; chartId: string } {
 beforeEach(() => {
   // Clean slate WITHOUT exercising the code under test.
   localStorage.clear();
+  // Node has no SQLite Worker: the dataset ledger lives in session memory.
+  sessionRowsForTests().clear();
   setActiveProfileScope(null);
   useChartLibraryStore.setState({ charts: {} });
   useProfilesStore.setState({ profiles: {}, activeProfileId: null });
@@ -357,7 +363,11 @@ describe('resetEverything', () => {
     expect(localStorage.getItem(LLM_SETTINGS_KEY)).toBeNull();
   });
 
-  it('start fresh also erases quarantined (unreadable) interpretations', async () => {
+  it('start fresh erases the SQLite quarantine and an old build’s localStorage copy', async () => {
+    const rows = await interpretationQuarantineRows();
+    for (const raw of ['unattributed-unreadable', '{"state":{"byChart":{"c":{"profileId":"p"}}}}']) {
+      expect(await holdUnreadableInterpretation({ source: 'canonical-sqlite', raw }, rows)).toBe(true);
+    }
     localStorage.setItem(
       'almamesh-interpretations.quarantine',
       JSON.stringify([{ quarantinedAt: '2026-10-04T12:00:00.000Z', source: 'legacy-local-storage', raw: 'x' }]),
@@ -366,6 +376,7 @@ describe('resetEverything', () => {
 
     await resetEverything();
 
+    expect(await readInterpretationQuarantine(rows)).toEqual([]);
     expect(localStorage.getItem('almamesh-interpretations.quarantine')).toBeNull();
   });
 

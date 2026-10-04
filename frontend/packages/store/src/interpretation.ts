@@ -23,10 +23,22 @@ import type {
   ReadingProvenance,
 } from '@almamesh/llm';
 import { safeWarn, type TitledPersona, type VedicInterpretation } from '@almamesh/shared-types';
-import { deletionAwareIdbStorage } from './deletionTombstones';
+import { deletionAwareIdbStorage, interpretationQuarantineRows } from './deletionTombstones';
 import { reportHydrationFailure, whenHydrated, type HydrationOutcome } from './hydrationBarrier';
+import {
+  holdUnreadableInterpretation,
+  migrateLegacyInterpretationQuarantine,
+  pruneExpiredInterpretationQuarantine,
+  type UnreadableInterpretation,
+} from './interpretationQuarantine';
 import { portableStatePersistence } from './portablePersistence';
-import { browserLocalStorage } from './webStorage';
+import { browserLocalStorage, type LegacyWebStorage } from './webStorage';
+
+export {
+  INTERPRETATION_QUARANTINE_KEY,
+  INTERPRETATION_QUARANTINE_TTL_DAYS,
+  type UnreadableInterpretation,
+} from './interpretationQuarantine';
 
 /** Lifecycle of a chart's interpretation generation. */
 export type InterpretationStatus = 'idle' | 'generating' | 'complete' | 'error';
@@ -503,21 +515,19 @@ function retireLegacyInterpretation(
 export async function readInterpretationPersistedValue(
   name: string,
   durable: Pick<StateStorage, 'getItem' | 'setItem'> = deletionAwareIdbStorage,
-  legacyStorage: Pick<Storage, 'getItem' | 'removeItem'> | undefined = browserLocalStorage(),
+  legacyStorage: LegacyWebStorage | undefined = browserLocalStorage(),
   retireLegacy: boolean | (() => boolean) = true,
-  quarantine: (entry: UnreadableInterpretation) => boolean = quarantineUnreadableInterpretation,
-  quarantineStorage: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> | undefined =
-    browserLocalStorage(),
+  quarantine: (entry: UnreadableInterpretation) => Promise<boolean> = quarantineUnreadableInterpretation,
 ): Promise<string | null> {
-  pruneExpiredInterpretationQuarantine(quarantineStorage);
   const shouldRetireLegacy = () =>
     typeof retireLegacy === 'function' ? retireLegacy() : retireLegacy;
+  await prepareInterpretationQuarantine(legacyStorage, shouldRetireLegacy);
   const durableValue = await durable.getItem(name);
   if (durableValue !== null) {
     // A row a previous build copied in unparsed would fail JSON.parse on every
     // boot. Set it aside and start from empty; the next save replaces it.
     if (!isPersistedEnvelope(durableValue)) {
-      if (!setAside(quarantine, { source: 'canonical-sqlite', raw: durableValue })) {
+      if (!(await setAside(quarantine, { source: 'canonical-sqlite', raw: durableValue }))) {
         throw new InterpretationSetAsideError('failed');
       }
       return null;
@@ -527,6 +537,8 @@ export async function readInterpretationPersistedValue(
     return durableValue;
   }
 
+  // TODO(remove after 2026-11-04, one release after the SQLite-only move):
+  // legacy localStorage interpretations reader; SQLite owns the row after it.
   let legacy: string | null = null;
   try {
     legacy = legacyStorage?.getItem(name) ?? null;
@@ -537,7 +549,7 @@ export async function readInterpretationPersistedValue(
   if (!isPersistedEnvelope(legacy)) {
     // Never copy an unreadable row into canonical SQLite. Retire the legacy
     // copy only once the quarantine provably holds it.
-    if (!setAside(quarantine, { source: 'legacy-local-storage', raw: legacy })) {
+    if (!(await setAside(quarantine, { source: 'legacy-local-storage', raw: legacy }))) {
       throw new InterpretationSetAsideError('failed');
     }
     if (shouldRetireLegacy()) retireLegacyInterpretation(legacyStorage, name);
@@ -551,41 +563,34 @@ export async function readInterpretationPersistedValue(
   return verified;
 }
 
-/** Where unreadable interpretation rows are kept instead of being destroyed. */
-export const INTERPRETATION_QUARANTINE_KEY = 'almamesh-interpretations.quarantine';
-
 /**
- * Bounded lifetime: a quarantined row is dropped this many days after it was
- * set aside. It never enters canonical SQLite, so backups exclude it; Start
- * fresh, Reset & reload and clearing site data erase it sooner. Profile delete
- * cannot attribute an unparseable blob to a profile, so it leaves it alone.
+ * Before reading: move an older build's localStorage quarantine into SQLite
+ * (copy, verify, then retire; the source is kept while SQLite is session-only)
+ * and drop rows past their 30-day expiry. A failed move keeps the source and
+ * never blocks hydration.
  */
-export const INTERPRETATION_QUARANTINE_TTL_DAYS = 30;
-const QUARANTINE_TTL_MS = INTERPRETATION_QUARANTINE_TTL_DAYS * 24 * 60 * 60 * 1000;
-
-/** Drop expired (or unreadable) quarantine records; remove the key once empty. Never throws. */
-export function pruneExpiredInterpretationQuarantine(
-  storage: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> | undefined = browserLocalStorage(),
-  now: () => Date = () => new Date(),
-): void {
+async function prepareInterpretationQuarantine(
+  legacyStorage: LegacyWebStorage | undefined,
+  retire: () => boolean,
+): Promise<void> {
   try {
-    if (storage === undefined || storage.getItem(INTERPRETATION_QUARANTINE_KEY) === null) return;
-    const cutoff = now().getTime() - QUARANTINE_TTL_MS;
-    const kept = readQuarantine(storage).filter((r) => Date.parse(r.quarantinedAt) >= cutoff);
-    if (kept.length === 0) storage.removeItem(INTERPRETATION_QUARANTINE_KEY);
-    else storage.setItem(INTERPRETATION_QUARANTINE_KEY, JSON.stringify(kept));
+    const rows = await interpretationQuarantineRows();
+    await migrateLegacyInterpretationQuarantine(legacyStorage, rows, retire);
+    await pruneExpiredInterpretationQuarantine(rows);
   } catch {
-    // Best-effort housekeeping; hydration must never fail on it.
+    safeWarn('storage.interpretation_quarantine_migration_failed');
   }
 }
 
-export interface UnreadableInterpretation {
-  readonly source: 'legacy-local-storage' | 'canonical-sqlite';
-  readonly raw: string;
-}
-
-interface QuarantinedInterpretation extends UnreadableInterpretation {
-  readonly quarantinedAt: string;
+/** Hold an unreadable row in the SQLite quarantine; true only once it is provably held. */
+export async function quarantineUnreadableInterpretation(
+  entry: UnreadableInterpretation,
+): Promise<boolean> {
+  try {
+    return await holdUnreadableInterpretation(entry, await interpretationQuarantineRows());
+  } catch {
+    return false;
+  }
 }
 
 let interpretationsSetAside = false;
@@ -638,14 +643,21 @@ function finishInterpretationHydration(): void {
  * writes refused for this page load.
  */
 function holdRowAfterHydrationFailure(
-  quarantine: (entry: UnreadableInterpretation) => boolean = quarantineUnreadableInterpretation,
+  quarantine: (entry: UnreadableInterpretation) => Promise<boolean> = quarantineUnreadableInterpretation,
 ): void {
   const raw = hydratingRaw;
   hydratingRaw = null;
   interpretationsSetAside = true;
   if (setAsideStatus === 'failed') return;
-  const held = raw !== null && quarantine({ source: 'canonical-sqlite', raw });
-  setAsideStatus = held ? 'held' : 'failed';
+  if (raw === null) {
+    setAsideStatus = 'failed';
+    return;
+  }
+  // Writes stay refused ('pending') until SQLite confirms it holds the row.
+  setAsideStatus = 'pending';
+  void quarantine({ source: 'canonical-sqlite', raw }).then((held) => {
+    setAsideStatus = held ? 'held' : 'failed';
+  });
 }
 
 /** True once this page load set aside unreadable saved interpretations (drives the boot notice). */
@@ -653,14 +665,14 @@ export function interpretationsWereSetAside(): boolean {
   return interpretationsSetAside;
 }
 
-function setAside(
-  quarantine: (entry: UnreadableInterpretation) => boolean,
+async function setAside(
+  quarantine: (entry: UnreadableInterpretation) => Promise<boolean>,
   entry: UnreadableInterpretation,
-): boolean {
+): Promise<boolean> {
   interpretationsSetAside = true;
   safeWarn('storage.interpretation_quarantined');
   setAsideStatus = 'pending';
-  const held = quarantine(entry);
+  const held = await quarantine(entry);
   setAsideStatus = held ? 'held' : 'failed';
   return held;
 }
@@ -670,38 +682,6 @@ function isPersistedEnvelope(raw: string): boolean {
   try {
     const parsed: unknown = JSON.parse(raw);
     return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed);
-  } catch {
-    return false;
-  }
-}
-
-function readQuarantine(storage: Pick<Storage, 'getItem'>): QuarantinedInterpretation[] {
-  try {
-    const parsed: unknown = JSON.parse(storage.getItem(INTERPRETATION_QUARANTINE_KEY) ?? '[]');
-    return Array.isArray(parsed) ? (parsed as QuarantinedInterpretation[]) : [];
-  } catch {
-    return [];
-  }
-}
-
-/**
- * Append an unreadable row to the quarantine (de-duplicated by source + bytes).
- * Returns true only when the row is provably held, so callers never drop the
- * only copy.
- */
-export function quarantineUnreadableInterpretation(
-  entry: UnreadableInterpretation,
-  storage: Pick<Storage, 'getItem' | 'setItem'> | undefined = browserLocalStorage(),
-  now: () => Date = () => new Date(),
-): boolean {
-  if (storage === undefined) return false;
-  try {
-    const records = readQuarantine(storage);
-    const held = records.some((r) => r.source === entry.source && r.raw === entry.raw);
-    if (held) return true;
-    const record = { quarantinedAt: now().toISOString(), source: entry.source, raw: entry.raw };
-    storage.setItem(INTERPRETATION_QUARANTINE_KEY, JSON.stringify([...records, record]));
-    return true;
   } catch {
     return false;
   }

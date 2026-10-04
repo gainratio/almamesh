@@ -99,10 +99,13 @@ idb-keyval records are copied, integrity-checked, and only then removed. A crash
 before cleanup leaves a redundant source copy and the migration safely resumes.
 Legacy localStorage preferences follow the same verify-before-delete rule. An
 interpretation row that is not valid JSON (legacy, or a canonical row an older
-build copied in unparsed) is never migrated: it moves to the localStorage key
-`almamesh-interpretations.quarantine` (timestamped, dropped after 30 days, not
-part of canonical SQLite or backups, erased by both reset paths) and boot shows
-a notice. A persist hydration error settles the hydration barrier as `failed`
+build copied in unparsed) is never migrated: it moves to the `quarantine`
+namespace of the same SQLite file, keyed `<profile>/<sha256>` (timestamped,
+dropped after 30 days, never in a snapshot, restore or exported backup). Start
+fresh clears it and profile delete removes that profile's rows, each inside the
+generation commit's SQLite batch. Boot shows a notice. An older build's
+localStorage `almamesh-interpretations.quarantine` key is copied into SQLite in
+one batch, verified, and only then removed (kept while SQLite is memory-only). A persist hydration error settles the hydration barrier as `failed`
 instead of hanging the first render. Once
 migration completes, live reads and writes use SQLite only; in-memory snapshots
 serve synchronous UI reads without creating another durable authority.

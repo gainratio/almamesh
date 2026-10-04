@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { VedicInterpretation } from '@almamesh/shared-types';
 import {
+  sessionRowsForTests,
   setActiveProfileScope,
   readDeletionTombstones,
   useChartLibraryStore,
@@ -33,6 +34,8 @@ function interpretation(summary: string): VedicInterpretation {
 }
 
 beforeEach(() => {
+  // Node has no SQLite Worker: the dataset ledger lives in session memory.
+  sessionRowsForTests().clear();
   setActiveProfileScope(null);
   useProfilesStore.setState({ profiles: {}, activeProfileId: null });
   useChartLibraryStore.setState({ charts: {} });
@@ -66,6 +69,8 @@ describe('deleteProfileData', () => {
     try {
       const deletion = deleteProfileData(target, {
         deleteMemoryForProfile: vi.fn().mockResolvedValue(undefined),
+        // Exercise the per-store snapshot fallback, not the generation commit.
+        recordDeletionTombstones: vi.fn(async () => undefined),
       });
       void deletion.then(() => {
         resolved = true;
@@ -119,6 +124,8 @@ describe('deleteProfileData', () => {
     try {
       const deletion = deleteProfileData(target, {
         deleteMemoryForProfile: vi.fn().mockResolvedValue(undefined),
+        // Exercise the per-store snapshot fallback, not the generation commit.
+        recordDeletionTombstones: vi.fn(async () => undefined),
       });
       void deletion.then(
         () => {
@@ -483,6 +490,8 @@ describe('deleteChatThreadData', () => {
     try {
       const deletion = deleteChatThreadData(threadId, {
         deleteMemoryForThread: vi.fn().mockResolvedValue(undefined),
+        // Exercise the per-store snapshot fallback, not the generation commit.
+        recordDeletionTombstones: vi.fn(async () => undefined),
       });
       void deletion.then(() => {
         resolved = true;
@@ -527,6 +536,8 @@ describe('deleteChatThreadData', () => {
       await expect(
         deleteChatThreadData(threadId, {
           deleteMemoryForThread: vi.fn().mockResolvedValue(undefined),
+        // Exercise the per-store snapshot fallback, not the generation commit.
+        recordDeletionTombstones: vi.fn(async () => undefined),
         }),
       ).rejects.toThrow(/chat persistence blocked/);
     } finally {
