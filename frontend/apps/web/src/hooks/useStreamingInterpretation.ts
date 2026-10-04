@@ -39,6 +39,7 @@ import {
   useInterpretationStore,
   useLanguageStore,
   usePredictiveStore,
+  interpretationWriteRefusal,
   whenInterpretationHydrated,
   predictiveRequestKey,
   type CachedPredictiveContexts,
@@ -152,6 +153,10 @@ export interface UseStreamingInterpretationResult {
  * the raw endpoint response body never reaches the screen.
  */
 export const READING_MODEL_UNAVAILABLE = 'reading_model_unavailable';
+
+/** Shown instead of starting a paid run while unreadable saved readings are not held. */
+const SAVED_READINGS_UNREADABLE =
+  'Your saved readings could not be read, so new readings are paused to protect them. Reload the page to try again.';
 
 /**
  * Resolve the LLM env for the INTERPRETATION path: build-time Vite env, with any
@@ -485,6 +490,12 @@ export function useStreamingInterpretation(chartId?: string | null): UseStreamin
       // for the whole lifecycle boundary before reading or mutating the store.
       await whenDataLifecycleReady();
       await whenInterpretationHydrated();
+      if (interpretationWriteRefusal() !== undefined) {
+        // Saved readings could not be read or held: a new run would overwrite them.
+        startInterpretation(id);
+        setError(id, SAVED_READINGS_UNREADABLE, 'unknown');
+        return;
+      }
       const stored = useChartLibraryStore.getState().getChart(id);
       const chart = stored?.sidereal_chart;
       if (!chart) {
@@ -604,6 +615,11 @@ export function useStreamingInterpretation(chartId?: string | null): UseStreamin
       await whenDataLifecycleReady();
       await whenInterpretationHydrated();
       const stored = useChartLibraryStore.getState().getChart(id);
+      if (interpretationWriteRefusal() !== undefined) {
+        startCurrentTimeline(id, stored?.profile_id);
+        setCurrentTimelineError(id, SAVED_READINGS_UNREADABLE, 'unknown');
+        return;
+      }
       const chart = stored?.sidereal_chart;
       if (!chart) {
         startCurrentTimeline(id, stored?.profile_id);

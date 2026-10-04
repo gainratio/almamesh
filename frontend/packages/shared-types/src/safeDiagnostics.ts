@@ -38,6 +38,7 @@ export const SAFE_DIAGNOSTIC_CODES = [
   'report.pdf_generation_failed',
   'storage.hydration_failed',
   'storage.interpretation_quarantined',
+  'storage.interpretation_write_refused',
   'storage.opfs_unavailable',
   'storage.state_open_failed',
   'stream.invalid_event',
