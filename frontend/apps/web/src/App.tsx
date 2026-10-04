@@ -2,6 +2,7 @@ import { Suspense, useEffect, type ReactElement, type ReactNode } from 'react'
 import { Route, Routes, Navigate } from 'react-router-dom'
 import { lazyWithRetry } from './lib/lazyWithRetry'
 import { useTranslation } from 'react-i18next'
+import { SetAsideNotice } from './components/SetAsideNotice'
 import { UpdateBanner } from './components/UpdateBanner'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { AnimatedRoutes } from './components/AnimatedRoutes'
@@ -183,6 +184,7 @@ function App() {
   return (
     <ErrorBoundary>
       <UpdateBanner />
+      <SetAsideNotice />
       <Suspense fallback={<PageLoadingFallback />}>
         {/* `/` is split out of the AppLayout-wrapped group so the marketing
             splash renders full-bleed, outside the app shell. */}

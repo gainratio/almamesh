@@ -357,6 +357,18 @@ describe('resetEverything', () => {
     expect(localStorage.getItem(LLM_SETTINGS_KEY)).toBeNull();
   });
 
+  it('start fresh also erases quarantined (unreadable) interpretations', async () => {
+    localStorage.setItem(
+      'almamesh-interpretations.quarantine',
+      JSON.stringify([{ quarantinedAt: '2026-10-04T12:00:00.000Z', source: 'legacy-local-storage', raw: 'x' }]),
+    );
+    seedEverything();
+
+    await resetEverything();
+
+    expect(localStorage.getItem('almamesh-interpretations.quarantine')).toBeNull();
+  });
+
   it('removes every legacy row and Web Storage duplicate while preserving the OPFS engine', async () => {
     localStorage.setItem(LANGUAGE_KEY, JSON.stringify({ state: { language: 'pt' }, version: 0 }));
     localStorage.setItem(LLM_SETTINGS_KEY, JSON.stringify({ model: 'local' }));

@@ -22,9 +22,9 @@ import type {
   RawEvidenceAnnotationPayload,
   ReadingProvenance,
 } from '@almamesh/llm';
-import type { TitledPersona, VedicInterpretation } from '@almamesh/shared-types';
+import { safeWarn, type TitledPersona, type VedicInterpretation } from '@almamesh/shared-types';
 import { deletionAwareIdbStorage } from './deletionTombstones';
-import { whenHydrated } from './hydrationBarrier';
+import { reportHydrationFailure, whenHydrated, type HydrationOutcome } from './hydrationBarrier';
 import { portableStatePersistence } from './portablePersistence';
 import { browserLocalStorage } from './webStorage';
 
@@ -505,11 +505,18 @@ export async function readInterpretationPersistedValue(
   durable: Pick<StateStorage, 'getItem' | 'setItem'> = deletionAwareIdbStorage,
   legacyStorage: Pick<Storage, 'getItem' | 'removeItem'> | undefined = browserLocalStorage(),
   retireLegacy: boolean | (() => boolean) = true,
+  quarantine: (entry: UnreadableInterpretation) => boolean = quarantineUnreadableInterpretation,
 ): Promise<string | null> {
   const shouldRetireLegacy = () =>
     typeof retireLegacy === 'function' ? retireLegacy() : retireLegacy;
   const durableValue = await durable.getItem(name);
   if (durableValue !== null) {
+    // A row a previous build copied in unparsed would fail JSON.parse on every
+    // boot. Set it aside and start from empty; the next save replaces it.
+    if (!isPersistedEnvelope(durableValue)) {
+      setAside(quarantine, { source: 'canonical-sqlite', raw: durableValue });
+      return null;
+    }
     if (shouldRetireLegacy()) retireLegacyInterpretation(legacyStorage, name);
     return durableValue;
   }
@@ -521,11 +528,88 @@ export async function readInterpretationPersistedValue(
     return null;
   }
   if (legacy === null) return null;
+  if (!isPersistedEnvelope(legacy)) {
+    // Never copy an unreadable row into canonical SQLite. Retire the legacy
+    // copy only once the quarantine provably holds it.
+    const held = setAside(quarantine, { source: 'legacy-local-storage', raw: legacy });
+    if (held && shouldRetireLegacy()) retireLegacyInterpretation(legacyStorage, name);
+    return null;
+  }
 
   await durable.setItem(name, legacy);
   const verified = await durable.getItem(name);
   if (verified !== null && shouldRetireLegacy()) retireLegacyInterpretation(legacyStorage, name);
   return verified;
+}
+
+/** Where unreadable interpretation rows are kept instead of being destroyed. */
+export const INTERPRETATION_QUARANTINE_KEY = 'almamesh-interpretations.quarantine';
+
+export interface UnreadableInterpretation {
+  readonly source: 'legacy-local-storage' | 'canonical-sqlite';
+  readonly raw: string;
+}
+
+interface QuarantinedInterpretation extends UnreadableInterpretation {
+  readonly quarantinedAt: string;
+}
+
+let interpretationsSetAside = false;
+
+/** True once this page load set aside unreadable saved interpretations (drives the boot notice). */
+export function interpretationsWereSetAside(): boolean {
+  return interpretationsSetAside;
+}
+
+function setAside(
+  quarantine: (entry: UnreadableInterpretation) => boolean,
+  entry: UnreadableInterpretation,
+): boolean {
+  interpretationsSetAside = true;
+  safeWarn('storage.interpretation_quarantined');
+  return quarantine(entry);
+}
+
+/** A zustand persist envelope: parseable JSON whose top level is an object. */
+function isPersistedEnvelope(raw: string): boolean {
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed);
+  } catch {
+    return false;
+  }
+}
+
+function readQuarantine(storage: Pick<Storage, 'getItem'>): QuarantinedInterpretation[] {
+  try {
+    const parsed: unknown = JSON.parse(storage.getItem(INTERPRETATION_QUARANTINE_KEY) ?? '[]');
+    return Array.isArray(parsed) ? (parsed as QuarantinedInterpretation[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Append an unreadable row to the quarantine (de-duplicated by source + bytes).
+ * Returns true only when the row is provably held, so callers never drop the
+ * only copy.
+ */
+export function quarantineUnreadableInterpretation(
+  entry: UnreadableInterpretation,
+  storage: Pick<Storage, 'getItem' | 'setItem'> | undefined = browserLocalStorage(),
+  now: () => Date = () => new Date(),
+): boolean {
+  if (storage === undefined) return false;
+  try {
+    const records = readQuarantine(storage);
+    const held = records.some((r) => r.source === entry.source && r.raw === entry.raw);
+    if (held) return true;
+    const record = { quarantinedAt: now().toISOString(), source: entry.source, raw: entry.raw };
+    storage.setItem(INTERPRETATION_QUARANTINE_KEY, JSON.stringify([...records, record]));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 const interpretationStorage: StateStorage = {
@@ -927,10 +1011,16 @@ export const useInterpretationStore = create<InterpretationStore>()(
     merge: mergeInterpretationPersistedState,
     storage: createJSONStorage(() => interpretationStorage),
     partialize: (state) => ({ byChart: state.byChart }),
+    onRehydrateStorage: () => (_state, error) => {
+      if (error === undefined) return;
+      interpretationsSetAside = true;
+      safeWarn('storage.hydration_failed');
+      reportHydrationFailure(useInterpretationStore.persist, error);
+    },
   }),
 );
 
 /** Wait until canonical SQLite state has rehydrated before starting a paid run. */
-export function whenInterpretationHydrated(): Promise<void> {
+export function whenInterpretationHydrated(): Promise<HydrationOutcome> {
   return whenHydrated(useInterpretationStore.persist);
 }

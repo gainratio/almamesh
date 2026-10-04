@@ -5,7 +5,9 @@ import type { VedicInterpretation } from '@almamesh/shared-types';
 
 import {
   INTERPRETATION_PERSIST_VERSION,
+  INTERPRETATION_QUARANTINE_KEY,
   interpretationStoreCreator,
+  quarantineUnreadableInterpretation,
   mergeInterpretationPersistedState,
   migrateInterpretationPersistedState,
   readInterpretationPersistedValue,
@@ -92,11 +94,12 @@ describe('interpretation portable storage migration', () => {
 
   it('checks durability after the repository has opened before retiring the legacy reading', async () => {
     let repositoryIsDurable = false;
-    const legacy = new Map([['almamesh-interpretations', 'legacy']]);
+    const legacy = new Map([['almamesh-interpretations', '{"state":{"byChart":{}}}']]);
+    const canonical = '{"state":{"byChart":{"canonical":{}}}}';
     const durableStorage = {
       getItem: async () => {
         repositoryIsDurable = true;
-        return 'canonical';
+        return canonical;
       },
       setItem: async () => undefined,
     };
@@ -109,8 +112,123 @@ describe('interpretation portable storage migration', () => {
         removeItem: (name) => void legacy.delete(name),
       },
       () => repositoryIsDurable,
-    )).resolves.toBe('canonical');
+    )).resolves.toBe(canonical);
     expect(legacy.has('almamesh-interpretations')).toBe(false);
+  });
+});
+
+/** Map-backed Storage double: what each test reads back is what the code wrote. */
+function memoryStorage(entries: Record<string, string> = {}) {
+  const map = new Map(Object.entries(entries));
+  return {
+    map,
+    getItem: (name: string) => map.get(name) ?? null,
+    setItem: (name: string, value: string) => void map.set(name, value),
+    removeItem: (name: string) => void map.delete(name),
+  };
+}
+
+function durableDouble(initial: string | null = null) {
+  const writes: string[] = [];
+  let value = initial;
+  return {
+    writes,
+    current: () => value,
+    getItem: async () => value,
+    setItem: async (_name: string, next: string) => {
+      writes.push(next);
+      value = next;
+    },
+  };
+}
+
+describe('unreadable interpretation rows are quarantined, never migrated or hung on', () => {
+  const NAME = 'almamesh-interpretations';
+  const VALID = '{"state":{"byChart":{"paid":{"status":"complete"}}},"version":6}';
+
+  it('never copies an unparseable legacy value into canonical SQLite', async () => {
+    const durable = durableDouble();
+    const legacy = memoryStorage({ [NAME]: 'reset-proof' });
+    const quarantined: { source: string; raw: string }[] = [];
+
+    await expect(
+      readInterpretationPersistedValue(NAME, durable, legacy, true, (entry) => {
+        quarantined.push(entry);
+        return true;
+      }),
+    ).resolves.toBeNull();
+
+    expect(durable.writes).toEqual([]);
+    expect(quarantined).toEqual([{ source: 'legacy-local-storage', raw: 'reset-proof' }]);
+    // Held in quarantine, so the legacy row can be retired without losing it.
+    expect(legacy.map.has(NAME)).toBe(false);
+  });
+
+  it('keeps the legacy row in place when the quarantine cannot hold it', async () => {
+    const durable = durableDouble();
+    const legacy = memoryStorage({ [NAME]: '{"state":' });
+
+    await expect(
+      readInterpretationPersistedValue(NAME, durable, legacy, true, () => false),
+    ).resolves.toBeNull();
+
+    expect(durable.writes).toEqual([]);
+    expect(legacy.map.get(NAME)).toBe('{"state":');
+  });
+
+  it('quarantines an already-poisoned canonical value so hydration recovers', async () => {
+    const durable = durableDouble('reset-proof');
+    const legacy = memoryStorage();
+    const quarantined: { source: string; raw: string }[] = [];
+
+    await expect(
+      readInterpretationPersistedValue(NAME, durable, legacy, true, (entry) => {
+        quarantined.push(entry);
+        return true;
+      }),
+    ).resolves.toBeNull();
+
+    expect(quarantined).toEqual([{ source: 'canonical-sqlite', raw: 'reset-proof' }]);
+  });
+
+  it('still migrates a valid legacy value into canonical SQLite and retires it', async () => {
+    const durable = durableDouble();
+    const legacy = memoryStorage({ [NAME]: VALID });
+
+    await expect(
+      readInterpretationPersistedValue(NAME, durable, legacy, true, () => {
+        throw new Error('a valid row must not be quarantined');
+      }),
+    ).resolves.toBe(VALID);
+
+    expect(durable.writes).toEqual([VALID]);
+    expect(legacy.map.has(NAME)).toBe(false);
+  });
+
+  it('writes a timestamped, de-duplicated quarantine record under a clearly named key', () => {
+    const storage = memoryStorage();
+    const now = () => new Date('2026-10-04T12:00:00.000Z');
+    const entry = { source: 'legacy-local-storage' as const, raw: 'reset-proof' };
+
+    expect(INTERPRETATION_QUARANTINE_KEY).toBe('almamesh-interpretations.quarantine');
+    expect(quarantineUnreadableInterpretation(entry, storage, now)).toBe(true);
+    expect(quarantineUnreadableInterpretation(entry, storage, now)).toBe(true);
+
+    expect(JSON.parse(storage.map.get(INTERPRETATION_QUARANTINE_KEY) ?? 'null')).toEqual([
+      { quarantinedAt: '2026-10-04T12:00:00.000Z', source: 'legacy-local-storage', raw: 'reset-proof' },
+    ]);
+  });
+
+  it('reports failure when there is no usable storage to hold the row', () => {
+    const entry = { source: 'canonical-sqlite' as const, raw: 'x' };
+    expect(quarantineUnreadableInterpretation(entry, undefined)).toBe(false);
+    const full = {
+      ...memoryStorage(),
+      setItem: () => {
+        throw new Error('QuotaExceededError');
+      },
+    };
+    expect(quarantineUnreadableInterpretation(entry, full)).toBe(false);
   });
 });
 
