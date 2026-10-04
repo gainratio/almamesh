@@ -140,6 +140,7 @@
   },
   "storage": {
     "interpretations_set_aside": "Some saved interpretations could not be read and were set aside on this device. They are kept for 30 days and then deleted. To remove them now, use Settings → Preferences → Reset chart / start fresh.",
+    "interpretations_unreadable_paused": "Some saved interpretations could not be read, and this device could not set them aside. To protect them, new readings are paused. Reload the page to try again.",
     "dismiss_aria": "Dismiss notice"
   }
 }

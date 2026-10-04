@@ -8,6 +8,7 @@ import {
   INTERPRETATION_PERSIST_VERSION,
   INTERPRETATION_QUARANTINE_KEY,
   INTERPRETATION_QUARANTINE_TTL_DAYS,
+  InterpretationSetAsideError,
   interpretationStoreCreator,
   pruneExpiredInterpretationQuarantine,
   quarantineUnreadableInterpretation,
@@ -167,16 +168,28 @@ describe('unreadable interpretation rows are quarantined, never migrated or hung
     expect(legacy.map.has(NAME)).toBe(false);
   });
 
-  it('keeps the legacy row in place when the quarantine cannot hold it', async () => {
+  // Contract reversed (2026-10-04): this used to resolve null, so hydration
+  // "succeeded" empty and the next save replaced the only copy. It must fail closed.
+  it('fails hydration closed and keeps the legacy row when the quarantine cannot hold it', async () => {
     const durable = durableDouble();
     const legacy = memoryStorage({ [NAME]: '{"state":' });
 
     await expect(
       readInterpretationPersistedValue(NAME, durable, legacy, true, () => false),
-    ).resolves.toBeNull();
+    ).rejects.toBeInstanceOf(InterpretationSetAsideError);
 
     expect(durable.writes).toEqual([]);
     expect(legacy.map.get(NAME)).toBe('{"state":');
+  });
+
+  it('fails hydration closed when a poisoned canonical row cannot be held', async () => {
+    const durable = durableDouble('reset-proof');
+
+    await expect(
+      readInterpretationPersistedValue(NAME, durable, memoryStorage(), true, () => false),
+    ).rejects.toMatchObject({ name: 'InterpretationSetAsideError', status: 'failed' });
+
+    expect(durable.writes).toEqual([]);
   });
 
   it('quarantines an already-poisoned canonical value so hydration recovers', async () => {

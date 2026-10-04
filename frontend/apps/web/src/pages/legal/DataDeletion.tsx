@@ -52,6 +52,7 @@ export default function DataDeletion() {
         <li>{t('data_deletion.deleted_li4')}</li>
         <li>{t('data_deletion.deleted_li5')}</li>
       </ul>
+      <p>{t('data_deletion.deleted_quarantine')}</p>
 
       <h2>{t('data_deletion.retention_heading')}</h2>
       <ul>
