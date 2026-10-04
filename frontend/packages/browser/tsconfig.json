@@ -4,6 +4,7 @@
     "composite": false,
     "noEmit": true,
     "allowImportingTsExtensions": true,
+    "types": ["node"],
     "lib": ["ES2023", "DOM", "DOM.Iterable", "WebWorker"]
   },
   "include": ["src/**/*.ts"],
