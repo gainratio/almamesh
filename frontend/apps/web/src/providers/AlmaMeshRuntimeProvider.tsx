@@ -26,6 +26,7 @@ import {
   EngineBootProgressContext,
   PROGRESS_COALESCE_MS,
 } from './chartEngineContext'
+import { portableStatePersistence } from '@almamesh/store'
 import { hasLocalChart } from '../lib/localChart'
 import { recordEngineBootFailure, registerEngineTeardown } from '../lib/engineLifecycle'
 import { recoverSeveredServiceWorkerChannel } from '../lib/swSelfHeal'
@@ -124,6 +125,10 @@ if (typeof window !== 'undefined' && EXIT_GATE_HOOKS) {
   ).__EDGEPROC_FORCE_INDEXEDDB_CACHE__ = forceIndexedDb
   window.__almameshVerifySqliteMemory = async () =>
     (await import('../lib/chatMemory')).verifySqliteMemoryPersistence()
+  // Boot opens the canonical SQLite state store (OPFS, or memory when OPFS is
+  // refused) and spawns its own Worker. Proofs that count Workers wait for this
+  // to leave 'pending' so that boot Worker is never attributed to the proof.
+  window.__almameshPortableStatePersistence = portableStatePersistence
 }
 
 /**
