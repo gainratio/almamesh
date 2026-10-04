@@ -140,5 +140,9 @@
     "confirm_prompt": "Al borrarla, este dispositivo pierde la protección frente a la versión antigua. ¿Borrar de todos modos?",
     "confirm": "Sí, borrarla",
     "cancel": "Cancelar"
+  },
+  "storage": {
+    "interpretations_set_aside": "Algunas interpretaciones guardadas no se pudieron leer y se apartaron en este dispositivo. Se conservan 30 días y luego se eliminan. Para borrarlas ahora, ve a Ajustes → Preferencias → Restablecer carta / empezar de cero.",
+    "dismiss_aria": "Cerrar aviso"
   }
 }

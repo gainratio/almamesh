@@ -90,6 +90,27 @@ describe('resetAppData', () => {
     expect(deleteDatabase).toHaveBeenCalledWith('almamesh-x');
   });
 
+  it('delete-all wipes quarantined (unreadable) interpretations too', async () => {
+    vi.stubGlobal('navigator', {
+      serviceWorker: { getRegistrations: vi.fn().mockResolvedValue([]) },
+    });
+    vi.stubGlobal('caches', { keys: vi.fn().mockResolvedValue([]), delete: vi.fn() });
+    const stored = new Map([
+      ['almamesh-interpretations.quarantine', '[{"quarantinedAt":"2026-10-04T00:00:00.000Z"}]'],
+    ]);
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => stored.get(key) ?? null,
+      setItem: (key: string, value: string) => void stored.set(key, value),
+      removeItem: (key: string) => void stored.delete(key),
+      clear: () => stored.clear(),
+    });
+    stubIndexedDb([]);
+
+    await resetAppData();
+
+    expect(stored.has('almamesh-interpretations.quarantine')).toBe(false);
+  });
+
   it('resolves even when one cleanup path throws (best-effort, isolated)', async () => {
     vi.stubGlobal('navigator', {
       serviceWorker: { getRegistrations: vi.fn().mockRejectedValue(new Error('SW boom')) },

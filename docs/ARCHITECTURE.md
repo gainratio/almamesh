@@ -97,7 +97,13 @@ use a pair-key CAS merge so separate pairs completed in different tabs are
 preserved. On first eligible launch, the old
 idb-keyval records are copied, integrity-checked, and only then removed. A crash
 before cleanup leaves a redundant source copy and the migration safely resumes.
-Legacy localStorage preferences follow the same verify-before-delete rule. Once
+Legacy localStorage preferences follow the same verify-before-delete rule. An
+interpretation row that is not valid JSON (legacy, or a canonical row an older
+build copied in unparsed) is never migrated: it moves to the localStorage key
+`almamesh-interpretations.quarantine` (timestamped, dropped after 30 days, not
+part of canonical SQLite or backups, erased by both reset paths) and boot shows
+a notice. A persist hydration error settles the hydration barrier as `failed`
+instead of hanging the first render. Once
 migration completes, live reads and writes use SQLite only; in-memory snapshots
 serve synchronous UI reads without creating another durable authority.
 

@@ -137,5 +137,9 @@
     "confirm_prompt": "Clearing removes this device's protection against the older version. Clear anyway?",
     "confirm": "Yes, clear it",
     "cancel": "Cancel"
+  },
+  "storage": {
+    "interpretations_set_aside": "Some saved interpretations could not be read and were set aside on this device. They are kept for 30 days and then deleted. To remove them now, use Settings → Preferences → Reset chart / start fresh.",
+    "dismiss_aria": "Dismiss notice"
   }
 }
