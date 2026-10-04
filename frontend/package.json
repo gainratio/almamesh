@@ -27,7 +27,7 @@
     "husky": "^9.1.7",
     "lint-staged": "^17.6.0",
     "@typescript/native": "npm:typescript@^7.0.2",
-    "typescript": "^6.0.3"
+    "typescript": "^7.0.2"
   },
   "//engines": "Bun is the sanctioned toolchain exception (ENGINEERING-STANDARDS §2) — pinned exactly in .bun-version (CI reads it via setup-bun's bun-version-file); engines.bun is the floor for humans.",
   "engines": {
