@@ -623,8 +623,8 @@ function abandonedDeletionRollForward(
   ];
 }
 
-async function runLeaseRecovery(): Promise<boolean> {
-  const repository = await portableRepository();
+async function runLeaseRecovery(held?: PortableStateRepository): Promise<boolean> {
+  const repository = held ?? (await portableRepository());
   // Session rows die with the page; only the SQLite ledger outlives a crash.
   if (repository === null) return false;
   const observed = parseDeletionTombstones(await repository.read(PORTABLE_LEDGER_KEY));
@@ -648,8 +648,8 @@ async function runLeaseRecovery(): Promise<boolean> {
  * anything else. One recovery runs at a time per realm, however many stores
  * hydrate at once. Resolves true when this call changed the ledger.
  */
-export function recoverAbandonedDatasetLease(): Promise<boolean> {
-  leaseRecovery ??= runLeaseRecovery().finally(() => {
+export function recoverAbandonedDatasetLease(held?: PortableStateRepository): Promise<boolean> {
+  leaseRecovery ??= runLeaseRecovery(held).finally(() => {
     leaseRecovery = undefined;
   });
   return leaseRecovery;
@@ -701,11 +701,12 @@ async function acquireRepositoryLease(
       };
     });
     if ('epoch' in transaction.result) return transaction.result.epoch;
-    if (await isLeaseAbandoned(transaction.result.busy)) {
-      await recoverAbandonedDatasetLease();
-    } else {
-      await new Promise((resolve) => globalThis.setTimeout(resolve, 25));
-    }
+    // Recover on THIS repository; and whenever nothing changed, pause before
+    // retrying, so a lease that cannot be settled never becomes a busy loop.
+    const recovered =
+      (await isLeaseAbandoned(transaction.result.busy)) &&
+      (await recoverAbandonedDatasetLease(repository));
+    if (!recovered) await new Promise((resolve) => globalThis.setTimeout(resolve, 25));
   }
 }
 

@@ -115,6 +115,28 @@ afterEach(() => {
 });
 
 describe('abandoned dataset lease recovery at boot', () => {
+  // Found as 100%-CPU vitest workers that never exited: lease acquisition
+  // looped on a repository while recovery looked up a different one, made no
+  // progress, and retried with no pause. Recovery must settle the lease on the
+  // repository the acquisition is using, and a loop must never spin.
+  it('settles an abandoned lease on the repository the acquisition holds, without spinning', async () => {
+    const { sqlite } = harness();
+    seedLedger(sqlite, { leaseOwner: 'dead-tab' });
+    let reads = 0;
+    const list = sqlite.list.bind(sqlite);
+    sqlite.list = async (options) => {
+      reads += 1;
+      if (reads === 1) setPortableStateRepositoryForTests(null);
+      if (reads > 200) throw new Error('lease acquisition is spinning');
+      return list(options);
+    };
+
+    const epoch = await beginDatasetMutation();
+
+    expect(epoch).toBeGreaterThan(2);
+    expect(reads).toBeLessThan(20);
+  });
+
   it('accepts writes after hydrating over an abandoned lease that holds no tombstones', async () => {
     const { sqlite, repository } = harness();
     seedLedger(sqlite, { restoreStartedAt: TEN_MINUTES_AGO(), leaseOwner: 'crashed-tab' });
