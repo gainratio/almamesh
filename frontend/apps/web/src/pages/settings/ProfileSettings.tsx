@@ -10,7 +10,8 @@ import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
-  appEvents,
+  requestRegeneration,
+  whenChartLibraryPersisted,
   type LocalBirthInput,
   type PendingChangeField,
   type PendingChanges,
@@ -378,11 +379,14 @@ export default function ProfileSettings() {
       }
       const birth = birthMetaFromDetails(currentDetails);
 
-      // Single source of regeneration: emit the event. The one subscriber in
-      // App.tsx recomputes on-device, replaces the primary (preserving
-      // profile_id), deletes the orphan, and re-streams the interpretation.
+      // Single source of regeneration: the one subscriber in App.tsx
+      // recomputes on-device, replaces the primary (preserving profile_id),
+      // deletes the orphan, and re-streams the interpretation. Say "Chart
+      // Updated!" only once the new chart is computed AND written: a reload
+      // before that silently reverted the edit.
       const profileId = useProfilesStore.getState().activeProfileId;
-      appEvents.emit('birth-info-changed', { birth, profileId });
+      await requestRegeneration({ birth, profileId });
+      await whenChartLibraryPersisted();
 
       clearPendingChanges();
       setRegenerationStatus('success');
@@ -818,7 +822,7 @@ export default function ProfileSettings() {
           </p>
         )}
 
-        {error && <p className="text-status-error text-sm mt-2">{error}</p>}
+        {error && <p role="alert" className="text-status-error text-sm mt-2">{error}</p>}
       </form>
 
       {/* Modal */}
