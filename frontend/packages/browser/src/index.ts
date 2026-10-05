@@ -12,6 +12,7 @@
 // --- the reused sync foundation (edge-proc browser tier) ---
 export {
   EngineClient,
+  EngineOperationError,
   materializeFile,
   MemoryCacheStore,
   syncIndex,

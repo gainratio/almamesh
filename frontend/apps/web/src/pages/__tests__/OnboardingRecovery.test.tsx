@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 
-import type { ChartEngine } from '@almamesh/browser';
+import { EngineOperationError, type ChartEngine } from '@almamesh/browser';
 import '../../i18n/config';
 import { registerRegenerationRunner, useOnboardingStore } from '@almamesh/store';
 
@@ -200,10 +200,10 @@ describe('Onboarding — in-app bootstrap recovery', () => {
     // @gainratio/browser surfaces a durable-floor refusal as an EngineOperationError
     // with code 'rollback'. Recovery must stay a deliberate click: auto-wiping the
     // bundle cache (and with it the rollback floor) would defeat rollback protection.
-    const rollback = Object.assign(
-      new Error('refusing rollback: pointer sequence 1 is below the durable floor 1700000000'),
-      { name: 'EngineOperationError', code: 'rollback' },
-    );
+    const rollback = new EngineOperationError({
+      code: 'rollback',
+      message: 'refusing rollback: pointer sequence 1 is below the durable floor 1700000000',
+    });
     const reboot = vi.fn().mockRejectedValue(rollback);
     engineValue = {
       engine: null,
