@@ -365,11 +365,18 @@ export class PortableStateRepository {
 
   /** Every held set-aside record, keyed `<personId>/<row>/<sha256>`. */
   public async listSetAside(): Promise<ReadonlyMap<string, string>> {
-    const page = await this.#store.list({
-      namespace: PORTABLE_SET_ASIDE_NAMESPACE,
-      limit: MAX_CANONICAL_ROWS,
-    });
-    return new Map(page.rows.map((row) => [row.key, decode(row.value, row.key)]));
+    const held = new Map<string, string>();
+    let afterKey: string | undefined;
+    do {
+      const page = await this.#store.list({
+        namespace: PORTABLE_SET_ASIDE_NAMESPACE,
+        limit: MAX_CANONICAL_ROWS,
+        ...(afterKey === undefined ? {} : { afterKey }),
+      });
+      for (const row of page.rows) held.set(row.key, decode(row.value, row.key));
+      afterKey = page.nextKey;
+    } while (afterKey !== undefined);
+    return held;
   }
 
   /**
@@ -389,8 +396,14 @@ export class PortableStateRepository {
       key,
       value: encoder.encode(value),
     })));
-    const held = await this.listSetAside();
-    if (rows.some(({ key }) => !held.has(key))) {
+    // Verify each record by its own key: never capped by a listing page.
+    const held = await Promise.all(
+      rows.map(async ({ key, value }) => {
+        const row = await this.#store.get(PORTABLE_SET_ASIDE_NAMESPACE, key);
+        return row !== undefined && decode(row.value, key) === value;
+      }),
+    );
+    if (held.includes(false)) {
       throw new Error('Set-aside records did not verify in SQLite.');
     }
   }

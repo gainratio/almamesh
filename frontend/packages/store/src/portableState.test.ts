@@ -42,18 +42,20 @@ class MemorySqliteStore implements SqliteStateStore {
     return row === undefined ? undefined : { namespace, key, ...row };
   }
 
-  async list(options: { namespace: string }) {
+  /** Pages like the real store: `limit` rows after `afterKey`, `nextKey` when more remain. */
+  async list(options: { namespace: string; afterKey?: string; limit?: number }) {
     const prefix = `${options.namespace}/`;
-    return {
-      rows: [...this.values.entries()]
-        .filter(([key]) => key.startsWith(prefix))
-        .map(([key, row]) => ({
-          namespace: options.namespace,
-          key: key.slice(prefix.length),
-          ...row,
-        }))
-        .sort((left, right) => left.key.localeCompare(right.key)),
-    };
+    const all = [...this.values.entries()]
+      .filter(([key]) => key.startsWith(prefix))
+      .map(([key, row]) => ({
+        namespace: options.namespace,
+        key: key.slice(prefix.length),
+        ...row,
+      }))
+      .sort((left, right) => (left.key < right.key ? -1 : left.key > right.key ? 1 : 0))
+      .filter((row) => options.afterKey === undefined || row.key > options.afterKey);
+    const rows = options.limit === undefined ? all : all.slice(0, options.limit);
+    return rows.length < all.length ? { rows, nextKey: rows.at(-1)!.key } : { rows };
   }
 
   async batch(mutations: readonly SqliteStateMutation[], options = {}) {
@@ -1081,6 +1083,30 @@ describe('repairPortableReferences: every dangling reference normal use can leav
     expect(held[0]![0]).toMatch(/^gone\/almamesh-life-events\/[0-9a-f]{64}$/);
     expect(JSON.parse(held[0]![1])).toMatchObject({ ...record });
     expect([...handed[0]!.values()].some((value) => value.includes('Married'))).toBe(false);
+  });
+
+  it('holds more than 1,000 set-aside records (verification is not capped by one page)', async () => {
+    const { repository } = await seed([]);
+    const records = Array.from({ length: 1_001 }, (_, i) => ({
+      row: 'almamesh-life-events' as const,
+      personId: 'gone',
+      value: `[{"id":"e${i}"}]`,
+    }));
+
+    await expect(repository.holdSetAside(records, '2026-10-05T00:00:00.000Z')).resolves.toBeUndefined();
+    expect((await repository.listSetAside()).size).toBe(1_001);
+  });
+
+  it('refuses to report a hold that SQLite did not keep', async () => {
+    const sqlite = new MemorySqliteStore();
+    const repository = new PortableStateRepository(sqlite, async (bytes) => bytes[0] ?? -1, rebuildAtEpoch(sqlite));
+    // A write that silently does not persist: the hold must not claim success,
+    // so no caller ever drops the only copy.
+    sqlite.batch = async () => ({ changed: 0, epoch: sqlite.epoch });
+
+    await expect(
+      repository.holdSetAside([{ row: 'almamesh-life-events', personId: 'gone', value: '[]' }], 'now'),
+    ).rejects.toThrow(/did not verify/);
   });
 
   it('treats an absent profiles row as unknown: no person-keyed record is touched', () => {

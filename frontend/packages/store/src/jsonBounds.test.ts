@@ -58,6 +58,15 @@ describe('assertJsonTextWithinBounds (before JSON.parse)', () => {
     expect(() => assertJsonTextWithinBounds(deep(MAX_JSON_DEPTH), ROW)).not.toThrow();
   });
 
+  it('honors backslash escapes: an escaped quote does not end the string', () => {
+    // Read as `"\"` + bracket noise, the string ends early and 65 `[` would
+    // exceed the depth limit; read correctly it is one short string value.
+    const text = JSON.stringify(['\"' + '['.repeat(MAX_JSON_DEPTH + 1) + ']]],,,:{']);
+    expect(() => assertJsonTextWithinBounds(text, ROW)).not.toThrow();
+    const many = JSON.stringify(Array.from({ length: 10 }, () => 'x\\"' + ','.repeat(30_000)));
+    expect(() => assertJsonTextWithinBounds(many, ROW)).not.toThrow();
+  });
+
   it('refuses a raw string too long to be within the character limit even if every character were escaped', () => {
     const huge = `"${'x'.repeat(MAX_STRING_CHARACTERS * 6 + 1)}"`;
     expect(() => assertJsonTextWithinBounds(huge, ROW)).toThrow(/string exceeds 1000000 characters/);
