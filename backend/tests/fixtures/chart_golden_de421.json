@@ -986,6 +986,19 @@
         "speed": 1.121903
       }
     },
+    "snapshot": {
+      "ayanamsa": "LAHIRI",
+      "birth_utc": "1972-03-10T08:15:00+00:00",
+      "dasha_year_convention": "julian_365_25",
+      "data_hash": "81de915e5e0168224c93fd2e54d8ac254748d0db090fcb09c5c14c9f70193cba",
+      "engine_version": "0.1.0",
+      "ephemeris_file": "de421.bsp",
+      "house_system": "whole_sign",
+      "node_type": "mean",
+      "reference_date": "2025-01-01T00:00:00+00:00",
+      "snapshot_id": "8dbb90ee2ffa6977e52943d344f408e2adfbe0981ddce1ab7fcef671067f5e8c",
+      "snapshot_schema": "1"
+    },
     "yogas": [
       {
         "category": "auspicious",
@@ -2588,6 +2601,19 @@
         "sign_lord": "venus",
         "speed": 1.119824
       }
+    },
+    "snapshot": {
+      "ayanamsa": "LAHIRI",
+      "birth_utc": "1985-07-23T04:30:00+00:00",
+      "dasha_year_convention": "julian_365_25",
+      "data_hash": "81de915e5e0168224c93fd2e54d8ac254748d0db090fcb09c5c14c9f70193cba",
+      "engine_version": "0.1.0",
+      "ephemeris_file": "de421.bsp",
+      "house_system": "whole_sign",
+      "node_type": "mean",
+      "reference_date": "2025-01-01T00:00:00+00:00",
+      "snapshot_id": "de708b7b239d69ea24a9be68b8c361d5e7a6924e3720d82cbd25e3c62bf3863e",
+      "snapshot_schema": "1"
     },
     "yogas": [
       {
@@ -4356,6 +4382,19 @@
         "speed": 0.829353
       }
     },
+    "snapshot": {
+      "ayanamsa": "LAHIRI",
+      "birth_utc": "1988-08-08T01:14:00+00:00",
+      "dasha_year_convention": "julian_365_25",
+      "data_hash": "81de915e5e0168224c93fd2e54d8ac254748d0db090fcb09c5c14c9f70193cba",
+      "engine_version": "0.1.0",
+      "ephemeris_file": "de421.bsp",
+      "house_system": "whole_sign",
+      "node_type": "mean",
+      "reference_date": "2025-01-01T00:00:00+00:00",
+      "snapshot_id": "23158635078ef8d847ce36bb873536b67eb2ecfde9e8a0b344541400222cdcee",
+      "snapshot_schema": "1"
+    },
     "yogas": [
       {
         "category": "auspicious",
@@ -5750,6 +5789,19 @@
         "sign_lord": "saturn",
         "speed": -0.600281
       }
+    },
+    "snapshot": {
+      "ayanamsa": "LAHIRI",
+      "birth_utc": "1990-01-15T12:00:00+00:00",
+      "dasha_year_convention": "julian_365_25",
+      "data_hash": "81de915e5e0168224c93fd2e54d8ac254748d0db090fcb09c5c14c9f70193cba",
+      "engine_version": "0.1.0",
+      "ephemeris_file": "de421.bsp",
+      "house_system": "whole_sign",
+      "node_type": "mean",
+      "reference_date": "2025-01-01T00:00:00+00:00",
+      "snapshot_id": "4eeebbf2d7372054e9dd8cc7022f2332306959a96c8398b786fd1f2bf6a5baab",
+      "snapshot_schema": "1"
     },
     "yogas": [
       {
@@ -7337,6 +7389,19 @@
         "speed": 1.102888
       }
     },
+    "snapshot": {
+      "ayanamsa": "LAHIRI",
+      "birth_utc": "2000-12-31T23:59:00+00:00",
+      "dasha_year_convention": "julian_365_25",
+      "data_hash": "81de915e5e0168224c93fd2e54d8ac254748d0db090fcb09c5c14c9f70193cba",
+      "engine_version": "0.1.0",
+      "ephemeris_file": "de421.bsp",
+      "house_system": "whole_sign",
+      "node_type": "mean",
+      "reference_date": "2025-01-01T00:00:00+00:00",
+      "snapshot_id": "58a230e8815d8d2957cd58d9a34231fe8c1566ca66713c4e8dcd05358ae90ab7",
+      "snapshot_schema": "1"
+    },
     "yogas": [
       {
         "category": "dhana",
@@ -8915,6 +8980,19 @@
         "speed": 1.158456
       }
     },
+    "snapshot": {
+      "ayanamsa": "LAHIRI",
+      "birth_utc": "2010-06-21T18:00:00+00:00",
+      "dasha_year_convention": "julian_365_25",
+      "data_hash": "81de915e5e0168224c93fd2e54d8ac254748d0db090fcb09c5c14c9f70193cba",
+      "engine_version": "0.1.0",
+      "ephemeris_file": "de421.bsp",
+      "house_system": "whole_sign",
+      "node_type": "mean",
+      "reference_date": "2025-01-01T00:00:00+00:00",
+      "snapshot_id": "740d8af48be2389a8e48def2b32259ad07a469ea70cff08c54360cd1dc7fb2ba",
+      "snapshot_schema": "1"
+    },
     "yogas": [
       {
         "category": "auspicious",
@@ -10373,6 +10451,19 @@
         "sign_lord": "mars",
         "speed": 1.241594
       }
+    },
+    "snapshot": {
+      "ayanamsa": "LAHIRI",
+      "birth_utc": "2019-11-09T17:45:00+00:00",
+      "dasha_year_convention": "julian_365_25",
+      "data_hash": "81de915e5e0168224c93fd2e54d8ac254748d0db090fcb09c5c14c9f70193cba",
+      "engine_version": "0.1.0",
+      "ephemeris_file": "de421.bsp",
+      "house_system": "whole_sign",
+      "node_type": "mean",
+      "reference_date": "2025-01-01T00:00:00+00:00",
+      "snapshot_id": "52b1afb354ca618d00e35e6ddeaf703c6b500d306e8f054e77dc65042a05175a",
+      "snapshot_schema": "1"
     },
     "yogas": [
       {

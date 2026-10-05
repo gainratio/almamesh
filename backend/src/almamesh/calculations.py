@@ -286,6 +286,16 @@ DEFAULT_EPHEMERIS_FILE = "de421.bsp"
 _VENDORED_EPHEMERIS_DIR = Path(__file__).resolve().parents[2]
 
 
+def resolve_ephemeris_path(ephemeris_file: str = DEFAULT_EPHEMERIS_FILE) -> Path:
+    """The ephemeris file the engine reads: the vendored copy on CPython, else
+    the bundle-seeded ``~/.skyfield-data`` copy (Pyodide). One resolver, so the
+    snapshot hashes exactly the bytes the numbers came from."""
+    vendored = _VENDORED_EPHEMERIS_DIR / ephemeris_file
+    if vendored.exists():
+        return vendored
+    return Path(Loader("~/.skyfield-data").path_to(ephemeris_file))
+
+
 class SkyfieldAstronomy:
     """Core astronomy calculations using Skyfield."""
 
@@ -297,8 +307,8 @@ class SkyfieldAstronomy:
         # via Skyfield's explicit-path loader. Under Pyodide the vendored file is
         # absent -> fall back to Loader(...) reading the bundle's ~/.skyfield-data
         # exactly as before. Same de421 bytes -> byte-identical numbers.
-        vendored = _VENDORED_EPHEMERIS_DIR / ephemeris_file
-        self.eph = load_file(str(vendored)) if vendored.exists() else self.loader(ephemeris_file)
+        path = resolve_ephemeris_path(ephemeris_file)
+        self.eph = load_file(str(path)) if path.exists() else self.loader(ephemeris_file)
         self.ts = self.loader.timescale()
 
     def _apparent_tropical_longitude(self, target: str, when: datetime) -> float:
