@@ -17,6 +17,7 @@ import type { BackupEnvelopePlain } from '@almamesh/shared-types';
 import {
   BackupCryptoError,
   BackupError,
+  EMPTY_PORTABLE_REPAIR_REPORT,
   PortableStateUnavailableError,
   PortableStateTooNewError,
   type PortableStateSnapshot,
@@ -101,12 +102,24 @@ describe('buildBackupExport', () => {
 
     const result = await buildBackupExport('test passphrase', {
       now: FIXED_NOW,
-      exportPortableState: vi.fn().mockResolvedValue(bytes),
+      exportPortableState: vi.fn().mockResolvedValue({ bytes, repairs: EMPTY_PORTABLE_REPAIR_REPORT }),
     });
 
     expect(result.filename).toBe('almamesh-backup-2026-07-01T12-34-56-000Z.almamesh');
     expect(result.content).toBeInstanceOf(Uint8Array);
     expect(result.content).not.toEqual(bytes);
+  });
+
+  it('passes the export repair report through, so the UI can say what was set aside', async () => {
+    const repairs = { ...EMPTY_PORTABLE_REPAIR_REPORT, unlinkedChatThreadIds: ['t1'], droppedReadingChartIds: ['c1'] };
+    const bytes = new Uint8Array([...new TextEncoder().encode('SQLite format 3\0'), 0xaa]);
+
+    const result = await buildBackupExport('test passphrase', {
+      now: FIXED_NOW,
+      exportPortableState: vi.fn().mockResolvedValue({ bytes, repairs }),
+    });
+
+    expect(result.repairs).toBe(repairs);
   });
 
   it('exports a completed interpretation immediately after its durability promise resolves', async () => {
@@ -298,7 +311,7 @@ describe('encrypted bundle round-trip (format v3)', () => {
     const result = await buildBackupExport(PASSPHRASE, {
       now: FIXED_NOW,
       appVersion: FIXED_VERSION,
-      exportPortableState: vi.fn().mockResolvedValue(databaseA),
+      exportPortableState: vi.fn().mockResolvedValue({ bytes: databaseA, repairs: EMPTY_PORTABLE_REPAIR_REPORT }),
     });
     expect(result.filename).toBe('almamesh-backup-2026-07-01T12-34-56-000Z.almamesh');
     expect(result.content).toBeInstanceOf(Uint8Array);
@@ -337,7 +350,7 @@ describe('encrypted bundle round-trip (format v3)', () => {
   });
 
   it('without a passphrase refuses export before reading the database', async () => {
-    const exportPortableState = vi.fn().mockResolvedValue(databaseA);
+    const exportPortableState = vi.fn().mockResolvedValue({ bytes: databaseA, repairs: EMPTY_PORTABLE_REPAIR_REPORT });
     await expect(buildBackupExport('', {
       now: FIXED_NOW,
       exportPortableState,
@@ -400,7 +413,7 @@ describe('encrypted bundle round-trip (format v3)', () => {
 
   it('refuses an authentic bundle whose database is not SQLite as corrupt', async () => {
     const { content } = await buildBackupExport(PASSPHRASE, {
-      exportPortableState: vi.fn().mockResolvedValue(new Uint8Array([1, 2, 3])),
+      exportPortableState: vi.fn().mockResolvedValue({ bytes: new Uint8Array([1, 2, 3]), repairs: EMPTY_PORTABLE_REPAIR_REPORT }),
     });
 
     await expect(stageBackupImport(content, PASSPHRASE)).rejects.toMatchObject({
@@ -847,3 +860,85 @@ describe('commitBackupImport (full round-trip)', () => {
     expect(destLocal.map.has('almamesh-chart')).toBe(false);
   });
 });
+
+describe('legacy JSON import repairs dangling references (2026-10-05 audit)', () => {
+  it('stages a pre-SQLite backup with a chat link and a reading for a deleted chart, repaired', async () => {
+    // Pre-SQLite JSON backups never went through the portable validator, and
+    // chats have pointed at regenerated charts since the first release. The
+    // import must repair them, or the next export refuses the whole dataset.
+    const file: BackupEnvelopePlain = {
+      format: 'almamesh-backup',
+      formatVersion: 1,
+      app: { version: 'legacy' },
+      exportedAt: FIXED_NOW,
+      encryption: 'none',
+      stores: {
+        'almamesh-profiles': { version: 1, state: { profiles: { p1: { id: 'p1' } }, activeProfileId: 'p1' } },
+        'almamesh-chart-library': { version: 1, state: { charts: { c2: { chart_id: 'c2', profile_id: 'p1' } } } },
+        'almamesh-chat-history': {
+          version: 2,
+          state: {
+            threads: { t1: { id: 't1', profile_id: 'p1', chart_id: 'c1' } },
+            messages: { t1: [{ id: 'm1', thread_id: 't1', content: 'kept' }] },
+            summaries: {},
+          },
+        },
+        'almamesh-interpretations': { version: 6, state: { byChart: { c1: { profileId: 'p1' } } } },
+      },
+    };
+
+    const staged = await stageBackupImport(JSON.stringify(file));
+
+    const stores = staged.envelope.stores;
+    expect((stores['almamesh-chat-history']!.state as { threads: Record<string, object> }).threads.t1).toEqual({
+      id: 't1',
+      profile_id: 'p1',
+    });
+    expect(stores['almamesh-chat-history']!.version).toBe(2);
+    expect(stores['almamesh-interpretations']!.state).toEqual({ byChart: {} });
+    expect(stores['almamesh-profiles']).toEqual(file.stores['almamesh-profiles']);
+    expect(staged.repairs?.unlinkedChatThreadIds).toEqual(['t1']);
+    expect(staged.repairs?.droppedReadingChartIds).toEqual(['c1']);
+  });
+
+  it('holds set-aside life events in SQLite before a legacy JSON import replaces anything', async () => {
+    const order: string[] = [];
+    const record = { row: 'almamesh-life-events', personId: 'gone', value: '[]' } as const;
+    const plain: BackupEnvelopePlain = {
+      format: 'almamesh-backup',
+      formatVersion: 1,
+      app: { version: 'legacy' },
+      exportedAt: FIXED_NOW,
+      encryption: 'none',
+      stores: {},
+    };
+
+    await commitBackupImport(
+      { kind: 'json', envelope: plain, wasEncrypted: false, repairs: { ...EMPTY_PORTABLE_REPAIR_REPORT, setAside: [record] } },
+      {
+        tiers: { idb: memTier(), local: memTier() },
+        holdSetAside: vi.fn(async () => void order.push('hold')),
+        beginBackupRestore: vi.fn(async () => {
+          order.push('begin');
+          return 1;
+        }),
+        finalizeBackupRestore: vi.fn().mockResolvedValue(undefined),
+        abortBackupRestore: vi.fn().mockResolvedValue(undefined),
+      },
+    );
+
+    expect(order.slice(0, 2)).toEqual(['hold', 'begin']);
+  });
+
+  it('reports what a SQLite backup needed repaired, for the preview', async () => {
+    const repairs = { ...EMPTY_PORTABLE_REPAIR_REPORT, droppedReadingChartIds: ['c1'] };
+    const sqlite = new Uint8Array([...new TextEncoder().encode('SQLite format 3\0'), 1]);
+
+    const staged = await stageBackupImport(sqlite, undefined, {
+      readPortableState: vi.fn().mockResolvedValue({ epoch: 1, values: new Map(), quarantine: new Map(), repairs }),
+    });
+
+    expect(staged.repairs).toBe(repairs);
+  });
+});
+

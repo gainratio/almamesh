@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { VedicInterpretation } from '@almamesh/shared-types';
 import {
+  EMPTY_PORTABLE_REPAIR_REPORT,
   resetSessionStateForTests,
   setActiveProfileScope,
   readDeletionTombstones,
@@ -21,9 +22,11 @@ import {
   applyRemoteDeletionNotice,
   deleteChatThreadData,
   deleteProfileData,
+  reconcilePortableReferences,
   resumePendingMemoryRebuild,
 } from './profileDataLifecycle';
 import { LLM_SETTINGS_CHANGED_EVENT } from './llmSettingsEvents';
+import { useDataRepairNotice } from './dataRepairNotice';
 
 function chart(chartId: string, profileId: string): StoredChart {
   return { chart_id: chartId, profile_id: profileId, person_name: profileId, is_primary: true } as StoredChart;
@@ -710,6 +713,180 @@ describe('cross-realm deletion propagation', () => {
     expect(useLifeEventsStore.getState().getEvents(target)).toEqual([]);
     expect(useChatStore.getState().threads[threadId]).toBeUndefined();
     expect(useInterpretationStore.getState().getEntry('target-chart')).toBeUndefined();
+  });
+});
+
+describe('dangling person/chart references (boot self-heal)', () => {
+  const QUESTION = 'When does my Saturn return start?';
+
+  const ALL_ROWS = [
+    'almamesh-chart-library',
+    'almamesh-profiles',
+    'almamesh-life-events',
+    'almamesh-chat-history',
+    'almamesh-interpretations',
+    'almamesh-mesh-readings',
+    'almamesh-rectification-records',
+    'almamesh-predictive',
+  ] as const;
+  /** Deps for a device whose SQLite holds every dataset row. */
+  function everyRow(extra: Record<string, unknown> = {}) {
+    return {
+      hydrated: async () => true,
+      presentKeys: async () => ALL_ROWS,
+      holdSetAside: vi.fn().mockResolvedValue(undefined),
+      ...extra,
+    };
+  }
+
+  function seedOrphan(): { orphan: string; healthy: string } {
+    useChartLibraryStore.setState({ charts: { c2: chart('c2', 'p1') } });
+    const orphan = useChatStore.getState().ensureThread('p1', '1e251b81');
+    useChatStore.getState().appendMessage(orphan, 'user', QUESTION);
+    const healthy = useChatStore.getState().ensureThread('p2', 'c2');
+    return { orphan, healthy };
+  }
+
+  it('unlinks the dangling chart link, keeps the conversation, and persists the repair', async () => {
+    const { orphan, healthy } = seedOrphan();
+    const persist = vi.fn().mockResolvedValue(undefined);
+
+    const repaired = await reconcilePortableReferences(everyRow({ persist }));
+
+    expect(repaired.unlinkedChatThreadIds).toEqual([orphan]);
+    expect(useChatStore.getState().threads[orphan]).not.toHaveProperty('chart_id');
+    expect(useChatStore.getState().getMessages(orphan)[0]!.content).toBe(QUESTION);
+    expect(useChatStore.getState().threads[healthy]!.chart_id).toBe('c2');
+    expect(persist).toHaveBeenCalledOnce();
+  });
+
+  it('sets aside (never deletes) life events of a person who is gone, holding them before the repair', async () => {
+    useProfilesStore.setState({ profiles: { p1: { id: 'p1', name: 'p1' } as never }, activeProfileId: 'p1' });
+    const married = [{ id: 'e1', note: 'Married' }];
+    useLifeEventsStore.setState({ eventsByProfile: { gone: married as never, p1: [] } });
+    const order: string[] = [];
+    const holdSetAside = vi.fn(async () => void order.push('hold'));
+    const persist = vi.fn(async () => void order.push('persist'));
+
+    const repaired = await reconcilePortableReferences(everyRow({ holdSetAside, persist }));
+
+    expect(holdSetAside).toHaveBeenCalledExactlyOnceWith([
+      { row: 'almamesh-life-events', personId: 'gone', value: JSON.stringify(married) },
+    ]);
+    expect(order).toEqual(['hold', 'persist']);
+    expect(repaired.setAside).toHaveLength(1);
+    expect(useLifeEventsStore.getState().eventsByProfile).toEqual({ p1: [] });
+    expect(useDataRepairNotice.getState().report).toBe(repaired);
+  });
+
+  it('changes nothing when holding the set-aside records fails', async () => {
+    useProfilesStore.setState({ profiles: { p1: { id: 'p1', name: 'p1' } as never }, activeProfileId: 'p1' });
+    useLifeEventsStore.setState({ eventsByProfile: { gone: [{ id: 'e1' }] as never, p1: [] } });
+    const persist = vi.fn();
+
+    await expect(
+      reconcilePortableReferences(everyRow({ holdSetAside: vi.fn().mockRejectedValue(new Error('disk full')), persist })),
+    ).rejects.toThrow(/disk full/);
+    expect(Object.keys(useLifeEventsStore.getState().eventsByProfile)).toEqual(['gone', 'p1']);
+    expect(persist).not.toHaveBeenCalled();
+  });
+
+  it('never touches person-keyed rows when SQLite holds no profiles row (absent is unknown, not empty)', async () => {
+    // A hydrated profiles store whose row is absent serializes as profiles:{}.
+    // Treated as "everyone is gone", boot once dropped every life event,
+    // rectification record and reading (graded 2026-10-05).
+    useChartLibraryStore.setState({ charts: { c2: chart('c2', 'p1') } });
+    useLifeEventsStore.setState({ eventsByProfile: { p1: [{ id: 'e1' }] as never } });
+    useRectificationRecordsStore.setState({ recordsByProfile: { p1: { profileId: 'p1' } as never } });
+    useInterpretationStore.getState().startInterpretation('c2', 'p1');
+    const persist = vi.fn();
+    const holdSetAside = vi.fn();
+
+    const repaired = await reconcilePortableReferences({
+      ...everyRow({ persist, holdSetAside }),
+      presentKeys: async () => ALL_ROWS.filter((key) => key !== 'almamesh-profiles'),
+    });
+
+    expect(repaired).toEqual(EMPTY_PORTABLE_REPAIR_REPORT);
+    expect(Object.keys(useLifeEventsStore.getState().eventsByProfile)).toEqual(['p1']);
+    expect(Object.keys(useRectificationRecordsStore.getState().recordsByProfile)).toEqual(['p1']);
+    expect(Object.keys(useInterpretationStore.getState().byChart)).toEqual(['c2']);
+    expect(persist).not.toHaveBeenCalled();
+    expect(holdSetAside).not.toHaveBeenCalled();
+  });
+
+  it('forgets an AI reading for a replaced chart and sets aside life events of a person who is gone', async () => {
+    useProfilesStore.setState({ profiles: { p1: { id: 'p1', name: 'p1' } as never }, activeProfileId: 'p1' });
+    useChartLibraryStore.setState({ charts: { c2: chart('c2', 'p1') } });
+    const run = useInterpretationStore.getState().startInterpretation('c1', 'p1');
+    useInterpretationStore.getState().startInterpretation('c2', 'p1');
+    useLifeEventsStore.setState({ eventsByProfile: { gone: [], p1: [] } });
+    const persist = vi.fn().mockResolvedValue(undefined);
+
+    const repaired = await reconcilePortableReferences(everyRow({ persist }));
+
+    expect(repaired.droppedReadingChartIds).toEqual(['c1']);
+    expect(repaired.setAside.map((record) => `${record.row}/${record.personId}`)).toEqual(['almamesh-life-events/gone']);
+    expect(Object.keys(useInterpretationStore.getState().byChart)).toEqual(['c2']);
+    expect(useLifeEventsStore.getState().eventsByProfile).toEqual({ p1: [] });
+    // The run still streaming for the replaced chart cannot write it back.
+    await useInterpretationStore.getState().setInterpretation('c1', interpretation('late'), 'now', undefined, undefined, run);
+    expect(useInterpretationStore.getState().byChart.c1).toBeUndefined();
+    expect(persist).toHaveBeenCalledOnce();
+  });
+
+  it('writes nothing when every chat link is live', async () => {
+    useChartLibraryStore.setState({ charts: { c2: chart('c2', 'p1') } });
+    useChatStore.getState().ensureThread('p1', 'c2');
+    const persist = vi.fn();
+
+    await expect(reconcilePortableReferences(everyRow({ persist }))).resolves.toEqual(
+      EMPTY_PORTABLE_REPAIR_REPORT,
+    );
+    expect(persist).not.toHaveBeenCalled();
+  });
+
+  it('never repairs against a chart library that failed to hydrate', async () => {
+    const { orphan } = seedOrphan();
+    const persist = vi.fn();
+
+    await expect(reconcilePortableReferences({ ...everyRow({ persist }), hydrated: async () => false })).resolves.toEqual(
+      EMPTY_PORTABLE_REPAIR_REPORT,
+    );
+    expect(useChatStore.getState().threads[orphan]!.chart_id).toBe('1e251b81');
+    expect(persist).not.toHaveBeenCalled();
+  });
+
+  it('runs on boot, so a device already holding the dangling link recovers with no user action', async () => {
+    vi.resetModules();
+    vi.doMock('@almamesh/store', async (importOriginal) => ({
+      ...(await importOriginal<typeof import('@almamesh/store')>()),
+      readDeletionTombstones: vi.fn().mockResolvedValue({
+        version: 1,
+        activeEpoch: 0,
+        restoreEpoch: 0,
+        restoreInProgress: false,
+        memoryRebuildPending: false,
+        profileIds: [],
+        threadIds: [],
+        chartIds: [],
+      }),
+      adoptLatestDatasetEpoch: vi.fn().mockResolvedValue({ changed: false, epoch: 0 }),
+      persistProfileDeletion: vi.fn().mockResolvedValue(undefined),
+      readActiveDatasetStoreKeys: vi.fn(async (keys: readonly string[]) => keys),
+    }));
+    try {
+      const store = await import('@almamesh/store');
+      store.useChartLibraryStore.setState({ charts: { c2: chart('c2', 'p1') } });
+      const orphan = store.useChatStore.getState().ensureThread('p1', '1e251b81');
+
+      const lifecycle = await import('./profileDataLifecycle');
+      await lifecycle.whenDataLifecycleReady();
+
+      expect(store.useChatStore.getState().threads[orphan]).not.toHaveProperty('chart_id');
+    } finally {
+      vi.doUnmock('@almamesh/store');
+    }
   });
 });
 

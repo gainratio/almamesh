@@ -268,6 +268,13 @@ export interface InterpretationStore {
   getEntry: (chartId: string) => ChartInterpretationEntry | undefined;
   /** Drop one chart's entry entirely. */
   reset: (chartId: string) => void;
+  /**
+   * The chart was replaced (a regeneration gave it a new id): drop its entry
+   * AND refuse every later write for it until a new run starts for that id,
+   * so a reading still streaming cannot write a reading for a chart that no
+   * longer exists (which Export refused, 2026-10-05).
+   */
+  forgetChart: (chartId: string) => void;
   /** Drop current and historical chart entries owned by one profile. */
   deleteForProfile: (profileId: string, currentChartIds: readonly string[]) => void;
   /** Attribute legacy entries only when current chart/thread ownership is unambiguous. */
@@ -743,15 +750,20 @@ export const interpretationStoreCreator: StateCreator<InterpretationStore> = (se
   const activeTimelineRuns = new Map<string, InterpretationRunToken>();
   let nextRunToken = 0;
 
+  // Charts replaced by a regeneration: no write lands for them until a new
+  // run starts for the same id.
+  const forgotten = new Set<string>();
   const acceptsRun = (chartId: string, runToken?: InterpretationRunToken): boolean =>
-    runToken === undefined || activeRuns.get(chartId) === runToken;
+    !forgotten.has(chartId) && (runToken === undefined || activeRuns.get(chartId) === runToken);
   const acceptsTimelineRun = (chartId: string, runToken?: InterpretationRunToken): boolean =>
-    runToken === undefined || activeTimelineRuns.get(chartId) === runToken;
+    !forgotten.has(chartId) &&
+    (runToken === undefined || activeTimelineRuns.get(chartId) === runToken);
 
   return {
     byChart: {},
 
     startInterpretation: (chartId, profileId) => {
+      forgotten.delete(chartId);
       nextRunToken += 1;
       const runToken = nextRunToken;
       activeRuns.set(chartId, runToken);
@@ -893,6 +905,7 @@ export const interpretationStoreCreator: StateCreator<InterpretationStore> = (se
     },
 
     startCurrentTimeline: (chartId, profileId) => {
+      forgotten.delete(chartId);
       nextRunToken += 1;
       const runToken = nextRunToken;
       activeTimelineRuns.set(chartId, runToken);
@@ -1039,6 +1052,11 @@ export const interpretationStoreCreator: StateCreator<InterpretationStore> = (se
         delete byChart[chartId];
         return { byChart };
       });
+    },
+
+    forgetChart: (chartId) => {
+      forgotten.add(chartId);
+      get().reset(chartId);
     },
 
     deleteForProfile: (profileId, currentChartIds) => {

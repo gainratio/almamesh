@@ -1212,3 +1212,75 @@ describe('evidence annotations (optional, purely additive)', () => {
     expect(store.getState().getEntry('c1')?.evidenceAnnotations).toBeUndefined();
   });
 });
+
+/**
+ * A rename/rectification regenerates the chart under a new id. A reading still
+ * streaming for the old id used to finish and write `byChart[oldId]` back,
+ * which Export then refused as a reading for a missing chart (2026-10-05).
+ */
+describe('forgetChart: a replaced chart takes its reading with it', () => {
+  it('drops the entry and refuses the in-flight run that finishes afterwards', async () => {
+    const store = newStore();
+    const run = store.getState().startInterpretation('c1', 'p1');
+
+    store.getState().forgetChart('c1');
+    store.getState().markSectionComplete('c1', 'summary', run);
+    await store.getState().setInterpretation('c1', makeInterpretation(), '2026-10-05T00:00:00Z', undefined, undefined, run);
+
+    expect(store.getState().byChart.c1).toBeUndefined();
+  });
+
+  it('refuses an untokened write for the forgotten chart', async () => {
+    const store = newStore();
+    store.getState().startInterpretation('c1', 'p1');
+    store.getState().forgetChart('c1');
+
+    await store.getState().setInterpretation('c1', makeInterpretation(), '2026-10-05T00:00:00Z');
+    store.getState().setError('c1', 'late failure');
+
+    expect(store.getState().byChart.c1).toBeUndefined();
+  });
+
+  it('refuses a late timeline section for the forgotten chart', () => {
+    const store = newStore();
+    const run = store.getState().startCurrentTimeline('c1', 'p1');
+    store.getState().forgetChart('c1');
+
+    store.getState().markCurrentTimelineSectionComplete('c1', 'current_sky', run);
+
+    expect(store.getState().byChart.c1).toBeUndefined();
+  });
+
+  it('refuses untokened late timeline writes for the forgotten chart', async () => {
+    const store = newStore();
+    store.getState().startCurrentTimeline('c1', 'p1');
+    store.getState().forgetChart('c1');
+
+    store.getState().markCurrentTimelineSectionComplete('c1', 'current_sky');
+    store.getState().markCurrentTimelineSectionFailed('c1', 'upcoming_periods');
+    await store.getState().setCurrentTimeline('c1', { upcoming_periods: [], current_sky: [] } as never, '2026-10-05T00:00:00Z');
+    store.getState().setCurrentTimelineError('c1', 'late failure');
+
+    expect(store.getState().byChart.c1).toBeUndefined();
+  });
+
+  it('accepts a fresh run if the same chart id comes back (renamed back)', async () => {
+    const store = newStore();
+    store.getState().forgetChart('c1');
+
+    const run = store.getState().startInterpretation('c1', 'p1');
+    await store.getState().setInterpretation('c1', makeInterpretation(), '2026-10-05T00:00:00Z', undefined, undefined, run);
+
+    expect(store.getState().byChart.c1?.status).toBe('complete');
+  });
+
+  it('leaves every other chart untouched', async () => {
+    const store = newStore();
+    const run = store.getState().startInterpretation('c2', 'p1');
+    store.getState().forgetChart('c1');
+
+    await store.getState().setInterpretation('c2', makeInterpretation(), '2026-10-05T00:00:00Z', undefined, undefined, run);
+
+    expect(store.getState().byChart.c2?.status).toBe('complete');
+  });
+});

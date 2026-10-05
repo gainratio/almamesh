@@ -190,11 +190,21 @@ describe("reasoning cap: timeline sections", () => {
           [5, sse("[DONE]")],
         ]),
     ]);
-    const events = await collect(
-      streamCurrentTimeline({ chart, config: OPENROUTER, fetchImpl, onSectionProgress: () => undefined, reasoningTimeoutMs: 50 }),
-    );
-    expect(roadCalls()).toBe(1);
-    expect(events.some((e) => e.type === "error")).toBe(false);
+    // Fake timers order the script and the cap by their scheduled times, not
+    // by how busy the machine is: on a loaded CI runner the real 25 ms answer
+    // timer fired after the 50 ms cap and the section was retried (2 calls).
+    vi.useFakeTimers();
+    try {
+      const run = collect(
+        streamCurrentTimeline({ chart, config: OPENROUTER, fetchImpl, onSectionProgress: () => undefined, reasoningTimeoutMs: 50 }),
+      );
+      await vi.runAllTimersAsync();
+      const events = await run;
+      expect(roadCalls()).toBe(1);
+      expect(events.some((e) => e.type === "error")).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

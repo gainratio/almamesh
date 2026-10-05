@@ -21,6 +21,7 @@ export const SAFE_DIAGNOSTIC_CODES = [
   'geo.city_lookup_failed',
   'geo.online_lookup_failed',
   'interpretation.stream_failed',
+  'lifecycle.portable_references_repaired',
   'lifecycle.memory_drain_failed',
   'lifecycle.remote_deletion_failed',
   'memory.index_failed',

@@ -8,6 +8,7 @@ import { useMeshReadingsStore } from './meshReadings';
 import { usePredictiveStore } from './predictive';
 import { useProfilesStore } from './profiles';
 import { useRectificationRecordsStore } from './rectificationRecords';
+import type { PortableRepair } from './portableRepair';
 import {
   commitDatasetGeneration,
   readDeletionTombstones,
@@ -119,3 +120,60 @@ export async function persistChatDeletion(): Promise<void> {
   if (await commitPendingDeletionGeneration()) return;
   await persistCurrentSnapshot(useChatStore);
 }
+
+/**
+ * The live dataset, serialized exactly as each store persists it, limited to
+ * the rows SQLite holds (`present`): a store whose row is absent is unknown,
+ * not empty, and must not take part in a repair.
+ */
+export function currentPortableDataset(present: ReadonlySet<string>): ReadonlyMap<string, string> {
+  return new Map(
+    [
+      currentDatasetSnapshot(useProfilesStore),
+      currentDatasetSnapshot(useChartLibraryStore),
+      currentDatasetSnapshot(useLifeEventsStore),
+      currentDatasetSnapshot(useChatStore),
+      currentDatasetSnapshot(useInterpretationStore),
+      currentDatasetSnapshot(useMeshReadingsStore),
+      currentDatasetSnapshot(useRectificationRecordsStore),
+      currentDatasetSnapshot(usePredictiveStore),
+    ]
+      .filter((row) => present.has(row.key))
+      .map((row) => [row.key, row.value ?? '']),
+  );
+}
+
+function repairedState(repair: PortableRepair, key: string): object {
+  return (JSON.parse(repair.values.get(key)!) as { state: object }).state;
+}
+
+/**
+ * Load a repair of {@link currentPortableDataset} back into the live stores.
+ * Readings go through `forgetChart` so a run still streaming for a dropped
+ * chart cannot write it back; the caller persists afterwards.
+ */
+export function adoptRepairedDataset(
+  before: ReadonlyMap<string, string>,
+  repair: PortableRepair,
+): void {
+  const changed = (key: string) => repair.values.get(key) !== before.get(key);
+  for (const chartId of repair.repairs.droppedReadingChartIds) {
+    useInterpretationStore.getState().forgetChart(chartId);
+  }
+  if (repair.repairs.resetPredictive) usePredictiveStore.getState().reset();
+  const stores = [
+    useProfilesStore,
+    useChartLibraryStore,
+    useLifeEventsStore,
+    useChatStore,
+    useMeshReadingsStore,
+    useRectificationRecordsStore,
+  ] as const;
+  for (const store of stores) {
+    const key = store.persist.getOptions().name;
+    if (key !== undefined && changed(key)) {
+      (store.setState as (partial: object) => void)(repairedState(repair, key));
+    }
+  }
+}
+

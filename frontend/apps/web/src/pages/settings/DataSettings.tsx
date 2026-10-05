@@ -41,6 +41,8 @@ import {
   type BackupFileContent,
 } from '../../lib/backupFile';
 import { suppressNextServiceWorkerHeal } from '../../lib/swSelfHeal';
+import { repairNoteLines } from '../../lib/dataRepairNotice';
+import { DataRepairNotice } from '../../components/features/settings/DataRepairNotice';
 
 /** Minimum export password length; the file carries the AI key, so it is required. */
 const MIN_PASSPHRASE_LENGTH = 8;
@@ -95,13 +97,17 @@ export function DataSettingsPanel({ persistence }: DataSettingsProps) {
     }
     setExporting(true);
     try {
-      const { filename, content } = await buildBackupExport(password);
+      const { filename, content, repairs } = await buildBackupExport(password);
       const result = await saveBackupFile(filename, content);
+      // Honest about what the export repaired: a chat whose chart is gone is
+      // kept in full; readings whose chart is gone are left out; records of a
+      // person who is gone stay set aside on this device, out of the file.
+      const note = repairNoteLines(t, repairs).map((line) => ` ${line}`).join('');
       if (result === 'saved') {
-        setStatus(t('backup.status_exported'));
+        setStatus(`${t('backup.status_exported')}${note}`);
         setPassword(''); // don't leave the passphrase lingering in the field
       } else if (result === 'unverified') {
-        setStatus(t('backup.status_export_started'));
+        setStatus(`${t('backup.status_export_started')}${note}`);
         setPassword('');
       }
     } catch (err) {
@@ -259,6 +265,8 @@ export function DataSettingsPanel({ persistence }: DataSettingsProps) {
         <p className="text-text-secondary text-sm mt-1">{t('backup.subtitle')}</p>
       </div>
 
+      <DataRepairNotice />
+
       {/* Status / error banners */}
       {status && (
         <p data-testid="backup-status" role="status" className="text-sm text-status-success">
@@ -343,6 +351,14 @@ export function DataSettingsPanel({ persistence }: DataSettingsProps) {
       >
         <div className="space-y-4">
           <p className="text-text-secondary text-sm">{t('backup.confirm_body')}</p>
+          {staged?.repairs !== undefined && repairNoteLines(t, staged.repairs).length > 0 && (
+            <div data-testid="backup-import-repairs" className="text-sm text-status-warning space-y-1">
+              <p className="font-semibold">{t('backup.import_repaired_title')}</p>
+              {repairNoteLines(t, staged.repairs).map((line) => (
+                <p key={line}>{line}</p>
+              ))}
+            </div>
+          )}
           {staged?.kind !== 'bundle' && (
             <p data-testid="backup-legacy-note" className="text-sm text-status-warning">
               {t('backup.confirm_legacy_note')}

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Footer } from '../../Footer';
 import { ProfileSwitcher } from '../profiles/ProfileSwitcher';
+import { DataRepairNotice } from '../settings/DataRepairNotice';
 import { AiStatusBadge } from './AiStatusBadge';
 import { MeshNavButton } from './MeshNavButton';
 
@@ -61,7 +62,10 @@ export function AppLayout({ children, showFooter = false }: AppLayoutProps) {
       </header>
 
       <main className="bg-astrolabe-rings flex-1">
-        <div className="app-gutter mx-auto w-full max-w-7xl py-6 md:py-8">{children}</div>
+        <div className="app-gutter mx-auto w-full max-w-7xl py-6 md:py-8">
+          <DataRepairNotice />
+          {children}
+        </div>
       </main>
 
       {showFooter && <Footer />}

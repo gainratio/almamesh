@@ -36,6 +36,8 @@ import {
   PORTABLE_PREFERENCES_KEY,
   PORTABLE_STATE_KEYS,
   readPortableStateDatabase,
+  type PortableExport,
+  type SetAsideRecord,
 } from './portableState';
 
 /** Compatibility tier labels retained by the legacy JSON backup envelope. */
@@ -297,10 +299,20 @@ export async function applyBrowserBackupAtomically(
   await commitDatasetGeneration(epoch, writes, { memoryRebuildPending: true });
 }
 
+/**
+ * Hold user-written records whose person no longer exists in SQLite's
+ * set-aside namespace (never exported). Resolves only once they are verified,
+ * so the caller may then drop them from the dataset.
+ */
+export async function holdSetAsideRecords(records: readonly SetAsideRecord[]): Promise<void> {
+  if (records.length === 0) return;
+  await (await requirePortableStateRepository()).holdSetAside(records, new Date().toISOString());
+}
+
 /** Export the canonical browser dataset as a real, standard SQLite database. */
-export async function exportPortableBrowserState(): Promise<Uint8Array> {
+export async function exportPortableBrowserState(): Promise<PortableExport> {
   await flushPortablePersistence();
-  return (await requirePortableStateRepository()).exportBytes();
+  return (await requirePortableStateRepository()).exportWithReport();
 }
 
 /**
@@ -319,6 +331,9 @@ export async function importPortableBrowserState(
   options: PortableBrowserImportOptions = {},
 ): Promise<void> {
   const imported = await readPortableStateDatabase(bytes);
+  // User-written records of a person the file no longer holds are kept on this
+  // device, never dropped with the import.
+  await holdSetAsideRecords(imported.repairs.setAside);
   const restored = restoredIdsFromPortableRows(imported.values);
   const importedPreferences = imported.values.get(PORTABLE_PREFERENCES_KEY);
   const preservedPreferences =

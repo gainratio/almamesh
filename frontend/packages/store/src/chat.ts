@@ -17,6 +17,7 @@ import { createJSONStorage, persist } from 'zustand/middleware';
 
 import type { ChatMessage, ChatThread, ChatThreadSummary } from '@almamesh/shared-types';
 import { hasValidChatSummaryShape, summaryMatchesMessages } from '@almamesh/llm';
+import { unlinkMissingChartLinks } from './chatChartLinks';
 import { deletionAwareIdbStorage } from './deletionTombstones';
 import { whenHydrated, type HydrationOutcome } from './hydrationBarrier';
 
@@ -146,6 +147,11 @@ export interface ChatStore {
   deleteThread: (threadId: string) => void;
   /** Remove every thread and message owned by one profile. */
   deleteThreadsForProfile: (profileId: string) => void;
+  /**
+   * Drop `chart_id` from threads whose chart is not in `liveChartIds` (a
+   * regenerated or deleted chart), keeping every message. Returns their ids.
+   */
+  unlinkMissingCharts: (liveChartIds: ReadonlySet<string>) => readonly string[];
   /** Assign all profile-less (orphan) threads to a profile — idempotent migration. */
   assignOrphanThreadsToProfile: (profileId: string) => number;
   /** Wipe all threads and messages — the "start fresh" reset. */
@@ -295,6 +301,12 @@ export const chatStoreCreator: StateCreator<ChatStore> = (set, get) => ({
       delete summaries[threadId];
       return { threads, messages, summaries };
     });
+  },
+
+  unlinkMissingCharts: (liveChartIds) => {
+    const repair = unlinkMissingChartLinks(get().threads, liveChartIds);
+    if (repair.unlinkedThreadIds.length > 0) set({ threads: repair.threads });
+    return repair.unlinkedThreadIds;
   },
 
   deleteThreadsForProfile: (profileId) => {

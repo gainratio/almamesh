@@ -6,6 +6,28 @@ import {
   type SqliteStateStore,
 } from '@gainratio/browser/sqlite';
 
+import {
+  assertJsonTextWithinBounds,
+  MAX_COLLECTION_ENTRIES,
+  MAX_JSON_DEPTH,
+  MAX_JSON_NODES,
+  MAX_STRING_CHARACTERS,
+} from './jsonBounds';
+import {
+  repairPortableReferences,
+  type PortableRepairReport,
+  type SetAsideRecord,
+} from './portableRepair';
+
+export {
+  EMPTY_PORTABLE_REPAIR_REPORT,
+  hasPortableRepairs,
+  repairPortableReferences,
+  type PortableRepair,
+  type PortableRepairReport,
+  type SetAsideRecord,
+} from './portableRepair';
+
 export const PORTABLE_STATE_DATABASE = 'almamesh-user-state';
 export const PORTABLE_STATE_NAMESPACE = 'canonical';
 export const PORTABLE_STATE_SCHEMA_VERSION = 1;
@@ -17,6 +39,12 @@ export const PORTABLE_LEDGER_KEY = 'almamesh-deletion-tombstones';
  * never part of a snapshot, a restore, or an exported backup.
  */
 export const PORTABLE_QUARANTINE_NAMESPACE = 'quarantine';
+/**
+ * Side table for user-written records (life events, rectification records)
+ * whose person no longer exists. Held instead of deleted, keyed
+ * `<personId>/<row>/<sha256>`; never part of a snapshot, restore, or backup.
+ */
+export const PORTABLE_SET_ASIDE_NAMESPACE = 'set-aside';
 export const PORTABLE_STATE_UNAVAILABLE_MESSAGE =
   'Portable SQLite requires cross-origin isolation, Web Workers, OPFS, SharedArrayBuffer, and Atomics.waitAsync.';
 
@@ -145,10 +173,8 @@ export function isPortablePreferenceKey(key: string): boolean {
 
 const MAX_TRANSACTION_ATTEMPTS = 8;
 const MAX_CANONICAL_ROWS = 1_000;
-const MAX_COLLECTION_ENTRIES = 10_000;
-const MAX_STRING_CHARACTERS = 1_000_000;
-const MAX_JSON_NODES = 200_000;
-const MAX_JSON_DEPTH = 64;
+// Node, depth, entry and string bounds live in jsonBounds.ts and are checked
+// on the raw text BEFORE any row is parsed.
 const MAX_IDENTIFIER_CHARACTERS = 512;
 const encoder = new TextEncoder();
 const decoder = new TextDecoder('utf-8', { fatal: true });
@@ -186,6 +212,13 @@ export interface PortableStateSnapshot {
   readonly values: ReadonlyMap<string, string>;
   /** Quarantine rows read at the same epoch, so a CAS transform can fence them too. */
   readonly quarantine: ReadonlyMap<string, string>;
+}
+
+/** What left the browser, plus the repairs made on the way out. */
+export interface PortableExport {
+  readonly bytes: Uint8Array;
+  /** What the export repaired on the way out (dangling person/chart references). */
+  readonly repairs: PortableRepairReport;
 }
 
 export interface LegacyStateStorage {
@@ -330,7 +363,56 @@ export class PortableStateRepository {
     await this.#store.batch(mutations.map(toSqliteMutation));
   }
 
+  /** Every held set-aside record, keyed `<personId>/<row>/<sha256>`. */
+  public async listSetAside(): Promise<ReadonlyMap<string, string>> {
+    const held = new Map<string, string>();
+    let afterKey: string | undefined;
+    do {
+      const page = await this.#store.list({
+        namespace: PORTABLE_SET_ASIDE_NAMESPACE,
+        limit: MAX_CANONICAL_ROWS,
+        ...(afterKey === undefined ? {} : { afterKey }),
+      });
+      for (const row of page.rows) held.set(row.key, decode(row.value, row.key));
+      afterKey = page.nextKey;
+    } while (afterKey !== undefined);
+    return held;
+  }
+
+  /**
+   * Hold user-written records of a missing person (idempotent: the key is a
+   * digest of the record). Resolves only once SQLite provably holds every one,
+   * so a caller may then drop them from the dataset.
+   */
+  public async holdSetAside(records: readonly SetAsideRecord[], at: string): Promise<void> {
+    if (records.length === 0) return;
+    const rows = await Promise.all(records.map(async (record) => ({
+      key: `${record.personId}/${record.row}/${await sha256Hex(record.value)}`,
+      value: JSON.stringify({ ...record, setAsideAt: at }),
+    })));
+    await this.#store.batch(rows.map(({ key, value }) => ({
+      type: 'put',
+      namespace: PORTABLE_SET_ASIDE_NAMESPACE,
+      key,
+      value: encoder.encode(value),
+    })));
+    // Verify each record by its own key: never capped by a listing page.
+    const held = await Promise.all(
+      rows.map(async ({ key, value }) => {
+        const row = await this.#store.get(PORTABLE_SET_ASIDE_NAMESPACE, key);
+        return row !== undefined && decode(row.value, key) === value;
+      }),
+    );
+    if (held.includes(false)) {
+      throw new Error('Set-aside records did not verify in SQLite.');
+    }
+  }
+
   public async exportBytes(): Promise<Uint8Array> {
+    return (await this.exportWithReport()).bytes;
+  }
+
+  public async exportWithReport(): Promise<PortableExport> {
     for (let attempt = 0; attempt < MAX_TRANSACTION_ATTEMPTS; attempt += 1) {
       const before = await this.#store.runtimeInfo();
       const bytes = await this.#store.exportBytes();
@@ -346,15 +428,18 @@ export class PortableStateRepository {
       ) {
         continue;
       }
-      validatePortableSnapshot(snapshot);
+      // A reference our own app left pointing at a person or chart that is
+      // gone is repairable, not corruption; it must never block the export.
+      const repaired = repairPortableReferences(snapshot.values);
+      validatePortableSnapshot({ ...snapshot, values: repaired.values });
       // Backups carry the canonical dataset only; the quarantine stays local.
       // The raw file is never what leaves: it may hold quarantine rows (their
       // writes are not fenced by the dataset epoch, so no re-read here could be
       // trusted) and a deleted row's bytes in free pages. A fresh file written
       // from the canonical rows read at the validated epoch holds neither.
-      const canonical = await this.#rebuildExport(snapshot.values);
+      const canonical = await this.#rebuildExport(repaired.values);
       await this.#validateExport(canonical);
-      return canonical;
+      return { bytes: canonical, repairs: repaired.repairs };
     }
     throw new Error('Portable state remained busy while exporting a consistent snapshot.');
   }
@@ -479,7 +564,9 @@ export async function validatePortableStateDatabase(bytes: Uint8Array): Promise<
 }
 
 /** Read a validated transport database without exposing arbitrary SQL. */
-export async function readPortableStateDatabase(bytes: Uint8Array): Promise<PortableStateSnapshot> {
+export async function readPortableStateDatabase(
+  bytes: Uint8Array,
+): Promise<PortableStateSnapshot & { readonly repairs: PortableRepairReport }> {
   const store = await createSqliteStateStore({
     name: 'almamesh-import-validation',
     initialSchemaVersion: PORTABLE_STATE_SCHEMA_VERSION,
@@ -491,7 +578,10 @@ export async function readPortableStateDatabase(bytes: Uint8Array): Promise<Port
     assertSupportedPortableStateSchema(stage.schemaVersion);
     await store.commitImport(stage.stageId, { expectedEpoch: 0 });
     await repository.checkIntegrity();
-    const snapshot = await repository.snapshot();
+    const read = await repository.snapshot();
+    // Files exported before the repair existed may still carry stale references.
+    const repaired = repairPortableReferences(read.values);
+    const snapshot = { ...read, values: repaired.values, repairs: repaired.repairs };
     validatePortableSnapshot(snapshot);
     return snapshot;
   } finally {
@@ -541,7 +631,8 @@ export async function mergeLegacyPreferencesIntoPortableState(
     }
     await store.commitImport(stage.stageId, { expectedEpoch: 0 });
     await repository.checkIntegrity();
-    validatePortableSnapshot(await repository.snapshot());
+    const read = await repository.snapshot();
+    validatePortableSnapshot({ ...read, values: repairPortableReferences(read.values).values });
 
     const current = await readPortablePreferences(repository);
     await repository.write(
@@ -627,6 +718,11 @@ export function decodePortablePreferences(value: string): PortablePreferences {
   return parsePortablePreferences(value);
 }
 
+async function sha256Hex(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', encoder.encode(value));
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
 function toSqliteMutation(mutation: PortableStateMutation): SqliteStateMutation {
   if ('namespace' in mutation) {
     assertQuarantineKey(mutation.key);
@@ -699,6 +795,8 @@ function validatePortableSnapshot(snapshot: PortableStateSnapshot): void {
       parsePortablePreferences(value);
       continue;
     }
+    // Bounded on the raw text first: a hostile row never reaches JSON.parse.
+    assertJsonTextWithinBounds(value, key);
     const envelope = parseJsonRecord(value, key);
     if (
       !Number.isSafeInteger(envelope.version) ||
