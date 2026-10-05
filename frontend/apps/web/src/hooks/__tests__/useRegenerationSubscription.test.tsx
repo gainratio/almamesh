@@ -23,7 +23,7 @@ vi.mock('../../providers/AlmaMeshRuntimeProvider', () => ({
   useChartEngine: () => engineValue,
 }));
 
-import { requestRegeneration, useChatStore, useInterpretationStore, usePredictiveStore, type BirthInfoChanged } from '@almamesh/store';
+import { requestRegeneration, useChatStore, useInterpretationStore, usePredictiveStore, useProfilesStore, type BirthInfoChanged } from '@almamesh/store';
 import { useRegenerationSubscription } from '../useRegenerationSubscription';
 
 const fakeEngine = { generateChart: vi.fn() } as unknown as ChartEngine;
@@ -227,5 +227,43 @@ describe('useRegenerationSubscription — emit-before-subscribe race', () => {
     await expect(request).rejects.toBe(failure);
     expect(warn).toHaveBeenCalledWith('[almamesh:warn:chart.regeneration_failed]');
     warn.mockRestore();
+  });
+});
+
+describe('useRegenerationSubscription — the header name follows the chart', () => {
+  beforeEach(() => {
+    regenerateSpy.mockClear();
+    useProfilesStore.setState({
+      profiles: { p1: { id: 'p1', name: 'Old Name', createdAt: '2026-01-01T00:00:00.000Z', avatarTint: '#c9a24a' } },
+      activeProfileId: 'p1',
+    } as never);
+  });
+
+  function onRegenerated(): () => void {
+    const deps = regenerateSpy.mock.calls[0][1] as { onRegenerated: () => void };
+    return deps.onRegenerated;
+  }
+
+  it("renames the person to the chart's person_name once the renamed chart is computed", () => {
+    engineValue = { engine: fakeEngine };
+    renderHook(() => useRegenerationSubscription(), { wrapper });
+    act(() => {
+      void requestRegeneration(event).catch(() => undefined);
+    });
+    expect(useProfilesStore.getState().profiles.p1!.name).toBe('Old Name');
+
+    act(() => onRegenerated()());
+
+    expect(useProfilesStore.getState().profiles.p1!.name).toBe('Asha');
+  });
+
+  it('keeps the old name when the recompute never lands (chart and header still agree)', () => {
+    engineValue = { engine: fakeEngine };
+    renderHook(() => useRegenerationSubscription(), { wrapper });
+    act(() => {
+      void requestRegeneration(event).catch(() => undefined);
+    });
+
+    expect(useProfilesStore.getState().profiles.p1!.name).toBe('Old Name');
   });
 });

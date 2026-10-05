@@ -123,6 +123,8 @@ export interface ChartLibraryStore {
   deleteChart: (chartId: string) => void;
   /** Delete every chart belonging to a profile (used when a person is removed). */
   deleteChartsForProfile: (profileId: string) => void;
+  /** Set `person_name` on every chart this person owns (a display field only). */
+  renameChartsForProfile: (profileId: string, name: string) => void;
   /** Assign all profile-less (orphan) charts to a profile — idempotent migration. */
   assignOrphanChartsToProfile: (profileId: string) => number;
   getPrimaryChart: () => StoredChart | undefined;
@@ -174,6 +176,18 @@ export const chartLibraryStoreCreator: StateCreator<ChartLibraryStore> = (set, g
       for (const [id, chart] of Object.entries(state.charts)) {
         if (chart.profile_id !== profileId) {
           next[id] = chart;
+        }
+      }
+      return { charts: next };
+    });
+  },
+
+  renameChartsForProfile: (profileId, name) => {
+    set((state) => {
+      const next: Record<string, StoredChart> = { ...state.charts };
+      for (const [id, chart] of Object.entries(state.charts)) {
+        if (chart.profile_id === profileId && chart.person_name !== name) {
+          next[id] = { ...chart, person_name: name };
         }
       }
       return { charts: next };
@@ -263,6 +277,11 @@ export function whenChartLibraryCommitted(): Promise<void> {
  * charts — no orphaned data. Thin wrapper over the store action, kept here so
  * the profiles store stays chart-agnostic and imports only this one helper.
  */
+/** Keep a person's charts named like the person (the header reads the person). */
+export function cascadeRenameCharts(profileId: string, name: string): void {
+  useChartLibraryStore.getState().renameChartsForProfile(profileId, name);
+}
+
 export function cascadeDeleteCharts(profileId: string): void {
   useChartLibraryStore.getState().deleteChartsForProfile(profileId);
 }
