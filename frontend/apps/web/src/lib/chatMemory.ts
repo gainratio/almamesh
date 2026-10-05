@@ -27,6 +27,7 @@ import {
   type RetrievedChunk,
   type VectorStore,
 } from '@almamesh/memory';
+import { devicePolicy } from '@almamesh/browser';
 import { safeWarn } from '@almamesh/shared-types';
 import { readDeletionTombstones, readObservedDatasetEpoch } from '@almamesh/store';
 
@@ -84,8 +85,16 @@ const vectorStore: VectorStore = createGenerationAwareVectorStore();
  * the model) only on the first `embed`, so holding it here costs nothing at
  * boot. It is dataset-independent, so it survives `invalidateMemoryRuntime`:
  * recreating it would leave the old worker (~+80-95 MB) alive beside a new one.
+ * Once idle for the device tier's window (60 s on a phone) the worker is
+ * terminated, so its model and wasm heap go back to the OS; the next search or
+ * chat send reloads it, and the status store says so.
  */
-const embedder: Embedder = embedderStatus.track(createWorkerEmbedder());
+const embedder: Embedder = embedderStatus.track(
+  createWorkerEmbedder({
+    idleReleaseMs: devicePolicy().embedderIdleReleaseMs,
+    onRelease: () => embedderStatus.reset(),
+  }),
+);
 
 /**
  * Resolve the process-wide memory singleton, booting the embedder worker on

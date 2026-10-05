@@ -25,6 +25,7 @@ export {
   type Embedder,
   type EmbedWorkerRequest,
   type EmbedWorkerResponse,
+  type WorkerEmbedderOptions,
 } from "./embedder";
 export {
   createVectorStore,
