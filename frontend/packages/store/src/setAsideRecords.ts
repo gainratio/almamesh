@@ -225,7 +225,14 @@ export async function restoreSetAsideRecord(
   }
   await whenPersistenceSettled(held.row);
   const saved = await (deps.readSaved ?? readCanonicalDatasetValue)(held.row);
-  if (!savedHolds(saved, held, targetProfileId, eventIds)) throw new SetAsideRestoreError('not_saved');
+  if (!savedHolds(saved, held, targetProfileId, eventIds)) {
+    // Not saved means not shown. attachRecord refused unless the person had no
+    // check, so clearing restores exactly the prior state, and a retry is not
+    // refused as `has_record` by this attempt's leftover. (Re-attached events
+    // need no rollback: a retry never duplicates them.)
+    if (held.row !== LIFE_EVENTS_ROW) useRectificationRecordsStore.getState().clearRecord(targetProfileId);
+    throw new SetAsideRestoreError('not_saved');
+  }
   await repository.releaseSetAside([key]);
 }
 

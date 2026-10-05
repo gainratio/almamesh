@@ -176,6 +176,23 @@ describe('set-aside records screen API', () => {
     expect((await repository.listSetAside()).size).toBe(1);
   });
 
+  it('a birth-time check whose restore did not reach SQLite is rolled back, so a retry succeeds', async () => {
+    addPerson('p1', 'Maria');
+    const key = await hold('almamesh-rectification-records', RECORD);
+
+    await expect(
+      restoreSetAsideRecord(key, 'p1', { repository, readSaved: async () => null }),
+    ).rejects.toMatchObject({ code: 'not_saved' });
+    // Not saved means not shown: the in-memory attach is undone.
+    expect(useRectificationRecordsStore.getState().recordsByProfile.p1).toBeUndefined();
+    expect((await repository.listSetAside()).size).toBe(1);
+
+    // The retry is not refused as `has_record` by the failed attempt's leftover.
+    await restoreSetAsideRecord(key, 'p1', { repository });
+    expect(useRectificationRecordsStore.getState().recordsByProfile.p1).toMatchObject({ profileId: 'p1' });
+    expect((await repository.listSetAside()).size).toBe(0);
+  });
+
   it('deletes one held record for good', async () => {
     const key = await hold('almamesh-life-events', EVENTS);
     await hold('almamesh-rectification-records', RECORD);
