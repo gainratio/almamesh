@@ -7,6 +7,10 @@
  * Vite preview applies the production CSP and COOP/COEP headers. The gate checks
  * cross-origin isolation before both the online boot and offline reload so the
  * service-worker path cannot silently lose SharedArrayBuffer-backed OPFS.
+ *
+ * Memory is REPORT ONLY (not gated yet): one `memory-report webkit-...` line
+ * with the RSS peak of the WebKit web-content process (the one iOS jetsam
+ * kills) and of WebKit's whole process tree, read from Linux /proc.
  */
 
 import { mkdtemp, rm } from 'node:fs/promises'
@@ -14,6 +18,8 @@ import { createServer, request as httpRequest } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { devices, webkit } from '@playwright/test'
+
+import { formatMemoryReport, processTreeReport, sampleProcessTreePeak } from './processMemory.mjs'
 
 const BASE_URL = process.argv[2] ?? 'http://localhost:4200'
 const FIRST_SESSION_ONLY = process.argv.includes('--first-session')
@@ -639,7 +645,14 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error('WebKit engine gate failed:', error)
-  process.exitCode = 1
-})
+const rssSampler = sampleProcessTreePeak(1_000)
+main()
+  .then(async () => {
+    const lane = FIRST_SESSION_ONLY ? 'webkit-first-session' : 'webkit-cold-cached-recovery'
+    console.log(formatMemoryReport(lane, processTreeReport(await rssSampler.stop(), ['webkit-web', 'webkit-network'])))
+  })
+  .catch(async (error) => {
+    await rssSampler.stop()
+    console.error('WebKit engine gate failed:', error)
+    process.exitCode = 1
+  })
