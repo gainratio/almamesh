@@ -22,6 +22,7 @@
  */
 
 import {
+  startTransition,
   useCallback,
   useEffect,
   useMemo,
@@ -179,7 +180,13 @@ export function ForceFieldExperience({
     const tick = (now: number): void => {
       const delta = last === null ? 0.016 : Math.min((now - last) / 1000, 0.1);
       last = now;
-      setAnimationTime((t) => t + delta);
+      // A transition, not an urgent update. An urgent setState every frame
+      // re-renders this tree ahead of everything else; on a slow device each
+      // render outlasts the frame, so the router's navigation (a transition)
+      // was interrupted and restarted forever and a click away from the
+      // landing page never landed. Transitions batch together instead, so a
+      // navigation commits with the next clock tick.
+      startTransition(() => setAnimationTime((t) => t + delta));
       rafRef.current = requestAnimationFrame(tick);
     };
     rafRef.current = requestAnimationFrame(tick);

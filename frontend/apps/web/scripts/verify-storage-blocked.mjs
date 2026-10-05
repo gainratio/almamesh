@@ -135,7 +135,8 @@ async function navigateInApp(page, path, readyTestId) {
       .waitFor({ state: 'visible', timeout: 20_000 }).then(() => true, () => false)
     if (ready) return
   }
-  throw new Error(`in-app navigation to ${path} never showed ${readyTestId} (${page.url()})`)
+  const screen = (await page.locator('body').innerText().catch(() => '')).replace(/\s+/g, ' ').slice(0, 400)
+  throw new Error(`in-app navigation to ${path} never showed ${readyTestId} (${page.url()}); screen: ${screen}`)
 }
 
 /**
