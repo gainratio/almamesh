@@ -33,6 +33,7 @@ import { AUDIT_EXCEPTIONS_FILE, auditIgnoreArgs, parseAuditExceptions } from "./
 import { assertAllPassed, runPool, startGate } from "./gates.js"
 import { nightlyRealSkipCheckScript } from "./nightlyRealSkips.js"
 import { pagesUploadLimitsCheckScript as releasePagesUploadLimitsScript } from "./pagesUploadLimits.js"
+import { laneScript } from "./laneScript.js"
 
 const ROOT = "/workspace"
 const FRONTEND = `${ROOT}/frontend`
@@ -72,6 +73,7 @@ const CONTRACT_TESTS = [
   "tests/dagger-deployment-contract.test.ts",
   "tests/dagger-foundation-contract.test.ts",
   "tests/dagger-gates.test.ts",
+  "tests/dagger-lane-timeout.test.ts",
   "tests/dagger-nightly-real-skips.test.ts",
   "tests/dagger-pages-upload-contract.test.ts",
   "tests/dagger-workflow-contract.test.ts",
@@ -941,12 +943,8 @@ echo "Wrangler Pages Functions dry-run verified closed feedback route for $EXPEC
     return this.localServer(container, preview, 4199, commands)
   }
   private localServer(container: Container, server: string, port: number, commands: readonly string[]): Container {
-    return container.withExec(["bash", "-c", `set -euo pipefail
-${server} &
-pid=$!
-trap 'kill "$pid" 2>/dev/null || true' EXIT
-for _ in {1..60}; do curl -fsS -o /dev/null http://127.0.0.1:${port} && break; kill -0 "$pid"; sleep 1; done; curl -fsS -o /dev/null http://127.0.0.1:${port}
-${commands.join("\n")}`])
+    // Every command is bounded (laneScript.ts): a hang fails with its name.
+    return container.withExec(["bash", "-c", laneScript({ server, port, commands })])
   }
   private preview(
     container: Container,

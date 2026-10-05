@@ -21,13 +21,30 @@ function describeError(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
+/**
+ * Budget for one gate. The longest (browser) takes ~20 min on a loaded
+ * runner. A gate past it reports a named failure instead of holding the run:
+ * on 2026-10-05 one lane waited 74 minutes on a service worker that was never
+ * registered (run 37362447831). The Dagger session ends with the run, which
+ * tears down the stuck exec.
+ */
+export const GATE_TIMEOUT_MS = 45 * 60_000
+
+class GateTimeoutError extends Error {
+  public override readonly name = "GateTimeoutError"
+}
+
 /** Starts one gate now. The returned promise never rejects; it reports instead. */
-export function startGate(name: string, run: Gate["run"]): Promise<GateOutcome> {
-  const started = (async () => run())()
+export function startGate(name: string, run: Gate["run"], timeoutMs = GATE_TIMEOUT_MS): Promise<GateOutcome> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new GateTimeoutError(`gate timed out after ${timeoutMs} ms`)), timeoutMs)
+  })
+  const started = Promise.race([(async () => run())(), deadline])
   return started.then(
     () => ({ gate: name, failed: false }),
     (error: unknown) => ({ gate: name, failed: true, error }),
-  )
+  ).finally(() => clearTimeout(timer))
 }
 
 /** Throws one error naming every failed gate with its output; no-op if all passed. */
