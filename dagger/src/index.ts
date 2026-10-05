@@ -42,7 +42,7 @@ const KEYS = "/run/almamesh-keys"
 const BUN_INSTALLER = "/opt/almamesh/install-bun.sh"
 const LIVE_ORIGIN = "https://almamesh.com"
 const REPOSITORY = "hseshadr/almamesh"
-const BROWSER_LEGO_SPEC = '"@gainratio/browser": "^0.2.0"'
+const BROWSER_LEGO_SPEC = '"@gainratio/browser": "^0.3.0"'
 const CONTRACT_SHA = "1111111111111111111111111111111111111111"
 const CENTRAL_MODULE_SHA = "a895f726e9786bcfd2bdf68f87d3d5c4b411f702"
 const BUN_IMAGE =
@@ -349,6 +349,10 @@ export class AlmameshCi {
           "frontend/apps/web/vitest.config.ts",
           // The memory-budget contract pins the test:e2e:memory-budget script.
           "frontend/apps/web/package.json",
+          // The browser Lego pin contract ties BROWSER_LEGO_SPEC to these.
+          "frontend/packages/browser/package.json",
+          "frontend/packages/memory/package.json",
+          "frontend/packages/store/package.json",
           AUDIT_EXCEPTIONS_FILE,
           ...CONTRACT_TESTS,
         ]),
