@@ -1,8 +1,12 @@
 #!/usr/bin/env node
 /**
  * Required WebKit runtime gate. It boots the production bundle at iPhone 13
- * size, generates a real chart, then reloads while every /bundle request is
- * blocked. The second boot can only succeed from the durable local cache.
+ * size in a WebKit that refuses OPFS (Linux Playwright WebKit), generates a
+ * real chart, and requires the in-memory mode to be honest: the engine cache
+ * is in-memory SQLite, nothing is written to IndexedDB, the page says the
+ * data and the engine download are not kept, and a reload with every /bundle
+ * request blocked fails with that explanation instead of hanging. It then
+ * proves a transport failure recovers on its own once the network returns.
  *
  * Vite preview applies the production CSP and COOP/COEP headers. The gate checks
  * cross-origin isolation before both the online boot and offline reload so the
@@ -25,7 +29,6 @@ const BASE_URL = process.argv[2] ?? 'http://localhost:4200'
 const FIRST_SESSION_ONLY = process.argv.includes('--first-session')
 const TRANSIENT_CACHE_VISIBILITY = process.argv.includes('--transient-cache-visibility')
 const CACHE_DATABASE = 'edgeproc-browser-cache'
-const FALLBACK_PARAMETER = 'force-indexeddb-engine-cache'
 const TRANSIENT_CACHE_VISIBILITY_HASH = '#transient-cache-visibility'
 const TRANSIENT_CACHE_INJECTED_KEY = 'almamesh:exit-gate:transient-cache-visibility:injected'
 const PRERENDERED_SHELLS = new Set(['/welcome', '/privacy', '/terms', '/data-deletion'])
@@ -243,33 +246,25 @@ function assertSingleSyncWorker(workerUrls, label) {
   return syncWorkerAssets
 }
 
+/** The ephemeral note is on screen and says the engine download is not kept. */
+async function assertEngineNotKeptNotice(page, label) {
+  const note = page.getByTestId('ephemeral-storage-notice')
+  await note.waitFor({ state: 'visible', timeout: 60_000 })
+    .catch(() => invariant(false, `${label}: no "not saving" note on screen`))
+  const text = (await note.innerText()).replace(/\s+/g, ' ')
+  invariant(/engine download is not kept/i.test(text) && /internet connection/i.test(text),
+    `${label}: the note does not say the engine download is not kept: ${text}`)
+  return text
+}
+
+/** Which store each layer chose, and every IndexedDB database the origin has. */
 async function storageEvidence(page) {
-  return page.evaluate(async () => {
-    const databases = (await indexedDB.databases()).flatMap((database) =>
-      database.name ? [database.name] : [],
-    )
-    try {
-      if (new URL(window.location.href).searchParams.has('force-indexeddb-engine-cache')) {
-        return {
-          selectedCache: window.__EDGEPROC_SELECTED_CACHE__ ?? null,
-          opfs: 'forced-unavailable',
-          databases,
-        }
-      }
-      await navigator.storage?.getDirectory()
-      return {
-        selectedCache: window.__EDGEPROC_SELECTED_CACHE__ ?? null,
-        opfs: navigator.storage ? 'available' : 'unavailable',
-        databases,
-      }
-    } catch (error) {
-      return {
-        selectedCache: window.__EDGEPROC_SELECTED_CACHE__ ?? null,
-        opfs: error instanceof Error ? `${error.name}: ${error.message}` : String(error),
-        databases,
-      }
-    }
-  })
+  return page.evaluate(async () => ({
+    // The app's own reading of OPFS: 'opfs', or 'memory' when the browser refused it.
+    statePersistence: window.__almameshPortableStatePersistence?.() ?? null,
+    selectedCache: window.__EDGEPROC_SELECTED_CACHE__ ?? null,
+    databases: (await indexedDB.databases()).flatMap((database) => (database.name ? [database.name] : [])),
+  }))
 }
 
 async function startCutoffProxy(upstreamUrl) {
@@ -545,24 +540,30 @@ async function main() {
     page.on('worker', (worker) => workerUrls.add(worker.url()))
 
     const coldAttempts = trackBootAttempts(page)
-    const forcedFallbackUrl = new URL(BASE_URL)
-    forcedFallbackUrl.searchParams.set(FALLBACK_PARAMETER, '1')
-    await page.goto(forcedFallbackUrl.href, { waitUntil: 'domcontentloaded' })
-    const coldIsolation = await assertBrowserIsolation(page, 'WebKit forced-fallback navigation')
+    await page.goto(BASE_URL, { waitUntil: 'domcontentloaded' })
+    const coldIsolation = await assertBrowserIsolation(page, 'WebKit cold navigation')
     await openEngineRoute(page)
     const cold = await waitForSettledEngine(page, 'WebKit cold boot', coldAttempts)
     invariant(coldAttempts.attempts() >= 1, 'WebKit cold boot attempt count was vacuous')
-    const syncWorkerAssets = assertSingleSyncWorker(workerUrls, 'WebKit forced-fallback boot')
+    const syncWorkerAssets = assertSingleSyncWorker(workerUrls, 'WebKit cold boot')
 
+    // REVERSED CONTRACT (2026-10-05, @gainratio/browser 0.3.0). This pass used
+    // to force an IndexedDB engine cache and require a /bundle-blocked reload
+    // to boot from it. AlmaMesh never falls back to IndexedDB: with OPFS
+    // refused (Safari Private Browsing, Linux Playwright WebKit) the engine
+    // runs on in-memory SQLite, the UI says so, and an offline reload fails
+    // with that explanation instead of booting from a hidden second store.
     const storage = await storageEvidence(page)
-    invariant(storage.opfs === 'forced-unavailable', `OPFS fallback was not forced: ${JSON.stringify(storage)}`)
-    invariant(storage.selectedCache === 'indexeddb', `worker did not select IndexedDB: ${JSON.stringify(storage)}`)
     invariant(
-      storage.databases.includes(CACHE_DATABASE),
-      `durable IndexedDB fallback was not opened: ${JSON.stringify(storage)}`,
+      storage.statePersistence === 'memory',
+      `this pass needs a WebKit that refuses OPFS (Linux Playwright WebKit does): ${JSON.stringify(storage)}`,
     )
+    invariant(storage.selectedCache === 'sqlite-memory', `engine cache is not in-memory SQLite: ${JSON.stringify(storage)}`)
+    invariant(!storage.databases.includes(CACHE_DATABASE), `engine cache wrote IndexedDB: ${JSON.stringify(storage)}`)
+    invariant(storage.databases.length === 0, `something wrote IndexedDB with OPFS refused: ${JSON.stringify(storage)}`)
     const firstChart = await generateReferenceChart(page)
     invariant(firstChart.lagna === 'gemini', `unexpected cold chart: ${JSON.stringify(firstChart)}`)
+    const coldNotice = await assertEngineNotKeptNotice(page, 'WebKit cold boot')
 
     const blocked = []
     await context.route('**/bundle/**', (route) => {
@@ -570,25 +571,29 @@ async function main() {
       blocked.push(url)
       return route.abort('failed')
     })
-    const cachedAttempts = trackBootAttempts(page)
-    await page.evaluate(() => window.history.replaceState({}, '', `/${window.location.search}`))
+    await page.evaluate(() => window.history.replaceState({}, '', '/'))
     await page.reload({ waitUntil: 'domcontentloaded' })
+    await assertBrowserIsolation(page, 'WebKit offline reload')
     await openEngineRoute(page)
-    const cached = await waitForSettledEngine(page, 'WebKit cached boot', cachedAttempts)
-    invariant(cachedAttempts.attempts() >= 1, 'WebKit cached boot attempt count was vacuous')
+    const offlineBoot = await waitForEngine(page)
+    invariant(
+      offlineBoot.stage !== 'ready' && SELF_RECOVERING_BOOT_FAILURE.test(offlineBoot.error ?? ''),
+      `in-memory mode booted (or failed oddly) with /bundle blocked: ${JSON.stringify(offlineBoot)}`,
+    )
     invariant(
       blocked.some((u) => u.includes('/bundle/latest')),
-      'cached boot was vacuous: /bundle/latest was not blocked',
+      'offline reload was vacuous: /bundle/latest was not blocked',
     )
-    const cachedChart = await generateReferenceChart(page)
-    invariant(cachedChart.lagna === 'gemini', `unexpected cached chart: ${JSON.stringify(cachedChart)}`)
-
+    const offlineNotice = await assertEngineNotKeptNotice(page, 'WebKit offline reload')
+    const afterOffline = await storageEvidence(page)
+    invariant(afterOffline.databases.length === 0, `offline reload wrote IndexedDB: ${JSON.stringify(afterOffline)}`)
+    await context.unroute('**/bundle/**')
     // A hard-offline boot failure used to remain latched after connectivity
     // returned: the provider held the rejected promise forever when WebKit
     // continued reporting `navigator.onLine`. Reproduce that transport-shaped
     // failure, keep the route blocked through the first backoff attempt, then
     // restore it WITHOUT a synthetic online event. This is intentionally
-    // after the durable-cache proof above, so the retry reuses IndexedDB data.
+    // after the offline proof above; in memory mode the retry downloads again.
     await context.unroute('**/bundle/**')
     const blockedKeys = []
     await context.route('**/public.key', (route) => {
@@ -623,10 +628,11 @@ async function main() {
       JSON.stringify(
         {
           cold,
-          cached,
           storage,
           firstChart,
-          cachedChart,
+          coldNotice,
+          offlineBoot,
+          offlineNotice,
           failedOfflineBoot,
           recovered,
           recoveredChart,
@@ -648,7 +654,7 @@ async function main() {
 const rssSampler = sampleProcessTreePeak(1_000)
 main()
   .then(async () => {
-    const lane = FIRST_SESSION_ONLY ? 'webkit-first-session' : 'webkit-cold-cached-recovery'
+    const lane = FIRST_SESSION_ONLY ? 'webkit-first-session' : 'webkit-memory-mode-recovery'
     console.log(formatMemoryReport(lane, processTreeReport(await rssSampler.stop(), ['webkit-web', 'webkit-network'])))
   })
   .catch(async (error) => {

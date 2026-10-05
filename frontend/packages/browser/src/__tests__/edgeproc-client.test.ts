@@ -44,12 +44,16 @@ class FakeWorker implements EngineWorkerLike {
 
 const globals = globalThis as typeof globalThis & {
   __EDGEPROC_FORCE_INDEXEDDB_CACHE__?: boolean;
+  __EDGEPROC_REPORT_CACHE__?: boolean;
   __EDGEPROC_SELECTED_CACHE__?: string;
+  __EDGEPROC_CACHE_STORAGE__?: unknown;
 };
 
 afterEach(() => {
   delete globals.__EDGEPROC_FORCE_INDEXEDDB_CACHE__;
+  delete globals.__EDGEPROC_REPORT_CACHE__;
   delete globals.__EDGEPROC_SELECTED_CACHE__;
+  delete globals.__EDGEPROC_CACHE_STORAGE__;
 });
 
 describe("AlmaMesh edgeproc adapter", () => {
@@ -83,22 +87,30 @@ describe("AlmaMesh edgeproc adapter", () => {
         chunksFetched: 0,
         chunksReused: 2,
         bytesFetched: 0,
-        cacheBackend: "opfs+indexeddb",
+        cacheBackend: "sqlite-opfs",
+        cacheStorage: { persistence: "opfs", pool: "edgeproc-browser-chunks", file: "/edgeproc-browser-chunks" },
       },
     });
-    await expect(pending).resolves.toMatchObject({ cacheBackend: "opfs+indexeddb" });
+    await expect(pending).resolves.toMatchObject({ cacheBackend: "sqlite-opfs" });
   });
 
-  it("maps the exit-gate fallback to IndexedDB and reports the selected backend", async () => {
+  // REVERSED CONTRACT (2026-10-05, @gainratio/browser 0.3.0): this test used to
+  // require that the exit-gate hook forced an IndexedDB engine cache. AlmaMesh
+  // never falls back to IndexedDB: with OPFS refused the cache is in-memory
+  // SQLite and the UI says it will not persist. The old hook must do nothing.
+  it("never asks for an IndexedDB cache, even with the retired force-IndexedDB hook set", () => {
     globals.__EDGEPROC_FORCE_INDEXEDDB_CACHE__ = true;
+    const worker = new FakeWorker();
+    void createAlmaSyncEngine(worker).sync("/bundle", "/public.key", "almamesh", "stable");
+
+    expect(worker.sent[0]).not.toHaveProperty("storageBackend");
+  });
+
+  it("reports the in-memory SQLite cache to the exit gate when asked", async () => {
+    globals.__EDGEPROC_REPORT_CACHE__ = true;
     const worker = new FakeWorker();
     const engine = createAlmaSyncEngine(worker);
     const pending = engine.sync("/bundle", "/public.key", "almamesh", "stable");
-
-    expect(worker.sent[0]).toMatchObject({
-      kind: "sync",
-      storageBackend: "indexeddb",
-    });
     worker.reply({
       ok: true,
       id: worker.sent[0]?.id ?? 0,
@@ -109,14 +121,42 @@ describe("AlmaMesh edgeproc adapter", () => {
         chunksFetched: 2,
         chunksReused: 0,
         bytesFetched: 1024,
-        cacheBackend: "indexeddb",
+        cacheBackend: "sqlite-memory",
+        cacheStorage: { persistence: "memory", reason: "opfs-unavailable", detail: "UnknownError" },
       },
     });
 
     await pending;
-    expect(globals.__EDGEPROC_SELECTED_CACHE__).toBe("indexeddb");
+    expect(globals.__EDGEPROC_SELECTED_CACHE__).toBe("sqlite-memory");
+    expect(globals.__EDGEPROC_CACHE_STORAGE__).toEqual({
+      persistence: "memory",
+      reason: "opfs-unavailable",
+      detail: "UnknownError",
+    });
     engine.terminate();
     expect(worker.terminated).toBe(true);
+  });
+
+  it("publishes nothing when the exit gate did not ask", async () => {
+    const worker = new FakeWorker();
+    const pending = createAlmaSyncEngine(worker).sync("/bundle", "/public.key", "almamesh", "stable");
+    worker.reply({
+      ok: true,
+      id: worker.sent[0]?.id ?? 0,
+      kind: "sync",
+      result: {
+        version: "v1",
+        manifestHash: "a".repeat(64),
+        chunksFetched: 0,
+        chunksReused: 2,
+        bytesFetched: 0,
+        cacheBackend: "sqlite-opfs",
+        cacheStorage: { persistence: "opfs", pool: "p", file: "/f" },
+      },
+    });
+    await pending;
+    expect(globals.__EDGEPROC_SELECTED_CACHE__).toBeUndefined();
+    expect(globals.__EDGEPROC_CACHE_STORAGE__).toBeUndefined();
   });
 
   it("clears the durable bundle cache (OPFS + IndexedDB floor) through the library, same namespace + layout", async () => {

@@ -14,7 +14,6 @@ export {
   EngineClient,
   materializeFile,
   MemoryCacheStore,
-  OpfsCacheStore,
   syncIndex,
   WorkerCrashError,
   WorkerTimeoutError,

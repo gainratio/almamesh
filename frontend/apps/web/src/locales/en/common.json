@@ -51,6 +51,7 @@
   "storage_ephemeral": {
     "title": "This browser is not saving your data.",
     "body": "It refuses on-device storage here (for example, Private Browsing), so your chart works but disappears when you reload or close this tab.",
+    "engine": "The chart engine download is not kept either: starting again after a reload needs an internet connection.",
     "export": "Export a backup to keep it."
   },
   "storage_unavailable": {

@@ -102,6 +102,29 @@ describe('StorageGate', () => {
     expect(note.querySelector('a')?.getAttribute('href')).toBe('/settings/data');
   });
 
+  it('says the chart engine is not kept either, so a reload needs a connection (OPFS refused)', () => {
+    render(
+      <MemoryRouter>
+        <StorageGate>
+          <p>dashboard chart</p>
+        </StorageGate>
+      </MemoryRouter>,
+    );
+    act(() => setPersistence('memory'));
+    const note = screen.getByTestId('ephemeral-storage-notice');
+    expect(note.textContent).toContain('The chart engine download is not kept either');
+    expect(note.textContent).toContain('needs an internet connection');
+  });
+
+  it('says the same about the engine in Spanish and Portuguese', async () => {
+    const es = (await import('../../locales/es/common.json')).default.storage_ephemeral;
+    const pt = (await import('../../locales/pt/common.json')).default.storage_ephemeral;
+    expect(es.engine).toMatch(/motor/i);
+    expect(es.engine).toMatch(/conexión a internet/i);
+    expect(pt.engine).toMatch(/motor/i);
+    expect(pt.engine).toMatch(/conexão com a internet/i);
+  });
+
   it('explains, instead of hanging, when no on-device database can start at all', () => {
     setPersistence('unavailable');
     render(
