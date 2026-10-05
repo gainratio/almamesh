@@ -230,10 +230,9 @@ async function editBirthTime(page: Page): Promise<void> {
   const time = page.locator('form input[type="time"]').first();
   await time.fill(EDITED_BIRTH_TIME);
   await expect(time).toHaveValue(EDITED_BIRTH_TIME);
-  // The rectified-time field starts at the OLD clock and is not moved by a
-  // Birth Time edit; left alone, Save never commits the edited time (product
-  // bug reported with this suite). Align it like a careful user would.
-  await page.locator('#rectified-time').fill(EDITED_BIRTH_TIME);
+  // A birth-time-only edit: no rectification exists yet, so the Rectified-time
+  // field is empty and Save must regenerate on the new clock alone (#245).
+  await expect(page.locator('#rectified-time')).toHaveValue('');
   await page.locator('form button[type="submit"]').click();
   await confirmRegeneration(page);
   // Regeneration runs in the background; the form re-reads the stored chart,
