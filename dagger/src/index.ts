@@ -347,6 +347,8 @@ export class AlmameshCi {
           "dagger/scripts/**",
           "dagger/src/**",
           "frontend/apps/web/vitest.config.ts",
+          // The memory-budget contract pins the test:e2e:memory-budget script.
+          "frontend/apps/web/package.json",
           AUDIT_EXCEPTIONS_FILE,
           ...CONTRACT_TESTS,
         ]),
