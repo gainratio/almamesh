@@ -27,11 +27,17 @@ const desktop: BootSignals = {
 };
 
 describe("decideBootPolicy (decision table)", () => {
-  it("desktop Chrome with >=4 GB and >=4 cores on 4g overlaps", () => {
+  it("desktop Chrome with >=8 GB (full device tier) and >=4 cores on 4g overlaps", () => {
     expect(decideBootPolicy(desktop)).toEqual({
       mode: "overlap",
       reason: expect.stringMatching(/8 GB.*12 cores/),
     });
+  });
+
+  it("a 4 GB, 8-core Chromium is the lite device tier: sequential, overlap is for the full tier only", () => {
+    const decision = decideBootPolicy({ ...desktop, deviceMemory: 4, hardwareConcurrency: 8 });
+    expect(decision.mode).toBe("sequential");
+    expect(decision.reason).toMatch(/lite device tier/);
   });
 
   it("low-end Windows (4 GB, 2 cores) is sequential: the two Workers would contend", () => {

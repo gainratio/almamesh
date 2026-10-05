@@ -9,7 +9,12 @@
 // `deviceMemory` reading (absent on WebKit/Firefox → sequential), enough cores,
 // and a link fast enough that the sync is not network-bound anyway.
 //
+// Overlap is allowed only on the "full" device tier (../deviceTier.ts, the one
+// tier every memory decision shares), with enough cores and a fast link.
+//
 // Pure: no globals, no I/O. `readBootSignals` is the one adapter over navigator.
+
+import { devicePolicy, deviceTier } from "../deviceTier";
 
 export type BootMode = "sequential" | "overlap";
 
@@ -41,8 +46,6 @@ export interface NavigatorSignals {
   readonly connection?: { readonly saveData?: boolean; readonly effectiveType?: string };
 }
 
-/** Below this, a second wasm heap during the sync is not worth the risk. */
-export const MIN_OVERLAP_DEVICE_MEMORY_GB = 4;
 /** Below this, the sync Worker and the Pyodide Worker would share cores. */
 export const MIN_OVERLAP_CORES = 4;
 
@@ -76,8 +79,9 @@ export function decideBootPolicy(signals: BootSignals): BootDecision {
     return sequential(`${effectiveType} network: the sync is network-bound, overlap only lengthens the memory peak`);
   }
   if (deviceMemory === undefined) return sequential("no deviceMemory signal (non-Chromium)");
-  if (deviceMemory < MIN_OVERLAP_DEVICE_MEMORY_GB) {
-    return sequential(`${deviceMemory} GB < ${MIN_OVERLAP_DEVICE_MEMORY_GB} GB`);
+  const tier = deviceTier(signals);
+  if (!devicePolicy(tier).bootOverlapAllowed) {
+    return sequential(`${tier} device tier (${deviceMemory} GB, ${hardwareConcurrency ?? "unknown"} cores)`);
   }
   if (hardwareConcurrency === undefined) return sequential("unknown number of cores");
   if (hardwareConcurrency < MIN_OVERLAP_CORES) {

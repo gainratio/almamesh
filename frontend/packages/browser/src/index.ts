@@ -29,6 +29,10 @@ export type {
   VersionPointer,
 } from "@gainratio/browser";
 
+// --- one device tier per tab (what each tier may keep resident) ---
+export { DEVICE_POLICIES, devicePolicy, deviceTier } from "./deviceTier";
+export type { DevicePolicy, DeviceTier } from "./deviceTier";
+
 // --- explicit user reset only: wipe the synced bundle cache + rollback floor ---
 export { clearAlmaBundleCache, EngineCacheNotDurableError, EngineStorageBlockedError } from "./edgeprocClient";
 
