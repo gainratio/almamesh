@@ -41,7 +41,8 @@
     "searching": "Buscando en tus conversaciones…",
     "no_results": "No hay mensajes anteriores que coincidan.",
     "thread_fallback": "Conversación",
-    "match": "{{percent}}% de coincidencia"
+    "match": "{{percent}}% de coincidencia",
+    "loading_model": "Cargando la búsqueda en tu dispositivo (solo la primera vez)…"
   },
   "suggested": {
     "label": "Preguntas sugeridas:",
@@ -81,5 +82,8 @@
   "not_configured": {
     "notice": "Conecta un modelo de IA para hacer preguntas sobre tu carta — tu carta ya está calculada en tu dispositivo.",
     "cta": "Conectar un modelo de IA"
+  },
+  "memory": {
+    "loading_model": "Cargando la memoria en tu dispositivo (solo la primera vez)…"
   }
 }

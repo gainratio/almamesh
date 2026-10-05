@@ -410,6 +410,9 @@ export class AlmameshCi {
     return this.localPreview(real, "dist-real", [
       "node scripts/verify-real-onboarding.mjs http://127.0.0.1:4199",
       "node scripts/verify-onboarding-recovery.mjs http://127.0.0.1:4199",
+      // Boot-to-ready memory budget on a phone-sized Chromium; also fails if
+      // the chat embedder (~+95 MiB) loads before search or chat.
+      "MEMORY_BUDGET_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:memory-budget",
     ])
   }
   /**

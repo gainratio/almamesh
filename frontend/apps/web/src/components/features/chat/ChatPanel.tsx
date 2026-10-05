@@ -24,6 +24,7 @@ import { MessageBubble } from './MessageBubble';
 import { ReferenceEntry } from './ReferenceEntry';
 import { SuggestedQuestions } from './SuggestedQuestions';
 import { ChatSearch } from './ChatSearch';
+import { useEmbedderStatus } from '../../../hooks/useEmbedderStatus';
 import type { SSEMetaData } from '../../../lib/streaming';
 import type { ViewMode } from '../../../lib/types';
 import { useChatThread, type ChatStreamInput } from '../../../hooks/useChatThread';
@@ -78,6 +79,9 @@ export function ChatPanel({
   // failure bubble. LIVE (useLlmStatus): turning AI off in Settings disables the
   // input immediately, so a "disconnected" chat can never keep sending.
   const aiConfigured = useLlmStatus().configured;
+  // The first send loads the on-device memory model (one time, ~+80-95 MB);
+  // say so instead of leaving a silent pause before the answer starts.
+  const memoryModelLoading = useEmbedderStatus() === 'loading';
   const [agentActivity, setAgentActivity] = useState<string | null>(null);
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
   const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map());
@@ -174,6 +178,12 @@ export function ChatPanel({
 
       {/* Semantic search over this profile's past conversations (discoverable). */}
       {profileId && <ChatSearch profileId={profileId} onOpenResult={handleOpenResult} />}
+
+      {isStreaming && memoryModelLoading && (
+        <div className="mx-4 mt-3 rounded-lg border border-ui-border px-3 py-2 text-xs text-text-muted" data-testid="chat-memory-loading" role="status">
+          {t('memory.loading_model')}
+        </div>
+      )}
 
       {isStreaming && agentActivity && (
         <div className="mx-4 mt-3 rounded-lg border border-accent-gold/30 bg-accent-gold/5 px-3 py-2 text-xs text-text-secondary" data-testid="chat-agent-status" role="status">

@@ -8,6 +8,7 @@ import {
   __resetMemoryForTest,
   type ChatMemoryFacade,
 } from '../../../../lib/chatMemory';
+import { embedderStatus, __resetEmbedderStatusForTest } from '../../../../lib/embedderStatus';
 
 const PROFILE = 'profile-X';
 
@@ -39,7 +40,46 @@ describe('ChatSearch', () => {
   afterEach(() => {
     useChatStore.setState({ threads: {}, messages: {} });
     __resetMemoryForTest();
+    __resetEmbedderStatusForTest();
     vi.restoreAllMocks();
+  });
+
+  it('tells the user the on-device model is loading during the first search', async () => {
+    __setMemoryForTest({
+      indexMessage: vi.fn(),
+      retrieve: vi.fn(() => new Promise<never>(() => undefined)),
+      deleteForProfile: vi.fn().mockResolvedValue(undefined),
+      deleteForThread: vi.fn().mockResolvedValue(undefined),
+      clear: vi.fn().mockResolvedValue(undefined),
+    });
+    // The first embed is in flight: the model is still starting.
+    void embedderStatus.track({ embed: () => new Promise<never>(() => undefined) }).embed(['q']);
+
+    render(<ChatSearch profileId={PROFILE} onOpenResult={vi.fn()} />);
+    fireEvent.change(screen.getByTestId('chat-search-input'), { target: { value: 'career' } });
+
+    const note = await screen.findByTestId('chat-search-model-loading');
+    expect(note.getAttribute('role')).toBe('status');
+    // i18n may or may not be initialised, depending on which test file ran first in the worker.
+    expect(note.textContent).toMatch(/^(search\.loading_model|Loading on-device search \(first time only\)…)$/);
+    expect(screen.queryByText(/^(search\.searching|Searching your conversations…)$/)).toBeNull();
+  });
+
+  it('shows the plain searching state once the model is resident', async () => {
+    __setMemoryForTest({
+      indexMessage: vi.fn(),
+      retrieve: vi.fn(() => new Promise<never>(() => undefined)),
+      deleteForProfile: vi.fn().mockResolvedValue(undefined),
+      deleteForThread: vi.fn().mockResolvedValue(undefined),
+      clear: vi.fn().mockResolvedValue(undefined),
+    });
+    await embedderStatus.track({ embed: async () => [] }).embed(['warm']);
+
+    render(<ChatSearch profileId={PROFILE} onOpenResult={vi.fn()} />);
+    fireEvent.change(screen.getByTestId('chat-search-input'), { target: { value: 'career' } });
+
+    await screen.findByText(/^(search\.searching|Searching your conversations…)$/);
+    expect(screen.queryByTestId('chat-search-model-loading')).toBeNull();
   });
 
   it('renders a discoverable search input', () => {

@@ -6,6 +6,7 @@ import { ChatPanel } from '../ChatPanel';
 import { useChatStore } from '@almamesh/store';
 import { hydrateLlmSettings, openRouterPreset, writeLlmSettings } from '@almamesh/llm';
 import { __setMemoryForTest, __resetMemoryForTest } from '../../../../lib/chatMemory';
+import { embedderStatus, __resetEmbedderStatusForTest } from '../../../../lib/embedderStatus';
 
 /** Configure a synthetic cloud tier so the panel's send affordance is live. */
 function configureCloudAi(): void {
@@ -93,6 +94,44 @@ describe('ChatPanel — typing indicator vs streamed text', () => {
       const msgs = useChatStore.getState().messages[threadIds[0]];
       expect(msgs.map((m) => m.role)).toEqual(['user', 'assistant']);
     });
+  });
+
+  it('says the on-device memory is loading while the first send waits for the model', async () => {
+    // The memory retrieval for this send is waiting on the model's first load.
+    const retrieval = deferred<never[]>();
+    __setMemoryForTest({
+      indexMessage: vi.fn().mockResolvedValue(undefined),
+      retrieve: vi.fn(() => retrieval.promise),
+      deleteForProfile: vi.fn().mockResolvedValue(undefined),
+      deleteForThread: vi.fn().mockResolvedValue(undefined),
+      clear: vi.fn().mockResolvedValue(undefined),
+    });
+    const model = deferred<Float32Array[]>();
+    const firstEmbed = embedderStatus.track({ embed: () => model.promise }).embed(['q']);
+
+    render(
+      <MemoryRouter>
+        <ChatPanel
+          personName="Test"
+          profileId="profile-1"
+          chartId="chart-1"
+          viewMode="layman"
+          onAskQuestionStream={vi.fn(() => new Promise<never>(() => undefined)) as never}
+        />
+      </MemoryRouter>,
+    );
+    fireEvent.change(screen.getByTestId('chat-input'), { target: { value: 'What about Mars?' } });
+    fireEvent.click(screen.getByTestId('chat-send-button'));
+
+    const note = await screen.findByTestId('chat-memory-loading');
+    expect(note.getAttribute('role')).toBe('status');
+    // i18n may or may not be initialised, depending on which test file ran first in the worker.
+    expect(note.textContent).toMatch(/^(memory\.loading_model|Loading on-device memory \(first time only\)…)$/);
+
+    act(() => model.resolve([]));
+    await firstEmbed;
+    await waitFor(() => expect(screen.queryByTestId('chat-memory-loading')).toBeNull());
+    __resetEmbedderStatusForTest();
   });
 
   it('renders an error-flagged message as a distinct error bubble (not a normal turn)', async () => {

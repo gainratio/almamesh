@@ -7,6 +7,16 @@ All notable changes to AlmaMesh are documented here. Format follows
 ## [Unreleased]
 
 ### Changed
+- **The chat embedder says when it is loading, and a memory budget guards boot.**
+  The on-device MiniLM embedder (about +95 MiB once loaded) was already deferred
+  to the first chat send or search; that first load now shows a "loading
+  on-device search/memory (first time only)" status instead of a silent pause,
+  and one embedder is kept per page (a memory-runtime invalidation used to leave
+  the old embedder worker alive beside a new one). A new memory-budget e2e lane
+  in the Dagger browser gate boots the production build in Chromium with an
+  iPhone UA and fails if boot-to-ready memory exceeds `e2e/memoryBudget.ts` or
+  if the embedder loads before it is needed. CLAUDE.md no longer describes the
+  vector store as IndexedDB; it is SQLite + sqlite-vector on OPFS.
 - **Own libraries moved to the `@gainratio` npm scope at their newest releases.**
   `@gainratio/avow ^0.5.2` (was `@edgeproc/avow 0.1.1`), `@gainratio/receipt-ui
   0.3.0` (was 0.2.0), `@gainratio/errors ^0.2.1` (was 0.1.3), `@gainratio/assay
