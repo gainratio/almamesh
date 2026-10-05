@@ -228,7 +228,7 @@ export async function buildBackupExport(
     const exported = await (override?.exportPortableState ?? exportPortableBrowserState)();
     const content = await sealPortableBundle(exported.bytes, passphrase, deps);
     return {
-      filename: `almamesh-backup-${filenameTimestamp(deps.now)}.almamesh`,
+      filename: exportBackupFilename(deps.now),
       content,
       repairs: exported.repairs,
     };
@@ -237,6 +237,18 @@ export async function buildBackupExport(
   const encoded = await encodeEnvelope(plain, passphrase);
   const filename = `almamesh-backup-${filenameTimestamp(deps.now)}.json`;
   return { filename, content: JSON.stringify(encoded, null, 2), repairs: EMPTY_PORTABLE_REPAIR_REPORT };
+}
+
+/** The name an export will be saved under, known before the export is built. */
+export function exportBackupFilename(now: string = new Date().toISOString()): string {
+  return `almamesh-backup-${filenameTimestamp(now)}.almamesh`;
+}
+
+/** The pre-import safety copy's name, derived from an export name. */
+export function safetyBackupFilename(exportName: string): string {
+  return exportName.startsWith('almamesh-backup-')
+    ? exportName.replace('almamesh-backup-', 'almamesh-backup-before-import-')
+    : `almamesh-backup-before-import-${exportName}`;
 }
 
 function filenameTimestamp(now: string): string {
