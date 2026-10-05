@@ -107,7 +107,7 @@ describe("layman voice guard at acceptance", () => {
 // nightly's remedies said "Yoga postures like tree pose" because the remedial
 // task itself asked for "yoga postures by ENGLISH name" in the layman voice.
 describe("layman prompt agrees with the guard", () => {
-  const sanitized = sanitizeChartForLlm(chart, new Date("2026-10-02T00:00:00Z"));
+  const sanitized = sanitizeChartForLlm(chart, { basis: "chart", instant: new Date("2026-10-02T00:00:00Z") });
 
   it.each([false, true])("names every banned term as a layman rule (lite=%s)", (lite) => {
     const [system] = buildSectionMessages("core", sanitized, "layman", lite, "en");

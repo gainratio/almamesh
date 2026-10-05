@@ -46,7 +46,7 @@ const ABSOLUTE_ISO = /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/;
 
 describe("sanitizeChartForLlm — privacy boundary", () => {
   it("never emits an absolute ISO date anywhere in the output", () => {
-    const sanitized = sanitizeChartForLlm(realChart, NOW);
+    const sanitized = sanitizeChartForLlm(realChart, { basis: "chart", instant: NOW });
     const leaks = allStrings(sanitized).filter((s) => ABSOLUTE_ISO.test(s));
     expect(leaks).toEqual([]);
   });
@@ -61,7 +61,7 @@ describe("sanitizeChartForLlm — privacy boundary", () => {
       calculation_timestamp: "2024-01-01T00:00:00Z",
     } as unknown as SiderealChart;
 
-    const sanitized = sanitizeChartForLlm(withIdentifiers, NOW) as Record<string, unknown>;
+    const sanitized = sanitizeChartForLlm(withIdentifiers, { basis: "chart", instant: NOW }) as Record<string, unknown>;
     expect(sanitized).not.toHaveProperty("chart_id");
     expect(sanitized).not.toHaveProperty("generated_at");
     expect(sanitized).not.toHaveProperty("calculation_timestamp");
@@ -71,7 +71,7 @@ describe("sanitizeChartForLlm — privacy boundary", () => {
   });
 
   it("removes start_date / end_date from every dasha period", () => {
-    const sanitized = sanitizeChartForLlm(realChart, NOW);
+    const sanitized = sanitizeChartForLlm(realChart, { basis: "chart", instant: NOW });
     const dashas = sanitized.dashas;
     expect(dashas).toBeDefined();
 
@@ -106,7 +106,7 @@ describe("sanitizeChartForLlm — privacy boundary", () => {
       },
     } as unknown as SiderealChart;
 
-    const sanitized = sanitizeChartForLlm(chart, NOW);
+    const sanitized = sanitizeChartForLlm(chart, { basis: "chart", instant: NOW });
     const period = sanitized.dashas?.maha_dasha_sequence?.[0];
     expect(period?.status).toMatch(/current \(\d+ years remaining\)/);
     expect(period?.lord).toBe("jupiter");
@@ -130,7 +130,7 @@ describe("sanitizeChartForLlm — privacy boundary", () => {
       },
     } as unknown as SiderealChart;
 
-    const sanitized = sanitizeChartForLlm(chart, NOW);
+    const sanitized = sanitizeChartForLlm(chart, { basis: "chart", instant: NOW });
     const period = sanitized.dashas?.maha_dasha_sequence?.[0];
     expect(period?.status).toMatch(/future \(starts in \d+ years\)/);
   });
@@ -153,7 +153,7 @@ describe("sanitizeChartForLlm — privacy boundary", () => {
       },
     } as unknown as SiderealChart;
 
-    const sanitized = sanitizeChartForLlm(chart, NOW);
+    const sanitized = sanitizeChartForLlm(chart, { basis: "chart", instant: NOW });
     expect(sanitized.dashas?.maha_dasha_sequence?.[0]?.status).toBe("past");
   });
 
@@ -173,14 +173,14 @@ describe("sanitizeChartForLlm — privacy boundary", () => {
       },
     } as unknown as SiderealChart;
 
-    const sanitized = sanitizeChartForLlm(chart, NOW);
+    const sanitized = sanitizeChartForLlm(chart, { basis: "chart", instant: NOW });
     const current = sanitized.dashas?.current_maha;
     expect(current?.months_remaining).toBeGreaterThan(0);
     expect(current).not.toHaveProperty("end_date");
   });
 
   it("preserves the astrological content the interpreter needs", () => {
-    const sanitized = sanitizeChartForLlm(realChart, NOW);
+    const sanitized = sanitizeChartForLlm(realChart, { basis: "chart", instant: NOW });
 
     // Planets: names, signs, houses survive.
     const planets = Object.values(sanitized.planets);
@@ -203,26 +203,26 @@ describe("sanitizeChartForLlm — privacy boundary", () => {
   it("passes the engine-declared dasha-year convention through (no silent convention)", () => {
     // The golden fixture declares its convention; it must survive sanitization.
     expect(realChart.dashas.convention).toBeDefined();
-    const sanitized = sanitizeChartForLlm(realChart, NOW);
+    const sanitized = sanitizeChartForLlm(realChart, { basis: "chart", instant: NOW });
     expect(sanitized.dashas?.convention).toBe(realChart.dashas.convention);
   });
 
   it("omits the convention key when an older engine bundle does not declare one", () => {
     const { convention: _convention, ...withoutConvention } = realChart.dashas;
     const chart = { ...realChart, dashas: withoutConvention } as unknown as SiderealChart;
-    const sanitized = sanitizeChartForLlm(chart, NOW);
+    const sanitized = sanitizeChartForLlm(chart, { basis: "chart", instant: NOW });
     expect(sanitized.dashas).not.toHaveProperty("convention");
   });
 
   it("passes the D9 navamsa through (signs only — nothing to relativize)", () => {
     expect(realChart.navamsa).not.toBeNull();
-    const sanitized = sanitizeChartForLlm(realChart, NOW);
+    const sanitized = sanitizeChartForLlm(realChart, { basis: "chart", instant: NOW });
     expect(sanitized.navamsa).toEqual(realChart.navamsa);
   });
 
   it("omits the navamsa key when the engine emits none", () => {
     const chart = { ...realChart, navamsa: null } as unknown as SiderealChart;
-    const sanitized = sanitizeChartForLlm(chart, NOW);
+    const sanitized = sanitizeChartForLlm(chart, { basis: "chart", instant: NOW });
     expect(sanitized).not.toHaveProperty("navamsa");
   });
 
@@ -250,7 +250,7 @@ describe("sanitizeChartForLlm — privacy boundary", () => {
     } as unknown as SiderealChart;
     const before = JSON.stringify(chart);
 
-    sanitizeChartForLlm(chart, NOW);
+    sanitizeChartForLlm(chart, { basis: "chart", instant: NOW });
 
     expect(JSON.stringify(chart)).toBe(before);
   });
@@ -272,19 +272,19 @@ const DAY_PRECISION = /\d{4}-\d{2}-\d{2}/;
 
 describe("sanitizeChartForLlm — predictive contexts (transits/strength/vargas/domains)", () => {
   it("omits the predictive key entirely when no context is present (graceful absence)", () => {
-    const sanitized = sanitizeChartForLlm(realChart, NOW);
+    const sanitized = sanitizeChartForLlm(realChart, { basis: "chart", instant: NOW });
     expect(sanitized).not.toHaveProperty("predictive");
   });
 
   it("reduces every predictive date to month precision (no day-level or ISO dates)", () => {
-    const sanitized = sanitizeChartForLlm(predictiveChart, NOW);
+    const sanitized = sanitizeChartForLlm(predictiveChart, { basis: "chart", instant: NOW });
     const leaks = allStrings(sanitized.predictive).filter((s) => DAY_PRECISION.test(s));
     expect(leaks).toEqual([]);
     expect(allStrings(sanitized).filter((s) => ABSOLUTE_ISO.test(s))).toEqual([]);
   });
 
   it("compacts the transit context: sade sati, fusion, gochara, hits, timeline", () => {
-    const transits = sanitizeChartForLlm(predictiveChart, NOW).predictive?.transits;
+    const transits = sanitizeChartForLlm(predictiveChart, { basis: "chart", instant: NOW }).predictive?.transits;
     expect(transits?.sade_sati).toMatchObject({
       is_active: true,
       current_phase: "peak",
@@ -324,7 +324,7 @@ describe("sanitizeChartForLlm — predictive contexts (transits/strength/vargas/
   });
 
   it("compacts strength to SAV total + per-planet shadbala figures", () => {
-    const strength = sanitizeChartForLlm(predictiveChart, NOW).predictive?.strength;
+    const strength = sanitizeChartForLlm(predictiveChart, { basis: "chart", instant: NOW }).predictive?.strength;
     expect(strength?.sav_total).toBe(337);
     expect(strength?.shadbala).toContainEqual({
       planet: "saturn",
@@ -335,7 +335,7 @@ describe("sanitizeChartForLlm — predictive contexts (transits/strength/vargas/
   });
 
   it("keeps only the engine's varga SUMMARIES (vargottama/shadvarga/vimshopaka)", () => {
-    const vargas = sanitizeChartForLlm(predictiveChart, NOW).predictive?.vargas;
+    const vargas = sanitizeChartForLlm(predictiveChart, { basis: "chart", instant: NOW }).predictive?.vargas;
     expect(vargas?.vargottama).toContainEqual({ point: "moon", sign: "taurus" });
     expect(vargas?.shadvarga_own_sign?.[0]).toMatchObject({
       graha: "jupiter",
@@ -349,7 +349,7 @@ describe("sanitizeChartForLlm — predictive contexts (transits/strength/vargas/
   });
 
   it("compacts each life-domain forecast (band, key graha, emphasis, month windows)", () => {
-    const domains = sanitizeChartForLlm(predictiveChart, NOW).predictive?.domains;
+    const domains = sanitizeChartForLlm(predictiveChart, { basis: "chart", instant: NOW }).predictive?.domains;
     const career = domains?.find((d) => d.domain === "career");
     expect(career).toMatchObject({
       band: "strong",
@@ -372,7 +372,7 @@ describe("sanitizeChartForLlm — predictive contexts (transits/strength/vargas/
   });
 
   it("drops the bulky raw context fields (sunrise, bindus tables, full charts)", () => {
-    const serialized = JSON.stringify(sanitizeChartForLlm(predictiveChart, NOW).predictive);
+    const serialized = JSON.stringify(sanitizeChartForLlm(predictiveChart, { basis: "chart", instant: NOW }).predictive);
     expect(serialized).not.toContain("sunrise_utc_iso");
     expect(serialized).not.toContain("bhinna");
     expect(serialized).not.toContain("transit_ayanamsa");
@@ -382,7 +382,7 @@ describe("sanitizeChartForLlm — predictive contexts (transits/strength/vargas/
 
   it("is pure with predictive contexts — it does not mutate the input chart", () => {
     const before = JSON.stringify(predictiveChart);
-    sanitizeChartForLlm(predictiveChart, NOW);
+    sanitizeChartForLlm(predictiveChart, { basis: "chart", instant: NOW });
     expect(JSON.stringify(predictiveChart)).toBe(before);
   });
 });
@@ -393,7 +393,7 @@ describe("sanitizeChartForLlm — predictive contexts (transits/strength/vargas/
 // against the real regenerated golden).
 describe("sanitizeChartForLlm — per-planet engine lordship fields", () => {
   it("passes houses_ruled / is_yogakaraka / is_combust through verbatim", () => {
-    const sanitized = sanitizeChartForLlm(realChart, NOW);
+    const sanitized = sanitizeChartForLlm(realChart, { basis: "chart", instant: NOW });
     expect(Object.keys(sanitized.planets).length).toBeGreaterThan(0);
     for (const [key, planet] of Object.entries(sanitized.planets)) {
       expect(planet.houses_ruled).toEqual(realChart.planets[key].houses_ruled);
@@ -403,7 +403,7 @@ describe("sanitizeChartForLlm — per-planet engine lordship fields", () => {
   });
 
   it("passes each yoga's qualitative trace (grade + factors + rules) through verbatim", () => {
-    const sanitized = sanitizeChartForLlm(realChart, NOW);
+    const sanitized = sanitizeChartForLlm(realChart, { basis: "chart", instant: NOW });
     expect(sanitized.yogas).toEqual(realChart.yogas);
     for (const yoga of sanitized.yogas) {
       expect(["strong", "moderate", "weak"]).toContain(yoga.grade);
@@ -422,7 +422,7 @@ const MONTH_ONLY = /^\d{4}-\d{2}$/;
 describe("sanitizeChartForLlm — dasha tree (antar + pratyantar sequences)", () => {
   // The golden's first chart carries the full tree; NOW (2030-01-01) falls
   // inside its jupiter maha (2023-04 → 2039-04).
-  const sanitized = sanitizeChartForLlm(realChart, NOW);
+  const sanitized = sanitizeChartForLlm(realChart, { basis: "chart", instant: NOW });
   const rows = sanitized.dashas?.maha_dasha_sequence ?? [];
 
   it("attaches the month window + the dated antar tree to the CURRENT maha row", () => {
@@ -494,7 +494,7 @@ describe("sanitizeChartForLlm — dasha tree (antar + pratyantar sequences)", ()
         ),
       },
     } as unknown as SiderealChart;
-    const out = sanitizeChartForLlm(legacy, NOW);
+    const out = sanitizeChartForLlm(legacy, { basis: "chart", instant: NOW });
     expect(out.dashas).not.toHaveProperty("pratyantar_sequence");
     for (const row of out.dashas?.maha_dasha_sequence ?? []) {
       expect(row).not.toHaveProperty("start_month");
@@ -520,7 +520,7 @@ describe("sanitizeChartForLlm — dasha tree (antar + pratyantar sequences)", ()
         pratyantar_sequence: null,
       },
     } as unknown as SiderealChart;
-    const out = sanitizeChartForLlm(chart, NOW);
+    const out = sanitizeChartForLlm(chart, { basis: "chart", instant: NOW });
     expect(out.dashas).not.toHaveProperty("pratyantar_sequence");
   });
 });

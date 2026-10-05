@@ -31,8 +31,8 @@ const predictiveChart = {
 
 const NOW = new Date("2030-01-01T00:00:00.000Z");
 
-const NATAL_ONLY = sanitizeChartForLlm(realChart, NOW);
-const WITH_PREDICTIVE = sanitizeChartForLlm(predictiveChart, NOW);
+const NATAL_ONLY = sanitizeChartForLlm(realChart, { basis: "chart", instant: NOW });
+const WITH_PREDICTIVE = sanitizeChartForLlm(predictiveChart, { basis: "chart", instant: NOW });
 
 function systemText(msgs: { role: string; content: string }[]): string {
   return msgs.find((m) => m.role === "system")?.content ?? "";

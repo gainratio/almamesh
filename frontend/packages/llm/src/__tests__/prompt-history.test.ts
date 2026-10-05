@@ -9,6 +9,7 @@ import type { SanitizedChart } from "../sanitize";
 // The Sun planet lets the layout assertions check that the chart payload rides
 // only on the final user turn.
 const CHART: SanitizedChart = {
+  as_of: { date: "2026-01-01", basis: "chart" },
   ayanamsa_value: 24.1,
   lagna: {
     longitude: 12.3,

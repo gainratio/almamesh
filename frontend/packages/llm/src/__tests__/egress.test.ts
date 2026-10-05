@@ -50,7 +50,7 @@ describe("egress — only sanitized, identifier-free data leaves the device", ()
         chart: realChart,
         config: LOCAL_CFG,
         fetchImpl: fetchImpl as unknown as typeof fetch,
-        now: new Date("2030-01-01T00:00:00.000Z"),
+        asOf: { basis: "chart", instant: new Date("2030-01-01T00:00:00.000Z") },
       }),
     );
 

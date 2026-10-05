@@ -104,7 +104,7 @@ describe("streamStructuredInterpretation — language awareness", () => {
       streamStructuredInterpretation({
         chart: realChart,
         config: LOCAL_CFG,
-        now: NOW,
+        asOf: { basis: "chart", instant: NOW },
         language: "es",
         fetchImpl,
       }),
@@ -124,7 +124,7 @@ describe("streamStructuredInterpretation — language awareness", () => {
       streamStructuredInterpretation({
         chart: realChart,
         config: LOCAL_CFG,
-        now: NOW,
+        asOf: { basis: "chart", instant: NOW },
         language: "pt",
         fetchImpl,
       }),
@@ -142,7 +142,7 @@ describe("streamStructuredInterpretation — language awareness", () => {
       streamStructuredInterpretation({
         chart: realChart,
         config: LOCAL_CFG,
-        now: NOW,
+        asOf: { basis: "chart", instant: NOW },
         fetchImpl,
       }),
     );

@@ -62,7 +62,7 @@ Planets:
 
 House lordships (engine-computed): mars rules 1,8; saturn rules 10,11 (yogakaraka)
 
-Current dasha period:
+Current dasha period (as of 2026-01-01, the chart's analysis date):
 - Mahadasha: sun (48 months remaining)
 - Antardasha: mercury (9 months remaining)
 
@@ -165,7 +165,7 @@ Planets:
 
 House lordships (engine-computed): mars rules 1,8; saturn rules 10,11 (yogakaraka)
 
-Current dasha period:
+Current dasha period (as of 2026-01-01, the chart's analysis date):
 - Mahadasha: sun (48 months remaining)
 - Antardasha: mercury (9 months remaining)
 
@@ -452,7 +452,7 @@ The reader is a layperson; make the layman fields especially warm and clear. Wri
 Chart Data (sanitized; no identifying information). The 'yogas' field is the
 EXHAUSTIVE list of yogas in this chart — discuss no others. Fields that are
 null or absent are simply UNKNOWN — omit them silently, never guess a value:
-{"ayanamsa_value":24.1,"lagna":{"longitude":12.3,"sign":"aries","sign_degrees":12.3,"sign_lord":"mars","nakshatra":"ashwini","nakshatra_pada":2,"nakshatra_lord":"ketu"},"planets":{"mars":{"name":"mars","longitude":280.5,"latitude":0,"distance":1,"speed":0.5,"is_retrograde":false,"sign":"capricorn","sign_degrees":10.5,"sign_lord":"saturn","nakshatra":"shravana","nakshatra_pada":1,"nakshatra_lord":"moon","house":10,"dignity":"exalted","is_combust":false,"combustion_separation_deg":null,"houses_ruled":[1,8],"is_yogakaraka":false},"saturn":{"name":"saturn","longitude":100.2,"latitude":0,"distance":1,"speed":-0.1,"is_retrograde":true,"sign":"cancer","sign_degrees":10.2,"sign_lord":"moon","nakshatra":"pushya","nakshatra_pada":2,"nakshatra_lord":"saturn","house":4,"dignity":"debilitated","is_combust":false,"combustion_separation_deg":null,"houses_ruled":[10,11],"is_yogakaraka":true}},"houses":{},"yogas":[{"name":"Gaja Kesari Yoga","display_name":"Gaja Kesari Yoga (Jupiter in the 1st from the Moon)","category":"auspicious","description":"Jupiter angular to the Moon.","effects":"Wisdom and prosperity.","grade":"moderate","strength_factors":[{"factor_type":"dignity","planet":"jupiter","value":"exalted","basis":"Sign dignity per the BPHS exaltation/own-sign doctrine"}],"planets_involved":["jupiter","moon"],"houses_involved":[1,4],"planetary_signature":"jupiter_moon_h1_h4","formation_rules":[{"rule":"chandra.gaja_kesari","description":"Jupiter in the 1st from the Moon","source":"BPHS, Chandra-yoga adhyaya","planets":["jupiter","moon"],"houses":[1]}]}],"navamsa":{"name":"D9","lagna_sign":"scorpio","lagna_sign_lord":"mars","planets":{"mars":{"name":"mars","sign":"capricorn","sign_lord":"saturn"}}}}",
+{"as_of":{"date":"2026-01-01","basis":"chart"},"ayanamsa_value":24.1,"lagna":{"longitude":12.3,"sign":"aries","sign_degrees":12.3,"sign_lord":"mars","nakshatra":"ashwini","nakshatra_pada":2,"nakshatra_lord":"ketu"},"planets":{"mars":{"name":"mars","longitude":280.5,"latitude":0,"distance":1,"speed":0.5,"is_retrograde":false,"sign":"capricorn","sign_degrees":10.5,"sign_lord":"saturn","nakshatra":"shravana","nakshatra_pada":1,"nakshatra_lord":"moon","house":10,"dignity":"exalted","is_combust":false,"combustion_separation_deg":null,"houses_ruled":[1,8],"is_yogakaraka":false},"saturn":{"name":"saturn","longitude":100.2,"latitude":0,"distance":1,"speed":-0.1,"is_retrograde":true,"sign":"cancer","sign_degrees":10.2,"sign_lord":"moon","nakshatra":"pushya","nakshatra_pada":2,"nakshatra_lord":"saturn","house":4,"dignity":"debilitated","is_combust":false,"combustion_separation_deg":null,"houses_ruled":[10,11],"is_yogakaraka":true}},"houses":{},"yogas":[{"name":"Gaja Kesari Yoga","display_name":"Gaja Kesari Yoga (Jupiter in the 1st from the Moon)","category":"auspicious","description":"Jupiter angular to the Moon.","effects":"Wisdom and prosperity.","grade":"moderate","strength_factors":[{"factor_type":"dignity","planet":"jupiter","value":"exalted","basis":"Sign dignity per the BPHS exaltation/own-sign doctrine"}],"planets_involved":["jupiter","moon"],"houses_involved":[1,4],"planetary_signature":"jupiter_moon_h1_h4","formation_rules":[{"rule":"chandra.gaja_kesari","description":"Jupiter in the 1st from the Moon","source":"BPHS, Chandra-yoga adhyaya","planets":["jupiter","moon"],"houses":[1]}]}],"navamsa":{"name":"D9","lagna_sign":"scorpio","lagna_sign_lord":"mars","planets":{"mars":{"name":"mars","sign":"capricorn","sign_lord":"saturn"}}}}",
     "role": "user",
   },
 ]
