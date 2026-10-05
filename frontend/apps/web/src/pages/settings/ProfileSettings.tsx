@@ -11,7 +11,6 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   appEvents,
-  type BirthMeta,
   type LocalBirthInput,
   type PendingChangeField,
   type PendingChanges,
@@ -22,6 +21,7 @@ import {
 import { TIME_CONFIDENCE, type TimeConfidence } from '@almamesh/constants';
 import { LocationSearch } from '../../components/shared/LocationSearch';
 import { type BirthDetails, birthDetailsFromBirthData } from './birthDetailsFromBirthData';
+import { birthMetaFromDetails, planProfileSave, type ProfileSavePlan } from './planProfileSave';
 import { RegenerationConfirmModal } from '../../components/features/settings/RegenerationConfirmModal';
 import {
   BirthTimeComparison,
@@ -105,6 +105,12 @@ export default function ProfileSettings() {
 
   // Local state
   const [initialDetails, setInitialDetails] = useState<BirthDetails | null>(null);
+  // The stored primary chart's id: the identity a save is compared against.
+  const [storedChartId, setStoredChartId] = useState<string | null>(null);
+  // Why a save did not open the regenerate modal (never a false "Chart Updated!").
+  const [saveNotice, setSaveNotice] = useState<Exclude<ProfileSavePlan, { kind: 'regenerate' }> | null>(
+    null,
+  );
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
@@ -123,6 +129,7 @@ export default function ProfileSettings() {
         if (cancelled) return;
         if (chartData.success) {
           const birthData = chartData.chart_data?.birth_data;
+          setStoredChartId(chartData.chart_id ?? null);
           if (birthData) {
             // Pure mapping: reconstructs the ENTERED time (birth_time_original)
             // and the RECTIFIED time (effective birth_datetime_local) as distinct
@@ -150,6 +157,7 @@ export default function ProfileSettings() {
 
   // Form Handlers
   const handleFieldChange = <K extends PendingChangeField>(field: K, value: PendingChanges[K]) => {
+    setSaveNotice(null);
     setPendingChange(field, value);
   };
 
@@ -324,6 +332,15 @@ export default function ProfileSettings() {
       return;
     }
 
+    const plan = planProfileSave({
+      initial: initialDetails ?? currentDetails,
+      current: currentDetails,
+      storedChartId,
+    });
+    if (plan.kind !== 'regenerate') {
+      setSaveNotice(plan);
+      return;
+    }
     setShowConfirmModal(true);
   };
 
@@ -340,24 +357,7 @@ export default function ProfileSettings() {
       if (!engine) {
         throw new Error(t('settings:profile.engine_starting'));
       }
-      const location = currentDetails.location!;
-      // A rectified time only counts when it actually differs from the entered
-      // one; otherwise the original time stays authoritative.
-      const rectified =
-        currentDetails.rectified_time && currentDetails.rectified_time !== currentDetails.birth_time
-          ? currentDetails.rectified_time
-          : undefined;
-      const birth: BirthMeta = {
-        name: currentDetails.name.trim(),
-        date: currentDetails.birth_date,
-        time: currentDetails.birth_time,
-        ...(rectified ? { rectifiedTime: rectified } : {}),
-        timeConfidence: currentDetails.time_confidence,
-        latitude: location.lat,
-        longitude: location.lon,
-        timezone: location.timezone || 'UTC',
-        location_name: location.displayName ?? location.city ?? '',
-      };
+      const birth = birthMetaFromDetails(currentDetails);
 
       // Single source of regeneration: emit the event. The one subscriber in
       // App.tsx recomputes on-device, replaces the primary (preserving
@@ -377,6 +377,7 @@ export default function ProfileSettings() {
 
   const handleResetForm = () => {
     clearPendingChanges();
+    setSaveNotice(null);
     setError(null);
   };
 
@@ -494,8 +495,14 @@ export default function ProfileSettings() {
                 type="time"
                 value={currentDetails.rectified_time}
                 onChange={(e) => handleFieldChange('rectified_time', e.target.value)}
+                aria-describedby={currentDetails.rectified_time ? undefined : 'rectified-time-unset'}
                 className="w-full px-4 py-2.5 bg-background-tertiary border border-ui-border rounded-lg text-text-primary focus:ring-2 focus:ring-accent-gold/50 outline-none"
               />
+              {!currentDetails.rectified_time && (
+                <p id="rectified-time-unset" className="text-text-muted text-xs mt-1">
+                  {t('settings:profile.rectified_time_unset')}
+                </p>
+              )}
               <div className="mt-2 flex gap-2">
                 {MINUTE_STEPS.map((delta) => (
                   <Button
@@ -757,6 +764,29 @@ export default function ProfileSettings() {
             </button>
           )}
         </div>
+
+        {saveNotice?.kind === 'rectification-governs' && (
+          <div
+            role="status"
+            data-testid="rectification-governs-notice"
+            className="p-4 bg-status-warning/10 border border-status-warning/30 rounded-lg text-sm text-text-primary"
+          >
+            <p>{t('settings:profile.rectification_governs', { time: saveNotice.rectifiedTime })}</p>
+            <button
+              type="button"
+              data-testid="rectification-governs-clear"
+              onClick={() => handleFieldChange('rectified_time', '')}
+              className="mt-3 px-4 py-2 border border-ui-border rounded-lg font-medium hover:bg-background-tertiary transition-colors"
+            >
+              {t('settings:profile.rectification_governs_clear')}
+            </button>
+          </div>
+        )}
+        {saveNotice?.kind === 'unchanged' && (
+          <p role="status" data-testid="save-unchanged-notice" className="text-text-secondary text-sm">
+            {t('settings:profile.save_unchanged')}
+          </p>
+        )}
 
         {error && <p className="text-status-error text-sm mt-2">{error}</p>}
       </form>

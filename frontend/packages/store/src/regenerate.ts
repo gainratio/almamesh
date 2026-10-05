@@ -100,18 +100,35 @@ function primaryForProfile(
 }
 
 /**
+ * The tail of the regeneration queue. Each run reads the prior primary, computes,
+ * then replaces it; two overlapping runs (a double-tapped Save, a rectification
+ * confirmed while an edit is still computing) would both read the SAME prior and
+ * the slower one would land last, resurrecting the older birth data beside an
+ * orphan. Chaining every run behind the previous one makes the last emitted
+ * event win deterministically. A failed run never blocks the next.
+ */
+let queueTail: Promise<void> = Promise.resolve();
+
+/**
  * Regenerate the primary chart in response to a `birth-info-changed` event.
  *
  * No-op (rename-only) when the effective birth inputs yield the same `chartId`.
  * Otherwise: compute the chart on-device, save the new primary with
- * `profile_id` PRESERVED, delete the prior primary row (the orphan) and its reading, unlink chat
- * threads from it, then let
- * the caller reset ephemeral state and re-stream the interpretation.
+ * `profile_id` PRESERVED, delete the prior primary row (the orphan) and its
+ * reading, unlink chat threads from it, then let the caller reset ephemeral
+ * state and re-stream the interpretation. Runs are serialized: this resolves
+ * once THIS event has been applied.
  */
-export async function regenerateOnBirthChange(
+export function regenerateOnBirthChange(
   event: BirthInfoChanged,
   deps: RegenerateDeps,
 ): Promise<void> {
+  const run = queueTail.then(() => regenerateNow(event, deps));
+  queueTail = run.catch(() => undefined);
+  return run;
+}
+
+async function regenerateNow(event: BirthInfoChanged, deps: RegenerateDeps): Promise<void> {
   const { birth, profileId } = event;
   const nextId = chartId(birth);
   const prior = primaryForProfile(deps.library, profileId);

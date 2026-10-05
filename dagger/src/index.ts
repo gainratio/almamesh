@@ -415,6 +415,9 @@ export class AlmameshCi {
       // Boot-to-ready memory budget on a phone-sized Chromium; also fails if
       // the chat embedder (~+95 MiB) loads before search or chat.
       "MEMORY_BUDGET_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:memory-budget",
+      // Settings: a birth-time-only edit recomputes the chart (or says the
+      // rectified time governs), never a false "Chart Updated!"; Export after.
+      "BIRTH_TIME_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:birth-time-edit --project=chromium",
     ])
   }
   /**
