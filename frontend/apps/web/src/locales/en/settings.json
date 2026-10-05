@@ -292,8 +292,6 @@
     "error_bad_format": "That file isn't an AlmaMesh backup.",
     "error_too_new": "This backup is from a newer version of AlmaMesh. Update the app first.",
     "error_bad_passphrase": "Wrong password, or the file was changed after export. Nothing was imported.",
-    "error_generic": "Something went wrong. Please try again.",
-    "error_safety_cancelled": "Import cancelled — we couldn't save a backup of your current data first, so nothing was changed.",
     "confirm_legacy_note": "This is an older backup format. AlmaMesh will import what it contains and preserve it in the current canonical database format.",
     "status_checking": "Checking the backup…",
     "error_passphrase_required": "Choose a password of at least 8 characters. It encrypts the file, including your AI key.",

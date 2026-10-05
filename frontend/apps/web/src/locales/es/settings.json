@@ -295,8 +295,6 @@
     "error_bad_format": "Ese archivo no es una copia de seguridad de AlmaMesh.",
     "error_too_new": "Esta copia es de una versión más reciente de AlmaMesh. Actualiza la app primero.",
     "error_bad_passphrase": "Contraseña incorrecta, o el archivo se modificó después de exportarlo. No se importó nada.",
-    "error_generic": "Algo salió mal. Inténtalo de nuevo.",
-    "error_safety_cancelled": "Importación cancelada — no pudimos guardar primero una copia de tus datos actuales, así que no se cambió nada.",
     "confirm_legacy_note": "Este es un formato de copia anterior. AlmaMesh importará lo que contiene y lo conservará en el formato actual de la base de datos canónica.",
     "status_checking": "Comprobando la copia…",
     "error_passphrase_required": "Elige una contraseña de al menos 8 caracteres. Cifra el archivo, incluida tu clave de IA.",

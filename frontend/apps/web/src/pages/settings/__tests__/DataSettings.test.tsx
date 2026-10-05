@@ -719,6 +719,32 @@ describe('DataSettings — Backup & Restore panel', () => {
     expect(vi.mocked(commitBackupImport)).not.toHaveBeenCalled();
   });
 
+  // The reversed contract's dismissal path (#246 grade): closing the save
+  // picker before choosing a file is the user saying "not like this", never
+  // "replace without a copy". It must show the explicit choice and replace
+  // nothing until the user picks one.
+  it('a dismissed safety-copy picker shows the explicit choice and never replaces silently', async () => {
+    const write = vi.fn();
+    vi.mocked(openBackupSaveTarget).mockReturnValue({
+      choice: Promise.resolve('cancelled'),
+      write,
+      discard: vi.fn(async () => undefined),
+    });
+    await stageAndConfirm();
+
+    const failed = await screen.findByTestId('backup-safety-failed');
+    expect(failed.textContent).toContain('the save dialog was closed');
+    expect(screen.getByTestId('backup-safety-retry')).toBeTruthy();
+    expect(screen.getByTestId('backup-skip-safety')).toBeTruthy();
+    // Let any stray async replace run before asserting it never happened.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(vi.mocked(buildBackupExport)).not.toHaveBeenCalled();
+    expect(write).not.toHaveBeenCalled();
+    expect(vi.mocked(armPortableImportRevision)).not.toHaveBeenCalled();
+    expect(vi.mocked(commitBackupImport)).not.toHaveBeenCalled();
+    expect(reloadSpy).not.toHaveBeenCalled();
+  });
+
   it('retries the safety copy from the choice, then imports with it', async () => {
     vi.mocked(buildBackupExport).mockRejectedValueOnce(new Error('busy'));
     await stageAndConfirm();
