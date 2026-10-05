@@ -100,6 +100,17 @@ describe('repository truth', () => {
     expect(readme).not.toMatch(/exactly two (?:runtime )?(?:egresses|network|outbound)/i);
   });
 
+  it('puts the interpretation quarantine in SQLite and says what profile delete leaves', () => {
+    // SQLite is the only store for app data (#240). The README used to say the
+    // set-aside rows lived in localStorage; it must now match the shipped code.
+    const readme = readRoot('README.md').replace(/\s+/g, ' ');
+    expect(readme).toContain('in a quarantine table inside that same SQLite file for up to 30 days');
+    expect(readme).toContain(
+      'a row that matches no profile stays until "start fresh", "Reset & reload", clearing site data, or the 30-day expiry',
+    );
+    expect(readme).not.toMatch(/set aside in localStorage/);
+  });
+
   it('maps every shipped runtime egress surface to the README data-flow table', () => {
     const network = readSection(readRoot('README.md'), '## Runtime network and data flow');
     const evidence = [

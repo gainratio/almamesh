@@ -46,6 +46,11 @@ export {
   type PortableStatePersistence,
 } from './portablePersistence';
 export * from './interpretation';
+export {
+  holdUnreadableInterpretation,
+  readInterpretationQuarantine,
+  type QuarantinedInterpretation,
+} from './interpretationQuarantine';
 export * from './settings';
 export * from './events';
 export * from './regenerate';

@@ -19,7 +19,6 @@ import {
   BackupError,
   PortableStateUnavailableError,
   PortableStateTooNewError,
-  CHAT_VECTORS_KEY,
   type PortableStateSnapshot,
   type StorageTier,
   useInterpretationStore,
@@ -173,6 +172,7 @@ describe('portable SQLite import', () => {
   );
   const portableSnapshot: PortableStateSnapshot = {
     epoch: 7,
+    quarantine: new Map(),
     values: new Map([
       ['almamesh-chat-history', chatEnvelope],
       ['almamesh-deletion-tombstones', JSON.stringify({ version: 1 })],
@@ -287,6 +287,7 @@ describe('encrypted bundle round-trip (format v3)', () => {
   );
   const snapshotA: PortableStateSnapshot = {
     epoch: 4,
+    quarantine: new Map(),
     values: new Map([
       ['almamesh-chat-history', chatEnvelope],
       ['almamesh-chart-library', snapshot(CHART_LIBRARY_STATE, 0)],
@@ -818,9 +819,9 @@ describe('commitBackupImport (full round-trip)', () => {
     const { override } = seededSource();
     const exported = await buildBackupExport('test passphrase', override);
 
-    // Wipe: brand-new destination tiers, pre-seeded with stale RAG vectors that
-    // the restore must delete (they rebuild from restored chat history).
-    const destIdb = memTier({ [CHAT_VECTORS_KEY]: 'stale-vectors' });
+    // Wipe: brand-new destination tiers. Vectors live in SqliteVectorIndex and
+    // rebuild from restored chat history; the tiers hold canonical rows only.
+    const destIdb = memTier();
     const destLocal = memTier();
     const destTiers = { local: destLocal, idb: destIdb } as Record<'local' | 'idb', StorageTier>;
 
@@ -842,8 +843,7 @@ describe('commitBackupImport (full round-trip)', () => {
       JSON.stringify({ state: LANGUAGE_STATE, version: 0 }),
     );
 
-    // Housekeeping: no duplicate route flag is created; stale vectors rebuild.
+    // Housekeeping: no duplicate route flag is created.
     expect(destLocal.map.has('almamesh-chart')).toBe(false);
-    expect(destIdb.map.has(CHAT_VECTORS_KEY)).toBe(false);
   });
 });

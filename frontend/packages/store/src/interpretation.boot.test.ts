@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
+import { interpretationQuarantineRows } from './deletionTombstones';
 import {
-  INTERPRETATION_QUARANTINE_KEY,
   interpretationsWereSetAside,
   useInterpretationStore,
   whenInterpretationHydrated,
 } from './interpretation';
+import { readInterpretationQuarantine } from './interpretationQuarantine';
 
 // Own file on purpose: the set-aside notice is page-load (module) state, so a
 // fresh module proves THIS boot raised it, not an earlier test.
@@ -34,7 +35,10 @@ describe('interpretation store boot with an unreadable saved row', () => {
       ]);
       expect(outcome).toEqual({ status: 'hydrated' });
       expect(useInterpretationStore.getState().byChart).toEqual({});
-      expect(legacy.map.get(INTERPRETATION_QUARANTINE_KEY)).toContain('reset-proof');
+      // Held in the SQLite-side quarantine, never written back to localStorage.
+      const held = await readInterpretationQuarantine(await interpretationQuarantineRows());
+      expect(held.map((record) => record.raw)).toEqual(['reset-proof']);
+      expect(legacy.map.has('almamesh-interpretations.quarantine')).toBe(false);
       expect(interpretationsWereSetAside()).toBe(true);
     } finally {
       (globalThis as { localStorage?: unknown }).localStorage = original;

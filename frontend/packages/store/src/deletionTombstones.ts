@@ -1,12 +1,5 @@
 import type { StateStorage } from 'zustand/middleware';
-import {
-  createStore,
-  del as idbDel,
-  get as idbGet,
-  promisifyRequest,
-  set as idbSet,
-  update as idbUpdate,
-} from 'idb-keyval';
+import { createStore, del as idbDel, get as idbGet } from 'idb-keyval';
 import {
   migrateLegacyState,
   openPortableStateRepository,
@@ -15,11 +8,13 @@ import {
   PORTABLE_LEDGER_KEY,
   PORTABLE_PREFERENCE_MIRROR_KEYS,
   PORTABLE_PREFERENCES_KEY,
+  PORTABLE_QUARANTINE_NAMESPACE,
   PORTABLE_STATE_KEYS,
   decodePortablePreferences,
   resolvePortableStateMode,
   type LegacyStateStorage,
   type PortablePreferenceMirrorKey,
+  type PortableStateMutation,
   type PortableStateRepository,
 } from './portableState';
 import {
@@ -27,6 +22,13 @@ import {
   nonDestructiveLegacyStorage,
   openPortableStateWithFallback,
 } from './portablePersistence';
+import {
+  absorbLegacyQuarantine,
+  memoryQuarantineRows,
+  quarantineKeysOwnedBy,
+  repositoryQuarantineRows,
+  type InterpretationQuarantineRows,
+} from './interpretationQuarantine';
 import { browserLocalStorage } from './webStorage';
 
 export const DELETION_TOMBSTONES_KEY = 'almamesh-deletion-tombstones';
@@ -68,7 +70,49 @@ const EMPTY_TOMBSTONES: DeletionTombstones = {
   chartIds: [],
 };
 
-const useKeyvalStore = createStore('keyval-store', 'keyval');
+/**
+ * The pre-SQLite idb-keyval database. Read once by the legacy migration and
+ * then retired; nothing writes it.
+ * TODO(remove after 2026-11-04, one release after the SQLite-only move): drop
+ * this reader with `migrateLegacyState` once returning visitors have migrated.
+ */
+const legacyKeyvalStore = createStore('keyval-store', 'keyval');
+
+/**
+ * Runtimes without the SQLite Worker (Node tests, SSR prerender) keep the
+ * dataset and its ledger in memory for the session. Never IndexedDB or
+ * localStorage: SQLite is the only durable store for app data.
+ */
+const sessionRows = new Map<string, unknown>();
+
+/** Test seam: the in-memory session rows used when no SQLite repository exists. */
+export function sessionRowsForTests(): Map<string, unknown> {
+  return sessionRows;
+}
+
+/** Test seam: forget the session dataset, ledger and quarantine (a new page load). */
+export function resetSessionStateForTests(): void {
+  sessionRows.clear();
+  sessionQuarantine.clear();
+}
+
+/** Session-only quarantine rows for the same runtimes (see interpretationQuarantine.ts). */
+const sessionQuarantine = new Map<string, string>();
+
+/**
+ * Where quarantined interpretation rows live: the `quarantine` namespace of the
+ * portable SQLite file, or session memory where no SQLite repository exists.
+ */
+export async function interpretationQuarantineRows(): Promise<InterpretationQuarantineRows> {
+  const repository = await portableRepository();
+  return repository === null
+    ? memoryQuarantineRows(sessionQuarantine)
+    : repositoryQuarantineRows(repository);
+}
+
+function updateSessionRow(key: string, update: (current: unknown) => unknown): void {
+  sessionRows.set(key, update(sessionRows.get(key)));
+}
 let portableRepositoryPromise: Promise<PortableStateRepository> | undefined;
 let portableRepositoryOverride: PortableStateRepository | null | undefined;
 let observedActiveEpoch = 0;
@@ -150,6 +194,7 @@ export function setPortableStateRepositoryForTests(
   repository: PortableStateRepository | null | undefined,
 ): void {
   portableRepositoryOverride = repository;
+  resetSessionStateForTests();
   locallyHydratedDatasetEpochs.clear();
   locallyAcknowledgedDatasetValues.clear();
   locallyHydratedPreferenceEpochs.clear();
@@ -184,6 +229,8 @@ export async function migrateLegacyPreferencesToRepository(
   repository: PortableStateRepository,
   retireLegacy = true,
 ): Promise<void> {
+  // TODO(remove after 2026-11-04, one release after the SQLite-only move):
+  // legacy localStorage preference reader; drop once visitors have migrated.
   const storage = browserLocalStorage();
   const legacyValues: Partial<Record<PortablePreferenceMirrorKey, string>> = {};
   if (
@@ -261,13 +308,15 @@ async function portableRepository(): Promise<PortableStateRepository | null> {
   portableRepositoryPromise ??= openPortableStateWithFallback({
     open: openPortableStateRepository,
   }).then(async ({ repository, persistence }) => {
+    // TODO(remove after 2026-11-04, one release after the SQLite-only move):
+    // legacy idb-keyval/localStorage reader for the one-time migration below.
     const legacy: LegacyStateStorage = {
       get: async (key) => {
         if (key === 'almamesh-language') {
           const storage = browserLocalStorage();
           return typeof storage?.getItem === 'function' ? storage.getItem(key) : null;
         }
-        const value = await idbGet<unknown>(key, useKeyvalStore);
+        const value = await idbGet<unknown>(key, legacyKeyvalStore);
         if (value === undefined) return null;
         return typeof value === 'string' ? value : JSON.stringify(value);
       },
@@ -277,7 +326,7 @@ async function portableRepository(): Promise<PortableStateRepository | null> {
           storage?.removeItem?.(key);
           return;
         }
-        await idbDel(key, useKeyvalStore);
+        await idbDel(key, legacyKeyvalStore);
       },
     };
     await migrateLegacyState(
@@ -413,13 +462,7 @@ export async function readDeletionTombstones(): Promise<DeletionTombstones> {
     observeDurableLedger(ledger);
     return ledger;
   }
-  if (typeof indexedDB === 'undefined') {
-    return EMPTY_TOMBSTONES;
-  }
-  const ledger = mergeDeletionTombstones(
-    await idbGet<unknown>(DELETION_TOMBSTONES_KEY, useKeyvalStore),
-    {},
-  );
+  const ledger = mergeDeletionTombstones(sessionRows.get(DELETION_TOMBSTONES_KEY), {});
   observeDurableLedger(ledger);
   return ledger;
 }
@@ -512,7 +555,7 @@ async function acquireDatasetMutationLease(
   }
   for (;;) {
     let acquiredEpoch: number | undefined;
-    await idbUpdate<unknown>(
+    updateSessionRow(
       DELETION_TOMBSTONES_KEY,
       (current) => {
         const ledger = mergeDeletionTombstones(current, {});
@@ -527,7 +570,6 @@ async function acquireDatasetMutationLease(
           leaseOwner: owner,
         };
       },
-      useKeyvalStore,
     );
     if (acquiredEpoch !== undefined) return acquiredEpoch;
     await new Promise((resolve) => globalThis.setTimeout(resolve, 25));
@@ -540,9 +582,6 @@ export async function recordDeletionTombstones(
   epoch?: number,
 ): Promise<void> {
   const repository = await portableRepository();
-  if (repository === null && typeof indexedDB === 'undefined') {
-    return;
-  }
   const activeEpoch =
     epoch ??
     (await acquireDatasetMutationLease((current) => ({
@@ -585,24 +624,17 @@ async function appendDeletionTombstones(
     return;
   }
   let appended = false;
-  await idbUpdate<unknown>(
-    DELETION_TOMBSTONES_KEY,
-    (current) => {
-      const ledger = mergeDeletionTombstones(current, {});
-      if (!ledger.restoreInProgress || ledger.restoreEpoch !== epoch) return ledger;
-      appended = true;
-      return mergeDeletionTombstones(ledger, additions);
-    },
-    useKeyvalStore,
-  );
+  updateSessionRow(DELETION_TOMBSTONES_KEY, (current) => {
+    const ledger = mergeDeletionTombstones(current, {});
+    if (!ledger.restoreInProgress || ledger.restoreEpoch !== epoch) return ledger;
+    appended = true;
+    return mergeDeletionTombstones(ledger, additions);
+  });
   if (!appended) throw new Error('Dataset mutation lease is no longer active.');
 }
 
 /** Fence stale realms, then permit exactly the IDs carried by a Replace backup. */
 export async function beginBackupRestore(restored: DeletionTombstoneAdditions): Promise<number> {
-  if ((await portableRepository()) === null && typeof indexedDB === 'undefined') {
-    return 0;
-  }
   const epoch = await acquireDatasetMutationLease((current) => ({
     ...current,
     reviveProfileIds: [...(restored.profileIds ?? [])],
@@ -618,7 +650,6 @@ export async function beginBackupRestore(restored: DeletionTombstoneAdditions): 
 
 /** Fence all other destructive operations before reading the active dataset. */
 export async function beginDatasetMutation(): Promise<number> {
-  if ((await portableRepository()) === null && typeof indexedDB === 'undefined') return 0;
   const epoch = await acquireDatasetMutationLease((current) => ({
     ...current,
     reviveProfileIds: [],
@@ -663,10 +694,7 @@ export async function finalizeBackupRestore(epoch: number): Promise<void> {
     if (localBackupRestoreEpoch === epoch) localBackupRestoreEpoch = undefined;
     return;
   }
-  if (typeof indexedDB === 'undefined') {
-    return;
-  }
-  await idbUpdate<unknown>(
+  updateSessionRow(
     DELETION_TOMBSTONES_KEY,
     (current) => {
       const ledger = mergeDeletionTombstones(current, {});
@@ -683,7 +711,6 @@ export async function finalizeBackupRestore(epoch: number): Promise<void> {
           }
         : ledger;
     },
-    useKeyvalStore,
   );
   observedActiveEpoch = epoch;
   observedRestoreInProgress = false;
@@ -722,10 +749,7 @@ export async function abortBackupRestore(epoch: number): Promise<void> {
     }
     return;
   }
-  if (typeof indexedDB === 'undefined') {
-    return;
-  }
-  await idbUpdate<unknown>(
+  updateSessionRow(
     DELETION_TOMBSTONES_KEY,
     (current) => {
       const ledger = mergeDeletionTombstones(current, {});
@@ -742,7 +766,6 @@ export async function abortBackupRestore(epoch: number): Promise<void> {
           }
         : ledger;
     },
-    useKeyvalStore,
   );
   const ledger = await readDeletionTombstones();
   observedRestoreEpoch = ledger.restoreEpoch;
@@ -766,7 +789,6 @@ export interface DatasetSnapshotWrite {
 export async function commitDatasetGeneration(
   epoch: number,
   writes: readonly DatasetSnapshotWrite[],
-  deletedKeys: readonly string[] = [],
   options: {
     readonly afterWrite?: (index: number) => void;
     readonly memoryRebuildPending?: boolean;
@@ -778,15 +800,27 @@ export async function commitDatasetGeneration(
      * requested owners while preserving unrelated concurrent additions.
      */
     readonly sanitizeCanonicalKeys?: readonly string[];
+    /** Start fresh: drop every quarantined interpretation in the same batch. */
+    readonly clearInterpretationQuarantine?: boolean;
   } = {},
 ): Promise<void> {
-  const repository = await portableRepository();
-  if (repository !== null) {
-    const derivedWrites = writes.filter((write) => !isPortableStateKey(write.key));
-    for (const [index, write] of writes.entries()) {
-      if (isPortableStateKey(write.key)) options.afterWrite?.(index);
+  for (const write of writes) {
+    if (!isPortableStateKey(write.key)) {
+      throw new Error(`Dataset write "${write.key}" is not canonical SQLite data.`);
     }
-    const transaction = await repository.transactWithResult(({ values }) => {
+  }
+  const repository = await portableRepository();
+  await absorbLegacyQuarantine(
+    browserLocalStorage(),
+    repository === null ? memoryQuarantineRows(sessionQuarantine) : repositoryQuarantineRows(repository),
+    await pendingDeletedProfileIds(repository),
+    options.clearInterpretationQuarantine === true,
+  );
+  if (repository === null) {
+    commitSessionGeneration(epoch, writes, options);
+  } else {
+    for (const [index] of writes.entries()) options.afterWrite?.(index);
+    await repository.transactWithResult(({ values, quarantine }) => {
       const ledger = parseDeletionTombstones(values.get(PORTABLE_LEDGER_KEY) ?? null);
       if (!ledger.restoreInProgress || ledger.restoreEpoch !== epoch) {
         throw new Error('Dataset Replace generation is no longer active.');
@@ -796,28 +830,26 @@ export async function commitDatasetGeneration(
         threadIds: ledger.reviveThreadIds,
         chartIds: ledger.reviveChartIds,
       });
-      const mutations = writes
-        .filter((write) => isPortableStateKey(write.key))
-        .map((write) => {
-          const canonical = values.get(write.key);
-          const sourceValue =
-            options.sanitizeCanonicalKeys?.includes(write.key) === true && canonical !== undefined
-              ? canonical
-              : write.value;
-          return sourceValue === null
-            ? ({ type: 'delete', key: write.key } as const)
-            : ({
-                type: 'put',
-                key: write.key,
-                value:
-                  isPortablePreferenceKey(write.key)
-                    ? sourceValue
-                    : tagPersistedValue(
-                        sanitizePersistedValue(write.key, sourceValue, effectiveLedger),
-                        epoch,
-                      ),
-              } as const);
-        });
+      const mutations: PortableStateMutation[] = writes.map((write) => {
+        const canonical = values.get(write.key);
+        const sourceValue =
+          options.sanitizeCanonicalKeys?.includes(write.key) === true && canonical !== undefined
+            ? canonical
+            : write.value;
+        return sourceValue === null
+          ? ({ type: 'delete', key: write.key } as const)
+          : ({
+              type: 'put',
+              key: write.key,
+              value:
+                isPortablePreferenceKey(write.key)
+                  ? sourceValue
+                  : tagPersistedValue(
+                      sanitizePersistedValue(write.key, sourceValue, effectiveLedger),
+                      epoch,
+                    ),
+            } as const);
+      });
       mutations.push({
         type: 'put',
         key: PORTABLE_LEDGER_KEY,
@@ -837,113 +869,96 @@ export async function commitDatasetGeneration(
           reviveChartIds: [],
         }),
       });
+      mutations.push(
+        ...quarantineDeletes(quarantine, effectiveLedger.profileIds, options).map(
+          (key) => ({ type: 'delete', namespace: PORTABLE_QUARANTINE_NAMESPACE, key }) as const,
+        ),
+      );
       return { mutations, result: effectiveLedger };
     });
-    const effectiveLedger = transaction.result;
-    if (typeof indexedDB !== 'undefined') {
-      const cleanup: Promise<unknown>[] = [];
-      const deferCleanup = (operation: () => Promise<unknown>): void => {
-        try {
-          cleanup.push(operation());
-        } catch {
-          // Some browser storage implementations throw synchronously before
-          // returning a promise. The canonical SQLite generation is already
-          // settled, so this remains the same rebuildable degraded path.
-        }
-      };
-      for (const write of derivedWrites) {
-        if (write.value === null) deferCleanup(() => idbDel(write.key, useKeyvalStore));
-        else {
-          const sanitized = sanitizePersistedValue(write.key, write.value, effectiveLedger);
-          deferCleanup(() =>
-            idbSet(write.key, tagPersistedValue(sanitized, epoch), useKeyvalStore),
-          );
-        }
-      }
-      for (const key of deletedKeys) deferCleanup(() => idbDel(key, useKeyvalStore));
-      // Canonical rows and the settled generation ledger already committed in
-      // SQLite. Derived caches are rebuildable; their cleanup may be retried by
-      // the durable memoryRebuildPending marker, but it must not turn a
-      // successful Replace into a false failure or attempted rollback.
-      await Promise.allSettled(cleanup);
-    }
-    observedRestoreEpoch = epoch;
-    observedActiveEpoch = epoch;
-    observedRestoreInProgress = false;
-    if (options.adoptLocalWrites === true) {
-      for (const write of writes) {
-        if (!isPortableStateKey(write.key) || isPortablePreferenceKey(write.key)) continue;
-        locallyHydratedDatasetEpochs.set(write.key, epoch);
-        locallyAcknowledgedDatasetValues.set(write.key, write.value);
-      }
-    }
-    if (localBackupRestoreEpoch === epoch) localBackupRestoreEpoch = undefined;
-    return;
   }
-  if (typeof indexedDB === 'undefined') {
-    return;
-  }
-  await useKeyvalStore(
-    'readwrite',
-    (store) =>
-      new Promise<void>((resolve, reject) => {
-        const ledgerRequest = store.get(DELETION_TOMBSTONES_KEY);
-        ledgerRequest.onerror = () => reject(ledgerRequest.error);
-        ledgerRequest.onsuccess = () => {
-          const ledger = mergeDeletionTombstones(ledgerRequest.result, {});
-          if (!ledger.restoreInProgress || ledger.restoreEpoch !== epoch) {
-            reject(new Error('Dataset Replace generation is no longer active.'));
-            return;
-          }
-          const effectiveLedger = subtractRestoredTombstones(ledger, {
-            profileIds: ledger.reviveProfileIds,
-            threadIds: ledger.reviveThreadIds,
-            chartIds: ledger.reviveChartIds,
-          });
-          const finish = (): void => {
-            for (const [index, write] of writes.entries()) {
-              if (write.value === null) store.delete(write.key);
-              else {
-                const sanitized = sanitizePersistedValue(write.key, write.value, effectiveLedger);
-                store.put(tagPersistedValue(sanitized, epoch), write.key);
-              }
-              try {
-                options.afterWrite?.(index);
-              } catch (error) {
-                store.transaction.abort();
-                reject(error);
-                return;
-              }
-            }
-            for (const key of deletedKeys) store.delete(key);
-            store.put(
-              {
-                ...effectiveLedger,
-                activeEpoch: epoch,
-                restoreEpoch: epoch,
-                restoreInProgress: false,
-                restoreStartedAt: undefined,
-                leaseOwner: undefined,
-                memoryRebuildPending: options.memoryRebuildPending ?? ledger.memoryRebuildPending,
-                profileIds: [],
-                threadIds: [],
-                chartIds: [],
-                reviveProfileIds: [],
-                reviveThreadIds: [],
-                reviveChartIds: [],
-              },
-              DELETION_TOMBSTONES_KEY,
-            );
-            void promisifyRequest(store.transaction).then(() => resolve(), reject);
-          };
-          finish();
-        };
-      }),
-  );
   observedRestoreEpoch = epoch;
   observedActiveEpoch = epoch;
   observedRestoreInProgress = false;
+  if (repository !== null && options.adoptLocalWrites === true) {
+    for (const write of writes) {
+      if (isPortablePreferenceKey(write.key)) continue;
+      locallyHydratedDatasetEpochs.set(write.key, epoch);
+      locallyAcknowledgedDatasetValues.set(write.key, write.value);
+    }
+  }
   if (localBackupRestoreEpoch === epoch) localBackupRestoreEpoch = undefined;
+}
+
+/** Profiles the pending generation deletes (tombstones not revived by a restore). */
+async function pendingDeletedProfileIds(
+  repository: PortableStateRepository | null,
+): Promise<readonly string[]> {
+  const ledger =
+    repository === null
+      ? mergeDeletionTombstones(sessionRows.get(DELETION_TOMBSTONES_KEY), {})
+      : parseDeletionTombstones(await repository.read(PORTABLE_LEDGER_KEY));
+  const revived = new Set(ledger.reviveProfileIds ?? []);
+  return ledger.profileIds.filter((id) => !revived.has(id));
+}
+
+/** Quarantine keys a generation commit must delete alongside its dataset rows. */
+function quarantineDeletes(
+  held: ReadonlyMap<string, string>,
+  deletedProfileIds: readonly string[],
+  options: { readonly clearInterpretationQuarantine?: boolean },
+): string[] {
+  return options.clearInterpretationQuarantine === true
+    ? [...held.keys()]
+    : quarantineKeysOwnedBy(held, deletedProfileIds);
+}
+
+/** The in-memory twin of the SQLite generation commit: stage everything, then apply at once. */
+function commitSessionGeneration(
+  epoch: number,
+  writes: readonly DatasetSnapshotWrite[],
+  options: Parameters<typeof commitDatasetGeneration>[2] & object,
+): void {
+  const ledger = mergeDeletionTombstones(sessionRows.get(DELETION_TOMBSTONES_KEY), {});
+  if (!ledger.restoreInProgress || ledger.restoreEpoch !== epoch) {
+    throw new Error('Dataset Replace generation is no longer active.');
+  }
+  const effectiveLedger = subtractRestoredTombstones(ledger, {
+    profileIds: ledger.reviveProfileIds,
+    threadIds: ledger.reviveThreadIds,
+    chartIds: ledger.reviveChartIds,
+  });
+  const staged = writes.map((write, index) => {
+    const value =
+      write.value === null
+        ? null
+        : tagPersistedValue(sanitizePersistedValue(write.key, write.value, effectiveLedger), epoch);
+    options.afterWrite?.(index);
+    return { key: write.key, value };
+  });
+  for (const { key, value } of staged) {
+    if (value === null) sessionRows.delete(key);
+    else sessionRows.set(key, value);
+  }
+  const held = new Map(sessionQuarantine);
+  for (const key of quarantineDeletes(held, effectiveLedger.profileIds, options)) {
+    sessionQuarantine.delete(key);
+  }
+  sessionRows.set(DELETION_TOMBSTONES_KEY, {
+    ...effectiveLedger,
+    activeEpoch: epoch,
+    restoreEpoch: epoch,
+    restoreInProgress: false,
+    restoreStartedAt: undefined,
+    leaseOwner: undefined,
+    memoryRebuildPending: options.memoryRebuildPending ?? ledger.memoryRebuildPending,
+    profileIds: [],
+    threadIds: [],
+    chartIds: [],
+    reviveProfileIds: [],
+    reviveThreadIds: [],
+    reviveChartIds: [],
+  });
 }
 
 export async function bumpRestoreEpoch(): Promise<number> {
@@ -970,17 +985,12 @@ export async function clearMemoryRebuildPending(expectedEpoch?: number): Promise
     });
     return;
   }
-  if (typeof indexedDB === 'undefined') return;
-  await idbUpdate<unknown>(
-    DELETION_TOMBSTONES_KEY,
-    (current) => {
-      const ledger = mergeDeletionTombstones(current, {});
-      return expectedEpoch === undefined || ledger.activeEpoch === expectedEpoch
-        ? { ...ledger, memoryRebuildPending: false }
-        : ledger;
-    },
-    useKeyvalStore,
-  );
+  updateSessionRow(DELETION_TOMBSTONES_KEY, (current) => {
+    const ledger = mergeDeletionTombstones(current, {});
+    return expectedEpoch === undefined || ledger.activeEpoch === expectedEpoch
+      ? { ...ledger, memoryRebuildPending: false }
+      : ledger;
+  });
 }
 
 function persistedEpoch(value: string): number {
@@ -1339,42 +1349,25 @@ export function tagPersistedValue(value: string, epoch: number): string {
   }
 }
 
-async function readIdbValueAndLedger(
-  name: string,
-): Promise<{ readonly value: unknown; readonly ledger: DeletionTombstones }> {
-  return useKeyvalStore('readonly', async (store) => {
-    const [value, ledger] = await Promise.all([
-      promisifyRequest(store.get(name)),
-      promisifyRequest(store.get(DELETION_TOMBSTONES_KEY)),
-    ]);
-    return { value, ledger: mergeDeletionTombstones(ledger, {}) };
-  });
+function readSessionValueAndLedger(name: string): {
+  readonly value: unknown;
+  readonly ledger: DeletionTombstones;
+} {
+  return {
+    value: sessionRows.get(name),
+    ledger: mergeDeletionTombstones(sessionRows.get(DELETION_TOMBSTONES_KEY), {}),
+  };
 }
 
-function setSanitizedIdbValue(name: string, value: string): Promise<void> {
-  return useKeyvalStore(
-    'readwrite',
-    (store) =>
-      new Promise<void>((resolve, reject) => {
-        const ledgerRequest = store.get(DELETION_TOMBSTONES_KEY);
-        ledgerRequest.onerror = () => reject(ledgerRequest.error);
-        ledgerRequest.onsuccess = () => {
-          try {
-            const tombstones = mergeDeletionTombstones(ledgerRequest.result, {});
-            if (
-              !tombstones.restoreInProgress &&
-              shouldAcceptRestoreEpoch(observedRestoreEpoch, tombstones.restoreEpoch)
-            ) {
-              const sanitized = sanitizePersistedValue(name, value, tombstones);
-              store.put(tagPersistedValue(sanitized, tombstones.activeEpoch), name);
-            }
-            void promisifyRequest(store.transaction).then(() => resolve(), reject);
-          } catch (error) {
-            reject(error);
-          }
-        };
-      }),
-  );
+function setSanitizedSessionValue(name: string, value: string): void {
+  const tombstones = mergeDeletionTombstones(sessionRows.get(DELETION_TOMBSTONES_KEY), {});
+  if (
+    !tombstones.restoreInProgress &&
+    shouldAcceptRestoreEpoch(observedRestoreEpoch, tombstones.restoreEpoch)
+  ) {
+    const sanitized = sanitizePersistedValue(name, value, tombstones);
+    sessionRows.set(name, tagPersistedValue(sanitized, tombstones.activeEpoch));
+  }
 }
 
 async function readDeletionAwareValue(
@@ -1399,10 +1392,7 @@ async function readDeletionAwareValue(
     if (acknowledgeHydration) locallyAcknowledgedDatasetValues.set(name, sanitized);
     return sanitized;
   }
-  if (typeof indexedDB === 'undefined') {
-    return null;
-  }
-  const { value, ledger: tombstones } = await readIdbValueAndLedger(name);
+  const { value, ledger: tombstones } = readSessionValueAndLedger(name);
   observeDurableLedger(tombstones);
   scheduleAbandonedRestoreRecovery(tombstones);
   if (!tombstones.restoreInProgress) {
@@ -1467,10 +1457,8 @@ export const deletionAwareIdbStorage: StateStorage = {
         if (transaction.result) locallyAcknowledgedDatasetValues.set(name, value);
         return;
       }
-      if (typeof indexedDB !== 'undefined') {
-        await setSanitizedIdbValue(name, value);
-        locallyAcknowledgedDatasetValues.set(name, value);
-      }
+      setSanitizedSessionValue(name, value);
+      locallyAcknowledgedDatasetValues.set(name, value);
     });
   },
   removeItem: (name) => {
@@ -1492,10 +1480,8 @@ export const deletionAwareIdbStorage: StateStorage = {
         if (transaction.result) locallyAcknowledgedDatasetValues.set(name, null);
         return;
       }
-      if (typeof indexedDB !== 'undefined') {
-        await idbDel(name, useKeyvalStore);
-        locallyAcknowledgedDatasetValues.set(name, null);
-      }
+      sessionRows.delete(name);
+      locallyAcknowledgedDatasetValues.set(name, null);
     });
   },
 };
@@ -1549,17 +1535,13 @@ export function mergeDeletionAwarePersistedValue(
       merged = transaction.result;
       return;
     }
-    if (typeof indexedDB === 'undefined') {
-      merged = merge(null);
-      return;
-    }
-    const { value, ledger } = await readIdbValueAndLedger(name);
+    const { value, ledger } = readSessionValueAndLedger(name);
     const current =
       typeof value === 'string' && persistedEpoch(value) === ledger.activeEpoch
         ? sanitizePersistedValue(name, value, ledger)
         : null;
     merged = sanitizePersistedValue(name, merge(current), ledger);
-    await setSanitizedIdbValue(name, merged);
+    setSanitizedSessionValue(name, merged);
   });
   return completion.then(() => {
     if (merged === undefined) throw new Error('Merged dataset write produced no value.');

@@ -75,7 +75,6 @@ async function commitPendingDeletionGeneration(): Promise<boolean> {
       currentDatasetSnapshot(useRectificationRecordsStore),
       currentDatasetSnapshot(usePredictiveStore),
     ],
-    ['almamesh-chat-vectors'],
     {
       adoptLocalWrites: true,
       memoryRebuildPending: true,

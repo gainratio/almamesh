@@ -1,12 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
 import { IDBFactory } from 'fake-indexeddb';
-import { createStore, get as idbGet, set as idbSet } from 'idb-keyval';
-import type {
-  SqliteStateImportStage,
-  SqliteStateMutation,
-  SqliteStateStore,
-} from '@gainratio/browser/sqlite';
-import { SqliteStateConflictError } from '@gainratio/browser/sqlite';
 
 import {
   adoptLatestDatasetEpoch,
@@ -25,6 +18,7 @@ import {
   refreshPortablePreferenceMirrors,
   recordDeletionTombstones,
   sanitizePersistedValue,
+  sessionRowsForTests,
   setPortableStateRepositoryForTests,
   whenPersistenceSettled,
   shouldAcceptRestoreEpoch,
@@ -32,9 +26,9 @@ import {
   tagPersistedValue,
   type DeletionTombstones,
 } from './deletionTombstones';
+import { PortableMemoryStore } from './portableMemoryStore.testkit';
 import {
   PORTABLE_LEDGER_KEY,
-  PORTABLE_STATE_NAMESPACE,
   PortableStateRepository,
 } from './portableState';
 import {
@@ -45,125 +39,6 @@ import {
 
 const TEST_INDEXED_DB = new IDBFactory();
 
-class PortableMemoryStore implements SqliteStateStore {
-  readonly name = 'portable-deletion-test';
-  readonly values = new Map<string, { value: Uint8Array; revision: number }>();
-  epoch = 0;
-  conflictOnce = false;
-  onConflict: ((store: PortableMemoryStore) => void) | undefined;
-  batchDelayMs = 0;
-  activeBatches = 0;
-  maxActiveBatches = 0;
-  failNext: Error | undefined;
-  beforeBatch:
-    | ((mutations: readonly SqliteStateMutation[]) => Promise<void>)
-    | undefined;
-
-  async get(namespace: string, key: string) {
-    const row = this.values.get(`${namespace}/${key}`);
-    return row === undefined ? undefined : { namespace, key, ...row };
-  }
-  async list(options: { namespace: string }) {
-    const prefix = `${options.namespace}/`;
-    return {
-      rows: [...this.values.entries()]
-        .filter(([key]) => key.startsWith(prefix))
-        .map(([key, row]) => ({
-          namespace: options.namespace,
-          key: key.slice(prefix.length),
-          ...row,
-        })),
-    };
-  }
-  async batch(mutations: readonly SqliteStateMutation[], options = {}) {
-    this.activeBatches += 1;
-    this.maxActiveBatches = Math.max(this.maxActiveBatches, this.activeBatches);
-    try {
-      await this.beforeBatch?.(mutations);
-      if (this.batchDelayMs > 0) {
-        await new Promise((resolve) => globalThis.setTimeout(resolve, this.batchDelayMs));
-      }
-      if (this.failNext !== undefined) {
-        const error = this.failNext;
-        this.failNext = undefined;
-        throw error;
-      }
-      if (this.conflictOnce) {
-        this.conflictOnce = false;
-        this.epoch += 1;
-        this.onConflict?.(this);
-        throw new SqliteStateConflictError('simulated competing tab');
-      }
-      if (options.expectedEpoch !== undefined && options.expectedEpoch !== this.epoch) {
-        throw new SqliteStateConflictError('stale');
-      }
-      this.epoch += 1;
-      for (const mutation of mutations) {
-        const key = `${mutation.namespace}/${mutation.key}`;
-        if (mutation.type === 'delete') this.values.delete(key);
-        else
-          this.values.set(key, {
-            value: mutation.value.slice(),
-            revision: this.epoch,
-          });
-      }
-      return { changed: mutations.length, epoch: this.epoch };
-    } finally {
-      this.activeBatches -= 1;
-    }
-  }
-  put(namespace: string, key: string, value: Uint8Array, options = {}) {
-    return this.batch([{ type: 'put', namespace, key, value }], options);
-  }
-  delete(namespace: string, key: string, options = {}) {
-    return this.batch([{ type: 'delete', namespace, key }], options);
-  }
-  async runtimeInfo() {
-    return {
-      name: this.name,
-      sqliteVersion: '3.53.4',
-      persistence: 'memory' as const,
-      ownership: 'isolated-worker' as const,
-      schemaVersion: 1,
-      epoch: this.epoch,
-      rowCount: this.values.size,
-    };
-  }
-  async checkIntegrity() {
-    return { ok: true as const, message: 'ok' as const };
-  }
-  async exportBytes() {
-    return new Uint8Array([1]);
-  }
-  async stageImport(): Promise<SqliteStateImportStage> {
-    return {
-      stageId: 'stage',
-      schemaVersion: 1,
-      epoch: 0,
-      rowCount: 0,
-      byteLength: 1,
-    };
-  }
-  async discardImport() {}
-  async commitImport() {
-    return { changed: 0, epoch: this.epoch, schemaVersion: 1 };
-  }
-  async reset() {
-    this.values.clear();
-    return { changed: 0, epoch: ++this.epoch };
-  }
-  async migrate() {
-    return { changed: 0, epoch: this.epoch, schemaVersion: 1 };
-  }
-  async dispose() {}
-
-  setPortableValue(key: string, value: string): void {
-    this.values.set(`${PORTABLE_STATE_NAMESPACE}/${key}`, {
-      value: new TextEncoder().encode(value),
-      revision: this.epoch,
-    });
-  }
-}
 
 const TOMBSTONES: DeletionTombstones = {
   version: 1,
@@ -224,13 +99,12 @@ describe('deletion tombstones', () => {
       value: TEST_INDEXED_DB,
       configurable: true,
     });
-    const store = createStore('keyval-store', 'keyval');
     try {
       const activeEpoch = (await readDeletionTombstones()).activeEpoch;
       const snapshot = envelope({
         profiles: { victim: { id: 'victim' }, survivor: { id: 'survivor' } },
       });
-      await idbSet('almamesh-profiles', tagPersistedValue(snapshot, activeEpoch), store);
+      sessionRowsForTests().set('almamesh-profiles', tagPersistedValue(snapshot, activeEpoch));
 
       const deleteEpoch = await beginDatasetMutation();
       await recordDeletionTombstones({ profileIds: ['victim'] }, deleteEpoch);
@@ -247,7 +121,6 @@ describe('deletion tombstones', () => {
       await commitDatasetGeneration(
         resetEpoch,
         [{ key: 'almamesh-profiles', value: null }],
-        ['almamesh-chat-vectors'],
         { memoryRebuildPending: false },
       );
 
@@ -272,7 +145,6 @@ describe('deletion tombstones', () => {
       value: TEST_INDEXED_DB,
       configurable: true,
     });
-    const store = createStore('keyval-store', 'keyval');
     try {
       const activeEpoch = (await readDeletionTombstones()).activeEpoch;
       const staleSnapshot = envelope({
@@ -282,7 +154,7 @@ describe('deletion tombstones', () => {
           survivor: { id: 'survivor' },
         },
       });
-      await idbSet('almamesh-profiles', tagPersistedValue(staleSnapshot, activeEpoch), store);
+      sessionRowsForTests().set('almamesh-profiles', tagPersistedValue(staleSnapshot, activeEpoch));
 
       const firstEpoch = await beginDatasetMutation();
       await recordDeletionTombstones({ profileIds: ['a'] }, firstEpoch);
@@ -353,20 +225,16 @@ describe('deletion tombstones', () => {
     }
   });
 
-  it('marks a derived-memory rebuild pending in the same commit that deletes vectors', async () => {
+  it('marks a derived-memory rebuild pending in the generation commit', async () => {
     const originalIndexedDb = globalThis.indexedDB;
     Object.defineProperty(globalThis, 'indexedDB', {
       value: TEST_INDEXED_DB,
       configurable: true,
     });
-    const store = createStore('keyval-store', 'keyval');
     try {
-      await idbSet('almamesh-chat-vectors', [{ id: 'old#0' }], store);
       const epoch = await beginBackupRestore({});
 
-      await commitDatasetGeneration(epoch, [], ['almamesh-chat-vectors'], {
-        memoryRebuildPending: true,
-      });
+      await commitDatasetGeneration(epoch, [], { memoryRebuildPending: true });
 
       const ledger = await readDeletionTombstones();
       expect(ledger).toMatchObject({
@@ -390,38 +258,21 @@ describe('deletion tombstones', () => {
     }
   });
 
-  it('deletes the stale vector index when committing a deletion generation', async () => {
+  // Contract reversed (2026-10-04, SQLite-only): this commit used to delete an
+  // idb-keyval `almamesh-chat-vectors` row. Vectors live in SqliteVectorIndex;
+  // the committed memoryRebuildPending marker is what retires stale vectors.
+  it('settles a deletion generation with the vector rebuild marked pending', async () => {
     const originalIndexedDb = globalThis.indexedDB;
     Object.defineProperty(globalThis, 'indexedDB', {
       value: TEST_INDEXED_DB,
       configurable: true,
     });
-    const store = createStore('keyval-store', 'keyval');
     try {
-      await idbSet(
-        'almamesh-chat-vectors',
-        {
-          generation: 0,
-          records: [
-            {
-              id: 'victim#0',
-              profile_id: 'victim',
-              thread_id: 'victim-thread',
-            },
-            {
-              id: 'survivor#0',
-              profile_id: 'survivor',
-              thread_id: 'survivor-thread',
-            },
-          ],
-        },
-        store,
-      );
       await recordDeletionTombstones({
         profileIds: ['victim'],
         threadIds: ['victim-thread'],
       });
-      const ledger = await idbGet<DeletionTombstones>('almamesh-deletion-tombstones', store);
+      const ledger = (sessionRowsForTests().get('almamesh-deletion-tombstones') as DeletionTombstones | undefined);
 
       await commitDatasetGeneration(
         ledger!.restoreEpoch,
@@ -431,12 +282,10 @@ describe('deletion tombstones', () => {
             value: envelope({ profiles: { survivor: { id: 'survivor' } } }),
           },
         ],
-        ['almamesh-chat-vectors'],
         { memoryRebuildPending: true },
       );
 
-      expect(await idbGet('almamesh-chat-vectors', store)).toBeUndefined();
-      const settled = await idbGet<DeletionTombstones>('almamesh-deletion-tombstones', store);
+      const settled = (sessionRowsForTests().get('almamesh-deletion-tombstones') as DeletionTombstones | undefined);
       expect(settled).toMatchObject({
         memoryRebuildPending: true,
         profileIds: [],
@@ -457,7 +306,6 @@ describe('deletion tombstones', () => {
       value: TEST_INDEXED_DB,
       configurable: true,
     });
-    const store = createStore('keyval-store', 'keyval');
     try {
       const previousEpoch = (await readDeletionTombstones()).activeEpoch;
       const oldValue = JSON.stringify({
@@ -465,7 +313,7 @@ describe('deletion tombstones', () => {
         version: 1,
         datasetEpoch: previousEpoch,
       });
-      await idbSet('almamesh-profiles', oldValue, store);
+      sessionRowsForTests().set('almamesh-profiles', oldValue);
       const epoch = await beginBackupRestore({});
 
       await expect(
@@ -483,7 +331,6 @@ describe('deletion tombstones', () => {
               value: envelope({ charts: { replacement: {} } }),
             },
           ],
-          [],
           {
             afterWrite: (index) => {
               if (index === 0) throw new Error('simulated tab crash');
@@ -492,13 +339,13 @@ describe('deletion tombstones', () => {
         ),
       ).rejects.toThrow(/simulated tab crash/);
 
-      expect(await idbGet('almamesh-profiles', store)).toBe(oldValue);
+      expect((sessionRowsForTests().get('almamesh-profiles') as DeletionTombstones | undefined)).toBe(oldValue);
       expect(
         stateOf((await deletionAwareIdbStorage.getItem('almamesh-profiles')) as string).profiles,
       ).toEqual({
         old: { id: 'old' },
       });
-      const crashedLedger = await idbGet<DeletionTombstones>('almamesh-deletion-tombstones', store);
+      const crashedLedger = (sessionRowsForTests().get('almamesh-deletion-tombstones') as DeletionTombstones | undefined);
       expect(crashedLedger).toMatchObject({
         activeEpoch: previousEpoch,
         restoreEpoch: epoch,
@@ -506,10 +353,7 @@ describe('deletion tombstones', () => {
       });
 
       await abortBackupRestore(epoch);
-      const recoveredLedger = await idbGet<DeletionTombstones>(
-        'almamesh-deletion-tombstones',
-        store,
-      );
+      const recoveredLedger = (sessionRowsForTests().get('almamesh-deletion-tombstones') as DeletionTombstones | undefined);
       expect(recoveredLedger).toMatchObject({
         activeEpoch: previousEpoch,
         restoreEpoch: epoch,
@@ -900,7 +744,6 @@ describe('deletion tombstones', () => {
       await commitDatasetGeneration(
         epoch,
         [{ key: 'almamesh-mesh-readings', value: staleTab }],
-        [],
         { sanitizeCanonicalKeys: ['almamesh-mesh-readings'] },
       );
 
@@ -1412,7 +1255,6 @@ describe('deletion tombstones', () => {
       await commitDatasetGeneration(
         epoch,
         [{ key: 'almamesh-chat-history', value: after }],
-        [],
         { adoptLocalWrites: true },
       );
 
@@ -1771,15 +1613,17 @@ describe('deletion tombstones', () => {
     }
   });
 
-  it('does not report import failure when derived cache cleanup fails after the SQLite flip', async () => {
+  it('commits a restore without touching IndexedDB at all (SQLite is the only store)', async () => {
     const repository = new PortableStateRepository(new PortableMemoryStore());
     const originalIndexedDb = globalThis.indexedDB;
     setPortableStateRepositoryForTests(repository);
+    let opens = 0;
     Object.defineProperty(globalThis, 'indexedDB', {
       configurable: true,
       value: {
         open: () => {
-          throw new Error('derived IndexedDB is blocked');
+          opens += 1;
+          throw new Error('IndexedDB is blocked');
         },
       },
     });
@@ -1789,10 +1633,10 @@ describe('deletion tombstones', () => {
         commitDatasetGeneration(
           epoch,
           [{ key: 'almamesh-profiles', value: envelope({ profiles: { imported: {} } }) }],
-          ['almamesh-chat-vectors'],
           { memoryRebuildPending: true },
         ),
       ).resolves.toBeUndefined();
+      expect(opens).toBe(0);
       expect(stateOf((await repository.read('almamesh-profiles')) as string).profiles).toEqual({
         imported: {},
       });

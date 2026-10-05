@@ -7,6 +7,10 @@ const PROFILE_ID = 'privacy-reset-sqlite-profile';
 const PROFILE_NAME = 'SQLite Reset Proof';
 const PRIVATE_CREDENTIAL = 'sk-privacy-reset-never-plaintext';
 const PASSPHRASE = 'privacy reset passphrase';
+// An older build's localStorage quarantine row: migrated into SQLite at boot,
+// and (being a local-only side table) never part of an exported backup.
+const LEGACY_QUARANTINE_KEY = 'almamesh-interpretations.quarantine';
+const QUARANTINE_MARKER = 'privacy-quarantine-never-exported';
 const BUNDLE_MAGIC = [0x41, 0x4c, 0x4d, 0x41, 0x4d, 0x45, 0x53, 0x48];
 const BUNDLE_FORMAT_VERSION = 3;
 const BUNDLE_PBKDF2_ITERATIONS = 600_000;
@@ -17,7 +21,7 @@ const SQLITE_HEADER = [
 const origin = new URL(baseUrl).origin;
 const browser = await chromium.launch({ headless: true });
 const context = await browser.newContext({ acceptDownloads: true });
-await context.addInitScript(({ profileId, privateCredential, passphrase }) => {
+await context.addInitScript(({ profileId, privateCredential, passphrase, quarantineMarker }) => {
   let target = window;
   while (target) {
     Reflect.deleteProperty(target, 'showSaveFilePicker');
@@ -73,6 +77,7 @@ await context.addInitScript(({ profileId, privateCredential, passphrase }) => {
         pageSizeField: (bytes[16] << 8) | bytes[17],
         hasCanonicalLedger: contains('almamesh-deletion-tombstones'),
         hasProfile: contains(profileId),
+        hasQuarantineMarker: contains(quarantineMarker),
         hasPrivateCredential: contains(privateCredential),
       };
     });
@@ -88,7 +93,7 @@ await context.addInitScript(({ profileId, privateCredential, passphrase }) => {
     },
     true,
   );
-}, { profileId: PROFILE_ID, privateCredential: PRIVATE_CREDENTIAL, passphrase: PASSPHRASE });
+}, { profileId: PROFILE_ID, privateCredential: PRIVATE_CREDENTIAL, passphrase: PASSPHRASE, quarantineMarker: QUARANTINE_MARKER });
 
 const page = await context.newPage();
 const errors = [];
@@ -255,6 +260,11 @@ try {
       datasetEpoch: 0,
     }),
   );
+  await page.evaluate(([key, marker]) => {
+    localStorage.setItem(key, JSON.stringify([
+      { quarantinedAt: new Date().toISOString(), source: 'legacy-local-storage', raw: marker },
+    ]));
+  }, [LEGACY_QUARANTINE_KEY, QUARANTINE_MARKER]);
   await page.evaluate((privateCredential) => {
     localStorage.setItem(
       'almamesh-llm-settings',
@@ -272,6 +282,12 @@ try {
   if ((await getIdbValue('almamesh-profiles')) !== null) {
     throw new Error('Legacy profile row was not retired after SQLite migration');
   }
+  // Retired only after SQLite verifiably holds the copy.
+  await page.waitForFunction(
+    (key) => localStorage.getItem(key) === null,
+    LEGACY_QUARANTINE_KEY,
+    { timeout: 10_000 },
+  );
 
   await page.goto(`${baseUrl}/settings/data`, { waitUntil: 'networkidle' });
   if (await page.evaluate(() => 'showSaveFilePicker' in window)) {
@@ -288,6 +304,9 @@ try {
   }
   const exported = await exportBackup();
   assertPortableBackup(exported, { expectProfile: true, expectCredential: true });
+  if (exported.hasQuarantineMarker) {
+    throw new Error('Backup carried the local-only interpretation quarantine');
+  }
 
   await page.goto(`${baseUrl}/settings/preferences`, { waitUntil: 'networkidle' });
   // networkidle is not app-ready: boot awaits SQLite hydration, not the network.
@@ -336,7 +355,7 @@ try {
   if (offOrigin.size > 0) throw new Error(`Off-origin requests: ${[...offOrigin].join(', ')}`);
   if (errors.length > 0) throw new Error(`Browser errors: ${errors.join(' | ')}`);
   console.log(
-    `privacy: sealed v3 exact SQLite export (${exported.size} bytes), all portable state encrypted, ` +
+    `privacy: sealed v3 exact SQLite export (${exported.size} bytes), quarantine migrated + excluded, all portable state encrypted, ` +
       'durable canonical + legacy reset, landing, zero egress, clean console',
   );
 } finally {
