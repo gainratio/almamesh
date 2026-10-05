@@ -8,7 +8,7 @@ const root = resolve(here, '../../../../../..');
 // Our own libraries ship from npm and track their newest release: a caret range,
 // never a Git commit alias and never the retired `@edgeproc/` scope.
 const OWN_LIBRARY_SCOPE = '@gainratio/';
-const BROWSER_LEGO_RANGE = '^0.2.0';
+const BROWSER_LEGO_RANGE = '^0.3.0';
 const DEPENDENCY_FIELDS = [
   'dependencies',
   'devDependencies',
@@ -176,7 +176,7 @@ describe('repository truth', () => {
     expect(setup).toContain('--version dev --sequence "${DEV_BUNDLE_SEQUENCE}" --offline');
   });
 
-  it('requires the live-like WebKit engine and persistent fallback gate in CI', () => {
+  it('requires the live-like WebKit engine gate and its honest in-memory mode in CI', () => {
     const workflow = readRoot('dagger/src/index.ts');
     const gate = readRoot('frontend/apps/web/scripts/verify-webkit-engine.mjs');
     const frontendPackage = readRoot('frontend/package.json');
@@ -202,10 +202,15 @@ describe('repository truth', () => {
     );
     expect(gate).toContain('webkit.launch({ headless: true })');
     expect(gate).toContain("u.includes('/bundle/latest')");
+    // REVERSED CONTRACT (2026-10-05, @gainratio/browser 0.3.0): the gate used
+    // to force and require an IndexedDB engine cache. With OPFS refused the
+    // engine now runs on in-memory SQLite, says so, and writes no IndexedDB.
     expect(gate).toContain("'edgeproc-browser-cache'");
-    expect(gate).toContain("'force-indexeddb-engine-cache'");
-    expect(gate).toContain("storage.opfs === 'forced-unavailable'");
-    expect(gate).toContain("storage.selectedCache === 'indexeddb'");
+    expect(gate).not.toContain('force-indexeddb-engine-cache');
+    expect(gate).not.toContain("storage.selectedCache === 'indexeddb'");
+    expect(gate).toContain("storage.selectedCache === 'sqlite-memory'");
+    expect(gate).toContain('!storage.databases.includes(CACHE_DATABASE)');
+    expect(gate).toContain('ephemeral-storage-notice');
     expect(gate).toContain("context.route('**/bundle/**'");
     expect(gate).toContain("serviceWorkers: 'allow'");
     expect(gate).toContain('initialDocumentControlled: !uncontrolled');
@@ -226,7 +231,7 @@ describe('repository truth', () => {
     const adapter = readRoot('frontend/packages/browser/src/edgeprocClient.ts');
     expect(adapter).toContain('database: "edgeproc-browser-cache"');
     expect(adapter).toContain('store: "content-addressed-cache"');
-    expect(adapter).toContain('storageBackend: "indexeddb"');
+    expect(adapter).not.toContain('storageBackend');
     const chromium = readRoot('frontend/apps/web/scripts/verify-browser-parity.mjs');
     expect(chromium).toContain('exactly one consumer-owned edgeproc Worker asset');
   });

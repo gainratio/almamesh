@@ -54,6 +54,7 @@
   "storage_ephemeral": {
     "title": "Este navegador não está salvando seus dados.",
     "body": "Aqui ele recusa o armazenamento no dispositivo (por exemplo, na navegação privada), então seu mapa funciona, mas desaparece quando você recarrega ou fecha esta aba.",
+    "engine": "O download do motor de mapas também não é guardado: recomeçar depois de recarregar precisa de conexão com a internet.",
     "export": "Exporte um backup para guardá-lo."
   },
   "storage_unavailable": {

@@ -115,14 +115,13 @@ const EXIT_GATE_HOOKS =
   import.meta.env.DEV || import.meta.env.VITE_EXIT_GATE_HOOKS === '1'
 
 if (typeof window !== 'undefined' && EXIT_GATE_HOOKS) {
-  const forceIndexedDb = new URL(window.location.href).searchParams.has(
-    'force-indexeddb-engine-cache',
-  )
+  // Lets the WebKit gate see which engine cache the library chose
+  // ("sqlite-opfs" or "sqlite-memory"). There is no IndexedDB fallback.
   ;(
     globalThis as typeof globalThis & {
-      __EDGEPROC_FORCE_INDEXEDDB_CACHE__?: boolean
+      __EDGEPROC_REPORT_CACHE__?: boolean
     }
-  ).__EDGEPROC_FORCE_INDEXEDDB_CACHE__ = forceIndexedDb
+  ).__EDGEPROC_REPORT_CACHE__ = true
   window.__almameshVerifySqliteMemory = async () =>
     (await import('../lib/chatMemory')).verifySqliteMemoryPersistence()
   // Boot opens the canonical SQLite state store (OPFS, or memory when OPFS is

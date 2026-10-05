@@ -52,9 +52,9 @@ import {
   usePredictiveStore,
   useProfilesStore,
   useRectificationRecordsStore,
+  deleteLegacyKeyval,
 } from '@almamesh/store';
 import { SemanticMemoryStorageUnavailableError } from '@almamesh/memory';
-import { createStore, del as idbDel } from 'idb-keyval';
 import { clearMemory } from './chatMemory';
 import { publishDeletionNotice } from './deletionPropagation';
 
@@ -91,10 +91,9 @@ const LEGACY_IDB_KEYS = [
   // Older builds kept RAG vectors here; vectors now live in SqliteVectorIndex.
   'almamesh-chat-vectors',
 ] as const;
-const legacyKeyvalStore = createStore('keyval-store', 'keyval');
 
 async function clearLegacyPersistedRows(): Promise<void> {
-  await Promise.all(LEGACY_IDB_KEYS.map((key) => idbDel(key, legacyKeyvalStore)));
+  await Promise.all(LEGACY_IDB_KEYS.map((key) => deleteLegacyKeyval(key)));
 }
 
 function getUsableLocalStorage(): Pick<Storage, 'removeItem'> | null {

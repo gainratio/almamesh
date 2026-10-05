@@ -4,6 +4,10 @@
  * without loading the chat embedder (MiniLM + onnxruntime, ~+95 MiB) that only
  * semantic search or chat needs.
  *
+ * A second, REPORT-ONLY test prints `memory-report` lines (not gated yet): the
+ * heap peak during boot, sampled every second from the first navigation, and
+ * the heap after a chat search has loaded the embedder.
+ *
  *   ./node_modules/.bin/vite build --outDir dist-real
  *   ./node_modules/.bin/vite preview --outDir dist-real --port 4199 &
  *   MEMORY_BUDGET_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:memory-budget
@@ -12,15 +16,47 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { expect, test, type CDPSession, type Page } from '@playwright/test';
 
+import { formatMemoryReport } from '../scripts/processMemory.mjs';
 import { BOOT_MEMORY_BUDGET, overBudget, type BootMemorySample } from './memoryBudget';
 
 const MiB = 1024 * 1024;
 const SETTLE_SAMPLES = 5;
+// The report-only boot sampler. Each measureUserAgentSpecificMemory call
+// interrupts every worker, so it runs in its own test, never in the gated one.
+const BOOT_SAMPLE_INTERVAL_MS = 1_000;
 
 async function typeSections(page: Page, testId: string, digits: string, trailing = ''): Promise<void> {
   await page.locator(`[data-testid="${testId}"] [role="spinbutton"]`).first().click();
   await page.keyboard.type(digits, { delay: 30 });
   if (trailing) await page.keyboard.type(trailing, { delay: 30 });
+}
+
+function recordMemoryReport(line: string): void {
+  console.log(line);
+  test.info().annotations.push({ type: 'memory-report', description: line });
+}
+
+async function settledHeap(page: Page): Promise<number[]> {
+  const heap: number[] = [];
+  for (let i = 0; i < SETTLE_SAMPLES; i += 1) {
+    heap.push(await pageHeap(page));
+    await page.waitForTimeout(1_000);
+  }
+  return heap;
+}
+
+/** Open chat, type a search, and wait until the on-device embedder has answered it. */
+async function searchChatWithEmbedder(page: Page): Promise<void> {
+  const embedderSpawned = page.waitForEvent('worker', {
+    predicate: (worker) => worker.url().includes('embedder.worker'),
+    timeout: 120_000,
+  });
+  await page.getByTestId('floating-chat-button').click();
+  await page.getByTestId('chat-search-input').fill('career');
+  await embedderSpawned;
+  await expect(page.getByTestId('chat-search-results')).toContainText('No matching past messages.', {
+    timeout: 180_000,
+  });
 }
 
 async function onboardToDashboard(page: Page): Promise<void> {
@@ -119,11 +155,7 @@ test('cold boot to a ready chart stays inside the memory budget without the chat
 
   await onboardToDashboard(page);
   const readyAt = Date.now();
-  const heap: number[] = [];
-  for (let i = 0; i < SETTLE_SAMPLES; i += 1) {
-    heap.push(await pageHeap(page));
-    await page.waitForTimeout(1_000);
-  }
+  const heap = await settledHeap(page);
   await rssLoop.stop();
   await session.detach();
 
@@ -139,5 +171,36 @@ test('cold boot to a ready chart stays inside the memory budget without the chat
   expect(Number.isFinite(sample.rendererRssSettledMiB), 'renderer RSS was sampled after ready').toBe(true);
   expect.soft(embedderTraffic, 'the chat embedder must not load before search or chat').toEqual([]);
   expect.soft(overBudget(sample, BOOT_MEMORY_BUDGET)).toEqual([]);
+  expect(consoleErrors).toEqual([]);
+});
+
+test('report only: heap peak during boot, and after a chat search loads the embedder', async ({ page }) => {
+  const consoleErrors: string[] = [];
+  page.on('pageerror', (error) => consoleErrors.push(String(error)));
+  const boot: number[] = [];
+  // Before the first cross-origin-isolated page the call throws; the loop skips it.
+  const bootLoop = sampleLoop(BOOT_SAMPLE_INTERVAL_MS, async () => {
+    boot.push(await pageHeap(page));
+  });
+  await onboardToDashboard(page);
+  const afterReady = await settledHeap(page);
+  await bootLoop.stop();
+  expect(boot.length, 'the heap was sampled during boot').toBeGreaterThan(0);
+  recordMemoryReport(
+    formatMemoryReport('boot-peak', {
+      heapPeakMiB: Math.max(...boot, ...afterReady) / MiB,
+      heapAfterReadyMiB: Math.max(...afterReady) / MiB,
+      bootSamples: boot.length,
+    }),
+  );
+
+  await searchChatWithEmbedder(page);
+  const afterChat = await settledHeap(page);
+  recordMemoryReport(
+    formatMemoryReport('after-chat-search', {
+      heapMiB: Math.max(...afterChat) / MiB,
+      embedderDeltaMiB: (Math.max(...afterChat) - Math.max(...afterReady)) / MiB,
+    }),
+  );
   expect(consoleErrors).toEqual([]);
 });

@@ -128,7 +128,7 @@ Browser (the product) ─ installable PWA, offline after first load
 │
 ├─ frontend/packages/browser     the in-browser engine
 │    ├─ edge-proc bundle sync ──▶ verifies ed25519 + sha256
-│    │                              OPFS primary; IndexedDB fallback + shared rollback floor
+│    │                              SQLite on OPFS; in memory + a notice if OPFS is refused
 │    └─ Pyodide Web Worker  ────▶ boots the UNCHANGED almamesh wheel, computes the chart
 │         │  emits SiderealChart (TS mirror of the Python SiderealContext)
 │         ▼

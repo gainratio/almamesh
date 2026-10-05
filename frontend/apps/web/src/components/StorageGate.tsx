@@ -16,6 +16,8 @@ import {
  * - only OPFS refused (Safari Private Browsing, older iOS, some WebViews): the
  *   app runs on an in-memory SQLite database, so keep the page and say the
  *   data goes away on reload or when the tab closes, and where to export it.
+ *   The engine's bundle cache is in-memory SQLite too (@gainratio/browser
+ *   0.3.0), so the note also says a reload needs a connection to start again.
  *   Nothing falls back to IndexedDB or localStorage: SQLite is the only store;
  * - no on-device database can start at all: explain instead of hydrating forever.
  */
@@ -85,7 +87,8 @@ function EphemeralStorageNotice() {
       {t('storage_ephemeral.body')}{' '}
       <Link to="/settings/data" className="underline text-text-primary">
         {t('storage_ephemeral.export')}
-      </Link>
+      </Link>{' '}
+      {t('storage_ephemeral.engine')}
     </div>
   )
 }

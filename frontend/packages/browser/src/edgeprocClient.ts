@@ -7,15 +7,25 @@ import {
 import EdgeProcWorker from "./edgeproc.worker?worker";
 
 const CACHE_NAMESPACE = "edgeproc-browser";
+// Where a 0.2.x cache kept its IndexedDB floor and chunks. 0.3.0 reads it once
+// to migrate into SQLite and never writes IndexedDB again.
 const LEGACY_INDEXED_DB_LAYOUT = Object.freeze({
   database: "edgeproc-browser-cache",
   store: "content-addressed-cache",
   separator: ":" as const,
 });
 
+/**
+ * Exit-gate hook (hooks builds only): when the provider sets
+ * `__EDGEPROC_REPORT_CACHE__`, publish which cache the library chose
+ * ("sqlite-opfs", or "sqlite-memory" when OPFS is refused). There is no
+ * IndexedDB fallback to force: since @gainratio/browser 0.3.0 the cache is
+ * SQLite on OPFS, else SQLite in memory for the Worker's life.
+ */
 type ExitGateGlobals = typeof globalThis & {
-  __EDGEPROC_FORCE_INDEXEDDB_CACHE__?: boolean;
+  __EDGEPROC_REPORT_CACHE__?: boolean;
   __EDGEPROC_SELECTED_CACHE__?: string;
+  __EDGEPROC_CACHE_STORAGE__?: EngineSyncResult["cacheStorage"];
 };
 
 /** AlmaMesh's small domain adapter over the generic signed-bundle client. */
@@ -30,9 +40,10 @@ export interface AlmaSyncEngine {
   ): Promise<EngineSyncResult>;
   readFile(path: string): Promise<Uint8Array>;
   /**
-   * Clear the durable signed-bundle cache (OPFS chunks/manifests + the durable
-   * active pointer + the IndexedDB rollback floor) via the library's own
-   * `EngineClient.clear()`, under the same Web Lock as sync/read.
+   * Clear the signed-bundle cache (the `edgeproc-browser-chunks` SQLite
+   * database: chunks, manifests, active pointer and rollback floor, plus any
+   * not-yet-migrated 0.2.x stores) via the library's own `EngineClient.clear()`,
+   * under the same Web Lock as sync/read.
    */
   clearCache(): Promise<void>;
   terminate(): void;
@@ -43,16 +54,17 @@ export function createAlmaSyncEngine(worker: EngineWorkerLike): AlmaSyncEngine {
   return {
     async sync(baseUrl, pubkeyUrl, expectedBundleId, expectedChannel, onProgress) {
       const hooks = globalThis as ExitGateGlobals;
-      const forceIndexedDb = hooks.__EDGEPROC_FORCE_INDEXEDDB_CACHE__ === true;
       const result = await client.sync(baseUrl, pubkeyUrl, {
         expectedBundleId,
         expectedChannel,
         cacheNamespace: CACHE_NAMESPACE,
         indexedDbLayout: LEGACY_INDEXED_DB_LAYOUT,
-        ...(forceIndexedDb ? { storageBackend: "indexeddb" as const } : {}),
         ...(onProgress === undefined ? {} : { onProgress }),
       });
-      if (forceIndexedDb) hooks.__EDGEPROC_SELECTED_CACHE__ = result.cacheBackend;
+      if (hooks.__EDGEPROC_REPORT_CACHE__ === true) {
+        hooks.__EDGEPROC_SELECTED_CACHE__ = result.cacheBackend;
+        hooks.__EDGEPROC_CACHE_STORAGE__ = result.cacheStorage;
+      }
       return result;
     },
     readFile: (path) => client.readFile(path),
