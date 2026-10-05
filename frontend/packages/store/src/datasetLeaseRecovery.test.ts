@@ -279,6 +279,48 @@ describe('Web Lock liveness for the dataset lease', () => {
     await expect(settleWithin(beginDatasetMutation(), 200)).rejects.toThrow('still waiting');
   });
 
+  // #246 grade: a live owner (say a frozen tab) made every other tab re-read
+  // SQLite every 25 ms for as long as it held the lease. Waiting is now on the
+  // owner's Web Lock, with a coarse backstop, not a tight poll.
+  it('waits on a live owner\'s Web Lock instead of polling SQLite, and proceeds once it is released', async () => {
+    let frozenWaits = 0;
+    let release!: () => void;
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    setDatasetLeaseLocksForTests({
+      request: async (name, callback) => {
+        // The frozen owner holds its lock until released; any other lock is free.
+        if (name === 'almamesh-dataset-lease:wl-frozen') {
+          frozenWaits += 1;
+          await released;
+        }
+        return callback();
+      },
+      query: async () => ({ held: [{ name: 'almamesh-dataset-lease:wl-frozen' }] }),
+    });
+    const { sqlite, repository } = harness();
+    seedLedger(sqlite, { restoreStartedAt: Date.now(), leaseOwner: 'wl-frozen' });
+    let reads = 0;
+    const transact = repository.transactWithResult.bind(repository);
+    repository.transactWithResult = ((...args: Parameters<typeof transact>) => {
+      reads += 1;
+      return transact(...args);
+    }) as typeof repository.transactWithResult;
+
+    const acquiring = beginDatasetMutation();
+    await new Promise((resolve) => globalThis.setTimeout(resolve, 2_300));
+    // A 25 ms poll re-reads ~90 times in 2.3 s; waiting on the lock reads once,
+    // plus one re-check per 1 s backstop, and queues ONE lock request.
+    expect(reads).toBeLessThanOrEqual(4);
+    expect(frozenWaits).toBe(1);
+
+    // The owner settles its lease, then drops its lock: the waiter proceeds.
+    seedLedger(sqlite, { restoreInProgress: false, leaseOwner: undefined });
+    release();
+    await expect(settleWithin(acquiring, 300)).resolves.toBeGreaterThan(2);
+  });
+
   it('runs one recovery for every store that hydrates at boot', async () => {
     const { sqlite, repository } = harness();
     seedLedger(sqlite, {

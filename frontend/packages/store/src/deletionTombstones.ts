@@ -676,6 +676,9 @@ async function acquireRepositoryLease(
   owner: string,
   transform: (current: DeletionTombstones) => DeletionTombstones,
 ): Promise<number> {
+  // One pending wait per owner: a backstop re-check must not queue another
+  // Web Lock request for the same frozen owner every second.
+  let ownerWait: { readonly owner: string | undefined; readonly ended: Promise<void> } | null = null;
   for (;;) {
     const transaction = await repository.transactWithResult<LeaseAttempt>(({ values }) => {
       const ledger = parseDeletionTombstones(values.get(PORTABLE_LEDGER_KEY) ?? null);
@@ -693,13 +696,35 @@ async function acquireRepositoryLease(
       };
     });
     if ('epoch' in transaction.result) return transaction.result.epoch;
-    // Recover on THIS repository; and whenever nothing changed, pause before
-    // retrying, so a lease that cannot be settled never becomes a busy loop.
-    const recovered =
-      (await isLeaseAbandoned(transaction.result.busy)) &&
-      (await recoverAbandonedDatasetLease(repository));
-    if (!recovered) await new Promise((resolve) => globalThis.setTimeout(resolve, 25));
+    // Recover on THIS repository. A live owner (say a frozen tab) is waited
+    // on, not polled: its Web Lock (or time expiry) signals a possible end,
+    // with a coarse backstop in case the ledger settles while the lock is
+    // still held, and a short floor so a loop can never spin.
+    const busy = transaction.result.busy;
+    if ((await isLeaseAbandoned(busy)) && (await recoverAbandonedDatasetLease(repository))) continue;
+    if (ownerWait === null || ownerWait.owner !== busy.leaseOwner) {
+      ownerWait = { owner: busy.leaseOwner, ended: whenLeaseMayHaveEnded(busy) };
+    }
+    const ended = ownerWait.ended.then(() => {
+      ownerWait = null; // ended: the next wait (if any) is a fresh one
+    });
+    await Promise.all([
+      Promise.race([ended, delay(LEASE_RECHECK_MS)]),
+      delay(LEASE_RETRY_FLOOR_MS),
+    ]);
   }
+}
+
+/** Backstop re-check while waiting on a live lease owner's lock. */
+const LEASE_RECHECK_MS = 1_000;
+/** Minimum pause between lease attempts, so acquisition never busy-loops. */
+const LEASE_RETRY_FLOOR_MS = 25;
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    const timer = globalThis.setTimeout(resolve, ms);
+    (timer as unknown as { unref?: () => void }).unref?.();
+  });
 }
 
 async function acquireSessionLease(
