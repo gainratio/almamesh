@@ -93,10 +93,10 @@ function Harness() {
   return <OnboardingPage />;
 }
 
-function renderPage() {
+function renderPage(entry = '/onboarding') {
   return render(
     <QueryClientProvider client={new QueryClient()}>
-      <MemoryRouter initialEntries={['/onboarding']}>
+      <MemoryRouter initialEntries={[entry]}>
         <Harness />
       </MemoryRouter>
     </QueryClientProvider>,
@@ -147,6 +147,7 @@ beforeEach(() => {
 afterEach(async () => {
   // Settle any compute a failing test left open: regeneration runs are
   // serialized module-wide, so an open one would block the next test's run.
+  compute.promise.catch(() => undefined);
   compute.reject(new Error('test teardown'));
   persisted.release();
   await flush();
@@ -194,5 +195,50 @@ describe('Onboarding — the chart is durable before the user leaves', () => {
     expect(navigateSpy).not.toHaveBeenCalled();
     expect(useOnboardingStore.getState().data.name).toBe('Asha');
     expect(Object.keys(useChartLibraryStore.getState().charts)).toHaveLength(0);
+  });
+
+  it('rebuilds a chartless person in place: same id, name prefilled, no duplicate profile', async () => {
+    const profiles = useProfilesStore.getState();
+    const other = profiles.createProfile('Someone Else');
+    const amma = profiles.createProfile('Amma');
+    useProfilesStore.getState().setActiveProfile(other);
+    renderPage(`/onboarding?person=${amma}`);
+
+    // Opens at the birth-details step for Amma, not at "what's your name".
+    await waitFor(() => expect(screen.queryByTestId('birth-date-input')).toBeTruthy());
+    expect(screen.queryByTestId('name-input')).toBeNull();
+    expect(useOnboardingStore.getState().data.name).toBe('Amma');
+    expect(useProfilesStore.getState().activeProfileId).toBe(amma);
+
+    // Finish the wizard with seeded birth details and generate.
+    const { name: _name, ...seed } = {
+      name: '',
+      birthDate: new Date('1990-01-15T00:00:00'),
+      birthTime: '12:00',
+      timeConfidence: 'exact' as const,
+      city: 'Pune',
+      state: '',
+      country: 'India',
+      latitude: 18.52,
+      longitude: 73.85,
+      timezone: 'Asia/Kolkata',
+      interests: [],
+      needsRectification: false,
+    };
+    act(() => {
+      useOnboardingStore.setState((state) => ({ currentStep: 5, data: { ...state.data, ...seed } }));
+    });
+    fireEvent.click(await screen.findByTestId('skip-life-events-button'));
+    await waitFor(() => expect(generateChart).toHaveBeenCalledOnce());
+    compute.resolve(fakeSiderealChart);
+    await waitFor(() => expect(persisted.calls).toBeGreaterThan(0));
+    persisted.release();
+    await waitFor(() => expect(navigateSpy).toHaveBeenCalledWith('/dashboard'));
+
+    const charts = Object.values(useChartLibraryStore.getState().charts);
+    expect(charts).toHaveLength(1);
+    expect(charts[0]?.profile_id).toBe(amma);
+    expect(charts[0]?.person_name).toBe('Amma');
+    expect(Object.keys(useProfilesStore.getState().profiles).sort()).toEqual([amma, other].sort());
   });
 });

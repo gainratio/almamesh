@@ -13,7 +13,7 @@
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useChartLibraryStore, useLanguageStore, useProfilesStore } from '@almamesh/store';
 import type { BirthChartGenerationResponse } from '@almamesh/shared-types';
@@ -55,6 +55,12 @@ const NO_CHART_IN_SCOPE: BirthChartGenerationResponse = {
   generated_at: new Date(0).toISOString(),
 };
 
+/** Stands in for onboarding and shows which person it was opened for. */
+function OnboardingProbe() {
+  const { search } = useLocation();
+  return <div data-testid="onboarding-probe">{new URLSearchParams(search).get('person') ?? ''}</div>;
+}
+
 function renderDashboard(): ReturnType<typeof render> {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
@@ -62,7 +68,7 @@ function renderDashboard(): ReturnType<typeof render> {
       <MemoryRouter initialEntries={['/dashboard']}>
         <Routes>
           <Route path="/dashboard" element={<DashboardPage />} />
-          <Route path="/onboarding" element={<div data-testid="onboarding-probe" />} />
+          <Route path="/onboarding" element={<OnboardingProbe />} />
           <Route path="/settings/people" element={<div data-testid="people-probe" />} />
         </Routes>
       </MemoryRouter>
@@ -119,6 +125,31 @@ describe('Dashboard — the active person has no chart yet', () => {
     fireEvent.click(screen.getByTestId('no-chart-create'));
 
     expect(screen.getByTestId('onboarding-probe')).toBeTruthy();
+  });
+
+  // CONTRACT REVERSED (2026-10-05, P0 reload-loss): this screen used to say
+  // "Nothing broke and nothing was lost". A reload during the first compute
+  // DID lose people's charts, and no birth data survives to rebuild from, so
+  // the copy must say what may have happened and how to rebuild.
+  it('is honest that no saved chart was found, never "nothing was lost"', async () => {
+    seedActivePerson('Amma');
+    renderDashboard();
+
+    const copy = await settledCopy();
+    expect(copy).not.toMatch(/nothing was lost|nothing broke/i);
+    expect(copy).toContain("We couldn't find a saved chart for Amma.");
+    expect(copy).toContain('This can happen if the page was reloaded while the chart was being computed.');
+    expect(copy).toContain('Enter the birth details again to rebuild it.');
+  });
+
+  it('rebuilds the chart for THIS person: the button opens onboarding with their id', async () => {
+    const id = seedActivePerson('Amma');
+    renderDashboard();
+    await settledCopy();
+
+    fireEvent.click(screen.getByTestId('no-chart-create'));
+
+    expect(screen.getByTestId('onboarding-probe').textContent).toBe(id);
   });
 
   it('the secondary escape goes somewhere real — Settings → People', async () => {

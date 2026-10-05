@@ -672,7 +672,7 @@ export default function DashboardPage() {
     return queryError ? (
       <ChartReadFailed t={t} />
     ) : (
-      <NoChartYet t={t} personName={activeProfileName} />
+      <NoChartYet t={t} personName={activeProfileName} personId={activeProfileId} />
     );
   }
 

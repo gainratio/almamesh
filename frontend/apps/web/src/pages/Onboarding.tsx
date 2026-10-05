@@ -1,5 +1,5 @@
 import React, { useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
   requestRegeneration,
@@ -196,16 +196,32 @@ export default function OnboardingPage() {
   // generated, so a non-empty name is always one THIS session typed — never
   // overwrite it. Reading through `getState()` inside a mount-only effect also
   // means clearing the field later cannot re-fire the seed and fight the edit.
+  //
+  // `?person=<id>` (the chartless dashboard's rebuild button) names WHICH
+  // existing person to rebuild: make them active so the chart is saved under
+  // their id (no duplicate profile), prefill their name, and open at the
+  // birth-details step.
+  const [searchParams] = useSearchParams();
+  const rebuildPersonId = searchParams.get("person");
   useEffect(() => {
     const onboarding = useOnboardingStore.getState();
+    const people = useProfilesStore.getState();
+    const rebuild = rebuildPersonId ? people.profiles[rebuildPersonId] : undefined;
+    if (rebuild) {
+      people.setActiveProfile(rebuild.id);
+      onboarding.setName(rebuild.name);
+      onboarding.goToStep(2);
+      return;
+    }
     if (onboarding.data.name.trim() !== "") {
       return;
     }
-    const { activeProfileId, profiles } = useProfilesStore.getState();
-    const activeName = activeProfileId ? profiles[activeProfileId]?.name : undefined;
+    const activeName = people.activeProfileId ? people.profiles[people.activeProfileId]?.name : undefined;
     if (activeName) {
       onboarding.setName(activeName);
     }
+    // Mount-only by design (see above); the param is read once on entry.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Sync currentStep from store to local step key

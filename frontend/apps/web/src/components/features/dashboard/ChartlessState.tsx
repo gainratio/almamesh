@@ -3,10 +3,11 @@
  *
  * They are different things and must not share copy:
  *
- * - `NoChartYet` — the ACTIVE person has no chart. AlmaMesh computes charts
- *   on-device; there is no chart API and nothing was requested, so nothing
- *   failed. This is a normal empty state (a second person on the device lands
- *   here the moment they are created), and the fix is to create the chart.
+ * - `NoChartYet` — the ACTIVE person has no saved chart. Usually a person just
+ *   created, but a reload during the first compute used to lose the chart for
+ *   good (prod 6a89c0e, 2026-10-05) and no birth data survives to rebuild from.
+ *   So the copy never claims "nothing was lost": it says no saved chart was
+ *   found, why that can happen, and offers to rebuild it for THIS person.
  * - `ChartReadFailed` — the on-device read genuinely rejected. Honest error
  *   copy, and a retry that can actually change the outcome.
  *
@@ -25,6 +26,8 @@ export interface ChartlessStateProps {
 export interface NoChartYetProps extends ChartlessStateProps {
   /** The active person's name, when one is known. */
   readonly personName: string | null;
+  /** The active person's id: the rebuild reuses it, never a new profile. */
+  readonly personId: string | null;
 }
 
 const SHELL = 'flex min-h-[60vh] flex-col items-center justify-center p-8';
@@ -34,7 +37,10 @@ const SECONDARY =
   'rounded-lg border border-ui-border px-6 py-3 text-text-secondary transition-colors hover:border-accent-gold/40 hover:text-text-primary';
 
 /** Normal empty state: this person's chart hasn't been created yet. */
-export function NoChartYet({ t, personName }: NoChartYetProps): ReactElement {
+export function NoChartYet({ t, personName, personId }: NoChartYetProps): ReactElement {
+  const onboardingPath = personId
+    ? `/onboarding?person=${encodeURIComponent(personId)}`
+    : '/onboarding';
   return (
     <div className={SHELL}>
       <div data-testid="no-chart-state" className="max-w-md text-center">
@@ -43,10 +49,14 @@ export function NoChartYet({ t, personName }: NoChartYetProps): ReactElement {
             ? t('dashboard:error.title', { name: personName })
             : t('dashboard:error.title_unnamed')}
         </h2>
-        <p className="mb-6 text-text-secondary">{t('dashboard:error.body')}</p>
+        <p className="mb-6 text-text-secondary">
+          {personName
+            ? t('dashboard:error.body_missing', { name: personName })
+            : t('dashboard:error.body')}
+        </p>
         <div className="flex flex-wrap items-center justify-center gap-3">
-          <Link to="/onboarding" data-testid="no-chart-create" className={PRIMARY}>
-            {t('dashboard:actions.create_chart')}
+          <Link to={onboardingPath} data-testid="no-chart-create" className={PRIMARY}>
+            {personName ? t('dashboard:actions.rebuild_chart') : t('dashboard:actions.create_chart')}
           </Link>
           <Link to="/settings/people" data-testid="no-chart-switch" className={SECONDARY}>
             {t('dashboard:actions.manage_people')}
