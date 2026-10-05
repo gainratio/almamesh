@@ -29,6 +29,7 @@
     "test:e2e:mesh": "playwright test --config=playwright.mesh-this-is-me.config.ts",
     "test:e2e:portable-sqlite": "playwright test --config=playwright.portable-sqlite.config.ts",
     "test:e2e:memory-budget": "playwright test --config=playwright.memory-budget.config.ts",
+    "test:e2e:birth-time-edit": "playwright test --config=playwright.birth-time-edit.config.ts",
     "test:unit": "vitest run",
     "test:unit:watch": "vitest",
     "test:unit:coverage": "vitest run --coverage",
