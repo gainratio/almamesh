@@ -1020,7 +1020,7 @@ describe('repairPortableReferences: every dangling reference normal use can leav
     // User-written: never deleted, set aside (the caller holds it in SQLite).
     expect(report.repairs.droppedPersonRecords).toEqual([]);
     expect(report.repairs.setAside).toEqual([
-      { row: 'almamesh-life-events', personId: 'gone', value: '[]' },
+      { row: 'almamesh-life-events', personId: 'gone', value: '[]', version: 4 },
     ]);
     expect(stateOf(handed[0]!, 'almamesh-life-events').eventsByProfile).toEqual({ p1: [] });
   });
@@ -1056,6 +1056,7 @@ describe('repairPortableReferences: every dangling reference normal use can leav
           row: 'almamesh-rectification-records',
           personId: 'gone',
           value: JSON.stringify({ profileId: 'gone' }),
+          version: 2,
         },
       ],
       clearedProfileLinks: ['p1', 'activeProfileId'],
