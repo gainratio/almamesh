@@ -120,7 +120,7 @@
       "dependencies": {
         "@gainratio/assay": "0.5.0-dev.6",
         "@gainratio/avow": "^0.5.2",
-        "@gainratio/browser": "github:hseshadr/edgeproc-browser#edd99713ddf6e700c384f8981dcfc25341cc20a7",
+        "@gainratio/browser": "^0.2.0",
         "pyodide": "^314.0.7",
       },
       "devDependencies": {
@@ -597,7 +597,7 @@
 
     "@gainratio/avow": ["@gainratio/avow@0.5.2", "", { "dependencies": { "@noble/ed25519": "^3.1.0", "canonicalize": "^3.0.0" } }, "sha512-a4vtiKx9Dbb5HNFKvwWNOzuZk6EY7pq6vFPKM/vwTSaVmEQ4Ym+GJSJ3u6vnLbsAxZJgBfr0JWpGUmdB5Oqkww=="],
 
-    "@gainratio/browser": ["@gainratio/browser@github:hseshadr/edgeproc-browser#edd9971", { "dependencies": { "@hpcc-js/wasm-zstd": "^1.16.1", "@noble/ed25519": "^3.2.0", "idb-keyval": "^6.3.0" } }, "hseshadr-edgeproc-browser-edd9971"],
+    "@gainratio/browser": ["@gainratio/browser@0.2.0", "", { "dependencies": { "@hpcc-js/wasm-zstd": "^1.16.1", "@noble/ed25519": "^3.2.0", "idb-keyval": "^6.3.0" } }, "sha512-IZHx4QKak4fXys3yzRw+o2nyyrsuetKGIJEDLbuGwoXM2bHAHCNhtueHWlhbhbmFS7O+CzYhfkqiGc26ExDMeg=="],
 
     "@gainratio/errors": ["@gainratio/errors@0.2.1", "", {}, "sha512-f1XOpswhbypRe2u8sJ2rRuh8BADbddkSSRONO5DRk3u5g7M+s8aaQ4vuPdk813GkLuvkQo1HMEwTj92TjT1ySQ=="],
 
@@ -2486,10 +2486,6 @@
     "zustand": ["zustand@5.0.15", "", { "peerDependencies": { "@types/react": ">=18.0.0", "immer": ">=9.0.6", "react": ">=18.0.0", "use-sync-external-store": ">=1.2.0" }, "optionalPeers": ["@types/react", "immer", "react", "use-sync-external-store"] }, "sha512-MpSEjRiBkA9crSYeOUH32rJC7SVqAbm0Fqcqge/bUi2PPoLcBWKOsG+C8mevmpr8TwXHBVkChbbJiyvkE+i/3A=="],
 
     "zwitch": ["zwitch@2.0.4", "", {}, "sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A=="],
-
-    "@almamesh/memory/@gainratio/browser": ["@gainratio/browser@0.2.0", "", { "dependencies": { "@hpcc-js/wasm-zstd": "^1.16.1", "@noble/ed25519": "^3.2.0", "idb-keyval": "^6.3.0" } }, "sha512-IZHx4QKak4fXys3yzRw+o2nyyrsuetKGIJEDLbuGwoXM2bHAHCNhtueHWlhbhbmFS7O+CzYhfkqiGc26ExDMeg=="],
-
-    "@almamesh/store/@gainratio/browser": ["@gainratio/browser@0.2.0", "", { "dependencies": { "@hpcc-js/wasm-zstd": "^1.16.1", "@noble/ed25519": "^3.2.0", "idb-keyval": "^6.3.0" } }, "sha512-IZHx4QKak4fXys3yzRw+o2nyyrsuetKGIJEDLbuGwoXM2bHAHCNhtueHWlhbhbmFS7O+CzYhfkqiGc26ExDMeg=="],
 
     "@apideck/better-ajv-errors/ajv": ["ajv@8.20.0", "", { "dependencies": { "fast-deep-equal": "^3.1.3", "fast-uri": "^3.0.1", "json-schema-traverse": "^1.0.0", "require-from-string": "^2.0.2" } }, "sha512-Thbli+OlOj+iMPYFBVBfJ3OmCAnaSyNn4M1vz9T6Gka5Jt9ba/HIR56joy65tY6kx/FCF5VXNB819Y7/GUrBGA=="],
 
