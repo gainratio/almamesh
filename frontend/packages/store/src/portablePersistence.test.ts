@@ -4,6 +4,7 @@ import {
   OPFS_PROBE_TIMEOUT_MS,
   PortableStateStartupError,
   markPortableStateUnavailable,
+  markPortableStorageBlockedByEngine,
   checkPortableStorageAgain,
   openPortableStateWhenAllowed,
   portableStatePersistence,
@@ -280,5 +281,28 @@ describe('markPortableStateUnavailable', () => {
     markPortableStateUnavailable();
     expect(portableStatePersistence()).toBe('unavailable');
     expect(seen).toEqual(['unavailable']);
+  });
+});
+
+// The app's SQLite opened, but the engine's own cache was refused
+// (@gainratio/browser cacheFallback "none", reason "opfs-unavailable"). The
+// same block screen must show, and "Check again" must recover it in place.
+describe('markPortableStorageBlockedByEngine', () => {
+  it('reports blocked, and a recheck that finds storage allowed reports opfs again', async () => {
+    let storage: { getDirectory: () => Promise<unknown> } = refusingStorage;
+    markPortableStorageBlockedByEngine({ storage: { getDirectory: () => storage.getDirectory() } });
+    expect(portableStatePersistence()).toBe('blocked');
+
+    await expect(checkPortableStorageAgain()).resolves.toBe('blocked');
+    expect(portableStatePersistence()).toBe('blocked');
+
+    storage = workingStorage;
+    const changes: string[] = [];
+    subscribePortableStatePersistence(() => changes.push(portableStatePersistence()));
+    await expect(checkPortableStorageAgain()).resolves.toBe('opfs');
+    expect(portableStatePersistence()).toBe('opfs');
+    expect(changes).toContain('opfs');
+    // Recovered: nothing is left pending to re-run.
+    await expect(checkPortableStorageAgain()).resolves.toBe('opfs');
   });
 });

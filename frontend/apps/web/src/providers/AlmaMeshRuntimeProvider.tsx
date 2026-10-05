@@ -19,14 +19,18 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { AlmaMeshRuntime, WorkerCrashError, WorkerTimeoutError } from '@almamesh/browser'
+import { AlmaMeshRuntime, EngineStorageBlockedError, WorkerCrashError, WorkerTimeoutError } from '@almamesh/browser'
 import type { BootStage, BundleMeta, ChartEngine, OnStage, RuntimeConfig } from '@almamesh/browser'
 import {
   ChartEngineContext,
   EngineBootProgressContext,
   PROGRESS_COALESCE_MS,
 } from './chartEngineContext'
-import { portableStatePersistence, subscribePortableStatePersistence } from '@almamesh/store'
+import {
+  markPortableStorageBlockedByEngine,
+  portableStatePersistence,
+  subscribePortableStatePersistence,
+} from '@almamesh/store'
 import { hasLocalChart } from '../lib/localChart'
 import { recordEngineBootFailure, registerEngineTeardown } from '../lib/engineLifecycle'
 import { recoverSeveredServiceWorkerChannel } from '../lib/swSelfHeal'
@@ -171,6 +175,16 @@ export interface BootstrapRuntime {
   dispose?(): Promise<void> | void
 }
 
+/** The engine-cache refusal anywhere in an error's cause chain, if any. */
+function engineStorageBlocked(error: unknown): EngineStorageBlockedError | null {
+  let current: unknown = error
+  for (let depth = 0; depth < 5 && current instanceof Error; depth += 1) {
+    if (current instanceof EngineStorageBlockedError) return current
+    current = current.cause
+  }
+  return null
+}
+
 // `stalled`: the sync transport's stall error (no bytes for 30 s) after its
 // own bounded retries. A network condition, so it gets the same online retry.
 const TRANSIENT_BOOT_FAILURE = /network unreachable|failed to fetch|load failed|networkerror|timed out after|stalled|importing a module script failed/i
@@ -218,6 +232,8 @@ export function AlmaMeshRuntimeProvider({ children, runtime }: ProviderProps) {
   // The CURRENT in-flight (or last) bootstrap promise, shared by every awaiter
   // of whenReady(). A ref (not state) so stable callbacks always see the latest.
   const inFlightRef = useRef<Promise<ChartEngine> | null>(null)
+  // The latest runBootstrap, for the storage-refusal path that re-arms itself.
+  const runBootstrapRef = useRef<(() => Promise<ChartEngine>) | null>(null)
   const startedRef = useRef(false)
   const bootstrapFailedRef = useRef(false)
   const retryableFailureRef = useRef(false)
@@ -335,6 +351,16 @@ export function AlmaMeshRuntimeProvider({ children, runtime }: ProviderProps) {
         // failed workers and bootstrap promise; keeping the provider's rejected
         // promise latched made every later whenReady()/online recovery return
         // the same failure forever.
+        if (inFlightRef.current === promise && engineStorageBlocked(e)?.reason === 'opfs-unavailable') {
+          // The browser refused the engine's on-device cache. Same rule as the
+          // app's data: show the storage block screen (never a RAM cache, never
+          // the generic engine error) and boot again once "Check again" finds
+          // storage allowed. runBootstrap waits on whenStorageDurable().
+          inFlightRef.current = null
+          markPortableStorageBlockedByEngine()
+          void runBootstrapRef.current?.().catch(() => undefined)
+          throw e
+        }
         if (inFlightRef.current === promise) {
           inFlightRef.current = null
           startedRef.current = false
@@ -359,6 +385,9 @@ export function AlmaMeshRuntimeProvider({ children, runtime }: ProviderProps) {
     inFlightRef.current = promise
     return promise
   }, [onStage])
+  useEffect(() => {
+    runBootstrapRef.current = runBootstrap
+  }, [runBootstrap])
 
   // Idempotently kick off the bootstrap AT MOST ONCE. Guarded by a ref so the
   // landing CTA's prewarm-on-intent (pointerenter/focus/click, which can all

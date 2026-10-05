@@ -3,6 +3,7 @@ import { render, screen, waitFor, act } from '@testing-library/react';
 import { useEffect, useState } from 'react';
 
 import {
+  EngineStorageBlockedError,
   WorkerCrashError,
   type BootStage,
   type ChartEngine,
@@ -38,8 +39,10 @@ const storage = vi.hoisted(() => {
     },
   };
 });
+const markBlockedByEngine = vi.hoisted(() => vi.fn());
 vi.mock('@almamesh/store', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@almamesh/store')>()),
+  markPortableStorageBlockedByEngine: markBlockedByEngine,
   portableStatePersistence: () => storage.state.current,
   subscribePortableStatePersistence: (listener: () => void) => {
     storage.listeners.add(listener);
@@ -185,6 +188,51 @@ describe('AlmaMeshRuntimeProvider — durable storage gate', () => {
       await new Promise((resolve) => setTimeout(resolve, 20));
     });
     expect(runtime.bootstrapCalls).toBe(0);
+  });
+});
+
+// @gainratio/browser 0.3.1 refuses its RAM cache (cacheFallback "none") and
+// the seam reports EngineStorageBlockedError. Never the generic engine error.
+describe('AlmaMeshRuntimeProvider — engine cache refused', () => {
+  beforeEach(() => markBlockedByEngine.mockReset().mockImplementation(() => storage.set('blocked')));
+
+  it('opfs-unavailable: shows the storage block screen, then boots once storage is allowed', async () => {
+    const runtime = makeFakeRuntime([
+      () => Promise.reject(new EngineStorageBlockedError('opfs-unavailable')),
+      (onStage) => {
+        onStage({ kind: 'ready' } as BootStage);
+        return Promise.resolve(makeFakeEngine('after-allow'));
+      },
+    ]);
+    render(
+      <AlmaMeshRuntimeProvider runtime={runtime}>
+        <Probe capture={() => {}} />
+      </AlmaMeshRuntimeProvider>,
+    );
+    await waitFor(() => expect(markBlockedByEngine).toHaveBeenCalledOnce());
+    expect(storage.state.current).toBe('blocked');
+    expect(runtime.bootstrapCalls).toBe(1);
+
+    act(() => storage.set('opfs'));
+    await waitFor(() => expect(screen.getByTestId('engine').textContent).toBe('engine-ready'));
+    expect(runtime.bootstrapCalls).toBe(2);
+  });
+
+  it('pool-in-use: surfaces the other-tab error itself and does not loop retrying', async () => {
+    const runtime = makeFakeRuntime([() => Promise.reject(new EngineStorageBlockedError('pool-in-use'))]);
+    render(
+      <AlmaMeshRuntimeProvider runtime={runtime}>
+        <Probe capture={() => {}} />
+      </AlmaMeshRuntimeProvider>,
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId('error').textContent).toBe('The engine cache is open in another AlmaMesh tab.'),
+    );
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    expect(runtime.bootstrapCalls).toBe(1);
+    expect(markBlockedByEngine).not.toHaveBeenCalled();
   });
 });
 

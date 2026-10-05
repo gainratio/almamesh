@@ -8,7 +8,16 @@ const root = resolve(here, '../../../../../..');
 // Our own libraries ship from npm and track their newest release: a caret range,
 // never a Git commit alias and never the retired `@edgeproc/` scope.
 const OWN_LIBRARY_SCOPE = '@gainratio/';
-const BROWSER_LEGO_RANGE = '^0.3.0';
+// One source of truth for the range: the Dagger pin check (BROWSER_LEGO_SPEC),
+// which a contract test already ties to the manifests. A literal here drifted
+// on every bump (0.3.0 -> 0.3.1 failed this test while the pin moved).
+const BROWSER_LEGO_RANGE = (() => {
+  const spec = readFileSync(resolve(root, 'dagger/src/index.ts'), 'utf8').match(
+    /const BROWSER_LEGO_SPEC = '"@gainratio\/browser": "(\^\d+\.\d+\.\d+)"'/,
+  )?.[1];
+  if (spec === undefined) throw new Error('BROWSER_LEGO_SPEC not found in dagger/src/index.ts');
+  return spec;
+})();
 const DEPENDENCY_FIELDS = [
   'dependencies',
   'devDependencies',

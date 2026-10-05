@@ -471,6 +471,11 @@ async function main() {
     page.on('worker', (worker) => workerUrls.add(worker.url()))
     const pageErrors = []
     page.on('pageerror', (error) => pageErrors.push(error.message))
+    // Engine bundle traffic, from the page or any Worker it starts.
+    const bundleRequests = []
+    context.on('request', (request) => {
+      if (new URL(request.url()).pathname.startsWith('/bundle/')) bundleRequests.push(request.url())
+    })
 
     await page.goto(BASE_URL, { waitUntil: 'domcontentloaded' })
     const coldIsolation = await assertBrowserIsolation(page, 'WebKit cold navigation')
@@ -498,9 +503,10 @@ async function main() {
     invariant(storage.databases.length === 0, `something wrote IndexedDB with OPFS refused: ${JSON.stringify(storage)}`)
     const engineWorkers = [...workerUrls].filter((url) => /edgeproc\.worker|pyodide|chart/i.test(url))
     invariant(engineWorkers.length === 0, `the engine started behind the block screen: ${JSON.stringify(engineWorkers)}`)
+    invariant(bundleRequests.length === 0, `the engine bundle was fetched behind the block screen: ${JSON.stringify(bundleRequests)}`)
     invariant(pageErrors.length === 0, `page errors behind the block screen: ${pageErrors.join(' | ')}`)
 
-    console.log(JSON.stringify({ reason, storage, workers: [...workerUrls], coldIsolation }, null, 2))
+    console.log(JSON.stringify({ reason, storage, workers: [...workerUrls], bundleRequests: bundleRequests.length, coldIsolation }, null, 2))
     await context.close()
   } finally {
     await browser.close()

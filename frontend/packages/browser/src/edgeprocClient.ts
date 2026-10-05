@@ -1,5 +1,6 @@
 import {
   EngineClient,
+  EngineStorageUnavailableError,
   type EngineSyncResult,
   type EngineWorkerLike,
   type SyncProgress,
@@ -28,17 +29,58 @@ type ExitGateGlobals = typeof globalThis & {
 };
 
 /**
- * The library picked its in-memory SQLite cache (OPFS refused inside the sync
- * Worker). Product rule: SQLite on OPFS or nothing. @gainratio/browser 0.3.0
- * has no option to refuse that cache up front, so the adapter fails closed
- * after the sync: the engine never boots on a cache that dies with the Worker.
- * Not a transient failure: the provider does not auto-retry it.
+ * Defense in depth. Since @gainratio/browser 0.3.1 every call passes
+ * `cacheFallback: "none"`, so the library refuses its in-memory cache up front
+ * (EngineStorageBlockedError, nothing downloaded) and should never report one.
+ * If a memory cache is ever reported anyway, the engine still never boots on a
+ * cache that dies with the Worker. Not transient: never auto-retried.
  */
 export class EngineCacheNotDurableError extends Error {
   public override readonly name = "EngineCacheNotDurableError";
 
   public constructor(public readonly cacheBackend: EngineSyncResult["cacheBackend"]) {
     super(`The engine cache is not durable (${cacheBackend}); AlmaMesh runs only on SQLite in OPFS.`);
+  }
+}
+
+/**
+ * The engine's persistent SQLite cache could not open, so nothing was opened
+ * in memory and nothing was downloaded (`cacheFallback: "none"`).
+ * "opfs-unavailable": the browser refuses on-device storage (the block
+ * screen). "pool-in-use": another AlmaMesh tab holds the engine cache.
+ * AlmaMesh's own type, so callers never import the library's names.
+ */
+export class EngineStorageBlockedError extends Error {
+  public override readonly name = "EngineStorageBlockedError";
+
+  public constructor(
+    public readonly reason: "opfs-unavailable" | "pool-in-use",
+    options?: ErrorOptions,
+  ) {
+    super(
+      reason === "pool-in-use"
+        ? "The engine cache is open in another AlmaMesh tab."
+        : "This browser refuses on-device storage, so the engine cache cannot open.",
+      options,
+    );
+  }
+}
+
+/** SQLite on OPFS or nothing: never let the library fall back to a RAM cache. */
+const NO_CACHE_FALLBACK = { cacheFallback: "none" } as const;
+
+/** Translate the library's storage refusal into AlmaMesh's typed error. */
+function asStorageBlocked(error: unknown): unknown {
+  if (!(error instanceof EngineStorageUnavailableError)) return error;
+  const reason = error.reason === "pool-in-use" ? "pool-in-use" : "opfs-unavailable";
+  return new EngineStorageBlockedError(reason, { cause: error });
+}
+
+async function translated<T>(operation: Promise<T>): Promise<T> {
+  try {
+    return await operation;
+  } catch (error) {
+    throw asStorageBlocked(error);
   }
 }
 
@@ -68,26 +110,34 @@ export function createAlmaSyncEngine(worker: EngineWorkerLike): AlmaSyncEngine {
   return {
     async sync(baseUrl, pubkeyUrl, expectedBundleId, expectedChannel, onProgress) {
       const hooks = globalThis as ExitGateGlobals;
-      const result = await client.sync(baseUrl, pubkeyUrl, {
-        expectedBundleId,
-        expectedChannel,
-        cacheNamespace: CACHE_NAMESPACE,
-        indexedDbLayout: LEGACY_INDEXED_DB_LAYOUT,
-        ...(onProgress === undefined ? {} : { onProgress }),
-      });
+      const result = await translated(
+        client.sync(baseUrl, pubkeyUrl, {
+          expectedBundleId,
+          expectedChannel,
+          cacheNamespace: CACHE_NAMESPACE,
+          indexedDbLayout: LEGACY_INDEXED_DB_LAYOUT,
+          ...NO_CACHE_FALLBACK,
+          ...(onProgress === undefined ? {} : { onProgress }),
+        }),
+      );
       if (hooks.__EDGEPROC_REPORT_CACHE__ === true) {
         hooks.__EDGEPROC_SELECTED_CACHE__ = result.cacheBackend;
         hooks.__EDGEPROC_CACHE_STORAGE__ = result.cacheStorage;
       }
+      // Defense in depth: with cacheFallback "none" the library never reports
+      // a memory cache, but if one ever appears the engine still never runs on it.
       if (result.cacheBackend !== "sqlite-opfs") throw new EngineCacheNotDurableError(result.cacheBackend);
       return result;
     },
-    readFile: (path) => client.readFile(path),
+    readFile: (path) => translated(client.readFile(path, NO_CACHE_FALLBACK)),
     clearCache: () =>
-      client.clear({
-        cacheNamespace: CACHE_NAMESPACE,
-        indexedDbLayout: LEGACY_INDEXED_DB_LAYOUT,
-      }),
+      translated(
+        client.clear({
+          cacheNamespace: CACHE_NAMESPACE,
+          indexedDbLayout: LEGACY_INDEXED_DB_LAYOUT,
+          ...NO_CACHE_FALLBACK,
+        }),
+      ),
     terminate: () => client.dispose(),
   };
 }

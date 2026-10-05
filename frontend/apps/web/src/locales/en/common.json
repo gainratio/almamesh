@@ -103,6 +103,11 @@
     "checking": "Checking…",
     "still_blocked": "Still blocked. The browser is still refusing storage for this site. Follow the steps above, then press Check again."
   },
+  "engine_other_tab": {
+    "title": "AlmaMesh is open in another tab",
+    "body": "Only one AlmaMesh tab can use the chart engine at a time. Close the other AlmaMesh tab, then press Try again.",
+    "retry": "Try again"
+  },
   "storage_unavailable": {
     "title": "AlmaMesh cannot start its on-device database",
     "body": "AlmaMesh computes and keeps your chart only on this device, and this browser cannot run the local database it needs.",

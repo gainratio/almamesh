@@ -9,6 +9,7 @@ import {
   clearAlmaBundleCache,
   createAlmaSyncEngine,
   EngineCacheNotDurableError,
+  EngineStorageBlockedError,
 } from "../edgeprocClient";
 
 class FakeWorker implements EngineWorkerLike {
@@ -55,6 +56,46 @@ afterEach(() => {
   delete globals.__EDGEPROC_REPORT_CACHE__;
   delete globals.__EDGEPROC_SELECTED_CACHE__;
   delete globals.__EDGEPROC_CACHE_STORAGE__;
+});
+
+describe("SQLite on OPFS or nothing: the engine never opens a memory cache", () => {
+  // @gainratio/browser 0.3.1 can refuse its in-memory cache up front
+  // (cacheFallback: "none"): nothing is opened in RAM and nothing downloaded.
+  it("asks for no cache fallback on sync, readFile and clear", async () => {
+    const worker = new FakeWorker();
+    const engine = createAlmaSyncEngine(worker);
+    void engine.sync("/bundle", "/public.key", "almamesh", "stable").catch(() => undefined);
+    void engine.readFile("almamesh.whl").catch(() => undefined);
+    void engine.clearCache().catch(() => undefined);
+    expect(worker.sent.map((request) => [request.kind, (request as { cacheFallback?: string }).cacheFallback])).toEqual([
+      ["sync", "none"],
+      ["readFile", "none"],
+      ["clear", "none"],
+    ]);
+    engine.terminate();
+  });
+
+  for (const reason of ["opfs-unavailable", "pool-in-use"] as const) {
+    it(`turns the library's refusal (${reason}) into AlmaMesh's EngineStorageBlockedError`, async () => {
+      const worker = new FakeWorker();
+      const pending = createAlmaSyncEngine(worker).sync("/bundle", "/public.key", "almamesh", "stable");
+      worker.reply({
+        ok: false,
+        id: worker.sent[0]?.id ?? 0,
+        error: { code: "storage", message: `engine cache refused (${reason})`, reason },
+      } as never);
+      await expect(pending).rejects.toBeInstanceOf(EngineStorageBlockedError);
+      await expect(pending).rejects.toMatchObject({ reason });
+    });
+  }
+
+  it("passes any other engine failure through unchanged", async () => {
+    const worker = new FakeWorker();
+    const pending = createAlmaSyncEngine(worker).sync("/bundle", "/public.key", "almamesh", "stable");
+    worker.reply({ ok: false, id: worker.sent[0]?.id ?? 0, error: { code: "network", message: "network unreachable" } } as never);
+    await expect(pending).rejects.not.toBeInstanceOf(EngineStorageBlockedError);
+    await expect(pending).rejects.toThrow("network unreachable");
+  });
 });
 
 describe("AlmaMesh edgeproc adapter", () => {

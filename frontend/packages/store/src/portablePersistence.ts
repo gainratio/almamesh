@@ -108,6 +108,23 @@ export function markPortableStateUnavailable(): void {
   reportPersistence('unavailable');
 }
 
+/**
+ * The app's SQLite is open, but the engine's own cache was refused (the
+ * library's cacheFallback "none", reason "opfs-unavailable"). Show the same
+ * block screen; "Check again" re-probes OPFS and, once allowed, reports
+ * 'opfs' again so the engine can retry. The repository is already open, so
+ * there is nothing to re-open here.
+ */
+export function markPortableStorageBlockedByEngine(options: { readonly storage?: OpfsEntrypoint } = {}): void {
+  pendingAttempt = async () => {
+    if (!(await probeAllows(options))) return 'blocked';
+    pendingAttempt = undefined;
+    reportPersistence('opfs');
+    return 'opfs';
+  };
+  reportPersistence('blocked');
+}
+
 export function resetPortableStatePersistenceForTests(): void {
   currentPersistence = 'pending';
   listeners.clear();
@@ -130,7 +147,7 @@ interface WhenAllowedOptions<Repository> {
   readonly storageBlocked?: () => boolean;
 }
 
-async function probeAllows(options: WhenAllowedOptions<unknown>): Promise<boolean> {
+async function probeAllows(options: Pick<WhenAllowedOptions<unknown>, 'storage' | 'storageBlocked'>): Promise<boolean> {
   if ((options.storageBlocked ?? siteStorageBlocked)()) {
     safeWarn('storage.opfs_unavailable', 'site storage blocked');
     return false;
