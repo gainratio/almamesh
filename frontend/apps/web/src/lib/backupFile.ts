@@ -16,6 +16,8 @@ interface BackupWritable {
 interface BackupFileHandle {
   createWritable(): Promise<BackupWritable>;
   getFile(): Promise<File>;
+  /** Chromium only: delete the file this handle points at. */
+  remove?(): Promise<void>;
 }
 
 interface SaveFilePickerOptions {
@@ -49,6 +51,8 @@ const SQLITE_PICKER_TYPE: BackupPickerType = {
 };
 
 const ALL_BACKUP_PICKER_TYPES = [ALMAMESH_PICKER_TYPE, SQLITE_PICKER_TYPE, JSON_PICKER_TYPE];
+/** FileSaver.js's figure: WebKit can read a download's Blob URL long after the click. */
+const DOWNLOAD_BLOB_URL_LIFETIME_MS = 40_000;
 /** Give Safari's file input time to publish `change` after the window refocuses. */
 const FILE_PICKER_CANCEL_GRACE_MS = 300;
 const SQLITE_HEADER = new Uint8Array([
@@ -108,31 +112,95 @@ function mimeTypeFor(suggestedName: string, content: BackupFileContent): string 
     : 'application/json';
 }
 
+export type BackupSaveResult = 'saved' | 'cancelled' | 'unverified';
+
+/**
+ * Where a backup will be saved, chosen BEFORE the backup is built.
+ *
+ * Chrome's save picker needs transient user activation, which expires about
+ * 5 s after the click. Building a backup (flush, SQLite export, validation,
+ * PBKDF2) can take longer than that on a slow phone, so the picker is opened
+ * first, inside the click, and the bytes are written to it afterwards.
+ */
+export interface BackupSaveTarget {
+  /** Resolves once the user picked a place ('chosen') or dismissed the picker. */
+  readonly choice: Promise<'chosen' | 'cancelled'>;
+  /** Write the finished backup. The download fallback cannot prove completion: 'unverified'. */
+  write(content: BackupFileContent): Promise<BackupSaveResult>;
+  /** Nothing will be written (the backup failed): remove the empty file the picker made. */
+  discard(): Promise<void>;
+}
+
+function hasSavePicker(): boolean {
+  return typeof window !== 'undefined' && 'showSaveFilePicker' in window;
+}
+
+function pickerSaveTarget(suggestedName: string, type: BackupPickerType): BackupSaveTarget {
+  // Called synchronously by the click handler: this line is the gesture.
+  const handle = (window as unknown as FileSystemAccessWindow).showSaveFilePicker({
+    suggestedName,
+    types: [type],
+  });
+  const choice = handle.then(
+    () => 'chosen' as const,
+    (error: unknown) => {
+      if (isAbortError(error)) return 'cancelled' as const;
+      throw error;
+    },
+  );
+  return {
+    choice,
+    async write(content) {
+      if ((await choice) === 'cancelled') return 'cancelled';
+      try {
+        const writable = await (await handle).createWritable();
+        await writable.write(content);
+        await writable.close();
+        return 'saved';
+      } catch (error) {
+        if (isAbortError(error)) return 'cancelled';
+        throw error;
+      }
+    },
+    async discard() {
+      if ((await choice.catch(() => 'cancelled')) === 'cancelled') return;
+      // Best effort: only Chromium can delete it, and a leftover empty file is harmless.
+      await (await handle).remove?.().catch(() => undefined);
+    },
+  };
+}
+
+function downloadSaveTarget(suggestedName: string): BackupSaveTarget {
+  return {
+    choice: Promise.resolve('chosen'),
+    async write(content) {
+      downloadFile(suggestedName, content);
+      // The anchor-download fallback has no completion event. A normal export can
+      // report that it started, while a destructive restore must ask the user to
+      // confirm the safety file actually appeared.
+      return 'unverified';
+    },
+    discard: async () => undefined,
+  };
+}
+
+/** Open the save picker NOW (call this first, inside the click), write later. */
+export function openBackupSaveTarget(suggestedName: string): BackupSaveTarget {
+  return hasSavePicker()
+    ? pickerSaveTarget(suggestedName, pickerTypeFor(suggestedName, ''))
+    : downloadSaveTarget(suggestedName);
+}
+
+/** Pick a place and save in one step (the backup is already built). */
 export async function saveBackupFile(
   suggestedName: string,
   content: BackupFileContent,
-): Promise<'saved' | 'cancelled' | 'unverified'> {
-  if (typeof window !== 'undefined' && 'showSaveFilePicker' in window) {
-    try {
-      const handle = await (window as unknown as FileSystemAccessWindow).showSaveFilePicker({
-        suggestedName,
-        types: [pickerTypeFor(suggestedName, content)],
-      });
-      const writable = await handle.createWritable();
-      await writable.write(content);
-      await writable.close();
-      return 'saved';
-    } catch (error) {
-      if (isAbortError(error)) return 'cancelled';
-      throw error;
-    }
-  }
-
-  downloadFile(suggestedName, content);
-  // The anchor-download fallback has no completion event. A normal export can
-  // report that it started, while a destructive restore must ask the user to
-  // confirm the safety file actually appeared.
-  return 'unverified';
+): Promise<BackupSaveResult> {
+  const target = hasSavePicker()
+    ? pickerSaveTarget(suggestedName, pickerTypeFor(suggestedName, content))
+    : downloadSaveTarget(suggestedName);
+  if ((await target.choice) === 'cancelled') return 'cancelled';
+  return target.write(content);
 }
 
 function downloadFile(suggestedName: string, content: BackupFileContent): void {
@@ -148,8 +216,9 @@ function downloadFile(suggestedName: string, content: BackupFileContent): void {
   document.body.appendChild(anchor);
   anchor.click();
   anchor.remove();
-  // Safari may not consume the Blob URL until the click task completes.
-  globalThis.setTimeout(() => URL.revokeObjectURL(url), 0);
+  // WebKit may read the Blob URL well after the click task; revoking it early
+  // silently empties the download.
+  globalThis.setTimeout(() => URL.revokeObjectURL(url), DOWNLOAD_BLOB_URL_LIFETIME_MS);
 }
 
 export async function pickBackupFile(): Promise<BackupFileContent | null> {
@@ -177,6 +246,7 @@ function pickFileViaInput(): Promise<BackupFileContent | null> {
     input.accept = 'application/vnd.almamesh.backup,application/vnd.sqlite3,application/json,.almamesh,.sqlite3,.sqlite,.db,.json';
 
     let settled = false;
+    let reading = false;
     let focusTimer: ReturnType<typeof setTimeout> | undefined;
     const settle = (value: BackupFileContent | null) => {
       if (settled) return;
@@ -185,19 +255,39 @@ function pickFileViaInput(): Promise<BackupFileContent | null> {
       window.removeEventListener('focus', onFocus);
       resolve(value);
     };
+    const fail = (error: unknown) => {
+      if (settled) return;
+      settled = true;
+      window.removeEventListener('focus', onFocus);
+      reject(error instanceof Error ? error : new Error(String(error)));
+    };
+    // Once a file is chosen, only its read settles the pick: a multi-MB read
+    // on a slow phone outlasts any refocus grace and must never become "cancelled".
+    const read = (file: File) => {
+      if (reading || settled) return;
+      reading = true;
+      clearTimeout(focusTimer);
+      readBackupFile(file).then(settle, fail);
+    };
     const onChange = () => {
       const file = input.files?.[0];
       if (file === undefined) {
         settle(null);
         return;
       }
-      void readBackupFile(file).then(settle, reject);
+      read(file);
     };
-    // Refocus without a `change` means the dialog was dismissed. If a real
-    // selection wins the race, settle() cancels this timer. Safari can emit
-    // focus before change, so do not treat the first refocus task as a cancel.
+    // Refocus without a selection means the dialog was dismissed. iOS Safari
+    // refocuses BEFORE it dispatches `change`, sometimes by seconds, but the
+    // chosen file is already on `input.files`: read it rather than cancel.
     const onFocus = () => {
-      focusTimer = setTimeout(() => settle(null), FILE_PICKER_CANCEL_GRACE_MS);
+      clearTimeout(focusTimer);
+      focusTimer = setTimeout(() => {
+        if (reading) return;
+        const file = input.files?.[0];
+        if (file === undefined) settle(null);
+        else read(file);
+      }, FILE_PICKER_CANCEL_GRACE_MS);
     };
 
     input.addEventListener('change', onChange, { once: true });
