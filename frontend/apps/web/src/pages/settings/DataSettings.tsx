@@ -15,7 +15,7 @@
  * It reshapes the typed refusals (BackupError / BackupCryptoError) into i18n
  * messages and owns the confirm + passphrase-prompt dialogs.
  */
-import { useState, useSyncExternalStore } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   armPortableImportRevision,
@@ -23,10 +23,7 @@ import {
   BackupError,
   clearPortableImportRevisionFence,
   PortableStateUnavailableError,
-  portableStatePersistence,
   readPortableStateRevision,
-  subscribePortableStatePersistence,
-  type PortableStatePersistence,
 } from '@almamesh/store';
 import { Button, Card, Dialog, Input } from '../../components/ui';
 import {
@@ -55,11 +52,7 @@ function reasonOf(error: unknown): string {
   return error instanceof Error && error.message ? error.message : String(error);
 }
 
-export interface DataSettingsProps {
-  readonly persistence: PortableStatePersistence;
-}
-
-export function DataSettingsPanel({ persistence }: DataSettingsProps) {
+export function DataSettingsPanel() {
   const { t } = useTranslation('settings');
 
   // Export
@@ -194,10 +187,6 @@ export function DataSettingsPanel({ persistence }: DataSettingsProps) {
 
   async function handleImport() {
     clearBanners();
-    if (persistence === 'memory') {
-      setError(t('backup.error_import_requires_durable_storage'));
-      return;
-    }
     try {
       const content = await pickBackupFile();
       if (content == null) return;
@@ -403,20 +392,10 @@ export function DataSettingsPanel({ persistence }: DataSettingsProps) {
             type="button"
             variant="outline"
             onClick={() => void handleImport()}
-            disabled={persistence === 'memory'}
             data-testid="backup-import-button"
           >
             {t('backup.import_button')}
           </Button>
-          {persistence === 'memory' && (
-            <p
-              role="note"
-              data-testid="backup-import-memory-warning"
-              className="text-sm text-status-warning"
-            >
-              {t('backup.error_import_requires_durable_storage')}
-            </p>
-          )}
         </div>
       </Card>
 
@@ -589,10 +568,5 @@ export function DataSettingsPanel({ persistence }: DataSettingsProps) {
 }
 
 export default function DataSettings() {
-  const persistence = useSyncExternalStore(
-    subscribePortableStatePersistence,
-    portableStatePersistence,
-    portableStatePersistence,
-  );
-  return <DataSettingsPanel persistence={persistence} />;
+  return <DataSettingsPanel />;
 }

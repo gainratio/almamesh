@@ -8,6 +8,7 @@ import {
   type AlmaSyncEngine,
   clearAlmaBundleCache,
   createAlmaSyncEngine,
+  EngineCacheNotDurableError,
 } from "../edgeprocClient";
 
 class FakeWorker implements EngineWorkerLike {
@@ -106,7 +107,13 @@ describe("AlmaMesh edgeproc adapter", () => {
     expect(worker.sent[0]).not.toHaveProperty("storageBackend");
   });
 
-  it("reports the in-memory SQLite cache to the exit gate when asked", async () => {
+  // CONTRACT REVERSED (2026-10-05, product rule "SQLite on OPFS or no dice"):
+  // this test used to require that a sync on the in-memory SQLite cache
+  // resolved (and was merely reported). @gainratio/browser 0.3.0 cannot be told
+  // to refuse its memory cache, so the adapter fails closed after the fact:
+  // the engine never runs on a cache that vanishes with the Worker. The exit
+  // gate still sees which cache was chosen, as a diagnostic.
+  it("fails closed on the in-memory SQLite cache, still reporting it to the exit gate", async () => {
     globals.__EDGEPROC_REPORT_CACHE__ = true;
     const worker = new FakeWorker();
     const engine = createAlmaSyncEngine(worker);
@@ -126,7 +133,10 @@ describe("AlmaMesh edgeproc adapter", () => {
       },
     });
 
-    await pending;
+    await expect(pending).rejects.toBeInstanceOf(EngineCacheNotDurableError);
+    await expect(pending).rejects.toThrow(
+      "The engine cache is not durable (sqlite-memory); AlmaMesh runs only on SQLite in OPFS.",
+    );
     expect(globals.__EDGEPROC_SELECTED_CACHE__).toBe("sqlite-memory");
     expect(globals.__EDGEPROC_CACHE_STORAGE__).toEqual({
       persistence: "memory",
@@ -135,6 +145,26 @@ describe("AlmaMesh edgeproc adapter", () => {
     });
     engine.terminate();
     expect(worker.terminated).toBe(true);
+  });
+
+  it("fails closed on the in-memory cache even when the exit gate did not ask", async () => {
+    const worker = new FakeWorker();
+    const pending = createAlmaSyncEngine(worker).sync("/bundle", "/public.key", "almamesh", "stable");
+    worker.reply({
+      ok: true,
+      id: worker.sent[0]?.id ?? 0,
+      kind: "sync",
+      result: {
+        version: "v1",
+        manifestHash: "a".repeat(64),
+        chunksFetched: 2,
+        chunksReused: 0,
+        bytesFetched: 1024,
+        cacheBackend: "sqlite-memory",
+        cacheStorage: { persistence: "memory", reason: "opfs-unavailable", detail: "UnknownError" },
+      },
+    });
+    await expect(pending).rejects.toBeInstanceOf(EngineCacheNotDurableError);
   });
 
   it("publishes nothing when the exit gate did not ask", async () => {

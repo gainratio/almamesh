@@ -302,7 +302,6 @@
     "error_export_failed": "La exportación falló: {{reason}}",
     "error_stage_failed": "No se pudo leer esa copia: {{reason}}",
     "error_import_failed": "La restauración falló: {{reason}}. No se reemplazó nada; inténtalo de nuevo o restaura la copia de seguridad.",
-    "error_import_requires_durable_storage": "La importación necesita almacenamiento duradero del navegador. Abre AlmaMesh en una ventana normal donde el almacenamiento local esté disponible; una restauración solo de sesión desaparecería al recargar.",
     "set_aside_heading": "Registros apartados",
     "set_aside_hint": "Estos registros pertenecen a personas que ya no están en este dispositivo. AlmaMesh los guarda aquí hasta que los restaures o los elimines, y nunca los borra por su cuenta. No se incluyen en las copias de seguridad: para llevar uno a otro dispositivo, primero restáuralo a una persona y luego exporta.",
     "set_aside_events_one": "{{count}} evento de vida",

@@ -517,15 +517,18 @@ async function canonicalOnlyExport(values: ReadonlyMap<string, string>): Promise
   }
 }
 
-/** 'memory' is the session-only fallback for browsers that refuse OPFS (see portablePersistence.ts). */
-export async function openPortableStateRepository(
-  persistence: 'opfs' | 'memory' = 'opfs',
-): Promise<PortableStateRepository> {
+/**
+ * The canonical app-data store: SQLite on OPFS, always. There is no in-memory
+ * mode for app data; a browser that refuses OPFS is blocked until the user
+ * allows storage (see portablePersistence.ts). The 'memory' stores elsewhere in
+ * this file are short-lived scratch files that validate or build an export.
+ */
+export async function openPortableStateRepository(): Promise<PortableStateRepository> {
   return new PortableStateRepository(
     await createSqliteStateStore({
       name: PORTABLE_STATE_DATABASE,
       initialSchemaVersion: PORTABLE_STATE_SCHEMA_VERSION,
-      persistence,
+      persistence: 'opfs',
     }),
     validatePortableExportDatabase,
     canonicalOnlyExport,
@@ -535,8 +538,8 @@ export async function openPortableStateRepository(
 /**
  * Rewrite an exported file so it holds only live rows. A deleted row's bytes
  * otherwise stay in SQLite's free pages: the OPFS database runs with
- * secure_delete, but the in-memory fallback (OPFS refused) does not, and a
- * backup taken there after Start fresh still carried the deleted profile.
+ * secure_delete, but the old in-memory fallback (removed 2026-10-05) did not,
+ * and a backup taken there after Start fresh carried the deleted profile.
  * Importing into a fresh in-memory database writes live rows to new pages
  * only; the copy's own epoch differs by the import and nothing reads it.
  */

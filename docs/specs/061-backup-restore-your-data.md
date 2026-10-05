@@ -172,8 +172,9 @@ scope until they can preserve the same atomicity and deletion guarantees.
 - No backup bytes are uploaded; save and open happen entirely in the browser.
 - Export requires encryption; there is no normal plaintext export action.
 - Import stages before commit and never partially applies a malformed file.
-- Import requires durable SQLite storage. The action is disabled in the
-  session-only memory fallback because reload would erase the restored state.
+- Import requires durable SQLite storage. There is no session-only memory
+  fallback (2026-10-05): when OPFS is refused the app shows its storage block
+  screen, so Import and Export are never reachable without durable SQLite.
 - Wrong-passphrase, tamper, unsupported-version, oversized-file, invalid-SQLite,
   and foreign-row failures leave existing data unchanged.
 - Restore carries deletion/generation metadata so another tab cannot resurrect

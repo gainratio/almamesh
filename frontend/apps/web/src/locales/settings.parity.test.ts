@@ -34,7 +34,7 @@ describe('settings backup copy is all in use', () => {
         }
       }
     };
-    walk(join(__dirname, '..'));
+    walk(join(import.meta.dirname, '..'));
     const corpus = sources.join('\n');
     const backup = (en as { backup: Record<string, unknown> }).backup;
     // i18next plural forms (`_one`, `_other`) are referenced by their base key.

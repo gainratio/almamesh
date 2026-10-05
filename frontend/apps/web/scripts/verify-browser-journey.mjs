@@ -111,10 +111,10 @@ async function bodyText(page) {
   return (await page.locator('body').innerText().catch(() => '')).replace(/\s+/g, ' ').slice(0, 300)
 }
 
-/** Which storage the app says it is on: opfs (no note) or memory. */
+/** Whether the app is running, or showing its storage block screen (and why). */
 async function storageNote(page) {
-  const note = page.getByTestId('ephemeral-storage-notice')
-  return (await note.isVisible().catch(() => false)) ? await note.getAttribute('data-durability') : 'opfs'
+  const notice = page.getByTestId('storage-blocked-notice')
+  return (await notice.isVisible().catch(() => false)) ? `blocked:${await notice.getAttribute('data-reason')}` : 'opfs'
 }
 
 const seconds = (milliseconds) => `${(milliseconds / 1000).toFixed(1)}s`

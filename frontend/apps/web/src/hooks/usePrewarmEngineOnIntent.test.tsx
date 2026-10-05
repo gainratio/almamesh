@@ -5,6 +5,14 @@ import type { BootStage, ChartEngine, OnStage, RuntimeConfig } from '@almamesh/b
 import { AlmaMeshRuntimeProvider } from '../providers/AlmaMeshRuntimeProvider'
 import { usePrewarmEngineOnIntent } from './usePrewarmEngineOnIntent'
 
+// The engine boots only once canonical SQLite is durable on OPFS; these tests
+// are about other behavior, so storage is ready from the start.
+vi.mock('@almamesh/store', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@almamesh/store')>()),
+  portableStatePersistence: () => 'opfs',
+  subscribePortableStatePersistence: () => () => undefined,
+}))
+
 // Keep the provider on the landing path so its mount does NOT auto-boot; this
 // isolates the boot calls to the ones the prewarm hook makes.
 vi.mock('../lib/localChart', () => ({

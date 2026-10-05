@@ -28,6 +28,14 @@ import {
   useEngineBootProgress,
 } from '../chartEngineContext';
 
+// The engine boots only once canonical SQLite is durable on OPFS; these tests
+// are about other behavior, so storage is ready from the start.
+vi.mock('@almamesh/store', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@almamesh/store')>()),
+  portableStatePersistence: () => 'opfs',
+  subscribePortableStatePersistence: () => () => undefined,
+}))
+
 beforeEach(() => {
   vi.useFakeTimers();
   window.history.pushState({}, '', '/onboarding');

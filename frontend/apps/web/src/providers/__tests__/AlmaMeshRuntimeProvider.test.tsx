@@ -24,11 +24,36 @@ const { recoverSeveredServiceWorkerChannel } = vi.hoisted(() => ({
 }));
 vi.mock('../../lib/swSelfHeal', () => ({ recoverSeveredServiceWorkerChannel }));
 
+// The engine only boots once canonical SQLite is durable on OPFS. Every test
+// here starts with storage ready; the gating tests drive it explicitly.
+const storage = vi.hoisted(() => {
+  const listeners = new Set<() => void>();
+  const state = { current: 'opfs' as 'pending' | 'opfs' | 'blocked' | 'unavailable' };
+  return {
+    state,
+    listeners,
+    set(next: typeof state.current) {
+      state.current = next;
+      for (const listener of listeners) listener();
+    },
+  };
+});
+vi.mock('@almamesh/store', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@almamesh/store')>()),
+  portableStatePersistence: () => storage.state.current,
+  subscribePortableStatePersistence: (listener: () => void) => {
+    storage.listeners.add(listener);
+    return () => storage.listeners.delete(listener);
+  },
+}));
+
 // The provider gates its mount auto-boot off the marketing landing route
 // (path "/" with no saved chart). These tests assert the auto-boot / recovery
 // contract, so they must render on a NON-landing route — otherwise the gate
 // (correctly) skips the mount boot. Pin a non-landing path for every test here.
 beforeEach(() => {
+  storage.state.current = 'opfs';
+  storage.listeners.clear();
   window.history.pushState({}, '', '/onboarding');
   clearRuntimeGenerator();
 });
@@ -98,6 +123,70 @@ function Probe({ capture }: { capture: (v: ReturnType<typeof useChartEngine>) =>
     </div>
   );
 }
+
+describe('AlmaMeshRuntimeProvider — durable storage gate', () => {
+  it('does not boot the engine while storage is blocked, and boots once it becomes OPFS', async () => {
+    storage.state.current = 'blocked';
+    const runtime = makeFakeRuntime([(onStage) => {
+      onStage({ kind: 'ready' } as BootStage);
+      return Promise.resolve(makeFakeEngine('gated'));
+    }]);
+
+    render(
+      <AlmaMeshRuntimeProvider runtime={runtime}>
+        <Probe capture={() => {}} />
+      </AlmaMeshRuntimeProvider>,
+    );
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    expect(runtime.bootstrapCalls).toBe(0);
+    expect(screen.getByTestId('engine').textContent).toBe('no-engine');
+
+    act(() => storage.set('pending'));
+    expect(runtime.bootstrapCalls).toBe(0);
+
+    act(() => storage.set('opfs'));
+    await waitFor(() => expect(screen.getByTestId('engine').textContent).toBe('engine-ready'));
+    expect(runtime.bootstrapCalls).toBe(1);
+  });
+
+  it('never boots and surfaces an error when storage is unavailable', async () => {
+    storage.state.current = 'blocked';
+    const runtime = makeFakeRuntime([() => Promise.resolve(makeFakeEngine('never'))]);
+
+    render(
+      <AlmaMeshRuntimeProvider runtime={runtime}>
+        <Probe capture={() => {}} />
+      </AlmaMeshRuntimeProvider>,
+    );
+    act(() => storage.set('unavailable'));
+
+    await waitFor(() =>
+      expect(screen.getByTestId('error').textContent).toBe(
+        'Durable storage is unavailable; the engine needs SQLite on OPFS.',
+      ),
+    );
+    expect(runtime.bootstrapCalls).toBe(0);
+  });
+
+  it('does not boot a disposed runtime when storage becomes ready after unmount', async () => {
+    storage.state.current = 'blocked';
+    const runtime = makeFakeRuntime([() => Promise.resolve(makeFakeEngine('late'))]);
+    const view = render(
+      <AlmaMeshRuntimeProvider runtime={runtime}>
+        <Probe capture={() => {}} />
+      </AlmaMeshRuntimeProvider>,
+    );
+    view.unmount();
+    act(() => storage.set('opfs'));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    expect(runtime.bootstrapCalls).toBe(0);
+  });
+});
 
 describe('AlmaMeshRuntimeProvider — retryable bootstrap', () => {
   it('exposes reboot() and whenReady() on the context value', async () => {

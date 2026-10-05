@@ -41,6 +41,7 @@ export * from './rectificationRecords';
 export * from './contentMode';
 export * from './language';
 export {
+  checkPortableStorageAgain,
   portableStatePersistence,
   subscribePortableStatePersistence,
   type PortableStatePersistence,

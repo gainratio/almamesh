@@ -25,12 +25,16 @@
  *
  * A second blocked realm refuses ONLY the Origin Private File System while
  * localStorage and IndexedDB keep working: Safari Private Browsing, older iOS,
- * some embedded WebViews, and every throwaway Playwright WebKit context. Until
- * 2026-10-01 the dashboard hung there forever on "Loading Your Chart": the
- * SQLite Worker refused to open, zustand persist never finished hydrating, and
- * nothing said why. This pass onboards for real and, within a fixed time
- * bound, requires the dashboard chart plus a visible "won't be saved" note.
- * It runs in every browser (no --journey needed): it never touches OPFS.
+ * some embedded WebViews, and every throwaway Playwright WebKit context.
+ * SQLite on OPFS is the only place AlmaMesh keeps data (Harish, 2026-10-05:
+ * "sqlite persistent is the only option"), so this realm must show the block
+ * screen within a time bound: no in-memory SQLite, no engine, no IndexedDB.
+ * The screen must say AlmaMesh needs permission to store data on this device,
+ * never claim AlmaMesh uses cookies, list numbered steps for this browser, and
+ * offer "Allow storage" and "Check again". Once storage is allowed, "Check
+ * again" must continue into the app without reloading the page.
+ *
+ * STORAGE_BLOCKED_SCREENSHOT_DIR=<dir> saves both block screens as PNGs.
  *
  * Usage:
  *   node scripts/verify-storage-blocked.mjs http://127.0.0.1:4200 --browser=webkit
@@ -75,10 +79,19 @@ function blockSiteStorage() {
   }
 }
 
-/** Runs before any app script: OPFS refuses, Web Storage and IndexedDB still work. */
-function refuseOpfsOnly() {
+const ONBOARDED_NAME = 'Reference Native'
+
+/**
+ * Runs before any app script: OPFS refuses until the test flips
+ * `window.__allowOpfs`, so "Check again" can be proven without a reload.
+ */
+function refuseOpfsUntilAllowed() {
   if (typeof globalThis.StorageManager === 'undefined') return
+  const real = globalThis.StorageManager.prototype.getDirectory
+  window.__allowOpfs = false
+  window.__loadMarker = Math.random()
   globalThis.StorageManager.prototype.getDirectory = function getDirectory() {
+    if (window.__allowOpfs) return real.call(this)
     return Promise.reject(new globalThis.DOMException(
       'The operation failed for an unknown transient reason (e.g. out of memory).',
       'UnknownError',
@@ -86,93 +99,30 @@ function refuseOpfsOnly() {
   }
 }
 
-const ONBOARDED_NAME = 'Reference Native'
-const BACKUP_PASSPHRASE = 'storage blocked passphrase'
+/** The block screen must never claim AlmaMesh uses cookies (it doesn't). */
+const COOKIE_CLAIM = /\b(we|almamesh)\s+(use|uses|store|stores|set|sets)\s+cookies\b/i
+const PERMISSION_COPY = /permission to store data on this device/i
 
-/**
- * Runs in the page before any app script: decrypt every exported backup
- * (format v3: authenticated 64-byte header, PBKDF2 + AES-GCM, plaintext is the
- * SQLite file) and record whether the onboarded name's bytes are in it.
- */
-function captureBackups({ passphrase, needle }) {
-  // Chromium would open its native save picker; force the download path.
-  for (let target = window; target; target = Object.getPrototypeOf(target)) {
-    Reflect.deleteProperty(target, 'showSaveFilePicker')
-  }
-  const createObjectUrl = URL.createObjectURL.bind(URL)
-  URL.createObjectURL = (blob) => {
-    window.__backupHasNeedle = blob.arrayBuffer().then(async (buffer) => {
-      const file = new Uint8Array(buffer)
-      const header = file.slice(0, 64)
-      const iterations = new DataView(header.buffer).getUint32(16, false)
-      const base = await window.crypto.subtle.importKey('raw', new window.TextEncoder().encode(passphrase), 'PBKDF2', false, ['deriveKey'])
-      const key = await window.crypto.subtle.deriveKey(
-        { name: 'PBKDF2', hash: 'SHA-256', salt: header.slice(36, 52), iterations },
-        base, { name: 'AES-GCM', length: 256 }, false, ['decrypt'],
-      )
-      const bytes = new Uint8Array(await window.crypto.subtle.decrypt(
-        { name: 'AES-GCM', iv: header.slice(52, 64), additionalData: header }, key, file.slice(64),
-      ))
-      const target = new window.TextEncoder().encode(needle)
-      return bytes.some((_, offset) => target.every((value, index) => bytes[offset + index] === value))
-    })
-    return createObjectUrl(blob)
-  }
-}
+/** How long the block screen may take to appear when OPFS is refused (no hang, no RAM fallback). */
+const BLOCK_SCREEN_BUDGET_MS = 20_000
 
-/**
- * Client-side navigation (a full load would start a new in-memory database),
- * repeated until `readyTestId` shows: on a slow device a redirect still in
- * flight from the previous screen (Start fresh -> /) can override the first.
- */
-async function navigateInApp(page, path, readyTestId) {
-  for (let attempt = 0; attempt < 4; attempt += 1) {
-    await page.evaluate((target) => {
-      window.history.pushState({}, '', target)
-      window.dispatchEvent(new window.PopStateEvent('popstate'))
-    }, path)
-    const ready = await page.getByTestId(readyTestId).first()
-      .waitFor({ state: 'visible', timeout: 20_000 }).then(() => true, () => false)
-    if (ready) return
-  }
+/** Assert the block screen is the whole story: clear copy, numbered steps, both buttons. */
+async function expectBlockScreen(page, label) {
+  const notice = page.getByTestId('storage-blocked-notice')
+  await notice.waitFor({ state: 'visible', timeout: BLOCK_SCREEN_BUDGET_MS }).catch(() => undefined)
   const screen = (await page.locator('body').innerText().catch(() => '')).replace(/\s+/g, ' ').slice(0, 400)
-  throw new Error(`in-app navigation to ${path} never showed ${readyTestId} (${page.url()}); screen: ${screen}`)
+  invariant(await notice.isVisible(), `${label}: no storage-blocked screen within ${BLOCK_SCREEN_BUDGET_MS} ms: ${screen}`)
+  const text = await notice.innerText()
+  invariant(PERMISSION_COPY.test(text), `${label}: the screen does not say AlmaMesh needs permission to store data: ${text}`)
+  invariant(!COOKIE_CLAIM.test(text), `${label}: the screen claims AlmaMesh uses cookies: ${text}`)
+  const steps = await notice.locator('ol li').count()
+  invariant(steps >= 2, `${label}: expected numbered steps for this browser, found ${steps}`)
+  invariant(await page.getByTestId('storage-allow-button').isVisible(), `${label}: no "Allow storage" button`)
+  invariant(await page.getByTestId('storage-check-again-button').isVisible(), `${label}: no "Check again" button`)
+  invariant(!(await page.getByTestId('name-input').isVisible().catch(() => false)), `${label}: the app ran behind the block screen`)
+  const browserBranch = await notice.locator('[data-browser]').first().getAttribute('data-browser').catch(() => null)
+  return { reason: await notice.getAttribute('data-reason'), browserBranch, steps }
 }
-
-/**
- * Runs in the page: every IndexedDB record and localStorage value that
- * contains the onboarded name. SQLite (here in memory) is the only allowed home.
- */
-async function findUserDataOutsideSqlite(needle) {
-  const leaks = []
-  for (let index = 0; index < localStorage.length; index += 1) {
-    const key = localStorage.key(index)
-    if (String(localStorage.getItem(key)).includes(needle)) leaks.push(`localStorage:${key}`)
-  }
-  const settle = (request) => new Promise((resolve, reject) => {
-    request.onsuccess = () => resolve(request.result)
-    request.onerror = () => reject(request.error)
-  })
-  for (const { name } of await indexedDB.databases()) {
-    if (!name) continue
-    const database = await settle(indexedDB.open(name))
-    try {
-      for (const storeName of database.objectStoreNames) {
-        const values = await settle(database.transaction(storeName).objectStore(storeName).getAll())
-        const text = (value) => {
-          try { return typeof value === 'string' ? value : JSON.stringify(value) } catch { return '' }
-        }
-        if (values.some((value) => text(value).includes(needle))) leaks.push(`indexedDB:${name}/${storeName}`)
-      }
-    } finally {
-      database.close()
-    }
-  }
-  return leaks
-}
-
-/** Total budget from finishing onboarding to a rendered chart in an OPFS-less realm. */
-const OPFS_REFUSED_CHART_BUDGET_MS = 120_000
 
 async function typeSections(page, testId, digits, trailing) {
   await page.locator(`[data-testid="${testId}"] [role="spinbutton"]`).first().click()
@@ -233,76 +183,76 @@ try {
     await notice.waitFor({ state: 'visible', timeout: 15_000 }).catch(() => undefined)
     invariant(visited.pageErrors.length === 0, `blocked storage threw on ${path}: ${visited.pageErrors.join(' | ')}`)
     invariant(await notice.isVisible(), `${path} showed no storage-blocked notice (blank page?)`)
-    const noticeText = await notice.innerText()
-    invariant(/cookies/i.test(noticeText), `${path} notice does not say what to change: ${noticeText}`)
+    const shown = await expectBlockScreen(visited.page, `block-all ${path}`)
+    if (process.env.STORAGE_BLOCKED_SCREENSHOT_DIR && path === '/onboarding') {
+      await visited.page.screenshot({
+        path: join(process.env.STORAGE_BLOCKED_SCREENSHOT_DIR, `block-all-${BROWSER_NAME}.png`),
+        fullPage: true,
+      })
+    }
+    console.log(`storage-blocked: block-all ${path} -> ${JSON.stringify(shown)}`)
   }
   await blocked.close()
 
-  const opfsRefused = await browser.newContext({ serviceWorkers: 'block' })
-  await opfsRefused.addInitScript(refuseOpfsOnly)
-  await opfsRefused.addInitScript(captureBackups, { passphrase: BACKUP_PASSPHRASE, needle: ONBOARDED_NAME })
+  // CONTRACT REVERSED (2026-10-05, Harish: "sqlite persistent is the only
+  // option"). This realm used to require an in-memory SQLite chart plus an
+  // ephemeral "won't be saved" note. OPFS refused now means the block screen,
+  // within a time bound: no app, no engine, no IndexedDB, no RAM SQLite. Then
+  // storage is allowed and "Check again" must move into the app WITHOUT a reload.
+  // A persistent profile, so OPFS really works once the init script stops
+  // refusing it (an ephemeral WebKit context refuses OPFS by itself). Linux
+  // Playwright WebKit has no nested-Worker OPFS even then: there the allow leg
+  // is skipped and said so; the block leg runs everywhere.
+  const canAllowOpfs = BROWSER_NAME !== 'webkit' || process.platform !== 'linux'
+  const refusedProfile = mkdtempSync(join(tmpdir(), 'almamesh-opfs-refused-'))
+  const opfsRefused = await browserType.launchPersistentContext(refusedProfile, { headless: true, serviceWorkers: 'block' })
+  await opfsRefused.addInitScript(refuseOpfsUntilAllowed)
   try {
     const visited = await visit(opfsRefused, '/onboarding')
-    await visited.page.getByTestId('name-input').waitFor({ state: 'visible', timeout: 30_000 })
-    await onboard(visited.page)
+    const engineWorkers = []
+    visited.page.on('worker', (worker) => {
+      if (/edgeproc|pyodide|chart|engine/i.test(worker.url())) engineWorkers.push(worker.url())
+    })
     const started = Date.now()
-    const chart = visited.page.getByTestId('chart-visualization').first()
-    const outcome = await Promise.race([
-      chart.waitFor({ state: 'visible', timeout: OPFS_REFUSED_CHART_BUDGET_MS }).then(() => 'chart'),
-      visited.page.getByTestId('storage-blocked-notice')
-        .waitFor({ state: 'visible', timeout: OPFS_REFUSED_CHART_BUDGET_MS }).then(() => 'notice'),
-    ]).catch(() => 'hang')
+    const shown = await expectBlockScreen(visited.page, 'OPFS refused')
     const seconds = ((Date.now() - started) / 1000).toFixed(1)
+    invariant(shown.reason === 'storage-blocked', `OPFS refused: expected data-reason storage-blocked, got ${shown.reason}`)
     if (process.env.STORAGE_BLOCKED_SCREENSHOT_DIR) {
       await visited.page.screenshot({
         path: join(process.env.STORAGE_BLOCKED_SCREENSHOT_DIR, `opfs-refused-${BROWSER_NAME}.png`),
+        fullPage: true,
       })
     }
-    const bodyText = (await visited.page.locator('body').innerText()).replace(/\s+/g, ' ').slice(0, 300)
-    invariant(outcome !== 'hang', `OPFS refused: no chart and no notice after ${seconds}s (hang): ${bodyText}`)
-    invariant(outcome === 'chart', `OPFS refused: expected the in-memory fallback chart, got the blocked notice: ${bodyText}`)
-    const note = visited.page.getByTestId('ephemeral-storage-notice')
-    invariant(await note.isVisible(), 'OPFS refused: chart rendered without the "will not be saved" note')
-    invariant(/export/i.test(await note.innerText()), 'OPFS refused: the ephemeral note does not suggest exporting')
-    invariant(
-      (await note.getAttribute('data-durability')) === 'memory',
-      'OPFS refused: the app does not report in-memory SQLite as its storage mode',
-    )
-    // SQLite is the only store. In memory mode nothing may quietly land in
-    // IndexedDB or localStorage instead (Harish, 2026-10-04).
-    const leaks = await visited.page.evaluate(findUserDataOutsideSqlite, ONBOARDED_NAME)
-    invariant(leaks.length === 0, `OPFS refused: user data written outside SQLite: ${leaks.join(', ')}`)
-    // Deleted data must not survive inside the SQLite file a backup carries.
-    // In memory SQLite has no secure_delete, so the freed pages kept the bytes.
-    await navigateInApp(visited.page, '/settings/preferences', 'reset-start-fresh')
-    await visited.page.getByTestId('reset-start-fresh').click()
-    await visited.page.getByTestId('reset-confirm').click()
-    await visited.page.getByTestId('landing-nav-cta').waitFor({ state: 'visible', timeout: 30_000 })
-    await navigateInApp(visited.page, '/settings/data', 'backup-passphrase-input')
-    await visited.page.getByTestId('backup-passphrase-input').fill(BACKUP_PASSPHRASE)
-    await visited.page.getByTestId('backup-export-button').click()
-    await visited.page.waitForFunction(() => window.__backupHasNeedle !== undefined, null, { timeout: 60_000 })
-    invariant(
-      !(await visited.page.evaluate(() => window.__backupHasNeedle)),
-      'OPFS refused: a backup exported after Start fresh still contains the deleted profile name',
-    )
-    // Honest, not hopeful: a reload loses the session and still says so.
-    await visited.page.reload({ waitUntil: 'load' })
-    await note.waitFor({ state: 'visible', timeout: 30_000 })
-    invariant(
-      !(await visited.page.getByText(ONBOARDED_NAME).first().isVisible().catch(() => false)),
-      'OPFS refused: data survived a reload although the note says it does not',
-    )
-    await note.getByRole('link').click()
-    await visited.page.waitForURL('**/settings/data', { timeout: 15_000 })
-    invariant(
-      !(await visited.page.getByTestId('storage-blocked-notice').isVisible()),
-      'OPFS refused: the export link led to a blocked-storage notice',
-    )
-    invariant(visited.pageErrors.length === 0, `OPFS refused run threw: ${visited.pageErrors.join(' | ')}`)
-    console.log(`storage-blocked: ${BROWSER_NAME} OPFS refused -> chart + ephemeral note in ${seconds}s`)
+    await visited.page.waitForTimeout(2_000)
+    const databases = await visited.page.evaluate(async () => (await indexedDB.databases()).map((d) => d.name))
+    invariant(databases.length === 0, `OPFS refused: IndexedDB databases were created: ${JSON.stringify(databases)}`)
+    invariant(engineWorkers.length === 0, `OPFS refused: the engine started behind the block screen: ${engineWorkers.join(', ')}`)
+    const marker = await visited.page.evaluate(() => window.__loadMarker)
+
+    // Still refused: Check again keeps the screen and says so.
+    await visited.page.getByTestId('storage-check-again-button').click()
+    await visited.page.waitForTimeout(1_500)
+    invariant(await visited.page.getByTestId('storage-blocked-notice').isVisible(), 'OPFS refused: Check again let the app run while storage is still refused')
+    invariant(visited.pageErrors.length === 0, `OPFS refused: page errors behind the block screen: ${visited.pageErrors.join(' | ')}`)
+
+    if (canAllowOpfs) {
+      // The user allows storage; Check again continues into the app, no reload.
+      await visited.page.evaluate(() => { window.__allowOpfs = true })
+      await visited.page.getByTestId('storage-check-again-button').click()
+      await visited.page.getByTestId('name-input').waitFor({ state: 'visible', timeout: 30_000 })
+      invariant(
+        (await visited.page.evaluate(() => window.__loadMarker)) === marker,
+        'OPFS allowed: Check again reloaded the page instead of continuing in place',
+      )
+      invariant(!(await visited.page.getByTestId('storage-blocked-notice').isVisible()), 'OPFS allowed: the block screen stayed up')
+      invariant(visited.pageErrors.length === 0, `OPFS refused run threw: ${visited.pageErrors.join(' | ')}`)
+      console.log(`storage-blocked: ${BROWSER_NAME} OPFS refused -> block screen in ${seconds}s (${shown.browserBranch}, ${shown.steps} steps); allowed -> Check again opens the app in place`)
+    } else {
+      console.log(`storage-blocked: ${BROWSER_NAME} OPFS refused -> block screen in ${seconds}s; skipped the allow -> Check again leg on Linux WebKit (no nested-Worker OPFS)`)
+    }
   } finally {
     await opfsRefused.close()
+    rmSync(refusedProfile, { recursive: true, force: true })
   }
 
   // Playwright's Linux WebKit port exposes document OPFS in a persistent
@@ -322,8 +272,8 @@ try {
         'storage-blocked notice shown although storage is allowed',
       )
       invariant(
-        !(await control.page.getByTestId('ephemeral-storage-notice').isVisible()),
-        'ephemeral "not saving" note shown although storage is allowed',
+        !(await control.page.getByTestId('storage-check-again-button').isVisible()),
+        'storage block controls shown although storage is allowed',
       )
       if (RUN_JOURNEY) {
         await onboard(control.page)

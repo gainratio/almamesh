@@ -19,11 +19,7 @@ import {
   type PortableStateRepository,
   type PortableStateSnapshot,
 } from './portableState';
-import {
-  markPortableStateUnavailable,
-  nonDestructiveLegacyStorage,
-  openPortableStateWithFallback,
-} from './portablePersistence';
+import { markPortableStateUnavailable, openPortableStateWhenAllowed } from './portablePersistence';
 import {
   absorbLegacyQuarantine,
   memoryQuarantineRows,
@@ -323,9 +319,12 @@ async function portableRepository(): Promise<PortableStateRepository | null> {
     throw error;
   }
   if (mode === 'node-test-fallback') return null;
-  portableRepositoryPromise ??= openPortableStateWithFallback({
-    open: openPortableStateRepository,
-  }).then(async ({ repository, persistence }) => {
+  // Durable OPFS SQLite or nothing. While the browser refuses storage this
+  // stays pending ('blocked') and every hydration waits on it; a successful
+  // checkPortableStorageAgain() resolves this same promise, no reload needed.
+  portableRepositoryPromise ??= openPortableStateWhenAllowed({
+    open: () => openPortableStateRepository(),
+  }).then(async (repository) => {
     // TODO(remove after 2026-11-04, one release after the SQLite-only move):
     // legacy idb-keyval/localStorage reader for the one-time migration below.
     const legacy: LegacyStateStorage = {
@@ -349,10 +348,10 @@ async function portableRepository(): Promise<PortableStateRepository | null> {
     };
     await migrateLegacyState(
       repository,
-      persistence === 'memory' ? nonDestructiveLegacyStorage(legacy) : legacy,
+      legacy,
       [...PORTABLE_STATE_KEYS.filter((key) => key !== PORTABLE_PREFERENCES_KEY), PORTABLE_LEDGER_KEY],
     );
-    await migrateLegacyPreferencesToRepository(repository, persistence === 'opfs');
+    await migrateLegacyPreferencesToRepository(repository);
     return repository;
   });
   return portableRepositoryPromise;

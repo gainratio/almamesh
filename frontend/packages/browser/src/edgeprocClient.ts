@@ -17,16 +17,30 @@ const LEGACY_INDEXED_DB_LAYOUT = Object.freeze({
 
 /**
  * Exit-gate hook (hooks builds only): when the provider sets
- * `__EDGEPROC_REPORT_CACHE__`, publish which cache the library chose
- * ("sqlite-opfs", or "sqlite-memory" when OPFS is refused). There is no
- * IndexedDB fallback to force: since @gainratio/browser 0.3.0 the cache is
- * SQLite on OPFS, else SQLite in memory for the Worker's life.
+ * `__EDGEPROC_REPORT_CACHE__`, publish which cache the library chose. This is a
+ * diagnostic only: AlmaMesh runs the engine on "sqlite-opfs" alone (see
+ * EngineCacheNotDurableError). There is no IndexedDB fallback to force.
  */
 type ExitGateGlobals = typeof globalThis & {
   __EDGEPROC_REPORT_CACHE__?: boolean;
   __EDGEPROC_SELECTED_CACHE__?: string;
   __EDGEPROC_CACHE_STORAGE__?: EngineSyncResult["cacheStorage"];
 };
+
+/**
+ * The library picked its in-memory SQLite cache (OPFS refused inside the sync
+ * Worker). Product rule: SQLite on OPFS or nothing. @gainratio/browser 0.3.0
+ * has no option to refuse that cache up front, so the adapter fails closed
+ * after the sync: the engine never boots on a cache that dies with the Worker.
+ * Not a transient failure: the provider does not auto-retry it.
+ */
+export class EngineCacheNotDurableError extends Error {
+  public override readonly name = "EngineCacheNotDurableError";
+
+  public constructor(public readonly cacheBackend: EngineSyncResult["cacheBackend"]) {
+    super(`The engine cache is not durable (${cacheBackend}); AlmaMesh runs only on SQLite in OPFS.`);
+  }
+}
 
 /** AlmaMesh's small domain adapter over the generic signed-bundle client. */
 export interface AlmaSyncEngine {
@@ -65,6 +79,7 @@ export function createAlmaSyncEngine(worker: EngineWorkerLike): AlmaSyncEngine {
         hooks.__EDGEPROC_SELECTED_CACHE__ = result.cacheBackend;
         hooks.__EDGEPROC_CACHE_STORAGE__ = result.cacheStorage;
       }
+      if (result.cacheBackend !== "sqlite-opfs") throw new EngineCacheNotDurableError(result.cacheBackend);
       return result;
     },
     readFile: (path) => client.readFile(path),

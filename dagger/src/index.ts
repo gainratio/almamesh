@@ -397,8 +397,11 @@ export class AlmameshCi {
         "node scripts/verify-sqlite-memory.mjs http://127.0.0.1:4200 --browser=webkit",
         "node scripts/verify-sqlite-memory.mjs http://127.0.0.1:4200 --browser=webkit --slow-boot-storage-ms=1500",
         "node scripts/verify-storage-blocked.mjs http://127.0.0.1:4200 --browser=webkit",
+        // OPFS refused -> the storage block screen: no engine, no RAM SQLite,
+        // no IndexedDB. The offline first-session pass needs working OPFS,
+        // which Linux Playwright WebKit lacks, so it runs on macOS
+        // (verify-webkit-engine.mjs --first-session refuses Linux).
         "node scripts/verify-webkit-engine.mjs http://127.0.0.1:4200",
-        "node scripts/verify-webkit-engine.mjs http://127.0.0.1:4200 --first-session --transient-cache-visibility",
       ],
     )
     checked = checked

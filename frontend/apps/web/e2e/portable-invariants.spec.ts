@@ -74,8 +74,8 @@ const DELETED_MEMBER: Native = {
 };
 
 // Linux Playwright WebKit cannot open SQLite's nested-Worker OPFS (see
-// scripts/verify-webkit-engine.mjs), so the app runs on in-memory SQLite there
-// and correctly disables Import. Real WebKit coverage runs on macOS.
+// scripts/verify-webkit-engine.mjs), so the app shows its storage block screen
+// there (SQLite on OPFS is the only store). Real WebKit coverage runs on macOS.
 test.skip(
   ({ browserName }) => browserName === 'webkit' && process.platform === 'linux',
   'Linux Playwright WebKit has no nested-Worker OPFS',
@@ -118,7 +118,7 @@ async function wipeOrigin(page: Page): Promise<void> {
  * A new browser profile = a new, empty OPFS root, plus faked third parties and
  * the iOS file paths. WebKit needs an on-disk profile: a default WebKit
  * newContext() is an ephemeral data store that refuses OPFS, so the app would
- * (correctly) fall back to in-memory SQLite and disable Import.
+ * (correctly) show its storage block screen instead of running.
  */
 async function freshBrowser(browser: Browser, testInfo: TestInfo) {
   const options = { baseURL: testInfo.project.use.baseURL, acceptDownloads: true };

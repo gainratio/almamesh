@@ -123,13 +123,16 @@ describe('DataSettings — Backup & Restore panel', () => {
     expect(screen.getByText('Import a backup')).toBeTruthy();
   });
 
-  it('disables restore when SQLite is session-only because reload would erase it', () => {
-    render(<DataSettingsPanel persistence="memory" />);
+  // CONTRACT REVERSED (2026-10-05, product rule "SQLite on OPFS or no dice"):
+  // this test used to require restore to be disabled with a warning when
+  // SQLite was session-only ('memory'). That mode no longer exists: a browser
+  // that refuses OPFS is blocked before this page renders, so the panel has no
+  // storage-mode input and restore is always offered.
+  it('always offers restore: there is no session-only SQLite mode to disable it for', () => {
+    render(<DataSettingsPanel />);
 
-    expect((screen.getByTestId('backup-import-button') as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByTestId('backup-import-memory-warning').textContent).toContain(
-      'Import needs durable browser storage',
-    );
+    expect((screen.getByTestId('backup-import-button') as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.queryByTestId('backup-import-memory-warning')).toBeNull();
   });
 
   // CONTRACT REVERSAL: export used to work with no password and silently left

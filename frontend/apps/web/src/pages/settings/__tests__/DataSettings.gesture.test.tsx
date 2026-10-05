@@ -73,7 +73,7 @@ afterEach(() => {
 
 describe('Export on a slow device (Chrome save picker, user activation)', () => {
   it('saves even when building the backup takes longer than the 5 s gesture window', async () => {
-    render(<DataSettingsPanel persistence="opfs" />);
+    render(<DataSettingsPanel />);
     fireEvent.change(screen.getByTestId('backup-passphrase-input'), {
       target: { value: 'hunter2-long' },
     });

@@ -104,7 +104,8 @@ async function runBrowser(browserType, browserName) {
       { timeout: 20_000 },
     )
     // Boot opens the canonical SQLite state store and spawns its own Worker
-    // (in memory when OPFS is refused). Take the Worker baseline only after
+    // (or, when OPFS is refused, reports 'blocked' and opens nothing: there is
+    // no in-memory fallback since 2026-10-05). Take the Worker baseline only after
     // that open has settled; otherwise, on a loaded runner, the boot Worker
     // starts inside the proof window and is miscounted as a memory Worker.
     await page.waitForFunction(

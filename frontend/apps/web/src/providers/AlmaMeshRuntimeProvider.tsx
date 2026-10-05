@@ -26,7 +26,7 @@ import {
   EngineBootProgressContext,
   PROGRESS_COALESCE_MS,
 } from './chartEngineContext'
-import { portableStatePersistence } from '@almamesh/store'
+import { portableStatePersistence, subscribePortableStatePersistence } from '@almamesh/store'
 import { hasLocalChart } from '../lib/localChart'
 import { recordEngineBootFailure, registerEngineTeardown } from '../lib/engineLifecycle'
 import { recoverSeveredServiceWorkerChannel } from '../lib/swSelfHeal'
@@ -115,8 +115,9 @@ const EXIT_GATE_HOOKS =
   import.meta.env.DEV || import.meta.env.VITE_EXIT_GATE_HOOKS === '1'
 
 if (typeof window !== 'undefined' && EXIT_GATE_HOOKS) {
-  // Lets the WebKit gate see which engine cache the library chose
-  // ("sqlite-opfs" or "sqlite-memory"). There is no IndexedDB fallback.
+  // Diagnostic only: lets the gate see which engine cache the library chose.
+  // The engine runs on "sqlite-opfs" alone; a "sqlite-memory" sync fails
+  // closed in @almamesh/browser (EngineCacheNotDurableError).
   ;(
     globalThis as typeof globalThis & {
       __EDGEPROC_REPORT_CACHE__?: boolean
@@ -124,10 +125,40 @@ if (typeof window !== 'undefined' && EXIT_GATE_HOOKS) {
   ).__EDGEPROC_REPORT_CACHE__ = true
   window.__almameshVerifySqliteMemory = async () =>
     (await import('../lib/chatMemory')).verifySqliteMemoryPersistence()
-  // Boot opens the canonical SQLite state store (OPFS, or memory when OPFS is
-  // refused) and spawns its own Worker. Proofs that count Workers wait for this
+  // Boot opens the canonical SQLite state store on OPFS (or reports 'blocked')
+  // and spawns its own Worker. Proofs that count Workers wait for this
   // to leave 'pending' so that boot Worker is never attributed to the proof.
   window.__almameshPortableStatePersistence = portableStatePersistence
+}
+
+/** Canonical storage can never become durable here (the SQLite Worker failed to open). */
+export class PortableStorageUnavailableError extends Error {
+  public override readonly name = 'PortableStorageUnavailableError'
+
+  public constructor() {
+    super('Durable storage is unavailable; the engine needs SQLite on OPFS.')
+  }
+}
+
+/**
+ * Resolve once canonical SQLite is durable on OPFS. Product rule: SQLite on
+ * OPFS or nothing, so the ~38 MB engine never syncs or boots while storage is
+ * pending or blocked; it waits (the block screen offers "check again").
+ */
+function whenStorageDurable(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const settled = (): boolean => {
+      const persistence = portableStatePersistence()
+      if (persistence === 'opfs') resolve()
+      else if (persistence === 'unavailable') reject(new PortableStorageUnavailableError())
+      else return false
+      return true
+    }
+    if (settled()) return
+    const unsubscribe = subscribePortableStatePersistence(() => {
+      if (settled()) unsubscribe()
+    })
+  })
 }
 
 /**
@@ -267,9 +298,17 @@ export function AlmaMeshRuntimeProvider({ children, runtime }: ProviderProps) {
     bootstrapFailedRef.current = false
     retryableFailureRef.current = false
     retryWithoutConnectivityRef.current = false
+    const boot = (): Promise<ChartEngine> => runtimeInstance.bootstrap(readRuntimeConfig(), onStage)
     let promise: Promise<ChartEngine>
-    promise = runtimeInstance
-      .bootstrap(readRuntimeConfig(), onStage)
+    // Already durable: boot now. Otherwise wait for OPFS, and drop the boot if
+    // a reboot or unmount superseded this attempt meanwhile.
+    const booting = portableStatePersistence() === 'opfs'
+      ? boot()
+      : whenStorageDurable().then(() => {
+        if (inFlightRef.current !== promise) throw new Error('AlmaMesh engine boot superseded')
+        return boot()
+      })
+    promise = booting
       .then((ready) => {
         if (inFlightRef.current !== promise) {
           return ready

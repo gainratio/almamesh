@@ -299,7 +299,6 @@
     "error_export_failed": "Export failed: {{reason}}",
     "error_stage_failed": "Couldn't read that backup: {{reason}}",
     "error_import_failed": "Restore failed: {{reason}}. Nothing was replaced; try again or restore the safety copy.",
-    "error_import_requires_durable_storage": "Import needs durable browser storage. Open AlmaMesh in a normal browser window where on-device storage is available; a session-only restore would disappear on reload.",
     "set_aside_heading": "Set-aside records",
     "set_aside_hint": "These records belong to people who are no longer on this device. AlmaMesh keeps them here until you restore or delete them, and never deletes them on its own. They are not included in backups: to take one to another device, restore it to a person first, then export.",
     "set_aside_events_one": "{{count}} life event",

@@ -1,12 +1,17 @@
 #!/usr/bin/env node
 /**
- * Required WebKit runtime gate. It boots the production bundle at iPhone 13
- * size in a WebKit that refuses OPFS (Linux Playwright WebKit), generates a
- * real chart, and requires the in-memory mode to be honest: the engine cache
- * is in-memory SQLite, nothing is written to IndexedDB, the page says the
- * data and the engine download are not kept, and a reload with every /bundle
- * request blocked fails with that explanation instead of hanging. It then
- * proves a transport failure recovers on its own once the network returns.
+ * Required WebKit runtime gate, at iPhone 13 size.
+ *
+ * Default pass: a WebKit that refuses OPFS (any ephemeral Playwright WebKit
+ * context; Safari Private Browsing refuses the same way). SQLite on OPFS is
+ * the only place AlmaMesh keeps data, so the app must show the storage block
+ * screen within a time bound, start no engine, choose no engine cache, run no
+ * SQLite in memory, and create no IndexedDB database.
+ *
+ * `--first-session`: a durable profile with working OPFS (macOS WebKit; Linux
+ * Playwright WebKit cannot open SQLite's nested-Worker OPFS, so the pass
+ * refuses to run there instead of passing vacuously). It installs the service
+ * worker, cuts the network, and requires the engine to boot offline.
  *
  * Vite preview applies the production CSP and COOP/COEP headers. The gate checks
  * cross-origin isolation before both the online boot and offline reload so the
@@ -28,7 +33,6 @@ import { formatMemoryReport, processTreeReport, sampleProcessTreePeak } from './
 const BASE_URL = process.argv[2] ?? 'http://localhost:4200'
 const FIRST_SESSION_ONLY = process.argv.includes('--first-session')
 const TRANSIENT_CACHE_VISIBILITY = process.argv.includes('--transient-cache-visibility')
-const CACHE_DATABASE = 'edgeproc-browser-cache'
 const TRANSIENT_CACHE_VISIBILITY_HASH = '#transient-cache-visibility'
 const TRANSIENT_CACHE_INJECTED_KEY = 'almamesh:exit-gate:transient-cache-visibility:injected'
 const PRERENDERED_SHELLS = new Set(['/welcome', '/privacy', '/terms', '/data-deletion'])
@@ -118,62 +122,6 @@ async function waitForEngine(page) {
   }))
 }
 
-// The provider's own classification of a retryable boot failure
-// (AlmaMeshRuntimeProvider TRANSIENT_BOOT_FAILURE plus the worker crash/timeout
-// classes). Anything else, such as an integrity failure, is terminal.
-const SELF_RECOVERING_BOOT_FAILURE =
-  /network unreachable|failed to fetch|load failed|networkerror|timed out after|importing a module script failed|worker crashed/i
-const MAX_SELF_RECOVERIES_PER_BOOT = 1
-
-/**
- * Wait for a boot to reach a TERMINAL state. A published transient error is not
- * terminal: the provider retries it on its own, with no reload or user action.
- * WebKit can leave a boot fetch with headers but no body after its network
- * process restarts, so the chart-worker boot times out after 60s and the retry
- * spawns a fresh worker that boots. The gate allows exactly one such automatic
- * recovery and records it. A second one, or any non-transient error, fails.
- * Every bootstrap attempt spawns exactly one sync Worker, so attempts are
- * counted from Worker spawns (the published error text repeats verbatim).
- */
-function trackBootAttempts(page) {
-  let attempts = 0
-  const countAttempt = (worker) => {
-    if (/\/edgeproc\.worker-[^/]+\.js(?:\?|$)/.test(worker.url())) attempts += 1
-  }
-  page.on('worker', countAttempt)
-  return {
-    attempts: () => attempts,
-    stop: () => page.off('worker', countAttempt),
-  }
-}
-
-/** Start counting BEFORE the boot is triggered, then call with the tracker. */
-async function waitForSettledEngine(page, label, tracker) {
-  let evidence = '{}'
-  try {
-    const deadline = Date.now() + 300_000
-    while (Date.now() < deadline) {
-      const state = await page.evaluate(() => ({
-        stage: window.__ALMAMESH_STAGE__ ?? null,
-        error: window.__ALMAMESH_ERROR__ ?? null,
-        hasGenerator: typeof window.__almameshGenerate === 'function',
-      }))
-      const attempts = tracker.attempts()
-      const selfRecoveries = Math.max(0, attempts - 1)
-      evidence = JSON.stringify({ ...state, attempts })
-      invariant(selfRecoveries <= MAX_SELF_RECOVERIES_PER_BOOT, `${label} needed more than one automatic recovery: ${evidence}`)
-      if (state.stage === 'ready' && state.hasGenerator) return { ...state, selfRecoveries }
-      if (typeof state.error === 'string') {
-        invariant(SELF_RECOVERING_BOOT_FAILURE.test(state.error), `${label} failed: ${evidence}`)
-      }
-      await new Promise((resolve) => setTimeout(resolve, 250))
-    }
-    throw new Error(`${label} did not settle within 300000ms: ${evidence}`)
-  } finally {
-    tracker.stop()
-  }
-}
-
 async function runtimeEvidence(page) {
   return page.evaluate(async () => {
     const registration = await navigator.serviceWorker.getRegistration()
@@ -244,17 +192,6 @@ function assertSingleSyncWorker(workerUrls, label) {
     `${label} did not load exactly one consumer-owned edgeproc Worker asset: ${JSON.stringify(syncWorkerAssets)}`,
   )
   return syncWorkerAssets
-}
-
-/** The ephemeral note is on screen and says the engine download is not kept. */
-async function assertEngineNotKeptNotice(page, label) {
-  const note = page.getByTestId('ephemeral-storage-notice')
-  await note.waitFor({ state: 'visible', timeout: 60_000 })
-    .catch(() => invariant(false, `${label}: no "not saving" note on screen`))
-  const text = (await note.innerText()).replace(/\s+/g, ' ')
-  invariant(/engine download is not kept/i.test(text) && /internet connection/i.test(text),
-    `${label}: the note does not say the engine download is not kept: ${text}`)
-  return text
 }
 
 /** Which store each layer chose, and every IndexedDB database the origin has. */
@@ -349,22 +286,6 @@ async function verifyFirstSessionOffline() {
   const proxy = await startCutoffProxy(BASE_URL)
   let transientCacheReadInjected = false
   const workerUrls = new Set()
-  if (process.platform === 'linux') {
-    // Playwright's Linux WebKit port cannot open SQLite's nested-Worker OPFS.
-    // This gate owns the durable service-worker + IndexedDB engine-cache path,
-    // not canonical-state durability (Chromium CI and macOS WebKit own that).
-    // Force the app's documented in-memory SQLite fallback so React can mount
-    // and register the service worker this gate is meant to exercise.
-    await context.addInitScript(() => {
-      if (typeof globalThis.StorageManager === 'undefined') return
-      globalThis.StorageManager.prototype.getDirectory = function getDirectory() {
-        return Promise.reject(new globalThis.DOMException(
-          'Linux Playwright WebKit has no nested-Worker OPFS.',
-          'UnknownError',
-        ))
-      }
-    })
-  }
   if (TRANSIENT_CACHE_VISIBILITY) {
     await context.exposeBinding('__almameshRecordTransientCacheRead', () => {
       transientCacheReadInjected = true
@@ -524,13 +445,23 @@ async function verifyFirstSessionOffline() {
   }
 }
 
+/** How long the block screen may take when OPFS is refused (no hang, no RAM fallback). */
+const BLOCK_SCREEN_BUDGET_MS = 20_000
+
 async function main() {
   if (FIRST_SESSION_ONLY) {
+    // The first session needs durable OPFS SQLite. Linux Playwright WebKit
+    // cannot open SQLite's nested-Worker OPFS, and since 2026-10-05 the app
+    // refuses to run on RAM SQLite, so on Linux this pass could only ever see
+    // the block screen. Fail loudly rather than pass vacuously: run it on macOS.
+    invariant(process.platform !== 'linux', '--first-session needs a WebKit with working OPFS (macOS); Linux Playwright WebKit refuses it')
     await verifyFirstSessionOffline()
     return
   }
   const browser = await webkit.launch({ headless: true })
   try {
+    // An ephemeral WebKit context refuses OPFS (Linux and macOS alike), the
+    // same refusal Safari Private Browsing gives.
     const context = await browser.newContext({
       ...devices['iPhone 13'],
       serviceWorkers: 'block',
@@ -538,113 +469,38 @@ async function main() {
     const page = await context.newPage()
     const workerUrls = new Set()
     page.on('worker', (worker) => workerUrls.add(worker.url()))
+    const pageErrors = []
+    page.on('pageerror', (error) => pageErrors.push(error.message))
 
-    const coldAttempts = trackBootAttempts(page)
     await page.goto(BASE_URL, { waitUntil: 'domcontentloaded' })
     const coldIsolation = await assertBrowserIsolation(page, 'WebKit cold navigation')
     await openEngineRoute(page)
-    const cold = await waitForSettledEngine(page, 'WebKit cold boot', coldAttempts)
-    invariant(coldAttempts.attempts() >= 1, 'WebKit cold boot attempt count was vacuous')
-    const syncWorkerAssets = assertSingleSyncWorker(workerUrls, 'WebKit cold boot')
 
-    // REVERSED CONTRACT (2026-10-05, @gainratio/browser 0.3.0). This pass used
-    // to force an IndexedDB engine cache and require a /bundle-blocked reload
-    // to boot from it. AlmaMesh never falls back to IndexedDB: with OPFS
-    // refused (Safari Private Browsing, Linux Playwright WebKit) the engine
-    // runs on in-memory SQLite, the UI says so, and an offline reload fails
-    // with that explanation instead of booting from a hidden second store.
+    // CONTRACT REVERSED TWICE. Before 2026-10-05 this pass forced an IndexedDB
+    // engine cache; increment 2 replaced that with in-memory SQLite plus a
+    // "not saving" note. Harish, 2026-10-05: "sqlite persistent is the only
+    // option; they have to enable writing to sqlite, otherwise no dice." With
+    // OPFS refused the app now shows the storage block screen within a time
+    // bound, starts no engine, opens no SQLite (in memory or otherwise), and
+    // creates no IndexedDB database.
+    const notice = page.getByTestId('storage-blocked-notice')
+    await notice.waitFor({ state: 'visible', timeout: BLOCK_SCREEN_BUDGET_MS })
+      .catch(() => invariant(false, `OPFS refused: no block screen within ${BLOCK_SCREEN_BUDGET_MS} ms`))
+    const reason = await notice.getAttribute('data-reason')
+    invariant(reason === 'storage-blocked', `OPFS refused: expected the storage-blocked screen, got ${reason}`)
+    const text = (await notice.innerText()).replace(/\s+/g, ' ')
+    invariant(/permission to store data on this device/i.test(text), `block screen copy is not the agreed one: ${text}`)
+    // Give anything that would start behind the screen time to start.
+    await page.waitForTimeout(5_000)
     const storage = await storageEvidence(page)
-    invariant(
-      storage.statePersistence === 'memory',
-      `this pass needs a WebKit that refuses OPFS (Linux Playwright WebKit does): ${JSON.stringify(storage)}`,
-    )
-    invariant(storage.selectedCache === 'sqlite-memory', `engine cache is not in-memory SQLite: ${JSON.stringify(storage)}`)
-    invariant(!storage.databases.includes(CACHE_DATABASE), `engine cache wrote IndexedDB: ${JSON.stringify(storage)}`)
+    invariant(storage.statePersistence === 'blocked', `the app does not report storage as blocked: ${JSON.stringify(storage)}`)
+    invariant(storage.selectedCache === null, `the engine chose a cache behind the block screen: ${JSON.stringify(storage)}`)
     invariant(storage.databases.length === 0, `something wrote IndexedDB with OPFS refused: ${JSON.stringify(storage)}`)
-    const firstChart = await generateReferenceChart(page)
-    invariant(firstChart.lagna === 'gemini', `unexpected cold chart: ${JSON.stringify(firstChart)}`)
-    const coldNotice = await assertEngineNotKeptNotice(page, 'WebKit cold boot')
+    const engineWorkers = [...workerUrls].filter((url) => /edgeproc\.worker|pyodide|chart/i.test(url))
+    invariant(engineWorkers.length === 0, `the engine started behind the block screen: ${JSON.stringify(engineWorkers)}`)
+    invariant(pageErrors.length === 0, `page errors behind the block screen: ${pageErrors.join(' | ')}`)
 
-    const blocked = []
-    await context.route('**/bundle/**', (route) => {
-      const url = route.request().url()
-      blocked.push(url)
-      return route.abort('failed')
-    })
-    await page.evaluate(() => window.history.replaceState({}, '', '/'))
-    await page.reload({ waitUntil: 'domcontentloaded' })
-    await assertBrowserIsolation(page, 'WebKit offline reload')
-    await openEngineRoute(page)
-    const offlineBoot = await waitForEngine(page)
-    invariant(
-      offlineBoot.stage !== 'ready' && SELF_RECOVERING_BOOT_FAILURE.test(offlineBoot.error ?? ''),
-      `in-memory mode booted (or failed oddly) with /bundle blocked: ${JSON.stringify(offlineBoot)}`,
-    )
-    invariant(
-      blocked.some((u) => u.includes('/bundle/latest')),
-      'offline reload was vacuous: /bundle/latest was not blocked',
-    )
-    const offlineNotice = await assertEngineNotKeptNotice(page, 'WebKit offline reload')
-    const afterOffline = await storageEvidence(page)
-    invariant(afterOffline.databases.length === 0, `offline reload wrote IndexedDB: ${JSON.stringify(afterOffline)}`)
-    await context.unroute('**/bundle/**')
-    // A hard-offline boot failure used to remain latched after connectivity
-    // returned: the provider held the rejected promise forever when WebKit
-    // continued reporting `navigator.onLine`. Reproduce that transport-shaped
-    // failure, keep the route blocked through the first backoff attempt, then
-    // restore it WITHOUT a synthetic online event. This is intentionally
-    // after the offline proof above; in memory mode the retry downloads again.
-    await context.unroute('**/bundle/**')
-    const blockedKeys = []
-    await context.route('**/public.key', (route) => {
-      blockedKeys.push(route.request().url())
-      return route.abort('failed')
-    })
-    await page.evaluate(() => window.history.replaceState({}, '', `/${window.location.search}`))
-    await page.reload({ waitUntil: 'domcontentloaded' })
-    await openEngineRoute(page)
-    const failedOfflineBoot = await waitForEngine(page)
-    invariant(
-      failedOfflineBoot.stage !== 'ready' && /network unreachable/i.test(failedOfflineBoot.error ?? ''),
-      `WebKit transport failure was not reproduced: ${JSON.stringify(failedOfflineBoot)}`,
-    )
-    invariant(blockedKeys.length > 0, 'transport-failure recovery was vacuous: public.key was not blocked')
-
-    // Hold the block until the provider's first automatic retry has actually
-    // hit it. A fixed sleep raced that retry: on a loaded runner the retry's
-    // public.key request can land after the sleep, which fails the gate below
-    // with nothing wrong in the app.
-    const firstRetryDeadline = Date.now() + 30_000
-    while (blockedKeys.length < 2 && Date.now() < firstRetryDeadline) {
-      await new Promise((resolve) => setTimeout(resolve, 100))
-    }
-    await context.unroute('**/public.key')
-    const recovered = await waitForRecoveredEngine(page, 'forced-cache transport recovery')
-    const recoveredChart = await generateReferenceChart(page)
-    invariant(recoveredChart.lagna === 'gemini', `unexpected recovered chart: ${JSON.stringify(recoveredChart)}`)
-    invariant(blockedKeys.length >= 2, 'public-key recovery did not outlive the first retry')
-
-    console.log(
-      JSON.stringify(
-        {
-          cold,
-          storage,
-          firstChart,
-          coldNotice,
-          offlineBoot,
-          offlineNotice,
-          failedOfflineBoot,
-          recovered,
-          recoveredChart,
-          blockedBundleRequests: blocked.length,
-          blockedPublicKeyRequests: blockedKeys.length,
-          syncWorkerAssets,
-          coldIsolation,
-        },
-        null,
-        2,
-      ),
-    )
+    console.log(JSON.stringify({ reason, storage, workers: [...workerUrls], coldIsolation }, null, 2))
     await context.close()
   } finally {
     await browser.close()
@@ -654,7 +510,7 @@ async function main() {
 const rssSampler = sampleProcessTreePeak(1_000)
 main()
   .then(async () => {
-    const lane = FIRST_SESSION_ONLY ? 'webkit-first-session' : 'webkit-memory-mode-recovery'
+    const lane = FIRST_SESSION_ONLY ? 'webkit-first-session' : 'webkit-storage-blocked'
     console.log(formatMemoryReport(lane, processTreeReport(await rssSampler.stop(), ['webkit-web', 'webkit-network'])))
   })
   .catch(async (error) => {
