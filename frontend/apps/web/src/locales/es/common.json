@@ -146,5 +146,9 @@
     "interpretations_unreadable_paused": "Algunas interpretaciones guardadas no se pudieron leer y este dispositivo no pudo apartarlas. Para protegerlas, las nuevas lecturas están en pausa. Recarga la página para intentarlo de nuevo.",
     "dismiss_aria": "Cerrar aviso"
   },
-  "reset_incomplete": "El restablecimiento no pudo borrar todos los datos guardados, porque este navegador todavía los usa. Cierra todas las pestañas de AlmaMesh e inténtalo de nuevo. Si sigue pasando, borra los datos del sitio de AlmaMesh en los ajustes del navegador."
+  "reset_incomplete": "El restablecimiento no pudo borrar todos los datos guardados, porque este navegador todavía los usa. Cierra todas las pestañas de AlmaMesh e inténtalo de nuevo. Si sigue pasando, borra los datos del sitio de AlmaMesh en los ajustes del navegador.",
+  "dropped_writes": {
+    "body": "Algunos cambios en esta página no se guardaron porque tus datos se estaban reemplazando o reparando. Recarga para ver tus datos actuales.",
+    "reload": "Recargar"
+  }
 }

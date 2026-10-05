@@ -233,6 +233,19 @@ describe('resetEverything', () => {
     ]);
   });
 
+  it('Start fresh also clears set-aside records, before the dataset commit', async () => {
+    const events: string[] = [];
+    await resetEverything({
+      waitForHydration: () => Promise.resolve(),
+      beginDatasetReset: async () => 3,
+      clearSetAside: vi.fn(async () => void events.push('clear-set-aside')),
+      clearPersisted: vi.fn(async () => void events.push('clear-persisted')),
+      publishDatasetReset: () => undefined,
+    });
+
+    expect(events).toEqual(['clear-set-aside', 'clear-persisted']);
+  });
+
   it('waits for every persisted store hydration barrier before deleting anything', async () => {
     const hydration = deferred();
     const waitForHydration = vi.fn(() => hydration.promise);

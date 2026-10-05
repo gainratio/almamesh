@@ -5,6 +5,7 @@ import { Footer } from '../../Footer';
 import { ProfileSwitcher } from '../profiles/ProfileSwitcher';
 import { DataRepairNotice } from '../settings/DataRepairNotice';
 import { AiStatusBadge } from './AiStatusBadge';
+import { DroppedWritesNotice } from './DroppedWritesNotice';
 import { MeshNavButton } from './MeshNavButton';
 
 export interface AppLayoutProps {
@@ -64,6 +65,7 @@ export function AppLayout({ children, showFooter = false }: AppLayoutProps) {
       <main className="bg-astrolabe-rings flex-1">
         <div className="app-gutter mx-auto w-full max-w-7xl py-6 md:py-8">
           <DataRepairNotice />
+          <DroppedWritesNotice />
           {children}
         </div>
       </main>

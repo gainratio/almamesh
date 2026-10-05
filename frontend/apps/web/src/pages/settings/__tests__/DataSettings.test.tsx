@@ -34,6 +34,7 @@ vi.mock('@almamesh/store', async (importOriginal) => {
     readPortableStateRevision: vi.fn(),
     armPortableImportRevision: vi.fn(),
     clearPortableImportRevisionFence: vi.fn(),
+    listSetAsideRecords: vi.fn(async () => []),
   };
 });
 
@@ -45,11 +46,17 @@ vi.mock('../../../lib/backupService', () => ({
   buildBackupExport: vi.fn(),
   stageBackupImport: vi.fn(),
   commitBackupImport: vi.fn(),
+  exportBackupFilename: vi.fn(() => 'almamesh-backup-2026-07-01T12-34-56-000Z.almamesh'),
+  safetyBackupFilename: (name: string) =>
+    name.replace('almamesh-backup-', 'almamesh-backup-before-import-'),
 }));
 
+// The picker opens first (inside the click) and the bytes are written later;
+// `saveBackupFile` stands in for "the user picked a place, then we wrote it".
 vi.mock('../../../lib/backupFile', () => ({
   saveBackupFile: vi.fn(),
   pickBackupFile: vi.fn(),
+  openBackupSaveTarget: vi.fn(),
 }));
 
 import {
@@ -57,7 +64,8 @@ import {
   stageBackupImport,
   commitBackupImport,
 } from '../../../lib/backupService';
-import { saveBackupFile, pickBackupFile } from '../../../lib/backupFile';
+import { saveBackupFile, pickBackupFile, openBackupSaveTarget } from '../../../lib/backupFile';
+import { listSetAsideRecords } from '@almamesh/store';
 import DataSettings, { DataSettingsPanel } from '../DataSettings';
 
 const SAMPLE_ENVELOPE: BackupEnvelopePlain = {
@@ -82,6 +90,11 @@ beforeEach(() => {
     repairs: EMPTY_PORTABLE_REPAIR_REPORT,
   });
   vi.mocked(saveBackupFile).mockResolvedValue('saved');
+  vi.mocked(openBackupSaveTarget).mockImplementation((name: string) => ({
+    choice: Promise.resolve('chosen'),
+    write: (content) => saveBackupFile(name, content),
+    discard: vi.fn(async () => undefined),
+  }));
   vi.mocked(pickBackupFile).mockResolvedValue(null);
   vi.mocked(stageBackupImport).mockResolvedValue({
     kind: 'json',
@@ -163,8 +176,10 @@ describe('DataSettings — Backup & Restore panel', () => {
     await waitFor(() =>
       expect(vi.mocked(buildBackupExport)).toHaveBeenCalledWith('hunter2-long'),
     );
+    // The file name is chosen before the export is built (the picker opens
+    // inside the click), so it is the export name, not the builder's.
     expect(vi.mocked(saveBackupFile)).toHaveBeenCalledWith(
-      'almamesh-backup-2026-07-01.json',
+      'almamesh-backup-2026-07-01T12-34-56-000Z.almamesh',
       '{"formatVersion":2}',
     );
     expect(await screen.findByText('Backup downloaded.')).toBeTruthy();
@@ -193,7 +208,7 @@ describe('DataSettings — Backup & Restore panel', () => {
         'Backup downloaded. 1 chat conversation was started on a chart that no longer exists. It is kept in full, just no longer linked to that chart. '
           + '2 AI readings belonged to charts that no longer exist, so they were not kept. You can generate new readings anytime. '
           + '1 saved record (life events or a birth-time check) belongs to a person who is no longer on this device. '
-          + 'It is set aside on this device, not deleted, and not included in backups.',
+          + 'It is set aside on this device, not deleted, and not included in backups. Restore or delete them in Settings → Data.',
       ),
     ).toBeTruthy();
   });
@@ -311,9 +326,11 @@ describe('DataSettings — Backup & Restore panel', () => {
     expect(vi.mocked(commitBackupImport)).not.toHaveBeenCalled();
   });
 
-  // ITEM 1 — if the user cancels the safety-net save, the import must ABORT: no
-  // commit, no reload, and a clear "nothing was changed" message.
-  it('aborts the import when the safety-net save is cancelled', async () => {
+  // CONTRACT REVERSAL (export/import robustness, item 2): a cancelled safety
+  // save used to close the dialog with "Import cancelled" and block the import.
+  // It now keeps the dialog open and offers an explicit choice: try the copy
+  // again, or replace without one. Nothing is replaced until the user picks.
+  it('offers an explicit choice when the safety-net save is cancelled, and changes nothing', async () => {
     vi.mocked(pickBackupFile).mockResolvedValue('FILE_TEXT');
     // The safety-net save (the only saveBackupFile call in this flow) is cancelled.
     vi.mocked(saveBackupFile).mockResolvedValue('cancelled');
@@ -333,11 +350,11 @@ describe('DataSettings — Backup & Restore panel', () => {
         new Uint8Array([1, 2, 3]),
       ),
     );
-    expect(
-      await screen.findByText(
-        "Import cancelled — we couldn't save a backup of your current data first, so nothing was changed.",
-      ),
-    ).toBeTruthy();
+    const failed = await screen.findByTestId('backup-safety-failed');
+    expect(failed.textContent).toContain("We couldn't save a copy of your current data first");
+    expect(failed.textContent).toContain('the save dialog was closed');
+    expect(screen.getByTestId('backup-safety-retry')).toBeTruthy();
+    expect(screen.getByTestId('backup-skip-safety')).toBeTruthy();
     expect(vi.mocked(commitBackupImport)).not.toHaveBeenCalled();
     expect(reloadSpy).not.toHaveBeenCalled();
   });
@@ -384,7 +401,7 @@ describe('DataSettings — Backup & Restore panel', () => {
     });
     fireEvent.click(screen.getByTestId('backup-confirm-import'));
 
-    expect((await screen.findByTestId('backup-error')).textContent).toContain(
+    expect((await screen.findByTestId('backup-safety-failed')).textContent).toContain(
       'Your AlmaMesh data changed while the safety backup was being prepared',
     );
     expect(vi.mocked(saveBackupFile)).not.toHaveBeenCalled();
@@ -585,5 +602,150 @@ describe('DataSettings — Backup & Restore panel', () => {
     await waitFor(() => expect(vi.mocked(pickBackupFile)).toHaveBeenCalled());
     expect(vi.mocked(stageBackupImport)).not.toHaveBeenCalled();
     expect(screen.queryByTestId('backup-confirm-import')).toBeNull();
+  });
+
+  async function stageAndConfirm(): Promise<void> {
+    vi.mocked(pickBackupFile).mockResolvedValue('FILE_TEXT');
+    render(<DataSettings />);
+    fireEvent.click(screen.getByTestId('backup-import-button'));
+    fireEvent.change(await screen.findByTestId('backup-safety-passphrase-input'), {
+      target: { value: 'safety-password' },
+    });
+    fireEvent.click(screen.getByTestId('backup-confirm-import'));
+  }
+
+  // Item 5: Chrome's save picker needs the click's user activation (~5 s).
+  it('opens the export save picker inside the click, before building the export', async () => {
+    render(<DataSettings />);
+    fireEvent.change(screen.getByTestId('backup-passphrase-input'), {
+      target: { value: 'hunter2-long' },
+    });
+
+    fireEvent.click(screen.getByTestId('backup-export-button'));
+
+    // Synchronously, in the click itself:
+    expect(vi.mocked(openBackupSaveTarget)).toHaveBeenCalledWith(
+      'almamesh-backup-2026-07-01T12-34-56-000Z.almamesh',
+    );
+    await waitFor(() => expect(vi.mocked(saveBackupFile)).toHaveBeenCalled());
+    expect(vi.mocked(openBackupSaveTarget).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(buildBackupExport).mock.invocationCallOrder[0]!,
+    );
+  });
+
+  it('builds nothing when the export save picker is dismissed', async () => {
+    vi.mocked(openBackupSaveTarget).mockReturnValue({
+      choice: Promise.resolve('cancelled'),
+      write: vi.fn(),
+      discard: vi.fn(),
+    });
+    render(<DataSettings />);
+    fireEvent.change(screen.getByTestId('backup-passphrase-input'), {
+      target: { value: 'hunter2-long' },
+    });
+
+    fireEvent.click(screen.getByTestId('backup-export-button'));
+
+    await waitFor(() =>
+      expect((screen.getByTestId('backup-export-button') as HTMLButtonElement).disabled).toBe(false),
+    );
+    expect(vi.mocked(buildBackupExport)).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('backup-error')).toBeNull();
+  });
+
+  it('removes the empty picked file when the export itself fails', async () => {
+    const discard = vi.fn(async () => undefined);
+    vi.mocked(openBackupSaveTarget).mockReturnValue({
+      choice: Promise.resolve('chosen'),
+      write: vi.fn(),
+      discard,
+    });
+    vi.mocked(buildBackupExport).mockRejectedValueOnce(new Error('validator refused'));
+    render(<DataSettings />);
+    fireEvent.change(screen.getByTestId('backup-passphrase-input'), {
+      target: { value: 'hunter2-long' },
+    });
+
+    fireEvent.click(screen.getByTestId('backup-export-button'));
+
+    expect((await screen.findByTestId('backup-error')).textContent).toContain('validator refused');
+    expect(discard).toHaveBeenCalledOnce();
+  });
+
+  it('opens the safety-copy save picker inside the confirm click, before building it', async () => {
+    await stageAndConfirm();
+
+    expect(vi.mocked(openBackupSaveTarget)).toHaveBeenCalledWith(
+      'almamesh-backup-before-import-2026-07-01T12-34-56-000Z.almamesh',
+    );
+    await waitFor(() => expect(vi.mocked(commitBackupImport)).toHaveBeenCalledOnce());
+    expect(vi.mocked(openBackupSaveTarget).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(buildBackupExport).mock.invocationCallOrder[0]!,
+    );
+  });
+
+  // Item 2: a safety copy that cannot be made must never block the import, and
+  // must never be skipped silently either.
+  it('offers a choice when the safety export is refused, and replaces only on the explicit skip', async () => {
+    vi.mocked(buildBackupExport).mockRejectedValueOnce(
+      new Error('"almamesh-chat-history" references missing chart "c1"'),
+    );
+    await stageAndConfirm();
+
+    const failed = await screen.findByTestId('backup-safety-failed');
+    expect(failed.textContent).toContain('references missing chart');
+    expect(failed.textContent).toContain('cannot be brought back');
+    expect(vi.mocked(commitBackupImport)).not.toHaveBeenCalled();
+    expect(vi.mocked(saveBackupFile)).not.toHaveBeenCalled();
+
+    vi.mocked(readPortableStateRevision).mockResolvedValue(23);
+    fireEvent.click(screen.getByTestId('backup-skip-safety'));
+
+    await waitFor(() => expect(vi.mocked(commitBackupImport)).toHaveBeenCalledOnce());
+    expect(vi.mocked(armPortableImportRevision)).toHaveBeenCalledExactlyOnceWith(23);
+    expect(vi.mocked(saveBackupFile)).not.toHaveBeenCalled();
+    expect(reloadSpy).toHaveBeenCalledOnce();
+  });
+
+  it('offers a choice when the safety file cannot be written (storage full)', async () => {
+    vi.mocked(saveBackupFile).mockRejectedValueOnce(
+      new DOMException('The quota has been exceeded.', 'QuotaExceededError'),
+    );
+    await stageAndConfirm();
+
+    expect((await screen.findByTestId('backup-safety-failed')).textContent).toContain(
+      'quota has been exceeded',
+    );
+    expect(vi.mocked(commitBackupImport)).not.toHaveBeenCalled();
+  });
+
+  it('retries the safety copy from the choice, then imports with it', async () => {
+    vi.mocked(buildBackupExport).mockRejectedValueOnce(new Error('busy'));
+    await stageAndConfirm();
+    await screen.findByTestId('backup-safety-failed');
+
+    fireEvent.click(screen.getByTestId('backup-safety-retry'));
+
+    await waitFor(() => expect(vi.mocked(commitBackupImport)).toHaveBeenCalledOnce());
+    expect(vi.mocked(openBackupSaveTarget)).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(saveBackupFile)).toHaveBeenCalledOnce();
+    expect(screen.queryByTestId('backup-safety-failed')).toBeNull();
+  });
+
+  // Item 1: set-aside records are reachable from Backup & Restore.
+  it('shows set-aside records on the Backup & Restore screen', async () => {
+    vi.mocked(listSetAsideRecords).mockResolvedValueOnce([
+      {
+        key: 'gone/almamesh-life-events/abc',
+        row: 'almamesh-life-events',
+        personId: 'gone',
+        setAsideAt: '2026-10-05T12:00:00.000Z',
+        itemCount: 2,
+        preview: ['Married Ana'],
+      },
+    ]);
+    render(<DataSettings />);
+
+    expect((await screen.findByTestId('set-aside-records')).textContent).toContain('2 life events');
   });
 });

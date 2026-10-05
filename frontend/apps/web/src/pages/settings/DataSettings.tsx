@@ -32,17 +32,21 @@ import { Button, Card, Dialog, Input } from '../../components/ui';
 import {
   buildBackupExport,
   commitBackupImport,
+  exportBackupFilename,
+  safetyBackupFilename,
   stageBackupImport,
   type StagedImport,
 } from '../../lib/backupService';
 import {
+  openBackupSaveTarget,
   pickBackupFile,
-  saveBackupFile,
   type BackupFileContent,
+  type BackupSaveTarget,
 } from '../../lib/backupFile';
 import { suppressNextServiceWorkerHeal } from '../../lib/swSelfHeal';
 import { repairNoteLines } from '../../lib/dataRepairNotice';
 import { DataRepairNotice } from '../../components/features/settings/DataRepairNotice';
+import { SetAsideRecords } from '../../components/features/settings/SetAsideRecords';
 
 /** Minimum export password length; the file carries the AI key, so it is required. */
 const MIN_PASSPHRASE_LENGTH = 8;
@@ -72,6 +76,8 @@ export function DataSettingsPanel({ persistence }: DataSettingsProps) {
   const [importing, setImporting] = useState(false);
   const [safetyDownloadUnverified, setSafetyDownloadUnverified] = useState(false);
   const [safetyRevision, setSafetyRevision] = useState<number | null>(null);
+  // Why the safety copy could not be made; the user then chooses retry or skip.
+  const [safetyFailure, setSafetyFailure] = useState<string | null>(null);
 
   // Passphrase prompt (encrypted backups)
   const [pendingContent, setPendingContent] = useState<BackupFileContent | null>(null);
@@ -89,20 +95,40 @@ export function DataSettingsPanel({ persistence }: DataSettingsProps) {
     setError(null);
   };
 
-  async function handleExport() {
+  // Synchronous on purpose: the save picker must open inside the click
+  // (Chrome's user activation lasts ~5 s; building the backup can take longer).
+  function handleExport() {
     clearBanners();
     if (password.length < MIN_PASSPHRASE_LENGTH) {
       setError(t('backup.error_passphrase_required'));
       return;
     }
+    let target: BackupSaveTarget;
+    try {
+      target = openBackupSaveTarget(exportBackupFilename());
+    } catch (err) {
+      setError(t('backup.error_export_failed', { reason: reasonOf(err) }));
+      return;
+    }
+    void finishExport(target, password);
+  }
+
+  async function finishExport(target: BackupSaveTarget, passphrase: string) {
     setExporting(true);
     try {
-      const { filename, content, repairs } = await buildBackupExport(password);
-      const result = await saveBackupFile(filename, content);
+      if ((await target.choice) === 'cancelled') return;
+      let built: Awaited<ReturnType<typeof buildBackupExport>>;
+      try {
+        built = await buildBackupExport(passphrase);
+      } catch (err) {
+        await target.discard();
+        throw err;
+      }
+      const result = await target.write(built.content);
       // Honest about what the export repaired: a chat whose chart is gone is
       // kept in full; readings whose chart is gone are left out; records of a
       // person who is gone stay set aside on this device, out of the file.
-      const note = repairNoteLines(t, repairs).map((line) => ` ${line}`).join('');
+      const note = repairNoteLines(t, built.repairs).map((line) => ` ${line}`).join('');
       if (result === 'saved') {
         setStatus(`${t('backup.status_exported')}${note}`);
         setPassword(''); // don't leave the passphrase lingering in the field
@@ -139,6 +165,7 @@ export function DataSettingsPanel({ persistence }: DataSettingsProps) {
       setSafetyPassphraseError(null);
       setSafetyDownloadUnverified(false);
       setSafetyRevision(null);
+      setSafetyFailure(null);
       setStaged(result);
       setConfirmOpen(true);
     } catch (err) {
@@ -187,7 +214,15 @@ export function DataSettingsPanel({ persistence }: DataSettingsProps) {
     await stageFile(pendingContent, promptPassphrase);
   }
 
-  async function handleConfirmImport() {
+  function closeConfirm() {
+    setConfirmOpen(false);
+    setSafetyDownloadUnverified(false);
+    setSafetyRevision(null);
+    setSafetyFailure(null);
+  }
+
+  // Synchronous on purpose: the safety copy's save picker opens inside the click.
+  function handleConfirmImport() {
     if (staged == null) {
       return;
     }
@@ -196,61 +231,109 @@ export function DataSettingsPanel({ persistence }: DataSettingsProps) {
       setSafetyPassphraseError(t('backup.error_safety_passphrase_required'));
       return;
     }
-    setImporting(true);
+    if (safetyDownloadUnverified) {
+      void replaceData(staged, async () => safetyRevision);
+      return;
+    }
+    let target: BackupSaveTarget;
     try {
-      let protectedRevision = safetyRevision;
-      if (!safetyDownloadUnverified) {
-        // Safety net FIRST: always encrypted, using the imported file's password
-        // when available or the explicit safety password entered below.
+      target = openBackupSaveTarget(safetyBackupFilename(exportBackupFilename()));
+    } catch (err) {
+      setSafetyFailure(reasonOf(err));
+      return;
+    }
+    void saveSafetyCopyThenReplace(staged, target, safetyPassword);
+  }
+
+  /**
+   * Safety net FIRST: always encrypted, with the imported file's password when
+   * available or the explicit safety password. If the copy cannot be made, the
+   * import is neither blocked nor silently continued: the user is told why and
+   * chooses to retry or to replace without a copy.
+   */
+  async function saveSafetyCopyThenReplace(
+    toImport: StagedImport,
+    target: BackupSaveTarget,
+    safetyPassword: string,
+  ) {
+    setImporting(true);
+    setSafetyFailure(null);
+    try {
+      if ((await target.choice) === 'cancelled') {
+        setSafetyFailure(t('backup.safety_failed_cancelled'));
+        return;
+      }
+      let revisionAfterExport: number;
+      let content: BackupFileContent;
+      try {
         const revisionBeforeExport = await readPortableStateRevision();
-        const current = await buildBackupExport(safetyPassword);
-        const revisionAfterExport = await readPortableStateRevision();
+        content = (await buildBackupExport(safetyPassword)).content;
+        revisionAfterExport = await readPortableStateRevision();
         if (revisionAfterExport !== revisionBeforeExport) {
           throw new Error(
-            'Your AlmaMesh data changed while the safety backup was being prepared. Start the import again.',
+            'Your AlmaMesh data changed while the safety backup was being prepared. Try again.',
           );
         }
-        const safetyFilename = current.filename.startsWith('almamesh-backup-')
-          ? current.filename.replace('almamesh-backup-', 'almamesh-backup-before-import-')
-          : `almamesh-backup-before-import-${current.filename}`;
-        const saved = await saveBackupFile(safetyFilename, current.content);
-        if (saved === 'unverified') {
-          // The <a download> fallback cannot prove completion. Keep the staged
-          // import untouched and require a second, explicit confirmation.
-          setSafetyDownloadUnverified(true);
-          setSafetyRevision(revisionAfterExport);
-          return;
-        }
-        if (saved === 'cancelled') {
-          // The user cancelled the safety-net save — abort WITHOUT touching any
-          // data (no commit, no reload), so the promised undo backup is never skipped.
-          setConfirmOpen(false);
-          setSafetyRevision(null);
-          setError(t('backup.error_safety_cancelled'));
-          return;
-        }
-        protectedRevision = revisionAfterExport;
+      } catch (err) {
+        await target.discard();
+        setSafetyFailure(reasonOf(err));
+        return;
       }
+      let saved: Awaited<ReturnType<BackupSaveTarget['write']>>;
+      try {
+        saved = await target.write(content);
+      } catch (err) {
+        setSafetyFailure(reasonOf(err));
+        return;
+      }
+      if (saved === 'cancelled') {
+        setSafetyFailure(t('backup.safety_failed_cancelled'));
+        return;
+      }
+      if (saved === 'unverified') {
+        // The <a download> fallback cannot prove completion. Keep the staged
+        // import untouched and require a second, explicit confirmation.
+        setSafetyDownloadUnverified(true);
+        setSafetyRevision(revisionAfterExport);
+        return;
+      }
+      await replaceData(toImport, async () => revisionAfterExport);
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  /** The user explicitly chose to replace this browser's data without a copy. */
+  function handleSkipSafety() {
+    if (staged == null) return;
+    void replaceData(staged, readPortableStateRevision);
+  }
+
+  /**
+   * Replace this browser's data with the staged backup. The revision fence
+   * refuses the commit if another tab changed SQLite after `protect` read it.
+   */
+  async function replaceData(toImport: StagedImport, protect: () => Promise<number | null>) {
+    setImporting(true);
+    try {
+      const protectedRevision = await protect();
       if (protectedRevision === null) {
         throw new Error('The safety backup revision is unavailable. Start the import again.');
       }
       armPortableImportRevision(protectedRevision);
       try {
-        await commitBackupImport(staged);
+        await commitBackupImport(toImport);
       } finally {
         clearPortableImportRevisionFence();
       }
-      setConfirmOpen(false);
-      setSafetyRevision(null);
+      closeConfirm();
       setStatus(t('backup.status_imported'));
       // The restore owns the next reload. Prevent the SW self-heal check from
       // stacking a second reload while the fresh realm hydrates its stores.
       suppressNextServiceWorkerHeal();
       window.location.reload();
     } catch (err) {
-      setConfirmOpen(false);
-      setSafetyDownloadUnverified(false);
-      setSafetyRevision(null);
+      closeConfirm();
       setError(t('backup.error_import_failed', { reason: reasonOf(err) }));
     } finally {
       setImporting(false);
@@ -302,7 +385,7 @@ export function DataSettingsPanel({ persistence }: DataSettingsProps) {
           </div>
           <Button
             type="button"
-            onClick={() => void handleExport()}
+            onClick={handleExport}
             disabled={exporting}
             data-testid="backup-export-button"
           >
@@ -337,15 +420,13 @@ export function DataSettingsPanel({ persistence }: DataSettingsProps) {
         </div>
       </Card>
 
+      <SetAsideRecords />
+
       {/* Confirm "replace all data" dialog */}
       <Dialog
         open={confirmOpen}
         onClose={() => {
-          if (!importing) {
-            setConfirmOpen(false);
-            setSafetyDownloadUnverified(false);
-            setSafetyRevision(null);
-          }
+          if (!importing) closeConfirm();
         }}
         title={t('backup.confirm_title')}
       >
@@ -372,6 +453,38 @@ export function DataSettingsPanel({ persistence }: DataSettingsProps) {
             >
               {t('backup.confirm_safety_download')}
             </p>
+          )}
+          {safetyFailure !== null && (
+            <div
+              role="alert"
+              data-testid="backup-safety-failed"
+              className="space-y-2 rounded-md border border-status-warning/50 p-3 text-sm"
+            >
+              <p className="font-semibold text-status-warning">{t('backup.safety_failed_title')}</p>
+              <p className="text-text-secondary">{t('backup.safety_failed_body', { reason: safetyFailure })}</p>
+              <p className="text-text-secondary">{t('backup.safety_failed_choice')}</p>
+              <div className="flex flex-wrap gap-2 pt-1">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={handleConfirmImport}
+                  disabled={importing}
+                  data-testid="backup-safety-retry"
+                >
+                  {t('backup.safety_retry')}
+                </Button>
+                <button
+                  type="button"
+                  onClick={handleSkipSafety}
+                  disabled={importing}
+                  data-testid="backup-skip-safety"
+                  className="px-3 h-8 rounded-md border border-status-error/60 text-status-error text-sm font-medium hover:bg-status-error/10 disabled:opacity-50"
+                >
+                  {t('backup.safety_skip')}
+                </button>
+              </div>
+            </div>
           )}
           {stagedPassphrase === undefined && (
             <div className="space-y-2">
@@ -404,11 +517,7 @@ export function DataSettingsPanel({ persistence }: DataSettingsProps) {
           <div className="flex gap-3 pt-2">
             <button
               type="button"
-              onClick={() => {
-                setConfirmOpen(false);
-                setSafetyDownloadUnverified(false);
-                setSafetyRevision(null);
-              }}
+              onClick={closeConfirm}
               disabled={importing}
               className="flex-1 px-4 py-2.5 bg-background-tertiary border border-ui-border text-text-primary rounded-md hover:bg-ui-border transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
             >
@@ -417,8 +526,8 @@ export function DataSettingsPanel({ persistence }: DataSettingsProps) {
             <button
               type="button"
               data-testid="backup-confirm-import"
-              onClick={() => void handleConfirmImport()}
-              disabled={importing}
+              onClick={handleConfirmImport}
+              disabled={importing || safetyFailure !== null}
               className="flex-1 px-4 py-2.5 bg-status-error text-background-primary rounded-md hover:bg-status-error/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-bold"
             >
               {safetyDownloadUnverified

@@ -408,6 +408,27 @@ export class PortableStateRepository {
     }
   }
 
+  /** One held set-aside record, or null when it is no longer held. */
+  public async readSetAside(key: string): Promise<string | null> {
+    const row = await this.#store.get(PORTABLE_SET_ASIDE_NAMESPACE, key);
+    return row === undefined ? null : decode(row.value, key);
+  }
+
+  /**
+   * Remove held set-aside records (restored or deleted by the user). Resolves
+   * only once SQLite provably no longer holds any of them.
+   */
+  public async releaseSetAside(keys: readonly string[]): Promise<void> {
+    if (keys.length === 0) return;
+    await this.#store.batch(
+      keys.map((key) => ({ type: 'delete', namespace: PORTABLE_SET_ASIDE_NAMESPACE, key }) as const),
+    );
+    const left = await Promise.all(keys.map((key) => this.#store.get(PORTABLE_SET_ASIDE_NAMESPACE, key)));
+    if (left.some((row) => row !== undefined)) {
+      throw new Error('Set-aside records were not removed from SQLite.');
+    }
+  }
+
   public async exportBytes(): Promise<Uint8Array> {
     return (await this.exportWithReport()).bytes;
   }

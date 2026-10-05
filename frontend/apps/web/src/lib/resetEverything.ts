@@ -33,7 +33,9 @@ import {
   INTERPRETATION_QUARANTINE_KEY,
   abortBackupRestore,
   bumpRestoreEpoch,
+  clearSetAsideRecords,
   commitDatasetGeneration,
+  supportsPortableState,
   whenChartLibraryHydrated,
   whenChatHydrated,
   whenLifeEventsHydrated,
@@ -110,6 +112,12 @@ function getUsableLocalStorage(): Pick<Storage, 'removeItem'> | null {
 export interface ResetEverythingDeps {
   waitForHydration: () => Promise<void>;
   clearPersisted: (epoch?: number) => Promise<void>;
+  /**
+   * Set-aside records (user-written, person gone) are personal data too. They
+   * live outside the dataset generation, so they go first: a crash after this
+   * step leaves less data, never more, which is what Start fresh asked for.
+   */
+  clearSetAside?: () => Promise<void>;
   beginDatasetReset?: () => Promise<number>;
   /** Optional only for injected non-atomic persistence; the browser commit finalizes itself. */
   finalizeDatasetReset?: (epoch: number) => Promise<void>;
@@ -135,6 +143,10 @@ async function waitForResetStoresHydrated(): Promise<void> {
 
 const DEFAULT_DEPS: ResetEverythingDeps = {
   waitForHydration: waitForResetStoresHydrated,
+  // Runtimes without the SQLite Worker (Node tests, prerender) hold no set-aside rows.
+  clearSetAside: async () => {
+    if (supportsPortableState()) await clearSetAsideRecords();
+  },
   clearPersisted: async (epoch) => {
     if (epoch === undefined) return;
     // One SQLite batch: dataset rows, the quarantine of unreadable
@@ -188,6 +200,7 @@ export async function resetEverything(deps: ResetEverythingDeps = DEFAULT_DEPS):
     usePredictiveStore.getState().reset();
     useMeshStore.getState().reset();
 
+    await deps.clearSetAside?.();
     await deps.clearPersisted(epoch);
     await clearLegacyPersistedRows();
     const storage = getUsableLocalStorage();
