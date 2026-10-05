@@ -38,15 +38,35 @@ describe('legacy idb-keyval reader', () => {
     expect(await readLegacyKeyval('almamesh-profiles')).toBeUndefined();
   });
 
-  it('assumes the database may exist when the browser cannot list databases', async () => {
-    useIndexedDb({ open: factory.open.bind(factory) });
-    expect(await legacyKeyvalDatabaseExists()).toBe(true);
+  // CONTRACT REVERSED (#246 grade). These used to assert that a browser which
+  // cannot list databases (Firefox < 126) "may" have the legacy one, so the
+  // read opened it and CREATED an empty keyval-store. The existence check now
+  // opens and aborts the upgrade: nothing is created, legacy data still reads.
+  const withoutListing = () => ({ open: factory.open.bind(factory) });
+  const listingRefused = () => ({
+    open: factory.open.bind(factory),
+    databases: () => Promise.reject(new Error('blocked')),
   });
 
-  it('assumes the database may exist when listing databases fails', async () => {
-    useIndexedDb({ databases: () => Promise.reject(new Error('blocked')) });
-    expect(await legacyKeyvalDatabaseExists()).toBe(true);
-  });
+  for (const [label, limited] of [
+    ['cannot list databases', withoutListing],
+    ['refuses to list databases', listingRefused],
+  ] as const) {
+    it(`creates no database on a fresh browser that ${label}`, async () => {
+      useIndexedDb(limited());
+      expect(await legacyKeyvalDatabaseExists()).toBe(false);
+      expect(await readLegacyKeyval('almamesh-profiles')).toBeUndefined();
+      await deleteLegacyKeyval('almamesh-profiles');
+      expect(await databaseNames()).toEqual([]);
+    });
+
+    it(`still reads legacy rows on a browser that ${label}`, async () => {
+      await set('almamesh-profiles', '{"state":{}}', createStore('keyval-store', 'keyval'));
+      useIndexedDb(limited());
+      expect(await legacyKeyvalDatabaseExists()).toBe(true);
+      expect(await readLegacyKeyval('almamesh-profiles')).toBe('{"state":{}}');
+    });
+  }
 
   it('says no database when there is no IndexedDB at all', async () => {
     useIndexedDb(undefined);

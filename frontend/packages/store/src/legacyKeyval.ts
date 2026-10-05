@@ -14,27 +14,57 @@ import { createStore, del, get } from 'idb-keyval';
  */
 const LEGACY_KEYVAL_DATABASE = 'keyval-store';
 
-/** Created lazily: idb-keyval opens the database on first use, not here. */
-let legacyStore: ReturnType<typeof createStore> | null = null;
+/**
+ * Created lazily: idb-keyval opens the database on first use, not here. Keyed
+ * to the factory it was made for (one per page in production; one per test).
+ */
+let legacyStore: { factory: unknown; store: ReturnType<typeof createStore> } | null = null;
 function store(): ReturnType<typeof createStore> {
-  legacyStore ??= createStore(LEGACY_KEYVAL_DATABASE, 'keyval');
-  return legacyStore;
+  const factory = (globalThis as { indexedDB?: unknown }).indexedDB;
+  if (legacyStore !== null && legacyStore.factory === factory) return legacyStore.store;
+  const created = createStore(LEGACY_KEYVAL_DATABASE, 'keyval');
+  legacyStore = { factory, store: created };
+  return created;
 }
 
 /**
- * False only when the browser can list its databases and the legacy one is
- * not there. A browser that cannot list them is treated as "maybe", so old
- * data is never stranded.
+ * Existence without creation, for browsers that cannot list databases
+ * (Firefox < 126) or refuse to: open with no version, and if `upgradeneeded`
+ * fires the database did not exist, so abort the version change. An aborted
+ * first upgrade leaves no database behind.
  */
+function probeByOpening(factory: Pick<IDBFactory, 'open'>): Promise<boolean> {
+  return new Promise((resolve) => {
+    let created = false;
+    const request = factory.open(LEGACY_KEYVAL_DATABASE);
+    request.onupgradeneeded = () => {
+      created = true;
+      request.transaction?.abort();
+    };
+    request.onsuccess = () => {
+      request.result.close();
+      resolve(!created);
+    };
+    request.onerror = (event) => {
+      event.preventDefault(); // the abort above, or a refused open: nothing to read
+      resolve(false);
+    };
+    request.onblocked = () => resolve(true);
+  });
+}
+
+/** False when the legacy database is not there; never creates it to find out. */
 export async function legacyKeyvalDatabaseExists(): Promise<boolean> {
   const factory = (globalThis as { indexedDB?: Partial<IDBFactory> }).indexedDB;
   if (factory === undefined) return false;
-  if (typeof factory.databases !== 'function') return true;
-  try {
-    return (await factory.databases()).some((database) => database.name === LEGACY_KEYVAL_DATABASE);
-  } catch {
-    return true; // listing refused: fall back to the pre-check behaviour
+  if (typeof factory.databases === 'function') {
+    try {
+      return (await factory.databases()).some((database) => database.name === LEGACY_KEYVAL_DATABASE);
+    } catch {
+      // Listing refused: probe instead.
+    }
   }
+  return typeof factory.open === 'function' ? probeByOpening(factory as Pick<IDBFactory, 'open'>) : false;
 }
 
 export async function readLegacyKeyval<T = unknown>(key: string): Promise<T | undefined> {
