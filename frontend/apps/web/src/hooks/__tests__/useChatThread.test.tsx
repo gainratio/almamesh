@@ -11,7 +11,7 @@ import {
   LlmRequestError,
   PrivacyViolationError,
 } from '@almamesh/llm';
-import { useChatStore } from '@almamesh/store';
+import { useChartLibraryStore, useChatStore, type StoredChart } from '@almamesh/store';
 import i18n from '../../i18n/config';
 import {
   __setMemoryForTest,
@@ -121,6 +121,104 @@ describe('useChatThread', () => {
     const remount = renderHook(() => useChatThread(PROFILE, CHART));
     expect(remount.result.current.threadId).toBe(threadId);
     expect(remount.result.current.messages.length).toBe(2);
+  });
+
+  describe('an answer for an older chart snapshot is dropped, not attached', () => {
+    afterEach(() => {
+      useChartLibraryStore.setState({ charts: {} });
+    });
+
+    function stampedChart(chartId: string, snapshotId: string): StoredChart {
+      return {
+        chart_id: chartId,
+        person_name: 'P',
+        is_primary: true,
+        profile_id: PROFILE,
+        astronomical_calculations: { calculation_timestamp: '2025-01-01T00:00:00.000Z' },
+        sidereal_chart: { snapshot: { snapshot_id: snapshotId } },
+      } as unknown as StoredChart;
+    }
+
+    /** A stream whose answer arrives only after the test releases it. */
+    function deferredStream(answer: string) {
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const stream = vi.fn(async () => {
+        await gate;
+        return answer;
+      });
+      return { stream, release };
+    }
+
+    it('drops the answer when the chart is regenerated (new chart id) mid-stream', async () => {
+      const { memory, index } = fakeMemory();
+      __setMemoryForTest(memory);
+      const { stream, release } = deferredStream('Your Saturn period is ending.');
+      const { result, rerender } = renderHook(({ chartId }) => useChatThread(PROFILE, chartId), {
+        initialProps: { chartId: CHART },
+      });
+
+      let pending!: Promise<void>;
+      act(() => {
+        pending = result.current.submit('Which period am I in?', stream);
+      });
+      rerender({ chartId: 'chart-B' });
+      await act(async () => {
+        release();
+        await pending;
+      });
+
+      const contents = result.current.messages.map((m) => m.content);
+      expect(contents).not.toContain('Your Saturn period is ending.');
+      expect(result.current.messages.at(-1)).toMatchObject({ role: 'assistant', error: true });
+      expect(index).not.toHaveBeenCalledWith(
+        expect.objectContaining({ content: 'Your Saturn period is ending.' }),
+      );
+    });
+
+    it('drops the answer when the same chart id is recomputed with a new snapshot', async () => {
+      const { memory } = fakeMemory();
+      __setMemoryForTest(memory);
+      useChartLibraryStore.setState({ charts: { [CHART]: stampedChart(CHART, 'a'.repeat(64)) } });
+      const { stream, release } = deferredStream('Stale answer.');
+      const { result } = renderHook(() => useChatThread(PROFILE, CHART));
+
+      let pending!: Promise<void>;
+      act(() => {
+        pending = result.current.submit('Which period am I in?', stream);
+      });
+      useChartLibraryStore.setState({ charts: { [CHART]: stampedChart(CHART, 'b'.repeat(64)) } });
+      await act(async () => {
+        release();
+        await pending;
+      });
+
+      expect(result.current.messages.map((m) => m.content)).not.toContain('Stale answer.');
+    });
+
+    it('keeps the answer when the snapshot did not change', async () => {
+      const { memory } = fakeMemory();
+      __setMemoryForTest(memory);
+      useChartLibraryStore.setState({ charts: { [CHART]: stampedChart(CHART, 'a'.repeat(64)) } });
+      const { stream, release } = deferredStream('Fresh answer.');
+      const { result } = renderHook(() => useChatThread(PROFILE, CHART));
+
+      let pending!: Promise<void>;
+      act(() => {
+        pending = result.current.submit('Which period am I in?', stream);
+      });
+      await act(async () => {
+        release();
+        await pending;
+      });
+
+      expect(result.current.messages.at(-1)).toMatchObject({
+        role: 'assistant',
+        content: 'Fresh answer.',
+      });
+    });
   });
 
   it('passes prior turns as history and retrieved snippets as retrievedContext to the stream fn', async () => {
