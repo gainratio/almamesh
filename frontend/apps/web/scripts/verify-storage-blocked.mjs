@@ -86,6 +86,91 @@ function refuseOpfsOnly() {
   }
 }
 
+const ONBOARDED_NAME = 'Reference Native'
+const BACKUP_PASSPHRASE = 'storage blocked passphrase'
+
+/**
+ * Runs in the page before any app script: decrypt every exported backup
+ * (format v3: authenticated 64-byte header, PBKDF2 + AES-GCM, plaintext is the
+ * SQLite file) and record whether the onboarded name's bytes are in it.
+ */
+function captureBackups({ passphrase, needle }) {
+  // Chromium would open its native save picker; force the download path.
+  for (let target = window; target; target = Object.getPrototypeOf(target)) {
+    Reflect.deleteProperty(target, 'showSaveFilePicker')
+  }
+  const createObjectUrl = URL.createObjectURL.bind(URL)
+  URL.createObjectURL = (blob) => {
+    window.__backupHasNeedle = blob.arrayBuffer().then(async (buffer) => {
+      const file = new Uint8Array(buffer)
+      const header = file.slice(0, 64)
+      const iterations = new DataView(header.buffer).getUint32(16, false)
+      const base = await window.crypto.subtle.importKey('raw', new window.TextEncoder().encode(passphrase), 'PBKDF2', false, ['deriveKey'])
+      const key = await window.crypto.subtle.deriveKey(
+        { name: 'PBKDF2', hash: 'SHA-256', salt: header.slice(36, 52), iterations },
+        base, { name: 'AES-GCM', length: 256 }, false, ['decrypt'],
+      )
+      const bytes = new Uint8Array(await window.crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv: header.slice(52, 64), additionalData: header }, key, file.slice(64),
+      ))
+      const target = new window.TextEncoder().encode(needle)
+      return bytes.some((_, offset) => target.every((value, index) => bytes[offset + index] === value))
+    })
+    return createObjectUrl(blob)
+  }
+}
+
+/**
+ * Client-side navigation (a full load would start a new in-memory database),
+ * repeated until `readyTestId` shows: on a slow device a redirect still in
+ * flight from the previous screen (Start fresh -> /) can override the first.
+ */
+async function navigateInApp(page, path, readyTestId) {
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    await page.evaluate((target) => {
+      window.history.pushState({}, '', target)
+      window.dispatchEvent(new window.PopStateEvent('popstate'))
+    }, path)
+    const ready = await page.getByTestId(readyTestId).first()
+      .waitFor({ state: 'visible', timeout: 20_000 }).then(() => true, () => false)
+    if (ready) return
+  }
+  const screen = (await page.locator('body').innerText().catch(() => '')).replace(/\s+/g, ' ').slice(0, 400)
+  throw new Error(`in-app navigation to ${path} never showed ${readyTestId} (${page.url()}); screen: ${screen}`)
+}
+
+/**
+ * Runs in the page: every IndexedDB record and localStorage value that
+ * contains the onboarded name. SQLite (here in memory) is the only allowed home.
+ */
+async function findUserDataOutsideSqlite(needle) {
+  const leaks = []
+  for (let index = 0; index < localStorage.length; index += 1) {
+    const key = localStorage.key(index)
+    if (String(localStorage.getItem(key)).includes(needle)) leaks.push(`localStorage:${key}`)
+  }
+  const settle = (request) => new Promise((resolve, reject) => {
+    request.onsuccess = () => resolve(request.result)
+    request.onerror = () => reject(request.error)
+  })
+  for (const { name } of await indexedDB.databases()) {
+    if (!name) continue
+    const database = await settle(indexedDB.open(name))
+    try {
+      for (const storeName of database.objectStoreNames) {
+        const values = await settle(database.transaction(storeName).objectStore(storeName).getAll())
+        const text = (value) => {
+          try { return typeof value === 'string' ? value : JSON.stringify(value) } catch { return '' }
+        }
+        if (values.some((value) => text(value).includes(needle))) leaks.push(`indexedDB:${name}/${storeName}`)
+      }
+    } finally {
+      database.close()
+    }
+  }
+  return leaks
+}
+
 /** Total budget from finishing onboarding to a rendered chart in an OPFS-less realm. */
 const OPFS_REFUSED_CHART_BUDGET_MS = 120_000
 
@@ -97,7 +182,7 @@ async function typeSections(page, testId, digits, trailing) {
 
 /** The real onboarding journey (mirrors e2e/live/liveJourney.ts generateChart). */
 async function onboard(page) {
-  await page.getByTestId('name-input').fill('Reference Native')
+  await page.getByTestId('name-input').fill(ONBOARDED_NAME)
   await page.getByTestId('next-button').click()
   await typeSections(page, 'birth-date-input', '08081988')
   await page.getByTestId('next-button').click()
@@ -155,6 +240,7 @@ try {
 
   const opfsRefused = await browser.newContext({ serviceWorkers: 'block' })
   await opfsRefused.addInitScript(refuseOpfsOnly)
+  await opfsRefused.addInitScript(captureBackups, { passphrase: BACKUP_PASSPHRASE, needle: ONBOARDED_NAME })
   try {
     const visited = await visit(opfsRefused, '/onboarding')
     await visited.page.getByTestId('name-input').waitFor({ state: 'visible', timeout: 30_000 })
@@ -178,6 +264,35 @@ try {
     const note = visited.page.getByTestId('ephemeral-storage-notice')
     invariant(await note.isVisible(), 'OPFS refused: chart rendered without the "will not be saved" note')
     invariant(/export/i.test(await note.innerText()), 'OPFS refused: the ephemeral note does not suggest exporting')
+    invariant(
+      (await note.getAttribute('data-durability')) === 'memory',
+      'OPFS refused: the app does not report in-memory SQLite as its storage mode',
+    )
+    // SQLite is the only store. In memory mode nothing may quietly land in
+    // IndexedDB or localStorage instead (Harish, 2026-10-04).
+    const leaks = await visited.page.evaluate(findUserDataOutsideSqlite, ONBOARDED_NAME)
+    invariant(leaks.length === 0, `OPFS refused: user data written outside SQLite: ${leaks.join(', ')}`)
+    // Deleted data must not survive inside the SQLite file a backup carries.
+    // In memory SQLite has no secure_delete, so the freed pages kept the bytes.
+    await navigateInApp(visited.page, '/settings/preferences', 'reset-start-fresh')
+    await visited.page.getByTestId('reset-start-fresh').click()
+    await visited.page.getByTestId('reset-confirm').click()
+    await visited.page.getByTestId('landing-nav-cta').waitFor({ state: 'visible', timeout: 30_000 })
+    await navigateInApp(visited.page, '/settings/data', 'backup-passphrase-input')
+    await visited.page.getByTestId('backup-passphrase-input').fill(BACKUP_PASSPHRASE)
+    await visited.page.getByTestId('backup-export-button').click()
+    await visited.page.waitForFunction(() => window.__backupHasNeedle !== undefined, null, { timeout: 60_000 })
+    invariant(
+      !(await visited.page.evaluate(() => window.__backupHasNeedle)),
+      'OPFS refused: a backup exported after Start fresh still contains the deleted profile name',
+    )
+    // Honest, not hopeful: a reload loses the session and still says so.
+    await visited.page.reload({ waitUntil: 'load' })
+    await note.waitFor({ state: 'visible', timeout: 30_000 })
+    invariant(
+      !(await visited.page.getByText(ONBOARDED_NAME).first().isVisible().catch(() => false)),
+      'OPFS refused: data survived a reload although the note says it does not',
+    )
     await note.getByRole('link').click()
     await visited.page.waitForURL('**/settings/data', { timeout: 15_000 })
     invariant(

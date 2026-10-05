@@ -3,9 +3,12 @@
  * memory (RAG) over chat history.
  *
  * Design:
- * - ONE lazily-booted memory singleton. The embedder Web Worker (and its ~25 MB
- *   self-hosted MiniLM model) is created only on the FIRST index/retrieve call,
- *   NOT at page load, so opening the dashboard stays cheap.
+ * - ONE lazily-booted memory singleton. The embedder Web Worker (its ~25 MB
+ *   self-hosted MiniLM model plus onnxruntime wasm: about +80-95 MB resident)
+ *   is created only on the FIRST index/retrieve call (a chat send or a search),
+ *   NOT at page load, so opening the dashboard stays cheap. `embedderStatus`
+ *   reports that first load so the chat UI can show it; the memory-budget e2e
+ *   lane fails if the model ever loads during boot.
  * - Every entry point is BEST-EFFORT: if the embedder fails (model missing, OOM,
  *   no GPU/WASM), we log a stable code and degrade gracefully. Memory is an enhancement —
  *   it must NEVER block the chat from answering.
@@ -19,12 +22,15 @@ import {
   createVectorStore,
   createWorkerEmbedder,
   type ChatMemory,
+  type Embedder,
   type IndexableMessage,
   type RetrievedChunk,
   type VectorStore,
 } from '@almamesh/memory';
 import { safeWarn } from '@almamesh/shared-types';
 import { readDeletionTombstones, readObservedDatasetEpoch } from '@almamesh/store';
+
+import { embedderStatus } from './embedderStatus';
 
 /** The slice of `ChatMemory` the UI depends on — keeps tests honest + injectable. */
 export type ChatMemoryFacade = Pick<
@@ -74,17 +80,26 @@ function createGenerationAwareVectorStore(): VectorStore {
 const vectorStore: VectorStore = createGenerationAwareVectorStore();
 
 /**
+ * ONE embedder for the page. `createWorkerEmbedder` spawns its Worker (and loads
+ * the model) only on the first `embed`, so holding it here costs nothing at
+ * boot. It is dataset-independent, so it survives `invalidateMemoryRuntime`:
+ * recreating it would leave the old worker (~+80-95 MB) alive beside a new one.
+ */
+const embedder: Embedder = embedderStatus.track(createWorkerEmbedder());
+
+/**
  * Resolve the process-wide memory singleton, booting the embedder worker on
  * first use. Replaceable in tests via {@link __setMemoryForTest}.
  */
 function getMemory(): ChatMemoryFacade {
   if (singleton === null) {
-    // Boot the shared @almamesh/memory worker embedder: it enables local,
+    // Wire the shared worker embedder (above) into a fresh facade. The worker
+    // enables local,
     // same-origin model loading (`env.allowLocalModels = true`) and forces
     // single-threaded ORT to keep embedding memory predictable even though the
     // deployed app is cross-origin isolated for shared SQLite.
     singleton = createMemory({
-      embedder: createWorkerEmbedder(),
+      embedder,
       store: vectorStore,
       generation: datasetGeneration,
     });

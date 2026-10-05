@@ -25,6 +25,7 @@ import { resolveReadyEngine } from "../lib/resolveReadyEngine";
 import { resetAppData } from "../lib/resetAppData";
 import { engineErrorCode, ROLLBACK_CODE } from "../lib/engineLifecycle";
 import { RollbackResetGuard } from "../components/RollbackResetGuard";
+import { incompleteDatabases, ResetIncompleteNotice } from "../components/ResetIncompleteNotice";
 import { prepareOnboardingLifeEvents } from "../lib/onboardingLifeEvents";
 import {
   isAiUsable,
@@ -137,6 +138,7 @@ export default function OnboardingPage() {
   const [generationStep, setGenerationStep] = React.useState(0);
   // Stable engine failure code of the last failed bootstrap (not the message).
   const [bootFailureCode, setBootFailureCode] = React.useState<string | null>(null);
+  const [resetIncomplete, setResetIncomplete] = React.useState<readonly string[] | null>(null);
   const [narrative, setNarrative] = React.useState("");
   const [extractedEvents, setExtractedEvents] = React.useState<LifeEventInput[]>([]);
   // The captured events as a ref so the (possibly stale) generation closure
@@ -492,7 +494,11 @@ export default function OnboardingPage() {
   // into a clean boot. Explicit click only — never automatic. Reuses the shared
   // resetAppData util (same as ErrorBoundary).
   const handleResetAppData = () => {
-    void resetAppData().finally(() => window.location.reload());
+    setResetIncomplete(null);
+    void resetAppData().then(
+      () => window.location.reload(),
+      (error: unknown) => setResetIncomplete(incompleteDatabases(error)),
+    );
   };
 
   const renderStep = () => {
@@ -564,6 +570,7 @@ export default function OnboardingPage() {
                   </button>
                 )}
               />
+              {resetIncomplete !== null && <ResetIncompleteNotice databases={resetIncomplete} />}
             </div>
           </div>
         );

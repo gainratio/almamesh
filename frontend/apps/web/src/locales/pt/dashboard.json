@@ -120,6 +120,7 @@
     "empty_title": "Dados do mapa indisponíveis",
     "empty_body": "Gere seu mapa natal para ver a análise técnica.",
     "force_field_title": "Campo de força planetário",
+    "force_field_unavailable": "Este navegador não consegue desenhar a visualização 3D aqui. Seu mapa, logo abaixo, tem tudo.",
     "kundli_title": "Kundli e posição planetária"
   }
 }

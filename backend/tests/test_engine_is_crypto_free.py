@@ -39,6 +39,9 @@ _CHART_WORKER = (
     _BACKEND.parent / "frontend" / "packages" / "browser" / "src" / "pyodide" / "chartWorker.ts"
 )
 _STRENGTH_RECEIPT_TS = _CHART_WORKER.parent / "strengthReceipt.ts"
+# The Worker's Pyodide package list lives in its own module so the dist-lockstep
+# unit test can import it without booting the Worker.
+_LOAD_PACKAGES_TS = _CHART_WORKER.parent / "loadPackages.ts"
 
 # `from almamesh.foo.bar import baz, qux` inside the PY_BOOTSTRAP template.
 _IMPORT_RE = re.compile(r"^\s*from\s+(almamesh[\w.]*)\s+import\s+([\w,\s]+)$", re.MULTILINE)
@@ -154,6 +157,8 @@ def test_pynacl_is_not_loaded_in_the_browser_boot() -> None:
     TypeScript it is dead weight on every boot — including natal-only sessions that
     never compute a Life Atlas at all."""
     worker = _CHART_WORKER.read_text(encoding="utf-8")
-    load_packages = re.search(r"LOAD_PACKAGES\s*=\s*\[(.*?)\]", worker, re.DOTALL)
-    assert load_packages is not None, "could not locate LOAD_PACKAGES in chartWorker.ts"
+    assert 'import { LOAD_PACKAGES } from "./loadPackages";' in worker
+    source = _LOAD_PACKAGES_TS.read_text(encoding="utf-8")
+    load_packages = re.search(r"LOAD_PACKAGES\s*=\s*\[(.*?)\]", source, re.DOTALL)
+    assert load_packages is not None, "could not locate LOAD_PACKAGES in loadPackages.ts"
     assert "pynacl" not in load_packages.group(1)

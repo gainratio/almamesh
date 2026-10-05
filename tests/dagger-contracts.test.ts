@@ -105,6 +105,7 @@ describe("Dagger public orchestration contract", () => {
       expect.arrayContaining([
         "backend",
         "browser",
+        "browser-matrix",
         "contracts",
         "dependency-audit",
         "deploy",

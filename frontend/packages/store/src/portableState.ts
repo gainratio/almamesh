@@ -11,6 +11,12 @@ export const PORTABLE_STATE_NAMESPACE = 'canonical';
 export const PORTABLE_STATE_SCHEMA_VERSION = 1;
 export const LEGACY_MIGRATION_MARKER = 'meta/legacy-idb-migration-v1';
 export const PORTABLE_LEDGER_KEY = 'almamesh-deletion-tombstones';
+/**
+ * Side table for unreadable interpretation rows held instead of destroyed.
+ * Same SQLite file as the canonical dataset (so one batch can fence both), but
+ * never part of a snapshot, a restore, or an exported backup.
+ */
+export const PORTABLE_QUARANTINE_NAMESPACE = 'quarantine';
 export const PORTABLE_STATE_UNAVAILABLE_MESSAGE =
   'Portable SQLite requires cross-origin isolation, Web Workers, OPFS, SharedArrayBuffer, and Atomics.waitAsync.';
 
@@ -157,13 +163,29 @@ const INITIAL_PORTABLE_LEDGER = JSON.stringify({
   chartIds: [],
 });
 
+export type PortableQuarantineMutation =
+  | {
+      readonly type: 'put';
+      readonly namespace: typeof PORTABLE_QUARANTINE_NAMESPACE;
+      readonly key: string;
+      readonly value: string;
+    }
+  | {
+      readonly type: 'delete';
+      readonly namespace: typeof PORTABLE_QUARANTINE_NAMESPACE;
+      readonly key: string;
+    };
+
 export type PortableStateMutation =
   | { readonly type: 'put'; readonly key: string; readonly value: string }
-  | { readonly type: 'delete'; readonly key: string };
+  | { readonly type: 'delete'; readonly key: string }
+  | PortableQuarantineMutation;
 
 export interface PortableStateSnapshot {
   readonly epoch: number;
   readonly values: ReadonlyMap<string, string>;
+  /** Quarantine rows read at the same epoch, so a CAS transform can fence them too. */
+  readonly quarantine: ReadonlyMap<string, string>;
 }
 
 export interface LegacyStateStorage {
@@ -179,13 +201,18 @@ export interface LegacyStateStorage {
 export class PortableStateRepository {
   readonly #store: SqliteStateStore;
   readonly #validateExport: (bytes: Uint8Array) => Promise<number>;
+  readonly #rebuildExport: (canonical: ReadonlyMap<string, string>) => Promise<Uint8Array>;
+  #writeQueue: Promise<void> = Promise.resolve();
 
   public constructor(
     store: SqliteStateStore,
     validateExport: (bytes: Uint8Array) => Promise<number> = validatePortableExportDatabase,
+    /** Production passes canonicalOnlyExport; unit tests pass a stub. */
+    rebuildExport: (canonical: ReadonlyMap<string, string>) => Promise<Uint8Array> = canonicalOnlyExport,
   ) {
     this.#store = store;
     this.#validateExport = validateExport;
+    this.#rebuildExport = rebuildExport;
   }
 
   public async read(key: string): Promise<string | null> {
@@ -201,6 +228,7 @@ export class PortableStateRepository {
         namespace: PORTABLE_STATE_NAMESPACE,
         limit: MAX_CANONICAL_ROWS,
       });
+      const quarantine = await this.listQuarantine();
       const after = await this.#store.runtimeInfo();
       if (page.nextKey !== undefined) {
         throw new Error('Portable state exceeds the supported canonical row count.');
@@ -210,6 +238,7 @@ export class PortableStateRepository {
       return {
         epoch: before.epoch,
         values: new Map(page.rows.map((row) => [row.key, decode(row.value, row.key)])),
+        quarantine,
       };
     }
     throw new Error('Portable state remained busy while reading a consistent snapshot.');
@@ -228,6 +257,25 @@ export class PortableStateRepository {
 
   /** Return attempt-local metadata only from the CAS attempt that actually won. */
   public async transactWithResult<Result>(
+    transform: (snapshot: PortableStateSnapshot) => {
+      readonly mutations: readonly PortableStateMutation[];
+      readonly result: Result;
+    },
+  ): Promise<{ readonly epoch: number; readonly result: Result }> {
+    // One writer at a time per realm. The SQLite epoch covers the whole file,
+    // so two of this tab's writes to different keys conflict with each other;
+    // left concurrent, boot hydration lost most CAS attempts to itself and a
+    // ninth concurrent writer failed outright. Other tabs still race through
+    // the epoch CAS below.
+    const turn = this.#writeQueue.then(() => this.#compareAndSwap(transform));
+    this.#writeQueue = turn.then(
+      () => undefined,
+      () => undefined,
+    );
+    return turn;
+  }
+
+  async #compareAndSwap<Result>(
     transform: (snapshot: PortableStateSnapshot) => {
       readonly mutations: readonly PortableStateMutation[];
       readonly result: Result;
@@ -264,6 +312,24 @@ export class PortableStateRepository {
     return this.#store.runtimeInfo();
   }
 
+  /** Every held quarantine row, keyed `<owner>/<digest>`. */
+  public async listQuarantine(): Promise<ReadonlyMap<string, string>> {
+    const page = await this.#store.list({
+      namespace: PORTABLE_QUARANTINE_NAMESPACE,
+      limit: MAX_CANONICAL_ROWS,
+    });
+    if (page.nextKey !== undefined) {
+      throw new Error('The interpretation quarantine exceeds the supported row count.');
+    }
+    return new Map(page.rows.map((row) => [row.key, decode(row.value, row.key)]));
+  }
+
+  /** One atomic SQLite batch over quarantine rows; never fenced by the dataset epoch. */
+  public async applyQuarantine(mutations: readonly PortableQuarantineMutation[]): Promise<void> {
+    if (mutations.length === 0) return;
+    await this.#store.batch(mutations.map(toSqliteMutation));
+  }
+
   public async exportBytes(): Promise<Uint8Array> {
     for (let attempt = 0; attempt < MAX_TRANSACTION_ATTEMPTS; attempt += 1) {
       const before = await this.#store.runtimeInfo();
@@ -281,7 +347,14 @@ export class PortableStateRepository {
         continue;
       }
       validatePortableSnapshot(snapshot);
-      return bytes;
+      // Backups carry the canonical dataset only; the quarantine stays local.
+      // The raw file is never what leaves: it may hold quarantine rows (their
+      // writes are not fenced by the dataset epoch, so no re-read here could be
+      // trusted) and a deleted row's bytes in free pages. A fresh file written
+      // from the canonical rows read at the validated epoch holds neither.
+      const canonical = await this.#rebuildExport(snapshot.values);
+      await this.#validateExport(canonical);
+      return canonical;
     }
     throw new Error('Portable state remained busy while exporting a consistent snapshot.');
   }
@@ -319,6 +392,25 @@ async function validatePortableExportDatabase(bytes: Uint8Array): Promise<number
   }
 }
 
+/**
+ * Rebuild the export from the canonical rows alone in a fresh in-memory file.
+ * Deleting quarantine rows from a copy would leave their bytes in SQLite free
+ * pages; a fresh file never contained them.
+ */
+async function canonicalOnlyExport(values: ReadonlyMap<string, string>): Promise<Uint8Array> {
+  const store = await createSqliteStateStore({
+    name: 'almamesh-export-canonical',
+    initialSchemaVersion: PORTABLE_STATE_SCHEMA_VERSION,
+    persistence: 'memory',
+  });
+  try {
+    await store.batch([...values].map(([key, value]) => toSqliteMutation({ type: 'put', key, value })));
+    return await store.exportBytes();
+  } finally {
+    await store.dispose();
+  }
+}
+
 /** 'memory' is the session-only fallback for browsers that refuse OPFS (see portablePersistence.ts). */
 export async function openPortableStateRepository(
   persistence: 'opfs' | 'memory' = 'opfs',
@@ -329,9 +421,19 @@ export async function openPortableStateRepository(
       initialSchemaVersion: PORTABLE_STATE_SCHEMA_VERSION,
       persistence,
     }),
+    validatePortableExportDatabase,
+    canonicalOnlyExport,
   );
 }
 
+/**
+ * Rewrite an exported file so it holds only live rows. A deleted row's bytes
+ * otherwise stay in SQLite's free pages: the OPFS database runs with
+ * secure_delete, but the in-memory fallback (OPFS refused) does not, and a
+ * backup taken there after Start fresh still carried the deleted profile.
+ * Importing into a fresh in-memory database writes live rows to new pages
+ * only; the copy's own epoch differs by the import and nothing reads it.
+ */
 export interface PortableStateCapabilities {
   readonly Worker?: unknown;
   readonly SharedArrayBuffer?: unknown;
@@ -410,6 +512,8 @@ export async function mergeLegacyPreferencesIntoPortableState(
     readonly createStore?: () => Promise<SqliteStateStore>;
     /** Unit-test seam for fake SQLite bytes; production re-opens exact bytes. */
     readonly validateExport?: (bytes: Uint8Array) => Promise<number>;
+    /** Unit-test seam; production rebuilds the file from canonical rows. */
+    readonly rebuildExport?: (canonical: ReadonlyMap<string, string>) => Promise<Uint8Array>;
   } = {},
 ): Promise<Uint8Array> {
   if (candidate === null || typeof candidate !== 'object' || Array.isArray(candidate)) {
@@ -429,7 +533,7 @@ export async function mergeLegacyPreferencesIntoPortableState(
       initialSchemaVersion: PORTABLE_STATE_SCHEMA_VERSION,
       persistence: 'memory',
     }));
-  const repository = new PortableStateRepository(store, options.validateExport);
+  const repository = new PortableStateRepository(store, options.validateExport, options.rebuildExport);
   try {
     const stage = await store.stageImport(bytes);
     if (stage.schemaVersion !== PORTABLE_STATE_SCHEMA_VERSION) {
@@ -524,6 +628,12 @@ export function decodePortablePreferences(value: string): PortablePreferences {
 }
 
 function toSqliteMutation(mutation: PortableStateMutation): SqliteStateMutation {
+  if ('namespace' in mutation) {
+    assertQuarantineKey(mutation.key);
+    return mutation.type === 'put'
+      ? { ...mutation, value: encoder.encode(mutation.value) }
+      : mutation;
+  }
   assertPortableKey(mutation.key);
   if (mutation.type === 'put' && mutation.key === PORTABLE_PREFERENCES_KEY) {
     parsePortablePreferences(mutation.value);
@@ -545,6 +655,14 @@ function toSqliteMutation(mutation: PortableStateMutation): SqliteStateMutation 
 function assertPortableKey(key: string): void {
   if (!isPortableStateKey(key)) {
     throw new Error(`Portable state key "${key}" is not canonical AlmaMesh data.`);
+  }
+}
+
+const QUARANTINE_KEY_PATTERN = /^[^\u0000-\u001f/]{1,512}\/[0-9a-f]{64}$/;
+
+function assertQuarantineKey(key: string): void {
+  if (!QUARANTINE_KEY_PATTERN.test(key)) {
+    throw new Error(`Quarantine key "${key}" is not <owner>/<sha256>.`);
   }
 }
 

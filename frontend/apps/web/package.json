@@ -28,6 +28,7 @@
     "test:e2e:dual-voice": "playwright test --config=playwright.dual-voice-life-atlas.config.ts",
     "test:e2e:mesh": "playwright test --config=playwright.mesh-this-is-me.config.ts",
     "test:e2e:portable-sqlite": "playwright test --config=playwright.portable-sqlite.config.ts",
+    "test:e2e:memory-budget": "playwright test --config=playwright.memory-budget.config.ts",
     "test:unit": "vitest run",
     "test:unit:watch": "vitest",
     "test:unit:coverage": "vitest run --coverage",
@@ -65,7 +66,7 @@
     "clsx": "^2.1.1",
     "date-fns": "^4.4.0",
     "dayjs": "^1.11.23",
-    "framer-motion": "^13.4.3",
+    "framer-motion": "^13.5.0",
     "gsap": "^3.15.0",
     "i18next": "^26.4.2",
     "idb-keyval": "^6.3.0",
@@ -105,6 +106,7 @@
     "countries-list": "3.4.1",
     "eslint": "^10.11.0",
     "eslint-plugin-react-hooks": "^7.1.1",
+    "fake-indexeddb": "^6.2.5",
     "happy-dom": "^20.11.2",
     "jsdom": "^30.1.1",
     "postcss": "^8.5.28",
@@ -119,6 +121,6 @@
     "vite-prerender-plugin": "^0.5.14",
     "vitest": "^5.0.2",
     "workbox-window": "^7.4.1",
-    "wrangler": "4.145.0"
+    "wrangler": "4.146.0"
   }
 }

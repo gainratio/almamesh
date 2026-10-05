@@ -28,8 +28,9 @@
  * single source of truth for the reset — reused by both the global ErrorBoundary
  * and the onboarding error card so the two can never drift apart.
  *
- * Note: this only CLEARS state. Callers decide whether to reload afterwards
- * (`void resetAppData().finally(() => window.location.reload())`).
+ * Note: this only CLEARS state. Callers reload on success and show the
+ * failure otherwise: a reload after an unconfirmed delete would look like a
+ * finished reset while user data was still on the device.
  */
 
 import { clearAlmaBundleCache } from '@almamesh/browser';
@@ -39,6 +40,21 @@ import { teardownLiveEngine } from './engineLifecycle';
 const BUNDLE_CLEAR_TIMEOUT_MS = 8_000;
 /** Upper bound on each IndexedDB delete, so a blocked delete can't hang Reset. */
 const IDB_DELETE_TIMEOUT_MS = 3_000;
+/**
+ * The service worker's cache-expiry bookkeeping (URLs and timestamps, no user
+ * data). The worker that holds it open outlives its unregistration until the
+ * page reloads, so its delete is attempted but never required.
+ */
+const NON_USER_DATABASE_PREFIX = 'workbox-';
+
+/** Reset could not confirm that these databases were deleted; nothing was reloaded. */
+export class ResetIncompleteError extends Error {
+  public override readonly name = 'ResetIncompleteError';
+
+  public constructor(public readonly databases: readonly string[]) {
+    super(`Reset could not delete: ${databases.join(', ')}`);
+  }
+}
 
 export async function resetAppData(): Promise<void> {
   // FIRST, while the service worker + caches can still serve the clear
@@ -50,8 +66,10 @@ export async function resetAppData(): Promise<void> {
   clearLocalStorage();
   await clearOpfs();
   // Last, after the engine Workers are gone and the floor database is closed,
-  // so its delete is not blocked by an open connection.
-  await clearIndexedDb();
+  // so its delete is not blocked by an open connection. A user-data database
+  // that is still there afterwards fails the reset visibly.
+  const remaining = await clearIndexedDb();
+  if (remaining.length > 0) throw new ResetIncompleteError(remaining);
 }
 
 /**
@@ -148,38 +166,43 @@ function clearLocalStorage(): void {
   }
 }
 
-async function clearIndexedDb(): Promise<void> {
+/** Delete every database; return the user-data ones not confirmed deleted. */
+async function clearIndexedDb(): Promise<string[]> {
+  let names: string[];
   try {
     if (typeof indexedDB === 'undefined' || !indexedDB.databases) {
-      return;
+      return [];
     }
-    const dbs = await indexedDB.databases();
-    await Promise.all(
-      dbs.flatMap(({ name }) => (name ? [deleteDatabaseBounded(name)] : [])),
-    );
+    names = (await indexedDB.databases()).flatMap(({ name }) => (name ? [name] : []));
   } catch {
-    // Best-effort.
+    // Cannot enumerate: nothing to confirm (best-effort, as before).
+    return [];
   }
+  const outcomes = await Promise.all(names.map(async (name) => ({ name, deleted: await deleteDatabaseConfirmed(name) })));
+  return outcomes
+    .filter(({ name, deleted }) => !deleted && !name.startsWith(NON_USER_DATABASE_PREFIX))
+    .map(({ name }) => name);
 }
 
 /**
- * Await one delete: success or error settles it; `blocked` (an open
- * connection) keeps waiting, bounded, since the delete completes once the
- * connection closes. Never rejects.
+ * Await one delete. `blocked` (an open connection) keeps waiting, bounded,
+ * since the delete completes once the connection closes; every AlmaMesh
+ * connection closes on versionchange (idbConnectionHygiene.ts). Resolves true
+ * only on success. Never rejects.
  */
-function deleteDatabaseBounded(name: string): Promise<void> {
-  return new Promise<void>((resolve) => {
-    const timer = setTimeout(resolve, IDB_DELETE_TIMEOUT_MS);
-    const done = (): void => {
+function deleteDatabaseConfirmed(name: string): Promise<boolean> {
+  return new Promise<boolean>((resolve) => {
+    const timer = setTimeout(() => resolve(false), IDB_DELETE_TIMEOUT_MS);
+    const done = (deleted: boolean): void => {
       clearTimeout(timer);
-      resolve();
+      resolve(deleted);
     };
     try {
       const request = indexedDB.deleteDatabase(name);
-      request.onsuccess = done;
-      request.onerror = done;
+      request.onsuccess = () => done(true);
+      request.onerror = () => done(false);
     } catch {
-      done();
+      done(false);
     }
   });
 }

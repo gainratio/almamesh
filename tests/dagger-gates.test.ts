@@ -147,7 +147,7 @@ describe("almamesh ci wiring", () => {
     expect(ci).toContain("assertAllPassed(")
     expect(ci.indexOf("this.secretScan(commitSha)")).toBeLessThan(ci.indexOf("assertAllPassed("))
     expect(ci).not.toContain("for (const gate of gates) await")
-    for (const gate of ["backend", "frontend", "browser", "pdf", "privacy"]) {
+    for (const gate of ["backend", "frontend", "browser", "browserMatrix", "pdf", "privacy"]) {
       expect(ci).toContain(`"${gate}"`)
     }
   })
@@ -162,5 +162,42 @@ describe("frontend unit tests survive a loaded runner", () => {
   test("vitest limits are 30s so CPU contention is not read as a failing test", () => {
     expect(config).toContain("testTimeout: 30_000")
     expect(config).toContain("hookTimeout: 30_000")
+  })
+})
+
+describe("browser matrix lane", () => {
+  const source = readFileSync(resolve(root, "dagger/src/index.ts"), "utf8")
+  const lane = source.slice(source.indexOf("browserMatrix(): Container"), source.indexOf("pdf(): Container"))
+
+  test("drives the real journey in Firefox with a clean console", () => {
+    expect(lane).toContain('"firefox"')
+    expect(lane).toContain("verify-browser-journey.mjs http://127.0.0.1:4199 --browser=firefox")
+  })
+
+  test("smokes Microsoft Edge where Microsoft ships a Linux build, and says so where it does not", () => {
+    const edge = source.slice(source.indexOf("const EDGE_SMOKE"), source.indexOf("fi`", source.indexOf("const EDGE_SMOKE")))
+    expect(lane).toContain("EDGE_SMOKE,")
+    expect(edge).toContain("playwright install --with-deps msedge")
+    expect(edge).toContain("--channel=msedge")
+    expect(edge).toContain('"$(uname -m)" = x86_64')
+    expect(edge).toMatch(/no Linux arm64 build of Edge/)
+  })
+
+  test("runs a low-end lane: one CPU core for every Worker, a CDP throttle, and asserted budgets", () => {
+    expect(lane).toContain("taskset -c 0 node scripts/verify-browser-journey.mjs")
+    expect(source).toContain("const LOW_END_CPU_THROTTLE = 4")
+    expect(source).toContain("const LOW_END_READY_BUDGET_MS = 15_000")
+    expect(source).toContain("const LOW_END_CHART_BUDGET_MS = 90_000")
+    expect(lane).toContain("--cpu-throttle=${LOW_END_CPU_THROTTLE}")
+    expect(lane).toMatch(/--ready-budget-ms=\$\{LOW_END_READY_BUDGET_MS\}/)
+    expect(lane).toMatch(/--chart-budget-ms=\$\{LOW_END_CHART_BUDGET_MS\}/)
+    expect(lane).toContain("STORAGE_BLOCKED_CPU_THROTTLE=${LOW_END_CPU_THROTTLE}")
+  })
+
+  test("Reset & reload must delete IndexedDB, proven on a build without its engine bundle", () => {
+    expect(lane).toContain("rm -rf dist-starved/bundle dist-starved/pyodide dist-starved/public.key")
+    for (const browser of ["chromium", "firefox"]) {
+      expect(lane).toContain(`verify-reset-deletes.mjs http://127.0.0.1:4198 --browser=${browser}`)
+    }
   })
 })

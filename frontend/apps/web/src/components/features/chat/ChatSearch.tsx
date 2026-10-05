@@ -17,6 +17,7 @@ import { useChatStore } from '@almamesh/store';
 import type { RetrievedChunk } from '@almamesh/memory';
 
 import { searchMemory } from '../../../lib/chatMemory';
+import { useEmbedderStatus } from '../../../hooks/useEmbedderStatus';
 
 interface ChatSearchProps {
   /** The active profile whose chat history is searched. */
@@ -38,6 +39,7 @@ export function ChatSearch({ profileId, onOpenResult }: ChatSearchProps) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<readonly RetrievedChunk[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const modelLoading = useEmbedderStatus() === 'loading';
 
   useEffect(() => {
     const q = query.trim();
@@ -92,7 +94,15 @@ export function ChatSearch({ profileId, onOpenResult }: ChatSearchProps) {
 
       {query.trim().length > 0 && (
         <div className="mt-2 max-h-48 overflow-y-auto" data-testid="chat-search-results">
-          {results.length === 0 ? (
+          {results.length === 0 && isSearching && modelLoading ? (
+            <p
+              className="px-1 py-2 text-xs text-text-muted"
+              role="status"
+              data-testid="chat-search-model-loading"
+            >
+              {t('search.loading_model')}
+            </p>
+          ) : results.length === 0 ? (
             <p className="px-1 py-2 text-xs text-text-muted">
               {isSearching ? t('search.searching') : t('search.no_results')}
             </p>

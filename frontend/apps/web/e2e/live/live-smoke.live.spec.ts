@@ -45,6 +45,42 @@ import {
 
 const ORIGIN = new URL(process.env.LIVE_SMOKE_ORIGIN ?? 'https://almamesh.com').origin;
 const PREVIOUS_URL = process.env.LIVE_SMOKE_PREVIOUS_URL ?? '';
+/**
+ * Local old -> new proof for the SQLite-only quarantine move (PR: SQLite is the
+ * only store): the returning visitor holds an older build's localStorage
+ * quarantine row, and the upgrade must move it into SQLite and only then drop
+ * the key. Opt-in; remove with the legacy reader (TODO 2026-11-04).
+ */
+const SEED_LEGACY_QUARANTINE = process.env.LIVE_SMOKE_SEED_LEGACY_QUARANTINE === '1';
+const LEGACY_QUARANTINE_KEY = 'almamesh-interpretations.quarantine';
+const LEGACY_QUARANTINE_MARKER = 'legacy-quarantine-proof-7f3a';
+
+/** True when any OPFS file's bytes contain the marker (the SQLite file holds the row). */
+async function opfsContains(marker: string): Promise<boolean | 'unreadable'> {
+  const needle = new TextEncoder().encode(marker);
+  const scan = async (dir: FileSystemDirectoryHandle): Promise<boolean | 'unreadable'> => {
+    let unreadable = false;
+    for await (const handle of (dir as unknown as { values(): AsyncIterable<FileSystemHandle> }).values()) {
+      if (handle.kind === 'directory') {
+        const found = await scan(handle as FileSystemDirectoryHandle);
+        if (found === true) return true;
+        if (found === 'unreadable') unreadable = true;
+        continue;
+      }
+      try {
+        const bytes = new Uint8Array(await (await (handle as FileSystemFileHandle).getFile()).arrayBuffer());
+        outer: for (let i = 0; i <= bytes.length - needle.length; i += 1) {
+          for (let j = 0; j < needle.length; j += 1) if (bytes[i + j] !== needle[j]) continue outer;
+          return true;
+        }
+      } catch {
+        unreadable = true;
+      }
+    }
+    return unreadable ? 'unreadable' : false;
+  };
+  return scan(await navigator.storage.getDirectory());
+}
 
 /**
  * Engine-ready budget (navigation -> chart Worker `boot` reply), pinned from
@@ -104,6 +140,33 @@ test.describe('live smoke', () => {
     expect(consoleErrors).toEqual([]);
   });
 
+  test('memory-mode visitor (OPFS refused) holding an old localStorage quarantine row: the key is retired', { tag: '@memory-quarantine' }, async ({ context }) => {
+    test.skip(!SEED_LEGACY_QUARANTINE, 'opt-in: LIVE_SMOKE_SEED_LEGACY_QUARANTINE=1');
+    // Refuse OPFS the way some browsers do, so SQLite runs session-only.
+    await context.addInitScript(() => {
+      const storage = navigator.storage as StorageManager & { getDirectory: () => Promise<FileSystemDirectoryHandle> };
+      storage.getDirectory = () => Promise.reject(new DOMException('refused for the smoke', 'SecurityError'));
+    });
+    const page = await context.newPage();
+    const pageErrors: string[] = [];
+    page.on('pageerror', (error) => pageErrors.push(error.message));
+    await page.goto(`${ORIGIN}/robots.txt`);
+    await page.evaluate(([key, marker]) => {
+      window.localStorage.setItem(key, JSON.stringify([
+        { quarantinedAt: new Date().toISOString(), source: 'legacy-local-storage', raw: marker },
+      ]));
+    }, [LEGACY_QUARANTINE_KEY, LEGACY_QUARANTINE_MARKER] as const);
+    await page.goto(`${ORIGIN}/welcome`);
+    await expect
+      .poll(() => page.evaluate((key) => window.localStorage.getItem(key), LEGACY_QUARANTINE_KEY), {
+        message: 'memory mode still retires the legacy key (no copy-back on the next boot)',
+      })
+      .toBeNull();
+    await page.reload();
+    expect(await page.evaluate((key) => window.localStorage.getItem(key), LEGACY_QUARANTINE_KEY)).toBeNull();
+    expect(pageErrors).toEqual([]);
+  });
+
   test('returning visitor: previous deploy upgrades, engine ready, chart renders', { tag: '@returning' }, async ({ context, request }) => {
     expect(PREVIOUS_URL, 'LIVE_SMOKE_PREVIOUS_URL is required for the returning pass').not.toBe('');
     const previousEntry = await servedEntryChunk(request, PREVIOUS_URL);
@@ -128,6 +191,13 @@ test.describe('live smoke', () => {
     await previous.evaluate(() => navigator.serviceWorker.ready.then(() => undefined));
     await previous.waitForFunction(() => navigator.serviceWorker.controller !== null, null, { timeout: 60_000 });
     expect(await executingEntryChunk(previous), 'the visitor starts on the previous deploy').toBe(previousEntry);
+    if (SEED_LEGACY_QUARANTINE) {
+      await previous.evaluate(([key, marker]) => {
+        window.localStorage.setItem(key, JSON.stringify([
+          { quarantinedAt: new Date().toISOString(), source: 'legacy-local-storage', raw: marker },
+        ]));
+      }, [LEGACY_QUARANTINE_KEY, LEGACY_QUARANTINE_MARKER] as const);
+    }
     expect(proxy.serviceWorkerRequests(), 'the previous service worker installed through the proxy').toBeGreaterThan(0);
 
     // The previous visit completes before the visitor leaves (PREVIOUS_VISIT_BUDGET_MS).
@@ -171,6 +241,16 @@ test.describe('live smoke', () => {
     expect(probe.bootMs ?? Infinity).toBeLessThanOrEqual(ENGINE_READY_BUDGET_MS);
 
     await expectChartRenders(page);
+    if (SEED_LEGACY_QUARANTINE) {
+      await expect
+        .poll(() => page.evaluate((key) => window.localStorage.getItem(key), LEGACY_QUARANTINE_KEY), {
+          message: 'the old build\'s localStorage quarantine is retired after the SQLite copy',
+        })
+        .toBeNull();
+      const inSqlite = await page.evaluate(opfsContains, LEGACY_QUARANTINE_MARKER);
+      console.log(`live-smoke legacy quarantine row in OPFS SQLite: ${inSqlite}`);
+      expect(inSqlite, 'the quarantined row now lives in the OPFS SQLite file').not.toBe(false);
+    }
     expect(consoleErrors).toEqual([]);
   });
 });

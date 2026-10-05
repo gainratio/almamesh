@@ -5,6 +5,7 @@ import { safeError } from '@almamesh/shared-types';
 import { resetAppData } from '../lib/resetAppData';
 import { isRollbackRefusal, lastEngineBootFailure } from '../lib/engineLifecycle';
 import { RollbackResetGuard } from './RollbackResetGuard';
+import { incompleteDatabases, ResetIncompleteNotice } from './ResetIncompleteNotice';
 import { isChunkLoadError } from '../lib/chunkError';
 import { reloadForUpdate } from '../lib/swSelfHeal';
 
@@ -22,6 +23,7 @@ interface State {
   hasError: boolean;
   error: Error | null;
   isChunkError: boolean;
+  resetIncomplete?: readonly string[];
 }
 
 /**
@@ -81,10 +83,15 @@ class ErrorBoundaryBase extends Component<Props, State> {
    * The bulletproof escape hatch for a stranded returning visitor: wipe every
    * stale-state source (service worker, caches, localStorage, IndexedDB, and
    * the OPFS signed-bundle cache + its rollback floor) then reload into a clean
-   * boot. Explicit click only. Best-effort cleanup never blocks the reload.
+   * boot. Explicit click only. Best-effort cleanup never blocks the reload,
+   * but a user database that could not be deleted stops it, visibly.
    */
   handleResetAppData = () => {
-    void resetAppData().finally(() => window.location.reload());
+    this.setState({ resetIncomplete: undefined });
+    void resetAppData().then(
+      () => window.location.reload(),
+      (error: unknown) => this.setState({ resetIncomplete: incompleteDatabases(error) }),
+    );
   };
 
   render() {
@@ -178,6 +185,9 @@ class ErrorBoundaryBase extends Component<Props, State> {
                   </button>
                 )}
               />
+              {this.state.resetIncomplete !== undefined && (
+                <ResetIncompleteNotice databases={this.state.resetIncomplete} />
+              )}
             </div>
           </div>
         </div>

@@ -9,35 +9,55 @@ import enSettings from './en/settings.json';
 import esSettings from './es/settings.json';
 import ptSettings from './pt/settings.json';
 
-// The quarantine keeps user data in a new place, so the storage inventory and
-// the deletion page must disclose it in every language.
-const KEY = 'almamesh-interpretations.quarantine';
+// The quarantine keeps user data, so the storage inventory and the deletion
+// page must disclose where it lives in every language. Since 2026-10-04 it is a
+// table in the on-device SQLite database, not a localStorage key.
+const LEGACY_KEY = 'almamesh-interpretations.quarantine';
 const LEGAL = { en, es, pt } as const;
 const COMMON = { en: enCommon, es: esCommon, pt: ptCommon } as const;
 const SETTINGS = { en: enSettings, es: esSettings, pt: ptSettings } as const;
 
-// Pinned literals: deleting a profile does NOT clear the quarantine (an
-// unreadable row cannot be matched to a profile); only Reset & reload, Start
-// fresh, clearing site data, or the 30-day expiry do.
+// Pinned literals for the storage inventory sentence about the quarantine.
+const QUARANTINE_STORAGE = {
+  en: 'If a saved interpretation cannot be read, it is set aside on this device in a quarantine table inside that same SQLite database for up to 30 days instead of being lost.',
+  es: 'Si una interpretación guardada no se puede leer, se aparta en este dispositivo en una tabla de cuarentena dentro de esa misma base SQLite durante un máximo de 30 días en lugar de perderse.',
+  pt: 'Se uma interpretação salva não puder ser lida, ela é separada neste dispositivo em uma tabela de quarentena dentro desse mesmo banco SQLite por até 30 dias em vez de ser perdida.',
+} as const;
+
+// Pinned: what profile delete does to set-aside rows, including the rows it
+// cannot touch (northstar review of #240: "removes every" overstated it).
+const QUARANTINE_PROFILE_DELETE = {
+  en: "Deleting a profile removes the set-aside records that hold that profile's readings; a record that matches no profile stays until Reset chart / start fresh, Reset & reload, clearing site data, or the 30-day expiry removes it.",
+  es: 'Eliminar un perfil borra los registros apartados que contienen lecturas de ese perfil; un registro que no corresponde a ningún perfil permanece hasta que lo eliminen Restablecer carta / empezar de cero, Restablecer y recargar, borrar los datos del sitio o el vencimiento de 30 días.',
+  pt: 'Excluir um perfil remove os registros separados que contêm leituras desse perfil; um registro que não corresponde a nenhum perfil permanece até ser apagado por Redefinir mapa / começar do zero, Redefinir e recarregar, limpar os dados do site ou o prazo de 30 dias.',
+} as const;
+
+// Contract reversed (2026-10-04): profile delete used to leave the quarantine
+// alone. It now removes every set-aside record holding that profile's readings;
+// only a record matched to no profile waits for reset, site-data clear or expiry.
 const QUARANTINE_DELETION = {
-  en: 'Interpretations set aside as unreadable (the almamesh-interpretations.quarantine key) are not removed when you delete a profile, because an unreadable record cannot be matched to a profile. Reset & reload, Settings → Preferences → Reset chart / start fresh, or clearing site data erases them; otherwise they are deleted automatically after 30 days.',
-  es: 'Las interpretaciones apartadas por ilegibles (la clave almamesh-interpretations.quarantine) no se eliminan al borrar un perfil, porque un registro ilegible no se puede asociar a un perfil. Restablecer y recargar, Ajustes → Preferencias → Restablecer carta / empezar de cero, o borrar los datos del sitio las elimina; si no, se eliminan automáticamente a los 30 días.',
-  pt: 'As interpretações separadas por serem ilegíveis (a chave almamesh-interpretations.quarantine) não são removidas quando você exclui um perfil, porque um registro ilegível não pode ser associado a um perfil. Redefinir e recarregar, Configurações → Preferências → Redefinir mapa / começar do zero, ou limpar os dados do site as apaga; caso contrário, são excluídas automaticamente após 30 dias.',
+  en: 'Interpretations set aside as unreadable (the quarantine table in the on-device SQLite database) are removed when you delete the profile they belong to. A record too damaged to match to any profile is erased by Reset & reload, Settings → Preferences → Reset chart / start fresh, or clearing site data; otherwise it is deleted automatically after 30 days.',
+  es: 'Las interpretaciones apartadas por ilegibles (la tabla de cuarentena de la base SQLite del dispositivo) se eliminan al borrar el perfil al que pertenecen. Un registro demasiado dañado para asociarlo a un perfil se borra con Restablecer y recargar, Ajustes → Preferencias → Restablecer carta / empezar de cero, o al borrar los datos del sitio; si no, se elimina automáticamente a los 30 días.',
+  pt: 'As interpretações separadas por serem ilegíveis (a tabela de quarentena do banco SQLite do dispositivo) são removidas quando você exclui o perfil a que pertencem. Um registro danificado demais para ser associado a um perfil é apagado por Redefinir e recarregar, Configurações → Preferências → Redefinir mapa / começar do zero, ou ao limpar os dados do site; caso contrário, é excluído automaticamente após 30 dias.',
 } as const;
 const PEOPLE_SECTION = { en: 'People', es: 'Personas', pt: 'Pessoas' } as const;
 
 describe.each(Object.keys(LEGAL) as (keyof typeof LEGAL)[])('[%s] quarantine disclosure', (lang) => {
   const privacyStorage = LEGAL[lang].privacy.s1_sub2_li1_text;
 
-  it('names the storage key, its 30-day lifetime and that backups exclude it', () => {
-    expect(privacyStorage).toContain(KEY);
-    expect(privacyStorage).toContain('30');
+  it('says the quarantine is a SQLite table, kept 30 days, never a localStorage key', () => {
+    expect(privacyStorage).toContain(QUARANTINE_STORAGE[lang]);
+    expect(privacyStorage).not.toMatch(/localStorage[^.]*almamesh-interpretations\.quarantine[^.]*30/);
   });
 
-  // Contract reversed (2026-10-04): the list item claimed in-app (profile)
-  // deletion removed the quarantine. It does not; the page now says so.
-  it('does not claim that deleting a profile removes set-aside interpretations', () => {
-    expect(LEGAL[lang].data_deletion.deleted_li2).not.toContain(KEY);
+  it('says profile delete removes only that profile’s rows; unmatched rows wait for reset or expiry', () => {
+    expect(privacyStorage).toContain(QUARANTINE_PROFILE_DELETE[lang]);
+    expect(privacyStorage).not.toMatch(/removes every set-aside|borra todos los registros apartados|remove todos os registros separados/);
+  });
+
+  it('keeps the profile list item free of the legacy key', () => {
+    expect(LEGAL[lang].data_deletion.deleted_li2).not.toContain(LEGACY_KEY);
+    expect(LEGAL[lang].data_deletion.deleted_quarantine).not.toContain(LEGACY_KEY);
   });
 
   it('says exactly which actions erase set-aside interpretations', () => {

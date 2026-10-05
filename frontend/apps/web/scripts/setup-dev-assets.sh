@@ -6,7 +6,7 @@
 # apps/web/public/{pyodide,bundle,public.key} is .gitignored.
 #
 # What it produces:
-#   apps/web/public/pyodide/   — self-hosted Pyodide dist (offline, 20 files)
+#   apps/web/public/pyodide/v<ver>/ — self-hosted Pyodide dist (offline, 17 files)
 #   apps/web/public/bundle/    — signed dev edge-proc bundle (origin layout)
 #   apps/web/public/public.key — pinned ed25519 verify key for that bundle
 #   apps/web/public/models/    — self-hosted RAG embedding model (MiniLM q8 ONNX)
@@ -30,36 +30,54 @@ PUBLIC_DIR="${WEB_DIR}/public"
 # copied from the pinned npm package when available (byte integrity without a
 # second network hop); only the package wheels fall back to the CDN.
 #
-# To change the set: keep it in lockstep with chartWorker.ts LOAD_PACKAGES (+ the
-# lock's transitive closure) and the `pyodide` dep version. Override with a local
-# dir via PYODIDE_DIST=/path (skips the download).
-PYODIDE_VERSION="${PYODIDE_VERSION:-0.29.4}"
+# To change the set: keep it in lockstep with loadPackages.ts LOAD_PACKAGES (+ the
+# lock's transitive closure) and the `pyodide` dep version — both are pinned by
+# packages/browser/src/pyodide/__tests__/pyodideDist.test.ts. Override with a
+# local dir via PYODIDE_DIST=/path (skips the download).
+#
+# The dist lands in a VERSIONED directory, public/pyodide/v<version>/, which is
+# where the chart Worker looks (pyodideDist.ts). /pyodide/* is served immutable
+# and CacheFirst-cached by the service worker, so an unversioned path would let a
+# returning visitor's cached 0.29 lock/wasm/wheels meet a newer bundled loader.
+PYODIDE_VERSION="${PYODIDE_VERSION:-314.0.7}"
 PYODIDE_CDN="https://cdn.jsdelivr.net/pyodide/v${PYODIDE_VERSION}/full"
 PYODIDE_NPM_DIR="${REPO_ROOT}/frontend/packages/browser/node_modules/pyodide"
+PYODIDE_OUT="${PUBLIC_DIR}/pyodide/v${PYODIDE_VERSION}"
 PYODIDE_FILES=(
-  pyodide.asm.js pyodide.asm.wasm pyodide.mjs pyodide-lock.json python_stdlib.zip
+  pyodide.asm.mjs pyodide.asm.wasm pyodide.mjs pyodide-lock.json python_stdlib.zip
   micropip-0.11.1-py3-none-any.whl
-  numpy-2.2.5-cp313-cp313-pyemscripten_2025_0_wasm32.whl
+  numpy-2.4.6-cp314-cp314-pyemscripten_2026_0_wasm32.whl
   pydantic-2.12.5-py3-none-any.whl
-  pydantic_core-2.41.5-cp313-cp313-pyemscripten_2025_0_wasm32.whl
-  pyyaml-6.0.2-cp313-cp313-pyemscripten_2025_0_wasm32.whl
+  pydantic_core-2.41.5-cp314-cp314-pyemscripten_2026_0_wasm32.whl
+  pyyaml-6.0.3-cp314-cp314-pyemscripten_2026_0_wasm32.whl
   annotated_types-0.7.0-py3-none-any.whl
   typing_extensions-4.15.0-py3-none-any.whl
   typing_inspection-0.4.2-py3-none-any.whl
   python_dateutil-2.9.0.post0-py2.py3-none-any.whl
-  pytz-2025.2-py2.py3-none-any.whl
-  certifi-2026.1.4-py3-none-any.whl
+  pytz-2026.1.post1-py2.py3-none-any.whl
+  certifi-2026.4.22-py3-none-any.whl
   six-1.17.0-py2.py3-none-any.whl
 )
 
-mkdir -p "${PUBLIC_DIR}/pyodide"
+# Copy core files from node_modules ONLY when it holds this exact release; a
+# PYODIDE_VERSION override must never mix an npm loader of another version in.
+PYODIDE_NPM_VERSION="$(node -p "require('${PYODIDE_NPM_DIR}/package.json').version" 2>/dev/null || true)"
+if [[ "${PYODIDE_NPM_VERSION}" != "${PYODIDE_VERSION}" ]]; then
+  PYODIDE_NPM_DIR=""
+fi
+# Prune every other release (incl. the pre-versioned flat layout): Pages ships
+# all of public/, so a stale dist would be deployed dead weight.
+if [[ -d "${PUBLIC_DIR}/pyodide" ]]; then
+  find "${PUBLIC_DIR}/pyodide" -mindepth 1 -maxdepth 1 ! -name "v${PYODIDE_VERSION}" -exec rm -rf {} +
+fi
+mkdir -p "${PYODIDE_OUT}"
 if [[ -n "${PYODIDE_DIST:-}" ]]; then
-  echo "==> Pyodide dist (local override): ${PYODIDE_DIST} -> ${PUBLIC_DIR}/pyodide/"
-  cp -R "${PYODIDE_DIST}/." "${PUBLIC_DIR}/pyodide/"
+  echo "==> Pyodide dist (local override): ${PYODIDE_DIST} -> ${PYODIDE_OUT}/"
+  cp -R "${PYODIDE_DIST}/." "${PYODIDE_OUT}/"
 else
   echo "==> Fetching Pyodide ${PYODIDE_VERSION} dist (${#PYODIDE_FILES[@]} files) from ${PYODIDE_CDN}"
   for f in "${PYODIDE_FILES[@]}"; do
-    dest="${PUBLIC_DIR}/pyodide/${f}"
+    dest="${PYODIDE_OUT}/${f}"
     if [[ ! -s "${dest}" ]]; then
       # CDN connections can reset while a large wasm file is streaming. Retry
       # all transient curl failures so one edge blip cannot invalidate an
@@ -68,7 +86,7 @@ else
       # never masquerade as a complete asset on the next run.
       part="${dest}.part.$$"
       rm -f "${part}"
-      if [[ -f "${PYODIDE_NPM_DIR}/${f}" ]]; then
+      if [[ -n "${PYODIDE_NPM_DIR}" && -f "${PYODIDE_NPM_DIR}/${f}" ]]; then
         echo "    - ${f} (pinned npm package)"
         cp "${PYODIDE_NPM_DIR}/${f}" "${part}"
       elif curl -fsSL --retry 5 --retry-delay 4 --retry-all-errors \

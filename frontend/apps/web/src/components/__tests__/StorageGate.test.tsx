@@ -94,7 +94,10 @@ describe('StorageGate', () => {
     expect(screen.getByText('dashboard chart')).toBeTruthy();
     const note = screen.getByTestId('ephemeral-storage-notice');
     expect(note.getAttribute('role')).toBe('status');
+    expect(note.getAttribute('data-durability')).toBe('memory');
     expect(note.textContent).toContain('This browser is not saving your data');
+    // A reload loses it too, not only closing the tab (WebKit audit 2026-10-04).
+    expect(note.textContent).toContain('reload or close this tab');
     expect(note.textContent).toContain('Export a backup');
     expect(note.querySelector('a')?.getAttribute('href')).toBe('/settings/data');
   });

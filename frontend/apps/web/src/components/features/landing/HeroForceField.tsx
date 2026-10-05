@@ -1,6 +1,7 @@
 import { lazy, Suspense, type ReactElement } from 'react';
 import { DEMO_CHART } from '../../../lib/demoChart';
 import { useReducedMotion } from '../../../hooks/useReducedMotion';
+import { WebGlGate } from '../../WebGlGate';
 
 /**
  * Lazy-load the Three.js force-field so the headline/CTA paint first and the
@@ -48,13 +49,16 @@ export function HeroForceField(): ReactElement {
       data-testid="hero-forcefield"
       className="pointer-events-none absolute inset-0 flex items-center justify-center [mask-image:radial-gradient(circle_at_50%_42%,#000_0%,#000_45%,transparent_78%)]"
     >
-      <Suspense fallback={null}>
-        {/* Dialed back from full strength so the animated core reads as a quiet
-            backdrop, not a competitor to the headline seated over it. */}
-        <div className="w-full max-w-3xl opacity-70">
-          <ForceFieldExperience chart={DEMO_CHART} height={560} />
-        </div>
-      </Suspense>
+      {/* No WebGL: keep the landing page and drop only the backdrop. */}
+      <WebGlGate available fallback={null}>
+        <Suspense fallback={null}>
+          {/* Dialed back from full strength so the animated core reads as a quiet
+              backdrop, not a competitor to the headline seated over it. */}
+          <div className="w-full max-w-3xl opacity-70">
+            <ForceFieldExperience chart={DEMO_CHART} height={560} />
+          </div>
+        </Suspense>
+      </WebGlGate>
     </div>
   );
 }

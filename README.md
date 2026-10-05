@@ -453,11 +453,12 @@ Nothing needs configuring to draw a chart. The knobs that exist:
   profiles and people; backup and restore. One OPFS SQLite database is
   authoritative for durable user state, including your optional AI key;
   localStorage and IndexedDB are not ongoing user-data mirrors. Older values are
-  read only for a verified one-time migration and are then deleted. The one
-  exception: a saved interpretation that cannot be read is set aside in
-  localStorage under `almamesh-interpretations.quarantine` for up to 30 days
-  (never in backups; erased by "start fresh", "Reset & reload", or clearing site
-  data) instead of blanking the app or being silently dropped. A backup
+  read only for a verified one-time migration and are then deleted. A saved
+  interpretation that cannot be read is set aside, not dropped, in a
+  quarantine table inside that same SQLite file for up to 30 days. It is never
+  in backups. Deleting a profile removes the set-aside rows holding that
+  profile's readings; a row that matches no profile stays until "start fresh",
+  "Reset & reload", clearing site data, or the 30-day expiry. A backup
   carries the key only inside the password-encrypted `.almamesh` transport file.
   The live OPFS database is not password-encrypted, so normal launches never ask
   for the transfer password. AlmaMesh has no account passwords, and the backup

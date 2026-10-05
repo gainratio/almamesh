@@ -257,7 +257,7 @@ describe("Foundation guard composition", () => {
         },
       }),
     })
-    for (const gate of ["backend", "frontend", "browser", "pdf", "privacy"] as const) {
+    for (const gate of ["backend", "frontend", "browser", "browserMatrix", "pdf", "privacy"] as const) {
       module[gate] = (() => ({
         sync: async () => {
           productGates.push(gate)
@@ -298,7 +298,7 @@ describe("ci runs independent gates concurrently", () => {
       contracts: stub(gates.contracts ?? (async () => undefined)),
       secretScan: stub(gates.secretScan ?? (async () => undefined)),
     })
-    for (const gate of ["backend", "frontend", "browser", "pdf", "privacy"] as const) {
+    for (const gate of ["backend", "frontend", "browser", "browserMatrix", "pdf", "privacy"] as const) {
       module[gate] = stub(gates[gate] ?? (async () => undefined)) as never
     }
     return module
@@ -319,12 +319,13 @@ describe("ci runs independent gates concurrently", () => {
       backend: gate("backend"),
       frontend: gate("frontend"),
       browser: gate("browser"),
+      browserMatrix: gate("browserMatrix"),
       pdf: gate("pdf"),
       privacy: gate("privacy"),
     })
     await expect(module.ci("1".repeat(40))).resolves.toContain("gates passed")
     expect(started[0]).toBe("browser")
-    expect(started.sort()).toEqual(["backend", "browser", "frontend", "pdf", "privacy"])
+    expect(started.sort()).toEqual(["backend", "browser", "browserMatrix", "frontend", "pdf", "privacy"])
     expect(peak).toBe(2)
   })
 
@@ -362,5 +363,18 @@ describe("ci runs independent gates concurrently", () => {
     })
     await expect(module.ci("1".repeat(40))).rejects.toThrow("secret found")
     expect(started).toEqual([])
+  })
+})
+
+describe("memory-budget lane", () => {
+  test("the browser gate runs it on the hooks-off production build", () => {
+    const source = readFileSync(resolve(root, "dagger/src/index.ts"), "utf8")
+    const browser = source.slice(source.indexOf("  browser(): Container {"), source.indexOf("  pdf(): Container {"))
+    const lane = "MEMORY_BUDGET_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:memory-budget"
+    expect(browser).toContain(lane)
+    // After the hooks-off dist-real build, inside its preview — not the dist-verify (hooks on) one.
+    expect(browser.indexOf(lane)).toBeGreaterThan(browser.indexOf('this.localPreview(real, "dist-real"'))
+    const scripts = JSON.parse(readFileSync(resolve(root, "frontend/apps/web/package.json"), "utf8")).scripts
+    expect(scripts["test:e2e:memory-budget"]).toBe("playwright test --config=playwright.memory-budget.config.ts")
   })
 })

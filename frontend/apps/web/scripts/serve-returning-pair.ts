@@ -12,7 +12,7 @@
  * knobs reproduce a slow CI runner link, where the deploy of fe5b447c failed
  * on 2026-10-01 while the same upgrade settled in 20 s on a fast one:
  *
- *   SLOW_PATH_PREFIXES=/pyodide/pyodide.asm.wasm SLOW_BPS=60000 SLOW_ORIGINS=live
+ *   SLOW_PATH_PREFIXES=/pyodide/v314.0.7/pyodide.asm.wasm SLOW_BPS=60000 SLOW_ORIGINS=live
  *       stream matching responses at SLOW_BPS bytes/s (per stream; SLOW_SHARED=1
  *       shares one link; SLOW_ORIGINS picks `live`, `previous` or `both`).
  *       Pyodide's wasm has no app-side fetch timeout, so a worker's CacheFirst
