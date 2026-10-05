@@ -1193,7 +1193,7 @@ export default function DashboardPage() {
         </Card>
 
         {/* Trust-through-transparency: how this chart was produced (on-device). */}
-        <ProvenanceFooter />
+        <ProvenanceFooter calculations={astronomicalData ?? null} />
       </div>
 
       {/* Grounded chart Q&A — available in both modes (one surface). */}
