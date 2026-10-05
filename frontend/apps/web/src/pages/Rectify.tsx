@@ -14,7 +14,8 @@ import { useState, useEffect, useMemo, type ReactElement } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
-  appEvents,
+  requestRegeneration,
+  whenChartLibraryPersisted,
   type BirthMeta,
   buildRectificationRecord,
   isStructuredLifeEvent,
@@ -68,6 +69,8 @@ export function RectifyPage(): ReactElement {
   const [step, setStep] = useState<WizardStep>(initialStep);
   const [pendingCandidate, setPendingCandidate] = useState<RectificationCandidate | null>(null);
   const [showModal, setShowModal] = useState(false);
+  // The confirmed rectification's chart write: the page stays until it lands.
+  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'error'>('idle');
   // Spec 062 honest-window choice: null until the user answers "how sure are
   // you about the recorded time?" (auto-filled for unknown-time profiles,
   // which have no recorded time to be sure about).
@@ -238,9 +241,23 @@ export function RectifyPage(): ReactElement {
       );
     }
 
-    appEvents.emit('birth-info-changed', { birth, profileId });
     setShowModal(false);
     setPendingCandidate(null);
+    void applyRectifiedChart(birth, profileId);
+  }
+
+  // Wait for the new chart to be computed AND written before leaving: a reload
+  // on the dashboard during the compute used to drop the rectified chart.
+  async function applyRectifiedChart(birth: BirthMeta, owner: string): Promise<void> {
+    setSaveState('saving');
+    try {
+      await requestRegeneration({ birth, profileId: owner });
+      await whenChartLibraryPersisted();
+    } catch {
+      setSaveState('error');
+      return;
+    }
+    setSaveState('idle');
     navigate('/dashboard');
   }
 
@@ -332,7 +349,26 @@ export function RectifyPage(): ReactElement {
         </div>
       )}
 
-      {step === 'results' && state.result != null && (
+      {saveState === 'saving' && (
+        <p
+          data-testid="rectify-saving"
+          role="status"
+          className="mb-4 rounded-md border border-accent-gold/40 bg-background-secondary/40 p-4 text-sm text-text-primary"
+        >
+          {t('status.saving_chart')}
+        </p>
+      )}
+      {saveState === 'error' && (
+        <p
+          data-testid="rectify-save-error"
+          role="alert"
+          className="mb-4 rounded-md border border-red-500/40 bg-red-500/10 p-4 text-sm text-text-primary"
+        >
+          {t('error.save_failed')}
+        </p>
+      )}
+
+      {step === 'results' && state.result != null && saveState !== 'saving' && (
         <RectifyResults
           result={state.result}
           recordedReading={recordedReading}

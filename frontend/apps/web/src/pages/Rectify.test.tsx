@@ -3,14 +3,15 @@ import '../i18n/config';
 
 import React from 'react';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import {
   useChartLibraryStore,
   useLifeEventsStore,
   useProfilesStore,
   useRectificationRecordsStore,
-  appEvents,
+  registerRegenerationRunner,
+  type BirthInfoChanged,
 } from '@almamesh/store';
 import { useRectification, type UseRectificationResult } from '../hooks/useRectification';
 import { RectifyPage } from '../pages/Rectify';
@@ -19,6 +20,8 @@ import { RectifyPage } from '../pages/Rectify';
 // Hoisted helpers (available before vi.mock factories run)
 // ---------------------------------------------------------------------------
 const mockNavigate = vi.hoisted(() => vi.fn());
+const regenerationRunner = vi.fn((_event: BirthInfoChanged) => Promise.resolve());
+let unregisterRunner: () => void = () => undefined;
 
 // ---------------------------------------------------------------------------
 // Heavy dep mocks — hoisted by Vitest before all imports
@@ -263,10 +266,14 @@ describe('RectifyPage', () => {
       },
     });
 
-    vi.spyOn(appEvents, 'emit');
+    // Stands in for App.tsx's regeneration subscriber (the page awaits it).
+    regenerationRunner.mockReset();
+    regenerationRunner.mockImplementation(() => Promise.resolve());
+    unregisterRunner = registerRegenerationRunner(regenerationRunner);
   });
 
   afterEach(() => {
+    unregisterRunner();
     vi.restoreAllMocks();
     useChartLibraryStore.setState({ charts: {} });
     useLifeEventsStore.setState({ eventsByProfile: {} });
@@ -456,7 +463,7 @@ describe('RectifyPage', () => {
     expect((screen.getByTestId('regen-confirm-btn') as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it('ack enables confirm which fires emit and navigates', async () => {
+  it('ack enables confirm which requests regeneration and navigates', async () => {
     const { rerender } = renderRectify();
     fireEvent.click(await screen.findByTestId('intro-start-btn'));
     fireEvent.click(await screen.findByTestId('events-continue-btn'));
@@ -477,8 +484,7 @@ describe('RectifyPage', () => {
     // Click confirm
     fireEvent.click(confirmBtn);
 
-    expect(appEvents.emit).toHaveBeenCalledWith(
-      'birth-info-changed',
+    expect(regenerationRunner).toHaveBeenCalledWith(
       expect.objectContaining({
         birth: expect.objectContaining({
           time: '07:30',
@@ -489,7 +495,43 @@ describe('RectifyPage', () => {
         profileId: PROFILE_ID,
       }),
     );
-    expect(mockNavigate).toHaveBeenCalledWith('/dashboard');
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/dashboard'));
+  });
+
+  it('stays on the page, showing that the chart is computing, until the new chart is applied', async () => {
+    let finish: () => void = () => undefined;
+    regenerationRunner.mockImplementation(() => new Promise<void>((resolve) => (finish = resolve)));
+    const { rerender } = renderRectify();
+    fireEvent.click(await screen.findByTestId('intro-start-btn'));
+    fireEvent.click(await screen.findByTestId('events-continue-btn'));
+    await navigateToResults(rerender);
+    fireEvent.click(screen.getByTestId('confirm-candidate-btn'));
+    await screen.findByTestId('regen-modal');
+    fireEvent.click(screen.getByRole('checkbox'));
+    fireEvent.click(screen.getByTestId('regen-confirm-btn'));
+
+    await screen.findByTestId('rectify-saving');
+    expect(regenerationRunner).toHaveBeenCalledOnce();
+    expect(mockNavigate).not.toHaveBeenCalled();
+
+    finish();
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/dashboard'));
+  });
+
+  it('keeps the user on the results with an error when the regeneration fails', async () => {
+    regenerationRunner.mockImplementation(() => Promise.reject(new Error('worker died')));
+    const { rerender } = renderRectify();
+    fireEvent.click(await screen.findByTestId('intro-start-btn'));
+    fireEvent.click(await screen.findByTestId('events-continue-btn'));
+    await navigateToResults(rerender);
+    fireEvent.click(screen.getByTestId('confirm-candidate-btn'));
+    await screen.findByTestId('regen-modal');
+    fireEvent.click(screen.getByRole('checkbox'));
+    fireEvent.click(screen.getByTestId('regen-confirm-btn'));
+
+    await screen.findByTestId('rectify-save-error');
+    expect(mockNavigate).not.toHaveBeenCalled();
+    expect(screen.getByTestId('rectify-results')).toBeTruthy();
   });
 
   it('confirm persists a RectificationRecord (chosen sign/time, band, original, event ids)', async () => {
@@ -528,7 +570,7 @@ describe('RectifyPage', () => {
     expect(typeof record?.confirmedAt).toBe('string');
   });
 
-  it('keep recorded fires no emit and navigates back', async () => {
+  it('keep recorded requests no regeneration and navigates back', async () => {
     const { rerender } = renderRectify();
     fireEvent.click(await screen.findByTestId('intro-start-btn'));
     fireEvent.click(await screen.findByTestId('events-continue-btn'));
@@ -536,7 +578,7 @@ describe('RectifyPage', () => {
 
     fireEvent.click(screen.getByTestId('keep-recorded-btn'));
 
-    expect(appEvents.emit).not.toHaveBeenCalled();
+    expect(regenerationRunner).not.toHaveBeenCalled();
     expect(mockNavigate).toHaveBeenCalledWith('/dashboard');
   });
 
@@ -613,7 +655,7 @@ describe('RectifyPage', () => {
       expect((screen.getByTestId('regen-confirm-btn') as HTMLButtonElement).disabled).toBe(false);
     });
 
-    it('confirm with unknown time emits birth-info-changed and navigates', async () => {
+    it('confirm with unknown time requests regeneration and navigates', async () => {
       const { rerender } = renderRectify();
       fireEvent.click(await screen.findByTestId('intro-start-btn'));
       fireEvent.click(await screen.findByTestId('events-continue-btn'));
@@ -625,14 +667,13 @@ describe('RectifyPage', () => {
       // Confirm fires immediately without needing an ack
       fireEvent.click(screen.getByTestId('regen-confirm-btn'));
 
-      expect(appEvents.emit).toHaveBeenCalledWith(
-        'birth-info-changed',
+      expect(regenerationRunner).toHaveBeenCalledWith(
         expect.objectContaining({
           birth: expect.objectContaining({ rectifiedTime: '07:45' }),
           profileId: PROFILE_ID,
         }),
       );
-      expect(mockNavigate).toHaveBeenCalledWith('/dashboard');
+      await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/dashboard'));
     });
   });
 
