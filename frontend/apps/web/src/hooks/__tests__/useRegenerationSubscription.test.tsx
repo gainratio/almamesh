@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook } from '@testing-library/react';
 import { act, type ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -23,7 +23,7 @@ vi.mock('../../providers/AlmaMeshRuntimeProvider', () => ({
   useChartEngine: () => engineValue,
 }));
 
-import { appEvents, requestRegeneration, useChatStore, useInterpretationStore, usePredictiveStore, type BirthInfoChanged } from '@almamesh/store';
+import { requestRegeneration, useChatStore, useInterpretationStore, usePredictiveStore, type BirthInfoChanged } from '@almamesh/store';
 import { useRegenerationSubscription } from '../useRegenerationSubscription';
 
 const fakeEngine = { generateChart: vi.fn() } as unknown as ChartEngine;
@@ -44,12 +44,7 @@ const event: BirthInfoChanged = {
 describe('useRegenerationSubscription — emit-before-subscribe race', () => {
   beforeEach(() => {
     regenerateSpy.mockClear();
-    appEvents.all.clear();
     usePredictiveStore.getState().reset();
-  });
-
-  afterEach(() => {
-    appEvents.all.clear();
   });
 
   it('handles a live event when the engine is already ready', () => {
@@ -57,7 +52,7 @@ describe('useRegenerationSubscription — emit-before-subscribe race', () => {
     renderHook(() => useRegenerationSubscription(), { wrapper });
 
     act(() => {
-      appEvents.emit('birth-info-changed', event);
+      void requestRegeneration(event).catch(() => undefined);
     });
 
     expect(regenerateSpy).toHaveBeenCalledTimes(1);
@@ -69,7 +64,7 @@ describe('useRegenerationSubscription — emit-before-subscribe race', () => {
     renderHook(() => useRegenerationSubscription(), { wrapper });
 
     act(() => {
-      appEvents.emit('birth-info-changed', event);
+      void requestRegeneration(event).catch(() => undefined);
     });
 
     const deps = regenerateSpy.mock.calls[0][1] as {
@@ -88,7 +83,7 @@ describe('useRegenerationSubscription — emit-before-subscribe race', () => {
     // Onboarding emits the moment resolveReadyEngine resolves — but the
     // subscriber's effect has not re-attached with a ready engine yet.
     act(() => {
-      appEvents.emit('birth-info-changed', event);
+      void requestRegeneration(event).catch(() => undefined);
     });
     expect(regenerateSpy).not.toHaveBeenCalled();
 
@@ -108,7 +103,7 @@ describe('useRegenerationSubscription — emit-before-subscribe race', () => {
     const { rerender } = renderHook(() => useRegenerationSubscription(), { wrapper });
 
     act(() => {
-      appEvents.emit('birth-info-changed', event);
+      void requestRegeneration(event).catch(() => undefined);
     });
 
     engineValue = { engine: fakeEngine };
@@ -133,7 +128,7 @@ describe('useRegenerationSubscription — emit-before-subscribe race', () => {
     renderHook(() => useRegenerationSubscription(), { wrapper });
 
     act(() => {
-      appEvents.emit('birth-info-changed', event);
+      void requestRegeneration(event).catch(() => undefined);
     });
     const deps = regenerateSpy.mock.calls[0]?.[1] as { onRegenerated: () => void };
     act(() => {
@@ -154,7 +149,7 @@ describe('useRegenerationSubscription — emit-before-subscribe race', () => {
     renderHook(() => useRegenerationSubscription(), { wrapper });
 
     act(() => {
-      appEvents.emit('birth-info-changed', event);
+      void requestRegeneration(event).catch(() => undefined);
     });
     const deps = regenerateSpy.mock.calls[0]?.[1] as { onRegenerated: () => void };
     act(() => {

@@ -1,31 +1,26 @@
 /**
- * Subscribe the ONE chart-regeneration handler to `birth-info-changed`.
+ * Register the ONE chart-regeneration runner behind `requestRegeneration`.
  *
- * Onboarding and Settings EMIT `birth-info-changed`; this is the single place
- * the chart is (re)computed — replacing the duplicated inline sequences that
- * caused the orphan / dropped-`profile_id` / stale-interpretation bugs.
+ * Onboarding, Rectify and Settings call `requestRegeneration(event)` and AWAIT
+ * it; this is the single place the chart is (re)computed — replacing the
+ * duplicated inline sequences that caused the orphan / dropped-`profile_id` /
+ * stale-interpretation bugs. Awaiting matters: pages used to emit on a
+ * fire-and-forget bus and navigate at once, so a reload during the compute
+ * lost the first chart for good (prod 6a89c0e, 2026-10-05).
  *
- * RACE-PROOF against emit-before-subscribe: the in-browser engine bootstraps
+ * RACE-PROOF against request-before-ready: the in-browser engine bootstraps
  * asynchronously, and the onboarding warming-race / post-`reboot()` recovery
- * paths emit `birth-info-changed` the instant the engine resolves — which can
- * land BEFORE this subscriber sees the ready engine on its next render. The old
- * effect early-returned `if (!engine)` and attached the listener only once the
- * engine was non-null, so that early emit fired into the void and the dashboard
- * showed "Unable to Load Chart". Here the listener is ALWAYS attached (it reads
- * the engine from a ref), so a live event is computed the moment the engine is
- * ready and BUFFERED otherwise; a ready-transition effect then DRAINS the buffer
- * exactly once. No dropped compute, regardless of ordering.
- *
- * AWAITABLE: the same runner is registered for `requestRegeneration(event)`, so
- * a page can wait until the chart is actually saved before it navigates (a
- * reload during the compute used to lose the first chart for good). A buffered
- * request's promise settles when the drained run settles.
+ * paths request a regeneration the instant the engine resolves — which can
+ * land BEFORE this hook sees the ready engine on its next render. The runner is
+ * ALWAYS registered (it reads the engine from a ref), so a request is computed
+ * the moment the engine is ready and BUFFERED otherwise; a ready-transition
+ * effect then DRAINS the buffer exactly once, and the buffered request's
+ * promise settles with that run. No dropped compute, regardless of ordering.
  */
 
 import { useEffect, useRef } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import {
-  appEvents,
   newChartReferenceInstant,
   regenerateOnBirthChange,
   registerRegenerationRunner,
@@ -88,19 +83,9 @@ export function useRegenerationSubscription(): void {
     })
   }
 
-  // Attach the listener ONCE for the app's lifetime (never gated on `engine`).
-  // The bus path is fire-and-forget; `requestRegeneration` is the awaitable one.
-  useEffect(() => {
-    const handler = (event: BirthInfoChanged) => {
-      void runRef.current(event).catch(() => undefined)
-    }
-    appEvents.on('birth-info-changed', handler)
-    const unregister = registerRegenerationRunner((event) => runRef.current(event))
-    return () => {
-      appEvents.off('birth-info-changed', handler)
-      unregister()
-    }
-  }, [])
+  // Register as THE runner ONCE for the app's lifetime (never gated on
+  // `engine`), so `requestRegeneration` always reaches this hook.
+  useEffect(() => registerRegenerationRunner((event) => runRef.current(event)), [])
 
   // When the engine becomes ready, DRAIN a buffered event exactly once. This is
   // what recovers the warming-race / post-reboot dashboard: the event that fired
