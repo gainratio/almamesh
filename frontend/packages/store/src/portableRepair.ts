@@ -29,6 +29,7 @@
  */
 
 import { unlinkMissingChartLinks } from './chatChartLinks';
+import { assertJsonTextWithinBounds } from './jsonBounds';
 
 export interface PortableRepairReport {
   /** Chat threads kept in full, without their link to a missing chart. */
@@ -95,6 +96,9 @@ function envelopeOf(rows: ReadonlyMap<string, string>, key: string): Envelope | 
   const raw = rows.get(key);
   if (raw === undefined) return null;
   try {
+    // Out of bounds or unreadable is "unknown": nothing is repaired from it,
+    // and the validator then refuses the row before anything parses it.
+    assertJsonTextWithinBounds(raw, key);
     const envelope = JSON.parse(raw) as unknown;
     if (!isRecord(envelope) || !isRecord(envelope.state)) return null;
     return { envelope, state: envelope.state };

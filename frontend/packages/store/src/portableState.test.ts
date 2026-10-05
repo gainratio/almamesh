@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   SqliteStateConflictError,
   type SqliteStateImportStage,
@@ -1095,6 +1095,54 @@ describe('repairPortableReferences: every dangling reference normal use can leav
 
     expect(repaired.values).toBe(values);
     expect(repaired.repairs).toEqual(EMPTY_PORTABLE_REPAIR_REPORT);
+  });
+
+  it('fails closed on an unreadable profiles row: repairs and deletes nothing', () => {
+    const values = new Map([
+      ['almamesh-profiles', '{"state":{"profiles":'],
+      ['almamesh-chart-library', envelope({ charts: { c2: { chart_id: 'c2' } } }, 'almamesh-chart-library')],
+      ['almamesh-life-events', envelope({ eventsByProfile: { p1: [{ id: 'e1' }] } }, 'almamesh-life-events')],
+      ['almamesh-mesh-readings', envelope({ byPair: { 'p1|p2': { pairKey: 'p1|p2', profileIds: ['p1', 'p2'] } } }, 'almamesh-mesh-readings')],
+    ]);
+
+    const repaired = repairPortableReferences(values);
+
+    expect(repaired.values).toBe(values);
+    expect(repaired.repairs).toEqual(EMPTY_PORTABLE_REPAIR_REPORT);
+  });
+
+  it('fails closed on an out-of-bounds row: repairs nothing from it, and nothing parses it', async () => {
+    const oversized = JSON.stringify({
+      state: { profiles: Object.fromEntries(Array.from({ length: 250_001 }, (_, i) => [`p${i}`, 0])) },
+      version: 1,
+      datasetEpoch: 0,
+    });
+    const values = new Map([
+      ['almamesh-profiles', oversized],
+      ['almamesh-life-events', envelope({ eventsByProfile: { p1: [] } }, 'almamesh-life-events')],
+    ]);
+    const parse = vi.spyOn(JSON, 'parse');
+
+    const repaired = repairPortableReferences(values);
+
+    expect(repaired.repairs).toEqual(EMPTY_PORTABLE_REPAIR_REPORT);
+    expect(parse.mock.calls.some(([text]) => text === oversized)).toBe(false);
+    parse.mockRestore();
+  });
+
+  it('refuses an oversized row at export before parsing it', async () => {
+    const { repository } = await seed([]);
+    const oversized = JSON.stringify({
+      state: { eventsByProfile: { p1: Array.from({ length: 250_001 }, () => 0) } },
+      version: PORTABLE_STORE_MAX_VERSIONS['almamesh-life-events'],
+      datasetEpoch: 0,
+    });
+    await repository.write('almamesh-life-events', oversized);
+    const parse = vi.spyOn(JSON, 'parse');
+
+    await expect(repository.exportBytes()).rejects.toThrow(/more than 250000 entries/);
+    expect(parse.mock.calls.some(([text]) => text === oversized)).toBe(false);
+    parse.mockRestore();
   });
 
   it('accepts the same rows on import (the snapshot read from a file is repaired, then validated)', () => {

@@ -7,6 +7,13 @@ import {
 } from '@gainratio/browser/sqlite';
 
 import {
+  assertJsonTextWithinBounds,
+  MAX_COLLECTION_ENTRIES,
+  MAX_JSON_DEPTH,
+  MAX_JSON_NODES,
+  MAX_STRING_CHARACTERS,
+} from './jsonBounds';
+import {
   repairPortableReferences,
   type PortableRepairReport,
   type SetAsideRecord,
@@ -166,18 +173,8 @@ export function isPortablePreferenceKey(key: string): boolean {
 
 const MAX_TRANSACTION_ATTEMPTS = 8;
 const MAX_CANONICAL_ROWS = 1_000;
-// Bounds for hostile files. A file is already capped at 64 MiB, so these are
-// sized for heavy real use, not tiny: 10,000 entries once refused a real
-// user's own long chat thread at export (2026-10-05 audit).
-const MAX_COLLECTION_ENTRIES = 250_000;
-const MAX_STRING_CHARACTERS = 1_000_000;
-// Measured 2026-10-05 (Chromium, CDP heap usage): decode + validator parse +
-// repair parse + repair stringify of one row costs ~64 MB of JS heap per
-// 1,000,000 nodes (empty objects: 64 MB; chat messages: 56 MB). 1,000,000
-// keeps one row's peak near 64 MB for low-end phones while holding about
-// 200,000 chat messages (a 40,000-message history is ~200,000 nodes).
-const MAX_JSON_NODES = 1_000_000;
-const MAX_JSON_DEPTH = 64;
+// Node, depth, entry and string bounds live in jsonBounds.ts and are checked
+// on the raw text BEFORE any row is parsed.
 const MAX_IDENTIFIER_CHARACTERS = 512;
 const encoder = new TextEncoder();
 const decoder = new TextDecoder('utf-8', { fatal: true });
@@ -785,6 +782,8 @@ function validatePortableSnapshot(snapshot: PortableStateSnapshot): void {
       parsePortablePreferences(value);
       continue;
     }
+    // Bounded on the raw text first: a hostile row never reaches JSON.parse.
+    assertJsonTextWithinBounds(value, key);
     const envelope = parseJsonRecord(value, key);
     if (
       !Number.isSafeInteger(envelope.version) ||
