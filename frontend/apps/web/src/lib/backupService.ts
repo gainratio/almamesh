@@ -45,6 +45,7 @@ import {
   readPortableStateDatabase,
   type BackupDeps,
   type PortableBrowserImportOptions,
+  type PortableExport,
   type PortableStateSnapshot,
   type StorageTier,
 } from '@almamesh/store';
@@ -97,7 +98,7 @@ export interface BackupDepsOverride {
     readonly phase: 'begin' | 'complete' | 'abort';
     readonly presentStoreKeys: readonly string[];
   }) => void;
-  exportPortableState?: () => Promise<Uint8Array>;
+  exportPortableState?: () => Promise<PortableExport>;
   readPortableState?: (bytes: Uint8Array) => Promise<PortableStateSnapshot>;
   importPortableState?: (
     bytes: Uint8Array,
@@ -197,6 +198,8 @@ const MAX_BACKUP_TEXT_CHARACTERS = 128 * 1024 * 1024;
 export interface BackupExport {
   filename: string;
   content: BackupContent;
+  /** Chat threads exported without their link to a chart that no longer exists. */
+  unlinkedChatThreads: number;
 }
 
 /**
@@ -216,14 +219,18 @@ export async function buildBackupExport(
   }
   const deps = resolveDeps(override);
   if (override?.tiers === undefined) {
-    const database = await (override?.exportPortableState ?? exportPortableBrowserState)();
-    const content = await sealPortableBundle(database, passphrase, deps);
-    return { filename: `almamesh-backup-${filenameTimestamp(deps.now)}.almamesh`, content };
+    const exported = await (override?.exportPortableState ?? exportPortableBrowserState)();
+    const content = await sealPortableBundle(exported.bytes, passphrase, deps);
+    return {
+      filename: `almamesh-backup-${filenameTimestamp(deps.now)}.almamesh`,
+      content,
+      unlinkedChatThreads: exported.unlinkedChatThreadIds.length,
+    };
   }
   const plain = await collectBackup(deps);
   const encoded = await encodeEnvelope(plain, passphrase);
   const filename = `almamesh-backup-${filenameTimestamp(deps.now)}.json`;
-  return { filename, content: JSON.stringify(encoded, null, 2) };
+  return { filename, content: JSON.stringify(encoded, null, 2), unlinkedChatThreads: 0 };
 }
 
 function filenameTimestamp(now: string): string {

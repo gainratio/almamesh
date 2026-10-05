@@ -273,6 +273,8 @@
     "passphrase_prompt_body": "Esta copia está protegida con contraseña. Introduce su contraseña para restaurar.",
     "passphrase_prompt_submit": "Desbloquear",
     "status_exported": "Copia de seguridad descargada.",
+    "note_unlinked_chat_one": "{{count}} conversación de chat se inició con una carta que ya no existe. Está completa en la copia, solo que ya no está vinculada a esa carta.",
+    "note_unlinked_chat_other": "{{count}} conversaciones de chat se iniciaron con una carta que ya no existe. Están completas en la copia, solo que ya no están vinculadas a esa carta.",
     "status_export_started": "Se inició la descarga. Confirma que el archivo aparece en Descargas antes de confiar en él.",
     "status_imported": "Restaurado. Recargando…",
     "error_bad_format": "Ese archivo no es una copia de seguridad de AlmaMesh.",

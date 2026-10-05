@@ -36,6 +36,7 @@ import {
   PORTABLE_PREFERENCES_KEY,
   PORTABLE_STATE_KEYS,
   readPortableStateDatabase,
+  type PortableExport,
 } from './portableState';
 
 /** Compatibility tier labels retained by the legacy JSON backup envelope. */
@@ -298,9 +299,9 @@ export async function applyBrowserBackupAtomically(
 }
 
 /** Export the canonical browser dataset as a real, standard SQLite database. */
-export async function exportPortableBrowserState(): Promise<Uint8Array> {
+export async function exportPortableBrowserState(): Promise<PortableExport> {
   await flushPortablePersistence();
-  return (await requirePortableStateRepository()).exportBytes();
+  return (await requirePortableStateRepository()).exportWithReport();
 }
 
 /**

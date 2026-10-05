@@ -78,6 +78,7 @@ beforeEach(() => {
   vi.mocked(buildBackupExport).mockResolvedValue({
     filename: 'almamesh-backup-2026-07-01T12-34-56-000Z.almamesh',
     content: new Uint8Array([1, 2, 3]),
+    unlinkedChatThreads: 0,
   });
   vi.mocked(saveBackupFile).mockResolvedValue('saved');
   vi.mocked(pickBackupFile).mockResolvedValue(null);
@@ -149,6 +150,7 @@ describe('DataSettings — Backup & Restore panel', () => {
     vi.mocked(buildBackupExport).mockResolvedValue({
       filename: 'almamesh-backup-2026-07-01.json',
       content: '{"formatVersion":2}',
+      unlinkedChatThreads: 0,
     });
     render(<DataSettings />);
 
@@ -165,6 +167,26 @@ describe('DataSettings — Backup & Restore panel', () => {
       '{"formatVersion":2}',
     );
     expect(await screen.findByText('Backup downloaded.')).toBeTruthy();
+  });
+
+  it('says plainly when a chat was exported without the chart it was started on', async () => {
+    vi.mocked(buildBackupExport).mockResolvedValue({
+      filename: 'almamesh-backup-2026-10-05.almamesh',
+      content: new Uint8Array([1]),
+      unlinkedChatThreads: 1,
+    });
+    render(<DataSettings />);
+
+    fireEvent.change(screen.getByTestId('backup-passphrase-input'), {
+      target: { value: 'hunter2-long' },
+    });
+    fireEvent.click(screen.getByTestId('backup-export-button'));
+
+    expect(
+      await screen.findByText(
+        'Backup downloaded. 1 chat conversation was started on a chart that no longer exists. It is in the backup in full, just no longer linked to that chart.',
+      ),
+    ).toBeTruthy();
   });
 
   it('shows the export failure reason instead of a generic error', async () => {
@@ -429,6 +451,7 @@ describe('DataSettings — Backup & Restore panel', () => {
     vi.mocked(buildBackupExport).mockResolvedValue({
       filename: 'almamesh-backup-2026-07-01T12-34-56-000Z.almamesh',
       content: new Uint8Array([9]),
+      unlinkedChatThreads: 0,
     });
     vi.mocked(stageBackupImport)
       .mockRejectedValueOnce(new BackupCryptoError('bad_passphrase', 'encrypted'))

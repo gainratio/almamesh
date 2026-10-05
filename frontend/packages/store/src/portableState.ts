@@ -6,6 +6,8 @@ import {
   type SqliteStateStore,
 } from '@gainratio/browser/sqlite';
 
+import { unlinkMissingChartLinks } from './chatChartLinks';
+
 export const PORTABLE_STATE_DATABASE = 'almamesh-user-state';
 export const PORTABLE_STATE_NAMESPACE = 'canonical';
 export const PORTABLE_STATE_SCHEMA_VERSION = 1;
@@ -188,6 +190,13 @@ export interface PortableStateSnapshot {
   readonly quarantine: ReadonlyMap<string, string>;
 }
 
+/** What left the browser, plus the repairs made on the way out. */
+export interface PortableExport {
+  readonly bytes: Uint8Array;
+  /** Chat threads exported without a link to a chart that no longer exists. */
+  readonly unlinkedChatThreadIds: readonly string[];
+}
+
 export interface LegacyStateStorage {
   get(key: string): Promise<string | null>;
   delete(key: string): Promise<void>;
@@ -331,6 +340,10 @@ export class PortableStateRepository {
   }
 
   public async exportBytes(): Promise<Uint8Array> {
+    return (await this.exportWithReport()).bytes;
+  }
+
+  public async exportWithReport(): Promise<PortableExport> {
     for (let attempt = 0; attempt < MAX_TRANSACTION_ATTEMPTS; attempt += 1) {
       const before = await this.#store.runtimeInfo();
       const bytes = await this.#store.exportBytes();
@@ -346,15 +359,18 @@ export class PortableStateRepository {
       ) {
         continue;
       }
-      validatePortableSnapshot(snapshot);
+      // A chat thread's link to a chart that no longer exists is a stale
+      // pointer, not corruption; it must never block exporting everything.
+      const repaired = unlinkOrphanedChatChartLinks(snapshot.values);
+      validatePortableSnapshot({ ...snapshot, values: repaired.values });
       // Backups carry the canonical dataset only; the quarantine stays local.
       // The raw file is never what leaves: it may hold quarantine rows (their
       // writes are not fenced by the dataset epoch, so no re-read here could be
       // trusted) and a deleted row's bytes in free pages. A fresh file written
       // from the canonical rows read at the validated epoch holds neither.
-      const canonical = await this.#rebuildExport(snapshot.values);
+      const canonical = await this.#rebuildExport(repaired.values);
       await this.#validateExport(canonical);
-      return canonical;
+      return { bytes: canonical, unlinkedChatThreadIds: repaired.unlinkedChatThreadIds };
     }
     throw new Error('Portable state remained busy while exporting a consistent snapshot.');
   }
@@ -491,7 +507,9 @@ export async function readPortableStateDatabase(bytes: Uint8Array): Promise<Port
     assertSupportedPortableStateSchema(stage.schemaVersion);
     await store.commitImport(stage.stageId, { expectedEpoch: 0 });
     await repository.checkIntegrity();
-    const snapshot = await repository.snapshot();
+    const read = await repository.snapshot();
+    // Files exported before the repair existed may still carry the stale link.
+    const snapshot = { ...read, values: unlinkOrphanedChatChartLinks(read.values).values };
     validatePortableSnapshot(snapshot);
     return snapshot;
   } finally {
@@ -541,7 +559,8 @@ export async function mergeLegacyPreferencesIntoPortableState(
     }
     await store.commitImport(stage.stageId, { expectedEpoch: 0 });
     await repository.checkIntegrity();
-    validatePortableSnapshot(await repository.snapshot());
+    const read = await repository.snapshot();
+    validatePortableSnapshot({ ...read, values: unlinkOrphanedChatChartLinks(read.values).values });
 
     const current = await readPortablePreferences(repository);
     await repository.write(
@@ -650,6 +669,50 @@ function toSqliteMutation(mutation: PortableStateMutation): SqliteStateMutation 
         namespace: PORTABLE_STATE_NAMESPACE,
         key: mutation.key,
       };
+}
+
+const CHAT_HISTORY_KEY = 'almamesh-chat-history';
+const CHART_LIBRARY_KEY = 'almamesh-chart-library';
+
+function parseRecordOrNull(value: string | undefined): Record<string, unknown> | null {
+  if (value === undefined) return null;
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return isPlainRecord(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Drop `chart_id` from chat threads whose chart is not in the chart library,
+ * keeping every thread, message and summary. Mirrors exactly what the
+ * validator would refuse; anything malformed is left untouched so the
+ * validator still rejects real corruption.
+ */
+export function unlinkOrphanedChatChartLinks(values: ReadonlyMap<string, string>): {
+  readonly values: ReadonlyMap<string, string>;
+  readonly unlinkedChatThreadIds: readonly string[];
+} {
+  const unchanged = { values, unlinkedChatThreadIds: [] };
+  const chat = parseRecordOrNull(values.get(CHAT_HISTORY_KEY));
+  const library = parseRecordOrNull(values.get(CHART_LIBRARY_KEY));
+  if (chat === null || library === null) return unchanged;
+  const chatState = chat.state;
+  const libraryState = library.state;
+  if (!isPlainRecord(chatState) || !isPlainRecord(chatState.threads)) return unchanged;
+  if (!isPlainRecord(libraryState) || !isPlainRecord(libraryState.charts)) return unchanged;
+  const repair = unlinkMissingChartLinks(
+    chatState.threads,
+    new Set(Object.keys(libraryState.charts)),
+  );
+  if (repair.unlinkedThreadIds.length === 0) return unchanged;
+  const next = new Map(values);
+  next.set(
+    CHAT_HISTORY_KEY,
+    JSON.stringify({ ...chat, state: { ...chatState, threads: repair.threads } }),
+  );
+  return { values: next, unlinkedChatThreadIds: repair.unlinkedThreadIds };
 }
 
 function assertPortableKey(key: string): void {

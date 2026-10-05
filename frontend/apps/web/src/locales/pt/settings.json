@@ -273,6 +273,8 @@
     "passphrase_prompt_body": "Este backup é protegido por senha. Digite a senha para restaurar.",
     "passphrase_prompt_submit": "Desbloquear",
     "status_exported": "Backup baixado.",
+    "note_unlinked_chat_one": "{{count}} conversa do chat foi iniciada com um mapa que não existe mais. Ela está completa no backup, apenas não está mais vinculada a esse mapa.",
+    "note_unlinked_chat_other": "{{count}} conversas do chat foram iniciadas com um mapa que não existe mais. Elas estão completas no backup, apenas não estão mais vinculadas a esse mapa.",
     "status_export_started": "O download foi iniciado. Confirme que o arquivo aparece em Downloads antes de confiar nele.",
     "status_imported": "Restaurado. Recarregando…",
     "error_bad_format": "Esse arquivo não é um backup do AlmaMesh.",

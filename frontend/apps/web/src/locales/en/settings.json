@@ -270,6 +270,8 @@
     "passphrase_prompt_body": "This backup is password-protected. Enter its password to restore.",
     "passphrase_prompt_submit": "Unlock",
     "status_exported": "Backup downloaded.",
+    "note_unlinked_chat_one": "{{count}} chat conversation was started on a chart that no longer exists. It is in the backup in full, just no longer linked to that chart.",
+    "note_unlinked_chat_other": "{{count}} chat conversations were started on a chart that no longer exists. They are in the backup in full, just no longer linked to that chart.",
     "status_export_started": "Backup download started. Confirm the file appears in Downloads before relying on it.",
     "status_imported": "Restored. Reloading…",
     "error_bad_format": "That file isn't an AlmaMesh backup.",

@@ -23,6 +23,7 @@ import {
   resolvePortableStateMode,
   supportsPortableState,
   assertSupportedPortableStateSchema,
+  unlinkOrphanedChatChartLinks,
 } from './portableState';
 
 class MemorySqliteStore implements SqliteStateStore {
@@ -766,5 +767,170 @@ describe('PortableStateRepository', () => {
         'almamesh-llm-settings'
       ],
     ).toContain('sk-legacy-synthetic');
+  });
+});
+
+/**
+ * Production 2026-10-05: one chat thread kept `chart_id` of a chart that a
+ * birth-detail edit had regenerated away, and Export refused the whole dataset
+ * with `references missing chart "1e251b81"`. A dangling link from a chat
+ * thread to a chart is a stale pointer, not corruption: the conversation still
+ * belongs to its person. It must never block exporting everything else.
+ */
+describe('a chat thread whose chart no longer exists', () => {
+  const ORPHAN_CHART = '1e251b81';
+  const SATURN_QUESTION = 'When does my Saturn return start?';
+
+  function envelope(state: unknown, key: keyof typeof PORTABLE_STORE_MAX_VERSIONS): string {
+    return JSON.stringify({ state, version: PORTABLE_STORE_MAX_VERSIONS[key], datasetEpoch: 0 });
+  }
+
+  async function seedOrphanedThread(
+    extra: ReadonlyArray<readonly [keyof typeof PORTABLE_STORE_MAX_VERSIONS, unknown]> = [],
+  ) {
+    const sqlite = new MemorySqliteStore();
+    const handed: Array<ReadonlyMap<string, string>> = [];
+    const repository = new PortableStateRepository(
+      sqlite,
+      async (bytes) => bytes[0] ?? -1,
+      async (canonical) => {
+        handed.push(canonical);
+        return new Uint8Array([sqlite.epoch]);
+      },
+    );
+    await migrateLegacyState(repository, { get: async () => null, delete: async () => undefined }, []);
+    await repository.write(
+      'almamesh-profiles',
+      envelope({ profiles: { p1: { id: 'p1' } }, activeProfileId: 'p1' }, 'almamesh-profiles'),
+    );
+    await repository.write(
+      'almamesh-chart-library',
+      envelope({ charts: { c2: { chart_id: 'c2', profile_id: 'p1' } } }, 'almamesh-chart-library'),
+    );
+    await repository.write(
+      'almamesh-chat-history',
+      envelope(
+        {
+          threads: {
+            t1: { id: 't1', profile_id: 'p1', chart_id: ORPHAN_CHART, title: 'Saturn' },
+            t2: { id: 't2', profile_id: 'p1', chart_id: 'c2', title: 'Career' },
+          },
+          messages: {
+            t1: [{ id: 'm1', thread_id: 't1', role: 'user', content: SATURN_QUESTION }],
+            t2: [],
+          },
+          summaries: {},
+        },
+        'almamesh-chat-history',
+      ),
+    );
+    for (const [key, state] of extra) await repository.write(key, envelope(state, key));
+    return { repository, handed };
+  }
+
+  function chatState(values: ReadonlyMap<string, string>) {
+    return (JSON.parse(values.get('almamesh-chat-history')!) as {
+      state: {
+        threads: Record<string, { chart_id?: string }>;
+        messages: Record<string, Array<{ content: string }>>;
+      };
+    }).state;
+  }
+
+  it('exports every row, keeping the thread and its messages but not the dangling chart link', async () => {
+    const { repository, handed } = await seedOrphanedThread();
+    const live = (await repository.snapshot()).values;
+
+    await expect(repository.exportBytes()).resolves.toBeInstanceOf(Uint8Array);
+
+    expect(handed).toHaveLength(1);
+    const exported = handed[0]!;
+    expect([...exported.keys()].sort()).toEqual([...live.keys()].sort());
+    const chat = chatState(exported);
+    expect(chat.threads.t1).toEqual({ id: 't1', profile_id: 'p1', title: 'Saturn' });
+    expect(chat.threads.t2!.chart_id).toBe('c2');
+    expect(chat.messages.t1![0]!.content).toBe(SATURN_QUESTION);
+    for (const [key, value] of live) {
+      if (key !== 'almamesh-chat-history') expect(exported.get(key)).toBe(value);
+    }
+  });
+
+  it('reports which chat threads lost their chart link so the UI can say so', async () => {
+    const { repository } = await seedOrphanedThread();
+
+    const report = await repository.exportWithReport();
+
+    expect(report.unlinkedChatThreadIds).toEqual(['t1']);
+    expect(report.bytes).toBeInstanceOf(Uint8Array);
+  });
+
+  it('leaves a healthy dataset byte-identical and reports nothing', async () => {
+    const { repository, handed } = await seedOrphanedThread();
+    await repository.write(
+      'almamesh-chart-library',
+      envelope(
+        {
+          charts: {
+            c2: { chart_id: 'c2', profile_id: 'p1' },
+            [ORPHAN_CHART]: { chart_id: ORPHAN_CHART, profile_id: 'p1' },
+          },
+        },
+        'almamesh-chart-library',
+      ),
+    );
+    const live = (await repository.snapshot()).values;
+
+    const report = await repository.exportWithReport();
+
+    expect(report.unlinkedChatThreadIds).toEqual([]);
+    expect(handed[0]).toEqual(live);
+  });
+
+  it('accepts the same orphaned row on import, repaired the same way', () => {
+    const values = new Map([
+      [
+        'almamesh-chart-library',
+        envelope({ charts: { c2: { chart_id: 'c2' } } }, 'almamesh-chart-library'),
+      ],
+      [
+        'almamesh-chat-history',
+        envelope(
+          {
+            threads: { t1: { id: 't1', chart_id: ORPHAN_CHART } },
+            messages: { t1: [{ id: 'm1', thread_id: 't1', content: SATURN_QUESTION }] },
+            summaries: {},
+          },
+          'almamesh-chat-history',
+        ),
+      ],
+    ]);
+
+    const repaired = unlinkOrphanedChatChartLinks(values);
+
+    expect(repaired.unlinkedChatThreadIds).toEqual(['t1']);
+    expect(chatState(repaired.values).threads.t1).toEqual({ id: 't1' });
+    expect(chatState(repaired.values).messages.t1![0]!.content).toBe(SATURN_QUESTION);
+  });
+
+  it.each([
+    [
+      'an interpretation saved for a chart that does not exist',
+      [['almamesh-interpretations', { byChart: { gone: { profileId: 'p1' } } }]] as const,
+      /references missing chart "gone"/,
+    ],
+    [
+      'a chat thread owned by a person who does not exist',
+      [
+        [
+          'almamesh-chat-history',
+          { threads: { t9: { id: 't9', profile_id: 'nobody' } }, messages: { t9: [] }, summaries: {} },
+        ],
+      ] as const,
+      /references missing profile "nobody"/,
+    ],
+  ])('still refuses real corruption: %s', async (_label, extra, expected) => {
+    const { repository } = await seedOrphanedThread(extra);
+
+    await expect(repository.exportBytes()).rejects.toThrow(expected);
   });
 });

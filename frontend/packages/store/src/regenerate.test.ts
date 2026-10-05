@@ -60,6 +60,11 @@ function seededPrimary(birth: BirthMeta, profileId: string): StoredChart {
   };
 }
 
+/** A chat facade for cases that do not assert on chat links. */
+function unlinkNothing() {
+  return { unlinkMissingCharts: vi.fn((_live: ReadonlySet<string>): readonly string[] => []) };
+}
+
 describe('regenerateOnBirthChange', () => {
   it('no-ops when chartId is unchanged (name is part of the id, so keep it equal)', async () => {
     const lib = makeFakeLibrary(seededPrimary(baseBirth, 'p1'));
@@ -69,6 +74,7 @@ describe('regenerateOnBirthChange', () => {
       engine,
       library: lib,
       onRegenerated,
+      chat: unlinkNothing(),
       referenceInstant: REFERENCE_INSTANT,
     };
 
@@ -90,6 +96,7 @@ describe('regenerateOnBirthChange', () => {
       engine,
       library: lib,
       onRegenerated,
+      chat: unlinkNothing(),
       referenceInstant: REFERENCE_INSTANT,
     };
 
@@ -113,7 +120,7 @@ describe('regenerateOnBirthChange', () => {
 
     await regenerateOnBirthChange(
       { birth: changedBirth, profileId: 'profile-a' },
-      { engine, library: lib, onRegenerated, referenceInstant: REFERENCE_INSTANT },
+      { engine, library: lib, onRegenerated, chat: unlinkNothing(), referenceInstant: REFERENCE_INSTANT },
     );
 
     expect(lib.getChart(profileB.chart_id)).toEqual(profileB);
@@ -133,7 +140,7 @@ describe('regenerateOnBirthChange', () => {
 
     await regenerateOnBirthChange(
       { birth: changedBirth, profileId: 'p1' },
-      { engine, library: lib, onRegenerated: vi.fn(), referenceInstant: REFERENCE_INSTANT },
+      { engine, library: lib, onRegenerated: vi.fn(), chat: unlinkNothing(), referenceInstant: REFERENCE_INSTANT },
     );
 
     const sent = engine.generateChart.mock.calls[0]?.[0] as { referenceDate: string };
@@ -154,6 +161,7 @@ describe('regenerateOnBirthChange', () => {
           engine: { generateChart: vi.fn().mockResolvedValue(fakeSiderealChart) },
           library: lib,
           onRegenerated: vi.fn(),
+          chat: unlinkNothing(),
           referenceInstant: REFERENCE_INSTANT,
         },
       );
@@ -161,5 +169,43 @@ describe('regenerateOnBirthChange', () => {
     };
 
     expect(JSON.stringify(await run())).toBe(JSON.stringify(await run()));
+  });
+
+  it('unlinks chat threads from the chart it replaced, so export never sees a dangling chart', async () => {
+    // Production 2026-10-05: a birth-time edit regenerated the chart under a
+    // new id and deleted the old one, but the chat thread kept the old
+    // chart_id, and Export refused the whole dataset.
+    const lib = makeFakeLibrary(seededPrimary(baseBirth, 'p1'));
+    const staleId = chartId(baseBirth);
+    const changedBirth: BirthMeta = { ...baseBirth, time: '18:00' };
+    const chat = unlinkNothing();
+
+    await regenerateOnBirthChange(
+      { birth: changedBirth, profileId: 'p1' },
+      {
+        engine: { generateChart: vi.fn().mockResolvedValue(fakeSiderealChart) },
+        library: lib,
+        onRegenerated: vi.fn(),
+        chat,
+        referenceInstant: REFERENCE_INSTANT,
+      },
+    );
+
+    expect(chat.unlinkMissingCharts).toHaveBeenCalledOnce();
+    const live = chat.unlinkMissingCharts.mock.calls[0]![0];
+    expect(live.has(staleId)).toBe(false);
+    expect(live.has(chartId(changedBirth))).toBe(true);
+  });
+
+  it('touches no chat link on a no-op (same chart id) event', async () => {
+    const lib = makeFakeLibrary(seededPrimary(baseBirth, 'p1'));
+    const chat = unlinkNothing();
+
+    await regenerateOnBirthChange(
+      { birth: baseBirth, profileId: 'p1' },
+      { engine: { generateChart: vi.fn() }, library: lib, onRegenerated: vi.fn(), chat, referenceInstant: REFERENCE_INSTANT },
+    );
+
+    expect(chat.unlinkMissingCharts).not.toHaveBeenCalled();
   });
 });

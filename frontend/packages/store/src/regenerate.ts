@@ -32,10 +32,22 @@ export interface RegenerateLibrary {
   deleteChart: (chartId: string) => void;
 }
 
+/** The chat surface the handler repairs (satisfied by `useChatStore.getState()`). */
+export interface RegenerateChat {
+  /** Drop chat links to charts outside `liveChartIds`, keeping every message. */
+  unlinkMissingCharts: (liveChartIds: ReadonlySet<string>) => readonly string[];
+}
+
 /** Everything the handler depends on; injected so it stays testable. */
 export interface RegenerateDeps {
   readonly engine: RegenerateEngine;
   readonly library: RegenerateLibrary;
+  /**
+   * Chat threads remember the chart they were started on. Deleting the prior
+   * chart without unlinking them left a dangling `chart_id` that made Export
+   * refuse the whole dataset (production, 2026-10-05).
+   */
+  readonly chat: RegenerateChat;
   /** Reset ephemeral interpretation/chat + trigger the interpretation re-stream. */
   readonly onRegenerated: () => void;
   /**
@@ -81,7 +93,8 @@ function primaryForProfile(
  *
  * No-op (rename-only) when the effective birth inputs yield the same `chartId`.
  * Otherwise: compute the chart on-device, save the new primary with
- * `profile_id` PRESERVED, delete the prior primary row (the orphan), then let
+ * `profile_id` PRESERVED, delete the prior primary row (the orphan), unlink chat
+ * threads from it, then let
  * the caller reset ephemeral state and re-stream the interpretation.
  */
 export async function regenerateOnBirthChange(
@@ -100,6 +113,9 @@ export async function regenerateOnBirthChange(
   deps.library.saveChart(buildPrimary(chart, birth, profileId, referenceInstant));
   if (prior && prior.chart_id !== nextId) {
     deps.library.deleteChart(prior.chart_id);
+    deps.chat.unlinkMissingCharts(
+      new Set(deps.library.listAllCharts().map((stored) => stored.chart_id)),
+    );
   }
   deps.onRegenerated();
 }

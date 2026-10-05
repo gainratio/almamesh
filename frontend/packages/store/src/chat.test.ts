@@ -224,6 +224,31 @@ describe('chatStore', () => {
       expect(store.getState().listThreads('survivor')).toHaveLength(1);
       expect(store.getState().getMessages(survivorThread)).toHaveLength(1);
     });
+
+    it('unlinkMissingCharts drops only links to charts that no longer exist, keeping messages', () => {
+      const store = newStore();
+      const stale = store.getState().ensureThread('p1', '1e251b81');
+      store.getState().appendMessage(stale, 'user', 'When does my Saturn return start?');
+      const live = store.getState().ensureThread('p2', 'c2');
+      const unlinked = store.getState().ensureThread('p3');
+
+      const repaired = store.getState().unlinkMissingCharts(new Set(['c2']));
+
+      expect(repaired).toEqual([stale]);
+      expect(store.getState().threads[stale]).not.toHaveProperty('chart_id');
+      expect(store.getState().getMessages(stale)[0]!.content).toBe('When does my Saturn return start?');
+      expect(store.getState().threads[live]!.chart_id).toBe('c2');
+      expect(store.getState().threads[unlinked]!.chart_id).toBeUndefined();
+    });
+
+    it('unlinkMissingCharts leaves state untouched when every link is live', () => {
+      const store = newStore();
+      store.getState().ensureThread('p1', 'c1');
+      const before = store.getState().threads;
+
+      expect(store.getState().unlinkMissingCharts(new Set(['c1']))).toEqual([]);
+      expect(store.getState().threads).toBe(before);
+    });
   });
 
   describe('messages', () => {

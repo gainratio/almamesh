@@ -21,6 +21,7 @@ import {
   applyRemoteDeletionNotice,
   deleteChatThreadData,
   deleteProfileData,
+  reconcileChatChartLinks,
   resumePendingMemoryRebuild,
 } from './profileDataLifecycle';
 import { LLM_SETTINGS_CHANGED_EVENT } from './llmSettingsEvents';
@@ -710,6 +711,80 @@ describe('cross-realm deletion propagation', () => {
     expect(useLifeEventsStore.getState().getEvents(target)).toEqual([]);
     expect(useChatStore.getState().threads[threadId]).toBeUndefined();
     expect(useInterpretationStore.getState().getEntry('target-chart')).toBeUndefined();
+  });
+});
+
+describe('chat links to charts that no longer exist (self-heal)', () => {
+  const QUESTION = 'When does my Saturn return start?';
+
+  function seedOrphan(): { orphan: string; healthy: string } {
+    useChartLibraryStore.setState({ charts: { c2: chart('c2', 'p1') } });
+    const orphan = useChatStore.getState().ensureThread('p1', '1e251b81');
+    useChatStore.getState().appendMessage(orphan, 'user', QUESTION);
+    const healthy = useChatStore.getState().ensureThread('p2', 'c2');
+    return { orphan, healthy };
+  }
+
+  it('unlinks the dangling chart link, keeps the conversation, and persists the repair', async () => {
+    const { orphan, healthy } = seedOrphan();
+    const persist = vi.fn().mockResolvedValue(undefined);
+
+    const repaired = await reconcileChatChartLinks({ hydrated: async () => true, persist });
+
+    expect(repaired).toEqual([orphan]);
+    expect(useChatStore.getState().threads[orphan]).not.toHaveProperty('chart_id');
+    expect(useChatStore.getState().getMessages(orphan)[0]!.content).toBe(QUESTION);
+    expect(useChatStore.getState().threads[healthy]!.chart_id).toBe('c2');
+    expect(persist).toHaveBeenCalledOnce();
+  });
+
+  it('writes nothing when every chat link is live', async () => {
+    useChartLibraryStore.setState({ charts: { c2: chart('c2', 'p1') } });
+    useChatStore.getState().ensureThread('p1', 'c2');
+    const persist = vi.fn();
+
+    await expect(reconcileChatChartLinks({ hydrated: async () => true, persist })).resolves.toEqual([]);
+    expect(persist).not.toHaveBeenCalled();
+  });
+
+  it('never repairs against a chart library that failed to hydrate', async () => {
+    const { orphan } = seedOrphan();
+    const persist = vi.fn();
+
+    await expect(reconcileChatChartLinks({ hydrated: async () => false, persist })).resolves.toEqual([]);
+    expect(useChatStore.getState().threads[orphan]!.chart_id).toBe('1e251b81');
+    expect(persist).not.toHaveBeenCalled();
+  });
+
+  it('runs on boot, so a device already holding the dangling link recovers with no user action', async () => {
+    vi.resetModules();
+    vi.doMock('@almamesh/store', async (importOriginal) => ({
+      ...(await importOriginal<typeof import('@almamesh/store')>()),
+      readDeletionTombstones: vi.fn().mockResolvedValue({
+        version: 1,
+        activeEpoch: 0,
+        restoreEpoch: 0,
+        restoreInProgress: false,
+        memoryRebuildPending: false,
+        profileIds: [],
+        threadIds: [],
+        chartIds: [],
+      }),
+      adoptLatestDatasetEpoch: vi.fn().mockResolvedValue({ changed: false, epoch: 0 }),
+      persistChatDeletion: vi.fn().mockResolvedValue(undefined),
+    }));
+    try {
+      const store = await import('@almamesh/store');
+      store.useChartLibraryStore.setState({ charts: { c2: chart('c2', 'p1') } });
+      const orphan = store.useChatStore.getState().ensureThread('p1', '1e251b81');
+
+      const lifecycle = await import('./profileDataLifecycle');
+      await lifecycle.whenDataLifecycleReady();
+
+      expect(store.useChatStore.getState().threads[orphan]).not.toHaveProperty('chart_id');
+    } finally {
+      vi.doUnmock('@almamesh/store');
+    }
   });
 });
 

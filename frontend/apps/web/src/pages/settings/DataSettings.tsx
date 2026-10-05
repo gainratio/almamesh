@@ -95,13 +95,19 @@ export function DataSettingsPanel({ persistence }: DataSettingsProps) {
     }
     setExporting(true);
     try {
-      const { filename, content } = await buildBackupExport(password);
+      const { filename, content, unlinkedChatThreads } = await buildBackupExport(password);
       const result = await saveBackupFile(filename, content);
+      // Honest about the one repair an export can make: a chat whose chart
+      // no longer exists is exported in full, minus that dead link.
+      const note =
+        unlinkedChatThreads > 0
+          ? ` ${t('backup.note_unlinked_chat', { count: unlinkedChatThreads })}`
+          : '';
       if (result === 'saved') {
-        setStatus(t('backup.status_exported'));
+        setStatus(`${t('backup.status_exported')}${note}`);
         setPassword(''); // don't leave the passphrase lingering in the field
       } else if (result === 'unverified') {
-        setStatus(t('backup.status_export_started'));
+        setStatus(`${t('backup.status_export_started')}${note}`);
         setPassword('');
       }
     } catch (err) {

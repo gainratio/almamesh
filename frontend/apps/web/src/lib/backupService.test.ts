@@ -101,12 +101,23 @@ describe('buildBackupExport', () => {
 
     const result = await buildBackupExport('test passphrase', {
       now: FIXED_NOW,
-      exportPortableState: vi.fn().mockResolvedValue(bytes),
+      exportPortableState: vi.fn().mockResolvedValue({ bytes, unlinkedChatThreadIds: [] }),
     });
 
     expect(result.filename).toBe('almamesh-backup-2026-07-01T12-34-56-000Z.almamesh');
     expect(result.content).toBeInstanceOf(Uint8Array);
     expect(result.content).not.toEqual(bytes);
+  });
+
+  it('reports how many chat threads were exported without their missing chart, so the UI can say so', async () => {
+    const bytes = new Uint8Array([...new TextEncoder().encode('SQLite format 3\0'), 0xaa]);
+
+    const result = await buildBackupExport('test passphrase', {
+      now: FIXED_NOW,
+      exportPortableState: vi.fn().mockResolvedValue({ bytes, unlinkedChatThreadIds: ['t1'] }),
+    });
+
+    expect(result.unlinkedChatThreads).toBe(1);
   });
 
   it('exports a completed interpretation immediately after its durability promise resolves', async () => {
@@ -298,7 +309,7 @@ describe('encrypted bundle round-trip (format v3)', () => {
     const result = await buildBackupExport(PASSPHRASE, {
       now: FIXED_NOW,
       appVersion: FIXED_VERSION,
-      exportPortableState: vi.fn().mockResolvedValue(databaseA),
+      exportPortableState: vi.fn().mockResolvedValue({ bytes: databaseA, unlinkedChatThreadIds: [] }),
     });
     expect(result.filename).toBe('almamesh-backup-2026-07-01T12-34-56-000Z.almamesh');
     expect(result.content).toBeInstanceOf(Uint8Array);
@@ -337,7 +348,7 @@ describe('encrypted bundle round-trip (format v3)', () => {
   });
 
   it('without a passphrase refuses export before reading the database', async () => {
-    const exportPortableState = vi.fn().mockResolvedValue(databaseA);
+    const exportPortableState = vi.fn().mockResolvedValue({ bytes: databaseA, unlinkedChatThreadIds: [] });
     await expect(buildBackupExport('', {
       now: FIXED_NOW,
       exportPortableState,
@@ -400,7 +411,7 @@ describe('encrypted bundle round-trip (format v3)', () => {
 
   it('refuses an authentic bundle whose database is not SQLite as corrupt', async () => {
     const { content } = await buildBackupExport(PASSPHRASE, {
-      exportPortableState: vi.fn().mockResolvedValue(new Uint8Array([1, 2, 3])),
+      exportPortableState: vi.fn().mockResolvedValue({ bytes: new Uint8Array([1, 2, 3]), unlinkedChatThreadIds: [] }),
     });
 
     await expect(stageBackupImport(content, PASSPHRASE)).rejects.toMatchObject({

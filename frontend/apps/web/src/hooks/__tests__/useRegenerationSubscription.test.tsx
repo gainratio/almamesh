@@ -23,7 +23,7 @@ vi.mock('../../providers/AlmaMeshRuntimeProvider', () => ({
   useChartEngine: () => engineValue,
 }));
 
-import { appEvents, usePredictiveStore, type BirthInfoChanged } from '@almamesh/store';
+import { appEvents, useChatStore, usePredictiveStore, type BirthInfoChanged } from '@almamesh/store';
 import { useRegenerationSubscription } from '../useRegenerationSubscription';
 
 const fakeEngine = { generateChart: vi.fn() } as unknown as ChartEngine;
@@ -62,6 +62,18 @@ describe('useRegenerationSubscription — emit-before-subscribe race', () => {
 
     expect(regenerateSpy).toHaveBeenCalledTimes(1);
     expect(regenerateSpy.mock.calls[0][0]).toBe(event);
+  });
+
+  it('hands the regeneration the live chat store, so a replaced chart never leaves a dangling chat link', () => {
+    engineValue = { engine: fakeEngine };
+    renderHook(() => useRegenerationSubscription(), { wrapper });
+
+    act(() => {
+      appEvents.emit('birth-info-changed', event);
+    });
+
+    const deps = regenerateSpy.mock.calls[0][1] as { chat: { unlinkMissingCharts: unknown } };
+    expect(deps.chat.unlinkMissingCharts).toBe(useChatStore.getState().unlinkMissingCharts);
   });
 
   it('REPLAYS an event emitted BEFORE the engine was ready, once it becomes ready', () => {
