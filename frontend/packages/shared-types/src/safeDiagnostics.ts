@@ -34,6 +34,7 @@ export const SAFE_DIAGNOSTIC_CODES = [
   'provider.disable_failed',
   'provider.models_failed',
   'provider.settings_save_failed',
+  'render.webgl_unavailable',
   'report.evidence_annotation_failed',
   'report.pdf_generation_failed',
   'storage.hydration_failed',

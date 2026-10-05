@@ -14,8 +14,9 @@ import {
  * - all site storage refused (Safari "Block all cookies" throws SecurityError
  *   on every storage API): nothing can be saved, explain how to allow it;
  * - only OPFS refused (Safari Private Browsing, older iOS, some WebViews): the
- *   app runs on an in-memory database, so keep the page and say the data goes
- *   away with the tab, and where to export it;
+ *   app runs on an in-memory SQLite database, so keep the page and say the
+ *   data goes away on reload or when the tab closes, and where to export it.
+ *   Nothing falls back to IndexedDB or localStorage: SQLite is the only store;
  * - no on-device database can start at all: explain instead of hydrating forever.
  */
 export function StorageGate({ children }: { children: ReactNode }) {
@@ -77,6 +78,7 @@ function EphemeralStorageNotice() {
     <div
       role="status"
       data-testid="ephemeral-storage-notice"
+      data-durability="memory"
       className="mx-4 mt-4 rounded-lg border border-ui-border bg-background-secondary px-4 py-3 text-sm text-text-secondary"
     >
       <strong className="text-text-primary">{t('storage_ephemeral.title')}</strong>{' '}

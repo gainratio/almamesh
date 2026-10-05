@@ -257,7 +257,7 @@ describe("Foundation guard composition", () => {
         },
       }),
     })
-    for (const gate of ["backend", "frontend", "browser", "pdf", "privacy"] as const) {
+    for (const gate of ["backend", "frontend", "browser", "browserMatrix", "pdf", "privacy"] as const) {
       module[gate] = (() => ({
         sync: async () => {
           productGates.push(gate)
@@ -298,7 +298,7 @@ describe("ci runs independent gates concurrently", () => {
       contracts: stub(gates.contracts ?? (async () => undefined)),
       secretScan: stub(gates.secretScan ?? (async () => undefined)),
     })
-    for (const gate of ["backend", "frontend", "browser", "pdf", "privacy"] as const) {
+    for (const gate of ["backend", "frontend", "browser", "browserMatrix", "pdf", "privacy"] as const) {
       module[gate] = stub(gates[gate] ?? (async () => undefined)) as never
     }
     return module
@@ -319,12 +319,13 @@ describe("ci runs independent gates concurrently", () => {
       backend: gate("backend"),
       frontend: gate("frontend"),
       browser: gate("browser"),
+      browserMatrix: gate("browserMatrix"),
       pdf: gate("pdf"),
       privacy: gate("privacy"),
     })
     await expect(module.ci("1".repeat(40))).resolves.toContain("gates passed")
     expect(started[0]).toBe("browser")
-    expect(started.sort()).toEqual(["backend", "browser", "frontend", "pdf", "privacy"])
+    expect(started.sort()).toEqual(["backend", "browser", "browserMatrix", "frontend", "pdf", "privacy"])
     expect(peak).toBe(2)
   })
 

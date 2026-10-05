@@ -29,6 +29,7 @@ class MemorySqliteStore implements SqliteStateStore {
   readonly values = new Map<string, { value: Uint8Array; revision: number }>();
   epoch = 0;
   conflictOnce = false;
+  staleConflicts = 0;
   integrityChecks = 0;
   exportCalls = 0;
   exportHook: (() => Promise<Uint8Array>) | undefined;
@@ -59,6 +60,7 @@ class MemorySqliteStore implements SqliteStateStore {
       throw new SqliteStateConflictError('simulated competing tab');
     }
     if (options.expectedEpoch !== undefined && options.expectedEpoch !== this.epoch) {
+      this.staleConflicts += 1;
       throw new SqliteStateConflictError('stale');
     }
     this.epoch += 1;
@@ -195,6 +197,28 @@ describe('PortableStateRepository', () => {
     expect(await repository.read('almamesh-profiles')).toBe('1');
     expect(await repository.read('almamesh-chat-history')).toBe('2');
     expect(sqlite.epoch).toBe(2);
+  });
+
+  it('serializes this realm\'s own concurrent writes instead of racing its own epoch', async () => {
+    // Boot hydrates every persisted store at once. Each write used to read the
+    // same epoch and race the others to SQLite, so all but one lost the CAS
+    // (Firefox logs each loss as SqliteStateConflictError) and, past
+    // MAX_TRANSACTION_ATTEMPTS writers, a write failed outright.
+    const sqlite = new MemorySqliteStore();
+    const repository = new PortableStateRepository(sqlite);
+
+    await Promise.all(
+      PORTABLE_DATASET_KEYS.flatMap((key) => [
+        repository.write(key, `${key}-a`),
+        repository.write(key, `${key}-b`),
+      ]),
+    );
+
+    expect(sqlite.staleConflicts).toBe(0);
+    expect(sqlite.epoch).toBe(PORTABLE_DATASET_KEYS.length * 2);
+    for (const key of PORTABLE_DATASET_KEYS) {
+      expect(await repository.read(key)).toBe(`${key}-b`);
+    }
   });
 
   it('stores predictive results and settings while refusing only derived vector caches', async () => {
@@ -379,6 +403,27 @@ describe('PortableStateRepository', () => {
 
     await expect(repository.exportBytes()).resolves.toEqual(new Uint8Array([3]));
     expect(sqlite.exportCalls).toBe(2);
+  });
+
+  it('returns a compacted copy of the validated file, so deleted rows cannot ride along in free pages', async () => {
+    const sqlite = new MemorySqliteStore();
+    const compacted: number[][] = [];
+    const repository = new PortableStateRepository(
+      sqlite,
+      async (bytes) => bytes[0] ?? -1,
+      async (bytes) => {
+        compacted.push(Array.from(bytes));
+        return new Uint8Array([99]);
+      },
+    );
+    await migrateLegacyState(repository, { get: async () => null, delete: async () => undefined }, []);
+
+    const exported = await repository.exportBytes();
+
+    // MemorySqliteStore exports one byte: its epoch. The compactor saw exactly
+    // that validated file, and its output is what leaves the browser.
+    expect(compacted).toEqual([[sqlite.epoch]]);
+    expect(Array.from(exported)).toEqual([99]);
   });
 
   it('validates the exact serialized bytes before returning an export', async () => {

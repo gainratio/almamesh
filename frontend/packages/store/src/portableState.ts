@@ -201,13 +201,18 @@ export interface LegacyStateStorage {
 export class PortableStateRepository {
   readonly #store: SqliteStateStore;
   readonly #validateExport: (bytes: Uint8Array) => Promise<number>;
+  readonly #compactExport: (bytes: Uint8Array) => Promise<Uint8Array>;
+  #writeQueue: Promise<void> = Promise.resolve();
 
   public constructor(
     store: SqliteStateStore,
     validateExport: (bytes: Uint8Array) => Promise<number> = validatePortableExportDatabase,
+    /** Production passes compactPortableExport; unit tests' fake bytes pass through. */
+    compactExport: (bytes: Uint8Array) => Promise<Uint8Array> = async (bytes) => bytes,
   ) {
     this.#store = store;
     this.#validateExport = validateExport;
+    this.#compactExport = compactExport;
   }
 
   public async read(key: string): Promise<string | null> {
@@ -252,6 +257,25 @@ export class PortableStateRepository {
 
   /** Return attempt-local metadata only from the CAS attempt that actually won. */
   public async transactWithResult<Result>(
+    transform: (snapshot: PortableStateSnapshot) => {
+      readonly mutations: readonly PortableStateMutation[];
+      readonly result: Result;
+    },
+  ): Promise<{ readonly epoch: number; readonly result: Result }> {
+    // One writer at a time per realm. The SQLite epoch covers the whole file,
+    // so two of this tab's writes to different keys conflict with each other;
+    // left concurrent, boot hydration lost most CAS attempts to itself and a
+    // ninth concurrent writer failed outright. Other tabs still race through
+    // the epoch CAS below.
+    const turn = this.#writeQueue.then(() => this.#compareAndSwap(transform));
+    this.#writeQueue = turn.then(
+      () => undefined,
+      () => undefined,
+    );
+    return turn;
+  }
+
+  async #compareAndSwap<Result>(
     transform: (snapshot: PortableStateSnapshot) => {
       readonly mutations: readonly PortableStateMutation[];
       readonly result: Result;
@@ -324,7 +348,9 @@ export class PortableStateRepository {
       }
       validatePortableSnapshot(snapshot);
       // Backups carry the canonical dataset only; the quarantine stays local.
-      if ((await this.listQuarantine()).size === 0) return bytes;
+      // Either path writes live rows into a fresh file, so a deleted row's
+      // bytes never ride along in SQLite free pages.
+      if ((await this.listQuarantine()).size === 0) return this.#compactExport(bytes);
       const canonical = await canonicalOnlyExport(snapshot.values);
       await this.#validateExport(canonical);
       return canonical;
@@ -394,7 +420,32 @@ export async function openPortableStateRepository(
       initialSchemaVersion: PORTABLE_STATE_SCHEMA_VERSION,
       persistence,
     }),
+    validatePortableExportDatabase,
+    compactPortableExport,
   );
+}
+
+/**
+ * Rewrite an exported file so it holds only live rows. A deleted row's bytes
+ * otherwise stay in SQLite's free pages: the OPFS database runs with
+ * secure_delete, but the in-memory fallback (OPFS refused) does not, and a
+ * backup taken there after Start fresh still carried the deleted profile.
+ * Importing into a fresh in-memory database writes live rows to new pages
+ * only; the copy's own epoch differs by the import and nothing reads it.
+ */
+async function compactPortableExport(bytes: Uint8Array): Promise<Uint8Array> {
+  const store = await createSqliteStateStore({
+    name: 'almamesh-export-compaction',
+    initialSchemaVersion: PORTABLE_STATE_SCHEMA_VERSION,
+    persistence: 'memory',
+  });
+  try {
+    const stage = await store.stageImport(bytes);
+    await store.commitImport(stage.stageId, { expectedEpoch: 0 });
+    return await store.exportBytes();
+  } finally {
+    await store.dispose();
+  }
 }
 
 export interface PortableStateCapabilities {

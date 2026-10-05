@@ -53,7 +53,7 @@
   },
   "storage_ephemeral": {
     "title": "Este navegador no está guardando tus datos.",
-    "body": "Aquí rechaza el almacenamiento en el dispositivo (por ejemplo, en navegación privada), así que tu carta funciona pero desaparece al cerrar esta pestaña.",
+    "body": "Aquí rechaza el almacenamiento en el dispositivo (por ejemplo, en navegación privada), así que tu carta funciona pero desaparece al recargar o cerrar esta pestaña.",
     "export": "Exporta una copia de seguridad para conservarla."
   },
   "storage_unavailable": {
@@ -145,5 +145,6 @@
     "interpretations_set_aside": "Algunas interpretaciones guardadas no se pudieron leer y se apartaron en este dispositivo. Se conservan 30 días y luego se eliminan. Para borrarlas ahora, ve a Ajustes → Preferencias → Restablecer carta / empezar de cero.",
     "interpretations_unreadable_paused": "Algunas interpretaciones guardadas no se pudieron leer y este dispositivo no pudo apartarlas. Para protegerlas, las nuevas lecturas están en pausa. Recarga la página para intentarlo de nuevo.",
     "dismiss_aria": "Cerrar aviso"
-  }
+  },
+  "reset_incomplete": "El restablecimiento no pudo borrar todos los datos guardados, porque este navegador todavía los usa. Cierra todas las pestañas de AlmaMesh e inténtalo de nuevo. Si sigue pasando, borra los datos del sitio de AlmaMesh en los ajustes del navegador."
 }

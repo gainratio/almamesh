@@ -50,7 +50,7 @@
   },
   "storage_ephemeral": {
     "title": "This browser is not saving your data.",
-    "body": "It refuses on-device storage here (for example, Private Browsing), so your chart works but disappears when you close this tab.",
+    "body": "It refuses on-device storage here (for example, Private Browsing), so your chart works but disappears when you reload or close this tab.",
     "export": "Export a backup to keep it."
   },
   "storage_unavailable": {
@@ -142,5 +142,6 @@
     "interpretations_set_aside": "Some saved interpretations could not be read and were set aside on this device. They are kept for 30 days and then deleted. To remove them now, use Settings → Preferences → Reset chart / start fresh.",
     "interpretations_unreadable_paused": "Some saved interpretations could not be read, and this device could not set them aside. To protect them, new readings are paused. Reload the page to try again.",
     "dismiss_aria": "Dismiss notice"
-  }
+  },
+  "reset_incomplete": "Reset could not delete all saved data, because this browser is still using it. Close every AlmaMesh tab and try again. If this keeps happening, clear AlmaMesh's site data in your browser settings."
 }
