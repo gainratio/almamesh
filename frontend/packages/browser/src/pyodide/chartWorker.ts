@@ -12,6 +12,8 @@ import { generateSeedHex, publicKeyHex } from "@gainratio/avow";
 import { loadPyodide, type PyodideInterface } from "pyodide";
 
 import type { SiderealChart } from "./chart";
+import { LOAD_PACKAGES } from "./loadPackages";
+import { versionedPyodideIndexUrl } from "./pyodideDist";
 import type { MeshEdgeContext } from "./mesh";
 import type { EnginePredictiveContexts, PredictiveContexts } from "./predictive";
 import { composeDomainStrengths } from "./strengthAssay";
@@ -30,25 +32,6 @@ import type { RectificationInput, RectificationResultRaw } from "./rectification
 
 const SKYFIELD_DATA_DIR = "/home/pyodide/.skyfield-data";
 
-// Resolved offline from the self-hosted Pyodide lock (no PyPI/CDN). dateutil,
-// pytz, and certifi ship in Pyodide's own lock, so skyfield's pure-Python deps
-// need no network. Only the pure-Python bundle wheels (jplephem/sgp4/skyfield,
-// almamesh) travel in the signed bundle.
-//
-// NO `pynacl`. Strength receipts are signed in TypeScript by `@gainratio/avow`
-// (see ./strengthReceipt.ts), so the Ed25519 WASM dylib — and its cffi ->
-// pycparser chain — is off EVERY boot, including natal-only sessions that never
-// compute a Life Atlas. It is also the one package that would not register under
-// this app's Pyodide boot at all.
-const LOAD_PACKAGES = [
-  "micropip",
-  "numpy",
-  "pydantic",
-  "pyyaml",
-  "python-dateutil",
-  "pytz",
-  "certifi",
-] as const;
 
 // Defines `_almamesh_generate_chart(birth_json)` once; the engine is the
 // unchanged package, called with an explicit reference_date for reproducibility.
@@ -282,7 +265,9 @@ async function startRuntime(pyodideIndexUrl: string): Promise<PyodideInterface> 
     runtimeStart.listener?.("bytes");
   });
   try {
-    const pyodide = await loadPyodide({ indexURL: pyodideIndexUrl });
+    // Version-scoped (`/pyodide/v<version>/`) so cached bytes of another release
+    // can never be handed to this loader — see ./pyodideDist.ts.
+    const pyodide = await loadPyodide({ indexURL: versionedPyodideIndexUrl(pyodideIndexUrl) });
     runtimeStart.stage = "packages";
     runtimeStart.listener?.("stage");
     // loadPackage resolves the whole list from the self-hosted lock — offline.

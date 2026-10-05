@@ -34,6 +34,10 @@ WEB_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"             # frontend/apps/web
 REPO_ROOT="$(cd "${WEB_DIR}/../../.." && pwd)"        # repo root (almamesh/)
 BACKEND_DIR="${REPO_ROOT}/backend"
 PUBLIC_DIR="${WEB_DIR}/public"
+# The chart Worker loads Pyodide from /pyodide/v<version>/ (pyodideDist.ts), the
+# version being the bundled npm loader's — so the dist must sit at exactly that path.
+PYODIDE_VERSION="$(node -p "require('${REPO_ROOT}/frontend/packages/browser/node_modules/pyodide/package.json').version")"
+PYODIDE_WASM="pyodide/v${PYODIDE_VERSION}/pyodide.asm.wasm"
 # CI supplies this from the runner's ephemeral temp directory so the private
 # signing key is never materialized inside the checkout. Local builds retain
 # the documented backend/keys-prod default.
@@ -51,8 +55,8 @@ if [[ ! -f "${KEYS_DIR}/private.key" || ! -f "${KEYS_DIR}/public.key" ]]; then
   fi
   exit 1
 fi
-if [[ ! -f "${PUBLIC_DIR}/pyodide/pyodide.asm.wasm" ]]; then
-  echo "!! Pyodide dist missing — run apps/web/scripts/setup-dev-assets.sh once first." >&2
+if [[ ! -f "${PUBLIC_DIR}/${PYODIDE_WASM}" ]]; then
+  echo "!! Pyodide ${PYODIDE_VERSION} dist missing — run apps/web/scripts/setup-dev-assets.sh once first." >&2
   exit 1
 fi
 if [[ ! -d "${PUBLIC_DIR}/models" ]]; then
@@ -105,7 +109,7 @@ echo "==> Building the app (tsc -b && vite build) — hooks OFF, VITE_API_URL em
 # --- Artifact sanity ------------------------------------------------------------
 DIST="${WEB_DIR}/dist"
 for must in index.html sw.js manifest.webmanifest _headers _redirects public.key \
-            bundle/latest pyodide/pyodide.asm.wasm .well-known/security.txt; do
+            bundle/latest "${PYODIDE_WASM}" .well-known/security.txt; do
   if [[ ! -f "${DIST}/${must}" ]]; then
     echo "!! dist is missing ${must}" >&2
     exit 1
