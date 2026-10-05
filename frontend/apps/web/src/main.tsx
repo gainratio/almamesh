@@ -13,7 +13,7 @@ import { safeWarn } from '@almamesh/shared-types'
 import { installChunkErrorRecovery } from './lib/swSelfHeal'
 import { initializePortableState } from './lib/portablePreferences'
 import { startupOutcome } from './lib/storageStartup'
-import { StorageGate } from './components/StorageGate'
+import { BlockedStartup } from './components/BlockedStartup'
 import App from './App'
 // Self-hosted observatory typography (no external font CDN — keeps the app
 // fully offline and free of cross-origin requests). Variable fonts: one woff2
@@ -102,7 +102,7 @@ async function bootstrap(): Promise<void> {
   if ((await startupOutcome(hydration)) === 'blocked') {
     root.render(
       <Shell>
-        <StorageGate>{null}</StorageGate>
+        <BlockedStartup />
       </Shell>,
     )
   }
