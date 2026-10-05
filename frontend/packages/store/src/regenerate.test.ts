@@ -60,6 +60,11 @@ function seededPrimary(birth: BirthMeta, profileId: string): StoredChart {
   };
 }
 
+/** An interpretation facade for cases that do not assert on readings. */
+function forgetNothing() {
+  return { forgetChart: vi.fn((_chartId: string) => undefined) };
+}
+
 /** A chat facade for cases that do not assert on chat links. */
 function unlinkNothing() {
   return { unlinkMissingCharts: vi.fn((_live: ReadonlySet<string>): readonly string[] => []) };
@@ -74,7 +79,7 @@ describe('regenerateOnBirthChange', () => {
       engine,
       library: lib,
       onRegenerated,
-      chat: unlinkNothing(),
+      chat: unlinkNothing(), interpretations: forgetNothing(),
       referenceInstant: REFERENCE_INSTANT,
     };
 
@@ -96,7 +101,7 @@ describe('regenerateOnBirthChange', () => {
       engine,
       library: lib,
       onRegenerated,
-      chat: unlinkNothing(),
+      chat: unlinkNothing(), interpretations: forgetNothing(),
       referenceInstant: REFERENCE_INSTANT,
     };
 
@@ -120,7 +125,7 @@ describe('regenerateOnBirthChange', () => {
 
     await regenerateOnBirthChange(
       { birth: changedBirth, profileId: 'profile-a' },
-      { engine, library: lib, onRegenerated, chat: unlinkNothing(), referenceInstant: REFERENCE_INSTANT },
+      { engine, library: lib, onRegenerated, chat: unlinkNothing(), interpretations: forgetNothing(), referenceInstant: REFERENCE_INSTANT },
     );
 
     expect(lib.getChart(profileB.chart_id)).toEqual(profileB);
@@ -140,7 +145,7 @@ describe('regenerateOnBirthChange', () => {
 
     await regenerateOnBirthChange(
       { birth: changedBirth, profileId: 'p1' },
-      { engine, library: lib, onRegenerated: vi.fn(), chat: unlinkNothing(), referenceInstant: REFERENCE_INSTANT },
+      { engine, library: lib, onRegenerated: vi.fn(), chat: unlinkNothing(), interpretations: forgetNothing(), referenceInstant: REFERENCE_INSTANT },
     );
 
     const sent = engine.generateChart.mock.calls[0]?.[0] as { referenceDate: string };
@@ -161,7 +166,7 @@ describe('regenerateOnBirthChange', () => {
           engine: { generateChart: vi.fn().mockResolvedValue(fakeSiderealChart) },
           library: lib,
           onRegenerated: vi.fn(),
-          chat: unlinkNothing(),
+          chat: unlinkNothing(), interpretations: forgetNothing(),
           referenceInstant: REFERENCE_INSTANT,
         },
       );
@@ -187,6 +192,7 @@ describe('regenerateOnBirthChange', () => {
         library: lib,
         onRegenerated: vi.fn(),
         chat,
+        interpretations: forgetNothing(),
         referenceInstant: REFERENCE_INSTANT,
       },
     );
@@ -200,12 +206,33 @@ describe('regenerateOnBirthChange', () => {
   it('touches no chat link on a no-op (same chart id) event', async () => {
     const lib = makeFakeLibrary(seededPrimary(baseBirth, 'p1'));
     const chat = unlinkNothing();
+    const interpretations = forgetNothing();
 
     await regenerateOnBirthChange(
       { birth: baseBirth, profileId: 'p1' },
-      { engine: { generateChart: vi.fn() }, library: lib, onRegenerated: vi.fn(), chat, referenceInstant: REFERENCE_INSTANT },
+      { engine: { generateChart: vi.fn() }, library: lib, onRegenerated: vi.fn(), chat, interpretations, referenceInstant: REFERENCE_INSTANT },
     );
 
     expect(chat.unlinkMissingCharts).not.toHaveBeenCalled();
+    expect(interpretations.forgetChart).not.toHaveBeenCalled();
+  });
+
+  it('forgets the replaced chart reading, so Export never meets a reading for a missing chart', async () => {
+    const lib = makeFakeLibrary(seededPrimary(baseBirth, 'p1'));
+    const interpretations = forgetNothing();
+
+    await regenerateOnBirthChange(
+      { birth: { ...baseBirth, name: 'Renamed Native' }, profileId: 'p1' },
+      {
+        engine: { generateChart: vi.fn().mockResolvedValue(fakeSiderealChart) },
+        library: lib,
+        onRegenerated: vi.fn(),
+        chat: unlinkNothing(),
+        interpretations,
+        referenceInstant: REFERENCE_INSTANT,
+      },
+    );
+
+    expect(interpretations.forgetChart).toHaveBeenCalledExactlyOnceWith(chartId(baseBirth));
   });
 });

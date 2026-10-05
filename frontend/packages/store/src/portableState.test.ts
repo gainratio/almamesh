@@ -23,7 +23,8 @@ import {
   resolvePortableStateMode,
   supportsPortableState,
   assertSupportedPortableStateSchema,
-  unlinkOrphanedChatChartLinks,
+  repairPortableReferences,
+  EMPTY_PORTABLE_REPAIR_REPORT,
 } from './portableState';
 
 class MemorySqliteStore implements SqliteStateStore {
@@ -507,16 +508,8 @@ describe('PortableStateRepository', () => {
       { threads: {}, messages: { missing: [] }, summaries: {} },
       /messages reference missing thread "missing"/,
     ],
-    [
-      'relationship readings with a missing owner',
-      'almamesh-mesh-readings',
-      {
-        byPair: {
-          'p1|missing': { pairKey: 'p1|missing', profileIds: ['p1', 'missing'] },
-        },
-      },
-      /references missing profile "missing"/,
-    ],
+    // A relationship reading with a missing owner used to be refused here; it
+    // is now repaired (dropped and reported), see repairPortableReferences.
   ] as const)(
     'rejects hostile canonical state with %s',
     async (_label, key, state, expected) => {
@@ -549,19 +542,19 @@ describe('PortableStateRepository', () => {
       'object entries',
       {
         profiles: Object.fromEntries(
-          Array.from({ length: 10_001 }, (_, index) => [
+          Array.from({ length: 250_001 }, (_, index) => [
             `p${index}`,
             { id: `p${index}` },
           ]),
         ),
         activeProfileId: null,
       },
-      /more than 10000 entries/,
+      /more than 250000 entries/,
     ],
     [
       'array entries',
-      { eventsByProfile: { p1: Array.from({ length: 10_001 }, () => ({})) } },
-      /more than 10000 entries/,
+      { eventsByProfile: { p1: Array.from({ length: 250_001 }, () => ({})) } },
+      /more than 250000 entries/,
     ],
     [
       'string length',
@@ -570,6 +563,12 @@ describe('PortableStateRepository', () => {
         activeProfileId: 'p1',
       },
       /string exceeds 1000000 characters/,
+    ],
+    [
+      'JSON node count',
+      // 20 arrays of 200,000 numbers: under the entry limit, over 4,000,000 nodes.
+      { eventsByProfile: Object.fromEntries(Array.from({ length: 20 }, (_, i) => [`p${i}`, Array.from({ length: 200_000 }, () => 0)])) },
+      /exceeds 4000000 JSON nodes/,
     ],
   ] as const)('rejects canonical rows beyond the %s limit', async (_label, state, expected) => {
     const sqlite = new MemorySqliteStore();
@@ -860,7 +859,7 @@ describe('a chat thread whose chart no longer exists', () => {
 
     const report = await repository.exportWithReport();
 
-    expect(report.unlinkedChatThreadIds).toEqual(['t1']);
+    expect(report.repairs.unlinkedChatThreadIds).toEqual(['t1']);
     expect(report.bytes).toBeInstanceOf(Uint8Array);
   });
 
@@ -882,7 +881,7 @@ describe('a chat thread whose chart no longer exists', () => {
 
     const report = await repository.exportWithReport();
 
-    expect(report.unlinkedChatThreadIds).toEqual([]);
+    expect(report.repairs).toEqual(EMPTY_PORTABLE_REPAIR_REPORT);
     expect(handed[0]).toEqual(live);
   });
 
@@ -905,19 +904,14 @@ describe('a chat thread whose chart no longer exists', () => {
       ],
     ]);
 
-    const repaired = unlinkOrphanedChatChartLinks(values);
+    const repaired = repairPortableReferences(values);
 
-    expect(repaired.unlinkedChatThreadIds).toEqual(['t1']);
+    expect(repaired.repairs.unlinkedChatThreadIds).toEqual(['t1']);
     expect(chatState(repaired.values).threads.t1).toEqual({ id: 't1' });
     expect(chatState(repaired.values).messages.t1![0]!.content).toBe(SATURN_QUESTION);
   });
 
   it.each([
-    [
-      'an interpretation saved for a chart that does not exist',
-      [['almamesh-interpretations', { byChart: { gone: { profileId: 'p1' } } }]] as const,
-      /references missing chart "gone"/,
-    ],
     [
       'a chat thread owned by a person who does not exist',
       [
@@ -934,3 +928,168 @@ describe('a chat thread whose chart no longer exists', () => {
     await expect(repository.exportBytes()).rejects.toThrow(expected);
   });
 });
+
+/**
+ * The same bug class as the chat link, found by the 2026-10-05 export audit:
+ * normal use leaves a row pointing at a person or chart that is gone, and the
+ * validator then refused the whole export (and so Import's safety backup).
+ */
+describe('repairPortableReferences: every dangling reference normal use can leave', () => {
+  type Key = keyof typeof PORTABLE_STORE_MAX_VERSIONS;
+
+  function envelope(state: unknown, key: Key): string {
+    return JSON.stringify({ state, version: PORTABLE_STORE_MAX_VERSIONS[key], datasetEpoch: 0 });
+  }
+
+  async function seed(rows: ReadonlyArray<readonly [Key, unknown]>) {
+    const sqlite = new MemorySqliteStore();
+    const handed: Array<ReadonlyMap<string, string>> = [];
+    const repository = new PortableStateRepository(
+      sqlite,
+      async (bytes) => bytes[0] ?? -1,
+      async (canonical) => {
+        handed.push(canonical);
+        return new Uint8Array([sqlite.epoch]);
+      },
+    );
+    await migrateLegacyState(repository, { get: async () => null, delete: async () => undefined }, []);
+    await repository.write(
+      'almamesh-profiles',
+      envelope({ profiles: { p1: { id: 'p1' } }, activeProfileId: 'p1' }, 'almamesh-profiles'),
+    );
+    await repository.write(
+      'almamesh-chart-library',
+      envelope({ charts: { c2: { chart_id: 'c2', profile_id: 'p1' } } }, 'almamesh-chart-library'),
+    );
+    for (const [key, state] of rows) await repository.write(key, envelope(state, key));
+    return { repository, handed };
+  }
+
+  const stateOf = (values: ReadonlyMap<string, string>, key: string) =>
+    (JSON.parse(values.get(key)!) as { state: Record<string, unknown> }).state;
+
+  it('probe 1: leaves out the AI reading of a chart a rename regenerated away, and says so', async () => {
+    const { repository, handed } = await seed([
+      [
+        'almamesh-interpretations',
+        {
+          byChart: {
+            c1: { profileId: 'p1', status: 'complete', sections: {} },
+            c2: { profileId: 'p1', status: 'complete', sections: {} },
+          },
+        },
+      ],
+    ]);
+
+    const report = await repository.exportWithReport();
+
+    expect(report.repairs.droppedReadingChartIds).toEqual(['c1']);
+    expect(Object.keys(stateOf(handed[0]!, 'almamesh-interpretations').byChart as object)).toEqual(['c2']);
+  });
+
+  it('probe 2: exports a thread with more than 10,000 messages', async () => {
+    const messages = Array.from({ length: 10_001 }, (_, i) => ({ id: `m${i}`, thread_id: 't1', role: 'user', content: 'x' }));
+    const { repository } = await seed([
+      ['almamesh-chat-history', { threads: { t1: { id: 't1', profile_id: 'p1', title: 'a' } }, messages: { t1: messages }, summaries: {} }],
+    ]);
+
+    await expect(repository.exportBytes()).resolves.toBeInstanceOf(Uint8Array);
+  });
+
+  it('probe 3: exports a long chat history (about 40,000 short messages)', async () => {
+    const threads: Record<string, unknown> = {};
+    const messages: Record<string, unknown> = {};
+    for (let t = 0; t < 5; t += 1) {
+      threads[`t${t}`] = { id: `t${t}`, profile_id: 'p1', title: 'a' };
+      messages[`t${t}`] = Array.from({ length: 8_000 }, (_, i) => ({ id: `m${t}-${i}`, thread_id: `t${t}`, role: 'user', content: 'x' }));
+    }
+    const { repository } = await seed([['almamesh-chat-history', { threads, messages, summaries: {} }]]);
+
+    await expect(repository.exportBytes()).resolves.toBeInstanceOf(Uint8Array);
+  });
+
+  it('probe 4: leaves out life events of a person who no longer exists, keeping everyone else', async () => {
+    const { repository, handed } = await seed([
+      ['almamesh-life-events', { eventsByProfile: { gone: [], p1: [] } }],
+    ]);
+
+    const report = await repository.exportWithReport();
+
+    expect(report.repairs.droppedPersonRecords).toEqual(['almamesh-life-events/gone']);
+    expect(stateOf(handed[0]!, 'almamesh-life-events').eventsByProfile).toEqual({ p1: [] });
+  });
+
+  it('repairs every other dangling person or chart reference in one pass', async () => {
+    const { repository, handed } = await seed([
+      [
+        'almamesh-profiles',
+        { profiles: { p1: { id: 'p1', relatedTo: 'gone' }, p2: { id: 'p2', relatedTo: 'p1' } }, activeProfileId: 'gone' },
+      ],
+      ['almamesh-rectification-records', { recordsByProfile: { gone: { profileId: 'gone' }, p1: { profileId: 'p1' } } }],
+      [
+        'almamesh-mesh-readings',
+        {
+          byPair: {
+            'gone|p1': { pairKey: 'gone|p1', profileIds: ['gone', 'p1'] },
+            'p1|p2': { pairKey: 'p1|p2', profileIds: ['p1', 'p2'] },
+          },
+        },
+      ],
+      ['almamesh-interpretations', { byChart: { c2: { profileId: 'gone' } } }],
+      ['almamesh-predictive', { status: 'ready', profileKey: 'gone', requestKey: 'r1' }],
+    ]);
+
+    const { repairs } = await repository.exportWithReport();
+
+    expect(repairs).toEqual({
+      unlinkedChatThreadIds: [],
+      droppedReadingChartIds: ['c2'],
+      droppedPersonRecords: ['almamesh-rectification-records/gone', 'almamesh-mesh-readings/gone|p1'],
+      clearedProfileLinks: ['p1', 'activeProfileId'],
+      resetPredictive: true,
+    });
+    const exported = handed[0]!;
+    expect(stateOf(exported, 'almamesh-profiles')).toEqual({
+      profiles: { p1: { id: 'p1' }, p2: { id: 'p2', relatedTo: 'p1' } },
+      activeProfileId: null,
+    });
+    expect(Object.keys(stateOf(exported, 'almamesh-mesh-readings').byPair as object)).toEqual(['p1|p2']);
+    expect(stateOf(exported, 'almamesh-predictive')).toEqual({ status: 'idle' });
+  });
+
+  it('accepts the same rows on import (the snapshot read from a file is repaired, then validated)', () => {
+    const values = new Map([
+      ['almamesh-profiles', envelope({ profiles: { p1: { id: 'p1' } }, activeProfileId: 'p1' }, 'almamesh-profiles')],
+      ['almamesh-chart-library', envelope({ charts: { c2: { chart_id: 'c2', profile_id: 'p1' } } }, 'almamesh-chart-library')],
+      ['almamesh-interpretations', envelope({ byChart: { c1: { profileId: 'p1' } } }, 'almamesh-interpretations')],
+    ]);
+
+    const { values: repaired, repairs } = repairPortableReferences(values);
+
+    expect(repairs.droppedReadingChartIds).toEqual(['c1']);
+    expect(stateOf(repaired, 'almamesh-interpretations')).toEqual({ byChart: {} });
+  });
+
+  it.each([
+    [
+      'a chart owned by a person who does not exist',
+      [['almamesh-chart-library', { charts: { c9: { chart_id: 'c9', profile_id: 'nobody' } } }]] as const,
+      /references missing profile "nobody"/,
+    ],
+    [
+      'a chart whose key and id disagree',
+      [['almamesh-chart-library', { charts: { c9: { chart_id: 'c8' } } }]] as const,
+      /chart "c9" has a mismatched id/,
+    ],
+    [
+      'a relationship reading whose owners are not a pair',
+      [['almamesh-mesh-readings', { byPair: { x: { pairKey: 'x', profileIds: ['gone'] } } }]] as const,
+      /invalid profileIds/,
+    ],
+  ])('still refuses real corruption: %s', async (_label, rows, expected) => {
+    const { repository } = await seed(rows);
+
+    await expect(repository.exportBytes()).rejects.toThrow(expected);
+  });
+});
+

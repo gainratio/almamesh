@@ -133,7 +133,10 @@ try {
   const generated = Date.now()
   await page.getByTestId('chart-visualization').first()
     .waitFor({ state: 'visible', timeout: CHART_BUDGET_MS })
-    .catch(async () => invariant(false, `no chart within ${seconds(CHART_BUDGET_MS)} of Generate: ${await bodyText(page)}`))
+    // The console carries the engine's typed boot failure; the page text alone
+    // only says "Connection Issue" (Edge, #244 CI run 37313819528).
+    .catch(async () => invariant(false, `no chart within ${seconds(CHART_BUDGET_MS)} of Generate: ${await bodyText(page)}`
+      + ` | console (${errors.length}): ${errors.slice(0, 5).join(' | ')}`))
   const chart = Date.now() - generated
   invariant(page.url().endsWith('/dashboard'), `the chart rendered on ${page.url()}, not /dashboard`)
 

@@ -38,6 +38,12 @@ export interface RegenerateChat {
   unlinkMissingCharts: (liveChartIds: ReadonlySet<string>) => readonly string[];
 }
 
+/** The reading surface the handler cleans up (satisfied by `useInterpretationStore.getState()`). */
+export interface RegenerateInterpretations {
+  /** Drop the replaced chart's reading and refuse late writes for it. */
+  forgetChart: (chartId: string) => void;
+}
+
 /** Everything the handler depends on; injected so it stays testable. */
 export interface RegenerateDeps {
   readonly engine: RegenerateEngine;
@@ -48,6 +54,11 @@ export interface RegenerateDeps {
    * refuse the whole dataset (production, 2026-10-05).
    */
   readonly chat: RegenerateChat;
+  /**
+   * The replaced chart's AI reading is derived from that chart and is
+   * re-streamed for the new one; left behind it made Export refuse the dataset.
+   */
+  readonly interpretations: RegenerateInterpretations;
   /** Reset ephemeral interpretation/chat + trigger the interpretation re-stream. */
   readonly onRegenerated: () => void;
   /**
@@ -93,7 +104,7 @@ function primaryForProfile(
  *
  * No-op (rename-only) when the effective birth inputs yield the same `chartId`.
  * Otherwise: compute the chart on-device, save the new primary with
- * `profile_id` PRESERVED, delete the prior primary row (the orphan), unlink chat
+ * `profile_id` PRESERVED, delete the prior primary row (the orphan) and its reading, unlink chat
  * threads from it, then let
  * the caller reset ephemeral state and re-stream the interpretation.
  */
@@ -113,6 +124,7 @@ export async function regenerateOnBirthChange(
   deps.library.saveChart(buildPrimary(chart, birth, profileId, referenceInstant));
   if (prior && prior.chart_id !== nextId) {
     deps.library.deleteChart(prior.chart_id);
+    deps.interpretations.forgetChart(prior.chart_id);
     deps.chat.unlinkMissingCharts(
       new Set(deps.library.listAllCharts().map((stored) => stored.chart_id)),
     );

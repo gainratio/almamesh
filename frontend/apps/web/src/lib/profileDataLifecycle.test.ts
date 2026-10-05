@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { VedicInterpretation } from '@almamesh/shared-types';
 import {
+  EMPTY_PORTABLE_REPAIR_REPORT,
   resetSessionStateForTests,
   setActiveProfileScope,
   readDeletionTombstones,
@@ -21,7 +22,7 @@ import {
   applyRemoteDeletionNotice,
   deleteChatThreadData,
   deleteProfileData,
-  reconcileChatChartLinks,
+  reconcilePortableReferences,
   resumePendingMemoryRebuild,
 } from './profileDataLifecycle';
 import { LLM_SETTINGS_CHANGED_EVENT } from './llmSettingsEvents';
@@ -714,7 +715,7 @@ describe('cross-realm deletion propagation', () => {
   });
 });
 
-describe('chat links to charts that no longer exist (self-heal)', () => {
+describe('dangling person/chart references (boot self-heal)', () => {
   const QUESTION = 'When does my Saturn return start?';
 
   function seedOrphan(): { orphan: string; healthy: string } {
@@ -729,12 +730,32 @@ describe('chat links to charts that no longer exist (self-heal)', () => {
     const { orphan, healthy } = seedOrphan();
     const persist = vi.fn().mockResolvedValue(undefined);
 
-    const repaired = await reconcileChatChartLinks({ hydrated: async () => true, persist });
+    const repaired = await reconcilePortableReferences({ hydrated: async () => true, persist });
 
-    expect(repaired).toEqual([orphan]);
+    expect(repaired.unlinkedChatThreadIds).toEqual([orphan]);
     expect(useChatStore.getState().threads[orphan]).not.toHaveProperty('chart_id');
     expect(useChatStore.getState().getMessages(orphan)[0]!.content).toBe(QUESTION);
     expect(useChatStore.getState().threads[healthy]!.chart_id).toBe('c2');
+    expect(persist).toHaveBeenCalledOnce();
+  });
+
+  it('forgets an AI reading for a replaced chart and life events of a person who is gone', async () => {
+    useProfilesStore.setState({ profiles: { p1: { id: 'p1', name: 'p1' } as never }, activeProfileId: 'p1' });
+    useChartLibraryStore.setState({ charts: { c2: chart('c2', 'p1') } });
+    const run = useInterpretationStore.getState().startInterpretation('c1', 'p1');
+    useInterpretationStore.getState().startInterpretation('c2', 'p1');
+    useLifeEventsStore.setState({ eventsByProfile: { gone: [], p1: [] } });
+    const persist = vi.fn().mockResolvedValue(undefined);
+
+    const repaired = await reconcilePortableReferences({ hydrated: async () => true, persist });
+
+    expect(repaired.droppedReadingChartIds).toEqual(['c1']);
+    expect(repaired.droppedPersonRecords).toEqual(['almamesh-life-events/gone']);
+    expect(Object.keys(useInterpretationStore.getState().byChart)).toEqual(['c2']);
+    expect(useLifeEventsStore.getState().eventsByProfile).toEqual({ p1: [] });
+    // The run still streaming for the replaced chart cannot write it back.
+    await useInterpretationStore.getState().setInterpretation('c1', interpretation('late'), 'now', undefined, undefined, run);
+    expect(useInterpretationStore.getState().byChart.c1).toBeUndefined();
     expect(persist).toHaveBeenCalledOnce();
   });
 
@@ -743,7 +764,9 @@ describe('chat links to charts that no longer exist (self-heal)', () => {
     useChatStore.getState().ensureThread('p1', 'c2');
     const persist = vi.fn();
 
-    await expect(reconcileChatChartLinks({ hydrated: async () => true, persist })).resolves.toEqual([]);
+    await expect(reconcilePortableReferences({ hydrated: async () => true, persist })).resolves.toEqual(
+      EMPTY_PORTABLE_REPAIR_REPORT,
+    );
     expect(persist).not.toHaveBeenCalled();
   });
 
@@ -751,7 +774,9 @@ describe('chat links to charts that no longer exist (self-heal)', () => {
     const { orphan } = seedOrphan();
     const persist = vi.fn();
 
-    await expect(reconcileChatChartLinks({ hydrated: async () => false, persist })).resolves.toEqual([]);
+    await expect(reconcilePortableReferences({ hydrated: async () => false, persist })).resolves.toEqual(
+      EMPTY_PORTABLE_REPAIR_REPORT,
+    );
     expect(useChatStore.getState().threads[orphan]!.chart_id).toBe('1e251b81');
     expect(persist).not.toHaveBeenCalled();
   });
@@ -771,7 +796,7 @@ describe('chat links to charts that no longer exist (self-heal)', () => {
         chartIds: [],
       }),
       adoptLatestDatasetEpoch: vi.fn().mockResolvedValue({ changed: false, epoch: 0 }),
-      persistChatDeletion: vi.fn().mockResolvedValue(undefined),
+      persistProfileDeletion: vi.fn().mockResolvedValue(undefined),
     }));
     try {
       const store = await import('@almamesh/store');

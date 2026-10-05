@@ -25,6 +25,7 @@ import {
   regenerateOnBirthChange,
   useChartLibraryStore,
   useChatStore,
+  useInterpretationStore,
   usePredictiveStore,
   type BirthInfoChanged,
 } from '@almamesh/store'
@@ -61,6 +62,7 @@ export function useRegenerationSubscription(): void {
       engine: currentEngine,
       library: useChartLibraryStore.getState(),
       chat: useChatStore.getState(),
+      interpretations: useInterpretationStore.getState(),
       // The app's "as of now" — read here, at the edge, and recorded on the
       // chart. Everything below this line is a pure function of it.
       referenceInstant: newChartReferenceInstant(),

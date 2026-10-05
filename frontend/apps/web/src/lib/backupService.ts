@@ -45,7 +45,10 @@ import {
   readPortableStateDatabase,
   type BackupDeps,
   type PortableBrowserImportOptions,
+  EMPTY_PORTABLE_REPAIR_REPORT,
   type PortableExport,
+  type PortableRepairReport,
+  repairPortableReferences,
   type PortableStateSnapshot,
   type StorageTier,
 } from '@almamesh/store';
@@ -198,8 +201,8 @@ const MAX_BACKUP_TEXT_CHARACTERS = 128 * 1024 * 1024;
 export interface BackupExport {
   filename: string;
   content: BackupContent;
-  /** Chat threads exported without their link to a chart that no longer exists. */
-  unlinkedChatThreads: number;
+  /** What the export repaired: dangling person/chart references (see repairPortableReferences). */
+  repairs: PortableRepairReport;
 }
 
 /**
@@ -224,13 +227,13 @@ export async function buildBackupExport(
     return {
       filename: `almamesh-backup-${filenameTimestamp(deps.now)}.almamesh`,
       content,
-      unlinkedChatThreads: exported.unlinkedChatThreadIds.length,
+      repairs: exported.repairs,
     };
   }
   const plain = await collectBackup(deps);
   const encoded = await encodeEnvelope(plain, passphrase);
   const filename = `almamesh-backup-${filenameTimestamp(deps.now)}.json`;
-  return { filename, content: JSON.stringify(encoded, null, 2), unlinkedChatThreads: 0 };
+  return { filename, content: JSON.stringify(encoded, null, 2), repairs: EMPTY_PORTABLE_REPAIR_REPORT };
 }
 
 function filenameTimestamp(now: string): string {
@@ -381,8 +384,27 @@ export async function stageBackupImport(
     );
   }
 
-  const envelope = await decodeEnvelope(parsed as BackupEnvelope, passphrase);
+  const envelope = repairEnvelopeReferences(await decodeEnvelope(parsed as BackupEnvelope, passphrase));
   return { kind: 'json', envelope, wasEncrypted };
+}
+
+/**
+ * Legacy JSON backups never passed the portable validator, and a chat has
+ * pointed at a regenerated chart since the first release. Repair dangling
+ * person/chart references the same way export and the SQLite import do, so
+ * importing an old file cannot poison every later export.
+ */
+function repairEnvelopeReferences(envelope: BackupEnvelopePlain): BackupEnvelopePlain {
+  const values = new Map(
+    Object.entries(envelope.stores).map(([key, snapshot]) => [key, JSON.stringify(snapshot)]),
+  );
+  const repaired = repairPortableReferences(values);
+  if (repaired.values === values) return envelope;
+  const stores: BackupEnvelopePlain['stores'] = {};
+  for (const [key, value] of repaired.values) {
+    stores[key] = JSON.parse(value) as BackupEnvelopePlain['stores'][string];
+  }
+  return { ...envelope, stores };
 }
 
 /**

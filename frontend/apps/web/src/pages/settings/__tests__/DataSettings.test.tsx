@@ -16,6 +16,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import {
+  EMPTY_PORTABLE_REPAIR_REPORT,
   armPortableImportRevision,
   BackupCryptoError,
   BackupError,
@@ -78,7 +79,7 @@ beforeEach(() => {
   vi.mocked(buildBackupExport).mockResolvedValue({
     filename: 'almamesh-backup-2026-07-01T12-34-56-000Z.almamesh',
     content: new Uint8Array([1, 2, 3]),
-    unlinkedChatThreads: 0,
+    repairs: EMPTY_PORTABLE_REPAIR_REPORT,
   });
   vi.mocked(saveBackupFile).mockResolvedValue('saved');
   vi.mocked(pickBackupFile).mockResolvedValue(null);
@@ -150,7 +151,7 @@ describe('DataSettings — Backup & Restore panel', () => {
     vi.mocked(buildBackupExport).mockResolvedValue({
       filename: 'almamesh-backup-2026-07-01.json',
       content: '{"formatVersion":2}',
-      unlinkedChatThreads: 0,
+      repairs: EMPTY_PORTABLE_REPAIR_REPORT,
     });
     render(<DataSettings />);
 
@@ -169,11 +170,16 @@ describe('DataSettings — Backup & Restore panel', () => {
     expect(await screen.findByText('Backup downloaded.')).toBeTruthy();
   });
 
-  it('says plainly when a chat was exported without the chart it was started on', async () => {
+  it('says plainly what the export repaired: chats kept without their chart, readings and records left out', async () => {
     vi.mocked(buildBackupExport).mockResolvedValue({
       filename: 'almamesh-backup-2026-10-05.almamesh',
       content: new Uint8Array([1]),
-      unlinkedChatThreads: 1,
+      repairs: {
+        ...EMPTY_PORTABLE_REPAIR_REPORT,
+        unlinkedChatThreadIds: ['t1'],
+        droppedReadingChartIds: ['c1', 'c3'],
+        droppedPersonRecords: ['almamesh-life-events/gone'],
+      },
     });
     render(<DataSettings />);
 
@@ -184,7 +190,9 @@ describe('DataSettings — Backup & Restore panel', () => {
 
     expect(
       await screen.findByText(
-        'Backup downloaded. 1 chat conversation was started on a chart that no longer exists. It is in the backup in full, just no longer linked to that chart.',
+        'Backup downloaded. 1 chat conversation was started on a chart that no longer exists. It is in the backup in full, just no longer linked to that chart. '
+          + '2 AI readings belonged to charts that no longer exist and were left out. You can generate new readings anytime. '
+          + '1 saved record belonged to a person who is no longer on this device and was left out.',
       ),
     ).toBeTruthy();
   });
@@ -451,7 +459,7 @@ describe('DataSettings — Backup & Restore panel', () => {
     vi.mocked(buildBackupExport).mockResolvedValue({
       filename: 'almamesh-backup-2026-07-01T12-34-56-000Z.almamesh',
       content: new Uint8Array([9]),
-      unlinkedChatThreads: 0,
+      repairs: EMPTY_PORTABLE_REPAIR_REPORT,
     });
     vi.mocked(stageBackupImport)
       .mockRejectedValueOnce(new BackupCryptoError('bad_passphrase', 'encrypted'))
