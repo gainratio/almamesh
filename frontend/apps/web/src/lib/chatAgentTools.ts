@@ -1,6 +1,8 @@
 import type { SiderealChart } from '@almamesh/browser/types';
 import {
   sanitizeChartForLlm,
+  todayAnalysisInstant,
+  type AnalysisInstant,
   type AgentJsonObject,
   type AgentTool,
   type AgentToolContext,
@@ -57,6 +59,12 @@ export function currentDateTimeForZone(now: Date, timeZone: string): ZonedDateTi
 
 export interface CreateChatAgentToolsInput {
   readonly chart: SiderealChart;
+  /**
+   * The chart's own analysis instant: `get_chart_facts` describes the chart as
+   * of this instant. Only `get_current_timing` (explicitly about today) uses
+   * the tool context's `now`, labelled as "today".
+   */
+  readonly chartAsOf: AnalysisInstant;
   readonly chartTimeZone: string;
   /** Resolve exact-day engine facts; the caller owns cache/profile identity checks. */
   readonly loadCurrentChart?: (context: AgentToolContext) => Promise<SiderealChart>;
@@ -115,9 +123,9 @@ export function createChatAgentTools(input: CreateChatAgentToolsInput): readonly
         required: ['section'],
         additionalProperties: false,
       },
-      execute: (args, context) => {
+      execute: (args) => {
         const section = enumArgument(args, 'section', chartSections);
-        const chart = sanitizeChartForLlm(input.chart, context.now);
+        const chart = sanitizeChartForLlm(input.chart, input.chartAsOf);
         switch (section) {
           case 'overview':
             return {
@@ -159,7 +167,7 @@ export function createChatAgentTools(input: CreateChatAgentToolsInput): readonly
         const sourceChart = input.loadCurrentChart
           ? await input.loadCurrentChart(context)
           : input.chart;
-        const chart = sanitizeChartForLlm(sourceChart, context.now);
+        const chart = sanitizeChartForLlm(sourceChart, todayAnalysisInstant(context.now));
         if (section === 'dashas') return chart.dashas ?? { available: false };
         const predictive = chart.predictive;
         if (!predictive) return { available: false };

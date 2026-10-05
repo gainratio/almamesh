@@ -23,6 +23,7 @@
 import {
   requestEvidenceAnnotations,
   sanitizeChartForLlm,
+  type AnalysisInstant,
   type EvidenceObservationPrompt,
   type ProviderConfig,
   type RawEvidenceAnnotationPayload,
@@ -41,6 +42,8 @@ export interface ObservationPrompts {
 export interface EvidenceAnnotationRequest {
   /** The same chart the reading was generated from. */
   readonly chart: SiderealChart;
+  /** The chart's analysis instant (`storedChartAnalysisInstant`), never the wall clock. */
+  readonly asOf: AnalysisInstant;
   /** The interpretation path's resolved provider config — no separate setting. */
   readonly config: ProviderConfig;
   /** The user's persisted UI language, as the reading itself used. */
@@ -177,7 +180,7 @@ export async function fetchEvidenceAnnotations(
       return null;
     }
     return await requestEvidenceAnnotations({
-      chart: sanitizeChartForLlm(request.chart),
+      chart: sanitizeChartForLlm(request.chart, request.asOf),
       observations,
       factorIds,
       config: request.config,

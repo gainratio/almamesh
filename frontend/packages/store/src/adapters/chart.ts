@@ -228,14 +228,15 @@ function selectActiveMaha(
  * reference instant), but to harden the dashboard's "Current Life Phase" card we
  * fall back to selecting the active maha by date-range over the engine's own
  * `maha_dasha_sequence` when `current_maha` is absent (older bundles / an
- * out-of-span reference). `now` is injectable for deterministic tests; the live
- * caller passes the wall clock. Returns undefined ONLY when the engine emitted
+ * out-of-span reference). `asOf` is the chart's analysis instant (REQUIRED, never
+ * the wall clock), so the fallback picks the period running when the chart was
+ * computed. Returns undefined ONLY when the engine emitted
  * no sequence at all — we never fabricate periods. The antar/pratyantar legs are
  * surfaced as-is (undefined when the engine emitted null); renderers guard them.
  */
 export function toDashaCtx(
   chart: SiderealChart,
-  now: Date = new Date(),
+  asOf: Date,
 ): VimshottariDashaData | undefined {
   const {
     current_maha,
@@ -245,7 +246,7 @@ export function toDashaCtx(
     pratyantar_sequence,
     convention,
   } = chart.dashas;
-  const maha = current_maha ?? selectActiveMaha(maha_dasha_sequence, now);
+  const maha = current_maha ?? selectActiveMaha(maha_dasha_sequence, asOf);
   if (!maha) {
     return undefined;
   }
@@ -451,7 +452,7 @@ export function siderealChartToChartData(
       // byte-compatible for the kundli renderers; the FULL 16-varga set rides
       // separately as varga_ctx_full.
       varga_ctx: toNavamsaVargaCtx(chart),
-      dasha_ctx: toDashaCtx(chart),
+      dasha_ctx: toDashaCtx(chart, stampedAt),
       // Engine yogas reshaped field-for-field (grade + honest trace; the old
       // numeric strength/is_active fields no longer exist in the contract).
       yoga_ctx: chart.yogas.map(toYogaData),

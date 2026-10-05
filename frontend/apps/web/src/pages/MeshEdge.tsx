@@ -40,6 +40,7 @@ import {
   resolveProviderConfig,
   sanitizeChartForLlm,
   sanitizeMeshEdgeForLlm,
+  todayAnalysisInstant,
   streamAgentChat,
   type AgentStatusEvent,
   type ChatTurn,
@@ -79,6 +80,7 @@ import {
 import { ensureCurrentPlanetaryContext } from '../lib/currentPlanetaryContext';
 import type { SSEMetaData } from '../lib/streaming';
 import type { ViewMode } from '../lib/types';
+import { storedChartAnalysisInstant } from '../lib/analysisInstant';
 
 /** The chat-tuned provider env (mirrors the dashboard's chat wiring): the
  * EXPLICIT chat model via applyChatSettings (replaces the silent swap). */
@@ -306,7 +308,11 @@ function MeshEdgeContent({
     const chatMode = effectiveViewMode === 'astrologer' ? 'expert' : 'layman';
     const config = resolveProviderConfig(readMeshChatEnv());
     const language = useLanguageStore.getState().language;
+    // `now` is ONLY for questions genuinely about today (the current-timing
+    // tool). Everything else describes the chart as of its own analysis instant.
     const now = new Date();
+    const chartAsOf = storedChartAnalysisInstant(anchorChart!);
+    let usesTodayContext = false;
     let chartWithPredictive = siderealChart;
     const chartTimeZone = anchorChart?.birth_data?.birth_location_details.timezone ?? 'UTC';
     const loadCurrentChart = async (context: { now: Date; signal: AbortSignal }) => {
@@ -324,10 +330,12 @@ function MeshEdgeContent({
         runtime,
         signal: context.signal,
       });
+      usesTodayContext = true;
       return chartWithPredictive;
     };
     const tools = createChatAgentTools({
       chart: chartWithPredictive,
+      chartAsOf,
       chartTimeZone,
       loadCurrentChart,
     });
@@ -349,7 +357,10 @@ function MeshEdgeContent({
     }
 
     let messages = buildChatMessages(
-      sanitizeChartForLlm(chartWithPredictive, now),
+      sanitizeChartForLlm(
+        chartWithPredictive,
+        usesTodayContext ? todayAnalysisInstant(now) : chartAsOf,
+      ),
       question,
       chatMode,
       history,

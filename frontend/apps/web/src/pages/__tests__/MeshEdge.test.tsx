@@ -86,6 +86,7 @@ function chartFor(profileId: string): StoredChart {
     },
     astronomical_calculations: {
       sidereal_ctx: { lagna: { sign: 'Aquarius', longitude: 328.84 } },
+      calculation_timestamp: '2026-01-01T12:00:00.000Z',
     },
     sidereal_chart: {
       ayanamsa_value: 23.86,
