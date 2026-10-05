@@ -2,7 +2,8 @@ import React, { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
-  appEvents,
+  requestRegeneration,
+  whenChartLibraryPersisted,
   type BirthMeta,
   type LifeEventInput,
   useLifeEventsStore,
@@ -45,6 +46,18 @@ class EngineWarmingError extends Error {
   constructor(message = "The on-device engine is still warming up.") {
     super(message);
     this.name = "EngineWarmingError";
+  }
+}
+
+/**
+ * The engine was ready but computing or saving the chart failed. The inputs
+ * were accepted, so the user stays on the generating card (Retry) with the
+ * draft intact rather than being sent back to edit their details.
+ */
+class ChartComputeError extends Error {
+  constructor(cause: unknown) {
+    super(cause instanceof Error ? cause.message : String(cause), { cause });
+    this.name = "ChartComputeError";
   }
 }
 
@@ -413,8 +426,16 @@ export default function OnboardingPage() {
         }
 
         // Single source of regeneration: the one subscriber in App.tsx computes
-        // on-device, saves the primary (with profile_id), and re-streams.
-        appEvents.emit("birth-info-changed", { birth, profileId });
+        // on-device, saves the primary (with profile_id), and re-streams. WAIT
+        // for it and for the write to reach storage before leaving: navigating
+        // first meant a reload during the compute lost the chart for good, with
+        // the draft already cleared (prod 6a89c0e, 2026-10-05).
+        try {
+          await requestRegeneration({ birth, profileId });
+          await whenChartLibraryPersisted();
+        } catch (computeErr) {
+          throw new ChartComputeError(computeErr);
+        }
 
         clearInterval(progressInterval);
 
@@ -430,6 +451,10 @@ export default function OnboardingPage() {
         // Transient "engine still warming" race — show a retryable message and
         // keep the user on the generating screen (which offers Retry + Reset).
         setError(getEngineWarmingMessage(err));
+      } else if (err instanceof ChartComputeError) {
+        // The engine ran but the chart was not saved (worker died, compute
+        // threw). Keep the draft and the user on the generating card's Retry.
+        setError(getUserFriendlyError('CHART_GEN_001', err, 'Chart generation failed'));
       } else if (err instanceof EngineBootstrapError) {
         // The engine bootstrap (re-sync/boot) failed — the user's birth data is
         // fine, so STAY on the generating error card where Retry re-bootstraps
@@ -593,6 +618,9 @@ export default function OnboardingPage() {
             <h2 className="text-2xl font-bold text-text-primary mb-2">{t("generating.title")}</h2>
             <p className="text-text-secondary text-sm">
               {t("generating.subtitle")}
+            </p>
+            <p className="text-text-muted text-xs mt-2" data-testid="computing-chart-hint">
+              {t("generating.keep_open")}
             </p>
             {/* When the on-device engine is still booting, the Generate click
                 now WAITS for it (instead of failing) — tell the user so the

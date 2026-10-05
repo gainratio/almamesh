@@ -23,7 +23,7 @@ vi.mock('../../providers/AlmaMeshRuntimeProvider', () => ({
   useChartEngine: () => engineValue,
 }));
 
-import { appEvents, useChatStore, useInterpretationStore, usePredictiveStore, type BirthInfoChanged } from '@almamesh/store';
+import { appEvents, requestRegeneration, useChatStore, useInterpretationStore, usePredictiveStore, type BirthInfoChanged } from '@almamesh/store';
 import { useRegenerationSubscription } from '../useRegenerationSubscription';
 
 const fakeEngine = { generateChart: vi.fn() } as unknown as ChartEngine;
@@ -164,5 +164,42 @@ describe('useRegenerationSubscription — emit-before-subscribe race', () => {
     expect(usePredictiveStore.getState().status).toBe('ready');
     expect(usePredictiveStore.getState().profileKey).toBe('profile-b');
     expect(usePredictiveStore.getState().requestKey).toBe('profile-b-current-input');
+  });
+
+  it('requestRegeneration resolves only when the computed chart is applied', async () => {
+    let finish: () => void = () => undefined;
+    regenerateSpy.mockImplementationOnce(() => new Promise<void>((resolve) => (finish = resolve)));
+    engineValue = { engine: fakeEngine };
+    renderHook(() => useRegenerationSubscription(), { wrapper });
+
+    let settled = false;
+    const request = requestRegeneration(event).then(() => (settled = true));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(regenerateSpy).toHaveBeenCalledTimes(1);
+    expect(settled).toBe(false);
+
+    finish();
+    await request;
+    expect(settled).toBe(true);
+  });
+
+  it('requestRegeneration made before the engine is ready settles after the drained run', async () => {
+    const failure = new Error('worker died');
+    regenerateSpy.mockImplementationOnce(() => Promise.reject(failure));
+    engineValue = { engine: null };
+    const { rerender } = renderHook(() => useRegenerationSubscription(), { wrapper });
+
+    const older = requestRegeneration(event);
+    const newer = requestRegeneration({ ...event, profileId: 'p2' });
+    engineValue = { engine: fakeEngine };
+    rerender();
+
+    // Last wins: one run, and BOTH callers learn its outcome.
+    await expect(newer).rejects.toBe(failure);
+    await expect(older).rejects.toBe(failure);
+    expect(regenerateSpy).toHaveBeenCalledTimes(1);
+    expect((regenerateSpy.mock.calls[0]?.[0] as BirthInfoChanged).profileId).toBe('p2');
   });
 });

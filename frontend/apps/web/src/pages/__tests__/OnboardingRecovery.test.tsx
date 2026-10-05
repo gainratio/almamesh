@@ -4,7 +4,7 @@ import { MemoryRouter } from 'react-router-dom';
 
 import type { ChartEngine } from '@almamesh/browser';
 import '../../i18n/config';
-import { useOnboardingStore } from '@almamesh/store';
+import { registerRegenerationRunner, useOnboardingStore } from '@almamesh/store';
 
 // --- module mocks (declared before importing the page) ---
 const navigateSpy = vi.fn();
@@ -71,13 +71,18 @@ function renderPage() {
 }
 
 describe('Onboarding — in-app bootstrap recovery', () => {
+  // Stands in for App.tsx's regeneration subscriber: the page now waits for
+  // the chart to be applied before it navigates.
+  let unregisterRunner: () => void = () => undefined;
   beforeEach(() => {
     navigateSpy.mockClear();
     resetAppDataSpy.mockClear();
     useOnboardingStore.getState().reset();
+    unregisterRunner = registerRegenerationRunner(() => Promise.resolve());
   });
 
   afterEach(() => {
+    unregisterRunner();
     useOnboardingStore.getState().reset();
   });
 

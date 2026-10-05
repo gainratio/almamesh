@@ -82,6 +82,7 @@
   "generating": {
     "title": "Gerando seu mapa",
     "subtitle": "Isso pode levar um minuto...",
+    "keep_open": "Calculando seu mapa neste dispositivo. Mantenha esta página aberta até que ele seja salvo.",
     "step_counter": "Etapa {{current}} de {{total}}",
     "engine_download_start": "Preparando o download do motor…",
     "engine_download": "Baixando dados do motor: {{done}} de {{total}} MB",

@@ -15,6 +15,11 @@
  * the engine from a ref), so a live event is computed the moment the engine is
  * ready and BUFFERED otherwise; a ready-transition effect then DRAINS the buffer
  * exactly once. No dropped compute, regardless of ordering.
+ *
+ * AWAITABLE: the same runner is registered for `requestRegeneration(event)`, so
+ * a page can wait until the chart is actually saved before it navigates (a
+ * reload during the compute used to lose the first chart for good). A buffered
+ * request's promise settles when the drained run settles.
  */
 
 import { useEffect, useRef } from 'react'
@@ -23,6 +28,7 @@ import {
   appEvents,
   newChartReferenceInstant,
   regenerateOnBirthChange,
+  registerRegenerationRunner,
   useChartLibraryStore,
   useChatStore,
   useInterpretationStore,
@@ -44,21 +50,21 @@ export function useRegenerationSubscription(): void {
   engineRef.current = engine
 
   // A single birth-info event awaiting a ready engine (the emit-before-ready
-  // case). Only the latest matters — a newer commit supersedes an older one.
-  const pendingRef = useRef<BirthInfoChanged | null>(null)
+  // case). Only the latest matters — a newer commit supersedes an older one,
+  // and every caller waiting on a superseded event settles with the winner.
+  const pendingRef = useRef<PendingRegeneration | null>(null)
 
   // The regeneration runner, held in a ref so the always-attached listener has a
   // stable identity. Reassigned every render so its closed-over `queryClient`
   // stays current. Reads the engine from the ref: compute now if ready, else
   // buffer for the ready-transition effect to drain.
-  const runRef = useRef<(event: BirthInfoChanged) => void>(() => {})
+  const runRef = useRef<(event: BirthInfoChanged) => Promise<void>>(() => Promise.resolve())
   runRef.current = (event: BirthInfoChanged) => {
     const currentEngine = engineRef.current
     if (currentEngine === null) {
-      pendingRef.current = event
-      return
+      return bufferUntilReady(pendingRef, event)
     }
-    void regenerateOnBirthChange(event, {
+    return regenerateOnBirthChange(event, {
       engine: currentEngine,
       library: useChartLibraryStore.getState(),
       chat: useChatStore.getState(),
@@ -83,10 +89,17 @@ export function useRegenerationSubscription(): void {
   }
 
   // Attach the listener ONCE for the app's lifetime (never gated on `engine`).
+  // The bus path is fire-and-forget; `requestRegeneration` is the awaitable one.
   useEffect(() => {
-    const handler = (event: BirthInfoChanged) => runRef.current(event)
+    const handler = (event: BirthInfoChanged) => {
+      void runRef.current(event).catch(() => undefined)
+    }
     appEvents.on('birth-info-changed', handler)
-    return () => appEvents.off('birth-info-changed', handler)
+    const unregister = registerRegenerationRunner((event) => runRef.current(event))
+    return () => {
+      appEvents.off('birth-info-changed', handler)
+      unregister()
+    }
   }, [])
 
   // When the engine becomes ready, DRAIN a buffered event exactly once. This is
@@ -99,7 +112,38 @@ export function useRegenerationSubscription(): void {
     const pending = pendingRef.current
     if (pending !== null) {
       pendingRef.current = null
-      runRef.current(pending)
+      runRef.current(pending.event).then(pending.resolve, pending.reject)
     }
   }, [engine])
+}
+
+/** The latest event awaiting a ready engine, plus how to settle its waiters. */
+interface PendingRegeneration {
+  readonly event: BirthInfoChanged
+  readonly resolve: () => void
+  readonly reject: (reason: unknown) => void
+}
+
+/**
+ * Hold `event` until the engine is ready. A newer event replaces an older one
+ * (last wins); the older caller's promise settles with the newer run's outcome.
+ */
+function bufferUntilReady(
+  pendingRef: { current: PendingRegeneration | null },
+  event: BirthInfoChanged,
+): Promise<void> {
+  const superseded = pendingRef.current
+  return new Promise<void>((resolve, reject) => {
+    pendingRef.current = {
+      event,
+      resolve: () => {
+        superseded?.resolve()
+        resolve()
+      },
+      reject: (reason: unknown) => {
+        superseded?.reject(reason)
+        reject(reason)
+      },
+    }
+  })
 }

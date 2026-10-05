@@ -82,6 +82,7 @@
   "generating": {
     "title": "Generando tu carta",
     "subtitle": "Esto puede tardar un minuto...",
+    "keep_open": "Calculando tu carta en este dispositivo. Mantén esta página abierta hasta que se guarde.",
     "step_counter": "Paso {{current}} de {{total}}",
     "engine_download_start": "Preparando la descarga del motor…",
     "engine_download": "Descargando datos del motor: {{done}} de {{total}} MB",
