@@ -97,13 +97,24 @@ describe('planProfileSave', () => {
     expect(plan.birth.rectifiedTime).toBeUndefined();
   });
 
-  it('reports unchanged when the chart identity is the same and the birth time did not move', () => {
+  // CONTRACT REVERSED (2026-10-05, #246 grade). This test used to assert that a
+  // confidence-only edit is `unchanged`: the page said "Nothing to save" and the
+  // edit was silently dropped. Confidence does not define the chart, so it is
+  // saved WITHOUT a regeneration.
+  it('saves a confidence-only edit without regenerating', () => {
     const initial = details();
     const plan = planProfileSave({
       initial,
       current: details({ time_confidence: 'approximate' }),
       storedChartId: storedIdOf(initial),
     });
+
+    expect(plan).toEqual({ kind: 'confidence-only', timeConfidence: 'approximate' });
+  });
+
+  it('reports unchanged when nothing at all changed', () => {
+    const initial = details();
+    const plan = planProfileSave({ initial, current: details(), storedChartId: storedIdOf(initial) });
 
     expect(plan).toEqual({ kind: 'unchanged' });
   });

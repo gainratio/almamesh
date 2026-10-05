@@ -67,7 +67,8 @@ export function birthDetailsFromBirthData(
     // Empty unless a rectification was stored. Never prefill it with the entered
     // time: a prefilled copy outlives a later birth-time edit and silently pins
     // the chart to the old clock (production bug, 2026-10-05).
-    rectified_time: birthData.birth_time_original ? effective_time : '',
+    rectified_time:
+      birthData.birth_time_original && birthData.birth_time_original !== effective_time ? effective_time : '',
     time_confidence,
   };
 }

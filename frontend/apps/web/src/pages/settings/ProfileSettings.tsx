@@ -22,6 +22,7 @@ import { TIME_CONFIDENCE, type TimeConfidence } from '@almamesh/constants';
 import { LocationSearch } from '../../components/shared/LocationSearch';
 import { type BirthDetails, birthDetailsFromBirthData } from './birthDetailsFromBirthData';
 import { birthMetaFromDetails, planProfileSave, type ProfileSavePlan } from './planProfileSave';
+import { saveTimeConfidence, type TimeConfidenceSaveResult } from './saveTimeConfidence';
 import { RegenerationConfirmModal } from '../../components/features/settings/RegenerationConfirmModal';
 import {
   BirthTimeComparison,
@@ -108,9 +109,11 @@ export default function ProfileSettings() {
   // The stored primary chart's id: the identity a save is compared against.
   const [storedChartId, setStoredChartId] = useState<string | null>(null);
   // Why a save did not open the regenerate modal (never a false "Chart Updated!").
-  const [saveNotice, setSaveNotice] = useState<Exclude<ProfileSavePlan, { kind: 'regenerate' }> | null>(
-    null,
-  );
+  const [saveNotice, setSaveNotice] = useState<
+    Exclude<ProfileSavePlan, { kind: 'regenerate' } | { kind: 'confidence-only' }> | null
+  >(null);
+  // The outcome of a confidence-only save (no regeneration): saved or not, never silent.
+  const [confidenceSave, setConfidenceSave] = useState<TimeConfidenceSaveResult | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
@@ -158,6 +161,7 @@ export default function ProfileSettings() {
   // Form Handlers
   const handleFieldChange = <K extends PendingChangeField>(field: K, value: PendingChanges[K]) => {
     setSaveNotice(null);
+    setConfidenceSave(null);
     setPendingChange(field, value);
   };
 
@@ -337,11 +341,26 @@ export default function ProfileSettings() {
       current: currentDetails,
       storedChartId,
     });
+    if (plan.kind === 'confidence-only') {
+      void handleConfidenceOnlySave(plan.timeConfidence);
+      return;
+    }
     if (plan.kind !== 'regenerate') {
       setSaveNotice(plan);
       return;
     }
     setShowConfirmModal(true);
+  };
+
+  const handleConfidenceOnlySave = async (timeConfidence: TimeConfidence) => {
+    setIsSaving(true);
+    const result = storedChartId ? await saveTimeConfidence(storedChartId, timeConfidence) : 'not-saved';
+    setIsSaving(false);
+    setConfidenceSave(result);
+    if (result === 'saved') {
+      setInitialDetails((details) => (details ? { ...details, time_confidence: timeConfidence } : details));
+      clearPendingChanges();
+    }
   };
 
   const handleConfirmRegeneration = async () => {
@@ -378,6 +397,7 @@ export default function ProfileSettings() {
   const handleResetForm = () => {
     clearPendingChanges();
     setSaveNotice(null);
+    setConfidenceSave(null);
     setError(null);
   };
 
@@ -781,6 +801,16 @@ export default function ProfileSettings() {
               {t('settings:profile.rectification_governs_clear')}
             </button>
           </div>
+        )}
+        {confidenceSave === 'saved' && (
+          <p role="status" data-testid="confidence-saved-notice" className="text-text-secondary text-sm">
+            {t('settings:profile.confidence_saved')}
+          </p>
+        )}
+        {confidenceSave === 'not-saved' && (
+          <p role="alert" data-testid="confidence-not-saved-notice" className="text-status-error text-sm">
+            {t('settings:profile.confidence_not_saved')}
+          </p>
         )}
         {saveNotice?.kind === 'unchanged' && (
           <p role="status" data-testid="save-unchanged-notice" className="text-text-secondary text-sm">

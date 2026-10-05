@@ -1,3 +1,4 @@
+import type { TimeConfidence } from '@almamesh/constants';
 import { chartId, type BirthMeta } from '@almamesh/store';
 
 import type { BirthDetails } from './birthDetailsFromBirthData';
@@ -9,11 +10,14 @@ import type { BirthDetails } from './birthDetailsFromBirthData';
  * - `rectification-governs`: only the birth time moved, but a stored rectified
  *   time still sets the clock, so the chart would not change. The page says so
  *   instead of claiming an update.
- * - `unchanged`: nothing that defines the chart changed.
+ * - `confidence-only`: only the birth-time confidence changed. It does not
+ *   define the chart, so it is saved on the stored chart without regenerating.
+ * - `unchanged`: nothing changed.
  */
 export type ProfileSavePlan =
   | { readonly kind: 'regenerate'; readonly birth: BirthMeta }
   | { readonly kind: 'rectification-governs'; readonly rectifiedTime: string }
+  | { readonly kind: 'confidence-only'; readonly timeConfidence: TimeConfidence }
   | { readonly kind: 'unchanged' };
 
 export interface ProfileSaveInput {
@@ -63,6 +67,9 @@ export function planProfileSave({ initial, current, storedChartId }: ProfileSave
   const rectifiedTime = effectiveRectifiedTime(current);
   if (rectifiedTime && current.birth_time !== initial.birth_time) {
     return { kind: 'rectification-governs', rectifiedTime };
+  }
+  if (current.time_confidence !== initial.time_confidence) {
+    return { kind: 'confidence-only', timeConfidence: current.time_confidence };
   }
   return { kind: 'unchanged' };
 }

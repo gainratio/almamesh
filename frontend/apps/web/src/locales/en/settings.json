@@ -46,6 +46,8 @@
     "rectification_governs": "Your rectified time ({{time}}) still sets this chart, so changing the birth time alone changes nothing. Clear the rectified time to use your new birth time.",
     "rectification_governs_clear": "Clear rectified time",
     "save_unchanged": "Nothing to save: your chart already matches these details.",
+    "confidence_saved": "Saved: birth-time confidence updated. The chart itself does not change.",
+    "confidence_not_saved": "Your birth-time confidence could not be saved on this device. Please try again.",
     "adjust_minutes_aria": "Adjust rectified time by {{sign}}{{minutes}} minutes",
     "minutes_suffix": "min",
     "time_confidence_label": "Time confidence",

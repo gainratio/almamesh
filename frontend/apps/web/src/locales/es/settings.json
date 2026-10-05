@@ -49,6 +49,8 @@
     "rectification_governs": "Tu hora rectificada ({{time}}) sigue definiendo esta carta, así que cambiar solo la hora de nacimiento no cambia nada. Borra la hora rectificada para usar tu nueva hora de nacimiento.",
     "rectification_governs_clear": "Borrar hora rectificada",
     "save_unchanged": "Nada que guardar: tu carta ya coincide con estos datos.",
+    "confidence_saved": "Guardado: se actualizó la confianza en la hora de nacimiento. La carta no cambia.",
+    "confidence_not_saved": "No se pudo guardar la confianza en la hora de nacimiento en este dispositivo. Inténtalo de nuevo.",
     "adjust_minutes_aria": "Ajustar la hora rectificada en {{sign}}{{minutes}} minutos",
     "minutes_suffix": "min",
     "time_confidence_label": "Confianza en la hora",

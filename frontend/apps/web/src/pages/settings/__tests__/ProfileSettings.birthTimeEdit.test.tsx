@@ -11,7 +11,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { appEvents, chartId, useProfilesStore, type BirthInfoChanged } from '@almamesh/store';
+import {
+  appEvents,
+  chartId,
+  useChartLibraryStore,
+  useProfilesStore,
+  type BirthInfoChanged,
+  type StoredChart,
+} from '@almamesh/store';
 
 import '../../../i18n/config';
 import { useSettingsStore } from '../../../stores/settings';
@@ -148,11 +155,41 @@ describe('ProfileSettings — birth-time-only edit', () => {
     expect(emitted[0].birth.rectifiedTime).toBeUndefined();
   });
 
-  it('never claims an update when nothing that defines the chart changed', async () => {
+  // CONTRACT REVERSED (2026-10-05, #246 grade). This test used to expect the
+  // "Nothing to save" notice for a confidence-only edit, while the edit was
+  // dropped. Confidence is now saved on the stored chart with no regeneration.
+  it('saves a confidence-only edit on the stored chart without regenerating', async () => {
     storeChart('06:44');
+    useChartLibraryStore.setState({
+      charts: {
+        [stored.chartId]: {
+          chart_id: stored.chartId,
+          person_name: 'Test User',
+          is_primary: true,
+          birth_data: stored.birthData,
+        } as unknown as StoredChart,
+      },
+    });
     renderPage();
     await timeInputs();
     fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: 'approximate' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+
+    await screen.findByTestId('confidence-saved-notice');
+    expect(screen.queryByTestId('save-unchanged-notice')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Confirm & Regenerate' })).toBeNull();
+    expect(emitted).toHaveLength(0);
+    const saved = useChartLibraryStore.getState().getChart(stored.chartId);
+    expect(saved?.birth_data?.birth_time_confidence).toBe('approximate');
+  });
+
+  it('never claims an update when an edit was undone before saving', async () => {
+    storeChart('06:44');
+    renderPage();
+    const { birth } = await timeInputs();
+    await waitFor(() => expect(birth.value).toBe('06:44'));
+    fireEvent.change(birth, { target: { value: '07:00' } });
+    fireEvent.change(birth, { target: { value: '06:44' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
 
     await screen.findByTestId('save-unchanged-notice');

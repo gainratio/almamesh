@@ -49,6 +49,8 @@
     "rectification_governs": "Sua hora retificada ({{time}}) ainda define este mapa, então mudar só a hora de nascimento não muda nada. Apague a hora retificada para usar sua nova hora de nascimento.",
     "rectification_governs_clear": "Apagar hora retificada",
     "save_unchanged": "Nada a salvar: seu mapa já corresponde a estes dados.",
+    "confidence_saved": "Salvo: a confiança na hora de nascimento foi atualizada. O mapa em si não muda.",
+    "confidence_not_saved": "Não foi possível salvar a confiança na hora de nascimento neste dispositivo. Tente novamente.",
     "adjust_minutes_aria": "Ajustar a hora retificada em {{sign}}{{minutes}} minutos",
     "minutes_suffix": "min",
     "time_confidence_label": "Confiança na hora",

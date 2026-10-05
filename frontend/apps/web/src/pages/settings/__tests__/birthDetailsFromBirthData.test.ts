@@ -59,6 +59,19 @@ describe('birthDetailsFromBirthData', () => {
     expect(details.rectified_time).toBe('');
   });
 
+  it('treats a stored birth_time_original equal to the effective clock as NO rectification', () => {
+    // Rows written by the old prefill carry birth_time_original === effective
+    // time. That is not a rectification; showing it as one pins the chart to
+    // the old clock again on the next birth-time edit.
+    const details = birthDetailsFromBirthData(
+      birthData({ birth_datetime_local: '1988-08-08T06:44:00', birth_time_original: '06:44' }),
+      'Reference Native',
+    );
+
+    expect(details.birth_time).toBe('06:44');
+    expect(details.rectified_time).toBe('');
+  });
+
   it('round-trips symmetrically with toBirthData() for a rectified profile (no silent reversion)', () => {
     const birth: BirthMeta = {
       name: 'Reference Native',
