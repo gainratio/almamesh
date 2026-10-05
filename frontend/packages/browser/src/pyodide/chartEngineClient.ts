@@ -3,6 +3,7 @@
 // replies. One in-flight map keyed by request id correlates responses to
 // promises (mirrors the edge-proc EngineClient).
 
+import { verifyChartSnapshot } from "./chartSnapshot";
 import type { SiderealChart } from "./chart";
 import type { MeshEdgeContext } from "./mesh";
 import type { PredictiveContexts } from "./predictive";
@@ -129,10 +130,15 @@ export class ChartEngineClient {
     }
   }
 
-  /** Compute a sidereal chart on-device. Requires a prior successful `boot`. */
+  /**
+   * Compute a sidereal chart on-device. Requires a prior successful `boot`.
+   * The chart crosses into the app only with a verified snapshot that names
+   * this request's birth and analysis instants (`verifyChartSnapshot`).
+   */
   public async generateChart(birth: BirthInput): Promise<SiderealChart> {
     const response = await this.#send({ kind: "generateChart", id: this.#allocId(), birth });
     if (response.ok && response.kind === "generateChart") {
+      await verifyChartSnapshot(response.chart, birth);
       return response.chart;
     }
     throw new Error(response.ok ? "unexpected response kind" : response.error);

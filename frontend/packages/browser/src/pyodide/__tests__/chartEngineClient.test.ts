@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ChartEngineClient } from "../chartEngineClient";
@@ -35,6 +38,16 @@ const bootConfig = (): BootConfig => ({
 });
 
 const STUB_CHART = { ayanamsa_value: 23.7 } as unknown as SiderealChart;
+
+// A real engine-stamped chart (the committed CPython golden) and the request it answers.
+const GOLDEN_PATH = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  "../../../../../../backend/tests/fixtures/chart_golden_de421.json",
+);
+const STAMPED_CHART = (
+  JSON.parse(readFileSync(GOLDEN_PATH, "utf8")) as Record<string, SiderealChart>
+)["1990-01-15T12:00:00+00:00"]!;
+const STAMPED_BIRTH: BirthInput = { ...BIRTH, referenceDate: "2025-01-01T00:00:00+00:00" };
 
 const PREDICTIVE_INPUT: PredictiveInput = {
   datetimeUtc: "1990-01-15T12:00:00+00:00",
@@ -283,7 +296,21 @@ describe("ChartEngineClient", () => {
     }
   });
 
-  it("generates a chart, returning the worker's chart payload", async () => {
+  it("generates a chart, returning the worker's chart payload once its snapshot verifies", async () => {
+    const client = withReply((req) => ({
+      ok: true,
+      kind: "generateChart",
+      id: req.id,
+      chart: STAMPED_CHART,
+    }));
+
+    const chart = await client.generateChart(STAMPED_BIRTH);
+
+    expect(chart).toBe(STAMPED_CHART);
+    expect(worker.posted[0]).toMatchObject({ kind: "generateChart", birth: STAMPED_BIRTH });
+  });
+
+  it("refuses a computed chart whose snapshot is missing (the worker boundary)", async () => {
     const client = withReply((req) => ({
       ok: true,
       kind: "generateChart",
@@ -291,10 +318,20 @@ describe("ChartEngineClient", () => {
       chart: STUB_CHART,
     }));
 
-    const chart = await client.generateChart(BIRTH);
+    await expect(client.generateChart(BIRTH)).rejects.toThrow(/chart snapshot: missing/);
+  });
 
-    expect(chart).toBe(STUB_CHART);
-    expect(worker.posted[0]).toMatchObject({ kind: "generateChart", birth: BIRTH });
+  it("refuses a computed chart stamped for a different analysis instant", async () => {
+    const client = withReply((req) => ({
+      ok: true,
+      kind: "generateChart",
+      id: req.id,
+      chart: STAMPED_CHART,
+    }));
+
+    await expect(
+      client.generateChart({ ...STAMPED_BIRTH, referenceDate: "2031-01-01T00:00:00.000Z" }),
+    ).rejects.toThrow(/reference_date/);
   });
 
   it("computes the lazy predictive payload, forwarding the explicit reference instant", async () => {
@@ -361,13 +398,13 @@ describe("ChartEngineClient", () => {
         return { ok: true, kind: "boot", id: req.id };
       }
       // Answer the second request first to prove correlation is by id, not order.
-      const chart = { ayanamsa_value: req.id } as unknown as SiderealChart;
+      const chart = { ...STAMPED_CHART, ayanamsa_value: req.id } as SiderealChart;
       return { ok: true, kind: "generateChart", id: req.id, chart };
     });
 
     const [first, second] = await Promise.all([
-      client.generateChart(BIRTH),
-      client.generateChart(BIRTH),
+      client.generateChart(STAMPED_BIRTH),
+      client.generateChart(STAMPED_BIRTH),
     ]);
 
     expect(first.ayanamsa_value).not.toBe(second.ayanamsa_value);
@@ -407,7 +444,7 @@ describe("ChartEngineClient", () => {
 		try {
 			const client = new ChartEngineClient(worker);
 			const predictive = client.computePredictive(PREDICTIVE_INPUT);
-			const chart = client.generateChart(BIRTH);
+			const chart = client.generateChart(STAMPED_BIRTH);
 			const [predictiveRequest, chartRequest] = worker.posted;
 
 			vi.advanceTimersByTime(60_001);
@@ -423,11 +460,11 @@ describe("ChartEngineClient", () => {
 				ok: true,
 				kind: "generateChart",
 				id: chartRequest.id,
-				chart: STUB_CHART,
+				chart: STAMPED_CHART,
 			});
 
 			await expect(predictive).resolves.toBe(STUB_PREDICTIVE);
-			await expect(chart).resolves.toBe(STUB_CHART);
+			await expect(chart).resolves.toBe(STAMPED_CHART);
 		} finally {
 			vi.useRealTimers();
 		}
@@ -438,7 +475,7 @@ describe("ChartEngineClient", () => {
 		try {
 			const client = new ChartEngineClient(worker);
 			const rectification = client.computeRectification(RECTIFICATION_INPUT);
-			const chart = client.generateChart(BIRTH);
+			const chart = client.generateChart(STAMPED_BIRTH);
 			const [rectificationRequest, chartRequest] = worker.posted;
 
 			vi.advanceTimersByTime(60_001);
@@ -454,11 +491,11 @@ describe("ChartEngineClient", () => {
 				ok: true,
 				kind: "generateChart",
 				id: chartRequest.id,
-				chart: STUB_CHART,
+				chart: STAMPED_CHART,
 			});
 
 			await expect(rectification).resolves.toBe(STUB_RECTIFICATION);
-			await expect(chart).resolves.toBe(STUB_CHART);
+			await expect(chart).resolves.toBe(STAMPED_CHART);
 		} finally {
 			vi.useRealTimers();
 		}
