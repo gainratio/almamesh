@@ -146,5 +146,9 @@
     "interpretations_unreadable_paused": "Algumas interpretações salvas não puderam ser lidas e este dispositivo não conseguiu separá-las. Para protegê-las, novas leituras estão pausadas. Recarregue a página para tentar novamente.",
     "dismiss_aria": "Fechar aviso"
   },
-  "reset_incomplete": "A redefinição não conseguiu apagar todos os dados salvos, porque este navegador ainda os está usando. Feche todas as abas do AlmaMesh e tente de novo. Se continuar acontecendo, limpe os dados do site do AlmaMesh nas configurações do navegador."
+  "reset_incomplete": "A redefinição não conseguiu apagar todos os dados salvos, porque este navegador ainda os está usando. Feche todas as abas do AlmaMesh e tente de novo. Se continuar acontecendo, limpe os dados do site do AlmaMesh nas configurações do navegador.",
+  "dropped_writes": {
+    "body": "Algumas alterações nesta página não foram salvas porque seus dados estavam sendo substituídos ou reparados. Recarregue para ver seus dados atuais.",
+    "reload": "Recarregar"
+  }
 }
