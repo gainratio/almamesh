@@ -4,11 +4,15 @@ export interface ProcessEntry {
   readonly pid: number
   readonly kind: ProcessKind
   readonly rssBytes: number
+  /** Private (USS) bytes from smaps_rollup; null when unreadable. */
+  readonly privateBytes: number | null
 }
 
 export interface ProcessTreeSummary {
   readonly totalMiB: number
   readonly byKind: Partial<Record<ProcessKind, number>>
+  /** Largest single process's private MiB per kind. */
+  readonly largestPrivateByKind: Partial<Record<ProcessKind, number>>
   readonly processes: number
 }
 
@@ -18,6 +22,7 @@ export interface ProcessTreePeak extends ProcessTreeSummary {
 
 export function parseProcStat(text: string): { pid: number; ppid: number }
 export function parseVmRssBytes(statusText: string): number | null
+export function parseSmapsPrivateBytes(smapsRollup: string): number | null
 export function processKind(argv: readonly string[]): ProcessKind
 export function descendantPids(rootPid: number, parents: ReadonlyMap<number, number>): number[]
 export function readProcessTree(rootPid?: number, procRoot?: string): ProcessEntry[] | null

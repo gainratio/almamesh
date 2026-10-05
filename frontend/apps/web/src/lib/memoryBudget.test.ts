@@ -83,11 +83,19 @@ describe('report-only memory samples', () => {
 
 describe('process-tree report fields', () => {
   it('names the peak of each requested kind, null when that kind never ran', () => {
-    const peak = { totalMiB: 900.4, byKind: { 'webkit-web': 610.2 }, processes: 3, samples: 40 };
+    const peak = {
+      totalMiB: 900.4,
+      byKind: { 'webkit-web': 610.2 },
+      largestPrivateByKind: { 'webkit-web': 340.1 },
+      processes: 3,
+      samples: 40,
+    };
     expect(processTreeReport(peak, ['webkit-web', 'webkit-network'])).toEqual({
       totalRssPeakMiB: 900.4,
       'webkit-webRssPeakMiB': 610.2,
+      'webkit-webPrivatePeakMiB': 340.1,
       'webkit-networkRssPeakMiB': null,
+      'webkit-networkPrivatePeakMiB': null,
       processes: 3,
       samples: 40,
     });
