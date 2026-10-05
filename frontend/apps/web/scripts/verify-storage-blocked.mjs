@@ -120,12 +120,22 @@ function captureBackups({ passphrase, needle }) {
   }
 }
 
-/** Client-side navigation: a full load would start a new in-memory database. */
-async function navigateInApp(page, path) {
-  await page.evaluate((target) => {
-    window.history.pushState({}, '', target)
-    window.dispatchEvent(new window.PopStateEvent('popstate'))
-  }, path)
+/**
+ * Client-side navigation (a full load would start a new in-memory database),
+ * repeated until `readyTestId` shows: on a slow device a redirect still in
+ * flight from the previous screen (Start fresh -> /) can override the first.
+ */
+async function navigateInApp(page, path, readyTestId) {
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    await page.evaluate((target) => {
+      window.history.pushState({}, '', target)
+      window.dispatchEvent(new window.PopStateEvent('popstate'))
+    }, path)
+    const ready = await page.getByTestId(readyTestId).first()
+      .waitFor({ state: 'visible', timeout: 20_000 }).then(() => true, () => false)
+    if (ready) return
+  }
+  throw new Error(`in-app navigation to ${path} never showed ${readyTestId} (${page.url()})`)
 }
 
 /**
@@ -263,11 +273,11 @@ try {
     invariant(leaks.length === 0, `OPFS refused: user data written outside SQLite: ${leaks.join(', ')}`)
     // Deleted data must not survive inside the SQLite file a backup carries.
     // In memory SQLite has no secure_delete, so the freed pages kept the bytes.
-    await navigateInApp(visited.page, '/settings/preferences')
+    await navigateInApp(visited.page, '/settings/preferences', 'reset-start-fresh')
     await visited.page.getByTestId('reset-start-fresh').click()
     await visited.page.getByTestId('reset-confirm').click()
     await visited.page.getByTestId('landing-nav-cta').waitFor({ state: 'visible', timeout: 30_000 })
-    await navigateInApp(visited.page, '/settings/data')
+    await navigateInApp(visited.page, '/settings/data', 'backup-passphrase-input')
     await visited.page.getByTestId('backup-passphrase-input').fill(BACKUP_PASSPHRASE)
     await visited.page.getByTestId('backup-export-button').click()
     await visited.page.waitForFunction(() => window.__backupHasNeedle !== undefined, null, { timeout: 60_000 })
