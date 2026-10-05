@@ -14,7 +14,39 @@
  *   bun run test:e2e:birth-time-edit                    # builds + previews
  *   BIRTH_TIME_E2E_BASE_URL=https://almamesh.com bun run test:e2e:birth-time-edit
  */
-import { expect, test, type Page } from "@playwright/test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { expect, test as base, webkit, type Page } from "@playwright/test";
+
+/**
+ * WebKit needs an on-disk profile: a default WebKit context is an ephemeral
+ * data store that refuses OPFS, and SQLite on OPFS is AlmaMesh's only store,
+ * so the app would (correctly) show its storage block screen there.
+ */
+const test = base.extend({
+  context: async ({ browserName, context, contextOptions, baseURL, viewport, userAgent }, provide) => {
+    if (browserName !== "webkit") {
+      await provide(context);
+      return;
+    }
+    const profile = await mkdtemp(join(tmpdir(), "almamesh-birth-time-edit-"));
+    const persistent = await webkit.launchPersistentContext(profile, {
+      ...contextOptions,
+      baseURL,
+      viewport,
+      userAgent,
+      acceptDownloads: true,
+      headless: true,
+    });
+    try {
+      await provide(persistent);
+    } finally {
+      await persistent.close();
+      await rm(profile, { recursive: true, force: true });
+    }
+  },
+});
 
 const PASSPHRASE = "birth time edit e2e passphrase";
 const CHART_UPDATED = "Chart Updated!";
