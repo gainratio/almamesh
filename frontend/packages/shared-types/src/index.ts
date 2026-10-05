@@ -1099,6 +1099,26 @@ export interface SiderealContext {
 }
 
 /**
+ * The identity of one computed chart, stamped by the engine
+ * (`backend/src/almamesh/snapshot.py`) and verified at the worker boundary.
+ * `snapshot_id` = SHA-256 of the canonical JSON of the other ten fields.
+ */
+export interface ChartSnapshot {
+  readonly snapshot_schema: string;
+  readonly engine_version: string;
+  readonly ephemeris_file: string;
+  readonly data_hash: string;
+  readonly ayanamsa: string;
+  readonly node_type: string;
+  readonly house_system: string;
+  readonly dasha_year_convention: string;
+  readonly birth_utc: string;
+  /** The analysis instant: the chart's "as of" and its "current" dasha. */
+  readonly reference_date: string;
+  readonly snapshot_id: string;
+}
+
+/**
  * Astronomical calculations from chart data
  * Matches backend AstronomicalCalculations class
  */
@@ -1116,7 +1136,10 @@ export interface AstronomicalCalculations {
   /** Per-life-domain deterministic synthesis (7 forecasts). */
   domains_ctx?: DomainsCtx;
   calculation_timestamp: string;
+  /** The engine version that computed THIS chart (a legacy label when unstamped). */
   software_version: string;
+  /** The snapshot this chart was computed with. Absent on charts stored before snapshots. */
+  snapshot?: ChartSnapshot;
 }
 
 // Note: LocationDetails and ProcessedBirthData are defined above (lines 133-154)

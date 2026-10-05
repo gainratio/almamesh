@@ -616,3 +616,29 @@ describe("toDashaCtx — dasha tree (antar + pratyantar sequences)", () => {
     expect(nullCtx).not.toHaveProperty("pratyantar_sequence");
   });
 });
+
+describe("siderealChartToChartData — the chart's snapshot rides along", () => {
+  it("keeps the engine's snapshot on the rendered chart, unchanged", () => {
+    const data = siderealChartToChartData(delhiChart, DELHI_BIRTH, REF);
+
+    expect(data.astronomical_calculations.snapshot).toEqual(delhiChart.snapshot);
+    expect(data.astronomical_calculations.snapshot?.engine_version).toBe("0.1.0");
+  });
+
+  it("records the engine version that COMPUTED the chart as software_version", () => {
+    const stamped = { ...delhiChart, snapshot: { ...delhiChart.snapshot!, engine_version: "0.0.9" } };
+
+    const data = siderealChartToChartData(stamped, DELHI_BIRTH, REF);
+
+    expect(data.astronomical_calculations.software_version).toBe("0.0.9");
+  });
+
+  it("still adapts a chart stored before snapshots existed, and says it has none", () => {
+    const { snapshot: _none, ...legacy } = delhiChart;
+
+    const data = siderealChartToChartData(legacy, DELHI_BIRTH, REF);
+
+    expect("snapshot" in data.astronomical_calculations).toBe(false);
+    expect(data.astronomical_calculations.software_version).toBe("almamesh-browser-engine");
+  });
+});

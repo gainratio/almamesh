@@ -86,7 +86,8 @@ export interface BirthMeta extends LocalBirthInput {
   readonly location_name: string;
 }
 
-const SOFTWARE_VERSION = "almamesh-browser-engine";
+/** The label a chart stored before snapshots existed keeps: no version is known. */
+const LEGACY_SOFTWARE_VERSION = "almamesh-browser-engine";
 
 /**
  * Mirrors the engine's `validate_coordinates` (InvalidBirthInputError) so a bad
@@ -466,7 +467,10 @@ export function siderealChartToChartData(
       // date and the "current" dasha came from two different instants.
       // NEVER `new Date(0)`: the epoch leaked through as "Generated on Dec 31 1969".
       calculation_timestamp: stampedAt.toISOString(),
-      software_version: SOFTWARE_VERSION,
+      // The engine that COMPUTED this chart, from its snapshot, never the
+      // engine running today. A chart stored before snapshots keeps the label.
+      software_version: chart.snapshot?.engine_version ?? LEGACY_SOFTWARE_VERSION,
+      ...(chart.snapshot ? { snapshot: chart.snapshot } : {}),
     },
     interpretation: undefined,
   };
