@@ -49,6 +49,8 @@ import {
   type PortableExport,
   type PortableRepairReport,
   repairPortableReferences,
+  holdSetAsideRecords,
+  type SetAsideRecord,
   type PortableStateSnapshot,
   type StorageTier,
 } from '@almamesh/store';
@@ -109,6 +111,7 @@ export interface BackupDepsOverride {
   ) => Promise<void>;
   mergeLegacyPreferences?: (bytes: Uint8Array, candidate: unknown) => Promise<Uint8Array>;
   readActiveEpoch?: () => Promise<number>;
+  holdSetAside?: (records: readonly SetAsideRecord[]) => Promise<void>;
 }
 
 /** How long staging waits for the local SQLite runtime before giving up. */
@@ -248,12 +251,15 @@ export type StagedImport =
       readonly kind: 'json';
       readonly envelope: BackupEnvelopePlain;
       readonly wasEncrypted: boolean;
+      /** What staging repaired (dangling person/chart references); shown before confirm. */
+      readonly repairs?: PortableRepairReport;
     }
   | {
       readonly kind: 'sqlite';
       readonly envelope: BackupEnvelopePlain;
       readonly wasEncrypted: false;
       readonly bytes: Uint8Array;
+      readonly repairs?: PortableRepairReport;
     }
   | {
       /** Encrypted SQLite bundle, normalized to the current canonical schema. */
@@ -261,6 +267,7 @@ export type StagedImport =
       readonly envelope: BackupEnvelopePlain;
       readonly wasEncrypted: true;
       readonly bytes: Uint8Array;
+      readonly repairs?: PortableRepairReport;
     };
 
 const SQLITE_HEADER = new Uint8Array([
@@ -322,15 +329,15 @@ export async function stageBackupImport(
       if (!hasSqliteHeader(database)) {
         throw new BackupError('corrupt', 'The backup unlocked but holds no AlmaMesh database.');
       }
-      const envelope = await readPortableEnvelope(database, override);
-      return { kind: 'bundle', envelope, wasEncrypted: true, bytes: database };
+      const { envelope, repairs } = await readPortableEnvelope(database, override);
+      return { kind: 'bundle', envelope, wasEncrypted: true, bytes: database, repairs };
     }
     if (!hasSqliteHeader(content)) {
       throw new BackupError('bad_format', 'This file is not an AlmaMesh backup.');
     }
     const bytes = content.slice();
-    const envelope = await readPortableEnvelope(bytes, override);
-    return { kind: 'sqlite', envelope, wasEncrypted: false, bytes };
+    const { envelope, repairs } = await readPortableEnvelope(bytes, override);
+    return { kind: 'sqlite', envelope, wasEncrypted: false, bytes, repairs };
   }
   if (content.length > MAX_BACKUP_TEXT_CHARACTERS) {
     throw new BackupError('bad_format', 'This backup file is too large to import safely.');
@@ -363,8 +370,8 @@ export async function stageBackupImport(
           database,
           settings,
         );
-    const envelope = await readPortableEnvelope(bytes, override);
-    return { kind: 'bundle', envelope, wasEncrypted: true, bytes };
+    const { envelope, repairs } = await readPortableEnvelope(bytes, override);
+    return { kind: 'bundle', envelope, wasEncrypted: true, bytes, repairs };
   }
   if (record.formatVersion > 2) {
     throw new BackupError(
@@ -384,8 +391,10 @@ export async function stageBackupImport(
     );
   }
 
-  const envelope = repairEnvelopeReferences(await decodeEnvelope(parsed as BackupEnvelope, passphrase));
-  return { kind: 'json', envelope, wasEncrypted };
+  const { envelope, repairs } = repairEnvelopeReferences(
+    await decodeEnvelope(parsed as BackupEnvelope, passphrase),
+  );
+  return { kind: 'json', envelope, wasEncrypted, repairs };
 }
 
 /**
@@ -394,17 +403,20 @@ export async function stageBackupImport(
  * person/chart references the same way export and the SQLite import do, so
  * importing an old file cannot poison every later export.
  */
-function repairEnvelopeReferences(envelope: BackupEnvelopePlain): BackupEnvelopePlain {
+function repairEnvelopeReferences(envelope: BackupEnvelopePlain): {
+  readonly envelope: BackupEnvelopePlain;
+  readonly repairs: PortableRepairReport;
+} {
   const values = new Map(
     Object.entries(envelope.stores).map(([key, snapshot]) => [key, JSON.stringify(snapshot)]),
   );
   const repaired = repairPortableReferences(values);
-  if (repaired.values === values) return envelope;
+  if (repaired.values === values) return { envelope, repairs: repaired.repairs };
   const stores: BackupEnvelopePlain['stores'] = {};
   for (const [key, value] of repaired.values) {
     stores[key] = JSON.parse(value) as BackupEnvelopePlain['stores'][string];
   }
-  return { ...envelope, stores };
+  return { envelope: { ...envelope, stores }, repairs: repaired.repairs };
 }
 
 /**
@@ -415,10 +427,14 @@ function repairEnvelopeReferences(envelope: BackupEnvelopePlain): BackupEnvelope
 async function readPortableEnvelope(
   bytes: Uint8Array,
   override?: Pick<BackupDepsOverride, 'readPortableState'>,
-): Promise<BackupEnvelopePlain> {
+): Promise<{ readonly envelope: BackupEnvelopePlain; readonly repairs: PortableRepairReport }> {
   try {
     const read = override?.readPortableState ?? readPortableStateDatabase;
-    return envelopeFromPortableSnapshot(await withinStageTimeout(read(bytes)));
+    const snapshot = await withinStageTimeout(read(bytes));
+    return {
+      envelope: envelopeFromPortableSnapshot(snapshot),
+      repairs: 'repairs' in snapshot ? (snapshot.repairs as PortableRepairReport) : EMPTY_PORTABLE_REPAIR_REPORT,
+    };
   } catch (error) {
     if (error instanceof PortableStateUnavailableError) throw error;
     if (error instanceof PortableStateTooNewError) {
@@ -487,6 +503,10 @@ export async function commitBackupImport(
     publish({ kind: 'dataset', operation: 'replace', phase: 'complete', presentStoreKeys });
     return;
   }
+  // User-written records of a person the file no longer holds stay on this
+  // device (set aside), never dropped with the import.
+  const setAside = staged.repairs?.setAside ?? [];
+  if (setAside.length > 0) await (override?.holdSetAside ?? holdSetAsideRecords)(setAside);
   const epoch = await beginRestore(restoredIds(plain));
   let rollback: BackupEnvelopePlain;
   try {

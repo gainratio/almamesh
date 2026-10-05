@@ -13,6 +13,7 @@ import {
   type BackupDeps,
   type BackupTier,
   type StorageTier,
+  holdSetAsideRecords,
 } from './backup';
 import { setPortableStateRepositoryForTests } from './deletionTombstones';
 import type { PortableStateRepository } from './portableState';
@@ -516,5 +517,26 @@ describe('applyBackup', () => {
     });
     expect(idb.map.size).toBe(0);
     expect(local.map.size).toBe(0);
+  });
+});
+
+describe('holdSetAsideRecords', () => {
+  const record = { row: 'almamesh-life-events', personId: 'gone', value: '[]' } as const;
+
+  it('holds user-written records of a missing person in SQLite', async () => {
+    const held: unknown[] = [];
+    setPortableStateRepositoryForTests({
+      holdSetAside: async (records: unknown, at: string) => void held.push([records, typeof at]),
+    } as unknown as PortableStateRepository);
+    try {
+      await holdSetAsideRecords([record]);
+      expect(held).toEqual([[[record], 'string']]);
+    } finally {
+      setPortableStateRepositoryForTests(undefined);
+    }
+  });
+
+  it('does not open SQLite when there is nothing to hold', async () => {
+    await expect(holdSetAsideRecords([])).resolves.toBeUndefined();
   });
 });

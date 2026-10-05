@@ -4,8 +4,10 @@ import {
   currentPortableDataset,
   EMPTY_PORTABLE_REPAIR_REPORT,
   hasPortableRepairs,
+  holdSetAsideRecords,
   repairPortableReferences,
   type PortableRepairReport,
+  type SetAsideRecord,
   abortBackupRestore,
   beginDatasetMutation,
   clearMemoryRebuildPending,
@@ -47,6 +49,7 @@ import {
 import { publishDeletionNotice, subscribeDeletionNotices } from './deletionPropagation';
 import { notifyLlmSettingsChanged } from './llmSettingsEvents';
 import { rehydratePortablePreferences } from './portablePreferences';
+import { useDataRepairNotice } from './dataRepairNotice';
 
 export interface ProfileDataLifecycleDeps {
   deleteMemoryForProfile: (profileId: string) => Promise<void>;
@@ -506,6 +509,10 @@ export async function resumePendingMemoryRebuild(
 export interface PortableReferenceDeps {
   /** True only when every dataset store hydrated successfully. */
   readonly hydrated?: () => Promise<boolean>;
+  /** Dataset rows SQLite actually holds; an absent row is "unknown", never empty. */
+  readonly presentKeys?: () => Promise<readonly string[]>;
+  /** Verified write of user-written records into SQLite's set-aside namespace. */
+  readonly holdSetAside?: (records: readonly SetAsideRecord[]) => Promise<void>;
   readonly persist?: () => Promise<void>;
 }
 
@@ -541,12 +548,21 @@ export async function reconcilePortableReferences(
   // A store that failed to hydrate looks empty: repairing against it would
   // drop live rows, and persisting it would overwrite them.
   if (!(await (deps.hydrated ?? datasetStoresHydrated)())) return EMPTY_PORTABLE_REPAIR_REPORT;
-  const before = currentPortableDataset();
+  // Only rows SQLite holds: a hydrated store whose row is absent serializes as
+  // empty (`profiles: {}`) and would make every person look deleted.
+  const present = new Set(
+    await (deps.presentKeys ?? (() => readActiveDatasetStoreKeys(PERSONAL_STORE_KEYS)))(),
+  );
+  const before = currentPortableDataset(present);
   const repair = repairPortableReferences(before);
   if (!hasPortableRepairs(repair.repairs)) return EMPTY_PORTABLE_REPAIR_REPORT;
+  // Set-aside records must be provably held before they leave the dataset; a
+  // failed hold throws and nothing is changed.
+  await (deps.holdSetAside ?? holdSetAsideRecords)(repair.repairs.setAside);
   adoptRepairedDataset(before, repair);
   safeWarn('lifecycle.portable_references_repaired');
   await (deps.persist ?? persistProfileDeletion)();
+  useDataRepairNotice.getState().show(repair.repairs);
   return repair.repairs;
 }
 

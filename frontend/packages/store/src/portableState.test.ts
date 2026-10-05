@@ -566,9 +566,9 @@ describe('PortableStateRepository', () => {
     ],
     [
       'JSON node count',
-      // 20 arrays of 200,000 numbers: under the entry limit, over 4,000,000 nodes.
-      { eventsByProfile: Object.fromEntries(Array.from({ length: 20 }, (_, i) => [`p${i}`, Array.from({ length: 200_000 }, () => 0)])) },
-      /exceeds 4000000 JSON nodes/,
+      // 5 arrays of 200,000 numbers: under the entry limit, just over 1,000,000 nodes.
+      { eventsByProfile: Object.fromEntries(Array.from({ length: 5 }, (_, i) => [`p${i}`, Array.from({ length: 200_000 }, () => 0)])) },
+      /exceeds 1000000 JSON nodes/,
     ],
   ] as const)('rejects canonical rows beyond the %s limit', async (_label, state, expected) => {
     const sqlite = new MemorySqliteStore();
@@ -1008,14 +1008,18 @@ describe('repairPortableReferences: every dangling reference normal use can leav
     await expect(repository.exportBytes()).resolves.toBeInstanceOf(Uint8Array);
   });
 
-  it('probe 4: leaves out life events of a person who no longer exists, keeping everyone else', async () => {
+  it('probe 4: sets aside life events of a person who no longer exists, keeping everyone else', async () => {
     const { repository, handed } = await seed([
       ['almamesh-life-events', { eventsByProfile: { gone: [], p1: [] } }],
     ]);
 
     const report = await repository.exportWithReport();
 
-    expect(report.repairs.droppedPersonRecords).toEqual(['almamesh-life-events/gone']);
+    // User-written: never deleted, set aside (the caller holds it in SQLite).
+    expect(report.repairs.droppedPersonRecords).toEqual([]);
+    expect(report.repairs.setAside).toEqual([
+      { row: 'almamesh-life-events', personId: 'gone', value: '[]' },
+    ]);
     expect(stateOf(handed[0]!, 'almamesh-life-events').eventsByProfile).toEqual({ p1: [] });
   });
 
@@ -1044,7 +1048,14 @@ describe('repairPortableReferences: every dangling reference normal use can leav
     expect(repairs).toEqual({
       unlinkedChatThreadIds: [],
       droppedReadingChartIds: ['c2'],
-      droppedPersonRecords: ['almamesh-rectification-records/gone', 'almamesh-mesh-readings/gone|p1'],
+      droppedPersonRecords: ['almamesh-mesh-readings/gone|p1'],
+      setAside: [
+        {
+          row: 'almamesh-rectification-records',
+          personId: 'gone',
+          value: JSON.stringify({ profileId: 'gone' }),
+        },
+      ],
       clearedProfileLinks: ['p1', 'activeProfileId'],
       resetPredictive: true,
     });
@@ -1055,6 +1066,35 @@ describe('repairPortableReferences: every dangling reference normal use can leav
     });
     expect(Object.keys(stateOf(exported, 'almamesh-mesh-readings').byPair as object)).toEqual(['p1|p2']);
     expect(stateOf(exported, 'almamesh-predictive')).toEqual({ status: 'idle' });
+  });
+
+  it('holds set-aside records in SQLite, idempotently, and never exports them', async () => {
+    const { repository, handed } = await seed([]);
+    const record = { row: 'almamesh-life-events', personId: 'gone', value: '[{"id":"e1","note":"Married"}]' } as const;
+
+    await repository.holdSetAside([record], '2026-10-05T00:00:00.000Z');
+    await repository.holdSetAside([record], '2026-10-06T00:00:00.000Z');
+    await repository.exportBytes();
+
+    const held = [...(await repository.listSetAside())];
+    expect(held).toHaveLength(1);
+    expect(held[0]![0]).toMatch(/^gone\/almamesh-life-events\/[0-9a-f]{64}$/);
+    expect(JSON.parse(held[0]![1])).toMatchObject({ ...record });
+    expect([...handed[0]!.values()].some((value) => value.includes('Married'))).toBe(false);
+  });
+
+  it('treats an absent profiles row as unknown: no person-keyed record is touched', () => {
+    const values = new Map([
+      ['almamesh-chart-library', envelope({ charts: { c2: { chart_id: 'c2' } } }, 'almamesh-chart-library')],
+      ['almamesh-life-events', envelope({ eventsByProfile: { p1: [{ id: 'e1' }] } }, 'almamesh-life-events')],
+      ['almamesh-rectification-records', envelope({ recordsByProfile: { p1: { profileId: 'p1' } } }, 'almamesh-rectification-records')],
+      ['almamesh-interpretations', envelope({ byChart: { c2: { profileId: 'p1' } } }, 'almamesh-interpretations')],
+    ]);
+
+    const repaired = repairPortableReferences(values);
+
+    expect(repaired.values).toBe(values);
+    expect(repaired.repairs).toEqual(EMPTY_PORTABLE_REPAIR_REPORT);
   });
 
   it('accepts the same rows on import (the snapshot read from a file is repaired, then validated)', () => {

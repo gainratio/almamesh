@@ -1251,6 +1251,19 @@ describe('forgetChart: a replaced chart takes its reading with it', () => {
     expect(store.getState().byChart.c1).toBeUndefined();
   });
 
+  it('refuses untokened late timeline writes for the forgotten chart', async () => {
+    const store = newStore();
+    store.getState().startCurrentTimeline('c1', 'p1');
+    store.getState().forgetChart('c1');
+
+    store.getState().markCurrentTimelineSectionComplete('c1', 'current_sky');
+    store.getState().markCurrentTimelineSectionFailed('c1', 'upcoming_periods');
+    await store.getState().setCurrentTimeline('c1', { upcoming_periods: [], current_sky: [] } as never, '2026-10-05T00:00:00Z');
+    store.getState().setCurrentTimelineError('c1', 'late failure');
+
+    expect(store.getState().byChart.c1).toBeUndefined();
+  });
+
   it('accepts a fresh run if the same chart id comes back (renamed back)', async () => {
     const store = newStore();
     store.getState().forgetChart('c1');

@@ -121,8 +121,12 @@ export async function persistChatDeletion(): Promise<void> {
   await persistCurrentSnapshot(useChatStore);
 }
 
-/** The live dataset, serialized exactly as each store persists it. */
-export function currentPortableDataset(): ReadonlyMap<string, string> {
+/**
+ * The live dataset, serialized exactly as each store persists it, limited to
+ * the rows SQLite holds (`present`): a store whose row is absent is unknown,
+ * not empty, and must not take part in a repair.
+ */
+export function currentPortableDataset(present: ReadonlySet<string>): ReadonlyMap<string, string> {
   return new Map(
     [
       currentDatasetSnapshot(useProfilesStore),
@@ -133,7 +137,9 @@ export function currentPortableDataset(): ReadonlyMap<string, string> {
       currentDatasetSnapshot(useMeshReadingsStore),
       currentDatasetSnapshot(useRectificationRecordsStore),
       currentDatasetSnapshot(usePredictiveStore),
-    ].map((row) => [row.key, row.value ?? '']),
+    ]
+      .filter((row) => present.has(row.key))
+      .map((row) => [row.key, row.value ?? '']),
   );
 }
 

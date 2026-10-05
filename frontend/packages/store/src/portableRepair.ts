@@ -10,14 +10,22 @@
  *
  * - chat thread -> missing chart: the link is dropped, the conversation kept;
  * - AI reading for a missing chart or person: dropped (derived, regenerable);
- * - life events / rectification record for a missing person: dropped;
- * - relationship reading with a missing person: dropped;
+ * - life events / rectification record for a missing person: USER-WRITTEN, so
+ *   never deleted: taken out of the dataset and returned in `setAside` for
+ *   the caller to hold in SQLite's set-aside namespace (export leaves them in
+ *   the live rows and only keeps them out of the file);
+ * - relationship reading with a missing person: dropped (derived);
  * - `relatedTo` / `activeProfileId` -> missing person: cleared;
  * - cached predictive result for a missing person or chart: reset to idle.
  *
+ * Person-keyed repairs run only when the profiles row is present, and chart
+ * repairs only when the chart-library row is present: an absent row means
+ * "unknown", never "everyone is gone" (an absent-but-hydrated profiles store
+ * once looked empty and would have dropped every person's records).
+ *
  * Everything else (bad JSON, mismatched ids, wrong shapes, a chart or chat
  * thread owned by a missing person) is left untouched so the validator still
- * refuses real corruption. Every drop is reported, so the UI can say so.
+ * refuses real corruption. Every change is reported, so the UI can say so.
  */
 
 import { unlinkMissingChartLinks } from './chatChartLinks';
@@ -27,12 +35,22 @@ export interface PortableRepairReport {
   readonly unlinkedChatThreadIds: readonly string[];
   /** AI readings left out because their chart or person no longer exists. */
   readonly droppedReadingChartIds: readonly string[];
-  /** `<row>/<key>` records left out because their person no longer exists. */
+  /** `<row>/<key>` derived records left out because their person no longer exists. */
   readonly droppedPersonRecords: readonly string[];
+  /** User-written records of a person who no longer exists, kept out of the dataset. */
+  readonly setAside: readonly SetAsideRecord[];
   /** Profile ids whose `relatedTo` was cleared, plus `activeProfileId` if reset. */
   readonly clearedProfileLinks: readonly string[];
   /** True when a cached predictive result for a missing target was reset. */
   readonly resetPredictive: boolean;
+}
+
+/** A user-written record (life events, rectification) whose person is gone. */
+export interface SetAsideRecord {
+  readonly row: 'almamesh-life-events' | 'almamesh-rectification-records';
+  readonly personId: string;
+  /** The record exactly as it was stored (JSON). */
+  readonly value: string;
 }
 
 export interface PortableRepair {
@@ -45,6 +63,7 @@ export const EMPTY_PORTABLE_REPAIR_REPORT: PortableRepairReport = {
   unlinkedChatThreadIds: [],
   droppedReadingChartIds: [],
   droppedPersonRecords: [],
+  setAside: [],
   clearedProfileLinks: [],
   resetPredictive: false,
 };
@@ -55,6 +74,7 @@ export function hasPortableRepairs(report: PortableRepairReport): boolean {
     report.unlinkedChatThreadIds.length > 0 ||
     report.droppedReadingChartIds.length > 0 ||
     report.droppedPersonRecords.length > 0 ||
+    report.setAside.length > 0 ||
     report.clearedProfileLinks.length > 0 ||
     report.resetPredictive
   );
@@ -100,6 +120,7 @@ class Repairer {
   readonly unlinkedChatThreadIds: string[] = [];
   readonly droppedReadingChartIds: string[] = [];
   readonly droppedPersonRecords: string[] = [];
+  readonly setAside: SetAsideRecord[] = [];
   readonly clearedProfileLinks: string[] = [];
   resetPredictive = false;
 
@@ -175,8 +196,11 @@ function repairPersonRows(repair: Repairer, profileIds: ReadonlySet<string> | un
     ['almamesh-life-events', 'eventsByProfile'],
     ['almamesh-rectification-records', 'recordsByProfile'],
   ] as const) {
-    const dropped = repair.dropEntries(key, field, (id) => missing(id, profileIds));
-    repair.droppedPersonRecords.push(...dropped.map((id) => `${key}/${id}`));
+    const map = envelopeOf(repair.rows, key)?.state[field];
+    const removed = repair.dropEntries(key, field, (id) => missing(id, profileIds));
+    for (const personId of removed) {
+      repair.setAside.push({ row: key, personId, value: JSON.stringify((map as Row)[personId]) });
+    }
   }
   const pairs = repair.dropEntries('almamesh-mesh-readings', 'byPair', (_id, reading) => {
     const owners = isRecord(reading) ? reading.profileIds : undefined;
@@ -206,6 +230,7 @@ export function repairPortableReferences(values: ReadonlyMap<string, string>): P
     unlinkedChatThreadIds: repair.unlinkedChatThreadIds,
     droppedReadingChartIds: repair.droppedReadingChartIds,
     droppedPersonRecords: repair.droppedPersonRecords,
+    setAside: repair.setAside,
     clearedProfileLinks: repair.clearedProfileLinks,
     resetPredictive: repair.resetPredictive,
   };

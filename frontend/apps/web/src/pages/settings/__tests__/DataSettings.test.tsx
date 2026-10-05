@@ -170,7 +170,7 @@ describe('DataSettings — Backup & Restore panel', () => {
     expect(await screen.findByText('Backup downloaded.')).toBeTruthy();
   });
 
-  it('says plainly what the export repaired: chats kept without their chart, readings and records left out', async () => {
+  it('says plainly what the export repaired: chats kept without their chart, readings left out, records set aside', async () => {
     vi.mocked(buildBackupExport).mockResolvedValue({
       filename: 'almamesh-backup-2026-10-05.almamesh',
       content: new Uint8Array([1]),
@@ -178,7 +178,7 @@ describe('DataSettings — Backup & Restore panel', () => {
         ...EMPTY_PORTABLE_REPAIR_REPORT,
         unlinkedChatThreadIds: ['t1'],
         droppedReadingChartIds: ['c1', 'c3'],
-        droppedPersonRecords: ['almamesh-life-events/gone'],
+        setAside: [{ row: 'almamesh-life-events', personId: 'gone', value: '[]' }],
       },
     });
     render(<DataSettings />);
@@ -190,11 +190,29 @@ describe('DataSettings — Backup & Restore panel', () => {
 
     expect(
       await screen.findByText(
-        'Backup downloaded. 1 chat conversation was started on a chart that no longer exists. It is in the backup in full, just no longer linked to that chart. '
-          + '2 AI readings belonged to charts that no longer exist and were left out. You can generate new readings anytime. '
-          + '1 saved record belonged to a person who is no longer on this device and was left out.',
+        'Backup downloaded. 1 chat conversation was started on a chart that no longer exists. It is kept in full, just no longer linked to that chart. '
+          + '2 AI readings belonged to charts that no longer exist, so they were not kept. You can generate new readings anytime. '
+          + '1 saved record (life events or a birth-time check) belongs to a person who is no longer on this device. '
+          + 'It is set aside on this device, not deleted, and not included in backups.',
       ),
     ).toBeTruthy();
+  });
+
+  it('says before Replace what the import will repair', async () => {
+    vi.mocked(pickBackupFile).mockResolvedValue('FILE_TEXT');
+    vi.mocked(stageBackupImport).mockResolvedValueOnce({
+      kind: 'json',
+      envelope: { format: 'almamesh-backup', formatVersion: 1, app: { version: 't' }, exportedAt: 'x', encryption: 'none', stores: {} },
+      wasEncrypted: false,
+      repairs: { ...EMPTY_PORTABLE_REPAIR_REPORT, droppedReadingChartIds: ['c1'] },
+    });
+    render(<DataSettings />);
+
+    fireEvent.click(screen.getByTestId('backup-import-button'));
+
+    const note = await screen.findByTestId('backup-import-repairs');
+    expect(note.textContent).toContain('This backup needs a small repair');
+    expect(note.textContent).toContain('1 AI reading belonged to a chart that no longer exists, so it was not kept.');
   });
 
   it('shows the export failure reason instead of a generic error', async () => {

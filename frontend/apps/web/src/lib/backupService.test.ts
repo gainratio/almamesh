@@ -897,6 +897,48 @@ describe('legacy JSON import repairs dangling references (2026-10-05 audit)', ()
     expect(stores['almamesh-chat-history']!.version).toBe(2);
     expect(stores['almamesh-interpretations']!.state).toEqual({ byChart: {} });
     expect(stores['almamesh-profiles']).toEqual(file.stores['almamesh-profiles']);
+    expect(staged.repairs?.unlinkedChatThreadIds).toEqual(['t1']);
+    expect(staged.repairs?.droppedReadingChartIds).toEqual(['c1']);
+  });
+
+  it('holds set-aside life events in SQLite before a legacy JSON import replaces anything', async () => {
+    const order: string[] = [];
+    const record = { row: 'almamesh-life-events', personId: 'gone', value: '[]' } as const;
+    const plain: BackupEnvelopePlain = {
+      format: 'almamesh-backup',
+      formatVersion: 1,
+      app: { version: 'legacy' },
+      exportedAt: FIXED_NOW,
+      encryption: 'none',
+      stores: {},
+    };
+
+    await commitBackupImport(
+      { kind: 'json', envelope: plain, wasEncrypted: false, repairs: { ...EMPTY_PORTABLE_REPAIR_REPORT, setAside: [record] } },
+      {
+        tiers: { idb: memTier(), local: memTier() },
+        holdSetAside: vi.fn(async () => void order.push('hold')),
+        beginBackupRestore: vi.fn(async () => {
+          order.push('begin');
+          return 1;
+        }),
+        finalizeBackupRestore: vi.fn().mockResolvedValue(undefined),
+        abortBackupRestore: vi.fn().mockResolvedValue(undefined),
+      },
+    );
+
+    expect(order.slice(0, 2)).toEqual(['hold', 'begin']);
+  });
+
+  it('reports what a SQLite backup needed repaired, for the preview', async () => {
+    const repairs = { ...EMPTY_PORTABLE_REPAIR_REPORT, droppedReadingChartIds: ['c1'] };
+    const sqlite = new Uint8Array([...new TextEncoder().encode('SQLite format 3\0'), 1]);
+
+    const staged = await stageBackupImport(sqlite, undefined, {
+      readPortableState: vi.fn().mockResolvedValue({ epoch: 1, values: new Map(), quarantine: new Map(), repairs }),
+    });
+
+    expect(staged.repairs).toBe(repairs);
   });
 });
 

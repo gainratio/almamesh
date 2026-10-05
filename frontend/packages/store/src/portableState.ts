@@ -6,7 +6,11 @@ import {
   type SqliteStateStore,
 } from '@gainratio/browser/sqlite';
 
-import { repairPortableReferences, type PortableRepairReport } from './portableRepair';
+import {
+  repairPortableReferences,
+  type PortableRepairReport,
+  type SetAsideRecord,
+} from './portableRepair';
 
 export {
   EMPTY_PORTABLE_REPAIR_REPORT,
@@ -14,6 +18,7 @@ export {
   repairPortableReferences,
   type PortableRepair,
   type PortableRepairReport,
+  type SetAsideRecord,
 } from './portableRepair';
 
 export const PORTABLE_STATE_DATABASE = 'almamesh-user-state';
@@ -27,6 +32,12 @@ export const PORTABLE_LEDGER_KEY = 'almamesh-deletion-tombstones';
  * never part of a snapshot, a restore, or an exported backup.
  */
 export const PORTABLE_QUARANTINE_NAMESPACE = 'quarantine';
+/**
+ * Side table for user-written records (life events, rectification records)
+ * whose person no longer exists. Held instead of deleted, keyed
+ * `<personId>/<row>/<sha256>`; never part of a snapshot, restore, or backup.
+ */
+export const PORTABLE_SET_ASIDE_NAMESPACE = 'set-aside';
 export const PORTABLE_STATE_UNAVAILABLE_MESSAGE =
   'Portable SQLite requires cross-origin isolation, Web Workers, OPFS, SharedArrayBuffer, and Atomics.waitAsync.';
 
@@ -160,7 +171,12 @@ const MAX_CANONICAL_ROWS = 1_000;
 // user's own long chat thread at export (2026-10-05 audit).
 const MAX_COLLECTION_ENTRIES = 250_000;
 const MAX_STRING_CHARACTERS = 1_000_000;
-const MAX_JSON_NODES = 4_000_000;
+// Measured 2026-10-05 (Chromium, CDP heap usage): decode + validator parse +
+// repair parse + repair stringify of one row costs ~64 MB of JS heap per
+// 1,000,000 nodes (empty objects: 64 MB; chat messages: 56 MB). 1,000,000
+// keeps one row's peak near 64 MB for low-end phones while holding about
+// 200,000 chat messages (a 40,000-message history is ~200,000 nodes).
+const MAX_JSON_NODES = 1_000_000;
 const MAX_JSON_DEPTH = 64;
 const MAX_IDENTIFIER_CHARACTERS = 512;
 const encoder = new TextEncoder();
@@ -350,6 +366,38 @@ export class PortableStateRepository {
     await this.#store.batch(mutations.map(toSqliteMutation));
   }
 
+  /** Every held set-aside record, keyed `<personId>/<row>/<sha256>`. */
+  public async listSetAside(): Promise<ReadonlyMap<string, string>> {
+    const page = await this.#store.list({
+      namespace: PORTABLE_SET_ASIDE_NAMESPACE,
+      limit: MAX_CANONICAL_ROWS,
+    });
+    return new Map(page.rows.map((row) => [row.key, decode(row.value, row.key)]));
+  }
+
+  /**
+   * Hold user-written records of a missing person (idempotent: the key is a
+   * digest of the record). Resolves only once SQLite provably holds every one,
+   * so a caller may then drop them from the dataset.
+   */
+  public async holdSetAside(records: readonly SetAsideRecord[], at: string): Promise<void> {
+    if (records.length === 0) return;
+    const rows = await Promise.all(records.map(async (record) => ({
+      key: `${record.personId}/${record.row}/${await sha256Hex(record.value)}`,
+      value: JSON.stringify({ ...record, setAsideAt: at }),
+    })));
+    await this.#store.batch(rows.map(({ key, value }) => ({
+      type: 'put',
+      namespace: PORTABLE_SET_ASIDE_NAMESPACE,
+      key,
+      value: encoder.encode(value),
+    })));
+    const held = await this.listSetAside();
+    if (rows.some(({ key }) => !held.has(key))) {
+      throw new Error('Set-aside records did not verify in SQLite.');
+    }
+  }
+
   public async exportBytes(): Promise<Uint8Array> {
     return (await this.exportWithReport()).bytes;
   }
@@ -506,7 +554,9 @@ export async function validatePortableStateDatabase(bytes: Uint8Array): Promise<
 }
 
 /** Read a validated transport database without exposing arbitrary SQL. */
-export async function readPortableStateDatabase(bytes: Uint8Array): Promise<PortableStateSnapshot> {
+export async function readPortableStateDatabase(
+  bytes: Uint8Array,
+): Promise<PortableStateSnapshot & { readonly repairs: PortableRepairReport }> {
   const store = await createSqliteStateStore({
     name: 'almamesh-import-validation',
     initialSchemaVersion: PORTABLE_STATE_SCHEMA_VERSION,
@@ -520,7 +570,8 @@ export async function readPortableStateDatabase(bytes: Uint8Array): Promise<Port
     await repository.checkIntegrity();
     const read = await repository.snapshot();
     // Files exported before the repair existed may still carry stale references.
-    const snapshot = { ...read, values: repairPortableReferences(read.values).values };
+    const repaired = repairPortableReferences(read.values);
+    const snapshot = { ...read, values: repaired.values, repairs: repaired.repairs };
     validatePortableSnapshot(snapshot);
     return snapshot;
   } finally {
@@ -655,6 +706,11 @@ export async function readPortablePreferences(
 /** Decode one canonical preferences row after enforcing its typed size limits. */
 export function decodePortablePreferences(value: string): PortablePreferences {
   return parsePortablePreferences(value);
+}
+
+async function sha256Hex(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', encoder.encode(value));
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
 function toSqliteMutation(mutation: PortableStateMutation): SqliteStateMutation {
