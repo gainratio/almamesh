@@ -1,5 +1,5 @@
 import type { StateStorage } from 'zustand/middleware';
-import { createStore, del as idbDel, get as idbGet } from 'idb-keyval';
+import { deleteLegacyKeyval, readLegacyKeyval } from './legacyKeyval';
 import {
   migrateLegacyState,
   openPortableStateRepository,
@@ -69,14 +69,6 @@ const EMPTY_TOMBSTONES: DeletionTombstones = {
   threadIds: [],
   chartIds: [],
 };
-
-/**
- * The pre-SQLite idb-keyval database. Read once by the legacy migration and
- * then retired; nothing writes it.
- * TODO(remove after 2026-11-04, one release after the SQLite-only move): drop
- * this reader with `migrateLegacyState` once returning visitors have migrated.
- */
-const legacyKeyvalStore = createStore('keyval-store', 'keyval');
 
 /**
  * Runtimes without the SQLite Worker (Node tests, SSR prerender) keep the
@@ -316,7 +308,7 @@ async function portableRepository(): Promise<PortableStateRepository | null> {
           const storage = browserLocalStorage();
           return typeof storage?.getItem === 'function' ? storage.getItem(key) : null;
         }
-        const value = await idbGet<unknown>(key, legacyKeyvalStore);
+        const value = await readLegacyKeyval(key);
         if (value === undefined) return null;
         return typeof value === 'string' ? value : JSON.stringify(value);
       },
@@ -326,7 +318,7 @@ async function portableRepository(): Promise<PortableStateRepository | null> {
           storage?.removeItem?.(key);
           return;
         }
-        await idbDel(key, legacyKeyvalStore);
+        await deleteLegacyKeyval(key);
       },
     };
     await migrateLegacyState(

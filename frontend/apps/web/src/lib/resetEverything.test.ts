@@ -10,7 +10,7 @@
  *
  * All fixtures are synthetic.
  */
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { del as idbDel } from 'idb-keyval';
 
 import { SemanticMemoryStorageUnavailableError } from '@almamesh/memory';
@@ -127,7 +127,17 @@ beforeEach(() => {
   usePredictiveStore.getState().reset();
   vi.mocked(clearMemory).mockClear();
   vi.mocked(idbDel).mockReset().mockResolvedValue(undefined);
+  // These tests model a browser upgraded from a pre-SQLite build, so the
+  // legacy idb-keyval database exists (the reader checks before opening it).
+  setIndexedDb({ databases: async () => [{ name: 'keyval-store', version: 1 }] });
 });
+
+afterEach(() => setIndexedDb(ORIGINAL_INDEXED_DB));
+
+const ORIGINAL_INDEXED_DB = (globalThis as { indexedDB?: unknown }).indexedDB;
+function setIndexedDb(value: unknown): void {
+  Object.defineProperty(globalThis, 'indexedDB', { value, configurable: true });
+}
 
 describe('store clearAll actions', () => {
   it('chartLibrary.clearAll empties charts without creating a route-guard flag', () => {
@@ -313,6 +323,16 @@ describe('resetEverything', () => {
         clearPersisted: () => Promise.reject(failure),
       }),
     ).rejects.toBe(failure);
+  });
+
+  it('never opens (and so never creates) the legacy database on a browser that never had one', async () => {
+    setIndexedDb({ databases: async () => [] });
+    await resetEverything({
+      waitForHydration: () => Promise.resolve(),
+      beginDatasetReset: () => Promise.resolve(3),
+      clearPersisted: () => Promise.resolve(),
+    });
+    expect(vi.mocked(idbDel)).not.toHaveBeenCalled();
   });
 
   it('propagates a legacy keyval cleanup failure and aborts the fenced reset', async () => {
