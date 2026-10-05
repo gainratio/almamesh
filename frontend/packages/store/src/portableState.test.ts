@@ -13,6 +13,7 @@ import {
   migrateLegacyState,
   PORTABLE_DATASET_KEYS,
   PORTABLE_PREFERENCES_KEY,
+  PORTABLE_QUARANTINE_NAMESPACE,
   PORTABLE_STORE_MAX_VERSIONS,
   PORTABLE_STATE_NAMESPACE,
   PORTABLE_STATE_UNAVAILABLE_MESSAGE,
@@ -127,6 +128,11 @@ class MemorySqliteStore implements SqliteStateStore {
     return { changed: 0, epoch: this.epoch, schemaVersion: 1 };
   }
   async dispose() {}
+}
+
+/** Stands in for the canonical-only rebuild: the fake file is one byte, its epoch. */
+function rebuildAtEpoch(sqlite: { epoch: number }): () => Promise<Uint8Array> {
+  return async () => new Uint8Array([sqlite.epoch]);
 }
 
 describe('PortableStateRepository', () => {
@@ -353,10 +359,8 @@ describe('PortableStateRepository', () => {
   });
 
   it('initializes a settled ledger for a fresh browser so its SQLite file is exportable', async () => {
-    const repository = new PortableStateRepository(
-      new MemorySqliteStore(),
-      async (bytes) => bytes[0]!,
-    );
+    const sqlite = new MemorySqliteStore();
+    const repository = new PortableStateRepository(sqlite, async (bytes) => bytes[0]!, rebuildAtEpoch(sqlite));
 
     await expect(
       migrateLegacyState(repository, { get: async () => null, delete: async () => undefined }, []),
@@ -373,7 +377,7 @@ describe('PortableStateRepository', () => {
 
   it('retries when another runtime changes the live epoch during export', async () => {
     const sqlite = new MemorySqliteStore();
-    const repository = new PortableStateRepository(sqlite, async (bytes) => bytes[0]!);
+    const repository = new PortableStateRepository(sqlite, async (bytes) => bytes[0]!, rebuildAtEpoch(sqlite));
     await migrateLegacyState(
       repository,
       { get: async () => null, delete: async () => undefined },
@@ -405,14 +409,14 @@ describe('PortableStateRepository', () => {
     expect(sqlite.exportCalls).toBe(2);
   });
 
-  it('returns a compacted copy of the validated file, so deleted rows cannot ride along in free pages', async () => {
+  it('rebuilds every export from the canonical rows at the validated epoch, never the raw file', async () => {
     const sqlite = new MemorySqliteStore();
-    const compacted: number[][] = [];
+    const rebuilt: string[][] = [];
     const repository = new PortableStateRepository(
       sqlite,
       async (bytes) => bytes[0] ?? -1,
-      async (bytes) => {
-        compacted.push(Array.from(bytes));
+      async (canonical) => {
+        rebuilt.push([...canonical.keys()].sort());
         return new Uint8Array([99]);
       },
     );
@@ -420,9 +424,52 @@ describe('PortableStateRepository', () => {
 
     const exported = await repository.exportBytes();
 
-    // MemorySqliteStore exports one byte: its epoch. The compactor saw exactly
-    // that validated file, and its output is what leaves the browser.
-    expect(compacted).toEqual([[sqlite.epoch]]);
+    // A fresh file written from live canonical rows: no free-page residue of a
+    // deleted row, and nothing outside the canonical namespace.
+    expect(rebuilt).toEqual([[...(await repository.snapshot()).values.keys()].sort()]);
+    expect(Array.from(exported)).toEqual([99]);
+  });
+
+  it('never exports a quarantine row, even when another tab empties the quarantine mid-export', async () => {
+    const sqlite = new MemorySqliteStore();
+    const handed: unknown[] = [];
+    const repository = new PortableStateRepository(
+      sqlite,
+      async (bytes) => bytes[0] ?? -1,
+      async (canonical: unknown) => {
+        handed.push(canonical);
+        return new Uint8Array([99]);
+      },
+    );
+    await migrateLegacyState(repository, { get: async () => null, delete: async () => undefined }, []);
+    const quarantineKey = `owner/${'a'.repeat(64)}`;
+    await repository.applyQuarantine([
+      { type: 'put', namespace: PORTABLE_QUARANTINE_NAMESPACE, key: quarantineKey, value: 'held reading' },
+    ]);
+    // The raw file is serialized while the quarantine row is still in it. The
+    // other tab's clear lands after the export's epoch check (quarantine writes
+    // are not fenced by the dataset epoch), so the row is gone by the time
+    // anything re-reads the quarantine.
+    sqlite.exportHook = async () => {
+      const raw = new Uint8Array([sqlite.epoch]);
+      const read = sqlite.runtimeInfo.bind(sqlite);
+      let calls = 0;
+      sqlite.runtimeInfo = async () => {
+        const info = await read();
+        calls += 1;
+        if (calls === 2) sqlite.values.delete(`${PORTABLE_QUARANTINE_NAMESPACE}/${quarantineKey}`);
+        return info;
+      };
+      return raw;
+    };
+
+    const exported = await repository.exportBytes();
+
+    // The raw SQLite file (which held the quarantine row) never leaves: the
+    // export is rebuilt from canonical rows only.
+    expect(handed).toHaveLength(1);
+    expect(handed[0]).toBeInstanceOf(Map);
+    expect([...(handed[0] as Map<string, string>).keys()].some((key) => key.includes(quarantineKey))).toBe(false);
     expect(Array.from(exported)).toEqual([99]);
   });
 
@@ -473,7 +520,7 @@ describe('PortableStateRepository', () => {
     'rejects hostile canonical state with %s',
     async (_label, key, state, expected) => {
       const sqlite = new MemorySqliteStore();
-      const repository = new PortableStateRepository(sqlite, async (bytes) => bytes[0]!);
+      const repository = new PortableStateRepository(sqlite, async (bytes) => bytes[0]!, rebuildAtEpoch(sqlite));
       await migrateLegacyState(
         repository,
         { get: async () => null, delete: async () => undefined },
@@ -525,7 +572,7 @@ describe('PortableStateRepository', () => {
     ],
   ] as const)('rejects canonical rows beyond the %s limit', async (_label, state, expected) => {
     const sqlite = new MemorySqliteStore();
-    const repository = new PortableStateRepository(sqlite, async (bytes) => bytes[0]!);
+    const repository = new PortableStateRepository(sqlite, async (bytes) => bytes[0]!, rebuildAtEpoch(sqlite));
     await migrateLegacyState(
       repository,
       { get: async () => null, delete: async () => undefined },
@@ -542,7 +589,7 @@ describe('PortableStateRepository', () => {
 
   it('accepts a predictive result keyed by a known chart fallback', async () => {
     const sqlite = new MemorySqliteStore();
-    const repository = new PortableStateRepository(sqlite, async (bytes) => bytes[0]!);
+    const repository = new PortableStateRepository(sqlite, async (bytes) => bytes[0]!, rebuildAtEpoch(sqlite));
     await migrateLegacyState(
       repository,
       { get: async () => null, delete: async () => undefined },
@@ -578,7 +625,7 @@ describe('PortableStateRepository', () => {
 
   it('accepts a legacy chat envelope from before summaries were persisted', async () => {
     const sqlite = new MemorySqliteStore();
-    const repository = new PortableStateRepository(sqlite, async (bytes) => bytes[0]!);
+    const repository = new PortableStateRepository(sqlite, async (bytes) => bytes[0]!, rebuildAtEpoch(sqlite));
     await migrateLegacyState(
       repository,
       { get: async () => null, delete: async () => undefined },
@@ -601,7 +648,7 @@ describe('PortableStateRepository', () => {
 
   it('fails clearly after bounded retries when the live epoch never settles', async () => {
     const sqlite = new MemorySqliteStore();
-    const repository = new PortableStateRepository(sqlite, async (bytes) => bytes[0]!);
+    const repository = new PortableStateRepository(sqlite, async (bytes) => bytes[0]!, rebuildAtEpoch(sqlite));
     await migrateLegacyState(
       repository,
       { get: async () => null, delete: async () => undefined },
@@ -633,7 +680,7 @@ describe('PortableStateRepository', () => {
     'rejects a future %s Zustand envelope with a typed compatibility error',
     async (key, maxVersion) => {
       const sqlite = new MemorySqliteStore();
-      const repository = new PortableStateRepository(sqlite, async (bytes) => bytes[0]!);
+      const repository = new PortableStateRepository(sqlite, async (bytes) => bytes[0]!, rebuildAtEpoch(sqlite));
       await migrateLegacyState(
         repository,
         { get: async () => null, delete: async () => undefined },
@@ -669,7 +716,7 @@ describe('PortableStateRepository', () => {
     ],
   ] as const)('rejects a future %s row through the typed compatibility path', async (key, value) => {
     const sqlite = new MemorySqliteStore();
-    const repository = new PortableStateRepository(sqlite, async (bytes) => bytes[0]!);
+    const repository = new PortableStateRepository(sqlite, async (bytes) => bytes[0]!, rebuildAtEpoch(sqlite));
     await migrateLegacyState(
       repository,
       { get: async () => null, delete: async () => undefined },
@@ -705,7 +752,11 @@ describe('PortableStateRepository', () => {
         }),
         evil: 'drop-me',
         },
-        { createStore: async () => sqlite, validateExport: async (bytes) => bytes[0]! },
+        {
+          createStore: async () => sqlite,
+          validateExport: async (bytes) => bytes[0]!,
+          rebuildExport: rebuildAtEpoch(sqlite),
+        },
       ),
     ).resolves.toEqual(new Uint8Array([2]));
 

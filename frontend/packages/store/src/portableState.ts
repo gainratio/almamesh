@@ -201,18 +201,18 @@ export interface LegacyStateStorage {
 export class PortableStateRepository {
   readonly #store: SqliteStateStore;
   readonly #validateExport: (bytes: Uint8Array) => Promise<number>;
-  readonly #compactExport: (bytes: Uint8Array) => Promise<Uint8Array>;
+  readonly #rebuildExport: (canonical: ReadonlyMap<string, string>) => Promise<Uint8Array>;
   #writeQueue: Promise<void> = Promise.resolve();
 
   public constructor(
     store: SqliteStateStore,
     validateExport: (bytes: Uint8Array) => Promise<number> = validatePortableExportDatabase,
-    /** Production passes compactPortableExport; unit tests' fake bytes pass through. */
-    compactExport: (bytes: Uint8Array) => Promise<Uint8Array> = async (bytes) => bytes,
+    /** Production passes canonicalOnlyExport; unit tests pass a stub. */
+    rebuildExport: (canonical: ReadonlyMap<string, string>) => Promise<Uint8Array> = canonicalOnlyExport,
   ) {
     this.#store = store;
     this.#validateExport = validateExport;
-    this.#compactExport = compactExport;
+    this.#rebuildExport = rebuildExport;
   }
 
   public async read(key: string): Promise<string | null> {
@@ -348,10 +348,11 @@ export class PortableStateRepository {
       }
       validatePortableSnapshot(snapshot);
       // Backups carry the canonical dataset only; the quarantine stays local.
-      // Either path writes live rows into a fresh file, so a deleted row's
-      // bytes never ride along in SQLite free pages.
-      if ((await this.listQuarantine()).size === 0) return this.#compactExport(bytes);
-      const canonical = await canonicalOnlyExport(snapshot.values);
+      // The raw file is never what leaves: it may hold quarantine rows (their
+      // writes are not fenced by the dataset epoch, so no re-read here could be
+      // trusted) and a deleted row's bytes in free pages. A fresh file written
+      // from the canonical rows read at the validated epoch holds neither.
+      const canonical = await this.#rebuildExport(snapshot.values);
       await this.#validateExport(canonical);
       return canonical;
     }
@@ -421,7 +422,7 @@ export async function openPortableStateRepository(
       persistence,
     }),
     validatePortableExportDatabase,
-    compactPortableExport,
+    canonicalOnlyExport,
   );
 }
 
@@ -433,21 +434,6 @@ export async function openPortableStateRepository(
  * Importing into a fresh in-memory database writes live rows to new pages
  * only; the copy's own epoch differs by the import and nothing reads it.
  */
-async function compactPortableExport(bytes: Uint8Array): Promise<Uint8Array> {
-  const store = await createSqliteStateStore({
-    name: 'almamesh-export-compaction',
-    initialSchemaVersion: PORTABLE_STATE_SCHEMA_VERSION,
-    persistence: 'memory',
-  });
-  try {
-    const stage = await store.stageImport(bytes);
-    await store.commitImport(stage.stageId, { expectedEpoch: 0 });
-    return await store.exportBytes();
-  } finally {
-    await store.dispose();
-  }
-}
-
 export interface PortableStateCapabilities {
   readonly Worker?: unknown;
   readonly SharedArrayBuffer?: unknown;
@@ -526,6 +512,8 @@ export async function mergeLegacyPreferencesIntoPortableState(
     readonly createStore?: () => Promise<SqliteStateStore>;
     /** Unit-test seam for fake SQLite bytes; production re-opens exact bytes. */
     readonly validateExport?: (bytes: Uint8Array) => Promise<number>;
+    /** Unit-test seam; production rebuilds the file from canonical rows. */
+    readonly rebuildExport?: (canonical: ReadonlyMap<string, string>) => Promise<Uint8Array>;
   } = {},
 ): Promise<Uint8Array> {
   if (candidate === null || typeof candidate !== 'object' || Array.isArray(candidate)) {
@@ -545,7 +533,7 @@ export async function mergeLegacyPreferencesIntoPortableState(
       initialSchemaVersion: PORTABLE_STATE_SCHEMA_VERSION,
       persistence: 'memory',
     }));
-  const repository = new PortableStateRepository(store, options.validateExport);
+  const repository = new PortableStateRepository(store, options.validateExport, options.rebuildExport);
   try {
     const stage = await store.stageImport(bytes);
     if (stage.schemaVersion !== PORTABLE_STATE_SCHEMA_VERSION) {
