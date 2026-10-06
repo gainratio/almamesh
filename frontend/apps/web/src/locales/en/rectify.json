@@ -139,14 +139,16 @@
     "stalled_title": "This is taking longer than usual",
     "stalled_body": "The engine still hasn't finished starting up. You can reset and reload it to try again.",
     "reset_reload": "Reset & reload engine",
-    "clear_engine_cache": "Clear the downloaded engine & reload"
+    "clear_engine_cache": "Clear the downloaded engine & reload",
+    "saving_chart": "Computing your new chart on this device. Keep this page open until it is saved."
   },
   "error": {
     "engine_failed_title": "The chart engine couldn't start",
     "engine_failed_body": "Something went wrong while loading the engine on your device. Reset and reload to try again.",
     "missing_birth": "We couldn't find saved birth details for this profile. Open this profile's settings to add a birth date, time and place, then try again.",
     "no_events": "Add at least one dated life event to begin — each event helps the engine compare candidate birth times.",
-    "back_to_events": "Back to events"
+    "back_to_events": "Back to events",
+    "save_failed": "Your new chart could not be saved. Your previous chart is unchanged. Please try again."
   },
   "steps": {
     "intro": "Introduction",

@@ -10,6 +10,7 @@
     "settings_title": "Configuración",
     "try_again": "Intentar de nuevo",
     "create_chart": "Añadir datos de nacimiento",
+    "rebuild_chart": "Introducir datos de nacimiento",
     "manage_people": "Gestionar personas",
     "retry": "Reintentar",
     "generate": "Generar lectura natal",
@@ -29,6 +30,7 @@
     "title": "Aún no hay carta de {{name}}",
     "title_unnamed": "Aún no hay carta",
     "body": "No falló nada y no se perdió nada. Esta carta todavía no se ha creado en este dispositivo: añade los datos de nacimiento y AlmaMesh la calcula aquí mismo.",
+    "body_missing": "No encontramos una carta guardada para {{name}}. Esto puede pasar si la página se recargó mientras se calculaba la carta. Vuelve a introducir los datos de nacimiento para reconstruirla.",
     "read_failed_title": "No se pudieron leer las cartas guardadas en este dispositivo",
     "read_failed_body": "Tus cartas están en este dispositivo y la lectura no terminó. No se borró nada."
   },

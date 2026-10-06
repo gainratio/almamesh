@@ -6,14 +6,15 @@
  * "rectification". The chart id never changed, regeneration no-oped, and the
  * page still said "Chart Updated!". These tests pin the honest outcomes.
  *
- * Engine/chart deps are stubbed; the real stores and event bus drive behavior.
+ * Engine/chart deps are stubbed; the real stores and a registered regeneration
+ * runner (standing in for App.tsx's subscriber) drive behavior.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import {
-  appEvents,
   chartId,
+  registerRegenerationRunner,
   useChartLibraryStore,
   useProfilesStore,
   type BirthInfoChanged,
@@ -22,6 +23,13 @@ import {
 
 import '../../../i18n/config';
 import { useSettingsStore } from '../../../stores/settings';
+
+/** The strict chart-library write barrier; a test may make it fail. */
+const chartWrite = vi.hoisted(() => ({ next: (): Promise<void> => Promise.resolve() }));
+vi.mock('@almamesh/store', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@almamesh/store')>();
+  return { ...actual, whenChartLibraryCommitted: () => chartWrite.next() };
+});
 
 const ENGINE = vi.hoisted(() => ({ generateChart: () => Promise.reject(new Error('unused')) }));
 
@@ -98,17 +106,78 @@ async function timeInputs(): Promise<{ birth: HTMLInputElement; rectified: HTMLI
 
 describe('ProfileSettings — birth-time-only edit', () => {
   const emitted: BirthInfoChanged[] = [];
-  const onEmit = (event: BirthInfoChanged) => emitted.push(event);
+  let applyRegeneration: (event: BirthInfoChanged) => Promise<void> = () => Promise.resolve();
+  let unregisterRunner: () => void = () => undefined;
 
   beforeEach(() => {
     emitted.length = 0;
-    appEvents.on('birth-info-changed', onEmit);
+    applyRegeneration = () => Promise.resolve();
+    unregisterRunner = registerRegenerationRunner((event) => {
+      emitted.push(event);
+      return applyRegeneration(event);
+    });
     useSettingsStore.getState().clearPendingChanges();
     useProfilesStore.setState({ activeProfileId: PROFILE_ID });
   });
 
   afterEach(() => {
-    appEvents.off('birth-info-changed', onEmit);
+    chartWrite.next = () => Promise.resolve();
+    vi.restoreAllMocks();
+    unregisterRunner();
+  });
+
+  it('says "Chart Updated!" only once the new chart is applied', async () => {
+    let finish: () => void = () => undefined;
+    applyRegeneration = () => new Promise<void>((resolve) => (finish = resolve));
+    storeChart('06:44');
+    renderPage();
+    const { birth } = await timeInputs();
+    await waitFor(() => expect(birth.value).toBe('06:44'));
+
+    fireEvent.change(birth, { target: { value: '06:14' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Confirm & Regenerate' }));
+
+    await waitFor(() => expect(emitted).toHaveLength(1));
+    expect(screen.queryByText('Chart Updated!')).toBeNull();
+
+    finish();
+    await screen.findByText('Chart Updated!');
+  });
+
+  it('shows the error, not "Chart Updated!", when the regeneration fails', async () => {
+    applyRegeneration = () => Promise.reject(new Error('worker died'));
+    storeChart('06:44');
+    renderPage();
+    const { birth } = await timeInputs();
+    await waitFor(() => expect(birth.value).toBe('06:44'));
+
+    fireEvent.change(birth, { target: { value: '06:14' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Confirm & Regenerate' }));
+
+    await waitFor(() => expect(emitted).toHaveLength(1));
+    await waitFor(() => expect(screen.queryByText('Chart Updated!')).toBeNull());
+    expect(await screen.findByRole('alert')).toBeTruthy();
+  });
+
+  it('shows the error with Save still offered, not "Chart Updated!", when the chart write fails', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    chartWrite.next = () => Promise.reject(new Error('opfs write failed'));
+    storeChart('06:44');
+    renderPage();
+    const { birth } = await timeInputs();
+    await waitFor(() => expect(birth.value).toBe('06:44'));
+
+    fireEvent.change(birth, { target: { value: '06:14' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Confirm & Regenerate' }));
+
+    expect(await screen.findByRole('alert')).toBeTruthy();
+    expect(screen.queryByText('Chart Updated!')).toBeNull();
+    // The edit is kept, so Save Changes is the retry.
+    expect(screen.getByRole('button', { name: 'Save Changes' })).toBeTruthy();
+    expect(warn).toHaveBeenCalledWith('[almamesh:warn:chart.save_failed]');
   });
 
   it('with no rectification, the new birth time is what gets regenerated', async () => {
