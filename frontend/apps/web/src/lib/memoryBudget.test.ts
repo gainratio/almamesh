@@ -54,6 +54,12 @@ describe('boot memory budget (memory-budget e2e lane)', () => {
     expect(overBudget({ ...WITHIN, heapPeakMiB: 338 }, BOOT_MEMORY_BUDGET)).toHaveLength(1);
   });
 
+  it('names every settled heap reading when the heap line breaks, so one spike reads differently from a sustained rise', () => {
+    expect(
+      overBudget({ ...WITHIN, heapPeakMiB: 309.8, heapSamplesMiB: [278.2, 278.4, 309.8, 278.9, 278.1] }, BOOT_MEMORY_BUDGET),
+    ).toEqual(['page+workers JS/wasm heap peak 310 MiB > budget 300 MiB (settled samples 278 278 310 279 278 MiB)']);
+  });
+
   it('treats an unmeasured (NaN) sample as a failure, not a pass', () => {
     expect(overBudget({ ...WITHIN, rendererRssSettledMiB: Number.NaN }, BOOT_MEMORY_BUDGET)).toEqual([
       'renderer RSS settled NaN MiB > budget 1100 MiB',

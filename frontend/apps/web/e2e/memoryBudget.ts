@@ -7,6 +7,10 @@
  *   run 37261138765 (278a693, Pyodide 314.0.7): heap 278 MiB, renderer RSS
  *   peak 989, settled 955 MiB. That is 22 MiB (7%) under the heap budget.
  *   Earlier: 254 (PR run 37223199200), 267 (release PR run 37252603946).
+ *   One outlier: run 37507824888 (3e35802) read 310 while its own report-only
+ *   test, same build and journey, read 278; #247's PR run read 279 and local
+ *   macOS reads 268 on both 3e35802 and de2a25c. The heap failure line now
+ *   prints every settled sample so the next outlier shows spike vs sustained.
  * Once the chat embedder loads the heap rises by ~95 MiB (macOS, 2026-10-04:
  * 243 -> 338). The PR that raised this lane's measurements records the local
  * Linux numbers per lane, including the report-only ones below.
@@ -39,6 +43,17 @@ export interface BootMemorySample {
   readonly heapPeakMiB: number;
   readonly rendererRssPeakMiB: number;
   readonly rendererRssSettledMiB: number;
+  /**
+   * Every settled heap reading behind `heapPeakMiB`. Printed with a heap
+   * failure so a single spike reads differently from a sustained rise.
+   */
+  readonly heapSamplesMiB?: readonly number[];
+}
+
+function heapSeries(sample: BootMemorySample): string {
+  const series = sample.heapSamplesMiB;
+  if (series === undefined || series.length === 0) return '';
+  return ` (settled samples ${series.map((mib) => mib.toFixed(0)).join(' ')} MiB)`;
 }
 
 /** Every budget line the sample breaks, as readable messages (empty = within budget). */
@@ -51,6 +66,9 @@ export function overBudget(sample: BootMemorySample, budget: MemoryBudget): stri
   return lines
     // `!(x <= budget)` rather than `x > budget`: an unmeasured NaN fails.
     .filter(([key]) => !(sample[key] <= budget[key]))
-    .map(([key, label]) => `${label} ${sample[key].toFixed(0)} MiB > budget ${budget[key]} MiB`);
+    .map(([key, label]) => {
+      const note = key === 'heapPeakMiB' ? heapSeries(sample) : '';
+      return `${label} ${sample[key].toFixed(0)} MiB > budget ${budget[key]} MiB${note}`;
+    });
 }
 

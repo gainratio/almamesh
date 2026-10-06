@@ -72,6 +72,14 @@ describe('Hero', () => {
         await screen.findByRole('button', { name: 'Restore from a backup' }, { timeout: 5_000 }),
       ).toBeTruthy();
     });
+
+    // At 390x664 the two-line hint pushed the restore button below the fold.
+    it('keeps the restore entry to one short line under the CTA', async () => {
+      renderHero();
+      await screen.findByRole('button', { name: 'Restore from a backup' }, { timeout: 5_000 });
+      expect(screen.getByText('Moving to a new phone?')).toBeTruthy();
+      expect(screen.queryByText(/instead of starting over/)).toBeNull();
+    });
   });
 
   describe('returning visitor (a chart already exists locally)', () => {
