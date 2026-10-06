@@ -268,7 +268,7 @@
     "import_heading": "Importar / Restaurar",
     "import_button": "Importar una copia",
     "first_run_button": "Restaurar desde una copia de seguridad",
-    "first_run_hint": "¿Vienes de otro teléfono o navegador? Restaura tu copia .almamesh en lugar de empezar de cero.",
+    "first_run_short": "¿Cambias de teléfono?",
     "confirm_title_empty": "¿Restaurar esta copia?",
     "confirm_body_empty": "Todavía no hay nada en este navegador, así que no hace falta una copia de seguridad previa. AlmaMesh instalará esta copia aquí.",
     "confirm_ok_empty": "Restaurar",

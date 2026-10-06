@@ -265,7 +265,7 @@
     "import_heading": "Import / Restore",
     "import_button": "Import a backup",
     "first_run_button": "Restore from a backup",
-    "first_run_hint": "Moving from another phone or browser? Restore your .almamesh backup instead of starting over.",
+    "first_run_short": "Moving to a new phone?",
     "confirm_title_empty": "Restore this backup?",
     "confirm_body_empty": "There is nothing on this browser yet, so no safety copy is needed. AlmaMesh will install this backup here.",
     "confirm_ok_empty": "Restore",
