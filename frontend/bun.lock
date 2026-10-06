@@ -120,7 +120,7 @@
       "dependencies": {
         "@gainratio/assay": "0.5.0-dev.6",
         "@gainratio/avow": "^0.5.2",
-        "@gainratio/browser": "^0.3.1",
+        "@gainratio/browser": "^0.3.2",
         "pyodide": "^314.0.7",
       },
       "devDependencies": {
@@ -155,7 +155,7 @@
       "name": "@almamesh/memory",
       "version": "0.0.1",
       "dependencies": {
-        "@gainratio/browser": "^0.3.1",
+        "@gainratio/browser": "^0.3.2",
         "@huggingface/transformers": "^4.3.0",
       },
       "devDependencies": {
@@ -181,7 +181,7 @@
         "@almamesh/constants": "workspace:*",
         "@almamesh/llm": "workspace:*",
         "@almamesh/shared-types": "workspace:*",
-        "@gainratio/browser": "^0.3.1",
+        "@gainratio/browser": "^0.3.2",
         "dayjs": "^1.11.23",
         "idb-keyval": "^6.3.0",
         "mitt": "^3.0.1",
@@ -597,7 +597,7 @@
 
     "@gainratio/avow": ["@gainratio/avow@0.5.2", "", { "dependencies": { "@noble/ed25519": "^3.1.0", "canonicalize": "^3.0.0" } }, "sha512-a4vtiKx9Dbb5HNFKvwWNOzuZk6EY7pq6vFPKM/vwTSaVmEQ4Ym+GJSJ3u6vnLbsAxZJgBfr0JWpGUmdB5Oqkww=="],
 
-    "@gainratio/browser": ["@gainratio/browser@0.3.1", "", { "dependencies": { "@hpcc-js/wasm-zstd": "^1.16.1", "@noble/ed25519": "^3.2.0" } }, "sha512-5QEeINfpHVDxVaRf/EdTfxqdSaB+dJwwq9oLXcGf3IKk9FV/kUsMKGL+VB63yDfpLdEYf00TuiLZCsfUA7PKMA=="],
+    "@gainratio/browser": ["@gainratio/browser@0.3.2", "", { "dependencies": { "@hpcc-js/wasm-zstd": "^1.16.1", "@noble/ed25519": "^3.2.0" } }, "sha512-m6iwYRognjrWaj+Oe/aH2uWkQ3ZnbHK9X2u/i2yePQDwYr9Ce9BTT1weZ2XMbSfB5tBi0OY26D91Q5ztuXNxYw=="],
 
     "@gainratio/errors": ["@gainratio/errors@0.2.1", "", {}, "sha512-f1XOpswhbypRe2u8sJ2rRuh8BADbddkSSRONO5DRk3u5g7M+s8aaQ4vuPdk813GkLuvkQo1HMEwTj92TjT1ySQ=="],
 
