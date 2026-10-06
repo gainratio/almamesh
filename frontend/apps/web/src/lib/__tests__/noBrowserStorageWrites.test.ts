@@ -26,6 +26,14 @@ const SESSION_RELOAD_FLAG_FILES = new Set([
   'apps/web/src/lib/swSelfHeal.ts',
 ]);
 
+/**
+ * The one allowed IndexedDB open: the legacy keyval EXISTENCE probe. It opens
+ * with no version and aborts the upgrade when the database does not exist, so
+ * nothing is created (legacyKeyval.test.ts proves it, red without the abort).
+ * Needed only on browsers that cannot list databases (Firefox < 126).
+ */
+const IDB_OPEN_AND_ABORT_PROBE_FILES = new Set(['packages/store/src/legacyKeyval.ts']);
+
 const IDB_KEYVAL_WRITERS = new Set(['set', 'setMany', 'update']);
 const STORAGE_GLOBALS = { localStorage: 'local', sessionStorage: 'session', indexedDB: 'idb' } as const;
 type StorageKind = (typeof STORAGE_GLOBALS)[keyof typeof STORAGE_GLOBALS];
@@ -96,6 +104,7 @@ function storageWriteFindings(file: string, text: string): string[] {
   };
   const writeOn = (kind: StorageKind, what: string): void => {
     if (kind === 'session' && SESSION_RELOAD_FLAG_FILES.has(file)) return;
+    if (kind === 'idb' && what === 'open' && IDB_OPEN_AND_ABORT_PROBE_FILES.has(file)) return;
     findings.push(`${kind}: ${what}`);
   };
 
@@ -241,5 +250,17 @@ describe('SQLite is the only store for app data', () => {
     ['packages/store/src/x.ts', "portablePreferenceStorage.setItem('k', 'v');"],
   ])('allows reads, retirement and non-browser storage: %s %s', (file, shape) => {
     expect(storageWriteFindings(file, shape)).toEqual([]);
+  });
+
+  it('exempts only the legacy open-and-abort probe, and only its open', () => {
+    const open = "const factory = globalThis.indexedDB; factory.open('keyval-store');";
+    expect(storageWriteFindings('packages/store/src/legacyKeyval.ts', open)).toEqual([]);
+    expect(storageWriteFindings('packages/store/src/other.ts', open)).toEqual(['idb: open']);
+    expect(
+      storageWriteFindings('packages/store/src/legacyKeyval.ts', "localStorage.setItem('k', 'v');"),
+    ).not.toEqual([]);
+    expect(
+      storageWriteFindings('packages/store/src/legacyKeyval.ts', "db.transaction('s', 'readwrite');"),
+    ).not.toEqual([]);
   });
 });

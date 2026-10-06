@@ -47,14 +47,69 @@
   },
   "loading": "Carregando",
   "storage_blocked": {
-    "title": "Seu navegador está bloqueando o armazenamento do site",
-    "body": "O AlmaMesh calcula e guarda seu mapa apenas neste dispositivo, então precisa de permissão para armazenar dados deste site. Seu navegador está recusando isso agora.",
-    "fix": "No Safari, abra Ajustes > Privacidade e desative \"Bloquear todos os cookies\"; depois recarregue esta página. Em outros navegadores, permita cookies e dados do site para almamesh.com."
+    "title": "O AlmaMesh não funciona até este navegador permitir que ele salve dados",
+    "body": "O AlmaMesh precisa de permissão para armazenar dados neste dispositivo para que o SQLite possa salvar seu mapa. Até você permitir, o AlmaMesh (incluindo Importar e Exportar) não funciona.",
+    "reassure": "Permitir isso só deixa o AlmaMesh guardar seus dados aqui, neste dispositivo.",
+    "steps_title": "Como permitir no {{browser}}",
+    "no_settings_link": "Uma página da web não consegue abrir as configurações do seu navegador, então esta parte é com você. Leva cerca de um minuto.",
+    "browser": {
+      "safari_macos": "Safari no Mac",
+      "safari_ios": "Safari no iPhone ou iPad",
+      "chromium": "Chrome ou Edge",
+      "firefox": "Firefox",
+      "other": "seu navegador"
+    },
+    "steps": {
+      "safari_macos": {
+        "open": "Na barra de menus, escolha Safari → Ajustes.",
+        "privacy": "Clique na aba Privacidade.",
+        "untick": "Desmarque “Bloquear todos os cookies”.",
+        "back": "Volte para esta aba e toque em Verificar de novo.",
+        "private": "Use uma janela normal, não uma janela privada: o AlmaMesh não consegue salvar seu mapa nela."
+      },
+      "safari_ios": {
+        "open": "Abra o app Ajustes.",
+        "safari": "Toque em Apps e depois em Safari. (Em versões antigas do iOS, o Safari aparece direto em Ajustes.)",
+        "toggle": "Desative “Bloquear Todos os Cookies”.",
+        "back": "Volte para esta aba e toque em Verificar de novo.",
+        "private": "Use uma aba normal, não uma aba privada: o AlmaMesh não consegue salvar seu mapa nela."
+      },
+      "chromium": {
+        "open": "Abra Configurações → Privacidade e segurança → Configurações do site (no Edge: Configurações → Cookies e permissões de site).",
+        "allow": "Abra “Dados do site no dispositivo” (versões antigas: “Cookies e dados do site”) e permita que almamesh.com salve dados. Se ele estiver em “Não permitido”, remova-o.",
+        "site_info": "Ou clique no ícone de informações do site, à esquerda da barra de endereço, escolha Configurações do site e permita lá.",
+        "back": "Volte para esta aba e toque em Verificar de novo.",
+        "private": "Use uma janela normal, não anônima (Chrome) nem InPrivate (Edge)."
+      },
+      "firefox": {
+        "padlock": "Clique no cadeado à esquerda da barra de endereço. Se aparecer uma permissão bloqueada para armazenar dados, remova-a.",
+        "settings": "Ou abra Configurações → Privacidade e Segurança → Cookies e dados de sites → Exceções, digite almamesh.com e escolha Permitir.",
+        "allow": "Toque em Permitir armazenamento abaixo. Se o Firefox perguntar, escolha Permitir.",
+        "private": "Use uma janela normal, não uma janela privada."
+      },
+      "other": {
+        "settings": "Nas configurações do seu navegador, permita que almamesh.com armazene dados do site.",
+        "back": "Volte para esta aba e toque em Verificar de novo.",
+        "private": "Use uma janela normal, não uma privada."
+      }
+    },
+    "illustration": {
+      "label": "A configuração deve ficar assim: {{setting}}, {{state}}",
+      "safari_macos_setting": "Bloquear todos os cookies",
+      "safari_ios_setting": "Bloquear Todos os Cookies",
+      "generic_setting": "Permitir dados do site",
+      "off": "desativado",
+      "on": "ativado"
+    },
+    "allow": "Permitir armazenamento",
+    "check_again": "Verificar de novo",
+    "checking": "Verificando…",
+    "still_blocked": "Ainda bloqueado. O navegador continua recusando armazenamento para este site. Siga os passos acima e toque em Verificar de novo."
   },
-  "storage_ephemeral": {
-    "title": "Este navegador não está salvando seus dados.",
-    "body": "Aqui ele recusa o armazenamento no dispositivo (por exemplo, na navegação privada), então seu mapa funciona, mas desaparece quando você recarrega ou fecha esta aba.",
-    "export": "Exporte um backup para guardá-lo."
+  "engine_other_tab": {
+    "title": "O AlmaMesh está aberto em outra aba",
+    "body": "Só uma aba do AlmaMesh pode usar o motor de mapas por vez. Feche a outra aba do AlmaMesh e toque em Tentar novamente.",
+    "retry": "Tentar novamente"
   },
   "storage_unavailable": {
     "title": "O AlmaMesh não consegue iniciar seu banco de dados no dispositivo",
@@ -146,5 +201,9 @@
     "interpretations_unreadable_paused": "Algumas interpretações salvas não puderam ser lidas e este dispositivo não conseguiu separá-las. Para protegê-las, novas leituras estão pausadas. Recarregue a página para tentar novamente.",
     "dismiss_aria": "Fechar aviso"
   },
-  "reset_incomplete": "A redefinição não conseguiu apagar todos os dados salvos, porque este navegador ainda os está usando. Feche todas as abas do AlmaMesh e tente de novo. Se continuar acontecendo, limpe os dados do site do AlmaMesh nas configurações do navegador."
+  "reset_incomplete": "A redefinição não conseguiu apagar todos os dados salvos, porque este navegador ainda os está usando. Feche todas as abas do AlmaMesh e tente de novo. Se continuar acontecendo, limpe os dados do site do AlmaMesh nas configurações do navegador.",
+  "dropped_writes": {
+    "body": "Algumas alterações nesta página não foram salvas porque seus dados estavam sendo substituídos ou reparados. Recarregue para ver seus dados atuais.",
+    "reload": "Recarregar"
+  }
 }

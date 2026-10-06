@@ -26,6 +26,12 @@
  *
  *   ready = navigation start -> onboarding form usable (SQLite open + hydration)
  *   chart = Generate clicked  -> chart drawn (engine download, boot, compute)
+ *
+ * Memory is REPORT ONLY (not gated yet): one `memory-report journey-...` line
+ * with the RSS peak of the browser's process tree over the whole journey
+ * (Linux /proc; null elsewhere) and the page+workers JS/wasm heap after the
+ * chart where the browser exposes measureUserAgentSpecificMemory (null in the
+ * Chromium headless shell and Firefox, with the reason).
  */
 
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -33,6 +39,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { chromium, firefox, webkit } from '@playwright/test'
+
+import { formatMemoryReport, processTreeReport, sampleProcessTreePeak } from './processMemory.mjs'
 
 const BROWSERS = { chromium, firefox, webkit }
 
@@ -103,13 +111,27 @@ async function bodyText(page) {
   return (await page.locator('body').innerText().catch(() => '')).replace(/\s+/g, ' ').slice(0, 300)
 }
 
-/** Which storage the app says it is on: opfs (no note) or memory. */
+/** Whether the app is running, or showing its storage block screen (and why). */
 async function storageNote(page) {
-  const note = page.getByTestId('ephemeral-storage-notice')
-  return (await note.isVisible().catch(() => false)) ? await note.getAttribute('data-durability') : 'opfs'
+  const notice = page.getByTestId('storage-blocked-notice')
+  return (await notice.isVisible().catch(() => false)) ? `blocked:${await notice.getAttribute('data-reason')}` : 'opfs'
 }
 
 const seconds = (milliseconds) => `${(milliseconds / 1000).toFixed(1)}s`
+
+/** Page+workers heap in MiB, or the reason it cannot be read in this browser. */
+async function pageHeapReport(page) {
+  return page.evaluate(async () => {
+    const isolated = globalThis.crossOriginIsolated
+    if (!isolated || performance.measureUserAgentSpecificMemory === undefined) {
+      return { heapAfterChartMiB: null, heapReason: `measureUserAgentSpecificMemory unavailable (crossOriginIsolated=${isolated})` }
+    }
+    return { heapAfterChartMiB: (await performance.measureUserAgentSpecificMemory()).bytes / (1024 * 1024) }
+  }).catch((error) => ({ heapAfterChartMiB: null, heapReason: String(error).replace(/\s+/g, ' ').slice(0, 240) }))
+}
+
+// The whole journey's process tree, sampled from outside the page every second.
+const rssSampler = sampleProcessTreePeak(1_000)
 const profile = mkdtempSync(join(tmpdir(), `almamesh-journey-${LABEL}-`))
 // A persistent profile: a pristine first visit whose storage survives the reload.
 const context = await BROWSERS[BROWSER_NAME].launchPersistentContext(profile, {
@@ -139,6 +161,7 @@ try {
       + ` | console (${errors.length}): ${errors.slice(0, 5).join(' | ')}`))
   const chart = Date.now() - generated
   invariant(page.url().endsWith('/dashboard'), `the chart rendered on ${page.url()}, not /dashboard`)
+  const heapReport = await pageHeapReport(page)
 
   await page.reload({ waitUntil: 'commit' })
   const reloaded = Date.now()
@@ -154,7 +177,12 @@ try {
     `browser-journey: ${LABEL} ${browserVersion} cpu-throttle=${CPU_THROTTLE}x ready=${seconds(ready)} `
     + `chart=${seconds(chart)} reload=${seconds(reload)} console=clean`,
   )
+  console.log(formatMemoryReport(`journey-${LABEL}-${CPU_THROTTLE}x`, {
+    ...processTreeReport(await rssSampler.stop(), ['renderer', 'gpu', 'browser', 'webkit-web']),
+    ...heapReport,
+  }))
 } finally {
+  await rssSampler.stop()
   await context.close()
   rmSync(profile, { recursive: true, force: true })
 }

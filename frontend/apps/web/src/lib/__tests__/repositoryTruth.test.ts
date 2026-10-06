@@ -8,7 +8,16 @@ const root = resolve(here, '../../../../../..');
 // Our own libraries ship from npm and track their newest release: a caret range,
 // never a Git commit alias and never the retired `@edgeproc/` scope.
 const OWN_LIBRARY_SCOPE = '@gainratio/';
-const BROWSER_LEGO_RANGE = '^0.2.0';
+// One source of truth for the range: the Dagger pin check (BROWSER_LEGO_SPEC),
+// which a contract test already ties to the manifests. A literal here drifted
+// on every bump (0.3.0 -> 0.3.1 failed this test while the pin moved).
+const BROWSER_LEGO_RANGE = (() => {
+  const spec = readFileSync(resolve(root, 'dagger/src/index.ts'), 'utf8').match(
+    /const BROWSER_LEGO_SPEC = '"@gainratio\/browser": "(\^\d+\.\d+\.\d+)"'/,
+  )?.[1];
+  if (spec === undefined) throw new Error('BROWSER_LEGO_SPEC not found in dagger/src/index.ts');
+  return spec;
+})();
 const DEPENDENCY_FIELDS = [
   'dependencies',
   'devDependencies',
@@ -176,7 +185,7 @@ describe('repository truth', () => {
     expect(setup).toContain('--version dev --sequence "${DEV_BUNDLE_SEQUENCE}" --offline');
   });
 
-  it('requires the live-like WebKit engine and persistent fallback gate in CI', () => {
+  it('requires the live-like WebKit gate: OPFS refused shows the block screen, never RAM SQLite', () => {
     const workflow = readRoot('dagger/src/index.ts');
     const gate = readRoot('frontend/apps/web/scripts/verify-webkit-engine.mjs');
     const frontendPackage = readRoot('frontend/package.json');
@@ -187,9 +196,11 @@ describe('repository truth', () => {
     expect(workflow).toContain(
       'node scripts/verify-webkit-engine.mjs http://127.0.0.1:4200',
     );
-    expect(workflow).toContain(
-      'node scripts/verify-webkit-engine.mjs http://127.0.0.1:4200 --first-session',
-    );
+    // The offline first-session pass needs working OPFS; Linux Playwright
+    // WebKit has none, and the app no longer runs on RAM SQLite, so it runs
+    // on macOS and the script refuses Linux rather than pass vacuously.
+    expect(workflow).not.toContain('verify-webkit-engine.mjs http://127.0.0.1:4200 --first-session');
+    expect(gate).toContain("process.platform !== 'linux'");
     expect(workflow).toContain(
       './node_modules/.bin/vite preview --outDir dist-verify --host 127.0.0.1 --port 4200 --strictPort',
     );
@@ -201,18 +212,25 @@ describe('repository truth', () => {
       'node scripts/verify-cross-origin-isolation.mjs http://127.0.0.1:4200 --browser=webkit',
     );
     expect(gate).toContain('webkit.launch({ headless: true })');
-    expect(gate).toContain("u.includes('/bundle/latest')");
-    expect(gate).toContain("'edgeproc-browser-cache'");
-    expect(gate).toContain("'force-indexeddb-engine-cache'");
-    expect(gate).toContain("storage.opfs === 'forced-unavailable'");
-    expect(gate).toContain("storage.selectedCache === 'indexeddb'");
-    expect(gate).toContain("context.route('**/bundle/**'");
+    // CONTRACT REVERSED TWICE (2026-10-05). The gate first forced an IndexedDB
+    // engine cache, then (increment 2) required in-memory SQLite plus a "not
+    // saving" note. Harish: "sqlite persistent is the only option". With OPFS
+    // refused the gate now requires the block screen, no engine cache, no
+    // engine Worker and zero IndexedDB databases.
+    expect(gate).not.toContain('force-indexeddb-engine-cache');
+    expect(gate).not.toContain("storage.selectedCache === 'indexeddb'");
+    expect(gate).not.toContain("storage.selectedCache === 'sqlite-memory'");
+    expect(gate).not.toContain('ephemeral-storage-notice');
+    expect(gate).toContain("reason === 'storage-blocked'");
+    expect(gate).toContain("storage.statePersistence === 'blocked'");
+    expect(gate).toContain('storage.selectedCache === null');
+    expect(gate).toContain('storage.databases.length === 0');
+    expect(gate).toContain('engineWorkers.length === 0');
     expect(gate).toContain("serviceWorkers: 'allow'");
     expect(gate).toContain('initialDocumentControlled: !uncontrolled');
     expect(gate).toContain('offlineDocumentControlled: controlled');
     expect(gate).toContain("proxy.state.rejected.includes('/public.key')");
     expect(gate).toContain('keyRequestsAfterRotation > keyRequestsBeforeRotation');
-    expect(gate).toContain('blockedKeys.length >= 2');
     expect(gate).toContain('assertSingleSyncWorker');
     expect(gate).not.toContain("window.dispatchEvent(new Event('online'))");
     const provider = readRoot(
@@ -226,7 +244,7 @@ describe('repository truth', () => {
     const adapter = readRoot('frontend/packages/browser/src/edgeprocClient.ts');
     expect(adapter).toContain('database: "edgeproc-browser-cache"');
     expect(adapter).toContain('store: "content-addressed-cache"');
-    expect(adapter).toContain('storageBackend: "indexeddb"');
+    expect(adapter).not.toContain('storageBackend');
     const chromium = readRoot('frontend/apps/web/scripts/verify-browser-parity.mjs');
     expect(chromium).toContain('exactly one consumer-owned edgeproc Worker asset');
   });

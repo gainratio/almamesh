@@ -43,14 +43,33 @@ describe('birthDetailsFromBirthData', () => {
     expect(details.rectified_time).toBe('06:14');
   });
 
-  it('falls back to the entered time for rectified_time when no rectification exists', () => {
+  // CONTRACT REVERSED (2026-10-05). This test used to assert that rectified_time
+  // is PREFILLED with the entered time when no rectification exists. That prefill
+  // was the bug: after editing only the birth time, the stale prefill was sent as
+  // a "rectification" that pinned the chart to the old time, the regeneration
+  // no-oped, and Settings still said "Chart Updated!". No rectification now means
+  // an EMPTY rectified field, so the entered birth time governs the chart.
+  it('leaves rectified_time empty when no rectification exists (no prefill)', () => {
     const details = birthDetailsFromBirthData(
       birthData({ birth_datetime_local: '1988-08-08T06:44:00' }),
       'Reference Native',
     );
 
     expect(details.birth_time).toBe('06:44');
-    expect(details.rectified_time).toBe('06:44');
+    expect(details.rectified_time).toBe('');
+  });
+
+  it('treats a stored birth_time_original equal to the effective clock as NO rectification', () => {
+    // Rows written by the old prefill carry birth_time_original === effective
+    // time. That is not a rectification; showing it as one pins the chart to
+    // the old clock again on the next birth-time edit.
+    const details = birthDetailsFromBirthData(
+      birthData({ birth_datetime_local: '1988-08-08T06:44:00', birth_time_original: '06:44' }),
+      'Reference Native',
+    );
+
+    expect(details.birth_time).toBe('06:44');
+    expect(details.rectified_time).toBe('');
   });
 
   it('round-trips symmetrically with toBirthData() for a rectified profile (no silent reversion)', () => {

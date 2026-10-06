@@ -30,7 +30,7 @@
 
 import { chromium } from '@playwright/test'
 import { Buffer } from 'node:buffer'
-import { isActivePointerName } from './exitGateDurability.mjs'
+import { cachePoolDirectory } from './exitGateDurability.mjs'
 import { confirmLegacyBackupImport } from './confirmLegacyBackupImport.mjs'
 
 const BASE_URL = process.argv[2] ?? 'http://localhost:4199'
@@ -403,33 +403,38 @@ async function main() {
       hasReadFailure: document.querySelector('[data-testid="chart-read-failed"]') !== null,
     }))
 
-    // Durability probe: the synced engine DATA persists in OPFS across reload —
-    // the chunk store + active version pointer are still present offline.
-    const activePointerNames = ['active', 'active.a', 'active.b'].filter(isActivePointerName)
-    const opfs = await page.evaluate(async (pointerNames) => {
+    // Durability probe: the synced engine DATA persists in OPFS across reload.
+    // Since @gainratio/browser 0.3.0 that is one SQLite database in an
+    // opfs-sahpool: the library must report OPFS persistence and its pool
+    // directory must hold files with bytes in them.
+    const cacheStorage = await page.evaluate(() => window.__EDGEPROC_CACHE_STORAGE__ ?? null).catch(() => null)
+    const poolDirectory = cachePoolDirectory(cacheStorage)
+    const opfs = await page.evaluate(async (directory) => {
+      if (directory === null) return { error: 'engine cache is not on OPFS' }
       try {
-        const root = await navigator.storage.getDirectory()
-        let chunkCount = 0
-        let hasActive = false
-        const chunkDir = await root.getDirectoryHandle('chunk')
-        for await (const _ of chunkDir.entries()) chunkCount += 1
-        for (const name of pointerNames) {
-          try {
-            await root.getFileHandle(name)
-            hasActive = true
-          } catch {
-            // A slot may not exist yet; the other crash-safe slot is sufficient.
+        // The sahpool keeps its slot files in a subdirectory (`.opaque`): walk it all.
+        let files = 0
+        let bytes = 0
+        const pending = [await (await navigator.storage.getDirectory()).getDirectoryHandle(directory)]
+        while (pending.length > 0) {
+          for await (const [, handle] of pending.pop().entries()) {
+            if (handle.kind === 'directory') {
+              pending.push(handle)
+              continue
+            }
+            files += 1
+            bytes += (await handle.getFile()).size
           }
         }
-        return { chunkCount, hasActive }
+        return { files, bytes }
       } catch (e) {
         return { error: String(e) }
       }
-    }, activePointerNames).catch((e) => ({ error: String(e) }))
+    }, poolDirectory).catch((e) => ({ error: String(e) }))
 
     const chartReadable =
       savedChart.hasIdentity && !savedChart.hasNoChart && !savedChart.hasReadFailure
-    const opfsDurable = (opfs?.chunkCount ?? 0) > 0 && opfs?.hasActive === true
+    const opfsDurable = (opfs?.files ?? 0) > 0 && (opfs?.bytes ?? 0) > 0
     const rebootedOffline = offlineStage === 'ready' && !offlineErr
 
     // P6 closed both halves of the exit-gate claim:
@@ -441,7 +446,7 @@ async function main() {
     //       the offline reboot too, not just durability.
     offlinePass = chartReadable && opfsDurable && rebootedOffline
     offlineDetail =
-      `OPFS chunks=${opfs?.chunkCount ?? '?'} active=${opfs?.hasActive}${opfs?.error ? ` error="${opfs.error}"` : ''} | canonical SQLite chart readable=${chartReadable} (identity=${savedChart.hasIdentity}, noChart=${savedChart.hasNoChart}, readFailure=${savedChart.hasReadFailure}). ` +
+      `OPFS cache ${JSON.stringify(cacheStorage)} pool files=${opfs?.files ?? '?'} bytes=${opfs?.bytes ?? '?'}${opfs?.error ? ` error="${opfs.error}"` : ''} | canonical SQLite chart readable=${chartReadable} (identity=${savedChart.hasIdentity}, noChart=${savedChart.hasNoChart}, readFailure=${savedChart.hasReadFailure}). ` +
       `OFFLINE-REBOOT: rebooted=${rebootedOffline} offlineStage=${offlineStage}${offlineErr ? ` err="${offlineErr}"` : ''} (sync fell back to the cached active version; bundle/pyodide refetch aborted).`
   } catch (e) {
     offlineDetail = `error: ${String(e)}`

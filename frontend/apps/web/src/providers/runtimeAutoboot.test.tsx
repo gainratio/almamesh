@@ -12,6 +12,14 @@ vi.mock('../lib/localChart', () => ({
 }))
 import { hasLocalChart } from '../lib/localChart'
 
+// The engine boots only once canonical SQLite is durable on OPFS; these tests
+// are about other behavior, so storage is ready from the start.
+vi.mock('@almamesh/store', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@almamesh/store')>()),
+  portableStatePersistence: () => 'opfs',
+  subscribePortableStatePersistence: () => () => undefined,
+}))
+
 /**
  * Minimal `AlmaMeshRuntime` stand-in (mirrors the existing provider test): each
  * `bootstrap()` resolves a ready engine and bumps a call counter so the test can

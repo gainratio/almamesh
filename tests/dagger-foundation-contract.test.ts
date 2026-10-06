@@ -378,3 +378,23 @@ describe("memory-budget lane", () => {
     expect(scripts["test:e2e:memory-budget"]).toBe("playwright test --config=playwright.memory-budget.config.ts")
   })
 })
+
+describe("browser Lego caret pin", () => {
+  // edgeprocPinCheck greps every consumer manifest for BROWSER_LEGO_SPEC inside
+  // the shared bun base. A dependency bump that leaves the constant behind
+  // fails every bun gate in CI (run 37352985472) while every local gate stays
+  // green, so the constant and the manifests are tied here.
+  const source = readFileSync(resolve(root, "dagger/src/index.ts"), "utf8")
+  const spec = source.match(/const BROWSER_LEGO_SPEC = '([^']+)'/)?.[1]
+
+  test("declares the spec the pin check greps for", () => {
+    expect(spec).toMatch(/^"@gainratio\/browser": "\^\d+\.\d+\.\d+"$/)
+  })
+
+  for (const manifest of ["browser", "memory", "store"]) {
+    test(`packages/${manifest}/package.json carries exactly that spec`, () => {
+      const text = readFileSync(resolve(root, `frontend/packages/${manifest}/package.json`), "utf8")
+      expect(text).toContain(spec ?? "(BROWSER_LEGO_SPEC missing)")
+    })
+  }
+})

@@ -33,6 +33,7 @@ import { AUDIT_EXCEPTIONS_FILE, auditIgnoreArgs, parseAuditExceptions } from "./
 import { assertAllPassed, runPool, startGate } from "./gates.js"
 import { nightlyRealSkipCheckScript } from "./nightlyRealSkips.js"
 import { pagesUploadLimitsCheckScript as releasePagesUploadLimitsScript } from "./pagesUploadLimits.js"
+import { laneScript } from "./laneScript.js"
 
 const ROOT = "/workspace"
 const FRONTEND = `${ROOT}/frontend`
@@ -42,7 +43,7 @@ const KEYS = "/run/almamesh-keys"
 const BUN_INSTALLER = "/opt/almamesh/install-bun.sh"
 const LIVE_ORIGIN = "https://almamesh.com"
 const REPOSITORY = "hseshadr/almamesh"
-const BROWSER_LEGO_SPEC = '"@gainratio/browser": "^0.2.0"'
+const BROWSER_LEGO_SPEC = '"@gainratio/browser": "^0.3.2"'
 const CONTRACT_SHA = "1111111111111111111111111111111111111111"
 const CENTRAL_MODULE_SHA = "a895f726e9786bcfd2bdf68f87d3d5c4b411f702"
 const BUN_IMAGE =
@@ -72,6 +73,7 @@ const CONTRACT_TESTS = [
   "tests/dagger-deployment-contract.test.ts",
   "tests/dagger-foundation-contract.test.ts",
   "tests/dagger-gates.test.ts",
+  "tests/dagger-lane-timeout.test.ts",
   "tests/dagger-nightly-real-skips.test.ts",
   "tests/dagger-pages-upload-contract.test.ts",
   "tests/dagger-workflow-contract.test.ts",
@@ -349,6 +351,10 @@ export class AlmameshCi {
           "frontend/apps/web/vitest.config.ts",
           // The memory-budget contract pins the test:e2e:memory-budget script.
           "frontend/apps/web/package.json",
+          // The browser Lego pin contract ties BROWSER_LEGO_SPEC to these.
+          "frontend/packages/browser/package.json",
+          "frontend/packages/memory/package.json",
+          "frontend/packages/store/package.json",
           AUDIT_EXCEPTIONS_FILE,
           ...CONTRACT_TESTS,
         ]),
@@ -376,6 +382,10 @@ export class AlmameshCi {
       "node scripts/verify-sqlite-memory.mjs http://127.0.0.1:4199 --browser=chromium --slow-boot-storage-ms=1500",
       "node scripts/verify-storage-blocked.mjs http://127.0.0.1:4199 --browser=chromium --journey",
       "PORTABLE_SQLITE_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:portable-sqlite",
+      // Chromium only: Linux Playwright WebKit cannot open SQLite's nested-Worker
+      // OPFS (see verify-webkit-engine.mjs), so Import is correctly disabled there.
+      // The WebKit project runs locally on macOS.
+      "PORTABLE_INVARIANTS_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:portable-invariants --project=chromium",
       "node scripts/verify-exit-gate.mjs http://127.0.0.1:4199",
       "node scripts/verify-i18n.mjs http://127.0.0.1:4199",
       "node scripts/verify-browser-parity.mjs http://127.0.0.1:4199 --reference-date=2025-01-01T00:00:00+00:00",
@@ -389,8 +399,11 @@ export class AlmameshCi {
         "node scripts/verify-sqlite-memory.mjs http://127.0.0.1:4200 --browser=webkit",
         "node scripts/verify-sqlite-memory.mjs http://127.0.0.1:4200 --browser=webkit --slow-boot-storage-ms=1500",
         "node scripts/verify-storage-blocked.mjs http://127.0.0.1:4200 --browser=webkit",
+        // OPFS refused -> the storage block screen: no engine, no RAM SQLite,
+        // no IndexedDB. The offline first-session pass needs working OPFS,
+        // which Linux Playwright WebKit lacks, so it runs on macOS
+        // (verify-webkit-engine.mjs --first-session refuses Linux).
         "node scripts/verify-webkit-engine.mjs http://127.0.0.1:4200",
-        "node scripts/verify-webkit-engine.mjs http://127.0.0.1:4200 --first-session --transient-cache-visibility",
       ],
     )
     checked = checked
@@ -415,6 +428,9 @@ export class AlmameshCi {
       // Boot-to-ready memory budget on a phone-sized Chromium; also fails if
       // the chat embedder (~+95 MiB) loads before search or chat.
       "MEMORY_BUDGET_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:memory-budget",
+      // Settings: a birth-time-only edit recomputes the chart (or says the
+      // rectified time governs), never a false "Chart Updated!"; Export after.
+      "BIRTH_TIME_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:birth-time-edit --project=chromium",
     ])
   }
   /**
@@ -927,12 +943,8 @@ echo "Wrangler Pages Functions dry-run verified closed feedback route for $EXPEC
     return this.localServer(container, preview, 4199, commands)
   }
   private localServer(container: Container, server: string, port: number, commands: readonly string[]): Container {
-    return container.withExec(["bash", "-c", `set -euo pipefail
-${server} &
-pid=$!
-trap 'kill "$pid" 2>/dev/null || true' EXIT
-for _ in {1..60}; do curl -fsS -o /dev/null http://127.0.0.1:${port} && break; kill -0 "$pid"; sleep 1; done; curl -fsS -o /dev/null http://127.0.0.1:${port}
-${commands.join("\n")}`])
+    // Every command is bounded (laneScript.ts): a hang fails with its name.
+    return container.withExec(["bash", "-c", laneScript({ server, port, commands })])
   }
   private preview(
     container: Container,

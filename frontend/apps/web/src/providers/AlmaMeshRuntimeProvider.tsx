@@ -19,14 +19,18 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { AlmaMeshRuntime, WorkerCrashError, WorkerTimeoutError } from '@almamesh/browser'
+import { AlmaMeshRuntime, EngineStorageBlockedError, WorkerCrashError, WorkerTimeoutError } from '@almamesh/browser'
 import type { BootStage, BundleMeta, ChartEngine, OnStage, RuntimeConfig } from '@almamesh/browser'
 import {
   ChartEngineContext,
   EngineBootProgressContext,
   PROGRESS_COALESCE_MS,
 } from './chartEngineContext'
-import { portableStatePersistence } from '@almamesh/store'
+import {
+  markPortableStorageBlockedByEngine,
+  portableStatePersistence,
+  subscribePortableStatePersistence,
+} from '@almamesh/store'
 import { hasLocalChart } from '../lib/localChart'
 import { recordEngineBootFailure, registerEngineTeardown } from '../lib/engineLifecycle'
 import { recoverSeveredServiceWorkerChannel } from '../lib/swSelfHeal'
@@ -115,20 +119,50 @@ const EXIT_GATE_HOOKS =
   import.meta.env.DEV || import.meta.env.VITE_EXIT_GATE_HOOKS === '1'
 
 if (typeof window !== 'undefined' && EXIT_GATE_HOOKS) {
-  const forceIndexedDb = new URL(window.location.href).searchParams.has(
-    'force-indexeddb-engine-cache',
-  )
+  // Diagnostic only: lets the gate see which engine cache the library chose.
+  // The engine runs on "sqlite-opfs" alone; a "sqlite-memory" sync fails
+  // closed in @almamesh/browser (EngineCacheNotDurableError).
   ;(
     globalThis as typeof globalThis & {
-      __EDGEPROC_FORCE_INDEXEDDB_CACHE__?: boolean
+      __EDGEPROC_REPORT_CACHE__?: boolean
     }
-  ).__EDGEPROC_FORCE_INDEXEDDB_CACHE__ = forceIndexedDb
+  ).__EDGEPROC_REPORT_CACHE__ = true
   window.__almameshVerifySqliteMemory = async () =>
     (await import('../lib/chatMemory')).verifySqliteMemoryPersistence()
-  // Boot opens the canonical SQLite state store (OPFS, or memory when OPFS is
-  // refused) and spawns its own Worker. Proofs that count Workers wait for this
+  // Boot opens the canonical SQLite state store on OPFS (or reports 'blocked')
+  // and spawns its own Worker. Proofs that count Workers wait for this
   // to leave 'pending' so that boot Worker is never attributed to the proof.
   window.__almameshPortableStatePersistence = portableStatePersistence
+}
+
+/** Canonical storage can never become durable here (the SQLite Worker failed to open). */
+export class PortableStorageUnavailableError extends Error {
+  public override readonly name = 'PortableStorageUnavailableError'
+
+  public constructor() {
+    super('Durable storage is unavailable; the engine needs SQLite on OPFS.')
+  }
+}
+
+/**
+ * Resolve once canonical SQLite is durable on OPFS. Product rule: SQLite on
+ * OPFS or nothing, so the ~38 MB engine never syncs or boots while storage is
+ * pending or blocked; it waits (the block screen offers "check again").
+ */
+function whenStorageDurable(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const settled = (): boolean => {
+      const persistence = portableStatePersistence()
+      if (persistence === 'opfs') resolve()
+      else if (persistence === 'unavailable') reject(new PortableStorageUnavailableError())
+      else return false
+      return true
+    }
+    if (settled()) return
+    const unsubscribe = subscribePortableStatePersistence(() => {
+      if (settled()) unsubscribe()
+    })
+  })
 }
 
 /**
@@ -139,6 +173,16 @@ if (typeof window !== 'undefined' && EXIT_GATE_HOOKS) {
 export interface BootstrapRuntime {
   bootstrap(config: RuntimeConfig, onStage?: OnStage): Promise<ChartEngine>
   dispose?(): Promise<void> | void
+}
+
+/** The engine-cache refusal anywhere in an error's cause chain, if any. */
+function engineStorageBlocked(error: unknown): EngineStorageBlockedError | null {
+  let current: unknown = error
+  for (let depth = 0; depth < 5 && current instanceof Error; depth += 1) {
+    if (current instanceof EngineStorageBlockedError) return current
+    current = current.cause
+  }
+  return null
 }
 
 // `stalled`: the sync transport's stall error (no bytes for 30 s) after its
@@ -188,6 +232,8 @@ export function AlmaMeshRuntimeProvider({ children, runtime }: ProviderProps) {
   // The CURRENT in-flight (or last) bootstrap promise, shared by every awaiter
   // of whenReady(). A ref (not state) so stable callbacks always see the latest.
   const inFlightRef = useRef<Promise<ChartEngine> | null>(null)
+  // The latest runBootstrap, for the storage-refusal path that re-arms itself.
+  const runBootstrapRef = useRef<(() => Promise<ChartEngine>) | null>(null)
   const startedRef = useRef(false)
   const bootstrapFailedRef = useRef(false)
   const retryableFailureRef = useRef(false)
@@ -268,9 +314,17 @@ export function AlmaMeshRuntimeProvider({ children, runtime }: ProviderProps) {
     bootstrapFailedRef.current = false
     retryableFailureRef.current = false
     retryWithoutConnectivityRef.current = false
+    const boot = (): Promise<ChartEngine> => runtimeInstance.bootstrap(readRuntimeConfig(), onStage)
     let promise: Promise<ChartEngine>
-    promise = runtimeInstance
-      .bootstrap(readRuntimeConfig(), onStage)
+    // Already durable: boot now. Otherwise wait for OPFS, and drop the boot if
+    // a reboot or unmount superseded this attempt meanwhile.
+    const booting = portableStatePersistence() === 'opfs'
+      ? boot()
+      : whenStorageDurable().then(() => {
+        if (inFlightRef.current !== promise) throw new Error('AlmaMesh engine boot superseded')
+        return boot()
+      })
+    promise = booting
       .then((ready) => {
         if (inFlightRef.current !== promise) {
           return ready
@@ -297,6 +351,16 @@ export function AlmaMeshRuntimeProvider({ children, runtime }: ProviderProps) {
         // failed workers and bootstrap promise; keeping the provider's rejected
         // promise latched made every later whenReady()/online recovery return
         // the same failure forever.
+        if (inFlightRef.current === promise && engineStorageBlocked(e)?.reason === 'opfs-unavailable') {
+          // The browser refused the engine's on-device cache. Same rule as the
+          // app's data: show the storage block screen (never a RAM cache, never
+          // the generic engine error) and boot again once "Check again" finds
+          // storage allowed. runBootstrap waits on whenStorageDurable().
+          inFlightRef.current = null
+          markPortableStorageBlockedByEngine()
+          void runBootstrapRef.current?.().catch(() => undefined)
+          throw e
+        }
         if (inFlightRef.current === promise) {
           inFlightRef.current = null
           startedRef.current = false
@@ -321,6 +385,9 @@ export function AlmaMeshRuntimeProvider({ children, runtime }: ProviderProps) {
     inFlightRef.current = promise
     return promise
   }, [onStage])
+  useEffect(() => {
+    runBootstrapRef.current = runBootstrap
+  }, [runBootstrap])
 
   // Idempotently kick off the bootstrap AT MOST ONCE. Guarded by a ref so the
   // landing CTA's prewarm-on-intent (pointerenter/focus/click, which can all

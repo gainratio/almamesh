@@ -44,14 +44,69 @@
   },
   "loading": "Loading",
   "storage_blocked": {
-    "title": "Your browser is blocking site storage",
-    "body": "AlmaMesh computes and keeps your chart only on this device, so it needs permission to store data for this site. Your browser is refusing that right now.",
-    "fix": "In Safari, open Settings > Privacy and turn off \"Block all cookies\", then reload this page. In other browsers, allow cookies and site data for almamesh.com."
+    "title": "AlmaMesh can't run until this browser lets it save data",
+    "body": "AlmaMesh needs permission to store data on this device so SQLite can save your chart. Until you allow it, AlmaMesh (including Import and Export) can't run.",
+    "reassure": "Allowing it only lets AlmaMesh keep your data here, on this device.",
+    "steps_title": "How to allow it in {{browser}}",
+    "no_settings_link": "A web page can't open your browser's settings, so this part is up to you. It takes about a minute.",
+    "browser": {
+      "safari_macos": "Safari on Mac",
+      "safari_ios": "Safari on iPhone or iPad",
+      "chromium": "Chrome or Edge",
+      "firefox": "Firefox",
+      "other": "your browser"
+    },
+    "steps": {
+      "safari_macos": {
+        "open": "In the menu bar, choose Safari → Settings.",
+        "privacy": "Click the Privacy tab.",
+        "untick": "Untick “Block all cookies”.",
+        "back": "Come back to this tab and press Check again.",
+        "private": "Use a normal window, not a Private window: AlmaMesh can't save your chart there."
+      },
+      "safari_ios": {
+        "open": "Open the Settings app.",
+        "safari": "Tap Apps, then Safari. (On older iOS, Safari is listed in Settings directly.)",
+        "toggle": "Turn off “Block All Cookies”.",
+        "back": "Come back to this tab and press Check again.",
+        "private": "Use a normal tab, not a Private tab: AlmaMesh can't save your chart there."
+      },
+      "chromium": {
+        "open": "Open Settings → Privacy and security → Site settings (in Edge: Settings → Cookies and site permissions).",
+        "allow": "Open “On-device site data” (older versions: “Cookies and site data”) and allow almamesh.com to save data. If it is listed under “Not allowed”, remove it.",
+        "site_info": "Or click the site-information icon at the left of the address bar, choose Site settings, and allow it there.",
+        "back": "Come back to this tab and press Check again.",
+        "private": "Use a normal window, not Incognito (Chrome) or InPrivate (Edge)."
+      },
+      "firefox": {
+        "padlock": "Click the padlock at the left of the address bar. If it shows a blocked permission to store data, clear it.",
+        "settings": "Or open Settings → Privacy & Security → Cookies and Site Data → Manage Exceptions, enter almamesh.com and choose Allow.",
+        "allow": "Press Allow storage below. If Firefox asks, choose Allow.",
+        "private": "Use a normal window, not a Private window."
+      },
+      "other": {
+        "settings": "In your browser's settings, allow almamesh.com to store site data.",
+        "back": "Come back to this tab and press Check again.",
+        "private": "Use a normal window, not a private one."
+      }
+    },
+    "illustration": {
+      "label": "The setting should look like this: {{setting}}, {{state}}",
+      "safari_macos_setting": "Block all cookies",
+      "safari_ios_setting": "Block All Cookies",
+      "generic_setting": "Allow site data",
+      "off": "off",
+      "on": "on"
+    },
+    "allow": "Allow storage",
+    "check_again": "Check again",
+    "checking": "Checking…",
+    "still_blocked": "Still blocked. The browser is still refusing storage for this site. Follow the steps above, then press Check again."
   },
-  "storage_ephemeral": {
-    "title": "This browser is not saving your data.",
-    "body": "It refuses on-device storage here (for example, Private Browsing), so your chart works but disappears when you reload or close this tab.",
-    "export": "Export a backup to keep it."
+  "engine_other_tab": {
+    "title": "AlmaMesh is open in another tab",
+    "body": "Only one AlmaMesh tab can use the chart engine at a time. Close the other AlmaMesh tab, then press Try again.",
+    "retry": "Try again"
   },
   "storage_unavailable": {
     "title": "AlmaMesh cannot start its on-device database",
@@ -143,5 +198,9 @@
     "interpretations_unreadable_paused": "Some saved interpretations could not be read, and this device could not set them aside. To protect them, new readings are paused. Reload the page to try again.",
     "dismiss_aria": "Dismiss notice"
   },
-  "reset_incomplete": "Reset could not delete all saved data, because this browser is still using it. Close every AlmaMesh tab and try again. If this keeps happening, clear AlmaMesh's site data in your browser settings."
+  "reset_incomplete": "Reset could not delete all saved data, because this browser is still using it. Close every AlmaMesh tab and try again. If this keeps happening, clear AlmaMesh's site data in your browser settings.",
+  "dropped_writes": {
+    "body": "Some changes on this page weren't saved because your data was being replaced or repaired. Reload to see your current data.",
+    "reload": "Reload"
+  }
 }

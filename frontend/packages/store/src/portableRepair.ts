@@ -52,6 +52,8 @@ export interface SetAsideRecord {
   readonly personId: string;
   /** The record exactly as it was stored (JSON). */
   readonly value: string;
+  /** The row's store version when it was set aside, so a restore can migrate it. */
+  readonly version?: number;
 }
 
 export interface PortableRepair {
@@ -200,10 +202,17 @@ function repairPersonRows(repair: Repairer, profileIds: ReadonlySet<string> | un
     ['almamesh-life-events', 'eventsByProfile'],
     ['almamesh-rectification-records', 'recordsByProfile'],
   ] as const) {
-    const map = envelopeOf(repair.rows, key)?.state[field];
+    const current = envelopeOf(repair.rows, key);
+    const map = current?.state[field];
+    const version = current?.envelope.version;
     const removed = repair.dropEntries(key, field, (id) => missing(id, profileIds));
     for (const personId of removed) {
-      repair.setAside.push({ row: key, personId, value: JSON.stringify((map as Row)[personId]) });
+      repair.setAside.push({
+        row: key,
+        personId,
+        value: JSON.stringify((map as Row)[personId]),
+        ...(Number.isSafeInteger(version) ? { version: version as number } : {}),
+      });
     }
   }
   const pairs = repair.dropEntries('almamesh-mesh-readings', 'byPair', (_id, reading) => {

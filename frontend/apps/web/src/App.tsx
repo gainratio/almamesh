@@ -4,6 +4,7 @@ import { lazyWithRetry } from './lib/lazyWithRetry'
 import { useTranslation } from 'react-i18next'
 import { SetAsideNotice } from './components/SetAsideNotice'
 import { UpdateBanner } from './components/UpdateBanner'
+import { EngineOtherTabNotice } from './components/EngineOtherTabNotice'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { AnimatedRoutes } from './components/AnimatedRoutes'
 import { AnimatedPage } from './components/AnimatedPage'
@@ -184,6 +185,7 @@ function App() {
   return (
     <ErrorBoundary>
       <UpdateBanner />
+      <EngineOtherTabNotice />
       <SetAsideNotice />
       <Suspense fallback={<PageLoadingFallback />}>
         {/* `/` is split out of the AppLayout-wrapped group so the marketing

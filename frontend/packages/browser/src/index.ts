@@ -14,7 +14,6 @@ export {
   EngineClient,
   materializeFile,
   MemoryCacheStore,
-  OpfsCacheStore,
   syncIndex,
   WorkerCrashError,
   WorkerTimeoutError,
@@ -30,7 +29,7 @@ export type {
 } from "@gainratio/browser";
 
 // --- explicit user reset only: wipe the synced bundle cache + rollback floor ---
-export { clearAlmaBundleCache } from "./edgeprocClient";
+export { clearAlmaBundleCache, EngineCacheNotDurableError, EngineStorageBlockedError } from "./edgeprocClient";
 
 // --- the runtime: sync the bundle -> boot Pyodide -> on-device chart engine ---
 export { AlmaMeshRuntime, defaultRuntimeDeps } from "./pyodide/runtime";

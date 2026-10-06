@@ -1,10 +1,11 @@
 import type { StateStorage } from 'zustand/middleware';
-import { createStore, del as idbDel, get as idbGet } from 'idb-keyval';
+import { deleteLegacyKeyval, readLegacyKeyval } from './legacyKeyval';
 import {
   migrateLegacyState,
   openPortableStateRepository,
   isPortableStateKey,
   isPortablePreferenceKey,
+  PORTABLE_DATASET_KEYS,
   PORTABLE_LEDGER_KEY,
   PORTABLE_PREFERENCE_MIRROR_KEYS,
   PORTABLE_PREFERENCES_KEY,
@@ -16,12 +17,9 @@ import {
   type PortablePreferenceMirrorKey,
   type PortableStateMutation,
   type PortableStateRepository,
+  type PortableStateSnapshot,
 } from './portableState';
-import {
-  markPortableStateUnavailable,
-  nonDestructiveLegacyStorage,
-  openPortableStateWithFallback,
-} from './portablePersistence';
+import { markPortableStateUnavailable, openPortableStateWhenAllowed } from './portablePersistence';
 import {
   absorbLegacyQuarantine,
   memoryQuarantineRows,
@@ -30,6 +28,17 @@ import {
   type InterpretationQuarantineRows,
 } from './interpretationQuarantine';
 import { browserLocalStorage } from './webStorage';
+import {
+  createLeaseOwner,
+  holdsAnyLease,
+  isLeaseAbandoned,
+  isLocalLeaseOwner,
+  releaseLeaseOwner,
+  resetDatasetLeaseForTests,
+  RESTORE_LEASE_MS,
+  whenLeaseMayHaveEnded,
+} from './datasetLease';
+import { reportDroppedWrite } from './droppedWrites';
 
 export const DELETION_TOMBSTONES_KEY = 'almamesh-deletion-tombstones';
 const RESTORE_EPOCH_MIRROR_KEY = 'almamesh-restore-epoch';
@@ -71,14 +80,6 @@ const EMPTY_TOMBSTONES: DeletionTombstones = {
 };
 
 /**
- * The pre-SQLite idb-keyval database. Read once by the legacy migration and
- * then retired; nothing writes it.
- * TODO(remove after 2026-11-04, one release after the SQLite-only move): drop
- * this reader with `migrateLegacyState` once returning visitors have migrated.
- */
-const legacyKeyvalStore = createStore('keyval-store', 'keyval');
-
-/**
  * Runtimes without the SQLite Worker (Node tests, SSR prerender) keep the
  * dataset and its ledger in memory for the session. Never IndexedDB or
  * localStorage: SQLite is the only durable store for app data.
@@ -118,8 +119,16 @@ let portableRepositoryOverride: PortableStateRepository | null | undefined;
 let observedActiveEpoch = 0;
 let observedRestoreEpoch: number | undefined;
 let observedRestoreInProgress = false;
-const RESTORE_LEASE_MS = 120_000;
-const scheduledRecoveryEpochs = new Set<number>();
+const watchedLeases = new Set<string>();
+/** Leases this realm took, by generation, so settling one releases its liveness lock. */
+const localLeaseOwners = new Map<number, string>();
+/**
+ * Stores that hydrated while another realm held the lease. Their value is the
+ * one at this active generation; if the lease settles without moving it, the
+ * hydration is still current and their writes are accepted again.
+ */
+const leaseHydratedDatasetEpochs = new Map<string, number>();
+let leaseRecovery: Promise<boolean> | undefined;
 const persistenceMutationQueues = new Map<string, Promise<void>>();
 const persistenceMutationFailures = new Map<string, unknown>();
 const locallyHydratedDatasetEpochs = new Map<string, number>();
@@ -204,6 +213,11 @@ export function setPortableStateRepositoryForTests(
   observedRestoreInProgress = false;
   inMemoryPreferenceFallback.clear();
   persistenceMutationFailures.clear();
+  leaseHydratedDatasetEpochs.clear();
+  watchedLeases.clear();
+  localLeaseOwners.clear();
+  leaseRecovery = undefined;
+  resetDatasetLeaseForTests();
 }
 
 function observeDurableLedger(ledger: DeletionTombstones): void {
@@ -305,9 +319,12 @@ async function portableRepository(): Promise<PortableStateRepository | null> {
     throw error;
   }
   if (mode === 'node-test-fallback') return null;
-  portableRepositoryPromise ??= openPortableStateWithFallback({
-    open: openPortableStateRepository,
-  }).then(async ({ repository, persistence }) => {
+  // Durable OPFS SQLite or nothing. While the browser refuses storage this
+  // stays pending ('blocked') and every hydration waits on it; a successful
+  // checkPortableStorageAgain() resolves this same promise, no reload needed.
+  portableRepositoryPromise ??= openPortableStateWhenAllowed({
+    open: () => openPortableStateRepository(),
+  }).then(async (repository) => {
     // TODO(remove after 2026-11-04, one release after the SQLite-only move):
     // legacy idb-keyval/localStorage reader for the one-time migration below.
     const legacy: LegacyStateStorage = {
@@ -316,7 +333,7 @@ async function portableRepository(): Promise<PortableStateRepository | null> {
           const storage = browserLocalStorage();
           return typeof storage?.getItem === 'function' ? storage.getItem(key) : null;
         }
-        const value = await idbGet<unknown>(key, legacyKeyvalStore);
+        const value = await readLegacyKeyval(key);
         if (value === undefined) return null;
         return typeof value === 'string' ? value : JSON.stringify(value);
       },
@@ -326,15 +343,15 @@ async function portableRepository(): Promise<PortableStateRepository | null> {
           storage?.removeItem?.(key);
           return;
         }
-        await idbDel(key, legacyKeyvalStore);
+        await deleteLegacyKeyval(key);
       },
     };
     await migrateLegacyState(
       repository,
-      persistence === 'memory' ? nonDestructiveLegacyStorage(legacy) : legacy,
+      legacy,
       [...PORTABLE_STATE_KEYS.filter((key) => key !== PORTABLE_PREFERENCES_KEY), PORTABLE_LEDGER_KEY],
     );
-    await migrateLegacyPreferencesToRepository(repository, persistence === 'opfs');
+    await migrateLegacyPreferencesToRepository(repository);
     return repository;
   });
   return portableRepositoryPromise;
@@ -483,97 +500,271 @@ export async function adoptLatestDatasetEpoch(): Promise<{
   return { changed, epoch: ledger.restoreEpoch };
 }
 
-function scheduleAbandonedRestoreRecovery(ledger: DeletionTombstones): void {
-  if (
-    !ledger.restoreInProgress ||
-    ledger.restoreStartedAt === undefined ||
-    scheduledRecoveryEpochs.has(ledger.restoreEpoch) ||
-    ledger.profileIds.length > 0 ||
-    ledger.threadIds.length > 0 ||
-    ledger.chartIds.length > 0
-  ) {
-    return;
-  }
-  scheduledRecoveryEpochs.add(ledger.restoreEpoch);
-  const delay = Math.max(0, ledger.restoreStartedAt + RESTORE_LEASE_MS - Date.now());
-  const timer = globalThis.setTimeout(() => {
-    scheduledRecoveryEpochs.delete(ledger.restoreEpoch);
-    void readDeletionTombstones().then(async (current) => {
-      if (current.restoreInProgress && current.restoreEpoch === ledger.restoreEpoch) {
-        await abortBackupRestore(current.restoreEpoch);
-      }
-    });
-  }, delay);
-  (timer as unknown as { unref?: () => void }).unref?.();
+function leaseIdentity(ledger: DeletionTombstones): string {
+  return `${ledger.restoreEpoch}:${ledger.leaseOwner ?? ''}:${ledger.restoreStartedAt ?? ''}`;
 }
 
-function leaseExpired(ledger: DeletionTombstones): boolean {
+function sameLease(left: DeletionTombstones, right: DeletionTombstones): boolean {
+  return left.restoreInProgress && right.restoreInProgress && leaseIdentity(left) === leaseIdentity(right);
+}
+
+/**
+ * A live lease held elsewhere at hydration: wait for its owner to end (its
+ * Web Lock released, or its time up), then settle it if it was abandoned.
+ */
+function watchForeignLease(ledger: DeletionTombstones): void {
+  const id = leaseIdentity(ledger);
+  if (!ledger.restoreInProgress || isLocalLeaseOwner(ledger.leaseOwner) || watchedLeases.has(id)) {
+    return;
+  }
+  watchedLeases.add(id);
+  void whenLeaseMayHaveEnded(ledger)
+    .then(async () => {
+      await recoverAbandonedDatasetLease();
+      const current = await readDeletionTombstones();
+      watchedLeases.delete(id);
+      if (!sameLease(current, ledger)) return;
+      const retry = globalThis.setTimeout(() => watchForeignLease(current), RESTORE_LEASE_MS);
+      (retry as unknown as { unref?: () => void }).unref?.();
+    })
+    .catch(() => {
+      watchedLeases.delete(id);
+    });
+}
+
+/** A crashed deletion: tombstones recorded, nothing being imported. */
+function holdsPendingDeletion(ledger: DeletionTombstones): boolean {
+  const reviving =
+    (ledger.reviveProfileIds?.length ?? 0) > 0 ||
+    (ledger.reviveThreadIds?.length ?? 0) > 0 ||
+    (ledger.reviveChartIds?.length ?? 0) > 0;
+  const deleting =
+    ledger.profileIds.length > 0 || ledger.threadIds.length > 0 || ledger.chartIds.length > 0;
+  return deleting && !reviving;
+}
+
+function settledLedger(ledger: DeletionTombstones): DeletionTombstones {
+  return {
+    ...ledger,
+    restoreInProgress: false,
+    restoreStartedAt: undefined,
+    leaseOwner: undefined,
+    reviveProfileIds: [],
+    reviveThreadIds: [],
+    reviveChartIds: [],
+  };
+}
+
+/** Rows the dead owner wrote at its own generation are partial; nothing reads them. */
+function partialGenerationDeletes(
+  values: ReadonlyMap<string, string>,
+  ledger: DeletionTombstones,
+): PortableStateMutation[] {
+  if (ledger.restoreEpoch === ledger.activeEpoch) return [];
+  return PORTABLE_DATASET_KEYS.filter((key) => {
+    const raw = values.get(key);
+    return raw !== undefined && persistedEpoch(raw) === ledger.restoreEpoch;
+  }).map((key) => ({ type: 'delete', key }) as const);
+}
+
+/** Abort: the last active generation stays the readable dataset. */
+function abandonedLeaseAbort(
+  values: ReadonlyMap<string, string>,
+  ledger: DeletionTombstones,
+): PortableStateMutation[] {
+  return [
+    ...partialGenerationDeletes(values, ledger),
+    { type: 'put', key: PORTABLE_LEDGER_KEY, value: serializeDeletionTombstones(settledLedger(ledger)) },
+  ];
+}
+
+/**
+ * Roll a crashed deletion forward: the active rows, minus everything the
+ * tombstones name, become a new generation, so the victim cannot come back
+ * through an export or a stale tab. Derived vectors are rebuilt from chat.
+ */
+function abandonedDeletionRollForward(
+  values: ReadonlyMap<string, string>,
+  quarantine: ReadonlyMap<string, string>,
+  ledger: DeletionTombstones,
+): PortableStateMutation[] {
+  const epoch = Math.max(ledger.restoreEpoch, ledger.activeEpoch) + 1;
+  const rows: PortableStateMutation[] = PORTABLE_DATASET_KEYS.flatMap((key) => {
+    const raw = values.get(key);
+    if (raw === undefined || persistedEpoch(raw) !== ledger.activeEpoch) return [];
+    const value = tagPersistedValue(sanitizePersistedValue(key, raw, ledger), epoch);
+    return [{ type: 'put', key, value } as const];
+  });
+  const settled: DeletionTombstones = {
+    ...settledLedger(ledger),
+    activeEpoch: epoch,
+    restoreEpoch: epoch,
+    memoryRebuildPending: true,
+    profileIds: [],
+    threadIds: [],
+    chartIds: [],
+  };
+  return [
+    ...partialGenerationDeletes(values, ledger),
+    ...rows,
+    { type: 'put', key: PORTABLE_LEDGER_KEY, value: serializeDeletionTombstones(settled) },
+    ...quarantineKeysOwnedBy(quarantine, ledger.profileIds).map(
+      (key) => ({ type: 'delete', namespace: PORTABLE_QUARANTINE_NAMESPACE, key }) as const,
+    ),
+  ];
+}
+
+async function runLeaseRecovery(held?: PortableStateRepository): Promise<boolean> {
+  const repository = held ?? (await portableRepository());
+  // Session rows die with the page; only the SQLite ledger outlives a crash.
+  if (repository === null) return false;
+  const observed = parseDeletionTombstones(await repository.read(PORTABLE_LEDGER_KEY));
+  if (!(await isLeaseAbandoned(observed))) return false;
+  const transaction = await repository.transactWithResult(({ values, quarantine }) => {
+    const ledger = parseDeletionTombstones(values.get(PORTABLE_LEDGER_KEY) ?? null);
+    if (!sameLease(ledger, observed)) return { mutations: [], result: false };
+    return {
+      mutations: holdsPendingDeletion(ledger)
+        ? abandonedDeletionRollForward(values, quarantine, ledger)
+        : abandonedLeaseAbort(values, ledger),
+      result: true,
+    };
+  });
+  await readDeletionTombstones();
+  return transaction.result;
+}
+
+/**
+ * Settle a lease whose owner is dead: roll a crashed deletion forward, abort
+ * anything else. One recovery runs at a time per realm, however many stores
+ * hydrate at once. Resolves true when this call changed the ledger.
+ */
+export function recoverAbandonedDatasetLease(held?: PortableStateRepository): Promise<boolean> {
+  leaseRecovery ??= runLeaseRecovery(held).finally(() => {
+    leaseRecovery = undefined;
+  });
+  return leaseRecovery;
+}
+
+/** Session-only fallback: no Web Lock owner check, a missing start time is expired. */
+function sessionLeaseExpired(ledger: DeletionTombstones): boolean {
   return (
-    ledger.restoreStartedAt !== undefined &&
+    ledger.restoreStartedAt === undefined ||
     ledger.restoreStartedAt + RESTORE_LEASE_MS <= Date.now()
   );
 }
 
-function leaseOwner(): string {
-  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+function acquiredLease(
+  next: DeletionTombstones,
+  epoch: number,
+  owner: string,
+): DeletionTombstones {
+  return {
+    ...next,
+    restoreEpoch: epoch,
+    restoreInProgress: true,
+    restoreStartedAt: Date.now(),
+    leaseOwner: owner,
+  };
+}
+
+type LeaseAttempt = { readonly epoch: number } | { readonly busy: DeletionTombstones };
+
+async function acquireRepositoryLease(
+  repository: PortableStateRepository,
+  owner: string,
+  transform: (current: DeletionTombstones) => DeletionTombstones,
+): Promise<number> {
+  // One pending wait per owner: a backstop re-check must not queue another
+  // Web Lock request for the same frozen owner every second.
+  let ownerWait: { readonly owner: string | undefined; readonly ended: Promise<void> } | null = null;
+  for (;;) {
+    const transaction = await repository.transactWithResult<LeaseAttempt>(({ values }) => {
+      const ledger = parseDeletionTombstones(values.get(PORTABLE_LEDGER_KEY) ?? null);
+      if (ledger.restoreInProgress) return { mutations: [], result: { busy: ledger } };
+      const epoch = Math.max(ledger.restoreEpoch, ledger.activeEpoch) + 1;
+      return {
+        mutations: [
+          {
+            type: 'put' as const,
+            key: PORTABLE_LEDGER_KEY,
+            value: serializeDeletionTombstones(acquiredLease(transform(ledger), epoch, owner)),
+          },
+        ],
+        result: { epoch },
+      };
+    });
+    if ('epoch' in transaction.result) return transaction.result.epoch;
+    // Recover on THIS repository. A live owner (say a frozen tab) is waited
+    // on, not polled: its Web Lock (or time expiry) signals a possible end,
+    // with a coarse backstop in case the ledger settles while the lock is
+    // still held, and a short floor so a loop can never spin.
+    const busy = transaction.result.busy;
+    if ((await isLeaseAbandoned(busy)) && (await recoverAbandonedDatasetLease(repository))) continue;
+    if (ownerWait === null || ownerWait.owner !== busy.leaseOwner) {
+      ownerWait = { owner: busy.leaseOwner, ended: whenLeaseMayHaveEnded(busy) };
+    }
+    const ended = ownerWait.ended.then(() => {
+      ownerWait = null; // ended: the next wait (if any) is a fresh one
+    });
+    await Promise.all([
+      Promise.race([ended, delay(LEASE_RECHECK_MS)]),
+      delay(LEASE_RETRY_FLOOR_MS),
+    ]);
+  }
+}
+
+/** Backstop re-check while waiting on a live lease owner's lock. */
+const LEASE_RECHECK_MS = 1_000;
+/** Minimum pause between lease attempts, so acquisition never busy-loops. */
+const LEASE_RETRY_FLOOR_MS = 25;
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    const timer = globalThis.setTimeout(resolve, ms);
+    (timer as unknown as { unref?: () => void }).unref?.();
+  });
+}
+
+async function acquireSessionLease(
+  owner: string,
+  transform: (current: DeletionTombstones) => DeletionTombstones,
+): Promise<number> {
+  for (;;) {
+    let acquiredEpoch: number | undefined;
+    updateSessionRow(DELETION_TOMBSTONES_KEY, (current) => {
+      const ledger = mergeDeletionTombstones(current, {});
+      if (ledger.restoreInProgress && !sessionLeaseExpired(ledger)) return ledger;
+      acquiredEpoch = Math.max(ledger.restoreEpoch, ledger.activeEpoch) + 1;
+      return acquiredLease(transform(ledger), acquiredEpoch, owner);
+    });
+    if (acquiredEpoch !== undefined) return acquiredEpoch;
+    await new Promise((resolve) => globalThis.setTimeout(resolve, 25));
+  }
 }
 
 async function acquireDatasetMutationLease(
   transform: (current: DeletionTombstones) => DeletionTombstones,
 ): Promise<number> {
-  const owner = leaseOwner();
-  const repository = await portableRepository();
-  if (repository !== null) {
-    for (;;) {
-      const transaction = await repository.transactWithResult(({ values }) => {
-        const ledger = parseDeletionTombstones(values.get(PORTABLE_LEDGER_KEY) ?? null);
-        if (ledger.restoreInProgress && !leaseExpired(ledger)) {
-          return { mutations: [], result: undefined as number | undefined };
-        }
-        const next = transform(ledger);
-        const acquiredEpoch = Math.max(ledger.restoreEpoch, ledger.activeEpoch) + 1;
-        return {
-          mutations: [
-            {
-              type: 'put',
-              key: PORTABLE_LEDGER_KEY,
-              value: serializeDeletionTombstones({
-                ...next,
-                restoreEpoch: acquiredEpoch,
-                restoreInProgress: true,
-                restoreStartedAt: Date.now(),
-                leaseOwner: owner,
-              }),
-            },
-          ],
-          result: acquiredEpoch,
-        };
-      });
-      if (transaction.result !== undefined) return transaction.result;
-      await new Promise((resolve) => globalThis.setTimeout(resolve, 25));
-    }
+  const owner = await createLeaseOwner();
+  try {
+    const repository = await portableRepository();
+    const epoch =
+      repository === null
+        ? await acquireSessionLease(owner, transform)
+        : await acquireRepositoryLease(repository, owner, transform);
+    localLeaseOwners.set(epoch, owner);
+    return epoch;
+  } catch (error) {
+    releaseLeaseOwner(owner);
+    throw error;
   }
-  for (;;) {
-    let acquiredEpoch: number | undefined;
-    updateSessionRow(
-      DELETION_TOMBSTONES_KEY,
-      (current) => {
-        const ledger = mergeDeletionTombstones(current, {});
-        if (ledger.restoreInProgress && !leaseExpired(ledger)) return ledger;
-        const next = transform(ledger);
-        acquiredEpoch = Math.max(ledger.restoreEpoch, ledger.activeEpoch) + 1;
-        return {
-          ...next,
-          restoreEpoch: acquiredEpoch,
-          restoreInProgress: true,
-          restoreStartedAt: Date.now(),
-          leaseOwner: owner,
-        };
-      },
-    );
-    if (acquiredEpoch !== undefined) return acquiredEpoch;
-    await new Promise((resolve) => globalThis.setTimeout(resolve, 25));
-  }
+}
+
+/** This realm's lease for `epoch` settled: drop its liveness lock. */
+function settleLocalLease(epoch: number): void {
+  releaseLeaseOwner(localLeaseOwners.get(epoch));
+  localLeaseOwners.delete(epoch);
 }
 
 /** Atomically add durable tombstones shared by every tab and installed PWA realm. */
@@ -689,6 +880,7 @@ export async function finalizeBackupRestore(epoch: number): Promise<void> {
       };
     });
     if (!transaction.result) throw new Error('Dataset Replace generation is no longer active.');
+    settleLocalLease(epoch);
     observedActiveEpoch = epoch;
     observedRestoreInProgress = false;
     if (localBackupRestoreEpoch === epoch) localBackupRestoreEpoch = undefined;
@@ -712,6 +904,7 @@ export async function finalizeBackupRestore(epoch: number): Promise<void> {
         : ledger;
     },
   );
+  settleLocalLease(epoch);
   observedActiveEpoch = epoch;
   observedRestoreInProgress = false;
   if (localBackupRestoreEpoch === epoch) localBackupRestoreEpoch = undefined;
@@ -719,6 +912,14 @@ export async function finalizeBackupRestore(epoch: number): Promise<void> {
 
 /** Release hydration after a failed Replace; partial snapshots remain explicit. */
 export async function abortBackupRestore(epoch: number): Promise<void> {
+  try {
+    await abortDatasetLease(epoch);
+  } finally {
+    settleLocalLease(epoch);
+  }
+}
+
+async function abortDatasetLease(epoch: number): Promise<void> {
   const repository = await portableRepository();
   if (repository !== null) {
     await repository.transact(({ values }) => {
@@ -816,11 +1017,12 @@ export async function commitDatasetGeneration(
     await pendingDeletedProfileIds(repository),
     options.clearInterpretationQuarantine === true,
   );
+  let previousActiveEpoch: number | undefined;
   if (repository === null) {
     commitSessionGeneration(epoch, writes, options);
   } else {
     for (const [index] of writes.entries()) options.afterWrite?.(index);
-    await repository.transactWithResult(({ values, quarantine }) => {
+    const committed = await repository.transactWithResult(({ values, quarantine }) => {
       const ledger = parseDeletionTombstones(values.get(PORTABLE_LEDGER_KEY) ?? null);
       if (!ledger.restoreInProgress || ledger.restoreEpoch !== epoch) {
         throw new Error('Dataset Replace generation is no longer active.');
@@ -876,7 +1078,9 @@ export async function commitDatasetGeneration(
       );
       return { mutations, result: effectiveLedger };
     });
+    previousActiveEpoch = committed.result.activeEpoch;
   }
+  settleLocalLease(epoch);
   observedRestoreEpoch = epoch;
   observedActiveEpoch = epoch;
   observedRestoreInProgress = false;
@@ -885,6 +1089,22 @@ export async function commitDatasetGeneration(
       if (isPortablePreferenceKey(write.key)) continue;
       locallyHydratedDatasetEpochs.set(write.key, epoch);
       locallyAcknowledgedDatasetValues.set(write.key, write.value);
+    }
+  }
+  if (repository !== null) {
+    // Preferences are not part of the dataset generation. A preference this
+    // tab hydrated at the previous generation, and that this commit did not
+    // replace, is still current: carry it forward, or every later language or
+    // settings change in this tab is refused until a reload.
+    const replaced = new Set(writes.map((write) => write.key));
+    // The settings mirrors (AI key, model, ...) live inside the preferences row.
+    if (replaced.has(PORTABLE_PREFERENCES_KEY)) {
+      for (const key of PORTABLE_PREFERENCE_MIRROR_KEYS) replaced.add(key);
+    }
+    for (const [key, hydrated] of locallyHydratedPreferenceEpochs) {
+      if (hydrated === previousActiveEpoch && !replaced.has(key)) {
+        locallyHydratedPreferenceEpochs.set(key, epoch);
+      }
     }
   }
   if (localBackupRestoreEpoch === epoch) localBackupRestoreEpoch = undefined;
@@ -1370,19 +1590,39 @@ function setSanitizedSessionValue(name: string, value: string): void {
   }
 }
 
+/**
+ * Hydrate at a settled generation: a lease whose owner is dead is recovered
+ * before any store reads, so the realm's writes are accepted. A live lease
+ * held elsewhere is watched until it ends.
+ */
+async function settledSnapshot(repository: PortableStateRepository): Promise<{
+  readonly snapshot: PortableStateSnapshot;
+  readonly tombstones: DeletionTombstones;
+}> {
+  let snapshot = await repository.snapshot();
+  let tombstones = parseDeletionTombstones(snapshot.values.get(PORTABLE_LEDGER_KEY) ?? null);
+  if (!tombstones.restoreInProgress) return { snapshot, tombstones };
+  await recoverAbandonedDatasetLease();
+  snapshot = await repository.snapshot();
+  tombstones = parseDeletionTombstones(snapshot.values.get(PORTABLE_LEDGER_KEY) ?? null);
+  watchForeignLease(tombstones);
+  return { snapshot, tombstones };
+}
+
 async function readDeletionAwareValue(
   name: string,
   acknowledgeHydration: boolean,
 ): Promise<string | null> {
   const repository = await portableRepository();
   if (repository !== null && isPortableStateKey(name)) {
-    const snapshot = await repository.snapshot();
-    const tombstones = parseDeletionTombstones(snapshot.values.get(PORTABLE_LEDGER_KEY) ?? null);
+    const { snapshot, tombstones } = await settledSnapshot(repository);
     observeDurableLedger(tombstones);
-    scheduleAbandonedRestoreRecovery(tombstones);
     const value = snapshot.values.get(name);
     if (!tombstones.restoreInProgress) {
       locallyHydratedDatasetEpochs.set(name, tombstones.activeEpoch);
+      leaseHydratedDatasetEpochs.delete(name);
+    } else if (acknowledgeHydration) {
+      leaseHydratedDatasetEpochs.set(name, tombstones.activeEpoch);
     }
     if (value === undefined || persistedEpoch(value) !== tombstones.activeEpoch) {
       if (acknowledgeHydration) locallyAcknowledgedDatasetValues.set(name, null);
@@ -1394,7 +1634,6 @@ async function readDeletionAwareValue(
   }
   const { value, ledger: tombstones } = readSessionValueAndLedger(name);
   observeDurableLedger(tombstones);
-  scheduleAbandonedRestoreRecovery(tombstones);
   if (!tombstones.restoreInProgress) {
     locallyHydratedDatasetEpochs.set(name, tombstones.activeEpoch);
   }
@@ -1412,29 +1651,85 @@ export function readCanonicalDatasetValue(name: string): Promise<string | null> 
   return readDeletionAwareValue(name, false);
 }
 
+/** What this realm knew when a store asked to persist (captured synchronously). */
+interface DatasetWriteContext {
+  readonly name: string;
+  readonly hydratedEpoch: number | undefined;
+  /** The store hydrated from SQLite (possibly during another realm's lease). */
+  readonly hydrated: boolean;
+  /** Written while this realm held a lease: part of its own Replace or deletion. */
+  readonly ownLease: boolean;
+}
+
+type DatasetWriteGate =
+  | { readonly accepted: true; readonly activeEpoch: number; readonly promoted: boolean }
+  | { readonly accepted: false; readonly ledger: DeletionTombstones };
+
+function datasetWriteContext(name: string): DatasetWriteContext {
+  const hydratedEpoch = locallyHydratedDatasetEpochs.get(name);
+  return {
+    name,
+    hydratedEpoch,
+    hydrated: hydratedEpoch !== undefined || leaseHydratedDatasetEpochs.has(name),
+    ownLease: holdsAnyLease(),
+  };
+}
+
+/** The generation fence every canonical dataset write passes inside its SQLite transaction. */
+function gateDatasetWrite(
+  context: DatasetWriteContext,
+  ledger: DeletionTombstones,
+): DatasetWriteGate {
+  const promoted =
+    context.hydratedEpoch === undefined &&
+    leaseHydratedDatasetEpochs.get(context.name) === ledger.activeEpoch;
+  const hydratedEpoch = promoted ? ledger.activeEpoch : context.hydratedEpoch;
+  if (
+    ledger.restoreInProgress ||
+    !shouldAcceptRestoreEpoch(observedRestoreEpoch, ledger.restoreEpoch) ||
+    hydratedEpoch !== ledger.activeEpoch
+  ) {
+    return { accepted: false, ledger };
+  }
+  return { accepted: true, activeEpoch: ledger.activeEpoch, promoted };
+}
+
+/** Adopt a promoted hydration, or make a refusal this realm did not cause visible. */
+function settleDatasetWrite(context: DatasetWriteContext, gate: DatasetWriteGate): void {
+  if (gate.accepted) {
+    if (gate.promoted) {
+      locallyHydratedDatasetEpochs.set(context.name, gate.activeEpoch);
+      leaseHydratedDatasetEpochs.delete(context.name);
+    }
+    return;
+  }
+  const ownRefusal = context.ownLease || isLocalLeaseOwner(gate.ledger.leaseOwner);
+  if (ownRefusal || !context.hydrated) return;
+  reportDroppedWrite(
+    context.name,
+    gate.ledger.restoreInProgress ? 'dataset-busy' : 'stale-generation',
+  );
+}
+
 /**
  * Historical adapter name retained by the stores. Production routes canonical
  * rows through SQLite CAS; the IndexedDB path exists only for Node tests and
- * explicitly derived caches. A stale tab cannot write across a tombstone.
+ * explicitly derived caches. A stale tab cannot write across a tombstone, and
+ * a write the fence refuses for another realm is reported, never silent.
  */
 export const deletionAwareIdbStorage: StateStorage = {
   getItem: (name) => readDeletionAwareValue(name, true),
   setItem: (name, value) => {
-    const hydratedEpoch = locallyHydratedDatasetEpochs.get(name);
+    const context = datasetWriteContext(name);
     return enqueuePersistenceMutation(name, async () => {
       const repository = await portableRepository();
       if (repository !== null && isPortableStateKey(name)) {
         const hasMergeBase = locallyAcknowledgedDatasetValues.has(name);
         const mergeBase = locallyAcknowledgedDatasetValues.get(name) ?? null;
-        const transaction = await repository.transactWithResult(({ values }) => {
+        const transaction = await repository.transactWithResult<DatasetWriteGate>(({ values }) => {
           const tombstones = parseDeletionTombstones(values.get(PORTABLE_LEDGER_KEY) ?? null);
-          if (
-            tombstones.restoreInProgress ||
-            !shouldAcceptRestoreEpoch(observedRestoreEpoch, tombstones.restoreEpoch) ||
-            hydratedEpoch !== tombstones.activeEpoch
-          ) {
-            return { mutations: [], result: false };
-          }
+          const gate = gateDatasetWrite(context, tombstones);
+          if (!gate.accepted) return { mutations: [], result: gate };
           const rawCurrent = values.get(name);
           const current =
             rawCurrent === undefined || persistedEpoch(rawCurrent) !== tombstones.activeEpoch
@@ -1451,10 +1746,11 @@ export const deletionAwareIdbStorage: StateStorage = {
                 value: tagPersistedValue(candidate, tombstones.activeEpoch),
               },
             ],
-            result: true,
+            result: gate,
           };
         });
-        if (transaction.result) locallyAcknowledgedDatasetValues.set(name, value);
+        settleDatasetWrite(context, transaction.result);
+        if (transaction.result.accepted) locallyAcknowledgedDatasetValues.set(name, value);
         return;
       }
       setSanitizedSessionValue(name, value);
@@ -1462,22 +1758,19 @@ export const deletionAwareIdbStorage: StateStorage = {
     });
   },
   removeItem: (name) => {
-    const hydratedEpoch = locallyHydratedDatasetEpochs.get(name);
+    const context = datasetWriteContext(name);
     return enqueuePersistenceMutation(name, async () => {
       const repository = await portableRepository();
       if (repository !== null && isPortableStateKey(name)) {
-        const transaction = await repository.transactWithResult(({ values }) => {
+        const transaction = await repository.transactWithResult<DatasetWriteGate>(({ values }) => {
           const tombstones = parseDeletionTombstones(values.get(PORTABLE_LEDGER_KEY) ?? null);
-          if (
-            tombstones.restoreInProgress ||
-            !shouldAcceptRestoreEpoch(observedRestoreEpoch, tombstones.restoreEpoch) ||
-            hydratedEpoch !== tombstones.activeEpoch
-          ) {
-            return { mutations: [], result: false };
-          }
-          return { mutations: [{ type: 'delete' as const, key: name }], result: true };
+          const gate = gateDatasetWrite(context, tombstones);
+          return gate.accepted
+            ? { mutations: [{ type: 'delete' as const, key: name }], result: gate }
+            : { mutations: [], result: gate };
         });
-        if (transaction.result) locallyAcknowledgedDatasetValues.set(name, null);
+        settleDatasetWrite(context, transaction.result);
+        if (transaction.result.accepted) locallyAcknowledgedDatasetValues.set(name, null);
         return;
       }
       sessionRows.delete(name);

@@ -771,7 +771,7 @@ describe('dangling person/chart references (boot self-heal)', () => {
     const repaired = await reconcilePortableReferences(everyRow({ holdSetAside, persist }));
 
     expect(holdSetAside).toHaveBeenCalledExactlyOnceWith([
-      { row: 'almamesh-life-events', personId: 'gone', value: JSON.stringify(married) },
+      { row: 'almamesh-life-events', personId: 'gone', value: JSON.stringify(married), version: 4 },
     ]);
     expect(order).toEqual(['hold', 'persist']);
     expect(repaired.setAside).toHaveLength(1);

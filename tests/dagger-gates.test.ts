@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
-import { assertAllPassed, runConcurrently, runPool, startGate } from "../dagger/src/gates.ts"
+import { assertAllPassed, GATE_TIMEOUT_MS, runConcurrently, runPool, startGate } from "../dagger/src/gates.ts"
 
 const root = resolve(import.meta.dir, "..")
 
@@ -85,6 +85,25 @@ describe("concurrent gate runner", () => {
     })
     expect(outcome.failed).toBe(true)
     expect(() => assertAllPassed([outcome])).toThrow("pdf: chromium crashed")
+  })
+})
+
+// CI hang (run 37362447831): one gate never settled and held the run for 74
+// minutes. A gate that outlives its budget reports a named failure instead.
+describe("every gate is time-bounded", () => {
+  test("pins the gate budget: 45 minutes", () => {
+    expect(GATE_TIMEOUT_MS).toBe(45 * 60_000)
+  })
+
+  test("a gate that never settles fails with its name once the budget runs out", async () => {
+    const outcome = await startGate("browser", () => new Promise(() => undefined), 50)
+    expect(outcome.failed).toBe(true)
+    expect(() => assertAllPassed([outcome])).toThrow("browser: gate timed out after 50 ms")
+  })
+
+  test("a gate that settles in time is unaffected by the budget", async () => {
+    const outcome = await startGate("pdf", async () => "ok", 1_000)
+    expect(outcome).toEqual({ gate: "pdf", failed: false })
   })
 })
 

@@ -47,14 +47,69 @@
   },
   "loading": "Cargando",
   "storage_blocked": {
-    "title": "Tu navegador está bloqueando el almacenamiento del sitio",
-    "body": "AlmaMesh calcula y guarda tu carta solo en este dispositivo, así que necesita permiso para almacenar datos de este sitio. Tu navegador lo está rechazando ahora mismo.",
-    "fix": "En Safari, abre Ajustes > Privacidad y desactiva \"Bloquear todas las cookies\"; luego recarga esta página. En otros navegadores, permite las cookies y los datos del sitio para almamesh.com."
+    "title": "AlmaMesh no puede funcionar hasta que este navegador le permita guardar datos",
+    "body": "AlmaMesh necesita permiso para almacenar datos en este dispositivo para que SQLite pueda guardar tu carta. Hasta que lo permitas, AlmaMesh (incluidas Importar y Exportar) no puede funcionar.",
+    "reassure": "Permitirlo solo deja que AlmaMesh guarde tus datos aquí, en este dispositivo.",
+    "steps_title": "Cómo permitirlo en {{browser}}",
+    "no_settings_link": "Una página web no puede abrir los ajustes de tu navegador, así que este paso te toca a ti. Lleva más o menos un minuto.",
+    "browser": {
+      "safari_macos": "Safari en Mac",
+      "safari_ios": "Safari en iPhone o iPad",
+      "chromium": "Chrome o Edge",
+      "firefox": "Firefox",
+      "other": "tu navegador"
+    },
+    "steps": {
+      "safari_macos": {
+        "open": "En la barra de menús, elige Safari → Ajustes.",
+        "privacy": "Haz clic en la pestaña Privacidad.",
+        "untick": "Desmarca “Bloquear todas las cookies”.",
+        "back": "Vuelve a esta pestaña y pulsa Comprobar de nuevo.",
+        "private": "Usa una ventana normal, no una ventana privada: AlmaMesh no puede guardar tu carta ahí."
+      },
+      "safari_ios": {
+        "open": "Abre la app Ajustes.",
+        "safari": "Toca Apps y luego Safari. (En iOS más antiguos, Safari aparece directamente en Ajustes.)",
+        "toggle": "Desactiva “Bloquear todas las cookies”.",
+        "back": "Vuelve a esta pestaña y pulsa Comprobar de nuevo.",
+        "private": "Usa una pestaña normal, no una pestaña privada: AlmaMesh no puede guardar tu carta ahí."
+      },
+      "chromium": {
+        "open": "Abre Configuración → Privacidad y seguridad → Configuración de sitios (en Edge: Configuración → Cookies y permisos del sitio).",
+        "allow": "Abre “Datos de sitios en el dispositivo” (versiones anteriores: “Cookies y datos de sitios”) y permite que almamesh.com guarde datos. Si aparece en “No permitido”, quítalo.",
+        "site_info": "O haz clic en el icono de información del sitio, a la izquierda de la barra de direcciones, elige Configuración de sitios y permítelo ahí.",
+        "back": "Vuelve a esta pestaña y pulsa Comprobar de nuevo.",
+        "private": "Usa una ventana normal, no de incógnito (Chrome) ni InPrivate (Edge)."
+      },
+      "firefox": {
+        "padlock": "Haz clic en el candado a la izquierda de la barra de direcciones. Si muestra un permiso bloqueado para almacenar datos, quítalo.",
+        "settings": "O abre Ajustes → Privacidad y seguridad → Cookies y datos del sitio → Administrar excepciones, escribe almamesh.com y elige Permitir.",
+        "allow": "Pulsa Permitir almacenamiento abajo. Si Firefox pregunta, elige Permitir.",
+        "private": "Usa una ventana normal, no una ventana privada."
+      },
+      "other": {
+        "settings": "En los ajustes de tu navegador, permite que almamesh.com almacene datos del sitio.",
+        "back": "Vuelve a esta pestaña y pulsa Comprobar de nuevo.",
+        "private": "Usa una ventana normal, no una privada."
+      }
+    },
+    "illustration": {
+      "label": "El ajuste debe verse así: {{setting}}, {{state}}",
+      "safari_macos_setting": "Bloquear todas las cookies",
+      "safari_ios_setting": "Bloquear todas las cookies",
+      "generic_setting": "Permitir datos del sitio",
+      "off": "desactivado",
+      "on": "activado"
+    },
+    "allow": "Permitir almacenamiento",
+    "check_again": "Comprobar de nuevo",
+    "checking": "Comprobando…",
+    "still_blocked": "Sigue bloqueado. El navegador sigue rechazando el almacenamiento para este sitio. Sigue los pasos de arriba y pulsa Comprobar de nuevo."
   },
-  "storage_ephemeral": {
-    "title": "Este navegador no está guardando tus datos.",
-    "body": "Aquí rechaza el almacenamiento en el dispositivo (por ejemplo, en navegación privada), así que tu carta funciona pero desaparece al recargar o cerrar esta pestaña.",
-    "export": "Exporta una copia de seguridad para conservarla."
+  "engine_other_tab": {
+    "title": "AlmaMesh está abierto en otra pestaña",
+    "body": "Solo una pestaña de AlmaMesh puede usar el motor de cartas a la vez. Cierra la otra pestaña de AlmaMesh y pulsa Intentar de nuevo.",
+    "retry": "Intentar de nuevo"
   },
   "storage_unavailable": {
     "title": "AlmaMesh no puede iniciar su base de datos en el dispositivo",
@@ -146,5 +201,9 @@
     "interpretations_unreadable_paused": "Algunas interpretaciones guardadas no se pudieron leer y este dispositivo no pudo apartarlas. Para protegerlas, las nuevas lecturas están en pausa. Recarga la página para intentarlo de nuevo.",
     "dismiss_aria": "Cerrar aviso"
   },
-  "reset_incomplete": "El restablecimiento no pudo borrar todos los datos guardados, porque este navegador todavía los usa. Cierra todas las pestañas de AlmaMesh e inténtalo de nuevo. Si sigue pasando, borra los datos del sitio de AlmaMesh en los ajustes del navegador."
+  "reset_incomplete": "El restablecimiento no pudo borrar todos los datos guardados, porque este navegador todavía los usa. Cierra todas las pestañas de AlmaMesh e inténtalo de nuevo. Si sigue pasando, borra los datos del sitio de AlmaMesh en los ajustes del navegador.",
+  "dropped_writes": {
+    "body": "Algunos cambios en esta página no se guardaron porque tus datos se estaban reemplazando o reparando. Recarga para ver tus datos actuales.",
+    "reload": "Recargar"
+  }
 }

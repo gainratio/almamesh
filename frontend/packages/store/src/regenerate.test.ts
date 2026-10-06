@@ -235,4 +235,83 @@ describe('regenerateOnBirthChange', () => {
 
     expect(interpretations.forgetChart).toHaveBeenCalledExactlyOnceWith(chartId(baseBirth));
   });
+
+  it('serializes overlapping regenerations: the later save wins and no orphan survives', async () => {
+    const lib = makeFakeLibrary(seededPrimary(baseBirth, 'p1'));
+    const first: BirthMeta = { ...baseBirth, time: '18:00' };
+    const second: BirthMeta = { ...baseBirth, time: '19:00' };
+    // The FIRST compute is the slow one, so without serialization it lands last
+    // and resurrects the older birth time over the newer one.
+    const slowFirst = (input: { datetimeUtc: string }) =>
+      new Promise<SiderealChart>((resolve) => {
+        const delayMs = input.datetimeUtc.includes('T12:30') ? 30 : 0;
+        setTimeout(() => resolve(fakeSiderealChart), delayMs);
+      });
+    const engine = { generateChart: vi.fn(slowFirst) };
+    // A chat thread started on the ORIGINAL chart: every replaced id must be
+    // unlinked by the time the queue drains, whichever run removed it.
+    const threadLinks = new Set([chartId(baseBirth)]);
+    const chat = {
+      unlinkMissingCharts: vi.fn((live: ReadonlySet<string>): readonly string[] => {
+        const dropped = [...threadLinks].filter((id) => !live.has(id));
+        for (const id of dropped) threadLinks.delete(id);
+        return dropped;
+      }),
+    };
+    const interpretations = forgetNothing();
+    const deps: RegenerateDeps = {
+      engine,
+      library: lib,
+      onRegenerated: vi.fn(),
+      chat,
+      interpretations,
+      referenceInstant: REFERENCE_INSTANT,
+    };
+
+    await Promise.all([
+      regenerateOnBirthChange({ birth: first, profileId: 'p1' }, deps),
+      regenerateOnBirthChange({ birth: second, profileId: 'p1' }, deps),
+    ]);
+
+    const p1Charts = lib.listAllCharts().filter((c) => c.profile_id === 'p1');
+    expect(p1Charts.map((c) => c.chart_id)).toEqual([chartId(second)]);
+    expect(lib.primaryFor('p1')?.chart_id).toBe(chartId(second));
+    // Dependents stay consistent: no chat link and no reading points at a chart
+    // that no longer exists.
+    expect(threadLinks.size).toBe(0);
+    const live = new Set(lib.listAllCharts().map((c) => c.chart_id));
+    for (const [forgotten] of interpretations.forgetChart.mock.calls) {
+      expect(live.has(forgotten)).toBe(false);
+    }
+    expect(interpretations.forgetChart.mock.calls.map(([id]) => id)).toEqual([
+      chartId(baseBirth),
+      chartId(first),
+    ]);
+  });
+
+  it('keeps serving the queue after a failed regeneration', async () => {
+    const lib = makeFakeLibrary(seededPrimary(baseBirth, 'p1'));
+    const next: BirthMeta = { ...baseBirth, time: '19:00' };
+    const engine = {
+      generateChart: vi
+        .fn()
+        .mockRejectedValueOnce(new Error('engine crashed'))
+        .mockResolvedValueOnce(fakeSiderealChart),
+    };
+    const deps: RegenerateDeps = {
+      engine,
+      library: lib,
+      onRegenerated: vi.fn(),
+      chat: unlinkNothing(),
+      interpretations: forgetNothing(),
+      referenceInstant: REFERENCE_INSTANT,
+    };
+
+    const failed = regenerateOnBirthChange({ birth: { ...baseBirth, time: '18:00' }, profileId: 'p1' }, deps);
+    const succeeded = regenerateOnBirthChange({ birth: next, profileId: 'p1' }, deps);
+
+    await expect(failed).rejects.toThrow('engine crashed');
+    await succeeded;
+    expect(lib.primaryFor('p1')?.chart_id).toBe(chartId(next));
+  });
 });

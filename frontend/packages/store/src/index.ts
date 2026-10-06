@@ -41,6 +41,8 @@ export * from './rectificationRecords';
 export * from './contentMode';
 export * from './language';
 export {
+  checkPortableStorageAgain,
+  markPortableStorageBlockedByEngine,
   portableStatePersistence,
   subscribePortableStatePersistence,
   type PortableStatePersistence,
@@ -56,6 +58,7 @@ export * from './events';
 export * from './regenerate';
 export * from './durablePersistence';
 export * from './deletionTombstones';
+export { deleteLegacyKeyval } from './legacyKeyval';
 export * from './portableState';
 export * from './webStorage';
 // Backup & Restore (Spec 061): export/import all user data. `backup` = storage
@@ -66,3 +69,6 @@ export * from './backupCrypto';
 // the reader retains compatibility with v2's separate settings payload.
 export * from './portableBundle';
 export * from './portableSettings';
+export * from './setAsideRecords';
+// Writes the dataset generation fence refused for another realm, surfaced in the UI.
+export * from './droppedWrites';

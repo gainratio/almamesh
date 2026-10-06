@@ -12,6 +12,8 @@ import { runProfileMigration, useLanguageStore } from '@almamesh/store'
 import { safeWarn } from '@almamesh/shared-types'
 import { installChunkErrorRecovery } from './lib/swSelfHeal'
 import { initializePortableState } from './lib/portablePreferences'
+import { startupOutcome } from './lib/storageStartup'
+import { BlockedStartup } from './components/BlockedStartup'
 import App from './App'
 // Self-hosted observatory typography (no external font CDN — keeps the app
 // fully offline and free of cross-origin requests). Variable fonts: one woff2
@@ -58,9 +60,10 @@ queryClient = new QueryClient({
 // wedge (empty precache) is healed in useServiceWorker.
 installChunkErrorRecovery()
 
-async function bootstrap(): Promise<void> {
+/** Hydrate SQLite, migrate profiles, apply the language. Never throws. */
+async function prepareState(hydration: Promise<void>): Promise<void> {
   try {
-    await initializePortableState()
+    await hydration
 
     // Named-profiles migration (no data loss) reads the now-hydrated chart,
     // profile, and chat stores. Complete it before any route guard renders.
@@ -74,21 +77,42 @@ async function bootstrap(): Promise<void> {
     // it can explain the degraded state instead of leaving a blank document.
     safeWarn('storage.state_open_failed', error)
   }
+}
 
-  ReactDOM.createRoot(document.getElementById('root')!).render(
+function Shell({ children }: { children: React.ReactNode }) {
+  return (
     <React.StrictMode>
       <ErrorBoundary>
         <I18nextProvider i18n={i18n}>
           <QueryClientProvider client={queryClient}>
-            <AlmaMeshRuntimeProvider>
-              <BrowserRouter>
-                <App />
-              </BrowserRouter>
-            </AlmaMeshRuntimeProvider>
+            <AlmaMeshRuntimeProvider>{children}</AlmaMeshRuntimeProvider>
           </QueryClientProvider>
         </I18nextProvider>
       </ErrorBoundary>
-    </React.StrictMode>,
+    </React.StrictMode>
+  )
+}
+
+async function bootstrap(): Promise<void> {
+  const root = ReactDOM.createRoot(document.getElementById('root')!)
+  const hydration = initializePortableState()
+  // SQLite on OPFS is the only store. While the browser refuses it, hydration
+  // waits for "Check again"; render the block screen now instead of a blank
+  // page, and render the app once the user has allowed storage (no reload).
+  if ((await startupOutcome(hydration)) === 'blocked') {
+    root.render(
+      <Shell>
+        <BlockedStartup />
+      </Shell>,
+    )
+  }
+  await prepareState(hydration)
+  root.render(
+    <Shell>
+      <BrowserRouter>
+        <App />
+      </BrowserRouter>
+    </Shell>,
   )
 }
 

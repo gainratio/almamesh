@@ -22,6 +22,9 @@ const BROWSER_NAME = process.argv.find((argument) => argument.startsWith('--brow
 const CHECK_EXTERNAL_EGRESS = process.argv.includes('--external-egress')
 const BROWSERS = { chromium, firefox, webkit }
 
+/** How long the service worker may take to install and control the page. */
+const SERVICE_WORKER_READY_MS = 60_000
+
 function invariant(condition, message) {
   if (!condition) throw new Error(message)
 }
@@ -58,9 +61,17 @@ try {
     `document lacks the isolated SQLite runtime: ${JSON.stringify(documentRuntime)}`,
   )
 
-  await page.evaluate(() => navigator.serviceWorker.ready.then(() => undefined))
+  // Bounded: an unregistered worker made this await hang CI for 74 minutes
+  // (2026-10-05). Fail with a reason instead.
+  await page.evaluate(
+    (ms) => Promise.race([
+      navigator.serviceWorker.ready.then(() => 'ready'),
+      new Promise((resolve) => setTimeout(() => resolve('timeout'), ms)),
+    ]),
+    SERVICE_WORKER_READY_MS,
+  ).then((state) => invariant(state === 'ready', `no service worker became ready within ${SERVICE_WORKER_READY_MS} ms (is it registered on this screen?)`))
   const controlledReloadResponse = await page.reload({ waitUntil: 'domcontentloaded' })
-  await page.waitForFunction(() => navigator.serviceWorker.controller !== null)
+  await page.waitForFunction(() => navigator.serviceWorker.controller !== null, null, { timeout: SERVICE_WORKER_READY_MS })
   const controlledReloadHeaders = controlledReloadResponse?.headers() ?? {}
   invariant(
     controlledReloadHeaders['cross-origin-opener-policy'] === 'same-origin' &&

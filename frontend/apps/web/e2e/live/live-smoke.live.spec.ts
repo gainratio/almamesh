@@ -140,9 +140,13 @@ test.describe('live smoke', () => {
     expect(consoleErrors).toEqual([]);
   });
 
-  test('memory-mode visitor (OPFS refused) holding an old localStorage quarantine row: the key is retired', { tag: '@memory-quarantine' }, async ({ context }) => {
+  // CONTRACT REVERSED (2026-10-05, "sqlite persistent is the only option").
+  // This used to run SQLite session-only in memory and require the legacy key
+  // to be retired. With OPFS refused the app now shows the storage block screen
+  // and opens no SQLite at all, so there is nowhere to move the row: it must be
+  // KEPT for the visit on which storage is allowed.
+  test('OPFS-refused visitor holding an old localStorage quarantine row: block screen, the row is kept', { tag: '@memory-quarantine' }, async ({ context }) => {
     test.skip(!SEED_LEGACY_QUARANTINE, 'opt-in: LIVE_SMOKE_SEED_LEGACY_QUARANTINE=1');
-    // Refuse OPFS the way some browsers do, so SQLite runs session-only.
     await context.addInitScript(() => {
       const storage = navigator.storage as StorageManager & { getDirectory: () => Promise<FileSystemDirectoryHandle> };
       storage.getDirectory = () => Promise.reject(new DOMException('refused for the smoke', 'SecurityError'));
@@ -156,14 +160,13 @@ test.describe('live smoke', () => {
         { quarantinedAt: new Date().toISOString(), source: 'legacy-local-storage', raw: marker },
       ]));
     }, [LEGACY_QUARANTINE_KEY, LEGACY_QUARANTINE_MARKER] as const);
-    await page.goto(`${ORIGIN}/welcome`);
-    await expect
-      .poll(() => page.evaluate((key) => window.localStorage.getItem(key), LEGACY_QUARANTINE_KEY), {
-        message: 'memory mode still retires the legacy key (no copy-back on the next boot)',
-      })
-      .toBeNull();
+    await page.goto(`${ORIGIN}/onboarding`);
+    await expect(page.getByTestId('storage-blocked-notice')).toBeVisible({ timeout: 20_000 });
     await page.reload();
-    expect(await page.evaluate((key) => window.localStorage.getItem(key), LEGACY_QUARANTINE_KEY)).toBeNull();
+    await expect(page.getByTestId('storage-blocked-notice')).toBeVisible({ timeout: 20_000 });
+    expect(await page.evaluate((key) => window.localStorage.getItem(key), LEGACY_QUARANTINE_KEY)).toContain(
+      LEGACY_QUARANTINE_MARKER,
+    );
     expect(pageErrors).toEqual([]);
   });
 
