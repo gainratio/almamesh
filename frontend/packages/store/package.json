@@ -25,7 +25,6 @@
     "@gainratio/browser": "^0.3.2",
     "dayjs": "^1.11.23",
     "idb-keyval": "^6.3.0",
-    "mitt": "^3.0.1",
     "zustand": "^5.0.14"
   },
   "peerDependencies": {

@@ -10,6 +10,7 @@
     "settings_title": "Configurações",
     "try_again": "Tentar novamente",
     "create_chart": "Adicionar dados de nascimento",
+    "rebuild_chart": "Inserir dados de nascimento",
     "manage_people": "Gerenciar pessoas",
     "retry": "Tentar novamente",
     "generate": "Gerar leitura natal",
@@ -29,6 +30,7 @@
     "title": "Ainda não há mapa de {{name}}",
     "title_unnamed": "Ainda não há mapa",
     "body": "Nada falhou e nada foi perdido. Este mapa ainda não foi criado neste dispositivo — adicione os dados de nascimento e o AlmaMesh o calcula aqui mesmo.",
+    "body_missing": "Não encontramos um mapa salvo para {{name}}. Isso pode acontecer se a página foi recarregada enquanto o mapa estava sendo calculado. Digite os dados de nascimento novamente para reconstruí-lo.",
     "read_failed_title": "Não foi possível ler os mapas salvos neste dispositivo",
     "read_failed_body": "Seus mapas ficam neste dispositivo e a leitura não terminou. Nada foi apagado."
   },

@@ -14,7 +14,7 @@ import { useState, useEffect, useMemo, type ReactElement } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
-  appEvents,
+  requestRegeneration,
   type BirthMeta,
   buildRectificationRecord,
   isStructuredLifeEvent,
@@ -23,13 +23,16 @@ import {
   useProfilesStore,
   useRectificationRecordsStore,
 } from '@almamesh/store';
+import { safeWarn } from '@almamesh/shared-types';
 import type {
   ProcessedBirthData,
   RectificationCandidate,
+  RectificationRecord,
   RectificationRecordEventSummary,
 } from '@almamesh/shared-types';
 import type { TimeConfidence } from '@almamesh/constants';
 import { useRectification } from '../hooks/useRectification';
+import { waitForChartSaved } from '../lib/chartSaved';
 import { EventEntryStep } from '../components/features/rectify/EventEntryStep';
 import { FitProgress } from '../components/features/rectify/FitProgress';
 import { EngineWarming } from '../components/features/rectify/EngineWarming';
@@ -68,6 +71,8 @@ export function RectifyPage(): ReactElement {
   const [step, setStep] = useState<WizardStep>(initialStep);
   const [pendingCandidate, setPendingCandidate] = useState<RectificationCandidate | null>(null);
   const [showModal, setShowModal] = useState(false);
+  // The confirmed rectification's chart write: the page stays until it lands.
+  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'error'>('idle');
   // Spec 062 honest-window choice: null until the user answers "how sure are
   // you about the recorded time?" (auto-filled for unknown-time profiles,
   // which have no recorded time to be sure about).
@@ -206,13 +211,15 @@ export function RectifyPage(): ReactElement {
       location_name: loc.location_name ?? '',
     };
 
-    // Persist a display-only record of THIS rectification before changing the
-    // birth time, so Settings can show a standing "was X, now Y" account. The
+    // Build a display-only record of THIS rectification, saved only once the
+    // new chart is on disk, so Settings can show a standing "was X, now Y"
+    // account that never describes a chart that is not in effect. The
     // chosen candidate's sign/time + the result's band/margin/mode are captured
     // alongside the structured events that informed the fit. v2 (Spec 062) also
     // snapshots the full in-memory adapted result and the events' own summaries
     // so the evidence story survives revisits — everything stays on-device
     // (canonical SQLite, local-first) and the record never feeds the engine.
+    let record: RectificationRecord | null = null;
     if (state.result != null) {
       const structuredEvents = useLifeEventsStore
         .getState()
@@ -225,22 +232,42 @@ export function RectifyPage(): ReactElement {
         category: e.category!,
         ...(e.summary != null && e.summary !== '' ? { summary: e.summary } : {}),
       }));
-      useRectificationRecordsStore.getState().setRecord(
-        buildRectificationRecord({
-          profileId,
-          result: state.result,
-          candidate: pendingCandidate,
-          originalTime: enteredTime,
-          structuredEventIds: structuredEvents.map((e) => e.id),
-          confirmedAt: Date.now(),
-          eventSummaries,
-        }),
-      );
+      record = buildRectificationRecord({
+        profileId,
+        result: state.result,
+        candidate: pendingCandidate,
+        originalTime: enteredTime,
+        structuredEventIds: structuredEvents.map((e) => e.id),
+        confirmedAt: Date.now(),
+        eventSummaries,
+      });
     }
 
-    appEvents.emit('birth-info-changed', { birth, profileId });
     setShowModal(false);
     setPendingCandidate(null);
+    void applyRectifiedChart(birth, profileId, record);
+  }
+
+  // Wait for the new chart to be computed AND written before leaving: a reload
+  // on the dashboard during the compute used to drop the rectified chart. A
+  // failed or stuck write stays here on the error, with the results' Confirm
+  // as the retry, and only a saved chart gets its rectification record.
+  async function applyRectifiedChart(
+    birth: BirthMeta,
+    owner: string,
+    record: RectificationRecord | null,
+  ): Promise<void> {
+    setSaveState('saving');
+    try {
+      await requestRegeneration({ birth, profileId: owner });
+      await waitForChartSaved();
+    } catch {
+      safeWarn('rectify.apply_failed');
+      setSaveState('error');
+      return;
+    }
+    if (record != null) useRectificationRecordsStore.getState().setRecord(record);
+    setSaveState('idle');
     navigate('/dashboard');
   }
 
@@ -332,7 +359,26 @@ export function RectifyPage(): ReactElement {
         </div>
       )}
 
-      {step === 'results' && state.result != null && (
+      {saveState === 'saving' && (
+        <p
+          data-testid="rectify-saving"
+          role="status"
+          className="mb-4 rounded-md border border-accent-gold/40 bg-background-secondary/40 p-4 text-sm text-text-primary"
+        >
+          {t('status.saving_chart')}
+        </p>
+      )}
+      {saveState === 'error' && (
+        <p
+          data-testid="rectify-save-error"
+          role="alert"
+          className="mb-4 rounded-md border border-red-500/40 bg-red-500/10 p-4 text-sm text-text-primary"
+        >
+          {t('error.save_failed')}
+        </p>
+      )}
+
+      {step === 'results' && state.result != null && saveState !== 'saving' && (
         <RectifyResults
           result={state.result}
           recordedReading={recordedReading}

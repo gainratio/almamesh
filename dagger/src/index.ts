@@ -436,6 +436,9 @@ export class AlmameshCi {
       // Settings: a birth-time-only edit recomputes the chart (or says the
       // rectified time governs), never a false "Chart Updated!"; Export after.
       "BIRTH_TIME_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:birth-time-edit --project=chromium",
+      // A reload the moment /dashboard appears (after onboarding or a rectify
+      // confirm) keeps the chart: pages navigate only after it is saved.
+      "CHART_RELOAD_E2E_BASE_URL=http://127.0.0.1:4199 RELOAD_DELAYS=0,200 bun run test:e2e:chart-durable-reload --project=chromium",
     ])
   }
   /**

@@ -180,13 +180,33 @@ export async function whenPersistenceSettled(name: string): Promise<void> {
   }
 }
 
+/** Throw the recorded failure of the last write to `name` (or to any row). */
+function throwRecordedPersistenceFailure(name?: string): void {
+  if (name !== undefined) {
+    if (persistenceMutationFailures.has(name)) throw persistenceMutationFailures.get(name);
+    return;
+  }
+  const failed = persistenceMutationFailures.values().next();
+  if (!failed.done) throw failed.value;
+}
+
+/**
+ * Strict form of {@link whenPersistenceSettled}: resolve only when the last
+ * write queued for `name` committed, and reject with its error when it failed.
+ * A surface that tells the user "saved" (or navigates as if it were) awaits
+ * this, so a failed SQLite/OPFS write is never reported as success.
+ */
+export async function whenPersistenceCommitted(name: string): Promise<void> {
+  await whenPersistenceSettled(name);
+  throwRecordedPersistenceFailure(name);
+}
+
 /** Wait until every queued canonical write is visible to an immediate export. */
 export async function flushPortablePersistence(): Promise<void> {
   for (let attempt = 0; attempt < 8; attempt += 1) {
     const pending = [...persistenceMutationQueues.values()];
     if (pending.length === 0) {
-      const failed = persistenceMutationFailures.values().next();
-      if (!failed.done) throw failed.value;
+      throwRecordedPersistenceFailure();
       return;
     }
     const results = await Promise.allSettled(pending);
