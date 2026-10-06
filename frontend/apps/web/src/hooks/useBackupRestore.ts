@@ -91,8 +91,9 @@ export function useBackupRestore(options: BackupRestoreOptions = {}): BackupRest
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [importing, setImporting] = useState(false);
   const [needsSafetyCopy, setNeedsSafetyCopy] = useState(true);
-  const [safetyDownloadUnverified, setSafetyDownloadUnverified] = useState(false);
-  const [safetyRevision, setSafetyRevision] = useState<number | null>(null);
+  /** The revision a fallback safety download captured; non-null = awaiting an explicit second confirm. */
+  const [unverifiedSafetyRevision, setUnverifiedSafetyRevision] = useState<number | null>(null);
+  const safetyDownloadUnverified = unverifiedSafetyRevision !== null;
   const [safetyFailure, setSafetyFailure] = useState<string | null>(null);
   const [pendingContent, setPendingContent] = useState<BackupFileContent | null>(null);
   // The password that unlocked the staged file; reused to seal the safety net.
@@ -118,8 +119,7 @@ export function useBackupRestore(options: BackupRestoreOptions = {}): BackupRest
     setPromptError(null);
     setSafetyPassphraseValue('');
     setSafetyPassphraseError(null);
-    setSafetyDownloadUnverified(false);
-    setSafetyRevision(null);
+    setUnverifiedSafetyRevision(null);
     setSafetyFailure(null);
   }
 
@@ -171,8 +171,7 @@ export function useBackupRestore(options: BackupRestoreOptions = {}): BackupRest
 
   function closeConfirm() {
     setConfirmOpen(false);
-    setSafetyDownloadUnverified(false);
-    setSafetyRevision(null);
+    setUnverifiedSafetyRevision(null);
     setSafetyFailure(null);
   }
 
@@ -203,13 +202,10 @@ export function useBackupRestore(options: BackupRestoreOptions = {}): BackupRest
    * Replace this browser's data with the staged backup. The revision fence
    * refuses the commit if another tab changed SQLite after `protect` read it.
    */
-  async function replaceData(toImport: StagedImport, protect: () => Promise<number | null>) {
+  async function replaceData(toImport: StagedImport, protect: () => Promise<number>) {
     setImporting(true);
     try {
       const protectedRevision = await protect();
-      if (protectedRevision === null) {
-        throw new Error('The safety backup revision is unavailable. Start the import again.');
-      }
       armPortableImportRevision(protectedRevision);
       try {
         await commitBackupImport(toImport);
@@ -237,8 +233,9 @@ export function useBackupRestore(options: BackupRestoreOptions = {}): BackupRest
       setSafetyPassphraseError(t('backup.error_safety_passphrase_required'));
       return;
     }
-    if (safetyDownloadUnverified) {
-      void replaceData(staged, async () => safetyRevision);
+    if (unverifiedSafetyRevision !== null) {
+      const revision = unverifiedSafetyRevision;
+      void replaceData(staged, async () => revision);
       return;
     }
     let target: BackupSaveTarget;
@@ -317,8 +314,7 @@ export function useBackupRestore(options: BackupRestoreOptions = {}): BackupRest
     if (saved === 'unverified') {
       // The <a download> fallback cannot prove completion. Keep the staged
       // import untouched and require a second, explicit confirmation.
-      setSafetyDownloadUnverified(true);
-      setSafetyRevision(built.revision);
+      setUnverifiedSafetyRevision(built.revision);
       return;
     }
     await replaceData(toImport, async () => built.revision);

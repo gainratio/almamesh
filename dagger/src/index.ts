@@ -386,6 +386,8 @@ export class AlmameshCi {
       // OPFS (see verify-webkit-engine.mjs), so Import is correctly disabled there.
       // The WebKit project runs locally on macOS.
       "PORTABLE_INVARIANTS_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:portable-invariants --project=chromium",
+      // A brand-new browser restores a backup from the landing page (Chromium only, as above).
+      "FIRST_RUN_RESTORE_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:first-run-restore --project=chromium",
       "node scripts/verify-exit-gate.mjs http://127.0.0.1:4199",
       "node scripts/verify-i18n.mjs http://127.0.0.1:4199",
       "node scripts/verify-browser-parity.mjs http://127.0.0.1:4199 --reference-date=2025-01-01T00:00:00+00:00",
