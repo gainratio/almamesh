@@ -79,6 +79,7 @@ describe('Export on a slow device (Chrome save picker, user activation)', () => 
     fireEvent.change(screen.getByTestId('backup-passphrase-input'), {
       target: { value: 'hunter2-long' },
     });
+    fireEvent.change(screen.getByTestId('backup-passphrase-confirm-input'), { target: { value: 'hunter2-long' } });
 
     fireEvent.click(screen.getByTestId('backup-export-button'));
     await act(async () => {

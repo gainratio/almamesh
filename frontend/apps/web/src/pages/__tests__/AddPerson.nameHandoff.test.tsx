@@ -203,7 +203,7 @@ describe('the onboarding wizard seeds its name from the active person', () => {
     expect(wizardNameInput().value).toBe('');
   });
 
-  it('the chart-less dashboard’s "Add birth details" lands on a prefilled wizard', async () => {
+  it('the chart-less dashboard’s rebuild button lands on birth details for that person', async () => {
     // The exact journey: a person with no chart sees the empty state, clicks the
     // primary action, and the wizard already knows their name. This link passes
     // through no form, so ONLY the wizard-mount seed can carry the name.
@@ -230,8 +230,12 @@ describe('the onboarding wizard seeds its name from the active person', () => {
 
     fireEvent.click(await screen.findByTestId('no-chart-create'));
 
-    await screen.findByTestId('name-input');
-    expect(wizardNameInput().value).toBe('Ravi');
+    // Since the 2026-10-05 rebuild button, the link names the person
+    // (?person=<id>), so the wizard skips the name step entirely and opens
+    // at birth details with the name already carried.
+    await screen.findByTestId('birth-date-input');
+    expect(screen.queryByTestId('name-input')).toBeNull();
+    expect(useOnboardingStore.getState().data.name).toBe('Ravi');
   });
 
   it('adding a NEW person still overrides a stale half-typed name', async () => {

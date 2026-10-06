@@ -81,6 +81,7 @@
   "generating": {
     "title": "Generating Your Chart",
     "subtitle": "This may take a minute...",
+    "keep_open": "Computing your chart on this device. Keep this page open until it is saved.",
     "step_counter": "Step {{current}} of {{total}}",
     "engine_download_start": "Preparing the engine download…",
     "engine_download": "Downloading engine data: {{done}} of {{total}} MB",

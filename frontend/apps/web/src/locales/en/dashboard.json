@@ -7,6 +7,7 @@
     "settings_title": "Settings",
     "try_again": "Try Again",
     "create_chart": "Add birth details",
+    "rebuild_chart": "Enter birth details",
     "manage_people": "Manage people",
     "retry": "Retry",
     "generate": "Generate natal reading",
@@ -26,6 +27,7 @@
     "title": "No chart for {{name}} yet",
     "title_unnamed": "No chart yet",
     "body": "Nothing broke and nothing was lost. This chart just hasn't been created on this device yet — add the birth details and AlmaMesh computes it right here.",
+    "body_missing": "We couldn't find a saved chart for {{name}}. This can happen if the page was reloaded while the chart was being computed. Enter the birth details again to rebuild it.",
     "read_failed_title": "Couldn't read this device's saved charts",
     "read_failed_body": "Your charts live on this device and the read didn't finish. Nothing was deleted."
   },

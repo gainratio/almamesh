@@ -139,6 +139,7 @@ async function exportBackup(page: Page): Promise<void> {
   await spaNavigate(page, "/settings/data");
   await expect(page.getByTestId("backup-export-button")).toBeVisible({ timeout: 60_000 });
   await page.getByTestId("backup-passphrase-input").fill(PASSPHRASE);
+  await page.getByTestId("backup-passphrase-confirm-input").fill(PASSPHRASE);
   const [download] = await Promise.all([
     page.waitForEvent("download", { timeout: 120_000 }),
     page.getByTestId("backup-export-button").click(),

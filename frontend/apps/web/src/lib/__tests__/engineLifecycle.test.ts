@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { EngineOperationError } from '@almamesh/browser';
+
 import {
   engineErrorCode,
   isRollbackRefusal,
@@ -9,9 +11,17 @@ import {
   teardownLiveEngine,
 } from '../engineLifecycle';
 
-/** The main-thread shape @gainratio/browser uses for a Worker refusal. */
-function engineOperationError(code: string): Error {
-  return Object.assign(new Error(`refused (${code})`), { name: 'EngineOperationError', code });
+/** The main-thread error @gainratio/browser raises for a Worker refusal. */
+function engineOperationError(code: 'rollback' | 'integrity' | 'storage'): Error {
+  return new EngineOperationError({ code, message: `refused (${code})` });
+}
+
+/** A library subclass (e.g. @gainratio/browser 0.3.1's EngineStorageUnavailableError). */
+class EngineStorageUnavailableError extends EngineOperationError {
+  constructor() {
+    super({ code: 'storage', message: 'OPFS refused' });
+    this.name = 'EngineStorageUnavailableError';
+  }
 }
 
 afterEach(() => {
@@ -36,6 +46,14 @@ describe('engineErrorCode / isRollbackRefusal', () => {
   it('only trusts a string code from an EngineOperationError', () => {
     const lookalike = Object.assign(new Error('x'), { code: 'rollback' });
     expect(engineErrorCode(lookalike)).toBeNull();
+    const renamed = Object.assign(new Error('x'), { name: 'EngineOperationError', code: 'rollback' });
+    expect(engineErrorCode(renamed)).toBeNull();
+  });
+
+  it('reads the code from a library subclass of EngineOperationError', () => {
+    expect(engineErrorCode(new EngineStorageUnavailableError())).toBe('storage');
+    const wrapped = new Error('Engine bootstrap failed', { cause: new EngineStorageUnavailableError() });
+    expect(engineErrorCode(wrapped)).toBe('storage');
   });
 });
 

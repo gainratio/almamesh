@@ -20,6 +20,7 @@ import {
   sanitizePersistedValue,
   sessionRowsForTests,
   setPortableStateRepositoryForTests,
+  whenPersistenceCommitted,
   whenPersistenceSettled,
   shouldAcceptRestoreEpoch,
   subtractRestoredTombstones,
@@ -33,6 +34,7 @@ import {
 } from './portableState';
 import {
   useChartLibraryStore,
+  whenChartLibraryCommitted,
   whenChartLibraryPersisted,
   type StoredChart,
 } from './chartLibrary';
@@ -1813,6 +1815,22 @@ describe('whenPersistenceSettled (durable-write barrier)', () => {
     }
   });
 
+  it('rejects whenChartLibraryCommitted when the chart-library write failed', async () => {
+    const sqlite = new PortableMemoryStore();
+    setPortableStateRepositoryForTests(new PortableStateRepository(sqlite));
+    try {
+      await useChartLibraryStore.persist.rehydrate();
+      await whenChartLibraryPersisted();
+      sqlite.failNext = new Error('opfs write failed');
+      useChartLibraryStore.getState().saveChart(chart('entered-0644'));
+      await expect(whenChartLibraryCommitted()).rejects.toThrow('opfs write failed');
+    } finally {
+      useChartLibraryStore.getState().clearAll();
+      await whenChartLibraryPersisted();
+      setPortableStateRepositoryForTests(undefined);
+    }
+  });
+
   it('resolves immediately when nothing is queued for the key', async () => {
     await expect(whenPersistenceSettled('almamesh-nothing-queued')).resolves.toBeUndefined();
   });
@@ -1829,5 +1847,40 @@ describe('whenPersistenceSettled (durable-write barrier)', () => {
     } finally {
       setPortableStateRepositoryForTests(undefined);
     }
+  });
+});
+
+describe('whenPersistenceCommitted (strict durable-write barrier)', () => {
+  it('rejects with the write error when the last queued write for the key failed', async () => {
+    const sqlite = new PortableMemoryStore();
+    sqlite.failNext = new Error('disk full');
+    setPortableStateRepositoryForTests(new PortableStateRepository(sqlite));
+    try {
+      await deletionAwareIdbStorage.getItem('almamesh-profiles');
+      const write = deletionAwareIdbStorage.setItem('almamesh-profiles', envelope({}));
+      write.catch(() => undefined);
+      await expect(whenPersistenceCommitted('almamesh-profiles')).rejects.toThrow('disk full');
+    } finally {
+      setPortableStateRepositoryForTests(undefined);
+    }
+  });
+
+  it('resolves once a later write for the key commits after an earlier failure', async () => {
+    const sqlite = new PortableMemoryStore();
+    sqlite.failNext = new Error('disk full');
+    setPortableStateRepositoryForTests(new PortableStateRepository(sqlite));
+    try {
+      await deletionAwareIdbStorage.getItem('almamesh-profiles');
+      await deletionAwareIdbStorage.setItem('almamesh-profiles', envelope({})).catch(() => undefined);
+      await expect(whenPersistenceCommitted('almamesh-profiles')).rejects.toThrow('disk full');
+      void deletionAwareIdbStorage.setItem('almamesh-profiles', envelope({ retried: true }));
+      await expect(whenPersistenceCommitted('almamesh-profiles')).resolves.toBeUndefined();
+    } finally {
+      setPortableStateRepositoryForTests(undefined);
+    }
+  });
+
+  it('resolves immediately when nothing is queued or failed for the key', async () => {
+    await expect(whenPersistenceCommitted('almamesh-nothing-queued')).resolves.toBeUndefined();
   });
 });

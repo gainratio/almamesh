@@ -513,10 +513,28 @@ test("migrates, exports, reloads, and restores canonical OPFS SQLite through Set
   await page.goto("/settings/data", { waitUntil: "domcontentloaded" });
   await expect(page.getByTestId("backup-import-button")).toBeVisible();
   await page.getByTestId("backup-passphrase-input").fill(PASSPHRASE);
+  // A mistyped confirmation blocks the export: nothing can recover a wrong
+  // password, so a file sealed with a typo would be unopenable forever.
+  let downloads = 0;
+  page.on("download", () => {
+    downloads += 1;
+  });
+  const confirmInput = page.getByTestId("backup-passphrase-confirm-input");
+  await confirmInput.fill(`${PASSPHRASE}-typo`);
+  await page.getByTestId("backup-export-button").click();
+  const mismatch = page.getByTestId("backup-passphrase-mismatch");
+  // This journey runs in Spanish (the seeded language), so the copy is the es string.
+  await expect(mismatch).toHaveText("Las contraseñas no coinciden.");
+  await expect(mismatch).toHaveAttribute("role", "alert");
+  await expect(confirmInput).toHaveAttribute("aria-describedby", (await mismatch.getAttribute("id")) ?? "");
+  await confirmInput.fill(PASSPHRASE);
+  await expect(mismatch).toHaveCount(0);
   const [download] = await Promise.all([
     page.waitForEvent("download"),
     page.getByTestId("backup-export-button").click(),
   ]);
+  // Only the matched-password click produced a file.
+  expect(downloads).toBe(1);
   expect(download.suggestedFilename()).toMatch(
     /^almamesh-backup-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z\.almamesh$/,
   );
