@@ -56,6 +56,7 @@ export {
 export * from './settings';
 export * from './events';
 export * from './regenerate';
+export * from './regenerationRequests';
 export * from './durablePersistence';
 export * from './deletionTombstones';
 export { deleteLegacyKeyval } from './legacyKeyval';

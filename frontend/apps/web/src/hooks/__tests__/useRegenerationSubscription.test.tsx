@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook } from '@testing-library/react';
 import { act, type ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -23,7 +23,7 @@ vi.mock('../../providers/AlmaMeshRuntimeProvider', () => ({
   useChartEngine: () => engineValue,
 }));
 
-import { appEvents, useChatStore, useInterpretationStore, usePredictiveStore, type BirthInfoChanged } from '@almamesh/store';
+import { requestRegeneration, useChatStore, useInterpretationStore, usePredictiveStore, type BirthInfoChanged } from '@almamesh/store';
 import { useRegenerationSubscription } from '../useRegenerationSubscription';
 
 const fakeEngine = { generateChart: vi.fn() } as unknown as ChartEngine;
@@ -44,12 +44,7 @@ const event: BirthInfoChanged = {
 describe('useRegenerationSubscription — emit-before-subscribe race', () => {
   beforeEach(() => {
     regenerateSpy.mockClear();
-    appEvents.all.clear();
     usePredictiveStore.getState().reset();
-  });
-
-  afterEach(() => {
-    appEvents.all.clear();
   });
 
   it('handles a live event when the engine is already ready', () => {
@@ -57,7 +52,7 @@ describe('useRegenerationSubscription — emit-before-subscribe race', () => {
     renderHook(() => useRegenerationSubscription(), { wrapper });
 
     act(() => {
-      appEvents.emit('birth-info-changed', event);
+      void requestRegeneration(event).catch(() => undefined);
     });
 
     expect(regenerateSpy).toHaveBeenCalledTimes(1);
@@ -69,7 +64,7 @@ describe('useRegenerationSubscription — emit-before-subscribe race', () => {
     renderHook(() => useRegenerationSubscription(), { wrapper });
 
     act(() => {
-      appEvents.emit('birth-info-changed', event);
+      void requestRegeneration(event).catch(() => undefined);
     });
 
     const deps = regenerateSpy.mock.calls[0][1] as {
@@ -88,7 +83,7 @@ describe('useRegenerationSubscription — emit-before-subscribe race', () => {
     // Onboarding emits the moment resolveReadyEngine resolves — but the
     // subscriber's effect has not re-attached with a ready engine yet.
     act(() => {
-      appEvents.emit('birth-info-changed', event);
+      void requestRegeneration(event).catch(() => undefined);
     });
     expect(regenerateSpy).not.toHaveBeenCalled();
 
@@ -108,7 +103,7 @@ describe('useRegenerationSubscription — emit-before-subscribe race', () => {
     const { rerender } = renderHook(() => useRegenerationSubscription(), { wrapper });
 
     act(() => {
-      appEvents.emit('birth-info-changed', event);
+      void requestRegeneration(event).catch(() => undefined);
     });
 
     engineValue = { engine: fakeEngine };
@@ -133,7 +128,7 @@ describe('useRegenerationSubscription — emit-before-subscribe race', () => {
     renderHook(() => useRegenerationSubscription(), { wrapper });
 
     act(() => {
-      appEvents.emit('birth-info-changed', event);
+      void requestRegeneration(event).catch(() => undefined);
     });
     const deps = regenerateSpy.mock.calls[0]?.[1] as { onRegenerated: () => void };
     act(() => {
@@ -154,7 +149,7 @@ describe('useRegenerationSubscription — emit-before-subscribe race', () => {
     renderHook(() => useRegenerationSubscription(), { wrapper });
 
     act(() => {
-      appEvents.emit('birth-info-changed', event);
+      void requestRegeneration(event).catch(() => undefined);
     });
     const deps = regenerateSpy.mock.calls[0]?.[1] as { onRegenerated: () => void };
     act(() => {
@@ -164,5 +159,73 @@ describe('useRegenerationSubscription — emit-before-subscribe race', () => {
     expect(usePredictiveStore.getState().status).toBe('ready');
     expect(usePredictiveStore.getState().profileKey).toBe('profile-b');
     expect(usePredictiveStore.getState().requestKey).toBe('profile-b-current-input');
+  });
+
+  it('requestRegeneration resolves only when the computed chart is applied', async () => {
+    let finish: () => void = () => undefined;
+    regenerateSpy.mockImplementationOnce(() => new Promise<void>((resolve) => (finish = resolve)));
+    engineValue = { engine: fakeEngine };
+    renderHook(() => useRegenerationSubscription(), { wrapper });
+
+    let settled = false;
+    const request = requestRegeneration(event).then(() => (settled = true));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(regenerateSpy).toHaveBeenCalledTimes(1);
+    expect(settled).toBe(false);
+
+    finish();
+    await request;
+    expect(settled).toBe(true);
+  });
+
+  it('requestRegeneration made before the engine is ready settles after the drained run', async () => {
+    const failure = new Error('worker died');
+    regenerateSpy.mockImplementationOnce(() => Promise.reject(failure));
+    engineValue = { engine: null };
+    const { rerender } = renderHook(() => useRegenerationSubscription(), { wrapper });
+
+    const older = requestRegeneration(event);
+    const newer = requestRegeneration({ ...event, profileId: 'p2' });
+    engineValue = { engine: fakeEngine };
+    rerender();
+
+    // Last wins: one run, and BOTH callers learn its outcome.
+    await expect(newer).rejects.toBe(failure);
+    await expect(older).rejects.toBe(failure);
+    expect(regenerateSpy).toHaveBeenCalledTimes(1);
+    expect((regenerateSpy.mock.calls[0]?.[0] as BirthInfoChanged).profileId).toBe('p2');
+  });
+  it('leaves a privacy-safe trace when a regeneration fails, and still rejects to the caller', async () => {
+    // The page shows the failure; the console keeps a code so a lost chart is
+    // never silent. The raw cause (which may hold birth data) is not printed.
+    const failure = new Error('worker died for Asha born 1990-01-15');
+    regenerateSpy.mockImplementationOnce(() => Promise.reject(failure));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    engineValue = { engine: fakeEngine };
+    renderHook(() => useRegenerationSubscription(), { wrapper });
+
+    await expect(requestRegeneration(event)).rejects.toBe(failure);
+
+    expect(warn).toHaveBeenCalledWith('[almamesh:warn:chart.regeneration_failed]');
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('Asha');
+    warn.mockRestore();
+  });
+
+  it('leaves the same trace when a request buffered before the engine was ready fails', async () => {
+    const failure = new Error('compute threw');
+    regenerateSpy.mockImplementationOnce(() => Promise.reject(failure));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    engineValue = { engine: null };
+    const { rerender } = renderHook(() => useRegenerationSubscription(), { wrapper });
+
+    const request = requestRegeneration(event);
+    engineValue = { engine: fakeEngine };
+    rerender();
+
+    await expect(request).rejects.toBe(failure);
+    expect(warn).toHaveBeenCalledWith('[almamesh:warn:chart.regeneration_failed]');
+    warn.mockRestore();
   });
 });

@@ -11,22 +11,24 @@
  * Nothing here clears anything. Clearing stays an explicit user action.
  */
 
+import { EngineOperationError } from '@almamesh/browser';
+
 /** The @gainratio/browser Worker code for a refusal against the durable floor. */
 export const ROLLBACK_CODE = 'rollback';
 
 /**
  * The stable `EngineOperationError.code` carried by an error or anything in its
- * `cause` chain; null for other errors. Only the library's own error type is
- * trusted, never a message match.
+ * `cause` chain; null for other errors. Only the library's own error type (and
+ * its subclasses, e.g. a storage-unavailable refusal) is trusted — checked by
+ * `instanceof`, never by `name` or a message match.
  */
 export function engineErrorCode(error: unknown): string | null {
   let current: unknown = error;
   for (let depth = 0; depth < 5 && current instanceof Error; depth += 1) {
-    const code = (current as { code?: unknown }).code;
-    if (current.name === 'EngineOperationError' && typeof code === 'string') {
-      return code;
+    if (current instanceof EngineOperationError) {
+      return current.code;
     }
-    current = (current as { cause?: unknown }).cause;
+    current = current.cause;
   }
   return null;
 }

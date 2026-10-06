@@ -140,14 +140,16 @@
     "stalled_title": "Isso está demorando mais que o normal",
     "stalled_body": "O motor ainda não terminou de iniciar. Você pode redefini-lo e recarregá-lo para tentar de novo.",
     "reset_reload": "Redefinir e recarregar o motor",
-    "clear_engine_cache": "Apagar o motor baixado e recarregar"
+    "clear_engine_cache": "Apagar o motor baixado e recarregar",
+    "saving_chart": "Calculando seu novo mapa neste dispositivo. Mantenha esta página aberta até que ele seja salvo."
   },
   "error": {
     "engine_failed_title": "O motor de gráfico não pôde iniciar",
     "engine_failed_body": "Algo deu errado ao carregar o motor no seu dispositivo. Redefina e recarregue para tentar de novo.",
     "missing_birth": "Não encontramos os dados de nascimento salvos para este perfil. Abra as configurações deste perfil para adicionar a data, a hora e o local de nascimento, e tente novamente.",
     "no_events": "Adicione ao menos um evento de vida com data para começar — cada evento ajuda o motor a comparar horários de nascimento candidatos.",
-    "back_to_events": "Voltar aos eventos"
+    "back_to_events": "Voltar aos eventos",
+    "save_failed": "Não foi possível salvar seu novo mapa. Seu mapa anterior não mudou. Tente novamente."
   },
   "steps": {
     "intro": "Introdução",

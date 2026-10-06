@@ -3,6 +3,7 @@ import { render, screen, waitFor, act } from '@testing-library/react';
 import { useEffect, useState } from 'react';
 
 import {
+  EngineOperationError,
   EngineStorageBlockedError,
   WorkerCrashError,
   type BootStage,
@@ -754,9 +755,9 @@ describe('AlmaMeshRuntimeProvider — recovery seams', () => {
   afterEach(() => recordEngineBootFailure(null));
 
   it('records a rollback boot failure (never auto-retries or clears it) and forgets it on success', async () => {
-    const rollback = Object.assign(new Error('refusing rollback: sequence is not fresher'), {
-      name: 'EngineOperationError',
+    const rollback = new EngineOperationError({
       code: 'rollback',
+      message: 'refusing rollback: sequence is not fresher',
     });
     const runtime = makeFakeRuntime([
       () => Promise.reject(rollback),
