@@ -388,6 +388,9 @@ export class AlmameshCi {
       "PORTABLE_INVARIANTS_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:portable-invariants --project=chromium",
       // A brand-new browser restores a backup from the landing page (Chromium only, as above).
       "FIRST_RUN_RESTORE_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:first-run-restore --project=chromium",
+      // The landing header fits 320/360/390/414 px phones in en/es/pt: no
+      // sideways scroll, nav CTA fully on screen (Chromium device emulation).
+      "LANDING_RESPONSIVE_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:landing-responsive",
       "node scripts/verify-exit-gate.mjs http://127.0.0.1:4199",
       "node scripts/verify-i18n.mjs http://127.0.0.1:4199",
       "node scripts/verify-browser-parity.mjs http://127.0.0.1:4199 --reference-date=2025-01-01T00:00:00+00:00",

@@ -32,6 +32,7 @@
     "test:e2e:memory-budget": "playwright test --config=playwright.memory-budget.config.ts",
     "test:e2e:birth-time-edit": "playwright test --config=playwright.birth-time-edit.config.ts",
     "test:e2e:first-run-restore": "playwright test --config=playwright.first-run-restore.config.ts",
+    "test:e2e:landing-responsive": "playwright test --config=playwright.landing.responsive.config.ts",
     "test:unit": "vitest run",
     "test:unit:watch": "vitest",
     "test:unit:coverage": "vitest run --coverage",

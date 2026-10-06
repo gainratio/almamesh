@@ -53,6 +53,25 @@ describe('LandingNav', () => {
     });
   });
 
+  describe('phone language control', () => {
+    it('keeps the accessible name and mirrors the chosen language as a code', () => {
+      useLanguageStore.setState({ language: 'pt' });
+      renderNav();
+      const select = screen.getByRole('combobox', { name: 'Language' }) as HTMLSelectElement;
+      expect(select.value).toBe('pt');
+      const code = screen.getByTestId('landing-language-code');
+      expect(code.textContent).toBe('pt');
+      expect(code.getAttribute('aria-hidden')).toBe('true');
+    });
+  });
+
+  describe('wordmark', () => {
+    it('is named AlmaMesh for assistive tech at every width', () => {
+      renderNav();
+      expect(screen.getByRole('link', { name: 'AlmaMesh' })).toBeTruthy();
+    });
+  });
+
   describe('adaptive CTA', () => {
     it('routes a first-time visitor to /onboarding with the generate label', () => {
       renderNav();
