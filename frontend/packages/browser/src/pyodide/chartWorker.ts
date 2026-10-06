@@ -29,6 +29,7 @@ import type {
   PredictiveInput,
 } from "./protocol";
 import type { RectificationInput, RectificationResultRaw } from "./rectification";
+import { observeOrphanedLoadFailures } from "./teardown";
 
 const SKYFIELD_DATA_DIR = "/home/pyodide/.skyfield-data";
 
@@ -190,6 +191,8 @@ let enginePyodide: PyodideInterface | undefined;
 // The one Pyodide runtime this Worker owns, started by `prewarm` (while the
 // bundle is still syncing on the main thread's sync Worker) or else by `boot`.
 let runtimePyodide: Promise<PyodideInterface> | undefined;
+/** Set once the runtime start has fully succeeded; see observeOrphanedLoadFailures. */
+let runtimeReady = false;
 
 /** Boot progress sink: a stage change, or bytes of a Pyodide asset arriving. */
 type ReportBoot = (progress: BootProgress) => void;
@@ -272,6 +275,7 @@ async function startRuntime(pyodideIndexUrl: string): Promise<PyodideInterface> 
     runtimeStart.listener?.("stage");
     // loadPackage resolves the whole list from the self-hosted lock — offline.
     await pyodide.loadPackage([...LOAD_PACKAGES]);
+    runtimeReady = true;
     return pyodide;
   } finally {
     scope.fetch = nativeFetch;
@@ -478,6 +482,7 @@ async function handle(request: ChartWorkerRequest): Promise<ChartWorkerResponse>
 const workerScope =
   typeof self !== "undefined" ? (self as unknown as DedicatedWorkerGlobalScope) : undefined;
 if (workerScope) {
+  observeOrphanedLoadFailures(workerScope, () => runtimeReady);
   workerScope.addEventListener("message", (event: MessageEvent<ChartWorkerRequest>) => {
     void handle(event.data).then((response) => {
       workerScope.postMessage(response);
