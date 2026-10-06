@@ -35,6 +35,8 @@ import type {
   PyodideAsset,
 } from "./protocol";
 import type { RectificationInput, RectificationResultRaw } from "./rectification";
+import { EngineBootCancelledError, trackPageTeardown } from "./teardown";
+import type { PageLifecycle } from "./teardown";
 
 /** A bootstrap stage, surfaced to the UI for a real progress story. The
  * `syncing` and `booting-engine` stages are re-reported with `progress` as
@@ -152,6 +154,8 @@ export interface RuntimeDeps {
   readonly log?: (line: string) => void;
   /** When the overlap-mode warm-up may start; defaults to `requestIdleCallback`. */
   readonly scheduleIdle?: IdleScheduler;
+  /** True once the page is unloading; no Worker is spawned then. Defaults to `pagehide`. */
+  readonly isPageTearingDown?: () => boolean;
 }
 
 const defaultDecideBootMode = (): BootDecision => decideBootPolicy(readBootSignals(navigator));
@@ -165,12 +169,17 @@ const defaultScheduleIdle: IdleScheduler = (task) => {
   return () => clearTimeout(id);
 };
 
+const pageLifecycle: PageLifecycle | null =
+  typeof window === "undefined" ? null : trackPageTeardown(window);
+const defaultIsPageTearingDown = (): boolean => pageLifecycle?.isTearingDown() ?? false;
+
 const defaultDeps: RuntimeDeps = {
   spawnSyncEngine: spawnAlmaSyncEngine,
   spawnChartEngine: () => ChartEngineClient.spawn(),
   decideBootMode: defaultDecideBootMode,
   log: defaultLog,
   scheduleIdle: defaultScheduleIdle,
+  isPageTearingDown: defaultIsPageTearingDown,
 };
 
 /** Build the production runtime deps (real sync Worker + real Pyodide Worker). */
@@ -256,6 +265,7 @@ export class AlmaMeshRuntime {
     onStage: OnStage,
     generation: number,
   ): Promise<ChartEngine> {
+    this.#assertPageAlive();
     const syncEngine = this.#deps.spawnSyncEngine();
     this.#syncEngine = syncEngine;
     let chartEngine: ChartEnginePort | null = null;
@@ -275,6 +285,7 @@ export class AlmaMeshRuntime {
         // which is why the policy grants this only on roomy hardware — and even
         // then the warm-up waits for an idle slot, so the first keystrokes of
         // the onboarding form are never competing with it for cores.
+        this.#assertPageAlive();
         const warming = this.#deps.spawnChartEngine();
         chartEngine = warming;
         this.#chartEngine = warming;
@@ -313,6 +324,7 @@ export class AlmaMeshRuntime {
       if (this.#syncEngine === syncEngine) this.#syncEngine = null;
 
       onStage({ kind: "booting-engine" });
+      if (chartEngine === null) this.#assertPageAlive();
       const booted = chartEngine ?? this.#deps.spawnChartEngine();
       chartEngine = booted;
       this.#chartEngine = booted;
@@ -341,6 +353,13 @@ export class AlmaMeshRuntime {
       if (this.#syncEngine === syncEngine) this.#syncEngine = null;
       if (this.#chartEngine === chartEngine) this.#chartEngine = null;
       throw error;
+    }
+  }
+
+  /** WebKit refuses (and logs) a Worker constructed after `pagehide`; do not try. */
+  #assertPageAlive(): void {
+    if ((this.#deps.isPageTearingDown ?? defaultIsPageTearingDown)()) {
+      throw new EngineBootCancelledError();
     }
   }
 
