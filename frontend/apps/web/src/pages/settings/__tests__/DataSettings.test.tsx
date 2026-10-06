@@ -117,6 +117,13 @@ beforeEach(() => {
   });
 });
 
+function typeExportPasswords(password: string, confirmation: string) {
+  fireEvent.change(screen.getByTestId('backup-passphrase-input'), { target: { value: password } });
+  fireEvent.change(screen.getByTestId('backup-passphrase-confirm-input'), {
+    target: { value: confirmation },
+  });
+}
+
 describe('DataSettings — Backup & Restore panel', () => {
   it('renders the panel and both actions', () => {
     render(<DataSettings />);
@@ -148,25 +155,36 @@ describe('DataSettings — Backup & Restore panel', () => {
     fireEvent.click(screen.getByTestId('backup-export-button'));
 
     expect(
-      await screen.findByText(
-        'Choose a password of at least 8 characters. It encrypts the file, including your AI key.',
-      ),
+      await screen.findByText('Choose a password. It encrypts the file, including your AI key.'),
     ).toBeTruthy();
     expect(vi.mocked(buildBackupExport)).not.toHaveBeenCalled();
   });
 
-  it('refuses a password shorter than 8 characters', async () => {
+  it('refuses a password shorter than 12 characters', async () => {
     render(<DataSettings />);
+    expect(screen.getByTestId('backup-passphrase-input').getAttribute('placeholder')).toBe(
+      'At least 12 characters',
+    );
 
-    fireEvent.change(screen.getByTestId('backup-passphrase-input'), {
-      target: { value: 'short' },
-    });
-
-    fireEvent.change(screen.getByTestId('backup-passphrase-confirm-input'), { target: { value: 'short' } });
+    typeExportPasswords('eleven char', 'eleven char');
     fireEvent.click(screen.getByTestId('backup-export-button'));
 
-    expect(await screen.findByTestId('backup-error')).toBeTruthy();
+    expect((await screen.findByTestId('backup-error')).textContent).toBe(
+      'Use at least 12 characters. The password encrypts the file, including your AI key.',
+    );
+    expect(screen.queryByTestId('backup-passphrase-mismatch')).toBeNull();
     expect(vi.mocked(buildBackupExport)).not.toHaveBeenCalled();
+  });
+
+  it('says honestly when the device runs out of memory encrypting the export', async () => {
+    vi.mocked(buildBackupExport).mockRejectedValueOnce(new BackupCryptoError('out_of_memory', 'oom'));
+    render(<DataSettings />);
+    typeExportPasswords('hunter2-long', 'hunter2-long');
+    fireEvent.click(screen.getByTestId('backup-export-button'));
+
+    expect((await screen.findByTestId('backup-error')).textContent).toBe(
+      'This device ran out of memory encrypting the backup; close other tabs/apps and try again.',
+    );
   });
 
   it('passes the entered passphrase to the export and shows the downloaded status', async () => {
@@ -357,7 +375,7 @@ describe('DataSettings — Backup & Restore panel', () => {
     fireEvent.click(await screen.findByTestId('backup-confirm-import'));
 
     expect(await screen.findByText(
-      'Choose a password of at least 8 characters for the encrypted safety backup.',
+      'Choose a password of at least 12 characters for the encrypted safety backup.',
     )).toBeTruthy();
     expect(vi.mocked(buildBackupExport)).not.toHaveBeenCalled();
     expect(vi.mocked(commitBackupImport)).not.toHaveBeenCalled();
@@ -548,18 +566,44 @@ describe('DataSettings — Backup & Restore panel', () => {
     render(<DataSettings />);
     fireEvent.click(screen.getByTestId('backup-import-button'));
     fireEvent.change(await screen.findByTestId('backup-passphrase-prompt-input'), {
-      target: { value: 'bundle-pass' },
+      target: { value: 'bundle-passphrase' },
     });
     fireEvent.click(screen.getByTestId('backup-passphrase-prompt-submit'));
 
     fireEvent.click(await screen.findByTestId('backup-confirm-import'));
 
     await waitFor(() => expect(vi.mocked(commitBackupImport)).toHaveBeenCalled());
-    expect(vi.mocked(buildBackupExport)).toHaveBeenCalledWith('bundle-pass');
+    expect(vi.mocked(buildBackupExport)).toHaveBeenCalledWith('bundle-passphrase');
     expect(vi.mocked(saveBackupFile)).toHaveBeenCalledWith(
       'almamesh-backup-before-import-2026-07-01T12-34-56-000Z.almamesh',
       new Uint8Array([9]),
     );
+  });
+
+  it('an old backup opened with a password under 12 characters asks for a new safety password', async () => {
+    vi.mocked(pickBackupFile).mockResolvedValue('BUNDLE_TEXT');
+    vi.mocked(stageBackupImport)
+      .mockRejectedValueOnce(new BackupCryptoError('bad_passphrase', 'encrypted'))
+      .mockResolvedValueOnce({
+        kind: 'bundle',
+        envelope: SAMPLE_ENVELOPE,
+        wasEncrypted: true,
+        bytes: new Uint8Array([1]),
+      });
+    render(<DataSettings />);
+    fireEvent.click(screen.getByTestId('backup-import-button'));
+    fireEvent.change(await screen.findByTestId('backup-passphrase-prompt-input'), {
+      target: { value: 'pw-legacy' },
+    });
+    fireEvent.click(screen.getByTestId('backup-passphrase-prompt-submit'));
+
+    // The safety copy is a NEW file, so it must meet the 12-character rule.
+    expect(await screen.findByTestId('backup-safety-passphrase-input')).toBeTruthy();
+    fireEvent.click(screen.getByTestId('backup-confirm-import'));
+    expect(
+      await screen.findByText('Choose a password of at least 12 characters for the encrypted safety backup.'),
+    ).toBeTruthy();
+    expect(vi.mocked(buildBackupExport)).not.toHaveBeenCalled();
   });
 
   it('a wrong password keeps the prompt open with a specific message and commits nothing', async () => {
@@ -580,6 +624,41 @@ describe('DataSettings — Backup & Restore panel', () => {
       ),
     ).toBeTruthy();
     expect(vi.mocked(commitBackupImport)).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['out_of_memory', 'This device ran out of memory unlocking the backup; close other tabs/apps and try again.'],
+    ['unavailable', "AlmaMesh couldn't unlock the backup just now. Your password was not checked; try again."],
+  ] as const)('keeps the prompt open and says to retry, not retype, on %s', async (code, message) => {
+    vi.mocked(pickBackupFile).mockResolvedValue(new Uint8Array([1]));
+    vi.mocked(stageBackupImport)
+      .mockRejectedValueOnce(new BackupCryptoError('bad_passphrase', 'encrypted'))
+      .mockRejectedValueOnce(new BackupCryptoError(code, code));
+    render(<DataSettings />);
+    fireEvent.click(screen.getByTestId('backup-import-button'));
+    fireEvent.change(await screen.findByTestId('backup-passphrase-prompt-input'), {
+      target: { value: 'the right password' },
+    });
+    fireEvent.click(screen.getByTestId('backup-passphrase-prompt-submit'));
+
+    expect(await screen.findByText(message)).toBeTruthy();
+    expect(screen.getByTestId('backup-passphrase-prompt-input')).toBeTruthy();
+    expect(vi.mocked(commitBackupImport)).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [new BackupCryptoError('unsupported', 'x'), "This backup uses encryption settings AlmaMesh can't open."],
+    [
+      new BackupCryptoError('too_costly', 'x', 21),
+      'This backup needs more memory to unlock (scrypt work factor 21) than AlmaMesh allows. AlmaMesh exports never do this; the file was made by another tool.',
+    ],
+  ])('names a backup AlmaMesh will not open: %s', async (error, message) => {
+    vi.mocked(pickBackupFile).mockResolvedValue(new Uint8Array([1]));
+    vi.mocked(stageBackupImport).mockRejectedValueOnce(error);
+    render(<DataSettings />);
+    fireEvent.click(screen.getByTestId('backup-import-button'));
+
+    expect((await screen.findByTestId('backup-error')).textContent).toBe(message);
   });
 
   it('warns before restoring an older backup that carries no AI settings', async () => {
@@ -825,13 +904,6 @@ describe('DataSettings — Backup & Restore panel', () => {
 // A typo in a new password makes the file permanently unopenable (nothing can
 // recover it), so every place that CREATES a password asks for it twice.
 describe('DataSettings — confirm the password you create', () => {
-  function typeExportPasswords(password: string, confirmation: string) {
-    fireEvent.change(screen.getByTestId('backup-passphrase-input'), { target: { value: password } });
-    fireEvent.change(screen.getByTestId('backup-passphrase-confirm-input'), {
-      target: { value: confirmation },
-    });
-  }
-
   async function openLegacyConfirm() {
     vi.mocked(pickBackupFile).mockResolvedValue('LEGACY_TEXT');
     render(<DataSettings />);

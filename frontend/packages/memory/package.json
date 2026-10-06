@@ -19,7 +19,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@gainratio/browser": "^0.3.2",
+    "@gainratio/browser": "^0.4.1",
     "@huggingface/transformers": "^4.3.0"
   },
   "devDependencies": {

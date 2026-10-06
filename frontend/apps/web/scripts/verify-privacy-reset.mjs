@@ -1,4 +1,8 @@
+import { Buffer } from 'node:buffer';
 import { chromium } from '@playwright/test';
+// An independent opener: typage (age's reference TypeScript implementation),
+// NOT the app's seam, so this proof cannot share a bug with the code it checks.
+import { Decrypter } from 'age-encryption';
 
 const baseUrl = process.argv[2];
 if (!baseUrl) throw new Error('Usage: node verify-privacy-reset.mjs <base-url>');
@@ -11,9 +15,10 @@ const PASSPHRASE = 'privacy reset passphrase';
 // and (being a local-only side table) never part of an exported backup.
 const LEGACY_QUARANTINE_KEY = 'almamesh-interpretations.quarantine';
 const QUARANTINE_MARKER = 'privacy-quarantine-never-exported';
-const BUNDLE_MAGIC = [0x41, 0x4c, 0x4d, 0x41, 0x4d, 0x45, 0x53, 0x48];
-const BUNDLE_FORMAT_VERSION = 3;
-const BUNDLE_PBKDF2_ITERATIONS = 600_000;
+// Exports are standard age v1 files with one scrypt passphrase recipient at
+// work factor 17 (128 MiB): `age -d` opens them with no AlmaMesh code.
+const AGE_MAGIC = 'age-encryption.org/v1\n';
+const AGE_SCRYPT_WORK_FACTOR = 17;
 const SQLITE_HEADER = [
   0x53, 0x51, 0x4c, 0x69, 0x74, 0x65, 0x20, 0x66,
   0x6f, 0x72, 0x6d, 0x61, 0x74, 0x20, 0x33, 0x00,
@@ -21,66 +26,18 @@ const SQLITE_HEADER = [
 const origin = new URL(baseUrl).origin;
 const browser = await chromium.launch({ headless: true });
 const context = await browser.newContext({ acceptDownloads: true });
-await context.addInitScript(({ profileId, privateCredential, passphrase, quarantineMarker }) => {
+await context.addInitScript(() => {
   let target = window;
   while (target) {
     Reflect.deleteProperty(target, 'showSaveFilePicker');
     target = Object.getPrototypeOf(target);
   }
   const createObjectUrl = URL.createObjectURL.bind(URL);
-  // Independent format-v3 opener. The authenticated 64-byte header carries the
-  // format, KDF, salt, IV, timestamp and lengths; the plaintext is exactly the
-  // canonical SQLite file, with no second settings payload.
-  const openBundle = async (file) => {
-    const header = file.slice(0, 64);
-    const view = new DataView(header.buffer, header.byteOffset, header.byteLength);
-    const iterations = view.getUint32(16, false);
-    const base = await window.crypto.subtle.importKey(
-      'raw', new window.TextEncoder().encode(passphrase), 'PBKDF2', false, ['deriveKey'],
-    );
-    const key = await window.crypto.subtle.deriveKey(
-      { name: 'PBKDF2', hash: 'SHA-256', salt: header.slice(36, 52), iterations },
-      base, { name: 'AES-GCM', length: 256 }, false, ['decrypt'],
-    );
-    const plain = await window.crypto.subtle.decrypt(
-      { name: 'AES-GCM', iv: header.slice(52, 64), additionalData: header },
-      key, file.slice(64),
-    );
-    return { database: new Uint8Array(plain), header, iterations };
-  };
-  const includes = (haystack, text) => {
-    const needle = new window.TextEncoder().encode(text);
-    return haystack.some((_, offset) =>
-      offset + needle.length <= haystack.length &&
-      needle.every((value, index) => haystack[offset + index] === value),
-    );
-  };
+  // Hand the exact downloaded bytes to Node, which opens them independently.
   URL.createObjectURL = (blob) => {
-    window.__almameshBackupEvidence = blob.arrayBuffer().then(async (buffer) => {
-      const file = new Uint8Array(buffer);
-      const { database: bytes, header, iterations } = await openBundle(file);
-      const contains = (text) => {
-        const needle = new window.TextEncoder().encode(text);
-        return bytes.some((_, offset) =>
-          offset + needle.length <= bytes.length &&
-          needle.every((value, index) => bytes[offset + index] === value),
-        );
-      };
-      return {
-        type: blob.type,
-        magic: [...header.slice(0, 8)],
-        formatVersion: header[8],
-        iterations,
-        fileHasPlaintextCredential: includes(file, privateCredential),
-        size: bytes.length,
-        header: [...bytes.slice(0, 16)],
-        pageSizeField: (bytes[16] << 8) | bytes[17],
-        hasCanonicalLedger: contains('almamesh-deletion-tombstones'),
-        hasProfile: contains(profileId),
-        hasQuarantineMarker: contains(quarantineMarker),
-        hasPrivateCredential: contains(privateCredential),
-      };
-    });
+    window.__almameshBackupEvidence = blob
+      .arrayBuffer()
+      .then((buffer) => ({ type: blob.type, file: Array.from(new Uint8Array(buffer)) }));
     return createObjectUrl(blob);
   };
   document.addEventListener(
@@ -93,7 +50,40 @@ await context.addInitScript(({ profileId, privateCredential, passphrase, quarant
     },
     true,
   );
-}, { profileId: PROFILE_ID, privateCredential: PRIVATE_CREDENTIAL, passphrase: PASSPHRASE, quarantineMarker: QUARANTINE_MARKER });
+});
+
+/** The scrypt work factor in an age header's single passphrase stanza. */
+function scryptWorkFactor(file) {
+  const lines = file.subarray(0, 256).toString('latin1').split('\n');
+  const stanza = lines[1]?.split(' ') ?? [];
+  return stanza[0] === '->' && stanza[1] === 'scrypt' && lines[3]?.startsWith('---')
+    ? Number(stanza[3])
+    : Number.NaN;
+}
+
+// Open the age file and read the canonical SQLite file it carries. The
+// plaintext is exactly the canonical SQLite file, with no second settings payload.
+async function backupEvidence({ filename, type, file: fileBytes }) {
+  const file = Buffer.from(fileBytes);
+  const decrypter = new Decrypter();
+  decrypter.addPassphrase(PASSPHRASE);
+  const bytes = Buffer.from(await decrypter.decrypt(new Uint8Array(file)));
+  const contains = (text) => bytes.includes(Buffer.from(text));
+  return {
+    filename,
+    type,
+    magic: file.subarray(0, AGE_MAGIC.length).toString('latin1'),
+    workFactor: scryptWorkFactor(file),
+    fileHasPlaintextCredential: file.includes(Buffer.from(PRIVATE_CREDENTIAL)),
+    size: bytes.length,
+    header: [...bytes.subarray(0, 16)],
+    pageSizeField: (bytes[16] << 8) | bytes[17],
+    hasCanonicalLedger: contains('almamesh-deletion-tombstones'),
+    hasProfile: contains(PROFILE_ID),
+    hasQuarantineMarker: contains(QUARANTINE_MARKER),
+    hasPrivateCredential: contains(PRIVATE_CREDENTIAL),
+  };
+}
 
 const page = await context.newPage();
 const errors = [];
@@ -182,10 +172,12 @@ async function exportBackup() {
   await page.waitForFunction(
     () => window.__almameshBackupFilename && window.__almameshBackupEvidence,
   );
-  return page.evaluate(async () => ({
-    filename: window.__almameshBackupFilename,
-    ...(await window.__almameshBackupEvidence),
-  }));
+  return backupEvidence(
+    await page.evaluate(async () => ({
+      filename: window.__almameshBackupFilename,
+      ...(await window.__almameshBackupEvidence),
+    })),
+  );
 }
 
 function assertPortableBackup(exported, { expectProfile, expectCredential }) {
@@ -194,13 +186,12 @@ function assertPortableBackup(exported, { expectProfile, expectCredential }) {
   }
   if (
     exported.type !== 'application/vnd.almamesh.backup' ||
-    exported.formatVersion !== BUNDLE_FORMAT_VERSION ||
-    exported.iterations !== BUNDLE_PBKDF2_ITERATIONS ||
-    JSON.stringify(exported.magic) !== JSON.stringify(BUNDLE_MAGIC)
+    exported.magic !== AGE_MAGIC ||
+    exported.workFactor !== AGE_SCRYPT_WORK_FACTOR
   ) {
     throw new Error(
-      `Backup envelope contract failed: type=${exported.type}, version=${exported.formatVersion}, ` +
-        `iterations=${exported.iterations}`,
+      `Backup envelope contract failed: type=${exported.type}, magic=${JSON.stringify(exported.magic)}, ` +
+        `scrypt work factor=${exported.workFactor}`,
     );
   }
   if (JSON.stringify(exported.header) !== JSON.stringify(SQLITE_HEADER)) {
@@ -356,7 +347,7 @@ try {
   if (offOrigin.size > 0) throw new Error(`Off-origin requests: ${[...offOrigin].join(', ')}`);
   if (errors.length > 0) throw new Error(`Browser errors: ${errors.join(' | ')}`);
   console.log(
-    `privacy: sealed v3 exact SQLite export (${exported.size} bytes), quarantine migrated + excluded, all portable state encrypted, ` +
+    `privacy: sealed age (scrypt 2^17) exact SQLite export (${exported.size} bytes), quarantine migrated + excluded, all portable state encrypted, ` +
       'durable canonical + legacy reset, landing, zero egress, clean console',
   );
 } finally {

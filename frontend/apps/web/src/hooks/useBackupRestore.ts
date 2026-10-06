@@ -19,6 +19,7 @@ import {
   armPortableImportRevision,
   BackupCryptoError,
   BackupError,
+  checkBackupPassphrase,
   clearPortableImportRevisionFence,
   PortableStateUnavailableError,
   readPortableStateRevision,
@@ -39,10 +40,11 @@ import {
   type BackupSaveTarget,
 } from '../lib/backupFile';
 import { suppressNextServiceWorkerHeal } from '../lib/swSelfHeal';
-import { passwordsMatch } from '../lib/backupPassword';
 
-/** Minimum password length for a safety copy (matches the export rule). */
-const MIN_RESTORE_PASSPHRASE_LENGTH = 8;
+/** True when a password may seal a NEW file (the safety copy): the export rule. */
+function canSealWith(password: string): boolean {
+  return checkBackupPassphrase(password, password) === null;
+}
 
 export interface BackupRestoreOptions {
   /** Where to go after a successful restore. Omitted: reload the current page. */
@@ -117,11 +119,9 @@ export function useBackupRestore(options: BackupRestoreOptions = {}): BackupRest
   }
 
   function resetConfirmState(passphrase: string | undefined) {
-    setStagedPassphrase(
-      passphrase !== undefined && passphrase.length >= MIN_RESTORE_PASSPHRASE_LENGTH
-        ? passphrase
-        : undefined,
-    );
+    // An old backup's password may be shorter than today's rule; then the user
+    // chooses a new one for the safety copy.
+    setStagedPassphrase(passphrase !== undefined && canSealWith(passphrase) ? passphrase : undefined);
     setPendingContent(null);
     setPromptPassphrase('');
     setPromptError(null);
@@ -137,7 +137,24 @@ export function useBackupRestore(options: BackupRestoreOptions = {}): BackupRest
     if (err instanceof BackupError && err.code === 'too_new') return t('backup.error_too_new');
     if (err instanceof BackupError && err.code === 'bad_format') return t('backup.error_bad_format');
     if (err instanceof PortableStateUnavailableError) return t('backup.error_storage_unavailable');
+    if (err instanceof BackupCryptoError && err.code === 'unsupported') return t('backup.error_unsupported');
+    if (err instanceof BackupCryptoError && err.code === 'too_costly') {
+      return t('backup.error_too_costly', { workFactor: err.workFactor });
+    }
     return t('backup.error_stage_failed', { reason: reasonOf(err) });
+  }
+
+  /**
+   * The prompt's message for a failed unlock, or undefined when the prompt
+   * should close. Out of memory and unavailable did NOT judge the password:
+   * the user retries, not retypes.
+   */
+  function promptMessage(err: unknown, passphrase: string | undefined): string | null | undefined {
+    if (!(err instanceof BackupCryptoError)) return undefined;
+    if (err.code === 'bad_passphrase') return passphrase ? t('backup.error_bad_passphrase') : null;
+    if (err.code === 'out_of_memory') return t('backup.error_out_of_memory');
+    if (err.code === 'unavailable') return t('backup.error_unlock_unavailable');
+    return undefined;
   }
 
   /** Stage a picked file; open the passphrase prompt on encryption, else confirm. */
@@ -153,10 +170,11 @@ export function useBackupRestore(options: BackupRestoreOptions = {}): BackupRest
       setConfirmOpen(true);
     } catch (err) {
       setStatus(null);
-      if (err instanceof BackupCryptoError && err.code === 'bad_passphrase') {
-        // Encrypted (or a wrong passphrase): (re)open the prompt to collect one.
+      const message = promptMessage(err, passphrase);
+      if (message !== undefined) {
+        // Encrypted, a wrong passphrase, or a retryable unlock: keep the prompt.
         setPendingContent(content);
-        setPromptError(passphrase ? t('backup.error_bad_passphrase') : null);
+        setPromptError(message);
         return;
       }
       setError(stageErrorMessage(err));
@@ -239,13 +257,13 @@ export function useBackupRestore(options: BackupRestoreOptions = {}): BackupRest
       return;
     }
     const safetyPassword = stagedPassphrase ?? safetyPassphrase;
-    if (safetyPassword.length < MIN_RESTORE_PASSPHRASE_LENGTH) {
+    if (!canSealWith(safetyPassword)) {
       setSafetyPassphraseError(t('backup.error_safety_passphrase_required'));
       return;
     }
     // A password the user just chose must be typed twice: a typo would seal a
     // safety copy nobody can open. (A reused import password was already proven.)
-    if (stagedPassphrase === undefined && !passwordsMatch(safetyPassphrase, safetyConfirmation)) {
+    if (stagedPassphrase === undefined && checkBackupPassphrase(safetyPassphrase, safetyConfirmation) !== null) {
       setSafetyConfirmationTouched(true);
       return;
     }
@@ -370,7 +388,7 @@ export function useBackupRestore(options: BackupRestoreOptions = {}): BackupRest
       setSafetyConfirmationTouched(true);
     },
     safetyPassphraseMismatch:
-      safetyConfirmationTouched && !passwordsMatch(safetyPassphrase, safetyConfirmation),
+      safetyConfirmationTouched && checkBackupPassphrase(safetyPassphrase, safetyConfirmation) === 'mismatch',
     safetyDownloadUnverified,
     safetyFailure,
     confirm,

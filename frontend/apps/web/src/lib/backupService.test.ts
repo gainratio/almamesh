@@ -2,8 +2,8 @@
  * Tests for the Backup & Restore orchestration service (Spec 061).
  *
  * This module composes the already-built store primitives (`collectBackup` /
- * `applyBackup` from `@almamesh/store`, `encodeEnvelope` / `decodeEnvelope` from
- * its crypto sibling) into the three operations the UI drives: build an export,
+ * `applyBackup` from `@almamesh/store`, `sealBackup` / `openBackup` from its
+ * crypto sibling) into the three operations the UI drives: build an export,
  * stage an import (parse + validate + decrypt), and commit it (write the stores).
  *
  * These are TRUE round-trips against the real primitives, not mocks: every tier
@@ -11,12 +11,17 @@
  * seam, and `now` + `appVersion` are injected for determinism. All fixtures are
  * synthetic — never real birth data.
  */
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import type { BackupEnvelopePlain } from '@almamesh/shared-types';
 
 import {
   BackupCryptoError,
   BackupError,
+  collectBackup,
   EMPTY_PORTABLE_REPAIR_REPORT,
   PortableStateUnavailableError,
   PortableStateTooNewError,
@@ -30,6 +35,39 @@ import {
   commitBackupImport,
   stageBackupImport,
 } from './backupService';
+
+// --- golden files written by the pre-age app (packages/store fixtures) --------
+
+const LEGACY = join(
+  dirname(fileURLToPath(import.meta.url)),
+  '../../../../packages/store/src/__fixtures__/legacy-backups',
+);
+const legacyManifest = JSON.parse(readFileSync(join(LEGACY, 'manifest.json'), 'utf8')) as Record<
+  string,
+  { passphrase: string; plaintextSha256?: string; databaseSha256?: string }
+>;
+const legacyBytes = (name: string) => new Uint8Array(readFileSync(join(LEGACY, name)));
+const legacyText = (name: string) => readFileSync(join(LEGACY, name), 'utf8');
+const sha256 = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
+const V1_PASSPHRASE = legacyManifest['legacy-v1.json'].passphrase;
+const V1_STORES = {
+  'almamesh-language': { version: 1, state: { language: 'pt' } },
+  'almamesh-profiles': {
+    version: 1,
+    state: {
+      profiles: {
+        'legacy-v1-ada': {
+          id: 'legacy-v1-ada',
+          name: 'Legacy V1 Ada',
+          createdAt: '2026-01-02T03:04:05.000Z',
+          avatarTint: '#3A4FB0',
+          relationship: 'self',
+        },
+      },
+      activeProfileId: 'legacy-v1-ada',
+    },
+  },
+};
 
 // --- in-memory tier fake -----------------------------------------------------
 
@@ -91,6 +129,8 @@ describe('buildBackupExport', () => {
     const { override } = seededSource();
     await expect(buildBackupExport(undefined, override)).rejects.toMatchObject({ code: 'bad_passphrase' });
     await expect(buildBackupExport('short', override)).rejects.toMatchObject({ code: 'bad_passphrase' });
+    // New backups need 12 characters (the seal library's floor), not the old 8.
+    await expect(buildBackupExport('eleven char', override)).rejects.toMatchObject({ code: 'bad_passphrase' });
   });
 
   it('exports production SQLite as encrypted binary with a collision-safe UTC timestamp', async () => {
@@ -108,6 +148,10 @@ describe('buildBackupExport', () => {
     expect(result.filename).toBe('almamesh-backup-2026-07-01T12-34-56-000Z.almamesh');
     expect(result.content).toBeInstanceOf(Uint8Array);
     expect(result.content).not.toEqual(bytes);
+    // A standard age file: `age -d` opens it without AlmaMesh.
+    expect(new TextDecoder().decode((result.content as Uint8Array).slice(0, 22))).toBe(
+      'age-encryption.org/v1\n',
+    );
   });
 
   it('passes the export repair report through, so the UI can say what was set aside', async () => {
@@ -152,13 +196,13 @@ describe('buildBackupExport', () => {
       run,
     );
     try {
-      const result = await buildBackupExport('test passphrase', {
+      // The tier snapshot (also the pre-import rollback copy) holds the reading
+      // the moment its durability promise resolves.
+      const parsed = await collectBackup({
         tiers: { local: memTier(), idb },
         now: FIXED_NOW,
         appVersion: FIXED_VERSION,
       });
-
-      const parsed = (await stageBackupImport(result.content, 'test passphrase')).envelope;
       expect(
         (parsed.stores['almamesh-interpretations']?.state as { byChart: Record<string, unknown> })
           .byChart['chart-now'],
@@ -430,10 +474,44 @@ describe('encrypted bundle round-trip (format v3)', () => {
     ).rejects.toMatchObject({ name: 'BackupError', code: 'bad_format' });
   });
 
-  it('refuses a bundle from a newer format version', async () => {
-    const future = (await exportFromA()).slice();
+  it('still opens a real v3 .almamesh export from the previous release', async () => {
+    const entry = legacyManifest['legacy-v3.almamesh'];
+    const readPortableState = vi.fn().mockResolvedValue(snapshotA);
+    const staged = await stageBackupImport(legacyBytes('legacy-v3.almamesh'), entry.passphrase, {
+      readPortableState,
+    });
+    expect(staged).toMatchObject({ kind: 'bundle', wasEncrypted: true });
+    expect(sha256((staged as { bytes: Uint8Array }).bytes)).toBe(entry.plaintextSha256);
+  });
+
+  it('refuses a wrong password on an old v3 export before reading anything', async () => {
+    const readPortableState = vi.fn();
+    await expect(
+      stageBackupImport(legacyBytes('legacy-v3.almamesh'), 'not the password', { readPortableState }),
+    ).rejects.toMatchObject({ name: 'BackupCryptoError', code: 'bad_passphrase' });
+    expect(readPortableState).not.toHaveBeenCalled();
+  });
+
+  it('still opens a v2 JSON bundle and merges its allowlisted settings', async () => {
+    const entry = legacyManifest['legacy-v2.json'];
+    const mergeLegacyPreferences = vi.fn(async (database: Uint8Array, _settings: unknown) => database);
+    const staged = await stageBackupImport(legacyText('legacy-v2.json'), entry.passphrase, {
+      readPortableState: vi.fn().mockResolvedValue(snapshotA),
+      mergeLegacyPreferences,
+    });
+    expect(staged).toMatchObject({ kind: 'bundle', wasEncrypted: true });
+    expect(sha256(mergeLegacyPreferences.mock.calls[0][0])).toBe(entry.databaseSha256);
+    expect(mergeLegacyPreferences.mock.calls[0][1]).toEqual({
+      'almamesh-llm-settings': '{"state":{"apiKey":"sk-legacy-v2-fixture"},"version":1}',
+    });
+  });
+
+  it('refuses an old v3 export that claims a newer format version', async () => {
+    const future = legacyBytes('legacy-v3.almamesh');
     future[8] = 4;
-    await expect(stageBackupImport(future, PASSPHRASE)).rejects.toMatchObject({ code: 'too_new' });
+    await expect(
+      stageBackupImport(future, legacyManifest['legacy-v3.almamesh'].passphrase),
+    ).rejects.toMatchObject({ name: 'BackupCryptoError', code: 'unsupported' });
   });
 
   it('fails with PortableStateUnavailableError when the local database never answers', async () => {
@@ -453,48 +531,31 @@ describe('encrypted bundle round-trip (format v3)', () => {
 
 // --- encrypted export -> stage import round-trip -----------------------------
 
-describe('stageBackupImport (encrypted round-trip)', () => {
-  it('decrypts an encrypted export back to the original stores', async () => {
-    const { override } = seededSource();
-
-    const exported = await buildBackupExport('correct horse', override);
-    // The file itself must be ciphertext, not plaintext stores.
-    const onDisk = JSON.parse(exported.content as string);
+describe('stageBackupImport (encrypted v1 JSON from the first release)', () => {
+  it('decrypts the golden v1 file back to its stores', async () => {
+    const onDisk = JSON.parse(legacyText('legacy-v1.json'));
     expect(onDisk.encryption).toBe('aes-gcm');
     expect(onDisk.stores).toBeUndefined();
 
-    const staged = await stageBackupImport(exported.content, 'correct horse');
+    const staged = await stageBackupImport(legacyText('legacy-v1.json'), V1_PASSPHRASE);
 
+    expect(staged.kind).toBe('json');
     expect(staged.wasEncrypted).toBe(true);
     expect(staged.envelope.encryption).toBe('none');
-    expect(staged.envelope.stores['almamesh-profiles']).toEqual({
-      state: PROFILES_STATE,
-      version: 1,
-    });
-    expect(staged.envelope.stores['almamesh-chart-library']).toEqual({
-      state: CHART_LIBRARY_STATE,
-      version: 0,
-    });
+    expect(staged.envelope.stores).toEqual(V1_STORES);
   });
 
   it('rejects a wrong passphrase with BackupCryptoError bad_passphrase', async () => {
-    const { override } = seededSource();
-    const exported = await buildBackupExport('the right one', override);
-
-    await expect(stageBackupImport(exported.content, 'the wrong one')).rejects.toMatchObject({
+    const file = legacyText('legacy-v1.json');
+    await expect(stageBackupImport(file, 'the wrong one')).rejects.toMatchObject({
       name: 'BackupCryptoError',
       code: 'bad_passphrase',
     });
-    await expect(stageBackupImport(exported.content, 'the wrong one')).rejects.toBeInstanceOf(
-      BackupCryptoError,
-    );
+    await expect(stageBackupImport(file, 'the wrong one')).rejects.toBeInstanceOf(BackupCryptoError);
   });
 
   it('rejects an encrypted file opened with no passphrase (so the UI can prompt)', async () => {
-    const { override } = seededSource();
-    const exported = await buildBackupExport('a passphrase', override);
-
-    await expect(stageBackupImport(exported.content)).rejects.toMatchObject({
+    await expect(stageBackupImport(legacyText('legacy-v1.json'))).rejects.toMatchObject({
       name: 'BackupCryptoError',
       code: 'bad_passphrase',
     });
@@ -829,8 +890,6 @@ describe('commitBackupImport (full round-trip)', () => {
   });
 
   it('restores every store into fresh tiers and runs the post-write housekeeping', async () => {
-    const { override } = seededSource();
-    const exported = await buildBackupExport('test passphrase', override);
 
     // Wipe: brand-new destination tiers. Vectors live in SqliteVectorIndex and
     // rebuild from restored chat history; the tiers hold canonical rows only.
@@ -838,22 +897,16 @@ describe('commitBackupImport (full round-trip)', () => {
     const destLocal = memTier();
     const destTiers = { local: destLocal, idb: destIdb } as Record<'local' | 'idb', StorageTier>;
 
-    const staged = await stageBackupImport(exported.content, 'test passphrase');
+    const staged = await stageBackupImport(legacyText('legacy-v1.json'), V1_PASSPHRASE);
     await commitBackupImport(staged.envelope, { tiers: destTiers });
 
     // Stores landed verbatim in their tiers.
     expect(JSON.parse(destIdb.map.get('almamesh-profiles')!)).toEqual({
-      state: PROFILES_STATE,
-      version: 1,
-      datasetEpoch: 0,
-    });
-    expect(JSON.parse(destIdb.map.get('almamesh-chart-library')!)).toEqual({
-      state: CHART_LIBRARY_STATE,
-      version: 0,
+      ...V1_STORES['almamesh-profiles'],
       datasetEpoch: 0,
     });
     expect(destLocal.map.get('almamesh-language')).toBe(
-      JSON.stringify({ state: LANGUAGE_STATE, version: 0 }),
+      JSON.stringify({ state: { language: 'pt' }, version: 1 }),
     );
 
     // Housekeeping: no duplicate route flag is created.
