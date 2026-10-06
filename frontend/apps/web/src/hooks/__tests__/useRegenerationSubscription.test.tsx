@@ -197,4 +197,35 @@ describe('useRegenerationSubscription — emit-before-subscribe race', () => {
     expect(regenerateSpy).toHaveBeenCalledTimes(1);
     expect((regenerateSpy.mock.calls[0]?.[0] as BirthInfoChanged).profileId).toBe('p2');
   });
+  it('leaves a privacy-safe trace when a regeneration fails, and still rejects to the caller', async () => {
+    // The page shows the failure; the console keeps a code so a lost chart is
+    // never silent. The raw cause (which may hold birth data) is not printed.
+    const failure = new Error('worker died for Asha born 1990-01-15');
+    regenerateSpy.mockImplementationOnce(() => Promise.reject(failure));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    engineValue = { engine: fakeEngine };
+    renderHook(() => useRegenerationSubscription(), { wrapper });
+
+    await expect(requestRegeneration(event)).rejects.toBe(failure);
+
+    expect(warn).toHaveBeenCalledWith('[almamesh:warn:chart.regeneration_failed]');
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('Asha');
+    warn.mockRestore();
+  });
+
+  it('leaves the same trace when a request buffered before the engine was ready fails', async () => {
+    const failure = new Error('compute threw');
+    regenerateSpy.mockImplementationOnce(() => Promise.reject(failure));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    engineValue = { engine: null };
+    const { rerender } = renderHook(() => useRegenerationSubscription(), { wrapper });
+
+    const request = requestRegeneration(event);
+    engineValue = { engine: fakeEngine };
+    rerender();
+
+    await expect(request).rejects.toBe(failure);
+    expect(warn).toHaveBeenCalledWith('[almamesh:warn:chart.regeneration_failed]');
+    warn.mockRestore();
+  });
 });

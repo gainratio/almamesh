@@ -20,6 +20,7 @@
 
 import { useEffect, useRef } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
+import { safeWarn } from '@almamesh/shared-types'
 import {
   newChartReferenceInstant,
   regenerateOnBirthChange,
@@ -84,8 +85,19 @@ export function useRegenerationSubscription(): void {
   }
 
   // Register as THE runner ONCE for the app's lifetime (never gated on
-  // `engine`), so `requestRegeneration` always reaches this hook.
-  useEffect(() => registerRegenerationRunner((event) => runRef.current(event)), [])
+  // `engine`), so `requestRegeneration` always reaches this hook. Every request
+  // (live or buffered) passes through here, so a failed compute always leaves a
+  // privacy-safe console code while the caller still gets the rejection.
+  useEffect(
+    () =>
+      registerRegenerationRunner((event) =>
+        runRef.current(event).catch((reason: unknown) => {
+          safeWarn('chart.regeneration_failed', reason)
+          throw reason
+        }),
+      ),
+    [],
+  )
 
   // When the engine becomes ready, DRAIN a buffered event exactly once. This is
   // what recovers the warming-race / post-reboot dashboard: the event that fired
