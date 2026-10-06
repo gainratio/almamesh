@@ -37,12 +37,15 @@ import {
   mergeLegacyPreferencesIntoPortableState,
   MIN_BUNDLE_PASSPHRASE_LENGTH,
   openPortableBundle,
+  PORTABLE_DATASET_KEYS,
+  PORTABLE_PREFERENCES_KEY,
   PORTABLE_STATE_KEYS,
   PortableStateTooNewError,
   PortableStateUnavailableError,
   sealPortableBundle,
   readDeletionTombstones,
   readPortableStateDatabase,
+  requirePortableStateRepository,
   type BackupDeps,
   type PortableBrowserImportOptions,
   EMPTY_PORTABLE_REPAIR_REPORT,
@@ -569,4 +572,73 @@ export async function commitBackupImport(
     safeWarn('backup.memory_rebuild_deferred');
   }
   publish({ kind: 'dataset', operation: 'replace', phase: 'complete', presentStoreKeys });
+}
+
+/** What a restore could destroy on this browser, read at one moment. */
+export interface ProtectableState {
+  /** Canonical rows (store key → persisted JSON). */
+  readonly values: ReadonlyMap<string, string>;
+  readonly quarantine: ReadonlyMap<string, string>;
+  readonly setAsideCount: number;
+}
+
+function isFilledCollection(value: unknown): boolean {
+  if (Array.isArray(value)) return value.length > 0;
+  return typeof value === 'object' && value !== null && Object.keys(value).length > 0;
+}
+
+/** A dataset row holds records when any top-level collection in its state is non-empty. */
+function datasetRowHoldsRecords(raw: string): boolean {
+  try {
+    const { state } = JSON.parse(raw) as { state?: unknown };
+    if (typeof state !== 'object' || state === null) return false;
+    return Object.values(state).some(isFilledCollection);
+  } catch {
+    return true; // unreadable is never "empty"
+  }
+}
+
+function preferencesHoldValues(raw: string): boolean {
+  try {
+    const { values } = JSON.parse(raw) as { values?: unknown };
+    return isFilledCollection(values);
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * True unless this browser holds nothing a restore could destroy: no person,
+ * chart, record, chat, reading, timing result, saved setting (the AI key lives
+ * there), set-aside or quarantined row. The language choice alone does not
+ * count. Anything unreadable counts as data. This decides whether the
+ * pre-import safety copy is needed: on a never-used browser it would be an
+ * empty file the user is made to save before their first restore.
+ */
+export function holdsDataToProtect(state: ProtectableState): boolean {
+  if (state.setAsideCount > 0 || state.quarantine.size > 0) return true;
+  const preferences = state.values.get(PORTABLE_PREFERENCES_KEY);
+  if (preferences !== undefined && preferencesHoldValues(preferences)) return true;
+  return PORTABLE_DATASET_KEYS.some((key) => {
+    const raw = state.values.get(key);
+    return raw !== undefined && datasetRowHoldsRecords(raw);
+  });
+}
+
+async function readProtectableState(): Promise<ProtectableState> {
+  const repository = await requirePortableStateRepository();
+  const snapshot = await repository.snapshot();
+  const setAside = await repository.listSetAside();
+  return { values: snapshot.values, quarantine: snapshot.quarantine, setAsideCount: setAside.size };
+}
+
+/** {@link holdsDataToProtect} on the live database; a read failure assumes there is data. */
+export async function hasDataToProtect(
+  read: () => Promise<ProtectableState> = readProtectableState,
+): Promise<boolean> {
+  try {
+    return holdsDataToProtect(await read());
+  } catch {
+    return true;
+  }
 }

@@ -16,6 +16,8 @@ import {
 import { useChartEngine } from "../providers/AlmaMeshRuntimeProvider";
 import { LocationSearch, type LocationResult } from "../components/shared/LocationSearch";
 import { Logo } from "../components/ui/Logo";
+import { RestoreFromBackup } from "../components/features/backup/RestoreFromBackup";
+import { useOnboardingStatus } from "../hooks/useOnboardingStatus";
 import { BirthDatePicker } from "../components/BirthDatePicker";
 import { EngineBootProgress } from "../components/EngineBootProgress";
 import { TimePicker } from "../components/TimePicker";
@@ -89,6 +91,8 @@ const STEP_KEYS: OnboardingStep[] = ["name", "birth-date", "birth-location", "bi
 
 export default function OnboardingPage() {
   const navigate = useNavigate();
+  // First run only: once a chart exists, restore lives in Settings → Data.
+  const { hasChart } = useOnboardingStatus();
   const { t, i18n } = useTranslation(["onboarding", "common"]);
 
   // Example narratives to guide users (translated; natural per-locale phrasing).
@@ -687,6 +691,8 @@ export default function OnboardingPage() {
               autoFocus
               data-testid="name-input"
             />
+            {/* A person moving to a new phone restores instead of starting over. */}
+            {!hasChart && <RestoreFromBackup className="border-t border-ui-border pt-6" />}
           </div>
         );
 

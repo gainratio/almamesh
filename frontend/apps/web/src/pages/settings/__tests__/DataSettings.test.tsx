@@ -46,6 +46,8 @@ vi.mock('../../../lib/backupService', () => ({
   buildBackupExport: vi.fn(),
   stageBackupImport: vi.fn(),
   commitBackupImport: vi.fn(),
+  // A browser that already holds data: the safety copy is taken first.
+  hasDataToProtect: vi.fn(async () => true),
   exportBackupFilename: vi.fn(() => 'almamesh-backup-2026-07-01T12-34-56-000Z.almamesh'),
   safetyBackupFilename: (name: string) =>
     name.replace('almamesh-backup-', 'almamesh-backup-before-import-'),
@@ -63,6 +65,7 @@ import {
   buildBackupExport,
   stageBackupImport,
   commitBackupImport,
+  hasDataToProtect,
 } from '../../../lib/backupService';
 import { saveBackupFile, pickBackupFile, openBackupSaveTarget } from '../../../lib/backupFile';
 import { listSetAsideRecords } from '@almamesh/store';
@@ -103,6 +106,7 @@ beforeEach(() => {
   });
   vi.mocked(commitBackupImport).mockResolvedValue(undefined);
   vi.mocked(readPortableStateRevision).mockResolvedValue(17);
+  vi.mocked(hasDataToProtect).mockResolvedValue(true);
 
   // Stub reload — the panel reloads after a commit; happy-dom's is a no-op we spy.
   reloadSpy = vi.fn();
@@ -296,6 +300,23 @@ describe('DataSettings — Backup & Restore panel', () => {
     );
     expect(sessionStorage.getItem('almamesh:restore-reload')).toBe('1');
     expect(reloadSpy).toHaveBeenCalled();
+  });
+
+  it('on a browser with nothing to protect, Settings restores without a safety copy and reloads in place', async () => {
+    vi.mocked(hasDataToProtect).mockResolvedValue(false);
+    vi.mocked(pickBackupFile).mockResolvedValue('FILE_TEXT');
+    render(<DataSettings />);
+
+    fireEvent.click(screen.getByTestId('backup-import-button'));
+    const confirmBtn = await screen.findByTestId('backup-confirm-import');
+    expect(screen.queryByTestId('backup-safety-passphrase-input')).toBeNull();
+    fireEvent.click(confirmBtn);
+
+    await waitFor(() => expect(reloadSpy).toHaveBeenCalled());
+    expect(vi.mocked(commitBackupImport)).toHaveBeenCalledOnce();
+    expect(vi.mocked(openBackupSaveTarget)).not.toHaveBeenCalled();
+    expect(vi.mocked(buildBackupExport)).not.toHaveBeenCalled();
+    expect(vi.mocked(armPortableImportRevision)).toHaveBeenCalledExactlyOnceWith(17);
   });
 
   it('passes a picked SQLite backup to staging as bytes', async () => {

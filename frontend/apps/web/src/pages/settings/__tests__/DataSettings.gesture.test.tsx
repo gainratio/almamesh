@@ -22,6 +22,8 @@ vi.mock('../../../lib/backupService', () => ({
   buildBackupExport: vi.fn(),
   stageBackupImport: vi.fn(),
   commitBackupImport: vi.fn(),
+  // A browser that already holds data: the safety copy is taken first.
+  hasDataToProtect: vi.fn(async () => true),
   exportBackupFilename: () => 'almamesh-backup-slow.almamesh',
   safetyBackupFilename: (name: string) => name,
 }));

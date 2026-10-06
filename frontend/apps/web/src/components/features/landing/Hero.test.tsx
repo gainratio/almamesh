@@ -64,6 +64,14 @@ describe('Hero', () => {
       renderHero();
       expect(screen.getByTestId('hero-cta').textContent).toContain('Generate my chart — free');
     });
+
+    // A person moving to a new phone must be able to restore BEFORE making a chart.
+    it('offers "Restore from a backup" next to the CTA', async () => {
+      renderHero();
+      expect(
+        await screen.findByRole('button', { name: 'Restore from a backup' }, { timeout: 5_000 }),
+      ).toBeTruthy();
+    });
   });
 
   describe('returning visitor (a chart already exists locally)', () => {
@@ -79,6 +87,11 @@ describe('Hero', () => {
     it('labels the CTA "Open my chart"', () => {
       renderHero();
       expect(screen.getByTestId('hero-cta').textContent).toContain('Open my chart');
+    });
+
+    it('does not offer a first-run restore (Settings → Data owns restore once data exists)', () => {
+      renderHero();
+      expect(screen.queryByTestId('first-run-restore')).toBeNull();
     });
   });
 

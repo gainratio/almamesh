@@ -569,8 +569,8 @@ test("migrates, exports, reloads, and restores canonical OPFS SQLite through Set
   await tamperedContext.close();
 
   // A fresh browser context has its own empty OPFS root. Restore only through
-  // Settings: real file input, real staged validation, safety-net download,
-  // real SQLite replace, and the UI-owned reload.
+  // Settings: real file input, real staged validation, real SQLite replace,
+  // and the UI-owned reload.
   const restoredContext = await browser.newContext({
     baseURL,
     acceptDownloads: true,
@@ -605,28 +605,18 @@ test("migrates, exports, reloads, and restores canonical OPFS SQLite through Set
   const confirm = restoredPage.getByTestId("backup-confirm-import");
   await expect(confirm).toBeVisible();
 
-  const [safetyDownload] = await Promise.all([
-    restoredPage.waitForEvent("download"),
-    confirm.click(),
-  ]);
-  expect(safetyDownload.suggestedFilename()).toMatch(
-    /^almamesh-backup-before-import-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z\.almamesh$/,
-  );
-  const safetyPath = testInfo.outputPath(
-    "portable-almamesh-safety-net.almamesh",
-  );
-  await safetyDownload.saveAs(safetyPath);
-  const safetyBytes = readFileSync(safetyPath);
-  expect(safetyBytes.includes(Buffer.from(API_KEY_SENTINEL))).toBe(false);
-  expect(safetyBytes.includes(SQLITE_HEADER)).toBe(false);
-
-  // Chromium's anchor-download fallback cannot observe completion. The first
-  // click must pause Replace until the user explicitly confirms the safety file.
-  await expect(restoredPage.getByTestId("backup-safety-confirmation")).toBeVisible();
+  // CONTRACT CHANGE (first-run restore): this browser is empty, so there is
+  // nothing for a safety copy to protect. Replace runs on the first confirm,
+  // with no "before-import" download and no second confirmation. Browsers that
+  // hold data still take the safety copy first (DataSettings unit tests).
+  await expect(restoredPage.getByText(/nothing on this browser yet/i)).toBeVisible();
+  const restoreDownloads: string[] = [];
+  restoredPage.on("download", (d) => restoreDownloads.push(d.suggestedFilename()));
   await Promise.all([
     restoredPage.waitForEvent("domcontentloaded"),
     confirm.click(),
   ]);
+  expect(restoreDownloads).toEqual([]);
 
   await expectProfileAndLanguage(restoredPage);
   await expectAiSettingsRestored(restoredPage);

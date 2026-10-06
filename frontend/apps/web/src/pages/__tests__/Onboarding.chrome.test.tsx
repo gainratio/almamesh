@@ -84,3 +84,21 @@ describe('Onboarding step indicator', () => {
     await i18n.changeLanguage('en');
   });
 });
+
+describe('Onboarding first step: restore instead of starting over', () => {
+  beforeEach(() => {
+    useOnboardingStore.getState().reset();
+  });
+
+  it('offers "Restore from a backup" on the first step', () => {
+    renderInShell();
+    expect(screen.getByRole('button', { name: 'Restore from a backup' })).toBeTruthy();
+  });
+
+  it('localises the restore entry', async () => {
+    await i18n.changeLanguage('pt');
+    renderInShell();
+    expect(screen.getByRole('button', { name: 'Restaurar de um backup' })).toBeTruthy();
+    await i18n.changeLanguage('en');
+  });
+});

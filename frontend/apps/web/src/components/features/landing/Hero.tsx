@@ -1,10 +1,18 @@
-import type { ReactElement } from 'react';
+import { Suspense, type ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { cn, buttonVariants } from '../../ui';
 import { useChartCta } from '../../../hooks/useChartCta';
 import { HeroForceField } from './HeroForceField';
 import { GITHUB_URL, GithubMark } from './LandingFooter';
+import { lazyWithRetry } from '../../../lib/lazyWithRetry';
+
+// Lazy so the landing chunk stays small: the restore flow (backup service,
+// dialogs) only loads for a first-time visitor, after the hero has painted.
+const RestoreFromBackup = lazyWithRetry(async () => {
+  const { RestoreFromBackup: Restore } = await import('../backup/RestoreFromBackup');
+  return { default: () => <Restore className="mt-2" /> };
+}, 'RestoreFromBackup');
 
 /**
  * Above-the-fold hero: the approved headline + subhead + the single committing
@@ -14,6 +22,9 @@ import { GITHUB_URL, GithubMark } from './LandingFooter';
  * The CTA is adaptive (`useChartCta`): a first-time visitor gets "Generate my
  * chart" → onboarding (prewarming the engine on intent); a returning visitor
  * with a saved chart gets "Open my chart" → straight to the dashboard.
+ *
+ * A first-time visitor also gets "Restore from a backup": someone moving to a
+ * new phone restores their file here instead of creating a chart first.
  */
 export function Hero(): ReactElement {
   const { t } = useTranslation('landing');
@@ -66,6 +77,12 @@ export function Hero(): ReactElement {
           >
             {t(`hero.${labelKey}`)}
           </Link>
+
+          {labelKey === 'cta' && (
+            <Suspense fallback={null}>
+              <RestoreFromBackup />
+            </Suspense>
+          )}
 
           {/* Goodwill signal: free, open source, no accounts — one click to the repo. */}
           <a
