@@ -39,6 +39,7 @@ import {
   type BackupSaveTarget,
 } from '../lib/backupFile';
 import { suppressNextServiceWorkerHeal } from '../lib/swSelfHeal';
+import { passwordsMatch } from '../lib/backupPassword';
 
 /** Minimum password length for a safety copy (matches the export rule). */
 const MIN_RESTORE_PASSPHRASE_LENGTH = 8;
@@ -71,6 +72,11 @@ export interface BackupRestore {
   readonly safetyPassphrase: string;
   setSafetyPassphrase(value: string): void;
   readonly safetyPassphraseError: string | null;
+  /** The safety password typed a second time; must match before Replace. */
+  readonly safetyPassphraseConfirmation: string;
+  setSafetyPassphraseConfirmation(value: string): void;
+  /** Show "Passwords don't match" (after typing in the confirm field, or on Replace). */
+  readonly safetyPassphraseMismatch: boolean;
   readonly safetyDownloadUnverified: boolean;
   readonly safetyFailure: string | null;
   /** Synchronous on purpose: the safety copy's save picker opens inside the click. */
@@ -102,6 +108,8 @@ export function useBackupRestore(options: BackupRestoreOptions = {}): BackupRest
   const [promptError, setPromptError] = useState<string | null>(null);
   const [safetyPassphrase, setSafetyPassphraseValue] = useState('');
   const [safetyPassphraseError, setSafetyPassphraseError] = useState<string | null>(null);
+  const [safetyConfirmation, setSafetyConfirmation] = useState('');
+  const [safetyConfirmationTouched, setSafetyConfirmationTouched] = useState(false);
 
   function clearMessages() {
     setStatus(null);
@@ -119,6 +127,8 @@ export function useBackupRestore(options: BackupRestoreOptions = {}): BackupRest
     setPromptError(null);
     setSafetyPassphraseValue('');
     setSafetyPassphraseError(null);
+    setSafetyConfirmation('');
+    setSafetyConfirmationTouched(false);
     setUnverifiedSafetyRevision(null);
     setSafetyFailure(null);
   }
@@ -231,6 +241,12 @@ export function useBackupRestore(options: BackupRestoreOptions = {}): BackupRest
     const safetyPassword = stagedPassphrase ?? safetyPassphrase;
     if (safetyPassword.length < MIN_RESTORE_PASSPHRASE_LENGTH) {
       setSafetyPassphraseError(t('backup.error_safety_passphrase_required'));
+      return;
+    }
+    // A password the user just chose must be typed twice: a typo would seal a
+    // safety copy nobody can open. (A reused import password was already proven.)
+    if (stagedPassphrase === undefined && !passwordsMatch(safetyPassphrase, safetyConfirmation)) {
+      setSafetyConfirmationTouched(true);
       return;
     }
     if (unverifiedSafetyRevision !== null) {
@@ -348,6 +364,13 @@ export function useBackupRestore(options: BackupRestoreOptions = {}): BackupRest
       setSafetyPassphraseError(null);
     },
     safetyPassphraseError,
+    safetyPassphraseConfirmation: safetyConfirmation,
+    setSafetyPassphraseConfirmation: (value: string) => {
+      setSafetyConfirmation(value);
+      setSafetyConfirmationTouched(true);
+    },
+    safetyPassphraseMismatch:
+      safetyConfirmationTouched && !passwordsMatch(safetyPassphrase, safetyConfirmation),
     safetyDownloadUnverified,
     safetyFailure,
     confirm,

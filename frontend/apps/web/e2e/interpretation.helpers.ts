@@ -285,6 +285,7 @@ export async function seedChart(
   const safety = page.getByTestId('backup-safety-passphrase-input');
   if ((await safety.count()) > 0) {
     await safety.fill('almamesh-test-safety-passphrase');
+    await page.getByTestId('backup-safety-passphrase-confirm-input').fill('almamesh-test-safety-passphrase');
     const [safetyDownload] = await Promise.all([
       page.waitForEvent('download'),
       confirm.click(),
