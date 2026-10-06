@@ -15,6 +15,7 @@ import type {
 import type { RectificationInput, RectificationResultRaw } from "../rectification";
 import type { SyncProgress, SyncResult } from "@gainratio/browser";
 import type { BootStage, IdleScheduler } from "../runtime";
+import { EngineBootCancelledError } from "../teardown";
 
 const CONFIG: RuntimeConfig = {
   bundleBaseUrl: "https://cdn.test/almamesh",
@@ -642,5 +643,62 @@ describe("AlmaMeshRuntime.bootstrap", () => {
     await (await runtime.bootstrap(CONFIG)).generateChart(BIRTH);
 
     expect(chart.chartCalls).toBe(2);
+  });
+
+  describe("page teardown (WebKit refuses a Worker constructed after pagehide)", () => {
+    it("a bootstrap that starts while the page is tearing down spawns no Worker and rejects as cancelled", async () => {
+      let spawned = 0;
+      const runtime = new AlmaMeshRuntime({
+        spawnSyncEngine: () => {
+          spawned += 1;
+          return new FakeSyncEngine(FILES);
+        },
+        spawnChartEngine: () => {
+          spawned += 1;
+          return new FakeChartEngine();
+        },
+        isPageTearingDown: () => true,
+      });
+
+      await expect(runtime.bootstrap(CONFIG)).rejects.toBeInstanceOf(EngineBootCancelledError);
+      expect(spawned).toBe(0);
+    });
+
+    it("a sync that settles after pagehide does not spawn the chart Worker", async () => {
+      let tearingDown = false;
+      const sync = new FakeSyncEngine(FILES);
+      const originalSync = sync.sync.bind(sync);
+      sync.sync = async (...args) => {
+        const result = await originalSync(...args);
+        tearingDown = true;
+        return result;
+      };
+      let chartSpawned = false;
+      const runtime = new AlmaMeshRuntime({
+        spawnSyncEngine: () => sync,
+        spawnChartEngine: () => {
+          chartSpawned = true;
+          return new FakeChartEngine();
+        },
+        decideBootMode: () => ({ mode: "sequential", reason: "test" }),
+        isPageTearingDown: () => tearingDown,
+      });
+
+      await expect(runtime.bootstrap(CONFIG)).rejects.toBeInstanceOf(EngineBootCancelledError);
+      expect(chartSpawned).toBe(false);
+      expect(sync.terminated).toBe(true);
+    });
+
+    it("a live page boots normally", async () => {
+      const chart = new FakeChartEngine();
+      const runtime = new AlmaMeshRuntime({
+        spawnSyncEngine: () => new FakeSyncEngine(FILES),
+        spawnChartEngine: () => chart,
+        isPageTearingDown: () => false,
+      });
+
+      await runtime.bootstrap(CONFIG);
+      expect(chart.bootCount).toBe(1);
+    });
   });
 });
