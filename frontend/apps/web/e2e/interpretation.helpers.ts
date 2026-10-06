@@ -262,9 +262,10 @@ export async function seedChart(
   );
 
   // Exercise the shipped restore boundary instead of reaching around it with
-  // a test-only persistence API. The fallback paths are still real browser UI:
-  // an HTML file input for the chosen backup and a normal download for the
-  // mandatory pre-import safety net.
+  // a test-only persistence API. The fallback path is still real browser UI:
+  // an HTML file input for the chosen backup, and — when the page already
+  // holds data (e.g. AI settings injected before load) — a normal download for
+  // the pre-import safety copy. An empty browser has nothing to protect.
   await page.addInitScript(() => {
     Reflect.deleteProperty(window, 'showOpenFilePicker');
     Reflect.deleteProperty(window, 'showSaveFilePicker');
@@ -281,15 +282,16 @@ export async function seedChart(
   });
   const confirm = page.getByTestId('backup-confirm-import');
   await confirm.waitFor({ state: 'visible' });
-  await page
-    .getByTestId('backup-safety-passphrase-input')
-    .fill('almamesh-test-safety-passphrase');
-  const [safetyDownload] = await Promise.all([
-    page.waitForEvent('download'),
-    confirm.click(),
-  ]);
-  await safetyDownload.cancel();
-  await page.getByTestId('backup-safety-confirmation').waitFor({ state: 'visible' });
+  const safety = page.getByTestId('backup-safety-passphrase-input');
+  if ((await safety.count()) > 0) {
+    await safety.fill('almamesh-test-safety-passphrase');
+    const [safetyDownload] = await Promise.all([
+      page.waitForEvent('download'),
+      confirm.click(),
+    ]);
+    await safetyDownload.cancel();
+    await page.getByTestId('backup-safety-confirmation').waitFor({ state: 'visible' });
+  }
   await Promise.all([page.waitForEvent('domcontentloaded'), confirm.click()]);
 
   return {

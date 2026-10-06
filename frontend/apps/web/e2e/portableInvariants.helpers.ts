@@ -12,7 +12,6 @@ import { expect, type BrowserContext, type Page, type Route } from '@playwright/
  */
 
 export const PASSPHRASE = 'portable invariants passphrase';
-export const SAFETY_PASSPHRASE = 'portable invariants safety passphrase';
 export const AI_KEY = 'sk-or-portable-invariants-0123456789';
 
 // Sentinels: unique strings that can only be on screen if that row survived.
@@ -346,9 +345,9 @@ export async function gotoSettled(page: Page, path: string): Promise<void> {
 }
 
 /**
- * Import `backupPath` into whatever this browser holds: pick the file, enter
- * the passphrase, take the mandatory safety backup, confirm, and wait for the
- * app's own reload.
+ * Import `backupPath` into a NEW, empty browser: pick the file, enter the
+ * passphrase, confirm, and wait for the app's own reload. An empty browser has
+ * nothing to protect, so no safety copy is asked for or downloaded.
  */
 export async function importBackup(page: Page, backupPath: string): Promise<void> {
   await gotoSettled(page, '/settings/data');
@@ -365,12 +364,7 @@ export async function importBackup(page: Page, backupPath: string): Promise<void
   await page.getByTestId('backup-passphrase-prompt-submit').click();
   const confirm = page.getByTestId('backup-confirm-import');
   await expect(confirm).toBeVisible();
-  const safety = page.getByTestId('backup-safety-passphrase-input');
-  if (await safety.isVisible().catch(() => false)) await safety.fill(SAFETY_PASSPHRASE);
-  const [safetyDownload] = await Promise.all([page.waitForEvent('download'), confirm.click()]);
-  expect(safetyDownload.suggestedFilename()).toMatch(/^almamesh-backup-before-import-.*\.almamesh$/);
-  await safetyDownload.cancel();
-  await expect(page.getByTestId('backup-safety-confirmation')).toBeVisible();
+  await expect(page.getByTestId('backup-safety-passphrase-input')).toHaveCount(0);
   await Promise.all([page.waitForEvent('domcontentloaded', { timeout: 120_000 }), confirm.click()]);
   await page.waitForLoadState('networkidle');
 }

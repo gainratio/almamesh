@@ -151,18 +151,19 @@ test('[real][self-heal] stale anthropic/claude-3.5-sonnet self-heals to DeepSeek
   await expect(page.getByText('Interpretation could not be generated')).toHaveCount(0);
   await expect(page.getByTestId('connect-ai-link')).toHaveCount(0);
 
-  // Final read-back of the healed model (also surfaced in the test report).
-  const healedModel = await page.evaluate((k) => {
-    const raw = window.localStorage.getItem(k);
-    return raw ? (JSON.parse(raw) as { model?: string }).model ?? null : null;
-  }, LLM_SETTINGS_KEY);
-  expect(healedModel).toBe(RECOMMENDED_MODEL);
-   
-  console.log(`[self-heal] persisted model after dashboard load: ${healedModel}`);
-
   // Capture the proof screenshot of the rendered reading FIRST, so the evidence
   // exists regardless of the assertions that follow.
   await page.screenshot({ path: '/tmp/almamesh-verify/dashboard-healed.png', fullPage: true });
+
+  // Final read-back of the healed model from where it lives (SQLite, shown on
+  // Settings -> AI), after a real reading ran. The retired localStorage key is
+  // asserted null above, so reading it here could only ever return null.
+  await page.goto('/settings/ai', { waitUntil: 'domcontentloaded' });
+  await page.getByTestId('llm-advanced-summary').click();
+  const healedModel = await page.getByTestId('llm-model').inputValue();
+  expect(healedModel).toBe(RECOMMENDED_MODEL);
+   
+  console.log(`[self-heal] persisted model after dashboard load: ${healedModel}`);
 
   // The LLM call itself must NOT have 404'd — that was the bug. A 404 from the
   // OpenRouter endpoint is the regression; benign non-LLM 404s are logged, not failed.
