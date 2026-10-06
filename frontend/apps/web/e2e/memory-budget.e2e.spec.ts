@@ -162,6 +162,7 @@ test('cold boot to a ready chart stays inside the memory budget without the chat
   const settled = rss.filter((s) => s.t >= readyAt).map((s) => s.bytes).sort((a, b) => a - b);
   const sample: BootMemorySample = {
     heapPeakMiB: Math.max(...heap) / MiB,
+    heapSamplesMiB: heap.map((bytes) => bytes / MiB),
     rendererRssPeakMiB: Math.max(...rss.map((s) => s.bytes)) / MiB,
     rendererRssSettledMiB: (settled[Math.floor(settled.length / 2)] ?? Number.NaN) / MiB,
   };

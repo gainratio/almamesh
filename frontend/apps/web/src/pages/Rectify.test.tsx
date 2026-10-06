@@ -3,14 +3,15 @@ import '../i18n/config';
 
 import React from 'react';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import {
   useChartLibraryStore,
   useLifeEventsStore,
   useProfilesStore,
   useRectificationRecordsStore,
-  appEvents,
+  registerRegenerationRunner,
+  type BirthInfoChanged,
 } from '@almamesh/store';
 import { useRectification, type UseRectificationResult } from '../hooks/useRectification';
 import { RectifyPage } from '../pages/Rectify';
@@ -19,6 +20,10 @@ import { RectifyPage } from '../pages/Rectify';
 // Hoisted helpers (available before vi.mock factories run)
 // ---------------------------------------------------------------------------
 const mockNavigate = vi.hoisted(() => vi.fn());
+/** The strict chart-library write barrier; each test may make it fail or hang. */
+const chartWrite = vi.hoisted(() => ({ next: (): Promise<void> => Promise.resolve() }));
+const regenerationRunner = vi.fn((_event: BirthInfoChanged) => Promise.resolve());
+let unregisterRunner: () => void = () => undefined;
 
 // ---------------------------------------------------------------------------
 // Heavy dep mocks — hoisted by Vitest before all imports
@@ -120,6 +125,11 @@ vi.mock('../components/features/settings/RegenerationConfirmModal', () => {
     );
   };
   return { RegenerationConfirmModal: Stub };
+});
+
+vi.mock('@almamesh/store', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@almamesh/store')>();
+  return { ...actual, whenChartLibraryCommitted: () => chartWrite.next() };
 });
 
 vi.mock('react-router-dom', async (importOriginal) => {
@@ -263,10 +273,16 @@ describe('RectifyPage', () => {
       },
     });
 
-    vi.spyOn(appEvents, 'emit');
+    // Stands in for App.tsx's regeneration subscriber (the page awaits it).
+    regenerationRunner.mockReset();
+    regenerationRunner.mockImplementation(() => Promise.resolve());
+    unregisterRunner = registerRegenerationRunner(regenerationRunner);
   });
 
   afterEach(() => {
+    vi.useRealTimers();
+    chartWrite.next = () => Promise.resolve();
+    unregisterRunner();
     vi.restoreAllMocks();
     useChartLibraryStore.setState({ charts: {} });
     useLifeEventsStore.setState({ eventsByProfile: {} });
@@ -456,7 +472,7 @@ describe('RectifyPage', () => {
     expect((screen.getByTestId('regen-confirm-btn') as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it('ack enables confirm which fires emit and navigates', async () => {
+  it('ack enables confirm which requests regeneration and navigates', async () => {
     const { rerender } = renderRectify();
     fireEvent.click(await screen.findByTestId('intro-start-btn'));
     fireEvent.click(await screen.findByTestId('events-continue-btn'));
@@ -477,8 +493,7 @@ describe('RectifyPage', () => {
     // Click confirm
     fireEvent.click(confirmBtn);
 
-    expect(appEvents.emit).toHaveBeenCalledWith(
-      'birth-info-changed',
+    expect(regenerationRunner).toHaveBeenCalledWith(
       expect.objectContaining({
         birth: expect.objectContaining({
           time: '07:30',
@@ -489,7 +504,94 @@ describe('RectifyPage', () => {
         profileId: PROFILE_ID,
       }),
     );
-    expect(mockNavigate).toHaveBeenCalledWith('/dashboard');
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/dashboard'));
+  });
+
+  it('stays on the page, showing that the chart is computing, until the new chart is applied', async () => {
+    let finish: () => void = () => undefined;
+    regenerationRunner.mockImplementation(() => new Promise<void>((resolve) => (finish = resolve)));
+    const { rerender } = renderRectify();
+    fireEvent.click(await screen.findByTestId('intro-start-btn'));
+    fireEvent.click(await screen.findByTestId('events-continue-btn'));
+    await navigateToResults(rerender);
+    fireEvent.click(screen.getByTestId('confirm-candidate-btn'));
+    await screen.findByTestId('regen-modal');
+    fireEvent.click(screen.getByRole('checkbox'));
+    fireEvent.click(screen.getByTestId('regen-confirm-btn'));
+
+    await screen.findByTestId('rectify-saving');
+    expect(regenerationRunner).toHaveBeenCalledOnce();
+    expect(mockNavigate).not.toHaveBeenCalled();
+
+    finish();
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/dashboard'));
+  });
+
+  it('keeps the user on the results with an error when the regeneration fails', async () => {
+    regenerationRunner.mockImplementation(() => Promise.reject(new Error('worker died')));
+    const { rerender } = renderRectify();
+    fireEvent.click(await screen.findByTestId('intro-start-btn'));
+    fireEvent.click(await screen.findByTestId('events-continue-btn'));
+    await navigateToResults(rerender);
+    fireEvent.click(screen.getByTestId('confirm-candidate-btn'));
+    await screen.findByTestId('regen-modal');
+    fireEvent.click(screen.getByRole('checkbox'));
+    fireEvent.click(screen.getByTestId('regen-confirm-btn'));
+
+    await screen.findByTestId('rectify-save-error');
+    expect(mockNavigate).not.toHaveBeenCalled();
+    expect(screen.getByTestId('rectify-results')).toBeTruthy();
+  });
+
+  /** Results → confirm the first candidate → ack the flip → confirm the modal. */
+  async function confirmFirstCandidate(): Promise<void> {
+    const { rerender } = renderRectify();
+    fireEvent.click(await screen.findByTestId('intro-start-btn'));
+    fireEvent.click(await screen.findByTestId('events-continue-btn'));
+    await navigateToResults(rerender);
+    fireEvent.click(screen.getByTestId('confirm-candidate-btn'));
+    await screen.findByTestId('regen-modal');
+    fireEvent.click(screen.getByRole('checkbox'));
+    fireEvent.click(screen.getByTestId('regen-confirm-btn'));
+  }
+
+  it('logs a fixed code when the regeneration fails', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    regenerationRunner.mockImplementation(() => Promise.reject(new Error('worker died')));
+    await confirmFirstCandidate();
+
+    await screen.findByTestId('rectify-save-error');
+    expect(warn).toHaveBeenCalledWith('[almamesh:warn:rectify.apply_failed]');
+  });
+
+  it('stays on the results with the error, logs a code, and keeps no record when the chart write fails', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    chartWrite.next = () => Promise.reject(new Error('opfs write failed'));
+    await confirmFirstCandidate();
+
+    await screen.findByTestId('rectify-save-error');
+    expect(mockNavigate).not.toHaveBeenCalled();
+    // The results (and their Confirm, the retry) stay on screen.
+    expect(screen.getByTestId('confirm-candidate-btn')).toBeTruthy();
+    expect(warn).toHaveBeenCalledWith('[almamesh:warn:chart.save_failed]');
+    // Settings must not say "was X, now Y" while the old chart is in effect.
+    expect(useRectificationRecordsStore.getState().getRecord(PROFILE_ID)).toBeNull();
+  });
+
+  it('leaves "saving" for the error and Retry when the chart write never settles', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    chartWrite.next = () => new Promise<void>(() => undefined);
+    await confirmFirstCandidate();
+    await screen.findByTestId('rectify-saving');
+
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    await screen.findByTestId('rectify-save-error');
+    expect(screen.queryByTestId('rectify-saving')).toBeNull();
+    expect(screen.getByTestId('confirm-candidate-btn')).toBeTruthy();
+    expect(mockNavigate).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledWith('[almamesh:warn:chart.save_timed_out]');
   });
 
   it('confirm persists a RectificationRecord (chosen sign/time, band, original, event ids)', async () => {
@@ -513,6 +615,8 @@ describe('RectifyPage', () => {
     fireEvent.click(screen.getByRole('checkbox')); // ack the sign flip
     fireEvent.click(screen.getByTestId('regen-confirm-btn'));
 
+    // The record is saved once the new chart is on disk, then the page leaves.
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/dashboard'));
     const record = useRectificationRecordsStore.getState().getRecord(PROFILE_ID);
     expect(record).toMatchObject({
       profileId: PROFILE_ID,
@@ -528,7 +632,7 @@ describe('RectifyPage', () => {
     expect(typeof record?.confirmedAt).toBe('string');
   });
 
-  it('keep recorded fires no emit and navigates back', async () => {
+  it('keep recorded requests no regeneration and navigates back', async () => {
     const { rerender } = renderRectify();
     fireEvent.click(await screen.findByTestId('intro-start-btn'));
     fireEvent.click(await screen.findByTestId('events-continue-btn'));
@@ -536,7 +640,7 @@ describe('RectifyPage', () => {
 
     fireEvent.click(screen.getByTestId('keep-recorded-btn'));
 
-    expect(appEvents.emit).not.toHaveBeenCalled();
+    expect(regenerationRunner).not.toHaveBeenCalled();
     expect(mockNavigate).toHaveBeenCalledWith('/dashboard');
   });
 
@@ -613,7 +717,7 @@ describe('RectifyPage', () => {
       expect((screen.getByTestId('regen-confirm-btn') as HTMLButtonElement).disabled).toBe(false);
     });
 
-    it('confirm with unknown time emits birth-info-changed and navigates', async () => {
+    it('confirm with unknown time requests regeneration and navigates', async () => {
       const { rerender } = renderRectify();
       fireEvent.click(await screen.findByTestId('intro-start-btn'));
       fireEvent.click(await screen.findByTestId('events-continue-btn'));
@@ -625,14 +729,13 @@ describe('RectifyPage', () => {
       // Confirm fires immediately without needing an ack
       fireEvent.click(screen.getByTestId('regen-confirm-btn'));
 
-      expect(appEvents.emit).toHaveBeenCalledWith(
-        'birth-info-changed',
+      expect(regenerationRunner).toHaveBeenCalledWith(
         expect.objectContaining({
           birth: expect.objectContaining({ rectifiedTime: '07:45' }),
           profileId: PROFILE_ID,
         }),
       );
-      expect(mockNavigate).toHaveBeenCalledWith('/dashboard');
+      await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/dashboard'));
     });
   });
 

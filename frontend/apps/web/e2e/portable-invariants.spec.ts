@@ -212,16 +212,23 @@ async function rectify(page: Page, profileId: string): Promise<void> {
   await confirmRegeneration(page);
   await page.waitForURL('**/dashboard', { timeout: 60_000 });
   // The confirmed time is in effect once the regenerated chart is committed.
+  // Wait for the form to hydrate from the persisted chart before reading it:
+  // spaNavigate only waits for the URL, and checking during ProfileSettings'
+  // loading spinner made this poll race (CI timed out about half the time).
+  let attempts = 0;
   await expect
     .poll(
       async () => {
+        attempts += 1;
         await spaNavigate(page, '/dashboard');
         await spaNavigate(page, '/settings/profile');
+        await page.locator('#rectified-time').waitFor();
         return page.getByTestId('adjustment-in-effect').isVisible();
       },
       { timeout: 120_000, intervals: [1_000] },
     )
     .toBe(true);
+  test.info().annotations.push({ type: 'rectify-poll-attempts', description: String(attempts) });
   await expect(page.getByTestId('rectification-record')).toBeVisible();
 }
 

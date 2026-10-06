@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
+import { EngineOperationError } from '@almamesh/browser';
+
 import '../../i18n/config';
 import { ErrorBoundary } from '../ErrorBoundary';
 import { recordEngineBootFailure } from '../../lib/engineLifecycle';
@@ -252,10 +254,7 @@ describe('ErrorBoundary', () => {
 
   it('after a ROLLBACK boot refusal, warns of tampering and needs a two-step confirm before the reset', async () => {
     recordEngineBootFailure(
-      Object.assign(new Error('refusing rollback: sequence is not fresher'), {
-        name: 'EngineOperationError',
-        code: 'rollback',
-      }),
+      new EngineOperationError({ code: 'rollback', message: 'refusing rollback: sequence is not fresher' }),
     );
     vi.stubGlobal('navigator', {});
     vi.stubGlobal('caches', undefined);

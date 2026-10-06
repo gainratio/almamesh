@@ -140,14 +140,16 @@
     "stalled_title": "Esto está tardando más de lo habitual",
     "stalled_body": "El motor aún no ha terminado de iniciarse. Puedes restablecerlo y recargarlo para intentarlo de nuevo.",
     "reset_reload": "Restablecer y recargar el motor",
-    "clear_engine_cache": "Borrar el motor descargado y recargar"
+    "clear_engine_cache": "Borrar el motor descargado y recargar",
+    "saving_chart": "Calculando tu nueva carta en este dispositivo. Mantén esta página abierta hasta que se guarde."
   },
   "error": {
     "engine_failed_title": "El motor de gráfico no pudo iniciarse",
     "engine_failed_body": "Algo salió mal al cargar el motor en tu dispositivo. Restablece y recarga para intentarlo de nuevo.",
     "missing_birth": "No encontramos los datos de nacimiento guardados para este perfil. Abre la configuración de este perfil para agregar la fecha, la hora y el lugar de nacimiento, y vuelve a intentarlo.",
     "no_events": "Agrega al menos un evento de vida con fecha para comenzar — cada evento ayuda al motor a comparar horas de nacimiento candidatas.",
-    "back_to_events": "Volver a los eventos"
+    "back_to_events": "Volver a los eventos",
+    "save_failed": "No se pudo guardar tu nueva carta. Tu carta anterior no ha cambiado. Inténtalo de nuevo."
   },
   "steps": {
     "intro": "Introducción",

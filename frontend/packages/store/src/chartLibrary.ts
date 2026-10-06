@@ -13,7 +13,11 @@ import { createJSONStorage, persist } from 'zustand/middleware';
 
 import type { ChartData } from '@almamesh/shared-types';
 import type { SiderealChart } from '@almamesh/browser/types';
-import { deletionAwareIdbStorage, whenPersistenceSettled } from './deletionTombstones';
+import {
+  deletionAwareIdbStorage,
+  whenPersistenceCommitted,
+  whenPersistenceSettled,
+} from './deletionTombstones';
 import { whenHydrated, type HydrationOutcome } from './hydrationBarrier';
 
 /** A chart as held on-device: the rendered shape plus its identity + primacy. */
@@ -242,6 +246,15 @@ export function whenChartLibraryHydrated(): Promise<HydrationOutcome> {
  */
 export function whenChartLibraryPersisted(): Promise<void> {
   return whenPersistenceSettled(PERSIST_NAME);
+}
+
+/**
+ * Like {@link whenChartLibraryPersisted}, but rejects when the last queued
+ * chart-library write failed. Pages that leave or say "Chart Updated!" after a
+ * save await this, so a failed write keeps the user on the retry surface.
+ */
+export function whenChartLibraryCommitted(): Promise<void> {
+  return whenPersistenceCommitted(PERSIST_NAME);
 }
 
 /**

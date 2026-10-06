@@ -1,8 +1,8 @@
 import React, { useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
-  appEvents,
+  requestRegeneration,
   type BirthMeta,
   type LifeEventInput,
   useLifeEventsStore,
@@ -25,6 +25,7 @@ import { useOnboardingStore } from "../stores/onboarding";
 import { getUserFriendlyError, getEngineWarmingMessage } from "../lib/errors";
 import { resolveReadyEngine } from "../lib/resolveReadyEngine";
 import { resetAppData } from "../lib/resetAppData";
+import { waitForChartSaved } from "../lib/chartSaved";
 import { engineErrorCode, ROLLBACK_CODE } from "../lib/engineLifecycle";
 import { RollbackResetGuard } from "../components/RollbackResetGuard";
 import { incompleteDatabases, ResetIncompleteNotice } from "../components/ResetIncompleteNotice";
@@ -45,6 +46,18 @@ class EngineWarmingError extends Error {
   constructor(message = "The on-device engine is still warming up.") {
     super(message);
     this.name = "EngineWarmingError";
+  }
+}
+
+/**
+ * The engine was ready but computing or saving the chart failed. The inputs
+ * were accepted, so the user stays on the generating card (Retry) with the
+ * draft intact rather than being sent back to edit their details.
+ */
+class ChartComputeError extends Error {
+  constructor(cause: unknown) {
+    super(cause instanceof Error ? cause.message : String(cause), { cause });
+    this.name = "ChartComputeError";
   }
 }
 
@@ -183,16 +196,32 @@ export default function OnboardingPage() {
   // generated, so a non-empty name is always one THIS session typed — never
   // overwrite it. Reading through `getState()` inside a mount-only effect also
   // means clearing the field later cannot re-fire the seed and fight the edit.
+  //
+  // `?person=<id>` (the chartless dashboard's rebuild button) names WHICH
+  // existing person to rebuild: make them active so the chart is saved under
+  // their id (no duplicate profile), prefill their name, and open at the
+  // birth-details step.
+  const [searchParams] = useSearchParams();
+  const rebuildPersonId = searchParams.get("person");
   useEffect(() => {
     const onboarding = useOnboardingStore.getState();
+    const people = useProfilesStore.getState();
+    const rebuild = rebuildPersonId ? people.profiles[rebuildPersonId] : undefined;
+    if (rebuild) {
+      people.setActiveProfile(rebuild.id);
+      onboarding.setName(rebuild.name);
+      onboarding.goToStep(2);
+      return;
+    }
     if (onboarding.data.name.trim() !== "") {
       return;
     }
-    const { activeProfileId, profiles } = useProfilesStore.getState();
-    const activeName = activeProfileId ? profiles[activeProfileId]?.name : undefined;
+    const activeName = people.activeProfileId ? people.profiles[people.activeProfileId]?.name : undefined;
     if (activeName) {
       onboarding.setName(activeName);
     }
+    // Mount-only by design (see above); the param is read once on entry.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Sync currentStep from store to local step key
@@ -413,8 +442,17 @@ export default function OnboardingPage() {
         }
 
         // Single source of regeneration: the one subscriber in App.tsx computes
-        // on-device, saves the primary (with profile_id), and re-streams.
-        appEvents.emit("birth-info-changed", { birth, profileId });
+        // on-device, saves the primary (with profile_id), and re-streams. WAIT
+        // for it and for the write to reach storage before leaving: navigating
+        // first meant a reload during the compute lost the chart for good, with
+        // the draft already cleared (prod 6a89c0e, 2026-10-05). A failed or
+        // stuck write (bounded by waitForChartSaved) lands on the Retry card.
+        try {
+          await requestRegeneration({ birth, profileId });
+          await waitForChartSaved();
+        } catch (computeErr) {
+          throw new ChartComputeError(computeErr);
+        }
 
         clearInterval(progressInterval);
 
@@ -430,6 +468,10 @@ export default function OnboardingPage() {
         // Transient "engine still warming" race — show a retryable message and
         // keep the user on the generating screen (which offers Retry + Reset).
         setError(getEngineWarmingMessage(err));
+      } else if (err instanceof ChartComputeError) {
+        // The engine ran but the chart was not saved (worker died, compute
+        // threw). Keep the draft and the user on the generating card's Retry.
+        setError(getUserFriendlyError('CHART_GEN_001', err, 'Chart generation failed'));
       } else if (err instanceof EngineBootstrapError) {
         // The engine bootstrap (re-sync/boot) failed — the user's birth data is
         // fine, so STAY on the generating error card where Retry re-bootstraps
@@ -593,6 +635,9 @@ export default function OnboardingPage() {
             <h2 className="text-2xl font-bold text-text-primary mb-2">{t("generating.title")}</h2>
             <p className="text-text-secondary text-sm">
               {t("generating.subtitle")}
+            </p>
+            <p className="text-text-muted text-xs mt-2" data-testid="computing-chart-hint">
+              {t("generating.keep_open")}
             </p>
             {/* When the on-device engine is still booting, the Generate click
                 now WAITS for it (instead of failing) — tell the user so the

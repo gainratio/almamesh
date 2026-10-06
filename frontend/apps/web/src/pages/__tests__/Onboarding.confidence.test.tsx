@@ -5,7 +5,7 @@ import { MemoryRouter } from 'react-router-dom';
 import type { ChartEngine } from '@almamesh/browser';
 import { timeConfidenceMargin } from '@almamesh/constants';
 import {
-  appEvents,
+  registerRegenerationRunner,
   useLifeEventsStore,
   useOnboardingStore,
   useProfilesStore,
@@ -105,7 +105,14 @@ function renderPage() {
   );
 }
 
+// Stands in for App.tsx's regeneration subscriber: the page now waits for the
+// chart to be applied before it navigates.
+const regenerationRunner = vi.fn((_event: BirthInfoChanged) => Promise.resolve());
+let unregisterRunner: () => void = () => undefined;
+
 beforeEach(() => {
+  regenerationRunner.mockClear();
+  unregisterRunner = registerRegenerationRunner(regenerationRunner);
   navigateSpy.mockClear();
   readyEngine();
   useOnboardingStore.getState().reset();
@@ -123,6 +130,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  unregisterRunner();
   useOnboardingStore.getState().reset();
 });
 
@@ -149,21 +157,15 @@ describe('Onboarding — birth-time confidence selector', () => {
     expect(useOnboardingStore.getState().data.needsRectification).toBe(true);
   });
 
-  it('carries the chosen confidence into the emitted birth metadata at generation', async () => {
+  it('carries the chosen confidence into the requested birth metadata at generation', async () => {
     seedAt(5, { timeConfidence: 'approximate' });
-    let captured: BirthInfoChanged | null = null;
-    const handler = (e: BirthInfoChanged) => {
-      captured = e;
-    };
-    appEvents.on('birth-info-changed', handler);
     renderPage();
 
     fireEvent.click(screen.getByTestId('skip-life-events-button'));
 
     await waitFor(() => expect(navigateSpy).toHaveBeenCalledWith('/dashboard'));
-    appEvents.off('birth-info-changed', handler);
-    expect(captured).not.toBeNull();
-    expect(captured!.birth.timeConfidence).toBe('approximate');
+    expect(regenerationRunner).toHaveBeenCalledOnce();
+    expect(regenerationRunner.mock.calls[0]?.[0].birth.timeConfidence).toBe('approximate');
   });
 });
 

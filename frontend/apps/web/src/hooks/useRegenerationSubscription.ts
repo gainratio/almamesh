@@ -1,28 +1,30 @@
 /**
- * Subscribe the ONE chart-regeneration handler to `birth-info-changed`.
+ * Register the ONE chart-regeneration runner behind `requestRegeneration`.
  *
- * Onboarding and Settings EMIT `birth-info-changed`; this is the single place
- * the chart is (re)computed — replacing the duplicated inline sequences that
- * caused the orphan / dropped-`profile_id` / stale-interpretation bugs.
+ * Onboarding, Rectify and Settings call `requestRegeneration(event)` and AWAIT
+ * it; this is the single place the chart is (re)computed — replacing the
+ * duplicated inline sequences that caused the orphan / dropped-`profile_id` /
+ * stale-interpretation bugs. Awaiting matters: pages used to emit on a
+ * fire-and-forget bus and navigate at once, so a reload during the compute
+ * lost the first chart for good (prod 6a89c0e, 2026-10-05).
  *
- * RACE-PROOF against emit-before-subscribe: the in-browser engine bootstraps
+ * RACE-PROOF against request-before-ready: the in-browser engine bootstraps
  * asynchronously, and the onboarding warming-race / post-`reboot()` recovery
- * paths emit `birth-info-changed` the instant the engine resolves — which can
- * land BEFORE this subscriber sees the ready engine on its next render. The old
- * effect early-returned `if (!engine)` and attached the listener only once the
- * engine was non-null, so that early emit fired into the void and the dashboard
- * showed "Unable to Load Chart". Here the listener is ALWAYS attached (it reads
- * the engine from a ref), so a live event is computed the moment the engine is
- * ready and BUFFERED otherwise; a ready-transition effect then DRAINS the buffer
- * exactly once. No dropped compute, regardless of ordering.
+ * paths request a regeneration the instant the engine resolves — which can
+ * land BEFORE this hook sees the ready engine on its next render. The runner is
+ * ALWAYS registered (it reads the engine from a ref), so a request is computed
+ * the moment the engine is ready and BUFFERED otherwise; a ready-transition
+ * effect then DRAINS the buffer exactly once, and the buffered request's
+ * promise settles with that run. No dropped compute, regardless of ordering.
  */
 
 import { useEffect, useRef } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
+import { safeWarn } from '@almamesh/shared-types'
 import {
-  appEvents,
   newChartReferenceInstant,
   regenerateOnBirthChange,
+  registerRegenerationRunner,
   useChartLibraryStore,
   useChatStore,
   useInterpretationStore,
@@ -44,21 +46,21 @@ export function useRegenerationSubscription(): void {
   engineRef.current = engine
 
   // A single birth-info event awaiting a ready engine (the emit-before-ready
-  // case). Only the latest matters — a newer commit supersedes an older one.
-  const pendingRef = useRef<BirthInfoChanged | null>(null)
+  // case). Only the latest matters — a newer commit supersedes an older one,
+  // and every caller waiting on a superseded event settles with the winner.
+  const pendingRef = useRef<PendingRegeneration | null>(null)
 
   // The regeneration runner, held in a ref so the always-attached listener has a
   // stable identity. Reassigned every render so its closed-over `queryClient`
   // stays current. Reads the engine from the ref: compute now if ready, else
   // buffer for the ready-transition effect to drain.
-  const runRef = useRef<(event: BirthInfoChanged) => void>(() => {})
+  const runRef = useRef<(event: BirthInfoChanged) => Promise<void>>(() => Promise.resolve())
   runRef.current = (event: BirthInfoChanged) => {
     const currentEngine = engineRef.current
     if (currentEngine === null) {
-      pendingRef.current = event
-      return
+      return bufferUntilReady(pendingRef, event)
     }
-    void regenerateOnBirthChange(event, {
+    return regenerateOnBirthChange(event, {
       engine: currentEngine,
       library: useChartLibraryStore.getState(),
       chat: useChatStore.getState(),
@@ -82,12 +84,20 @@ export function useRegenerationSubscription(): void {
     })
   }
 
-  // Attach the listener ONCE for the app's lifetime (never gated on `engine`).
-  useEffect(() => {
-    const handler = (event: BirthInfoChanged) => runRef.current(event)
-    appEvents.on('birth-info-changed', handler)
-    return () => appEvents.off('birth-info-changed', handler)
-  }, [])
+  // Register as THE runner ONCE for the app's lifetime (never gated on
+  // `engine`), so `requestRegeneration` always reaches this hook. Every request
+  // (live or buffered) passes through here, so a failed compute always leaves a
+  // privacy-safe console code while the caller still gets the rejection.
+  useEffect(
+    () =>
+      registerRegenerationRunner((event) =>
+        runRef.current(event).catch((reason: unknown) => {
+          safeWarn('chart.regeneration_failed', reason)
+          throw reason
+        }),
+      ),
+    [],
+  )
 
   // When the engine becomes ready, DRAIN a buffered event exactly once. This is
   // what recovers the warming-race / post-reboot dashboard: the event that fired
@@ -99,7 +109,38 @@ export function useRegenerationSubscription(): void {
     const pending = pendingRef.current
     if (pending !== null) {
       pendingRef.current = null
-      runRef.current(pending)
+      runRef.current(pending.event).then(pending.resolve, pending.reject)
     }
   }, [engine])
+}
+
+/** The latest event awaiting a ready engine, plus how to settle its waiters. */
+interface PendingRegeneration {
+  readonly event: BirthInfoChanged
+  readonly resolve: () => void
+  readonly reject: (reason: unknown) => void
+}
+
+/**
+ * Hold `event` until the engine is ready. A newer event replaces an older one
+ * (last wins); the older caller's promise settles with the newer run's outcome.
+ */
+function bufferUntilReady(
+  pendingRef: { current: PendingRegeneration | null },
+  event: BirthInfoChanged,
+): Promise<void> {
+  const superseded = pendingRef.current
+  return new Promise<void>((resolve, reject) => {
+    pendingRef.current = {
+      event,
+      resolve: () => {
+        superseded?.resolve()
+        resolve()
+      },
+      reject: (reason: unknown) => {
+        superseded?.reject(reason)
+        reject(reason)
+      },
+    }
+  })
 }
