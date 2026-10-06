@@ -20,6 +20,8 @@ import { RectifyPage } from '../pages/Rectify';
 // Hoisted helpers (available before vi.mock factories run)
 // ---------------------------------------------------------------------------
 const mockNavigate = vi.hoisted(() => vi.fn());
+/** The strict chart-library write barrier; each test may make it fail or hang. */
+const chartWrite = vi.hoisted(() => ({ next: (): Promise<void> => Promise.resolve() }));
 const regenerationRunner = vi.fn((_event: BirthInfoChanged) => Promise.resolve());
 let unregisterRunner: () => void = () => undefined;
 
@@ -123,6 +125,11 @@ vi.mock('../components/features/settings/RegenerationConfirmModal', () => {
     );
   };
   return { RegenerationConfirmModal: Stub };
+});
+
+vi.mock('@almamesh/store', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@almamesh/store')>();
+  return { ...actual, whenChartLibraryCommitted: () => chartWrite.next() };
 });
 
 vi.mock('react-router-dom', async (importOriginal) => {
@@ -273,6 +280,8 @@ describe('RectifyPage', () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
+    chartWrite.next = () => Promise.resolve();
     unregisterRunner();
     vi.restoreAllMocks();
     useChartLibraryStore.setState({ charts: {} });
@@ -534,6 +543,57 @@ describe('RectifyPage', () => {
     expect(screen.getByTestId('rectify-results')).toBeTruthy();
   });
 
+  /** Results → confirm the first candidate → ack the flip → confirm the modal. */
+  async function confirmFirstCandidate(): Promise<void> {
+    const { rerender } = renderRectify();
+    fireEvent.click(await screen.findByTestId('intro-start-btn'));
+    fireEvent.click(await screen.findByTestId('events-continue-btn'));
+    await navigateToResults(rerender);
+    fireEvent.click(screen.getByTestId('confirm-candidate-btn'));
+    await screen.findByTestId('regen-modal');
+    fireEvent.click(screen.getByRole('checkbox'));
+    fireEvent.click(screen.getByTestId('regen-confirm-btn'));
+  }
+
+  it('logs a fixed code when the regeneration fails', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    regenerationRunner.mockImplementation(() => Promise.reject(new Error('worker died')));
+    await confirmFirstCandidate();
+
+    await screen.findByTestId('rectify-save-error');
+    expect(warn).toHaveBeenCalledWith('[almamesh:warn:rectify.apply_failed]');
+  });
+
+  it('stays on the results with the error, logs a code, and keeps no record when the chart write fails', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    chartWrite.next = () => Promise.reject(new Error('opfs write failed'));
+    await confirmFirstCandidate();
+
+    await screen.findByTestId('rectify-save-error');
+    expect(mockNavigate).not.toHaveBeenCalled();
+    // The results (and their Confirm, the retry) stay on screen.
+    expect(screen.getByTestId('confirm-candidate-btn')).toBeTruthy();
+    expect(warn).toHaveBeenCalledWith('[almamesh:warn:chart.save_failed]');
+    // Settings must not say "was X, now Y" while the old chart is in effect.
+    expect(useRectificationRecordsStore.getState().getRecord(PROFILE_ID)).toBeNull();
+  });
+
+  it('leaves "saving" for the error and Retry when the chart write never settles', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    chartWrite.next = () => new Promise<void>(() => undefined);
+    await confirmFirstCandidate();
+    await screen.findByTestId('rectify-saving');
+
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    await screen.findByTestId('rectify-save-error');
+    expect(screen.queryByTestId('rectify-saving')).toBeNull();
+    expect(screen.getByTestId('confirm-candidate-btn')).toBeTruthy();
+    expect(mockNavigate).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledWith('[almamesh:warn:chart.save_timed_out]');
+  });
+
   it('confirm persists a RectificationRecord (chosen sign/time, band, original, event ids)', async () => {
     // Seed the structured life events that inform the fit (synthetic — no PII).
     useLifeEventsStore.setState({
@@ -555,6 +615,8 @@ describe('RectifyPage', () => {
     fireEvent.click(screen.getByRole('checkbox')); // ack the sign flip
     fireEvent.click(screen.getByTestId('regen-confirm-btn'));
 
+    // The record is saved once the new chart is on disk, then the page leaves.
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/dashboard'));
     const record = useRectificationRecordsStore.getState().getRecord(PROFILE_ID);
     expect(record).toMatchObject({
       profileId: PROFILE_ID,

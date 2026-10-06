@@ -34,21 +34,29 @@ vi.mock('../../lib/resetAppData', () => ({
   resetAppData: () => Promise.resolve(),
 }));
 
-/** The storage-settled barrier, held open by the test to model a slow write. */
+/**
+ * The chart-library write barrier, held open by the test to model a slow write.
+ * `fail` models a write SQLite/OPFS rejected: the lenient barrier still settles
+ * (as the real `whenPersistenceSettled` does), the strict one rejects.
+ */
 const persisted = vi.hoisted(() => ({
   release: (): void => undefined,
+  fail: (_reason: unknown): void => undefined,
   calls: 0,
 }));
 vi.mock('@almamesh/store', async (orig) => {
   const actual = await orig<typeof import('@almamesh/store')>();
+  const barrier = (): Promise<void> => {
+    persisted.calls += 1;
+    return new Promise<void>((resolve, reject) => {
+      persisted.release = resolve;
+      persisted.fail = reject;
+    });
+  };
   return {
     ...actual,
-    whenChartLibraryPersisted: () => {
-      persisted.calls += 1;
-      return new Promise<void>((resolve) => {
-        persisted.release = resolve;
-      });
-    },
+    whenChartLibraryPersisted: () => barrier().catch(() => undefined),
+    whenChartLibraryCommitted: barrier,
   };
 });
 
@@ -195,6 +203,24 @@ describe('Onboarding — the chart is durable before the user leaves', () => {
     expect(navigateSpy).not.toHaveBeenCalled();
     expect(useOnboardingStore.getState().data.name).toBe('Asha');
     expect(Object.keys(useChartLibraryStore.getState().charts)).toHaveLength(0);
+  });
+
+  it('stays on the generating retry card with the draft, and logs a code, when the chart write fails', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    seedReadyToGenerate();
+    renderPage();
+
+    fireEvent.click(screen.getByTestId('skip-life-events-button'));
+    await waitFor(() => expect(generateChart).toHaveBeenCalledOnce());
+    compute.resolve(fakeSiderealChart);
+    await waitFor(() => expect(persisted.calls).toBeGreaterThan(0));
+    persisted.fail(new Error('opfs write failed'));
+
+    await waitFor(() => expect(screen.getByTestId('retry-generation-button')).toBeTruthy());
+    expect(navigateSpy).not.toHaveBeenCalled();
+    expect(useOnboardingStore.getState().data.name).toBe('Asha');
+    expect(warn).toHaveBeenCalledWith('[almamesh:warn:chart.save_failed]');
+    warn.mockRestore();
   });
 
   it('rebuilds a chartless person in place: same id, name prefilled, no duplicate profile', async () => {

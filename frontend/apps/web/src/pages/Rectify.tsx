@@ -15,7 +15,6 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   requestRegeneration,
-  whenChartLibraryPersisted,
   type BirthMeta,
   buildRectificationRecord,
   isStructuredLifeEvent,
@@ -24,13 +23,16 @@ import {
   useProfilesStore,
   useRectificationRecordsStore,
 } from '@almamesh/store';
+import { safeWarn } from '@almamesh/shared-types';
 import type {
   ProcessedBirthData,
   RectificationCandidate,
+  RectificationRecord,
   RectificationRecordEventSummary,
 } from '@almamesh/shared-types';
 import type { TimeConfidence } from '@almamesh/constants';
 import { useRectification } from '../hooks/useRectification';
+import { waitForChartSaved } from '../lib/chartSaved';
 import { EventEntryStep } from '../components/features/rectify/EventEntryStep';
 import { FitProgress } from '../components/features/rectify/FitProgress';
 import { EngineWarming } from '../components/features/rectify/EngineWarming';
@@ -209,13 +211,15 @@ export function RectifyPage(): ReactElement {
       location_name: loc.location_name ?? '',
     };
 
-    // Persist a display-only record of THIS rectification before changing the
-    // birth time, so Settings can show a standing "was X, now Y" account. The
+    // Build a display-only record of THIS rectification, saved only once the
+    // new chart is on disk, so Settings can show a standing "was X, now Y"
+    // account that never describes a chart that is not in effect. The
     // chosen candidate's sign/time + the result's band/margin/mode are captured
     // alongside the structured events that informed the fit. v2 (Spec 062) also
     // snapshots the full in-memory adapted result and the events' own summaries
     // so the evidence story survives revisits — everything stays on-device
     // (canonical SQLite, local-first) and the record never feeds the engine.
+    let record: RectificationRecord | null = null;
     if (state.result != null) {
       const structuredEvents = useLifeEventsStore
         .getState()
@@ -228,35 +232,41 @@ export function RectifyPage(): ReactElement {
         category: e.category!,
         ...(e.summary != null && e.summary !== '' ? { summary: e.summary } : {}),
       }));
-      useRectificationRecordsStore.getState().setRecord(
-        buildRectificationRecord({
-          profileId,
-          result: state.result,
-          candidate: pendingCandidate,
-          originalTime: enteredTime,
-          structuredEventIds: structuredEvents.map((e) => e.id),
-          confirmedAt: Date.now(),
-          eventSummaries,
-        }),
-      );
+      record = buildRectificationRecord({
+        profileId,
+        result: state.result,
+        candidate: pendingCandidate,
+        originalTime: enteredTime,
+        structuredEventIds: structuredEvents.map((e) => e.id),
+        confirmedAt: Date.now(),
+        eventSummaries,
+      });
     }
 
     setShowModal(false);
     setPendingCandidate(null);
-    void applyRectifiedChart(birth, profileId);
+    void applyRectifiedChart(birth, profileId, record);
   }
 
   // Wait for the new chart to be computed AND written before leaving: a reload
-  // on the dashboard during the compute used to drop the rectified chart.
-  async function applyRectifiedChart(birth: BirthMeta, owner: string): Promise<void> {
+  // on the dashboard during the compute used to drop the rectified chart. A
+  // failed or stuck write stays here on the error, with the results' Confirm
+  // as the retry, and only a saved chart gets its rectification record.
+  async function applyRectifiedChart(
+    birth: BirthMeta,
+    owner: string,
+    record: RectificationRecord | null,
+  ): Promise<void> {
     setSaveState('saving');
     try {
       await requestRegeneration({ birth, profileId: owner });
-      await whenChartLibraryPersisted();
+      await waitForChartSaved();
     } catch {
+      safeWarn('rectify.apply_failed');
       setSaveState('error');
       return;
     }
+    if (record != null) useRectificationRecordsStore.getState().setRecord(record);
     setSaveState('idle');
     navigate('/dashboard');
   }

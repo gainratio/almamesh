@@ -11,7 +11,6 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   requestRegeneration,
-  whenChartLibraryPersisted,
   type LocalBirthInput,
   type PendingChangeField,
   type PendingChanges,
@@ -38,6 +37,7 @@ import { formatDegree } from '../../lib/reportData';
 import { rectificationDeltaFromClocks } from '../../lib/rectification';
 import { cuspInfo } from '../../lib/lagnaCusp';
 import { getUserFriendlyError } from '../../lib/errors';
+import { waitForChartSaved } from '../../lib/chartSaved';
 
 // Constants for regeneration impact. Local-first: regeneration is free (runs
 // on-device), so base_cost is 0 — kept for the scope-calculation contract.
@@ -383,10 +383,11 @@ export default function ProfileSettings() {
       // recomputes on-device, replaces the primary (preserving profile_id),
       // deletes the orphan, and re-streams the interpretation. Say "Chart
       // Updated!" only once the new chart is computed AND written: a reload
-      // before that silently reverted the edit.
+      // before that silently reverted the edit, and a failed or stuck write
+      // shows the error with the edit kept, so Save Changes is the retry.
       const profileId = useProfilesStore.getState().activeProfileId;
       await requestRegeneration({ birth, profileId });
-      await whenChartLibraryPersisted();
+      await waitForChartSaved();
 
       clearPendingChanges();
       setRegenerationStatus('success');

@@ -3,7 +3,6 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
   requestRegeneration,
-  whenChartLibraryPersisted,
   type BirthMeta,
   type LifeEventInput,
   useLifeEventsStore,
@@ -26,6 +25,7 @@ import { useOnboardingStore } from "../stores/onboarding";
 import { getUserFriendlyError, getEngineWarmingMessage } from "../lib/errors";
 import { resolveReadyEngine } from "../lib/resolveReadyEngine";
 import { resetAppData } from "../lib/resetAppData";
+import { waitForChartSaved } from "../lib/chartSaved";
 import { engineErrorCode, ROLLBACK_CODE } from "../lib/engineLifecycle";
 import { RollbackResetGuard } from "../components/RollbackResetGuard";
 import { incompleteDatabases, ResetIncompleteNotice } from "../components/ResetIncompleteNotice";
@@ -445,10 +445,11 @@ export default function OnboardingPage() {
         // on-device, saves the primary (with profile_id), and re-streams. WAIT
         // for it and for the write to reach storage before leaving: navigating
         // first meant a reload during the compute lost the chart for good, with
-        // the draft already cleared (prod 6a89c0e, 2026-10-05).
+        // the draft already cleared (prod 6a89c0e, 2026-10-05). A failed or
+        // stuck write (bounded by waitForChartSaved) lands on the Retry card.
         try {
           await requestRegeneration({ birth, profileId });
-          await whenChartLibraryPersisted();
+          await waitForChartSaved();
         } catch (computeErr) {
           throw new ChartComputeError(computeErr);
         }

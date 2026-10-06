@@ -24,6 +24,13 @@ import {
 import '../../../i18n/config';
 import { useSettingsStore } from '../../../stores/settings';
 
+/** The strict chart-library write barrier; a test may make it fail. */
+const chartWrite = vi.hoisted(() => ({ next: (): Promise<void> => Promise.resolve() }));
+vi.mock('@almamesh/store', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@almamesh/store')>();
+  return { ...actual, whenChartLibraryCommitted: () => chartWrite.next() };
+});
+
 const ENGINE = vi.hoisted(() => ({ generateChart: () => Promise.reject(new Error('unused')) }));
 
 vi.mock('../../../providers/AlmaMeshRuntimeProvider', () => ({
@@ -114,6 +121,8 @@ describe('ProfileSettings — birth-time-only edit', () => {
   });
 
   afterEach(() => {
+    chartWrite.next = () => Promise.resolve();
+    vi.restoreAllMocks();
     unregisterRunner();
   });
 
@@ -150,6 +159,25 @@ describe('ProfileSettings — birth-time-only edit', () => {
     await waitFor(() => expect(emitted).toHaveLength(1));
     await waitFor(() => expect(screen.queryByText('Chart Updated!')).toBeNull());
     expect(await screen.findByRole('alert')).toBeTruthy();
+  });
+
+  it('shows the error with Save still offered, not "Chart Updated!", when the chart write fails', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    chartWrite.next = () => Promise.reject(new Error('opfs write failed'));
+    storeChart('06:44');
+    renderPage();
+    const { birth } = await timeInputs();
+    await waitFor(() => expect(birth.value).toBe('06:44'));
+
+    fireEvent.change(birth, { target: { value: '06:14' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Confirm & Regenerate' }));
+
+    expect(await screen.findByRole('alert')).toBeTruthy();
+    expect(screen.queryByText('Chart Updated!')).toBeNull();
+    // The edit is kept, so Save Changes is the retry.
+    expect(screen.getByRole('button', { name: 'Save Changes' })).toBeTruthy();
+    expect(warn).toHaveBeenCalledWith('[almamesh:warn:chart.save_failed]');
   });
 
   it('with no rectification, the new birth time is what gets regenerated', async () => {
