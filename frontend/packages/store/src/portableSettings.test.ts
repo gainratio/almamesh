@@ -6,7 +6,7 @@ import {
   PORTABLE_SETTINGS_KEYS,
 } from './portableSettings';
 
-const LLM = JSON.stringify({ apiBase: 'https://openrouter.ai/api/v1', apiKey: 'sk-synthetic' });
+const LLM = JSON.stringify({ apiBase: 'https://openrouter.ai/api/v1', apiKey: 'test-key-not-a-secret' });
 
 describe('portable settings', () => {
   it('accepts only the legacy-v2 AI settings key', () => {

@@ -16,7 +16,11 @@
  */
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { PortableStateUnavailableError } from '@almamesh/store';
+import {
+  BackupCryptoError,
+  checkBackupPassphrase,
+  PortableStateUnavailableError,
+} from '@almamesh/store';
 import { Button, Card, Input } from '../../components/ui';
 import { buildBackupExport, exportBackupFilename } from '../../lib/backupService';
 import { openBackupSaveTarget, type BackupSaveTarget } from '../../lib/backupFile';
@@ -26,13 +30,21 @@ import { DataRepairNotice } from '../../components/features/settings/DataRepairN
 import { SetAsideRecords } from '../../components/features/settings/SetAsideRecords';
 import { RestoreBackupDialogs } from '../../components/features/backup/RestoreBackupDialogs';
 import { ConfirmPasswordField } from '../../components/features/backup/ConfirmPasswordField';
-import { passwordsMatch } from '../../lib/backupPassword';
-
-/** Minimum export password length; the file carries the AI key, so it is required. */
-const MIN_PASSPHRASE_LENGTH = 8;
 
 function reasonOf(error: unknown): string {
   return error instanceof Error && error.message ? error.message : String(error);
+}
+
+/** The i18n key for an export failure: honest about memory and retries. */
+function exportErrorKey(error: unknown): string | null {
+  if (error instanceof PortableStateUnavailableError) return 'backup.error_storage_unavailable';
+  if (error instanceof BackupCryptoError && error.code === 'out_of_memory') {
+    return 'backup.error_export_out_of_memory';
+  }
+  if (error instanceof BackupCryptoError && error.code === 'unavailable') {
+    return 'backup.error_export_unavailable';
+  }
+  return null;
 }
 
 export function DataSettingsPanel() {
@@ -45,7 +57,10 @@ export function DataSettingsPanel() {
   const [confirmation, setConfirmation] = useState('');
   // The mismatch shows once the user has typed in the confirm field, or on submit.
   const [confirmationTouched, setConfirmationTouched] = useState(false);
-  const showMismatch = confirmationTouched && !passwordsMatch(password, confirmation);
+  // The library checks empty, then too short, then mismatch; the confirm field
+  // only ever shows the mismatch.
+  const passwordProblem = checkBackupPassphrase(password, confirmation);
+  const showMismatch = confirmationTouched && passwordProblem === 'mismatch';
   const [exporting, setExporting] = useState(false);
   const [exportStatus, setExportStatus] = useState<string | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
@@ -64,12 +79,14 @@ export function DataSettingsPanel() {
   // (Chrome's user activation lasts ~5 s; building the backup can take longer).
   function handleExport() {
     clearBanners();
-    if (password.length < MIN_PASSPHRASE_LENGTH) {
-      setExportError(t('backup.error_passphrase_required'));
+    if (passwordProblem === 'mismatch') {
+      setConfirmationTouched(true);
       return;
     }
-    if (!passwordsMatch(password, confirmation)) {
-      setConfirmationTouched(true);
+    if (passwordProblem !== null) {
+      setExportError(
+        t(passwordProblem === 'empty' ? 'backup.error_passphrase_empty' : 'backup.error_passphrase_too_short'),
+      );
       return;
     }
     let target: BackupSaveTarget;
@@ -112,11 +129,8 @@ export function DataSettingsPanel() {
         clearPasswords();
       }
     } catch (err) {
-      setExportError(
-        err instanceof PortableStateUnavailableError
-          ? t('backup.error_storage_unavailable')
-          : t('backup.error_export_failed', { reason: reasonOf(err) }),
-      );
+      const key = exportErrorKey(err);
+      setExportError(key ? t(key) : t('backup.error_export_failed', { reason: reasonOf(err) }));
     } finally {
       setExporting(false);
     }

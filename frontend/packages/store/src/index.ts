@@ -63,12 +63,16 @@ export { deleteLegacyKeyval } from './legacyKeyval';
 export * from './portableState';
 export * from './webStorage';
 // Backup & Restore (Spec 061): export/import all user data. `backup` = storage
-// collect/apply + registry; `backupCrypto` = passphrase encrypt/decode.
+// collect/apply + registry; `backupSealing` = passphrase encryption: new files
+// are age files, and every older format still opens (all crypto lives behind
+// the `passphraseSeal` seam).
 export * from './backup';
-export * from './backupCrypto';
-// Backup format v3: exact canonical SQLite bytes under required encryption;
-// the reader retains compatibility with v2's separate settings payload.
-export * from './portableBundle';
+export * from './backupSealing';
+export {
+  checkBackupPassphrase,
+  MIN_BACKUP_PASSPHRASE_LENGTH,
+  type BackupPassphraseProblem,
+} from './passphraseSeal';
 export * from './portableSettings';
 export * from './setAsideRecords';
 // Writes the dataset generation fence refused for another realm, surfaced in the UI.

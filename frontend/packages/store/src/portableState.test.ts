@@ -750,7 +750,7 @@ describe('PortableStateRepository', () => {
         {
         'almamesh-llm-settings': JSON.stringify({
           apiBase: 'https://openrouter.ai/api/v1',
-          apiKey: 'sk-legacy-synthetic',
+          apiKey: 'test-key-not-a-secret',
         }),
         evil: 'drop-me',
         },
@@ -767,7 +767,7 @@ describe('PortableStateRepository', () => {
       decodePortablePreferences((await staged.read(PORTABLE_PREFERENCES_KEY))!).values[
         'almamesh-llm-settings'
       ],
-    ).toContain('sk-legacy-synthetic');
+    ).toContain('test-key-not-a-secret');
   });
 });
 

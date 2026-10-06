@@ -93,12 +93,23 @@ files or byte-for-byte identical destination storage metadata.
 ## Current transport contract
 
 The normal user-facing export is always encrypted and requires a passphrase of
-at least eight characters. Its `.almamesh` body uses Web Crypto only:
+at least twelve characters. Its `.almamesh` body is a standard
+[age v1](https://age-encryption.org/v1) file, written by
+`@gainratio/browser/seal` behind the seam `packages/store/src/passphraseSeal.ts`:
 
-- PBKDF2-HMAC-SHA-256 with 600,000 iterations and a random salt;
-- AES-256-GCM with a random IV;
-- authenticated, versioned framing; and
+- one scrypt passphrase recipient at work factor 17 (N = 2^17, 128 MiB),
+  computed in a Worker so the page never blocks;
+- ChaCha20-Poly1305 payload chunks with an authenticated header; and
 - the exact exported SQLite bytes as the encrypted payload.
+
+Any age tool opens it (`age -d backup.almamesh > backup.sqlite`). Files written
+before the move (format v3 binary with PBKDF2-SHA-256 600,000 + AES-256-GCM,
+v2 and v1 JSON) are read-only and open through the library's legacy reader;
+`isSealed` picks the path. Golden files written by the pre-age code
+(`packages/store/src/__fixtures__/legacy-backups/`) pin that they keep opening.
+A wrong password and a changed file give the same message; running out of
+memory or failing to load the decryptor say so and ask for a retry, because the
+password was not checked.
 
 The framing contains only the non-secret information required to identify and
 decrypt the format. The SQLite header, user data, AI settings, and API key do not

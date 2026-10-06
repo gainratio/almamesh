@@ -7,6 +7,17 @@ All notable changes to AlmaMesh are documented here. Format follows
 ## [Unreleased]
 
 ### Changed
+- **Backups are now standard age files, and every old backup still opens.**
+  Export seals the canonical SQLite file as an age v1 file (scrypt, 128 MiB) via
+  `@gainratio/browser@^0.4.1`'s `./seal` entry, behind one seam
+  (`packages/store/src/passphraseSeal.ts`), in a Worker per operation; any age
+  tool can open it. Older `.almamesh` v3, v2 JSON and v1 JSON backups open
+  through the library's read-only legacy reader, proven by golden files the
+  previous code wrote. New passwords need at least 12 characters (was 8); an old
+  backup's shorter password still opens it, and the safety copy then asks for a
+  new one. Unlock failures are worded honestly: out of memory and a failed load
+  say "try again" instead of "wrong password". The hand-written PBKDF2/AES-GCM
+  code (`backupCrypto.ts`, `portableBundle.ts`) is gone.
 - **The chat embedder says when it is loading, and a memory budget guards boot.**
   The on-device MiniLM embedder (about +95 MiB once loaded) was already deferred
   to the first chat send or search; that first load now shows a "loading

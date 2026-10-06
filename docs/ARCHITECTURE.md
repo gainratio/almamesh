@@ -110,14 +110,17 @@ instead of hanging the first render. Once
 migration completes, live reads and writes use SQLite only; in-memory snapshots
 serve synchronous UI reads without creating another durable authority.
 
-Settings exports one timestamped `.almamesh` file: format v3 seals the exact
-canonical SQLite bytes with the user's password (PBKDF2-SHA256 600k +
-AES-256-GCM, authenticated binary header). AI provider, models, API key,
+Settings exports one timestamped `.almamesh` file: a standard age v1 file
+(scrypt, work factor 17 = 128 MiB) that seals the exact canonical SQLite bytes
+with the user's password (at least 12 characters), so `age -d` opens it too.
+The age code comes from `@gainratio/browser/seal` behind one seam
+(`packages/store/src/passphraseSeal.ts`) and runs in a Worker per operation. AI provider, models, API key,
 language, and content preferences already live in versioned SQLite rows, so
 there is no second settings payload to apply after the database commit. Every
 restore is staged in an isolated in-memory database before atomically replacing
-the live generation. Raw SQLite, encrypted v2, and legacy JSON backups remain
-importable. The password protects the transport file only: import decrypts it
+the live generation. Raw SQLite, the older PBKDF2 `.almamesh` v3 files, encrypted
+v2, and legacy JSON backups remain importable through the library's read-only
+legacy reader, pinned by golden files the pre-age code wrote. The password protects the transport file only: import decrypts it
 once and installs ordinary SQLite into the destination browser's OPFS, so later
 launches do not ask for that password. Predictive results travel in canonical
 SQLite. Semantic vectors, embedding assets, and signed engine-delivery caches
