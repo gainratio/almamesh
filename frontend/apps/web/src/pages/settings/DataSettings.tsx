@@ -25,6 +25,8 @@ import { useBackupRestore } from '../../hooks/useBackupRestore';
 import { DataRepairNotice } from '../../components/features/settings/DataRepairNotice';
 import { SetAsideRecords } from '../../components/features/settings/SetAsideRecords';
 import { RestoreBackupDialogs } from '../../components/features/backup/RestoreBackupDialogs';
+import { ConfirmPasswordField } from '../../components/features/backup/ConfirmPasswordField';
+import { passwordsMatch } from '../../lib/backupPassword';
 
 /** Minimum export password length; the file carries the AI key, so it is required. */
 const MIN_PASSPHRASE_LENGTH = 8;
@@ -40,6 +42,10 @@ export function DataSettingsPanel() {
 
   // Export
   const [password, setPassword] = useState('');
+  const [confirmation, setConfirmation] = useState('');
+  // The mismatch shows once the user has typed in the confirm field, or on submit.
+  const [confirmationTouched, setConfirmationTouched] = useState(false);
+  const showMismatch = confirmationTouched && !passwordsMatch(password, confirmation);
   const [exporting, setExporting] = useState(false);
   const [exportStatus, setExportStatus] = useState<string | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
@@ -62,6 +68,10 @@ export function DataSettingsPanel() {
       setExportError(t('backup.error_passphrase_required'));
       return;
     }
+    if (!passwordsMatch(password, confirmation)) {
+      setConfirmationTouched(true);
+      return;
+    }
     let target: BackupSaveTarget;
     try {
       target = openBackupSaveTarget(exportBackupFilename());
@@ -70,6 +80,12 @@ export function DataSettingsPanel() {
       return;
     }
     void finishExport(target, password);
+  }
+
+  function clearPasswords() {
+    setPassword('');
+    setConfirmation('');
+    setConfirmationTouched(false);
   }
 
   async function finishExport(target: BackupSaveTarget, passphrase: string) {
@@ -90,10 +106,10 @@ export function DataSettingsPanel() {
       const note = repairNoteLines(t, built.repairs).map((line) => ` ${line}`).join('');
       if (result === 'saved') {
         setExportStatus(`${t('backup.status_exported')}${note}`);
-        setPassword(''); // don't leave the passphrase lingering in the field
+        clearPasswords(); // don't leave the passphrase lingering in the fields
       } else if (result === 'unverified') {
         setExportStatus(`${t('backup.status_export_started')}${note}`);
-        setPassword('');
+        clearPasswords();
       }
     } catch (err) {
       setExportError(
@@ -155,6 +171,17 @@ export function DataSettingsPanel() {
               autoComplete="new-password"
             />
           </div>
+          <ConfirmPasswordField
+            id="backup-passphrase-confirm"
+            testId="backup-passphrase-confirm-input"
+            mismatchTestId="backup-passphrase-mismatch"
+            value={confirmation}
+            onChange={(value) => {
+              setConfirmation(value);
+              setConfirmationTouched(true);
+            }}
+            showMismatch={showMismatch}
+          />
           <Button
             type="button"
             onClick={handleExport}

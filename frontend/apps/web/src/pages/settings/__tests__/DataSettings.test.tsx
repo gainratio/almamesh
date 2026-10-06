@@ -161,6 +161,8 @@ describe('DataSettings — Backup & Restore panel', () => {
     fireEvent.change(screen.getByTestId('backup-passphrase-input'), {
       target: { value: 'short' },
     });
+
+    fireEvent.change(screen.getByTestId('backup-passphrase-confirm-input'), { target: { value: 'short' } });
     fireEvent.click(screen.getByTestId('backup-export-button'));
 
     expect(await screen.findByTestId('backup-error')).toBeTruthy();
@@ -178,6 +180,8 @@ describe('DataSettings — Backup & Restore panel', () => {
     fireEvent.change(screen.getByTestId('backup-passphrase-input'), {
       target: { value: 'hunter2-long' },
     });
+
+    fireEvent.change(screen.getByTestId('backup-passphrase-confirm-input'), { target: { value: 'hunter2-long' } });
     fireEvent.click(screen.getByTestId('backup-export-button'));
 
     await waitFor(() =>
@@ -208,6 +212,8 @@ describe('DataSettings — Backup & Restore panel', () => {
     fireEvent.change(screen.getByTestId('backup-passphrase-input'), {
       target: { value: 'hunter2-long' },
     });
+
+    fireEvent.change(screen.getByTestId('backup-passphrase-confirm-input'), { target: { value: 'hunter2-long' } });
     fireEvent.click(screen.getByTestId('backup-export-button'));
 
     expect(
@@ -244,6 +250,8 @@ describe('DataSettings — Backup & Restore panel', () => {
     fireEvent.change(screen.getByTestId('backup-passphrase-input'), {
       target: { value: 'hunter2-long' },
     });
+
+    fireEvent.change(screen.getByTestId('backup-passphrase-confirm-input'), { target: { value: 'hunter2-long' } });
     fireEvent.click(screen.getByTestId('backup-export-button'));
 
     expect(
@@ -258,10 +266,13 @@ describe('DataSettings — Backup & Restore panel', () => {
 
     fireEvent.change(input, { target: { value: 'hunter2-long' } });
     expect(input.value).toBe('hunter2-long');
+    const confirmation = screen.getByTestId('backup-passphrase-confirm-input') as HTMLInputElement;
+    fireEvent.change(confirmation, { target: { value: 'hunter2-long' } });
 
     fireEvent.click(screen.getByTestId('backup-export-button'));
 
     await waitFor(() => expect(input.value).toBe(''));
+    expect(confirmation.value).toBe('');
   });
 
   it('imports: pick → stage → confirm downloads a safety-net, commits, and reloads', async () => {
@@ -277,6 +288,8 @@ describe('DataSettings — Backup & Restore panel', () => {
     fireEvent.change(screen.getByTestId('backup-safety-passphrase-input'), {
       target: { value: 'safety-password' },
     });
+
+    fireEvent.change(screen.getByTestId('backup-safety-passphrase-confirm-input'), { target: { value: 'safety-password' } });
     fireEvent.click(confirmBtn);
 
     await waitFor(() =>
@@ -365,6 +378,7 @@ describe('DataSettings — Backup & Restore panel', () => {
     fireEvent.change(screen.getByTestId('backup-safety-passphrase-input'), {
       target: { value: 'safety-password' },
     });
+    fireEvent.change(screen.getByTestId('backup-safety-passphrase-confirm-input'), { target: { value: 'safety-password' } });
     fireEvent.click(confirmBtn);
 
     // The safety net was attempted, then the import bailed out entirely.
@@ -393,6 +407,7 @@ describe('DataSettings — Backup & Restore panel', () => {
     fireEvent.change(screen.getByTestId('backup-safety-passphrase-input'), {
       target: { value: 'safety-password' },
     });
+    fireEvent.change(screen.getByTestId('backup-safety-passphrase-confirm-input'), { target: { value: 'safety-password' } });
     fireEvent.click(confirmBtn);
 
     expect(
@@ -423,6 +438,7 @@ describe('DataSettings — Backup & Restore panel', () => {
     fireEvent.change(await screen.findByTestId('backup-safety-passphrase-input'), {
       target: { value: 'safety-password' },
     });
+    fireEvent.change(screen.getByTestId('backup-safety-passphrase-confirm-input'), { target: { value: 'safety-password' } });
     fireEvent.click(screen.getByTestId('backup-confirm-import'));
 
     expect((await screen.findByTestId('backup-safety-failed')).textContent).toContain(
@@ -446,6 +462,7 @@ describe('DataSettings — Backup & Restore panel', () => {
     fireEvent.change(await screen.findByTestId('backup-safety-passphrase-input'), {
       target: { value: 'safety-password' },
     });
+    fireEvent.change(screen.getByTestId('backup-safety-passphrase-confirm-input'), { target: { value: 'safety-password' } });
     fireEvent.click(screen.getByTestId('backup-confirm-import'));
     await screen.findByTestId('backup-safety-confirmation');
 
@@ -611,6 +628,7 @@ describe('DataSettings — Backup & Restore panel', () => {
     fireEvent.change(await screen.findByTestId('backup-safety-passphrase-input'), {
       target: { value: 'safety-password' },
     });
+    fireEvent.change(screen.getByTestId('backup-safety-passphrase-confirm-input'), { target: { value: 'safety-password' } });
     fireEvent.click(await screen.findByTestId('backup-confirm-import'));
 
     expect(await screen.findByText(/Restore failed: disk full/)).toBeTruthy();
@@ -635,6 +653,7 @@ describe('DataSettings — Backup & Restore panel', () => {
     fireEvent.change(await screen.findByTestId('backup-safety-passphrase-input'), {
       target: { value: 'safety-password' },
     });
+    fireEvent.change(screen.getByTestId('backup-safety-passphrase-confirm-input'), { target: { value: 'safety-password' } });
     fireEvent.click(screen.getByTestId('backup-confirm-import'));
   }
 
@@ -644,6 +663,7 @@ describe('DataSettings — Backup & Restore panel', () => {
     fireEvent.change(screen.getByTestId('backup-passphrase-input'), {
       target: { value: 'hunter2-long' },
     });
+    fireEvent.change(screen.getByTestId('backup-passphrase-confirm-input'), { target: { value: 'hunter2-long' } });
 
     fireEvent.click(screen.getByTestId('backup-export-button'));
 
@@ -667,6 +687,7 @@ describe('DataSettings — Backup & Restore panel', () => {
     fireEvent.change(screen.getByTestId('backup-passphrase-input'), {
       target: { value: 'hunter2-long' },
     });
+    fireEvent.change(screen.getByTestId('backup-passphrase-confirm-input'), { target: { value: 'hunter2-long' } });
 
     fireEvent.click(screen.getByTestId('backup-export-button'));
 
@@ -689,6 +710,7 @@ describe('DataSettings — Backup & Restore panel', () => {
     fireEvent.change(screen.getByTestId('backup-passphrase-input'), {
       target: { value: 'hunter2-long' },
     });
+    fireEvent.change(screen.getByTestId('backup-passphrase-confirm-input'), { target: { value: 'hunter2-long' } });
 
     fireEvent.click(screen.getByTestId('backup-export-button'));
 
@@ -797,5 +819,146 @@ describe('DataSettings — Backup & Restore panel', () => {
     render(<DataSettings />);
 
     expect((await screen.findByTestId('set-aside-records')).textContent).toContain('2 life events');
+  });
+});
+
+// A typo in a new password makes the file permanently unopenable (nothing can
+// recover it), so every place that CREATES a password asks for it twice.
+describe('DataSettings — confirm the password you create', () => {
+  function typeExportPasswords(password: string, confirmation: string) {
+    fireEvent.change(screen.getByTestId('backup-passphrase-input'), { target: { value: password } });
+    fireEvent.change(screen.getByTestId('backup-passphrase-confirm-input'), {
+      target: { value: confirmation },
+    });
+  }
+
+  async function openLegacyConfirm() {
+    vi.mocked(pickBackupFile).mockResolvedValue('LEGACY_TEXT');
+    render(<DataSettings />);
+    fireEvent.click(screen.getByTestId('backup-import-button'));
+    return screen.findByTestId('backup-confirm-import');
+  }
+
+  function typeSafetyPasswords(password: string, confirmation: string) {
+    fireEvent.change(screen.getByTestId('backup-safety-passphrase-input'), {
+      target: { value: password },
+    });
+    fireEvent.change(screen.getByTestId('backup-safety-passphrase-confirm-input'), {
+      target: { value: confirmation },
+    });
+  }
+
+  it('both export password fields are new-password inputs', () => {
+    render(<DataSettings />);
+    for (const id of ['backup-passphrase-input', 'backup-passphrase-confirm-input']) {
+      const input = screen.getByTestId(id) as HTMLInputElement;
+      expect(input.type).toBe('password');
+      expect(input.autocomplete).toBe('new-password');
+    }
+    expect(screen.getByLabelText('Confirm password')).toBe(
+      screen.getByTestId('backup-passphrase-confirm-input'),
+    );
+  });
+
+  it('export refuses mismatched passwords and builds nothing', async () => {
+    render(<DataSettings />);
+    typeExportPasswords('hunter2-long', 'hunter2-lung');
+
+    fireEvent.click(screen.getByTestId('backup-export-button'));
+
+    expect(screen.getByTestId('backup-passphrase-mismatch').textContent).toBe("Passwords don't match.");
+    expect(vi.mocked(openBackupSaveTarget)).not.toHaveBeenCalled();
+    expect(vi.mocked(buildBackupExport)).not.toHaveBeenCalled();
+  });
+
+  it('export refuses an empty confirmation on submit and says the passwords do not match', () => {
+    render(<DataSettings />);
+    fireEvent.change(screen.getByTestId('backup-passphrase-input'), {
+      target: { value: 'hunter2-long' },
+    });
+
+    fireEvent.click(screen.getByTestId('backup-export-button'));
+
+    expect(screen.getByTestId('backup-passphrase-mismatch')).toBeTruthy();
+    expect(vi.mocked(buildBackupExport)).not.toHaveBeenCalled();
+  });
+
+  it('export proceeds with the password when both fields match', async () => {
+    render(<DataSettings />);
+    typeExportPasswords('hunter2-long', 'hunter2-long');
+
+    fireEvent.click(screen.getByTestId('backup-export-button'));
+
+    await waitFor(() => expect(vi.mocked(buildBackupExport)).toHaveBeenCalledWith('hunter2-long'));
+    expect(screen.queryByTestId('backup-passphrase-mismatch')).toBeNull();
+  });
+
+  it('says nothing about a mismatch until the confirm field is typed in', () => {
+    render(<DataSettings />);
+    fireEvent.change(screen.getByTestId('backup-passphrase-input'), {
+      target: { value: 'hunter2-long' },
+    });
+    expect(screen.queryByTestId('backup-passphrase-mismatch')).toBeNull();
+
+    fireEvent.change(screen.getByTestId('backup-passphrase-confirm-input'), {
+      target: { value: 'hunter' },
+    });
+    expect(screen.getByTestId('backup-passphrase-mismatch')).toBeTruthy();
+  });
+
+  it('the export mismatch message is announced and tied to the confirm input', () => {
+    render(<DataSettings />);
+    typeExportPasswords('hunter2-long', 'nope-nope');
+
+    const message = screen.getByTestId('backup-passphrase-mismatch');
+    const confirm = screen.getByTestId('backup-passphrase-confirm-input');
+    expect(message.getAttribute('role')).toBe('alert');
+    expect(screen.getAllByRole('alert')).toContain(message);
+    expect(message.textContent).toBe("Passwords don't match.");
+    expect(confirm.getAttribute('aria-describedby')).toBe(message.id);
+    expect(confirm.getAttribute('aria-invalid')).toBe('true');
+  });
+
+  it('safety backup: both password fields are new-password inputs', async () => {
+    await openLegacyConfirm();
+    for (const id of ['backup-safety-passphrase-input', 'backup-safety-passphrase-confirm-input']) {
+      const input = screen.getByTestId(id) as HTMLInputElement;
+      expect(input.type).toBe('password');
+      expect(input.autocomplete).toBe('new-password');
+    }
+  });
+
+  it('safety backup refuses mismatched passwords and replaces nothing', async () => {
+    const confirmBtn = await openLegacyConfirm();
+    typeSafetyPasswords('safety-password', 'safety-passw0rd');
+
+    fireEvent.click(confirmBtn);
+
+    const message = await screen.findByTestId('backup-safety-passphrase-mismatch');
+    expect(message.textContent).toBe("Passwords don't match.");
+    expect(vi.mocked(openBackupSaveTarget)).not.toHaveBeenCalled();
+    expect(vi.mocked(buildBackupExport)).not.toHaveBeenCalled();
+    expect(vi.mocked(commitBackupImport)).not.toHaveBeenCalled();
+  });
+
+  it('safety backup proceeds with the password when both fields match', async () => {
+    const confirmBtn = await openLegacyConfirm();
+    typeSafetyPasswords('safety-password', 'safety-password');
+
+    fireEvent.click(confirmBtn);
+
+    await waitFor(() => expect(vi.mocked(commitBackupImport)).toHaveBeenCalledOnce());
+    expect(vi.mocked(buildBackupExport)).toHaveBeenCalledWith('safety-password');
+  });
+
+  it('the safety mismatch message is announced and tied to its confirm input', async () => {
+    await openLegacyConfirm();
+    typeSafetyPasswords('safety-password', 'other-password');
+
+    const message = await screen.findByTestId('backup-safety-passphrase-mismatch');
+    const confirm = screen.getByTestId('backup-safety-passphrase-confirm-input');
+    expect(message.getAttribute('role')).toBe('alert');
+    expect(confirm.getAttribute('aria-describedby')).toBe(message.id);
+    expect(confirm.getAttribute('aria-invalid')).toBe('true');
   });
 });

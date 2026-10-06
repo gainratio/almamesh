@@ -306,6 +306,7 @@ export async function confirmRegeneration(page: Page): Promise<void> {
 export async function exportBackup(page: Page, outputPath: string): Promise<Buffer> {
   await spaNavigateOrGoto(page, '/settings/data');
   await page.getByTestId('backup-passphrase-input').fill(PASSPHRASE);
+  await page.getByTestId('backup-passphrase-confirm-input').fill(PASSPHRASE);
   const [download] = await Promise.all([
     page.waitForEvent('download'),
     page.getByTestId('backup-export-button').click(),

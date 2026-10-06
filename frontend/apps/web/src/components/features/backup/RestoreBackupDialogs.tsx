@@ -9,6 +9,7 @@ import { useTranslation } from 'react-i18next';
 import { Button, Dialog, Input } from '../../ui';
 import { repairNoteLines } from '../../../lib/dataRepairNotice';
 import type { BackupRestore } from '../../../hooks/useBackupRestore';
+import { ConfirmPasswordField } from './ConfirmPasswordField';
 
 interface RestoreBackupDialogsProps {
   readonly restore: BackupRestore;
@@ -83,6 +84,14 @@ function SafetyPassphrase({ restore }: RestoreBackupDialogsProps): ReactElement 
         placeholder={t('backup.passphrase_placeholder')}
         data-testid="backup-safety-passphrase-input"
         autoComplete="new-password"
+      />
+      <ConfirmPasswordField
+        id="backup-safety-passphrase-confirm"
+        testId="backup-safety-passphrase-confirm-input"
+        mismatchTestId="backup-safety-passphrase-mismatch"
+        value={restore.safetyPassphraseConfirmation}
+        onChange={restore.setSafetyPassphraseConfirmation}
+        showMismatch={restore.safetyPassphraseMismatch}
       />
       <p className="text-text-muted text-xs">{t('backup.safety_passphrase_hint')}</p>
       {restore.safetyPassphraseError && (

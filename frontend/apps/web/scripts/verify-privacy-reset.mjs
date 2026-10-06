@@ -176,6 +176,7 @@ async function exportBackup() {
     delete window.__almameshBackupFilename;
   });
   await page.getByTestId('backup-passphrase-input').fill(PASSPHRASE);
+  await page.getByTestId('backup-passphrase-confirm-input').fill(PASSPHRASE);
   await page.getByTestId('backup-export-button').click();
   await page.getByTestId('backup-status').waitFor();
   await page.waitForFunction(

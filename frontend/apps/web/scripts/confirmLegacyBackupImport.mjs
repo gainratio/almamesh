@@ -19,6 +19,7 @@ export async function confirmLegacyBackupImport(
     return
   }
   await page.getByTestId('backup-safety-passphrase-input').fill(safetyPassphrase)
+  await page.getByTestId('backup-safety-passphrase-confirm-input').fill(safetyPassphrase)
 
   const [safetyDownload] = await Promise.all([
     page.waitForEvent('download'),
