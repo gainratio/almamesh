@@ -12,6 +12,12 @@ export async function confirmLegacyBackupImport(
 ) {
   const confirm = page.getByTestId('backup-confirm-import')
   await confirm.waitFor({ state: 'visible' })
+  // A browser with nothing to protect gets no safety copy: Replace commits on
+  // the first confirm. The dialog renders the safety field with the button.
+  if ((await page.getByTestId('backup-safety-passphrase-input').count()) === 0) {
+    await Promise.all([page.waitForEvent('domcontentloaded'), confirm.click()])
+    return
+  }
   await page.getByTestId('backup-safety-passphrase-input').fill(safetyPassphrase)
 
   const [safetyDownload] = await Promise.all([
