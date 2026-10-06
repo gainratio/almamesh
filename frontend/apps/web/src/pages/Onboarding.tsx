@@ -736,8 +736,6 @@ export default function OnboardingPage() {
               autoFocus
               data-testid="name-input"
             />
-            {/* A person moving to a new phone restores instead of starting over. */}
-            {!hasChart && <RestoreFromBackup className="border-t border-ui-border pt-6" />}
           </div>
         );
 
@@ -1065,7 +1063,7 @@ export default function OnboardingPage() {
           second `sticky top-0 z-40` header stacked a dead ghost bar (and a
           duplicate logo) under the real one at every breakpoint. */}
 
-      <main className="flex-1 flex flex-col items-center justify-center py-6 sm:py-10 relative z-10">
+      <main className="flex-1 flex flex-col items-center justify-center py-4 sm:py-10 relative z-10">
         <div className="w-full max-w-lg">
           {/* Logo — steps down on narrow viewports so the wordmark carries the
               same visual weight on a phone as on a laptop. */}
@@ -1082,7 +1080,7 @@ export default function OnboardingPage() {
 
           {/* Progress Bar */}
           {currentStepKey !== "generating" && (
-            <div className="mb-8">
+            <div className="mb-6 sm:mb-8">
               {/* Compact indicator (narrow viewports). Five labels cannot fit a
                   phone in every locale — es/pt run ~50% longer than en ("Fecha
                   de nacimiento") — so show the active step plus a counter
@@ -1139,7 +1137,7 @@ export default function OnboardingPage() {
 
               {/* Navigation Buttons - hidden for life-events step which has its own buttons */}
               {currentStepKey !== "generating" && currentStepKey !== "life-events" && (
-                <div className="flex gap-4 mt-8">
+                <div className="flex gap-4 mt-6 sm:mt-8">
                   {currentStepKey !== "name" && (
                     <button
                       onClick={handleBack}
@@ -1158,6 +1156,13 @@ export default function OnboardingPage() {
                     {t("common:actions.continue")}
                   </button>
                 </div>
+              )}
+
+              {/* A person moving to a new phone restores instead of starting
+                  over. One line UNDER Continue: above it, the full block pushed
+                  the main action below the fold on a 390x664 phone. */}
+              {currentStepKey === "name" && !hasChart && (
+                <RestoreFromBackup className="mt-3" />
               )}
             </div>
           </div>
