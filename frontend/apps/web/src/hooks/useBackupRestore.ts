@@ -159,6 +159,10 @@ export function useBackupRestore(options: BackupRestoreOptions = {}): BackupRest
 
   /** Stage a picked file; open the passphrase prompt on encryption, else confirm. */
   async function stageFile(content: BackupFileContent, passphrase?: string) {
+    // A new attempt starts clean: a stale "wrong password" must not sit next to
+    // whatever this attempt reports.
+    clearMessages();
+    setPromptError(null);
     setStatus(t('backup.status_checking'));
     try {
       const result = await stageBackupImport(content, passphrase);
@@ -177,6 +181,8 @@ export function useBackupRestore(options: BackupRestoreOptions = {}): BackupRest
         setPromptError(message);
         return;
       }
+      // Not a password problem: close the prompt so the reason is visible.
+      setPendingContent(null);
       setError(stageErrorMessage(err));
     }
   }

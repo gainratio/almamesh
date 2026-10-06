@@ -8,6 +8,7 @@
   },
   "legacy-v2.json": {
     "passphrase": "short",
+    "source": "frontend/scripts/make-legacy-v2-fixture.mjs: the fdfd171 v2 writer, flat AI settings as writeLlmSettings stored them",
     "databaseSha256": "b52d6596dbb322b0e983523e83861fdd7519c11ca93394e2ba53fc5c74d69413",
     "settingsKept": [
       "almamesh-llm-settings"

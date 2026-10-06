@@ -93,7 +93,7 @@ describe('openBackup (golden files from the pre-age code)', () => {
     expect(opened.format).toBe('almamesh-backup-v2');
     expect(sha256(opened.database)).toBe(entry.databaseSha256);
     expect(opened.settings).toEqual({
-      'almamesh-llm-settings': '{"state":{"apiKey":"sk-legacy-v2-fixture"},"version":1}',
+      'almamesh-llm-settings': '{"apiBase":"https://openrouter.ai/api/v1","apiKey":"test-key-not-a-secret","interpretationModel":"synthetic/frontier","chatModel":"synthetic/fast","privacyMode":"standard"}',
     });
   });
 

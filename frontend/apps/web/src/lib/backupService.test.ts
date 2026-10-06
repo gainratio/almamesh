@@ -502,7 +502,7 @@ describe('encrypted bundle round-trip (format v3)', () => {
     expect(staged).toMatchObject({ kind: 'bundle', wasEncrypted: true });
     expect(sha256(mergeLegacyPreferences.mock.calls[0][0])).toBe(entry.databaseSha256);
     expect(mergeLegacyPreferences.mock.calls[0][1]).toEqual({
-      'almamesh-llm-settings': '{"state":{"apiKey":"sk-legacy-v2-fixture"},"version":1}',
+      'almamesh-llm-settings': '{"apiBase":"https://openrouter.ai/api/v1","apiKey":"test-key-not-a-secret","interpretationModel":"synthetic/frontier","chatModel":"synthetic/fast","privacyMode":"standard"}',
     });
   });
 
