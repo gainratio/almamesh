@@ -95,6 +95,18 @@ describe('Onboarding first step: restore instead of starting over', () => {
     expect(screen.getByRole('button', { name: 'Restore from a backup' })).toBeTruthy();
   });
 
+  it('places the restore entry after Continue so the main action stays above the fold', () => {
+    // On a 390x664 phone the full restore block above Continue pushed the
+    // button to y=707 (116px of overflow). Continue comes first; restore is a
+    // one-line link under it.
+    renderInShell();
+    const next = screen.getByTestId('next-button');
+    const restore = screen.getByRole('button', { name: 'Restore from a backup' });
+    expect(next.compareDocumentPosition(restore) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByText('Moving to a new phone?')).toBeTruthy();
+    expect(screen.queryByText(/instead of starting over/)).toBeNull();
+  });
+
   it('localises the restore entry', async () => {
     await i18n.changeLanguage('pt');
     renderInShell();

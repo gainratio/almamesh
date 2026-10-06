@@ -3,6 +3,10 @@
  * landing hero and the first onboarding step. A person moving to a new phone
  * restores their .almamesh file here instead of creating a chart first, and
  * lands on the dashboard. Same flow as Settings → Data (`useBackupRestore`).
+ *
+ * One short line with a link-style button, placed UNDER the primary action:
+ * on a 390x664 phone the earlier two-line hint plus outlined button pushed
+ * onboarding's Continue (and the hero's own restore button) below the fold.
  */
 import type { ReactElement } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -20,16 +24,18 @@ export function RestoreFromBackup({ className }: RestoreFromBackupProps): ReactE
 
   return (
     <div data-testid="first-run-restore" className={cn('flex flex-col items-center gap-2 text-center', className)}>
-      <p className="text-sm text-text-secondary">{t('backup.first_run_hint')}</p>
-      <button
-        type="button"
-        onClick={() => void restore.chooseFile()}
-        disabled={restore.importing}
-        data-testid="first-run-restore-button"
-        className="inline-flex items-center justify-center rounded-md border border-accent-gold/60 px-5 py-2 text-sm font-semibold text-accent-gold transition-colors hover:bg-accent-gold/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-gold/60 disabled:opacity-50"
-      >
-        {t('backup.first_run_button')}
-      </button>
+      <p className="text-sm text-text-secondary">
+        {t('backup.first_run_short')}{' '}
+        <button
+          type="button"
+          onClick={() => void restore.chooseFile()}
+          disabled={restore.importing}
+          data-testid="first-run-restore-button"
+          className="rounded-sm font-semibold text-accent-gold underline underline-offset-2 hover:text-accent-gold-bright focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-gold/60 disabled:opacity-50"
+        >
+          {t('backup.first_run_button')}
+        </button>
+      </p>
       {restore.status && (
         <p role="status" data-testid="first-run-restore-status" className="text-sm text-text-secondary">
           {restore.status}
