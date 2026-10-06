@@ -26,6 +26,7 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   workers: 1,
+  repeatEach: 4, // DIAGNOSTIC ONLY
   reporter: process.env.CI ? [['github'], ['list']] : 'list',
   // The engine boot + rectification compute can take 90–120s.
   timeout: 300_000,

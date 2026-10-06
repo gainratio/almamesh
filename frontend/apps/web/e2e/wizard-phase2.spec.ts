@@ -76,6 +76,48 @@ async function spaNav(page: import('@playwright/test').Page, path: string) {
   await page.waitForTimeout(600);
 }
 
+
+// DIAGNOSTIC ONLY: sample the rectify route until the intro shows (or 60 s).
+async function introDiag(page: import('@playwright/test').Page, label: string) {
+  const t0 = Date.now();
+  const events: string[] = [];
+  const onConsole = (m: import('@playwright/test').ConsoleMessage) =>
+    events.push(`+${Date.now() - t0}ms [${m.type()}] ${m.text().slice(0, 240)}`);
+  const onNav = (f: import('@playwright/test').Frame) => {
+    if (f === page.mainFrame()) events.push(`+${Date.now() - t0}ms [nav] ${f.url()}`);
+  };
+  const onCrash = () => events.push(`+${Date.now() - t0}ms [crash]`);
+  page.on('console', onConsole);
+  page.on('framenavigated', onNav);
+  page.on('crash', onCrash);
+  await page.evaluate(() => { (window as unknown as { __diagMarker?: number }).__diagMarker = 1; }).catch(() => {});
+  let seenAt: number | null = null;
+  for (let k = 0; k < 120 && seenAt === null; k += 1) {
+    const snap = await page
+      .evaluate(() => ({
+        url: location.pathname,
+        marker: (window as unknown as { __diagMarker?: number }).__diagMarker ?? null,
+        ready: document.readyState,
+        intro: document.querySelector('[data-testid="intro-step"]') != null,
+        ids: Array.from(document.querySelectorAll('[data-testid]')).map((e) => e.getAttribute('data-testid')).slice(0, 30).join(','),
+        text: (document.querySelector('main') ?? document.body).innerText.replace(/\s+/g, ' ').slice(0, 240),
+      }))
+      .catch((e: unknown) => ({ err: String(e).slice(0, 160) }));
+    events.push(`+${Date.now() - t0}ms snap ${JSON.stringify(snap)}`);
+    if ('intro' in snap && snap.intro) seenAt = Date.now() - t0;
+    else await page.waitForTimeout(500);
+  }
+  page.off('console', onConsole);
+  page.off('framenavigated', onNav);
+  page.off('crash', onCrash);
+  console.log(`[INTRO-LATENCY ${label}] ${seenAt ?? 'NEVER'}`);
+  if (seenAt === null || seenAt > 8_000) {
+    const dedup = events.filter((e, i) => i === 0 || e.replace(/^\+\d+ms /, '') !== events[i - 1].replace(/^\+\d+ms /, ''));
+    console.log(`[INTRO-DIAG ${label}]\n${dedup.join('\n')}`);
+  }
+  expect.soft(seenAt !== null && seenAt <= 10_000, `intro within 10 s (${label})`).toBe(true);
+}
+
 test.describe('Phase-2 Rectification Wizard', () => {
   test('full wizard journey: intro → events → fit → results → confirm → dashboard', async ({
     page,
@@ -125,7 +167,8 @@ test.describe('Phase-2 Rectification Wizard', () => {
 
     // ── 5. Intro step ─────────────────────────────────────────────────────
     const introStep = page.locator('[data-testid="intro-step"]');
-    await expect(introStep, 'intro step must render').toBeVisible({ timeout: 10_000 });
+    await introDiag(page, 'full');
+    await expect(introStep, 'intro step must render').toBeVisible({ timeout: 60_000 });
     await page.screenshot({ path: `${SCRATCHPAD}/03-intro-step.png`, fullPage: true });
 
     // ── 6. Click Start ────────────────────────────────────────────────────
@@ -463,10 +506,11 @@ test.describe('Phase-2 Rectification Wizard', () => {
     });
 
     // ── 5. Intro step ─────────────────────────────────────────────────────
+    await introDiag(page, 'window');
     await expect(
       page.locator('[data-testid="intro-step"]'),
       'intro step must render',
-    ).toBeVisible({ timeout: 10_000 });
+    ).toBeVisible({ timeout: 60_000 });
     await page.screenshot({ path: `${SCRATCHPAD}/window-03-intro.png`, fullPage: true });
 
     // ── 6. Click Start ────────────────────────────────────────────────────
