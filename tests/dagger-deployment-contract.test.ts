@@ -359,6 +359,41 @@ describe("deploy-or-skip decision from the shared Foundation", () => {
     })
   })
 
+  test("main moving on during the build is a green skip, refused by the provider before upload", async () => {
+    const events: string[] = []
+    const port = failClosedPort(events)
+    port.evidenceId = async () => {
+      events.push("provider")
+      throw new Error(
+        `FunctionError: superseded: ${commitSha} is no longer main HEAD (${newerSha}); the newer commit's deploy will ship it`,
+      )
+    }
+
+    const result = await deliverProduction(port, commitSha, "781", 3, centralSha)
+
+    expect(result).toEqual({
+      skipped: true,
+      supersededBy: newerSha,
+      message: `SKIP ${commitSha}: superseded by ${newerSha} on main before upload; the newer commit's deploy will ship it`,
+    })
+    expect(events.at(-1)).toBe("provider")
+    expect(events.some((event) => event.startsWith("live-smoke") || event.startsWith("rollback"))).toBe(false)
+  })
+
+  test.each([
+    ["another commit's superseded refusal", `superseded: ${newerSha} is no longer main HEAD (${commitSha})`],
+    ["a generic provider failure", "GitHub applicable Dagger check count is outside bounds"],
+    ["a malformed superseded refusal", `superseded: ${commitSha} is no longer main HEAD (abc)`],
+  ])("a provider failure that is not this commit's superseded refusal still fails: %s", async (_name, text) => {
+    const port = failClosedPort([])
+    const failure = new Error(text)
+    port.evidenceId = async () => {
+      throw failure
+    }
+
+    await expect(deliverProduction(port, commitSha, "781", 3, centralSha)).rejects.toBe(failure)
+  })
+
   test("a failing HEAD decision still fails the deploy before any build or upload", async () => {
     const events: string[] = []
     const port = failClosedPort(events)

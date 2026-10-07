@@ -15,6 +15,10 @@ All notable changes to AlmaMesh are documented here. Format follows
   deploys as before, a commit main has moved past exits green with
   `SKIP <sha>: superseded by <newer>` and builds nothing, and a red HEAD still
   fails. An older commit can never be deployed over a newer one.
+- **The same holds when main moves while a deploy is building.** The central
+  Pages provider re-checks main right before upload; it now refuses a commit main
+  has moved past with a `superseded:` error (hseshadr/ci#69), and the deploy reports
+  that as a green `SKIP ... before upload` instead of failing. Seen live on 8c2f664.
 - **The app now works offline after the first load on a slow phone too.** On a
   weak CPU the service worker was still installing when the engine downloaded
   the Pyodide runtime, so nothing cached it; the engine said "ready" and the

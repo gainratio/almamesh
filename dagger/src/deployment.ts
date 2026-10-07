@@ -187,6 +187,16 @@ function skipDecision(
   return { action: "skip", supersededBy: mainSha, message: requiredString(value, "message") }
 }
 
+const SUPERSEDED_AT_UPLOAD = /\bsuperseded: ([0-9a-f]{40}) is no longer main HEAD \(([0-9a-f]{40})\)/
+
+/** The newer main SHA if the provider refused exactly this commit as superseded, else null. */
+export function supersededAtUpload(error: unknown, expectedSha: string): string | null {
+  const text = error instanceof Error ? error.message : String(error)
+  const match = SUPERSEDED_AT_UPLOAD.exec(text)
+  if (match === null || match[1] !== expectedSha || match[2] === expectedSha) return null
+  return match[2] ?? null
+}
+
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
 }
@@ -250,7 +260,19 @@ export async function deliverProduction<Source, Artifact, Envelope, LazyEvidence
     throw new Error("previous production deployment differs")
   }
   const lazyEvidence = port.deployPages(envelope, providerRequest(evidence, identities))
-  const evidenceId = await port.evidenceId(lazyEvidence)
+  let evidenceId: string
+  try {
+    evidenceId = await port.evidenceId(lazyEvidence)
+  } catch (error) {
+    // The provider re-checks main right before upload and refuses a commit main moved past.
+    const newer = supersededAtUpload(error, expectedSha)
+    if (newer === null) throw error
+    return {
+      skipped: true,
+      supersededBy: newer,
+      message: `SKIP ${expectedSha}: superseded by ${newer} on main before upload; the newer commit's deploy will ship it`,
+    }
+  }
   const storedEvidence = port.reloadEvidence(evidenceId)
   const provider = await port.providerIdentity(storedEvidence, evidence)
   const liveProof = await port.verifyLive(artifact, evidence, provider)
