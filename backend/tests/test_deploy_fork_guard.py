@@ -29,6 +29,9 @@ _ROOT = Path(__file__).resolve().parents[2]
 _DEPLOY = _ROOT / ".github" / "workflows" / "deploy.yml"
 _GUARDED_JOB = "deploy"
 _THIS_REPO = "hseshadr/almamesh"
+# The same repository after the planned transfer to the gainratio org.
+_TRANSFERRED_REPO = "gainratio/almamesh"
+_OWNERS = (_THIS_REPO, _TRANSFERRED_REPO)
 _FORK_REPO = "attacker/almamesh"
 
 # The gate this one replaced, verbatim. Kept so the hostile-payload case can show
@@ -200,20 +203,20 @@ def extract_job_if(workflow: str, job: str) -> str:
 GUARD = extract_job_if(_DEPLOY.read_text(encoding="utf-8"), _GUARDED_JOB)
 
 
-def _push_to_main() -> Context:
+def _push_to_main(repository: str = _THIS_REPO) -> Context:
     """The one payload that may deploy: a push to THIS repo's main whose CI passed."""
     return Context(
         event_name="workflow_run",
-        repository=_THIS_REPO,
-        workflow_run=WorkflowRun("push", "success", "main", _THIS_REPO),
+        repository=repository,
+        workflow_run=WorkflowRun("push", "success", "main", repository),
     )
 
 
-def _fork_pull_request(event: str = "pull_request") -> Context:
+def _fork_pull_request(event: str = "pull_request", repository: str = _THIS_REPO) -> Context:
     """A fork PR. The fork's default branch is ALSO called ``main`` — that is the point."""
     return Context(
         event_name="workflow_run",
-        repository=_THIS_REPO,
+        repository=repository,
         workflow_run=WorkflowRun(event, "success", "main", _FORK_REPO),
     )
 
@@ -224,18 +227,31 @@ def test_guard_is_read_from_the_committed_workflow() -> None:
     assert "github.event.workflow_run.event == 'push'" in GUARD
 
 
-def test_legitimate_push_to_this_repos_main_is_accepted() -> None:
-    assert evaluate(GUARD, _push_to_main()) is True
+@pytest.mark.parametrize("repository", _OWNERS)
+def test_legitimate_push_to_this_repos_main_is_accepted(repository: str) -> None:
+    assert evaluate(GUARD, _push_to_main(repository)) is True
 
 
-def test_fork_pull_request_claiming_main_is_rejected() -> None:
+@pytest.mark.parametrize("repository", _OWNERS)
+def test_fork_pull_request_claiming_main_is_rejected(repository: str) -> None:
     """The attack: an outside contributor's PR reaching base-repo secrets."""
-    assert evaluate(GUARD, _fork_pull_request()) is False
+    assert evaluate(GUARD, _fork_pull_request(repository=repository)) is False
 
 
-def test_fork_run_reporting_a_push_is_still_rejected() -> None:
+@pytest.mark.parametrize("repository", _OWNERS)
+def test_fork_run_reporting_a_push_is_still_rejected(repository: str) -> None:
     """The repository check has teeth on its own, not merely as a proxy for the event."""
-    assert evaluate(GUARD, _fork_pull_request(event="push")) is False
+    assert evaluate(GUARD, _fork_pull_request(event="push", repository=repository)) is False
+
+
+def test_pre_transfer_name_is_rejected_once_transferred() -> None:
+    """After the transfer only gainratio/almamesh is this repository; the old name is not."""
+    context = Context(
+        event_name="workflow_run",
+        repository=_TRANSFERRED_REPO,
+        workflow_run=WorkflowRun("push", "success", "main", _THIS_REPO),
+    )
+    assert evaluate(GUARD, context) is False
 
 
 def test_same_repo_pull_request_is_rejected() -> None:
