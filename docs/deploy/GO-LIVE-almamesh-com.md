@@ -204,6 +204,10 @@ gh run list --workflow=Dagger --branch=main --limit 1
 gh run list --workflow='Deploy almamesh.com' --branch=main --limit 1
 ```
 
+If two commits land close together, both deploys run. The older one exits green
+with `SKIP <sha>: superseded by <newer> on main` and builds nothing; the newer one
+deploys. An older commit is never deployed over a newer one.
+
 What native Dagger `deploy` does (see `dagger/src/index.ts` + `build-prod.sh`):
 installs deps, fetches the Pyodide dist, restores the prod keypair from typed
 Secrets, **signs** the bundle into
