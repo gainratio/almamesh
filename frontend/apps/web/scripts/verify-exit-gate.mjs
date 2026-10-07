@@ -131,6 +131,21 @@ async function main() {
     workerUrls.add(`(serviceworker) ${sw.url()}`)
   })
 
+  // The slow-phone first visit: the service worker loses the race. On a weak
+  // CPU the SW is still installing (precaching the app shell) when the engine
+  // worker fetches the Pyodide runtime, so nothing intercepts those fetches and
+  // nothing lands in its CacheFirst cache. Hold /sw.js until the engine reports
+  // ready so every run of this gate exercises that worst case deterministically:
+  // "ready" must already mean the engine can reboot offline.
+  let releaseServiceWorker
+  const serviceWorkerHeld = new Promise((resolve) => {
+    releaseServiceWorker = resolve
+  })
+  await context.route('**/sw.js', async (route) => {
+    await serviceWorkerHeld
+    await route.continue()
+  })
+
   // ---- CHECK 1: engine boots in-browser ----
   const t0 = Date.now()
   // `/` is now the marketing splash, which intentionally DEFERS the engine for a
@@ -164,6 +179,7 @@ async function main() {
     check1Error = describeError(e)
   }
   const coldBootMs = Date.now() - t0
+  releaseServiceWorker()
 
   // Worker evidence: at least one real Worker spawned (Pyodide + sync).
   // Network evidence: bundle + pyodide fetched.
@@ -432,6 +448,13 @@ async function main() {
   let offlinePass = false
   let offlineDetail
   try {
+    // The shell itself needs the (late) service worker; the engine bytes must
+    // already be durable from the first boot, whoever cached them.
+    await page
+      .evaluate(() =>
+        Promise.race([navigator.serviceWorker.ready, new Promise((r) => setTimeout(r, 30_000))]),
+      )
+      .catch(() => {})
     await guarded('CHECK 5', DEADLINES_MS.check5, async ({ step, signal }) => {
       const abortedDuringOffline = []
       await step('install engine-data abort route', () => context.route('**/*', (route) => {
