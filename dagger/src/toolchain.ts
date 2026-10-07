@@ -32,7 +32,8 @@ export const TOOLCHAIN_RECIPE: ToolchainRecipe = {
 }
 
 // Digest-pinned image built by toolchain-image.yml, or null to install inline.
-export const TOOLCHAIN_IMAGE: string | null = null
+export const TOOLCHAIN_IMAGE: string | null =
+  "ghcr.io/hseshadr/almamesh-toolchain:r-81e517e120c27dea-pw1.63.0@sha256:ddccce732634082393bb427db3659a0c98cd172562be7786b4bab9c7244d3c99"
 
 const PINNED = /^ghcr\.io\/hseshadr\/almamesh-toolchain:(r-[0-9a-f]{16})-pw\d+\.\d+\.\d+@sha256:[0-9a-f]{64}$/
 
