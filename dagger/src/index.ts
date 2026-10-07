@@ -30,7 +30,15 @@ import {
   type SmokeRun,
 } from "./deployment.js"
 import { AUDIT_EXCEPTIONS_FILE, auditIgnoreArgs, parseAuditExceptions } from "./auditExceptions.js"
-import { assertAllPassed, runPool, startGate } from "./gates.js"
+import {
+  PRODUCT_GATES,
+  assertAllPassed,
+  gateVerdict,
+  isProductGate,
+  runPool,
+  startGate,
+  type ProductGate,
+} from "./gates.js"
 import { nightlyRealSkipCheckScript } from "./nightlyRealSkips.js"
 import { pagesUploadLimitsCheckScript as releasePagesUploadLimitsScript } from "./pagesUploadLimits.js"
 import { laneScript } from "./laneScript.js"
@@ -89,9 +97,9 @@ const NIGHTLY_REPORTED_E2E = [
   "timeline:real",
 ]
 // The product gates are independent, but they are heavy (real browsers, Pyodide, vitest
-// workers) and the GitHub runner has 4 vCPUs. Six at once turned CPU contention into
-// timeouts in three CI runs, so they share two lanes: the 18-minute browser gate in one,
-// the rest one after another in the other.
+// workers) and a 4 vCPU machine running `ci` locally turned six-at-once CPU contention
+// into timeouts, so `ci` runs them through two lanes, longest first. GitHub does not
+// use `ci`: it runs each gate as its own job on its own runner (`gate --name=...`).
 const PRODUCT_GATE_LANES = 2
 // The low-end lane (browserMatrix): CDP slows the page's main thread 4x and
 // `taskset -c 0` pins the whole browser, Workers included, to one core. The
@@ -372,11 +380,17 @@ export class AlmameshCi {
   frontend(): Container {
     return this.bunBase().withExec(["bun", "run", "gate"])
   }
+  /** The one hooked (VITE_EXIT_GATE_HOOKS=1) build every browser shard serves. */
+  private hookedBuild(): Container {
+    return this.builtBrowser("dist-verify", true)
+  }
+  // The browser gate, as five shards (see PRODUCT_GATES). Every shard starts
+  // from the same hookedBuild(), so `ci` builds it once in one engine.
   @func()
-  browser(): Container {
-    let checked = this.builtBrowser("dist-verify", true)
+  browserChromium(): Container {
+    const checked = this.hookedBuild()
       .withExec(["node", "scripts/verify-precache-redirect.mjs", "dist-verify"])
-    checked = this.localPreview(checked, "dist-verify", [
+    return this.localPreview(checked, "dist-verify", [
       "node scripts/verify-cross-origin-isolation.mjs http://127.0.0.1:4199 --browser=chromium",
       "node scripts/verify-sqlite-memory.mjs http://127.0.0.1:4199 --browser=chromium",
       "node scripts/verify-sqlite-memory.mjs http://127.0.0.1:4199 --browser=chromium --slow-boot-storage-ms=1500",
@@ -386,6 +400,11 @@ export class AlmameshCi {
       // OPFS (see verify-webkit-engine.mjs), so Import is correctly disabled there.
       // The WebKit project runs locally on macOS.
       "PORTABLE_INVARIANTS_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:portable-invariants --project=chromium",
+    ])
+  }
+  @func()
+  browserJourneys(): Container {
+    return this.localPreview(this.hookedBuild(), "dist-verify", [
       // A brand-new browser restores a backup from the landing page (Chromium only, as above).
       "FIRST_RUN_RESTORE_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:first-run-restore --project=chromium",
       // The landing header fits 320/360/390/414 px phones in en/es/pt: no
@@ -395,8 +414,28 @@ export class AlmameshCi {
       "node scripts/verify-i18n.mjs http://127.0.0.1:4199",
       "node scripts/verify-browser-parity.mjs http://127.0.0.1:4199 --reference-date=2025-01-01T00:00:00+00:00",
     ])
-    checked = this.localServer(
-      checked,
+  }
+  // The hooked Playwright suites. Each used to rebuild this same bundle in its
+  // own webServer (`tsc -b && vite build`); *_BASE_URL points it at the lane's
+  // preview of the build already made instead.
+  @func()
+  browserSuites(): Container {
+    return this.localPreview(this.hookedBuild(), "dist-verify", [
+      "INTERP_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:interp",
+      "CHAT_GROUNDING_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:chat:grounding",
+    ])
+  }
+  @func()
+  browserWizards(): Container {
+    return this.localPreview(this.hookedBuild(), "dist-verify", [
+      "RECTIFY_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:rectification",
+      "WIZARD_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:wizard",
+    ])
+  }
+  @func()
+  browserWebkitReal(): Container {
+    const webkit = this.localServer(
+      this.hookedBuild(),
       "./node_modules/.bin/vite preview --outDir dist-verify --host 127.0.0.1 --port 4200 --strictPort",
       4200,
       [
@@ -411,13 +450,7 @@ export class AlmameshCi {
         "node scripts/verify-webkit-engine.mjs http://127.0.0.1:4200",
       ],
     )
-    checked = checked
-      .withExec(["bun", "run", "test:e2e:interp"])
-      .withExec(["bun", "run", "test:e2e:chat:grounding"])
-      .withExec(["bun", "run", "test:e2e:rectification"])
-      .withExec(["bun", "run", "test:e2e:wizard"])
-
-    const real = checked.withEnvVariable("VITE_EXIT_GATE_HOOKS", "").withExec([
+    const real = webkit.withEnvVariable("VITE_EXIT_GATE_HOOKS", "").withExec([
       "./node_modules/.bin/vite",
       "build",
       "--outDir",
@@ -497,18 +530,35 @@ export class AlmameshCi {
     const contracts = startGate("contracts", async () => (await this.contracts()).sync())
     await this.secretScan(commitSha).sync()
     const product = await runPool(
-      [
-        { name: "browser", run: () => this.browser().sync() },
-        { name: "browserMatrix", run: () => this.browserMatrix().sync() },
-        { name: "backend", run: () => this.backend().sync() },
-        { name: "frontend", run: () => this.frontend().sync() },
-        { name: "pdf", run: () => this.pdf().sync() },
-        { name: "privacy", run: () => this.privacy().sync() },
-      ],
+      PRODUCT_GATES.map((name) => ({ name, run: () => this.productGate(name).sync() })),
       PRODUCT_GATE_LANES,
     )
     assertAllPassed([await contracts, ...product])
     return "Contract, secret, backend, frontend, browser, browser-matrix, PDF, and privacy gates passed."
+  }
+  /**
+   * One gate of `ci`, by name (secretScan, contracts, or a PRODUCT_GATES
+   * entry). GitHub runs each as its own job so the gates do not share 4 vCPUs.
+   */
+  @func()
+  async gate(name: string, commitSha: string): Promise<string> {
+    const run = this.gateRunner(name, commitSha)
+    assertAllPassed([await startGate(name, run)])
+    return `${name} gate passed.`
+  }
+  /** The required `Dagger` check: red unless every per-gate job succeeded. */
+  @func()
+  verdict(results: string): string {
+    return gateVerdict(results)
+  }
+  private gateRunner(name: string, commitSha: string): () => Promise<unknown> {
+    if (name === "secretScan") return async () => this.secretScan(commitSha).sync()
+    if (name === "contracts") return async () => (await this.contracts()).sync()
+    if (isProductGate(name)) return async () => this.productGate(name).sync()
+    throw new Error(`unknown gate "${name}"; expected secretScan, contracts, or one of ${PRODUCT_GATES.join(", ")}`)
+  }
+  private productGate(name: ProductGate): Container {
+    return this[name]()
   }
   @func()
   secretScan(commitSha: string): Container {

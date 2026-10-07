@@ -1,7 +1,16 @@
 import { describe, expect, test } from "bun:test"
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
-import { assertAllPassed, GATE_TIMEOUT_MS, runConcurrently, runPool, startGate } from "../dagger/src/gates.ts"
+import {
+  assertAllPassed,
+  CI_GATES,
+  GATE_TIMEOUT_MS,
+  gateVerdict,
+  PRODUCT_GATES,
+  runConcurrently,
+  runPool,
+  startGate,
+} from "../dagger/src/gates.ts"
 
 const root = resolve(import.meta.dir, "..")
 
@@ -158,17 +167,54 @@ describe("almamesh ci wiring", () => {
   const source = readFileSync(resolve(root, "dagger/src/index.ts"), "utf8")
   const ci = source.slice(source.indexOf("async ci("), source.indexOf("secretScan(commitSha: string)"))
 
-  test("guards the source first, then runs the product gates through a 2-lane pool, browser first", () => {
+  test("names every product gate once, the five browser shards first (they are the longest)", () => {
+    expect([...PRODUCT_GATES]).toEqual([
+      "browserChromium",
+      "browserJourneys",
+      "browserSuites",
+      "browserWizards",
+      "browserWebkitReal",
+      "browserMatrix",
+      "frontend",
+      "backend",
+      "pdf",
+      "privacy",
+    ])
+    expect([...CI_GATES]).toEqual(["secretScan", "contracts", ...PRODUCT_GATES])
+  })
+
+  test("guards the source first, then runs the product gates through a 2-lane pool", () => {
     expect(ci).toContain("runPool(")
     expect(ci).toContain("PRODUCT_GATE_LANES")
     expect(source).toContain("const PRODUCT_GATE_LANES = 2")
-    expect(ci.indexOf('"browser"')).toBeLessThan(ci.indexOf('"backend"'))
+    expect(ci).toContain("PRODUCT_GATES.map(")
     expect(ci).toContain("assertAllPassed(")
-    expect(ci.indexOf("this.secretScan(commitSha)")).toBeLessThan(ci.indexOf("assertAllPassed("))
+    expect(ci.indexOf("this.secretScan(commitSha)")).toBeLessThan(ci.indexOf("runPool("))
     expect(ci).not.toContain("for (const gate of gates) await")
-    for (const gate of ["backend", "frontend", "browser", "browserMatrix", "pdf", "privacy"]) {
-      expect(ci).toContain(`"${gate}"`)
-    }
+  })
+})
+
+describe("aggregate verdict over the per-gate CI jobs", () => {
+  const all = (result: string) => CI_GATES.map(() => result).join(",")
+
+  test("passes only when every gate job succeeded", () => {
+    expect(gateVerdict(all("success"))).toContain(`${CI_GATES.length} gate jobs passed`)
+  })
+
+  for (const bad of ["failure", "cancelled", "skipped"]) {
+    test(`a ${bad} gate job turns the aggregate red`, () => {
+      const results = CI_GATES.map((_, index) => (index === 3 ? bad : "success")).join(",")
+      expect(() => gateVerdict(results)).toThrow(`1 of ${CI_GATES.length} gate jobs did not succeed: ${bad}`)
+    })
+  }
+
+  test("a gate job missing from the aggregate's needs is refused, not counted as green", () => {
+    const short = CI_GATES.slice(1).map(() => "success").join(",")
+    expect(() => gateVerdict(short)).toThrow(`expected ${CI_GATES.length} gate job results, got ${CI_GATES.length - 1}`)
+  })
+
+  test("an empty result list is refused", () => {
+    expect(() => gateVerdict("")).toThrow(`expected ${CI_GATES.length} gate job results, got 0`)
   })
 })
 
@@ -218,5 +264,56 @@ describe("browser matrix lane", () => {
     for (const browser of ["chromium", "firefox"]) {
       expect(lane).toContain(`verify-reset-deletes.mjs http://127.0.0.1:4198 --browser=${browser}`)
     }
+  })
+})
+
+describe("browser gate shards", () => {
+  const source = readFileSync(resolve(root, "dagger/src/index.ts"), "utf8")
+  const shards = source.slice(source.indexOf("  browserChromium(): Container {"), source.indexOf("  browserMatrix(): Container {"))
+  // Every command the single `browser` gate ran before it was split, verbatim
+  // (the four Playwright suites now reuse the lane's hooked build via *_BASE_URL
+  // instead of rebuilding the same bundle in their own webServer).
+  const commands = [
+    '"node", "scripts/verify-precache-redirect.mjs", "dist-verify"',
+    "node scripts/verify-cross-origin-isolation.mjs http://127.0.0.1:4199 --browser=chromium",
+    "node scripts/verify-sqlite-memory.mjs http://127.0.0.1:4199 --browser=chromium",
+    "node scripts/verify-sqlite-memory.mjs http://127.0.0.1:4199 --browser=chromium --slow-boot-storage-ms=1500",
+    "node scripts/verify-storage-blocked.mjs http://127.0.0.1:4199 --browser=chromium --journey",
+    "PORTABLE_SQLITE_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:portable-sqlite",
+    "PORTABLE_INVARIANTS_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:portable-invariants --project=chromium",
+    "FIRST_RUN_RESTORE_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:first-run-restore --project=chromium",
+    "LANDING_RESPONSIVE_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:landing-responsive",
+    "node scripts/verify-exit-gate.mjs http://127.0.0.1:4199",
+    "node scripts/verify-i18n.mjs http://127.0.0.1:4199",
+    "node scripts/verify-browser-parity.mjs http://127.0.0.1:4199 --reference-date=2025-01-01T00:00:00+00:00",
+    "node scripts/verify-cross-origin-isolation.mjs http://127.0.0.1:4200 --browser=webkit",
+    "node scripts/verify-sqlite-memory.mjs http://127.0.0.1:4200 --browser=webkit",
+    "node scripts/verify-sqlite-memory.mjs http://127.0.0.1:4200 --browser=webkit --slow-boot-storage-ms=1500",
+    "node scripts/verify-storage-blocked.mjs http://127.0.0.1:4200 --browser=webkit",
+    "node scripts/verify-webkit-engine.mjs http://127.0.0.1:4200",
+    "INTERP_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:interp",
+    "CHAT_GROUNDING_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:chat:grounding",
+    "RECTIFY_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:rectification",
+    "WIZARD_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:wizard",
+    '"bun", "run", "test:e2e:returning-visitor"',
+    "node scripts/verify-real-onboarding.mjs http://127.0.0.1:4199",
+    "node scripts/verify-onboarding-recovery.mjs http://127.0.0.1:4199",
+    "MEMORY_BUDGET_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:memory-budget",
+    "BIRTH_TIME_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:birth-time-edit --project=chromium",
+    "CHART_RELOAD_E2E_BASE_URL=http://127.0.0.1:4199 RELOAD_DELAYS=0,200 bun run test:e2e:chart-durable-reload --project=chromium",
+  ]
+
+  for (const command of commands) {
+    test(`runs exactly once: ${command}`, () => {
+      const literal = command.startsWith('"') ? command : `"${command}"`
+      expect(shards.split(literal).length - 1).toBe(1)
+    })
+  }
+
+  test("each shard is one of the product gates and serves the one hooked build", () => {
+    for (const shard of PRODUCT_GATES.filter((gate) => gate.startsWith("browser") && gate !== "browserMatrix")) {
+      expect(shards).toContain(`  ${shard}(): Container {`)
+    }
+    expect(shards.split("this.hookedBuild()").length - 1).toBe(5)
   })
 })
