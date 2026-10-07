@@ -12,11 +12,15 @@
  *
  *   chromium: contexts still reachable after a forced GC (CDP) <= MAX_LIVE
  *   webkit:   no "too many active WebGL contexts" console message
- *             (WebKit counts a context as active until it is collected)
+ *             (WebKit counts a context as active until it is collected).
+ *             macOS only: Linux Playwright WebKit has no usable OPFS.
  *
  * Usage: node scripts/verify-webgl-contexts.mjs http://127.0.0.1:4199 --browser=chromium [--visits=10]
  */
 
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { chromium, devices, webkit } from '@playwright/test'
 
 const BASE_URL = process.argv.find((argument) => /^https?:\/\//.test(argument)) ?? 'http://127.0.0.1:4199'
@@ -79,9 +83,23 @@ async function navigate(page, path) {
 }
 
 const { defaultBrowserType: _ignored, ...iPhone } = devices['iPhone 13']
-const browser = await (BROWSER_NAME === 'webkit' ? webkit : chromium).launch()
+// Linux Playwright WebKit cannot open SQLite's nested-Worker OPFS, so the app
+// shows its storage block screen and never reaches the dashboard. Refuse rather
+// than fail on onboarding: run the WebKit pass on macOS.
+invariant(
+  BROWSER_NAME !== 'webkit' || process.platform !== 'linux',
+  'needs a WebKit with working OPFS (macOS); Linux Playwright WebKit refuses it',
+)
+// A persistent, on-disk profile like a real Safari/iOS profile: an ephemeral
+// WebKit context has no OPFS, and AlmaMesh (SQLite on OPFS only) refuses to run
+// without it (see verify-webkit-engine.mjs).
+const userDataDir = await mkdtemp(join(tmpdir(), 'almamesh-webgl-contexts-'))
+const context = await (BROWSER_NAME === 'webkit' ? webkit : chromium).launchPersistentContext(userDataDir, {
+  ...iPhone,
+  baseURL: BASE_URL,
+  headless: true,
+})
 try {
-  const context = await browser.newContext({ ...iPhone, baseURL: BASE_URL })
   await context.addInitScript(trackContexts)
   const page = await context.newPage()
   const tooMany = []
@@ -120,5 +138,6 @@ try {
     invariant(counts.live <= MAX_LIVE, `${counts.live} WebGL contexts still reachable after ${VISITS} visits and a forced GC (max ${MAX_LIVE})`)
   }
 } finally {
-  await browser.close()
+  await context.close()
+  await rm(userDataDir, { recursive: true, force: true })
 }

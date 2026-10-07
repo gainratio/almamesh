@@ -532,9 +532,9 @@ exec ${inline.join(" ")}`,
       "CHART_RELOAD_E2E_BASE_URL=http://127.0.0.1:4199 RELOAD_DELAYS=0,200 bun run test:e2e:chart-durable-reload --project=chromium",
       // Ten dashboard visits must not pile up WebGL contexts (three's shared
       // DFG LUT retained every renderer; WebKit then warned "too many active
-      // WebGL contexts").
+      // WebGL contexts"). The WebKit pass needs working OPFS, which Linux
+      // Playwright WebKit lacks, so it runs on macOS (--browser=webkit).
       "node scripts/verify-webgl-contexts.mjs http://127.0.0.1:4199 --browser=chromium",
-      "node scripts/verify-webgl-contexts.mjs http://127.0.0.1:4199 --browser=webkit --visits=20",
     ])
   }
   /**

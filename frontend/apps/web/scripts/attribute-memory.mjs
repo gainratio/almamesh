@@ -14,11 +14,15 @@
  *   field) -> chat-search (embedder + sqlite-vector) -> settings (dashboard
  *   unmounted) -> idle (after the embedder idle window)
  *
- * Usage (inside the Playwright Linux container):
- *   node scripts/attribute-memory.mjs http://127.0.0.1:4199 --browser=webkit
+ * Usage (WebKit needs macOS: Linux Playwright WebKit has no usable OPFS, so
+ * AlmaMesh shows its storage block screen there):
+ *   node scripts/attribute-memory.mjs http://127.0.0.1:4199 --browser=webkit --idle-ms=70000
  */
 
 import { execFileSync } from 'node:child_process'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { clearInterval, setInterval } from 'node:timers'
 
 import { chromium, devices, webkit } from '@playwright/test'
@@ -167,14 +171,16 @@ async function navigate(page, path) {
 
 const { defaultBrowserType: _ignored, ...iPhone } = devices['iPhone 13']
 const launcher = BROWSER_NAME === 'chromium' ? chromium : webkit
-const browser = await launcher.launch(
-  BROWSER_NAME === 'chromium'
+// A persistent, on-disk profile: an ephemeral WebKit context refuses OPFS and
+// AlmaMesh (SQLite on OPFS only) would stop at its storage block screen.
+const userDataDir = await mkdtemp(join(tmpdir(), 'almamesh-attribute-memory-'))
+const context = await launcher.launchPersistentContext(userDataDir, {
+  ...(BROWSER_NAME === 'chromium'
     ? { channel: 'chromium', args: ['--enable-precise-memory-info', '--enable-blink-features=ForceEagerMeasureMemory'] }
-    : {},
-)
-const context = await browser.newContext({
+    : {}),
   ...iPhone,
   baseURL: BASE_URL,
+  headless: true,
   ...(ABLATE.has('service-worker') ? { serviceWorkers: 'block' } : {}),
 })
 await applyAblations(context)
@@ -222,5 +228,6 @@ try {
 } finally {
   clearInterval(peakTimer)
   console.log(`attribute-summary ${BROWSER_NAME} ${tainted ? 'TAINTED(another Playwright WebKit ran) ' : ''}${JSON.stringify(rows.map((r) => [r.stage, r.privateMiB, r.peakPrivateMiB, r.heapMiB]))}`)
-  await browser.close()
+  await context.close()
+  await rm(userDataDir, { recursive: true, force: true })
 }
