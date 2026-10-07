@@ -64,7 +64,7 @@ const LIVE_ORIGIN = "https://almamesh.com"
 const REPOSITORY = "hseshadr/almamesh"
 const BROWSER_LEGO_SPEC = '"@gainratio/browser": "^0.4.1"'
 const CONTRACT_SHA = "1111111111111111111111111111111111111111"
-const CENTRAL_MODULE_SHA = "4d48302e30d3a54ec71364d43aada5c0d4b1f9bf"
+const CENTRAL_MODULE_SHA = "0e8d3373e8edacebe0cb5005397fd67866b20305"
 const NODE_IMAGE =
   "node:22-trixie-slim@sha256:7b8a0c89c54499bee567618f96578e1a12a800f062fbdbfd1fb6a443fa6f6284"
 const PAGES_NODE_IMAGE =
