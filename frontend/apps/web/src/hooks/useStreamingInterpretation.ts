@@ -56,7 +56,11 @@ import { aiErrorRegistry, chatErrorMessage, classifyConnectionError } from '../l
 import { createFrameBatcher, type FrameBatcher } from '../lib/frameBatcher';
 import { whenDataLifecycleReady } from '../lib/profileDataLifecycle';
 import { buildEnsurePredictiveInput, predictiveReferenceInstant } from '../lib/predictive';
-import { storedChartAnalysisInstant } from '../lib/analysisInstant';
+import {
+  storedChartAnalysisInstant,
+  storedChartReferenceDay,
+  viewerTimeZone,
+} from '../lib/analysisInstant';
 import { fetchEvidenceAnnotations } from './evidenceAnnotations';
 import { useSingleFlight } from './useSingleFlight';
 
@@ -203,14 +207,18 @@ function predictiveProfileKey(chartId: string | null): string {
   return stored?.profile_id ?? chartId ?? 'primary';
 }
 
-/** Build today's deterministic predictive identity for one stored chart. */
+/**
+ * The predictive identity for one stored chart, as of the chart's own analysis
+ * day — the SAME day the Life Atlas computes for (`usePredictiveLayer`), so the
+ * timeline is narrated from the facts on screen, with the prompt's `asOf`.
+ */
 function expectedPredictiveKey(chartId: string | null): string | null {
   const stored = chartId ? useChartLibraryStore.getState().getChart(chartId) : undefined;
-  const timeZone = stored?.birth_data?.birth_location_details.timezone ?? 'UTC';
+  const todayDay = predictiveReferenceInstant(new Date(), viewerTimeZone());
   const input = buildEnsurePredictiveInput(
     predictiveProfileKey(chartId),
     stored?.birth_data as ProcessedBirthData | undefined,
-    predictiveReferenceInstant(new Date(), timeZone),
+    stored ? storedChartReferenceDay(stored, todayDay) : todayDay,
   );
   return input ? predictiveRequestKey(input) : null;
 }

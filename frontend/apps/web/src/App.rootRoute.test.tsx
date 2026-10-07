@@ -43,6 +43,7 @@ vi.mock('./hooks/useLanguageSync', () => ({ useLanguageSync: () => {} }));
 vi.mock('./hooks/useRegenerationSubscription', () => ({
   useRegenerationSubscription: () => {},
 }));
+vi.mock('./hooks/useChartReanchor', () => ({ useChartReanchor: () => {} }));
 
 import App from './App';
 

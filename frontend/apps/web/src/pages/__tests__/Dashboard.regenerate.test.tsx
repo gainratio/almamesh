@@ -108,6 +108,7 @@ import { readLocalPrimaryChart } from '../../lib/localChartRead';
 import { resolveInterpretationConfig } from '../../hooks/useStreamingInterpretation';
 import DashboardPage from '../Dashboard';
 import { predictiveReferenceInstant } from '../../lib/predictive';
+import { viewerTimeZone } from '../../lib/analysisInstant';
 
 const mockedStream = vi.mocked(streamNatalInterpretation);
 const mockedTimelineStream = vi.mocked(streamCurrentTimeline);
@@ -161,7 +162,8 @@ function storedChart(): StoredChart {
         lagna: {},
         planets: {},
       },
-      calculation_timestamp: '1990-03-30T06:30:00Z',
+      // No recorded instant: the chart reads as of today, the day these
+      // spend/queue tests seed their predictive facts for.
       software_version: 'test',
     },
   } as unknown as StoredChart;
@@ -489,7 +491,7 @@ describe('Dashboard — regenerate reading', () => {
   });
 
   function seedReadyPredictiveFacts(): void {
-    const today = predictiveReferenceInstant(new Date(), 'Asia/Kolkata').slice(0, 10);
+    const today = predictiveReferenceInstant(new Date(), viewerTimeZone()).slice(0, 10);
     usePredictiveStore.setState({
       status: 'ready',
       profileKey: 'profile-1',
@@ -512,7 +514,7 @@ describe('Dashboard — regenerate reading', () => {
   it('shows the road ahead as it is written, with a live word count', async () => {
     configureCloudAi();
     seedCompleteReading(currentProvenance());
-    const today = predictiveReferenceInstant(new Date(), 'Asia/Kolkata').slice(0, 10);
+    const today = predictiveReferenceInstant(new Date(), viewerTimeZone()).slice(0, 10);
     usePredictiveStore.setState({
       status: 'ready',
       profileKey: 'profile-1',
@@ -548,7 +550,7 @@ describe('Dashboard — regenerate reading', () => {
   it('shows a reasoning model is thinking before the first prose arrives', async () => {
     configureCloudAi();
     seedCompleteReading(currentProvenance());
-    const today = predictiveReferenceInstant(new Date(), 'Asia/Kolkata').slice(0, 10);
+    const today = predictiveReferenceInstant(new Date(), viewerTimeZone()).slice(0, 10);
     usePredictiveStore.setState({
       status: 'ready',
       profileKey: 'profile-1',

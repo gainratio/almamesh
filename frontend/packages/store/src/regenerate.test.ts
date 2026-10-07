@@ -6,7 +6,7 @@ import golden from '../../../../backend/tests/fixtures/chart_golden_de421.json';
 import type { BirthMeta } from './adapters/chart';
 import { chartId, siderealChartToChartData } from './adapters/chart';
 import type { RegenerateDeps } from './regenerate';
-import { regenerateOnBirthChange } from './regenerate';
+import { reanchorChart, regenerateOnBirthChange } from './regenerate';
 import type { StoredChart } from './chartLibrary';
 
 const DELHI_KEY = '1990-01-15T12:00:00+00:00';
@@ -313,5 +313,111 @@ describe('regenerateOnBirthChange', () => {
     await expect(failed).rejects.toThrow('engine crashed');
     await succeeded;
     expect(lib.primaryFor('p1')?.chart_id).toBe(chartId(next));
+  });
+});
+
+describe('reanchorChart', () => {
+  const TODAY = '2026-10-07T18:00:00.000Z';
+
+  function reanchorDeps(lib: ReturnType<typeof makeFakeLibrary>, engine: RegenerateDeps['engine']) {
+    return { engine, library: lib, referenceInstant: TODAY };
+  }
+
+  it('recomputes the same chart as of the new instant, keeping its identity, birth and owner', async () => {
+    const prior = seededPrimary(baseBirth, 'p1');
+    const lib = makeFakeLibrary(prior);
+    const engine = { generateChart: vi.fn(async () => fakeSiderealChart) };
+
+    const saved = await reanchorChart(prior.chart_id, reanchorDeps(lib, engine));
+
+    expect(saved).toBe(true);
+    expect(engine.generateChart).toHaveBeenCalledWith({
+      datetimeUtc: prior.birth_data.birth_datetime_utc,
+      latitude: 28.6139,
+      longitude: 77.209,
+      referenceDate: TODAY,
+    });
+    const next = lib.getChart(prior.chart_id)!;
+    expect(next.astronomical_calculations.calculation_timestamp).toBe(TODAY);
+    expect(next.astronomical_calculations.calculation_timestamp).not.toBe(
+      prior.astronomical_calculations.calculation_timestamp,
+    );
+    expect(next.birth_data).toBe(prior.birth_data);
+    expect(next.person_name).toBe(prior.person_name);
+    expect(next.profile_id).toBe('p1');
+    expect(next.is_primary).toBe(true);
+    expect(lib.charts.size).toBe(1);
+  });
+
+  it('never resurrects a chart deleted while it was computing', async () => {
+    const prior = seededPrimary(baseBirth, 'p1');
+    const lib = makeFakeLibrary(prior);
+    const engine = {
+      generateChart: vi.fn(async () => {
+        lib.deleteChart(prior.chart_id);
+        return fakeSiderealChart;
+      }),
+    };
+
+    expect(await reanchorChart(prior.chart_id, reanchorDeps(lib, engine))).toBe(false);
+    expect(lib.charts.size).toBe(0);
+  });
+
+  it('never overwrites a chart that changed while it was computing', async () => {
+    const prior = seededPrimary(baseBirth, 'p1');
+    const lib = makeFakeLibrary(prior);
+    const renamed = { ...prior, person_name: 'Renamed' };
+    const engine = {
+      generateChart: vi.fn(async () => {
+        lib.charts.set(prior.chart_id, renamed);
+        return fakeSiderealChart;
+      }),
+    };
+
+    expect(await reanchorChart(prior.chart_id, reanchorDeps(lib, engine))).toBe(false);
+    expect(lib.getChart(prior.chart_id)).toBe(renamed);
+  });
+
+  it('leaves a chart without a stored birth instant alone', async () => {
+    const prior = seededPrimary(baseBirth, 'p1');
+    const bare = { ...prior, birth_data: {} } as unknown as StoredChart;
+    const lib = makeFakeLibrary(bare);
+    const engine = { generateChart: vi.fn() };
+
+    expect(await reanchorChart(prior.chart_id, reanchorDeps(lib, engine))).toBe(false);
+    expect(engine.generateChart).not.toHaveBeenCalled();
+    expect(lib.getChart(prior.chart_id)).toBe(bare);
+  });
+
+  it('waits for a regeneration already queued, then re-anchors whatever it left', async () => {
+    const prior = seededPrimary(baseBirth, 'p1');
+    const lib = makeFakeLibrary(prior);
+    const order: string[] = [];
+    const engine = {
+      generateChart: vi.fn(async (input: { referenceDate: string }) => {
+        order.push(input.referenceDate);
+        return fakeSiderealChart;
+      }),
+    };
+    const moved: BirthMeta = { ...baseBirth, time: '18:30' };
+
+    const regen = regenerateOnBirthChange(
+      { birth: moved, profileId: 'p1' },
+      {
+        engine,
+        library: lib,
+        onRegenerated: vi.fn(),
+        chat: unlinkNothing(),
+        interpretations: forgetNothing(),
+        referenceInstant: REFERENCE_INSTANT,
+      },
+    );
+    const reanchor = reanchorChart(prior.chart_id, reanchorDeps(lib, engine));
+    await Promise.all([regen, reanchor]);
+
+    expect(order).toEqual([REFERENCE_INSTANT]);
+    expect(await reanchor).toBe(false);
+    expect(lib.getChart(prior.chart_id)).toBeUndefined();
+    expect(lib.getChart(chartId(moved))).toBeDefined();
   });
 });

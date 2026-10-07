@@ -15,6 +15,7 @@ import { useOnboardingStatus } from './hooks/useOnboardingStatus'
 import { useChatScopeSync } from './hooks/useChatScopeSync'
 import { useLanguageSync } from './hooks/useLanguageSync'
 import { useRegenerationSubscription } from './hooks/useRegenerationSubscription'
+import { useChartReanchor } from './hooks/useChartReanchor'
 
 /** Wrap a page element in the animated-page transition wrapper. */
 function page(element: ReactNode): ReactNode {
@@ -175,6 +176,9 @@ function AppRoutes() {
 
 function App() {
   useRegenerationSubscription()
+  // Move the active chart's one analysis instant to the user's day, so every
+  // "As of" (atlas, footer, dasha, PDF, prompt) follows it together.
+  useChartReanchor()
   // Mirror the chartLibrary scope wiring: keep the per-profile chat + RAG memory
   // scope in step with the active profile (switch / create / delete).
   useChatScopeSync()

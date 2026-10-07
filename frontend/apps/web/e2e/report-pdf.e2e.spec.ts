@@ -387,9 +387,12 @@ async function seedSyntheticMaximalReport(
   // stores hydrate before this write, they can race and overwrite the fixture.
   await page.clock.setFixedTime(SYNTHETIC_NOW);
   await page.goto('/robots.txt', { waitUntil: 'domcontentloaded' });
+  // ONE analysis instant (PR #277): the predictive facts are keyed to the
+  // chart's own calculation day, read in the viewer's zone (the zone the
+  // footer, cover and PDF print it in). The browser runs in this process's zone.
   const referenceInstant = chartDayReferenceInstant(
     SYNTHETIC_NOW,
-    SYNTHETIC_BIRTH.birth_location_details.timezone,
+    Intl.DateTimeFormat().resolvedOptions().timeZone,
   );
   const requestKey = JSON.stringify([
     SYNTHETIC_PROFILE_ID,
@@ -414,7 +417,8 @@ async function seedSyntheticMaximalReport(
         lagna: SYNTHETIC_SIDEREAL.lagna,
         planets: SYNTHETIC_SIDEREAL.planets,
       },
-      calculation_timestamp: '2026-01-01T00:00:00Z',
+      // Computed as of SYNTHETIC_NOW: the instant its seeded predictive facts are for.
+      calculation_timestamp: SYNTHETIC_NOW.toISOString(),
       software_version: 'report-pdf-e2e',
     },
     sidereal_chart: SYNTHETIC_SIDEREAL,
@@ -1025,7 +1029,12 @@ test('REAL onboarding -> rectify -> offline reload -> predictive PDF is correct'
   // into a retired persistence implementation would test storage internals, not
   // the product contract. Keep both bounds because CI can cross midnight while
   // onboarding and rectification run.
-  const chartGenerationStartedAt = new Date();
+  //
+  // CHANGED with PR #277 (one analysis instant): the PDF's transits now follow
+  // the chart's own instant, not the export clock. So the chart is computed as
+  // of TRANSIT_REFERENCE_TIME (the page clock runs from there), which is the
+  // day RECTIFIED_TRANSIT_ROWS pin, and the cover must print that same day.
+  await page.clock.setSystemTime(new Date(TRANSIT_REFERENCE_TIME));
 
   // ---- 1. REAL onboarding through the live engine bootstrap to /dashboard ----
   await driveRealOnboarding(page, errors);
@@ -1127,7 +1136,6 @@ test('REAL onboarding -> rectify -> offline reload -> predictive PDF is correct'
   const lagnaAfterRectify = await readDashboardLagna(page);
   console.log('[report-pdf] dashboard lagna @06:14 =', JSON.stringify(lagnaAfterRectify));
   expect(lagnaAfterRectify, 'after rectifying the lagna must no longer be Leo').not.toContain('leo');
-  const chartGenerationCompletedAt = new Date();
 
   // ---- 3. RELOAD and prove the rectified time PERSISTED ----
   await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
@@ -1245,10 +1253,14 @@ test('REAL onboarding -> rectify -> offline reload -> predictive PDF is correct'
   const generatedOn = new Date(TRANSIT_REFERENCE_TIME);
   await page.clock.setFixedTime(generatedOn);
   await spaNavigate(page, '/report');
+  // The chart is computed as of this day (PR #277), so the dashboard's Life
+  // Atlas may already have computed its facts; compute only if they are absent.
   const computePredictive = page.getByTestId('report-predictive-compute');
-  await expect(computePredictive).toBeVisible({ timeout: 60_000 });
-  await computePredictive.click();
   const gocharaTable = page.getByTestId('report-gochara-table');
+  await expect(computePredictive.or(gocharaTable)).toBeVisible({ timeout: 150_000 });
+  if (await computePredictive.isVisible()) {
+    await computePredictive.click();
+  }
   await expect(gocharaTable).toBeVisible({ timeout: 150_000 });
   await expect(gocharaTable.getByRole('columnheader').nth(4)).toHaveText('From Lagna');
   for (const expected of RECTIFIED_TRANSIT_ROWS) {
@@ -1348,36 +1360,20 @@ test('REAL onboarding -> rectify -> offline reload -> predictive PDF is correct'
   // either wall-clock day only when the end-to-end journey crossed midnight.
   // The epoch guard below is unchanged and still load-bearing: a chart with no
   // usable instant now prints no date at all, and must never print 1969/1970.
-  const longEnglishDate = (date: Date) =>
-    date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-  const chartGenerationDates = [
-    ...new Set([
-      longEnglishDate(chartGenerationStartedAt),
-      longEnglishDate(chartGenerationCompletedAt),
-    ]),
-  ];
-  const exportClockLong = generatedOn.toLocaleDateString('en-US', {
+  //
+  // INVERTED AGAIN with PR #277: the chart is computed as of the transit day,
+  // so cover, transits and footer name ONE day. The export clock is still not
+  // read: step 6a moved it and the two exports are byte-identical.
+  const computedAtLong = new Date(TRANSIT_REFERENCE_TIME).toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'long',
     day: 'numeric',
   });
   expect(
-    chartGenerationDates,
-    'the real chart-generation day must differ from the deliberately frozen export clock',
-  ).not.toContain(exportClockLong);
-  const computedAtLong = chartGenerationDates.find((date) => pdfText.includes(date));
-  expect(
-    computedAtLong,
-    `the PDF cover must carry the real chart-generation date (${chartGenerationDates.join(' or ')})`,
-  ).toBeDefined();
-  const dateLine = (
-    pdfText.split('\n').find((line) => computedAtLong !== undefined && line.includes(computedAtLong)) ?? ''
-  ).trim();
-  expect(
     pdfText,
-    `the PDF cover must NOT carry the export-time clock ("${exportClockLong}") — ` +
-      'the export must not read the clock at all',
-  ).not.toContain(exportClockLong);
+    `the PDF cover must carry the chart's own analysis day (${computedAtLong}), the transits' day`,
+  ).toContain(computedAtLong);
+  const dateLine = (pdfText.split('\n').find((line) => line.includes(computedAtLong)) ?? '').trim();
   expect(pdfText, 'the PDF must NOT show the Unix-epoch year 1969').not.toMatch(/\b1969\b/);
   expect(pdfText, 'the PDF must NOT show the Unix-epoch year 1970').not.toMatch(/\b1970\b/);
 
@@ -1476,7 +1472,7 @@ test('REAL onboarding -> rectify -> offline reload -> predictive PDF is correct'
   ).toBeGreaterThanOrEqual(KEYLESS_PDF_BASELINE_PAGES);
 
   // Surface the load-bearing lines in the test log as evidence.
-  console.log('[report-pdf] generated-on date :', JSON.stringify(dateLine || generatedOnLong));
+  console.log('[report-pdf] generated-on date :', JSON.stringify(dateLine || computedAtLong));
   console.log('[report-pdf] time-of-birth line:', JSON.stringify(timeOfBirthLine));
   console.log('[report-pdf] ascendant line    :', JSON.stringify(pdfAscendantLine(pdfText)));
 

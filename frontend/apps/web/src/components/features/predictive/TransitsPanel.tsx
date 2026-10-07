@@ -14,7 +14,7 @@ import type {
 } from '@almamesh/shared-types';
 import { Badge, Card } from '../../ui';
 import { formatDegree } from '../../../lib/reportData';
-import { formatPredictiveDate } from '../../../lib/predictive';
+import { formatPredictiveDate, formatReferenceDay } from '../../../lib/predictive';
 import {
   grahaName,
   sadeSatiPhaseName,
@@ -45,7 +45,7 @@ function GocharaTable({ ctx }: { ctx: TransitCtx }): ReactElement {
   return (
     <Card
       title={t('gochara.heading')}
-      subtitle={t('gochara.subtitle', { date: formatPredictiveDate(ctx.gochara.instant) })}
+      subtitle={t('gochara.subtitle', { date: formatReferenceDay(ctx.gochara.instant) })}
       data-testid="gochara-card"
     >
       <div className="overflow-x-auto">

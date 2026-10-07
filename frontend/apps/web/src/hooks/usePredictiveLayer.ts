@@ -15,7 +15,7 @@
  * button.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   useChartLibraryStore,
   usePredictiveStore,
@@ -35,10 +35,11 @@ import type { VimshottariDasha } from '@almamesh/browser/types';
 import { useOptionalChartEngine } from '../providers/chartEngineContext';
 import {
   buildEnsurePredictiveInput,
-  predictiveReferenceInstant,
   selectPrimaryStoredChart,
 } from '../lib/predictive';
 import { useRectificationGate } from '../lib/rectificationGate';
+import { storedChartReferenceDay, viewerTimeZone } from '../lib/analysisInstant';
+import { useDailyReferenceInstant } from './useDailyReferenceInstant';
 
 /**
  * The deferred auto-kickoff delay (ms). It is a HARD floor, NOT an idle hint:
@@ -75,37 +76,6 @@ function scheduleKickoff(run: () => void): ScheduledKickoff {
 
 function cancelKickoff(handle: ScheduledKickoff): void {
   clearTimeout(handle.id);
-}
-
-/** Milliseconds until the chart timezone's calendar day changes. */
-function untilNextReferenceDay(now: number, timeZone: string): number {
-  const current = predictiveReferenceInstant(new Date(now), timeZone);
-  let low = now;
-  let high = now + 30 * 60 * 60 * 1_000;
-  while (high - low > 1_000) {
-    const middle = Math.floor((low + high) / 2);
-    if (predictiveReferenceInstant(new Date(middle), timeZone) === current) low = middle;
-    else high = middle;
-  }
-  return high - now;
-}
-
-/** A chart-local daily reference that updates even when the page stays idle. */
-function useDailyReferenceInstant(timeZone: string): string {
-  const [reference, setReference] = useState(() => predictiveReferenceInstant(new Date(), timeZone));
-  useEffect(() => {
-    const currentReference = predictiveReferenceInstant(new Date(), timeZone);
-    if (reference !== currentReference) {
-      setReference(currentReference);
-      return;
-    }
-    const timer = setTimeout(
-      () => setReference(predictiveReferenceInstant(new Date(), timeZone)),
-      untilNextReferenceDay(Date.now(), timeZone) + 1,
-    );
-    return () => clearTimeout(timer);
-  }, [reference, timeZone]);
-  return reference;
 }
 
 export interface PredictiveLayer {
@@ -164,11 +134,14 @@ export function usePredictiveLayer({ auto = false }: UsePredictiveLayerOptions =
   const storedChart = selectPrimaryStoredChart(charts, activeProfileId);
   const birth = storedChart?.birth_data as ProcessedBirthData | undefined;
   const profileKey = activeProfileId ?? storedChart?.chart_id ?? 'primary';
-  const chartTimeZone = birth?.birth_location_details.timezone ?? 'UTC';
 
-  // The reference instant is pinned per day (UTC midnight) so the store's
-  // idempotency key stays stable across re-renders and navigations.
-  const referenceInstant = useDailyReferenceInstant(chartTimeZone);
+  // ONE analysis instant (#274): the predictive layer is computed for the
+  // chart's own analysis day, never the wall clock, so the Life Atlas and Sky
+  // & Timing cannot name a day the chart's running daśā was not computed for.
+  // The chart is re-anchored to today by `useChartReanchor`; only a chart that
+  // records no instant at all falls back to the viewer's daily wall-clock day.
+  const todayDay = useDailyReferenceInstant(viewerTimeZone());
+  const referenceInstant = storedChart ? storedChartReferenceDay(storedChart, todayDay) : todayDay;
   const input = useMemo(
     () => buildEnsurePredictiveInput(profileKey, birth, referenceInstant),
     [profileKey, birth, referenceInstant],

@@ -27,7 +27,7 @@ import {
   TransitsPanel,
 } from '../components/features/predictive';
 import { usePredictiveLayer } from '../hooks/usePredictiveLayer';
-import { formatPredictiveDate } from '../lib/predictive';
+import { formatReferenceDay } from '../lib/predictive';
 
 type PredictiveTab = 'timing' | 'periods' | 'vargas' | 'strength' | 'domains';
 
@@ -59,7 +59,7 @@ export default function PredictivePage(): ReactElement {
           <p className="mt-1 max-w-2xl text-sm text-text-secondary">{t('page.subtitle')}</p>
           {ready && layer.transitCtx && (
             <p className="mt-1 text-xs text-text-tertiary" data-testid="predictive-as-of">
-              {t('page.as_of', { date: formatPredictiveDate(layer.transitCtx.instant) })}
+              {t('page.as_of', { date: formatReferenceDay(layer.transitCtx.instant) })}
             </p>
           )}
         </div>

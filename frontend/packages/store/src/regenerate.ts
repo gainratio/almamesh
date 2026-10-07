@@ -15,7 +15,14 @@
 
 import type { BirthInput, SiderealChart } from '@almamesh/browser/types';
 
-import { type BirthMeta, chartId, siderealChartToChartData, toBirthInput } from './adapters/chart';
+import {
+  type BirthMeta,
+  chartCalculations,
+  chartId,
+  siderealChartToChartData,
+  toBirthInput,
+} from './adapters/chart';
+import { requireChartReferenceInstant } from './chartReferenceInstant';
 import type { StoredChart } from './chartLibrary';
 import type { BirthInfoChanged } from './events';
 
@@ -147,4 +154,70 @@ async function regenerateNow(event: BirthInfoChanged, deps: RegenerateDeps): Pro
     );
   }
   deps.onRegenerated();
+}
+
+/** What re-anchoring needs: the engine, the library it rewrites, and the new instant. */
+export interface ReanchorDeps {
+  readonly engine: RegenerateEngine;
+  readonly library: Pick<RegenerateLibrary, 'listAllCharts' | 'saveChart'>;
+  /** The new analysis instant — mint it with `newChartReferenceInstant()`. */
+  readonly referenceInstant: string;
+}
+
+function findChart(library: ReanchorDeps['library'], id: string): StoredChart | undefined {
+  return library.listAllCharts().find((stored) => stored.chart_id === id);
+}
+
+/** The engine input for the SAME birth, as of a new instant; null without a stored birth. */
+function reanchorInput(prior: StoredChart, referenceInstant: string): BirthInput | null {
+  const datetimeUtc = prior.birth_data?.birth_datetime_utc;
+  const location = prior.birth_data?.birth_location_details;
+  if (!datetimeUtc || !location) {
+    return null;
+  }
+  return {
+    datetimeUtc,
+    latitude: location.latitude,
+    longitude: location.longitude,
+    referenceDate: requireChartReferenceInstant(referenceInstant, 'reanchorChart: referenceInstant'),
+  };
+}
+
+/**
+ * Re-anchor a stored chart to a new analysis instant: recompute it from its
+ * OWN stored birth instant (rectification included) as of `referenceInstant`,
+ * and replace only its instant-dependent calculations. Its id, owner, name,
+ * birth data and readings are untouched; the dasha "running" now, the
+ * snapshot's reference date and the stored calculation instant all move
+ * together, so every surface reading the chart's one analysis instant moves.
+ *
+ * Runs in the regeneration queue, and saves only if the chart is still the
+ * exact row it read: one deleted, regenerated or edited while the engine ran
+ * is never resurrected or overwritten. Resolves true when it saved.
+ */
+export function reanchorChart(id: string, deps: ReanchorDeps): Promise<boolean> {
+  const run = queueTail.then(() => reanchorNow(id, deps));
+  queueTail = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
+}
+
+async function reanchorNow(id: string, deps: ReanchorDeps): Promise<boolean> {
+  const prior = findChart(deps.library, id);
+  const input = prior ? reanchorInput(prior, deps.referenceInstant) : null;
+  if (!prior || !input) {
+    return false;
+  }
+  const chart = await deps.engine.generateChart(input);
+  if (findChart(deps.library, id) !== prior) {
+    return false;
+  }
+  deps.library.saveChart({
+    ...prior,
+    astronomical_calculations: chartCalculations(chart, deps.referenceInstant),
+    sidereal_chart: chart,
+  });
+  return true;
 }

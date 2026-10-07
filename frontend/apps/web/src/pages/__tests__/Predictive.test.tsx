@@ -21,6 +21,7 @@ import {
 } from '../../test/predictiveFixtures';
 import { FOUNDER_DASHAS } from '../../test/dashaFixtures';
 import { predictiveReferenceInstant } from '../../lib/predictive';
+import { viewerTimeZone } from '../../lib/analysisInstant';
 
 function storedChart(): StoredChart {
   return {
@@ -49,7 +50,7 @@ function currentRequestKey(): string {
     datetimeUtc: '1990-03-30T06:30:00Z',
     latitude: 12.97,
     longitude: 77.59,
-    referenceInstant: predictiveReferenceInstant(new Date(), 'Asia/Kolkata'),
+    referenceInstant: predictiveReferenceInstant(new Date(), viewerTimeZone()),
   });
 }
 
