@@ -415,6 +415,12 @@ function pwaPlugin(): Plugin[] {
             cacheName: 'almamesh-pyodide-immutable',
             expiration: { maxEntries: 128, maxAgeSeconds: 60 * 60 * 24 * 365 },
             cacheableResponse: { statuses: [0, 200] },
+            // The chart Worker also writes this cache (pyodideDistCache.ts) when
+            // the SW lost the first-visit race. Its stored request has no
+            // `Origin` (scripts cannot set it), so a `Vary: Origin` response
+            // would never match the SW's module-import request. The files are
+            // versioned + immutable, so Vary carries no meaning here.
+            matchOptions: { ignoreVary: true },
           },
         },
         {

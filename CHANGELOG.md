@@ -6,6 +6,19 @@ All notable changes to AlmaMesh are documented here. Format follows
 
 ## [Unreleased]
 
+### Fixed
+- **The app now works offline after the first load on a slow phone too.** On a
+  weak CPU the service worker was still installing when the engine downloaded
+  the Pyodide runtime, so nothing cached it; the engine said "ready" and the
+  next offline visit stalled at `booting-engine`. The chart Worker now checks
+  the Pyodide cache after every boot and writes in any missing file before it
+  reports ready (`packages/browser/src/pyodide/pyodideDistCache.ts`), and the
+  service worker's Pyodide rule now matches ignoring `Vary` so it can serve
+  what the Worker wrote (versioned, immutable files). A package
+  Pyodide failed to load is now a typed `PyodidePackageLoadError` naming it,
+  not a later `No module named 'micropip'`. The exit gate now holds the service
+  worker until the engine is ready, so every run tests this worst case.
+
 ### Changed
 - **Backups are now standard age files, and every old backup still opens.**
   Export seals the canonical SQLite file as an age v1 file (scrypt, 128 MiB) via
