@@ -14,6 +14,12 @@ import { loadPyodide, type PyodideInterface } from "pyodide";
 import type { SiderealChart } from "./chart";
 import { LOAD_PACKAGES } from "./loadPackages";
 import { versionedPyodideIndexUrl } from "./pyodideDist";
+import {
+  assertPackagesLoaded,
+  bootCriticalUrls,
+  ensureDistCached,
+  openDistCache,
+} from "./pyodideDistCache";
 import type { MeshEdgeContext } from "./mesh";
 import type { EnginePredictiveContexts, PredictiveContexts } from "./predictive";
 import { composeDomainStrengths } from "./strengthAssay";
@@ -233,13 +239,16 @@ function countingFetch(
   native: typeof fetch,
   indexUrl: string,
   onBytes: (received: number, total: number | null) => void,
+  fetched: Set<string>,
 ): typeof fetch {
   const prefix = new URL(indexUrl, self.location.href).href;
   let cumulative = 0;
   return async (input, init) => {
     const response = await native(input, init);
     const url = new URL(requestUrl(input), self.location.href).href;
-    if (response.body === null || !url.startsWith(prefix)) return response;
+    if (!url.startsWith(prefix)) return response;
+    fetched.add(url);
+    if (response.body === null) return response;
     const declared = Number(response.headers.get("content-length"));
     const total = Number.isFinite(declared) && declared > 0 ? declared : null;
     const counted = response.body.pipeThrough(
@@ -259,22 +268,54 @@ function countingFetch(
   };
 }
 
+/**
+ * Make sure every file this boot used is in the SW's Pyodide cache, so the next
+ * boot works offline even when the SW never saw this one (first visit, slow
+ * CPU). A file that cannot be cached does not fail the boot — the engine works
+ * now — but it is reported, because offline reboot is now not guaranteed.
+ */
+async function cacheForOffline(
+  indexUrl: string,
+  fetched: ReadonlySet<string>,
+  nativeFetch: typeof fetch,
+): Promise<void> {
+  if (typeof caches === "undefined") return; // insecure context: no Cache API
+  const cache = await openDistCache(caches);
+  const { failed } = await ensureDistCached(bootCriticalUrls(indexUrl, fetched), cache, nativeFetch);
+  // Code-only line, like the boot-policy line: no URLs or causes leave the Worker.
+  if (failed.length > 0) console.info(`[almamesh] engine offline cache incomplete (${failed.length} files)`);
+}
+
 async function startRuntime(pyodideIndexUrl: string): Promise<PyodideInterface> {
   const scope = self as unknown as { fetch: typeof fetch };
   const nativeFetch = scope.fetch;
-  scope.fetch = countingFetch(nativeFetch, pyodideIndexUrl, (received, total) => {
-    runtimeStart.bytesReceived = received;
-    runtimeStart.bytesTotal = total;
-    runtimeStart.listener?.("bytes");
-  });
+  const fetched = new Set<string>();
+  scope.fetch = countingFetch(
+    nativeFetch,
+    pyodideIndexUrl,
+    (received, total) => {
+      runtimeStart.bytesReceived = received;
+      runtimeStart.bytesTotal = total;
+      runtimeStart.listener?.("bytes");
+    },
+    fetched,
+  );
   try {
     // Version-scoped (`/pyodide/v<version>/`) so cached bytes of another release
     // can never be handed to this loader — see ./pyodideDist.ts.
-    const pyodide = await loadPyodide({ indexURL: versionedPyodideIndexUrl(pyodideIndexUrl) });
+    const indexUrl = versionedPyodideIndexUrl(pyodideIndexUrl);
+    const pyodide = await loadPyodide({ indexURL: indexUrl });
     runtimeStart.stage = "packages";
     runtimeStart.listener?.("stage");
-    // loadPackage resolves the whole list from the self-hosted lock — offline.
-    await pyodide.loadPackage([...LOAD_PACKAGES]);
+    // loadPackage resolves the whole list from the self-hosted lock. It does
+    // NOT throw when a wheel fails to fetch (offline): it logs and moves on, so
+    // check what actually arrived and fail loudly here.
+    const loadErrors: string[] = [];
+    const loaded = await pyodide.loadPackage([...LOAD_PACKAGES], {
+      errorCallback: (message) => loadErrors.push(message),
+    });
+    assertPackagesLoaded(LOAD_PACKAGES, loaded, loadErrors);
+    await cacheForOffline(indexUrl, fetched, nativeFetch);
     runtimeReady = true;
     return pyodide;
   } finally {
