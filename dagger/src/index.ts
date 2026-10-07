@@ -42,6 +42,17 @@ import {
 import { nightlyRealSkipCheckScript } from "./nightlyRealSkips.js"
 import { pagesUploadLimitsCheckScript as releasePagesUploadLimitsScript } from "./pagesUploadLimits.js"
 import { laneScript } from "./laneScript.js"
+import {
+  BUN_IMAGE,
+  TOOLCHAIN_IMAGE,
+  TOOLCHAIN_PLAYWRIGHT_FILE,
+  TOOLCHAIN_RECIPE,
+  TOOLCHAIN_REPOSITORY,
+  UV_IMAGE,
+  pinnedToolchain,
+  playwrightVersion,
+  toolchainTag,
+} from "./toolchain.js"
 
 const ROOT = "/workspace"
 const FRONTEND = `${ROOT}/frontend`
@@ -54,14 +65,10 @@ const REPOSITORY = "hseshadr/almamesh"
 const BROWSER_LEGO_SPEC = '"@gainratio/browser": "^0.4.1"'
 const CONTRACT_SHA = "1111111111111111111111111111111111111111"
 const CENTRAL_MODULE_SHA = "a895f726e9786bcfd2bdf68f87d3d5c4b411f702"
-const BUN_IMAGE =
-  "oven/bun:1.3.5@sha256:e90cdbaf9ccdb3d4bd693aa335c3310a6004286a880f62f79b18f9b1312a8ec3"
 const NODE_IMAGE =
   "node:22-trixie-slim@sha256:7b8a0c89c54499bee567618f96578e1a12a800f062fbdbfd1fb6a443fa6f6284"
 const PAGES_NODE_IMAGE =
   "node:24.6.0-bookworm-slim@sha256:9b741b28148b0195d62fa456ed84dd6c953c1f17a3761f3e6e6797a754d9edff"
-const UV_IMAGE =
-  "ghcr.io/astral-sh/uv:0.12.1-python3.13-trixie-slim@sha256:8db423175bfff42bd1c81f77280bc92f10ef9cf03161803bd5cb6e15d86c3d10"
 const WRANGLER_VERSION = "4.103.0"
 const WRANGLER = "/opt/wrangler/node_modules/.bin/wrangler"
 const WRANGLER_COMPATIBILITY_DATE = "2026-06-24"
@@ -84,6 +91,7 @@ const CONTRACT_TESTS = [
   "tests/dagger-lane-timeout.test.ts",
   "tests/dagger-nightly-real-skips.test.ts",
   "tests/dagger-pages-upload-contract.test.ts",
+  "tests/dagger-toolchain-contract.test.ts",
   "tests/dagger-workflow-contract.test.ts",
 ]
 const SMOKE_OUTPUT_LINES = 60
@@ -288,15 +296,67 @@ export class AlmameshCi {
     return this.browserToolchain()
       .withExec(["bash", "apps/web/scripts/setup-dev-assets.sh"])
       .withWorkdir(WEB)
-      .withExec(["bun", "x", "playwright", "install", "--with-deps", ...browsers])
+      .withExec(this.playwrightInstall(browsers))
+  }
+
+  // With the prebuilt image the browsers and their system packages are already
+  // there, so this only confirms them. A lock whose Playwright differs from the
+  // image's (a bump not yet republished) gets the full inline install instead.
+  private playwrightInstall(browsers: string[]): string[] {
+    const inline = ["bun", "x", "playwright", "install", "--with-deps", ...browsers]
+    if (pinnedToolchain(TOOLCHAIN_IMAGE, TOOLCHAIN_RECIPE) === null) return inline
+    return [
+      "sh",
+      "-c",
+      `want="$(bun x playwright --version | awk '{print $2}')"; have="$(cat ${TOOLCHAIN_PLAYWRIGHT_FILE})"
+if [ "$want" = "$have" ]; then exec bun x playwright install ${browsers.join(" ")}; fi
+echo "toolchain image has Playwright $have, the lock wants $want: installing browsers and system packages inline"
+exec ${inline.join(" ")}`,
+    ]
+  }
+
+  private aptInstall(): string[] {
+    const packages = TOOLCHAIN_RECIPE.apt.join(" ")
+    return [
+      "sh",
+      "-c",
+      `apt-get update && apt-get install -y --no-install-recommends ${packages} && rm -rf /var/lib/apt/lists/*`,
+    ]
+  }
+
+  // The image every browser gate starts from: the published toolchain when its
+  // pin matches TOOLCHAIN_RECIPE, else the same apt list installed inline.
+  private browserImage(): Container {
+    const pinned = pinnedToolchain(TOOLCHAIN_IMAGE, TOOLCHAIN_RECIPE)
+    if (pinned !== null) return dag.container().from(pinned)
+    const bun = dag.container().from(TOOLCHAIN_RECIPE.bun).file("/usr/local/bin/bun")
+    return dag.container().from(TOOLCHAIN_RECIPE.base).withFile("/usr/local/bin/bun", bun).withExec(this.aptInstall())
+  }
+
+  private toolchainImage(playwright: string): Container {
+    const bun = dag.container().from(TOOLCHAIN_RECIPE.bun).file("/usr/local/bin/bun")
+    return dag
+      .container({ platform: "linux/amd64" as Platform })
+      .from(TOOLCHAIN_RECIPE.base)
+      .withFile("/usr/local/bin/bun", bun)
+      .withExec(this.aptInstall())
+      .withExec(["bun", "x", `playwright@${playwright}`, "install", "--with-deps", ...TOOLCHAIN_RECIPE.browsers])
+      .withNewFile(TOOLCHAIN_PLAYWRIGHT_FILE, playwright)
+      .withLabel("org.opencontainers.image.source", `https://github.com/${REPOSITORY}`)
+      .withLabel("org.opencontainers.image.description", "AlmaMesh CI browser toolchain (apt, Bun, Playwright browsers)")
+  }
+
+  /** Build the browser toolchain image and push it to GHCR; returns the digest-pinned reference. */
+  @func()
+  async publishToolchain(githubToken: Secret): Promise<string> {
+    const lock = await this.source.file("frontend/bun.lock").contents()
+    const playwright = playwrightVersion(lock)
+    const reference = `${TOOLCHAIN_REPOSITORY}:${toolchainTag(TOOLCHAIN_RECIPE, playwright)}`
+    return this.toolchainImage(playwright).withRegistryAuth("ghcr.io", "hseshadr", githubToken).publish(reference)
   }
 
   private browserToolchain(): Container {
-    const bun = dag.container().from(BUN_IMAGE).file("/usr/local/bin/bun")
-    return dag
-      .container()
-      .from(UV_IMAGE)
-      .withFile("/usr/local/bin/bun", bun)
+    return this.browserImage()
       .withFile(BUN_INSTALLER, this.source.file("dagger/scripts/install-bun.sh"))
       .withDirectory(ROOT, this.selected(["backend/**", "frontend/**"]))
       .withWorkdir(FRONTEND)
@@ -307,11 +367,6 @@ export class AlmameshCi {
       .withEnvVariable("PYTHON", "/usr/bin/python3")
       .withMountedCache("/root/.cache/uv", this.cache("uv"))
       .withMountedCache("/root/.skyfield-data", this.cache("skyfield"))
-      .withExec([
-        "sh",
-        "-c",
-        "apt-get update && apt-get install -y --no-install-recommends build-essential ca-certificates curl git node-gyp nodejs openssl poppler-utils && rm -rf /var/lib/apt/lists/*",
-      ])
       .withExec(this.edgeprocPinCheck())
       .withExec(["sh", BUN_INSTALLER])
   }
@@ -353,10 +408,13 @@ export class AlmameshCi {
         this.selected([
           ".github/workflows/dagger.yml",
           ".github/workflows/deploy.yml",
+          ".github/workflows/toolchain-image.yml",
           "dagger.json",
           "dagger/scripts/**",
           "dagger/src/**",
           "frontend/apps/web/vitest.config.ts",
+          // The toolchain contract reads the locked Playwright version.
+          "frontend/bun.lock",
           // The memory-budget contract pins the test:e2e:memory-budget script.
           "frontend/apps/web/package.json",
           // The browser Lego pin contract ties BROWSER_LEGO_SPEC to these.
@@ -1041,7 +1099,7 @@ echo "Wrangler Pages Functions dry-run verified closed feedback route for $EXPEC
   private async liveSmokePass(pass: SmokePass, previousUrl?: string): Promise<SmokeRun> {
     let runner = this.browserToolchain()
       .withWorkdir(WEB)
-      .withExec(["bun", "x", "playwright", "install", "--with-deps", "chromium"])
+      .withExec(this.playwrightInstall(["chromium"]))
       .withEnvVariable("LIVE_SMOKE_ORIGIN", LIVE_ORIGIN)
       .withEnvVariable("LIVE_SMOKE_RUN", randomUUID())
     if (previousUrl !== undefined) runner = runner.withEnvVariable("LIVE_SMOKE_PREVIOUS_URL", previousUrl)

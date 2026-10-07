@@ -62,7 +62,11 @@ This repo builds against `~/dev/project-ideas/oss/ENGINEERING-STANDARDS.md`
     of `dagger call ci` as its own job (`dagger call gate --name=<gate>`; the
     list is `CI_GATES` in `dagger/src/gates.ts`, the browser gate split into
     five shards), and the required `Dagger` check is `dagger call verdict` over
-    those jobs' results.
+    those jobs' results. Browser gates start from a prebuilt toolchain image
+    (apt packages + Bun + Playwright browsers; `dagger/src/toolchain.ts`,
+    published by `toolchain-image.yml`, digest-pinned in `TOOLCHAIN_IMAGE`).
+    Fallback: set `TOOLCHAIN_IMAGE = null` (or change the recipe) and the
+    gates install the same toolchain inline.
   - **Service-worker update lane** (`playwright.sw-update.config.ts`): the only
     gate that needs TWO builds — it serves build A, "deploys" build B on the
     same origin, and asserts that clicking the update banner leaves the browser
