@@ -219,7 +219,14 @@ PWA, deploys `dist/` to Cloudflare Pages, then **shreds** the restored private k
 ## ✅ Step 6 — Verify the live site (static PWA, not a server)
 
 There is no `/health` endpoint — health is "the app boots and draws a chart
-offline". Check, in a browser, at https://almamesh.com :
+offline". First confirm production serves main's HEAD:
+
+```bash
+curl -s https://almamesh.com/build.json | jq -r .commit   # must equal:
+gh api repos/hseshadr/almamesh/branches/main -q .commit.sha
+```
+
+Then check, in a browser, at https://almamesh.com :
 
 - [ ] App shell loads over HTTPS; no console errors.
 - [ ] **Onboard for real** (name + birth date/time + city) → **Generate** → wait for
