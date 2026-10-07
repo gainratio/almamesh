@@ -69,7 +69,7 @@ function daggerStep(call: string): Mapping {
 function expectedGateJob(gate: string): Mapping {
   return {
     name: `gate / ${gate}`,
-    "runs-on": "ubuntu-latest",
+    "runs-on": "depot-ubuntu-24.04-4",
     "timeout-minutes": 60,
     steps: [checkoutStep(), daggerStep(`gate --name=${gate} --commit-sha=\${{ github.sha }} --repository=\${{ github.repository }}`)],
   }
@@ -193,7 +193,7 @@ function gateJobFixture(gate: string): string[] {
   return [
     `  ${gateJobKey(gate)}:`,
     `    name: gate / ${gate}`,
-    "    runs-on: ubuntu-latest",
+    "    runs-on: depot-ubuntu-24.04-4",
     "    timeout-minutes: 60",
     "    steps:",
     `      - uses: ${checkout} # v7`,
