@@ -96,7 +96,8 @@ function daggerArgsExpressionViolations(workflowSteps: Array<Record<string, unkn
 }
 
 function expectThinDaggerIngress(name: string): void {
-  expect(ingressViolations(steps(name))).toEqual([])
+  const jobs = workflow(name).jobs as Record<string, { steps: Array<Record<string, unknown>> }>
+  for (const job of Object.values(jobs)) expect(ingressViolations(job.steps)).toEqual([])
 }
 
 describe("Dagger public orchestration contract", () => {
@@ -104,19 +105,25 @@ describe("Dagger public orchestration contract", () => {
     expect(daggerFunctions()).toEqual(
       expect.arrayContaining([
         "backend",
-        "browser",
+        "browser-chromium",
+        "browser-journeys",
         "browser-matrix",
+        "browser-suites",
+        "browser-webkit-real",
+        "browser-wizards",
         "contracts",
         "dependency-audit",
         "deploy",
         "deploy-dry-run",
         "frontend",
+        "gate",
         "live-probe",
         "nightly",
         "pdf",
         "privacy",
         "production-artifact",
         "secret-scan",
+        "verdict",
         "verify-live",
         "web",
       ]),
