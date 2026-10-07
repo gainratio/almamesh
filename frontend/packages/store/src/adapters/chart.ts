@@ -422,16 +422,15 @@ export function chartId(birth: BirthMeta): string {
 }
 
 /**
- * Reshape the engine's flat `SiderealChart` into the nested `ChartData` the UI
- * renders. Pure: no astrology is computed here. `varga_ctx` carries the D9
- * Navamsa the Python engine computed (undefined for older bundles); the
- * `interpretation` is left absent (engine emits none).
+ * The instant-dependent half of a stored chart: the engine output reshaped for
+ * the UI, stamped with the instant it was computed as of. Split out so a chart
+ * re-anchored to a new day (`reanchorChart`) is reshaped by the SAME code as a
+ * freshly generated one.
  */
-export function siderealChartToChartData(
+export function chartCalculations(
   chart: SiderealChart,
-  birth: BirthMeta,
   referenceInstant: string,
-): ChartData & { readonly chart_id: string } {
+): ChartData["astronomical_calculations"] {
   const stampedAt = chartReferenceInstantAsDate(
     referenceInstant,
     "siderealChartToChartData: referenceInstant",
@@ -444,35 +443,49 @@ export function siderealChartToChartData(
   const strengthCtx = toStrengthCtx(chart.strength_context);
   const domainsCtx = toDomainsCtx(chart.domains_context);
   return {
+    sidereal_ctx: toSiderealCtx(chart),
+    // D9 Navamsa from the Python engine (never reimplemented in TS). Kept
+    // byte-compatible for the kundli renderers; the FULL 16-varga set rides
+    // separately as varga_ctx_full.
+    varga_ctx: toNavamsaVargaCtx(chart),
+    dasha_ctx: toDashaCtx(chart, stampedAt),
+    // Engine yogas reshaped field-for-field (grade + honest trace; the old
+    // numeric strength/is_active fields no longer exist in the contract).
+    yoga_ctx: chart.yogas.map(toYogaData),
+    ...(transitCtx ? { transit_ctx: transitCtx } : {}),
+    ...(vargaCtxFull ? { varga_ctx_full: vargaCtxFull } : {}),
+    ...(strengthCtx ? { strength_ctx: strengthCtx } : {}),
+    ...(domainsCtx ? { domains_ctx: domainsCtx } : {}),
+    // The chart's reference instant — the SAME value passed to the engine as
+    // `referenceDate`, not a second, independent clock read. That identity is
+    // what makes the claim checkable: this printed timestamp is the input
+    // that reproduces the chart, so a reader can regenerate it from what the
+    // report shows. It used to be its own `new Date()`, which meant the cover
+    // date and the "current" dasha came from two different instants.
+    // NEVER `new Date(0)`: the epoch leaked through as "Generated on Dec 31 1969".
+    calculation_timestamp: stampedAt.toISOString(),
+    // The engine that COMPUTED this chart, from its snapshot, never the
+    // engine running today. A chart stored before snapshots keeps the label.
+    software_version: chart.snapshot?.engine_version ?? LEGACY_SOFTWARE_VERSION,
+    ...(chart.snapshot ? { snapshot: chart.snapshot } : {}),
+  };
+}
+
+/**
+ * Reshape the engine's flat `SiderealChart` into the nested `ChartData` the UI
+ * renders. Pure: no astrology is computed here. `varga_ctx` carries the D9
+ * Navamsa the Python engine computed (undefined for older bundles); the
+ * `interpretation` is left absent (engine emits none).
+ */
+export function siderealChartToChartData(
+  chart: SiderealChart,
+  birth: BirthMeta,
+  referenceInstant: string,
+): ChartData & { readonly chart_id: string } {
+  return {
     chart_id: chartId(birth),
     birth_data: toBirthData(birth),
-    astronomical_calculations: {
-      sidereal_ctx: toSiderealCtx(chart),
-      // D9 Navamsa from the Python engine (never reimplemented in TS). Kept
-      // byte-compatible for the kundli renderers; the FULL 16-varga set rides
-      // separately as varga_ctx_full.
-      varga_ctx: toNavamsaVargaCtx(chart),
-      dasha_ctx: toDashaCtx(chart, stampedAt),
-      // Engine yogas reshaped field-for-field (grade + honest trace; the old
-      // numeric strength/is_active fields no longer exist in the contract).
-      yoga_ctx: chart.yogas.map(toYogaData),
-      ...(transitCtx ? { transit_ctx: transitCtx } : {}),
-      ...(vargaCtxFull ? { varga_ctx_full: vargaCtxFull } : {}),
-      ...(strengthCtx ? { strength_ctx: strengthCtx } : {}),
-      ...(domainsCtx ? { domains_ctx: domainsCtx } : {}),
-      // The chart's reference instant — the SAME value passed to the engine as
-      // `referenceDate`, not a second, independent clock read. That identity is
-      // what makes the claim checkable: this printed timestamp is the input
-      // that reproduces the chart, so a reader can regenerate it from what the
-      // report shows. It used to be its own `new Date()`, which meant the cover
-      // date and the "current" dasha came from two different instants.
-      // NEVER `new Date(0)`: the epoch leaked through as "Generated on Dec 31 1969".
-      calculation_timestamp: stampedAt.toISOString(),
-      // The engine that COMPUTED this chart, from its snapshot, never the
-      // engine running today. A chart stored before snapshots keeps the label.
-      software_version: chart.snapshot?.engine_version ?? LEGACY_SOFTWARE_VERSION,
-      ...(chart.snapshot ? { snapshot: chart.snapshot } : {}),
-    },
+    astronomical_calculations: chartCalculations(chart, referenceInstant),
     interpretation: undefined,
   };
 }

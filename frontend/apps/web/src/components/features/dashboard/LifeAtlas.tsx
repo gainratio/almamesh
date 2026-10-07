@@ -23,7 +23,7 @@ import { Button, Card, Spinner } from '../../ui';
 import { useElapsedSeconds, formatElapsed } from '../../../hooks/useElapsedSeconds';
 import { usePredictiveLayer, type PredictiveLayer } from '../../../hooks/usePredictiveLayer';
 import { LIFE_DOMAINS, nextWindow } from '../../../lib/lifeAtlas';
-import { formatPredictiveDate } from '../../../lib/predictive';
+import { formatPredictiveDate, formatReferenceDay } from '../../../lib/predictive';
 import { domainWindowLabel } from '../../../lib/predictiveEventCopy';
 import { BandBadge } from '../predictive/PredictiveBadges';
 
@@ -195,7 +195,7 @@ export function LifeAtlas(): ReactElement | null {
         </div>
         {domainsCtx && (
           <p className="text-xs text-text-tertiary">
-            {t('atlas.as_of', { date: formatPredictiveDate(domainsCtx.instant) })}
+            {t('atlas.as_of', { date: formatReferenceDay(domainsCtx.instant) })}
           </p>
         )}
       </header>

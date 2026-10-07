@@ -28,7 +28,7 @@ import type {
 import { buildVargaGeometry } from '@almamesh/store';
 import type { StrengthProvenance } from '../../lib/strengthProvenance';
 import { formatDegree } from '../../lib/reportData';
-import { formatPct, formatPredictiveDate, formatRupas, toVargaChart } from '../../lib/predictive';
+import { formatPct, formatPredictiveDate, formatReferenceDay, formatRupas, toVargaChart } from '../../lib/predictive';
 import {
   domainWindowLabel,
   grahaName,
@@ -216,7 +216,7 @@ export function buildTransitsSection(
 
   return {
     chrome: chrome(tr, 'transits', 'transits.heading'),
-    asOf: glyphSafe(tr('transits.as_of', { date: formatPredictiveDate(ctx.gochara.instant) })),
+    asOf: glyphSafe(tr('transits.as_of', { date: formatReferenceDay(ctx.gochara.instant) })),
     gochara,
     sadeSatiHeading: glyphSafe(tr('transits.sade_sati_heading')),
     sadeSati,

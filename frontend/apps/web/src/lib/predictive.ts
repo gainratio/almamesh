@@ -37,6 +37,22 @@ export function predictiveReferenceInstant(
 }
 
 /**
+ * Display one analysis day — a `predictiveReferenceInstant` value — as the
+ * calendar day it names. It is UTC midnight of the chart-local day, so it is
+ * formatted in UTC: formatting it in the viewer's zone printed the day BEFORE
+ * for anyone west of Greenwich ("As of Oct 06" on Oct 07 in California). Every
+ * "As of" on screen and in the PDF goes through here, so they cannot disagree.
+ */
+export function formatReferenceDay(day: string): string {
+  return formatDisplayDate(new Date(day), {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    timeZone: 'UTC',
+  });
+}
+
+/**
  * Build the lazy-compute input from the stored chart's birth data, or `null`
  * when the chart predates the fields the engine needs (no silent guesses).
  */

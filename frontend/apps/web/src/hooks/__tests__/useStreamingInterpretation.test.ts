@@ -81,7 +81,8 @@ const mockedDataLifecycleReady = vi.mocked(whenDataLifecycleReady);
 const CHART_WITH_RAW = {
   chart_id: 'chart-123',
   profile_id: 'profile-123',
-  astronomical_calculations: { calculation_timestamp: '2026-01-01T12:00:00.000Z' },
+  // Anchored to the day its predictive facts were computed for (one analysis instant).
+  astronomical_calculations: { calculation_timestamp: '2026-07-12T12:00:00.000Z' },
   birth_data: {
     birth_datetime_utc: '1990-03-30T06:45:00Z',
     birth_location_details: { latitude: 12.97, longitude: 77.59 },
@@ -94,7 +95,8 @@ const CHART_WITH_RAW = {
 const CHART_WITH_FACTORS = {
   chart_id: 'chart-777',
   profile_id: 'profile-123',
-  astronomical_calculations: { calculation_timestamp: '2026-01-01T12:00:00.000Z' },
+  // Anchored to the day its predictive facts were computed for (one analysis instant).
+  astronomical_calculations: { calculation_timestamp: '2026-07-12T12:00:00.000Z' },
   birth_data: {
     birth_datetime_utc: '1990-03-30T06:45:00Z',
     birth_location_details: { latitude: 12.97, longitude: 77.59 },

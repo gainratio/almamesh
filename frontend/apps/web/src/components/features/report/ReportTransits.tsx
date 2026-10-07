@@ -9,7 +9,7 @@ import type { ReactElement } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { TransitCtx, TransitPlacementData } from '@almamesh/shared-types';
 import { formatDegree } from '../../../lib/reportData';
-import { formatPredictiveDate } from '../../../lib/predictive';
+import { formatPredictiveDate, formatReferenceDay } from '../../../lib/predictive';
 import {
   grahaName,
   sadeSatiPhaseName,
@@ -44,7 +44,7 @@ export function ReportTransits({ transitCtx }: ReportTransitsProps): ReactElemen
     <section className="report-section" data-testid="report-transits">
       <ReportSectionHeading index={sectionNumeral('transits')} title={t('transits.heading')} />
       <p className="report-note">
-        {t('transits.as_of', { date: formatPredictiveDate(transitCtx.gochara.instant) })}
+        {t('transits.as_of', { date: formatReferenceDay(transitCtx.gochara.instant) })}
       </p>
 
       {placements.length > 0 && (

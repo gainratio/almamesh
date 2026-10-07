@@ -8,6 +8,7 @@ export const SAFE_DIAGNOSTIC_CODES = [
   'backup.local_mirror_deferred',
   'backup.memory_rebuild_deferred',
   'cache.query_not_found',
+  'chart.reanchor_failed',
   'chart.regeneration_failed',
   'chart.save_failed',
   'chart.save_timed_out',

@@ -42,6 +42,7 @@ vi.mock('./hooks/useLanguageSync', () => ({ useLanguageSync: () => {} }));
 vi.mock('./hooks/useRegenerationSubscription', () => ({
   useRegenerationSubscription: () => {},
 }));
+vi.mock('./hooks/useChartReanchor', () => ({ useChartReanchor: () => {} }));
 
 const hasLocalChart = vi.fn();
 vi.mock('./lib/localChart', () => ({

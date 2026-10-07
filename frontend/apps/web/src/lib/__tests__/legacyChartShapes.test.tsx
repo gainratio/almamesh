@@ -15,18 +15,26 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { render, screen } from '@testing-library/react';
-import { afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { MemoryRouter } from 'react-router-dom';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import {
   CHART_LIBRARY_PERSIST_VERSION,
   migrateChartLibraryPersistedState,
+  predictiveRequestKey,
   useChartLibraryStore,
+  usePredictiveStore,
   useProfilesStore,
   type StoredChart,
 } from '@almamesh/store';
+import type { ProcessedBirthData } from '@almamesh/shared-types';
 
+import { LifeAtlas } from '../../components/features/dashboard/LifeAtlas';
 import { ProvenanceFooter } from '../../components/ProvenanceFooter';
+import { DOMAINS_CTX } from '../../test/predictiveFixtures';
+import { currentTimelineInputState } from '../../hooks/useStreamingInterpretation';
 import { storedChartAnalysisInstant } from '../analysisInstant';
+import { buildEnsurePredictiveInput, predictiveReferenceInstant } from '../predictive';
 
 // Vitest runs from apps/web (the DOM environment's import.meta.url is not a file URL).
 const EXTRACT = join(
@@ -61,6 +69,8 @@ beforeAll(() => {
 
 afterEach(() => {
   useChartLibraryStore.setState({ charts: {} });
+  usePredictiveStore.getState().reset();
+  vi.useRealTimers();
 });
 
 describe('a chart from a backup made before chart snapshots', () => {
@@ -115,5 +125,93 @@ describe('a chart from a backup made before chart snapshots', () => {
     const reimported = JSON.parse(exported) as PersistedRow;
     const migrated = migrateChartLibraryPersistedState(reimported.state, reimported.version);
     expect(migrated.charts[CHART_ID]).toEqual(legacyChart);
+  });
+});
+
+/**
+ * The live bug (almamesh.com, 50a9c00): a pre-snapshot chart calculated on
+ * Jun 26, whose current timeline was refreshed in October. The Life Atlas
+ * printed the October wall-clock day while the provenance footer printed the
+ * chart's own Jun 26 instant: two "As of" dates on one screen.
+ */
+describe('one analysis instant on screen for a pre-snapshot chart', () => {
+  const CALCULATED = '2026-06-26T17:00:00.000Z';
+  const TODAY = new Date('2026-10-07T18:00:00.000Z');
+
+  function calculatedLegacyChart(): StoredChart {
+    return {
+      ...legacyChart,
+      astronomical_calculations: {
+        ...legacyChart.astronomical_calculations,
+        calculation_timestamp: CALCULATED,
+      },
+    };
+  }
+
+  /** The predictive result computed for `day` — what the atlas renders when keys match. */
+  function predictiveReadyFor(chart: StoredChart, day: string): void {
+    const input = buildEnsurePredictiveInput(
+      PROFILE_ID,
+      chart.birth_data as ProcessedBirthData,
+      day,
+    )!;
+    usePredictiveStore.setState({
+      status: 'ready',
+      domainsCtx: { ...DOMAINS_CTX, instant: day },
+      profileKey: PROFILE_ID,
+      requestKey: predictiveRequestKey(input),
+    });
+  }
+
+  function renderScreen(chart: StoredChart): void {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(TODAY);
+    useChartLibraryStore.setState({ charts: { [CHART_ID]: chart }, hydrated: true });
+    useProfilesStore.setState({ activeProfileId: PROFILE_ID });
+  }
+
+  function asOfDates(): string[] {
+    const texts = [
+      screen.getByTestId('life-atlas').textContent ?? '',
+      screen.getByTestId('provenance-footer').textContent ?? '',
+    ];
+    return texts.flatMap((text) => [...text.matchAll(/As of ([A-Z][a-z]+ \d{1,2}, \d{4})/g)].map((m) => m[1]!));
+  }
+
+  function mount(chart: StoredChart): void {
+    render(
+      <MemoryRouter>
+        <LifeAtlas />
+        <ProvenanceFooter calculations={chart.astronomical_calculations} />
+      </MemoryRouter>,
+    );
+  }
+
+  it('never prints a wall-clock day beside the chart\'s own day after a timeline refresh', () => {
+    const chart = calculatedLegacyChart();
+    renderScreen(chart);
+    // The facts a refreshed timeline was narrated from: computed for TODAY.
+    predictiveReadyFor(chart, predictiveReferenceInstant(TODAY, 'Asia/Kolkata'));
+    mount(chart);
+    expect(new Set(asOfDates()).size).toBe(1);
+  });
+
+  it('shows the atlas as of exactly the date the footer prints', () => {
+    const chart = calculatedLegacyChart();
+    renderScreen(chart);
+    predictiveReadyFor(chart, predictiveReferenceInstant(new Date(CALCULATED), 'Asia/Kolkata'));
+    mount(chart);
+    const dates = asOfDates();
+    expect(dates).toHaveLength(2);
+    expect(dates[0]).toBe(dates[1]);
+    expect(dates[0]).toBe('Jun 26, 2026');
+  });
+
+  it('refreshes the current timeline from the facts computed for the chart\'s own day', () => {
+    const chart = calculatedLegacyChart();
+    renderScreen(chart);
+    predictiveReadyFor(chart, predictiveReferenceInstant(new Date(CALCULATED), 'Asia/Kolkata'));
+    usePredictiveStore.setState({ rawContexts: {} as never });
+    expect(currentTimelineInputState(CHART_ID)).toBe('ready');
   });
 });
