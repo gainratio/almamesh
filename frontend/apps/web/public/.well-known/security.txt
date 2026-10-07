@@ -10,6 +10,6 @@
 
 Contact: mailto:harish.seshadri@gmail.com
 Expires: 2027-07-25T00:00:00.000Z
-Policy: https://github.com/hseshadr/almamesh/blob/main/SECURITY.md
+Policy: https://github.com/gainratio/almamesh/blob/main/SECURITY.md
 Canonical: https://almamesh.com/.well-known/security.txt
 Preferred-Languages: en

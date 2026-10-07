@@ -95,7 +95,7 @@ file, removes the mount, and strips secret variables before Wrangler executes.
 - A **Cloudflare account** that owns (or will own) the `almamesh.com` zone.
   - The domain's DNS should be managed by Cloudflare (nameservers pointed at CF).
 - Wrangler 4.103.0 for one-time account setup — `npx --yes wrangler@4.103.0 --version`.
-- `gh` CLI authenticated against `hseshadr/almamesh` — `gh auth status`.
+- `gh` CLI authenticated against `gainratio/almamesh` — `gh auth status`.
 - The production signing keypair present locally (it already is):
   - `backend/keys-prod/private.key` (32 bytes, mode 600)
   - `backend/keys-prod/public.key` (32 bytes)
@@ -223,7 +223,7 @@ offline". First confirm production serves main's HEAD:
 
 ```bash
 curl -s https://almamesh.com/build.json | jq -r .commit   # must equal:
-gh api repos/hseshadr/almamesh/branches/main -q .commit.sha
+gh api repos/gainratio/almamesh/branches/main -q .commit.sha
 ```
 
 Then check, in a browser, at https://almamesh.com :

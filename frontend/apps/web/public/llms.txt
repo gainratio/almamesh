@@ -24,4 +24,4 @@ Birth details and computed charts remain in the browser. The city search can use
 
 ## Source
 
-- Repository: https://github.com/hseshadr/almamesh
+- Repository: https://github.com/gainratio/almamesh

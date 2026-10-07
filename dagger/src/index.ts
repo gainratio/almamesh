@@ -68,7 +68,7 @@ const CONTRACT_SHA = "1111111111111111111111111111111111111111"
 // Owner of the Git source a Git-linked Pages project stays bound to. Pinned to
 // today's owner so the binding survives the hseshadr -> gainratio transfer.
 const PAGES_GIT_SOURCE_OWNER = "hseshadr"
-const CENTRAL_MODULE_SHA = "a88866232e679b6353d2b75bceb01969be739f67"
+const CENTRAL_MODULE_SHA = "8fbde750dafd431c1777f2bf63b3170ef6db2caf"
 const NODE_IMAGE =
   "node:22-trixie-slim@sha256:7b8a0c89c54499bee567618f96578e1a12a800f062fbdbfd1fb6a443fa6f6284"
 const PAGES_NODE_IMAGE =
