@@ -11,6 +11,9 @@ interface EmbedRequest {
 }
 
 const spawned: string[] = [];
+let terminated = 0;
+const IPHONE =
+  'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.6 Mobile/15E148 Safari/604.1';
 
 class StubEmbedderWorker extends EventTarget {
   constructor(url: URL | string) {
@@ -23,7 +26,9 @@ class StubEmbedderWorker extends EventTarget {
       this.dispatchEvent(new MessageEvent('message', { data: { id: request.id, ok: true, vectors } }));
     });
   }
-  terminate(): void {}
+  terminate(): void {
+    terminated += 1;
+  }
 }
 
 const embedderSpawns = (): number => spawned.filter((u) => u.includes('embedder')).length;
@@ -31,11 +36,17 @@ const embedderSpawns = (): number => spawned.filter((u) => u.includes('embedder'
 describe('chatMemory embedder lifecycle', () => {
   beforeEach(() => {
     spawned.length = 0;
+    terminated = 0;
     vi.resetModules();
     vi.stubGlobal('Worker', StubEmbedderWorker);
+    // The embedder arms an idle-release timer after each answer; fake it so
+    // tests can step through it and nothing is left pending.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
   });
 
   afterEach(() => {
+    vi.clearAllTimers();
+    vi.useRealTimers();
     vi.unstubAllGlobals();
   });
 
@@ -64,5 +75,22 @@ describe('chatMemory embedder lifecycle', () => {
     invalidateMemoryRuntime();
     await searchMemory('health', 'p1');
     expect(embedderSpawns()).toBe(1);
+  });
+
+  it('on a 3 GB iPhone (minimal tier) releases the embedder after 60 s idle, reports idle, and reloads on demand', async () => {
+    vi.stubGlobal('navigator', { userAgent: IPHONE, platform: 'iPhone', maxTouchPoints: 5, hardwareConcurrency: 6 });
+    const { embedderStatus } = await import('../embedderStatus');
+    const { searchMemory } = await import('../chatMemory');
+    await searchMemory('career', 'p1');
+    expect(embedderStatus.get()).toBe('ready');
+
+    vi.advanceTimersByTime(59_999);
+    expect(terminated).toBe(0);
+    vi.advanceTimersByTime(1);
+    expect(terminated).toBe(1);
+    expect(embedderStatus.get()).toBe('idle');
+
+    await searchMemory('health', 'p1');
+    expect(embedderSpawns()).toBe(2);
   });
 });

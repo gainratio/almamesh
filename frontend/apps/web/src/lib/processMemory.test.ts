@@ -7,8 +7,10 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   descendantPids,
   parseProcStat,
+  parseSmapsPrivateBytes,
   parseVmRssBytes,
   processKind,
+  processTreeReport,
   readProcessTree,
   sampleProcessTreePeak,
   summarizeProcessTree,
@@ -23,6 +25,13 @@ describe('/proc parsing', () => {
 
   it('reads VmRSS in bytes', () => {
     expect(parseVmRssBytes('Name:\tchrome\nVmPeak:\t 9 kB\nVmRSS:\t  2048 kB\n')).toBe(2 * MiB);
+  });
+
+  it('reads private (USS) bytes from smaps_rollup: clean + dirty private pages, shared libraries excluded', () => {
+    expect(
+      parseSmapsPrivateBytes('Rss:  400000 kB\nPss:  300000 kB\nShared_Clean: 150000 kB\nPrivate_Clean: 1024 kB\nPrivate_Dirty: 2048 kB\n'),
+    ).toBe(3 * MiB);
+    expect(parseSmapsPrivateBytes('')).toBeNull();
   });
 
   it('returns null for a kernel thread or exited process with no VmRSS line', () => {
@@ -77,28 +86,51 @@ describe('process tree', () => {
   it('sums RSS per kind and in total, in MiB', () => {
     expect(
       summarizeProcessTree([
-        { pid: 1, kind: 'renderer', rssBytes: 300 * MiB },
-        { pid: 2, kind: 'renderer', rssBytes: 100 * MiB },
-        { pid: 3, kind: 'gpu', rssBytes: 50 * MiB },
+        { pid: 1, kind: 'renderer', rssBytes: 300 * MiB, privateBytes: null },
+        { pid: 2, kind: 'renderer', rssBytes: 100 * MiB, privateBytes: null },
+        { pid: 3, kind: 'gpu', rssBytes: 50 * MiB, privateBytes: null },
       ]),
-    ).toEqual({ totalMiB: 450, byKind: { renderer: 400, gpu: 50 }, processes: 3 });
+    ).toEqual({ totalMiB: 450, byKind: { renderer: 400, gpu: 50 }, largestPrivateByKind: {}, processes: 3 });
+  });
+
+  // A WebKit run has more than one web process (a suspended about:blank one
+  // holds ~250 MiB RSS, most of it shared libraries), so the sum of RSS per kind
+  // is not "the web process". The largest single process's private memory is.
+  it('keeps the largest single process private memory per kind, not the sum', () => {
+    expect(
+      summarizeProcessTree([
+        { pid: 1, kind: 'webkit-web', rssBytes: 255 * MiB, privateBytes: 95 * MiB },
+        { pid: 2, kind: 'webkit-web', rssBytes: 504 * MiB, privateBytes: 340 * MiB },
+      ]).largestPrivateByKind,
+    ).toEqual({ 'webkit-web': 340 });
+  });
+
+  it('reports the largest web process private peak next to the RSS sum', () => {
+    const report = processTreeReport(
+      { totalMiB: 900, byKind: { 'webkit-web': 759 }, largestPrivateByKind: { 'webkit-web': 340 }, processes: 3, samples: 4 },
+      ['webkit-web'],
+    );
+    expect(report).toMatchObject({ 'webkit-webRssPeakMiB': 759, 'webkit-webPrivatePeakMiB': 340 });
   });
 
   describe('readProcessTree over a /proc fixture', () => {
     let root = '';
     afterEach(() => rmSync(root, { recursive: true, force: true }));
 
-    function proc(pid: number, ppid: number, argv: string[], rssKiB?: number): void {
+    function proc(pid: number, ppid: number, argv: string[], rssKiB?: number, privateKiB?: number): void {
       mkdirSync(join(root, String(pid)));
       writeFileSync(join(root, String(pid), 'stat'), `${pid} (x) S ${ppid} 0 0`);
       writeFileSync(join(root, String(pid), 'cmdline'), `${argv.join('\0')}\0`);
       writeFileSync(join(root, String(pid), 'status'), rssKiB === undefined ? 'Name:\tx\n' : `VmRSS:\t${rssKiB} kB\n`);
+      if (privateKiB !== undefined) {
+        writeFileSync(join(root, String(pid), 'smaps_rollup'), `Private_Clean:\t0 kB\nPrivate_Dirty:\t${privateKiB} kB\n`);
+      }
     }
 
     it('reads only our descendants and skips processes without RSS', () => {
       root = mkdtempSync(join(tmpdir(), 'proc-fixture-'));
       proc(100, 1, ['node', 'journey.mjs']);
-      proc(101, 100, ['/pw/webkit/WebKitWebProcess'], 2048);
+      proc(101, 100, ['/pw/webkit/WebKitWebProcess'], 2048, 1024);
       proc(102, 100, ['/pw/webkit/WebKitNetworkProcess'], 1024);
       proc(103, 101, ['/pw/zombie']);
       proc(104, 100, ['/pw/exited'], 512);
@@ -107,18 +139,25 @@ describe('process tree', () => {
       mkdirSync(join(root, 'self'));
 
       expect(readProcessTree(100, root)).toEqual([
-        { pid: 101, kind: 'webkit-web', rssBytes: 2 * MiB },
-        { pid: 102, kind: 'webkit-network', rssBytes: 1 * MiB },
+        { pid: 101, kind: 'webkit-web', rssBytes: 2 * MiB, privateBytes: 1 * MiB },
+        { pid: 102, kind: 'webkit-network', rssBytes: 1 * MiB, privateBytes: null },
       ]);
     });
 
     it('keeps the peak of each kind across samples, not the last value', async () => {
       root = mkdtempSync(join(tmpdir(), 'proc-fixture-'));
       proc(100, 1, ['node']);
-      proc(101, 100, ['/pw/chrome', '--type=renderer'], 300 * 1024);
+      proc(101, 100, ['/pw/chrome', '--type=renderer'], 300 * 1024, 200 * 1024);
       const sampler = sampleProcessTreePeak(60_000, 100, root);
       writeFileSync(join(root, '101', 'status'), `VmRSS:\t${100 * 1024} kB\n`);
-      expect(await sampler.stop()).toEqual({ totalMiB: 300, byKind: { renderer: 300 }, processes: 1, samples: 2 });
+      writeFileSync(join(root, '101', 'smaps_rollup'), `Private_Dirty:\t${50 * 1024} kB\n`);
+      expect(await sampler.stop()).toEqual({
+        totalMiB: 300,
+        byKind: { renderer: 300 },
+        largestPrivateByKind: { renderer: 200 },
+        processes: 1,
+        samples: 2,
+      });
     });
 
     it('reports null when there is no /proc to read', async () => {

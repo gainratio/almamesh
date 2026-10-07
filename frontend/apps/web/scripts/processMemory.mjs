@@ -28,6 +28,18 @@ export function parseVmRssBytes(statusText) {
   return match ? Number(match[1]) * 1024 : null
 }
 
+/**
+ * Private memory (USS: private clean + private dirty) from /proc/<pid>/smaps_rollup.
+ * RSS also counts shared library pages every process maps; private memory is
+ * what this one process alone costs.
+ */
+export function parseSmapsPrivateBytes(smapsRollup) {
+  const clean = /^Private_Clean:\s+(\d+) kB/m.exec(smapsRollup)
+  const dirty = /^Private_Dirty:\s+(\d+) kB/m.exec(smapsRollup)
+  if (clean === null && dirty === null) return null
+  return (Number(clean?.[1] ?? 0) + Number(dirty?.[1] ?? 0)) * 1024
+}
+
 const CHROMIUM_TYPES = { renderer: 'renderer', 'gpu-process': 'gpu', utility: 'utility', zygote: 'zygote' }
 
 export function processKind(argv) {
@@ -83,15 +95,31 @@ export function readProcessTree(rootPid = process.pid, procRoot = '/proc') {
     const rssBytes = parseVmRssBytes(readOrNull(join(procRoot, String(pid), 'status')) ?? '')
     if (rssBytes === null) return []
     const argv = (readOrNull(join(procRoot, String(pid), 'cmdline')) ?? '').split('\0').filter(Boolean)
-    return [{ pid, kind: processKind(argv), rssBytes }]
+    const privateBytes = parseSmapsPrivateBytes(readOrNull(join(procRoot, String(pid), 'smaps_rollup')) ?? '')
+    return [{ pid, kind: processKind(argv), rssBytes, privateBytes }]
   })
 }
 
+/**
+ * RSS summed per kind and in total, plus the largest single process's private
+ * memory per kind (a WebKit run has several web processes, so their summed RSS
+ * is not "the web process").
+ */
 export function summarizeProcessTree(entries) {
   const byKind = {}
-  for (const { kind, rssBytes } of entries) byKind[kind] = (byKind[kind] ?? 0) + rssBytes / MiB
+  const largestPrivateByKind = {}
+  for (const { kind, rssBytes, privateBytes } of entries) {
+    byKind[kind] = (byKind[kind] ?? 0) + rssBytes / MiB
+    if (privateBytes !== null) largestPrivateByKind[kind] = Math.max(largestPrivateByKind[kind] ?? 0, privateBytes / MiB)
+  }
   const totalMiB = entries.reduce((sum, { rssBytes }) => sum + rssBytes, 0) / MiB
-  return { totalMiB, byKind, processes: entries.length }
+  return { totalMiB, byKind, largestPrivateByKind, processes: entries.length }
+}
+
+function maxByKind(a, b) {
+  const out = { ...a }
+  for (const [kind, mib] of Object.entries(b)) out[kind] = Math.max(out[kind] ?? 0, mib)
+  return out
 }
 
 /**
@@ -101,14 +129,13 @@ export function summarizeProcessTree(entries) {
  */
 export function sampleProcessTreePeak(intervalMs = 500, rootPid = process.pid, procRoot = '/proc') {
   if (readProcessTree(rootPid, procRoot) === null) return { stop: async () => null }
-  let peak = { totalMiB: 0, byKind: {}, processes: 0, samples: 0 }
+  let peak = { totalMiB: 0, byKind: {}, largestPrivateByKind: {}, processes: 0, samples: 0 }
   const take = () => {
     const now = summarizeProcessTree(readProcessTree(rootPid, procRoot) ?? [])
-    const byKind = { ...peak.byKind }
-    for (const [kind, mib] of Object.entries(now.byKind)) byKind[kind] = Math.max(byKind[kind] ?? 0, mib)
     peak = {
       totalMiB: Math.max(peak.totalMiB, now.totalMiB),
-      byKind,
+      byKind: maxByKind(peak.byKind, now.byKind),
+      largestPrivateByKind: maxByKind(peak.largestPrivateByKind, now.largestPrivateByKind),
       processes: Math.max(peak.processes, now.processes),
       samples: peak.samples + 1,
     }
@@ -140,6 +167,9 @@ export function formatMemoryReport(lane, fields) {
 export function processTreeReport(peak, kinds) {
   if (peak === null) return { totalRssPeakMiB: null, reason: 'no /proc on this host (RSS is read on Linux only)' }
   const fields = { totalRssPeakMiB: peak.totalMiB }
-  for (const kind of kinds) fields[`${kind}RssPeakMiB`] = peak.byKind[kind] ?? null
+  for (const kind of kinds) {
+    fields[`${kind}RssPeakMiB`] = peak.byKind[kind] ?? null
+    fields[`${kind}PrivatePeakMiB`] = peak.largestPrivateByKind?.[kind] ?? null
+  }
   return { ...fields, processes: peak.processes, samples: peak.samples }
 }

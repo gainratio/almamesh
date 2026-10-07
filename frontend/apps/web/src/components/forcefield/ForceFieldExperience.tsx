@@ -17,8 +17,9 @@
  * from the static waves (cheap; no per-frame allocation of the wave list).
  *
  * Perf/a11y: rAF pauses when offscreen (IntersectionObserver) or tab-hidden;
- * `prefers-reduced-motion` renders a single static frame; bloom is gated off on
- * low-power devices; the canvas carries `role="img"` + an aria summary.
+ * `prefers-reduced-motion` renders a single static frame; bloom is off on the
+ * minimal device tier and the canvas dpr follows the tier; the canvas carries
+ * `role="img"` + an aria summary.
  */
 
 import {
@@ -34,6 +35,7 @@ import { useTranslation } from 'react-i18next';
 import { Canvas, type RootState } from '@react-three/fiber';
 import { EffectComposer, Bloom, Vignette } from '@react-three/postprocessing';
 import { colors } from '@almamesh/constants';
+import { devicePolicy } from '@almamesh/browser';
 import type { SiderealChart } from '@almamesh/browser/types';
 import {
   buildEnergyFrame,
@@ -48,6 +50,8 @@ import {
 } from '@almamesh/shared-types';
 import { ForceFieldScene } from './ForceFieldScene';
 import { isSoftwareRenderer } from './softwareRenderer';
+import { forceFieldRenderSettings } from './renderSettings';
+import { SharedTextureRelease } from './SharedTextureRelease';
 
 export interface ForceFieldExperienceProps {
   /** The engine's raw, lossless chart output (the richest feed). */
@@ -58,27 +62,6 @@ export interface ForceFieldExperienceProps {
   readonly onSelectPlanet?: (id: string | null) => void;
   /** Override the rendered height (px). Default 420. */
   readonly height?: number;
-}
-
-/** Post-processing tier — phones get a gentle bloom, desktops the full pass. */
-type EffectTier = 'full' | 'lite';
-
-/**
- * Pick the post-processing tier. Low-core / coarse-pointer (phone) devices get
- * the `lite` tier — a soft, cheap single-pass bloom that still lifts the
- * brass/lapis glow without the wider mip chain + vignette that can cost FPS on
- * mobile GPUs. Everything else gets the `full` tier.
- */
-function effectTier(): EffectTier {
-  if (typeof navigator === 'undefined') return 'full';
-  const lowCores =
-    typeof navigator.hardwareConcurrency === 'number' &&
-    navigator.hardwareConcurrency <= 4;
-  const coarsePointer =
-    typeof window !== 'undefined' &&
-    typeof window.matchMedia === 'function' &&
-    window.matchMedia('(pointer: coarse)').matches;
-  return lowCores || coarsePointer ? 'lite' : 'full';
 }
 
 /** The lagna tint = the wave colour of the ascendant's sign-lord planet. */
@@ -140,7 +123,8 @@ export function ForceFieldExperience({
   );
 
   const ariaLabel = useMemo(() => describeField(frame), [frame]);
-  const tier = useMemo(() => effectTier(), []);
+  // One device tier for the whole app: bloom and canvas resolution follow it.
+  const render = useMemo(() => forceFieldRenderSettings(devicePolicy()), []);
 
   // prefers-reduced-motion
   useEffect(() => {
@@ -225,13 +209,14 @@ export function ForceFieldExperience({
       <Canvas
         camera={{ position: [0, 6, 14], fov: 50 }}
         gl={{ antialias: true, alpha: true, powerPreference: 'high-performance' }}
-        dpr={[1, 2]}
+        dpr={[render.dpr[0], render.dpr[1]]}
         frameloop={!still && inView ? 'always' : 'demand'}
         onCreated={handleCreated}
         role="img"
         aria-label={ariaLabel}
       >
         <color attach="background" args={[colors.background.primary]} />
+        <SharedTextureRelease />
         <ForceFieldScene
           frame={frame}
           animationTime={animationTime}
@@ -242,7 +227,7 @@ export function ForceFieldExperience({
           houseSpokes={houseSpokes}
           lagnaLongitude={lagnaLongitude}
           effects={
-            tier === 'full' ? (
+            render.effects === 'full' ? (
               <EffectComposer>
                 <Bloom
                   luminanceThreshold={0.22}
@@ -252,9 +237,8 @@ export function ForceFieldExperience({
                 />
                 <Vignette eskil={false} offset={0.28} darkness={0.62} />
               </EffectComposer>
-            ) : (
-              // Mobile / low-power: a single soft bloom (no mip chain, no
-              // vignette) — keeps the gentle glow ON without tanking FPS.
+            ) : render.effects === 'lite' ? (
+              // Mid-tier: a single soft bloom (no mip chain, no vignette).
               <EffectComposer>
                 <Bloom
                   luminanceThreshold={0.32}
@@ -262,7 +246,7 @@ export function ForceFieldExperience({
                   intensity={0.45}
                 />
               </EffectComposer>
-            )
+            ) : null
           }
         />
       </Canvas>
