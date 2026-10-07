@@ -12,6 +12,7 @@ import { buildChatMessages, type ChatRectificationContext } from "../prompt";
 import type { SanitizedChart } from "../sanitize";
 
 const CHART: SanitizedChart = {
+  as_of: { date: "2026-01-01", basis: "chart" },
   ayanamsa_value: 24.1,
   lagna: {
     longitude: 12.3,

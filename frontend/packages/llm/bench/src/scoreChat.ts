@@ -33,7 +33,7 @@ export interface ScoreChatOptions {
 }
 
 export async function scoreChat(options: ScoreChatOptions): Promise<ChatScore> {
-  const sanitized = sanitizeChartForLlm(options.chart, options.now);
+  const sanitized = sanitizeChartForLlm(options.chart, { basis: "chart", instant: options.now });
   const maxTokens = options.maxTokens ?? 450;
   const clientOptions: Omit<BenchClientOptions, "fetchBase"> & { fetchBase: FetchLike } = {
     baseUrl: options.baseUrl,

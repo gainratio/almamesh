@@ -59,6 +59,7 @@ function renderCover(lagna: LagnaData, profileId?: string | null) {
         birth={BIRTH}
         lagna={lagna}
         profileId={profileId}
+        asOf="2025-01-01T12:00:00.000Z"
       />
     </MemoryRouter>,
   );

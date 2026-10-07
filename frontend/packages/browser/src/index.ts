@@ -59,7 +59,15 @@ export type { DomainStrengthAssayResult } from "./pyodide/strengthAssay";
 
 // --- the Pyodide chart engine (compute layer) ---
 export { ChartEngineClient } from "./pyodide/chartEngineClient";
+export {
+  CHART_SNAPSHOT_SCHEMA,
+  ChartSnapshotError,
+  computeSnapshotId,
+  parseChartSnapshot,
+  verifyChartSnapshot,
+} from "./pyodide/chartSnapshot";
 export type {
+  ChartSnapshot,
   HouseCusp,
   LagnaData,
   PlanetPosition,

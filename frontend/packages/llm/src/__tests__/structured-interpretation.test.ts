@@ -152,7 +152,7 @@ describe("streamStructuredInterpretation — happy path", () => {
       streamStructuredInterpretation({
         chart: realChart,
         config: LOCAL_CFG,
-        now: NOW,
+        asOf: { basis: "chart", instant: NOW },
         fetchImpl: makeStubFetch(),
       }),
     );
@@ -171,7 +171,7 @@ describe("streamStructuredInterpretation — happy path", () => {
       streamStructuredInterpretation({
         chart: realChart,
         config: LOCAL_CFG,
-        now: NOW,
+        asOf: { basis: "chart", instant: NOW },
         fetchImpl: makeStubFetch(),
       }),
     );
@@ -213,7 +213,7 @@ describe("streamStructuredInterpretation — happy path", () => {
       streamStructuredInterpretation({
         chart: realChart,
         config: LOCAL_CFG,
-        now: NOW,
+        asOf: { basis: "chart", instant: NOW },
         fetchImpl: makeStubFetch({ fence: new Set(["core", "yoga"]) }),
       }),
     );
@@ -235,7 +235,7 @@ describe("streamStructuredInterpretation — degrade gracefully", () => {
       streamStructuredInterpretation({
         chart: realChart,
         config: LOCAL_CFG,
-        now: NOW,
+        asOf: { basis: "chart", instant: NOW },
         fetchImpl: makeStubFetch({ fail: new Set(["yoga"]) }),
       }),
     );
@@ -276,7 +276,7 @@ describe("streamStructuredInterpretation — degrade gracefully", () => {
     const gen = streamStructuredInterpretation({
       chart: realChart,
       config: LOCAL_CFG,
-      now: NOW,
+      asOf: { basis: "chart", instant: NOW },
       fetchImpl: makeStubFetch({ fail: new Set(ALL_SECTIONS) }),
     });
 
@@ -310,7 +310,7 @@ describe("streamStructuredInterpretation — degrade gracefully", () => {
     const gen = streamStructuredInterpretation({
       chart: realChart,
       config: LOCAL_CFG,
-      now: NOW,
+      asOf: { basis: "chart", instant: NOW },
       fetchImpl: fetch402,
     });
 
@@ -332,7 +332,7 @@ describe("streamStructuredInterpretation — dual-voice summary", () => {
       streamStructuredInterpretation({
         chart: realChart,
         config: LOCAL_CFG,
-        now: NOW,
+        asOf: { basis: "chart", instant: NOW },
         fetchImpl: makeStubFetch(),
       }),
     );
@@ -361,7 +361,7 @@ describe("streamStructuredInterpretation — dual-voice summary", () => {
       streamStructuredInterpretation({
         chart: realChart,
         config: LOCAL_CFG,
-        now: NOW,
+        asOf: { basis: "chart", instant: NOW },
         fetchImpl: bareStringCoreFetch,
       }),
     );
@@ -389,7 +389,7 @@ describe("streamStructuredInterpretation — privacy fail-closed", () => {
         baseUrl: "https://openrouter.ai/api/v1",
         apiKey: "sk-test",
       },
-      now: NOW,
+      asOf: { basis: "chart", instant: NOW },
       fetchImpl,
     });
 
@@ -408,7 +408,7 @@ describe("streamStructuredInterpretation — abort", () => {
     const gen = streamStructuredInterpretation({
       chart: realChart,
       config: LOCAL_CFG,
-      now: NOW,
+      asOf: { basis: "chart", instant: NOW },
       signal: controller.signal,
       fetchImpl,
     });
@@ -431,7 +431,7 @@ describe("streamStructuredInterpretation — egress", () => {
       streamStructuredInterpretation({
         chart: realChart,
         config: LOCAL_CFG,
-        now: NOW,
+        asOf: { basis: "chart", instant: NOW },
         fetchImpl,
       }),
     );

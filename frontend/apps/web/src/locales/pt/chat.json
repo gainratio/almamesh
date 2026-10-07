@@ -70,6 +70,7 @@
     "recommended_remedies": "Remédios recomendados"
   },
   "errors": {
+    "chart_changed": "Seu mapa mudou enquanto esta resposta era escrita, então ela foi descartada. Pergunte novamente para obter uma resposta sobre o mapa atual.",
     "model_unavailable": "O modelo de IA configurado não está disponível no seu endpoint. Escolha outro modelo em Configurações → IA.",
     "endpoint_unreachable": "Não foi possível alcançar seu endpoint de IA. Verifique se ele está em execução e se o endereço em Configurações → IA está correto.",
     "insufficient_credits": "Sua conta de IA está sem créditos. Adicione créditos com seu provedor (para OpenRouter: openrouter.ai → Credits) ou escolha um modelo mais barato em Configurações → IA.",

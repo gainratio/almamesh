@@ -158,3 +158,19 @@ describe('chartLibraryStore', () => {
     });
   });
 });
+
+describe('renameChartsForProfile', () => {
+  it("renames only that person's charts, and leaves state untouched when nothing changes", () => {
+    const store = newStore();
+    store.setState({ charts: { a: makeChart('a', true, 'p1'), b: makeChart('b', false, 'p2') } });
+
+    store.getState().renameChartsForProfile('p1', 'Ada');
+    expect(store.getState().charts.a!.person_name).toBe('Ada');
+    expect(store.getState().charts.b!.person_name).toBe('Person b');
+
+    const before = store.getState().charts;
+    store.getState().renameChartsForProfile('p1', 'Ada');
+    // Same reference: no new state, so persist queues no write.
+    expect(store.getState().charts).toBe(before);
+  });
+});

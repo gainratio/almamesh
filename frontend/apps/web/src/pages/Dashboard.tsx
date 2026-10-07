@@ -15,6 +15,7 @@ import {
   describeLlmStatus,
   resolveProviderConfig,
   sanitizeChartForLlm,
+  todayAnalysisInstant,
   streamAgentChat,
   serializeInterpretationForChat,
   readLlmSettings,
@@ -42,6 +43,7 @@ import { ContentModeToggle } from "../components/ui/ContentModeToggle";
 import { MarkdownContent } from "../components/ui/MarkdownContent";
 import { FloatingChatPanel } from "../components/features/chat/FloatingChatPanel";
 import { FeedbackWidget } from "../components/features/feedback/FeedbackWidget";
+import { storedChartAnalysisInstant } from "../lib/analysisInstant";
 import { ProvenanceFooter } from "../components/ProvenanceFooter";
 import {
   ChartVisualization,
@@ -298,7 +300,11 @@ export default function DashboardPage() {
       ? useRectificationRecordsStore.getState().getRecord(activeProfileId)
       : null;
     const language = useLanguageStore.getState().language;
+    // `now` is ONLY for questions genuinely about today (the current-timing
+    // tool). Everything else describes the chart as of its own analysis instant.
     const now = new Date();
+    const chartAsOf = storedChartAnalysisInstant(storedChart!);
+    let usesTodayContext = false;
     let chartWithPredictive = withRawPredictive(chart, chartId);
     const rectification = rectificationRecord
       ? {
@@ -325,10 +331,12 @@ export default function DashboardPage() {
         runtime,
         signal: context.signal,
       });
+      usesTodayContext = true;
       return chartWithPredictive;
     };
     const tools = createChatAgentTools({
       chart: chartWithPredictive,
+      chartAsOf,
       chartTimeZone,
       loadCurrentChart,
     });
@@ -355,7 +363,10 @@ export default function DashboardPage() {
     }
 
     let messages = buildChatMessages(
-      sanitizeChartForLlm(chartWithPredictive, now),
+      sanitizeChartForLlm(
+        chartWithPredictive,
+        usesTodayContext ? todayAnalysisInstant(now) : chartAsOf,
+      ),
       question,
       chatMode,
       history,
@@ -1193,7 +1204,7 @@ export default function DashboardPage() {
         </Card>
 
         {/* Trust-through-transparency: how this chart was produced (on-device). */}
-        <ProvenanceFooter />
+        <ProvenanceFooter calculations={astronomicalData ?? null} />
       </div>
 
       {/* Grounded chart Q&A — available in both modes (one surface). */}

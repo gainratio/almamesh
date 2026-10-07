@@ -95,7 +95,9 @@ function dashaBlock(chart: SanitizedChart): string {
     // No silent convention: state which dasha-year length built these periods.
     lines.push(`- Dasha-year convention: ${chart.dashas.convention} (engine-declared)`);
   }
-  return lines.length > 0 ? ["Current dasha period:", ...lines].join("\n") : "";
+  const basis = chart.as_of.basis === "today" ? "today" : "the chart's analysis date";
+  const header = `Current dasha period (as of ${chart.as_of.date}, ${basis}):`;
+  return lines.length > 0 ? [header, ...lines].join("\n") : "";
 }
 
 // --- engine-dated period blocks (the dasha tree). Every lord and window below

@@ -20,7 +20,7 @@ import {
 import { sanitizeChartForLlm } from "../sanitize";
 
 const NOW = new Date("2030-01-01T00:00:00.000Z");
-const CHART = sanitizeChartForLlm(golden as unknown as SiderealChart, NOW);
+const CHART = sanitizeChartForLlm(golden as unknown as SiderealChart, { basis: "chart", instant: NOW });
 
 const LOCAL_CONFIG: ProviderConfig = {
   engine: "openai-http",

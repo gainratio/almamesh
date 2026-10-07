@@ -6,6 +6,7 @@ import type { SanitizedChart, SanitizedPredictive } from "../sanitize";
 // A real-shape SanitizedChart with an exalted planet + a current dasha so we can
 // assert the facts block (not a raw JSON dump) reaches the prompt.
 const CHART: SanitizedChart = {
+  as_of: { date: "2026-01-01", basis: "chart" },
   ayanamsa_value: 24.1,
   lagna: {
     longitude: 12.3,

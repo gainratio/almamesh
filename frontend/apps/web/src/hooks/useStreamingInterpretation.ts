@@ -56,6 +56,7 @@ import { aiErrorRegistry, chatErrorMessage, classifyConnectionError } from '../l
 import { createFrameBatcher, type FrameBatcher } from '../lib/frameBatcher';
 import { whenDataLifecycleReady } from '../lib/profileDataLifecycle';
 import { buildEnsurePredictiveInput, predictiveReferenceInstant } from '../lib/predictive';
+import { storedChartAnalysisInstant } from '../lib/analysisInstant';
 import { fetchEvidenceAnnotations } from './evidenceAnnotations';
 import { useSingleFlight } from './useSingleFlight';
 
@@ -520,6 +521,7 @@ export function useStreamingInterpretation(chartId?: string | null): UseStreamin
       try {
         for await (const event of streamNatalInterpretation({
           chart,
+          asOf: storedChartAnalysisInstant(stored),
           config,
           mode: options.view_mode === 'expert' ? 'expert' : 'layman',
           language,
@@ -582,6 +584,7 @@ export function useStreamingInterpretation(chartId?: string | null): UseStreamin
       }
       const annotations = await fetchEvidenceAnnotations({
         chart,
+        asOf: storedChartAnalysisInstant(stored),
         config,
         language,
         signal: controller.signal,
@@ -660,6 +663,7 @@ export function useStreamingInterpretation(chartId?: string | null): UseStreamin
       try {
         for await (const event of streamCurrentTimeline({
           chart: input.chart,
+          asOf: storedChartAnalysisInstant(stored),
           config,
           mode: options.view_mode === 'expert' ? 'expert' : 'layman',
           language,

@@ -29,6 +29,7 @@ vi.mock('../../lib/downloadReportPdf', () => ({
   downloadReportPdf: vi.fn(async () => undefined),
 }));
 import { downloadReportPdf } from '../../lib/downloadReportPdf';
+import { formatReportDate } from '../../lib/reportData';
 
 import ReportView from '../ReportView';
 
@@ -136,13 +137,20 @@ describe('ReportView', () => {
     expect(within(yogas).getByText(/Phaladeepika, Vipareeta Raja-yoga adhyaya/)).toBeTruthy();
   });
 
-  it('renders a real generated date — never 1969 or Invalid', () => {
+  // CONTRACT REVERSED (2026-10-05, chart consistency phase 1): this test used
+  // to require TODAY's year on the cover, i.e. it asserted the defect. The
+  // cover now prints the chart's own analysis date, the same date the PDF
+  // prints, so the screen and the PDF can no longer disagree about "as of".
+  it("renders the chart's analysis date — never today, 1969 or Invalid", () => {
     seed();
     renderReport('you');
     const generated = screen.getByTestId('report-generated-date').textContent ?? '';
     expect(generated).not.toMatch(/1969/);
     expect(generated).not.toMatch(/invalid/i);
-    expect(generated).toContain(String(new Date().getFullYear()));
+    expect(generated).toContain(
+      formatReportDate(storedChart().astronomical_calculations.calculation_timestamp),
+    );
+    expect(generated).not.toContain(String(new Date().getFullYear()));
   });
 
   it('renders a place string with no trailing/empty commas', () => {

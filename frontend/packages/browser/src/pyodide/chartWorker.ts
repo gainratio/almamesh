@@ -49,6 +49,7 @@ export const PY_BOOTSTRAP = `
 import json
 from datetime import UTC, datetime
 from almamesh.calculations import calculate_sidereal_context
+from almamesh.snapshot import compute_stamped_chart
 
 def _almamesh_generate_chart(birth_json):
     # referenceDate is REQUIRED — no silent now(); a KeyError here is a caller
@@ -63,10 +64,13 @@ def _almamesh_generate_chart(birth_json):
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=UTC)
     reference_date = datetime.fromisoformat(birth["referenceDate"])
-    ctx = calculate_sidereal_context(
+    # The stamped chart: engine output + its snapshot (engine version, data
+    # hash, conventions, both instants, snapshot_id). The TS boundary re-hashes
+    # the snapshot and refuses a chart whose stamp does not match the request.
+    chart = compute_stamped_chart(
         dt, birth["latitude"], birth["longitude"], reference_date=reference_date
     )
-    return json.dumps(ctx.model_dump(mode="json"))
+    return json.dumps(chart.model_dump(mode="json"))
 
 def _almamesh_compute_predictive(input_json):
     # The LAZY predictive superset (transits + vargas + strength + domains).

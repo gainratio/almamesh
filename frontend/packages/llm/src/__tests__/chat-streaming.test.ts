@@ -65,7 +65,7 @@ describe("streamChartChat — cloud path is a SINGLE streaming pass (no blocking
         question: "Where is my Mars?",
         config: CLOUD_CFG,
         fetchImpl: fetchImpl as unknown as typeof fetch,
-        now: NOW,
+        asOf: { basis: "chart", instant: NOW },
       }),
     );
 
@@ -92,7 +92,7 @@ describe("streamChartChat — cloud path is a SINGLE streaming pass (no blocking
         question: "Tell me about my chart.",
         config: CLOUD_CFG,
         fetchImpl: fetchImpl as unknown as typeof fetch,
-        now: NOW,
+        asOf: { basis: "chart", instant: NOW },
       }),
     );
     // The compact facts block, not the structural JSON keys.
@@ -112,7 +112,7 @@ describe("streamChartChat — cloud path is a SINGLE streaming pass (no blocking
         question: "Tell me about my chart.",
         config: CLOUD_CFG,
         fetchImpl: fetchImpl as unknown as typeof fetch,
-        now: NOW,
+        asOf: { basis: "chart", instant: NOW },
       }),
     );
     expect(body).not.toMatch(/chart_id|generated_at|calculation_timestamp/);
@@ -133,7 +133,7 @@ describe("streamChartChat — local path is also a single streaming pass", () =>
         question: "Where is my Mars?",
         config: LOCAL_CFG,
         fetchImpl: fetchImpl as unknown as typeof fetch,
-        now: NOW,
+        asOf: { basis: "chart", instant: NOW },
       }),
     );
     expect(tokens.join("")).toBe("Local answer.");
@@ -157,7 +157,7 @@ describe("streamChartChat — RAG retrievedContext threads through", () => {
         question: "And my career path?",
         config: CLOUD_CFG,
         fetchImpl: fetchImpl as unknown as typeof fetch,
-        now: NOW,
+        asOf: { basis: "chart", instant: NOW },
         retrievedContext: ["Earlier we discussed a Saturn return."],
       }),
     );

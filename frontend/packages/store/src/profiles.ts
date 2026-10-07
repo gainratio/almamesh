@@ -23,6 +23,7 @@ import {
 
 import {
   cascadeDeleteCharts,
+  cascadeRenameCharts,
   setActiveProfileScope,
   useChartLibraryStore,
   whenChartLibraryHydrated,
@@ -303,6 +304,9 @@ export const profilesStoreCreator: StateCreator<ProfilesStore> = (set, get) => (
       const next = { ...existing, name: name.trim() || existing.name };
       return { profiles: { ...state.profiles, [id]: next } };
     });
+    // The chart's person_name follows, so the header and the chart agree.
+    const renamed = get().profiles[id];
+    if (renamed && name.trim() !== '') cascadeRenameCharts(id, renamed.name);
   },
 
   deleteProfile: (id) => {

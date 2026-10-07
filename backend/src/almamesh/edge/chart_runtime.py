@@ -36,6 +36,7 @@ from almamesh.rectification.models import (
 )
 from almamesh.schemas.astrology import SiderealContext
 from almamesh.schemas.mesh import MatchRole, Relationship
+from almamesh.snapshot import compute_stamped_chart
 
 _RUNTIME_VERSION = "almamesh-chart/0.1.0"
 
@@ -56,18 +57,23 @@ def _parse_payload_number(value: object, *, field: str) -> float:
 def _compute_chart(payload: Mapping[str, object]) -> dict[str, JsonValue]:
     """Run the deterministic calc core over birth data from a task payload.
 
-    An optional ``reference_date`` (ISO 8601) pins the "current" Vimshottari
-    maha dasha; omit it to use the wall clock. Passing it makes the chart fully
+    Returns the stamped chart (engine output + ``snapshot``). An optional
+    ``reference_date`` (ISO 8601) pins the "current" Vimshottari maha dasha;
+    omit it to use the wall clock, which the snapshot then records. Passing it makes the chart fully
     reproducible (required for byte-parity and content-addressed bundles).
     """
     dt = datetime.fromisoformat(str(payload["datetime_utc"]))
     latitude = _parse_payload_number(payload["latitude"], field="latitude")
     longitude = _parse_payload_number(payload["longitude"], field="longitude")
     raw_reference = payload.get("reference_date")
-    reference_date = datetime.fromisoformat(str(raw_reference)) if raw_reference else None
-    return calculate_sidereal_context(
-        dt, latitude, longitude, reference_date=reference_date
-    ).model_dump(mode="json")
+    # The CLI may omit the instant; read the clock ONCE so the snapshot records
+    # exactly the instant the "current" dasha was computed for.
+    reference_date = (
+        datetime.fromisoformat(str(raw_reference)) if raw_reference else datetime.now(UTC)
+    )
+    return compute_stamped_chart(dt, latitude, longitude, reference_date=reference_date).model_dump(
+        mode="json"
+    )
 
 
 def compute_predictive(payload: Mapping[str, object]) -> dict[str, JsonValue]:

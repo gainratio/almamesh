@@ -212,7 +212,62 @@ export interface SanitizedPredictive {
 }
 
 /** The chart as it leaves the device: identifier-free, dasha dates relativized. */
+/**
+ * The instant every "current"/"remaining" statement in the prompt is relative
+ * to. `chart` = the chart's own stored analysis instant (its snapshot's
+ * `reference_date`), the default for everything that describes the chart.
+ * `today` = the wall clock, ONLY where a caller genuinely asks about today
+ * (the chat's current-timing tool), and labelled as such in the prompt.
+ */
+export interface AnalysisInstant {
+  readonly basis: "chart" | "today";
+  readonly instant: Date;
+}
+
+/** The "as of" stamp the prompt carries: a local calendar date and its basis. */
+export interface SanitizedAsOf {
+  readonly date: string;
+  readonly basis: AnalysisInstant["basis"];
+}
+
+function requireInstant(value: string | Date, label: string): Date {
+  const instant = value instanceof Date ? new Date(value.getTime()) : new Date(value);
+  if (Number.isNaN(instant.getTime())) {
+    throw new Error(`analysis instant: ${label} is not a valid instant`);
+  }
+  return instant;
+}
+
+/**
+ * The chart's analysis instant: its snapshot's `reference_date`, or, for a
+ * chart stored before snapshots existed, the stored calculation instant the
+ * caller passes. Never the wall clock: with neither, it refuses.
+ */
+export function chartAnalysisInstant(
+  chart: SiderealChart,
+  storedInstant?: string | Date,
+): AnalysisInstant {
+  const recorded = chart.snapshot?.reference_date ?? storedInstant;
+  if (recorded === undefined) {
+    throw new Error("analysis instant: the chart records none and no stored instant was given");
+  }
+  return { basis: "chart", instant: requireInstant(recorded, "chart reference") };
+}
+
+/** An explicit, labelled "today" basis, for questions genuinely about now. */
+export function todayAnalysisInstant(now: Date): AnalysisInstant {
+  return { basis: "today", instant: requireInstant(now, "today") };
+}
+
+/** The instant's calendar date in the display (runtime) timezone, as the UI prints it. */
+function localIsoDate(instant: Date): string {
+  const pad = (n: number): string => String(n).padStart(2, "0");
+  return `${instant.getFullYear()}-${pad(instant.getMonth() + 1)}-${pad(instant.getDate())}`;
+}
+
 export interface SanitizedChart {
+  /** Which instant "current"/"remaining" below are relative to. */
+  readonly as_of: SanitizedAsOf;
   readonly ayanamsa_value: SiderealChart["ayanamsa_value"];
   readonly lagna: SiderealChart["lagna"];
   readonly planets: SiderealChart["planets"];
@@ -435,18 +490,22 @@ function sanitizePredictive(chart: SiderealChart): SanitizedPredictive | undefin
 /**
  * Sanitize an engine `SiderealChart` before it is sent to any LLM endpoint.
  *
- * Pure: returns a fresh object and never mutates `chart`. `now` is injectable so
- * the relativization is deterministic and testable (defaults to wall clock).
+ * Pure: returns a fresh object and never mutates `chart`. `asOf` is REQUIRED:
+ * pass `chartAnalysisInstant(chart)` so the prompt's "current" dasha is the one
+ * the screen and the PDF show; pass `todayAnalysisInstant(now)` only where the
+ * question is genuinely about today. There is no wall-clock default.
  */
 export function sanitizeChartForLlm(
   chart: SiderealChart,
-  now: Date = new Date(),
+  asOf: AnalysisInstant,
 ): SanitizedChart {
+  const now = asOf.instant;
   // Allowlist rebuild: we copy ONLY the astrological fields below, so any
   // identifier field a caller layered on (IDENTIFIER_FIELDS, or anything else)
   // is dropped by construction rather than by a fragile denylist.
   const predictive = sanitizePredictive(chart);
   const base: SanitizedChart = {
+    as_of: { date: localIsoDate(now), basis: asOf.basis },
     ayanamsa_value: chart.ayanamsa_value,
     lagna: chart.lagna,
     planets: chart.planets,

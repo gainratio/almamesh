@@ -4,6 +4,8 @@ ChartRuntime accepts a LOCAL_ONLY, DETERMINISTIC task carrying birth data and
 returns the full sidereal chart — the calc core runs entirely on-device.
 """
 
+from datetime import UTC, datetime
+
 import pytest
 from edgeproc import CapabilityVerdict, PrivacyMode, Task, TaskKind
 
@@ -86,10 +88,31 @@ async def test_execute_returns_full_chart() -> None:
 
 
 async def test_execute_is_byte_identical_for_same_input() -> None:
+    # The analysis instant is an input (the snapshot records it), so "same
+    # input" pins it; with it pinned there is no RNG and no clock in the output.
+    pinned = dict(_BIRTH, reference_date="2025-01-01T00:00:00+00:00")
     runtime = ChartRuntime()
-    first = await runtime.execute(_chart_task())
-    second = await runtime.execute(_chart_task())
-    assert first.payload == second.payload  # no RNG, no clock in the calc core
+    first = await runtime.execute(_chart_task(pinned))
+    second = await runtime.execute(_chart_task(pinned))
+    assert first.payload == second.payload
+
+
+async def test_execute_stamps_the_snapshot_with_the_pinned_instant() -> None:
+    pinned = dict(_BIRTH, reference_date="2025-01-01T00:00:00+00:00")
+    result = await ChartRuntime().execute(_chart_task(pinned))
+
+    stamp = result.payload["chart"]["snapshot"]
+    assert stamp["reference_date"] == "2025-01-01T00:00:00+00:00"
+    assert stamp["birth_utc"] == "1990-01-15T12:00:00+00:00"
+
+
+async def test_execute_records_the_instant_it_used_when_none_is_pinned() -> None:
+    """The CLI may omit the instant; the chart then says which one it used."""
+    result = await ChartRuntime().execute(_chart_task())
+
+    stamp = result.payload["chart"]["snapshot"]
+    used = datetime.fromisoformat(stamp["reference_date"])
+    assert abs((datetime.now(UTC) - used).total_seconds()) < 60
 
 
 async def test_reference_date_in_payload_selects_current_maha() -> None:

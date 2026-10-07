@@ -42,10 +42,12 @@ describe('createChatAgentTools', () => {
     houses: [],
     yogas: [],
   } as unknown as SiderealChart;
+  const chartAsOf = { basis: 'chart' as const, instant: new Date('2025-01-01T12:00:00.000Z') };
 
   it('exposes exactly the three bounded read-only capabilities', () => {
     const tools = createChatAgentTools({
       chart,
+      chartAsOf,
       chartTimeZone: 'Asia/Kolkata',
     });
     expect(tools.map((tool) => tool.name)).toEqual([
@@ -58,6 +60,7 @@ describe('createChatAgentTools', () => {
   it('uses the turn-pinned clock and chart timezone without wall-clock reads', async () => {
     const [timeTool] = createChatAgentTools({
       chart,
+      chartAsOf,
       chartTimeZone: 'Asia/Kolkata',
     });
     await expect(
@@ -75,7 +78,7 @@ describe('createChatAgentTools', () => {
   });
 
   it('exposes only chart and UTC time scopes and rejects device context', () => {
-    const [timeTool] = createChatAgentTools({ chart, chartTimeZone: 'Asia/Kolkata' });
+    const [timeTool] = createChatAgentTools({ chart, chartAsOf, chartTimeZone: 'Asia/Kolkata' });
 
     expect(timeTool.parameters).toMatchObject({
       properties: {
@@ -92,7 +95,7 @@ describe('createChatAgentTools', () => {
 
   it('returns only sanitizer-allowlisted chart data', async () => {
     const chartWithPii = { ...chart, name: 'Private Name', city: 'Secret City' } as SiderealChart;
-    const tools = createChatAgentTools({ chart: chartWithPii, chartTimeZone: 'UTC' });
+    const tools = createChatAgentTools({ chart: chartWithPii, chartAsOf, chartTimeZone: 'UTC' });
     const overview = await tools[1].execute(
       { section: 'overview' },
       { now: new Date('2026-03-08T09:30:00.000Z'), signal: new AbortController().signal },
@@ -112,6 +115,7 @@ describe('createChatAgentTools', () => {
     const loadCurrentChart = vi.fn(async () => currentChart);
     const tools = createChatAgentTools({
       chart,
+      chartAsOf,
       chartTimeZone: 'Asia/Kolkata',
       loadCurrentChart,
     });
@@ -147,5 +151,28 @@ describe('requiresCurrentPlanetaryContext', () => {
     'What does this yoga mean?',
   ])('does not force current computation for natal-only question: %s', (question) => {
     expect(requiresCurrentPlanetaryContext(question)).toBe(false);
+  });
+
+  it("describes the chart as of its own instant, and only the timing tool as of today", async () => {
+    const golden = (await import('../../../../../../backend/tests/fixtures/chart_golden_de421.json'))
+      .default as unknown as Record<string, SiderealChart>;
+    const real = golden['1988-08-08T01:14:00+00:00']!;
+    const tools = createChatAgentTools({
+      chart: real,
+      chartAsOf: { basis: 'chart', instant: new Date(real.snapshot!.reference_date) },
+      chartTimeZone: 'UTC',
+      loadCurrentChart: async () => real,
+    });
+    const context = { now: new Date('2030-06-01T12:00:00.000Z'), signal: new AbortController().signal };
+
+    const facts = (await tools[1].execute({ section: 'dashas' }, context)) as {
+      maha_dasha_sequence: Array<{ lord: string; status?: string }>;
+    };
+    const timing = (await tools[2].execute({ section: 'dashas' }, context)) as typeof facts;
+
+    const current = (rows: typeof facts.maha_dasha_sequence) =>
+      rows.filter((row) => row.status?.startsWith('current')).map((row) => row.lord);
+    expect(current(facts.maha_dasha_sequence)).toEqual(['jupiter']);
+    expect(current(timing.maha_dasha_sequence)).toEqual(['saturn']);
   });
 });

@@ -96,6 +96,31 @@ describe('profilesStore', () => {
     expect(store.getState().getActiveProfile()?.name).toBe('Alicia');
   });
 
+  it("renameProfile renames that person's charts too, so the header and the chart agree", () => {
+    const store = newStore();
+    const alice = store.getState().createProfile('Alice');
+    const bob = store.getState().createProfile('Bob');
+    const lib = useChartLibraryStore.getState();
+    seedChart(lib, 'c-alice', alice);
+    seedChart(lib, 'c-bob', bob);
+
+    store.getState().renameProfile(alice, '  Alicia ');
+
+    expect(useChartLibraryStore.getState().getChart('c-alice')?.person_name).toBe('Alicia');
+    expect(useChartLibraryStore.getState().getChart('c-bob')?.person_name).toBe('X');
+  });
+
+  it('a blank rename changes neither the person nor the chart', () => {
+    const store = newStore();
+    const alice = store.getState().createProfile('Alice');
+    seedChart(useChartLibraryStore.getState(), 'c-alice', alice);
+
+    store.getState().renameProfile(alice, '   ');
+
+    expect(store.getState().getActiveProfile()?.name).toBe('Alice');
+    expect(useChartLibraryStore.getState().getChart('c-alice')?.person_name).toBe('X');
+  });
+
   it('setActiveProfile switches the active profile', () => {
     const store = newStore();
     store.getState().createProfile('Alice');

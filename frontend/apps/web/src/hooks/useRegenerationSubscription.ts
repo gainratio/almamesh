@@ -29,6 +29,7 @@ import {
   useChatStore,
   useInterpretationStore,
   usePredictiveStore,
+  useProfilesStore,
   type BirthInfoChanged,
 } from '@almamesh/store'
 
@@ -60,6 +61,10 @@ export function useRegenerationSubscription(): void {
     if (currentEngine === null) {
       return bufferUntilReady(pendingRef, event)
     }
+    // The person's name when this regeneration was asked for. A rename made
+    // while the chart was computing is newer than this event and must win.
+    const nameAtRequest =
+      event.profileId === null ? undefined : useProfilesStore.getState().profiles[event.profileId]?.name
     return regenerateOnBirthChange(event, {
       engine: currentEngine,
       library: useChartLibraryStore.getState(),
@@ -77,6 +82,16 @@ export function useRegenerationSubscription(): void {
         const predictive = usePredictiveStore.getState()
         if (event.profileId === null || predictive.profileKey === event.profileId) {
           predictive.reset()
+        }
+        // The header shows the PERSON's name; the chart carries person_name.
+        // A rename in Settings arrives as birth data, so once the renamed chart
+        // is computed the person takes the same name. Only on success: if the
+        // recompute fails, both keep the old name and still agree.
+        if (event.profileId !== null) {
+          const profiles = useProfilesStore.getState()
+          if (profiles.profiles[event.profileId]?.name === nameAtRequest) {
+            profiles.renameProfile(event.profileId, event.birth.name)
+          }
         }
         clearAllChartData()
         void queryClient.invalidateQueries({ queryKey: ['primary-chart'] })

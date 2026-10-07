@@ -40,7 +40,12 @@ import { ensurePrivacy, isLocalEndpoint, type ProviderConfig } from "./config";
 import { withLanguage, type PromptLanguage } from "./language";
 import { buildPredictiveFactsBlock } from "./predictive-facts";
 import { OUTPUT_DISCIPLINE_RULES, PRIVACY_RULE, type ViewMode } from "./prompt";
-import { sanitizeChartForLlm, type SanitizedChart } from "./sanitize";
+import {
+  chartAnalysisInstant,
+  sanitizeChartForLlm,
+  type AnalysisInstant,
+  type SanitizedChart,
+} from "./sanitize";
 
 // =============================================================================
 // Public API
@@ -102,8 +107,12 @@ export interface StructuredInterpretationParams {
   /** UI/narration language for the reading (`en` default); engine is untouched. */
   readonly language?: PromptLanguage;
   readonly signal?: AbortSignal;
-  /** Injectable reference "now" for deterministic dasha relativization. */
-  readonly now?: Date;
+  /**
+   * The instant "current" dasha statements are relative to. Defaults to the
+   * chart's own snapshot instant (`chartAnalysisInstant`), never the wall
+   * clock; a chart stored before snapshots must pass its stored instant.
+   */
+  readonly asOf?: AnalysisInstant;
   /** Injectable for tests; defaults to the global `fetch`. */
   readonly fetchImpl?: typeof fetch;
   /**
@@ -1184,7 +1193,7 @@ async function* streamSections<Section extends InterpretationSectionKey>(
   // "complete" empty — a blank dashboard with no explanation.
   ensurePrivacy(params.config);
 
-  const chart = sanitizeChartForLlm(params.chart, params.now ?? new Date());
+  const chart = sanitizeChartForLlm(params.chart, params.asOf ?? chartAnalysisInstant(params.chart));
 
   for (const section of sections) {
     yield { type: "section_start", section };

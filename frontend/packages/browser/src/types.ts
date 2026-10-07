@@ -6,6 +6,7 @@
 // worker, OPFS sync, or the edge-proc path dependency into their type graph.
 
 export type {
+  ChartSnapshot,
   HouseCusp,
   LagnaData,
   PlanetPosition,

@@ -28,6 +28,7 @@ import { buildSectionMessages } from "../structured-interpretation";
 // --- fixed synthetic chart (same synthetic shape the other prompt suites use) --
 
 const CHART: SanitizedChart = {
+  as_of: { date: "2026-01-01", basis: "chart" },
   ayanamsa_value: 24.1,
   lagna: {
     longitude: 12.3,

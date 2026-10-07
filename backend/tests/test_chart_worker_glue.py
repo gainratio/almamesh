@@ -189,3 +189,14 @@ def test_glue_rejects_out_of_range_latitude(generate_chart: GenerateChart) -> No
         InvalidBirthInputError, match=r"^invalid coordinate: latitude out of range \(-90, 90\)$"
     ):
         generate_chart(_payload(latitude=200.0))
+
+
+def test_glue_stamps_the_chart_with_its_snapshot(generate_chart: GenerateChart) -> None:
+    """The browser path hands out the same snapshot block CPython stamps, naming
+    the exact birth and analysis instants it was asked for."""
+    chart = json.loads(generate_chart(_payload()))
+
+    stamp = chart["snapshot"]
+    assert stamp["birth_utc"] == "1983-04-05T00:20:00+00:00"
+    assert stamp["reference_date"] == "2020-06-01T00:00:00+00:00"
+    assert len(stamp["snapshot_id"]) == 64

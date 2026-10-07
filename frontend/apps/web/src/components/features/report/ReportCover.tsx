@@ -4,8 +4,8 @@
  * Shows the AlmaMesh wordmark, the audience badge (For You / For Astrologer),
  * the person's name, a birth-details box (date/time in the BIRTH timezone via
  * `formatBirthDateTime`, place via `buildPlaceString`, ascendant), and the
- * generated date via `formatReportDate(new Date())` — which is null/epoch-safe,
- * so the cover never reads "December 31, 1969" the way the old export did.
+ * chart's analysis date via `formatReportDate(asOf)` (the same instant the PDF
+ * prints), never today's date.
  *
  * Two honesty surfaces sit on the cover (so the screen report matches the PDF):
  *   1. The Time of Birth ALWAYS carries an "As recorded" / "Rectified +N min"
@@ -52,6 +52,12 @@ interface ReportCoverProps {
    * action its own copy recommends. Null/absent simply omits the link.
    */
   readonly profileId?: string | null;
+  /**
+   * The chart's analysis instant (`calculation_timestamp`, the snapshot's
+   * reference_date). The cover prints THIS date, the same one the PDF prints,
+   * never today.
+   */
+  readonly asOf: string;
 }
 
 /**
@@ -166,6 +172,7 @@ export function ReportCover({
   lagna,
   rectification,
   profileId,
+  asOf,
 }: ReportCoverProps): ReactElement {
   const { t } = useTranslation('report');
   const when = formatBirthDateTime(birth);
@@ -228,7 +235,7 @@ export function ReportCover({
       <CuspCallout lagna={lagna} profileId={profileId} />
 
       <p className="report-cover-generated" data-testid="report-generated-date">
-        {t('cover.generated_on', { date: formatReportDate(new Date()) })}
+        {t('cover.generated_on', { date: formatReportDate(asOf) })}
       </p>
     </section>
   );

@@ -195,7 +195,34 @@ export interface NavamsaChart {
   readonly planets: Readonly<Record<string, VargaPlanet>>;
 }
 
+/**
+ * The identity of one computed chart, stamped by the engine
+ * (`backend/src/almamesh/snapshot.py`). Every field is an ASCII string;
+ * `snapshot_id` is the SHA-256 of the canonical JSON of the other ten.
+ */
+export interface ChartSnapshot {
+  readonly snapshot_schema: string;
+  readonly engine_version: string;
+  readonly ephemeris_file: string;
+  /** SHA-256 over the ephemeris + Lahiri table bytes the numbers came from. */
+  readonly data_hash: string;
+  readonly ayanamsa: string;
+  readonly node_type: string;
+  readonly house_system: string;
+  readonly dasha_year_convention: string;
+  readonly birth_utc: string;
+  /** The analysis instant: which dasha is "current", and the chart's "as of". */
+  readonly reference_date: string;
+  readonly snapshot_id: string;
+}
+
 export interface SiderealChart {
+  /**
+   * The snapshot this chart was computed with. Every chart the worker returns
+   * carries a verified one; OPTIONAL only because charts stored (or exported)
+   * before snapshots existed have none, and they must still load.
+   */
+  readonly snapshot?: ChartSnapshot;
   readonly ayanamsa_value: number;
   readonly lagna: LagnaData;
   readonly planets: Readonly<Record<string, PlanetPosition>>;

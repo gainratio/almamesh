@@ -19,6 +19,7 @@ import {
 import type { SanitizedChart } from "../sanitize";
 
 const SMALL_CHART: SanitizedChart = {
+  as_of: { date: "2026-01-01", basis: "chart" },
   ayanamsa_value: 24.1,
   lagna: {
     longitude: 12.3,
@@ -133,6 +134,7 @@ describe("buildSectionMessages — per-section slimming over the budget", () => 
 
   it("rides predictive facts only on the slimmed timeline section", () => {
     const withPredictive: SanitizedChart = {
+      as_of: { date: "2026-01-01", basis: "chart" },
       ...chart,
       predictive: {
         strength: {

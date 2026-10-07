@@ -281,6 +281,7 @@ export default function ReportView(): ReactElement {
             lagna={lagna}
             rectification={rectificationDelta(birth)}
             profileId={profileId}
+            asOf={storedChart.astronomical_calculations.calculation_timestamp}
           />
         ) : null}
         {/* Section order is DECLARED once, in `lib/reportSections.ts`, and the

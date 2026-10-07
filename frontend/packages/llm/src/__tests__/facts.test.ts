@@ -7,6 +7,7 @@ import type { SanitizedChart, SanitizedPredictive } from "../sanitize";
 // sanitizer emits, plus a smuggled identifier so we can prove the facts block
 // never echoes it. Mars is exalted in Capricorn (10th); Moon is in own sign.
 const CHART: SanitizedChart = {
+  as_of: { date: "2026-01-01", basis: "chart" },
   ayanamsa_value: 24.1,
   lagna: {
     longitude: 12.3,
@@ -189,6 +190,7 @@ describe("buildChartFactsBlock — degrees + nakshatra depth (Spec 062 delta 4)"
     delete legacyMars.nakshatra;
     delete legacyMars.sign_degrees;
     const legacy: SanitizedChart = {
+      as_of: { date: "2026-01-01", basis: "chart" },
       ...CHART,
       planets: { mars: legacyMars as unknown as SanitizedChart["planets"][string] },
     };
@@ -201,6 +203,7 @@ describe("buildChartFactsBlock — degrees + nakshatra depth (Spec 062 delta 4)"
 describe("buildChartFactsBlock — dasha convention (no silent convention)", () => {
   it("states the engine-declared dasha-year convention when present", () => {
     const withConvention: SanitizedChart = {
+      as_of: { date: "2026-01-01", basis: "chart" },
       ...CHART,
       dashas: { ...CHART.dashas!, convention: "julian_365_25" },
     };
@@ -516,7 +519,7 @@ describe("buildChartFactsBlock — engine-dated current + upcoming periods", () 
 
   it("orders the blocks: relative current block, then dated current, then upcoming", () => {
     const block = buildChartFactsBlock(TREE_CHART);
-    const relativeIdx = block.indexOf("Current dasha period:");
+    const relativeIdx = block.indexOf("Current dasha period (as of 2026-01-01, the chart's analysis date):");
     const datedIdx = block.indexOf("Current period (engine-dated):");
     const upcomingIdx = block.indexOf("Upcoming periods (engine-dated):");
     expect(relativeIdx).toBeGreaterThanOrEqual(0);
@@ -526,6 +529,7 @@ describe("buildChartFactsBlock — engine-dated current + upcoming periods", () 
 
   it("omits the next-maha line when the current maha is the LAST sequence row", () => {
     const truncated: SanitizedChart = {
+      as_of: { date: "2026-01-01", basis: "chart" },
       ...CHART,
       dashas: {
         ...FOUNDER_DASHAS,
@@ -540,6 +544,7 @@ describe("buildChartFactsBlock — engine-dated current + upcoming periods", () 
 
   it("emits no remaining antar/pratyantar lines without a current antar anchor", () => {
     const noAntar: SanitizedChart = {
+      as_of: { date: "2026-01-01", basis: "chart" },
       ...CHART,
       dashas: {
         ...FOUNDER_DASHAS,
@@ -570,7 +575,7 @@ describe("buildChartFactsBlock — engine-dated current + upcoming periods", () 
       "- mars: capricorn 10.50° (10th house), exalted — nakshatra shravana pada 1 (lord moon)",
       "- saturn: cancer 10.20° (4th house), debilitated, retrograde — nakshatra pushya pada 2 (lord saturn)",
       "",
-      "Current dasha period:",
+      "Current dasha period (as of 2026-01-01, the chart's analysis date):",
       "- Mahadasha: sun (48 months remaining)",
       "- Antardasha: mercury (9 months remaining)",
       "",

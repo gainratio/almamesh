@@ -13,6 +13,7 @@ import type { SanitizedChart } from "../sanitize";
 
 // The same minimal real-shape SanitizedChart the existing prompt tests use.
 const CHART: SanitizedChart = {
+  as_of: { date: "2026-01-01", basis: "chart" },
   ayanamsa_value: 24.1,
   lagna: {
     longitude: 12.3,
@@ -183,7 +184,7 @@ describe("streamChartChat — raw mesh edge threading", () => {
         config: LOCAL_CFG,
         meshEdge: RAW_SPOUSE,
         fetchImpl: fetchImpl as unknown as typeof fetch,
-        now: NOW,
+        asOf: { basis: "chart", instant: NOW },
       }),
     );
 
@@ -209,7 +210,7 @@ describe("streamChartChat — raw mesh edge threading", () => {
         question: "How is my year ahead?",
         config: LOCAL_CFG,
         fetchImpl: fetchImpl as unknown as typeof fetch,
-        now: NOW,
+        asOf: { basis: "chart", instant: NOW },
       }),
     );
 

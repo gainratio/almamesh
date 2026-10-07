@@ -17,7 +17,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useChatStore } from '@almamesh/store';
+import { useChartLibraryStore, useChatStore } from '@almamesh/store';
 import { safeError } from '@almamesh/shared-types';
 import type {
   ChatMessage,
@@ -215,6 +215,18 @@ export function describeChatStreamError(error: unknown): string {
   return getChatErrorMessage('QA_001', error);
 }
 
+/**
+ * The identity an answer is bound to: the chart's snapshot_id when it has one,
+ * else its chart id (a chart stored before snapshots). Read LIVE from the chart
+ * library, so a regeneration or a recompute under the same id is visible.
+ */
+function chartSnapshotIdentity(chartId: string | null): string | null {
+  if (chartId === null) return null;
+  const snapshotId = useChartLibraryStore.getState().getChart(chartId)?.sidereal_chart?.snapshot
+    ?.snapshot_id;
+  return snapshotId ?? `chart:${chartId}`;
+}
+
 export function useChatThread(
   profileId: string | null,
   chartId: string | null,
@@ -231,6 +243,11 @@ export function useChatThread(
   // `isStreaming` state only reaches `submit` after a re-render; this ref closes
   // the gap so two sends from the same render never buy two paid answers.
   const sendInFlight = useRef(false);
+  // The chart on screen NOW (the in-flight send's closure holds the old one).
+  const currentChartId = useRef(chartId);
+  useEffect(() => {
+    currentChartId.current = chartId;
+  }, [chartId]);
 
   useEffect(() => {
     const abortOwned = () => {
@@ -275,6 +292,9 @@ export function useChatThread(
       const history = toHistory(priorMessages);
       const existingSummary = store.getSummary(tid);
 
+      // The snapshot this question is about. An answer that arrives after the
+      // chart changed describes a chart the user is no longer looking at.
+      const askedAbout = chartSnapshotIdentity(chartId);
       const userMessage = store.appendMessage(tid, 'user', q);
       void indexChatMessage({ id: userMessage.id, thread_id: tid, profile_id: profileId, content: q });
 
@@ -304,6 +324,13 @@ export function useChatThread(
           },
         });
         const finalAnswer = answer || draft;
+        if (chartSnapshotIdentity(currentChartId.current) !== askedAbout) {
+          // Dropped, not attached: flagged so it never enters history or RAG.
+          store.appendMessage(tid, 'assistant', i18n.t('chat:errors.chart_changed'), {
+            error: true,
+          });
+          return;
+        }
         const assistantMessage = store.appendMessage(tid, 'assistant', finalAnswer);
         void indexChatMessage({
           id: assistantMessage.id,

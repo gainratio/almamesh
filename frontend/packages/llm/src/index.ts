@@ -5,7 +5,13 @@
 // sent to an OpenAI-compatible endpoint under a fail-closed PrivacyMode contract.
 // A key is never bundled; cloud (OpenRouter) is strictly opt-in.
 
-export { sanitizeChartForLlm, IDENTIFIER_FIELDS } from "./sanitize";
+export {
+  sanitizeChartForLlm,
+  IDENTIFIER_FIELDS,
+  chartAnalysisInstant,
+  todayAnalysisInstant,
+} from "./sanitize";
+export type { AnalysisInstant, SanitizedAsOf } from "./sanitize";
 export type {
   SanitizedChart,
   SanitizedDashas,
@@ -241,7 +247,7 @@ import {
   type ViewMode,
 } from "./prompt";
 import { routeChatCompletion } from "./route";
-import { sanitizeChartForLlm } from "./sanitize";
+import { chartAnalysisInstant, sanitizeChartForLlm, type AnalysisInstant } from "./sanitize";
 import type { SiderealChart } from "@almamesh/browser/types";
 
 export interface StreamInterpretationParams {
@@ -253,8 +259,12 @@ export interface StreamInterpretationParams {
   readonly signal?: AbortSignal;
   /** Injectable for tests; defaults to the global `fetch`. */
   readonly fetchImpl?: typeof fetch;
-  /** Injectable reference "now" for deterministic dasha relativization. */
-  readonly now?: Date;
+  /**
+   * The instant "current" dasha statements are relative to. Defaults to the
+   * chart's own snapshot instant (`chartAnalysisInstant`), never the wall
+   * clock; a chart stored before snapshots must pass its stored instant.
+   */
+  readonly asOf?: AnalysisInstant;
 }
 
 /**
@@ -267,7 +277,7 @@ export interface StreamInterpretationParams {
 export async function* streamChartInterpretation(
   params: StreamInterpretationParams,
 ): AsyncGenerator<string> {
-  const sanitized = sanitizeChartForLlm(params.chart, params.now ?? new Date());
+  const sanitized = sanitizeChartForLlm(params.chart, params.asOf ?? chartAnalysisInstant(params.chart));
   const messages = buildInterpretationMessages(
     sanitized,
     params.mode ?? "layman",
@@ -319,8 +329,12 @@ export interface StreamChatParams {
   readonly signal?: AbortSignal;
   /** Injectable for tests; defaults to the global `fetch`. */
   readonly fetchImpl?: typeof fetch;
-  /** Injectable reference "now" for deterministic dasha relativization. */
-  readonly now?: Date;
+  /**
+   * The instant "current" dasha statements are relative to. Defaults to the
+   * chart's own snapshot instant (`chartAnalysisInstant`), never the wall
+   * clock; a chart stored before snapshots must pass its stored instant.
+   */
+  readonly asOf?: AnalysisInstant;
 }
 
 /**
@@ -337,7 +351,7 @@ export interface StreamChatParams {
 export async function* streamChartChat(
   params: StreamChatParams,
 ): AsyncGenerator<string> {
-  const sanitized = sanitizeChartForLlm(params.chart, params.now ?? new Date());
+  const sanitized = sanitizeChartForLlm(params.chart, params.asOf ?? chartAnalysisInstant(params.chart));
   // The pair boundary is just as unskippable: a raw mesh edge is sanitized here
   // (month-precision dates, roles not names) before any prompt sees it.
   const meshEdge = params.meshEdge ? sanitizeMeshEdgeForLlm(params.meshEdge) : undefined;
