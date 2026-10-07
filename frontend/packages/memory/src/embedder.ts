@@ -101,12 +101,35 @@ export function createWorkerEmbedder(options: WorkerEmbedderOptions = {}): Embed
     scheduleRelease();
   }
 
+  /**
+   * The worker died (e.g. out of memory while reloading the model after an idle
+   * release). Reject every in-flight embed instead of leaving it pending forever,
+   * and drop the worker so the next embed spawns a fresh one.
+   */
+  function fail(dead: Worker): void {
+    if (worker !== dead) {
+      return;
+    }
+    clearTimeout(idleTimer);
+    idleTimer = undefined;
+    worker = undefined;
+    dead.terminate();
+    const failed = [...pending.values()];
+    pending.clear();
+    for (const slot of failed) {
+      slot.reject(new Error("embedder worker failed"));
+    }
+    options.onRelease?.();
+  }
+
   function ensureWorker(): Worker {
     clearTimeout(idleTimer);
     idleTimer = undefined;
     if (worker === undefined) {
-      worker = spawn();
-      worker.addEventListener("message", settle);
+      const spawned = spawn();
+      spawned.addEventListener("message", settle);
+      spawned.addEventListener("error", () => fail(spawned));
+      worker = spawned;
     }
     return worker;
   }

@@ -11,9 +11,16 @@ class FakeWorker {
   terminated = false;
   readonly requests: EmbedWorkerRequest[] = [];
   #listener: ((event: MessageEvent<EmbedWorkerResponse>) => void) | undefined;
+  #errorListener: (() => void) | undefined;
 
-  addEventListener(_type: "message", listener: (event: MessageEvent<EmbedWorkerResponse>) => void): void {
-    this.#listener = listener;
+  addEventListener(type: "message" | "error", listener: (event: MessageEvent<EmbedWorkerResponse>) => void): void {
+    if (type === "error") this.#errorListener = listener as () => void;
+    else this.#listener = listener;
+  }
+
+  /** The worker died (e.g. out of memory while loading the model). */
+  crash(): void {
+    this.#errorListener?.();
   }
 
   postMessage(request: EmbedWorkerRequest): void {
@@ -113,5 +120,20 @@ describe("createWorkerEmbedder idle release", () => {
     await first;
     vi.advanceTimersByTime(24 * 60 * 60 * 1000);
     expect(spawned[0]?.terminated).toBe(false);
+  });
+
+  it("rejects every in-flight embed and drops the worker when it dies, then respawns", async () => {
+    const { embedder, spawned, released } = harness(60_000);
+    const first = embedder.embed(["a"]);
+    const second = embedder.embed(["b"]);
+    spawned[0]?.crash();
+    await expect(first).rejects.toThrow(/embedder worker failed/);
+    await expect(second).rejects.toThrow(/embedder worker failed/);
+    expect(spawned[0]?.terminated).toBe(true);
+    expect(released).toHaveBeenCalledTimes(1);
+    const third = embedder.embed(["c"]);
+    expect(spawned).toHaveLength(2);
+    spawned[1]?.answer();
+    await expect(third).resolves.toHaveLength(1);
   });
 });
