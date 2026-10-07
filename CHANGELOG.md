@@ -7,6 +7,14 @@ All notable changes to AlmaMesh are documented here. Format follows
 ## [Unreleased]
 
 ### Fixed
+- **An older commit's deploy no longer shows red when a newer commit has landed.**
+  Main runs stopped cancelling each other (#263/#266), so the deploy for an older
+  commit asked "is main green?" about the newer HEAD and failed ("applicable Dagger
+  check count is outside bounds"). The deploy now calls the central
+  `green-main-decision` (hseshadr/ci#68) for its own commit: main's green HEAD
+  deploys as before, a commit main has moved past exits green with
+  `SKIP <sha>: superseded by <newer>` and builds nothing, and a red HEAD still
+  fails. An older commit can never be deployed over a newer one.
 - **The app now works offline after the first load on a slow phone too.** On a
   weak CPU the service worker was still installing when the engine downloaded
   the Pyodide runtime, so nothing cached it; the engine said "ready" and the

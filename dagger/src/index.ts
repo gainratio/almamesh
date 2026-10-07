@@ -64,7 +64,7 @@ const LIVE_ORIGIN = "https://almamesh.com"
 const REPOSITORY = "hseshadr/almamesh"
 const BROWSER_LEGO_SPEC = '"@gainratio/browser": "^0.4.1"'
 const CONTRACT_SHA = "1111111111111111111111111111111111111111"
-const CENTRAL_MODULE_SHA = "a895f726e9786bcfd2bdf68f87d3d5c4b411f702"
+const CENTRAL_MODULE_SHA = "4d48302e30d3a54ec71364d43aada5c0d4b1f9bf"
 const NODE_IMAGE =
   "node:22-trixie-slim@sha256:7b8a0c89c54499bee567618f96578e1a12a800f062fbdbfd1fb6a443fa6f6284"
 const PAGES_NODE_IMAGE =
@@ -701,7 +701,7 @@ exec ${inline.join(" ")}`,
     runAttempt: number,
   ): Promise<string> {
     const result = await deliverProduction({
-      greenMain: async () => dag.foundation().greenMain(githubToken, REPOSITORY).serialization(),
+      greenMain: async () => dag.foundation().greenMainDecision(githubToken, REPOSITORY, expectedSha).serialization(),
       bindSource: async (evidence) => this.materializedPublicSource(evidence.commitSha),
       guardSource: async (source, evidence) => {
         await dag.foundation().guard(source, REPOSITORY, evidence.commitSha).sync()
@@ -749,6 +749,8 @@ exec ${inline.join(" ")}`,
         deploymentId,
       ),
     }, expectedSha, workflowRunId, runAttempt, CENTRAL_MODULE_SHA)
+    // A superseded commit exits green without deploying; the newer commit ships.
+    if ("skipped" in result) return result.message
     return [
       `Cloudflare Pages deployment verified: ${result.deploymentId} ${result.deploymentUrl}`,
       result.liveProof,

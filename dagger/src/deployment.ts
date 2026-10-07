@@ -48,6 +48,18 @@ export interface DeliveryResult extends ProviderIdentity {
   liveProof: string
 }
 
+/** A deploy for a commit main has already moved past: nothing is built or uploaded. */
+export interface SkippedDelivery {
+  skipped: true
+  supersededBy: string
+  message: string
+}
+
+/** The shared Foundation's verdict for the commit this deploy was triggered for. */
+export type GreenMainDecision =
+  | { action: "deploy"; evidence: GreenMainEvidence }
+  | { action: "skip"; supersededBy: string; message: string }
+
 /** The two post-deploy smoke passes, in the order they run. */
 export const SMOKE_PASSES = Object.freeze(["fresh", "returning"] as const)
 export type SmokePass = (typeof SMOKE_PASSES)[number]
@@ -132,6 +144,53 @@ export function parseGreenMainEvidence(
   return { repository, branch, commitSha, workflowRunId, runAttempt }
 }
 
+/**
+ * Parse the Foundation's deploy-or-skip decision. Only main's exact-green HEAD carries
+ * evidence; a superseded commit is a skip with no evidence, so it can never be deployed
+ * over the newer commit (which ships through its own deploy).
+ */
+export function parseGreenMainDecision(
+  serialization: string,
+  expectedSha: string,
+  expectedWorkflowRunId: string,
+  expectedRunAttempt: number,
+): GreenMainDecision {
+  requireFullSha(expectedSha, "expected SHA")
+  const value = parseObject(serialization)
+  const action = value.action
+  if (requiredString(value, "commit_sha") !== expectedSha) {
+    throw new Error("Foundation decision commit identity differs")
+  }
+  const mainSha = requiredString(value, "main_sha")
+  requireFullSha(mainSha, "Foundation main SHA")
+  if (action === "skip") return skipDecision(value, expectedSha, mainSha)
+  if (action !== "deploy" || mainSha !== expectedSha || !isObject(value.evidence)) {
+    throw new Error("Foundation decision differs")
+  }
+  const evidence = parseGreenMainEvidence(
+    JSON.stringify(value.evidence),
+    expectedSha,
+    expectedWorkflowRunId,
+    expectedRunAttempt,
+  )
+  return { action: "deploy", evidence }
+}
+
+function skipDecision(
+  value: Record<string, unknown>,
+  expectedSha: string,
+  mainSha: string,
+): GreenMainDecision {
+  if (mainSha === expectedSha || value.evidence !== null) {
+    throw new Error("Foundation skip decision differs")
+  }
+  return { action: "skip", supersededBy: mainSha, message: requiredString(value, "message") }
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
 export function releaseIdentities(
   evidence: GreenMainEvidence,
   centralSha: string,
@@ -169,14 +228,17 @@ export async function deliverProduction<Source, Artifact, Envelope, LazyEvidence
   workflowRunId: string,
   runAttempt: number,
   centralSha: string,
-): Promise<DeliveryResult> {
-  const serialization = await port.greenMain()
-  const evidence = parseGreenMainEvidence(
-    serialization,
+): Promise<DeliveryResult | SkippedDelivery> {
+  const decision = parseGreenMainDecision(
+    await port.greenMain(),
     expectedSha,
     workflowRunId,
     runAttempt,
   )
+  if (decision.action === "skip") {
+    return { skipped: true, supersededBy: decision.supersededBy, message: decision.message }
+  }
+  const evidence = decision.evidence
   const identities = releaseIdentities(evidence, centralSha)
   const source = await port.bindSource(evidence)
   await port.guardSource(source, evidence)

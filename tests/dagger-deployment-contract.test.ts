@@ -8,6 +8,7 @@ import {
   indexNowProgram,
   indexNowScript,
   liveVerificationScript,
+  parseGreenMainDecision,
   parseGreenMainEvidence,
   releaseIdentities,
   validateProviderEvidence,
@@ -28,6 +29,29 @@ function serializedEvidence(
     commit_sha: commitSha,
     workflow_run_id: "781",
     run_attempt: 3,
+    ...overrides,
+  })
+}
+
+const newerSha = "3".repeat(40)
+
+function serializedDecision(overrides: Record<string, unknown> = {}): string {
+  return JSON.stringify({
+    action: "deploy",
+    commit_sha: commitSha,
+    main_sha: commitSha,
+    message: `DEPLOY ${commitSha}: exact-green main HEAD`,
+    evidence: JSON.parse(serializedEvidence()),
+    ...overrides,
+  })
+}
+
+function serializedSkip(overrides: Record<string, unknown> = {}): string {
+  return serializedDecision({
+    action: "skip",
+    main_sha: newerSha,
+    message: `SKIP ${commitSha}: superseded by ${newerSha} on main; the newer commit's deploy will ship it`,
+    evidence: null,
     ...overrides,
   })
 }
@@ -130,7 +154,7 @@ describe("single-transaction delivery orchestration", () => {
     const result = await deliverProduction({
       greenMain: async () => {
         events.push("green-main")
-        return serializedEvidence()
+        return serializedDecision()
       },
       bindSource: async () => {
         events.push("bind-source")
@@ -276,6 +300,85 @@ describe("single-transaction delivery orchestration", () => {
   })
 })
 
+describe("deploy-or-skip decision from the shared Foundation", () => {
+  test("a deploy decision yields evidence bound to the requested HEAD commit", () => {
+    expect(parseGreenMainDecision(serializedDecision(), commitSha, "781", 3)).toEqual({
+      action: "deploy",
+      evidence: {
+        repository: "hseshadr/almamesh",
+        branch: "main",
+        commitSha,
+        workflowRunId: "781",
+        runAttempt: 3,
+      },
+    })
+  })
+
+  test("a skip decision names the newer main commit and carries no evidence", () => {
+    const decision = parseGreenMainDecision(serializedSkip(), commitSha, "781", 3)
+    expect(decision.action).toBe("skip")
+    if (decision.action !== "skip") throw new Error("unreachable")
+    expect(decision.supersededBy).toBe(newerSha)
+    expect(decision.message).toContain(`superseded by ${newerSha}`)
+  })
+
+  test.each([
+    ["unknown action", { action: "proceed" }],
+    ["deploy for another commit", { commit_sha: newerSha, main_sha: newerSha }],
+    ["deploy while main moved", { main_sha: newerSha }],
+    ["deploy without evidence", { evidence: null }],
+  ])("rejects a malformed deploy decision: %s", (_name, overrides) => {
+    expect(() => parseGreenMainDecision(serializedDecision(overrides), commitSha, "781", 3)).toThrow()
+  })
+
+  test.each([
+    ["skip for another commit", { commit_sha: newerSha }],
+    ["skip with deployable evidence", { evidence: JSON.parse(serializedEvidence()) }],
+    ["skip while requested commit is HEAD", { main_sha: commitSha }],
+    ["skip with a short main SHA", { main_sha: "abc" }],
+    ["skip without a message", { message: "" }],
+  ])("rejects a malformed skip decision: %s", (_name, overrides) => {
+    expect(() => parseGreenMainDecision(serializedSkip(overrides), commitSha, "781", 3)).toThrow()
+  })
+
+  test("a superseded commit exits successfully without touching source, build, or production", async () => {
+    const events: string[] = []
+    const port = failClosedPort(events)
+    port.greenMain = async () => {
+      events.push("green-main")
+      return serializedSkip()
+    }
+
+    const result = await deliverProduction(port, commitSha, "781", 3, centralSha)
+
+    expect(events).toEqual(["green-main"])
+    expect(result).toEqual({
+      skipped: true,
+      supersededBy: newerSha,
+      message: `SKIP ${commitSha}: superseded by ${newerSha} on main; the newer commit's deploy will ship it`,
+    })
+  })
+
+  test("a failing HEAD decision still fails the deploy before any build or upload", async () => {
+    const events: string[] = []
+    const port = failClosedPort(events)
+    const red = new Error("latest GitHub workflow attempt is not successful")
+    port.greenMain = async () => {
+      events.push("green-main")
+      throw red
+    }
+
+    await expect(deliverProduction(port, commitSha, "781", 3, centralSha)).rejects.toBe(red)
+    expect(events).toEqual(["green-main"])
+  })
+
+  test("the deploy asks the Foundation about its own commit, not whatever main is now", () => {
+    const source = readFileSync(join(import.meta.dir, "..", "dagger/src/index.ts"), "utf8")
+    expect(source).toContain("dag.foundation().greenMainDecision(githubToken, REPOSITORY, expectedSha).serialization()")
+    expect(source).not.toContain(".greenMain(githubToken")
+  })
+})
+
 describe("materialized provider evidence", () => {
   const sourceEvidence = {
     repository: "hseshadr/almamesh",
@@ -326,7 +429,7 @@ function failClosedPort(events: string[]) {
   return {
     greenMain: async () => {
       events.push("green-main")
-      return serializedEvidence()
+      return serializedDecision()
     },
     bindSource: async () => {
       events.push("bind-source")
