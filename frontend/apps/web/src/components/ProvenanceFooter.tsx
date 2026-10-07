@@ -29,6 +29,21 @@ function stampedLine(snapshot: ChartSnapshot): string {
   )
 }
 
+/**
+ * A stored snapshot is only trusted at the worker boundary; one restored from a
+ * crafted or damaged backup may be any shape. Print it only when every field
+ * the line reads is usable, else fall back to the legacy line.
+ */
+function isPrintableSnapshot(snapshot: unknown): snapshot is ChartSnapshot {
+  if (snapshot === null || typeof snapshot !== 'object') return false
+  const fields = snapshot as Record<string, unknown>
+  const textFields = ['engine_version', 'ayanamsa', 'ephemeris_file', 'snapshot_id', 'reference_date']
+  return (
+    textFields.every((key) => typeof fields[key] === 'string') &&
+    !Number.isNaN(Date.parse(fields.reference_date as string))
+  )
+}
+
 function legacyLine(calculationTimestamp: string | undefined): string {
   const base =
     'Calculated locally by AlmaMesh · engine version not recorded (computed before charts ' +
@@ -68,7 +83,7 @@ export function ProvenanceFooter({ calculations }: ProvenanceFooterProps) {
       aria-label={t('provenance.aria')}
       data-testid="provenance-footer"
     >
-      {snapshot ? stampedLine(snapshot) : legacyLine(calculatedAt)}
+      {isPrintableSnapshot(snapshot) ? stampedLine(snapshot) : legacyLine(calculatedAt)}
     </p>
   )
 }

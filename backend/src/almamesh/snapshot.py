@@ -1,9 +1,12 @@
 """One snapshot identity per computed chart.
 
-A chart is fully determined by: the engine that computed it, the data it read
-(DE421 ephemeris + Lahiri table), the calculation conventions, the birth
-instant, and the analysis instant (``reference_date``, which picks the
-"current" dasha). ``ChartSnapshot`` records all of them as plain strings, and
+Given the birth place, a chart is determined by: the engine that computed it,
+the data it read (DE421 ephemeris + Lahiri table), the calculation conventions,
+the birth instant, and the analysis instant (``reference_date``, which picks
+the "current" dasha). Latitude and longitude are deliberately NOT stamped (they
+are identifying); every regeneration mints a fresh ``reference_date``, so two
+computations never share an id in practice. ``ChartSnapshot`` records the
+fields above as plain strings, and
 ``snapshot_id`` is the SHA-256 of their canonical JSON form:
 
     json.dumps(fields, sort_keys=True, separators=(",", ":"), ensure_ascii=True)

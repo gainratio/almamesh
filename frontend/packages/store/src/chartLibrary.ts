@@ -185,12 +185,15 @@ export const chartLibraryStoreCreator: StateCreator<ChartLibraryStore> = (set, g
   renameChartsForProfile: (profileId, name) => {
     set((state) => {
       const next: Record<string, StoredChart> = { ...state.charts };
+      let changed = false;
       for (const [id, chart] of Object.entries(state.charts)) {
         if (chart.profile_id === profileId && chart.person_name !== name) {
           next[id] = { ...chart, person_name: name };
+          changed = true;
         }
       }
-      return { charts: next };
+      // Nothing to rename: keep the same state so no persist write is queued.
+      return changed ? { charts: next } : state;
     });
   },
 
@@ -271,17 +274,17 @@ export function whenChartLibraryCommitted(): Promise<void> {
   return whenPersistenceCommitted(PERSIST_NAME);
 }
 
+/** Keep a person's charts named like the person (the header reads the person). */
+export function cascadeRenameCharts(profileId: string, name: string): void {
+  useChartLibraryStore.getState().renameChartsForProfile(profileId, name);
+}
+
 /**
  * Cascade-delete every chart owned by a profile. Called when a person is
  * removed (see `profiles.deleteProfile`) so deleting a person also removes their
  * charts — no orphaned data. Thin wrapper over the store action, kept here so
  * the profiles store stays chart-agnostic and imports only this one helper.
  */
-/** Keep a person's charts named like the person (the header reads the person). */
-export function cascadeRenameCharts(profileId: string, name: string): void {
-  useChartLibraryStore.getState().renameChartsForProfile(profileId, name);
-}
-
 export function cascadeDeleteCharts(profileId: string): void {
   useChartLibraryStore.getState().deleteChartsForProfile(profileId);
 }

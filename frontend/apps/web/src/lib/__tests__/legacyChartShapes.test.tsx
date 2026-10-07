@@ -1,28 +1,25 @@
 /**
  * Old data stays readable after the chart-snapshot change.
  *
- * The fixture is a REAL v3 `.almamesh` export made before charts carried a
- * snapshot (`packages/store/src/__fixtures__/legacy-backups/legacy-v3.almamesh`).
- * It is opened exactly as Settings → Import opens it, its SQLite rows are read
- * as the OPFS repository stores them, and the chart-library row goes through
- * the store's persist `migrate`. Its chart has no `snapshot`, no
- * `calculation_timestamp` and no `software_version`: the oldest shape there is.
+ * The rows come from a REAL v3 `.almamesh` export made before charts carried a
+ * snapshot: `legacy-v3-canonical-rows.json` is its chart-library and profiles
+ * rows verbatim, pinned byte-for-byte to the export by
+ * `packages/store/src/legacyV3Rows.fixture.test.ts`. The chart-library row goes
+ * through the store's persist `migrate`, as on app load. Its chart has no
+ * `snapshot`, no `calculation_timestamp` and no `software_version`: the oldest
+ * shape there is.
  */
 import '../../i18n/config';
 
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { DatabaseSync } from 'node:sqlite';
 
 import { render, screen } from '@testing-library/react';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 import {
   CHART_LIBRARY_PERSIST_VERSION,
-  defaultSealRunner,
   migrateChartLibraryPersistedState,
-  openBackup,
   useChartLibraryStore,
   useProfilesStore,
   type StoredChart,
@@ -31,36 +28,23 @@ import {
 import { ProvenanceFooter } from '../../components/ProvenanceFooter';
 import { storedChartAnalysisInstant } from '../analysisInstant';
 
-// Vitest runs from apps/web (jsdom's import.meta.url is not a file URL).
-const FIXTURES = join(process.cwd(), '../../packages/store/src/__fixtures__/legacy-backups');
-const manifest = JSON.parse(readFileSync(join(FIXTURES, 'manifest.json'), 'utf8')) as Record<
-  string,
-  { passphrase: string }
->;
+// Vitest runs from apps/web (the DOM environment's import.meta.url is not a file URL).
+const EXTRACT = join(
+  process.cwd(),
+  '../../packages/store/src/__fixtures__/legacy-backups/legacy-v3-canonical-rows.json',
+);
 
 interface PersistedRow {
   readonly state: unknown;
   readonly version: number;
 }
 
-/** Open the real export and read its canonical rows the way the repository stores them. */
-async function readLegacyExportRows(): Promise<Record<string, PersistedRow>> {
-  const bytes = new Uint8Array(readFileSync(join(FIXTURES, 'legacy-v3.almamesh')));
-  const opened = await openBackup(bytes, manifest['legacy-v3.almamesh']!.passphrase, defaultSealRunner());
-  if (opened.kind !== 'database') throw new Error('expected a SQLite export');
-  const dir = mkdtempSync(join(tmpdir(), 'almamesh-legacy-'));
-  try {
-    const file = join(dir, 'legacy.sqlite');
-    writeFileSync(file, opened.database);
-    const db = new DatabaseSync(file, { readOnly: true });
-    const rows = db
-      .prepare("SELECT key, CAST(value AS TEXT) AS value FROM edgeproc_state_rows WHERE namespace = 'canonical' AND key LIKE 'almamesh-%'")
-      .all() as Array<{ key: string; value: string }>;
-    db.close();
-    return Object.fromEntries(rows.map((row) => [row.key, JSON.parse(row.value) as PersistedRow]));
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
+/** The export's stored rows, parsed the way the persist layer parses them. */
+function readLegacyExportRows(): Record<string, PersistedRow> {
+  const extract = JSON.parse(readFileSync(EXTRACT, 'utf8')) as { rows: Record<string, string> };
+  return Object.fromEntries(
+    Object.entries(extract.rows).map(([key, value]) => [key, JSON.parse(value) as PersistedRow]),
+  );
 }
 
 const CHART_ID = 'portable-chart-ada';
@@ -68,12 +52,12 @@ const PROFILE_ID = 'portable-profile-ada';
 let rows: Record<string, PersistedRow>;
 let legacyChart: StoredChart;
 
-beforeAll(async () => {
-  rows = await readLegacyExportRows();
+beforeAll(() => {
+  rows = readLegacyExportRows();
   const library = rows['almamesh-chart-library']!;
   const migrated = migrateChartLibraryPersistedState(library.state, library.version);
   legacyChart = migrated.charts[CHART_ID]!;
-}, 60_000);
+});
 
 afterEach(() => {
   useChartLibraryStore.setState({ charts: {} });

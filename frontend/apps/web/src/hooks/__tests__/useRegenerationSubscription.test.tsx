@@ -257,6 +257,20 @@ describe('useRegenerationSubscription — the header name follows the chart', ()
     expect(useProfilesStore.getState().profiles.p1!.name).toBe('Asha');
   });
 
+  it('does not undo a rename the user made while the regeneration was computing', () => {
+    engineValue = { engine: fakeEngine };
+    renderHook(() => useRegenerationSubscription(), { wrapper });
+    act(() => {
+      void requestRegeneration(event).catch(() => undefined);
+    });
+    // The user renames the person from the switcher before the slow compute lands.
+    act(() => useProfilesStore.getState().renameProfile('p1', 'Newest Name'));
+
+    act(() => onRegenerated()());
+
+    expect(useProfilesStore.getState().profiles.p1!.name).toBe('Newest Name');
+  });
+
   it('keeps the old name when the recompute never lands (chart and header still agree)', () => {
     engineValue = { engine: fakeEngine };
     renderHook(() => useRegenerationSubscription(), { wrapper });

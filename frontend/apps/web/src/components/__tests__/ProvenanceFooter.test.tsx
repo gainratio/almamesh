@@ -73,4 +73,17 @@ describe('ProvenanceFooter', () => {
 
     expect(container.innerHTML).toBe('');
   });
+
+  it('falls back to the legacy line when a restored snapshot is malformed, instead of crashing', () => {
+    render(
+      <ProvenanceFooter
+        calculations={{
+          snapshot: { engine_version: 7 } as unknown as ChartSnapshot,
+          calculation_timestamp: '2025-01-01T00:00:00.000Z',
+        }}
+      />,
+    );
+
+    expect(line()).toContain('engine version not recorded');
+  });
 });
