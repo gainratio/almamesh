@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
+import { CI_GATES } from "../dagger/src/gates.ts"
 
 const root = resolve(import.meta.dir, "..")
 const workflowPath = resolve(root, ".github/workflows/dagger.yml")
@@ -44,12 +45,51 @@ function sameValue(left: unknown, right: unknown): boolean {
   return left === right
 }
 
+/** The GitHub job key for one Dagger gate: `browserChromium` -> `browser-chromium`. */
+function gateJobKey(gate: string): string {
+  return gate.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)
+}
+
+function checkoutStep(): Mapping {
+  return {
+    uses: checkout,
+    with: {
+      "fetch-depth": 0,
+      "persist-credentials": false,
+      ref: "${{ github.sha }}",
+    },
+  }
+}
+
+function daggerStep(call: string): Mapping {
+  return { uses: daggerAction, with: { version: "0.21.8", call } }
+}
+
+function expectedGateJob(gate: string): Mapping {
+  return {
+    name: `gate / ${gate}`,
+    "runs-on": "ubuntu-latest",
+    "timeout-minutes": 60,
+    steps: [checkoutStep(), daggerStep(`gate --name=${gate} --commit-sha=\${{ github.sha }}`)],
+  }
+}
+
+// The one required check. `!cancelled()` makes it run (and go red) when a gate
+// job fails; without it a failed dependency SKIPS this job, and branch
+// protection reads a skipped required check as passing.
+const expectedAggregateJob: Mapping = {
+  name: "Dagger",
+  needs: CI_GATES.map(gateJobKey),
+  if: "${{ !cancelled() }}",
+  "runs-on": "ubuntu-latest",
+  "timeout-minutes": 20,
+  steps: [checkoutStep(), daggerStep("verdict --results=\"${{ join(needs.*.result, ',') }}\"")],
+}
+
 function exactDaggerWorkflowViolations(source: string): string[] {
   const workflow = mapping(Bun.YAML.parse(source))
   const triggers = mapping(workflow.on)
   const jobs = mapping(workflow.jobs)
-  const job = mapping(jobs.dagger)
-  const steps = Array.isArray(job.steps) ? job.steps : []
   const violations: string[] = []
 
   if (workflow.name !== "Dagger") violations.push("workflow-name")
@@ -62,29 +102,11 @@ function exactDaggerWorkflowViolations(source: string): string[] {
     group: "${{ github.workflow }}-${{ github.ref }}",
     "cancel-in-progress": true,
   })) violations.push("concurrency")
-  if (!sameValue(Object.keys(jobs), ["dagger"])) violations.push("jobs")
-  if (!sameValue(job, {
-    name: "Dagger",
-    "runs-on": "ubuntu-latest",
-    "timeout-minutes": 120,
-    steps: [
-      {
-        uses: checkout,
-        with: {
-          "fetch-depth": 0,
-          "persist-credentials": false,
-          ref: "${{ github.sha }}",
-        },
-      },
-      {
-        uses: daggerAction,
-        with: {
-          version: "0.21.8",
-          call: "ci --commit-sha=${{ github.sha }}",
-        },
-      },
-    ],
-  })) violations.push("dagger-job")
+  if (!sameValue(Object.keys(jobs).sort(), [...CI_GATES.map(gateJobKey), "dagger"].sort())) violations.push("jobs")
+  for (const gate of CI_GATES) {
+    if (!sameValue(jobs[gateJobKey(gate)], expectedGateJob(gate))) violations.push(`gate-job:${gate}`)
+  }
+  if (!sameValue(jobs.dagger, expectedAggregateJob)) violations.push("dagger-job")
 
   return violations
 }
@@ -166,6 +188,25 @@ function exactDeployWorkflowViolations(source: string): string[] {
   return violations
 }
 
+function gateJobFixture(gate: string): string[] {
+  return [
+    `  ${gateJobKey(gate)}:`,
+    `    name: gate / ${gate}`,
+    "    runs-on: ubuntu-latest",
+    "    timeout-minutes: 60",
+    "    steps:",
+    `      - uses: ${checkout} # v7`,
+    "        with:",
+    "          fetch-depth: 0",
+    "          persist-credentials: false",
+    "          ref: ${{ github.sha }}",
+    `      - uses: ${daggerAction} # v8.4.1`,
+    "        with:",
+    "          version: \"0.21.8\"",
+    `          call: gate --name=${gate} --commit-sha=\${{ github.sha }}`,
+  ]
+}
+
 const canonicalFixture = [
   "name: Dagger",
   "",
@@ -182,10 +223,13 @@ const canonicalFixture = [
   "  cancel-in-progress: true",
   "",
   "jobs:",
+  ...CI_GATES.flatMap(gateJobFixture),
   "  dagger:",
   "    name: Dagger",
+  `    needs: [${CI_GATES.map(gateJobKey).join(", ")}]`,
+  "    if: ${{ !cancelled() }}",
   "    runs-on: ubuntu-latest",
-  "    timeout-minutes: 120",
+  "    timeout-minutes: 20",
   "    steps:",
   `      - uses: ${checkout} # v7`,
   "        with:",
@@ -195,7 +239,7 @@ const canonicalFixture = [
   `      - uses: ${daggerAction} # v8.4.1`,
   "        with:",
   "          version: \"0.21.8\"",
-  "          call: ci --commit-sha=${{ github.sha }}",
+  "          call: verdict --results=\"${{ join(needs.*.result, ',') }}\"",
   "",
 ].join("\n")
 
@@ -261,19 +305,48 @@ const canonicalDeployFixture = [
 ].join("\n")
 
 describe("atomic hosted Dagger workflow", () => {
-  test("the committed workflow has one exact-SHA Dagger check and no alternate ingress", () => {
+  const verdictCall = "          call: verdict --results=\"${{ join(needs.*.result, ',') }}\"\n"
+  const browserCall = "          call: gate --name=browserChromium --commit-sha=${{ github.sha }}\n"
+
+  test("the committed workflow runs every Dagger gate as its own job under one required Dagger check", () => {
     const source = readFileSync(workflowPath, "utf8")
     expect(exactDaggerWorkflowViolations(source)).toEqual([])
   })
 
+  test("the canonical fixture is itself clean", () => {
+    expect(exactDaggerWorkflowViolations(canonicalFixture)).toEqual([])
+  })
+
   test.each([
     {
-      name: "bare ci",
-      source: canonicalFixture.replace(
-        "call: ci --commit-sha=${{ github.sha }}",
-        "call: ci",
-      ),
+      name: "a gate dropped from the aggregate's needs",
+      source: canonicalFixture.replace(", browser-chromium,", ","),
       violation: "dagger-job",
+    },
+    {
+      name: "an aggregate that is skipped when a gate fails",
+      source: canonicalFixture.replace("    if: ${{ !cancelled() }}\n", ""),
+      violation: "dagger-job",
+    },
+    {
+      name: "an aggregate that ignores the gate results",
+      source: canonicalFixture.replace(verdictCall, "          call: contracts\n"),
+      violation: "dagger-job",
+    },
+    {
+      name: "a gate job without the commit identity",
+      source: canonicalFixture.replace(browserCall, "          call: gate --name=browserChromium\n"),
+      violation: "gate-job:browserChromium",
+    },
+    {
+      name: "a gate job that runs a different gate",
+      source: canonicalFixture.replace(browserCall, browserCall.replace("browserChromium", "privacy")),
+      violation: "gate-job:browserChromium",
+    },
+    {
+      name: "a missing gate job",
+      source: canonicalFixture.replace(/  browser-wizards:\n(?: {4}.*\n| {6}.*\n| {8}.*\n| {10}.*\n)+/, ""),
+      violation: "jobs",
     },
     {
       name: "manual dispatch",
@@ -282,19 +355,13 @@ describe("atomic hosted Dagger workflow", () => {
     },
     {
       name: "extra module selection",
-      source: canonicalFixture.replace(
-        "          call: ci --commit-sha=${{ github.sha }}",
-        "          module: ./dagger\n          call: ci --commit-sha=${{ github.sha }}",
-      ),
+      source: canonicalFixture.replace(verdictCall, `          module: ./dagger\n${verdictCall}`),
       violation: "dagger-job",
     },
     {
       name: "permissive checkout ref",
-      source: canonicalFixture.replace(
-        "          ref: ${{ github.sha }}",
-        "          ref: refs/heads/main",
-      ),
-      violation: "dagger-job",
+      source: canonicalFixture.replace("          ref: ${{ github.sha }}", "          ref: refs/heads/main"),
+      violation: "gate-job:secretScan",
     },
     {
       name: "renamed protected check",
@@ -303,27 +370,21 @@ describe("atomic hosted Dagger workflow", () => {
     },
     {
       name: "post-Dagger shell step",
-      source: canonicalFixture.replace(
-        "          call: ci --commit-sha=${{ github.sha }}\n",
-        "          call: ci --commit-sha=${{ github.sha }}\n      - run: dagger call deploy --help\n",
-      ),
+      source: canonicalFixture.replace(verdictCall, `${verdictCall}      - run: dagger call deploy --help\n`),
       violation: "dagger-job",
     },
     {
       name: "pre-Dagger shell step",
       source: canonicalFixture.replace(
-        `      - uses: ${daggerAction} # v8.4.1`,
-        `      - run: dagger functions\n      - uses: ${daggerAction} # v8.4.1`,
+        `      - uses: ${daggerAction} # v8.4.1\n        with:\n          version: "0.21.8"\n${verdictCall}`,
+        `      - run: dagger functions\n      - uses: ${daggerAction} # v8.4.1\n        with:\n          version: "0.21.8"\n${verdictCall}`,
       ),
       violation: "dagger-job",
     },
     {
-      name: "post-Dagger action step",
-      source: canonicalFixture.replace(
-        "          call: ci --commit-sha=${{ github.sha }}\n",
-        "          call: ci --commit-sha=${{ github.sha }}\n      - uses: actions/setup-node@v4\n",
-      ),
-      violation: "dagger-job",
+      name: "post-Dagger action step in a gate job",
+      source: canonicalFixture.replace(browserCall, `${browserCall}      - uses: actions/setup-node@v4\n`),
+      violation: "gate-job:browserChromium",
     },
   ])("rejects $name", ({ source, violation }) => {
     expect(source).not.toBe(canonicalFixture)
