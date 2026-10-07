@@ -408,10 +408,13 @@ exec ${inline.join(" ")}`,
         this.selected([
           ".github/workflows/dagger.yml",
           ".github/workflows/deploy.yml",
+          ".github/workflows/toolchain-image.yml",
           "dagger.json",
           "dagger/scripts/**",
           "dagger/src/**",
           "frontend/apps/web/vitest.config.ts",
+          // The toolchain contract reads the locked Playwright version.
+          "frontend/bun.lock",
           // The memory-budget contract pins the test:e2e:memory-budget script.
           "frontend/apps/web/package.json",
           // The browser Lego pin contract ties BROWSER_LEGO_SPEC to these.
