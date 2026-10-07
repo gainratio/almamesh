@@ -5,7 +5,7 @@ import { useLanguageStore, type Language } from '@almamesh/store';
 import { Select } from '../../ui';
 
 /** Canonical public source repository. */
-export const GITHUB_URL = 'https://github.com/hseshadr/almamesh';
+export const GITHUB_URL = 'https://github.com/gainratio/almamesh';
 
 /**
  * The GitHub octocat mark, inlined as an SVG so the open-source signal renders

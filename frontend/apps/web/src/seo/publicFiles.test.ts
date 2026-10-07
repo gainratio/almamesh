@@ -96,11 +96,29 @@ describe('public/llms.txt', () => {
   it('provides factual product, privacy, source, and public-page context', () => {
     const llms = readFileSync(path.join(publicDir, 'llms.txt'), 'utf-8');
     expect(llms).toContain('# AlmaMesh');
-    expect(llms).toContain('https://github.com/hseshadr/almamesh');
+    expect(llms).toContain('https://github.com/gainratio/almamesh');
     expect(llms).toContain('https://almamesh.com/privacy');
     expect(llms).toContain('browser');
     expect(llms).toContain('optional AI');
     expect(llms).not.toMatch(/guaranteed|scientifically proven|medical advice/i);
+  });
+});
+
+// The repository lives at github.com/gainratio/almamesh since the 2026-10-07
+// org transfer. Every public surface that names it must say so.
+describe('public repository URL', () => {
+  const publicSurfaces = [
+    path.join(publicDir, '../index.html'),
+    path.join(publicDir, 'llms.txt'),
+    path.join(publicDir, '.well-known/security.txt'),
+    path.join(here, '../components/features/landing/LandingFooter.tsx'),
+    path.join(repoRoot, 'README.md'),
+  ];
+
+  it.each(publicSurfaces)('%s names gainratio/almamesh, never hseshadr/almamesh', (file) => {
+    const text = readFileSync(file, 'utf-8');
+    expect(text).toContain('github.com/gainratio/almamesh');
+    expect(text).not.toContain('hseshadr/almamesh');
   });
 });
 
@@ -233,7 +251,7 @@ describe('security.txt', () => {
     expect(readFileSync(path.join(repoRoot, 'SECURITY.md'), 'utf-8')).toContain(
       'harish.seshadri@gmail.com',
     );
-    expect(field('Policy')).toBe('https://github.com/hseshadr/almamesh/blob/main/SECURITY.md');
+    expect(field('Policy')).toBe('https://github.com/gainratio/almamesh/blob/main/SECURITY.md');
     expect(field('Canonical')).toBe(`${SITE_ORIGIN}/.well-known/security.txt`);
   });
 

@@ -45,7 +45,7 @@ Local traps we hit:
 ## 2. Clone, install, run
 
 ```bash
-git clone https://github.com/hseshadr/almamesh.git && cd almamesh
+git clone https://github.com/gainratio/almamesh.git && cd almamesh
 (cd backend && uv sync --extra dev)     # a few seconds with a warm uv cache
 (cd frontend && bun install)            # about 10 s (2,243 packages)
 ```

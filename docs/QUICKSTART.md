@@ -4,7 +4,7 @@
 no server, no account, no API key.
 
 ```bash
-git clone https://github.com/hseshadr/almamesh && cd almamesh
+git clone https://github.com/gainratio/almamesh && cd almamesh
 make demo        # install → fetch/sign dev assets → build → open http://localhost:4173
 ```
 

@@ -2,9 +2,9 @@
 
 Your Vedic (traditional Indian) astrology chart, free and computed in your own browser — no account, no data harvesting.
 
-[![CI](https://github.com/hseshadr/almamesh/actions/workflows/dagger.yml/badge.svg)](https://github.com/hseshadr/almamesh/actions/workflows/dagger.yml)
-[![Version](https://img.shields.io/github/v/tag/hseshadr/almamesh?label=version)](CHANGELOG.md)
-[![License: MIT](https://img.shields.io/github/license/hseshadr/almamesh)](LICENSE)
+[![CI](https://github.com/gainratio/almamesh/actions/workflows/dagger.yml/badge.svg)](https://github.com/gainratio/almamesh/actions/workflows/dagger.yml)
+[![Version](https://img.shields.io/github/v/tag/gainratio/almamesh?label=version)](CHANGELOG.md)
+[![License: MIT](https://img.shields.io/github/license/gainratio/almamesh)](LICENSE)
 
 **[Live demo](https://almamesh.com)** · [Docs](docs/README.md) · [Quickstart](docs/QUICKSTART.md)
 
@@ -29,7 +29,7 @@ Fastest: open **[almamesh.com](https://almamesh.com)** — nothing to install, n
 To run your own copy (needs [uv](https://docs.astral.sh/uv/) and [Bun](https://bun.sh/)):
 
 ```bash
-git clone https://github.com/hseshadr/almamesh.git && cd almamesh && make demo
+git clone https://github.com/gainratio/almamesh.git && cd almamesh && make demo
 ```
 
 The first run takes longer than a minute: it installs packages, downloads the
@@ -355,7 +355,7 @@ From source: requires [Bun](https://bun.sh/) (version pinned in
 Everything else resolves from public sources through committed locks and exact pins.
 
 ```bash
-git clone https://github.com/hseshadr/almamesh.git && cd almamesh
+git clone https://github.com/gainratio/almamesh.git && cd almamesh
 
 # One command, from the repo root. Installs deps, builds the dev assets, then
 # builds and opens the app at http://localhost:4173.
