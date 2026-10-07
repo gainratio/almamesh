@@ -128,7 +128,31 @@ function sampleLoop(intervalMs: number, sample: () => Promise<void>): { stop: ()
   };
 }
 
+/**
+ * A string only the age library (typage) ships. Backup encryption loads it in
+ * a Worker on the first seal or open, never at boot; the precache download by
+ * the service worker itself is not a load.
+ */
+const AGE_LIBRARY_MARKER = 'scrypt work factor is too high';
+
 test('cold boot to a ready chart stays inside the memory budget without the chat embedder', async ({ page, browser }) => {
+  const ageTraffic: string[] = [];
+  const scriptChecks: Promise<void>[] = [];
+  page.on('worker', (worker) => {
+    if (worker.url().includes('passphraseSeal.worker')) ageTraffic.push(`spawned ${new URL(worker.url()).pathname}`);
+  });
+  page.context().on('response', (response) => {
+    const { pathname } = new URL(response.url());
+    if (response.request().serviceWorker() !== null || !pathname.endsWith('.js')) return;
+    scriptChecks.push(
+      response.text().then(
+        (body) => {
+          if (body.includes(AGE_LIBRARY_MARKER)) ageTraffic.push(`loaded ${pathname}`);
+        },
+        () => undefined,
+      ),
+    );
+  });
   const embedderTraffic: string[] = [];
   // The service worker precaches the (small) embedder worker script; that is
   // not a load. A spawned embedder worker or a model/ORT fetch is.
@@ -171,6 +195,9 @@ test('cold boot to a ready chart stays inside the memory budget without the chat
   expect(rss.length, 'renderer RSS was sampled').toBeGreaterThan(0);
   expect(Number.isFinite(sample.rendererRssSettledMiB), 'renderer RSS was sampled after ready').toBe(true);
   expect.soft(embedderTraffic, 'the chat embedder must not load before search or chat').toEqual([]);
+  await Promise.all(scriptChecks);
+  expect(scriptChecks.length, 'boot scripts were inspected').toBeGreaterThan(0);
+  expect.soft(ageTraffic, 'the age library loads only when a backup is sealed or opened').toEqual([]);
   expect.soft(overBudget(sample, BOOT_MEMORY_BUDGET)).toEqual([]);
   expect(consoleErrors).toEqual([]);
 });

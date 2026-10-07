@@ -340,7 +340,7 @@ asserted by SHA-256 in `e2e/report-pdf.e2e.spec.ts`.
 Python side resolves [`edge-proc`](https://pypi.org/project/edge-proc/) from
 PyPI. The browser consumes the public
 [`@gainratio/browser`](https://www.npmjs.com/package/@gainratio/browser) Lego
-from npm at its latest release (`^0.2.0`, locked in `frontend/bun.lock`); no copied sync/storage implementation remains here. See
+from npm at its latest release (`^0.4.1`, locked in `frontend/bun.lock`); no copied sync/storage implementation remains here. See
 [`docs/edgeproc-browser.md`](docs/edgeproc-browser.md) for provenance and the
 consumer boundary.
 

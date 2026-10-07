@@ -22,7 +22,7 @@
     "@almamesh/constants": "workspace:*",
     "@almamesh/llm": "workspace:*",
     "@almamesh/shared-types": "workspace:*",
-    "@gainratio/browser": "^0.3.2",
+    "@gainratio/browser": "^0.4.1",
     "dayjs": "^1.11.23",
     "idb-keyval": "^6.3.0",
     "zustand": "^5.0.14"
@@ -36,8 +36,9 @@
     }
   },
   "devDependencies": {
-    "fake-indexeddb": "^6.2.5",
     "@typescript/native": "npm:typescript@^7.0.2",
+    "age-encryption": "^0.3.1",
+    "fake-indexeddb": "^6.2.5",
     "typescript": "^6.0.3",
     "vitest": "^5.0.2"
   }

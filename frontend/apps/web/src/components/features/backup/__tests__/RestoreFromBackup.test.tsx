@@ -142,6 +142,29 @@ describe('RestoreFromBackup (first run)', () => {
     expect(assignSpy).not.toHaveBeenCalled();
   });
 
+  it('after a wrong password, a later failure replaces the stale password alert', async () => {
+    vi.mocked(stageBackupImport).mockImplementation(async (_content, passphrase) => {
+      if (passphrase !== PASSWORD) throw new BackupCryptoError('bad_passphrase', 'locked');
+      throw new Error('Portable LLM setting "state" is invalid.');
+    });
+    render(<RestoreFromBackup />);
+
+    fireEvent.click(screen.getByTestId('first-run-restore-button'));
+    await unlockWith('not the password');
+    const wrongPassword = 'Wrong password, or the file was changed after export. Nothing was imported.';
+    expect(await screen.findByText(wrongPassword)).toBeTruthy();
+
+    await unlockWith(PASSWORD);
+
+    expect((await screen.findByTestId('first-run-restore-error')).textContent).toBe(
+      'Couldn\'t read that backup: Portable LLM setting "state" is invalid.',
+    );
+    expect(screen.queryByText(wrongPassword)).toBeNull();
+    // Not a password problem: the prompt closes so the reason is the one alert.
+    await waitFor(() => expect(screen.queryByTestId('backup-passphrase-prompt-input')).toBeNull());
+    expect(screen.getAllByRole('alert')).toHaveLength(1);
+  });
+
   it('a file that is not a backup is refused inline, and the button still works', async () => {
     vi.mocked(stageBackupImport).mockRejectedValue(new BackupError('bad_format', 'nope'));
     render(<RestoreFromBackup />);

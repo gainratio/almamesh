@@ -1,0 +1,21 @@
+{
+  "generatedBy": "almamesh main @ 79177b3 (backupCrypto.ts + portableBundle.ts, before the age migration)",
+  "legacy-v3.almamesh": {
+    "passphrase": "portable e2e passphrase",
+    "plaintextSha256": "b52d6596dbb322b0e983523e83861fdd7519c11ca93394e2ba53fc5c74d69413",
+    "plaintextBytes": 49152,
+    "source": "real Settings export, e2e/portable-sqlite-state.spec.ts (Chromium)"
+  },
+  "legacy-v2.json": {
+    "passphrase": "short",
+    "source": "frontend/scripts/make-legacy-v2-fixture.mjs: the fdfd171 v2 writer, flat AI settings as writeLlmSettings stored them",
+    "databaseSha256": "b52d6596dbb322b0e983523e83861fdd7519c11ca93394e2ba53fc5c74d69413",
+    "settingsKept": [
+      "almamesh-llm-settings"
+    ]
+  },
+  "legacy-v1.json": {
+    "passphrase": "pw-legacy",
+    "storesJsonSha256": "a23cc6b9a7a206c50c0a666cae37f914292be786b409161d6c9a3f2fc2e6d9f1"
+  }
+}

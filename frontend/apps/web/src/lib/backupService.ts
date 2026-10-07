@@ -6,7 +6,7 @@
  * the three operations a Settings screen needs:
  *
  *   - {@link buildBackupExport} — seal canonical SQLite into one encrypted
- *     `.almamesh` file.
+ *     `.almamesh` file (a standard age file; `age -d` opens it too).
  *   - {@link stageBackupImport} — validate SQLite or legacy JSON, decrypt when
  *     needed, and return a preview ready for confirmation (nothing written yet).
  *   - {@link commitBackupImport} — write a staged envelope into the stores.
@@ -25,24 +25,22 @@ import {
   BackupCryptoError,
   BackupError,
   beginBackupRestore,
+  checkBackupPassphrase,
+  MIN_BACKUP_PASSPHRASE_LENGTH,
   clearMemoryRebuildPending,
   collectBackup,
   createBrowserTiers,
-  decodeEnvelope,
-  encodeEnvelope,
   exportPortableBrowserState,
   finalizeBackupRestore,
   importPortableBrowserState,
-  isPortableBundle,
   mergeLegacyPreferencesIntoPortableState,
-  MIN_BUNDLE_PASSPHRASE_LENGTH,
-  openPortableBundle,
+  openBackup,
+  type OpenedBackup,
   PORTABLE_DATASET_KEYS,
   PORTABLE_PREFERENCES_KEY,
   PORTABLE_STATE_KEYS,
   PortableStateTooNewError,
   PortableStateUnavailableError,
-  sealPortableBundle,
   readDeletionTombstones,
   readPortableStateDatabase,
   requirePortableStateRepository,
@@ -54,11 +52,12 @@ import {
   repairPortableReferences,
   holdSetAsideRecords,
   type SetAsideRecord,
+  sealBackup,
   type PortableStateSnapshot,
   type StorageTier,
 } from '@almamesh/store';
 import { safeWarn } from '@almamesh/shared-types';
-import type { BackupEnvelope, BackupEnvelopePlain } from '@almamesh/shared-types';
+import type { BackupEnvelopePlain } from '@almamesh/shared-types';
 import type { IndexableMessage } from '@almamesh/memory';
 import { clearMemory, rebuildMemory } from './chatMemory';
 import { publishDeletionNotice } from './deletionPropagation';
@@ -212,34 +211,23 @@ export interface BackupExport {
 }
 
 /**
- * The user-facing export requires a passphrase and yields format v3: exact
- * canonical SQLite bytes sealed with AES-GCM under a PBKDF2-derived key.
- * Dependency-injected pure-tier tests retain the legacy JSON envelope.
+ * The export requires a passphrase (at least 12 characters) and yields the
+ * exact canonical SQLite bytes sealed as an age file (scrypt), in a Worker.
  */
 export async function buildBackupExport(
   passphrase?: string,
   override?: BackupDepsOverride,
 ): Promise<BackupExport> {
-  if (passphrase === undefined || passphrase.length < MIN_BUNDLE_PASSPHRASE_LENGTH) {
+  if (passphrase === undefined || checkBackupPassphrase(passphrase, passphrase) !== null) {
     throw new BackupCryptoError(
       'bad_passphrase',
-      `A passphrase of at least ${MIN_BUNDLE_PASSPHRASE_LENGTH} characters is required to export.`,
+      `A passphrase of at least ${MIN_BACKUP_PASSPHRASE_LENGTH} characters is required to export.`,
     );
   }
-  const deps = resolveDeps(override);
-  if (override?.tiers === undefined) {
-    const exported = await (override?.exportPortableState ?? exportPortableBrowserState)();
-    const content = await sealPortableBundle(exported.bytes, passphrase, deps);
-    return {
-      filename: exportBackupFilename(deps.now),
-      content,
-      repairs: exported.repairs,
-    };
-  }
-  const plain = await collectBackup(deps);
-  const encoded = await encodeEnvelope(plain, passphrase);
-  const filename = `almamesh-backup-${filenameTimestamp(deps.now)}.json`;
-  return { filename, content: JSON.stringify(encoded, null, 2), repairs: EMPTY_PORTABLE_REPAIR_REPORT };
+  const now = override?.now ?? new Date().toISOString();
+  const exported = await (override?.exportPortableState ?? exportPortableBrowserState)();
+  const content = await sealBackup(exported.bytes, passphrase);
+  return { filename: exportBackupFilename(now), content, repairs: exported.repairs };
 }
 
 /** The name an export will be saved under, known before the export is built. */
@@ -320,40 +308,72 @@ function envelopeFromPortableSnapshot(snapshot: PortableStateSnapshot): BackupEn
 }
 
 /**
- * Detect and validate picked SQLite bytes or legacy JSON text, then decrypt
- * encrypted JSON when needed.
- * Nothing is written — the caller previews {@link StagedImport.envelope} and
- * only then calls {@link commitBackupImport}.
+ * Detect and validate picked backup bytes or legacy JSON text, decrypting when
+ * needed. Nothing is written — the caller previews {@link StagedImport.envelope}
+ * and only then calls {@link commitBackupImport}.
  *
- * Failure modes are typed so the UI can message the exact reason:
- *  - invalid SQLite/JSON, not an AlmaMesh backup, or a below-range version
- *    ⇒ {@link BackupError} `bad_format`
+ * Formats: an age file (every export since the age move), an older `.almamesh`
+ * v3 binary, a v2 JSON bundle, a v1 JSON store backup (plain or encrypted), or
+ * a raw SQLite file. Failure modes are typed so the UI can word the reason:
+ *  - not an AlmaMesh backup, or a damaged header ⇒ {@link BackupError} `bad_format`
  *  - made by a newer app (`formatVersion > 2`) ⇒ {@link BackupError} `too_new`
- *  - encrypted but no passphrase given ⇒ {@link BackupCryptoError}
- *    `bad_passphrase` (so the UI knows to prompt), and a wrong passphrase
- *    surfaces the same error from `decodeEnvelope`.
+ *  - encrypted and no passphrase, or a wrong one ⇒ {@link BackupCryptoError}
+ *    `bad_passphrase` (the UI prompts); `out_of_memory` / `unavailable` mean
+ *    the password was NOT judged and the user should retry.
  */
 export async function stageBackupImport(
   content: BackupContent,
   passphrase?: string,
   override?: Pick<BackupDepsOverride, 'readPortableState' | 'mergeLegacyPreferences'>,
 ): Promise<StagedImport> {
-  if (content instanceof Uint8Array) {
-    if (isPortableBundle(content)) {
-      const { database } = await openPortableBundle(content, passphrase ?? '');
-      if (!hasSqliteHeader(database)) {
-        throw new BackupError('corrupt', 'The backup unlocked but holds no AlmaMesh database.');
-      }
-      const { envelope, repairs } = await readPortableEnvelope(database, override);
-      return { kind: 'bundle', envelope, wasEncrypted: true, bytes: database, repairs };
-    }
-    if (!hasSqliteHeader(content)) {
-      throw new BackupError('bad_format', 'This file is not an AlmaMesh backup.');
-    }
+  if (content instanceof Uint8Array && hasSqliteHeader(content)) {
     const bytes = content.slice();
     const { envelope, repairs } = await readPortableEnvelope(bytes, override);
     return { kind: 'sqlite', envelope, wasEncrypted: false, bytes, repairs };
   }
+  if (typeof content === 'string' && !content.startsWith('-----BEGIN AGE ENCRYPTED FILE-----')) {
+    return stageJsonImport(content, passphrase, override);
+  }
+  return stageOpenedBackup(await openBackup(content, passphrase), override);
+}
+
+async function stageOpenedBackup(
+  opened: OpenedBackup,
+  override?: Pick<BackupDepsOverride, 'readPortableState' | 'mergeLegacyPreferences'>,
+): Promise<StagedImport> {
+  if (opened.kind === 'stores') {
+    const { envelope, repairs } = repairEnvelopeReferences(legacyEnvelope(opened.stores));
+    return { kind: 'json', envelope, wasEncrypted: true, repairs };
+  }
+  if (!hasSqliteHeader(opened.database)) {
+    throw new BackupError('corrupt', 'The backup unlocked but holds no AlmaMesh database.');
+  }
+  const bytes = Object.keys(opened.settings).length === 0
+    ? opened.database
+    : await (override?.mergeLegacyPreferences ?? mergeLegacyPreferencesIntoPortableState)(
+        opened.database,
+        opened.settings,
+      );
+  const { envelope, repairs } = await readPortableEnvelope(bytes, override);
+  return { kind: 'bundle', envelope, wasEncrypted: true, bytes, repairs };
+}
+
+function legacyEnvelope(stores: BackupEnvelopePlain['stores']): BackupEnvelopePlain {
+  return {
+    format: 'almamesh-backup',
+    formatVersion: 1,
+    app: { version: 'legacy-v1' },
+    exportedAt: new Date().toISOString(),
+    encryption: 'none',
+    stores,
+  };
+}
+
+async function stageJsonImport(
+  content: string,
+  passphrase: string | undefined,
+  override?: Pick<BackupDepsOverride, 'readPortableState' | 'mergeLegacyPreferences'>,
+): Promise<StagedImport> {
   if (content.length > MAX_BACKUP_TEXT_CHARACTERS) {
     throw new BackupError('bad_format', 'This backup file is too large to import safely.');
   }
@@ -373,43 +393,24 @@ export async function stageBackupImport(
   ) {
     throw new BackupError('bad_format', 'This file is not an AlmaMesh backup.');
   }
-  if (isPortableBundle(parsed)) {
-    // Validates the header first (bad_format), then asks for the passphrase.
-    const { database, settings } = await openPortableBundle(parsed, passphrase ?? '');
-    if (!hasSqliteHeader(database)) {
-      throw new BackupError('corrupt', 'The backup unlocked but holds no AlmaMesh database.');
-    }
-    const bytes = Object.keys(settings).length === 0
-      ? database
-      : await (override?.mergeLegacyPreferences ?? mergeLegacyPreferencesIntoPortableState)(
-          database,
-          settings,
-        );
-    const { envelope, repairs } = await readPortableEnvelope(bytes, override);
-    return { kind: 'bundle', envelope, wasEncrypted: true, bytes, repairs };
-  }
   if (record.formatVersion > 2) {
     throw new BackupError(
       'too_new',
       'This backup was made by a newer version of AlmaMesh. Update the app first.',
     );
   }
-  if (record.formatVersion < 1 || record.formatVersion === 2) {
+  if (record.formatVersion < 1) {
     throw new BackupError('bad_format', 'This backup has an invalid format version.');
   }
-
-  const wasEncrypted = record.encryption === 'aes-gcm';
-  if (wasEncrypted && !passphrase) {
-    throw new BackupCryptoError(
-      'bad_passphrase',
-      'This backup is encrypted — enter its passphrase to open it.',
-    );
+  if (record.encryption === 'aes-gcm') {
+    return stageOpenedBackup(await openBackup(content, passphrase), override);
   }
-
-  const { envelope, repairs } = repairEnvelopeReferences(
-    await decodeEnvelope(parsed as BackupEnvelope, passphrase),
-  );
-  return { kind: 'json', envelope, wasEncrypted, repairs };
+  // v2 bundles were always sealed; only v1 had a plaintext form.
+  if (record.formatVersion === 2 || record.encryption !== 'none') {
+    throw new BackupError('bad_format', 'This backup has an invalid format version.');
+  }
+  const { envelope, repairs } = repairEnvelopeReferences(parsed as BackupEnvelopePlain);
+  return { kind: 'json', envelope, wasEncrypted: false, repairs };
 }
 
 /**
