@@ -99,7 +99,7 @@ function exactDaggerWorkflowViolations(source: string): string[] {
   })) violations.push("triggers")
   if (!sameValue(workflow.permissions, { contents: "read" })) violations.push("permissions")
   if (!sameValue(workflow.concurrency, {
-    group: "${{ github.workflow }}-${{ github.ref }}",
+    group: "${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.run_id || github.ref }}",
     "cancel-in-progress": "${{ github.ref != 'refs/heads/main' }}",
   })) violations.push("concurrency")
   if (!sameValue(Object.keys(jobs).sort(), [...CI_GATES.map(gateJobKey), "dagger"].sort())) violations.push("jobs")
@@ -219,7 +219,7 @@ const canonicalFixture = [
   "  contents: read",
   "",
   "concurrency:",
-  "  group: ${{ github.workflow }}-${{ github.ref }}",
+  "  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.run_id || github.ref }}",
   "  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}",
   "",
   "jobs:",
@@ -354,6 +354,16 @@ describe("atomic hosted Dagger workflow", () => {
       source: canonicalFixture.replace(
         "  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}",
         "  cancel-in-progress: true",
+      ),
+      violation: "concurrency",
+    },
+    {
+      // One group per ref holds one pending run: a third stacked main merge
+      // would cancel the pending second one. Main runs get a group each.
+      name: "main runs sharing one concurrency group",
+      source: canonicalFixture.replace(
+        "  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.run_id || github.ref }}",
+        "  group: ${{ github.workflow }}-${{ github.ref }}",
       ),
       violation: "concurrency",
     },
