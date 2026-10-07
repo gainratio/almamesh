@@ -1,9 +1,10 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { afterEach, describe, it, expect, beforeEach, vi } from 'vitest';
 import { useLanguageStore, type StoredChart } from '@almamesh/store';
 import type { ProcessedBirthData } from '@almamesh/shared-types';
 import {
   buildEnsurePredictiveInput,
   formatPredictiveDate,
+  formatReferenceDay,
   predictiveReferenceInstant,
   selectPrimaryStoredChart,
   titleCaseToken,
@@ -119,4 +120,18 @@ describe('titleCaseToken', () => {
     expect(titleCaseToken('saturn')).toBe('Saturn');
     expect(titleCaseToken('')).toBe('');
   });
+});
+
+describe('formatReferenceDay', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it.each(['America/Los_Angeles', 'UTC', 'Asia/Kolkata', 'Pacific/Auckland'])(
+    'prints the calendar day a UTC-midnight reference names, for a viewer in %s',
+    (zone) => {
+      vi.stubEnv('TZ', zone);
+      expect(formatReferenceDay('2026-10-07T00:00:00Z')).toBe('Oct 7, 2026');
+    },
+  );
 });

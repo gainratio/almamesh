@@ -16,7 +16,7 @@ import { join } from 'node:path';
 
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   CHART_LIBRARY_PERSIST_VERSION,
@@ -137,6 +137,15 @@ describe('a chart from a backup made before chart snapshots', () => {
 describe('one analysis instant on screen for a pre-snapshot chart', () => {
   const CALCULATED = '2026-06-26T17:00:00.000Z';
   const TODAY = new Date('2026-10-07T18:00:00.000Z');
+
+  // The live bug only shows west of Greenwich (a UTC-midnight day printed in
+  // Pacific time reads one day early), and CI runs in UTC. Pin the viewer.
+  beforeEach(() => {
+    vi.stubEnv('TZ', 'America/Los_Angeles');
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
 
   function calculatedLegacyChart(): StoredChart {
     return {
