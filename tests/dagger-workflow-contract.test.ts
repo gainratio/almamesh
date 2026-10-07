@@ -100,7 +100,7 @@ function exactDaggerWorkflowViolations(source: string): string[] {
   if (!sameValue(workflow.permissions, { contents: "read" })) violations.push("permissions")
   if (!sameValue(workflow.concurrency, {
     group: "${{ github.workflow }}-${{ github.ref }}",
-    "cancel-in-progress": true,
+    "cancel-in-progress": "${{ github.ref != 'refs/heads/main' }}",
   })) violations.push("concurrency")
   if (!sameValue(Object.keys(jobs).sort(), [...CI_GATES.map(gateJobKey), "dagger"].sort())) violations.push("jobs")
   for (const gate of CI_GATES) {
@@ -220,7 +220,7 @@ const canonicalFixture = [
   "",
   "concurrency:",
   "  group: ${{ github.workflow }}-${{ github.ref }}",
-  "  cancel-in-progress: true",
+  "  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}",
   "",
   "jobs:",
   ...CI_GATES.flatMap(gateJobFixture),
@@ -347,6 +347,23 @@ describe("atomic hosted Dagger workflow", () => {
       name: "a missing gate job",
       source: canonicalFixture.replace(/  browser-wizards:\n(?: {4}.*\n| {6}.*\n| {8}.*\n| {10}.*\n)+/, ""),
       violation: "jobs",
+    },
+    {
+      // Every main merge must finish so it can deploy; only superseded PR runs cancel.
+      name: "main runs that cancel each other",
+      source: canonicalFixture.replace(
+        "  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}",
+        "  cancel-in-progress: true",
+      ),
+      violation: "concurrency",
+    },
+    {
+      name: "PR runs that never cancel superseded ones",
+      source: canonicalFixture.replace(
+        "  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}",
+        "  cancel-in-progress: false",
+      ),
+      violation: "concurrency",
     },
     {
       name: "manual dispatch",
