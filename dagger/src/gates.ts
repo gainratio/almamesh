@@ -79,3 +79,51 @@ export async function runPool(gates: readonly Gate[], limit: number): Promise<Ga
   await Promise.all(Array.from({ length: Math.min(limit, gates.length) }, lane))
   return outcomes
 }
+
+/**
+ * The product gates, longest first (the order `ci` starts them in). The old
+ * single `browser` gate ran ~28 minutes of serial commands, so it is split into
+ * five shards that each serve the same hooked build; in one engine (`ci`) Dagger
+ * builds it once, and on GitHub each shard runs on its own runner.
+ */
+export const PRODUCT_GATES = [
+  "browserChromium",
+  "browserJourneys",
+  "browserSuites",
+  "browserWizards",
+  "browserWebkitReal",
+  "browserMatrix",
+  "frontend",
+  "backend",
+  "pdf",
+  "privacy",
+] as const
+
+export type ProductGate = (typeof PRODUCT_GATES)[number]
+
+/** Every gate `ci` runs; GitHub runs each as its own job (`gate --name=...`). */
+export const CI_GATES = ["secretScan", "contracts", ...PRODUCT_GATES] as const
+
+export type CiGate = (typeof CI_GATES)[number]
+
+export function isProductGate(name: string): name is ProductGate {
+  return (PRODUCT_GATES as readonly string[]).includes(name)
+}
+
+/**
+ * The required `Dagger` check's verdict over the per-gate GitHub jobs, given
+ * `join(needs.*.result, ',')`. Green only when there is one result per gate and
+ * every one is `success`: a failed, cancelled, or skipped gate is red, and so is
+ * a gate job someone dropped from the aggregate's `needs`.
+ */
+export function gateVerdict(results: string): string {
+  const outcomes = results.split(",").map((result) => result.trim()).filter((result) => result !== "")
+  if (outcomes.length !== CI_GATES.length) {
+    throw new Error(`expected ${CI_GATES.length} gate job results, got ${outcomes.length}: ${results}`)
+  }
+  const red = outcomes.filter((result) => result !== "success")
+  if (red.length > 0) {
+    throw new Error(`${red.length} of ${outcomes.length} gate jobs did not succeed: ${red.join(", ")}`)
+  }
+  return `All ${outcomes.length} gate jobs passed.`
+}

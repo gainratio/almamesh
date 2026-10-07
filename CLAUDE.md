@@ -58,7 +58,11 @@ This repo builds against `~/dev/project-ideas/oss/ENGINEERING-STANDARDS.md`
     JS/wasm heap or renderer RSS exceeds `e2e/memoryBudget.ts`, or if the chat
     embedder loads before search/chat), backup/reset, and report-PDF
     journeys. `.github/workflows/dagger.yml` is only the pinned GitHub trigger;
-    `dagger/src/index.ts` is the portable gate contract.
+    `dagger/src/index.ts` is the portable gate contract. GitHub runs each gate
+    of `dagger call ci` as its own job (`dagger call gate --name=<gate>`; the
+    list is `CI_GATES` in `dagger/src/gates.ts`, the browser gate split into
+    five shards), and the required `Dagger` check is `dagger call verdict` over
+    those jobs' results.
   - **Service-worker update lane** (`playwright.sw-update.config.ts`): the only
     gate that needs TWO builds — it serves build A, "deploys" build B on the
     same origin, and asserts that clicking the update banner leaves the browser

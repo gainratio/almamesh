@@ -1,3 +1,4 @@
+import { PRODUCT_GATES } from "../dagger/src/gates.ts"
 import { describe, expect, mock, test } from "bun:test"
 import { existsSync, readFileSync } from "node:fs"
 import { resolve } from "node:path"
@@ -257,7 +258,7 @@ describe("Foundation guard composition", () => {
         },
       }),
     })
-    for (const gate of ["backend", "frontend", "browser", "browserMatrix", "pdf", "privacy"] as const) {
+    for (const gate of PRODUCT_GATES) {
       module[gate] = (() => ({
         sync: async () => {
           productGates.push(gate)
@@ -298,13 +299,13 @@ describe("ci runs independent gates concurrently", () => {
       contracts: stub(gates.contracts ?? (async () => undefined)),
       secretScan: stub(gates.secretScan ?? (async () => undefined)),
     })
-    for (const gate of ["backend", "frontend", "browser", "browserMatrix", "pdf", "privacy"] as const) {
+    for (const gate of PRODUCT_GATES) {
       module[gate] = stub(gates[gate] ?? (async () => undefined)) as never
     }
     return module
   }
 
-  test("runs product gates two at a time, longest (browser) first, and finishes them all", async () => {
+  test("runs product gates two at a time, browser shards first, and finishes them all", async () => {
     const started: string[] = []
     let inFlight = 0
     let peak = 0
@@ -315,30 +316,58 @@ describe("ci runs independent gates concurrently", () => {
       await new Promise((done) => setTimeout(done, 5))
       inFlight -= 1
     }
-    const module = await ciModule({
-      backend: gate("backend"),
-      frontend: gate("frontend"),
-      browser: gate("browser"),
-      browserMatrix: gate("browserMatrix"),
-      pdf: gate("pdf"),
-      privacy: gate("privacy"),
-    })
+    const module = await ciModule(Object.fromEntries(PRODUCT_GATES.map((name) => [name, gate(name)])))
     await expect(module.ci("1".repeat(40))).resolves.toContain("gates passed")
-    expect(started[0]).toBe("browser")
-    expect(started.sort()).toEqual(["backend", "browser", "browserMatrix", "frontend", "pdf", "privacy"])
+    expect(started.slice(0, 2)).toEqual(["browserChromium", "browserJourneys"])
+    expect(started.sort()).toEqual([...PRODUCT_GATES].sort())
     expect(peak).toBe(2)
+  })
+
+  test("gate runs exactly the one named gate, the same container ci runs", async () => {
+    const started: string[] = []
+    const record = (name: string) => async () => void started.push(name)
+    const module = await ciModule({
+      ...Object.fromEntries(PRODUCT_GATES.map((name) => [name, record(name)])),
+      contracts: record("contracts"),
+      secretScan: record("secretScan"),
+    })
+    await expect(module.gate("browserWizards", "1".repeat(40))).resolves.toBe("browserWizards gate passed.")
+    await expect(module.gate("secretScan", "1".repeat(40))).resolves.toBe("secretScan gate passed.")
+    await expect(module.gate("contracts", "1".repeat(40))).resolves.toBe("contracts gate passed.")
+    expect(started).toEqual(["browserWizards", "secretScan", "contracts"])
+  })
+
+  test("a red gate fails its gate call by name", async () => {
+    const module = await ciModule({
+      privacy: async () => {
+        throw new Error("verify-privacy-reset exited 1")
+      },
+    })
+    await expect(module.gate("privacy", "1".repeat(40))).rejects.toThrow("privacy: verify-privacy-reset exited 1")
+  })
+
+  test("an unknown gate name is refused before anything runs", async () => {
+    const started: string[] = []
+    const module = await ciModule({ backend: async () => void started.push("backend") })
+    await expect(module.gate("browser", "1".repeat(40))).rejects.toThrow('unknown gate "browser"')
+    expect(started).toEqual([])
+  })
+
+  test("the aggregate verdict is exposed as a function", async () => {
+    const module = await ciModule({})
+    expect(() => module.verdict("failure")).toThrow("gate job results")
   })
 
   test("one red gate fails ci by name after the others finish", async () => {
     const finished: string[] = []
     const module = await ciModule({
       backend: async () => void finished.push("backend"),
-      browser: async () => {
+      browserJourneys: async () => {
         throw new Error("verify-exit-gate exited 1")
       },
       privacy: async () => void finished.push("privacy"),
     })
-    await expect(module.ci("1".repeat(40))).rejects.toThrow("browser: verify-exit-gate exited 1")
+    await expect(module.ci("1".repeat(40))).rejects.toThrow("browserJourneys: verify-exit-gate exited 1")
     expect(finished.sort()).toEqual(["backend", "privacy"])
   })
 
@@ -359,7 +388,7 @@ describe("ci runs independent gates concurrently", () => {
         throw new Error("secret found")
       },
       backend: record("backend"),
-      browser: record("browser"),
+      browserChromium: record("browserChromium"),
     })
     await expect(module.ci("1".repeat(40))).rejects.toThrow("secret found")
     expect(started).toEqual([])
@@ -369,7 +398,7 @@ describe("ci runs independent gates concurrently", () => {
 describe("memory-budget lane", () => {
   test("the browser gate runs it on the hooks-off production build", () => {
     const source = readFileSync(resolve(root, "dagger/src/index.ts"), "utf8")
-    const browser = source.slice(source.indexOf("  browser(): Container {"), source.indexOf("  pdf(): Container {"))
+    const browser = source.slice(source.indexOf("  browserWebkitReal(): Container {"), source.indexOf("  browserMatrix(): Container {"))
     const lane = "MEMORY_BUDGET_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:memory-budget"
     expect(browser).toContain(lane)
     // After the hooks-off dist-real build, inside its preview — not the dist-verify (hooks on) one.
