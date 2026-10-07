@@ -409,7 +409,7 @@ describe("deploy-or-skip decision from the shared Foundation", () => {
 
   test("the deploy asks the Foundation about its own commit, not whatever main is now", () => {
     const source = readFileSync(join(import.meta.dir, "..", "dagger/src/index.ts"), "utf8")
-    expect(source).toContain("dag.foundation().greenMainDecision(githubToken, REPOSITORY, expectedSha).serialization()")
+    expect(source).toContain("dag.foundation().greenMainDecision(githubToken, runRepository, expectedSha).serialization()")
     expect(source).not.toContain(".greenMain(githubToken")
   })
 })
@@ -1020,3 +1020,83 @@ async function runBunProgram(program: string, env: Record<string, string>) {
   ])
   return { stdout, stderr, exitCode }
 }
+
+// After the hseshadr -> gainratio transfer the run's own `github.repository`
+// (and the Foundation's canonical full_name) is gainratio/almamesh. The deploy
+// binds the evidence to the run's repository, validated by exact allow-list.
+describe("run repository identity across the gainratio transfer", () => {
+  const gainratio = "gainratio/almamesh"
+
+  test("binds evidence to the gainratio run repository", () => {
+    expect(parseGreenMainEvidence(
+      serializedEvidence({ repository: gainratio }),
+      commitSha,
+      "781",
+      3,
+      gainratio,
+    ).repository).toBe(gainratio)
+  })
+
+  test("the default expected repository is today's owner", () => {
+    expect(() => parseGreenMainEvidence(serializedEvidence({ repository: gainratio }), commitSha, "781", 3))
+      .toThrow("Foundation source identity differs")
+  })
+
+  test("refuses evidence for the other allowed owner than the run's", () => {
+    expect(() => parseGreenMainEvidence(serializedEvidence(), commitSha, "781", 3, gainratio))
+      .toThrow("Foundation source identity differs")
+  })
+
+  test.each([
+    "attacker/almamesh",
+    "gainratio/aml-filter",
+    "hseshadr/almamesh-evil",
+    "gainratio-evil/almamesh",
+    "",
+  ])("refuses run repository %p before reading evidence", (repository) => {
+    expect(() => parseGreenMainEvidence(
+      serializedEvidence({ repository }),
+      commitSha,
+      "781",
+      3,
+      repository,
+    )).toThrow("is not an allowed repository")
+  })
+
+  test("the deploy decision carries the run repository through", () => {
+    const decision = serializedDecision({
+      evidence: JSON.parse(serializedEvidence({ repository: gainratio })),
+    })
+    expect(parseGreenMainDecision(decision, commitSha, "781", 3, gainratio)).toEqual({
+      action: "deploy",
+      evidence: { repository: gainratio, branch: "main", commitSha, workflowRunId: "781", runAttempt: 3 },
+    })
+  })
+
+  test("delivery asks the provider for the gainratio repository and identity", async () => {
+    const port = failClosedPort([])
+    port.greenMain = async () => serializedDecision({
+      evidence: JSON.parse(serializedEvidence({ repository: gainratio })),
+    })
+    let requested: { repository: string, consumerIdentity: string } | undefined
+    port.deployPages = (_envelope, request) => {
+      requested = request
+      return "lazy-evidence"
+    }
+    port.providerIdentity = async () => ({
+      deploymentId: "deployment-id",
+      deploymentUrl: "https://deployment.pages.dev",
+    })
+    await deliverProduction(port, commitSha, "781", 3, centralSha, gainratio)
+    expect(requested?.repository).toBe(gainratio)
+    expect(requested?.consumerIdentity).toBe(`${gainratio}@${commitSha}`)
+  })
+
+  test("delivery refuses an unlisted run repository before any provider call", async () => {
+    const events: string[] = []
+    const port = failClosedPort(events)
+    await expect(deliverProduction(port, commitSha, "781", 3, centralSha, "attacker/almamesh"))
+      .rejects.toThrow("is not an allowed repository")
+    expect(events).not.toContain("deploy")
+  })
+})

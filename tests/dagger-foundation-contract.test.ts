@@ -275,6 +275,75 @@ describe("Foundation guard composition", () => {
   })
 })
 
+describe("the source guard runs as the run's own repository", () => {
+  async function guardedModule(guardCalls: string[]) {
+    const noOpDecorator = () => () => undefined
+    // A chainable stand-in for Container: every method returns itself, `sync`
+    // resolves, and it is not a thenable (so `await` does not hang on it).
+    const inert: unknown = new Proxy({}, {
+      get: (_target, key) => {
+        if (key === "then") return undefined
+        return key === "sync" ? async () => inert : () => inert
+      },
+    })
+    mock.module("@dagger.io/dagger", () => ({
+      CacheVolume: class {},
+      Container: class {},
+      Directory: class {},
+      ReturnType: { Any: "ANY", Success: "SUCCESS" },
+      Secret: class {},
+      Service: class {},
+      Workspace: class {},
+      check: noOpDecorator,
+      func: noOpDecorator,
+      object: noOpDecorator,
+      dag: {
+        cacheVolume: () => ({}),
+        container: () => inert,
+        foundation: () => ({
+          guard: (_source: unknown, guardRepository: string) => {
+            guardCalls.push(guardRepository)
+            return inert
+          },
+        }),
+      },
+    }))
+    const { AlmameshCi } = await import("../dagger/src/index.ts")
+    return new AlmameshCi({ directory: () => ({}) } as never)
+  }
+
+  test.each([
+    ["the default (today's owner)", undefined, repository],
+    ["hseshadr", "hseshadr/almamesh", "hseshadr/almamesh"],
+    ["gainratio", "gainratio/almamesh", "gainratio/almamesh"],
+  ])("secretScan guards %s", async (_name, runRepository, expected) => {
+    const guardCalls: string[] = []
+    const module = await guardedModule(guardCalls)
+    module.secretScan("1".repeat(40), runRepository)
+    expect(guardCalls).toEqual([expected])
+  })
+
+  test("the secretScan gate forwards the run repository to the guard", async () => {
+    const guardCalls: string[] = []
+    const module = await guardedModule(guardCalls)
+    await module.gate("secretScan", "1".repeat(40), "gainratio/almamesh")
+    expect(guardCalls).toEqual(["gainratio/almamesh"])
+  })
+
+  test.each([
+    "attacker/almamesh",
+    "gainratio/aml-filter",
+    "hseshadr/almamesh-evil",
+    "gainratio-evil/almamesh",
+    "",
+  ])("secretScan refuses run repository %p before the guard runs", async (runRepository) => {
+    const guardCalls: string[] = []
+    const module = await guardedModule(guardCalls)
+    expect(() => module.secretScan("1".repeat(40), runRepository)).toThrow("is not an allowed repository")
+    expect(guardCalls).toEqual([])
+  })
+})
+
 describe("ci runs independent gates concurrently", () => {
   async function ciModule(gates: Record<string, () => Promise<void>>) {
     const noOpDecorator = () => () => undefined
