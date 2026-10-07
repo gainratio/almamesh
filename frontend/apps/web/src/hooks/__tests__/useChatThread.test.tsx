@@ -198,6 +198,38 @@ describe('useChatThread', () => {
       expect(result.current.messages.map((m) => m.content)).not.toContain('Stale answer.');
     });
 
+    it('a chart restored from an old backup (no snapshot) keeps its answer, and drops it once recomputed with one', async () => {
+      const { memory } = fakeMemory();
+      __setMemoryForTest(memory);
+      const legacy = { ...stampedChart(CHART, 'unused'), sidereal_chart: {} } as unknown as StoredChart;
+      useChartLibraryStore.setState({ charts: { [CHART]: legacy } });
+      const { result } = renderHook(() => useChatThread(PROFILE, CHART));
+
+      const kept = deferredStream('Legacy answer.');
+      let pending!: Promise<void>;
+      act(() => {
+        pending = result.current.submit('Which period am I in?', kept.stream);
+      });
+      await act(async () => {
+        kept.release();
+        await pending;
+      });
+      expect(result.current.messages.at(-1)).toMatchObject({ content: 'Legacy answer.' });
+
+      const dropped = deferredStream('Answer about the unstamped chart.');
+      act(() => {
+        pending = result.current.submit('And now?', dropped.stream);
+      });
+      useChartLibraryStore.setState({ charts: { [CHART]: stampedChart(CHART, 'c'.repeat(64)) } });
+      await act(async () => {
+        dropped.release();
+        await pending;
+      });
+      expect(result.current.messages.map((m) => m.content)).not.toContain(
+        'Answer about the unstamped chart.',
+      );
+    });
+
     it('keeps the answer when the snapshot did not change', async () => {
       const { memory } = fakeMemory();
       __setMemoryForTest(memory);

@@ -29,16 +29,22 @@ function stampedLine(snapshot: ChartSnapshot): string {
   )
 }
 
-function legacyLine(calculationTimestamp: string): string {
-  return (
+function legacyLine(calculationTimestamp: string | undefined): string {
+  const base =
     'Calculated locally by AlmaMesh · engine version not recorded (computed before charts ' +
-    `carried a snapshot) · As of ${asOf(calculationTimestamp)}`
-  )
+    'carried a snapshot)'
+  // The oldest backups recorded no instant at all: say nothing rather than "Invalid Date".
+  if (calculationTimestamp === undefined || Number.isNaN(Date.parse(calculationTimestamp))) {
+    return base
+  }
+  return `${base} · As of ${asOf(calculationTimestamp)}`
 }
 
 export interface ProvenanceFooterProps {
   /** The displayed chart's calculations; `null` while no chart is shown. */
-  readonly calculations: Pick<AstronomicalCalculations, 'snapshot' | 'calculation_timestamp'> | null
+  readonly calculations: Partial<
+    Pick<AstronomicalCalculations, 'snapshot' | 'calculation_timestamp'>
+  > | null
 }
 
 /**
