@@ -9,9 +9,11 @@ permissions:
   contents: read
 
 # A newer push to a PR cancels that PR's superseded run. Main runs never cancel:
-# every merge to main finishes its Dagger run, so every merge can deploy.
+# every merge to main finishes its Dagger run, so every merge can deploy. Each
+# main run gets its own group, because a shared group keeps only one pending
+# run and a third stacked merge would cancel the pending second one.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.run_id || github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 # Each gate of the Dagger module's `ci` runs as its own job on its own runner
