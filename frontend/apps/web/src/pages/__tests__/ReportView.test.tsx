@@ -38,7 +38,7 @@ const NATAL_ONLY_INPUT = { predictiveRequestKey: null } as const;
 // --- A complete-enough engine chart fixture (Title-Case signs, as emitted) ---
 import { CHART, FULL_INTERPRETATION, storedChart } from '../../test/reportFixtures';
 import { predictiveReferenceInstant } from '../../lib/predictive';
-import { storedChartReferenceDay } from '../../lib/analysisInstant';
+import { storedChartReferenceDay, viewerTimeZone } from '../../lib/analysisInstant';
 
 
 function seed(interpretationComplete = true): void {
@@ -345,7 +345,7 @@ describe('ReportView predictive sections', () => {
         longitude: 77.59,
         referenceInstant: storedChartReferenceDay(
           storedChart(),
-          predictiveReferenceInstant(new Date(), 'Asia/Kolkata'),
+          predictiveReferenceInstant(new Date(), viewerTimeZone()),
         ),
       }),
     });
@@ -400,7 +400,7 @@ describe('ReportView predictive sections', () => {
         longitude: 77.59,
         referenceInstant: storedChartReferenceDay(
           storedChart(),
-          predictiveReferenceInstant(new Date(), 'Asia/Kolkata'),
+          predictiveReferenceInstant(new Date(), viewerTimeZone()),
         ),
       }),
     });

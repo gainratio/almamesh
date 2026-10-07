@@ -56,7 +56,11 @@ import { aiErrorRegistry, chatErrorMessage, classifyConnectionError } from '../l
 import { createFrameBatcher, type FrameBatcher } from '../lib/frameBatcher';
 import { whenDataLifecycleReady } from '../lib/profileDataLifecycle';
 import { buildEnsurePredictiveInput, predictiveReferenceInstant } from '../lib/predictive';
-import { storedChartAnalysisInstant, storedChartReferenceDay } from '../lib/analysisInstant';
+import {
+  storedChartAnalysisInstant,
+  storedChartReferenceDay,
+  viewerTimeZone,
+} from '../lib/analysisInstant';
 import { fetchEvidenceAnnotations } from './evidenceAnnotations';
 import { useSingleFlight } from './useSingleFlight';
 
@@ -210,8 +214,7 @@ function predictiveProfileKey(chartId: string | null): string {
  */
 function expectedPredictiveKey(chartId: string | null): string | null {
   const stored = chartId ? useChartLibraryStore.getState().getChart(chartId) : undefined;
-  const timeZone = stored?.birth_data?.birth_location_details.timezone ?? 'UTC';
-  const todayDay = predictiveReferenceInstant(new Date(), timeZone);
+  const todayDay = predictiveReferenceInstant(new Date(), viewerTimeZone());
   const input = buildEnsurePredictiveInput(
     predictiveProfileKey(chartId),
     stored?.birth_data as ProcessedBirthData | undefined,

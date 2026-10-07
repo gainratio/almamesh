@@ -38,7 +38,7 @@ import {
   selectPrimaryStoredChart,
 } from '../lib/predictive';
 import { useRectificationGate } from '../lib/rectificationGate';
-import { storedChartReferenceDay } from '../lib/analysisInstant';
+import { storedChartReferenceDay, viewerTimeZone } from '../lib/analysisInstant';
 import { useDailyReferenceInstant } from './useDailyReferenceInstant';
 
 /**
@@ -134,14 +134,13 @@ export function usePredictiveLayer({ auto = false }: UsePredictiveLayerOptions =
   const storedChart = selectPrimaryStoredChart(charts, activeProfileId);
   const birth = storedChart?.birth_data as ProcessedBirthData | undefined;
   const profileKey = activeProfileId ?? storedChart?.chart_id ?? 'primary';
-  const chartTimeZone = birth?.birth_location_details.timezone ?? 'UTC';
 
   // ONE analysis instant (#274): the predictive layer is computed for the
   // chart's own analysis day, never the wall clock, so the Life Atlas and Sky
   // & Timing cannot name a day the chart's running daśā was not computed for.
   // The chart is re-anchored to today by `useChartReanchor`; only a chart that
-  // records no instant at all falls back to the daily wall-clock reference.
-  const todayDay = useDailyReferenceInstant(chartTimeZone);
+  // records no instant at all falls back to the viewer's daily wall-clock day.
+  const todayDay = useDailyReferenceInstant(viewerTimeZone());
   const referenceInstant = storedChart ? storedChartReferenceDay(storedChart, todayDay) : todayDay;
   const input = useMemo(
     () => buildEnsurePredictiveInput(profileKey, birth, referenceInstant),

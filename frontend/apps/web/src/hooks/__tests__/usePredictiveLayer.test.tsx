@@ -290,7 +290,9 @@ describe('usePredictiveLayer({ auto: true })', () => {
     expect(result.current.transitCtx).toBeUndefined();
   });
 
-  it('recomputes after the chart-local reference day rolls over', () => {
+  it("recomputes after the viewer's reference day rolls over", () => {
+    // A chart that records no instant reads as of the viewer's today (#277).
+    vi.stubEnv('TZ', 'UTC');
     vi.setSystemTime(new Date('2026-07-12T23:59:58Z'));
     const ensure = readyingEnsure();
     usePredictiveStore.setState({
@@ -310,7 +312,8 @@ describe('usePredictiveLayer({ auto: true })', () => {
     });
 
     act(() => {
-      vi.advanceTimersByTime(2_001);
+      // The day-change timer resolves to within a second past midnight.
+      vi.advanceTimersByTime(3_100);
     });
     act(() => {
       vi.advanceTimersByTime(2_500);
@@ -318,6 +321,7 @@ describe('usePredictiveLayer({ auto: true })', () => {
 
     expect(ensure).toHaveBeenCalledTimes(1);
     expect(ensure.mock.calls[0]?.[1].referenceInstant).toBe('2026-07-13T00:00:00Z');
+    vi.unstubAllEnvs();
   });
 
   it('does not double-fire when the deferred timer is rescheduled across re-renders', () => {

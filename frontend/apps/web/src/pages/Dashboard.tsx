@@ -43,7 +43,7 @@ import { ContentModeToggle } from "../components/ui/ContentModeToggle";
 import { MarkdownContent } from "../components/ui/MarkdownContent";
 import { FloatingChatPanel } from "../components/features/chat/FloatingChatPanel";
 import { FeedbackWidget } from "../components/features/feedback/FeedbackWidget";
-import { storedChartAnalysisInstant } from "../lib/analysisInstant";
+import { storedChartAnalysisInstant, viewerTimeZone } from "../lib/analysisInstant";
 import { ProvenanceFooter } from "../components/ProvenanceFooter";
 import {
   ChartVisualization,
@@ -326,7 +326,10 @@ export default function DashboardPage() {
         chart,
         profileKey: storedChart?.profile_id ?? chartId ?? 'primary',
         birth: storedChart?.birth_data as ProcessedBirthData | undefined,
-        chartTimeZone,
+        // "Today" is the viewer's day, the zone every analysis day is read in,
+        // so a today-question about a chart computed today joins the Life
+        // Atlas's calculation instead of evicting it from the one store slot.
+        chartTimeZone: viewerTimeZone(),
         now: context.now,
         runtime,
         signal: context.signal,

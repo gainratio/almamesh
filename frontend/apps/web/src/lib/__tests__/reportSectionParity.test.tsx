@@ -78,7 +78,7 @@ vi.mock('../../lib/downloadReportPdf', () => ({
 
 import ReportView from '../../pages/ReportView';
 import { predictiveReferenceInstant } from '../predictive';
-import { storedChartReferenceDay } from '../analysisInstant';
+import { storedChartReferenceDay, viewerTimeZone } from '../analysisInstant';
 
 describe('report section parity — screen → registry', () => {
   beforeAll(() => {
@@ -110,7 +110,7 @@ describe('report section parity — screen → registry', () => {
         longitude: 77.59,
         referenceInstant: storedChartReferenceDay(
           storedChart(),
-          predictiveReferenceInstant(new Date(), 'Asia/Kolkata'),
+          predictiveReferenceInstant(new Date(), viewerTimeZone()),
         ),
       }),
     });
