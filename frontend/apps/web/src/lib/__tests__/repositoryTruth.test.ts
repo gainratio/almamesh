@@ -41,7 +41,7 @@ const ownLibraryViolations = (relativePath: string, manifestText: string): strin
       const value = typeof spec === 'string' ? spec : JSON.stringify(spec);
       const where = `${relativePath} ${field}.${name} = ${value}`;
       if (name.startsWith('@edgeproc/') || value.includes('@edgeproc/')) return [`retired scope: ${where}`];
-      const ownGitAlias = /^(github:|git\+|git:|https:\/\/github\.com\/)/.test(value) && /hseshadr\//.test(value);
+      const ownGitAlias = /^(github:|git\+|git:|https:\/\/github\.com\/)/.test(value) && /(hseshadr|gainratio)\//.test(value);
       if (ownGitAlias || (name.startsWith(OWN_LIBRARY_SCOPE) && /^(github:|git)/.test(value))) {
         return [`git dependency on own library: ${where}`];
       }
@@ -282,6 +282,7 @@ describe('repository truth', () => {
     const lock = readRoot('frontend/bun.lock');
     expect(lock).toMatch(/"@gainratio\/browser": \["@gainratio\/browser@0\.\d+\.\d+", ""/);
     expect(lock).not.toContain('github:hseshadr/');
+    expect(lock).not.toContain('github:gainratio/');
     expect(existsSync(resolve(root, 'frontend/packages/edgeproc-browser/package.json'))).toBe(false);
     expect(readRoot('frontend/apps/web/vite.config.ts')).not.toMatch(
       /vendored at packages\/edgeproc-browser|vendored packages\/edgeproc-browser/,
@@ -315,6 +316,8 @@ describe('repository truth', () => {
     expect(check({ x: 'npm:@edgeproc/avow@0.1.1' })).toHaveLength(1);
     expect(check({ '@gainratio/browser': 'github:hseshadr/edgeproc-browser#edd9971' })).toHaveLength(1);
     expect(check({ other: 'git+https://github.com/hseshadr/errors.git' })).toHaveLength(1);
+    expect(check({ '@gainratio/browser': 'github:gainratio/edgeproc-browser#edd9971' })).toHaveLength(1);
+    expect(check({ other: 'git+https://github.com/gainratio/errors.git' })).toHaveLength(1);
     expect(check({ '@gainratio/avow': 'git+ssh://git@example.com/fork.git' })).toHaveLength(1);
   });
 

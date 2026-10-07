@@ -1,4 +1,4 @@
-import { DEFAULT_REPOSITORY, requireAllowedRepository } from "./repositoryIdentity.js"
+import { requireAllowedRepository } from "./repositoryIdentity.js"
 
 const FULL_SHA = /^[0-9a-f]{40}$/
 const POSITIVE_INTEGER = /^[1-9][0-9]*$/
@@ -112,8 +112,6 @@ export interface RollbackEvidence {
 }
 
 export const PAGES_TARGET = Object.freeze({
-  repository: "hseshadr/almamesh",
-  repositoryUrl: "https://github.com/hseshadr/almamesh.git",
   project: "almamesh",
   productionBranch: "main",
   liveDomain: "almamesh.com",
@@ -129,7 +127,7 @@ export function parseGreenMainEvidence(
   expectedSha: string,
   expectedWorkflowRunId: string,
   expectedRunAttempt: number,
-  expectedRepository: string = DEFAULT_REPOSITORY,
+  expectedRepository: string,
 ): GreenMainEvidence {
   const runRepository = requireAllowedRepository(expectedRepository)
   requireFullSha(expectedSha, "expected SHA")
@@ -158,7 +156,7 @@ export function parseGreenMainDecision(
   expectedSha: string,
   expectedWorkflowRunId: string,
   expectedRunAttempt: number,
-  expectedRepository: string = DEFAULT_REPOSITORY,
+  expectedRepository: string,
 ): GreenMainDecision {
   requireAllowedRepository(expectedRepository)
   requireFullSha(expectedSha, "expected SHA")
@@ -245,7 +243,7 @@ export async function deliverProduction<Source, Artifact, Envelope, LazyEvidence
   workflowRunId: string,
   runAttempt: number,
   centralSha: string,
-  repository: string = DEFAULT_REPOSITORY,
+  repository: string,
 ): Promise<DeliveryResult | SkippedDelivery> {
   requireAllowedRepository(repository)
   const decision = parseGreenMainDecision(

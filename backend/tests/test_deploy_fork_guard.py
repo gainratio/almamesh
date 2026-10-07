@@ -28,8 +28,10 @@ import pytest
 _ROOT = Path(__file__).resolve().parents[2]
 _DEPLOY = _ROOT / ".github" / "workflows" / "deploy.yml"
 _GUARDED_JOB = "deploy"
+# The guard never names an owner: it compares against the run's own
+# ``github.repository``. These are only the two identities the tests drive it as,
+# before and after the planned transfer to the gainratio org.
 _THIS_REPO = "hseshadr/almamesh"
-# The same repository after the planned transfer to the gainratio org.
 _TRANSFERRED_REPO = "gainratio/almamesh"
 _OWNERS = (_THIS_REPO, _TRANSFERRED_REPO)
 _FORK_REPO = "attacker/almamesh"
@@ -65,7 +67,7 @@ class Context:
     """The ``github`` context a job-level ``if:`` is evaluated against."""
 
     event_name: str
-    repository: str
+    repository: str | None
     workflow_run: WorkflowRun | None = None
 
 
@@ -203,7 +205,7 @@ def extract_job_if(workflow: str, job: str) -> str:
 GUARD = extract_job_if(_DEPLOY.read_text(encoding="utf-8"), _GUARDED_JOB)
 
 
-def _push_to_main(repository: str = _THIS_REPO) -> Context:
+def _push_to_main(repository: str) -> Context:
     """The one payload that may deploy: a push to THIS repo's main whose CI passed."""
     return Context(
         event_name="workflow_run",
@@ -212,7 +214,7 @@ def _push_to_main(repository: str = _THIS_REPO) -> Context:
     )
 
 
-def _fork_pull_request(event: str = "pull_request", repository: str = _THIS_REPO) -> Context:
+def _fork_pull_request(repository: str, event: str = "pull_request") -> Context:
     """A fork PR. The fork's default branch is ALSO called ``main`` — that is the point."""
     return Context(
         event_name="workflow_run",
@@ -241,7 +243,25 @@ def test_fork_pull_request_claiming_main_is_rejected(repository: str) -> None:
 @pytest.mark.parametrize("repository", _OWNERS)
 def test_fork_run_reporting_a_push_is_still_rejected(repository: str) -> None:
     """The repository check has teeth on its own, not merely as a proxy for the event."""
-    assert evaluate(GUARD, _fork_pull_request(event="push", repository=repository)) is False
+    assert evaluate(GUARD, _fork_pull_request(repository, event="push")) is False
+
+
+def test_missing_run_repository_is_rejected() -> None:
+    """No default identity: a run with no ``github.repository`` never deploys."""
+    context = Context(
+        event_name="workflow_run",
+        repository=None,
+        workflow_run=WorkflowRun("push", "success", "main", _THIS_REPO),
+    )
+    assert evaluate(GUARD, context) is False
+
+
+def test_deploy_hands_dagger_the_run_repository_not_a_literal_owner() -> None:
+    """Dagger's allow-list sees the run's own identity; deploy.yml names no owner."""
+    workflow = _DEPLOY.read_text(encoding="utf-8")
+    assert '--repository="$GITHUB_REPOSITORY"' in workflow
+    assert "hseshadr/almamesh" not in workflow
+    assert "gainratio/almamesh" not in workflow
 
 
 def test_pre_transfer_name_is_rejected_once_transferred() -> None:
@@ -283,10 +303,11 @@ def test_production_deploy_has_no_manual_dispatch_bypass() -> None:
     assert "workflow_dispatch" not in workflow
 
 
-def test_pre_fix_guard_accepted_the_fork_pull_request() -> None:
+@pytest.mark.parametrize("repository", _OWNERS)
+def test_pre_fix_guard_accepted_the_fork_pull_request(repository: str) -> None:
     """Break the property, not the form: the gate we replaced ACCEPTS the attack."""
-    assert evaluate(_PRE_FIX_GUARD, _fork_pull_request()) is True
-    assert evaluate(GUARD, _fork_pull_request()) is False
+    assert evaluate(_PRE_FIX_GUARD, _fork_pull_request(repository)) is True
+    assert evaluate(GUARD, _fork_pull_request(repository)) is False
 
 
 @pytest.mark.parametrize(

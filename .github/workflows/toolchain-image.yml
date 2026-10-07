@@ -1,9 +1,13 @@
 name: Toolchain image
 
 # Builds the prebuilt browser toolchain (apt packages, Bun, Playwright browsers)
-# and pushes it to ghcr.io/hseshadr/almamesh-toolchain. The gates only use it
-# once a PR pins its digest in dagger/src/toolchain.ts; until then they install
-# inline. Runs when the recipe or the locked Playwright version can change.
+# and pushes it to ghcr.io/<owner>/almamesh-toolchain, where <owner> is this
+# run's own github.repository_owner, lowercased. publish-toolchain refuses any
+# repository outside the allow-list (hseshadr/almamesh, gainratio/almamesh), so
+# a fork cannot publish. The gates only use the image once a PR pins its digest
+# in dagger/src/toolchain.ts; until then they install inline. Runs when the
+# recipe or the locked Playwright version can change, or on manual dispatch
+# (the first publish under a new owner after a repository transfer).
 on:
   push:
     branches: [main]
@@ -28,7 +32,7 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
-      packages: write # Push ghcr.io/hseshadr/almamesh-toolchain.
+      packages: write # Push ghcr.io/<owner>/almamesh-toolchain.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -40,4 +44,4 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         with:
           version: "0.21.8"
-          call: publish-toolchain --github-token=env:GITHUB_TOKEN
+          call: publish-toolchain --github-token=env:GITHUB_TOKEN --repository=${{ github.repository }} --repository-owner=${{ github.repository_owner }}

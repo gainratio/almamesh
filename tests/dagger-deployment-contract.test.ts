@@ -19,6 +19,8 @@ import {
 
 const commitSha = "1".repeat(40)
 const centralSha = "2".repeat(40)
+// The run's own `github.repository`; every entry point requires it (no default).
+const runRepository = "hseshadr/almamesh"
 
 function serializedEvidence(
   overrides: Record<string, unknown> = {},
@@ -59,8 +61,6 @@ function serializedSkip(overrides: Record<string, unknown> = {}): string {
 describe("immutable AlmaMesh Pages target", () => {
   test("closes the shared provider boundary over the static site and Pages Functions", () => {
     expect(PAGES_TARGET).toEqual({
-      repository: "hseshadr/almamesh",
-      repositoryUrl: "https://github.com/hseshadr/almamesh.git",
       project: "almamesh",
       productionBranch: "main",
       liveDomain: "almamesh.com",
@@ -75,7 +75,7 @@ describe("immutable AlmaMesh Pages target", () => {
 
 describe("protected Dagger evidence", () => {
   test("binds the exact repository, main SHA, workflow run, and attempt", () => {
-    expect(parseGreenMainEvidence(serializedEvidence(), commitSha, "781", 3)).toEqual({
+    expect(parseGreenMainEvidence(serializedEvidence(), commitSha, "781", 3, runRepository)).toEqual({
       repository: "hseshadr/almamesh",
       branch: "main",
       commitSha,
@@ -95,13 +95,13 @@ describe("protected Dagger evidence", () => {
     ["zero attempt", { run_attempt: 0 }],
     ["fractional attempt", { run_attempt: 1.5 }],
   ])("rejects %s", (_name, overrides) => {
-    expect(() => parseGreenMainEvidence(serializedEvidence(overrides), commitSha, "781", 3))
+    expect(() => parseGreenMainEvidence(serializedEvidence(overrides), commitSha, "781", 3, runRepository))
       .toThrow()
   })
 
   test("rejects malformed and non-object serialization", () => {
     for (const value of ["not-json", "null", "[]"]) {
-      expect(() => parseGreenMainEvidence(value, commitSha, "781", 3)).toThrow()
+      expect(() => parseGreenMainEvidence(value, commitSha, "781", 3, runRepository)).toThrow()
     }
   })
 
@@ -111,7 +111,7 @@ describe("protected Dagger evidence", () => {
     ["numeric workflow run", { workflow_run_id: 781 }],
     ["missing attempt", { run_attempt: undefined }],
   ])("rejects schema with %s", (_name, overrides) => {
-    expect(() => parseGreenMainEvidence(serializedEvidence(overrides), commitSha, "781", 3))
+    expect(() => parseGreenMainEvidence(serializedEvidence(overrides), commitSha, "781", 3, runRepository))
       .toThrow("Foundation")
   })
 
@@ -126,11 +126,12 @@ describe("protected Dagger evidence", () => {
       commitSha,
       workflowRunId as string,
       runAttempt as number,
+      runRepository,
     )).toThrow()
   })
 
   test("derives closed Foundation identities from the protected run", () => {
-    const evidence = parseGreenMainEvidence(serializedEvidence(), commitSha, "781", 3)
+    const evidence = parseGreenMainEvidence(serializedEvidence(), commitSha, "781", 3, runRepository)
     expect(releaseIdentities(evidence, centralSha)).toEqual({
       consumer: `hseshadr/almamesh@${commitSha}`,
       producer: `${centralSha}:781`,
@@ -140,7 +141,7 @@ describe("protected Dagger evidence", () => {
   test.each(["", "2".repeat(39), "G".repeat(40)])(
     "rejects noncanonical central identity %s",
     (value) => {
-      const evidence = parseGreenMainEvidence(serializedEvidence(), commitSha, "781", 3)
+      const evidence = parseGreenMainEvidence(serializedEvidence(), commitSha, "781", 3, runRepository)
       expect(() => releaseIdentities(evidence, value)).toThrow()
     },
   )
@@ -239,7 +240,7 @@ describe("single-transaction delivery orchestration", () => {
       rollbackTo: async () => {
         throw new Error("rollback must not run on a green smoke")
       },
-    }, commitSha, "781", 3, centralSha)
+    }, commitSha, "781", 3, centralSha, runRepository)
 
     expect(evidenceIdCalls).toBe(1)
     expect(reloadCalls).toBe(1)
@@ -274,7 +275,7 @@ describe("single-transaction delivery orchestration", () => {
       throw previewFailure
     }
 
-    await expect(deliverProduction(port, commitSha, "781", 3, centralSha))
+    await expect(deliverProduction(port, commitSha, "781", 3, centralSha, runRepository))
       .rejects.toBe(previewFailure)
     expect(events).toEqual([
       "green-main",
@@ -294,7 +295,7 @@ describe("single-transaction delivery orchestration", () => {
       throw envelopeFailure
     }
 
-    await expect(deliverProduction(port, commitSha, "781", 3, centralSha))
+    await expect(deliverProduction(port, commitSha, "781", 3, centralSha, runRepository))
       .rejects.toBe(envelopeFailure)
     expect(events).not.toContain("deploy")
   })
@@ -302,7 +303,7 @@ describe("single-transaction delivery orchestration", () => {
 
 describe("deploy-or-skip decision from the shared Foundation", () => {
   test("a deploy decision yields evidence bound to the requested HEAD commit", () => {
-    expect(parseGreenMainDecision(serializedDecision(), commitSha, "781", 3)).toEqual({
+    expect(parseGreenMainDecision(serializedDecision(), commitSha, "781", 3, runRepository)).toEqual({
       action: "deploy",
       evidence: {
         repository: "hseshadr/almamesh",
@@ -315,7 +316,7 @@ describe("deploy-or-skip decision from the shared Foundation", () => {
   })
 
   test("a skip decision names the newer main commit and carries no evidence", () => {
-    const decision = parseGreenMainDecision(serializedSkip(), commitSha, "781", 3)
+    const decision = parseGreenMainDecision(serializedSkip(), commitSha, "781", 3, runRepository)
     expect(decision.action).toBe("skip")
     if (decision.action !== "skip") throw new Error("unreachable")
     expect(decision.supersededBy).toBe(newerSha)
@@ -328,7 +329,7 @@ describe("deploy-or-skip decision from the shared Foundation", () => {
     ["deploy while main moved", { main_sha: newerSha }],
     ["deploy without evidence", { evidence: null }],
   ])("rejects a malformed deploy decision: %s", (_name, overrides) => {
-    expect(() => parseGreenMainDecision(serializedDecision(overrides), commitSha, "781", 3)).toThrow()
+    expect(() => parseGreenMainDecision(serializedDecision(overrides), commitSha, "781", 3, runRepository)).toThrow()
   })
 
   test.each([
@@ -338,7 +339,7 @@ describe("deploy-or-skip decision from the shared Foundation", () => {
     ["skip with a short main SHA", { main_sha: "abc" }],
     ["skip without a message", { message: "" }],
   ])("rejects a malformed skip decision: %s", (_name, overrides) => {
-    expect(() => parseGreenMainDecision(serializedSkip(overrides), commitSha, "781", 3)).toThrow()
+    expect(() => parseGreenMainDecision(serializedSkip(overrides), commitSha, "781", 3, runRepository)).toThrow()
   })
 
   test("a superseded commit exits successfully without touching source, build, or production", async () => {
@@ -349,7 +350,7 @@ describe("deploy-or-skip decision from the shared Foundation", () => {
       return serializedSkip()
     }
 
-    const result = await deliverProduction(port, commitSha, "781", 3, centralSha)
+    const result = await deliverProduction(port, commitSha, "781", 3, centralSha, runRepository)
 
     expect(events).toEqual(["green-main"])
     expect(result).toEqual({
@@ -369,7 +370,7 @@ describe("deploy-or-skip decision from the shared Foundation", () => {
       )
     }
 
-    const result = await deliverProduction(port, commitSha, "781", 3, centralSha)
+    const result = await deliverProduction(port, commitSha, "781", 3, centralSha, runRepository)
 
     expect(result).toEqual({
       skipped: true,
@@ -391,7 +392,7 @@ describe("deploy-or-skip decision from the shared Foundation", () => {
       throw failure
     }
 
-    await expect(deliverProduction(port, commitSha, "781", 3, centralSha)).rejects.toBe(failure)
+    await expect(deliverProduction(port, commitSha, "781", 3, centralSha, runRepository)).rejects.toBe(failure)
   })
 
   test("a failing HEAD decision still fails the deploy before any build or upload", async () => {
@@ -403,7 +404,7 @@ describe("deploy-or-skip decision from the shared Foundation", () => {
       throw red
     }
 
-    await expect(deliverProduction(port, commitSha, "781", 3, centralSha)).rejects.toBe(red)
+    await expect(deliverProduction(port, commitSha, "781", 3, centralSha, runRepository)).rejects.toBe(red)
     expect(events).toEqual(["green-main"])
   })
 
@@ -526,7 +527,7 @@ describe("post-deploy live smoke and rollback through the central module", () =>
       return smoke(passes, previousUrl)
     }
 
-    const result = await deliverProduction(port, commitSha, "781", 3, centralSha)
+    const result = await deliverProduction(port, commitSha, "781", 3, centralSha, runRepository)
     expect(events.indexOf("previous-production")).toBeLessThan(events.indexOf("deploy"))
     expect(events.at(-1)).toBe("live-smoke:fresh,returning")
     expect(smokedWith).toBe(PREVIOUS.deploymentUrl)
@@ -550,7 +551,7 @@ describe("post-deploy live smoke and rollback through the central module", () =>
       ]
     }
 
-    const failure = deliverProduction(port, commitSha, "781", 3, centralSha)
+    const failure = deliverProduction(port, commitSha, "781", 3, centralSha, runRepository)
     await expect(failure).rejects.toThrow(
       `Live smoke failed (returning) on deployment deployment-id; production rolled back from deployment-id to ${PREVIOUS.deploymentId}; recovery smoke (fresh) passed`,
     )
@@ -572,7 +573,7 @@ describe("post-deploy live smoke and rollback through the central module", () =>
       return [{ pass: "fresh", passed: false, output: "still broken" }]
     }
 
-    await expect(deliverProduction(port, commitSha, "781", 3, centralSha)).rejects.toThrow(
+    await expect(deliverProduction(port, commitSha, "781", 3, centralSha, runRepository)).rejects.toThrow(
       `production rolled back from deployment-id to ${PREVIOUS.deploymentId}; recovery smoke (fresh) FAILED`,
     )
     expect(calls).toBe(2)
@@ -592,7 +593,7 @@ describe("post-deploy live smoke and rollback through the central module", () =>
     port.rollbackTo = async () => {
       throw new Error("module refused")
     }
-    await expect(deliverProduction(port, commitSha, "781", 3, centralSha)).rejects.toThrow("rollback FAILED")
+    await expect(deliverProduction(port, commitSha, "781", 3, centralSha, runRepository)).rejects.toThrow("rollback FAILED")
     expect(calls).toBe(1)
   })
 
@@ -606,7 +607,7 @@ describe("post-deploy live smoke and rollback through the central module", () =>
       throw new Error("rollback target is already live")
     }
 
-    await expect(deliverProduction(port, commitSha, "781", 3, centralSha)).rejects.toThrow(
+    await expect(deliverProduction(port, commitSha, "781", 3, centralSha, runRepository)).rejects.toThrow(
       "Live smoke failed (fresh) on deployment deployment-id; rollback FAILED, deployment-id may still be live: rollback target is already live",
     )
   })
@@ -623,7 +624,7 @@ describe("post-deploy live smoke and rollback through the central module", () =>
       liveDeploymentId: "deployment-id",
     })
 
-    await expect(deliverProduction(port, commitSha, "781", 3, centralSha)).rejects.toThrow(
+    await expect(deliverProduction(port, commitSha, "781", 3, centralSha, runRepository)).rejects.toThrow(
       "rollback FAILED, deployment-id may still be live: rollback evidence differs",
     )
   })
@@ -640,7 +641,7 @@ describe("post-deploy live smoke and rollback through the central module", () =>
       liveDeploymentId: deploymentId,
     })
 
-    await expect(deliverProduction(port, commitSha, "781", 3, centralSha)).rejects.toThrow(
+    await expect(deliverProduction(port, commitSha, "781", 3, centralSha, runRepository)).rejects.toThrow(
       "rollback evidence differs",
     )
   })
@@ -650,7 +651,7 @@ describe("post-deploy live smoke and rollback through the central module", () =>
     const port = failClosedPort(events)
     port.previousProduction = async () => ({ deploymentId: "x", deploymentUrl: "https://evil.example" })
 
-    await expect(deliverProduction(port, commitSha, "781", 3, centralSha)).rejects.toThrow(
+    await expect(deliverProduction(port, commitSha, "781", 3, centralSha, runRepository)).rejects.toThrow(
       "previous production deployment differs",
     )
     expect(events).not.toContain("deploy")
@@ -659,7 +660,7 @@ describe("post-deploy live smoke and rollback through the central module", () =>
   test("a requested pass that never reported is a failure, not a success", async () => {
     const port = failClosedPort([])
     port.smokeLive = async () => [{ pass: "fresh", passed: true, output: "fresh ok" }]
-    await expect(deliverProduction(port, commitSha, "781", 3, centralSha)).rejects.toThrow(
+    await expect(deliverProduction(port, commitSha, "781", 3, centralSha, runRepository)).rejects.toThrow(
       "Live smoke failed (returning)",
     )
   })
@@ -1037,9 +1038,29 @@ describe("run repository identity across the gainratio transfer", () => {
     ).repository).toBe(gainratio)
   })
 
-  test("the default expected repository is today's owner", () => {
-    expect(() => parseGreenMainEvidence(serializedEvidence({ repository: gainratio }), commitSha, "781", 3))
+  test("the hseshadr run refuses gainratio evidence", () => {
+    expect(() => parseGreenMainEvidence(serializedEvidence({ repository: gainratio }), commitSha, "781", 3, runRepository))
       .toThrow("Foundation source identity differs")
+  })
+
+  // No default identity: a caller that omits the run repository is refused, never
+  // silently bound to hseshadr/almamesh.
+  test("refuses evidence when the run repository is missing", () => {
+    const parse = parseGreenMainEvidence as (...args: unknown[]) => unknown
+    expect(() => parse(serializedEvidence(), commitSha, "781", 3)).toThrow("is not an allowed repository")
+  })
+
+  test("refuses a decision when the run repository is missing", () => {
+    const parse = parseGreenMainDecision as (...args: unknown[]) => unknown
+    expect(() => parse(serializedDecision(), commitSha, "781", 3)).toThrow("is not an allowed repository")
+  })
+
+  test("delivery refuses a missing run repository before any provider call", async () => {
+    const events: string[] = []
+    const deliver = deliverProduction as (...args: unknown[]) => Promise<unknown>
+    await expect(deliver(failClosedPort(events), commitSha, "781", 3, centralSha))
+      .rejects.toThrow("is not an allowed repository")
+    expect(events).toEqual([])
   })
 
   test("refuses evidence for the other allowed owner than the run's", () => {

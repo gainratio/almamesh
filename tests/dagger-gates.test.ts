@@ -189,7 +189,9 @@ describe("almamesh ci wiring", () => {
     expect(source).toContain("const PRODUCT_GATE_LANES = 2")
     expect(ci).toContain("PRODUCT_GATES.map(")
     expect(ci).toContain("assertAllPassed(")
-    expect(ci.indexOf("this.secretScan(commitSha)")).toBeLessThan(ci.indexOf("runPool("))
+    // The guard runs as the run's own repository; -1 (not found) must not pass.
+    expect(ci.indexOf("this.secretScan(commitSha, repository)")).toBeGreaterThan(-1)
+    expect(ci.indexOf("this.secretScan(commitSha, repository)")).toBeLessThan(ci.indexOf("runPool("))
     expect(ci).not.toContain("for (const gate of gates) await")
   })
 })

@@ -1,8 +1,12 @@
 import { describe, expect, test } from "bun:test"
+import { readdirSync, readFileSync } from "node:fs"
+import { join, resolve } from "node:path"
+import * as identity from "../dagger/src/repositoryIdentity.ts"
 import {
+  ALLOWED_OWNERS,
   ALLOWED_REPOSITORIES,
-  DEFAULT_REPOSITORY,
   repositoryGitUrl,
+  repositoryOwner,
   requireAllowedRepository,
 } from "../dagger/src/repositoryIdentity.ts"
 
@@ -14,8 +18,29 @@ describe("repository identity allow-list", () => {
     expect(ALLOWED_REPOSITORIES).toEqual(["hseshadr/almamesh", "gainratio/almamesh"])
   })
 
-  test("defaults to today's owner so existing callers do not change", () => {
-    expect(DEFAULT_REPOSITORY).toBe("hseshadr/almamesh")
+  // No fallback identity: every caller passes the run's own `github.repository`,
+  // so nothing silently keeps acting as hseshadr/almamesh after the transfer.
+  test("exports no default repository", () => {
+    expect(Object.keys(identity)).not.toContain("DEFAULT_REPOSITORY")
+  })
+
+  test.each([undefined, null])("refuses a missing repository (%p)", (repository) => {
+    expect(() => requireAllowedRepository(repository as never)).toThrow("is not an allowed repository")
+  })
+
+  test("derives the two owners from the allow-list", () => {
+    expect(ALLOWED_OWNERS).toEqual(["hseshadr", "gainratio"])
+  })
+
+  test.each([
+    ["hseshadr/almamesh", "hseshadr"],
+    ["gainratio/almamesh", "gainratio"],
+  ])("the owner of %s is %s", (repository, owner) => {
+    expect(repositoryOwner(repository)).toBe(owner)
+  })
+
+  test.each(["attacker/almamesh", "", undefined])("refuses the owner of %p", (repository) => {
+    expect(() => repositoryOwner(repository as never)).toThrow("is not an allowed repository")
   })
 
   test.each(["hseshadr/almamesh", "gainratio/almamesh"])("accepts %s", (repository) => {
@@ -42,4 +67,19 @@ describe("repository identity allow-list", () => {
   test("refuses to derive a clone URL for a repository outside the allow-list", () => {
     expect(() => repositoryGitUrl("attacker/almamesh")).toThrow("is not an allowed repository")
   })
+})
+
+// The module's identity lives in one place. Any other `hseshadr/almamesh` literal in
+// dagger/src (a clone URL, an image label, a target constant) would keep acting as
+// the old owner after the transfer, so the run repository must be threaded instead.
+describe("no hardcoded repository identity outside the allow-list", () => {
+  const src = resolve(import.meta.dir, "..", "dagger", "src")
+  const hardcoded = /(hseshadr|gainratio)\/almamesh(?![-\w])/
+
+  test.each(readdirSync(src).filter((name) => name.endsWith(".ts") && name !== "repositoryIdentity.ts"))(
+    "%s names no owner/almamesh literal",
+    (name) => {
+      expect(readFileSync(join(src, name), "utf8")).not.toMatch(hardcoded)
+    },
+  )
 })
