@@ -4,7 +4,7 @@ import { existsSync, readFileSync } from "node:fs"
 import { resolve } from "node:path"
 
 const root = resolve(import.meta.dir, "..")
-const centralSha = "a895f726e9786bcfd2bdf68f87d3d5c4b411f702"
+const centralSha = "4d48302e30d3a54ec71364d43aada5c0d4b1f9bf"
 const repository = "hseshadr/almamesh"
 const providerMarkers = [
   "CLOUDFLARE_API_TOKEN",

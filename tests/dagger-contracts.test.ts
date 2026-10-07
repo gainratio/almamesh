@@ -161,7 +161,7 @@ describe("Dagger public orchestration contract", () => {
   test("production deploy composes one central Pages Functions transaction", () => {
     const source = readFileSync(resolve(root, "dagger/src/index.ts"), "utf8")
     expect(source).toContain("deliverProduction")
-    expect(source).toContain(".greenMain(")
+    expect(source).toContain(".greenMainDecision(")
     expect(source).toContain(".source(")
     expect(source).toContain(".guard(")
     expect(source).toContain(".envelope(")
