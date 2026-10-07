@@ -31,7 +31,7 @@ import {
   type ReactElement,
 } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Canvas } from '@react-three/fiber';
+import { Canvas, type RootState } from '@react-three/fiber';
 import { EffectComposer, Bloom, Vignette } from '@react-three/postprocessing';
 import { colors } from '@almamesh/constants';
 import type { SiderealChart } from '@almamesh/browser/types';
@@ -47,6 +47,7 @@ import {
   type RGBColor,
 } from '@almamesh/shared-types';
 import { ForceFieldScene } from './ForceFieldScene';
+import { isSoftwareRenderer } from './softwareRenderer';
 
 export interface ForceFieldExperienceProps {
   /** The engine's raw, lossless chart output (the richest feed). */
@@ -111,6 +112,10 @@ export function ForceFieldExperience({
   const rafRef = useRef<number | null>(null);
   const [animationTime, setAnimationTime] = useState(0);
   const [reducedMotion, setReducedMotion] = useState(false);
+  // CPU-rendered WebGL (no GPU): an animated scene there takes most of a
+  // second per frame and starves the page, so it holds a still frame instead.
+  const [softwareGl, setSoftwareGl] = useState(false);
+  const still = reducedMotion || softwareGl;
   const [inView, setInView] = useState(true);
 
   // Static per-planet wave params: computed ONCE from the chart (t=0).
@@ -171,7 +176,7 @@ export function ForceFieldExperience({
   // choreography completes in ~2.5 wall-seconds even when the device renders
   // at low FPS; long gaps (tab jank) are clamped so the clock never jumps.
   useEffect(() => {
-    if (reducedMotion || !inView) {
+    if (still || !inView) {
       if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
       return;
@@ -194,7 +199,11 @@ export function ForceFieldExperience({
       if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
     };
-  }, [reducedMotion, inView]);
+  }, [still, inView]);
+
+  const handleCreated = useCallback((state: RootState) => {
+    setSoftwareGl(isSoftwareRenderer(state.gl.getContext()));
+  }, []);
 
   const handleSelect = useCallback(
     (id: string | null) => onSelectPlanet?.(id),
@@ -217,7 +226,8 @@ export function ForceFieldExperience({
         camera={{ position: [0, 6, 14], fov: 50 }}
         gl={{ antialias: true, alpha: true, powerPreference: 'high-performance' }}
         dpr={[1, 2]}
-        frameloop={reducedMotion ? 'demand' : inView ? 'always' : 'demand'}
+        frameloop={!still && inView ? 'always' : 'demand'}
+        onCreated={handleCreated}
         role="img"
         aria-label={ariaLabel}
       >
@@ -225,7 +235,7 @@ export function ForceFieldExperience({
         <ForceFieldScene
           frame={frame}
           animationTime={animationTime}
-          reducedMotion={reducedMotion}
+          reducedMotion={still}
           selectedPlanet={selectedPlanet}
           onPlanetSelect={handleSelect}
           lagnaColor={lagnaColor}
