@@ -88,6 +88,7 @@ const CONTRACT_TESTS = [
   "tests/dagger-deployment-contract.test.ts",
   "tests/dagger-foundation-contract.test.ts",
   "tests/dagger-gates.test.ts",
+  "tests/dagger-ingress-contract.test.ts",
   "tests/dagger-lane-timeout.test.ts",
   "tests/dagger-nightly-real-skips.test.ts",
   "tests/dagger-pages-upload-contract.test.ts",
@@ -406,9 +407,8 @@ exec ${inline.join(" ")}`,
       .withDirectory(
         ROOT,
         this.selected([
-          ".github/workflows/dagger.yml",
-          ".github/workflows/deploy.yml",
-          ".github/workflows/toolchain-image.yml",
+          // The ingress contract checks every workflow, so a new one cannot hide.
+          ".github/workflows/**",
           "dagger.json",
           "dagger/scripts/**",
           "dagger/src/**",
