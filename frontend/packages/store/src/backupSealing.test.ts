@@ -15,6 +15,10 @@ import {
 } from './backupSealing';
 import { handleSealRequest, type SealReply, type SealRequest } from './passphraseSeal';
 
+// Real age scrypt at the production work factor (128 MiB). ~0.5 s on a laptop, but the
+// shared CI runner has taken over 5 s, Vitest's default limit.
+const REAL_SCRYPT_MS = 60_000;
+
 const FIXTURES = new URL('./__fixtures__/legacy-backups/', import.meta.url);
 const manifest = JSON.parse(readFileSync(new URL('manifest.json', FIXTURES), 'utf8')) as Record<
   string,
@@ -41,7 +45,7 @@ describe('sealBackup / openBackup (age)', () => {
       name: 'BackupCryptoError',
       code: 'bad_passphrase',
     });
-  });
+  }, REAL_SCRYPT_MS);
 
   it('refuses a passphrase under 12 characters before any sealing work', async () => {
     const runner = vi.fn<SealRunner>();
@@ -59,7 +63,7 @@ describe('sealBackup / openBackup (age)', () => {
       code: 'bad_passphrase',
     });
     expect(runner).not.toHaveBeenCalled();
-  });
+  }, REAL_SCRYPT_MS);
 
   it('opens an ASCII-armored age file read as text', async () => {
     const { armor, Encrypter } = await import('age-encryption');

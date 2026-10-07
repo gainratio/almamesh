@@ -18,6 +18,10 @@ import {
   sealInThread,
 } from './passphraseSeal';
 
+// Real age scrypt at the production work factor (128 MiB). ~0.5 s on a laptop, but the
+// shared CI runner has taken over 5 s, Vitest's default limit.
+const REAL_SCRYPT_MS = 60_000;
+
 const FIXTURES = new URL('./__fixtures__/legacy-backups/', import.meta.url);
 const manifest = JSON.parse(readFileSync(new URL('manifest.json', FIXTURES), 'utf8')) as Record<
   string,
@@ -67,7 +71,7 @@ describe('age sealing (new exports)', () => {
       ok: false,
       reason: 'wrong_passphrase_or_tampered',
     });
-  });
+  }, REAL_SCRYPT_MS);
 
   it('does not mistake old files or SQLite for age files', () => {
     expect(isSealedBackup(fixtureBytes('legacy-v3.almamesh'))).toBe(false);
