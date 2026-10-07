@@ -42,16 +42,17 @@ import {
 import { nightlyRealSkipCheckScript } from "./nightlyRealSkips.js"
 import { pagesUploadLimitsCheckScript as releasePagesUploadLimitsScript } from "./pagesUploadLimits.js"
 import { laneScript } from "./laneScript.js"
-import { DEFAULT_REPOSITORY, repositoryGitUrl, requireAllowedRepository } from "./repositoryIdentity.js"
+import { ALLOWED_OWNERS, repositoryGitUrl, requireAllowedRepository } from "./repositoryIdentity.js"
 import {
   BUN_IMAGE,
   TOOLCHAIN_IMAGE,
   TOOLCHAIN_PLAYWRIGHT_FILE,
   TOOLCHAIN_RECIPE,
-  TOOLCHAIN_REPOSITORY,
   UV_IMAGE,
   pinnedToolchain,
   playwrightVersion,
+  toolchainImageOwner,
+  toolchainRepository,
   toolchainTag,
 } from "./toolchain.js"
 
@@ -338,7 +339,7 @@ exec ${inline.join(" ")}`,
     return dag.container().from(TOOLCHAIN_RECIPE.base).withFile("/usr/local/bin/bun", bun).withExec(this.aptInstall())
   }
 
-  private toolchainImage(playwright: string): Container {
+  private toolchainImage(playwright: string, repository: string): Container {
     const bun = dag.container().from(TOOLCHAIN_RECIPE.bun).file("/usr/local/bin/bun")
     return dag
       .container({ platform: "linux/amd64" as Platform })
@@ -347,17 +348,22 @@ exec ${inline.join(" ")}`,
       .withExec(this.aptInstall())
       .withExec(["bun", "x", `playwright@${playwright}`, "install", "--with-deps", ...TOOLCHAIN_RECIPE.browsers])
       .withNewFile(TOOLCHAIN_PLAYWRIGHT_FILE, playwright)
-      .withLabel("org.opencontainers.image.source", `https://github.com/${DEFAULT_REPOSITORY}`)
+      .withLabel("org.opencontainers.image.source", `https://github.com/${requireAllowedRepository(repository)}`)
       .withLabel("org.opencontainers.image.description", "AlmaMesh CI browser toolchain (apt, Bun, Playwright browsers)")
   }
 
-  /** Build the browser toolchain image and push it to GHCR; returns the digest-pinned reference. */
+  /**
+   * Build the browser toolchain image and push it to GHCR under the run's own
+   * owner (`github.repository_owner`, lowercased); returns the digest-pinned
+   * reference. `repository` is the run's `github.repository` (exact allow-list).
+   */
   @func()
-  async publishToolchain(githubToken: Secret): Promise<string> {
+  async publishToolchain(githubToken: Secret, repository: string, repositoryOwner: string): Promise<string> {
+    const owner = toolchainImageOwner(repository, repositoryOwner)
     const lock = await this.source.file("frontend/bun.lock").contents()
     const playwright = playwrightVersion(lock)
-    const reference = `${TOOLCHAIN_REPOSITORY}:${toolchainTag(TOOLCHAIN_RECIPE, playwright)}`
-    return this.toolchainImage(playwright).withRegistryAuth("ghcr.io", "hseshadr", githubToken).publish(reference)
+    const reference = `${toolchainRepository(owner)}:${toolchainTag(TOOLCHAIN_RECIPE, playwright)}`
+    return this.toolchainImage(playwright, repository).withRegistryAuth("ghcr.io", owner, githubToken).publish(reference)
   }
 
   private browserToolchain(): Container {
@@ -377,14 +383,13 @@ exec ${inline.join(" ")}`,
   }
 
   // Our own libraries come from npm at a caret range (they track the newest
-  // release); a Git alias for any of them must never re-enter the manifests or lock.
+  // release); a Git alias for any of them, under either owner, must never
+  // re-enter the manifests or lock.
   private edgeprocPinCheck(): string[] {
     const spec = JSON.stringify(BROWSER_LEGO_SPEC)
-    return [
-      "sh",
-      "-c",
-      `grep -F ${spec} packages/browser/package.json >/dev/null && grep -F ${spec} packages/memory/package.json >/dev/null && grep -F ${spec} packages/store/package.json >/dev/null && ! grep -F "github:hseshadr/" bun.lock >/dev/null`,
-    ]
+    const manifests = ["browser", "memory", "store"].map((name) => `grep -F ${spec} packages/${name}/package.json >/dev/null`)
+    const aliases = ALLOWED_OWNERS.map((owner) => `! grep -F "github:${owner}/" bun.lock >/dev/null`)
+    return ["sh", "-c", [...manifests, ...aliases].join(" && ")]
   }
 
   private builtBrowser(
@@ -588,7 +593,7 @@ exec ${inline.join(" ")}`,
     )
   }
   @func()
-  async ci(commitSha: string, repository: string = DEFAULT_REPOSITORY): Promise<string> {
+  async ci(commitSha: string, repository: string): Promise<string> {
     // The gates below are independent containers (own filesystem layers, own
     // network namespace, no artifact handed from one to another), so they can
     // overlap. Contracts start first and overlap the source guard; the guard
@@ -609,7 +614,7 @@ exec ${inline.join(" ")}`,
    * `repository` is the run's own `github.repository` (exact allow-list).
    */
   @func()
-  async gate(name: string, commitSha: string, repository: string = DEFAULT_REPOSITORY): Promise<string> {
+  async gate(name: string, commitSha: string, repository: string): Promise<string> {
     const run = this.gateRunner(name, commitSha, repository)
     assertAllPassed([await startGate(name, run)])
     return `${name} gate passed.`
@@ -629,7 +634,7 @@ exec ${inline.join(" ")}`,
     return this[name]()
   }
   @func()
-  secretScan(commitSha: string, repository: string = DEFAULT_REPOSITORY): Container {
+  secretScan(commitSha: string, repository: string): Container {
     return dag
       .foundation()
       .guard(this.source, requireAllowedRepository(repository), commitSha)
@@ -669,7 +674,7 @@ exec ${inline.join(" ")}`,
     expectedSha: string,
     bundleVersion: string,
     bundleSequence: number,
-    repository: string = DEFAULT_REPOSITORY,
+    repository: string,
   ): Promise<Directory> {
     const source = await this.verifiedPublicSource(expectedSha, repository)
     return this.releaseArtifact(source, this.signedBuild(
@@ -677,6 +682,7 @@ exec ${inline.join(" ")}`,
       bundlePrivateKeyB64,
       bundlePublicKeyB64,
       expectedSha,
+      repository,
       bundleVersion,
       bundleSequence,
     )).roots
@@ -710,7 +716,7 @@ exec ${inline.join(" ")}`,
     expectedSha: string,
     workflowRunId: string,
     runAttempt: number,
-    repository: string = DEFAULT_REPOSITORY,
+    repository: string,
   ): Promise<string> {
     const runRepository = requireAllowedRepository(repository)
     const result = await deliverProduction({
@@ -726,6 +732,7 @@ exec ${inline.join(" ")}`,
           bundlePrivateKeyB64,
           bundlePublicKeyB64,
           evidence.commitSha,
+          evidence.repository,
         ),
       ),
       verifyPreview: async (artifact, evidence) => {
@@ -951,6 +958,7 @@ exec ${inline.join(" ")}`,
     privateKey: Secret,
     publicKey: Secret,
     expectedSha: string,
+    repository: string,
     bundleVersion?: string,
     bundleSequence?: number,
   ): Container {
@@ -959,6 +967,7 @@ exec ${inline.join(" ")}`,
       .withSecretVariable("BUNDLE_PRIVATE_KEY_B64", privateKey)
       .withSecretVariable("BUNDLE_PUBLIC_KEY_B64", publicKey)
       .withEnvVariable("EXPECTED_SHA", expectedSha)
+      .withEnvVariable("REPOSITORY_GIT_URL", repositoryGitUrl(repository))
     if (bundleVersion !== undefined) {
       build = build.withEnvVariable("BUNDLE_VERSION_ARG", bundleVersion)
     }
@@ -990,7 +999,7 @@ if [ -n "\${BUNDLE_VERSION_ARG:-}" ] && [ -n "\${BUNDLE_SEQUENCE_ARG:-}" ]; then
   export BUNDLE_VERSION="$BUNDLE_VERSION_ARG" BUNDLE_SEQUENCE="$BUNDLE_SEQUENCE_ARG"
 else
   rm -rf /tmp/almamesh-history
-  git clone --quiet --filter=blob:none --no-checkout https://github.com/hseshadr/almamesh.git /tmp/almamesh-history
+  git clone --quiet --filter=blob:none --no-checkout "$REPOSITORY_GIT_URL" /tmp/almamesh-history
   git -C /tmp/almamesh-history fetch --quiet origin "$EXPECTED_SHA"
   export BUNDLE_SEQUENCE="$(git -C /tmp/almamesh-history rev-list --count "$EXPECTED_SHA")"
   export BUNDLE_VERSION="$(git -C /tmp/almamesh-history describe --tags --abbrev=0 "$EXPECTED_SHA" 2>/dev/null || printf '0.0.0+%s' "\${EXPECTED_SHA:0:7}")"

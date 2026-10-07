@@ -4,10 +4,11 @@ import { resolve } from "node:path"
 import {
   TOOLCHAIN_IMAGE,
   TOOLCHAIN_RECIPE,
-  TOOLCHAIN_REPOSITORY,
   playwrightVersion,
   pinnedToolchain,
   recipeTag,
+  toolchainImageOwner,
+  toolchainRepository,
   toolchainTag,
 } from "../dagger/src/toolchain.ts"
 
@@ -17,6 +18,7 @@ const workflowPath = resolve(root, ".github/workflows/toolchain-image.yml")
 const checkout = "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
 const daggerAction = "dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77"
 const digest = `sha256:${"a".repeat(64)}`
+const TOOLCHAIN_REPOSITORY = toolchainRepository("hseshadr")
 
 describe("prebuilt toolchain image", () => {
   test("reads the exact Playwright version the frontend lock resolves", () => {
@@ -47,6 +49,44 @@ describe("prebuilt toolchain image", () => {
   test("uses a digest-pinned image built from the current recipe", () => {
     const image = `${TOOLCHAIN_REPOSITORY}:${recipeTag(TOOLCHAIN_RECIPE)}-pw1.63.0@${digest}`
     expect(pinnedToolchain(image, TOOLCHAIN_RECIPE)).toBe(image)
+  })
+
+  // The image follows the repository across the hseshadr -> gainratio transfer: a pin
+  // under either owner is used, any other owner is refused (never pulled).
+  test.each(["hseshadr", "gainratio"])("uses a pinned image under the %s owner", (owner) => {
+    const image = `${toolchainRepository(owner)}:${recipeTag(TOOLCHAIN_RECIPE)}-pw1.63.0@${digest}`
+    expect(image).toStartWith(`ghcr.io/${owner}/almamesh-toolchain:`)
+    expect(pinnedToolchain(image, TOOLCHAIN_RECIPE)).toBe(image)
+  })
+
+  test.each([
+    ["another owner", "attacker"],
+    ["a look-alike owner", "gainratio-evil"],
+    ["an owner prefix", "hseshadrx"],
+  ])("refuses a pinned image under %s", (_name, owner) => {
+    const image = `ghcr.io/${owner}/almamesh-toolchain:${recipeTag(TOOLCHAIN_RECIPE)}-pw1.63.0@${digest}`
+    expect(() => pinnedToolchain(image, TOOLCHAIN_RECIPE)).toThrow("digest-pinned")
+  })
+
+  test.each(["attacker", "", "HSESHADR"])("refuses to name a toolchain repository for owner %p", (owner) => {
+    expect(() => toolchainRepository(owner)).toThrow("not an allowed owner")
+  })
+
+  test.each([
+    ["hseshadr/almamesh", "hseshadr", "hseshadr"],
+    ["gainratio/almamesh", "gainratio", "gainratio"],
+    ["gainratio/almamesh", "GainRatio", "gainratio"],
+  ])("publishes %s under the lowercased run owner", (repository, owner, expected) => {
+    expect(toolchainImageOwner(repository, owner)).toBe(expected)
+  })
+
+  test.each([
+    ["a foreign repository", "attacker/almamesh", "attacker"],
+    ["a missing repository", undefined, "hseshadr"],
+    ["a missing owner", "hseshadr/almamesh", undefined],
+    ["an owner that is not the repository's", "hseshadr/almamesh", "gainratio"],
+  ])("refuses to publish for %s", (_name, repository, owner) => {
+    expect(() => toolchainImageOwner(repository as never, owner as never)).toThrow()
   })
 
   test("falls back to the inline install when no image is pinned", () => {
@@ -101,7 +141,11 @@ describe("toolchain image workflow", () => {
             {
               uses: daggerAction,
               env: { GITHUB_TOKEN: "${{ github.token }}" },
-              with: { version: "0.21.8", call: "publish-toolchain --github-token=env:GITHUB_TOKEN" },
+              with: {
+                version: "0.21.8",
+                call: "publish-toolchain --github-token=env:GITHUB_TOKEN"
+                  + " --repository=${{ github.repository }} --repository-owner=${{ github.repository_owner }}",
+              },
             },
           ],
         },

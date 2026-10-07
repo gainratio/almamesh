@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto"
+import { ALLOWED_OWNERS, repositoryOwner } from "./repositoryIdentity.js"
 
 // The prebuilt browser toolchain. Every browser gate used to spend ~2 minutes on
 // the same apt install and Playwright browser download; the image bakes both in.
@@ -13,7 +14,32 @@ export const UV_IMAGE =
   "ghcr.io/astral-sh/uv:0.12.1-python3.13-trixie-slim@sha256:8db423175bfff42bd1c81f77280bc92f10ef9cf03161803bd5cb6e15d86c3d10"
 export const BUN_IMAGE =
   "oven/bun:1.3.5@sha256:e90cdbaf9ccdb3d4bd693aa335c3310a6004286a880f62f79b18f9b1312a8ec3"
-export const TOOLCHAIN_REPOSITORY = "ghcr.io/hseshadr/almamesh-toolchain"
+const TOOLCHAIN_NAME = "almamesh-toolchain"
+
+/**
+ * The GHCR repository of the toolchain image under one of our owners. The image
+ * follows the repository: before the transfer it is published under hseshadr,
+ * after it under gainratio. Any other owner is refused.
+ */
+export function toolchainRepository(owner: string): string {
+  if (!ALLOWED_OWNERS.includes(owner)) {
+    throw new Error(`"${owner}" is not an allowed owner; expected one of ${ALLOWED_OWNERS.join(", ")}`)
+  }
+  return `ghcr.io/${owner}/${TOOLCHAIN_NAME}`
+}
+
+/**
+ * The owner to publish the image under: the run's `github.repository_owner`,
+ * lowercased (GHCR names are lowercase), and only when it is the owner of the
+ * run's allow-listed `github.repository`.
+ */
+export function toolchainImageOwner(repository: string, runOwner: string): string {
+  const owner = repositoryOwner(repository)
+  if (typeof runOwner !== "string" || runOwner.toLowerCase() !== owner) {
+    throw new Error(`run owner "${runOwner}" is not the owner of ${repository}`)
+  }
+  return owner
+}
 // The file inside the image that records which Playwright built its browsers.
 export const TOOLCHAIN_PLAYWRIGHT_FILE = "/opt/almamesh-toolchain/playwright-version"
 
@@ -35,7 +61,11 @@ export const TOOLCHAIN_RECIPE: ToolchainRecipe = {
 export const TOOLCHAIN_IMAGE: string | null =
   "ghcr.io/hseshadr/almamesh-toolchain:r-81e517e120c27dea-pw1.63.0@sha256:ddccce732634082393bb427db3659a0c98cd172562be7786b4bab9c7244d3c99"
 
-const PINNED = /^ghcr\.io\/hseshadr\/almamesh-toolchain:(r-[0-9a-f]{16})-pw\d+\.\d+\.\d+@sha256:[0-9a-f]{64}$/
+// A pin under any allowed owner is accepted, so the hseshadr pin keeps working
+// after the transfer until a gainratio-published digest replaces it.
+const PINNED = new RegExp(
+  `^ghcr\\.io\\/(?:${ALLOWED_OWNERS.join("|")})\\/${TOOLCHAIN_NAME}:(r-[0-9a-f]{16})-pw\\d+\\.\\d+\\.\\d+@sha256:[0-9a-f]{64}$`,
+)
 
 /** The exact Playwright version frontend/bun.lock resolves. */
 export function playwrightVersion(lock: string): string {
@@ -58,6 +88,6 @@ export function toolchainTag(recipe: ToolchainRecipe, playwright: string): strin
 export function pinnedToolchain(image: string | null, recipe: ToolchainRecipe): string | null {
   if (image === null) return null
   const match = PINNED.exec(image)
-  if (match === null) throw new Error(`toolchain image must be digest-pinned in ${TOOLCHAIN_REPOSITORY}: ${image}`)
+  if (match === null) throw new Error(`toolchain image must be digest-pinned in ghcr.io/{${ALLOWED_OWNERS.join("|")}}/${TOOLCHAIN_NAME}: ${image}`)
   return match[1] === recipeTag(recipe) ? image : null
 }

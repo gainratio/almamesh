@@ -8,8 +8,11 @@ export const ALLOWED_REPOSITORIES = ["hseshadr/almamesh", "gainratio/almamesh"] 
 
 export type AllowedRepository = (typeof ALLOWED_REPOSITORIES)[number]
 
-/** Today's owner: the default for callers that do not pass the run identity yet. */
-export const DEFAULT_REPOSITORY: AllowedRepository = "hseshadr/almamesh"
+/** The owners of the allowed repositories (the GHCR namespaces we publish under). */
+export const ALLOWED_OWNERS: readonly string[] = ALLOWED_REPOSITORIES.map((repository) => repository.split("/")[0])
+
+// There is deliberately no default repository: every entry point takes the run's
+// own `github.repository`, so nothing silently keeps acting as the old owner.
 
 export function requireAllowedRepository(repository: string): AllowedRepository {
   const allowed = ALLOWED_REPOSITORIES.find((candidate) => candidate === repository)
@@ -24,4 +27,9 @@ export function requireAllowedRepository(repository: string): AllowedRepository 
 /** The HTTPS clone URL of an allowed repository. */
 export function repositoryGitUrl(repository: string): string {
   return `https://github.com/${requireAllowedRepository(repository)}.git`
+}
+
+/** The owner segment of an allowed repository. */
+export function repositoryOwner(repository: string): string {
+  return requireAllowedRepository(repository).split("/")[0]
 }

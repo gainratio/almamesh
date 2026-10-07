@@ -1,7 +1,8 @@
 import { PRODUCT_GATES } from "../dagger/src/gates.ts"
 import { describe, expect, mock, test } from "bun:test"
-import { existsSync, readFileSync } from "node:fs"
-import { resolve } from "node:path"
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join, resolve } from "node:path"
 
 const root = resolve(import.meta.dir, "..")
 const centralSha = "a88866232e679b6353d2b75bceb01969be739f67"
@@ -266,7 +267,7 @@ describe("Foundation guard composition", () => {
       })) as never
     }
 
-    await expect(module.ci(commitSha)).rejects.toBe(guardFailure)
+    await expect(module.ci(commitSha, repository)).rejects.toBe(guardFailure)
     // Contracts now start alongside the guard (they used to run strictly before
     // it), so order is not part of the contract: both run, product gates never do.
     expect([...orchestration].sort()).toEqual(["contracts", "foundation"])
@@ -313,7 +314,6 @@ describe("the source guard runs as the run's own repository", () => {
   }
 
   test.each([
-    ["the default (today's owner)", undefined, repository],
     ["hseshadr", "hseshadr/almamesh", "hseshadr/almamesh"],
     ["gainratio", "gainratio/almamesh", "gainratio/almamesh"],
   ])("secretScan guards %s", async (_name, runRepository, expected) => {
@@ -321,6 +321,30 @@ describe("the source guard runs as the run's own repository", () => {
     const module = await guardedModule(guardCalls)
     module.secretScan("1".repeat(40), runRepository)
     expect(guardCalls).toEqual([expected])
+  })
+
+  // Dagger makes a parameter optional only when it has a default. Each entry point
+  // that acts as the repository must REQUIRE the run's `github.repository`, so its
+  // declared arity counts the repository parameter (a default would drop it).
+  test.each([
+    ["ci", 2],
+    ["gate", 3],
+    ["secretScan", 2],
+    ["productionArtifact", 6],
+    ["deploy", 9],
+    ["publishToolchain", 3],
+  ])("%s requires the run repository (arity %i, no default)", async (name, arity) => {
+    const module = await guardedModule([])
+    const method = (module as unknown as Record<string, (...args: unknown[]) => unknown>)[name]
+    expect(method.length).toBe(arity)
+  })
+
+  test("the gate refuses a missing run repository before the guard runs", async () => {
+    const guardCalls: string[] = []
+    const module = await guardedModule(guardCalls)
+    const gate = module.gate.bind(module) as (...args: unknown[]) => Promise<string>
+    await expect(gate("secretScan", "1".repeat(40))).rejects.toThrow("is not an allowed repository")
+    expect(guardCalls).toEqual([])
   })
 
   test("the secretScan gate forwards the run repository to the guard", async () => {
@@ -336,10 +360,11 @@ describe("the source guard runs as the run's own repository", () => {
     "hseshadr/almamesh-evil",
     "gainratio-evil/almamesh",
     "",
+    undefined,
   ])("secretScan refuses run repository %p before the guard runs", async (runRepository) => {
     const guardCalls: string[] = []
     const module = await guardedModule(guardCalls)
-    expect(() => module.secretScan("1".repeat(40), runRepository)).toThrow("is not an allowed repository")
+    expect(() => module.secretScan("1".repeat(40), runRepository as string)).toThrow("is not an allowed repository")
     expect(guardCalls).toEqual([])
   })
 })
@@ -435,7 +460,7 @@ describe("ci runs independent gates concurrently", () => {
       inFlight -= 1
     }
     const module = await ciModule(Object.fromEntries(PRODUCT_GATES.map((name) => [name, gate(name)])))
-    await expect(module.ci("1".repeat(40))).resolves.toContain("gates passed")
+    await expect(module.ci("1".repeat(40), repository)).resolves.toContain("gates passed")
     expect(started.slice(0, 2)).toEqual(["browserChromium", "browserJourneys"])
     expect(started.sort()).toEqual([...PRODUCT_GATES].sort())
     expect(peak).toBe(2)
@@ -449,9 +474,9 @@ describe("ci runs independent gates concurrently", () => {
       contracts: record("contracts"),
       secretScan: record("secretScan"),
     })
-    await expect(module.gate("browserWizards", "1".repeat(40))).resolves.toBe("browserWizards gate passed.")
-    await expect(module.gate("secretScan", "1".repeat(40))).resolves.toBe("secretScan gate passed.")
-    await expect(module.gate("contracts", "1".repeat(40))).resolves.toBe("contracts gate passed.")
+    await expect(module.gate("browserWizards", "1".repeat(40), repository)).resolves.toBe("browserWizards gate passed.")
+    await expect(module.gate("secretScan", "1".repeat(40), repository)).resolves.toBe("secretScan gate passed.")
+    await expect(module.gate("contracts", "1".repeat(40), repository)).resolves.toBe("contracts gate passed.")
     expect(started).toEqual(["browserWizards", "secretScan", "contracts"])
   })
 
@@ -461,13 +486,13 @@ describe("ci runs independent gates concurrently", () => {
         throw new Error("verify-privacy-reset exited 1")
       },
     })
-    await expect(module.gate("privacy", "1".repeat(40))).rejects.toThrow("privacy: verify-privacy-reset exited 1")
+    await expect(module.gate("privacy", "1".repeat(40), repository)).rejects.toThrow("privacy: verify-privacy-reset exited 1")
   })
 
   test("an unknown gate name is refused before anything runs", async () => {
     const started: string[] = []
     const module = await ciModule({ backend: async () => void started.push("backend") })
-    await expect(module.gate("browser", "1".repeat(40))).rejects.toThrow('unknown gate "browser"')
+    await expect(module.gate("browser", "1".repeat(40), repository)).rejects.toThrow('unknown gate "browser"')
     expect(started).toEqual([])
   })
 
@@ -485,7 +510,7 @@ describe("ci runs independent gates concurrently", () => {
       },
       privacy: async () => void finished.push("privacy"),
     })
-    await expect(module.ci("1".repeat(40))).rejects.toThrow("browserJourneys: verify-exit-gate exited 1")
+    await expect(module.ci("1".repeat(40), repository)).rejects.toThrow("browserJourneys: verify-exit-gate exited 1")
     expect(finished.sort()).toEqual(["backend", "privacy"])
   })
 
@@ -495,7 +520,7 @@ describe("ci runs independent gates concurrently", () => {
         throw new Error("bun test red")
       },
     })
-    await expect(module.ci("1".repeat(40))).rejects.toThrow("contracts: bun test red")
+    await expect(module.ci("1".repeat(40), repository)).rejects.toThrow("contracts: bun test red")
   })
 
   test("a failing source guard stops before any product gate starts", async () => {
@@ -508,7 +533,7 @@ describe("ci runs independent gates concurrently", () => {
       backend: record("backend"),
       browserChromium: record("browserChromium"),
     })
-    await expect(module.ci("1".repeat(40))).rejects.toThrow("secret found")
+    await expect(module.ci("1".repeat(40), repository)).rejects.toThrow("secret found")
     expect(started).toEqual([])
   })
 })
@@ -536,6 +561,44 @@ describe("browser Lego caret pin", () => {
 
   test("declares the spec the pin check greps for", () => {
     expect(spec).toMatch(/^"@gainratio\/browser": "\^\d+\.\d+\.\d+"$/)
+  })
+
+  // The lock must never carry a Git alias of our own libraries under EITHER owner:
+  // after the transfer an alias would read github:gainratio/..., not hseshadr.
+  async function pinCheckExit(lock: string): Promise<number> {
+    const noOpDecorator = () => () => undefined
+    mock.module("@dagger.io/dagger", () => ({
+      CacheVolume: class {},
+      Container: class {},
+      Directory: class {},
+      ReturnType: { Any: "ANY", Success: "SUCCESS" },
+      Secret: class {},
+      Service: class {},
+      Workspace: class {},
+      check: noOpDecorator,
+      func: noOpDecorator,
+      object: noOpDecorator,
+      dag: { cacheVolume: () => ({}) },
+    }))
+    const { AlmameshCi } = await import("../dagger/src/index.ts")
+    const module = new AlmameshCi({ directory: () => ({}) } as never) as unknown as {
+      edgeprocPinCheck: () => string[]
+    }
+    const dir = mkdtempSync(join(tmpdir(), "pin-check-"))
+    for (const manifest of ["browser", "memory", "store"]) {
+      mkdirSync(join(dir, "packages", manifest), { recursive: true })
+      writeFileSync(join(dir, "packages", manifest, "package.json"), `{ ${spec} }`)
+    }
+    writeFileSync(join(dir, "bun.lock"), lock)
+    return Bun.spawnSync(module.edgeprocPinCheck(), { cwd: dir }).exitCode
+  }
+
+  test("passes a lock that resolves our libraries from npm", async () => {
+    expect(await pinCheckExit('"@gainratio/browser": ["@gainratio/browser@0.4.1", ""]')).toBe(0)
+  })
+
+  test.each(["hseshadr", "gainratio"])("refuses a %s Git alias in the lock", async (owner) => {
+    expect(await pinCheckExit(`"@gainratio/browser": ["github:${owner}/edgeproc-browser#edd9971"]`)).not.toBe(0)
   })
 
   for (const manifest of ["browser", "memory", "store"]) {
