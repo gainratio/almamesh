@@ -517,7 +517,7 @@ export class AlmameshCi {
     return this.localPreview(
       built.withEnvVariable("ALMAMESH_PRIVACY_CONTRACT", "backup-reset-v4"),
       "dist-privacy",
-      ["node scripts/verify-privacy-reset.mjs http://127.0.0.1:4199"],
+      ["node scripts/verify-privacy-reset.mjs http://127.0.0.1:4198"],
     )
   }
   @func()
