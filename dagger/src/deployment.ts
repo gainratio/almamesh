@@ -1,3 +1,5 @@
+import { DEFAULT_REPOSITORY, requireAllowedRepository } from "./repositoryIdentity.js"
+
 const FULL_SHA = /^[0-9a-f]{40}$/
 const POSITIVE_INTEGER = /^[1-9][0-9]*$/
 
@@ -127,7 +129,9 @@ export function parseGreenMainEvidence(
   expectedSha: string,
   expectedWorkflowRunId: string,
   expectedRunAttempt: number,
+  expectedRepository: string = DEFAULT_REPOSITORY,
 ): GreenMainEvidence {
+  const runRepository = requireAllowedRepository(expectedRepository)
   requireFullSha(expectedSha, "expected SHA")
   requireAttempt(expectedWorkflowRunId, expectedRunAttempt, "caller")
   const value = parseObject(serialization)
@@ -136,7 +140,7 @@ export function parseGreenMainEvidence(
   const commitSha = requiredString(value, "commit_sha")
   const workflowRunId = requiredString(value, "workflow_run_id")
   const runAttempt = value.run_attempt
-  requireSource(repository, branch, commitSha, expectedSha)
+  requireSource(repository, branch, commitSha, expectedSha, runRepository)
   requireAttempt(workflowRunId, runAttempt, "Foundation")
   if (workflowRunId !== expectedWorkflowRunId || runAttempt !== expectedRunAttempt) {
     throw new Error("Foundation protected attempt identity differs")
@@ -154,7 +158,9 @@ export function parseGreenMainDecision(
   expectedSha: string,
   expectedWorkflowRunId: string,
   expectedRunAttempt: number,
+  expectedRepository: string = DEFAULT_REPOSITORY,
 ): GreenMainDecision {
+  requireAllowedRepository(expectedRepository)
   requireFullSha(expectedSha, "expected SHA")
   const value = parseObject(serialization)
   const action = value.action
@@ -172,6 +178,7 @@ export function parseGreenMainDecision(
     expectedSha,
     expectedWorkflowRunId,
     expectedRunAttempt,
+    expectedRepository,
   )
   return { action: "deploy", evidence }
 }
@@ -238,12 +245,15 @@ export async function deliverProduction<Source, Artifact, Envelope, LazyEvidence
   workflowRunId: string,
   runAttempt: number,
   centralSha: string,
+  repository: string = DEFAULT_REPOSITORY,
 ): Promise<DeliveryResult | SkippedDelivery> {
+  requireAllowedRepository(repository)
   const decision = parseGreenMainDecision(
     await port.greenMain(),
     expectedSha,
     workflowRunId,
     runAttempt,
+    repository,
   )
   if (decision.action === "skip") {
     return { skipped: true, supersededBy: decision.supersededBy, message: decision.message }
@@ -488,7 +498,7 @@ function providerRequest(
   return {
     workflowRunId: evidence.workflowRunId,
     runAttempt: evidence.runAttempt,
-    repository: PAGES_TARGET.repository,
+    repository: evidence.repository,
     project: PAGES_TARGET.project,
     productionBranch: PAGES_TARGET.productionBranch,
     liveDomain: PAGES_TARGET.liveDomain,
@@ -527,9 +537,10 @@ function requireSource(
   branch: string,
   commitSha: string,
   expectedSha: string,
+  expectedRepository: string,
 ): void {
   requireFullSha(commitSha, "Foundation commit SHA")
-  if (repository !== PAGES_TARGET.repository || branch !== PAGES_TARGET.productionBranch) {
+  if (repository !== expectedRepository || branch !== PAGES_TARGET.productionBranch) {
     throw new Error("Foundation source identity differs")
   }
   if (commitSha !== expectedSha) throw new Error("Foundation commit identity differs")

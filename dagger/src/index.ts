@@ -42,6 +42,7 @@ import {
 import { nightlyRealSkipCheckScript } from "./nightlyRealSkips.js"
 import { pagesUploadLimitsCheckScript as releasePagesUploadLimitsScript } from "./pagesUploadLimits.js"
 import { laneScript } from "./laneScript.js"
+import { DEFAULT_REPOSITORY, repositoryGitUrl, requireAllowedRepository } from "./repositoryIdentity.js"
 import {
   BUN_IMAGE,
   TOOLCHAIN_IMAGE,
@@ -61,10 +62,12 @@ const DIST = `${WEB}/dist`
 const KEYS = "/run/almamesh-keys"
 const BUN_INSTALLER = "/opt/almamesh/install-bun.sh"
 const LIVE_ORIGIN = "https://almamesh.com"
-const REPOSITORY = "hseshadr/almamesh"
 const BROWSER_LEGO_SPEC = '"@gainratio/browser": "^0.4.1"'
 const CONTRACT_SHA = "1111111111111111111111111111111111111111"
-const CENTRAL_MODULE_SHA = "0e8d3373e8edacebe0cb5005397fd67866b20305"
+// Owner of the Git source a Git-linked Pages project stays bound to. Pinned to
+// today's owner so the binding survives the hseshadr -> gainratio transfer.
+const PAGES_GIT_SOURCE_OWNER = "hseshadr"
+const CENTRAL_MODULE_SHA = "a88866232e679b6353d2b75bceb01969be739f67"
 const NODE_IMAGE =
   "node:22-trixie-slim@sha256:7b8a0c89c54499bee567618f96578e1a12a800f062fbdbfd1fb6a443fa6f6284"
 const PAGES_NODE_IMAGE =
@@ -92,6 +95,7 @@ const CONTRACT_TESTS = [
   "tests/dagger-lane-timeout.test.ts",
   "tests/dagger-nightly-real-skips.test.ts",
   "tests/dagger-pages-upload-contract.test.ts",
+  "tests/dagger-repository-identity.test.ts",
   "tests/dagger-toolchain-contract.test.ts",
   "tests/dagger-workflow-contract.test.ts",
 ]
@@ -343,7 +347,7 @@ exec ${inline.join(" ")}`,
       .withExec(this.aptInstall())
       .withExec(["bun", "x", `playwright@${playwright}`, "install", "--with-deps", ...TOOLCHAIN_RECIPE.browsers])
       .withNewFile(TOOLCHAIN_PLAYWRIGHT_FILE, playwright)
-      .withLabel("org.opencontainers.image.source", `https://github.com/${REPOSITORY}`)
+      .withLabel("org.opencontainers.image.source", `https://github.com/${DEFAULT_REPOSITORY}`)
       .withLabel("org.opencontainers.image.description", "AlmaMesh CI browser toolchain (apt, Bun, Playwright browsers)")
   }
 
@@ -584,14 +588,14 @@ exec ${inline.join(" ")}`,
     )
   }
   @func()
-  async ci(commitSha: string): Promise<string> {
+  async ci(commitSha: string, repository: string = DEFAULT_REPOSITORY): Promise<string> {
     // The gates below are independent containers (own filesystem layers, own
     // network namespace, no artifact handed from one to another), so they can
     // overlap. Contracts start first and overlap the source guard; the guard
     // must pass before any product gate starts (fail closed on a bad source).
     // Product gates go longest first through PRODUCT_GATE_LANES lanes.
     const contracts = startGate("contracts", async () => (await this.contracts()).sync())
-    await this.secretScan(commitSha).sync()
+    await this.secretScan(commitSha, repository).sync()
     const product = await runPool(
       PRODUCT_GATES.map((name) => ({ name, run: () => this.productGate(name).sync() })),
       PRODUCT_GATE_LANES,
@@ -602,10 +606,11 @@ exec ${inline.join(" ")}`,
   /**
    * One gate of `ci`, by name (secretScan, contracts, or a PRODUCT_GATES
    * entry). GitHub runs each as its own job so the gates do not share 4 vCPUs.
+   * `repository` is the run's own `github.repository` (exact allow-list).
    */
   @func()
-  async gate(name: string, commitSha: string): Promise<string> {
-    const run = this.gateRunner(name, commitSha)
+  async gate(name: string, commitSha: string, repository: string = DEFAULT_REPOSITORY): Promise<string> {
+    const run = this.gateRunner(name, commitSha, repository)
     assertAllPassed([await startGate(name, run)])
     return `${name} gate passed.`
   }
@@ -614,8 +619,8 @@ exec ${inline.join(" ")}`,
   verdict(results: string): string {
     return gateVerdict(results)
   }
-  private gateRunner(name: string, commitSha: string): () => Promise<unknown> {
-    if (name === "secretScan") return async () => this.secretScan(commitSha).sync()
+  private gateRunner(name: string, commitSha: string, repository: string): () => Promise<unknown> {
+    if (name === "secretScan") return async () => this.secretScan(commitSha, repository).sync()
     if (name === "contracts") return async () => (await this.contracts()).sync()
     if (isProductGate(name)) return async () => this.productGate(name).sync()
     throw new Error(`unknown gate "${name}"; expected secretScan, contracts, or one of ${PRODUCT_GATES.join(", ")}`)
@@ -624,10 +629,10 @@ exec ${inline.join(" ")}`,
     return this[name]()
   }
   @func()
-  secretScan(commitSha: string): Container {
+  secretScan(commitSha: string, repository: string = DEFAULT_REPOSITORY): Container {
     return dag
       .foundation()
-      .guard(this.source, REPOSITORY, commitSha)
+      .guard(this.source, requireAllowedRepository(repository), commitSha)
       .withDirectory(ROOT, this.source)
       .withWorkdir(ROOT)
       .withExec([
@@ -664,8 +669,9 @@ exec ${inline.join(" ")}`,
     expectedSha: string,
     bundleVersion: string,
     bundleSequence: number,
+    repository: string = DEFAULT_REPOSITORY,
   ): Promise<Directory> {
-    const source = await this.verifiedPublicSource(expectedSha)
+    const source = await this.verifiedPublicSource(expectedSha, repository)
     return this.releaseArtifact(source, this.signedBuild(
       source,
       bundlePrivateKeyB64,
@@ -704,12 +710,14 @@ exec ${inline.join(" ")}`,
     expectedSha: string,
     workflowRunId: string,
     runAttempt: number,
+    repository: string = DEFAULT_REPOSITORY,
   ): Promise<string> {
+    const runRepository = requireAllowedRepository(repository)
     const result = await deliverProduction({
-      greenMain: async () => dag.foundation().greenMainDecision(githubToken, REPOSITORY, expectedSha).serialization(),
-      bindSource: async (evidence) => this.materializedPublicSource(evidence.commitSha),
+      greenMain: async () => dag.foundation().greenMainDecision(githubToken, runRepository, expectedSha).serialization(),
+      bindSource: async (evidence) => this.materializedPublicSource(evidence.commitSha, evidence.repository),
       guardSource: async (source, evidence) => {
-        await dag.foundation().guard(source, REPOSITORY, evidence.commitSha).sync()
+        await dag.foundation().guard(source, evidence.repository, evidence.commitSha).sync()
       },
       buildRelease: async (source, evidence) => this.releaseArtifact(
         source,
@@ -753,7 +761,7 @@ exec ${inline.join(" ")}`,
         cloudflareAccountId,
         deploymentId,
       ),
-    }, expectedSha, workflowRunId, runAttempt, CENTRAL_MODULE_SHA)
+    }, expectedSha, workflowRunId, runAttempt, CENTRAL_MODULE_SHA, runRepository)
     // A superseded commit exits green without deploying; the newer commit ships.
     if ("skipped" in result) return result.message
     return [
@@ -816,21 +824,21 @@ exec ${inline.join(" ")}`,
       .withEnvVariable("PLAYWRIGHT_JSON_OUTPUT_FILE", `${NIGHTLY_REPORTS_DIR}/${suite.replaceAll(":", "-")}.json`)
       .withExec(["bun", "run", `test:e2e:${suite}`, "--reporter=list,json"])
   }
-  private publicSource(commitSha: string): Directory {
+  private publicSource(commitSha: string, repository: string): Directory {
     const history = dag
-      .git(PAGES_TARGET.repositoryUrl)
+      .git(repositoryGitUrl(repository))
       .commit(commitSha)
       .tree({ depth: 0, includeTags: true })
-    return dag.foundation().source(history, PAGES_TARGET.repository, commitSha)
+    return dag.foundation().source(history, requireAllowedRepository(repository), commitSha)
   }
-  private async materializedPublicSource(commitSha: string): Promise<Directory> {
-    const source = this.publicSource(commitSha)
+  private async materializedPublicSource(commitSha: string, repository: string): Promise<Directory> {
+    const source = this.publicSource(commitSha, repository)
     await source.digest()
     return source
   }
-  private async verifiedPublicSource(commitSha: string): Promise<Directory> {
-    const source = await this.materializedPublicSource(commitSha)
-    await dag.foundation().guard(source, PAGES_TARGET.repository, commitSha).sync()
+  private async verifiedPublicSource(commitSha: string, repository: string): Promise<Directory> {
+    const source = await this.materializedPublicSource(commitSha, repository)
+    await dag.foundation().guard(source, requireAllowedRepository(repository), commitSha).sync()
     return source
   }
   private releaseArtifact(source: Directory, signed: Container): ReleaseArtifact {
@@ -890,7 +898,7 @@ exec ${inline.join(" ")}`,
       request.consumerIdentity,
       request.producingIdentity,
       request.allowedRoots,
-      { pagesFunctions: request.pagesFunctions },
+      { pagesFunctions: request.pagesFunctions, gitSourceOwner: PAGES_GIT_SOURCE_OWNER },
     )
   }
   private async providerIdentity(

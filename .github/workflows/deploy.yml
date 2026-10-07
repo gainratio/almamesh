@@ -62,3 +62,4 @@ jobs:
             --expected-sha="$HEAD_SHA"
             --workflow-run-id="$WORKFLOW_RUN_ID"
             --run-attempt="$RUN_ATTEMPT"
+            --repository="$GITHUB_REPOSITORY"

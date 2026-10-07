@@ -17,6 +17,7 @@ const expectedDeployFlags = [
   "--expected-sha",
   "--workflow-run-id",
   "--run-attempt",
+  "--repository",
 ]
 
 type Mapping = Record<string, unknown>
@@ -70,7 +71,7 @@ function expectedGateJob(gate: string): Mapping {
     name: `gate / ${gate}`,
     "runs-on": "ubuntu-latest",
     "timeout-minutes": 60,
-    steps: [checkoutStep(), daggerStep(`gate --name=${gate} --commit-sha=\${{ github.sha }}`)],
+    steps: [checkoutStep(), daggerStep(`gate --name=${gate} --commit-sha=\${{ github.sha }} --repository=\${{ github.repository }}`)],
   }
 }
 
@@ -179,7 +180,7 @@ function exactDeployWorkflowViolations(source: string): string[] {
         with: {
           version: "0.21.8",
           verb: "call",
-          args: "deploy --github-token=env:GITHUB_TOKEN --cloudflare-api-token=env:CLOUDFLARE_API_TOKEN --cloudflare-account-id=env:CLOUDFLARE_ACCOUNT_ID --bundle-private-key-b-64=env:BUNDLE_PRIVATE_KEY_B64 --bundle-public-key-b-64=env:BUNDLE_PUBLIC_KEY_B64 --expected-sha=\"$HEAD_SHA\" --workflow-run-id=\"$WORKFLOW_RUN_ID\" --run-attempt=\"$RUN_ATTEMPT\"",
+          args: "deploy --github-token=env:GITHUB_TOKEN --cloudflare-api-token=env:CLOUDFLARE_API_TOKEN --cloudflare-account-id=env:CLOUDFLARE_ACCOUNT_ID --bundle-private-key-b-64=env:BUNDLE_PRIVATE_KEY_B64 --bundle-public-key-b-64=env:BUNDLE_PUBLIC_KEY_B64 --expected-sha=\"$HEAD_SHA\" --workflow-run-id=\"$WORKFLOW_RUN_ID\" --run-attempt=\"$RUN_ATTEMPT\" --repository=\"$GITHUB_REPOSITORY\"",
         },
       },
     ],
@@ -203,7 +204,7 @@ function gateJobFixture(gate: string): string[] {
     `      - uses: ${daggerAction} # v8.4.1`,
     "        with:",
     "          version: \"0.21.8\"",
-    `          call: gate --name=${gate} --commit-sha=\${{ github.sha }}`,
+    `          call: gate --name=${gate} --commit-sha=\${{ github.sha }} --repository=\${{ github.repository }}`,
   ]
 }
 
@@ -301,12 +302,13 @@ const canonicalDeployFixture = [
   "            --expected-sha=\"$HEAD_SHA\"",
   "            --workflow-run-id=\"$WORKFLOW_RUN_ID\"",
   "            --run-attempt=\"$RUN_ATTEMPT\"",
+  "            --repository=\"$GITHUB_REPOSITORY\"",
   "",
 ].join("\n")
 
 describe("atomic hosted Dagger workflow", () => {
   const verdictCall = "          call: verdict --results=\"${{ join(needs.*.result, ',') }}\"\n"
-  const browserCall = "          call: gate --name=browserChromium --commit-sha=${{ github.sha }}\n"
+  const browserCall = "          call: gate --name=browserChromium --commit-sha=${{ github.sha }} --repository=${{ github.repository }}\n"
 
   test("the committed workflow runs every Dagger gate as its own job under one required Dagger check", () => {
     const source = readFileSync(workflowPath, "utf8")

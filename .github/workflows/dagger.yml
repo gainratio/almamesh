@@ -36,7 +36,7 @@ jobs:
       - uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77 # v8.4.1
         with:
           version: "0.21.8"
-          call: gate --name=secretScan --commit-sha=${{ github.sha }}
+          call: gate --name=secretScan --commit-sha=${{ github.sha }} --repository=${{ github.repository }}
 
   contracts:
     name: gate / contracts
@@ -51,7 +51,7 @@ jobs:
       - uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77 # v8.4.1
         with:
           version: "0.21.8"
-          call: gate --name=contracts --commit-sha=${{ github.sha }}
+          call: gate --name=contracts --commit-sha=${{ github.sha }} --repository=${{ github.repository }}
 
   browser-chromium:
     name: gate / browserChromium
@@ -66,7 +66,7 @@ jobs:
       - uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77 # v8.4.1
         with:
           version: "0.21.8"
-          call: gate --name=browserChromium --commit-sha=${{ github.sha }}
+          call: gate --name=browserChromium --commit-sha=${{ github.sha }} --repository=${{ github.repository }}
 
   browser-journeys:
     name: gate / browserJourneys
@@ -81,7 +81,7 @@ jobs:
       - uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77 # v8.4.1
         with:
           version: "0.21.8"
-          call: gate --name=browserJourneys --commit-sha=${{ github.sha }}
+          call: gate --name=browserJourneys --commit-sha=${{ github.sha }} --repository=${{ github.repository }}
 
   browser-suites:
     name: gate / browserSuites
@@ -96,7 +96,7 @@ jobs:
       - uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77 # v8.4.1
         with:
           version: "0.21.8"
-          call: gate --name=browserSuites --commit-sha=${{ github.sha }}
+          call: gate --name=browserSuites --commit-sha=${{ github.sha }} --repository=${{ github.repository }}
 
   browser-wizards:
     name: gate / browserWizards
@@ -111,7 +111,7 @@ jobs:
       - uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77 # v8.4.1
         with:
           version: "0.21.8"
-          call: gate --name=browserWizards --commit-sha=${{ github.sha }}
+          call: gate --name=browserWizards --commit-sha=${{ github.sha }} --repository=${{ github.repository }}
 
   browser-webkit-real:
     name: gate / browserWebkitReal
@@ -126,7 +126,7 @@ jobs:
       - uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77 # v8.4.1
         with:
           version: "0.21.8"
-          call: gate --name=browserWebkitReal --commit-sha=${{ github.sha }}
+          call: gate --name=browserWebkitReal --commit-sha=${{ github.sha }} --repository=${{ github.repository }}
 
   browser-matrix:
     name: gate / browserMatrix
@@ -141,7 +141,7 @@ jobs:
       - uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77 # v8.4.1
         with:
           version: "0.21.8"
-          call: gate --name=browserMatrix --commit-sha=${{ github.sha }}
+          call: gate --name=browserMatrix --commit-sha=${{ github.sha }} --repository=${{ github.repository }}
 
   frontend:
     name: gate / frontend
@@ -156,7 +156,7 @@ jobs:
       - uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77 # v8.4.1
         with:
           version: "0.21.8"
-          call: gate --name=frontend --commit-sha=${{ github.sha }}
+          call: gate --name=frontend --commit-sha=${{ github.sha }} --repository=${{ github.repository }}
 
   backend:
     name: gate / backend
@@ -171,7 +171,7 @@ jobs:
       - uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77 # v8.4.1
         with:
           version: "0.21.8"
-          call: gate --name=backend --commit-sha=${{ github.sha }}
+          call: gate --name=backend --commit-sha=${{ github.sha }} --repository=${{ github.repository }}
 
   pdf:
     name: gate / pdf
@@ -186,7 +186,7 @@ jobs:
       - uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77 # v8.4.1
         with:
           version: "0.21.8"
-          call: gate --name=pdf --commit-sha=${{ github.sha }}
+          call: gate --name=pdf --commit-sha=${{ github.sha }} --repository=${{ github.repository }}
 
   privacy:
     name: gate / privacy
@@ -201,7 +201,7 @@ jobs:
       - uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77 # v8.4.1
         with:
           version: "0.21.8"
-          call: gate --name=privacy --commit-sha=${{ github.sha }}
+          call: gate --name=privacy --commit-sha=${{ github.sha }} --repository=${{ github.repository }}
 
   # The one required check (branch protection and the deploy's green-main
   # proof both read the check named Dagger). `!cancelled()` makes it run and go

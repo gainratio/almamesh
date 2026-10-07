@@ -4,7 +4,7 @@ import { existsSync, readFileSync } from "node:fs"
 import { resolve } from "node:path"
 
 const root = resolve(import.meta.dir, "..")
-const centralSha = "0e8d3373e8edacebe0cb5005397fd67866b20305"
+const centralSha = "a88866232e679b6353d2b75bceb01969be739f67"
 const repository = "hseshadr/almamesh"
 const providerMarkers = [
   "CLOUDFLARE_API_TOKEN",
@@ -272,6 +272,124 @@ describe("Foundation guard composition", () => {
     expect([...orchestration].sort()).toEqual(["contracts", "foundation"])
     expect(guardCalls).toEqual([{ source, repository, commitSha }])
     expect(productGates).toEqual([])
+  })
+})
+
+describe("the source guard runs as the run's own repository", () => {
+  async function guardedModule(guardCalls: string[]) {
+    const noOpDecorator = () => () => undefined
+    // A chainable stand-in for Container: every method returns itself, `sync`
+    // resolves, and it is not a thenable (so `await` does not hang on it).
+    const inert: unknown = new Proxy({}, {
+      get: (_target, key) => {
+        if (key === "then") return undefined
+        return key === "sync" ? async () => inert : () => inert
+      },
+    })
+    mock.module("@dagger.io/dagger", () => ({
+      CacheVolume: class {},
+      Container: class {},
+      Directory: class {},
+      ReturnType: { Any: "ANY", Success: "SUCCESS" },
+      Secret: class {},
+      Service: class {},
+      Workspace: class {},
+      check: noOpDecorator,
+      func: noOpDecorator,
+      object: noOpDecorator,
+      dag: {
+        cacheVolume: () => ({}),
+        container: () => inert,
+        foundation: () => ({
+          guard: (_source: unknown, guardRepository: string) => {
+            guardCalls.push(guardRepository)
+            return inert
+          },
+        }),
+      },
+    }))
+    const { AlmameshCi } = await import("../dagger/src/index.ts")
+    return new AlmameshCi({ directory: () => ({}) } as never)
+  }
+
+  test.each([
+    ["the default (today's owner)", undefined, repository],
+    ["hseshadr", "hseshadr/almamesh", "hseshadr/almamesh"],
+    ["gainratio", "gainratio/almamesh", "gainratio/almamesh"],
+  ])("secretScan guards %s", async (_name, runRepository, expected) => {
+    const guardCalls: string[] = []
+    const module = await guardedModule(guardCalls)
+    module.secretScan("1".repeat(40), runRepository)
+    expect(guardCalls).toEqual([expected])
+  })
+
+  test("the secretScan gate forwards the run repository to the guard", async () => {
+    const guardCalls: string[] = []
+    const module = await guardedModule(guardCalls)
+    await module.gate("secretScan", "1".repeat(40), "gainratio/almamesh")
+    expect(guardCalls).toEqual(["gainratio/almamesh"])
+  })
+
+  test.each([
+    "attacker/almamesh",
+    "gainratio/aml-filter",
+    "hseshadr/almamesh-evil",
+    "gainratio-evil/almamesh",
+    "",
+  ])("secretScan refuses run repository %p before the guard runs", async (runRepository) => {
+    const guardCalls: string[] = []
+    const module = await guardedModule(guardCalls)
+    expect(() => module.secretScan("1".repeat(40), runRepository)).toThrow("is not an allowed repository")
+    expect(guardCalls).toEqual([])
+  })
+})
+
+describe("the Pages upload keeps the Git source bound to today's owner", () => {
+  test("every cloudflare-pages deploy passes gitSourceOwner hseshadr", async () => {
+    const noOpDecorator = () => () => undefined
+    const calls: unknown[][] = []
+    mock.module("@dagger.io/dagger", () => ({
+      CacheVolume: class {},
+      Container: class {},
+      Directory: class {},
+      ReturnType: { Any: "ANY", Success: "SUCCESS" },
+      Secret: class {},
+      Service: class {},
+      Workspace: class {},
+      check: noOpDecorator,
+      func: noOpDecorator,
+      object: noOpDecorator,
+      dag: {
+        cacheVolume: () => ({}),
+        cloudflarePages: () => ({
+          deploy: (...args: unknown[]) => {
+            calls.push(args)
+            return "lazy-evidence"
+          },
+        }),
+      },
+    }))
+    const { AlmameshCi } = await import("../dagger/src/index.ts")
+    const module = new AlmameshCi({ directory: () => ({}) } as never) as unknown as {
+      providerDeploy: (...args: unknown[]) => unknown
+    }
+    const request = {
+      workflowRunId: "781",
+      runAttempt: 3,
+      repository,
+      project: "almamesh",
+      productionBranch: "main",
+      liveDomain: "almamesh.com",
+      deployRoot: "dist",
+      domains: ["www.almamesh.com"],
+      consumerIdentity: `${repository}@${"1".repeat(40)}`,
+      producingIdentity: `${centralSha}:781`,
+      allowedRoots: ["dist", "functions"],
+      pagesFunctions: true,
+    }
+    expect(module.providerDeploy("envelope", "gh", "cf-token", "cf-account", request)).toBe("lazy-evidence")
+    expect(calls).toHaveLength(1)
+    expect(calls[0]?.at(-1)).toEqual({ pagesFunctions: true, gitSourceOwner: "hseshadr" })
   })
 })
 
