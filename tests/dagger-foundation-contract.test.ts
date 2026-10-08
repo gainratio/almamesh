@@ -34,12 +34,12 @@ describe("central Dagger Lego pins", () => {
     expect(descriptor.dependencies).toEqual([
       {
         name: "cloudflare-pages",
-        source: `github.com/hseshadr/ci/modules/cloudflare-pages@${centralSha}`,
+        source: `github.com/gainratio/ci/modules/cloudflare-pages@${centralSha}`,
         pin: centralSha,
       },
       {
         name: "foundation",
-        source: `github.com/hseshadr/ci/modules/portfolio-foundation@${centralSha}`,
+        source: `github.com/gainratio/ci/modules/portfolio-foundation@${centralSha}`,
         pin: centralSha,
       },
     ])
