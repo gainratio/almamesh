@@ -313,6 +313,24 @@ test('[contract/stubbed] chat reuses the reading + sends the fast chat model on 
     ['core', 'guidance1', 'guidance2', 'remedial', 'yoga'].sort(),
   );
 
+  // 1b) Wait for the chart to re-anchor to today. The seeded chart is pinned to
+  //     DELHI_BIRTH.referenceDate (2025-01-01), so it is a day behind and
+  //     useChartReanchor recomputes it as soon as the dashboard's engine boots.
+  //     That recompute gives the chart a new snapshot, and an answer streamed
+  //     across it is discarded by design ("Your chart changed while this answer
+  //     was being written"). Engine boot and the reading finish at about the
+  //     same time, so without this wait the chat turn raced the re-anchor and
+  //     lost on slower or faster runners (main 2649c71). Chat about the chart
+  //     the user will actually see: today's.
+  const today = await page.evaluate(() =>
+    new Intl.DateTimeFormat('en', { year: 'numeric', month: 'short', day: 'numeric' }).format(
+      new Date(),
+    ),
+  );
+  await expect(page.getByTestId('provenance-footer')).toContainText(`As of ${today}`, {
+    timeout: 60_000,
+  });
+
   // 2) Open the chat panel and send a question (selectors from chat.rag.real.spec.ts).
   await page.getByTestId('floating-chat-button').click({ timeout: 60_000 });
   const chatInput = page.getByTestId('chat-input');
