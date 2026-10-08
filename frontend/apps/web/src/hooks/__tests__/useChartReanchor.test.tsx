@@ -16,7 +16,7 @@ import { useChartLibraryStore, useProfilesStore, type StoredChart } from '@almam
 
 import golden from '../../../../../../backend/tests/fixtures/chart_golden_de421.json';
 import { ChartEngineContext, type ChartEngineContextValue } from '../../providers/chartEngineContext';
-import { useChartReanchor } from '../useChartReanchor';
+import { REANCHOR_WAIT_LIMIT_MS, useChartReanchor } from '../useChartReanchor';
 import { useChartReanchorStatus } from '../../lib/chartReanchorStatus';
 
 const ENGINE_CHART = (golden as Record<string, SiderealChart>)['1990-01-15T12:00:00+00:00']!;
@@ -129,6 +129,36 @@ describe('useChartReanchor', () => {
     fail(new Error('engine down'));
     await waitFor(() => expect(isPending()).toBe(false));
     expect(storedInstant()).toBe('2026-06-26T17:00:00.000Z');
+  });
+
+  it('waits 30 s at most, so a hung engine cannot lock chat until reload', async () => {
+    expect(REANCHOR_WAIT_LIMIT_MS).toBe(30_000);
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
+    vi.setSystemTime(TODAY);
+    useChartLibraryStore.setState({
+      charts: { 'chart-1': chartCalculatedOn('2026-06-26T17:00:00.000Z') },
+      hydrated: true,
+    });
+    let unhang!: (reason: Error) => void;
+    const generateChart = vi.fn(
+      () => new Promise<SiderealChart>((_resolve, reject) => {
+        unhang = reject;
+      }),
+    );
+    renderReanchor(engineCtx(generateChart));
+
+    // The attempt starts on mount; flush its microtasks without moving the clock.
+    await vi.advanceTimersByTimeAsync(0);
+    expect(generateChart).toHaveBeenCalledTimes(1);
+    expect(isPending()).toBe(true);
+    await vi.advanceTimersByTimeAsync(29_999);
+    expect(isPending()).toBe(true);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(isPending()).toBe(false);
+
+    // Free the shared re-anchor queue for the next test.
+    unhang(new Error('worker gone'));
+    await vi.advanceTimersByTimeAsync(0);
   });
 
   it('never reports a re-anchor for a chart already as of today', async () => {
