@@ -15,6 +15,7 @@ permissions:
   actions: read
   checks: read
   contents: read
+  packages: read # The live smoke pulls the private ghcr.io toolchain image.
 
 concurrency:
   group: deploy-almamesh-com

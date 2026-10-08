@@ -58,8 +58,9 @@ export const TOOLCHAIN_RECIPE: ToolchainRecipe = {
 }
 
 // Digest-pinned image built by toolchain-image.yml, or null to install inline.
+// The gainratio package is private: gates pull it with the run's GITHUB_TOKEN.
 export const TOOLCHAIN_IMAGE: string | null =
-  "ghcr.io/hseshadr/almamesh-toolchain:r-81e517e120c27dea-pw1.63.0@sha256:ddccce732634082393bb427db3659a0c98cd172562be7786b4bab9c7244d3c99"
+  "ghcr.io/gainratio/almamesh-toolchain:r-81e517e120c27dea-pw1.63.0@sha256:11352b6f77703c45c8b3e17e669a48364d422cfd421aa3281050b69f17c2cfd2"
 
 // A pin under any allowed owner is accepted, so the hseshadr pin keeps working
 // after the transfer until a gainratio-published digest replaces it.
@@ -90,4 +91,28 @@ export function pinnedToolchain(image: string | null, recipe: ToolchainRecipe): 
   const match = PINNED.exec(image)
   if (match === null) throw new Error(`toolchain image must be digest-pinned in ghcr.io/{${ALLOWED_OWNERS.join("|")}}/${TOOLCHAIN_NAME}: ${image}`)
   return match[1] === recipeTag(recipe) ? image : null
+}
+
+/** An authenticated pull of the pinned image; `token` is a Dagger Secret in the module. */
+export interface ToolchainPull<Token> {
+  readonly image: string
+  readonly registry: "ghcr.io"
+  readonly username: string
+  readonly token: Token
+}
+
+/**
+ * How to pull the pinned toolchain, or null to install inline. The package is
+ * private, so a pull needs a registry token; without one (a local `dagger call`)
+ * the gates install inline rather than fail on an unauthenticated pull.
+ */
+export function toolchainPull<Token>(
+  image: string | null,
+  recipe: ToolchainRecipe,
+  token: Token | undefined,
+): ToolchainPull<Token> | null {
+  const pinned = pinnedToolchain(image, recipe)
+  if (pinned === null || token === undefined) return null
+  const username = pinned.split("/")[1]
+  return { image: pinned, registry: "ghcr.io", username, token }
 }

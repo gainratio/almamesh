@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, mock, test } from "bun:test"
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
 import {
@@ -8,6 +8,7 @@ import {
   pinnedToolchain,
   recipeTag,
   toolchainImageOwner,
+  toolchainPull,
   toolchainRepository,
   toolchainTag,
 } from "../dagger/src/toolchain.ts"
@@ -18,7 +19,11 @@ const workflowPath = resolve(root, ".github/workflows/toolchain-image.yml")
 const checkout = "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
 const daggerAction = "dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77"
 const digest = `sha256:${"a".repeat(64)}`
-const TOOLCHAIN_REPOSITORY = toolchainRepository("hseshadr")
+const TOOLCHAIN_REPOSITORY = toolchainRepository("gainratio")
+// The image toolchain-image.yml published under gainratio (run 37693260483). The
+// package is private, so the gates pull it with the run's GITHUB_TOKEN.
+const COMMITTED_PIN =
+  "ghcr.io/gainratio/almamesh-toolchain:r-81e517e120c27dea-pw1.63.0@sha256:11352b6f77703c45c8b3e17e669a48364d422cfd421aa3281050b69f17c2cfd2"
 
 describe("prebuilt toolchain image", () => {
   test("reads the exact Playwright version the frontend lock resolves", () => {
@@ -110,6 +115,89 @@ describe("prebuilt toolchain image", () => {
     if (TOOLCHAIN_IMAGE === null) return
     expect(pinnedToolchain(TOOLCHAIN_IMAGE, TOOLCHAIN_RECIPE)).toBe(TOOLCHAIN_IMAGE)
   })
+
+  test("the committed pin is the gainratio-published digest", () => {
+    expect(TOOLCHAIN_IMAGE).toBe(COMMITTED_PIN)
+  })
+})
+
+describe("private toolchain pull", () => {
+  const token = { secret: "registry-token" }
+
+  test("pulls the pinned image from ghcr.io as its owner with the run's token", () => {
+    expect(toolchainPull(COMMITTED_PIN, TOOLCHAIN_RECIPE, token)).toEqual({
+      image: COMMITTED_PIN,
+      registry: "ghcr.io",
+      username: "gainratio",
+      token,
+    })
+  })
+
+  test("authenticates as the pin's own owner, never another", () => {
+    const image = `${toolchainRepository("hseshadr")}:${recipeTag(TOOLCHAIN_RECIPE)}-pw1.63.0@${digest}`
+    expect(toolchainPull(image, TOOLCHAIN_RECIPE, token)?.username).toBe("hseshadr")
+  })
+
+  // Local `dagger call` and runs without packages:read have no token: the
+  // private image cannot be pulled, so they install inline instead of failing.
+  test("without a token it installs inline instead of an unauthenticated pull", () => {
+    expect(toolchainPull(COMMITTED_PIN, TOOLCHAIN_RECIPE, undefined)).toBeNull()
+  })
+
+  test("a pin from another recipe installs inline even with a token", () => {
+    const stale = `${TOOLCHAIN_REPOSITORY}:r-${"0".repeat(16)}-pw1.63.0@${digest}`
+    expect(toolchainPull(stale, TOOLCHAIN_RECIPE, token)).toBeNull()
+    expect(toolchainPull(null, TOOLCHAIN_RECIPE, token)).toBeNull()
+  })
+})
+
+// Behaviour of the real module against a recording `dag`: the browser image must
+// be pulled through withRegistryAuth (a Dagger Secret, never a plain string).
+describe("browser image pull in the Dagger module", () => {
+  async function browserImageCalls(registryToken?: unknown): Promise<unknown[][]> {
+    const calls: unknown[][] = []
+    const container: Record<string, (...args: unknown[]) => unknown> = new Proxy({}, {
+      get: (_target, name: string) => (...args: unknown[]) => {
+        calls.push([name, ...args])
+        return name === "file" ? "bun-file" : container
+      },
+    })
+    const noOpDecorator = () => () => undefined
+    mock.module("@dagger.io/dagger", () => ({
+      CacheVolume: class {},
+      Container: class {},
+      Directory: class {},
+      ReturnType: { Any: "ANY", Success: "SUCCESS" },
+      Secret: class {},
+      Service: class {},
+      Workspace: class {},
+      check: noOpDecorator,
+      func: noOpDecorator,
+      object: noOpDecorator,
+      dag: { container: () => container, cacheVolume: () => ({}) },
+    }))
+    const { AlmameshCi } = await import("../dagger/src/index.ts")
+    const module = new AlmameshCi({ directory: () => ({}) } as never, registryToken as never) as unknown as {
+      browserImage: () => unknown
+    }
+    module.browserImage()
+    return calls
+  }
+
+  test("authenticates to ghcr.io with the token, then pulls the pinned digest", async () => {
+    const token = { secret: "registry-token" }
+    expect(await browserImageCalls(token)).toEqual([
+      ["withRegistryAuth", "ghcr.io", "gainratio", token],
+      ["from", COMMITTED_PIN],
+    ])
+  })
+
+  test("without a token never pulls the private pin and installs inline", async () => {
+    const calls = await browserImageCalls()
+    expect(calls.some(([name]) => name === "withRegistryAuth")).toBe(false)
+    expect(calls.filter(([name]) => name === "from").map(([, image]) => image))
+      .toEqual([TOOLCHAIN_RECIPE.bun, TOOLCHAIN_RECIPE.base])
+  })
 })
 
 describe("toolchain image workflow", () => {
@@ -151,5 +239,15 @@ describe("toolchain image workflow", () => {
         },
       },
     })
+  })
+})
+
+describe("deploy live smoke", () => {
+  // deploy.yml's job token already reaches `deploy` as --github-token (with
+  // packages:read); the live smoke's browser image is pulled with that Secret.
+  test("reuses the deploy's GitHub token as the registry token", () => {
+    const source = readFileSync(resolve(root, "dagger/src/index.ts"), "utf8")
+    const deploy = source.slice(source.indexOf("  async deploy("), source.indexOf("const result = await deliverProduction"))
+    expect(deploy).toContain("this.registryToken ??= githubToken")
   })
 })
