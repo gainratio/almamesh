@@ -7,6 +7,7 @@ import { useChatStore } from '@almamesh/store';
 import { hydrateLlmSettings, openRouterPreset, writeLlmSettings } from '@almamesh/llm';
 import { __setMemoryForTest, __resetMemoryForTest } from '../../../../lib/chatMemory';
 import { embedderStatus, __resetEmbedderStatusForTest } from '../../../../lib/embedderStatus';
+import { useChartReanchorStatus } from '../../../../lib/chartReanchorStatus';
 
 /** Configure a synthetic cloud tier so the panel's send affordance is live. */
 function configureCloudAi(): void {
@@ -410,5 +411,71 @@ describe('ChatPanel — no-AI-configured gate (never invite a doomed question)',
 
     expect(screen.queryByTestId('chat-connect-ai')).toBeNull();
     expect((screen.getByTestId('chat-input') as HTMLTextAreaElement).disabled).toBe(false);
+  });
+});
+
+describe('ChatPanel — waits for the day\'s chart re-anchor before sending', () => {
+  // A returning user's first message of a new day must not race the daily
+  // recompute: an answer streamed across it is discarded ("Your chart changed
+  // while this answer was being written"). While the active chart re-anchors,
+  // Send waits and says why; it comes back as soon as the recompute settles.
+  beforeEach(() => {
+    hydrateLlmSettings(null);
+    configureCloudAi();
+    useChatStore.setState({ threads: {}, messages: {} });
+    useChartReanchorStatus.setState({ pendingChartIds: new Set() });
+  });
+
+  afterEach(() => {
+    hydrateLlmSettings(null);
+    useChatStore.setState({ threads: {}, messages: {} });
+    useChartReanchorStatus.setState({ pendingChartIds: new Set() });
+    vi.restoreAllMocks();
+  });
+
+  function renderPanel(onAsk: ReturnType<typeof vi.fn>): void {
+    render(
+      <MemoryRouter>
+        <ChatPanel
+          personName="Test"
+          profileId="profile-1"
+          chartId="chart-1"
+          viewMode="layman"
+          onAskQuestionStream={onAsk as never}
+        />
+      </MemoryRouter>,
+    );
+    fireEvent.change(screen.getByTestId('chat-input'), {
+      target: { value: 'What matters for me today?' },
+    });
+  }
+
+  function sendButton(): HTMLButtonElement {
+    return screen.getByTestId('chat-send-button') as HTMLButtonElement;
+  }
+
+  it('disables Send with a plain status while the active chart re-anchors, then re-enables when it lands', async () => {
+    useChartReanchorStatus.getState().begin('chart-1');
+    const onAsk = vi.fn(() => new Promise<never>(() => undefined));
+    renderPanel(onAsk);
+
+    expect(sendButton().disabled).toBe(true);
+    expect(screen.getByTestId('chat-reanchor-status').textContent).toBe(
+      'Updating your chart for today…',
+    );
+    fireEvent.click(sendButton());
+    expect(onAsk).not.toHaveBeenCalled();
+
+    act(() => useChartReanchorStatus.getState().settle('chart-1'));
+    await waitFor(() => expect(sendButton().disabled).toBe(false));
+    expect(screen.queryByTestId('chat-reanchor-status')).toBeNull();
+  });
+
+  it('ignores a re-anchor of a different chart', () => {
+    useChartReanchorStatus.getState().begin('chart-other');
+    renderPanel(vi.fn());
+
+    expect(sendButton().disabled).toBe(false);
+    expect(screen.queryByTestId('chat-reanchor-status')).toBeNull();
   });
 });

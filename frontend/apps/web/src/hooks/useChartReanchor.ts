@@ -12,6 +12,11 @@
  *
  * At most one attempt per chart per day: a failed recompute leaves the chart as
  * it was (still self-consistent) and is retried tomorrow, never in a loop.
+ *
+ * While an attempt runs, the chart is listed in `useChartReanchorStatus` so chat
+ * waits instead of streaming an answer the recompute would discard. The entry
+ * is cleared whether the attempt lands or fails, and after
+ * `REANCHOR_WAIT_LIMIT_MS` at most, so a hung engine cannot lock chat.
  */
 import { useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -29,9 +34,13 @@ import {
   storedChartReferenceDay,
   viewerTimeZone,
 } from '../lib/analysisInstant';
+import { useChartReanchorStatus } from '../lib/chartReanchorStatus';
 import { selectPrimaryStoredChart } from '../lib/predictive';
 import { useOptionalChartEngine } from '../providers/chartEngineContext';
 import { useDailyReferenceInstant } from './useDailyReferenceInstant';
+
+/** The longest chat waits for a re-anchor before it is enabled anyway. */
+export const REANCHOR_WAIT_LIMIT_MS = 30_000;
 
 export function useChartReanchor(): void {
   const engine = useOptionalChartEngine()?.engine ?? null;
@@ -55,16 +64,24 @@ export function useChartReanchor(): void {
       return;
     }
     attempted.current.add(attempt);
-    reanchorChart(chartId, {
+    const deps = {
       engine,
       library: useChartLibraryStore.getState(),
       referenceInstant: newChartReferenceInstant(),
-    })
+    };
+    const status = useChartReanchorStatus.getState();
+    status.begin(chartId);
+    const waitLimit = setTimeout(() => status.settle(chartId), REANCHOR_WAIT_LIMIT_MS);
+    reanchorChart(chartId, deps)
       .then((saved) => {
         if (saved) {
           void queryClient.invalidateQueries({ queryKey: ['primary-chart'] });
         }
       })
-      .catch((reason: unknown) => safeWarn('chart.reanchor_failed', reason));
+      .catch((reason: unknown) => safeWarn('chart.reanchor_failed', reason))
+      .finally(() => {
+        clearTimeout(waitLimit);
+        status.settle(chartId);
+      });
   }, [engine, chartId, behind, today, queryClient]);
 }
