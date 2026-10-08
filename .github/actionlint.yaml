@@ -1,4 +1,0 @@
-self-hosted-runner:
-  # Depot-hosted GitHub Actions runners (org gainratio).
-  labels:
-    - depot-ubuntu-24.04-4

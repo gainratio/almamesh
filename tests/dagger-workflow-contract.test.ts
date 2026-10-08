@@ -74,7 +74,7 @@ const GATE_REGISTRY_TOKEN = "--registry-token=env:GITHUB_TOKEN"
 function expectedGateJob(gate: string): Mapping {
   return {
     name: `gate / ${gate}`,
-    "runs-on": "depot-ubuntu-24.04-4",
+    "runs-on": "ubuntu-latest",
     "timeout-minutes": 60,
     permissions: { contents: "read", packages: "read" },
     steps: [
@@ -210,7 +210,7 @@ function gateJobFixture(gate: string): string[] {
   return [
     `  ${gateJobKey(gate)}:`,
     `    name: gate / ${gate}`,
-    "    runs-on: depot-ubuntu-24.04-4",
+    "    runs-on: ubuntu-latest",
     "    timeout-minutes: 60",
     "    permissions:",
     "      contents: read",
