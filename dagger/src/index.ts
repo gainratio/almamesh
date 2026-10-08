@@ -49,9 +49,9 @@ import {
   TOOLCHAIN_PLAYWRIGHT_FILE,
   TOOLCHAIN_RECIPE,
   UV_IMAGE,
-  pinnedToolchain,
   playwrightVersion,
   toolchainImageOwner,
+  toolchainPull,
   toolchainRepository,
   toolchainTag,
 } from "./toolchain.js"
@@ -141,12 +141,19 @@ type PagesEvidence = ReturnType<PagesClient["deploy"]>
 @object()
 export class AlmameshCi {
   source: Directory
+  registryToken?: Secret
 
-  constructor(workspace: Workspace) {
+  /**
+   * `registryToken` reads the private ghcr.io toolchain image (CI passes the
+   * job's GITHUB_TOKEN with packages:read). Without it the browser gates
+   * install their toolchain inline.
+   */
+  constructor(workspace: Workspace, registryToken?: Secret) {
     this.source = workspace.directory("/", {
       exclude: SOURCE_EXCLUDES,
       gitignore: false,
     })
+    this.registryToken = registryToken
   }
 
   private selected(include: string[]): Directory {
@@ -310,7 +317,7 @@ export class AlmameshCi {
   // image's (a bump not yet republished) gets the full inline install instead.
   private playwrightInstall(browsers: string[]): string[] {
     const inline = ["bun", "x", "playwright", "install", "--with-deps", ...browsers]
-    if (pinnedToolchain(TOOLCHAIN_IMAGE, TOOLCHAIN_RECIPE) === null) return inline
+    if (toolchainPull(TOOLCHAIN_IMAGE, TOOLCHAIN_RECIPE, this.registryToken) === null) return inline
     return [
       "sh",
       "-c",
@@ -331,10 +338,11 @@ exec ${inline.join(" ")}`,
   }
 
   // The image every browser gate starts from: the published toolchain when its
-  // pin matches TOOLCHAIN_RECIPE, else the same apt list installed inline.
+  // pin matches TOOLCHAIN_RECIPE and a registry token can read it, else the
+  // same apt list installed inline.
   private browserImage(): Container {
-    const pinned = pinnedToolchain(TOOLCHAIN_IMAGE, TOOLCHAIN_RECIPE)
-    if (pinned !== null) return dag.container().from(pinned)
+    const pull = toolchainPull(TOOLCHAIN_IMAGE, TOOLCHAIN_RECIPE, this.registryToken)
+    if (pull !== null) return dag.container().withRegistryAuth(pull.registry, pull.username, pull.token).from(pull.image)
     const bun = dag.container().from(TOOLCHAIN_RECIPE.bun).file("/usr/local/bin/bun")
     return dag.container().from(TOOLCHAIN_RECIPE.base).withFile("/usr/local/bin/bun", bun).withExec(this.aptInstall())
   }
@@ -718,6 +726,7 @@ exec ${inline.join(" ")}`,
     runAttempt: number,
     repository: string,
   ): Promise<string> {
+    this.registryToken ??= githubToken
     const runRepository = requireAllowedRepository(repository)
     const result = await deliverProduction({
       greenMain: async () => dag.foundation().greenMainDecision(githubToken, runRepository, expectedSha).serialization(),

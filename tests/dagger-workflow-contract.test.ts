@@ -66,12 +66,28 @@ function daggerStep(call: string): Mapping {
   return { uses: daggerAction, with: { version: "0.21.8", call } }
 }
 
+// The browser toolchain image is a private GHCR package, so every gate job may
+// read packages and hands its GITHUB_TOKEN to the module as a typed Secret
+// (`env:`), which Dagger never prints. The workflow keeps contents:read only.
+const GATE_REGISTRY_TOKEN = "--registry-token=env:GITHUB_TOKEN"
+
 function expectedGateJob(gate: string): Mapping {
   return {
     name: `gate / ${gate}`,
     "runs-on": "depot-ubuntu-24.04-4",
     "timeout-minutes": 60,
-    steps: [checkoutStep(), daggerStep(`gate --name=${gate} --commit-sha=\${{ github.sha }} --repository=\${{ github.repository }}`)],
+    permissions: { contents: "read", packages: "read" },
+    steps: [
+      checkoutStep(),
+      {
+        uses: daggerAction,
+        env: { GITHUB_TOKEN: "${{ github.token }}" },
+        with: {
+          version: "0.21.8",
+          call: `${GATE_REGISTRY_TOKEN} gate --name=${gate} --commit-sha=\${{ github.sha }} --repository=\${{ github.repository }}`,
+        },
+      },
+    ],
   }
 }
 
@@ -144,6 +160,7 @@ function exactDeployWorkflowViolations(source: string): string[] {
     actions: "read",
     checks: "read",
     contents: "read",
+    packages: "read",
   })) violations.push("permissions")
   if (!sameValue(workflow.concurrency, {
     group: "deploy-almamesh-com",
@@ -195,6 +212,9 @@ function gateJobFixture(gate: string): string[] {
     `    name: gate / ${gate}`,
     "    runs-on: depot-ubuntu-24.04-4",
     "    timeout-minutes: 60",
+    "    permissions:",
+    "      contents: read",
+    "      packages: read",
     "    steps:",
     `      - uses: ${checkout} # v7`,
     "        with:",
@@ -202,9 +222,11 @@ function gateJobFixture(gate: string): string[] {
     "          persist-credentials: false",
     "          ref: ${{ github.sha }}",
     `      - uses: ${daggerAction} # v8.4.1`,
+    "        env:",
+    "          GITHUB_TOKEN: ${{ github.token }}",
     "        with:",
     "          version: \"0.21.8\"",
-    `          call: gate --name=${gate} --commit-sha=\${{ github.sha }} --repository=\${{ github.repository }}`,
+    `          call: ${GATE_REGISTRY_TOKEN} gate --name=${gate} --commit-sha=\${{ github.sha }} --repository=\${{ github.repository }}`,
   ]
 }
 
@@ -257,6 +279,7 @@ const canonicalDeployFixture = [
   "  actions: read",
   "  checks: read",
   "  contents: read",
+  "  packages: read",
   "",
   "concurrency:",
   "  group: deploy-almamesh-com",
@@ -308,7 +331,7 @@ const canonicalDeployFixture = [
 
 describe("atomic hosted Dagger workflow", () => {
   const verdictCall = "          call: verdict --results=\"${{ join(needs.*.result, ',') }}\"\n"
-  const browserCall = "          call: gate --name=browserChromium --commit-sha=${{ github.sha }} --repository=${{ github.repository }}\n"
+  const browserCall = "          call: --registry-token=env:GITHUB_TOKEN gate --name=browserChromium --commit-sha=${{ github.sha }} --repository=${{ github.repository }}\n"
 
   test("the committed workflow runs every Dagger gate as its own job under one required Dagger check", () => {
     const source = readFileSync(workflowPath, "utf8")
@@ -343,6 +366,24 @@ describe("atomic hosted Dagger workflow", () => {
     {
       name: "a gate job that runs a different gate",
       source: canonicalFixture.replace(browserCall, browserCall.replace("browserChromium", "privacy")),
+      violation: "gate-job:browserChromium",
+    },
+    {
+      name: "a gate job that pulls the private toolchain without registry auth",
+      source: canonicalFixture.replace(browserCall, browserCall.replace("--registry-token=env:GITHUB_TOKEN ", "")),
+      violation: "gate-job:browserChromium",
+    },
+    {
+      name: "a gate job whose token cannot read packages",
+      source: canonicalFixture.replace(
+        "    permissions:\n      contents: read\n      packages: read\n    steps:\n      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7\n        with:\n          fetch-depth: 0\n          persist-credentials: false\n          ref: ${{ github.sha }}\n      - uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77 # v8.4.1\n        env:\n          GITHUB_TOKEN: ${{ github.token }}\n        with:\n          version: \"0.21.8\"\n          call: --registry-token=env:GITHUB_TOKEN gate --name=secretScan",
+        "    permissions:\n      contents: read\n    steps:\n      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7\n        with:\n          fetch-depth: 0\n          persist-credentials: false\n          ref: ${{ github.sha }}\n      - uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77 # v8.4.1\n        env:\n          GITHUB_TOKEN: ${{ github.token }}\n        with:\n          version: \"0.21.8\"\n          call: --registry-token=env:GITHUB_TOKEN gate --name=secretScan",
+      ),
+      violation: "gate-job:secretScan",
+    },
+    {
+      name: "a gate job that pastes the token value into the bash-pasted call",
+      source: canonicalFixture.replace(browserCall, browserCall.replace("env:GITHUB_TOKEN", "${{ github.token }}")),
       violation: "gate-job:browserChromium",
     },
     {

@@ -21,12 +21,23 @@ concurrency:
 # gate instead of every gate sharing one 4 vCPU runner. `dagger call ci` runs
 # the same gates in one engine; dagger/src/gates.ts lists them (CI_GATES), and
 # tests/dagger-workflow-contract.test.ts holds this file to that list.
+#
+# The browser toolchain image (ghcr.io/gainratio/almamesh-toolchain) is a
+# private package. Each gate job reads it with its own GITHUB_TOKEN
+# (packages:read), handed to the module as a Dagger Secret (`env:`), so the
+# value is never printed. A fork PR's token may be unable to read it, which
+# fails that gate red rather than skipping it; every external contributor's
+# run already waits for a maintainer's approval (fork-pr-contributor-approval:
+# all_external_contributors).
 
 jobs:
   secret-scan:
     name: gate / secretScan
     runs-on: depot-ubuntu-24.04-4
     timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: read # Pull the private ghcr.io toolchain image.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -34,14 +45,19 @@ jobs:
           persist-credentials: false
           ref: ${{ github.sha }}
       - uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77 # v8.4.1
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         with:
           version: "0.21.8"
-          call: gate --name=secretScan --commit-sha=${{ github.sha }} --repository=${{ github.repository }}
+          call: --registry-token=env:GITHUB_TOKEN gate --name=secretScan --commit-sha=${{ github.sha }} --repository=${{ github.repository }}
 
   contracts:
     name: gate / contracts
     runs-on: depot-ubuntu-24.04-4
     timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: read # Pull the private ghcr.io toolchain image.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -49,14 +65,19 @@ jobs:
           persist-credentials: false
           ref: ${{ github.sha }}
       - uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77 # v8.4.1
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         with:
           version: "0.21.8"
-          call: gate --name=contracts --commit-sha=${{ github.sha }} --repository=${{ github.repository }}
+          call: --registry-token=env:GITHUB_TOKEN gate --name=contracts --commit-sha=${{ github.sha }} --repository=${{ github.repository }}
 
   browser-chromium:
     name: gate / browserChromium
     runs-on: depot-ubuntu-24.04-4
     timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: read # Pull the private ghcr.io toolchain image.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -64,14 +85,19 @@ jobs:
           persist-credentials: false
           ref: ${{ github.sha }}
       - uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77 # v8.4.1
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         with:
           version: "0.21.8"
-          call: gate --name=browserChromium --commit-sha=${{ github.sha }} --repository=${{ github.repository }}
+          call: --registry-token=env:GITHUB_TOKEN gate --name=browserChromium --commit-sha=${{ github.sha }} --repository=${{ github.repository }}
 
   browser-journeys:
     name: gate / browserJourneys
     runs-on: depot-ubuntu-24.04-4
     timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: read # Pull the private ghcr.io toolchain image.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -79,14 +105,19 @@ jobs:
           persist-credentials: false
           ref: ${{ github.sha }}
       - uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77 # v8.4.1
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         with:
           version: "0.21.8"
-          call: gate --name=browserJourneys --commit-sha=${{ github.sha }} --repository=${{ github.repository }}
+          call: --registry-token=env:GITHUB_TOKEN gate --name=browserJourneys --commit-sha=${{ github.sha }} --repository=${{ github.repository }}
 
   browser-suites:
     name: gate / browserSuites
     runs-on: depot-ubuntu-24.04-4
     timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: read # Pull the private ghcr.io toolchain image.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -94,14 +125,19 @@ jobs:
           persist-credentials: false
           ref: ${{ github.sha }}
       - uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77 # v8.4.1
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         with:
           version: "0.21.8"
-          call: gate --name=browserSuites --commit-sha=${{ github.sha }} --repository=${{ github.repository }}
+          call: --registry-token=env:GITHUB_TOKEN gate --name=browserSuites --commit-sha=${{ github.sha }} --repository=${{ github.repository }}
 
   browser-wizards:
     name: gate / browserWizards
     runs-on: depot-ubuntu-24.04-4
     timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: read # Pull the private ghcr.io toolchain image.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -109,14 +145,19 @@ jobs:
           persist-credentials: false
           ref: ${{ github.sha }}
       - uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77 # v8.4.1
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         with:
           version: "0.21.8"
-          call: gate --name=browserWizards --commit-sha=${{ github.sha }} --repository=${{ github.repository }}
+          call: --registry-token=env:GITHUB_TOKEN gate --name=browserWizards --commit-sha=${{ github.sha }} --repository=${{ github.repository }}
 
   browser-webkit-real:
     name: gate / browserWebkitReal
     runs-on: depot-ubuntu-24.04-4
     timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: read # Pull the private ghcr.io toolchain image.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -124,14 +165,19 @@ jobs:
           persist-credentials: false
           ref: ${{ github.sha }}
       - uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77 # v8.4.1
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         with:
           version: "0.21.8"
-          call: gate --name=browserWebkitReal --commit-sha=${{ github.sha }} --repository=${{ github.repository }}
+          call: --registry-token=env:GITHUB_TOKEN gate --name=browserWebkitReal --commit-sha=${{ github.sha }} --repository=${{ github.repository }}
 
   browser-matrix:
     name: gate / browserMatrix
     runs-on: depot-ubuntu-24.04-4
     timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: read # Pull the private ghcr.io toolchain image.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -139,14 +185,19 @@ jobs:
           persist-credentials: false
           ref: ${{ github.sha }}
       - uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77 # v8.4.1
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         with:
           version: "0.21.8"
-          call: gate --name=browserMatrix --commit-sha=${{ github.sha }} --repository=${{ github.repository }}
+          call: --registry-token=env:GITHUB_TOKEN gate --name=browserMatrix --commit-sha=${{ github.sha }} --repository=${{ github.repository }}
 
   frontend:
     name: gate / frontend
     runs-on: depot-ubuntu-24.04-4
     timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: read # Pull the private ghcr.io toolchain image.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -154,14 +205,19 @@ jobs:
           persist-credentials: false
           ref: ${{ github.sha }}
       - uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77 # v8.4.1
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         with:
           version: "0.21.8"
-          call: gate --name=frontend --commit-sha=${{ github.sha }} --repository=${{ github.repository }}
+          call: --registry-token=env:GITHUB_TOKEN gate --name=frontend --commit-sha=${{ github.sha }} --repository=${{ github.repository }}
 
   backend:
     name: gate / backend
     runs-on: depot-ubuntu-24.04-4
     timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: read # Pull the private ghcr.io toolchain image.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -169,14 +225,19 @@ jobs:
           persist-credentials: false
           ref: ${{ github.sha }}
       - uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77 # v8.4.1
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         with:
           version: "0.21.8"
-          call: gate --name=backend --commit-sha=${{ github.sha }} --repository=${{ github.repository }}
+          call: --registry-token=env:GITHUB_TOKEN gate --name=backend --commit-sha=${{ github.sha }} --repository=${{ github.repository }}
 
   pdf:
     name: gate / pdf
     runs-on: depot-ubuntu-24.04-4
     timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: read # Pull the private ghcr.io toolchain image.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -184,14 +245,19 @@ jobs:
           persist-credentials: false
           ref: ${{ github.sha }}
       - uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77 # v8.4.1
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         with:
           version: "0.21.8"
-          call: gate --name=pdf --commit-sha=${{ github.sha }} --repository=${{ github.repository }}
+          call: --registry-token=env:GITHUB_TOKEN gate --name=pdf --commit-sha=${{ github.sha }} --repository=${{ github.repository }}
 
   privacy:
     name: gate / privacy
     runs-on: depot-ubuntu-24.04-4
     timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: read # Pull the private ghcr.io toolchain image.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -199,9 +265,11 @@ jobs:
           persist-credentials: false
           ref: ${{ github.sha }}
       - uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77 # v8.4.1
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         with:
           version: "0.21.8"
-          call: gate --name=privacy --commit-sha=${{ github.sha }} --repository=${{ github.repository }}
+          call: --registry-token=env:GITHUB_TOKEN gate --name=privacy --commit-sha=${{ github.sha }} --repository=${{ github.repository }}
 
   # The one required check (branch protection and the deploy's green-main
   # proof both read the check named Dagger). `!cancelled()` makes it run and go
