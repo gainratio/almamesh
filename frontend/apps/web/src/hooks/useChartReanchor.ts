@@ -12,6 +12,10 @@
  *
  * At most one attempt per chart per day: a failed recompute leaves the chart as
  * it was (still self-consistent) and is retried tomorrow, never in a loop.
+ *
+ * While an attempt runs, the chart is listed in `useChartReanchorStatus` so chat
+ * waits instead of streaming an answer the recompute would discard. The entry
+ * is cleared whether the attempt lands or fails.
  */
 import { useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -29,6 +33,7 @@ import {
   storedChartReferenceDay,
   viewerTimeZone,
 } from '../lib/analysisInstant';
+import { useChartReanchorStatus } from '../lib/chartReanchorStatus';
 import { selectPrimaryStoredChart } from '../lib/predictive';
 import { useOptionalChartEngine } from '../providers/chartEngineContext';
 import { useDailyReferenceInstant } from './useDailyReferenceInstant';
@@ -55,6 +60,8 @@ export function useChartReanchor(): void {
       return;
     }
     attempted.current.add(attempt);
+    const status = useChartReanchorStatus.getState();
+    status.begin(chartId);
     reanchorChart(chartId, {
       engine,
       library: useChartLibraryStore.getState(),
@@ -65,6 +72,7 @@ export function useChartReanchor(): void {
           void queryClient.invalidateQueries({ queryKey: ['primary-chart'] });
         }
       })
-      .catch((reason: unknown) => safeWarn('chart.reanchor_failed', reason));
+      .catch((reason: unknown) => safeWarn('chart.reanchor_failed', reason))
+      .finally(() => status.settle(chartId));
   }, [engine, chartId, behind, today, queryClient]);
 }

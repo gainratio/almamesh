@@ -66,6 +66,9 @@
     "timing_analysis": "Timing Analysis",
     "recommended_remedies": "Recommended Remedies"
   },
+  "reanchor": {
+    "updating": "Updating your chart for today…"
+  },
   "errors": {
     "chart_changed": "Your chart changed while this answer was being written, so it was discarded. Ask again to get an answer for the current chart.",
     "model_unavailable": "The configured AI model isn't available on your endpoint. Pick a different model in Settings → AI.",

@@ -29,6 +29,7 @@ import type { SSEMetaData } from '../../../lib/streaming';
 import type { ViewMode } from '../../../lib/types';
 import { useChatThread, type ChatStreamInput } from '../../../hooks/useChatThread';
 import { useLlmStatus } from '../../../hooks/useLlmStatus';
+import { useChartReanchorPending } from '../../../lib/chartReanchorStatus';
 import { AlmaMeshAssistantRuntime } from './AlmaMeshAssistantRuntime';
 import { generateProviderChatSummary } from '../../../lib/chatSummaryProvider';
 
@@ -82,6 +83,11 @@ export function ChatPanel({
   // The first send loads the on-device memory model (one time, ~+80-95 MB);
   // say so instead of leaving a silent pause before the answer starts.
   const memoryModelLoading = useEmbedderStatus() === 'loading';
+  // A new day's recompute of this chart is in flight. An answer streamed across
+  // it would be discarded (useChatThread's chart_changed guard), so Send waits
+  // and says why. It is cleared whether the recompute lands or fails.
+  const reanchoring = useChartReanchorPending(chartId);
+  const sendBlocked = !aiConfigured || isStreaming || reanchoring;
   const [agentActivity, setAgentActivity] = useState<string | null>(null);
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
   const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map());
@@ -89,7 +95,7 @@ export function ChatPanel({
   const handleSubmit = useCallback(
     async (question: string) => {
       const q = question.trim();
-      if (!q || isStreaming || !aiConfigured) {
+      if (!q || sendBlocked) {
         return;
       }
       // The hook owns persistence + RAG; here we only delegate the LLM streaming.
@@ -103,7 +109,7 @@ export function ChatPanel({
         ),
       );
     },
-    [aiConfigured, isStreaming, submit, onAskQuestionStream, t, viewMode],
+    [sendBlocked, submit, onAskQuestionStream, t, viewMode],
   );
 
   const handleSuggestedQuestion = (question: string) => {
@@ -143,7 +149,7 @@ export function ChatPanel({
       messages={messages}
       streamingDraft={streamingDraft}
       isRunning={isStreaming}
-      isSendDisabled={!aiConfigured || isStreaming}
+      isSendDisabled={sendBlocked}
       onSubmit={handleSubmit}
     >
     <ThreadPrimitive.Root
@@ -178,6 +184,12 @@ export function ChatPanel({
 
       {/* Semantic search over this profile's past conversations (discoverable). */}
       {profileId && <ChatSearch profileId={profileId} onOpenResult={handleOpenResult} />}
+
+      {reanchoring && aiConfigured && (
+        <div className="mx-4 mt-3 rounded-lg border border-ui-border px-3 py-2 text-xs text-text-muted" data-testid="chat-reanchor-status" role="status">
+          {t('reanchor.updating')}
+        </div>
+      )}
 
       {isStreaming && memoryModelLoading && (
         <div className="mx-4 mt-3 rounded-lg border border-ui-border px-3 py-2 text-xs text-text-muted" data-testid="chat-memory-loading" role="status">
@@ -227,7 +239,7 @@ export function ChatPanel({
       {/* Suggested questions (show when no messages or few messages) */}
       {messages.length < 3 && (
         <div className="px-4">
-          <SuggestedQuestions onSelect={handleSuggestedQuestion} disabled={isStreaming} />
+          <SuggestedQuestions onSelect={handleSuggestedQuestion} disabled={isStreaming || reanchoring} />
         </div>
       )}
 

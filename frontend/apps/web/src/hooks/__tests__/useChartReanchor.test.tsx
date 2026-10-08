@@ -17,6 +17,7 @@ import { useChartLibraryStore, useProfilesStore, type StoredChart } from '@almam
 import golden from '../../../../../../backend/tests/fixtures/chart_golden_de421.json';
 import { ChartEngineContext, type ChartEngineContextValue } from '../../providers/chartEngineContext';
 import { useChartReanchor } from '../useChartReanchor';
+import { useChartReanchorStatus } from '../../lib/chartReanchorStatus';
 
 const ENGINE_CHART = (golden as Record<string, SiderealChart>)['1990-01-15T12:00:00+00:00']!;
 /** The same chart as stored before snapshots: only `calculation_timestamp` records its instant. */
@@ -81,6 +82,63 @@ describe('useChartReanchor', () => {
   afterEach(() => {
     vi.useRealTimers();
     useChartLibraryStore.setState({ charts: {} });
+    useChartReanchorStatus.setState({ pendingChartIds: new Set() });
+  });
+
+  function isPending(): boolean {
+    return useChartReanchorStatus.getState().pendingChartIds.has('chart-1');
+  }
+
+  it('reports the chart as re-anchoring until the recompute lands', async () => {
+    useChartLibraryStore.setState({
+      charts: { 'chart-1': chartCalculatedOn('2026-06-26T17:00:00.000Z') },
+      hydrated: true,
+    });
+    let finish!: (chart: SiderealChart) => void;
+    const generateChart = vi.fn(
+      () => new Promise<SiderealChart>((resolve) => {
+        finish = resolve;
+      }),
+    );
+    renderReanchor(engineCtx(generateChart));
+
+    await waitFor(() => expect(generateChart).toHaveBeenCalledTimes(1));
+    expect(isPending()).toBe(true);
+
+    finish(ENGINE_CHART);
+    await waitFor(() => expect(storedInstant()).toBe(TODAY.toISOString()));
+    await waitFor(() => expect(isPending()).toBe(false));
+  });
+
+  it('stops reporting the re-anchor when it fails, so chat is never locked', async () => {
+    useChartLibraryStore.setState({
+      charts: { 'chart-1': chartCalculatedOn('2026-06-26T17:00:00.000Z') },
+      hydrated: true,
+    });
+    let fail!: (reason: Error) => void;
+    const generateChart = vi.fn(
+      () => new Promise<SiderealChart>((_resolve, reject) => {
+        fail = reject;
+      }),
+    );
+    renderReanchor(engineCtx(generateChart));
+
+    await waitFor(() => expect(generateChart).toHaveBeenCalledTimes(1));
+    expect(isPending()).toBe(true);
+
+    fail(new Error('engine down'));
+    await waitFor(() => expect(isPending()).toBe(false));
+    expect(storedInstant()).toBe('2026-06-26T17:00:00.000Z');
+  });
+
+  it('never reports a re-anchor for a chart already as of today', async () => {
+    useChartLibraryStore.setState({
+      charts: { 'chart-1': chartCalculatedOn('2026-10-07T17:00:00.000Z') },
+      hydrated: true,
+    });
+    renderReanchor(engineCtx(vi.fn(async () => ENGINE_CHART)));
+    await Promise.resolve();
+    expect(isPending()).toBe(false);
   });
 
   it('recomputes a chart calculated on an earlier day as of now', async () => {

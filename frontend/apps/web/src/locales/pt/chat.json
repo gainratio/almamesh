@@ -69,6 +69,9 @@
     "timing_analysis": "Análise de tempo",
     "recommended_remedies": "Remédios recomendados"
   },
+  "reanchor": {
+    "updating": "Atualizando seu mapa para hoje…"
+  },
   "errors": {
     "chart_changed": "Seu mapa mudou enquanto esta resposta era escrita, então ela foi descartada. Pergunte novamente para obter uma resposta sobre o mapa atual.",
     "model_unavailable": "O modelo de IA configurado não está disponível no seu endpoint. Escolha outro modelo em Configurações → IA.",
