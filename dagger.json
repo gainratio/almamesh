@@ -7,12 +7,12 @@
   "dependencies": [
     {
       "name": "cloudflare-pages",
-      "source": "github.com/hseshadr/ci/modules/cloudflare-pages@8fbde750dafd431c1777f2bf63b3170ef6db2caf",
+      "source": "github.com/gainratio/ci/modules/cloudflare-pages@8fbde750dafd431c1777f2bf63b3170ef6db2caf",
       "pin": "8fbde750dafd431c1777f2bf63b3170ef6db2caf"
     },
     {
       "name": "foundation",
-      "source": "github.com/hseshadr/ci/modules/portfolio-foundation@8fbde750dafd431c1777f2bf63b3170ef6db2caf",
+      "source": "github.com/gainratio/ci/modules/portfolio-foundation@8fbde750dafd431c1777f2bf63b3170ef6db2caf",
       "pin": "8fbde750dafd431c1777f2bf63b3170ef6db2caf"
     }
   ],
