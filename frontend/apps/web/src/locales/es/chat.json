@@ -69,6 +69,9 @@
     "timing_analysis": "Análisis de tiempos",
     "recommended_remedies": "Remedios recomendados"
   },
+  "reanchor": {
+    "updating": "Actualizando tu carta para hoy…"
+  },
   "errors": {
     "chart_changed": "Tu carta cambió mientras se escribía esta respuesta, así que se descartó. Vuelve a preguntar para obtener una respuesta sobre la carta actual.",
     "model_unavailable": "El modelo de IA configurado no está disponible en tu endpoint. Elige otro modelo en Ajustes → IA.",

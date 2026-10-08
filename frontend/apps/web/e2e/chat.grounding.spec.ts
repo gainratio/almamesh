@@ -446,3 +446,115 @@ test('[contract/stubbed] chat reuses the reading + sends the fast chat model on 
     fullPage: true,
   });
 });
+
+// The text useChatThread appends when an answer was streamed across a chart
+// change and discarded (locales/en/chat.json errors.chart_changed).
+const CHART_CHANGED = 'Your chart changed while this answer was being written';
+const REANCHOR_STATUS = 'Updating your chart for today…';
+const WAITED_ANSWER = 'An answer about today’s chart.';
+
+test('[contract/stubbed] a message sent while today’s re-anchor is pending waits, and its answer is kept', async ({
+  page,
+}) => {
+  const pageErrors: string[] = [];
+  page.on('pageerror', (error) => pageErrors.push(error.message));
+  await page.addInitScript(
+    ([key, cfg]) => {
+      window.localStorage.setItem(key as string, cfg as string);
+    },
+    [LLM_SETTINGS_KEY, JSON.stringify(LLM_CONFIG)] as const,
+  );
+  // Hold every chart computation on the dashboard until the test releases it.
+  // The seeded chart is days behind, so the first one there is the day's
+  // re-anchor: holding it reproduces a slow recompute deterministically.
+  await page.addInitScript(() => {
+    if (!window.location.pathname.startsWith('/dashboard')) return;
+    const post = Worker.prototype.postMessage;
+    const held: Array<[Worker, Parameters<Worker['postMessage']>]> = [];
+    let released = false;
+    const w = window as unknown as { __releaseReanchor: () => void };
+    w.__releaseReanchor = () => {
+      released = true;
+      for (const [worker, args] of held.splice(0)) post.apply(worker, args);
+    };
+    Worker.prototype.postMessage = function (
+      this: Worker,
+      ...args: Parameters<Worker['postMessage']>
+    ) {
+      const message = args[0] as { kind?: string } | null;
+      if (!released && message?.kind === 'generateChart') {
+        held.push([this, args]);
+        return;
+      }
+      return post.apply(this, args);
+    } as Worker['postMessage'];
+  });
+
+  // The stubbed answer is held until the re-anchor has landed, so any question
+  // that slipped out during the pending window would be answered across the
+  // chart change, exactly the race a returning user hits at midnight.
+  let reanchorLanded!: () => void;
+  const landed = new Promise<void>((resolve) => {
+    reanchorLanded = resolve;
+  });
+  let agentRequestsBeforeLanding = 0;
+  let reanchorDone = false;
+  await page.route('**/chat/completions', async (route) => {
+    const parsed = JSON.parse(route.request().postData() ?? '{}') as { tools?: unknown[] };
+    if (!Array.isArray(parsed.tools)) {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ choices: [{ message: { content: '{}' } }] }),
+      });
+    }
+    if (!reanchorDone) agentRequestsBeforeLanding += 1;
+    await landed;
+    return route.fulfill({
+      status: 200,
+      contentType: 'text/event-stream',
+      body: `data: ${JSON.stringify({ choices: [{ delta: { content: WAITED_ANSWER } }] })}\n\ndata: [DONE]\n\n`,
+    });
+  });
+
+  await bootEngine(page);
+  await seedChart(page);
+  await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+
+  // The returning user opens chat right away and asks, while the recompute runs.
+  await page.getByTestId('floating-chat-button').click({ timeout: 60_000 });
+  const chatPanel = page.getByTestId('chat-panel');
+  const chatInput = page.getByTestId('chat-input');
+  const send = page.getByTestId('chat-send-button');
+  await expect(page.getByTestId('chat-reanchor-status')).toHaveText(REANCHOR_STATUS, {
+    timeout: 120_000,
+  });
+  await chatInput.fill('What matters for me today?');
+  await chatInput.press('Enter');
+
+  // Let the recompute land and wait until the dashboard shows today's chart.
+  await page.evaluate(() =>
+    (window as unknown as { __releaseReanchor: () => void }).__releaseReanchor(),
+  );
+  const today = await page.evaluate(() =>
+    new Intl.DateTimeFormat('en', { year: 'numeric', month: 'short', day: 'numeric' }).format(
+      new Date(),
+    ),
+  );
+  await expect(page.getByTestId('provenance-footer')).toContainText(`As of ${today}`, {
+    timeout: 60_000,
+  });
+  reanchorDone = true;
+  reanchorLanded();
+
+  // Chat comes back on its own; the question goes out now and its answer stays.
+  await expect(page.getByTestId('chat-reanchor-status')).toHaveCount(0);
+  await chatInput.fill('What matters for me today?');
+  await expect(send).toBeEnabled();
+  await send.click();
+  await expect(chatPanel.getByText(WAITED_ANSWER)).toBeVisible({ timeout: 60_000 });
+  await expect(chatPanel).not.toContainText(CHART_CHANGED);
+  expect(agentRequestsBeforeLanding, 'no question may leave while the re-anchor is pending').toBe(0);
+  expect(pageErrors).toEqual([]);
+  await page.screenshot({ path: 'test-results/chat-reanchor-wait.png', fullPage: true });
+});
