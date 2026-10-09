@@ -200,12 +200,12 @@ describe('defaultSealRunner', () => {
   });
 
   it('reports a worker that fails to start as unavailable, and terminates it', async () => {
-    let worker: { terminated: boolean } | undefined;
+    const started: { terminated: boolean }[] = [];
     class BrokenWorker extends EventTarget {
       terminated = false;
       constructor() {
         super();
-        worker = this;
+        started.push(this);
       }
       postMessage(): void {
         queueMicrotask(() => this.dispatchEvent(new Event('error')));
@@ -216,6 +216,6 @@ describe('defaultSealRunner', () => {
     }
     vi.stubGlobal('Worker', BrokenWorker);
     await expect(sealBackup(DATABASE.slice(), PASSPHRASE)).rejects.toMatchObject({ code: 'unavailable' });
-    expect(worker?.terminated).toBe(true);
+    expect(started.map((worker) => worker.terminated)).toEqual([true]);
   });
 });

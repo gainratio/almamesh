@@ -11,22 +11,27 @@
     "build": "bun run --filter '*' build",
     "dev": "bun run --filter '*' dev",
     "typecheck": "bun run --filter '*' typecheck",
-    "lint": "bun run --filter '*' lint",
+    "lint": "eslint .",
     "knip": "bunx knip@6.26.0 --no-progress",
-    "gate": "node scripts/check-tsc-native.mjs && bunx tsc -b packages/shared-types packages/constants packages/store packages/llm --force && bun run --filter '*' typecheck && bun run --filter @almamesh/web lint && bun run knip && bun run --filter @almamesh/browser test && bun run --filter @almamesh/store test && bun run --filter @almamesh/llm test && bun run --filter @almamesh/web test:unit && bun run --filter @almamesh/web build && node apps/web/scripts/verify-prerender-dist.mjs apps/web/dist",
+    "gate": "node scripts/check-tsc-native.mjs && bunx tsc -b packages/shared-types packages/constants packages/store packages/llm --force && bun run --filter '*' typecheck && bun run lint && bun test ../tests/frontend-lint-coverage-contract.test.ts && bun run knip && bun run --filter @almamesh/browser test && bun run --filter @almamesh/store test && bun run --filter @almamesh/llm test && bun run --filter @almamesh/web test:unit && bun run --filter @almamesh/web build && node apps/web/scripts/verify-prerender-dist.mjs apps/web/dist",
     "clean": "bun run --filter '*' clean && rm -rf node_modules",
     "prepare": "cd .. && husky frontend/.husky"
   },
   "//gate": "The frontend quality gate — CI's frontend job runs exactly this script (ENGINEERING-STANDARDS §3: gate mirrors CI, both directions). The standalone @gainratio/browser package runs its own upstream gate; this consumer gate proves the npm package integration and AlmaMesh adapter. The final `verify-prerender-dist.mjs` step checks the build itself: every public route must ship as a flat prerendered page (e.g. dist/welcome.html) listed in the SW precache. A bundler change once dropped them while the build still exited 0. The `knip` step is the TypeScript dead-code / unused-export axis (config in knip.json). Playwright e2e is deliberately NOT here — it needs generated 38MB engine assets and runs as the exit-gate / e2e-smoke / nightly CI lanes (see CLAUDE.md 'Playwright e2e tiering'). Dependencies remain untrusted for lifecycle execution; the browser Lego ships compiled dist on npm.",
   "//knip": "knip is the frontend dead-code / unused-export axis (config in knip.json). Pinned via bunx (6.26.0), matching the existing `bunx tsc` / `bunx playwright` toolchain pattern; graduating it to a locked devDependency is a follow-up. SCOPE is deliberately incremental, mirroring security-audit.yml's documented pip-audit scoping: the whole-dead-module axis ('files') is HARD-ENFORCED and kept green, while the symbol-level axes (unused exports/types/enum members) and the dependency-hygiene axes are surfaced as non-blocking WARNINGS on every gate run — a pre-existing backlog (~280 exports, ~87 types, a few dynamic-import-only deps). They auto-verify and print but do not block, so knip is not a permanently-red signal; a dedicated cleanup pass will retire the backlog and graduate those rules to 'error'.",
   "lint-staged": {
-    "apps/web/**/*.{ts,tsx}": "bun run --filter @almamesh/web lint"
+    "{apps/web,packages}/**/*.{ts,tsx,js,mjs}": "eslint --no-warn-ignored"
   },
   "//typescript": "TypeScript 7 is the native compiler and ships no JS API. `@typescript/native` provides `tsc` (7.x); `typescript` stays on 6.x ONLY so typescript-eslint (peer <6.1) can load its API. Both packages install a `tsc` bin and bun links the native one first, so the gate runs scripts/check-tsc-native.mjs first and fails unless tsc is 7.x. Drop the 6.x pin when typescript-eslint supports TS 7.1+.",
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@typescript-eslint/eslint-plugin": "^8.71.0",
+    "@typescript-eslint/parser": "^8.71.0",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "eslint": "^10.11.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
     "husky": "^9.1.7",
     "lint-staged": "^17.6.0",
-    "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3"
   },
   "//engines": "Bun is the sanctioned toolchain exception (ENGINEERING-STANDARDS §2) — pinned exactly in .bun-version (CI reads it via setup-bun's bun-version-file); engines.bun is the floor for humans.",
@@ -41,8 +46,6 @@
     "@react-three/postprocessing": "^3.1.3",
     "@tanstack/react-query": "^5.104.1",
     "@types/node": "^26.6.4",
-    "@typescript-eslint/eslint-plugin": "^8.71.0",
-    "@typescript-eslint/parser": "^8.71.0",
     "@vitest/coverage-v8": "^5.0.3",
     "baseline-browser-mapping": "^2.11.27",
     "caniuse-lite": "^1.0.30001814",

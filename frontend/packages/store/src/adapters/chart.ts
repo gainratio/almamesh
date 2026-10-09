@@ -133,6 +133,7 @@ function birthDatetimeUtc(input: LocalBirthInput): string {
     if (error instanceof RangeError) {
       throw new Error(
         `toBirthInput: could not parse local datetime "${input.date}T${clock}" in zone "${input.timezone}"`,
+        { cause: error },
       );
     }
     throw error; // LocalTimeError: a DST gap/overlap the caller must resolve.

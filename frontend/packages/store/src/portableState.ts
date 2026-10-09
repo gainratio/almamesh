@@ -779,6 +779,7 @@ function assertPortableKey(key: string): void {
   }
 }
 
+// eslint-disable-next-line no-control-regex -- quarantine keys must not contain C0 control characters
 const QUARANTINE_KEY_PATTERN = /^[^\u0000-\u001f/]{1,512}\/[0-9a-f]{64}$/;
 
 function assertQuarantineKey(key: string): void {
