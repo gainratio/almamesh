@@ -74,6 +74,17 @@ describe('useChatThread', () => {
     vi.restoreAllMocks();
   });
 
+  it('with equal timestamps the newest-inserted thread is the active one, as in the store', () => {
+    const { memory } = fakeMemory();
+    __setMemoryForTest(memory);
+    const stamp = '2026-10-09T10:00:00.000Z';
+    const thread = (id: string) => ({ id, profile_id: PROFILE, title: null, created_at: stamp, updated_at: stamp, archived_at: null, message_count: 0 });
+    useChatStore.setState({ threads: { zzz: thread('zzz'), aaa: thread('aaa') }, messages: {}, summaries: {} });
+    const { result } = renderHook(() => useChatThread(PROFILE, CHART));
+    expect(result.current.threadId).toBe(useChatStore.getState().listThreads(PROFILE)[0].id);
+    expect(result.current.threadId).toBe('aaa');
+  });
+
   it('starts with no messages and no thread for a fresh profile', () => {
     const { memory } = fakeMemory();
     __setMemoryForTest(memory);

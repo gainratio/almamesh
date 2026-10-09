@@ -30,6 +30,7 @@ import {
   markPortableStorageBlockedByEngine,
   portableStatePersistence,
   subscribePortableStatePersistence,
+  useChatStore,
   usePredictiveStore,
 } from '@almamesh/store'
 import { hasLocalChart } from '../lib/localChart'
@@ -41,6 +42,7 @@ import {
   clearRuntimeMoonWindow,
   clearRuntimePredictive,
   clearRuntimeResolvePlace,
+  publishPinnedThreads,
   publishPredictiveRequestKeys,
   publishRuntimeError,
   publishRuntimeGenerator,
@@ -144,6 +146,11 @@ if (typeof window !== 'undefined' && EXIT_GATE_HOOKS) {
   // Every requestKey the Life Atlas slot holds: the time-travel journey proves
   // a period compute never borrows it, not even briefly.
   publishPredictiveRequestKeys(usePredictiveStore)
+  publishPinnedThreads(() =>
+    Object.values(useChatStore.getState().threads).flatMap((thread) =>
+      thread.as_of ? [{ id: thread.id, as_of: thread.as_of }] : [],
+    ),
+  )
 }
 
 /** Canonical storage can never become durable here (the SQLite Worker failed to open). */

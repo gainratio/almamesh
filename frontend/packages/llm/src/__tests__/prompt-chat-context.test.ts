@@ -87,3 +87,24 @@ describe("buildChatMessages — chart-facts + interpretation grounding (LOCK)", 
     expect(userTurn).not.toContain("already generated");
   });
 });
+
+const YEAR_2027 = { start: "2027-01-01", end: "2027-12-31" };
+
+describe("buildChatMessages with a pin", () => {
+  it("adds the pinned rule to the system prompt only when a pin is given", () => {
+    const plain = buildChatMessages(CHART, "Will work get easier?");
+    const pinned = buildChatMessages(
+      CHART, "Will work get easier?", "layman", [], [], undefined, "en", undefined, undefined, undefined, false,
+      { ...YEAR_2027, relative: "future" },
+    );
+    expect(plain[0]?.content).not.toContain("PINNED PERIOD");
+    expect(pinned[0]?.content).toContain("PINNED PERIOD: this conversation is about 2027-01-01 to 2027-12-31");
+    expect(pinned[0]?.content).toContain("future tense");
+  });
+
+  it("is byte-identical without a pin (snapshot-locked prompts stay put)", () => {
+    const before = buildChatMessages(CHART, "q", "layman", [], [], undefined, "en", undefined, undefined, undefined, false);
+    const after = buildChatMessages(CHART, "q", "layman", [], [], undefined, "en", undefined, undefined, undefined, false, undefined);
+    expect(after).toEqual(before);
+  });
+});

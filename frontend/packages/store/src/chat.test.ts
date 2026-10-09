@@ -1,9 +1,10 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createStore } from 'zustand/vanilla';
 
 import type { ChatThreadSummary } from '@almamesh/shared-types';
 
 import {
+  CHAT_PERSIST_VERSION,
   chatStoreCreator,
   migrateChatPersistedState,
   setActiveChatScope,
@@ -444,5 +445,121 @@ describe('chatStore', () => {
       expect(store.getState().listThreads('p1').map((t) => t.id)).toContain(orphan);
       expect(store.getState().listThreads('p9').map((t) => t.id)).toEqual([owned]);
     });
+  });
+});
+
+const PIN_2027 = { start: '2027-01-01', end: '2027-12-31', granularity: 'year' } as const;
+const PIN_JUNE = { start: '2026-06-01', end: '2026-06-30', granularity: 'month' } as const;
+
+describe('chat store v3: time-travel pins', () => {
+  it('is persisted as version 3', () => {
+    expect(CHAT_PERSIST_VERSION).toBe(3);
+  });
+
+  it('migrates a v2 blob with its threads and messages intact (no as_of = a normal thread)', () => {
+    const v2 = {
+      threads: { t1: { id: 't1', profile_id: 'p1', title: 'Career', message_count: 1 } },
+      messages: { t1: [{ id: 'm1', thread_id: 't1', role: 'user', content: 'Hi' }] },
+      summaries: {},
+    };
+    const out = migrateChatPersistedState(v2, 2);
+    expect(out.threads.t1).toEqual(v2.threads.t1);
+    expect(out.messages.t1).toEqual(v2.messages.t1);
+  });
+
+  it('keeps a valid pin and drops a malformed one, keeping that thread', () => {
+    const out = migrateChatPersistedState(
+      {
+        threads: {
+          good: { id: 'good', profile_id: 'p1', as_of: PIN_2027 },
+          bad: { id: 'bad', profile_id: 'p1', title: 'Kept', as_of: { ...PIN_2027, granularity: 'week' } },
+        },
+        messages: { good: [], bad: [] },
+        summaries: {},
+      },
+      2,
+    );
+    expect(out.threads.good?.as_of).toEqual(PIN_2027);
+    expect(out.threads.bad).toEqual({ id: 'bad', profile_id: 'p1', title: 'Kept' });
+  });
+
+  describe('with a frozen clock', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-10-09T12:00:00Z'));
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('startThread always opens a new thread, pinned when asked', () => {
+      const store = newStore();
+      const normal = store.getState().startThread('p1', 'c1');
+      const pinned = store.getState().startThread('p1', 'c1', PIN_2027);
+      expect(pinned).not.toBe(normal);
+      expect(store.getState().threads[normal]?.as_of).toBeUndefined();
+      expect(store.getState().threads[pinned]).toMatchObject({ profile_id: 'p1', chart_id: 'c1', as_of: PIN_2027, title: null });
+      expect(store.getState().getActiveThread('p1')?.id).toBe(pinned);
+    });
+
+    it('a thread started in the same millisecond is the active one, listed first', () => {
+      const store = newStore();
+      const first = store.getState().startThread('p1');
+      const second = store.getState().startThread('p1');
+      expect(store.getState().getActiveThread('p1')?.id).toBe(second);
+      expect(store.getState().listThreads('p1').map((t) => t.id)).toEqual([second, first]);
+    });
+  });
+
+  it('a Day pin keeps its place exactly, in memory and through serialize → fresh store', () => {
+    const place = { label: 'Bogotá, Colombia', timezone: 'America/Bogota', latitude: 4.711, longitude: -74.0721 };
+    const day = { start: '2026-06-15', end: '2026-06-15', granularity: 'day', place } as const;
+    const before = newStore();
+    const id = before.getState().startThread('p1', 'c1', day);
+    expect(before.getState().threads[id]?.as_of).toStrictEqual(day);
+    const { threads, messages, summaries } = before.getState();
+    const after = newStore();
+    after.setState(JSON.parse(JSON.stringify({ threads, messages, summaries })) as Partial<ChatStore>);
+    expect(after.getState().threads[id]?.as_of).toStrictEqual(day);
+  });
+
+  it('startThread refuses a malformed pin and creates nothing', () => {
+    const store = newStore();
+    expect(() => store.getState().startThread('p1', undefined, { ...PIN_2027, end: '2027-12-30' })).toThrow(
+      'Invalid time-travel period: as_of.end',
+    );
+    expect(store.getState().listThreads('p1')).toEqual([]);
+  });
+
+  it('setThreadAsOf changes a pin and keeps the messages', () => {
+    const store = newStore();
+    const id = store.getState().startThread('p1', undefined, PIN_2027);
+    store.getState().appendMessage(id, 'user', 'Will work get easier?');
+    store.getState().setThreadAsOf(id, PIN_JUNE);
+    expect(store.getState().threads[id]?.as_of).toEqual(PIN_JUNE);
+    expect(store.getState().getMessages(id)).toHaveLength(1);
+  });
+
+  it('setThreadAsOf refuses a malformed pin, a missing thread and a normal thread', () => {
+    const store = newStore();
+    const pinned = store.getState().startThread('p1', undefined, PIN_2027);
+    const normal = store.getState().startThread('p1');
+    expect(() => store.getState().setThreadAsOf(pinned, { ...PIN_JUNE, start: '2026-06-02' })).toThrow(
+      'Invalid time-travel period: as_of.start',
+    );
+    expect(() => store.getState().setThreadAsOf('gone', PIN_JUNE)).toThrow('does not exist');
+    expect(() => store.getState().setThreadAsOf(normal, PIN_JUNE)).toThrow(
+      'Only a time-travel thread can change its period.',
+    );
+    expect(store.getState().threads[pinned]?.as_of).toEqual(PIN_2027);
+  });
+
+  it('a pin survives the serialize → fresh-store round trip', () => {
+    const before = newStore();
+    const id = before.getState().startThread('p1', 'c1', PIN_2027);
+    const { threads, messages, summaries } = before.getState();
+    const after = newStore();
+    after.setState(JSON.parse(JSON.stringify({ threads, messages, summaries })) as Partial<ChatStore>);
+    expect(after.getState().threads[id]?.as_of).toEqual(PIN_2027);
   });
 });

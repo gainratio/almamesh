@@ -23,6 +23,7 @@ import type {
   ChatMessage,
   ChatSummaryDraft,
   ChatSummaryGenerator,
+  ChatThreadAsOf,
   ChatThreadSummary,
 } from '@almamesh/shared-types';
 import {
@@ -38,7 +39,9 @@ import i18n from '../i18n/config';
 import { indexChatMessage, retrieveContext } from '../lib/chatMemory';
 import { chatErrorMessage, getChatErrorMessage } from '../lib/errors';
 import { LLM_SETTINGS_CHANGED_EVENT } from '../lib/llmSettingsEvents';
+import { asOfKey } from '../lib/pinnedPeriod';
 import { waitForStoreSaved } from '../lib/storeSaved';
+import { repinThread, startPinnedThread, todayThread } from '../lib/timeTravelThreads';
 
 /** Input the caller's stream fn receives; it wires `streamChartChat` with these. */
 export interface ChatStreamInput {
@@ -46,6 +49,8 @@ export interface ChatStreamInput {
   readonly history: readonly ChatTurn[];
   readonly retrievedContext: readonly string[];
   readonly onToken: (token: string) => void;
+  /** The thread's time-travel pin; absent in a normal thread. */
+  readonly asOf?: ChatThreadAsOf;
 }
 
 /** A function that streams an answer (delegated to the Dashboard's LLM wiring). */
@@ -76,6 +81,14 @@ export interface UseChatThreadResult {
   readonly submit: (question: string, stream: ChatStreamFn) => Promise<void>;
   /** Select one existing thread owned by the active profile. */
   readonly openThread: (threadId: string) => void;
+  /** The active thread's pin, or undefined in a normal thread. */
+  readonly asOf: ChatThreadAsOf | undefined;
+  /** Open a new thread pinned to `asOf` (saved first). */
+  readonly pin: (asOf: ChatThreadAsOf) => Promise<void>;
+  /** Change this thread's pin (saved first). */
+  readonly repin: (asOf: ChatThreadAsOf) => Promise<void>;
+  /** Open the latest normal thread, or a new one. */
+  readonly backToToday: () => Promise<void>;
 }
 
 /**
@@ -248,6 +261,20 @@ function chartSnapshotIdentity(chartId: string | null): string | null {
   return snapshotId ?? `chart:${chartId}`;
 }
 
+/** Every snapshot field but the analysis instant: what a pinned answer depends on (plan Ruling 4). */
+function natalIdentity(chartId: string): string {
+  const snapshot = useChartLibraryStore.getState().getChart(chartId)?.sidereal_chart?.snapshot;
+  if (!snapshot) return `chart:${chartId}`;
+  const { snapshot_id: _id, reference_date: _today, ...natal } = snapshot;
+  return `chart:${chartId}|${JSON.stringify(natal)}`;
+}
+
+/** The identity an answer is bound to. A pinned thread does not depend on today, so a re-anchor keeps it. */
+export function answerIdentity(chartId: string | null, asOf: ChatThreadAsOf | undefined): string | null {
+  if (!asOf) return chartSnapshotIdentity(chartId);
+  return `${chartId === null ? 'no-chart' : natalIdentity(chartId)}|${asOfKey(asOf)}`;
+}
+
 export function useChatThread(
   profileId: string | null,
   chartId: string | null,
@@ -294,9 +321,7 @@ export function useChatThread(
     profileId && selectedThread?.profile_id === profileId
       ? selectedThread
       : profileId
-        ? Object.values(threadsById)
-        .filter((t) => t.profile_id === profileId)
-        .sort((a, b) => b.updated_at.localeCompare(a.updated_at))[0] ?? null
+        ? useChatStore.getState().listThreads(profileId)[0] ?? null
         : null;
   const threadId = activeThread?.id ?? null;
   const messages = threadId ? (messagesByThread[threadId] ?? []) : [];
@@ -315,7 +340,8 @@ export function useChatThread(
 
       // The snapshot this question is about. An answer that arrives after the
       // chart changed describes a chart the user is no longer looking at.
-      const askedAbout = chartSnapshotIdentity(chartId);
+      const askedAsOf = useChatStore.getState().threads[tid]?.as_of;
+      const askedAbout = answerIdentity(chartId, askedAsOf);
       const userMessage = store.appendMessage(tid, 'user', q);
       void indexChatMessage({ id: userMessage.id, thread_id: tid, profile_id: profileId, content: q });
 
@@ -339,17 +365,23 @@ export function useChatThread(
           question: q,
           history,
           retrievedContext,
+          ...(askedAsOf ? { asOf: askedAsOf } : {}),
           onToken: (token) => {
             draft += token;
             setStreamingDraft(draft);
           },
         });
         const finalAnswer = answer || draft;
-        if (chartSnapshotIdentity(currentChartId.current) !== askedAbout) {
+        // Deleted mid-answer: nothing to attach the answer to.
+        if (useChatStore.getState().threads[tid] === undefined) return;
+        const liveAsOf = useChatStore.getState().threads[tid]?.as_of;
+        if (answerIdentity(currentChartId.current, liveAsOf) !== askedAbout) {
           // Dropped, not attached: flagged so it never enters history or RAG.
-          store.appendMessage(tid, 'assistant', i18n.t('chat:errors.chart_changed'), {
-            error: true,
-          });
+          const why =
+            asOfKey(liveAsOf) === asOfKey(askedAsOf)
+              ? 'chat:errors.chart_changed'
+              : 'chat:errors.pin_changed';
+          store.appendMessage(tid, 'assistant', i18n.t(why), { error: true });
           return;
         }
         const assistantMessage = store.appendMessage(tid, 'assistant', finalAnswer);
@@ -382,7 +414,9 @@ export function useChatThread(
         safeError('chat.stream_failed', error);
         // Flagged as an error turn: rendered as an error bubble, excluded from
         // the model-visible history (see `toHistory`), never indexed for RAG.
-        store.appendMessage(tid, 'assistant', describeChatStreamError(error), { error: true });
+        if (useChatStore.getState().threads[tid] !== undefined) {
+          store.appendMessage(tid, 'assistant', describeChatStreamError(error), { error: true });
+        }
       } finally {
         // The answer (or error) is in the store now: drop the draft first, or
         // it renders a second copy for as long as the save takes.
@@ -405,7 +439,34 @@ export function useChatThread(
     [profileId],
   );
 
-  return { messages, threadId, isStreaming, streamingDraft, submit, openThread };
+  const pin = useCallback(
+    async (asOf: ChatThreadAsOf) => {
+      if (profileId) setSelectedThreadId(await startPinnedThread(profileId, chartId, asOf));
+    },
+    [profileId, chartId],
+  );
+  const repin = useCallback(
+    async (asOf: ChatThreadAsOf) => {
+      if (threadId && activeThread?.as_of) await repinThread(threadId, asOf);
+    },
+    [threadId, activeThread?.as_of],
+  );
+  const backToToday = useCallback(async () => {
+    if (profileId) setSelectedThreadId(await todayThread(profileId, chartId));
+  }, [profileId, chartId]);
+
+  return {
+    messages,
+    threadId,
+    isStreaming,
+    streamingDraft,
+    submit,
+    openThread,
+    asOf: activeThread?.as_of,
+    pin,
+    repin,
+    backToToday,
+  };
 }
 
 export default useChatThread;

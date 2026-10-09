@@ -13,6 +13,10 @@ const __dirname = resolve(__filename, "..");
  * the engine and SQLite module Workers only load from a build, and preview
  * applies the real CSP and COOP/COEP headers from public/_headers.
  *
+ * The build is hooked (VITE_EXIT_GATE_HOOKS=1), like the hooked build every
+ * Dagger browser shard serves: the Day-pin round-trip reads
+ * window.__almameshPinnedThreads.
+ *
  * Dagger passes its own preview through PORTABLE_INVARIANTS_E2E_BASE_URL and
  * picks a browser with `--project`. Locally the config builds and serves.
  */
@@ -46,7 +50,7 @@ export default defineConfig({
   webServer: EXTERNAL_BASE_URL
     ? undefined
     : {
-        command: `VITE_API_URL= bun run build && VITE_API_URL= bun run preview --host 127.0.0.1 --port ${PORT} --strictPort`,
+        command: `VITE_API_URL= VITE_EXIT_GATE_HOOKS=1 bun run build && VITE_API_URL= bun run preview --host 127.0.0.1 --port ${PORT} --strictPort`,
         url: BASE_URL,
         reuseExistingServer: false,
         timeout: 300_000,

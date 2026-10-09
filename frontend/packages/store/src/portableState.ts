@@ -13,6 +13,7 @@ import {
   MAX_JSON_NODES,
   MAX_STRING_CHARACTERS,
 } from './jsonBounds';
+import { chatAsOfProblem } from './chatAsOf';
 import {
   repairPortableReferences,
   type PortableRepairReport,
@@ -106,7 +107,7 @@ export const PORTABLE_STORE_MAX_VERSIONS = {
   'almamesh-chart-library': 1,
   'almamesh-life-events': 4,
   'almamesh-rectification-records': 2,
-  'almamesh-chat-history': 2,
+  'almamesh-chat-history': 3,
   'almamesh-interpretations': 6,
   'almamesh-mesh-readings': 1,
   'almamesh-predictive': 4,
@@ -1025,6 +1026,10 @@ function validateCanonicalDataset(
       }
       assertKnownReference(thread.profile_id, profileIds, 'almamesh-chat-history', 'profile');
       assertKnownReference(thread.chart_id, chartIds, 'almamesh-chat-history', 'chart');
+      const pinProblem = thread.as_of === undefined ? undefined : chatAsOfProblem(thread.as_of);
+      if (pinProblem) {
+        throw new Error(`Portable state row "almamesh-chat-history" thread "${threadId}" has an invalid ${pinProblem}.`);
+      }
     }
     const chat = envelopes.get('almamesh-chat-history')!.state as Record<string, unknown>;
     const chatVersion = envelopes.get('almamesh-chat-history')!.version as number;

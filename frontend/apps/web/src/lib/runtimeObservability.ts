@@ -18,6 +18,7 @@ declare global {
     __almameshVerifySqliteMemory?: () => Promise<SqliteMemoryProof>
     __almameshPortableStatePersistence?: () => PortableStatePersistence
     __almameshPredictiveRequestKeys?: string[]
+    __almameshPinnedThreads?: () => readonly PinnedThreadRow[]
   }
 }
 
@@ -92,4 +93,14 @@ export const publishPredictiveRequestKeys = (store: PredictiveRequestKeySource):
   }
   record(store.getState())
   return store.subscribe(record)
+}
+
+export interface PinnedThreadRow {
+  readonly id: string
+  readonly as_of: unknown
+}
+
+/** Exit-gate builds only: lets the time-travel and backup suites compare pins field for field. */
+export const publishPinnedThreads = (read: () => readonly PinnedThreadRow[]): void => {
+  window.__almameshPinnedThreads = read
 }

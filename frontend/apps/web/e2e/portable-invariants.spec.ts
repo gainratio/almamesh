@@ -591,3 +591,66 @@ test.describe('migrate from an old build, then export', () => {
     await b.close();
   });
 });
+
+/** The exact pin the sheet stores for 15 June 2026 in Bogotá (bundled city list). */
+const BOGOTA_DAY_PIN = {
+  start: '2026-06-15',
+  end: '2026-06-15',
+  granularity: 'day',
+  place: { label: 'Bogotá, Colombia', timezone: 'America/Bogota', latitude: 4.60971, longitude: -74.08175 },
+};
+
+test.describe('a pinned time-travel thread round-trips (chat store v3)', () => {
+  type PinnedThreads = () => Array<{ id: string; as_of: unknown }>;
+
+  async function pinnedThreads(page: Page): Promise<Array<{ id: string; as_of: unknown }>> {
+    await page.waitForFunction(
+      () => ((window as unknown as { __almameshPinnedThreads?: PinnedThreads }).__almameshPinnedThreads?.() ?? []).length > 0,
+    );
+    return page.evaluate(() => (window as unknown as { __almameshPinnedThreads: PinnedThreads }).__almameshPinnedThreads());
+  }
+
+  test('a Day pin with a place survives export and import field for field', async ({ browser }, testInfo) => {
+    const a = await freshBrowser(browser, testInfo);
+    await test.step('seed: onboard, connect AI, pin 15 June 2026 in Bogotá', async () => {
+      await gotoSettled(a.page, '/onboarding');
+      await onboard(a.page, SELF);
+      await connectAi(a.page);
+      await spaNavigate(a.page, '/dashboard');
+      await a.page.getByTestId('floating-chat-button').click({ timeout: 60_000 });
+      await a.page.getByTestId('time-travel-button').click();
+      await a.page.getByTestId('time-travel-tab-day').click();
+      await a.page.getByTestId('time-travel-day').fill('2026-06-15');
+      await a.page.getByTestId('time-travel-where-input').fill('Bogotá');
+      await a.page.getByTestId('time-travel-where-option-0').click({ timeout: 30_000 });
+      await a.page.getByTestId('time-travel-go').click();
+      await expect(a.page.getByTestId('time-travel-banner')).toContainText('Bogotá, Colombia');
+      // The banner renders from memory before the save resolves; the sheet
+      // closing is the save signal, so export only after it is gone.
+      await expect(a.page.getByTestId('time-travel-sheet')).toHaveCount(0);
+    });
+    const before = await pinnedThreads(a.page);
+    expect(before).toHaveLength(1);
+    expect(before[0]?.as_of).toEqual(BOGOTA_DAY_PIN);
+
+    const exportPath = testInfo.outputPath('pinned.almamesh');
+    await test.step('export from browser A', async () => {
+      await exportBackup(a.page, exportPath);
+      expectCleanBrowser(a.problems, 'browser A');
+    });
+    await a.close();
+
+    const b = await freshBrowser(browser, testInfo);
+    await test.step('import into browser B: the same pin, field for field, and its banner', async () => {
+      await importBackup(b.page, exportPath);
+      await spaNavigate(b.page, '/dashboard');
+      const restored = await pinnedThreads(b.page);
+      expect(restored).toEqual(before);
+      expect(restored[0]?.as_of).toEqual(BOGOTA_DAY_PIN);
+      await b.page.getByTestId('floating-chat-button').click({ timeout: 60_000 });
+      await expect(b.page.getByTestId('time-travel-banner')).toContainText('Bogotá, Colombia');
+      expectCleanBrowser(b.problems, 'browser B');
+    });
+    await b.close();
+  });
+});

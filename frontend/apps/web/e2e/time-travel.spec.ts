@@ -589,3 +589,191 @@ test.describe('places', () => {
     expect(consoleErrors, 'the journey must keep a clean console').toEqual([]);
   });
 });
+
+/**
+ * Journey 2 (spec 2026-10-08, Inc D; plan Ruling 11: the shared ChatPanel, on the
+ * Dashboard): ⏳ Time travel → Year 2027 (next year) → Go. The thread is pinned, survives a
+ * reload, shows the badge, title, banner and future starters, and a question
+ * with no dates reads that year in the future tense. Today is never pre-run.
+ */
+const PIN_QUESTION = 'Will work get easier?';
+// Next year: 2027 when this lands (the spec's journey), and never a past year as the calendar moves.
+const PIN_YEAR = String(new Date().getUTCFullYear() + 1);
+const PIN_DAYS = new Date(Date.UTC(Number(PIN_YEAR), 1, 29)).getUTCMonth() === 1 ? 366 : 365;
+const PIN_ANSWER = `I looked at 1 January–31 December ${PIN_YEAR}. Work should get easier from spring.`;
+const PIN_SCREENSHOT = 'test-results/time-travel-next-year.png';
+
+/** The pinned threads the app holds (the exit-gate hook): ids and pins only. */
+async function pinnedThreads(page: Page): Promise<Array<{ id: string; as_of: unknown }>> {
+  const rows = await page.evaluate(() =>
+    (window as unknown as { __almameshPinnedThreads?: () => Array<{ id: string; as_of: unknown }> }).__almameshPinnedThreads?.(),
+  );
+  if (!rows) throw new Error('window.__almameshPinnedThreads is missing: build with VITE_EXIT_GATE_HOOKS=1');
+  return rows;
+}
+
+async function openPinnedYear(page: Page, year: string): Promise<void> {
+  await page.getByTestId('time-travel-button').click();
+  await expect(page.getByTestId('time-travel-sheet')).toBeVisible();
+  await page.getByTestId('time-travel-tab-year').click();
+  await expect(page.getByTestId('time-travel-where')).toHaveCount(0);
+  await page.getByTestId('time-travel-year').selectOption(year);
+  await page.getByTestId('time-travel-go').click();
+  // The banner shows from memory at once; the sheet closes only after the pin is saved (Ruling 12).
+  await expect(page.getByTestId('time-travel-sheet')).toBeHidden();
+  await expect(page.getByTestId('time-travel-banner')).toBeVisible();
+}
+
+/** The device zone is a zone no step names, so any appearance in a model request is the device zone leaking. */
+test.describe('pinned threads on a device in another zone', () => {
+  test.use({ timezoneId: DEVICE_ZONE });
+
+  test('[contract/stubbed] Time travel → next year pins a thread that reads it without dates', async ({ page }) => {
+    const consoleErrors = await prepare(page);
+    const seen: AgentRequest[] = [];
+    const bodies: string[] = [];
+    const fulfilled = new Set<string>();
+    await scripted(
+      page,
+      {
+        [PIN_QUESTION]: (tools) =>
+          tools.length === 0
+            ? { content: null, tool_calls: [call('when', 'get_current_datetime', { scope: 'chart' }), call('sky', 'get_timing', { section: 'transits' })] }
+            : { content: PIN_ANSWER },
+      },
+      seen,
+      bodies,
+      fulfilled,
+    );
+    await bootEngine(page);
+    await seedChart(page);
+    await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+    const today = await page.evaluate(() =>
+      new Intl.DateTimeFormat('en', { year: 'numeric', month: 'short', day: 'numeric' }).format(new Date()),
+    );
+    await expect(page.getByTestId('provenance-footer')).toContainText(`As of ${today}`, { timeout: 120_000 });
+    await expect(page.getByTestId('life-atlas').getByText(/^As of /)).toBeVisible({ timeout: 240_000 });
+    const keysBefore = await predictiveRequestKeys(page);
+
+    await page.getByTestId('floating-chat-button').click({ timeout: 60_000 });
+    await openPinnedYear(page, PIN_YEAR);
+    await expect(page.getByTestId('time-travel-badge')).toHaveText('⏳');
+    await expect(page.getByTestId('time-travel-title')).toHaveText(`Time travel · ${PIN_YEAR}`);
+    await expect(page.getByTestId('time-travel-banner')).toContainText('answers are about this period');
+    await expect(page.getByRole('button', { name: 'What should I prepare for?' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Which months look strongest?' })).toBeVisible();
+
+    // The pin was on disk before the sheet closed: a full reload keeps it.
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.getByTestId('floating-chat-button').click({ timeout: 120_000 });
+    await expect(page.getByTestId('time-travel-title')).toHaveText(`Time travel · ${PIN_YEAR}`);
+    expect((await pinnedThreads(page)).map((row) => row.as_of)).toEqual([
+      { start: `${PIN_YEAR}-01-01`, end: `${PIN_YEAR}-12-31`, granularity: 'year' },
+    ]);
+
+    await page.evaluate(() => {
+      const history: string[] = [];
+      (window as unknown as { __agentStatusHistory: string[] }).__agentStatusHistory = history;
+      new MutationObserver(() => {
+        const text = document.querySelector('[data-testid="chat-agent-status"]')?.textContent;
+        if (text && history.at(-1) !== text) history.push(text);
+      }).observe(document.body, { subtree: true, childList: true, characterData: true });
+    });
+    await page.getByTestId('chat-input').fill(PIN_QUESTION);
+    await page.getByTestId('chat-send-button').click();
+    await expect(page.getByTestId('chat-panel').getByText(PIN_ANSWER)).toBeVisible({ timeout: 240_000 });
+
+    const last = seen.at(-1)!;
+    const tools = turnTools(last.messages);
+    expect(tools.map((m) => m.name)).toEqual(['get_current_datetime', 'get_timing']);
+    expect(tools[0]?.content).toContain(`"pinned_period":{"start":"${PIN_YEAR}-01-01","end":"${PIN_YEAR}-12-31"}`);
+    expect(tools[0]?.content).toContain('"relative":"future"');
+    expect(tools[1]?.content).toContain(`"period":{"start":"${PIN_YEAR}-01-01","end":"${PIN_YEAR}-12-31","days":${PIN_DAYS},"basis":"period"}`);
+    const system = last.messages.find((m) => m.role === 'system')?.content ?? '';
+    expect(system).toContain(`PINNED PERIOD: this conversation is about ${PIN_YEAR}-01-01 to ${PIN_YEAR}-12-31 (relative: future)`);
+    expect(system).toContain('future tense');
+    const statuses = await page.evaluate(() => (window as unknown as { __agentStatusHistory: string[] }).__agentStatusHistory);
+    expect(statuses.some((text) => text.startsWith(`Working out the sky for ${PIN_YEAR}`))).toBe(true);
+    expect((await predictiveRequestKeys(page)).slice(keysBefore.length), 'the Life Atlas slot keeps its requestKey').toEqual([]);
+    expect(bodies.length, 'the question reached the stubbed model').toBeGreaterThan(0);
+    // The chart zone (get_current_datetime scope 'chart') legitimately names the birth zone; only the device's must stay out.
+    expect(bodies.filter((body) => body.includes(DEVICE_ZONE)), 'the device zone must not reach the model').toEqual([]);
+    await page.screenshot({ path: PIN_SCREENSHOT, fullPage: true });
+    expect(consoleErrors, 'the journey must keep a clean console').toEqual([]);
+  });
+
+  /**
+   * The Day pin (spec Testing, e2e): "Where?" shows on Day only, starts empty, is
+   * required, and the city search makes no request off the app origin. Then
+   * Change → Month and Back to today. No coordinates reach the model.
+   */
+  test('[contract/stubbed] a Day pin needs a place found on the device, then Change and Back to today', async ({ page }) => {
+    const consoleErrors = await prepare(page);
+    const fulfilled = new Set<string>();
+    const bodies: string[] = [];
+    const seen: AgentRequest[] = [];
+    const DAY_ANSWER_TEXT = 'That day looks calm.';
+    await scripted(
+      page,
+      {
+        // get_timing without dates reads the pinned Day with the pinned place.
+        'How was that day?': (tools) =>
+          tools.length === 0
+            ? { content: null, tool_calls: [call('when', 'get_current_datetime', { scope: 'utc' }), call('sky', 'get_timing', { section: 'transits' })] }
+            : { content: DAY_ANSWER_TEXT },
+      },
+      seen,
+      bodies,
+      fulfilled,
+    );
+    await bootEngine(page);
+    await seedChart(page);
+    await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+    const origin = new URL(page.url()).origin;
+    const offOrigin: string[] = [];
+    page.on('request', (request) => {
+      if (new URL(request.url()).origin !== origin) offOrigin.push(request.url());
+    });
+
+    await page.getByTestId('floating-chat-button').click({ timeout: 120_000 });
+    await page.getByTestId('time-travel-button').click();
+    await expect(page.getByTestId('time-travel-where')).toHaveCount(0);
+    await page.getByTestId('time-travel-tab-day').click();
+    await expect(page.getByTestId('time-travel-where-input')).toHaveValue('');
+    await expect(page.getByTestId('time-travel-where-required')).toBeVisible();
+    await page.getByTestId('time-travel-day').fill('2026-06-15');
+    await expect(page.getByTestId('time-travel-go')).toBeDisabled();
+    await page.getByTestId('time-travel-where-input').fill('Bogotá');
+    await page.getByTestId('time-travel-where-option-0').click({ timeout: 30_000 });
+    await expect(page.getByTestId('time-travel-go')).toBeEnabled();
+    await page.getByTestId('time-travel-go').click();
+    await expect(page.getByTestId('time-travel-banner')).toContainText('Bogotá, Colombia');
+    const [dayPin] = await pinnedThreads(page);
+    expect(dayPin?.as_of).toMatchObject({ start: '2026-06-15', end: '2026-06-15', granularity: 'day', place: { timezone: 'America/Bogota' } });
+
+    await page.getByTestId('chat-input').fill('How was that day?');
+    await page.getByTestId('chat-send-button').click();
+    await expect(page.getByTestId('chat-panel').getByText(DAY_ANSWER_TEXT)).toBeVisible({ timeout: 240_000 });
+
+    await page.getByTestId('time-travel-change').click();
+    await page.getByTestId('time-travel-tab-month').click();
+    await page.getByTestId('time-travel-month').selectOption('06');
+    await page.getByTestId('time-travel-month-year').selectOption('2026');
+    await page.getByTestId('time-travel-go').click();
+    await expect(page.getByTestId('time-travel-title')).toHaveText('Time travel · June 2026');
+    await expect(page.getByTestId('time-travel-banner')).not.toContainText('Bogotá');
+
+    await page.getByTestId('time-travel-back').click();
+    await expect(page.getByTestId('time-travel-banner')).toHaveCount(0);
+    expect(offOrigin.filter((url) => !fulfilled.has(url)), 'nothing may leave the app origin').toEqual([]);
+    expect(bodies.length, 'the question reached the stubbed model').toBeGreaterThan(0);
+    expect(bodies.flatMap(leaks), 'no coordinates reach the model').toEqual([]);
+    const timingResult = seen.flatMap((request) => request.messages).filter((m) => m.role === 'tool' && /Bogot/.test(m.content ?? ''));
+    expect(timingResult.length, 'get_timing read the pinned Day with the pinned place').toBeGreaterThan(0);
+    const COORDINATES = /4\.6097|-?74\.0817|latitude|longitude/i;
+    expect(timingResult.filter((m) => COORDINATES.test(m.content ?? '')), 'the tool result carries the place label, not its coordinates').toEqual([]);
+    expect(bodies.filter((body) => COORDINATES.test(body)), 'no model request body carries coordinates').toEqual([]);
+    expect(bodies.some((body) => body.includes('Bogot')), 'the place label reaches the model').toBe(true);
+    expect(consoleErrors, 'the journey must keep a clean console').toEqual([]);
+  });
+});

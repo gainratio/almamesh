@@ -4,6 +4,12 @@ import { buildChartFactsBlock, formatPeriodLabel } from "../facts";
 import { buildChatMessages } from "../prompt";
 import { periodAnalysisInstant, sanitizeChartForLlm } from "../sanitize";
 import { BIRTH_2000_CHART } from "./birth-2000-fixture";
+import {
+  DOMAINS_CTX_FIXTURE,
+  STRENGTH_CTX_FIXTURE,
+  TRANSIT_CTX_FIXTURE,
+} from "./predictive-fixture";
+import type { SiderealChart } from "@almamesh/browser/types";
 
 describe("formatPeriodLabel", () => {
   it.each([
@@ -35,6 +41,31 @@ describe("the facts block under a period basis", () => {
 
   it("omits the upcoming rows derived from today's current rows", () => {
     expect(block).not.toMatch(/Remaining antardashas|Remaining pratyantardashas|Next mahadasha/);
+  });
+});
+
+describe("a period basis never carries today's predictive sky", () => {
+  const withToday = {
+    ...BIRTH_2000_CHART,
+    transit_context: TRANSIT_CTX_FIXTURE,
+    strength_context: STRENGTH_CTX_FIXTURE,
+    domains_context: DOMAINS_CTX_FIXTURE,
+  } as unknown as SiderealChart;
+  const period = buildChartFactsBlock(
+    sanitizeChartForLlm(withToday, periodAnalysisInstant("2026-06-01", "2026-06-30")),
+  );
+  const today = buildChartFactsBlock(
+    sanitizeChartForLlm(withToday, { basis: "today", instant: new Date("2030-01-01T00:00:00Z") }),
+  );
+
+  it("omits current transits and predictive windows under a period basis", () => {
+    expect(period).not.toContain("Current transits");
+    expect(period).not.toContain("Upcoming transit windows");
+    expect(period).not.toContain("ENGINE PREDICTIVE");
+  });
+
+  it("keeps the predictive block for a today basis", () => {
+    expect(today).toContain("Current transits");
   });
 });
 

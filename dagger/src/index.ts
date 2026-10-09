@@ -495,10 +495,10 @@ exec ${inline.join(" ")}`,
       // "unknown" computing at noon, and the Vedic weekday lord for Apia
       // (date-line) and Sydney (east of UTC) births. Chromium only.
       "TIME_HANDLING_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:time-handling --project=chromium",
-      // Time travel (spec 2026-10-08), Inc A, B and C journeys: June 2019
-      // typed in plain chat, an 18-month period, and places (June with two
-      // cities, a day, "where were you?", an event in Bogotá, nothing
-      // leaving the origin). A stubbed provider, the real engine. Chromium only.
+      // Time travel (spec 2026-10-08), Inc A, B, C and D journeys: June 2019
+      // typed in plain chat, an 18-month period, places, and the Time travel
+      // button (2027 pinned; a Day pin found on the device). A stubbed
+      // provider, the real engine. Chromium only.
       "TIME_TRAVEL_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:time-travel --project=chromium",
       // A person added on /mesh survives an immediate full page load (the
       // write is on disk before the dialog moves on). Chromium only.
