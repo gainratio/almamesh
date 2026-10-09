@@ -397,3 +397,5 @@ export {
   startsBeforeBirth,
 } from "./period";
 export type { PeriodArgs, PeriodEcho, PeriodLimits } from "./period";
+export { NO_TREE_NOTE, PRATYANTAR_NOTE, selectDashasForPeriod } from "./period-dashas";
+export type { PeriodAntarRow, PeriodDashaRow, PeriodDashas } from "./period-dashas";
