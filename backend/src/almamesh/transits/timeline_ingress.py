@@ -27,7 +27,7 @@ _SIGN_WIDTH: Final[float] = 30.0
 _STICK_DAYS: Final[float] = 30.0  # Jupiter/Saturn settle within a month of ingress
 
 
-def _graha_lon_fn(astro: SkyfieldAstronomy, graha: PlanetName) -> Callable[[datetime], float]:
+def graha_lon_fn(astro: SkyfieldAstronomy, graha: PlanetName) -> Callable[[datetime], float]:
     """Bound sidereal-longitude function for the graha (Lahiri, mean node)."""
 
     @cache
@@ -37,7 +37,7 @@ def _graha_lon_fn(astro: SkyfieldAstronomy, graha: PlanetName) -> Callable[[date
     return lon
 
 
-def _cusp_gap(lon_fn: Callable[[datetime], float], cusp: float) -> Callable[[datetime], float]:
+def cusp_gap(lon_fn: Callable[[datetime], float], cusp: float) -> Callable[[datetime], float]:
     """Seam-unwrapped distance of the graha from a sign cusp."""
     return lambda when: (lon_fn(when) - cusp + 180.0) % 360.0 - 180.0
 
@@ -66,10 +66,10 @@ def slow_graha_ingress_events(
     astro: SkyfieldAstronomy, graha: PlanetName, start: datetime, end: datetime
 ) -> list[TimelineEvent]:
     """Every sticking sign ingress of `graha` within [start, end]."""
-    lon_fn = _graha_lon_fn(astro, graha)
+    lon_fn = graha_lon_fn(astro, graha)
     events: list[TimelineEvent] = []
     for sign_idx in range(12):
-        gap = _cusp_gap(lon_fn, sign_idx * _SIGN_WIDTH)
+        gap = cusp_gap(lon_fn, sign_idx * _SIGN_WIDTH)
         for when in find_crossings(gap, start, end, _STEP_DAYS):
             if (
                 _entered_sign(lon_fn, when) == sign_idx
