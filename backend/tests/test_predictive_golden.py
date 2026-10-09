@@ -40,6 +40,24 @@ FIXTURES: list[tuple[str, float, float, int]] = [
     ("2000-12-31T23:59:00+00:00", 40.7128, -74.0060, -300),  # NYC
 ]
 
+# One two-year case (Inc B), keyed "<iso>@24m". MUST match parity.mjs and
+# apps/web/scripts/verify-browser-parity.mjs PREDICTIVE_FIXTURES.
+WINDOW_24_FIXTURES: list[tuple[str, float, float, int]] = [
+    ("1990-01-15T12:00:00+00:00", 28.6139, 77.2090, 330),  # Delhi
+]
+
+
+def golden_key(iso_dt: str, window_months: int) -> str:
+    """The golden's key for one case: the ISO birth, plus "@24m" for two-year cases."""
+    return iso_dt if window_months == 12 else f"{iso_dt}@{window_months}m"
+
+
+def golden_cases() -> list[tuple[str, tuple[str, float, float, int], int]]:
+    """Every (key, fixture, window) the predictive golden pins."""
+    twelve = [(golden_key(f[0], 12), f, 12) for f in FIXTURES]
+    return twelve + [(golden_key(f[0], 24), f, 24) for f in WINDOW_24_FIXTURES]
+
+
 GOLDEN_PATH = Path(__file__).parent / "fixtures" / "predictive_golden_de421.json"
 
 
@@ -56,16 +74,23 @@ def _canonicalize(value: object) -> object:
     return value
 
 
-def _compute(iso_dt: str, lat: float, lon: float, offset_minutes: int) -> PredictiveContexts:
+def _compute(
+    iso_dt: str, lat: float, lon: float, offset_minutes: int, window_months: int = 12
+) -> PredictiveContexts:
     """The composed predictive payload for one fixture at the pinned instant."""
     birth = datetime.fromisoformat(iso_dt)
     civil = timedelta(minutes=offset_minutes)
-    return compute_predictive_contexts(birth, lat, lon, FIXED_REFERENCE_INSTANT, civil_offset=civil)
+    return compute_predictive_contexts(
+        birth, lat, lon, FIXED_REFERENCE_INSTANT, civil_offset=civil, window_months=window_months
+    )
 
 
-def _canonical_predictive(iso_dt: str, lat: float, lon: float, offset_minutes: int) -> object:
+def _canonical_predictive(
+    iso_dt: str, lat: float, lon: float, offset_minutes: int, window_months: int = 12
+) -> object:
     """Canonicalized JSON dump of one fixture's PredictiveContexts."""
-    return _canonicalize(_compute(iso_dt, lat, lon, offset_minutes).model_dump(mode="json"))
+    contexts = _compute(iso_dt, lat, lon, offset_minutes, window_months)
+    return _canonicalize(contexts.model_dump(mode="json"))
 
 
 def _load_golden() -> dict[str, object]:
@@ -77,8 +102,9 @@ def _load_golden() -> dict[str, object]:
 def test_all_predictive_fixtures_match_golden() -> None:
     """Every fixture's canonicalized PredictiveContexts equals the committed golden."""
     golden = _load_golden()
-    for iso_dt, lat, lon, offset in FIXTURES:
-        assert _canonical_predictive(iso_dt, lat, lon, offset) == golden[iso_dt]
+    assert sorted(golden) == sorted(key for key, _, _ in golden_cases())
+    for key, fixture, window in golden_cases():
+        assert _canonical_predictive(*fixture, window_months=window) == golden[key], key
 
 
 def test_predictive_json_round_trip_is_byte_identical() -> None:

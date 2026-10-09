@@ -342,6 +342,8 @@ export interface DashaTransitFusionData {
   severity: TransitSeverity;
 }
 
+export type StationDirection = 'retrograde' | 'direct';
+
 export interface TransitTimelineEventData {
   date: string;
   kind: TransitEventKind;
@@ -354,6 +356,9 @@ export interface TransitTimelineEventData {
   severity: TransitSeverity;
   /** STABLE machine key, e.g. "saturn.ingress.aries" (LLM/i18n narrates it). */
   descriptor: string;
+  /** Station events: which way the graha turns, and the sign it turns in. */
+  station_direction: StationDirection | null;
+  station_sign: ZodiacSign | null;
 }
 
 export interface TransitTimelineData {

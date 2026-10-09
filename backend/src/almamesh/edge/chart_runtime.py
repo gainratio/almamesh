@@ -26,7 +26,11 @@ from edgeproc.core.models import JsonValue
 from almamesh.calculations import calculate_sidereal_context
 from almamesh.constants.astrology import EventType
 from almamesh.mesh import compute_mesh_edge
-from almamesh.predictive import civil_offset_from_minutes, compute_predictive_contexts
+from almamesh.predictive import (
+    civil_offset_from_minutes,
+    compute_predictive_contexts,
+    window_months_from_wire,
+)
 from almamesh.rectification import compute_rectification_result
 from almamesh.rectification.models import (
     AnchorConfidence,
@@ -97,6 +101,7 @@ def compute_predictive(payload: Mapping[str, object]) -> dict[str, JsonValue]:
         _parse_payload_number(payload["longitude"], field="longitude"),
         datetime.fromisoformat(str(payload["reference_instant"])),
         civil_offset=civil_offset_from_minutes(payload["utc_offset_minutes"]),
+        window_months=window_months_from_wire(payload.get("window_months")),
     )
     return contexts.model_dump(mode="json")
 

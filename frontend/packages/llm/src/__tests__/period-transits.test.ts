@@ -39,7 +39,7 @@ describe("restrictTransitsToPeriod", () => {
   it("labels a multi-day result's placements as of the period's first day", () => {
     const { notes } = restrictTransitsToPeriod(CTX, { start: "2030-03-01", end: "2030-03-31" }, true);
     expect(notes).toContain(
-      "Planet signs and houses are as of 2030-03-01, the period's first day. Mars can change sign during the period, so do not say it stayed in one sign throughout.",
+      "Planet signs and houses are as of 2030-03-01, the period's first day. Sign changes and stations during the period are listed in the timeline.",
     );
   });
 
@@ -64,11 +64,39 @@ describe("restrictTransitsToPeriod", () => {
     expect(notes).toEqual([placementsAsOfNote("2030-01-01"), timelineCutoffNote("2031-01-01T00:00:00Z")]);
     expect(notes[1]).toContain("2031-01");
   });
+
+  it("notes a window that ends during the period's last day, to the minute", () => {
+    const ctx = { ...CTX, timeline: { ...CTX.timeline, window_end: "2028-12-31T06:00:00Z" } };
+    const { notes } = restrictTransitsToPeriod(ctx, { start: "2028-01-01", end: "2028-12-31" }, true);
+    expect(notes).toContain("Transit events are listed only until 2028-12-31 06:00 UTC. Ask about a later start for the rest.");
+  });
+
+  it("adds no cutoff note when the window outlasts the period's last day", () => {
+    const ctx = { ...CTX, timeline: { ...CTX.timeline, window_end: "2028-01-01T06:00:00Z" } };
+    const { notes } = restrictTransitsToPeriod(ctx, { start: "2027-01-01", end: "2027-12-31" }, true);
+    expect(notes.some((note) => note.startsWith("Transit events are listed only until"))).toBe(false);
+  });
+
+  it("a 731-day period outlasts the 24-month window (730.5 days) and names the exact UTC instant", () => {
+    const ctx = { ...CTX, timeline: { ...CTX.timeline, window_end: "2028-12-31T12:00:00Z" } };
+    const { notes } = restrictTransitsToPeriod(ctx, { start: "2027-01-01", end: "2028-12-31" }, true);
+    expect(notes).toContain("Transit events are listed only until 2028-12-31 12:00 UTC. Ask about a later start for the rest.");
+  });
 });
 
 describe("COVERED_EVENTS", () => {
-  it("claims only what the engine checks before Inc B", () => {
-    expect(COVERED_EVENTS).toEqual(["jupiter_ingress", "saturn_ingress", "dasha_change", "sade_sati_phase"]);
-    expect(COVERED_EVENTS).not.toContain("mars_ingress");
+  it("claims exactly what the Inc B engine timeline checks", () => {
+    expect(COVERED_EVENTS).toEqual([
+      "jupiter_ingress",
+      "saturn_ingress",
+      "mars_ingress",
+      "rahu_ingress",
+      "ketu_ingress",
+      "jupiter_station",
+      "saturn_station",
+      "mars_station",
+      "dasha_change",
+      "sade_sati_phase",
+    ]);
   });
 });

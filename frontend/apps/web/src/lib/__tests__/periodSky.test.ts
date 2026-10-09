@@ -1,5 +1,12 @@
+import type { PredictiveInput } from '@almamesh/browser/types';
 import type { PredictiveContexts } from '@almamesh/browser';
-import { predictiveRequestKey, usePredictiveStore, type EnsurePredictiveInput } from '@almamesh/store';
+import {
+  predictiveRequestKey,
+  usePredictiveStore,
+  type CachedPredictiveContexts,
+  type EnsurePredictiveInput,
+  type PredictiveRuntime,
+} from '@almamesh/store';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
@@ -185,5 +192,30 @@ describe('periodSkyCache', () => {
     expect(periodSkyCache()).toBe(first);
     __resetPeriodSkyCacheForTest();
     expect(periodSkyCache()).not.toBe(first);
+  });
+});
+
+describe('periodSky and the 24-month window', () => {
+  const TWELVE: EnsurePredictiveInput = {
+    profileKey: 'p1',
+    datetimeUtc: '1990-01-15T12:00:00Z',
+    latitude: 28.6139,
+    longitude: 77.209,
+    referenceInstant: '2027-01-01T00:00:00Z',
+    utcOffsetMinutes: 330,
+  };
+
+  it('never answers a 24-month period from the 12-month Life Atlas reading', async () => {
+    const stored = { transit_context: 'stored' } as unknown as CachedPredictiveContexts;
+    const fresh = { transit_context: 'fresh' } as unknown as CachedPredictiveContexts;
+    const computePredictive = vi.fn(async (_input: PredictiveInput) => fresh);
+    const runtime = { computePredictive } as unknown as PredictiveRuntime;
+    const cache = createPeriodSkyCache({
+      readStore: () => ({ status: 'ready', requestKey: predictiveRequestKey(TWELVE), rawContexts: stored }),
+    });
+    await expect(cache.load(TWELVE, runtime, new AbortController().signal)).resolves.toBe(stored);
+    await expect(cache.load({ ...TWELVE, windowMonths: 24 }, runtime, new AbortController().signal)).resolves.toBe(fresh);
+    expect(computePredictive).toHaveBeenCalledTimes(1);
+    expect(computePredictive.mock.calls[0]?.[0]).toMatchObject({ windowMonths: 24 });
   });
 });

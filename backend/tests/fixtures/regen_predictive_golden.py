@@ -15,13 +15,14 @@ import json
 from pathlib import Path
 
 # Single source of truth: reuse the golden test's pins, cases and pipeline.
-from tests.test_predictive_golden import FIXTURES, GOLDEN_PATH, _canonical_predictive
+from tests.test_predictive_golden import GOLDEN_PATH, _canonical_predictive, golden_cases
 
 
 def main() -> None:
     """Write the golden fixture for every case."""
     golden = {
-        iso: _canonical_predictive(iso, lat, lon, offset) for iso, lat, lon, offset in FIXTURES
+        key: _canonical_predictive(*fixture, window_months=window)
+        for key, fixture, window in golden_cases()
     }
     out = Path(GOLDEN_PATH)
     out.write_text(json.dumps(golden, indent=2, sort_keys=True) + "\n")

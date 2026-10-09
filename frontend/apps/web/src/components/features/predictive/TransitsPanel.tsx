@@ -14,7 +14,11 @@ import type {
 } from '@almamesh/shared-types';
 import { Badge, Card } from '../../ui';
 import { formatDegree } from '../../../lib/reportData';
-import { formatPredictiveDate, formatReferenceDay } from '../../../lib/predictive';
+import {
+  formatPredictiveDate,
+  formatPredictiveWindowBound,
+  formatReferenceDay,
+} from '../../../lib/predictive';
 import {
   grahaName,
   sadeSatiPhaseName,
@@ -223,8 +227,8 @@ function TimelineCard({ ctx }: { ctx: TransitCtx }): ReactElement {
     <Card
       title={t('timeline.heading')}
       subtitle={t('timeline.subtitle', {
-        start: formatPredictiveDate(timeline.window_start),
-        end: formatPredictiveDate(timeline.window_end),
+        start: formatPredictiveWindowBound(timeline.window_start),
+        end: formatPredictiveWindowBound(timeline.window_end),
       })}
       data-testid="transit-timeline"
     >
@@ -245,7 +249,7 @@ function TimelineCard({ ctx }: { ctx: TransitCtx }): ReactElement {
                   </span>
                   <span className="text-sm text-text-primary">{timelineEventLabel(t, event)}</span>
                 </div>
-                <SeverityBadge severity={event.severity} />
+                {event.severity === 'neutral' ? null : <SeverityBadge severity={event.severity} />}
               </div>
             </li>
           ))}

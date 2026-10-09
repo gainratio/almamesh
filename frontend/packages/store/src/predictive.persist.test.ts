@@ -339,8 +339,8 @@ describe("usePredictiveStore persistence", () => {
 // Spec 062 (LLM delta 1): the engine's calculation contexts are persisted
 // alongside the UI reshape so the LLM composition layer can put
 // transit_context/strength_context/varga_context_full/domains_context back
-// onto the chart. A v1 blob (no raw slice) keeps its ready UI contexts; v3 also
-// expires v2 proof from a previous Worker boot without discarding calculations.
+// onto the chart. Since v4 (step B) every v1-v3 blob is a cache miss: those
+// snapshots carry the pre-step-B timeline and Life Atlas.
 describe("usePredictiveStore — raw contexts persistence (Spec 062 delta 1)", () => {
   beforeEach(() => {
     installMemoryStorage();
@@ -367,30 +367,43 @@ describe("usePredictiveStore — raw contexts persistence (Spec 062 delta 1)", (
     expect(raw).not.toHaveProperty("strength_signer_public_key");
   });
 
-  it("migrates a v2 cache by preserving calculations and deleting its stale proof", async () => {
-    memMap.set(
-      PREDICTIVE_PERSIST_NAME,
-      JSON.stringify({
-        version: 2,
-        state: {
-          status: "ready",
-          transitCtx: rawTransit,
-          strengthCtx: rawStrength,
-          rawContexts: RAW,
-          profileKey: INPUT.profileKey,
-          requestKey: KEY,
-        },
-      }),
-    );
-
-    await usePredictiveStore.persist.rehydrate();
-
-    expect(usePredictiveStore.getState().rawContexts?.strength_context).toEqual(rawStrength);
-    const rewritten = JSON.parse(memMap.get(PREDICTIVE_PERSIST_NAME)!);
-    expect(rewritten.version).toBe(PREDICTIVE_PERSIST_VERSION);
-    expect(rewritten.state.rawContexts).not.toHaveProperty("domain_strength_receipts");
-    expect(rewritten.state.rawContexts).not.toHaveProperty("strength_signer_public_key");
+  // v4 (time travel step B): every older snapshot was computed by a pre-Inc-B
+  // engine (old timeline with double "enters X", old Life Atlas). It is derived
+  // data, so dropping it costs one recompute and never loses user data.
+  it("pins the persist version at 4 (the step B timeline invalidates v1-v3 snapshots)", () => {
+    expect(PREDICTIVE_PERSIST_VERSION).toBe(4);
   });
+
+  it.each([1, 2, 3])(
+    "drops a v%i (pre-step-B) ready snapshot: rehydrates idle and the same input recomputes",
+    async (version) => {
+      memMap.set(
+        PREDICTIVE_PERSIST_NAME,
+        JSON.stringify({
+          version,
+          state: {
+            status: "ready",
+            transitCtx: rawTransit,
+            strengthCtx: rawStrength,
+            rawContexts: RAW,
+            profileKey: INPUT.profileKey,
+            requestKey: KEY,
+          },
+        }),
+      );
+
+      await usePredictiveStore.persist.rehydrate();
+
+      const s = usePredictiveStore.getState();
+      expect(s.status).toBe("idle");
+      expect(s.requestKey).toBeUndefined();
+      expect(s.transitCtx).toBeUndefined();
+      expect(s.rawContexts).toBeUndefined();
+      const fresh = makeRuntime();
+      await usePredictiveStore.getState().ensurePredictive(fresh, INPUT);
+      expect(fresh.computePredictive).toHaveBeenCalledTimes(1);
+    },
+  );
 
   it("reset clears the raw contexts", async () => {
     await usePredictiveStore.getState().ensurePredictive(makeRuntime(), INPUT);
@@ -398,7 +411,9 @@ describe("usePredictiveStore — raw contexts persistence (Spec 062 delta 1)", (
     expect(usePredictiveStore.getState().rawContexts).toBeUndefined();
   });
 
-  it("migrates a v1 blob (no rawContexts): ready UI contexts survive, raw stays absent, NO recompute", async () => {
+  // Inverted in step B: this used to assert a v1 blob survived with NO
+  // recompute. A v1 snapshot predates the step B timeline, so it must recompute.
+  it("drops a v1 blob (no rawContexts) to idle and recomputes, never serving the old timeline", async () => {
     // Build a genuine ready blob via the real path, then rewind it to v1 by
     // stripping the raw slice — exactly what an upgrading device carries.
     await usePredictiveStore.getState().ensurePredictive(makeRuntime(), INPUT);
@@ -410,13 +425,74 @@ describe("usePredictiveStore — raw contexts persistence (Spec 062 delta 1)", (
     await usePredictiveStore.persist.rehydrate();
 
     const s = usePredictiveStore.getState();
-    expect(s.status).toBe("ready"); // graceful: features degrade, never an error
+    expect(s.status).toBe("idle"); // a clean miss, never an error
     expect(s.rawContexts).toBeUndefined();
-    expect(s.strengthCtx?.ashtakavarga.sarva.total).toBe(337);
+    expect(s.strengthCtx).toBeUndefined();
 
     const fresh = makeRuntime();
     await usePredictiveStore.getState().ensurePredictive(fresh, INPUT);
-    expect(fresh.computePredictive).not.toHaveBeenCalled();
+    expect(fresh.computePredictive).toHaveBeenCalledTimes(1);
+  });
+
+  it("reads an older build's timeline events (no station keys) as null after a reload", async () => {
+    const ingress = {
+      date: "2026-10-26T00:00:00Z",
+      kind: "sign_ingress",
+      graha: "jupiter",
+      from_sign: "Gemini",
+      to_sign: "Cancer",
+      from_lord: null,
+      to_lord: null,
+      sade_sati_phase: null,
+      severity: "neutral",
+      descriptor: "jupiter.ingress.cancer",
+    };
+    const withEvent = {
+      ...RAW,
+      transit_context: { ...rawTransit, timeline: { ...rawTransit.timeline, events: [ingress] } },
+    } as unknown as PredictiveContexts;
+    await usePredictiveStore.getState().ensurePredictive(makeRuntime(() => Promise.resolve(withEvent)), INPUT);
+    // Rewind the persisted UI event to the pre-Inc-B shape: no station keys at all.
+    const blob = JSON.parse(memMap.get(PREDICTIVE_PERSIST_NAME)!);
+    const [event] = blob.state.transitCtx.timeline.events;
+    delete event.station_direction;
+    delete event.station_sign;
+    usePredictiveStore.getState().reset();
+    memMap.set(PREDICTIVE_PERSIST_NAME, JSON.stringify(blob));
+    await usePredictiveStore.persist.rehydrate();
+
+    const events = usePredictiveStore.getState().transitCtx?.timeline.events ?? [];
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ to_sign: "cancer", station_direction: null, station_sign: null });
+  });
+
+  it("drops non-object timeline events from a persisted blob instead of throwing", async () => {
+    const ingress = {
+      date: "2026-10-26T00:00:00Z",
+      kind: "sign_ingress",
+      graha: "jupiter",
+      from_sign: "Gemini",
+      to_sign: "Cancer",
+      from_lord: null,
+      to_lord: null,
+      sade_sati_phase: null,
+      severity: "neutral",
+      descriptor: "jupiter.ingress.cancer",
+    };
+    const withEvent = {
+      ...RAW,
+      transit_context: { ...rawTransit, timeline: { ...rawTransit.timeline, events: [ingress] } },
+    } as unknown as PredictiveContexts;
+    await usePredictiveStore.getState().ensurePredictive(makeRuntime(() => Promise.resolve(withEvent)), INPUT);
+    const blob = JSON.parse(memMap.get(PREDICTIVE_PERSIST_NAME)!);
+    blob.state.transitCtx.timeline.events = [null, 7, "x", [], blob.state.transitCtx.timeline.events[0]];
+    usePredictiveStore.getState().reset();
+    memMap.set(PREDICTIVE_PERSIST_NAME, JSON.stringify(blob));
+    await usePredictiveStore.persist.rehydrate();
+
+    const events = usePredictiveStore.getState().transitCtx?.timeline.events ?? [];
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ to_sign: "cancer", station_direction: null });
   });
 
   it("flattens an unknown pre-v1 version to a clean idle", async () => {

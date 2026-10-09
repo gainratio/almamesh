@@ -1,16 +1,19 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { BirthInput, SiderealChart } from '@almamesh/browser'
+import type { BirthInput, PredictiveContexts, PredictiveInput, SiderealChart } from '@almamesh/browser'
 import {
   clearRuntimeError,
   clearRuntimeGenerator,
+  clearRuntimePredictive,
   publishPredictiveRequestKeys,
   publishRuntimeError,
   publishRuntimeGenerator,
+  publishRuntimePredictive,
   publishRuntimeStage,
 } from '../runtimeObservability'
 
 afterEach(() => {
   clearRuntimeGenerator()
+  clearRuntimePredictive()
 })
 
 describe('runtime observability', () => {
@@ -41,6 +44,20 @@ describe('runtime observability', () => {
 
     clearRuntimeGenerator()
     expect(window.__almameshGenerate).toBeUndefined()
+  })
+
+  it('publishes and clears the predictive computer for the browser parity gate', async () => {
+    const input = { datetimeUtc: '1990-01-15T12:00:00+00:00', windowMonths: 24 } as PredictiveInput
+    const contexts = { strength_signer_public_key: 'k' } as PredictiveContexts
+    const compute = vi.fn(async (_input: PredictiveInput): Promise<PredictiveContexts> => contexts)
+
+    publishRuntimePredictive(compute)
+
+    await expect(window.__almameshComputePredictive?.(input)).resolves.toBe(contexts)
+    expect(compute).toHaveBeenCalledWith(input)
+
+    clearRuntimePredictive()
+    expect(window.__almameshComputePredictive).toBeUndefined()
   })
 
   it('records every predictive requestKey the store holds, so a borrowed slot shows even if handed back', () => {

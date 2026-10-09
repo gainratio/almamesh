@@ -11,6 +11,10 @@ const MS_PER_DAY = 86_400_000;
 const EPHEMERIS_LAST_DAY = "2052-12-31";
 /** Longer spans get dashas only. */
 const MAX_TRANSIT_SPAN_YEARS = 2;
+/** The engine's month for its timeline window (`_DAYS_PER_MONTH`, backend/src/almamesh/transits/timeline.py). */
+export const ENGINE_DAYS_PER_MONTH = 30.4375;
+/** The engine's longest timeline window (`_MAX_WINDOW_MONTHS`, backend/src/almamesh/predictive.py). */
+export const LONG_PERIOD_WINDOW_MONTHS = 24;
 
 export const BEFORE_BIRTH_MESSAGE =
   "This period starts before the birth date. Ask about a period after it.";
@@ -111,4 +115,29 @@ export function periodLimits(period: PeriodRange): PeriodLimits {
     return { dashasOnly: true, notes: [OVER_TWO_YEARS_NOTE] };
   }
   return { dashasOnly: false, notes: [] };
+}
+
+/**
+ * True when an engine window of `windowMonths`, starting at the period's first
+ * day, ends before the END of the period's last day (instants, not days: a
+ * leap calendar year's 12 months stop at 06:00 UTC on 31 December). Calendar
+ * arithmetic only.
+ */
+export function windowEndsBeforePeriodEnd(period: PeriodRange, windowMonths: number): boolean {
+  const start = Date.parse(`${period.start}T00:00:00Z`);
+  return instantEndsBeforePeriodEnd(start + windowMonths * ENGINE_DAYS_PER_MONTH * MS_PER_DAY, period);
+}
+
+/** True when the instant (epoch ms) falls before the END of the period's last day. One rule for every window check. */
+export function instantEndsBeforePeriodEnd(instantMs: number, period: PeriodRange): boolean {
+  return instantMs < Date.parse(`${period.end}T00:00:00Z`) + MS_PER_DAY;
+}
+
+/**
+ * 24 when the engine's default 12-month window ends before the period does;
+ * otherwise undefined (send no window, so 12-month store and memo keys stay as
+ * they were).
+ */
+export function periodWindowMonths(period: PeriodRange): typeof LONG_PERIOD_WINDOW_MONTHS | undefined {
+  return windowEndsBeforePeriodEnd(period, 12) ? LONG_PERIOD_WINDOW_MONTHS : undefined;
 }

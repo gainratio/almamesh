@@ -99,6 +99,14 @@
             "severity": "neutral",
             "source": "transit",
             "trigger": "jupiter"
+          },
+          {
+            "date": "2025-12-05T12:27:17.451862Z",
+            "descriptor": "career.transit.jupiter.ingress.gemini",
+            "kind": "sign_ingress",
+            "severity": "neutral",
+            "source": "transit",
+            "trigger": "jupiter"
           }
         ],
         "varga": {
@@ -206,6 +214,14 @@
           {
             "date": "2025-10-18T13:50:37.934350Z",
             "descriptor": "education.transit.jupiter.ingress.cancer",
+            "kind": "sign_ingress",
+            "severity": "neutral",
+            "source": "transit",
+            "trigger": "jupiter"
+          },
+          {
+            "date": "2025-12-05T12:27:17.451862Z",
+            "descriptor": "education.transit.jupiter.ingress.gemini",
             "kind": "sign_ingress",
             "severity": "neutral",
             "source": "transit",
@@ -331,6 +347,14 @@
             "severity": "neutral",
             "source": "transit",
             "trigger": "jupiter"
+          },
+          {
+            "date": "2025-12-05T12:27:17.451862Z",
+            "descriptor": "family.transit.jupiter.ingress.gemini",
+            "kind": "sign_ingress",
+            "severity": "neutral",
+            "source": "transit",
+            "trigger": "jupiter"
           }
         ],
         "varga": {
@@ -416,6 +440,14 @@
           {
             "date": "2025-10-18T13:50:37.934350Z",
             "descriptor": "finances.transit.jupiter.ingress.cancer",
+            "kind": "sign_ingress",
+            "severity": "neutral",
+            "source": "transit",
+            "trigger": "jupiter"
+          },
+          {
+            "date": "2025-12-05T12:27:17.451862Z",
+            "descriptor": "finances.transit.jupiter.ingress.gemini",
             "kind": "sign_ingress",
             "severity": "neutral",
             "source": "transit",
@@ -532,6 +564,14 @@
             "severity": "neutral",
             "source": "transit",
             "trigger": "jupiter"
+          },
+          {
+            "date": "2025-12-05T12:27:17.451862Z",
+            "descriptor": "health.transit.jupiter.ingress.gemini",
+            "kind": "sign_ingress",
+            "severity": "neutral",
+            "source": "transit",
+            "trigger": "jupiter"
           }
         ],
         "varga": {
@@ -632,6 +672,14 @@
           {
             "date": "2025-10-18T13:50:37.934350Z",
             "descriptor": "relationships.transit.jupiter.ingress.cancer",
+            "kind": "sign_ingress",
+            "severity": "neutral",
+            "source": "transit",
+            "trigger": "jupiter"
+          },
+          {
+            "date": "2025-12-05T12:27:17.451862Z",
+            "descriptor": "relationships.transit.jupiter.ingress.gemini",
             "kind": "sign_ingress",
             "severity": "neutral",
             "source": "transit",
@@ -758,6 +806,14 @@
             "severity": "neutral",
             "source": "transit",
             "trigger": "jupiter"
+          },
+          {
+            "date": "2025-12-05T12:27:17.451862Z",
+            "descriptor": "spiritual.transit.jupiter.ingress.gemini",
+            "kind": "sign_ingress",
+            "severity": "neutral",
+            "source": "transit",
+            "trigger": "jupiter"
           }
         ],
         "varga": {
@@ -875,6 +931,14 @@
             "severity": "neutral",
             "source": "transit",
             "trigger": "jupiter"
+          },
+          {
+            "date": "2025-12-05T12:27:17.451862Z",
+            "descriptor": "career.transit.jupiter.ingress.gemini",
+            "kind": "sign_ingress",
+            "severity": "neutral",
+            "source": "transit",
+            "trigger": "jupiter"
           }
         ],
         "varga": {
@@ -974,6 +1038,14 @@
           {
             "date": "2025-10-18T13:50:37.934350Z",
             "descriptor": "education.transit.jupiter.ingress.cancer",
+            "kind": "sign_ingress",
+            "severity": "neutral",
+            "source": "transit",
+            "trigger": "jupiter"
+          },
+          {
+            "date": "2025-12-05T12:27:17.451862Z",
+            "descriptor": "education.transit.jupiter.ingress.gemini",
             "kind": "sign_ingress",
             "severity": "neutral",
             "source": "transit",
@@ -1101,6 +1173,14 @@
             "severity": "neutral",
             "source": "transit",
             "trigger": "jupiter"
+          },
+          {
+            "date": "2025-12-05T12:27:17.451862Z",
+            "descriptor": "family.transit.jupiter.ingress.gemini",
+            "kind": "sign_ingress",
+            "severity": "neutral",
+            "source": "transit",
+            "trigger": "jupiter"
           }
         ],
         "varga": {
@@ -1184,6 +1264,14 @@
           {
             "date": "2025-10-18T13:50:37.934350Z",
             "descriptor": "finances.transit.jupiter.ingress.cancer",
+            "kind": "sign_ingress",
+            "severity": "neutral",
+            "source": "transit",
+            "trigger": "jupiter"
+          },
+          {
+            "date": "2025-12-05T12:27:17.451862Z",
+            "descriptor": "finances.transit.jupiter.ingress.gemini",
             "kind": "sign_ingress",
             "severity": "neutral",
             "source": "transit",
@@ -1304,6 +1392,14 @@
             "severity": "neutral",
             "source": "transit",
             "trigger": "jupiter"
+          },
+          {
+            "date": "2025-12-05T12:27:17.451862Z",
+            "descriptor": "health.transit.jupiter.ingress.gemini",
+            "kind": "sign_ingress",
+            "severity": "neutral",
+            "source": "transit",
+            "trigger": "jupiter"
           }
         ],
         "varga": {
@@ -1404,6 +1500,14 @@
           {
             "date": "2025-10-18T13:50:37.934350Z",
             "descriptor": "relationships.transit.jupiter.ingress.cancer",
+            "kind": "sign_ingress",
+            "severity": "neutral",
+            "source": "transit",
+            "trigger": "jupiter"
+          },
+          {
+            "date": "2025-12-05T12:27:17.451862Z",
+            "descriptor": "relationships.transit.jupiter.ingress.gemini",
             "kind": "sign_ingress",
             "severity": "neutral",
             "source": "transit",
@@ -1518,6 +1622,14 @@
           {
             "date": "2025-10-18T13:50:37.934350Z",
             "descriptor": "spiritual.transit.jupiter.ingress.cancer",
+            "kind": "sign_ingress",
+            "severity": "neutral",
+            "source": "transit",
+            "trigger": "jupiter"
+          },
+          {
+            "date": "2025-12-05T12:27:17.451862Z",
+            "descriptor": "spiritual.transit.jupiter.ingress.gemini",
             "kind": "sign_ingress",
             "severity": "neutral",
             "source": "transit",
@@ -1704,6 +1816,14 @@
             "severity": "neutral",
             "source": "transit",
             "trigger": "jupiter"
+          },
+          {
+            "date": "2025-12-05T12:27:17.451862Z",
+            "descriptor": "education.transit.jupiter.ingress.gemini",
+            "kind": "sign_ingress",
+            "severity": "neutral",
+            "source": "transit",
+            "trigger": "jupiter"
           }
         ],
         "varga": {
@@ -1813,6 +1933,14 @@
             "severity": "neutral",
             "source": "transit",
             "trigger": "jupiter"
+          },
+          {
+            "date": "2025-12-05T12:27:17.451862Z",
+            "descriptor": "family.transit.jupiter.ingress.gemini",
+            "kind": "sign_ingress",
+            "severity": "neutral",
+            "source": "transit",
+            "trigger": "jupiter"
           }
         ],
         "varga": {
@@ -1904,6 +2032,14 @@
           {
             "date": "2025-10-18T13:50:37.934350Z",
             "descriptor": "finances.transit.jupiter.ingress.cancer",
+            "kind": "sign_ingress",
+            "severity": "neutral",
+            "source": "transit",
+            "trigger": "jupiter"
+          },
+          {
+            "date": "2025-12-05T12:27:17.451862Z",
+            "descriptor": "finances.transit.jupiter.ingress.gemini",
             "kind": "sign_ingress",
             "severity": "neutral",
             "source": "transit",
@@ -2020,6 +2156,14 @@
             "severity": "neutral",
             "source": "transit",
             "trigger": "jupiter"
+          },
+          {
+            "date": "2025-12-05T12:27:17.451862Z",
+            "descriptor": "health.transit.jupiter.ingress.gemini",
+            "kind": "sign_ingress",
+            "severity": "neutral",
+            "source": "transit",
+            "trigger": "jupiter"
           }
         ],
         "varga": {
@@ -2110,6 +2254,14 @@
           {
             "date": "2025-10-18T13:50:37.934350Z",
             "descriptor": "relationships.transit.jupiter.ingress.cancer",
+            "kind": "sign_ingress",
+            "severity": "neutral",
+            "source": "transit",
+            "trigger": "jupiter"
+          },
+          {
+            "date": "2025-12-05T12:27:17.451862Z",
+            "descriptor": "relationships.transit.jupiter.ingress.gemini",
             "kind": "sign_ingress",
             "severity": "neutral",
             "source": "transit",
@@ -2224,6 +2376,14 @@
           {
             "date": "2025-10-18T13:50:37.934350Z",
             "descriptor": "spiritual.transit.jupiter.ingress.cancer",
+            "kind": "sign_ingress",
+            "severity": "neutral",
+            "source": "transit",
+            "trigger": "jupiter"
+          },
+          {
+            "date": "2025-12-05T12:27:17.451862Z",
+            "descriptor": "spiritual.transit.jupiter.ingress.gemini",
             "kind": "sign_ingress",
             "severity": "neutral",
             "source": "transit",

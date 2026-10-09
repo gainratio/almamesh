@@ -22,6 +22,7 @@ import type {
   DomainsCtx,
   StrengthCtx,
   TransitCtx,
+  TransitTimelineEventData,
   VargaCtxFull,
 } from '@almamesh/shared-types';
 import type {
@@ -70,6 +71,8 @@ export interface EnsurePredictiveInput {
   readonly referenceInstant: string;
   /** The birthplace's civil UTC offset at birth, whole minutes (engine weekday basis). */
   readonly utcOffsetMinutes: number;
+  /** The engine timeline's length; omitted means 12. Only a time-travel period sends 24. */
+  readonly windowMonths?: 24;
 }
 
 export interface PredictiveStore {
@@ -121,14 +124,15 @@ const EMPTY_CONTEXTS = {
  * JSON over an ordered tuple is deterministic and avoids delimiter collisions.
  */
 export function predictiveRequestKey(input: EnsurePredictiveInput): string {
-  return JSON.stringify([
+  const base = [
     input.profileKey,
     input.datetimeUtc,
     input.latitude,
     input.longitude,
     input.referenceInstant,
     input.utcOffsetMinutes,
-  ]);
+  ];
+  return JSON.stringify(input.windowMonths === undefined ? base : [...base, input.windowMonths]);
 }
 
 // --- Persistence (canonical OPFS SQLite) ------------------------------------
@@ -145,8 +149,10 @@ export function predictiveRequestKey(input: EnsurePredictiveInput): string {
  * Bump when the persisted predictive shape changes; always pair with `migrate`.
  * v1 → v2 (Spec 062, LLM delta 1): added the OPTIONAL `rawContexts` slice.
  * v2 → v3: expired receipts and signer keys that belonged to a prior Worker boot.
+ * v3 → v4 (time travel step B): the engine timeline and Life Atlas changed, so
+ * every older snapshot is a cache miss and is recomputed (derived data only).
  */
-export const PREDICTIVE_PERSIST_VERSION = 3;
+export const PREDICTIVE_PERSIST_VERSION = 4;
 
 /** The canonical SQLite key holding the persisted predictive slice. */
 export const PREDICTIVE_PERSIST_NAME = 'almamesh-predictive';
@@ -237,6 +243,26 @@ function coerceRawContexts(value: unknown): CachedPredictiveContexts | undefined
 }
 
 /**
+ * A transit context persisted by a build older than the station fields lacks
+ * `station_direction`/`station_sign` on every timeline event. Rehydration does
+ * not run the adapter again, so fill them with the `null` the type promises.
+ */
+function coercePersistedTransitCtx(value: unknown): TransitCtx | undefined {
+  const ctx = value as TransitCtx | undefined;
+  if (!isPlainRecord(ctx?.timeline) || !Array.isArray(ctx.timeline.events)) {
+    return ctx;
+  }
+  const events = (ctx.timeline.events as unknown[]).filter(isPlainRecord).map(
+    (event): TransitTimelineEventData => ({
+      ...(event as unknown as TransitTimelineEventData),
+      station_direction: (event.station_direction as TransitTimelineEventData["station_direction"]) ?? null,
+      station_sign: (event.station_sign as TransitTimelineEventData["station_sign"]) ?? null,
+    }),
+  );
+  return { ...ctx, timeline: { ...ctx.timeline, events } };
+}
+
+/**
  * Coerce ANY persisted blob into a SAFE snapshot. Only a fully-formed `ready`
  * result (its contexts plus a `requestKey` identity) survives a reload; a
  * persisted `loading`/`error`/unknown shape is flattened to a clean `idle` so a
@@ -254,7 +280,7 @@ export function coercePersistedPredictive(persisted: unknown): PersistedPredicti
   return {
     status: 'ready',
     error: undefined,
-    transitCtx: persisted.transitCtx as TransitCtx | undefined,
+    transitCtx: coercePersistedTransitCtx(persisted.transitCtx),
     vargaCtxFull: persisted.vargaCtxFull as VargaCtxFull | undefined,
     strengthCtx: persisted.strengthCtx as StrengthCtx | undefined,
     domainsCtx: persisted.domainsCtx as DomainsCtx | undefined,
@@ -267,19 +293,16 @@ export function coercePersistedPredictive(persisted: unknown): PersistedPredicti
 }
 
 /**
- * A v1 blob simply lacks `rawContexts`; keep its ready UI contexts and let the
- * LLM layer degrade to natal-only. A v2 blob keeps its calculations while
- * `coercePersistedPredictive` strips proof from the previous Worker boot. Any
- * other old/unknown version becomes a clean idle slate. Current-version blobs
- * still flow through `merge`, which applies the same proof-expiry rule.
+ * Every older version (v1-v3) was computed by an engine from before time travel
+ * step B: its timeline can show "enters X" twice and its Life Atlas is stale.
+ * The snapshot is derived data, so it becomes a clean idle slate and the next
+ * `ensurePredictive` recomputes it. Current-version blobs never reach `migrate`;
+ * they flow through `merge`, which applies the proof-expiry rule.
  */
 export function migratePredictivePersistedState(
-  persisted: unknown,
-  fromVersion: number,
+  _persisted: unknown,
+  _fromVersion: number,
 ): PersistedPredictiveState {
-  if (fromVersion === 1 || fromVersion === 2) {
-    return coercePersistedPredictive(persisted);
-  }
   return IDLE_PERSISTED;
 }
 

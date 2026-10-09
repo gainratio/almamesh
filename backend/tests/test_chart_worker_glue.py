@@ -200,3 +200,39 @@ def test_glue_stamps_the_chart_with_its_snapshot(generate_chart: GenerateChart) 
     assert stamp["birth_utc"] == "1983-04-05T00:20:00+00:00"
     assert stamp["reference_date"] == "2020-06-01T00:00:00+00:00"
     assert len(stamp["snapshot_id"]) == 64
+
+
+def _predictive_glue() -> Callable[[str], str]:
+    namespace: dict[str, object] = {}
+    exec(compile(_extract_bootstrap(), str(_WORKER_TS), "exec"), namespace)  # noqa: S102
+    fn = namespace["_almamesh_compute_predictive"]
+    assert callable(fn)
+    return fn
+
+
+def _predictive_input(**extra: object) -> str:
+    return json.dumps(
+        {
+            "datetimeUtc": "1990-01-15T12:00:00+00:00",
+            "latitude": 28.6139,
+            "longitude": 77.209,
+            "referenceInstant": "2026-06-09T12:00:00+00:00",
+            "utcOffsetMinutes": 330,
+            **extra,
+        }
+    )
+
+
+def _window_end(raw: str) -> str:
+    return str(json.loads(raw)["transit_context"]["timeline"]["window_end"])
+
+
+def test_glue_passes_window_months_to_the_engine() -> None:
+    glue = _predictive_glue()
+    assert _window_end(glue(_predictive_input())).startswith("2027-06-09T18:00:00")
+    assert _window_end(glue(_predictive_input(windowMonths=24))).startswith("2028-06-09T00:00:00")
+
+
+def test_glue_refuses_a_window_past_two_years() -> None:
+    with pytest.raises(ValueError, match="window_months"):
+        _predictive_glue()(_predictive_input(windowMonths=25))

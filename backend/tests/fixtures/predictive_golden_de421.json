@@ -78,6 +78,14 @@
               "trigger": "jupiter"
             },
             {
+              "date": "2027-01-24T20:50:25.344201Z",
+              "descriptor": "career.transit.jupiter.ingress.cancer",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "jupiter"
+            },
+            {
               "date": "2027-06-02T23:04:25.266583Z",
               "descriptor": "career.transit.saturn.ingress.aries",
               "kind": "sign_ingress",
@@ -167,6 +175,14 @@
             {
               "date": "2026-10-31T05:58:13.713998Z",
               "descriptor": "education.transit.jupiter.ingress.leo",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "jupiter"
+            },
+            {
+              "date": "2027-01-24T20:50:25.344201Z",
+              "descriptor": "education.transit.jupiter.ingress.cancer",
               "kind": "sign_ingress",
               "severity": "neutral",
               "source": "transit",
@@ -272,6 +288,14 @@
               "trigger": "jupiter"
             },
             {
+              "date": "2027-01-24T20:50:25.344201Z",
+              "descriptor": "family.transit.jupiter.ingress.cancer",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "jupiter"
+            },
+            {
               "date": "2027-06-02T23:04:25.266583Z",
               "descriptor": "family.transit.saturn.ingress.aries",
               "kind": "sign_ingress",
@@ -353,6 +377,14 @@
             {
               "date": "2026-10-31T05:58:13.713998Z",
               "descriptor": "finances.transit.jupiter.ingress.leo",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "jupiter"
+            },
+            {
+              "date": "2027-01-24T20:50:25.344201Z",
+              "descriptor": "finances.transit.jupiter.ingress.cancer",
               "kind": "sign_ingress",
               "severity": "neutral",
               "source": "transit",
@@ -457,6 +489,14 @@
               "trigger": "jupiter"
             },
             {
+              "date": "2027-01-24T20:50:25.344201Z",
+              "descriptor": "health.transit.jupiter.ingress.cancer",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "jupiter"
+            },
+            {
               "date": "2027-06-02T23:04:25.266583Z",
               "descriptor": "health.transit.saturn.ingress.aries",
               "kind": "sign_ingress",
@@ -537,6 +577,14 @@
             {
               "date": "2026-10-31T05:58:13.713998Z",
               "descriptor": "relationships.transit.jupiter.ingress.leo",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "jupiter"
+            },
+            {
+              "date": "2027-01-24T20:50:25.344201Z",
+              "descriptor": "relationships.transit.jupiter.ingress.cancer",
               "kind": "sign_ingress",
               "severity": "neutral",
               "source": "transit",
@@ -637,6 +685,14 @@
             {
               "date": "2026-10-31T05:58:13.713998Z",
               "descriptor": "spiritual.transit.jupiter.ingress.leo",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "jupiter"
+            },
+            {
+              "date": "2027-01-24T20:50:25.344201Z",
+              "descriptor": "spiritual.transit.jupiter.ingress.cancer",
               "kind": "sign_ingress",
               "severity": "neutral",
               "source": "transit",
@@ -1828,6 +1884,62 @@
       "timeline": {
         "events": [
           {
+            "date": "2026-06-20T18:23:59.722851Z",
+            "descriptor": "mars.ingress.taurus",
+            "from_lord": null,
+            "from_sign": "Aries",
+            "graha": "mars",
+            "kind": "sign_ingress",
+            "sade_sati_phase": null,
+            "severity": "neutral",
+            "station_direction": null,
+            "station_sign": null,
+            "to_lord": null,
+            "to_sign": "Taurus"
+          },
+          {
+            "date": "2026-07-26T07:56:07.187988Z",
+            "descriptor": "saturn.station.retrograde",
+            "from_lord": null,
+            "from_sign": null,
+            "graha": "saturn",
+            "kind": "station",
+            "sade_sati_phase": null,
+            "severity": "neutral",
+            "station_direction": "retrograde",
+            "station_sign": "Pisces",
+            "to_lord": null,
+            "to_sign": null
+          },
+          {
+            "date": "2026-08-02T17:14:30.855989Z",
+            "descriptor": "mars.ingress.gemini",
+            "from_lord": null,
+            "from_sign": "Taurus",
+            "graha": "mars",
+            "kind": "sign_ingress",
+            "sade_sati_phase": null,
+            "severity": "neutral",
+            "station_direction": null,
+            "station_sign": null,
+            "to_lord": null,
+            "to_sign": "Gemini"
+          },
+          {
+            "date": "2026-09-18T10:58:12.766566Z",
+            "descriptor": "mars.ingress.cancer",
+            "from_lord": null,
+            "from_sign": "Gemini",
+            "graha": "mars",
+            "kind": "sign_ingress",
+            "sade_sati_phase": null,
+            "severity": "neutral",
+            "station_direction": null,
+            "station_sign": null,
+            "to_lord": null,
+            "to_sign": "Cancer"
+          },
+          {
             "date": "2026-10-31T05:58:13.713998Z",
             "descriptor": "jupiter.ingress.leo",
             "from_lord": null,
@@ -1836,6 +1948,162 @@
             "kind": "sign_ingress",
             "sade_sati_phase": null,
             "severity": "neutral",
+            "station_direction": null,
+            "station_sign": null,
+            "to_lord": null,
+            "to_sign": "Leo"
+          },
+          {
+            "date": "2026-11-12T14:39:26.243363Z",
+            "descriptor": "mars.ingress.leo",
+            "from_lord": null,
+            "from_sign": "Cancer",
+            "graha": "mars",
+            "kind": "sign_ingress",
+            "sade_sati_phase": null,
+            "severity": "neutral",
+            "station_direction": null,
+            "station_sign": null,
+            "to_lord": null,
+            "to_sign": "Leo"
+          },
+          {
+            "date": "2026-12-05T17:19:32.307871Z",
+            "descriptor": "rahu.ingress.capricorn",
+            "from_lord": null,
+            "from_sign": "Aquarius",
+            "graha": "rahu",
+            "kind": "sign_ingress",
+            "sade_sati_phase": null,
+            "severity": "neutral",
+            "station_direction": null,
+            "station_sign": null,
+            "to_lord": null,
+            "to_sign": "Capricorn"
+          },
+          {
+            "date": "2026-12-05T17:19:32.307871Z",
+            "descriptor": "ketu.ingress.cancer",
+            "from_lord": null,
+            "from_sign": "Leo",
+            "graha": "ketu",
+            "kind": "sign_ingress",
+            "sade_sati_phase": null,
+            "severity": "neutral",
+            "station_direction": null,
+            "station_sign": null,
+            "to_lord": null,
+            "to_sign": "Cancer"
+          },
+          {
+            "date": "2026-12-10T11:31:14.480066Z",
+            "descriptor": "saturn.station.direct",
+            "from_lord": null,
+            "from_sign": null,
+            "graha": "saturn",
+            "kind": "station",
+            "sade_sati_phase": null,
+            "severity": "neutral",
+            "station_direction": "direct",
+            "station_sign": "Pisces",
+            "to_lord": null,
+            "to_sign": null
+          },
+          {
+            "date": "2026-12-12T12:56:33.227751Z",
+            "descriptor": "jupiter.station.retrograde",
+            "from_lord": null,
+            "from_sign": null,
+            "graha": "jupiter",
+            "kind": "station",
+            "sade_sati_phase": null,
+            "severity": "neutral",
+            "station_direction": "retrograde",
+            "station_sign": "Leo",
+            "to_lord": null,
+            "to_sign": null
+          },
+          {
+            "date": "2027-01-10T00:58:37.149884Z",
+            "descriptor": "mars.station.retrograde",
+            "from_lord": null,
+            "from_sign": null,
+            "graha": "mars",
+            "kind": "station",
+            "sade_sati_phase": null,
+            "severity": "neutral",
+            "station_direction": "retrograde",
+            "station_sign": "Leo",
+            "to_lord": null,
+            "to_sign": null
+          },
+          {
+            "date": "2027-01-24T20:50:25.344201Z",
+            "descriptor": "jupiter.ingress.cancer",
+            "from_lord": null,
+            "from_sign": "Leo",
+            "graha": "jupiter",
+            "kind": "sign_ingress",
+            "sade_sati_phase": null,
+            "severity": "neutral",
+            "station_direction": null,
+            "station_sign": null,
+            "to_lord": null,
+            "to_sign": "Cancer"
+          },
+          {
+            "date": "2027-03-09T19:02:48.069351Z",
+            "descriptor": "mars.ingress.cancer",
+            "from_lord": null,
+            "from_sign": "Leo",
+            "graha": "mars",
+            "kind": "sign_ingress",
+            "sade_sati_phase": null,
+            "severity": "neutral",
+            "station_direction": null,
+            "station_sign": null,
+            "to_lord": null,
+            "to_sign": "Cancer"
+          },
+          {
+            "date": "2027-04-01T02:08:53.239726Z",
+            "descriptor": "mars.station.direct",
+            "from_lord": null,
+            "from_sign": null,
+            "graha": "mars",
+            "kind": "station",
+            "sade_sati_phase": null,
+            "severity": "neutral",
+            "station_direction": "direct",
+            "station_sign": "Cancer",
+            "to_lord": null,
+            "to_sign": null
+          },
+          {
+            "date": "2027-04-12T14:11:42.928679Z",
+            "descriptor": "jupiter.station.direct",
+            "from_lord": null,
+            "from_sign": null,
+            "graha": "jupiter",
+            "kind": "station",
+            "sade_sati_phase": null,
+            "severity": "neutral",
+            "station_direction": "direct",
+            "station_sign": "Cancer",
+            "to_lord": null,
+            "to_sign": null
+          },
+          {
+            "date": "2027-04-26T05:56:16.426381Z",
+            "descriptor": "mars.ingress.leo",
+            "from_lord": null,
+            "from_sign": "Cancer",
+            "graha": "mars",
+            "kind": "sign_ingress",
+            "sade_sati_phase": null,
+            "severity": "neutral",
+            "station_direction": null,
+            "station_sign": null,
             "to_lord": null,
             "to_sign": "Leo"
           },
@@ -1848,11 +2116,3780 @@
             "kind": "sign_ingress",
             "sade_sati_phase": null,
             "severity": "neutral",
+            "station_direction": null,
+            "station_sign": null,
             "to_lord": null,
             "to_sign": "Aries"
           }
         ],
         "window_end": "2027-06-09T18:00:00Z",
+        "window_start": "2026-06-09T12:00:00Z"
+      }
+    },
+    "varga_context_full": {
+      "charts": {
+        "D1": {
+          "chart": "D1",
+          "lagna_sign": "Gemini",
+          "lagna_sign_lord": "mercury",
+          "placements": {
+            "jupiter": {
+              "graha": "jupiter",
+              "is_combust": false,
+              "sign": "Gemini",
+              "sign_lord": "mercury"
+            },
+            "ketu": {
+              "graha": "ketu",
+              "is_combust": false,
+              "sign": "Cancer",
+              "sign_lord": "moon"
+            },
+            "mars": {
+              "graha": "mars",
+              "is_combust": false,
+              "sign": "Scorpio",
+              "sign_lord": "mars"
+            },
+            "mercury": {
+              "graha": "mercury",
+              "is_combust": false,
+              "sign": "Sagittarius",
+              "sign_lord": "jupiter"
+            },
+            "moon": {
+              "graha": "moon",
+              "is_combust": false,
+              "sign": "Leo",
+              "sign_lord": "sun"
+            },
+            "rahu": {
+              "graha": "rahu",
+              "is_combust": false,
+              "sign": "Capricorn",
+              "sign_lord": "saturn"
+            },
+            "saturn": {
+              "graha": "saturn",
+              "is_combust": true,
+              "sign": "Sagittarius",
+              "sign_lord": "jupiter"
+            },
+            "sun": {
+              "graha": "sun",
+              "is_combust": false,
+              "sign": "Capricorn",
+              "sign_lord": "saturn"
+            },
+            "venus": {
+              "graha": "venus",
+              "is_combust": true,
+              "sign": "Capricorn",
+              "sign_lord": "saturn"
+            }
+          }
+        },
+        "D10": {
+          "chart": "D10",
+          "lagna_sign": "Pisces",
+          "lagna_sign_lord": "jupiter",
+          "placements": {
+            "jupiter": {
+              "graha": "jupiter",
+              "is_combust": false,
+              "sign": "Virgo",
+              "sign_lord": "mercury"
+            },
+            "ketu": {
+              "graha": "ketu",
+              "is_combust": false,
+              "sign": "Libra",
+              "sign_lord": "venus"
+            },
+            "mars": {
+              "graha": "mars",
+              "is_combust": false,
+              "sign": "Pisces",
+              "sign_lord": "jupiter"
+            },
+            "mercury": {
+              "graha": "mercury",
+              "is_combust": false,
+              "sign": "Taurus",
+              "sign_lord": "venus"
+            },
+            "moon": {
+              "graha": "moon",
+              "is_combust": false,
+              "sign": "Pisces",
+              "sign_lord": "jupiter"
+            },
+            "rahu": {
+              "graha": "rahu",
+              "is_combust": false,
+              "sign": "Aries",
+              "sign_lord": "mars"
+            },
+            "saturn": {
+              "graha": "saturn",
+              "is_combust": true,
+              "sign": "Cancer",
+              "sign_lord": "moon"
+            },
+            "sun": {
+              "graha": "sun",
+              "is_combust": false,
+              "sign": "Virgo",
+              "sign_lord": "mercury"
+            },
+            "venus": {
+              "graha": "venus",
+              "is_combust": true,
+              "sign": "Scorpio",
+              "sign_lord": "mars"
+            }
+          }
+        },
+        "D12": {
+          "chart": "D12",
+          "lagna_sign": "Taurus",
+          "lagna_sign_lord": "venus",
+          "placements": {
+            "jupiter": {
+              "graha": "jupiter",
+              "is_combust": false,
+              "sign": "Virgo",
+              "sign_lord": "mercury"
+            },
+            "ketu": {
+              "graha": "ketu",
+              "is_combust": false,
+              "sign": "Aries",
+              "sign_lord": "mars"
+            },
+            "mars": {
+              "graha": "mars",
+              "is_combust": false,
+              "sign": "Virgo",
+              "sign_lord": "mercury"
+            },
+            "mercury": {
+              "graha": "mercury",
+              "is_combust": false,
+              "sign": "Cancer",
+              "sign_lord": "moon"
+            },
+            "moon": {
+              "graha": "moon",
+              "is_combust": false,
+              "sign": "Taurus",
+              "sign_lord": "venus"
+            },
+            "rahu": {
+              "graha": "rahu",
+              "is_combust": false,
+              "sign": "Libra",
+              "sign_lord": "venus"
+            },
+            "saturn": {
+              "graha": "saturn",
+              "is_combust": true,
+              "sign": "Virgo",
+              "sign_lord": "mercury"
+            },
+            "sun": {
+              "graha": "sun",
+              "is_combust": false,
+              "sign": "Capricorn",
+              "sign_lord": "saturn"
+            },
+            "venus": {
+              "graha": "venus",
+              "is_combust": true,
+              "sign": "Pisces",
+              "sign_lord": "jupiter"
+            }
+          }
+        },
+        "D16": {
+          "chart": "D16",
+          "lagna_sign": "Pisces",
+          "lagna_sign_lord": "jupiter",
+          "placements": {
+            "jupiter": {
+              "graha": "jupiter",
+              "is_combust": false,
+              "sign": "Taurus",
+              "sign_lord": "venus"
+            },
+            "ketu": {
+              "graha": "ketu",
+              "is_combust": false,
+              "sign": "Aries",
+              "sign_lord": "mars"
+            },
+            "mars": {
+              "graha": "mars",
+              "is_combust": false,
+              "sign": "Virgo",
+              "sign_lord": "mercury"
+            },
+            "mercury": {
+              "graha": "mercury",
+              "is_combust": false,
+              "sign": "Virgo",
+              "sign_lord": "mercury"
+            },
+            "moon": {
+              "graha": "moon",
+              "is_combust": false,
+              "sign": "Leo",
+              "sign_lord": "sun"
+            },
+            "rahu": {
+              "graha": "rahu",
+              "is_combust": false,
+              "sign": "Aries",
+              "sign_lord": "mars"
+            },
+            "saturn": {
+              "graha": "saturn",
+              "is_combust": true,
+              "sign": "Sagittarius",
+              "sign_lord": "jupiter"
+            },
+            "sun": {
+              "graha": "sun",
+              "is_combust": false,
+              "sign": "Aries",
+              "sign_lord": "mars"
+            },
+            "venus": {
+              "graha": "venus",
+              "is_combust": true,
+              "sign": "Cancer",
+              "sign_lord": "moon"
+            }
+          }
+        },
+        "D2": {
+          "chart": "D2",
+          "lagna_sign": "Cancer",
+          "lagna_sign_lord": "moon",
+          "placements": {
+            "jupiter": {
+              "graha": "jupiter",
+              "is_combust": false,
+              "sign": "Leo",
+              "sign_lord": "sun"
+            },
+            "ketu": {
+              "graha": "ketu",
+              "is_combust": false,
+              "sign": "Leo",
+              "sign_lord": "sun"
+            },
+            "mars": {
+              "graha": "mars",
+              "is_combust": false,
+              "sign": "Leo",
+              "sign_lord": "sun"
+            },
+            "mercury": {
+              "graha": "mercury",
+              "is_combust": false,
+              "sign": "Cancer",
+              "sign_lord": "moon"
+            },
+            "moon": {
+              "graha": "moon",
+              "is_combust": false,
+              "sign": "Cancer",
+              "sign_lord": "moon"
+            },
+            "rahu": {
+              "graha": "rahu",
+              "is_combust": false,
+              "sign": "Leo",
+              "sign_lord": "sun"
+            },
+            "saturn": {
+              "graha": "saturn",
+              "is_combust": true,
+              "sign": "Cancer",
+              "sign_lord": "moon"
+            },
+            "sun": {
+              "graha": "sun",
+              "is_combust": false,
+              "sign": "Cancer",
+              "sign_lord": "moon"
+            },
+            "venus": {
+              "graha": "venus",
+              "is_combust": true,
+              "sign": "Cancer",
+              "sign_lord": "moon"
+            }
+          }
+        },
+        "D20": {
+          "chart": "D20",
+          "lagna_sign": "Pisces",
+          "lagna_sign_lord": "jupiter",
+          "placements": {
+            "jupiter": {
+              "graha": "jupiter",
+              "is_combust": false,
+              "sign": "Aquarius",
+              "sign_lord": "saturn"
+            },
+            "ketu": {
+              "graha": "ketu",
+              "is_combust": false,
+              "sign": "Cancer",
+              "sign_lord": "moon"
+            },
+            "mars": {
+              "graha": "mars",
+              "is_combust": false,
+              "sign": "Taurus",
+              "sign_lord": "venus"
+            },
+            "mercury": {
+              "graha": "mercury",
+              "is_combust": false,
+              "sign": "Cancer",
+              "sign_lord": "moon"
+            },
+            "moon": {
+              "graha": "moon",
+              "is_combust": false,
+              "sign": "Pisces",
+              "sign_lord": "jupiter"
+            },
+            "rahu": {
+              "graha": "rahu",
+              "is_combust": false,
+              "sign": "Cancer",
+              "sign_lord": "moon"
+            },
+            "saturn": {
+              "graha": "saturn",
+              "is_combust": true,
+              "sign": "Scorpio",
+              "sign_lord": "mars"
+            },
+            "sun": {
+              "graha": "sun",
+              "is_combust": false,
+              "sign": "Aries",
+              "sign_lord": "mars"
+            },
+            "venus": {
+              "graha": "venus",
+              "is_combust": true,
+              "sign": "Leo",
+              "sign_lord": "sun"
+            }
+          }
+        },
+        "D24": {
+          "chart": "D24",
+          "lagna_sign": "Cancer",
+          "lagna_sign_lord": "moon",
+          "placements": {
+            "jupiter": {
+              "graha": "jupiter",
+              "is_combust": false,
+              "sign": "Pisces",
+              "sign_lord": "jupiter"
+            },
+            "ketu": {
+              "graha": "ketu",
+              "is_combust": false,
+              "sign": "Aquarius",
+              "sign_lord": "saturn"
+            },
+            "mars": {
+              "graha": "mars",
+              "is_combust": false,
+              "sign": "Pisces",
+              "sign_lord": "jupiter"
+            },
+            "mercury": {
+              "graha": "mercury",
+              "is_combust": false,
+              "sign": "Libra",
+              "sign_lord": "venus"
+            },
+            "moon": {
+              "graha": "moon",
+              "is_combust": false,
+              "sign": "Pisces",
+              "sign_lord": "jupiter"
+            },
+            "rahu": {
+              "graha": "rahu",
+              "is_combust": false,
+              "sign": "Aquarius",
+              "sign_lord": "saturn"
+            },
+            "saturn": {
+              "graha": "saturn",
+              "is_combust": true,
+              "sign": "Aquarius",
+              "sign_lord": "saturn"
+            },
+            "sun": {
+              "graha": "sun",
+              "is_combust": false,
+              "sign": "Leo",
+              "sign_lord": "sun"
+            },
+            "venus": {
+              "graha": "venus",
+              "is_combust": true,
+              "sign": "Sagittarius",
+              "sign_lord": "jupiter"
+            }
+          }
+        },
+        "D27": {
+          "chart": "D27",
+          "lagna_sign": "Scorpio",
+          "lagna_sign_lord": "mars",
+          "placements": {
+            "jupiter": {
+              "graha": "jupiter",
+              "is_combust": false,
+              "sign": "Gemini",
+              "sign_lord": "mercury"
+            },
+            "ketu": {
+              "graha": "ketu",
+              "is_combust": false,
+              "sign": "Libra",
+              "sign_lord": "venus"
+            },
+            "mars": {
+              "graha": "mars",
+              "is_combust": false,
+              "sign": "Sagittarius",
+              "sign_lord": "jupiter"
+            },
+            "mercury": {
+              "graha": "mercury",
+              "is_combust": false,
+              "sign": "Cancer",
+              "sign_lord": "moon"
+            },
+            "moon": {
+              "graha": "moon",
+              "is_combust": false,
+              "sign": "Capricorn",
+              "sign_lord": "saturn"
+            },
+            "rahu": {
+              "graha": "rahu",
+              "is_combust": false,
+              "sign": "Aries",
+              "sign_lord": "mars"
+            },
+            "saturn": {
+              "graha": "saturn",
+              "is_combust": true,
+              "sign": "Capricorn",
+              "sign_lord": "saturn"
+            },
+            "sun": {
+              "graha": "sun",
+              "is_combust": false,
+              "sign": "Leo",
+              "sign_lord": "sun"
+            },
+            "venus": {
+              "graha": "venus",
+              "is_combust": true,
+              "sign": "Capricorn",
+              "sign_lord": "saturn"
+            }
+          }
+        },
+        "D3": {
+          "chart": "D3",
+          "lagna_sign": "Aquarius",
+          "lagna_sign_lord": "saturn",
+          "placements": {
+            "jupiter": {
+              "graha": "jupiter",
+              "is_combust": false,
+              "sign": "Gemini",
+              "sign_lord": "mercury"
+            },
+            "ketu": {
+              "graha": "ketu",
+              "is_combust": false,
+              "sign": "Pisces",
+              "sign_lord": "jupiter"
+            },
+            "mars": {
+              "graha": "mars",
+              "is_combust": false,
+              "sign": "Cancer",
+              "sign_lord": "moon"
+            },
+            "mercury": {
+              "graha": "mercury",
+              "is_combust": false,
+              "sign": "Aries",
+              "sign_lord": "mars"
+            },
+            "moon": {
+              "graha": "moon",
+              "is_combust": false,
+              "sign": "Aries",
+              "sign_lord": "mars"
+            },
+            "rahu": {
+              "graha": "rahu",
+              "is_combust": false,
+              "sign": "Virgo",
+              "sign_lord": "mercury"
+            },
+            "saturn": {
+              "graha": "saturn",
+              "is_combust": true,
+              "sign": "Leo",
+              "sign_lord": "sun"
+            },
+            "sun": {
+              "graha": "sun",
+              "is_combust": false,
+              "sign": "Capricorn",
+              "sign_lord": "saturn"
+            },
+            "venus": {
+              "graha": "venus",
+              "is_combust": true,
+              "sign": "Capricorn",
+              "sign_lord": "saturn"
+            }
+          }
+        },
+        "D30": {
+          "chart": "D30",
+          "lagna_sign": "Libra",
+          "lagna_sign_lord": "venus",
+          "placements": {
+            "jupiter": {
+              "graha": "jupiter",
+              "is_combust": false,
+              "sign": "Aquarius",
+              "sign_lord": "saturn"
+            },
+            "ketu": {
+              "graha": "ketu",
+              "is_combust": false,
+              "sign": "Capricorn",
+              "sign_lord": "saturn"
+            },
+            "mars": {
+              "graha": "mars",
+              "is_combust": false,
+              "sign": "Scorpio",
+              "sign_lord": "mars"
+            },
+            "mercury": {
+              "graha": "mercury",
+              "is_combust": false,
+              "sign": "Sagittarius",
+              "sign_lord": "jupiter"
+            },
+            "moon": {
+              "graha": "moon",
+              "is_combust": false,
+              "sign": "Gemini",
+              "sign_lord": "mercury"
+            },
+            "rahu": {
+              "graha": "rahu",
+              "is_combust": false,
+              "sign": "Capricorn",
+              "sign_lord": "saturn"
+            },
+            "saturn": {
+              "graha": "saturn",
+              "is_combust": true,
+              "sign": "Gemini",
+              "sign_lord": "mercury"
+            },
+            "sun": {
+              "graha": "sun",
+              "is_combust": false,
+              "sign": "Taurus",
+              "sign_lord": "venus"
+            },
+            "venus": {
+              "graha": "venus",
+              "is_combust": true,
+              "sign": "Virgo",
+              "sign_lord": "mercury"
+            }
+          }
+        },
+        "D4": {
+          "chart": "D4",
+          "lagna_sign": "Pisces",
+          "lagna_sign_lord": "jupiter",
+          "placements": {
+            "jupiter": {
+              "graha": "jupiter",
+              "is_combust": false,
+              "sign": "Virgo",
+              "sign_lord": "mercury"
+            },
+            "ketu": {
+              "graha": "ketu",
+              "is_combust": false,
+              "sign": "Aries",
+              "sign_lord": "mars"
+            },
+            "mars": {
+              "graha": "mars",
+              "is_combust": false,
+              "sign": "Leo",
+              "sign_lord": "sun"
+            },
+            "mercury": {
+              "graha": "mercury",
+              "is_combust": false,
+              "sign": "Gemini",
+              "sign_lord": "mercury"
+            },
+            "moon": {
+              "graha": "moon",
+              "is_combust": false,
+              "sign": "Taurus",
+              "sign_lord": "venus"
+            },
+            "rahu": {
+              "graha": "rahu",
+              "is_combust": false,
+              "sign": "Libra",
+              "sign_lord": "venus"
+            },
+            "saturn": {
+              "graha": "saturn",
+              "is_combust": true,
+              "sign": "Virgo",
+              "sign_lord": "mercury"
+            },
+            "sun": {
+              "graha": "sun",
+              "is_combust": false,
+              "sign": "Capricorn",
+              "sign_lord": "saturn"
+            },
+            "venus": {
+              "graha": "venus",
+              "is_combust": true,
+              "sign": "Capricorn",
+              "sign_lord": "saturn"
+            }
+          }
+        },
+        "D40": {
+          "chart": "D40",
+          "lagna_sign": "Gemini",
+          "lagna_sign_lord": "mercury",
+          "placements": {
+            "jupiter": {
+              "graha": "jupiter",
+              "is_combust": false,
+              "sign": "Aries",
+              "sign_lord": "mars"
+            },
+            "ketu": {
+              "graha": "ketu",
+              "is_combust": false,
+              "sign": "Taurus",
+              "sign_lord": "venus"
+            },
+            "mars": {
+              "graha": "mars",
+              "is_combust": false,
+              "sign": "Leo",
+              "sign_lord": "sun"
+            },
+            "mercury": {
+              "graha": "mercury",
+              "is_combust": false,
+              "sign": "Pisces",
+              "sign_lord": "jupiter"
+            },
+            "moon": {
+              "graha": "moon",
+              "is_combust": false,
+              "sign": "Scorpio",
+              "sign_lord": "mars"
+            },
+            "rahu": {
+              "graha": "rahu",
+              "is_combust": false,
+              "sign": "Taurus",
+              "sign_lord": "venus"
+            },
+            "saturn": {
+              "graha": "saturn",
+              "is_combust": true,
+              "sign": "Scorpio",
+              "sign_lord": "mars"
+            },
+            "sun": {
+              "graha": "sun",
+              "is_combust": false,
+              "sign": "Scorpio",
+              "sign_lord": "mars"
+            },
+            "venus": {
+              "graha": "venus",
+              "is_combust": true,
+              "sign": "Cancer",
+              "sign_lord": "moon"
+            }
+          }
+        },
+        "D45": {
+          "chart": "D45",
+          "lagna_sign": "Cancer",
+          "lagna_sign_lord": "moon",
+          "placements": {
+            "jupiter": {
+              "graha": "jupiter",
+              "is_combust": false,
+              "sign": "Aquarius",
+              "sign_lord": "saturn"
+            },
+            "ketu": {
+              "graha": "ketu",
+              "is_combust": false,
+              "sign": "Pisces",
+              "sign_lord": "jupiter"
+            },
+            "mars": {
+              "graha": "mars",
+              "is_combust": false,
+              "sign": "Scorpio",
+              "sign_lord": "mars"
+            },
+            "mercury": {
+              "graha": "mercury",
+              "is_combust": false,
+              "sign": "Aquarius",
+              "sign_lord": "saturn"
+            },
+            "moon": {
+              "graha": "moon",
+              "is_combust": false,
+              "sign": "Cancer",
+              "sign_lord": "moon"
+            },
+            "rahu": {
+              "graha": "rahu",
+              "is_combust": false,
+              "sign": "Pisces",
+              "sign_lord": "jupiter"
+            },
+            "saturn": {
+              "graha": "saturn",
+              "is_combust": true,
+              "sign": "Scorpio",
+              "sign_lord": "mars"
+            },
+            "sun": {
+              "graha": "sun",
+              "is_combust": false,
+              "sign": "Gemini",
+              "sign_lord": "mercury"
+            },
+            "venus": {
+              "graha": "venus",
+              "is_combust": true,
+              "sign": "Aquarius",
+              "sign_lord": "saturn"
+            }
+          }
+        },
+        "D60": {
+          "chart": "D60",
+          "lagna_sign": "Pisces",
+          "lagna_sign_lord": "jupiter",
+          "placements": {
+            "jupiter": {
+              "graha": "jupiter",
+              "is_combust": false,
+              "sign": "Capricorn",
+              "sign_lord": "saturn"
+            },
+            "ketu": {
+              "graha": "ketu",
+              "is_combust": false,
+              "sign": "Gemini",
+              "sign_lord": "mercury"
+            },
+            "mars": {
+              "graha": "mars",
+              "is_combust": false,
+              "sign": "Pisces",
+              "sign_lord": "jupiter"
+            },
+            "mercury": {
+              "graha": "mercury",
+              "is_combust": false,
+              "sign": "Scorpio",
+              "sign_lord": "mars"
+            },
+            "moon": {
+              "graha": "moon",
+              "is_combust": false,
+              "sign": "Cancer",
+              "sign_lord": "moon"
+            },
+            "rahu": {
+              "graha": "rahu",
+              "is_combust": false,
+              "sign": "Sagittarius",
+              "sign_lord": "jupiter"
+            },
+            "saturn": {
+              "graha": "saturn",
+              "is_combust": true,
+              "sign": "Scorpio",
+              "sign_lord": "mars"
+            },
+            "sun": {
+              "graha": "sun",
+              "is_combust": false,
+              "sign": "Pisces",
+              "sign_lord": "jupiter"
+            },
+            "venus": {
+              "graha": "venus",
+              "is_combust": true,
+              "sign": "Aquarius",
+              "sign_lord": "saturn"
+            }
+          }
+        },
+        "D7": {
+          "chart": "D7",
+          "lagna_sign": "Sagittarius",
+          "lagna_sign_lord": "jupiter",
+          "placements": {
+            "jupiter": {
+              "graha": "jupiter",
+              "is_combust": false,
+              "sign": "Leo",
+              "sign_lord": "sun"
+            },
+            "ketu": {
+              "graha": "ketu",
+              "is_combust": false,
+              "sign": "Gemini",
+              "sign_lord": "mercury"
+            },
+            "mars": {
+              "graha": "mars",
+              "is_combust": false,
+              "sign": "Scorpio",
+              "sign_lord": "mars"
+            },
+            "mercury": {
+              "graha": "mercury",
+              "is_combust": false,
+              "sign": "Aries",
+              "sign_lord": "mars"
+            },
+            "moon": {
+              "graha": "moon",
+              "is_combust": false,
+              "sign": "Capricorn",
+              "sign_lord": "saturn"
+            },
+            "rahu": {
+              "graha": "rahu",
+              "is_combust": false,
+              "sign": "Sagittarius",
+              "sign_lord": "jupiter"
+            },
+            "saturn": {
+              "graha": "saturn",
+              "is_combust": true,
+              "sign": "Taurus",
+              "sign_lord": "venus"
+            },
+            "sun": {
+              "graha": "sun",
+              "is_combust": false,
+              "sign": "Cancer",
+              "sign_lord": "moon"
+            },
+            "venus": {
+              "graha": "venus",
+              "is_combust": true,
+              "sign": "Leo",
+              "sign_lord": "sun"
+            }
+          }
+        },
+        "D9": {
+          "chart": "D9",
+          "lagna_sign": "Gemini",
+          "lagna_sign_lord": "mercury",
+          "placements": {
+            "jupiter": {
+              "graha": "jupiter",
+              "is_combust": false,
+              "sign": "Sagittarius",
+              "sign_lord": "jupiter"
+            },
+            "ketu": {
+              "graha": "ketu",
+              "is_combust": false,
+              "sign": "Aquarius",
+              "sign_lord": "saturn"
+            },
+            "mars": {
+              "graha": "mars",
+              "is_combust": false,
+              "sign": "Aquarius",
+              "sign_lord": "saturn"
+            },
+            "mercury": {
+              "graha": "mercury",
+              "is_combust": false,
+              "sign": "Virgo",
+              "sign_lord": "mercury"
+            },
+            "moon": {
+              "graha": "moon",
+              "is_combust": false,
+              "sign": "Scorpio",
+              "sign_lord": "mars"
+            },
+            "rahu": {
+              "graha": "rahu",
+              "is_combust": false,
+              "sign": "Leo",
+              "sign_lord": "sun"
+            },
+            "saturn": {
+              "graha": "saturn",
+              "is_combust": true,
+              "sign": "Scorpio",
+              "sign_lord": "mars"
+            },
+            "sun": {
+              "graha": "sun",
+              "is_combust": false,
+              "sign": "Capricorn",
+              "sign_lord": "saturn"
+            },
+            "venus": {
+              "graha": "venus",
+              "is_combust": true,
+              "sign": "Pisces",
+              "sign_lord": "jupiter"
+            }
+          }
+        }
+      },
+      "shadvarga_own_sign": [
+        {
+          "charts_in_own_sign": [],
+          "graha": "sun",
+          "own_sign_count": 0
+        },
+        {
+          "charts_in_own_sign": [
+            "D2"
+          ],
+          "graha": "moon",
+          "own_sign_count": 1
+        },
+        {
+          "charts_in_own_sign": [
+            "D1",
+            "D30"
+          ],
+          "graha": "mars",
+          "own_sign_count": 2
+        },
+        {
+          "charts_in_own_sign": [
+            "D9"
+          ],
+          "graha": "mercury",
+          "own_sign_count": 1
+        },
+        {
+          "charts_in_own_sign": [
+            "D9"
+          ],
+          "graha": "jupiter",
+          "own_sign_count": 1
+        },
+        {
+          "charts_in_own_sign": [],
+          "graha": "venus",
+          "own_sign_count": 0
+        },
+        {
+          "charts_in_own_sign": [],
+          "graha": "saturn",
+          "own_sign_count": 0
+        },
+        {
+          "charts_in_own_sign": [],
+          "graha": "rahu",
+          "own_sign_count": 0
+        },
+        {
+          "charts_in_own_sign": [],
+          "graha": "ketu",
+          "own_sign_count": 0
+        }
+      ],
+      "vargottama": [
+        {
+          "point": "lagna",
+          "sign": "Gemini"
+        },
+        {
+          "point": "sun",
+          "sign": "Capricorn"
+        }
+      ],
+      "vimshopaka": [
+        {
+          "approximated": true,
+          "graha": "sun",
+          "score": 0.0
+        },
+        {
+          "approximated": true,
+          "graha": "moon",
+          "score": 2.0
+        },
+        {
+          "approximated": true,
+          "graha": "mars",
+          "score": 7.0
+        },
+        {
+          "approximated": true,
+          "graha": "mercury",
+          "score": 5.0
+        },
+        {
+          "approximated": true,
+          "graha": "jupiter",
+          "score": 5.0
+        },
+        {
+          "approximated": true,
+          "graha": "venus",
+          "score": 0.0
+        },
+        {
+          "approximated": true,
+          "graha": "saturn",
+          "score": 0.0
+        },
+        {
+          "approximated": true,
+          "graha": "rahu",
+          "score": 0.0
+        },
+        {
+          "approximated": true,
+          "graha": "ketu",
+          "score": 0.0
+        }
+      ]
+    }
+  },
+  "1990-01-15T12:00:00+00:00@24m": {
+    "domains_context": {
+      "forecasts": {
+        "career": {
+          "current_emphasis": {
+            "active_dasha_significator": true,
+            "approximated": true,
+            "dasha_levels": [
+              "antar"
+            ],
+            "matched_dasha_lords": [
+              "mercury"
+            ],
+            "note": "transit_severity = sign of a coarse vote-sum over domain-relevant transit signals; the signals are exact, the netting is an AlmaMesh heuristic (not a BPHS quantity).",
+            "rule": "dasha-lord karakatva (maha/antar/pratyantar) + slow-graha gochara over the domain bhavas (whole-sign from lagna) + Sade Sati relevance",
+            "transit_severity": "challenging",
+            "under_sade_sati": false
+          },
+          "domain": "career",
+          "houses": [
+            {
+              "house": 10,
+              "lord": "jupiter",
+              "lord_dignity": "neutral",
+              "lord_house": 1,
+              "lord_sign": "Gemini",
+              "rule": "career: 10th house of karma/profession",
+              "sign": "Pisces"
+            }
+          ],
+          "karakas": [
+            {
+              "dignity": "neutral",
+              "graha": "sun",
+              "house": 8,
+              "is_retrograde": false,
+              "rule": "Sun = karaka of authority & status",
+              "sign": "Capricorn"
+            },
+            {
+              "dignity": "neutral",
+              "graha": "saturn",
+              "house": 7,
+              "is_retrograde": false,
+              "rule": "Saturn = karaka of work, service & discipline",
+              "sign": "Sagittarius"
+            },
+            {
+              "dignity": "neutral",
+              "graha": "mercury",
+              "house": 7,
+              "is_retrograde": true,
+              "rule": "Mercury = karaka of commerce & skill",
+              "sign": "Sagittarius"
+            }
+          ],
+          "strength_summary": {
+            "approximated": true,
+            "band": "moderate",
+            "key_graha": "saturn",
+            "key_graha_meets_minimum": true,
+            "key_graha_rupas": 6.903508,
+            "note": "band = AlmaMesh heuristic over exact Shadbala Rupas + SAV bindus; inputs are BPHS-rigorous, the threshold mapping is a coarse synthesis.",
+            "sav_bindus": 27,
+            "sav_pct": 48.214286,
+            "shadbala_pct": 75.228064,
+            "strength_pct": 48.214286,
+            "strength_tier": "model"
+          },
+          "upcoming_windows": [
+            {
+              "date": "2026-10-31T05:58:13.713998Z",
+              "descriptor": "career.transit.jupiter.ingress.leo",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "jupiter"
+            },
+            {
+              "date": "2027-01-24T20:50:25.344201Z",
+              "descriptor": "career.transit.jupiter.ingress.cancer",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "jupiter"
+            },
+            {
+              "date": "2027-06-02T23:04:25.266583Z",
+              "descriptor": "career.transit.saturn.ingress.aries",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "saturn"
+            },
+            {
+              "date": "2027-06-25T23:14:39.808732Z",
+              "descriptor": "career.transit.jupiter.ingress.leo",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "jupiter"
+            },
+            {
+              "date": "2027-10-20T02:54:57.331732Z",
+              "descriptor": "career.transit.saturn.ingress.pisces",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "saturn"
+            },
+            {
+              "date": "2027-11-26T12:29:21.953436Z",
+              "descriptor": "career.transit.jupiter.ingress.virgo",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "jupiter"
+            },
+            {
+              "date": "2028-02-23T12:37:39.735091Z",
+              "descriptor": "career.transit.saturn.ingress.aries",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "saturn"
+            },
+            {
+              "date": "2028-02-28T14:45:33.672409Z",
+              "descriptor": "career.transit.jupiter.ingress.leo",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "jupiter"
+            }
+          ],
+          "varga": {
+            "chart": "D10",
+            "graha": "saturn",
+            "rule": "D10 Dasamsa governs career & public standing",
+            "same_sign_as_d1": false,
+            "sign": "Cancer",
+            "sign_lord": "moon",
+            "vargottama": false
+          }
+        },
+        "education": {
+          "current_emphasis": {
+            "active_dasha_significator": true,
+            "approximated": true,
+            "dasha_levels": [
+              "antar"
+            ],
+            "matched_dasha_lords": [
+              "mercury"
+            ],
+            "note": "transit_severity = sign of a coarse vote-sum over domain-relevant transit signals; the signals are exact, the netting is an AlmaMesh heuristic (not a BPHS quantity).",
+            "rule": "dasha-lord karakatva (maha/antar/pratyantar) + slow-graha gochara over the domain bhavas (whole-sign from lagna) + Sade Sati relevance",
+            "transit_severity": "neutral",
+            "under_sade_sati": false
+          },
+          "domain": "education",
+          "houses": [
+            {
+              "house": 4,
+              "lord": "mercury",
+              "lord_dignity": "neutral",
+              "lord_house": 7,
+              "lord_sign": "Sagittarius",
+              "rule": "education: 4th house of foundational schooling",
+              "sign": "Virgo"
+            },
+            {
+              "house": 5,
+              "lord": "venus",
+              "lord_dignity": "neutral",
+              "lord_house": 8,
+              "lord_sign": "Capricorn",
+              "rule": "education: 5th house of intelligence & learning",
+              "sign": "Libra"
+            }
+          ],
+          "karakas": [
+            {
+              "dignity": "neutral",
+              "graha": "mercury",
+              "house": 7,
+              "is_retrograde": true,
+              "rule": "Mercury = karaka of intellect & learning",
+              "sign": "Sagittarius"
+            },
+            {
+              "dignity": "neutral",
+              "graha": "jupiter",
+              "house": 1,
+              "is_retrograde": true,
+              "rule": "Jupiter = karaka of knowledge & teachers",
+              "sign": "Gemini"
+            }
+          ],
+          "strength_summary": {
+            "approximated": true,
+            "band": "strong",
+            "key_graha": "mercury",
+            "key_graha_meets_minimum": true,
+            "key_graha_rupas": 7.591796,
+            "note": "band = AlmaMesh heuristic over exact Shadbala Rupas + SAV bindus; inputs are BPHS-rigorous, the threshold mapping is a coarse synthesis.",
+            "sav_bindus": 66,
+            "sav_pct": 58.928571,
+            "shadbala_pct": 63.381689,
+            "strength_pct": 58.928571,
+            "strength_tier": "model"
+          },
+          "upcoming_windows": [
+            {
+              "date": "2026-10-31T05:58:13.713998Z",
+              "descriptor": "education.transit.jupiter.ingress.leo",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "jupiter"
+            },
+            {
+              "date": "2027-01-24T20:50:25.344201Z",
+              "descriptor": "education.transit.jupiter.ingress.cancer",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "jupiter"
+            },
+            {
+              "date": "2027-06-25T23:14:39.808732Z",
+              "descriptor": "education.transit.jupiter.ingress.leo",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "jupiter"
+            },
+            {
+              "date": "2027-11-26T12:29:21.953436Z",
+              "descriptor": "education.transit.jupiter.ingress.virgo",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "jupiter"
+            },
+            {
+              "date": "2028-02-28T14:45:33.672409Z",
+              "descriptor": "education.transit.jupiter.ingress.leo",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "jupiter"
+            }
+          ],
+          "varga": {
+            "chart": "D24",
+            "graha": "mercury",
+            "rule": "D24 Siddhamsa governs education & learning",
+            "same_sign_as_d1": false,
+            "sign": "Libra",
+            "sign_lord": "venus",
+            "vargottama": false
+          }
+        },
+        "family": {
+          "current_emphasis": {
+            "active_dasha_significator": true,
+            "approximated": true,
+            "dasha_levels": [
+              "antar",
+              "pratyantar"
+            ],
+            "matched_dasha_lords": [
+              "mercury",
+              "moon"
+            ],
+            "note": "transit_severity = sign of a coarse vote-sum over domain-relevant transit signals; the signals are exact, the netting is an AlmaMesh heuristic (not a BPHS quantity).",
+            "rule": "dasha-lord karakatva (maha/antar/pratyantar) + slow-graha gochara over the domain bhavas (whole-sign from lagna) + Sade Sati relevance",
+            "transit_severity": "supportive",
+            "under_sade_sati": false
+          },
+          "domain": "family",
+          "houses": [
+            {
+              "house": 2,
+              "lord": "moon",
+              "lord_dignity": "neutral",
+              "lord_house": 3,
+              "lord_sign": "Leo",
+              "rule": "family: 2nd house of kutumba (immediate family)",
+              "sign": "Cancer"
+            },
+            {
+              "house": 4,
+              "lord": "mercury",
+              "lord_dignity": "neutral",
+              "lord_house": 7,
+              "lord_sign": "Sagittarius",
+              "rule": "family: 4th house of mother & home",
+              "sign": "Virgo"
+            },
+            {
+              "house": 5,
+              "lord": "venus",
+              "lord_dignity": "neutral",
+              "lord_house": 8,
+              "lord_sign": "Capricorn",
+              "rule": "family: 5th house of progeny",
+              "sign": "Libra"
+            },
+            {
+              "house": 9,
+              "lord": "saturn",
+              "lord_dignity": "neutral",
+              "lord_house": 7,
+              "lord_sign": "Sagittarius",
+              "rule": "family: 9th house of father & lineage dharma",
+              "sign": "Aquarius"
+            }
+          ],
+          "karakas": [
+            {
+              "dignity": "neutral",
+              "graha": "jupiter",
+              "house": 1,
+              "is_retrograde": true,
+              "rule": "Jupiter = karaka of progeny & family lineage",
+              "sign": "Gemini"
+            }
+          ],
+          "strength_summary": {
+            "approximated": true,
+            "band": "strong",
+            "key_graha": "jupiter",
+            "key_graha_meets_minimum": true,
+            "key_graha_rupas": 9.784421,
+            "note": "band = AlmaMesh heuristic over exact Shadbala Rupas + SAV bindus; inputs are BPHS-rigorous, the threshold mapping is a coarse synthesis.",
+            "sav_bindus": 113,
+            "sav_pct": 50.446429,
+            "shadbala_pct": 80.21182,
+            "strength_pct": 50.446429,
+            "strength_tier": "model"
+          },
+          "upcoming_windows": [
+            {
+              "date": "2026-10-31T05:58:13.713998Z",
+              "descriptor": "family.transit.jupiter.ingress.leo",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "jupiter"
+            },
+            {
+              "date": "2027-01-24T20:50:25.344201Z",
+              "descriptor": "family.transit.jupiter.ingress.cancer",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "jupiter"
+            },
+            {
+              "date": "2027-06-02T23:04:25.266583Z",
+              "descriptor": "family.transit.saturn.ingress.aries",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "saturn"
+            },
+            {
+              "date": "2027-06-25T23:14:39.808732Z",
+              "descriptor": "family.transit.jupiter.ingress.leo",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "jupiter"
+            },
+            {
+              "date": "2027-10-20T02:54:57.331732Z",
+              "descriptor": "family.transit.saturn.ingress.pisces",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "saturn"
+            },
+            {
+              "date": "2027-11-12T21:05:00.089572Z",
+              "descriptor": "family.dasha.dasha.antar.mercury_to_ketu",
+              "kind": "dasha_change",
+              "severity": "neutral",
+              "source": "dasha",
+              "trigger": "ketu"
+            },
+            {
+              "date": "2027-11-26T12:29:21.953436Z",
+              "descriptor": "family.transit.jupiter.ingress.virgo",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "jupiter"
+            },
+            {
+              "date": "2028-02-23T12:37:39.735091Z",
+              "descriptor": "family.transit.saturn.ingress.aries",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "saturn"
+            },
+            {
+              "date": "2028-02-28T14:45:33.672409Z",
+              "descriptor": "family.transit.jupiter.ingress.leo",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "jupiter"
+            }
+          ],
+          "varga": {
+            "chart": "D12",
+            "graha": "jupiter",
+            "rule": "D12 Dwadasamsa governs parents & lineage",
+            "same_sign_as_d1": false,
+            "sign": "Virgo",
+            "sign_lord": "mercury",
+            "vargottama": false
+          }
+        },
+        "finances": {
+          "current_emphasis": {
+            "active_dasha_significator": true,
+            "approximated": true,
+            "dasha_levels": [
+              "pratyantar"
+            ],
+            "matched_dasha_lords": [
+              "moon"
+            ],
+            "note": "transit_severity = sign of a coarse vote-sum over domain-relevant transit signals; the signals are exact, the netting is an AlmaMesh heuristic (not a BPHS quantity).",
+            "rule": "dasha-lord karakatva (maha/antar/pratyantar) + slow-graha gochara over the domain bhavas (whole-sign from lagna) + Sade Sati relevance",
+            "transit_severity": "supportive",
+            "under_sade_sati": false
+          },
+          "domain": "finances",
+          "houses": [
+            {
+              "house": 2,
+              "lord": "moon",
+              "lord_dignity": "neutral",
+              "lord_house": 3,
+              "lord_sign": "Leo",
+              "rule": "finances: 2nd house of accumulated wealth (dhana)",
+              "sign": "Cancer"
+            },
+            {
+              "house": 11,
+              "lord": "mars",
+              "lord_dignity": "own",
+              "lord_house": 6,
+              "lord_sign": "Scorpio",
+              "rule": "finances: 11th house of gains (labha)",
+              "sign": "Aries"
+            }
+          ],
+          "karakas": [
+            {
+              "dignity": "neutral",
+              "graha": "jupiter",
+              "house": 1,
+              "is_retrograde": true,
+              "rule": "Jupiter = karaka of wealth & expansion",
+              "sign": "Gemini"
+            }
+          ],
+          "strength_summary": {
+            "approximated": true,
+            "band": "strong",
+            "key_graha": "jupiter",
+            "key_graha_meets_minimum": true,
+            "key_graha_rupas": 9.784421,
+            "note": "band = AlmaMesh heuristic over exact Shadbala Rupas + SAV bindus; inputs are BPHS-rigorous, the threshold mapping is a coarse synthesis.",
+            "sav_bindus": 57,
+            "sav_pct": 50.892857,
+            "shadbala_pct": 80.21182,
+            "strength_pct": 50.892857,
+            "strength_tier": "model"
+          },
+          "upcoming_windows": [
+            {
+              "date": "2026-10-31T05:58:13.713998Z",
+              "descriptor": "finances.transit.jupiter.ingress.leo",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "jupiter"
+            },
+            {
+              "date": "2027-01-24T20:50:25.344201Z",
+              "descriptor": "finances.transit.jupiter.ingress.cancer",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "jupiter"
+            },
+            {
+              "date": "2027-06-02T23:04:25.266583Z",
+              "descriptor": "finances.transit.saturn.ingress.aries",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "saturn"
+            },
+            {
+              "date": "2027-06-25T23:14:39.808732Z",
+              "descriptor": "finances.transit.jupiter.ingress.leo",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "jupiter"
+            },
+            {
+              "date": "2027-11-12T21:05:00.089572Z",
+              "descriptor": "finances.dasha.dasha.antar.mercury_to_ketu",
+              "kind": "dasha_change",
+              "severity": "neutral",
+              "source": "dasha",
+              "trigger": "ketu"
+            },
+            {
+              "date": "2027-11-26T12:29:21.953436Z",
+              "descriptor": "finances.transit.jupiter.ingress.virgo",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "jupiter"
+            },
+            {
+              "date": "2028-02-23T12:37:39.735091Z",
+              "descriptor": "finances.transit.saturn.ingress.aries",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "saturn"
+            },
+            {
+              "date": "2028-02-28T14:45:33.672409Z",
+              "descriptor": "finances.transit.jupiter.ingress.leo",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "jupiter"
+            }
+          ],
+          "varga": {
+            "chart": "D2",
+            "graha": "jupiter",
+            "rule": "D2 Hora governs wealth & prosperity",
+            "same_sign_as_d1": false,
+            "sign": "Leo",
+            "sign_lord": "sun",
+            "vargottama": false
+          }
+        },
+        "health": {
+          "current_emphasis": {
+            "active_dasha_significator": true,
+            "approximated": true,
+            "dasha_levels": [
+              "maha",
+              "antar"
+            ],
+            "matched_dasha_lords": [
+              "rahu",
+              "mercury"
+            ],
+            "note": "transit_severity = sign of a coarse vote-sum over domain-relevant transit signals; the signals are exact, the netting is an AlmaMesh heuristic (not a BPHS quantity).",
+            "rule": "dasha-lord karakatva (maha/antar/pratyantar) + slow-graha gochara over the domain bhavas (whole-sign from lagna) + Sade Sati relevance",
+            "transit_severity": "challenging",
+            "under_sade_sati": false
+          },
+          "domain": "health",
+          "houses": [
+            {
+              "house": 1,
+              "lord": "mercury",
+              "lord_dignity": "neutral",
+              "lord_house": 7,
+              "lord_sign": "Sagittarius",
+              "rule": "health: 1st house of body & vitality",
+              "sign": "Gemini"
+            },
+            {
+              "house": 6,
+              "lord": "mars",
+              "lord_dignity": "own",
+              "lord_house": 6,
+              "lord_sign": "Scorpio",
+              "rule": "health: 6th house of disease & recovery",
+              "sign": "Scorpio"
+            },
+            {
+              "house": 8,
+              "lord": "saturn",
+              "lord_dignity": "neutral",
+              "lord_house": 7,
+              "lord_sign": "Sagittarius",
+              "rule": "health: 8th house of chronic illness & longevity",
+              "sign": "Capricorn"
+            }
+          ],
+          "karakas": [
+            {
+              "dignity": "neutral",
+              "graha": "sun",
+              "house": 8,
+              "is_retrograde": false,
+              "rule": "Sun = karaka of vitality (aatma/prana)",
+              "sign": "Capricorn"
+            }
+          ],
+          "strength_summary": {
+            "approximated": true,
+            "band": "moderate",
+            "key_graha": "sun",
+            "key_graha_meets_minimum": false,
+            "key_graha_rupas": 4.866937,
+            "note": "band = AlmaMesh heuristic over exact Shadbala Rupas + SAV bindus; inputs are BPHS-rigorous, the threshold mapping is a coarse synthesis.",
+            "sav_bindus": 84,
+            "sav_pct": 50.0,
+            "shadbala_pct": 44.925574,
+            "strength_pct": 44.925574,
+            "strength_tier": "model"
+          },
+          "upcoming_windows": [
+            {
+              "date": "2026-10-31T05:58:13.713998Z",
+              "descriptor": "health.transit.jupiter.ingress.leo",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "jupiter"
+            },
+            {
+              "date": "2027-01-24T20:50:25.344201Z",
+              "descriptor": "health.transit.jupiter.ingress.cancer",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "jupiter"
+            },
+            {
+              "date": "2027-06-02T23:04:25.266583Z",
+              "descriptor": "health.transit.saturn.ingress.aries",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "saturn"
+            },
+            {
+              "date": "2027-06-25T23:14:39.808732Z",
+              "descriptor": "health.transit.jupiter.ingress.leo",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "jupiter"
+            },
+            {
+              "date": "2027-10-20T02:54:57.331732Z",
+              "descriptor": "health.transit.saturn.ingress.pisces",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "saturn"
+            },
+            {
+              "date": "2027-11-26T12:29:21.953436Z",
+              "descriptor": "health.transit.jupiter.ingress.virgo",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "jupiter"
+            },
+            {
+              "date": "2028-02-23T12:37:39.735091Z",
+              "descriptor": "health.transit.saturn.ingress.aries",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "saturn"
+            },
+            {
+              "date": "2028-02-28T14:45:33.672409Z",
+              "descriptor": "health.transit.jupiter.ingress.leo",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "jupiter"
+            }
+          ],
+          "varga": {
+            "chart": "D30",
+            "graha": "sun",
+            "rule": "D30 Trimsamsa governs misfortunes & health",
+            "same_sign_as_d1": false,
+            "sign": "Taurus",
+            "sign_lord": "venus",
+            "vargottama": false
+          }
+        },
+        "relationships": {
+          "current_emphasis": {
+            "active_dasha_significator": true,
+            "approximated": true,
+            "dasha_levels": [
+              "antar"
+            ],
+            "matched_dasha_lords": [
+              "mercury"
+            ],
+            "note": "transit_severity = sign of a coarse vote-sum over domain-relevant transit signals; the signals are exact, the netting is an AlmaMesh heuristic (not a BPHS quantity).",
+            "rule": "dasha-lord karakatva (maha/antar/pratyantar) + slow-graha gochara over the domain bhavas (whole-sign from lagna) + Sade Sati relevance",
+            "transit_severity": "neutral",
+            "under_sade_sati": false
+          },
+          "domain": "relationships",
+          "houses": [
+            {
+              "house": 7,
+              "lord": "jupiter",
+              "lord_dignity": "neutral",
+              "lord_house": 1,
+              "lord_sign": "Gemini",
+              "rule": "relationships: 7th house of marriage & partnership",
+              "sign": "Sagittarius"
+            }
+          ],
+          "karakas": [
+            {
+              "dignity": "neutral",
+              "graha": "venus",
+              "house": 8,
+              "is_retrograde": true,
+              "rule": "Venus = karaka of marriage & love",
+              "sign": "Capricorn"
+            },
+            {
+              "dignity": "neutral",
+              "graha": "jupiter",
+              "house": 1,
+              "is_retrograde": true,
+              "rule": "Jupiter = classical karaka of spouse/dharma (texts cite it for the husband; applied gender-neutrally \u2014 the engine takes no gender input)",
+              "sign": "Gemini"
+            }
+          ],
+          "strength_summary": {
+            "approximated": true,
+            "band": "moderate",
+            "key_graha": "venus",
+            "key_graha_meets_minimum": true,
+            "key_graha_rupas": 7.224748,
+            "note": "band = AlmaMesh heuristic over exact Shadbala Rupas + SAV bindus; inputs are BPHS-rigorous, the threshold mapping is a coarse synthesis.",
+            "sav_bindus": 21,
+            "sav_pct": 37.5,
+            "shadbala_pct": 72.543624,
+            "strength_pct": 37.5,
+            "strength_tier": "model"
+          },
+          "upcoming_windows": [
+            {
+              "date": "2026-10-31T05:58:13.713998Z",
+              "descriptor": "relationships.transit.jupiter.ingress.leo",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "jupiter"
+            },
+            {
+              "date": "2027-01-24T20:50:25.344201Z",
+              "descriptor": "relationships.transit.jupiter.ingress.cancer",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "jupiter"
+            },
+            {
+              "date": "2027-06-02T23:04:25.266583Z",
+              "descriptor": "relationships.transit.saturn.ingress.aries",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "saturn"
+            },
+            {
+              "date": "2027-06-25T23:14:39.808732Z",
+              "descriptor": "relationships.transit.jupiter.ingress.leo",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "jupiter"
+            },
+            {
+              "date": "2027-10-20T02:54:57.331732Z",
+              "descriptor": "relationships.transit.saturn.ingress.pisces",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "saturn"
+            },
+            {
+              "date": "2027-11-26T12:29:21.953436Z",
+              "descriptor": "relationships.transit.jupiter.ingress.virgo",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "jupiter"
+            },
+            {
+              "date": "2028-02-23T12:37:39.735091Z",
+              "descriptor": "relationships.transit.saturn.ingress.aries",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "saturn"
+            },
+            {
+              "date": "2028-02-28T14:45:33.672409Z",
+              "descriptor": "relationships.transit.jupiter.ingress.leo",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "jupiter"
+            }
+          ],
+          "varga": {
+            "chart": "D9",
+            "graha": "venus",
+            "rule": "D9 Navamsa governs spouse & marital dharma",
+            "same_sign_as_d1": false,
+            "sign": "Pisces",
+            "sign_lord": "jupiter",
+            "vargottama": false
+          }
+        },
+        "spiritual": {
+          "current_emphasis": {
+            "active_dasha_significator": false,
+            "approximated": true,
+            "dasha_levels": [],
+            "matched_dasha_lords": [],
+            "note": "transit_severity = sign of a coarse vote-sum over domain-relevant transit signals; the signals are exact, the netting is an AlmaMesh heuristic (not a BPHS quantity).",
+            "rule": "dasha-lord karakatva (maha/antar/pratyantar) + slow-graha gochara over the domain bhavas (whole-sign from lagna) + Sade Sati relevance",
+            "transit_severity": "challenging",
+            "under_sade_sati": false
+          },
+          "domain": "spiritual",
+          "houses": [
+            {
+              "house": 9,
+              "lord": "saturn",
+              "lord_dignity": "neutral",
+              "lord_house": 7,
+              "lord_sign": "Sagittarius",
+              "rule": "spiritual: 9th house of dharma & higher wisdom",
+              "sign": "Aquarius"
+            },
+            {
+              "house": 12,
+              "lord": "venus",
+              "lord_dignity": "neutral",
+              "lord_house": 8,
+              "lord_sign": "Capricorn",
+              "rule": "spiritual: 12th house of moksha & liberation",
+              "sign": "Taurus"
+            },
+            {
+              "house": 5,
+              "lord": "venus",
+              "lord_dignity": "neutral",
+              "lord_house": 8,
+              "lord_sign": "Capricorn",
+              "rule": "spiritual: 5th house of purva-punya & mantra",
+              "sign": "Libra"
+            }
+          ],
+          "karakas": [
+            {
+              "dignity": "neutral",
+              "graha": "jupiter",
+              "house": 1,
+              "is_retrograde": true,
+              "rule": "Jupiter = karaka of dharma & wisdom",
+              "sign": "Gemini"
+            },
+            {
+              "dignity": "neutral",
+              "graha": "ketu",
+              "house": 2,
+              "is_retrograde": true,
+              "rule": "Ketu = karaka of moksha & detachment",
+              "sign": "Cancer"
+            }
+          ],
+          "strength_summary": {
+            "approximated": true,
+            "band": "strong",
+            "key_graha": "jupiter",
+            "key_graha_meets_minimum": true,
+            "key_graha_rupas": 9.784421,
+            "note": "band = AlmaMesh heuristic over exact Shadbala Rupas + SAV bindus; inputs are BPHS-rigorous, the threshold mapping is a coarse synthesis.",
+            "sav_bindus": 84,
+            "sav_pct": 50.0,
+            "shadbala_pct": 80.21182,
+            "strength_pct": 50.0,
+            "strength_tier": "model"
+          },
+          "upcoming_windows": [
+            {
+              "date": "2026-10-31T05:58:13.713998Z",
+              "descriptor": "spiritual.transit.jupiter.ingress.leo",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "jupiter"
+            },
+            {
+              "date": "2027-01-24T20:50:25.344201Z",
+              "descriptor": "spiritual.transit.jupiter.ingress.cancer",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "jupiter"
+            },
+            {
+              "date": "2027-06-02T23:04:25.266583Z",
+              "descriptor": "spiritual.transit.saturn.ingress.aries",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "saturn"
+            },
+            {
+              "date": "2027-06-25T23:14:39.808732Z",
+              "descriptor": "spiritual.transit.jupiter.ingress.leo",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "jupiter"
+            },
+            {
+              "date": "2027-10-20T02:54:57.331732Z",
+              "descriptor": "spiritual.transit.saturn.ingress.pisces",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "saturn"
+            },
+            {
+              "date": "2027-11-12T21:05:00.089572Z",
+              "descriptor": "spiritual.dasha.dasha.antar.mercury_to_ketu",
+              "kind": "dasha_change",
+              "severity": "neutral",
+              "source": "dasha",
+              "trigger": "ketu"
+            },
+            {
+              "date": "2027-11-26T12:29:21.953436Z",
+              "descriptor": "spiritual.transit.jupiter.ingress.virgo",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "jupiter"
+            },
+            {
+              "date": "2028-02-23T12:37:39.735091Z",
+              "descriptor": "spiritual.transit.saturn.ingress.aries",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "saturn"
+            },
+            {
+              "date": "2028-02-28T14:45:33.672409Z",
+              "descriptor": "spiritual.transit.jupiter.ingress.leo",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "jupiter"
+            }
+          ],
+          "varga": {
+            "chart": "D20",
+            "graha": "jupiter",
+            "rule": "D20 Vimsamsa governs spiritual pursuits",
+            "same_sign_as_d1": false,
+            "sign": "Aquarius",
+            "sign_lord": "saturn",
+            "vargottama": false
+          }
+        }
+      },
+      "instant": "2026-06-09T12:00:00Z"
+    },
+    "strength_context": {
+      "ashtakavarga": {
+        "bhinna": {
+          "jupiter": {
+            "bindus": {
+              "Aquarius": 6,
+              "Aries": 6,
+              "Cancer": 3,
+              "Capricorn": 3,
+              "Gemini": 5,
+              "Leo": 4,
+              "Libra": 4,
+              "Pisces": 4,
+              "Sagittarius": 5,
+              "Scorpio": 5,
+              "Taurus": 4,
+              "Virgo": 7
+            },
+            "planet": "jupiter",
+            "total": 56
+          },
+          "mars": {
+            "bindus": {
+              "Aquarius": 2,
+              "Aries": 3,
+              "Cancer": 1,
+              "Capricorn": 1,
+              "Gemini": 6,
+              "Leo": 4,
+              "Libra": 4,
+              "Pisces": 4,
+              "Sagittarius": 3,
+              "Scorpio": 5,
+              "Taurus": 4,
+              "Virgo": 2
+            },
+            "planet": "mars",
+            "total": 39
+          },
+          "mercury": {
+            "bindus": {
+              "Aquarius": 3,
+              "Aries": 4,
+              "Cancer": 3,
+              "Capricorn": 5,
+              "Gemini": 5,
+              "Leo": 4,
+              "Libra": 2,
+              "Pisces": 4,
+              "Sagittarius": 4,
+              "Scorpio": 7,
+              "Taurus": 6,
+              "Virgo": 7
+            },
+            "planet": "mercury",
+            "total": 54
+          },
+          "moon": {
+            "bindus": {
+              "Aquarius": 3,
+              "Aries": 6,
+              "Cancer": 5,
+              "Capricorn": 3,
+              "Gemini": 4,
+              "Leo": 4,
+              "Libra": 5,
+              "Pisces": 6,
+              "Sagittarius": 3,
+              "Scorpio": 3,
+              "Taurus": 3,
+              "Virgo": 4
+            },
+            "planet": "moon",
+            "total": 49
+          },
+          "saturn": {
+            "bindus": {
+              "Aquarius": 2,
+              "Aries": 5,
+              "Cancer": 2,
+              "Capricorn": 3,
+              "Gemini": 3,
+              "Leo": 4,
+              "Libra": 6,
+              "Pisces": 2,
+              "Sagittarius": 1,
+              "Scorpio": 5,
+              "Taurus": 3,
+              "Virgo": 3
+            },
+            "planet": "saturn",
+            "total": 39
+          },
+          "sun": {
+            "bindus": {
+              "Aquarius": 4,
+              "Aries": 4,
+              "Cancer": 4,
+              "Capricorn": 3,
+              "Gemini": 4,
+              "Leo": 5,
+              "Libra": 5,
+              "Pisces": 2,
+              "Sagittarius": 3,
+              "Scorpio": 5,
+              "Taurus": 4,
+              "Virgo": 5
+            },
+            "planet": "sun",
+            "total": 48
+          },
+          "venus": {
+            "bindus": {
+              "Aquarius": 5,
+              "Aries": 7,
+              "Cancer": 4,
+              "Capricorn": 4,
+              "Gemini": 2,
+              "Leo": 6,
+              "Libra": 7,
+              "Pisces": 5,
+              "Sagittarius": 2,
+              "Scorpio": 3,
+              "Taurus": 2,
+              "Virgo": 5
+            },
+            "planet": "venus",
+            "total": 52
+          }
+        },
+        "sarva": {
+          "bindus": {
+            "Aquarius": 25,
+            "Aries": 35,
+            "Cancer": 22,
+            "Capricorn": 22,
+            "Gemini": 29,
+            "Leo": 31,
+            "Libra": 33,
+            "Pisces": 27,
+            "Sagittarius": 21,
+            "Scorpio": 33,
+            "Taurus": 26,
+            "Virgo": 33
+          },
+          "total": 337
+        }
+      },
+      "shadbala": {
+        "planets": {
+          "jupiter": {
+            "cheshta": {
+              "approximated": false,
+              "citation": "BPHS Shadbala Adhyaya \u2014 Cheshtabala (motional state from true speed).",
+              "note": null,
+              "virupas": 60.0
+            },
+            "dig": {
+              "approximated": false,
+              "citation": "BPHS Shadbala Adhyaya \u2014 Digbala (linear taper, 60 Virupas at strong cusp).",
+              "note": null,
+              "virupas": 53.610181
+            },
+            "drik": {
+              "approximated": false,
+              "citation": "BPHS Shadbala Adhyaya \u2014 Drikbala (benefic - malefic drishti / 4).",
+              "note": null,
+              "virupas": -22.828171
+            },
+            "kala": {
+              "abda": {
+                "approximated": false,
+                "citation": "BPHS Kalabala \u2014 Abdabala (year-lord, 15 Virupas).",
+                "note": null,
+                "virupas": 0.0
+              },
+              "ayana": {
+                "approximated": false,
+                "citation": "BPHS Kalabala \u2014 Ayanabala (declination-driven, 60 Virupas range).",
+                "note": null,
+                "virupas": 59.928174
+              },
+              "hora": {
+                "approximated": false,
+                "citation": "BPHS Kalabala \u2014 Horabala (hora-lord from sunrise, 60 Virupas).",
+                "note": null,
+                "virupas": 0.0
+              },
+              "masa": {
+                "approximated": false,
+                "citation": "BPHS Kalabala \u2014 Masabala (month-lord, 30 Virupas).",
+                "note": null,
+                "virupas": 0.0
+              },
+              "nathonnatha": {
+                "approximated": false,
+                "citation": "BPHS Kalabala \u2014 Nathonnatha (diurnal/nocturnal, 60 at peak).",
+                "note": null,
+                "virupas": 58.474915
+              },
+              "paksha": {
+                "approximated": false,
+                "citation": "BPHS Kalabala \u2014 Pakshabala (lunar phase; Moon doubled).",
+                "note": null,
+                "virupas": 48.294877
+              },
+              "total_virupas": 226.697967,
+              "tribhaga": {
+                "approximated": false,
+                "citation": "BPHS Kalabala \u2014 Tribhagabala (thirds of day/night; Jupiter always).",
+                "note": null,
+                "virupas": 60.0
+              },
+              "vara": {
+                "approximated": false,
+                "citation": "BPHS Kalabala \u2014 Varabala (weekday-lord, 45 Virupas).",
+                "note": null,
+                "virupas": 0.0
+              },
+              "yuddha": {
+                "approximated": true,
+                "citation": "BPHS Kalabala \u2014 Yuddhabala (planetary-war adjustment).",
+                "note": "War-outcome strength transfer not modelled; 0 Virupas pending a rigorous war model.",
+                "virupas": 0.0
+              }
+            },
+            "meets_minimum": true,
+            "naisargika": {
+              "approximated": false,
+              "citation": "BPHS Shadbala Adhyaya \u2014 Naisargikabala (k/7 of 60 Virupas).",
+              "note": null,
+              "virupas": 34.285714
+            },
+            "planet": "jupiter",
+            "required_rupas": 6.5,
+            "sthana": {
+              "drekkana": {
+                "approximated": false,
+                "citation": "BPHS Sthanabala \u2014 Drekkanabala (gender decanate, 15 Virupas).",
+                "note": null,
+                "virupas": 15.0
+              },
+              "kendradi": {
+                "approximated": false,
+                "citation": "BPHS Sthanabala \u2014 Kendradibala (kendra 60 / panaphara 30 / apoklima 15).",
+                "note": null,
+                "virupas": 60.0
+              },
+              "ojayugma": {
+                "approximated": false,
+                "citation": "BPHS Sthanabala \u2014 Ojayugmabala (odd/even rasi + navamsa, 15 each).",
+                "note": null,
+                "virupas": 30.0
+              },
+              "saptavargaja": {
+                "approximated": false,
+                "citation": "BPHS Sthanabala \u2014 Saptavargajabala (dignity over 7 vargas).",
+                "note": null,
+                "virupas": 78.75
+              },
+              "total_virupas": 235.299557,
+              "uccha": {
+                "approximated": false,
+                "citation": "BPHS Sthanabala \u2014 Uchchabala (60*(180-|d|)/180).",
+                "note": null,
+                "virupas": 51.549557
+              }
+            },
+            "total_rupas": 9.784421,
+            "total_virupas": 587.065249
+          },
+          "mars": {
+            "cheshta": {
+              "approximated": false,
+              "citation": "BPHS Shadbala Adhyaya \u2014 Cheshtabala (motional state from true speed).",
+              "note": null,
+              "virupas": 30.0
+            },
+            "dig": {
+              "approximated": false,
+              "citation": "BPHS Shadbala Adhyaya \u2014 Digbala (linear taper, 60 Virupas at strong cusp).",
+              "note": null,
+              "virupas": 19.124524
+            },
+            "drik": {
+              "approximated": false,
+              "citation": "BPHS Shadbala Adhyaya \u2014 Drikbala (benefic - malefic drishti / 4).",
+              "note": null,
+              "virupas": 12.421448
+            },
+            "kala": {
+              "abda": {
+                "approximated": false,
+                "citation": "BPHS Kalabala \u2014 Abdabala (year-lord, 15 Virupas).",
+                "note": null,
+                "virupas": 0.0
+              },
+              "ayana": {
+                "approximated": false,
+                "citation": "BPHS Kalabala \u2014 Ayanabala (declination-driven, 60 Virupas range).",
+                "note": null,
+                "virupas": 0.507838
+              },
+              "hora": {
+                "approximated": false,
+                "citation": "BPHS Kalabala \u2014 Horabala (hora-lord from sunrise, 60 Virupas).",
+                "note": null,
+                "virupas": 60.0
+              },
+              "masa": {
+                "approximated": false,
+                "citation": "BPHS Kalabala \u2014 Masabala (month-lord, 30 Virupas).",
+                "note": null,
+                "virupas": 0.0
+              },
+              "nathonnatha": {
+                "approximated": false,
+                "citation": "BPHS Kalabala \u2014 Nathonnatha (diurnal/nocturnal, 60 at peak).",
+                "note": null,
+                "virupas": 1.525085
+              },
+              "paksha": {
+                "approximated": false,
+                "citation": "BPHS Kalabala \u2014 Pakshabala (lunar phase; Moon doubled).",
+                "note": null,
+                "virupas": 11.705123
+              },
+              "total_virupas": 73.738045,
+              "tribhaga": {
+                "approximated": false,
+                "citation": "BPHS Kalabala \u2014 Tribhagabala (thirds of day/night; Jupiter always).",
+                "note": null,
+                "virupas": 0.0
+              },
+              "vara": {
+                "approximated": false,
+                "citation": "BPHS Kalabala \u2014 Varabala (weekday-lord, 45 Virupas).",
+                "note": null,
+                "virupas": 0.0
+              },
+              "yuddha": {
+                "approximated": true,
+                "citation": "BPHS Kalabala \u2014 Yuddhabala (planetary-war adjustment).",
+                "note": "War-outcome strength transfer not modelled; 0 Virupas pending a rigorous war model.",
+                "virupas": 0.0
+              }
+            },
+            "meets_minimum": true,
+            "naisargika": {
+              "approximated": false,
+              "citation": "BPHS Shadbala Adhyaya \u2014 Naisargikabala (k/7 of 60 Virupas).",
+              "note": null,
+              "virupas": 17.142857
+            },
+            "planet": "mars",
+            "required_rupas": 5.0,
+            "sthana": {
+              "drekkana": {
+                "approximated": false,
+                "citation": "BPHS Sthanabala \u2014 Drekkanabala (gender decanate, 15 Virupas).",
+                "note": null,
+                "virupas": 0.0
+              },
+              "kendradi": {
+                "approximated": false,
+                "citation": "BPHS Sthanabala \u2014 Kendradibala (kendra 60 / panaphara 30 / apoklima 15).",
+                "note": null,
+                "virupas": 15.0
+              },
+              "ojayugma": {
+                "approximated": false,
+                "citation": "BPHS Sthanabala \u2014 Ojayugmabala (odd/even rasi + navamsa, 15 each).",
+                "note": null,
+                "virupas": 15.0
+              },
+              "saptavargaja": {
+                "approximated": false,
+                "citation": "BPHS Sthanabala \u2014 Saptavargajabala (dignity over 7 vargas).",
+                "note": null,
+                "virupas": 131.25
+              },
+              "total_virupas": 200.647233,
+              "uccha": {
+                "approximated": false,
+                "citation": "BPHS Sthanabala \u2014 Uchchabala (60*(180-|d|)/180).",
+                "note": null,
+                "virupas": 39.397233
+              }
+            },
+            "total_rupas": 5.884568,
+            "total_virupas": 353.074108
+          },
+          "mercury": {
+            "cheshta": {
+              "approximated": false,
+              "citation": "BPHS Shadbala Adhyaya \u2014 Cheshtabala (motional state from true speed).",
+              "note": null,
+              "virupas": 60.0
+            },
+            "dig": {
+              "approximated": false,
+              "citation": "BPHS Shadbala Adhyaya \u2014 Digbala (linear taper, 60 Virupas at strong cusp).",
+              "note": null,
+              "virupas": 3.730409
+            },
+            "drik": {
+              "approximated": false,
+              "citation": "BPHS Shadbala Adhyaya \u2014 Drikbala (benefic - malefic drishti / 4).",
+              "note": null,
+              "virupas": 11.780486
+            },
+            "kala": {
+              "abda": {
+                "approximated": false,
+                "citation": "BPHS Kalabala \u2014 Abdabala (year-lord, 15 Virupas).",
+                "note": null,
+                "virupas": 0.0
+              },
+              "ayana": {
+                "approximated": false,
+                "citation": "BPHS Kalabala \u2014 Ayanabala (declination-driven, 60 Virupas range).",
+                "note": null,
+                "virupas": 59.363315
+              },
+              "hora": {
+                "approximated": false,
+                "citation": "BPHS Kalabala \u2014 Horabala (hora-lord from sunrise, 60 Virupas).",
+                "note": null,
+                "virupas": 0.0
+              },
+              "masa": {
+                "approximated": false,
+                "citation": "BPHS Kalabala \u2014 Masabala (month-lord, 30 Virupas).",
+                "note": null,
+                "virupas": 0.0
+              },
+              "nathonnatha": {
+                "approximated": false,
+                "citation": "BPHS Kalabala \u2014 Nathonnatha (diurnal/nocturnal, 60 at peak).",
+                "note": null,
+                "virupas": 60.0
+              },
+              "paksha": {
+                "approximated": false,
+                "citation": "BPHS Kalabala \u2014 Pakshabala (lunar phase; Moon doubled).",
+                "note": null,
+                "virupas": 48.294877
+              },
+              "total_virupas": 167.658192,
+              "tribhaga": {
+                "approximated": false,
+                "citation": "BPHS Kalabala \u2014 Tribhagabala (thirds of day/night; Jupiter always).",
+                "note": null,
+                "virupas": 0.0
+              },
+              "vara": {
+                "approximated": false,
+                "citation": "BPHS Kalabala \u2014 Varabala (weekday-lord, 45 Virupas).",
+                "note": null,
+                "virupas": 0.0
+              },
+              "yuddha": {
+                "approximated": true,
+                "citation": "BPHS Kalabala \u2014 Yuddhabala (planetary-war adjustment).",
+                "note": "War-outcome strength transfer not modelled; 0 Virupas pending a rigorous war model.",
+                "virupas": 0.0
+              }
+            },
+            "meets_minimum": true,
+            "naisargika": {
+              "approximated": false,
+              "citation": "BPHS Shadbala Adhyaya \u2014 Naisargikabala (k/7 of 60 Virupas).",
+              "note": null,
+              "virupas": 25.714286
+            },
+            "planet": "mercury",
+            "required_rupas": 7.0,
+            "sthana": {
+              "drekkana": {
+                "approximated": false,
+                "citation": "BPHS Sthanabala \u2014 Drekkanabala (gender decanate, 15 Virupas).",
+                "note": null,
+                "virupas": 15.0
+              },
+              "kendradi": {
+                "approximated": false,
+                "citation": "BPHS Sthanabala \u2014 Kendradibala (kendra 60 / panaphara 30 / apoklima 15).",
+                "note": null,
+                "virupas": 60.0
+              },
+              "ojayugma": {
+                "approximated": false,
+                "citation": "BPHS Sthanabala \u2014 Ojayugmabala (odd/even rasi + navamsa, 15 each).",
+                "note": null,
+                "virupas": 15.0
+              },
+              "saptavargaja": {
+                "approximated": false,
+                "citation": "BPHS Sthanabala \u2014 Saptavargajabala (dignity over 7 vargas).",
+                "note": null,
+                "virupas": 67.5
+              },
+              "total_virupas": 186.624367,
+              "uccha": {
+                "approximated": false,
+                "citation": "BPHS Sthanabala \u2014 Uchchabala (60*(180-|d|)/180).",
+                "note": null,
+                "virupas": 29.124367
+              }
+            },
+            "total_rupas": 7.591796,
+            "total_virupas": 455.507739
+          },
+          "moon": {
+            "cheshta": {
+              "approximated": false,
+              "citation": "BPHS Shadbala Adhyaya \u2014 Cheshtabala (motional state from true speed).",
+              "note": null,
+              "virupas": 60.0
+            },
+            "dig": {
+              "approximated": false,
+              "citation": "BPHS Shadbala Adhyaya \u2014 Digbala (linear taper, 60 Virupas at strong cusp).",
+              "note": null,
+              "virupas": 48.321859
+            },
+            "drik": {
+              "approximated": false,
+              "citation": "BPHS Shadbala Adhyaya \u2014 Drikbala (benefic - malefic drishti / 4).",
+              "note": null,
+              "virupas": -22.410675
+            },
+            "kala": {
+              "abda": {
+                "approximated": false,
+                "citation": "BPHS Kalabala \u2014 Abdabala (year-lord, 15 Virupas).",
+                "note": null,
+                "virupas": 0.0
+              },
+              "ayana": {
+                "approximated": false,
+                "citation": "BPHS Kalabala \u2014 Ayanabala (declination-driven, 60 Virupas range).",
+                "note": null,
+                "virupas": 23.682687
+              },
+              "hora": {
+                "approximated": false,
+                "citation": "BPHS Kalabala \u2014 Horabala (hora-lord from sunrise, 60 Virupas).",
+                "note": null,
+                "virupas": 0.0
+              },
+              "masa": {
+                "approximated": false,
+                "citation": "BPHS Kalabala \u2014 Masabala (month-lord, 30 Virupas).",
+                "note": null,
+                "virupas": 0.0
+              },
+              "nathonnatha": {
+                "approximated": false,
+                "citation": "BPHS Kalabala \u2014 Nathonnatha (diurnal/nocturnal, 60 at peak).",
+                "note": null,
+                "virupas": 1.525085
+              },
+              "paksha": {
+                "approximated": false,
+                "citation": "BPHS Kalabala \u2014 Pakshabala (lunar phase; Moon doubled).",
+                "note": null,
+                "virupas": 60.0
+              },
+              "total_virupas": 130.207772,
+              "tribhaga": {
+                "approximated": false,
+                "citation": "BPHS Kalabala \u2014 Tribhagabala (thirds of day/night; Jupiter always).",
+                "note": null,
+                "virupas": 0.0
+              },
+              "vara": {
+                "approximated": false,
+                "citation": "BPHS Kalabala \u2014 Varabala (weekday-lord, 45 Virupas).",
+                "note": null,
+                "virupas": 45.0
+              },
+              "yuddha": {
+                "approximated": true,
+                "citation": "BPHS Kalabala \u2014 Yuddhabala (planetary-war adjustment).",
+                "note": "War-outcome strength transfer not modelled; 0 Virupas pending a rigorous war model.",
+                "virupas": 0.0
+              }
+            },
+            "meets_minimum": true,
+            "naisargika": {
+              "approximated": false,
+              "citation": "BPHS Shadbala Adhyaya \u2014 Naisargikabala (k/7 of 60 Virupas).",
+              "note": null,
+              "virupas": 51.428571
+            },
+            "planet": "moon",
+            "required_rupas": 6.0,
+            "sthana": {
+              "drekkana": {
+                "approximated": false,
+                "citation": "BPHS Sthanabala \u2014 Drekkanabala (gender decanate, 15 Virupas).",
+                "note": null,
+                "virupas": 15.0
+              },
+              "kendradi": {
+                "approximated": false,
+                "citation": "BPHS Sthanabala \u2014 Kendradibala (kendra 60 / panaphara 30 / apoklima 15).",
+                "note": null,
+                "virupas": 15.0
+              },
+              "ojayugma": {
+                "approximated": false,
+                "citation": "BPHS Sthanabala \u2014 Ojayugmabala (odd/even rasi + navamsa, 15 each).",
+                "note": null,
+                "virupas": 15.0
+              },
+              "saptavargaja": {
+                "approximated": false,
+                "citation": "BPHS Sthanabala \u2014 Saptavargajabala (dignity over 7 vargas).",
+                "note": null,
+                "virupas": 90.0
+              },
+              "total_virupas": 158.072099,
+              "uccha": {
+                "approximated": false,
+                "citation": "BPHS Sthanabala \u2014 Uchchabala (60*(180-|d|)/180).",
+                "note": null,
+                "virupas": 23.072099
+              }
+            },
+            "total_rupas": 7.09366,
+            "total_virupas": 425.619626
+          },
+          "saturn": {
+            "cheshta": {
+              "approximated": false,
+              "citation": "BPHS Shadbala Adhyaya \u2014 Cheshtabala (motional state from true speed).",
+              "note": null,
+              "virupas": 15.0
+            },
+            "dig": {
+              "approximated": false,
+              "citation": "BPHS Shadbala Adhyaya \u2014 Digbala (linear taper, 60 Virupas at strong cusp).",
+              "note": null,
+              "virupas": 58.259652
+            },
+            "drik": {
+              "approximated": false,
+              "citation": "BPHS Shadbala Adhyaya \u2014 Drikbala (benefic - malefic drishti / 4).",
+              "note": null,
+              "virupas": 8.049122
+            },
+            "kala": {
+              "abda": {
+                "approximated": false,
+                "citation": "BPHS Kalabala \u2014 Abdabala (year-lord, 15 Virupas).",
+                "note": null,
+                "virupas": 15.0
+              },
+              "ayana": {
+                "approximated": false,
+                "citation": "BPHS Kalabala \u2014 Ayanabala (declination-driven, 60 Virupas range).",
+                "note": null,
+                "virupas": 58.549095
+              },
+              "hora": {
+                "approximated": false,
+                "citation": "BPHS Kalabala \u2014 Horabala (hora-lord from sunrise, 60 Virupas).",
+                "note": null,
+                "virupas": 0.0
+              },
+              "masa": {
+                "approximated": false,
+                "citation": "BPHS Kalabala \u2014 Masabala (month-lord, 30 Virupas).",
+                "note": null,
+                "virupas": 0.0
+              },
+              "nathonnatha": {
+                "approximated": false,
+                "citation": "BPHS Kalabala \u2014 Nathonnatha (diurnal/nocturnal, 60 at peak).",
+                "note": null,
+                "virupas": 1.525085
+              },
+              "paksha": {
+                "approximated": false,
+                "citation": "BPHS Kalabala \u2014 Pakshabala (lunar phase; Moon doubled).",
+                "note": null,
+                "virupas": 11.705123
+              },
+              "total_virupas": 146.779303,
+              "tribhaga": {
+                "approximated": false,
+                "citation": "BPHS Kalabala \u2014 Tribhagabala (thirds of day/night; Jupiter always).",
+                "note": null,
+                "virupas": 60.0
+              },
+              "vara": {
+                "approximated": false,
+                "citation": "BPHS Kalabala \u2014 Varabala (weekday-lord, 45 Virupas).",
+                "note": null,
+                "virupas": 0.0
+              },
+              "yuddha": {
+                "approximated": true,
+                "citation": "BPHS Kalabala \u2014 Yuddhabala (planetary-war adjustment).",
+                "note": "War-outcome strength transfer not modelled; 0 Virupas pending a rigorous war model.",
+                "virupas": 0.0
+              }
+            },
+            "meets_minimum": true,
+            "naisargika": {
+              "approximated": false,
+              "citation": "BPHS Shadbala Adhyaya \u2014 Naisargikabala (k/7 of 60 Virupas).",
+              "note": null,
+              "virupas": 8.571429
+            },
+            "planet": "saturn",
+            "required_rupas": 5.0,
+            "sthana": {
+              "drekkana": {
+                "approximated": false,
+                "citation": "BPHS Sthanabala \u2014 Drekkanabala (gender decanate, 15 Virupas).",
+                "note": null,
+                "virupas": 0.0
+              },
+              "kendradi": {
+                "approximated": false,
+                "citation": "BPHS Sthanabala \u2014 Kendradibala (kendra 60 / panaphara 30 / apoklima 15).",
+                "note": null,
+                "virupas": 60.0
+              },
+              "ojayugma": {
+                "approximated": false,
+                "citation": "BPHS Sthanabala \u2014 Ojayugmabala (odd/even rasi + navamsa, 15 each).",
+                "note": null,
+                "virupas": 15.0
+              },
+              "saptavargaja": {
+                "approximated": false,
+                "citation": "BPHS Sthanabala \u2014 Saptavargajabala (dignity over 7 vargas).",
+                "note": null,
+                "virupas": 63.75
+              },
+              "total_virupas": 177.550973,
+              "uccha": {
+                "approximated": false,
+                "citation": "BPHS Sthanabala \u2014 Uchchabala (60*(180-|d|)/180).",
+                "note": null,
+                "virupas": 38.800973
+              }
+            },
+            "total_rupas": 6.903508,
+            "total_virupas": 414.210478
+          },
+          "sun": {
+            "cheshta": {
+              "approximated": false,
+              "citation": "BPHS Shadbala Adhyaya \u2014 Cheshtabala (motional state from true speed).",
+              "note": null,
+              "virupas": 2.98721
+            },
+            "dig": {
+              "approximated": false,
+              "citation": "BPHS Shadbala Adhyaya \u2014 Digbala (linear taper, 60 Virupas at strong cusp).",
+              "note": null,
+              "virupas": 30.847578
+            },
+            "drik": {
+              "approximated": false,
+              "citation": "BPHS Shadbala Adhyaya \u2014 Drikbala (benefic - malefic drishti / 4).",
+              "note": null,
+              "virupas": 4.143905
+            },
+            "kala": {
+              "abda": {
+                "approximated": false,
+                "citation": "BPHS Kalabala \u2014 Abdabala (year-lord, 15 Virupas).",
+                "note": null,
+                "virupas": 0.0
+              },
+              "ayana": {
+                "approximated": false,
+                "citation": "BPHS Kalabala \u2014 Ayanabala (declination-driven, 60 Virupas range).",
+                "note": null,
+                "virupas": 2.98721
+              },
+              "hora": {
+                "approximated": false,
+                "citation": "BPHS Kalabala \u2014 Horabala (hora-lord from sunrise, 60 Virupas).",
+                "note": null,
+                "virupas": 0.0
+              },
+              "masa": {
+                "approximated": false,
+                "citation": "BPHS Kalabala \u2014 Masabala (month-lord, 30 Virupas).",
+                "note": null,
+                "virupas": 0.0
+              },
+              "nathonnatha": {
+                "approximated": false,
+                "citation": "BPHS Kalabala \u2014 Nathonnatha (diurnal/nocturnal, 60 at peak).",
+                "note": null,
+                "virupas": 58.474915
+              },
+              "paksha": {
+                "approximated": false,
+                "citation": "BPHS Kalabala \u2014 Pakshabala (lunar phase; Moon doubled).",
+                "note": null,
+                "virupas": 11.705123
+              },
+              "total_virupas": 73.167248,
+              "tribhaga": {
+                "approximated": false,
+                "citation": "BPHS Kalabala \u2014 Tribhagabala (thirds of day/night; Jupiter always).",
+                "note": null,
+                "virupas": 0.0
+              },
+              "vara": {
+                "approximated": false,
+                "citation": "BPHS Kalabala \u2014 Varabala (weekday-lord, 45 Virupas).",
+                "note": null,
+                "virupas": 0.0
+              },
+              "yuddha": {
+                "approximated": true,
+                "citation": "BPHS Kalabala \u2014 Yuddhabala (planetary-war adjustment).",
+                "note": "War-outcome strength transfer not modelled; 0 Virupas pending a rigorous war model.",
+                "virupas": 0.0
+              }
+            },
+            "meets_minimum": false,
+            "naisargika": {
+              "approximated": false,
+              "citation": "BPHS Shadbala Adhyaya \u2014 Naisargikabala (k/7 of 60 Virupas).",
+              "note": null,
+              "virupas": 60.0
+            },
+            "planet": "sun",
+            "required_rupas": 6.5,
+            "sthana": {
+              "drekkana": {
+                "approximated": false,
+                "citation": "BPHS Sthanabala \u2014 Drekkanabala (gender decanate, 15 Virupas).",
+                "note": null,
+                "virupas": 15.0
+              },
+              "kendradi": {
+                "approximated": false,
+                "citation": "BPHS Sthanabala \u2014 Kendradibala (kendra 60 / panaphara 30 / apoklima 15).",
+                "note": null,
+                "virupas": 30.0
+              },
+              "ojayugma": {
+                "approximated": false,
+                "citation": "BPHS Sthanabala \u2014 Ojayugmabala (odd/even rasi + navamsa, 15 each).",
+                "note": null,
+                "virupas": 0.0
+              },
+              "saptavargaja": {
+                "approximated": false,
+                "citation": "BPHS Sthanabala \u2014 Saptavargajabala (dignity over 7 vargas).",
+                "note": null,
+                "virupas": 48.75
+              },
+              "total_virupas": 120.870287,
+              "uccha": {
+                "approximated": false,
+                "citation": "BPHS Sthanabala \u2014 Uchchabala (60*(180-|d|)/180).",
+                "note": null,
+                "virupas": 27.120287
+              }
+            },
+            "total_rupas": 4.866937,
+            "total_virupas": 292.016229
+          },
+          "venus": {
+            "cheshta": {
+              "approximated": false,
+              "citation": "BPHS Shadbala Adhyaya \u2014 Cheshtabala (motional state from true speed).",
+              "note": null,
+              "virupas": 60.0
+            },
+            "dig": {
+              "approximated": false,
+              "citation": "BPHS Shadbala Adhyaya \u2014 Digbala (linear taper, 60 Virupas at strong cusp).",
+              "note": null,
+              "virupas": 27.283265
+            },
+            "drik": {
+              "approximated": false,
+              "citation": "BPHS Shadbala Adhyaya \u2014 Drikbala (benefic - malefic drishti / 4).",
+              "note": null,
+              "virupas": 1.34017
+            },
+            "kala": {
+              "abda": {
+                "approximated": false,
+                "citation": "BPHS Kalabala \u2014 Abdabala (year-lord, 15 Virupas).",
+                "note": null,
+                "virupas": 0.0
+              },
+              "ayana": {
+                "approximated": false,
+                "citation": "BPHS Kalabala \u2014 Ayanabala (declination-driven, 60 Virupas range).",
+                "note": null,
+                "virupas": 4.411748
+              },
+              "hora": {
+                "approximated": false,
+                "citation": "BPHS Kalabala \u2014 Horabala (hora-lord from sunrise, 60 Virupas).",
+                "note": null,
+                "virupas": 0.0
+              },
+              "masa": {
+                "approximated": false,
+                "citation": "BPHS Kalabala \u2014 Masabala (month-lord, 30 Virupas).",
+                "note": null,
+                "virupas": 30.0
+              },
+              "nathonnatha": {
+                "approximated": false,
+                "citation": "BPHS Kalabala \u2014 Nathonnatha (diurnal/nocturnal, 60 at peak).",
+                "note": null,
+                "virupas": 58.474915
+              },
+              "paksha": {
+                "approximated": false,
+                "citation": "BPHS Kalabala \u2014 Pakshabala (lunar phase; Moon doubled).",
+                "note": null,
+                "virupas": 48.294877
+              },
+              "total_virupas": 141.181541,
+              "tribhaga": {
+                "approximated": false,
+                "citation": "BPHS Kalabala \u2014 Tribhagabala (thirds of day/night; Jupiter always).",
+                "note": null,
+                "virupas": 0.0
+              },
+              "vara": {
+                "approximated": false,
+                "citation": "BPHS Kalabala \u2014 Varabala (weekday-lord, 45 Virupas).",
+                "note": null,
+                "virupas": 0.0
+              },
+              "yuddha": {
+                "approximated": true,
+                "citation": "BPHS Kalabala \u2014 Yuddhabala (planetary-war adjustment).",
+                "note": "War-outcome strength transfer not modelled; 0 Virupas pending a rigorous war model.",
+                "virupas": 0.0
+              }
+            },
+            "meets_minimum": true,
+            "naisargika": {
+              "approximated": false,
+              "citation": "BPHS Shadbala Adhyaya \u2014 Naisargikabala (k/7 of 60 Virupas).",
+              "note": null,
+              "virupas": 42.857143
+            },
+            "planet": "venus",
+            "required_rupas": 5.5,
+            "sthana": {
+              "drekkana": {
+                "approximated": false,
+                "citation": "BPHS Sthanabala \u2014 Drekkanabala (gender decanate, 15 Virupas).",
+                "note": null,
+                "virupas": 0.0
+              },
+              "kendradi": {
+                "approximated": false,
+                "citation": "BPHS Sthanabala \u2014 Kendradibala (kendra 60 / panaphara 30 / apoklima 15).",
+                "note": null,
+                "virupas": 30.0
+              },
+              "ojayugma": {
+                "approximated": false,
+                "citation": "BPHS Sthanabala \u2014 Ojayugmabala (odd/even rasi + navamsa, 15 each).",
+                "note": null,
+                "virupas": 30.0
+              },
+              "saptavargaja": {
+                "approximated": false,
+                "citation": "BPHS Sthanabala \u2014 Saptavargajabala (dignity over 7 vargas).",
+                "note": null,
+                "virupas": 67.5
+              },
+              "total_virupas": 160.822777,
+              "uccha": {
+                "approximated": false,
+                "citation": "BPHS Sthanabala \u2014 Uchchabala (60*(180-|d|)/180).",
+                "note": null,
+                "virupas": 33.322777
+              }
+            },
+            "total_rupas": 7.224748,
+            "total_virupas": 433.484896
+          }
+        }
+      },
+      "sunrise_utc_iso": "1990-01-15T01:45:06.319002+00:00"
+    },
+    "transit_context": {
+      "fusion": {
+        "afflicting": [
+          "ketu"
+        ],
+        "antar_lord": "mercury",
+        "instant": "2026-06-09T12:00:00Z",
+        "maha_lord": "rahu",
+        "maha_lord_transit_house_from_lagna": 9,
+        "maha_lord_transit_house_from_moon": 7,
+        "net_weight": 0.05,
+        "reinforcing": [],
+        "severity": "neutral"
+      },
+      "gochara": {
+        "instant": "2026-06-09T12:00:00Z",
+        "placements": {
+          "jupiter": {
+            "graha": "jupiter",
+            "house_from_lagna": 2,
+            "house_from_moon": 12,
+            "is_retrograde": false,
+            "longitude": 91.486331,
+            "nakshatra": "Punarvasu",
+            "nakshatra_pada": 4,
+            "natal_sign_occupied": "Cancer",
+            "sign": "Cancer",
+            "sign_degrees": 1.486331
+          },
+          "ketu": {
+            "graha": "ketu",
+            "house_from_lagna": 3,
+            "house_from_moon": 1,
+            "is_retrograde": true,
+            "longitude": 129.497319,
+            "nakshatra": "Magha",
+            "nakshatra_pada": 3,
+            "natal_sign_occupied": "Leo",
+            "sign": "Leo",
+            "sign_degrees": 9.497319
+          },
+          "mars": {
+            "graha": "mars",
+            "house_from_lagna": 11,
+            "house_from_moon": 9,
+            "is_retrograde": false,
+            "longitude": 21.800718,
+            "nakshatra": "Bharani",
+            "nakshatra_pada": 3,
+            "natal_sign_occupied": "Aries",
+            "sign": "Aries",
+            "sign_degrees": 21.800718
+          },
+          "mercury": {
+            "graha": "mercury",
+            "house_from_lagna": 1,
+            "house_from_moon": 11,
+            "is_retrograde": false,
+            "longitude": 77.801645,
+            "nakshatra": "Ardra",
+            "nakshatra_pada": 4,
+            "natal_sign_occupied": "Gemini",
+            "sign": "Gemini",
+            "sign_degrees": 17.801645
+          },
+          "moon": {
+            "graha": "moon",
+            "house_from_lagna": 10,
+            "house_from_moon": 8,
+            "is_retrograde": false,
+            "longitude": 337.695704,
+            "nakshatra": "Uttara Bhadrapada",
+            "nakshatra_pada": 2,
+            "natal_sign_occupied": "Pisces",
+            "sign": "Pisces",
+            "sign_degrees": 7.695704
+          },
+          "rahu": {
+            "graha": "rahu",
+            "house_from_lagna": 9,
+            "house_from_moon": 7,
+            "is_retrograde": true,
+            "longitude": 309.497319,
+            "nakshatra": "Shatabhisha",
+            "nakshatra_pada": 1,
+            "natal_sign_occupied": "Aquarius",
+            "sign": "Aquarius",
+            "sign_degrees": 9.497319
+          },
+          "saturn": {
+            "graha": "saturn",
+            "house_from_lagna": 10,
+            "house_from_moon": 8,
+            "is_retrograde": false,
+            "longitude": 348.692973,
+            "nakshatra": "Revati",
+            "nakshatra_pada": 1,
+            "natal_sign_occupied": "Pisces",
+            "sign": "Pisces",
+            "sign_degrees": 18.692973
+          },
+          "sun": {
+            "graha": "sun",
+            "house_from_lagna": 12,
+            "house_from_moon": 10,
+            "is_retrograde": false,
+            "longitude": 54.44989,
+            "nakshatra": "Mrigashira",
+            "nakshatra_pada": 1,
+            "natal_sign_occupied": "Taurus",
+            "sign": "Taurus",
+            "sign_degrees": 24.44989
+          },
+          "venus": {
+            "graha": "venus",
+            "house_from_lagna": 2,
+            "house_from_moon": 12,
+            "is_retrograde": false,
+            "longitude": 91.162883,
+            "nakshatra": "Punarvasu",
+            "nakshatra_pada": 4,
+            "natal_sign_occupied": "Cancer",
+            "sign": "Cancer",
+            "sign_degrees": 1.162883
+          }
+        },
+        "transit_ayanamsa": 24.22575
+      },
+      "instant": "2026-06-09T12:00:00Z",
+      "sade_sati": {
+        "current_phase": "none",
+        "cycle": [],
+        "cycle_end": null,
+        "cycle_start": null,
+        "is_active": false,
+        "natal_moon_sign": "Leo"
+      },
+      "slow_hits": [
+        {
+          "exact": "2027-10-19T18:32:08.796866Z",
+          "graha": "jupiter",
+          "kind": "sign_ingress",
+          "natal_point": "moon",
+          "severity": "supportive"
+        },
+        {
+          "exact": "2034-07-03T18:40:47.865566Z",
+          "graha": "saturn",
+          "kind": "sign_ingress",
+          "natal_point": "lagna",
+          "severity": "challenging"
+        },
+        {
+          "exact": "2033-08-31T03:57:20.871705Z",
+          "graha": "saturn",
+          "kind": "return",
+          "natal_point": "natal_saturn",
+          "severity": "neutral"
+        }
+      ],
+      "timeline": {
+        "events": [
+          {
+            "date": "2026-06-20T18:23:59.722851Z",
+            "descriptor": "mars.ingress.taurus",
+            "from_lord": null,
+            "from_sign": "Aries",
+            "graha": "mars",
+            "kind": "sign_ingress",
+            "sade_sati_phase": null,
+            "severity": "neutral",
+            "station_direction": null,
+            "station_sign": null,
+            "to_lord": null,
+            "to_sign": "Taurus"
+          },
+          {
+            "date": "2026-07-26T07:56:07.187988Z",
+            "descriptor": "saturn.station.retrograde",
+            "from_lord": null,
+            "from_sign": null,
+            "graha": "saturn",
+            "kind": "station",
+            "sade_sati_phase": null,
+            "severity": "neutral",
+            "station_direction": "retrograde",
+            "station_sign": "Pisces",
+            "to_lord": null,
+            "to_sign": null
+          },
+          {
+            "date": "2026-08-02T17:14:30.855989Z",
+            "descriptor": "mars.ingress.gemini",
+            "from_lord": null,
+            "from_sign": "Taurus",
+            "graha": "mars",
+            "kind": "sign_ingress",
+            "sade_sati_phase": null,
+            "severity": "neutral",
+            "station_direction": null,
+            "station_sign": null,
+            "to_lord": null,
+            "to_sign": "Gemini"
+          },
+          {
+            "date": "2026-09-18T10:58:12.766566Z",
+            "descriptor": "mars.ingress.cancer",
+            "from_lord": null,
+            "from_sign": "Gemini",
+            "graha": "mars",
+            "kind": "sign_ingress",
+            "sade_sati_phase": null,
+            "severity": "neutral",
+            "station_direction": null,
+            "station_sign": null,
+            "to_lord": null,
+            "to_sign": "Cancer"
+          },
+          {
+            "date": "2026-10-31T05:58:13.713998Z",
+            "descriptor": "jupiter.ingress.leo",
+            "from_lord": null,
+            "from_sign": "Cancer",
+            "graha": "jupiter",
+            "kind": "sign_ingress",
+            "sade_sati_phase": null,
+            "severity": "neutral",
+            "station_direction": null,
+            "station_sign": null,
+            "to_lord": null,
+            "to_sign": "Leo"
+          },
+          {
+            "date": "2026-11-12T14:39:26.243363Z",
+            "descriptor": "mars.ingress.leo",
+            "from_lord": null,
+            "from_sign": "Cancer",
+            "graha": "mars",
+            "kind": "sign_ingress",
+            "sade_sati_phase": null,
+            "severity": "neutral",
+            "station_direction": null,
+            "station_sign": null,
+            "to_lord": null,
+            "to_sign": "Leo"
+          },
+          {
+            "date": "2026-12-05T17:19:32.307871Z",
+            "descriptor": "rahu.ingress.capricorn",
+            "from_lord": null,
+            "from_sign": "Aquarius",
+            "graha": "rahu",
+            "kind": "sign_ingress",
+            "sade_sati_phase": null,
+            "severity": "neutral",
+            "station_direction": null,
+            "station_sign": null,
+            "to_lord": null,
+            "to_sign": "Capricorn"
+          },
+          {
+            "date": "2026-12-05T17:19:32.307871Z",
+            "descriptor": "ketu.ingress.cancer",
+            "from_lord": null,
+            "from_sign": "Leo",
+            "graha": "ketu",
+            "kind": "sign_ingress",
+            "sade_sati_phase": null,
+            "severity": "neutral",
+            "station_direction": null,
+            "station_sign": null,
+            "to_lord": null,
+            "to_sign": "Cancer"
+          },
+          {
+            "date": "2026-12-10T11:31:14.480066Z",
+            "descriptor": "saturn.station.direct",
+            "from_lord": null,
+            "from_sign": null,
+            "graha": "saturn",
+            "kind": "station",
+            "sade_sati_phase": null,
+            "severity": "neutral",
+            "station_direction": "direct",
+            "station_sign": "Pisces",
+            "to_lord": null,
+            "to_sign": null
+          },
+          {
+            "date": "2026-12-12T12:56:33.227751Z",
+            "descriptor": "jupiter.station.retrograde",
+            "from_lord": null,
+            "from_sign": null,
+            "graha": "jupiter",
+            "kind": "station",
+            "sade_sati_phase": null,
+            "severity": "neutral",
+            "station_direction": "retrograde",
+            "station_sign": "Leo",
+            "to_lord": null,
+            "to_sign": null
+          },
+          {
+            "date": "2027-01-10T00:58:37.149884Z",
+            "descriptor": "mars.station.retrograde",
+            "from_lord": null,
+            "from_sign": null,
+            "graha": "mars",
+            "kind": "station",
+            "sade_sati_phase": null,
+            "severity": "neutral",
+            "station_direction": "retrograde",
+            "station_sign": "Leo",
+            "to_lord": null,
+            "to_sign": null
+          },
+          {
+            "date": "2027-01-24T20:50:25.344201Z",
+            "descriptor": "jupiter.ingress.cancer",
+            "from_lord": null,
+            "from_sign": "Leo",
+            "graha": "jupiter",
+            "kind": "sign_ingress",
+            "sade_sati_phase": null,
+            "severity": "neutral",
+            "station_direction": null,
+            "station_sign": null,
+            "to_lord": null,
+            "to_sign": "Cancer"
+          },
+          {
+            "date": "2027-03-09T19:02:48.069351Z",
+            "descriptor": "mars.ingress.cancer",
+            "from_lord": null,
+            "from_sign": "Leo",
+            "graha": "mars",
+            "kind": "sign_ingress",
+            "sade_sati_phase": null,
+            "severity": "neutral",
+            "station_direction": null,
+            "station_sign": null,
+            "to_lord": null,
+            "to_sign": "Cancer"
+          },
+          {
+            "date": "2027-04-01T02:08:53.239726Z",
+            "descriptor": "mars.station.direct",
+            "from_lord": null,
+            "from_sign": null,
+            "graha": "mars",
+            "kind": "station",
+            "sade_sati_phase": null,
+            "severity": "neutral",
+            "station_direction": "direct",
+            "station_sign": "Cancer",
+            "to_lord": null,
+            "to_sign": null
+          },
+          {
+            "date": "2027-04-12T14:11:42.928679Z",
+            "descriptor": "jupiter.station.direct",
+            "from_lord": null,
+            "from_sign": null,
+            "graha": "jupiter",
+            "kind": "station",
+            "sade_sati_phase": null,
+            "severity": "neutral",
+            "station_direction": "direct",
+            "station_sign": "Cancer",
+            "to_lord": null,
+            "to_sign": null
+          },
+          {
+            "date": "2027-04-26T05:56:16.426381Z",
+            "descriptor": "mars.ingress.leo",
+            "from_lord": null,
+            "from_sign": "Cancer",
+            "graha": "mars",
+            "kind": "sign_ingress",
+            "sade_sati_phase": null,
+            "severity": "neutral",
+            "station_direction": null,
+            "station_sign": null,
+            "to_lord": null,
+            "to_sign": "Leo"
+          },
+          {
+            "date": "2027-06-02T23:04:25.266583Z",
+            "descriptor": "saturn.ingress.aries",
+            "from_lord": null,
+            "from_sign": "Pisces",
+            "graha": "saturn",
+            "kind": "sign_ingress",
+            "sade_sati_phase": null,
+            "severity": "neutral",
+            "station_direction": null,
+            "station_sign": null,
+            "to_lord": null,
+            "to_sign": "Aries"
+          },
+          {
+            "date": "2027-06-25T23:14:39.808732Z",
+            "descriptor": "jupiter.ingress.leo",
+            "from_lord": null,
+            "from_sign": "Cancer",
+            "graha": "jupiter",
+            "kind": "sign_ingress",
+            "sade_sati_phase": null,
+            "severity": "neutral",
+            "station_direction": null,
+            "station_sign": null,
+            "to_lord": null,
+            "to_sign": "Leo"
+          },
+          {
+            "date": "2027-07-04T22:53:20.427277Z",
+            "descriptor": "mars.ingress.virgo",
+            "from_lord": null,
+            "from_sign": "Leo",
+            "graha": "mars",
+            "kind": "sign_ingress",
+            "sade_sati_phase": null,
+            "severity": "neutral",
+            "station_direction": null,
+            "station_sign": null,
+            "to_lord": null,
+            "to_sign": "Virgo"
+          },
+          {
+            "date": "2027-08-09T06:06:08.783085Z",
+            "descriptor": "saturn.station.retrograde",
+            "from_lord": null,
+            "from_sign": null,
+            "graha": "saturn",
+            "kind": "station",
+            "sade_sati_phase": null,
+            "severity": "neutral",
+            "station_direction": "retrograde",
+            "station_sign": "Aries",
+            "to_lord": null,
+            "to_sign": null
+          },
+          {
+            "date": "2027-08-24T04:11:44.400922Z",
+            "descriptor": "mars.ingress.libra",
+            "from_lord": null,
+            "from_sign": "Virgo",
+            "graha": "mars",
+            "kind": "sign_ingress",
+            "sade_sati_phase": null,
+            "severity": "neutral",
+            "station_direction": null,
+            "station_sign": null,
+            "to_lord": null,
+            "to_sign": "Libra"
+          },
+          {
+            "date": "2027-10-07T19:50:14.279792Z",
+            "descriptor": "mars.ingress.scorpio",
+            "from_lord": null,
+            "from_sign": "Libra",
+            "graha": "mars",
+            "kind": "sign_ingress",
+            "sade_sati_phase": null,
+            "severity": "neutral",
+            "station_direction": null,
+            "station_sign": null,
+            "to_lord": null,
+            "to_sign": "Scorpio"
+          },
+          {
+            "date": "2027-10-20T02:54:57.331732Z",
+            "descriptor": "saturn.ingress.pisces",
+            "from_lord": null,
+            "from_sign": "Aries",
+            "graha": "saturn",
+            "kind": "sign_ingress",
+            "sade_sati_phase": null,
+            "severity": "neutral",
+            "station_direction": null,
+            "station_sign": null,
+            "to_lord": null,
+            "to_sign": "Pisces"
+          },
+          {
+            "date": "2027-11-12T21:05:00.089572Z",
+            "descriptor": "dasha.antar.mercury_to_ketu",
+            "from_lord": "mercury",
+            "from_sign": null,
+            "graha": null,
+            "kind": "dasha_change",
+            "sade_sati_phase": null,
+            "severity": "neutral",
+            "station_direction": null,
+            "station_sign": null,
+            "to_lord": "ketu",
+            "to_sign": null
+          },
+          {
+            "date": "2027-11-18T03:07:55.262939Z",
+            "descriptor": "mars.ingress.sagittarius",
+            "from_lord": null,
+            "from_sign": "Scorpio",
+            "graha": "mars",
+            "kind": "sign_ingress",
+            "sade_sati_phase": null,
+            "severity": "neutral",
+            "station_direction": null,
+            "station_sign": null,
+            "to_lord": null,
+            "to_sign": "Sagittarius"
+          },
+          {
+            "date": "2027-11-26T12:29:21.953436Z",
+            "descriptor": "jupiter.ingress.virgo",
+            "from_lord": null,
+            "from_sign": "Leo",
+            "graha": "jupiter",
+            "kind": "sign_ingress",
+            "sade_sati_phase": null,
+            "severity": "neutral",
+            "station_direction": null,
+            "station_sign": null,
+            "to_lord": null,
+            "to_sign": "Virgo"
+          },
+          {
+            "date": "2027-12-23T14:46:26.797138Z",
+            "descriptor": "saturn.station.direct",
+            "from_lord": null,
+            "from_sign": null,
+            "graha": "saturn",
+            "kind": "station",
+            "sade_sati_phase": null,
+            "severity": "neutral",
+            "station_direction": "direct",
+            "station_sign": "Pisces",
+            "to_lord": null,
+            "to_sign": null
+          },
+          {
+            "date": "2027-12-27T07:26:28.019130Z",
+            "descriptor": "mars.ingress.capricorn",
+            "from_lord": null,
+            "from_sign": "Sagittarius",
+            "graha": "mars",
+            "kind": "sign_ingress",
+            "sade_sati_phase": null,
+            "severity": "neutral",
+            "station_direction": null,
+            "station_sign": null,
+            "to_lord": null,
+            "to_sign": "Capricorn"
+          },
+          {
+            "date": "2028-01-11T20:53:12.944404Z",
+            "descriptor": "jupiter.station.retrograde",
+            "from_lord": null,
+            "from_sign": null,
+            "graha": "jupiter",
+            "kind": "station",
+            "sade_sati_phase": null,
+            "severity": "neutral",
+            "station_direction": "retrograde",
+            "station_sign": "Virgo",
+            "to_lord": null,
+            "to_sign": null
+          },
+          {
+            "date": "2028-02-03T10:05:16.380370Z",
+            "descriptor": "mars.ingress.aquarius",
+            "from_lord": null,
+            "from_sign": "Capricorn",
+            "graha": "mars",
+            "kind": "sign_ingress",
+            "sade_sati_phase": null,
+            "severity": "neutral",
+            "station_direction": null,
+            "station_sign": null,
+            "to_lord": null,
+            "to_sign": "Aquarius"
+          },
+          {
+            "date": "2028-02-23T12:37:39.735091Z",
+            "descriptor": "saturn.ingress.aries",
+            "from_lord": null,
+            "from_sign": "Pisces",
+            "graha": "saturn",
+            "kind": "sign_ingress",
+            "sade_sati_phase": null,
+            "severity": "neutral",
+            "station_direction": null,
+            "station_sign": null,
+            "to_lord": null,
+            "to_sign": "Aries"
+          },
+          {
+            "date": "2028-02-28T14:45:33.672409Z",
+            "descriptor": "jupiter.ingress.leo",
+            "from_lord": null,
+            "from_sign": "Virgo",
+            "graha": "jupiter",
+            "kind": "sign_ingress",
+            "sade_sati_phase": null,
+            "severity": "neutral",
+            "station_direction": null,
+            "station_sign": null,
+            "to_lord": null,
+            "to_sign": "Leo"
+          },
+          {
+            "date": "2028-03-12T10:58:47.448159Z",
+            "descriptor": "mars.ingress.pisces",
+            "from_lord": null,
+            "from_sign": "Aquarius",
+            "graha": "mars",
+            "kind": "sign_ingress",
+            "sade_sati_phase": null,
+            "severity": "neutral",
+            "station_direction": null,
+            "station_sign": null,
+            "to_lord": null,
+            "to_sign": "Pisces"
+          },
+          {
+            "date": "2028-04-20T07:47:30.013569Z",
+            "descriptor": "mars.ingress.aries",
+            "from_lord": null,
+            "from_sign": "Pisces",
+            "graha": "mars",
+            "kind": "sign_ingress",
+            "sade_sati_phase": null,
+            "severity": "neutral",
+            "station_direction": null,
+            "station_sign": null,
+            "to_lord": null,
+            "to_sign": "Aries"
+          },
+          {
+            "date": "2028-05-13T08:00:19.404641Z",
+            "descriptor": "jupiter.station.direct",
+            "from_lord": null,
+            "from_sign": null,
+            "graha": "jupiter",
+            "kind": "station",
+            "sade_sati_phase": null,
+            "severity": "neutral",
+            "station_direction": "direct",
+            "station_sign": "Leo",
+            "to_lord": null,
+            "to_sign": null
+          },
+          {
+            "date": "2028-05-30T18:44:32.924478Z",
+            "descriptor": "mars.ingress.taurus",
+            "from_lord": null,
+            "from_sign": "Aries",
+            "graha": "mars",
+            "kind": "sign_ingress",
+            "sade_sati_phase": null,
+            "severity": "neutral",
+            "station_direction": null,
+            "station_sign": null,
+            "to_lord": null,
+            "to_sign": "Taurus"
+          }
+        ],
+        "window_end": "2028-06-09T00:00:00Z",
         "window_start": "2026-06-09T12:00:00Z"
       }
     },
@@ -3116,6 +7153,14 @@
               "severity": "neutral",
               "source": "transit",
               "trigger": "jupiter"
+            },
+            {
+              "date": "2027-01-24T20:50:25.344201Z",
+              "descriptor": "education.transit.jupiter.ingress.cancer",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "jupiter"
             }
           ],
           "varga": {
@@ -3209,6 +7254,14 @@
               "severity": "neutral",
               "source": "transit",
               "trigger": "jupiter"
+            },
+            {
+              "date": "2027-01-24T20:50:25.344201Z",
+              "descriptor": "family.transit.jupiter.ingress.cancer",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "jupiter"
             }
           ],
           "varga": {
@@ -3284,6 +7337,14 @@
             {
               "date": "2026-10-31T05:58:13.713998Z",
               "descriptor": "finances.transit.jupiter.ingress.leo",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "jupiter"
+            },
+            {
+              "date": "2027-01-24T20:50:25.344201Z",
+              "descriptor": "finances.transit.jupiter.ingress.cancer",
               "kind": "sign_ingress",
               "severity": "neutral",
               "source": "transit",
@@ -3388,6 +7449,14 @@
               "trigger": "jupiter"
             },
             {
+              "date": "2027-01-24T20:50:25.344201Z",
+              "descriptor": "health.transit.jupiter.ingress.cancer",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "jupiter"
+            },
+            {
               "date": "2027-06-02T23:04:25.266583Z",
               "descriptor": "health.transit.saturn.ingress.aries",
               "kind": "sign_ingress",
@@ -3468,6 +7537,14 @@
             {
               "date": "2026-10-31T05:58:13.713998Z",
               "descriptor": "relationships.transit.jupiter.ingress.leo",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "jupiter"
+            },
+            {
+              "date": "2027-01-24T20:50:25.344201Z",
+              "descriptor": "relationships.transit.jupiter.ingress.cancer",
               "kind": "sign_ingress",
               "severity": "neutral",
               "source": "transit",
@@ -3574,6 +7651,14 @@
             {
               "date": "2026-10-31T05:58:13.713998Z",
               "descriptor": "spiritual.transit.jupiter.ingress.leo",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "jupiter"
+            },
+            {
+              "date": "2027-01-24T20:50:25.344201Z",
+              "descriptor": "spiritual.transit.jupiter.ingress.cancer",
               "kind": "sign_ingress",
               "severity": "neutral",
               "source": "transit",
@@ -4758,6 +8843,62 @@
       "timeline": {
         "events": [
           {
+            "date": "2026-06-20T18:23:59.722851Z",
+            "descriptor": "mars.ingress.taurus",
+            "from_lord": null,
+            "from_sign": "Aries",
+            "graha": "mars",
+            "kind": "sign_ingress",
+            "sade_sati_phase": null,
+            "severity": "neutral",
+            "station_direction": null,
+            "station_sign": null,
+            "to_lord": null,
+            "to_sign": "Taurus"
+          },
+          {
+            "date": "2026-07-26T07:56:07.187988Z",
+            "descriptor": "saturn.station.retrograde",
+            "from_lord": null,
+            "from_sign": null,
+            "graha": "saturn",
+            "kind": "station",
+            "sade_sati_phase": null,
+            "severity": "neutral",
+            "station_direction": "retrograde",
+            "station_sign": "Pisces",
+            "to_lord": null,
+            "to_sign": null
+          },
+          {
+            "date": "2026-08-02T17:14:30.855989Z",
+            "descriptor": "mars.ingress.gemini",
+            "from_lord": null,
+            "from_sign": "Taurus",
+            "graha": "mars",
+            "kind": "sign_ingress",
+            "sade_sati_phase": null,
+            "severity": "neutral",
+            "station_direction": null,
+            "station_sign": null,
+            "to_lord": null,
+            "to_sign": "Gemini"
+          },
+          {
+            "date": "2026-09-18T10:58:12.766566Z",
+            "descriptor": "mars.ingress.cancer",
+            "from_lord": null,
+            "from_sign": "Gemini",
+            "graha": "mars",
+            "kind": "sign_ingress",
+            "sade_sati_phase": null,
+            "severity": "neutral",
+            "station_direction": null,
+            "station_sign": null,
+            "to_lord": null,
+            "to_sign": "Cancer"
+          },
+          {
             "date": "2026-10-31T05:58:13.713998Z",
             "descriptor": "jupiter.ingress.leo",
             "from_lord": null,
@@ -4766,6 +8907,162 @@
             "kind": "sign_ingress",
             "sade_sati_phase": null,
             "severity": "neutral",
+            "station_direction": null,
+            "station_sign": null,
+            "to_lord": null,
+            "to_sign": "Leo"
+          },
+          {
+            "date": "2026-11-12T14:39:26.243363Z",
+            "descriptor": "mars.ingress.leo",
+            "from_lord": null,
+            "from_sign": "Cancer",
+            "graha": "mars",
+            "kind": "sign_ingress",
+            "sade_sati_phase": null,
+            "severity": "neutral",
+            "station_direction": null,
+            "station_sign": null,
+            "to_lord": null,
+            "to_sign": "Leo"
+          },
+          {
+            "date": "2026-12-05T17:19:32.307871Z",
+            "descriptor": "rahu.ingress.capricorn",
+            "from_lord": null,
+            "from_sign": "Aquarius",
+            "graha": "rahu",
+            "kind": "sign_ingress",
+            "sade_sati_phase": null,
+            "severity": "neutral",
+            "station_direction": null,
+            "station_sign": null,
+            "to_lord": null,
+            "to_sign": "Capricorn"
+          },
+          {
+            "date": "2026-12-05T17:19:32.307871Z",
+            "descriptor": "ketu.ingress.cancer",
+            "from_lord": null,
+            "from_sign": "Leo",
+            "graha": "ketu",
+            "kind": "sign_ingress",
+            "sade_sati_phase": null,
+            "severity": "neutral",
+            "station_direction": null,
+            "station_sign": null,
+            "to_lord": null,
+            "to_sign": "Cancer"
+          },
+          {
+            "date": "2026-12-10T11:31:14.480066Z",
+            "descriptor": "saturn.station.direct",
+            "from_lord": null,
+            "from_sign": null,
+            "graha": "saturn",
+            "kind": "station",
+            "sade_sati_phase": null,
+            "severity": "neutral",
+            "station_direction": "direct",
+            "station_sign": "Pisces",
+            "to_lord": null,
+            "to_sign": null
+          },
+          {
+            "date": "2026-12-12T12:56:33.227751Z",
+            "descriptor": "jupiter.station.retrograde",
+            "from_lord": null,
+            "from_sign": null,
+            "graha": "jupiter",
+            "kind": "station",
+            "sade_sati_phase": null,
+            "severity": "neutral",
+            "station_direction": "retrograde",
+            "station_sign": "Leo",
+            "to_lord": null,
+            "to_sign": null
+          },
+          {
+            "date": "2027-01-10T00:58:37.149884Z",
+            "descriptor": "mars.station.retrograde",
+            "from_lord": null,
+            "from_sign": null,
+            "graha": "mars",
+            "kind": "station",
+            "sade_sati_phase": null,
+            "severity": "neutral",
+            "station_direction": "retrograde",
+            "station_sign": "Leo",
+            "to_lord": null,
+            "to_sign": null
+          },
+          {
+            "date": "2027-01-24T20:50:25.344201Z",
+            "descriptor": "jupiter.ingress.cancer",
+            "from_lord": null,
+            "from_sign": "Leo",
+            "graha": "jupiter",
+            "kind": "sign_ingress",
+            "sade_sati_phase": null,
+            "severity": "neutral",
+            "station_direction": null,
+            "station_sign": null,
+            "to_lord": null,
+            "to_sign": "Cancer"
+          },
+          {
+            "date": "2027-03-09T19:02:48.069351Z",
+            "descriptor": "mars.ingress.cancer",
+            "from_lord": null,
+            "from_sign": "Leo",
+            "graha": "mars",
+            "kind": "sign_ingress",
+            "sade_sati_phase": null,
+            "severity": "neutral",
+            "station_direction": null,
+            "station_sign": null,
+            "to_lord": null,
+            "to_sign": "Cancer"
+          },
+          {
+            "date": "2027-04-01T02:08:53.239726Z",
+            "descriptor": "mars.station.direct",
+            "from_lord": null,
+            "from_sign": null,
+            "graha": "mars",
+            "kind": "station",
+            "sade_sati_phase": null,
+            "severity": "neutral",
+            "station_direction": "direct",
+            "station_sign": "Cancer",
+            "to_lord": null,
+            "to_sign": null
+          },
+          {
+            "date": "2027-04-12T14:11:42.928679Z",
+            "descriptor": "jupiter.station.direct",
+            "from_lord": null,
+            "from_sign": null,
+            "graha": "jupiter",
+            "kind": "station",
+            "sade_sati_phase": null,
+            "severity": "neutral",
+            "station_direction": "direct",
+            "station_sign": "Cancer",
+            "to_lord": null,
+            "to_sign": null
+          },
+          {
+            "date": "2027-04-26T05:56:16.426381Z",
+            "descriptor": "mars.ingress.leo",
+            "from_lord": null,
+            "from_sign": "Cancer",
+            "graha": "mars",
+            "kind": "sign_ingress",
+            "sade_sati_phase": null,
+            "severity": "neutral",
+            "station_direction": null,
+            "station_sign": null,
             "to_lord": null,
             "to_sign": "Leo"
           },
@@ -4778,6 +9075,8 @@
             "kind": "sign_ingress",
             "sade_sati_phase": null,
             "severity": "neutral",
+            "station_direction": null,
+            "station_sign": null,
             "to_lord": null,
             "to_sign": "Aries"
           }

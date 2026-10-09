@@ -589,7 +589,11 @@ describe('PortableStateRepository', () => {
     await expect(repository.exportBytes()).rejects.toThrow(expected);
   });
 
-  it('accepts a predictive result keyed by a known chart fallback', async () => {
+  it('pins the predictive row at the store persist version 4 (step B snapshots export)', () => {
+    expect(PORTABLE_STORE_MAX_VERSIONS['almamesh-predictive']).toBe(4);
+  });
+
+  it.each([3, 4])('accepts a v%i predictive result keyed by a known chart fallback', async (version) => {
     const sqlite = new MemorySqliteStore();
     const repository = new PortableStateRepository(sqlite, async (bytes) => bytes[0]!, rebuildAtEpoch(sqlite));
     await migrateLegacyState(
@@ -617,7 +621,7 @@ describe('PortableStateRepository', () => {
       'almamesh-predictive',
       JSON.stringify({
         state: { status: 'ready', profileKey: 'c1', requestKey: 'request-1' },
-        version: 3,
+        version,
         datasetEpoch: 0,
       }),
     );

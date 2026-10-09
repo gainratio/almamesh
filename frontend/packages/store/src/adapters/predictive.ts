@@ -195,6 +195,8 @@ function toTimelineEvent(raw: TimelineEvent): TransitTimelineEventData {
     sade_sati_phase: raw.sade_sati_phase,
     severity: raw.severity,
     descriptor: raw.descriptor,
+    station_direction: raw.station_direction ?? null,
+    station_sign: toUiSignOrNull(raw.station_sign ?? null),
   };
 }
 

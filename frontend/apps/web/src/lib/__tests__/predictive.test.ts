@@ -4,6 +4,7 @@ import type { ProcessedBirthData } from '@almamesh/shared-types';
 import {
   buildEnsurePredictiveInput,
   formatPredictiveDate,
+  formatPredictiveWindowBound,
   formatReferenceDay,
   predictiveReferenceInstant,
   selectPrimaryStoredChart,
@@ -145,6 +146,21 @@ describe('formatPredictiveDate', () => {
 
   it('renders a full instant without throwing', () => {
     expect(formatPredictiveDate('2026-09-12T04:00:00Z')).toContain('2026');
+  });
+});
+
+describe('formatPredictiveWindowBound', () => {
+  beforeEach(() => {
+    useLanguageStore.setState({ language: 'en' });
+  });
+
+  it('renders a UTC-midnight bound as its UTC calendar day', () => {
+    expect(formatPredictiveWindowBound('2026-10-09T00:00:00Z')).toBe('Oct 09, 2026');
+  });
+
+  it('keeps the date-only and unparseable paths of formatPredictiveDate', () => {
+    expect(formatPredictiveWindowBound('2026-10-26')).toBe(formatPredictiveDate('2026-10-26'));
+    expect(formatPredictiveWindowBound('2026-10-26T99:99:99Z')).toBe(formatPredictiveDate('2026-10-26T99:99:99Z'));
   });
 });
 

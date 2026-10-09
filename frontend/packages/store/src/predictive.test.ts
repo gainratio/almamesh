@@ -268,3 +268,26 @@ describe("predictiveRequestKey — the civil offset is part of the identity", ()
     );
   });
 });
+
+describe("predictiveRequestKey and the engine window", () => {
+  const BASE: EnsurePredictiveInput = {
+    profileKey: "p1",
+    datetimeUtc: "1990-01-15T12:00:00Z",
+    latitude: 28.6139,
+    longitude: 77.209,
+    referenceInstant: "2026-06-01T00:00:00Z",
+    utcOffsetMinutes: 330,
+  };
+
+  it("is unchanged for the default 12-month window (the persisted Life Atlas key)", () => {
+    expect(predictiveRequestKey(BASE)).toBe(
+      '["p1","1990-01-15T12:00:00Z",28.6139,77.209,"2026-06-01T00:00:00Z",330]',
+    );
+  });
+
+  it("names a 24-month window, so it can never match a 12-month reading", () => {
+    expect(predictiveRequestKey({ ...BASE, windowMonths: 24 })).toBe(
+      '["p1","1990-01-15T12:00:00Z",28.6139,77.209,"2026-06-01T00:00:00Z",330,24]',
+    );
+  });
+});

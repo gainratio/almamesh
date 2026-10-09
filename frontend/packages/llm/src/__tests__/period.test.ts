@@ -2,6 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import {
   BEFORE_BIRTH_MESSAGE,
+  ENGINE_DAYS_PER_MONTH,
+  LONG_PERIOD_WINDOW_MONTHS,
+  periodWindowMonths,
+  windowEndsBeforePeriodEnd,
+  instantEndsBeforePeriodEnd,
   OVER_TWO_YEARS_NOTE,
   PAST_EPHEMERIS_NOTE,
   parsePeriodArgs,
@@ -109,5 +114,49 @@ describe("periodLimits", () => {
       dashasOnly: true,
       notes: [PAST_EPHEMERIS_NOTE],
     });
+  });
+});
+
+describe("periodWindowMonths", () => {
+  it("keeps the engine's default window when 12 engine months cover the whole period", () => {
+    expect(periodWindowMonths({ start: "2026-06-01", end: "2026-06-30" })).toBeUndefined();
+    expect(periodWindowMonths({ start: "2027-01-01", end: "2027-12-31" })).toBeUndefined();
+  });
+
+  it("asks for 24 months when 12 would stop short, a leap year's 31 December included", () => {
+    expect(periodWindowMonths({ start: "2028-01-01", end: "2028-12-31" })).toBe(24);
+    expect(periodWindowMonths({ start: "2027-01-01", end: "2028-06-30" })).toBe(24);
+  });
+
+  it("pins the engine's month length and the long window", () => {
+    expect(ENGINE_DAYS_PER_MONTH).toBe(30.4375);
+    expect(LONG_PERIOD_WINDOW_MONTHS).toBe(24);
+  });
+});
+
+describe("windowEndsBeforePeriodEnd", () => {
+  it("compares the window's end instant with the end of the period's last day", () => {
+    const leap = { start: "2028-01-01", end: "2028-12-31" };
+    expect(windowEndsBeforePeriodEnd(leap, 12)).toBe(true);
+    expect(windowEndsBeforePeriodEnd(leap, 24)).toBe(false);
+    expect(windowEndsBeforePeriodEnd({ start: "2027-01-01", end: "2027-12-31" }, 12)).toBe(false);
+  });
+});
+
+describe("instantEndsBeforePeriodEnd", () => {
+  const period = { start: "2027-01-01", end: "2027-12-31" };
+  const endOfLastDay = Date.parse("2028-01-01T00:00:00Z");
+
+  it("is false when the window ends exactly at the end of the last day", () => {
+    expect(instantEndsBeforePeriodEnd(endOfLastDay, period)).toBe(false);
+  });
+
+  it("is true one millisecond earlier", () => {
+    expect(instantEndsBeforePeriodEnd(endOfLastDay - 1, period)).toBe(true);
+  });
+
+  it("is true for the 2028-12-31T06:00Z leap-year window end", () => {
+    const leap = { start: "2028-01-01", end: "2028-12-31" };
+    expect(instantEndsBeforePeriodEnd(Date.parse("2028-12-31T06:00:00Z"), leap)).toBe(true);
   });
 });

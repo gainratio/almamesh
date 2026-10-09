@@ -26,6 +26,7 @@ from pydantic import BaseModel, ConfigDict
 
 from almamesh.calculations import calculate_sidereal_context
 from almamesh.domains import compute_life_domains
+from almamesh.schemas.astrology import SiderealContext
 from almamesh.schemas.domains import LifeDomainsContext
 from almamesh.schemas.strength import StrengthContext
 from almamesh.schemas.transits import TransitContext
@@ -54,6 +55,28 @@ class PredictiveContexts(BaseModel):
 
 
 _MAX_OFFSET_MINUTES: Final[int] = 18 * 60  # real civil offsets lie within -12 h..+14 h
+_DEFAULT_WINDOW_MONTHS: Final[int] = 12
+_MAX_WINDOW_MONTHS: Final[int] = 24
+
+
+def checked_window_months(value: int) -> int:
+    """The timeline window in months, refused outside 1..24."""
+    if not 1 <= value <= _MAX_WINDOW_MONTHS:
+        raise ValueError("invalid window_months: must be 1..24")
+    return value
+
+
+def window_months_from_wire(value: object) -> int:
+    """The timeline window from a wire value; absent means the default 12.
+
+    Shared by the CPython edge runtime and the Pyodide worker glue so both
+    refuse the same inputs: booleans, strings, fractions, out-of-range values.
+    """
+    if value is None:
+        return _DEFAULT_WINDOW_MONTHS
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError("invalid window_months: must be whole months")
+    return checked_window_months(value)
 
 
 def civil_offset_from_minutes(value: object) -> timedelta:
@@ -76,6 +99,7 @@ def compute_predictive_contexts(
     reference_instant: datetime,
     *,
     civil_offset: timedelta,
+    window_months: int = _DEFAULT_WINDOW_MONTHS,
 ) -> PredictiveContexts:
     """All four predictive contexts at one EXPLICIT instant (no silent now()).
 
@@ -85,11 +109,29 @@ def compute_predictive_contexts(
     ``reference_instant`` pins BOTH the natal "current" dasha and the transit
     "now", keeping the whole payload coherent and reproducible — which is what
     makes the CPython<->Pyodide byte-parity gate meaningful.
+
+    ``window_months`` (1..24, default 12) is the forward timeline's length; a
+    period of up to two years is one compute.
     """
+    checked_window_months(window_months)
     natal = calculate_sidereal_context(
         birth_dt, latitude, longitude, reference_date=reference_instant
     )
-    transits = calculate_transit_context(natal, birth_dt, transit_instant=reference_instant)
+    transits = calculate_transit_context(
+        natal, birth_dt, transit_instant=reference_instant, window_months=window_months
+    )
+    return _compose(natal, transits, birth_dt, latitude, longitude, civil_offset)
+
+
+def _compose(
+    natal: SiderealContext,
+    transits: TransitContext,
+    birth_dt: datetime,
+    latitude: float,
+    longitude: float,
+    civil_offset: timedelta,
+) -> PredictiveContexts:
+    """The varga, strength and domain contexts, assembled with the transits."""
     vargas = compute_varga_context(natal)
     strength = compute_strength_context(
         natal, birth_dt, latitude, longitude, civil_offset=civil_offset
@@ -103,4 +145,10 @@ def compute_predictive_contexts(
     )
 
 
-__all__ = ["PredictiveContexts", "civil_offset_from_minutes", "compute_predictive_contexts"]
+__all__ = [
+    "PredictiveContexts",
+    "checked_window_months",
+    "civil_offset_from_minutes",
+    "compute_predictive_contexts",
+    "window_months_from_wire",
+]

@@ -66,6 +66,7 @@ export function buildEnsurePredictiveInput(
   profileKey: string,
   birth: ProcessedBirthData | undefined,
   referenceInstant: string,
+  windowMonths?: 24,
 ): EnsurePredictiveInput | null {
   const datetimeUtc = birth?.birth_datetime_utc;
   const location = birth?.birth_location_details;
@@ -87,6 +88,7 @@ export function buildEnsurePredictiveInput(
     longitude: location.longitude,
     referenceInstant,
     utcOffsetMinutes,
+    ...(windowMonths === undefined ? {} : { windowMonths }),
   };
 }
 
@@ -149,6 +151,19 @@ export function formatPredictiveDate(iso: string): string {
     return formatBirthDateForDisplay(iso.split('T')[0] ?? iso);
   }
   return formatDisplayDate(parsed);
+}
+
+/**
+ * Display date for an engine window bound. The bounds are UTC instants (often
+ * UTC midnight), so they are formatted in UTC: west of Greenwich a local-time
+ * render would show the previous day ("Oct 08" for a window starting 9 Oct).
+ */
+export function formatPredictiveWindowBound(iso: string): string {
+  const parsed = new Date(iso);
+  if (DATE_ONLY.test(iso) || Number.isNaN(parsed.getTime())) {
+    return formatPredictiveDate(iso);
+  }
+  return formatDisplayDate(parsed, { year: 'numeric', month: 'short', day: '2-digit', timeZone: 'UTC' });
 }
 
 /**

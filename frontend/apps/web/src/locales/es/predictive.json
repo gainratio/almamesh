@@ -142,6 +142,7 @@
   },
   "events": {
     "sign_ingress": "{{graha}} entra en {{sign}}",
+    "sign_ingress_backward": "{{graha}} retrocede a {{sign}}",
     "sign_ingress_unknown": "{{graha}} cambia de signo",
     "sade_sati_phase": "Sade Sati — fase {{phase}}",
     "return": "Retorno de {{graha}}",
@@ -149,6 +150,8 @@
     "dasha_change_to": "Comienza un período de daśā de {{graha}}",
     "dasha_change_generic": "Cambia el período de daśā",
     "station": "{{graha}} estaciona",
+    "station_retrograde": "{{graha}} inicia su movimiento retrógrado en {{sign}}",
+    "station_direct": "{{graha}} retoma el movimiento directo en {{sign}}",
     "generic": "{{descriptor}}"
   },
   "vargas": {
