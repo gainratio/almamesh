@@ -189,7 +189,7 @@ test('[real] interpretation renders against live OpenRouter', async ({ page }) =
   const config = JSON.stringify({
     apiBase: 'https://openrouter.ai/api/v1',
     apiKey: KEY,
-    model: 'deepseek/deepseek-v4-pro',
+    model: 'deepseek/deepseek-v4.1-flash',
     privacyMode: 'cloud_premium',
     engine: 'openai-http',
   });

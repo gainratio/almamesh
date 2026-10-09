@@ -24,7 +24,7 @@ import { completionUsage, type CompletionUsage } from './openrouterUsage';
  * Run:  OPENROUTER_API_KEY=... bunx playwright test --config=playwright.timeline.real.config.ts
  */
 
-const MODEL = process.env.TIMELINE_REAL_MODEL ?? 'deepseek/deepseek-v4-pro';
+const MODEL = process.env.TIMELINE_REAL_MODEL ?? 'deepseek/deepseek-v4.1-flash';
 const TTFT_BUDGET_MS = Number(process.env.TIMELINE_TTFT_BUDGET_MS ?? 60_000);
 const LIVE = '[data-testid^="timeline-live-"]';
 

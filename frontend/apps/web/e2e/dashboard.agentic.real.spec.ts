@@ -16,7 +16,7 @@ import { bootEngine, seedChart, LLM_SETTINGS_KEY } from './interpretation.helper
  *
  * This is a REAL integration test: real in-browser Pyodide engine, a real Delhi
  * sidereal chart generated in-tab, and a LIVE OpenRouter round-trip. The reading
- * uses the seeded `model` (deepseek/deepseek-v4-pro); chat has no `chatModel`
+ * uses the seeded `model` (deepseek/deepseek-v4.1-flash); chat has no `chatModel`
  * saved, so it runs on the default chat tier (CHAT_CLOUD_MODEL,
  * deepseek/deepseek-v4.1-flash). The OpenRouter key is read ONLY from
  * process.env (never bundled).
@@ -69,7 +69,7 @@ test('[real] dashboard: timer + life phase + exact-day agentic chat', async ({
   const config = JSON.stringify({
     apiBase: 'https://openrouter.ai/api/v1',
     apiKey: KEY,
-    model: 'deepseek/deepseek-v4-pro',
+    model: 'deepseek/deepseek-v4.1-flash',
     privacyMode: 'cloud_premium',
     engine: 'openai-http',
   });
