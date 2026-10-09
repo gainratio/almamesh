@@ -6,10 +6,13 @@
  */
 
 import { useTranslation } from 'react-i18next';
+import type { PinRelative } from '@almamesh/llm';
 
 interface SuggestedQuestionsProps {
   onSelect: (question: string) => void;
   disabled?: boolean;
+  /** Where the pinned period sits against today; absent for a normal thread. */
+  relative?: PinRelative;
 }
 
 /** The suggestion catalog — keys map to `chat:suggested.questions.*`. */
@@ -24,18 +27,28 @@ const SUGGESTED_QUESTION_KEYS = [
   'lifepath',
 ] as const;
 
+/** Time travel starters by tense (spec Part 3); "contains_today" keeps the current set. */
+const PINNED_STARTER_KEYS = {
+  past: ['time_travel.starters.past.hard', 'time_travel.starters.past.teaching'],
+  future: ['time_travel.starters.future.prepare', 'time_travel.starters.future.strongest'],
+} as const;
+
 export function SuggestedQuestions({
   onSelect,
   disabled = false,
+  relative,
 }: SuggestedQuestionsProps) {
   const { t } = useTranslation('chat');
+  const keys = relative === 'past' || relative === 'future'
+    ? PINNED_STARTER_KEYS[relative]
+    : SUGGESTED_QUESTION_KEYS.map((key) => `suggested.questions.${key}`);
 
   return (
     <div className="mb-4">
       <p className="text-text-muted text-xs mb-2">{t('suggested.label')}</p>
       <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-ui-border scrollbar-track-transparent">
-        {SUGGESTED_QUESTION_KEYS.map((key) => {
-          const question = t(`suggested.questions.${key}`);
+        {keys.map((key) => {
+          const question = t(key);
           return (
             <button
               key={key}

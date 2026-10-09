@@ -19,7 +19,9 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate } from 'react-router-dom';
 import { ComposerPrimitive, ThreadPrimitive, type MessageState } from '@assistant-ui/react';
-import { type ChatTurn } from '@almamesh/llm';
+import { type ChatTurn, pinRelative } from '@almamesh/llm';
+import { useLanguageStore } from '@almamesh/store';
+import type { ChatThreadAsOf } from '@almamesh/shared-types';
 import { MessageBubble } from './MessageBubble';
 import { ReferenceEntry } from './ReferenceEntry';
 import { SuggestedQuestions } from './SuggestedQuestions';
@@ -32,6 +34,9 @@ import { useLlmStatus } from '../../../hooks/useLlmStatus';
 import { useChartReanchorPending } from '../../../lib/chartReanchorStatus';
 import { AlmaMeshAssistantRuntime } from './AlmaMeshAssistantRuntime';
 import { generateProviderChatSummary } from '../../../lib/chatSummaryProvider';
+import { viewerTodayDay } from '../../../lib/chatAgentTools';
+import { TimeTravelSheet } from './TimeTravelSheet';
+import { TimeTravelBanner } from './TimeTravelBanner';
 
 interface ChatPanelProps {
   personName: string;
@@ -41,6 +46,8 @@ interface ChatPanelProps {
   chartId: string | null;
   /** Current view mode - determines response style (plain English vs technical) */
   viewMode: ViewMode;
+  /** Earliest plausible pin year (the birth year). */
+  birthYear?: number;
   /** Streaming question handler — wires bounded tool orchestration with RAG context. */
   onAskQuestionStream: (
     question: string,
@@ -50,6 +57,7 @@ interface ChatPanelProps {
     history?: readonly ChatTurn[],
     retrievedContext?: readonly string[],
     onAgentStatus?: (label: string | null) => void,
+    asOf?: ChatThreadAsOf,
   ) => Promise<{
     answer: string;
     timing_guidance?: string | null;
@@ -64,12 +72,13 @@ export function ChatPanel({
   profileId,
   chartId,
   viewMode,
+  birthYear,
   onAskQuestionStream,
   hideHeader = false,
 }: ChatPanelProps) {
   const { t } = useTranslation('chat');
   const navigate = useNavigate();
-  const { messages, isStreaming, streamingDraft, submit, openThread } = useChatThread(
+  const { messages, isStreaming, streamingDraft, submit, openThread, asOf, pin, repin, backToToday } = useChatThread(
     profileId,
     chartId,
     generateProviderChatSummary,
@@ -87,7 +96,13 @@ export function ChatPanel({
   // it would be discarded (useChatThread's chart_changed guard), so Send waits
   // and says why. It is cleared whether the recompute lands or fails.
   const reanchoring = useChartReanchorPending(chartId);
-  const sendBlocked = !aiConfigured || isStreaming || reanchoring;
+  // A pinned thread doesn't depend on today, so it skips the re-anchor wait (spec Part 3).
+  const reanchorWaits = reanchoring && asOf === undefined;
+  const sendBlocked = !aiConfigured || isStreaming || reanchorWaits;
+  const language = useLanguageStore((s) => s.language);
+  const today = viewerTodayDay(new Date());
+  const relative = asOf ? pinRelative(asOf, today) : undefined;
+  const [sheet, setSheet] = useState<'closed' | 'new' | 'change'>('closed');
   const [agentActivity, setAgentActivity] = useState<string | null>(null);
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
   const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map());
@@ -153,7 +168,7 @@ export function ChatPanel({
       onSubmit={handleSubmit}
     >
     <ThreadPrimitive.Root
-      className={`flex flex-col h-[500px] bg-background-secondary ${hideHeader ? '' : 'border border-ui-border rounded-xl'} overflow-hidden`}
+      className={`flex flex-col h-[500px] bg-background-secondary ${hideHeader ? '' : 'border border-ui-border rounded-xl'} overflow-hidden relative`}
       data-testid="chat-panel"
     >
       {/* Header - adapts based on mode, hidden when used in FloatingChatPanel */}
@@ -185,7 +200,11 @@ export function ChatPanel({
       {/* Semantic search over this profile's past conversations (discoverable). */}
       {profileId && <ChatSearch profileId={profileId} onOpenResult={handleOpenResult} />}
 
-      {reanchoring && aiConfigured && (
+      {asOf && (
+        <TimeTravelBanner asOf={asOf} language={language} onChange={() => setSheet('change')} onBack={() => void backToToday()} />
+      )}
+
+      {reanchorWaits && aiConfigured && (
         <div className="mx-4 mt-3 rounded-lg border border-ui-border px-3 py-2 text-xs text-text-muted" data-testid="chat-reanchor-status" role="status">
           {t('reanchor.updating')}
         </div>
@@ -239,7 +258,7 @@ export function ChatPanel({
       {/* Suggested questions (show when no messages or few messages) */}
       {messages.length < 3 && (
         <div className="px-4">
-          <SuggestedQuestions onSelect={handleSuggestedQuestion} disabled={isStreaming || reanchoring} />
+          <SuggestedQuestions onSelect={handleSuggestedQuestion} disabled={isStreaming || reanchorWaits} relative={relative} />
         </div>
       )}
 
@@ -259,6 +278,12 @@ export function ChatPanel({
           </div>
         ) : (
         <ComposerPrimitive.Root className="flex gap-2">
+          <button type="button" data-testid="time-travel-button" onClick={() => setSheet('new')}
+            aria-label={t('time_travel.button')}
+            className="flex-shrink-0 rounded-xl border border-ui-border px-3 py-3 text-sm text-text-secondary hover:border-accent-gold">
+            <span aria-hidden="true">⏳</span>
+            <span className="ml-1 hidden sm:inline">{t('time_travel.button')}</span>
+          </button>
           <ComposerPrimitive.Input
             placeholder={t('input.placeholder')}
             className="flex-1 min-w-0 px-4 py-3 bg-background-primary border border-ui-border rounded-xl text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-accent-gold/50 resize-none text-sm disabled:opacity-50"
@@ -283,6 +308,14 @@ export function ChatPanel({
         </ComposerPrimitive.Root>
         )}
       </div>
+      <TimeTravelSheet
+        open={sheet !== 'closed'}
+        current={sheet === 'change' ? asOf : undefined}
+        birthYear={birthYear}
+        today={today}
+        onGo={sheet === 'change' ? repin : pin}
+        onClose={() => setSheet('closed')}
+      />
     </ThreadPrimitive.Root>
     </AlmaMeshAssistantRuntime>
   );
@@ -383,6 +416,7 @@ async function streamAnswer(
       input.history,
       input.retrievedContext,
       onAgentStatus,
+      input.asOf,
     );
     return response.answer;
   } finally {

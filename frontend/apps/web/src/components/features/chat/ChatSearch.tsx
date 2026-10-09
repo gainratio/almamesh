@@ -13,11 +13,13 @@
 
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useChatStore } from '@almamesh/store';
+import { useChatStore, useLanguageStore } from '@almamesh/store';
+import type { ChatThread } from '@almamesh/shared-types';
 import type { RetrievedChunk } from '@almamesh/memory';
 
 import { searchMemory } from '../../../lib/chatMemory';
 import { useEmbedderStatus } from '../../../hooks/useEmbedderStatus';
+import { formatPinLabel } from '../../../lib/timeTravelSheet';
 
 interface ChatSearchProps {
   /** The active profile whose chat history is searched. */
@@ -33,9 +35,12 @@ export function ChatSearch({ profileId, onOpenResult }: ChatSearchProps) {
   const { t } = useTranslation('chat');
   const threadsById = useChatStore((s) => s.threads);
 
-  /** A short label for a thread: its title, else a localized fallback. */
-  const threadLabel = (title: string | null): string =>
-    title?.trim() || t('search.thread_fallback');
+  const language = useLanguageStore((s) => s.language);
+  /** A pinned thread is "⏳ Time travel · <period>"; others their title, else a fallback. */
+  const threadLabel = (thread: ChatThread | undefined): string =>
+    thread?.as_of
+      ? `⏳ ${t('time_travel.title', { period: formatPinLabel(thread.as_of, language) })}`
+      : thread?.title?.trim() || t('search.thread_fallback');
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<readonly RetrievedChunk[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -121,7 +126,7 @@ export function ChatSearch({ profileId, onOpenResult }: ChatSearchProps) {
                   >
                     <div className="mb-1 flex items-center justify-between gap-2">
                       <span className="truncate text-xs font-medium text-text-secondary">
-                        {threadLabel(threadsById[hit.thread_id]?.title ?? null)}
+                        {threadLabel(threadsById[hit.thread_id])}
                       </span>
                       <span className="flex-shrink-0 text-[10px] tabular-nums text-text-muted">
                         {t('search.match', { percent: Math.round(hit.score * 100) })}
