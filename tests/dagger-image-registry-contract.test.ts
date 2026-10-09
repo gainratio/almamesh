@@ -14,6 +14,7 @@ const SCANNED_ROOTS = ["dagger", ".github"]
 const SKIPPED_DIRS = new Set(["node_modules", "sdk", ".pnpm-store"])
 const SKIPPED_FILES = new Set(["yarn.lock"])
 const MIRROR = "ghcr.io/hseshadr/mirror/docker.io"
+// Mirror root is still ghcr.io/hseshadr/... until it moves to gainratio (tracked follow-up).
 const ENGINE_CONFIG = ".github/xdg/dagger/engine.json"
 const XDG_CONFIG_HOME = "${{ github.workspace }}/.github/xdg"
 const DAGGER_ACTION = "dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77"
@@ -33,6 +34,21 @@ const IMAGE_PATTERNS: readonly RegExp[] = [
   /["'`]((?:[a-z0-9.-]+(?::\d+)?\/)*[a-z0-9._-]+(?::[\w.-]+)?@sha256:[0-9a-f]{64})["'`]/g,
   /(?<![\w./-])((?:index\.|registry-1\.)?docker\.io\/[\w./:@-]+)/g,
 ]
+
+// The places an image is chosen: a literal `.from(` argument, an image constant
+// (with or without a type annotation), and the TS SDK's `dagger.baseImage`.
+const PULLED_IMAGE_PATTERNS: readonly RegExp[] = [
+  /\.from\(\s*["'`]([^"'`]+)["'`]/g,
+  /\b[A-Z_]*IMAGE[A-Z_]*(?:\s*:\s*[\w |]+)?\s*=\s*["'`]([^"'`]+)["'`]/g,
+  /"baseImage"\s*:\s*"([^"]+)"/g,
+]
+const DIGEST_PINNED = /@sha256:[0-9a-f]{64}$/
+
+/** Every `.from(` literal, image constant, and base image written in one file. */
+export function pulledImageRefs(file: string, source: string): ImageRef[] {
+  const refs = PULLED_IMAGE_PATTERNS.flatMap((pattern) => [...source.matchAll(pattern)].map((match) => match[1]))
+  return [...new Set(refs)].map((ref) => ({ file, ref }))
+}
 
 export interface ImageRef {
   readonly file: string
@@ -74,6 +90,11 @@ function scannedFiles(dir: string): string[] {
 function repositoryImageRefs(): ImageRef[] {
   return SCANNED_ROOTS.flatMap((dir) => scannedFiles(resolve(root, dir)))
     .flatMap((path) => imageRefs(relative(root, path), readFileSync(path, "utf8")))
+}
+
+function repositoryPulledImageRefs(): ImageRef[] {
+  return SCANNED_ROOTS.flatMap((dir) => scannedFiles(resolve(root, dir)))
+    .flatMap((path) => pulledImageRefs(relative(root, path), readFileSync(path, "utf8")))
 }
 
 function daggerSteps(): Array<Record<string, unknown>> {
@@ -131,6 +152,24 @@ describe("no CI path pulls from Docker Hub", () => {
     expect(refs.length).toBeGreaterThanOrEqual(6)
     expect(refs.map((image) => image.ref)).toContain(SDK_NODE_BASE_IMAGE)
     expect(refs.filter((image) => isDockerHub(image.ref))).toEqual([])
+  })
+
+  test("every pulled image is pinned by digest", () => {
+    const refs = repositoryPulledImageRefs()
+    // NODE_IMAGE, PAGES_NODE_IMAGE, UV_IMAGE, BUN_IMAGE, TOOLCHAIN_IMAGE, baseImage.
+    expect(refs.length).toBeGreaterThanOrEqual(6)
+    expect(refs.filter((image) => !DIGEST_PINNED.test(image.ref))).toEqual([])
+  })
+
+  test.each([
+    ['const NODE_IMAGE =\n  "mirror.gcr.io/library/node:22-trixie-slim"', 1],
+    ['export const TOOLCHAIN_IMAGE: string | null =\n  "ghcr.io/gainratio/almamesh-toolchain:r-1"', 1],
+    ['dag.container().from("alpine:3.22")', 1],
+    ['"dagger": { "baseImage": "mirror.gcr.io/library/node:24" }', 1],
+    [`const BUN_IMAGE = "mirror.gcr.io/oven/bun:1.3.5@sha256:${"c".repeat(64)}"`, 0],
+  ])("flags an unpinned image in %s", (source, unpinned) => {
+    const refs = pulledImageRefs("x.ts", source)
+    expect(refs.filter((image) => !DIGEST_PINNED.test(image.ref)).length).toBe(unpinned)
   })
 
   test("the TypeScript SDK runtime base image is the mirror-pinned SDK default", () => {
