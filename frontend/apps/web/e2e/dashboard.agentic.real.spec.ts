@@ -196,7 +196,7 @@ test('[real] dashboard: timer + life phase + exact-day agentic chat', async ({
   expect(firstAgentRequest.tools?.map((tool) => tool.function?.name)).toEqual([
     'get_current_datetime',
     'get_chart_facts',
-    'get_current_timing',
+    'get_timing',
   ]);
   const firstMessages = Array.isArray(firstAgentRequest.messages)
     ? firstAgentRequest.messages

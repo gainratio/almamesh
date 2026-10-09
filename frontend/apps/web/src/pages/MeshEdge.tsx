@@ -77,8 +77,11 @@ import { predictiveReferenceInstant } from '../lib/predictive';
 import {
   createChatAgentTools,
   requiresCurrentPlanetaryContext,
+  viewerTodayDay,
 } from '../lib/chatAgentTools';
 import { ensureCurrentPlanetaryContext } from '../lib/currentPlanetaryContext';
+import { birthDayOf, createPeriodChartLoader } from '../lib/periodChart';
+import { TIMING_TOOL_NAME } from '../lib/timingTool';
 import type { SSEMetaData } from '../lib/streaming';
 import type { ViewMode } from '../lib/types';
 import { storedChartAnalysisInstant } from '../lib/analysisInstant';
@@ -344,11 +347,21 @@ function MeshEdgeContent({
       chartAsOf,
       chartTimeZone,
       loadCurrentChart,
+      // Today's echo names the same day the current-chart load computes (the
+      // birth zone here, until the shared builder moves it to the viewer's).
+      todayDay: (day) => viewerTodayDay(day, chartTimeZone),
+      birthDay: birthDayOf(anchorChart?.birth_data as ProcessedBirthData | undefined),
+      loadPeriodChart: createPeriodChartLoader({
+        chart: siderealChart,
+        profileKey: anchorChart?.profile_id ?? anchorChart?.chart_id ?? anchor.id,
+        birth: anchorChart?.birth_data as ProcessedBirthData | undefined,
+        engine: chartEngineContext,
+      }),
     });
 
     let currentContextUnavailable = false;
     if (requiresCurrentPlanetaryContext(question)) {
-      const currentTimingTool = tools.find((tool) => tool.name === 'get_current_timing');
+      const currentTimingTool = tools.find((tool) => tool.name === TIMING_TOOL_NAME);
       if (!currentTimingTool) throw new Error('Current timing tool is unavailable.');
       onAgentStatus?.(currentTimingTool.statusLabel ?? t('chat:agent.preparing'));
       try {

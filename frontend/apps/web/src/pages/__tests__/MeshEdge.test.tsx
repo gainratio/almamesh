@@ -324,7 +324,7 @@ describe('MeshEdgePage', () => {
     expect(options.tools.map((tool: { name: string }) => tool.name)).toEqual([
       'get_current_datetime',
       'get_chart_facts',
-      'get_current_timing',
+      'get_timing',
     ]);
     expect(JSON.stringify(options.messages)).toContain('ENGINE RELATIONSHIP CONTEXT');
     expect(JSON.stringify(options.messages)).not.toContain(ANCHOR.name);

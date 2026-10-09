@@ -83,6 +83,8 @@ import {
   requiresCurrentPlanetaryContext,
 } from "../lib/chatAgentTools";
 import { ensureCurrentPlanetaryContext } from "../lib/currentPlanetaryContext";
+import { birthDayOf, createPeriodChartLoader } from "../lib/periodChart";
+import { TIMING_TOOL_NAME } from "../lib/timingTool";
 import { useOptionalChartEngine } from "../providers/chartEngineContext";
 
 // Resolve the LLM env: build-time Vite env with any browser-local Settings
@@ -348,6 +350,13 @@ export default function DashboardPage() {
       chartAsOf,
       chartTimeZone,
       loadCurrentChart,
+      birthDay: birthDayOf(storedChart?.birth_data as ProcessedBirthData | undefined),
+      loadPeriodChart: createPeriodChartLoader({
+        chart: chart,
+        profileKey: storedChart?.profile_id ?? chartId ?? 'primary',
+        birth: storedChart?.birth_data as ProcessedBirthData | undefined,
+        engine: chartEngineContext,
+      }),
     });
 
     // A small deterministic router guarantees that explicit relative-time
@@ -357,7 +366,7 @@ export default function DashboardPage() {
     // one serialized into the agent context. Same-day repeats hit the store cache.
     let currentContextUnavailable = false;
     if (requiresCurrentPlanetaryContext(question)) {
-      const currentTimingTool = tools.find((tool) => tool.name === 'get_current_timing');
+      const currentTimingTool = tools.find((tool) => tool.name === TIMING_TOOL_NAME);
       if (!currentTimingTool) throw new Error('Current timing tool is unavailable.');
       onAgentStatus?.(currentTimingTool.statusLabel ?? 'Calculating current planetary context');
       try {

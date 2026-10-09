@@ -1,12 +1,16 @@
 import type { SiderealChart } from '@almamesh/browser/types';
 import {
   sanitizeChartForLlm,
-  todayAnalysisInstant,
   type AnalysisInstant,
-  type AgentJsonObject,
   type AgentTool,
   type AgentToolContext,
+  type PeriodRange,
 } from '@almamesh/llm';
+
+import { enumArgument } from './agentArgs';
+import { viewerTimeZone } from './analysisInstant';
+import { predictiveReferenceInstant } from './predictive';
+import { createTimingTool } from './timingTool';
 
 export interface ZonedDateTime {
   readonly isoUtc: string;
@@ -61,13 +65,27 @@ export interface CreateChatAgentToolsInput {
   readonly chart: SiderealChart;
   /**
    * The chart's own analysis instant: `get_chart_facts` describes the chart as
-   * of this instant. Only `get_current_timing` (explicitly about today) uses
-   * the tool context's `now`, labelled as "today".
+   * of this instant. Only `get_timing` (today, or a dated period) uses the
+   * tool context's `now`, labelled as "today".
    */
   readonly chartAsOf: AnalysisInstant;
   readonly chartTimeZone: string;
   /** Resolve exact-day engine facts; the caller owns cache/profile identity checks. */
   readonly loadCurrentChart?: (context: AgentToolContext) => Promise<SiderealChart>;
+  /** The local birth day (YYYY-MM-DD); periods before it are refused. */
+  readonly birthDay?: string;
+  /** Today's calendar day; defaults to the viewer's zone. */
+  readonly todayDay?: (now: Date) => string;
+  /** Engine facts for a period other than today (periodChart.ts). */
+  readonly loadPeriodChart?: (period: PeriodRange, context: AgentToolContext) => Promise<SiderealChart>;
+}
+
+/**
+ * Today's calendar day in the viewer's (device) zone: the one "today" every
+ * page reads, and the zone every "As of" on screen is printed in.
+ */
+export function viewerTodayDay(now: Date, timeZone: string = viewerTimeZone()): string {
+  return predictiveReferenceInstant(now, timeZone).slice(0, 10);
 }
 
 const CURRENT_CONTEXT_PATTERN =
@@ -79,18 +97,9 @@ export function requiresCurrentPlanetaryContext(question: string): boolean {
   return CURRENT_CONTEXT_PATTERN.test(normalized);
 }
 
-function enumArgument(args: AgentJsonObject, key: string, allowed: readonly string[]): string {
-  const value = args[key];
-  if (typeof value !== 'string' || !allowed.includes(value)) {
-    throw new Error(`${key} must be one of: ${allowed.join(', ')}`);
-  }
-  return value;
-}
-
 /** Build the fixed, read-only capability set for one already-loaded chart. */
 export function createChatAgentTools(input: CreateChatAgentToolsInput): readonly AgentTool[] {
   const chartSections = ['overview', 'planets', 'houses', 'yogas', 'dashas'] as const;
-  const timingSections = ['dashas', 'transits', 'domains', 'strength'] as const;
 
   return [
     {
@@ -146,34 +155,12 @@ export function createChatAgentTools(input: CreateChatAgentToolsInput): readonly
         }
       },
     },
-    {
-      name: 'get_current_timing',
-      description:
-        'Calculate or read the exact-day deterministic planetary timing data on this device. Use this for today, now, current timing, or transits. It never makes a network request.',
-      statusLabel: 'Calculating current planetary context',
-      timeoutMs: 60_000,
-      parameters: {
-        type: 'object',
-        properties: { section: { type: 'string', enum: timingSections } },
-        required: ['section'],
-        additionalProperties: false,
-      },
-      execute: async (args, context) => {
-        const section = enumArgument(
-          args,
-          'section',
-          timingSections,
-        ) as (typeof timingSections)[number];
-        const sourceChart = input.loadCurrentChart
-          ? await input.loadCurrentChart(context)
-          : input.chart;
-        const chart = sanitizeChartForLlm(sourceChart, todayAnalysisInstant(context.now));
-        if (section === 'dashas') return chart.dashas ?? { available: false };
-        const predictive = chart.predictive;
-        if (!predictive) return { available: false };
-        const value = predictive[section];
-        return value ?? { available: false };
-      },
-    },
+    createTimingTool({
+      chart: input.chart,
+      birthDay: input.birthDay,
+      todayDay: input.todayDay ?? viewerTodayDay,
+      loadCurrentChart: input.loadCurrentChart,
+      loadPeriodChart: input.loadPeriodChart,
+    }),
   ];
 }
