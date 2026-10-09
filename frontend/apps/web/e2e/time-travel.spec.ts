@@ -150,10 +150,12 @@ test('[contract/stubbed] a typed June 2019 question reads June 2019, not today',
   const [decision] = agentRequests;
   const prompt = decision.messages.map((message) => message.content ?? '').join('\n');
   expect(prompt, 'a dated question must not pre-run and label today').not.toContain(', today):');
+  // Extended 2026-10 (time travel step C): the pinned full tier adds resolve_place.
   expect(decision.tools.map((tool) => tool.function.name)).toEqual([
     'get_current_datetime',
     'get_chart_facts',
     'get_timing',
+    'resolve_place',
   ]);
 
   const chatPanel = page.getByTestId('chat-panel');
