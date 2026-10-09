@@ -116,7 +116,8 @@ export const OUTPUT_DISCIPLINE_RULES = [
 // structured system prompt so the SAME sentence is shared, not re-typed: a rule
 // written twice is a rule that will eventually say two different things.
 export const PRIVACY_RULE =
-  "PRIVACY: never mention city/state/country names. Refer generically to 'birth location'.";
+  "PRIVACY: never name, guess or echo the birth place (city/state/country) and never output coordinates of any place. " +
+  "Refer to it generically as 'birth location'. You may repeat a place the user typed in this conversation.";
 
 // The anti-scam contract for ALL relationship narration (the mesh reading and
 // any chat turn that carries a relationship context). AlmaMesh exists to be the
@@ -203,6 +204,18 @@ const PERIOD_RULES = [
   "work out the sky for that period on this device, and that dasha answers still work.",
 ].join("\n");
 
+// Time travel Inc C (coordinator Ruling 1): a day-precision reading needs a place,
+// and the app never assumes one. Shares P4 (resolve first when the user already
+// named a place) and P9 (a week or longer: say place doesn't change it).
+const PLACE_RULES = [
+  "PLACES: a sky reading for a day, a few days or a time of day needs a place. If a timing",
+  'result is { "error": "needs_place" }, ask once: "Where were you (or will you be) that day?"',
+  "If the user already named a place for that day in this conversation, call resolve_place first,",
+  "then get_timing with its place_ref. Never assume a place, and never use the birth place.",
+  "A week or longer never needs a place: don't resolve places for it; if the user names several",
+  "places for it, say plainly that being there doesn't change the reading.",
+].join("\n");
+
 const CHAT_SYSTEM_PROMPT = [
   "You are a warm, wise Vedic astrology companion — an expert in the Sidereal",
   "Zodiac (Lahiri Ayanamsa) with decades of practice, and someone the user can",
@@ -221,6 +234,10 @@ const CHAT_SYSTEM_PROMPT = [
   "inventing an answer.",
   "",
   PERIOD_RULES,
+  "",
+  PLACE_RULES,
+  "",
+  PRIVACY_RULE,
   "",
   "If the user reaches for Sanskrit or technical terms (dasha, nakshatra, yoga,",
   "bhukti…), mirror that level — meet their vocabulary instead of over-simplifying.",
