@@ -291,6 +291,7 @@ describe("browser gate shards", () => {
     "TIME_HANDLING_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:time-handling --project=chromium",
     "TIME_TRAVEL_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:time-travel --project=chromium",
     "MESH_PERSIST_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:mesh-add-persist",
+    "DURABLE_SAVES_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:durable-saves",
     "node scripts/verify-cross-origin-isolation.mjs http://127.0.0.1:4200 --browser=webkit",
     "node scripts/verify-sqlite-memory.mjs http://127.0.0.1:4200 --browser=webkit",
     "node scripts/verify-sqlite-memory.mjs http://127.0.0.1:4200 --browser=webkit --slow-boot-storage-ms=1500",

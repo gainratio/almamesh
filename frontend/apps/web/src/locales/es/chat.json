@@ -81,7 +81,8 @@
     "rate_limited": "El proveedor de IA está limitando las solicitudes. Espera un momento e inténtalo de nuevo.",
     "reasoning_timeout": "El modelo pensó durante más de 3 minutos sin empezar su respuesta. Inténtalo de nuevo o elige un modelo más rápido en Ajustes → IA.",
     "server_error": "El proveedor de IA está teniendo problemas ahora mismo. Inténtalo de nuevo en breve.",
-    "request_failed": "La solicitud a la IA falló. Inténtalo de nuevo en un momento o revisa tu modelo y endpoint en Ajustes → IA."
+    "request_failed": "La solicitud a la IA falló. Inténtalo de nuevo en un momento o revisa tu modelo y endpoint en Ajustes → IA.",
+    "save_failed": "Esta respuesta no se pudo guardar en este dispositivo, así que puede desaparecer al recargar."
   },
   "not_configured": {
     "notice": "Conecta un modelo de IA para hacer preguntas sobre tu carta — tu carta ya está calculada en tu dispositivo.",

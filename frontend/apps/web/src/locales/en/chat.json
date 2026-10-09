@@ -78,7 +78,8 @@
     "rate_limited": "The AI provider is rate-limiting requests. Wait a moment and try again.",
     "reasoning_timeout": "The model thought for over 3 minutes without starting its answer. Try again, or pick a faster model in Settings → AI.",
     "server_error": "The AI provider is having trouble right now. Try again shortly.",
-    "request_failed": "The AI request failed — try again in a moment, or check your model and endpoint in Settings → AI."
+    "request_failed": "The AI request failed — try again in a moment, or check your model and endpoint in Settings → AI.",
+    "save_failed": "This answer couldn't be saved on this device, so it may be gone after a reload."
   },
   "not_configured": {
     "notice": "Connect an AI model to ask questions about your chart — your chart itself is already calculated on your device.",

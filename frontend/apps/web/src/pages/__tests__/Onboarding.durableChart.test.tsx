@@ -46,6 +46,8 @@ const persisted = vi.hoisted(() => ({
 }));
 // The first-run person this page creates must be on disk too, not just the chart.
 const profilesCommit = vi.hoisted(() => ({ next: (): Promise<void> => Promise.resolve() }));
+// ...and so must the life-event notes captured on the last step.
+const lifeEventsCommit = vi.hoisted(() => ({ next: (): Promise<void> => Promise.resolve() }));
 vi.mock('@almamesh/store', async (orig) => {
   const actual = await orig<typeof import('@almamesh/store')>();
   const barrier = (): Promise<void> => {
@@ -60,6 +62,7 @@ vi.mock('@almamesh/store', async (orig) => {
     whenChartLibraryPersisted: () => barrier().catch(() => undefined),
     whenChartLibraryCommitted: barrier,
     whenProfilesCommitted: () => profilesCommit.next(),
+    whenLifeEventsCommitted: () => lifeEventsCommit.next(),
   };
 });
 
@@ -150,6 +153,7 @@ beforeEach(() => {
   compute = deferred<SiderealChart>();
   persisted.calls = 0;
   profilesCommit.next = () => Promise.resolve();
+  lifeEventsCommit.next = () => Promise.resolve();
   useOnboardingStore.getState().reset();
   useProfilesStore.setState({ profiles: {}, activeProfileId: null });
   useLifeEventsStore.setState({ eventsByProfile: {} });
@@ -243,6 +247,32 @@ describe('Onboarding — the chart is durable before the user leaves', () => {
     expect(navigateSpy).not.toHaveBeenCalled();
     expect(useOnboardingStore.getState().data.name).toBe('Asha');
     expect(warn).toHaveBeenCalledWith('[almamesh:warn:people.save_failed]');
+    warn.mockRestore();
+  });
+
+  it('stays on the retry card when the captured life-event notes could not be saved', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    lifeEventsCommit.next = () => Promise.reject(new Error('opfs write failed'));
+    seedReadyToGenerate();
+    renderPage();
+
+    fireEvent.change(screen.getByTestId('life-events-input'), {
+      target: { value: 'In June 2015 I moved to Pune for a new job, and in 2018 I got married.' },
+    });
+    fireEvent.click(screen.getByTestId('extract-events-button'));
+    await screen.findByTestId('captured-life-events');
+    // The notes are only in memory here; the step must not claim they are saved.
+    expect(document.body.textContent ?? '').not.toMatch(/is saved on this device/i);
+
+    // The step moves on by itself after showing its feedback.
+    await waitFor(() => expect(generateChart).toHaveBeenCalledOnce(), { timeout: 4000 });
+    compute.resolve(fakeSiderealChart);
+    await waitFor(() => expect(persisted.calls).toBeGreaterThan(0));
+    persisted.release();
+
+    await waitFor(() => expect(screen.getByTestId('retry-generation-button')).toBeTruthy());
+    expect(navigateSpy).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledWith('[almamesh:warn:life_events.save_failed]');
     warn.mockRestore();
   });
 

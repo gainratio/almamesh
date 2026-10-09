@@ -17,8 +17,8 @@ const save = vi.hoisted(() => ({
   resolve: (): void => undefined,
   reject: (_error: Error): void => undefined,
 }));
-vi.mock('../../../lib/profilesSaved', () => ({
-  waitForProfilesSaved: () => {
+vi.mock('../../../lib/storeSaved', () => ({
+  waitForStoreSaved: () => {
     save.calls += 1;
     return new Promise<void>((resolve, reject) => {
       save.resolve = resolve;

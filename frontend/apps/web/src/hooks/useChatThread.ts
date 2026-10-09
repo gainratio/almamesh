@@ -38,6 +38,7 @@ import i18n from '../i18n/config';
 import { indexChatMessage, retrieveContext } from '../lib/chatMemory';
 import { chatErrorMessage, getChatErrorMessage } from '../lib/errors';
 import { LLM_SETTINGS_CHANGED_EVENT } from '../lib/llmSettingsEvents';
+import { waitForStoreSaved } from '../lib/storeSaved';
 
 /** Input the caller's stream fn receives; it wires `streamChartChat` with these. */
 export interface ChatStreamInput {
@@ -220,6 +221,26 @@ export function describeChatStreamError(error: unknown): string {
  * else its chart id (a chart stored before snapshots). Read LIVE from the chart
  * library, so a regeneration or a recompute under the same id is visible.
  */
+/**
+ * End-of-turn barrier. Streamed tokens are React-local and never persisted, so
+ * only the turn's final appends need to reach disk before the turn ends; a
+ * reload before that used to lose the answer. A failed save leaves a flagged
+ * notice (excluded from history and RAG) instead of failing silently.
+ */
+async function settleChatTurn(threadId: string): Promise<void> {
+  try {
+    await waitForStoreSaved('chat');
+  } catch {
+    // waitForStoreSaved already logged a fixed code. The thread can be gone
+    // (deleted mid-turn); then there is nothing left to annotate.
+    if (useChatStore.getState().threads[threadId] !== undefined) {
+      useChatStore
+        .getState()
+        .appendMessage(threadId, 'assistant', i18n.t('chat:errors.save_failed'), { error: true });
+    }
+  }
+}
+
 function chartSnapshotIdentity(chartId: string | null): string | null {
   if (chartId === null) return null;
   const snapshotId = useChartLibraryStore.getState().getChart(chartId)?.sidereal_chart?.snapshot
@@ -363,6 +384,7 @@ export function useChatThread(
         // the model-visible history (see `toHistory`), never indexed for RAG.
         store.appendMessage(tid, 'assistant', describeChatStreamError(error), { error: true });
       } finally {
+        await settleChatTurn(tid);
         sendInFlight.current = false;
         setIsStreaming(false);
         setStreamingDraft('');

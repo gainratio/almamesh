@@ -16,7 +16,7 @@ import { useOnboardingStore, useProfilesStore } from '@almamesh/store';
 import { safeError } from '@almamesh/shared-types';
 import { MEMBER_RELATIONSHIPS, type MemberRelationship } from '@almamesh/shared-types';
 import { Button, Dialog, Input, Select } from '../../ui';
-import { waitForProfilesSaved } from '../../../lib/profilesSaved';
+import { waitForStoreSaved } from '../../../lib/storeSaved';
 
 /** Narrow a raw `<select>` value to a member relationship (no casts). */
 export function asMemberRelationship(value: string): MemberRelationship | undefined {
@@ -106,7 +106,7 @@ export function AddPersonDialog({ open, onClose }: AddPersonDialogProps): ReactE
       stagePerson(trimmed);
       // The person is "added" only once they are on disk. Moving on before
       // this let a full page load lose them (the write was still queued).
-      await waitForProfilesSaved();
+      await waitForStoreSaved('people');
     } catch (err) {
       // A store or disk failure must never silently close the dialog or
       // escape the click handler: keep the typed entry, show a retryable notice.

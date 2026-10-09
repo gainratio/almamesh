@@ -11,7 +11,7 @@ import {
 import { Button, Dialog, Input } from '../../ui';
 import { AvatarChip } from './AvatarChip';
 import { deleteProfileData } from '../../../lib/profileDataLifecycle';
-import { waitForProfilesSaved } from '../../../lib/profilesSaved';
+import { waitForStoreSaved } from '../../../lib/storeSaved';
 
 /**
  * ProfileSwitcher — the header control for named, password-less people sharing
@@ -90,7 +90,7 @@ export function ProfileSwitcher() {
     try {
       // Only move on once the person is on disk: navigating first let a full
       // page load lose them while the write was still queued.
-      await waitForProfilesSaved();
+      await waitForStoreSaved('people');
     } catch {
       setAddError(t('profiles.add_error'));
       return;

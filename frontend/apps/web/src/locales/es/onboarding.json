@@ -62,7 +62,7 @@
     "char_count": "{{count}}/5000 caracteres",
     "privacy_note": "La organización se realiza en el dispositivo salvo que hayas conectado una IA. Si la IA está conectada, al pulsar Guardar se envía solo este relato a tu proveedor de IA conectado para crear filas de eventos tipadas; tus datos de nacimiento y tu carta permanecen en este dispositivo.",
     "min_length_error": "Describe al menos un evento importante de tu vida.",
-    "saved_feedback": "¡Gracias! Tu historia se ha guardado en este dispositivo como notas para ayudarte a rectificar tu hora de nacimiento a mano en Ajustes.",
+    "saved_feedback": "¡Gracias! Tu historia se guardará en este dispositivo junto con tu carta, como notas para ayudarte a rectificar tu hora de nacimiento a mano en Ajustes.",
     "saved_label": "Guardado en este dispositivo:",
     "inspiration_label": "¿Necesitas inspiración? Prueba un ejemplo:",
     "helpful_title": "Los eventos que más ayudan:",

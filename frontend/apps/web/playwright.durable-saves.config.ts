@@ -6,30 +6,31 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = resolve(__filename, '..');
 
 /**
- * Mesh add-person durability — live-journey config.
+ * Durable saves — live-journey config.
  *
- * Drives the REAL production build: add a person on /mesh, then do a full
- * page load straight away. The person must still be there. Zero store
- * seeding and zero engine hooks, so this lane stays fast.
+ * Each journey makes a save the app then reports as done (the AI key's
+ * status badge, a finished chat turn) and does a full page load straight
+ * away. The data must still be there. The chat journey seeds a real chart, so
+ * this needs the hooked build (window.__almameshGenerate).
  *
- * Run:  bun run playwright test --config=playwright.mesh-add-persist.config.ts
+ * Run:  bun run test:e2e:durable-saves
  */
 
-const PORT = Number(process.env.MESH_PERSIST_E2E_PORT ?? 4199);
-// A Dagger lane that already serves a build passes MESH_PERSIST_E2E_BASE_URL;
-// then this suite drives it instead of starting its own server.
-const EXTERNAL_BASE_URL = process.env.MESH_PERSIST_E2E_BASE_URL;
+const PORT = Number(process.env.DURABLE_SAVES_E2E_PORT ?? 4197);
+// A Dagger lane that already serves the hooked build passes DURABLE_SAVES_E2E_BASE_URL.
+const EXTERNAL_BASE_URL = process.env.DURABLE_SAVES_E2E_BASE_URL;
 const BASE_URL = EXTERNAL_BASE_URL ?? `http://localhost:${PORT}`;
 
 export default defineConfig({
   testDir: './e2e',
-  testMatch: /mesh-add-persist\.spec\.ts/,
+  testMatch: /durable-saves\.spec\.ts/,
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   workers: 1,
   reporter: process.env.CI ? [['github'], ['list']] : 'list',
-  timeout: 120_000,
+  // The cold engine boot can take ~60-90s under headless Chromium.
+  timeout: 240_000,
   expect: { timeout: 30_000 },
   use: {
     baseURL: BASE_URL,
@@ -43,14 +44,13 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'] },
     },
   ],
-  // Plain production build — this journey needs no exit-gate hooks.
   webServer: EXTERNAL_BASE_URL
     ? undefined
     : {
-        command: `VITE_API_URL= bun run build && VITE_API_URL= bun run preview --port ${PORT} --strictPort`,
+        command: `VITE_API_URL= VITE_EXIT_GATE_HOOKS=1 bun run build && VITE_API_URL= bun run preview --port ${PORT} --strictPort`,
         url: BASE_URL,
         reuseExistingServer: !process.env.CI,
-        timeout: 300_000,
+        timeout: 240_000,
         cwd: __dirname,
       },
 });

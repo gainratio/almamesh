@@ -499,6 +499,9 @@ exec ${inline.join(" ")}`,
       // A person added on /mesh survives an immediate full page load (the
       // write is on disk before the dialog moves on). Chromium only.
       "MESH_PERSIST_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:mesh-add-persist",
+      // A saved AI key and a finished chat turn survive an immediate full page
+      // load (each save is on disk before the app says it is done). Chromium only.
+      "DURABLE_SAVES_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:durable-saves",
     ])
   }
   // The hooked Playwright suites. Each used to rebuild this same bundle in its

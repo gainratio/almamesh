@@ -81,7 +81,8 @@
     "rate_limited": "O provedor de IA está limitando as solicitações. Espere um momento e tente novamente.",
     "reasoning_timeout": "O modelo pensou por mais de 3 minutos sem começar a resposta. Tente novamente ou escolha um modelo mais rápido em Configurações → IA.",
     "server_error": "O provedor de IA está com problemas no momento. Tente novamente em breve.",
-    "request_failed": "A solicitação à IA falhou. Tente novamente em instantes ou verifique seu modelo e endpoint em Configurações → IA."
+    "request_failed": "A solicitação à IA falhou. Tente novamente em instantes ou verifique seu modelo e endpoint em Configurações → IA.",
+    "save_failed": "Esta resposta não pôde ser salva neste dispositivo, então pode sumir ao recarregar."
   },
   "not_configured": {
     "notice": "Conecte um modelo de IA para fazer perguntas sobre seu mapa — seu mapa já está calculado no seu dispositivo.",
