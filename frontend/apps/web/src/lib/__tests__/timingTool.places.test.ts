@@ -17,6 +17,7 @@ import {
   PLACE_DOES_NOT_CHANGE_NOTE,
   PLACE_MOON_UNAVAILABLE_NOTE,
 } from '../timingTool';
+import { PLACE_MOON_DEADLINE_MS } from '../timingPlaces';
 import { CHART, SKY_CHART } from './timingFixtures';
 
 const NOW = new Date('2026-06-20T09:30:00.000Z');
@@ -295,6 +296,43 @@ describe('get_timing with places', () => {
     expect(load).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ['segments', { segments: [{ start: '2026-06-01', end: '2026-06-15', place_ref: 'city:101' }, { start: '2026-06-16', end: '2026-06-30', place_ref: 'city:202' }] }],
+    ['place_ref', { start: '2026-06-01', end: '2026-06-30', place_ref: 'city:202' }],
+  ])('a weak device reads dashas for a week or longer with %s without looking any place up', async (_, args) => {
+    const placeFromRef = vi.fn(async (ref: string) => PLACES[ref]);
+    const result = await tool({ periodSkyAllowed: false, placeFromRef }).execute({ section: 'dashas', ...args }, context());
+    expect(result).toMatchObject({ shown: 'dashas' });
+    expect(result).not.toHaveProperty('places');
+    expect(notesOf(result)).not.toContain(PLACE_DOES_NOT_CHANGE_NOTE);
+    expect(placeFromRef).not.toHaveBeenCalled();
+  });
+
+  it('a Moon read that hangs gives up after its own deadline, keeps the sky answer, and cancels the read', async () => {
+    vi.useFakeTimers();
+    try {
+      let seen: AbortSignal | undefined;
+      const load = vi.fn((_request: MoonWindowRequest, { signal }: { signal: AbortSignal }) => {
+        seen = signal;
+        return new Promise<MoonWindow>(() => undefined);
+      });
+      const pending = tool({ loadMoonWindow: load }).execute({ section: 'transits', start: '2026-06-15', place_ref: 'city:202' }, context());
+      await vi.advanceTimersByTimeAsync(PLACE_MOON_DEADLINE_MS - 1);
+      expect(seen?.aborted).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      const result = await pending;
+      expect(result).toMatchObject({ shown: 'transits', places: [{ label: 'Bogotá, Colombia' }] });
+      expect(notesOf(result)).toContain(PLACE_MOON_UNAVAILABLE_NOTE);
+      expect(seen?.aborted).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('the Moon deadline fits inside the tool budget left after the period sky (150 s - 140 s)', () => {
+    expect(PLACE_MOON_DEADLINE_MS).toBe(8_000);
+  });
+
   it('a failed Moon read keeps the sky answer and says so', async () => {
     const load = vi.fn(async () => {
       throw new Error('worker died');
@@ -358,5 +396,24 @@ describe('get_timing teaches the model about places', () => {
     expect(description).toContain('"Where were you (or will you be) that day?"');
     expect(description).toContain('A week or longer never needs a place');
     expect(description).toContain('Never assume a place');
+  });
+});
+
+describe('get_timing on a weak device says nothing about places', () => {
+  const PLACE_WORDS = /resolve_place|needs_place|place_ref|Where were you/;
+
+  it('a lite description and schema carry no place sentences or fields', () => {
+    const lite = tool({ periodSkyAllowed: false });
+    expect(lite.description).not.toMatch(PLACE_WORDS);
+    const properties = (lite.parameters as { properties: Record<string, unknown> }).properties;
+    expect(Object.keys(properties)).toEqual(['section', 'start', 'end']);
+  });
+
+  it('a full description and schema carry them', () => {
+    const full = tool({ periodSkyAllowed: true });
+    expect(full.description).toMatch(/resolve_place/);
+    expect(full.description).toMatch(/needs_place/);
+    const properties = (full.parameters as { properties: Record<string, unknown> }).properties;
+    expect(Object.keys(properties)).toEqual(['section', 'start', 'end', 'place_ref', 'time', 'segments']);
   });
 });

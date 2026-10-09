@@ -118,8 +118,10 @@ export function buildChatToolset(input: BuildChatToolsetInput): ChatToolset {
       engine: input.engine,
     }),
     periodSkyAllowed: skyAllowed,
-    loadMoonWindow: createMoonWindowLoader(input.engine),
-    placeFromRef: input.placeFromRef ?? placeFromRef,
+    // Only a full device reads places: lite never gets a path to the city data.
+    ...(skyAllowed
+      ? { loadMoonWindow: createMoonWindowLoader(input.engine), placeFromRef: input.placeFromRef ?? placeFromRef }
+      : {}),
   });
   const tools = skyAllowed ? [...agentTools, createResolvePlaceTool()] : agentTools;
 

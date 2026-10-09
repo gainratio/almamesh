@@ -95,6 +95,16 @@ describe('createMoonWindowLoader', () => {
     expect(computeMoonWindow).toHaveBeenCalledWith(moonWindowInput(request));
   });
 
+  it('a cancelled read never reaches the engine', async () => {
+    const computeMoonWindow = vi.fn(async () => ({ at_place: null, event: null }));
+    const engine = { engine: { computeMoonWindow }, startBootstrap: vi.fn(), whenReady: vi.fn() } as unknown as ChartEngineContextValue;
+    const controller = new AbortController();
+    controller.abort(new Error('deadline'));
+    const request = { start: '2026-06-15', end: '2026-06-15', zone: 'America/Bogota', place: BOGOTA };
+    await expect(createMoonWindowLoader(engine)(request, { ...context(), signal: controller.signal })).rejects.toThrow('deadline');
+    expect(computeMoonWindow).not.toHaveBeenCalled();
+  });
+
   it('refuses a bad time before the engine is touched', async () => {
     const startBootstrap = vi.fn();
     const engine = { engine: null, startBootstrap, whenReady: vi.fn() } as unknown as ChartEngineContextValue;

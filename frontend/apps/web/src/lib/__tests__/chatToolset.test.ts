@@ -235,6 +235,26 @@ describe('buildChatToolset: places', () => {
     expect(names(4)).not.toContain('resolve_place');
   });
 
+  it('a lite device gets no place reader and no Moon loader at all', () => {
+    toolset({ periodSkyAllowed: false });
+    const lite = vi.mocked(createChatAgentTools).mock.lastCall?.[0];
+    expect(lite).toMatchObject({ periodSkyAllowed: false });
+    expect(lite?.placeFromRef).toBeUndefined();
+    expect(lite?.loadMoonWindow).toBeUndefined();
+    toolset({ periodSkyAllowed: true });
+    const full = vi.mocked(createChatAgentTools).mock.lastCall?.[0];
+    expect(full?.placeFromRef).toBeTypeOf('function');
+    expect(full?.loadMoonWindow).toBeTypeOf('function');
+  });
+
+  it('a lite device never looks a place up, even for dashas over a month with segments', async () => {
+    const placeFromRef = vi.fn(async () => LIMA);
+    const segments = [{ start: '2026-06-01', end: '2026-06-15', place_ref: 'city:5' }, { start: '2026-06-16', end: '2026-06-30', place_ref: 'city:5' }];
+    const result = await timingOf(toolset({ periodSkyAllowed: false, placeFromRef })).execute({ section: 'dashas', segments }, options());
+    expect(result).toMatchObject({ shown: 'dashas' });
+    expect(placeFromRef).not.toHaveBeenCalled();
+  });
+
   it('a lite device never asks where: a day of transits is dashas only', async () => {
     const result = await timingOf(toolset({ periodSkyAllowed: false })).execute({ section: 'transits', start: '2026-06-15' }, options());
     expect(result).toMatchObject({ shown: 'dashas' });

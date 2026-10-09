@@ -125,6 +125,10 @@ const DESCRIPTION = [
   '"2019" -> start=2019-01-01, end=2019-12-31. For vague ranges ("summer 2019") pick a sensible range and say which.',
   'Every result carries `period`: name it in your answer, e.g. "I looked at 1–30 June 2026."',
   'Respect `notes`. Only the events in `covered_events` were checked; do not claim anything about other planets.',
+].join(' ');
+
+/** Full tier only: lite/minimal answer every period with dashas, so they never hear of places. */
+const PLACE_DESCRIPTION = [
   'A sky reading (transits, domains, strength) for less than 7 days (a day, a few days, or a time of day) needs a place:',
   'send place_ref from resolve_place, or segments that each carry one. Never assume a place.',
   'If the user already named a place for that day in this conversation, call resolve_place first, then call this with its place_ref.',
@@ -133,6 +137,13 @@ const DESCRIPTION = [
   'Dashas never need a place. For a time of day send start, place_ref and time (HH:MM, 24-hour).',
   `For a few days in different places send segments (up to ${MAX_SEGMENTS}); one turn can resolve at most 2 places.`,
 ].join(' ');
+
+const BASE_PROPERTIES = { section: { type: 'string', enum: TIMING_SECTIONS }, start: DAY, end: DAY } as const;
+const PLACE_PROPERTIES = {
+  place_ref: PLACE_REF,
+  time: { type: 'string', pattern: TIME_OF_DAY_PATTERN },
+  segments: { type: 'array', minItems: 1, maxItems: MAX_SEGMENTS, items: SEGMENT },
+} as const;
 
 const UNAVAILABLE = { available: false } as const;
 
@@ -265,8 +276,9 @@ function limitedTiming(
 ): TimingResult | undefined {
   const notes = dashasOnlyNotes(input, section, period);
   if (notes && section !== 'dashas') return dashasTiming(input, section, period, echo, notes);
-  // Dashas for under a week ignore places: no lookup, no Moon read.
-  if (section === 'dashas' && echo.days < PLACE_NEEDED_BELOW_DAYS) return dashasTiming(input, section, period, echo, []);
+  // Dashas ignore places under a week, and on a weak device always: no lookup, no Moon read.
+  const placesIgnored = !input.periodSkyAllowed || echo.days < PLACE_NEEDED_BELOW_DAYS;
+  if (section === 'dashas' && placesIgnored) return dashasTiming(input, section, period, echo, []);
   return undefined;
 }
 
@@ -322,20 +334,13 @@ function statusLabelFor(input: TimingToolInput, args: AgentJsonObject): string |
 export function createTimingTool(input: TimingToolInput): AgentTool {
   return {
     name: TIMING_TOOL_NAME,
-    description: DESCRIPTION,
+    description: input.periodSkyAllowed ? `${DESCRIPTION} ${PLACE_DESCRIPTION}` : DESCRIPTION,
     statusLabel: SKY_STATUS_LABEL,
     statusLabelFor: (args: AgentJsonObject) => statusLabelFor(input, args),
     timeoutMs: TIMING_TOOL_TIMEOUT_MS,
     parameters: {
       type: 'object',
-      properties: {
-        section: { type: 'string', enum: TIMING_SECTIONS },
-        start: DAY,
-        end: DAY,
-        place_ref: PLACE_REF,
-        time: { type: 'string', pattern: TIME_OF_DAY_PATTERN },
-        segments: { type: 'array', minItems: 1, maxItems: MAX_SEGMENTS, items: SEGMENT },
-      },
+      properties: input.periodSkyAllowed ? { ...BASE_PROPERTIES, ...PLACE_PROPERTIES } : BASE_PROPERTIES,
       required: ['section'],
       additionalProperties: false,
     },

@@ -17,6 +17,14 @@ export const PLACE_MOON_UNAVAILABLE_NOTE = "Couldn't read the Moon at that place
 /** Adjacent segments' echo spans 2 days (end, next start); more leaves a day uncovered. */
 const ADJACENT_SPAN_DAYS = 2;
 
+/**
+ * How long all of one call's Moon reads may take. The tool has 150 s
+ * (TIMING_TOOL_TIMEOUT_MS) and the period sky before it up to 140 s
+ * (PERIOD_SKY_TIMEOUT_MS), so 8 s keeps a hung Moon read from losing the sky
+ * answer at the tool timeout. One read is a few positions on a warm engine.
+ */
+export const PLACE_MOON_DEADLINE_MS = 8_000;
+
 export type PlaceReader = (ref: string) => Promise<ResolvedPlace | undefined>;
 
 /** The place arguments of one period call (parseTimingArgs). */
@@ -127,6 +135,27 @@ async function readWindows(
   return windows;
 }
 
+/** Run `work` with a signal that aborts on the turn's cancellation or after PLACE_MOON_DEADLINE_MS. */
+async function withDeadline<T>(context: AgentToolContext, work: (bounded: AgentToolContext) => Promise<T>): Promise<T> {
+  const controller = new AbortController();
+  const cancel = () => controller.abort(context.signal.reason);
+  context.signal.addEventListener('abort', cancel, { once: true });
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      const error = new Error('The Moon read passed its deadline.');
+      controller.abort(error);
+      reject(error);
+    }, PLACE_MOON_DEADLINE_MS);
+  });
+  try {
+    return await Promise.race([work({ ...context, signal: controller.signal }), deadline]);
+  } finally {
+    clearTimeout(timer);
+    context.signal.removeEventListener('abort', cancel);
+  }
+}
+
 function withMoons<T extends PlacedResult>(
   result: T,
   spans: readonly PlacedSpan[],
@@ -153,7 +182,8 @@ export async function shortPlaces<T extends PlacedResult>(
   const unavailable = { ...result, places: spans.map(labelRow), notes: [...result.notes, PLACE_MOON_UNAVAILABLE_NOTE] };
   if (!load) return unavailable;
   try {
-    return withMoons(result, spans, await readWindows(load, spans, time, context), time);
+    const windows = await withDeadline(context, (bounded) => readWindows(load, spans, time, bounded));
+    return withMoons(result, spans, windows, time);
   } catch (error) {
     // A cancelled turn is not a Moon failure: let the agent see the cancellation.
     if (context.signal.aborted) throw error;

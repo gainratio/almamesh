@@ -56,9 +56,11 @@ export function moonWindowInput(request: MoonWindowRequest): MoonWindowInput {
 }
 
 export function createMoonWindowLoader(engine: ChartEngineContextValue | null): MoonWindowLoader {
-  return async (request) => {
+  return async (request, context) => {
     const input = moonWindowInput(request);
     const runtime = await readyEngine(engine);
+    // A read cancelled (turn stopped or its deadline passed) while the engine booted never starts.
+    context.signal.throwIfAborted();
     return runtime.computeMoonWindow(input);
   };
 }
