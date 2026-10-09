@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import i18next from 'i18next';
 import { useLanguageStore } from '@almamesh/store';
@@ -103,5 +103,53 @@ describe('TransitsPanel', () => {
     } finally {
       errors.mockRestore();
     }
+  });
+
+  it('hides the severity badge on a neutral row and keeps it on the others', () => {
+    const [ingress, dasha] = TRANSIT_CTX.timeline.events;
+    const ctx: TransitCtx = {
+      ...TRANSIT_CTX,
+      timeline: {
+        ...TRANSIT_CTX.timeline,
+        events: [
+          { ...ingress!, severity: 'supportive' },
+          { ...dasha!, severity: 'neutral' },
+          { ...ingress!, date: '2027-03-01', descriptor: 'jupiter.ingress.leo', to_sign: 'leo', severity: 'challenging' },
+        ],
+      },
+    };
+    render(<TransitsPanel transitCtx={ctx} />);
+    const rows = within(screen.getByTestId('transit-timeline')).getAllByRole('listitem');
+    expect(rows).toHaveLength(3);
+    expect(within(rows[0]!).getByText('Supportive')).toBeTruthy();
+    expect(within(rows[1]!).queryByText('Neutral')).toBeNull();
+    expect(within(rows[2]!).getByText('Challenging')).toBeTruthy();
+  });
+
+  describe('in a timezone west of UTC (America/Los_Angeles)', () => {
+    const originalTz = process.env.TZ;
+    beforeEach(() => {
+      process.env.TZ = 'America/Los_Angeles';
+    });
+    afterEach(() => {
+      process.env.TZ = originalTz;
+    });
+
+    it('formats the UTC-midnight window bounds as their UTC calendar day', () => {
+      // Prove the pin applied: UTC midnight is the previous evening in Los Angeles.
+      expect(new Date('2026-10-09T00:00:00Z').getDate()).toBe(8);
+      const ctx: TransitCtx = {
+        ...TRANSIT_CTX,
+        timeline: {
+          ...TRANSIT_CTX.timeline,
+          window_start: '2026-10-09T00:00:00Z',
+          window_end: '2027-10-09T00:00:00Z',
+        },
+      };
+      render(<TransitsPanel transitCtx={ctx} />);
+      const card = screen.getByTestId('transit-timeline');
+      expect(card.textContent).toContain('Oct 09, 2026 – Oct 09, 2027');
+      expect(card.textContent).not.toContain('Oct 08');
+    });
   });
 });

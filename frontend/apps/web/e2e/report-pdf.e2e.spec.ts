@@ -538,7 +538,8 @@ async function seedSyntheticMaximalReport(
           profileKey: SYNTHETIC_PROFILE_ID,
           requestKey,
         },
-        version: 2,
+        // The current predictive persist version: an older one is a cache miss.
+        version: 4,
       }),
     ],
     [

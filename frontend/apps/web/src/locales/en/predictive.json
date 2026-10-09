@@ -141,6 +141,7 @@
   },
   "events": {
     "sign_ingress": "{{graha}} enters {{sign}}",
+    "sign_ingress_backward": "{{graha}} moves back into {{sign}}",
     "sign_ingress_unknown": "{{graha}} changes sign",
     "sade_sati_phase": "Sade Sati — {{phase}} phase",
     "return": "{{graha}} return",

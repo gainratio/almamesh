@@ -9,7 +9,7 @@ import pytest
 from almamesh.calculations import SkyfieldAstronomy
 from almamesh.constants.astrology import ZODIAC_SIGNS, PlanetName
 from almamesh.schemas.transits import TimelineEvent
-from almamesh.transits import timeline_ingress
+from almamesh.transits import timeline_ingress, timeline_sign_changes
 from almamesh.transits.natal import sign_index
 from almamesh.transits.positions import transit_longitude
 from almamesh.transits.timeline_sign_changes import node_sign_change_events, sign_change_events
@@ -80,3 +80,34 @@ def test_a_jump_over_two_signs_is_not_invented_as_one_crossing(
     # When scanned / Then nothing is reported (no single cusp explains it)
     events = sign_change_events(object(), PlanetName.MARS, start, start + timedelta(days=5))  # type: ignore[arg-type]
     assert events == []
+
+
+# The fixture window, plus the 2022-24 window: Mars's retrograde loop there is
+# short enough that a coarse step can step over both cusp crossings, which the
+# fixture window never exercises (a 40-day step still matches daily there).
+_WINDOWS = [_START, datetime(2022, 6, 9, 12, tzinfo=UTC)]
+_INGRESSING = [PlanetName.JUPITER, PlanetName.SATURN, PlanetName.MARS, PlanetName.RAHU]
+
+
+def _fine_scan(
+    astro: SkyfieldAstronomy, graha: PlanetName, start: datetime, end: datetime
+) -> list[TimelineEvent]:
+    """The same producer, scanned with a 1-day step: the reference answer."""
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(timeline_sign_changes, "_STEP_DAYS", 1.0)
+        return sign_change_events(astro, graha, start, end)
+
+
+@pytest.mark.parametrize("start", _WINDOWS, ids=lambda when: when.date().isoformat())
+@pytest.mark.parametrize("graha", _INGRESSING, ids=lambda graha: graha.value)
+def test_the_coarse_step_finds_every_sign_change_a_daily_scan_finds(
+    astro: SkyfieldAstronomy, graha: PlanetName, start: datetime
+) -> None:
+    # Given two years scanned with the production step and with a 1-day step
+    end = start + timedelta(days=730.5)
+    coarse = sign_change_events(astro, graha, start, end)
+    fine = _fine_scan(astro, graha, start, end)
+    # Then both find the same sign changes, each to within a minute
+    assert [(e.from_sign, e.to_sign) for e in coarse] == [(e.from_sign, e.to_sign) for e in fine]
+    for got, want in zip(coarse, fine, strict=True):
+        assert abs(got.date - want.date) <= timedelta(minutes=1)

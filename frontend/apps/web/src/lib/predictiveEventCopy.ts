@@ -27,7 +27,8 @@ const GRAHAS = new Set([
   'ketu',
 ]);
 
-const SIGNS = new Set([
+/** The twelve signs in zodiac order (the order a forward sign change follows). */
+const SIGN_ORDER = [
   'aries',
   'taurus',
   'gemini',
@@ -40,7 +41,24 @@ const SIGNS = new Set([
   'capricorn',
   'aquarius',
   'pisces',
-]);
+] as const;
+
+const SIGNS = new Set<string>(SIGN_ORDER);
+
+/** The mean nodes always move backward, so their ordinary sign change "enters". */
+const NODES = new Set(['rahu', 'ketu']);
+
+/**
+ * True when a planet that normally moves forward steps back into the previous
+ * sign: `to` is the sign just before `from` (Aries -> Pisces wraps).
+ */
+function isBackwardSignChange(graha: string, from: string, to: string): boolean {
+  if (NODES.has(graha)) return false;
+  const order: readonly string[] = SIGN_ORDER;
+  const fromIndex = order.indexOf(from);
+  const toIndex = order.indexOf(to);
+  return fromIndex >= 0 && toIndex === (fromIndex + 11) % 12;
+}
 
 /** Localized graha name ("saturn" → "Saturn"/"Saturno"), verbatim fallback. */
 export function grahaName(t: TFunction, graha: string): string {
@@ -67,7 +85,8 @@ export function timelineEventLabel(t: TFunction, event: TransitTimelineEventData
   switch (event.kind) {
     case 'sign_ingress':
       if (event.graha && event.to_sign) {
-        return t('predictive:events.sign_ingress', {
+        const backward = event.from_sign !== null && isBackwardSignChange(event.graha, event.from_sign, event.to_sign);
+        return t(backward ? 'predictive:events.sign_ingress_backward' : 'predictive:events.sign_ingress', {
           graha: grahaName(t, event.graha),
           sign: signName(t, event.to_sign),
         });

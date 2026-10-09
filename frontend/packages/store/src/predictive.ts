@@ -149,8 +149,10 @@ export function predictiveRequestKey(input: EnsurePredictiveInput): string {
  * Bump when the persisted predictive shape changes; always pair with `migrate`.
  * v1 → v2 (Spec 062, LLM delta 1): added the OPTIONAL `rawContexts` slice.
  * v2 → v3: expired receipts and signer keys that belonged to a prior Worker boot.
+ * v3 → v4 (time travel step B): the engine timeline and Life Atlas changed, so
+ * every older snapshot is a cache miss and is recomputed (derived data only).
  */
-export const PREDICTIVE_PERSIST_VERSION = 3;
+export const PREDICTIVE_PERSIST_VERSION = 4;
 
 /** The canonical SQLite key holding the persisted predictive slice. */
 export const PREDICTIVE_PERSIST_NAME = 'almamesh-predictive';
@@ -291,19 +293,16 @@ export function coercePersistedPredictive(persisted: unknown): PersistedPredicti
 }
 
 /**
- * A v1 blob simply lacks `rawContexts`; keep its ready UI contexts and let the
- * LLM layer degrade to natal-only. A v2 blob keeps its calculations while
- * `coercePersistedPredictive` strips proof from the previous Worker boot. Any
- * other old/unknown version becomes a clean idle slate. Current-version blobs
- * still flow through `merge`, which applies the same proof-expiry rule.
+ * Every older version (v1-v3) was computed by an engine from before time travel
+ * step B: its timeline can show "enters X" twice and its Life Atlas is stale.
+ * The snapshot is derived data, so it becomes a clean idle slate and the next
+ * `ensurePredictive` recomputes it. Current-version blobs never reach `migrate`;
+ * they flow through `merge`, which applies the proof-expiry rule.
  */
 export function migratePredictivePersistedState(
-  persisted: unknown,
-  fromVersion: number,
+  _persisted: unknown,
+  _fromVersion: number,
 ): PersistedPredictiveState {
-  if (fromVersion === 1 || fromVersion === 2) {
-    return coercePersistedPredictive(persisted);
-  }
   return IDLE_PERSISTED;
 }
 

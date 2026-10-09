@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import type { PlanetName, TransitTimelineEventData, ZodiacSign } from '@almamesh/shared-types';
 import i18n from '../../i18n/config';
 import {
   domainWindowLabel,
@@ -57,9 +58,48 @@ describe('timelineEventLabel', () => {
     expect(timelineEventLabel(i18n.getFixedT('pt'), station)).toBe('Saturno fica retrógrado em Peixes');
   });
 
-  it('renders a backward Jupiter sign change by its real destination sign (A1)', () => {
-    const backward = { ...TRANSIT_CTX.timeline.events[0], from_sign: 'leo', to_sign: 'cancer', descriptor: 'jupiter.ingress.cancer' } as const;
-    expect(timelineEventLabel(t, backward)).toBe('Jupiter enters Cancer');
+  // Inverted (northstar N3): this used to assert "Jupiter enters Cancer" for a
+  // Leo -> Cancer change. A backward sign change now reads "moves back into".
+  const ingress = (
+    from_sign: ZodiacSign,
+    to_sign: ZodiacSign,
+    graha: PlanetName = 'jupiter',
+  ): TransitTimelineEventData => ({
+    ...TRANSIT_CTX.timeline.events[0]!,
+    graha,
+    from_sign,
+    to_sign,
+    descriptor: `${graha}.ingress.${to_sign}`,
+  });
+
+  it.each([
+    ['en', 'leo', 'cancer', 'Jupiter moves back into Cancer'],
+    ['es', 'leo', 'cancer', 'Júpiter retrocede a Cáncer'],
+    ['pt', 'leo', 'cancer', 'Júpiter retrocede para Câncer'],
+    ['en', 'aries', 'pisces', 'Jupiter moves back into Pisces'],
+    ['es', 'aries', 'pisces', 'Júpiter retrocede a Piscis'],
+    ['pt', 'aries', 'pisces', 'Júpiter retrocede para Peixes'],
+  ] as const)('renders a backward sign change in %s: %s -> %s reads "%s"', (language, from, to, expected) => {
+    expect(timelineEventLabel(i18n.getFixedT(language), ingress(from, to))).toBe(expected);
+  });
+
+  // Rahu and Ketu (mean node) always move backward through the zodiac, so their
+  // ordinary sign change is not a return: it keeps "enters".
+  it.each([
+    ['en', 'rahu', 'aquarius', 'capricorn', 'Rahu enters Capricorn'],
+    ['es', 'ketu', 'leo', 'cancer', 'Ketu entra en Cáncer'],
+    ['pt', 'rahu', 'aries', 'pisces', 'Rahu entra em Peixes'],
+  ] as const)('keeps a node sign change as "enters" in %s (%s %s -> %s)', (language, graha, from, to, expected) => {
+    expect(timelineEventLabel(i18n.getFixedT(language), ingress(from, to, graha))).toBe(expected);
+  });
+
+  it.each([
+    ['en', 'pisces', 'aries', 'Jupiter enters Aries'],
+    ['es', 'pisces', 'aries', 'Júpiter entra en Aries'],
+    ['pt', 'pisces', 'aries', 'Júpiter entra em Áries'],
+    ['en', 'gemini', 'cancer', 'Jupiter enters Cancer'],
+  ] as const)('keeps a forward sign change as "enters" in %s: %s -> %s', (language, from, to, expected) => {
+    expect(timelineEventLabel(i18n.getFixedT(language), ingress(from, to))).toBe(expected);
   });
 
   it('a station without its direction keeps the plain line', () => {
