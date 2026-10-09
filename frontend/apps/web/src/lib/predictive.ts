@@ -66,6 +66,7 @@ export function buildEnsurePredictiveInput(
   profileKey: string,
   birth: ProcessedBirthData | undefined,
   referenceInstant: string,
+  windowMonths?: 24,
 ): EnsurePredictiveInput | null {
   const datetimeUtc = birth?.birth_datetime_utc;
   const location = birth?.birth_location_details;
@@ -87,6 +88,7 @@ export function buildEnsurePredictiveInput(
     longitude: location.longitude,
     referenceInstant,
     utcOffsetMinutes,
+    ...(windowMonths === undefined ? {} : { windowMonths }),
   };
 }
 

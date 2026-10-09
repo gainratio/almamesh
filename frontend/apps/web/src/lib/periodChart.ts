@@ -9,7 +9,7 @@
  * is what bounds retained period payloads to the device tier's pool.
  */
 import type { SiderealChart } from '@almamesh/browser/types';
-import type { AgentToolContext, PeriodRange } from '@almamesh/llm';
+import { periodWindowMonths, type AgentToolContext, type PeriodRange } from '@almamesh/llm';
 import type { ProcessedBirthData } from '@almamesh/shared-types';
 import type { PredictiveRuntime } from '@almamesh/store';
 
@@ -47,6 +47,7 @@ export function createPeriodChartLoader(input: PeriodChartLoaderInput): PeriodCh
       input.profileKey,
       input.birth,
       periodReferenceInstant(period.start),
+      periodWindowMonths(period),
     );
     if (!predictiveInput) throw new PeriodSkyUnavailableError('incomplete_birth_data');
     // The deadline starts here, at tool entry, so a cold engine boot counts

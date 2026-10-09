@@ -71,6 +71,8 @@ export interface EnsurePredictiveInput {
   readonly referenceInstant: string;
   /** The birthplace's civil UTC offset at birth, whole minutes (engine weekday basis). */
   readonly utcOffsetMinutes: number;
+  /** The engine timeline's length; omitted means 12. Only a time-travel period sends 24. */
+  readonly windowMonths?: 24;
 }
 
 export interface PredictiveStore {
@@ -122,14 +124,15 @@ const EMPTY_CONTEXTS = {
  * JSON over an ordered tuple is deterministic and avoids delimiter collisions.
  */
 export function predictiveRequestKey(input: EnsurePredictiveInput): string {
-  return JSON.stringify([
+  const base = [
     input.profileKey,
     input.datetimeUtc,
     input.latitude,
     input.longitude,
     input.referenceInstant,
     input.utcOffsetMinutes,
-  ]);
+  ];
+  return JSON.stringify(input.windowMonths === undefined ? base : [...base, input.windowMonths]);
 }
 
 // --- Persistence (canonical OPFS SQLite) ------------------------------------

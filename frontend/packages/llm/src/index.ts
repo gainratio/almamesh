@@ -397,6 +397,10 @@ export {
   parsePeriodArgs,
   periodEcho,
   periodLimits,
+  ENGINE_DAYS_PER_MONTH,
+  LONG_PERIOD_WINDOW_MONTHS,
+  periodWindowMonths,
+  windowEndsBeforePeriodEnd,
 } from "./period";
 export type { PeriodArgs, PeriodEcho, PeriodLimits } from "./period";
 export { BIRTH_YEAR_ROWS_NOTE, NO_TREE_NOTE, PRATYANTAR_NOTE, selectDashasForPeriod } from "./period-dashas";
