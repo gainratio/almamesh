@@ -10,14 +10,6 @@
 // ============================================================================
 
 /**
- * Chat thread metadata
- * Represents a conversation thread without messages.
- *
- * Local-first: every thread belongs to a named profile (person) on this device
- * via `profile_id`, mirroring how charts are scoped per profile. `chart_id`
- * optionally links the thread to the chart it was opened from.
- */
-/**
  * A time-travel pin (spec 2026-10-08, Data and storage): the period a thread is
  * about. Only a Day pin carries a place; its coordinates never reach the model.
  */
@@ -33,6 +25,14 @@ export interface ChatThreadAsOf {
   };
 }
 
+/**
+ * Chat thread metadata
+ * Represents a conversation thread without messages.
+ *
+ * Local-first: every thread belongs to a named profile (person) on this device
+ * via `profile_id`, mirroring how charts are scoped per profile. `chart_id`
+ * optionally links the thread to the chart it was opened from.
+ */
 export interface ChatThread {
   id: string;
   /** The profile (person) this thread belongs to — local-first per-person scope. */
