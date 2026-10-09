@@ -39,12 +39,19 @@ export function PlacePicker({ place, lookup, onPick }: PlacePickerProps) {
 
   useEffect(() => {
     const text = query.trim();
-    if (text.length < 2 || text === place?.label) return;
+    if (text.length < 2) {
+      setOptions(null);
+      return;
+    }
+    if (text === place?.label) return;
     let cancelled = false;
     const handle = setTimeout(() => {
-      void lookup(text).then((result) => {
-        if (!cancelled) setOptions(candidatesOf(result));
-      });
+      lookup(text)
+        .then((result) => candidatesOf(result))
+        .catch(() => [] as readonly ResolvedPlace[])
+        .then((found) => {
+          if (!cancelled) setOptions(found);
+        });
     }, DEBOUNCE_MS);
     return () => {
       cancelled = true;

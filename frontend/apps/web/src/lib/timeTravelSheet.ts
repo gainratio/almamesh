@@ -38,9 +38,11 @@ function lastDayOf(month: string): string {
   return new Date(Date.UTC(year, monthIndex, 0)).toISOString().slice(0, 10);
 }
 
-/** A real calendar day: '' and '2026-02-30' are not (toISOString throws on an invalid Date). */
+/** A real calendar day inside the sheet's years (1900..2052): '' and '2026-02-30' are not (toISOString throws on an invalid Date). */
 function isRealDay(value: string): boolean {
   if (!DAY.test(value)) return false;
+  const year = Number(value.slice(0, 4));
+  if (year < SHEET_FIRST_YEAR || year > SHEET_LAST_YEAR) return false;
   const time = Date.parse(`${value}T00:00:00Z`);
   return !Number.isNaN(time) && new Date(time).toISOString().slice(0, 10) === value;
 }

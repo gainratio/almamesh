@@ -26,7 +26,13 @@ interface TimeTravelSheetProps {
   readonly onClose: () => void;
 }
 
-const FOCUSABLE = 'button:not([disabled]), input, select, [href], [tabindex]:not([tabindex="-1"])';
+const FOCUSABLE = [
+  'button:not([disabled]):not([tabindex="-1"])',
+  'input:not([disabled]):not([tabindex="-1"])',
+  'select:not([disabled]):not([tabindex="-1"])',
+  '[href]',
+  '[tabindex]:not([tabindex="-1"])',
+].join(', ');
 
 /** Keep Tab / Shift+Tab inside the open sheet (aria-modal does not do this by itself). */
 function trapFocus(event: KeyboardEvent<HTMLDivElement>, root: HTMLElement | null): void {
@@ -62,8 +68,11 @@ export function TimeTravelSheet(props: TimeTravelSheetProps) {
   const [saving, setSaving] = useState(false);
   const { open, today, current } = props;
   const dialogRef = useRef<HTMLDivElement>(null);
+  // Resets whenever `current` changes identity while open: callers must pass a stable pin.
   useEffect(() => {
-    if (open) setDraft(sheetDefaults(today, current, dayAllowed));
+    if (!open) return;
+    setDraft(sheetDefaults(today, current, dayAllowed));
+    setSaveFailed(false);
   }, [open, today, current, dayAllowed]);
   useEffect(() => {
     if (!open) return;
@@ -82,7 +91,7 @@ export function TimeTravelSheet(props: TimeTravelSheetProps) {
     new Intl.DateTimeFormat(i18n.language, { month: 'long', timeZone: 'UTC' }).format(new Date(`2000-${month}-15T12:00:00Z`));
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.key === 'Escape') props.onClose();
+    if (event.key === 'Escape' && !saving) props.onClose();
     if (event.key === 'Tab') trapFocus(event, dialogRef.current);
   };
 
@@ -109,7 +118,7 @@ export function TimeTravelSheet(props: TimeTravelSheetProps) {
       <p className="mt-3 text-sm font-medium text-text-primary">{t('time_travel.sheet.when')}</p>
       <div role="tablist" aria-label={t('time_travel.sheet.when')} className="mt-1 flex gap-2">
         {tabs.map((tab) => (
-          <button key={tab} type="button" role="tab" aria-selected={draft.granularity === tab} tabIndex={draft.granularity === tab ? 0 : -1}
+          <button key={tab} type="button" role="tab" aria-selected={draft.granularity === tab} aria-controls="time-travel-panel" id={`time-travel-tab-id-${tab}`} tabIndex={draft.granularity === tab ? 0 : -1}
             onKeyDown={(event) => moveTab(event, tabs, draft.granularity, (next) => setDraft({ ...draft, granularity: next }))} data-testid={`time-travel-tab-${tab}`}
             onClick={() => setDraft({ ...draft, granularity: tab })}
             className={`rounded-full border px-3 py-1 text-xs ${draft.granularity === tab ? 'border-accent-gold text-accent-gold' : 'border-ui-border text-text-secondary'}`}>
@@ -117,6 +126,7 @@ export function TimeTravelSheet(props: TimeTravelSheetProps) {
           </button>
         ))}
       </div>
+      <div role="tabpanel" id="time-travel-panel" aria-labelledby={`time-travel-tab-id-${draft.granularity}`}>
       {draft.granularity === 'day' && (
         <>
           <input type="date" aria-label={t('time_travel.sheet.day_label')} data-testid="time-travel-day" value={draft.day}
@@ -148,6 +158,7 @@ export function TimeTravelSheet(props: TimeTravelSheetProps) {
           {years.map((year) => <option key={year} value={year}>{year}</option>)}
         </select>
       )}
+      </div>
       {beforeBirth && <p data-testid="time-travel-before-birth" role="alert" className="mt-2 text-xs text-status-error">{t('time_travel.sheet.before_birth')}</p>}
       {saveFailed && <p data-testid="time-travel-save-failed" role="alert" className="mt-2 text-xs text-status-error">{t('time_travel.sheet.save_failed')}</p>}
       <div className="mt-4 flex justify-end gap-2">

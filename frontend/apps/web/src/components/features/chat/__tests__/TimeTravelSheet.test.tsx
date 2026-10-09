@@ -17,10 +17,15 @@ const BOGOTA = {
 function renderSheet(overrides: Partial<Parameters<typeof TimeTravelSheet>[0]> = {}) {
   const onGo = vi.fn(async () => undefined);
   const lookupPlace = vi.fn(async () => ({ status: 'found' as const, place: BOGOTA }));
-  render(
+  const view = render(
     <TimeTravelSheet open today="2026-10-09" birthYear={1990} dayAllowed onGo={onGo} onClose={vi.fn()} lookupPlace={lookupPlace} {...overrides} />,
   );
-  return { onGo, lookupPlace };
+  return { onGo, lookupPlace, rerender: view.rerender };
+}
+
+async function pickBogota() {
+  fireEvent.change(screen.getByTestId('time-travel-where-input'), { target: { value: 'Bogotá' } });
+  fireEvent.click(await screen.findByTestId('time-travel-where-option-0'));
 }
 
 const go = () => screen.getByTestId('time-travel-go') as HTMLButtonElement;
@@ -101,6 +106,16 @@ describe('TimeTravelSheet', () => {
     expect(chatAsOfProblem(pin)).toBeUndefined();
   });
 
+  it('emits a Day pin with a place that passes the strict store validator', async () => {
+    const { onGo } = renderSheet();
+    fireEvent.click(screen.getByTestId('time-travel-tab-day'));
+    await pickBogota();
+    fireEvent.click(go());
+    await waitFor(() => expect(onGo).toHaveBeenCalled());
+    const [pin] = onGo.mock.calls[0] as unknown as [unknown];
+    expect(chatAsOfProblem(pin)).toBeUndefined();
+  });
+
   it('is a labelled modal dialog that takes focus, closes on Escape and arrow-keys between tabs', () => {
     const onClose = vi.fn();
     renderSheet({ onClose });
@@ -112,6 +127,89 @@ describe('TimeTravelSheet', () => {
     expect(screen.getByTestId('time-travel-tab-year').getAttribute('aria-selected')).toBe('true');
     fireEvent.keyDown(dialog, { key: 'Escape' });
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it('keeps Go disabled for a typed Day outside the sheet years', async () => {
+    renderSheet({ birthYear: undefined });
+    fireEvent.click(screen.getByTestId('time-travel-tab-day'));
+    await pickBogota();
+    for (const day of ['2060-05-01', '1850-01-01', '0001-01-01']) {
+      fireEvent.change(screen.getByTestId('time-travel-day'), { target: { value: day } });
+      expect(go().disabled).toBe(true);
+    }
+    fireEvent.change(screen.getByTestId('time-travel-day'), { target: { value: '2052-12-31' } });
+    expect(go().disabled).toBe(false);
+    fireEvent.change(screen.getByTestId('time-travel-day'), { target: { value: '1900-01-01' } });
+    expect(go().disabled).toBe(false);
+  });
+
+  it('refuses 1989-12-31 but allows 1990-01-01 for a 1990 birth year', async () => {
+    renderSheet();
+    fireEvent.click(screen.getByTestId('time-travel-tab-day'));
+    await pickBogota();
+    fireEvent.change(screen.getByTestId('time-travel-day'), { target: { value: '1989-12-31' } });
+    expect(screen.getByTestId('time-travel-before-birth')).toBeTruthy();
+    expect(go().disabled).toBe(true);
+    fireEvent.change(screen.getByTestId('time-travel-day'), { target: { value: '1990-01-01' } });
+    expect(screen.queryByTestId('time-travel-before-birth')).toBeNull();
+    expect(go().disabled).toBe(false);
+  });
+
+  it('wraps Tab at the end and Shift+Tab at the start of the sheet', () => {
+    renderSheet();
+    const dialog = screen.getByRole('dialog');
+    const cancel = screen.getByTestId('time-travel-go');
+    cancel.focus();
+    fireEvent.keyDown(dialog, { key: 'Tab' });
+    expect(document.activeElement).toBe(screen.getByTestId('time-travel-tab-month'));
+    fireEvent.keyDown(dialog, { key: 'Tab', shiftKey: true });
+    expect(document.activeElement).toBe(screen.getByTestId('time-travel-go'));
+  });
+
+  it('shows "none found" instead of an unhandled rejection when the lookup fails', async () => {
+    renderSheet({ lookupPlace: vi.fn(async () => Promise.reject(new Error('city list failed'))) });
+    fireEvent.click(screen.getByTestId('time-travel-tab-day'));
+    fireEvent.change(screen.getByTestId('time-travel-where-input'), { target: { value: 'Bogotá' } });
+    expect(await screen.findByTestId('time-travel-where-none')).toBeTruthy();
+  });
+
+  it('clears stale "none found" when the query is cleared', async () => {
+    renderSheet({ lookupPlace: vi.fn(async () => ({ status: 'not_found' as const })) });
+    fireEvent.click(screen.getByTestId('time-travel-tab-day'));
+    fireEvent.change(screen.getByTestId('time-travel-where-input'), { target: { value: 'Atlantis' } });
+    await screen.findByTestId('time-travel-where-none');
+    fireEvent.change(screen.getByTestId('time-travel-where-input'), { target: { value: 'A' } });
+    await waitFor(() => expect(screen.queryByTestId('time-travel-where-none')).toBeNull());
+  });
+
+  it('ignores Escape while saving and clears the save error on reopen', async () => {
+    let release: () => void = () => undefined;
+    const onGo = vi.fn(() => new Promise<void>((resolveGo) => { release = resolveGo; }));
+    const onClose = vi.fn();
+    renderSheet({ onGo, onClose });
+    fireEvent.click(go());
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+    expect(onClose).not.toHaveBeenCalled();
+    release();
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+  });
+
+  it('clears an old save error when the sheet reopens', async () => {
+    const onGo = vi.fn(async () => Promise.reject(new Error('x')));
+    const view = renderSheet({ onGo });
+    fireEvent.click(go());
+    await screen.findByTestId('time-travel-save-failed');
+    view.rerender(<TimeTravelSheet open={false} today="2026-10-09" onGo={onGo} onClose={vi.fn()} />);
+    view.rerender(<TimeTravelSheet open today="2026-10-09" dayAllowed onGo={onGo} onClose={vi.fn()} />);
+    expect(screen.queryByTestId('time-travel-save-failed')).toBeNull();
+  });
+
+  it('joins tabs to a tabpanel', () => {
+    renderSheet();
+    const tab = screen.getByTestId('time-travel-tab-month');
+    const panel = screen.getByRole('tabpanel');
+    expect(tab.getAttribute('aria-controls')).toBe(panel.id);
+    expect(panel.getAttribute('aria-labelledby')).toBe(tab.id);
   });
 
   it('prefills Change from the current pin', () => {
