@@ -33,5 +33,7 @@ describe('pinnedPeriod', () => {
     expect(asOfKey(undefined)).toBe('today');
     expect(asOfKey(YEAR)).not.toBe(asOfKey({ ...YEAR, start: '2028-01-01', end: '2028-12-31' }));
     expect(asOfKey(DAY)).not.toBe(asOfKey({ ...DAY, place: { ...BOGOTA, latitude: 4.6 } }));
+    expect(asOfKey(DAY)).not.toBe(asOfKey({ ...DAY, place: { ...BOGOTA, longitude: -74 } }));
+    expect(asOfKey(DAY)).not.toBe(asOfKey({ ...DAY, place: { ...BOGOTA, timezone: 'America/Lima' } }));
   });
 });

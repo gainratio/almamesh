@@ -39,6 +39,7 @@ describe('chatAsOfProblem', () => {
     ['a place with an extra key', { ...DAY, place: { ...BOGOTA, altitude: 2640 } }, 'as_of.place'],
     ['an empty label', { ...DAY, place: { ...BOGOTA, label: '' } }, 'as_of.place.label'],
     ['a long label', { ...DAY, place: { ...BOGOTA, label: 'x'.repeat(121) } }, 'as_of.place.label'],
+    ['an empty zone', { ...DAY, place: { ...BOGOTA, timezone: '' } }, 'as_of.place.timezone'],
     ['a bad zone', { ...DAY, place: { ...BOGOTA, timezone: 'Mars/Olympus' } }, 'as_of.place.timezone'],
     ['latitude 91', { ...DAY, place: { ...BOGOTA, latitude: 91 } }, 'as_of.place.latitude'],
     ['a string latitude', { ...DAY, place: { ...BOGOTA, latitude: '4.7' } }, 'as_of.place.latitude'],

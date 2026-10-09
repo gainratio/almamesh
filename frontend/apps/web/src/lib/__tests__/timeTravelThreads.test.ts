@@ -29,6 +29,11 @@ describe('pin changes reach disk before the UI moves on', () => {
     expect(useChatStore.getState().threads[id]?.as_of).toEqual(YEAR);
   });
 
+  it('Go with no chart creates a thread that has no chart id', async () => {
+    const id = await startPinnedThread('p1', null, YEAR);
+    expect(useChatStore.getState().threads[id]?.chart_id).toBeUndefined();
+  });
+
   it('a failed save removes the new thread and rejects', async () => {
     save.fail = true;
     await expect(startPinnedThread('p1', 'c1', YEAR)).rejects.toThrow('Saving chat failed.');
@@ -57,6 +62,12 @@ describe('pin changes reach disk before the UI moves on', () => {
     useChatStore.getState().startThread('p1', undefined, JUNE);
     expect(await todayThread('p1', null)).toBe(normal);
     expect(save.calls).toBe(0);
+  });
+
+  it('Back to today with no chart creates a chartless thread', async () => {
+    const id = await todayThread('p1', null);
+    expect(useChatStore.getState().threads[id]?.chart_id).toBeUndefined();
+    expect(save.calls).toBe(1);
   });
 
   it('Back to today with no normal thread creates one and saves it first', async () => {
