@@ -111,3 +111,27 @@ describe('birthDetailsFromBirthData', () => {
     expect(reStored.birth_time_original).toBe('06:44');
   });
 });
+
+describe('birthDetailsFromBirthData — time-zone honesty', () => {
+  it('does not invent UTC for a stored chart with no timezone', () => {
+    const details = birthDetailsFromBirthData(
+      birthData({ birth_location_details: { ...LOCATION, timezone: '' } }),
+      'Reference Native',
+    );
+    expect(details.location?.timezone).not.toBe('UTC');
+    expect(details.location?.timezone).toBeFalsy();
+  });
+
+  it('reads back which occurrence of a repeated DST hour the stored chart used', () => {
+    const la = { ...LOCATION, latitude: 34.05, longitude: -118.24, timezone: 'America/Los_Angeles' };
+    const details = birthDetailsFromBirthData(
+      birthData({
+        birth_location_details: la,
+        birth_datetime_local: '2024-11-03T01:30:00',
+        birth_datetime_utc: '2024-11-03T09:30:00.000Z',
+      }),
+      'Reference Native',
+    );
+    expect(details.dst_fold).toBe('later');
+  });
+});

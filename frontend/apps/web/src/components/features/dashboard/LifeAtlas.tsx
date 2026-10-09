@@ -26,6 +26,7 @@ import { LIFE_DOMAINS, nextWindow } from '../../../lib/lifeAtlas';
 import { formatPredictiveDate, formatReferenceDay } from '../../../lib/predictive';
 import { domainWindowLabel } from '../../../lib/predictiveEventCopy';
 import { BandBadge } from '../predictive/PredictiveBadges';
+import { BirthZoneMissingCard } from '../predictive/BirthZoneMissingCard';
 
 /** Shared card frame so pending and ready faces carry one grammar. */
 const CARD_FRAME =
@@ -179,6 +180,15 @@ export function LifeAtlas(): ReactElement | null {
   const layer = usePredictiveLayer({ auto: true });
   const elapsed = useElapsedSeconds(layer.status === 'loading');
 
+  // A stored chart without its birthplace zone cannot be timed: say so, with
+  // the link that fixes it, rather than vanishing.
+  if (layer.birthZoneMissing) {
+    return (
+      <section data-testid="life-atlas">
+        <BirthZoneMissingCard />
+      </section>
+    );
+  }
   // A chart-less device shows the onboarding path elsewhere; stay silent here.
   if (!layer.hasBirthData) {
     return null;

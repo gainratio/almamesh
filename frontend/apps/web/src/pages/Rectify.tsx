@@ -17,6 +17,7 @@ import {
   requestRegeneration,
   type BirthMeta,
   buildRectificationRecord,
+  dstFoldFromStoredUtc,
   isStructuredLifeEvent,
   useChartLibraryStore,
   useLifeEventsStore,
@@ -199,6 +200,15 @@ export function RectifyPage(): ReactElement {
     const date = localDt.split('T')[0] ?? '';
 
     const profileName = useProfilesStore.getState().profiles[profileId]?.name ?? '';
+    // No `?? 'UTC'`: a chart regenerated as if born in UTC is wrong by the
+    // whole offset. A stored chart without a zone is refused, visibly.
+    if (!loc.timezone) {
+      safeWarn('rectify.missing_timezone');
+      setSaveState('error');
+      return;
+    }
+    const storedClock = localDt.split('T')[1]?.slice(0, 5) ?? '';
+    const dstFold = dstFoldFromStoredUtc(date, storedClock, loc.timezone, birthData.birth_datetime_utc);
 
     const birth: BirthMeta = {
       name: profileName,
@@ -207,7 +217,8 @@ export function RectifyPage(): ReactElement {
       rectifiedTime: pendingCandidate.representativeTimeLocal,
       latitude: loc.latitude,
       longitude: loc.longitude,
-      timezone: loc.timezone ?? 'UTC',
+      timezone: loc.timezone,
+      ...(dstFold ? { dstFold } : {}),
       location_name: loc.location_name ?? '',
     };
 

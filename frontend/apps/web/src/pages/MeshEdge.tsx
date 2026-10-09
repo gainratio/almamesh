@@ -25,6 +25,7 @@ import {
   useLanguageStore,
   useMeshStore,
   useProfilesStore,
+  requireBirthTimeZone,
   type MeshEdgeEntry,
   type Profile,
 } from '@almamesh/store';
@@ -314,7 +315,12 @@ function MeshEdgeContent({
     const chartAsOf = storedChartAnalysisInstant(anchorChart!);
     let usesTodayContext = false;
     let chartWithPredictive = siderealChart;
-    const chartTimeZone = anchorChart?.birth_data?.birth_location_details.timezone ?? 'UTC';
+    // No `?? 'UTC'`: the chat's "current time in the chart's zone" tool would
+    // silently answer in UTC. A chart without a zone is refused, visibly.
+    const chartTimeZone = requireBirthTimeZone(
+      anchorChart?.birth_data?.birth_location_details.timezone,
+      'chat',
+    );
     const loadCurrentChart = async (context: { now: Date; signal: AbortSignal }) => {
       if (!chartEngineContext) {
         throw new Error('The on-device chart engine is unavailable.');

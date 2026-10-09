@@ -107,6 +107,14 @@ export interface PredictiveLayer {
    * the Periods surfaces render instantly. Absent on older stored charts.
    */
   readonly natalDashas?: VimshottariDasha;
+  /** IANA zone of the birthplace (absent on a chart stored without one). */
+  readonly birthTimeZone?: string;
+  /**
+   * A stored chart exists but its birthplace zone is missing or unrecognised,
+   * so nothing can be timed: surfaces show a "re-select the birthplace" card,
+   * never "generate your chart first" and never silence.
+   */
+  readonly birthZoneMissing: boolean;
 }
 
 export interface UsePredictiveLayerOptions {
@@ -221,5 +229,7 @@ export function usePredictiveLayer({ auto = false }: UsePredictiveLayerOptions =
     canCompute: engine !== null && input !== null,
     compute,
     natalDashas: storedChart?.sidereal_chart?.dashas,
+    birthTimeZone: birth?.birth_location_details?.timezone || undefined,
+    birthZoneMissing: Boolean(birth?.birth_datetime_utc && birth.birth_location_details) && input === null,
   };
 }

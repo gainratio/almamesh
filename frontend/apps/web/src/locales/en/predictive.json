@@ -28,6 +28,9 @@
     "dur_days": "{{count}} d"
   },
   "gate": {
+    "zone_missing_title": "Your birthplace timezone is missing",
+    "zone_missing_body": "Your saved chart has no birthplace timezone, so the timing layer cannot place your sunrise or weekday. Re-select your birthplace in Settings to fix it.",
+    "zone_missing_link": "Re-select the birthplace in Settings",
     "title": "Compute your timing layer",
     "body": "Transits, Sade Sati, all sixteen divisional charts, Ashtakavarga, Shadbala and a twelve-month timeline are computed from the ephemeris on your device. Nothing leaves this browser.",
     "compute": "Compute now",
@@ -220,7 +223,8 @@
     "meets": "Meets minimum",
     "below": "Below minimum",
     "approx_footnote": "Components marked ≈ use documented approximations of the classical computation; the engine flags every one instead of presenting it as exact.",
-    "sunrise_basis": "Kālabala is anchored to the civil sunrise preceding birth ({{date}})."
+    "sunrise_basis_zoned": "Kālabala is anchored to the local sunrise at the birthplace: {{date}}, {{time}} ({{zone}}).",
+    "day_lord": "Weekday lord (the Vedic day runs from local sunrise): {{lord}}"
   },
   "domains": {
     "heading": "Life Domains",

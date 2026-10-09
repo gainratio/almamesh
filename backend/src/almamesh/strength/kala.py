@@ -15,7 +15,7 @@ from almamesh.constants.astrology import PlanetName
 from almamesh.schemas.strength import BalaValue, KalaBala
 from almamesh.strength.kala_lords import abdabala, horabala, masabala, varabala
 from almamesh.strength.kala_parts import nathonnatha, pakshabala, tribhagabala
-from almamesh.strength.sunrise import SunWindow, sun_window
+from almamesh.strength.sunrise import SunWindow
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -101,21 +101,26 @@ def compute_kala(
     birth_utc: datetime,
     lat: float,
     lon: float,
-    window: SunWindow | None = None,
+    window: SunWindow,
 ) -> tuple[KalaBala, SunWindow]:
-    """Full Kalabala for a graha; returns the bala and the (reusable) sun window."""
-    win = window if window is not None else sun_window(astro, birth_utc, lat, lon)
+    """Full Kalabala for a graha; returns the bala and the (reusable) sun window.
+
+    ``window`` is required: it carries the birthplace's civil offset, which no
+    default could supply honestly.
+    """
+    win = window
     frac_mid = _frac_from_midnight(win, birth_utc)
     day_frac, is_day = _day_fraction(win, birth_utc)
     third = min(2, int(day_frac * 3))
     nath = nathonnatha(planet, frac_mid)
     paksha = pakshabala(planet, _moon_phase_frac(natal))
     tri = tribhagabala(planet, third, is_day)
+    local_rise = win.local_sunrise  # weekday lords read the CIVIL sunrise date
     lords = (
-        abdabala(planet, win.sunrise),
-        masabala(planet, win.sunrise),
-        varabala(planet, win.sunrise),
-        horabala(planet, win.sunrise, birth_utc),
+        abdabala(planet, win.local_year_sunrise),
+        masabala(planet, win.local_month_sunrise),
+        varabala(planet, local_rise),
+        horabala(planet, local_rise, birth_utc),
     )
     ayana = _ayanabala(planet, _tropical_longitude(natal, planet))
     yuddha = _yuddhabala(planet)

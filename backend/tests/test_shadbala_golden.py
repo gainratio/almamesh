@@ -9,7 +9,7 @@ the fixture deliberately) or a regression. Regenerate with
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -18,6 +18,13 @@ from almamesh.calculations import calculate_sidereal_context
 from almamesh.strength import compute_strength_context
 
 _FIXTURE = Path(__file__).parent / "fixtures" / "strength_golden_de421.json"
+
+
+def _civil(birth: datetime) -> timedelta:
+    """The fixture's civil offset: every strength case is written in local time."""
+    offset = birth.utcoffset()
+    assert offset is not None, "strength fixtures carry their local offset"
+    return offset
 
 
 def _round(obj: object) -> object:
@@ -36,7 +43,7 @@ def _compute(case: dict[str, object]) -> object:
     birth = datetime.fromisoformat(str(case["birth_iso"]))
     lat, lon = float(case["lat"]), float(case["lon"])  # type: ignore[arg-type]
     natal = calculate_sidereal_context(birth, lat, lon)
-    ctx = compute_strength_context(natal, birth, lat, lon)
+    ctx = compute_strength_context(natal, birth, lat, lon, civil_offset=_civil(birth))
     return _round(ctx.model_dump(mode="json"))
 
 

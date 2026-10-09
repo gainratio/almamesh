@@ -45,7 +45,11 @@
     },
     "confidence_margin": "We'll treat this as accurate within ±{{minutes}} min.",
     "confidence_exact_note": "We'll treat this as an exact time.",
-    "confidence_unknown_note": "We'll use noon as a placeholder — you can refine it by hand later in Settings."
+    "confidence_unknown_note": "We'll use noon as a placeholder — you can refine it by hand later in Settings.",
+    "dst_gap": "{{time}} did not exist in {{zone}} on this date: the clocks jumped forward an hour for daylight saving. Please check the time on the birth record.",
+    "dst_overlap": "{{time}} happened twice in {{zone}} on this date (the clocks went back an hour). Which one was it?",
+    "dst_earlier": "The first {{time}} (daylight time, {{offset}})",
+    "dst_later": "The second {{time}} (standard time, {{offset}})"
   },
   "life_events": {
     "title": "Share Your Life Story",

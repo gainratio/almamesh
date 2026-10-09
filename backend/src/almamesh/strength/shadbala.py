@@ -32,7 +32,7 @@ from almamesh.strength.sthana import sthanabala
 from almamesh.strength.sunrise import SunWindow, sun_window
 
 if TYPE_CHECKING:
-    from datetime import datetime
+    from datetime import datetime, timedelta
 
     from almamesh.schemas.astrology import SiderealContext
 
@@ -108,11 +108,20 @@ def _assemble(  # noqa: PLR0913 - one typed field per Shadbala component
 
 
 def compute_shadbala(
-    natal: SiderealContext, birth_utc: datetime, lat: float, lon: float
+    natal: SiderealContext,
+    birth_utc: datetime,
+    lat: float,
+    lon: float,
+    *,
+    civil_offset: timedelta,
 ) -> ShadbalaContext:
-    """Shadbala for the seven grahas (rigorous Kalabala via true civil sunrise)."""
+    """Shadbala for the seven grahas (rigorous Kalabala via true civil sunrise).
+
+    ``civil_offset`` is the birthplace's civil UTC offset at birth; the Vedic
+    weekday lords are read off the civil date of each day-opening sunrise.
+    """
     astro = SkyfieldAstronomy()
-    window = sun_window(astro, birth_utc, lat, lon)
+    window = sun_window(astro, birth_utc, lat, lon, civil_offset=civil_offset)
     planets = {
         p: _planet_shadbala(astro, natal, p, birth_utc, lat, lon, window) for p in SHADBALA_PLANETS
     }

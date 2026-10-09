@@ -9,8 +9,14 @@
  */
 
 import type { ProcessedBirthData, VargaChartFullData } from '@almamesh/shared-types';
-import type { EnsurePredictiveInput, StoredChart, VargaChart, VargaPlanet } from '@almamesh/store';
-import { formatBirthDateForDisplay, formatDisplayDate } from './dates';
+import {
+  offsetMinutesAtInstant,
+  type EnsurePredictiveInput,
+  type StoredChart,
+  type VargaChart,
+  type VargaPlanet,
+} from '@almamesh/store';
+import { formatBirthDateForDisplay, formatDisplayDate, formatDisplayTime } from './dates';
 
 /**
  * The EXPLICIT reference instant for "what's happening now": UTC midnight of
@@ -63,8 +69,16 @@ export function buildEnsurePredictiveInput(
 ): EnsurePredictiveInput | null {
   const datetimeUtc = birth?.birth_datetime_utc;
   const location = birth?.birth_location_details;
-  if (!datetimeUtc || !location) {
+  // No zone, no civil offset: the engine reads Vedic weekdays off the civil
+  // date, so a missing zone is "incomplete birth data", never a UTC guess.
+  if (!datetimeUtc || !location?.timezone) {
     return null;
+  }
+  let utcOffsetMinutes: number;
+  try {
+    utcOffsetMinutes = offsetMinutesAtInstant(datetimeUtc, location.timezone);
+  } catch {
+    return null; // an unknown zone or unreadable instant is incomplete birth data
   }
   return {
     profileKey,
@@ -72,6 +86,7 @@ export function buildEnsurePredictiveInput(
     latitude: location.latitude,
     longitude: location.longitude,
     referenceInstant,
+    utcOffsetMinutes,
   };
 }
 
@@ -154,3 +169,28 @@ export function formatRupas(value: number): string {
 export function formatPct(value: number): string {
   return `${Math.round(value)}%`;
 }
+
+/** The `strength.sunrise_basis_zoned` interpolation values. */
+export interface SunriseBasisParams {
+  readonly date: string;
+  readonly time: string;
+  readonly zone: string;
+}
+
+/**
+ * The Kalabala sunrise on the BIRTHPLACE's calendar and clock. The Vedic day
+ * runs sunrise to sunrise at the birthplace, so a viewer in another zone must
+ * not see it moved onto their own date. Without the birthplace zone the
+ * instant is shown in UTC and labelled so — never the viewer's zone. Shared by
+ * the Strength tab, the web report and the PDF.
+ */
+export function sunriseBasisParams(sunriseUtcIso: string, birthTimeZone?: string): SunriseBasisParams {
+  const zone = birthTimeZone || 'UTC';
+  const sunrise = new Date(sunriseUtcIso);
+  return {
+    date: formatDisplayDate(sunrise, { year: 'numeric', month: 'short', day: '2-digit', timeZone: zone }),
+    time: formatDisplayTime(sunrise, { hour: 'numeric', minute: '2-digit', timeZone: zone }),
+    zone,
+  };
+}
+

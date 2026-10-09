@@ -318,7 +318,10 @@ export default function ReportView(): ReactElement {
           <ReportVargas vargaCtxFull={predictive.vargaCtxFull} />
         )}
         {predictive.status === 'ready' && predictive.strengthCtx && (
-          <ReportStrength strengthCtx={predictive.strengthCtx} />
+          <ReportStrength
+            strengthCtx={predictive.strengthCtx}
+            birthTimeZone={birth?.birth_location_details?.timezone}
+          />
         )}
         {predictive.status === 'ready' && predictive.domainsCtx && (
           <ReportDomains domainsCtx={predictive.domainsCtx} stability={stability} />

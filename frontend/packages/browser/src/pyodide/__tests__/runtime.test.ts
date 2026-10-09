@@ -279,6 +279,7 @@ describe("AlmaMeshRuntime.bootstrap", () => {
     const predictive = await engine.computePredictive({
       ...BIRTH,
       referenceInstant: "2026-06-09T12:00:00+00:00",
+      utcOffsetMinutes: 330,
     });
 
     expect(predictive.transit_context.instant).toBe("2026-06-09T12:00:00+00:00");
@@ -615,6 +616,7 @@ describe("AlmaMeshRuntime.bootstrap", () => {
       latitude: BIRTH.latitude,
       longitude: BIRTH.longitude,
       referenceInstant: "2025-01-01T00:00:00+00:00",
+      utcOffsetMinutes: 330,
     };
 
     const first = await engine.generateChart(BIRTH);

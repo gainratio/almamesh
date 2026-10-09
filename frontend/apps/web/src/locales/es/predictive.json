@@ -29,6 +29,9 @@
     "dur_days": "{{count}} d"
   },
   "gate": {
+    "zone_missing_title": "Falta la zona horaria de tu lugar de nacimiento",
+    "zone_missing_body": "Tu carta guardada no tiene la zona horaria del lugar de nacimiento, así que la capa de tiempos no puede ubicar tu amanecer ni tu día de la semana. Vuelve a elegir tu lugar de nacimiento en Ajustes para corregirlo.",
+    "zone_missing_link": "Volver a elegir el lugar de nacimiento en Ajustes",
     "title": "Calcula tu capa de tiempos",
     "body": "Los tránsitos, Sade Sati, las dieciséis cartas divisionales, Ashtakavarga, Shadbala y una línea de tiempo de doce meses se calculan con las efemérides en tu dispositivo. Nada sale de este navegador.",
     "compute": "Calcular ahora",
@@ -221,7 +224,8 @@
     "meets": "Alcanza el mínimo",
     "below": "Bajo el mínimo",
     "approx_footnote": "Los componentes marcados con ≈ usan aproximaciones documentadas del cálculo clásico; el motor señala cada uno en lugar de presentarlo como exacto.",
-    "sunrise_basis": "Kālabala se ancla al amanecer civil previo al nacimiento ({{date}})."
+    "sunrise_basis_zoned": "Kālabala se ancla al amanecer local en el lugar de nacimiento: {{date}}, {{time}} ({{zone}}).",
+    "day_lord": "Señor del día (el día védico empieza con el amanecer local): {{lord}}"
   },
   "domains": {
     "heading": "Áreas de Vida",

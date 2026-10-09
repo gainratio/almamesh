@@ -1,5 +1,6 @@
 import type { ProcessedBirthData } from '@almamesh/shared-types';
 import { TIME_CONFIDENCE, type TimeConfidence } from '@almamesh/constants';
+import { type DstFold, dstFoldFromStoredUtc } from '@almamesh/store';
 import type { LocationResult } from '../../components/shared/LocationSearch';
 
 /** Editable birth details backing the ProfileSettings form. */
@@ -10,6 +11,8 @@ export interface BirthDetails {
   location: LocationResult | null;
   rectified_time: string;
   time_confidence: TimeConfidence;
+  /** Which occurrence of a repeated (DST fall-back) hour the effective clock is. */
+  dst_fold?: DstFold;
 }
 
 /**
@@ -49,7 +52,9 @@ export function birthDetailsFromBirthData(
       country: loc.country || '',
       lat: loc.latitude || 0,
       lon: loc.longitude || 0,
-      timezone: loc.timezone || 'UTC',
+      // No `|| 'UTC'`: a missing zone stays missing, and the save path refuses
+      // it (requireBirthTimeZone) rather than recomputing the chart in UTC.
+      timezone: loc.timezone || undefined,
     };
   }
 
@@ -70,5 +75,18 @@ export function birthDetailsFromBirthData(
     rectified_time:
       birthData.birth_time_original && birthData.birth_time_original !== effective_time ? effective_time : '',
     time_confidence,
+    ...storedFold(birthData, birth_date, effective_time),
   };
+}
+
+/** The DST occurrence the stored chart used, read back from its UTC instant. */
+function storedFold(
+  birthData: ProcessedBirthData,
+  date: string,
+  time: string,
+): { dst_fold?: DstFold } {
+  const zone = birthData.birth_location_details?.timezone;
+  if (!zone || !birthData.birth_datetime_utc) return {};
+  const fold = dstFoldFromStoredUtc(date, time, zone, birthData.birth_datetime_utc);
+  return fold ? { dst_fold: fold } : {};
 }

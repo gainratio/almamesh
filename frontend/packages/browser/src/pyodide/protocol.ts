@@ -33,6 +33,12 @@ export interface PredictiveInput {
   readonly latitude: number;
   readonly longitude: number;
   readonly referenceInstant: string; // ISO-8601 — explicit, never wall-clock
+  /**
+   * The birthplace's civil UTC offset at the birth instant, in whole minutes
+   * (330 for IST, 780 for Apia). Kalabala reads each Vedic weekday off the
+   * CIVIL date of its sunrise, so the engine needs it; it has no tz database.
+   */
+  readonly utcOffsetMinutes: number;
 }
 
 /** One bare birth input of a mesh pair — the worker recomputes its chart on-device. */

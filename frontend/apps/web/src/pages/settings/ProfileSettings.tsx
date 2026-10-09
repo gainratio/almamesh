@@ -11,6 +11,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   requestRegeneration,
+  resolveLocalTime,
+  type DstFold,
   type LocalBirthInput,
   type PendingChangeField,
   type PendingChanges,
@@ -20,8 +22,10 @@ import {
 } from '@almamesh/store';
 import { TIME_CONFIDENCE, type TimeConfidence } from '@almamesh/constants';
 import { LocationSearch } from '../../components/shared/LocationSearch';
+import { LocalTimeCheck } from '../../components/shared/LocalTimeCheck';
 import { type BirthDetails, birthDetailsFromBirthData } from './birthDetailsFromBirthData';
 import { birthMetaFromDetails, planProfileSave, type ProfileSavePlan } from './planProfileSave';
+import { suggestBirthplaceZone } from './utcZoneRepair';
 import { saveTimeConfidence, type TimeConfidenceSaveResult } from './saveTimeConfidence';
 import { RegenerationConfirmModal } from '../../components/features/settings/RegenerationConfirmModal';
 import {
@@ -31,6 +35,7 @@ import {
 import { Button } from '../../components/ui';
 import { useSettingsStore } from '../../stores/settings';
 import { useChartEngine } from '../../providers/AlmaMeshRuntimeProvider';
+import { resolveReadyEngine } from '../../lib/resolveReadyEngine';
 import { useLagnaPreview } from '../../hooks/useLagnaPreview';
 import { readLocalPrimaryChart } from '../../lib/localChartRead';
 import { formatDegree } from '../../lib/reportData';
@@ -47,7 +52,42 @@ const REGENERATION_FIELDS_METADATA: Record<string, { scope: RegenerationScope; b
   birth_location: { scope: 'chart+interpretation', base_cost: 0 },
   // A rectified time changes the effective instant -> recompute the chart.
   rectified_time: { scope: 'chart+interpretation', base_cost: 0 },
+  // Which occurrence of a repeated DST hour: a different instant -> recompute.
+  dst_fold: { scope: 'chart+interpretation', base_cost: 0 },
 };
+
+/** Edits that move the effective clock, invalidating a DST-occurrence choice. */
+const CLOCK_FIELDS: ReadonlySet<PendingChangeField> = new Set([
+  'birth_date',
+  'birth_time',
+  'birth_location',
+  'rectified_time',
+]);
+
+/** The pending DST choice ('' = cleared by a clock edit), else the stored one. */
+function currentFold(
+  pending: DstFold | '' | undefined,
+  stored: DstFold | undefined,
+): { dst_fold?: DstFold } {
+  const fold = pending !== undefined ? pending : stored;
+  return fold ? { dst_fold: fold } : {};
+}
+
+/** The i18n key explaining why this clock cannot be saved yet, if any. */
+function localTimeProblem(details: BirthDetails): string | null {
+  const zone = details.location?.timezone;
+  const clock = details.rectified_time || details.birth_time;
+  if (!zone || !details.birth_date || !clock) return null;
+  let kind: string;
+  try {
+    kind = resolveLocalTime(details.birth_date, clock, zone).kind;
+  } catch {
+    return null; // malformed input: the other required-field checks own it
+  }
+  if (kind === 'nonexistent') return 'onboarding:birth_time.dst_gap';
+  if (kind === 'ambiguous' && !details.dst_fold) return 'onboarding:birth_time.dst_overlap';
+  return null;
+}
 
 const CONFIDENCE_KEYS = Object.keys(TIME_CONFIDENCE) as TimeConfidence[];
 
@@ -85,7 +125,7 @@ function shiftClockMinutes(clock: string, deltaMinutes: number): string {
 export default function ProfileSettings() {
   const navigate = useNavigate();
   const { t, i18n } = useTranslation(['settings', 'common']);
-  const { engine, error: engineError } = useChartEngine();
+  const { engine, error: engineError, startBootstrap, whenReady, reboot, lastProgressAt } = useChartEngine();
   const activeProfileId = useProfilesStore((s) => s.activeProfileId);
 
   // The standing read-only record of a CONFIRMED rectification for this profile
@@ -164,6 +204,8 @@ export default function ProfileSettings() {
     setSaveNotice(null);
     setConfidenceSave(null);
     setPendingChange(field, value);
+    // A DST-occurrence choice belongs to one clock; moving the clock drops it.
+    if (CLOCK_FIELDS.has(field)) setPendingChange('dst_fold', '');
   };
 
   const currentDetails: BirthDetails = {
@@ -179,6 +221,7 @@ export default function ProfileSettings() {
     time_confidence: (pendingChanges.time_confidence !== undefined
       ? pendingChanges.time_confidence
       : (initialDetails?.time_confidence ?? 'exact')) as TimeConfidence,
+    ...currentFold(pendingChanges.dst_fold, initialDetails?.dst_fold),
   };
 
   // Candidate birth for the LIVE, non-destructive lagna preview. Uses the
@@ -186,17 +229,28 @@ export default function ProfileSettings() {
   // `toBirthInput` the real chart path uses, so the birthplace-tz -> UTC
   // conversion is identical. Null until date + place are known.
   const previewInput: LocalBirthInput | null =
-    currentDetails.birth_date && currentDetails.location
+    // No `|| 'UTC'`: without the birthplace zone there is no honest preview.
+    currentDetails.birth_date && currentDetails.location?.timezone
       ? {
           date: currentDetails.birth_date,
           time: currentDetails.birth_time,
           rectifiedTime: currentDetails.rectified_time || currentDetails.birth_time,
           latitude: currentDetails.location.lat,
           longitude: currentDetails.location.lon,
-          timezone: currentDetails.location.timezone || 'UTC',
+          timezone: currentDetails.location.timezone,
+          ...(currentDetails.dst_fold ? { dstFold: currentDetails.dst_fold } : {}),
         }
       : null;
   const lagnaPreview = useLagnaPreview(engine, engineError, previewInput, previewRetryAttempt);
+
+  // A chart saved by the old `|| 'UTC'` fallback: offered a repair, never rewritten.
+  const suggestedZone = currentDetails.location
+    ? suggestBirthplaceZone(
+        currentDetails.location,
+        currentDetails.birth_date,
+        currentDetails.rectified_time || currentDetails.birth_time,
+      )
+    : null;
   const previewCusp =
     lagnaPreview.status === 'ready'
       ? cuspInfo(lagnaPreview.lagna.sign, lagnaPreview.lagna.signDegrees)
@@ -304,6 +358,19 @@ export default function ProfileSettings() {
     e.preventDefault();
     setError(null);
 
+    // A DST edge is the user's to resolve, and it explains a preview failure
+    // better than "could not calculate", so it is checked first.
+    const timeProblem = localTimeProblem(currentDetails);
+    if (timeProblem) {
+      setError(
+        t(timeProblem, {
+          time: currentDetails.rectified_time || currentDetails.birth_time,
+          zone: currentDetails.location?.timezone,
+        }),
+      );
+      return;
+    }
+
     // A rectified time may cross the rising-sign boundary. Never open a modal
     // without knowing whether the mandatory sign-flip acknowledgement applies.
     // On slower engines both preview reads can still be in flight after input.
@@ -371,11 +438,12 @@ export default function ProfileSettings() {
     setError(null);
 
     try {
-      if (engineError) {
-        throw engineError;
-      }
+      // Settings can be reached straight after a reload (e.g. from the
+      // "birthplace timezone is missing" link) before anything booted the
+      // engine: start it and wait (or reboot a failed one), never fail the save.
       if (!engine) {
-        throw new Error(t('settings:profile.engine_starting'));
+        startBootstrap();
+        await resolveReadyEngine({ engine, error: engineError, reboot, whenReady, lastProgressAt });
       }
       const birth = birthMetaFromDetails(currentDetails);
 
@@ -502,6 +570,16 @@ export default function ProfileSettings() {
             />
           </div>
         </div>
+
+        {currentDetails.location?.timezone && (
+          <LocalTimeCheck
+            date={currentDetails.birth_date}
+            time={currentDetails.rectified_time || currentDetails.birth_time}
+            timeZone={currentDetails.location.timezone}
+            fold={currentDetails.dst_fold}
+            onFoldChange={(fold) => handleFieldChange('dst_fold', fold)}
+          />
+        )}
 
         {/* Birth-time rectification */}
         <div className="rounded-lg border border-ui-border bg-background-secondary/40 p-4">
@@ -744,8 +822,8 @@ export default function ProfileSettings() {
           </div>
         )}
 
-        {/* Location */}
-        <div>
+        {/* Location (the #birthplace anchor is where "timezone missing" cards link) */}
+        <div id="birthplace">
           <label className="block text-sm font-medium text-text-primary mb-2">{t('settings:profile.location_label')}</label>
           <LocationSearch
             value={currentDetails.location}
@@ -753,6 +831,34 @@ export default function ProfileSettings() {
             placeholder={t('settings:profile.location_placeholder')}
           />
           <p className="text-text-muted text-xs mt-2">{t('settings:profile.location_hint')}</p>
+          {currentDetails.location && !currentDetails.location.timezone && (
+            <p
+              role="status"
+              data-testid="birth-zone-missing-settings"
+              className="mt-3 rounded-lg border border-status-warning/60 bg-status-warning/10 p-3 text-sm text-text-primary"
+            >
+              {t('settings:profile.zone_missing')}
+            </p>
+          )}
+          {currentDetails.location && suggestedZone && (
+            <div
+              role="status"
+              data-testid="utc-zone-repair"
+              className="mt-3 rounded-lg border border-status-warning/60 bg-status-warning/10 p-3 text-sm text-text-primary"
+            >
+              <p>{t('settings:profile.utc_zone_suspect', { zone: suggestedZone })}</p>
+              <button
+                type="button"
+                className="mt-2 rounded-md border border-accent-gold/60 px-3 py-1.5 text-accent-gold hover:bg-accent-gold/10"
+                onClick={() =>
+                  currentDetails.location &&
+                  handleFieldChange('birth_location', { ...currentDetails.location, timezone: suggestedZone })
+                }
+              >
+                {t('settings:profile.utc_zone_use', { zone: suggestedZone })}
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Regeneration Warnings */}

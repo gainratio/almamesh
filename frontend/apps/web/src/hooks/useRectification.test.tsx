@@ -137,6 +137,32 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 
 describe('useRectification', () => {
+  it('run() surfaces a missing birthplace timezone as an error instead of computing in UTC', async () => {
+    const chart = syntheticChart();
+    const noZone = {
+      ...chart,
+      birth_data: {
+        ...chart.birth_data!,
+        birth_location_details: { ...chart.birth_data!.birth_location_details, timezone: '' },
+      },
+    } as StoredChart;
+    useChartLibraryStore.setState({ charts: { [CHART_ID]: noZone }, hydrated: true });
+    const ctx = makeEngineCtx();
+    const { result } = renderHook(() => useRectification(PROFILE_ID), {
+      wrapper: makeWrapper(ctx),
+    });
+
+    await act(async () => {
+      await result.current.run('cusp');
+    });
+
+    expect(result.current.state.status).toBe('error');
+    expect(result.current.state.error).toMatch(/timezone is missing/);
+    const compute = (ctx.engine as unknown as { computeRectification: ReturnType<typeof vi.fn> })
+      .computeRectification;
+    expect(compute).not.toHaveBeenCalled();
+  });
+
   it('run() transitions store idle -> loading -> ready with the adapted result', async () => {
     const ctx = makeEngineCtx();
     const { result } = renderHook(() => useRectification(PROFILE_ID), {

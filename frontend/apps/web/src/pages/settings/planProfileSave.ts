@@ -1,5 +1,5 @@
 import type { TimeConfidence } from '@almamesh/constants';
-import { chartId, type BirthMeta } from '@almamesh/store';
+import { chartId, requireBirthTimeZone, type BirthMeta } from '@almamesh/store';
 
 import type { BirthDetails } from './birthDetailsFromBirthData';
 
@@ -50,7 +50,8 @@ export function birthMetaFromDetails(details: BirthDetails): BirthMeta {
     timeConfidence: details.time_confidence,
     latitude: location.lat,
     longitude: location.lon,
-    timezone: location.timezone || 'UTC',
+    timezone: requireBirthTimeZone(location.timezone, 'birthMetaFromDetails'),
+    ...(details.dst_fold ? { dstFold: details.dst_fold } : {}),
     location_name: location.displayName || location.city,
   };
 }
@@ -62,6 +63,11 @@ export function birthMetaFromDetails(details: BirthDetails): BirthMeta {
 export function planProfileSave({ initial, current, storedChartId }: ProfileSaveInput): ProfileSavePlan {
   const birth = birthMetaFromDetails(current);
   if (storedChartId === null || chartId(birth) !== storedChartId) {
+    return { kind: 'regenerate', birth };
+  }
+  // A zone change (incl. missing -> present) must persist even when the id
+  // matches: the stored id was minted with the zone the details later lost.
+  if ((initial.location?.timezone ?? '') !== (current.location?.timezone ?? '')) {
     return { kind: 'regenerate', birth };
   }
   const rectifiedTime = effectiveRectifiedTime(current);

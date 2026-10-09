@@ -133,12 +133,79 @@ describe('birthMetaFromDetails', () => {
     );
   });
 
-  it('falls back to UTC and the city name when the location omits them', () => {
-    const birth = birthMetaFromDetails(
-      details({ location: { ...BENGALURU, timezone: '', displayName: '' } }),
-    );
+  // CONTRACT REVERSED (time-handling increment). This test used to assert
+  // `birth.timezone === 'UTC'` when the location had no zone: the defect as the
+  // requirement. A chart regenerated "in UTC" for a Bengaluru birth is wrong by
+  // 5h30m. A missing zone is now refused (see the next describe); the city-name
+  // fallback, which is harmless display copy, is still pinned here.
+  it('falls back to the city name when the location omits a display name', () => {
+    const birth = birthMetaFromDetails(details({ location: { ...BENGALURU, displayName: '' } }));
 
-    expect(birth.timezone).toBe('UTC');
     expect(birth.location_name).toBe('Bengaluru');
   });
+
+  it('no longer falls back to UTC when the location omits its timezone', () => {
+    expect(() =>
+      birthMetaFromDetails(details({ location: { ...BENGALURU, timezone: '', displayName: '' } })),
+    ).toThrow(/timezone is missing/);
+  });
 });
+
+describe('birthMetaFromDetails — no silent UTC, explicit DST choice', () => {
+  it('refuses a location with no timezone instead of computing the chart in UTC', () => {
+    const noZone = { ...BENGALURU, timezone: '' };
+    expect(() => birthMetaFromDetails(details({ location: noZone }))).toThrow(
+      /timezone is missing/,
+    );
+  });
+
+  it('carries the chosen occurrence of a repeated DST hour to the engine input', () => {
+    const la = { ...BENGALURU, lat: 34.05, lon: -118.24, timezone: 'America/Los_Angeles' };
+    const meta = birthMetaFromDetails(
+      details({ location: la, birth_date: '2024-11-03', birth_time: '01:30', dst_fold: 'later' }),
+    );
+    expect(meta.dstFold).toBe('later');
+  });
+});
+
+describe('planProfileSave — a legacy chart born in a repeated DST hour', () => {
+  // dayjs stored every repeated-hour chart as the EARLIER occurrence; reading
+  // the fold back ('earlier') must not change the chart's identity.
+  const LA = { ...BENGALURU, lat: 34.0522, lon: -118.2437, timezone: 'America/Los_Angeles' };
+  const saved = details({ location: LA, birth_date: '2024-11-03', birth_time: '01:30', dst_fold: 'earlier' });
+  const legacyId = chartId({ ...birthMetaFromDetails(saved), dstFold: undefined });
+
+  it('keeps a confidence-only edit confidence-only', () => {
+    const plan = planProfileSave({
+      initial: saved,
+      current: { ...saved, time_confidence: 'approximate' },
+      storedChartId: legacyId,
+    });
+    expect(plan.kind).toBe('confidence-only');
+  });
+});
+
+describe('planProfileSave — a birthplace zone change always regenerates', () => {
+  it('regenerates when a missing zone is restored, even though the chart id matches', () => {
+    // The stored id was minted WITH the zone; the stored details lost it.
+    const restored = details();
+    const zoneless = details({ location: { ...BENGALURU, timezone: '' } });
+    const plan = planProfileSave({
+      initial: zoneless,
+      current: restored,
+      storedChartId: chartId(birthMetaFromDetails(restored)),
+    });
+    expect(plan.kind).toBe('regenerate');
+  });
+
+  it('still reports unchanged when the zone did not change', () => {
+    const same = details();
+    const plan = planProfileSave({
+      initial: same,
+      current: same,
+      storedChartId: chartId(birthMetaFromDetails(same)),
+    });
+    expect(plan.kind).toBe('unchanged');
+  });
+});
+

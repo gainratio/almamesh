@@ -51,6 +51,7 @@ function currentRequestKey(): string {
     latitude: 12.97,
     longitude: 77.59,
     referenceInstant: predictiveReferenceInstant(new Date(), viewerTimeZone()),
+    utcOffsetMinutes: 330,
   });
 }
 
@@ -80,6 +81,23 @@ describe('PredictivePage (/predictive)', () => {
     useProfilesStore.setState({ activeProfileId: 'chart-1' });
     useChartLibraryStore.setState({ charts: { 'chart-1': storedChart() }, hydrated: true });
     usePredictiveStore.getState().reset();
+  });
+
+  it('says the birthplace timezone is missing instead of "generate your chart first"', () => {
+    const chart = storedChart();
+    const zoneless = {
+      ...chart,
+      birth_data: {
+        ...chart.birth_data!,
+        birth_location_details: { ...chart.birth_data!.birth_location_details, timezone: '' },
+      },
+    } as StoredChart;
+    useChartLibraryStore.setState({ charts: { 'chart-1': zoneless }, hydrated: true });
+    renderPage('/predictive?tab=strength');
+    const cards = screen.getAllByTestId('birth-zone-missing');
+    expect(cards.length).toBeGreaterThan(0);
+    expect(screen.queryByTestId('predictive-no-chart')).toBeNull();
+    expect(cards[0]?.querySelector('a')?.getAttribute('href')).toBe('/settings/profile#birthplace');
   });
 
   it('shows the gate with an honest engine-warming note when the engine is not booted', () => {

@@ -39,7 +39,7 @@ function previewKey(input: LocalBirthInput | null, retryAttempt: number): string
     return '';
   }
   const clock = input.rectifiedTime ?? input.time;
-  return `${input.date}T${clock}|${input.timezone}|${input.latitude}|${input.longitude}|${retryAttempt}`;
+  return `${input.date}T${clock}|${input.timezone}|${input.dstFold ?? ''}|${input.latitude}|${input.longitude}|${retryAttempt}`;
 }
 
 interface KeyedPreviewState {

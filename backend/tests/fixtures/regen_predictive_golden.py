@@ -20,7 +20,9 @@ from tests.test_predictive_golden import FIXTURES, GOLDEN_PATH, _canonical_predi
 
 def main() -> None:
     """Write the golden fixture for every case."""
-    golden = {iso: _canonical_predictive(iso, lat, lon) for iso, lat, lon in FIXTURES}
+    golden = {
+        iso: _canonical_predictive(iso, lat, lon, offset) for iso, lat, lon, offset in FIXTURES
+    }
     out = Path(GOLDEN_PATH)
     out.write_text(json.dumps(golden, indent=2, sort_keys=True) + "\n")
     print(f"wrote {len(golden)} cases to {out} ({out.stat().st_size} bytes)")  # noqa: T201 - dev script

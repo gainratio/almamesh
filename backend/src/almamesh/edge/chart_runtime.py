@@ -26,7 +26,7 @@ from edgeproc.core.models import JsonValue
 from almamesh.calculations import calculate_sidereal_context
 from almamesh.constants.astrology import EventType
 from almamesh.mesh import compute_mesh_edge
-from almamesh.predictive import compute_predictive_contexts
+from almamesh.predictive import civil_offset_from_minutes, compute_predictive_contexts
 from almamesh.rectification import compute_rectification_result
 from almamesh.rectification.models import (
     AnchorConfidence,
@@ -80,9 +80,12 @@ def compute_predictive(payload: Mapping[str, object]) -> dict[str, JsonValue]:
     """The LAZY predictive payload (transits + vargas + strength + domains).
 
     Unlike the natal chart, ``reference_instant`` (ISO 8601) is REQUIRED — there
-    is no silent wall-clock fallback. The caller pins the instant, which pins
-    both the "current" dasha and the transit "now", so the payload is
-    reproducible (and byte-parity-testable) by construction.
+    is no silent wall-clock fallback. So is ``utc_offset_minutes``, the
+    birthplace's civil UTC offset at birth: Kalabala's weekday lords are read
+    off the civil date of the sunrise, and no default offset is honest. The
+    caller pins the instant, which pins both the "current" dasha and the
+    transit "now", so the payload is reproducible (and byte-parity-testable)
+    by construction.
 
     No signing happens here. The four contexts ARE the engine's output; the
     browser Worker seals each domain's strength summary into a receipt in
@@ -93,6 +96,7 @@ def compute_predictive(payload: Mapping[str, object]) -> dict[str, JsonValue]:
         _parse_payload_number(payload["latitude"], field="latitude"),
         _parse_payload_number(payload["longitude"], field="longitude"),
         datetime.fromisoformat(str(payload["reference_instant"])),
+        civil_offset=civil_offset_from_minutes(payload["utc_offset_minutes"]),
     )
     return contexts.model_dump(mode="json")
 

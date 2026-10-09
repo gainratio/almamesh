@@ -28,7 +28,14 @@ import type {
 import { buildVargaGeometry } from '@almamesh/store';
 import type { StrengthProvenance } from '../../lib/strengthProvenance';
 import { formatDegree } from '../../lib/reportData';
-import { formatPct, formatPredictiveDate, formatReferenceDay, formatRupas, toVargaChart } from '../../lib/predictive';
+import {
+  formatPct,
+  formatPredictiveDate,
+  formatReferenceDay,
+  formatRupas,
+  sunriseBasisParams,
+  toVargaChart,
+} from '../../lib/predictive';
 import {
   domainWindowLabel,
   grahaName,
@@ -300,6 +307,7 @@ export function buildVargasSection(
 export function buildStrengthSection(
   ctx: StrengthCtx,
   { tr, tp }: ReportPdfTranslators,
+  birthTimeZone?: string,
 ): ReportPdfStrength {
   const sarva = ctx.ashtakavarga.sarva;
   const savCells: ReportPdfLabeledValue[] = SIGN_ORDER.map((sign) => ({
@@ -366,7 +374,7 @@ export function buildStrengthSection(
     componentsNote: glyphSafe(tr('strength.components_note')),
     ...(anyApprox ? { approxNote: glyphSafe(tp('strength.approx_footnote')) } : {}),
     sunriseNote: glyphSafe(
-      tp('strength.sunrise_basis', { date: formatPredictiveDate(ctx.sunrise_utc_iso) }),
+      tp('strength.sunrise_basis_zoned', { ...sunriseBasisParams(ctx.sunrise_utc_iso, birthTimeZone) }),
     ),
   };
 }

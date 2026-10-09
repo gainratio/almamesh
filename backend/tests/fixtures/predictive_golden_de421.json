@@ -3013,11 +3013,11 @@
             "band": "strong",
             "key_graha": "saturn",
             "key_graha_meets_minimum": true,
-            "key_graha_rupas": 6.532915,
+            "key_graha_rupas": 6.282915,
             "note": "band = AlmaMesh heuristic over exact Shadbala Rupas + SAV bindus; inputs are BPHS-rigorous, the threshold mapping is a coarse synthesis.",
             "sav_bindus": 30,
             "sav_pct": 53.571429,
-            "shadbala_pct": 72.263318,
+            "shadbala_pct": 70.263318,
             "strength_pct": 53.571429,
             "strength_tier": "model"
           },
@@ -3193,11 +3193,11 @@
             "band": "strong",
             "key_graha": "jupiter",
             "key_graha_meets_minimum": true,
-            "key_graha_rupas": 8.536183,
+            "key_graha_rupas": 9.036183,
             "note": "band = AlmaMesh heuristic over exact Shadbala Rupas + SAV bindus; inputs are BPHS-rigorous, the threshold mapping is a coarse synthesis.",
             "sav_bindus": 116,
             "sav_pct": 51.785714,
-            "shadbala_pct": 72.53036,
+            "shadbala_pct": 75.607283,
             "strength_pct": 51.785714,
             "strength_tier": "model"
           },
@@ -3272,11 +3272,11 @@
             "band": "strong",
             "key_graha": "jupiter",
             "key_graha_meets_minimum": true,
-            "key_graha_rupas": 8.536183,
+            "key_graha_rupas": 9.036183,
             "note": "band = AlmaMesh heuristic over exact Shadbala Rupas + SAV bindus; inputs are BPHS-rigorous, the threshold mapping is a coarse synthesis.",
             "sav_bindus": 58,
             "sav_pct": 51.785714,
-            "shadbala_pct": 72.53036,
+            "shadbala_pct": 75.607283,
             "strength_pct": 51.785714,
             "strength_tier": "model"
           },
@@ -3456,11 +3456,11 @@
             "band": "moderate",
             "key_graha": "venus",
             "key_graha_meets_minimum": true,
-            "key_graha_rupas": 6.252448,
+            "key_graha_rupas": 6.002448,
             "note": "band = AlmaMesh heuristic over exact Shadbala Rupas + SAV bindus; inputs are BPHS-rigorous, the threshold mapping is a coarse synthesis.",
             "sav_bindus": 19,
             "sav_pct": 33.928571,
-            "shadbala_pct": 65.472351,
+            "shadbala_pct": 63.654169,
             "strength_pct": 33.928571,
             "strength_tier": "model"
           },
@@ -3562,11 +3562,11 @@
             "band": "moderate",
             "key_graha": "jupiter",
             "key_graha_meets_minimum": true,
-            "key_graha_rupas": 8.536183,
+            "key_graha_rupas": 9.036183,
             "note": "band = AlmaMesh heuristic over exact Shadbala Rupas + SAV bindus; inputs are BPHS-rigorous, the threshold mapping is a coarse synthesis.",
             "sav_bindus": 72,
             "sav_pct": 42.857143,
-            "shadbala_pct": 72.53036,
+            "shadbala_pct": 75.607283,
             "strength_pct": 42.857143,
             "strength_tier": "model"
           },
@@ -3785,7 +3785,7 @@
                 "approximated": false,
                 "citation": "BPHS Kalabala \u2014 Masabala (month-lord, 30 Virupas).",
                 "note": null,
-                "virupas": 0.0
+                "virupas": 30.0
               },
               "nathonnatha": {
                 "approximated": false,
@@ -3799,7 +3799,7 @@
                 "note": null,
                 "virupas": 18.793193
               },
-              "total_virupas": 185.592384,
+              "total_virupas": 215.592384,
               "tribhaga": {
                 "approximated": false,
                 "citation": "BPHS Kalabala \u2014 Tribhagabala (thirds of day/night; Jupiter always).",
@@ -3861,8 +3861,8 @@
                 "virupas": 41.106572
               }
             },
-            "total_rupas": 8.536183,
-            "total_virupas": 512.17101
+            "total_rupas": 9.036183,
+            "total_virupas": 542.17101
           },
           "mars": {
             "cheshta": {
@@ -4251,7 +4251,7 @@
                 "approximated": false,
                 "citation": "BPHS Kalabala \u2014 Abdabala (year-lord, 15 Virupas).",
                 "note": null,
-                "virupas": 15.0
+                "virupas": 0.0
               },
               "ayana": {
                 "approximated": false,
@@ -4283,7 +4283,7 @@
                 "note": null,
                 "virupas": 41.206807
               },
-              "total_virupas": 131.559481,
+              "total_virupas": 116.559481,
               "tribhaga": {
                 "approximated": false,
                 "citation": "BPHS Kalabala \u2014 Tribhagabala (thirds of day/night; Jupiter always).",
@@ -4345,8 +4345,8 @@
                 "virupas": 3.573528
               }
             },
-            "total_rupas": 6.532915,
-            "total_virupas": 391.974889
+            "total_rupas": 6.282915,
+            "total_virupas": 376.974889
           },
           "sun": {
             "cheshta": {
@@ -4493,7 +4493,7 @@
                 "approximated": false,
                 "citation": "BPHS Kalabala \u2014 Abdabala (year-lord, 15 Virupas).",
                 "note": null,
-                "virupas": 0.0
+                "virupas": 15.0
               },
               "ayana": {
                 "approximated": false,
@@ -4511,7 +4511,7 @@
                 "approximated": false,
                 "citation": "BPHS Kalabala \u2014 Masabala (month-lord, 30 Virupas).",
                 "note": null,
-                "virupas": 30.0
+                "virupas": 0.0
               },
               "nathonnatha": {
                 "approximated": false,
@@ -4525,7 +4525,7 @@
                 "note": null,
                 "virupas": 18.793193
               },
-              "total_virupas": 113.221822,
+              "total_virupas": 98.221822,
               "tribhaga": {
                 "approximated": false,
                 "citation": "BPHS Kalabala \u2014 Tribhagabala (thirds of day/night; Jupiter always).",
@@ -4587,8 +4587,8 @@
                 "virupas": 42.031829
               }
             },
-            "total_rupas": 6.252448,
-            "total_virupas": 375.146897
+            "total_rupas": 6.002448,
+            "total_virupas": 360.146897
           }
         }
       },

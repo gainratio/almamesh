@@ -13,7 +13,7 @@ Regenerate (only on an intentional engine change):
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from almamesh.calculations import calculate_sidereal_context
@@ -27,11 +27,12 @@ from almamesh.vargas import compute_varga_context
 FIXED_REFERENCE_DATE = datetime(2025, 1, 1, tzinfo=UTC)
 FIXED_TRANSIT_INSTANT = datetime(2025, 1, 1, tzinfo=UTC)
 
-# (iso birth, lat, lon) — synthetic reference native (one generic case) + Delhi + NYC.
-FIXTURES: list[tuple[str, float, float]] = [
-    ("1988-08-08T06:44:00+05:30", 12.9716, 77.5946),  # Bengaluru (reference native)
-    ("1990-01-15T12:00:00+00:00", 28.6139, 77.2090),  # Delhi
-    ("2000-12-31T23:59:00+00:00", 40.7128, -74.0060),  # NYC
+# (iso birth, lat, lon, civil UTC offset minutes) — synthetic reference native
+# (one generic case) + Delhi + NYC. The offset is the birthplace's civil offset.
+FIXTURES: list[tuple[str, float, float, int]] = [
+    ("1988-08-08T06:44:00+05:30", 12.9716, 77.5946, 330),  # Bengaluru (reference native)
+    ("1990-01-15T12:00:00+00:00", 28.6139, 77.2090, 330),  # Delhi
+    ("2000-12-31T23:59:00+00:00", 40.7128, -74.0060, -300),  # NYC
 ]
 
 GOLDEN_PATH = Path(__file__).parent / "fixtures" / "domains_golden_de421.json"
@@ -50,19 +51,20 @@ def _canonicalize(value: object) -> object:
     return value
 
 
-def _compute(iso_dt: str, lat: float, lon: float) -> LifeDomainsContext:
+def _compute(iso_dt: str, lat: float, lon: float, offset_minutes: int) -> LifeDomainsContext:
     """The full predictive pipeline for one fixture, pinned to the fixed instants."""
     birth = datetime.fromisoformat(iso_dt)
     natal = calculate_sidereal_context(birth, lat, lon, reference_date=FIXED_REFERENCE_DATE)
     transits = calculate_transit_context(natal, birth, transit_instant=FIXED_TRANSIT_INSTANT)
     vargas = compute_varga_context(natal)
-    strength = compute_strength_context(natal, birth, lat, lon)
+    civil = timedelta(minutes=offset_minutes)
+    strength = compute_strength_context(natal, birth, lat, lon, civil_offset=civil)
     return compute_life_domains(natal, transits, vargas, strength)
 
 
-def _canonical_domains(iso_dt: str, lat: float, lon: float) -> object:
+def _canonical_domains(iso_dt: str, lat: float, lon: float, offset_minutes: int) -> object:
     """Canonicalized JSON dump of one fixture's LifeDomainsContext."""
-    return _canonicalize(_compute(iso_dt, lat, lon).model_dump(mode="json"))
+    return _canonicalize(_compute(iso_dt, lat, lon, offset_minutes).model_dump(mode="json"))
 
 
 def _load_golden() -> dict[str, object]:
@@ -74,12 +76,12 @@ def _load_golden() -> dict[str, object]:
 def test_all_domain_fixtures_match_golden() -> None:
     """Every fixture's canonicalized LifeDomainsContext equals the committed golden."""
     golden = _load_golden()
-    for iso_dt, lat, lon in FIXTURES:
-        assert _canonical_domains(iso_dt, lat, lon) == golden[iso_dt]
+    for iso_dt, lat, lon, offset in FIXTURES:
+        assert _canonical_domains(iso_dt, lat, lon, offset) == golden[iso_dt]
 
 
 def test_domains_json_round_trip_is_byte_identical() -> None:
     """model_dump_json -> model_validate_json -> model_dump_json is byte-stable."""
-    iso_dt, lat, lon = FIXTURES[0]
-    dumped = _compute(iso_dt, lat, lon).model_dump_json()
+    iso_dt, lat, lon, offset = FIXTURES[0]
+    dumped = _compute(iso_dt, lat, lon, offset).model_dump_json()
     assert LifeDomainsContext.model_validate_json(dumped).model_dump_json() == dumped

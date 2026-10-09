@@ -46,7 +46,11 @@
     },
     "confidence_margin": "Vamos tratá-lo como preciso dentro de ±{{minutes}} min.",
     "confidence_exact_note": "Vamos tratá-lo como um horário exato.",
-    "confidence_unknown_note": "Usaremos o meio-dia como valor provisório; você poderá ajustá-lo à mão mais tarde em Configurações."
+    "confidence_unknown_note": "Usaremos o meio-dia como valor provisório; você poderá ajustá-lo à mão mais tarde em Configurações.",
+    "dst_gap": "{{time}} não existiu em {{zone}} nesta data: os relógios foram adiantados uma hora pelo horário de verão. Confira a hora no registro de nascimento.",
+    "dst_overlap": "{{time}} aconteceu duas vezes em {{zone}} nesta data (os relógios foram atrasados uma hora). Qual foi?",
+    "dst_earlier": "O primeiro {{time}} (horário de verão, {{offset}})",
+    "dst_later": "O segundo {{time}} (horário padrão, {{offset}})"
   },
   "life_events": {
     "title": "Compartilhe a história da sua vida",

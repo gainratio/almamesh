@@ -169,6 +169,7 @@ describe('usePredictiveLayer({ auto: true })', () => {
         latitude: 12.97,
         longitude: 77.59,
         referenceInstant: '2026-07-12T00:00:00Z',
+        utcOffsetMinutes: 330,
       }),
       ensurePredictive: ensure,
     });
@@ -200,6 +201,7 @@ describe('usePredictiveLayer({ auto: true })', () => {
         latitude: 12.97,
         longitude: 77.59,
         referenceInstant: '2026-07-12T00:00:00Z',
+        utcOffsetMinutes: 330,
       }),
       ensurePredictive: ensure,
     });
@@ -238,6 +240,7 @@ describe('usePredictiveLayer({ auto: true })', () => {
       latitude: 12.97,
       longitude: 77.59,
       referenceInstant: '2026-07-12T00:00:00Z',
+      utcOffsetMinutes: 330,
     };
     usePredictiveStore.setState({
       status: 'ready',
@@ -278,6 +281,7 @@ describe('usePredictiveLayer({ auto: true })', () => {
         latitude: 12.97,
         longitude: 77.59,
         referenceInstant: '2026-07-12T00:00:00Z',
+        utcOffsetMinutes: 330,
       }),
       transitCtx: { instant: 'stale-aquarius' } as TransitCtx,
     });
@@ -304,6 +308,7 @@ describe('usePredictiveLayer({ auto: true })', () => {
         latitude: 12.97,
         longitude: 77.59,
         referenceInstant: '2026-07-12T00:00:00Z',
+        utcOffsetMinutes: 330,
       }),
       ensurePredictive: ensure,
     });
@@ -372,6 +377,7 @@ describe('usePredictiveLayer — raw engine contexts passthrough', () => {
         latitude: 12.97,
         longitude: 77.59,
         referenceInstant: '2026-07-12T00:00:00Z',
+        utcOffsetMinutes: 330,
       }),
       rawContexts,
     });
@@ -393,6 +399,7 @@ describe('usePredictiveLayer — raw engine contexts passthrough', () => {
         latitude: 12.97,
         longitude: 77.59,
         referenceInstant: '2026-07-12T00:00:00Z',
+        utcOffsetMinutes: 330,
       }),
       rawContexts: { domains_context: { instant: 'stale' } } as unknown as PredictiveContexts,
     });

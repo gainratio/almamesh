@@ -22,6 +22,7 @@ const birth = {
   birth_location_details: {
     latitude: 12.97,
     longitude: 77.59,
+    timezone: 'Asia/Kolkata',
   },
 } as unknown as ProcessedBirthData;
 

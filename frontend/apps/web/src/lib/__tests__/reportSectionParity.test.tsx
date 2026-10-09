@@ -112,6 +112,7 @@ describe('report section parity — screen → registry', () => {
           storedChart(),
           predictiveReferenceInstant(new Date(), viewerTimeZone()),
         ),
+        utcOffsetMinutes: 330,
       }),
     });
   });

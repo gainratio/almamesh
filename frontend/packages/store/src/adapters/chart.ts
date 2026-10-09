@@ -45,6 +45,7 @@ import {
   toTransitCtx,
   toVargaCtx as toVargaCtxFull,
 } from "./predictive";
+import { type DstFold, localTimeToInstant, resolveLocalTime } from "./localBirthTime";
 
 dayjs.extend(utcPlugin);
 dayjs.extend(tzPlugin);
@@ -68,6 +69,12 @@ export interface LocalBirthInput {
   readonly longitude: number;
   /** IANA timezone name (e.g. `Asia/Kolkata`). The engine has no geocoder. */
   readonly timezone: string;
+  /**
+   * Which occurrence the user chose when the effective clock happened twice
+   * (DST fall-back). Required for such a time — `toBirthInput` refuses to pick
+   * one silently — and ignored for every other time.
+   */
+  readonly dstFold?: DstFold;
   // NO `referenceDate` here, deliberately. The instant that pins the "current"
   // dasha is not birth data — it is a parameter of the computation, and mixing
   // it into the birth record is exactly what let it go missing: an optional
@@ -119,13 +126,29 @@ function birthDatetimeUtc(input: LocalBirthInput): string {
   requireCoordinate(input.longitude, "longitude");
 
   const clock = effectiveTime(input);
-  const local = dayjs.tz(`${input.date}T${clock}`, input.timezone);
-  if (!local.isValid()) {
-    throw new Error(
-      `toBirthInput: could not parse local datetime "${input.date}T${clock}" in zone "${input.timezone}"`,
-    );
+  let instant;
+  try {
+    instant = localTimeToInstant(input.date, clock, input.timezone, input.dstFold);
+  } catch (error) {
+    if (error instanceof RangeError) {
+      throw new Error(
+        `toBirthInput: could not parse local datetime "${input.date}T${clock}" in zone "${input.timezone}"`,
+      );
+    }
+    throw error; // LocalTimeError: a DST gap/overlap the caller must resolve.
   }
-  return local.utc().toISOString();
+  return instant.utc;
+}
+
+/** The fold that matters for this birth: only an ambiguous clock carries one. */
+function effectiveFold(birth: LocalBirthInput): DstFold | undefined {
+  if (!birth.dstFold) return undefined;
+  try {
+    const resolution = resolveLocalTime(birth.date, effectiveTime(birth), birth.timezone);
+    return resolution.kind === "ambiguous" ? birth.dstFold : undefined;
+  } catch {
+    return undefined; // an unreadable draft clock has no fold; ids never throw
+  }
 }
 
 /**
@@ -412,7 +435,13 @@ export function toBirthData(birth: BirthMeta): ProcessedBirthData {
  * id, which Phase-5 change-detection uses to trigger a regeneration.
  */
 export function chartId(birth: BirthMeta): string {
-  const seed = `${birth.name}|${birth.date}T${effectiveTime(birth)}|${birth.timezone}|${birth.latitude}|${birth.longitude}`;
+  // Only the LATER occurrence of a repeated hour marks the seed. Before DST
+  // folds were explicit, dayjs resolved every repeated hour to the EARLIER
+  // occurrence, so every stored chart in one is an 'earlier' chart: leaving
+  // 'earlier' unmarked keeps those ids stable, while the two occurrences still
+  // get distinct ids (switching between them must regenerate).
+  const laterMark = effectiveFold(birth) === "later" ? "|later" : "";
+  const seed = `${birth.name}|${birth.date}T${effectiveTime(birth)}|${birth.timezone}|${birth.latitude}|${birth.longitude}${laterMark}`;
   let hash = 0x811c9dc5;
   for (let i = 0; i < seed.length; i += 1) {
     hash ^= seed.charCodeAt(i);

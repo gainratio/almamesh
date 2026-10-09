@@ -6,6 +6,7 @@
  */
 
 import { create, StateCreator } from 'zustand';
+import type { DstFold } from './adapters/localBirthTime';
 
 export type RegenerationScope = 'none' | 'interpretation' | 'chart+interpretation';
 
@@ -37,6 +38,8 @@ export interface PendingChanges {
   birth_location: PendingLocationValue | null;
   rectified_time: string;
   time_confidence: string;
+  /** The chosen occurrence of a repeated DST hour; '' clears a stale choice. */
+  dst_fold: DstFold | '';
 }
 
 /** A field that a pending edit can target. */
