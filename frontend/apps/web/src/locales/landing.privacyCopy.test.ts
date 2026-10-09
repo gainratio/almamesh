@@ -226,6 +226,74 @@ describe('AI disclosures say chart data can reveal the birth date', () => {
   }
 });
 
+/**
+ * Round 2: "no personal data" is an absolute the chart prompt cannot meet,
+ * because planet positions can reveal the birth date. The AI consent cards
+ * (settings ai.advanced_body, tiers.cloud_body) and the Terms AI clause
+ * (terms.s6_li2) must carry the same caveat, and no settings/legal string may
+ * call the chart prompt free of personal data.
+ */
+type ConsentCopy = {
+  settings: { ai: { advanced_body: string }; tiers: { cloud_body: string } };
+  legal: { terms: { s6_li2: string } };
+};
+
+const PERSONAL_DATA_ABSOLUTES: Record<
+  string,
+  { copy: ConsentCopy; reveal: string; banned: string[] }
+> = {
+  en: {
+    copy: { settings: enSettings, legal: enLegal } as ConsentCopy,
+    reveal: 'can reveal',
+    banned: ['no personal data', 'only a privacy-redacted chart prompt leaves your device.'],
+  },
+  es: {
+    copy: { settings: esSettings, legal: esLegal } as ConsentCopy,
+    reveal: 'pueden revelar',
+    banned: [
+      'sin datos personales',
+      'no incluyen datos personales',
+      'sin información personal',
+      'se anonimizan',
+    ],
+  },
+  pt: {
+    copy: { settings: ptSettings, legal: ptLegal } as ConsentCopy,
+    reveal: 'podem revelar',
+    banned: [
+      'sem dados pessoais',
+      'não incluem dados pessoais',
+      'sem informações pessoais',
+      'são anonimizadas',
+    ],
+  },
+};
+
+describe('AI consent copy never calls the chart prompt free of personal data', () => {
+  for (const [lang, { copy, reveal, banned }] of Object.entries(PERSONAL_DATA_ABSOLUTES)) {
+    const consent: Record<string, string> = {
+      'settings.ai.advanced_body': copy.settings.ai.advanced_body,
+      'settings.tiers.cloud_body': copy.settings.tiers.cloud_body,
+      'legal.terms.s6_li2': copy.legal.terms.s6_li2,
+    };
+    for (const [key, text] of Object.entries(consent)) {
+      it(`[${lang}] ${key} says the chart data can reveal the birth date`, () => {
+        expect(text.toLowerCase()).toContain(reveal);
+      });
+    }
+
+    it(`[${lang}] settings + legal catalogs carry no "personal data" absolute`, () => {
+      // privacy.s2_li1 is the one-way app/bundle download, which truly carries
+      // no personal data; every other settings/legal string is scanned.
+      const legal = copy.legal as { privacy?: Record<string, string> };
+      const { s2_li1: _delivery, ...privacyRest } = legal.privacy ?? {};
+      const scanned = [copy.settings, { ...copy.legal, privacy: privacyRest }];
+      const catalogs = JSON.stringify(scanned).toLowerCase();
+      for (const phrase of banned) expect(catalogs).not.toContain(phrase);
+    });
+  }
+});
+
 type SettingsCopy = { tiers: { cloud_body: string } };
 
 const AI_SETTINGS_DISCLOSURE: Record<string, { body: string; narrative: string; birth: string }> = {

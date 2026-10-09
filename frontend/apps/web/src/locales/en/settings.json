@@ -170,7 +170,7 @@
     "credits_note": "OpenRouter bills prepaid credits in US dollars, not tokens.",
     "advanced_hint": "Enter an endpoint above to enable.",
     "advanced_summary": "Advanced: use a custom OpenAI-compatible endpoint",
-    "advanced_body": "Point AlmaMesh at any OpenAI-compatible endpoint — a local model (e.g. Ollama) or another provider. Chart prompts are privacy-redacted. Life-event text is sent as written only when you submit it after the disclosure.",
+    "advanced_body": "Point AlmaMesh at any OpenAI-compatible endpoint — a local model (e.g. Ollama) or another provider. Chart prompts leave out your name and birth date, but the planet positions and period dates they include can reveal your birth date. Life-event text is sent as written only when you submit it after the disclosure.",
     "endpoint_label": "Endpoint (OpenAI-compatible)",
     "allow_cloud_label": "Allow a cloud endpoint for optional AI content",
     "api_key_label": "API key (stored only in this browser)",
@@ -197,7 +197,7 @@
     "none_button": "Turn AI off",
     "active_badge": "Active",
     "cloud_title": "Connect AI",
-    "cloud_body": "Add written interpretations and chat with an OpenRouter key (recommended) or any OpenAI-compatible endpoint. Only a privacy-redacted chart prompt leaves your device. If you use AI to organize life events, the narrative you enter is sent as written after the disclosure; birth details and chart data are not attached."
+    "cloud_body": "Add written interpretations and chat with an OpenRouter key (recommended) or any OpenAI-compatible endpoint. Chart data leaves your device without your name or birth date, but the planet positions and period dates it includes can reveal your birth date. If you use AI to organize life events, the narrative you enter is sent as written after the disclosure; birth details and chart data are not attached."
   },
   "preferences": {
     "title": "Preferences",

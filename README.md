@@ -214,7 +214,7 @@ full set of dev/build/test commands.
 
 | Option | Better choice when | Where AlmaMesh differs |
 |---|---|---|
-| Paid astrology sites and apps | You want a human-written or curated reading, or an astrologer to talk to | Free, no account or email, and the birth data never reaches a server |
+| Paid astrology sites and apps | You want a human-written or curated reading, or an astrologer to talk to | Free, no account or email, and no AlmaMesh server ever holds your birth data; with the optional AI off, nothing about your chart leaves your device |
 | Free online chart calculators | You only need a quick one-off chart and don't mind the site seeing your birth data | The calculation runs in your tab; charts are saved locally and work offline |
 | Desktop astrology software (for example, Jagannatha Hora on Windows) | You are a practitioner who needs far more techniques and settings than AlmaMesh offers | Runs in any browser on any OS; the engine is open source and checked against an independent astronomy reference |
 | Do nothing / ask a family astrologer | You trust a person more than software | AlmaMesh shows its math and states what it cannot prove |

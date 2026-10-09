@@ -173,7 +173,7 @@
     "credits_note": "O OpenRouter cobra créditos pré-pagos em dólares americanos, não em tokens.",
     "advanced_hint": "Insira um endpoint acima para ativar.",
     "advanced_summary": "Avançado: use um endpoint personalizado compatível com OpenAI",
-    "advanced_body": "Aponte o AlmaMesh para qualquer endpoint compatível com OpenAI — um modelo local (ex.: Ollama) ou outro provedor. As solicitações do mapa não incluem dados pessoais. O relato de vida é enviado como escrito somente quando você o envia após o aviso.",
+    "advanced_body": "Aponte o AlmaMesh para qualquer endpoint compatível com OpenAI — um modelo local (ex.: Ollama) ou outro provedor. As solicitações do mapa não incluem o seu nome nem a sua data de nascimento, mas as posições planetárias e as datas dos períodos que incluem podem revelar a sua data de nascimento. O relato de vida é enviado como escrito somente quando você o envia após o aviso.",
     "endpoint_label": "Endpoint (compatível com OpenAI)",
     "allow_cloud_label": "Permitir um endpoint na nuvem para conteúdo opcional de IA",
     "api_key_label": "Chave de API (armazenada apenas neste navegador)",
@@ -200,7 +200,7 @@
     "none_button": "Desativar a IA",
     "active_badge": "Ativo",
     "cloud_title": "Conectar IA",
-    "cloud_body": "Adicione interpretações escritas e chat com uma chave do OpenRouter (recomendado) ou qualquer endpoint compatível com OpenAI. As solicitações baseadas no mapa não incluem dados pessoais antes de sair do seu dispositivo. Se você usar IA para organizar eventos de vida, a narrativa digitada será enviada como escrita após o aviso; os dados de nascimento e o mapa não serão anexados."
+    "cloud_body": "Adicione interpretações escritas e chat com uma chave do OpenRouter (recomendado) ou qualquer endpoint compatível com OpenAI. As solicitações baseadas no mapa não incluem o seu nome nem a sua data de nascimento, mas as posições planetárias e as datas dos períodos que incluem podem revelar a sua data de nascimento. Se você usar IA para organizar eventos de vida, a narrativa digitada será enviada como escrita após o aviso; os dados de nascimento e o mapa não serão anexados."
   },
   "preferences": {
     "title": "Preferências",

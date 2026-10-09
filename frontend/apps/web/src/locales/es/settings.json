@@ -173,7 +173,7 @@
     "credits_note": "OpenRouter cobra créditos prepago en dólares estadounidenses, no en tokens.",
     "advanced_hint": "Introduce un endpoint arriba para activarlo.",
     "advanced_summary": "Avanzado: usa un endpoint personalizado compatible con OpenAI",
-    "advanced_body": "Apunta AlmaMesh a cualquier endpoint compatible con OpenAI — un modelo local (p. ej. Ollama) u otro proveedor. Las solicitudes de la carta no incluyen datos personales. El relato vital se envía tal cual solo cuando lo envías después del aviso.",
+    "advanced_body": "Apunta AlmaMesh a cualquier endpoint compatible con OpenAI — un modelo local (p. ej. Ollama) u otro proveedor. Las solicitudes de la carta no incluyen tu nombre ni tu fecha de nacimiento, pero las posiciones planetarias y las fechas de los periodos que incluyen pueden revelar tu fecha de nacimiento. El relato vital se envía tal cual solo cuando lo envías después del aviso.",
     "endpoint_label": "Endpoint (compatible con OpenAI)",
     "allow_cloud_label": "Permitir un endpoint en la nube para contenido opcional de IA",
     "api_key_label": "Clave de API (guardada solo en este navegador)",
@@ -200,7 +200,7 @@
     "none_button": "Desactivar la IA",
     "active_badge": "Activo",
     "cloud_title": "Conectar IA",
-    "cloud_body": "Añade interpretaciones escritas y chat con una clave de OpenRouter (recomendado) o cualquier endpoint compatible con OpenAI. Las solicitudes basadas en la carta no incluyen datos personales antes de salir de tu dispositivo. Si usas IA para organizar eventos vitales, el relato que escribas se envía tal cual después del aviso; no se adjuntan tus datos de nacimiento ni la carta."
+    "cloud_body": "Añade interpretaciones escritas y chat con una clave de OpenRouter (recomendado) o cualquier endpoint compatible con OpenAI. Las solicitudes basadas en la carta no incluyen tu nombre ni tu fecha de nacimiento, pero las posiciones planetarias y las fechas de los periodos que incluyen pueden revelar tu fecha de nacimiento. Si usas IA para organizar eventos vitales, el relato que escribas se envía tal cual después del aviso; no se adjuntan tus datos de nacimiento ni la carta."
   },
   "preferences": {
     "title": "Preferencias",

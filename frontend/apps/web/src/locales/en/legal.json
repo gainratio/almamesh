@@ -36,7 +36,7 @@
     "s6_heading": "6. Optional AI Interpretation",
     "s6_p1": "AI-generated interpretation, chat, and life-event organization are entirely optional and are never required to draw a chart.",
     "s6_li1": "AI features work only if you choose to configure an OpenAI-compatible endpoint (for example, OpenRouter or your own).",
-    "s6_li2": "When you use them, PII-redacted chart prompts and chat questions are sent to the third-party endpoint you chose. Life-event prose is sent as written only after its separate disclosure, without birth details or chart data. Those requests are subject to that provider's terms and privacy policy, not ours.",
+    "s6_li2": "When you use them, chart prompts (without your name or birth date, but with planet positions and period dates that can reveal your birth date) and chat questions are sent to the third-party endpoint you chose. Life-event prose is sent as written only after its separate disclosure, without birth details or chart data. Those requests are subject to that provider's terms and privacy policy, not ours.",
     "s6_li3": "AI output is probabilistic and may be inaccurate; treat it as entertainment, consistent with the disclaimer above.",
     "s7_heading": "7. Intellectual Property",
     "s7_li1": "AlmaMesh and its content are protected by copyright and trademark laws",
