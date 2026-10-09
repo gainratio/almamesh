@@ -4,7 +4,8 @@ import { useLanguageStore } from '@almamesh/store';
 import type { StrengthCtx } from '@almamesh/shared-types';
 
 import '../../../../i18n/config';
-import { StrengthPanel, hasApproximatedComponents } from '../StrengthPanel';
+import { StrengthPanel } from '../StrengthPanel';
+import { hasApproximatedComponents } from '../../../../lib/predictive';
 import { ALL_SIGNS, SAV_BINDUS, STRENGTH_CTX } from '../../../../test/predictiveFixtures';
 
 describe('StrengthPanel', () => {

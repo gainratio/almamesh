@@ -19,7 +19,7 @@ import type {
 } from '@almamesh/shared-types';
 import { formatRupas, sunriseBasisParams } from '../../../lib/predictive';
 import { grahaName, signName } from '../../../lib/predictiveEventCopy';
-import { hasApproximatedComponents } from '../predictive/StrengthPanel';
+import { hasApproximatedComponents } from '../../../lib/predictive';
 import { ReportSectionHeading } from './ReportSectionHeading';
 import { sectionNumeral } from '../../../lib/reportSections';
 

@@ -8,7 +8,11 @@
  * geometry builder, and locale-aware date display for engine ISO values.
  */
 
-import type { ProcessedBirthData, VargaChartFullData } from '@almamesh/shared-types';
+import type {
+  PlanetShadbalaData,
+  ProcessedBirthData,
+  VargaChartFullData,
+} from '@almamesh/shared-types';
 import {
   offsetMinutesAtInstant,
   type EnsurePredictiveInput,
@@ -209,3 +213,14 @@ export function sunriseBasisParams(sunriseUtcIso: string, birthTimeZone?: string
   };
 }
 
+/** True when ANY Shadbala component of this graha carries the approx flag. */
+export function hasApproximatedComponents(p: PlanetShadbalaData): boolean {
+  const flat = [
+    p.sthana.uccha, p.sthana.saptavargaja, p.sthana.ojayugma, p.sthana.kendradi, p.sthana.drekkana,
+    p.dig,
+    p.kala.nathonnatha, p.kala.paksha, p.kala.tribhaga, p.kala.abda, p.kala.masa,
+    p.kala.vara, p.kala.hora, p.kala.ayana, p.kala.yuddha,
+    p.cheshta, p.naisargika, p.drik,
+  ];
+  return flat.some((component) => component.approximated);
+}
