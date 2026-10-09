@@ -11,7 +11,8 @@ export interface DeadlineOptions {
   readonly failureMessage: string;
 }
 
-function abortReason(signal: AbortSignal): Error {
+/** The signal's own reason when it is an Error, else a standard AbortError. */
+export function abortReason(signal: AbortSignal): Error {
   const reason: unknown = signal.reason;
   return reason instanceof Error ? reason : new DOMException('The operation was aborted', 'AbortError');
 }

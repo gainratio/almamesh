@@ -15,7 +15,8 @@ import type { PredictiveRuntime } from '@almamesh/store';
 
 import type { ChartEngineContextValue } from '../providers/chartEngineContext';
 import { buildEnsurePredictiveInput } from './predictive';
-import { periodReferenceInstant, periodSkyCache, type PeriodSkyCache } from './periodSky';
+import { withDeadline } from './deadline';
+import { periodReferenceInstant, periodSkyCache, periodSkyDeadline, type PeriodSkyCache } from './periodSky';
 import { PeriodSkyUnavailableError } from './timingTool';
 
 export interface PeriodChartLoaderInput {
@@ -48,8 +49,12 @@ export function createPeriodChartLoader(input: PeriodChartLoaderInput): PeriodCh
       periodReferenceInstant(period.start),
     );
     if (!predictiveInput) throw new PeriodSkyUnavailableError('incomplete_birth_data');
-    const runtime = await readyEngine(input.engine);
-    const contexts = await (input.cache ?? periodSkyCache()).load(predictiveInput, runtime, context.signal);
+    // The deadline starts here, at tool entry, so a cold engine boot counts
+    // against it too: the model gets `timeout`, never the agent's opaque cap.
+    const work = readyEngine(input.engine).then((runtime) =>
+      (input.cache ?? periodSkyCache()).load(predictiveInput, runtime, context.signal),
+    );
+    const contexts = await withDeadline(work, context.signal, periodSkyDeadline());
     return { ...input.chart, ...contexts };
   };
 }

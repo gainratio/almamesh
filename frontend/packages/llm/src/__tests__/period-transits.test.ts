@@ -36,6 +36,11 @@ describe("restrictTransitsToPeriod", () => {
     expect(notes).toEqual([]);
   });
 
+  it("keeps a slow hit whose exact day falls inside the period", () => {
+    const { context } = restrictTransitsToPeriod(CTX, { start: "2030-05-01", end: "2030-05-31" }, true);
+    expect(context.slow_hits.map((hit) => hit.exact)).toEqual(["2030-05-20T00:00:00Z"]);
+  });
+
   it("a single day keeps every graha, the Moon included", () => {
     const { context } = restrictTransitsToPeriod(CTX, { start: "2030-03-29", end: "2030-03-29" }, false);
     expect(Object.keys(context.gochara.placements)).toContain("moon");

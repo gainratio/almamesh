@@ -228,6 +228,11 @@ describe('mentionsExplicitPeriod', () => {
     '¿Qué pasó en julio?',
     'Como foi março para mim?',
     'E em setembro?',
+    'What happened in March?',
+    'Desde marco de 2020',
+    'Tudo mudou desde marco',
+    // NFD "março" (c + combining cedilla), as some keyboards and pastes send it.
+    'Como foi março para mim?'.normalize('NFD'),
   ])('sees an explicit period in: %s', (question) => {
     expect(mentionsExplicitPeriod(question)).toBe(true);
   });

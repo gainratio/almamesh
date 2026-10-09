@@ -110,14 +110,14 @@ describe('a slow period compute reaches the model as a timeout value', () => {
   };
   const decision = (message: Record<string, unknown>) => Response.json({ choices: [{ message }] });
 
-  it('answers {available: false, reason: "timeout"} before the 150 s tool cap', async () => {
+  /** One model turn that calls get_timing for June 2019; returns the tool message the model reads next. */
+  async function toolResultSeenByModel(loadPeriodChart: ReturnType<typeof loader>) {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
-    const never = rawEngine(() => new Promise<PredictiveContexts>(() => undefined));
     const timing: AgentTool = createTimingTool({
       chart: CHART,
       birthDay: '1990-01-15',
       todayDay: () => '2026-03-08',
-      loadPeriodChart: loader(engineContext(never.engine)),
+      loadPeriodChart,
     });
     const bodies: Array<{ messages: Array<{ role: string; content: string | null }> }> = [];
     const fetchImpl = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
@@ -147,14 +147,25 @@ describe('a slow period compute reaches the model as a timeout value', () => {
     await answer;
 
     const toolMessage = bodies[1]?.messages.find((message) => message.role === 'tool');
-    const content = JSON.parse(toolMessage?.content ?? '{}') as {
-      ok?: boolean;
-      value?: { period?: unknown; data?: unknown };
-    };
+    return JSON.parse(toolMessage?.content ?? '{}') as { ok?: boolean; value?: { period?: unknown; data?: unknown } };
+  }
+
+  const TIMEOUT_VALUE = {
+    period: { start: '2019-06-01', end: '2019-06-30', basis: 'period' },
+    data: { available: false, reason: 'timeout' },
+  };
+
+  it('answers {available: false, reason: "timeout"} before the 150 s tool cap', async () => {
+    const never = rawEngine(() => new Promise<PredictiveContexts>(() => undefined));
+    const content = await toolResultSeenByModel(loader(engineContext(never.engine)));
     expect(content.ok).toBe(true);
-    expect(content.value).toMatchObject({
-      period: { start: '2019-06-01', end: '2019-06-30', basis: 'period' },
-      data: { available: false, reason: 'timeout' },
-    });
+    expect(content.value).toMatchObject(TIMEOUT_VALUE);
+  });
+
+  it('counts a cold engine boot inside the same deadline (whenReady never settles)', async () => {
+    const booting = engineContext(null, vi.fn(() => new Promise<ChartEngine>(() => undefined)));
+    const content = await toolResultSeenByModel(loader(booting));
+    expect(content.ok).toBe(true);
+    expect(content.value).toMatchObject(TIMEOUT_VALUE);
   });
 });

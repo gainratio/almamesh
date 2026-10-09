@@ -27,7 +27,6 @@ import {
   type SanitizedChart,
 } from '@almamesh/llm';
 
-import { enumArgument } from './agentArgs';
 import { PeriodSkyTimeoutError } from './periodSky';
 
 export const TIMING_TOOL_NAME = 'get_timing';
@@ -86,6 +85,9 @@ const DESCRIPTION = [
 ].join(' ');
 
 const UNAVAILABLE = { available: false } as const;
+
+/** Returned, not thrown, so the model can retry with a valid section. */
+const SECTION_ERROR = `section must be one of: ${TIMING_SECTIONS.join(', ')}`;
 
 function sectionData(chart: SanitizedChart, section: TimingSection): unknown {
   if (section === 'dashas') return chart.dashas ?? UNAVAILABLE;
@@ -202,7 +204,8 @@ export function createTimingTool(input: TimingToolInput): AgentTool {
       additionalProperties: false,
     },
     execute: async (args: AgentJsonObject, context: AgentToolContext) => {
-      const section = enumArgument(args, 'section', TIMING_SECTIONS) as TimingSection;
+      const section = TIMING_SECTIONS.find((value) => value === args.section);
+      if (!section) return { error: SECTION_ERROR };
       const parsed = parsePeriodArgs(args);
       if (parsed.kind === 'invalid') return { error: parsed.error };
       if (parsed.kind === 'today') return todayTiming(input, section, context);

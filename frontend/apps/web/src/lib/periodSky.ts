@@ -21,7 +21,7 @@ import {
   type PredictiveRuntime,
 } from '@almamesh/store';
 
-import { withDeadline } from './deadline';
+import { abortReason, withDeadline, type DeadlineOptions } from './deadline';
 
 /**
  * One queued Life Atlas compute (~30 s) plus this one (~30 s+). Kept under the
@@ -34,6 +34,15 @@ export class PeriodSkyTimeoutError extends Error {
     super('The period sky calculation timed out.');
     this.name = 'PeriodSkyTimeoutError';
   }
+}
+
+/** The period waiter's deadline: a timeout reads as `PeriodSkyTimeoutError`. */
+export function periodSkyDeadline(timeoutMs: number = PERIOD_SKY_TIMEOUT_MS): DeadlineOptions {
+  return {
+    timeoutMs,
+    onTimeout: () => new PeriodSkyTimeoutError(),
+    failureMessage: 'The period sky calculation failed.',
+  };
 }
 
 export interface PredictiveStoreSnapshot {
@@ -69,18 +78,9 @@ function engineInput(input: EnsurePredictiveInput): PredictiveInput {
   };
 }
 
-function abortReason(signal: AbortSignal): Error {
-  const reason: unknown = signal.reason;
-  return reason instanceof Error ? reason : new DOMException('The operation was aborted', 'AbortError');
-}
-
 export function createPeriodSkyCache(options: PeriodSkyCacheOptions): PeriodSkyCache {
   const readStore = options.readStore ?? ((): PredictiveStoreSnapshot => usePredictiveStore.getState());
-  const deadline = {
-    timeoutMs: options.timeoutMs ?? PERIOD_SKY_TIMEOUT_MS,
-    onTimeout: () => new PeriodSkyTimeoutError(),
-    failureMessage: 'The period sky calculation failed.',
-  };
+  const deadline = periodSkyDeadline(options.timeoutMs);
   const inFlight = new Map<string, Promise<CachedPredictiveContexts>>();
   let queue: Promise<unknown> = Promise.resolve();
 

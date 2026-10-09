@@ -185,6 +185,39 @@ describe('get_timing with dates', () => {
     expect(result).toMatchObject({ data: { available: false, reason } });
   });
 
+  it('names the engine unavailable when no period loader was wired', async () => {
+    const result = await tool({ loadPeriodChart: undefined }).execute(
+      { section: 'transits', start: '2019-06-01', end: '2019-06-30' },
+      context(),
+    );
+    expect(result).toMatchObject({ data: { available: false, reason: 'engine_unavailable' } });
+  });
+
+  it('says transits are unavailable when the period sky has no transit context', async () => {
+    const result = await tool({ loadPeriodChart: vi.fn(async () => CHART) }).execute(
+      { section: 'transits', start: '2019-06-01', end: '2019-06-30' },
+      context(),
+    );
+    expect(result).toMatchObject({ shown: 'transits', notes: [], data: { available: false } });
+    expect((result as { data: unknown }).data).toEqual({ available: false });
+  });
+
+  it('says dashas are unavailable when the stored chart has none', async () => {
+    const noDashas = { ...CHART, dashas: undefined } as unknown as SiderealChart;
+    const result = await tool({ chart: noDashas }).execute(
+      { section: 'dashas', start: '2019-06-01', end: '2019-06-30' },
+      context(),
+    );
+    expect(result).toMatchObject({ shown: 'dashas', notes: [] });
+    expect((result as { data: unknown }).data).toEqual({ available: false });
+  });
+
+  it('returns (never throws) a readable error for an unknown section', async () => {
+    await expect(tool().execute({ section: 'vargas' }, context())).resolves.toEqual({
+      error: 'section must be one of: dashas, transits, domains, strength',
+    });
+  });
+
   it('rethrows when the turn itself was cancelled', async () => {
     const controller = new AbortController();
     const loadPeriodChart = vi.fn(async () => {

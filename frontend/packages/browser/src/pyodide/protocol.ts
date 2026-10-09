@@ -23,12 +23,6 @@ export interface BirthInput {
 }
 
 /**
- * Input for the LAZY predictive computation (transits + vargas + strength +
- * life domains). Like `BirthInput.referenceDate`, `referenceInstant` is
- * REQUIRED — the engine never silently reads the wall clock; the caller pins
- * the instant, which pins both the "current" dasha and the transit "now".
- */
-/**
  * How a predictive result is retained by the engine memo. `"period"` marks a
  * time-travel compute (a day other than today): it counts against the
  * device-tier period bound (5 / 3 / 1), never the Life Atlas's entries.
@@ -37,6 +31,12 @@ export interface PredictiveCallOptions {
   readonly retention?: "default" | "period";
 }
 
+/**
+ * Input for the LAZY predictive computation (transits + vargas + strength +
+ * life domains). Like `BirthInput.referenceDate`, `referenceInstant` is
+ * REQUIRED — the engine never silently reads the wall clock; the caller pins
+ * the instant, which pins both the "current" dasha and the transit "now".
+ */
 export interface PredictiveInput {
   readonly datetimeUtc: string; // ISO-8601 UTC birth instant
   readonly latitude: number;
