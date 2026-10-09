@@ -38,10 +38,12 @@ import { recoverSeveredServiceWorkerChannel } from '../lib/swSelfHeal'
 import {
   clearRuntimeError,
   clearRuntimeGenerator,
+  clearRuntimeMoonWindow,
   clearRuntimePredictive,
   publishPredictiveRequestKeys,
   publishRuntimeError,
   publishRuntimeGenerator,
+  publishRuntimeMoonWindow,
   publishRuntimePredictive,
   publishRuntimeStage,
 } from '../lib/runtimeObservability'
@@ -318,6 +320,7 @@ export function AlmaMeshRuntimeProvider({ children, runtime }: ProviderProps) {
     if (EXIT_GATE_HOOKS) {
       clearRuntimeGenerator()
       clearRuntimePredictive()
+      clearRuntimeMoonWindow()
     }
     bootstrapFailedRef.current = false
     retryableFailureRef.current = false
@@ -351,6 +354,7 @@ export function AlmaMeshRuntimeProvider({ children, runtime }: ProviderProps) {
           clearRuntimeError()
           publishRuntimeGenerator((birth) => ready.generateChart(birth))
           publishRuntimePredictive((input) => ready.computePredictive(input))
+          publishRuntimeMoonWindow((input) => ready.computeMoonWindow(input))
         }
         return ready
       })
@@ -387,6 +391,7 @@ export function AlmaMeshRuntimeProvider({ children, runtime }: ProviderProps) {
           if (EXIT_GATE_HOOKS) {
             clearRuntimeGenerator()
             clearRuntimePredictive()
+            clearRuntimeMoonWindow()
             publishRuntimeError(e.message)
           }
         }

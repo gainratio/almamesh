@@ -4,6 +4,7 @@ import type { SqliteMemoryProof } from './chatMemory'
 
 export type RuntimeChartGenerator = ChartEngine['generateChart']
 export type RuntimePredictiveComputer = ChartEngine['computePredictive']
+export type RuntimeMoonWindowComputer = ChartEngine['computeMoonWindow']
 
 declare global {
   interface Window {
@@ -11,6 +12,7 @@ declare global {
     __ALMAMESH_ERROR__?: string
     __almameshGenerate?: RuntimeChartGenerator
     __almameshComputePredictive?: RuntimePredictiveComputer
+    __almameshComputeMoonWindow?: RuntimeMoonWindowComputer
     __almameshVerifySqliteMemory?: () => Promise<SqliteMemoryProof>
     __almameshPortableStatePersistence?: () => PortableStatePersistence
     __almameshPredictiveRequestKeys?: string[]
@@ -44,6 +46,15 @@ export const publishRuntimePredictive = (compute: RuntimePredictiveComputer): vo
 
 export const clearRuntimePredictive = (): void => {
   delete window.__almameshComputePredictive
+}
+
+/** Exit-gate builds only: lets the browser parity gate run the moon window entry directly. */
+export const publishRuntimeMoonWindow = (compute: RuntimeMoonWindowComputer): void => {
+  window.__almameshComputeMoonWindow = compute
+}
+
+export const clearRuntimeMoonWindow = (): void => {
+  delete window.__almameshComputeMoonWindow
 }
 
 interface PredictiveRequestKeyState {

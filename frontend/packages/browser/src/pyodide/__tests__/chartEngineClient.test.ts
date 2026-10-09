@@ -358,6 +358,39 @@ describe("ChartEngineClient", () => {
     await expect(client.computePredictive(PREDICTIVE_INPUT)).rejects.toThrow("engine not booted");
   });
 
+  it("computeMoonWindow sends a computeMoonWindow request and returns the window", async () => {
+    const mark = { sign: "taurus", nakshatra: "Rohini", tithi: 3, paksha: "shukla" } as const;
+    const moonWindow = { at_place: { at_start: mark, at_end: mark }, event: null };
+    const bounds = {
+      placeStartUtc: "2026-06-15T05:00:00+00:00",
+      placeEndUtc: "2026-06-16T05:00:00+00:00",
+    };
+    const client = withReply((req) => ({
+      ok: true,
+      kind: "computeMoonWindow",
+      id: req.id,
+      moonWindow,
+    }));
+
+    await expect(client.computeMoonWindow(bounds)).resolves.toEqual(moonWindow);
+    expect(worker.posted[0]).toMatchObject({ kind: "computeMoonWindow", input: bounds });
+  });
+
+  it("computeMoonWindow surfaces a worker error", async () => {
+    const client = withReply((req) => ({
+      ok: false,
+      id: req.id,
+      error: "invalid place_start_utc: outside the on-device ephemeris (1900..2052)",
+    }));
+
+    await expect(
+      client.computeMoonWindow({
+        placeStartUtc: "2053-01-01T00:00:00Z",
+        placeEndUtc: "2053-01-02T00:00:00Z",
+      }),
+    ).rejects.toThrow("invalid place_start_utc");
+  });
+
   it("computes the mesh edge, forwarding both births + relationship/roles + the explicit window", async () => {
     const client = withReply((req) => ({
       ok: true,

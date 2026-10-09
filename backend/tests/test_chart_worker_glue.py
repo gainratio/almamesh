@@ -46,6 +46,7 @@ import pytest
 
 from almamesh import calculations
 from tests import test_chart_golden as golden
+from tests.test_moon_window_golden import GOLDEN_PATH
 
 _WORKER_TS: Final[Path] = (
     Path(__file__).resolve().parents[2]
@@ -208,6 +209,37 @@ def _predictive_glue() -> Callable[[str], str]:
     fn = namespace["_almamesh_compute_predictive"]
     assert callable(fn)
     return fn
+
+
+def _moon_window_glue() -> Callable[[str], str]:
+    namespace: dict[str, object] = {}
+    exec(compile(_extract_bootstrap(), str(_WORKER_TS), "exec"), namespace)  # noqa: S102
+    fn = namespace["_almamesh_compute_moon_window"]
+    assert callable(fn)
+    return fn
+
+
+def test_moon_window_glue_maps_camel_case_onto_the_shared_validator() -> None:
+    camel = {
+        "placeStartUtc": "2026-06-15T05:00:00+00:00",
+        "placeEndUtc": "2026-06-16T05:00:00+00:00",
+        "event": {
+            "datetimeUtc": "2026-06-15T20:00:00+00:00",
+            "latitude": 4.711,
+            "longitude": -74.0721,
+        },
+    }
+    golden = json.loads(GOLDEN_PATH.read_text())["bogota-2026-06-15@15:00"]
+    assert json.loads(_moon_window_glue()(json.dumps(camel))) == golden
+
+
+def test_moon_window_glue_without_an_event() -> None:
+    golden = json.loads(GOLDEN_PATH.read_text())["bogota-2026-06-15"]
+    camel = {
+        "placeStartUtc": "2026-06-15T05:00:00+00:00",
+        "placeEndUtc": "2026-06-16T05:00:00+00:00",
+    }
+    assert json.loads(_moon_window_glue()(json.dumps(camel))) == golden
 
 
 def _predictive_input(**extra: object) -> str:

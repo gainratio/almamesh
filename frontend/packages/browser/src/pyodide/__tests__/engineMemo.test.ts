@@ -51,6 +51,10 @@ class CountingEngine implements ChartEngine {
     return { transit_context: { instant: input.referenceInstant } } as unknown as PredictiveContexts;
   }
 
+  public async computeMoonWindow(): Promise<never> {
+    throw new Error("not used");
+  }
+
   public async computeMeshEdge(): Promise<never> {
     throw new Error("not used");
   }
@@ -164,6 +168,7 @@ describe("memoizeChartEngine — identical input is computed once", () => {
 
     expect(cached.meta()).toBeNull();
     await expect(cached.computeMeshEdge({} as never)).rejects.toThrow("not used");
+    await expect(cached.computeMoonWindow({} as never)).rejects.toThrow("not used");
   });
 });
 

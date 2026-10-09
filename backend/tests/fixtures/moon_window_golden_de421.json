@@ -1,0 +1,61 @@
+{
+  "bogota-2026-06-15": {
+    "at_place": {
+      "at_end": {
+        "nakshatra": "Ardra",
+        "paksha": "shukla",
+        "sign": "Gemini",
+        "tithi": 2
+      },
+      "at_start": {
+        "nakshatra": "Mrigashira",
+        "paksha": "shukla",
+        "sign": "Gemini",
+        "tithi": 1
+      }
+    },
+    "event": null
+  },
+  "bogota-2026-06-15@15:00": {
+    "at_place": {
+      "at_end": {
+        "nakshatra": "Ardra",
+        "paksha": "shukla",
+        "sign": "Gemini",
+        "tithi": 2
+      },
+      "at_start": {
+        "nakshatra": "Mrigashira",
+        "paksha": "shukla",
+        "sign": "Gemini",
+        "tithi": 1
+      }
+    },
+    "event": {
+      "lagna_sign": "Libra",
+      "moon": {
+        "nakshatra": "Ardra",
+        "paksha": "shukla",
+        "sign": "Gemini",
+        "tithi": 1
+      }
+    }
+  },
+  "la-2026-06-01..03": {
+    "at_place": {
+      "at_end": {
+        "nakshatra": "Uttara Ashadha",
+        "paksha": "krishna",
+        "sign": "Capricorn",
+        "tithi": 19
+      },
+      "at_start": {
+        "nakshatra": "Jyeshtha",
+        "paksha": "krishna",
+        "sign": "Scorpio",
+        "tithi": 16
+      }
+    },
+    "event": null
+  }
+}

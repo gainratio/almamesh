@@ -129,6 +129,46 @@ export interface ComputePredictiveRequest {
   readonly input: PredictiveInput;
 }
 
+/** An event's instant and place; its Moon and lagna sign are read on-device. */
+export interface MoonWindowEvent {
+  readonly datetimeUtc: string;
+  readonly latitude: number;
+  readonly longitude: number;
+}
+
+/** A place's local window as two UTC instants, plus an optional event. */
+export interface MoonWindowInput {
+  /** ISO UTC instant: the place's local 00:00 on the first day. */
+  readonly placeStartUtc: string;
+  /** ISO UTC instant: the place's local 00:00 after the last day. */
+  readonly placeEndUtc: string;
+  readonly event?: MoonWindowEvent;
+}
+
+/** The Moon's sign, nakshatra, tithi and paksha at one instant. */
+export interface MoonMark {
+  readonly sign: string;
+  readonly nakshatra: string;
+  readonly tithi: number;
+  readonly paksha: "shukla" | "krishna";
+}
+
+export interface MoonEnds {
+  readonly at_start: MoonMark;
+  readonly at_end: MoonMark;
+}
+
+export interface MoonWindow {
+  readonly at_place: MoonEnds;
+  readonly event: { readonly lagna_sign: string; readonly moon: MoonMark } | null;
+}
+
+export interface ComputeMoonWindowRequest {
+  readonly kind: "computeMoonWindow";
+  readonly id: number;
+  readonly input: MoonWindowInput;
+}
+
 export interface ComputeMeshEdgeRequest {
   readonly kind: "computeMeshEdge";
   readonly id: number;
@@ -146,6 +186,7 @@ export type ChartWorkerRequest =
   | BootRequest
   | GenerateChartRequest
   | ComputePredictiveRequest
+  | ComputeMoonWindowRequest
   | ComputeMeshEdgeRequest
   | ComputeRectificationRequest;
 
@@ -199,6 +240,13 @@ export interface PredictiveOk {
   readonly predictive: PredictiveContexts;
 }
 
+export interface MoonWindowOk {
+  readonly ok: true;
+  readonly kind: "computeMoonWindow";
+  readonly id: number;
+  readonly moonWindow: MoonWindow;
+}
+
 export interface MeshEdgeOk {
   readonly ok: true;
   readonly kind: "computeMeshEdge";
@@ -225,6 +273,7 @@ export type ChartWorkerResponse =
   | BootProgressResponse
   | ChartOk
   | PredictiveOk
+  | MoonWindowOk
   | MeshEdgeOk
   | RectificationOk
   | WorkerErr;

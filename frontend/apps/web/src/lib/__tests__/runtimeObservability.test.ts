@@ -1,12 +1,21 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { BirthInput, PredictiveContexts, PredictiveInput, SiderealChart } from '@almamesh/browser'
+import type {
+  BirthInput,
+  MoonWindow,
+  MoonWindowInput,
+  PredictiveContexts,
+  PredictiveInput,
+  SiderealChart,
+} from '@almamesh/browser'
 import {
   clearRuntimeError,
   clearRuntimeGenerator,
+  clearRuntimeMoonWindow,
   clearRuntimePredictive,
   publishPredictiveRequestKeys,
   publishRuntimeError,
   publishRuntimeGenerator,
+  publishRuntimeMoonWindow,
   publishRuntimePredictive,
   publishRuntimeStage,
 } from '../runtimeObservability'
@@ -14,6 +23,7 @@ import {
 afterEach(() => {
   clearRuntimeGenerator()
   clearRuntimePredictive()
+  clearRuntimeMoonWindow()
 })
 
 describe('runtime observability', () => {
@@ -58,6 +68,20 @@ describe('runtime observability', () => {
 
     clearRuntimePredictive()
     expect(window.__almameshComputePredictive).toBeUndefined()
+  })
+
+  it('publishes and clears the moon window computer for the browser parity gate', async () => {
+    const input = { placeStartUtc: '2026-06-15T05:00:00+00:00', placeEndUtc: '2026-06-16T05:00:00+00:00' }
+    const window_ = { at_place: {}, event: null } as unknown as MoonWindow
+    const compute = vi.fn(async (_input: MoonWindowInput): Promise<MoonWindow> => window_)
+
+    publishRuntimeMoonWindow(compute)
+
+    await expect(window.__almameshComputeMoonWindow?.(input)).resolves.toBe(window_)
+    expect(compute).toHaveBeenCalledWith(input)
+
+    clearRuntimeMoonWindow()
+    expect(window.__almameshComputeMoonWindow).toBeUndefined()
   })
 
   it('records every predictive requestKey the store holds, so a borrowed slot shows even if handed back', () => {
