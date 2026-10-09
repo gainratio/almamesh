@@ -492,6 +492,10 @@ exec ${inline.join(" ")}`,
       // "unknown" computing at noon, and the Vedic weekday lord for Apia
       // (date-line) and Sydney (east of UTC) births. Chromium only.
       "TIME_HANDLING_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:time-handling --project=chromium",
+      // Time travel (spec 2026-10-08, Inc A): "what happened in June 2019?"
+      // typed in plain chat; a stubbed provider calls get_timing with dates;
+      // the real engine computes June 2019. Chromium only.
+      "TIME_TRAVEL_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:time-travel --project=chromium",
     ])
   }
   // The hooked Playwright suites. Each used to rebuild this same bundle in its
