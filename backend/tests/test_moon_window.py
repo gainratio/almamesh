@@ -6,9 +6,13 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from almamesh.calculations import calculate_sidereal_context
+from almamesh.constants.astrology import PlanetName
 from almamesh.edge.chart_runtime import compute_moon_window_payload
 from almamesh.transits.moon_window import (
     EventPoint,
+    EventSky,
+    MoonWindow,
     compute_moon_window,
     moon_window_from_wire,
     tithi_number,
@@ -41,11 +45,6 @@ def test_a_place_day_reports_the_moon_at_both_ends() -> None:
     # The Moon moves 11.8-15.4 deg a day: one nakshatra (13.33 deg) or more, so the ends differ.
     assert (start.nakshatra, start.tithi) != (end.nakshatra, end.tithi)
     assert window.event is None
-
-
-def test_paksha_follows_tithi() -> None:
-    mark = compute_moon_window(*BOGOTA_DAY).at_place.at_start
-    assert mark.paksha == ("shukla" if mark.tithi <= 15 else "krishna")
 
 
 def test_a_few_days_span_is_accepted() -> None:
@@ -163,3 +162,87 @@ def test_wire_without_an_event_reports_only_the_place() -> None:
         "place_end_utc": "2026-06-16T05:00:00+00:00",
     }
     assert moon_window_from_wire(payload).event is None
+
+
+NEW_MOON = datetime(2026, 6, 15, 2, 54, tzinfo=UTC)  # astronomical new moon
+FULL_MOON = datetime(2026, 6, 29, 23, 57, tzinfo=UTC)  # astronomical full moon
+PLACES = [BOGOTA, (34.0522, -118.2437), (-33.8688, 151.2093)]
+
+
+def _window_at(when: datetime, place: tuple[float, float]) -> tuple[MoonWindow, EventSky]:
+    point = EventPoint(when=when, latitude=place[0], longitude=place[1])
+    window = compute_moon_window(
+        when - timedelta(hours=12), when + timedelta(hours=12), event=point
+    )
+    assert window.event is not None
+    return window, window.event
+
+
+@pytest.mark.parametrize("place", PLACES)
+@pytest.mark.parametrize(
+    "when", [datetime(2026, 6, 15, 20, tzinfo=UTC), datetime(2031, 1, 3, 9, tzinfo=UTC)]
+)
+def test_event_sky_matches_the_natal_chart_pipeline(
+    when: datetime, place: tuple[float, float]
+) -> None:
+    chart = calculate_sidereal_context(when, place[0], place[1], reference_date=when)
+    _, event = _window_at(when, place)
+    assert event.lagna_sign == chart.lagna.sign
+    assert event.moon.sign == chart.planets[PlanetName.MOON].sign
+    assert event.moon.nakshatra == chart.planets[PlanetName.MOON].nakshatra
+
+
+def test_place_ends_match_the_natal_chart_pipeline() -> None:
+    start, end = BOGOTA_DAY
+    window = compute_moon_window(start, end)
+    for mark, when in ((window.at_place.at_start, start), (window.at_place.at_end, end)):
+        moon = calculate_sidereal_context(when, 0.0, 0.0, reference_date=when).planets[
+            PlanetName.MOON
+        ]
+        assert (mark.sign, mark.nakshatra) == (moon.sign, moon.nakshatra)
+
+
+@pytest.mark.parametrize(
+    ("when", "tithi", "paksha"),
+    [
+        (NEW_MOON - timedelta(hours=1), 30, "krishna"),
+        (NEW_MOON + timedelta(hours=1), 1, "shukla"),
+        (FULL_MOON - timedelta(hours=1), 15, "shukla"),
+        (FULL_MOON + timedelta(hours=1), 16, "krishna"),
+    ],
+)
+def test_tithi_and_paksha_flip_at_the_documented_new_and_full_moons(
+    when: datetime, tithi: int, paksha: str
+) -> None:
+    window = compute_moon_window(when, when + timedelta(days=1))
+    assert (window.at_place.at_start.tithi, window.at_place.at_start.paksha) == (tithi, paksha)
+
+
+@pytest.mark.parametrize("span", [timedelta(hours=22), timedelta(days=6, hours=2)])
+def test_the_exact_span_limits_are_accepted(span: timedelta) -> None:
+    start = datetime(2026, 6, 15, 5, tzinfo=UTC)
+    assert compute_moon_window(start, start + span).event is None
+
+
+@pytest.mark.parametrize("field", ["place_start_utc", "place_end_utc"])
+def test_wire_names_the_field_when_the_instant_is_not_iso(field: str) -> None:
+    payload = {
+        "place_start_utc": "2026-06-15T05:00:00+00:00",
+        "place_end_utc": "2026-06-16T05:00:00+00:00",
+    }
+    payload[field] = "nope"
+    with pytest.raises(ValueError, match=f"invalid {field}"):
+        moon_window_from_wire(payload)
+
+
+@pytest.mark.parametrize("step", range(14))
+def test_event_sky_matches_the_natal_chart_across_a_lunar_month(step: int) -> None:
+    """Every Moon sign is visited, so a wrong 30-degree sign table cannot hide."""
+    when = datetime(2026, 6, 1, 3, tzinfo=UTC) + timedelta(hours=50 * step)
+    place = PLACES[step % len(PLACES)]
+    chart = calculate_sidereal_context(when, place[0], place[1], reference_date=when)
+    _, event = _window_at(when, place)
+    assert (event.lagna_sign, event.moon.sign) == (
+        chart.lagna.sign,
+        chart.planets[PlanetName.MOON].sign,
+    )

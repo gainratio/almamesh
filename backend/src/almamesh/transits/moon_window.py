@@ -124,7 +124,10 @@ def compute_moon_window(
 def _wire_instant(value: object, field: str) -> datetime:
     if not isinstance(value, str):
         raise ValueError(f"invalid {field}: must be an ISO 8601 UTC instant")
-    when = datetime.fromisoformat(value)
+    try:
+        when = datetime.fromisoformat(value)
+    except ValueError as error:
+        raise ValueError(f"invalid {field}: must be an ISO 8601 UTC instant") from error
     if when.utcoffset() != timedelta(0):
         raise ValueError(f"invalid {field}: must be a UTC instant")
     if not _FIRST_INSTANT <= when < _LAST_INSTANT:
