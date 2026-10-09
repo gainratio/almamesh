@@ -13,6 +13,7 @@ import { withLanguage, type PromptLanguage } from "./language";
 import { buildMeshFactsBlock } from "./mesh-facts";
 import type { SanitizedMeshEdge } from "./mesh-sanitize";
 import { buildPredictiveFactsBlock } from "./predictive-facts";
+import { pinnedPeriodRules, type PinnedPrompt } from "./period-pin";
 import type { SanitizedChart } from "./sanitize";
 import type {
   VedicInterpretation,
@@ -502,6 +503,9 @@ function interpretationBlock(text?: string): string {
  *
  * The optional `budget` selects a {@link ChatPromptBudget} profile; the default
  * is {@link CLOUD_CHAT_BUDGET} (today's bytes, snapshot-locked).
+ *
+ * The optional `pinned` is a time-travel thread's period and tense; when absent,
+ * the prompt is byte-identical to the unpinned path.
  */
 export function buildChatMessages(
   chart: SanitizedChart,
@@ -515,6 +519,7 @@ export function buildChatMessages(
   rectification?: ChatRectificationContext,
   budget: ChatPromptBudget = CLOUD_CHAT_BUDGET,
   places = false,
+  pinned?: PinnedPrompt,
 ): ChatMessage[] {
   // The raw-predictive engine block is dropped under a profile that excludes
   // it; `predictive` is optional on SanitizedChart, so the natal-only facts
@@ -556,7 +561,9 @@ export function buildChatMessages(
   // PLACE_RULES name resolve_place and needs_place, which exist only where the
   // toolset registers them (full tier). Elsewhere an unknown tool call would end
   // the turn tool-less, so the rules ride only when `places` is true.
-  const base = places ? CHAT_SYSTEM_PROMPT + "\n\n" + PLACE_RULES : CHAT_SYSTEM_PROMPT;
+  const withPlaces = places ? CHAT_SYSTEM_PROMPT + "\n\n" + PLACE_RULES : CHAT_SYSTEM_PROMPT;
+  // Inc D: a pinned thread says which period and which tense (period-pin.ts).
+  const base = pinned ? withPlaces + "\n\n" + pinnedPeriodRules(pinned) : withPlaces;
   const systemPrompt = meshBlock === "" ? base : base + MESH_CONTEXT_EXCEPTION;
   const systemContent = withLanguage(systemPrompt, language);
 

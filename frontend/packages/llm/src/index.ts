@@ -13,6 +13,7 @@ export {
   periodAnalysisInstant,
 } from "./sanitize";
 export type { AnalysisInstant, PeriodRange, SanitizedAsOf } from "./sanitize";
+export { pinRelative, pinnedPeriodRules, type PinRelative, type PinnedPrompt } from "./period-pin";
 export type {
   SanitizedChart,
   SanitizedDashas,
