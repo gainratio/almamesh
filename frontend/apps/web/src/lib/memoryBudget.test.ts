@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { BOOT_MEMORY_BUDGET, overBudget, type BootMemorySample } from '../../e2e/memoryBudget';
+import { BOOT_MEMORY_BUDGET, PLACE_LOOKUP_HEAP_GROWTH_MIB, overBudget, type BootMemorySample } from '../../e2e/memoryBudget';
 import { formatMemoryReport, processTreeReport } from '../../scripts/processMemory.mjs';
 
 const WITHIN: BootMemorySample = {
@@ -10,6 +10,10 @@ const WITHIN: BootMemorySample = {
 };
 
 describe('boot memory budget (memory-budget e2e lane)', () => {
+  it('pins the first place-lookup heap growth gate at 48 MiB (plan Ruling 15)', () => {
+    expect(PLACE_LOOKUP_HEAP_GROWTH_MIB).toBe(48);
+  });
+
   it('pins the documented budgets as literals, not as references to themselves', () => {
     expect(BOOT_MEMORY_BUDGET.heapPeakMiB).toBe(300);
     expect(BOOT_MEMORY_BUDGET.rendererRssPeakMiB).toBe(1400);

@@ -44,6 +44,7 @@ import {
   publishRuntimeError,
   publishRuntimeGenerator,
   publishRuntimeMoonWindow,
+  publishRuntimeResolvePlace,
   publishRuntimePredictive,
   publishRuntimeStage,
 } from '../lib/runtimeObservability'
@@ -355,6 +356,10 @@ export function AlmaMeshRuntimeProvider({ children, runtime }: ProviderProps) {
           publishRuntimeGenerator((birth) => ready.generateChart(birth))
           publishRuntimePredictive((input) => ready.computePredictive(input))
           publishRuntimeMoonWindow((input) => ready.computeMoonWindow(input))
+          // Lazy, like chat: the place module (and so the city list) loads on first call.
+          publishRuntimeResolvePlace(async (query) =>
+            (await import('../lib/geo/placeLookup')).lookupPlaceOffline(query),
+          )
         }
         return ready
       })

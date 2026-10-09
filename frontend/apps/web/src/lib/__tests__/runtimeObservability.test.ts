@@ -11,11 +11,13 @@ import {
   clearRuntimeError,
   clearRuntimeGenerator,
   clearRuntimeMoonWindow,
+  clearRuntimeResolvePlace,
   clearRuntimePredictive,
   publishPredictiveRequestKeys,
   publishRuntimeError,
   publishRuntimeGenerator,
   publishRuntimeMoonWindow,
+  publishRuntimeResolvePlace,
   publishRuntimePredictive,
   publishRuntimeStage,
 } from '../runtimeObservability'
@@ -82,6 +84,18 @@ describe('runtime observability', () => {
 
     clearRuntimeMoonWindow()
     expect(window.__almameshComputeMoonWindow).toBeUndefined()
+  })
+
+  it('publishes and clears the place resolver for the memory-budget gate', async () => {
+    const lookup = vi.fn(async (_query: string): Promise<unknown> => ({ status: 'found' }))
+
+    publishRuntimeResolvePlace(lookup)
+
+    await expect(window.__almameshResolvePlace?.('Bogotá')).resolves.toEqual({ status: 'found' })
+    expect(lookup).toHaveBeenCalledWith('Bogotá')
+
+    clearRuntimeResolvePlace()
+    expect(window.__almameshResolvePlace).toBeUndefined()
   })
 
   it('records every predictive requestKey the store holds, so a borrowed slot shows even if handed back', () => {

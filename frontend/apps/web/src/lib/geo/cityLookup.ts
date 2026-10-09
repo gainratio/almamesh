@@ -66,6 +66,10 @@ async function loadCityDb(): Promise<readonly CityRow[]> {
     cityDbPromise = import('../../data/cities.min.json').then(
       (module) => module.default,
     );
+    // A failed import must not stay cached as a rejected promise: a later call retries.
+    cityDbPromise.catch(() => {
+      cityDbPromise = null;
+    });
   }
   return cityDbPromise;
 }
