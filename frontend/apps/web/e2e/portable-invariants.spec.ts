@@ -592,6 +592,14 @@ test.describe('migrate from an old build, then export', () => {
   });
 });
 
+/** The exact pin the sheet stores for 15 June 2026 in Bogotá (bundled city list). */
+const BOGOTA_DAY_PIN = {
+  start: '2026-06-15',
+  end: '2026-06-15',
+  granularity: 'day',
+  place: { label: 'Bogotá, Colombia', timezone: 'America/Bogota', latitude: 4.60971, longitude: -74.08175 },
+};
+
 test.describe('a pinned time-travel thread round-trips (chat store v3)', () => {
   type PinnedThreads = () => Array<{ id: string; as_of: unknown }>;
 
@@ -623,7 +631,7 @@ test.describe('a pinned time-travel thread round-trips (chat store v3)', () => {
     });
     const before = await pinnedThreads(a.page);
     expect(before).toHaveLength(1);
-    expect(before[0]?.as_of).toMatchObject({ granularity: 'day', place: { timezone: 'America/Bogota' } });
+    expect(before[0]?.as_of).toEqual(BOGOTA_DAY_PIN);
 
     const exportPath = testInfo.outputPath('pinned.almamesh');
     await test.step('export from browser A', async () => {
@@ -636,7 +644,9 @@ test.describe('a pinned time-travel thread round-trips (chat store v3)', () => {
     await test.step('import into browser B: the same pin, field for field, and its banner', async () => {
       await importBackup(b.page, exportPath);
       await spaNavigate(b.page, '/dashboard');
-      expect(await pinnedThreads(b.page)).toEqual(before);
+      const restored = await pinnedThreads(b.page);
+      expect(restored).toEqual(before);
+      expect(restored[0]?.as_of).toEqual(BOGOTA_DAY_PIN);
       await b.page.getByTestId('floating-chat-button').click({ timeout: 60_000 });
       await expect(b.page.getByTestId('time-travel-banner')).toContainText('Bogotá, Colombia');
       expectCleanBrowser(b.problems, 'browser B');
