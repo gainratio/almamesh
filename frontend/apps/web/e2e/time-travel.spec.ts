@@ -703,11 +703,18 @@ test('[contract/stubbed] a Day pin needs a place found on the device, then Chang
   const consoleErrors = await prepare(page);
   const fulfilled = new Set<string>();
   const bodies: string[] = [];
+  const seen: AgentRequest[] = [];
   const DAY_ANSWER_TEXT = 'That day looks calm.';
   await scripted(
     page,
-    { 'How was that day?': (tools) => (tools.length === 0 ? { content: null, tool_calls: [call('when', 'get_current_datetime', {})] } : { content: DAY_ANSWER_TEXT }) },
-    [],
+    {
+      // get_timing without dates reads the pinned Day with the pinned place.
+      'How was that day?': (tools) =>
+        tools.length === 0
+          ? { content: null, tool_calls: [call('when', 'get_current_datetime', {}), call('sky', 'get_timing', { section: 'transits' })] }
+          : { content: DAY_ANSWER_TEXT },
+    },
+    seen,
     bodies,
     fulfilled,
   );
@@ -753,5 +760,11 @@ test('[contract/stubbed] a Day pin needs a place found on the device, then Chang
   expect(offOrigin.filter((url) => !fulfilled.has(url)), 'nothing may leave the app origin').toEqual([]);
   expect(bodies.length, 'the question reached the stubbed model').toBeGreaterThan(0);
   expect(bodies.flatMap(leaks), 'no coordinates reach the model').toEqual([]);
+  const timingResult = seen.flatMap((request) => request.messages).filter((m) => m.role === 'tool' && /Bogot/.test(m.content ?? ''));
+  expect(timingResult.length, 'get_timing read the pinned Day with the pinned place').toBeGreaterThan(0);
+  const COORDINATES = /4\.6097|-?74\.0817|latitude|longitude/i;
+  expect(timingResult.filter((m) => COORDINATES.test(m.content ?? '')), 'the tool result carries the place label, not its coordinates').toEqual([]);
+  expect(bodies.filter((body) => COORDINATES.test(body)), 'no model request body carries coordinates').toEqual([]);
+  expect(bodies.some((body) => body.includes('Bogot')), 'the place label reaches the model').toBe(true);
   expect(consoleErrors, 'the journey must keep a clean console').toEqual([]);
 });
