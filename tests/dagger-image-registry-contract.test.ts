@@ -5,7 +5,7 @@ import { join, relative, resolve } from "node:path"
 // CI must never pull from Docker Hub: its unauthenticated pull limit failed four
 // gates of run 37988010725 (`toomanyrequests`). Every image the module or the
 // workflows name comes from the GHCR mirror (gainratio/ci mirror/images.json) or
-// from another registry (mirror.gcr.io, ghcr.io) by digest. The TypeScript SDK's own bun introspector
+// from another registry (ghcr.io) by digest. The TypeScript SDK's own bun introspector
 // image cannot be overridden, so the engine also gets a Docker Hub mirror
 // (.github/xdg/dagger/engine.json), mounted by the CLI from $XDG_CONFIG_HOME.
 
@@ -48,6 +48,50 @@ const DIGEST_PINNED = /@sha256:[0-9a-f]{64}$/
 export function pulledImageRefs(file: string, source: string): ImageRef[] {
   const refs = PULLED_IMAGE_PATTERNS.flatMap((pattern) => [...source.matchAll(pattern)].map((match) => match[1]))
   return [...new Set(refs)].map((ref) => ({ file, ref }))
+}
+
+// A `.from(` whose argument is not a string literal pulls whatever that expression
+// holds. The literal and constant scans above see only image constants and recipe
+// fields, so any other expression is a pull this contract cannot check.
+const FROM_EXPRESSION = /(?<!\bArray)\.from\(\s*([^"'\s)][^)]*?)\s*\)/g
+const KNOWN_FROM_EXPRESSIONS: readonly RegExp[] = [
+  /^[A-Z_]*IMAGE[A-Z_]*$/,
+  /^TOOLCHAIN_RECIPE\.(?:base|bun)$/,
+  // toolchainPull() returns TOOLCHAIN_IMAGE, and only after its digest-pin check.
+  /^pull\.image$/,
+]
+
+/** Every non-literal `.from(` argument written in one file. */
+export function fromExpressions(file: string, source: string): ImageRef[] {
+  const refs = [...source.matchAll(FROM_EXPRESSION)].map((match) => match[1])
+  return [...new Set(refs)].map((ref) => ({ file, ref }))
+}
+
+export function isKnownFromExpression(expression: string): boolean {
+  return KNOWN_FROM_EXPRESSIONS.some((pattern) => pattern.test(expression))
+}
+
+type WorkflowImage = string | { readonly image?: string } | undefined
+
+interface WorkflowJob {
+  readonly container?: WorkflowImage
+  readonly services?: Record<string, WorkflowImage>
+  readonly steps?: ReadonlyArray<{ readonly uses?: string }>
+}
+
+function workflowImage(value: WorkflowImage): string | undefined {
+  return typeof value === "string" ? value : value?.image
+}
+
+/** Every job `container:`, `services.<id>.image`, and `uses: docker://` image in one workflow. */
+export function workflowImageRefs(file: string, source: string): ImageRef[] {
+  const workflow = Bun.YAML.parse(source) as { jobs?: Record<string, WorkflowJob> }
+  const refs = Object.values(workflow.jobs ?? {}).flatMap((job) => [
+    workflowImage(job.container),
+    ...Object.values(job.services ?? {}).map(workflowImage),
+    ...(job.steps ?? []).map((step) => step.uses?.match(/^docker:\/\/(.+)$/)?.[1]),
+  ])
+  return refs.filter((ref): ref is string => ref !== undefined).map((ref) => ({ file, ref }))
 }
 
 export interface ImageRef {
@@ -95,6 +139,17 @@ function repositoryImageRefs(): ImageRef[] {
 function repositoryPulledImageRefs(): ImageRef[] {
   return SCANNED_ROOTS.flatMap((dir) => scannedFiles(resolve(root, dir)))
     .flatMap((path) => pulledImageRefs(relative(root, path), readFileSync(path, "utf8")))
+}
+
+function repositoryFromExpressions(): ImageRef[] {
+  return scannedFiles(resolve(root, "dagger"))
+    .flatMap((path) => fromExpressions(relative(root, path), readFileSync(path, "utf8")))
+}
+
+function repositoryWorkflowImageRefs(): ImageRef[] {
+  const dir = resolve(root, ".github/workflows")
+  return readdirSync(dir).flatMap((name) =>
+    workflowImageRefs(join(".github/workflows", name), readFileSync(join(dir, name), "utf8")))
 }
 
 function daggerSteps(): Array<Record<string, unknown>> {
@@ -170,6 +225,48 @@ describe("no CI path pulls from Docker Hub", () => {
   ])("flags an unpinned image in %s", (source, unpinned) => {
     const refs = pulledImageRefs("x.ts", source)
     expect(refs.filter((image) => !DIGEST_PINNED.test(image.ref)).length).toBe(unpinned)
+  })
+
+  test("every .from(<expression>) names an image constant or a toolchain recipe field", () => {
+    const refs = repositoryFromExpressions()
+    // BUN_IMAGE, PAGES_NODE_IMAGE, UV_IMAGE, NODE_IMAGE, TOOLCHAIN_RECIPE.bun/.base, pull.image.
+    expect(refs.length).toBeGreaterThanOrEqual(6)
+    expect(refs.filter((image) => !isKnownFromExpression(image.ref))).toEqual([])
+  })
+
+  test.each([
+    ["dag.container().from(UV_IMAGE)", []],
+    ["dag.container().from( TOOLCHAIN_RECIPE.base )", []],
+    ["dag.container().from(TOOLCHAIN_RECIPE.bun).file(\"/usr/local/bin/bun\")", []],
+    [".withRegistryAuth(r, u, t).from(pull.image)", []],
+    ["Array.from({ length: 2 }, lane)", []],
+    ['dag.container().from("alpine:3.22")', []],
+    ["dag.container().from(image)", ["image"]],
+    ["dag.container().from(TOOLCHAIN_RECIPE.apt)", ["TOOLCHAIN_RECIPE.apt"]],
+    ["dag.container().from(`${registry}/node:24`)", ["`${registry}/node:24`"]],
+    ["dag.container().from(pick(NODE_IMAGE))", ["pick(NODE_IMAGE"]],
+  ])("flags an unknown .from() expression in %s", (source, unknown) => {
+    const refs = fromExpressions("x.ts", source).map((image) => image.ref)
+    expect(refs.filter((ref) => !isKnownFromExpression(ref))).toEqual(unknown)
+  })
+
+  test("every workflow container, service, and docker:// image is pinned by digest", () => {
+    const refs = repositoryWorkflowImageRefs()
+    expect(refs.filter((image) => !DIGEST_PINNED.test(image.ref))).toEqual([])
+    expect(refs.filter((image) => isDockerHub(image.ref))).toEqual([])
+  })
+
+  const pinned = `ghcr.io/gainratio/mirror/docker.io/library/postgres:16@sha256:${"d".repeat(64)}`
+  test.each([
+    ["jobs:\n  a:\n    container: ghcr.io/x/y:1\n    steps: []", ["ghcr.io/x/y:1"]],
+    ["jobs:\n  a:\n    container:\n      image: ghcr.io/x/y:2\n    steps: []", ["ghcr.io/x/y:2"]],
+    ["jobs:\n  a:\n    services:\n      db:\n        image: postgres:16\n    steps: []", ["postgres:16"]],
+    ["jobs:\n  a:\n    steps:\n      - uses: docker://oven/bun:1.3.0", ["oven/bun:1.3.0"]],
+    [`jobs:\n  a:\n    container: ${pinned}\n    services:\n      db:\n        image: ${pinned}\n    steps: []`, []],
+    ["jobs:\n  a:\n    steps:\n      - uses: actions/checkout@v4", []],
+  ])("flags an unpinned workflow image in %s", (source, unpinned) => {
+    const refs = workflowImageRefs("w.yml", source)
+    expect(refs.filter((image) => !DIGEST_PINNED.test(image.ref)).map((image) => image.ref)).toEqual(unpinned)
   })
 
   test("the TypeScript SDK runtime base image is the mirror-pinned SDK default", () => {
