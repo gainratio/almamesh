@@ -245,8 +245,11 @@ birth zone (`MeshEdge.tsx:334`).
 
 Time travel adds period loading, place lookup and a pinned period to both. Rather than copy it
 twice, one builder, `buildChatToolset` in `apps/web/src/lib/chatToolset.ts`, takes the chart,
-birth data, engine context, day zone and optional pinned period, and returns the tools plus the
-router. Each page passes its own day zone, so today's behaviour stays exactly as it is.
+birth data, engine context and optional pinned period, and returns the tools plus the router.
+The builder reads "today" in one zone for both pages: the viewer's (device) zone, from
+`viewerTimeZone()`. Pages do not pass a day zone. MeshEdge's "today" moves from the birth zone to
+the viewer zone, which is the zone every "As of" on screen is already printed in (see open
+question 1, decided).
 
 ### Part 2: places
 
@@ -573,7 +576,12 @@ A and D are the user-visible core. B and C can ship in either order after A.
 
 ## Open questions
 
-1. Dashboard keys "today" on the viewer's zone and MeshEdge on the birth zone. The shared
-   builder keeps each as it is. Should they be unified, and to which?
+1. **Decided (Harish, 2026-10-08): unify on the viewer (device) zone.** Dashboard keyed "today"
+   on the viewer's zone and MeshEdge on the birth zone. `buildChatToolset` now reads today with
+   `viewerTimeZone()` for both pages, and neither page passes a zone. Why the viewer zone: it is
+   the zone the footer, report cover, PDF and prompt `as_of` already print in (#274), and the
+   home-zone default for places (Part 2) is the same zone. Inc A carries this as a task, with a
+   test that pins both pages to the same "today" for a chart whose birth zone and the device
+   zone fall on different calendar days.
 2. LRU sizes by tier (5 / 3 / 1) are a starting guess. Inc A should measure the payload size
    on a throttled profile and adjust.
