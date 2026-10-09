@@ -43,18 +43,36 @@ import { useDailyReferenceInstant } from './useDailyReferenceInstant';
 /** The longest chat waits for a re-anchor before it is enabled anyway. */
 export const REANCHOR_WAIT_LIMIT_MS = 30_000;
 
+/** The active wait's release per attempt (`chartId|day`). */
+type Waits = Map<string, () => void>;
+
 /**
- * List the chart as re-anchoring so chat waits. Returns the release; the wait
- * also ends on its own after `REANCHOR_WAIT_LIMIT_MS`.
+ * List the chart as re-anchoring so chat waits, unless a wait for this attempt
+ * is already active. The wait ends when released or after
+ * `REANCHOR_WAIT_LIMIT_MS`; either way its entry is removed, so a later call
+ * (the recompute starting late, a StrictMode remount) waits again.
  */
-function beginWait(chartId: string): () => void {
+function beginWait(waits: Waits, attempt: string, chartId: string): void {
+  if (waits.has(attempt)) {
+    return;
+  }
   const status = useChartReanchorStatus.getState();
-  status.begin(chartId);
-  const limit = setTimeout(() => status.settle(chartId), REANCHOR_WAIT_LIMIT_MS);
-  return () => {
+  let limit: ReturnType<typeof setTimeout> | undefined;
+  const release = (): void => {
     clearTimeout(limit);
+    if (waits.get(attempt) === release) {
+      waits.delete(attempt);
+    }
     status.settle(chartId);
   };
+  waits.set(attempt, release);
+  status.begin(chartId);
+  limit = setTimeout(release, REANCHOR_WAIT_LIMIT_MS);
+}
+
+/** End whatever wait is active for this attempt. */
+function endWait(waits: Waits, attempt: string): void {
+  waits.get(attempt)?.();
 }
 
 export function useChartReanchor(): void {
@@ -67,13 +85,15 @@ export function useChartReanchor(): void {
   // A chart that records no instant at all (the oldest backups) is behind too.
   const behind = chart !== undefined &&
     (!storedChartRecordsInstant(chart) || storedChartReferenceDay(chart, today) < today);
-  // Per attempt: the release of chat's wait, and whether the recompute ran.
-  const waits = useRef(new Map<string, () => void>());
+  // Per attempt (`chartId|day`): the active wait, and whether the recompute
+  // started / finished. Refs survive StrictMode's simulated remount.
+  const waits = useRef<Waits>(new Map());
   const attempted = useRef(new Set<string>());
+  const finished = useRef(new Set<string>());
   useEffect(() => {
-    const pending = waits.current;
+    const active = waits.current;
     return () => {
-      for (const release of pending.values()) release();
+      for (const release of [...active.values()]) release();
     };
   }, []);
 
@@ -83,14 +103,14 @@ export function useChartReanchor(): void {
       return;
     }
     const attempt = `${chartId}|${today}`;
-    // Chat waits from the moment a re-anchor is DUE, not from when the engine
-    // is up to run it: a question sent while the engine boots would otherwise
-    // be answered across the recompute and discarded.
-    let release = waits.current.get(attempt);
-    if (release === undefined) {
-      release = beginWait(chartId);
-      waits.current.set(attempt, release);
+    if (finished.current.has(attempt)) {
+      return;
     }
+    // Chat waits from the moment a re-anchor is DUE, not from when the engine
+    // is up to run it, and again whenever the recompute starts (or a remount
+    // happens) with no wait active: an answer streamed across the recompute
+    // would be discarded.
+    beginWait(waits.current, attempt, chartId);
     if (!engine || attempted.current.has(attempt)) {
       return;
     }
@@ -107,6 +127,9 @@ export function useChartReanchor(): void {
         }
       })
       .catch((reason: unknown) => safeWarn('chart.reanchor_failed', reason))
-      .finally(release);
+      .finally(() => {
+        finished.current.add(attempt);
+        endWait(waits.current, attempt);
+      });
   }, [engine, chartId, behind, today, queryClient]);
 }

@@ -6,7 +6,7 @@
  * "As of Jun 26" everywhere forever. On the first render of a new chart-local
  * day, the booted engine recomputes the chart as of now.
  */
-import type { ReactElement, ReactNode } from 'react';
+import { StrictMode, type ReactElement, type ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -65,6 +65,44 @@ function renderReanchor(ctx: ChartEngineContextValue | null): void {
     </QueryClientProvider>
   );
   renderHook(() => useChartReanchor(), { wrapper: Wrapper });
+}
+
+interface MountedReanchor {
+  readonly bringUpEngine: (ctx: ChartEngineContextValue) => void;
+  readonly unmount: () => void;
+}
+
+/** Mount the hook with an engine that can come up later, optionally under StrictMode. */
+function mountReanchor(strict = false): MountedReanchor {
+  const client = new QueryClient();
+  let ctx: ChartEngineContextValue | null = null;
+  const Wrapper = ({ children }: { children: ReactNode }): ReactElement => {
+    const tree = (
+      <QueryClientProvider client={client}>
+        <ChartEngineContext.Provider value={ctx}>{children}</ChartEngineContext.Provider>
+      </QueryClientProvider>
+    );
+    return strict ? <StrictMode>{tree}</StrictMode> : tree;
+  };
+  const { rerender, unmount } = renderHook(() => useChartReanchor(), { wrapper: Wrapper });
+  return {
+    bringUpEngine: (next) => {
+      ctx = next;
+      rerender();
+    },
+    unmount,
+  };
+}
+
+/** A recompute that stays in flight until the test fails it (freeing the shared queue). */
+function heldGenerateChart(): { readonly generateChart: () => Promise<SiderealChart>; readonly fail: () => void } {
+  let reject: (reason: Error) => void = () => {};
+  const generateChart = vi.fn(
+    () => new Promise<SiderealChart>((_resolve, rejectRun) => {
+      reject = rejectRun;
+    }),
+  );
+  return { generateChart, fail: () => reject(new Error('released by test')) };
 }
 
 function storedInstant(): string | undefined {
@@ -267,5 +305,70 @@ describe('useChartReanchor', () => {
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(generateChart).toHaveBeenCalledTimes(1);
     expect(storedInstant()).toBe('2026-06-26T17:00:00.000Z');
+  });
+
+  describe('the wait chat sees', () => {
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
+      vi.setSystemTime(TODAY);
+      useChartLibraryStore.setState({
+        charts: { 'chart-1': chartCalculatedOn('2026-06-26T17:00:00.000Z') },
+        hydrated: true,
+      });
+    });
+
+    // Northstar on #308: after the 30 s cap, an engine that boots late started
+    // the recompute with chat unblocked, worse than main on slow phones.
+    it('waits again when the recompute starts after the cap expired', async () => {
+      const held = heldGenerateChart();
+      const mounted = mountReanchor();
+      await vi.advanceTimersByTimeAsync(REANCHOR_WAIT_LIMIT_MS);
+      expect(isPending()).toBe(false);
+
+      mounted.bringUpEngine(engineCtx(held.generateChart));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(held.generateChart).toHaveBeenCalledTimes(1);
+      expect(isPending()).toBe(true);
+
+      held.fail();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(isPending()).toBe(false);
+    });
+
+    // src/main.tsx renders under StrictMode: mount, unmount, mount again.
+    it('waits under StrictMode while the engine boots', async () => {
+      mountReanchor(true);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(isPending()).toBe(true);
+    });
+
+    it('waits under StrictMode while the recompute runs, and stops when it lands', async () => {
+      const held = heldGenerateChart();
+      const timersBefore = vi.getTimerCount();
+      const mounted = mountReanchor(true);
+      mounted.bringUpEngine(engineCtx(held.generateChart));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(held.generateChart).toHaveBeenCalledTimes(1);
+      expect(isPending()).toBe(true);
+
+      held.fail();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(isPending()).toBe(false);
+      mounted.unmount();
+      expect(vi.getTimerCount(), 'the wait limit timer is cleared').toBe(timersBefore);
+    });
+
+    it('releases the wait and leaves no timer behind on unmount', async () => {
+      const timersBefore = vi.getTimerCount();
+      const mounted = mountReanchor();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(isPending()).toBe(true);
+      const timersMounted = vi.getTimerCount();
+      expect(timersMounted).toBeGreaterThan(timersBefore);
+
+      mounted.unmount();
+      expect(isPending()).toBe(false);
+      expect(vi.getTimerCount(), 'the wait limit timer is cleared').toBe(timersBefore);
+    });
   });
 });
