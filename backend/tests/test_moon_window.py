@@ -112,24 +112,23 @@ def test_wire_refuses_missing_naive_out_of_range_or_malformed_bounds(
         moon_window_from_wire(payload)
 
 
+BOGOTA_3PM_WIRE = {
+    "place_start_utc": "2026-06-15T05:00:00+00:00",
+    "place_end_utc": "2026-06-16T05:00:00+00:00",
+    "event": {
+        "datetime_utc": "2026-06-15T20:00:00+00:00",
+        "latitude": BOGOTA[0],
+        "longitude": BOGOTA[1],
+    },
+}
+
+
 def test_wire_and_direct_call_agree_and_the_edge_entry_dumps_json() -> None:
-    payload = {
-        "place_start_utc": "2026-06-15T05:00:00+00:00",
-        "place_end_utc": "2026-06-16T05:00:00+00:00",
-        "event": {
-            "datetime_utc": "2026-06-15T20:00:00+00:00",
-            "latitude": BOGOTA[0],
-            "longitude": BOGOTA[1],
-        },
-    }
-    direct = compute_moon_window(
-        *BOGOTA_DAY,
-        event=EventPoint(
-            when=datetime(2026, 6, 15, 20, tzinfo=UTC), latitude=BOGOTA[0], longitude=BOGOTA[1]
-        ),
-    )
-    assert moon_window_from_wire(payload) == direct
-    assert compute_moon_window_payload(payload) == direct.model_dump(mode="json")
+    at_3pm = datetime(2026, 6, 15, 20, tzinfo=UTC)
+    event = EventPoint(when=at_3pm, latitude=BOGOTA[0], longitude=BOGOTA[1])
+    direct = compute_moon_window(*BOGOTA_DAY, event=event)
+    assert moon_window_from_wire(BOGOTA_3PM_WIRE) == direct
+    assert compute_moon_window_payload(BOGOTA_3PM_WIRE) == direct.model_dump(mode="json")
 
 
 @pytest.mark.parametrize(

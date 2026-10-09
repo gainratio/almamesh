@@ -10,26 +10,27 @@ from almamesh.edge.chart_runtime import compute_moon_window_payload
 GOLDEN_PATH = Path(__file__).parent / "fixtures" / "moon_window_golden_de421.json"
 
 
+BOGOTA_DAY_BOUNDS = {
+    "place_start_utc": "2026-06-15T05:00:00+00:00",
+    "place_end_utc": "2026-06-16T05:00:00+00:00",
+}
+LA_THREE_DAYS_BOUNDS = {
+    "place_start_utc": "2026-06-01T07:00:00+00:00",
+    "place_end_utc": "2026-06-04T07:00:00+00:00",
+}
+BOGOTA_3PM_EVENT = {
+    "datetime_utc": "2026-06-15T20:00:00+00:00",
+    "latitude": 4.711,
+    "longitude": -74.0721,
+}
+
+
 def golden_cases() -> dict[str, dict[str, object]]:
     """Keys MUST equal MOON_WINDOW_FIXTURES in apps/web/scripts/verify-browser-parity.mjs."""
     return {
-        "bogota-2026-06-15": {
-            "place_start_utc": "2026-06-15T05:00:00+00:00",
-            "place_end_utc": "2026-06-16T05:00:00+00:00",
-        },
-        "la-2026-06-01..03": {
-            "place_start_utc": "2026-06-01T07:00:00+00:00",
-            "place_end_utc": "2026-06-04T07:00:00+00:00",
-        },
-        "bogota-2026-06-15@15:00": {
-            "place_start_utc": "2026-06-15T05:00:00+00:00",
-            "place_end_utc": "2026-06-16T05:00:00+00:00",
-            "event": {
-                "datetime_utc": "2026-06-15T20:00:00+00:00",
-                "latitude": 4.711,
-                "longitude": -74.0721,
-            },
-        },
+        "bogota-2026-06-15": {**BOGOTA_DAY_BOUNDS},
+        "la-2026-06-01..03": {**LA_THREE_DAYS_BOUNDS},
+        "bogota-2026-06-15@15:00": {**BOGOTA_DAY_BOUNDS, "event": {**BOGOTA_3PM_EVENT}},
     }
 
 
