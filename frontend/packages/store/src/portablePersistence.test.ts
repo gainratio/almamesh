@@ -29,11 +29,6 @@ const refusingStorage = {
 };
 const workingStorage = { getDirectory: () => Promise.resolve({ kind: 'directory' }) };
 const hangingStorage = { getDirectory: () => new Promise<never>(() => undefined) };
-/** OPFS that works but answers late: a busy low-end phone, or OPFS contended by the engine sync. */
-const slowStorage = (delayMs: number) => ({
-  getDirectory: () =>
-    new Promise<{ kind: string }>((resolve) => setTimeout(() => resolve({ kind: 'directory' }), delayMs)),
-});
 
 describe('startup time bounds', () => {
   it('pins the documented probe budget', () => {

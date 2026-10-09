@@ -55,7 +55,7 @@ uv run ruff check . && uv run ruff format --check . && uv run mypy src/ && uv ru
 
 # Frontend
 bun run --filter '*' typecheck
-bun run --filter @almamesh/web lint
+bun run lint   # ESLint across apps/web + every packages/* workspace
 bun run --filter @almamesh/web test:unit          # Vitest
 cd frontend/packages/browser && bun run test:parity   # Pyodide == CPython byte-parity
 cd frontend/apps/web && bun run build                 # module Workers resolve only in a build

@@ -167,7 +167,7 @@ export class AlmameshCi {
       .container()
       .from(BUN_IMAGE)
       .withFile(BUN_INSTALLER, this.source.file("dagger/scripts/install-bun.sh"))
-      .withDirectory(ROOT, this.selected([".gitignore", ".github/workflows/**", "CHANGELOG.md", "README.md", "SECURITY.md", "backend/**", "dagger/**", "docs/**", "frontend/**", "testdata/**"]))
+      .withDirectory(ROOT, this.selected([".gitignore", ".github/workflows/**", "CHANGELOG.md", "README.md", "SECURITY.md", "backend/**", "dagger/**", "docs/**", "frontend/**", "testdata/**", "tests/frontend-lint-coverage-contract.test.ts"]))
       .withWorkdir(FRONTEND)
       .withEnvVariable("ALMAMESH_CI_CONTRACT", "modern-v13")
       .withEnvVariable("HUSKY", "0")

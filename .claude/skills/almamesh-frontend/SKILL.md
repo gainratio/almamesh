@@ -53,7 +53,7 @@ bun run --filter @almamesh/web dev       # Start dev server (port 3000)
 
 # Quality
 bun run --filter @almamesh/web typecheck # TypeScript check
-bun run --filter @almamesh/web lint      # ESLint
+bun run lint                            # ESLint, every workspace
 bun run --filter @almamesh/web build     # Production build
 
 # E2E Tests

@@ -191,7 +191,7 @@ describe('chatStore', () => {
 
     it('ensureThread records the optional chart_id on the thread', () => {
       const store = newStore();
-      const threadId = store.getState().ensureThread('p1', 'chart-9');
+      store.getState().ensureThread('p1', 'chart-9');
       expect(store.getState().getActiveThread('p1')?.chart_id).toBe('chart-9');
     });
 

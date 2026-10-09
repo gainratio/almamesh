@@ -43,7 +43,7 @@ cd frontend
 bun run --filter @almamesh/web typecheck
 
 # Linting
-bun run --filter @almamesh/web lint
+bun run lint   # ESLint across apps/web + every packages/* workspace
 
 # Build (catches errors)
 bun run --filter @almamesh/web build
