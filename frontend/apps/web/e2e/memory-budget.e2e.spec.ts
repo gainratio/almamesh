@@ -14,7 +14,7 @@
  */
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import { expect, test, type CDPSession, type Page } from '@playwright/test';
+import { expect, test, type CDPSession, type Page, type Route } from '@playwright/test';
 
 import { formatMemoryReport } from '../scripts/processMemory.mjs';
 import { BOOT_MEMORY_BUDGET, PLACE_LOOKUP_HEAP_GROWTH_MIB, overBudget, type BootMemorySample } from './memoryBudget';
@@ -59,7 +59,29 @@ async function searchChatWithEmbedder(page: Page): Promise<void> {
   });
 }
 
+/**
+ * Onboarding's place search is online-first (Open-Meteo, 3.5 s cap) and falls
+ * back to the bundled city list when that call fails or stalls. Left live, a
+ * slow CI network made the onboarding search load the city list and the lite
+ * chat test blamed chat for it. A fixed answer keeps every run on one path.
+ */
+const GEOCODER_URL = 'https://geocoding-api.open-meteo.com/**';
+const BENGALURU = {
+  name: 'Bengaluru', latitude: 12.9716, longitude: 77.5946, country: 'India', country_code: 'IN',
+  admin1: 'Karnataka', timezone: 'Asia/Kolkata', population: 8443675, feature_code: 'PPLA',
+};
+
+async function answerGeocoder(route: Route): Promise<void> {
+  await route.fulfill({
+    status: 200,
+    headers: { 'access-control-allow-origin': '*', 'cross-origin-resource-policy': 'cross-origin' },
+    contentType: 'application/json',
+    body: JSON.stringify({ results: [BENGALURU] }),
+  });
+}
+
 async function onboardToDashboard(page: Page): Promise<void> {
+  await page.route(GEOCODER_URL, answerGeocoder);
   await page.goto('/onboarding');
   await page.getByTestId('name-input').fill('Memory Budget');
   await page.getByTestId('next-button').click();
@@ -286,6 +308,10 @@ test('first place lookup loads the city list once, same-origin, inside its heap 
  * imports the city list. The service worker still precaches the chunk at
  * install (pre-existing, from the context's request stream, not the page's);
  * what must not happen is a page-initiated request for it.
+ *
+ * Onboarding must not load the list either (its geocoder is answered, see
+ * onboardToDashboard): once the module is loaded, a later chat import is served
+ * from memory with no request, and this test could no longer see it.
  */
 test('on a lite device opening chat never requests the city list', async ({ page }) => {
   await page.addInitScript((device) => {
@@ -299,10 +325,13 @@ test('on a lite device opening chat never requests the city list', async ({ page
   page.on('pageerror', (error) => consoleErrors.push(String(error)));
 
   await onboardToDashboard(page);
+  const isCitiesChunk = (url: string): boolean => url.includes('cities.min');
+  expect(urls.filter(isCitiesChunk), 'onboarding did not load the city list, so chat is observable').toEqual([]);
+  const requestsBeforeChat = urls.length;
   await page.getByTestId('floating-chat-button').click();
   await page.getByTestId('chat-search-input').waitFor({ timeout: 30_000 });
   await page.waitForTimeout(3_000);
 
-  expect(urls.filter((url) => url.includes('cities.min')), 'no page request for the city list on lite').toEqual([]);
+  expect(urls.slice(requestsBeforeChat).filter(isCitiesChunk), 'no page request for the city list on lite').toEqual([]);
   expect(consoleErrors).toEqual([]);
 });
