@@ -77,14 +77,16 @@ describe("egress — a period early in life never reveals the birth month", () =
     expect(prompt).not.toContain("2000-03");
   });
 
-  // Real engine output: this native is in their first (birth) maha, so the
-  // chat facts render the current maha's window. Its start is the birth
-  // instant and must read "birth", never 2019-11.
+  // Real engine output: this native is in their first (birth) maha. Its start is
+  // the birth instant and must read "birth", never 2019-11. Under a period basis
+  // the facts block omits the current rows (they describe today), so the
+  // positive control is the sanitized chart itself, not the rendered line.
   it("keeps 2019-11 out of the chat prompt for the real 2019-11-09 native asked about June 2020", () => {
     const native = goldenCharts["2019-11-09T17:45:00+00:00"]!;
     const sanitized = sanitizeChartForLlm(native, periodAnalysisInstant("2020-06-01", "2020-06-30"));
     const prompt = JSON.stringify(buildChatMessages(sanitized, "What was June 2020 like?"));
-    expect(prompt).toContain("Mahadasha: mercury birth -> 2031-07");
+    expect(sanitized.dashas?.current_maha?.start_month).toBe("birth");
+    expect(prompt).not.toContain("Mahadasha: mercury");
     expect(prompt).not.toContain("2019-11");
   });
 });
