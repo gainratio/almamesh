@@ -116,6 +116,15 @@ export function longPlaces<T extends PlacedResult>(
   return { ...result, places: spans.map(labelRow), notes };
 }
 
+/**
+ * Under a week, for domains and strength: the places as label and zone only. Those
+ * readings don't use the Moon at a place, and its rows and event would push a
+ * life-area read over the tool-result cap. The Moon goes on transits.
+ */
+export function labelPlaces<T extends PlacedResult>(result: T, spans: readonly PlacedSpan[]): T {
+  return { ...result, places: spans.map(labelRow) };
+}
+
 const moonMark = (mark: MoonMark): MoonMark => ({
   sign: mark.sign,
   nakshatra: mark.nakshatra,

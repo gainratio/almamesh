@@ -38,8 +38,10 @@ import {
 
 import type { MoonWindowLoader } from './moonWindow';
 import { PeriodSkyTimeoutError } from './periodSky';
+import { hoistSharedStrengthNote, type DomainsPayload } from './timingDomains';
 import {
   impossibleTime,
+  labelPlaces,
   longPlaces,
   placedSpans,
   shortPlaces,
@@ -158,6 +160,12 @@ function sectionData(chart: SanitizedChart, section: TimingSection): unknown {
   return chart.predictive?.[section] ?? UNAVAILABLE;
 }
 
+/** A section's data plus any note lifted out of it (the life areas' shared strength note). */
+function sectionPayload(chart: SanitizedChart, section: TimingSection): DomainsPayload {
+  const data = sectionData(chart, section);
+  return section === 'domains' ? hoistSharedStrengthNote(data) : { data, notes: [] };
+}
+
 async function todayTiming(
   input: TimingToolInput,
   section: TimingSection,
@@ -168,13 +176,8 @@ async function todayTiming(
     section === 'dashas' || !input.loadCurrentChart ? input.chart : await input.loadCurrentChart(context);
   const chart = sanitizeChartForLlm(source, todayAnalysisInstant(context.now));
   const today = input.todayDay(context.now);
-  return {
-    period: periodEcho({ start: today, end: today }, 'today'),
-    section,
-    shown: section,
-    notes: [],
-    data: sectionData(chart, section),
-  };
+  const { data, notes } = sectionPayload(chart, section);
+  return { period: periodEcho({ start: today, end: today }, 'today'), section, shown: section, notes: [...notes], data };
 }
 
 function failureReason(error: unknown): PeriodSkyFailure {
@@ -196,7 +199,8 @@ function skyResult(
   const asOf = periodAnalysisInstant(period.start, period.end);
   if (section !== 'transits') {
     const measuredAt = multiDay ? 'start_of_period' : 'that_day';
-    return { ...base, notes: [], measured_at: measuredAt, data: sectionData(sanitizeChartForLlm(sky, asOf), section) };
+    const { data, notes } = sectionPayload(sanitizeChartForLlm(sky, asOf), section);
+    return { ...base, notes: [...notes], measured_at: measuredAt, data };
   }
   if (!sky.transit_context) return { ...base, notes: [], data: UNAVAILABLE };
   const restricted = restrictTransitsToPeriod(sky.transit_context, period, multiDay);
@@ -297,6 +301,7 @@ async function placedTiming(
   if (section === 'dashas') return longPlaces(dashasTiming(input, section, request.period, echo, []), spans, request);
   const sky = await skyTiming(input, section, request.period, echo, context);
   if (echo.days >= PLACE_NEEDED_BELOW_DAYS) return longPlaces(sky, spans, request);
+  if (section !== 'transits') return labelPlaces(sky, spans);
   return shortPlaces(input.loadMoonWindow, sky, spans, request.time, context);
 }
 

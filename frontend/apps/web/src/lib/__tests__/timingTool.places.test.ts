@@ -1,5 +1,7 @@
 import type { MoonWindow } from '@almamesh/browser';
+import type { SiderealChart } from '@almamesh/browser/types';
 import {
+  AGENT_LIMITS,
   BIRTH_YEAR_SKY_NOTE,
   NEEDS_PLACE_ERROR,
   PLACE_REF_ERROR,
@@ -20,6 +22,8 @@ import {
 } from '../timingTool';
 import { PLACE_MOON_DEADLINE_MS } from '../timingPlaces';
 import { CHART, SKY_CHART } from './timingFixtures';
+import domainsGolden from '../../../../../../backend/tests/fixtures/domains_golden_de421.json';
+import domainsJuly3 from './domains-2026-07-03.json';
 
 const NOW = new Date('2026-06-20T09:30:00.000Z');
 const context = () => ({ now: NOW, signal: new AbortController().signal });
@@ -393,12 +397,13 @@ describe('get_timing with places', () => {
     expect(notesOf(result)).toContain(PLACE_MOON_UNAVAILABLE_NOTE);
   });
 
+  // Was a domains call; the Moon now rides on transits only (northstar #306 item 1).
   it('with no Moon loader wired, the sky answer stands and says the Moon is unavailable', async () => {
     const result = await tool({ loadMoonWindow: undefined }).execute(
-      { section: 'domains', start: '2026-06-15', place_ref: 'city:202' },
+      { section: 'transits', start: '2026-06-15', place_ref: 'city:202' },
       context(),
     );
-    expect(result).toMatchObject({ shown: 'domains', places: [{ label: 'Bogotá, Colombia' }] });
+    expect(result).toMatchObject({ shown: 'transits', places: [{ label: 'Bogotá, Colombia' }] });
     expect(notesOf(result)).toContain(PLACE_MOON_UNAVAILABLE_NOTE);
   });
 
@@ -459,5 +464,73 @@ describe('get_timing on a weak device says nothing about places', () => {
     expect(full.description).toMatch(/needs_place/);
     const properties = (full.parameters as { properties: Record<string, unknown> }).properties;
     expect(Object.keys(properties)).toEqual(['section', 'start', 'end', 'place_ref', 'time', 'segments']);
+  });
+});
+
+describe('get_timing keeps placed life-area and strength reads small', () => {
+  // Real engine output for the live-drive birth (Bengaluru, 8 Aug 1988, 06:44 IST): the
+  // CPython domains pipeline of backend/tests/test_domains_golden.py run with the
+  // reference date and transit instant at 2026-07-03T12:00Z (the live-drive turn-d day).
+  const skyWith = (domains: unknown) => ({ ...SKY_CHART, domains_context: domains }) as unknown as SiderealChart;
+  const JULY_3_SKY = skyWith(domainsJuly3);
+  const EVENT_WINDOW: MoonWindow = { ...WINDOW, event: { lagna_sign: 'scorpio', moon: MARK } };
+  const DAY_AT_BOGOTA = { start: '2026-07-03', place_ref: 'city:202', time: '15:00' } as const;
+  // The agent sends each result as {"ok":true,"value":…} and refuses anything over its cap.
+  const wrapped = (result: unknown) => JSON.stringify({ ok: true, value: result }).length;
+  const BUDGET = AGENT_LIMITS.maxResultChars - 1024;
+  const domainsAt = (sky: SiderealChart) =>
+    tool({ loadPeriodChart: vi.fn(async () => sky), loadMoonWindow: vi.fn(async () => EVENT_WINDOW) }).execute(
+      { section: 'domains', ...DAY_AT_BOGOTA },
+      context(),
+    );
+
+  it.each(['domains', 'strength'])('%s at a place carries label-only place rows: no Moon, no event', async (section) => {
+    const load = vi.fn(async () => EVENT_WINDOW);
+    const result = await tool({ loadPeriodChart: vi.fn(async () => JULY_3_SKY), loadMoonWindow: load }).execute(
+      { section, ...DAY_AT_BOGOTA },
+      context(),
+    );
+    expect(result).toMatchObject({ shown: section });
+    const placed = result as { places: object[]; notes: string[] };
+    expect(placed.places).toEqual([
+      { start: '2026-07-03', end: '2026-07-03', label: 'Bogotá, Colombia', timezone: 'America/Bogota' },
+    ]);
+    expect(result).not.toHaveProperty('event');
+    expect(placed.notes).not.toContain(PLACE_MOON_ROWS_NOTE);
+    expect(placed.notes).not.toContain(PLACE_DOES_NOT_CHANGE_NOTE);
+    expect(load).not.toHaveBeenCalled();
+  });
+
+  it('a real domains read for 3 July 2026 at Bogotá at 15:00 fits the tool-result cap with 1 KiB to spare', async () => {
+    const result = await domainsAt(JULY_3_SKY);
+    expect((result as { data: unknown[] }).data).toHaveLength(7);
+    expect(AGENT_LIMITS.maxResultChars).toBe(8_192);
+    expect(JSON.stringify(result).length).toBeLessThanOrEqual(BUDGET);
+  });
+
+  it('the heaviest committed real domains read (golden, 1 Jan 2025 transits) still fits the cap', async () => {
+    const result = await domainsAt(skyWith(domainsGolden['1988-08-08T06:44:00+05:30']));
+    expect((result as { data: unknown[] }).data).toHaveLength(7);
+    expect(wrapped(result)).toBeLessThanOrEqual(AGENT_LIMITS.maxResultChars);
+  });
+
+  it('says the shared strength method note once, not once per life area', async () => {
+    const result = await domainsAt(JULY_3_SKY);
+    const rows = (result as { data: Record<string, unknown>[] }).data;
+    expect(rows.every((row) => !('strength_note' in row))).toBe(true);
+    const note = Object.values(domainsJuly3.forecasts)[0]?.strength_summary.note;
+    expect(notesOf(result).filter((text) => text === note)).toHaveLength(1);
+  });
+
+  it('transits at the same place and time still carry the Moon rows and the event', async () => {
+    const result = await tool({ loadMoonWindow: vi.fn(async () => EVENT_WINDOW) }).execute(
+      { section: 'transits', ...DAY_AT_BOGOTA },
+      context(),
+    );
+    expect(result).toMatchObject({
+      places: [{ label: 'Bogotá, Colombia', moon: WINDOW.at_place }],
+      event: { local_time: '15:00', lagna_sign: 'scorpio' },
+    });
+    expect(notesOf(result)).toContain(PLACE_MOON_ROWS_NOTE);
   });
 });

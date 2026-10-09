@@ -136,11 +136,18 @@ describe('createChatAgentTools', () => {
       placeFromRef,
     });
     const context = { now: new Date('2026-03-08T09:30:00.000Z'), signal: new AbortController().signal };
-    const result = await timing.execute({ section: 'strength', start: '2019-06-01', place_ref: 'city:5' }, context);
+    // The Moon at a place rides on transits. INVERTED (northstar #306 item 1): a placed
+    // strength day used to read the Moon too; it now carries the label and zone only.
+    const result = await timing.execute({ section: 'transits', start: '2019-06-01', place_ref: 'city:5' }, context);
     expect(loadPeriodChart).toHaveBeenCalledWith({ start: '2019-06-01', end: '2019-06-01' }, context);
     expect(placeFromRef).toHaveBeenCalledWith('city:5');
     expect(loadMoonWindow).toHaveBeenCalledOnce();
     expect(result).toMatchObject({ places: [{ label: 'Lima, Peru', timezone: 'America/Lima', moon: { at_start: mark } }] });
+    const strength = await timing.execute({ section: 'strength', start: '2019-06-01', place_ref: 'city:5' }, context);
+    expect(loadMoonWindow).toHaveBeenCalledOnce();
+    expect((strength as { places: unknown[] }).places).toEqual([
+      { start: '2019-06-01', end: '2019-06-01', label: 'Lima, Peru', timezone: 'America/Lima' },
+    ]);
   });
 
   it('uses the turn-pinned clock and chart timezone without wall-clock reads', async () => {

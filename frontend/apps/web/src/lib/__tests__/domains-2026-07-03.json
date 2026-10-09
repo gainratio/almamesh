@@ -1,0 +1,792 @@
+{
+  "forecasts": {
+    "career": {
+      "current_emphasis": {
+        "active_dasha_significator": true,
+        "approximated": true,
+        "dasha_levels": [
+          "maha",
+          "antar",
+          "pratyantar"
+        ],
+        "matched_dasha_lords": [
+          "saturn",
+          "saturn",
+          "venus"
+        ],
+        "note": "transit_severity = sign of a coarse vote-sum over domain-relevant transit signals; the signals are exact, the netting is an AlmaMesh heuristic (not a BPHS quantity).",
+        "rule": "dasha-lord karakatva (maha/antar/pratyantar) + slow-graha gochara over the domain bhavas (whole-sign from lagna) + Sade Sati relevance",
+        "transit_severity": "neutral",
+        "under_sade_sati": false
+      },
+      "domain": "career",
+      "houses": [
+        {
+          "house": 10,
+          "lord": "venus",
+          "lord_dignity": "neutral",
+          "lord_house": 11,
+          "lord_sign": "Gemini",
+          "rule": "career: 10th house of karma/profession",
+          "sign": "Taurus"
+        }
+      ],
+      "karakas": [
+        {
+          "dignity": "neutral",
+          "graha": "sun",
+          "house": 12,
+          "is_retrograde": false,
+          "rule": "Sun = karaka of authority & status",
+          "sign": "Cancer"
+        },
+        {
+          "dignity": "neutral",
+          "graha": "saturn",
+          "house": 5,
+          "is_retrograde": true,
+          "rule": "Saturn = karaka of work, service & discipline",
+          "sign": "Sagittarius"
+        },
+        {
+          "dignity": "neutral",
+          "graha": "mercury",
+          "house": 12,
+          "is_retrograde": false,
+          "rule": "Mercury = karaka of commerce & skill",
+          "sign": "Cancer"
+        }
+      ],
+      "strength_summary": {
+        "approximated": true,
+        "band": "strong",
+        "key_graha": "saturn",
+        "key_graha_meets_minimum": true,
+        "key_graha_rupas": 7.515194,
+        "note": "band = AlmaMesh heuristic over exact Shadbala Rupas + SAV bindus; inputs are BPHS-rigorous, the threshold mapping is a coarse synthesis.",
+        "sav_bindus": 32,
+        "sav_pct": 57.142857,
+        "shadbala_pct": 80.12155,
+        "strength_pct": 57.142857,
+        "strength_tier": "model"
+      },
+      "upcoming_windows": [
+        {
+          "date": "2026-10-31T05:58:13.713998Z",
+          "descriptor": "career.transit.jupiter.ingress.leo",
+          "kind": "sign_ingress",
+          "severity": "neutral",
+          "source": "transit",
+          "trigger": "jupiter"
+        },
+        {
+          "date": "2027-01-24T20:50:25.344201Z",
+          "descriptor": "career.transit.jupiter.ingress.cancer",
+          "kind": "sign_ingress",
+          "severity": "neutral",
+          "source": "transit",
+          "trigger": "jupiter"
+        },
+        {
+          "date": "2027-06-02T23:04:25.266583Z",
+          "descriptor": "career.transit.saturn.ingress.aries",
+          "kind": "sign_ingress",
+          "severity": "neutral",
+          "source": "transit",
+          "trigger": "saturn"
+        },
+        {
+          "date": "2027-06-25T23:14:39.808732Z",
+          "descriptor": "career.transit.jupiter.ingress.leo",
+          "kind": "sign_ingress",
+          "severity": "neutral",
+          "source": "transit",
+          "trigger": "jupiter"
+        }
+      ],
+      "varga": {
+        "chart": "D10",
+        "graha": "saturn",
+        "rule": "D10 Dasamsa governs career & public standing",
+        "same_sign_as_d1": true,
+        "sign": "Sagittarius",
+        "sign_lord": "jupiter",
+        "vargottama": false
+      }
+    },
+    "education": {
+      "current_emphasis": {
+        "active_dasha_significator": true,
+        "approximated": true,
+        "dasha_levels": [
+          "maha",
+          "antar"
+        ],
+        "matched_dasha_lords": [
+          "saturn",
+          "saturn"
+        ],
+        "note": "transit_severity = sign of a coarse vote-sum over domain-relevant transit signals; the signals are exact, the netting is an AlmaMesh heuristic (not a BPHS quantity).",
+        "rule": "dasha-lord karakatva (maha/antar/pratyantar) + slow-graha gochara over the domain bhavas (whole-sign from lagna) + Sade Sati relevance",
+        "transit_severity": "neutral",
+        "under_sade_sati": false
+      },
+      "domain": "education",
+      "houses": [
+        {
+          "house": 4,
+          "lord": "mars",
+          "lord_dignity": "neutral",
+          "lord_house": 8,
+          "lord_sign": "Pisces",
+          "rule": "education: 4th house of foundational schooling",
+          "sign": "Scorpio"
+        },
+        {
+          "house": 5,
+          "lord": "jupiter",
+          "lord_dignity": "neutral",
+          "lord_house": 10,
+          "lord_sign": "Taurus",
+          "rule": "education: 5th house of intelligence & learning",
+          "sign": "Sagittarius"
+        }
+      ],
+      "karakas": [
+        {
+          "dignity": "neutral",
+          "graha": "mercury",
+          "house": 12,
+          "is_retrograde": false,
+          "rule": "Mercury = karaka of intellect & learning",
+          "sign": "Cancer"
+        },
+        {
+          "dignity": "neutral",
+          "graha": "jupiter",
+          "house": 10,
+          "is_retrograde": false,
+          "rule": "Jupiter = karaka of knowledge & teachers",
+          "sign": "Taurus"
+        }
+      ],
+      "strength_summary": {
+        "approximated": true,
+        "band": "moderate",
+        "key_graha": "mercury",
+        "key_graha_meets_minimum": false,
+        "key_graha_rupas": 6.871614,
+        "note": "band = AlmaMesh heuristic over exact Shadbala Rupas + SAV bindus; inputs are BPHS-rigorous, the threshold mapping is a coarse synthesis.",
+        "sav_bindus": 57,
+        "sav_pct": 50.892857,
+        "shadbala_pct": 58.89955,
+        "strength_pct": 50.892857,
+        "strength_tier": "model"
+      },
+      "upcoming_windows": [
+        {
+          "date": "2026-10-31T05:58:13.713998Z",
+          "descriptor": "education.transit.jupiter.ingress.leo",
+          "kind": "sign_ingress",
+          "severity": "neutral",
+          "source": "transit",
+          "trigger": "jupiter"
+        },
+        {
+          "date": "2027-01-24T20:50:25.344201Z",
+          "descriptor": "education.transit.jupiter.ingress.cancer",
+          "kind": "sign_ingress",
+          "severity": "neutral",
+          "source": "transit",
+          "trigger": "jupiter"
+        },
+        {
+          "date": "2027-06-02T23:04:25.266583Z",
+          "descriptor": "education.transit.saturn.ingress.aries",
+          "kind": "sign_ingress",
+          "severity": "neutral",
+          "source": "transit",
+          "trigger": "saturn"
+        },
+        {
+          "date": "2027-06-25T23:14:39.808732Z",
+          "descriptor": "education.transit.jupiter.ingress.leo",
+          "kind": "sign_ingress",
+          "severity": "neutral",
+          "source": "transit",
+          "trigger": "jupiter"
+        }
+      ],
+      "varga": {
+        "chart": "D24",
+        "graha": "mercury",
+        "rule": "D24 Siddhamsa governs education & learning",
+        "same_sign_as_d1": false,
+        "sign": "Aries",
+        "sign_lord": "mars",
+        "vargottama": false
+      }
+    },
+    "family": {
+      "current_emphasis": {
+        "active_dasha_significator": true,
+        "approximated": true,
+        "dasha_levels": [
+          "maha",
+          "antar"
+        ],
+        "matched_dasha_lords": [
+          "saturn",
+          "saturn"
+        ],
+        "note": "transit_severity = sign of a coarse vote-sum over domain-relevant transit signals; the signals are exact, the netting is an AlmaMesh heuristic (not a BPHS quantity).",
+        "rule": "dasha-lord karakatva (maha/antar/pratyantar) + slow-graha gochara over the domain bhavas (whole-sign from lagna) + Sade Sati relevance",
+        "transit_severity": "neutral",
+        "under_sade_sati": false
+      },
+      "domain": "family",
+      "houses": [
+        {
+          "house": 2,
+          "lord": "mercury",
+          "lord_dignity": "neutral",
+          "lord_house": 12,
+          "lord_sign": "Cancer",
+          "rule": "family: 2nd house of kutumba (immediate family)",
+          "sign": "Virgo"
+        },
+        {
+          "house": 4,
+          "lord": "mars",
+          "lord_dignity": "neutral",
+          "lord_house": 8,
+          "lord_sign": "Pisces",
+          "rule": "family: 4th house of mother & home",
+          "sign": "Scorpio"
+        },
+        {
+          "house": 5,
+          "lord": "jupiter",
+          "lord_dignity": "neutral",
+          "lord_house": 10,
+          "lord_sign": "Taurus",
+          "rule": "family: 5th house of progeny",
+          "sign": "Sagittarius"
+        },
+        {
+          "house": 9,
+          "lord": "mars",
+          "lord_dignity": "neutral",
+          "lord_house": 8,
+          "lord_sign": "Pisces",
+          "rule": "family: 9th house of father & lineage dharma",
+          "sign": "Aries"
+        }
+      ],
+      "karakas": [
+        {
+          "dignity": "neutral",
+          "graha": "jupiter",
+          "house": 10,
+          "is_retrograde": false,
+          "rule": "Jupiter = karaka of progeny & family lineage",
+          "sign": "Taurus"
+        }
+      ],
+      "strength_summary": {
+        "approximated": true,
+        "band": "moderate",
+        "key_graha": "jupiter",
+        "key_graha_meets_minimum": false,
+        "key_graha_rupas": 6.484366,
+        "note": "band = AlmaMesh heuristic over exact Shadbala Rupas + SAV bindus; inputs are BPHS-rigorous, the threshold mapping is a coarse synthesis.",
+        "sav_bindus": 121,
+        "sav_pct": 54.017857,
+        "shadbala_pct": 59.855689,
+        "strength_pct": 54.017857,
+        "strength_tier": "model"
+      },
+      "upcoming_windows": [
+        {
+          "date": "2026-10-31T05:58:13.713998Z",
+          "descriptor": "family.transit.jupiter.ingress.leo",
+          "kind": "sign_ingress",
+          "severity": "neutral",
+          "source": "transit",
+          "trigger": "jupiter"
+        },
+        {
+          "date": "2027-01-24T20:50:25.344201Z",
+          "descriptor": "family.transit.jupiter.ingress.cancer",
+          "kind": "sign_ingress",
+          "severity": "neutral",
+          "source": "transit",
+          "trigger": "jupiter"
+        },
+        {
+          "date": "2027-06-02T23:04:25.266583Z",
+          "descriptor": "family.transit.saturn.ingress.aries",
+          "kind": "sign_ingress",
+          "severity": "neutral",
+          "source": "transit",
+          "trigger": "saturn"
+        },
+        {
+          "date": "2027-06-25T23:14:39.808732Z",
+          "descriptor": "family.transit.jupiter.ingress.leo",
+          "kind": "sign_ingress",
+          "severity": "neutral",
+          "source": "transit",
+          "trigger": "jupiter"
+        }
+      ],
+      "varga": {
+        "chart": "D12",
+        "graha": "jupiter",
+        "rule": "D12 Dwadasamsa governs parents & lineage",
+        "same_sign_as_d1": false,
+        "sign": "Leo",
+        "sign_lord": "sun",
+        "vargottama": false
+      }
+    },
+    "finances": {
+      "current_emphasis": {
+        "active_dasha_significator": true,
+        "approximated": true,
+        "dasha_levels": [
+          "pratyantar"
+        ],
+        "matched_dasha_lords": [
+          "venus"
+        ],
+        "note": "transit_severity = sign of a coarse vote-sum over domain-relevant transit signals; the signals are exact, the netting is an AlmaMesh heuristic (not a BPHS quantity).",
+        "rule": "dasha-lord karakatva (maha/antar/pratyantar) + slow-graha gochara over the domain bhavas (whole-sign from lagna) + Sade Sati relevance",
+        "transit_severity": "supportive",
+        "under_sade_sati": false
+      },
+      "domain": "finances",
+      "houses": [
+        {
+          "house": 2,
+          "lord": "mercury",
+          "lord_dignity": "neutral",
+          "lord_house": 12,
+          "lord_sign": "Cancer",
+          "rule": "finances: 2nd house of accumulated wealth (dhana)",
+          "sign": "Virgo"
+        },
+        {
+          "house": 11,
+          "lord": "mercury",
+          "lord_dignity": "neutral",
+          "lord_house": 12,
+          "lord_sign": "Cancer",
+          "rule": "finances: 11th house of gains (labha)",
+          "sign": "Gemini"
+        }
+      ],
+      "karakas": [
+        {
+          "dignity": "neutral",
+          "graha": "jupiter",
+          "house": 10,
+          "is_retrograde": false,
+          "rule": "Jupiter = karaka of wealth & expansion",
+          "sign": "Taurus"
+        }
+      ],
+      "strength_summary": {
+        "approximated": true,
+        "band": "moderate",
+        "key_graha": "jupiter",
+        "key_graha_meets_minimum": false,
+        "key_graha_rupas": 6.484366,
+        "note": "band = AlmaMesh heuristic over exact Shadbala Rupas + SAV bindus; inputs are BPHS-rigorous, the threshold mapping is a coarse synthesis.",
+        "sav_bindus": 52,
+        "sav_pct": 46.428571,
+        "shadbala_pct": 59.855689,
+        "strength_pct": 46.428571,
+        "strength_tier": "model"
+      },
+      "upcoming_windows": [
+        {
+          "date": "2026-10-31T05:58:13.713998Z",
+          "descriptor": "finances.transit.jupiter.ingress.leo",
+          "kind": "sign_ingress",
+          "severity": "neutral",
+          "source": "transit",
+          "trigger": "jupiter"
+        },
+        {
+          "date": "2027-01-24T20:50:25.344201Z",
+          "descriptor": "finances.transit.jupiter.ingress.cancer",
+          "kind": "sign_ingress",
+          "severity": "neutral",
+          "source": "transit",
+          "trigger": "jupiter"
+        },
+        {
+          "date": "2027-06-25T23:14:39.808732Z",
+          "descriptor": "finances.transit.jupiter.ingress.leo",
+          "kind": "sign_ingress",
+          "severity": "neutral",
+          "source": "transit",
+          "trigger": "jupiter"
+        }
+      ],
+      "varga": {
+        "chart": "D2",
+        "graha": "jupiter",
+        "rule": "D2 Hora governs wealth & prosperity",
+        "same_sign_as_d1": false,
+        "sign": "Cancer",
+        "sign_lord": "moon",
+        "vargottama": false
+      }
+    },
+    "health": {
+      "current_emphasis": {
+        "active_dasha_significator": true,
+        "approximated": true,
+        "dasha_levels": [
+          "maha",
+          "antar"
+        ],
+        "matched_dasha_lords": [
+          "saturn",
+          "saturn"
+        ],
+        "note": "transit_severity = sign of a coarse vote-sum over domain-relevant transit signals; the signals are exact, the netting is an AlmaMesh heuristic (not a BPHS quantity).",
+        "rule": "dasha-lord karakatva (maha/antar/pratyantar) + slow-graha gochara over the domain bhavas (whole-sign from lagna) + Sade Sati relevance",
+        "transit_severity": "challenging",
+        "under_sade_sati": false
+      },
+      "domain": "health",
+      "houses": [
+        {
+          "house": 1,
+          "lord": "sun",
+          "lord_dignity": "neutral",
+          "lord_house": 12,
+          "lord_sign": "Cancer",
+          "rule": "health: 1st house of body & vitality",
+          "sign": "Leo"
+        },
+        {
+          "house": 6,
+          "lord": "saturn",
+          "lord_dignity": "neutral",
+          "lord_house": 5,
+          "lord_sign": "Sagittarius",
+          "rule": "health: 6th house of disease & recovery",
+          "sign": "Capricorn"
+        },
+        {
+          "house": 8,
+          "lord": "jupiter",
+          "lord_dignity": "neutral",
+          "lord_house": 10,
+          "lord_sign": "Taurus",
+          "rule": "health: 8th house of chronic illness & longevity",
+          "sign": "Pisces"
+        }
+      ],
+      "karakas": [
+        {
+          "dignity": "neutral",
+          "graha": "sun",
+          "house": 12,
+          "is_retrograde": false,
+          "rule": "Sun = karaka of vitality (aatma/prana)",
+          "sign": "Cancer"
+        }
+      ],
+      "strength_summary": {
+        "approximated": true,
+        "band": "moderate",
+        "key_graha": "sun",
+        "key_graha_meets_minimum": false,
+        "key_graha_rupas": 6.301801,
+        "note": "band = AlmaMesh heuristic over exact Shadbala Rupas + SAV bindus; inputs are BPHS-rigorous, the threshold mapping is a coarse synthesis.",
+        "sav_bindus": 84,
+        "sav_pct": 50.0,
+        "shadbala_pct": 58.170475,
+        "strength_pct": 50.0,
+        "strength_tier": "model"
+      },
+      "upcoming_windows": [
+        {
+          "date": "2026-10-31T05:58:13.713998Z",
+          "descriptor": "health.transit.jupiter.ingress.leo",
+          "kind": "sign_ingress",
+          "severity": "neutral",
+          "source": "transit",
+          "trigger": "jupiter"
+        },
+        {
+          "date": "2027-01-24T20:50:25.344201Z",
+          "descriptor": "health.transit.jupiter.ingress.cancer",
+          "kind": "sign_ingress",
+          "severity": "neutral",
+          "source": "transit",
+          "trigger": "jupiter"
+        },
+        {
+          "date": "2027-06-02T23:04:25.266583Z",
+          "descriptor": "health.transit.saturn.ingress.aries",
+          "kind": "sign_ingress",
+          "severity": "neutral",
+          "source": "transit",
+          "trigger": "saturn"
+        },
+        {
+          "date": "2027-06-25T23:14:39.808732Z",
+          "descriptor": "health.transit.jupiter.ingress.leo",
+          "kind": "sign_ingress",
+          "severity": "neutral",
+          "source": "transit",
+          "trigger": "jupiter"
+        }
+      ],
+      "varga": {
+        "chart": "D30",
+        "graha": "sun",
+        "rule": "D30 Trimsamsa governs misfortunes & health",
+        "same_sign_as_d1": false,
+        "sign": "Capricorn",
+        "sign_lord": "saturn",
+        "vargottama": false
+      }
+    },
+    "relationships": {
+      "current_emphasis": {
+        "active_dasha_significator": true,
+        "approximated": true,
+        "dasha_levels": [
+          "maha",
+          "antar",
+          "pratyantar"
+        ],
+        "matched_dasha_lords": [
+          "saturn",
+          "saturn",
+          "venus"
+        ],
+        "note": "transit_severity = sign of a coarse vote-sum over domain-relevant transit signals; the signals are exact, the netting is an AlmaMesh heuristic (not a BPHS quantity).",
+        "rule": "dasha-lord karakatva (maha/antar/pratyantar) + slow-graha gochara over the domain bhavas (whole-sign from lagna) + Sade Sati relevance",
+        "transit_severity": "challenging",
+        "under_sade_sati": false
+      },
+      "domain": "relationships",
+      "houses": [
+        {
+          "house": 7,
+          "lord": "saturn",
+          "lord_dignity": "neutral",
+          "lord_house": 5,
+          "lord_sign": "Sagittarius",
+          "rule": "relationships: 7th house of marriage & partnership",
+          "sign": "Aquarius"
+        }
+      ],
+      "karakas": [
+        {
+          "dignity": "neutral",
+          "graha": "venus",
+          "house": 11,
+          "is_retrograde": false,
+          "rule": "Venus = karaka of marriage & love",
+          "sign": "Gemini"
+        },
+        {
+          "dignity": "neutral",
+          "graha": "jupiter",
+          "house": 10,
+          "is_retrograde": false,
+          "rule": "Jupiter = classical karaka of spouse/dharma (texts cite it for the husband; applied gender-neutrally \u2014 the engine takes no gender input)",
+          "sign": "Taurus"
+        }
+      ],
+      "strength_summary": {
+        "approximated": true,
+        "band": "weak",
+        "key_graha": "venus",
+        "key_graha_meets_minimum": false,
+        "key_graha_rupas": 4.958147,
+        "note": "band = AlmaMesh heuristic over exact Shadbala Rupas + SAV bindus; inputs are BPHS-rigorous, the threshold mapping is a coarse synthesis.",
+        "sav_bindus": 24,
+        "sav_pct": 42.857143,
+        "shadbala_pct": 54.088879,
+        "strength_pct": 42.857143,
+        "strength_tier": "model"
+      },
+      "upcoming_windows": [
+        {
+          "date": "2026-10-31T05:58:13.713998Z",
+          "descriptor": "relationships.transit.jupiter.ingress.leo",
+          "kind": "sign_ingress",
+          "severity": "neutral",
+          "source": "transit",
+          "trigger": "jupiter"
+        },
+        {
+          "date": "2027-01-24T20:50:25.344201Z",
+          "descriptor": "relationships.transit.jupiter.ingress.cancer",
+          "kind": "sign_ingress",
+          "severity": "neutral",
+          "source": "transit",
+          "trigger": "jupiter"
+        },
+        {
+          "date": "2027-06-02T23:04:25.266583Z",
+          "descriptor": "relationships.transit.saturn.ingress.aries",
+          "kind": "sign_ingress",
+          "severity": "neutral",
+          "source": "transit",
+          "trigger": "saturn"
+        },
+        {
+          "date": "2027-06-25T23:14:39.808732Z",
+          "descriptor": "relationships.transit.jupiter.ingress.leo",
+          "kind": "sign_ingress",
+          "severity": "neutral",
+          "source": "transit",
+          "trigger": "jupiter"
+        }
+      ],
+      "varga": {
+        "chart": "D9",
+        "graha": "venus",
+        "rule": "D9 Navamsa governs spouse & marital dharma",
+        "same_sign_as_d1": false,
+        "sign": "Sagittarius",
+        "sign_lord": "jupiter",
+        "vargottama": false
+      }
+    },
+    "spiritual": {
+      "current_emphasis": {
+        "active_dasha_significator": true,
+        "approximated": true,
+        "dasha_levels": [
+          "maha",
+          "antar"
+        ],
+        "matched_dasha_lords": [
+          "saturn",
+          "saturn"
+        ],
+        "note": "transit_severity = sign of a coarse vote-sum over domain-relevant transit signals; the signals are exact, the netting is an AlmaMesh heuristic (not a BPHS quantity).",
+        "rule": "dasha-lord karakatva (maha/antar/pratyantar) + slow-graha gochara over the domain bhavas (whole-sign from lagna) + Sade Sati relevance",
+        "transit_severity": "supportive",
+        "under_sade_sati": false
+      },
+      "domain": "spiritual",
+      "houses": [
+        {
+          "house": 9,
+          "lord": "mars",
+          "lord_dignity": "neutral",
+          "lord_house": 8,
+          "lord_sign": "Pisces",
+          "rule": "spiritual: 9th house of dharma & higher wisdom",
+          "sign": "Aries"
+        },
+        {
+          "house": 12,
+          "lord": "moon",
+          "lord_dignity": "neutral",
+          "lord_house": 11,
+          "lord_sign": "Gemini",
+          "rule": "spiritual: 12th house of moksha & liberation",
+          "sign": "Cancer"
+        },
+        {
+          "house": 5,
+          "lord": "jupiter",
+          "lord_dignity": "neutral",
+          "lord_house": 10,
+          "lord_sign": "Taurus",
+          "rule": "spiritual: 5th house of purva-punya & mantra",
+          "sign": "Sagittarius"
+        }
+      ],
+      "karakas": [
+        {
+          "dignity": "neutral",
+          "graha": "jupiter",
+          "house": 10,
+          "is_retrograde": false,
+          "rule": "Jupiter = karaka of dharma & wisdom",
+          "sign": "Taurus"
+        },
+        {
+          "dignity": "neutral",
+          "graha": "ketu",
+          "house": 1,
+          "is_retrograde": true,
+          "rule": "Ketu = karaka of moksha & detachment",
+          "sign": "Leo"
+        }
+      ],
+      "strength_summary": {
+        "approximated": true,
+        "band": "moderate",
+        "key_graha": "jupiter",
+        "key_graha_meets_minimum": false,
+        "key_graha_rupas": 6.484366,
+        "note": "band = AlmaMesh heuristic over exact Shadbala Rupas + SAV bindus; inputs are BPHS-rigorous, the threshold mapping is a coarse synthesis.",
+        "sav_bindus": 86,
+        "sav_pct": 51.190476,
+        "shadbala_pct": 59.855689,
+        "strength_pct": 51.190476,
+        "strength_tier": "model"
+      },
+      "upcoming_windows": [
+        {
+          "date": "2026-10-31T05:58:13.713998Z",
+          "descriptor": "spiritual.transit.jupiter.ingress.leo",
+          "kind": "sign_ingress",
+          "severity": "neutral",
+          "source": "transit",
+          "trigger": "jupiter"
+        },
+        {
+          "date": "2027-01-24T20:50:25.344201Z",
+          "descriptor": "spiritual.transit.jupiter.ingress.cancer",
+          "kind": "sign_ingress",
+          "severity": "neutral",
+          "source": "transit",
+          "trigger": "jupiter"
+        },
+        {
+          "date": "2027-06-02T23:04:25.266583Z",
+          "descriptor": "spiritual.transit.saturn.ingress.aries",
+          "kind": "sign_ingress",
+          "severity": "neutral",
+          "source": "transit",
+          "trigger": "saturn"
+        },
+        {
+          "date": "2027-06-25T23:14:39.808732Z",
+          "descriptor": "spiritual.transit.jupiter.ingress.leo",
+          "kind": "sign_ingress",
+          "severity": "neutral",
+          "source": "transit",
+          "trigger": "jupiter"
+        }
+      ],
+      "varga": {
+        "chart": "D20",
+        "graha": "jupiter",
+        "rule": "D20 Vimsamsa governs spiritual pursuits",
+        "same_sign_as_d1": true,
+        "sign": "Taurus",
+        "sign_lord": "venus",
+        "vargottama": false
+      }
+    }
+  },
+  "instant": "2026-07-03T12:00:00Z"
+}
