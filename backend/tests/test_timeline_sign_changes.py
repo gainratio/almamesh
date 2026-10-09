@@ -8,6 +8,7 @@ import pytest
 
 from almamesh.calculations import SkyfieldAstronomy
 from almamesh.constants.astrology import ZODIAC_SIGNS, PlanetName
+from almamesh.schemas.transits import TimelineEvent
 from almamesh.transits import timeline_ingress
 from almamesh.transits.natal import sign_index
 from almamesh.transits.positions import transit_longitude
@@ -27,6 +28,13 @@ def _sign(astro: SkyfieldAstronomy, graha: PlanetName, when: datetime) -> str:
     return ZODIAC_SIGNS[sign_index(transit_longitude(astro, graha, when))]
 
 
+def _assert_real_crossing(astro: SkyfieldAstronomy, event: TimelineEvent) -> None:
+    assert event.graha is not None
+    graha = PlanetName(event.graha)
+    assert _sign(astro, graha, event.date - _HALF_DAY) == event.from_sign
+    assert _sign(astro, graha, event.date + _HALF_DAY) == event.to_sign
+
+
 def test_mars_retrograde_exit_and_re_entry_both_show(astro: SkyfieldAstronomy) -> None:
     # Given the first half of 2027, when Mars retrogrades from Leo back into Cancer
     events = sign_change_events(
@@ -44,8 +52,7 @@ def test_every_mars_change_is_real_and_chronological(astro: SkyfieldAstronomy) -
     assert len(events) == 15
     assert [e.date for e in events] == sorted(e.date for e in events)
     for event in events:
-        assert _sign(astro, PlanetName.MARS, event.date - _HALF_DAY) == event.from_sign
-        assert _sign(astro, PlanetName.MARS, event.date + _HALF_DAY) == event.to_sign
+        _assert_real_crossing(astro, event)
 
 
 def test_rahu_and_ketu_change_sign_together_in_opposite_signs(astro: SkyfieldAstronomy) -> None:
@@ -56,8 +63,8 @@ def test_rahu_and_ketu_change_sign_together_in_opposite_signs(astro: SkyfieldAst
     ]
     assert events[0].date == events[1].date
     assert date(2026, 12, 1) <= events[0].date.date() <= date(2026, 12, 6)
+    _assert_real_crossing(astro, events[1])
     assert [e.descriptor for e in events] == ["rahu.ingress.capricorn", "ketu.ingress.cancer"]
-    assert _sign(astro, PlanetName.KETU, events[1].date + _HALF_DAY) == "Cancer"
 
 
 def test_a_jump_over_two_signs_is_not_invented_as_one_crossing(

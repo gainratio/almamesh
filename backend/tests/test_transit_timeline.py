@@ -11,7 +11,7 @@ import pytest
 from almamesh.calculations import SkyfieldAstronomy, calculate_sidereal_context
 from almamesh.constants.astrology import PlanetName
 from almamesh.schemas.astrology import SiderealContext
-from almamesh.schemas.transits import TransitEventKind
+from almamesh.schemas.transits import TimelineEvent, TransitEventKind
 from almamesh.transits import timeline_ingress
 from almamesh.transits.timeline import build_timeline
 from almamesh.transits.timeline_sign_changes import sign_change_events
@@ -97,23 +97,30 @@ def test_should_sample_each_instant_once_when_sign_change_scan_finds_no_crossing
 _TWO_YEAR_START = datetime(2026, 6, 9, 12, 0, 0, tzinfo=UTC)
 
 
+_INC_B_KINDS = {
+    ("mars", "sign_ingress"),
+    ("rahu", "sign_ingress"),
+    ("ketu", "sign_ingress"),
+    ("jupiter", "station"),
+    ("saturn", "station"),
+    ("mars", "station"),
+}
+_FAST_GRAHAS = {"sun", "moon", "mercury", "venus"}
+
+
+def _graha_kinds(events: list[TimelineEvent]) -> set[tuple[str, str]]:
+    return {(e.graha, e.kind) for e in events if e.graha is not None}
+
+
 def test_two_year_timeline_covers_mars_nodes_and_stations() -> None:
     # Given a 24-month window from the golden's reference instant
     natal = calculate_sidereal_context(_BIRTH, *_DELHI, reference_date=_TWO_YEAR_START)
     timeline = build_timeline(SkyfieldAstronomy(), natal, _BIRTH, _TWO_YEAR_START, window_months=24)
+    kinds = _graha_kinds(timeline.events)
     # Then every Inc B producer is present, and no fast graha appears
-    kinds = {(e.graha, e.kind) for e in timeline.events if e.graha is not None}
-    assert {
-        ("mars", "sign_ingress"),
-        ("rahu", "sign_ingress"),
-        ("ketu", "sign_ingress"),
-        ("jupiter", "station"),
-        ("saturn", "station"),
-        ("mars", "station"),
-    } <= kinds
-    assert not {graha for graha, _ in kinds} & {"sun", "moon", "mercury", "venus"}
-    dates = [e.date for e in timeline.events]
-    assert dates == sorted(dates)
+    assert _INC_B_KINDS <= kinds
+    assert not {graha for graha, _ in kinds} & _FAST_GRAHAS
+    assert [e.date for e in timeline.events] == sorted(e.date for e in timeline.events)
 
 
 # Jupiter goes back from Virgo into Leo (~2028-02) and Saturn from Aries into

@@ -250,11 +250,11 @@ function coercePersistedTransitCtx(value: unknown): TransitCtx | undefined {
   if (!isPlainRecord(ctx?.timeline) || !Array.isArray(ctx.timeline.events)) {
     return ctx;
   }
-  const events = ctx.timeline.events.map(
+  const events = (ctx.timeline.events as unknown[]).filter(isPlainRecord).map(
     (event): TransitTimelineEventData => ({
-      ...event,
-      station_direction: event.station_direction ?? null,
-      station_sign: event.station_sign ?? null,
+      ...(event as unknown as TransitTimelineEventData),
+      station_direction: (event.station_direction as TransitTimelineEventData["station_direction"]) ?? null,
+      station_sign: (event.station_sign as TransitTimelineEventData["station_sign"]) ?? null,
     }),
   );
   return { ...ctx, timeline: { ...ctx.timeline, events } };
