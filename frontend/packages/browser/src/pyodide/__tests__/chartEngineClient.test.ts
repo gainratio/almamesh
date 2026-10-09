@@ -54,6 +54,7 @@ const PREDICTIVE_INPUT: PredictiveInput = {
   latitude: 28.6139,
   longitude: 77.209,
   referenceInstant: "2026-06-09T12:00:00+00:00",
+  utcOffsetMinutes: 330,
 };
 
 const STUB_PREDICTIVE = {

@@ -76,6 +76,7 @@ const INPUT: EnsurePredictiveInput = {
   latitude: 28.6139,
   longitude: 77.209,
   referenceInstant: "2026-06-09T12:00:00+00:00",
+  utcOffsetMinutes: 330,
 };
 
 const makeRuntime = (impl?: () => Promise<PredictiveContexts>) => ({
@@ -108,6 +109,7 @@ describe("usePredictiveStore", () => {
       latitude: INPUT.latitude,
       longitude: INPUT.longitude,
       referenceInstant: INPUT.referenceInstant,
+      utcOffsetMinutes: 330,
     });
     const s = usePredictiveStore.getState();
     expect(s.status).toBe("ready");
@@ -159,6 +161,7 @@ describe("usePredictiveStore", () => {
       latitude: INPUT.latitude,
       longitude: INPUT.longitude,
       referenceInstant: INPUT.referenceInstant,
+      utcOffsetMinutes: INPUT.utcOffsetMinutes,
     });
   });
 
@@ -255,5 +258,13 @@ describe("usePredictiveStore", () => {
     expect(s.status).toBe("idle");
     expect(s.transitCtx).toBeUndefined();
     expect(s.profileKey).toBeUndefined();
+  });
+});
+
+describe("predictiveRequestKey — the civil offset is part of the identity", () => {
+  it("changes when only the birthplace civil offset changes", () => {
+    expect(predictiveRequestKey(INPUT)).not.toBe(
+      predictiveRequestKey({ ...INPUT, utcOffsetMinutes: 780 }),
+    );
   });
 });

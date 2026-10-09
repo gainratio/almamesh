@@ -9,7 +9,7 @@ reference native is one case among others, per the calc-integrity mandate).
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 import pytest
@@ -42,6 +42,8 @@ FIXED_REFERENCE_DATE = datetime(2025, 1, 1, tzinfo=UTC)
 FIXED_TRANSIT_INSTANT = datetime(2025, 1, 1, tzinfo=UTC)
 
 # (iso birth, lat, lon) — the synthetic reference native is ONE generic case among others.
+# The birthplace civil offset (IST) rides along: Kalabala needs it explicitly.
+_IST = timedelta(minutes=330)
 CASES: dict[str, tuple[str, float, float]] = {
     "reference_native": ("1988-08-08T06:44:00+05:30", 12.9716, 77.5946),
     "delhi_1990": ("1990-01-15T12:00:00+00:00", 28.6139, 77.2090),
@@ -57,7 +59,7 @@ def _build_pipeline(iso: str, lat: float, lon: float) -> Pipeline:
     natal = calculate_sidereal_context(birth, lat, lon, reference_date=FIXED_REFERENCE_DATE)
     transits = calculate_transit_context(natal, birth, transit_instant=FIXED_TRANSIT_INSTANT)
     vargas = compute_varga_context(natal)
-    strength = compute_strength_context(natal, birth, lat, lon)
+    strength = compute_strength_context(natal, birth, lat, lon, civil_offset=_IST)
     domains = compute_life_domains(natal, transits, vargas, strength)
     return natal, transits, vargas, strength, domains
 

@@ -111,3 +111,25 @@ describe('onboarding store — daylight-saving edges block the time step until r
     expect(store.getState().isStepValid(4)).toBe(true);
   });
 });
+
+describe('onboarding store — "I don\'t know" sends noon, never a stale clock', () => {
+  let store: ReturnType<typeof createStore<OnboardingStore>>;
+  const LA = { city: 'Los Angeles', state: 'CA', country: 'US', latitude: 34.05, longitude: -118.24, timezone: 'America/Los_Angeles' };
+
+  beforeEach(() => {
+    store = createStore<OnboardingStore>(onboardingStoreCreator);
+    store.getState().setName('Test Native');
+    store.getState().setLocation(LA);
+    store.getState().setBirthDate(new Date(2024, 2, 10));
+  });
+
+  it('replaces a typed gap time with 12:00 once the time is marked unknown', () => {
+    store.getState().setBirthTime('02:30', 'exact');
+    expect(store.getState().isStepValid(4)).toBe(false);
+    store.getState().setBirthTime('02:30', 'unknown');
+    expect(store.getState().localTimeStatus()).toBe('unique');
+    expect(store.getState().isStepValid(4)).toBe(true);
+    expect(store.getState().getFormattedBirthData()?.time).toBe('12:00');
+  });
+});
+

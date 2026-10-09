@@ -85,7 +85,7 @@ const CHART_WITH_RAW = {
   astronomical_calculations: { calculation_timestamp: '2026-07-12T12:00:00.000Z' },
   birth_data: {
     birth_datetime_utc: '1990-03-30T06:45:00Z',
-    birth_location_details: { latitude: 12.97, longitude: 77.59 },
+    birth_location_details: { latitude: 12.97, longitude: 77.59, timezone: 'Asia/Kolkata' },
   },
   sidereal_chart: { ayanamsa_value: 23.4, lagna: {}, planets: {}, houses: {}, yogas: [] },
 };
@@ -99,7 +99,7 @@ const CHART_WITH_FACTORS = {
   astronomical_calculations: { calculation_timestamp: '2026-07-12T12:00:00.000Z' },
   birth_data: {
     birth_datetime_utc: '1990-03-30T06:45:00Z',
-    birth_location_details: { latitude: 12.97, longitude: 77.59 },
+    birth_location_details: { latitude: 12.97, longitude: 77.59, timezone: 'Asia/Kolkata' },
   },
   sidereal_chart: {
     ayanamsa_value: 23.4,
@@ -148,6 +148,7 @@ const CURRENT_PREDICTIVE_KEY = predictiveRequestKey({
   latitude: 12.97,
   longitude: 77.59,
   referenceInstant: '2026-07-12T00:00:00Z',
+  utcOffsetMinutes: 330,
 });
 
 const SAMPLE_INTERPRETATION: VedicInterpretation = {

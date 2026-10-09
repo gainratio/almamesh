@@ -16,8 +16,7 @@ import type {
   ZodiacSign,
 } from '@almamesh/shared-types';
 import { Badge, Card } from '../../ui';
-import { formatRupas } from '../../../lib/predictive';
-import { formatDisplayDate, formatDisplayTime } from '../../../lib/dates';
+import { formatRupas, sunriseBasisParams } from '../../../lib/predictive';
 import { grahaName, signName } from '../../../lib/predictiveEventCopy';
 
 const SIGN_ORDER: readonly ZodiacSign[] = [
@@ -184,17 +183,11 @@ function SunriseBasis({
   birthTimeZone?: string;
 }): ReactElement {
   const { t } = useTranslation('predictive');
-  const zone = birthTimeZone || 'UTC';
-  const sunrise = new Date(ctx.sunrise_utc_iso);
   const lord = vedicDayLord(ctx);
   return (
     <>
       <p className="text-xs leading-relaxed text-text-tertiary" data-testid="strength-sunrise-basis">
-        {t('strength.sunrise_basis_zoned', {
-          date: formatDisplayDate(sunrise, { year: 'numeric', month: 'short', day: '2-digit', timeZone: zone }),
-          time: formatDisplayTime(sunrise, { hour: 'numeric', minute: '2-digit', timeZone: zone }),
-          zone,
-        })}
+        {t('strength.sunrise_basis_zoned', { ...sunriseBasisParams(ctx.sunrise_utc_iso, birthTimeZone) })}
       </p>
       {lord && (
         <p className="text-xs leading-relaxed text-text-tertiary" data-testid="strength-day-lord">

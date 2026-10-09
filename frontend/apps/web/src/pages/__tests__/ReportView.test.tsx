@@ -347,6 +347,7 @@ describe('ReportView predictive sections', () => {
           storedChart(),
           predictiveReferenceInstant(new Date(), viewerTimeZone()),
         ),
+        utcOffsetMinutes: 330,
       }),
     });
     renderReport('astrologer');
@@ -402,6 +403,7 @@ describe('ReportView predictive sections', () => {
           storedChart(),
           predictiveReferenceInstant(new Date(), viewerTimeZone()),
         ),
+        utcOffsetMinutes: 330,
       }),
     });
     renderReport('astrologer');

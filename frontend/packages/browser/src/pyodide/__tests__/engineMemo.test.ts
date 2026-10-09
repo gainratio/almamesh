@@ -26,6 +26,7 @@ const PREDICTIVE: PredictiveInput = {
   latitude: 12.9716,
   longitude: 77.5946,
   referenceInstant: REFERENCE,
+  utcOffsetMinutes: 330,
 };
 
 /** A deterministic engine double: serves the golden chart for its birth instant. */

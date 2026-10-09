@@ -161,3 +161,14 @@ export function requireBirthTimeZone(zone: string | null | undefined, context: s
   }
   return zone;
 }
+
+/**
+ * The zone's civil UTC offset (minutes) at a stored UTC instant — what the
+ * engine needs to read a Vedic weekday off the birthplace's civil calendar.
+ * Throws RangeError on an unknown zone or unreadable instant.
+ */
+export function offsetMinutesAtInstant(utcIso: string, timeZone: string): number {
+  const epoch = Date.parse(utcIso);
+  if (Number.isNaN(epoch)) throw new RangeError(`invalid instant "${utcIso}"`);
+  return offsetAt(epoch, timeZone);
+}

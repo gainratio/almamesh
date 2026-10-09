@@ -4,13 +4,12 @@ The lord of the year (Abda) gets 15 Virupas, of the month (Masa) 30, of the
 weekday (Vara) 45, and of the birth hora (Hora) 60. Vara and Hora are computed
 rigorously from the true sunrise; Abda and Masa follow the classical rule that
 the year-lord is the weekday-lord of the solar-year start and the month-lord the
-weekday-lord of the solar-month start, both reckoned in whole 360.25-day years /
+weekday-lord of the solar-month start, both reckoned in mean 365.25-day years /
 30.4375-day months from the weekday axis. (BPHS, Shadbala Adhyaya, Kalabala.)
 """
 
 from __future__ import annotations
 
-from datetime import timedelta
 from typing import TYPE_CHECKING, Final
 
 from almamesh.constants.astrology import PlanetName
@@ -50,15 +49,14 @@ _HORA_ORDER: Final[tuple[PlanetName, ...]] = (
     PlanetName.MOON,
 )
 _HOURS_PER_DAY: Final[int] = 24
-_AVG_YEAR_DAYS: Final[float] = 365.25
-_AVG_MONTH_DAYS: Final[float] = 30.4375
 
 
 def _weekday_index(sunrise: datetime) -> int:
     """0=Sunday..6=Saturn for the Vedic day, which begins at sunrise.
 
-    ``sunrise`` must be the LOCAL sunrise (``SunWindow.local_sunrise``): the
-    weekday is the birthplace's calendar day, never the UTC one.
+    ``sunrise`` must be on the birthplace's CIVIL clock
+    (``SunWindow.local_sunrise``): the weekday is the birthplace's calendar
+    day, never the UTC or local-mean-solar one.
     """
     return (sunrise.weekday() + 1) % 7
 
@@ -75,20 +73,19 @@ def hora_lord(sunrise: datetime, birth_utc: datetime) -> PlanetName:
     return _HORA_ORDER[(start + hours) % len(_HORA_ORDER)]
 
 
-def _epoch_weekday_lord(sunrise: datetime, period_days: float, multiple: int) -> PlanetName:
-    """Weekday lord ``multiple`` whole periods before the birth-day sunrise."""
-    epoch = sunrise - timedelta(days=period_days * multiple)
-    return _WEEKDAY_LORDS[(epoch.weekday() + 1) % 7]
+def abda_lord(year_sunrise: datetime) -> PlanetName:
+    """Year-lord: weekday lord of the Vedic day holding the solar-year axis (BPHS Abda).
+
+    ``year_sunrise`` is the CIVIL-clock sunrise opening the Vedic day that
+    contains the epoch (birth-day sunrise minus one mean year): the epoch itself
+    lands ~6 h before a sunrise, so its own calendar date is not its Vedic day.
+    """
+    return vara_lord(year_sunrise)
 
 
-def abda_lord(sunrise: datetime) -> PlanetName:
-    """Year-lord: weekday lord of the solar-year axis (BPHS Abda rule)."""
-    return _epoch_weekday_lord(sunrise, _AVG_YEAR_DAYS, 1)
-
-
-def masa_lord(sunrise: datetime) -> PlanetName:
-    """Month-lord: weekday lord of the solar-month axis (BPHS Masa rule)."""
-    return _epoch_weekday_lord(sunrise, _AVG_MONTH_DAYS, 1)
+def masa_lord(month_sunrise: datetime) -> PlanetName:
+    """Month-lord: weekday lord of the Vedic day holding the solar-month axis (BPHS Masa)."""
+    return vara_lord(month_sunrise)
 
 
 def _award(planet: PlanetName, lord: PlanetName, value: float, citation: str) -> BalaValue:
@@ -96,14 +93,14 @@ def _award(planet: PlanetName, lord: PlanetName, value: float, citation: str) ->
     return BalaValue(virupas=value if planet == lord else 0.0, citation=citation)
 
 
-def abdabala(planet: PlanetName, sunrise: datetime) -> BalaValue:
+def abdabala(planet: PlanetName, year_sunrise: datetime) -> BalaValue:
     """Abdabala (year-lord strength)."""
-    return _award(planet, abda_lord(sunrise), _ABDA_V, _C_ABDA)
+    return _award(planet, abda_lord(year_sunrise), _ABDA_V, _C_ABDA)
 
 
-def masabala(planet: PlanetName, sunrise: datetime) -> BalaValue:
+def masabala(planet: PlanetName, month_sunrise: datetime) -> BalaValue:
     """Masabala (month-lord strength)."""
-    return _award(planet, masa_lord(sunrise), _MASA_V, _C_MASA)
+    return _award(planet, masa_lord(month_sunrise), _MASA_V, _C_MASA)
 
 
 def varabala(planet: PlanetName, sunrise: datetime) -> BalaValue:

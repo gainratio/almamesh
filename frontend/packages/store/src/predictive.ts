@@ -63,6 +63,8 @@ export interface EnsurePredictiveInput {
   readonly longitude: number;
   /** ISO-8601 — explicit, never wall-clock; pins dasha "current" + transit "now". */
   readonly referenceInstant: string;
+  /** The birthplace's civil UTC offset at birth, whole minutes (engine weekday basis). */
+  readonly utcOffsetMinutes: number;
 }
 
 export interface PredictiveStore {
@@ -120,6 +122,7 @@ export function predictiveRequestKey(input: EnsurePredictiveInput): string {
     input.latitude,
     input.longitude,
     input.referenceInstant,
+    input.utcOffsetMinutes,
   ]);
 }
 
@@ -307,6 +310,7 @@ export const predictiveStoreCreator: StateCreator<PredictiveStore> = (set, get) 
         latitude: input.latitude,
         longitude: input.longitude,
         referenceInstant: input.referenceInstant,
+        utcOffsetMinutes: input.utcOffsetMinutes,
       });
       if (get().requestKey !== key) {
         return; // superseded by a newer profile/instant while in flight

@@ -413,6 +413,7 @@ describe('Dashboard — regenerate reading', () => {
         latitude: 12.97,
         longitude: 77.59,
         referenceInstant: '2026-07-12T00:00:00Z',
+        utcOffsetMinutes: 330,
       }),
       rawContexts: {
         transit_context: { instant: '2026-07-12T00:00:00Z' },
@@ -501,6 +502,7 @@ describe('Dashboard — regenerate reading', () => {
         latitude: 12.97,
         longitude: 77.59,
         referenceInstant: `${today}T00:00:00Z`,
+        utcOffsetMinutes: 330,
       }),
       rawContexts: {
         transit_context: { instant: `${today}T00:00:00Z` },
@@ -524,6 +526,7 @@ describe('Dashboard — regenerate reading', () => {
         latitude: 12.97,
         longitude: 77.59,
         referenceInstant: `${today}T00:00:00Z`,
+        utcOffsetMinutes: 330,
       }),
       rawContexts: {
         transit_context: { instant: `${today}T00:00:00Z` },
@@ -560,6 +563,7 @@ describe('Dashboard — regenerate reading', () => {
         latitude: 12.97,
         longitude: 77.59,
         referenceInstant: `${today}T00:00:00Z`,
+        utcOffsetMinutes: 330,
       }),
       rawContexts: {
         transit_context: { instant: `${today}T00:00:00Z` },
@@ -699,6 +703,7 @@ describe('Dashboard — regenerate reading', () => {
         latitude: 12.97,
         longitude: 77.59,
         referenceInstant: `${day}T00:00:00Z`,
+        utcOffsetMinutes: 330,
       });
     const rawContexts = {
       transit_context: { instant: '2026-07-12T00:00:00Z' },
@@ -757,6 +762,7 @@ describe('Dashboard — regenerate reading', () => {
         latitude: 12.97,
         longitude: 77.59,
         referenceInstant: `${day}T00:00:00Z`,
+        utcOffsetMinutes: 330,
       });
     const currentRawContexts = {
       transit_context: { instant: '2026-07-13T00:00:00Z' },

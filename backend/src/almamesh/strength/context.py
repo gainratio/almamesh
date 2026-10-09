@@ -18,7 +18,7 @@ from almamesh.strength.shadbala import compute_shadbala
 from almamesh.strength.sunrise import sun_window
 
 if TYPE_CHECKING:
-    from datetime import datetime
+    from datetime import datetime, timedelta
 
     from almamesh.schemas.astrology import SiderealContext
 
@@ -30,13 +30,19 @@ def compute_strength_context(
     birth_dt: datetime,
     lat: float,
     lon: float,
+    *,
+    civil_offset: timedelta,
 ) -> StrengthContext:
-    """Compute the full Ashtakavarga + Shadbala strength context for a natal chart."""
+    """Compute the full Ashtakavarga + Shadbala strength context for a natal chart.
+
+    ``civil_offset`` is the birthplace's civil UTC offset at birth (required:
+    the Vedic weekday is the civil date of the sunrise, see ``SunWindow``).
+    """
     birth_utc = _to_utc(birth_dt)
     astro = SkyfieldAstronomy()
-    window = sun_window(astro, birth_utc, lat, lon)
+    window = sun_window(astro, birth_utc, lat, lon, civil_offset=civil_offset)
     return StrengthContext(
         sunrise_utc_iso=window.sunrise.isoformat(),
         ashtakavarga=compute_ashtakavarga(natal),
-        shadbala=compute_shadbala(natal, birth_utc, lat, lon),
+        shadbala=compute_shadbala(natal, birth_utc, lat, lon, civil_offset=civil_offset),
     )

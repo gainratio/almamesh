@@ -36,8 +36,11 @@ export interface CityMatch {
   countryCode: string;
   latitude: number;
   longitude: number;
-  /** IANA timezone derived from coordinates, e.g. "Asia/Kolkata". */
-  timezone: string;
+  /**
+   * IANA timezone, e.g. "Asia/Kolkata". Absent only when no zone could be
+   * resolved for the point; the engine path then refuses it (never 'UTC').
+   */
+  timezone?: string;
   /** Population — used for ranking and surfaced for disambiguation. */
   population: number;
 }

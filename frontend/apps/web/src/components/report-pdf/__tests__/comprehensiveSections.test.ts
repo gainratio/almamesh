@@ -587,3 +587,16 @@ describe('ReportDocument — full comprehensive render', () => {
     expect(() => ReportDocument({ data })).not.toThrow();
   });
 });
+
+describe('buildReportPdfData — strength sunrise in the birthplace zone', () => {
+  it('prints the Kalabala sunrise on the birth zone\'s calendar and clock', () => {
+    // STRENGTH_CTX sunrise 1990-01-15T01:12Z = 06:42 Jan 15 in Asia/Kolkata
+    // (the fixture birth zone); a viewer west of UTC would see Jan 14.
+    const data = buildReportPdfData({ ...baseInput(), comprehensive: COMPREHENSIVE });
+    const note = data.strength?.sunriseNote ?? '';
+    expect(note).toMatch(/Jan 15, 1990/);
+    expect(note).toMatch(/6:42/);
+    expect(note).toMatch(/Asia\/Kolkata/);
+  });
+});
+

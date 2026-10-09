@@ -2674,7 +2674,7 @@
                   "approximated": false,
                   "citation": "BPHS Kalabala \u2014 Abdabala (year-lord, 15 Virupas).",
                   "note": null,
-                  "virupas": 0.0
+                  "virupas": 15.0
                 },
                 "ayana": {
                   "approximated": false,
@@ -2706,7 +2706,7 @@
                   "note": null,
                   "virupas": 12.709763
                 },
-                "total_virupas": 101.84231,
+                "total_virupas": 116.84231,
                 "tribhaga": {
                   "approximated": false,
                   "citation": "BPHS Kalabala \u2014 Tribhagabala (thirds of day/night; Jupiter always).",
@@ -2768,8 +2768,8 @@
                   "virupas": 38.792793
                 }
               },
-              "total_rupas": 5.075919,
-              "total_virupas": 304.555165
+              "total_rupas": 5.325919,
+              "total_virupas": 319.555165
             },
             "sun": {
               "cheshta": {
@@ -2795,7 +2795,7 @@
                   "approximated": false,
                   "citation": "BPHS Kalabala \u2014 Abdabala (year-lord, 15 Virupas).",
                   "note": null,
-                  "virupas": 15.0
+                  "virupas": 0.0
                 },
                 "ayana": {
                   "approximated": false,
@@ -2827,7 +2827,7 @@
                   "note": null,
                   "virupas": 12.709763
                 },
-                "total_virupas": 180.158734,
+                "total_virupas": 165.158734,
                 "tribhaga": {
                   "approximated": false,
                   "citation": "BPHS Kalabala \u2014 Tribhagabala (thirds of day/night; Jupiter always).",
@@ -2889,8 +2889,8 @@
                   "virupas": 27.190997
                 }
               },
-              "total_rupas": 7.542661,
-              "total_virupas": 452.559689
+              "total_rupas": 7.292661,
+              "total_virupas": 437.559689
             },
             "venus": {
               "cheshta": {

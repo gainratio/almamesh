@@ -17,7 +17,8 @@ from almamesh.schemas.strength import VIRUPAS_PER_RUPA
 from almamesh.strength.naisargika import NAISARGIKA_VIRUPAS
 from almamesh.strength.shadbala import compute_shadbala
 
-_IST = timezone(timedelta(hours=5, minutes=30))
+_IST_OFFSET = timedelta(hours=5, minutes=30)
+_IST = timezone(_IST_OFFSET)
 # Synthetic reference native (Bengaluru, fictional birth). All assertions below
 # are chart-invariant (BPHS constants, Rupa arithmetic, flags), so any real,
 # computable chart serves; this one is the project's single reference fixture.
@@ -39,7 +40,9 @@ _EXPECTED_NAISARGIKA = {
 @pytest.fixture(scope="module")
 def reference_shadbala():  # noqa: ANN201 - pytest fixture
     natal = calculate_sidereal_context(_REFERENCE, _REFERENCE_LAT, _REFERENCE_LON)
-    return compute_shadbala(natal, _REFERENCE, _REFERENCE_LAT, _REFERENCE_LON)
+    return compute_shadbala(
+        natal, _REFERENCE, _REFERENCE_LAT, _REFERENCE_LON, civil_offset=_IST_OFFSET
+    )
 
 
 @pytest.mark.parametrize(("planet", "expected"), list(_EXPECTED_NAISARGIKA.items()))
@@ -109,5 +112,7 @@ def test_should_flag_yuddhabala_as_approximated_with_a_note(reference_shadbala) 
 
 def test_should_be_deterministic_when_recomputed(reference_shadbala) -> None:
     natal = calculate_sidereal_context(_REFERENCE, _REFERENCE_LAT, _REFERENCE_LON)
-    again = compute_shadbala(natal, _REFERENCE, _REFERENCE_LAT, _REFERENCE_LON)
+    again = compute_shadbala(
+        natal, _REFERENCE, _REFERENCE_LAT, _REFERENCE_LON, civil_offset=_IST_OFFSET
+    )
     assert again.model_dump() == reference_shadbala.model_dump()

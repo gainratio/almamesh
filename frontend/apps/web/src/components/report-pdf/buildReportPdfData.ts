@@ -335,7 +335,11 @@ export function buildReportPdfData(input: BuildReportPdfDataInput): ReportPdfDat
         : undefined,
     strength:
       comprehensive?.strengthCtx !== undefined
-        ? buildStrengthSection(comprehensive.strengthCtx, comprehensive.translators)
+        ? buildStrengthSection(
+            comprehensive.strengthCtx,
+            comprehensive.translators,
+            input.birth.birth_location_details?.timezone,
+          )
         : undefined,
     domains:
       comprehensive?.domainsCtx !== undefined

@@ -668,6 +668,25 @@ describe("toBirthInput daylight-saving edges (never silently picked)", () => {
     expect(earlier.datetimeUtc).toBe("2024-11-03T08:30:00.000Z");
   });
 
+  it("keeps a legacy repeated-hour chart's id when its read-back fold is 'earlier'", () => {
+    // dayjs always resolved a repeated hour to the EARLIER occurrence, so every
+    // stored chart in one is an 'earlier' chart. Its id must not move when the
+    // fold is read back, or a confidence-only edit would plan a regeneration.
+    // Literal = main's seed formula (no fold) for this exact birth.
+    const legacy: BirthMeta = {
+      name: "Test User",
+      date: "2024-11-03",
+      time: "01:30",
+      latitude: 34.0522,
+      longitude: -118.2437,
+      timezone: "America/Los_Angeles",
+      location_name: "Los Angeles, USA",
+    };
+    expect(chartId(legacy)).toBe("08f7a7e9");
+    expect(chartId({ ...legacy, dstFold: "earlier" })).toBe("08f7a7e9");
+    expect(chartId({ ...legacy, dstFold: "later" })).not.toBe("08f7a7e9");
+  });
+
   it("gives the two occurrences different chart ids so switching them regenerates", () => {
     const base: BirthMeta = { ...DELHI_BIRTH, ...LA, date: "2024-11-03", time: "01:30" };
     expect(chartId({ ...base, dstFold: "earlier" })).not.toBe(chartId({ ...base, dstFold: "later" }));

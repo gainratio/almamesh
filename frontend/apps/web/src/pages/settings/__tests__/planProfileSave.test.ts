@@ -167,3 +167,21 @@ describe('birthMetaFromDetails — no silent UTC, explicit DST choice', () => {
     expect(meta.dstFold).toBe('later');
   });
 });
+
+describe('planProfileSave — a legacy chart born in a repeated DST hour', () => {
+  // dayjs stored every repeated-hour chart as the EARLIER occurrence; reading
+  // the fold back ('earlier') must not change the chart's identity.
+  const LA = { ...BENGALURU, lat: 34.0522, lon: -118.2437, timezone: 'America/Los_Angeles' };
+  const saved = details({ location: LA, birth_date: '2024-11-03', birth_time: '01:30', dst_fold: 'earlier' });
+  const legacyId = chartId({ ...birthMetaFromDetails(saved), dstFold: undefined });
+
+  it('keeps a confidence-only edit confidence-only', () => {
+    const plan = planProfileSave({
+      initial: saved,
+      current: { ...saved, time_confidence: 'approximate' },
+      storedChartId: legacyId,
+    });
+    expect(plan.kind).toBe('confidence-only');
+  });
+});
+

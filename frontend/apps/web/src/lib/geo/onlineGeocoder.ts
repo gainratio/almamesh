@@ -38,12 +38,16 @@ interface OpenMeteoPlace {
   feature_code?: string;
 }
 
-/** Resolve an IANA zone from coordinates, tolerant of tz-lookup throwing. */
-function fallbackTimezone(latitude: number, longitude: number): string {
+/**
+ * Resolve an IANA zone from coordinates. Undefined when tz-lookup cannot place
+ * the point: a made-up 'UTC' would silently compute the chart in the wrong
+ * zone, while undefined is refused downstream (requireBirthTimeZone).
+ */
+function fallbackTimezone(latitude: number, longitude: number): string | undefined {
   try {
     return tzlookup(latitude, longitude);
   } catch {
-    return 'UTC';
+    return undefined;
   }
 }
 

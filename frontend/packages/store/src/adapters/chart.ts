@@ -435,11 +435,13 @@ export function toBirthData(birth: BirthMeta): ProcessedBirthData {
  * id, which Phase-5 change-detection uses to trigger a regeneration.
  */
 export function chartId(birth: BirthMeta): string {
-  // The fold joins the seed ONLY for an ambiguous clock, so every existing
-  // (unambiguous) chart keeps its id while the two occurrences of a repeated
-  // hour get distinct ids — switching between them must regenerate.
-  const fold = effectiveFold(birth);
-  const seed = `${birth.name}|${birth.date}T${effectiveTime(birth)}|${birth.timezone}|${birth.latitude}|${birth.longitude}${fold ? `|${fold}` : ""}`;
+  // Only the LATER occurrence of a repeated hour marks the seed. Before DST
+  // folds were explicit, dayjs resolved every repeated hour to the EARLIER
+  // occurrence, so every stored chart in one is an 'earlier' chart: leaving
+  // 'earlier' unmarked keeps those ids stable, while the two occurrences still
+  // get distinct ids (switching between them must regenerate).
+  const laterMark = effectiveFold(birth) === "later" ? "|later" : "";
+  const seed = `${birth.name}|${birth.date}T${effectiveTime(birth)}|${birth.timezone}|${birth.latitude}|${birth.longitude}${laterMark}`;
   let hash = 0x811c9dc5;
   for (let i = 0; i < seed.length; i += 1) {
     hash ^= seed.charCodeAt(i);

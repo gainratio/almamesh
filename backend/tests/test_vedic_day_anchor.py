@@ -30,14 +30,20 @@ _SYDNEY = (-33.8688, 151.2093, timezone(timedelta(hours=11)))  # AEDT in January
 _AUCKLAND = (-36.8485, 174.7633, timezone(timedelta(hours=13)))  # NZDT in January
 _BENGALURU = (12.9716, 77.5946, timezone(timedelta(hours=5, minutes=30)))
 _LOS_ANGELES = (34.0522, -118.2437, timezone(timedelta(hours=-8)))
+# Date-line zones ~24 h from local mean time: civil date != solar date.
+_APIA = (-13.8333, -171.7667, timezone(timedelta(hours=13)))  # Samoa, no DST since 2021
+_NUKUALOFA = (-21.1394, -175.2018, timezone(timedelta(hours=13)))  # Tonga
 
 # 2024-01-10 is a Wednesday (Mercury); 2024-01-09 a Tuesday (Mars).
 _WED, _TUE = PlanetName.MERCURY, PlanetName.MARS
 
 
 def _shadbala(local: datetime, lat: float, lon: float) -> ShadbalaContext:
+    """Shadbala for an aware LOCAL birth; its UTC offset is the civil offset."""
+    offset = local.utcoffset()
+    assert offset is not None, "births are aware local datetimes"
     natal = calculate_sidereal_context(local, lat, lon, reference_date=_REFERENCE)
-    return compute_shadbala(natal, local.astimezone(UTC), lat, lon)
+    return compute_shadbala(natal, local.astimezone(UTC), lat, lon, civil_offset=offset)
 
 
 def _awarded(ctx: ShadbalaContext, part: str) -> PlanetName:
@@ -55,6 +61,8 @@ def _awarded(ctx: ShadbalaContext, part: str) -> PlanetName:
         ("Auckland morning", _AUCKLAND, (9, 0), _WED),
         ("Bengaluru before sunrise (control)", _BENGALURU, (5, 0), _TUE),
         ("Los Angeles evening (control)", _LOS_ANGELES, (20, 0), _WED),
+        ("Apia morning (civil date ~24 h from solar time)", _APIA, (10, 0), _WED),
+        ("Nuku'alofa morning (civil date ~24 h from solar time)", _NUKUALOFA, (10, 0), _WED),
     ],
 )
 def test_should_take_weekday_lord_from_local_sunrise_day_when_birth_is_anywhere(
@@ -73,7 +81,8 @@ def test_should_take_weekday_lord_from_local_sunrise_day_when_birth_is_anywhere(
 def _local_sunrise(lat: float, lon: float, tz: timezone) -> datetime:
     """The civil sunrise of 2024-01-10 at the place, as an aware UTC datetime."""
     noon = datetime(2024, 1, 10, 12, 0, tzinfo=tz).astimezone(UTC)
-    return sun_window(SkyfieldAstronomy(), noon, lat, lon).sunrise
+    offset = tz.utcoffset(None)
+    return sun_window(SkyfieldAstronomy(), noon, lat, lon, civil_offset=offset).sunrise
 
 
 def test_should_split_vedic_day_at_local_sunrise_when_birth_straddles_it() -> None:
@@ -82,8 +91,8 @@ def test_should_split_vedic_day_at_local_sunrise_when_birth_straddles_it() -> No
     sunrise = _local_sunrise(lat, lon, tz)
     assert sunrise.astimezone(tz).date().isoformat() == "2024-01-10"
     # When births fall two minutes either side of it
-    before = _shadbala(sunrise - timedelta(minutes=2), lat, lon)
-    after = _shadbala(sunrise + timedelta(minutes=2), lat, lon)
+    before = _shadbala((sunrise - timedelta(minutes=2)).astimezone(tz), lat, lon)
+    after = _shadbala((sunrise + timedelta(minutes=2)).astimezone(tz), lat, lon)
     # Then the earlier belongs to Tuesday, the later to Wednesday
     assert _awarded(before, "vara") == _TUE
     assert _awarded(after, "vara") == _WED
@@ -94,7 +103,7 @@ def test_should_rule_first_hora_by_weekday_lord_when_birth_follows_local_sunrise
     lat, lon, tz = _SYDNEY
     sunrise = _local_sunrise(lat, lon, tz)
     # When the birth is five minutes after it
-    ctx = _shadbala(sunrise + timedelta(minutes=5), lat, lon)
+    ctx = _shadbala((sunrise + timedelta(minutes=5)).astimezone(tz), lat, lon)
     # Then the first hora is Wednesday's lord
     assert _awarded(ctx, "hora") == _WED
 
@@ -111,3 +120,25 @@ def test_should_reckon_month_lord_on_local_calendar_when_epoch_crosses_utc_midni
     local = datetime(1990, 1, 15, 12, 0, tzinfo=timezone(timedelta(hours=-5)))
     # When Shadbala is computed / Then Masabala goes to Friday's lord
     assert _awarded(_shadbala(local, lat, lon), "masa") == PlanetName.VENUS
+
+
+def test_should_take_year_lord_from_vedic_day_of_epoch_when_epoch_precedes_its_sunrise() -> None:
+    """Abda epoch = birth-day sunrise - 365.25 d, read as a VEDIC day.
+
+    New York 1990-01-15: local sunrise ~07:19 EST, so the epoch is 1989-01-15
+    ~01:19 EST - a Sunday on the civil calendar, but before that day's sunrise,
+    so the Vedic day is Saturday 1989-01-14 -> Saturn. Reading the civil date of
+    the epoch (6 h before a winter sunrise) named Sunday -> Sun.
+    """
+    # Given a New York winter noon birth
+    lat, lon = 40.7128, -74.006
+    local = datetime(1990, 1, 15, 12, 0, tzinfo=timezone(timedelta(hours=-5)))
+    # When Shadbala is computed / Then Abdabala goes to Saturday's lord
+    assert _awarded(_shadbala(local, lat, lon), "abda") == PlanetName.SATURN
+
+
+def test_should_require_the_civil_offset_when_computing_the_sun_window() -> None:
+    # Given / When a caller omits the civil offset / Then it is refused, not guessed
+    noon = datetime(2024, 1, 10, 1, 0, tzinfo=UTC)
+    with pytest.raises(TypeError):
+        sun_window(SkyfieldAstronomy(), noon, -33.8688, 151.2093)  # type: ignore[call-arg]

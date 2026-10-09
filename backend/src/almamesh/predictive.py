@@ -19,7 +19,8 @@ CRYPTO-FREE BY DESIGN. This module computes; it does not sign. Each domain's
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
+from typing import Final
 
 from pydantic import BaseModel, ConfigDict
 
@@ -52,13 +53,34 @@ class PredictiveContexts(BaseModel):
     domains_context: LifeDomainsContext
 
 
+_MAX_OFFSET_MINUTES: Final[int] = 18 * 60  # real civil offsets lie within -12 h..+14 h
+
+
+def civil_offset_from_minutes(value: object) -> timedelta:
+    """The birthplace's civil UTC offset from a wire value in whole minutes.
+
+    Shared by the CPython edge runtime and the Pyodide worker glue so both
+    refuse the same inputs: booleans, strings, fractions, out-of-range values.
+    """
+    if isinstance(value, bool) or not isinstance(value, int | float) or value != int(value):
+        raise ValueError("invalid utc_offset_minutes: must be whole minutes")
+    if abs(value) > _MAX_OFFSET_MINUTES:
+        raise ValueError("invalid utc_offset_minutes: out of range")
+    return timedelta(minutes=int(value))
+
+
 def compute_predictive_contexts(
     birth_dt: datetime,
     latitude: float,
     longitude: float,
     reference_instant: datetime,
+    *,
+    civil_offset: timedelta,
 ) -> PredictiveContexts:
     """All four predictive contexts at one EXPLICIT instant (no silent now()).
+
+    ``civil_offset`` is the birthplace's civil UTC offset at birth; Kalabala
+    reads the Vedic weekday off the civil date of the sunrise.
 
     ``reference_instant`` pins BOTH the natal "current" dasha and the transit
     "now", keeping the whole payload coherent and reproducible — which is what
@@ -69,7 +91,9 @@ def compute_predictive_contexts(
     )
     transits = calculate_transit_context(natal, birth_dt, transit_instant=reference_instant)
     vargas = compute_varga_context(natal)
-    strength = compute_strength_context(natal, birth_dt, latitude, longitude)
+    strength = compute_strength_context(
+        natal, birth_dt, latitude, longitude, civil_offset=civil_offset
+    )
     domains = compute_life_domains(natal, transits, vargas, strength)
     return PredictiveContexts(
         transit_context=transits,
@@ -79,4 +103,4 @@ def compute_predictive_contexts(
     )
 
 
-__all__ = ["PredictiveContexts", "compute_predictive_contexts"]
+__all__ = ["PredictiveContexts", "civil_offset_from_minutes", "compute_predictive_contexts"]

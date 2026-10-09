@@ -8,7 +8,7 @@ places are fixed; the engine is deterministic, so the output is reproducible.
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from almamesh.calculations import calculate_sidereal_context
@@ -22,6 +22,13 @@ _CASES: tuple[tuple[str, str, float, float], ...] = (
     ("tokyo_1985", "1985-07-15T09:30:00+09:00", 35.6762, 139.6503),
     ("newyork_1990", "1990-01-15T12:00:00-05:00", 40.7128, -74.0060),
 )
+
+
+def _civil(birth: datetime) -> timedelta:
+    """The fixture's civil offset: every strength case is written in local time."""
+    offset = birth.utcoffset()
+    assert offset is not None, "strength fixtures carry their local offset"
+    return offset
 
 
 def _round(obj: object) -> object:
@@ -39,7 +46,7 @@ def _case(name: str, birth_iso: str, lat: float, lon: float) -> dict[str, object
     """Compute one fixture case dict."""
     birth = datetime.fromisoformat(birth_iso)
     natal = calculate_sidereal_context(birth, lat, lon)
-    ctx = compute_strength_context(natal, birth, lat, lon)
+    ctx = compute_strength_context(natal, birth, lat, lon, civil_offset=_civil(birth))
     return {
         "name": name,
         "birth_iso": birth_iso,

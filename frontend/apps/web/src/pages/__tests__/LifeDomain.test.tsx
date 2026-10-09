@@ -73,6 +73,7 @@ function seedReady(): void {
       latitude: 12.97,
       longitude: 77.59,
       referenceInstant: predictiveReferenceInstant(new Date(), viewerTimeZone()),
+      utcOffsetMinutes: 330,
     }),
   });
 }

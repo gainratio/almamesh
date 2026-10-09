@@ -488,6 +488,10 @@ exec ${inline.join(" ")}`,
       "node scripts/verify-exit-gate.mjs http://127.0.0.1:4199",
       "node scripts/verify-i18n.mjs http://127.0.0.1:4199",
       "node scripts/verify-browser-parity.mjs http://127.0.0.1:4199 --reference-date=2025-01-01T00:00:00+00:00",
+      // Time handling through the real onboarding UI: DST gap/overlap prompts,
+      // "unknown" computing at noon, and the Vedic weekday lord for Apia
+      // (date-line) and Sydney (east of UTC) births. Chromium only.
+      "TIME_HANDLING_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:time-handling --project=chromium",
     ])
   }
   // The hooked Playwright suites. Each used to rebuild this same bundle in its

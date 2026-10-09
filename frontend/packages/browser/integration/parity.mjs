@@ -97,8 +97,10 @@ const PREDICTIVE_REFERENCE_INSTANT = "2026-06-09T12:00:00+00:00";
 // NOT about the browser: a package can load here and still fail to register in a
 // real browser boot (which is exactly what pynacl's `_sodium` did).
 const PREDICTIVE_FIXTURES = [
-  { iso: "1990-01-15T12:00:00+00:00", lat: 28.6139, lon: 77.209, label: "Delhi" },
-  { iso: "2000-12-31T23:59:00+00:00", lat: 40.7128, lon: -74.006, label: "NYC" },
+  // offset = the birthplace civil UTC offset in minutes (the Worker's
+  // utcOffsetMinutes); MUST match backend/tests/test_predictive_golden.py.
+  { iso: "1990-01-15T12:00:00+00:00", lat: 28.6139, lon: 77.209, offset: 330, label: "Delhi" },
+  { iso: "2000-12-31T23:59:00+00:00", lat: 40.7128, lon: -74.006, offset: -300, label: "NYC" },
 ];
 
 // Relational MESH edge (mesh foundations): the SAME pairs the backend golden
@@ -306,12 +308,15 @@ def _parity_transit(iso_dt, lat, lon):
 # Wave-C predictive payload parity — the SAME composed entrypoint the chart
 # Worker's computePredictive uses, at one pinned EXPLICIT reference instant
 # (it pins both the "current" dasha and the transit "now"; no silent now()).
-from almamesh.predictive import compute_predictive_contexts
+from almamesh.predictive import civil_offset_from_minutes, compute_predictive_contexts
 _PREDICTIVE_INSTANT = datetime.fromisoformat("${PREDICTIVE_REFERENCE_INSTANT}")
 
-def _parity_predictive(iso_dt, lat, lon):
+def _parity_predictive(iso_dt, lat, lon, offset_minutes):
     dt = datetime.fromisoformat(iso_dt)
-    ctx = compute_predictive_contexts(dt, lat, lon, _PREDICTIVE_INSTANT)
+    ctx = compute_predictive_contexts(
+        dt, lat, lon, _PREDICTIVE_INSTANT,
+        civil_offset=civil_offset_from_minutes(offset_minutes),
+    )
     return json.dumps(_canonicalize(ctx.model_dump(mode="json")), sort_keys=True)
 
 # Mesh-edge parity — the relational bundle between two charts, with the SAME
@@ -408,7 +413,7 @@ console.error("");
 console.error(`[parity] predictive payload (Wave-C lazy superset)`);
 for (const fx of PREDICTIVE_FIXTURES) {
   const fxT0 = Date.now();
-  const pyodidePredictive = JSON.parse(parityPredictive(fx.iso, fx.lat, fx.lon));
+  const pyodidePredictive = JSON.parse(parityPredictive(fx.iso, fx.lat, fx.lon, fx.offset));
   const goldenPredictive = predictiveGolden[fx.iso];
   const ok = goldenPredictive !== undefined && deepEqual(pyodidePredictive, goldenPredictive);
   const ms = Date.now() - fxT0;

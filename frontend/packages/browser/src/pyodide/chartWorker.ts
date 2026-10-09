@@ -82,7 +82,7 @@ def _almamesh_compute_predictive(input_json):
     # This returns the engine's four contexts and NOTHING else. Assay composes
     # each headline and Avow seals its complete strength summary in TypeScript
     # after this call returns — the Python side stays crypto-free.
-    from almamesh.predictive import compute_predictive_contexts
+    from almamesh.predictive import civil_offset_from_minutes, compute_predictive_contexts
     data = json.loads(input_json)
     dt = datetime.fromisoformat(data["datetimeUtc"])
     if dt.tzinfo is None:
@@ -90,6 +90,7 @@ def _almamesh_compute_predictive(input_json):
     reference = datetime.fromisoformat(data["referenceInstant"])
     ctx = compute_predictive_contexts(
         dt, data["latitude"], data["longitude"], reference,
+        civil_offset=civil_offset_from_minutes(data["utcOffsetMinutes"]),
     )
     return json.dumps(ctx.model_dump(mode="json"))
 

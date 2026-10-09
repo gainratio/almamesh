@@ -17,7 +17,7 @@ import type {
   StrengthCtx,
   ZodiacSign,
 } from '@almamesh/shared-types';
-import { formatPredictiveDate, formatRupas } from '../../../lib/predictive';
+import { formatRupas, sunriseBasisParams } from '../../../lib/predictive';
 import { grahaName, signName } from '../../../lib/predictiveEventCopy';
 import { hasApproximatedComponents } from '../predictive/StrengthPanel';
 import { ReportSectionHeading } from './ReportSectionHeading';
@@ -42,10 +42,12 @@ function orderedRows<T extends { readonly planet: string }>(
 
 interface ReportStrengthProps {
   readonly strengthCtx: StrengthCtx;
+  /** IANA zone of the birthplace: the sunrise is printed on its calendar. */
+  readonly birthTimeZone?: string;
 }
 
 /** Ashtakavarga (SAV + BAV) + six-component Shadbala for print. */
-export function ReportStrength({ strengthCtx }: ReportStrengthProps): ReactElement {
+export function ReportStrength({ strengthCtx, birthTimeZone }: ReportStrengthProps): ReactElement {
   const { t } = useTranslation('report');
   const { t: tp } = useTranslation('predictive');
   const sarva = strengthCtx.ashtakavarga.sarva;
@@ -143,9 +145,9 @@ export function ReportStrength({ strengthCtx }: ReportStrengthProps): ReactEleme
       </table>
       <p className="report-note">{t('strength.components_note')}</p>
       {anyApprox && <p className="report-note">{tp('strength.approx_footnote')}</p>}
-      <p className="report-note">
-        {tp('strength.sunrise_basis', {
-          date: formatPredictiveDate(strengthCtx.sunrise_utc_iso),
+      <p className="report-note" data-testid="report-sunrise-basis">
+        {tp('strength.sunrise_basis_zoned', {
+          ...sunriseBasisParams(strengthCtx.sunrise_utc_iso, birthTimeZone),
         })}
       </p>
     </section>

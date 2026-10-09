@@ -16,7 +16,7 @@ Regenerate (only on an intentional engine change):
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from almamesh.predictive import PredictiveContexts, compute_predictive_contexts
@@ -32,10 +32,12 @@ FIXED_REFERENCE_INSTANT = datetime(2026, 6, 9, 12, 0, 0, tzinfo=UTC)
 # vectors in testdata/vectors/ (backend/tests/test_strength_receipt_vectors.py
 # and the @almamesh/browser strengthReceipt suite).
 
-# (iso birth, lat, lon) — parity-clean subset; MUST match parity.mjs:PREDICTIVE_FIXTURES.
-FIXTURES: list[tuple[str, float, float]] = [
-    ("1990-01-15T12:00:00+00:00", 28.6139, 77.2090),  # Delhi
-    ("2000-12-31T23:59:00+00:00", 40.7128, -74.0060),  # NYC
+# (iso birth, lat, lon, civil UTC offset minutes) — parity-clean subset; MUST
+# match parity.mjs:PREDICTIVE_FIXTURES. The offset is the birthplace's civil
+# offset at birth (IST +5:30, EST -5:00); Kalabala reads weekdays off it.
+FIXTURES: list[tuple[str, float, float, int]] = [
+    ("1990-01-15T12:00:00+00:00", 28.6139, 77.2090, 330),  # Delhi
+    ("2000-12-31T23:59:00+00:00", 40.7128, -74.0060, -300),  # NYC
 ]
 
 GOLDEN_PATH = Path(__file__).parent / "fixtures" / "predictive_golden_de421.json"
@@ -54,15 +56,16 @@ def _canonicalize(value: object) -> object:
     return value
 
 
-def _compute(iso_dt: str, lat: float, lon: float) -> PredictiveContexts:
+def _compute(iso_dt: str, lat: float, lon: float, offset_minutes: int) -> PredictiveContexts:
     """The composed predictive payload for one fixture at the pinned instant."""
     birth = datetime.fromisoformat(iso_dt)
-    return compute_predictive_contexts(birth, lat, lon, FIXED_REFERENCE_INSTANT)
+    civil = timedelta(minutes=offset_minutes)
+    return compute_predictive_contexts(birth, lat, lon, FIXED_REFERENCE_INSTANT, civil_offset=civil)
 
 
-def _canonical_predictive(iso_dt: str, lat: float, lon: float) -> object:
+def _canonical_predictive(iso_dt: str, lat: float, lon: float, offset_minutes: int) -> object:
     """Canonicalized JSON dump of one fixture's PredictiveContexts."""
-    return _canonicalize(_compute(iso_dt, lat, lon).model_dump(mode="json"))
+    return _canonicalize(_compute(iso_dt, lat, lon, offset_minutes).model_dump(mode="json"))
 
 
 def _load_golden() -> dict[str, object]:
@@ -74,12 +77,12 @@ def _load_golden() -> dict[str, object]:
 def test_all_predictive_fixtures_match_golden() -> None:
     """Every fixture's canonicalized PredictiveContexts equals the committed golden."""
     golden = _load_golden()
-    for iso_dt, lat, lon in FIXTURES:
-        assert _canonical_predictive(iso_dt, lat, lon) == golden[iso_dt]
+    for iso_dt, lat, lon, offset in FIXTURES:
+        assert _canonical_predictive(iso_dt, lat, lon, offset) == golden[iso_dt]
 
 
 def test_predictive_json_round_trip_is_byte_identical() -> None:
     """model_dump_json -> model_validate_json -> model_dump_json is byte-stable."""
-    iso_dt, lat, lon = FIXTURES[0]
-    dumped = _compute(iso_dt, lat, lon).model_dump_json()
+    iso_dt, lat, lon, offset = FIXTURES[0]
+    dumped = _compute(iso_dt, lat, lon, offset).model_dump_json()
     assert PredictiveContexts.model_validate_json(dumped).model_dump_json() == dumped

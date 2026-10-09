@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
   requestRegeneration,
+  UNKNOWN_TIME_CLOCK,
   type BirthMeta,
   type LifeEventInput,
   useLifeEventsStore,
@@ -797,10 +798,10 @@ export default function OnboardingPage() {
 
             {/* Daylight-saving edges: a gap time is refused, a repeated hour
                 needs the user's choice. Next stays disabled until resolved. */}
-            {data.timeConfidence !== "unknown" && data.birthDate && data.timezone && (
+            {data.birthDate && data.timezone && (
               <LocalTimeCheck
                 date={formatLocalDate(data.birthDate)}
-                time={data.birthTime}
+                time={data.timeConfidence === "unknown" ? UNKNOWN_TIME_CLOCK : data.birthTime}
                 timeZone={data.timezone}
                 fold={data.dstFold}
                 onFoldChange={setDstFold}

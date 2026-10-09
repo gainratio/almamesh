@@ -77,3 +77,15 @@ describe('ReportStrength — printed Ashtakavarga + Shadbala', () => {
     expect(jupiterRow?.textContent).toContain('Below minimum');
   });
 });
+
+describe('ReportStrength — the Kalabala sunrise is printed in the birthplace zone', () => {
+  it('prints the sunrise on the birthplace calendar and clock, naming the zone', () => {
+    // 1990-01-15T01:12Z is 06:42 on Jan 15 in Kolkata (and Jan 14 west of UTC).
+    render(<ReportStrength strengthCtx={STRENGTH_CTX} birthTimeZone="Asia/Kolkata" />);
+    const note = screen.getByTestId('report-sunrise-basis').textContent ?? '';
+    expect(note).toMatch(/Jan 15, 1990/);
+    expect(note).toMatch(/6:42/);
+    expect(note).toMatch(/Asia\/Kolkata/);
+  });
+});
+

@@ -35,7 +35,7 @@ const RAW = {
 
 const CURRENT_BIRTH = {
   birth_datetime_utc: '1990-03-30T06:45:00Z',
-  birth_location_details: { latitude: 12.97, longitude: 77.59 },
+  birth_location_details: { latitude: 12.97, longitude: 77.59, timezone: 'Asia/Kolkata' },
 };
 
 function currentRequestKey(profileKey: string): string {
@@ -45,6 +45,7 @@ function currentRequestKey(profileKey: string): string {
     latitude: CURRENT_BIRTH.birth_location_details.latitude,
     longitude: CURRENT_BIRTH.birth_location_details.longitude,
     referenceInstant: '2026-06-09T00:00:00Z',
+    utcOffsetMinutes: 330,
   });
 }
 
@@ -163,6 +164,7 @@ describe('withRawPredictive (Spec 062 delta 1)', () => {
         latitude: 12.97,
         longitude: 77.59,
         referenceInstant: '2026-06-09T00:00:00Z',
+        utcOffsetMinutes: 330,
       }),
     });
 

@@ -32,10 +32,22 @@ export type OnboardingSaveCallback = (data: OnboardingData, step: number) => Pro
 /** How the entered local birth time maps onto real instants. */
 export type LocalTimeStatus = 'incomplete' | 'unique' | 'nonexistent' | 'ambiguous';
 
+/** The placeholder clock an unknown birth time is computed at (the UI promises noon). */
+export const UNKNOWN_TIME_CLOCK = '12:00';
+
+/**
+ * The clock the chart is computed for: noon when the time is unknown (never a
+ * stale typed value), else the entered time.
+ */
+function effectiveClock(data: OnboardingData): string {
+  return data.timeConfidence === 'unknown' ? UNKNOWN_TIME_CLOCK : data.birthTime;
+}
+
 function localTimeStatusOf(data: OnboardingData): LocalTimeStatus {
-  if (!data.birthDate || data.birthTime.length < 4 || !data.timezone) return 'incomplete';
+  const clock = effectiveClock(data);
+  if (!data.birthDate || clock.length < 4 || !data.timezone) return 'incomplete';
   try {
-    return resolveLocalTime(formatLocalDate(data.birthDate), data.birthTime, data.timezone).kind;
+    return resolveLocalTime(formatLocalDate(data.birthDate), clock, data.timezone).kind;
   } catch {
     return 'incomplete'; // malformed clock or unknown zone: other checks own that
   }
@@ -311,8 +323,8 @@ export const onboardingStoreCreator: StateCreator<OnboardingStore> = (set, get) 
         // Time is valid if provided, or if user selected "unknown" — and a
         // provided time must name exactly one instant: a DST-gap time is
         // refused, and a repeated (fall-back) time needs the user's choice.
-        if (data.timeConfidence === 'unknown') return true;
-        if (data.birthTime.length < 4) return false;
+        // An unknown time is computed at noon, which gets the same DST check.
+        if (effectiveClock(data).length < 4) return false;
         return isResolvedLocalTime(localTimeStatusOf(data), data.dstFold);
       case 5:
         return true; // Life events are optional
@@ -331,8 +343,9 @@ export const onboardingStoreCreator: StateCreator<OnboardingStore> = (set, get) 
     // Format date as YYYY-MM-DD in local timezone
     const date = formatLocalDate(data.birthDate);
 
-    // Use default time if unknown
-    const time = data.birthTime || '12:00';
+    // Unknown -> noon, exactly as the confidence note promises; a time typed
+    // before switching to "unknown" is never sent.
+    const time = effectiveClock(data) || UNKNOWN_TIME_CLOCK;
 
     // Build location_name from city, state, country
     const locationParts = [data.city, data.state, data.country].filter(Boolean);

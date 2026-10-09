@@ -201,7 +201,7 @@ cd frontend/packages/browser && bun run test:parity
 
 1. **Local-first, no server** — No FastAPI/DB/auth. Compute stays on-device; the network is delivery-only (signed bundle).
 2. **Engine math lives in Python** — The TS adapter RESHAPES `SiderealChart → ChartData` only; never reimplement astrology in TypeScript.
-3. **Determinism** — Same inputs → byte-identical chart on CPython and Pyodide, where the inputs are all four of `(datetimeUtc, latitude, longitude, referenceDate)`. `referenceDate` is REQUIRED at the worker boundary — never optional, never a wall-clock fallback (that gap is what made the shipped chart differ run to run). Mint it once per generation with `newChartReferenceInstant()` and pass the same value to `toBirthInput` and `siderealChartToChartData`.
+3. **Determinism** — Same inputs → byte-identical chart on CPython and Pyodide, where the inputs are all four of `(datetimeUtc, latitude, longitude, referenceDate)`. `referenceDate` is REQUIRED at the worker boundary — never optional, never a wall-clock fallback (that gap is what made the shipped chart differ run to run). Mint it once per generation with `newChartReferenceInstant()` and pass the same value to `toBirthInput` and `siderealChartToChartData`. The predictive entry also REQUIRES `utcOffsetMinutes` (the birthplace's civil UTC offset at birth, from its IANA zone): Kalabala's weekday lords are read off the civil date of the sunrise, so no default offset is honest.
 
 (On top of these: the global defaults — tools/skills-first, parallel superpower
 agents, library-first, minimal code, TDD, type-safety, test-always, no dead code.)

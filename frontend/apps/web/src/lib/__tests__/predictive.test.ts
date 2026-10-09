@@ -48,7 +48,40 @@ describe('buildEnsurePredictiveInput', () => {
       latitude: 40.7128,
       longitude: -74.006,
       referenceInstant: '2026-06-09T00:00:00Z',
+      // EST at the birth instant: the engine reads the Vedic weekday off it.
+      utcOffsetMinutes: -300,
     });
+  });
+
+  it('sends the birthplace civil offset at the birth instant (date-line zone, DST)', () => {
+    const apia: ProcessedBirthData = {
+      birth_datetime_utc: '2024-01-09T21:00:00.000Z',
+      birth_datetime_local: '2024-01-10T10:00:00',
+      birth_location_details: { city: 'Apia', latitude: -13.83, longitude: -171.77, timezone: 'Pacific/Apia' },
+    };
+    expect(buildEnsurePredictiveInput('p', apia, '2026-06-09T00:00:00Z')?.utcOffsetMinutes).toBe(780);
+    const laSummer: ProcessedBirthData = {
+      ...BIRTH,
+      birth_datetime_utc: '2024-07-01T19:00:00.000Z',
+      birth_location_details: { ...BIRTH.birth_location_details, timezone: 'America/Los_Angeles' },
+    };
+    expect(buildEnsurePredictiveInput('p', laSummer, '2026-06-09T00:00:00Z')?.utcOffsetMinutes).toBe(-420);
+  });
+
+  it('returns null for an unknown birthplace zone instead of throwing', () => {
+    const bogus: ProcessedBirthData = {
+      ...BIRTH,
+      birth_location_details: { ...BIRTH.birth_location_details, timezone: 'Mars/Olympus' },
+    };
+    expect(buildEnsurePredictiveInput('p', bogus, '2026-06-09T00:00:00Z')).toBeNull();
+  });
+
+  it('returns null when the birthplace timezone is missing (no UTC guess)', () => {
+    const noZone: ProcessedBirthData = {
+      ...BIRTH,
+      birth_location_details: { ...BIRTH.birth_location_details, timezone: '' },
+    };
+    expect(buildEnsurePredictiveInput('p', noZone, '2026-06-09T00:00:00Z')).toBeNull();
   });
 
   it('returns null when birth data is missing (no silent guesses)', () => {

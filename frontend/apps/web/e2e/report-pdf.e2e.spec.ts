@@ -400,6 +400,7 @@ async function seedSyntheticMaximalReport(
     SYNTHETIC_BIRTH.birth_location_details.latitude,
     SYNTHETIC_BIRTH.birth_location_details.longitude,
     referenceInstant,
+    330, // Asia/Kolkata civil offset at the birth instant (predictiveRequestKey)
   ]);
   const storedChart = {
     chart_id: SYNTHETIC_CHART_ID,
