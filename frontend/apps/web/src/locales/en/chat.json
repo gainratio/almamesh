@@ -91,7 +91,7 @@
   },
   "time_travel": {
     "button": "Time travel",
-    "title": "Time travel · {{period}}",
+    "title": "Time travel · {{period}}",
     "status_working": "Working out the sky for {{period}}… (about 30 s)",
     "sheet": {
       "title": "Time travel",
