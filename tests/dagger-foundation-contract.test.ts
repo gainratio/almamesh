@@ -76,6 +76,25 @@ describe("central Dagger Lego pins", () => {
     expect(bunBase).not.toContain("NODE_IMAGE")
   })
 
+  // Debian's apt `node-gyp` drags in Debian's nodejs and links every addon it
+  // builds against that libnode. Loaded into NODE_IMAGE's own Node, the addon
+  // brings a second V8 into the process: on linux/arm64, where ws's optional
+  // bufferutil/utf-8-validate have no prebuild and get compiled, `vite build`
+  // died with "this.#build is not a function" and SIGSEGV (exit 139).
+  test("builds release native addons against the release image's own Node", () => {
+    const source = readFileSync(resolve(root, "dagger/src/index.ts"), "utf8")
+    const releaseBase = source.slice(
+      source.indexOf("private releaseBase("),
+      source.indexOf("private browserBase("),
+    )
+    const aptInstall = releaseBase.match(/apt-get install[^"]*/)?.[0] ?? ""
+
+    expect(releaseBase).toContain(".from(NODE_IMAGE)")
+    expect(aptInstall).toContain("build-essential")
+    expect(aptInstall).not.toMatch(/\bnode-gyp\b/)
+    expect(aptInstall).not.toMatch(/\bnodejs\b/)
+  })
+
   test("keeps the closed Pages proof local, fixed, and credential-free", () => {
     const source = readFileSync(resolve(root, "dagger/src/index.ts"), "utf8")
     const buildArgs = source.slice(

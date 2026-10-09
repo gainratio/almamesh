@@ -105,7 +105,9 @@ describe("Dagger public orchestration contract", () => {
     expect(source).toContain(".source(")
     expect(source).toContain(".guard(")
     expect(source).toContain(".envelope(")
-    expect(source).toContain("{ pagesFunctions: request.pagesFunctions }")
+    expect(source).toContain(
+      "{ pagesFunctions: request.pagesFunctions, gitSourceOwner: PAGES_GIT_SOURCE_OWNER }",
+    )
     expect(source).toContain("loadCloudflarePagesDeploymentEvidenceFromID")
     expect(source).not.toContain(".preflight(")
     expect(source).not.toContain(".verifyEnvelope(")

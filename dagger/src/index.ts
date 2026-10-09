@@ -284,10 +284,12 @@ export class AlmameshCi {
       .withEnvVariable("PYTHON", "/usr/bin/python3")
       .withEnvVariable("WRANGLER", WRANGLER)
       .withMountedCache("/root/.cache/uv", this.cache("uv"))
+      // No apt node-gyp here: it pulls Debian's nodejs and links addons against
+      // that libnode, which crashes NODE_IMAGE's own Node (see the foundation test).
       .withExec([
         "sh",
         "-c",
-        "apt-get update && apt-get install -y --no-install-recommends build-essential ca-certificates curl git node-gyp openssl poppler-utils python3 python3-dev && rm -rf /var/lib/apt/lists/*",
+        "apt-get update && apt-get install -y --no-install-recommends build-essential ca-certificates curl git openssl poppler-utils python3 python3-dev && rm -rf /var/lib/apt/lists/*",
       ])
       .withExec(this.edgeprocPinCheck())
       .withExec(["sh", BUN_INSTALLER])
