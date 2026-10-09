@@ -625,6 +625,69 @@ async function openPinnedYear(page: Page, year: string): Promise<void> {
 }
 
 /** The device zone is a zone no step names, so any appearance in a model request is the device zone leaking. */
+const BANNER_380_SCREENSHOT = 'test-results/time-travel-banner-380.png';
+
+/**
+ * The banner's rendered lines at the current viewport, read glyph by glyph
+ * (one Range per character), so the check sees where the browser actually
+ * wrapped, not the DOM structure.
+ */
+async function bannerLines(page: Page, width?: number): Promise<string[]> {
+  return page.getByTestId('time-travel-banner').evaluate((banner, forcedWidth) => {
+    banner.style.width = forcedWidth === undefined ? '' : `${forcedWidth}px`;
+    const glyphs: Array<{ char: string; top: number; left: number; height: number }> = [];
+    const walker = document.createTreeWalker(banner, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
+      const text = node.textContent ?? '';
+      for (let i = 0; i < text.length; i += 1) {
+        const char = text[i] ?? '';
+        if (/\s/.test(char)) continue;
+        const range = document.createRange();
+        range.setStart(node, i);
+        range.setEnd(node, i + 1);
+        const rect = range.getBoundingClientRect();
+        if (rect.width > 0) glyphs.push({ char, top: rect.top, left: rect.left, height: rect.height });
+      }
+    }
+    glyphs.sort((a, b) => a.top - b.top || a.left - b.left);
+    const lines: Array<typeof glyphs> = [];
+    for (const glyph of glyphs) {
+      const line = lines.at(-1);
+      const first = line?.[0];
+      if (line !== undefined && first !== undefined && glyph.top < first.top + first.height / 2) line.push(glyph);
+      else lines.push([glyph]);
+    }
+    banner.style.width = '';
+    return lines.map((line) => line.sort((a, b) => a.left - b.left).map((g) => g.char).join(''));
+  }, width);
+}
+
+/** Banner widths swept below the 380 px viewport, so every wrap point is tried whatever the font metrics. */
+const BANNER_WIDTHS = Array.from({ length: 23 }, (_, i) => 340 - i * 10);
+
+/**
+ * At 380 px the banner wraps, and no wrapped line may start with a "·"
+ * separator. Where a line breaks depends on the platform's font metrics, so a
+ * single width can miss a separator wrap: the banner is also swept from 340 px
+ * down to 120 px in 10 px steps, which puts a break before every item.
+ */
+async function expectBannerWrapsCleanlyAt380(page: Page): Promise<void> {
+  const original = page.viewportSize();
+  await page.setViewportSize({ width: 380, height: 800 });
+  await expect(page.getByTestId('time-travel-banner')).toBeVisible();
+  const lines = await bannerLines(page);
+  expect(lines.length, `the banner wraps at 380 px: ${JSON.stringify(lines)}`).toBeGreaterThan(1);
+  expect(lines.filter((line) => line.startsWith('·')), `no line starts with "·": ${JSON.stringify(lines)}`).toEqual([]);
+  const separatorStarts: string[] = [];
+  for (const width of BANNER_WIDTHS) {
+    const swept = await bannerLines(page, width);
+    if (swept.some((line) => line.startsWith('·'))) separatorStarts.push(`${width}px: ${JSON.stringify(swept)}`);
+  }
+  expect(separatorStarts, 'no line starts with "·" at any banner width').toEqual([]);
+  await page.getByTestId('time-travel-banner').screenshot({ path: BANNER_380_SCREENSHOT });
+  if (original !== null) await page.setViewportSize(original);
+}
+
 test.describe('pinned threads on a device in another zone', () => {
   test.use({ timezoneId: DEVICE_ZONE });
 
@@ -748,6 +811,7 @@ test.describe('pinned threads on a device in another zone', () => {
     await expect(page.getByTestId('time-travel-go')).toBeEnabled();
     await page.getByTestId('time-travel-go').click();
     await expect(page.getByTestId('time-travel-banner')).toContainText('Bogotá, Colombia');
+    await expectBannerWrapsCleanlyAt380(page);
     const [dayPin] = await pinnedThreads(page);
     expect(dayPin?.as_of).toMatchObject({ start: '2026-06-15', end: '2026-06-15', granularity: 'day', place: { timezone: 'America/Bogota' } });
 

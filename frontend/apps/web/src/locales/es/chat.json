@@ -94,7 +94,7 @@
   },
   "time_travel": {
     "button": "Viaje en el tiempo",
-    "title": "Viaje en el tiempo · {{period}}",
+    "title": "Viaje en el tiempo · {{period}}",
     "status_working": "Calculando el cielo de {{period}}… (unos 30 s)",
     "sheet": {
       "title": "Viaje en el tiempo",

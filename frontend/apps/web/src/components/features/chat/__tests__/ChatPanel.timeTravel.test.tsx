@@ -40,7 +40,7 @@ async function pinYear(year: string) {
 beforeEach(() => {
   hydrateLlmSettings(null);
   useChatStore.setState({ threads: {}, messages: {}, summaries: {} });
-  useChartReanchorStatus.setState({ pendingChartIds: new Set() });
+  useChartReanchorStatus.setState({ pendingAttempts: new Map() });
   __setMemoryForTest({
     indexMessage: vi.fn().mockResolvedValue(undefined),
     retrieve: vi.fn().mockResolvedValue([]),
@@ -52,7 +52,7 @@ beforeEach(() => {
 afterEach(() => {
   hydrateLlmSettings(null);
   useChatStore.setState({ threads: {}, messages: {}, summaries: {} });
-  useChartReanchorStatus.setState({ pendingChartIds: new Set() });
+  useChartReanchorStatus.setState({ pendingAttempts: new Map() });
   __resetMemoryForTest();
   vi.restoreAllMocks();
 });
@@ -67,7 +67,7 @@ describe('ChatPanel time travel', () => {
     renderPanel();
     await pinYear('2050');
     expect(screen.getByTestId('time-travel-badge').textContent).toBe('⏳');
-    expect(screen.getByTestId('time-travel-title').textContent).toBe('Time travel · 2050');
+    expect(screen.getByTestId('time-travel-title').textContent?.replace(/\u00a0/g, ' ')).toBe('Time travel · 2050');
     expect(screen.getByTestId('time-travel-banner').textContent).toContain('answers are about this period');
     expect(screen.getByRole('button', { name: 'What should I prepare for?' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Which months look strongest?' })).toBeTruthy();
@@ -94,7 +94,7 @@ describe('ChatPanel time travel', () => {
 
   it('a pinned thread can send while the chart re-anchors to a new day', async () => {
     useChatStore.getState().startThread('p1', 'c1', YEAR_2050);
-    useChartReanchorStatus.getState().begin('c1');
+    useChartReanchorStatus.getState().begin('c1', 'c1|2026-10-07');
     renderPanel();
     fireEvent.change(screen.getByTestId('chat-input'), { target: { value: 'Will work get easier?' } });
     expect((screen.getByTestId('chat-send-button') as HTMLButtonElement).disabled).toBe(false);
@@ -108,7 +108,7 @@ describe('ChatPanel time travel', () => {
     expect((screen.getByTestId('time-travel-year') as HTMLSelectElement).value).toBe('2050');
     fireEvent.change(screen.getByTestId('time-travel-year'), { target: { value: '2051' } });
     fireEvent.click(screen.getByTestId('time-travel-go'));
-    await waitFor(() => expect(screen.getByTestId('time-travel-title').textContent).toBe('Time travel · 2051'));
+    await waitFor(() => expect(screen.getByTestId('time-travel-title').textContent?.replace(/\u00a0/g, ' ')).toBe('Time travel · 2051'));
     expect(Object.keys(useChatStore.getState().threads)).toHaveLength(1);
 
     await act(async () => fireEvent.click(screen.getByTestId('time-travel-back')));

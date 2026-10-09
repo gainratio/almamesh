@@ -425,13 +425,13 @@ describe('ChatPanel — waits for the day\'s chart re-anchor before sending', ()
     hydrateLlmSettings(null);
     configureCloudAi();
     useChatStore.setState({ threads: {}, messages: {} });
-    useChartReanchorStatus.setState({ pendingChartIds: new Set() });
+    useChartReanchorStatus.setState({ pendingAttempts: new Map() });
   });
 
   afterEach(() => {
     hydrateLlmSettings(null);
     useChatStore.setState({ threads: {}, messages: {} });
-    useChartReanchorStatus.setState({ pendingChartIds: new Set() });
+    useChartReanchorStatus.setState({ pendingAttempts: new Map() });
     vi.restoreAllMocks();
   });
 
@@ -457,7 +457,7 @@ describe('ChatPanel — waits for the day\'s chart re-anchor before sending', ()
   }
 
   it('disables Send with a plain status while the active chart re-anchors, then re-enables when it lands', async () => {
-    useChartReanchorStatus.getState().begin('chart-1');
+    useChartReanchorStatus.getState().begin('chart-1', 'chart-1|2026-10-07');
     const onAsk = vi.fn(() => new Promise<never>(() => undefined));
     renderPanel(onAsk);
 
@@ -468,13 +468,13 @@ describe('ChatPanel — waits for the day\'s chart re-anchor before sending', ()
     fireEvent.click(sendButton());
     expect(onAsk).not.toHaveBeenCalled();
 
-    act(() => useChartReanchorStatus.getState().settle('chart-1'));
+    act(() => useChartReanchorStatus.getState().settle('chart-1', 'chart-1|2026-10-07'));
     await waitFor(() => expect(sendButton().disabled).toBe(false));
     expect(screen.queryByTestId('chat-reanchor-status')).toBeNull();
   });
 
   it('ignores a re-anchor of a different chart', () => {
-    useChartReanchorStatus.getState().begin('chart-other');
+    useChartReanchorStatus.getState().begin('chart-other', 'chart-other|2026-10-07');
     renderPanel(vi.fn());
 
     expect(sendButton().disabled).toBe(false);

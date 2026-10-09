@@ -68,6 +68,49 @@ const BENGALURU_SEED: SeedBirthSpec = {
 };
 
 // SPA-navigate without full document reload (keeps the engine singleton alive).
+/** What the fit step showed each time the DOM changed while FitProgress was mounted. */
+interface FitProgressSnapshot {
+  readonly hasElapsed: boolean;
+  readonly hasPercent: boolean;
+}
+
+/**
+ * Record FitProgress at the moment it is in the DOM. The fit is sub-second, so
+ * a later "is it visible?" check races it: the step can unmount between two
+ * queries. A MutationObserver snapshots the progress view synchronously with
+ * every DOM change instead, so a short fit is still checked, never skipped.
+ */
+async function watchFitProgress(page: import('@playwright/test').Page): Promise<void> {
+  await page.evaluate(() => {
+    const seen: Array<{ hasElapsed: boolean; hasPercent: boolean }> = [];
+    (window as unknown as { __fitProgressSeen: typeof seen }).__fitProgressSeen = seen;
+    const snapshot = (): void => {
+      const progress = document.querySelector('[data-testid="fit-progress"]');
+      if (progress === null) return;
+      const step = progress.closest('[data-testid="fit-step"]') ?? progress;
+      seen.push({
+        hasElapsed: progress.querySelector('[data-testid="fit-elapsed"]') !== null,
+        hasPercent: (step.textContent ?? '').includes('%'),
+      });
+    };
+    const observer = new MutationObserver(snapshot);
+    observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+    (window as unknown as { __fitProgressObserver: MutationObserver }).__fitProgressObserver = observer;
+  });
+}
+
+/** Stop watching and return what FitProgress showed. */
+async function fitProgressSeen(page: import('@playwright/test').Page): Promise<FitProgressSnapshot[]> {
+  return page.evaluate(() => {
+    const watched = window as unknown as {
+      __fitProgressSeen?: FitProgressSnapshot[];
+      __fitProgressObserver?: MutationObserver;
+    };
+    watched.__fitProgressObserver?.disconnect();
+    return watched.__fitProgressSeen ?? [];
+  });
+}
+
 async function spaNav(page: import('@playwright/test').Page, path: string) {
   await page.evaluate((to: string) => {
     window.history.pushState({}, '', to);
@@ -509,6 +552,7 @@ test.describe('Phase-2 Rectification Wizard', () => {
     });
 
     // ── 8. Continue → Fit ─────────────────────────────────────────────────
+    await watchFitProgress(page);
     const fitStart = Date.now();
     await wContinueBtn.click();
     await page.waitForTimeout(600);
@@ -521,20 +565,8 @@ test.describe('Phase-2 Rectification Wizard', () => {
       'window question must be ABSENT for unknown-time profiles',
     ).toHaveCount(0);
 
-    // FitProgress: elapsed timer visible, NO "%"
-    const wFitStep = page.locator('[data-testid="fit-step"]');
-    if (await wFitStep.isVisible({ timeout: 4_000 }).catch(() => false)) {
-      console.log('[wizard-window] fit step active — whole-day window sweep computing…');
-      const fitProgress = page.locator('[data-testid="fit-progress"]');
-      if (await fitProgress.isVisible({ timeout: 3_000 }).catch(() => false)) {
-        const fitStepText = (await wFitStep.textContent()) ?? '';
-        expect(fitStepText, 'FitProgress must NOT contain %').not.toContain('%');
-        const elapsedEl = page.locator('[data-testid="fit-elapsed"]');
-        await expect(elapsedEl, 'elapsed timer must render').toBeVisible({ timeout: 3_000 });
-        console.log('[wizard-window] FitProgress: elapsed timer visible, no % ✓');
-      }
-      await page.screenshot({ path: `${SCRATCHPAD}/window-05-fit-loading.png`, fullPage: true });
-    }
+    // FitProgress (elapsed timer, NO "%") is checked from the observer's
+    // snapshots once results render: see watchFitProgress.
 
     // ── 9. Wait for results (up to 180s — 12-sign window sweep) ──────────
     const wBandLabel = page.locator('[data-testid="band-label"]');
@@ -542,6 +574,11 @@ test.describe('Phase-2 Rectification Wizard', () => {
       timeout: 180_000,
     });
     const fitElapsedMs = Date.now() - fitStart;
+    const fitSnapshots = await fitProgressSeen(page);
+    expect(fitSnapshots.length, 'FitProgress must render while the fit computes').toBeGreaterThan(0);
+    expect(fitSnapshots.filter((seen) => !seen.hasElapsed), 'elapsed timer must render').toEqual([]);
+    expect(fitSnapshots.filter((seen) => seen.hasPercent), 'FitProgress must NOT contain %').toEqual([]);
+    console.log(`[wizard-window] FitProgress: elapsed timer in all ${fitSnapshots.length} snapshots, no % ✓`);
     console.log(
       `[wizard-window] window fit wall-clock: ${fitElapsedMs}ms (${Math.round(fitElapsedMs / 1000)}s)`,
     );

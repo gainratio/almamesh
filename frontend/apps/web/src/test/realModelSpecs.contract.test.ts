@@ -60,8 +60,20 @@ function onlyAssertsOrReports(line: string, name: string, aliases: ReadonlySet<s
     trimmed.startsWith('import ') ||
     (declared !== undefined && aliases.has(declared)) ||
     /\bexpect\(|\.toBe\(|\.toEqual\(|console\.log\(/.test(line) ||
-    new RegExp(`\\$\\{${name}\\b`).test(line)
+    interpolatedIntoText(line, name)
   );
+}
+
+/**
+ * The name is interpolated into a longer string (a message, a label, a file
+ * name, possibly through an expression like `.replace()`). A
+ * template literal that is ONLY the name (`` `${NAME}` ``) is the value itself,
+ * so it counts as a send.
+ */
+function interpolatedIntoText(line: string, name: string): boolean {
+  const interpolated = new RegExp(`\\$\\{\\s*${name}\\b`);
+  const bareTemplate = new RegExp(`\`\\$\\{\\s*${name}\\s*\\}\``);
+  return interpolated.test(line) && !bareTemplate.test(line);
 }
 
 /** Lines that use the product default (or an alias) as something the test sends. */
@@ -114,5 +126,25 @@ describe('real-model e2e specs', () => {
   // outside an assertion or a log line, the product default is never used.
   it.each(realSpecs())('%s never sends the product default model', (spec) => {
     expect(sendsProductDefault(source(spec))).toEqual([]);
+  });
+});
+
+describe('the send detector', () => {
+  const alias = 'const RECOMMENDED_MODEL = PRODUCT_DEFAULT_MODEL;\n';
+
+  it('counts a template literal that is only the alias as a send', () => {
+    expect(sendsProductDefault(`${alias}await configure({ model: \`\${RECOMMENDED_MODEL}\` });`)).toEqual([
+      'await configure({ model: `${RECOMMENDED_MODEL}` });',
+    ]);
+  });
+
+  it('still exempts the alias interpolated into a message', () => {
+    expect(
+      sendsProductDefault(`${alias}test.info().annotations.push({ type: 'model', description: \`default \${RECOMMENDED_MODEL}\` });`),
+    ).toEqual([]);
+  });
+
+  it('counts the alias passed bare', () => {
+    expect(sendsProductDefault(`${alias}await configure({ model: RECOMMENDED_MODEL });`)).toHaveLength(1);
   });
 });
