@@ -29,6 +29,11 @@ export interface DevicePolicy {
   readonly forceFieldMaxDpr: number;
   /** May the Pyodide worker warm up while the bundle-sync worker is alive? */
   readonly bootOverlapAllowed: boolean;
+  /**
+   * How many time-travel period computes stay in memory (apps/web periodSky.ts).
+   * Each holds a full predictive payload; recomputing one costs ~30 s.
+   */
+  readonly periodSkyCacheSize: number;
 }
 
 export const DEVICE_POLICIES: Readonly<Record<DeviceTier, DevicePolicy>> = Object.freeze({
@@ -38,6 +43,7 @@ export const DEVICE_POLICIES: Readonly<Record<DeviceTier, DevicePolicy>> = Objec
     forceFieldEffects: "none",
     forceFieldMaxDpr: 1,
     bootOverlapAllowed: false,
+    periodSkyCacheSize: 1,
   }),
   lite: Object.freeze({
     tier: "lite",
@@ -45,6 +51,7 @@ export const DEVICE_POLICIES: Readonly<Record<DeviceTier, DevicePolicy>> = Objec
     forceFieldEffects: "lite",
     forceFieldMaxDpr: 1.5,
     bootOverlapAllowed: false,
+    periodSkyCacheSize: 3,
   }),
   full: Object.freeze({
     tier: "full",
@@ -52,6 +59,7 @@ export const DEVICE_POLICIES: Readonly<Record<DeviceTier, DevicePolicy>> = Objec
     forceFieldEffects: "full",
     forceFieldMaxDpr: 2,
     bootOverlapAllowed: true,
+    periodSkyCacheSize: 5,
   }),
 });
 

@@ -40,6 +40,7 @@ describe("devicePolicy (pinned literals: what each tier may keep resident)", () 
       forceFieldEffects: "none",
       forceFieldMaxDpr: 1,
       bootOverlapAllowed: false,
+      periodSkyCacheSize: 1,
     });
   });
 
@@ -50,6 +51,7 @@ describe("devicePolicy (pinned literals: what each tier may keep resident)", () 
       forceFieldEffects: "lite",
       forceFieldMaxDpr: 1.5,
       bootOverlapAllowed: false,
+      periodSkyCacheSize: 3,
     });
   });
 
@@ -60,7 +62,14 @@ describe("devicePolicy (pinned literals: what each tier may keep resident)", () 
       forceFieldEffects: "full",
       forceFieldMaxDpr: 2,
       bootOverlapAllowed: true,
+      periodSkyCacheSize: 5,
     });
+  });
+
+  it("period-sky cache: full keeps 5 periods, lite 3, minimal 1", () => {
+    expect(devicePolicy("full").periodSkyCacheSize).toBe(5);
+    expect(devicePolicy("lite").periodSkyCacheSize).toBe(3);
+    expect(devicePolicy("minimal").periodSkyCacheSize).toBe(1);
   });
 
   it("every tier has a policy", () => {
