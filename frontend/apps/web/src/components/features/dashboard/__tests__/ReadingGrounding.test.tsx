@@ -53,8 +53,12 @@ describe('ReadingGrounding', () => {
     expect(text).toContain('JPL');
     // Grounded narration, not a generic pre-written horoscope.
     expect(text.toLowerCase()).toContain('horoscope');
-    // Privacy: nothing about the chart leaves the device.
-    expect(text.toLowerCase()).toContain('redacted');
+    // Privacy (REVERSED CONTRACT): this used to pin "only a redacted chart — no
+    // name, no birth date". With AI on, planet positions leave the device and can
+    // reveal the birth date, so the point must say so.
+    expect(text.toLowerCase()).toContain('without ai, nothing about it leaves your device');
+    expect(text.toLowerCase()).toContain('can reveal your birth date');
+    expect(text.toLowerCase()).not.toContain('no name, no birth date');
   });
 
   it('makes NO accuracy superlative about the AI model (anti-scam voice)', () => {

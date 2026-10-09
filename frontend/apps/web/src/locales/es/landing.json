@@ -8,7 +8,7 @@
   },
   "hero": {
     "headline": "Tu cielo real. Calculado en tu dispositivo. Gratis, para siempre.",
-    "subhead": "Una carta védica (sideral) fiel — planetas, nakshatras, dashas — calculada en tu navegador. Un experimento honesto, no un adivino. Sin cuenta. Sin correo. Tu fecha, hora y carta de nacimiento nunca salen de tu navegador.",
+    "subhead": "Una carta védica (sideral) fiel — planetas, nakshatras, dashas — calculada en tu navegador. Un experimento honesto, no un adivino. Sin cuenta. Sin correo. Tu fecha, hora y carta de nacimiento se quedan en tu navegador salvo que actives la IA opcional.",
     "cta": "Generar mi carta — gratis",
     "ctaReturning": "Abrir mi carta",
     "openSource": "Gratis y de código abierto en GitHub",
@@ -72,7 +72,7 @@
         "b": "Requiere registro y correo electrónico"
       },
       {
-        "a": "Tu fecha, hora y carta de nacimiento nunca salen de tu navegador",
+        "a": "Tu fecha, hora y carta de nacimiento se quedan en tu navegador (salvo que actives la IA)",
         "b": "Datos de nacimiento almacenados, perfilados, monetizados"
       },
       {
@@ -101,7 +101,7 @@
         "body": "Sumérgete en tu carta, tus dashas y la malla — con una IA opcional que solo narra, nunca inventa."
       }
     ],
-    "zeroEgress": "El motor de cartas no hace llamadas de red; tu fecha y hora de nacimiento nunca salen de tu dispositivo. Dos cosas usan la red: el lugar de nacimiento que buscas y (solo si activas la IA opcional) una carta sin datos personales, sin nombre ni fecha de nacimiento.",
+    "zeroEgress": "El motor de cartas no hace llamadas de red. Dos cosas usan la red: el lugar de nacimiento que buscas y (solo si activas la IA opcional) los datos de tu carta, sin tu nombre. A la IA no se le envía tu fecha de nacimiento, pero las posiciones planetarias y las fechas de los periodos que recibe pueden revelarla.",
     "portability": "No hay ningún servidor que guarde tus datos, así que son tuyos para llevar: exporta todo el estado SQLite a un archivo cifrado y restáuralo en otro navegador o dispositivo, por ejemplo, de Chrome a Safari de iOS. La contraseña del archivo se usa una vez al importarlo; los inicios normales no la necesitan. Nada se sube; solo tú puedes moverlo."
   },
   "who": {
@@ -146,7 +146,7 @@
     "viewSource": "Ver el código en GitHub"
   },
   "footer": {
-    "tagline": "Astrología védica gratis y en tu dispositivo. Un experimento honesto — tu fecha, hora y carta de nacimiento nunca salen de tu navegador.",
+    "tagline": "Astrología védica gratis y en tu dispositivo. Un experimento honesto — tu fecha, hora y carta de nacimiento se quedan en tu navegador salvo que actives la IA opcional.",
     "privacy": "Política de privacidad",
     "terms": "Términos del servicio",
     "dataDeletion": "Eliminación de datos",

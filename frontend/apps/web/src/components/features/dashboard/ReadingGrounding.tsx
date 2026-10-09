@@ -10,8 +10,9 @@
  *      vs. astropy + JPL Horizons; no Swiss Ephemeris, no fudge factors).
  *   3. The AI narration is grounded — it reads back the exact engine-computed
  *      placements, not a generic pre-written horoscope.
- *   4. Privacy — only a redacted chart (no name, no birth date) ever leaves the
- *      device, and only to the optional AI.
+ *   4. Privacy — without AI nothing leaves the device; with the optional AI on,
+ *      the sanitized chart (no name, but planet positions and period dates that
+ *      can reveal the birth date) goes to the user's chosen endpoint.
  *
  * It computes NO astrology and makes NO LLM call — pure static, i18n-driven
  * copy. Reuses the shared `Disclosure` primitive (closed by default, opens in

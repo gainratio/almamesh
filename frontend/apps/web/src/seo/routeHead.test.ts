@@ -64,6 +64,13 @@ describe('routeHead — the single per-route SEO source', () => {
     }
   });
 
+  it('privacy description does not claim the birth date never leaves', () => {
+    // With AI on, planet positions leave the device and can reveal the birth date.
+    const description = getRouteHead('/privacy')!.description.toLowerCase();
+    expect(description).not.toContain('never leave');
+    expect(description).toContain('can reveal your birth date');
+  });
+
   it('headElementsFor emits description + canonical + OG + twitter for a route', () => {
     const head = getRouteHead('/welcome');
     expect(head).toBeDefined();

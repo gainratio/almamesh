@@ -7,7 +7,7 @@
   },
   "hero": {
     "headline": "Your real sky. Computed on your device. Free, forever.",
-    "subhead": "A faithful Vedic (sidereal) chart — planets, nakshatras, dashas — calculated in your browser. An honest experiment, not a fortune-teller. No account. No email. Your birth date, time, and chart never leave your browser.",
+    "subhead": "A faithful Vedic (sidereal) chart — planets, nakshatras, dashas — calculated in your browser. An honest experiment, not a fortune-teller. No account. No email. Your birth date, time, and chart stay in your browser unless you turn on the optional AI.",
     "cta": "Generate my chart — free",
     "ctaReturning": "Open my chart",
     "openSource": "Free & open source on GitHub",
@@ -71,7 +71,7 @@
         "b": "Sign-up + email required"
       },
       {
-        "a": "Your birth date, time & chart never leave your browser",
+        "a": "Your birth date, time & chart stay in your browser (unless you turn on AI)",
         "b": "Birth data stored, profiled, monetized"
       },
       {
@@ -100,7 +100,7 @@
         "body": "Dive into your chart, dashas, and the mesh — with an optional AI that only narrates, never invents."
       }
     ],
-    "zeroEgress": "The chart engine makes no network calls; your birth date and time never leave your device. Two things reach the network — the birthplace you search, and (only if you turn on the optional AI) a privacy-redacted chart with no name or birth date.",
+    "zeroEgress": "The chart engine makes no network calls. Two things reach the network — the birthplace you search, and (only if you turn on the optional AI) your chart data, without your name. The AI is not sent your birth date, but the planet positions and period dates it gets can reveal it.",
     "portability": "There's no server holding your data, so it's yours to carry: export the complete SQLite state to one encrypted file and restore it in another browser or device — for example, Chrome to iOS Safari. The file password is used once during import; normal launches need no password. Nothing is uploaded; only you can move it."
   },
   "who": {
@@ -145,7 +145,7 @@
     "viewSource": "View source on GitHub"
   },
   "footer": {
-    "tagline": "Free, on-device Vedic astrology. An honest experiment — your birth date, time, and chart never leave your browser.",
+    "tagline": "Free, on-device Vedic astrology. An honest experiment — your birth date, time, and chart stay in your browser unless you turn on the optional AI.",
     "privacy": "Privacy Policy",
     "terms": "Terms of Service",
     "dataDeletion": "Data Deletion",

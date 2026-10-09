@@ -146,7 +146,7 @@
     "title": "Modelo de IA",
     "description": "A IA vem desativada por padrão — seu mapa é puro cálculo. Ative-a com uma chave gratuita do OpenRouter para interpretações escritas e chat. Sua chave fica apenas neste navegador, e a IA nunca é necessária para gerar um mapa.",
     "info_title": "O motor do mapa nunca acessa a rede",
-    "info_description": "Por padrão nenhuma IA está configurada: seu mapa é puro cálculo e nunca sai do seu dispositivo. Se você conectar uma IA, a narração, o chat e a organização opcional de eventos de vida poderão usá-la. As solicitações do mapa não incluem nome nem data de nascimento; o relato de vida é enviado como escrito somente após o aviso específico.",
+    "info_description": "Por padrão nenhuma IA está configurada: seu mapa é puro cálculo e nunca sai do seu dispositivo. Se você conectar uma IA, a narração, o chat e a organização opcional de eventos de vida poderão usá-la. As solicitações do mapa não incluem o seu nome nem a sua data de nascimento, mas incluem posições planetárias e datas dos períodos, que podem revelar a sua data e hora aproximada de nascimento; o relato de vida é enviado como escrito somente após o aviso específico.",
     "step1_title": "1. Crie uma chave de API gratuita",
     "step1_body": "O OpenRouter oferece um único endpoint com centenas de modelos. Cadastre-se e crie uma chave — leva um minuto.",
     "step1_link": "Obtenha uma chave em openrouter.ai/keys",
@@ -173,7 +173,7 @@
     "credits_note": "O OpenRouter cobra créditos pré-pagos em dólares americanos, não em tokens.",
     "advanced_hint": "Insira um endpoint acima para ativar.",
     "advanced_summary": "Avançado: use um endpoint personalizado compatível com OpenAI",
-    "advanced_body": "Aponte o AlmaMesh para qualquer endpoint compatível com OpenAI — um modelo local (ex.: Ollama) ou outro provedor. As solicitações do mapa não incluem dados pessoais. O relato de vida é enviado como escrito somente quando você o envia após o aviso.",
+    "advanced_body": "Aponte o AlmaMesh para qualquer endpoint compatível com OpenAI — um modelo local (ex.: Ollama) ou outro provedor. As solicitações do mapa não incluem o seu nome nem a sua data de nascimento, mas as posições planetárias e as datas dos períodos que incluem podem revelar a sua data de nascimento. O relato de vida é enviado como escrito somente quando você o envia após o aviso.",
     "endpoint_label": "Endpoint (compatível com OpenAI)",
     "allow_cloud_label": "Permitir um endpoint na nuvem para conteúdo opcional de IA",
     "api_key_label": "Chave de API (armazenada apenas neste navegador)",
@@ -200,7 +200,7 @@
     "none_button": "Desativar a IA",
     "active_badge": "Ativo",
     "cloud_title": "Conectar IA",
-    "cloud_body": "Adicione interpretações escritas e chat com uma chave do OpenRouter (recomendado) ou qualquer endpoint compatível com OpenAI. As solicitações baseadas no mapa não incluem dados pessoais antes de sair do seu dispositivo. Se você usar IA para organizar eventos de vida, a narrativa digitada será enviada como escrita após o aviso; os dados de nascimento e o mapa não serão anexados."
+    "cloud_body": "Adicione interpretações escritas e chat com uma chave do OpenRouter (recomendado) ou qualquer endpoint compatível com OpenAI. As solicitações baseadas no mapa não incluem o seu nome nem a sua data de nascimento, mas as posições planetárias e as datas dos períodos que incluem podem revelar a sua data de nascimento. Se você usar IA para organizar eventos de vida, a narrativa digitada será enviada como escrita após o aviso; os dados de nascimento e o mapa não serão anexados."
   },
   "preferences": {
     "title": "Preferências",

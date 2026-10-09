@@ -49,13 +49,13 @@ const CARDS = [
     slug: 'welcome',
     kind: 'page',
     headline: 'Your real sky.\nComputed on your device.\nFree, forever.',
-    subtitle: 'No account. No email. Your birth data never leaves your browser.',
+    subtitle: 'No account. No email. Your chart is computed in your browser.',
   },
   {
     slug: 'privacy',
     kind: 'page',
     headline: 'Privacy Policy',
-    subtitle: 'Your birth data never leaves your device.',
+    subtitle: 'Your chart is computed on your device. AI is opt-in.',
   },
   {
     slug: 'terms',

@@ -80,7 +80,7 @@
     "point_engine": "Your birth chart is deterministic astronomy, computed on your device: the same birth details always produce the exact same chart.",
     "point_validated": "The planetary positions come from Skyfield and NASA's JPL DE421 ephemeris, checked to sub-arcsecond accuracy against astropy and JPL Horizons — no Swiss Ephemeris, no fudge factors.",
     "point_grounded": "The AI narration is grounded in your chart: it reads back your exact engine-computed placements — your planets, life periods and planetary patterns — so it's genuinely yours, not a generic pre-written horoscope.",
-    "point_privacy": "Your chart stays private. Nothing about it leaves your device; only a redacted chart — no name, no birth date — is ever sent to the optional AI."
+    "point_privacy": "Your chart stays private. Without AI, nothing about it leaves your device. If you turn on the optional AI, it gets your chart data (planet positions and period dates) but not your name, and those positions can reveal your birth date."
   },
   "interpretation": {
     "strengths": "Strengths",

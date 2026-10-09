@@ -310,7 +310,9 @@ online-primary with an offline fallback to the bundled `cities.min.json` list
 (`lib/geo/onlineGeocoder.ts` + `searchCities` in `lib/geo/cityLookup.ts`). Only
 the city name leaves the device — never the birth date/time, name, or chart.
 Privacy copy is scoped accordingly (landing/legal/mesh say "birth date, time,
-and chart never leave"; the privacy policy discloses the geocoder as touchpoint
+and chart stay on the device unless you turn on the optional AI"; with AI on, the
+sanitized chart's planet positions and period dates can reveal the birth date, and
+the AI disclosures say so; the privacy policy discloses the geocoder as touchpoint
 #2). NOTE: the engine emits the
 full D1–D60 varga set; the adapter populates `varga_ctx` (D9 Navamsa rendered in
 both kundli styles + the print report, D1–D60 in the predictive "Divisional Charts"

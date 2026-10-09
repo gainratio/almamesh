@@ -6,7 +6,7 @@
     "subtitle": "Las personas tejidas en tu cielo: cada una con su carta completa, leída desde la tuya.",
     "people_count": "Personas en tu malla: {{count}}",
     "manage": "Gestionar personas",
-    "computed_note": "Cada vínculo se calcula en este dispositivo. Tu fecha, hora y cartas de nacimiento nunca salen de él."
+    "computed_note": "Cada vínculo se calcula en este dispositivo. Tus fechas, horas y cartas de nacimiento se quedan en él salvo que pidas una lectura a la IA opcional."
   },
   "invitation": {
     "kicker": "La malla",

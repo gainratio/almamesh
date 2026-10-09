@@ -146,7 +146,7 @@
     "title": "Modelo de IA",
     "description": "La IA está desactivada por defecto — tu carta es puro cálculo. Actívala con una clave gratuita de OpenRouter para interpretaciones escritas y chat. Tu clave vive solo en este navegador, y la IA nunca es necesaria para trazar una carta.",
     "info_title": "El motor de la carta nunca usa la red",
-    "info_description": "Por defecto no hay IA configurada: tu carta es puro cálculo y nunca sale de tu dispositivo. Si conectas una IA, pueden usarla la narración, el chat y la organización de eventos vitales opcionales. Las solicitudes de la carta no incluyen nombre ni fecha de nacimiento; el relato vital se envía tal cual solo después de su aviso específico.",
+    "info_description": "Por defecto no hay IA configurada: tu carta es puro cálculo y nunca sale de tu dispositivo. Si conectas una IA, pueden usarla la narración, el chat y la organización de eventos vitales opcionales. Las solicitudes de la carta no incluyen tu nombre ni tu fecha de nacimiento, pero sí posiciones planetarias y fechas de los periodos, que pueden revelar tu fecha y hora aproximada de nacimiento; el relato vital se envía tal cual solo después de su aviso específico.",
     "step1_title": "1. Crea una clave de API gratuita",
     "step1_body": "OpenRouter te da un único endpoint con cientos de modelos. Regístrate y crea una clave — toma un minuto.",
     "step1_link": "Consigue una clave en openrouter.ai/keys",
@@ -173,7 +173,7 @@
     "credits_note": "OpenRouter cobra créditos prepago en dólares estadounidenses, no en tokens.",
     "advanced_hint": "Introduce un endpoint arriba para activarlo.",
     "advanced_summary": "Avanzado: usa un endpoint personalizado compatible con OpenAI",
-    "advanced_body": "Apunta AlmaMesh a cualquier endpoint compatible con OpenAI — un modelo local (p. ej. Ollama) u otro proveedor. Las solicitudes de la carta no incluyen datos personales. El relato vital se envía tal cual solo cuando lo envías después del aviso.",
+    "advanced_body": "Apunta AlmaMesh a cualquier endpoint compatible con OpenAI — un modelo local (p. ej. Ollama) u otro proveedor. Las solicitudes de la carta no incluyen tu nombre ni tu fecha de nacimiento, pero las posiciones planetarias y las fechas de los periodos que incluyen pueden revelar tu fecha de nacimiento. El relato vital se envía tal cual solo cuando lo envías después del aviso.",
     "endpoint_label": "Endpoint (compatible con OpenAI)",
     "allow_cloud_label": "Permitir un endpoint en la nube para contenido opcional de IA",
     "api_key_label": "Clave de API (guardada solo en este navegador)",
@@ -200,7 +200,7 @@
     "none_button": "Desactivar la IA",
     "active_badge": "Activo",
     "cloud_title": "Conectar IA",
-    "cloud_body": "Añade interpretaciones escritas y chat con una clave de OpenRouter (recomendado) o cualquier endpoint compatible con OpenAI. Las solicitudes basadas en la carta no incluyen datos personales antes de salir de tu dispositivo. Si usas IA para organizar eventos vitales, el relato que escribas se envía tal cual después del aviso; no se adjuntan tus datos de nacimiento ni la carta."
+    "cloud_body": "Añade interpretaciones escritas y chat con una clave de OpenRouter (recomendado) o cualquier endpoint compatible con OpenAI. Las solicitudes basadas en la carta no incluyen tu nombre ni tu fecha de nacimiento, pero las posiciones planetarias y las fechas de los periodos que incluyen pueden revelar tu fecha de nacimiento. Si usas IA para organizar eventos vitales, el relato que escribas se envía tal cual después del aviso; no se adjuntan tus datos de nacimiento ni la carta."
   },
   "preferences": {
     "title": "Preferencias",
