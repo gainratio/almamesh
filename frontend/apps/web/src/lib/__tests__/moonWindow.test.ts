@@ -31,6 +31,23 @@ describe('localPeriodBounds', () => {
   });
 });
 
+describe('localPeriodBounds edge zones', () => {
+  it('starts at the earlier midnight when local midnight happens twice', () => {
+    // America/Havana ends DST at 01:00 on 2026-11-01, repeating 00:00-01:00.
+    const { startUtc } = localPeriodBounds('2026-11-01', '2026-11-01', 'America/Havana');
+    expect(startUtc).toBe('2026-11-01T04:00:00.000Z');
+  });
+
+  it('ends at the skipped-midnight day start when the day after the last day skips midnight', () => {
+    const { endUtc } = localPeriodBounds('2026-09-05', '2026-09-05', 'America/Santiago');
+    expect(endUtc).toBe('2026-09-06T04:00:00.000Z');
+  });
+
+  it('refuses a day with neither 00:00 nor 01:00 (Samoa skipped 30 Dec 2011)', () => {
+    expect(() => localPeriodBounds('2011-12-30', '2011-12-30', 'Pacific/Apia')).toThrow(RangeError);
+  });
+});
+
 describe('eventInstantUtc', () => {
   it('turns 15:00 in Bogotá into 20:00 UTC', () => {
     expect(eventInstantUtc('2026-06-15', '15:00', 'America/Bogota')).toBe('2026-06-15T20:00:00.000Z');
@@ -76,6 +93,14 @@ describe('createMoonWindowLoader', () => {
     await createMoonWindowLoader(engine)(request, context());
     expect(computeMoonWindow).toHaveBeenCalledTimes(1);
     expect(computeMoonWindow).toHaveBeenCalledWith(moonWindowInput(request));
+  });
+
+  it('refuses a bad time before the engine is touched', async () => {
+    const startBootstrap = vi.fn();
+    const engine = { engine: null, startBootstrap, whenReady: vi.fn() } as unknown as ChartEngineContextValue;
+    const request = { start: '2026-03-08', end: '2026-03-08', zone: 'America/Los_Angeles', place: BOGOTA, time: '02:30' };
+    await expect(createMoonWindowLoader(engine)(request, context())).rejects.toBeInstanceOf(LocalTimeError);
+    expect(startBootstrap).not.toHaveBeenCalled();
   });
 
   it('fails as engine_unavailable without an engine', async () => {

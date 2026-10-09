@@ -3,7 +3,6 @@ import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const SRC = resolve(__dirname, '../..');
-// Task 6 adds lib/moonWindow.ts to this list.
 const PLACE_PATH_FILES = ['lib/placeTool.ts', 'lib/geo/placeLookup.ts', 'lib/timingTool.ts', 'lib/chatToolset.ts', 'lib/moonWindow.ts'];
 
 function sourceFiles(dir: string): string[] {
