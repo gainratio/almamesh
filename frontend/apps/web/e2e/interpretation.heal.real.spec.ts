@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { bootEngine, seedChart, LLM_SETTINGS_KEY } from './interpretation.helpers';
+import { PRODUCT_DEFAULT_MODEL } from './realModel';
 
 /**
  * Self-heal REAL integration test — reproduces the USER'S EXACT BUG and proves
@@ -13,7 +14,7 @@ import { bootEngine, seedChart, LLM_SETTINGS_KEY } from './interpretation.helper
  *
  * THE FIX (two parts, both exercised here):
  *   1. `@almamesh/llm` `readLlmSettings()` self-heals a saved
- *      `anthropic/claude-3.5-sonnet` on an OpenRouter base → `deepseek/deepseek-v4.1-flash`
+ *      `anthropic/claude-3.5-sonnet` on an OpenRouter base → the recommended model
  *      (a real OpenRouter slug) AND persists the rewrite back to localStorage.
  *   2. The Dashboard shows an actionable "Switch to recommended (DeepSeek V4.1 Flash)"
  *      button on a model-not-found error (belt-and-suspenders recovery).
@@ -21,7 +22,7 @@ import { bootEngine, seedChart, LLM_SETTINGS_KEY } from './interpretation.helper
  * This spec installs the STALE Sonnet config (the bricking blob), boots the real
  * in-browser engine, seeds a real Delhi chart, then lets the LIVE OpenRouter
  * endpoint actually answer. It asserts:
- *   (a) the persisted model self-healed to `deepseek/deepseek-v4.1-flash`;
+ *   (a) the persisted model self-healed to the recommended model;
  *   (b) a real reading renders (no "could not be generated");
  *   (c) the console is clean — no 404 / "No endpoints found".
  *
@@ -32,7 +33,8 @@ import { bootEngine, seedChart, LLM_SETTINGS_KEY } from './interpretation.helper
  *       (set OPENROUTER_API_KEY=... to exercise it.)
  */
 
-const RECOMMENDED_MODEL = 'deepseek/deepseek-v4.1-flash';
+/** The app's own recommended model: the self-heal target this spec asserts. */
+const RECOMMENDED_MODEL = PRODUCT_DEFAULT_MODEL;
 const RETIRED_MODEL = 'anthropic/claude-3.5-sonnet';
 
 /** Strings that signal a non-real / placeholder summary (case-insensitive). */
