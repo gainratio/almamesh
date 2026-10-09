@@ -13,8 +13,23 @@ import { ALLOWED_OWNERS, repositoryOwner } from "./repositoryIdentity.js"
 export const UV_IMAGE =
   "ghcr.io/astral-sh/uv:0.12.1-python3.13-trixie-slim@sha256:8db423175bfff42bd1c81f77280bc92f10ef9cf03161803bd5cb6e15d86c3d10"
 export const BUN_IMAGE =
-  "oven/bun:1.3.5@sha256:e90cdbaf9ccdb3d4bd693aa335c3310a6004286a880f62f79b18f9b1312a8ec3"
+  "mirror.gcr.io/oven/bun:1.3.5@sha256:e90cdbaf9ccdb3d4bd693aa335c3310a6004286a880f62f79b18f9b1312a8ec3"
 const TOOLCHAIN_NAME = "almamesh-toolchain"
+
+// Docker Hub images are pulled by digest from a mirror with no anonymous pull
+// limit: the GHCR mirror (gainratio/ci mirror/images.json) or, for an image it
+// does not hold yet, Google's Docker Hub cache. Same digest, different registry.
+const DOCKER_HUB_MIRRORS = ["ghcr.io/hseshadr/mirror/docker.io/", "mirror.gcr.io/"]
+
+/**
+ * The Docker Hub ref a mirrored image was copied from. The recipe names images
+ * by content, not transport, so moving a pull to a mirror keeps the recipe tag
+ * (and the published toolchain pin) unchanged.
+ */
+export function upstreamImage(image: string): string {
+  const mirror = DOCKER_HUB_MIRRORS.find((prefix) => image.startsWith(prefix))
+  return mirror === undefined ? image : image.slice(mirror.length)
+}
 
 /**
  * The GHCR repository of the toolchain image under one of our owners. The image
@@ -52,7 +67,7 @@ export interface ToolchainRecipe {
 
 export const TOOLCHAIN_RECIPE: ToolchainRecipe = {
   base: UV_IMAGE,
-  bun: BUN_IMAGE,
+  bun: upstreamImage(BUN_IMAGE),
   apt: ["build-essential", "ca-certificates", "curl", "git", "node-gyp", "nodejs", "openssl", "poppler-utils"],
   browsers: ["chromium", "firefox", "webkit"],
 }

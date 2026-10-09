@@ -26,6 +26,9 @@ jobs:
         with:
           persist-credentials: false
       - uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77 # v8.4.1
+        env:
+          # Engine config: pull Docker Hub images via the GHCR mirror (.github/xdg/dagger/engine.json).
+          XDG_CONFIG_HOME: ${{ github.workspace }}/.github/xdg
         with:
           version: "0.21.8"
           verb: call
