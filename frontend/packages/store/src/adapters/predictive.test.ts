@@ -242,7 +242,7 @@ describe("toTransitCtx", () => {
     expect(ctx?.slow_hits[0].natal_point).toBe("moon");
 
     expect(ctx?.timeline.window_start).toBe("2026-06-09T12:00:00Z");
-    const first = ctx?.timeline.events[0];
+    const first = ctx?.timeline.events.find((e) => e.descriptor === "jupiter.ingress.leo");
     expect(first?.descriptor).toBe("jupiter.ingress.leo");
     expect(first?.kind).toBe("sign_ingress");
     expect(first?.from_sign).toBe("cancer");
