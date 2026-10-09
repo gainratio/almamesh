@@ -47,6 +47,12 @@ describe('resolve_place', () => {
     expect(await createResolvePlaceTool(lookup).execute({ query: 'Nowhere' }, context())).toEqual({ status: 'not_found' });
   });
 
+  it('by default loads the offline list on first use and finds a real city', async () => {
+    const result = await createResolvePlaceTool().execute({ query: 'Bogotá' }, context());
+    expect(result).toMatchObject({ status: 'found', place: { timezone: 'America/Bogota' } });
+    expect(numbersIn(result)).toEqual([]);
+  });
+
   it.each([{}, { query: 7 }, { query: ' ' }, { query: 'x'.repeat(121) }])('refuses %j with a tool error', async (args) => {
     const lookup = vi.fn();
     const result = await createResolvePlaceTool(lookup).execute(args, context());

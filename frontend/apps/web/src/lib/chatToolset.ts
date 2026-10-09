@@ -18,7 +18,6 @@ import type { ChartEngineContextValue } from '../providers/chartEngineContext';
 import { viewerTimeZone } from './analysisInstant';
 import { createChatAgentTools, shouldPreRunToday, viewerTodayDay } from './chatAgentTools';
 import { ensureCurrentPlanetaryContext } from './currentPlanetaryContext';
-import { placeFromRef } from './geo/placeLookup';
 import { createMoonWindowLoader } from './moonWindow';
 import { birthUtcYearOf, birthYearOf, createPeriodChartLoader, readyEngine } from './periodChart';
 import { createResolvePlaceTool } from './placeTool';
@@ -65,6 +64,12 @@ export interface ChatToolset {
 
 /** Shown while today's facts compute, if the timing tool carries no label of its own. */
 const TODAY_STATUS_FALLBACK = "Working out today's sky";
+
+/**
+ * Re-read a place_ref from the offline city list. A dynamic import, so tz-lookup
+ * and the geo module never enter the chat chunk that every tier parses.
+ */
+const lazyPlaceFromRef: PlaceReader = (ref) => import('./geo/placeLookup').then((geo) => geo.placeFromRef(ref));
 
 /** Run today's timing once, locally, so a today-question is grounded before the model answers. */
 async function preRunToday(tools: readonly AgentTool[], options: PrepareOptions): Promise<boolean> {
@@ -120,7 +125,7 @@ export function buildChatToolset(input: BuildChatToolsetInput): ChatToolset {
     periodSkyAllowed: skyAllowed,
     // Only a full device reads places: lite never gets a path to the city data.
     ...(skyAllowed
-      ? { loadMoonWindow: createMoonWindowLoader(input.engine), placeFromRef: input.placeFromRef ?? placeFromRef }
+      ? { loadMoonWindow: createMoonWindowLoader(input.engine), placeFromRef: input.placeFromRef ?? lazyPlaceFromRef }
       : {}),
   });
   const tools = skyAllowed ? [...agentTools, createResolvePlaceTool()] : agentTools;

@@ -78,6 +78,7 @@ import { isPlaceholderContent } from "./exportGate";
 import { personaText, resolveReportAudience } from "../lib/reportSelectors";
 import { rectificationDelta } from "../lib/rectification";
 import { buildChatToolset } from "../lib/chatToolset";
+import { RESOLVE_PLACE_TOOL_NAME } from "../lib/placeTool";
 import { useOptionalChartEngine } from "../providers/chartEngineContext";
 
 // Resolve the LLM env: build-time Vite env with any browser-local Settings
@@ -340,7 +341,7 @@ export default function DashboardPage() {
       undefined,
       rectification,
       undefined,
-      toolset.tools.some((tool) => tool.name === 'resolve_place'),
+      toolset.tools.some((tool) => tool.name === RESOLVE_PLACE_TOOL_NAME),
     );
     if (prepared.currentContextUnavailable) {
       const [system, ...rest] = messages;

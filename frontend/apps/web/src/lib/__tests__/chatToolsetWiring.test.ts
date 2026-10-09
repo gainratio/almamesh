@@ -27,4 +27,9 @@ describe.each(pages)('$name chat wiring', ({ source }) => {
     expect(source).not.toContain('periodSkyAllowed');
     expect(source).not.toContain('placeFromRef');
   });
+
+  it('names the place tool by its constant, not a literal', () => {
+    expect(source).not.toMatch(/['"]resolve_place['"]/);
+    expect(source).toContain('RESOLVE_PLACE_TOOL_NAME');
+  });
 });

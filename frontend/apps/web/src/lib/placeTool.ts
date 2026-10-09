@@ -5,7 +5,7 @@
  */
 import type { AgentJsonObject, AgentTool } from '@almamesh/llm';
 
-import { lookupPlaceOffline, type PlaceLookup, type ResolvedPlace } from './geo/placeLookup';
+import type { PlaceLookup, ResolvedPlace } from './geo/placeLookup';
 
 export const RESOLVE_PLACE_TOOL_NAME = 'resolve_place';
 export const RESOLVE_PLACE_STATUS_LABEL = 'Looking up the place on this device';
@@ -17,6 +17,9 @@ const DESCRIPTION = [
   'status "ambiguous": list the candidates and ask which one. status "not_found": ask for the nearest larger city.',
   'Never use this for the birth place.',
 ].join(' ');
+
+/** The offline lookup, loaded on first use so the geo module stays out of the chat chunk. */
+const lazyLookup = (text: string): Promise<PlaceLookup> => import('./geo/placeLookup').then((geo) => geo.lookupPlaceOffline(text));
 
 function query(args: AgentJsonObject): string | undefined {
   const value = args.query;
@@ -32,7 +35,7 @@ function forModel(result: PlaceLookup): AgentJsonObject {
   return { status: 'not_found' };
 }
 
-export function createResolvePlaceTool(lookup: (query: string) => Promise<PlaceLookup> = lookupPlaceOffline): AgentTool {
+export function createResolvePlaceTool(lookup: (query: string) => Promise<PlaceLookup> = lazyLookup): AgentTool {
   return {
     name: RESOLVE_PLACE_TOOL_NAME,
     description: DESCRIPTION,
