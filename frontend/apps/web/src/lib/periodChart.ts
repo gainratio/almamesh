@@ -8,10 +8,10 @@
  * by `memoizeChartEngine` (packages/browser/src/pyodide/runtime.ts). Its memo
  * is what bounds retained period payloads to the device tier's pool.
  */
+import type { ChartEngine } from '@almamesh/browser';
 import type { SiderealChart } from '@almamesh/browser/types';
 import { periodWindowMonths, type AgentToolContext, type PeriodRange } from '@almamesh/llm';
 import type { ProcessedBirthData } from '@almamesh/shared-types';
-import type { PredictiveRuntime } from '@almamesh/store';
 
 import type { ChartEngineContextValue } from '../providers/chartEngineContext';
 import { buildEnsurePredictiveInput } from './predictive';
@@ -35,7 +35,7 @@ export type PeriodChartLoader = (period: PeriodRange, context: AgentToolContext)
  * The one engine wait every chat engine load goes through: start the boot if
  * it has not started, then use the ready engine or await the in-flight boot.
  */
-export async function readyEngine(engine: ChartEngineContextValue | null): Promise<PredictiveRuntime> {
+export async function readyEngine(engine: ChartEngineContextValue | null): Promise<ChartEngine> {
   if (!engine) throw new PeriodSkyUnavailableError('engine_unavailable');
   engine.startBootstrap();
   return engine.engine ?? (await engine.whenReady());
