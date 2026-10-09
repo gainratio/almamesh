@@ -317,12 +317,12 @@ describe('shouldPreRunToday', () => {
 
 describe('get_current_datetime in a pinned thread', () => {
   const NOW = new Date('2026-03-08T20:00:00.000Z');
-  function datetime(pinned?: { period: { start: string; end: string } }) {
+  function datetime(pinned?: { period: { start: string; end: string } }, viewerZone?: string) {
     const tools = createChatAgentTools({
       chart: CHART,
       chartAsOf: { basis: 'chart', instant: new Date('2025-01-01T00:00:00Z') },
       chartTimeZone: 'Asia/Kolkata',
-      todayDay: () => '2026-03-08',
+      todayDay: viewerZone ? (now) => viewerTodayDay(now, viewerZone) : () => '2026-03-08',
       periodSkyAllowed: false,
       pinned,
     });
@@ -335,6 +335,22 @@ describe('get_current_datetime in a pinned thread', () => {
     expect(result.isoUtc).toBe('2026-03-08T20:00:00.000Z');
     expect(result.pinned_period).toEqual({ start: '2050-01-01', end: '2050-12-31' });
     expect(result.relative).toBe('future');
+  });
+
+  it('is exactly the chart-zone clock plus the pin, and never names the device zone', () => {
+    const device = 'Pacific/Chatham';
+    const result = datetime({ period: { start: '2050-01-01', end: '2050-12-31' } }, device);
+    expect(result).toEqual({
+      scope: 'chart',
+      isoUtc: '2026-03-08T20:00:00.000Z',
+      localDate: '2026-03-09',
+      localTime: '01:30:00',
+      utcOffset: '+05:30',
+      timeZone: 'Asia/Kolkata',
+      pinned_period: { start: '2050-01-01', end: '2050-12-31' },
+      relative: 'future',
+    });
+    expect(JSON.stringify(result)).not.toContain(device);
   });
 
   it('is "contains_today" when today is the pin\'s first or last day, "past" after it', () => {

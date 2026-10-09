@@ -511,6 +511,18 @@ describe('chat store v3: time-travel pins', () => {
     });
   });
 
+  it('a Day pin keeps its place exactly, in memory and through serialize → fresh store', () => {
+    const place = { label: 'Bogotá, Colombia', timezone: 'America/Bogota', latitude: 4.711, longitude: -74.0721 };
+    const day = { start: '2026-06-15', end: '2026-06-15', granularity: 'day', place } as const;
+    const before = newStore();
+    const id = before.getState().startThread('p1', 'c1', day);
+    expect(before.getState().threads[id]?.as_of).toStrictEqual(day);
+    const { threads, messages, summaries } = before.getState();
+    const after = newStore();
+    after.setState(JSON.parse(JSON.stringify({ threads, messages, summaries })) as Partial<ChatStore>);
+    expect(after.getState().threads[id]?.as_of).toStrictEqual(day);
+  });
+
   it('startThread refuses a malformed pin and creates nothing', () => {
     const store = newStore();
     expect(() => store.getState().startThread('p1', undefined, { ...PIN_2027, end: '2027-12-30' })).toThrow(

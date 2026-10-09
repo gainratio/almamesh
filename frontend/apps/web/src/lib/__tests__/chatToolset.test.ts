@@ -353,6 +353,14 @@ describe('a pinned thread', () => {
     expect(text).not.toMatch(/4\.711|74\.07|"latitude"|"longitude"/);
   });
 
+  it('the real pinned place reader gives get_timing the label and zone, and no coordinate in its result', async () => {
+    const engine = engineContextWith({ computeMoonWindow: vi.fn(async () => Promise.reject(new Error('no moon in tests'))) });
+    const pinned = toolset({ pinned: DAY_PIN, periodSkyAllowed: true, placeFromRef: vi.fn(async () => undefined), engine });
+    const result = (await timingOf(pinned).execute({ section: 'transits' }, options())) as { places?: unknown };
+    expect(result.places).toEqual([{ start: '2026-06-15', end: '2026-06-15', label: 'Bogotá, Colombia', timezone: 'America/Bogota' }]);
+    expect(JSON.stringify(result)).not.toMatch(/4\.711|74\.07|latitude|longitude/i);
+  });
+
   it('tells the pin\'s tense in the viewer zone, not the birth zone', async () => {
     // SPLIT_DAY_NOW is 2026-03-08 in Los Angeles (viewer) and already 03-09 in Kolkata (birth).
     const today = { start: '2026-03-08', end: '2026-03-08', granularity: 'day' } as const;
