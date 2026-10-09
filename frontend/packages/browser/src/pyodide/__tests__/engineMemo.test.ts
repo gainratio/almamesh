@@ -3,6 +3,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
+import { devicePolicy } from "../../deviceTier";
 import type { SiderealChart } from "../chart";
 import { EngineMemo, memoKey, memoizeChartEngine } from "../engineMemo";
 import type { PredictiveContexts } from "../predictive";
@@ -217,5 +218,87 @@ describe("memoizeChartEngine — determinism contract: cached == fresh, byte for
 
     expect(engine.chartCalls).toBe(1);
     expect(JSON.stringify(second)).toBe(JSON.stringify(goldenCharts[FIXTURE_KEYS[0]]));
+  });
+});
+
+/** The same birth at another reference day: a distinct predictive input. */
+const atDay = (day: string): PredictiveInput => ({ ...PREDICTIVE, referenceInstant: `${day}T00:00:00Z` });
+const PERIOD = { retention: "period" } as const;
+const DAYS = ["2019-01-01", "2019-02-01", "2019-03-01", "2019-04-01", "2019-05-01", "2019-06-01"];
+
+describe("memoizeChartEngine — period computes are bounded by the period capacity", () => {
+  it("keeps at most `periodCapacity` period payloads; one more evicts the oldest", async () => {
+    const engine = new CountingEngine();
+    const cached = memoized(engine, "manifest-a", new EngineMemo(32, 2));
+
+    for (const day of DAYS.slice(0, 3)) await cached.computePredictive(atDay(day), PERIOD);
+    await cached.computePredictive(atDay(DAYS[2]), PERIOD); // newest still kept
+    expect(engine.predictiveCalls).toBe(3);
+    await cached.computePredictive(atDay(DAYS[0]), PERIOD); // oldest was evicted
+    expect(engine.predictiveCalls).toBe(4);
+  });
+
+  it("a period compute never evicts a default (Life Atlas) entry", async () => {
+    const engine = new CountingEngine();
+    const cached = memoized(engine, "manifest-a", new EngineMemo(32, 1));
+
+    await cached.computePredictive(PREDICTIVE);
+    for (const day of DAYS) await cached.computePredictive(atDay(day), PERIOD);
+    await cached.computePredictive(PREDICTIVE);
+    expect(engine.predictiveCalls).toBe(1 + DAYS.length);
+  });
+
+  it("default entries do not use up the period capacity", async () => {
+    const engine = new CountingEngine();
+    const cached = memoized(engine, "manifest-a", new EngineMemo(32, 2));
+
+    await cached.computePredictive(PREDICTIVE);
+    await cached.computePredictive(atDay(DAYS[0]), PERIOD);
+    await cached.computePredictive(atDay(DAYS[1]), PERIOD);
+    await cached.computePredictive(atDay(DAYS[0]), PERIOD);
+    await cached.computePredictive(atDay(DAYS[1]), PERIOD);
+    expect(engine.predictiveCalls).toBe(3);
+  });
+
+  it("default computes are not bound by the period capacity", async () => {
+    const engine = new CountingEngine();
+    const cached = memoized(engine, "manifest-a", new EngineMemo(32, 1));
+
+    for (const day of DAYS) await cached.computePredictive(atDay(day));
+    for (const day of DAYS) await cached.computePredictive(atDay(day));
+    expect(engine.predictiveCalls).toBe(DAYS.length);
+  });
+
+  it("a period ask joins the entry the store's compute already holds (same key shape)", async () => {
+    const engine = new CountingEngine();
+    const cached = memoized(engine, "manifest-a", new EngineMemo(32, 1));
+
+    await cached.computePredictive(PREDICTIVE);
+    await cached.computePredictive(PREDICTIVE, PERIOD);
+    expect(engine.predictiveCalls).toBe(1);
+  });
+
+  it.each([0, -3, Number.NaN])("a period capacity of %s clamps to 1 (the last period stays cached)", async (size) => {
+    const engine = new CountingEngine();
+    const cached = memoized(engine, "manifest-a", new EngineMemo(32, size));
+
+    await cached.computePredictive(atDay(DAYS[0]), PERIOD);
+    await cached.computePredictive(atDay(DAYS[0]), PERIOD);
+    expect(engine.predictiveCalls).toBe(1);
+    await cached.computePredictive(atDay(DAYS[1]), PERIOD);
+    await cached.computePredictive(atDay(DAYS[0]), PERIOD);
+    expect(engine.predictiveCalls).toBe(3);
+  });
+
+  it("by default the period capacity is this device tier's periodSkyCacheSize", async () => {
+    const size = devicePolicy().periodSkyCacheSize;
+    const engine = new CountingEngine();
+    const cached = memoizeChartEngine(engine, "manifest-a");
+
+    for (const day of DAYS.slice(0, size + 1)) await cached.computePredictive(atDay(day), PERIOD);
+    await cached.computePredictive(atDay(DAYS[size]), PERIOD);
+    expect(engine.predictiveCalls).toBe(size + 1);
+    await cached.computePredictive(atDay(DAYS[0]), PERIOD);
+    expect(engine.predictiveCalls).toBe(size + 2);
   });
 });

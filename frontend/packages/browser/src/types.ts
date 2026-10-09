@@ -26,6 +26,7 @@ export type {
   BootConfig,
   MeshBirthInput,
   MeshEdgeInput,
+  PredictiveCallOptions,
   PredictiveInput,
   PyodideAsset,
 } from "./pyodide/protocol";
@@ -117,7 +118,12 @@ export type {
   RectificationResultRaw,
 } from "./pyodide/rectification";
 
-import type { BirthInput, MeshEdgeInput, PredictiveInput } from "./pyodide/protocol";
+import type {
+  BirthInput,
+  MeshEdgeInput,
+  PredictiveCallOptions,
+  PredictiveInput,
+} from "./pyodide/protocol";
 import type { SiderealChart } from "./pyodide/chart";
 import type { MeshEdgeContext } from "./pyodide/mesh";
 import type { PredictiveContexts } from "./pyodide/predictive";
@@ -132,7 +138,7 @@ import type { RectificationInput, RectificationResultRaw } from "./pyodide/recti
 export interface ChartEngine {
   generateChart(birth: BirthInput): Promise<SiderealChart>;
   /** LAZY predictive payload at an EXPLICIT instant (~35s under Pyodide). */
-  computePredictive(input: PredictiveInput): Promise<PredictiveContexts>;
+  computePredictive(input: PredictiveInput, options?: PredictiveCallOptions): Promise<PredictiveContexts>;
   /** Relational MESH edge between two birth inputs (explicit instants only). */
   computeMeshEdge(input: MeshEdgeInput): Promise<MeshEdgeContext>;
   /** Birth-time rectification: score life events against candidate times. */

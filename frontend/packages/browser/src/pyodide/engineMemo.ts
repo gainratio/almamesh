@@ -16,9 +16,10 @@
 // receipts signed with a per-Worker-boot device key, and those must never be
 // made durable (see the predictive store's `withoutBootProof`).
 
+import { devicePolicy } from "../deviceTier";
 import type { SiderealChart } from "./chart";
 import type { PredictiveContexts } from "./predictive";
-import type { BirthInput, PredictiveInput } from "./protocol";
+import type { BirthInput, PredictiveCallOptions, PredictiveInput } from "./protocol";
 import type { ChartEngine } from "./runtime";
 
 /** Entries kept per engine; a chart is ~30 KB and a predictive payload ~60 KB. */
@@ -44,40 +45,66 @@ export function memoKey(identity: string, kind: MemoKind, input: unknown): strin
   return JSON.stringify([identity, kind, canonical(input)]);
 }
 
+/**
+ * Which bound an entry counts against. Time-travel period computes (spec
+ * 2026-10-08, "Computing a period's sky") get their own, device-tier-sized
+ * pool so a run of period questions can neither hold more than the tier
+ * allows nor evict the Life Atlas's profile-switch entries.
+ */
+type MemoPool = "default" | "period";
+
+interface MemoEntry {
+  readonly value: Promise<unknown>;
+  readonly pool: MemoPool;
+}
+
+/** A period capacity below 1 (or NaN) would cache nothing: clamp to 1. */
+function atLeastOne(size: number): number {
+  return size >= 1 ? Math.floor(size) : 1;
+}
+
 /** A bounded LRU of settled-or-in-flight engine results. Failures are never kept. */
 export class EngineMemo {
-  readonly #entries = new Map<string, Promise<unknown>>();
-  readonly #capacity: number;
+  readonly #entries = new Map<string, MemoEntry>();
+  readonly #capacity: Readonly<Record<MemoPool, number>>;
 
-  public constructor(capacity: number = DEFAULT_MEMO_CAPACITY) {
-    this.#capacity = capacity;
+  public constructor(
+    capacity: number = DEFAULT_MEMO_CAPACITY,
+    periodCapacity: number = devicePolicy().periodSkyCacheSize,
+  ) {
+    this.#capacity = { default: capacity, period: atLeastOne(periodCapacity) };
   }
 
-  public async run<T>(key: string, compute: () => Promise<T>): Promise<T> {
-    const value = (await this.#entry(key, compute)) as T;
+  public async run<T>(key: string, compute: () => Promise<T>, pool: MemoPool = "default"): Promise<T> {
+    const value = (await this.#entry(key, compute, pool)) as T;
     return structuredClone(value);
   }
 
-  #entry(key: string, compute: () => Promise<unknown>): Promise<unknown> {
+  #entry(key: string, compute: () => Promise<unknown>, pool: MemoPool): Promise<unknown> {
     const existing = this.#entries.get(key);
     if (existing !== undefined) {
       this.#entries.delete(key); // re-insert: most recently used last
       this.#entries.set(key, existing);
-      return existing;
+      return existing.value;
     }
     const pending = compute();
-    this.#entries.set(key, pending);
+    this.#entries.set(key, { value: pending, pool });
     pending.catch(() => {
-      if (this.#entries.get(key) === pending) this.#entries.delete(key);
+      if (this.#entries.get(key)?.value === pending) this.#entries.delete(key);
     });
-    this.#evict();
+    this.#evict(pool);
     return pending;
   }
 
-  #evict(): void {
-    while (this.#entries.size > this.#capacity) {
-      const oldest = this.#entries.keys().next().value as string;
-      this.#entries.delete(oldest);
+  /** Drop the least recently used entries of `pool` until it is within its bound. */
+  #evict(pool: MemoPool): void {
+    let excess = -this.#capacity[pool];
+    for (const entry of this.#entries.values()) if (entry.pool === pool) excess += 1;
+    for (const [key, entry] of this.#entries) {
+      if (excess <= 0) return;
+      if (entry.pool !== pool) continue;
+      this.#entries.delete(key);
+      excess -= 1;
     }
   }
 }
@@ -91,9 +118,14 @@ export function memoizeChartEngine(
   return {
     generateChart: (birth: BirthInput): Promise<SiderealChart> =>
       memo.run(memoKey(identity, "generateChart", birth), () => engine.generateChart(birth)),
-    computePredictive: (input: PredictiveInput): Promise<PredictiveContexts> =>
-      memo.run(memoKey(identity, "computePredictive", input), () =>
-        engine.computePredictive(input),
+    computePredictive: (
+      input: PredictiveInput,
+      options?: PredictiveCallOptions,
+    ): Promise<PredictiveContexts> =>
+      memo.run(
+        memoKey(identity, "computePredictive", input),
+        () => engine.computePredictive(input),
+        options?.retention ?? "default",
       ),
     computeMeshEdge: (input) => engine.computeMeshEdge(input),
     computeRectification: (input) => engine.computeRectification(input),

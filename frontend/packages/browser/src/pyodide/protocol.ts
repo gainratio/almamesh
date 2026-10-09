@@ -28,6 +28,15 @@ export interface BirthInput {
  * REQUIRED — the engine never silently reads the wall clock; the caller pins
  * the instant, which pins both the "current" dasha and the transit "now".
  */
+/**
+ * How a predictive result is retained by the engine memo. `"period"` marks a
+ * time-travel compute (a day other than today): it counts against the
+ * device-tier period bound (5 / 3 / 1), never the Life Atlas's entries.
+ */
+export interface PredictiveCallOptions {
+  readonly retention?: "default" | "period";
+}
+
 export interface PredictiveInput {
   readonly datetimeUtc: string; // ISO-8601 UTC birth instant
   readonly latitude: number;
