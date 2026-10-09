@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { useLanguageStore, useProfilesStore } from '@almamesh/store';
+import { useLanguageStore, useOnboardingStore, useProfilesStore } from '@almamesh/store';
 
 const save = vi.hoisted(() => ({
   calls: 0,
@@ -48,6 +48,7 @@ function addPerson(name: string): void {
 
 beforeEach(() => {
   save.calls = 0;
+  useOnboardingStore.getState().reset();
   useLanguageStore.setState({ language: 'en' });
   useProfilesStore.setState({ profiles: {}, activeProfileId: null, hydrated: true });
 });
@@ -110,5 +111,25 @@ describe('ProfileSwitcher — a new person is saved before it moves on', () => {
       'Asha Rao',
     ]);
     expect(useProfilesStore.getState().activeProfileId).toBe(me);
+  });
+
+  it('closing while the save is still in flight: no person, previous active kept, no navigation', async () => {
+    const me = useProfilesStore.getState().createProfile('Asha Rao');
+    useProfilesStore.getState().setActiveProfile(me);
+    renderSwitcher();
+    fireEvent.click(screen.getByRole('button', { name: /Asha Rao/ }));
+    fireEvent.change(screen.getByLabelText('New person name'), { target: { value: 'Ravi' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+    expect(save.calls).toBe(1);
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await act(async () => save.resolve());
+
+    expect(Object.values(useProfilesStore.getState().profiles).map((p) => p.name)).toEqual([
+      'Asha Rao',
+    ]);
+    expect(useProfilesStore.getState().activeProfileId).toBe(me);
+    expect(screen.queryByText('onboarding-page')).toBeNull();
+    expect(useOnboardingStore.getState().data.name).toBe('');
   });
 });

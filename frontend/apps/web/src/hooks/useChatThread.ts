@@ -384,10 +384,12 @@ export function useChatThread(
         // the model-visible history (see `toHistory`), never indexed for RAG.
         store.appendMessage(tid, 'assistant', describeChatStreamError(error), { error: true });
       } finally {
+        // The answer (or error) is in the store now: drop the draft first, or
+        // it renders a second copy for as long as the save takes.
+        setStreamingDraft('');
         await settleChatTurn(tid);
         sendInFlight.current = false;
         setIsStreaming(false);
-        setStreamingDraft('');
       }
     },
     [activeThread?.id, profileId, chartId, isStreaming, summarize],

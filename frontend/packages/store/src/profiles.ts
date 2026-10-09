@@ -280,6 +280,30 @@ function removeProfile(
   return { profiles, activeProfileId };
 }
 
+/** Back-off between re-writes of a rollback whose own write failed. */
+const DISCARD_RETRY_DELAYS_MS = [100, 200, 400, 800, 1600] as const;
+
+/**
+ * Make a rollback stick. If the add's write lands late and the rollback's own
+ * write then fails, the disk still holds the person and a reload would bring
+ * them back. So re-write the row (memory no longer has them) until a write
+ * commits. Any committed write removes them: the row merge sees them in the
+ * acknowledged base and absent locally. Stops if the person was re-added.
+ */
+async function ensureDiscardCommitted(id: string): Promise<void> {
+  for (const delayMs of DISCARD_RETRY_DELAYS_MS) {
+    try {
+      await whenPersistenceCommitted(PERSIST_NAME);
+      return;
+    } catch {
+      // The last write of the row failed; wait, then queue a fresh one.
+    }
+    await new Promise((resolve) => globalThis.setTimeout(resolve, delayMs));
+    if (useProfilesStore.getState().profiles[id] !== undefined) return;
+    useProfilesStore.setState({});
+  }
+}
+
 export const profilesStoreCreator: StateCreator<ProfilesStore> = (set, get) => ({
   profiles: {},
   activeProfileId: null,
@@ -343,6 +367,7 @@ export const profilesStoreCreator: StateCreator<ProfilesStore> = (set, get) => (
       return { profiles, activeProfileId: restored };
     });
     setActiveProfileScope(get().activeProfileId);
+    void ensureDiscardCommitted(id);
   },
 
   setActiveProfile: (id) => {

@@ -119,4 +119,30 @@ describe('useChatThread — the turn ends only once the answer is saved', () => 
     expect(useChatStore.getState().threads[threadId ?? '']).toBeUndefined();
     expect(useChatStore.getState().messages[threadId ?? ''] ?? []).toEqual([]);
   });
+
+  it('shows the answer exactly once while its save is pending (draft cleared, spinner kept)', async () => {
+    // A real stream emits tokens into the draft before returning the answer.
+    const streamed = vi.fn(async (input: { onToken: (t: string) => void }): Promise<string> => {
+      input.onToken(ANSWER);
+      return ANSWER;
+    });
+    const { result } = renderHook(() => useChatThread(PROFILE, CHART));
+    act(() => {
+      void result.current.submit('How is my Saturn?', streamed);
+    });
+
+    await waitFor(() => expect(save.stores).toEqual(['chat']));
+    const { messages, isStreaming, streamingDraft } = result.current;
+    // What AlmaMeshAssistantRuntime renders: the stored messages, plus the
+    // draft as a synthetic bubble while the turn is running.
+    const rendered = [
+      ...messages.map((m) => m.content),
+      ...(isStreaming && streamingDraft.length > 0 ? [streamingDraft] : []),
+    ];
+    expect(rendered.filter((text) => text === ANSWER)).toHaveLength(1);
+    expect(isStreaming).toBe(true);
+
+    await act(async () => save.resolve());
+    await waitFor(() => expect(result.current.isStreaming).toBe(false));
+  });
 });

@@ -86,10 +86,11 @@ export function AddPersonDialog({ open, onClose }: AddPersonDialogProps): ReactE
     }
     setSubmitError(null);
     setSaving(true);
+    let savedId: string | null;
     try {
       // The person is "added" only once they are on disk. Moving on before
       // this let a full page load lose them (the write was still queued).
-      await stagedPerson.save({
+      savedId = await stagedPerson.save({
         name: trimmed,
         relationship: asMemberRelationship(relationshipValue),
       });
@@ -101,6 +102,10 @@ export function AddPersonDialog({ open, onClose }: AddPersonDialogProps): ReactE
       return;
     } finally {
       setSaving(false);
+    }
+    // Cancelled while the save was in flight: already closed and rolled back.
+    if (savedId === null) {
+      return;
     }
     handleClose();
     // Hand the name to the wizard's own store BEFORE navigating so step 1 is

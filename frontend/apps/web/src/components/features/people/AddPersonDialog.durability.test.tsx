@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { useLanguageStore, useProfilesStore } from '@almamesh/store';
+import { useLanguageStore, useOnboardingStore, useProfilesStore } from '@almamesh/store';
 
 const save = vi.hoisted(() => ({
   calls: 0,
@@ -62,6 +62,7 @@ function profileNames(): string[] {
 beforeEach(() => {
   save.calls = 0;
   closes = 0;
+  useOnboardingStore.getState().reset();
   useLanguageStore.setState({ language: 'en' });
   useProfilesStore.setState({ profiles: {}, activeProfileId: null, hydrated: true });
 });
@@ -170,5 +171,34 @@ describe('AddPersonDialog — cancelling after a failed save rolls the person ba
     submit('Second Friend');
     await act(async () => save.resolve());
     expect(profileNames()).toEqual(['Asha Rao', 'Second Friend']);
+  });
+
+  it('cancel while the save is still in flight: no person, previous active kept, no navigation', async () => {
+    const me = seedMe();
+    renderDialog();
+    submit('Second Friend');
+    expect(save.calls).toBe(1);
+
+    // The user gives up mid-save; the save then finishes anyway.
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    await act(async () => save.resolve());
+
+    expect(profileNames()).toEqual(['Asha Rao']);
+    expect(useProfilesStore.getState().activeProfileId).toBe(me);
+    expect(screen.queryByText('onboarding-page')).toBeNull();
+    expect(useOnboardingStore.getState().data.name).toBe('');
+  });
+
+  it('cancel while in flight, then the save fails: nothing lingers into the next open', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    seedMe();
+    renderDialog();
+    submit('Second Friend');
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    await act(async () => save.reject(new Error('disk full')));
+
+    expect(profileNames()).toEqual(['Asha Rao']);
+    expect(screen.queryByTestId('add-person-error')).toBeNull();
   });
 });

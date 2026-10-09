@@ -23,8 +23,13 @@ export interface StagedPersonInput {
 }
 
 export interface StagedPerson {
-  /** Stage (or re-stage) the person and resolve with their id once on disk. */
-  readonly save: (input: StagedPersonInput) => Promise<string>;
+  /**
+   * Stage (or re-stage) the person and resolve with their id once on disk.
+   * Resolves `null` when the add was discarded while the save was in flight:
+   * the caller must then stop (no navigation, no hand-off). Rejects when the
+   * save failed and the person is still staged for a retry.
+   */
+  readonly save: (input: StagedPersonInput) => Promise<string | null>;
   /** Roll back a person whose save did not finish. No-op when nothing is staged. */
   readonly discard: () => void;
 }
@@ -55,10 +60,18 @@ function stage(current: Staged | null, input: StagedPersonInput): Staged {
 export function useStagedPerson(): StagedPerson {
   const stagedRef = useRef<Staged | null>(null);
 
-  const save = async (input: StagedPersonInput): Promise<string> => {
+  const save = async (input: StagedPersonInput): Promise<string | null> => {
     const staged = stage(stagedRef.current, input);
     stagedRef.current = staged;
-    await waitForStoreSaved('people');
+    try {
+      await waitForStoreSaved('people');
+    } catch (error) {
+      // Cancelled mid-save: the rollback already ran, so there is nothing to retry.
+      if (stagedRef.current !== staged) return null;
+      throw error;
+    }
+    // Cancelled mid-save: the person was rolled back; do not carry on.
+    if (stagedRef.current !== staged) return null;
     stagedRef.current = null;
     return staged.id;
   };

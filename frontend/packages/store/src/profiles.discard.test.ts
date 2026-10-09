@@ -3,7 +3,7 @@
  * add). The rollback must win even when the original write commits LATE, after
  * the rollback was requested: the late write must not resurrect the person.
  */
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { setPortableStateRepositoryForTests } from './deletionTombstones';
 import { PortableMemoryStore } from './portableMemoryStore.testkit';
@@ -80,6 +80,40 @@ describe('discardUnsavedProfile', () => {
       await whenProfilesCommitted();
 
       expect(await storedState(repository)).toEqual({ names: ['Asha Rao'], activeProfileId: me });
+    });
+  });
+
+  it('a late commit cannot resurrect the person even when the rollback write itself fails once', async () => {
+    await withRepository(async (sqlite, repository) => {
+      const store = useProfilesStore.getState();
+      const me = store.createProfile('Asha Rao');
+      await whenProfilesCommitted();
+
+      // Batch 1 (the add) hangs; batch 2 (the rollback) fails; later ones work.
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let batches = 0;
+      sqlite.beforeBatch = () => {
+        batches += 1;
+        if (batches === 1) return held;
+        if (batches === 2) return Promise.reject(new Error('disk busy'));
+        return Promise.resolve();
+      };
+      const staged = store.createProfile('Second Friend');
+      useProfilesStore.getState().discardUnsavedProfile(staged, me);
+      release();
+      // The add has landed (with the person) and the rollback write has failed.
+      await vi.waitFor(() => expect(batches).toBeGreaterThanOrEqual(2), { timeout: 3000 });
+
+      await vi.waitFor(
+        async () => {
+          expect(await storedState(repository)).toEqual({ names: ['Asha Rao'], activeProfileId: me });
+        },
+        { timeout: 3000, interval: 20 },
+      );
+      sqlite.beforeBatch = undefined;
     });
   });
 

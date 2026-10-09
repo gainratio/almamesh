@@ -91,7 +91,7 @@ export function ProfileSwitcher() {
     }
     setAddError(null);
     setAdding(true);
-    let id: string;
+    let id: string | null;
     try {
       // Only move on once the person is on disk: navigating first let a full
       // page load lose them while the write was still queued. A retry re-saves
@@ -102,6 +102,10 @@ export function ProfileSwitcher() {
       return;
     } finally {
       setAdding(false);
+    }
+    // Closed while the save was in flight: already rolled back; stop here.
+    if (id === null) {
+      return;
     }
     setNewName('');
     // A brand-new person has no chart yet → send them to onboarding, with the
