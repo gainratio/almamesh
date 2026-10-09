@@ -47,10 +47,10 @@ def test_should_sort_events_and_keep_them_in_window() -> None:
     assert dates == sorted(dates)
     for e in timeline.events:
         assert timeline.window_start <= e.date <= timeline.window_end
-    # And no fast-graha noise: only the slow grahas (Jupiter/Saturn) ingress
+    # And no fast-graha noise: only slow grahas ingress (Inc B adds Mars and the nodes)
     for e in timeline.events:
         if e.kind == TransitEventKind.SIGN_INGRESS.value and e.graha is not None:
-            assert e.graha in {"jupiter", "saturn"}
+            assert e.graha in {"jupiter", "saturn", "mars", "rahu", "ketu"}
 
 
 def test_should_emit_descriptor_keys_not_prose() -> None:
@@ -89,3 +89,25 @@ def test_should_reuse_ephemeris_samples_across_ingress_cusps(
     # Then each astronomical instant is evaluated once, not once per zodiac cusp
     assert events == []
     assert sampled == [start, start + timedelta(days=5), start + timedelta(days=10)]
+
+
+_TWO_YEAR_START = datetime(2026, 6, 9, 12, 0, 0, tzinfo=UTC)
+
+
+def test_two_year_timeline_covers_mars_nodes_and_stations() -> None:
+    # Given a 24-month window from the golden's reference instant
+    natal = calculate_sidereal_context(_BIRTH, *_DELHI, reference_date=_TWO_YEAR_START)
+    timeline = build_timeline(SkyfieldAstronomy(), natal, _BIRTH, _TWO_YEAR_START, window_months=24)
+    # Then every Inc B producer is present, and no fast graha appears
+    kinds = {(e.graha, e.kind) for e in timeline.events if e.graha is not None}
+    assert {
+        ("mars", "sign_ingress"),
+        ("rahu", "sign_ingress"),
+        ("ketu", "sign_ingress"),
+        ("jupiter", "station"),
+        ("saturn", "station"),
+        ("mars", "station"),
+    } <= kinds
+    assert not {graha for graha, _ in kinds} & {"sun", "moon", "mercury", "venus"}
+    dates = [e.date for e in timeline.events]
+    assert dates == sorted(dates)
