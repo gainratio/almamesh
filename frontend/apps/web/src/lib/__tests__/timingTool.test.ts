@@ -159,7 +159,7 @@ describe('get_timing with dates', () => {
     )) as { data: { gochara: Array<{ graha: string }>; timeline: Array<{ month: string }> }; covered_events: string[] };
     expect(result.data.gochara.map((row) => row.graha).sort()).toEqual(['jupiter', 'saturn']);
     expect(result.data.timeline.map((row) => row.month)).toEqual(['2019-06']);
-    expect(result.covered_events).not.toContain('mars_ingress');
+    expect(result.covered_events).toEqual(['jupiter_ingress', 'saturn_ingress', 'dasha_change', 'sade_sati_phase']);
   });
 
   it('a single day keeps the Moon', async () => {
