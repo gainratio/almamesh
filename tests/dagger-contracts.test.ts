@@ -1,14 +1,12 @@
+// Dagger CLI tests: each one shells out to a host `dagger` (functions, --help,
+// `dagger call contracts`, `dagger call deploy-dry-run`), so they run locally only.
+// CI's ingress stays checkout + dagger with no host steps (dagger-ingress-contract),
+// and the `contracts` gate already runs the contracts and deploy-dry-run pipelines.
+// The checks that need no dagger CLI (source text of dagger/src/index.ts and the
+// install-bun.sh retry script) live in tests/dagger-foundation-contract.test.ts,
+// which the `contracts` gate runs on every PR.
 import { describe, expect, test } from "bun:test"
-import {
-  chmodSync,
-  existsSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs"
-import { tmpdir } from "node:os"
-import { join, resolve } from "node:path"
+import { resolve } from "node:path"
 import { spawnSync } from "node:child_process"
 
 const root = resolve(import.meta.dir, "..")
@@ -98,22 +96,6 @@ describe("Dagger public orchestration contract", () => {
     expect(output).toContain("dagger-workflow-contract.test.ts")
   }, 120_000)
 
-  test("production deploy composes one central Pages Functions transaction", () => {
-    const source = readFileSync(resolve(root, "dagger/src/index.ts"), "utf8")
-    expect(source).toContain("deliverProduction")
-    expect(source).toContain(".greenMainDecision(")
-    expect(source).toContain(".source(")
-    expect(source).toContain(".guard(")
-    expect(source).toContain(".envelope(")
-    expect(source).toContain("{ pagesFunctions: request.pagesFunctions }")
-    expect(source).toContain("loadCloudflarePagesDeploymentEvidenceFromID")
-    expect(source).not.toContain(".preflight(")
-    expect(source).not.toContain(".verifyEnvelope(")
-    expect(source).not.toContain("dag.cloudflarePages().verify(")
-    expect(source).not.toContain("verify-pages-source.mjs")
-    expect(source).not.toContain("pagesDeployScript")
-  })
-
   test("deploy dry-run serves the closed compiled feedback route without credentials", () => {
     const expectedSha = "1".repeat(40)
     const run = spawnSync(
@@ -133,52 +115,5 @@ describe("Dagger public orchestration contract", () => {
     )
     expect(output).not.toContain("api.cloudflare.com")
   }, 180_000)
-
-  test("package installs cannot reuse partially downloaded Bun tarballs", () => {
-    const source = readFileSync(resolve(root, "dagger/src/index.ts"), "utf8")
-    expect(source).not.toContain('withMountedCache("/root/.bun/install/cache"')
-  })
-
-  test("Bun installs time out, clean ephemeral state, retry once, and fail closed", () => {
-    const sandbox = mkdtempSync(join(tmpdir(), "almamesh-bun-install-"))
-    const installer = resolve(root, "dagger/scripts/install-bun.sh")
-    const counter = join(sandbox, "attempts")
-    const args = join(sandbox, "args")
-    writeFileSync(join(sandbox, "timeout"), [
-      "#!/bin/sh", "shift 3", '"$@" &', "pid=$!", '( sleep 1; kill "$pid" 2>/dev/null ) &',
-      "watch=$!", 'wait "$pid"', "status=$?", 'kill "$watch" 2>/dev/null || true', "exit $status",
-    ].join("\n"))
-    writeFileSync(join(sandbox, "bun"), [
-      "#!/bin/sh", "set -eu", `counter='${counter}'`, `args='${args}'`,
-      'attempt=$(($(cat "$counter" 2>/dev/null || echo 0) + 1))', 'echo "$attempt" > "$counter"',
-      'echo "$*" >> "$args"',
-      'if [ "${FAKE_FAIL:-}" = always ]; then mkdir -p node_modules "$BUN_INSTALL_CACHE_DIR"; touch node_modules/final-partial "$BUN_INSTALL_CACHE_DIR/final-partial"; exit 9; fi',
-      'if [ "$attempt" -eq 1 ]; then sleep 5; fi', "mkdir -p node_modules",
-    ].join("\n"))
-    chmodSync(join(sandbox, "timeout"), 0o755)
-    chmodSync(join(sandbox, "bun"), 0o755)
-    const env = {
-      ...process.env,
-      PATH: `${sandbox}:${process.env.PATH ?? ""}`,
-      BUN_INSTALL_CACHE_DIR: join(sandbox, "cache"),
-      BUN_INSTALL_TIMEOUT_SECONDS: "1",
-    }
-    try {
-      const recovered = spawnSync("bash", [installer], { cwd: sandbox, env, encoding: "utf8" })
-      expect(recovered.status, recovered.stderr).toBe(0)
-      expect(readFileSync(counter, "utf8").trim()).toBe("2")
-      expect(readFileSync(args, "utf8").trim().split("\n"))
-        .toEqual(["install --frozen-lockfile", "install --frozen-lockfile"])
-      const failed = spawnSync("bash", [installer], {
-        cwd: sandbox, env: { ...env, FAKE_FAIL: "always" }, encoding: "utf8",
-      })
-      expect(failed.status).toBe(1)
-      expect(failed.stderr).toContain("failed after 2 attempts")
-      expect(existsSync(join(sandbox, "node_modules/final-partial"))).toBe(true)
-      expect(existsSync(join(sandbox, "cache/final-partial"))).toBe(true)
-    } finally {
-      rmSync(sandbox, { recursive: true, force: true })
-    }
-  }, 10_000)
 })
 
