@@ -3,7 +3,9 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   createChatAgentTools,
   currentDateTimeForZone,
+  mentionsExplicitPeriod,
   requiresCurrentPlanetaryContext,
+  shouldPreRunToday,
   viewerTodayDay,
 } from '../chatAgentTools';
 import type { SiderealChart } from '@almamesh/browser/types';
@@ -210,5 +212,43 @@ describe('requiresCurrentPlanetaryContext', () => {
       rows.filter((row) => row.status?.startsWith('current')).map((row) => row.lord);
     expect(current(facts.maha_dasha_sequence)).toEqual(['jupiter']);
     expect(current(timing.maha_dasha_sequence)).toEqual(['saturn']);
+  });
+});
+
+describe('mentionsExplicitPeriod', () => {
+  it.each([
+    'What happened in June 2019?',
+    'transits in June 2019',
+    'How was 2019 for me?',
+    'What about 15 June?',
+    'what may happen in May?',
+    'Tell me about May 2027',
+    '3 May was a big day',
+    '¿Cómo fue marzo de 2020?',
+    '¿Qué pasó en julio?',
+    'Como foi março para mim?',
+    'E em setembro?',
+  ])('sees an explicit period in: %s', (question) => {
+    expect(mentionsExplicitPeriod(question)).toBe(true);
+  });
+
+  it.each([
+    'What may happen today?',
+    'What are my current transits?',
+    'Ask Marco about this week',
+    'How should I march forward this month?',
+    'Where is my natal Mars?',
+    'Explain my ascendant.',
+  ])('sees no explicit period in: %s', (question) => {
+    expect(mentionsExplicitPeriod(question)).toBe(false);
+  });
+});
+
+describe('shouldPreRunToday', () => {
+  it('pre-runs today only for "today" questions with no explicit period', () => {
+    expect(shouldPreRunToday('What are my current transits?')).toBe(true);
+    expect(shouldPreRunToday('What may happen today?')).toBe(true);
+    expect(shouldPreRunToday('transits in June 2019')).toBe(false);
+    expect(shouldPreRunToday('Where is my natal Mars?')).toBe(false);
   });
 });

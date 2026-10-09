@@ -91,10 +91,55 @@ export function viewerTodayDay(now: Date, timeZone: string = viewerTimeZone()): 
 const CURRENT_CONTEXT_PATTERN =
   /\b(?:today|now|currently|current|this\s+(?:week|month|year)|transits?|timing|hoy|ahora|actual(?:mente)?|esta\s+semana|este\s+(?:mes|ano)|transitos?|hoje|agora|atual(?:mente)?|esta\s+semana|este\s+(?:mes|ano)|transitos?)\b/i;
 
+/** Lowercase with accents folded, the way the router has always matched. */
+function foldQuestion(question: string): string {
+  return question.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
+
 /** Conservative, multilingual routing for questions that require exact-day facts. */
 export function requiresCurrentPlanetaryContext(question: string): boolean {
-  const normalized = question.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-  return CURRENT_CONTEXT_PATTERN.test(normalized);
+  return CURRENT_CONTEXT_PATTERN.test(foldQuestion(question));
+}
+
+// Month names in en/es/pt (folded). "may" and "march" are also an English
+// verb and "marco" is a first name, so those three count only beside a date
+// word. Portuguese "março" is caught before folding.
+const MONTH_WORDS = [
+  'january', 'february', 'april', 'june', 'july', 'august', 'september', 'october', 'november', 'december',
+  'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'setiembre',
+  'octubre', 'noviembre', 'diciembre',
+  'janeiro', 'fevereiro', 'maio', 'junho', 'julho', 'setembro', 'outubro', 'novembro', 'dezembro',
+];
+const YEAR_PATTERN = /\b(?:19|20)\d{2}\b/;
+const MONTH_PATTERN = new RegExp(`\\b(?:${MONTH_WORDS.join('|')})\\b`);
+const MARCO_PATTERN = /\bmarço\b/;
+const AMBIGUOUS_MONTH = '(?:may|march|marco)';
+const AMBIGUOUS_MONTH_PATTERN = new RegExp(
+  [
+    `\\b(?:in|of|since|until|by|en|em|de|desde|hasta|ate)\\s+${AMBIGUOUS_MONTH}\\b`,
+    `\\b${AMBIGUOUS_MONTH}\\s+(?:de\\s+)?\\d{1,4}\\b`,
+    `\\b\\d{1,2}(?:st|nd|rd|th)?\\s+(?:de\\s+)?${AMBIGUOUS_MONTH}\\b`,
+  ].join('|'),
+);
+
+/** True when the question names a year or a month: the model should send dates, not get today. */
+export function mentionsExplicitPeriod(question: string): boolean {
+  const folded = foldQuestion(question);
+  return (
+    YEAR_PATTERN.test(folded) ||
+    MONTH_PATTERN.test(folded) ||
+    MARCO_PATTERN.test(question.normalize('NFC').toLowerCase()) ||
+    AMBIGUOUS_MONTH_PATTERN.test(folded)
+  );
+}
+
+/**
+ * The router: pre-run TODAY's sky only for a "today" question with no
+ * explicit period. "Transits in June 2019" matches "transits", but pre-running
+ * today would label the prompt "today" and spend 30 s on the wrong sky.
+ */
+export function shouldPreRunToday(question: string): boolean {
+  return requiresCurrentPlanetaryContext(question) && !mentionsExplicitPeriod(question);
 }
 
 /** Build the fixed, read-only capability set for one already-loaded chart. */
