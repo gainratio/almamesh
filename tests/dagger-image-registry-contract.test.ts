@@ -139,9 +139,10 @@ describe("no CI path pulls from Docker Hub", () => {
     expect(manifest.dagger?.baseImage).toBe(SDK_NODE_BASE_IMAGE)
   })
 
-  test("the engine config mirrors Docker Hub to GHCR", () => {
+  test("the engine config mirrors Docker Hub to GHCR, then Google's cache", () => {
     const config = JSON.parse(readFileSync(resolve(root, ENGINE_CONFIG), "utf8")) as unknown
-    expect(config).toEqual({ registries: { "docker.io": { mirrors: [MIRROR] } } })
+    // The GHCR mirror first; mirror.gcr.io (Google's Docker Hub cache) for anything not yet mirrored.
+    expect(config).toEqual({ registries: { "docker.io": { mirrors: [MIRROR, "mirror.gcr.io"] } } })
   })
 
   test("every dagger-for-github step mounts that engine config", () => {
