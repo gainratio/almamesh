@@ -24,6 +24,7 @@
     "delete_aria": "Excluir {{name}}",
     "delete_confirm": "Excluir {{name}} e os seus mapas? Isto não pode ser desfeito.",
     "delete_error": "Não foi possível concluir a exclusão desta pessoa. Nada foi removido — tente novamente.",
+    "add_error": "Não foi possível salvar esta pessoa neste dispositivo. Tente novamente, ou feche esta janela e ela não será mantida.",
     "new_person_name_aria": "Nome da nova pessoa"
   },
   "actions": {
@@ -204,6 +205,8 @@
   "reset_incomplete": "A redefinição não conseguiu apagar todos os dados salvos, porque este navegador ainda os está usando. Feche todas as abas do AlmaMesh e tente de novo. Se continuar acontecendo, limpe os dados do site do AlmaMesh nas configurações do navegador.",
   "dropped_writes": {
     "body": "Algumas alterações nesta página não foram salvas porque seus dados estavam sendo substituídos ou reparados. Recarregue para ver seus dados atuais.",
-    "reload": "Recarregar"
+    "reload": "Recarregar",
+    "discard_failed_body": "Não foi possível remover deste dispositivo uma pessoa que você cancelou, então ela pode voltar ao recarregar.",
+    "try_again": "Tentar novamente"
   }
 }

@@ -21,6 +21,7 @@
     "delete_aria": "Delete {{name}}",
     "delete_confirm": "Delete {{name}} and their charts? This cannot be undone.",
     "delete_error": "Couldn't finish deleting this person. Nothing was removed — please try again.",
+    "add_error": "Couldn't save this person on this device. Try again, or close this window and they won't be kept.",
     "new_person_name_aria": "New person name"
   },
   "actions": {
@@ -201,6 +202,8 @@
   "reset_incomplete": "Reset could not delete all saved data, because this browser is still using it. Close every AlmaMesh tab and try again. If this keeps happening, clear AlmaMesh's site data in your browser settings.",
   "dropped_writes": {
     "body": "Some changes on this page weren't saved because your data was being replaced or repaired. Reload to see your current data.",
-    "reload": "Reload"
+    "reload": "Reload",
+    "discard_failed_body": "A person you cancelled couldn't be removed from this device, so they may come back after a reload.",
+    "try_again": "Try again"
   }
 }

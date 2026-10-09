@@ -11,6 +11,7 @@ import {
 import { Button, Dialog, Input } from '../../ui';
 import { AvatarChip } from './AvatarChip';
 import { deleteProfileData } from '../../../lib/profileDataLifecycle';
+import { useStagedPerson } from '../people/useStagedPerson';
 
 /**
  * ProfileSwitcher — the header control for named, password-less people sharing
@@ -33,7 +34,6 @@ export function ProfileSwitcher() {
   // fresh object/array every render and loops forever under React 19 (#185).
   const profilesMap = useProfilesStore((s) => s.profiles);
   const activeProfileId = useProfilesStore((s) => s.activeProfileId);
-  const createProfile = useProfilesStore((s) => s.createProfile);
   const renameProfile = useProfilesStore((s) => s.renameProfile);
   const setActiveProfile = useProfilesStore((s) => s.setActiveProfile);
   // The onboarding wizard reads a DIFFERENT store than this one; without the
@@ -55,6 +55,17 @@ export function ProfileSwitcher() {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [addError, setAddError] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
+  // Saving, retrying and cancelling a person whose save did not finish.
+  const stagedPerson = useStagedPerson();
+
+  /** Close the menu; a person whose save failed is rolled back with it. */
+  const closeDialog = () => {
+    stagedPerson.discard();
+    setAddError(null);
+    setOpen(false);
+  };
 
   /** Refresh the chart view + route to the right place for `profileId`. */
   const refreshForProfile = (profileId: string | null) => {
@@ -66,21 +77,39 @@ export function ProfileSwitcher() {
   };
 
   const handleSwitch = (id: string) => {
+    // Roll back an unsaved add FIRST: it restores the previous active person,
+    // which the switch below then overrides.
+    closeDialog();
     setActiveProfile(id);
-    setOpen(false);
     refreshForProfile(id);
   };
 
-  const handleAdd = () => {
+  const handleAdd = async () => {
     const name = newName.trim();
-    if (!name) {
+    if (!name || adding) {
       return;
     }
-    const id = createProfile(name);
+    setAddError(null);
+    setAdding(true);
+    let id: string | null;
+    try {
+      // Only move on once the person is on disk: navigating first let a full
+      // page load lose them while the write was still queued. A retry re-saves
+      // the same person under the current name, never a second copy.
+      id = await stagedPerson.save({ name, relationship: undefined });
+    } catch {
+      setAddError(t('profiles.add_error'));
+      return;
+    } finally {
+      setAdding(false);
+    }
+    // Closed while the save was in flight: already rolled back; stop here.
+    if (id === null) {
+      return;
+    }
     setNewName('');
     // A brand-new person has no chart yet → send them to onboarding, with the
     // name already answered so the wizard never asks for it twice.
-    setActiveProfile(id);
     setOnboardingName(name);
     setOpen(false);
     refreshForProfile(id);
@@ -135,7 +164,7 @@ export function ProfileSwitcher() {
         )}
       </button>
 
-      <Dialog open={open} onClose={() => setOpen(false)} title={t('profiles.dialog_title')}>
+      <Dialog open={open} onClose={closeDialog} title={t('profiles.dialog_title')}>
         <div className="flex flex-col gap-4">
           <p className="font-sans text-sm text-text-secondary">
             {t('profiles.dialog_description')}
@@ -243,6 +272,11 @@ export function ProfileSwitcher() {
           </ul>
 
           {deleteError && <p className="font-sans text-sm text-status-error">{deleteError}</p>}
+          {addError && (
+            <p role="alert" className="font-sans text-sm text-status-error">
+              {addError}
+            </p>
+          )}
 
           <div className="flex items-end gap-2 border-t border-ui-border pt-4">
             <label className="flex-1">
@@ -254,14 +288,18 @@ export function ProfileSwitcher() {
                 onChange={(e) => setNewName(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
-                    handleAdd();
+                    void handleAdd();
                   }
                 }}
                 placeholder={t('profiles.name_placeholder')}
                 aria-label={t('profiles.new_person_name_aria')}
               />
             </label>
-            <Button variant="primary" onClick={handleAdd} disabled={!newName.trim()}>
+            <Button
+              variant="primary"
+              onClick={() => void handleAdd()}
+              disabled={!newName.trim() || adding}
+            >
               {t('profiles.add')}
             </Button>
           </div>

@@ -61,7 +61,7 @@
     "char_count": "{{count}}/5000 characters",
     "privacy_note": "Organization stays on-device unless you connected AI. If AI is connected, pressing Save sends only this narrative to your connected AI provider to create typed event rows; your birth details and chart stay on this device.",
     "min_length_error": "Please describe at least one significant life event.",
-    "saved_feedback": "Thanks! Your story is saved on this device as notes to help you rectify your birth time by hand in Settings.",
+    "saved_feedback": "Thanks! Your story will be saved on this device with your chart, as notes to help you rectify your birth time by hand in Settings.",
     "saved_label": "Saved on this device:",
     "inspiration_label": "Need inspiration? Try an example:",
     "helpful_title": "Events that help most:",

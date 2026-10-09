@@ -17,7 +17,7 @@
 import type { EventDatePrecision, LifeEventCategory } from '@almamesh/shared-types';
 import { create, type StateCreator } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
-import { deletionAwareIdbStorage } from './deletionTombstones';
+import { deletionAwareIdbStorage, whenPersistenceCommitted } from './deletionTombstones';
 import { whenHydrated, type HydrationOutcome } from './hydrationBarrier';
 
 /** A persisted life-event note belonging to one profile. */
@@ -360,4 +360,13 @@ export const useLifeEventsStore = create<LifeEventsStore>()(
  */
 export function whenLifeEventsHydrated(): Promise<HydrationOutcome> {
   return whenHydrated(useLifeEventsStore.persist);
+}
+
+/**
+ * Resolve once every queued life-events write has committed to SQLite; reject with
+ * the error when the last one failed. The store changes memory at once and
+ * persists later: a surface that says "saved" or moves on awaits this first.
+ */
+export function whenLifeEventsCommitted(): Promise<void> {
+  return whenPersistenceCommitted(PERSIST_NAME);
 }

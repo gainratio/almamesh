@@ -29,6 +29,7 @@ import { getUserFriendlyError, getEngineWarmingMessage } from "../lib/errors";
 import { resolveReadyEngine } from "../lib/resolveReadyEngine";
 import { resetAppData } from "../lib/resetAppData";
 import { waitForChartSaved } from "../lib/chartSaved";
+import { waitForStoreSaved } from '../lib/storeSaved';
 import { engineErrorCode, ROLLBACK_CODE } from "../lib/engineLifecycle";
 import { RollbackResetGuard } from "../components/RollbackResetGuard";
 import { incompleteDatabases, ResetIncompleteNotice } from "../components/ResetIncompleteNotice";
@@ -453,9 +454,14 @@ export default function OnboardingPage() {
         // first meant a reload during the compute lost the chart for good, with
         // the draft already cleared (prod 6a89c0e, 2026-10-05). A failed or
         // stuck write (bounded by waitForChartSaved) lands on the Retry card.
+        // The person this page may have just created, and the life-event notes
+        // captured on the last step, must be on disk too: a reload must not
+        // find a chart owned by nobody, or lose the notes we said we kept.
         try {
           await requestRegeneration({ birth, profileId });
           await waitForChartSaved();
+          await waitForStoreSaved('people');
+          await waitForStoreSaved('life_events');
         } catch (computeErr) {
           throw new ChartComputeError(computeErr);
         }

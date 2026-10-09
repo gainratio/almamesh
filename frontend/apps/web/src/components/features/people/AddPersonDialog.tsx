@@ -12,10 +12,11 @@ import { useState, type ReactElement } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
-import { useOnboardingStore, useProfilesStore } from '@almamesh/store';
+import { useOnboardingStore } from '@almamesh/store';
 import { safeError } from '@almamesh/shared-types';
 import { MEMBER_RELATIONSHIPS, type MemberRelationship } from '@almamesh/shared-types';
 import { Button, Dialog, Input, Select } from '../../ui';
+import { useStagedPerson } from './useStagedPerson';
 
 /** Narrow a raw `<select>` value to a member relationship (no casts). */
 export function asMemberRelationship(value: string): MemberRelationship | undefined {
@@ -51,9 +52,8 @@ export function AddPersonDialog({ open, onClose }: AddPersonDialogProps): ReactE
   const { t } = useTranslation('settings');
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const createProfile = useProfilesStore((s) => s.createProfile);
-  const setRelationship = useProfilesStore((s) => s.setRelationship);
-  const setActiveProfile = useProfilesStore((s) => s.setActiveProfile);
+  // Saving, retrying and cancelling a person whose save did not finish.
+  const stagedPerson = useStagedPerson();
   // The wizard reads a DIFFERENT store than the profiles store this dialog
   // writes to. Without this hand-off the very next screen asks for the name we
   // just took. See `handOffNameToWizard`.
@@ -62,6 +62,7 @@ export function AddPersonDialog({ open, onClose }: AddPersonDialogProps): ReactE
   const [name, setName] = useState('');
   const [relationshipValue, setRelationshipValue] = useState('');
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const resetForm = (): void => {
     setName('');
@@ -70,30 +71,40 @@ export function AddPersonDialog({ open, onClose }: AddPersonDialogProps): ReactE
   };
 
   // Reset on ANY close (Cancel, Escape, overlay) so a cancelled entry never
-  // lingers into the next open.
+  // lingers into the next open. A person whose save failed is rolled back here:
+  // they were kept only so a retry could re-save them.
   const handleClose = (): void => {
+    stagedPerson.discard();
     resetForm();
     onClose();
   };
 
-  const submit = (): void => {
+  const submit = async (): Promise<void> => {
     const trimmed = name.trim();
-    if (!trimmed) {
+    if (!trimmed || saving) {
       return;
     }
     setSubmitError(null);
+    setSaving(true);
+    let savedId: string | null;
     try {
-      const id = createProfile(trimmed);
-      const memberRelationship = asMemberRelationship(relationshipValue);
-      if (memberRelationship) {
-        setRelationship(id, memberRelationship);
-      }
-      setActiveProfile(id);
+      // The person is "added" only once they are on disk. Moving on before
+      // this let a full page load lose them (the write was still queued).
+      savedId = await stagedPerson.save({
+        name: trimmed,
+        relationship: asMemberRelationship(relationshipValue),
+      });
     } catch (err) {
-      // A store failure must never silently close the dialog or escape the
-      // click handler: keep the typed entry, show a friendly retryable notice.
+      // A store or disk failure must never silently close the dialog or
+      // escape the click handler: keep the typed entry, show a retryable notice.
       safeError('people.add_failed', err);
       setSubmitError(t('people.add_failed'));
+      return;
+    } finally {
+      setSaving(false);
+    }
+    // Cancelled while the save was in flight: already closed and rolled back.
+    if (savedId === null) {
       return;
     }
     handleClose();
@@ -148,7 +159,7 @@ export function AddPersonDialog({ open, onClose }: AddPersonDialogProps): ReactE
           <Button variant="ghost" onClick={handleClose}>
             {t('people.add_cancel')}
           </Button>
-          <Button onClick={submit} disabled={!name.trim()}>
+          <Button onClick={() => void submit()} disabled={!name.trim() || saving}>
             {t('people.add_continue')}
           </Button>
         </div>

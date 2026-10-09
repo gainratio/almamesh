@@ -62,7 +62,7 @@
     "char_count": "{{count}}/5000 caracteres",
     "privacy_note": "A organização acontece no dispositivo, a menos que você tenha conectado uma IA. Se a IA estiver conectada, pressionar Salvar envia apenas este relato ao seu provedor de IA conectado para criar linhas de eventos tipadas; seus dados de nascimento e mapa permanecem neste dispositivo.",
     "min_length_error": "Descreva pelo menos um evento importante da sua vida.",
-    "saved_feedback": "Obrigado! Sua história foi salva neste dispositivo como notas para ajudar você a retificar sua hora de nascimento à mão em Configurações.",
+    "saved_feedback": "Obrigado! Sua história será salva neste dispositivo junto com seu mapa, como notas para ajudar você a retificar sua hora de nascimento à mão em Configurações.",
     "saved_label": "Salvo neste dispositivo:",
     "inspiration_label": "Precisa de inspiração? Experimente um exemplo:",
     "helpful_title": "Os eventos que mais ajudam:",

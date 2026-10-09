@@ -154,7 +154,7 @@ describe('PeopleSettings', () => {
     expect(screen.getAllByRole('button', { name: 'This is me' })).toHaveLength(1);
   });
 
-  it('add a person creates the profile, assigns the relationship, and routes into onboarding', () => {
+  it('add a person creates the profile, assigns the relationship, and routes into onboarding', async () => {
     const me = seed('Asha');
     useProfilesStore.getState().setAnchor(me);
     renderPage();
@@ -166,8 +166,9 @@ describe('PeopleSettings', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: 'Add & enter birth details' }));
 
-    // Routed through the EXISTING flow: new person active, sent to onboarding.
-    expect(screen.getByTestId('onboarding-probe')).toBeTruthy();
+    // Routed through the EXISTING flow once the person is saved: new person
+    // active, sent to onboarding.
+    expect(await screen.findByTestId('onboarding-probe')).toBeTruthy();
     const created = useProfilesStore
       .getState()
       .listProfiles()

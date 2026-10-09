@@ -24,6 +24,7 @@
     "delete_aria": "Eliminar a {{name}}",
     "delete_confirm": "¿Eliminar a {{name}} y sus cartas? Esto no se puede deshacer.",
     "delete_error": "No se pudo terminar de eliminar a esta persona. No se borró nada: inténtalo de nuevo.",
+    "add_error": "No se pudo guardar a esta persona en este dispositivo. Inténtalo de nuevo, o cierra esta ventana y no se conservará.",
     "new_person_name_aria": "Nombre de la nueva persona"
   },
   "actions": {
@@ -204,6 +205,8 @@
   "reset_incomplete": "El restablecimiento no pudo borrar todos los datos guardados, porque este navegador todavía los usa. Cierra todas las pestañas de AlmaMesh e inténtalo de nuevo. Si sigue pasando, borra los datos del sitio de AlmaMesh en los ajustes del navegador.",
   "dropped_writes": {
     "body": "Algunos cambios en esta página no se guardaron porque tus datos se estaban reemplazando o reparando. Recarga para ver tus datos actuales.",
-    "reload": "Recargar"
+    "reload": "Recargar",
+    "discard_failed_body": "No se pudo quitar de este dispositivo a una persona que cancelaste, así que puede volver a aparecer al recargar.",
+    "try_again": "Reintentar"
   }
 }

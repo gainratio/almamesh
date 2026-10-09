@@ -88,7 +88,7 @@ describe('AddPersonDialog — submit failure surfaces an inline error', () => {
     useProfilesStore.setState({ profiles: {}, activeProfileId: null, hydrated: true });
   });
 
-  it('keeps the dialog open with a friendly notice when the store throws (no unhandled crash)', () => {
+  it('keeps the dialog open with a friendly notice when the store throws (no unhandled crash)', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
     // A store failure (e.g. persistence quota) must not silently close the
     // dialog or escape the click handler as an uncaught exception.
@@ -106,12 +106,12 @@ describe('AddPersonDialog — submit failure surfaces an inline error', () => {
     // Still open, with the typed name intact and a friendly inline error —
     // never the raw failure text.
     expect(nameField().value).toBe('Ravi');
-    const notice = screen.getByTestId('add-person-error');
+    const notice = await screen.findByTestId('add-person-error');
     expect(notice.textContent ?? '').toContain('Something went wrong');
     expect(notice.textContent ?? '').not.toContain('quota');
   });
 
-  it('a failure notice does not linger into the next open', () => {
+  it('a failure notice does not linger into the next open', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
     useProfilesStore.setState({
       createProfile: () => {
@@ -123,7 +123,7 @@ describe('AddPersonDialog — submit failure surfaces an inline error', () => {
     openDialog();
     fireEvent.change(nameField(), { target: { value: 'Ravi' } });
     fireEvent.click(screen.getByRole('button', { name: 'Add & enter birth details' }));
-    expect(screen.getByTestId('add-person-error')).toBeTruthy();
+    expect(await screen.findByTestId('add-person-error')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     openDialog();

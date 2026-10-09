@@ -18,7 +18,7 @@ import { createJSONStorage, persist } from 'zustand/middleware';
 import type { ChatMessage, ChatThread, ChatThreadSummary } from '@almamesh/shared-types';
 import { hasValidChatSummaryShape, summaryMatchesMessages } from '@almamesh/llm';
 import { unlinkMissingChartLinks } from './chatChartLinks';
-import { deletionAwareIdbStorage } from './deletionTombstones';
+import { deletionAwareIdbStorage, whenPersistenceCommitted } from './deletionTombstones';
 import { whenHydrated, type HydrationOutcome } from './hydrationBarrier';
 
 type ChatRole = ChatMessage['role'];
@@ -386,4 +386,13 @@ export function whenChatHydrated(): Promise<HydrationOutcome> {
  */
 export function assignOrphanChatThreads(profileId: string): number {
   return useChatStore.getState().assignOrphanThreadsToProfile(profileId);
+}
+
+/**
+ * Resolve once every queued chat-history write has committed to SQLite; reject with
+ * the error when the last one failed. The store changes memory at once and
+ * persists later: a surface that says "saved" or moves on awaits this first.
+ */
+export function whenChatCommitted(): Promise<void> {
+  return whenPersistenceCommitted(PERSIST_NAME);
 }
