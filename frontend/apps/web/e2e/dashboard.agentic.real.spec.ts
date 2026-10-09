@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { bootEngine, seedChart, LLM_SETTINGS_KEY } from './interpretation.helpers';
+import { E2E_REAL_MODEL, PRODUCT_DEFAULT_MODEL } from './realModel';
 
 /**
  * Dashboard LIVE validation against REAL OpenRouter — three headline changes:
@@ -16,9 +17,9 @@ import { bootEngine, seedChart, LLM_SETTINGS_KEY } from './interpretation.helper
  *
  * This is a REAL integration test: real in-browser Pyodide engine, a real Delhi
  * sidereal chart generated in-tab, and a LIVE OpenRouter round-trip. The reading
- * uses the seeded `model` (deepseek/deepseek-v4-pro); chat has no `chatModel`
+ * uses the seeded `model` (E2E_REAL_MODEL, the cheapest); chat has no `chatModel`
  * saved, so it runs on the default chat tier (CHAT_CLOUD_MODEL,
- * deepseek/deepseek-v4.1-flash). The OpenRouter key is read ONLY from
+ * PRODUCT_DEFAULT_MODEL). The OpenRouter key is read ONLY from
  * process.env (never bundled).
  *
  * Run:  bun run test:e2e:dashboard:agentic:real   (from apps/web)
@@ -69,7 +70,7 @@ test('[real] dashboard: timer + life phase + exact-day agentic chat', async ({
   const config = JSON.stringify({
     apiBase: 'https://openrouter.ai/api/v1',
     apiKey: KEY,
-    model: 'deepseek/deepseek-v4-pro',
+    model: E2E_REAL_MODEL,
     privacyMode: 'cloud_premium',
     engine: 'openai-http',
   });
@@ -195,7 +196,7 @@ test('[real] dashboard: timer + life phase + exact-day agentic chat', async ({
     messages?: unknown[];
   };
   // Chat runs on the default chat tier, not the seeded reading model.
-  expect(firstAgentRequest.model).toBe('deepseek/deepseek-v4.1-flash');
+  expect(firstAgentRequest.model).toBe(PRODUCT_DEFAULT_MODEL);
   // Inverted 2026-10: this asserted `stream: false`. Since 5c99027 the
   // tool-decision round streams so a no-tool answer shows token by token
   // (agent.test.ts and chat.grounding.spec.ts already pin `stream: true`).

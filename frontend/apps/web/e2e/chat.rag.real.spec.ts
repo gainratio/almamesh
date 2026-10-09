@@ -1,6 +1,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { test, expect, type Request } from '@playwright/test';
 import { bootEngine, LLM_SETTINGS_KEY, seedChart } from './interpretation.helpers';
+import { E2E_REAL_MODEL, PRODUCT_DEFAULT_MODEL } from './realModel';
 import { completionUsage } from './openrouterUsage';
 
 /**
@@ -8,7 +9,7 @@ import { completionUsage } from './openrouterUsage';
  *
  * This is the "build-green != works" gate. It drives the REAL running app:
  *   - real in-browser Pyodide engine + a real Delhi sidereal chart in-tab,
- *   - a LIVE OpenRouter round-trip (deepseek/deepseek-v4-pro),
+ *   - a LIVE OpenRouter round-trip (the reading on E2E_REAL_MODEL, chat on the app's default),
  *   - the SELF-HOSTED in-browser embedder (MiniLM ONNX under /models/...).
  *
  * Steps mirror the A–G journey in the verification brief and emit machine-
@@ -25,7 +26,7 @@ const SHOT = '/tmp/almamesh-verify/chat';
  * finished first answer, and the turn's cost (OpenRouter `usage`) are written
  * to test-results/chat-real-timing-<model>.json.
  */
-const CHAT_MODEL = process.env.CHAT_REAL_MODEL ?? 'deepseek/deepseek-v4.1-flash';
+const CHAT_MODEL = process.env.CHAT_REAL_MODEL ?? PRODUCT_DEFAULT_MODEL;
 
 test('[real] chat: single-pass streaming + self-hosted RAG + persistence + search', async ({
   page,
@@ -79,8 +80,9 @@ test('[real] chat: single-pass streaming + self-hosted RAG + persistence + searc
   const config = JSON.stringify({
     apiBase: 'https://openrouter.ai/api/v1',
     apiKey: KEY,
-    model: 'deepseek/deepseek-v4-pro',
-    chatModel: CHAT_MODEL,
+    model: E2E_REAL_MODEL,
+    // No chatModel unless benchmarking one: the app picks its own chat default.
+    ...(process.env.CHAT_REAL_MODEL ? { chatModel: process.env.CHAT_REAL_MODEL } : {}),
     privacyMode: 'cloud_premium',
     engine: 'openai-http',
   });
@@ -178,6 +180,13 @@ test('[real] chat: single-pass streaming + self-hosted RAG + persistence + searc
       { timeout: 300_000, intervals: [2_500] },
     )
     .toBe(true);
+  // The streamed draft looks like an answer even when the turn then discards it
+  // because the day's re-anchor landed mid-stream (nightly 2026-10-08/09). Say
+  // so here, not two reloads later as "1 assistant message instead of 2".
+  await expect(
+    chatPanel,
+    'the first answer must be kept, not discarded by a re-anchor landing mid-stream',
+  ).not.toContainText('Your chart changed while this answer was being written');
   const answerMs = Date.now() - tSend;
   await page.screenshot({ path: `${SHOT}/B-answer-complete.png`, fullPage: true });
   const firstTurn = (await Promise.all(chatResponses)).map(completionUsage);
@@ -185,7 +194,8 @@ test('[real] chat: single-pass streaming + self-hosted RAG + persistence + searc
   writeFileSync(
     `test-results/chat-real-timing-${CHAT_MODEL.replace(/\W/g, '_')}.json`,
     JSON.stringify({
-      model: CHAT_MODEL,
+      // The model the first chat turn actually sent (asserted in B2).
+      model: (JSON.parse(chatTurnBodies[0]?.body ?? '{}') as { model?: string }).model ?? null,
       firstTokenMs,
       answerMs,
       requests: firstTurn.length,
@@ -201,8 +211,8 @@ test('[real] chat: single-pass streaming + self-hosted RAG + persistence + searc
 
   // ===========================================================================
   // B2) ON-THE-WIRE MODEL — the chat turn must use the FAST chat model
-  //     (CHAT_MODEL, default `deepseek/deepseek-v4.1-flash`; NOT the deeper `deepseek/deepseek-v4-pro` that
-  //     the preset seeds for interpretation), stream:true, and carry the chart
+  //     (CHAT_MODEL: the app's own chat default, PRODUCT_DEFAULT_MODEL, unless
+  //     CHAT_REAL_MODEL benchmarks another; NOT the seeded reading model), stream:true, and carry the chart
   //     facts + reused-reading grounding blocks. applyChatModelPreference swaps
   //     the model ONLY on the default OpenRouter cloud preset (the one seeded).
   // ===========================================================================

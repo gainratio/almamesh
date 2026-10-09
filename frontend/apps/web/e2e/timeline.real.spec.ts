@@ -1,6 +1,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { test, expect } from '@playwright/test';
 import { bootEngine, seedChart, LLM_SETTINGS_KEY } from './interpretation.helpers';
+import { E2E_REAL_MODEL } from './realModel';
 import { completionUsage, type CompletionUsage } from './openrouterUsage';
 
 /**
@@ -24,7 +25,7 @@ import { completionUsage, type CompletionUsage } from './openrouterUsage';
  * Run:  OPENROUTER_API_KEY=... bunx playwright test --config=playwright.timeline.real.config.ts
  */
 
-const MODEL = process.env.TIMELINE_REAL_MODEL ?? 'deepseek/deepseek-v4-pro';
+const MODEL = process.env.TIMELINE_REAL_MODEL ?? E2E_REAL_MODEL;
 const TTFT_BUDGET_MS = Number(process.env.TIMELINE_TTFT_BUDGET_MS ?? 60_000);
 const LIVE = '[data-testid^="timeline-live-"]';
 
