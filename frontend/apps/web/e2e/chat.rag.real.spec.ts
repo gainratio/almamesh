@@ -1,6 +1,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { test, expect, type Request } from '@playwright/test';
 import { bootEngine, LLM_SETTINGS_KEY, seedChart } from './interpretation.helpers';
+import { E2E_REAL_MODEL, PRODUCT_DEFAULT_MODEL } from './realModel';
 import { completionUsage } from './openrouterUsage';
 
 /**
@@ -8,7 +9,7 @@ import { completionUsage } from './openrouterUsage';
  *
  * This is the "build-green != works" gate. It drives the REAL running app:
  *   - real in-browser Pyodide engine + a real Delhi sidereal chart in-tab,
- *   - a LIVE OpenRouter round-trip (deepseek/deepseek-v4.1-flash, the cheapest model),
+ *   - a LIVE OpenRouter round-trip (the reading on E2E_REAL_MODEL, chat on the app's default),
  *   - the SELF-HOSTED in-browser embedder (MiniLM ONNX under /models/...).
  *
  * Steps mirror the A–G journey in the verification brief and emit machine-
@@ -25,7 +26,7 @@ const SHOT = '/tmp/almamesh-verify/chat';
  * finished first answer, and the turn's cost (OpenRouter `usage`) are written
  * to test-results/chat-real-timing-<model>.json.
  */
-const CHAT_MODEL = process.env.CHAT_REAL_MODEL ?? 'deepseek/deepseek-v4.1-flash';
+const CHAT_MODEL = process.env.CHAT_REAL_MODEL ?? PRODUCT_DEFAULT_MODEL;
 
 test('[real] chat: single-pass streaming + self-hosted RAG + persistence + search', async ({
   page,
@@ -79,8 +80,9 @@ test('[real] chat: single-pass streaming + self-hosted RAG + persistence + searc
   const config = JSON.stringify({
     apiBase: 'https://openrouter.ai/api/v1',
     apiKey: KEY,
-    model: 'deepseek/deepseek-v4.1-flash',
-    chatModel: CHAT_MODEL,
+    model: E2E_REAL_MODEL,
+    // No chatModel unless benchmarking one: the app picks its own chat default.
+    ...(process.env.CHAT_REAL_MODEL ? { chatModel: process.env.CHAT_REAL_MODEL } : {}),
     privacyMode: 'cloud_premium',
     engine: 'openai-http',
   });
@@ -208,8 +210,8 @@ test('[real] chat: single-pass streaming + self-hosted RAG + persistence + searc
 
   // ===========================================================================
   // B2) ON-THE-WIRE MODEL — the chat turn must use the FAST chat model
-  //     (CHAT_MODEL, default `deepseek/deepseek-v4.1-flash`, the cheapest model;
-  //     every real spec uses it, see realModelSpecs.contract.test.ts), stream:true, and carry the chart
+  //     (CHAT_MODEL: the app's own chat default, PRODUCT_DEFAULT_MODEL, unless
+  //     CHAT_REAL_MODEL benchmarks another; NOT the seeded reading model), stream:true, and carry the chart
   //     facts + reused-reading grounding blocks. applyChatModelPreference swaps
   //     the model ONLY on the default OpenRouter cloud preset (the one seeded).
   // ===========================================================================

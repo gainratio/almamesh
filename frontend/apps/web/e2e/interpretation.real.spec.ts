@@ -1,6 +1,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { test, expect, type Page } from '@playwright/test';
 import { bootEngine, seedChart, LLM_SETTINGS_KEY } from './interpretation.helpers';
+import { E2E_REAL_MODEL } from './realModel';
 
 /**
  * Structured Vedic interpretation REAL integration test — REAL chart, REAL LLM.
@@ -189,7 +190,7 @@ test('[real] interpretation renders against live OpenRouter', async ({ page }) =
   const config = JSON.stringify({
     apiBase: 'https://openrouter.ai/api/v1',
     apiKey: KEY,
-    model: 'deepseek/deepseek-v4.1-flash',
+    model: E2E_REAL_MODEL,
     privacyMode: 'cloud_premium',
     engine: 'openai-http',
   });
