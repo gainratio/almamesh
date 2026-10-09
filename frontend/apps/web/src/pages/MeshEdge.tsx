@@ -33,6 +33,7 @@ import type {
   MemberRelationship,
   MeshEdgeCtx,
   ProcessedBirthData,
+  ChatThreadAsOf,
 } from '@almamesh/shared-types';
 import {
   applyChatSettings,
@@ -74,6 +75,8 @@ import {
 } from '../lib/mesh';
 import { predictiveReferenceInstant } from '../lib/predictive';
 import { buildChatToolset } from '../lib/chatToolset';
+import { formatPinLabel } from '../lib/timeTravelSheet';
+import { birthYearOf } from '../lib/periodChart';
 import { RESOLVE_PLACE_TOOL_NAME } from '../lib/placeTool';
 import type { SSEMetaData } from '../lib/streaming';
 import type { ViewMode } from '../lib/types';
@@ -294,6 +297,7 @@ function MeshEdgeContent({
     history: readonly ChatTurn[] = [],
     retrievedContext: readonly string[] = [],
     onAgentStatus?: (label: string | null) => void,
+    asOf?: ChatThreadAsOf,
   ): AsyncGenerator<string> {
     if (!siderealChart) {
       throw new Error(t('errors:needs_regeneration'));
@@ -321,11 +325,13 @@ function MeshEdgeContent({
       profileKey: anchorChart?.profile_id ?? anchorChart?.chart_id ?? anchor.id,
       birth: anchorChart?.birth_data as ProcessedBirthData | undefined,
       engine: chartEngineContext,
+      ...(asOf ? { pinned: asOf } : {}),
     });
     const prepared = await toolset.prepare(question, {
       now,
       signal,
       onStatus: (label) => onAgentStatus?.(label),
+      pinnedStatus: asOf ? t('chat:time_travel.status_working', { period: formatPinLabel(asOf, language) }) : undefined,
     });
 
     let messages = buildChatMessages(
@@ -340,6 +346,7 @@ function MeshEdgeContent({
       undefined,
       undefined,
       toolset.tools.some((tool) => tool.name === RESOLVE_PLACE_TOOL_NAME),
+      prepared.pinned,
     );
     if (prepared.currentContextUnavailable) {
       const [system, ...rest] = messages;
@@ -395,6 +402,7 @@ function MeshEdgeContent({
     history: readonly ChatTurn[] = [],
     retrievedContext: readonly string[] = [],
     onAgentStatus?: (label: string | null) => void,
+    asOf?: ChatThreadAsOf,
   ): Promise<{ answer: string; timing_guidance?: string | null; remedies?: string[] | null }> => {
     const controller = new AbortController();
     let answer = '';
@@ -406,6 +414,7 @@ function MeshEdgeContent({
         history,
         retrievedContext,
         onAgentStatus,
+        asOf,
       )) {
         answer += delta;
         onToken(delta);
@@ -523,6 +532,7 @@ function MeshEdgeContent({
           chartId={anchorChart?.chart_id ?? null}
           viewMode={viewMode}
           onAskQuestionStream={handleAskQuestionStream}
+          birthYear={birthYearOf(anchorChart?.birth_data as ProcessedBirthData | undefined)}
           initialOpen={discussRequested}
         />
       )}

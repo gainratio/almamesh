@@ -7,6 +7,7 @@ import type {
   AstronomicalCalculations,
   SiderealPlanet,
   ProcessedBirthData,
+  ChatThreadAsOf,
 } from "@almamesh/shared-types";
 import { readLocalPrimaryChart } from "../lib/localChartRead";
 import {
@@ -78,6 +79,8 @@ import { isPlaceholderContent } from "./exportGate";
 import { personaText, resolveReportAudience } from "../lib/reportSelectors";
 import { rectificationDelta } from "../lib/rectification";
 import { buildChatToolset } from "../lib/chatToolset";
+import { formatPinLabel } from "../lib/timeTravelSheet";
+import { birthYearOf } from "../lib/periodChart";
 import { RESOLVE_PLACE_TOOL_NAME } from "../lib/placeTool";
 import { useOptionalChartEngine } from "../providers/chartEngineContext";
 
@@ -266,6 +269,7 @@ export default function DashboardPage() {
     history: readonly ChatTurn[] = [],
     retrievedContext: readonly string[] = [],
     onAgentStatus?: (label: string | null) => void,
+    asOf?: ChatThreadAsOf,
   ) {
     const storedChart = chartId ? useChartLibraryStore.getState().getChart(chartId) : undefined;
     const chart = storedChart?.sidereal_chart;
@@ -323,11 +327,13 @@ export default function DashboardPage() {
       profileKey: storedChart?.profile_id ?? chartId ?? 'primary',
       birth: storedChart?.birth_data as ProcessedBirthData | undefined,
       engine: chartEngineContext,
+      ...(asOf ? { pinned: asOf } : {}),
     });
     const prepared = await toolset.prepare(question, {
       now,
       signal,
       onStatus: (label) => onAgentStatus?.(label),
+      pinnedStatus: asOf ? t('chat:time_travel.status_working', { period: formatPinLabel(asOf, language) }) : undefined,
     });
 
     let messages = buildChatMessages(
@@ -342,6 +348,7 @@ export default function DashboardPage() {
       rectification,
       undefined,
       toolset.tools.some((tool) => tool.name === RESOLVE_PLACE_TOOL_NAME),
+      prepared.pinned,
     );
     if (prepared.currentContextUnavailable) {
       const [system, ...rest] = messages;
@@ -387,6 +394,7 @@ export default function DashboardPage() {
     history: readonly ChatTurn[] = [],
     retrievedContext: readonly string[] = [],
     onAgentStatus?: (label: string | null) => void,
+    asOf?: ChatThreadAsOf,
   ) => {
     const controller = new AbortController();
     let answer = '';
@@ -398,6 +406,7 @@ export default function DashboardPage() {
         history,
         retrievedContext,
         onAgentStatus,
+        asOf,
       )) {
         answer += delta;
         onToken(delta);
@@ -1181,6 +1190,7 @@ export default function DashboardPage() {
         chartId={chartId}
         viewMode={viewMode}
         onAskQuestionStream={handleAskQuestionStream}
+        birthYear={birthYearOf(chartId ? (useChartLibraryStore.getState().getChart(chartId)?.birth_data as ProcessedBirthData | undefined) : undefined)}
         initialOpen={chatInitiallyOpen}
       />
     </>

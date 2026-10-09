@@ -32,4 +32,12 @@ describe.each(pages)('$name chat wiring', ({ source }) => {
     expect(source).not.toMatch(/['"]resolve_place['"]/);
     expect(source).toContain('RESOLVE_PLACE_TOOL_NAME');
   });
+
+  it('forwards the thread pin to the toolset and the prompt, and bounds the sheet by birth year', () => {
+    expect(source).toContain('...(asOf ? { pinned: asOf } : {})');
+    expect(source).toContain('pinnedStatus:');
+    expect(source).toContain('prepared.pinned');
+    expect(source).toContain('birthYear={');
+    expect(source).not.toContain('pinnedPlaceReader(');
+  });
 });
