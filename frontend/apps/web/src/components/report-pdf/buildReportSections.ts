@@ -286,11 +286,11 @@ export function buildCharts(
 }
 
 /**
- * A short "Mon YYYY" label from an ISO date string (epoch-safe). Date-safe:
- * parses the WRITTEN Y/M/D parts and formats at local noon — `new Date(iso)`
- * would reparse a date-only string as UTC midnight and roll the label back a
- * month at month boundaries for every viewer west of GMT (the life-event
- * date bug class, flagged in Spec 062).
+ * A short "Mon YYYY" label from an ISO date string (epoch-safe), by the
+ * Periods panel's rule. A date-only string is its WRITTEN Y/M/D, formatted at
+ * local noon — `new Date(iso)` would reparse it as UTC midnight and roll the
+ * label back a month west of GMT (the life-event date bug class, Spec 062).
+ * A full instant is read in the viewer's zone, as the screen shows it.
  */
 function shortMonthYear(iso: string): string {
   const datePart = iso.split('T')[0] ?? '';
@@ -298,9 +298,12 @@ function shortMonthYear(iso: string): string {
   if (!year || !month || !day || Date.UTC(year, month - 1, day) === 0) {
     return '';
   }
-  return new Intl.DateTimeFormat('en-US', { month: 'short', year: 'numeric' }).format(
-    new Date(year, month - 1, day, 12, 0, 0),
-  );
+  const instant = iso.includes('T') ? new Date(iso) : null;
+  const when =
+    instant !== null && !Number.isNaN(instant.getTime())
+      ? instant
+      : new Date(year, month - 1, day, 12, 0, 0);
+  return new Intl.DateTimeFormat('en-US', { month: 'short', year: 'numeric' }).format(when);
 }
 
 function spanLabel(years: number): string {

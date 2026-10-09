@@ -32,31 +32,16 @@
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { mkdir, readFile } from 'node:fs/promises';
-import { registerHooks } from 'node:module';
 import { createElement } from 'react';
 import { Font, renderToFile } from '@react-pdf/renderer';
 import i18next from 'i18next';
 
 /**
- * Stub `.css` imports before ANY app module loads.
- *
- * The pure `buildComprehensiveSections` builder reaches `DOMAIN_ORDER` and
- * `hasApproximatedComponents` through two React panel modules, and one of those
- * panels imports a stylesheet. Vite handles that in the browser; plain Node +
- * tsx cannot parse `.css` and the whole harness dies on an unrelated import.
- * A no-op module keeps this eye-inspection script running without asking the
- * app to restructure. App modules are imported dynamically BELOW so this hook
- * is installed first (static imports would be hoisted ahead of it).
+ * The report-pdf builders must stay plain-Node loadable: no React panel
+ * modules, no stylesheets, no engine runtime (`?worker` imports). The unit gate
+ * runs this script (`reportPdfSampleScript.test.ts`), so a Vite-only import
+ * reaching the builders fails CI instead of silently breaking this harness.
  */
-registerHooks({
-  load(url, context, nextLoad) {
-    if (url.endsWith('.css')) {
-      return { format: 'module', shortCircuit: true, source: 'export default {};' };
-    }
-    return nextLoad(url, context);
-  },
-});
-
 const { ReportDocument } = await import('../src/components/report-pdf/ReportDocument.tsx');
 const {
   buildCharts,
@@ -88,8 +73,11 @@ const { default: enRectify } = await import('../src/locales/en/rectify.json');
 const HERE = dirname(fileURLToPath(import.meta.url));
 const APP_ROOT = resolve(HERE, '..');
 const FONT_DIR = resolve(APP_ROOT, 'public/fonts');
-const OUT_DIR = resolve(APP_ROOT, '.report-out');
-const CHART_FILE = resolve(OUT_DIR, 'reference_chart.json');
+// `REPORT_OUT_DIR` / `REPORT_CHART_FILE` override the defaults so the unit gate
+// (`reportPdfSampleScript.test.ts`) can run this exact script on the committed
+// Bengaluru reference chart without the Python engine.
+const OUT_DIR = resolve(process.env.REPORT_OUT_DIR ?? resolve(APP_ROOT, '.report-out'));
+const CHART_FILE = resolve(process.env.REPORT_CHART_FILE ?? resolve(OUT_DIR, 'reference_chart.json'));
 
 // `REPORT_FIXTURE=natal-only` renders the graceful natal-only degradation: the
 // deterministic halves (cover · birth details · planets · kundli · dasha · yogas)

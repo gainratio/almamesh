@@ -3,8 +3,9 @@
  * joined over an explicit window, as a dual-track list.
  *
  * Each engine segment is one slice where BOTH charts' mahā+antar legs are
- * constant: dates on the left (locale display), your track and theirs side by
- * side. Shared lords — the same graha timing both lives at once — glow gold
+ * constant: dates on the left, your track and theirs side by side. The window
+ * bounds are UTC midnight and print as that UTC day; interior cuts are antar
+ * start instants and print in the viewer's zone, like the Periods panel. Shared lords — the same graha timing both lives at once — glow gold
  * and get their own line; a simultaneous boundary is noted quietly. The window
  * control re-derives the edge (seconds, on-device); both daśā-year conventions
  * are declared underneath, verbatim.
@@ -13,11 +14,16 @@
 import type { ReactElement } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
-import type { MeshEdgeCtx, PlanetName, SynchronySegmentData } from '@almamesh/shared-types';
+import type {
+  DashaSynchronyData,
+  MeshEdgeCtx,
+  PlanetName,
+  SynchronySegmentData,
+} from '@almamesh/shared-types';
 
 import { Badge, Card } from '../../ui';
 import { MESH_WINDOW_YEARS, type MeshWindowYears } from '../../../lib/mesh';
-import { formatPredictiveDate } from '../../../lib/predictive';
+import { formatPredictiveDate, formatPredictiveWindowBound } from '../../../lib/predictive';
 import { grahaName } from '../../../lib/predictiveEventCopy';
 
 export interface SynchronySectionProps {
@@ -25,6 +31,18 @@ export interface SynchronySectionProps {
   readonly memberName: string;
   readonly years: MeshWindowYears;
   readonly onYearsChange: (years: MeshWindowYears) => void;
+}
+
+/**
+ * A synchrony cut as a display date. The window bounds are UTC midnight, so
+ * they print as that UTC day; an interior cut is an antar start instant with a
+ * real time of day, so it prints in the viewer's zone (the Periods rule).
+ */
+function formatCut(iso: string, synchrony: DashaSynchronyData): string {
+  const instant = Date.parse(iso);
+  const isBound =
+    instant === Date.parse(synchrony.window_start) || instant === Date.parse(synchrony.window_end);
+  return isBound ? formatPredictiveWindowBound(iso) : formatPredictiveDate(iso);
 }
 
 /** The now → +N years control (explicit window, never a silent default). */
@@ -90,10 +108,12 @@ function Track({
 
 function SegmentRow({
   segment,
+  synchrony,
   memberName,
   t,
 }: {
   segment: SynchronySegmentData;
+  synchrony: DashaSynchronyData;
   memberName: string;
   t: TFunction;
 }): ReactElement {
@@ -105,8 +125,8 @@ function SegmentRow({
     >
       <span className="font-mono text-xs text-text-tertiary">
         {t('mesh:synchrony.window', {
-          start: formatPredictiveDate(segment.start),
-          end: formatPredictiveDate(segment.end),
+          start: formatCut(segment.start, synchrony),
+          end: formatCut(segment.end, synchrony),
         })}
       </span>
       <Track
@@ -148,8 +168,8 @@ export function SynchronySection({
     <Card
       title={t('mesh:synchrony.heading')}
       subtitle={t('mesh:synchrony.window', {
-        start: formatPredictiveDate(synchrony.window_start),
-        end: formatPredictiveDate(synchrony.window_end),
+        start: formatPredictiveWindowBound(synchrony.window_start),
+        end: formatPredictiveWindowBound(synchrony.window_end),
       })}
       actions={
         <div className="flex items-center gap-3">
@@ -165,6 +185,7 @@ export function SynchronySection({
             <SegmentRow
               key={`${segment.start}-${segment.end}`}
               segment={segment}
+              synchrony={synchrony}
               memberName={memberName}
               t={t}
             />

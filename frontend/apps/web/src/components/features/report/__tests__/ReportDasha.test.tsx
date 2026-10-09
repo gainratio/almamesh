@@ -6,12 +6,13 @@
  * Older payloads without depth render the classic section unchanged.
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import { useLanguageStore } from '@almamesh/store';
 
 import '../../../../i18n/config';
 import { ReportDasha } from '../ReportDasha';
+import { PeriodsPanel } from '../../predictive/PeriodsPanel';
 import { FOUNDER_DASHAS, FOUNDER_DASHAS_NO_DEPTH } from '../../../../test/dashaFixtures';
 
 describe('ReportDasha', () => {
@@ -97,10 +98,20 @@ describe('ReportDasha', () => {
     expect(mahaTable.textContent).not.toContain('01/08/2017');
   });
 
-  it('full ISO datetime boundaries render their written (UTC) calendar date', () => {
-    // An instant just past UTC midnight is the sharpest west-of-GMT trap:
-    // rendered as a local-time instant in America/Los_Angeles it would show
-    // Jan 12 — the date-safe path must keep the written Jan 13.
+  // CONTRACT REVERSED (PR #305): this test used to require the UTC calendar
+  // day of an ISO instant ("written date"), while the on-screen Periods panel
+  // shows the same instant in the viewer's zone, so print and screen disagreed
+  // by a day west of GMT. The report now follows the Periods rule.
+  describe('in a timezone west of UTC (America/Los_Angeles)', () => {
+    const originalTz = process.env.TZ;
+    beforeEach(() => {
+      process.env.TZ = 'America/Los_Angeles';
+    });
+    afterEach(() => {
+      process.env.TZ = originalTz;
+    });
+
+    // 00:30 UTC on Jan 13 is the evening of Jan 12 in Los Angeles.
     const dashas = {
       ...FOUNDER_DASHAS_NO_DEPTH,
       maha_dasha_sequence: [
@@ -115,9 +126,15 @@ describe('ReportDasha', () => {
       current_antar: null,
       current_pratyantar: null,
     } as typeof FOUNDER_DASHAS_NO_DEPTH;
-    render(<ReportDasha dashas={dashas} />);
-    const table = screen.getByTestId('report-dasha-maha-table');
-    expect(table.textContent).toContain('01/13/2020');
-    expect(table.textContent).not.toContain('01/12/2020');
+
+    it('prints an ISO instant boundary on the same day the Periods panel shows', () => {
+      render(<PeriodsPanel dashas={dashas} />);
+      const periods = screen.getByTestId('dasha-tree-maha-mercury').textContent ?? '';
+      render(<ReportDasha dashas={dashas} />);
+      const table = screen.getByTestId('report-dasha-maha-table');
+      expect(periods).toContain('Jan 12, 2020');
+      expect(table.textContent).toContain('Jan 12, 2020');
+      expect(table.textContent).not.toContain('01/13/2020');
+    });
   });
 });

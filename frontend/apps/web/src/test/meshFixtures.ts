@@ -284,7 +284,7 @@ export const MESH_EDGE_SPOUSE: MeshEdgeCtx = {
     segments: [
       {
         start: '2026-06-11T00:00:00Z',
-        end: '2027-01-08T00:00:00Z',
+        end: '2027-01-08T04:52:00Z',
         a_maha: 'saturn',
         a_antar: 'mercury',
         b_maha: 'jupiter',
@@ -293,7 +293,7 @@ export const MESH_EDGE_SPOUSE: MeshEdgeCtx = {
         simultaneous_boundary: false,
       },
       {
-        start: '2027-01-08T00:00:00Z',
+        start: '2027-01-08T04:52:00Z',
         end: '2028-06-11T00:00:00Z',
         a_maha: 'saturn',
         a_antar: 'venus',

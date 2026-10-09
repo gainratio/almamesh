@@ -33,6 +33,7 @@ import {
   formatPredictiveDate,
   formatReferenceDay,
   formatRupas,
+  hasApproximatedComponents,
   sunriseBasisParams,
   toVargaChart,
 } from '../../lib/predictive';
@@ -44,8 +45,7 @@ import {
   slowHitTargetLabel,
   timelineEventLabel,
 } from '../../lib/predictiveEventCopy';
-import { DOMAIN_ORDER } from '../features/predictive/DomainsPanel';
-import { hasApproximatedComponents } from '../features/predictive/StrengthPanel';
+import { LIFE_DOMAINS } from '../../lib/lifeAtlas';
 import { domainClaimId } from '../../lib/stability';
 import { paperTint, type StabilityFlagFor } from './buildReportSections';
 import { glyphSafe } from './glyphSafe';
@@ -528,7 +528,7 @@ export function buildDomainsSection(
   stabilityFlagFor?: StabilityFlagFor,
 ): ReportPdfDomains {
   const { tr, tp } = translators;
-  const blocks = DOMAIN_ORDER.map((domain) => {
+  const blocks = LIFE_DOMAINS.map((domain) => {
     const forecast = ctx.forecasts[domain];
     const strength = forecast.strength_summary;
     const unverified = isStrengthUnverified(domain, provenance);

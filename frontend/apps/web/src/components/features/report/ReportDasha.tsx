@@ -23,11 +23,10 @@ import {
   type DashaTreeRow,
   type DashaTreeSource,
 } from '../../../lib/dashaPeriods';
-// Dasha boundaries arrive as date-only strings OR full ISO instants; the old
-// `formatReportDate` reparsed both through `new Date(...)` and formatted them
-// in the VIEWER's timezone, rolling the displayed day back a day west of GMT
-// (the life-event date bug class). Taking the written date part and
-// formatting it at local noon keeps the calendar day stable in every zone.
+// Dasha boundaries arrive as date-only strings OR full ISO instants. The print
+// uses the Periods panel's rule (`formatPredictiveDate`): a date-only string is
+// the written day (formatted at local noon, stable in every zone); an instant
+// is shown in the viewer's zone, so print and screen name the same day.
 import { formatPredictiveDate } from '../../../lib/predictive';
 import { formatDurationYears } from '../../../lib/reportData';
 import { ReportSectionHeading } from './ReportSectionHeading';
@@ -37,10 +36,10 @@ function titleCase(value: string): string {
   return value ? value.charAt(0).toUpperCase() + value.slice(1) : '';
 }
 
-/** Date-safe dasha boundary date: the WRITTEN calendar date, or an em dash. */
+/** Dasha boundary date by the Periods panel's rule, or an em dash. */
 function formatDashaDate(value: string | null | undefined): string {
   if (!value) return '—';
-  return formatPredictiveDate(value.split('T')[0] ?? value);
+  return formatPredictiveDate(value);
 }
 
 /** A current-period leg with its level label, or null when the engine omits it. */
