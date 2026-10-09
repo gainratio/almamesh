@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 // package export: imported by path so this test exercises the real pool bound.
 import { EngineMemo, memoizeChartEngine } from '../../../../../packages/browser/src/pyodide/engineMemo';
 import type { ChartEngineContextValue } from '../../providers/chartEngineContext';
-import { birthYearOf, createPeriodChartLoader } from '../periodChart';
+import { birthUtcYearOf, birthYearOf, createPeriodChartLoader } from '../periodChart';
 import { createPeriodSkyCache } from '../periodSky';
 import { PeriodSkyUnavailableError, createTimingTool } from '../timingTool';
 
@@ -89,6 +89,14 @@ describe('createPeriodChartLoader', () => {
     const error = await loader(context, birth as ProcessedBirthData)(JUNE, toolContext()).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(PeriodSkyUnavailableError);
     expect((error as PeriodSkyUnavailableError).reason).toBe(reason);
+  });
+});
+
+describe('birthUtcYearOf', () => {
+  it("is the birth instant's UTC year, else unknown", () => {
+    expect(birthUtcYearOf({ ...BIRTH, birth_datetime_utc: '1991-01-01T04:00:00Z' })).toBe(1991);
+    expect(birthUtcYearOf({ ...BIRTH, birth_datetime_utc: '' })).toBeUndefined();
+    expect(birthUtcYearOf(undefined)).toBeUndefined();
   });
 });
 

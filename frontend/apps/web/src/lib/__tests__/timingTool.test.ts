@@ -9,6 +9,7 @@ import { describe, expect, it, vi } from 'vitest';
 import golden from '../../../../../../backend/tests/fixtures/chart_golden_de421.json';
 import { PeriodSkyTimeoutError } from '../periodSky';
 import {
+  DASHAS_STATUS_LABEL,
   DEVICE_DASHAS_ONLY_NOTE,
   PeriodSkyUnavailableError,
   TIMING_TOOL_TIMEOUT_MS,
@@ -179,6 +180,40 @@ describe('get_timing with dates', () => {
       expect(loadPeriodChart).toHaveBeenCalledOnce();
     },
   );
+
+  it('does not promise a sky computation for a birth-year period (the engine never runs)', () => {
+    const timing = tool();
+    // What the agent shows: the per-call label, else the tool's label.
+    const shown = (args: Record<string, string>) => timing.statusLabelFor?.(args) ?? timing.statusLabel;
+    expect(shown({ section: 'transits', start: '1990-06-01' })).toBe(DASHAS_STATUS_LABEL);
+    expect(DASHAS_STATUS_LABEL).toBe('Reading dasha periods');
+    expect(shown({ section: 'domains', start: '1991-06-01' })).toBe('Working out the sky… (about 30 s)');
+    expect(shown({ section: 'transits' })).toBe('Working out the sky… (about 30 s)');
+    // A refused (before the birth year) call runs no engine either.
+    expect(shown({ section: 'transits', start: '1985-01-01' })).toBe(DASHAS_STATUS_LABEL);
+  });
+
+  it('withholds the sky until the later of the local and UTC birth years', async () => {
+    // Born 1990-12-31 20:00 PST = 1991-01-01T04:00Z: 1991-01-01 is still before the birth instant.
+    const loadPeriodChart = vi.fn(async () => SKY_CHART);
+    const pstEdge = tool({ birthYear: 1990, birthUtcYear: 1991, loadPeriodChart });
+    const result = await pstEdge.execute({ section: 'transits', start: '1991-01-01' }, context());
+    expect(loadPeriodChart).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ shown: 'dashas' });
+    expect((result as { notes: string[] }).notes[0]).toBe(BIRTH_YEAR_SKY_NOTE);
+    expect(pstEdge.statusLabelFor?.({ section: 'transits', start: '1991-01-01' })).toBe(DASHAS_STATUS_LABEL);
+    await pstEdge.execute({ section: 'transits', start: '1992-01-01' }, context());
+    expect(loadPeriodChart).toHaveBeenCalledOnce();
+  });
+
+  it('gates the sky on the UTC birth year alone when the local year is unknown', async () => {
+    const loadPeriodChart = vi.fn(async () => SKY_CHART);
+    const utcOnly = tool({ birthYear: undefined, birthUtcYear: 1991, loadPeriodChart });
+    await expect(utcOnly.execute({ section: 'strength', start: '1991-06-01' }, context())).resolves.toMatchObject({
+      shown: 'dashas',
+    });
+    expect(loadPeriodChart).not.toHaveBeenCalled();
+  });
 
   it('a span over two years gives dashas only, with a note, and no engine run', async () => {
     const loadPeriodChart = vi.fn();

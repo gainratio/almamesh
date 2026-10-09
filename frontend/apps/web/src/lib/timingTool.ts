@@ -54,6 +54,12 @@ export interface TimingToolInput {
    * of it; never echoed. Never the day: a day-precision refusal is a birth-date oracle.
    */
   readonly birthYear: number | undefined;
+  /**
+   * The birth instant's UTC year, when it is later than the local year (a birth
+   * late on 31 Dec west of UTC). The engine computes in UTC, so the birth-year sky
+   * gate uses the later of the two. Never echoed.
+   */
+  readonly birthUtcYear?: number | undefined;
   /** Today's calendar day in the one "today" zone (the viewer's). */
   readonly todayDay: (now: Date) => string;
   /** Today's engine facts (the Life Atlas store path). */
@@ -187,6 +193,27 @@ function dashasTiming(
   };
 }
 
+/** The later of the local and UTC birth years: the sky gate must cover the UTC birth instant too. */
+function skyGateYear(input: TimingToolInput): number | undefined {
+  if (input.birthYear === undefined) return input.birthUtcYear;
+  return Math.max(input.birthYear, input.birthUtcYear ?? input.birthYear);
+}
+
+/** Why this period gets dashas only (its notes), or undefined when the engine runs. */
+function dashasOnlyNotes(
+  input: TimingToolInput,
+  section: TimingSection,
+  period: PeriodRange,
+): readonly string[] | undefined {
+  if (section === 'dashas') return [];
+  // The engine computes against the real birth instant, so a birth-year sky flips at birth.
+  if (startsInOrBeforeBirthYear(period, skyGateYear(input))) return [BIRTH_YEAR_SKY_NOTE];
+  const limits = periodLimits(period);
+  if (limits.dashasOnly) return limits.notes;
+  if (!input.periodSkyAllowed) return [DEVICE_DASHAS_ONLY_NOTE];
+  return undefined;
+}
+
 async function periodTiming(
   input: TimingToolInput,
   section: TimingSection,
@@ -195,22 +222,30 @@ async function periodTiming(
 ): Promise<TimingResult | TimingError> {
   if (endsBeforeBirthYear(period, input.birthYear)) return { error: BEFORE_BIRTH_MESSAGE };
   const echo = periodEcho(period, 'period');
-  const limits = periodLimits(period);
-  if (section === 'dashas') return dashasTiming(input, section, period, echo, []);
-  // The engine computes against the real birth instant, so a birth-year sky flips at birth.
-  if (startsInOrBeforeBirthYear(period, input.birthYear)) {
-    return dashasTiming(input, section, period, echo, [BIRTH_YEAR_SKY_NOTE]);
-  }
-  if (limits.dashasOnly) return dashasTiming(input, section, period, echo, limits.notes);
-  if (!input.periodSkyAllowed) return dashasTiming(input, section, period, echo, [DEVICE_DASHAS_ONLY_NOTE]);
+  const notes = dashasOnlyNotes(input, section, period);
+  if (notes || section === 'dashas') return dashasTiming(input, section, period, echo, notes ?? []);
   return skyTiming(input, section, period, echo, context);
+}
+
+const SKY_STATUS_LABEL = 'Working out the sky… (about 30 s)';
+/** Shown when a period call will not run the engine. A fixed phrase: no dates, no reasons. */
+export const DASHAS_STATUS_LABEL = 'Reading dasha periods';
+
+/** The status line for one call: no sky wording when the engine will not run. */
+function statusLabelFor(input: TimingToolInput, args: AgentJsonObject): string | undefined {
+  const section = TIMING_SECTIONS.find((value) => value === args.section);
+  const parsed = parsePeriodArgs(args);
+  if (!section || parsed.kind !== 'period') return undefined;
+  if (endsBeforeBirthYear(parsed.period, input.birthYear)) return DASHAS_STATUS_LABEL;
+  return dashasOnlyNotes(input, section, parsed.period) ? DASHAS_STATUS_LABEL : undefined;
 }
 
 export function createTimingTool(input: TimingToolInput): AgentTool {
   return {
     name: TIMING_TOOL_NAME,
     description: DESCRIPTION,
-    statusLabel: 'Working out the sky… (about 30 s)',
+    statusLabel: SKY_STATUS_LABEL,
+    statusLabelFor: (args: AgentJsonObject) => statusLabelFor(input, args),
     timeoutMs: TIMING_TOOL_TIMEOUT_MS,
     parameters: {
       type: 'object',

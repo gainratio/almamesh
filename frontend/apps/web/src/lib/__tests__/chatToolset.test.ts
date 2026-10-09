@@ -182,6 +182,18 @@ describe('buildChatToolset: period sky', () => {
     expect(ensureMock).not.toHaveBeenCalled();
   });
 
+  it('passes both the local and the UTC birth year to the timing tool (31 Dec PST birth)', () => {
+    const edge = {
+      ...BIRTH,
+      birth_datetime_utc: '1991-01-01T04:00:00Z',
+      birth_datetime_local: '1990-12-31T20:00:00',
+    } as unknown as ProcessedBirthData;
+    toolset({ birth: edge });
+    expect(vi.mocked(createChatAgentTools)).toHaveBeenLastCalledWith(
+      expect.objectContaining({ birthYear: 1990, birthUtcYear: 1991 }),
+    );
+  });
+
   // REVERSED CONTRACT (PR #298): the day before the local birth day used to be refused.
   // A day-precision refusal bisects the birth date, so only periods before the birth YEAR are.
   it('refuses only periods before the local birth year, not before the birth day', async () => {

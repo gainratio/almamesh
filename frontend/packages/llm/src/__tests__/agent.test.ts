@@ -176,6 +176,37 @@ describe("streamAgentChat", () => {
     expect(JSON.stringify(statuses)).not.toContain(NOW.toISOString());
   });
 
+  it("labels a call from the tool's per-call label when it gives one", async () => {
+    const statuses: AgentStatusEvent[] = [];
+    let calls = 0;
+    const fetchImpl = vi.fn(async () => {
+      calls += 1;
+      if (calls === 1) {
+        return decision({
+          role: "assistant",
+          content: null,
+          tool_calls: [call("call-1", "get_current_datetime", '{"zone":"chart"}')],
+        });
+      }
+      return decision({ role: "assistant", content: "Done." });
+    });
+    const statusLabelFor = vi.fn((args: Readonly<Record<string, unknown>>) =>
+      args.zone === "chart" ? "Reading the chart clock" : undefined,
+    );
+    await collect(
+      streamAgentChat({
+        config: CONFIG,
+        messages: [{ role: "user", content: "Time?" }],
+        tools: [tool(vi.fn(() => ({ ok: true })), { statusLabelFor })],
+        now: NOW,
+        onStatus: (status) => statuses.push(status),
+        fetchImpl: fetchImpl as typeof fetch,
+      }),
+    );
+    expect(statusLabelFor).toHaveBeenCalledWith({ zone: "chart" });
+    expect(statuses).toContainEqual(expect.objectContaining({ phase: "using_tool", label: "Reading the chart clock" }));
+  });
+
   it("snapshots the caller clock once before any asynchronous work", async () => {
     const turnNow = new Date(NOW);
     let executorNow = "";

@@ -17,7 +17,7 @@ import type { ChartEngineContextValue } from '../providers/chartEngineContext';
 import { viewerTimeZone } from './analysisInstant';
 import { createChatAgentTools, shouldPreRunToday, viewerTodayDay } from './chatAgentTools';
 import { ensureCurrentPlanetaryContext } from './currentPlanetaryContext';
-import { birthYearOf, createPeriodChartLoader, readyEngine } from './periodChart';
+import { birthUtcYearOf, birthYearOf, createPeriodChartLoader, readyEngine } from './periodChart';
 import { TIMING_TOOL_NAME } from './timingTool';
 
 export interface BuildChatToolsetInput {
@@ -97,6 +97,7 @@ export function buildChatToolset(input: BuildChatToolsetInput): ChatToolset {
     chartAsOf: input.chartAsOf,
     chartTimeZone: input.chartTimeZone,
     birthYear: birthYearOf(input.birth),
+    birthUtcYear: birthUtcYearOf(input.birth),
     todayDay: (now) => viewerTodayDay(now, zone()),
     loadCurrentChart,
     loadPeriodChart: createPeriodChartLoader({

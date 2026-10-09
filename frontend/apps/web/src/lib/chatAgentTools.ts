@@ -75,6 +75,8 @@ export interface CreateChatAgentToolsInput {
   readonly loadCurrentChart?: (context: AgentToolContext) => Promise<SiderealChart>;
   /** The local birth year; periods that end before 1 January of it are refused. */
   readonly birthYear?: number;
+  /** The birth instant's UTC year; the birth-year sky gate uses the later of the two. */
+  readonly birthUtcYear?: number | undefined;
   /** Today's calendar day; defaults to the viewer's zone. */
   readonly todayDay?: (now: Date) => string;
   /** Engine facts for a period other than today (periodChart.ts). */
@@ -206,6 +208,7 @@ export function createChatAgentTools(input: CreateChatAgentToolsInput): readonly
     createTimingTool({
       chart: input.chart,
       birthYear: input.birthYear,
+      birthUtcYear: input.birthUtcYear,
       todayDay: input.todayDay ?? viewerTodayDay,
       loadCurrentChart: input.loadCurrentChart,
       loadPeriodChart: input.loadPeriodChart,
