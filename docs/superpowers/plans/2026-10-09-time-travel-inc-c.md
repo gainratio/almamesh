@@ -2,44 +2,47 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** The chat knows when a place matters and asks only then. "How was June 2026? I was in LA the first half, then Bogotá" reads June once and says plainly that the places don't change it. "What about June 15?" reads that day in the home time zone and asks "where were you?" only when the Moon's sign differs across the Earth that day. "Bogotá" is looked up on the device, never online, and the model never sees a coordinate.
+**Goal:** The chat asks where when a place matters and never assumes one. "How was June 2026? I was in LA the first half, then Bogotá" reads June once and says plainly that the places don't change it. "What about 15 June?" uses the place the user already named for that day. "And 3 pm on 3 July?" with no place named gets one question, "Where were you (or will you be) that day?", because `get_timing` refuses a day-precision sky read without a place. "Bogotá" is looked up on the device, never online, and the model never sees a coordinate, the device's zone, or the birth place.
 
-**Architecture:** A new Python engine function, `compute_moon_window`, reports the Moon's sign, nakshatra and tithi at the two ends of a calendar day as seen anywhere on Earth (00:00 at UTC+14 and 24:00 at UTC−12). Optionally it also reports them at one place's local start and end of day, and the lagna sign plus Moon at one event instant and place. It reaches the browser as a new worker request, `computeMoonWindow`, next to `computePredictive`, and goes through the CPython/Pyodide parity gate. On the app side, a new `resolve_place` tool calls only the bundled offline city list. It returns a label, an IANA zone and a stateless `place_ref` (`city:<row>`); coordinates never leave the tool layer. `get_timing` gains `place_ref`, `time` and `segments`. Its multi-day path merges segments into one period and notes that place changes nothing. Its single-day `transits` path attaches the moon window and `location_sensitive`.
+**Architecture:** `get_timing` gains `place_ref`, `time` and `segments`. Any sky section (transits, domains, strength) over a period under 28 days, with no place, returns the constant `{ "error": "needs_place" }` before any engine work. The prompt teaches the model to turn that into the question. A new `resolve_place` tool calls only the bundled offline city list and returns a label, an IANA zone and a stateless `place_ref` (`city:<row>`); coordinates never leave the tool layer. With a place, a short period also gets the Moon's sign, nakshatra and tithi at that place's local start and end, from a new Python engine function, `compute_moon_window(start, end, event?)`. With a time of day it also gets the event lagna sign. That function reaches the browser as a new worker request, `computeMoonWindow`, next to `computePredictive`, and goes through the CPython/Pyodide parity gate. Periods of 28 days or more never need a place. Places given for them are echoed as labels with a note that place changes nothing.
 
 **Tech Stack:** Python 3.13 engine (Skyfield + DE421, Pydantic, pytest, ruff, mypy strict, xenon), Pyodide worker glue, TypeScript (`@almamesh/llm`, `@almamesh/browser`, `@almamesh/store`, `apps/web`), Vitest, `bun:test` (repo contract tests in `tests/`), Playwright, Dagger.
 
-**Spec:** `docs/superpowers/specs/2026-10-08-time-travel-design.md`. Read: Journey 3; Part 2 (When to ask, The location check for a single day, `resolve_place`, Split periods); the Privacy table (rows "Typed city text", "Place coordinates", "Place lookup network calls"); Performance (`resolve_place` under 100 ms); Error handling (place rows); Testing (rows "Location check", "Offline place lookup", "No coordinates to the model"); the Inc C row: "`resolve_place`, `computeMoonWindow`, `location_sensitive`, `segments`, event-time reads with a place. Claim: 'a chat-typed city never leaves the device'. Journey 3 works."
+**Spec:** `docs/superpowers/specs/2026-10-08-time-travel-design.md`, revised on this branch with the coordinator's rulings of 2026-10-09. Read: Journey 3; Part 2 (When to ask, including the tool-enforced `needs_place` rule; Reading a day at a place; `resolve_place`; Split periods); the Privacy table (rows "Typed city text", "The birth place", "The device's time zone", "Place coordinates", "Place lookup network calls"); Error handling (place rows); Testing (rows "A day needs a place", "Birth place never echoed", "Offline place lookup", "No coordinates to the model"); the Inc C row.
 
 ## Rulings
 
-The spec is silent or self-contradictory on these. Each is a decision this plan makes. The PR body repeats them.
+The coordinator settled four spec gaps on 2026-10-09 (Rulings 1, 2, 12 and 16). The others are this plan's decisions. The PR body repeats all of them.
 
-1. **`location_sensitive` is driven by the Moon's sign only.** Nakshatra and tithi are reported at both ends but do not set the flag. By arithmetic they change in every 50-hour window: the Moon's slowest daily motion is about 11.8°, so 50 h is at least 24.6°, which is more than one nakshatra (13.33°). The Moon−Sun elongation grows at least about 10.4°/day, so 50 h is at least 21.7°, more than one tithi (12°). With them in the flag, it would be `true` every day and the chat would ask "where?" for every single-day question, which is the opposite of the spec's intent ("asked only when it matters"). Task 1 pins this with a property test over every day of 2026 and records the Moon-sign base rate in the PR. Even sign-only, the flag is true on most days: a 50 h arc of 24.6–32.1° crosses a 30° sign boundary 82–100% of the time. This is a spec gap Harish should see (see "Spec gaps").
-2. **The home zone's name never goes to the model.** Today's egress carries the birth IANA zone (`get_current_datetime` scope `chart`) but never the viewer's zone. Sending `America/Los_Angeles` as "your home time zone" (spec Journey 3, step 3) would be new egress. A single-day result without a place says `place: { "basis": "home_time_zone" }`. The model says "in your home time zone" without naming it. A place the user typed is echoed with its zone, because the user typed the city.
-3. **`resolve_place` and every place read exist only where the sky does.** On `lite` and `minimal` (`periodSkyComputeAllowed: false`) every dated question already gets dashas only. There, `resolve_place` is not registered, and `get_timing` ignores `place_ref`, `time` and `segments` places (dashas only, the existing device note). So the 2 MB city list never loads on a weak device. Low-end first.
-4. **`place_ref` is stateless: `city:<row index>`.** Tool results are not saved in chat history (`ChatMessage` stores text only), so a ref only has to live for one agent turn. A ref that is the row index of `cities.min.json` needs no closure map, no lifecycle, and nothing stored. It says nothing beyond the label returned with it. `get_timing` re-reads the row offline. An unknown or malformed ref is a tool error, "unknown place_ref: call resolve_place first".
-5. **When a lookup counts as "found".** The query's city part is the text before the first comma, folded the same way `cityLookup.ts` folds. Candidates are `searchCitiesOffline`'s results, up to 5. Exactly one candidate whose folded city name equals the folded city part counts as `found`. So does more than one such candidate when the most populous is at least 10× the next one ("Los Angeles": Los Angeles, United States, over Los Ángeles, Chile). Otherwise any candidates are `ambiguous`, and none is `not_found`.
-6. **Which `get_timing` calls run the location check:** a dated, single-day `transits` call that passes every existing gate (birth-year sky gate, 2052 cap, device tier) and whose sky loaded. Dashas, domains and strength don't report the Moon, so they don't check. A call with dates omitted ("today") is unchanged from Inc A: no check, no new fields.
-7. **The moon window is sky, so it sits behind the sky gates.** A day in or before the birth year gets dashas only, as today, with no moon window, no `time` read and no place values. That covers the "birth instant at the birth place" case: an event read at the birth time is withheld by the existing `startsInOrBeforeBirthYear` gate.
-8. **Event-time reads (`time: "HH:MM"`):** only with a single day and a place (`place_ref`, or the one segment covering that day). The local time at the place is turned into a UTC instant by the existing `localTimeToInstant` (`@almamesh/store`). A time that never happened (DST spring-forward) or happened twice (fall-back) is a tool error naming the problem, never a silent guess. The result gives `lagna_sign` and the Moon's sign, nakshatra and tithi at that instant. There are no coordinates and no degrees.
-9. **Place bounds on the wire are instants, computed in TypeScript.** Python gets `place_start_utc` and `place_end_utc` (the place's local 00:00 and the next local 00:00, via `resolveLocalTime`). That way the engine needs no tz database under Pyodide. Python refuses bounds that are not 22–26 h apart (DST days are 23 or 25 h), that fall outside the 50 h window, or that come in reverse order. A local midnight that doesn't exist (a DST jump at 00:00) starts the day at the first instant that does (local 01:00).
-10. **Segments.** `segments` holds 1–4 `{ start, end, place_ref? }`, in order and not overlapping. Gaps are allowed and noted. Segments can't be combined with `start`/`end`. The merged period is the first `start` through the last `end`, and every existing period rule applies to it. A multi-day result echoes each segment's label and zone (never coordinates) plus the note "Place doesn't change readings for periods longer than a day…". For a single day, the one segment's `place_ref` is the day's place. A `place_ref` argument that disagrees with it is a tool error.
-11. **`computeMoonWindow` is not memoized and is a normal (60 s) worker request.** It is under a second of compute. It joins neither the engine memo (`MemoKind` unchanged) nor the long-request timeout set.
-12. **Prompt.** A chat-only `PLACE_RULES` block sits next to `PERIOD_RULES`. `PRIVACY_RULE` is unchanged (other prompts share it). `PLACE_RULES` says the privacy rule is about the birth place, and that places the user names may be repeated back.
-13. **Tool budget is unchanged.** The split journey is resolve, resolve (round 1), then `get_timing` with segments (round 2), which is 3 calls in 2 rounds and fits `AGENT_LIMITS` (3 calls, 2 per round, 2 rounds). The single-day follow-up with a place is resolve, then `get_timing`. Tool descriptions tell the model to resolve both places in one round.
-14. **Status labels follow Inc A's pattern.** These are English constants on the tool, like `get_timing`'s labels: `resolve_place` gets `'Looking up the place on this device'`. If Inc A routed `get_timing` labels through i18n keys by the time this lands, mirror that for en/es/pt in the same task.
+1. **A day-precision sky read needs a place, and the tool enforces it** (coordinator). A period under 28 days (`PLACE_NEEDED_BELOW_DAYS = 28`) is "day precision": a single day, a few days, or a time of day. For such a period, `get_timing` with section transits, domains or strength and no place returns the constant `{ "error": "needs_place" }`. "No place" means no `place_ref`, and no `segments` whose every segment has a `place_ref`. The check sits after the existing gates (birth-year refusal, birth-year sky gate, 2052 and two-year caps, device tier), so a dashas-only answer never asks where. It sits before any engine or place work, so nothing computes for 30 s and then gets thrown away. Dashas never need a place. A call with no dates ("today") is unchanged from Inc A. 28 days or more never needs a place: February counts as a month.
+2. **No home-zone default, and the device's zone is never sent** (coordinator). With no place, the model asks. It never reads a day "in your home time zone", and no result carries the viewer's zone. The earlier `location_sensitive` flag is dropped: nakshatra and tithi change inside every 50-hour window and the Moon's sign does on most days, so the flag was true almost always.
+3. **`resolve_place` and every place read exist only where the sky does.** On `lite` and `minimal` (`periodSkyComputeAllowed: false`) every dated question already gets dashas only. There, `resolve_place` is not registered, `needs_place` never fires (the device gate comes first), and places are ignored. The 2 MB city list never loads on a weak device.
+4. **`place_ref` is stateless: `city:<row index>`.** Tool results are not saved in chat history (`ChatMessage` stores text only), so a ref lives for one agent turn. A row-index ref needs no closure map and stores nothing. `get_timing` re-reads the row offline. An unknown or malformed ref is a tool error, "unknown place_ref: call resolve_place first".
+5. **When a lookup counts as "found".** The query's city part is the text before the first comma, folded the same way `cityLookup.ts` folds. Candidates are `searchCitiesOffline`'s results, up to 5. Exactly one candidate whose folded city name equals the folded city part counts as `found`. So does more than one such candidate when the most populous is at least 10× the next one. Otherwise any candidates are `ambiguous`, and none is `not_found`.
+6. **What a place adds.**
+   - For a sky section over a period under 28 days with places: one `places` row per placed span (the single `place_ref` spans the whole period; segments span themselves). Each row is `{ start, end, label, timezone, moon: { at_start, at_end } }`: the Moon's sign, nakshatra and tithi at the place's local start of `start` and local end of `end`.
+   - With `time` (single day only): also `event: { local_time, lagna_sign, moon }`.
+   - For 28 days or more with places: `segments`/`place` echoed as labels and zones plus `PLACE_DOES_NOT_CHANGE_NOTE`, and no engine call for places. This also applies to the dashas section.
+7. **Places sit behind the sky gates.** A period in or before the birth year gets dashas only, as today: no `needs_place`, no Moon at a place, no event read. That covers "the birth instant at the birth place".
+8. **Event-time reads (`time: "HH:MM"`):** only with a single day and a place. `localTimeToInstant` (`@almamesh/store`) turns the local time at the place into a UTC instant. A time that never happened (DST spring-forward) or happened twice (fall-back) is a tool error naming the problem, never a silent guess. The result gives `lagna_sign` and the Moon's sign, nakshatra and tithi at that instant. No coordinates and no degrees.
+9. **Bounds on the wire are instants, computed in TypeScript.** Python gets `place_start_utc` (the place's local 00:00 on the first day) and `place_end_utc` (local 00:00 after the last day), via `resolveLocalTime`. The engine needs no tz database under Pyodide. Python refuses reversed bounds, spans under 22 h or over 27 days + 2 h, instants outside 1900–2052, and an event outside the bounds. A skipped local midnight (DST at 00:00) starts the day at local 01:00.
+10. **Segments.** `segments` holds 1–4 `{ start, end, place_ref? }`, in order and not overlapping. Gaps are allowed and noted. Segments can't be combined with `start`/`end`. The merged period is the first `start` through the last `end`, and every existing period rule applies to it. Under 28 days, every segment needs a `place_ref` for a sky section (Ruling 1). For a single day, the one segment's `place_ref` is the day's place. A `place_ref` argument that disagrees with it is a tool error.
+11. **`computeMoonWindow` is not memoized and is a normal (60 s) worker request.** It is under a second per call and joins neither the engine memo nor the long-request timeout set. At most 4 calls (one per segment) per `get_timing`.
+12. **`PRIVACY_RULE` is narrowed** (coordinator). New text: "PRIVACY: never name, guess or echo the birth place (city/state/country) and never output coordinates of any place. Refer to it generically as 'birth location'. You may repeat a place the user typed in this conversation." It is shared by every prompt that includes it, and the change is deliberate. Any existing test that pins the old sentence is a stated contract being narrowed: update it and say so loudly in the PR. A chat-only `PLACE_RULES` block next to `PERIOD_RULES` teaches `needs_place`.
+13. **Tool budget is unchanged.** The split journey is resolve, resolve (round 1), then `get_timing` with segments (round 2): 3 calls in 2 rounds, inside `AGENT_LIMITS`. A day follow-up with a place is resolve, then `get_timing`. Tool descriptions tell the model to resolve every named place in one round.
+14. **Status labels follow Inc A's pattern.** English constants on the tool: `resolve_place` gets `'Looking up the place on this device'`, and a `needs_place` call gets `'Checking where you were'`. If Inc A routed labels through i18n keys by the time this lands, mirror that for en/es/pt in the same task.
 15. **City list memory is measured, and gated loosely the first time.** Task 9 records the heap growth of the first lookup and the request that loads the chunk. It gates growth at ≤ 48 MiB on the full tier. If the measured growth exceeds 48 MiB, stop and report; do not raise the gate.
+16. **"Zero network" means no request leaves the app's own origin** (coordinator). The cities chunk is a same-origin ES module, loaded at most once. The e2e journey fails on any request to a non-origin host. The one exception is the stubbed provider URL, and that exception holds only for requests the test's `page.route` handler itself fulfilled, which never reach the network.
 
 ## Spec gaps found
 
-- **The location check as written is always true** (Ruling 1). Nakshatra and tithi change in every 50 h window. Even the Moon's sign changes on most days. The spec's "Moon covers about 28° in 50 hours, less than one sign" is also off: a fast Moon covers about 32°. The no-false-negative argument still holds (both motions only move forward, and the window is far short of 360°). But the flag carries little information, and Harish should decide whether "ask where" should depend on something narrower, such as whether the Moon changes sign during the home zone's own day.
-- Journey 3 step 3 has the model name the home zone (`America/Los_Angeles`). That is new egress the privacy rules forbid (Ruling 2).
-- `PRIVACY_RULE` ("never mention city/state/country names") contradicts Journey 3's "Were you in LA or Bogotá?" (Ruling 12).
-- The spec doesn't say whether the location check runs for "today" (no dates), for non-transit sections, or behind the birth-year gate (Rulings 6 and 7). It also doesn't define ambiguity (Ruling 5), segment validation (Ruling 10), or what happens to places on weak devices (Ruling 3).
-- The spec puts coordinates "in the tool closure keyed by a short opaque place_ref". A stateless row-index ref is equivalent and simpler (Ruling 4).
-- The cities chunk is fetched from the app origin as an ES module, not by `fetch`. "Zero network" in the browser therefore means no request to any origin other than the app. The first lookup may load the chunk from the origin or the service-worker precache (Task 3 and Task 10 assert this precisely).
+All four gaps from the first draft are resolved by the coordinator rulings above, and the spec on this branch now says so: Journey 3, Part 2 "When to ask" / "Reading a day at a place" / "Split periods", the Inc D sheet's "Where?" default, Privacy, Error handling, Testing, and the Inc C row. Remaining gaps:
+
+- "Today" (no dates) is day precision but stays unchanged from Inc A (no `needs_place`), because the Inc A router pre-runs today. If Harish wants "what's today like?" to ask where, that belongs in a later change to the router.
+- The 28-day threshold is this plan's reading of "a few days" versus "a month or longer" (Ruling 1). The spec now states it.
 
 ## Global Constraints
+
 
 - Work in `/Users/harish/dev/oss/almamesh/.worktrees/time-travel-c` on branch `claude/time-travel-c` (off `origin/main` at or after `44b885fe`, step B merged). All paths below are relative to it.
 - Stage named files only. Never `git add -A` or `git add .`. `docs/superpowers` is gitignored, so plan or spec files need `git add -f`.
@@ -49,11 +52,11 @@ The spec is silent or self-contradictory on these. Each is a decision this plan 
   Claude-Session: https://claude.ai/code/session_01QfxWgyzxj7Q4LtWoUmxvg7
   ```
 - **One PR at the end** (Task 11). Tasks commit to the branch.
-- **The step A and B privacy rules stay intact and unchanged.** Refuse only a period that ends before 1 January of the birth year (`endsBeforeBirthYear`, constant message). Give no sky for a period that starts in or before the birth year (`startsInOrBeforeBirthYear`, gated on the later of local and UTC birth year); the moon window and event reads are sky (Ruling 7). Send nothing beyond today's egress. **Today's egress about the birth place is: no city, no country, no coordinates; the birth IANA zone only through `get_current_datetime` scope `chart`.** So no tool result in this increment may carry a latitude, a longitude, or any number derived from them, for any place, at any precision. Nothing in the place path reads `birth.birth_location_details`. A resolved place equal to the birth city is echoed only as its label and zone, because the user typed it.
+- **The step A and B privacy rules stay intact and unchanged.** Refuse only a period that ends before 1 January of the birth year (`endsBeforeBirthYear`, constant message). Give no sky for a period that starts in or before the birth year (`startsInOrBeforeBirthYear`, gated on the later of local and UTC birth year); the moon window and event reads are sky (Ruling 7). Send nothing beyond today's egress. **Today's egress about the birth place is: no city, no country, no coordinates; the birth IANA zone only through `get_current_datetime` scope `chart`.** So no tool result in this increment may carry a latitude, a longitude, or any number derived from them, for any place, at any precision. Nothing in the place path reads `birth.birth_location_details`. A resolved place equal to the birth city is echoed only as its label and zone, because the user typed it. The device's zone is never sent (Ruling 2).
 - **No network geocoding from chat.** The place path imports `searchCitiesOffline` (via new row-level helpers in `cityLookup.ts`) and never `searchCities` or `onlineGeocoder.ts`.
 - **Engine math lives in Python** (repo CLAUDE.md rule 2): Moon/Sun longitudes, nakshatra, tithi and lagna are Python. TypeScript does calendar and zone arithmetic on strings and instants only.
 - **Determinism** (rule 3): `compute_moon_window` takes explicit instants. There are no wall-clock reads.
-- **Low-end devices first:** `lite`/`minimal` get dashas only, with no place tool and no city list (Ruling 3). The city list stays a lazy dynamic import, and its memory is measured (Task 9).
+- **Low-end devices first:** `lite`/`minimal` get dashas only, with no place tool, no `needs_place` and no city list (Ruling 3). The city list stays a lazy dynamic import, and its memory is measured (Task 9).
 - **SQLite only for user data.** Nothing here stores user data. Place refs are stateless, and moon windows are not cached or persisted.
 - **Python edits follow `python-quality`:** functions ≤ 15 lines, Radon grade A (xenon must not gain a block), mypy strict, no `Dict[str, Any]`, no `TypedDict`, Pydantic at boundaries, raise rather than swallow. Invoke `python-quality` after every Python task and `frontend-quality` after every TS task.
 - **TDD with red runs.** Write the test, run it, see it fail for the stated reason, then implement. Every guard also gets a **mutation red run** with the helper below. Paste each `KILLED` line into the PR's mutation table.
@@ -110,11 +113,11 @@ Run mutations from the worktree root with paths relative to it.
 
 ## Review Focus
 
-1. **The user types their birth city as the place** ("I was back home in Delhi on the 15th"). The result must carry the label and zone only. No number, nothing from `birth_location_details`, and no degree-level lagna or Moon. Test: Task 8 egress test (birth fixture Delhi 28.61/77.21, `resolve_place("Delhi")` plus `get_timing` with that ref and a `time`).
-2. **A DST day at the place.** Bogotá has no DST, but "Los Angeles, 2026-03-08" is a 23 h day, and "2:30 am" on that day never happened. Bounds must be 23 h apart and the time must be a tool error, not a shifted guess. Also a zone whose midnight is skipped (`America/Santiago` 2026-09-06). Tests: Task 6 (`localDayBounds`, `eventInstant`), Task 1 (bounds validation).
-3. **Diacritics and qualifiers in the place text.** "Bogota", "BOGOTÁ", "São Paulo" vs "Sao Paulo", "Los Angeles, US", "Springfield" (many). Folding must match, and "Springfield" must come back `ambiguous` with ≤ 5 candidates that each carry a `place_ref`. Test: Task 3.
-4. **The model fabricates or mangles a `place_ref`** (`"city:99999999"`, `"bogota"`, a number). This must be a tool error that tells it to call `resolve_place`, never an exception and never a random city. Test: Task 5 (parse) and Task 7 (unknown row).
-5. **A weak device.** On `lite`/`minimal` the tool list has no `resolve_place`, the cities chunk is never requested, and a single-day question with a `place_ref` still answers with dashas only and the device note. Tests: Task 7 (toolset), Task 9 (lazy-load source contract).
+1. **The user names their birth city as the place** ("I was back home in Delhi on the 15th"). The model may repeat "Delhi" because the user typed it. But the result carries the label and zone only, never a number, nothing from `birth_location_details`, and no degree-level lagna or Moon. The prompt never introduces the birth place on its own. Test: Task 8 egress test (birth fixture Delhi 28.61/77.21; `resolve_place("Delhi")` plus `get_timing` with that ref and a `time`; the prompt built for a chart whose `location_name` is "Bengaluru").
+2. **A short period at the 28-day edge.** 1–28 February 2027 (28 days) never asks where. 1–27 February asks. A 3-day period with only some segments placed asks. Dashas for a single day never ask. A lite device never asks. Tests: Task 5 (`needsPlace`), Task 7 (gate order).
+3. **A DST day at the place.** "Los Angeles, 2026-03-08" is a 23 h day, and "02:30" that day never happened. Bounds must be 23 h apart and the time must be a tool error, not a shifted guess. Also a zone whose midnight is skipped (`America/Santiago` 2026-09-06). Tests: Task 6, Task 1 (bounds validation).
+4. **Diacritics, qualifiers, shared names, and fabricated refs.** "Bogota", "BOGOTÁ", "Los Angeles, US", "Springfield" (ambiguous, ≤ 5 candidates, each with its own ref). A model-invented `place_ref` (`"city:99999999"`, `"bogota"`, a number) is a tool error telling it to call `resolve_place`, never an exception and never a random city. Tests: Task 3, Task 5, Task 7.
+5. **Any request off the app origin during a place journey**, including a regression that reaches for the online geocoder, fails the e2e. On a weak device the cities chunk is never requested at all. Tests: Task 10 (network listener, mutation red run), Task 4 (source contract), Task 9 (lazy load).
 
 ---
 
@@ -131,74 +134,31 @@ Run mutations from the worktree root with paths relative to it.
   - `class MoonMark(BaseModel)`: `sign: ZodiacSign`, `nakshatra: str`, `tithi: int` (1..30), `paksha: Literal["shukla", "krishna"]`.
   - `class MoonEnds(BaseModel)`: `at_start: MoonMark`, `at_end: MoonMark`.
   - `class EventSky(BaseModel)`: `lagna_sign: ZodiacSign`, `moon: MoonMark`.
-  - `class MoonWindow(BaseModel)`: `day: date`, `location_sensitive: bool`, `across_earth: MoonEnds`, `at_place: MoonEnds | None`, `event: EventSky | None`.
+  - `class MoonWindow(BaseModel)`: `at_place: MoonEnds`, `event: EventSky | None`.
   - `class EventPoint(BaseModel)`: `when: datetime`, `latitude: float`, `longitude: float`.
   - `tithi_number(moon_lon: float, sun_lon: float) -> int`
-  - `earth_day_bounds(day: date) -> tuple[datetime, datetime]`
-  - `compute_moon_window(day: date, *, place_bounds: tuple[datetime, datetime] | None = None, event: EventPoint | None = None, astronomy: SkyfieldAstronomy | None = None) -> MoonWindow`
-  - `moon_window_from_wire(payload: Mapping[str, object]) -> MoonWindow` (snake_case keys: `day`, `place_start_utc`, `place_end_utc`, `event` = `{datetime_utc, latitude, longitude}` or absent/None)
+  - `compute_moon_window(start: datetime, end: datetime, *, event: EventPoint | None = None, astronomy: SkyfieldAstronomy | None = None) -> MoonWindow`
+  - `moon_window_from_wire(payload: Mapping[str, object]) -> MoonWindow` (snake_case keys: `place_start_utc`, `place_end_utc` required; `event` = `{datetime_utc, latitude, longitude}` or absent/None)
   - `chart_runtime.compute_moon_window_payload(payload) -> dict[str, JsonValue]`
 
-- [ ] **Step 1: Find the fixture days with a scan (evidence, not code)**
-
-Run this one-off from `backend/` and paste the output into the PR. It picks the pinned days below.
-
-```bash
-cd backend && uv run python - <<'PY'
-from datetime import UTC, date, datetime, timedelta
-from almamesh.calculations import SkyfieldAstronomy
-from almamesh.constants.astrology import PlanetName
-from almamesh.transits.positions import transit_longitude
-astro = SkyfieldAstronomy()
-def sign(when): return int(transit_longitude(astro, PlanetName.MOON, when) // 30)
-quiet, flips = [], 0
-day = date(2026, 1, 1)
-while day.year == 2026:
-    s = datetime(day.year, day.month, day.day, tzinfo=UTC) - timedelta(hours=14)
-    e = datetime(day.year, day.month, day.day, tzinfo=UTC) + timedelta(hours=36)
-    if sign(s) == sign(e): quiet.append(day.isoformat())
-    else: flips += 1
-    day += timedelta(days=1)
-print("sensitive days 2026:", flips, "of 365; quiet:", quiet[:12])
-s = datetime(2026, 6, 15, tzinfo=UTC) - timedelta(hours=14)
-print("2026-06-15 sensitive:", sign(s) != sign(s + timedelta(hours=50)))
-PY
-```
-
-Record `QUIET_DAY` = the first quiet day after 2026-06-01 and `SENSITIVE_DAY` = the first sensitive day after 2026-06-01. Write both into the test below in place of the two `"<from scan>"` literals. Also record whether 2026-06-15 is sensitive; Task 10 reads it from the golden, not from this note.
-
-- [ ] **Step 2: Write the failing tests**
+- [ ] **Step 1: Write the failing tests**
 
 `backend/tests/test_moon_window.py`:
 
 ```python
-"""compute_moon_window: the Moon at the two ends of a day anywhere on Earth (spec 2026-10-08 Part 2)."""
+"""compute_moon_window: the Moon at a place's local start and end, and at one event (spec 2026-10-08 Part 2)."""
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
 from almamesh.edge.chart_runtime import compute_moon_window_payload
-from almamesh.transits.moon_window import (
-    EventPoint,
-    compute_moon_window,
-    earth_day_bounds,
-    moon_window_from_wire,
-    tithi_number,
-)
+from almamesh.transits.moon_window import EventPoint, compute_moon_window, moon_window_from_wire, tithi_number
 
-QUIET_DAY = date.fromisoformat("<from scan>")
-SENSITIVE_DAY = date.fromisoformat("<from scan>")
 BOGOTA = (4.711, -74.0721)
-
-
-def test_earth_day_bounds_are_utc_plus_14_midnight_to_utc_minus_12_midnight() -> None:
-    start, end = earth_day_bounds(date(2026, 6, 15))
-    assert start == datetime(2026, 6, 14, 10, tzinfo=UTC)
-    assert end == datetime(2026, 6, 16, 12, tzinfo=UTC)
-    assert end - start == timedelta(hours=50)
+BOGOTA_DAY = (datetime(2026, 6, 15, 5, tzinfo=UTC), datetime(2026, 6, 16, 5, tzinfo=UTC))
 
 
 @pytest.mark.parametrize(
@@ -209,126 +169,109 @@ def test_tithi_number_counts_twelve_degree_steps_of_moon_minus_sun(moon: float, 
     assert tithi_number(moon, sun) == expected
 
 
-def test_a_quiet_day_is_not_location_sensitive() -> None:
-    window = compute_moon_window(QUIET_DAY)
-    assert window.location_sensitive is False
-    assert window.across_earth.at_start.sign == window.across_earth.at_end.sign
-
-
-def test_a_day_with_a_moon_sign_change_is_location_sensitive() -> None:
-    window = compute_moon_window(SENSITIVE_DAY)
-    assert window.location_sensitive is True
-    assert window.across_earth.at_start.sign != window.across_earth.at_end.sign
-
-
-def test_nakshatra_and_tithi_always_change_inside_fifty_hours_so_they_do_not_drive_the_flag() -> None:
-    # Ruling 1: pinned so nobody "fixes" the flag into a constant True.
-    window = compute_moon_window(QUIET_DAY)
-    assert window.across_earth.at_start.nakshatra != window.across_earth.at_end.nakshatra
-    assert window.across_earth.at_start.tithi != window.across_earth.at_end.tithi
-    assert window.location_sensitive is False
+def test_a_place_day_reports_the_moon_at_both_ends() -> None:
+    window = compute_moon_window(*BOGOTA_DAY)
+    start, end = window.at_place.at_start, window.at_place.at_end
+    # The Moon moves 11.8-15.4 deg a day: one nakshatra (13.33 deg) or more, so the ends differ.
+    assert (start.nakshatra, start.tithi) != (end.nakshatra, end.tithi)
+    assert window.event is None
 
 
 def test_paksha_follows_tithi() -> None:
-    mark = compute_moon_window(QUIET_DAY).across_earth.at_start
+    mark = compute_moon_window(*BOGOTA_DAY).at_place.at_start
     assert mark.paksha == ("shukla" if mark.tithi <= 15 else "krishna")
 
 
-def test_place_bounds_give_values_at_the_local_day() -> None:
-    start = datetime(2026, 6, 15, 5, tzinfo=UTC)  # Bogotá 00:00 (UTC-5)
-    window = compute_moon_window(date(2026, 6, 15), place_bounds=(start, start + timedelta(hours=24)))
-    assert window.at_place is not None
-    assert window.at_place.at_start.sign in {window.across_earth.at_start.sign, window.across_earth.at_end.sign}
+def test_a_few_days_span_is_accepted() -> None:
+    start = datetime(2026, 6, 1, 7, tzinfo=UTC)  # Los Angeles 00:00 (PDT)
+    window = compute_moon_window(start, start + timedelta(days=3))
+    assert window.at_place.at_start != window.at_place.at_end
 
 
 @pytest.mark.parametrize(
-    ("offset_hours", "length_hours"),
-    [(5, 21), (5, 27), (-20, 24), (30, 24)],
+    "span",
+    [timedelta(hours=21), timedelta(days=27, hours=3), timedelta(hours=-24)],
 )
-def test_place_bounds_outside_the_day_or_not_a_day_long_are_refused(offset_hours: int, length_hours: int) -> None:
-    start = datetime(2026, 6, 15, tzinfo=UTC) + timedelta(hours=offset_hours)
-    with pytest.raises(ValueError, match="place day"):
-        compute_moon_window(date(2026, 6, 15), place_bounds=(start, start + timedelta(hours=length_hours)))
-
-
-def test_reversed_place_bounds_are_refused() -> None:
+def test_spans_that_are_not_one_to_twenty_seven_local_days_are_refused(span: timedelta) -> None:
     start = datetime(2026, 6, 15, 5, tzinfo=UTC)
-    with pytest.raises(ValueError, match="place day"):
-        compute_moon_window(date(2026, 6, 15), place_bounds=(start + timedelta(hours=24), start))
+    with pytest.raises(ValueError, match="place bounds"):
+        compute_moon_window(start, start + span)
 
 
 def test_event_reports_lagna_sign_and_moon_without_degrees() -> None:
     when = datetime(2026, 6, 15, 20, tzinfo=UTC)  # 15:00 in Bogotá
-    window = compute_moon_window(date(2026, 6, 15), event=EventPoint(when=when, latitude=BOGOTA[0], longitude=BOGOTA[1]))
+    window = compute_moon_window(*BOGOTA_DAY, event=EventPoint(when=when, latitude=BOGOTA[0], longitude=BOGOTA[1]))
     assert window.event is not None
     dumped = window.model_dump(mode="json")
     assert set(dumped["event"]) == {"lagna_sign", "moon"}
     assert not any(isinstance(v, float) for v in dumped["event"]["moon"].values())
 
 
-def test_event_outside_the_day_is_refused() -> None:
+def test_event_outside_the_bounds_is_refused() -> None:
     when = datetime(2026, 6, 20, tzinfo=UTC)
     with pytest.raises(ValueError, match="event"):
-        compute_moon_window(date(2026, 6, 15), event=EventPoint(when=when, latitude=BOGOTA[0], longitude=BOGOTA[1]))
+        compute_moon_window(*BOGOTA_DAY, event=EventPoint(when=when, latitude=BOGOTA[0], longitude=BOGOTA[1]))
 
 
 def test_event_with_impossible_coordinates_is_refused() -> None:
     when = datetime(2026, 6, 15, 20, tzinfo=UTC)
-    with pytest.raises(ValueError):
-        compute_moon_window(date(2026, 6, 15), event=EventPoint(when=when, latitude=95.0, longitude=0.0))
+    with pytest.raises(ValueError, match="event"):
+        compute_moon_window(*BOGOTA_DAY, event=EventPoint(when=when, latitude=95.0, longitude=0.0))
 
 
-@pytest.mark.parametrize("day", ["1899-12-31", "2053-01-01", "2026-02-30", "2026-6-1", 20260615, None])
-def test_wire_refuses_days_outside_the_ephemeris_or_malformed(day: object) -> None:
-    with pytest.raises(ValueError, match="day"):
-        moon_window_from_wire({"day": day})
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {},
+        {"place_start_utc": "2026-06-15T05:00:00+00:00"},
+        {"place_start_utc": "2026-06-15T05:00:00", "place_end_utc": "2026-06-16T05:00:00+00:00"},
+        {"place_start_utc": "1899-12-31T05:00:00+00:00", "place_end_utc": "1900-01-01T05:00:00+00:00"},
+        {"place_start_utc": "2053-01-01T05:00:00+00:00", "place_end_utc": "2053-01-02T05:00:00+00:00"},
+        {"place_start_utc": 20260615, "place_end_utc": "2026-06-16T05:00:00+00:00"},
+    ],
+)
+def test_wire_refuses_missing_naive_out_of_range_or_malformed_bounds(payload: dict[str, object]) -> None:
+    with pytest.raises(ValueError, match="place_"):
+        moon_window_from_wire(payload)
 
 
 def test_wire_and_direct_call_agree_and_the_edge_entry_dumps_json() -> None:
     payload = {
-        "day": "2026-06-15",
         "place_start_utc": "2026-06-15T05:00:00+00:00",
         "place_end_utc": "2026-06-16T05:00:00+00:00",
         "event": {"datetime_utc": "2026-06-15T20:00:00+00:00", "latitude": BOGOTA[0], "longitude": BOGOTA[1]},
     }
     direct = compute_moon_window(
-        date(2026, 6, 15),
-        place_bounds=(datetime(2026, 6, 15, 5, tzinfo=UTC), datetime(2026, 6, 16, 5, tzinfo=UTC)),
+        *BOGOTA_DAY,
         event=EventPoint(when=datetime(2026, 6, 15, 20, tzinfo=UTC), latitude=BOGOTA[0], longitude=BOGOTA[1]),
     )
     assert moon_window_from_wire(payload) == direct
     assert compute_moon_window_payload(payload) == direct.model_dump(mode="json")
-
-
-def test_wire_refuses_naive_instants() -> None:
-    with pytest.raises(ValueError, match="UTC"):
-        moon_window_from_wire({"day": "2026-06-15", "place_start_utc": "2026-06-15T05:00:00", "place_end_utc": "2026-06-16T05:00:00+00:00"})
 ```
 
-- [ ] **Step 3: Run the tests and watch them fail**
+- [ ] **Step 2: Run the tests and watch them fail**
 
 Run: `cd backend && uv run pytest tests/test_moon_window.py -q --no-cov`
 Expected: collection error `ModuleNotFoundError: No module named 'almamesh.transits.moon_window'`.
 
-- [ ] **Step 4: Implement**
+- [ ] **Step 3: Implement**
 
 `backend/src/almamesh/transits/moon_window.py`:
 
 ```python
-"""The Moon at the two ends of a calendar day, anywhere on Earth (spec 2026-10-08 Part 2).
+"""The Moon at a place's local start and end of a short period, and at one event.
 
-A calendar day starts first at UTC+14 and ends last at UTC-12: a 50-hour window.
-The Moon's longitude and the Moon-Sun angle only grow, and 50 hours is far short
-of a full cycle, so equal values at both ends mean equal values everywhere that
-day. Only the Moon's SIGN drives ``location_sensitive``: nakshatra (13.33 deg) and
-tithi (12 deg of elongation) change inside every 50-hour window (plan Ruling 1).
+Spec 2026-10-08 Part 2: a day-precision reading needs a place; this reports the
+Moon's sign, nakshatra and tithi at that place's local start of the first day and
+local end of the last day, plus the lagna sign and the Moon at an optional event
+instant. The caller turns local midnights into UTC instants (no tz database here).
 Lahiri sidereal, mean node, like the rest of the timeline.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
@@ -337,12 +280,10 @@ from almamesh.calculations import SkyfieldAstronomy, _resolve_ayanamsa, get_naks
 from almamesh.constants.astrology import AyanamsaType, PlanetName, ZodiacSign
 from almamesh.transits.positions import transit_longitude
 
-_EARLIEST_ZONE = timedelta(hours=14)
-_LATEST_ZONE = timedelta(hours=12)
-_MIN_DAY = timedelta(hours=22)
-_MAX_DAY = timedelta(hours=26)
-_FIRST_DAY = date(1900, 1, 1)
-_LAST_DAY = date(2052, 12, 31)
+_MIN_SPAN = timedelta(hours=22)
+_MAX_SPAN = timedelta(days=27, hours=2)
+_FIRST_INSTANT = datetime(1900, 1, 1, tzinfo=UTC)
+_LAST_INSTANT = datetime(2053, 1, 1, tzinfo=UTC)
 _SIGNS = list(ZodiacSign)
 
 
@@ -375,22 +316,13 @@ class EventSky(BaseModel):
 
 class MoonWindow(BaseModel):
     model_config = ConfigDict(frozen=True)
-    day: date
-    location_sensitive: bool
-    across_earth: MoonEnds
-    at_place: MoonEnds | None = None
+    at_place: MoonEnds
     event: EventSky | None = None
 
 
 def tithi_number(moon_lon: float, sun_lon: float) -> int:
     """Tithi 1..30: whole 12-degree steps of the Moon-Sun angle, plus one."""
     return int(((moon_lon - sun_lon) % 360.0) // 12.0) + 1
-
-
-def earth_day_bounds(day: date) -> tuple[datetime, datetime]:
-    """00:00 of ``day`` at UTC+14 and 24:00 of ``day`` at UTC-12, as UTC instants."""
-    midnight = datetime(day.year, day.month, day.day, tzinfo=UTC)
-    return midnight - _EARLIEST_ZONE, midnight + timedelta(days=1) + _LATEST_ZONE
 
 
 def _sign_of(longitude: float) -> ZodiacSign:
@@ -404,70 +336,50 @@ def _moon_mark(astro: SkyfieldAstronomy, when: datetime) -> MoonMark:
     return MoonMark(sign=_sign_of(moon), nakshatra=nakshatra, tithi=tithi, paksha="shukla" if tithi <= 15 else "krishna")
 
 
-def _ends(astro: SkyfieldAstronomy, bounds: tuple[datetime, datetime]) -> MoonEnds:
-    return MoonEnds(at_start=_moon_mark(astro, bounds[0]), at_end=_moon_mark(astro, bounds[1]))
+def _checked_bounds(start: datetime, end: datetime) -> None:
+    if not _MIN_SPAN <= end - start <= _MAX_SPAN:
+        raise ValueError("invalid place bounds: must span 1 to 27 local days, start before end")
 
 
-def _checked_place_bounds(day: date, bounds: tuple[datetime, datetime]) -> tuple[datetime, datetime]:
-    earliest, latest = earth_day_bounds(day)
-    start, end = bounds
-    inside = earliest <= start and end <= latest
-    if not inside or not _MIN_DAY <= end - start <= _MAX_DAY:
-        raise ValueError("invalid place day: bounds must be one local day inside the 50-hour window")
-    return bounds
-
-
-def _event_sky(astro: SkyfieldAstronomy, day: date, event: EventPoint) -> EventSky:
-    earliest, latest = earth_day_bounds(day)
-    if not earliest <= event.when <= latest:
-        raise ValueError("invalid event: the instant is not on that day anywhere on Earth")
-    validate_coordinates(event.latitude, event.longitude)
+def _event_sky(astro: SkyfieldAstronomy, start: datetime, end: datetime, event: EventPoint) -> EventSky:
+    if not start <= event.when <= end:
+        raise ValueError("invalid event: the instant is outside the place bounds")
+    try:
+        validate_coordinates(event.latitude, event.longitude)
+    except (TypeError, ValueError) as error:
+        raise ValueError("invalid event: coordinates out of range") from error
     ayanamsa = _resolve_ayanamsa(astro, event.when, AyanamsaType.LAHIRI)
     lagna = astro.calculate_lagna(event.when, event.latitude, event.longitude, ayanamsa)
     return EventSky(lagna_sign=_sign_of(lagna), moon=_moon_mark(astro, event.when))
 
 
 def compute_moon_window(
-    day: date,
+    start: datetime,
+    end: datetime,
     *,
-    place_bounds: tuple[datetime, datetime] | None = None,
     event: EventPoint | None = None,
     astronomy: SkyfieldAstronomy | None = None,
 ) -> MoonWindow:
-    """The Moon at both ends of ``day`` everywhere, optionally at one place's day and one event."""
+    """The Moon at ``start`` and ``end`` (a place's local bounds), and optionally at one event."""
+    _checked_bounds(start, end)
     astro = astronomy if astronomy is not None else SkyfieldAstronomy()
-    across = _ends(astro, earth_day_bounds(day))
-    at_place = None if place_bounds is None else _ends(astro, _checked_place_bounds(day, place_bounds))
-    return MoonWindow(
-        day=day,
-        location_sensitive=across.at_start.sign != across.at_end.sign,
-        across_earth=across,
-        at_place=at_place,
-        event=None if event is None else _event_sky(astro, day, event),
-    )
+    ends = MoonEnds(at_start=_moon_mark(astro, start), at_end=_moon_mark(astro, end))
+    return MoonWindow(at_place=ends, event=None if event is None else _event_sky(astro, start, end, event))
 ```
 
-Then the wire helpers in the same file (each ≤ 15 lines):
+If `validate_coordinates` raises some other exception type, catch that type in `_event_sky` instead. The public contract is `ValueError` with "invalid event".
+
+Wire helpers, in the same file (each ≤ 15 lines):
 
 ```python
-def _wire_day(value: object) -> date:
-    if not isinstance(value, str) or len(value) != 10:
-        raise ValueError("invalid day: must be YYYY-MM-DD")
-    try:
-        day = date.fromisoformat(value)
-    except ValueError as error:
-        raise ValueError("invalid day: must be a real calendar day") from error
-    if not _FIRST_DAY <= day <= _LAST_DAY:
-        raise ValueError("invalid day: outside the on-device ephemeris (1900..2052)")
-    return day
-
-
 def _wire_instant(value: object, field: str) -> datetime:
     if not isinstance(value, str):
         raise ValueError(f"invalid {field}: must be an ISO 8601 UTC instant")
     when = datetime.fromisoformat(value)
     if when.utcoffset() != timedelta(0):
         raise ValueError(f"invalid {field}: must be a UTC instant")
+    if not _FIRST_INSTANT <= when < _LAST_INSTANT:
+        raise ValueError(f"invalid {field}: outside the on-device ephemeris (1900..2052)")
     return when
 
 
@@ -489,61 +401,54 @@ def _wire_event(value: object) -> EventPoint | None:
     )
 
 
-def _wire_bounds(payload: Mapping[str, object]) -> tuple[datetime, datetime] | None:
-    start, end = payload.get("place_start_utc"), payload.get("place_end_utc")
-    if start is None and end is None:
-        return None
-    return _wire_instant(start, "place_start_utc"), _wire_instant(end, "place_end_utc")
-
-
 def moon_window_from_wire(payload: Mapping[str, object]) -> MoonWindow:
     """Shared by the CPython edge runtime and the Pyodide worker glue so both refuse the same inputs."""
     return compute_moon_window(
-        _wire_day(payload.get("day")),
-        place_bounds=_wire_bounds(payload),
+        _wire_instant(payload.get("place_start_utc"), "place_start_utc"),
+        _wire_instant(payload.get("place_end_utc"), "place_end_utc"),
         event=_wire_event(payload.get("event")),
     )
 ```
 
-The message `"must be a UTC instant"` matches the test's `match="UTC"`. A naive string has `utcoffset() is None`, which `!= timedelta(0)`.
+A naive string has `utcoffset() is None`, which `!= timedelta(0)`. `"…Z"` parses on Python 3.11+.
 
 In `backend/src/almamesh/edge/chart_runtime.py`, after `compute_predictive`:
 
 ```python
 def compute_moon_window_payload(payload: Mapping[str, object]) -> dict[str, JsonValue]:
-    """The Moon at the two ends of a day anywhere on Earth (and optionally at a place/event).
+    """The Moon at a place's local bounds (and optionally one event), as JSON.
 
-    Snake_case wire keys: ``day``, ``place_start_utc``, ``place_end_utc``, ``event``.
-    The Pyodide worker glue maps its camelCase input onto the same validator.
+    Snake_case wire keys: ``place_start_utc``, ``place_end_utc``, ``event``. The
+    Pyodide worker glue maps its camelCase input onto the same validator.
     """
     return moon_window_from_wire(payload).model_dump(mode="json")
 ```
 
-with `from almamesh.transits.moon_window import moon_window_from_wire` at the top. If `validate_coordinates` raises something other than `ValueError`, wrap the call in `_event_sky` so it raises `ValueError("invalid event: coordinates out of range")` from it. Keep the test's `pytest.raises(ValueError)`.
+with `from almamesh.transits.moon_window import moon_window_from_wire` at the top.
 
-- [ ] **Step 5: Run the tests and watch them pass**
+- [ ] **Step 4: Run the tests and watch them pass**
 
 Run: `cd backend && uv run pytest tests/test_moon_window.py -q --no-cov`
 Expected: all pass.
 
-- [ ] **Step 6: Mutation red runs**
+- [ ] **Step 5: Mutation red runs**
 
 ```bash
-python3 "$MUTATE" backend/src/almamesh/transits/moon_window.py 'location_sensitive=across.at_start.sign != across.at_end.sign' 'location_sensitive=across.at_start.sign != across.at_start.sign' -- bash -c 'cd backend && uv run pytest tests/test_moon_window.py -q --no-cov'
-python3 "$MUTATE" backend/src/almamesh/transits/moon_window.py '_EARLIEST_ZONE = timedelta(hours=14)' '_EARLIEST_ZONE = timedelta(hours=0)' -- bash -c 'cd backend && uv run pytest tests/test_moon_window.py -q --no-cov'
-python3 "$MUTATE" backend/src/almamesh/transits/moon_window.py 'if not inside or not _MIN_DAY' 'if False and not _MIN_DAY' -- bash -c 'cd backend && uv run pytest tests/test_moon_window.py -q --no-cov'
-python3 "$MUTATE" backend/src/almamesh/transits/moon_window.py '_LAST_DAY = date(2052, 12, 31)' '_LAST_DAY = date(2099, 12, 31)' -- bash -c 'cd backend && uv run pytest tests/test_moon_window.py -q --no-cov'
-python3 "$MUTATE" backend/src/almamesh/transits/moon_window.py 'if not earliest <= event.when <= latest:' 'if False:' -- bash -c 'cd backend && uv run pytest tests/test_moon_window.py -q --no-cov'
+python3 "$MUTATE" backend/src/almamesh/transits/moon_window.py 'ends = MoonEnds(at_start=_moon_mark(astro, start), at_end=_moon_mark(astro, end))' 'ends = MoonEnds(at_start=_moon_mark(astro, start), at_end=_moon_mark(astro, start))' -- bash -c 'cd backend && uv run pytest tests/test_moon_window.py -q --no-cov'
+python3 "$MUTATE" backend/src/almamesh/transits/moon_window.py '_MAX_SPAN = timedelta(days=27, hours=2)' '_MAX_SPAN = timedelta(days=400)' -- bash -c 'cd backend && uv run pytest tests/test_moon_window.py -q --no-cov'
+python3 "$MUTATE" backend/src/almamesh/transits/moon_window.py '_LAST_INSTANT = datetime(2053, 1, 1, tzinfo=UTC)' '_LAST_INSTANT = datetime(2100, 1, 1, tzinfo=UTC)' -- bash -c 'cd backend && uv run pytest tests/test_moon_window.py -q --no-cov'
+python3 "$MUTATE" backend/src/almamesh/transits/moon_window.py 'if not start <= event.when <= end:' 'if False:' -- bash -c 'cd backend && uv run pytest tests/test_moon_window.py -q --no-cov'
+python3 "$MUTATE" backend/src/almamesh/transits/moon_window.py 'if when.utcoffset() != timedelta(0):' 'if False:' -- bash -c 'cd backend && uv run pytest tests/test_moon_window.py -q --no-cov'
 ```
-Expected: five `KILLED` lines (the first is "compare only one end", the spec's mutation for the location check).
+Expected: five `KILLED` lines.
 
-- [ ] **Step 7: Quality and commit**
+- [ ] **Step 6: Quality and commit**
 
 Run `cd backend && uv run poe lint`, then invoke `python-quality` on the two changed files.
 
 ```bash
 git add backend/src/almamesh/transits/moon_window.py backend/src/almamesh/edge/chart_runtime.py backend/tests/test_moon_window.py
-git commit -m "feat(engine): compute_moon_window — Moon sign, nakshatra, tithi across a day; place and event reads"
+git commit -m "feat(engine): compute_moon_window — Moon sign, nakshatra, tithi at a place; event lagna sign"
 ```
 
 ---
@@ -570,18 +475,14 @@ git commit -m "feat(engine): compute_moon_window — Moon sign, nakshatra, tithi
   ```ts
   export interface MoonWindowEvent { readonly datetimeUtc: string; readonly latitude: number; readonly longitude: number; }
   export interface MoonWindowInput {
-    readonly day: string;                 // YYYY-MM-DD
-    readonly placeStartUtc?: string;      // ISO UTC instant, with placeEndUtc
-    readonly placeEndUtc?: string;
+    readonly placeStartUtc: string;       // ISO UTC instant: the place's local 00:00 on the first day
+    readonly placeEndUtc: string;         // ISO UTC instant: the place's local 00:00 after the last day
     readonly event?: MoonWindowEvent;
   }
   export interface MoonMark { readonly sign: string; readonly nakshatra: string; readonly tithi: number; readonly paksha: 'shukla' | 'krishna'; }
   export interface MoonEnds { readonly at_start: MoonMark; readonly at_end: MoonMark; }
   export interface MoonWindow {
-    readonly day: string;
-    readonly location_sensitive: boolean;
-    readonly across_earth: MoonEnds;
-    readonly at_place: MoonEnds | null;
+    readonly at_place: MoonEnds;
     readonly event: { readonly lagna_sign: string; readonly moon: MoonMark } | null;
   }
   ```
@@ -607,11 +508,15 @@ GOLDEN_PATH = Path(__file__).parent / "fixtures" / "moon_window_golden_de421.jso
 def golden_cases() -> dict[str, dict[str, object]]:
     """Keys MUST equal MOON_WINDOW_FIXTURES in apps/web/scripts/verify-browser-parity.mjs."""
     return {
-        "quiet": {"day": "<QUIET_DAY from Task 1>"},
-        "sensitive": {"day": "<SENSITIVE_DAY from Task 1>"},
-        "2026-06-15": {"day": "2026-06-15"},
-        "2026-06-15@bogota": {
-            "day": "2026-06-15",
+        "bogota-2026-06-15": {
+            "place_start_utc": "2026-06-15T05:00:00+00:00",
+            "place_end_utc": "2026-06-16T05:00:00+00:00",
+        },
+        "la-2026-06-01..03": {
+            "place_start_utc": "2026-06-01T07:00:00+00:00",
+            "place_end_utc": "2026-06-04T07:00:00+00:00",
+        },
+        "bogota-2026-06-15@15:00": {
             "place_start_utc": "2026-06-15T05:00:00+00:00",
             "place_end_utc": "2026-06-16T05:00:00+00:00",
             "event": {"datetime_utc": "2026-06-15T20:00:00+00:00", "latitude": 4.711, "longitude": -74.0721},
@@ -646,7 +551,7 @@ if __name__ == "__main__":
 ```
 
 Run: `cd backend && uv run pytest tests/test_moon_window_golden.py -q --no-cov`
-Expected: FAIL with `FileNotFoundError` on the golden. Then generate it with `uv run python -m tests.fixtures.regen_moon_window_golden` and re-run. Expected: PASS. Check that the `quiet` case shows `"location_sensitive": false` and `sensitive` shows `true`.
+Expected: FAIL with `FileNotFoundError` on the golden. Then generate it with `uv run python -m tests.fixtures.regen_moon_window_golden` and re-run. Expected: PASS. Check that only the `@15:00` case has a non-null `event`.
 
 - [ ] **Step 2: Worker glue under CPython (red)**
 
@@ -656,19 +561,19 @@ In `backend/tests/test_chart_worker_glue.py`, next to the predictive glue test (
 def test_moon_window_glue_maps_camel_case_onto_the_shared_validator(namespace: dict[str, object]) -> None:
     glue = namespace["_almamesh_compute_moon_window"]
     camel = {
-        "day": "2026-06-15",
         "placeStartUtc": "2026-06-15T05:00:00+00:00",
         "placeEndUtc": "2026-06-16T05:00:00+00:00",
         "event": {"datetimeUtc": "2026-06-15T20:00:00+00:00", "latitude": 4.711, "longitude": -74.0721},
     }
-    golden = json.loads(GOLDEN_PATH.read_text())["2026-06-15@bogota"]
+    golden = json.loads(GOLDEN_PATH.read_text())["bogota-2026-06-15@15:00"]
     assert json.loads(glue(json.dumps(camel))) == golden
 
 
-def test_moon_window_glue_without_place_or_event(namespace: dict[str, object]) -> None:
+def test_moon_window_glue_without_an_event(namespace: dict[str, object]) -> None:
     glue = namespace["_almamesh_compute_moon_window"]
-    golden = json.loads(GOLDEN_PATH.read_text())["2026-06-15"]
-    assert json.loads(glue(json.dumps({"day": "2026-06-15"}))) == golden
+    golden = json.loads(GOLDEN_PATH.read_text())["bogota-2026-06-15"]
+    camel = {"placeStartUtc": "2026-06-15T05:00:00+00:00", "placeEndUtc": "2026-06-16T05:00:00+00:00"}
+    assert json.loads(glue(json.dumps(camel))) == golden
 ```
 
 Reuse whatever fixture name the file already uses for the exec'd `PY_BOOTSTRAP` namespace (L60/L89/L207). Import `GOLDEN_PATH` from `tests.test_moon_window_golden`.
@@ -682,7 +587,6 @@ def _almamesh_compute_moon_window(input_json):
     data = json.loads(input_json)
     event = data.get("event")
     return json.dumps(moon_window_from_wire({
-        "day": data.get("day"),
         "place_start_utc": data.get("placeStartUtc"),
         "place_end_utc": data.get("placeEndUtc"),
         "event": None if event is None else {
@@ -701,24 +605,24 @@ In `packages/browser/src/__tests__/chartEngineClient.test.ts`, following the fil
 
 ```ts
 it('computeMoonWindow sends a computeMoonWindow request and returns the window', async () => {
-  const window = { day: '2026-06-15', location_sensitive: true, across_earth: MARKS, at_place: null, event: null };
+  const window = { at_place: MARKS, event: null };
   const { client, worker } = clientWithFakeWorker();
-  const pending = client.computeMoonWindow({ day: '2026-06-15' });
+  const pending = client.computeMoonWindow(BOUNDS);
   const request = worker.lastRequest();
-  expect(request).toMatchObject({ kind: 'computeMoonWindow', input: { day: '2026-06-15' } });
+  expect(request).toMatchObject({ kind: 'computeMoonWindow', input: BOUNDS });
   worker.reply({ ok: true, kind: 'computeMoonWindow', id: request.id, moonWindow: window });
   await expect(pending).resolves.toEqual(window);
 });
 
 it('computeMoonWindow surfaces a worker error', async () => {
   const { client, worker } = clientWithFakeWorker();
-  const pending = client.computeMoonWindow({ day: '2053-01-01' });
-  worker.reply({ ok: false, id: worker.lastRequest().id, error: 'invalid day: outside the on-device ephemeris (1900..2052)' });
-  await expect(pending).rejects.toThrow('invalid day');
+  const pending = client.computeMoonWindow({ placeStartUtc: '2053-01-01T00:00:00Z', placeEndUtc: '2053-01-02T00:00:00Z' });
+  worker.reply({ ok: false, id: worker.lastRequest().id, error: 'invalid place_start_utc: outside the on-device ephemeris (1900..2052)' });
+  await expect(pending).rejects.toThrow('invalid place_start_utc');
 });
 ```
 
-Use the file's own fake-worker helper names. If they differ from `clientWithFakeWorker`/`lastRequest`/`reply`, adapt the calls, not the assertions. `MARKS` is a local constant `{ at_start: MARK, at_end: MARK }` with `MARK = { sign: 'taurus', nakshatra: 'Rohini', tithi: 3, paksha: 'shukla' }`.
+Use the file's own fake-worker helper names. If they differ from `clientWithFakeWorker`/`lastRequest`/`reply`, adapt the calls, not the assertions. `BOUNDS` is `{ placeStartUtc: '2026-06-15T05:00:00+00:00', placeEndUtc: '2026-06-16T05:00:00+00:00' }`; `MARKS` is a local constant `{ at_start: MARK, at_end: MARK }` with `MARK = { sign: 'taurus', nakshatra: 'Rohini', tithi: 3, paksha: 'shukla' }`.
 Run: `cd frontend/packages/browser && bunx vitest run src/__tests__/chartEngineClient.test.ts`. Expected: FAIL with `client.computeMoonWindow is not a function`.
 
 Implement:
@@ -765,11 +669,9 @@ In `verify-browser-parity.mjs`, after CHECK 7, add CHECK 8. It mirrors CHECK 7's
 ```js
     // Pins MUST match backend/tests/test_moon_window_golden.py golden_cases() (camelCase here).
     const MOON_WINDOW_FIXTURES = {
-      quiet: { day: '<QUIET_DAY>' },
-      sensitive: { day: '<SENSITIVE_DAY>' },
-      '2026-06-15': { day: '2026-06-15' },
-      '2026-06-15@bogota': {
-        day: '2026-06-15',
+      'bogota-2026-06-15': { placeStartUtc: '2026-06-15T05:00:00+00:00', placeEndUtc: '2026-06-16T05:00:00+00:00' },
+      'la-2026-06-01..03': { placeStartUtc: '2026-06-01T07:00:00+00:00', placeEndUtc: '2026-06-04T07:00:00+00:00' },
+      'bogota-2026-06-15@15:00': {
         placeStartUtc: '2026-06-15T05:00:00+00:00',
         placeEndUtc: '2026-06-16T05:00:00+00:00',
         event: { datetimeUtc: '2026-06-15T20:00:00+00:00', latitude: 4.711, longitude: -74.0721 },
@@ -801,8 +703,8 @@ In `verify-browser-parity.mjs`, after CHECK 7, add CHECK 8. It mirrors CHECK 7's
         console.log(`   [FAIL] moon window ${key} DIVERGED at ${d.path}: cpython=${JSON.stringify(d.golden)} browser=${JSON.stringify(d.browser)}`)
       }
     }
-    const sensitivityControl = moonGolden.quiet?.location_sensitive === false && moonGolden.sensitive?.location_sensitive === true
-    if (!sensitivityControl) { moonMismatches += 1; console.log('   [FAIL] golden lost its quiet/sensitive control pair') }
+    const eventControl = moonGolden['bogota-2026-06-15']?.event === null && moonGolden['bogota-2026-06-15@15:00']?.event != null
+    if (!eventControl) { moonMismatches += 1; console.log('   [FAIL] golden lost its event / no-event control pair') }
     record('CHECK 8 — moon window byte-identical to the CPython golden', moonMismatches === 0, `cases=${Object.keys(MOON_WINDOW_FIXTURES).length} mismatches=${moonMismatches}`)
 ```
 
@@ -815,7 +717,7 @@ python3 "$MUTATE" frontend/packages/browser/src/pyodide/chartWorker.ts '"place_s
 python3 "$MUTATE" frontend/packages/browser/src/pyodide/chartEngineClient.ts 'kind: "computeMoonWindow", id' 'kind: "computePredictive", id' -- bash -c 'cd frontend/packages/browser && bunx vitest run src/__tests__/chartEngineClient.test.ts'
 ```
 
-CHECK 8 red: edit the built golden copy, not the source. Run the gate with `backend/tests/fixtures/moon_window_golden_de421.json` temporarily changed so the `quiet` case's `at_start.tithi` is off by one: `python3 "$MUTATE" backend/tests/fixtures/moon_window_golden_de421.json '"tithi": <value>' '"tithi": <value+1>' -- node frontend/apps/web/scripts/verify-browser-parity.mjs --reference-date=2025-01-01T00:00:00+00:00`. Pick a `"tithi": N` string that occurs once; if every value repeats, mutate the `"day"` of `quiet` instead. Expected: `KILLED` (CHECK 8 FAIL, exit non-zero).
+CHECK 8 red: edit the built golden copy, not the source. Run the gate with `backend/tests/fixtures/moon_window_golden_de421.json` temporarily changed so the `bogota-2026-06-15` case's `at_place.at_start.tithi` is off by one: `python3 "$MUTATE" backend/tests/fixtures/moon_window_golden_de421.json '"tithi": <value>' '"tithi": <value+1>' -- node frontend/apps/web/scripts/verify-browser-parity.mjs --reference-date=2025-01-01T00:00:00+00:00`. Pick a `"tithi": N` string that occurs once; if every value repeats, mutate that case's `"lagna_sign"` in the `@15:00` case instead. Expected: `KILLED` (CHECK 8 FAIL, exit non-zero).
 
 - [ ] **Step 7: Quality and commit**
 
@@ -1277,7 +1179,7 @@ git commit -m "feat(web): resolve_place tool — offline only, no coordinates to
 
 ---
 
-### Task 5: `get_timing` arguments: `place_ref`, `time`, `segments`
+### Task 5: `get_timing` arguments: `place_ref`, `time`, `segments`, and the `needs_place` rule
 
 **Files:**
 - Create: `frontend/packages/llm/src/period-places.ts`
@@ -1298,6 +1200,10 @@ git commit -m "feat(web): resolve_place tool — offline only, no coordinates to
     | { readonly kind: "invalid"; readonly error: string };
   export function parseTimingArgs(args: Readonly<Record<string, unknown>>): TimingArgs;
   export const SEGMENT_GAP_NOTE: string;
+  export const NEEDS_PLACE_ERROR = "needs_place";
+  export const PLACE_NEEDED_BELOW_DAYS = 28;
+  /** True when a sky read of `period` has no place (coordinator Ruling 1). Calendar arithmetic only. */
+  export function needsPlace(period: PeriodRange, places: { readonly placeRef?: string; readonly segments?: readonly TimingSegment[] }): boolean;
   ```
   Error constants (exported, so tests and the tool use the same text): `SEGMENTS_WITH_DATES_ERROR`, `SEGMENTS_SHAPE_ERROR`, `SEGMENTS_ORDER_ERROR`, `PLACE_REF_ERROR`, `TIME_FORMAT_ERROR`, `TIME_NEEDS_DAY_ERROR`, `TIME_NEEDS_PLACE_ERROR`, `PLACE_CONFLICT_ERROR`.
 
@@ -1387,7 +1293,41 @@ describe("parseTimingArgs", () => {
     });
   });
 });
+
+describe("needsPlace (coordinator Ruling 1)", () => {
+  const day = { start: "2026-06-15", end: "2026-06-15" };
+  it("a day, a few days, or 27 days without a place needs one", () => {
+    expect(needsPlace(day, {})).toBe(true);
+    expect(needsPlace({ start: "2026-06-01", end: "2026-06-03" }, {})).toBe(true);
+    expect(needsPlace({ start: "2027-02-01", end: "2027-02-27" }, {})).toBe(true);
+  });
+
+  it("28 days or more never needs one", () => {
+    expect(needsPlace({ start: "2027-02-01", end: "2027-02-28" }, {})).toBe(false);
+    expect(needsPlace({ start: "2026-06-01", end: "2026-06-30" }, {})).toBe(false);
+  });
+
+  it("a place_ref, or segments that all carry one, satisfy it", () => {
+    expect(needsPlace(day, { placeRef: BOG })).toBe(false);
+    expect(needsPlace({ start: "2026-06-01", end: "2026-06-05" }, {
+      segments: [{ start: "2026-06-01", end: "2026-06-02", place_ref: LA }, { start: "2026-06-03", end: "2026-06-05", place_ref: BOG }],
+    })).toBe(false);
+  });
+
+  it("segments with a missing place do not", () => {
+    expect(needsPlace({ start: "2026-06-01", end: "2026-06-05" }, {
+      segments: [{ start: "2026-06-01", end: "2026-06-02", place_ref: LA }, { start: "2026-06-03", end: "2026-06-05" }],
+    })).toBe(true);
+  });
+
+  it("the error is the constant the prompt teaches", () => {
+    expect(NEEDS_PLACE_ERROR).toBe("needs_place");
+    expect(PLACE_NEEDED_BELOW_DAYS).toBe(28);
+  });
+});
 ```
+
+Add `NEEDS_PLACE_ERROR`, `PLACE_NEEDED_BELOW_DAYS` and `needsPlace` to the test's import list.
 
 Run: `cd frontend/packages/llm && bunx vitest run src/__tests__/period-places.test.ts`
 Expected: FAIL to resolve `../period-places`.
@@ -1518,6 +1458,25 @@ Two cases need care so they don't slip through:
 
 If xenon flags `parseTimingArgs` above grade A, split the final object build into a `periodArgs(period, segments, place, time)` helper.
 
+Then the `needs_place` rule, in the same file:
+
+```ts
+export const NEEDS_PLACE_ERROR = "needs_place";
+/** Under this many days a sky reading is day precision and needs a place; 28+ (a month) never does. */
+export const PLACE_NEEDED_BELOW_DAYS = 28;
+
+export function needsPlace(
+  period: PeriodRange,
+  places: { readonly placeRef?: string; readonly segments?: readonly TimingSegment[] },
+): boolean {
+  if (periodEcho(period, "period").days >= PLACE_NEEDED_BELOW_DAYS) return false;
+  if (places.placeRef) return false;
+  return !(places.segments?.length && places.segments.every((segment) => segment.place_ref));
+}
+```
+
+Import `periodEcho` from `./period`.
+
 Add `export * from "./period-places";` to the barrel (or named exports, matching the file's existing style at L388-410).
 
 Run: Step 1's command. Expected: PASS.
@@ -1529,19 +1488,21 @@ python3 "$MUTATE" frontend/packages/llm/src/period-places.ts 'if (previous && se
 python3 "$MUTATE" frontend/packages/llm/src/period-places.ts 'return place ? value : { error: TIME_NEEDS_PLACE_ERROR };' 'return value;' -- bash -c 'cd frontend/packages/llm && bunx vitest run src/__tests__/period-places.test.ts'
 python3 "$MUTATE" frontend/packages/llm/src/period-places.ts 'if (args.start !== undefined || args.end !== undefined) return { error: SEGMENTS_WITH_DATES_ERROR };' '' -- bash -c 'cd frontend/packages/llm && bunx vitest run src/__tests__/period-places.test.ts'
 python3 "$MUTATE" frontend/packages/llm/src/period-places.ts 'if (placeRef && fromSegment && placeRef !== fromSegment) return { error: PLACE_CONFLICT_ERROR };' '' -- bash -c 'cd frontend/packages/llm && bunx vitest run src/__tests__/period-places.test.ts'
+python3 "$MUTATE" frontend/packages/llm/src/period-places.ts 'if (periodEcho(period, "period").days >= PLACE_NEEDED_BELOW_DAYS) return false;' 'if (periodEcho(period, "period").days > PLACE_NEEDED_BELOW_DAYS) return false;' -- bash -c 'cd frontend/packages/llm && bunx vitest run src/__tests__/period-places.test.ts'
+python3 "$MUTATE" frontend/packages/llm/src/period-places.ts 'places.segments.every((segment) => segment.place_ref)' 'places.segments.some((segment) => segment.place_ref)' -- bash -c 'cd frontend/packages/llm && bunx vitest run src/__tests__/period-places.test.ts'
 ```
-Expected: four `KILLED`.
+Expected: six `KILLED` (the last two are the spec's "use `<=` 28 days" mutation and "one placed segment is enough").
 
 - [ ] **Step 4: Commit**
 
 ```bash
 git add frontend/packages/llm/src/period-places.ts frontend/packages/llm/src/index.ts frontend/packages/llm/src/__tests__/period-places.test.ts
-git commit -m "feat(llm): get_timing argument rules for place_ref, time and segments"
+git commit -m "feat(llm): get_timing argument rules for place_ref, time, segments; needs_place below 28 days"
 ```
 
 ---
 
-### Task 6: Moon-window loader: place day bounds and event instants in TypeScript
+### Task 6: Moon-window loader: place bounds and event instants in TypeScript
 
 **Files:**
 - Create: `frontend/apps/web/src/lib/moonWindow.ts`
@@ -1549,17 +1510,18 @@ git commit -m "feat(llm): get_timing argument rules for place_ref, time and segm
 - Test: `frontend/apps/web/src/lib/__tests__/moonWindow.test.ts`
 
 **Interfaces:**
-- Consumes: `resolveLocalTime`, `localTimeToInstant`, `LocalTimeError` (`@almamesh/store`, `adapters/localBirthTime.ts`); `readyEngine` (`periodChart.ts:38`, returns the engine; widen its return type to `ChartEngine` from `@almamesh/browser` if it is typed as `PredictiveRuntime`); `MoonWindow`, `MoonWindowInput` (Task 2); `AgentToolContext`; `withDeadline` and `periodSkyDeadline()` as `periodChart.ts` uses them.
+- Consumes: `resolveLocalTime`, `localTimeToInstant`, `LocalTimeError` (`@almamesh/store`, `adapters/localBirthTime.ts`); `readyEngine` (`periodChart.ts:38`; widen its return type to `ChartEngine` from `@almamesh/browser` if it is typed as `PredictiveRuntime`); `MoonWindow`, `MoonWindowInput` (Task 2); `AgentToolContext`.
 - Produces:
   ```ts
   export interface MoonWindowRequest {
-    readonly day: string;                                   // YYYY-MM-DD
-    readonly zone: string;                                  // IANA: the place's, or the home zone
-    readonly place?: { readonly latitude: number; readonly longitude: number };
-    readonly time?: string;                                 // HH:MM at `zone`; needs `place`
+    readonly start: string;                                  // YYYY-MM-DD, first local day
+    readonly end: string;                                    // YYYY-MM-DD, last local day (inclusive)
+    readonly zone: string;                                   // the place's IANA zone
+    readonly place: { readonly latitude: number; readonly longitude: number };
+    readonly time?: string;                                  // HH:MM at `zone`; only when start === end
   }
   export type MoonWindowLoader = (request: MoonWindowRequest, context: AgentToolContext) => Promise<MoonWindow>;
-  export function localDayBounds(day: string, zone: string): { readonly startUtc: string; readonly endUtc: string };
+  export function localPeriodBounds(start: string, end: string, zone: string): { readonly startUtc: string; readonly endUtc: string };
   export function eventInstantUtc(day: string, time: string, zone: string): string;   // throws LocalTimeError
   export function moonWindowInput(request: MoonWindowRequest): MoonWindowInput;
   export function createMoonWindowLoader(engine: ChartEngineContextValue | null): MoonWindowLoader;
@@ -1572,26 +1534,30 @@ import { LocalTimeError } from '@almamesh/store';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { ChartEngineContextValue } from '../../providers/chartEngineContext';
-import { createMoonWindowLoader, eventInstantUtc, localDayBounds, moonWindowInput } from '../moonWindow';
+import { createMoonWindowLoader, eventInstantUtc, localPeriodBounds, moonWindowInput } from '../moonWindow';
 
 const context = () => ({ now: new Date('2026-06-20T00:00:00Z'), signal: new AbortController().signal });
+const BOGOTA = { latitude: 4.711, longitude: -74.0721 };
 
-describe('localDayBounds', () => {
-  it('is local midnight to the next local midnight in UTC', () => {
-    expect(localDayBounds('2026-06-15', 'America/Bogota')).toEqual({
+describe('localPeriodBounds', () => {
+  it('is local midnight of the first day to local midnight after the last day, in UTC', () => {
+    expect(localPeriodBounds('2026-06-15', '2026-06-15', 'America/Bogota')).toEqual({
       startUtc: '2026-06-15T05:00:00.000Z',
       endUtc: '2026-06-16T05:00:00.000Z',
+    });
+    expect(localPeriodBounds('2026-06-01', '2026-06-03', 'America/Los_Angeles')).toEqual({
+      startUtc: '2026-06-01T07:00:00.000Z',
+      endUtc: '2026-06-04T07:00:00.000Z',
     });
   });
 
   it('is 23 hours on a spring-forward day', () => {
-    const { startUtc, endUtc } = localDayBounds('2026-03-08', 'America/Los_Angeles');
+    const { startUtc, endUtc } = localPeriodBounds('2026-03-08', '2026-03-08', 'America/Los_Angeles');
     expect(Date.parse(endUtc) - Date.parse(startUtc)).toBe(23 * 3_600_000);
   });
 
   it('starts at the first real instant when local midnight is skipped', () => {
-    // Chile springs forward at 00:00 -> 01:00 (first Sunday of September 2026).
-    const { startUtc } = localDayBounds('2026-09-06', 'America/Santiago');
+    const { startUtc } = localPeriodBounds('2026-09-06', '2026-09-06', 'America/Santiago');
     expect(startUtc).toBe('2026-09-06T04:00:00.000Z');
   });
 });
@@ -1611,9 +1577,8 @@ describe('eventInstantUtc', () => {
 });
 
 describe('moonWindowInput', () => {
-  it('sends the day, the place day and the event, with coordinates only on the device-side wire', () => {
-    expect(moonWindowInput({ day: '2026-06-15', zone: 'America/Bogota', place: { latitude: 4.711, longitude: -74.0721 }, time: '15:00' })).toEqual({
-      day: '2026-06-15',
+  it('sends the place bounds and the event; coordinates go only to the on-device worker', () => {
+    expect(moonWindowInput({ start: '2026-06-15', end: '2026-06-15', zone: 'America/Bogota', place: BOGOTA, time: '15:00' })).toEqual({
       placeStartUtc: '2026-06-15T05:00:00.000Z',
       placeEndUtc: '2026-06-16T05:00:00.000Z',
       event: { datetimeUtc: '2026-06-15T20:00:00.000Z', latitude: 4.711, longitude: -74.0721 },
@@ -1621,8 +1586,7 @@ describe('moonWindowInput', () => {
   });
 
   it('sends no event without a time', () => {
-    expect(moonWindowInput({ day: '2026-06-15', zone: 'America/Bogota' })).toEqual({
-      day: '2026-06-15',
+    expect(moonWindowInput({ start: '2026-06-15', end: '2026-06-15', zone: 'America/Bogota', place: BOGOTA })).toEqual({
       placeStartUtc: '2026-06-15T05:00:00.000Z',
       placeEndUtc: '2026-06-16T05:00:00.000Z',
     });
@@ -1631,19 +1595,21 @@ describe('moonWindowInput', () => {
 
 describe('createMoonWindowLoader', () => {
   it('calls the engine once with the built input', async () => {
-    const computeMoonWindow = vi.fn(async () => ({ day: '2026-06-15' }));
+    const computeMoonWindow = vi.fn(async () => ({ at_place: null, event: null }));
     const engine = { engine: { computeMoonWindow }, startBootstrap: vi.fn(), whenReady: vi.fn() } as unknown as ChartEngineContextValue;
-    await createMoonWindowLoader(engine)({ day: '2026-06-15', zone: 'America/Bogota' }, context());
-    expect(computeMoonWindow).toHaveBeenCalledWith(moonWindowInput({ day: '2026-06-15', zone: 'America/Bogota' }));
+    const request = { start: '2026-06-15', end: '2026-06-15', zone: 'America/Bogota', place: BOGOTA };
+    await createMoonWindowLoader(engine)(request, context());
+    expect(computeMoonWindow).toHaveBeenCalledWith(moonWindowInput(request));
   });
 
   it('fails as engine_unavailable without an engine', async () => {
-    await expect(createMoonWindowLoader(null)({ day: '2026-06-15', zone: 'UTC' }, context())).rejects.toMatchObject({ reason: 'engine_unavailable' });
+    const request = { start: '2026-06-15', end: '2026-06-15', zone: 'UTC', place: BOGOTA };
+    await expect(createMoonWindowLoader(null)(request, context())).rejects.toMatchObject({ reason: 'engine_unavailable' });
   });
 });
 ```
 
-The Santiago case: Chile moves from UTC−4 to UTC−3 at local 00:00 on the first Saturday→Sunday of September. Confirm the 2026 date with `bun -e` and `Intl` before pinning. If 2026's change falls on 2026-09-06 at 00:00 local, the first instant of that day is 01:00 −03:00 = 04:00Z. Adjust the literal only to what `Intl` shows, and record it.
+The Santiago case: Chile moves from UTC−4 to UTC−3 at local 00:00 on the first Sunday of September. Confirm 2026's date with `bun -e` and `Intl` before pinning, adjust the literal only to what `Intl` shows, and record it.
 
 Run: `cd frontend/apps/web && bunx vitest run src/lib/__tests__/moonWindow.test.ts src/lib/__tests__/placeOffline.contract.test.ts`
 Expected: FAIL to resolve `../moonWindow` (and ENOENT in the contract test).
@@ -1653,8 +1619,8 @@ Expected: FAIL to resolve `../moonWindow` (and ENOENT in the contract test).
 ```ts
 /**
  * Inputs for the engine's moon window (spec 2026-10-08 Part 2). Calendar and
- * zone arithmetic only: local midnights and a local time of day become UTC
- * instants here, so the Python engine needs no tz database (plan Ruling 9).
+ * zone arithmetic only: a place's local midnights and a local time of day become
+ * UTC instants here, so the Python engine needs no tz database (plan Ruling 9).
  * Coordinates go to the on-device worker only; nothing here is model-facing.
  */
 import type { MoonWindow, MoonWindowInput } from '@almamesh/browser';
@@ -1665,9 +1631,10 @@ import type { ChartEngineContextValue } from '../providers/chartEngineContext';
 import { readyEngine } from './periodChart';
 
 export interface MoonWindowRequest {
-  readonly day: string;
+  readonly start: string;
+  readonly end: string;
   readonly zone: string;
-  readonly place?: { readonly latitude: number; readonly longitude: number };
+  readonly place: { readonly latitude: number; readonly longitude: number };
   readonly time?: string;
 }
 
@@ -1687,8 +1654,8 @@ function firstInstant(day: string, zone: string): string {
   throw new RangeError(`no start of day for ${day} in ${zone}`);
 }
 
-export function localDayBounds(day: string, zone: string): { readonly startUtc: string; readonly endUtc: string } {
-  return { startUtc: firstInstant(day, zone), endUtc: firstInstant(nextDay(day), zone) };
+export function localPeriodBounds(start: string, end: string, zone: string): { readonly startUtc: string; readonly endUtc: string } {
+  return { startUtc: firstInstant(start, zone), endUtc: firstInstant(nextDay(end), zone) };
 }
 
 export function eventInstantUtc(day: string, time: string, zone: string): string {
@@ -1696,11 +1663,11 @@ export function eventInstantUtc(day: string, time: string, zone: string): string
 }
 
 export function moonWindowInput(request: MoonWindowRequest): MoonWindowInput {
-  const { startUtc, endUtc } = localDayBounds(request.day, request.zone);
-  const base = { day: request.day, placeStartUtc: startUtc, placeEndUtc: endUtc };
-  if (!request.time || !request.place) return base;
-  const datetimeUtc = eventInstantUtc(request.day, request.time, request.zone);
-  return { ...base, event: { datetimeUtc, latitude: request.place.latitude, longitude: request.place.longitude } };
+  const { startUtc, endUtc } = localPeriodBounds(request.start, request.end, request.zone);
+  const base = { placeStartUtc: startUtc, placeEndUtc: endUtc };
+  if (!request.time) return base;
+  const datetimeUtc = eventInstantUtc(request.start, request.time, request.zone);
+  return { ...base, event: { datetimeUtc, ...request.place } };
 }
 
 export function createMoonWindowLoader(engine: ChartEngineContextValue | null): MoonWindowLoader {
@@ -1712,11 +1679,9 @@ export function createMoonWindowLoader(engine: ChartEngineContextValue | null): 
 }
 ```
 
-- The UTC-ISO format from `resolveLocalTime` is `toISOString()` (`.000Z`). Python's `datetime.fromisoformat` accepts `Z` on 3.11+. Task 1's `_wire_instant` check `utcoffset() == 0` holds.
-- `readyEngine` must return a type with `computeMoonWindow`. If it returns `PredictiveRuntime`, change its return type to `ChartEngine` (it already returns `engine.engine ?? await engine.whenReady()`, which is a `ChartEngine`). `periodChart.ts`'s own call site still type-checks, because `ChartEngine` has `computePredictive`.
+- `readyEngine` must return a type with `computeMoonWindow`. If it returns `PredictiveRuntime`, change its return type to `ChartEngine`. It already returns `engine.engine ?? await engine.whenReady()`, which is a `ChartEngine`, and `periodChart.ts`'s own call site still type-checks.
 - `readyEngine(null)` throws `PeriodSkyUnavailableError('engine_unavailable')`, which carries `reason`.
-- Re-export `MoonWindow`/`MoonWindowInput` from `@almamesh/browser`'s index if Task 2 didn't.
-- The moon-window call rides inside `get_timing`'s 150 s budget and its abort signal (the tool's deadline wraps it). It needs no own deadline.
+- The calls ride inside `get_timing`'s 150 s budget and abort signal.
 
 Run: Step 1's command. Expected: PASS.
 
@@ -1724,77 +1689,67 @@ Run: Step 1's command. Expected: PASS.
 
 ```bash
 python3 "$MUTATE" frontend/apps/web/src/lib/moonWindow.ts "for (const time of ['00:00', '01:00'])" "for (const time of ['00:00'])" -- bash -c 'cd frontend/apps/web && bunx vitest run src/lib/__tests__/moonWindow.test.ts'
-python3 "$MUTATE" frontend/apps/web/src/lib/moonWindow.ts "return { startUtc: firstInstant(day, zone), endUtc: firstInstant(nextDay(day), zone) };" "return { startUtc: firstInstant(day, zone), endUtc: new Date(Date.parse(firstInstant(day, zone)) + 86_400_000).toISOString() };" -- bash -c 'cd frontend/apps/web && bunx vitest run src/lib/__tests__/moonWindow.test.ts'
+python3 "$MUTATE" frontend/apps/web/src/lib/moonWindow.ts "return { startUtc: firstInstant(start, zone), endUtc: firstInstant(nextDay(end), zone) };" "return { startUtc: firstInstant(start, zone), endUtc: new Date(Date.parse(firstInstant(start, zone)) + 86_400_000).toISOString() };" -- bash -c 'cd frontend/apps/web && bunx vitest run src/lib/__tests__/moonWindow.test.ts'
 ```
-Expected: two `KILLED` (the skipped midnight; the 23-hour day).
+Expected: two `KILLED` (the skipped midnight; the 23-hour day and the 3-day span).
 
 - [ ] **Step 4: Commit**
 
 ```bash
 git add frontend/apps/web/src/lib/moonWindow.ts frontend/apps/web/src/lib/periodChart.ts frontend/apps/web/src/lib/__tests__/moonWindow.test.ts frontend/apps/web/src/lib/__tests__/placeOffline.contract.test.ts
-git commit -m "feat(web): moon-window inputs — local day bounds and event instants, DST-safe"
+git commit -m "feat(web): moon-window inputs — local period bounds and event instants, DST-safe"
 ```
 
 ---
 
-### Task 7: `get_timing` reads places; the toolset registers `resolve_place` on full devices
+### Task 7: `get_timing` asks for a place and reads it; the toolset registers `resolve_place` on full devices
 
 **Files:**
-- Modify: `frontend/apps/web/src/lib/timingTool.ts`
+- Modify: `frontend/apps/web/src/lib/timingTool.ts` (if it passes ~300 lines, put the place helpers in a sibling `frontend/apps/web/src/lib/timingPlaces.ts`)
 - Modify: `frontend/apps/web/src/lib/chatAgentTools.ts` (`CreateChatAgentToolsInput` passes the new timing inputs through)
-- Modify: `frontend/apps/web/src/lib/chatToolset.ts` (moon loader, home zone, place-ref reader, `resolve_place` behind the tier)
-- Test: `frontend/apps/web/src/lib/__tests__/timingTool.places.test.ts` (new), `frontend/apps/web/src/lib/__tests__/chatToolset.test.ts` (extend)
-- Modify (expected, intended extension): `frontend/apps/web/e2e/time-travel.spec.ts` Journey 1's tool-list assertion (Task 10 does it)
+- Modify: `frontend/apps/web/src/lib/chatToolset.ts` (moon loader, place-ref reader, `resolve_place` behind the tier)
+- Test: `frontend/apps/web/src/lib/__tests__/timingTool.places.test.ts` (new), `frontend/apps/web/src/lib/__tests__/chatToolset.test.ts` and `chatToolsetWiring.test.ts` (extend)
 
 **Interfaces:**
-- Consumes: Task 5 `parseTimingArgs`, `TimingSegment`, `SEGMENT_GAP_NOTE`, `PLACE_REF_ERROR`; Task 3 `placeFromRef`, `ResolvedPlace`; Task 4 `createResolvePlaceTool`; Task 6 `MoonWindowLoader`, `createMoonWindowLoader`, `LocalTimeError`; `MoonWindow`.
+- Consumes: Task 5 `parseTimingArgs`, `needsPlace`, `NEEDS_PLACE_ERROR`, `TimingSegment`, `SEGMENT_GAP_NOTE`, `PLACE_REF_ERROR`; Task 3 `placeFromRef`, `ResolvedPlace`; Task 4 `createResolvePlaceTool`; Task 6 `MoonWindowLoader`, `createMoonWindowLoader`; `LocalTimeError`; `MoonWindow`.
 - Produces:
   - New `TimingToolInput` fields:
     ```ts
-    /** The engine's moon window for one day (Task 6). Absent: no location check. */
+    /** The engine's Moon at a place for a short period (Task 6). Absent: no Moon-at-place rows. */
     readonly loadMoonWindow?: MoonWindowLoader;
-    /** The home zone (the viewer's device zone). Used for a day read with no place; never echoed. */
-    readonly homeZone?: () => string;
     /** Re-read a place_ref offline (geo/placeLookup.ts placeFromRef). */
     readonly placeFromRef?: (ref: string) => Promise<ResolvedPlace | undefined>;
     ```
   - Result additions on `TimingResult`:
     ```ts
-    place?: { readonly basis: 'home_time_zone' } | { readonly basis: 'place'; readonly label: string; readonly timezone: string };
-    location_sensitive?: boolean;
-    moon?: { readonly across_earth: MoonEnds; readonly at_place: MoonEnds | null };
+    places?: readonly { readonly start: string; readonly end: string; readonly label: string; readonly timezone: string; readonly moon?: MoonEnds }[];
     event?: { readonly local_time: string; readonly lagna_sign: string; readonly moon: MoonMark };
-    segments?: readonly { readonly start: string; readonly end: string; readonly label?: string; readonly timezone?: string }[];
     ```
-  - Exported notes: `PLACE_DOES_NOT_CHANGE_NOTE = "Place doesn't change readings for periods longer than a day: dashas come from the birth chart and planet positions are the same from anywhere on Earth."` and `LOCATION_CHECK_UNAVAILABLE_NOTE = "Couldn't check whether the place changes this day's Moon; ask where they were only if it matters."`
-  - `BuildChatToolsetInput` gains test seams `periodSkyAllowed?: boolean` and `placeFromRef?`. Pages never pass them; extend `chatToolsetWiring.test.ts`'s "pages never pass" pin to cover the new keys.
+  - Exported constants: `PLACE_DOES_NOT_CHANGE_NOTE = "Place doesn't change readings for periods of a month or longer: dashas come from the birth chart and slow-planet positions are the same from anywhere on Earth."`, `PLACE_MOON_UNAVAILABLE_NOTE = "Couldn't read the Moon at that place on this device; the rest of the answer stands."`, `NEEDS_PLACE_STATUS_LABEL = 'Checking where you were'`.
+  - `BuildChatToolsetInput` gains test seams `periodSkyAllowed?: boolean` and `placeFromRef?`. Pages never pass them; extend `chatToolsetWiring.test.ts`'s "pages never pass" pin to the new keys.
 
-- [ ] **Step 1: Write the failing tool tests**
+- [ ] **Step 1: Write the failing tool tests (the `needs_place` gate first)**
 
-`timingTool.places.test.ts` reuses the fixtures of `timingTool.test.ts` (`CHART`, `SKY_CHART`, `NOW`). Import them if they are exported, or move them to `src/lib/__tests__/timingFixtures.ts` in this step and import from both files. The move is a pure refactor, so `timingTool.test.ts` stays green.
+`timingTool.places.test.ts` reuses `timingTool.test.ts`'s fixtures. If `CHART`/`SKY_CHART` are not exported, move them to `src/lib/__tests__/timingFixtures.ts` in this step and import from both. The move is a pure refactor, so `timingTool.test.ts` stays green.
 
 ```ts
 import { describe, expect, it, vi } from 'vitest';
 
 import type { MoonWindow } from '@almamesh/browser';
-import { BIRTH_YEAR_SKY_NOTE, PLACE_REF_ERROR, TIME_NEEDS_PLACE_ERROR } from '@almamesh/llm';
+import { BIRTH_YEAR_SKY_NOTE, NEEDS_PLACE_ERROR, PLACE_REF_ERROR, SEGMENT_GAP_NOTE, TIME_NEEDS_PLACE_ERROR } from '@almamesh/llm';
 
-import { createTimingTool, DEVICE_DASHAS_ONLY_NOTE, LOCATION_CHECK_UNAVAILABLE_NOTE, PLACE_DOES_NOT_CHANGE_NOTE } from '../timingTool';
+import { moonWindowInput, type MoonWindowRequest } from '../moonWindow';
+import { createTimingTool, DEVICE_DASHAS_ONLY_NOTE, PLACE_DOES_NOT_CHANGE_NOTE, PLACE_MOON_UNAVAILABLE_NOTE } from '../timingTool';
 import { CHART, SKY_CHART } from './timingFixtures';
 
 const NOW = new Date('2026-06-20T09:30:00.000Z');
 const context = () => ({ now: NOW, signal: new AbortController().signal });
 const MARK = { sign: 'taurus', nakshatra: 'Rohini', tithi: 3, paksha: 'shukla' } as const;
 const NEXT = { sign: 'gemini', nakshatra: 'Mrigashira', tithi: 5, paksha: 'shukla' } as const;
-const WINDOW: MoonWindow = {
-  day: '2026-06-15',
-  location_sensitive: true,
-  across_earth: { at_start: MARK, at_end: NEXT },
-  at_place: { at_start: MARK, at_end: NEXT },
-  event: null,
-};
+const WINDOW: MoonWindow = { at_place: { at_start: MARK, at_end: NEXT }, event: null };
 const BOGOTA = { summary: { place_ref: 'city:202', label: 'Bogotá, Colombia', timezone: 'America/Bogota' }, latitude: 4.711, longitude: -74.0721 };
 const LA = { summary: { place_ref: 'city:101', label: 'Los Angeles, United States', timezone: 'America/Los_Angeles' }, latitude: 34.05, longitude: -118.24 };
+const NEEDS_PLACE = { error: NEEDS_PLACE_ERROR };
 
 function tool(overrides: Partial<Parameters<typeof createTimingTool>[0]> = {}) {
   return createTimingTool({
@@ -1804,134 +1759,132 @@ function tool(overrides: Partial<Parameters<typeof createTimingTool>[0]> = {}) {
     loadPeriodChart: vi.fn(async () => SKY_CHART),
     periodSkyAllowed: true,
     loadMoonWindow: vi.fn(async () => WINDOW),
-    homeZone: () => 'America/Los_Angeles',
     placeFromRef: vi.fn(async (ref: string) => ({ 'city:202': BOGOTA, 'city:101': LA })[ref]),
     ...overrides,
   });
 }
 
-function numbersUnder(value: unknown, key: string): number[] {
-  if (!value || typeof value !== 'object') return [];
-  const record = value as Record<string, unknown>;
-  const own = key in record ? JSON.stringify(record[key]).match(/-?\d+\.\d+/g) ?? [] : [];
-  return [...own.map(Number), ...Object.values(record).flatMap((child) => numbersUnder(child, key))];
-}
+describe('get_timing needs a place below a month', () => {
+  it('refuses a single day of transits with no place, before any engine work', async () => {
+    const loadPeriodChart = vi.fn(async () => SKY_CHART);
+    const load = vi.fn(async () => WINDOW);
+    const result = await tool({ loadPeriodChart, loadMoonWindow: load }).execute({ section: 'transits', start: '2026-06-15' }, context());
+    expect(result).toEqual(NEEDS_PLACE);
+    expect(loadPeriodChart).not.toHaveBeenCalled();
+    expect(load).not.toHaveBeenCalled();
+  });
+
+  it.each(['transits', 'domains', 'strength'])('refuses %s for 27 days and answers 28 days, with no place', async (section) => {
+    expect(await tool().execute({ section, start: '2027-02-01', end: '2027-02-27' }, context())).toEqual(NEEDS_PLACE);
+    expect(await tool().execute({ section, start: '2027-02-01', end: '2027-02-28' }, context())).not.toEqual(NEEDS_PLACE);
+  });
+
+  it('refuses segments under a month when any segment has no place', async () => {
+    const segments = [{ start: '2026-06-01', end: '2026-06-02', place_ref: 'city:101' }, { start: '2026-06-03', end: '2026-06-05' }];
+    expect(await tool().execute({ section: 'transits', segments }, context())).toEqual(NEEDS_PLACE);
+  });
+
+  it('never asks for dashas, for today, on a weak device, or in the birth year', async () => {
+    expect(await tool().execute({ section: 'dashas', start: '2026-06-15' }, context())).not.toEqual(NEEDS_PLACE);
+    expect(await tool({ loadCurrentChart: vi.fn(async () => SKY_CHART) }).execute({ section: 'transits' }, context())).not.toEqual(NEEDS_PLACE);
+    expect(await tool({ periodSkyAllowed: false }).execute({ section: 'transits', start: '2026-06-15' }, context())).toMatchObject({ shown: 'dashas', notes: [DEVICE_DASHAS_ONLY_NOTE] });
+    expect(await tool().execute({ section: 'transits', start: '1990-06-15' }, context())).toMatchObject({ shown: 'dashas', notes: [BIRTH_YEAR_SKY_NOTE] });
+  });
+
+  it('a time without a place is still the time error', async () => {
+    expect(await tool().execute({ section: 'transits', start: '2026-06-15', time: '15:00' }, context())).toEqual({ error: TIME_NEEDS_PLACE_ERROR });
+  });
+});
 
 describe('get_timing with places', () => {
-  it('a single dated day of transits carries the location check in the home zone, without naming the zone', async () => {
-    const load = vi.fn(async () => WINDOW);
-    const result = await tool({ loadMoonWindow: load }).execute({ section: 'transits', start: '2026-06-15' }, context());
-    expect(result).toMatchObject({ location_sensitive: true, place: { basis: 'home_time_zone' }, moon: { across_earth: WINDOW.across_earth } });
-    expect(load).toHaveBeenCalledWith({ day: '2026-06-15', zone: 'America/Los_Angeles' }, expect.anything());
-    expect(JSON.stringify(result)).not.toContain('America/Los_Angeles');
-  });
-
-  it('a quiet day says so', async () => {
-    const result = await tool({ loadMoonWindow: vi.fn(async () => ({ ...WINDOW, location_sensitive: false })) }).execute({ section: 'transits', start: '2026-06-15' }, context());
-    expect(result).toMatchObject({ location_sensitive: false });
-  });
-
-  it('a day at a resolved place reads that place, echoes label and zone, and sends coordinates only to the loader', async () => {
+  it('a day at a resolved place reads the Moon there; label and zone echoed, coordinates only to the loader', async () => {
     const load = vi.fn(async () => WINDOW);
     const result = await tool({ loadMoonWindow: load }).execute({ section: 'transits', start: '2026-06-15', place_ref: 'city:202' }, context());
-    expect(result).toMatchObject({ place: { basis: 'place', label: 'Bogotá, Colombia', timezone: 'America/Bogota' }, moon: { at_place: WINDOW.at_place } });
-    expect(load).toHaveBeenCalledWith({ day: '2026-06-15', zone: 'America/Bogota', place: { latitude: 4.711, longitude: -74.0721 } }, expect.anything());
+    expect(result).toMatchObject({
+      shown: 'transits',
+      places: [{ start: '2026-06-15', end: '2026-06-15', label: 'Bogotá, Colombia', timezone: 'America/Bogota', moon: WINDOW.at_place }],
+    });
+    expect(load).toHaveBeenCalledWith({ start: '2026-06-15', end: '2026-06-15', zone: 'America/Bogota', place: { latitude: 4.711, longitude: -74.0721 } }, expect.anything());
     expect(JSON.stringify(result)).not.toMatch(/latitude|longitude|4\.711|74\.07/);
+  });
+
+  it('a few days split across two places reads each place for its own days', async () => {
+    const load = vi.fn(async () => WINDOW);
+    const segments = [{ start: '2026-06-01', end: '2026-06-02', place_ref: 'city:101' }, { start: '2026-06-03', end: '2026-06-05', place_ref: 'city:202' }];
+    const result = await tool({ loadMoonWindow: load }).execute({ section: 'transits', segments }, context());
+    expect(load.mock.calls.map(([request]) => [request.start, request.end, request.zone])).toEqual([
+      ['2026-06-01', '2026-06-02', 'America/Los_Angeles'],
+      ['2026-06-03', '2026-06-05', 'America/Bogota'],
+    ]);
+    expect((result as { places: unknown[] }).places).toHaveLength(2);
   });
 
   it('a time of day at a place returns the lagna sign and the Moon, no degrees', async () => {
     const event = { lagna_sign: 'scorpio', moon: MARK };
     const load = vi.fn(async () => ({ ...WINDOW, event }));
-    const result = await tool({ loadMoonWindow: load }).execute({ section: 'transits', start: '2026-06-15', place_ref: 'city:202', time: '15:00' }, context());
+    const result = await tool({ loadMoonWindow: load }).execute({ section: 'transits', start: '2026-07-03', place_ref: 'city:202', time: '15:00' }, context());
     expect(result).toMatchObject({ event: { local_time: '15:00', lagna_sign: 'scorpio', moon: MARK } });
     expect(load).toHaveBeenCalledWith(expect.objectContaining({ time: '15:00' }), expect.anything());
   });
 
   it('a time that never happened at the place is a tool error, not a guess', async () => {
-    // The stub builds the real wire input, so LocalTimeError fires before any engine call.
     const load = vi.fn(async (request: MoonWindowRequest) => {
       moonWindowInput(request);
       return WINDOW;
     });
-    const result = await tool({ loadMoonWindow: load }).execute(
-      { section: 'transits', start: '2026-03-08', place_ref: 'city:101', time: '02:30' },
-      context(),
-    );
+    const result = await tool({ loadMoonWindow: load }).execute({ section: 'transits', start: '2026-03-08', place_ref: 'city:101', time: '02:30' }, context());
     expect(result).toEqual({ error: expect.stringContaining('did not exist') });
   });
 
-  it('an unknown place_ref is a tool error', async () => {
-    const result = await tool().execute({ section: 'transits', start: '2026-06-15', place_ref: 'city:999999' }, context());
+  it('an unknown place_ref is a tool error, checked before the engine runs', async () => {
+    const loadPeriodChart = vi.fn(async () => SKY_CHART);
+    const result = await tool({ loadPeriodChart }).execute({ section: 'transits', start: '2026-06-15', place_ref: 'city:999999' }, context());
     expect(result).toEqual({ error: PLACE_REF_ERROR });
+    expect(loadPeriodChart).not.toHaveBeenCalled();
   });
 
-  it('a time without a place is a tool error', async () => {
-    expect(await tool().execute({ section: 'transits', start: '2026-06-15', time: '15:00' }, context())).toEqual({ error: TIME_NEEDS_PLACE_ERROR });
-  });
-
-  it('split June: one merged period, labels echoed, a plain note, no moon window', async () => {
+  it('split June (a month): one merged period, labels echoed, a plain note, no Moon at a place', async () => {
     const load = vi.fn(async () => WINDOW);
-    const result = await tool({ loadMoonWindow: load }).execute(
-      { section: 'transits', segments: [{ start: '2026-06-01', end: '2026-06-15', place_ref: 'city:101' }, { start: '2026-06-16', end: '2026-06-30', place_ref: 'city:202' }] },
-      context(),
-    );
+    const segments = [{ start: '2026-06-01', end: '2026-06-15', place_ref: 'city:101' }, { start: '2026-06-16', end: '2026-06-30', place_ref: 'city:202' }];
+    const result = await tool({ loadMoonWindow: load }).execute({ section: 'transits', segments }, context());
     expect(result).toMatchObject({
       period: { start: '2026-06-01', end: '2026-06-30', days: 30, basis: 'period' },
-      segments: [
+      places: [
         { start: '2026-06-01', end: '2026-06-15', label: 'Los Angeles, United States', timezone: 'America/Los_Angeles' },
         { start: '2026-06-16', end: '2026-06-30', label: 'Bogotá, Colombia', timezone: 'America/Bogota' },
       ],
     });
     expect((result as { notes: string[] }).notes).toContain(PLACE_DOES_NOT_CHANGE_NOTE);
     expect(load).not.toHaveBeenCalled();
-    expect(numbersUnder(result, 'segments')).toEqual([]);
+    expect(JSON.stringify((result as { places: unknown }).places)).not.toMatch(/moon|\d+\.\d+/);
   });
 
-  it('dashas, domains and strength do not run the location check', async () => {
-    for (const section of ['dashas', 'domains', 'strength']) {
-      const load = vi.fn(async () => WINDOW);
-      const result = await tool({ loadMoonWindow: load }).execute({ section, start: '2026-06-15' }, context());
-      expect(load).not.toHaveBeenCalled();
-      expect(result).not.toHaveProperty('location_sensitive');
-    }
+  it('a gap between month-scale segments is noted', async () => {
+    const segments = [{ start: '2026-06-01', end: '2026-06-10', place_ref: 'city:101' }, { start: '2026-06-20', end: '2026-07-10', place_ref: 'city:202' }];
+    const result = await tool().execute({ section: 'transits', segments }, context());
+    expect((result as { notes: string[] }).notes).toContain(SEGMENT_GAP_NOTE);
   });
 
-  it('today (no dates) is unchanged: no check', async () => {
+  it('a weak device never reads places', async () => {
+    const placeFromRef = vi.fn();
     const load = vi.fn(async () => WINDOW);
-    const result = await tool({ loadMoonWindow: load, loadCurrentChart: vi.fn(async () => SKY_CHART) }).execute({ section: 'transits' }, context());
-    expect(load).not.toHaveBeenCalled();
-    expect(result).not.toHaveProperty('location_sensitive');
-  });
-
-  it('a birth-year day gets dashas only and no moon window, even with a place and time', async () => {
-    const load = vi.fn(async () => WINDOW);
-    const result = await tool({ loadMoonWindow: load }).execute({ section: 'transits', start: '1990-06-15', place_ref: 'city:202', time: '15:00' }, context());
-    expect(result).toMatchObject({ shown: 'dashas', notes: [BIRTH_YEAR_SKY_NOTE] });
-    expect(load).not.toHaveBeenCalled();
-  });
-
-  it('a weak device gets dashas only and no moon window', async () => {
-    const load = vi.fn(async () => WINDOW);
-    const result = await tool({ loadMoonWindow: load, periodSkyAllowed: false }).execute({ section: 'transits', start: '2026-06-15', place_ref: 'city:202' }, context());
+    const result = await tool({ periodSkyAllowed: false, placeFromRef, loadMoonWindow: load }).execute({ section: 'transits', start: '2026-06-15', place_ref: 'city:202' }, context());
     expect(result).toMatchObject({ shown: 'dashas', notes: [DEVICE_DASHAS_ONLY_NOTE] });
+    expect(placeFromRef).not.toHaveBeenCalled();
     expect(load).not.toHaveBeenCalled();
   });
 
-  it('a failed moon window keeps the sky answer and says the check was unavailable', async () => {
-    const result = await tool({ loadMoonWindow: vi.fn(async () => { throw new Error('worker died'); }) }).execute({ section: 'transits', start: '2026-06-15' }, context());
+  it('a failed Moon read keeps the sky answer and says so', async () => {
+    const result = await tool({ loadMoonWindow: vi.fn(async () => { throw new Error('worker died'); }) })
+      .execute({ section: 'transits', start: '2026-06-15', place_ref: 'city:202' }, context());
     expect(result).toMatchObject({ shown: 'transits' });
-    expect(result).not.toHaveProperty('location_sensitive');
-    expect((result as { notes: string[] }).notes).toContain(LOCATION_CHECK_UNAVAILABLE_NOTE);
+    expect((result as { notes: string[] }).notes).toContain(PLACE_MOON_UNAVAILABLE_NOTE);
   });
 });
 ```
 
-Notes on the tests:
-- The weak-device test relies on `placeFromRef` not being called. The tier gate runs before any place work, so refs aren't even read on a weak device. Assert that too: pass `placeFromRef: vi.fn()` and expect it not called.
-- Add `import { moonWindowInput, type MoonWindowRequest } from '../moonWindow';` for the "time that never happened" test.
-
 Run: `cd frontend/apps/web && bunx vitest run src/lib/__tests__/timingTool.places.test.ts`
-Expected: FAIL. `LOCATION_CHECK_UNAVAILABLE_NOTE`/`PLACE_DOES_NOT_CHANGE_NOTE` are not exported, and the assertions fail.
+Expected: FAIL. The first test gets a sky result instead of `{ error: "needs_place" }`. This is the red run for the gate; paste it into the PR.
 
 - [ ] **Step 2: Implement in `timingTool.ts`**
 
@@ -1951,48 +1904,53 @@ Expected: FAIL. `LOCATION_CHECK_UNAVAILABLE_NOTE`/`PLACE_DOES_NOT_CHANGE_NOTE` a
      },
    },
    ```
-3. Extend `DESCRIPTION` with three sentences: "Places never change a period longer than a day: for 'first half in LA, then Bogotá' send segments with each place_ref and say plainly that place doesn't change the reading. For a single day of transits the result says location_sensitive: ask where they were only when it is true; otherwise say you read the day in their home time zone (do not name a zone you weren't given). For a time of day, always ask where, call resolve_place, then send start, place_ref and time (HH:MM)."
-4. Thread a `PlaceRequest` (`{ placeRef?: string; time?: string; segments?: readonly TimingSegment[] }`) from `execute` into `periodTiming`. `periodTiming` keeps its gate order exactly: refusal, then `dashasOnlyNotes`, then dashas. Only after a sky result succeeds does it call `withPlaces(input, result, period, places, context)`. That puts the birth-year and device gates ahead of any place work (Ruling 7, Ruling 3).
-5. New helpers (each ≤ 15 lines, in `timingTool.ts` or a sibling `timingPlaces.ts` if the file passes ~300 lines):
+3. Extend `DESCRIPTION`: "A sky reading for less than 28 days (a day, a few days, or a time of day) needs a place: send place_ref from resolve_place, or segments that each carry one. Without it the result is { error: \"needs_place\" }: ask once where they were (or will be) that day, unless they already named a place for it in this conversation, in which case resolve that place and call again. Never assume a place. A month or longer never needs a place: for 'first half in LA, then Bogotá' send segments and say plainly that place doesn't change the reading. For a time of day send start, place_ref and time (HH:MM)."
+4. Thread a `PlaceRequest` (`{ placeRef?: string; time?: string; segments?: readonly TimingSegment[] }`) from `execute` into `periodTiming`. The order, with nothing else moved:
+   1. `endsBeforeBirthYear` refusal.
+   2. `dashasOnlyNotes`: if it returns notes, `dashasTiming` as today, with places ignored. The dashas section continues to step 5 with month-scale places only.
+   3. `needsPlace(period, places)` (Task 5) for a sky section: return `{ error: NEEDS_PLACE_ERROR }`.
+   4. Read every `place_ref` via `placeFromRef`. Any unknown ref returns `{ error: PLACE_REF_ERROR }`. Both checks run before `skyTiming`, so a refused call never starts a 30 s compute.
+   5. `skyTiming` (or `dashasTiming` for the dashas section), then `withPlaces(...)`.
+5. New helpers (each ≤ 15 lines):
    ```ts
-   export const PLACE_DOES_NOT_CHANGE_NOTE = "Place doesn't change readings for periods longer than a day: dashas come from the birth chart and planet positions are the same from anywhere on Earth.";
-   export const LOCATION_CHECK_UNAVAILABLE_NOTE = "Couldn't check whether the place changes this day's Moon; ask where they were only if it matters.";
+   export const PLACE_DOES_NOT_CHANGE_NOTE = "Place doesn't change readings for periods of a month or longer: dashas come from the birth chart and slow-planet positions are the same from anywhere on Earth.";
+   export const PLACE_MOON_UNAVAILABLE_NOTE = "Couldn't read the Moon at that place on this device; the rest of the answer stands.";
 
-   type PlaceEcho = { readonly basis: 'home_time_zone' } | { readonly basis: 'place'; readonly label: string; readonly timezone: string };
+   interface PlacedSpan { readonly start: string; readonly end: string; readonly place: ResolvedPlace }
 
-   async function readPlace(input: TimingToolInput, ref: string | undefined): Promise<ResolvedPlace | undefined | 'unknown'> {
-     if (!ref) return undefined;
-     const place = await input.placeFromRef?.(ref);
-     return place ?? 'unknown';
-   }
-
-   async function segmentEcho(input: TimingToolInput, segments: readonly TimingSegment[]): Promise<TimingResult['segments'] | 'unknown'> {
-     const echoed = [];
-     for (const segment of segments) {
-       const place = await readPlace(input, segment.place_ref);
-       if (place === 'unknown') return 'unknown';
-       echoed.push({ start: segment.start, end: segment.end, ...(place ? { label: place.summary.label, timezone: place.summary.timezone } : {}) });
+   /** The spans to read: the single place_ref over the whole period, or each placed segment. */
+   async function placedSpans(input: TimingToolInput, period: PeriodRange, places: PlaceRequest): Promise<readonly PlacedSpan[] | 'unknown'> {
+     const wanted = places.segments ?? (places.placeRef ? [{ ...period, place_ref: places.placeRef }] : []);
+     const spans: PlacedSpan[] = [];
+     for (const segment of wanted) {
+       if (!segment.place_ref) continue;
+       const place = await input.placeFromRef?.(segment.place_ref);
+       if (!place) return 'unknown';
+       spans.push({ start: segment.start, end: segment.end, place });
      }
-     return echoed;
+     return spans;
    }
 
-   function hasGap(segments: readonly TimingSegment[]): boolean {
-     return segments.some((segment, i) => i > 0 && periodEcho({ start: (segments[i - 1] as TimingSegment).end, end: segment.start }, 'period').days > 2);
+   function labelRow(span: PlacedSpan) {
+     return { start: span.start, end: span.end, label: span.place.summary.label, timezone: span.place.summary.timezone };
+   }
+
+   function hasGap(segments: readonly TimingSegment[] | undefined): boolean {
+     return (segments ?? []).some((segment, i) => i > 0 && periodEcho({ start: (segments?.[i - 1] as TimingSegment).end, end: segment.start }, 'period').days > 2);
    }
    ```
-   `multiDayPlaces(input, result, places)`: if neither `segments` nor `placeRef` was sent, return `result` unchanged. If `segmentEcho` returns `'unknown'` (or `placeRef` reads `'unknown'`), return `{ error: PLACE_REF_ERROR }`. Otherwise return `{ ...result, segments, notes: [...result.notes, PLACE_DOES_NOT_CHANGE_NOTE, ...(hasGap ? [SEGMENT_GAP_NOTE] : [])] }`. This applies to every section, including dashas-only answers, so the note shows even on a weak device. The `'unknown'` check runs only on the sky or dashas path after the gates. On a weak device the dashas-only path skips `multiDayPlaces`' ref read entirely, so the Task 7 weak-device test holds.
-   `dayPlaces(input, result, period, places, context)`: only when `result.section === 'transits'`, `result.shown === 'transits'`, `period.start === period.end`, and `input.loadMoonWindow` exists.
-   - Read the place. `'unknown'` gives `{ error: PLACE_REF_ERROR }`.
-   - `zone = place?.summary.timezone ?? input.homeZone?.()`. With no zone, return `result` plus `LOCATION_CHECK_UNAVAILABLE_NOTE`.
-   - Call `input.loadMoonWindow({ day, zone, ...(place ? { place: { latitude, longitude } } : {}), ...(time ? { time } : {}) }, context)`.
-   - On `LocalTimeError`, return `{ error: error.message }`. On an abort, rethrow. On any other failure, return `{ ...result, notes: [...result.notes, LOCATION_CHECK_UNAVAILABLE_NOTE] }`.
-   - On success, return `{ ...result, place: echo, location_sensitive: w.location_sensitive, moon: { across_earth: w.across_earth, at_place: w.at_place }, ...(w.event && time ? { event: { local_time: time, ...w.event } } : {}) }`.
-6. `statusLabelFor`: unchanged behaviour (dashas label when the engine won't run). Use `parseTimingArgs` there too.
+   - `monthPlaces(result, spans, places)` (period ≥ 28 days, any section): if `spans` is empty and no segments were sent, return `result`. Otherwise return `{ ...result, places: spans.map(labelRow), notes: [...result.notes, PLACE_DOES_NOT_CHANGE_NOTE, ...(hasGap(places.segments) ? [SEGMENT_GAP_NOTE] : [])] }`.
+   - `shortPlaces(input, result, spans, time, context)` (period < 28 days, sky sections; `needsPlace` already guaranteed every span is placed). For each span, call `input.loadMoonWindow({ start, end, zone: place.summary.timezone, place: { latitude, longitude }, ...(time ? { time } : {}) }, context)`.
+     - On `LocalTimeError`, return `{ error: error.message }`.
+     - On an abort, rethrow.
+     - On any other failure, return `{ ...result, places: spans.map(labelRow), notes: [...result.notes, PLACE_MOON_UNAVAILABLE_NOTE] }`.
+     - On success, return `{ ...result, places: rows /* labelRow + moon: window.at_place */, ...(time && first.event ? { event: { local_time: time, ...first.event } } : {}) }`.
+6. `statusLabelFor`: unchanged behaviour, plus `NEEDS_PLACE_STATUS_LABEL` when `needsPlace` would refuse, so the "about 30 s" sky label never flashes for an instant refusal. Use `parseTimingArgs` there too.
 
-Keep the result-size limit in mind: a day result adds about 400 chars, well under 8 KB.
+Keep the result-size limit in mind: four place rows add about 1 KB, well under 8 KB.
 
 Run: `cd frontend/apps/web && bunx vitest run src/lib/__tests__/timingTool.places.test.ts src/lib/__tests__/timingTool.test.ts`
-Expected: all pass. Inc A's suite stays green unchanged. If an Inc A test must change, stop: it's a finding (see CLAUDE.md "A test that must change to fix a bug is a finding").
+Expected: all pass. Inc A's suite needs one deliberate change. Any Inc A test that reads a sky section for a single dated day or a sub-month period with no place now gets `needs_place`. Add a `place_ref` (with a `placeFromRef` stub) to those calls, or switch them to 28+ day periods, and list every such test in the PR as a contract narrowed by coordinator Ruling 1. Do not delete any of them.
 
 - [ ] **Step 3: Toolset wiring tests (red), then wire**
 
@@ -2005,29 +1963,25 @@ it('registers resolve_place only where the device computes the sky', () => {
   expect(names(false)).toEqual(['get_current_datetime', 'get_chart_facts', 'get_timing']);
 });
 
-it('reads a day without a place in the viewer zone, never the birth zone', async () => {
-  const computeMoonWindow = vi.fn(async () => WINDOW);
-  loadMock.mockResolvedValue(PREDICTIVE_CONTEXTS);
+it('a day with no place asks, and never falls back to the viewer or birth zone', async () => {
+  const computeMoonWindow = vi.fn();
   const set = toolset({ engine: engineContextWith({ computeMoonWindow }), periodSkyAllowed: true });
   const timing = set.tools.find((t) => t.name === 'get_timing');
-  await timing?.execute({ section: 'transits', start: '2026-06-15' }, options());
-  const input = computeMoonWindow.mock.calls[0]?.[0];
-  // America/Los_Angeles (the viewerZone seam), 2026-06-15 local midnight = 07:00Z; not Asia/Kolkata (birth).
-  expect(input).toMatchObject({ day: '2026-06-15', placeStartUtc: '2026-06-15T07:00:00.000Z' });
+  expect(await timing?.execute({ section: 'transits', start: '2026-06-15' }, options())).toEqual({ error: 'needs_place' });
+  expect(computeMoonWindow).not.toHaveBeenCalled();
 });
 
-it('the place path never reads the birth place', async () => {
+it('the place path reads only the ref it was given, never the birth place', async () => {
   const placeFromRef = vi.fn(async () => undefined);
   const set = toolset({ placeFromRef, periodSkyAllowed: true });
   await set.tools.find((t) => t.name === 'get_timing')?.execute({ section: 'transits', start: '2026-06-15', place_ref: 'city:1' }, options());
-  expect(placeFromRef).toHaveBeenCalledWith('city:1');
-  expect(JSON.stringify(placeFromRef.mock.calls)).not.toContain('Delhi');
+  expect(placeFromRef.mock.calls).toEqual([['city:1']]);
 });
 ```
 
-`engineContextWith(overrides)` extends the file's `engineContext()` so `engine` and `whenReady` resolve to `{ computePredictive: vi.fn(), ...overrides }`. `WINDOW` and `PREDICTIVE_CONTEXTS` are local constants. Reuse whatever the file already uses to make `loadMock` resolve a sky chart.
+`engineContextWith(overrides)` extends the file's `engineContext()` so `engine` and `whenReady` resolve to `{ computePredictive: vi.fn(), ...overrides }`.
 
-Run: `cd frontend/apps/web && bunx vitest run src/lib/__tests__/chatToolset.test.ts src/lib/__tests__/chatToolsetWiring.test.ts`. Expected: FAIL (no `resolve_place`, and the moon loader is not wired).
+Run: `cd frontend/apps/web && bunx vitest run src/lib/__tests__/chatToolset.test.ts src/lib/__tests__/chatToolsetWiring.test.ts`. Expected: FAIL (no `resolve_place`; no gate wired).
 
 Wire `chatToolset.ts`:
 
@@ -2037,7 +1991,6 @@ const tools = createChatAgentTools({
   // ...existing fields...
   periodSkyAllowed: skyAllowed,
   loadMoonWindow: createMoonWindowLoader(input.engine),
-  homeZone: zone,
   placeFromRef: input.placeFromRef ?? placeFromRef,
 });
 return {
@@ -2046,19 +1999,19 @@ return {
 };
 ```
 
-`createChatAgentTools` passes `loadMoonWindow`, `homeZone` and `placeFromRef` to `createTimingTool` unchanged. `placeFromRef` is imported from `./geo/placeLookup`. That module imports `cityLookup.ts`, which loads the JSON only through the existing dynamic `import()`, so importing it costs no data until a lookup runs.
+`createChatAgentTools` passes `loadMoonWindow` and `placeFromRef` to `createTimingTool` unchanged. Nothing here reads `input.birth.birth_location_details`. Importing `./geo/placeLookup` costs no data until a lookup runs, because the JSON is behind the dynamic `import()`.
 
-Run: Step 3's command plus the full `src/lib/__tests__` folder. Expected: PASS. If `chatAgentTools.test.ts` pins `createChatAgentTools`' tool list, it is unchanged: `resolve_place` is added by the toolset, not by `createChatAgentTools`.
+Run: Step 3's command plus the full `src/lib/__tests__` folder. Expected: PASS.
 
 - [ ] **Step 4: Mutation red runs**
 
 ```bash
+python3 "$MUTATE" frontend/apps/web/src/lib/timingTool.ts "if (needsPlace(period, places)) return { error: NEEDS_PLACE_ERROR };" "" -- bash -c 'cd frontend/apps/web && bunx vitest run src/lib/__tests__/timingTool.places.test.ts'
 python3 "$MUTATE" frontend/apps/web/src/lib/chatToolset.ts "tools: skyAllowed ? [...tools, createResolvePlaceTool()] : tools," "tools: [...tools, createResolvePlaceTool()]," -- bash -c 'cd frontend/apps/web && bunx vitest run src/lib/__tests__/chatToolset.test.ts'
-python3 "$MUTATE" frontend/apps/web/src/lib/timingTool.ts "label: place.summary.label, timezone: place.summary.timezone } : {})" "label: place.summary.label, timezone: place.summary.timezone, latitude: place.latitude } : {})" -- bash -c 'cd frontend/apps/web && bunx vitest run src/lib/__tests__/timingTool.places.test.ts'
-python3 "$MUTATE" frontend/apps/web/src/lib/chatToolset.ts "homeZone: zone," "homeZone: () => input.chartTimeZone," -- bash -c 'cd frontend/apps/web && bunx vitest run src/lib/__tests__/chatToolset.test.ts'
+python3 "$MUTATE" frontend/apps/web/src/lib/timingTool.ts "return { start: span.start, end: span.end, label: span.place.summary.label, timezone: span.place.summary.timezone };" "return { start: span.start, end: span.end, label: span.place.summary.label, timezone: span.place.summary.timezone, latitude: span.place.latitude };" -- bash -c 'cd frontend/apps/web && bunx vitest run src/lib/__tests__/timingTool.places.test.ts'
 ```
 
-Add one more for the single-day gate: change the `period.start === period.end` condition in `dayPlaces` to `true` and run `timingTool.places.test.ts`; the split-June test's `load` must have been called, so it dies. And one for the home-zone echo: change `{ basis: 'home_time_zone' }` to `{ basis: 'home_time_zone', timezone: zone }`; the first test dies on `not.toContain('America/Los_Angeles')`. Expected: five `KILLED`.
+Adjust the first mutation's `old` text to the exact gate line you wrote; it must occur once. Also run a gate-order mutation: move the `needsPlace` check above `dashasOnlyNotes`. The weak-device and birth-year assertions in "never asks…" must die. Expected: four `KILLED`.
 
 - [ ] **Step 5: Commit**
 
@@ -2068,115 +2021,180 @@ Invoke `frontend-quality`.
 git add frontend/apps/web/src/lib/timingTool.ts frontend/apps/web/src/lib/chatAgentTools.ts frontend/apps/web/src/lib/chatToolset.ts \
   frontend/apps/web/src/lib/__tests__/timingTool.places.test.ts frontend/apps/web/src/lib/__tests__/timingFixtures.ts \
   frontend/apps/web/src/lib/__tests__/timingTool.test.ts frontend/apps/web/src/lib/__tests__/chatToolset.test.ts frontend/apps/web/src/lib/__tests__/chatToolsetWiring.test.ts
-git commit -m "feat(web): get_timing reads places — location check, event time, split periods; resolve_place on full devices"
+git commit -m "feat(web): get_timing needs a place below a month; Moon at a place, event time, split periods; resolve_place on full devices"
 ```
+
+(Add `timingPlaces.ts` to the list if you split it out.)
 
 ---
 
-### Task 8: Prompt rules and the place egress test
+### Task 8: Narrowed privacy rule, `needs_place` in the prompt, and the birth-place egress test
 
 **Files:**
-- Modify: `frontend/packages/llm/src/prompt.ts` (`PLACE_RULES` beside `PERIOD_RULES`, inserted into `CHAT_SYSTEM_PROMPT`)
-- Modify: `frontend/packages/llm/src/__tests__/__snapshots__/prompt-snapshots.test.ts.snap` (regenerated)
-- Test: `frontend/packages/llm/src/__tests__/prompt-places.test.ts`, `frontend/apps/web/src/lib/__tests__/placeEgress.test.ts`
+- Modify: `frontend/packages/llm/src/prompt.ts` (`PRIVACY_RULE` narrowed; `PLACE_RULES` beside `PERIOD_RULES`, inserted into `CHAT_SYSTEM_PROMPT`)
+- Modify: `frontend/packages/llm/src/__tests__/__snapshots__/prompt-snapshots.test.ts.snap` (regenerated), plus any test that pins the old `PRIVACY_RULE` sentence (`grep -rn "never mention city/state/country" frontend/packages frontend/apps/web/src`)
+- Modify: `frontend/packages/llm/src/structured-interpretation.ts` (L306, L530) only if they restate the old sentence instead of importing `PRIVACY_RULE`; make them import it
+- Test: `frontend/packages/llm/src/__tests__/prompt-places.test.ts`, `frontend/packages/llm/src/__tests__/birth-place-egress.test.ts`, `frontend/apps/web/src/lib/__tests__/placeEgress.test.ts`
 
 **Interfaces:**
-- Consumes: `CHAT_SYSTEM_PROMPT` assembly (`prompt.ts:206-223`), `PRIVACY_RULE` (`prompt.ts:118`); Task 7 toolset.
-- Produces: `PLACE_RULES` (not exported, like `PERIOD_RULES`).
+- Consumes: `PRIVACY_RULE` (`prompt.ts:118`), `CHAT_SYSTEM_PROMPT` assembly (`prompt.ts:206-223`), `buildChatMessages`, `sanitizeChartForLlm`; the seeding approach of `snapshot-egress.test.ts` (it puts `location_name: "Bengaluru, Karnataka"`, `latitude: 12.9716`, `longitude: 77.5946` on the chart); Task 7 toolset.
+- Produces: the new `PRIVACY_RULE` text (Ruling 12) and `PLACE_RULES` (not exported, like `PERIOD_RULES`).
 
-- [ ] **Step 1: Failing prompt test**
+- [ ] **Step 1: Failing prompt tests (red first)**
+
+`prompt-places.test.ts`:
+
+```ts
+import { describe, expect, it } from "vitest";
+
+import { buildChatMessages, PRIVACY_RULE } from "../prompt";
+import { sanitizeChartForLlm, todayAnalysisInstant } from "../sanitize";
+import { CHART_FIXTURE } from "./predictive-fixture";
+
+const system = () =>
+  buildChatMessages(sanitizeChartForLlm(CHART_FIXTURE, todayAnalysisInstant(new Date("2026-06-20T00:00:00Z"))), "hi")[0]?.content ?? "";
+
+describe("the narrowed privacy rule", () => {
+  it("forbids the birth place and coordinates, and allows places the user typed", () => {
+    expect(PRIVACY_RULE).toBe(
+      "PRIVACY: never name, guess or echo the birth place (city/state/country) and never output coordinates of any place. " +
+        "Refer to it generically as 'birth location'. You may repeat a place the user typed in this conversation.",
+    );
+  });
+});
+
+describe("chat prompt place rules", () => {
+  it("turns needs_place into one question and never assumes a place", () => {
+    expect(system()).toContain('{ "error": "needs_place" }');
+    expect(system()).toContain("Where were you (or will you be) that day?");
+    expect(system()).toContain("Never assume a place");
+  });
+
+  it("never asks for a month or longer", () => {
+    expect(system()).toContain("A month or longer never needs a place");
+  });
+});
+```
+
+Use the chart fixture `prompt-snapshots.test.ts` uses if `CHART_FIXTURE` isn't the right export name.
+Run: `cd frontend/packages/llm && bunx vitest run src/__tests__/prompt-places.test.ts`. Expected: FAIL on the `PRIVACY_RULE` text and on `needs_place`.
+
+- [ ] **Step 2: Failing birth-place egress test over the prompt (red first)**
+
+`birth-place-egress.test.ts`. The red-first assertion is the rule text inside the outbound body. The property assertions (no birth place, no coordinate) are expected to already hold; Step 5's mutations prove they can fail.
 
 ```ts
 import { describe, expect, it } from "vitest";
 
 import { buildChatMessages } from "../prompt";
-import { sanitizeChartForLlm, todayAnalysisInstant } from "../sanitize";
+import { sanitizeChartForLlm, periodAnalysisInstant } from "../sanitize";
 import { CHART_FIXTURE } from "./predictive-fixture";
 
-describe("chat prompt place rules", () => {
-  const system = buildChatMessages(sanitizeChartForLlm(CHART_FIXTURE, todayAnalysisInstant(new Date("2026-06-20T00:00:00Z"))), "hi")[0]?.content ?? "";
+// Seeded the way snapshot-egress.test.ts seeds it: the birth place rides on the chart object.
+const BIRTH_PLACE_CHART = { ...CHART_FIXTURE, location_name: "Bengaluru, Karnataka", latitude: 12.9716, longitude: 77.5946 };
+const FORBIDDEN = [/Bengaluru/i, /Karnataka/i, /12\.97/, /77\.59/, /"latitude"/, /"longitude"/];
 
-  it("tells the model when to ask where", () => {
-    expect(system).toContain("PLACES:");
-    expect(system).toContain("location_sensitive");
-    expect(system).toContain("For a specific time of day, always ask where");
-  });
-
-  it("keeps the birth place private while allowing places the user named", () => {
-    expect(system).toContain("never mention city/state/country names");
-    expect(system).toContain("Never name or guess the birth place");
+describe("the birth place never reaches the model", () => {
+  it("is absent from the chat prompt, even when the user names other places", () => {
+    const messages = buildChatMessages(
+      sanitizeChartForLlm(BIRTH_PLACE_CHART as typeof CHART_FIXTURE, periodAnalysisInstant("2026-06-01", "2026-06-30")),
+      "How was June? I was in LA the first half, then Bogotá.",
+    );
+    const body = JSON.stringify(messages);
+    for (const pattern of FORBIDDEN) expect(body).not.toMatch(pattern);
+    expect(body).toContain("never name, guess or echo the birth place");
+    expect(body).toContain("Bogotá"); // the user's own words pass through
   });
 });
 ```
 
-Use whatever chart fixture `prompt-snapshots.test.ts` uses if `CHART_FIXTURE` isn't the right export name.
-Run: `cd frontend/packages/llm && bunx vitest run src/__tests__/prompt-places.test.ts`. Expected: FAIL on `"PLACES:"`.
+Run: `cd frontend/packages/llm && bunx vitest run src/__tests__/birth-place-egress.test.ts`. Expected: FAIL on `"never name, guess or echo the birth place"` (old rule text).
 
-- [ ] **Step 2: Add `PLACE_RULES`**
+- [ ] **Step 3: Narrow `PRIVACY_RULE` and add `PLACE_RULES`**
 
 ```ts
-// Time travel Inc C: places. The PRIVACY rule above is about the birth place;
-// places the user names in this conversation may be repeated back to them.
+export const PRIVACY_RULE =
+  "PRIVACY: never name, guess or echo the birth place (city/state/country) and never output coordinates of any place. " +
+  "Refer to it generically as 'birth location'. You may repeat a place the user typed in this conversation.";
+
+// Time travel Inc C (coordinator Ruling 1): a day-precision reading needs a place,
+// and the app never assumes one.
 const PLACE_RULES = [
-  "PLACES: a place never changes a reading longer than a day. If the user names several",
-  "places for a month or longer, say plainly that being there doesn't change the reading,",
-  "and don't ask where. For a single day, a timing result has location_sensitive: ask where",
-  "they were only when it is true; otherwise say in one line that you read the day in their",
-  "home time zone. For a specific time of day, always ask where, then call resolve_place.",
-  "Places the user names may be repeated back to them. Never name or guess the birth place.",
+  "PLACES: a sky reading for a day, a few days or a time of day needs a place. If a timing",
+  'result is { "error": "needs_place" }, ask once: "Where were you (or will you be) that day?",',
+  "unless the user already named a place for that day in this conversation; then call",
+  "resolve_place with it and try again. Never assume a place, and never use the birth place.",
+  "A month or longer never needs a place: if the user names several places for it, say plainly",
+  "that being there doesn't change the reading.",
 ].join("\n");
 ```
 
-Insert it into `CHAT_SYSTEM_PROMPT` right after `PERIOD_RULES` (with a `""` spacer line). Regenerate the snapshot: `bunx vitest run src/__tests__/prompt-snapshots.test.ts -u`. Review the diff: only the six new lines and a blank should appear.
+Insert `PLACE_RULES` into `CHAT_SYSTEM_PROMPT` right after `PERIOD_RULES`, with a `""` spacer line.
+- **Snapshots.** Regenerate with `bunx vitest run src/__tests__/prompt-snapshots.test.ts -u`. Review the diff: only the privacy sentence (in every prompt that includes it) and the six chat lines should change.
+- **Old-sentence pins.** Update every test that pinned the old privacy sentence to the new one. List each file in the PR under "contract narrowed (coordinator Ruling 3)".
 
-Run: both prompt tests. Expected: PASS.
+Run: Steps 1–2 commands and `bunx vitest run` in `frontend/packages/llm`. Expected: PASS.
 
-- [ ] **Step 3: Place egress test across real tools**
+- [ ] **Step 4: Place egress test across real tools**
 
-`frontend/apps/web/src/lib/__tests__/placeEgress.test.ts` drives the real toolset with a Delhi birth (lat 28.61, lon 77.21), real `resolve_place` against the real city list, and a stub engine. It asserts on the JSON the agent would send (`JSON.stringify({ ok: true, value })`, as `safeToolResult` does):
+`frontend/apps/web/src/lib/__tests__/placeEgress.test.ts` drives the real toolset with:
+- a Delhi birth (lat 28.61, lon 77.21, `birth_location_details.city: 'Delhi'`);
+- real `resolve_place` against the real city list;
+- a stub engine.
+
+It asserts on the JSON the agent sends (`JSON.stringify({ ok: true, value })`, as `safeToolResult` does):
 
 ```ts
 import { describe, expect, it, vi } from 'vitest';
 
 // ...same vi.mock('../periodSky') / vi.mock('../currentPlanetaryContext') prelude as chatToolset.test.ts...
 
-const BIRTH_COORDS = [/28\.6/, /77\.2/];
+const COORDINATE_LIKE = [/28\.6/, /77\.2/, /"latitude"/, /"longitude"/, /"lat"/, /"lon"/, /birth_location/, /location_name/];
 
 describe('a chat-typed city never leaves the device, and the birth place never does', () => {
-  it('resolve_place + get_timing (day, place, time) for the birth city carry no coordinates and no birth fields', async () => {
-    const computeMoonWindow = vi.fn(async (input) => ({ ...WINDOW, day: input.day, event: { lagna_sign: 'leo', moon: MARK } }));
+  it('resolve_place + get_timing (day, place, time) carry no coordinate and no birth field', async () => {
+    const computeMoonWindow = vi.fn(async () => ({ at_place: { at_start: MARK, at_end: MARK }, event: { lagna_sign: 'leo', moon: MARK } }));
     const set = toolset({ engine: engineContextWith({ computeMoonWindow }), periodSkyAllowed: true });
     const resolve = set.tools.find((t) => t.name === 'resolve_place');
     const timing = set.tools.find((t) => t.name === 'get_timing');
     const found = (await resolve?.execute({ query: 'Delhi' }, options())) as { status: string; place: { place_ref: string } };
     expect(found.status).toBe('found');
     const day = await timing?.execute({ section: 'transits', start: '2026-06-15', place_ref: found.place.place_ref, time: '15:00' }, options());
-    const wire = JSON.stringify({ ok: true, value: found }) + JSON.stringify({ ok: true, value: day });
-    for (const pattern of BIRTH_COORDS) expect(wire).not.toMatch(pattern);
-    expect(wire).not.toMatch(/latitude|longitude|birth_location|location_name|"lat"|"lon"/);
-    // The worker (on device) did get coordinates: that is where they belong.
+    const asked = await timing?.execute({ section: 'transits', start: '2026-06-16' }, options());
+    const wire = [found, day, asked].map((value) => JSON.stringify({ ok: true, value })).join('\n');
+    for (const pattern of COORDINATE_LIKE) expect(wire).not.toMatch(pattern);
+    expect(asked).toEqual({ error: 'needs_place' });
+    // The on-device worker did get coordinates: that is where they belong.
     expect(computeMoonWindow.mock.calls[0]?.[0].event).toMatchObject({ latitude: expect.any(Number) });
   });
 });
 ```
 
-The label `Delhi, India` and the zone `Asia/Kolkata` are allowed (the user typed Delhi; the birth zone is already in today's egress via `get_current_datetime`). The property under test is "no coordinates, no birth fields".
+`Delhi, India` and `Asia/Kolkata` may appear here, because the user typed Delhi (Ruling 12). The property under test is no coordinate and no birth field, plus the constant `needs_place`.
 
-Run: `cd frontend/apps/web && bunx vitest run src/lib/__tests__/placeEgress.test.ts`. Expected: PASS. Then the red run:
+Run: `cd frontend/apps/web && bunx vitest run src/lib/__tests__/placeEgress.test.ts`. Expected: PASS.
+
+- [ ] **Step 5: Mutation red runs**
 
 ```bash
+python3 "$MUTATE" frontend/packages/llm/src/sanitize.ts 'ayanamsa_value: chart.ayanamsa_value,' 'ayanamsa_value: chart.ayanamsa_value, location_name: (chart as { location_name?: string }).location_name,' -- bash -c 'cd frontend/packages/llm && bunx vitest run src/__tests__/birth-place-egress.test.ts'
 python3 "$MUTATE" frontend/apps/web/src/lib/placeTool.ts "const summary = (place: ResolvedPlace) => place.summary;" "const summary = (place: ResolvedPlace) => ({ ...place.summary, at: \`\${place.latitude.toFixed(1)},\${place.longitude.toFixed(1)}\` });" -- bash -c 'cd frontend/apps/web && bunx vitest run src/lib/__tests__/placeEgress.test.ts'
-python3 "$MUTATE" frontend/packages/llm/src/prompt.ts '"Places the user names may be repeated back to them. Never name or guess the birth place.",' '' -- bash -c 'cd frontend/packages/llm && bunx vitest run src/__tests__/prompt-places.test.ts'
+python3 "$MUTATE" frontend/packages/llm/src/prompt.ts "unless the user already named a place for that day in this conversation; then call" "assume the home time zone and say so; then call" -- bash -c 'cd frontend/packages/llm && bunx vitest run src/__tests__/prompt-places.test.ts'
 ```
 
-The first proves a coarse (one-decimal) coordinate in a string is caught, not just number fields. Expected: two `KILLED`.
+- The first mutation leaks the birth place into the sanitized chart and must turn the prompt egress test red. If the `ayanamsa_value: chart.ayanamsa_value,` line isn't unique in `sanitize.ts`, pick the allowlist line inside `sanitizeChartForLlm` (L591-603).
+- The second proves a coarse one-decimal coordinate inside a string is caught, not just number fields.
+- Expected: three `KILLED`.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add frontend/packages/llm/src/prompt.ts frontend/packages/llm/src/__tests__/prompt-places.test.ts frontend/packages/llm/src/__tests__/__snapshots__/prompt-snapshots.test.ts.snap frontend/apps/web/src/lib/__tests__/placeEgress.test.ts
-git commit -m "feat(llm): place rules in the chat prompt; egress test for place and birth coordinates"
+git add frontend/packages/llm/src/prompt.ts frontend/packages/llm/src/__tests__/prompt-places.test.ts frontend/packages/llm/src/__tests__/birth-place-egress.test.ts \
+  frontend/packages/llm/src/__tests__/__snapshots__/prompt-snapshots.test.ts.snap frontend/apps/web/src/lib/__tests__/placeEgress.test.ts
+git commit -m "feat(llm): narrow PRIVACY_RULE to the birth place; needs_place prompt rule; birth-place egress tests"
 ```
+
+(Add every test file updated for the old privacy sentence, and `structured-interpretation.ts` if touched.)
 
 ---
 
@@ -2239,81 +2257,94 @@ git commit -m "test(web): city list loads lazily, same-origin only; first-lookup
 
 ---
 
-### Task 10: End-to-end journey "June in LA then Bogotá, then the 15th", in browserJourneys
+### Task 10: End-to-end journey "June in LA then Bogotá; the 15th; 3 pm on 3 July", in browserJourneys
 
 **Files:**
 - Modify: `frontend/apps/web/e2e/time-travel.spec.ts` (Journey 3; Journey 1's tool-list assertion gains `resolve_place`)
-- Modify: `dagger/src/index.ts` (comment above the time-travel command only: "Inc A, B and C journeys"). The command line itself is unchanged, so `tests/dagger-gates.test.ts` stays green as is.
+- Modify: `dagger/src/index.ts`, but only the comment above the time-travel command, to "Inc A, B and C journeys". The command itself is unchanged, so `tests/dagger-gates.test.ts` stays green as is.
 
 **Interfaces:**
-- Consumes: everything above; `prepare`, `predictiveRequestKeys`, `bootEngine`, `seedChart` (`time-travel.spec.ts`, `interpretation.helpers.ts`); the moon-window golden (Task 2) for the expected `location_sensitive` of 2026-06-15.
-- Produces: the third `[contract/stubbed]` test in `time-travel.spec.ts`. `playwright.time-travel.config.ts` matches the file, and browserJourneys already runs `TIME_TRAVEL_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:time-travel --project=chromium` on the hooked build. So the journey is in CI with no new lane line.
+- Consumes: everything above; `prepare`, `predictiveRequestKeys`, `bootEngine`, `seedChart` (`time-travel.spec.ts`, `interpretation.helpers.ts`; the seeded chart is born 1990 in Delhi, so 2026 passes every birth gate).
+- Produces: the third `[contract/stubbed]` test in `time-travel.spec.ts`. `playwright.time-travel.config.ts` matches that file, and browserJourneys already runs `TIME_TRAVEL_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:time-travel --project=chromium` on the hooked build. The journey is in CI with no new lane line.
 
 - [ ] **Step 1: Update Journey 1's tool list (intended extension)**
 
-In Journey 1, the `decision.tools` expectation becomes `['get_current_datetime', 'get_chart_facts', 'get_timing', 'resolve_place']`. That spec pins `FULL_TIER`, so `resolve_place` is registered. Say so in the PR: an extended contract, not a reversed one.
+In Journey 1, the `decision.tools` expectation becomes `['get_current_datetime', 'get_chart_facts', 'get_timing', 'resolve_place']`. That spec pins `FULL_TIER`. Journey 1 asks about June 2019 (a month), so it never meets `needs_place`. Say so in the PR: an extended contract, not a reversed one.
 
-- [ ] **Step 2: Write Journey 3 (red until the build has Tasks 1–9; run it after they land)**
+- [ ] **Step 2: Write Journey 3 (run it after Tasks 1–9 land)**
 
 ```ts
 /**
- * Journey 3 (spec 2026-10-08, Inc C): "June 2026, first half LA then Bogotá"
- * reads June once and says places don't change it; "what about June 15?"
- * reads the day in the home zone with the location check; "Bogotá" reads the
- * day there. Every city lookup stays on the device: no request leaves the app
- * origin except the stubbed provider.
+ * Journey 3 (spec 2026-10-08, Inc C, coordinator rulings 2026-10-09):
+ * June (a month) with two places reads June once and says places don't change it;
+ * "the 15th" reuses the place the user named for that half; "3 pm on 3 July" has no
+ * place, so get_timing answers needs_place and the model asks; "Bogotá" reads the
+ * event there. No request may leave the app origin, except provider calls that this
+ * test's own route handler fulfilled (they never reach the network).
  */
 const SPLIT_QUESTION = 'How was June 2026 for me? I was in LA the first half, then Bogotá.';
 const SPLIT_ANSWER = "I looked at 1–30 June 2026. Being in LA and then Bogotá doesn't change June's reading.";
 const DAY_QUESTION = 'What about June 15 itself?';
-const DAY_ANSWER = 'I read 15 June 2026 in your home time zone.';
-const PLACE_REPLY = 'I was in Bogotá that day.';
-const PLACE_ANSWER = 'On 15 June 2026 in Bogotá, Colombia, the Moon was';
-const SPLIT_SCREENSHOT = 'test-results/time-travel-la-bogota.png';
-const MOON_GOLDEN = JSON.parse(
-  readFileSync(resolve(__dirname, '../../../../backend/tests/fixtures/moon_window_golden_de421.json'), 'utf8'),
-) as Record<string, { location_sensitive: boolean }>;
+const DAY_ANSWER = 'On 15 June 2026 in Los Angeles the Moon was';
+const TIME_QUESTION = 'And 3 pm on 3 July?';
+const WHERE_QUESTION = 'Where were you (or will you be) that day?';
+const PLACE_REPLY = 'I will be in Bogotá.';
+const EVENT_ANSWER = 'At 3 pm on 3 July 2026 in Bogotá, Colombia, the rising sign was';
+const PLACE_SCREENSHOT = 'test-results/time-travel-places.png';
 
 type Script = (messages: WireMessage[]) => object;
 
-/** The stubbed provider: one script per user question, keyed by its text. */
-function scripted(page: Page, scripts: Record<string, Script>, seen: AgentRequest[]): Promise<void> {
+const call = (id: string, name: string, args: object) => ({ id, type: 'function', function: { name, arguments: JSON.stringify(args) } });
+const toolMessages = (messages: WireMessage[]) => messages.filter((m) => m.role === 'tool');
+const refFrom = (content: string | null | undefined) =>
+  (JSON.parse(content ?? '{}') as { value: { place: { place_ref: string } } }).value.place.place_ref;
+
+/** The stubbed provider: one script per user message; records every URL it fulfilled. */
+function scripted(page: Page, scripts: Record<string, Script>, seen: AgentRequest[], fulfilled: Set<string>): Promise<void> {
   return page.route('**/chat/completions', async (route) => {
+    fulfilled.add(route.request().url());
     const parsed = JSON.parse(route.request().postData() ?? '{}') as { messages?: WireMessage[]; tools?: AgentRequest['tools'] };
     const messages = parsed.messages ?? [];
     const lastUser = [...messages].reverse().find((m) => m.role === 'user')?.content ?? '';
     const key = Object.keys(scripts).find((text) => lastUser.includes(text));
+    const empty = { choices: [{ message: { content: '' } }] };
     if (!Array.isArray(parsed.tools) || !key) {
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ choices: [{ message: { content: '' } }] }) });
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(empty) });
     }
     seen.push({ messages, tools: parsed.tools });
-    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ choices: [{ message: scripts[key](messages) }] }) });
+    const body = { choices: [{ message: scripts[key](messages) }] };
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
 }
-
-const call = (id: string, name: string, args: object) => ({ id, type: 'function', function: { name, arguments: JSON.stringify(args) } });
-const toolMessages = (messages: WireMessage[]) => messages.filter((m) => m.role === 'tool');
-const refFrom = (content: string | null | undefined) => (JSON.parse(content ?? '{}') as { value: { place: { place_ref: string } } }).value.place.place_ref;
 ```
 
 The scripts:
 - **SPLIT_QUESTION**
-  - No tool messages yet: reply `tool_calls: [resolve_place {query:'Los Angeles'}, resolve_place {query:'Bogotá'}]`.
-  - After two tool messages: read both refs and reply `tool_calls: [get_timing {section:'transits', segments:[{start:'2026-06-01', end:'2026-06-15', place_ref: la}, {start:'2026-06-16', end:'2026-06-30', place_ref: bog}]}]`.
-  - After three: `content: SPLIT_ANSWER`.
-- **DAY_QUESTION**: `get_timing {section:'transits', start:'2026-06-15'}`, then `content: DAY_ANSWER`.
-- **PLACE_REPLY**: `resolve_place {query:'Bogotá'}`, then `get_timing {section:'transits', start:'2026-06-15', place_ref}`, then `content: PLACE_ANSWER + ' …'`.
+  - No tool messages yet: `{ content: null, tool_calls: [call('la','resolve_place',{query:'Los Angeles'}), call('bog','resolve_place',{query:'Bogotá'})] }`.
+  - Two tool messages: read both refs and return `tool_calls: [call('june','get_timing',{section:'transits', segments:[{start:'2026-06-01',end:'2026-06-15',place_ref:la},{start:'2026-06-16',end:'2026-06-30',place_ref:bog}]})]`.
+  - Three: `{ content: SPLIT_ANSWER }`.
+- **DAY_QUESTION** (the user named LA for the first half, so the model reuses it; no question)
+  - `resolve_place {query:'Los Angeles'}`.
+  - Then `get_timing {section:'transits', start:'2026-06-15', place_ref}`.
+  - Then `{ content: DAY_ANSWER + ' …' }`.
+- **TIME_QUESTION**
+  - `get_timing {section:'transits', start:'2026-07-03'}` (the stub plays a model that first tries without a place).
+  - When the last tool message's content is `{"ok":true,"value":{"error":"needs_place"}}`, `{ content: WHERE_QUESTION }`.
+- **PLACE_REPLY**
+  - `resolve_place {query:'Bogotá'}`.
+  - Then `get_timing {section:'transits', start:'2026-07-03', place_ref, time:'15:00'}`.
+  - Then `{ content: EVENT_ANSWER + ' …' }`.
 
-The test body follows Journey 1's skeleton (boot, seed, Dashboard, wait for footer and Life Atlas, record `keysBefore`), then:
+The test body follows Journey 1's skeleton (prepare, `scripted(...)`, boot, seed, Dashboard, wait for the footer and the Life Atlas, record `keysBefore`), then:
 
 ```ts
+  const origin = new URL(page.url()).origin;
   const offOrigin: string[] = [];
   const cityChunks: string[] = [];
-  const origin = new URL(page.url()).origin;
   page.on('request', (request) => {
     const url = new URL(request.url());
     if (url.pathname.includes('cities.min')) cityChunks.push(request.url());
-    if (url.origin !== origin && !url.pathname.endsWith('/chat/completions')) offOrigin.push(request.url());
+    if (url.origin !== origin) offOrigin.push(request.url());
   });
   expect(cityChunks, 'the city list must not load before a place is asked about').toEqual([]);
 
@@ -2323,63 +2354,79 @@ The test body follows Journey 1's skeleton (boot, seed, Dashboard, wait for foot
     await page.getByTestId('chat-send-button').click();
     await expect(page.getByTestId('chat-panel').getByText(answer, { exact: false })).toBeVisible({ timeout: 240_000 });
   };
+  const lastTools = () => toolMessages(seen.at(-1)?.messages ?? []);
 
   await ask(SPLIT_QUESTION, SPLIT_ANSWER);
-  const splitTools = toolMessages(seen.filter((r) => JSON.stringify(r.messages).includes('first half')).at(-1)?.messages ?? []);
-  expect(splitTools.map((m) => m.name)).toEqual(['resolve_place', 'resolve_place', 'get_timing']);
-  expect(splitTools[0]?.content).toContain('"timezone":"America/Los_Angeles"');
-  expect(splitTools[1]?.content).toContain('"label":"Bogotá, Colombia"');
-  expect(splitTools[2]?.content).toContain('"period":{"start":"2026-06-01","end":"2026-06-30","days":30,"basis":"period"}');
-  expect(splitTools[2]?.content).toContain("Place doesn't change readings for periods longer than a day");
-  expect(splitTools[2]?.content).not.toContain('location_sensitive');
+  expect(lastTools().map((m) => m.name)).toEqual(['resolve_place', 'resolve_place', 'get_timing']);
+  expect(lastTools()[0]?.content).toContain('"timezone":"America/Los_Angeles"');
+  expect(lastTools()[1]?.content).toContain('"label":"Bogotá, Colombia"');
+  expect(lastTools()[2]?.content).toContain('"period":{"start":"2026-06-01","end":"2026-06-30","days":30,"basis":"period"}');
+  expect(lastTools()[2]?.content).toContain("Place doesn't change readings for periods of a month or longer");
+  expect(lastTools()[2]?.content).not.toContain('"moon"');
 
   await ask(DAY_QUESTION, DAY_ANSWER);
-  const dayTool = toolMessages(seen.at(-1)?.messages ?? []).at(-1);
-  expect(dayTool?.content).toContain('"place":{"basis":"home_time_zone"}');
-  expect(dayTool?.content).toContain(`"location_sensitive":${MOON_GOLDEN['2026-06-15']?.location_sensitive}`);
+  expect(lastTools().map((m) => m.name)).toEqual(['resolve_place', 'get_timing']);
+  expect(lastTools()[1]?.content).toContain('"label":"Los Angeles, United States"');
+  expect(lastTools()[1]?.content).toContain('"moon":{"at_start":');
 
-  await ask(PLACE_REPLY, PLACE_ANSWER);
-  const placeTools = toolMessages(seen.at(-1)?.messages ?? []);
-  expect(placeTools.map((m) => m.name)).toEqual(['resolve_place', 'get_timing']);
-  expect(placeTools[1]?.content).toContain('"basis":"place","label":"Bogotá, Colombia","timezone":"America/Bogota"');
-  expect(placeTools[1]?.content).toContain('"at_place":{');
+  await ask(TIME_QUESTION, WHERE_QUESTION);
+  expect(lastTools().map((m) => m.content)).toEqual(['{"ok":true,"value":{"error":"needs_place"}}']);
+
+  await ask(PLACE_REPLY, EVENT_ANSWER);
+  expect(lastTools().map((m) => m.name)).toEqual(['resolve_place', 'get_timing']);
+  expect(lastTools()[1]?.content).toContain('"event":{"local_time":"15:00","lagna_sign":');
 
   for (const message of seen.flatMap((r) => toolMessages(r.messages))) {
-    expect(message.content ?? '').not.toMatch(/latitude|longitude|4\.71|74\.07|34\.05|118\.2|28\.6|77\.2/);
+    expect(message.content ?? '').not.toMatch(/latitude|longitude|4\.71|74\.07|34\.05|118\.2|28\.6|77\.2|home_time_zone/);
   }
-  expect(offOrigin, 'no request may leave the app origin except the stubbed provider').toEqual([]);
-  expect(cityChunks.length, 'the city list loads at most once, from the app origin').toBeLessThanOrEqual(1);
+  expect(
+    offOrigin.filter((url) => !fulfilled.has(url)),
+    'no request may leave the app origin (stubbed provider calls are fulfilled locally)',
+  ).toEqual([]);
+  expect(cityChunks.length, 'the city list loads at most once').toBeLessThanOrEqual(1);
   expect(cityChunks.every((url) => new URL(url).origin === origin)).toBe(true);
   expect((await predictiveRequestKeys(page)).slice(keysBefore.length), 'the Life Atlas slot must keep its requestKey').toEqual([]);
-  await page.screenshot({ path: SPLIT_SCREENSHOT, fullPage: true });
+  await page.screenshot({ path: PLACE_SCREENSHOT, fullPage: true });
   expect(consoleErrors, 'the journey must keep a clean console').toEqual([]);
 ```
 
-Add `import { readFileSync } from 'node:fs'; import { resolve } from 'node:path';` at the top.
-- **Service-worker case.** If the service worker serves the chunk, no request event may fire for it. `cityChunks.length` can then be 0, which the `<= 1` assertion allows, and the "not before" assertion still holds. Put that in the PR as part of the precise "zero network" claim.
-- **Seeded chart year.** The seeded chart is born 1990, so 2026 passes every birth gate.
+Declare `const seen: AgentRequest[] = []` and `const fulfilled = new Set<string>()`, and call `scripted(page, {...}, seen, fulfilled)` before `bootEngine`.
+- **Listener timing.** Register the request listener right after `page.goto('/dashboard')`, so app boot traffic (all same-origin) is covered too. Any off-origin request during boot is also a finding.
+- **Service worker.** If the service worker serves the cities chunk, no request event may fire for it, and `cityChunks.length` can be 0. Say so in the PR.
+- **Contents check.** The tool-content check runs over every tool message the provider saw, so the `home_time_zone` and coordinate patterns cover all four turns.
 
 Run:
 ```bash
 cd frontend/apps/web && bun run test:e2e:time-travel --project=chromium
 ```
-Expected: three tests pass. Keep the screenshot. Then the red run: the place path calling the online geocoder must turn the journey red.
+Expected: three tests pass. Keep the screenshot.
+
+- [ ] **Step 3: Red runs**
+
+The place path calling the online geocoder must turn the journey red (Ruling 16):
 
 ```bash
 python3 "$MUTATE" frontend/apps/web/src/lib/geo/placeLookup.ts "const rows = await searchCityRowsOffline(query, PLACE_CANDIDATE_LIMIT);" "await fetch('https://geocoding-api.open-meteo.com/v1/search?name=' + encodeURIComponent(query)).catch(() => undefined);
   const rows = await searchCityRowsOffline(query, PLACE_CANDIDATE_LIMIT);" -- bash -c 'cd frontend/apps/web && bun run test:e2e:time-travel --project=chromium'
 ```
-Expected: `KILLED`. `offOrigin` lists the Open-Meteo URL; a COEP block still fires the request event.
+Expected: `KILLED`. `offOrigin` lists the Open-Meteo URL; the request event fires even if COEP blocks the response.
 
-- [ ] **Step 3: Comment-only lane update, contract tests**
+The `needs_place` gate removed must turn the journey red too (the TIME_QUESTION turn gets a sky result, so the stub never asks):
+
+```bash
+python3 "$MUTATE" frontend/apps/web/src/lib/timingTool.ts "if (needsPlace(period, places)) return { error: NEEDS_PLACE_ERROR };" "" -- bash -c 'cd frontend/apps/web && bun run test:e2e:time-travel --project=chromium'
+```
+Expected: `KILLED`. Use the same exact gate line as Task 7 Step 4.
+
+- [ ] **Step 4: Comment-only lane update, contract tests**
 
 In `dagger/src/index.ts`, change the comment above the time-travel command to name Inc C's journey. Leave the command string alone. Run `bun test ./tests/*.test.ts` from the root. Expected: all pass. `tests/dagger-ingress-contract.test.ts` is untouched.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
 git add frontend/apps/web/e2e/time-travel.spec.ts dagger/src/index.ts
-git commit -m "test(e2e): time travel journey 3 — LA then Bogotá, the 15th, and a place, all on device"
+git commit -m "test(e2e): time travel journey 3 — month with places, a day, needs_place, an event in Bogotá, all on device"
 ```
 
 ---
@@ -2405,7 +2452,7 @@ Expected: every exit is 0. Record test counts, coverage (backend ≥ 90%; `moon_
 - [ ] **Step 3: Drive it live**
 
 `cd frontend/apps/web && VITE_API_URL= bun run build && VITE_API_URL= bun run preview --host 127.0.0.1 --port 4216`. Use Playwright Chromium (the MCP_DOCKER browser cannot boot the engine). Onboard a chart, open chat, and ask the three Journey 3 questions.
-- With an OpenRouter key on this machine: confirm that (a) the June answer says places don't change it and doesn't ask where; (b) the 15th answer names "home time zone" and asks where only if `location_sensitive` was true; (c) after "Bogotá" the answer names Bogotá and the Moon at the start and end of that day. Watch the network panel and confirm no request to any host but the app origin and the provider.
+- With an OpenRouter key on this machine: confirm that (a) the June answer says places don't change it and doesn't ask where; (b) "what about the 15th?" reuses LA without asking; (c) "3 pm on 3 July?" gets "Where were you (or will you be) that day?" and never a home-zone guess; (d) after "Bogotá" the answer names Bogotá, the rising sign and the Moon. Watch the network panel and confirm no request to any host but the app origin and the provider.
 - With no key: say plainly in the PR that the real-model drive is unverified and Task 10's stubbed journey is the evidence.
 - Take screenshots and confirm a clean console for each. Repeat once with `deviceMemory` pinned to 2 (lite). There must be no `resolve_place` in the tool list (check the provider request body), a dashas-only answer, and no `cities.min` request.
 
@@ -2424,13 +2471,14 @@ Fix anything below A, re-run Step 1, and re-grade.
 ```bash
 git push -u origin claude/time-travel-c
 gh pr create --repo gainratio/almamesh --base main --head claude/time-travel-c \
-  --title "feat: time travel step C — places, location check, split periods (on device)" --body-file /tmp/inc-c-pr.md
+  --title "feat: time travel step C — places, needs_place, split periods (on device)" --body-file /tmp/inc-c-pr.md
 ```
 
 The body states:
 - what ships (the Inc C row);
 - the claim touched ("a chat-typed city never leaves the device", with its precise browser meaning: no request off the app origin; the city chunk is same-origin, lazy and at most once);
-- the Rulings list verbatim, with the "location check is almost always true" finding at the top for Harish's call;
+- the Rulings list verbatim, marking the four coordinator rulings (1, 2, 12, 16) and why the `location_sensitive` flag was dropped;
+- the contracts narrowed on purpose: Inc A timing tests that now need a place (Task 7 Step 2), and tests pinning the old `PRIVACY_RULE` sentence (Task 8);
 - Journey 1's extended tool list (an extension, not a reversal);
 - the evidence table: gate exits and counts, CHECK 8, memory growth and first-lookup time, e2e pass plus screenshot, lite-tier drive, and the live drive or "unverified";
 - the mutation table: every `KILLED` line from Tasks 1–10.
@@ -2456,28 +2504,28 @@ When CI is green and northstar is A:
 
 ## Self-review notes (spec coverage)
 
-| Spec item (Inc C / Part 2) | Task |
+| Spec item (Inc C / Part 2, revised 2026-10-09) | Task |
 | --- | --- |
 | `resolve_place`, offline only, `searchCitiesOffline`, never `searchCities` | 3, 4 (source contract), 10 (network) |
 | One / several (≤ 5) / none → found / ambiguous / not_found | 3, 4 |
 | Model sees only typed text, label, IANA zone; coordinates stay on device, keyed by `place_ref` | 3 (stateless ref, Ruling 4), 4, 7, 8 |
-| Location check: Moon sign, nakshatra, tithi at 00:00 UTC+14 and 24:00 UTC−12 | 1 (flag on sign only, Ruling 1), 2 |
-| `compute_moon_window` in Python; tithi new; `get_nakshatra_info` reused | 1 |
-| `computeMoonWindow` worker request beside `computePredictive`; parity gate | 2 |
-| Values at the place's local start and end of day when the place is known | 1, 6, 7 |
-| Single day: default to home zone and say so; ask only when `location_sensitive` | 7, 8 (no zone name, Ruling 2) |
-| A month or longer: never ask; several places: say why | 7 (note), 8 (prompt) |
-| Specific time of day: always ask; event ascendant needs lat/lon | 1 (lagna sign), 5 (`time` needs a place), 6, 7, 8 |
-| `segments: [{ start, end, place_ref }]` merged for dashas/slow transits; only single-day reads use a segment's place | 5, 7 |
-| Error handling: place not found / ambiguous | 3, 4 |
-| Performance: `resolve_place` < 100 ms once loaded | 3 (unit), 9 (measured in browser) |
-| Testing rows: Location check; Offline place lookup (fetch spy); No coordinates to the model | 1, 3, 4, 8 |
+| A day, a few days or a time of day needs a place; tool returns `{ error: "needs_place" }`; model asks once | 5 (`needsPlace`), 7 (gate, red first), 8 (prompt), 10 (journey) |
+| A month or longer never needs a place; several places → say why | 7 (note), 8 (prompt), 10 |
+| No home-zone default; device zone never sent | 7 (no `homeZone` input; toolset test), 10 (`home_time_zone` never appears) |
+| Moon's sign, nakshatra, tithi at the place's local start and end | 1, 2, 6, 7 |
+| `compute_moon_window` in Python; tithi new; `get_nakshatra_info` reused; `computeMoonWindow` worker request; parity gate | 1, 2 |
+| Specific time of day: always a place; event ascendant sign | 1, 5, 6, 7, 10 |
+| `segments: [{ start, end, place_ref }]` merged; under 28 days each needs a place and is read at its own place | 5, 7 |
+| Narrowed `PRIVACY_RULE`: user-typed places may be repeated; birth place and coordinates never | 8 (red-first prompt and tool egress tests) |
+| "Zero network" = no request off the app origin | 10 (listener over the whole journey, geocoder red run), 4, 9 |
+| Error handling: needs_place / not found / ambiguous | 3, 4, 7, 8 |
+| Performance: `resolve_place` < 100 ms once loaded | 3 (unit), 9 (browser) |
 | Journey 3 end to end, in browserJourneys | 10 |
-| Privacy: A/B rules intact; no new egress about the birth place | 7 (gate order), 8 (egress), Global Constraints |
+| Privacy: A/B rules intact | 7 (gate order: refusal, dashas-only gates, then needs_place), Global Constraints |
 | Low-end: dashas only on lite/minimal; lazy city list, memory measured | 7, 9, 11 |
 
 Known gaps, deliberately not tasks:
 - exact change times inside a day (out of scope for v1 per spec);
 - persisting a chosen place on a thread (`as_of.place` is Inc D);
 - i18n of tool status labels (Ruling 14);
-- whether `location_sensitive` should use a narrower definition (Spec gaps, for Harish).
+- "today" with no dates staying place-free (Spec gaps).

@@ -23,7 +23,7 @@ The work ships in four increments (see [Increments](#increments)):
 | --- | --- | --- |
 | A | Timing tool takes dates; dashas picked by date; period label in prompts | Typed questions about any period work |
 | B | Engine reports Mars, Rahu/Ketu sign changes and retrograde stations; 24-month window | Fuller slow-planet picture for long periods |
-| C | Places: `resolve_place`, location check for single days, split periods | "Where were you?" asked only when it matters |
+| C | Places: `resolve_place`, a place required for day-precision reads, split periods | "Where were you?" asked for a day or a few days, never for a month or longer |
 | D | Button, pinned threads, banner, export/import of the pin | One-tap time travel |
 
 ## Why
@@ -72,18 +72,18 @@ date other than today, and a prompt that says which date it used.
 2. The model calls the timing tool for 2026-06-01..2026-06-30. It does not call `resolve_place`.
    It tells her plainly: "Being in LA and then Bogotá doesn't change June's reading. Dashas
    come from your birth chart and planet positions are the same from anywhere on Earth."
-3. She follows up: "what about June 15 itself?". Now it's a single day. The model uses her home
-   zone and says so in one line: "I'm reading 15 June in your home time zone
-   (America/Los_Angeles)."
-4. The tool checks whether the Moon's sign, nakshatra or tithi on 15 June differs anywhere
-   between UTC−12 and UTC+14. If not, the place doesn't matter and nothing is asked. If it
-   does, the tool returns `location_sensitive: true` and the model asks "Were you in LA or
-   Bogotá on the 15th?".
-5. She says Bogotá. The model calls `resolve_place("Bogotá")`, which searches the bundled city
-   list on the device. The model sees only `Bogotá, Colombia` and `America/Bogota`. The
-   coordinates stay on the device.
-6. If she had asked "what about 3 pm on the 15th?", the model would always ask where. An event
-   ascendant needs a real latitude and longitude.
+3. She follows up: "what about June 15 itself?". Now it's a single day, and a day reading
+   needs a place. She already said she was in LA for the first half, so the model calls
+   `resolve_place("Los Angeles")`, which searches the bundled city list on the device, then
+   `get_timing` for 15 June with that place. The model sees only `Los Angeles, United States`
+   and `America/Los_Angeles`. The coordinates stay on the device.
+4. She asks "and 3 pm on 3 July?". No place for July has come up in this thread. `get_timing`
+   for a day without a place returns `{ "error": "needs_place" }`, and the model asks once:
+   "Where were you (or will you be) that day?". It never assumes a place, and never the home
+   or birth zone.
+5. She says Bogotá. The model resolves it on the device and reads 3 July at 15:00 in Bogotá:
+   the event ascendant's sign and the Moon. An event ascendant needs a real latitude and
+   longitude, which is why a time of day always needs a place.
 
 ## Design
 
@@ -257,39 +257,40 @@ question 1, decided).
 
 | What is being read | Ask where? | Why |
 | --- | --- | --- |
-| A month or longer | Never | Dashas come from the birth chart. Planet positions are geocentric. Houses come from the natal chart. Place changes nothing. |
+| A month or longer (28 days or more) | Never | Dashas come from the birth chart. Slow-planet positions and events are geocentric. Houses come from the natal chart. Place changes nothing. |
 | A month or longer, user mentions several places | Never, and say why | "Being in LA and then Bogotá doesn't change June's reading." |
-| A single day | Only when `location_sensitive: true` | Default to the home zone and say so in one line |
+| A single day or a few days (under 28 days) | Always, unless the user already named a place for it in this thread | The Moon's sign, nakshatra and tithi at the local day depend on where you are |
 | A specific time of day | Always | The event ascendant needs latitude and longitude |
 
-"Home zone" is the device's current time zone (`viewerTimeZone()`, already used at
-`Dashboard.tsx:338`). It is the best guess for where someone lives. The birth zone is not: plenty
-of people live far from where they were born. The model always names the zone it used, so a
-wrong guess is visible and easy to correct.
+The app enforces this in the tool, not only in the prompt. `get_timing` for a sky section
+(transits, domains, strength) over a period under 28 days, with no `place_ref` and no placed
+`segments`, returns the constant `{ "error": "needs_place" }` before any engine work. The
+prompt teaches the model to turn that into one question: "Where were you (or will you be)
+that day?". Dashas never need a place. A call with no dates ("today") is unchanged.
 
-#### The location check for a single day
+There is no default place. The app never assumes the device's zone or the birth place, and
+never sends the device's zone to the model: the model asks.
 
-For a single day, `get_timing` asks the engine for the Moon's sign, nakshatra and tithi at the
-two ends of that calendar day as seen anywhere on Earth: 00:00 at UTC+14 and 24:00 at UTC−12.
-That is a 50-hour window.
+#### Reading a day at a place
 
-The Moon and Sun both move forward in sidereal longitude and never go retrograde, so the
-Moon–Sun angle only grows. If the sign, nakshatra and tithi are the same at both ends, they are
-the same everywhere that day. If any differ, the result says `location_sensitive: true` and the
-model asks where. The Moon covers about 28° in 50 hours, less than one sign and less than one
-full tithi cycle, so comparing the ends can't miss a change and come back to the same value.
+Once a short period has a place, `get_timing` asks the engine for the Moon's sign, nakshatra and
+tithi at that place's local start of the first day and local end of the last day, for example
+"Moon in Taurus at the start of the day, Gemini by the end". With a time of day it also returns
+the event ascendant's sign and the Moon at that instant. Exact change times are out of scope
+for v1.
 
 This is astrology, so it lives in Python (project rule 2: no astrology in TypeScript). A new
-engine function, `compute_moon_window(day)`, does the whole check and returns
-`{ location_sensitive, at_start, at_end }`. It reuses `get_nakshatra_info`
-(`backend/src/almamesh/calculations.py:521`); tithi is new there. The browser reaches it
-through a new worker request, `computeMoonWindow`, next to `computePredictive`
-(`frontend/packages/browser/src/pyodide/chartWorker.ts:494`). It runs in well under a second
-and goes through the CPython/Pyodide parity gate like every other entry.
+engine function, `compute_moon_window(start, end, event?)`, takes UTC instants (the app turns
+the place's local midnights and the local time into instants, so the engine needs no time-zone
+database) and returns `{ at_place: { at_start, at_end }, event }`. It reuses
+`get_nakshatra_info` (`backend/src/almamesh/calculations.py:521`); tithi is new there. The
+browser reaches it through a new worker request, `computeMoonWindow`, next to
+`computePredictive` (`frontend/packages/browser/src/pyodide/chartWorker.ts:494`). It runs in
+well under a second and goes through the CPython/Pyodide parity gate like every other entry.
 
-When the place is known and the day is still sensitive, the result gives the values at that
-place's local start and end of day, for example "Moon in Taurus at the start of the day,
-Gemini by the end". Exact change times are out of scope for v1.
+(An earlier draft computed a `location_sensitive` flag from the Moon at 00:00 UTC+14 and 24:00
+UTC−12. It was dropped: nakshatra and tithi change inside every such 50-hour window, and the
+Moon's sign does on most days, so the flag was true almost always.)
 
 #### `resolve_place`
 
@@ -312,7 +313,9 @@ time-of-day reads. A chat-typed city never leaves the device.
 
 `get_timing` accepts an optional `segments: [{ start, end, place_ref }]` instead of
 `start`/`end`. The tool merges the segments into one period for dashas and slow transits,
-since place doesn't change them. Only single-day reads use a segment's place. This lets the
+since place doesn't change them. When the merged period is under 28 days, every segment needs
+a `place_ref` (or the call returns `needs_place`), and each segment's Moon is read at its own
+place. This lets the
 model pass "first half LA, then Bogotá" through without having to argue with the tool.
 
 ### Part 3: the button and pinned threads
@@ -329,7 +332,7 @@ The sheet:
 | Field | Shown | Default |
 | --- | --- | --- |
 | When? | Always. Tabs: Day / Month / Year | Month, current month |
-| Where? | Day tab only | Home zone, with a "change" link that opens the offline city search |
+| Where? | Day tab only | Empty and required for a Day pin; opens the offline city search. Never pre-filled from the device zone or the birth place |
 | Go | Always | Opens a new thread pinned to the period |
 
 #### The pinned thread
@@ -418,7 +421,9 @@ chart facts reach the model.
 | The transit cutoff note's time of day | Yes, to the minute in UTC (e.g. "until 2028-12-31 12:00 UTC"). It does not narrow the birth date. The instant is the period's start + N × 30.4375 days, derived from the period the user asked about, never from birth data. Event dates stay month precision. | `restrictTransitsToPeriod` builds the window end from the period start and `window_months` only |
 | Birth month via the first maha's length | No. On every row that starts at birth (first maha, its first antar, a current period or pratyantar starting at birth) `duration_years` is the birth balance; with the month-precision end it gives the birth month. It is omitted, not rounded (a rounded balance still narrows the month within the year). | `sanitize.ts` `lengthOf` |
 | The first maha's start month (= birth month) | No, even when a period falls inside the first maha | `selectDashasForPeriod` withholds it |
-| Typed city text | Already in the user's message | n/a |
+| Typed city text | Already in the user's message; the model may repeat a place the user typed | n/a |
+| The birth place (name, zone as a place, coordinates) | No. The model never names, guesses or echoes the birth place, and no tool result or prompt carries any coordinate | Narrowed `PRIVACY_RULE`; egress test over prompt and tool results |
+| The device's time zone | No. A day without a place gets `needs_place`, never a home-zone default | `get_timing` place gate |
 | Place coordinates | No. Model sees label + IANA zone only | `place_ref` indirection |
 | Place lookup network calls | None. Offline list only | `resolve_place` imports `searchCitiesOffline` only |
 
@@ -444,7 +449,7 @@ year; the birth day never enters the tool path.
 | Dashas for any period | Instant. Pure date selection, no engine |
 | Transits, domains, strength for a new period | About 30 s under Pyodide (`frontend/packages/store/src/predictive.ts:131`) |
 | Same period again | Instant from the LRU |
-| Location check for a day | Under a second |
+| Moon at a place for a day or a few days | Under a second |
 | `resolve_place` | Under 100 ms once the city list is loaded |
 
 The Pyodide worker is serial. A period compute queues behind any Life Atlas compute already
@@ -472,6 +477,7 @@ while another period compute runs. The tool waits for the first to finish.
 | Engine not ready or failed | "I couldn't work out the sky for June 2026 on this device. Dasha answers still work." | `{ available: false, reason: "engine_unavailable" }` |
 | Engine timeout (150 s) | Same as above, plus "Try again in a moment." | `{ available: false, reason: "timeout" }` |
 | Birth data incomplete (no zone) | Existing "complete birth data" message | Existing error |
+| A day or a few days with no place | Model asks once: "Where were you (or will you be) that day?" | `{ error: "needs_place" }` |
 | Place not found | Model asks for a nearby larger city | `status: "not_found"` |
 | Place ambiguous | Model lists the candidates and asks | `status: "ambiguous"` |
 | User changes the pin mid-answer | The old answer is dropped | n/a |
@@ -508,7 +514,8 @@ that red run in the PR.
 | Router skips dated questions | "transits in June 2019" does not pre-run today | Drop `mentionsExplicitPeriod` |
 | Pinned router | Pinned thread pre-runs the pin, never today | Pre-run today |
 | Prompt label | Period basis renders "as of 1–30 June 2026 (the period asked about)" | Render "today" |
-| Location check | Day with a Moon sign change inside the 50-hour window → `location_sensitive: true`; a quiet day → false | Compare only one end |
+| A day needs a place | `get_timing` transits for 2026-06-15 with no place → `{ error: "needs_place" }`, engine not called; a 30-day period with no place → answered | Drop the place gate; use `<=` 28 days |
+| Birth place never echoed | Prompt and every tool result for a chart born in Delhi contain no birth place name and no coordinate | Copy `location_name` into the sanitized chart |
 | Offline place lookup | `resolve_place` makes zero `fetch` calls (spy) | Call `searchCities` |
 | No coordinates to the model | `resolve_place` result has no number fields | Include latitude |
 | Tense | `relative` is past / future / contains_today at the boundaries (today = start, today = end) | Use `<` for `<=` |
@@ -536,7 +543,7 @@ deterministic. The real in-browser engine runs.
 | --- | --- |
 | Typed "June 2019" in Dashboard chat | Tool called with 2019-06-01..30; answer shows the echoed period; Life Atlas `requestKey` unchanged after |
 | Button → Year 2027 on MeshEdge | Thread titled "Time travel · 2027"; ⏳ badge; banner; future starters; no "Where?" field |
-| Day pin with a place | "Where?" shows; city search makes no network request (`page.on('request')`); `location_sensitive` path asks |
+| Day pin with a place | "Where?" shows and is required; city search makes no request off the app origin (`page.on('request')`) |
 | Clean console | No errors during each journey |
 
 Wire it into the browserJourneys lane (`dagger/src/index.ts:481`) as
@@ -573,7 +580,7 @@ Saturn events only.
 `window_months` (default 12) so a 13–24 month period is one compute. `covered_events` widens.
 Claim: CPython/Pyodide parity.
 
-**Inc C: places.** `resolve_place`, `computeMoonWindow`, `location_sensitive`, `segments`,
+**Inc C: places.** `resolve_place`, `computeMoonWindow`, the `needs_place` gate, `segments`,
 event-time reads with a place. Claim: "a chat-typed city never leaves the device". Journey 3
 works.
 
@@ -596,8 +603,8 @@ A and D are the user-visible core. B and C can ship in either order after A.
 1. **Decided (Harish, 2026-10-08): unify on the viewer (device) zone.** Dashboard keyed "today"
    on the viewer's zone and MeshEdge on the birth zone. `buildChatToolset` now reads today with
    `viewerTimeZone()` for both pages, and neither page passes a zone. Why the viewer zone: it is
-   the zone the footer, report cover, PDF and prompt `as_of` already print in (#274), and the
-   home-zone default for places (Part 2) is the same zone. Inc A carries this as a task, with a
+   the zone the footer, report cover, PDF and prompt `as_of` already print in (#274). (Places
+   never default to it: Part 2 asks where.) Inc A carries this as a task, with a
    test that pins both pages to the same "today" for a chart whose birth zone and the device
    zone fall on different calendar days.
 2. LRU sizes by tier (5 / 3 / 1) are a starting guess. Inc A should measure the payload size
