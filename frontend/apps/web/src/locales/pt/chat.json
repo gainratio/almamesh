@@ -91,5 +91,37 @@
   },
   "memory": {
     "loading_model": "Carregando a memória no seu dispositivo (só na primeira vez)…"
+  },
+  "time_travel": {
+    "button": "Viagem no tempo",
+    "title": "Viagem no tempo · {{period}}",
+    "status_working": "Calculando o céu de {{period}}… (cerca de 30 s)",
+    "sheet": {
+      "title": "Viagem no tempo",
+      "intro": "Escolha um momento. As respostas no novo chat serão sobre ele.",
+      "when": "Quando?",
+      "tabs": { "day": "Dia", "month": "Mês", "year": "Ano" },
+      "day_label": "Dia",
+      "month_label": "Mês",
+      "year_label": "Ano",
+      "where": "Onde?",
+      "where_hint": "Digite uma cidade. A busca fica neste dispositivo.",
+      "where_placeholder": "Busque uma cidade",
+      "where_required": "Escolha onde você estava (ou estará) nesse dia.",
+      "where_none": "Cidade não encontrada. Tente uma cidade maior perto dali.",
+      "before_birth": "Isso é antes de você nascer. Escolha um período depois.",
+      "save_failed": "Não foi possível salvar no seu dispositivo. Tente de novo.",
+      "go": "Ir",
+      "cancel": "Cancelar"
+    },
+    "banner": {
+      "about": "as respostas são sobre este período",
+      "change": "Mudar",
+      "back": "Voltar para hoje"
+    },
+    "starters": {
+      "past": { "hard": "Por que essa época foi difícil?", "teaching": "O que esse período estava me ensinando?" },
+      "future": { "prepare": "Para o que devo me preparar?", "strongest": "Quais meses parecem mais fortes?" }
+    }
   }
 }

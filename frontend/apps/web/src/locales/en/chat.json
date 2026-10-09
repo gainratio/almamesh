@@ -88,5 +88,37 @@
   },
   "memory": {
     "loading_model": "Loading on-device memory (first time only)…"
+  },
+  "time_travel": {
+    "button": "Time travel",
+    "title": "Time travel · {{period}}",
+    "status_working": "Working out the sky for {{period}}… (about 30 s)",
+    "sheet": {
+      "title": "Time travel",
+      "intro": "Pick a time. Answers in the new chat will be about it.",
+      "when": "When?",
+      "tabs": { "day": "Day", "month": "Month", "year": "Year" },
+      "day_label": "Day",
+      "month_label": "Month",
+      "year_label": "Year",
+      "where": "Where?",
+      "where_hint": "Type a city. The search stays on this device.",
+      "where_placeholder": "Search for a city",
+      "where_required": "Pick where you were (or will be) that day.",
+      "where_none": "No city found. Try a nearby larger city.",
+      "before_birth": "That's before you were born. Pick a later period.",
+      "save_failed": "Couldn't save this on your device. Try again.",
+      "go": "Go",
+      "cancel": "Cancel"
+    },
+    "banner": {
+      "about": "answers are about this period",
+      "change": "Change",
+      "back": "Back to today"
+    },
+    "starters": {
+      "past": { "hard": "Why did this time feel hard?", "teaching": "What was this period teaching me?" },
+      "future": { "prepare": "What should I prepare for?", "strongest": "Which months look strongest?" }
+    }
   }
 }
