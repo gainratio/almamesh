@@ -31,7 +31,7 @@ import { LINT_IGNORES } from "./eslint.ignores.mjs";
 // packages/* workspace. `bun run lint` (frontend/) runs `eslint .` against it,
 // and so do `bun run gate` and the Dagger `frontend` gate. No workspace keeps
 // its own config; tests/frontend-lint-coverage-contract.test.ts fails if one
-// appears or if any packages/* workspace falls under LINT_IGNORES.
+// appears or if ESLint would skip a real source file in any workspace.
 export default defineConfig([
   // Lint ignores what git ignores. Gitignored scratch files (e.g. the
   // verify-*.mjs live-validation scripts) never reach a commit, so a lint error
@@ -105,13 +105,19 @@ export default defineConfig([
         setTimeout: "readonly",
         clearTimeout: "readonly",
         AbortController: "readonly",
-        Buffer: "readonly",
-        TextEncoder: "readonly",
-        TextDecoder: "readonly",
       },
     },
     rules: {
       "no-unused-vars": ["error", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
+    },
+  },
+
+  // Node-only fixture generators that encode bytes. Scoped to these two files
+  // so the browser-flavoured .mjs globals above stay narrow.
+  {
+    files: ["scripts/generate-cities.mjs", "scripts/make-legacy-v2-fixture.mjs"],
+    languageOptions: {
+      globals: { Buffer: "readonly", TextEncoder: "readonly", TextDecoder: "readonly" },
     },
   },
 

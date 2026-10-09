@@ -1,8 +1,8 @@
 // The ONE list of paths ESLint skips across the whole frontend workspace
-// (apps/web and every packages/* workspace). eslint.config.mjs imports it, and
-// tests/frontend-lint-coverage-contract.test.ts imports it too, so the contract
-// can prove no frontend/packages/* source is ignored without loading ESLint.
-// This module must stay dependency-free for that reason.
+// (apps/web and every packages/* workspace), imported by eslint.config.mjs.
+// tests/frontend-lint-coverage-contract.test.ts asks ESLint whether a real file
+// in each workspace is linted, so a pattern here that swallows a workspace
+// fails the frontend gate.
 //
 // Patterns resolve against frontend/ (the config's base path) and are written
 // as `**/<dir>/**` so they apply inside every workspace.
