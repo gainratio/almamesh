@@ -13,10 +13,11 @@
  * At most one attempt per chart per day: a failed recompute leaves the chart as
  * it was (still self-consistent) and is retried tomorrow, never in a loop.
  *
- * While an attempt runs, the chart is listed in `useChartReanchorStatus` so chat
- * waits instead of streaming an answer the recompute would discard. The entry
- * is cleared whether the attempt lands or fails, and after
- * `REANCHOR_WAIT_LIMIT_MS` at most, so a hung engine cannot lock chat.
+ * From the moment a re-anchor is due (even while the engine still boots) until
+ * it settles, the chart is listed in `useChartReanchorStatus` so chat waits
+ * instead of streaming an answer the recompute would discard. The entry is
+ * cleared whether the attempt lands or fails, and after
+ * `REANCHOR_WAIT_LIMIT_MS` at most, so a hung or absent engine cannot lock chat.
  */
 import { useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -42,6 +43,20 @@ import { useDailyReferenceInstant } from './useDailyReferenceInstant';
 /** The longest chat waits for a re-anchor before it is enabled anyway. */
 export const REANCHOR_WAIT_LIMIT_MS = 30_000;
 
+/**
+ * List the chart as re-anchoring so chat waits. Returns the release; the wait
+ * also ends on its own after `REANCHOR_WAIT_LIMIT_MS`.
+ */
+function beginWait(chartId: string): () => void {
+  const status = useChartReanchorStatus.getState();
+  status.begin(chartId);
+  const limit = setTimeout(() => status.settle(chartId), REANCHOR_WAIT_LIMIT_MS);
+  return () => {
+    clearTimeout(limit);
+    status.settle(chartId);
+  };
+}
+
 export function useChartReanchor(): void {
   const engine = useOptionalChartEngine()?.engine ?? null;
   const queryClient = useQueryClient();
@@ -52,15 +67,31 @@ export function useChartReanchor(): void {
   // A chart that records no instant at all (the oldest backups) is behind too.
   const behind = chart !== undefined &&
     (!storedChartRecordsInstant(chart) || storedChartReferenceDay(chart, today) < today);
+  // Per attempt: the release of chat's wait, and whether the recompute ran.
+  const waits = useRef(new Map<string, () => void>());
   const attempted = useRef(new Set<string>());
+  useEffect(() => {
+    const pending = waits.current;
+    return () => {
+      for (const release of pending.values()) release();
+    };
+  }, []);
 
   const chartId = chart?.chart_id;
   useEffect(() => {
-    if (!engine || chartId === undefined || !behind) {
+    if (chartId === undefined || !behind) {
       return;
     }
     const attempt = `${chartId}|${today}`;
-    if (attempted.current.has(attempt)) {
+    // Chat waits from the moment a re-anchor is DUE, not from when the engine
+    // is up to run it: a question sent while the engine boots would otherwise
+    // be answered across the recompute and discarded.
+    let release = waits.current.get(attempt);
+    if (release === undefined) {
+      release = beginWait(chartId);
+      waits.current.set(attempt, release);
+    }
+    if (!engine || attempted.current.has(attempt)) {
       return;
     }
     attempted.current.add(attempt);
@@ -69,9 +100,6 @@ export function useChartReanchor(): void {
       library: useChartLibraryStore.getState(),
       referenceInstant: newChartReferenceInstant(),
     };
-    const status = useChartReanchorStatus.getState();
-    status.begin(chartId);
-    const waitLimit = setTimeout(() => status.settle(chartId), REANCHOR_WAIT_LIMIT_MS);
     reanchorChart(chartId, deps)
       .then((saved) => {
         if (saved) {
@@ -79,9 +107,6 @@ export function useChartReanchor(): void {
         }
       })
       .catch((reason: unknown) => safeWarn('chart.reanchor_failed', reason))
-      .finally(() => {
-        clearTimeout(waitLimit);
-        status.settle(chartId);
-      });
+      .finally(release);
   }, [engine, chartId, behind, today, queryClient]);
 }

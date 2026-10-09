@@ -205,6 +205,54 @@ describe('useChartReanchor', () => {
     expect(storedInstant()).toBe('2026-06-26T17:00:00.000Z');
   });
 
+  // Nightly chat.rag.real, 2026-10-08/09: chat opened while the engine was
+  // still booting. Nothing was listed yet, so Send was enabled, the question
+  // went out, the engine came up, the re-anchor landed mid-answer and the paid
+  // answer was discarded ("Your chart changed while this answer was being written").
+  it('reports a due re-anchor before the engine is up, so chat waits for it', async () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
+    vi.setSystemTime(TODAY);
+    useChartLibraryStore.setState({
+      charts: { 'chart-1': chartCalculatedOn('2026-06-26T17:00:00.000Z') },
+      hydrated: true,
+    });
+    const generateChart = vi.fn(async () => ENGINE_CHART);
+    const client = new QueryClient();
+    let ctx: ChartEngineContextValue | null = null;
+    const Wrapper = ({ children }: { children: ReactNode }): ReactElement => (
+      <QueryClientProvider client={client}>
+        <ChartEngineContext.Provider value={ctx}>{children}</ChartEngineContext.Provider>
+      </QueryClientProvider>
+    );
+    const { rerender } = renderHook(() => useChartReanchor(), { wrapper: Wrapper });
+
+    await vi.advanceTimersByTimeAsync(0);
+    expect(isPending()).toBe(true);
+    expect(generateChart).not.toHaveBeenCalled();
+
+    ctx = engineCtx(generateChart);
+    rerender();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(generateChart).toHaveBeenCalledTimes(1);
+    expect(storedInstant()).toBe(TODAY.toISOString());
+    expect(isPending()).toBe(false);
+  });
+
+  it('stops waiting for an engine that never comes up after 30 s', async () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
+    vi.setSystemTime(TODAY);
+    useChartLibraryStore.setState({
+      charts: { 'chart-1': chartCalculatedOn('2026-06-26T17:00:00.000Z') },
+      hydrated: true,
+    });
+    renderReanchor(null);
+
+    await vi.advanceTimersByTimeAsync(29_999);
+    expect(isPending()).toBe(true);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(isPending()).toBe(false);
+  });
+
   it('tries once per day when the engine fails, never in a loop', async () => {
     useChartLibraryStore.setState({
       charts: { 'chart-1': chartCalculatedOn('2026-06-26T17:00:00.000Z') },

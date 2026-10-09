@@ -8,7 +8,7 @@ import { completionUsage } from './openrouterUsage';
  *
  * This is the "build-green != works" gate. It drives the REAL running app:
  *   - real in-browser Pyodide engine + a real Delhi sidereal chart in-tab,
- *   - a LIVE OpenRouter round-trip (deepseek/deepseek-v4-pro),
+ *   - a LIVE OpenRouter round-trip (deepseek/deepseek-v4.1-flash, the cheapest model),
  *   - the SELF-HOSTED in-browser embedder (MiniLM ONNX under /models/...).
  *
  * Steps mirror the A–G journey in the verification brief and emit machine-
@@ -79,7 +79,7 @@ test('[real] chat: single-pass streaming + self-hosted RAG + persistence + searc
   const config = JSON.stringify({
     apiBase: 'https://openrouter.ai/api/v1',
     apiKey: KEY,
-    model: 'deepseek/deepseek-v4-pro',
+    model: 'deepseek/deepseek-v4.1-flash',
     chatModel: CHAT_MODEL,
     privacyMode: 'cloud_premium',
     engine: 'openai-http',
@@ -178,6 +178,13 @@ test('[real] chat: single-pass streaming + self-hosted RAG + persistence + searc
       { timeout: 300_000, intervals: [2_500] },
     )
     .toBe(true);
+  // The streamed draft looks like an answer even when the turn then discards it
+  // because the day's re-anchor landed mid-stream (nightly 2026-10-08/09). Say
+  // so here, not two reloads later as "1 assistant message instead of 2".
+  await expect(
+    chatPanel,
+    'the first answer must be kept, not discarded by a re-anchor landing mid-stream',
+  ).not.toContainText('Your chart changed while this answer was being written');
   const answerMs = Date.now() - tSend;
   await page.screenshot({ path: `${SHOT}/B-answer-complete.png`, fullPage: true });
   const firstTurn = (await Promise.all(chatResponses)).map(completionUsage);
@@ -201,8 +208,8 @@ test('[real] chat: single-pass streaming + self-hosted RAG + persistence + searc
 
   // ===========================================================================
   // B2) ON-THE-WIRE MODEL — the chat turn must use the FAST chat model
-  //     (CHAT_MODEL, default `deepseek/deepseek-v4.1-flash`; NOT the deeper `deepseek/deepseek-v4-pro` that
-  //     the preset seeds for interpretation), stream:true, and carry the chart
+  //     (CHAT_MODEL, default `deepseek/deepseek-v4.1-flash`, the cheapest model;
+  //     every real spec uses it, see realModelSpecs.contract.test.ts), stream:true, and carry the chart
   //     facts + reused-reading grounding blocks. applyChatModelPreference swaps
   //     the model ONLY on the default OpenRouter cloud preset (the one seeded).
   // ===========================================================================
