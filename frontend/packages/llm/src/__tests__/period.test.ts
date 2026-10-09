@@ -7,7 +7,9 @@ import {
   parsePeriodArgs,
   periodEcho,
   periodLimits,
+  BIRTH_YEAR_SKY_NOTE,
   endsBeforeBirthYear,
+  startsInOrBeforeBirthYear,
 } from "../period";
 
 describe("parsePeriodArgs", () => {
@@ -70,6 +72,19 @@ describe("endsBeforeBirthYear", () => {
       "This period starts before the birth date. Ask about a period after it.",
     );
     expect(BEFORE_BIRTH_MESSAGE).not.toMatch(/\d/);
+  });
+});
+
+describe("startsInOrBeforeBirthYear", () => {
+  it("withholds the sky for any period starting on or before 31 December of the birth year", () => {
+    expect(startsInOrBeforeBirthYear({ start: "1990-12-31", end: "1991-02-01" }, 1990)).toBe(true);
+    expect(startsInOrBeforeBirthYear({ start: "1990-01-01", end: "1990-01-01" }, 1990)).toBe(true);
+    expect(startsInOrBeforeBirthYear({ start: "1991-01-01", end: "1991-01-01" }, 1990)).toBe(false);
+    expect(startsInOrBeforeBirthYear({ start: "1990-06-01", end: "1990-06-01" }, undefined)).toBe(false);
+  });
+
+  it("says so in constant words", () => {
+    expect(BIRTH_YEAR_SKY_NOTE).toBe("Planet timing for the year of birth isn't available; showing periods only.");
   });
 });
 

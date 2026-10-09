@@ -8,6 +8,7 @@
 import type { SiderealChart } from '@almamesh/browser/types';
 import {
   BEFORE_BIRTH_MESSAGE,
+  BIRTH_YEAR_SKY_NOTE,
   COVERED_EVENTS,
   endsBeforeBirthYear,
   ISO_DAY_PATTERN,
@@ -18,6 +19,7 @@ import {
   restrictTransitsToPeriod,
   sanitizeChartForLlm,
   selectDashasForPeriod,
+  startsInOrBeforeBirthYear,
   todayAnalysisInstant,
   type AgentJsonObject,
   type AgentTool,
@@ -175,7 +177,7 @@ function dashasTiming(
   echo: PeriodEcho,
   limitNotes: readonly string[],
 ): TimingResult {
-  const dashas = input.chart.dashas ? selectDashasForPeriod(input.chart.dashas, period) : undefined;
+  const dashas = input.chart.dashas ? selectDashasForPeriod(input.chart.dashas, period, input.birthYear) : undefined;
   return {
     period: echo,
     section,
@@ -195,6 +197,10 @@ async function periodTiming(
   const echo = periodEcho(period, 'period');
   const limits = periodLimits(period);
   if (section === 'dashas') return dashasTiming(input, section, period, echo, []);
+  // The engine computes against the real birth instant, so a birth-year sky flips at birth.
+  if (startsInOrBeforeBirthYear(period, input.birthYear)) {
+    return dashasTiming(input, section, period, echo, [BIRTH_YEAR_SKY_NOTE]);
+  }
   if (limits.dashasOnly) return dashasTiming(input, section, period, echo, limits.notes);
   if (!input.periodSkyAllowed) return dashasTiming(input, section, period, echo, [DEVICE_DASHAS_ONLY_NOTE]);
   return skyTiming(input, section, period, echo, context);

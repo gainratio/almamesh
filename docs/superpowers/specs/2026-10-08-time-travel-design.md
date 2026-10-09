@@ -413,7 +413,9 @@ chart facts reach the model.
 | Period `start`/`end` | Yes, the model chose them from the user's own words | Echoed as-is |
 | Dates inside results (dasha boundaries, transit events) | Month precision only | `sanitize.ts` allowlist rebuild |
 | The birth date | No. "Before birth" refusals don't include it, and *whether* a call is refused never depends on the birth month or day | Refusal message is a constant; refusal boundary is 1 January of the birth year (`endsBeforeBirthYear`) |
-| Birth month/day via which rows appear | No. A row starting at birth counts as starting on 1 January of the birth year | `selectDashasForPeriod` year-floors the birth rows |
+| Birth month/day via which rows appear | No. A row starting at birth counts as starting on 1 January of the LOCAL birth year (the refusal's year), and a birth-year period carries one constant note: "The first period row begins during the year of birth; months before birth don't apply." | `selectDashasForPeriod(dashas, period, birthYear)` |
+| Birth month/day via a birth-year sky | No. The engine computes a period sky against the real birth instant, so its running maha/antar lords (transits `fusion`, domains, strength) flip at birth. Any sky section for a period starting on or before 31 Dec of the birth year is withheld: dashas only, constant note "Planet timing for the year of birth isn't available; showing periods only." The engine is not called. | `startsInOrBeforeBirthYear` in `get_timing` |
+| Birth month via the first maha's length | No. On every row that starts at birth (first maha, its first antar, a current period or pratyantar starting at birth) `duration_years` is the birth balance; with the month-precision end it gives the birth month. It is omitted, not rounded (a rounded balance still narrows the month within the year). | `sanitize.ts` `lengthOf` |
 | The first maha's start month (= birth month) | No, even when a period falls inside the first maha | `selectDashasForPeriod` withholds it |
 | Typed city text | Already in the user's message | n/a |
 | Place coordinates | No. Model sees label + IANA zone only | `place_ref` indirection |
@@ -488,7 +490,9 @@ that red run in the PR.
 | Period echo | Every result has `period.start`/`end` equal to the resolved input | Drop the echo |
 | Bad dates rejected | `2026-02-30`, `2026-6-1`, reversed range → tool error | Remove the reversed check |
 | Before birth refused, birth date hidden | Refusal text contains no `YYYY-MM` of the birth | Interpolate the birth date into the message |
-| No birth-day oracle | Every month of 1989–1991 and every day of March 1990 give identical results for births 1990-03-17 and 1990-11-02 | Refuse by comparing `start` with the birth day; or overlap the birth row from its exact day |
+| No birth-day oracle | Every section (dashas, transits, domains, strength), every month of 1989–1991 and every day of March 1990 give identical results for births 1990-03-17 and 1990-11-02, with a period engine whose lords flip at birth | Refuse by comparing `start` with the birth day; overlap the birth row from its exact day; compute a birth-year sky |
+| Local birth year | A birth at 1990-12-31 20:00 PST reads June 1990 like a mid-year 1990 birth | Clamp the birth row to the UTC year of its instant |
+| First-maha balance withheld | Two births in one year with the same later tree sanitize to identical dashas | Pass `duration_years` through on birth rows |
 | 2-year cap | 25-month span returns dashas only plus note | Change the cap to `>=` 3 years |
 | 2052 cap | A 2053 day returns dashas only | Remove the ephemeris check |
 | Fast planets dropped for multi-day | Month period has no Moon/Sun/Mercury/Venus | Keep all grahas |

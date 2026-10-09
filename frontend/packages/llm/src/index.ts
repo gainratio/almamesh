@@ -388,7 +388,9 @@ export {
 // Time travel: argument rules for the timing tool's optional start/end.
 export {
   BEFORE_BIRTH_MESSAGE,
+  BIRTH_YEAR_SKY_NOTE,
   endsBeforeBirthYear,
+  startsInOrBeforeBirthYear,
   ISO_DAY_PATTERN,
   OVER_TWO_YEARS_NOTE,
   PAST_EPHEMERIS_NOTE,
@@ -397,7 +399,7 @@ export {
   periodLimits,
 } from "./period";
 export type { PeriodArgs, PeriodEcho, PeriodLimits } from "./period";
-export { NO_TREE_NOTE, PRATYANTAR_NOTE, selectDashasForPeriod } from "./period-dashas";
+export { BIRTH_YEAR_ROWS_NOTE, NO_TREE_NOTE, PRATYANTAR_NOTE, selectDashasForPeriod } from "./period-dashas";
 export type { PeriodAntarRow, PeriodDashaRow, PeriodDashas } from "./period-dashas";
 export {
   COVERED_EVENTS,

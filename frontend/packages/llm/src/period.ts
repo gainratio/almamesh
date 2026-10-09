@@ -14,6 +14,8 @@ const MAX_TRANSIT_SPAN_YEARS = 2;
 
 export const BEFORE_BIRTH_MESSAGE =
   "This period starts before the birth date. Ask about a period after it.";
+export const BIRTH_YEAR_SKY_NOTE =
+  "Planet timing for the year of birth isn't available; showing periods only.";
 export const OVER_TWO_YEARS_NOTE =
   "Over 2 years: showing dashas only. Ask about a shorter span for transits.";
 export const PAST_EPHEMERIS_NOTE =
@@ -80,7 +82,22 @@ export function periodEcho(period: PeriodRange, basis: PeriodEcho["basis"]): Per
  */
 export function endsBeforeBirthYear(period: PeriodRange, birthYear: number | undefined): boolean {
   if (birthYear === undefined) return false;
-  return period.end < `${String(birthYear).padStart(4, "0")}-01-01`;
+  return period.end < yearDay(birthYear, "01-01");
+}
+
+/**
+ * True when the period starts on or before 31 December of the birth year. The
+ * engine computes a period sky against the real birth instant, so its running
+ * dasha lords flip at birth; a birth-year sky would be a birth-day oracle.
+ */
+export function startsInOrBeforeBirthYear(period: PeriodRange, birthYear: number | undefined): boolean {
+  if (birthYear === undefined) return false;
+  return period.start <= yearDay(birthYear, "12-31");
+}
+
+/** "YYYY-MM-DD" for a month-day in the given year. */
+export function yearDay(year: number, monthDay: "01-01" | "12-31"): string {
+  return `${String(year).padStart(4, "0")}-${monthDay}`;
 }
 
 /** The same month and day N years later, as a string bound (02-29 stays a valid upper bound). */

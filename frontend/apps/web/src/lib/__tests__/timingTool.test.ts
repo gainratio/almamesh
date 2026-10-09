@@ -1,5 +1,9 @@
 import type { SiderealChart, TransitContext } from '@almamesh/browser/types';
-import { BEFORE_BIRTH_MESSAGE, OVER_TWO_YEARS_NOTE, PAST_EPHEMERIS_NOTE, placementsAsOfNote } from '@almamesh/llm';
+import {
+  BEFORE_BIRTH_MESSAGE,
+  BIRTH_YEAR_ROWS_NOTE,
+  BIRTH_YEAR_SKY_NOTE,
+  OVER_TWO_YEARS_NOTE, PAST_EPHEMERIS_NOTE, placementsAsOfNote } from '@almamesh/llm';
 import { describe, expect, it, vi } from 'vitest';
 
 import golden from '../../../../../../backend/tests/fixtures/chart_golden_de421.json';
@@ -149,8 +153,32 @@ describe('get_timing with dates', () => {
     expect(refused).toEqual({ error: BEFORE_BIRTH_MESSAGE });
     const answered = await tool().execute({ section: 'transits', start: '1990-01-01', end: '1990-01-14' }, context());
     expect(answered).not.toHaveProperty('error');
-    expect(answered).toMatchObject({ shown: 'transits', period: { start: '1990-01-01', end: '1990-01-14' } });
+    // Round 2: answered, but a birth-year sky is withheld (dashas only, constant note).
+    expect(answered).toMatchObject({ shown: 'dashas', period: { start: '1990-01-01', end: '1990-01-14' } });
+    expect((answered as { notes: string[] }).notes).toEqual([
+      BIRTH_YEAR_SKY_NOTE,
+      BIRTH_YEAR_ROWS_NOTE,
+      'Pratyantar dashas are only available for the current antar.',
+    ]);
   });
+
+  it.each(['transits', 'domains', 'strength'])(
+    'withholds the %s sky for a period starting in the birth year: dashas only, one constant note, no engine run',
+    async (section) => {
+      const loadPeriodChart = vi.fn(async () => SKY_CHART);
+      const result = (await tool({ loadPeriodChart }).execute(
+        { section, start: '1990-12-31', end: '1991-01-05' },
+        context(),
+      )) as { shown: string; notes: string[] };
+      expect(loadPeriodChart).not.toHaveBeenCalled();
+      expect(result.shown).toBe('dashas');
+      expect(result.notes[0]).toBe(BIRTH_YEAR_SKY_NOTE);
+      expect(BIRTH_YEAR_SKY_NOTE).toBe("Planet timing for the year of birth isn't available; showing periods only.");
+      const nextYear = await tool({ loadPeriodChart }).execute({ section, start: '1991-01-01' }, context());
+      expect(nextYear).toMatchObject({ shown: section });
+      expect(loadPeriodChart).toHaveBeenCalledOnce();
+    },
+  );
 
   it('a span over two years gives dashas only, with a note, and no engine run', async () => {
     const loadPeriodChart = vi.fn();
@@ -304,8 +332,7 @@ describe('get_timing on real engine output (born 2019-11-09)', () => {
 
 describe('get_timing is not a birth-day oracle', () => {
   // A chart whose dasha tree starts at the hidden birth instant; every later boundary is fixed.
-  function chartBornOn(birthDay: string): SiderealChart {
-    const birth = `${birthDay}T12:00:00Z`;
+  function chartBornOn(birthDay: string, birth = `${birthDay}T12:00:00Z`): SiderealChart {
     const dashas = {
       ...DASHAS,
       maha_dasha_sequence: [
@@ -334,27 +361,68 @@ describe('get_timing is not a birth-day oracle', () => {
     ...Array.from({ length: 31 }, (_, i) => ({ start: `1990-03-${pad(i + 1)}`, end: `1990-03-${pad(i + 1)}` })),
   ];
 
+  /**
+   * A faithful fake of the period engine: like the real one it computes against the
+   * birth instant, so the running maha lord is "sun" for a day before birth and
+   * "rahu" after it, in transits (fusion), domains and strength alike.
+   */
+  function skyBornOn(chart: SiderealChart, birthDay: string) {
+    return vi.fn(async (period: { start: string }) => {
+      const lord = period.start < birthDay ? 'sun' : 'rahu';
+      const forecast = {
+        domain: 'career',
+        strength_summary: {
+          band: 'steady', key_graha: lord, key_graha_rupas: 6, key_graha_meets_minimum: true, sav_bindus: 28, note: '',
+        },
+        current_emphasis: {
+          active_dasha_significator: lord, dasha_levels: ['maha'], matched_dasha_lords: [lord],
+          under_sade_sati: false, transit_severity: 'neutral',
+        },
+        upcoming_windows: [],
+      };
+      const strength = {
+        ashtakavarga: { sarva: { total: 337 } },
+        shadbala: { planets: { [lord]: { planet: lord, total_rupas: 6, required_rupas: 5, meets_minimum: true } } },
+      };
+      return {
+        ...chart,
+        transit_context: { ...TRANSITS, fusion: { ...TRANSITS.fusion, maha_lord: lord, antar_lord: lord } },
+        domains_context: { forecasts: { career: forecast } },
+        strength_context: strength,
+      } as unknown as SiderealChart;
+    });
+  }
+
   async function transcript(birthDay: string): Promise<unknown[]> {
     const chart = chartBornOn(birthDay);
     const timing = tool({
       chart,
       birthYear: Number(birthDay.slice(0, 4)),
-      loadPeriodChart: vi.fn(async () => ({ ...chart, transit_context: TRANSITS }) as SiderealChart),
+      loadPeriodChart: skyBornOn(chart, birthDay),
     });
     const answers: unknown[] = [];
-    for (const section of ['dashas', 'transits'] as const) {
+    for (const section of ['dashas', 'transits', 'domains', 'strength'] as const) {
       for (const period of probes) answers.push(await timing.execute({ section, ...period }, context()));
     }
     return answers;
   }
 
-  it('answers every month of 1989-1991 and every day of March 1990 identically for two birth days in 1990', async () => {
+  it('answers every section, every month of 1989-1991 and every day of March 1990 identically for two birth days in 1990', async () => {
     const march = await transcript('1990-03-17');
     const november = await transcript('1990-11-02');
-    expect(march).toHaveLength(probes.length * 2);
+    expect(march).toHaveLength(probes.length * 4);
     expect(march).toEqual(november);
     // Sanity: the year is still the boundary, so 1989 is refused and 1990 is not.
     expect(march[0]).toEqual({ error: BEFORE_BIRTH_MESSAGE });
     expect(march[12]).not.toHaveProperty('error');
+  });
+
+  it('a birth late on 31 Dec (local) reads June of that year like a mid-year birth', async () => {
+    // 1990-12-31 20:00 PST is 1991-01-01T04:00Z: the local year (1990) must win.
+    const june = { section: 'dashas', start: '1990-06-01', end: '1990-06-30' };
+    const pstEdge = await tool({ chart: chartBornOn('1990-12-31', '1991-01-01T04:00:00Z'), birthYear: 1990 }).execute(june, context());
+    const midYear = await tool({ chart: chartBornOn('1990-06-15'), birthYear: 1990 }).execute(june, context());
+    expect(pstEdge).toMatchObject({ data: { maha: [{ start_month: 'birth' }] } });
+    expect(pstEdge).toEqual(midYear);
   });
 });

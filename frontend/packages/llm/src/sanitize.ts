@@ -58,7 +58,11 @@ const MS_PER_DAY = 1000 * 60 * 60 * 24;
 /** One dated sequence row at the LLM-bound month precision ("YYYY-MM"). */
 export interface SanitizedDatedPeriod {
   readonly lord: string;
-  readonly duration_years: number;
+  /**
+   * The row's length in years. Absent on rows that start at birth: there it is the
+   * birth balance, and balance plus the month-precision end gives the birth month.
+   */
+  readonly duration_years?: number;
   readonly start_month: string;
   readonly end_month: string;
 }
@@ -66,7 +70,11 @@ export interface SanitizedDatedPeriod {
 /** A maha period after relativization: absolute dates replaced by a status. */
 export interface SanitizedMahaPeriod {
   readonly lord: string;
-  readonly duration_years: number;
+  /**
+   * The row's length in years. Absent on rows that start at birth: there it is the
+   * birth balance, and balance plus the month-precision end gives the birth month.
+   */
+  readonly duration_years?: number;
   readonly status: string;
   /** Month-precision window; present on NON-PAST rows of tree-bearing charts. */
   readonly start_month?: string;
@@ -78,7 +86,11 @@ export interface SanitizedMahaPeriod {
 /** The current period after relativization: end_date replaced by months left. */
 export interface SanitizedCurrentPeriod {
   readonly lord: string;
-  readonly duration_years: number;
+  /**
+   * The row's length in years. Absent on rows that start at birth: there it is the
+   * birth balance, and balance plus the month-precision end gives the birth month.
+   */
+  readonly duration_years?: number;
   readonly months_remaining: number;
   /** Month-precision window; present when the chart carries the dasha tree. */
   readonly start_month?: string;
@@ -319,11 +331,20 @@ function wholeDaysBetween(from: Date, to: Date): number {
   return Math.floor((to.getTime() - from.getTime()) / MS_PER_DAY);
 }
 
+/**
+ * `duration_years`, except on a row that starts at birth: there it is the exact
+ * birth balance, which with the row's end month gives away the birth month. It
+ * is withheld, not rounded: a rounded balance still narrows the month.
+ */
+function lengthOf(period: DashaPeriod, birthStart: string | undefined): { readonly duration_years?: number } {
+  return period.start_date === birthStart ? {} : { duration_years: period.duration_years };
+}
+
 /** A dated sequence row reduced to month precision (the LLM-bound granularity). */
 function toDatedPeriod(period: DashaPeriod, birthStart: string | undefined): SanitizedDatedPeriod {
   return {
     lord: period.lord,
-    duration_years: period.duration_years,
+    ...lengthOf(period, birthStart),
     start_month: dashaBoundaryMonth(period.start_date, birthStart),
     end_month: dashaBoundaryMonth(period.end_date, birthStart),
   };
@@ -343,7 +364,7 @@ function relativizeMahaPeriod(
 ): SanitizedMahaPeriod {
   const start = new Date(period.start_date);
   const end = new Date(period.end_date);
-  const base = { lord: period.lord, duration_years: period.duration_years };
+  const base = { lord: period.lord, ...lengthOf(period, birthStart) };
   const window = period.antar_sequence
     ? {
         start_month: dashaBoundaryMonth(period.start_date, birthStart),
@@ -380,7 +401,7 @@ function relativizeCurrentPeriod(
   const remaining = Math.max(0, Math.floor(wholeDaysBetween(now, end) / DAYS_PER_MONTH));
   return {
     lord: period.lord,
-    duration_years: period.duration_years,
+    ...lengthOf(period, birthStart),
     months_remaining: remaining,
     // Month-precision window — ONLY when the chart carries the dasha tree, so
     // older-bundle sanitization stays unchanged.
