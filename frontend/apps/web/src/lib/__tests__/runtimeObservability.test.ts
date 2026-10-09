@@ -13,6 +13,7 @@ import {
   clearRuntimeMoonWindow,
   clearRuntimeResolvePlace,
   clearRuntimePredictive,
+  publishPinnedThreads,
   publishPredictiveRequestKeys,
   publishRuntimeError,
   publishRuntimeGenerator,
@@ -122,5 +123,12 @@ describe('runtime observability', () => {
     set('after-stop')
 
     expect(window.__almameshPredictiveRequestKeys).toEqual(['today', 'june-2019', '(none)', 'today'])
+  })
+
+  it('publishes the pinned threads for the e2e suites (ids and pins only)', () => {
+    publishPinnedThreads(() => [{ id: 't1', as_of: { start: '2027-01-01', end: '2027-12-31', granularity: 'year' } }])
+    expect(window.__almameshPinnedThreads?.()).toEqual([
+      { id: 't1', as_of: { start: '2027-01-01', end: '2027-12-31', granularity: 'year' } },
+    ])
   })
 })
