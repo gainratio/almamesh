@@ -40,6 +40,7 @@ import {
   clearRuntimeGenerator,
   clearRuntimeMoonWindow,
   clearRuntimePredictive,
+  clearRuntimeResolvePlace,
   publishPredictiveRequestKeys,
   publishRuntimeError,
   publishRuntimeGenerator,
@@ -322,6 +323,7 @@ export function AlmaMeshRuntimeProvider({ children, runtime }: ProviderProps) {
       clearRuntimeGenerator()
       clearRuntimePredictive()
       clearRuntimeMoonWindow()
+      clearRuntimeResolvePlace()
     }
     bootstrapFailedRef.current = false
     retryableFailureRef.current = false
@@ -397,6 +399,7 @@ export function AlmaMeshRuntimeProvider({ children, runtime }: ProviderProps) {
             clearRuntimeGenerator()
             clearRuntimePredictive()
             clearRuntimeMoonWindow()
+            clearRuntimeResolvePlace()
             publishRuntimeError(e.message)
           }
         }
