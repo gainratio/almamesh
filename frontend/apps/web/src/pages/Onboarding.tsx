@@ -21,6 +21,8 @@ import { useOnboardingStatus } from "../hooks/useOnboardingStatus";
 import { BirthDatePicker } from "../components/BirthDatePicker";
 import { EngineBootProgress } from "../components/EngineBootProgress";
 import { TimePicker } from "../components/TimePicker";
+import { LocalTimeCheck } from "../components/shared/LocalTimeCheck";
+import { formatLocalDate } from "../lib/dates";
 import { useOnboardingStore } from "../stores/onboarding";
 import { getUserFriendlyError, getEngineWarmingMessage } from "../lib/errors";
 import { resolveReadyEngine } from "../lib/resolveReadyEngine";
@@ -140,6 +142,7 @@ export default function OnboardingPage() {
     setName,
     setBirthDate,
     setBirthTime,
+    setDstFold,
     setLocation,
     nextStep,
     prevStep,
@@ -424,6 +427,8 @@ export default function OnboardingPage() {
           // stored chart's birth details (birth_time_confidence) so cusp/
           // confidence displays and manual rectification know how exact it is.
           timeConfidence: data.timeConfidence,
+          // The user's explicit choice for a DST fall-back hour (never guessed).
+          ...(data.dstFold ? { dstFold: data.dstFold } : {}),
         };
 
         // Tag the chart with the active profile so it belongs to the right
@@ -789,6 +794,18 @@ export default function OnboardingPage() {
                 onChange={(time) => handleBirthTimeChange(time)}
               />
             </div>
+
+            {/* Daylight-saving edges: a gap time is refused, a repeated hour
+                needs the user's choice. Next stays disabled until resolved. */}
+            {data.timeConfidence !== "unknown" && data.birthDate && data.timezone && (
+              <LocalTimeCheck
+                date={formatLocalDate(data.birthDate)}
+                time={data.birthTime}
+                timeZone={data.timezone}
+                fold={data.dstFold}
+                onFoldChange={setDstFold}
+              />
+            )}
 
             {/* Birth-time confidence — honest about how exact this time is.
                 Feeds the chart's birth_time_confidence and manual rectification. */}

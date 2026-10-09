@@ -9,7 +9,7 @@ module only READS astronomy — it never touches the natal pipeline.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any, Final
 
 from skyfield import almanac
@@ -19,14 +19,34 @@ if TYPE_CHECKING:
     from almamesh.calculations import SkyfieldAstronomy
 
 _LOOKBACK_HOURS: Final[int] = 30  # a full day of slack to bracket the prior sunrise
+_DEGREES_PER_HOUR: Final[float] = 15.0  # Earth turns 15 deg of longitude per hour
 
 
 @dataclass(frozen=True)
 class SunWindow:
-    """The civil sunrise that opened the birth day and the following sunset (UTC)."""
+    """The civil sunrise that opened the birth day and the following sunset (UTC).
+
+    ``longitude`` is kept so the Vedic weekday can be read off the LOCAL date of
+    the sunrise: east of ~90 deg E a local morning sunrise is still the previous
+    day in UTC, so ``sunrise.weekday()`` alone names the wrong day.
+    """
 
     sunrise: datetime
     sunset: datetime
+    longitude: float
+
+    @property
+    def local_sunrise(self) -> datetime:
+        """The sunrise in local mean solar time at the birthplace (aware).
+
+        The Vedic day is astronomical (sunrise to sunrise at the place), so its
+        weekday is the date of the sunrise in local solar time. Local mean time
+        is exact here: civil sunrise lies hours from local midnight at every
+        latitude with a sunrise, so no civil-zone rule can move it across a date
+        line. It also needs no timezone database inside the engine.
+        """
+        offset = timedelta(hours=self.longitude / _DEGREES_PER_HOUR)
+        return self.sunrise.astimezone(timezone(offset))
 
 
 def _events(
@@ -73,4 +93,4 @@ def sun_window(astro: SkyfieldAstronomy, birth_utc: datetime, lat: float, lon: f
     times, is_rise = _events(astro, lat, lon, start, end)
     sunrise = _last_rise_before(times, is_rise, birth_utc)
     sunset = _first_set_after(times, is_rise, sunrise)
-    return SunWindow(sunrise=sunrise, sunset=sunset)
+    return SunWindow(sunrise=sunrise, sunset=sunset, longitude=lon)

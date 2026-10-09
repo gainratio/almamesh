@@ -26,6 +26,7 @@ export * from './lifeEvents';
 export * from './chat';
 export * from './profiles';
 export * from './adapters/chart';
+export * from './adapters/localBirthTime';
 export * from './adapters/chartGeometry';
 // The one sanctioned clock read on the chart path (see the module docstring).
 export * from './chartReferenceInstant';

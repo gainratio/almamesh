@@ -10,12 +10,14 @@
 import type { ReactElement } from 'react';
 import { useTranslation } from 'react-i18next';
 import type {
+  PlanetName,
   PlanetShadbalaData,
   StrengthCtx,
   ZodiacSign,
 } from '@almamesh/shared-types';
 import { Badge, Card } from '../../ui';
-import { formatPredictiveDate, formatRupas } from '../../../lib/predictive';
+import { formatRupas } from '../../../lib/predictive';
+import { formatDisplayDate, formatDisplayTime } from '../../../lib/dates';
 import { grahaName, signName } from '../../../lib/predictiveEventCopy';
 
 const SIGN_ORDER: readonly ZodiacSign[] = [
@@ -92,7 +94,13 @@ function BavTotals({ ctx }: { ctx: StrengthCtx }): ReactElement {
   );
 }
 
-function ShadbalaTable({ ctx }: { ctx: StrengthCtx }): ReactElement {
+function ShadbalaTable({
+  ctx,
+  birthTimeZone,
+}: {
+  ctx: StrengthCtx;
+  birthTimeZone?: string;
+}): ReactElement {
   const { t } = useTranslation('predictive');
   const rows = Object.values(ctx.shadbala.planets).filter(
     (row): row is PlanetShadbalaData => row !== undefined,
@@ -147,25 +155,69 @@ function ShadbalaTable({ ctx }: { ctx: StrengthCtx }): ReactElement {
             {t('strength.approx_footnote')}
           </p>
         )}
-        <p className="text-xs leading-relaxed text-text-tertiary">
-          {t('strength.sunrise_basis', { date: formatPredictiveDate(ctx.sunrise_utc_iso) })}
-        </p>
+        <SunriseBasis ctx={ctx} birthTimeZone={birthTimeZone} />
       </div>
     </Card>
   );
 }
 
+/** The graha the engine awarded Varabala (the weekday lord), if any. */
+export function vedicDayLord(ctx: StrengthCtx): PlanetName | undefined {
+  const rows = Object.values(ctx.shadbala.planets).filter(
+    (row): row is PlanetShadbalaData => row !== undefined,
+  );
+  return rows.find((row) => row.kala.vara.virupas > 0)?.planet;
+}
+
+/**
+ * The Kalabala sunrise on the BIRTHPLACE's calendar and clock, plus the weekday
+ * lord. The Vedic day runs sunrise to sunrise at the birthplace, so a viewer in
+ * another zone must not see the sunrise moved onto their own date. Without the
+ * birthplace zone the instant is shown in UTC and labelled so — never the
+ * viewer's zone.
+ */
+function SunriseBasis({
+  ctx,
+  birthTimeZone,
+}: {
+  ctx: StrengthCtx;
+  birthTimeZone?: string;
+}): ReactElement {
+  const { t } = useTranslation('predictive');
+  const zone = birthTimeZone || 'UTC';
+  const sunrise = new Date(ctx.sunrise_utc_iso);
+  const lord = vedicDayLord(ctx);
+  return (
+    <>
+      <p className="text-xs leading-relaxed text-text-tertiary" data-testid="strength-sunrise-basis">
+        {t('strength.sunrise_basis_zoned', {
+          date: formatDisplayDate(sunrise, { year: 'numeric', month: 'short', day: '2-digit', timeZone: zone }),
+          time: formatDisplayTime(sunrise, { hour: 'numeric', minute: '2-digit', timeZone: zone }),
+          zone,
+        })}
+      </p>
+      {lord && (
+        <p className="text-xs leading-relaxed text-text-tertiary" data-testid="strength-day-lord">
+          {t('strength.day_lord', { lord: grahaName(t, lord) })}
+        </p>
+      )}
+    </>
+  );
+}
+
 export interface StrengthPanelProps {
   readonly strengthCtx: StrengthCtx;
+  /** IANA zone of the birthplace: the sunrise is shown on its calendar. */
+  readonly birthTimeZone?: string;
 }
 
 /** Ashtakavarga + Shadbala, rendered verbatim from the engine. */
-export function StrengthPanel({ strengthCtx }: StrengthPanelProps): ReactElement {
+export function StrengthPanel({ strengthCtx, birthTimeZone }: StrengthPanelProps): ReactElement {
   return (
     <div className="space-y-6" data-testid="strength-panel">
       <SavGrid ctx={strengthCtx} />
       <BavTotals ctx={strengthCtx} />
-      <ShadbalaTable ctx={strengthCtx} />
+      <ShadbalaTable ctx={strengthCtx} birthTimeZone={birthTimeZone} />
     </div>
   );
 }

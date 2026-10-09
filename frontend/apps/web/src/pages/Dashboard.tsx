@@ -35,6 +35,7 @@ import {
   usePredictiveStore,
   useProfilesStore,
   useRectificationRecordsStore,
+  requireBirthTimeZone,
 } from "@almamesh/store";
 import { safeError } from "@almamesh/shared-types";
 
@@ -315,7 +316,12 @@ export default function DashboardPage() {
         }
       : undefined;
 
-    const chartTimeZone = storedChart?.birth_data?.birth_location_details.timezone ?? 'UTC';
+    // No `?? 'UTC'`: the chat's "current time in the chart's zone" tool would
+    // silently answer in UTC. A chart without a zone is refused, visibly.
+    const chartTimeZone = requireBirthTimeZone(
+      storedChart?.birth_data?.birth_location_details.timezone,
+      'chat',
+    );
     const loadCurrentChart = async (context: { now: Date; signal: AbortSignal }) => {
       if (!chartEngineContext) {
         throw new Error('The on-device chart engine is unavailable.');

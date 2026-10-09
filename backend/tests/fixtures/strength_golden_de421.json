@@ -1578,7 +1578,7 @@
                   "note": null,
                   "virupas": 10.954517
                 },
-                "total_virupas": 51.299303,
+                "total_virupas": 96.299303,
                 "tribhaga": {
                   "approximated": false,
                   "citation": "BPHS Kalabala \u2014 Tribhagabala (thirds of day/night; Jupiter always).",
@@ -1589,7 +1589,7 @@
                   "approximated": false,
                   "citation": "BPHS Kalabala \u2014 Varabala (weekday-lord, 45 Virupas).",
                   "note": null,
-                  "virupas": 0.0
+                  "virupas": 45.0
                 },
                 "yuddha": {
                   "approximated": true,
@@ -1598,7 +1598,7 @@
                   "virupas": 0.0
                 }
               },
-              "meets_minimum": false,
+              "meets_minimum": true,
               "naisargika": {
                 "approximated": false,
                 "citation": "BPHS Shadbala Adhyaya \u2014 Naisargikabala (k/7 of 60 Virupas).",
@@ -1640,8 +1640,8 @@
                   "virupas": 53.116288
                 }
               },
-              "total_rupas": 5.300666,
-              "total_virupas": 318.039957
+              "total_rupas": 6.050666,
+              "total_virupas": 363.039957
             },
             "saturn": {
               "cheshta": {
@@ -1679,7 +1679,7 @@
                   "approximated": false,
                   "citation": "BPHS Kalabala \u2014 Horabala (hora-lord from sunrise, 60 Virupas).",
                   "note": null,
-                  "virupas": 60.0
+                  "virupas": 0.0
                 },
                 "masa": {
                   "approximated": false,
@@ -1699,7 +1699,7 @@
                   "note": null,
                   "virupas": 54.522741
                 },
-                "total_virupas": 222.297726,
+                "total_virupas": 162.297726,
                 "tribhaga": {
                   "approximated": false,
                   "citation": "BPHS Kalabala \u2014 Tribhagabala (thirds of day/night; Jupiter always).",
@@ -1761,8 +1761,8 @@
                   "virupas": 57.364175
                 }
               },
-              "total_rupas": 7.993678,
-              "total_virupas": 479.620652
+              "total_rupas": 6.993678,
+              "total_virupas": 419.620652
             },
             "sun": {
               "cheshta": {
@@ -1800,7 +1800,7 @@
                   "approximated": false,
                   "citation": "BPHS Kalabala \u2014 Horabala (hora-lord from sunrise, 60 Virupas).",
                   "note": null,
-                  "virupas": 0.0
+                  "virupas": 60.0
                 },
                 "masa": {
                   "approximated": false,
@@ -1820,7 +1820,7 @@
                   "note": null,
                   "virupas": 54.522741
                 },
-                "total_virupas": 237.555429,
+                "total_virupas": 252.555429,
                 "tribhaga": {
                   "approximated": false,
                   "citation": "BPHS Kalabala \u2014 Tribhagabala (thirds of day/night; Jupiter always).",
@@ -1831,7 +1831,7 @@
                   "approximated": false,
                   "citation": "BPHS Kalabala \u2014 Varabala (weekday-lord, 45 Virupas).",
                   "note": null,
-                  "virupas": 45.0
+                  "virupas": 0.0
                 },
                 "yuddha": {
                   "approximated": true,
@@ -1882,8 +1882,8 @@
                   "virupas": 33.725562
                 }
               },
-              "total_rupas": 9.186481,
-              "total_virupas": 551.18886
+              "total_rupas": 9.436481,
+              "total_virupas": 566.18886
             },
             "venus": {
               "cheshta": {
@@ -2692,7 +2692,7 @@
                   "approximated": false,
                   "citation": "BPHS Kalabala \u2014 Masabala (month-lord, 30 Virupas).",
                   "note": null,
-                  "virupas": 30.0
+                  "virupas": 0.0
                 },
                 "nathonnatha": {
                   "approximated": false,
@@ -2706,7 +2706,7 @@
                   "note": null,
                   "virupas": 12.709763
                 },
-                "total_virupas": 131.84231,
+                "total_virupas": 101.84231,
                 "tribhaga": {
                   "approximated": false,
                   "citation": "BPHS Kalabala \u2014 Tribhagabala (thirds of day/night; Jupiter always).",
@@ -2768,8 +2768,8 @@
                   "virupas": 38.792793
                 }
               },
-              "total_rupas": 5.575919,
-              "total_virupas": 334.555165
+              "total_rupas": 5.075919,
+              "total_virupas": 304.555165
             },
             "sun": {
               "cheshta": {
@@ -2934,7 +2934,7 @@
                   "approximated": false,
                   "citation": "BPHS Kalabala \u2014 Masabala (month-lord, 30 Virupas).",
                   "note": null,
-                  "virupas": 0.0
+                  "virupas": 30.0
                 },
                 "nathonnatha": {
                   "approximated": false,
@@ -2948,7 +2948,7 @@
                   "note": null,
                   "virupas": 47.290237
                 },
-                "total_virupas": 81.080288,
+                "total_virupas": 111.080288,
                 "tribhaga": {
                   "approximated": false,
                   "citation": "BPHS Kalabala \u2014 Tribhagabala (thirds of day/night; Jupiter always).",
@@ -3010,8 +3010,8 @@
                   "virupas": 33.28142
                 }
               },
-              "total_rupas": 6.332565,
-              "total_virupas": 379.953899
+              "total_rupas": 6.832565,
+              "total_virupas": 409.953899
             }
           }
         },

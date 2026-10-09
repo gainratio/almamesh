@@ -11,6 +11,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   requestRegeneration,
+  resolveLocalTime,
+  type DstFold,
   type LocalBirthInput,
   type PendingChangeField,
   type PendingChanges,
@@ -20,6 +22,7 @@ import {
 } from '@almamesh/store';
 import { TIME_CONFIDENCE, type TimeConfidence } from '@almamesh/constants';
 import { LocationSearch } from '../../components/shared/LocationSearch';
+import { LocalTimeCheck } from '../../components/shared/LocalTimeCheck';
 import { type BirthDetails, birthDetailsFromBirthData } from './birthDetailsFromBirthData';
 import { birthMetaFromDetails, planProfileSave, type ProfileSavePlan } from './planProfileSave';
 import { saveTimeConfidence, type TimeConfidenceSaveResult } from './saveTimeConfidence';
@@ -47,7 +50,42 @@ const REGENERATION_FIELDS_METADATA: Record<string, { scope: RegenerationScope; b
   birth_location: { scope: 'chart+interpretation', base_cost: 0 },
   // A rectified time changes the effective instant -> recompute the chart.
   rectified_time: { scope: 'chart+interpretation', base_cost: 0 },
+  // Which occurrence of a repeated DST hour: a different instant -> recompute.
+  dst_fold: { scope: 'chart+interpretation', base_cost: 0 },
 };
+
+/** Edits that move the effective clock, invalidating a DST-occurrence choice. */
+const CLOCK_FIELDS: ReadonlySet<PendingChangeField> = new Set([
+  'birth_date',
+  'birth_time',
+  'birth_location',
+  'rectified_time',
+]);
+
+/** The pending DST choice ('' = cleared by a clock edit), else the stored one. */
+function currentFold(
+  pending: DstFold | '' | undefined,
+  stored: DstFold | undefined,
+): { dst_fold?: DstFold } {
+  const fold = pending !== undefined ? pending : stored;
+  return fold ? { dst_fold: fold } : {};
+}
+
+/** The i18n key explaining why this clock cannot be saved yet, if any. */
+function localTimeProblem(details: BirthDetails): string | null {
+  const zone = details.location?.timezone;
+  const clock = details.rectified_time || details.birth_time;
+  if (!zone || !details.birth_date || !clock) return null;
+  let kind: string;
+  try {
+    kind = resolveLocalTime(details.birth_date, clock, zone).kind;
+  } catch {
+    return null; // malformed input: the other required-field checks own it
+  }
+  if (kind === 'nonexistent') return 'onboarding:birth_time.dst_gap';
+  if (kind === 'ambiguous' && !details.dst_fold) return 'onboarding:birth_time.dst_overlap';
+  return null;
+}
 
 const CONFIDENCE_KEYS = Object.keys(TIME_CONFIDENCE) as TimeConfidence[];
 
@@ -164,6 +202,8 @@ export default function ProfileSettings() {
     setSaveNotice(null);
     setConfidenceSave(null);
     setPendingChange(field, value);
+    // A DST-occurrence choice belongs to one clock; moving the clock drops it.
+    if (CLOCK_FIELDS.has(field)) setPendingChange('dst_fold', '');
   };
 
   const currentDetails: BirthDetails = {
@@ -179,6 +219,7 @@ export default function ProfileSettings() {
     time_confidence: (pendingChanges.time_confidence !== undefined
       ? pendingChanges.time_confidence
       : (initialDetails?.time_confidence ?? 'exact')) as TimeConfidence,
+    ...currentFold(pendingChanges.dst_fold, initialDetails?.dst_fold),
   };
 
   // Candidate birth for the LIVE, non-destructive lagna preview. Uses the
@@ -186,14 +227,16 @@ export default function ProfileSettings() {
   // `toBirthInput` the real chart path uses, so the birthplace-tz -> UTC
   // conversion is identical. Null until date + place are known.
   const previewInput: LocalBirthInput | null =
-    currentDetails.birth_date && currentDetails.location
+    // No `|| 'UTC'`: without the birthplace zone there is no honest preview.
+    currentDetails.birth_date && currentDetails.location?.timezone
       ? {
           date: currentDetails.birth_date,
           time: currentDetails.birth_time,
           rectifiedTime: currentDetails.rectified_time || currentDetails.birth_time,
           latitude: currentDetails.location.lat,
           longitude: currentDetails.location.lon,
-          timezone: currentDetails.location.timezone || 'UTC',
+          timezone: currentDetails.location.timezone,
+          ...(currentDetails.dst_fold ? { dstFold: currentDetails.dst_fold } : {}),
         }
       : null;
   const lagnaPreview = useLagnaPreview(engine, engineError, previewInput, previewRetryAttempt);
@@ -303,6 +346,19 @@ export default function ProfileSettings() {
   const handleSaveClick = (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+
+    // A DST edge is the user's to resolve, and it explains a preview failure
+    // better than "could not calculate", so it is checked first.
+    const timeProblem = localTimeProblem(currentDetails);
+    if (timeProblem) {
+      setError(
+        t(timeProblem, {
+          time: currentDetails.rectified_time || currentDetails.birth_time,
+          zone: currentDetails.location?.timezone,
+        }),
+      );
+      return;
+    }
 
     // A rectified time may cross the rising-sign boundary. Never open a modal
     // without knowing whether the mandatory sign-flip acknowledgement applies.
@@ -502,6 +558,16 @@ export default function ProfileSettings() {
             />
           </div>
         </div>
+
+        {currentDetails.location?.timezone && (
+          <LocalTimeCheck
+            date={currentDetails.birth_date}
+            time={currentDetails.rectified_time || currentDetails.birth_time}
+            timeZone={currentDetails.location.timezone}
+            fold={currentDetails.dst_fold}
+            onFoldChange={(fold) => handleFieldChange('dst_fold', fold)}
+          />
+        )}
 
         {/* Birth-time rectification */}
         <div className="rounded-lg border border-ui-border bg-background-secondary/40 p-4">

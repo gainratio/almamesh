@@ -221,7 +221,9 @@
     "meets": "Atinge o mínimo",
     "below": "Abaixo do mínimo",
     "approx_footnote": "Componentes marcados com ≈ usam aproximações documentadas do cálculo clássico; o motor sinaliza cada um em vez de apresentá-lo como exato.",
-    "sunrise_basis": "Kālabala é ancorado ao nascer do sol civil anterior ao nascimento ({{date}})."
+    "sunrise_basis": "Kālabala é ancorado ao nascer do sol civil anterior ao nascimento ({{date}}).",
+    "sunrise_basis_zoned": "Kālabala é ancorado ao nascer do sol local no lugar de nascimento: {{date}}, {{time}} ({{zone}}).",
+    "day_lord": "Senhor do dia (o dia védico começa no nascer do sol local): {{lord}}"
   },
   "domains": {
     "heading": "Áreas da Vida",

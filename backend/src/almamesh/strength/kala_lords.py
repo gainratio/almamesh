@@ -55,7 +55,11 @@ _AVG_MONTH_DAYS: Final[float] = 30.4375
 
 
 def _weekday_index(sunrise: datetime) -> int:
-    """0=Sunday..6=Saturn for the Vedic day, which begins at sunrise."""
+    """0=Sunday..6=Saturn for the Vedic day, which begins at sunrise.
+
+    ``sunrise`` must be the LOCAL sunrise (``SunWindow.local_sunrise``): the
+    weekday is the birthplace's calendar day, never the UTC one.
+    """
     return (sunrise.weekday() + 1) % 7
 
 

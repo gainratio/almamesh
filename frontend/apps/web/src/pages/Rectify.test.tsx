@@ -555,6 +555,22 @@ describe('RectifyPage', () => {
     fireEvent.click(screen.getByTestId('regen-confirm-btn'));
   }
 
+  it('refuses to regenerate a chart whose stored birthplace has no timezone (no silent UTC)', async () => {
+    const noZone = {
+      ...MOCK_CHART,
+      birth_data: {
+        ...MOCK_CHART.birth_data,
+        birth_location_details: { ...MOCK_CHART.birth_data.birth_location_details, timezone: '' },
+      },
+    };
+    useChartLibraryStore.setState({ charts: { 'chart-1': noZone as never } });
+    await confirmFirstCandidate();
+
+    await screen.findByTestId('rectify-save-error');
+    expect(regenerationRunner).not.toHaveBeenCalled();
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
   it('logs a fixed code when the regeneration fails', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     regenerationRunner.mockImplementation(() => Promise.reject(new Error('worker died')));

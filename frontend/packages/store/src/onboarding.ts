@@ -9,6 +9,7 @@
 import { create, StateCreator } from 'zustand';
 import type { TimeConfidence } from '@almamesh/constants';
 import { safeError } from '@almamesh/shared-types';
+import { type DstFold, resolveLocalTime } from './adapters/localBirthTime';
 
 /**
  * Format a Date as YYYY-MM-DD in LOCAL timezone (not UTC)
@@ -28,6 +29,23 @@ function formatLocalDate(date: Date): string {
  */
 export type OnboardingSaveCallback = (data: OnboardingData, step: number) => Promise<void>;
 
+/** How the entered local birth time maps onto real instants. */
+export type LocalTimeStatus = 'incomplete' | 'unique' | 'nonexistent' | 'ambiguous';
+
+function localTimeStatusOf(data: OnboardingData): LocalTimeStatus {
+  if (!data.birthDate || data.birthTime.length < 4 || !data.timezone) return 'incomplete';
+  try {
+    return resolveLocalTime(formatLocalDate(data.birthDate), data.birthTime, data.timezone).kind;
+  } catch {
+    return 'incomplete'; // malformed clock or unknown zone: other checks own that
+  }
+}
+
+function isResolvedLocalTime(status: LocalTimeStatus, fold: DstFold | undefined): boolean {
+  if (status === 'nonexistent') return false;
+  return status !== 'ambiguous' || fold !== undefined;
+}
+
 export interface OnboardingData {
   // Step 1: Name
   name: string;
@@ -38,6 +56,11 @@ export interface OnboardingData {
   // Step 3: Birth Time
   birthTime: string; // HH:MM format
   timeConfidence: TimeConfidence;
+  /**
+   * Which occurrence of a DST fall-back hour the birth was in. Set only by the
+   * user's explicit choice; cleared whenever date, time or place changes.
+   */
+  dstFold?: DstFold;
 
   // Step 4: Birth Location
   city: string;
@@ -77,6 +100,9 @@ export interface OnboardingStore {
   setName: (name: string) => void;
   setBirthDate: (date: Date) => void;
   setBirthTime: (time: string, confidence: TimeConfidence) => void;
+  setDstFold: (fold: DstFold) => void;
+  /** Whether the entered local time maps to one, zero or two instants. */
+  localTimeStatus: () => LocalTimeStatus;
   setLocation: (location: {
     city: string;
     state: string;
@@ -173,7 +199,7 @@ export const onboardingStoreCreator: StateCreator<OnboardingStore> = (set, get) 
 
   setBirthDate: (date: Date) => {
     set((state) => ({
-      data: { ...state.data, birthDate: date },
+      data: { ...state.data, birthDate: date, dstFold: undefined },
       error: null,
     }));
   },
@@ -186,6 +212,7 @@ export const onboardingStoreCreator: StateCreator<OnboardingStore> = (set, get) 
         birthTime: time,
         timeConfidence: confidence,
         needsRectification,
+        dstFold: undefined,
       },
       error: null,
     }));
@@ -193,10 +220,16 @@ export const onboardingStoreCreator: StateCreator<OnboardingStore> = (set, get) 
 
   setLocation: (location) => {
     set((state) => ({
-      data: { ...state.data, ...location },
+      data: { ...state.data, ...location, dstFold: undefined },
       error: null,
     }));
   },
+
+  setDstFold: (fold: DstFold) => {
+    set((state) => ({ data: { ...state.data, dstFold: fold }, error: null }));
+  },
+
+  localTimeStatus: () => localTimeStatusOf(get().data),
 
   setInterests: (interests: string[]) => {
     set((state) => ({
@@ -275,8 +308,12 @@ export const onboardingStoreCreator: StateCreator<OnboardingStore> = (set, get) 
       case 3:
         return data.city.trim().length >= 1;
       case 4:
-        // Time is valid if provided, or if user selected "unknown"
-        return data.timeConfidence === 'unknown' || data.birthTime.length >= 4;
+        // Time is valid if provided, or if user selected "unknown" — and a
+        // provided time must name exactly one instant: a DST-gap time is
+        // refused, and a repeated (fall-back) time needs the user's choice.
+        if (data.timeConfidence === 'unknown') return true;
+        if (data.birthTime.length < 4) return false;
+        return isResolvedLocalTime(localTimeStatusOf(data), data.dstFold);
       case 5:
         return true; // Life events are optional
       default:

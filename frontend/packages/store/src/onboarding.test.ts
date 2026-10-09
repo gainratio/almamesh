@@ -67,3 +67,47 @@ describe('onboarding store — step validation follows the flow order', () => {
     expect(store.getState().currentStep).toBe(5);
   });
 });
+
+describe('onboarding store — daylight-saving edges block the time step until resolved', () => {
+  let store: ReturnType<typeof createStore<OnboardingStore>>;
+  const LA = { city: 'Los Angeles', state: 'CA', country: 'US', latitude: 34.05, longitude: -118.24, timezone: 'America/Los_Angeles' };
+
+  beforeEach(() => {
+    store = createStore<OnboardingStore>(onboardingStoreCreator);
+    store.getState().setName('Test Native');
+    store.getState().setLocation(LA);
+  });
+
+  it('rejects a time that never existed (spring-forward gap)', () => {
+    store.getState().setBirthDate(new Date(2024, 2, 10));
+    store.getState().setBirthTime('02:30', 'exact');
+    expect(store.getState().localTimeStatus()).toBe('nonexistent');
+    expect(store.getState().isStepValid(4)).toBe(false);
+  });
+
+  it('requires a choice for a time that happened twice, then accepts it', () => {
+    store.getState().setBirthDate(new Date(2024, 10, 3));
+    store.getState().setBirthTime('01:30', 'exact');
+    expect(store.getState().localTimeStatus()).toBe('ambiguous');
+    expect(store.getState().isStepValid(4)).toBe(false);
+    store.getState().setDstFold('later');
+    expect(store.getState().isStepValid(4)).toBe(true);
+    expect(store.getState().data.dstFold).toBe('later');
+  });
+
+  it('drops a stale choice when the time changes', () => {
+    store.getState().setBirthDate(new Date(2024, 10, 3));
+    store.getState().setBirthTime('01:30', 'exact');
+    store.getState().setDstFold('earlier');
+    store.getState().setBirthTime('01:45', 'exact');
+    expect(store.getState().data.dstFold).toBeUndefined();
+    expect(store.getState().isStepValid(4)).toBe(false);
+  });
+
+  it('accepts an ordinary time', () => {
+    store.getState().setBirthDate(new Date(2024, 0, 10));
+    store.getState().setBirthTime('20:00', 'exact');
+    expect(store.getState().localTimeStatus()).toBe('unique');
+    expect(store.getState().isStepValid(4)).toBe(true);
+  });
+});

@@ -335,4 +335,42 @@ describe('MeshEdgePage', () => {
       ),
     );
   });
+  it('refuses relationship chat when the anchor chart has no birthplace timezone (no silent UTC)', async () => {
+    writeLlmSettings(openRouterPreset('sk-or-v1-0000-synthetic-test-key', 'test-org/test-model'));
+    __setMemoryForTest({
+      indexMessage: vi.fn().mockResolvedValue(undefined),
+      retrieve: vi.fn().mockResolvedValue([]),
+      deleteForProfile: vi.fn().mockResolvedValue(undefined),
+      deleteForThread: vi.fn().mockResolvedValue(undefined),
+      clear: vi.fn().mockResolvedValue(undefined),
+    });
+    seedPeople(SPOUSE);
+    seedCharts(SPOUSE);
+    const anchor = chartFor(ANCHOR.id);
+    const details = anchor.birth_data!.birth_location_details;
+    useChartLibraryStore.setState((state) => ({
+      charts: {
+        ...state.charts,
+        [`chart-${ANCHOR.id}`]: {
+          ...anchor,
+          birth_data: { ...anchor.birth_data!, birth_location_details: { ...details, timezone: '' } },
+        },
+      },
+    }));
+    seedEdge(SPOUSE, MESH_EDGE_SPOUSE);
+    renderAt('/mesh/p-spouse');
+
+    fireEvent.click(screen.getByTestId('mesh-discuss-chat'));
+    fireEvent.change(await screen.findByTestId('chat-input'), {
+      target: { value: 'How are our charts working together?' },
+    });
+    fireEvent.click(screen.getByTestId('chat-send-button'));
+
+    // The send fails visibly (the chat's generic error card) and nothing is
+    // sent: no model ever answers "what time is it" in a guessed UTC.
+    await waitFor(() =>
+      expect(screen.getByTestId('chat-panel').textContent).toMatch(/couldn't process your request/),
+    );
+    expect(llmMocks.streamAgentChat).not.toHaveBeenCalled();
+  });
 });

@@ -4,7 +4,7 @@
  *
  * Responsibilities:
  *  - Builds a `RectificationInput` from the profile's stored chart + structured
- *    life events (DST-aware UTC offset via dayjs; always pins `referenceDate`).
+ *    life events (explicit DST resolution via `localTimeToInstant`; always pins `referenceDate`).
  *  - Calls `useRectificationStore.run(engine, input)` and exposes the store's
  *    `{ status, result, error }` through `state`.
  *  - Predictive gating: sets `useRectificationGate.active = true` while mounted
@@ -22,14 +22,15 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import dayjs from 'dayjs';
-import utc from 'dayjs/plugin/utc';
-import timezone from 'dayjs/plugin/timezone';
 import {
   useChartLibraryStore,
   useLifeEventsStore,
   useRectificationStore,
   isStructuredLifeEvent,
+  dstFoldFromStoredUtc,
+  localTimeToInstant,
+  requireBirthTimeZone,
+  type DstFold,
   type LifeEvent,
   type RectificationRuntime,
   type StoredChart,
@@ -48,9 +49,6 @@ import { useEngineBootProgress, useOptionalChartEngine } from '../providers/char
 import { predictiveReferenceInstant } from '../lib/predictive';
 import { useRectificationGate } from '../lib/rectificationGate';
 
-// Extend dayjs once; idempotent if another module already extended it.
-dayjs.extend(utc);
-dayjs.extend(timezone);
 
 // ---------------------------------------------------------------------------
 // Pure helpers (module-level for testability)
@@ -69,6 +67,7 @@ function birthDescForProfile(
   latitude: number;
   longitude: number;
   tz: string;
+  dstFold?: DstFold;
 } | null {
   const candidates = Object.values(charts).filter((c) => c.profile_id === profileId);
   const primary = candidates.find((c) => c.is_primary) ?? candidates[0];
@@ -86,8 +85,23 @@ function birthDescForProfile(
     effectiveTime,
     latitude: loc.latitude,
     longitude: loc.longitude,
-    tz: loc.timezone ?? 'UTC',
+    // No `?? 'UTC'`: buildWireInput refuses a missing zone (requireBirthTimeZone).
+    tz: loc.timezone,
+    ...storedFold(localDt, effectiveTime, loc.timezone, birth.birth_datetime_utc),
   };
+}
+
+/** The DST occurrence the stored chart used for a repeated hour, if any. */
+function storedFold(
+  localDt: string,
+  time: string,
+  zone: string,
+  storedUtc: string | undefined,
+): { dstFold?: DstFold } {
+  const date = localDt.split('T')[0] ?? '';
+  if (!zone || !storedUtc) return {};
+  const fold = dstFoldFromStoredUtc(date, time, zone, storedUtc);
+  return fold ? { dstFold: fold } : {};
 }
 
 /**
@@ -124,12 +138,13 @@ export function buildWireInput(
   mode: RectificationMode,
   spanMinutes?: number,
 ): RectificationInput {
-  const tzd = dayjs.tz(`${birth.date}T${birth.effectiveTime}`, birth.tz);
+  const zone = requireBirthTimeZone(birth.tz, 'rectification');
+  const instant = localTimeToInstant(birth.date, birth.effectiveTime, zone, birth.dstFold);
   return {
-    datetimeUtc: tzd.utc().toISOString(),
+    datetimeUtc: instant.utc,
     latitude: birth.latitude,
     longitude: birth.longitude,
-    utcOffsetMinutes: tzd.utcOffset(),
+    utcOffsetMinutes: instant.offsetMinutes,
     events,
     mode,
     anchorConfidence: mode === 'window' ? 'unknown' : 'about',
@@ -362,7 +377,18 @@ export function useRectification(profileId: string): UseRectificationResult {
 
       if (wireEvents.length < 1) return;
 
-      const wireInput = buildWireInput(birth, wireEvents, mode, spanMinutes);
+      let wireInput: RectificationInput;
+      try {
+        wireInput = buildWireInput(birth, wireEvents, mode, spanMinutes);
+      } catch (err) {
+        // A missing zone or an unresolved DST edge: show it, never guess.
+        useRectificationStore.setState({
+          status: 'error',
+          result: null,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        return;
+      }
 
       // Reset the cancelled flag at the start of every run (important for
       // remounted wizards and for the retry path after a previous cancellation).

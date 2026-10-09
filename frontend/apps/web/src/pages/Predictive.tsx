@@ -112,7 +112,7 @@ export default function PredictivePage(): ReactElement {
 
           <TabsContent value="strength">
             {ready && layer.strengthCtx ? (
-              <StrengthPanel strengthCtx={layer.strengthCtx} />
+              <StrengthPanel strengthCtx={layer.strengthCtx} birthTimeZone={layer.birthTimeZone} />
             ) : (
               <PredictiveStatusCard layer={layer} auto />
             )}

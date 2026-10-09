@@ -111,11 +111,12 @@ def compute_kala(
     nath = nathonnatha(planet, frac_mid)
     paksha = pakshabala(planet, _moon_phase_frac(natal))
     tri = tribhagabala(planet, third, is_day)
+    local_rise = win.local_sunrise  # weekday lords read the LOCAL sunrise date
     lords = (
-        abdabala(planet, win.sunrise),
-        masabala(planet, win.sunrise),
-        varabala(planet, win.sunrise),
-        horabala(planet, win.sunrise, birth_utc),
+        abdabala(planet, local_rise),
+        masabala(planet, local_rise),
+        varabala(planet, local_rise),
+        horabala(planet, local_rise, birth_utc),
     )
     ayana = _ayanabala(planet, _tropical_longitude(natal, planet))
     yuddha = _yuddhabala(planet)
