@@ -68,6 +68,7 @@ describe('a chat-typed city never leaves the device, and the birth place never d
     const found = (await resolve?.execute({ query: 'Delhi' }, options())) as { status: string; place: { place_ref: string } };
     expect(found.status).toBe('found');
     const day = await timing?.execute({ section: 'transits', start: '2026-06-15', place_ref: found.place.place_ref, time: '15:00' }, options());
+    expect(day).not.toHaveProperty('error');
     const asked = await timing?.execute({ section: 'transits', start: '2026-06-16' }, options());
     const wire = [found, day, asked].map((value) => JSON.stringify({ ok: true, value })).join('\n');
     for (const pattern of COORDINATE_LIKE) expect(wire).not.toMatch(pattern);

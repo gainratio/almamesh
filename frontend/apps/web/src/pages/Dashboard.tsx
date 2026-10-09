@@ -339,6 +339,8 @@ export default function DashboardPage() {
       language,
       undefined,
       rectification,
+      undefined,
+      toolset.tools.some((tool) => tool.name === 'resolve_place'),
     );
     if (prepared.currentContextUnavailable) {
       const [system, ...rest] = messages;

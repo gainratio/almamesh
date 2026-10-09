@@ -303,7 +303,7 @@ const SYSTEM_PROMPT_LITE = [
   "  - YOGAS (ZERO TOLERANCE): discuss ONLY yogas that appear in the chart's yoga list.",
   "    If a yoga is not listed it DOES NOT EXIST here — never invent or name one.",
   "",
-  "PRIVACY: never mention any city/state/country name. Say 'birth location' generically.",
+  PRIVACY_RULE,
   "",
   OUTPUT_DISCIPLINE_RULES,
   "",

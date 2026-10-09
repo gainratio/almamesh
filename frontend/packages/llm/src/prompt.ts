@@ -235,8 +235,6 @@ const CHAT_SYSTEM_PROMPT = [
   "",
   PERIOD_RULES,
   "",
-  PLACE_RULES,
-  "",
   PRIVACY_RULE,
   "",
   "If the user reaches for Sanskrit or technical terms (dasha, nakshatra, yoga,",
@@ -516,6 +514,7 @@ export function buildChatMessages(
   meshEdge?: SanitizedMeshEdge,
   rectification?: ChatRectificationContext,
   budget: ChatPromptBudget = CLOUD_CHAT_BUDGET,
+  places = false,
 ): ChatMessage[] {
   // The raw-predictive engine block is dropped under a profile that excludes
   // it; `predictive` is optional on SanitizedChart, so the natal-only facts
@@ -554,8 +553,11 @@ export function buildChatMessages(
     .filter((part) => part !== "")
     .join("\n");
 
-  const systemPrompt =
-    meshBlock === "" ? CHAT_SYSTEM_PROMPT : CHAT_SYSTEM_PROMPT + MESH_CONTEXT_EXCEPTION;
+  // PLACE_RULES name resolve_place and needs_place, which exist only where the
+  // toolset registers them (full tier). Elsewhere an unknown tool call would end
+  // the turn tool-less, so the rules ride only when `places` is true.
+  const base = places ? CHAT_SYSTEM_PROMPT + "\n\n" + PLACE_RULES : CHAT_SYSTEM_PROMPT;
+  const systemPrompt = meshBlock === "" ? base : base + MESH_CONTEXT_EXCEPTION;
   const systemContent = withLanguage(systemPrompt, language);
 
   // Prior turns are model-authored prose + the user's own questions — plain UI

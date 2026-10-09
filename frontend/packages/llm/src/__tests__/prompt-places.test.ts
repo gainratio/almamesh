@@ -3,15 +3,26 @@ import { describe, expect, it } from "vitest";
 import type { SiderealChart } from "@almamesh/browser/types";
 import golden from "../../../../../backend/tests/fixtures/chart_golden_de421.json";
 import { buildChatMessages, PRIVACY_RULE } from "../prompt";
+import { buildSectionMessages } from "../structured-interpretation";
 import { sanitizeChartForLlm, todayAnalysisInstant } from "../sanitize";
 
 const chart = (golden as Record<string, SiderealChart>)["1988-08-08T01:14:00+00:00"] as SiderealChart;
 
-const system = (): string =>
+const systemFor = (places: boolean): string =>
   buildChatMessages(
     sanitizeChartForLlm(chart, todayAnalysisInstant(new Date("2026-06-20T00:00:00Z"))),
     "hi",
+    "layman",
+    [],
+    [],
+    undefined,
+    "en",
+    undefined,
+    undefined,
+    undefined,
+    places,
   )[0]?.content ?? "";
+const system = (): string => systemFor(true);
 
 describe("the narrowed privacy rule", () => {
   it("forbids the birth place and coordinates, and allows places the user typed", () => {
@@ -36,5 +47,26 @@ describe("chat prompt place rules", () => {
   it("never asks for a week or longer, and tells the model not to resolve places for it (P9)", () => {
     expect(system()).toContain("A week or longer never needs a place");
     expect(system()).toContain("don't resolve places for it");
+  });
+});
+
+describe("place rules ride only where resolve_place exists", () => {
+  it("full tier carries them; lite/minimal (no places) does not", () => {
+    for (const phrase of ["needs_place", "resolve_place", "Where were you"]) {
+      expect(systemFor(true)).toContain(phrase);
+      expect(systemFor(false)).not.toContain(phrase);
+    }
+  });
+
+  it("both tiers carry the narrowed privacy rule", () => {
+    expect(systemFor(true)).toContain(PRIVACY_RULE);
+    expect(systemFor(false)).toContain(PRIVACY_RULE);
+  });
+
+  it.each([false, true])("the structured prompt (lite=%s) shares PRIVACY_RULE, not its own sentence", (lite) => {
+    const sanitized = sanitizeChartForLlm(chart, todayAnalysisInstant(new Date("2026-06-20T00:00:00Z")));
+    const content = buildSectionMessages("core", sanitized, "layman", lite)[0]?.content ?? "";
+    expect(content).toContain(PRIVACY_RULE);
+    expect(content).not.toContain("never mention any city/state/country name");
   });
 });
