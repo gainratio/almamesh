@@ -321,9 +321,7 @@ export function useChatThread(
     profileId && selectedThread?.profile_id === profileId
       ? selectedThread
       : profileId
-        ? Object.values(threadsById)
-        .filter((t) => t.profile_id === profileId)
-        .sort((a, b) => b.updated_at.localeCompare(a.updated_at))[0] ?? null
+        ? useChatStore.getState().listThreads(profileId)[0] ?? null
         : null;
   const threadId = activeThread?.id ?? null;
   const messages = threadId ? (messagesByThread[threadId] ?? []) : [];
