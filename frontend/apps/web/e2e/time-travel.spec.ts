@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 
 import { LLM_SETTINGS_KEY, bootEngine, seedChart } from './interpretation.helpers';
 
@@ -28,6 +28,15 @@ interface WireMessage {
 interface AgentRequest {
   messages: WireMessage[];
   tools: Array<{ function: { name: string } }>;
+}
+
+/** Every requestKey the predictive store held on this page (the exit-gate hook). */
+async function predictiveRequestKeys(page: Page): Promise<string[]> {
+  const keys = await page.evaluate(
+    () => (window as unknown as { __almameshPredictiveRequestKeys?: string[] }).__almameshPredictiveRequestKeys,
+  );
+  if (!keys) throw new Error('window.__almameshPredictiveRequestKeys is missing: build with VITE_EXIT_GATE_HOOKS=1');
+  return [...keys];
 }
 
 test('[contract/stubbed] a typed June 2019 question reads June 2019, not today', async ({ page }) => {
@@ -98,19 +107,21 @@ test('[contract/stubbed] a typed June 2019 question reads June 2019, not today',
   await expect(atlasAsOf).toBeVisible({ timeout: 240_000 });
   const atlasBefore = (await atlasAsOf.textContent()) ?? '';
   expect(atlasBefore).not.toContain('2019');
-  // A period compute that borrowed the store slot and handed it back would
-  // pass a before/after compare, so watch the line for the whole journey.
-  await page.evaluate((baseline) => {
-    const atlas = document.querySelector('[data-testid="life-atlas"]');
+  // The predictive store's requestKey history (an exit-gate hook) from here
+  // on: a period compute that borrowed the slot and handed it back would pass
+  // a before/after compare, but not this.
+  const keysBefore = await predictiveRequestKeys(page);
+  const baselineKey = keysBefore[keysBefore.length - 1];
+  expect(baselineKey, 'the Life Atlas slot holds a computed reading').not.toBe('(none)');
+  // The "Working out the sky" status can be brief; record every text it shows.
+  await page.evaluate(() => {
     const seen: string[] = [];
-    (window as unknown as { __atlasAsOfChanges: string[] }).__atlasAsOfChanges = seen;
-    const record = () => {
-      const line = [...(atlas?.querySelectorAll('p') ?? [])].find((p) => p.textContent?.startsWith('As of '));
-      const text = line?.textContent ?? '(no As of line)';
-      if (text !== baseline && seen[seen.length - 1] !== text) seen.push(text);
-    };
-    new MutationObserver(record).observe(document.body, { subtree: true, childList: true, characterData: true });
-  }, atlasBefore);
+    (window as unknown as { __agentStatusHistory: string[] }).__agentStatusHistory = seen;
+    new MutationObserver(() => {
+      const text = document.querySelector('[data-testid="chat-agent-status"]')?.textContent;
+      if (text && seen[seen.length - 1] !== text) seen.push(text);
+    }).observe(document.body, { subtree: true, childList: true, characterData: true });
+  });
 
   await page.getByTestId('floating-chat-button').click({ timeout: 60_000 });
   await page.getByTestId('chat-input').fill(QUESTION);
@@ -128,10 +139,13 @@ test('[contract/stubbed] a typed June 2019 question reads June 2019, not today',
     'get_timing',
   ]);
 
-  // The period compute runs the real engine (~30 s) and says so.
-  await expect(page.getByTestId('chat-agent-status')).toContainText('Working out the sky', { timeout: 60_000 });
   const chatPanel = page.getByTestId('chat-panel');
   await expect(chatPanel.getByText('I looked at 1–30 June 2019.', { exact: false })).toBeVisible({ timeout: 240_000 });
+  // The period compute runs the real engine and said so while it ran.
+  const statuses = await page.evaluate(
+    () => (window as unknown as { __agentStatusHistory: string[] }).__agentStatusHistory,
+  );
+  expect(statuses.some((text) => text.includes('Working out the sky')), statuses.join(' | ')).toBe(true);
 
   expect(agentRequests).toHaveLength(2);
   const toolResults = agentRequests[1].messages.filter((message) => message.role === 'tool');
@@ -146,10 +160,8 @@ test('[contract/stubbed] a typed June 2019 question reads June 2019, not today',
 
   // The Life Atlas still describes today: the period compute did not take its slot.
   await expect(atlasAsOf).toHaveText(atlasBefore);
-  const atlasChanges = await page.evaluate(
-    () => (window as unknown as { __atlasAsOfChanges: string[] }).__atlasAsOfChanges,
-  );
-  expect(atlasChanges, 'the Life Atlas "As of" line must not change during the journey').toEqual([]);
+  const keysAfter = await predictiveRequestKeys(page);
+  expect(keysAfter.slice(keysBefore.length), 'the Life Atlas slot must keep its requestKey').toEqual([]);
   await page.screenshot({ path: SCREENSHOT, fullPage: true });
   expect(consoleErrors, 'the journey must keep a clean console').toEqual([]);
 });
