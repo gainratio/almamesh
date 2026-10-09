@@ -15,11 +15,12 @@
 import { create, type StateCreator } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
-import type { ChatMessage, ChatThread, ChatThreadSummary } from '@almamesh/shared-types';
+import type { ChatMessage, ChatThread, ChatThreadAsOf, ChatThreadSummary } from '@almamesh/shared-types';
 import { hasValidChatSummaryShape, summaryMatchesMessages } from '@almamesh/llm';
 import { unlinkMissingChartLinks } from './chatChartLinks';
 import { deletionAwareIdbStorage, whenPersistenceCommitted } from './deletionTombstones';
 import { whenHydrated, type HydrationOutcome } from './hydrationBarrier';
+import { chatAsOfProblem, isChatThreadAsOf } from './chatAsOf';
 
 type ChatRole = ChatMessage['role'];
 
@@ -27,7 +28,7 @@ type ChatRole = ChatMessage['role'];
 const PERSIST_NAME = 'almamesh-chat-history';
 
 /** Bump when the persisted chat shape changes; always pair with `migrate`. */
-export const CHAT_PERSIST_VERSION = 2;
+export const CHAT_PERSIST_VERSION = 3;
 
 /** The slice of the store that `partialize` actually persists. */
 export interface PersistedChatState {
@@ -41,6 +42,17 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
+/** v3 (time travel): a thread whose pin is malformed keeps everything but the pin. */
+function withoutMalformedPins(threads: PersistedChatState['threads']): PersistedChatState['threads'] {
+  return Object.fromEntries(
+    Object.entries(threads).map(([id, thread]) => {
+      if (!isPlainRecord(thread) || !('as_of' in thread) || isChatThreadAsOf(thread.as_of)) return [id, thread];
+      const { as_of: _malformed, ...kept } = thread as ChatThread;
+      return [id, kept];
+    }),
+  ) as PersistedChatState['threads'];
+}
+
 /**
  * Defensive hydration: tolerate ANY old/unknown/corrupt persisted blob and
  * always return valid `{ threads, messages, summaries }` maps. A returning visitor whose
@@ -52,9 +64,9 @@ export function migrateChatPersistedState(
   _fromVersion: number,
 ): PersistedChatState {
   const source = isPlainRecord(persisted) ? persisted : {};
-  const threads = isPlainRecord(source.threads)
-    ? (source.threads as PersistedChatState['threads'])
-    : {};
+  const threads = withoutMalformedPins(
+    isPlainRecord(source.threads) ? (source.threads as PersistedChatState['threads']) : {},
+  );
   const messages = isPlainRecord(source.messages)
     ? (source.messages as PersistedChatState['messages'])
     : {};
@@ -125,6 +137,10 @@ export interface ChatStore {
    * Returns the thread id. `chartId` links a freshly-created thread to a chart.
    */
   ensureThread: (profileId: string, chartId?: string) => string;
+  /** Open a NEW thread (never reuses one); pinned to a period when `asOf` is given. */
+  startThread: (profileId: string, chartId?: string, asOf?: ChatThreadAsOf) => string;
+  /** Change a time-travel thread's period; its messages stay. */
+  setThreadAsOf: (threadId: string, asOf: ChatThreadAsOf) => void;
   /**
    * Append a message. `options.error` marks a failed-turn notice: rendered as
    * an error bubble, excluded from the model-visible history by consumers.
@@ -139,7 +155,7 @@ export interface ChatStore {
   getSummary: (threadId: string) => ChatThreadSummary | null;
   /** Commit only a source-current summary; invalid/stale candidates are a no-op. */
   commitSummary: (summary: ChatThreadSummary) => Promise<boolean>;
-  /** All threads for a profile, newest-updated first. */
+  /** All threads for a profile, newest-updated first; ties go to the newest-inserted thread. */
   listThreads: (profileId: string) => ChatThread[];
   /** The profile's most-recently-updated thread, or null when it has none. */
   getActiveThread: (profileId: string) => ChatThread | null;
@@ -163,8 +179,13 @@ function byUpdatedDesc(a: ChatThread, b: ChatThread): number {
   return b.updated_at.localeCompare(a.updated_at);
 }
 
-/** A fresh, empty thread owned by a profile. */
-function makeThread(profileId: string, chartId?: string): ChatThread {
+function assertPin(asOf: ChatThreadAsOf): void {
+  const problem = chatAsOfProblem(asOf);
+  if (problem) throw new Error(`Invalid time-travel period: ${problem}`);
+}
+
+/** A fresh, empty thread owned by a profile; `as_of` stays the last key. */
+function makeThread(profileId: string, chartId?: string, asOf?: ChatThreadAsOf): ChatThread {
   const now = new Date().toISOString();
   return {
     id: nextId('thread'),
@@ -175,6 +196,7 @@ function makeThread(profileId: string, chartId?: string): ChatThread {
     updated_at: now,
     archived_at: null,
     message_count: 0,
+    ...(asOf ? { as_of: asOf } : {}),
   };
 }
 
@@ -200,6 +222,22 @@ export const chatStoreCreator: StateCreator<ChatStore> = (set, get) => ({
     const thread = makeThread(profileId, chartId);
     set((state) => ({ threads: { ...state.threads, [thread.id]: thread } }));
     return thread.id;
+  },
+
+  startThread: (profileId, chartId, asOf) => {
+    if (asOf) assertPin(asOf);
+    const thread = makeThread(profileId, chartId, asOf);
+    set((state) => ({ threads: { ...state.threads, [thread.id]: thread } }));
+    return thread.id;
+  },
+
+  setThreadAsOf: (threadId, asOf) => {
+    assertPin(asOf);
+    const thread = get().threads[threadId];
+    if (!thread) throw new Error(`Cannot change the period: thread ${threadId} does not exist.`);
+    if (!thread.as_of) throw new Error('Only a time-travel thread can change its period.');
+    const next: ChatThread = { ...thread, as_of: asOf, updated_at: new Date().toISOString() };
+    set((state) => ({ threads: { ...state.threads, [threadId]: next } }));
   },
 
   appendMessage: (threadId, role, content, options) => {
@@ -276,6 +314,7 @@ export const chatStoreCreator: StateCreator<ChatStore> = (set, get) => ({
   listThreads: (profileId) =>
     Object.values(get().threads)
       .filter((t) => t.profile_id === profileId)
+      .reverse()
       .sort(byUpdatedDesc),
 
   getActiveThread: (profileId) => get().listThreads(profileId)[0] ?? null,
