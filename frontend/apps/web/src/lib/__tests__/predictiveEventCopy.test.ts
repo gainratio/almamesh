@@ -53,8 +53,13 @@ describe('timelineEventLabel', () => {
   it('renders a station with its direction and sign, in every language', () => {
     expect(timelineEventLabel(t, station)).toBe('Saturn turns retrograde in Pisces');
     expect(timelineEventLabel(t, { ...station, station_direction: 'direct' })).toBe('Saturn turns direct in Pisces');
-    expect(timelineEventLabel(i18n.getFixedT('es'), station)).toBe('Saturno inicia su retrógrado en Piscis');
+    expect(timelineEventLabel(i18n.getFixedT('es'), station)).toBe('Saturno inicia su movimiento retrógrado en Piscis');
     expect(timelineEventLabel(i18n.getFixedT('pt'), station)).toBe('Saturno fica retrógrado em Peixes');
+  });
+
+  it('renders a backward Jupiter sign change by its real destination sign (A1)', () => {
+    const backward = { ...TRANSIT_CTX.timeline.events[0], from_sign: 'leo', to_sign: 'cancer', descriptor: 'jupiter.ingress.cancer' } as const;
+    expect(timelineEventLabel(t, backward)).toBe('Jupiter enters Cancer');
   });
 
   it('a station without its direction keeps the plain line', () => {

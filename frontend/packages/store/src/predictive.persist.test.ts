@@ -419,6 +419,38 @@ describe("usePredictiveStore — raw contexts persistence (Spec 062 delta 1)", (
     expect(fresh.computePredictive).not.toHaveBeenCalled();
   });
 
+  it("reads an older build's timeline events (no station keys) as null after a reload", async () => {
+    const ingress = {
+      date: "2026-10-26T00:00:00Z",
+      kind: "sign_ingress",
+      graha: "jupiter",
+      from_sign: "Gemini",
+      to_sign: "Cancer",
+      from_lord: null,
+      to_lord: null,
+      sade_sati_phase: null,
+      severity: "neutral",
+      descriptor: "jupiter.ingress.cancer",
+    };
+    const withEvent = {
+      ...RAW,
+      transit_context: { ...rawTransit, timeline: { ...rawTransit.timeline, events: [ingress] } },
+    } as unknown as PredictiveContexts;
+    await usePredictiveStore.getState().ensurePredictive(makeRuntime(() => Promise.resolve(withEvent)), INPUT);
+    // Rewind the persisted UI event to the pre-Inc-B shape: no station keys at all.
+    const blob = JSON.parse(memMap.get(PREDICTIVE_PERSIST_NAME)!);
+    const [event] = blob.state.transitCtx.timeline.events;
+    delete event.station_direction;
+    delete event.station_sign;
+    usePredictiveStore.getState().reset();
+    memMap.set(PREDICTIVE_PERSIST_NAME, JSON.stringify(blob));
+    await usePredictiveStore.persist.rehydrate();
+
+    const events = usePredictiveStore.getState().transitCtx?.timeline.events ?? [];
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ to_sign: "cancer", station_direction: null, station_sign: null });
+  });
+
   it("flattens an unknown pre-v1 version to a clean idle", async () => {
     await usePredictiveStore.getState().ensurePredictive(makeRuntime(), INPUT);
     const blob = JSON.parse(memMap.get(PREDICTIVE_PERSIST_NAME)!);

@@ -337,6 +337,7 @@ describe("sanitizeChartForLlm — predictive contexts (transits/strength/vargas/
       to_sign: null,
       station_direction: "retrograde",
       station_sign: "pisces",
+      severity: "neutral",
       descriptor: "saturn.station.retrograde",
     } as const;
     const chart = {
@@ -353,7 +354,7 @@ describe("sanitizeChartForLlm — predictive contexts (transits/strength/vargas/
         to_sign: null,
         station_direction: "retrograde",
         station_sign: "pisces",
-        severity: "challenging",
+        severity: "neutral",
         descriptor: "saturn.station.retrograde",
       },
     ]);

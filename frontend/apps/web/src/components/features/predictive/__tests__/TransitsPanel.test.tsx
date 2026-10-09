@@ -95,10 +95,13 @@ describe('TransitsPanel', () => {
         ],
       },
     };
-    render(<TransitsPanel transitCtx={ctx} />);
-    expect(screen.getByText('Rahu enters Capricorn')).toBeTruthy();
-    expect(screen.getByText('Ketu enters Cancer')).toBeTruthy();
-    expect(errors).not.toHaveBeenCalled();
-    errors.mockRestore();
+    try {
+      render(<TransitsPanel transitCtx={ctx} />);
+      expect(screen.getByText('Rahu enters Capricorn')).toBeTruthy();
+      expect(screen.getByText('Ketu enters Cancer')).toBeTruthy();
+      expect(errors).not.toHaveBeenCalled();
+    } finally {
+      errors.mockRestore();
+    }
   });
 });

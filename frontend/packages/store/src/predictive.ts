@@ -22,6 +22,7 @@ import type {
   DomainsCtx,
   StrengthCtx,
   TransitCtx,
+  TransitTimelineEventData,
   VargaCtxFull,
 } from '@almamesh/shared-types';
 import type {
@@ -237,6 +238,26 @@ function coerceRawContexts(value: unknown): CachedPredictiveContexts | undefined
 }
 
 /**
+ * A transit context persisted by a build older than the station fields lacks
+ * `station_direction`/`station_sign` on every timeline event. Rehydration does
+ * not run the adapter again, so fill them with the `null` the type promises.
+ */
+function coercePersistedTransitCtx(value: unknown): TransitCtx | undefined {
+  const ctx = value as TransitCtx | undefined;
+  if (!isPlainRecord(ctx?.timeline) || !Array.isArray(ctx.timeline.events)) {
+    return ctx;
+  }
+  const events = ctx.timeline.events.map(
+    (event): TransitTimelineEventData => ({
+      ...event,
+      station_direction: event.station_direction ?? null,
+      station_sign: event.station_sign ?? null,
+    }),
+  );
+  return { ...ctx, timeline: { ...ctx.timeline, events } };
+}
+
+/**
  * Coerce ANY persisted blob into a SAFE snapshot. Only a fully-formed `ready`
  * result (its contexts plus a `requestKey` identity) survives a reload; a
  * persisted `loading`/`error`/unknown shape is flattened to a clean `idle` so a
@@ -254,7 +275,7 @@ export function coercePersistedPredictive(persisted: unknown): PersistedPredicti
   return {
     status: 'ready',
     error: undefined,
-    transitCtx: persisted.transitCtx as TransitCtx | undefined,
+    transitCtx: coercePersistedTransitCtx(persisted.transitCtx),
     vargaCtxFull: persisted.vargaCtxFull as VargaCtxFull | undefined,
     strengthCtx: persisted.strengthCtx as StrengthCtx | undefined,
     domainsCtx: persisted.domainsCtx as DomainsCtx | undefined,
