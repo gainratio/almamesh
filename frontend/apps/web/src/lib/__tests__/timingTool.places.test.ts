@@ -15,6 +15,7 @@ import {
   DEVICE_DASHAS_ONLY_NOTE,
   NEEDS_PLACE_STATUS_LABEL,
   PLACE_DOES_NOT_CHANGE_NOTE,
+  PLACE_MOON_ROWS_NOTE,
   PLACE_MOON_UNAVAILABLE_NOTE,
 } from '../timingTool';
 import { PLACE_MOON_DEADLINE_MS } from '../timingPlaces';
@@ -124,6 +125,24 @@ describe('get_timing with places', () => {
       expect.anything(),
     );
     expect(JSON.stringify(result)).not.toMatch(/latitude|longitude|4\.711|74\.07/);
+  });
+
+  it('a placed day tells the model the place rows are the local-day Moon there (final review)', async () => {
+    const result = await tool().execute({ section: 'transits', start: '2026-06-15', place_ref: 'city:202' }, context());
+    expect(notesOf(result)).toContain(PLACE_MOON_ROWS_NOTE);
+    expect(PLACE_MOON_ROWS_NOTE).toBe(
+      "Each places row's moon is the Moon for that place's local days (at_start: local midnight starting the first day; at_end: local midnight after the last). The transit Moon is not tied to any place; use the places rows for a day at a place.",
+    );
+  });
+
+  it('no place-row note when the Moon read failed or for a week or longer', async () => {
+    const failed = await tool({ loadMoonWindow: vi.fn(async () => { throw new Error('boom'); }) }).execute(
+      { section: 'transits', start: '2026-06-15', place_ref: 'city:202' },
+      context(),
+    );
+    expect(notesOf(failed)).not.toContain(PLACE_MOON_ROWS_NOTE);
+    const segments = [{ start: '2026-06-01', end: '2026-06-30', place_ref: 'city:101' }];
+    expect(notesOf(await tool().execute({ section: 'transits', segments }, context()))).not.toContain(PLACE_MOON_ROWS_NOTE);
   });
 
   it('a few days split across two places reads each place for its own days', async () => {
@@ -244,6 +263,31 @@ describe('get_timing with places', () => {
     const result = await tool().execute({ section: 'transits', start: '2026-06-01', end: '2026-06-30' }, context());
     expect(result).not.toHaveProperty('places');
     expect(notesOf(result)).not.toContain(PLACE_DOES_NOT_CHANGE_NOTE);
+  });
+
+  it('a week or longer with an unplaced segment echoes only the placed one and reads nothing for the other', async () => {
+    const placeFromRef = vi.fn(async (ref: string) => PLACES[ref]);
+    const segments = [
+      { start: '2026-06-01', end: '2026-06-10', place_ref: 'city:101' },
+      { start: '2026-06-11', end: '2026-06-30' },
+    ];
+    const result = await tool({ placeFromRef }).execute({ section: 'transits', segments }, context());
+    expect(result).not.toEqual(NEEDS_PLACE);
+    expect((result as { places: unknown[] }).places).toEqual([
+      { start: '2026-06-01', end: '2026-06-10', label: 'Los Angeles, United States', timezone: 'America/Los_Angeles' },
+    ]);
+    expect(placeFromRef.mock.calls).toEqual([['city:101']]);
+    expect(notesOf(result)).toContain(PLACE_DOES_NOT_CHANGE_NOTE);
+  });
+
+  it('under a week, placed segments that leave a gap ask for a place before any engine work (final review)', async () => {
+    const loadPeriodChart = vi.fn(async () => SKY_CHART);
+    const segments = [
+      { start: '2026-06-01', end: '2026-06-01', place_ref: 'city:101' },
+      { start: '2026-06-04', end: '2026-06-04', place_ref: 'city:202' },
+    ];
+    expect(await tool({ loadPeriodChart }).execute({ section: 'transits', segments }, context())).toEqual(NEEDS_PLACE);
+    expect(loadPeriodChart).not.toHaveBeenCalled();
   });
 
   it('a gap between week-or-longer segments is noted', async () => {

@@ -13,6 +13,9 @@ import { eventInstantUtc, type MoonWindowLoader } from './moonWindow';
 
 export const PLACE_DOES_NOT_CHANGE_NOTE =
   "Place doesn't change readings for periods of a week or longer: dashas come from the birth chart and slow-planet positions are the same from anywhere on Earth.";
+/** A placed short read carries both the place-blind transit Moon and the Moon at each place; say which to use. */
+export const PLACE_MOON_ROWS_NOTE =
+  "Each places row's moon is the Moon for that place's local days (at_start: local midnight starting the first day; at_end: local midnight after the last). The transit Moon is not tied to any place; use the places rows for a day at a place.";
 export const PLACE_MOON_UNAVAILABLE_NOTE = "Couldn't read the Moon at that place on this device; the rest of the answer stands.";
 /** Adjacent segments' echo spans 2 days (end, next start); more leaves a day uncovered. */
 const ADJACENT_SPAN_DAYS = 2;
@@ -166,9 +169,10 @@ function withMoons<T extends PlacedResult>(
     const ends = (windows[i] as MoonWindow).at_place;
     return { ...labelRow(span), moon: { at_start: moonMark(ends.at_start), at_end: moonMark(ends.at_end) } };
   });
+  const notes = [...result.notes, PLACE_MOON_ROWS_NOTE];
   const event = time ? windows[0]?.event : null;
-  if (!time || !event) return { ...result, places };
-  return { ...result, places, event: { local_time: time, lagna_sign: event.lagna_sign, moon: moonMark(event.moon) } };
+  if (!time || !event) return { ...result, places, notes };
+  return { ...result, places, notes, event: { local_time: time, lagna_sign: event.lagna_sign, moon: moonMark(event.moon) } };
 }
 
 /** Under a week: the Moon at each place for its own days, and the event if a time was sent. */

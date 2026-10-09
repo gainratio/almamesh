@@ -48,7 +48,7 @@ import {
   type PlaceRequest,
 } from './timingPlaces';
 
-export { PLACE_DOES_NOT_CHANGE_NOTE, PLACE_MOON_UNAVAILABLE_NOTE } from './timingPlaces';
+export { PLACE_DOES_NOT_CHANGE_NOTE, PLACE_MOON_ROWS_NOTE, PLACE_MOON_UNAVAILABLE_NOTE } from './timingPlaces';
 
 export const TIMING_TOOL_NAME = 'get_timing';
 /** One queued Life Atlas compute plus one period compute (spec, Performance). */
