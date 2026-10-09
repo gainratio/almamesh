@@ -11,6 +11,11 @@
  *      Wednesday 2024-01-10 gets the Wednesday lord (Mercury).
  *   4. Sydney 00:30 on 2024-01-10 is before sunrise, so the Vedic day is
  *      Tuesday the 9th (Mars), and the sunrise prints on Sydney's calendar.
+ *   5. A stored chart with NO birthplace zone (a real onboarded chart whose
+ *      stored zone is then removed) shows "birthplace timezone is missing" with a link
+ *      to the Settings birthplace field — never "generate your chart first";
+ *      re-selecting the birthplace there and saving writes the zone back and
+ *      the timing layer computes.
  *
  * The birthplace geocoder is forced onto the bundled offline city list (the
  * online request answers with an unreadable body), so CI needs no egress and
@@ -132,5 +137,79 @@ test('Sydney just after midnight belongs to the previous Vedic day', async ({ pa
   expect(lord).toContain('Mars'); // before sunrise: Tuesday 2024-01-09
   expect(sunrise).toMatch(/Jan 09, 2024/);
   expect(sunrise).toContain('Australia/Sydney');
+  expect(errors).toEqual([]);
+});
+
+/**
+ * Remove the birthplace zone from every stored chart, as a chart saved by an
+ * older build (or edited by hand) can lack it. Reaches the live chart-library
+ * store through the already-loaded app chunks, then lets it persist.
+ */
+async function stripStoredZone(page: Page): Promise<string> {
+  return page.evaluate(async () => {
+    const urls = performance
+      .getEntriesByType('resource')
+      .map((entry) => entry.name)
+      .filter((url) => /\/assets\/.*\.js$/.test(url));
+    for (const url of [...new Set(urls)]) {
+      let mod: Record<string, unknown>;
+      try {
+        mod = (await import(/* @vite-ignore */ url)) as Record<string, unknown>;
+      } catch {
+        continue;
+      }
+      for (const value of Object.values(mod)) {
+        const store = value as {
+          getState?: () => Record<string, unknown>;
+          setState?: (next: unknown) => void;
+        } | null;
+        if (!store || typeof store.getState !== 'function' || typeof store.setState !== 'function') continue;
+        const state = store.getState();
+        if (!state || !('charts' in state) || !('saveChart' in state)) continue;
+        type Chart = { birth_data?: { birth_location_details?: Record<string, unknown> } };
+        const charts = state.charts as Record<string, Chart>;
+        const next: Record<string, Chart> = {};
+        for (const [id, chart] of Object.entries(charts)) {
+          const copy = structuredClone(chart);
+          if (copy.birth_data?.birth_location_details) delete copy.birth_data.birth_location_details.timezone;
+          next[id] = copy;
+        }
+        store.setState({ charts: next });
+        return `stripped ${Object.keys(next).length}`;
+      }
+    }
+    return 'store not found';
+  });
+}
+
+test('a stored chart with no birthplace zone: card -> Settings -> re-select -> save -> timing works', async ({ page }) => {
+  const errors = watchConsole(page);
+  await toTimeStep(page, { city: 'Delhi', country: /India/, mmddyyyy: '01151990', hhmm: '0530', meridiem: 'p' });
+  await generateExact(page);
+  expect(await stripStoredZone(page)).toBe('stripped 1');
+  await page.waitForTimeout(1_000); // let the chart library persist the edit
+  await page.reload();
+  await page.goto('/predictive?tab=strength');
+  const card = page.getByTestId('birth-zone-missing').first();
+  await expect(card).toContainText('timezone is missing', { timeout: 120_000 });
+  await expect(page.getByTestId('predictive-no-chart')).toHaveCount(0);
+
+  // The card's link lands on the Settings birthplace field, which says why.
+  await card.getByRole('link').click();
+  await page.waitForURL('**/settings/profile#birthplace');
+  await expect(page.getByTestId('birth-zone-missing-settings')).toBeVisible({ timeout: 30_000 });
+
+  // Re-select the birthplace and save: the zone change must persist + recompute.
+  await page.getByTestId('location-search-input').fill('Delhi');
+  await page.locator('[role="option"]').filter({ hasText: /India/ }).first().click({ timeout: 30_000 });
+  await expect(page.getByTestId('birth-zone-missing-settings')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Save Changes' }).click();
+  await page.getByRole('button', { name: 'Confirm & Regenerate' }).click();
+  await expect(page.getByText('Chart Updated!')).toBeVisible({ timeout: 300_000 });
+
+  // The timing layer now computes: 1990-01-15 17:30 IST was a Monday (Moon).
+  const { lord, sunrise } = await strengthLines(page);
+  expect(lord).toContain('Moon');
+  expect(sunrise).toContain('Asia/Kolkata');
   expect(errors).toEqual([]);
 });

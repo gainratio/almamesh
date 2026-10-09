@@ -6,6 +6,18 @@ rigorously from the true sunrise; Abda and Masa follow the classical rule that
 the year-lord is the weekday-lord of the solar-year start and the month-lord the
 weekday-lord of the solar-month start, both reckoned in mean 365.25-day years /
 30.4375-day months from the weekday axis. (BPHS, Shadbala Adhyaya, Kalabala.)
+
+Civil-offset caveat (documented approximation): every weekday here is read on
+the birthplace's civil calendar using ONE offset, the civil UTC offset at the
+birth instant (``SunWindow.civil_offset``). The Abda and Masa epochs lie a year
+and a month earlier, where the zone's real offset may differ. A DST change can
+move the epoch's civil date only when its sunrise falls within an hour of
+midnight, which civil sunrises do not. A date-line switch can move it by a
+whole day: Samoa jumped from UTC-10 to UTC+14 by skipping 2011-12-30, so an Apia
+birth in mid-2012 has its Abda epoch in mid-2011 under the old -10 offset, yet
+we read that epoch at +14 and name the next weekday. The engine has no tz
+database, so it cannot know historical offsets; the browser would have to send
+the offset at each epoch to remove this.
 """
 
 from __future__ import annotations

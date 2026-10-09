@@ -185,3 +185,27 @@ describe('planProfileSave — a legacy chart born in a repeated DST hour', () =>
   });
 });
 
+describe('planProfileSave — a birthplace zone change always regenerates', () => {
+  it('regenerates when a missing zone is restored, even though the chart id matches', () => {
+    // The stored id was minted WITH the zone; the stored details lost it.
+    const restored = details();
+    const zoneless = details({ location: { ...BENGALURU, timezone: '' } });
+    const plan = planProfileSave({
+      initial: zoneless,
+      current: restored,
+      storedChartId: chartId(birthMetaFromDetails(restored)),
+    });
+    expect(plan.kind).toBe('regenerate');
+  });
+
+  it('still reports unchanged when the zone did not change', () => {
+    const same = details();
+    const plan = planProfileSave({
+      initial: same,
+      current: same,
+      storedChartId: chartId(birthMetaFromDetails(same)),
+    });
+    expect(plan.kind).toBe('unchanged');
+  });
+});
+

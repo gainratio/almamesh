@@ -25,6 +25,7 @@ import { LocationSearch } from '../../components/shared/LocationSearch';
 import { LocalTimeCheck } from '../../components/shared/LocalTimeCheck';
 import { type BirthDetails, birthDetailsFromBirthData } from './birthDetailsFromBirthData';
 import { birthMetaFromDetails, planProfileSave, type ProfileSavePlan } from './planProfileSave';
+import { suggestBirthplaceZone } from './utcZoneRepair';
 import { saveTimeConfidence, type TimeConfidenceSaveResult } from './saveTimeConfidence';
 import { RegenerationConfirmModal } from '../../components/features/settings/RegenerationConfirmModal';
 import {
@@ -34,6 +35,7 @@ import {
 import { Button } from '../../components/ui';
 import { useSettingsStore } from '../../stores/settings';
 import { useChartEngine } from '../../providers/AlmaMeshRuntimeProvider';
+import { resolveReadyEngine } from '../../lib/resolveReadyEngine';
 import { useLagnaPreview } from '../../hooks/useLagnaPreview';
 import { readLocalPrimaryChart } from '../../lib/localChartRead';
 import { formatDegree } from '../../lib/reportData';
@@ -123,7 +125,7 @@ function shiftClockMinutes(clock: string, deltaMinutes: number): string {
 export default function ProfileSettings() {
   const navigate = useNavigate();
   const { t, i18n } = useTranslation(['settings', 'common']);
-  const { engine, error: engineError } = useChartEngine();
+  const { engine, error: engineError, startBootstrap, whenReady, reboot, lastProgressAt } = useChartEngine();
   const activeProfileId = useProfilesStore((s) => s.activeProfileId);
 
   // The standing read-only record of a CONFIRMED rectification for this profile
@@ -240,6 +242,15 @@ export default function ProfileSettings() {
         }
       : null;
   const lagnaPreview = useLagnaPreview(engine, engineError, previewInput, previewRetryAttempt);
+
+  // A chart saved by the old `|| 'UTC'` fallback: offered a repair, never rewritten.
+  const suggestedZone = currentDetails.location
+    ? suggestBirthplaceZone(
+        currentDetails.location,
+        currentDetails.birth_date,
+        currentDetails.rectified_time || currentDetails.birth_time,
+      )
+    : null;
   const previewCusp =
     lagnaPreview.status === 'ready'
       ? cuspInfo(lagnaPreview.lagna.sign, lagnaPreview.lagna.signDegrees)
@@ -427,11 +438,12 @@ export default function ProfileSettings() {
     setError(null);
 
     try {
-      if (engineError) {
-        throw engineError;
-      }
+      // Settings can be reached straight after a reload (e.g. from the
+      // "birthplace timezone is missing" link) before anything booted the
+      // engine: start it and wait (or reboot a failed one), never fail the save.
       if (!engine) {
-        throw new Error(t('settings:profile.engine_starting'));
+        startBootstrap();
+        await resolveReadyEngine({ engine, error: engineError, reboot, whenReady, lastProgressAt });
       }
       const birth = birthMetaFromDetails(currentDetails);
 
@@ -810,8 +822,8 @@ export default function ProfileSettings() {
           </div>
         )}
 
-        {/* Location */}
-        <div>
+        {/* Location (the #birthplace anchor is where "timezone missing" cards link) */}
+        <div id="birthplace">
           <label className="block text-sm font-medium text-text-primary mb-2">{t('settings:profile.location_label')}</label>
           <LocationSearch
             value={currentDetails.location}
@@ -819,6 +831,34 @@ export default function ProfileSettings() {
             placeholder={t('settings:profile.location_placeholder')}
           />
           <p className="text-text-muted text-xs mt-2">{t('settings:profile.location_hint')}</p>
+          {currentDetails.location && !currentDetails.location.timezone && (
+            <p
+              role="status"
+              data-testid="birth-zone-missing-settings"
+              className="mt-3 rounded-lg border border-status-warning/60 bg-status-warning/10 p-3 text-sm text-text-primary"
+            >
+              {t('settings:profile.zone_missing')}
+            </p>
+          )}
+          {currentDetails.location && suggestedZone && (
+            <div
+              role="status"
+              data-testid="utc-zone-repair"
+              className="mt-3 rounded-lg border border-status-warning/60 bg-status-warning/10 p-3 text-sm text-text-primary"
+            >
+              <p>{t('settings:profile.utc_zone_suspect', { zone: suggestedZone })}</p>
+              <button
+                type="button"
+                className="mt-2 rounded-md border border-accent-gold/60 px-3 py-1.5 text-accent-gold hover:bg-accent-gold/10"
+                onClick={() =>
+                  currentDetails.location &&
+                  handleFieldChange('birth_location', { ...currentDetails.location, timezone: suggestedZone })
+                }
+              >
+                {t('settings:profile.utc_zone_use', { zone: suggestedZone })}
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Regeneration Warnings */}

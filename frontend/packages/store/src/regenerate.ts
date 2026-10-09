@@ -135,11 +135,22 @@ export function regenerateOnBirthChange(
   return run;
 }
 
+/**
+ * True when the prior row already IS this birth: same id AND the same stored
+ * birthplace zone. The id was minted with the zone, so a chart whose stored
+ * birth data lost (or never wrote back) its zone keeps the old id; comparing
+ * ids alone would skip the save forever and the zone would never come back.
+ */
+function alreadyStored(prior: StoredChart | undefined, birth: BirthMeta, nextId: string): boolean {
+  if (prior?.chart_id !== nextId) return false;
+  return (prior.birth_data?.birth_location_details?.timezone ?? '') === birth.timezone;
+}
+
 async function regenerateNow(event: BirthInfoChanged, deps: RegenerateDeps): Promise<void> {
   const { birth, profileId } = event;
   const nextId = chartId(birth);
   const prior = primaryForProfile(deps.library, profileId);
-  if (prior?.chart_id === nextId) {
+  if (alreadyStored(prior, birth, nextId)) {
     return;
   }
   // ONE instant for both the engine input and the stored `calculation_timestamp`.

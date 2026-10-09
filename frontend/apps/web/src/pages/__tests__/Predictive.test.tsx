@@ -83,6 +83,23 @@ describe('PredictivePage (/predictive)', () => {
     usePredictiveStore.getState().reset();
   });
 
+  it('says the birthplace timezone is missing instead of "generate your chart first"', () => {
+    const chart = storedChart();
+    const zoneless = {
+      ...chart,
+      birth_data: {
+        ...chart.birth_data!,
+        birth_location_details: { ...chart.birth_data!.birth_location_details, timezone: '' },
+      },
+    } as StoredChart;
+    useChartLibraryStore.setState({ charts: { 'chart-1': zoneless }, hydrated: true });
+    renderPage('/predictive?tab=strength');
+    const cards = screen.getAllByTestId('birth-zone-missing');
+    expect(cards.length).toBeGreaterThan(0);
+    expect(screen.queryByTestId('predictive-no-chart')).toBeNull();
+    expect(cards[0]?.querySelector('a')?.getAttribute('href')).toBe('/settings/profile#birthplace');
+  });
+
   it('shows the gate with an honest engine-warming note when the engine is not booted', () => {
     // Rendered OUTSIDE AlmaMeshRuntimeProvider → no engine; idle store.
     renderPage();

@@ -95,6 +95,22 @@ describe('LifeAtlas', () => {
     expect(container.firstChild).toBeNull();
   });
 
+  it('says the birthplace timezone is missing (with a Settings link) instead of vanishing', () => {
+    const chart = storedChart();
+    const zoneless = {
+      ...chart,
+      birth_data: {
+        ...chart.birth_data!,
+        birth_location_details: { ...chart.birth_data!.birth_location_details, timezone: '' },
+      },
+    } as StoredChart;
+    useChartLibraryStore.setState({ charts: { 'chart-1': zoneless }, hydrated: true });
+    renderAtlas();
+    const card = screen.getByTestId('birth-zone-missing');
+    expect(card.textContent).toMatch(/timezone is missing/i);
+    expect(within(card).getByRole('link').getAttribute('href')).toBe('/settings/profile#birthplace');
+  });
+
   it('renders all seven domain cards in a designed pending state before data arrives', () => {
     renderAtlas();
     for (const domain of LIFE_DOMAINS) {

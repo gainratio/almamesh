@@ -10,6 +10,7 @@ import { useTranslation } from 'react-i18next';
 import { Button, Card, Spinner } from '../../ui';
 import { useElapsedSeconds, formatElapsed } from '../../../hooks/useElapsedSeconds';
 import type { PredictiveLayer } from '../../../hooks/usePredictiveLayer';
+import { BirthZoneMissingCard } from './BirthZoneMissingCard';
 
 interface PredictiveStatusCardProps {
   readonly layer: PredictiveLayer;
@@ -56,6 +57,9 @@ export function PredictiveStatusCard({
   }
 
   // idle
+  if (layer.birthZoneMissing) {
+    return <BirthZoneMissingCard />;
+  }
   if (!layer.hasBirthData) {
     return (
       <Card title={t('gate.title')} data-testid="predictive-no-chart">

@@ -65,6 +65,11 @@ export function planProfileSave({ initial, current, storedChartId }: ProfileSave
   if (storedChartId === null || chartId(birth) !== storedChartId) {
     return { kind: 'regenerate', birth };
   }
+  // A zone change (incl. missing -> present) must persist even when the id
+  // matches: the stored id was minted with the zone the details later lost.
+  if ((initial.location?.timezone ?? '') !== (current.location?.timezone ?? '')) {
+    return { kind: 'regenerate', birth };
+  }
   const rectifiedTime = effectiveRectifiedTime(current);
   if (rectifiedTime && current.birth_time !== initial.birth_time) {
     return { kind: 'rectification-governs', rectifiedTime };

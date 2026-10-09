@@ -28,6 +28,9 @@
     "dur_days": "{{count}} d"
   },
   "gate": {
+    "zone_missing_title": "Your birthplace timezone is missing",
+    "zone_missing_body": "Your saved chart has no birthplace timezone, so the timing layer cannot place your sunrise or weekday. Re-select your birthplace in Settings to fix it.",
+    "zone_missing_link": "Re-select the birthplace in Settings",
     "title": "Compute your timing layer",
     "body": "Transits, Sade Sati, all sixteen divisional charts, Ashtakavarga, Shadbala and a twelve-month timeline are computed from the ephemeris on your device. Nothing leaves this browser.",
     "compute": "Compute now",

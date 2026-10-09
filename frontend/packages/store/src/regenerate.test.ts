@@ -90,6 +90,37 @@ describe('regenerateOnBirthChange', () => {
     expect(lib.charts.size).toBe(1);
   });
 
+  it('writes the birthplace zone back when the stored chart lost it, even with the same id', async () => {
+    // A chart whose birth_data lost its zone keeps its old id (the id was minted
+    // with the zone). Re-selecting the birthplace yields the SAME id, so a
+    // chart-id-only check silently skipped the save: the zone never came back.
+    const seeded = seededPrimary(baseBirth, 'p1');
+    const zoneless: StoredChart = {
+      ...seeded,
+      birth_data: {
+        ...seeded.birth_data!,
+        birth_location_details: { ...seeded.birth_data!.birth_location_details, timezone: '' },
+      },
+    };
+    const lib = makeFakeLibrary(zoneless);
+    const engine = { generateChart: vi.fn().mockResolvedValue(fakeSiderealChart) };
+    const onRegenerated = vi.fn();
+    const deps: RegenerateDeps = {
+      engine,
+      library: lib,
+      onRegenerated,
+      chat: unlinkNothing(), interpretations: forgetNothing(),
+      referenceInstant: REFERENCE_INSTANT,
+    };
+
+    await regenerateOnBirthChange({ birth: baseBirth, profileId: 'p1' }, deps);
+
+    expect(engine.generateChart).toHaveBeenCalledOnce();
+    expect(lib.primaryFor('p1')?.birth_data?.birth_location_details.timezone).toBe('Asia/Kolkata');
+    expect(lib.charts.size).toBe(1);
+    expect(onRegenerated).toHaveBeenCalledOnce();
+  });
+
   it('regenerates, deletes the stale-id orphan, and preserves profile_id', async () => {
     const lib = makeFakeLibrary(seededPrimary(baseBirth, 'p1'));
     const staleId = chartId(baseBirth);
