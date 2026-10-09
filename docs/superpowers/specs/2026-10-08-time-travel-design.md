@@ -23,7 +23,7 @@ The work ships in four increments (see [Increments](#increments)):
 | --- | --- | --- |
 | A | Timing tool takes dates; dashas picked by date; period label in prompts | Typed questions about any period work |
 | B | Engine reports Mars, Rahu/Ketu sign changes and retrograde stations; 24-month window | Fuller slow-planet picture for long periods |
-| C | Places: `resolve_place`, a place required for day-precision reads, split periods | "Where were you?" asked for a day or a few days, never for a month or longer |
+| C | Places: `resolve_place`, a place required for day-precision reads, split periods | "Where were you?" asked for a day or a few days, never for a week or longer |
 | D | Button, pinned threads, banner, export/import of the pin | One-tap time travel |
 
 ## Why
@@ -72,6 +72,7 @@ date other than today, and a prompt that says which date it used.
 2. The model calls the timing tool for 2026-06-01..2026-06-30. It does not call `resolve_place`.
    It tells her plainly: "Being in LA and then Bogotá doesn't change June's reading. Dashas
    come from your birth chart and planet positions are the same from anywhere on Earth."
+   A week or longer never needs a place.
 3. She follows up: "what about June 15 itself?". Now it's a single day, and a day reading
    needs a place. She already said she was in LA for the first half, so the model calls
    `resolve_place("Los Angeles")`, which searches the bundled city list on the device, then
@@ -257,13 +258,13 @@ question 1, decided).
 
 | What is being read | Ask where? | Why |
 | --- | --- | --- |
-| A month or longer (28 days or more) | Never | Dashas come from the birth chart. Slow-planet positions and events are geocentric. Houses come from the natal chart. Place changes nothing. |
-| A month or longer, user mentions several places | Never, and say why | "Being in LA and then Bogotá doesn't change June's reading." |
-| A single day or a few days (under 28 days) | Always, unless the user already named a place for it in this thread | The Moon's sign, nakshatra and tithi at the local day depend on where you are |
+| A week or longer (7 days or more) | Never | Dashas come from the birth chart. Slow-planet positions and events are geocentric. Houses come from the natal chart. Place changes nothing. |
+| A week or longer, user mentions several places | Never, and say why | "Being in LA and then Bogotá doesn't change June's reading." |
+| A single day or a few days (under 7 days) | Always, unless the user already named a place for it in this thread | The Moon's sign, nakshatra and tithi at the local day depend on where you are |
 | A specific time of day | Always | The event ascendant needs latitude and longitude |
 
 The app enforces this in the tool, not only in the prompt. `get_timing` for a sky section
-(transits, domains, strength) over a period under 28 days, with no `place_ref` and no placed
+(transits, domains, strength) over a period under 7 days, with no `place_ref` and no placed
 `segments`, returns the constant `{ "error": "needs_place" }` before any engine work. The
 prompt teaches the model to turn that into one question: "Where were you (or will you be)
 that day?". Dashas never need a place. A call with no dates ("today") is unchanged.
@@ -313,7 +314,7 @@ time-of-day reads. A chat-typed city never leaves the device.
 
 `get_timing` accepts an optional `segments: [{ start, end, place_ref }]` instead of
 `start`/`end`. The tool merges the segments into one period for dashas and slow transits,
-since place doesn't change them. When the merged period is under 28 days, every segment needs
+since place doesn't change them. When the merged period is under 7 days, every segment needs
 a `place_ref` (or the call returns `needs_place`), and each segment's Moon is read at its own
 place. This lets the
 model pass "first half LA, then Bogotá" through without having to argue with the tool.
@@ -514,7 +515,7 @@ that red run in the PR.
 | Router skips dated questions | "transits in June 2019" does not pre-run today | Drop `mentionsExplicitPeriod` |
 | Pinned router | Pinned thread pre-runs the pin, never today | Pre-run today |
 | Prompt label | Period basis renders "as of 1–30 June 2026 (the period asked about)" | Render "today" |
-| A day needs a place | `get_timing` transits for 2026-06-15 with no place → `{ error: "needs_place" }`, engine not called; a 30-day period with no place → answered | Drop the place gate; use `<=` 28 days |
+| A day needs a place | `get_timing` transits for 2026-06-15 with no place → `{ error: "needs_place" }`, engine not called; 1–6 Feb 2027 with no place → `needs_place`; 1–7 Feb 2027 (7 days) with no place → answered | Drop the place gate; use `<=` 7 days |
 | Birth place never echoed | Prompt and every tool result for a chart born in Delhi contain no birth place name and no coordinate | Copy `location_name` into the sanitized chart |
 | Offline place lookup | `resolve_place` makes zero `fetch` calls (spy) | Call `searchCities` |
 | No coordinates to the model | `resolve_place` result has no number fields | Include latitude |
