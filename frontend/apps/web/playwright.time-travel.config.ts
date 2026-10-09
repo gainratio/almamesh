@@ -34,8 +34,9 @@ export default defineConfig({
     screenshot: "only-on-failure",
   },
   projects: [
+    // Chromium only: the spec pins a full-tier device, and desktop Safari
+    // (no navigator.deviceMemory) reads as lite, which answers with dashas only.
     { name: "chromium", use: { ...devices["Desktop Chrome"] } },
-    { name: "webkit", use: { ...devices["Desktop Safari"] } },
   ],
   // Build with the exit-gate hooks ON (bootEngine/seedChart need
   // window.__almameshGenerate), as CI's hookedBuild() does, then serve it.

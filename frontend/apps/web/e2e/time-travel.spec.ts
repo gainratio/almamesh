@@ -18,6 +18,12 @@ const QUESTION = 'What was going on for me in June 2019? Any big transits?';
 const ANSWER = 'I looked at 1–30 June 2019. A Saturn antar was ending and Jupiter was moving.';
 const BIRTH_MONTH = '1990-01'; // DELHI_BIRTH.datetimeUtc
 const SCREENSHOT = 'test-results/time-travel-june-2019.png';
+/**
+ * Pin a full-tier device (devicePolicy: >= 8 GB and > 2 cores). Lite and minimal
+ * answer dated questions with dashas only, so without this pin the period-sky
+ * path this spec covers would depend on the runner's hardware.
+ */
+const FULL_TIER = { deviceMemory: 8, hardwareConcurrency: 8 };
 
 interface WireMessage {
   role: string;
@@ -45,6 +51,11 @@ test('[contract/stubbed] a typed June 2019 question reads June 2019, not today',
   page.on('console', (message) => {
     if (message.type() === 'error') consoleErrors.push(`console: ${message.text()}`);
   });
+  await page.addInitScript((tier) => {
+    for (const [name, value] of Object.entries(tier)) {
+      Object.defineProperty(Navigator.prototype, name, { get: () => value, configurable: true });
+    }
+  }, FULL_TIER);
   await page.addInitScript(
     ([key, cfg]) => window.localStorage.setItem(key as string, cfg as string),
     [LLM_SETTINGS_KEY, JSON.stringify(LLM_CONFIG)] as const,
