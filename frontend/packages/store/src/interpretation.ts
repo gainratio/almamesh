@@ -547,7 +547,7 @@ export async function readInterpretationPersistedValue(
 
   // TODO(remove after 2026-11-04, one release after the SQLite-only move):
   // legacy localStorage interpretations reader; SQLite owns the row after it.
-  let legacy: string | null = null;
+  let legacy: string | null;
   try {
     legacy = legacyStorage?.getItem(name) ?? null;
   } catch {

@@ -10,7 +10,7 @@ cd frontend || exit 1
 
 echo "[pre-push] Running frontend lint + typecheck gate..."
 
-bun run --filter @almamesh/web lint && bun run --filter '*' typecheck
+bun run lint && bun run --filter '*' typecheck
 
 status=$?
 if [ "$status" -ne 0 ]; then

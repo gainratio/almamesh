@@ -99,6 +99,7 @@ const CONTRACT_TESTS = [
   "tests/dagger-repository-identity.test.ts",
   "tests/dagger-toolchain-contract.test.ts",
   "tests/dagger-workflow-contract.test.ts",
+  "tests/frontend-lint-coverage-contract.test.ts",
 ]
 const SMOKE_OUTPUT_LINES = 60
 const NIGHTLY_REPORTS_DIR = "nightly-reports"
@@ -441,6 +442,13 @@ exec ${inline.join(" ")}`,
           "frontend/packages/browser/package.json",
           "frontend/packages/memory/package.json",
           "frontend/packages/store/package.json",
+          // The lint-coverage contract proves every packages/* workspace is linted.
+          "frontend/package.json",
+          "frontend/eslint.config.mjs",
+          "frontend/eslint.ignores.mjs",
+          "frontend/packages/*/package.json",
+          "frontend/apps/**/eslint.config.*",
+          "frontend/packages/**/eslint.config.*",
           AUDIT_EXCEPTIONS_FILE,
           ...CONTRACT_TESTS,
         ]),

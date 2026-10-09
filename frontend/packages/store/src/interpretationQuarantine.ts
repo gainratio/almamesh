@@ -105,6 +105,7 @@ async function rowFor(
 ): Promise<{ readonly key: string; readonly record: QuarantinedInterpretation }> {
   const profileIds = profileIdsIn(entry.raw);
   const owner =
+    // eslint-disable-next-line no-control-regex -- a profile id containing a C0 control character is refused as an owner
     profileIds.length === 1 && /^[^\u0000-\u001f/]{1,512}$/.test(profileIds[0]!)
       ? profileIds[0]!
       : UNATTRIBUTED_OWNER;
