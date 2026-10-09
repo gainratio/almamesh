@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
@@ -11,7 +11,7 @@ import {
 import { Button, Dialog, Input } from '../../ui';
 import { AvatarChip } from './AvatarChip';
 import { deleteProfileData } from '../../../lib/profileDataLifecycle';
-import { waitForStoreSaved } from '../../../lib/storeSaved';
+import { useStagedPerson } from '../people/useStagedPerson';
 
 /**
  * ProfileSwitcher — the header control for named, password-less people sharing
@@ -34,7 +34,6 @@ export function ProfileSwitcher() {
   // fresh object/array every render and loops forever under React 19 (#185).
   const profilesMap = useProfilesStore((s) => s.profiles);
   const activeProfileId = useProfilesStore((s) => s.activeProfileId);
-  const createProfile = useProfilesStore((s) => s.createProfile);
   const renameProfile = useProfilesStore((s) => s.renameProfile);
   const setActiveProfile = useProfilesStore((s) => s.setActiveProfile);
   // The onboarding wizard reads a DIFFERENT store than this one; without the
@@ -58,7 +57,15 @@ export function ProfileSwitcher() {
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [addError, setAddError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
-  const unsavedIdRef = useRef<string | null>(null);
+  // Saving, retrying and cancelling a person whose save did not finish.
+  const stagedPerson = useStagedPerson();
+
+  /** Close the menu; a person whose save failed is rolled back with it. */
+  const closeDialog = () => {
+    stagedPerson.discard();
+    setAddError(null);
+    setOpen(false);
+  };
 
   /** Refresh the chart view + route to the right place for `profileId`. */
   const refreshForProfile = (profileId: string | null) => {
@@ -70,8 +77,10 @@ export function ProfileSwitcher() {
   };
 
   const handleSwitch = (id: string) => {
+    // Roll back an unsaved add FIRST: it restores the previous active person,
+    // which the switch below then overrides.
+    closeDialog();
     setActiveProfile(id);
-    setOpen(false);
     refreshForProfile(id);
   };
 
@@ -82,22 +91,18 @@ export function ProfileSwitcher() {
     }
     setAddError(null);
     setAdding(true);
-    // A retry after a failed save re-saves the same person, never a second copy.
-    const id = unsavedIdRef.current ?? createProfile(name);
-    unsavedIdRef.current = id;
-    // Always queues a fresh write of the whole row, which is what a retry needs.
-    setActiveProfile(id);
+    let id: string;
     try {
       // Only move on once the person is on disk: navigating first let a full
-      // page load lose them while the write was still queued.
-      await waitForStoreSaved('people');
+      // page load lose them while the write was still queued. A retry re-saves
+      // the same person under the current name, never a second copy.
+      id = await stagedPerson.save({ name, relationship: undefined });
     } catch {
       setAddError(t('profiles.add_error'));
       return;
     } finally {
       setAdding(false);
     }
-    unsavedIdRef.current = null;
     setNewName('');
     // A brand-new person has no chart yet → send them to onboarding, with the
     // name already answered so the wizard never asks for it twice.
@@ -155,7 +160,7 @@ export function ProfileSwitcher() {
         )}
       </button>
 
-      <Dialog open={open} onClose={() => setOpen(false)} title={t('profiles.dialog_title')}>
+      <Dialog open={open} onClose={closeDialog} title={t('profiles.dialog_title')}>
         <div className="flex flex-col gap-4">
           <p className="font-sans text-sm text-text-secondary">
             {t('profiles.dialog_description')}

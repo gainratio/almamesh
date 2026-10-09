@@ -78,4 +78,37 @@ describe('ProfileSwitcher — a new person is saved before it moves on', () => {
     expect(screen.queryByText('onboarding-page')).toBeNull();
     expect(screen.getByRole('alert').textContent ?? '').toContain("Couldn't save");
   });
+
+  it('a retry after a failed save does not add the person twice', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    renderSwitcher();
+    addPerson('Ravi');
+    await act(async () => save.reject(new Error('disk full')));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+    await act(async () => save.resolve());
+
+    expect(Object.values(useProfilesStore.getState().profiles).map((p) => p.name)).toEqual([
+      'Ravi',
+    ]);
+    expect(screen.getByText('onboarding-page')).toBeTruthy();
+  });
+
+  it('closing after a failed save rolls the person back and restores the active person', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const me = useProfilesStore.getState().createProfile('Asha Rao');
+    useProfilesStore.getState().setActiveProfile(me);
+    renderSwitcher();
+    fireEvent.click(screen.getByRole('button', { name: /Asha Rao/ }));
+    fireEvent.change(screen.getByLabelText('New person name'), { target: { value: 'Ravi' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+    await act(async () => save.reject(new Error('disk full')));
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    expect(Object.values(useProfilesStore.getState().profiles).map((p) => p.name)).toEqual([
+      'Asha Rao',
+    ]);
+    expect(useProfilesStore.getState().activeProfileId).toBe(me);
+  });
 });

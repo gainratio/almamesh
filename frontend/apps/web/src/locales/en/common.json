@@ -21,7 +21,7 @@
     "delete_aria": "Delete {{name}}",
     "delete_confirm": "Delete {{name}} and their charts? This cannot be undone.",
     "delete_error": "Couldn't finish deleting this person. Nothing was removed — please try again.",
-    "add_error": "Couldn't save this person. Nothing was added — please try again.",
+    "add_error": "Couldn't save this person on this device. Try again, or close this window and they won't be kept.",
     "new_person_name_aria": "New person name"
   },
   "actions": {

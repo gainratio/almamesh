@@ -159,6 +159,15 @@ export interface ProfilesStore {
    * when the deleted one was active. No-op for an unknown id.
    */
   deleteProfile: (id: string) => void;
+  /**
+   * Roll back a person whose save failed or timed out and the user cancelled
+   * the add: remove them and give focus back to `restoreActiveId` (when it
+   * still exists). No last-profile guard and no chart cascade: an unsaved
+   * person owns nothing. Like every write, the rollback queues behind any
+   * pending write of this row, so a late commit of the add cannot resurrect
+   * the person. No-op for an unknown id.
+   */
+  discardUnsavedProfile: (id: string, restoreActiveId: string | null) => void;
   setActiveProfile: (id: string) => void;
 
   /**
@@ -320,6 +329,19 @@ export const profilesStoreCreator: StateCreator<ProfilesStore> = (set, get) => (
     set((state) => removeProfile(state, id));
     // Cascade: remove the person's charts, then push the new active scope.
     cascadeDeleteCharts(id);
+    setActiveProfileScope(get().activeProfileId);
+  },
+
+  discardUnsavedProfile: (id, restoreActiveId) => {
+    if (!get().profiles[id]) {
+      return;
+    }
+    set((state) => {
+      const { profiles, activeProfileId } = removeProfile(state, id);
+      const restored =
+        restoreActiveId !== null && profiles[restoreActiveId] ? restoreActiveId : activeProfileId;
+      return { profiles, activeProfileId: restored };
+    });
     setActiveProfileScope(get().activeProfileId);
   },
 

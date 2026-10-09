@@ -8,15 +8,15 @@
  * assigned around it — chart creation is never forked.
  */
 
-import { useRef, useState, type ReactElement } from 'react';
+import { useState, type ReactElement } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
-import { useOnboardingStore, useProfilesStore } from '@almamesh/store';
+import { useOnboardingStore } from '@almamesh/store';
 import { safeError } from '@almamesh/shared-types';
 import { MEMBER_RELATIONSHIPS, type MemberRelationship } from '@almamesh/shared-types';
 import { Button, Dialog, Input, Select } from '../../ui';
-import { waitForStoreSaved } from '../../../lib/storeSaved';
+import { useStagedPerson } from './useStagedPerson';
 
 /** Narrow a raw `<select>` value to a member relationship (no casts). */
 export function asMemberRelationship(value: string): MemberRelationship | undefined {
@@ -52,9 +52,8 @@ export function AddPersonDialog({ open, onClose }: AddPersonDialogProps): ReactE
   const { t } = useTranslation('settings');
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const createProfile = useProfilesStore((s) => s.createProfile);
-  const setRelationship = useProfilesStore((s) => s.setRelationship);
-  const setActiveProfile = useProfilesStore((s) => s.setActiveProfile);
+  // Saving, retrying and cancelling a person whose save did not finish.
+  const stagedPerson = useStagedPerson();
   // The wizard reads a DIFFERENT store than the profiles store this dialog
   // writes to. Without this hand-off the very next screen asks for the name we
   // just took. See `handOffNameToWizard`.
@@ -64,35 +63,20 @@ export function AddPersonDialog({ open, onClose }: AddPersonDialogProps): ReactE
   const [relationshipValue, setRelationshipValue] = useState('');
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  // The person created by a submit whose save failed. A retry re-saves them
-  // instead of creating a second copy.
-  const unsavedIdRef = useRef<string | null>(null);
 
   const resetForm = (): void => {
     setName('');
     setRelationshipValue('');
     setSubmitError(null);
-    unsavedIdRef.current = null;
   };
 
   // Reset on ANY close (Cancel, Escape, overlay) so a cancelled entry never
-  // lingers into the next open.
+  // lingers into the next open. A person whose save failed is rolled back here:
+  // they were kept only so a retry could re-save them.
   const handleClose = (): void => {
+    stagedPerson.discard();
     resetForm();
     onClose();
-  };
-
-  /** Create (or, on a retry, re-save) the person in memory; return their id. */
-  const stagePerson = (trimmed: string): string => {
-    const id = unsavedIdRef.current ?? createProfile(trimmed);
-    unsavedIdRef.current = id;
-    const memberRelationship = asMemberRelationship(relationshipValue);
-    if (memberRelationship) {
-      setRelationship(id, memberRelationship);
-    }
-    // Always queues a fresh write of the whole row, which is what a retry needs.
-    setActiveProfile(id);
-    return id;
   };
 
   const submit = async (): Promise<void> => {
@@ -103,10 +87,12 @@ export function AddPersonDialog({ open, onClose }: AddPersonDialogProps): ReactE
     setSubmitError(null);
     setSaving(true);
     try {
-      stagePerson(trimmed);
       // The person is "added" only once they are on disk. Moving on before
       // this let a full page load lose them (the write was still queued).
-      await waitForStoreSaved('people');
+      await stagedPerson.save({
+        name: trimmed,
+        relationship: asMemberRelationship(relationshipValue),
+      });
     } catch (err) {
       // A store or disk failure must never silently close the dialog or
       // escape the click handler: keep the typed entry, show a retryable notice.

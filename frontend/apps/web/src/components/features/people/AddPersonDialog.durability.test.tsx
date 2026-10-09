@@ -30,12 +30,19 @@ vi.mock('../../../lib/storeSaved', () => ({
 import '../../../i18n/config';
 import { AddPersonDialog } from './AddPersonDialog';
 
+let closes = 0;
+
 function renderDialog(): void {
   render(
     <QueryClientProvider client={new QueryClient()}>
       <MemoryRouter initialEntries={['/mesh']}>
         <Routes>
-          <Route path="/mesh" element={<AddPersonDialog open onClose={() => undefined} />} />
+          <Route path="/mesh" element={<AddPersonDialog
+                open
+                onClose={() => {
+                  closes += 1;
+                }}
+              />} />
           <Route path="/onboarding" element={<p>onboarding-page</p>} />
         </Routes>
       </MemoryRouter>
@@ -54,6 +61,7 @@ function profileNames(): string[] {
 
 beforeEach(() => {
   save.calls = 0;
+  closes = 0;
   useLanguageStore.setState({ language: 'en' });
   useProfilesStore.setState({ profiles: {}, activeProfileId: null, hydrated: true });
 });
@@ -102,5 +110,65 @@ describe('AddPersonDialog — the person is saved before the dialog says so', ()
 
     expect(profileNames()).toEqual(['Second Friend']);
     expect(screen.getByText('onboarding-page')).toBeTruthy();
+  });
+
+  it('a retry after editing the name saves the current name on the same person', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    renderDialog();
+    submit('Secnod Friend');
+    await act(async () => save.reject(new Error('disk full')));
+
+    submit('Second Friend');
+    await act(async () => save.resolve());
+
+    expect(profileNames()).toEqual(['Second Friend']);
+    expect(screen.getByText('onboarding-page')).toBeTruthy();
+  });
+});
+
+describe('AddPersonDialog — cancelling after a failed save rolls the person back', () => {
+  function seedMe(): string {
+    const me = useProfilesStore.getState().createProfile('Asha Rao');
+    useProfilesStore.getState().setActiveProfile(me);
+    return me;
+  }
+
+  it('after a failed save: the person is gone and the previous person is active again', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const me = seedMe();
+    renderDialog();
+    submit('Second Friend');
+    await act(async () => save.reject(new Error('disk full')));
+    // Kept while the dialog is open, so a retry can re-save the same person.
+    expect(profileNames()).toEqual(['Asha Rao', 'Second Friend']);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    expect(closes).toBe(1);
+    expect(profileNames()).toEqual(['Asha Rao']);
+    expect(useProfilesStore.getState().activeProfileId).toBe(me);
+  });
+
+  it('after a timed-out save: the same rollback', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const me = seedMe();
+    renderDialog();
+    submit('Second Friend');
+    await act(async () =>
+      save.reject(Object.assign(new Error('timed out'), { reason: 'timed_out' })),
+    );
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    expect(profileNames()).toEqual(['Asha Rao']);
+    expect(useProfilesStore.getState().activeProfileId).toBe(me);
+  });
+
+  it('a successful add is never rolled back', async () => {
+    seedMe();
+    renderDialog();
+    submit('Second Friend');
+    await act(async () => save.resolve());
+    expect(profileNames()).toEqual(['Asha Rao', 'Second Friend']);
   });
 });

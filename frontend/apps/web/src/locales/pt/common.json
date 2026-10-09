@@ -24,7 +24,7 @@
     "delete_aria": "Excluir {{name}}",
     "delete_confirm": "Excluir {{name}} e os seus mapas? Isto não pode ser desfeito.",
     "delete_error": "Não foi possível concluir a exclusão desta pessoa. Nada foi removido — tente novamente.",
-    "add_error": "Não foi possível salvar esta pessoa. Nada foi adicionado — tente novamente.",
+    "add_error": "Não foi possível salvar esta pessoa neste dispositivo. Tente novamente, ou feche esta janela e ela não será mantida.",
     "new_person_name_aria": "Nome da nova pessoa"
   },
   "actions": {

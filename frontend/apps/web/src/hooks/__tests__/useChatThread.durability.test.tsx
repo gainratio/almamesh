@@ -91,4 +91,32 @@ describe('useChatThread — the turn ends only once the answer is saved', () => 
     expect(last).toMatchObject({ role: 'assistant', error: true });
     expect(last?.content).toMatch(/couldn.t be saved/i);
   });
+
+  it('a thread deleted mid-turn ends the turn quietly when its save then fails', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const { result } = renderHook(() => useChatThread(PROFILE, CHART));
+    let outcome: 'pending' | 'resolved' | 'rejected' = 'pending';
+    act(() => {
+      result.current.submit('How is my Saturn?', stream).then(
+        () => {
+          outcome = 'resolved';
+        },
+        () => {
+          outcome = 'rejected';
+        },
+      );
+    });
+
+    await waitFor(() => expect(save.stores).toEqual(['chat']));
+    const threadId = result.current.threadId;
+    expect(threadId).not.toBeNull();
+    act(() => useChatStore.getState().deleteThread(threadId ?? ''));
+    await act(async () => save.reject(new Error('disk full')));
+
+    await waitFor(() => expect(outcome).toBe('resolved'));
+    expect(result.current.isStreaming).toBe(false);
+    // Nothing to annotate: no notice is resurrected into a deleted thread.
+    expect(useChatStore.getState().threads[threadId ?? '']).toBeUndefined();
+    expect(useChatStore.getState().messages[threadId ?? ''] ?? []).toEqual([]);
+  });
 });
