@@ -40,7 +40,7 @@ async function pinYear(year: string) {
 beforeEach(() => {
   hydrateLlmSettings(null);
   useChatStore.setState({ threads: {}, messages: {}, summaries: {} });
-  useChartReanchorStatus.setState({ pendingChartIds: new Set() });
+  useChartReanchorStatus.setState({ pendingAttempts: new Map() });
   __setMemoryForTest({
     indexMessage: vi.fn().mockResolvedValue(undefined),
     retrieve: vi.fn().mockResolvedValue([]),
@@ -52,7 +52,7 @@ beforeEach(() => {
 afterEach(() => {
   hydrateLlmSettings(null);
   useChatStore.setState({ threads: {}, messages: {}, summaries: {} });
-  useChartReanchorStatus.setState({ pendingChartIds: new Set() });
+  useChartReanchorStatus.setState({ pendingAttempts: new Map() });
   __resetMemoryForTest();
   vi.restoreAllMocks();
 });
@@ -94,7 +94,7 @@ describe('ChatPanel time travel', () => {
 
   it('a pinned thread can send while the chart re-anchors to a new day', async () => {
     useChatStore.getState().startThread('p1', 'c1', YEAR_2050);
-    useChartReanchorStatus.getState().begin('c1');
+    useChartReanchorStatus.getState().begin('c1', 'c1|2026-10-07');
     renderPanel();
     fireEvent.change(screen.getByTestId('chat-input'), { target: { value: 'Will work get easier?' } });
     expect((screen.getByTestId('chat-send-button') as HTMLButtonElement).disabled).toBe(false);

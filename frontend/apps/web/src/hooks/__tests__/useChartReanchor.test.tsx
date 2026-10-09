@@ -8,7 +8,7 @@
  */
 import { StrictMode, type ReactElement, type ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { SiderealChart } from '@almamesh/browser/types';
@@ -120,11 +120,11 @@ describe('useChartReanchor', () => {
   afterEach(() => {
     vi.useRealTimers();
     useChartLibraryStore.setState({ charts: {} });
-    useChartReanchorStatus.setState({ pendingChartIds: new Set() });
+    useChartReanchorStatus.setState({ pendingAttempts: new Map() });
   });
 
   function isPending(): boolean {
-    return useChartReanchorStatus.getState().pendingChartIds.has('chart-1');
+    return useChartReanchorStatus.getState().pendingAttempts.has('chart-1');
   }
 
   it('reports the chart as re-anchoring until the recompute lands', async () => {
@@ -370,5 +370,36 @@ describe('useChartReanchor', () => {
       expect(isPending()).toBe(false);
       expect(vi.getTimerCount(), 'the wait limit timer is cleared').toBe(timersBefore);
     });
+  });
+
+  it('keeps chat waiting when a re-anchor started before midnight settles after it', async () => {
+    // Local midnight in the test process's zone (the zone `viewerTimeZone` reads).
+    const midnight = new Date(2026, 9, 8, 0, 0, 0).getTime();
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
+    vi.setSystemTime(midnight - 10_000);
+    useChartLibraryStore.setState({
+      charts: { 'chart-1': chartCalculatedOn('2026-06-26T17:00:00.000Z') },
+      hydrated: true,
+    });
+    const held = heldGenerateChart();
+    renderReanchor(engineCtx(held.generateChart));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(held.generateChart).toHaveBeenCalledTimes(1);
+    expect(isPending()).toBe(true);
+
+    // The clock crosses midnight: the new day's attempt begins its own wait.
+    await act(() => vi.advanceTimersByTimeAsync(11_000));
+    expect(Date.now()).toBeGreaterThan(midnight);
+    expect(isPending()).toBe(true);
+
+    // Yesterday's attempt settles; its release must not clear today's wait.
+    held.fail();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(isPending(), "the new day's recompute is still due").toBe(true);
+
+    // Today's recompute settles too; then chat is free.
+    held.fail();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(isPending()).toBe(false);
   });
 });

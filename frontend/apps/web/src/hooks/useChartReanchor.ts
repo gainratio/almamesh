@@ -63,10 +63,10 @@ function beginWait(waits: Waits, attempt: string, chartId: string): void {
     if (waits.get(attempt) === release) {
       waits.delete(attempt);
     }
-    status.settle(chartId);
+    status.settle(chartId, attempt);
   };
   waits.set(attempt, release);
-  status.begin(chartId);
+  status.begin(chartId, attempt);
   limit = setTimeout(release, REANCHOR_WAIT_LIMIT_MS);
 }
 
