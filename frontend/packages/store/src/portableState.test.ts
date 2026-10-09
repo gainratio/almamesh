@@ -26,6 +26,7 @@ import {
   repairPortableReferences,
   EMPTY_PORTABLE_REPAIR_REPORT,
 } from './portableState';
+import { CHAT_PERSIST_VERSION } from './chat';
 
 class MemorySqliteStore implements SqliteStateStore {
   readonly name = 'test';
@@ -1212,3 +1213,74 @@ describe('repairPortableReferences: every dangling reference normal use can leav
   });
 });
 
+describe('time-travel pins in a backup (chat store v3)', () => {
+  const DAY_PIN = {
+    start: '2026-06-15',
+    end: '2026-06-15',
+    granularity: 'day',
+    place: { label: 'Bogotá, Colombia', timezone: 'America/Bogota', latitude: 4.711, longitude: -74.0721 },
+  };
+
+  function envelope(state: unknown, version: number): string {
+    return JSON.stringify({ state, version, datasetEpoch: 0 });
+  }
+
+  async function seedChat(thread: Record<string, unknown>, version = 3) {
+    const sqlite = new MemorySqliteStore();
+    const handed: Array<ReadonlyMap<string, string>> = [];
+    const repository = new PortableStateRepository(
+      sqlite,
+      async (bytes) => bytes[0] ?? -1,
+      async (canonical) => {
+        handed.push(canonical);
+        return new Uint8Array([sqlite.epoch]);
+      },
+    );
+    await migrateLegacyState(repository, { get: async () => null, delete: async () => undefined }, []);
+    await repository.write(
+      'almamesh-profiles',
+      envelope({ profiles: { p1: { id: 'p1' } }, activeProfileId: 'p1' }, 1),
+    );
+    await repository.write(
+      'almamesh-chat-history',
+      envelope({ threads: { t1: { id: 't1', profile_id: 'p1', ...thread } }, messages: { t1: [] }, summaries: {} }, version),
+    );
+    return { repository, handed };
+  }
+
+  it('reads chat store version 3 (the store and the importer agree)', () => {
+    expect(PORTABLE_STORE_MAX_VERSIONS['almamesh-chat-history']).toBe(3);
+    expect(CHAT_PERSIST_VERSION).toBe(3);
+  });
+
+  it('exports a Day pin with its place field for field', async () => {
+    const { repository, handed } = await seedChat({ as_of: DAY_PIN });
+    await repository.exportBytes();
+    const chat = JSON.parse(handed.at(-1)!.get('almamesh-chat-history')!) as {
+      state: { threads: Record<string, { as_of?: unknown }> };
+    };
+    expect(chat.state.threads.t1?.as_of).toEqual(DAY_PIN);
+  });
+
+  it('still accepts a v2 chat row with no pins', async () => {
+    const { repository } = await seedChat({}, 2);
+    await expect(repository.exportBytes()).resolves.toBeDefined();
+  });
+
+  it.each([
+    ['latitude 91', { ...DAY_PIN, place: { ...DAY_PIN.place, latitude: 91 } }, 'as_of.place.latitude'],
+    ['an extra key', { ...DAY_PIN, birth_place: 'Delhi' }, 'as_of'],
+    ['granularity week', { ...DAY_PIN, granularity: 'week' }, 'as_of.granularity'],
+    ['a Month pin with a place', { ...DAY_PIN, start: '2026-06-01', end: '2026-06-30', granularity: 'month' }, 'as_of.place'],
+  ])('refuses a backup whose pin has %s, naming the row, thread and field', async (_label, asOf, field) => {
+    const { repository } = await seedChat({ as_of: asOf });
+    await expect(repository.exportBytes()).rejects.toThrow(
+      `Portable state row "almamesh-chat-history" thread "t1" has an invalid ${field}.`,
+    );
+  });
+
+  it('calls a v4 chat row too new', async () => {
+    const { repository } = await seedChat({}, 4);
+    await expect(repository.exportBytes()).rejects.toBeInstanceOf(PortableStateTooNewError);
+  });
+});
