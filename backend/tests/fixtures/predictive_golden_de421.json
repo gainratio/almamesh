@@ -1836,6 +1836,8 @@
             "kind": "sign_ingress",
             "sade_sati_phase": null,
             "severity": "neutral",
+            "station_direction": null,
+            "station_sign": null,
             "to_lord": null,
             "to_sign": "Leo"
           },
@@ -1848,6 +1850,8 @@
             "kind": "sign_ingress",
             "sade_sati_phase": null,
             "severity": "neutral",
+            "station_direction": null,
+            "station_sign": null,
             "to_lord": null,
             "to_sign": "Aries"
           }
@@ -4766,6 +4770,8 @@
             "kind": "sign_ingress",
             "sade_sati_phase": null,
             "severity": "neutral",
+            "station_direction": null,
+            "station_sign": null,
             "to_lord": null,
             "to_sign": "Leo"
           },
@@ -4778,6 +4784,8 @@
             "kind": "sign_ingress",
             "sade_sati_phase": null,
             "severity": "neutral",
+            "station_direction": null,
+            "station_sign": null,
             "to_lord": null,
             "to_sign": "Aries"
           }

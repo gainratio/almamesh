@@ -52,6 +52,13 @@ class TransitSeverity(StrEnum):
     CHALLENGING = "challenging"
 
 
+class StationDirection(StrEnum):
+    """Which way a graha turns at a station."""
+
+    RETROGRADE = "retrograde"  # starts moving backward
+    DIRECT = "direct"  # resumes forward motion
+
+
 # --- atomic placements ---
 
 
@@ -150,6 +157,8 @@ class TimelineEvent(BaseModel):
     from_lord: PlanetName | None = None  # dasha change: outgoing lord
     to_lord: PlanetName | None = None  # dasha change: incoming lord
     sade_sati_phase: SadeSatiPhase | None = None
+    station_direction: StationDirection | None = None  # station: which way it turns
+    station_sign: ZodiacSign | None = None  # station: the sign it stations in
     severity: TransitSeverity
     descriptor: str  # STABLE machine key, e.g. "saturn.ingress.aries"
     model_config = {"use_enum_values": True}
