@@ -94,6 +94,12 @@ export function timelineEventLabel(t: TFunction, event: TransitTimelineEventData
       }
       return t('predictive:events.dasha_change_generic');
     case 'station':
+      if (event.graha && event.station_direction && event.station_sign) {
+        return t(`predictive:events.station_${event.station_direction}`, {
+          graha: grahaName(t, event.graha),
+          sign: signName(t, event.station_sign),
+        });
+      }
       if (event.graha) {
         return t('predictive:events.station', { graha: grahaName(t, event.graha) });
       }

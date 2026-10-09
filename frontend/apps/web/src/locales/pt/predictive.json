@@ -149,6 +149,8 @@
     "dasha_change_to": "Começa um período de daśā de {{graha}}",
     "dasha_change_generic": "O período de daśā muda",
     "station": "{{graha}} estaciona",
+    "station_retrograde": "{{graha}} fica retrógrado em {{sign}}",
+    "station_direct": "{{graha}} volta ao movimento direto em {{sign}}",
     "generic": "{{descriptor}}"
   },
   "vargas": {

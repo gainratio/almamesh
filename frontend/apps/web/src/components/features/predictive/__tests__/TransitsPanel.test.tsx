@@ -1,7 +1,8 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import i18next from 'i18next';
 import { useLanguageStore } from '@almamesh/store';
+import type { TransitCtx } from '@almamesh/shared-types';
 
 import '../../../../i18n/config';
 import { TransitsPanel } from '../TransitsPanel';
@@ -79,5 +80,25 @@ describe('TransitsPanel', () => {
     const timeline = screen.getByTestId('transit-timeline');
     expect(within(timeline).getByText('Jupiter enters Cancer')).toBeTruthy();
     expect(within(timeline).getByText(/Mercury → Ketu/)).toBeTruthy();
+  });
+
+  it('renders Rahu and Ketu changing sign at the same instant as two rows, without a key warning', () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const base = { ...TRANSIT_CTX.timeline.events[0], kind: 'sign_ingress', from_lord: null, to_lord: null } as const;
+    const ctx: TransitCtx = {
+      ...TRANSIT_CTX,
+      timeline: {
+        ...TRANSIT_CTX.timeline,
+        events: [
+          { ...base, date: '2026-12-03', graha: 'rahu', from_sign: 'aquarius', to_sign: 'capricorn', descriptor: 'rahu.ingress.capricorn' },
+          { ...base, date: '2026-12-03', graha: 'ketu', from_sign: 'leo', to_sign: 'cancer', descriptor: 'ketu.ingress.cancer' },
+        ],
+      },
+    };
+    render(<TransitsPanel transitCtx={ctx} />);
+    expect(screen.getByText('Rahu enters Capricorn')).toBeTruthy();
+    expect(screen.getByText('Ketu enters Cancer')).toBeTruthy();
+    expect(errors).not.toHaveBeenCalled();
+    errors.mockRestore();
   });
 });

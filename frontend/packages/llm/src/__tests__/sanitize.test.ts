@@ -319,9 +319,45 @@ describe("sanitizeChartForLlm — predictive contexts (transits/strength/vargas/
       graha: "saturn",
       from_sign: "aquarius",
       to_sign: "pisces",
+      station_direction: null,
+      station_sign: null,
       severity: "challenging",
       descriptor: "Saturn enters Pisces",
     });
+  });
+
+  it("keeps a station's direction and sign, and its date at month precision", () => {
+    const [ingress] = TRANSIT_CTX_FIXTURE.timeline.events;
+    const station = {
+      ...ingress,
+      date: "2030-07-26T07:56:00Z",
+      kind: "station",
+      graha: "saturn",
+      from_sign: null,
+      to_sign: null,
+      station_direction: "retrograde",
+      station_sign: "pisces",
+      descriptor: "saturn.station.retrograde",
+    } as const;
+    const chart = {
+      ...predictiveChart,
+      transit_context: { ...TRANSIT_CTX_FIXTURE, timeline: { ...TRANSIT_CTX_FIXTURE.timeline, events: [station] } },
+    } as unknown as SiderealChart;
+    const transits = sanitizeChartForLlm(chart, { basis: "chart", instant: NOW }).predictive?.transits;
+    expect(transits?.timeline).toEqual([
+      {
+        month: "2030-07",
+        kind: "station",
+        graha: "saturn",
+        from_sign: null,
+        to_sign: null,
+        station_direction: "retrograde",
+        station_sign: "pisces",
+        severity: "challenging",
+        descriptor: "saturn.station.retrograde",
+      },
+    ]);
+    expect(allStrings(transits).filter((s) => DAY_PRECISION.test(s))).toEqual([]);
   });
 
   it("compacts strength to SAV total + per-planet shadbala figures", () => {

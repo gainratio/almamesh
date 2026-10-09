@@ -166,6 +166,22 @@ const domainsRaw: LifeDomainsContext = {
 // ---------------------------------------------------------------------------
 
 describe("toTransitCtx", () => {
+  it("carries a station's direction and sign, and reads a pre-Inc-B payload as null", () => {
+    const raw = transitGolden["1990-01-15T12:00:00+00:00"] as unknown as TransitContext;
+    const station = toTransitCtx(raw)?.timeline.events.find((e) => e.kind === "station" && e.graha === "saturn");
+    expect(station).toMatchObject({ station_direction: "retrograde", station_sign: "pisces" });
+    const legacy: TransitContext = {
+      ...raw,
+      timeline: {
+        ...raw.timeline,
+        events: raw.timeline.events.map(({ station_direction: _d, station_sign: _s, ...rest }) => rest),
+      },
+    };
+    const events = toTransitCtx(legacy)?.timeline.events ?? [];
+    expect(events.length).toBeGreaterThan(0);
+    expect(events.every((e) => e.station_direction === null && e.station_sign === null)).toBe(true);
+  });
+
   it("returns undefined for absent input (older bundles emit no transit_context)", () => {
     expect(toTransitCtx(undefined)).toBeUndefined();
     expect(toTransitCtx(null)).toBeUndefined();

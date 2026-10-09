@@ -148,6 +148,8 @@
     "dasha_change_to": "A {{graha}} daśā period begins",
     "dasha_change_generic": "Daśā period changes",
     "station": "{{graha}} stations",
+    "station_retrograde": "{{graha}} turns retrograde in {{sign}}",
+    "station_direct": "{{graha}} turns direct in {{sign}}",
     "generic": "{{descriptor}}"
   },
   "vargas": {

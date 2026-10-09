@@ -158,6 +158,8 @@ export interface SanitizedTransitEvent {
   readonly graha: string | null;
   readonly from_sign: string | null;
   readonly to_sign: string | null;
+  readonly station_direction: string | null;
+  readonly station_sign: string | null;
   readonly severity: string;
   readonly descriptor: string;
 }
@@ -500,6 +502,8 @@ function sanitizeTransits(ctx: TransitContext): SanitizedTransits {
       graha: event.graha,
       from_sign: event.from_sign,
       to_sign: event.to_sign,
+      station_direction: event.station_direction ?? null,
+      station_sign: event.station_sign ?? null,
       severity: event.severity,
       descriptor: event.descriptor,
     })),

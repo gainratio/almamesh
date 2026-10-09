@@ -126,6 +126,8 @@ export interface DashaTransitFusion {
   readonly severity: TransitSeverity;
 }
 
+export type StationDirection = "retrograde" | "direct";
+
 export interface TimelineEvent {
   readonly date: string;
   readonly kind: TransitEventKind;
@@ -137,6 +139,9 @@ export interface TimelineEvent {
   readonly sade_sati_phase: SadeSatiPhase | null;
   readonly severity: TransitSeverity;
   readonly descriptor: string;
+  /** Station events only (Inc B). Absent on payloads saved by older builds. */
+  readonly station_direction?: StationDirection | null;
+  readonly station_sign?: string | null;
 }
 
 export interface TransitTimeline {

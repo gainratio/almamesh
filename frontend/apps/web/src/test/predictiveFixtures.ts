@@ -134,6 +134,8 @@ export const TRANSIT_CTX: TransitCtx = {
         sade_sati_phase: null,
         severity: 'supportive',
         descriptor: 'jupiter.ingress.cancer',
+        station_direction: null,
+        station_sign: null,
       },
       {
         date: '2027-02-14',
@@ -146,6 +148,8 @@ export const TRANSIT_CTX: TransitCtx = {
         sade_sati_phase: null,
         severity: 'neutral',
         descriptor: 'dasha.antar.mercury_to_ketu',
+        station_direction: null,
+        station_sign: null,
       },
     ],
   },

@@ -38,6 +38,28 @@ describe('timelineEventLabel', () => {
     const broken = { ...TRANSIT_CTX.timeline.events[0], graha: null };
     expect(timelineEventLabel(t, broken)).toBe('jupiter.ingress.cancer');
   });
+
+  const station = {
+    ...TRANSIT_CTX.timeline.events[0],
+    kind: 'station',
+    graha: 'saturn',
+    from_sign: null,
+    to_sign: null,
+    station_direction: 'retrograde',
+    station_sign: 'pisces',
+    descriptor: 'saturn.station.retrograde',
+  } as const;
+
+  it('renders a station with its direction and sign, in every language', () => {
+    expect(timelineEventLabel(t, station)).toBe('Saturn turns retrograde in Pisces');
+    expect(timelineEventLabel(t, { ...station, station_direction: 'direct' })).toBe('Saturn turns direct in Pisces');
+    expect(timelineEventLabel(i18n.getFixedT('es'), station)).toBe('Saturno inicia su retrógrado en Piscis');
+    expect(timelineEventLabel(i18n.getFixedT('pt'), station)).toBe('Saturno fica retrógrado em Peixes');
+  });
+
+  it('a station without its direction keeps the plain line', () => {
+    expect(timelineEventLabel(t, { ...station, station_direction: null })).toBe('Saturn stations');
+  });
 });
 
 describe('domainWindowLabel', () => {

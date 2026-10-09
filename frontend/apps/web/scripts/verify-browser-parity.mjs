@@ -6,7 +6,10 @@
  * script that makes that true. It boots the shipped app from a served origin,
  * drives the REAL Pyodide Web Worker (`packages/browser/src/pyodide/chartWorker.ts`)
  * through the app's own runtime, and asserts every chart it returns is
- * byte-identical to the committed CPython golden.
+ * byte-identical to the committed CPython golden. CHECK 7 does the same for
+ * the predictive entry (transits, vargas, strength, domains) against
+ * `backend/tests/fixtures/predictive_golden_de421.json`, including its
+ * 24-month case.
  *
  * Why a browser and not node
  * --------------------------
@@ -251,16 +254,19 @@ async function main() {
     let stage = null
     let bootError = null
     let hasGen = false
+    let hasPredictive = false
     const deadline = Date.now() + 120_000
     while (Date.now() < deadline) {
       const probe = await page.evaluate(() => ({
         stage: window.__ALMAMESH_STAGE__ ?? null,
         error: window.__ALMAMESH_ERROR__ ?? null,
         hasGen: typeof window.__almameshGenerate === 'function',
+        hasPredictive: typeof window.__almameshComputePredictive === 'function',
       }))
       stage = probe.stage
       bootError = probe.error
       hasGen = probe.hasGen
+      hasPredictive = probe.hasPredictive
       if (bootError) break
       if (stage === 'ready' && hasGen) break
       await page.waitForTimeout(500)
@@ -386,6 +392,82 @@ async function main() {
           ? `control=${CONTROL_REFERENCE_DATE} diverged as required`
           : `control=${CONTROL_REFERENCE_DATE} produced the SAME bytes as the golden — ` +
             'the reference date is NOT reaching the engine, so CHECK 3 proves nothing',
+    )
+
+    // --- CHECK 7: the predictive payload (transits/vargas/strength/domains) is byte-identical ---
+    // Pins MUST match backend/tests/test_predictive_golden.py (FIXTURES + WINDOW_24_FIXTURES)
+    // and packages/browser/integration/parity.mjs.
+    const PREDICTIVE_REFERENCE_INSTANT = '2026-06-09T12:00:00+00:00'
+    const PREDICTIVE_FIXTURES = {
+      '1990-01-15T12:00:00+00:00': { iso: '1990-01-15T12:00:00+00:00', latitude: 28.6139, longitude: 77.209, utcOffsetMinutes: 330 },
+      '2000-12-31T23:59:00+00:00': { iso: '2000-12-31T23:59:00+00:00', latitude: 40.7128, longitude: -74.006, utcOffsetMinutes: -300 },
+      '1990-01-15T12:00:00+00:00@24m': { iso: '1990-01-15T12:00:00+00:00', latitude: 28.6139, longitude: 77.209, utcOffsetMinutes: 330, windowMonths: 24 },
+    }
+    // The four engine contexts, named. computePredictive also returns what
+    // TypeScript adds (domain_strength_assays, domain_strength_receipts,
+    // strength_signer_public_key); those are not engine output and not compared.
+    const ENGINE_KEYS = ['domains_context', 'strength_context', 'transit_context', 'varga_context_full']
+    const predictiveGolden = JSON.parse(
+      readFileSync(join(REPO_ROOT, 'backend/tests/fixtures/predictive_golden_de421.json'), 'utf8'),
+    )
+    const predictiveGoldenKeys = Object.keys(predictiveGolden).sort()
+    const predictiveFixtureKeys = Object.keys(PREDICTIVE_FIXTURES).sort()
+    let predictiveMismatches = 0
+    if (!hasPredictive) {
+      predictiveMismatches += 1
+      console.log('   [FAIL] __almameshComputePredictive=ABSENT (build without VITE_EXIT_GATE_HOOKS=1?)')
+    }
+    if (predictiveGoldenKeys.join('|') !== predictiveFixtureKeys.join('|')) {
+      predictiveMismatches += 1
+      console.log(`   [FAIL] predictive golden keys ${predictiveGoldenKeys} != fixtures ${predictiveFixtureKeys}`)
+    }
+    const predictiveTimings = []
+    for (const key of hasPredictive ? predictiveFixtureKeys : []) {
+      const expected = predictiveGolden[key]
+      if (expected == null || Object.keys(expected).sort().join('|') !== ENGINE_KEYS.join('|')) {
+        predictiveMismatches += 1
+        console.log(`   [FAIL] predictive ${key}: golden case keys are not exactly ${ENGINE_KEYS}`)
+        continue
+      }
+      const { iso, windowMonths, ...place } = PREDICTIVE_FIXTURES[key]
+      const input = {
+        datetimeUtc: iso,
+        ...place,
+        referenceInstant: PREDICTIVE_REFERENCE_INSTANT,
+        ...(windowMonths ? { windowMonths } : {}),
+      }
+      const t0 = Date.now()
+      let payload = null
+      let err = null
+      try {
+        payload = await page.evaluate((arg) => window.__almameshComputePredictive(arg), input)
+      } catch (e) {
+        err = String(e)
+      }
+      const ms = Date.now() - t0
+      predictiveTimings.push(`${key}=${ms}ms`)
+      if (err || payload == null) {
+        predictiveMismatches += 1
+        console.log(`   [FAIL] predictive ${key} — compute threw: ${err ?? 'null payload'}  ${ms}ms`)
+        continue
+      }
+      const actual = canonicalize(Object.fromEntries(ENGINE_KEYS.map((k) => [k, payload[k]])))
+      const expectedCanon = canonicalize(expected)
+      if (deepEqual(actual, expectedCanon)) {
+        console.log(`   [ok]   predictive ${key} byte-identical  ${ms}ms`)
+      } else {
+        predictiveMismatches += 1
+        const d = firstDiff(expectedCanon, actual)
+        console.log(`   [FAIL] predictive ${key} DIVERGED  ${ms}ms`)
+        console.log(`          first diff at: ${d.path}`)
+        console.log(`            cpython(golden): ${JSON.stringify(d.golden)}`)
+        console.log(`            browser        : ${JSON.stringify(d.browser)}`)
+      }
+    }
+    record(
+      'CHECK 7 — predictive payloads byte-identical to the CPython golden (incl. 24 months)',
+      predictiveMismatches === 0,
+      `cases=${predictiveFixtureKeys.length} mismatches=${predictiveMismatches} ${predictiveTimings.join(' ')}`,
     )
 
     // --- CHECK 5: clean console over the whole parity run ---

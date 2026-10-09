@@ -3,12 +3,14 @@ import type { PortableStatePersistence } from '@almamesh/store'
 import type { SqliteMemoryProof } from './chatMemory'
 
 export type RuntimeChartGenerator = ChartEngine['generateChart']
+export type RuntimePredictiveComputer = ChartEngine['computePredictive']
 
 declare global {
   interface Window {
     __ALMAMESH_STAGE__?: string
     __ALMAMESH_ERROR__?: string
     __almameshGenerate?: RuntimeChartGenerator
+    __almameshComputePredictive?: RuntimePredictiveComputer
     __almameshVerifySqliteMemory?: () => Promise<SqliteMemoryProof>
     __almameshPortableStatePersistence?: () => PortableStatePersistence
     __almameshPredictiveRequestKeys?: string[]
@@ -33,6 +35,15 @@ export const publishRuntimeGenerator = (generate: RuntimeChartGenerator): void =
 
 export const clearRuntimeGenerator = (): void => {
   delete window.__almameshGenerate
+}
+
+/** Exit-gate builds only: lets the browser parity gate run the predictive entry directly. */
+export const publishRuntimePredictive = (compute: RuntimePredictiveComputer): void => {
+  window.__almameshComputePredictive = compute
+}
+
+export const clearRuntimePredictive = (): void => {
+  delete window.__almameshComputePredictive
 }
 
 interface PredictiveRequestKeyState {
