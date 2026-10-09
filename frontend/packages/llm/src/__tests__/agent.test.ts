@@ -465,3 +465,10 @@ describe("streamAgentChat", () => {
     expect(execute).not.toHaveBeenCalled();
   });
 });
+
+describe("AGENT_LIMITS", () => {
+  it("lets a period compute run 150 s (one queued Life Atlas compute plus its own)", () => {
+    expect(AGENT_LIMITS.maxToolTimeoutMs).toBe(150_000);
+    expect(AGENT_LIMITS.toolTimeoutMs).toBe(2_000);
+  });
+});

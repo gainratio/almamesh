@@ -19,7 +19,8 @@ export const AGENT_LIMITS = Object.freeze({
   maxResultChars: 8_192,
   maxAggregateResultChars: 16_384,
   toolTimeoutMs: 2_000,
-  maxToolTimeoutMs: 60_000,
+  // The timing tool's period computes (time travel): 150 s, under the worker's own 180 s.
+  maxToolTimeoutMs: 150_000,
 });
 
 export type AgentJsonObject = Readonly<Record<string, unknown>>;
