@@ -63,7 +63,7 @@ function checkoutStep(): Mapping {
 }
 
 function daggerStep(call: string): Mapping {
-  return { uses: daggerAction, with: { version: "0.21.8", call } }
+  return { uses: daggerAction, env: { XDG_CONFIG_HOME: "${{ github.workspace }}/.github/xdg" }, with: { version: "0.21.8", call } }
 }
 
 // The browser toolchain image is a private GHCR package, so every gate job may
@@ -81,7 +81,7 @@ function expectedGateJob(gate: string): Mapping {
       checkoutStep(),
       {
         uses: daggerAction,
-        env: { GITHUB_TOKEN: "${{ github.token }}" },
+        env: { XDG_CONFIG_HOME: "${{ github.workspace }}/.github/xdg", GITHUB_TOKEN: "${{ github.token }}" },
         with: {
           version: "0.21.8",
           call: `${GATE_REGISTRY_TOKEN} gate --name=${gate} --commit-sha=\${{ github.sha }} --repository=\${{ github.repository }}`,
@@ -193,6 +193,7 @@ function exactDeployWorkflowViolations(source: string): string[] {
           HEAD_SHA: "${{ github.event.workflow_run.head_sha }}",
           RUN_ATTEMPT: "${{ github.event.workflow_run.run_attempt }}",
           WORKFLOW_RUN_ID: "${{ github.event.workflow_run.id }}",
+          XDG_CONFIG_HOME: "${{ github.workspace }}/.github/xdg",
         },
         with: {
           version: "0.21.8",
@@ -223,6 +224,7 @@ function gateJobFixture(gate: string): string[] {
     "          ref: ${{ github.sha }}",
     `      - uses: ${daggerAction} # v8.4.1`,
     "        env:",
+    "          XDG_CONFIG_HOME: ${{ github.workspace }}/.github/xdg",
     "          GITHUB_TOKEN: ${{ github.token }}",
     "        with:",
     "          version: \"0.21.8\"",
@@ -260,6 +262,8 @@ const canonicalFixture = [
   "          persist-credentials: false",
   "          ref: ${{ github.sha }}",
   `      - uses: ${daggerAction} # v8.4.1`,
+  "        env:",
+  "          XDG_CONFIG_HOME: ${{ github.workspace }}/.github/xdg",
   "        with:",
   "          version: \"0.21.8\"",
   "          call: verdict --results=\"${{ join(needs.*.result, ',') }}\"",
@@ -312,6 +316,7 @@ const canonicalDeployFixture = [
   "          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}",
   "          WORKFLOW_RUN_ID: ${{ github.event.workflow_run.id }}",
   "          RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}",
+  "          XDG_CONFIG_HOME: ${{ github.workspace }}/.github/xdg",
   "        with:",
   "          version: \"0.21.8\"",
   "          verb: call",
@@ -376,8 +381,8 @@ describe("atomic hosted Dagger workflow", () => {
     {
       name: "a gate job whose token cannot read packages",
       source: canonicalFixture.replace(
-        "    permissions:\n      contents: read\n      packages: read\n    steps:\n      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7\n        with:\n          fetch-depth: 0\n          persist-credentials: false\n          ref: ${{ github.sha }}\n      - uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77 # v8.4.1\n        env:\n          GITHUB_TOKEN: ${{ github.token }}\n        with:\n          version: \"0.21.8\"\n          call: --registry-token=env:GITHUB_TOKEN gate --name=secretScan",
-        "    permissions:\n      contents: read\n    steps:\n      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7\n        with:\n          fetch-depth: 0\n          persist-credentials: false\n          ref: ${{ github.sha }}\n      - uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77 # v8.4.1\n        env:\n          GITHUB_TOKEN: ${{ github.token }}\n        with:\n          version: \"0.21.8\"\n          call: --registry-token=env:GITHUB_TOKEN gate --name=secretScan",
+        "    permissions:\n      contents: read\n      packages: read\n    steps:\n      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7\n        with:\n          fetch-depth: 0\n          persist-credentials: false\n          ref: ${{ github.sha }}\n      - uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77 # v8.4.1\n        env:\n          XDG_CONFIG_HOME: ${{ github.workspace }}/.github/xdg\n          GITHUB_TOKEN: ${{ github.token }}\n        with:\n          version: \"0.21.8\"\n          call: --registry-token=env:GITHUB_TOKEN gate --name=secretScan",
+        "    permissions:\n      contents: read\n    steps:\n      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7\n        with:\n          fetch-depth: 0\n          persist-credentials: false\n          ref: ${{ github.sha }}\n      - uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77 # v8.4.1\n        env:\n          XDG_CONFIG_HOME: ${{ github.workspace }}/.github/xdg\n          GITHUB_TOKEN: ${{ github.token }}\n        with:\n          version: \"0.21.8\"\n          call: --registry-token=env:GITHUB_TOKEN gate --name=secretScan",
       ),
       violation: "gate-job:secretScan",
     },
@@ -446,8 +451,8 @@ describe("atomic hosted Dagger workflow", () => {
     {
       name: "pre-Dagger shell step",
       source: canonicalFixture.replace(
-        `      - uses: ${daggerAction} # v8.4.1\n        with:\n          version: "0.21.8"\n${verdictCall}`,
-        `      - run: dagger functions\n      - uses: ${daggerAction} # v8.4.1\n        with:\n          version: "0.21.8"\n${verdictCall}`,
+        `      - uses: ${daggerAction} # v8.4.1\n        env:\n          XDG_CONFIG_HOME: \${{ github.workspace }}/.github/xdg\n        with:\n          version: "0.21.8"\n${verdictCall}`,
+        `      - run: dagger functions\n      - uses: ${daggerAction} # v8.4.1\n        env:\n          XDG_CONFIG_HOME: \${{ github.workspace }}/.github/xdg\n        with:\n          version: "0.21.8"\n${verdictCall}`,
       ),
       violation: "dagger-job",
     },
