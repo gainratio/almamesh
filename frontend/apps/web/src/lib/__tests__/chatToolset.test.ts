@@ -285,3 +285,77 @@ describe('buildChatToolset: places', () => {
     expect(JSON.stringify(result)).not.toMatch(/latitude|longitude|12\.04|77\.03|Delhi|28\.61|77\.21|Kolkata/);
   });
 });
+
+describe('a pinned thread', () => {
+  const YEAR_2027 = { start: '2027-01-01', end: '2027-12-31', granularity: 'year' } as const;
+  const BOGOTA = { label: 'Bogotá, Colombia', timezone: 'America/Bogota', latitude: 4.711, longitude: -74.0721 };
+  const DAY_PIN = { start: '2026-06-15', end: '2026-06-15', granularity: 'day', place: BOGOTA } as const;
+
+  beforeEach(() => {
+    loadMock.mockReset();
+    ensureMock.mockReset();
+    loadMock.mockResolvedValue(CHART);
+  });
+
+  it('warms the pinned period before the model runs, and never today, whatever the question', async () => {
+    const pinned = toolset({ pinned: YEAR_2027, periodSkyAllowed: true });
+    await pinned.prepare("what's happening today?", options());
+    expect(ensureMock).not.toHaveBeenCalled();
+    expect(loadMock).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(loadMock.mock.calls[0])).toContain('2027-01-01');
+  });
+
+  it('labels the prompt with the period and hands back the pin with its tense (viewer day)', async () => {
+    const prepared = await toolset({ pinned: YEAR_2027, periodSkyAllowed: true }).prepare('Will work get easier?', options());
+    expect(prepared.asOf).toMatchObject({ basis: 'period', period: { start: '2027-01-01', end: '2027-12-31' } });
+    expect(prepared.pinned).toEqual({ start: '2027-01-01', end: '2027-12-31', relative: 'future' });
+    expect(prepared.currentContextUnavailable).toBe(false);
+  });
+
+  it('shows the page\'s localized status only when the engine will run', async () => {
+    const full = vi.fn();
+    await toolset({ pinned: YEAR_2027, periodSkyAllowed: true }).prepare('q', {
+      ...options(), onStatus: full, pinnedStatus: 'Working out the sky for 2027… (about 30 s)',
+    });
+    expect(full).toHaveBeenCalledWith('Working out the sky for 2027… (about 30 s)');
+    const lite = vi.fn();
+    await toolset({ pinned: YEAR_2027, periodSkyAllowed: false }).prepare('q', {
+      ...options(), onStatus: lite, pinnedStatus: 'Working out the sky for 2027… (about 30 s)',
+    });
+    expect(lite).toHaveBeenCalledWith('Reading dasha periods');
+  });
+
+  it('a lite device answers a Day pin with dashas only and reads no place', async () => {
+    const placeFromRef = vi.fn();
+    const pinned = toolset({ pinned: DAY_PIN, periodSkyAllowed: false, placeFromRef });
+    await pinned.prepare('q', options());
+    const timing = pinned.tools.find((tool) => tool.name === 'get_timing')!;
+    const result = (await timing.execute({ section: 'transits' }, options())) as { shown: string };
+    expect(result.shown).toBe('dashas');
+    expect(loadMock).not.toHaveBeenCalled();
+    expect(placeFromRef).not.toHaveBeenCalled();
+  });
+
+  it('a full device reads a Day pin at its place and sends no coordinate anywhere', async () => {
+    // The Moon read fails fast here, so the 8 s Moon deadline never runs in a unit test.
+    const engine = engineContextWith({ computeMoonWindow: vi.fn(async () => Promise.reject(new Error('no moon in tests'))) });
+    const pinned = toolset({ pinned: DAY_PIN, periodSkyAllowed: true, placeFromRef: vi.fn(async () => undefined), engine });
+    const timing = pinned.tools.find((tool) => tool.name === 'get_timing')!;
+    const datetime = pinned.tools.find((tool) => tool.name === 'get_current_datetime')!;
+    const results = [
+      await timing.execute({ section: 'transits' }, options()),
+      await datetime.execute({ scope: 'utc' }, options()),
+      await pinned.prepare('q', options()),
+    ];
+    const text = JSON.stringify(results);
+    expect(text).toContain('Bogotá, Colombia');
+    expect(text).not.toMatch(/4\.711|74\.07|"latitude"|"longitude"/);
+  });
+
+  it('an unpinned thread keeps the step A router (today pre-run for a today question)', async () => {
+    ensureMock.mockResolvedValue(TODAY_CHART);
+    const prepared = await toolset({ periodSkyAllowed: true }).prepare("what's happening today?", options());
+    expect(ensureMock).toHaveBeenCalledTimes(1);
+    expect(prepared.pinned).toBeUndefined();
+  });
+});

@@ -7,12 +7,15 @@
 import { devicePolicy } from '@almamesh/browser';
 import type { SiderealChart } from '@almamesh/browser/types';
 import {
+  periodAnalysisInstant,
+  pinRelative,
   todayAnalysisInstant,
   type AgentTool,
   type AgentToolContext,
   type AnalysisInstant,
+  type PinnedPrompt,
 } from '@almamesh/llm';
-import type { ProcessedBirthData } from '@almamesh/shared-types';
+import type { ChatThreadAsOf, ProcessedBirthData } from '@almamesh/shared-types';
 
 import type { ChartEngineContextValue } from '../providers/chartEngineContext';
 import { viewerTimeZone } from './analysisInstant';
@@ -20,6 +23,7 @@ import { createChatAgentTools, shouldPreRunToday, viewerTodayDay } from './chatA
 import { ensureCurrentPlanetaryContext } from './currentPlanetaryContext';
 import { createMoonWindowLoader } from './moonWindow';
 import { birthUtcYearOf, birthYearOf, createPeriodChartLoader, readyEngine } from './periodChart';
+import { pinnedPlaceReader, pinnedTiming } from './pinnedPeriod';
 import { createResolvePlaceTool } from './placeTool';
 import type { PlaceReader } from './timingPlaces';
 import { TIMING_TOOL_NAME } from './timingTool';
@@ -41,12 +45,16 @@ export interface BuildChatToolsetInput {
   readonly periodSkyAllowed?: boolean;
   /** Test seam only (pinned as above). Default: the offline city list (geo/placeLookup.ts). */
   readonly placeFromRef?: PlaceReader;
+  /** A time-travel thread's pin: tools default to it and the router warms it (spec Part 3). */
+  readonly pinned?: ChatThreadAsOf;
 }
 
 interface PrepareOptions {
   readonly now: Date;
   readonly signal: AbortSignal;
   readonly onStatus?: (label: string) => void;
+  /** Localized 'Working out the sky for <period>…' shown when the pinned pre-run computes. */
+  readonly pinnedStatus?: string;
 }
 
 interface PreparedChatContext {
@@ -55,6 +63,8 @@ interface PreparedChatContext {
   readonly asOf: AnalysisInstant;
   /** A today question whose engine facts could not be computed. */
   readonly currentContextUnavailable: boolean;
+  /** Set only for a pinned thread: the period and its tense for the prompt. */
+  readonly pinned?: PinnedPrompt;
 }
 
 export interface ChatToolset {
@@ -85,6 +95,39 @@ async function preRunToday(tools: readonly AgentTool[], options: PrepareOptions)
   }
 }
 
+/** Warm the pinned period's sky (plan Ruling 8). Failures are the model's to see through get_timing. */
+async function preRunPin(tools: readonly AgentTool[], options: PrepareOptions): Promise<void> {
+  const timing = tools.find((tool) => tool.name === TIMING_TOOL_NAME);
+  if (!timing) throw new Error('The timing tool is unavailable.');
+  const args = { section: 'transits' };
+  // A fixed tool label (dashas only, needs a place) wins: the engine will not run.
+  options.onStatus?.(timing.statusLabelFor?.(args) ?? options.pinnedStatus ?? timing.statusLabel ?? TODAY_STATUS_FALLBACK);
+  try {
+    await timing.execute(args, { now: new Date(options.now.getTime()), signal: options.signal });
+  } catch (error) {
+    if (options.signal.aborted) throw error;
+  }
+}
+
+/** A pinned thread never pre-runs today (spec router table: "Pinned | Anything | The pinned period"). */
+async function preparePinned(
+  tools: readonly AgentTool[],
+  pinned: ChatThreadAsOf,
+  chart: SiderealChart,
+  viewerZone: string,
+  options: PrepareOptions,
+): Promise<PreparedChatContext> {
+  await preRunPin(tools, options);
+  const period = { start: pinned.start, end: pinned.end };
+  const relative = pinRelative(period, viewerTodayDay(options.now, viewerZone));
+  return {
+    chart,
+    asOf: periodAnalysisInstant(pinned.start, pinned.end),
+    currentContextUnavailable: false,
+    pinned: { ...period, relative },
+  };
+}
+
 export function buildChatToolset(input: BuildChatToolsetInput): ChatToolset {
   const zone = input.viewerZone ?? viewerTimeZone;
   const natalPrompt = input.promptChart ?? input.chart;
@@ -106,6 +149,10 @@ export function buildChatToolset(input: BuildChatToolsetInput): ChatToolset {
     return todayChart;
   };
 
+  const pinned = input.pinned;
+  const baseReader = input.placeFromRef ?? lazyPlaceFromRef;
+  const reader = pinned ? pinnedPlaceReader(pinned, baseReader) : baseReader;
+
   // lite/minimal: no place tool and no needs_place; the city data is never loaded there.
   const skyAllowed = input.periodSkyAllowed ?? devicePolicy().periodSkyComputeAllowed;
   const agentTools = createChatAgentTools({
@@ -123,9 +170,10 @@ export function buildChatToolset(input: BuildChatToolsetInput): ChatToolset {
       engine: input.engine,
     }),
     periodSkyAllowed: skyAllowed,
+    ...(pinned ? { pinned: pinnedTiming(pinned) } : {}),
     // Only a full device reads places: lite never gets a path to the city data.
     ...(skyAllowed
-      ? { loadMoonWindow: createMoonWindowLoader(input.engine), placeFromRef: input.placeFromRef ?? lazyPlaceFromRef }
+      ? { loadMoonWindow: createMoonWindowLoader(input.engine), placeFromRef: reader }
       : {}),
   });
   const tools = skyAllowed ? [...agentTools, createResolvePlaceTool()] : agentTools;
@@ -133,6 +181,7 @@ export function buildChatToolset(input: BuildChatToolsetInput): ChatToolset {
   return {
     tools,
     async prepare(question, options) {
+      if (pinned) return preparePinned(tools, pinned, natalPrompt, zone(), options);
       // A small deterministic router: an undated today-question gets exact-day
       // engine facts before the model runs; a dated one is left to get_timing.
       const needsToday = shouldPreRunToday(question);
