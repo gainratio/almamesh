@@ -27,6 +27,7 @@
     "test:e2e:report:pdf": "playwright test --config=playwright.report-pdf.config.ts",
     "test:e2e:dual-voice": "playwright test --config=playwright.dual-voice-life-atlas.config.ts",
     "test:e2e:mesh": "playwright test --config=playwright.mesh-this-is-me.config.ts",
+    "test:e2e:mesh-add-persist": "playwright test --config=playwright.mesh-add-persist.config.ts",
     "test:e2e:portable-sqlite": "playwright test --config=playwright.portable-sqlite.config.ts",
     "test:e2e:portable-invariants": "playwright test --config=playwright.portable-invariants.config.ts",
     "test:e2e:memory-budget": "playwright test --config=playwright.memory-budget.config.ts",

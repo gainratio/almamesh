@@ -29,7 +29,7 @@ import {
   whenChartLibraryHydrated,
 } from './chartLibrary';
 import { assignOrphanChatThreads, whenChatHydrated } from './chat';
-import { deletionAwareIdbStorage } from './deletionTombstones';
+import { deletionAwareIdbStorage, whenPersistenceCommitted } from './deletionTombstones';
 import { whenHydrated, type HydrationOutcome } from './hydrationBarrier';
 
 /** A named person on this device. No credentials — local-first by design. */
@@ -442,6 +442,18 @@ export function useMeshReady(): boolean {
  */
 export function whenProfilesHydrated(): Promise<HydrationOutcome> {
   return whenHydrated(useProfilesStore.persist);
+}
+
+/**
+ * Resolve once every queued profiles write has committed to SQLite; reject
+ * with the error when the last one failed.
+ *
+ * `createProfile` and friends update memory at once and persist later. A
+ * surface that says "added" or navigates on must await this first, or a full
+ * page load in that window loses the person.
+ */
+export function whenProfilesCommitted(): Promise<void> {
+  return whenPersistenceCommitted(PERSIST_NAME);
 }
 
 /**

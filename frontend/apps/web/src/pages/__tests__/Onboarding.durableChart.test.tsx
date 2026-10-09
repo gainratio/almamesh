@@ -44,6 +44,8 @@ const persisted = vi.hoisted(() => ({
   fail: (_reason: unknown): void => undefined,
   calls: 0,
 }));
+// The first-run person this page creates must be on disk too, not just the chart.
+const profilesCommit = vi.hoisted(() => ({ next: (): Promise<void> => Promise.resolve() }));
 vi.mock('@almamesh/store', async (orig) => {
   const actual = await orig<typeof import('@almamesh/store')>();
   const barrier = (): Promise<void> => {
@@ -57,6 +59,7 @@ vi.mock('@almamesh/store', async (orig) => {
     ...actual,
     whenChartLibraryPersisted: () => barrier().catch(() => undefined),
     whenChartLibraryCommitted: barrier,
+    whenProfilesCommitted: () => profilesCommit.next(),
   };
 });
 
@@ -146,6 +149,7 @@ beforeEach(() => {
   generateChart.mockClear();
   compute = deferred<SiderealChart>();
   persisted.calls = 0;
+  profilesCommit.next = () => Promise.resolve();
   useOnboardingStore.getState().reset();
   useProfilesStore.setState({ profiles: {}, activeProfileId: null });
   useLifeEventsStore.setState({ eventsByProfile: {} });
@@ -220,6 +224,25 @@ describe('Onboarding — the chart is durable before the user leaves', () => {
     expect(navigateSpy).not.toHaveBeenCalled();
     expect(useOnboardingStore.getState().data.name).toBe('Asha');
     expect(warn).toHaveBeenCalledWith('[almamesh:warn:chart.save_failed]');
+    warn.mockRestore();
+  });
+
+  it('stays on the retry card when the first-run person could not be saved, even though the chart was', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    profilesCommit.next = () => Promise.reject(new Error('opfs write failed'));
+    seedReadyToGenerate();
+    renderPage();
+
+    fireEvent.click(screen.getByTestId('skip-life-events-button'));
+    await waitFor(() => expect(generateChart).toHaveBeenCalledOnce());
+    compute.resolve(fakeSiderealChart);
+    await waitFor(() => expect(persisted.calls).toBeGreaterThan(0));
+    persisted.release();
+
+    await waitFor(() => expect(screen.getByTestId('retry-generation-button')).toBeTruthy());
+    expect(navigateSpy).not.toHaveBeenCalled();
+    expect(useOnboardingStore.getState().data.name).toBe('Asha');
+    expect(warn).toHaveBeenCalledWith('[almamesh:warn:people.save_failed]');
     warn.mockRestore();
   });
 

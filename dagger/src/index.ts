@@ -496,6 +496,9 @@ exec ${inline.join(" ")}`,
       // typed in plain chat; a stubbed provider calls get_timing with dates;
       // the real engine computes June 2019. Chromium only.
       "TIME_TRAVEL_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:time-travel --project=chromium",
+      // A person added on /mesh survives an immediate full page load (the
+      // write is on disk before the dialog moves on). Chromium only.
+      "MESH_PERSIST_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:mesh-add-persist",
     ])
   }
   // The hooked Playwright suites. Each used to rebuild this same bundle in its

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
@@ -11,6 +11,7 @@ import {
 import { Button, Dialog, Input } from '../../ui';
 import { AvatarChip } from './AvatarChip';
 import { deleteProfileData } from '../../../lib/profileDataLifecycle';
+import { waitForProfilesSaved } from '../../../lib/profilesSaved';
 
 /**
  * ProfileSwitcher — the header control for named, password-less people sharing
@@ -55,6 +56,9 @@ export function ProfileSwitcher() {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [addError, setAddError] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
+  const unsavedIdRef = useRef<string | null>(null);
 
   /** Refresh the chart view + route to the right place for `profileId`. */
   const refreshForProfile = (profileId: string | null) => {
@@ -71,16 +75,32 @@ export function ProfileSwitcher() {
     refreshForProfile(id);
   };
 
-  const handleAdd = () => {
+  const handleAdd = async () => {
     const name = newName.trim();
-    if (!name) {
+    if (!name || adding) {
       return;
     }
-    const id = createProfile(name);
+    setAddError(null);
+    setAdding(true);
+    // A retry after a failed save re-saves the same person, never a second copy.
+    const id = unsavedIdRef.current ?? createProfile(name);
+    unsavedIdRef.current = id;
+    // Always queues a fresh write of the whole row, which is what a retry needs.
+    setActiveProfile(id);
+    try {
+      // Only move on once the person is on disk: navigating first let a full
+      // page load lose them while the write was still queued.
+      await waitForProfilesSaved();
+    } catch {
+      setAddError(t('profiles.add_error'));
+      return;
+    } finally {
+      setAdding(false);
+    }
+    unsavedIdRef.current = null;
     setNewName('');
     // A brand-new person has no chart yet → send them to onboarding, with the
     // name already answered so the wizard never asks for it twice.
-    setActiveProfile(id);
     setOnboardingName(name);
     setOpen(false);
     refreshForProfile(id);
@@ -243,6 +263,11 @@ export function ProfileSwitcher() {
           </ul>
 
           {deleteError && <p className="font-sans text-sm text-status-error">{deleteError}</p>}
+          {addError && (
+            <p role="alert" className="font-sans text-sm text-status-error">
+              {addError}
+            </p>
+          )}
 
           <div className="flex items-end gap-2 border-t border-ui-border pt-4">
             <label className="flex-1">
@@ -254,14 +279,18 @@ export function ProfileSwitcher() {
                 onChange={(e) => setNewName(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
-                    handleAdd();
+                    void handleAdd();
                   }
                 }}
                 placeholder={t('profiles.name_placeholder')}
                 aria-label={t('profiles.new_person_name_aria')}
               />
             </label>
-            <Button variant="primary" onClick={handleAdd} disabled={!newName.trim()}>
+            <Button
+              variant="primary"
+              onClick={() => void handleAdd()}
+              disabled={!newName.trim() || adding}
+            >
               {t('profiles.add')}
             </Button>
           </div>

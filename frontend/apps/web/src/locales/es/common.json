@@ -24,6 +24,7 @@
     "delete_aria": "Eliminar a {{name}}",
     "delete_confirm": "¿Eliminar a {{name}} y sus cartas? Esto no se puede deshacer.",
     "delete_error": "No se pudo terminar de eliminar a esta persona. No se borró nada: inténtalo de nuevo.",
+    "add_error": "No se pudo guardar a esta persona. No se añadió nada; inténtalo de nuevo.",
     "new_person_name_aria": "Nombre de la nueva persona"
   },
   "actions": {

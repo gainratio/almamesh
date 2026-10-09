@@ -92,7 +92,7 @@ describe('MeshPage', () => {
     useChartLibraryStore.setState({ charts: {}, hydrated: true });
   });
 
-  it('opens the add-person dialog in place from the empty-state invitation', () => {
+  it('opens the add-person dialog in place from the empty-state invitation', async () => {
     useProfilesStore.setState({ profiles: { [ANCHOR.id]: ANCHOR } }); // anchor alone — no members
     renderMesh();
     expect(screen.getByTestId('mesh-invitation')).toBeTruthy();
@@ -108,8 +108,9 @@ describe('MeshPage', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: 'Add & enter birth details' }));
 
-    // Routed through the EXISTING flow: new person active, sent to onboarding.
-    expect(screen.getByTestId('onboarding-stub')).toBeTruthy();
+    // Routed through the EXISTING flow once the person is saved: new person
+    // active, sent to onboarding.
+    expect(await screen.findByTestId('onboarding-stub')).toBeTruthy();
     const created = useProfilesStore
       .getState()
       .listProfiles()
@@ -132,7 +133,7 @@ describe('MeshPage', () => {
     expect(screen.getByTestId('people-stub')).toBeTruthy();
   });
 
-  it('lights a new star in place: the constellation add node opens the same dialog', () => {
+  it('lights a new star in place: the constellation add node opens the same dialog', async () => {
     useProfilesStore.setState({
       profiles: { [ANCHOR.id]: ANCHOR, [SPOUSE.id]: SPOUSE },
       activeProfileId: ANCHOR.id,
@@ -153,7 +154,7 @@ describe('MeshPage', () => {
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Mira Sen' } });
     fireEvent.click(screen.getByRole('button', { name: 'Add & enter birth details' }));
 
-    expect(screen.getByTestId('onboarding-stub')).toBeTruthy();
+    expect(await screen.findByTestId('onboarding-stub')).toBeTruthy();
     const created = useProfilesStore
       .getState()
       .listProfiles()
