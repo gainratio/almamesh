@@ -9,6 +9,7 @@ import type { SiderealChart } from '@almamesh/browser/types';
 import {
   BEFORE_BIRTH_MESSAGE,
   COVERED_EVENTS,
+  endsBeforeBirthYear,
   ISO_DAY_PATTERN,
   parsePeriodArgs,
   periodAnalysisInstant,
@@ -17,7 +18,6 @@ import {
   restrictTransitsToPeriod,
   sanitizeChartForLlm,
   selectDashasForPeriod,
-  startsBeforeBirth,
   todayAnalysisInstant,
   type AgentJsonObject,
   type AgentTool,
@@ -47,8 +47,11 @@ export class PeriodSkyUnavailableError extends Error {
 export interface TimingToolInput {
   /** The stored natal chart: its dated dasha tree is read for every period. */
   readonly chart: SiderealChart;
-  /** The local birth day (YYYY-MM-DD). Used only to refuse earlier periods; never echoed. */
-  readonly birthDay: string | undefined;
+  /**
+   * The local birth year. Used only to refuse periods that end before 1 January
+   * of it; never echoed. Never the day: a day-precision refusal is a birth-date oracle.
+   */
+  readonly birthYear: number | undefined;
   /** Today's calendar day in the one "today" zone (the viewer's). */
   readonly todayDay: (now: Date) => string;
   /** Today's engine facts (the Life Atlas store path). */
@@ -188,7 +191,7 @@ async function periodTiming(
   period: PeriodRange,
   context: AgentToolContext,
 ): Promise<TimingResult | TimingError> {
-  if (startsBeforeBirth(period, input.birthDay)) return { error: BEFORE_BIRTH_MESSAGE };
+  if (endsBeforeBirthYear(period, input.birthYear)) return { error: BEFORE_BIRTH_MESSAGE };
   const echo = periodEcho(period, 'period');
   const limits = periodLimits(period);
   if (section === 'dashas') return dashasTiming(input, section, period, echo, []);

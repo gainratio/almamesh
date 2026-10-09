@@ -73,8 +73,8 @@ export interface CreateChatAgentToolsInput {
   readonly chartTimeZone: string;
   /** Resolve exact-day engine facts; the caller owns cache/profile identity checks. */
   readonly loadCurrentChart?: (context: AgentToolContext) => Promise<SiderealChart>;
-  /** The local birth day (YYYY-MM-DD); periods before it are refused. */
-  readonly birthDay?: string;
+  /** The local birth year; periods that end before 1 January of it are refused. */
+  readonly birthYear?: number;
   /** Today's calendar day; defaults to the viewer's zone. */
   readonly todayDay?: (now: Date) => string;
   /** Engine facts for a period other than today (periodChart.ts). */
@@ -205,7 +205,7 @@ export function createChatAgentTools(input: CreateChatAgentToolsInput): readonly
     },
     createTimingTool({
       chart: input.chart,
-      birthDay: input.birthDay,
+      birthYear: input.birthYear,
       todayDay: input.todayDay ?? viewerTodayDay,
       loadCurrentChart: input.loadCurrentChart,
       loadPeriodChart: input.loadPeriodChart,

@@ -97,7 +97,7 @@ describe('createChatAgentTools', () => {
       chart,
       chartAsOf,
       chartTimeZone: 'UTC',
-      birthDay: '1990-01-15',
+      birthYear: 1990,
       todayDay: () => '2026-03-08',
       loadPeriodChart,
       periodSkyAllowed: true,

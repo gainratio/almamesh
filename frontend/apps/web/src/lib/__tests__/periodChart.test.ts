@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 // package export: imported by path so this test exercises the real pool bound.
 import { EngineMemo, memoizeChartEngine } from '../../../../../packages/browser/src/pyodide/engineMemo';
 import type { ChartEngineContextValue } from '../../providers/chartEngineContext';
-import { birthDayOf, createPeriodChartLoader } from '../periodChart';
+import { birthYearOf, createPeriodChartLoader } from '../periodChart';
 import { createPeriodSkyCache } from '../periodSky';
 import { PeriodSkyUnavailableError, createTimingTool } from '../timingTool';
 
@@ -92,11 +92,11 @@ describe('createPeriodChartLoader', () => {
   });
 });
 
-describe('birthDayOf', () => {
-  it('is the local birth day, else the UTC day, else unknown', () => {
-    expect(birthDayOf(BIRTH)).toBe('1990-01-15');
-    expect(birthDayOf({ ...BIRTH, birth_datetime_local: '' })).toBe('1990-01-15');
-    expect(birthDayOf(undefined)).toBeUndefined();
+describe('birthYearOf', () => {
+  it('is the local birth year, else the UTC year, else unknown; never the day', () => {
+    expect(birthYearOf(BIRTH)).toBe(1990);
+    expect(birthYearOf({ ...BIRTH, birth_datetime_local: '' })).toBe(1990);
+    expect(birthYearOf(undefined)).toBeUndefined();
   });
 });
 
@@ -115,7 +115,7 @@ describe('a slow period compute reaches the model as a timeout value', () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     const timing: AgentTool = createTimingTool({
       chart: CHART,
-      birthDay: '1990-01-15',
+      birthYear: 1990,
       todayDay: () => '2026-03-08',
       loadPeriodChart,
       periodSkyAllowed: true,

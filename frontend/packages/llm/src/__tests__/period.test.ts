@@ -7,7 +7,7 @@ import {
   parsePeriodArgs,
   periodEcho,
   periodLimits,
-  startsBeforeBirth,
+  endsBeforeBirthYear,
 } from "../period";
 
 describe("parsePeriodArgs", () => {
@@ -55,11 +55,14 @@ describe("periodEcho", () => {
   });
 });
 
-describe("startsBeforeBirth", () => {
-  it("refuses only periods that start before the birth day", () => {
-    expect(startsBeforeBirth({ start: "1990-01-14", end: "1990-02-01" }, "1990-01-15")).toBe(true);
-    expect(startsBeforeBirth({ start: "1990-01-15", end: "1990-02-01" }, "1990-01-15")).toBe(false);
-    expect(startsBeforeBirth({ start: "1800-01-01", end: "1800-01-01" }, undefined)).toBe(false);
+describe("endsBeforeBirthYear", () => {
+  // REVERSED CONTRACT (PR #298): this used to refuse any period starting before the
+  // birth DAY. That is a 1-bit oracle on the birth date; the boundary is now the year.
+  it("refuses only periods that end before 1 January of the birth year", () => {
+    expect(endsBeforeBirthYear({ start: "1989-01-01", end: "1989-12-31" }, 1990)).toBe(true);
+    expect(endsBeforeBirthYear({ start: "1989-06-01", end: "1990-01-01" }, 1990)).toBe(false);
+    expect(endsBeforeBirthYear({ start: "1990-01-14", end: "1990-02-01" }, 1990)).toBe(false);
+    expect(endsBeforeBirthYear({ start: "1800-01-01", end: "1800-01-01" }, undefined)).toBe(false);
   });
 
   it("the refusal text never carries a date", () => {

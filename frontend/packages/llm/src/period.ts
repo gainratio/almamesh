@@ -72,8 +72,15 @@ export function periodEcho(period: PeriodRange, basis: PeriodEcho["basis"]): Per
   return { start: period.start, end: period.end, days: Math.round(span / MS_PER_DAY) + 1, basis };
 }
 
-export function startsBeforeBirth(period: PeriodRange, birthDay: string | undefined): boolean {
-  return birthDay !== undefined && period.start < birthDay;
+/**
+ * True when the whole period ends before 1 January of the birth year. Year
+ * precision on purpose: a refusal is itself an answer, so a day-precision
+ * boundary would let repeated calls bisect the birth month and day. The year
+ * is already revealed by month-precision dasha boundaries; nothing finer is.
+ */
+export function endsBeforeBirthYear(period: PeriodRange, birthYear: number | undefined): boolean {
+  if (birthYear === undefined) return false;
+  return period.end < `${String(birthYear).padStart(4, "0")}-01-01`;
 }
 
 /** The same month and day N years later, as a string bound (02-29 stays a valid upper bound). */

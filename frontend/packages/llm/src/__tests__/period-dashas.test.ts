@@ -33,6 +33,17 @@ describe("selectDashasForPeriod", () => {
     expect(JSON.stringify(result)).not.toContain("2000-03");
   });
 
+  it("the birth rows cover the whole birth year, so their presence is no birth-day oracle", () => {
+    // Born 2000-03: a January 2000 period must read exactly like a June 2000 one.
+    const january = selectDashasForPeriod(BIRTH_2000_DASHAS, { start: "2000-01-01", end: "2000-01-31" });
+    const june = selectDashasForPeriod(BIRTH_2000_DASHAS, { start: "2000-06-01", end: "2000-06-30" });
+    expect(january.maha).toEqual([{ lord: "mercury", start_month: "birth", end_month: "2010-09" }]);
+    expect(january).toEqual(june);
+    const before = selectDashasForPeriod(BIRTH_2000_DASHAS, { start: "1999-12-01", end: "1999-12-31" });
+    expect(before.maha).toEqual([]);
+    expect(before.antar).toEqual([]);
+  });
+
   it("gives pratyantars only inside the chart's current antar", () => {
     const inside = selectDashasForPeriod(BIRTH_2000_DASHAS, { start: "2022-05-01", end: "2022-05-31" });
     expect(inside.pratyantar).toEqual([{ lord: "rahu", start_month: "2022-04", end_month: "2022-08" }]);

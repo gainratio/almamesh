@@ -66,7 +66,7 @@ const context = () => ({ now: NOW, signal: new AbortController().signal });
 function tool(overrides: Partial<Parameters<typeof createTimingTool>[0]> = {}) {
   return createTimingTool({
     chart: CHART,
-    birthDay: '1990-01-15',
+    birthYear: 1990,
     todayDay: () => '2026-03-08',
     loadPeriodChart: vi.fn(async () => SKY_CHART),
     periodSkyAllowed: true,
@@ -134,10 +134,22 @@ describe('get_timing with dates', () => {
     await expect(tool().execute({ section: 'transits', ...dates }, context())).resolves.toEqual({ error });
   });
 
-  it('refuses a period before birth without revealing the birth date', async () => {
+  // REVERSED CONTRACT (PR #298): this period used to be refused because it starts
+  // before the birth DAY. A day-precision refusal is a 1-bit oracle on the birth
+  // date, so the refusal boundary is now 1 January of the birth year.
+  it('answers a period that starts before the birth day but ends in the birth year', async () => {
     const result = await tool().execute({ section: 'dashas', start: '1989-06-01', end: '1990-06-30' }, context());
-    expect(result).toEqual({ error: BEFORE_BIRTH_MESSAGE });
-    expect(JSON.stringify(result)).not.toMatch(/1990-01|1990/);
+    expect(result).not.toHaveProperty('error');
+    expect(result).toMatchObject({ shown: 'dashas', data: { maha: [{ start_month: 'birth' }] } });
+    expect(JSON.stringify(result)).not.toMatch(/1990-01/);
+  });
+
+  it('refuses only a period that ends before 1 January of the birth year', async () => {
+    const refused = await tool().execute({ section: 'dashas', start: '1989-01-01', end: '1989-12-31' }, context());
+    expect(refused).toEqual({ error: BEFORE_BIRTH_MESSAGE });
+    const answered = await tool().execute({ section: 'transits', start: '1990-01-01', end: '1990-01-14' }, context());
+    expect(answered).not.toHaveProperty('error');
+    expect(answered).toMatchObject({ shown: 'transits', period: { start: '1990-01-01', end: '1990-01-14' } });
   });
 
   it('a span over two years gives dashas only, with a note, and no engine run', async () => {
@@ -268,7 +280,7 @@ describe('get_timing with dates', () => {
 
 describe('get_timing on real engine output (born 2019-11-09)', () => {
   const real = (golden as unknown as Record<string, SiderealChart>)['2019-11-09T17:45:00+00:00']!;
-  const realTool = () => tool({ chart: real, birthDay: '2019-11-09' });
+  const realTool = () => tool({ chart: real, birthYear: 2019 });
 
   it('a dashas period inside the first maha never shows the birth month', async () => {
     const result = await realTool().execute({ section: 'dashas', start: '2020-06-01', end: '2020-06-30' }, context());
@@ -287,5 +299,62 @@ describe('get_timing on real engine output (born 2019-11-09)', () => {
       expect(row.start_month).toMatch(/^(\d{4}-\d{2}|birth)$/);
       expect(row.end_month).toMatch(/^(\d{4}-\d{2}|birth)$/);
     }
+  });
+});
+
+describe('get_timing is not a birth-day oracle', () => {
+  // A chart whose dasha tree starts at the hidden birth instant; every later boundary is fixed.
+  function chartBornOn(birthDay: string): SiderealChart {
+    const birth = `${birthDay}T12:00:00Z`;
+    const dashas = {
+      ...DASHAS,
+      maha_dasha_sequence: [
+        {
+          lord: 'rahu', start_date: birth, end_date: '2007-06-01T00:00:00Z', duration_years: 17,
+          antar_sequence: [
+            { lord: 'rahu', start_date: birth, end_date: '1992-06-01T00:00:00Z', duration_years: 2 },
+            { lord: 'jupiter', start_date: '1992-06-01T00:00:00Z', end_date: '2007-06-01T00:00:00Z', duration_years: 15 },
+          ],
+        },
+        ...DASHAS.maha_dasha_sequence.slice(1),
+      ],
+    };
+    return { ...CHART, dashas } as unknown as SiderealChart;
+  }
+
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const lastDay = (year: number, month: number) => new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const probes: Array<{ start: string; end: string }> = [
+    ...[1989, 1990, 1991].flatMap((year) =>
+      Array.from({ length: 12 }, (_, i) => ({
+        start: `${year}-${pad(i + 1)}-01`,
+        end: `${year}-${pad(i + 1)}-${pad(lastDay(year, i + 1))}`,
+      })),
+    ),
+    ...Array.from({ length: 31 }, (_, i) => ({ start: `1990-03-${pad(i + 1)}`, end: `1990-03-${pad(i + 1)}` })),
+  ];
+
+  async function transcript(birthDay: string): Promise<unknown[]> {
+    const chart = chartBornOn(birthDay);
+    const timing = tool({
+      chart,
+      birthYear: Number(birthDay.slice(0, 4)),
+      loadPeriodChart: vi.fn(async () => ({ ...chart, transit_context: TRANSITS }) as SiderealChart),
+    });
+    const answers: unknown[] = [];
+    for (const section of ['dashas', 'transits'] as const) {
+      for (const period of probes) answers.push(await timing.execute({ section, ...period }, context()));
+    }
+    return answers;
+  }
+
+  it('answers every month of 1989-1991 and every day of March 1990 identically for two birth days in 1990', async () => {
+    const march = await transcript('1990-03-17');
+    const november = await transcript('1990-11-02');
+    expect(march).toHaveLength(probes.length * 2);
+    expect(march).toEqual(november);
+    // Sanity: the year is still the boundary, so 1989 is refused and 1990 is not.
+    expect(march[0]).toEqual({ error: BEFORE_BIRTH_MESSAGE });
+    expect(march[12]).not.toHaveProperty('error');
   });
 });

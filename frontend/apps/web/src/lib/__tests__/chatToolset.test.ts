@@ -182,8 +182,12 @@ describe('buildChatToolset: period sky', () => {
     expect(ensureMock).not.toHaveBeenCalled();
   });
 
-  it('refuses periods before the local birth day', async () => {
-    const result = await timingOf(toolset()).execute({ section: 'dashas', start: '1990-01-14' }, options());
-    expect(result).toHaveProperty('error');
+  // REVERSED CONTRACT (PR #298): the day before the local birth day used to be refused.
+  // A day-precision refusal bisects the birth date, so only periods before the birth YEAR are.
+  it('refuses only periods before the local birth year, not before the birth day', async () => {
+    const dayBefore = await timingOf(toolset()).execute({ section: 'dashas', start: '1990-01-14' }, options());
+    expect(dayBefore).not.toHaveProperty('error');
+    const yearBefore = await timingOf(toolset()).execute({ section: 'dashas', start: '1989-12-31' }, options());
+    expect(yearBefore).toHaveProperty('error');
   });
 });

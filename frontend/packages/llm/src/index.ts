@@ -388,13 +388,13 @@ export {
 // Time travel: argument rules for the timing tool's optional start/end.
 export {
   BEFORE_BIRTH_MESSAGE,
+  endsBeforeBirthYear,
   ISO_DAY_PATTERN,
   OVER_TWO_YEARS_NOTE,
   PAST_EPHEMERIS_NOTE,
   parsePeriodArgs,
   periodEcho,
   periodLimits,
-  startsBeforeBirth,
 } from "./period";
 export type { PeriodArgs, PeriodEcho, PeriodLimits } from "./period";
 export { NO_TREE_NOTE, PRATYANTAR_NOTE, selectDashasForPeriod } from "./period-dashas";

@@ -31,8 +31,17 @@ function day(iso: string): string {
   return iso.slice(0, 10);
 }
 
-function overlaps(row: DashaPeriod, period: PeriodRange): boolean {
-  return day(row.start_date) <= period.end && day(row.end_date) >= period.start;
+/**
+ * A row that starts at the birth instant is treated as starting on 1 January of
+ * the birth year. Otherwise whether it appears for a period inside the birth year
+ * would bisect the birth day; the year is all the dasha boundaries already reveal.
+ */
+function rowStartDay(row: DashaPeriod, birthStart: string | undefined): string {
+  return row.start_date === birthStart ? `${row.start_date.slice(0, 4)}-01-01` : day(row.start_date);
+}
+
+function overlaps(row: DashaPeriod, period: PeriodRange, birthStart: string | undefined): boolean {
+  return rowStartDay(row, birthStart) <= period.end && day(row.end_date) >= period.start;
 }
 
 function toRow(row: DashaPeriod, birthStart: string | undefined): PeriodDashaRow {
@@ -54,15 +63,15 @@ function pratyantarRows(
   if (!antar || !sequence) return { note: PRATYANTAR_NOTE };
   const inside = day(antar.start_date) <= period.start && period.end <= day(antar.end_date);
   if (!inside) return { note: PRATYANTAR_NOTE };
-  return { rows: sequence.filter((row) => overlaps(row, period)).map((row) => toRow(row, birthStart)) };
+  return { rows: sequence.filter((row) => overlaps(row, period, birthStart)).map((row) => toRow(row, birthStart)) };
 }
 
 export function selectDashasForPeriod(dashas: VimshottariDasha, period: PeriodRange): PeriodDashas {
   const birthStart = dashas.maha_dasha_sequence[0]?.start_date;
-  const mahas = dashas.maha_dasha_sequence.filter((maha) => overlaps(maha, period));
+  const mahas = dashas.maha_dasha_sequence.filter((maha) => overlaps(maha, period, birthStart));
   const antar = mahas.flatMap((maha) =>
     (maha.antar_sequence ?? [])
-      .filter((row) => overlaps(row, period))
+      .filter((row) => overlaps(row, period, birthStart))
       .map((row) => ({ maha_lord: maha.lord, ...toRow(row, birthStart) })),
   );
   const notes: string[] = [];

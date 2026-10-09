@@ -59,8 +59,11 @@ export function createPeriodChartLoader(input: PeriodChartLoaderInput): PeriodCh
   };
 }
 
-/** The birth's local calendar day, for refusing earlier periods. Never sent to the model. */
-export function birthDayOf(birth: ProcessedBirthData | undefined): string | undefined {
+/**
+ * The birth's local calendar year, for refusing periods before it. Never sent to
+ * the model, and never the day: a day-precision refusal is a birth-date oracle.
+ */
+export function birthYearOf(birth: ProcessedBirthData | undefined): number | undefined {
   const stamp = birth?.birth_datetime_local || birth?.birth_datetime_utc;
-  return stamp && /^\d{4}-\d{2}-\d{2}/.test(stamp) ? stamp.slice(0, 10) : undefined;
+  return stamp && /^\d{4}-\d{2}-\d{2}/.test(stamp) ? Number(stamp.slice(0, 4)) : undefined;
 }

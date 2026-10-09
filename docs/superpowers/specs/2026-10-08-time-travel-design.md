@@ -136,7 +136,7 @@ The model can send anything. The app checks it before any work happens.
 | --- | --- |
 | Not `YYYY-MM-DD`, or not a real date | Tool error to the model: "start must be a date like 2026-06-01" |
 | `end` before `start` | Tool error: "end is before start" |
-| `start` before the birth date | Refused: "This period starts before the birth date. Ask about a period after it." The birth date is not in the message. |
+| Whole period ends before 1 January of the birth year | Refused: "This period starts before the birth date. Ask about a period after it." The birth date is not in the message. A period that ends anywhere in the birth year is answered (see Privacy: the refusal boundary is the year, not the day). |
 | Span over 2 years | Dashas only. `notes: ["Over 2 years: showing dashas only. Ask about a shorter span for transits."]` |
 | Any day after 2052-12-31 | Dashas only, with a note. The engine's ephemeris stops at 2053 (`backend/src/almamesh/transits/slow_hits.py:36`). |
 | Span over 12 months (until Inc B) | Transit events for the first 12 months only, with a note. The engine's timeline window is 12 months (`backend/src/almamesh/transits/timeline.py:53`). |
@@ -412,7 +412,8 @@ chart facts reach the model.
 | --- | --- | --- |
 | Period `start`/`end` | Yes, the model chose them from the user's own words | Echoed as-is |
 | Dates inside results (dasha boundaries, transit events) | Month precision only | `sanitize.ts` allowlist rebuild |
-| The birth date | No. "Before birth" refusals don't include it | Refusal message is a constant |
+| The birth date | No. "Before birth" refusals don't include it, and *whether* a call is refused never depends on the birth month or day | Refusal message is a constant; refusal boundary is 1 January of the birth year (`endsBeforeBirthYear`) |
+| Birth month/day via which rows appear | No. A row starting at birth counts as starting on 1 January of the birth year | `selectDashasForPeriod` year-floors the birth rows |
 | The first maha's start month (= birth month) | No, even when a period falls inside the first maha | `selectDashasForPeriod` withholds it |
 | Typed city text | Already in the user's message | n/a |
 | Place coordinates | No. Model sees label + IANA zone only | `place_ref` indirection |
@@ -422,6 +423,16 @@ The dasha tree today crosses only for non-past periods so that birth-adjacent da
 (sanitize.ts:11-14). With a period basis, "past" is measured from the period start. A period
 early in life could put the first maha in range. Its start is the birth date, so
 `selectDashasForPeriod` always reports that row's start as `"birth"`, never a month.
+
+A refusal is itself a side channel. If "March 1990 refused / April 1990 answered" were possible,
+the model (or anyone reading the transcript) could bisect the birth day in about 13 calls. So the
+refusal boundary is the birth **year**, which month-precision dasha boundaries already reveal:
+only a period that ends before 1 January of the birth year is refused. Every period that ends in
+or after the birth year is answered the same way whatever the birth month and day. No rows are
+invented for before birth, and nothing in the result says why rows are missing. For the same
+reason the rows that start at birth are treated as starting on 1 January of the birth year, so
+their presence in a birth-year period is not an oracle either. The tool receives only the birth
+year; the birth day never enters the tool path.
 
 ## Performance
 
@@ -453,7 +464,7 @@ while another period compute runs. The tool waits for the first to finish.
 | Failure | What the user sees | What the model gets |
 | --- | --- | --- |
 | Bad or reversed dates | Nothing directly. The model retries or asks | Tool error with the reason |
-| Before birth | "That's before you were born. Pick a later period." | Refusal, no birth date |
+| Before the birth year | "That's before you were born. Pick a later period." | Refusal, no birth date; boundary is 1 January of the birth year |
 | Over 2 years, or past 2052 | Answer covers dashas, says why transits are missing | Dashas + note |
 | Engine not ready or failed | "I couldn't work out the sky for June 2026 on this device. Dasha answers still work." | `{ available: false, reason: "engine_unavailable" }` |
 | Engine timeout (150 s) | Same as above, plus "Try again in a moment." | `{ available: false, reason: "timeout" }` |
@@ -477,6 +488,7 @@ that red run in the PR.
 | Period echo | Every result has `period.start`/`end` equal to the resolved input | Drop the echo |
 | Bad dates rejected | `2026-02-30`, `2026-6-1`, reversed range → tool error | Remove the reversed check |
 | Before birth refused, birth date hidden | Refusal text contains no `YYYY-MM` of the birth | Interpolate the birth date into the message |
+| No birth-day oracle | Every month of 1989–1991 and every day of March 1990 give identical results for births 1990-03-17 and 1990-11-02 | Refuse by comparing `start` with the birth day; or overlap the birth row from its exact day |
 | 2-year cap | 25-month span returns dashas only plus note | Change the cap to `>=` 3 years |
 | 2052 cap | A 2053 day returns dashas only | Remove the ephemeris check |
 | Fast planets dropped for multi-day | Month period has no Moon/Sun/Mercury/Venus | Keep all grahas |
