@@ -34,6 +34,7 @@ import {
   type PeriodEcho,
   type PeriodRange,
   type SanitizedChart,
+  type TimingArgs,
 } from '@almamesh/llm';
 
 import type { MoonWindowLoader } from './moonWindow';
@@ -89,6 +90,8 @@ export interface TimingToolInput {
   readonly loadPeriodChart?: (period: PeriodRange, context: AgentToolContext) => Promise<SiderealChart>;
   /** `devicePolicy().periodSkyComputeAllowed`: false answers every period with dashas only. */
   readonly periodSkyAllowed: boolean;
+  /** A time-travel thread's pin: no dates read it, and the pinned day uses its place. */
+  readonly pinned?: PinnedTiming;
   /** The engine's Moon at a place for a short period (moonWindow.ts). Absent: no Moon-at-place rows. */
   readonly loadMoonWindow?: MoonWindowLoader;
   /** Re-read a place_ref offline (geo/placeLookup.ts placeFromRef). Absent: every place_ref is unknown. */
@@ -329,11 +332,30 @@ export const NEEDS_PLACE_STATUS_LABEL = 'Checking where you were';
 /** The status line for one call: no sky wording when the engine will not run. */
 function statusLabelFor(input: TimingToolInput, args: AgentJsonObject): string | undefined {
   const section = TIMING_SECTIONS.find((value) => value === args.section);
-  const parsed = parseTimingArgs(args);
+  const parsed = withPin(input.pinned, parseTimingArgs(args));
   if (!section || parsed.kind !== 'period') return undefined;
   if (endsBeforeBirthYear(parsed.period, input.birthYear)) return DASHAS_STATUS_LABEL;
   if (dashasOnlyNotes(input, section, parsed.period)) return DASHAS_STATUS_LABEL;
   return needsPlace(parsed.period, parsed) ? NEEDS_PLACE_STATUS_LABEL : undefined;
+}
+
+/** A pinned thread's period (spec Part 3) and, for a Day pin, the reserved ref of its place. */
+export interface PinnedTiming {
+  readonly period: PeriodRange;
+  readonly placeRef?: string;
+}
+
+function samePeriod(a: PeriodRange, b: PeriodRange): boolean {
+  return a.start === b.start && a.end === b.end;
+}
+
+/** Plan Ruling 3 and 9: in a pinned thread no dates mean the pin, and the pinned day keeps its place. */
+export function withPin(pinned: PinnedTiming | undefined, parsed: TimingArgs): TimingArgs {
+  if (!pinned || parsed.kind === 'invalid') return parsed;
+  const place = pinned.placeRef ? { placeRef: pinned.placeRef } : {};
+  if (parsed.kind === 'today') return { kind: 'period', period: pinned.period, ...place };
+  const unplaced = !parsed.placeRef && !parsed.segments;
+  return unplaced && samePeriod(parsed.period, pinned.period) ? { ...parsed, ...place } : parsed;
 }
 
 export function createTimingTool(input: TimingToolInput): AgentTool {
@@ -352,7 +374,7 @@ export function createTimingTool(input: TimingToolInput): AgentTool {
     execute: async (args: AgentJsonObject, context: AgentToolContext) => {
       const section = TIMING_SECTIONS.find((value) => value === args.section);
       if (!section) return { error: SECTION_ERROR };
-      const parsed = parseTimingArgs(args);
+      const parsed = withPin(input.pinned, parseTimingArgs(args));
       if (parsed.kind === 'invalid') return { error: parsed.error };
       if (parsed.kind === 'today') return todayTiming(input, section, context);
       return periodTiming(input, section, parsed, context);
