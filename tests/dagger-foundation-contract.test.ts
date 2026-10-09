@@ -1,6 +1,7 @@
 import { PRODUCT_GATES } from "../dagger/src/gates.ts"
 import { describe, expect, mock, test } from "bun:test"
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
+import { spawnSync } from "node:child_process"
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 
@@ -74,6 +75,25 @@ describe("central Dagger Lego pins", () => {
     expect(source).not.toContain("WRANGLER_NODE")
     expect(bunBase).toContain("node-gyp nodejs poppler-utils")
     expect(bunBase).not.toContain("NODE_IMAGE")
+  })
+
+  // Debian's apt `node-gyp` drags in Debian's nodejs and links every addon it
+  // builds against that libnode. Loaded into NODE_IMAGE's own Node, the addon
+  // brings a second V8 into the process: on linux/arm64, where ws's optional
+  // bufferutil/utf-8-validate have no prebuild and get compiled, `vite build`
+  // died with "this.#build is not a function" and SIGSEGV (exit 139).
+  test("builds release native addons against the release image's own Node", () => {
+    const source = readFileSync(resolve(root, "dagger/src/index.ts"), "utf8")
+    const releaseBase = source.slice(
+      source.indexOf("private releaseBase("),
+      source.indexOf("private browserBase("),
+    )
+    const aptInstall = releaseBase.match(/apt-get install[^"]*/)?.[0] ?? ""
+
+    expect(releaseBase).toContain(".from(NODE_IMAGE)")
+    expect(aptInstall).toContain("build-essential")
+    expect(aptInstall).not.toMatch(/\bnode-gyp\b/)
+    expect(aptInstall).not.toMatch(/\bnodejs\b/)
   })
 
   test("keeps the closed Pages proof local, fixed, and credential-free", () => {
@@ -607,4 +627,73 @@ describe("browser Lego caret pin", () => {
       expect(text).toContain(spec ?? "(BROWSER_LEGO_SPEC missing)")
     })
   }
+})
+
+// Moved from tests/dagger-contracts.test.ts, which needs a host `dagger` and is
+// local-only; these need no dagger CLI, so the `contracts` gate runs them.
+describe("Dagger orchestration source contracts", () => {
+  test("production deploy composes one central Pages Functions transaction", () => {
+    const source = readFileSync(resolve(root, "dagger/src/index.ts"), "utf8")
+    expect(source).toContain("deliverProduction")
+    expect(source).toContain(".greenMainDecision(")
+    expect(source).toContain(".source(")
+    expect(source).toContain(".guard(")
+    expect(source).toContain(".envelope(")
+    expect(source).toContain(
+      "{ pagesFunctions: request.pagesFunctions, gitSourceOwner: PAGES_GIT_SOURCE_OWNER }",
+    )
+    expect(source).toContain("loadCloudflarePagesDeploymentEvidenceFromID")
+    expect(source).not.toContain(".preflight(")
+    expect(source).not.toContain(".verifyEnvelope(")
+    expect(source).not.toContain("dag.cloudflarePages().verify(")
+    expect(source).not.toContain("verify-pages-source.mjs")
+    expect(source).not.toContain("pagesDeployScript")
+  })
+
+  test("package installs cannot reuse partially downloaded Bun tarballs", () => {
+    const source = readFileSync(resolve(root, "dagger/src/index.ts"), "utf8")
+    expect(source).not.toContain('withMountedCache("/root/.bun/install/cache"')
+  })
+
+  test("Bun installs time out, clean ephemeral state, retry once, and fail closed", () => {
+    const sandbox = mkdtempSync(join(tmpdir(), "almamesh-bun-install-"))
+    const installer = resolve(root, "dagger/scripts/install-bun.sh")
+    const counter = join(sandbox, "attempts")
+    const args = join(sandbox, "args")
+    writeFileSync(join(sandbox, "timeout"), [
+      "#!/bin/sh", "shift 3", '"$@" &', "pid=$!", '( sleep 1; kill "$pid" 2>/dev/null ) &',
+      "watch=$!", 'wait "$pid"', "status=$?", 'kill "$watch" 2>/dev/null || true', "exit $status",
+    ].join("\n"))
+    writeFileSync(join(sandbox, "bun"), [
+      "#!/bin/sh", "set -eu", `counter='${counter}'`, `args='${args}'`,
+      'attempt=$(($(cat "$counter" 2>/dev/null || echo 0) + 1))', 'echo "$attempt" > "$counter"',
+      'echo "$*" >> "$args"',
+      'if [ "${FAKE_FAIL:-}" = always ]; then mkdir -p node_modules "$BUN_INSTALL_CACHE_DIR"; touch node_modules/final-partial "$BUN_INSTALL_CACHE_DIR/final-partial"; exit 9; fi',
+      'if [ "$attempt" -eq 1 ]; then sleep 5; fi', "mkdir -p node_modules",
+    ].join("\n"))
+    chmodSync(join(sandbox, "timeout"), 0o755)
+    chmodSync(join(sandbox, "bun"), 0o755)
+    const env = {
+      ...process.env,
+      PATH: `${sandbox}:${process.env.PATH ?? ""}`,
+      BUN_INSTALL_CACHE_DIR: join(sandbox, "cache"),
+      BUN_INSTALL_TIMEOUT_SECONDS: "1",
+    }
+    try {
+      const recovered = spawnSync("bash", [installer], { cwd: sandbox, env, encoding: "utf8" })
+      expect(recovered.status, recovered.stderr).toBe(0)
+      expect(readFileSync(counter, "utf8").trim()).toBe("2")
+      expect(readFileSync(args, "utf8").trim().split("\n"))
+        .toEqual(["install --frozen-lockfile", "install --frozen-lockfile"])
+      const failed = spawnSync("bash", [installer], {
+        cwd: sandbox, env: { ...env, FAKE_FAIL: "always" }, encoding: "utf8",
+      })
+      expect(failed.status).toBe(1)
+      expect(failed.stderr).toContain("failed after 2 attempts")
+      expect(existsSync(join(sandbox, "node_modules/final-partial"))).toBe(true)
+      expect(existsSync(join(sandbox, "cache/final-partial"))).toBe(true)
+    } finally {
+      rmSync(sandbox, { recursive: true, force: true })
+    }
+  }, 10_000)
 })
