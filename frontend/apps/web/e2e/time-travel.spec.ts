@@ -719,7 +719,7 @@ test.describe('pinned threads on a device in another zone', () => {
         // get_timing without dates reads the pinned Day with the pinned place.
         'How was that day?': (tools) =>
           tools.length === 0
-            ? { content: null, tool_calls: [call('when', 'get_current_datetime', {}), call('sky', 'get_timing', { section: 'transits' })] }
+            ? { content: null, tool_calls: [call('when', 'get_current_datetime', { scope: 'utc' }), call('sky', 'get_timing', { section: 'transits' })] }
             : { content: DAY_ANSWER_TEXT },
       },
       seen,
