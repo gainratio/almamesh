@@ -25,6 +25,8 @@ import { openRouterPreset, writeLlmSettings } from '@almamesh/llm';
 
 import '../../i18n/config';
 import MeshEdgePage from '../MeshEdge';
+import { buildChatToolset, type ChatToolset } from '../../lib/chatToolset';
+import { expectToolsetReadsViewerToday } from '../../test/viewerToday';
 import { MESH_EDGE_FRIEND, MESH_EDGE_SPOUSE } from '../../test/meshFixtures';
 import { __resetMemoryForTest, __setMemoryForTest } from '../../lib/chatMemory';
 
@@ -40,6 +42,11 @@ vi.mock('@almamesh/llm', async (importOriginal) => {
     streamAgentChat: llmMocks.streamAgentChat,
     streamChartChat: llmMocks.streamChartChat,
   };
+});
+
+vi.mock('../../lib/chatToolset', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../lib/chatToolset')>();
+  return { ...actual, buildChatToolset: vi.fn(actual.buildChatToolset) };
 });
 
 const ANCHOR: Profile = {
@@ -334,6 +341,10 @@ describe('MeshEdgePage', () => {
         'relationship timing is grounded',
       ),
     );
+    // Same function of the same instant as the Dashboard pin: a page that reads
+    // its birth zone for "today" fails here.
+    const toolset = vi.mocked(buildChatToolset).mock.results.at(-1)!.value as ChatToolset;
+    await expectToolsetReadsViewerToday(toolset, 'Asia/Kolkata'); // the anchor's birth zone in this fixture
   });
   it('refuses relationship chat when the anchor chart has no birthplace timezone (no silent UTC)', async () => {
     writeLlmSettings(openRouterPreset('sk-or-v1-0000-synthetic-test-key', 'test-org/test-model'));

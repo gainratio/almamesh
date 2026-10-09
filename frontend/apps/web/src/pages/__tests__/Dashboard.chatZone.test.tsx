@@ -46,7 +46,14 @@ vi.mock('../../components/features/dashboard', () => ({
   ReadingGrounding: () => null,
 }));
 
+vi.mock('../../lib/chatToolset', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../lib/chatToolset')>();
+  return { ...actual, buildChatToolset: vi.fn(actual.buildChatToolset) };
+});
+
 import { hydrateLlmSettings, openRouterPreset, writeLlmSettings } from '@almamesh/llm';
+import { buildChatToolset, type ChatToolset } from '../../lib/chatToolset';
+import { expectToolsetReadsViewerToday } from '../../test/viewerToday';
 import { readLocalPrimaryChart } from '../../lib/localChartRead';
 import DashboardPage from '../Dashboard';
 
@@ -157,5 +164,15 @@ describe('Dashboard chat — no silent UTC for the chart zone', () => {
     await ask('What does my chart say about career?');
 
     await waitFor(() => expect(llmMocks.streamAgentChat).toHaveBeenCalledTimes(1));
+  });
+  it('reads chat "today" in the viewer zone, like MeshEdge', async () => {
+    const chart = chartWithZone('Asia/Kolkata');
+    useChartLibraryStore.setState({ charts: { 'chart-1': chart }, hydrated: true });
+    vi.mocked(readLocalPrimaryChart).mockResolvedValue(response(chart));
+    renderDashboardWithChatOpen();
+    await ask('What does my chart say about career?');
+    await waitFor(() => expect(vi.mocked(buildChatToolset)).toHaveBeenCalled());
+    const toolset = vi.mocked(buildChatToolset).mock.results[0].value as ChatToolset;
+    await expectToolsetReadsViewerToday(toolset, 'Asia/Kolkata');
   });
 });

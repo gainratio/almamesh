@@ -30,7 +30,11 @@ export interface PeriodChartLoaderInput {
 
 export type PeriodChartLoader = (period: PeriodRange, context: AgentToolContext) => Promise<SiderealChart>;
 
-async function readyEngine(engine: ChartEngineContextValue | null): Promise<PredictiveRuntime> {
+/**
+ * The one engine wait every chat engine load goes through: start the boot if
+ * it has not started, then use the ready engine or await the in-flight boot.
+ */
+export async function readyEngine(engine: ChartEngineContextValue | null): Promise<PredictiveRuntime> {
   if (!engine) throw new PeriodSkyUnavailableError('engine_unavailable');
   engine.startBootstrap();
   return engine.engine ?? (await engine.whenReady());
