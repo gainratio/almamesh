@@ -632,8 +632,9 @@ const BANNER_380_SCREENSHOT = 'test-results/time-travel-banner-380.png';
  * (one Range per character), so the check sees where the browser actually
  * wrapped, not the DOM structure.
  */
-async function bannerLines(page: Page): Promise<string[]> {
-  return page.getByTestId('time-travel-banner').evaluate((banner) => {
+async function bannerLines(page: Page, width?: number): Promise<string[]> {
+  return page.getByTestId('time-travel-banner').evaluate((banner, forcedWidth) => {
+    banner.style.width = forcedWidth === undefined ? '' : `${forcedWidth}px`;
     const glyphs: Array<{ char: string; top: number; left: number; height: number }> = [];
     const walker = document.createTreeWalker(banner, NodeFilter.SHOW_TEXT);
     for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
@@ -656,11 +657,20 @@ async function bannerLines(page: Page): Promise<string[]> {
       if (line !== undefined && first !== undefined && glyph.top < first.top + first.height / 2) line.push(glyph);
       else lines.push([glyph]);
     }
+    banner.style.width = '';
     return lines.map((line) => line.sort((a, b) => a.left - b.left).map((g) => g.char).join(''));
-  });
+  }, width);
 }
 
-/** At 380 px the banner wraps, and no wrapped line may start with a "·" separator. */
+/** Banner widths swept below the 380 px viewport, so every wrap point is tried whatever the font metrics. */
+const BANNER_WIDTHS = Array.from({ length: 23 }, (_, i) => 340 - i * 10);
+
+/**
+ * At 380 px the banner wraps, and no wrapped line may start with a "·"
+ * separator. Where a line breaks depends on the platform's font metrics, so a
+ * single width can miss a separator wrap: the banner is also swept from 340 px
+ * down to 120 px in 10 px steps, which puts a break before every item.
+ */
 async function expectBannerWrapsCleanlyAt380(page: Page): Promise<void> {
   const original = page.viewportSize();
   await page.setViewportSize({ width: 380, height: 800 });
@@ -668,6 +678,12 @@ async function expectBannerWrapsCleanlyAt380(page: Page): Promise<void> {
   const lines = await bannerLines(page);
   expect(lines.length, `the banner wraps at 380 px: ${JSON.stringify(lines)}`).toBeGreaterThan(1);
   expect(lines.filter((line) => line.startsWith('·')), `no line starts with "·": ${JSON.stringify(lines)}`).toEqual([]);
+  const separatorStarts: string[] = [];
+  for (const width of BANNER_WIDTHS) {
+    const swept = await bannerLines(page, width);
+    if (swept.some((line) => line.startsWith('·'))) separatorStarts.push(`${width}px: ${JSON.stringify(swept)}`);
+  }
+  expect(separatorStarts, 'no line starts with "·" at any banner width').toEqual([]);
   await page.getByTestId('time-travel-banner').screenshot({ path: BANNER_380_SCREENSHOT });
   if (original !== null) await page.setViewportSize(original);
 }

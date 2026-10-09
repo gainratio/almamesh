@@ -93,14 +93,22 @@ async function watchFitProgress(page: import('@playwright/test').Page): Promise<
         hasPercent: (step.textContent ?? '').includes('%'),
       });
     };
-    new MutationObserver(snapshot).observe(document.body, { childList: true, subtree: true, characterData: true });
+    const observer = new MutationObserver(snapshot);
+    observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+    (window as unknown as { __fitProgressObserver: MutationObserver }).__fitProgressObserver = observer;
   });
 }
 
+/** Stop watching and return what FitProgress showed. */
 async function fitProgressSeen(page: import('@playwright/test').Page): Promise<FitProgressSnapshot[]> {
-  return page.evaluate(
-    () => (window as unknown as { __fitProgressSeen?: FitProgressSnapshot[] }).__fitProgressSeen ?? [],
-  );
+  return page.evaluate(() => {
+    const watched = window as unknown as {
+      __fitProgressSeen?: FitProgressSnapshot[];
+      __fitProgressObserver?: MutationObserver;
+    };
+    watched.__fitProgressObserver?.disconnect();
+    return watched.__fitProgressSeen ?? [];
+  });
 }
 
 async function spaNav(page: import('@playwright/test').Page, path: string) {
