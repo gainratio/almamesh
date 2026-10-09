@@ -246,7 +246,18 @@ describe('get_timing with dates', () => {
     // Placements hold at the first day only; the model must not stretch them over the month.
     expect(result.notes[0]).toBe(placementsAsOfNote('2019-06-01'));
     expect(result.data.timeline.map((row) => row.month)).toEqual(['2019-06']);
-    expect(result.covered_events).toEqual(['jupiter_ingress', 'saturn_ingress', 'dasha_change', 'sade_sati_phase']);
+    expect(result.covered_events).toEqual([
+      'jupiter_ingress',
+      'saturn_ingress',
+      'mars_ingress',
+      'rahu_ingress',
+      'ketu_ingress',
+      'jupiter_station',
+      'saturn_station',
+      'mars_station',
+      'dasha_change',
+      'sade_sati_phase',
+    ]);
   });
 
   it('a single day keeps the Moon', async () => {

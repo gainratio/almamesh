@@ -3,17 +3,30 @@
 // the period. Selection by name and by engine date only, no astrology.
 import type { TransitContext } from "@almamesh/browser/types";
 
+import { instantEndsBeforePeriodEnd } from "./period";
 import type { PeriodRange } from "./sanitize";
 
 /** Kept in multi-day results. Sun, Moon, Mercury and Venus move too fast for a period. */
 export const SLOW_GRAHAS: readonly string[] = ["mars", "jupiter", "saturn", "rahu", "ketu"];
 
 /**
- * The dated event kinds the engine timeline really checks until Inc B
- * (`_SLOW_GRAHAS` in transits/timeline.py is Jupiter and Saturn). The model
- * must not read "no Mars ingress" when Mars was never checked.
+ * The dated event kinds the engine timeline checks (Inc B: transits/timeline.py):
+ * every Jupiter, Saturn, Mars and Rahu/Ketu sign change, Jupiter/Saturn/Mars
+ * stations, dasha changes and Sade Sati phases. The model must not claim
+ * anything about a kind that is not listed.
  */
-export const COVERED_EVENTS = ["jupiter_ingress", "saturn_ingress", "dasha_change", "sade_sati_phase"] as const;
+export const COVERED_EVENTS = [
+  "jupiter_ingress",
+  "saturn_ingress",
+  "mars_ingress",
+  "rahu_ingress",
+  "ketu_ingress",
+  "jupiter_station",
+  "saturn_station",
+  "mars_station",
+  "dasha_change",
+  "sade_sati_phase",
+] as const;
 
 export interface RestrictedTransits {
   readonly context: TransitContext;
@@ -29,15 +42,15 @@ function inPeriod(iso: string, period: PeriodRange): boolean {
 }
 
 export function timelineCutoffNote(windowEnd: string): string {
-  return `Transit events are listed only up to ${windowEnd.slice(0, 7)}. Ask about a later start for the rest.`;
+  return `Transit events are listed only until ${windowEnd.slice(0, 10)} ${windowEnd.slice(11, 16)} UTC. Ask about a later start for the rest.`;
 }
 
 /**
- * The engine places every graha once, at the period's first day. Over a month
- * Mars can change sign, so a multi-day result says when its placements hold.
+ * The engine places every graha once, at the period's first day. A multi-day
+ * result says when its placements hold and where the changes after it live.
  */
 export function placementsAsOfNote(start: string): string {
-  return `Planet signs and houses are as of ${start}, the period's first day. Mars can change sign during the period, so do not say it stayed in one sign throughout.`;
+  return `Planet signs and houses are as of ${start}, the period's first day. Sign changes and stations during the period are listed in the timeline.`;
 }
 
 export function restrictTransitsToPeriod(
@@ -53,7 +66,7 @@ export function restrictTransitsToPeriod(
       )
     : ctx.gochara.placements;
   const asOf = multiDay ? [placementsAsOfNote(period.start)] : [];
-  const cutoff = day(ctx.timeline.window_end) < period.end ? [timelineCutoffNote(ctx.timeline.window_end)] : [];
+  const cutoff = instantEndsBeforePeriodEnd(Date.parse(ctx.timeline.window_end), period) ? [timelineCutoffNote(ctx.timeline.window_end)] : [];
   const notes = [...asOf, ...cutoff];
   return {
     context: {

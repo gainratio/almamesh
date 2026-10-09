@@ -125,8 +125,12 @@ export function periodLimits(period: PeriodRange): PeriodLimits {
  */
 export function windowEndsBeforePeriodEnd(period: PeriodRange, windowMonths: number): boolean {
   const start = Date.parse(`${period.start}T00:00:00Z`);
-  const afterLastDay = Date.parse(`${period.end}T00:00:00Z`) + MS_PER_DAY;
-  return start + windowMonths * ENGINE_DAYS_PER_MONTH * MS_PER_DAY < afterLastDay;
+  return instantEndsBeforePeriodEnd(start + windowMonths * ENGINE_DAYS_PER_MONTH * MS_PER_DAY, period);
+}
+
+/** True when the instant (epoch ms) falls before the END of the period's last day. One rule for every window check. */
+export function instantEndsBeforePeriodEnd(instantMs: number, period: PeriodRange): boolean {
+  return instantMs < Date.parse(`${period.end}T00:00:00Z`) + MS_PER_DAY;
 }
 
 /**
