@@ -1,0 +1,40 @@
+name: WebKit (macOS)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.run_id || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+# The one gating workflow that is not Dagger (tests/dagger-ingress-contract.test.ts,
+# NATIVE_MACOS_LANES). Dagger runs Linux containers, and Linux Playwright WebKit
+# cannot open SQLite's nested-Worker OPFS, so the in-browser engine never boots
+# there. macOS WebKit can: this lane runs the time-travel and export/import
+# journeys on desktop Safari and an iPhone profile. Read-only, no secrets, every
+# action SHA-pinned; all logic is in frontend/apps/web/scripts/webkit-macos-lane.sh.
+
+jobs:
+  webkit-macos:
+    name: webkit / macOS time travel + export-import
+    runs-on: macos-15
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: frontend/apps/web
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: frontend/.bun-version
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+      - run: bun install --frozen-lockfile
+      - run: bash scripts/webkit-macos-lane.sh

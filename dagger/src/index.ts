@@ -437,6 +437,10 @@ exec ${inline.join(" ")}`,
           "frontend/bun.lock",
           // The memory-budget contract pins the test:e2e:memory-budget script.
           "frontend/apps/web/package.json",
+          // The macOS WebKit lane contract reads its script and the two configs it runs.
+          "frontend/apps/web/scripts/webkit-macos-lane.sh",
+          "frontend/apps/web/playwright.time-travel.config.ts",
+          "frontend/apps/web/playwright.portable-invariants.config.ts",
           // The browser Lego pin contract ties BROWSER_LEGO_SPEC to these.
           "frontend/packages/browser/package.json",
           "frontend/packages/memory/package.json",
@@ -476,7 +480,7 @@ exec ${inline.join(" ")}`,
       "PORTABLE_SQLITE_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:portable-sqlite",
       // Chromium only: Linux Playwright WebKit cannot open SQLite's nested-Worker
       // OPFS (see verify-webkit-engine.mjs), so Import is correctly disabled there.
-      // The WebKit project runs locally on macOS.
+      // The WebKit and iPhone projects run on macOS (.github/workflows/webkit-macos.yml).
       "PORTABLE_INVARIANTS_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:portable-invariants --project=chromium",
     ])
   }
@@ -498,7 +502,8 @@ exec ${inline.join(" ")}`,
       // Time travel (spec 2026-10-08), Inc A, B, C and D journeys: June 2019
       // typed in plain chat, an 18-month period, places, and the Time travel
       // button (2027 pinned; a Day pin found on the device). A stubbed
-      // provider, the real engine. Chromium only.
+      // provider, the real engine. Chromium here; WebKit and an iPhone run on
+      // macOS (.github/workflows/webkit-macos.yml), as Linux WebKit cannot boot the engine.
       "TIME_TRAVEL_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:time-travel --project=chromium",
       // A person added on /mesh survives an immediate full page load (the
       // write is on disk before the dialog moves on). Chromium only.

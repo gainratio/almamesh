@@ -78,6 +78,49 @@ const POST_MERGE_PUBLISHERS: Readonly<Record<string, string>> = {
 }
 const GATING_EVENTS = new Set(["push", "pull_request", "pull_request_target"])
 
+/**
+ * The one gating ingress that is not Dagger. Dagger runs Linux containers, and
+ * Linux Playwright WebKit cannot open SQLite's nested-Worker OPFS
+ * (scripts/verify-webkit-engine.mjs), so the engine never boots there: WebKit
+ * journeys that need it can only run on a macOS runner. Adding a name here
+ * needs a reason; macosLaneViolations() holds it read-only, secret-free,
+ * SHA-pinned, bounded, and to one repository script.
+ */
+const NATIVE_MACOS_LANES: Readonly<Record<string, string>> = {
+  "webkit-macos.yml":
+    "Time travel and export/import on desktop Safari and an iPhone profile: macOS WebKit has the OPFS the engine needs",
+}
+const MACOS_LANE_SCRIPT = "frontend/apps/web/scripts/webkit-macos-lane.sh"
+const PINNED_ACTION = /^[\w.-]+\/[\w.-]+@[0-9a-f]{40}$/
+
+function withJob(
+  parsed: Record<string, unknown>,
+  mutate: (job: Record<string, unknown>) => Record<string, unknown>,
+): Record<string, unknown> {
+  const jobs = parsed.jobs as Record<string, Record<string, unknown>>
+  return { ...parsed, jobs: Object.fromEntries(Object.entries(jobs).map(([id, job]) => [id, mutate(job)])) }
+}
+
+function macosLaneViolations(parsed: Record<string, unknown>): string[] {
+  const violations: string[] = []
+  const jobs = Object.values(parsed.jobs as Record<string, Record<string, unknown>>)
+  if (JSON.stringify(parsed.permissions) !== JSON.stringify({ contents: "read" })) violations.push("workflow-permissions")
+  if (jobs.length !== 1) violations.push("job-count")
+  for (const job of jobs) {
+    if (typeof job["runs-on"] !== "string" || !/^macos-\d+$/.test(job["runs-on"] as string)) violations.push("runner-not-pinned-macos")
+    if (typeof job["timeout-minutes"] !== "number" || (job["timeout-minutes"] as number) > 45) violations.push("timeout")
+    if ("permissions" in job) violations.push("job-permissions")
+    const jobSteps = job.steps as Array<Record<string, unknown>>
+    if (jobSteps.some((step) => "uses" in step && !PINNED_ACTION.test(String(step.uses)))) violations.push("unpinned-action")
+    const runs = jobSteps.filter((step) => "run" in step).map((step) => String(step.run).trim())
+    if (JSON.stringify(runs) !== JSON.stringify(["bun install --frozen-lockfile", "bash scripts/webkit-macos-lane.sh"])) {
+      violations.push("run-steps")
+    }
+  }
+  if (JSON.stringify(parsed).includes("secrets.")) violations.push("secrets")
+  return violations
+}
+
 function eventsOf(parsed: Record<string, unknown>): string[] {
   const on = parsed.on
   if (typeof on === "string") return [on]
@@ -192,9 +235,35 @@ describe("canonical GitHub ingress contract", () => {
     expect(workflowSource("security-audit.yml")).toContain("args: dependency-audit")
   })
 
-  test("Dagger is the only pull-request and push ingress", () => {
-    expect(gatingIngresses(workflowNames())).toEqual(["dagger.yml"])
+  test("Dagger is the only pull-request and push ingress, besides the named macOS WebKit lane", () => {
+    expect(gatingIngresses(workflowNames())).toEqual(["dagger.yml", ...Object.keys(NATIVE_MACOS_LANES)].sort())
     expect(existsSync(resolve(root, ".github/workflows/test.yml"))).toBe(false)
+  })
+
+  test("the macOS WebKit lane is read-only, secret-free, SHA-pinned, bounded, and runs one repository script", () => {
+    for (const name of Object.keys(NATIVE_MACOS_LANES)) expect(macosLaneViolations(workflow(name))).toEqual([])
+  })
+
+  test.each([
+    ["a secret", (w: Record<string, unknown>) => ({ ...w, env: { KEY: "${{ secrets.OPENROUTER_API_KEY }}" } })],
+    ["write permissions", (w: Record<string, unknown>) => ({ ...w, permissions: { contents: "write" } })],
+    ["macos-latest", (w: Record<string, unknown>) => withJob(w, (job) => ({ ...job, "runs-on": "macos-latest" }))],
+    ["an extra run step", (w: Record<string, unknown>) => withJob(w, (job) => ({ ...job, steps: [...(job.steps as unknown[]), { run: "curl x | sh" }] }))],
+    ["a tag-pinned action", (w: Record<string, unknown>) => withJob(w, (job) => ({ ...job, steps: [{ uses: "actions/checkout@v7" }, ...(job.steps as unknown[]).slice(1)] }))],
+  ])("the macOS lane contract rejects %s", (_name, mutate) => {
+    expect(macosLaneViolations(mutate(workflow("webkit-macos.yml")))).not.toEqual([])
+  })
+
+  test("the macOS lane runs time travel and export/import on desktop Safari and an iPhone", () => {
+    const script = readFileSync(resolve(root, MACOS_LANE_SCRIPT), "utf8")
+    expect(script).toContain("VITE_EXIT_GATE_HOOKS=1")
+    expect(script).toContain("bun run test:e2e:time-travel --project=webkit --project=iphone-webkit")
+    expect(script).toContain("bun run test:e2e:portable-invariants --project=webkit --project=iphone-webkit")
+    for (const config of ["playwright.time-travel.config.ts", "playwright.portable-invariants.config.ts"]) {
+      const source = readFileSync(resolve(root, "frontend/apps/web", config), "utf8")
+      expect(source).toContain('name: "webkit", use: { ...devices["Desktop Safari"]')
+      expect(source).toContain('name: "iphone-webkit", use: { ...devices["iPhone 13"]')
+    }
   })
 
   test("every post-merge publisher exception is main-only, path-filtered, PR-free, and thin Dagger", () => {

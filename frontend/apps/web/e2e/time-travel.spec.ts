@@ -1,8 +1,9 @@
 import { readFileSync } from 'node:fs';
 
-import { expect, test, type Page } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
 
 import { DELHI_BIRTH, DELHI_SEED, LLM_SETTINGS_KEY, bootEngine, seedChart } from './interpretation.helpers';
+import { test } from './webkitProfile';
 
 /**
  * Journey 1 (spec 2026-10-08): "what was going on for me in June 2019?" typed
@@ -47,6 +48,18 @@ async function predictiveRequestKeys(page: Page): Promise<string[]> {
   );
   if (!keys) throw new Error('window.__almameshPredictiveRequestKeys is missing: build with VITE_EXIT_GATE_HOOKS=1');
   return [...keys];
+}
+
+/**
+ * Open the dashboard after seedChart. seedChart's restore reloads the app, and
+ * that load is still opening SQLite (wasm + Worker); WebKit reports a load a
+ * hard navigation cancels as an "access control checks" console error, which
+ * would read as an app failure. So let the load settle first, as
+ * portableInvariants.helpers.ts gotoSettled does.
+ */
+async function openDashboard(page: Page): Promise<void> {
+  await page.waitForLoadState('networkidle');
+  await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
 }
 
 /** Console capture, a full-tier device pin and the stubbed provider's settings: every journey's set-up. */
@@ -113,7 +126,7 @@ test('[contract/stubbed] a typed June 2019 question reads June 2019, not today',
 
   await bootEngine(page);
   await seedChart(page);
-  await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+  await openDashboard(page);
 
   // The seeded chart re-anchors to today first; an answer streamed across that
   // is discarded by design, so chat about the chart the user will see.
@@ -280,7 +293,7 @@ test('[contract/stubbed] an 18-month period is one engine run with Mars, nodes a
 
   await bootEngine(page);
   await seedChart(page);
-  await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+  await openDashboard(page);
   // As in the June 2019 journey: wait for the re-anchor to today, or the answer is discarded by design.
   const today = await page.evaluate(() =>
     new Intl.DateTimeFormat('en', { year: 'numeric', month: 'short', day: 'numeric' }).format(new Date()),
@@ -530,7 +543,7 @@ test.describe('places', () => {
 
     await bootEngine(page);
     await seedChart(page);
-    await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+    await openDashboard(page);
     // As in Journey 1: wait for the re-anchor to today, or the answer is discarded by design.
     const today = await page.evaluate(() =>
       new Intl.DateTimeFormat('en', { year: 'numeric', month: 'short', day: 'numeric' }).format(new Date()),
@@ -578,7 +591,14 @@ test.describe('places', () => {
       offOrigin.filter((url) => !(fulfilled.has(url) && new URL(url).origin === PROVIDER_ORIGIN)),
       'no request may leave the app origin (only stubbed provider calls, fulfilled locally, are allowed)',
     ).toEqual([]);
-    expect(serviceWorkerRequests, 'the off-origin check must see service-worker traffic too').toBeGreaterThan(0);
+    if (test.info().project.use.serviceWorkers === 'block') {
+      // WebKit projects block the worker (see the config), so there is no
+      // service-worker traffic to miss: prove none controls the page.
+      const controlled = await page.evaluate(() => navigator.serviceWorker?.controller !== null && navigator.serviceWorker?.controller !== undefined);
+      expect(controlled, 'with service workers blocked, no worker may control the page').toBe(false);
+    } else {
+      expect(serviceWorkerRequests, 'the off-origin check must see service-worker traffic too').toBeGreaterThan(0);
+    }
     expect(cityChunks, 'the city list loads once, from the app origin').toHaveLength(1);
     expect(cityChunks.every((url) => new URL(url).origin === origin)).toBe(true);
     expect(
@@ -710,7 +730,7 @@ test.describe('pinned threads on a device in another zone', () => {
     );
     await bootEngine(page);
     await seedChart(page);
-    await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+    await openDashboard(page);
     const today = await page.evaluate(() =>
       new Intl.DateTimeFormat('en', { year: 'numeric', month: 'short', day: 'numeric' }).format(new Date()),
     );
@@ -791,7 +811,7 @@ test.describe('pinned threads on a device in another zone', () => {
     );
     await bootEngine(page);
     await seedChart(page);
-    await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+    await openDashboard(page);
     const origin = new URL(page.url()).origin;
     const offOrigin: string[] = [];
     page.on('request', (request) => {
@@ -838,6 +858,74 @@ test.describe('pinned threads on a device in another zone', () => {
     expect(timingResult.filter((m) => COORDINATES.test(m.content ?? '')), 'the tool result carries the place label, not its coordinates').toEqual([]);
     expect(bodies.filter((body) => COORDINATES.test(body)), 'no model request body carries coordinates').toEqual([]);
     expect(bodies.some((body) => body.includes('Bogot')), 'the place label reaches the model').toBe(true);
+    expect(consoleErrors, 'the journey must keep a clean console').toEqual([]);
+  });
+});
+
+/**
+ * The iPhone (iphone-webkit project only). iOS is always the minimal device tier
+ * (packages/browser/src/deviceTier.ts), whatever navigator reports, so the
+ * full-tier journeys above do not exist there: no Day pin, no places. What an
+ * iPhone user does get is Month and Year. Pin next year, keep it across a
+ * reload, ask a question with no dates, and the banner wraps cleanly at 380 px.
+ */
+test.describe('time travel on an iPhone', () => {
+  test.use({ timezoneId: DEVICE_ZONE });
+
+  test('[contract/stubbed] @iphone offers Month and Year, pins next year and reads it without dates', async ({ page }) => {
+    const consoleErrors = await prepare(page);
+    const seen: AgentRequest[] = [];
+    const bodies: string[] = [];
+    const fulfilled = new Set<string>();
+    await scripted(
+      page,
+      {
+        [PIN_QUESTION]: (tools) =>
+          tools.length === 0
+            ? { content: null, tool_calls: [call('when', 'get_current_datetime', { scope: 'chart' }), call('sky', 'get_timing', { section: 'transits' })] }
+            : { content: PIN_ANSWER },
+      },
+      seen,
+      bodies,
+      fulfilled,
+    );
+    await bootEngine(page);
+    await seedChart(page);
+    await openDashboard(page);
+
+    await page.getByTestId('floating-chat-button').click({ timeout: 120_000 });
+    await page.getByTestId('time-travel-button').click();
+    await expect(page.getByTestId('time-travel-sheet')).toBeVisible();
+    await expect(page.getByTestId('time-travel-tab-month')).toBeVisible();
+    await expect(page.getByTestId('time-travel-tab-year')).toBeVisible();
+    await expect(page.getByTestId('time-travel-tab-day'), 'the Day pin is full-tier only, and iOS is minimal').toHaveCount(0);
+    await page.getByTestId('time-travel-tab-year').click();
+    await page.getByTestId('time-travel-year').selectOption(PIN_YEAR);
+    await page.getByTestId('time-travel-go').click();
+    await expect(page.getByTestId('time-travel-sheet')).toBeHidden();
+    await expect(page.getByTestId('time-travel-title')).toHaveText(`Time travel · ${PIN_YEAR}`);
+    await expect(page.getByTestId('time-travel-banner')).toContainText('answers are about this period');
+
+    // The pin was on disk before the sheet closed: a full reload keeps it.
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.getByTestId('floating-chat-button').click({ timeout: 120_000 });
+    await expect(page.getByTestId('time-travel-title')).toHaveText(`Time travel · ${PIN_YEAR}`);
+    expect((await pinnedThreads(page)).map((row) => row.as_of)).toEqual([
+      { start: `${PIN_YEAR}-01-01`, end: `${PIN_YEAR}-12-31`, granularity: 'year' },
+    ]);
+
+    await page.getByTestId('chat-input').fill(PIN_QUESTION);
+    await page.getByTestId('chat-send-button').click();
+    await expect(page.getByTestId('chat-panel').getByText(PIN_ANSWER)).toBeVisible({ timeout: 240_000 });
+    const last = seen.at(-1)!;
+    expect(last.tools.map((tool) => tool.function.name), 'minimal tier: no place tool').not.toContain('resolve_place');
+    const tools = turnTools(last.messages);
+    expect(tools.map((m) => m.name)).toEqual(['get_current_datetime', 'get_timing']);
+    expect(tools[0]?.content).toContain(`"pinned_period":{"start":"${PIN_YEAR}-01-01","end":"${PIN_YEAR}-12-31"}`);
+    expect(tools[0]?.content).toContain('"relative":"future"');
+    expect(bodies.filter((body) => body.includes(DEVICE_ZONE)), 'the device zone must not reach the model').toEqual([]);
+
+    await expectBannerWrapsCleanlyAt380(page);
     expect(consoleErrors, 'the journey must keep a clean console').toEqual([]);
   });
 });

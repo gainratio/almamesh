@@ -11,6 +11,7 @@ dist/
 dist-verify/
 dist-real/
 dist-sw-update/
+dist-webkit/
 build/
 *.egg-info/
 .next/
