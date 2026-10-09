@@ -1,8 +1,9 @@
-import type { SiderealChart, TransitContext } from '@almamesh/browser/types';
+import type { SiderealChart } from '@almamesh/browser/types';
 import {
   BEFORE_BIRTH_MESSAGE,
   BIRTH_YEAR_ROWS_NOTE,
   BIRTH_YEAR_SKY_NOTE,
+  NEEDS_PLACE_ERROR,
   OVER_TWO_YEARS_NOTE, PAST_EPHEMERIS_NOTE, placementsAsOfNote } from '@almamesh/llm';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -11,62 +12,22 @@ import { PeriodSkyTimeoutError } from '../periodSky';
 import {
   DASHAS_STATUS_LABEL,
   DEVICE_DASHAS_ONLY_NOTE,
+  NEEDS_PLACE_STATUS_LABEL,
   PeriodSkyUnavailableError,
   TIMING_TOOL_TIMEOUT_MS,
   createTimingTool,
 } from '../timingTool';
-
-const BIRTH = '1990-01-15T12:00:00Z';
-const DASHAS = {
-  maha_dasha_sequence: [
-    {
-      lord: 'rahu', start_date: BIRTH, end_date: '2007-06-01T00:00:00Z', duration_years: 17.4,
-      antar_sequence: [{ lord: 'rahu', start_date: BIRTH, end_date: '1992-06-01T00:00:00Z', duration_years: 2.4 }],
-    },
-    {
-      lord: 'jupiter', start_date: '2007-06-01T00:00:00Z', end_date: '2023-06-01T00:00:00Z', duration_years: 16,
-      antar_sequence: [
-        { lord: 'saturn', start_date: '2017-01-01T00:00:00Z', end_date: '2019-06-15T00:00:00Z', duration_years: 2.5 },
-        { lord: 'mercury', start_date: '2019-06-15T00:00:00Z', end_date: '2021-09-01T00:00:00Z', duration_years: 2.2 },
-      ],
-    },
-  ],
-  current_maha: null,
-  current_antar: null,
-  current_pratyantar: null,
-};
-const CHART = { ayanamsa_value: 23.7, lagna: {}, planets: [], houses: [], yogas: [], dashas: DASHAS } as unknown as SiderealChart;
-
-const placement = (graha: string) => ({
-  graha, longitude: 0, sign: 'aries', sign_degrees: 0, nakshatra: 'ashwini', nakshatra_pada: 1,
-  is_retrograde: false, house_from_lagna: 1, house_from_moon: 1, natal_sign_occupied: 'aries',
-});
-const event = (date: string, graha: string) => ({
-  date, kind: 'sign_ingress', graha, from_sign: 'scorpio', to_sign: 'sagittarius', from_lord: null,
-  to_lord: null, sade_sati_phase: null, severity: 'supportive', descriptor: `${graha} changes sign`,
-});
-const TRANSITS = {
-  instant: '2019-06-01T00:00:00Z',
-  gochara: {
-    instant: '2019-06-01T00:00:00Z', transit_ayanamsa: 24.1,
-    placements: { moon: placement('moon'), saturn: placement('saturn'), jupiter: placement('jupiter') },
-  },
-  sade_sati: { is_active: false, current_phase: 'none', natal_moon_sign: 'aries', cycle: [], cycle_start: null, cycle_end: null },
-  slow_hits: [],
-  fusion: {
-    instant: '2019-06-01T00:00:00Z', maha_lord: 'jupiter', antar_lord: 'saturn',
-    maha_lord_transit_house_from_moon: 9, maha_lord_transit_house_from_lagna: 9,
-    reinforcing: [], afflicting: [], net_weight: 0, severity: 'neutral',
-  },
-  timeline: {
-    window_start: '2019-06-01T00:00:00Z', window_end: '2020-06-01T00:00:00Z',
-    events: [event('2019-06-10T00:00:00Z', 'jupiter'), event('2019-09-01T00:00:00Z', 'saturn')],
-  },
-} as unknown as TransitContext;
-const SKY_CHART = { ...CHART, transit_context: TRANSITS } as SiderealChart;
+import { CHART, DASHAS, SKY_CHART, TRANSITS } from './timingFixtures';
 
 const NOW = new Date('2026-03-08T09:30:00.000Z');
 const context = () => ({ now: NOW, signal: new AbortController().signal });
+/** Step C: a sky reading under a week needs a place; these siblings send one. */
+const PLACED = { place_ref: 'city:202' } as const;
+const BOGOTA = {
+  summary: { place_ref: 'city:202', label: 'Bogotá, Colombia', timezone: 'America/Bogota' },
+  latitude: 4.711,
+  longitude: -74.0721,
+};
 
 function tool(overrides: Partial<Parameters<typeof createTimingTool>[0]> = {}) {
   return createTimingTool({
@@ -75,6 +36,7 @@ function tool(overrides: Partial<Parameters<typeof createTimingTool>[0]> = {}) {
     todayDay: () => '2026-03-08',
     loadPeriodChart: vi.fn(async () => SKY_CHART),
     periodSkyAllowed: true,
+    placeFromRef: vi.fn(async (ref: string) => (ref === BOGOTA.summary.place_ref ? BOGOTA : undefined)),
     ...overrides,
   });
 }
@@ -175,8 +137,14 @@ describe('get_timing with dates', () => {
       expect(result.shown).toBe('dashas');
       expect(result.notes[0]).toBe(BIRTH_YEAR_SKY_NOTE);
       expect(BIRTH_YEAR_SKY_NOTE).toBe("Planet timing for the year of birth isn't available; showing periods only.");
+      // INVERTED (time travel step C): a single day of sky with no place used to be computed;
+      // under a week it now needs a place, and the engine does not run.
       const nextYear = await tool({ loadPeriodChart }).execute({ section, start: '1991-01-01' }, context());
-      expect(nextYear).toMatchObject({ shown: section });
+      expect(nextYear).toEqual({ error: NEEDS_PLACE_ERROR });
+      expect(loadPeriodChart).not.toHaveBeenCalled();
+      // Placed sibling: the year after birth still computes the sky.
+      const placed = await tool({ loadPeriodChart }).execute({ section, start: '1991-01-01', ...PLACED }, context());
+      expect(placed).toMatchObject({ shown: section });
       expect(loadPeriodChart).toHaveBeenCalledOnce();
     },
   );
@@ -187,7 +155,10 @@ describe('get_timing with dates', () => {
     const shown = (args: Record<string, string>) => timing.statusLabelFor?.(args) ?? timing.statusLabel;
     expect(shown({ section: 'transits', start: '1990-06-01' })).toBe(DASHAS_STATUS_LABEL);
     expect(DASHAS_STATUS_LABEL).toBe('Reading dasha periods');
-    expect(shown({ section: 'domains', start: '1991-06-01' })).toBe('Working out the sky… (about 30 s)');
+    // INVERTED (time travel step C): a single day with no place is refused at once, so the
+    // label no longer promises a 30 s sky. Placed sibling: with a place it still does.
+    expect(shown({ section: 'domains', start: '1991-06-01' })).toBe(NEEDS_PLACE_STATUS_LABEL);
+    expect(shown({ section: 'domains', start: '1991-06-01', ...PLACED })).toBe('Working out the sky… (about 30 s)');
     expect(shown({ section: 'transits' })).toBe('Working out the sky… (about 30 s)');
     // A refused (before the birth year) call runs no engine either.
     expect(shown({ section: 'transits', start: '1985-01-01' })).toBe(DASHAS_STATUS_LABEL);
@@ -202,7 +173,13 @@ describe('get_timing with dates', () => {
     expect(result).toMatchObject({ shown: 'dashas' });
     expect((result as { notes: string[] }).notes[0]).toBe(BIRTH_YEAR_SKY_NOTE);
     expect(pstEdge.statusLabelFor?.({ section: 'transits', start: '1991-01-01' })).toBe(DASHAS_STATUS_LABEL);
-    await pstEdge.execute({ section: 'transits', start: '1992-01-01' }, context());
+    // INVERTED (time travel step C): 1992-01-01 with no place now needs a place, no engine run.
+    await expect(pstEdge.execute({ section: 'transits', start: '1992-01-01' }, context())).resolves.toEqual({
+      error: NEEDS_PLACE_ERROR,
+    });
+    expect(loadPeriodChart).not.toHaveBeenCalled();
+    // Placed sibling: the year after the UTC birth year computes the sky.
+    await pstEdge.execute({ section: 'transits', start: '1992-01-01', ...PLACED }, context());
     expect(loadPeriodChart).toHaveBeenCalledOnce();
   });
 
@@ -260,8 +237,16 @@ describe('get_timing with dates', () => {
     ]);
   });
 
-  it('a single day keeps the Moon', async () => {
-    const result = (await tool().execute({ section: 'transits', start: '2019-06-10' }, context())) as {
+  // INVERTED (time travel step C): a single day of transits with no place used to answer
+  // with the Moon; it now needs a place first.
+  it('a single day with no place needs a place', async () => {
+    const result = await tool().execute({ section: 'transits', start: '2019-06-10' }, context());
+    expect(result).toEqual({ error: NEEDS_PLACE_ERROR });
+  });
+
+  // Placed sibling of the inverted test: the original intent, the Moon kept for one day.
+  it('a single day at a place keeps the Moon', async () => {
+    const result = (await tool().execute({ section: 'transits', start: '2019-06-10', ...PLACED }, context())) as {
       data: { gochara: Array<{ graha: string }> };
     };
     expect(result.data.gochara.map((row) => row.graha)).toContain('moon');

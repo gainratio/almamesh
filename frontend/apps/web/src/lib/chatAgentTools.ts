@@ -11,6 +11,8 @@ import {
 import { enumArgument } from './agentArgs';
 import { viewerTimeZone } from './analysisInstant';
 import { predictiveReferenceInstant } from './predictive';
+import type { MoonWindowLoader } from './moonWindow';
+import type { PlaceReader } from './timingPlaces';
 import { createTimingTool } from './timingTool';
 
 export interface ZonedDateTime {
@@ -83,6 +85,10 @@ export interface CreateChatAgentToolsInput {
   readonly loadPeriodChart?: (period: PeriodRange, context: AgentToolContext) => Promise<SiderealChart>;
   /** Test seam. Default: this device's `devicePolicy().periodSkyComputeAllowed`. */
   readonly periodSkyAllowed?: boolean;
+  /** The engine's Moon at a place for a short period (moonWindow.ts). */
+  readonly loadMoonWindow?: MoonWindowLoader;
+  /** Re-read a place_ref offline (geo/placeLookup.ts). */
+  readonly placeFromRef?: PlaceReader;
 }
 
 /**
@@ -213,6 +219,8 @@ export function createChatAgentTools(input: CreateChatAgentToolsInput): readonly
       loadCurrentChart: input.loadCurrentChart,
       loadPeriodChart: input.loadPeriodChart,
       periodSkyAllowed: input.periodSkyAllowed ?? devicePolicy().periodSkyComputeAllowed,
+      loadMoonWindow: input.loadMoonWindow,
+      placeFromRef: input.placeFromRef,
     }),
   ];
 }

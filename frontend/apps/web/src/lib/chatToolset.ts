@@ -4,6 +4,7 @@
  * router, and the one "today": the viewer's (device) zone for every page
  * (open question 1, decided 2026-10-08). Pages pass no zone.
  */
+import { devicePolicy } from '@almamesh/browser';
 import type { SiderealChart } from '@almamesh/browser/types';
 import {
   todayAnalysisInstant,
@@ -17,7 +18,11 @@ import type { ChartEngineContextValue } from '../providers/chartEngineContext';
 import { viewerTimeZone } from './analysisInstant';
 import { createChatAgentTools, shouldPreRunToday, viewerTodayDay } from './chatAgentTools';
 import { ensureCurrentPlanetaryContext } from './currentPlanetaryContext';
+import { placeFromRef } from './geo/placeLookup';
+import { createMoonWindowLoader } from './moonWindow';
 import { birthUtcYearOf, birthYearOf, createPeriodChartLoader, readyEngine } from './periodChart';
+import { createResolvePlaceTool } from './placeTool';
+import type { PlaceReader } from './timingPlaces';
 import { TIMING_TOOL_NAME } from './timingTool';
 
 export interface BuildChatToolsetInput {
@@ -33,6 +38,10 @@ export interface BuildChatToolsetInput {
   readonly engine: ChartEngineContextValue | null;
   /** Test seam only. Pages never pass it (pinned by chatToolsetWiring.test.ts). */
   readonly viewerZone?: () => string;
+  /** Test seam only (pinned as above). Default: this device's `devicePolicy().periodSkyComputeAllowed`. */
+  readonly periodSkyAllowed?: boolean;
+  /** Test seam only (pinned as above). Default: the offline city list (geo/placeLookup.ts). */
+  readonly placeFromRef?: PlaceReader;
 }
 
 interface PrepareOptions {
@@ -92,7 +101,9 @@ export function buildChatToolset(input: BuildChatToolsetInput): ChatToolset {
     return todayChart;
   };
 
-  const tools = createChatAgentTools({
+  // lite/minimal: no place tool and no needs_place; the city data is never loaded there.
+  const skyAllowed = input.periodSkyAllowed ?? devicePolicy().periodSkyComputeAllowed;
+  const agentTools = createChatAgentTools({
     chart: natalPrompt,
     chartAsOf: input.chartAsOf,
     chartTimeZone: input.chartTimeZone,
@@ -106,7 +117,11 @@ export function buildChatToolset(input: BuildChatToolsetInput): ChatToolset {
       birth: input.birth,
       engine: input.engine,
     }),
+    periodSkyAllowed: skyAllowed,
+    loadMoonWindow: createMoonWindowLoader(input.engine),
+    placeFromRef: input.placeFromRef ?? placeFromRef,
   });
+  const tools = skyAllowed ? [...agentTools, createResolvePlaceTool()] : agentTools;
 
   return {
     tools,

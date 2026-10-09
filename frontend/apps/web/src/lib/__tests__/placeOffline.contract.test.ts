@@ -3,7 +3,7 @@ import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const SRC = resolve(__dirname, '../..');
-const PLACE_PATH_FILES = ['lib/placeTool.ts', 'lib/geo/placeLookup.ts', 'lib/timingTool.ts', 'lib/chatToolset.ts', 'lib/moonWindow.ts'];
+const PLACE_PATH_FILES = ['lib/placeTool.ts', 'lib/geo/placeLookup.ts', 'lib/timingTool.ts', 'lib/chatToolset.ts', 'lib/moonWindow.ts', 'lib/timingPlaces.ts'];
 
 function sourceFiles(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {
