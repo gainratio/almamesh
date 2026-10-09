@@ -7,8 +7,9 @@
  * - A real spec names no model id of its own: models come from e2e/realModel.ts
  *   (env-override fallbacks included). The one exception is the retired slug
  *   the self-heal spec seeds on purpose; the app rewrites it before any call.
- * - `PRODUCT_DEFAULT_MODEL` (what the app picks itself) is only ever asserted,
- *   never configured, and must match the app's real default.
+ * - `PRODUCT_DEFAULT_MODEL` (what the app picks itself) and any alias of it is
+ *   only ever asserted or logged, never configured or passed along, and it
+ *   must match the app's real default.
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -28,8 +29,50 @@ const ALLOWED_LITERALS: Readonly<Record<string, readonly string[]>> = {
 
 const PROVIDER_SLUG =
   /\b(?:deepseek|anthropic|openai|google|meta-llama|mistralai|qwen|x-ai|z-ai|moonshotai|cohere|nvidia|microsoft|amazon|minimax|openrouter)\/[\w.:-]+/g;
-/** The product default used as a value the test SENDS, not one it expects. */
-const CONFIGURES_PRODUCT_DEFAULT = /\b(?:model|chatModel)\s*:\s*PRODUCT_DEFAULT_MODEL/;
+/**
+ * Names that hold the product default: PRODUCT_DEFAULT_MODEL itself plus every
+ * `const X = PRODUCT_DEFAULT_MODEL` or `const X = <env> ?? PRODUCT_DEFAULT_MODEL`
+ * alias (and aliases of aliases).
+ */
+function productDefaultAliases(code: string): ReadonlySet<string> {
+  const names = new Set(['PRODUCT_DEFAULT_MODEL']);
+  const declaration = /const\s+(\w+)\s*=\s*(?:[^;\n]*\?\?\s*)?(\w+)\s*;/g;
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const [, alias, source] of code.matchAll(declaration)) {
+      if (alias !== undefined && source !== undefined && names.has(source) && !names.has(alias)) {
+        names.add(alias);
+        grew = true;
+      }
+    }
+  }
+  return names;
+}
+
+/** A line where the product default may appear: it is only checked or reported there. */
+function onlyAssertsOrReports(line: string, name: string, aliases: ReadonlySet<string>): boolean {
+  const trimmed = line.trim();
+  const declared = /^const\s+(\w+)\s*=/.exec(trimmed)?.[1];
+  return (
+    trimmed.startsWith('//') ||
+    trimmed.startsWith('*') ||
+    trimmed.startsWith('import ') ||
+    (declared !== undefined && aliases.has(declared)) ||
+    /\bexpect\(|\.toBe\(|\.toEqual\(|console\.log\(/.test(line) ||
+    new RegExp(`\\$\\{${name}\\b`).test(line)
+  );
+}
+
+/** Lines that use the product default (or an alias) as something the test sends. */
+function sendsProductDefault(code: string): string[] {
+  const aliases = productDefaultAliases(code);
+  return code.split('\n').filter((line) =>
+    [...aliases].some(
+      (name) => new RegExp(`\\b${name}\\b`).test(line) && !onlyAssertsOrReports(line, name, aliases),
+    ),
+  );
+}
 
 function realSpecs(): string[] {
   return readdirSync(E2E_DIR).filter((name) => name.endsWith('.real.spec.ts'));
@@ -67,7 +110,9 @@ describe('real-model e2e specs', () => {
     expect(named.filter((model) => !allowed.has(model))).toEqual([]);
   });
 
-  it.each(realSpecs())('%s never configures the product default model', (spec) => {
-    expect(source(spec)).not.toMatch(CONFIGURES_PRODUCT_DEFAULT);
+  // Covers aliases (RECOMMENDED_MODEL, CHAT_MODEL) and positional arguments too:
+  // outside an assertion or a log line, the product default is never used.
+  it.each(realSpecs())('%s never sends the product default model', (spec) => {
+    expect(sendsProductDefault(source(spec))).toEqual([]);
   });
 });

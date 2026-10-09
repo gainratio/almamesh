@@ -194,7 +194,8 @@ test('[real] chat: single-pass streaming + self-hosted RAG + persistence + searc
   writeFileSync(
     `test-results/chat-real-timing-${CHAT_MODEL.replace(/\W/g, '_')}.json`,
     JSON.stringify({
-      model: CHAT_MODEL,
+      // The model the first chat turn actually sent (asserted in B2).
+      model: (JSON.parse(chatTurnBodies[0]?.body ?? '{}') as { model?: string }).model ?? null,
       firstTokenMs,
       answerMs,
       requests: firstTurn.length,
