@@ -125,10 +125,14 @@ export interface ChartEngine {
    */
   computePredictive(input: PredictiveInput, options?: PredictiveCallOptions): Promise<PredictiveContexts>;
   /**
+   * The Moon's sign, nakshatra and tithi at the ends of a place's local days
+   * (explicit UTC instants), plus an optional event instant (time travel step C).
+   */
+  computeMoonWindow(input: MoonWindowInput): Promise<MoonWindow>;
+  /**
    * The relational MESH edge between two birth inputs, computed on-device
    * (both natal contexts recomputed internally; explicit instants only).
    */
-  computeMoonWindow(input: MoonWindowInput): Promise<MoonWindow>;
   computeMeshEdge(input: MeshEdgeInput): Promise<MeshEdgeContext>;
   /**
    * Birth-time rectification: score user life events against adjacent-sign
