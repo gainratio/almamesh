@@ -120,6 +120,20 @@ Run mutations from the worktree root with paths relative to it, for example:
 - **A3 (keeps Ruling 9).** The leap-year cutoff fix stays in Tasks 7 and 8, each with its red-first regression test run before the fix (`periodWindowMonths` 2028 case; `restrictTransitsToPeriod` 2028-12-31 06:00 UTC note).
 - **Branch/worktree.** Work in `/Users/harish/dev/oss/almamesh/.worktrees/time-travel-b-plan` on branch `claude/time-travel-b` (not `.worktrees/time-travel-inc-b`). Task 10 pushes `claude/time-travel-b`, opens ONE PR titled "feat(engine): time travel step B — stations, every sign change, two-year window", and does NOT merge.
 
+- **Preflight rulings (controller, after the conflict scan):**
+  - P1 4A repoints test_should_reuse_ephemeris_samples_across_ingress_cusps to sign_change_events (same assertions) and deletes dead _entered_sign/_ingress_event — keeps the sample-reuse guard alive — if wrong: lose a perf guard on the old producer only.
+  - P2 4A regenerates domains golden with `uv run python -m tests.fixtures.regen_domains_golden` — it is the only regen path — if wrong: none (regen is deterministic).
+  - P3 4A explains every changed window in BOTH domains golden and predictive golden domains_context — the PR must justify any Life Atlas move — if wrong: extra PR text only.
+  - P4 Task 6 CHECK 7 compares the four engine keys explicitly (not strip-one-key) — computePredictive also returns domain_strength_assays and strength_signer_public_key — if wrong: CHECK 7 compares too little; reviewer would catch.
+  - P5/P6 4A rewords timeline_sign_changes.py docstring, windows.py comment and scope-test docstring, and adds a backward Jupiter ingress row expecting True — keep A1 coherent — if wrong: doc drift only.
+  - P7 Task 8 COVERED_EVENTS comment says "every Jupiter, Saturn, Mars and Rahu/Ketu sign change" — per A1.
+  - P8 Task 10 uses claude/time-travel-b, title "feat(engine): time travel step B — stations, every sign change, two-year window", no merge/cleanup — user instruction overrides plan.
+  - P9 Task 10 PR prints Rulings with A1-A3 applied (1 and 6 marked amended), drops the two Known-gaps items, Life Atlas claim restated as "changes only where a Jupiter/Saturn retrograde crossing is real, explained"; Review Focus 5 reworded likewise.
+  - P10 Task 9 e2e asserts real descriptors (mars.ingress.*, mars.station.*) not the covered_events constant; no Rahu assertion unless a Rahu change falls in 2027-01..2028-06 — constant-asserting test proves nothing — if wrong: weaker e2e.
+  - P11 Task 7 exports one helper from period.ts for "window end vs end of period's last day" (reuse period.ts MS_PER_DAY); Task 8 imports it — no duplicate rule — if wrong: minor coupling.
+  - P12 24-month max stays; a 731-day period (2027-01-01..2028-12-31) gets the cutoff note, pinned by a Task 8 test — honest disclosure beats widening the cap — if wrong: last 12h of a leap two-year question uncovered but disclosed.
+  - P13 Task 2 Step 6 golden-diff check judged by exit code (git diff --exit-code) — carried into Task 2 review.
+
 ### Task 1: Rahu/Ketu longitude fast path (same bytes, no nine-graha recompute)
 
 The sign-change scan (Task 3) samples Rahu's longitude every 5 days and bisects. Today `transit_longitude` serves the nodes through the full `get_planetary_positions` (14 apparent observations per call). This task gives the nodes the same arithmetic without the other planets.
