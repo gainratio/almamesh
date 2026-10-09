@@ -394,6 +394,7 @@ export {
   ISO_DAY_PATTERN,
   OVER_TWO_YEARS_NOTE,
   PAST_EPHEMERIS_NOTE,
+  isCalendarDay,
   parsePeriodArgs,
   periodEcho,
   periodLimits,

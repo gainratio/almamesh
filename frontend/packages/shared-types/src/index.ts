@@ -39,6 +39,7 @@ export * from './mesh';
 // Chat types for Assistant UI integration
 export type {
   ChatThread,
+  ChatThreadAsOf,
   ChatMessage,
   ChatSummaryDraft,
   ChatSummaryGenerator,

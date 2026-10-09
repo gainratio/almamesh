@@ -17,6 +17,22 @@
  * via `profile_id`, mirroring how charts are scoped per profile. `chart_id`
  * optionally links the thread to the chart it was opened from.
  */
+/**
+ * A time-travel pin (spec 2026-10-08, Data and storage): the period a thread is
+ * about. Only a Day pin carries a place; its coordinates never reach the model.
+ */
+export interface ChatThreadAsOf {
+  readonly start: string;
+  readonly end: string;
+  readonly granularity: 'day' | 'month' | 'year';
+  readonly place?: {
+    readonly label: string;
+    readonly timezone: string;
+    readonly latitude: number;
+    readonly longitude: number;
+  };
+}
+
 export interface ChatThread {
   id: string;
   /** The profile (person) this thread belongs to — local-first per-person scope. */
@@ -28,6 +44,8 @@ export interface ChatThread {
   updated_at: string;
   archived_at: string | null;
   message_count: number;
+  /** Set only on a time-travel thread: the period its answers are about. */
+  as_of?: ChatThreadAsOf;
 }
 
 /**
