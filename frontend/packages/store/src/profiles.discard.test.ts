@@ -6,6 +6,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { setPortableStateRepositoryForTests } from './deletionTombstones';
+import { readDroppedWrites, resetDroppedWritesForTests } from './droppedWrites';
 import { PortableMemoryStore } from './portableMemoryStore.testkit';
 import { PortableStateRepository } from './portableState';
 import { useProfilesStore, whenProfilesCommitted } from './profiles';
@@ -116,6 +117,51 @@ describe('discardUnsavedProfile', () => {
       sqlite.beforeBatch = undefined;
     });
   });
+
+  it('when storage stays broken: stops at the retry cap and reports the failure once, without names', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    resetDroppedWritesForTests();
+    await withRepository(async (sqlite, repository) => {
+      const store = useProfilesStore.getState();
+      const me = store.createProfile('Asha Rao');
+      await whenProfilesCommitted();
+
+      // The add lands late; every write after it fails for good.
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let batches = 0;
+      sqlite.beforeBatch = () => {
+        batches += 1;
+        return batches === 1 ? held : Promise.reject(new Error('disk gone'));
+      };
+      const staged = store.createProfile('Second Friend');
+      useProfilesStore.getState().discardUnsavedProfile(staged, me);
+      release();
+
+      await vi.waitFor(() => expect(readDroppedWrites()).toHaveLength(1), {
+        timeout: 8000,
+        interval: 50,
+      });
+      expect(readDroppedWrites()[0]).toMatchObject({
+        key: 'almamesh-profiles',
+        reason: 'discard-failed',
+      });
+      // The cap holds: no further re-writes once it gave up.
+      const attempts = batches;
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      expect(batches).toBe(attempts);
+      expect(readDroppedWrites()).toHaveLength(1);
+      expect(warn).toHaveBeenCalledWith('[almamesh:warn:people.discard_failed]');
+      expect(JSON.stringify(warn.mock.calls)).not.toMatch(/Second Friend|Asha/);
+      // The person really is still on disk: that is why the user must be told.
+      expect((await storedState(repository)).names).toContain('Second Friend');
+      sqlite.beforeBatch = undefined;
+    });
+    warn.mockRestore();
+    resetDroppedWritesForTests();
+  }, 15_000);
 
   it('is a no-op for an unknown id', () => {
     const before = useProfilesStore.getState().profiles;

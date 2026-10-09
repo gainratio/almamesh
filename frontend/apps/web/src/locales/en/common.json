@@ -202,6 +202,8 @@
   "reset_incomplete": "Reset could not delete all saved data, because this browser is still using it. Close every AlmaMesh tab and try again. If this keeps happening, clear AlmaMesh's site data in your browser settings.",
   "dropped_writes": {
     "body": "Some changes on this page weren't saved because your data was being replaced or repaired. Reload to see your current data.",
-    "reload": "Reload"
+    "reload": "Reload",
+    "discard_failed_body": "A person you cancelled couldn't be removed from this device, so they may come back after a reload.",
+    "try_again": "Try again"
   }
 }

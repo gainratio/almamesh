@@ -17,6 +17,7 @@ import { createJSONStorage, persist } from 'zustand/middleware';
 import { useShallow } from 'zustand/react/shallow';
 import {
   MEMBER_RELATIONSHIPS,
+  safeWarn,
   type MemberRelationship,
   type Relationship,
 } from '@almamesh/shared-types';
@@ -30,6 +31,7 @@ import {
 } from './chartLibrary';
 import { assignOrphanChatThreads, whenChatHydrated } from './chat';
 import { deletionAwareIdbStorage, whenPersistenceCommitted } from './deletionTombstones';
+import { clearDroppedWrites, reportDroppedWrite } from './droppedWrites';
 import { whenHydrated, type HydrationOutcome } from './hydrationBarrier';
 
 /** A named person on this device. No credentials — local-first by design. */
@@ -284,23 +286,57 @@ function removeProfile(
 const DISCARD_RETRY_DELAYS_MS = [100, 200, 400, 800, 1600] as const;
 
 /**
+ * Discarded people whose removal never reached disk after every retry. They
+ * would come back on reload, so the UI is told (see `retryFailedDiscards`).
+ */
+const failedDiscards = new Set<string>();
+
+/** Resolve true once the row's last write committed; false when it failed. */
+async function profilesRowCommitted(): Promise<boolean> {
+  try {
+    await whenPersistenceCommitted(PERSIST_NAME);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Make a rollback stick. If the add's write lands late and the rollback's own
  * write then fails, the disk still holds the person and a reload would bring
  * them back. So re-write the row (memory no longer has them) until a write
  * commits. Any committed write removes them: the row merge sees them in the
  * acknowledged base and absent locally. Stops if the person was re-added.
+ * When storage stays broken past the cap, log a fixed code (never a name) and
+ * report it once, so the user hears the person may come back.
  */
 async function ensureDiscardCommitted(id: string): Promise<void> {
   for (const delayMs of DISCARD_RETRY_DELAYS_MS) {
-    try {
-      await whenPersistenceCommitted(PERSIST_NAME);
-      return;
-    } catch {
-      // The last write of the row failed; wait, then queue a fresh one.
-    }
+    if (await profilesRowCommitted()) return;
     await new Promise((resolve) => globalThis.setTimeout(resolve, delayMs));
     if (useProfilesStore.getState().profiles[id] !== undefined) return;
     useProfilesStore.setState({});
+  }
+  // The last re-write's result decides it.
+  if (await profilesRowCommitted()) return;
+  failedDiscards.add(id);
+  safeWarn('people.discard_failed');
+  reportDroppedWrite(PERSIST_NAME, 'discard-failed');
+}
+
+/**
+ * Try again to remove every discarded person whose removal failed. Clears the
+ * report first; a fresh failure reports again.
+ */
+export async function retryFailedDiscards(): Promise<void> {
+  const ids = [...failedDiscards];
+  failedDiscards.clear();
+  clearDroppedWrites('discard-failed');
+  for (const id of ids) {
+    if (useProfilesStore.getState().profiles[id] === undefined) {
+      useProfilesStore.setState({});
+      await ensureDiscardCommitted(id);
+    }
   }
 }
 

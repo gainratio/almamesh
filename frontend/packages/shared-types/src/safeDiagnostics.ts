@@ -38,6 +38,7 @@ export const SAFE_DIAGNOSTIC_CODES = [
   'onboarding.progress_save_failed',
   'onboarding.save_failed',
   'people.add_failed',
+  'people.discard_failed',
   'people.save_failed',
   'people.save_timed_out',
   'provider.connection_test_failed',

@@ -30,4 +30,21 @@ describe('DroppedWritesNotice', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Reload' }));
     expect(reload).toHaveBeenCalledOnce();
   });
+
+  it('says plainly when a cancelled person could not be removed, and offers to try again', () => {
+    const retry = vi.fn().mockResolvedValue(undefined);
+    const reload = vi.fn();
+    render(<DroppedWritesNotice reload={reload} retryDiscards={retry} />);
+
+    act(() => reportDroppedWrite('almamesh-profiles', 'discard-failed'));
+
+    const notice = screen.getByTestId('discard-failed-notice');
+    expect(notice.getAttribute('role')).toBe('alert');
+    expect(notice.textContent).toContain("couldn't be removed from this device");
+    // Reloading would bring the person back, so it is not offered here.
+    expect(screen.queryByRole('button', { name: 'Reload' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(retry).toHaveBeenCalledOnce();
+    expect(reload).not.toHaveBeenCalled();
+  });
 });
