@@ -38,6 +38,12 @@ function engineContext(): ChartEngineContextValue {
   } as unknown as ChartEngineContextValue;
 }
 
+/** engineContext() whose engine (ready and booting alike) carries extra methods. */
+function engineContextWith(overrides: Record<string, unknown>): ChartEngineContextValue {
+  const engine = { computePredictive: vi.fn(), ...overrides };
+  return { engine, startBootstrap: vi.fn(), whenReady: vi.fn(async () => engine) } as unknown as ChartEngineContextValue;
+}
+
 function toolset(overrides: Partial<BuildChatToolsetInput> = {}) {
   return buildChatToolset({
     chart: CHART,
@@ -201,5 +207,81 @@ describe('buildChatToolset: period sky', () => {
     expect(dayBefore).not.toHaveProperty('error');
     const yearBefore = await timingOf(toolset()).execute({ section: 'dashas', start: '1989-12-31' }, options());
     expect(yearBefore).toHaveProperty('error');
+  });
+});
+
+describe('buildChatToolset: places', () => {
+  const MARK = { sign: 'taurus', nakshatra: 'Rohini', tithi: 3, paksha: 'shukla' } as const;
+  const LIMA = { summary: { place_ref: 'city:5', label: 'Lima, Peru', timezone: 'America/Lima' }, latitude: -12.04, longitude: -77.03 };
+
+  it('registers resolve_place only where the device computes the sky', () => {
+    const names = (allowed: boolean) => toolset({ periodSkyAllowed: allowed }).tools.map((t) => t.name);
+    expect(names(true)).toEqual(['get_current_datetime', 'get_chart_facts', 'get_timing', 'resolve_place']);
+    expect(names(false)).toEqual(['get_current_datetime', 'get_chart_facts', 'get_timing']);
+  });
+
+  it('follows devicePolicy when no seam is passed: full tier gets resolve_place, lite does not', () => {
+    const names = (gib: number) => {
+      Object.defineProperty(navigator, 'deviceMemory', { value: gib, configurable: true });
+      Object.defineProperty(navigator, 'hardwareConcurrency', { value: 8, configurable: true });
+      try {
+        return toolset().tools.map((t) => t.name);
+      } finally {
+        Reflect.deleteProperty(navigator, 'deviceMemory');
+        Reflect.deleteProperty(navigator, 'hardwareConcurrency');
+      }
+    };
+    expect(names(8)).toContain('resolve_place');
+    expect(names(4)).not.toContain('resolve_place');
+  });
+
+  it('a lite device gets no place reader and no Moon loader at all', () => {
+    toolset({ periodSkyAllowed: false });
+    const lite = vi.mocked(createChatAgentTools).mock.lastCall?.[0];
+    expect(lite).toMatchObject({ periodSkyAllowed: false });
+    expect(lite?.placeFromRef).toBeUndefined();
+    expect(lite?.loadMoonWindow).toBeUndefined();
+    toolset({ periodSkyAllowed: true });
+    const full = vi.mocked(createChatAgentTools).mock.lastCall?.[0];
+    expect(full?.placeFromRef).toBeTypeOf('function');
+    expect(full?.loadMoonWindow).toBeTypeOf('function');
+  });
+
+  it('a lite device never looks a place up, even for dashas over a month with segments', async () => {
+    const placeFromRef = vi.fn(async () => LIMA);
+    const segments = [{ start: '2026-06-01', end: '2026-06-15', place_ref: 'city:5' }, { start: '2026-06-16', end: '2026-06-30', place_ref: 'city:5' }];
+    const result = await timingOf(toolset({ periodSkyAllowed: false, placeFromRef })).execute({ section: 'dashas', segments }, options());
+    expect(result).toMatchObject({ shown: 'dashas' });
+    expect(placeFromRef).not.toHaveBeenCalled();
+  });
+
+  it('a lite device never asks where: a day of transits is dashas only', async () => {
+    const result = await timingOf(toolset({ periodSkyAllowed: false })).execute({ section: 'transits', start: '2026-06-15' }, options());
+    expect(result).toMatchObject({ shown: 'dashas' });
+  });
+
+  it('a day with no place asks, and never falls back to the viewer or birth zone', async () => {
+    const computeMoonWindow = vi.fn();
+    const set = toolset({ engine: engineContextWith({ computeMoonWindow }), periodSkyAllowed: true });
+    expect(await timingOf(set).execute({ section: 'transits', start: '2026-06-15' }, options())).toEqual({ error: 'needs_place' });
+    expect(computeMoonWindow).not.toHaveBeenCalled();
+    expect(loadMock).not.toHaveBeenCalled();
+  });
+
+  it('the place path reads only the ref it was given, never the birth place', async () => {
+    const placeFromRef = vi.fn(async () => undefined);
+    const set = toolset({ placeFromRef, periodSkyAllowed: true });
+    const result = await timingOf(set).execute({ section: 'transits', start: '2026-06-15', place_ref: 'city:1' }, options());
+    expect(placeFromRef.mock.calls).toEqual([['city:1']]);
+    expect(result).toEqual({ error: 'unknown place_ref: call resolve_place first' });
+  });
+
+  it("a placed day reads the Moon on this device's engine at the place, and echoes no coordinates", async () => {
+    const computeMoonWindow = vi.fn(async () => ({ at_place: { at_start: MARK, at_end: MARK }, event: null }));
+    const set = toolset({ engine: engineContextWith({ computeMoonWindow }), placeFromRef: vi.fn(async () => LIMA), periodSkyAllowed: true });
+    const result = await timingOf(set).execute({ section: 'transits', start: '2026-06-15', place_ref: 'city:5' }, options());
+    expect(computeMoonWindow).toHaveBeenCalledWith({ placeStartUtc: '2026-06-15T05:00:00.000Z', placeEndUtc: '2026-06-16T05:00:00.000Z' });
+    expect(result).toMatchObject({ places: [{ label: 'Lima, Peru', timezone: 'America/Lima', moon: { at_start: MARK } }] });
+    expect(JSON.stringify(result)).not.toMatch(/latitude|longitude|12\.04|77\.03|Delhi|28\.61|77\.21|Kolkata/);
   });
 });

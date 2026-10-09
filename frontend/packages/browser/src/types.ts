@@ -26,6 +26,11 @@ export type {
   BootConfig,
   MeshBirthInput,
   MeshEdgeInput,
+  MoonEnds,
+  MoonMark,
+  MoonWindow,
+  MoonWindowEvent,
+  MoonWindowInput,
   PredictiveCallOptions,
   PredictiveInput,
   PyodideAsset,
@@ -122,6 +127,8 @@ export type {
 import type {
   BirthInput,
   MeshEdgeInput,
+  MoonWindow,
+  MoonWindowInput,
   PredictiveCallOptions,
   PredictiveInput,
 } from "./pyodide/protocol";
@@ -140,6 +147,8 @@ export interface ChartEngine {
   generateChart(birth: BirthInput): Promise<SiderealChart>;
   /** LAZY predictive payload at an EXPLICIT instant (~35s under Pyodide). */
   computePredictive(input: PredictiveInput, options?: PredictiveCallOptions): Promise<PredictiveContexts>;
+  /** The Moon at the ends of a place's local days, plus an optional event (explicit instants). */
+  computeMoonWindow(input: MoonWindowInput): Promise<MoonWindow>;
   /** Relational MESH edge between two birth inputs (explicit instants only). */
   computeMeshEdge(input: MeshEdgeInput): Promise<MeshEdgeContext>;
   /** Birth-time rectification: score life events against candidate times. */

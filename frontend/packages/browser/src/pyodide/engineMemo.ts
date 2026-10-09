@@ -127,6 +127,7 @@ export function memoizeChartEngine(
         () => engine.computePredictive(input),
         options?.retention ?? "default",
       ),
+    computeMoonWindow: (input) => engine.computeMoonWindow(input),
     computeMeshEdge: (input) => engine.computeMeshEdge(input),
     computeRectification: (input) => engine.computeRectification(input),
     meta: () => engine.meta(),

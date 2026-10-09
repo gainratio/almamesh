@@ -13,7 +13,7 @@ import {
 } from '@almamesh/browser';
 import { AlmaMeshRuntimeProvider } from '../AlmaMeshRuntimeProvider';
 import { useChartEngine } from '../chartEngineContext';
-import { clearRuntimeGenerator } from '../../lib/runtimeObservability';
+import { clearRuntimeGenerator, clearRuntimeResolvePlace } from '../../lib/runtimeObservability';
 import {
   isRollbackRefusal,
   lastEngineBootFailure,
@@ -63,6 +63,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   clearRuntimeGenerator();
+  clearRuntimeResolvePlace();
   window.history.pushState({}, '', '/');
 });
 
@@ -303,6 +304,47 @@ describe('AlmaMeshRuntimeProvider — retryable bootstrap', () => {
       await expect(captured!.reboot()).rejects.toThrow('fresh boot failed');
     });
     expect(window.__almameshGenerate).toBeUndefined();
+  });
+
+  it('clears the place-lookup hook as soon as a reboot starts (final review)', async () => {
+    const runtime = makeFakeRuntime([
+      () => Promise.resolve(makeFakeEngine('place-hook')),
+      () => new Promise<ChartEngine>(() => {}),
+    ]);
+    let captured: ReturnType<typeof useChartEngine> | null = null;
+    render(
+      <AlmaMeshRuntimeProvider runtime={runtime}>
+        <Probe capture={(value) => {
+          captured = value;
+        }} />
+      </AlmaMeshRuntimeProvider>,
+    );
+    await waitFor(() => expect(window.__almameshResolvePlace).toBeTypeOf('function'));
+    act(() => {
+      void captured!.reboot().catch(() => undefined);
+    });
+    await waitFor(() => expect(runtime.bootstrapCalls).toBe(2));
+    expect(window.__almameshResolvePlace).toBeUndefined();
+  });
+
+  it('a failed reboot leaves no place-lookup hook behind', async () => {
+    const runtime = makeFakeRuntime([
+      () => Promise.resolve(makeFakeEngine('place-hook-fail')),
+      () => Promise.reject(new Error('fresh boot failed')),
+    ]);
+    let captured: ReturnType<typeof useChartEngine> | null = null;
+    render(
+      <AlmaMeshRuntimeProvider runtime={runtime}>
+        <Probe capture={(value) => {
+          captured = value;
+        }} />
+      </AlmaMeshRuntimeProvider>,
+    );
+    await waitFor(() => expect(window.__almameshResolvePlace).toBeTypeOf('function'));
+    await act(async () => {
+      await expect(captured!.reboot()).rejects.toThrow('fresh boot failed');
+    });
+    expect(window.__almameshResolvePlace).toBeUndefined();
   });
 
   it('whenReady() resolves with the in-flight bootstrap result (shared, no extra bootstrap)', async () => {

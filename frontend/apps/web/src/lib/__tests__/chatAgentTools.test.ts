@@ -109,8 +109,45 @@ describe('createChatAgentTools', () => {
     await expect(timing.execute({ section: 'dashas' }, context)).resolves.toMatchObject({
       period: { start: '2026-03-08', basis: 'today' },
     });
-    await timing.execute({ section: 'strength', start: '2019-06-01' }, context);
+    // INVERTED (time travel step C): a single day of strength with no place used to load the
+    // period sky; under a week it now needs a place and the loader is not called.
+    await expect(timing.execute({ section: 'strength', start: '2019-06-01' }, context)).resolves.toEqual({
+      error: 'needs_place',
+    });
+    expect(loadPeriodChart).not.toHaveBeenCalled();
+  });
+
+  // Placed sibling of the inverted call: the place reader and Moon loader reach get_timing.
+  it('hands get_timing the place reader and the Moon loader, and loads the placed day', async () => {
+    const loadPeriodChart = vi.fn(async () => chart);
+    const mark = { sign: 'taurus', nakshatra: 'Rohini', tithi: 3, paksha: 'shukla' } as const;
+    const loadMoonWindow = vi.fn(async () => ({ at_place: { at_start: mark, at_end: mark }, event: null }));
+    const place = { summary: { place_ref: 'city:5', label: 'Lima, Peru', timezone: 'America/Lima' }, latitude: -12, longitude: -77 };
+    const placeFromRef = vi.fn(async () => place);
+    const [, , timing] = createChatAgentTools({
+      chart,
+      chartAsOf,
+      chartTimeZone: 'UTC',
+      birthYear: 1990,
+      todayDay: () => '2026-03-08',
+      loadPeriodChart,
+      periodSkyAllowed: true,
+      loadMoonWindow,
+      placeFromRef,
+    });
+    const context = { now: new Date('2026-03-08T09:30:00.000Z'), signal: new AbortController().signal };
+    // The Moon at a place rides on transits. INVERTED (northstar #306 item 1): a placed
+    // strength day used to read the Moon too; it now carries the label and zone only.
+    const result = await timing.execute({ section: 'transits', start: '2019-06-01', place_ref: 'city:5' }, context);
     expect(loadPeriodChart).toHaveBeenCalledWith({ start: '2019-06-01', end: '2019-06-01' }, context);
+    expect(placeFromRef).toHaveBeenCalledWith('city:5');
+    expect(loadMoonWindow).toHaveBeenCalledOnce();
+    expect(result).toMatchObject({ places: [{ label: 'Lima, Peru', timezone: 'America/Lima', moon: { at_start: mark } }] });
+    const strength = await timing.execute({ section: 'strength', start: '2019-06-01', place_ref: 'city:5' }, context);
+    expect(loadMoonWindow).toHaveBeenCalledOnce();
+    expect((strength as { places: unknown[] }).places).toEqual([
+      { start: '2019-06-01', end: '2019-06-01', label: 'Lima, Peru', timezone: 'America/Lima' },
+    ]);
   });
 
   it('uses the turn-pinned clock and chart timezone without wall-clock reads', async () => {

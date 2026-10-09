@@ -4,6 +4,8 @@ import type { SqliteMemoryProof } from './chatMemory'
 
 export type RuntimeChartGenerator = ChartEngine['generateChart']
 export type RuntimePredictiveComputer = ChartEngine['computePredictive']
+export type RuntimeMoonWindowComputer = ChartEngine['computeMoonWindow']
+export type RuntimePlaceResolver = (query: string) => Promise<unknown>
 
 declare global {
   interface Window {
@@ -11,6 +13,8 @@ declare global {
     __ALMAMESH_ERROR__?: string
     __almameshGenerate?: RuntimeChartGenerator
     __almameshComputePredictive?: RuntimePredictiveComputer
+    __almameshComputeMoonWindow?: RuntimeMoonWindowComputer
+    __almameshResolvePlace?: RuntimePlaceResolver
     __almameshVerifySqliteMemory?: () => Promise<SqliteMemoryProof>
     __almameshPortableStatePersistence?: () => PortableStatePersistence
     __almameshPredictiveRequestKeys?: string[]
@@ -44,6 +48,24 @@ export const publishRuntimePredictive = (compute: RuntimePredictiveComputer): vo
 
 export const clearRuntimePredictive = (): void => {
   delete window.__almameshComputePredictive
+}
+
+/** Exit-gate builds only: lets the browser parity gate run the moon window entry directly. */
+export const publishRuntimeMoonWindow = (compute: RuntimeMoonWindowComputer): void => {
+  window.__almameshComputeMoonWindow = compute
+}
+
+export const clearRuntimeMoonWindow = (): void => {
+  delete window.__almameshComputeMoonWindow
+}
+
+/** Exit-gate builds only: lets the memory-budget lane run the first place lookup directly. */
+export const publishRuntimeResolvePlace = (resolve: RuntimePlaceResolver): void => {
+  window.__almameshResolvePlace = resolve
+}
+
+export const clearRuntimeResolvePlace = (): void => {
+  delete window.__almameshResolvePlace
 }
 
 interface PredictiveRequestKeyState {

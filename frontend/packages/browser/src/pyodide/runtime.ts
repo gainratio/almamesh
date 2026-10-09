@@ -31,6 +31,8 @@ import type {
   BootConfig,
   BootProgress,
   MeshEdgeInput,
+  MoonWindow,
+  MoonWindowInput,
   PredictiveCallOptions,
   PredictiveInput,
   PyodideAsset,
@@ -91,6 +93,7 @@ export interface ChartEnginePort {
   boot(config: BootConfig, onProgress?: (progress: BootProgress) => void): Promise<void>;
   generateChart(birth: BirthInput): Promise<SiderealChart>;
   computePredictive(input: PredictiveInput): Promise<PredictiveContexts>;
+  computeMoonWindow(input: MoonWindowInput): Promise<MoonWindow>;
   computeMeshEdge(input: MeshEdgeInput): Promise<MeshEdgeContext>;
   computeRectification(input: RectificationInput): Promise<RectificationResultRaw>;
   /** Stop the chart Worker and release Pyodide resources. */
@@ -121,6 +124,11 @@ export interface ChartEngine {
    * only chooses how the engine memo retains the result (./engineMemo.ts).
    */
   computePredictive(input: PredictiveInput, options?: PredictiveCallOptions): Promise<PredictiveContexts>;
+  /**
+   * The Moon's sign, nakshatra and tithi at the ends of a place's local days
+   * (explicit UTC instants), plus an optional event instant (time travel step C).
+   */
+  computeMoonWindow(input: MoonWindowInput): Promise<MoonWindow>;
   /**
    * The relational MESH edge between two birth inputs, computed on-device
    * (both natal contexts recomputed internally; explicit instants only).
@@ -339,6 +347,7 @@ export class AlmaMeshRuntime {
         {
           generateChart: (birth) => booted.generateChart(birth),
           computePredictive: (input) => booted.computePredictive(input),
+          computeMoonWindow: (input) => booted.computeMoonWindow(input),
           computeMeshEdge: (input) => booted.computeMeshEdge(input),
           computeRectification: (input) => booted.computeRectification(input),
           meta: () => meta,

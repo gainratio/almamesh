@@ -17,7 +17,7 @@ import { readFileSync } from 'node:fs';
 import { expect, test, type CDPSession, type Page } from '@playwright/test';
 
 import { formatMemoryReport } from '../scripts/processMemory.mjs';
-import { BOOT_MEMORY_BUDGET, overBudget, type BootMemorySample } from './memoryBudget';
+import { BOOT_MEMORY_BUDGET, PLACE_LOOKUP_HEAP_GROWTH_MIB, overBudget, type BootMemorySample } from './memoryBudget';
 
 const MiB = 1024 * 1024;
 const SETTLE_SAMPLES = 5;
@@ -230,5 +230,79 @@ test('report only: heap peak during boot, and after a chat search loads the embe
       embedderDeltaMiB: (Math.max(...afterChat) - Math.max(...afterReady)) / MiB,
     }),
   );
+  expect(consoleErrors).toEqual([]);
+});
+
+/**
+ * The city list is a lazy chunk: not requested at boot, requested once (same
+ * origin) by the first resolve_place, and the heap growth that costs is gated.
+ * Needs the VITE_EXIT_GATE_HOOKS=1 build (window.__almameshResolvePlace).
+ * PLACE_CPU_THROTTLE=4 re-runs the cold first lookup on a 4x slower CPU.
+ */
+test('first place lookup loads the city list once, same-origin, inside its heap growth gate', async ({ page }) => {
+  const consoleErrors: string[] = [];
+  page.on('pageerror', (error) => consoleErrors.push(String(error)));
+  const urls: string[] = [];
+  page.on('request', (request) => urls.push(request.url()));
+  const throttle = Number(process.env.PLACE_CPU_THROTTLE ?? '1');
+  if (throttle > 1) {
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: throttle });
+  }
+
+  await onboardToDashboard(page);
+  const hasHook = await page.evaluate(() => typeof window.__almameshResolvePlace === 'function');
+  test.skip(!hasHook, 'needs a VITE_EXIT_GATE_HOOKS=1 build');
+  const isCitiesChunk = (url: string): boolean => url.includes('cities.min');
+  expect(urls.filter(isCitiesChunk), 'the city list is not requested at boot').toEqual([]);
+  const requestsBeforeLookup = urls.length;
+
+  const before = Math.max(...(await settledHeap(page)));
+  const { result, firstLookupMs } = await page.evaluate(async () => {
+    const started = performance.now();
+    const found = await window.__almameshResolvePlace?.('Bogotá');
+    return { result: found as { status?: string } | undefined, firstLookupMs: performance.now() - started };
+  });
+  const after = Math.max(...(await settledHeap(page)));
+
+  const growthMiB = (after - before) / MiB;
+  const lookupUrls = urls.slice(requestsBeforeLookup);
+  const cityRequests = lookupUrls.filter(isCitiesChunk);
+  const origin = new URL(page.url()).origin;
+  const report = { beforeMiB: before / MiB, afterMiB: after / MiB, growthMiB, firstLookupMs, cityRequests: cityRequests.length, throttle };
+  recordMemoryReport(formatMemoryReport('first-place-lookup', report));
+  await test.info().attach('first-place-lookup', { body: JSON.stringify(report), contentType: 'application/json' });
+
+  expect(result?.status).toBe('found');
+  expect(cityRequests, 'exactly one request for the city list').toHaveLength(1);
+  expect(cityRequests.every((url) => new URL(url).origin === origin), 'city list is same-origin').toBe(true);
+  expect(lookupUrls.filter((url) => new URL(url).origin !== origin && /^https?:/.test(url)), 'no cross-origin request').toEqual([]);
+  expect(growthMiB, `first lookup heap growth (limit ${PLACE_LOOKUP_HEAP_GROWTH_MIB} MiB)`).toBeLessThanOrEqual(PLACE_LOOKUP_HEAP_GROWTH_MIB);
+  expect(consoleErrors).toEqual([]);
+});
+
+/**
+ * Lite/minimal devices never register resolve_place, so the chat path never
+ * imports the city list. The service worker still precaches the chunk at
+ * install (pre-existing, from the context's request stream, not the page's);
+ * what must not happen is a page-initiated request for it.
+ */
+test('on a lite device opening chat never requests the city list', async ({ page }) => {
+  await page.addInitScript((device) => {
+    for (const [name, value] of Object.entries(device)) {
+      Object.defineProperty(Navigator.prototype, name, { get: () => value, configurable: true });
+    }
+  }, { deviceMemory: 2, hardwareConcurrency: 2 });
+  const urls: string[] = [];
+  page.on('request', (request) => urls.push(request.url()));
+  const consoleErrors: string[] = [];
+  page.on('pageerror', (error) => consoleErrors.push(String(error)));
+
+  await onboardToDashboard(page);
+  await page.getByTestId('floating-chat-button').click();
+  await page.getByTestId('chat-search-input').waitFor({ timeout: 30_000 });
+  await page.waitForTimeout(3_000);
+
+  expect(urls.filter((url) => url.includes('cities.min')), 'no page request for the city list on lite').toEqual([]);
   expect(consoleErrors).toEqual([]);
 });

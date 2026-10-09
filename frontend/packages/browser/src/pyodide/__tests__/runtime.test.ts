@@ -10,6 +10,8 @@ import type {
   BootConfig,
   BootProgress,
   MeshEdgeInput,
+  MoonWindow,
+  MoonWindowInput,
   PredictiveInput,
 } from "../protocol";
 import type { RectificationInput, RectificationResultRaw } from "../rectification";
@@ -120,6 +122,12 @@ class FakeChartEngine implements ChartEnginePort {
     return {
       transit_context: { instant: input.referenceInstant },
     } as unknown as PredictiveContexts;
+  }
+
+  public async computeMoonWindow(input: MoonWindowInput): Promise<MoonWindow> {
+    const mark = { sign: "taurus", nakshatra: "Rohini", tithi: 3, paksha: "shukla" } as const;
+    void input;
+    return { at_place: { at_start: mark, at_end: mark }, event: null };
   }
 
   public async computeMeshEdge(input: MeshEdgeInput): Promise<MeshEdgeContext> {

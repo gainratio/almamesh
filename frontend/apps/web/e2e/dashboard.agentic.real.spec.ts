@@ -79,6 +79,14 @@ test('[real] dashboard: timer + life phase + exact-day agentic chat', async ({
     },
     [LLM_SETTINGS_KEY, config] as const,
   );
+  // Pin a full-tier device (devicePolicy: >= 8 GB and > 2 cores): only full
+  // tier registers resolve_place, so the pinned tool list below must not
+  // depend on the runner's hardware (time travel step C).
+  await page.addInitScript((tier) => {
+    for (const [name, value] of Object.entries(tier)) {
+      Object.defineProperty(Navigator.prototype, name, { get: () => value, configurable: true });
+    }
+  }, { deviceMemory: 8, hardwareConcurrency: 8 });
 
   await bootEngine(page);
   // Restore the real engine chart through the same backup-import boundary a
@@ -193,10 +201,12 @@ test('[real] dashboard: timer + life phase + exact-day agentic chat', async ({
   // (agent.test.ts and chat.grounding.spec.ts already pin `stream: true`).
   expect(firstAgentRequest.stream).toBe(true);
   expect(firstAgentRequest.tool_choice).toBe('auto');
+  // Extended 2026-10 (time travel step C): full tier adds resolve_place.
   expect(firstAgentRequest.tools?.map((tool) => tool.function?.name)).toEqual([
     'get_current_datetime',
     'get_chart_facts',
     'get_timing',
+    'resolve_place',
   ]);
   const firstMessages = Array.isArray(firstAgentRequest.messages)
     ? firstAgentRequest.messages

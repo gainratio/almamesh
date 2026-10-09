@@ -32,6 +32,8 @@ import type {
   ChartWorkerRequest,
   ChartWorkerResponse,
   MeshEdgeInput,
+  MoonWindow,
+  MoonWindowInput,
   PredictiveInput,
 } from "./protocol";
 import type { RectificationInput, RectificationResultRaw } from "./rectification";
@@ -94,6 +96,24 @@ def _almamesh_compute_predictive(input_json):
         window_months=window_months_from_wire(data.get("windowMonths")),
     )
     return json.dumps(ctx.model_dump(mode="json"))
+
+def _almamesh_compute_moon_window(input_json):
+    # The Moon at the ends of a place's local window, plus (optionally) one
+    # event's Moon and lagna sign. Only the explicit instants and coordinates
+    # in the payload are read; no wall clock. Imported lazily so booting an
+    # OLDER bundled wheel (without the module) still serves natal charts.
+    from almamesh.transits.moon_window import moon_window_from_wire
+    data = json.loads(input_json)
+    event = data.get("event")
+    return json.dumps(moon_window_from_wire({
+        "place_start_utc": data.get("placeStartUtc"),
+        "place_end_utc": data.get("placeEndUtc"),
+        "event": None if event is None else {
+            "datetime_utc": event.get("datetimeUtc"),
+            "latitude": event.get("latitude"),
+            "longitude": event.get("longitude"),
+        },
+    }).model_dump(mode="json"))
 
 def _almamesh_compute_mesh(input_json):
     # The relational MESH edge between TWO bare birth inputs ("a" and "b").
@@ -186,6 +206,10 @@ interface PyChartFn {
   destroy(): void;
 }
 interface PyPredictiveFn {
+  (inputJson: string): string;
+  destroy(): void;
+}
+interface PyMoonWindowFn {
   (inputJson: string): string;
   destroy(): void;
 }
@@ -403,6 +427,18 @@ function generateChart(birth: BirthInput): SiderealChart {
   }
 }
 
+function computeMoonWindow(input: MoonWindowInput): MoonWindow {
+  if (enginePyodide === undefined) {
+    throw new Error("chart worker not booted");
+  }
+  const fn = enginePyodide.globals.get("_almamesh_compute_moon_window") as unknown as PyMoonWindowFn;
+  try {
+    return JSON.parse(fn(JSON.stringify(input))) as MoonWindow;
+  } finally {
+    fn.destroy();
+  }
+}
+
 function computePredictive(input: PredictiveInput): EnginePredictiveContexts {
   if (enginePyodide === undefined) {
     throw new Error("chart worker not booted");
@@ -498,6 +534,14 @@ async function handle(request: ChartWorkerRequest): Promise<ChartWorkerResponse>
         kind: "computePredictive",
         id: request.id,
         predictive: await computeSealedPredictive(request.input),
+      };
+    }
+    if (request.kind === "computeMoonWindow") {
+      return {
+        ok: true,
+        kind: "computeMoonWindow",
+        id: request.id,
+        moonWindow: computeMoonWindow(request.input),
       };
     }
     if (request.kind === "computeMeshEdge") {

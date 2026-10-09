@@ -313,7 +313,9 @@ Privacy copy is scoped accordingly (landing/legal/mesh say "birth date, time,
 and chart stay on the device unless you turn on the optional AI"; with AI on, the
 sanitized chart's planet positions and period dates can reveal the birth date, and
 the AI disclosures say so; the privacy policy discloses the geocoder as touchpoint
-#2). NOTE: the engine emits the
+#2). Places named in chat are NOT a third egress: `resolve_place` is offline-only
+and full-tier only; it searches the bundled city list and sends the model only a
+label and an IANA zone, never coordinates (`lib/placeTool.ts`). NOTE: the engine emits the
 full D1–D60 varga set; the adapter populates `varga_ctx` (D9 Navamsa rendered in
 both kundli styles + the print report, D1–D60 in the predictive "Divisional Charts"
 tab) and the predictive contexts above.

@@ -10,6 +10,8 @@
  * the predictive entry (transits, vargas, strength, domains) against
  * `backend/tests/fixtures/predictive_golden_de421.json`, including its
  * 24-month case.
+ * CHECK 8 does the same for the moon window entry against
+ * `backend/tests/fixtures/moon_window_golden_de421.json`.
  *
  * Why a browser and not node
  * --------------------------
@@ -468,6 +470,54 @@ async function main() {
       'CHECK 7 — predictive payloads byte-identical to the CPython golden (incl. 24 months)',
       predictiveMismatches === 0,
       `cases=${predictiveFixtureKeys.length} mismatches=${predictiveMismatches} ${predictiveTimings.join(' ')}`,
+    )
+
+    // --- CHECK 8: the moon window (time travel by place) is byte-identical ---
+    // Pins MUST match backend/tests/test_moon_window_golden.py golden_cases() (camelCase here).
+    const MOON_WINDOW_FIXTURES = {
+      'bogota-2026-06-15': { placeStartUtc: '2026-06-15T05:00:00+00:00', placeEndUtc: '2026-06-16T05:00:00+00:00' },
+      'la-2026-06-01..03': { placeStartUtc: '2026-06-01T07:00:00+00:00', placeEndUtc: '2026-06-04T07:00:00+00:00' },
+      'bogota-2026-06-15@15:00': {
+        placeStartUtc: '2026-06-15T05:00:00+00:00',
+        placeEndUtc: '2026-06-16T05:00:00+00:00',
+        event: { datetimeUtc: '2026-06-15T20:00:00+00:00', latitude: 4.711, longitude: -74.0721 },
+      },
+    }
+    const moonGolden = JSON.parse(readFileSync(join(REPO_ROOT, 'backend/tests/fixtures/moon_window_golden_de421.json'), 'utf8'))
+    const hasMoon = await page.evaluate(() => typeof window.__almameshComputeMoonWindow === 'function')
+    let moonMismatches = hasMoon ? 0 : 1
+    if (!hasMoon) console.log('   [FAIL] __almameshComputeMoonWindow=ABSENT (build without VITE_EXIT_GATE_HOOKS=1?)')
+    if (Object.keys(moonGolden).sort().join('|') !== Object.keys(MOON_WINDOW_FIXTURES).sort().join('|')) {
+      moonMismatches += 1
+      console.log('   [FAIL] moon-window golden keys != fixtures')
+    }
+    for (const key of hasMoon ? Object.keys(MOON_WINDOW_FIXTURES).sort() : []) {
+      let payload = null
+      try {
+        payload = await page.evaluate((arg) => window.__almameshComputeMoonWindow(arg), MOON_WINDOW_FIXTURES[key])
+      } catch (e) {
+        moonMismatches += 1
+        console.log(`   [FAIL] moon window ${key} — threw: ${String(e)}`)
+        continue
+      }
+      const expected = canonicalize(moonGolden[key])
+      const actual = canonicalize(payload)
+      if (deepEqual(actual, expected)) console.log(`   [ok]   moon window ${key} byte-identical`)
+      else {
+        moonMismatches += 1
+        const d = firstDiff(expected, actual)
+        console.log(`   [FAIL] moon window ${key} DIVERGED at ${d.path}: cpython=${JSON.stringify(d.golden)} browser=${JSON.stringify(d.browser)}`)
+      }
+    }
+    const eventControl = moonGolden['bogota-2026-06-15']?.event === null && moonGolden['bogota-2026-06-15@15:00']?.event != null
+    if (!eventControl) {
+      moonMismatches += 1
+      console.log('   [FAIL] golden lost its event / no-event control pair')
+    }
+    record(
+      'CHECK 8 — moon window byte-identical to the CPython golden',
+      moonMismatches === 0,
+      `cases=${Object.keys(MOON_WINDOW_FIXTURES).length} mismatches=${moonMismatches}`,
     )
 
     // --- CHECK 5: clean console over the whole parity run ---

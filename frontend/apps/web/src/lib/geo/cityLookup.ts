@@ -66,6 +66,10 @@ async function loadCityDb(): Promise<readonly CityRow[]> {
     cityDbPromise = import('../../data/cities.min.json').then(
       (module) => module.default,
     );
+    // A failed import must not stay cached as a rejected promise: a later call retries.
+    cityDbPromise.catch(() => {
+      cityDbPromise = null;
+    });
   }
   return cityDbPromise;
 }
@@ -184,14 +188,24 @@ function nameScore(foldedName: string, normQuery: string): number {
  * @param limit - maximum results to return (default 8).
  */
 export async function searchCitiesOffline(query: string, limit = 8): Promise<CityMatch[]> {
+  return (await searchCityRowsOffline(query, limit)).map(({ match }) => match);
+}
+
+export interface IndexedCityMatch {
+  readonly index: number;
+  readonly match: CityMatch;
+}
+
+/** The offline scan with each row's index in the bundled list (a stable ref within one build). */
+export async function searchCityRowsOffline(query: string, limit = 8): Promise<IndexedCityMatch[]> {
   if (query.trim().length < 2) return [];
   const tokens = tokenize(query);
   if (tokens.length === 0) return [];
   const normQuery = tokens.join(' ');
 
   const db = await loadCityDb();
-  const scored: Array<{ row: CityRow; score: number }> = [];
-  for (const row of db) {
+  const scored: Array<{ index: number; row: CityRow; score: number }> = [];
+  db.forEach((row, index) => {
     const name = fold(row.n);
     const nameTokens = splitWords(name);
     const qualWords = qualifierWords(row);
@@ -199,12 +213,22 @@ export async function searchCitiesOffline(query: string, limit = 8): Promise<Cit
       name.includes(normQuery) ||
       cityWithQualifiers(nameTokens, qualWords, tokens) ||
       tokens.every((token) => qualWords.some((w) => w.startsWith(token)));
-    if (matched) scored.push({ row, score: nameScore(name, normQuery) });
-  }
+    if (matched) scored.push({ index, row, score: nameScore(name, normQuery) });
+  });
 
   scored.sort((a, b) => b.score - a.score || b.row.p - a.row.p);
-  return scored.slice(0, limit).map(({ row }) => toMatch(row));
+  return scored.slice(0, limit).map(({ index, row }) => ({ index, match: toMatch(row) }));
 }
+
+/** One bundled row by index, offline. Undefined for an index outside the list. */
+export async function cityAtIndexOffline(index: number): Promise<CityMatch | undefined> {
+  if (!Number.isSafeInteger(index) || index < 0) return undefined;
+  const row = (await loadCityDb())[index];
+  return row ? toMatch(row) : undefined;
+}
+
+/** The fold every offline match uses (NFD, strip diacritics, lower-case). */
+export const foldPlaceText = fold;
 
 /**
  * Birthplace search — ONLINE-PRIMARY with an OFFLINE FALLBACK.

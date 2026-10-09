@@ -74,6 +74,7 @@ import {
 } from '../lib/mesh';
 import { predictiveReferenceInstant } from '../lib/predictive';
 import { buildChatToolset } from '../lib/chatToolset';
+import { RESOLVE_PLACE_TOOL_NAME } from '../lib/placeTool';
 import type { SSEMetaData } from '../lib/streaming';
 import type { ViewMode } from '../lib/types';
 import { storedChartAnalysisInstant } from '../lib/analysisInstant';
@@ -336,6 +337,9 @@ function MeshEdgeContent({
       undefined,
       language,
       entry.edge ? sanitizeMeshEdgeForLlm(entry.edge) : undefined,
+      undefined,
+      undefined,
+      toolset.tools.some((tool) => tool.name === RESOLVE_PLACE_TOOL_NAME),
     );
     if (prepared.currentContextUnavailable) {
       const [system, ...rest] = messages;

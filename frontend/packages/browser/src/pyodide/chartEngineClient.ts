@@ -14,6 +14,8 @@ import type {
   ChartWorkerRequest,
   ChartWorkerResponse,
   MeshEdgeInput,
+  MoonWindow,
+  MoonWindowInput,
   PredictiveInput,
   WorkerLike,
 } from "./protocol";
@@ -154,6 +156,18 @@ export class ChartEngineClient {
     const response = await this.#send({ kind: "computePredictive", id: this.#allocId(), input });
     if (response.ok && response.kind === "computePredictive") {
       return response.predictive;
+    }
+    throw new Error(response.ok ? "unexpected response kind" : response.error);
+  }
+
+  /**
+   * The Moon (sign, nakshatra, tithi, paksha) at both ends of a place's local
+   * window, plus an event's Moon and lagna sign. Fast; not a long request.
+   */
+  public async computeMoonWindow(input: MoonWindowInput): Promise<MoonWindow> {
+    const response = await this.#send({ kind: "computeMoonWindow", id: this.#allocId(), input });
+    if (response.ok && response.kind === "computeMoonWindow") {
+      return response.moonWindow;
     }
     throw new Error(response.ok ? "unexpected response kind" : response.error);
   }

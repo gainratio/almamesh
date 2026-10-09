@@ -403,6 +403,26 @@ export {
   windowEndsBeforePeriodEnd,
 } from "./period";
 export type { PeriodArgs, PeriodEcho, PeriodLimits } from "./period";
+export {
+  MAX_SEGMENTS,
+  NEEDS_PLACE_ERROR,
+  PLACE_CONFLICT_ERROR,
+  PLACE_NEEDED_BELOW_DAYS,
+  PLACE_REF_ARG_PATTERN,
+  PLACE_REF_ERROR,
+  SEGMENT_GAP_NOTE,
+  SEGMENTS_ORDER_ERROR,
+  SEGMENTS_SHAPE_ERROR,
+  SEGMENTS_WITH_DATES_ERROR,
+  SEGMENTS_WITH_PLACE_ERROR,
+  TIME_FORMAT_ERROR,
+  TIME_NEEDS_DAY_ERROR,
+  TIME_NEEDS_PLACE_ERROR,
+  TIME_OF_DAY_PATTERN,
+  needsPlace,
+  parseTimingArgs,
+} from "./period-places";
+export type { TimingArgs, TimingSegment } from "./period-places";
 export { BIRTH_YEAR_ROWS_NOTE, NO_TREE_NOTE, PRATYANTAR_NOTE, selectDashasForPeriod } from "./period-dashas";
 export type { PeriodAntarRow, PeriodDashaRow, PeriodDashas } from "./period-dashas";
 export {

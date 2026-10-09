@@ -23,5 +23,13 @@ describe.each(pages)('$name chat wiring', ({ source }) => {
     expect(source).not.toContain('viewerTodayDay(');
     expect(source).not.toContain('whenReady()');
     expect(source).not.toContain('viewerZone');
+    // Step C test seams: the device tier and the place reader come from the builder.
+    expect(source).not.toContain('periodSkyAllowed');
+    expect(source).not.toContain('placeFromRef');
+  });
+
+  it('names the place tool by its constant, not a literal', () => {
+    expect(source).not.toMatch(/['"]resolve_place['"]/);
+    expect(source).toContain('RESOLVE_PLACE_TOOL_NAME');
   });
 });

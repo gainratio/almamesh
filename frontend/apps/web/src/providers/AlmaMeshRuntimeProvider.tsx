@@ -38,10 +38,14 @@ import { recoverSeveredServiceWorkerChannel } from '../lib/swSelfHeal'
 import {
   clearRuntimeError,
   clearRuntimeGenerator,
+  clearRuntimeMoonWindow,
   clearRuntimePredictive,
+  clearRuntimeResolvePlace,
   publishPredictiveRequestKeys,
   publishRuntimeError,
   publishRuntimeGenerator,
+  publishRuntimeMoonWindow,
+  publishRuntimeResolvePlace,
   publishRuntimePredictive,
   publishRuntimeStage,
 } from '../lib/runtimeObservability'
@@ -318,6 +322,8 @@ export function AlmaMeshRuntimeProvider({ children, runtime }: ProviderProps) {
     if (EXIT_GATE_HOOKS) {
       clearRuntimeGenerator()
       clearRuntimePredictive()
+      clearRuntimeMoonWindow()
+      clearRuntimeResolvePlace()
     }
     bootstrapFailedRef.current = false
     retryableFailureRef.current = false
@@ -351,6 +357,11 @@ export function AlmaMeshRuntimeProvider({ children, runtime }: ProviderProps) {
           clearRuntimeError()
           publishRuntimeGenerator((birth) => ready.generateChart(birth))
           publishRuntimePredictive((input) => ready.computePredictive(input))
+          publishRuntimeMoonWindow((input) => ready.computeMoonWindow(input))
+          // Lazy, like chat: the place module (and so the city list) loads on first call.
+          publishRuntimeResolvePlace(async (query) =>
+            (await import('../lib/geo/placeLookup')).lookupPlaceOffline(query),
+          )
         }
         return ready
       })
@@ -387,6 +398,8 @@ export function AlmaMeshRuntimeProvider({ children, runtime }: ProviderProps) {
           if (EXIT_GATE_HOOKS) {
             clearRuntimeGenerator()
             clearRuntimePredictive()
+            clearRuntimeMoonWindow()
+            clearRuntimeResolvePlace()
             publishRuntimeError(e.message)
           }
         }

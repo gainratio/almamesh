@@ -72,3 +72,10 @@ export function overBudget(sample: BootMemorySample, budget: MemoryBudget): stri
     });
 }
 
+
+/**
+ * Heap growth allowed for the first offline place lookup (resolve_place, full
+ * tier only): the ~2 MB cities.min.json chunk parsed into rows. Plan Ruling 15.
+ * Over this the PR stops; the number is never raised to get a run green.
+ */
+export const PLACE_LOOKUP_HEAP_GROWTH_MIB = 48;
