@@ -352,6 +352,45 @@ describe('a pinned thread', () => {
     expect(text).not.toMatch(/4\.711|74\.07|"latitude"|"longitude"/);
   });
 
+  it('tells the pin\'s tense in the viewer zone, not the birth zone', async () => {
+    // SPLIT_DAY_NOW is 2026-03-08 in Los Angeles (viewer) and already 03-09 in Kolkata (birth).
+    const today = { start: '2026-03-08', end: '2026-03-08', granularity: 'day' } as const;
+    const prepared = await toolset({ pinned: today, periodSkyAllowed: true }).prepare('q', options());
+    expect(prepared.pinned).toEqual({ start: '2026-03-08', end: '2026-03-08', relative: 'contains_today' });
+  });
+
+  it('hands a lite device no place reader at all, whatever the pin', async () => {
+    const spy = vi.mocked(createChatAgentTools);
+    spy.mockClear();
+    toolset({ pinned: DAY_PIN, periodSkyAllowed: false });
+    expect(spy.mock.calls[0]?.[0]).not.toHaveProperty('placeFromRef');
+    spy.mockClear();
+    toolset({ pinned: DAY_PIN, periodSkyAllowed: true });
+    expect(spy.mock.calls[0]?.[0]).toHaveProperty('placeFromRef');
+  });
+
+  it('stops the pinned warm when the user aborts it', async () => {
+    const controller = new AbortController();
+    loadMock.mockImplementation(async () => {
+      controller.abort();
+      throw new Error('aborted mid-warm');
+    });
+    const pinned = toolset({ pinned: YEAR_2027, periodSkyAllowed: true });
+    await expect(pinned.prepare('q', { now: SPLIT_DAY_NOW, signal: controller.signal })).rejects.toThrow();
+  });
+
+  it('leaves a failed (not aborted) warm to the model: prepare still resolves with the pin', async () => {
+    loadMock.mockRejectedValue(new Error('engine down'));
+    const prepared = await toolset({ pinned: YEAR_2027, periodSkyAllowed: true }).prepare('q', options());
+    expect(prepared.pinned).toMatchObject({ start: '2027-01-01', relative: 'future' });
+    expect(prepared.currentContextUnavailable).toBe(false);
+  });
+
+  it('refuses to prepare a pinned thread that has no timing tool', async () => {
+    vi.mocked(createChatAgentTools).mockReturnValueOnce([]);
+    await expect(toolset({ pinned: YEAR_2027, periodSkyAllowed: true }).prepare('q', options())).rejects.toThrow('timing tool is unavailable');
+  });
+
   it('an unpinned thread keeps the step A router (today pre-run for a today question)', async () => {
     ensureMock.mockResolvedValue(TODAY_CHART);
     const prepared = await toolset({ periodSkyAllowed: true }).prepare("what's happening today?", options());

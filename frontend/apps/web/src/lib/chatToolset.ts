@@ -74,6 +74,8 @@ export interface ChatToolset {
 
 /** Shown while today's facts compute, if the timing tool carries no label of its own. */
 const TODAY_STATUS_FALLBACK = "Working out today's sky";
+/** Neutral wording for the pinned warm when neither the page nor the tool supplies a label. */
+const PINNED_STATUS_FALLBACK = 'Working out the sky for this period';
 
 /**
  * Re-read a place_ref from the offline city list. A dynamic import, so tz-lookup
@@ -101,7 +103,7 @@ async function preRunPin(tools: readonly AgentTool[], options: PrepareOptions): 
   if (!timing) throw new Error('The timing tool is unavailable.');
   const args = { section: 'transits' };
   // A fixed tool label (dashas only, needs a place) wins: the engine will not run.
-  options.onStatus?.(timing.statusLabelFor?.(args) ?? options.pinnedStatus ?? timing.statusLabel ?? TODAY_STATUS_FALLBACK);
+  options.onStatus?.(timing.statusLabelFor?.(args) ?? options.pinnedStatus ?? PINNED_STATUS_FALLBACK);
   try {
     await timing.execute(args, { now: new Date(options.now.getTime()), signal: options.signal });
   } catch (error) {
