@@ -52,10 +52,12 @@ function segmentArg(value: unknown): Parsed<TimingSegment> {
   const raw = value as Readonly<Record<string, unknown>>;
   if (raw.start === undefined || raw.end === undefined) return { error: SEGMENTS_SHAPE_ERROR };
   const dates = parsePeriodArgs(raw);
-  if (dates.kind !== "period") return { error: dates.kind === "invalid" ? dates.error : SEGMENTS_SHAPE_ERROR };
+  if (dates.kind === "invalid") return { error: dates.error };
+  // start and end are both present here, so parsePeriodArgs cannot answer "today".
+  const { period } = dates as Extract<PeriodArgs, { readonly kind: "period" }>;
   const placeRef = placeRefArg(raw.place_ref);
   if (failed(placeRef)) return placeRef;
-  return { ...dates.period, ...(placeRef ? { place_ref: placeRef } : {}) };
+  return { ...period, ...(placeRef ? { place_ref: placeRef } : {}) };
 }
 
 function segmentsArg(value: unknown): Parsed<readonly TimingSegment[]> {
