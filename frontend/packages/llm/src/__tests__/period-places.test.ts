@@ -116,6 +116,24 @@ describe("needsPlace (coordinator Ruling 1)", () => {
     })).toBe(true);
   });
 
+  it("under 7 days, placed segments that leave a gap still need a place (final review ruling)", () => {
+    const gapped = [{ start: "2026-06-01", end: "2026-06-01", place_ref: LA }, { start: "2026-06-04", end: "2026-06-04", place_ref: BOG }];
+    expect(needsPlace({ start: "2026-06-01", end: "2026-06-04" }, { segments: gapped })).toBe(true);
+    const touching = [{ start: "2026-06-01", end: "2026-06-02", place_ref: LA }, { start: "2026-06-03", end: "2026-06-04", place_ref: BOG }];
+    expect(needsPlace({ start: "2026-06-01", end: "2026-06-04" }, { segments: touching })).toBe(false);
+  });
+
+  it("a week or longer with a gap between placed segments never needs a place", () => {
+    const gapped = [{ start: "2026-06-01", end: "2026-06-02", place_ref: LA }, { start: "2026-06-20", end: "2026-06-30", place_ref: BOG }];
+    expect(needsPlace({ start: "2026-06-01", end: "2026-06-30" }, { segments: gapped })).toBe(false);
+  });
+
+  it("parsed gapped short segments come back as needing a place", () => {
+    const parsed = parseTimingArgs({ segments: [{ start: "2026-06-01", end: "2026-06-01", place_ref: LA }, { start: "2026-06-04", end: "2026-06-04", place_ref: BOG }] });
+    if (parsed.kind !== "period") throw new Error(`expected a period, got ${parsed.kind}`);
+    expect(needsPlace(parsed.period, { segments: parsed.segments })).toBe(true);
+  });
+
   it("the error is the constant the prompt teaches", () => {
     expect(NEEDS_PLACE_ERROR).toBe("needs_place");
     expect(PLACE_NEEDED_BELOW_DAYS).toBe(7);

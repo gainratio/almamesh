@@ -129,7 +129,14 @@ export function needsPlace(
   period: PeriodRange,
   places: { readonly placeRef?: string; readonly segments?: readonly TimingSegment[] },
 ): boolean {
-  if (periodEcho(period, "period").days >= PLACE_NEEDED_BELOW_DAYS) return false;
+  const days = periodEcho(period, "period").days;
+  if (days >= PLACE_NEEDED_BELOW_DAYS) return false;
   if (!places.segments?.length) return !places.placeRef;
-  return !places.segments.every((segment) => segment.place_ref);
+  if (!places.segments.every((segment) => segment.place_ref)) return true;
+  return segmentDays(places.segments) < days;
+}
+
+/** Days the segments cover; segments are ordered and never overlap, so a sum below the period's days is a gap. */
+function segmentDays(segments: readonly TimingSegment[]): number {
+  return segments.reduce((sum, segment) => sum + periodEcho(segment, "period").days, 0);
 }
