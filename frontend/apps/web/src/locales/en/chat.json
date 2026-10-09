@@ -71,6 +71,7 @@
   },
   "errors": {
     "chart_changed": "Your chart changed while this answer was being written, so it was discarded. Ask again to get an answer for the current chart.",
+    "pin_changed": "You changed the period while this answer was being written, so it was discarded. Ask again to get an answer for the new period.",
     "model_unavailable": "The configured AI model isn't available on your endpoint. Pick a different model in Settings → AI.",
     "endpoint_unreachable": "Couldn't reach your AI endpoint. Check that it's running and that the address in Settings → AI is correct.",
     "insufficient_credits": "Your AI account is out of credits. Add credits with your provider (for OpenRouter: openrouter.ai → Credits), or pick a cheaper model in Settings → AI.",
