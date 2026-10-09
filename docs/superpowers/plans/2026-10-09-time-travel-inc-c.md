@@ -2179,7 +2179,7 @@ Run: `cd frontend/apps/web && bunx vitest run src/lib/__tests__/placeEgress.test
 ```bash
 python3 "$MUTATE" frontend/packages/llm/src/sanitize.ts 'ayanamsa_value: chart.ayanamsa_value,' 'ayanamsa_value: chart.ayanamsa_value, location_name: (chart as { location_name?: string }).location_name,' -- bash -c 'cd frontend/packages/llm && bunx vitest run src/__tests__/birth-place-egress.test.ts'
 python3 "$MUTATE" frontend/apps/web/src/lib/placeTool.ts "const summary = (place: ResolvedPlace) => place.summary;" "const summary = (place: ResolvedPlace) => ({ ...place.summary, at: \`\${place.latitude.toFixed(1)},\${place.longitude.toFixed(1)}\` });" -- bash -c 'cd frontend/apps/web && bunx vitest run src/lib/__tests__/placeEgress.test.ts'
-python3 "$MUTATE" frontend/packages/llm/src/prompt.ts "unless the user already named a place for that day in this conversation; then call" "assume the home time zone and say so; then call" -- bash -c 'cd frontend/packages/llm && bunx vitest run src/__tests__/prompt-places.test.ts'
+python3 "$MUTATE" frontend/packages/llm/src/prompt.ts '"resolve_place with it and try again. Never assume a place, and never use the birth place.",' '"resolve_place with it and try again. If unsure, assume their home time zone.",' -- bash -c 'cd frontend/packages/llm && bunx vitest run src/__tests__/prompt-places.test.ts'
 ```
 
 - The first mutation leaks the birth place into the sanitized chart and must turn the prompt egress test red. If the `ayanamsa_value: chart.ayanamsa_value,` line isn't unique in `sanitize.ts`, pick the allowlist line inside `sanitizeChartForLlm` (L591-603).
