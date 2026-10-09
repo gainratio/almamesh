@@ -103,6 +103,17 @@ export function ChatPanel({
   const today = viewerTodayDay(new Date());
   const relative = asOf ? pinRelative(asOf, today) : undefined;
   const [sheet, setSheet] = useState<'closed' | 'new' | 'change'>('closed');
+  const [backState, setBackState] = useState<'idle' | 'busy' | 'failed'>('idle');
+  // Back to today saves a fresh thread first; a failed save must stay visible (Ruling 12).
+  const handleBack = useCallback(async () => {
+    setBackState('busy');
+    try {
+      await backToToday();
+      setBackState('idle');
+    } catch {
+      setBackState('failed');
+    }
+  }, [backToToday]);
   const [agentActivity, setAgentActivity] = useState<string | null>(null);
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
   const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map());
@@ -201,7 +212,8 @@ export function ChatPanel({
       {profileId && <ChatSearch profileId={profileId} onOpenResult={handleOpenResult} />}
 
       {asOf && (
-        <TimeTravelBanner asOf={asOf} language={language} onChange={() => setSheet('change')} onBack={() => void backToToday()} />
+        <TimeTravelBanner asOf={asOf} language={language} onChange={() => setSheet('change')} onBack={() => void handleBack()}
+          backBusy={backState === 'busy'} backFailed={backState === 'failed'} />
       )}
 
       {reanchorWaits && aiConfigured && (
@@ -279,8 +291,9 @@ export function ChatPanel({
         ) : (
         <ComposerPrimitive.Root className="flex gap-2">
           <button type="button" data-testid="time-travel-button" onClick={() => setSheet('new')}
+            disabled={isStreaming}
             aria-label={t('time_travel.button')}
-            className="flex-shrink-0 rounded-xl border border-ui-border px-3 py-3 text-sm text-text-secondary hover:border-accent-gold">
+            className="flex-shrink-0 rounded-xl border border-ui-border px-3 py-3 text-sm text-text-secondary hover:border-accent-gold disabled:cursor-not-allowed disabled:opacity-50">
             <span aria-hidden="true">⏳</span>
             <span className="ml-1 hidden sm:inline">{t('time_travel.button')}</span>
           </button>

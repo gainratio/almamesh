@@ -7,7 +7,9 @@ import { hydrateLlmSettings, openRouterPreset, writeLlmSettings } from '@almames
 vi.mock('../../../../lib/storeSaved', () => ({ waitForStoreSaved: vi.fn(async () => undefined) }));
 
 import '../../../../i18n/config';
+import type { ComponentProps } from 'react';
 import { ChatPanel } from '../ChatPanel';
+import { waitForStoreSaved } from '../../../../lib/storeSaved';
 import { __resetMemoryForTest, __setMemoryForTest } from '../../../../lib/chatMemory';
 import { useChartReanchorStatus } from '../../../../lib/chartReanchorStatus';
 
@@ -15,11 +17,13 @@ import { useChartReanchorStatus } from '../../../../lib/chartReanchorStatus';
 const YEAR_2050 = { start: '2050-01-01', end: '2050-12-31', granularity: 'year' } as const;
 const PAST = { start: '2019-06-01', end: '2019-06-30', granularity: 'month' } as const;
 
-function renderPanel(onAsk = vi.fn(async () => ({ answer: 'ok' })), configured = true) {
+type AskFn = NonNullable<ComponentProps<typeof ChatPanel>['onAskQuestionStream']>;
+
+function renderPanel(onAsk = vi.fn<AskFn>(async () => ({ answer: 'ok' })), configured = true) {
   if (configured) writeLlmSettings(openRouterPreset('sk-or-v1-0000-synthetic-test-key', 'test-org/test-model'));
   render(
     <MemoryRouter>
-      <ChatPanel personName="Marco" profileId="p1" chartId="c1" viewMode="layman" birthYear={1990} onAskQuestionStream={onAsk as never} />
+      <ChatPanel personName="Marco" profileId="p1" chartId="c1" viewMode="layman" birthYear={1990} onAskQuestionStream={onAsk} />
     </MemoryRouter>,
   );
   return onAsk;
@@ -113,24 +117,53 @@ describe('ChatPanel time travel', () => {
 
   it('a parent re-render does not wipe a draft typed in the Change sheet', async () => {
     useChatStore.getState().startThread('p1', 'c1', YEAR_2050);
-    const view = render(
-      <MemoryRouter>
-        <ChatPanel personName="Marco" profileId="p1" chartId="c1" viewMode="layman" birthYear={1990} onAskQuestionStream={vi.fn() as never} />
-      </MemoryRouter>,
-    );
     writeLlmSettings(openRouterPreset('sk-or-v1-0000-synthetic-test-key', 'test-org/test-model'));
-    view.rerender(
+    const onAsk = vi.fn<AskFn>();
+    const tree = (
       <MemoryRouter>
-        <ChatPanel personName="Marco" profileId="p1" chartId="c1" viewMode="layman" birthYear={1990} onAskQuestionStream={vi.fn() as never} />
-      </MemoryRouter>,
+        <ChatPanel personName="Marco" profileId="p1" chartId="c1" viewMode="layman" birthYear={1990} onAskQuestionStream={onAsk} />
+      </MemoryRouter>
     );
+    const view = render(tree);
     fireEvent.click(await screen.findByTestId('time-travel-change'));
     fireEvent.change(screen.getByTestId('time-travel-year'), { target: { value: '2051' } });
-    view.rerender(
-      <MemoryRouter>
-        <ChatPanel personName="Marco" profileId="p1" chartId="c1" viewMode="layman" birthYear={1990} onAskQuestionStream={vi.fn() as never} />
-      </MemoryRouter>,
-    );
+    view.rerender(tree);
     expect((screen.getByTestId('time-travel-year') as HTMLSelectElement).value).toBe('2051');
+  });
+
+  it('keeps the current eight starters for a pin that contains today', () => {
+    const today = new Date().getUTCFullYear();
+    useChatStore.getState().startThread('p1', 'c1', { start: `${today}-01-01`, end: `${today}-12-31`, granularity: 'year' });
+    renderPanel();
+    expect(screen.getByRole('button', { name: 'What are my career strengths?' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Why did this time feel hard?' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'What should I prepare for?' })).toBeNull();
+  });
+
+  it('a failed Back to today save keeps the banner, shows an alert and re-enables Back', async () => {
+    renderPanel();
+    await pinYear('2050');
+    vi.mocked(waitForStoreSaved).mockRejectedValueOnce(new Error('disk full'));
+    const unhandled = vi.fn();
+    process.on('unhandledRejection', unhandled);
+    await act(async () => fireEvent.click(screen.getByTestId('time-travel-back')));
+    const alert = await screen.findByTestId('time-travel-back-failed');
+    expect(alert.getAttribute('role')).toBe('alert');
+    expect(alert.textContent).toBe("Couldn't save this on your device. Try again.");
+    expect(screen.getByTestId('time-travel-banner')).toBeTruthy();
+    expect((screen.getByTestId('time-travel-back') as HTMLButtonElement).disabled).toBe(false);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    process.off('unhandledRejection', unhandled);
+    expect(unhandled).not.toHaveBeenCalled();
+  });
+
+  it('disables Time travel while an answer is streaming', async () => {
+    const onAsk = vi.fn<AskFn>(() => new Promise(() => undefined));
+    renderPanel(onAsk);
+    const button = screen.getByTestId('time-travel-button') as HTMLButtonElement;
+    expect(button.disabled).toBe(false);
+    fireEvent.change(screen.getByTestId('chat-input'), { target: { value: 'Hello?' } });
+    fireEvent.click(screen.getByTestId('chat-send-button'));
+    await waitFor(() => expect(button.disabled).toBe(true));
   });
 });
