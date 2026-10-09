@@ -41,6 +41,7 @@ describe("devicePolicy (pinned literals: what each tier may keep resident)", () 
       forceFieldMaxDpr: 1,
       bootOverlapAllowed: false,
       periodSkyCacheSize: 1,
+      periodSkyComputeAllowed: false,
     });
   });
 
@@ -52,6 +53,7 @@ describe("devicePolicy (pinned literals: what each tier may keep resident)", () 
       forceFieldMaxDpr: 1.5,
       bootOverlapAllowed: false,
       periodSkyCacheSize: 3,
+      periodSkyComputeAllowed: false,
     });
   });
 
@@ -63,6 +65,7 @@ describe("devicePolicy (pinned literals: what each tier may keep resident)", () 
       forceFieldMaxDpr: 2,
       bootOverlapAllowed: true,
       periodSkyCacheSize: 5,
+      periodSkyComputeAllowed: true,
     });
   });
 
@@ -70,6 +73,14 @@ describe("devicePolicy (pinned literals: what each tier may keep resident)", () 
     expect(devicePolicy("full").periodSkyCacheSize).toBe(5);
     expect(devicePolicy("lite").periodSkyCacheSize).toBe(3);
     expect(devicePolicy("minimal").periodSkyCacheSize).toBe(1);
+  });
+
+  it("period skies: only full computes them; lite and minimal answer dated questions with dashas", () => {
+    // Measured 2026-10-09 at 4x CPU throttle: one period compute takes page+workers heap
+    // to 425 MiB (lite) and 419 MiB (minimal), over the 300 MiB budget in e2e/memoryBudget.ts.
+    expect(devicePolicy("full").periodSkyComputeAllowed).toBe(true);
+    expect(devicePolicy("lite").periodSkyComputeAllowed).toBe(false);
+    expect(devicePolicy("minimal").periodSkyComputeAllowed).toBe(false);
   });
 
   it("every tier has a policy", () => {

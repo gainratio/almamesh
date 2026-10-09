@@ -1,6 +1,6 @@
 import type { SiderealChart } from '@almamesh/browser/types';
 import type { ProcessedBirthData } from '@almamesh/shared-types';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { ChartEngineContextValue } from '../../providers/chartEngineContext';
 import { SPLIT_DAY_NOW } from '../../test/viewerToday';
@@ -154,6 +154,24 @@ describe('buildChatToolset: charts', () => {
 });
 
 describe('buildChatToolset: period sky', () => {
+  // devicePolicy reads navigator.deviceMemory: 8 GB is the full tier, 4 GB lite.
+  const setDeviceMemory = (gib: number) => Object.defineProperty(navigator, 'deviceMemory', { value: gib, configurable: true });
+  beforeEach(() => setDeviceMemory(8));
+  afterEach(() => Reflect.deleteProperty(navigator, 'deviceMemory'));
+
+  it('a lite device (4 GB) answers a dated question with dashas only and never computes the sky', async () => {
+    setDeviceMemory(4);
+    const result = await timingOf(toolset()).execute(
+      { section: 'transits', start: '2019-06-01', end: '2019-06-30' },
+      options(),
+    );
+    expect(loadMock).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      shown: 'dashas',
+      notes: expect.arrayContaining(['This device answers dated questions with dashas only, to stay within memory.']),
+    });
+  });
+
   it('loads a period through the period-sky cache at the period start', async () => {
     await timingOf(toolset()).execute({ section: 'strength', start: '2019-06-01', end: '2019-06-30' }, options());
     expect(loadMock).toHaveBeenCalledWith(

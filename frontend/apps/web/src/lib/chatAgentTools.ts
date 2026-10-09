@@ -1,3 +1,4 @@
+import { devicePolicy } from '@almamesh/browser';
 import type { SiderealChart } from '@almamesh/browser/types';
 import {
   sanitizeChartForLlm,
@@ -78,6 +79,8 @@ export interface CreateChatAgentToolsInput {
   readonly todayDay?: (now: Date) => string;
   /** Engine facts for a period other than today (periodChart.ts). */
   readonly loadPeriodChart?: (period: PeriodRange, context: AgentToolContext) => Promise<SiderealChart>;
+  /** Test seam. Default: this device's `devicePolicy().periodSkyComputeAllowed`. */
+  readonly periodSkyAllowed?: boolean;
 }
 
 /**
@@ -206,6 +209,7 @@ export function createChatAgentTools(input: CreateChatAgentToolsInput): readonly
       todayDay: input.todayDay ?? viewerTodayDay,
       loadCurrentChart: input.loadCurrentChart,
       loadPeriodChart: input.loadPeriodChart,
+      periodSkyAllowed: input.periodSkyAllowed ?? devicePolicy().periodSkyComputeAllowed,
     }),
   ];
 }

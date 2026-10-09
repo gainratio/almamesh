@@ -55,6 +55,8 @@ export interface TimingToolInput {
   readonly loadCurrentChart?: (context: AgentToolContext) => Promise<SiderealChart>;
   /** A period's engine facts (periodChart.ts, through periodSky.ts). */
   readonly loadPeriodChart?: (period: PeriodRange, context: AgentToolContext) => Promise<SiderealChart>;
+  /** `devicePolicy().periodSkyComputeAllowed`: false answers every period with dashas only. */
+  readonly periodSkyAllowed: boolean;
 }
 
 /** Every successful call. `shown` differs from `section` when a limit gave dashas only. */
@@ -85,6 +87,9 @@ const DESCRIPTION = [
 ].join(' ');
 
 const UNAVAILABLE = { available: false } as const;
+
+/** Why a weak device's period answer has no sky (devicePolicy, deviceTier.ts). */
+export const DEVICE_DASHAS_ONLY_NOTE = 'This device answers dated questions with dashas only, to stay within memory.';
 
 /** Returned, not thrown, so the model can retry with a valid section. */
 const SECTION_ERROR = `section must be one of: ${TIMING_SECTIONS.join(', ')}`;
@@ -188,6 +193,7 @@ async function periodTiming(
   const limits = periodLimits(period);
   if (section === 'dashas') return dashasTiming(input, section, period, echo, []);
   if (limits.dashasOnly) return dashasTiming(input, section, period, echo, limits.notes);
+  if (!input.periodSkyAllowed) return dashasTiming(input, section, period, echo, [DEVICE_DASHAS_ONLY_NOTE]);
   return skyTiming(input, section, period, echo, context);
 }
 

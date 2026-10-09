@@ -4,7 +4,12 @@ import { describe, expect, it, vi } from 'vitest';
 
 import golden from '../../../../../../backend/tests/fixtures/chart_golden_de421.json';
 import { PeriodSkyTimeoutError } from '../periodSky';
-import { PeriodSkyUnavailableError, TIMING_TOOL_TIMEOUT_MS, createTimingTool } from '../timingTool';
+import {
+  DEVICE_DASHAS_ONLY_NOTE,
+  PeriodSkyUnavailableError,
+  TIMING_TOOL_TIMEOUT_MS,
+  createTimingTool,
+} from '../timingTool';
 
 const BIRTH = '1990-01-15T12:00:00Z';
 const DASHAS = {
@@ -64,6 +69,7 @@ function tool(overrides: Partial<Parameters<typeof createTimingTool>[0]> = {}) {
     birthDay: '1990-01-15',
     todayDay: () => '2026-03-08',
     loadPeriodChart: vi.fn(async () => SKY_CHART),
+    periodSkyAllowed: true,
     ...overrides,
   });
 }
@@ -206,6 +212,27 @@ describe('get_timing with dates', () => {
     );
     expect(result).toMatchObject({ shown: 'transits', notes: [], data: { available: false } });
     expect((result as { data: unknown }).data).toEqual({ available: false });
+  });
+
+  it('a device that may not compute period skies answers with dashas only, and says why', async () => {
+    const loadPeriodChart = vi.fn(async () => SKY_CHART);
+    const result = (await tool({ loadPeriodChart, periodSkyAllowed: false }).execute(
+      { section: 'transits', start: '2019-06-01', end: '2019-06-30' },
+      context(),
+    )) as { section: string; shown: string; notes: string[]; data: unknown };
+    expect(loadPeriodChart).not.toHaveBeenCalled();
+    expect(result.section).toBe('transits');
+    expect(result.shown).toBe('dashas');
+    expect(result.notes[0]).toBe('This device answers dated questions with dashas only, to stay within memory.');
+    expect(result.notes[0]).toBe(DEVICE_DASHAS_ONLY_NOTE);
+    expect(result.data).toMatchObject({ maha: expect.any(Array) });
+  });
+
+  it('a dashas-only device still answers today from the Life Atlas sky', async () => {
+    const loadCurrentChart = vi.fn(async () => SKY_CHART);
+    const result = await tool({ loadCurrentChart, periodSkyAllowed: false }).execute({ section: 'transits' }, context());
+    expect(loadCurrentChart).toHaveBeenCalledOnce();
+    expect(result).toMatchObject({ period: { basis: 'today' }, shown: 'transits', notes: [] });
   });
 
   it('says dashas are unavailable when the stored chart has none', async () => {

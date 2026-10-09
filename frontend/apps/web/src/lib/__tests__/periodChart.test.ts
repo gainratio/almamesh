@@ -118,6 +118,7 @@ describe('a slow period compute reaches the model as a timeout value', () => {
       birthDay: '1990-01-15',
       todayDay: () => '2026-03-08',
       loadPeriodChart,
+      periodSkyAllowed: true,
     });
     const bodies: Array<{ messages: Array<{ role: string; content: string | null }> }> = [];
     const fetchImpl = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {

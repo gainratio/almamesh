@@ -74,6 +74,23 @@ describe('createChatAgentTools', () => {
     ]);
   });
 
+  it.each([
+    [8, true],
+    [4, false],
+  ])('with no seam, a %i GB device follows devicePolicy (period sky computed: %s)', async (gib, computed) => {
+    Object.defineProperty(navigator, 'deviceMemory', { value: gib, configurable: true });
+    try {
+      const loadPeriodChart = vi.fn(async () => chart);
+      const [, , timing] = createChatAgentTools({ chart, chartAsOf, chartTimeZone: 'UTC', loadPeriodChart });
+      const context = { now: new Date('2026-03-08T09:30:00.000Z'), signal: new AbortController().signal };
+      const result = await timing.execute({ section: 'transits', start: '2019-06-01', end: '2019-06-30' }, context);
+      expect(loadPeriodChart).toHaveBeenCalledTimes(computed ? 1 : 0);
+      expect(result).toMatchObject({ shown: computed ? 'transits' : 'dashas' });
+    } finally {
+      Reflect.deleteProperty(navigator, 'deviceMemory');
+    }
+  });
+
   it('hands get_timing the birth day, today, and the period loader', async () => {
     const loadPeriodChart = vi.fn(async () => chart);
     const [, , timing] = createChatAgentTools({
@@ -83,6 +100,7 @@ describe('createChatAgentTools', () => {
       birthDay: '1990-01-15',
       todayDay: () => '2026-03-08',
       loadPeriodChart,
+      periodSkyAllowed: true,
     });
     const context = { now: new Date('2026-03-08T09:30:00.000Z'), signal: new AbortController().signal };
     await expect(timing.execute({ section: 'dashas', start: '1989-01-01' }, context)).resolves.toEqual({
