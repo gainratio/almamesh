@@ -174,6 +174,7 @@ export class AlmameshCi {
       .withNewFile("/tmp/node-contract.cjs", "Promise.withResolvers ||= () => { let resolve, reject; const promise = new Promise((ok, fail) => { resolve = ok; reject = fail }); return { promise, resolve, reject } }")
       .withEnvVariable("NODE_OPTIONS", "--require=/tmp/node-contract.cjs")
       .withEnvVariable("PYTHON", "/usr/bin/python3")
+      // apt node-gyp + nodejs are safe here: BUN_IMAGE ships no real Node, so Debian's Node runs the addons it builds (one ABI); releaseBase bans them.
       .withExec([
         "sh",
         "-c",
