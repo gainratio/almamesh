@@ -30,6 +30,7 @@ import {
   markPortableStorageBlockedByEngine,
   portableStatePersistence,
   subscribePortableStatePersistence,
+  usePredictiveStore,
 } from '@almamesh/store'
 import { hasLocalChart } from '../lib/localChart'
 import { recordEngineBootFailure, registerEngineTeardown } from '../lib/engineLifecycle'
@@ -37,6 +38,7 @@ import { recoverSeveredServiceWorkerChannel } from '../lib/swSelfHeal'
 import {
   clearRuntimeError,
   clearRuntimeGenerator,
+  publishPredictiveRequestKeys,
   publishRuntimeError,
   publishRuntimeGenerator,
   publishRuntimeStage,
@@ -133,6 +135,9 @@ if (typeof window !== 'undefined' && EXIT_GATE_HOOKS) {
   // and spawns its own Worker. Proofs that count Workers wait for this
   // to leave 'pending' so that boot Worker is never attributed to the proof.
   window.__almameshPortableStatePersistence = portableStatePersistence
+  // Every requestKey the Life Atlas slot holds: the time-travel journey proves
+  // a period compute never borrows it, not even briefly.
+  publishPredictiveRequestKeys(usePredictiveStore)
 }
 
 /** Canonical storage can never become durable here (the SQLite Worker failed to open). */

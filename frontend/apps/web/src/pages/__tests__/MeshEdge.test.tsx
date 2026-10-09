@@ -25,6 +25,8 @@ import { openRouterPreset, writeLlmSettings } from '@almamesh/llm';
 
 import '../../i18n/config';
 import MeshEdgePage from '../MeshEdge';
+import { buildChatToolset, type ChatToolset } from '../../lib/chatToolset';
+import { expectToolsetReadsViewerToday } from '../../test/viewerToday';
 import { MESH_EDGE_FRIEND, MESH_EDGE_SPOUSE } from '../../test/meshFixtures';
 import { __resetMemoryForTest, __setMemoryForTest } from '../../lib/chatMemory';
 
@@ -40,6 +42,17 @@ vi.mock('@almamesh/llm', async (importOriginal) => {
     streamAgentChat: llmMocks.streamAgentChat,
     streamChartChat: llmMocks.streamChartChat,
   };
+});
+
+// Pin the viewer's zone so the viewer-today check holds on a runner in any TZ.
+vi.mock('../../lib/analysisInstant', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../lib/analysisInstant')>()),
+  viewerTimeZone: () => 'America/Los_Angeles',
+}));
+
+vi.mock('../../lib/chatToolset', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../lib/chatToolset')>();
+  return { ...actual, buildChatToolset: vi.fn(actual.buildChatToolset) };
 });
 
 const ANCHOR: Profile = {
@@ -324,7 +337,7 @@ describe('MeshEdgePage', () => {
     expect(options.tools.map((tool: { name: string }) => tool.name)).toEqual([
       'get_current_datetime',
       'get_chart_facts',
-      'get_current_timing',
+      'get_timing',
     ]);
     expect(JSON.stringify(options.messages)).toContain('ENGINE RELATIONSHIP CONTEXT');
     expect(JSON.stringify(options.messages)).not.toContain(ANCHOR.name);
@@ -334,6 +347,10 @@ describe('MeshEdgePage', () => {
         'relationship timing is grounded',
       ),
     );
+    // Same function of the same instant as the Dashboard pin: a page that reads
+    // its birth zone for "today" fails here.
+    const toolset = vi.mocked(buildChatToolset).mock.results.at(-1)!.value as ChatToolset;
+    await expectToolsetReadsViewerToday(toolset, 'Asia/Kolkata'); // the anchor's birth zone in this fixture
   });
   it('refuses relationship chat when the anchor chart has no birthplace timezone (no silent UTC)', async () => {
     writeLlmSettings(openRouterPreset('sk-or-v1-0000-synthetic-test-key', 'test-org/test-model'));

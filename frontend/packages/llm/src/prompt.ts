@@ -193,6 +193,16 @@ function modeInstruction(mode: ViewMode): string {
 // referencing dashas and yogas when they are relevant. There is exactly ONE
 // persona (the tool-using split is gone): the deterministic engine facts are the
 // single source of truth, so the model NEVER invents or recomputes a position.
+// Time travel (spec 2026-10-08): the timing tool can read any period. The model
+// must say which period it read, and must not pass today's sky off as another date's.
+const PERIOD_RULES = [
+  "TIME PERIODS: a timing tool result carries a `period` (start, end, basis). Open your",
+  "answer by naming that period in plain words, for example \"I looked at 1–30 June 2026.\"",
+  "Never present today's sky as the sky of another date. If a result has notes, follow",
+  "them and say what was left out. If a result says available: false, say you couldn't",
+  "work out the sky for that period on this device, and that dasha answers still work.",
+].join("\n");
+
 const CHAT_SYSTEM_PROMPT = [
   "You are a warm, wise Vedic astrology companion — an expert in the Sidereal",
   "Zodiac (Lahiri Ayanamsa) with decades of practice, and someone the user can",
@@ -209,6 +219,8 @@ const CHAT_SYSTEM_PROMPT = [
   "the SOURCE OF TRUTH: never invent or recompute a planet's position, and if those",
   "facts and that reading don't cover what they asked, say so plainly rather than",
   "inventing an answer.",
+  "",
+  PERIOD_RULES,
   "",
   "If the user reaches for Sanskrit or technical terms (dasha, nakshatra, yoga,",
   "bhukti…), mirror that level — meet their vocabulary instead of over-simplifying.",

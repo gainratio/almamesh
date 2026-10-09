@@ -81,22 +81,60 @@ function dashaLine(label: string, period: SanitizedCurrentPeriod | null): string
   return `- ${label}: ${period.lord} (${period.months_remaining} months remaining)`;
 }
 
-/** The current Vimshottari dasha block (maha/antar/pratyantar), if present. */
+const PERIOD_LABEL_FORMAT = new Intl.DateTimeFormat("en-GB", {
+  day: "numeric",
+  month: "long",
+  year: "numeric",
+  timeZone: "UTC",
+});
+
+/**
+ * A period in plain English (the prompt language): "1–30 June 2026". ICU puts
+ * thin spaces around the range dash and their presence varies by ICU version,
+ * so the dash is normalized to keep prompts byte-stable.
+ */
+export function formatPeriodLabel(start: string, end: string): string {
+  return PERIOD_LABEL_FORMAT.formatRange(new Date(`${start}T00:00:00Z`), new Date(`${end}T00:00:00Z`)).replace(
+    /\s*–\s*/g,
+    "–",
+  );
+}
+
+function dashaHeader(asOf: SanitizedChart["as_of"]): string {
+  if (asOf.basis === "period" && asOf.period_start && asOf.period_end) {
+    return `Dasha period as of ${formatPeriodLabel(asOf.period_start, asOf.period_end)} (the period asked about):`;
+  }
+  const basis = asOf.basis === "today" ? "today" : "the chart's analysis date";
+  return `Current dasha period (as of ${asOf.date}, ${basis}):`;
+}
+
+/**
+ * The current Vimshottari dasha block (maha/antar/pratyantar), if present. Under a
+ * period basis the current rows describe the chart's reference date, not the
+ * period, so they are omitted (the timing tool result carries the period's dashas).
+ */
 function dashaBlock(chart: SanitizedChart): string {
   if (!chart.dashas) {
     return "";
   }
-  const lines = [
-    dashaLine("Mahadasha", chart.dashas.current_maha),
-    dashaLine("Antardasha", chart.dashas.current_antar),
-    dashaLine("Pratyantardasha", chart.dashas.current_pratyantar),
-  ].filter((line) => line !== "");
+  const isPeriod = chart.as_of.basis === "period";
+  const lines = (
+    isPeriod
+      ? []
+      : [
+          dashaLine("Mahadasha", chart.dashas.current_maha),
+          dashaLine("Antardasha", chart.dashas.current_antar),
+          dashaLine("Pratyantardasha", chart.dashas.current_pratyantar),
+        ]
+  ).filter((line) => line !== "");
   if (chart.dashas.convention) {
     // No silent convention: state which dasha-year length built these periods.
     lines.push(`- Dasha-year convention: ${chart.dashas.convention} (engine-declared)`);
   }
-  const basis = chart.as_of.basis === "today" ? "today" : "the chart's analysis date";
-  const header = `Current dasha period (as of ${chart.as_of.date}, ${basis}):`;
+  if (isPeriod) {
+    lines.unshift("- Current dasha rows omitted: they describe today, not this period; use the timing tool result.");
+  }
+  const header = dashaHeader(chart.as_of);
   return lines.length > 0 ? [header, ...lines].join("\n") : "";
 }
 
@@ -120,7 +158,7 @@ function datedCurrentLine(label: string, period: SanitizedCurrentPeriod | null):
 
 /** The engine-dated current stack (maha/antar/pratyantar month windows). */
 function datedCurrentBlock(chart: SanitizedChart): string {
-  if (!chart.dashas) {
+  if (!chart.dashas || chart.as_of.basis === "period") {
     return "";
   }
   const lines = [
@@ -183,7 +221,8 @@ function nextMahaLine(dashas: SanitizedDashas): string {
  * maha, the remaining pratyantardashas of the current antar, and the next maha.
  */
 function upcomingPeriodsBlock(chart: SanitizedChart): string {
-  if (!chart.dashas) {
+  // These derive from the current rows, which describe today, so a period basis omits them.
+  if (!chart.dashas || chart.as_of.basis === "period") {
     return "";
   }
   const lines = [

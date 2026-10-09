@@ -87,6 +87,7 @@ export type {
   BootProgressStage,
   MeshBirthInput,
   MeshEdgeInput,
+  PredictiveCallOptions,
   PredictiveInput,
   PyodideAsset,
 } from "./pyodide/protocol";

@@ -3,7 +3,10 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   createChatAgentTools,
   currentDateTimeForZone,
+  mentionsExplicitPeriod,
   requiresCurrentPlanetaryContext,
+  shouldPreRunToday,
+  viewerTodayDay,
 } from '../chatAgentTools';
 import type { SiderealChart } from '@almamesh/browser/types';
 
@@ -34,6 +37,20 @@ describe('currentDateTimeForZone', () => {
   });
 });
 
+describe('viewerTodayDay', () => {
+  const now = new Date('2026-03-08T05:30:00.000Z');
+
+  it("is today's calendar day in the given zone", () => {
+    expect(viewerTodayDay(now, 'America/Los_Angeles')).toBe('2026-03-07');
+    expect(viewerTodayDay(now, 'Asia/Kolkata')).toBe('2026-03-08');
+  });
+
+  it("defaults to the viewer's (device) zone", () => {
+    const device = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    expect(viewerTodayDay(now)).toBe(viewerTodayDay(now, device));
+  });
+});
+
 describe('createChatAgentTools', () => {
   const chart = {
     ayanamsa_value: 24,
@@ -53,8 +70,47 @@ describe('createChatAgentTools', () => {
     expect(tools.map((tool) => tool.name)).toEqual([
       'get_current_datetime',
       'get_chart_facts',
-      'get_current_timing',
+      'get_timing',
     ]);
+  });
+
+  it.each([
+    [8, true],
+    [4, false],
+  ])('with no seam, a %i GB device follows devicePolicy (period sky computed: %s)', async (gib, computed) => {
+    Object.defineProperty(navigator, 'deviceMemory', { value: gib, configurable: true });
+    try {
+      const loadPeriodChart = vi.fn(async () => chart);
+      const [, , timing] = createChatAgentTools({ chart, chartAsOf, chartTimeZone: 'UTC', loadPeriodChart });
+      const context = { now: new Date('2026-03-08T09:30:00.000Z'), signal: new AbortController().signal };
+      const result = await timing.execute({ section: 'transits', start: '2019-06-01', end: '2019-06-30' }, context);
+      expect(loadPeriodChart).toHaveBeenCalledTimes(computed ? 1 : 0);
+      expect(result).toMatchObject({ shown: computed ? 'transits' : 'dashas' });
+    } finally {
+      Reflect.deleteProperty(navigator, 'deviceMemory');
+    }
+  });
+
+  it('hands get_timing the birth day, today, and the period loader', async () => {
+    const loadPeriodChart = vi.fn(async () => chart);
+    const [, , timing] = createChatAgentTools({
+      chart,
+      chartAsOf,
+      chartTimeZone: 'UTC',
+      birthYear: 1990,
+      todayDay: () => '2026-03-08',
+      loadPeriodChart,
+      periodSkyAllowed: true,
+    });
+    const context = { now: new Date('2026-03-08T09:30:00.000Z'), signal: new AbortController().signal };
+    await expect(timing.execute({ section: 'dashas', start: '1989-01-01' }, context)).resolves.toEqual({
+      error: expect.stringMatching(/before the birth date/),
+    });
+    await expect(timing.execute({ section: 'dashas' }, context)).resolves.toMatchObject({
+      period: { start: '2026-03-08', basis: 'today' },
+    });
+    await timing.execute({ section: 'strength', start: '2019-06-01' }, context);
+    expect(loadPeriodChart).toHaveBeenCalledWith({ start: '2019-06-01', end: '2019-06-01' }, context);
   });
 
   it('uses the turn-pinned clock and chart timezone without wall-clock reads', async () => {
@@ -125,12 +181,12 @@ describe('createChatAgentTools', () => {
         { section: 'strength' },
         { now: new Date('2026-03-08T09:30:00.000Z'), signal: new AbortController().signal },
       ),
-    ).resolves.toMatchObject({ sav_total: 337 });
+    ).resolves.toMatchObject({ period: { basis: 'today' }, data: { sav_total: 337 } });
     expect(loadCurrentChart).toHaveBeenCalledWith({
       now: new Date('2026-03-08T09:30:00.000Z'),
       signal: expect.any(AbortSignal),
     });
-    expect(tools[2].timeoutMs).toBeGreaterThan(30_000);
+    expect(tools[2].timeoutMs).toBe(150_000);
   });
 });
 
@@ -168,11 +224,54 @@ describe('requiresCurrentPlanetaryContext', () => {
     const facts = (await tools[1].execute({ section: 'dashas' }, context)) as {
       maha_dasha_sequence: Array<{ lord: string; status?: string }>;
     };
-    const timing = (await tools[2].execute({ section: 'dashas' }, context)) as typeof facts;
+    const timing = ((await tools[2].execute({ section: 'dashas' }, context)) as { data: typeof facts }).data;
 
     const current = (rows: typeof facts.maha_dasha_sequence) =>
       rows.filter((row) => row.status?.startsWith('current')).map((row) => row.lord);
     expect(current(facts.maha_dasha_sequence)).toEqual(['jupiter']);
     expect(current(timing.maha_dasha_sequence)).toEqual(['saturn']);
+  });
+});
+
+describe('mentionsExplicitPeriod', () => {
+  it.each([
+    'What happened in June 2019?',
+    'transits in June 2019',
+    'How was 2019 for me?',
+    'What about 15 June?',
+    'what may happen in May?',
+    'Tell me about May 2027',
+    '3 May was a big day',
+    '¿Cómo fue marzo de 2020?',
+    '¿Qué pasó en julio?',
+    'Como foi março para mim?',
+    'E em setembro?',
+    'What happened in March?',
+    'Desde marco de 2020',
+    'Tudo mudou desde marco',
+    // NFD "março" (c + combining cedilla), as some keyboards and pastes send it.
+    'Como foi março para mim?'.normalize('NFD'),
+  ])('sees an explicit period in: %s', (question) => {
+    expect(mentionsExplicitPeriod(question)).toBe(true);
+  });
+
+  it.each([
+    'What may happen today?',
+    'What are my current transits?',
+    'Ask Marco about this week',
+    'How should I march forward this month?',
+    'Where is my natal Mars?',
+    'Explain my ascendant.',
+  ])('sees no explicit period in: %s', (question) => {
+    expect(mentionsExplicitPeriod(question)).toBe(false);
+  });
+});
+
+describe('shouldPreRunToday', () => {
+  it('pre-runs today only for "today" questions with no explicit period', () => {
+    expect(shouldPreRunToday('What are my current transits?')).toBe(true);
+    expect(shouldPreRunToday('What may happen today?')).toBe(true);
+    expect(shouldPreRunToday('transits in June 2019')).toBe(false);
+    expect(shouldPreRunToday('Where is my natal Mars?')).toBe(false);
   });
 });

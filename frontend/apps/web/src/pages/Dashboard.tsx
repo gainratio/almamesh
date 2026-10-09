@@ -15,7 +15,6 @@ import {
   describeLlmStatus,
   resolveProviderConfig,
   sanitizeChartForLlm,
-  todayAnalysisInstant,
   streamAgentChat,
   serializeInterpretationForChat,
   readLlmSettings,
@@ -44,7 +43,7 @@ import { ContentModeToggle } from "../components/ui/ContentModeToggle";
 import { MarkdownContent } from "../components/ui/MarkdownContent";
 import { FloatingChatPanel } from "../components/features/chat/FloatingChatPanel";
 import { FeedbackWidget } from "../components/features/feedback/FeedbackWidget";
-import { storedChartAnalysisInstant, viewerTimeZone } from "../lib/analysisInstant";
+import { storedChartAnalysisInstant } from "../lib/analysisInstant";
 import { ProvenanceFooter } from "../components/ProvenanceFooter";
 import {
   ChartVisualization,
@@ -78,11 +77,7 @@ import { useReportPdfExport } from "../hooks/useReportPdfExport";
 import { isPlaceholderContent } from "./exportGate";
 import { personaText, resolveReportAudience } from "../lib/reportSelectors";
 import { rectificationDelta } from "../lib/rectification";
-import {
-  createChatAgentTools,
-  requiresCurrentPlanetaryContext,
-} from "../lib/chatAgentTools";
-import { ensureCurrentPlanetaryContext } from "../lib/currentPlanetaryContext";
+import { buildChatToolset } from "../lib/chatToolset";
 import { useOptionalChartEngine } from "../providers/chartEngineContext";
 
 // Resolve the LLM env: build-time Vite env with any browser-local Settings
@@ -301,12 +296,9 @@ export default function DashboardPage() {
       ? useRectificationRecordsStore.getState().getRecord(activeProfileId)
       : null;
     const language = useLanguageStore.getState().language;
-    // `now` is ONLY for questions genuinely about today (the current-timing
-    // tool). Everything else describes the chart as of its own analysis instant.
+    // `now` is ONLY for questions genuinely about today. Everything else
+    // describes the chart as of its own analysis instant.
     const now = new Date();
-    const chartAsOf = storedChartAnalysisInstant(storedChart!);
-    let usesTodayContext = false;
-    let chartWithPredictive = withRawPredictive(chart, chartId);
     const rectification = rectificationRecord
       ? {
           band: rectificationRecord.band,
@@ -322,60 +314,23 @@ export default function DashboardPage() {
       storedChart?.birth_data?.birth_location_details.timezone,
       'chat',
     );
-    const loadCurrentChart = async (context: { now: Date; signal: AbortSignal }) => {
-      if (!chartEngineContext) {
-        throw new Error('The on-device chart engine is unavailable.');
-      }
-      chartEngineContext.startBootstrap();
-      const runtime = chartEngineContext.engine ?? await chartEngineContext.whenReady();
-      chartWithPredictive = await ensureCurrentPlanetaryContext({
-        chart,
-        profileKey: storedChart?.profile_id ?? chartId ?? 'primary',
-        birth: storedChart?.birth_data as ProcessedBirthData | undefined,
-        // "Today" is the viewer's day, the zone every analysis day is read in,
-        // so a today-question about a chart computed today joins the Life
-        // Atlas's calculation instead of evicting it from the one store slot.
-        chartTimeZone: viewerTimeZone(),
-        now: context.now,
-        runtime,
-        signal: context.signal,
-      });
-      usesTodayContext = true;
-      return chartWithPredictive;
-    };
-    const tools = createChatAgentTools({
-      chart: chartWithPredictive,
-      chartAsOf,
+    const toolset = buildChatToolset({
+      chart,
+      promptChart: withRawPredictive(chart, chartId),
+      chartAsOf: storedChartAnalysisInstant(storedChart!),
       chartTimeZone,
-      loadCurrentChart,
+      profileKey: storedChart?.profile_id ?? chartId ?? 'primary',
+      birth: storedChart?.birth_data as ProcessedBirthData | undefined,
+      engine: chartEngineContext,
+    });
+    const prepared = await toolset.prepare(question, {
+      now,
+      signal,
+      onStatus: (label) => onAgentStatus?.(label),
     });
 
-    // A small deterministic router guarantees that explicit relative-time
-    // questions receive exact-day engine facts. This does not ask a cheap model
-    // to decide whether "today" needs today's sky; the same allowlisted tool the
-    // model can call is run locally first, and the resulting chart is then the
-    // one serialized into the agent context. Same-day repeats hit the store cache.
-    let currentContextUnavailable = false;
-    if (requiresCurrentPlanetaryContext(question)) {
-      const currentTimingTool = tools.find((tool) => tool.name === 'get_current_timing');
-      if (!currentTimingTool) throw new Error('Current timing tool is unavailable.');
-      onAgentStatus?.(currentTimingTool.statusLabel ?? 'Calculating current planetary context');
-      try {
-        await currentTimingTool.execute(
-          { section: 'transits' },
-          { now: new Date(now.getTime()), signal },
-        );
-      } catch (error) {
-        if (signal.aborted) throw error;
-        currentContextUnavailable = true;
-      }
-    }
-
     let messages = buildChatMessages(
-      sanitizeChartForLlm(
-        chartWithPredictive,
-        usesTodayContext ? todayAnalysisInstant(now) : chartAsOf,
-      ),
+      sanitizeChartForLlm(prepared.chart, prepared.asOf),
       question,
       chatMode,
       history,
@@ -385,7 +340,7 @@ export default function DashboardPage() {
       undefined,
       rectification,
     );
-    if (currentContextUnavailable) {
+    if (prepared.currentContextUnavailable) {
       const [system, ...rest] = messages;
       messages = [
         {
@@ -402,7 +357,7 @@ export default function DashboardPage() {
     yield* streamAgentChat({
       config,
       messages,
-      tools,
+      tools: toolset.tools,
       now,
       signal,
       onStatus: (event) => {

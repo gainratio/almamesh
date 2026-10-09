@@ -19,7 +19,8 @@ export const AGENT_LIMITS = Object.freeze({
   maxResultChars: 8_192,
   maxAggregateResultChars: 16_384,
   toolTimeoutMs: 2_000,
-  maxToolTimeoutMs: 60_000,
+  // The timing tool's period computes (time travel): 150 s, under the worker's own 180 s.
+  maxToolTimeoutMs: 150_000,
 });
 
 export type AgentJsonObject = Readonly<Record<string, unknown>>;
@@ -39,6 +40,12 @@ export interface AgentTool {
   readonly parameters: AgentJsonObject;
   /** Human-readable activity label. Must not contain arguments or private data. */
   readonly statusLabel?: string;
+  /**
+   * Optional per-call label, chosen from the call's arguments (e.g. no "working out
+   * the sky" when this call will not run the engine). Same rule: it must be a fixed
+   * phrase, never the arguments or private data. Undefined falls back to `statusLabel`.
+   */
+  readonly statusLabelFor?: (args: AgentJsonObject) => string | undefined;
   /** Optional local deadline for known-long deterministic work, capped globally. */
   readonly timeoutMs?: number;
   readonly execute: (
@@ -677,7 +684,7 @@ export async function* streamAgentChat(
             phase: "using_tool",
             round,
             toolName: selectedTool.name,
-            label: selectedTool.statusLabel ?? `Using ${selectedTool.name}`,
+            label: selectedTool.statusLabelFor?.(args) ?? selectedTool.statusLabel ?? `Using ${selectedTool.name}`,
             callNumber: executedCalls,
           });
           try {

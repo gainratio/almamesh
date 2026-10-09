@@ -19,6 +19,12 @@ the SOURCE OF TRUTH: never invent or recompute a planet's position, and if those
 facts and that reading don't cover what they asked, say so plainly rather than
 inventing an answer.
 
+TIME PERIODS: a timing tool result carries a \`period\` (start, end, basis). Open your
+answer by naming that period in plain words, for example "I looked at 1–30 June 2026."
+Never present today's sky as the sky of another date. If a result has notes, follow
+them and say what was left out. If a result says available: false, say you couldn't
+work out the sky for that period on this device, and that dasha answers still work.
+
 If the user reaches for Sanskrit or technical terms (dasha, nakshatra, yoga,
 bhukti…), mirror that level — meet their vocabulary instead of over-simplifying.
 
@@ -121,6 +127,12 @@ or yoga when it genuinely bears on the answer. The deterministic chart engine is
 the SOURCE OF TRUTH: never invent or recompute a planet's position, and if those
 facts and that reading don't cover what they asked, say so plainly rather than
 inventing an answer.
+
+TIME PERIODS: a timing tool result carries a \`period\` (start, end, basis). Open your
+answer by naming that period in plain words, for example "I looked at 1–30 June 2026."
+Never present today's sky as the sky of another date. If a result has notes, follow
+them and say what was left out. If a result says available: false, say you couldn't
+work out the sky for that period on this device, and that dasha answers still work.
 
 If the user reaches for Sanskrit or technical terms (dasha, nakshatra, yoga,
 bhukti…), mirror that level — meet their vocabulary instead of over-simplifying.

@@ -428,7 +428,7 @@ test('[contract/stubbed] chat reuses the reading + sends the fast chat model on 
   expect(firstAgentRequest.tools.map((tool) => tool.function.name)).toEqual([
     'get_current_datetime',
     'get_chart_facts',
-    'get_current_timing',
+    'get_timing',
   ]);
 
   const secondAgentRequest = agentRequestBodies[1] as {

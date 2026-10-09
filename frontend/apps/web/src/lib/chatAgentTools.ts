@@ -1,12 +1,17 @@
+import { devicePolicy } from '@almamesh/browser';
 import type { SiderealChart } from '@almamesh/browser/types';
 import {
   sanitizeChartForLlm,
-  todayAnalysisInstant,
   type AnalysisInstant,
-  type AgentJsonObject,
   type AgentTool,
   type AgentToolContext,
+  type PeriodRange,
 } from '@almamesh/llm';
+
+import { enumArgument } from './agentArgs';
+import { viewerTimeZone } from './analysisInstant';
+import { predictiveReferenceInstant } from './predictive';
+import { createTimingTool } from './timingTool';
 
 export interface ZonedDateTime {
   readonly isoUtc: string;
@@ -61,36 +66,90 @@ export interface CreateChatAgentToolsInput {
   readonly chart: SiderealChart;
   /**
    * The chart's own analysis instant: `get_chart_facts` describes the chart as
-   * of this instant. Only `get_current_timing` (explicitly about today) uses
-   * the tool context's `now`, labelled as "today".
+   * of this instant. Only `get_timing` (today, or a dated period) uses the
+   * tool context's `now`, labelled as "today".
    */
   readonly chartAsOf: AnalysisInstant;
   readonly chartTimeZone: string;
   /** Resolve exact-day engine facts; the caller owns cache/profile identity checks. */
   readonly loadCurrentChart?: (context: AgentToolContext) => Promise<SiderealChart>;
+  /** The local birth year; periods that end before 1 January of it are refused. */
+  readonly birthYear?: number;
+  /** The birth instant's UTC year; the birth-year sky gate uses the later of the two. */
+  readonly birthUtcYear?: number | undefined;
+  /** Today's calendar day; defaults to the viewer's zone. */
+  readonly todayDay?: (now: Date) => string;
+  /** Engine facts for a period other than today (periodChart.ts). */
+  readonly loadPeriodChart?: (period: PeriodRange, context: AgentToolContext) => Promise<SiderealChart>;
+  /** Test seam. Default: this device's `devicePolicy().periodSkyComputeAllowed`. */
+  readonly periodSkyAllowed?: boolean;
+}
+
+/**
+ * Today's calendar day in the viewer's (device) zone: the one "today" every
+ * page reads, and the zone every "As of" on screen is printed in.
+ */
+export function viewerTodayDay(now: Date, timeZone: string = viewerTimeZone()): string {
+  return predictiveReferenceInstant(now, timeZone).slice(0, 10);
 }
 
 const CURRENT_CONTEXT_PATTERN =
   /\b(?:today|now|currently|current|this\s+(?:week|month|year)|transits?|timing|hoy|ahora|actual(?:mente)?|esta\s+semana|este\s+(?:mes|ano)|transitos?|hoje|agora|atual(?:mente)?|esta\s+semana|este\s+(?:mes|ano)|transitos?)\b/i;
 
-/** Conservative, multilingual routing for questions that require exact-day facts. */
-export function requiresCurrentPlanetaryContext(question: string): boolean {
-  const normalized = question.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-  return CURRENT_CONTEXT_PATTERN.test(normalized);
+/** Lowercase with accents folded, the way the router has always matched. */
+function foldQuestion(question: string): string {
+  return question.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 }
 
-function enumArgument(args: AgentJsonObject, key: string, allowed: readonly string[]): string {
-  const value = args[key];
-  if (typeof value !== 'string' || !allowed.includes(value)) {
-    throw new Error(`${key} must be one of: ${allowed.join(', ')}`);
-  }
-  return value;
+/** Conservative, multilingual routing for questions that require exact-day facts. */
+export function requiresCurrentPlanetaryContext(question: string): boolean {
+  return CURRENT_CONTEXT_PATTERN.test(foldQuestion(question));
+}
+
+// Month names in en/es/pt (folded). "may" and "march" are also an English
+// verb and "marco" is a first name, so those three count only beside a date
+// word. Portuguese "março" is caught before folding.
+const MONTH_WORDS = [
+  'january', 'february', 'april', 'june', 'july', 'august', 'september', 'october', 'november', 'december',
+  'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'setiembre',
+  'octubre', 'noviembre', 'diciembre',
+  'janeiro', 'fevereiro', 'maio', 'junho', 'julho', 'setembro', 'outubro', 'novembro', 'dezembro',
+];
+const YEAR_PATTERN = /\b(?:19|20)\d{2}\b/;
+const MONTH_PATTERN = new RegExp(`\\b(?:${MONTH_WORDS.join('|')})\\b`);
+const MARCO_PATTERN = /\bmarço\b/;
+const AMBIGUOUS_MONTH = '(?:may|march|marco)';
+const AMBIGUOUS_MONTH_PATTERN = new RegExp(
+  [
+    `\\b(?:in|of|since|until|by|en|em|de|desde|hasta|ate)\\s+${AMBIGUOUS_MONTH}\\b`,
+    `\\b${AMBIGUOUS_MONTH}\\s+(?:de\\s+)?\\d{1,4}\\b`,
+    `\\b\\d{1,2}(?:st|nd|rd|th)?\\s+(?:de\\s+)?${AMBIGUOUS_MONTH}\\b`,
+  ].join('|'),
+);
+
+/** True when the question names a year or a month: the model should send dates, not get today. */
+export function mentionsExplicitPeriod(question: string): boolean {
+  const folded = foldQuestion(question);
+  return (
+    YEAR_PATTERN.test(folded) ||
+    MONTH_PATTERN.test(folded) ||
+    MARCO_PATTERN.test(question.normalize('NFC').toLowerCase()) ||
+    AMBIGUOUS_MONTH_PATTERN.test(folded)
+  );
+}
+
+/**
+ * The router: pre-run TODAY's sky only for a "today" question with no
+ * explicit period. "Transits in June 2019" matches "transits", but pre-running
+ * today would label the prompt "today" and spend 30 s on the wrong sky.
+ */
+export function shouldPreRunToday(question: string): boolean {
+  return requiresCurrentPlanetaryContext(question) && !mentionsExplicitPeriod(question);
 }
 
 /** Build the fixed, read-only capability set for one already-loaded chart. */
 export function createChatAgentTools(input: CreateChatAgentToolsInput): readonly AgentTool[] {
   const chartSections = ['overview', 'planets', 'houses', 'yogas', 'dashas'] as const;
-  const timingSections = ['dashas', 'transits', 'domains', 'strength'] as const;
 
   return [
     {
@@ -146,34 +205,14 @@ export function createChatAgentTools(input: CreateChatAgentToolsInput): readonly
         }
       },
     },
-    {
-      name: 'get_current_timing',
-      description:
-        'Calculate or read the exact-day deterministic planetary timing data on this device. Use this for today, now, current timing, or transits. It never makes a network request.',
-      statusLabel: 'Calculating current planetary context',
-      timeoutMs: 60_000,
-      parameters: {
-        type: 'object',
-        properties: { section: { type: 'string', enum: timingSections } },
-        required: ['section'],
-        additionalProperties: false,
-      },
-      execute: async (args, context) => {
-        const section = enumArgument(
-          args,
-          'section',
-          timingSections,
-        ) as (typeof timingSections)[number];
-        const sourceChart = input.loadCurrentChart
-          ? await input.loadCurrentChart(context)
-          : input.chart;
-        const chart = sanitizeChartForLlm(sourceChart, todayAnalysisInstant(context.now));
-        if (section === 'dashas') return chart.dashas ?? { available: false };
-        const predictive = chart.predictive;
-        if (!predictive) return { available: false };
-        const value = predictive[section];
-        return value ?? { available: false };
-      },
-    },
+    createTimingTool({
+      chart: input.chart,
+      birthYear: input.birthYear,
+      birthUtcYear: input.birthUtcYear,
+      todayDay: input.todayDay ?? viewerTodayDay,
+      loadCurrentChart: input.loadCurrentChart,
+      loadPeriodChart: input.loadPeriodChart,
+      periodSkyAllowed: input.periodSkyAllowed ?? devicePolicy().periodSkyComputeAllowed,
+    }),
   ];
 }

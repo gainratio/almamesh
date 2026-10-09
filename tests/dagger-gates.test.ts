@@ -289,6 +289,7 @@ describe("browser gate shards", () => {
     "node scripts/verify-i18n.mjs http://127.0.0.1:4199",
     "node scripts/verify-browser-parity.mjs http://127.0.0.1:4199 --reference-date=2025-01-01T00:00:00+00:00",
     "TIME_HANDLING_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:time-handling --project=chromium",
+    "TIME_TRAVEL_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:time-travel --project=chromium",
     "node scripts/verify-cross-origin-isolation.mjs http://127.0.0.1:4200 --browser=webkit",
     "node scripts/verify-sqlite-memory.mjs http://127.0.0.1:4200 --browser=webkit",
     "node scripts/verify-sqlite-memory.mjs http://127.0.0.1:4200 --browser=webkit --slow-boot-storage-ms=1500",

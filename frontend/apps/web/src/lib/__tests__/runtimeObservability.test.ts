@@ -3,6 +3,7 @@ import type { BirthInput, SiderealChart } from '@almamesh/browser'
 import {
   clearRuntimeError,
   clearRuntimeGenerator,
+  publishPredictiveRequestKeys,
   publishRuntimeError,
   publishRuntimeGenerator,
   publishRuntimeStage,
@@ -40,5 +41,31 @@ describe('runtime observability', () => {
 
     clearRuntimeGenerator()
     expect(window.__almameshGenerate).toBeUndefined()
+  })
+
+  it('records every predictive requestKey the store holds, so a borrowed slot shows even if handed back', () => {
+    let state: { requestKey?: string } = { requestKey: 'today' }
+    const listeners = new Set<(next: { requestKey?: string }) => void>()
+    const store = {
+      getState: () => state,
+      subscribe: (listener: (next: { requestKey?: string }) => void) => {
+        listeners.add(listener)
+        return () => listeners.delete(listener)
+      },
+    }
+    const set = (requestKey?: string) => {
+      state = requestKey === undefined ? {} : { requestKey }
+      for (const listener of listeners) listener(state)
+    }
+
+    const stop = publishPredictiveRequestKeys(store)
+    set('today')
+    set('june-2019')
+    set(undefined)
+    set('today')
+    stop()
+    set('after-stop')
+
+    expect(window.__almameshPredictiveRequestKeys).toEqual(['today', 'june-2019', '(none)', 'today'])
   })
 })

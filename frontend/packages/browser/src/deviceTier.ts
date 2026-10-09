@@ -29,6 +29,18 @@ export interface DevicePolicy {
   readonly forceFieldMaxDpr: number;
   /** May the Pyodide worker warm up while the bundle-sync worker is alive? */
   readonly bootOverlapAllowed: boolean;
+  /**
+   * How many time-travel period computes stay in memory (apps/web periodSky.ts).
+   * Each holds a full predictive payload; recomputing one costs ~30 s.
+   */
+  readonly periodSkyCacheSize: number;
+  /**
+   * May a dated chat question run the engine for that period's sky? Measured
+   * 2026-10-09 at 4x CPU throttle: one period compute grows page+workers heap
+   * by ~165 MiB (to 425 lite / 419 minimal), past the 300 MiB budget in
+   * e2e/memoryBudget.ts. Where false, get_timing answers with dashas only.
+   */
+  readonly periodSkyComputeAllowed: boolean;
 }
 
 export const DEVICE_POLICIES: Readonly<Record<DeviceTier, DevicePolicy>> = Object.freeze({
@@ -38,6 +50,8 @@ export const DEVICE_POLICIES: Readonly<Record<DeviceTier, DevicePolicy>> = Objec
     forceFieldEffects: "none",
     forceFieldMaxDpr: 1,
     bootOverlapAllowed: false,
+    periodSkyCacheSize: 1,
+    periodSkyComputeAllowed: false,
   }),
   lite: Object.freeze({
     tier: "lite",
@@ -45,6 +59,8 @@ export const DEVICE_POLICIES: Readonly<Record<DeviceTier, DevicePolicy>> = Objec
     forceFieldEffects: "lite",
     forceFieldMaxDpr: 1.5,
     bootOverlapAllowed: false,
+    periodSkyCacheSize: 3,
+    periodSkyComputeAllowed: false,
   }),
   full: Object.freeze({
     tier: "full",
@@ -52,6 +68,8 @@ export const DEVICE_POLICIES: Readonly<Record<DeviceTier, DevicePolicy>> = Objec
     forceFieldEffects: "full",
     forceFieldMaxDpr: 2,
     bootOverlapAllowed: true,
+    periodSkyCacheSize: 5,
+    periodSkyComputeAllowed: true,
   }),
 });
 

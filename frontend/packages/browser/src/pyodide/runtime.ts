@@ -31,6 +31,7 @@ import type {
   BootConfig,
   BootProgress,
   MeshEdgeInput,
+  PredictiveCallOptions,
   PredictiveInput,
   PyodideAsset,
 } from "./protocol";
@@ -116,9 +117,10 @@ export interface ChartEngine {
   generateChart(birth: BirthInput): Promise<SiderealChart>;
   /**
    * The LAZY predictive payload at an EXPLICIT reference instant. Heavy
-   * (~35s under Pyodide) — never part of the natal chart path.
+   * (~35s under Pyodide) — never part of the natal chart path. `options`
+   * only chooses how the engine memo retains the result (./engineMemo.ts).
    */
-  computePredictive(input: PredictiveInput): Promise<PredictiveContexts>;
+  computePredictive(input: PredictiveInput, options?: PredictiveCallOptions): Promise<PredictiveContexts>;
   /**
    * The relational MESH edge between two birth inputs, computed on-device
    * (both natal contexts recomputed internally; explicit instants only).

@@ -24,7 +24,11 @@ import type {
   TransitCtx,
   VargaCtxFull,
 } from '@almamesh/shared-types';
-import type { PredictiveContexts, PredictiveInput } from '@almamesh/browser/types';
+import type {
+  PredictiveCallOptions,
+  PredictiveContexts,
+  PredictiveInput,
+} from '@almamesh/browser/types';
 import {
   toDomainsCtx,
   toStrengthCtx,
@@ -51,7 +55,8 @@ export type CachedPredictiveContexts = Omit<PredictiveContexts, WorkerResultKeys
  * satisfies this structurally.
  */
 export interface PredictiveRuntime {
-  computePredictive(input: PredictiveInput): Promise<PredictiveContexts>;
+  /** `options` only picks the engine memo's retention bound (time-travel periods). */
+  computePredictive(input: PredictiveInput, options?: PredictiveCallOptions): Promise<PredictiveContexts>;
 }
 
 /** Birth + instant input for `ensurePredictive`. `referenceInstant` is REQUIRED. */

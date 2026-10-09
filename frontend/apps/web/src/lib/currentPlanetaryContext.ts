@@ -6,6 +6,7 @@ import {
   type PredictiveRuntime,
 } from '@almamesh/store';
 
+import { withDeadline } from './deadline';
 import { buildEnsurePredictiveInput, predictiveReferenceInstant } from './predictive';
 
 export interface EnsureCurrentPlanetaryContextInput {
@@ -32,28 +33,10 @@ export function planetaryReferenceInstantForZone(now: Date, timeZone: string): s
 }
 
 function withCurrentContextDeadline<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    const finish = (error?: Error, value?: T) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timeout);
-      signal.removeEventListener('abort', onAbort);
-      if (error) reject(error);
-      else resolve(value as T);
-    };
-    const onAbort = () => {
-      const reason = signal.reason;
-      finish(reason instanceof Error ? reason : new DOMException('The operation was aborted', 'AbortError'));
-    };
-    const timeout = setTimeout(
-      () => finish(new Error('Current planetary context calculation timed out.')),
-      CURRENT_CONTEXT_TIMEOUT_MS,
-    );
-    signal.addEventListener('abort', onAbort, { once: true });
-    work.then((value) => finish(undefined, value), (error: unknown) => {
-      finish(error instanceof Error ? error : new Error('Current planetary context calculation failed.'));
-    });
+  return withDeadline(work, signal, {
+    timeoutMs: CURRENT_CONTEXT_TIMEOUT_MS,
+    onTimeout: () => new Error('Current planetary context calculation timed out.'),
+    failureMessage: 'Current planetary context calculation failed.',
   });
 }
 

@@ -4,6 +4,7 @@ import type { SiderealChart } from "@almamesh/browser/types";
 
 import golden from "../../../../../backend/tests/fixtures/chart_golden_de421.json";
 import { sanitizeChartForLlm } from "../sanitize";
+import { BIRTH_2000_CHART } from "./birth-2000-fixture";
 import {
   DOMAINS_CTX_FIXTURE,
   STRENGTH_CTX_FIXTURE,
@@ -522,5 +523,49 @@ describe("sanitizeChartForLlm — dasha tree (antar + pratyantar sequences)", ()
     } as unknown as SiderealChart;
     const out = sanitizeChartForLlm(chart, { basis: "chart", instant: NOW });
     expect(out.dashas).not.toHaveProperty("pratyantar_sequence");
+  });
+});
+
+describe("today's egress is not a birth-month oracle", () => {
+  // Two births in 2000 with the same dasha tree after the first maha. The first maha
+  // and its first antar start at birth, so the engine's balance floats differ.
+  function chartBornOn(birth: string, mahaBalance: number, antarBalance: number): SiderealChart {
+    const first = {
+      lord: "mercury",
+      start_date: birth,
+      end_date: "2010-09-15T00:00:00Z",
+      duration_years: mahaBalance,
+    };
+    const firstAntar = { lord: "mercury", start_date: birth, end_date: "2001-11-20T00:00:00Z", duration_years: antarBalance };
+    const ketuAntar = { lord: "ketu", start_date: "2001-11-20T00:00:00Z", end_date: "2002-07-01T00:00:00Z", duration_years: 0.61 };
+    const ketu = { lord: "ketu", start_date: "2010-09-15T00:00:00Z", end_date: "2017-09-15T00:00:00Z", duration_years: 7 };
+    return {
+      ...BIRTH_2000_CHART,
+      dashas: {
+        maha_dasha_sequence: [
+          { ...first, antar_sequence: [firstAntar, ketuAntar] },
+          { ...ketu, antar_sequence: [{ ...ketu }] },
+        ],
+        current_maha: first,
+        current_antar: firstAntar,
+        current_pratyantar: null,
+        pratyantar_sequence: [{ lord: "mercury", start_date: birth, end_date: "2000-12-01T00:00:00Z", duration_years: 0.2 }],
+      },
+    } as unknown as SiderealChart;
+  }
+  const march = chartBornOn("2000-03-15T04:30:00Z", 10.5, 1.68);
+  const october = chartBornOn("2000-10-02T09:00:00Z", 9.95, 1.13);
+
+  it.each([
+    ["inside the first maha", new Date("2001-06-01T00:00:00Z")],
+    ["after it", new Date("2026-03-08T00:00:00Z")],
+  ])("gives identical first-maha and first-antar fields for two births in the same year (%s)", (_label, instant) => {
+    const a = sanitizeChartForLlm(march, { basis: "today", instant });
+    const b = sanitizeChartForLlm(october, { basis: "today", instant });
+    expect(a.dashas).toEqual(b.dashas);
+    // The balance float is withheld on every row that starts at birth, not rounded.
+    expect(a.dashas?.maha_dasha_sequence[0]).not.toHaveProperty("duration_years");
+    // Rows that do not start at birth keep their length.
+    expect(a.dashas?.maha_dasha_sequence[1]?.duration_years).toBe(7);
   });
 });
