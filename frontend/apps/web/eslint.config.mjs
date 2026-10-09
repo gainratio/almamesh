@@ -19,12 +19,27 @@ if (typeof Object.prototype.throwIfAborted !== "function") {
   });
 }
 
+import path from "node:path";
+import { defineConfig, includeIgnoreFile } from "eslint/config";
 import js from "@eslint/js";
 import reactHooks from "eslint-plugin-react-hooks";
 import tsPlugin from "@typescript-eslint/eslint-plugin";
 import tsParser from "@typescript-eslint/parser";
 
-export default [
+export default defineConfig([
+  // Lint ignores what git ignores. Gitignored scratch files (e.g. the
+  // verify-*.mjs live-validation scripts) never reach a commit, so a lint error
+  // in one must not block `git push` via the pre-push hook. Patterns resolve
+  // relative to each .gitignore's own directory, exactly like git.
+  includeIgnoreFile(
+    [
+      path.resolve(import.meta.dirname, "../../../.gitignore"),
+      path.resolve(import.meta.dirname, ".gitignore"),
+    ],
+    { gitignoreResolution: true, name: "almamesh/gitignored-files" },
+  ),
+
+
   // Build / generated output + vendored third-party bundles (Pyodide dist).
   // `public/**` ships the prebuilt Pyodide runtime verbatim; it is not our
   // source and must not be linted (4900+ no-undef false positives otherwise).
@@ -115,4 +130,4 @@ export default [
       "no-unused-vars": ["error", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
     },
   },
-];
+]);
