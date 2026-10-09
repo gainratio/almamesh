@@ -1,5 +1,5 @@
 import type { SiderealChart } from '@almamesh/browser/types';
-import { AGENT_LIMITS, NEEDS_PLACE_ERROR } from '@almamesh/llm';
+import { AGENT_LIMITS, NEEDS_PLACE_ERROR, PLACE_REF_ERROR } from '@almamesh/llm';
 import { describe, expect, it, vi } from 'vitest';
 
 import { DASHAS_STATUS_LABEL, createTimingTool, withPin, type PinnedTiming } from '../timingTool';
@@ -91,5 +91,27 @@ describe('get_timing in a pinned thread', () => {
     const result = await tool(DAY_PIN, { loadPeriodChart: vi.fn(async () => heavy) }).execute({ section: 'domains' }, context());
     expect((result as { data: unknown[] }).data).toHaveLength(7);
     expect(JSON.stringify({ ok: true, value: result }).length).toBeLessThanOrEqual(AGENT_LIMITS.maxResultChars);
+  });
+
+  it('the model can never send the reserved "pinned" ref itself, at top level or in a segment', async () => {
+    const placeFromRef = vi.fn(async (ref: string) => (ref === 'pinned' ? PINNED_BOGOTA : undefined));
+    const top = await tool(DAY_PIN, { placeFromRef }).execute({ section: 'transits', start: '2026-06-15', place_ref: 'pinned' }, context());
+    const segment = await tool(DAY_PIN, { placeFromRef }).execute(
+      { section: 'transits', segments: [{ start: '2026-06-15', end: '2026-06-15', place_ref: 'pinned' }] },
+      context(),
+    );
+    expect(top).toEqual({ error: PLACE_REF_ERROR });
+    expect(segment).toEqual({ error: PLACE_REF_ERROR });
+    expect(placeFromRef).not.toHaveBeenCalledWith('pinned');
+  });
+
+  it.each(['transits', 'dashas'])('a Day pin on a weak device answers %s with dashas only and no place', async (section) => {
+    const placeFromRef = vi.fn(async (ref: string) => (ref === 'pinned' ? PINNED_BOGOTA : undefined));
+    const loadPeriodChart = vi.fn(async () => SKY_CHART);
+    const result = await tool(DAY_PIN, { periodSkyAllowed: false, placeFromRef, loadPeriodChart }).execute({ section }, context());
+    expect(result).toMatchObject({ shown: 'dashas' });
+    expect(placeFromRef).not.toHaveBeenCalled();
+    expect(loadPeriodChart).not.toHaveBeenCalled();
+    expect(JSON.stringify(result)).not.toMatch(/Bogot|America\/|4\.711|74\.07|latitude|longitude|"places"/);
   });
 });
