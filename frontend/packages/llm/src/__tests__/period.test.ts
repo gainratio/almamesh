@@ -6,6 +6,7 @@ import {
   LONG_PERIOD_WINDOW_MONTHS,
   periodWindowMonths,
   windowEndsBeforePeriodEnd,
+  instantEndsBeforePeriodEnd,
   OVER_TWO_YEARS_NOTE,
   PAST_EPHEMERIS_NOTE,
   parsePeriodArgs,
@@ -139,5 +140,23 @@ describe("windowEndsBeforePeriodEnd", () => {
     expect(windowEndsBeforePeriodEnd(leap, 12)).toBe(true);
     expect(windowEndsBeforePeriodEnd(leap, 24)).toBe(false);
     expect(windowEndsBeforePeriodEnd({ start: "2027-01-01", end: "2027-12-31" }, 12)).toBe(false);
+  });
+});
+
+describe("instantEndsBeforePeriodEnd", () => {
+  const period = { start: "2027-01-01", end: "2027-12-31" };
+  const endOfLastDay = Date.parse("2028-01-01T00:00:00Z");
+
+  it("is false when the window ends exactly at the end of the last day", () => {
+    expect(instantEndsBeforePeriodEnd(endOfLastDay, period)).toBe(false);
+  });
+
+  it("is true one millisecond earlier", () => {
+    expect(instantEndsBeforePeriodEnd(endOfLastDay - 1, period)).toBe(true);
+  });
+
+  it("is true for the 2028-12-31T06:00Z leap-year window end", () => {
+    const leap = { start: "2028-01-01", end: "2028-12-31" };
+    expect(instantEndsBeforePeriodEnd(Date.parse("2028-12-31T06:00:00Z"), leap)).toBe(true);
   });
 });

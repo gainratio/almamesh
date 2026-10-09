@@ -58,7 +58,8 @@ def test_engine_refuses_a_window_past_two_years() -> None:
 
 
 def test_payload_bytes_stay_within_the_low_end_budget() -> None:
-    # Measured on main before Inc B: 59,102 bytes for this chart at 12 months.
+    # Measured on main before Inc B: 59,102 bytes for this chart at 12 months;
+    # with Inc B's new events the 12-month Delhi payload is now 64,744 bytes.
     twelve = len(json.dumps(compute_predictive(_payload())))
     twenty_four = len(json.dumps(compute_predictive(_payload(window_months=24))))
     print(f"predictive payload bytes: 12m={twelve} 24m={twenty_four}")  # noqa: T201 - recorded in the PR

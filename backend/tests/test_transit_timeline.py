@@ -68,7 +68,7 @@ def test_should_emit_descriptor_keys_not_prose() -> None:
         assert " " not in e.descriptor
 
 
-def test_should_reuse_ephemeris_samples_across_ingress_cusps(
+def test_should_sample_each_instant_once_when_sign_change_scan_finds_no_crossing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # Given a ten-day window where the same three instants are checked against all 12 cusps

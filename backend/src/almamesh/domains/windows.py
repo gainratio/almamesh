@@ -10,8 +10,8 @@ implementation, which calc-integrity forbids.
 
 Which events feed windows (``feeds_domain_windows``): Jupiter and Saturn sign
 ingresses in both directions (a retrograde move back across a cusp is a window
-of its own), dasha changes and Sade Sati phases. Mars and Rahu/Ketu ingresses
-and all stations are not used, by decision.
+of its own), dasha changes, Sade Sati phases and returns. Mars and Rahu/Ketu
+ingresses and all stations are not used, by decision.
 
 Relevance per event kind:
 - DASHA_CHANGE: the incoming lord is a domain significator  -> source ``dasha``;
@@ -64,7 +64,7 @@ def _classify_transit_event(
     sigs: frozenset[PlanetName],
     house_signs: frozenset[ZodiacSign],
 ) -> _Verdict | None:
-    """Ingress/station/return relevance: significator graha or domain-bhava sign."""
+    """Ingress/return relevance: significator graha or domain-bhava sign."""
     if event.graha is None:
         return None
     enters_domain_sign = event.to_sign is not None and event.to_sign in house_signs

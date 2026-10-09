@@ -280,6 +280,11 @@ test('[contract/stubbed] an 18-month period is one engine run with Mars, nodes a
     new Intl.DateTimeFormat('en', { year: 'numeric', month: 'short', day: 'numeric' }).format(new Date()),
   );
   await expect(page.getByTestId('provenance-footer')).toContainText(`As of ${today}`, { timeout: 120_000 });
+  // Today's Life Atlas reading, recorded before the 24-month compute can touch its slot.
+  const atlasAsOf = page.getByTestId('life-atlas').getByText(/^As of /);
+  await expect(atlasAsOf).toBeVisible({ timeout: 240_000 });
+  const atlasBefore = (await atlasAsOf.textContent()) ?? '';
+  expect(atlasBefore).not.toContain('2027');
   await page.getByTestId('floating-chat-button').click({ timeout: 120_000 });
   await page.getByTestId('chat-input').fill(LONG_QUESTION);
   await page.getByTestId('chat-send-button').click();
@@ -296,6 +301,8 @@ test('[contract/stubbed] an 18-month period is one engine run with Mars, nodes a
   // Step A: the period compute never takes the Life Atlas slot.
   const keys = await predictiveRequestKeys(page);
   expect(keys.filter((key) => key.includes('2027-01-01')), 'the Life Atlas slot must keep its requestKey').toEqual([]);
+  // The Life Atlas still describes today after the 24-month compute.
+  await expect(atlasAsOf).toHaveText(atlasBefore);
 
   expect(toolResults).toHaveLength(1);
   const content = toolResults[0].content ?? '';

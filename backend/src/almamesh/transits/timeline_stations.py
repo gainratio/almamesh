@@ -37,7 +37,7 @@ _HOUR: Final[timedelta] = timedelta(hours=1)
 def _motion_fn(astro: SkyfieldAstronomy, graha: PlanetName) -> Callable[[datetime], float]:
     """Degrees moved over the next day, tropical of date (ayanamsa 0)."""
 
-    @cache
+    @cache  # per call: the 1-day-ahead sample of one step is the next step's base sample
     def tropical(when: datetime) -> float:
         return astro.graha_sidereal_longitude(graha, when, 0.0)
 

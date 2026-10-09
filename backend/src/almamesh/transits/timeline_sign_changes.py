@@ -61,6 +61,8 @@ def _event(graha: PlanetName, when: datetime, from_idx: int, to_idx: int) -> Tim
     )
 
 
+# Known limit: the scan compares the sign at each 5-day sample, so a cusp crossed
+# and re-crossed inside one step (same sign at both ends) is not reported.
 def _changes_in(
     lon_fn: Callable[[datetime], float], graha: PlanetName, lo: datetime, hi: datetime
 ) -> list[TimelineEvent]:
@@ -84,9 +86,14 @@ def sign_change_events(
     return events
 
 
-def _opposite(sign: str | None) -> int:
+def _opposite(sign_idx: int) -> int:
     """The sign index six signs away (Ketu's sign for a Rahu sign)."""
-    return (ZODIAC_SIGNS.index(str(sign)) + 6) % 12
+    return (sign_idx + 6) % 12
+
+
+def _idx(sign: ZodiacSign | None) -> int:
+    """A sign's index in zodiac order."""
+    return ZODIAC_SIGNS.index(str(sign))
 
 
 def node_sign_change_events(
@@ -95,6 +102,7 @@ def node_sign_change_events(
     """Rahu's sign changes, then Ketu's mirror of each (same instant)."""
     rahu = sign_change_events(astro, PlanetName.RAHU, start, end)
     ketu = [
-        _event(PlanetName.KETU, e.date, _opposite(e.from_sign), _opposite(e.to_sign)) for e in rahu
+        _event(PlanetName.KETU, e.date, _opposite(_idx(e.from_sign)), _opposite(_idx(e.to_sign)))
+        for e in rahu
     ]
     return rahu + ketu

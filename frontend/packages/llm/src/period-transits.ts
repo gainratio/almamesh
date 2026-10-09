@@ -66,7 +66,8 @@ export function restrictTransitsToPeriod(
       )
     : ctx.gochara.placements;
   const asOf = multiDay ? [placementsAsOfNote(period.start)] : [];
-  const cutoff = instantEndsBeforePeriodEnd(Date.parse(ctx.timeline.window_end), period) ? [timelineCutoffNote(ctx.timeline.window_end)] : [];
+  const windowEndsEarly = instantEndsBeforePeriodEnd(Date.parse(ctx.timeline.window_end), period);
+  const cutoff = windowEndsEarly ? [timelineCutoffNote(ctx.timeline.window_end)] : [];
   const notes = [...asOf, ...cutoff];
   return {
     context: {
