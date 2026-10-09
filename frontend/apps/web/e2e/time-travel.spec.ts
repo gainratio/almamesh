@@ -16,6 +16,8 @@ const LLM_CONFIG = {
   privacyMode: 'cloud_premium',
   engine: 'openai-http',
 };
+/** The only off-origin URLs a journey may request: the stubbed provider's, fulfilled by page.route. */
+const PROVIDER_ORIGIN = new URL(LLM_CONFIG.apiBase).origin;
 const QUESTION = 'What was going on for me in June 2019? Any big transits?';
 const ANSWER = 'I looked at 1–30 June 2019. A Saturn antar was ending and Jupiter was moving.';
 const BIRTH_MONTH = '1990-01'; // DELHI_BIRTH.datetimeUtc
@@ -365,11 +367,17 @@ function cityRow(name: string, country: string): CityRow {
   return row;
 }
 
-/** A coordinate's 2-decimal prefix as a standalone number, sign dropped: 4.60971 matches "4.60…", not "14.60". */
+/**
+ * A coordinate as a standalone 3-decimal number, sign dropped, truncated (4.60971 -> 4.609) or
+ * rounded (4.610). Final review ruling: facts.ts prints degrees with toFixed(2), so a 2-decimal
+ * prefix could match a planet's degree on some dates; 3 decimals cannot.
+ */
 function coordinatePattern(value: number): RegExp {
-  const prefix = /^\d+\.\d{2}/.exec(String(Math.abs(value)))?.[0];
-  if (!prefix) throw new Error(`${value} has fewer than two decimals`);
-  return new RegExp(`(?<!\\d)${prefix.replace('.', '\\.')}`);
+  const magnitude = Math.abs(value);
+  const truncated = /^\d+\.\d{3}/.exec(String(magnitude))?.[0];
+  if (!truncated) throw new Error(`${value} has fewer than three decimals`);
+  const forms = [...new Set([truncated, magnitude.toFixed(3)])].map((form) => form.replace('.', '\\.'));
+  return new RegExp(`(?<!\\d)(?:${forms.join('|')})`);
 }
 
 /** Ruling P8: patterns from the real resolved rows and the seeded birth, not hand-typed digits. */
@@ -481,6 +489,18 @@ const PLACE_SCRIPTS: Record<string, Script> = {
   },
 };
 
+test('[contract/pure] leak patterns are 3-decimal prefixes of the real rows, so 2-decimal chart degrees never collide', () => {
+  // Final review ruling: facts.ts prints degrees with toFixed(2), so a 2-decimal prefix can match a planet's degree.
+  const bogota = cityRow('Bogotá', 'Colombia');
+  const twoDecimalDegrees = [bogota.lat, bogota.lon, DELHI_BIRTH.latitude, DELHI_BIRTH.longitude].map((value) =>
+    Math.abs(value).toFixed(2),
+  );
+  expect(twoDecimalDegrees.flatMap((degrees) => leaks(`"degree":${degrees}`))).toEqual([]);
+  expect(leaks(`"at":"${bogota.lat},${bogota.lon}"`)).toHaveLength(2);
+  // A leak rounded to 3 decimals (4.60971 -> 4.610) is caught as well as one truncated (4.609).
+  expect(leaks(`"lat":${bogota.lat.toFixed(3)},"lon":${bogota.lon.toFixed(3)}`)).toHaveLength(2);
+});
+
 test.describe('places', () => {
   test.use({ timezoneId: DEVICE_ZONE });
 
@@ -495,9 +515,13 @@ test.describe('places', () => {
     const cityChunks: string[] = [];
     // Registered before the first navigation, so app boot traffic is covered too.
     page.on('request', (request) => {
-      const url = new URL(request.url());
-      if (url.pathname.includes('cities.min')) cityChunks.push(request.url());
-      if (url.origin !== origin) offOrigin.push(request.url());
+      if (new URL(request.url()).pathname.includes('cities.min')) cityChunks.push(request.url());
+    });
+    // Ruling 16: context level, so service-worker and worker requests count too, not only the page's.
+    let serviceWorkerRequests = 0;
+    page.context().on('request', (request) => {
+      if (request.serviceWorker()) serviceWorkerRequests += 1;
+      if (new URL(request.url()).origin !== origin) offOrigin.push(request.url());
     });
     const seen: AgentRequest[] = [];
     const bodies: string[] = [];
@@ -551,9 +575,10 @@ test.describe('places', () => {
     // Every body the provider was sent (system prompt, history, tool results, all four turns).
     expect(bodies.flatMap(leaks), 'no coordinate, device zone or birth place may reach the model').toEqual([]);
     expect(
-      offOrigin.filter((url) => !fulfilled.has(url)),
-      'no request may leave the app origin (stubbed provider calls are fulfilled locally)',
+      offOrigin.filter((url) => !(fulfilled.has(url) && new URL(url).origin === PROVIDER_ORIGIN)),
+      'no request may leave the app origin (only stubbed provider calls, fulfilled locally, are allowed)',
     ).toEqual([]);
+    expect(serviceWorkerRequests, 'the off-origin check must see service-worker traffic too').toBeGreaterThan(0);
     expect(cityChunks, 'the city list loads once, from the app origin').toHaveLength(1);
     expect(cityChunks.every((url) => new URL(url).origin === origin)).toBe(true);
     expect(
