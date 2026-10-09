@@ -48,6 +48,11 @@ export interface PredictiveInput {
    * CIVIL date of its sunrise, so the engine needs it; it has no tz database.
    */
   readonly utcOffsetMinutes: number;
+  /**
+   * The engine timeline's length in months. Omitted means the engine's default
+   * 12. Only 24 is ever sent, so 12-month keys (store, memo) never change.
+   */
+  readonly windowMonths?: 24;
 }
 
 /** One bare birth input of a mesh pair — the worker recomputes its chart on-device. */

@@ -99,8 +99,9 @@ const PREDICTIVE_REFERENCE_INSTANT = "2026-06-09T12:00:00+00:00";
 const PREDICTIVE_FIXTURES = [
   // offset = the birthplace civil UTC offset in minutes (the Worker's
   // utcOffsetMinutes); MUST match backend/tests/test_predictive_golden.py.
-  { iso: "1990-01-15T12:00:00+00:00", lat: 28.6139, lon: 77.209, offset: 330, label: "Delhi" },
-  { iso: "2000-12-31T23:59:00+00:00", lat: 40.7128, lon: -74.006, offset: -300, label: "NYC" },
+  { iso: "1990-01-15T12:00:00+00:00", lat: 28.6139, lon: 77.209, offset: 330, windowMonths: 12, key: "1990-01-15T12:00:00+00:00", label: "Delhi" },
+  { iso: "2000-12-31T23:59:00+00:00", lat: 40.7128, lon: -74.006, offset: -300, windowMonths: 12, key: "2000-12-31T23:59:00+00:00", label: "NYC" },
+  { iso: "1990-01-15T12:00:00+00:00", lat: 28.6139, lon: 77.209, offset: 330, windowMonths: 24, key: "1990-01-15T12:00:00+00:00@24m", label: "Delhi, 24 months" },
 ];
 
 // Relational MESH edge (mesh foundations): the SAME pairs the backend golden
@@ -311,11 +312,12 @@ def _parity_transit(iso_dt, lat, lon):
 from almamesh.predictive import civil_offset_from_minutes, compute_predictive_contexts
 _PREDICTIVE_INSTANT = datetime.fromisoformat("${PREDICTIVE_REFERENCE_INSTANT}")
 
-def _parity_predictive(iso_dt, lat, lon, offset_minutes):
+def _parity_predictive(iso_dt, lat, lon, offset_minutes, window_months):
     dt = datetime.fromisoformat(iso_dt)
     ctx = compute_predictive_contexts(
         dt, lat, lon, _PREDICTIVE_INSTANT,
         civil_offset=civil_offset_from_minutes(offset_minutes),
+        window_months=window_months,
     )
     return json.dumps(_canonicalize(ctx.model_dump(mode="json")), sort_keys=True)
 
@@ -413,17 +415,17 @@ console.error("");
 console.error(`[parity] predictive payload (Wave-C lazy superset)`);
 for (const fx of PREDICTIVE_FIXTURES) {
   const fxT0 = Date.now();
-  const pyodidePredictive = JSON.parse(parityPredictive(fx.iso, fx.lat, fx.lon, fx.offset));
-  const goldenPredictive = predictiveGolden[fx.iso];
+  const pyodidePredictive = JSON.parse(parityPredictive(fx.iso, fx.lat, fx.lon, fx.offset, fx.windowMonths));
+  const goldenPredictive = predictiveGolden[fx.key];
   const ok = goldenPredictive !== undefined && deepEqual(pyodidePredictive, goldenPredictive);
   const ms = Date.now() - fxT0;
   if (ok) {
-    console.error(`[parity] PASS  predictive ${fx.iso}  (${fx.label})  ${ms}ms`);
+    console.error(`[parity] PASS  predictive ${fx.key}  (${fx.label})  ${ms}ms  rss=${Math.round(process.memoryUsage().rss / 1048576)}MB`);
   } else {
     failures += 1;
-    console.error(`[parity] FAIL  predictive ${fx.iso}  (${fx.label})  ${ms}ms`);
+    console.error(`[parity] FAIL  predictive ${fx.key}  (${fx.label})  ${ms}ms  rss=${Math.round(process.memoryUsage().rss / 1048576)}MB`);
     if (goldenPredictive === undefined) {
-      console.error(`         predictive golden has no entry for ${fx.iso}`);
+      console.error(`         predictive golden has no entry for ${fx.key}`);
     } else {
       const d = firstDiff(goldenPredictive, pyodidePredictive);
       console.error(`         first diff at: ${d.path}`);
