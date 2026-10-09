@@ -287,6 +287,7 @@ describe('buildChatToolset: places', () => {
 });
 
 describe('a pinned thread', () => {
+  const YEAR_2050 = { start: '2050-01-01', end: '2050-12-31', granularity: 'year' } as const;
   const YEAR_2027 = { start: '2027-01-01', end: '2027-12-31', granularity: 'year' } as const;
   const BOGOTA = { label: 'Bogotá, Colombia', timezone: 'America/Bogota', latitude: 4.711, longitude: -74.0721 };
   const DAY_PIN = { start: '2026-06-15', end: '2026-06-15', granularity: 'day', place: BOGOTA } as const;
@@ -306,9 +307,9 @@ describe('a pinned thread', () => {
   });
 
   it('labels the prompt with the period and hands back the pin with its tense (viewer day)', async () => {
-    const prepared = await toolset({ pinned: YEAR_2027, periodSkyAllowed: true }).prepare('Will work get easier?', options());
-    expect(prepared.asOf).toMatchObject({ basis: 'period', period: { start: '2027-01-01', end: '2027-12-31' } });
-    expect(prepared.pinned).toEqual({ start: '2027-01-01', end: '2027-12-31', relative: 'future' });
+    const prepared = await toolset({ pinned: YEAR_2050, periodSkyAllowed: true }).prepare('Will work get easier?', options());
+    expect(prepared.asOf).toMatchObject({ basis: 'period', period: { start: '2050-01-01', end: '2050-12-31' } });
+    expect(prepared.pinned).toEqual({ start: '2050-01-01', end: '2050-12-31', relative: 'future' });
     expect(prepared.currentContextUnavailable).toBe(false);
   });
 
@@ -381,8 +382,8 @@ describe('a pinned thread', () => {
 
   it('leaves a failed (not aborted) warm to the model: prepare still resolves with the pin', async () => {
     loadMock.mockRejectedValue(new Error('engine down'));
-    const prepared = await toolset({ pinned: YEAR_2027, periodSkyAllowed: true }).prepare('q', options());
-    expect(prepared.pinned).toMatchObject({ start: '2027-01-01', relative: 'future' });
+    const prepared = await toolset({ pinned: YEAR_2050, periodSkyAllowed: true }).prepare('q', options());
+    expect(prepared.pinned).toMatchObject({ start: '2050-01-01', relative: 'future' });
     expect(prepared.currentContextUnavailable).toBe(false);
   });
 

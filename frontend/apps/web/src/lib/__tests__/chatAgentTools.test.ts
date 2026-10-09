@@ -331,9 +331,9 @@ describe('get_current_datetime in a pinned thread', () => {
   }
 
   it('returns the real now plus the pinned period and where today falls', () => {
-    const result = datetime({ period: { start: '2027-01-01', end: '2027-12-31' } });
+    const result = datetime({ period: { start: '2050-01-01', end: '2050-12-31' } });
     expect(result.isoUtc).toBe('2026-03-08T20:00:00.000Z');
-    expect(result.pinned_period).toEqual({ start: '2027-01-01', end: '2027-12-31' });
+    expect(result.pinned_period).toEqual({ start: '2050-01-01', end: '2050-12-31' });
     expect(result.relative).toBe('future');
   });
 
