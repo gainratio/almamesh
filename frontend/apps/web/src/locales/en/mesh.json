@@ -5,7 +5,7 @@
     "subtitle": "The people woven into your sky — each a whole chart, read from your own.",
     "people_count": "People in your mesh: {{count}}",
     "manage": "Manage people",
-    "computed_note": "Every edge is computed on this device. Your birth date, time, and charts never leave it."
+    "computed_note": "Every edge is computed on this device. Your birth dates, times, and charts stay on it unless you ask the optional AI for a reading."
   },
   "invitation": {
     "kicker": "The mesh",

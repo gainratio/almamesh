@@ -8,7 +8,7 @@
   },
   "hero": {
     "headline": "Seu céu real. Calculado no seu dispositivo. Grátis, para sempre.",
-    "subhead": "Um mapa védico (sideral) fiel — planetas, nakshatras, dashas — calculado no seu navegador. Um experimento honesto, não um adivinho. Sem conta. Sem e-mail. Sua data, hora e mapa de nascimento nunca saem do seu navegador.",
+    "subhead": "Um mapa védico (sideral) fiel — planetas, nakshatras, dashas — calculado no seu navegador. Um experimento honesto, não um adivinho. Sem conta. Sem e-mail. Sua data, hora e mapa de nascimento ficam no seu navegador, a menos que você ative a IA opcional.",
     "cta": "Gerar meu mapa — grátis",
     "ctaReturning": "Abrir meu mapa",
     "openSource": "Grátis e de código aberto no GitHub",
@@ -72,7 +72,7 @@
         "b": "Cadastro e e-mail obrigatórios"
       },
       {
-        "a": "Sua data, hora e mapa de nascimento nunca saem do seu navegador",
+        "a": "Sua data, hora e mapa de nascimento ficam no seu navegador (a menos que você ative a IA)",
         "b": "Dados de nascimento armazenados, perfilados, monetizados"
       },
       {
@@ -101,7 +101,7 @@
         "body": "Mergulhe no seu mapa, nas suas dashas e na malha — com uma IA opcional que apenas narra, nunca inventa."
       }
     ],
-    "zeroEgress": "O motor de mapas não faz chamadas de rede; sua data e hora de nascimento nunca saem do seu dispositivo. Duas coisas usam a rede: o local de nascimento que você busca e (apenas se você ativar a IA opcional) um mapa sem dados pessoais, sem nome nem data de nascimento.",
+    "zeroEgress": "O motor de mapas não faz chamadas de rede. Duas coisas usam a rede: o local de nascimento que você busca e (apenas se você ativar a IA opcional) os dados do seu mapa, sem o seu nome. A IA não recebe a sua data de nascimento, mas as posições planetárias e as datas dos períodos que ela recebe podem revelar essa data.",
     "portability": "Não há nenhum servidor guardando seus dados, então eles são seus para levar: exporte todo o estado SQLite para um arquivo criptografado e restaure em outro navegador ou dispositivo, por exemplo, do Chrome para o Safari do iOS. A senha do arquivo é usada uma vez na importação; as inicializações normais não precisam dela. Nada é enviado; só você pode movê-lo."
   },
   "who": {
@@ -146,7 +146,7 @@
     "viewSource": "Ver o código no GitHub"
   },
   "footer": {
-    "tagline": "Astrologia védica grátis e no seu dispositivo. Um experimento honesto — sua data, hora e mapa de nascimento nunca saem do seu navegador.",
+    "tagline": "Astrologia védica grátis e no seu dispositivo. Um experimento honesto — sua data, hora e mapa de nascimento ficam no seu navegador, a menos que você ative a IA opcional.",
     "privacy": "Política de privacidade",
     "terms": "Termos de serviço",
     "dataDeletion": "Exclusão de dados",

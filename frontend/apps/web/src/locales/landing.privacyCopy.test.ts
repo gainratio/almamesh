@@ -11,6 +11,9 @@ import ptLegal from './pt/legal.json';
 import enSettings from './en/settings.json';
 import esSettings from './es/settings.json';
 import ptSettings from './pt/settings.json';
+import enDashboard from './en/dashboard.json';
+import esDashboard from './es/dashboard.json';
+import ptDashboard from './pt/dashboard.json';
 
 /**
  * Privacy-honesty invariant: the landing hero + footer must NOT claim an
@@ -34,8 +37,12 @@ type LocaleCopy = {
 const LOCALES: Record<string, { copy: LocaleCopy; scoped: string; bannedAbsolutes: string[] }> = {
   en: {
     copy: en as LocaleCopy,
-    scoped: 'your birth date, time, and chart never leave your browser',
+    scoped: 'your birth date, time, and chart stay in your browser unless you turn on the optional ai',
     bannedAbsolutes: [
+      // REVERSED CONTRACT: this was the required wording until the AI egress
+      // audit. With AI on, the chart (planet longitudes, lagna) leaves, and it
+      // can reveal the birth date, so the unqualified sentence is untrue.
+      'your birth date, time, and chart never leave your browser',
       'nothing leaves your browser',
       'your data never leaves your browser',
       'your birth data never leaves your browser',
@@ -43,8 +50,9 @@ const LOCALES: Record<string, { copy: LocaleCopy; scoped: string; bannedAbsolute
   },
   es: {
     copy: es as LocaleCopy,
-    scoped: 'tu fecha, hora y carta de nacimiento nunca salen de tu navegador',
+    scoped: 'tu fecha, hora y carta de nacimiento se quedan en tu navegador salvo que actives la ia opcional',
     bannedAbsolutes: [
+      'tu fecha, hora y carta de nacimiento nunca salen de tu navegador',
       'nada sale de tu navegador',
       'tus datos nunca salen de tu navegador',
       'tus datos de nacimiento nunca salen de tu navegador',
@@ -52,8 +60,9 @@ const LOCALES: Record<string, { copy: LocaleCopy; scoped: string; bannedAbsolute
   },
   pt: {
     copy: pt as LocaleCopy,
-    scoped: 'sua data, hora e mapa de nascimento nunca saem do seu navegador',
+    scoped: 'sua data, hora e mapa de nascimento ficam no seu navegador, a menos que você ative a ia opcional',
     bannedAbsolutes: [
+      'sua data, hora e mapa de nascimento nunca saem do seu navegador',
       'nada sai do seu navegador',
       'seus dados nunca saem do seu navegador',
       'seus dados de nascimento nunca saem do seu navegador',
@@ -113,23 +122,23 @@ const ENGINE_SURFACES: Record<
   en: {
     meshNote: (enMesh as MeshCopy).page.computed_note,
     legalRights: (enLegal as LegalCopy).privacy.s5_p1,
-    scoped: 'birth date, time, and chart',
-    bannedMeshAbsolute: 'nothing leaves it',
-    bannedLegalAbsolute: 'your data never leaves your device',
+    scoped: 'unless you',
+    bannedMeshAbsolute: 'never leave',
+    bannedLegalAbsolute: 'never leave',
   },
   es: {
     meshNote: (esMesh as MeshCopy).page.computed_note,
     legalRights: (esLegal as LegalCopy).privacy.s5_p1,
-    scoped: 'fecha, hora y carta',
-    bannedMeshAbsolute: 'nada sale de él',
-    bannedLegalAbsolute: 'tus datos nunca salen de tu dispositivo',
+    scoped: 'salvo que',
+    bannedMeshAbsolute: 'nunca salen',
+    bannedLegalAbsolute: 'nunca salen',
   },
   pt: {
     meshNote: (ptMesh as MeshCopy).page.computed_note,
     legalRights: (ptLegal as LegalCopy).privacy.s5_p1,
-    scoped: 'data, hora e mapa',
-    bannedMeshAbsolute: 'nada sai dele',
-    bannedLegalAbsolute: 'seus dados nunca saem do seu dispositivo',
+    scoped: 'a menos que',
+    bannedMeshAbsolute: 'nunca saem',
+    bannedLegalAbsolute: 'nunca saem',
   },
 };
 
@@ -147,6 +156,73 @@ describe('engine-surface privacy copy is scoped to birth data (anti-overclaim)',
       expect(legalRights).toContain(surface.scoped);
       expect(legalRights).not.toContain(surface.bannedLegalAbsolute);
     });
+  }
+});
+
+/**
+ * AI egress honesty. With AI on, `sanitizeChartForLlm` (packages/llm/src/sanitize.ts)
+ * sends planet longitudes, the lagna, the ayanamsa value and month-precision
+ * dasha windows. The birth DATE field itself is not sent, but those positions
+ * are enough to work out the birth date and approximate time. So no AI
+ * disclosure may say the AI gets "no birth date" without saying the chart data
+ * can reveal it, and no copy may say the birth date/time "never" leaves.
+ */
+type AiEgressCopy = {
+  landing: { how: { zeroEgress: string } };
+  dashboard: { grounding: { point_privacy: string } };
+  settings: { ai: { info_description: string } };
+  legal: { privacy: { s2_li2: string } };
+};
+
+const AI_EGRESS: Record<string, { copy: AiEgressCopy; reveal: string; banned: string[] }> = {
+  en: {
+    copy: { landing: en, dashboard: enDashboard, settings: enSettings, legal: enLegal } as AiEgressCopy,
+    reveal: 'can reveal',
+    banned: [
+      'birth date and time never leave',
+      'no name or birth date',
+      'no name, no birth date',
+      'nothing about it leaves your device;',
+    ],
+  },
+  es: {
+    copy: { landing: es, dashboard: esDashboard, settings: esSettings, legal: esLegal } as AiEgressCopy,
+    reveal: 'pueden revelar',
+    banned: [
+      'fecha y hora de nacimiento nunca salen',
+      'sin nombre ni fecha de nacimiento',
+      'no incluyen nombre ni fecha de nacimiento',
+      'nada de ella sale de tu dispositivo;',
+    ],
+  },
+  pt: {
+    copy: { landing: pt, dashboard: ptDashboard, settings: ptSettings, legal: ptLegal } as AiEgressCopy,
+    reveal: 'podem revelar',
+    banned: [
+      'data e hora de nascimento nunca saem',
+      'sem nome nem data de nascimento',
+      'sem nome e sem data de nascimento',
+      'não incluem nome nem data de nascimento',
+      'nada dele sai do seu dispositivo;',
+    ],
+  },
+};
+
+describe('AI disclosures say chart data can reveal the birth date', () => {
+  for (const [lang, { copy, reveal, banned }] of Object.entries(AI_EGRESS)) {
+    const surfaces: Record<string, string> = {
+      'landing.how.zeroEgress': copy.landing.how.zeroEgress,
+      'dashboard.grounding.point_privacy': copy.dashboard.grounding.point_privacy,
+      'settings.ai.info_description': copy.settings.ai.info_description,
+      'legal.privacy.s2_li2': copy.legal.privacy.s2_li2,
+    };
+    for (const [key, text] of Object.entries(surfaces)) {
+      it(`[${lang}] ${key} says the chart data can reveal the birth date`, () => {
+        const lower = text.toLowerCase();
+        expect(lower).toContain(reveal);
+        for (const phrase of banned) expect(lower).not.toContain(phrase);
+      });
+    }
   }
 });
 

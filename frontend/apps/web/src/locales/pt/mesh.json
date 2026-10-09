@@ -6,7 +6,7 @@
     "subtitle": "As pessoas tecidas no seu céu — cada uma com o seu mapa completo, lido a partir do seu.",
     "people_count": "Pessoas na sua malha: {{count}}",
     "manage": "Gerir pessoas",
-    "computed_note": "Cada vínculo é calculado neste dispositivo. Sua data, hora e mapas de nascimento nunca saem dele."
+    "computed_note": "Cada vínculo é calculado neste dispositivo. Suas datas, horas e mapas de nascimento ficam nele, a menos que você peça uma leitura à IA opcional."
   },
   "invitation": {
     "kicker": "A malha",

@@ -143,7 +143,7 @@
     "title": "AI Model",
     "description": "AI is off by default — your chart is pure calculation. Turn it on with a free OpenRouter key for written interpretations and chat. Your key lives only in this browser, and AI is never required to draw a chart.",
     "info_title": "The chart engine never calls the network",
-    "info_description": "By default no AI is configured: your chart is pure calculation and never leaves your device. If you connect AI, optional narration, chat, and life-event organization can use it. Chart prompts are privacy-redacted (no name or birth date); life-event text is sent as written only after its separate disclosure.",
+    "info_description": "By default no AI is configured: your chart is pure calculation and never leaves your device. If you connect AI, optional narration, chat, and life-event organization can use it. Chart prompts leave out your name and birth date, but they include planet positions and period dates, which can reveal your birth date and approximate time; life-event text is sent as written only after its separate disclosure.",
     "step1_title": "1. Create a free API key",
     "step1_body": "OpenRouter gives you one endpoint with hundreds of models. Sign up and create a key — it takes a minute.",
     "step1_link": "Get a key at openrouter.ai/keys",

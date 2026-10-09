@@ -146,7 +146,7 @@
     "title": "Modelo de IA",
     "description": "A IA vem desativada por padrão — seu mapa é puro cálculo. Ative-a com uma chave gratuita do OpenRouter para interpretações escritas e chat. Sua chave fica apenas neste navegador, e a IA nunca é necessária para gerar um mapa.",
     "info_title": "O motor do mapa nunca acessa a rede",
-    "info_description": "Por padrão nenhuma IA está configurada: seu mapa é puro cálculo e nunca sai do seu dispositivo. Se você conectar uma IA, a narração, o chat e a organização opcional de eventos de vida poderão usá-la. As solicitações do mapa não incluem nome nem data de nascimento; o relato de vida é enviado como escrito somente após o aviso específico.",
+    "info_description": "Por padrão nenhuma IA está configurada: seu mapa é puro cálculo e nunca sai do seu dispositivo. Se você conectar uma IA, a narração, o chat e a organização opcional de eventos de vida poderão usá-la. As solicitações do mapa não incluem o seu nome nem a sua data de nascimento, mas incluem posições planetárias e datas dos períodos, que podem revelar a sua data e hora aproximada de nascimento; o relato de vida é enviado como escrito somente após o aviso específico.",
     "step1_title": "1. Crie uma chave de API gratuita",
     "step1_body": "O OpenRouter oferece um único endpoint com centenas de modelos. Cadastre-se e crie uma chave — leva um minuto.",
     "step1_link": "Obtenha uma chave em openrouter.ai/keys",
