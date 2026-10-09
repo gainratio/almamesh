@@ -99,6 +99,7 @@
     "sheet": {
       "title": "Viaje en el tiempo",
       "intro": "Elige un momento. Las respuestas del nuevo chat serán sobre él.",
+      "intro_change": "Elige un nuevo periodo. Las próximas respuestas de este chat serán sobre él.",
       "when": "¿Cuándo?",
       "tabs": { "day": "Día", "month": "Mes", "year": "Año" },
       "day_label": "Día",

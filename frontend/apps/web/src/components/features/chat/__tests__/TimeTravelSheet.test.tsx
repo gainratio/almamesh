@@ -218,6 +218,45 @@ describe('TimeTravelSheet', () => {
     expect((screen.getByTestId('time-travel-year') as HTMLSelectElement).value).toBe('2027');
   });
 
+  it('keeps the picked value when Change fails, even if the pin identity flips and rolls back', async () => {
+    const pin = { start: '2027-01-01', end: '2027-12-31', granularity: 'year' as const };
+    let rerenderWith: (current: typeof pin) => void = () => undefined;
+    const onGo = vi.fn(async () => {
+      rerenderWith({ ...pin, start: '2030-01-01', end: '2030-12-31' });
+      rerenderWith({ ...pin });
+      throw new Error('Saving chat failed.');
+    });
+    const view = renderSheet({ current: pin, onGo });
+    rerenderWith = (current) => view.rerender(
+      <TimeTravelSheet open today="2026-10-09" birthYear={1990} dayAllowed current={current} onGo={onGo} onClose={vi.fn()} />,
+    );
+    fireEvent.change(screen.getByTestId('time-travel-year'), { target: { value: '2030' } });
+    fireEvent.click(go());
+    expect(await screen.findByTestId('time-travel-save-failed')).toBeTruthy();
+    expect((screen.getByTestId('time-travel-year') as HTMLSelectElement).value).toBe('2030');
+  });
+
+  it('Change says the next answers in this chat will be about the new period', () => {
+    renderSheet({ current: { start: '2027-01-01', end: '2027-12-31', granularity: 'year' } });
+    expect(screen.getByText('Pick a new period. This chat\'s next answers will be about it.')).toBeTruthy();
+    expect(screen.queryByText(/in the new chat/)).toBeNull();
+  });
+
+  it('starts Change on the nearest allowed year for an imported pin outside the list', () => {
+    const view = renderSheet({ current: { start: '2099-01-01', end: '2099-12-31', granularity: 'year' } });
+    expect((screen.getByTestId('time-travel-year') as HTMLSelectElement).value).toBe('2052');
+    const before = { start: '1950-03-01', end: '1950-03-31', granularity: 'month' as const };
+    view.rerender(<TimeTravelSheet open={false} today="2026-10-09" birthYear={2000} dayAllowed current={before} onGo={vi.fn()} onClose={vi.fn()} />);
+    view.rerender(<TimeTravelSheet open today="2026-10-09" birthYear={2000} dayAllowed current={before} onGo={vi.fn()} onClose={vi.fn()} />);
+    expect((screen.getByTestId('time-travel-month-year') as HTMLSelectElement).value).toBe('2000');
+  });
+
+  it('Go saves the clamped year the select shows', async () => {
+    const { onGo } = renderSheet({ current: { start: '2099-01-01', end: '2099-12-31', granularity: 'year' } });
+    fireEvent.click(go());
+    await waitFor(() => expect(onGo).toHaveBeenCalledWith({ start: '2052-01-01', end: '2052-12-31', granularity: 'year' }));
+  });
+
   it('loads the city list lazily, from the offline lookup only (source contract)', () => {
     const source = readFileSync(resolve(__dirname, '../PlacePicker.tsx'), 'utf8');
     expect(source).toContain("import('../../../lib/geo/placeLookup')");

@@ -63,17 +63,21 @@ const MONTHS = Array.from({ length: 12 }, (_, index) => String(index + 1).padSta
 export function TimeTravelSheet(props: TimeTravelSheetProps) {
   const { t, i18n } = useTranslation('chat');
   const dayAllowed = props.dayAllowed ?? devicePolicy().periodSkyComputeAllowed;
-  const [draft, setDraft] = useState<SheetDraft>(() => sheetDefaults(props.today, props.current, dayAllowed));
+  const [draft, setDraft] = useState<SheetDraft>(() => sheetDefaults(props.today, props.current, dayAllowed, props.birthYear));
   const [saveFailed, setSaveFailed] = useState(false);
   const [saving, setSaving] = useState(false);
   const { open, today, current } = props;
   const dialogRef = useRef<HTMLDivElement>(null);
-  // Resets whenever `current` changes identity while open: callers must pass a stable pin.
+  const { birthYear } = props;
+  const wasOpen = useRef(false);
+  // Resets only when the sheet opens, so a failed save (which flips the pin and rolls it back) keeps what the user picked.
   useEffect(() => {
-    if (!open) return;
-    setDraft(sheetDefaults(today, current, dayAllowed));
+    const opening = open && !wasOpen.current;
+    wasOpen.current = open;
+    if (!opening) return;
+    setDraft(sheetDefaults(today, current, dayAllowed, birthYear));
     setSaveFailed(false);
-  }, [open, today, current, dayAllowed]);
+  }, [open, today, current, dayAllowed, birthYear]);
   useEffect(() => {
     if (!open) return;
     const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -114,7 +118,7 @@ export function TimeTravelSheet(props: TimeTravelSheetProps) {
       className="absolute inset-x-0 bottom-0 z-20 max-h-full overflow-y-auto rounded-t-2xl border border-ui-border bg-background-secondary p-4 shadow-xl"
       onKeyDown={onKeyDown}>
       <h4 id="time-travel-sheet-title" className="font-semibold text-text-primary">⏳ {t('time_travel.sheet.title')}</h4>
-      <p className="text-xs text-text-muted">{t('time_travel.sheet.intro')}</p>
+      <p className="text-xs text-text-muted">{t(current ? 'time_travel.sheet.intro_change' : 'time_travel.sheet.intro')}</p>
       <p className="mt-3 text-sm font-medium text-text-primary">{t('time_travel.sheet.when')}</p>
       <div role="tablist" aria-label={t('time_travel.sheet.when')} className="mt-1 flex gap-2">
         {tabs.map((tab) => (

@@ -25,9 +25,16 @@ export function sheetYears(birthYear?: number): number[] {
   return Array.from({ length: SHEET_LAST_YEAR - first + 1 }, (_, index) => first + index);
 }
 
-export function sheetDefaults(today: string, current: ChatThreadAsOf | undefined, dayAllowed: boolean): SheetDraft {
+/** An imported pin can sit outside the year list; start the Month/Year draft on the nearest listed year. */
+function clampYear(year: number, birthYear?: number): number {
+  const years = sheetYears(birthYear);
+  return Math.min(Math.max(year, years[0]), years[years.length - 1]);
+}
+
+export function sheetDefaults(today: string, current: ChatThreadAsOf | undefined, dayAllowed: boolean, birthYear?: number): SheetDraft {
   const anchor = current?.start ?? today;
-  const base = { day: anchor, month: anchor.slice(0, 7), year: Number(anchor.slice(0, 4)) };
+  const year = clampYear(Number(anchor.slice(0, 4)), birthYear);
+  const base = { day: anchor, month: `${year}${anchor.slice(4, 7)}`, year };
   if (!current) return { granularity: 'month', ...base };
   if (current.granularity === 'day' && !dayAllowed) return { granularity: 'month', ...base };
   return { granularity: current.granularity, ...base, ...(current.place ? { place: current.place } : {}) };

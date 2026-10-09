@@ -96,6 +96,7 @@
     "sheet": {
       "title": "Time travel",
       "intro": "Pick a time. Answers in the new chat will be about it.",
+      "intro_change": "Pick a new period. This chat's next answers will be about it.",
       "when": "When?",
       "tabs": { "day": "Day", "month": "Month", "year": "Year" },
       "day_label": "Day",
