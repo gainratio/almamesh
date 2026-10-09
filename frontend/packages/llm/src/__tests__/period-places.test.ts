@@ -5,6 +5,8 @@ import {
   PLACE_REF_ERROR,
   SEGMENTS_ORDER_ERROR,
   SEGMENTS_SHAPE_ERROR,
+  SEGMENTS_WITH_PLACE_ERROR,
+  SEGMENT_GAP_NOTE,
   SEGMENTS_WITH_DATES_ERROR,
   TIME_FORMAT_ERROR,
   TIME_NEEDS_DAY_ERROR,
@@ -136,5 +138,55 @@ describe("pinned literals", () => {
 
   it("a place alone with no dates stays today", () => {
     expect(parseTimingArgs({ place_ref: BOG })).toEqual({ kind: "today" });
+  });
+});
+
+describe("fix round 1: segments and a top-level place_ref", () => {
+  const two = [
+    { start: "2026-06-01", end: "2026-06-02", place_ref: LA },
+    { start: "2026-06-03", end: "2026-06-04", place_ref: BOG },
+  ];
+
+  it("refuses a top-level place_ref with a multi-day segments period", () => {
+    expect(parseTimingArgs({ segments: two, place_ref: BOG })).toEqual({ kind: "invalid", error: SEGMENTS_WITH_PLACE_ERROR });
+    expect(parseTimingArgs({ segments: [{ start: "2026-06-01", end: "2026-06-02" }], place_ref: BOG })).toEqual({
+      kind: "invalid",
+      error: SEGMENTS_WITH_PLACE_ERROR,
+    });
+  });
+
+  it("allows a top-level place_ref on a one-day segment that has none, and records it on the segment", () => {
+    expect(parseTimingArgs({ segments: [{ start: "2026-06-15", end: "2026-06-15" }], place_ref: BOG })).toEqual({
+      kind: "period",
+      period: { start: "2026-06-15", end: "2026-06-15" },
+      segments: [{ start: "2026-06-15", end: "2026-06-15", place_ref: BOG }],
+      placeRef: BOG,
+    });
+  });
+
+  it("needsPlace ignores placeRef when segments are present", () => {
+    const period = { start: "2026-06-01", end: "2026-06-04" };
+    const unplaced = [{ start: "2026-06-01", end: "2026-06-04" }];
+    expect(needsPlace(period, { placeRef: BOG, segments: unplaced })).toBe(true);
+    expect(needsPlace(period, { placeRef: BOG })).toBe(false);
+  });
+
+  it.each([null, [], "June", 7])("refuses a segment item that is %j", (item) => {
+    expect(parseTimingArgs({ segments: [item] })).toEqual({ kind: "invalid", error: SEGMENTS_SHAPE_ERROR });
+  });
+
+  it("a one-day segment with a time and no place asks for a place", () => {
+    expect(parseTimingArgs({ segments: [{ start: "2026-06-15", end: "2026-06-15" }], time: "15:00" })).toEqual({
+      kind: "invalid",
+      error: TIME_NEEDS_PLACE_ERROR,
+    });
+  });
+
+  it("a place and a time with no dates is refused, not today", () => {
+    expect(parseTimingArgs({ place_ref: BOG, time: "15:00" })).toEqual({ kind: "invalid", error: TIME_NEEDS_DAY_ERROR });
+  });
+
+  it("pins the gap note text", () => {
+    expect(SEGMENT_GAP_NOTE).toBe("The places you gave leave some days uncovered; the reading still spans the whole period.");
   });
 });

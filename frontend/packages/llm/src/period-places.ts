@@ -17,6 +17,7 @@ export const TIME_FORMAT_ERROR = "time must be HH:MM, 24-hour, like 15:00";
 export const TIME_NEEDS_DAY_ERROR = "a time of day needs a single day: send start only, or one one-day segment";
 export const TIME_NEEDS_PLACE_ERROR = "a time of day needs a place: ask where, call resolve_place, then pass place_ref";
 export const PLACE_CONFLICT_ERROR = "place_ref disagrees with the segment's place_ref for that day";
+export const SEGMENTS_WITH_PLACE_ERROR = "with segments, put each place on its segment; a top-level place_ref is only for a single day";
 export const SEGMENT_GAP_NOTE = "The places you gave leave some days uncovered; the reading still spans the whole period.";
 
 export interface TimingSegment {
@@ -51,8 +52,7 @@ function segmentArg(value: unknown): Parsed<TimingSegment> {
   const raw = value as Readonly<Record<string, unknown>>;
   if (raw.start === undefined || raw.end === undefined) return { error: SEGMENTS_SHAPE_ERROR };
   const dates = parsePeriodArgs(raw);
-  if (dates.kind === "invalid") return { error: dates.error };
-  if (dates.kind !== "period") return { error: SEGMENTS_SHAPE_ERROR };
+  if (dates.kind !== "period") return { error: dates.kind === "invalid" ? dates.error : SEGMENTS_SHAPE_ERROR };
   const placeRef = placeRefArg(raw.place_ref);
   if (failed(placeRef)) return placeRef;
   return { ...dates.period, ...(placeRef ? { place_ref: placeRef } : {}) };
@@ -82,9 +82,17 @@ function datesFrom(args: Readonly<Record<string, unknown>>): Parsed<{ dates: Per
 }
 
 function dayPlace(period: PeriodRange, segments: readonly TimingSegment[] | undefined, placeRef: string | undefined): Parsed<string | undefined> {
+  if (segments && placeRef && period.start !== period.end) return { error: SEGMENTS_WITH_PLACE_ERROR };
   const fromSegment = period.start === period.end ? segments?.[0]?.place_ref : undefined;
   if (placeRef && fromSegment && placeRef !== fromSegment) return { error: PLACE_CONFLICT_ERROR };
   return placeRef ?? fromSegment;
+}
+
+/** A single-day segment takes the top-level place, so `needsPlace` can read the segments alone. */
+function withDayPlace(segments: readonly TimingSegment[] | undefined, place: string | undefined): readonly TimingSegment[] | undefined {
+  const only = segments?.length === 1 ? segments[0] : undefined;
+  if (!only || !place || only.place_ref) return segments;
+  return [{ ...only, place_ref: place }];
 }
 
 function timeArg(value: unknown, period: PeriodRange | undefined, place: string | undefined): Parsed<string | undefined> {
@@ -107,7 +115,8 @@ export function parseTimingArgs(args: Readonly<Record<string, unknown>>): Timing
   const time = timeArg(args.time, period, place);
   if (failed(time)) return invalid(time.error);
   if (!period) return { kind: "today" };
-  return { kind: "period", period, ...(read.segments ? { segments: read.segments } : {}), ...(place ? { placeRef: place } : {}), ...(time ? { time } : {}) };
+  const segments = withDayPlace(read.segments, place);
+  return { kind: "period", period, ...(segments ? { segments } : {}), ...(place ? { placeRef: place } : {}), ...(time ? { time } : {}) };
 }
 
 export const NEEDS_PLACE_ERROR = "needs_place";
@@ -119,6 +128,6 @@ export function needsPlace(
   places: { readonly placeRef?: string; readonly segments?: readonly TimingSegment[] },
 ): boolean {
   if (periodEcho(period, "period").days >= PLACE_NEEDED_BELOW_DAYS) return false;
-  if (places.placeRef) return false;
-  return !(places.segments?.length && places.segments.every((segment) => segment.place_ref));
+  if (!places.segments?.length) return !places.placeRef;
+  return !places.segments.every((segment) => segment.place_ref);
 }
