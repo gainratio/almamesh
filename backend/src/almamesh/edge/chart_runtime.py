@@ -41,6 +41,7 @@ from almamesh.rectification.models import (
 from almamesh.schemas.astrology import SiderealContext
 from almamesh.schemas.mesh import MatchRole, Relationship
 from almamesh.snapshot import compute_stamped_chart
+from almamesh.transits.moon_window import moon_window_from_wire
 
 _RUNTIME_VERSION = "almamesh-chart/0.1.0"
 
@@ -104,6 +105,15 @@ def compute_predictive(payload: Mapping[str, object]) -> dict[str, JsonValue]:
         window_months=window_months_from_wire(payload.get("window_months")),
     )
     return contexts.model_dump(mode="json")
+
+
+def compute_moon_window_payload(payload: Mapping[str, object]) -> dict[str, JsonValue]:
+    """The Moon at a place's local bounds (and optionally one event), as JSON.
+
+    Snake_case wire keys: ``place_start_utc``, ``place_end_utc``, ``event``. The
+    Pyodide worker glue maps its camelCase input onto the same validator.
+    """
+    return moon_window_from_wire(payload).model_dump(mode="json")
 
 
 def _birth_input(value: object) -> Mapping[str, object]:
