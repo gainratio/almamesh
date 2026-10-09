@@ -124,12 +124,12 @@ describe('buildChatToolset: router', () => {
     await expect(toolset().prepare('What matters today?', options())).rejects.toThrow('The timing tool is unavailable.');
   });
 
-  it('names the timing tool in the status when it carries no label of its own', async () => {
+  it('shows a readable status when the timing tool carries no label of its own', async () => {
     const execute = vi.fn(async () => ({}));
     vi.mocked(createChatAgentTools).mockReturnValueOnce([{ name: 'get_timing', execute } as never]);
     const onStatus = vi.fn();
     await toolset().prepare('What matters today?', { ...options(), onStatus });
-    expect(onStatus).toHaveBeenCalledWith('get_timing');
+    expect(onStatus).toHaveBeenCalledWith("Working out today's sky");
     expect(execute).toHaveBeenCalledWith({ section: 'transits' }, expect.objectContaining({ now: SPLIT_DAY_NOW }));
   });
 

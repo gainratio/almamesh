@@ -46,6 +46,12 @@ vi.mock('../../components/features/dashboard', () => ({
   ReadingGrounding: () => null,
 }));
 
+// Pin the viewer's zone so the viewer-today check holds on a runner in any TZ.
+vi.mock('../../lib/analysisInstant', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../lib/analysisInstant')>()),
+  viewerTimeZone: () => 'America/Los_Angeles',
+}));
+
 vi.mock('../../lib/chatToolset', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../lib/chatToolset')>();
   return { ...actual, buildChatToolset: vi.fn(actual.buildChatToolset) };

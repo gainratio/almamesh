@@ -54,11 +54,14 @@ export interface ChatToolset {
   prepare(question: string, options: PrepareOptions): Promise<PreparedChatContext>;
 }
 
+/** Shown while today's facts compute, if the timing tool carries no label of its own. */
+const TODAY_STATUS_FALLBACK = "Working out today's sky";
+
 /** Run today's timing once, locally, so a today-question is grounded before the model answers. */
 async function preRunToday(tools: readonly AgentTool[], options: PrepareOptions): Promise<boolean> {
   const timing = tools.find((tool) => tool.name === TIMING_TOOL_NAME);
   if (!timing) throw new Error('The timing tool is unavailable.');
-  options.onStatus?.(timing.statusLabel ?? TIMING_TOOL_NAME);
+  options.onStatus?.(timing.statusLabel ?? TODAY_STATUS_FALLBACK);
   try {
     await timing.execute({ section: 'transits' }, { now: new Date(options.now.getTime()), signal: options.signal });
     return true;
