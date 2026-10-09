@@ -1,7 +1,7 @@
 import type { TransitContext } from "@almamesh/browser/types";
 import { describe, expect, it } from "vitest";
 
-import { COVERED_EVENTS, restrictTransitsToPeriod, timelineCutoffNote } from "../period-transits";
+import { COVERED_EVENTS, placementsAsOfNote, restrictTransitsToPeriod, timelineCutoffNote } from "../period-transits";
 import { TRANSIT_CTX_FIXTURE } from "./predictive-fixture";
 
 const saturn = TRANSIT_CTX_FIXTURE.gochara.placements.saturn;
@@ -33,6 +33,18 @@ describe("restrictTransitsToPeriod", () => {
     expect(Object.keys(context.gochara.placements).sort()).toEqual(["jupiter", "mars", "saturn"]);
     expect(context.timeline.events.map((event) => event.date)).toEqual(["2030-03-29T00:00:00Z"]);
     expect(context.slow_hits).toEqual([]); // the fixture's hit is 2030-05-20
+    expect(notes).toEqual([placementsAsOfNote("2030-03-01")]);
+  });
+
+  it("labels a multi-day result's placements as of the period's first day", () => {
+    const { notes } = restrictTransitsToPeriod(CTX, { start: "2030-03-01", end: "2030-03-31" }, true);
+    expect(notes).toContain(
+      "Planet signs and houses are as of 2030-03-01, the period's first day. Mars can change sign during the period, so do not say it stayed in one sign throughout.",
+    );
+  });
+
+  it("a single day needs no as-of label", () => {
+    const { notes } = restrictTransitsToPeriod(CTX, { start: "2030-03-29", end: "2030-03-29" }, false);
     expect(notes).toEqual([]);
   });
 
@@ -49,8 +61,8 @@ describe("restrictTransitsToPeriod", () => {
 
   it("notes when the period runs past the engine's timeline window", () => {
     const { notes } = restrictTransitsToPeriod(CTX, { start: "2030-01-01", end: "2031-06-30" }, true);
-    expect(notes).toEqual([timelineCutoffNote("2031-01-01T00:00:00Z")]);
-    expect(notes[0]).toContain("2031-01");
+    expect(notes).toEqual([placementsAsOfNote("2030-01-01"), timelineCutoffNote("2031-01-01T00:00:00Z")]);
+    expect(notes[1]).toContain("2031-01");
   });
 });
 

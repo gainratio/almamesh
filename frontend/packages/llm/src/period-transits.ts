@@ -32,6 +32,14 @@ export function timelineCutoffNote(windowEnd: string): string {
   return `Transit events are listed only up to ${windowEnd.slice(0, 7)}. Ask about a later start for the rest.`;
 }
 
+/**
+ * The engine places every graha once, at the period's first day. Over a month
+ * Mars can change sign, so a multi-day result says when its placements hold.
+ */
+export function placementsAsOfNote(start: string): string {
+  return `Planet signs and houses are as of ${start}, the period's first day. Mars can change sign during the period, so do not say it stayed in one sign throughout.`;
+}
+
 export function restrictTransitsToPeriod(
   ctx: TransitContext,
   period: PeriodRange,
@@ -44,7 +52,9 @@ export function restrictTransitsToPeriod(
         ),
       )
     : ctx.gochara.placements;
-  const notes = day(ctx.timeline.window_end) < period.end ? [timelineCutoffNote(ctx.timeline.window_end)] : [];
+  const asOf = multiDay ? [placementsAsOfNote(period.start)] : [];
+  const cutoff = day(ctx.timeline.window_end) < period.end ? [timelineCutoffNote(ctx.timeline.window_end)] : [];
+  const notes = [...asOf, ...cutoff];
   return {
     context: {
       ...ctx,

@@ -399,5 +399,11 @@ export {
 export type { PeriodArgs, PeriodEcho, PeriodLimits } from "./period";
 export { NO_TREE_NOTE, PRATYANTAR_NOTE, selectDashasForPeriod } from "./period-dashas";
 export type { PeriodAntarRow, PeriodDashaRow, PeriodDashas } from "./period-dashas";
-export { COVERED_EVENTS, SLOW_GRAHAS, restrictTransitsToPeriod, timelineCutoffNote } from "./period-transits";
+export {
+  COVERED_EVENTS,
+  SLOW_GRAHAS,
+  placementsAsOfNote,
+  restrictTransitsToPeriod,
+  timelineCutoffNote,
+} from "./period-transits";
 export type { RestrictedTransits } from "./period-transits";

@@ -1,5 +1,5 @@
 import type { SiderealChart, TransitContext } from '@almamesh/browser/types';
-import { BEFORE_BIRTH_MESSAGE, OVER_TWO_YEARS_NOTE, PAST_EPHEMERIS_NOTE } from '@almamesh/llm';
+import { BEFORE_BIRTH_MESSAGE, OVER_TWO_YEARS_NOTE, PAST_EPHEMERIS_NOTE, placementsAsOfNote } from '@almamesh/llm';
 import { describe, expect, it, vi } from 'vitest';
 
 import golden from '../../../../../../backend/tests/fixtures/chart_golden_de421.json';
@@ -156,8 +156,14 @@ describe('get_timing with dates', () => {
     const result = (await tool().execute(
       { section: 'transits', start: '2019-06-01', end: '2019-06-30' },
       context(),
-    )) as { data: { gochara: Array<{ graha: string }>; timeline: Array<{ month: string }> }; covered_events: string[] };
+    )) as {
+      data: { gochara: Array<{ graha: string }>; timeline: Array<{ month: string }> };
+      covered_events: string[];
+      notes: string[];
+    };
     expect(result.data.gochara.map((row) => row.graha).sort()).toEqual(['jupiter', 'saturn']);
+    // Placements hold at the first day only; the model must not stretch them over the month.
+    expect(result.notes[0]).toBe(placementsAsOfNote('2019-06-01'));
     expect(result.data.timeline.map((row) => row.month)).toEqual(['2019-06']);
     expect(result.covered_events).toEqual(['jupiter_ingress', 'saturn_ingress', 'dasha_change', 'sade_sati_phase']);
   });
