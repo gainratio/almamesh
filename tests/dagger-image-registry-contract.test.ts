@@ -13,16 +13,15 @@ const root = resolve(import.meta.dir, "..")
 const SCANNED_ROOTS = ["dagger", ".github"]
 const SKIPPED_DIRS = new Set(["node_modules", "sdk", ".pnpm-store"])
 const SKIPPED_FILES = new Set(["yarn.lock"])
-const MIRROR = "ghcr.io/hseshadr/mirror/docker.io"
-// Mirror root is still ghcr.io/hseshadr/... until it moves to gainratio (tracked follow-up).
+const MIRROR = "ghcr.io/gainratio/mirror/docker.io"
 const ENGINE_CONFIG = ".github/xdg/dagger/engine.json"
 const XDG_CONFIG_HOME = "${{ github.workspace }}/.github/xdg"
 const DAGGER_ACTION = "dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77"
 // The Node runtime image the TypeScript SDK v0.21.8 would pull from Docker Hub
 // (sdk/typescript/runtime/tsdistconsts DefaultNodeImageRef), pinned by digest on
-// Google's Docker Hub cache until the GHCR mirror can hold it.
+// the GHCR mirror.
 const SDK_NODE_BASE_IMAGE =
-  "mirror.gcr.io/library/node:24.13.1-alpine@sha256:4f696fbf39f383c1e486030ba6b289a5d9af541642fc78ab197e584a113b9c03"
+  `${MIRROR}/library/node:24.13.1-alpine@sha256:4f696fbf39f383c1e486030ba6b289a5d9af541642fc78ab197e584a113b9c03`
 const DOCKER_HUB_HOSTS = new Set(["docker.io", "index.docker.io", "registry-1.docker.io"])
 
 const IMAGE_PATTERNS: readonly RegExp[] = [
@@ -207,6 +206,13 @@ describe("no CI path pulls from Docker Hub", () => {
     expect(refs.length).toBeGreaterThanOrEqual(6)
     expect(refs.map((image) => image.ref)).toContain(SDK_NODE_BASE_IMAGE)
     expect(refs.filter((image) => isDockerHub(image.ref))).toEqual([])
+  })
+
+  test("every pulled Docker Hub image comes from the GHCR mirror, not Google's cache", () => {
+    const refs = repositoryPulledImageRefs().map((image) => image.ref)
+    // mirror.gcr.io stays only as the engine.json fallback for images not yet mirrored.
+    expect(refs.filter((ref) => ref.startsWith("mirror.gcr.io/"))).toEqual([])
+    expect(refs.filter((ref) => ref.startsWith(`${MIRROR}/`)).length).toBeGreaterThanOrEqual(4)
   })
 
   test("every pulled image is pinned by digest", () => {

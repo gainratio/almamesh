@@ -70,9 +70,9 @@ const CONTRACT_SHA = "1111111111111111111111111111111111111111"
 const PAGES_GIT_SOURCE_OWNER = "hseshadr"
 const CENTRAL_MODULE_SHA = "8fbde750dafd431c1777f2bf63b3170ef6db2caf"
 const NODE_IMAGE =
-  "mirror.gcr.io/library/node:22-trixie-slim@sha256:7b8a0c89c54499bee567618f96578e1a12a800f062fbdbfd1fb6a443fa6f6284"
+  "ghcr.io/gainratio/mirror/docker.io/library/node:22-trixie-slim@sha256:7b8a0c89c54499bee567618f96578e1a12a800f062fbdbfd1fb6a443fa6f6284"
 const PAGES_NODE_IMAGE =
-  "ghcr.io/hseshadr/mirror/docker.io/library/node:24.6.0-bookworm-slim@sha256:9b741b28148b0195d62fa456ed84dd6c953c1f17a3761f3e6e6797a754d9edff"
+  "ghcr.io/gainratio/mirror/docker.io/library/node:24.6.0-bookworm-slim@sha256:9b741b28148b0195d62fa456ed84dd6c953c1f17a3761f3e6e6797a754d9edff"
 const WRANGLER_VERSION = "4.103.0"
 const WRANGLER = "/opt/wrangler/node_modules/.bin/wrangler"
 const WRANGLER_COMPATIBILITY_DATE = "2026-06-24"

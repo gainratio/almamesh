@@ -68,7 +68,7 @@ describe("central Dagger Lego pins", () => {
     )
 
     expect(source).toContain(
-      '"ghcr.io/hseshadr/mirror/docker.io/library/node:24.6.0-bookworm-slim@sha256:9b741b28148b0195d62fa456ed84dd6c953c1f17a3761f3e6e6797a754d9edff"',
+      '"ghcr.io/gainratio/mirror/docker.io/library/node:24.6.0-bookworm-slim@sha256:9b741b28148b0195d62fa456ed84dd6c953c1f17a3761f3e6e6797a754d9edff"',
     )
     expect(pagesBase).toContain('.container({ platform: "linux/amd64" as Platform })')
     expect(pagesBase).toContain('`wrangler@${WRANGLER_VERSION}`')
