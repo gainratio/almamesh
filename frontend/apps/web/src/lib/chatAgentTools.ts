@@ -1,6 +1,7 @@
 import { devicePolicy } from '@almamesh/browser';
 import type { SiderealChart } from '@almamesh/browser/types';
 import {
+  pinRelative,
   sanitizeChartForLlm,
   type AnalysisInstant,
   type AgentTool,
@@ -13,7 +14,7 @@ import { viewerTimeZone } from './analysisInstant';
 import { predictiveReferenceInstant } from './predictive';
 import type { MoonWindowLoader } from './moonWindow';
 import type { PlaceReader } from './timingPlaces';
-import { createTimingTool } from './timingTool';
+import { createTimingTool, type PinnedTiming } from './timingTool';
 
 export interface ZonedDateTime {
   readonly isoUtc: string;
@@ -66,6 +67,8 @@ export function currentDateTimeForZone(now: Date, timeZone: string): ZonedDateTi
 
 export interface CreateChatAgentToolsInput {
   readonly chart: SiderealChart;
+  /** A time-travel thread's pin (chatToolset.ts builds it from the thread's as_of). */
+  readonly pinned?: PinnedTiming;
   /**
    * The chart's own analysis instant: `get_chart_facts` describes the chart as
    * of this instant. Only `get_timing` (today, or a dated period) uses the
@@ -174,7 +177,12 @@ export function createChatAgentTools(input: CreateChatAgentToolsInput): readonly
       execute: (args, context) => {
         const scope = enumArgument(args, 'scope', ['chart', 'utc']);
         const zone = scope === 'chart' ? input.chartTimeZone : 'UTC';
-        return { scope, ...currentDateTimeForZone(context.now, zone) };
+        const now = { scope, ...currentDateTimeForZone(context.now, zone) };
+        if (!input.pinned) return now;
+        // Plan Ruling 2: the viewer's day, the same "today" get_timing reads.
+        const today = (input.todayDay ?? viewerTodayDay)(context.now);
+        const { start, end } = input.pinned.period;
+        return { ...now, pinned_period: { start, end }, relative: pinRelative(input.pinned.period, today) };
       },
     },
     {
@@ -221,6 +229,7 @@ export function createChatAgentTools(input: CreateChatAgentToolsInput): readonly
       periodSkyAllowed: input.periodSkyAllowed ?? devicePolicy().periodSkyComputeAllowed,
       loadMoonWindow: input.loadMoonWindow,
       placeFromRef: input.placeFromRef,
+      pinned: input.pinned,
     }),
   ];
 }

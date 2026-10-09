@@ -43,7 +43,7 @@ export interface PeriodLimits {
 }
 
 /** True for a real calendar day: Date.parse rolls 2026-02-30 to March, so round-trip it. */
-function isCalendarDay(value: string): boolean {
+export function isCalendarDay(value: string): boolean {
   if (!ISO_DAY.test(value)) return false;
   const ms = Date.parse(`${value}T00:00:00Z`);
   return !Number.isNaN(ms) && new Date(ms).toISOString().slice(0, 10) === value;

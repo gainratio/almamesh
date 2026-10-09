@@ -298,7 +298,9 @@ export function buildChartFactsBlock(chart: SanitizedChart): string {
     yogaBlock(chart),
     // The delimited engine predictive block ("" when no contexts are present,
     // keeping the output byte-identical to the natal-only facts).
-    buildPredictiveFactsBlock(chart.predictive),
+    // Under a period basis it would be today's sky labelled as the period: the
+    // timing tool result carries the period's own sky instead.
+    chart.as_of.basis === "period" ? "" : buildPredictiveFactsBlock(chart.predictive),
   ]
     .filter((block) => block !== "")
     .join("\n\n");

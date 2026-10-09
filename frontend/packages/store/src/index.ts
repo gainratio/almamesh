@@ -24,6 +24,7 @@ export * from './chart';
 export * from './chartLibrary';
 export * from './lifeEvents';
 export * from './chat';
+export { chatAsOfProblem, isChatThreadAsOf } from './chatAsOf';
 export * from './profiles';
 export * from './adapters/chart';
 export * from './adapters/localBirthTime';

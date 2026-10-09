@@ -12,6 +12,7 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ChatTurn } from '@almamesh/llm';
+import type { ChatThreadAsOf } from '@almamesh/shared-types';
 import { ChatPanel } from './ChatPanel';
 import type { SSEMetaData } from '../../../lib/streaming';
 import type { ViewMode } from '../../../lib/types';
@@ -25,6 +26,8 @@ interface FloatingChatPanelProps {
   /** The chart this conversation is opened from (links a fresh thread). */
   chartId: string | null;
   viewMode: ViewMode;
+  /** Earliest plausible pin year (the birth year). */
+  birthYear?: number;
   onAskQuestionStream: (
     question: string,
     onToken: (token: string) => void,
@@ -33,6 +36,7 @@ interface FloatingChatPanelProps {
     history?: readonly ChatTurn[],
     retrievedContext?: readonly string[],
     onAgentStatus?: (label: string | null) => void,
+    asOf?: ChatThreadAsOf,
   ) => Promise<{
     answer: string;
     timing_guidance?: string | null;
@@ -103,6 +107,7 @@ export function FloatingChatPanel({
   profileId,
   chartId,
   viewMode,
+  birthYear,
   onAskQuestionStream,
   initialOpen = false,
 }: FloatingChatPanelProps) {
@@ -256,6 +261,7 @@ export function FloatingChatPanel({
                   profileId={profileId}
                   chartId={chartId}
                   viewMode={viewMode}
+                  birthYear={birthYear}
                   onAskQuestionStream={onAskQuestionStream}
                   hideHeader
                 />

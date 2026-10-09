@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
+import '../../../../i18n/config';
 import { ChatSearch } from '../ChatSearch';
 import { useChatStore } from '@almamesh/store';
 import {
@@ -139,5 +140,19 @@ describe('ChatSearch', () => {
     await waitFor(() => {
       expect(screen.queryByTestId('chat-search-result-m1')).toBeNull();
     });
+  });
+
+  it('labels a pinned thread with the badge and its period, not its first question', async () => {
+    const tid = useChatStore.getState().startThread(PROFILE, undefined, {
+      start: '2050-01-01', end: '2050-12-31', granularity: 'year',
+    });
+    useChatStore.getState().appendMessage(tid, 'user', 'Will work get easier?');
+    __setMemoryForTest(memoryReturning(tid));
+
+    render(<ChatSearch profileId={PROFILE} onOpenResult={vi.fn()} />);
+    fireEvent.change(screen.getByTestId('chat-search-input'), { target: { value: 'work' } });
+
+    expect(await screen.findByText('⏳ Time travel · 2050')).toBeTruthy();
+    expect(screen.queryByText('Will work get easier?')).toBeNull();
   });
 });
