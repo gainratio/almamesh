@@ -5,7 +5,7 @@ import { join, relative, resolve } from "node:path"
 // CI must never pull from Docker Hub: its unauthenticated pull limit failed four
 // gates of run 37988010725 (`toomanyrequests`). Every image the module or the
 // workflows name comes from the GHCR mirror (gainratio/ci mirror/images.json) or
-// from another registry by digest. The TypeScript SDK's own bun introspector
+// from another registry (mirror.gcr.io, ghcr.io) by digest. The TypeScript SDK's own bun introspector
 // image cannot be overridden, so the engine also gets a Docker Hub mirror
 // (.github/xdg/dagger/engine.json), mounted by the CLI from $XDG_CONFIG_HOME.
 
@@ -18,9 +18,10 @@ const ENGINE_CONFIG = ".github/xdg/dagger/engine.json"
 const XDG_CONFIG_HOME = "${{ github.workspace }}/.github/xdg"
 const DAGGER_ACTION = "dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77"
 // The Node runtime image the TypeScript SDK v0.21.8 would pull from Docker Hub
-// (sdk/typescript/runtime/tsdistconsts DefaultNodeImageRef), mirror-pinned.
+// (sdk/typescript/runtime/tsdistconsts DefaultNodeImageRef), pinned by digest on
+// Google's Docker Hub cache until the GHCR mirror can hold it.
 const SDK_NODE_BASE_IMAGE =
-  "ghcr.io/hseshadr/mirror/docker.io/library/node:24.13.1-alpine@sha256:4f696fbf39f383c1e486030ba6b289a5d9af541642fc78ab197e584a113b9c03"
+  "mirror.gcr.io/library/node:24.13.1-alpine@sha256:4f696fbf39f383c1e486030ba6b289a5d9af541642fc78ab197e584a113b9c03"
 const DOCKER_HUB_HOSTS = new Set(["docker.io", "index.docker.io", "registry-1.docker.io"])
 
 const IMAGE_PATTERNS: readonly RegExp[] = [
