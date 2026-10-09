@@ -78,6 +78,14 @@
               "trigger": "jupiter"
             },
             {
+              "date": "2027-01-24T20:50:25.344201Z",
+              "descriptor": "career.transit.jupiter.ingress.cancer",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "jupiter"
+            },
+            {
               "date": "2027-06-02T23:04:25.266583Z",
               "descriptor": "career.transit.saturn.ingress.aries",
               "kind": "sign_ingress",
@@ -167,6 +175,14 @@
             {
               "date": "2026-10-31T05:58:13.713998Z",
               "descriptor": "education.transit.jupiter.ingress.leo",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "jupiter"
+            },
+            {
+              "date": "2027-01-24T20:50:25.344201Z",
+              "descriptor": "education.transit.jupiter.ingress.cancer",
               "kind": "sign_ingress",
               "severity": "neutral",
               "source": "transit",
@@ -272,6 +288,14 @@
               "trigger": "jupiter"
             },
             {
+              "date": "2027-01-24T20:50:25.344201Z",
+              "descriptor": "family.transit.jupiter.ingress.cancer",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "jupiter"
+            },
+            {
               "date": "2027-06-02T23:04:25.266583Z",
               "descriptor": "family.transit.saturn.ingress.aries",
               "kind": "sign_ingress",
@@ -353,6 +377,14 @@
             {
               "date": "2026-10-31T05:58:13.713998Z",
               "descriptor": "finances.transit.jupiter.ingress.leo",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "jupiter"
+            },
+            {
+              "date": "2027-01-24T20:50:25.344201Z",
+              "descriptor": "finances.transit.jupiter.ingress.cancer",
               "kind": "sign_ingress",
               "severity": "neutral",
               "source": "transit",
@@ -457,6 +489,14 @@
               "trigger": "jupiter"
             },
             {
+              "date": "2027-01-24T20:50:25.344201Z",
+              "descriptor": "health.transit.jupiter.ingress.cancer",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "jupiter"
+            },
+            {
               "date": "2027-06-02T23:04:25.266583Z",
               "descriptor": "health.transit.saturn.ingress.aries",
               "kind": "sign_ingress",
@@ -537,6 +577,14 @@
             {
               "date": "2026-10-31T05:58:13.713998Z",
               "descriptor": "relationships.transit.jupiter.ingress.leo",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "jupiter"
+            },
+            {
+              "date": "2027-01-24T20:50:25.344201Z",
+              "descriptor": "relationships.transit.jupiter.ingress.cancer",
               "kind": "sign_ingress",
               "severity": "neutral",
               "source": "transit",
@@ -637,6 +685,14 @@
             {
               "date": "2026-10-31T05:58:13.713998Z",
               "descriptor": "spiritual.transit.jupiter.ingress.leo",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "jupiter"
+            },
+            {
+              "date": "2027-01-24T20:50:25.344201Z",
+              "descriptor": "spiritual.transit.jupiter.ingress.cancer",
               "kind": "sign_ingress",
               "severity": "neutral",
               "source": "transit",
@@ -1982,6 +2038,20 @@
             "to_sign": null
           },
           {
+            "date": "2027-01-24T20:50:25.344201Z",
+            "descriptor": "jupiter.ingress.cancer",
+            "from_lord": null,
+            "from_sign": "Leo",
+            "graha": "jupiter",
+            "kind": "sign_ingress",
+            "sade_sati_phase": null,
+            "severity": "neutral",
+            "station_direction": null,
+            "station_sign": null,
+            "to_lord": null,
+            "to_sign": "Cancer"
+          },
+          {
             "date": "2027-03-09T19:02:48.069351Z",
             "descriptor": "mars.ingress.cancer",
             "from_lord": null,
@@ -3316,6 +3386,14 @@
               "severity": "neutral",
               "source": "transit",
               "trigger": "jupiter"
+            },
+            {
+              "date": "2027-01-24T20:50:25.344201Z",
+              "descriptor": "education.transit.jupiter.ingress.cancer",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "jupiter"
             }
           ],
           "varga": {
@@ -3409,6 +3487,14 @@
               "severity": "neutral",
               "source": "transit",
               "trigger": "jupiter"
+            },
+            {
+              "date": "2027-01-24T20:50:25.344201Z",
+              "descriptor": "family.transit.jupiter.ingress.cancer",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "jupiter"
             }
           ],
           "varga": {
@@ -3484,6 +3570,14 @@
             {
               "date": "2026-10-31T05:58:13.713998Z",
               "descriptor": "finances.transit.jupiter.ingress.leo",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "jupiter"
+            },
+            {
+              "date": "2027-01-24T20:50:25.344201Z",
+              "descriptor": "finances.transit.jupiter.ingress.cancer",
               "kind": "sign_ingress",
               "severity": "neutral",
               "source": "transit",
@@ -3588,6 +3682,14 @@
               "trigger": "jupiter"
             },
             {
+              "date": "2027-01-24T20:50:25.344201Z",
+              "descriptor": "health.transit.jupiter.ingress.cancer",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "jupiter"
+            },
+            {
               "date": "2027-06-02T23:04:25.266583Z",
               "descriptor": "health.transit.saturn.ingress.aries",
               "kind": "sign_ingress",
@@ -3668,6 +3770,14 @@
             {
               "date": "2026-10-31T05:58:13.713998Z",
               "descriptor": "relationships.transit.jupiter.ingress.leo",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "jupiter"
+            },
+            {
+              "date": "2027-01-24T20:50:25.344201Z",
+              "descriptor": "relationships.transit.jupiter.ingress.cancer",
               "kind": "sign_ingress",
               "severity": "neutral",
               "source": "transit",
@@ -3774,6 +3884,14 @@
             {
               "date": "2026-10-31T05:58:13.713998Z",
               "descriptor": "spiritual.transit.jupiter.ingress.leo",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "jupiter"
+            },
+            {
+              "date": "2027-01-24T20:50:25.344201Z",
+              "descriptor": "spiritual.transit.jupiter.ingress.cancer",
               "kind": "sign_ingress",
               "severity": "neutral",
               "source": "transit",
@@ -5110,6 +5228,20 @@
             "station_sign": "Leo",
             "to_lord": null,
             "to_sign": null
+          },
+          {
+            "date": "2027-01-24T20:50:25.344201Z",
+            "descriptor": "jupiter.ingress.cancer",
+            "from_lord": null,
+            "from_sign": "Leo",
+            "graha": "jupiter",
+            "kind": "sign_ingress",
+            "sade_sati_phase": null,
+            "severity": "neutral",
+            "station_direction": null,
+            "station_sign": null,
+            "to_lord": null,
+            "to_sign": "Cancer"
           },
           {
             "date": "2027-03-09T19:02:48.069351Z",

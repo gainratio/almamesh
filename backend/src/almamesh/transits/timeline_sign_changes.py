@@ -1,10 +1,11 @@
 """Every sign change of a graha, in its real direction.
 
-This is the producer for every planet that ingresses on the timeline: each cusp
-crossing is an event with the real from_sign -> to_sign, so a retrograde exit
-shows before the re-entry. Mars retrogrades back across cusps and the nodes
-always move backward. Ketu is Rahu + 180 deg: its events are Rahu's, mirrored,
-at the same instant."""
+This is the one producer for every planet that ingresses on the timeline
+(Jupiter, Saturn, Mars, Rahu, Ketu): each cusp crossing is an event with the
+real from_sign -> to_sign, so a retrograde exit shows before the re-entry and
+one planet never "enters" the same sign twice in a row. Jupiter, Saturn and
+Mars retrograde back across cusps; the nodes always move backward. Ketu is
+Rahu + 180 deg: its events are Rahu's, mirrored, at the same instant."""
 
 from __future__ import annotations
 
@@ -23,7 +24,7 @@ if TYPE_CHECKING:
 
     from almamesh.calculations import SkyfieldAstronomy
 
-_STEP_DAYS: Final[float] = 5.0  # Mars moves under 1 deg/day: one change per step at most
+_STEP_DAYS: Final[float] = 5.0  # all these grahas move under 1 deg/day: one change per step at most
 _SIGN_WIDTH: Final[float] = 30.0
 
 

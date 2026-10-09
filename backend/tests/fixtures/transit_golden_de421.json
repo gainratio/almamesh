@@ -316,6 +316,20 @@
           "to_sign": null
         },
         {
+          "date": "2027-01-24T20:50:25.344201Z",
+          "descriptor": "jupiter.ingress.cancer",
+          "from_lord": null,
+          "from_sign": "Leo",
+          "graha": "jupiter",
+          "kind": "sign_ingress",
+          "sade_sati_phase": null,
+          "severity": "neutral",
+          "station_direction": null,
+          "station_sign": null,
+          "to_lord": null,
+          "to_sign": "Cancer"
+        },
+        {
           "date": "2027-03-09T19:02:48.069351Z",
           "descriptor": "mars.ingress.cancer",
           "from_lord": null,
@@ -706,6 +720,20 @@
           "station_sign": "Leo",
           "to_lord": null,
           "to_sign": null
+        },
+        {
+          "date": "2027-01-24T20:50:25.344201Z",
+          "descriptor": "jupiter.ingress.cancer",
+          "from_lord": null,
+          "from_sign": "Leo",
+          "graha": "jupiter",
+          "kind": "sign_ingress",
+          "sade_sati_phase": null,
+          "severity": "neutral",
+          "station_direction": null,
+          "station_sign": null,
+          "to_lord": null,
+          "to_sign": "Cancer"
         },
         {
           "date": "2027-03-09T19:02:48.069351Z",
@@ -1107,6 +1135,20 @@
           "station_sign": "Leo",
           "to_lord": null,
           "to_sign": null
+        },
+        {
+          "date": "2027-01-24T20:50:25.344201Z",
+          "descriptor": "jupiter.ingress.cancer",
+          "from_lord": null,
+          "from_sign": "Leo",
+          "graha": "jupiter",
+          "kind": "sign_ingress",
+          "sade_sati_phase": null,
+          "severity": "neutral",
+          "station_direction": null,
+          "station_sign": null,
+          "to_lord": null,
+          "to_sign": "Cancer"
         },
         {
           "date": "2027-03-09T19:02:48.069351Z",

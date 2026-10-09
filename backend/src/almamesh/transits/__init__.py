@@ -61,7 +61,5 @@ def calculate_transit_context(
         sade_sati=build_sade_sati_context(astro, moon_idx, instant),
         slow_hits=_slow_hits(astro, natal, instant),
         fusion=build_fusion(astro, natal, birth_dt, instant, ayanamsa_type, node_type),
-        timeline=build_timeline(
-            astro, natal, birth_dt, instant, window_months, ayanamsa_type, node_type
-        ),
+        timeline=build_timeline(astro, natal, birth_dt, instant, window_months),
     )

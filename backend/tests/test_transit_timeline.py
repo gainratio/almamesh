@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import re
 from datetime import UTC, datetime, timedelta
 
@@ -9,9 +10,11 @@ import pytest
 
 from almamesh.calculations import SkyfieldAstronomy, calculate_sidereal_context
 from almamesh.constants.astrology import PlanetName
+from almamesh.schemas.astrology import SiderealContext
 from almamesh.schemas.transits import TransitEventKind
 from almamesh.transits import timeline_ingress
 from almamesh.transits.timeline import build_timeline
+from almamesh.transits.timeline_sign_changes import sign_change_events
 
 _BIRTH = datetime(1990, 1, 15, 12, 0, 0, tzinfo=UTC)
 _DELHI = (28.6139, 77.2090)
@@ -20,7 +23,7 @@ _START = datetime(2027, 1, 1, 0, 0, 0, tzinfo=UTC)
 _DESCRIPTOR = re.compile(r"^[a-z0-9]+(\.[a-z0-9_]+)+$")
 
 
-def _natal():
+def _natal() -> SiderealContext:
     return calculate_sidereal_context(_BIRTH, *_DELHI, reference_date=_START)
 
 
@@ -78,15 +81,15 @@ def test_should_reuse_ephemeris_samples_across_ingress_cusps(
 
     monkeypatch.setattr(timeline_ingress, "transit_longitude", longitude)
 
-    # When ingress discovery scans a slow graha with no crossing
-    events = timeline_ingress.slow_graha_ingress_events(
+    # When sign-change discovery scans a slow graha with no crossing
+    events = sign_change_events(
         object(),
         PlanetName.JUPITER,
         start,
-        start + timedelta(days=10),  # type: ignore[arg-type]
+        start + timedelta(days=10),
     )
 
-    # Then each astronomical instant is evaluated once, not once per zodiac cusp
+    # Then each astronomical instant is evaluated once
     assert events == []
     assert sampled == [start, start + timedelta(days=5), start + timedelta(days=10)]
 
@@ -111,3 +114,57 @@ def test_two_year_timeline_covers_mars_nodes_and_stations() -> None:
     assert not {graha for graha, _ in kinds} & {"sun", "moon", "mercury", "venus"}
     dates = [e.date for e in timeline.events]
     assert dates == sorted(dates)
+
+
+# Jupiter goes back from Virgo into Leo (~2028-02) and Saturn from Aries into
+# Pisces (~2027-10) inside this window: both cross a cusp retrograde.
+_RETROGRADE_START = datetime(2027, 1, 1, 0, 0, 0, tzinfo=UTC)
+_INGRESS_GRAHAS = ("jupiter", "saturn", "mars", "rahu", "ketu")
+
+
+def _sign_ingresses(start: datetime, graha: str) -> list[tuple[str | None, str | None]]:
+    natal = calculate_sidereal_context(_BIRTH, *_DELHI, reference_date=start)
+    timeline = build_timeline(SkyfieldAstronomy(), natal, _BIRTH, start, window_months=24)
+    return [
+        (e.from_sign, e.to_sign)
+        for e in timeline.events
+        if e.kind == TransitEventKind.SIGN_INGRESS.value and e.graha == graha
+    ]
+
+
+@pytest.mark.parametrize("start", [_TWO_YEAR_START, _RETROGRADE_START])
+@pytest.mark.parametrize("graha", _INGRESS_GRAHAS)
+def test_should_alternate_sign_ingresses_when_any_ingressing_graha_crosses_cusps(
+    start: datetime, graha: str
+) -> None:
+    # Given a two-year window
+    # When one graha's sign ingresses are listed
+    changes = _sign_ingresses(start, graha)
+    assert changes, graha
+    # Then each starts where the previous one ended and never re-enters the same sign
+    for (_, prev_to), (next_from, next_to) in zip(changes, changes[1:], strict=False):
+        assert next_from == prev_to, changes
+        assert next_to != prev_to, changes
+
+
+@pytest.mark.parametrize(
+    ("graha", "backward"),
+    [("jupiter", ("Virgo", "Leo")), ("saturn", ("Aries", "Pisces"))],
+)
+def test_should_report_backward_ingress_when_graha_retrogrades_across_a_cusp(
+    graha: str, backward: tuple[str, str]
+) -> None:
+    # Given a window where the graha retrogrades back across a cusp
+    # When its sign ingresses are listed
+    changes = _sign_ingresses(_RETROGRADE_START, graha)
+    # Then the backward change is an event of its own, in its real direction
+    assert backward in changes, changes
+
+
+def test_should_build_timeline_that_takes_no_ayanamsa_or_node_arguments() -> None:
+    # Given the timeline is Lahiri + mean node by construction
+    # When its signature is read
+    parameters = inspect.signature(build_timeline).parameters
+    # Then it accepts no knobs it would ignore
+    assert "ayanamsa_type" not in parameters
+    assert "node_type" not in parameters

@@ -8,13 +8,17 @@ events because those boundaries were computed by the Vimshottari engine itself;
 re-deriving sub-period successors here would be a second (riskier) dasha
 implementation, which calc-integrity forbids.
 
+Which events feed windows (``feeds_domain_windows``): Jupiter and Saturn sign
+ingresses in both directions (a retrograde move back across a cusp is a window
+of its own), dasha changes and Sade Sati phases. Mars and Rahu/Ketu ingresses
+and all stations are not used, by decision.
+
 Relevance per event kind:
 - DASHA_CHANGE: the incoming lord is a domain significator  -> source ``dasha``;
 - SADE_SATI_PHASE: the domain is Sade Sati-relevant         -> source ``transit``
   (trigger Saturn — Sade Sati IS the Saturn transit);
-- ingress/station/return: the moving graha is a domain significator, or the
+- Jupiter/Saturn SIGN_INGRESS: the moving graha is a domain significator, or the
   entered sign is one of the domain's whole-sign bhavas     -> source ``transit``.
-- Mars/Rahu/Ketu ingresses and stations (Inc B): not used, by decision.
 """
 
 from __future__ import annotations
@@ -34,7 +38,8 @@ if TYPE_CHECKING:
     from almamesh.schemas.transits import TimelineEvent, TransitContext
 
 # Inc B widened the timeline (Mars and node ingresses, stations). Life Atlas
-# windows keep the earlier event set until that is a product decision.
+# windows take only Jupiter/Saturn ingresses (every crossing, either direction),
+# dasha changes and Sade Sati phases; widening further is a product decision.
 _DOMAIN_INGRESS_GRAHAS: Final[frozenset[PlanetName]] = frozenset(
     {PlanetName.JUPITER, PlanetName.SATURN}
 )
