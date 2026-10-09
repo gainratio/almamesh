@@ -1,6 +1,8 @@
+import { readFileSync } from 'node:fs';
+
 import { expect, test, type Page } from '@playwright/test';
 
-import { LLM_SETTINGS_KEY, bootEngine, seedChart } from './interpretation.helpers';
+import { DELHI_BIRTH, DELHI_SEED, LLM_SETTINGS_KEY, bootEngine, seedChart } from './interpretation.helpers';
 
 /**
  * Journey 1 (spec 2026-10-08): "what was going on for me in June 2019?" typed
@@ -319,4 +321,246 @@ test('[contract/stubbed] an 18-month period is one engine run with Mars, nodes a
   expect(content).not.toContain(BIRTH_MONTH);
   await page.screenshot({ path: LONG_SCREENSHOT, fullPage: true });
   expect(consoleErrors, 'the journey must keep a clean console').toEqual([]);
+});
+
+/**
+ * Journey 3 (spec 2026-10-08, Inc C, coordinator rulings 2026-10-09, P4/P8/P9):
+ * June (30 days, a week or longer) with two places is read once with get_timing
+ * alone, and the model says the places don't change it (P9: no resolve_place);
+ * "the 15th" reuses the place the user named for that half (P4: resolve first,
+ * then get_timing, two rounds); "3 pm on 3 July" has no place, so get_timing
+ * answers needs_place and the model asks; "Bogotá" reads the event there. No
+ * request may leave the app origin, except provider calls that this test's own
+ * route handler fulfilled (they never reach the network). Nothing the model is
+ * sent may carry a coordinate, the device zone or the birth place.
+ */
+const SPLIT_QUESTION = 'How was June 2026 for me? I was in LA the first half, then Bogotá.';
+const SPLIT_ANSWER = "I looked at 1–30 June 2026. Being in LA and then Bogotá doesn't change June's reading.";
+const DAY_QUESTION = 'What about June 15 itself?';
+const DAY_ANSWER = 'On 15 June 2026 in Los Angeles the Moon was';
+const TIME_QUESTION = 'And 3 pm on 3 July?';
+const WHERE_QUESTION = 'Where were you (or will you be) that day?';
+const PLACE_REPLY = 'I will be in Bogotá.';
+const EVENT_ANSWER = 'At 3 pm on 3 July 2026 in Bogotá, Colombia, the rising sign was';
+const PLACE_SCREENSHOT = 'test-results/time-travel-places.png';
+const NEEDS_PLACE_RESULT = '{"ok":true,"value":{"error":"needs_place"}}';
+/** A zone no journey step names, so any appearance in a model-bound body is the device zone leaking. */
+const DEVICE_ZONE = 'Pacific/Chatham';
+
+interface CityRow {
+  n: string;
+  c: string;
+  lat: number;
+  lon: number;
+}
+
+/** The bundled offline city list resolve_place reads (the rows whose coordinates must never leave). */
+const CITY_ROWS = JSON.parse(
+  readFileSync(new URL('../src/data/cities.min.json', import.meta.url), 'utf8'),
+) as CityRow[];
+
+function cityRow(name: string, country: string): CityRow {
+  const row = CITY_ROWS.find((candidate) => candidate.n === name && candidate.c === country);
+  if (!row) throw new Error(`${name}, ${country} is missing from cities.min.json`);
+  return row;
+}
+
+/** A coordinate's 2-decimal prefix as a standalone number, sign dropped: 4.60971 matches "4.60…", not "14.60". */
+function coordinatePattern(value: number): RegExp {
+  const prefix = /^\d+\.\d{2}/.exec(String(Math.abs(value)))?.[0];
+  if (!prefix) throw new Error(`${value} has fewer than two decimals`);
+  return new RegExp(`(?<!\\d)${prefix.replace('.', '\\.')}`);
+}
+
+/** Ruling P8: patterns from the real resolved rows and the seeded birth, not hand-typed digits. */
+const LEAK_PATTERNS: readonly RegExp[] = [
+  ...[cityRow('Los Angeles', 'United States'), cityRow('Bogotá', 'Colombia')].flatMap((row) => [
+    coordinatePattern(row.lat),
+    coordinatePattern(row.lon),
+  ]),
+  coordinatePattern(DELHI_BIRTH.latitude),
+  coordinatePattern(DELHI_BIRTH.longitude),
+  /latitude|longitude|home_time_zone/i,
+  new RegExp(DEVICE_ZONE.replace('/', '\\/')),
+  new RegExp(DELHI_SEED.timezone.replace('/', '\\/')),
+  new RegExp(`\\b(?:${DELHI_SEED.city}|${DELHI_SEED.locationName.split(', ')[1]})\\b`),
+];
+
+/** Every leak pattern that matches, with the text around the match. */
+function leaks(body: string): string[] {
+  return LEAK_PATTERNS.flatMap((pattern) => {
+    const match = pattern.exec(body);
+    return match ? [`${pattern} ~ ${body.slice(Math.max(0, match.index - 40), match.index + 40)}`] : [];
+  });
+}
+
+type Script = (turn: WireMessage[]) => object;
+
+const call = (id: string, name: string, args: object) => ({
+  id,
+  type: 'function',
+  function: { name, arguments: JSON.stringify(args) },
+});
+/** The tool messages of the turn in flight: everything after the last user message. */
+const turnTools = (messages: WireMessage[]) => {
+  const lastUser = messages.map((m) => m.role).lastIndexOf('user');
+  return messages.slice(lastUser + 1).filter((m) => m.role === 'tool');
+};
+const refFrom = (content: string | null | undefined) =>
+  (JSON.parse(content ?? '{}') as { value: { place: { place_ref: string } } }).value.place.place_ref;
+const sse = (content: string) =>
+  `data: ${JSON.stringify({ choices: [{ delta: { content } }] })}\n\ndata: [DONE]\n\n`;
+
+/**
+ * The stubbed provider: one script per user message; records every model-bound
+ * body and every URL it fulfilled. The forced final round (tool_choice "none")
+ * always streams, so its answer goes back as SSE.
+ */
+function scripted(
+  page: Page,
+  scripts: Record<string, Script>,
+  seen: AgentRequest[],
+  bodies: string[],
+  fulfilled: Set<string>,
+): Promise<unknown> {
+  return page.route('**/chat/completions', async (route) => {
+    fulfilled.add(route.request().url());
+    const raw = route.request().postData() ?? '{}';
+    bodies.push(raw);
+    const parsed = JSON.parse(raw) as { messages?: WireMessage[]; tools?: AgentRequest['tools']; tool_choice?: string };
+    const messages = parsed.messages ?? [];
+    const lastUser = [...messages].reverse().find((m) => m.role === 'user')?.content ?? '';
+    // Recalled history can quote earlier questions inside the user message; the asked one comes last.
+    const key = Object.keys(scripts)
+      .filter((text) => lastUser.includes(text))
+      .sort((a, b) => lastUser.lastIndexOf(b) - lastUser.lastIndexOf(a))[0];
+    if (!Array.isArray(parsed.tools) || !key) {
+      const empty = { choices: [{ message: { content: '' } }] };
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(empty) });
+    }
+    seen.push({ messages, tools: parsed.tools });
+    const message = scripts[key](turnTools(messages)) as { content?: string | null };
+    if (parsed.tool_choice === 'none') {
+      return route.fulfill({ status: 200, contentType: 'text/event-stream', body: sse(message.content ?? '') });
+    }
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ choices: [{ message }] }),
+    });
+  });
+}
+
+const PLACE_SCRIPTS: Record<string, Script> = {
+  // P9: a week or longer needs no place, so June is one get_timing and the model says so.
+  [SPLIT_QUESTION]: (tools) =>
+    tools.length === 0
+      ? { content: null, tool_calls: [call('june', 'get_timing', { section: 'transits', start: '2026-06-01', end: '2026-06-30' })] }
+      : { content: SPLIT_ANSWER },
+  // P4: the user named LA for the first half, so resolve it first, then read the day there.
+  [DAY_QUESTION]: (tools) => {
+    if (tools.length === 0) return { content: null, tool_calls: [call('la', 'resolve_place', { query: 'Los Angeles' })] };
+    if (tools.length === 1) {
+      const args = { section: 'transits', start: '2026-06-15', place_ref: refFrom(tools[0]?.content) };
+      return { content: null, tool_calls: [call('day', 'get_timing', args)] };
+    }
+    return { content: `${DAY_ANSWER} …` };
+  },
+  // No place named for 3 July: the stub tries without one; only needs_place makes it ask.
+  [TIME_QUESTION]: (tools) => {
+    if (tools.length === 0) return { content: null, tool_calls: [call('july', 'get_timing', { section: 'transits', start: '2026-07-03' })] };
+    return { content: tools.at(-1)?.content === NEEDS_PLACE_RESULT ? WHERE_QUESTION : 'Here is 3 July without a place.' };
+  },
+  [PLACE_REPLY]: (tools) => {
+    if (tools.length === 0) return { content: null, tool_calls: [call('bog', 'resolve_place', { query: 'Bogotá' })] };
+    if (tools.length === 1) {
+      const args = { section: 'transits', start: '2026-07-03', place_ref: refFrom(tools[0]?.content), time: '15:00' };
+      return { content: null, tool_calls: [call('event', 'get_timing', args)] };
+    }
+    return { content: `${EVENT_ANSWER} …` };
+  },
+};
+
+test.describe('places', () => {
+  test.use({ timezoneId: DEVICE_ZONE });
+
+  test('[contract/stubbed] June with two places, a day, needs_place and an event in Bogotá, all on device', async ({
+    page,
+    baseURL,
+  }) => {
+    test.setTimeout(600_000);
+    const consoleErrors = await prepare(page);
+    const origin = new URL(baseURL ?? '').origin;
+    const offOrigin: string[] = [];
+    const cityChunks: string[] = [];
+    // Registered before the first navigation, so app boot traffic is covered too.
+    page.on('request', (request) => {
+      const url = new URL(request.url());
+      if (url.pathname.includes('cities.min')) cityChunks.push(request.url());
+      if (url.origin !== origin) offOrigin.push(request.url());
+    });
+    const seen: AgentRequest[] = [];
+    const bodies: string[] = [];
+    const fulfilled = new Set<string>();
+    await scripted(page, PLACE_SCRIPTS, seen, bodies, fulfilled);
+
+    await bootEngine(page);
+    await seedChart(page);
+    await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+    // As in Journey 1: wait for the re-anchor to today, or the answer is discarded by design.
+    const today = await page.evaluate(() =>
+      new Intl.DateTimeFormat('en', { year: 'numeric', month: 'short', day: 'numeric' }).format(new Date()),
+    );
+    await expect(page.getByTestId('provenance-footer')).toContainText(`As of ${today}`, { timeout: 120_000 });
+    const atlasAsOf = page.getByTestId('life-atlas').getByText(/^As of /);
+    await expect(atlasAsOf).toBeVisible({ timeout: 240_000 });
+    const keysBefore = await predictiveRequestKeys(page);
+    expect(cityChunks, 'the city list must not load before a place is asked about').toEqual([]);
+
+    await page.getByTestId('floating-chat-button').click({ timeout: 60_000 });
+    const ask = async (text: string, answer: string) => {
+      await page.getByTestId('chat-input').fill(text);
+      await page.getByTestId('chat-send-button').click();
+      await expect(page.getByTestId('chat-panel').getByText(answer, { exact: false })).toBeVisible({ timeout: 240_000 });
+    };
+    const lastTools = () => turnTools(seen.at(-1)?.messages ?? []);
+
+    await ask(SPLIT_QUESTION, SPLIT_ANSWER);
+    expect(lastTools().map((m) => m.name)).toEqual(['get_timing']);
+    expect(lastTools()[0]?.content).toContain('"period":{"start":"2026-06-01","end":"2026-06-30","days":30,"basis":"period"}');
+    expect(lastTools()[0]?.content).not.toContain('"moon"');
+    expect(lastTools()[0]?.content).not.toContain('"places"');
+    expect(cityChunks, 'a week or longer never loads the city list').toEqual([]);
+
+    await ask(DAY_QUESTION, DAY_ANSWER);
+    expect(lastTools().map((m) => m.name)).toEqual(['resolve_place', 'get_timing']);
+    expect(lastTools()[0]?.content).toContain('"label":"Los Angeles, United States"');
+    expect(lastTools()[0]?.content).toContain('"timezone":"America/Los_Angeles"');
+    expect(lastTools()[1]?.content).toContain('"label":"Los Angeles, United States"');
+    expect(lastTools()[1]?.content).toContain('"moon":{"at_start":');
+
+    await ask(TIME_QUESTION, WHERE_QUESTION);
+    expect(lastTools().map((m) => m.content)).toEqual([NEEDS_PLACE_RESULT]);
+
+    await ask(PLACE_REPLY, EVENT_ANSWER);
+    expect(lastTools().map((m) => m.name)).toEqual(['resolve_place', 'get_timing']);
+    expect(lastTools()[0]?.content).toContain('"label":"Bogotá, Colombia"');
+    expect(lastTools()[1]?.content).toContain('"label":"Bogotá, Colombia"');
+    expect(lastTools()[1]?.content).toContain('"event":{"local_time":"15:00","lagna_sign":');
+
+    // Every body the provider was sent (system prompt, history, tool results, all four turns).
+    expect(bodies.flatMap(leaks), 'no coordinate, device zone or birth place may reach the model').toEqual([]);
+    expect(
+      offOrigin.filter((url) => !fulfilled.has(url)),
+      'no request may leave the app origin (stubbed provider calls are fulfilled locally)',
+    ).toEqual([]);
+    expect(cityChunks, 'the city list loads once, from the app origin').toHaveLength(1);
+    expect(cityChunks.every((url) => new URL(url).origin === origin)).toBe(true);
+    expect(
+      (await predictiveRequestKeys(page)).slice(keysBefore.length),
+      'the Life Atlas slot must keep its requestKey',
+    ).toEqual([]);
+    await page.screenshot({ path: PLACE_SCREENSHOT, fullPage: true });
+    expect(consoleErrors, 'the journey must keep a clean console').toEqual([]);
+  });
 });
