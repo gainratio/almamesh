@@ -32,6 +32,10 @@ describe("the facts block under a period basis", () => {
     expect(block).not.toMatch(/- (Mahadasha|Antardasha|Pratyantardasha):/);
     expect(block).not.toContain("Current period (engine-dated)");
   });
+
+  it("omits the upcoming rows derived from today's current rows", () => {
+    expect(block).not.toMatch(/Remaining antardashas|Remaining pratyantardashas|Next mahadasha/);
+  });
 });
 
 describe("the chat system prompt", () => {

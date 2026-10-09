@@ -221,7 +221,8 @@ function nextMahaLine(dashas: SanitizedDashas): string {
  * maha, the remaining pratyantardashas of the current antar, and the next maha.
  */
 function upcomingPeriodsBlock(chart: SanitizedChart): string {
-  if (!chart.dashas) {
+  // These derive from the current rows, which describe today, so a period basis omits them.
+  if (!chart.dashas || chart.as_of.basis === "period") {
     return "";
   }
   const lines = [

@@ -542,6 +542,17 @@ describe("buildChartFactsBlock — engine-dated current + upcoming periods", () 
     expect(block).not.toContain("Next mahadasha");
   });
 
+  it("omits current and upcoming rows under a period basis, which describe today", () => {
+    const block = buildChartFactsBlock({
+      ...TREE_CHART,
+      as_of: { date: "2026-06-01", basis: "period", period_start: "2026-06-01", period_end: "2026-06-30" },
+    });
+    expect(block).not.toContain("Remaining antardashas");
+    expect(block).not.toContain("Remaining pratyantardashas");
+    expect(block).not.toContain("Next mahadasha");
+    expect(buildChartFactsBlock(TREE_CHART)).toContain("- Next mahadasha: mercury 2036-02 -> 2053-02");
+  });
+
   it("emits no remaining antar/pratyantar lines without a current antar anchor", () => {
     const noAntar: SanitizedChart = {
       as_of: { date: "2026-01-01", basis: "chart" },

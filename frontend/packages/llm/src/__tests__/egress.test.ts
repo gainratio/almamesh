@@ -6,7 +6,7 @@ import golden from "../../../../../backend/tests/fixtures/chart_golden_de421.jso
 import { streamChartInterpretation } from "../index";
 import type { ProviderConfig } from "../config";
 import { buildChatMessages } from "../prompt";
-import { periodAnalysisInstant, sanitizeChartForLlm } from "../sanitize";
+import { periodAnalysisInstant, sanitizeChartForLlm, todayAnalysisInstant } from "../sanitize";
 import { BIRTH_2000_DASHAS } from "./birth-2000-fixture";
 
 // End-to-end egress proof: a REAL engine chart routed through the public
@@ -87,6 +87,14 @@ describe("egress — a period early in life never reveals the birth month", () =
     const prompt = JSON.stringify(buildChatMessages(sanitized, "What was June 2020 like?"));
     expect(sanitized.dashas?.current_maha?.start_month).toBe("birth");
     expect(prompt).not.toContain("Mahadasha: mercury");
+    expect(prompt).not.toContain("2019-11");
+  });
+
+  it("renders the first maha start as 'birth' in the chat prompt under the today basis", () => {
+    const native = goldenCharts["2019-11-09T17:45:00+00:00"]!;
+    const sanitized = sanitizeChartForLlm(native, todayAnalysisInstant(new Date("2020-06-15T00:00:00Z")));
+    const prompt = JSON.stringify(buildChatMessages(sanitized, "What is now like?"));
+    expect(prompt).toContain("Mahadasha: mercury birth -> 2031-07");
     expect(prompt).not.toContain("2019-11");
   });
 });
