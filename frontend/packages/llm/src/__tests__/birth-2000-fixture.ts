@@ -4,7 +4,7 @@
 // them (calculations.py `_subdivide_period` starts at the parent's start).
 import type { DashaPeriod, SiderealChart, VimshottariDasha } from "@almamesh/browser/types";
 
-export const BIRTH_2000_START = "2000-03-15T04:30:00Z";
+const BIRTH_2000_START = "2000-03-15T04:30:00Z";
 
 function row(lord: string, start: string, end: string, years: number): DashaPeriod {
   return { lord, start_date: start, end_date: end, duration_years: years };

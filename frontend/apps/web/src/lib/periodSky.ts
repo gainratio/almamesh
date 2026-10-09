@@ -45,7 +45,7 @@ export function periodSkyDeadline(timeoutMs: number = PERIOD_SKY_TIMEOUT_MS): De
   };
 }
 
-export interface PredictiveStoreSnapshot {
+interface PredictiveStoreSnapshot {
   readonly status: string;
   readonly requestKey?: string;
   readonly rawContexts?: CachedPredictiveContexts;

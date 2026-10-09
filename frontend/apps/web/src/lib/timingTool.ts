@@ -32,8 +32,8 @@ import { PeriodSkyTimeoutError } from './periodSky';
 export const TIMING_TOOL_NAME = 'get_timing';
 /** One queued Life Atlas compute plus one period compute (spec, Performance). */
 export const TIMING_TOOL_TIMEOUT_MS = 150_000;
-export const TIMING_SECTIONS = ['dashas', 'transits', 'domains', 'strength'] as const;
-export type TimingSection = (typeof TIMING_SECTIONS)[number];
+const TIMING_SECTIONS = ['dashas', 'transits', 'domains', 'strength'] as const;
+type TimingSection = (typeof TIMING_SECTIONS)[number];
 
 export type PeriodSkyFailure = 'engine_unavailable' | 'timeout' | 'incomplete_birth_data';
 
@@ -58,7 +58,7 @@ export interface TimingToolInput {
 }
 
 /** Every successful call. `shown` differs from `section` when a limit gave dashas only. */
-export interface TimingResult {
+interface TimingResult {
   readonly period: PeriodEcho;
   readonly section: TimingSection;
   readonly shown: TimingSection;
@@ -69,7 +69,7 @@ export interface TimingResult {
 }
 
 /** A refusal the model must read and act on. */
-export interface TimingError {
+interface TimingError {
   readonly error: string;
 }
 

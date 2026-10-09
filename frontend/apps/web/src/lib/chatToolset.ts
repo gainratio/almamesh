@@ -35,13 +35,13 @@ export interface BuildChatToolsetInput {
   readonly viewerZone?: () => string;
 }
 
-export interface PrepareOptions {
+interface PrepareOptions {
   readonly now: Date;
   readonly signal: AbortSignal;
   readonly onStatus?: (label: string) => void;
 }
 
-export interface PreparedChatContext {
+interface PreparedChatContext {
   /** The chart to sanitize into the prompt. */
   readonly chart: SiderealChart;
   readonly asOf: AnalysisInstant;
