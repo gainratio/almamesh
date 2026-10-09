@@ -10,8 +10,9 @@ export {
   IDENTIFIER_FIELDS,
   chartAnalysisInstant,
   todayAnalysisInstant,
+  periodAnalysisInstant,
 } from "./sanitize";
-export type { AnalysisInstant, SanitizedAsOf } from "./sanitize";
+export type { AnalysisInstant, PeriodRange, SanitizedAsOf } from "./sanitize";
 export type {
   SanitizedChart,
   SanitizedDashas,

@@ -211,23 +211,31 @@ export interface SanitizedPredictive {
   readonly domains?: readonly SanitizedDomainForecast[];
 }
 
-/** The chart as it leaves the device: identifier-free, dasha dates relativized. */
+/** A calendar period, both ends inclusive, as `YYYY-MM-DD` days. */
+export interface PeriodRange {
+  readonly start: string;
+  readonly end: string;
+}
+
 /**
  * The instant every "current"/"remaining" statement in the prompt is relative
  * to. `chart` = the chart's own stored analysis instant (its snapshot's
  * `reference_date`), the default for everything that describes the chart.
  * `today` = the wall clock, ONLY where a caller genuinely asks about today
  * (the chat's current-timing tool), and labelled as such in the prompt.
+ * `period` = a period the user asked about; `instant` is its first day at UTC
+ * midnight.
  */
-export interface AnalysisInstant {
-  readonly basis: "chart" | "today";
-  readonly instant: Date;
-}
+export type AnalysisInstant =
+  | { readonly basis: "chart" | "today"; readonly instant: Date }
+  | { readonly basis: "period"; readonly instant: Date; readonly period: PeriodRange };
 
-/** The "as of" stamp the prompt carries: a local calendar date and its basis. */
+/** The "as of" stamp the prompt carries: a calendar date, its basis, and the period when there is one. */
 export interface SanitizedAsOf {
   readonly date: string;
   readonly basis: AnalysisInstant["basis"];
+  readonly period_start?: string;
+  readonly period_end?: string;
 }
 
 function requireInstant(value: string | Date, label: string): Date {
@@ -259,6 +267,33 @@ export function todayAnalysisInstant(now: Date): AnalysisInstant {
   return { basis: "today", instant: requireInstant(now, "today") };
 }
 
+const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+/** A labelled "period" basis for a question about a period other than today. */
+export function periodAnalysisInstant(start: string, end: string): AnalysisInstant {
+  if (!ISO_DAY.test(start) || !ISO_DAY.test(end) || end < start) {
+    throw new Error("analysis instant: a period needs YYYY-MM-DD days with start <= end");
+  }
+  return {
+    basis: "period",
+    instant: requireInstant(`${start}T00:00:00Z`, "period start"),
+    period: { start, end },
+  };
+}
+
+/** The prompt's as-of stamp. A period is stamped with its own first day, never a runtime-zone date. */
+function sanitizedAsOf(asOf: AnalysisInstant): SanitizedAsOf {
+  if (asOf.basis === "period") {
+    return {
+      date: asOf.period.start,
+      basis: "period",
+      period_start: asOf.period.start,
+      period_end: asOf.period.end,
+    };
+  }
+  return { date: localIsoDate(asOf.instant), basis: asOf.basis };
+}
+
 /** The instant's calendar date in the display (runtime) timezone, as the UI prints it. */
 function localIsoDate(instant: Date): string {
   const pad = (n: number): string => String(n).padStart(2, "0");
@@ -285,12 +320,12 @@ function wholeDaysBetween(from: Date, to: Date): number {
 }
 
 /** A dated sequence row reduced to month precision (the LLM-bound granularity). */
-function toDatedPeriod(period: DashaPeriod): SanitizedDatedPeriod {
+function toDatedPeriod(period: DashaPeriod, birthStart: string | undefined): SanitizedDatedPeriod {
   return {
     lord: period.lord,
     duration_years: period.duration_years,
-    start_month: monthOf(period.start_date),
-    end_month: monthOf(period.end_date),
+    start_month: dashaBoundaryMonth(period.start_date, birthStart),
+    end_month: dashaBoundaryMonth(period.end_date, birthStart),
   };
 }
 
@@ -298,15 +333,22 @@ function toDatedPeriod(period: DashaPeriod): SanitizedDatedPeriod {
  * Relativize one maha period to a current/future/past status (mirrors Python).
  * Tree-bearing rows (new bundles emit `antar_sequence` on every row) ALSO keep
  * a month-precision window on NON-PAST rows, and the CURRENT row keeps its
- * dated antar tree. Past rows stay date-free — their windows chain back to the
- * birth instant, which must never leak.
+ * dated antar tree. Past rows stay date-free. The birth instant itself always
+ * crosses as "birth", never as its month.
  */
-function relativizeMahaPeriod(period: MahaDashaPeriod, now: Date): SanitizedMahaPeriod {
+function relativizeMahaPeriod(
+  period: MahaDashaPeriod,
+  now: Date,
+  birthStart: string | undefined,
+): SanitizedMahaPeriod {
   const start = new Date(period.start_date);
   const end = new Date(period.end_date);
   const base = { lord: period.lord, duration_years: period.duration_years };
   const window = period.antar_sequence
-    ? { start_month: monthOf(period.start_date), end_month: monthOf(period.end_date) }
+    ? {
+        start_month: dashaBoundaryMonth(period.start_date, birthStart),
+        end_month: dashaBoundaryMonth(period.end_date, birthStart),
+      }
     : {};
 
   if (start <= now && now <= end) {
@@ -316,7 +358,7 @@ function relativizeMahaPeriod(period: MahaDashaPeriod, now: Date): SanitizedMaha
       status: `current (${remaining} years remaining)`,
       ...window,
       ...(period.antar_sequence
-        ? { antar_sequence: period.antar_sequence.map(toDatedPeriod) }
+        ? { antar_sequence: period.antar_sequence.map((row) => toDatedPeriod(row, birthStart)) }
         : {}),
     };
   }
@@ -332,6 +374,7 @@ function relativizeCurrentPeriod(
   period: NonNullable<VimshottariDasha["current_maha"]>,
   now: Date,
   dated: boolean,
+  birthStart: string | undefined,
 ): SanitizedCurrentPeriod {
   const end = new Date(period.end_date);
   const remaining = Math.max(0, Math.floor(wholeDaysBetween(now, end) / DAYS_PER_MONTH));
@@ -342,7 +385,10 @@ function relativizeCurrentPeriod(
     // Month-precision window — ONLY when the chart carries the dasha tree, so
     // older-bundle sanitization stays unchanged.
     ...(dated
-      ? { start_month: monthOf(period.start_date), end_month: monthOf(period.end_date) }
+      ? {
+          start_month: dashaBoundaryMonth(period.start_date, birthStart),
+          end_month: dashaBoundaryMonth(period.end_date, birthStart),
+        }
       : {}),
   };
 }
@@ -351,23 +397,26 @@ function relativizeCurrentOrNull(
   period: VimshottariDasha["current_maha"],
   now: Date,
   dated: boolean,
+  birthStart: string | undefined,
 ): SanitizedCurrentPeriod | null {
-  return period ? relativizeCurrentPeriod(period, now, dated) : null;
+  return period ? relativizeCurrentPeriod(period, now, dated, birthStart) : null;
 }
 
 function sanitizeDashas(dashas: VimshottariDasha, now: Date): SanitizedDashas {
   // The new-engine signal: maha rows carry their dated antar tree.
   const dated = dashas.maha_dasha_sequence.some((p) => p.antar_sequence !== undefined);
+  // The first maha starts at the birth instant: that boundary never crosses as a month.
+  const birthStart = dashas.maha_dasha_sequence[0]?.start_date;
   return {
-    maha_dasha_sequence: dashas.maha_dasha_sequence.map((p) => relativizeMahaPeriod(p, now)),
-    current_maha: relativizeCurrentOrNull(dashas.current_maha, now, dated),
-    current_antar: relativizeCurrentOrNull(dashas.current_antar, now, dated),
-    current_pratyantar: relativizeCurrentOrNull(dashas.current_pratyantar, now, dated),
+    maha_dasha_sequence: dashas.maha_dasha_sequence.map((p) => relativizeMahaPeriod(p, now, birthStart)),
+    current_maha: relativizeCurrentOrNull(dashas.current_maha, now, dated, birthStart),
+    current_antar: relativizeCurrentOrNull(dashas.current_antar, now, dated, birthStart),
+    current_pratyantar: relativizeCurrentOrNull(dashas.current_pratyantar, now, dated, birthStart),
     // The CURRENT antar's dated pratyantardashas, reduced to month precision.
     // Engine-null (no current antar) and absent (older bundle) both fold to an
     // absent key.
     ...(dashas.pratyantar_sequence
-      ? { pratyantar_sequence: dashas.pratyantar_sequence.map(toDatedPeriod) }
+      ? { pratyantar_sequence: dashas.pratyantar_sequence.map((row) => toDatedPeriod(row, birthStart)) }
       : {}),
     ...(dashas.convention ? { convention: dashas.convention } : {}),
   };
@@ -376,6 +425,17 @@ function sanitizeDashas(dashas: VimshottariDasha, now: Date): SanitizedDashas {
 /** Reduce an ISO-8601 date to month precision ("YYYY-MM"). */
 function monthOf(iso: string): string {
   return iso.slice(0, 7);
+}
+
+const BIRTH_BOUNDARY = "birth";
+
+/**
+ * A dasha boundary at month precision, or "birth" when it IS the birth
+ * instant (the first maha's start, which the engine also uses for that maha's
+ * first antar). The birth month must never cross, whatever the as-of.
+ */
+export function dashaBoundaryMonth(iso: string, birthStart: string | undefined): string {
+  return iso === birthStart ? BIRTH_BOUNDARY : monthOf(iso);
 }
 
 function monthOrNull(iso: string | null): string | null {
@@ -505,7 +565,7 @@ export function sanitizeChartForLlm(
   // is dropped by construction rather than by a fragile denylist.
   const predictive = sanitizePredictive(chart);
   const base: SanitizedChart = {
-    as_of: { date: localIsoDate(now), basis: asOf.basis },
+    as_of: sanitizedAsOf(asOf),
     ayanamsa_value: chart.ayanamsa_value,
     lagna: chart.lagna,
     planets: chart.planets,
