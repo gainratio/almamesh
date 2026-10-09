@@ -24,11 +24,12 @@ export async function startPinnedThread(profileId: string, chartId: string | nul
 
 export async function repinThread(threadId: string, asOf: ChatThreadAsOf): Promise<void> {
   const previous = useChatStore.getState().threads[threadId]?.as_of;
+  if (!previous) throw new Error('Only a time-travel thread can change its period.');
   useChatStore.getState().setThreadAsOf(threadId, asOf);
   try {
     await waitForStoreSaved('chat');
   } catch (error) {
-    if (previous) useChatStore.getState().setThreadAsOf(threadId, previous);
+    useChatStore.getState().setThreadAsOf(threadId, previous);
     throw error;
   }
 }

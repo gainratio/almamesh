@@ -123,12 +123,79 @@ describe('useChatThread in a pinned thread', () => {
   });
 });
 
+function threadId(): string {
+  return Object.keys(useChatStore.getState().threads)[0]!;
+}
+
 describe('a thread deleted mid-answer', () => {
-  it('does not throw and leaves nothing behind', async () => {
-    await askInPin(() => {
-      const id = Object.keys(useChatStore.getState().threads)[0]!;
-      useChatStore.getState().deleteThread(id);
+  it('does not throw, leaves nothing behind and logs no stream failure', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    await askInPin(() => useChatStore.getState().deleteThread(threadId()));
+    expect(useChatStore.getState().listThreads(PROFILE)).toEqual([]);
+    expect(spy.mock.calls.flat()).not.toContain('[almamesh:error:chat.stream_failed]');
+    spy.mockRestore();
+  });
+
+  it('a stream that rejects after the delete resolves and appends nothing', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const { result } = renderHook(() => useChatThread(PROFILE, CHART));
+    await act(() => result.current.pin(YEAR));
+    let fail!: () => void;
+    const gate = new Promise<void>((resolve) => (fail = resolve));
+    const stream = vi.fn(async (): Promise<string> => {
+      await gate;
+      throw new Error('boom');
+    });
+    let pending!: Promise<void>;
+    act(() => {
+      pending = result.current.submit('Q?', stream);
+    });
+    useChatStore.getState().deleteThread(threadId());
+    await act(async () => {
+      fail();
+      await expect(pending).resolves.toBeUndefined();
     });
     expect(useChatStore.getState().listThreads(PROFILE)).toEqual([]);
+    spy.mockRestore();
+  });
+});
+
+describe('Back to today mid-answer', () => {
+  it('lands the answer in the original pinned thread, not the new one', async () => {
+    const { result } = renderHook(() => useChatThread(PROFILE, CHART));
+    await act(() => result.current.pin(YEAR));
+    const pinnedId = result.current.threadId!;
+    const { stream, release } = deferredStream('Pinned answer.');
+    let pending!: Promise<void>;
+    act(() => {
+      pending = result.current.submit('Q?', stream);
+    });
+    await act(() => result.current.backToToday());
+    const todayId = result.current.threadId!;
+    expect(todayId).not.toBe(pinnedId);
+    await act(async () => {
+      release();
+      await pending;
+    });
+    const store = useChatStore.getState();
+    expect(store.getMessages(pinnedId).map((m) => m.content)).toContain('Pinned answer.');
+    expect(store.getMessages(todayId).filter((m) => m.role === 'assistant')).toEqual([]);
+  });
+});
+
+describe('Change on a normal thread', () => {
+  it('does nothing', async () => {
+    const { result } = renderHook(() => useChatThread(PROFILE, CHART));
+    const { stream, release } = deferredStream('Fine.');
+    let pending!: Promise<void>;
+    act(() => {
+      pending = result.current.submit('Q?', stream);
+    });
+    await act(async () => {
+      release();
+      await pending;
+    });
+    await act(() => result.current.repin(JUNE));
+    expect(useChatStore.getState().threads[result.current.threadId!]?.as_of).toBeUndefined();
   });
 });

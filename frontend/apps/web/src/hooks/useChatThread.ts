@@ -342,7 +342,7 @@ export function useChatThread(
 
       // The snapshot this question is about. An answer that arrives after the
       // chart changed describes a chart the user is no longer looking at.
-      const askedAsOf = store.threads[tid]?.as_of;
+      const askedAsOf = useChatStore.getState().threads[tid]?.as_of;
       const askedAbout = answerIdentity(chartId, askedAsOf);
       const userMessage = store.appendMessage(tid, 'user', q);
       void indexChatMessage({ id: userMessage.id, thread_id: tid, profile_id: profileId, content: q });
@@ -449,9 +449,9 @@ export function useChatThread(
   );
   const repin = useCallback(
     async (asOf: ChatThreadAsOf) => {
-      if (threadId) await repinThread(threadId, asOf);
+      if (threadId && activeThread?.as_of) await repinThread(threadId, asOf);
     },
-    [threadId],
+    [threadId, activeThread?.as_of],
   );
   const backToToday = useCallback(async () => {
     if (profileId) setSelectedThreadId(await todayThread(profileId, chartId));

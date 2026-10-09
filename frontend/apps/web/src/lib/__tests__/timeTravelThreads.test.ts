@@ -44,9 +44,17 @@ describe('pin changes reach disk before the UI moves on', () => {
     expect(useChatStore.getState().threads[id]?.as_of).toEqual(JUNE);
   });
 
+  it('Change refuses a normal thread before writing anything', async () => {
+    const id = useChatStore.getState().startThread('p1');
+    await expect(repinThread(id, JUNE)).rejects.toThrow('Only a time-travel thread');
+    expect(useChatStore.getState().threads[id]?.as_of).toBeUndefined();
+    expect(save.calls).toBe(0);
+  });
+
   it('Back to today opens the latest normal thread without writing anything', async () => {
-    const normal = useChatStore.getState().startThread('p1');
     useChatStore.getState().startThread('p1', undefined, YEAR);
+    const normal = useChatStore.getState().startThread('p1');
+    useChatStore.getState().startThread('p1', undefined, JUNE);
     expect(await todayThread('p1', null)).toBe(normal);
     expect(save.calls).toBe(0);
   });
