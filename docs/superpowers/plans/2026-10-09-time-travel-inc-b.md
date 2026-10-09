@@ -113,6 +113,13 @@ Run mutations from the worktree root with paths relative to it, for example:
 
 ---
 
+## Controller amendments (2026-10-09, approved by Harish; these override Rulings 1 and 6 and the "Spec gaps" / "Known gaps" lines where they conflict)
+
+- **A1 (overrides Ruling 1's Jupiter/Saturn clause and part of Ruling 6).** The timeline must never show two consecutive ingresses into the same sign for one planet. Jupiter and Saturn move from the sticking-ingress rule to the same every-crossing producer as Mars (`sign_change_events`, real `from_sign` → `to_sign`). One rule for every planet that ingresses; alternation holds by construction (each event's `from_sign` is the previous event's `to_sign`). `feeds_domain_windows` keeps accepting Jupiter/Saturn `sign_ingress` events in both directions, so if a golden fixture spans a Jupiter/Saturn retrograde cusp crossing the Life Atlas golden changes; the change is produced by regeneration only, diffed, and explained event by event in the PR. Implemented in **Task 4A** (after Task 4). Later tasks' copy that says "Jupiter/Saturn sticking ingresses" reads "every Jupiter, Saturn, Mars and Rahu/Ketu sign change".
+- **A2 (resolves the `build_timeline` ayanamsa/node gap).** No production caller passes non-default `ayanamsa_type`/`node_type` (only `calculate_transit_context` forwards its own defaults; `predictive.py` passes neither). The timeline producers are Lahiri + mean node by construction. Remove the two parameters from `build_timeline` and stop forwarding them from `calculate_transit_context`, with a test that pins the signature and a docstring line saying the timeline is Lahiri + mean node. Implemented in **Task 4A**.
+- **A3 (keeps Ruling 9).** The leap-year cutoff fix stays in Tasks 7 and 8, each with its red-first regression test run before the fix (`periodWindowMonths` 2028 case; `restrictTransitsToPeriod` 2028-12-31 06:00 UTC note).
+- **Branch/worktree.** Work in `/Users/harish/dev/oss/almamesh/.worktrees/time-travel-b-plan` on branch `claude/time-travel-b` (not `.worktrees/time-travel-inc-b`). Task 10 pushes `claude/time-travel-b`, opens ONE PR titled "feat(engine): time travel step B — stations, every sign change, two-year window", and does NOT merge.
+
 ### Task 1: Rahu/Ketu longitude fast path (same bytes, no nine-graha recompute)
 
 The sign-change scan (Task 3) samples Rahu's longitude every 5 days and bisects. Today `transit_longitude` serves the nodes through the full `get_planetary_positions` (14 apparent observations per call). This task gives the nodes the same arithmetic without the other planets.
@@ -933,6 +940,29 @@ Claude-Session: https://claude.ai/code/session_01QfxWgyzxj7Q4LtWoUmxvg7"
 ```
 
 ---
+
+### Task 4A: Jupiter and Saturn report every sign change; `build_timeline` drops the ignored ayanamsa/node arguments
+
+**Files:**
+- Modify: `backend/src/almamesh/transits/timeline.py`, `backend/src/almamesh/transits/__init__.py`
+- Modify: `backend/src/almamesh/transits/timeline_ingress.py` (delete `slow_graha_ingress_events` and `_STICK_DAYS` if nothing else uses them; keep `graha_lon_fn`/`cusp_gap` used by Task 3)
+- Modify: `backend/tests/test_transit_timeline.py` (and any test that asserted sticking-only behaviour: invert, never delete)
+- Modify (regenerated only): `backend/tests/fixtures/transit_golden_de421.json`, `backend/tests/fixtures/predictive_golden_de421.json`, and `backend/tests/fixtures/domains_golden_de421.json` only if regeneration changes it
+
+**Interfaces:**
+- Consumes: `sign_change_events(astro, graha, start, end)` from Task 3.
+- Produces: `build_timeline(astro, natal, birth_dt, start, window_months=12)` (no ayanamsa/node parameters); timeline `sign_ingress` events for Jupiter, Saturn, Mars, Rahu, Ketu are all every-crossing.
+
+- [ ] **Step 1: Failing tests (red first)**
+  1. Alternation: over the two-year window from Task 4 (`_TWO_YEAR_START`, 24 months) AND over a window chosen to contain a real Jupiter or Saturn retrograde cusp crossing (find one with a scan, e.g. Jupiter around its Gemini/Cancer or Cancer/Leo cusp in 2025–2027; Saturn Pisces/Aries 2025–2026), for each graha in {jupiter, saturn, mars, rahu, ketu}: consecutive `sign_ingress` events satisfy `next.from_sign == prev.to_sign` and `next.to_sign != prev.to_sign`. Under the old sticking rule this test must FAIL on the retrograde-crossing window (show the red output: two consecutive "enters X").
+  2. The retrograde window yields a backward event (`to_sign` is the sign before `from_sign`) for that planet.
+  3. Signature: `inspect.signature(build_timeline).parameters` has no `ayanamsa_type`/`node_type`; red before the change.
+- [ ] **Step 2:** Run, watch them fail for the stated reason.
+- [ ] **Step 3: Implement.** In `_collect`, replace the sticking loop with `for graha in (JUPITER, SATURN, MARS): events += sign_change_events(...)`. Remove the two parameters from `build_timeline` and from the `build_timeline(...)` call in `calculate_transit_context` (gochara and fusion still get them). Update the docstring. Remove dead code in `timeline_ingress.py`.
+- [ ] **Step 4: Regenerate goldens** with the commands in Global Constraints (never hand-edit). Then `git diff --stat` the three fixtures. For the transit/predictive goldens, list the Jupiter/Saturn events that changed. If `domains_golden_de421.json` changed, write one line per changed window saying which Jupiter/Saturn crossing caused it, into the task report under "Life Atlas golden diff" (the PR body copies it). If it did not change, say so with the `git diff --exit-code` exit.
+- [ ] **Step 5:** Run `tests/test_transit_timeline.py tests/test_timeline_sign_changes.py tests/test_transit_golden.py tests/test_predictive_golden.py tests/test_domains_golden.py tests/test_domain_windows_scope.py` plus every frontend test that reads these goldens (`grep -rl "transit_golden_de421\|predictive_golden_de421\|domains_golden_de421" frontend --include='*.ts'`). PASS.
+- [ ] **Step 6: Mutation red runs** (KILLED lines into the report): (i) put Jupiter back on the sticking producer → the alternation test fails; (ii) re-add a non-default-honouring check is not applicable, so instead mutate the signature test target by re-adding `ayanamsa_type` param → signature test fails. Confirm `git status` clean after each.
+- [ ] **Step 7:** `python-quality` on the touched Python; `cd backend && uv run poe gate` exit 0. Commit (named files, trailer).
 
 ### Task 5: `window_months` on the predictive entry, the worker glue, and a two-year golden
 
