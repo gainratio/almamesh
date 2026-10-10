@@ -9,8 +9,9 @@
 # Builds the hooked preview once (VITE_EXIT_GATE_HOOKS=1, as the Dagger browser
 # shards do), serves it, and runs the journeys on desktop Safari and an iPhone
 # profile:
-#   - e2e/time-travel.spec.ts (webkit: the six full-tier journeys; iphone-webkit:
-#     the iPhone journey, minimal tier)
+#   - e2e/time-travel.spec.ts (webkit: the full-tier and Dashboard journeys; iphone-webkit:
+#     the iPhone journey, minimal tier; iphone-15-webkit: the @iphone15 Dashboard
+#     time-travel journey, minimal tier)
 #   - e2e/portable-invariants.spec.ts (export/import, incl. the Day-pin round trip)
 #   - e2e/boot-retry.spec.ts (webkit: one automatic engine boot retry, bare and
 #     Pyodide-wrapped wasm traps; needs this hooks build)
@@ -80,7 +81,7 @@ curl -fsS -o /dev/null "${BASE_URL}/"
 # writes to its own output directory, so a later run does not wipe an earlier
 # one's evidence.
 status=0
-TIME_TRAVEL_E2E_BASE_URL="${BASE_URL}" bun run test:e2e:time-travel --project=webkit --project=iphone-webkit --retries=0 --output="${ARTIFACTS}/time-travel" || status=1
+TIME_TRAVEL_E2E_BASE_URL="${BASE_URL}" bun run test:e2e:time-travel --project=webkit --project=iphone-webkit --project=iphone-15-webkit --retries=0 --output="${ARTIFACTS}/time-travel" || status=1
 PORTABLE_INVARIANTS_E2E_BASE_URL="${BASE_URL}" bun run test:e2e:portable-invariants --project=webkit --project=iphone-webkit --retries=0 --output="${ARTIFACTS}/portable-invariants" || status=1
 BOOT_RETRY_E2E_BASE_URL="${BASE_URL}" bun run test:e2e:boot-retry --project=webkit --retries=0 --output="${ARTIFACTS}/boot-retry" || status=1
 collect_crash_evidence

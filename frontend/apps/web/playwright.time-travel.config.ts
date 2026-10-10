@@ -37,8 +37,9 @@ export default defineConfig({
   },
   projects: [
     // The full-tier journeys pin the tier. @iphone runs only on the iPhone
-    // project (iOS is always minimal), @safari only on desktop WebKit (its own
-    // lite tier), and @sw (service worker on, nothing stubbed) everywhere.
+    // project (iOS is always minimal), @iphone15 only on the iPhone 15 project,
+    // @safari only on desktop WebKit (its own lite tier), and @sw (service
+    // worker on, nothing stubbed) everywhere but the iPhone 15.
     { name: "chromium", use: { ...devices["Desktop Chrome"] }, grepInvert: /@iphone|@safari/ },
     // WebKit runs need an on-disk profile (e2e/webkitProfile.ts: an ephemeral
     // WebKit context refuses OPFS) and macOS (Linux Playwright WebKit cannot
@@ -50,7 +51,9 @@ export default defineConfig({
     // uploads them with each test's WebKit log and RSS samples
     // (e2e/webkitDiagnostics.ts), so a lost page can be diagnosed.
     { name: "webkit", use: { ...devices["Desktop Safari"], serviceWorkers: "block", ...WEBKIT_EVIDENCE }, grepInvert: /@iphone/ },
-    { name: "iphone-webkit", use: { ...devices["iPhone 13"], serviceWorkers: "block", ...WEBKIT_EVIDENCE }, grep: /@iphone|@sw/ },
+    { name: "iphone-webkit", use: { ...devices["iPhone 13"], serviceWorkers: "block", ...WEBKIT_EVIDENCE }, grep: /@iphone|@sw/, grepInvert: /@iphone15/ },
+    // The iPhone 15 (spec 2026-10-10, Per-PR proof): added beside the iPhone 13, not instead of it.
+    { name: "iphone-15-webkit", use: { ...devices["iPhone 15"], serviceWorkers: "block", ...WEBKIT_EVIDENCE }, grep: /@iphone15/ },
   ],
   // Build with the exit-gate hooks ON (bootEngine/seedChart need
   // window.__almameshGenerate), as CI's hookedBuild() does, then serve it.
