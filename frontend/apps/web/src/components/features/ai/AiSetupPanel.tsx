@@ -53,6 +53,12 @@ import {
   slowModelSwitch,
 } from '../../../lib/modelSuggestion';
 import { resolveInterpretationConfig } from '../../../hooks/useStreamingInterpretation';
+import {
+  beginSettingsWrite,
+  markRestoreTarget,
+  ownsSettingsMemory,
+  restoreTargetSettings,
+} from './aiSettingsDurability';
 
 const OPENROUTER_KEYS_URL = 'https://openrouter.ai/keys';
 const PLACEHOLDER_BASE = 'http://localhost:11434/v1';
@@ -143,21 +149,8 @@ export function AiSetupPanel({
   // fetch, so a stale verdict from a superseded config can never land on screen.
   const probeGen = useRef(0);
   const probeAbort = useRef<AbortController | null>(null);
-  // Memory-ownership guard, separate from probeGen: only a WRITE to the in-memory
-  // settings (a save, a turn-off, a remote Replace) bumps it. Edits and unmount
-  // supersede a verdict but never write memory, so they must not stop a failed
-  // save from putting memory back.
-  const writeGen = useRef(0);
-  // The restore target for a failed save: the newest write known to be durable
-  // (boot hydrate, a flushed save or turn-off, a Replace), or the off snapshot
-  // after a failed turn-off (fail closed). Never memory as it stands.
-  const durable = useRef<LlmSettings>(readLlmSettings());
-  const durableGen = useRef(0);
-  const markRestoreTarget = (writeId: number, snapshot: LlmSettings) => {
-    if (writeId < durableGen.current) return; // an older write never replaces a newer target
-    durableGen.current = writeId;
-    durable.current = snapshot;
-  };
+  // Which memory a failed save may restore is tracked in ./aiSettingsDurability,
+  // shared by every panel instance because the settings snapshot is module-global.
 
   // A remote Replace reconstructs the synchronous memory snapshot, then emits the same
   // settings signal used by local saves. Re-read the whole form so a tab left
@@ -168,10 +161,6 @@ export function AiSetupPanel({
       probeGen.current += 1;
       probeAbort.current?.abort();
       const restored = readLlmSettings();
-      // The Replace snapshot came from the canonical row: it owns memory now and is
-      // the restore target.
-      durableGen.current = writeGen.current += 1;
-      durable.current = restored;
       setSettings(restored);
       setStatus(describeLlmStatus(restored));
       setConn({ phase: 'idle' });
@@ -295,7 +284,7 @@ export function AiSetupPanel({
   const turnAiOff = async () => {
     const offGen = (probeGen.current += 1);
     probeAbort.current?.abort();
-    const offWrite = (writeGen.current += 1);
+    const offWrite = beginSettingsWrite();
     try {
       writeLlmSettings({
         engine: '',
@@ -306,8 +295,10 @@ export function AiSetupPanel({
         chatModel: '',
         privacyMode: 'local_only',
       });
+      // Off is the restore target whether its flush succeeds or fails (fail closed),
+      // and it is THIS write's own snapshot, taken before any newer write can land.
+      markRestoreTarget(offWrite, readLlmSettings()); // off is the restore target
       await flushSettings();
-      markRestoreTarget(offWrite, readLlmSettings());
     } catch (err) {
       // Canonical SQLite can reject. Fail CLOSED: writeLlmSettings already set the
       // in-memory snapshot to off, and it stays off. The flush can reject because
@@ -315,8 +306,6 @@ export function AiSetupPanel({
       // would keep cloud calls going. The badge and the header follow memory, even
       // when superseded (a newer save's snapshot is simply what memory now holds).
       safeError('provider.disable_failed', err);
-      // Fail closed for later failed saves too: their restore target becomes off.
-      markRestoreTarget(offWrite, readLlmSettings()); // fail-closed restore target
       setStatus(describeLlmStatus()); // fail-closed badge after a failed turn-off
       notifyLlmSettingsChanged(); // fail-closed header after a failed turn-off
       // A newer save or edit owns the verdict now; a late off-failure must not paint over it.
@@ -351,7 +340,7 @@ export function AiSetupPanel({
     probeAbort.current?.abort();
     const controller = new AbortController();
     probeAbort.current = controller;
-    const saveWrite = (writeGen.current += 1);
+    const saveWrite = beginSettingsWrite();
 
     try {
       writeLlmSettings({ ...next, engine: '' });
@@ -365,8 +354,8 @@ export function AiSetupPanel({
       // Never leave an unsaved config live in memory until the next reload — even
       // when an edit or unmount superseded this save's verdict. Only a newer WRITE
       // owns memory; then it is that write's job to restore or keep it.
-      if (saveWrite === writeGen.current) {
-        hydrateLlmSettings(JSON.stringify(durable.current)); // restore the last durable config
+      if (ownsSettingsMemory(saveWrite)) {
+        hydrateLlmSettings(JSON.stringify(restoreTargetSettings())); // restore the last durable config
         setStatus(describeLlmStatus());
         notifyLlmSettingsChanged();
       }

@@ -12,6 +12,7 @@ import {
   type ProviderConfig,
 } from '@almamesh/llm';
 import { AiSetupPanel, type AiSetupPanelProps } from './AiSetupPanel';
+import { resetSettingsDurabilityForTests } from './aiSettingsDurability';
 import { LLM_SETTINGS_CHANGED_EVENT, notifyLlmSettingsChanged } from '../../../lib/llmSettingsEvents';
 import { hydrateSlowModelSuggestion } from '../../../lib/modelSuggestion';
 
@@ -55,6 +56,7 @@ const settle = () => new Promise((r) => setTimeout(r, 0));
 describe('AiSetupPanel — OpenRouter-first, test-on-save', () => {
   beforeEach(() => {
     hydrateLlmSettings(null);
+    resetSettingsDurabilityForTests();
     hydrateSlowModelSuggestion(null);
     configureLlmSettingsPersistence(undefined);
     fetchCredits.mockClear();
@@ -62,6 +64,7 @@ describe('AiSetupPanel — OpenRouter-first, test-on-save', () => {
   });
   afterEach(() => {
     hydrateLlmSettings(null);
+    resetSettingsDurabilityForTests();
     hydrateSlowModelSuggestion(null);
     configureLlmSettingsPersistence(undefined);
   });
@@ -279,6 +282,7 @@ describe('AiSetupPanel — OpenRouter-first, test-on-save', () => {
 describe('AiSetupPanel — OpenRouter credits balance', () => {
   beforeEach(() => {
     hydrateLlmSettings(null);
+    resetSettingsDurabilityForTests();
     hydrateSlowModelSuggestion(null);
     fetchCredits.mockClear();
     fetchModels.mockClear();
@@ -372,6 +376,7 @@ describe('AiSetupPanel — OpenRouter credits balance', () => {
 describe('AiSetupPanel — live OpenRouter model picker', () => {
   beforeEach(() => {
     hydrateLlmSettings(null);
+    resetSettingsDurabilityForTests();
     hydrateSlowModelSuggestion(null);
     fetchCredits.mockClear();
     fetchModels.mockClear();
@@ -455,10 +460,12 @@ describe('AiSetupPanel — one-time switch suggestion for glm-5.3-flash users', 
 
   beforeEach(() => {
     hydrateLlmSettings(null);
+    resetSettingsDurabilityForTests();
     hydrateSlowModelSuggestion(null);
   });
   afterEach(() => {
     hydrateLlmSettings(null);
+    resetSettingsDurabilityForTests();
     hydrateSlowModelSuggestion(null);
   });
 
@@ -525,11 +532,13 @@ describe('AiSetupPanel — one-time switch suggestion for glm-5.3-flash users', 
 describe('AiSetupPanel — surface props (showOffChoice, intro)', () => {
   beforeEach(() => {
     hydrateLlmSettings(null);
+    resetSettingsDurabilityForTests();
     hydrateSlowModelSuggestion(null);
     configureLlmSettingsPersistence(undefined);
   });
   afterEach(() => {
     hydrateLlmSettings(null);
+    resetSettingsDurabilityForTests();
     hydrateSlowModelSuggestion(null);
     configureLlmSettingsPersistence(undefined);
   });
@@ -587,11 +596,13 @@ describe('AiSetupPanel — surface props (showOffChoice, intro)', () => {
 describe('AiSetupPanel — onConnected', () => {
   beforeEach(() => {
     hydrateLlmSettings(null);
+    resetSettingsDurabilityForTests();
     hydrateSlowModelSuggestion(null);
     configureLlmSettingsPersistence(undefined);
   });
   afterEach(() => {
     hydrateLlmSettings(null);
+    resetSettingsDurabilityForTests();
     hydrateSlowModelSuggestion(null);
     configureLlmSettingsPersistence(undefined);
   });
@@ -1042,6 +1053,105 @@ describe('AiSetupPanel — onConnected', () => {
       await settle();
     });
     expect(readLlmSettings().apiKey).toBe('sk-or-B');
+  });
+
+  // ── Regrade C: the turn-off's restore target is set synchronously from its own
+  // off snapshot, and the durability state is shared by every panel instance.
+  const EMPTY = JSON.stringify({ apiKey: '', apiBase: '', privacyMode: 'local_only' });
+  const offThenSave = async () => {
+    const offFlush = deferred();
+    const saveFlush = deferred();
+    const flushSettings = vi.fn().mockResolvedValue(undefined);
+    renderPanel({ flushSettings, testConnection: vi.fn().mockResolvedValue(undefined) });
+    saveKey('sk-or-old');
+    await waitFor(() => expect(verdict()).toContain('Connected'));
+    flushSettings.mockImplementationOnce(() => offFlush.promise).mockImplementationOnce(() => saveFlush.promise);
+    fireEvent.click(screen.getByTestId('tier-none-select'));
+    await settle();
+    saveKey('sk-or-K');
+    await settle();
+    expect(readSaved().apiKey).toBe('sk-or-K');
+    return { offFlush, saveFlush };
+  };
+  const settleIn = async (fn: () => void) => {
+    await act(async () => {
+      fn();
+      await settle();
+    });
+  };
+
+  it('off rejects, then a newer save rejects: memory is off, not the unsaved key', async () => {
+    const { offFlush, saveFlush } = await offThenSave();
+    await settleIn(() => offFlush.reject(new Error('down')));
+    await settleIn(() => saveFlush.reject(new Error('down')));
+    expect(readSaved().apiKey).toBe('');
+    expect(readSaved().privacyMode).toBe('local_only');
+  });
+
+  it('off resolves, then a newer save rejects: memory is off, not the unsaved key', async () => {
+    const { offFlush, saveFlush } = await offThenSave();
+    await settleIn(() => offFlush.resolve());
+    await settleIn(() => saveFlush.reject(new Error('down')));
+    expect(readSaved().apiKey).toBe('');
+    expect(readSaved().privacyMode).toBe('local_only');
+  });
+
+  it('a newer save rejects first, then the off flush settles: memory is off', async () => {
+    const { offFlush, saveFlush } = await offThenSave();
+    await settleIn(() => saveFlush.reject(new Error('down')));
+    expect(readSaved().apiKey).toBe('');
+    await settleIn(() => offFlush.reject(new Error('down')));
+    expect(readSaved().apiKey).toBe('');
+    expect(readSaved().privacyMode).toBe('local_only');
+  });
+
+  it('after a successful turn-off, a failed save restores off, not the old key', async () => {
+    const flushSettings = vi.fn().mockResolvedValue(undefined);
+    renderPanel({ flushSettings, testConnection: vi.fn().mockResolvedValue(undefined) });
+    saveKey('sk-or-old');
+    await waitFor(() => expect(verdict()).toContain('Connected'));
+    fireEvent.click(screen.getByTestId('tier-none-select'));
+    await waitFor(() => expect(screen.getByTestId('tier-none-active')).toBeTruthy());
+    flushSettings.mockRejectedValueOnce(new Error('down'));
+    saveKey('sk-or-new');
+    await waitFor(() => expect(verdict()).toContain("Couldn't save"));
+    expect(readSaved().apiKey).toBe('');
+  });
+
+  it('after a remote Replace, a failed save restores the replaced config, not the pre-Replace one', async () => {
+    const flushSettings = vi.fn().mockResolvedValue(undefined);
+    renderPanel({ flushSettings, testConnection: vi.fn().mockResolvedValue(undefined) });
+    saveKey('sk-or-before');
+    await waitFor(() => expect(verdict()).toContain('Connected'));
+    act(() => {
+      hydrateLlmSettings(
+        JSON.stringify({ apiKey: 'sk-or-imported', apiBase: 'https://openrouter.ai/api/v1', privacyMode: 'cloud_premium' }),
+      );
+      notifyLlmSettingsChanged({ replace: true });
+    });
+    flushSettings.mockRejectedValueOnce(new Error('down'));
+    saveKey('sk-or-new');
+    await waitFor(() => expect(verdict()).toContain("Couldn't save"));
+    expect(readSaved().apiKey).toBe('sk-or-imported');
+  });
+
+  it('two panel instances share one durability record (no unsaved key survives)', async () => {
+    hydrateLlmSettings(EMPTY);
+    const fA = deferred();
+    const fB = deferred();
+    const a = renderPanel({ flushSettings: vi.fn(() => fA.promise), testConnection: vi.fn().mockResolvedValue(undefined) });
+    saveKey('sk-or-K');
+    await settle();
+    a.unmount();
+    renderPanel({ flushSettings: vi.fn(() => fB.promise), testConnection: vi.fn().mockResolvedValue(undefined) });
+    saveKey('sk-or-L');
+    await settle();
+    await settleIn(() => fA.reject(new Error('down')));
+    // A's write is older than B's: it must not restore over B's memory.
+    expect(readSaved().apiKey).toBe('sk-or-L');
+    await settleIn(() => fB.reject(new Error('down')));
+    // B restores the last DURABLE config (empty), not A's unsaved K.
+    expect(readSaved().apiKey).toBe('');
   });
 
   it('P4b-edit: a failed save superseded by a field EDIT does not leave the unsaved key live in memory', async () => {

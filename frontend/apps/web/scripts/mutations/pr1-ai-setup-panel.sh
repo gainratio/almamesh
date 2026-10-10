@@ -16,6 +16,7 @@ WEB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$WEB_DIR"
 
 PANEL=src/components/features/ai/AiSetupPanel.tsx
+DURABILITY=src/components/features/ai/aiSettingsDurability.ts
 TEST=src/components/features/ai/AiSetupPanel.test.tsx
 MARKERS=(
   MUTATION_EARLY_CONNECTED MUTATION_NO_FLUSH_AWAIT MUTATION_SKIP_FLUSH
@@ -28,16 +29,18 @@ MARKERS=(
   MUTATION_OFF_NO_FLUSH_AWAIT MUTATION_OFF_FAILED_HEADER MUTATION_OFF_LATE_FAIL_NO_REFRESH
   MUTATION_RESTORE_AFTER_SUPERSEDE MUTATION_RESTORE_FROM_MEMORY MUTATION_RESTORE_IGNORES_NEWER_WRITE
   MUTATION_OFF_GENERIC_COPY MUTATION_OFF_KEEPS_FORM MUTATION_OFF_NO_RESTORE_TARGET
+  MUTATION_OFF_TARGET_AFTER_AWAIT MUTATION_OFF_TARGET_IN_CATCH MUTATION_PER_INSTANCE
+  MUTATION_REPLACE_NO_TARGET
 )
 REPORTS="$(mktemp -d)"
 
-if ! git diff --quiet -- "$PANEL" "$TEST"; then
-  echo "refusing: $PANEL or $TEST has uncommitted changes" >&2
+if ! git diff --quiet -- "$PANEL" "$DURABILITY" "$TEST"; then
+  echo "refusing: $PANEL, $DURABILITY or $TEST has uncommitted changes" >&2
   exit 1
 fi
 
 # Installed only after the dirty check, so a refusal never wipes the caller's edits.
-trap 'git checkout -- "$PANEL"; rm -rf "$REPORTS"' EXIT
+trap 'git checkout -- "$PANEL" "$DURABILITY"; rm -rf "$REPORTS"' EXIT
 trap 'exit 130' INT TERM
 ROW=0
 
@@ -58,14 +61,14 @@ count() {
 }
 
 restore_and_fail() {
-  git checkout -- "$PANEL"
+  git checkout -- "$PANEL" "$DURABILITY"
   echo "FAIL $1" >&2
   exit 1
 }
 
-# expect_red LABEL MARKER PERL_EXPR TEST_NAME
+# expect_red LABEL MARKER PERL_EXPR TEST_NAME [FILE]   (FILE defaults to the panel)
 expect_red() {
-  local label="$1" marker="$2" expr="$3" name="$4"
+  local label="$1" marker="$2" expr="$3" name="$4" file="${5:-$PANEL}"
   ROW=$((ROW + 1))
   local base="$REPORTS/row$ROW.base.json" mut="$REPORTS/row$ROW.mut.json"
   local before_hash after_hash
@@ -74,11 +77,11 @@ expect_red() {
   [ -f "$base" ] || restore_and_fail "$label: no report written for the baseline run"
   [ "$(count "$base" numPassedTests)" -ge 1 ] || restore_and_fail "$label: '$name' matched no test"
 
-  before_hash="$(git hash-object "$PANEL")"
-  perl -0pi -e "$expr" "$PANEL"
-  after_hash="$(git hash-object "$PANEL")"
+  before_hash="$(git hash-object "$file")"
+  perl -0pi -e "$expr" "$file"
+  after_hash="$(git hash-object "$file")"
   [ "$before_hash" != "$after_hash" ] || restore_and_fail "$label: the mutation did not apply (file unchanged)"
-  [ "$(grep -c "$marker" "$PANEL")" -eq 1 ] || restore_and_fail "$label: the mutation did not apply exactly once"
+  [ "$(grep -c "$marker" "$file")" -eq 1 ] || restore_and_fail "$label: the mutation did not apply exactly once"
 
   local code=0
   run_named "$name" "$mut" || code=$?
@@ -88,7 +91,7 @@ expect_red() {
   failed="$(count "$mut" numFailedTests)"
   [ "$failed" -ge 1 ] || restore_and_fail "$label: the run errored (exit $code) without a failing test"
 
-  git checkout -- "$PANEL"
+  git checkout -- "$file"
   printf '| %s | %s | %s | %s | %s |\n' "$label" "$marker" "$name" "$code" "$failed"
 }
 
@@ -196,7 +199,7 @@ expect_red "a failed save leaves the unsaved config live in memory" MUTATION_SAV
   "restores the previous in-memory settings when a save cannot be made durable"
 
 expect_red "turnAiOff does not await its flush" MUTATION_OFF_NO_FLUSH_AWAIT \
-  's{(privacyMode: \x27local_only\x27,\n\s*\}\);\n\s*)await flushSettings\(\);}{${1}void flushSettings(); /* MUTATION_OFF_NO_FLUSH_AWAIT */}' \
+  's{(// off is the restore target\n\s*)await flushSettings\(\);}{${1}void flushSettings(); /* MUTATION_OFF_NO_FLUSH_AWAIT */}' \
   "turns AI off only after the off write is durable"
 
 expect_red "N5: restore only when the save still owns the verdict (edit)" MUTATION_RESTORE_AFTER_SUPERSEDE \
@@ -224,15 +227,39 @@ expect_red "a failed turn-off leaves the key in the form" MUTATION_OFF_KEEPS_FOR
   "says AI is off for now, and clears the key field, when turning AI off cannot be saved"
 
 expect_red "a failed turn-off keeps the old key as the restore target" MUTATION_OFF_NO_RESTORE_TARGET \
-  's{markRestoreTarget\(offWrite, readLlmSettings\(\)\); // fail-closed restore target}{/* MUTATION_OFF_NO_RESTORE_TARGET */}' \
+  's{markRestoreTarget\(offWrite, readLlmSettings\(\)\); // off is the restore target}{/* MUTATION_OFF_NO_RESTORE_TARGET */}' \
   "a failed save after a failed turn-off restores memory to off, not the old key"
 
+expect_red "a successful turn-off keeps the old key as the restore target" MUTATION_OFF_NO_RESTORE_TARGET \
+  's{markRestoreTarget\(offWrite, readLlmSettings\(\)\); // off is the restore target}{/* MUTATION_OFF_NO_RESTORE_TARGET */}' \
+  "after a successful turn-off, a failed save restores off, not the old key"
+
+expect_red "I1: the off target is read from memory AFTER the flush" MUTATION_OFF_TARGET_AFTER_AWAIT \
+  's{markRestoreTarget\(offWrite, readLlmSettings\(\)\); // off is the restore target\n(\s*)await flushSettings\(\);}{await flushSettings();\n${1}markRestoreTarget(offWrite, readLlmSettings()); /* MUTATION_OFF_TARGET_AFTER_AWAIT */}' \
+  "off resolves, then a newer save rejects"
+
+expect_red "I1: the off target is read from memory after a failed flush" MUTATION_OFF_TARGET_IN_CATCH \
+  's{markRestoreTarget\(offWrite, readLlmSettings\(\)\); // off is the restore target\n}{}; s{(safeError\(\x27provider\.disable_failed\x27, err\);)}{$1 markRestoreTarget(offWrite, readLlmSettings()); /* MUTATION_OFF_TARGET_IN_CATCH */}' \
+  "off rejects, then a newer save rejects"
+
+expect_red "I1: off target missing when the save fails first" MUTATION_OFF_NO_RESTORE_TARGET \
+  's{markRestoreTarget\(offWrite, readLlmSettings\(\)\); // off is the restore target}{/* MUTATION_OFF_NO_RESTORE_TARGET */}' \
+  "a newer save rejects first, then the off flush settles"
+
+expect_red "I2: durability is per panel instance again (reset on mount)" MUTATION_PER_INSTANCE \
+  's{(import \{\n  beginSettingsWrite,)}{import { resetSettingsDurabilityForTests as perInstanceReset } from \x27./aiSettingsDurability\x27;\n$1}; s{(  const probeAbort = useRef<AbortController \| null>\(null\);\n)}{$1  useState(() => perInstanceReset()); /* MUTATION_PER_INSTANCE */\n}' \
+  "two panel instances share one durability record"
+
+expect_red "I3: a Replace is not the restore target" MUTATION_REPLACE_NO_TARGET \
+  's{target = \{ writeId: writeCounter, settings: readLlmSettings\(\) \}; // Replace is the restore target}{/* MUTATION_REPLACE_NO_TARGET */}' \
+  "after a remote Replace, a failed save restores the replaced config" "$DURABILITY"
+
 # Restored: the source is clean and no marker survives anywhere in src.
-git diff --quiet -- "$PANEL" || { echo "FAIL: $PANEL is not clean after restore" >&2; exit 1; }
+git diff --quiet -- "$PANEL" "$DURABILITY" || { echo "FAIL: $PANEL or $DURABILITY is not clean after restore" >&2; exit 1; }
 for marker in "${MARKERS[@]}"; do
   if grep -rq "$marker" src; then
     echo "FAIL: $marker left in src" >&2
     exit 1
   fi
 done
-echo "all 33 mutations went RED; source restored and clean"
+echo "all 39 mutations went RED; source restored and clean"
