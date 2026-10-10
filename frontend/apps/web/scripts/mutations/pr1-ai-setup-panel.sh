@@ -20,7 +20,9 @@ TEST=src/components/features/ai/AiSetupPanel.test.tsx
 MARKERS=(
   MUTATION_EARLY_CONNECTED MUTATION_NO_FLUSH_AWAIT MUTATION_SKIP_FLUSH
   MUTATION_PROBEGEN MUTATION_POSTFLUSH_GUARD MUTATION_HIDE_DISCLOSURE
-  MUTATION_HIDE_WARNING MUTATION_POSTFLUSH_CATCH
+  MUTATION_HIDE_WARNING MUTATION_POSTFLUSH_CATCH MUTATION_NO_UNMOUNT_CLEANUP
+  MUTATION_OFF_RESOLVE_GUARD MUTATION_OFF_REJECT_GUARD MUTATION_REPLACE_NO_BUMP
+  MUTATION_OFF_NO_BUMP MUTATION_OFF_STORAGE_CATCH MUTATION_FAILED_PROBE_GUARD
 )
 REPORTS="$(mktemp -d)"
 
@@ -124,6 +126,34 @@ expect_red "hide the refusal warning when showOffChoice is false" MUTATION_HIDE_
   's{\{willRefuse && \(}{\{willRefuse \&\& showOffChoice /* MUTATION_HIDE_WARNING */ \&\& \(}' \
   "keeps the local-only refusal warning in the onboarding variant"
 
+expect_red "no unmount cleanup (probe outlives the screen)" MUTATION_NO_UNMOUNT_CLEANUP \
+  's{gens\.current \+= 1; // unmount supersedes the probe\n\s*aborts\.current\?\.abort\(\);}{/* MUTATION_NO_UNMOUNT_CLEANUP */}' \
+  "does not report connected after unmount, and aborts the in-flight probe"
+
+expect_red "turnAiOff ignores its own gen on a late flush resolve" MUTATION_OFF_RESOLVE_GUARD \
+  's{(the verdict to whoever superseded this turn-off\.\n\s*)if \(offGen !== probeGen\.current\) \{}{${1}if (false /* MUTATION_OFF_RESOLVE_GUARD */) \{}' \
+  "keeps the newer Connected verdict when a superseded Turn-AI-off flushes late"
+
+expect_red "turnAiOff ignores its own gen on a late flush reject" MUTATION_OFF_REJECT_GUARD \
+  's{(a late off-failure must not paint over it\.\n\s*)if \(offGen !== probeGen\.current\) \{}{${1}if (false /* MUTATION_OFF_REJECT_GUARD */) \{}' \
+  "keeps the newer Connected verdict when a superseded Turn-AI-off rejects late"
+
+expect_red "remote Replace no longer bumps probeGen (M6)" MUTATION_REPLACE_NO_BUMP \
+  's{(event\.detail\?\.replace !== true\) return;\n\s*)probeGen\.current \+= 1;}{${1}/* MUTATION_REPLACE_NO_BUMP */}' \
+  "does not report connected when a remote Replace lands mid-probe"
+
+expect_red "turnAiOff no longer bumps probeGen (M9)" MUTATION_OFF_NO_BUMP \
+  's{const offGen = \(probeGen\.current \+= 1\);}{const offGen = probeGen.current; /* MUTATION_OFF_NO_BUMP */}' \
+  "does not report connected when AI is turned off mid-probe"
+
+expect_red "turnAiOff storage catch swallows the failure" MUTATION_OFF_STORAGE_CATCH \
+  's{setConn\(\{ phase: \x27error\x27, source: \x27guided\x27, kind: \x27storage\x27 \}\);}{/* MUTATION_OFF_STORAGE_CATCH */}' \
+  "shows a storage error, and keeps AI on, when turning AI off cannot be saved"
+
+expect_red "drop the supersede guard on a FAILED probe" MUTATION_FAILED_PROBE_GUARD \
+  's{(current verdict; ignore its result\.\n\s*)if \(gen !== probeGen\.current\) \{}{${1}if (false /* MUTATION_FAILED_PROBE_GUARD */) \{}' \
+  "ignores a superseded probe that FAILS late"
+
 # Restored: the source is clean and no marker survives anywhere in src.
 git diff --quiet -- "$PANEL" || { echo "FAIL: $PANEL is not clean after restore" >&2; exit 1; }
 for marker in "${MARKERS[@]}"; do
@@ -132,4 +162,4 @@ for marker in "${MARKERS[@]}"; do
     exit 1
   fi
 done
-echo "all 9 mutations went RED; source restored and clean"
+echo "all 16 mutations went RED; source restored and clean"
