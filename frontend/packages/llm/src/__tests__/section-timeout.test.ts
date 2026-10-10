@@ -347,6 +347,35 @@ describe("report section time caps", () => {
     expect(completed(events)).toContain("current_period");
   });
 
+  it("local: a retry after a mid-stream provider failure re-enters the first-token phase", async () => {
+    const encoder = new TextEncoder();
+    let calls = 0;
+    const failsMidStream = (): Response =>
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(encoder.encode(delta("{")));
+            controller.enqueue(encoder.encode(sse({ error: { message: "upstream dropped", code: 502 } })));
+            controller.close();
+          },
+        }),
+        { headers: SSE_HEADERS },
+      );
+    const { fetchImpl } = fetchWith({
+      current_period: () => {
+        calls += 1;
+        // The retry re-prefills: its first token comes after 100 ms, past the 40 ms idle cap.
+        return calls === 1 ? failsMidStream() : slowStream("current_period", 4, 15, 100);
+      },
+    });
+    const events = await collect(streamReportTimeline({
+      chart: REPORT_RAW_CHART, asOf: REPORT_AS_OF, config: LOCAL, fetchImpl, sectionIdleTimeoutMs: 40,
+    }));
+    expect(calls).toBe(2);
+    expect(errorsOf(events)).toEqual([]);
+    expect(completed(events)).toContain("current_period");
+  });
+
   it("local: no byte ever fails with a first_token timeout at the first-token cap", async () => {
     const { fetchImpl } = fetchWith({ current_period: abortableNever });
     const events = await collect(streamReportTimeline({

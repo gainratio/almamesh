@@ -164,6 +164,7 @@ async function runOnce(chart: SiderealChart, config: ProviderConfig, pricing: Mo
   const bodies: Record<string, unknown>[] = [];
   const t0 = Date.now();
   const errors: string[] = [];
+  const usageReads: Promise<void>[] = [];
   const fetchImpl: typeof fetch = async (input, init) => {
     const requestBody = String(init?.body ?? '');
     bodies.push(JSON.parse(requestBody) as Record<string, unknown>);
@@ -176,11 +177,20 @@ async function runOnce(chart: SiderealChart, config: ProviderConfig, pricing: Mo
       errors.push(`fetch rejected (${section}) after ${Date.now() - started} ms: ${describeFetchFailure(err)}`);
       throw err;
     }
-    const row = sectionUsageRow(requestBody, res.status, await res.clone().text());
-    if (row) {
-      rows.push(row);
-      sectionMs.push({ section: row.section, status: res.status, ms: Date.now() - started });
-    }
+    // Report sections stream, and their idle cap watches the bytes: hand the
+    // Response back at once and read the usage off a tee'd copy in the
+    // background (awaited before the run's rows are used).
+    usageReads.push(
+      res
+        .clone()
+        .text()
+        .then((text) => {
+          const row = sectionUsageRow(requestBody, res.status, text);
+          if (!row) return;
+          rows.push(row);
+          sectionMs.push({ section: row.section, status: res.status, ms: Date.now() - started });
+        }),
+    );
     return res;
   };
   const out: ReportOutput = { natal: null, timeline: null };
@@ -203,6 +213,8 @@ async function runOnce(chart: SiderealChart, config: ProviderConfig, pricing: Mo
     clearTimeout(timer);
   }
   const totalMs = Date.now() - t0;
+  // An aborted section's copy rejects with its stream; it has no usage row.
+  await Promise.allSettled(usageReads);
   for (const body of bodies) {
     expect.soft(body.reasoning).toEqual({ max_tokens: REASONING_CAP });
     expect.soft(body.provider).toEqual(PROVIDER_ROUTING);

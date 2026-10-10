@@ -57,6 +57,12 @@ export interface SectionTimeLimits {
 export interface SectionDeadlineContext {
   readonly signal: AbortSignal;
   readonly touch: () => void;
+  /**
+   * A fresh attempt starts (a retry). With a first-token cap, go back to the
+   * first-token phase: a local device re-prefills before its first token.
+   * Without one, a no-op (idle keeps running from the last token).
+   */
+  readonly restart: () => void;
 }
 
 type Timer = ReturnType<typeof setTimeout> | undefined;
@@ -103,13 +109,19 @@ export function withSectionDeadline<T>(
     clearTimeout(idle);
     idle = arm("idle", limits.idleMs);
   };
+  const restart = (): void => {
+    if (controller.signal.aborted || limits.firstTokenMs === undefined) return;
+    clearTimeout(idle);
+    clearTimeout(firstToken);
+    firstToken = arm("first_token", limits.firstTokenMs);
+  };
   total = arm("total", limits.totalMs);
   if (started) idle = arm("idle", limits.idleMs);
   else firstToken = arm("first_token", limits.firstTokenMs);
   if (callerSignal?.aborted) onCallerAbort();
   else callerSignal?.addEventListener("abort", onCallerAbort, { once: true });
 
-  const running = work({ signal: controller.signal, touch });
+  const running = work({ signal: controller.signal, touch, restart });
   // After a cap or abort settles the call, the request may still reject; nobody awaits it.
   running.catch(() => undefined);
   return Promise.race([running, expired]).finally(() => {

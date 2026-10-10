@@ -41,6 +41,7 @@ import {
   REPORT_SECTION_TIMEOUT_MS,
   SectionTimeoutError,
   withSectionDeadline,
+  type SectionDeadlineContext,
   type SectionTimeLimits,
 } from "./section-timeout";
 import { LAYMAN_JARGON_TERMS } from "./layman-jargon";
@@ -1521,11 +1522,12 @@ function requestWithRetry<Section extends AnySectionKey>(
   section: Section,
   messages: ChatMessage[],
   params: SectionRunParams<Section>,
-  touch?: () => void,
+  deadline?: Pick<SectionDeadlineContext, "touch" | "restart">,
 ): Promise<string> {
-  const request = () => requestSection(section, messages, params, touch);
+  const request = () => requestSection(section, messages, params, deadline?.touch);
   return request().catch((err: unknown) => {
     if (params.signal?.aborted || !isTransientFailure(err)) throw err;
+    deadline?.restart();
     return request();
   });
 }
@@ -1541,8 +1543,8 @@ function requestCapped<Section extends AnySectionKey>(
 ): Promise<string> {
   const limits = sectionLimits(section, params);
   if (!limits) return requestWithRetry(section, messages, params);
-  return withSectionDeadline(limits, params.signal, ({ signal, touch }) =>
-    requestWithRetry(section, messages, { ...params, signal }, touch),
+  return withSectionDeadline(limits, params.signal, (deadline) =>
+    requestWithRetry(section, messages, { ...params, signal: deadline.signal }, deadline),
   );
 }
 

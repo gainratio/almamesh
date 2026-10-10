@@ -87,6 +87,9 @@ export async function streamChatCompletionJson(
   const response = await openJsonStream(options);
   // Some OpenAI-compatible servers ignore `stream: true` and answer one JSON
   // body (the agent chat tolerates the same). Treat it as a single delta.
+  // Known limit (2.14b N3): such a server sends no tokens until the whole
+  // answer is done, so on a remote endpoint a report section that takes over
+  // REPORT_SECTION_IDLE_TIMEOUT_MS fails `idle` here, before the total cap.
   if (response.headers.get("content-type")?.includes("application/json")) {
     const content = completionJsonContent(await response.json());
     options.onDelta?.(content);
