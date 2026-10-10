@@ -1,4 +1,3 @@
-// W/src/lib/__tests__/timeTravel.test.ts
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useChatStore } from '@almamesh/store';
 
@@ -58,6 +57,40 @@ describe('applyTravel: one path for every way to travel', () => {
     expect(useChatStore.getState().listThreads('p1')).toHaveLength(2);
   });
 
+  it("thread 'latest' follows listThreads()[0]: a newer unpinned thread is not repinned over an older pinned one", async () => {
+    const chat = useChatStore.getState();
+    const older = chat.startThread('p1', 'c1', YEAR_2027);
+    const newest = chat.startThread('p1', 'c1');
+    expect(useChatStore.getState().listThreads('p1')[0]?.id).toBe(newest);
+    const out = await applyTravel({ asOf: MARCH_2019, source: 'dashboard-sheet' }, DASH, aiOn);
+    expect(out.threadId).not.toBe(older);
+    expect(out.threadId).not.toBe(newest);
+    expect(useChatStore.getState().threads[older]?.as_of).toEqual(YEAR_2027);
+    expect(useChatStore.getState().listThreads('p1')).toHaveLength(3);
+  });
+
+  it('thread { id } repins that pinned thread, with no new thread', async () => {
+    const chat = useChatStore.getState();
+    const target = chat.startThread('p1', 'c1', YEAR_2027);
+    chat.startThread('p1', 'c1', YEAR_2027);
+    const out = await applyTravel({ asOf: MARCH_2019, source: 'chat-sheet' }, { ...DASH, thread: { id: target } }, aiOn);
+    expect(out.threadId).toBe(target);
+    expect(useChatStore.getState().threads[target]?.as_of).toEqual(MARCH_2019);
+    expect(useChatStore.getState().listThreads('p1')).toHaveLength(2);
+  });
+
+  it.each([
+    ['unpinned', () => useChatStore.getState().startThread('p1', 'c1')],
+    ['unknown', () => 'no-such-thread'],
+  ])('thread { id } of an %s thread starts a new pinned thread', async (_name, makeId) => {
+    const id = makeId();
+    const before = useChatStore.getState().listThreads('p1').length;
+    const out = await applyTravel({ asOf: MARCH_2019, source: 'chat-tool' }, { ...DASH, thread: { id } }, aiOn);
+    expect(out.threadId).not.toBe(id);
+    expect(useChatStore.getState().threads[out.threadId as string]?.as_of).toEqual(MARCH_2019);
+    expect(useChatStore.getState().listThreads('p1')).toHaveLength(before + 1);
+  });
+
   it('a failed pin save moves nothing: no moment, no thread, and it rethrows', async () => {
     save.fail = true;
     await expect(applyTravel({ asOf: MARCH_2019, source: 'dashboard-sheet' }, DASH, aiOn)).rejects.toThrow('Saving chat failed.');
@@ -101,5 +134,12 @@ describe('applyBackToToday', () => {
     expect(out.threadId).toBeDefined();
     expect(useChatStore.getState().threads[out.threadId as string]?.as_of).toBeUndefined();
     expect(moment()).toBeUndefined();
+  });
+
+  it('a failed save rethrows and leaves the moment set', async () => {
+    await applyTravel({ asOf: MARCH_2019, source: 'dashboard-sheet' }, DASH, aiOff);
+    save.fail = true;
+    await expect(applyBackToToday({ profileId: 'p1', chartId: 'c1' }, aiOn)).rejects.toThrow('Saving chat failed.');
+    expect(moment()).toEqual(MARCH_2019);
   });
 });

@@ -1,4 +1,3 @@
-// W/src/lib/timeTravel.ts
 /**
  * The one way to travel to a moment (spec "One code path for travel to a
  * moment"). The Dashboard sheet, the chat sheet and banner, and the chat tool
