@@ -1,6 +1,9 @@
 # Cloud drive backup: back up to your own drive, restore on any device
 
 Status: draft design for owner review (2026-10-10). Written against `main` at `821bd6e8`.
+Revision 2 (2026-10-10): drive sign-in is now stored per device, encrypted (owner's question:
+"why can't we store a token in SQLite?"). OneDrive moves from MSAL to `oauth4webapi`. Automatic
+backup is planned as PR 6.
 
 ## TL;DR
 
@@ -21,6 +24,12 @@ Four things do not change:
 | The provider only ever stores ciphertext | The file uploaded is exactly today's `.almamesh` export: an age v1 file sealed with the user's passphrase (scrypt). |
 | Opt-in | Nothing touches a drive until the user presses a drive button and grants consent. |
 
+Drive sign-in is remembered per device. Each provider's credential (a Google access token, a
+Dropbox refresh token, a Microsoft refresh token) is stored in a **device-local** SQLite row,
+encrypted with a non-extractable WebCrypto key, never included in a backup or export, and
+deleted on Disconnect or a full reset. See [Stored credentials](#stored-credentials) and the
+[threat model](#threat-model).
+
 Launch with Google Drive. Dropbox and OneDrive (personal accounts) follow behind the same
 `BackupDrive` interface. iCloud and Box are dropped (reasons in the research note, summarised in
 [Providers](#providers)).
@@ -30,10 +39,11 @@ The work ships in five PRs (see [PR split](#pr-split)):
 | PR | What ships | User sees |
 |---|---|---|
 | 1 | `BackupDrive` seam, ciphertext guard, file naming, retention planner, fake drive, contract suite | Nothing |
-| 2 | Google Drive adapter, OAuth redirect, in-memory token, CSP host, ciphertext egress test | Nothing (feature flag off) |
+| 2 | Google Drive adapter, OAuth redirect, encrypted device-local credential store, silent renewal, CSP host, ciphertext egress test | Nothing (feature flag off) |
 | 3 | Settings and first-run UI, privacy copy in en/es/pt, CLAUDE.md and README egress inventory, live Google round trip | "Back up to Google Drive" and "Restore from Google Drive" |
-| 4 | Dropbox adapter + CSP + copy | Dropbox in the provider picker |
-| 5 | OneDrive adapter (MSAL v5) + CSP + copy | OneDrive in the provider picker |
+| 4 | Dropbox adapter (PKCE via `oauth4webapi`, stored refresh token) + CSP + copy | Dropbox in the provider picker; connect once per device |
+| 5 | OneDrive adapter (PKCE via `oauth4webapi`, not MSAL) + CSP + copy | OneDrive in the provider picker |
+| 6 | Recipient-key sealing + automatic backup (debounced, on change) | "Back up automatically" toggle |
 
 ## Why
 
@@ -73,7 +83,10 @@ There is no separate per-secret encryption to extend.
    Button: **Connect Google Drive**.
 3. Full-page redirect to Google's consent screen. It asks for one thing: "See, edit, create and
    delete only the specific Google Drive files you use with this app." No email, no profile.
-4. Back on `/oauth/callback`, which hands over to Settings → Data with the token held in memory.
+4. Back on `/oauth/callback`, which stores the token (encrypted, device-local) and hands over to
+   Settings → Data. A reload within the hour does not ask again. After the hour, the next drive
+   action bounces through Google with `prompt=none` and comes straight back: no consent screen
+   while the user is still signed in to Google.
 5. Passphrase setup (first time only on this device, see [Passphrase](#passphrase)): type it
    twice, tick "I understand that if I forget this passphrase, nobody can open these backups.
    Not AlmaMesh, not Google."
@@ -174,11 +187,14 @@ Files:
 | `lib/drive/guardedDrive.ts` | Ciphertext and name guards |
 | `lib/drive/backupName.ts` | Build and parse names, device code, browser/OS enum |
 | `lib/drive/retention.ts` | Pure "which files to trash" planner |
-| `lib/drive/driveSession.ts` | In-memory token holder per provider |
+| `lib/drive/driveSession.ts` | Per-provider credential holder: reads and writes through `credentialStore.ts`, tracks expiry, decides renew vs reconnect |
+| `lib/drive/credentialStore.ts` | The only code that touches stored credentials: encrypt/decrypt with the device key, device-local SQLite rows, delete on disconnect/reset |
+| `lib/drive/deviceKey.ts` | The only code that touches the non-extractable AES-GCM key and its IndexedDB store |
 | `lib/drive/oauthRedirect.ts` | `state`, PKCE verifier, callback parsing, fragment scrub |
+| `lib/drive/oauthClient.ts` | The only importer of `oauth4webapi` (PKCE code exchange and refresh for Dropbox and Microsoft) |
 | `lib/drive/googleDrive.ts` | Google adapter (REST via `fetch`, no SDK) |
-| `lib/drive/dropboxDrive.ts` | Dropbox adapter (only importer of `dropbox`, or REST) |
-| `lib/drive/oneDrive.ts` | OneDrive adapter (only importer of `@azure/msal-browser`) |
+| `lib/drive/dropboxDrive.ts` | Dropbox adapter (REST via `fetch`; auth via `oauthClient.ts`) |
+| `lib/drive/oneDrive.ts` | OneDrive adapter (Graph via `fetch`; auth via `oauthClient.ts`) |
 | `lib/drive/providerConfig.ts` | Public client IDs and redirect URIs (not secrets) |
 | `lib/drive/testing/fakeDrive.ts` + `backupDrive.contract.ts` | In-memory drive and the shared contract suite |
 | `hooks/useDriveBackup.ts` | Back up, list, restore, delete; reuses `buildBackupExport` and `useBackupRestore` staging |
@@ -189,19 +205,36 @@ Files:
 
 | | Google Drive (PR 2–3) | Dropbox (PR 4) | OneDrive personal (PR 5) |
 |---|---|---|---|
-| Library | None. Drive v3 REST via `fetch`. (`googleapis` is Node-only; `gapi` is a CDN script COEP blocks.) | `dropbox` 10.47.0 (Dropbox Inc.) or plain REST | `@azure/msal-browser` 5.x (Microsoft); Graph via plain `fetch` |
-| Auth flow | OAuth 2.0 for client-side web apps: top-level redirect, `response_type=token`. Google's web clients need a secret for code+PKCE, so this is the supported browser path. | Code + PKCE, public client, no secret, top-level redirect | MSAL v5 redirect flow (its redirect bridge if v5 requires it, see open question 6) |
+| Library | None. Drive v3 REST via `fetch`. (`googleapis` is Node-only; `gapi` is a CDN script COEP blocks.) | `oauth4webapi` 3.8.8 for PKCE (see below); Dropbox REST via `fetch`. The `dropbox` SDK isn't needed. | `oauth4webapi` 3.8.8 for PKCE against the Microsoft identity platform v2.0 endpoints; Graph via `fetch`. **Not MSAL** (see below). |
+| Auth flow | OAuth 2.0 for client-side web apps: top-level redirect, `response_type=token`. Google's web clients need a secret for code+PKCE, so this is the supported browser path. Silent renewal: same redirect with `prompt=none`. | Code + PKCE, public client, no secret, `token_access_type=offline`, top-level redirect | Code + PKCE, SPA redirect URI (token redemption over CORS), top-level redirect |
 | Scope | `https://www.googleapis.com/auth/drive.file` only. Non-sensitive. No `openid`, `email` or `profile`. | App folder app; `files.metadata.read`, `files.content.read`, `files.content.write` | `Files.ReadWrite.AppFolder` (delegated, no admin consent) |
 | Where files go | Visible folder **AlmaMesh backups** in My Drive, created by the app | `/Apps/AlmaMesh/` | `/Apps/AlmaMesh/` (Graph `special/approot`) |
-| Token lifetime | 1 h access token, no refresh token | Short-lived access token; request `token_access_type=online` (no refresh token) in v1 | Access token; MSAL `cacheLocation: 'memoryStorage'` |
+| What we store | The 1 h access token (`expires_in=3600`). There is no refresh token without a client secret. | The long-lived refresh token (Dropbox: "long-lived refresh tokens"); access tokens are short-lived and minted from it | The refresh token. For SPA redirect URIs it expires 24 h after the interactive sign-in, and refreshed tokens "carry over that expiration time", so it is **not** rolling. |
+| How often the user sees the provider | Once per device for consent. After each hour, a `prompt=none` bounce with no screen while signed in to Google. | Once per device, until they disconnect or revoke the app in Dropbox | Once a day at most: a `prompt=none` bounce after 24 h, an account screen only if Microsoft needs one |
 | Upload | Resumable session (`uploadType=resumable`), one code path for any size; an unfinished session leaves no file | `/2/files/upload` (≤150 MB, under our 128 MiB cap) | `createUploadSession` for >4 MB, simple PUT below |
 | Remove | `files.update {trashed:true}` (recoverable 30 days), not `files.delete` | `delete_v2` (recoverable in Dropbox's deleted files) | `DELETE` item (goes to recycle bin) |
-| CSP `connect-src` added | `https://www.googleapis.com`, `https://oauth2.googleapis.com` (token revoke) | `https://api.dropboxapi.com`, `https://content.dropboxapi.com` | `https://login.microsoftonline.com`, `https://graph.microsoft.com`, plus the download hosts a live trace shows |
+| CSP `connect-src` added | `https://www.googleapis.com`, `https://oauth2.googleapis.com` (token revoke) | `https://api.dropboxapi.com` (also the token endpoint), `https://content.dropboxapi.com` | `https://login.microsoftonline.com` (token endpoint), `https://graph.microsoft.com`, plus the download hosts a live trace shows |
 | Approval needed | Consent screen published to production; brand verification only if we show a logo | Production approval past the development-user cap (500 per long-standing policy; check the console) | None for personal accounts; work/school tenants are out of scope at launch |
 
 Dropped: **iCloud** (no web API for iCloud Drive; CloudKit JS is a CDN script COEP blocks, sign-in
 is a popup COOP breaks, and backups would land in an opaque container), **Box** (token exchange
 needs a client secret, no app-folder scope).
+
+**Why not MSAL for OneDrive.** We need the refresh token in our own encrypted SQLite row, and
+MSAL won't allow that:
+
+- `@azure/msal-browser` 5.25.0 has no cache plugin. Its `CacheOptions` (checked in
+  `types/config/Configuration.d.ts` of the published package) offers only `cacheLocation`:
+  `localStorage`, `sessionStorage` or `memoryStorage`. The custom `ICachePlugin` exists in
+  `msal-node`, not in the browser library.
+- MSAL's caching doc says `memoryStorage` does not support the redirect flow, and we can only use
+  redirects under COOP. `localStorage` breaks the "SQLite only" rule and puts tokens outside our
+  reset and export controls. MSAL hides the refresh token by design, so we can't copy it out.
+- So we run the standard auth-code + PKCE flow ourselves through `oauth4webapi` (Filip Skokan,
+  OpenID Certified client, 3.8.8 published 2026-09-05). The same seam file serves Dropbox, so
+  there's one OAuth engine for two providers, behind `oauthClient.ts`. This also removes the
+  MSAL redirect-bridge question. The cost: we own Microsoft-specific details (the `consumers`
+  authority, error codes) that MSAL would handle. That's small for one scope and one flow.
 
 Why `drive.file` and not `drive.appdata`: both are non-sensitive. `drive.file` puts backups where
 the user can see, download and delete them in the Drive UI without AlmaMesh. That is the more
@@ -222,30 +255,108 @@ the provider sends it back to `https://almamesh.com/oauth/callback`, and the SPA
   `App.tsx`, and the service worker `navigateFallbackAllowlist` in `vite.config.ts`, so a
   returning visitor's SW serves the shell and the URL never reaches the origin server. Mark it
   `noindex` and keep it out of `sitemap.xml`.
-- A full-page redirect needs no COOP change. Only MSAL's bridge page (if v5 requires it) would be
-  served with `! Cross-Origin-Opener-Policy`, scoped to that one path, in PR 5.
+- A full-page redirect needs no COOP change, for any of the three providers. No bridge page.
 - Before leaving, `oauthRedirect.ts` writes one short-lived record to `sessionStorage`:
   `{ provider, state, pkceVerifier?, returnTo, startedAt }`. `state` is 128 random bits. This is
   protocol state that must survive the redirect, not user data, and it holds no token. It is read
   once and deleted on the callback, and dropped if older than 10 minutes.
 - On the callback: compare `state` (mismatch: reject and show "That sign-in didn't come from this
   tab. Try again."), read the token from the fragment (Google) or exchange the code with the
-  verifier (Dropbox, MSAL), then immediately `history.replaceState` to strip the fragment or
-  query, hand the token to `driveSession.ts`, and client-side navigate to `returnTo`.
+  verifier (Dropbox, Microsoft), then immediately `history.replaceState` to strip the fragment or
+  query, hand the token to `driveSession.ts` (which stores it encrypted), and client-side navigate
+  to `returnTo`.
 - Navigation to the provider uses `location.assign`, not a form, so `form-action 'self'` stays.
 - The callback reads the fragment before React mounts any child that could log the URL.
   Diagnostics already emit allowlisted codes only; the callback adds no URL logging.
 
-### Token handling
+### Stored credentials
+
+The owner asked why a token can't be kept on the device so the user isn't asked every session.
+It can. What we store differs by provider, because what each provider issues to a serverless
+browser app differs.
+
+| Provider | Stored | Lifetime | When it runs out |
+|---|---|---|---|
+| Google | Access token + `expiresAt` | 1 h (`expires_in=3600` in the callback fragment) | Silent renewal: full-page redirect with `prompt=none` (below) |
+| Dropbox | Refresh token. Access tokens are minted from it and kept in memory only. | Long-lived, until the user disconnects or revokes the app in Dropbox | Never in normal use. A revoked token gives `invalid_grant`: delete the row and show "Reconnect". |
+| OneDrive | Refresh token. Access tokens in memory only. | 24 h from the interactive sign-in, not rolling | `prompt=none` redirect, the same as Google |
+
+**Google silent renewal.** Google's client-side flow lists `prompt=none` as "Don't display any
+authentication or consent screens. Must not be specified with other values." ([OAuth 2.0 for
+Client-side Web Applications](https://developers.google.com/identity/protocols/oauth2/javascript-implicit-flow),
+checked 2026-10-10). So when the stored token has expired, the next drive action does a full-page
+redirect to the same authorize URL with `prompt=none`. If the user is still signed in to Google
+and has granted `drive.file`, Google sends a fresh token straight back. The user sees a bounce,
+not a screen. If Google can't do that silently, it returns an error to the callback instead of
+showing a page. OpenID Connect Core §3.1.2.6 defines these as `login_required`,
+`consent_required`, `interaction_required` and `account_selection_required`. Google's page doesn't
+list which one it sends here, so the live run records it. On any of them, the app asks the user
+to press "Connect Google Drive" again (a normal interactive redirect). It never loops: one silent
+try per user action.
+
+The silent bounce runs only when the user presses a drive button, never at page load. It reloads
+the app, so it must not interrupt anything else (see open question 1).
+
+**`login_hint`: not possible without asking for identity.** Google says `login_hint` "can be the
+user's email address or the `sub` string, which is equivalent to the user's Google ID"
+([OpenID Connect](https://developers.google.com/identity/openid-connect/openid-connect)). With
+`drive.file` alone we learn neither. Getting `sub` means adding the `openid` scope and an ID
+token, so AlmaMesh would hold a stable Google account ID. We don't do that in v1. Without a hint,
+`prompt=none` still works when Google can tell which account to use. A user signed in to several
+Google accounts may get `account_selection_required` and see the account picker each hour. The
+live run checks this with two accounts signed in (open question 8).
+
+**Where and how credentials are stored.**
 
 | Rule | How |
 |---|---|
-| Memory only | `driveSession.ts` keeps `{ accessToken, expiresAt }` in a module closure. Not in Zustand persist, not in SQLite, not in `localStorage`, not in `sessionStorage`, not in a backup. MSAL uses `memoryStorage`. |
-| No refresh tokens in v1 | Google issues none. Dropbox is asked for `online` tokens. MSAL keeps its refresh token in memory only. The user re-consents once per tab session. Consent is remembered by the provider, so the second time is usually one click. |
-| Expiry | Before each call, if `expiresAt` is within 60 s, treat as disconnected. A 401 maps to `token_expired` and the UI offers "Reconnect". |
-| Disconnect | Drops the token. Google: also `POST https://oauth2.googleapis.com/revoke`. |
-| Never logged | Tokens never reach diagnostics, error messages or test snapshots. A test scans storage and captured console output after a connect. |
-| No identity | We never ask for email or profile scopes, so AlmaMesh never learns who the user is. The UI says "Connected to Google Drive", never an address. |
+| Device-local SQLite | One row per provider, `drive-credential/<provider>`, in the new `device` namespace (the same namespace as the device code). Like `quarantine` and `set-aside`, it is never part of a snapshot, export, restore or backup. A restore never brings another device's credentials in and never wipes this device's. |
+| Encrypted at rest | AES-GCM, 256-bit, fresh 96-bit IV per write. The row holds `{ v: 1, iv, ciphertext, provider, expiresAt }`. The additional authenticated data (AAD) is the row key, so a row can't be swapped onto another provider. |
+| The key | One `CryptoKey` from `crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt'])`. `extractable: false` means no script, ours included, can read its bytes. |
+| Where the key lives | IndexedDB, database `almamesh-device-keys`, one object store, one record. A non-extractable `CryptoKey` has no bytes to put in SQLite. The only way to persist it is the structured clone of the key object, and IndexedDB is the browser store that supports that, keeping it non-extractable. |
+| Ruling on "SQLite only for user data" | **The rule holds.** This key handle is not user data. It is not a record, a setting, or a mirror of anything in SQLite. It is an opaque, device-bound capability that can't be serialised. `deviceKey.ts` is the only module that opens this database. A test asserts it holds exactly one record and that the record is a `CryptoKey` with `extractable === false`. Anything else in that database fails the gate. Add a one-line exception to CLAUDE.md where the SQLite rule is stated, naming this database. |
+| Lost key, kept rows | If site data is partly cleared and the key is gone but the rows remain, decryption fails. Treat this as disconnected, delete the rows and show "Reconnect". Never a crash, never a retry loop. |
+| Deleted on Disconnect | Delete the row. Revoke at the provider where there's an endpoint: Google `POST https://oauth2.googleapis.com/revoke`; Dropbox `POST /2/auth/token/revoke`; Microsoft has no revoke for a single SPA refresh token, so we only delete it. Clear in-memory access tokens. |
+| Deleted on full reset | "Reset chart / start fresh" and "Reset & reload" (`lib/resetEverything.ts`) delete every `drive-credential/*` row **and** the `almamesh-device-keys` database. The data deletion page says so. |
+| Never logged | Tokens and ciphertext rows never reach diagnostics, error messages, `console`, or test snapshots. `DriveError` messages carry a kind and an HTTP status, never a body or a URL with a token. |
+| No identity | No `openid`, `email` or `profile` scope, so AlmaMesh never learns who the user is. The UI says "Connected to Google Drive", never an address. |
+| Expiry | Before each call, a token within 60 s of `expiresAt` counts as expired. A 401 maps to `token_expired`, which triggers one refresh (Dropbox, Microsoft) or one silent bounce (Google), and then "Reconnect". |
+
+**What the encryption does and doesn't buy.** It protects against someone reading the OPFS SQLite
+file on its own: a copied profile folder without the IndexedDB key, a disk image, or a future bug
+that leaks a SQLite row. It does **not** protect against code running in our origin, which can
+ask the key to decrypt. MSAL's caching doc says the same about its own encrypted cache: "If a bad
+actor gains access to browser storage they would also have access to the key or have the ability
+to request tokens on your behalf." The real defences against that are the strict CSP and the
+narrow scopes. See the threat model.
+
+### Threat model
+
+What a stolen credential can do, per provider. "Stolen" means an attacker has the decrypted
+token: XSS in our origin, malware with the browser profile and its keys, or a token caught in
+transit (HTTPS makes the last unlikely).
+
+| Credential | Reach | Can do | Cannot do | For how long |
+|---|---|---|---|---|
+| Google access token, `drive.file` | Only files AlmaMesh created in that Google account: our backups and their folder | List, download (ciphertext), trash, delete, overwrite them, or upload new files and use up quota | See any other Drive file, read the user's email or profile, open a backup without the passphrase | ≤ 1 h. No refresh token exists to steal. |
+| Dropbox refresh token, App folder | `/Apps/AlmaMesh/` only | The same as above, inside the app folder | Anything outside the app folder; decrypt backups | Until the user disconnects or revokes the app in Dropbox's connected-apps settings. The longest-lived credential, so it gets the most care. |
+| Microsoft refresh token, `Files.ReadWrite.AppFolder` | `/Apps/AlmaMesh/` in that OneDrive | The same as above | Mail, other files, profile; decrypt backups | ≤ 24 h from sign-in |
+
+In every case the worst outcome is to **availability, not confidentiality**. An attacker can delete
+or corrupt backups, but can't read them without the passphrase, and can't reach anything else
+in the account. Mitigations:
+
+- The device's SQLite stays the system of record, so losing drive backups loses no live data.
+- Prunes and deletes go to the provider's trash or recycle bin, recoverable for about 30 days.
+- A planted file can't fool a restore: it must parse as a backup name, open with the user's
+  passphrase, and pass the existing `stageBackupImport` validation and preview before anything is
+  written. Drive bytes are untrusted input, like any picked file.
+- XSS is the path that matters most. `script-src` stays `'self' 'wasm-unsafe-eval'` plus
+  Cloudflare Turnstile, with no provider SDK scripts and no CDN. This feature adds no script
+  origin. Turnstile is the one third-party script origin; it predates this feature and is listed
+  here so nobody forgets it shares the origin with stored tokens.
+- The passphrase is never stored, so no stored secret on the device decrypts backups. This is
+  why automatic backup needs recipient-key sealing rather than a stored passphrase (open question 1).
 
 ### Encryption
 
@@ -343,10 +454,10 @@ safety copy). The cases that remain:
 |---|---|
 | Offline before starting | Drive buttons disabled with the offline message. File export still works. |
 | Connection drops mid-upload | Google resumable session never completes, so no partial file appears. Dropbox and OneDrive single requests fail as a whole; an unfinished OneDrive upload session expires on its own. Local data untouched. Error: "The upload didn't finish. Your data on this device is safe." |
-| Token expired mid-flow | `token_expired`, "Reconnect" button, then retry the same sealed bytes (kept in memory, not re-sealed). |
+| Token expired mid-flow | One refresh (Dropbox, Microsoft) or one `prompt=none` bounce (Google), then "Reconnect" if that fails. The sealed bytes are kept in memory for a refresh retry; a Google bounce reloads the page, so the user presses Back up again and it re-seals. |
 | Drive full | `quota_exceeded`: "Your Google Drive is full. Free some space or trash old AlmaMesh backups." |
 | 429 / 5xx | One retry with backoff for idempotent reads (`list`, `download`). Uploads are not auto-retried; the user presses Retry. |
-| No background queue | v1 does not queue backups for later or run them on a timer. See open question 1. |
+| No background queue in v1 | v1 does not queue backups for later or run them on a timer. PR 6 adds automatic backup; see open question 1. |
 
 ## Privacy
 
@@ -364,11 +475,11 @@ follows, and each change lands in the PR that makes the egress reachable (PR 3 f
 
 | Place | Change |
 |---|---|
-| `CLAUDE.md`, "exactly TWO deliberate network egresses" paragraph | Becomes THREE. Add: "(3) **cloud drive backup**: only when the user presses a drive button and consents, the age-sealed backup file and its neutral filename go to the user's own drive provider (Google Drive at launch). Never plaintext, never the passphrase, never a person name in a name. Tokens are memory-only." Update the `connect-src` note to list the new hosts. |
+| `CLAUDE.md`, "exactly TWO deliberate network egresses" paragraph | Becomes THREE. Add: "(3) **cloud drive backup**: only when the user presses a drive button and consents, the age-sealed backup file and its neutral filename go to the user's own drive provider (Google Drive at launch). Never plaintext, never the passphrase, never a person name in a name. The provider credential is stored encrypted in device-local SQLite and never travels in a backup." Update the `connect-src` note to list the new hosts. Add the one-line `almamesh-device-keys` IndexedDB exception next to the SQLite-only rule. |
 | `README.md` "Runtime network and data flow" table | New row: Trigger "Back up or restore with a cloud drive", Destination "Google Drive (your account)", Data sent "The passphrase-sealed backup file, a filename with time, browser, OS and a random device code, normal request metadata", Explicitly not sent "Plaintext data, your passphrase, names, birth details". One row per provider as each ships. |
 | `public/_headers` | Add each host to `connect-src` with a justification comment in the same style as Open-Meteo's. |
 | Privacy policy `locales/{en,es,pt}/legal.json` | Section 1: one sentence that a drive backup is an encrypted copy the user chooses to send. Section 2 "What Touches the Network": new bullet `s2_li8` "Optional cloud backup" with the README row's wording. Section 6 "Data Retention": backups on your drive are kept by your drive provider under your account until you trash them; AlmaMesh keeps the 10 newest per device. New short section or bullet: "Google's handling of your files is covered by Google's terms". |
-| Data deletion page `pages/legal/DataDeletion.tsx` + `legal.json` | "Reset & reload" and "clear site data" do **not** delete drive backups. How to delete them: from the in-app list, or in Drive under **AlmaMesh backups**, then empty the trash. |
+| Data deletion page `pages/legal/DataDeletion.tsx` + `legal.json` | Reset deletes the stored drive sign-in and its device key. "Reset & reload" and "clear site data" do **not** delete drive backups. How to delete them: from the in-app list, or in Drive under **AlmaMesh backups**, then empty the trash. |
 | Landing hero/footer and `why.rows` | No new claim. They keep the scoped wording. If any landing copy mentions backup, it must say "encrypted". |
 | `landing.privacyCopy.test.ts` | Extend: any locale string mentioning a drive or cloud backup must also contain the locale's word for encrypted/locked; no string may say backups are "on our servers". |
 | `legal.parity.test.ts` | Picks up the new keys in all three locales automatically; confirm. |
@@ -390,6 +501,10 @@ recorder that also plays the fake provider:
      `SQLite format 3\0`, and contains none of the canaries in UTF-8 or UTF-16;
    - no request goes to a host outside the provider's declared list.
 4. Assert no request at all goes to a provider host before `connect()`.
+5. Seed a stored credential with a canary token. Assert the canary appears only in the
+   `Authorization` header of requests to that provider's own hosts, and in the token-endpoint and
+   revoke bodies for that provider. It never appears in a URL, another host's request, the
+   console, or any storage other than its encrypted row.
 
 A Playwright twin (`e2e/drive-backup.spec.ts`) does the same at the browser level with
 `page.route` on the provider hosts and the real built app, so it also covers anything outside
@@ -416,7 +531,11 @@ commit.
 | `retention` | Keeps 10 newest of this device; never selects another device's file; never selects an unparseable file; nothing pruned when verification failed. |
 | `guardedDrive` | Plain SQLite bytes, JSON, or empty bytes refused before `fetch` is called; bad names refused; offline mapped. |
 | `oauthRedirect` | State mismatch rejected; record deleted after read; record older than 10 min rejected; fragment scrubbed from `location` after callback. |
-| `driveSession` | After connect, `localStorage`, `sessionStorage`, SQLite rows and captured console contain no token. Expiry within 60 s reads as disconnected. |
+| `credentialStore` / `deviceKey` | After connect, the token appears nowhere in plaintext: not in `localStorage`, `sessionStorage`, any SQLite row, IndexedDB, or captured console. The SQLite row decrypts only with the device key; a row moved to another provider's key fails (AAD). The key is a `CryptoKey` with `extractable === false`, and `almamesh-device-keys` holds exactly one record. |
+| Not in backups | Seed a credential with a canary token, run `exportPortableBrowserState` and `buildBackupExport`: the canary and the `drive-credential/` key are absent from the bytes. Restoring a backup leaves this device's credential row unchanged. |
+| Disconnect and reset | Disconnect deletes the row and calls the revoke endpoint (Google, Dropbox). `resetEverything` deletes every `drive-credential/*` row and the `almamesh-device-keys` database. Both are asserted by reading storage afterwards, not by spying on calls. |
+| Renewal | Expired Google token: one `prompt=none` redirect URL built (`prompt=none`, same scope, new `state`), no second attempt after an error. Each of the four OIDC errors maps to "Reconnect". Dropbox `invalid_grant` deletes the row. Microsoft refresh after 24 h falls back to `prompt=none`. |
+| Lost key | Rows present, key database deleted: reads as disconnected, rows removed, no throw. |
 | Contract suite | `backupDrive.contract.ts` runs against `fakeDrive` and each adapter (with a recorded fake server): upload then list shows it, download is byte-equal, remove hides it, 401 maps to `token_expired`, 403 storage quota maps to `quota_exceeded`, 429 maps to `rate_limited`. |
 | `useDriveBackup` | Backup reuses `buildBackupExport` (one seal path); restore hands downloaded bytes to `stageBackupImport` (one import path); safety copy can go to the drive. |
 | Egress | `driveEgress.test.ts` above. |
@@ -433,7 +552,12 @@ test, paste the red output, then revert.
 | No names in filenames | `buildBackupName` appends the active profile's name | `backupName.test.ts` property test, `driveEgress.test.ts` |
 | Device code is device-local | Add the `device` namespace to `PORTABLE_STATE_KEYS` | device-code test, retention cross-device test |
 | Retention scope | Planner ignores device code | `retention.test.ts` |
-| Token memory-only | `driveSession` also writes to `sessionStorage` | `driveSession.test.ts` |
+| Token encrypted at rest | `credentialStore` writes the token JSON unencrypted | `credentialStore.test.ts` |
+| Key non-extractable | `deviceKey` generates the key with `extractable: true` | `deviceKey.test.ts` |
+| Credentials device-local | Put `drive-credential/*` in a portable namespace | not-in-backups test |
+| Reset deletes credentials | Drop the credential cleanup from `resetEverything` | reset test |
+| Disconnect deletes credentials | Disconnect clears memory only | disconnect test |
+| No silent loop | Renewal retries `prompt=none` after an error | renewal test |
 | CSRF | Callback skips the `state` compare | `oauthRedirect.test.ts` |
 | Closed CSP | Add `https:` to `connect-src` | `previewHeaders.test.ts` |
 | Passphrase never sent | Put the passphrase in the upload metadata | `driveEgress.test.ts` |
@@ -465,6 +589,11 @@ against the deployed site after merge.
   neutral name (Drive API list), restore in a second persistent context logged in to the same
   account (proves `drive.file` cross-device visibility), compare the restored dashboard, trash the
   file, record a HAR and run the ciphertext checks on it, assert a clean console.
+- Silent renewal: expire the stored token by hand, press Back up, and confirm the `prompt=none`
+  bounce returns without a screen. Record which OIDC error Google sends when it can't renew
+  silently: signed out of Google, and two Google accounts signed in. Reload inside the hour and
+  confirm no redirect at all.
+- Disconnect: confirm the revoke call succeeds and the SQLite row and key database are gone.
 - Evidence in the PR: the run log, the HAR scan result, screenshots of the list and the
   restored dashboard, and a screenshot of the Drive UI folder.
 
@@ -491,10 +620,11 @@ default off) keeps PR 2 unreachable until PR 3.
 | PR | Scope | Claim touched | Acceptance criteria |
 |---|---|---|---|
 | **1. Seam** | `backupDrive.ts`, `guardedDrive.ts`, `backupName.ts`, `retention.ts`, `device` namespace + device code, `fakeDrive.ts`, contract suite | "Backups never carry a person name in their filename"; "the device code never travels in a backup" | All unit and contract tests green on `fakeDrive`; mutation runs for naming, device code, retention, ciphertext guard shown red; no network code; `make gate` green; northstar A |
-| **2. Google adapter** | `googleDrive.ts`, `oauthRedirect.ts`, `driveSession.ts`, `providerConfig.ts`, `/oauth/callback` route (+ `_redirects`, SW allowlist, `noindex`), CSP hosts + exact-list test, `driveEgress.test.ts` | "Only ciphertext goes to the drive"; "tokens are memory-only"; "connect-src is closed" | Contract suite green against recorded Google responses; egress, token and CSRF mutation runs red; flag off so no UI reaches it (grep proves no production caller outside the flag); `verify-precache-redirect.mjs` green with the new route; northstar A |
+| **2. Google adapter** | `googleDrive.ts`, `oauthRedirect.ts`, `driveSession.ts`, `credentialStore.ts`, `deviceKey.ts`, the `resetEverything` hook, `providerConfig.ts`, `/oauth/callback` route (+ `_redirects`, SW allowlist, `noindex`), CSP hosts + exact-list test, `driveEgress.test.ts` | "Only ciphertext goes to the drive"; "drive credentials are encrypted, device-local, and gone after Disconnect or reset"; "connect-src is closed" | Contract suite green against recorded Google responses; egress, token and CSRF mutation runs red; flag off so no UI reaches it (grep proves no production caller outside the flag); `verify-precache-redirect.mjs` green with the new route; northstar A |
 | **3. Google UI + claim** | Provider picker, passphrase setup, backup list, restore from drive in Settings → Data, Hero and Onboarding; drive safety copy; offline states; en/es/pt strings; privacy policy, data deletion page, README table, CLAUDE.md egress paragraph; flag on | "Your data stays on your device unless you choose AI or encrypted cloud backup" | Stubbed Playwright journey green in Chromium and WebKit; real Google round trip run with evidence; privacy copy tests updated and red-run (remove "encrypted" from the es string); reachable from all three entry points; clean console; northstar A |
-| **4. Dropbox** | `dropboxDrive.ts`, CSP hosts, copy rows, picker entry | Same claims, new host | Contract + egress suites green for Dropbox; live Dropbox round trip with an owner test account; northstar A |
-| **5. OneDrive** | `oneDrive.ts` with MSAL v5, bridge page only if required (COOP detached on that path only), CSP hosts from a live trace, copy rows | Same claims, new hosts; "COOP stays on every app page" | Contract + egress suites green; live round trip with a personal Microsoft account in Chromium and WebKit; header test proves COOP is detached only on the bridge path; northstar A |
+| **4. Dropbox** | `oauthClient.ts` (`oauth4webapi`), `dropboxDrive.ts`, stored refresh token, revoke on disconnect, CSP hosts, copy rows, picker entry | Same claims, new host; "connect once per device" | Contract + egress suites green for Dropbox; live Dropbox round trip with an owner test account; northstar A |
+| **5. OneDrive** | `oneDrive.ts` via `oauthClient.ts` (no MSAL), `consumers` authority, stored 24 h refresh token, CSP hosts from a live trace, copy rows | Same claims, new hosts | Contract + egress suites green; live round trip with a personal Microsoft account in Chromium and WebKit, including a refresh and the 24 h fallback (simulated by expiring the row); northstar A |
+| **6. Automatic backup** | age X25519 recipient sealing (`@gainratio/browser/seal` or the `age-encryption` recipient API behind `passphraseSeal.ts`), key file on the drive, "Back up automatically" toggle, debounced on-change trigger | "Your passphrase is never stored"; "automatic backups are ciphertext too" | Restore of an automatic backup needs only the passphrase on a fresh device; no passphrase or private key in any device storage (test); egress suite green for automatic runs; northstar A |
 
 ## Owner's one-time setup (for `~/dev/oss/harish_actions.py`)
 
@@ -554,9 +684,8 @@ reads the origin and hides the buttons on unlisted origins).
 
 ## Out of scope for v1
 
-- Automatic or scheduled backups, background sync, and any merge of two devices' data.
+- Background sync and any merge of two devices' data. (Automatic backup is PR 6, after launch.)
 - Work/school Microsoft accounts, iCloud, Box.
-- Persisted refresh tokens.
 - Partial restore (one profile out of a backup).
 - Changing the passphrase of existing drive backups (re-sealing old files).
 
@@ -564,14 +693,14 @@ reads the origin and hides the buttons on unlisted origins).
 
 | # | Question | Recommendation |
 |---|---|---|
-| 1 | Should backups run automatically (on change, or daily)? | **Not in v1.** Google gives no refresh token without a server, so an automatic run would need the user to re-consent anyway. Show "Last drive backup: 12 days ago" on Settings → Data and a gentle nudge on the dashboard after 14 days. Revisit if users ask. |
-| 2 | Should the user type the passphrase on every backup? One-click backup would need an age X25519 key pair: back up to the public key with no passphrase, keep the private key sealed by the passphrase in a small key file on the drive. | **Not in v1.** Ask once per tab session. The key-pair design is a good follow-up (it also gives a cheap passphrase check), but it adds a second file, rotation rules and a recovery story. Ship the simple version, measure whether it is tedious. |
+| 1 | Now that sign-in is stored, should v1 back up automatically (on open, or on change, debounced)? | **Not in the launch PRs; yes in PR 6, right after.** Stored tokens remove the sign-in obstacle, but not the passphrase. A sealed backup needs the passphrase, and we never store it. Storing it, even encrypted with the device key, would let anyone who steals the device's storage open every backup on the drive, old ones included. The fix is recipient-key sealing (question 2): automatic backups seal to a public key, which is safe to store. PR 6 then adds "Back up automatically": on change, debounced 10 minutes, at most one per hour, and only when a usable token exists **without a redirect** (Dropbox always; Microsoft within its 24 h; Google within its hour). It never bounces the page on its own. Google users past the hour see "Last drive backup: 3 h ago, Back up now". Not backup-on-open: a backup at boot competes with the ~38 MB engine bootstrap, and on-change covers the same need. Until PR 6, show "Last drive backup: N days ago" on Settings → Data and a dashboard nudge after 14 days. |
+| 2 | Should the user type the passphrase on every backup? One-click backup would need an age X25519 key pair: back up to the public key with no passphrase, keep the private key sealed by the passphrase in a small key file on the drive. | **Launch: ask once per tab session. PR 6: adopt the key pair.** The private key exists only inside a passphrase-sealed key file on the drive, so a restore still needs only the passphrase. The device stores only the public key. This is what makes question 1 safe. It also gives a cheap passphrase check: open the small key file instead of a whole backup. |
 | 3 | How many backups to keep? | **10 newest per device**, trashed (recoverable 30 days) not deleted. Make the number a constant now, not a setting. |
 | 4 | Is the read-back verification worth an extra download? | **Yes.** Backups are small (measure in PR 3; expect low MB). "Backed up" should mean "we read it back". If measured sizes are large on mobile data, switch to comparing the provider's reported size and checksum (Drive `sha256Checksum`, Dropbox `content_hash`, Graph `sha256Hash` where present). |
 | 5 | Check the passphrase against existing backups when the user types it, so they don't create a set they can't open together? | **Not in v1.** It needs a download plus a scrypt run. Revisit with question 2. The hint text covers it. |
-| 6 | Does MSAL v5's redirect flow require the redirect bridge page, or only the popup flow? | **Find out in PR 5 with a spike in WebKit and Chromium.** If required, serve `/oauth/msal-bridge.html` with `! Cross-Origin-Opener-Policy` on that path only, and add a header test pinning that no other path loses COOP. |
-| 7 | Google implicit flow is discouraged by the OAuth security BCP. Is that acceptable? | **Yes, for now.** It is Google's documented browser-only path, and we mitigate the known risks: `state` check, fragment scrubbed immediately, strict CSP with no third-party scripts, a 1-hour token, the narrowest scope. Revisit if Google allows PKCE without a secret for web clients. |
-| 8 | Show the Google account email so users know which drive they used? | **No.** That needs the `email` scope and makes AlmaMesh learn an identity. Say "Connected to Google Drive". The provider's own consent screen shows the account. |
+| 6 | MSAL or our own PKCE for OneDrive? | **Our own, via `oauth4webapi`.** `@azure/msal-browser` 5.25.0 has no cache plugin, its `memoryStorage` can't do redirects, and it hides the refresh token. We'd have to keep tokens in `localStorage` outside our encryption and reset. The redirect-bridge question goes away with it. |
+| 7 | Google implicit flow is discouraged by the OAuth security BCP, and we now store its token. Is that acceptable? | **Yes.** It is Google's documented browser-only path. We mitigate the known risks: `state` check, fragment scrubbed at once, strict CSP with no provider scripts, a 1-hour token encrypted at rest, the narrowest scope. A stolen token reaches only our own encrypted backups, for an hour at most (see the threat model). Revisit if Google allows PKCE without a secret for web clients. |
+| 8 | Ask for `openid` so we can send `login_hint` (the `sub` ID) and avoid the hourly account picker for people signed in to several Google accounts? Or show the email? | **No to both in v1.** Either one makes AlmaMesh hold a Google identity. First measure in the live run whether `prompt=none` without a hint shows the picker for a two-account browser. If it does and users complain, add `openid` only (no email), keep `sub` in the same encrypted device-local row, and send it as `login_hint`. |
 | 9 | Device label: auto "Chrome on macOS", or let the user name it ("Mum's iPad")? | **Auto only.** A typed label would go into a plaintext filename and could carry a person name. The 6-character code tells same-type devices apart. |
 | 10 | Should the safety copy before a drive restore go to the drive or to a local file? | **To the drive by default** when connected (one less file to save), with "Save to this device instead" as a link. It uses the same passphrase prompt. |
 | 11 | Keep the "Export to a file" button? | **Yes.** It works offline and needs no account. Drive backup is an extra destination, not a replacement. |
