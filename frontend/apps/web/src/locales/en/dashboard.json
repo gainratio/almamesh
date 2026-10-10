@@ -124,6 +124,7 @@
     "kundli_title": "Kundli & Planetary Position"
   },
   "time_travel": {
+    "sheet_intro": "Pick a time. The Dashboard will show that moment.",
     "banner_about": "the cards below are about this moment",
     "dashas_only": "This device shows dashas only for other dates, to stay within memory.",
     "moment_title": "At this moment",

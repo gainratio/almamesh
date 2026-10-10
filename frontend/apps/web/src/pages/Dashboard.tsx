@@ -849,7 +849,7 @@ export default function DashboardPage() {
         <DashboardTimeTravelSheet open={travelSheet !== 'closed'}
           current={travelSheet === 'change' ? timeTravel.moment : undefined}
           birthYear={travelBirthYear} today={viewerTodayDay(new Date())}
-          onGo={goToMoment} onClose={() => setTravelSheet('closed')} />
+          intro={t("dashboard:time_travel.sheet_intro")} onGo={goToMoment} onClose={() => setTravelSheet('closed')} />
 
         {/* The PDF render failed. Calm, visible, on-screen ONLY (`no-print`) —
             never a silent unhandled rejection, and never printed into a

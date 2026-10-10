@@ -151,6 +151,14 @@ describe('Dashboard Time travel', () => {
     expect(document.activeElement).toBe(button);
   });
 
+  it('the sheet speaks for the Dashboard, not for a chat', async () => {
+    await renderDashboard({ ai: 'off' });
+    fireEvent.click(screen.getByTestId('dashboard-time-travel-button'));
+    const text = screen.getByTestId('time-travel-sheet').textContent ?? '';
+    expect(text).toContain('The Dashboard will show that moment.');
+    expect(text).not.toContain('new chat');
+  });
+
   it('Escape closes the sheet and returns focus to the button', async () => {
     await renderDashboard({ ai: 'off' });
     const button = screen.getByTestId('dashboard-time-travel-button');

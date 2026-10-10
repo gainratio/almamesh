@@ -127,6 +127,7 @@
     "kundli_title": "Kundli y posición planetaria"
   },
   "time_travel": {
+    "sheet_intro": "Elige un momento. El panel mostrará ese momento.",
     "banner_about": "las tarjetas de abajo hablan de este momento",
     "dashas_only": "Este dispositivo muestra solo los dashas para otras fechas, para no gastar demasiada memoria.",
     "moment_title": "En este momento",
