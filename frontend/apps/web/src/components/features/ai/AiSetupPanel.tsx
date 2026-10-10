@@ -115,6 +115,7 @@ export interface AiSetupPanelProps {
   /**
    * Called once per save, only after the settings are durable AND the probe
    * passed for the config still on screen. Onboarding advances on it.
+   * Must not throw: it runs after the probe, so a throw becomes an unhandled rejection.
    */
   onConnected?: (status: LlmStatus) => void;
 }
@@ -299,7 +300,16 @@ export function AiSetupPanel({
       // A canonical SQLite write can fail. Do not
       // probe or report a configuration that will disappear on reload.
       safeError('provider.settings_save_failed', err);
+      // A newer save or edit owns the verdict now; a late failure must not paint over it.
+      if (gen !== probeGen.current) {
+        return;
+      }
       setConn({ phase: 'error', source, kind: 'storage' });
+      return;
+    }
+    // A save superseded while its flush was in flight must not repaint the form,
+    // the status, or the verdict that the newer save now owns.
+    if (gen !== probeGen.current) {
       return;
     }
 

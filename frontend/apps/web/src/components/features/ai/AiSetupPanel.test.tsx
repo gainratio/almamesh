@@ -689,4 +689,45 @@ describe('AiSetupPanel — onConnected', () => {
     await settle();
     expect(onConnected).not.toHaveBeenCalled();
   });
+
+  // Regression (Task 1.5b): a superseded save whose flush settles LATE must not
+  // repaint over the newer save's verdict — neither "Testing…" nor "Couldn't save".
+  const supersededFlush = async (settleFirst: (flush: ReturnType<typeof deferred<void>>) => void) => {
+    const onConnected = vi.fn();
+    const firstFlush = deferred();
+    const flushSettings = vi
+      .fn()
+      .mockImplementationOnce(() => firstFlush.promise)
+      .mockResolvedValue(undefined);
+    renderPanel({ onConnected, flushSettings, testConnection: vi.fn().mockResolvedValue(undefined) });
+
+    saveKey('sk-or-first');
+    await waitFor(() => expect(flushSettings).toHaveBeenCalledOnce());
+    saveKey('sk-or-second');
+    await waitFor(() =>
+      expect(screen.getByTestId('llm-connection-result').textContent).toContain('Connected'),
+    );
+    expect(onConnected).toHaveBeenCalledOnce();
+
+    settleFirst(firstFlush);
+    await settle();
+    return onConnected;
+  };
+
+  it('keeps the newer Connected verdict when a superseded save flushes late', async () => {
+    const onConnected = await supersededFlush((flush) => flush.resolve());
+    expect(screen.getByTestId('llm-connection-result').textContent).toContain('Connected');
+    expect(onConnected).toHaveBeenCalledOnce();
+    expect(onConnected).toHaveBeenCalledWith({ kind: 'openrouter', label: 'OpenRouter', configured: true });
+  });
+
+  it('keeps the newer Connected verdict when a superseded save rejects late', async () => {
+    const onConnected = await supersededFlush((flush) =>
+      flush.reject(new Error('canonical SQLite write failed')),
+    );
+    const result = screen.getByTestId('llm-connection-result').textContent;
+    expect(result).toContain('Connected');
+    expect(result).not.toContain("Couldn't save");
+    expect(onConnected).toHaveBeenCalledOnce();
+  });
 });
