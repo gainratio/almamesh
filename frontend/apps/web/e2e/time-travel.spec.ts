@@ -1,8 +1,10 @@
 import { readFileSync } from 'node:fs';
 
-import { expect, test, type Page } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
 
-import { DELHI_BIRTH, DELHI_SEED, LLM_SETTINGS_KEY, bootEngine, seedChart } from './interpretation.helpers';
+import { DELHI_BIRTH, DELHI_SEED, LLM_SETTINGS_KEY, bootEngine, seedChart, waitForEngineReady } from './interpretation.helpers';
+import { gotoSettled } from './portableInvariants.helpers';
+import { test } from './webkitProfile';
 
 /**
  * Journey 1 (spec 2026-10-08): "what was going on for me in June 2019?" typed
@@ -49,22 +51,44 @@ async function predictiveRequestKeys(page: Page): Promise<string[]> {
   return [...keys];
 }
 
-/** Console capture, a full-tier device pin and the stubbed provider's settings: every journey's set-up. */
-async function prepare(page: Page): Promise<string[]> {
+/**
+ * Open the dashboard after seedChart. seedChart's restore reloads the app, and
+ * that load is still opening SQLite and the engine; WebKit reports a load a
+ * hard navigation cancels as an "access control checks" console error, and the
+ * app's own navigation can cut the goto short ("Frame load interrupted").
+ * gotoSettled waits for the document to settle and retries an interrupted goto.
+ */
+async function openDashboard(page: Page): Promise<void> {
+  await gotoSettled(page, '/dashboard');
+}
+
+/** Every console error and uncaught page error, for the clean-console checks. */
+function captureConsole(page: Page): string[] {
   const consoleErrors: string[] = [];
   page.on('pageerror', (error) => consoleErrors.push(`pageerror: ${error.message}`));
   page.on('console', (message) => {
     if (message.type() === 'error') consoleErrors.push(`console: ${message.text()}`);
   });
+  return consoleErrors;
+}
+
+/** The stubbed provider's settings, so chat shows its composer and the Time travel button. */
+async function configureStubbedAi(page: Page): Promise<void> {
+  await page.addInitScript(
+    ([key, cfg]) => window.localStorage.setItem(key as string, cfg as string),
+    [LLM_SETTINGS_KEY, JSON.stringify(LLM_CONFIG)] as const,
+  );
+}
+
+/** Console capture, a full-tier device pin and the stubbed provider's settings: every full-tier journey's set-up. */
+async function prepare(page: Page): Promise<string[]> {
+  const consoleErrors = captureConsole(page);
   await page.addInitScript((tier) => {
     for (const [name, value] of Object.entries(tier)) {
       Object.defineProperty(Navigator.prototype, name, { get: () => value, configurable: true });
     }
   }, FULL_TIER);
-  await page.addInitScript(
-    ([key, cfg]) => window.localStorage.setItem(key as string, cfg as string),
-    [LLM_SETTINGS_KEY, JSON.stringify(LLM_CONFIG)] as const,
-  );
+  await configureStubbedAi(page);
   return consoleErrors;
 }
 
@@ -113,7 +137,7 @@ test('[contract/stubbed] a typed June 2019 question reads June 2019, not today',
 
   await bootEngine(page);
   await seedChart(page);
-  await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+  await openDashboard(page);
 
   // The seeded chart re-anchors to today first; an answer streamed across that
   // is discarded by design, so chat about the chart the user will see.
@@ -280,7 +304,7 @@ test('[contract/stubbed] an 18-month period is one engine run with Mars, nodes a
 
   await bootEngine(page);
   await seedChart(page);
-  await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+  await openDashboard(page);
   // As in the June 2019 journey: wait for the re-anchor to today, or the answer is discarded by design.
   const today = await page.evaluate(() =>
     new Intl.DateTimeFormat('en', { year: 'numeric', month: 'short', day: 'numeric' }).format(new Date()),
@@ -530,7 +554,7 @@ test.describe('places', () => {
 
     await bootEngine(page);
     await seedChart(page);
-    await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+    await openDashboard(page);
     // As in Journey 1: wait for the re-anchor to today, or the answer is discarded by design.
     const today = await page.evaluate(() =>
       new Intl.DateTimeFormat('en', { year: 'numeric', month: 'short', day: 'numeric' }).format(new Date()),
@@ -578,7 +602,14 @@ test.describe('places', () => {
       offOrigin.filter((url) => !(fulfilled.has(url) && new URL(url).origin === PROVIDER_ORIGIN)),
       'no request may leave the app origin (only stubbed provider calls, fulfilled locally, are allowed)',
     ).toEqual([]);
-    expect(serviceWorkerRequests, 'the off-origin check must see service-worker traffic too').toBeGreaterThan(0);
+    if (test.info().project.use.serviceWorkers === 'block') {
+      // WebKit projects block the worker (see the config), so there is no
+      // service-worker traffic to miss: prove none controls the page.
+      const controlled = await page.evaluate(() => navigator.serviceWorker?.controller !== null && navigator.serviceWorker?.controller !== undefined);
+      expect(controlled, 'with service workers blocked, no worker may control the page').toBe(false);
+    } else {
+      expect(serviceWorkerRequests, 'the off-origin check must see service-worker traffic too').toBeGreaterThan(0);
+    }
     expect(cityChunks, 'the city list loads once, from the app origin').toHaveLength(1);
     expect(cityChunks.every((url) => new URL(url).origin === origin)).toBe(true);
     expect(
@@ -710,7 +741,7 @@ test.describe('pinned threads on a device in another zone', () => {
     );
     await bootEngine(page);
     await seedChart(page);
-    await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+    await openDashboard(page);
     const today = await page.evaluate(() =>
       new Intl.DateTimeFormat('en', { year: 'numeric', month: 'short', day: 'numeric' }).format(new Date()),
     );
@@ -791,7 +822,7 @@ test.describe('pinned threads on a device in another zone', () => {
     );
     await bootEngine(page);
     await seedChart(page);
-    await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+    await openDashboard(page);
     const origin = new URL(page.url()).origin;
     const offOrigin: string[] = [];
     page.on('request', (request) => {
@@ -838,6 +869,188 @@ test.describe('pinned threads on a device in another zone', () => {
     expect(timingResult.filter((m) => COORDINATES.test(m.content ?? '')), 'the tool result carries the place label, not its coordinates').toEqual([]);
     expect(bodies.filter((body) => COORDINATES.test(body)), 'no model request body carries coordinates').toEqual([]);
     expect(bodies.some((body) => body.includes('Bogot')), 'the place label reaches the model').toBe(true);
+    expect(consoleErrors, 'the journey must keep a clean console').toEqual([]);
+  });
+});
+
+/**
+ * The iPhone (iphone-webkit project only). iOS is always the minimal device tier
+ * (packages/browser/src/deviceTier.ts), whatever navigator reports, so the
+ * full-tier journeys above do not exist there: no Day pin, no places. What an
+ * iPhone user does get is Month and Year. Pin next year, keep it across a
+ * reload, ask a question with no dates, and the banner wraps cleanly at 380 px.
+ */
+test.describe('time travel on an iPhone', () => {
+  test.use({ timezoneId: DEVICE_ZONE });
+
+  test('[contract/stubbed] @iphone offers Month and Year, pins next year and reads it without dates', async ({ page }) => {
+    const consoleErrors = await prepare(page);
+    const seen: AgentRequest[] = [];
+    const bodies: string[] = [];
+    const fulfilled = new Set<string>();
+    await scripted(
+      page,
+      {
+        [PIN_QUESTION]: (tools) =>
+          tools.length === 0
+            ? { content: null, tool_calls: [call('when', 'get_current_datetime', { scope: 'chart' }), call('sky', 'get_timing', { section: 'transits' })] }
+            : { content: PIN_ANSWER },
+      },
+      seen,
+      bodies,
+      fulfilled,
+    );
+    await bootEngine(page);
+    await seedChart(page);
+    await openDashboard(page);
+
+    await page.getByTestId('floating-chat-button').click({ timeout: 120_000 });
+    await page.getByTestId('time-travel-button').click();
+    await expect(page.getByTestId('time-travel-sheet')).toBeVisible();
+    await expect(page.getByTestId('time-travel-tab-month')).toBeVisible();
+    await expect(page.getByTestId('time-travel-tab-year')).toBeVisible();
+    await expect(page.getByTestId('time-travel-tab-day'), 'the Day pin is full-tier only, and iOS is minimal').toHaveCount(0);
+    await page.getByTestId('time-travel-tab-year').click();
+    await page.getByTestId('time-travel-year').selectOption(PIN_YEAR);
+    await page.getByTestId('time-travel-go').click();
+    await expect(page.getByTestId('time-travel-sheet')).toBeHidden();
+    await expect(page.getByTestId('time-travel-title')).toHaveText(`Time travel · ${PIN_YEAR}`);
+    await expect(page.getByTestId('time-travel-banner')).toContainText('answers are about this period');
+
+    // The pin was on disk before the sheet closed: a full reload keeps it.
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.getByTestId('floating-chat-button').click({ timeout: 120_000 });
+    await expect(page.getByTestId('time-travel-title')).toHaveText(`Time travel · ${PIN_YEAR}`);
+    expect((await pinnedThreads(page)).map((row) => row.as_of)).toEqual([
+      { start: `${PIN_YEAR}-01-01`, end: `${PIN_YEAR}-12-31`, granularity: 'year' },
+    ]);
+
+    await page.getByTestId('chat-input').fill(PIN_QUESTION);
+    await page.getByTestId('chat-send-button').click();
+    await expect(page.getByTestId('chat-panel').getByText(PIN_ANSWER)).toBeVisible({ timeout: 240_000 });
+    const last = seen.at(-1)!;
+    expect(last.tools.map((tool) => tool.function.name), 'minimal tier: no place tool').not.toContain('resolve_place');
+    const tools = turnTools(last.messages);
+    expect(tools.map((m) => m.name)).toEqual(['get_current_datetime', 'get_timing']);
+    expect(tools[0]?.content).toContain(`"pinned_period":{"start":"${PIN_YEAR}-01-01","end":"${PIN_YEAR}-12-31"}`);
+    expect(tools[0]?.content).toContain('"relative":"future"');
+    expect(bodies.filter((body) => body.includes(DEVICE_ZONE)), 'the device zone must not reach the model').toEqual([]);
+
+    await expectBannerWrapsCleanlyAt380(page);
+    expect(consoleErrors, 'the journey must keep a clean console').toEqual([]);
+  });
+});
+
+/**
+ * Desktop Safari as it ships: no tier pin. Safari has no navigator.deviceMemory,
+ * so the app reads it as the lite tier, where the Day pin (full tier only) is not
+ * offered. Month and Year are. WebKit project only (@safari).
+ */
+test.describe("desktop Safari's own device tier", () => {
+  test('[contract/stubbed] @safari no Day pin on the lite tier; a Year pin still works', async ({ page }) => {
+    const consoleErrors = captureConsole(page);
+    await configureStubbedAi(page);
+    await bootEngine(page);
+    expect(await page.evaluate(() => 'deviceMemory' in navigator), 'Safari reports no deviceMemory').toBe(false);
+    await seedChart(page);
+    await openDashboard(page);
+
+    await page.getByTestId('floating-chat-button').click({ timeout: 120_000 });
+    await page.getByTestId('time-travel-button').click();
+    await expect(page.getByTestId('time-travel-sheet')).toBeVisible();
+    await expect(page.getByTestId('time-travel-tab-month')).toBeVisible();
+    await expect(page.getByTestId('time-travel-tab-day'), 'the Day pin is full-tier only; desktop Safari is lite').toHaveCount(0);
+    await page.getByTestId('time-travel-tab-year').click();
+    await page.getByTestId('time-travel-year').selectOption(PIN_YEAR);
+    await page.getByTestId('time-travel-go').click();
+    await expect(page.getByTestId('time-travel-sheet')).toBeHidden();
+    await expect(page.getByTestId('time-travel-title')).toHaveText(`Time travel · ${PIN_YEAR}`);
+    expect((await pinnedThreads(page)).map((row) => row.as_of)).toEqual([
+      { start: `${PIN_YEAR}-01-01`, end: `${PIN_YEAR}-12-31`, granularity: 'year' },
+    ]);
+    expect(consoleErrors, 'the journey must keep a clean console').toEqual([]);
+  });
+});
+
+/**
+ * Off-origin URLs the controlling service worker has fetched, from its own
+ * Resource Timing record. Playwright WebKit does not report requests a service
+ * worker sends, so a `context.on('request')` check is blind to them; the
+ * worker's own record is not. The probe (sw-egress-probe.js) exists only in
+ * hooked builds (VITE_EXIT_GATE_HOOKS=1); with no answer this throws.
+ */
+async function serviceWorkerOffOrigin(page: Page, origin: string): Promise<string[]> {
+  const names = await serviceWorkerFetches(page);
+  // Not vacuous: the worker's precache fetches are same-origin and must be on record.
+  expect(names.length, 'the egress probe saw the service worker fetch').toBeGreaterThan(0);
+  return names.filter((name) => new URL(name).origin !== origin);
+}
+
+/** Every URL the controlling service worker has fetched (see serviceWorkerOffOrigin). */
+async function serviceWorkerFetches(page: Page): Promise<string[]> {
+  const names = await page.evaluate(
+    () =>
+      new Promise<string[]>((resolve, reject) => {
+        const worker = navigator.serviceWorker.controller;
+        if (worker === null) {
+          reject(new Error('no service worker controls the page'));
+          return;
+        }
+        const channel = new MessageChannel();
+        const timer = setTimeout(
+          () => reject(new Error('the service worker egress probe did not answer: build with VITE_EXIT_GATE_HOOKS=1')),
+          10_000,
+        );
+        channel.port1.onmessage = (event: MessageEvent<string[]>) => {
+          clearTimeout(timer);
+          resolve(event.data);
+        };
+        worker.postMessage({ type: 'almamesh:egress-probe' }, [channel.port2]);
+      }),
+  );
+  return names;
+}
+
+/**
+ * The app as a visitor gets it: the service worker active, AI off, and nothing
+ * stubbed or routed. The WebKit projects block the worker for the stubbed
+ * journeys (Playwright cannot route through it); this journey turns it back on
+ * and needs no routing, so it drives Safari's real setup. With AI off nothing
+ * may leave the app origin: the page's requests are read from Playwright, the
+ * service worker's own from its Resource Timing record (serviceWorkerOffOrigin).
+ * Runs on every project (@sw is included on the iPhone).
+ */
+test.describe('as shipped: service worker on, AI off, nothing stubbed', () => {
+  test.use({ serviceWorkers: 'allow' });
+
+  test('[contract/real] @sw nothing leaves the app origin, service-worker traffic included, with AI off', async ({ page, baseURL }) => {
+    const consoleErrors = captureConsole(page);
+    const origin = new URL(baseURL ?? '').origin;
+    const pageOffOrigin: string[] = [];
+    page.context().on('request', (request) => {
+      const url = new URL(request.url());
+      if (url.protocol.startsWith('http') && url.origin !== origin) pageOffOrigin.push(request.url());
+    });
+    await bootEngine(page);
+    await seedChart(page);
+    await openDashboard(page);
+    // Bounded: with the worker blocked `ready` never settles, and the check below must say so.
+    await page.evaluate(() =>
+      Promise.race([navigator.serviceWorker.ready, new Promise((resolve) => setTimeout(resolve, 60_000))]),
+    );
+    // A fresh navigation now goes through the active worker.
+    await gotoSettled(page, '/dashboard');
+    expect(await page.evaluate(() => navigator.serviceWorker.controller !== null), 'the service worker controls the page').toBe(true);
+    await waitForEngineReady(page);
+    await expect(page.getByTestId('provenance-footer')).toContainText('As of', { timeout: 120_000 });
+
+    await page.getByTestId('floating-chat-button').click({ timeout: 120_000 });
+    await expect(page.getByTestId('chat-connect-ai')).toBeVisible();
+    await expect(page.getByTestId('time-travel-button'), 'no AI, no Time travel').toHaveCount(0);
+    await page.waitForLoadState('networkidle');
+
+    expect(await serviceWorkerOffOrigin(page, origin), 'with AI off, the service worker requests only the app origin').toEqual([]);
+    expect(pageOffOrigin, 'with AI off, the page requests only the app origin').toEqual([]);
     expect(consoleErrors, 'the journey must keep a clean console').toEqual([]);
   });
 });

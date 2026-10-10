@@ -46,6 +46,11 @@ export default defineConfig({
   projects: [
     { name: "chromium", use: { ...devices["Desktop Chrome"] } },
     { name: "webkit", use: { ...devices["Desktop Safari"] } },
+    // An iPhone: the export/import journeys at phone size with an iOS UA.
+    // The Day pin is full-tier only and iOS is always the minimal tier
+    // (packages/browser/src/deviceTier.ts), so that journey does not exist on
+    // an iPhone and is not run there.
+    { name: "iphone-webkit", use: { ...devices["iPhone 13"] }, grepInvert: /a Day pin with a place/ },
   ],
   webServer: EXTERNAL_BASE_URL
     ? undefined

@@ -329,20 +329,50 @@ async function spaNavigateOrGoto(page: Page, path: string): Promise<void> {
  * profile's first load may route through `/` or self-heal-reload once).
  */
 export async function gotoSettled(page: Page, path: string): Promise<void> {
-  // Never cut the current document off mid-load: WebKit reports a load that a
-  // navigation cancels (wasm, Worker, blob) as an "access control" console
-  // error, which would read as an app failure.
-  if (page.url().startsWith('http')) await page.waitForLoadState('networkidle');
   for (let attempt = 0; ; attempt += 1) {
+    // Never cut the current document off mid-load: WebKit reports a load that a
+    // navigation cancels (wasm, Worker, blob, bundle chunk) as an "access
+    // control" console error, which would read as an app failure.
+    if (page.url().startsWith('http')) await settleDocument(page);
     try {
       await page.goto(path, { waitUntil: 'domcontentloaded' });
       await page.waitForLoadState('load');
       if (new URL(page.url()).pathname === path) return;
     } catch (error) {
-      if (attempt >= 2 || !String(error).includes('interrupted by another navigation')) throw error;
+      if (attempt >= 2 || !APP_NAVIGATION_INTERRUPT.test(String(error))) throw error;
     }
     if (attempt >= 2) return;
   }
+}
+
+/** The app's own navigation (a boot redirect or self-heal reload) cut a goto short: Chromium's and WebKit's wording. */
+const APP_NAVIGATION_INTERRUPT = /interrupted by another navigation|Frame load interrupted/;
+
+/**
+ * Wait until the current document has finished what it started: the network
+ * is idle and, if the engine began booting, it reached ready or reported an
+ * error. networkidle alone is not enough on a slow runner (macos-15 CI): a
+ * quiet gap of 500 ms while the bundle parses can come before the engine even
+ * starts fetching Pyodide, and a navigation then cancels that boot. So a page
+ * where no boot has begun counts as settled only once it is ENGINE_START_GRACE_MS
+ * old (on a dev Mac the boot starts ~0.3 s after load). The stage hook needs
+ * VITE_EXIT_GATE_HOOKS=1; pages that never boot the engine (the landing page)
+ * just wait out the grace.
+ */
+const ENGINE_START_GRACE_MS = 5_000;
+
+export async function settleDocument(page: Page): Promise<void> {
+  await page.waitForLoadState('networkidle');
+  await page.waitForFunction(
+    (graceMs) => {
+      const w = window as unknown as { __ALMAMESH_STAGE__?: string; __ALMAMESH_ERROR__?: string };
+      if (w.__ALMAMESH_ERROR__ !== undefined || w.__ALMAMESH_STAGE__ === 'ready') return true;
+      return w.__ALMAMESH_STAGE__ === undefined && performance.now() >= graceMs;
+    },
+    ENGINE_START_GRACE_MS,
+    { timeout: 180_000, polling: 250 },
+  );
+  await page.waitForLoadState('networkidle');
 }
 
 /**
@@ -352,9 +382,10 @@ export async function gotoSettled(page: Page, path: string): Promise<void> {
  */
 export async function importBackup(page: Page, backupPath: string): Promise<void> {
   await gotoSettled(page, '/settings/data');
-  // Let the first boot finish opening SQLite (wasm + Worker) before Import
-  // reloads the page; otherwise the app's own reload cancels that load.
-  await page.waitForLoadState('networkidle');
+  // Let the first boot finish (SQLite wasm + Worker, and the engine's Pyodide
+  // files) before Import reloads the page; otherwise the app's own reload
+  // cancels those loads and WebKit logs each one as a console error.
+  await settleDocument(page);
   await expect(page.getByTestId('backup-import-button')).toBeEnabled();
   const [chooser] = await Promise.all([
     page.waitForEvent('filechooser'),
@@ -367,5 +398,5 @@ export async function importBackup(page: Page, backupPath: string): Promise<void
   await expect(confirm).toBeVisible();
   await expect(page.getByTestId('backup-safety-passphrase-input')).toHaveCount(0);
   await Promise.all([page.waitForEvent('domcontentloaded', { timeout: 120_000 }), confirm.click()]);
-  await page.waitForLoadState('networkidle');
+  await settleDocument(page);
 }

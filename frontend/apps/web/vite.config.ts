@@ -605,6 +605,70 @@ function previewPublicRoutesMiddleware(): Plugin {
   }
 }
 
+// Exit-gate hooks builds only (VITE_EXIT_GATE_HOOKS=1, never production): a
+// service-worker egress probe. Playwright WebKit does not report requests a
+// service worker sends, so e2e egress checks ask the worker itself. The probe
+// is the FIRST statement of sw.js (prepended after vite-plugin-pwa writes it),
+// so it wraps self.fetch before any other worker code runs, and it also keeps
+// every Resource Timing entry. Each URL is written into a Cache Storage list as
+// it is seen, because an idle worker can be stopped and restarted empty. A
+// `{ type: 'almamesh:egress-probe' }` message answers on its port with every
+// URL fetched. It observes; it never changes a request.
+const EXIT_GATE_HOOKS_BUILD = process.env.VITE_EXIT_GATE_HOOKS === '1'
+const SW_EGRESS_PROBE = 'sw-egress-probe.js'
+const SW_EGRESS_PROBE_SOURCE = `(() => {
+  const CACHE = 'almamesh-egress-probe';
+  const PREFIX = '/__egress-probe/';
+  const seen = new Set();
+  const keep = (name) => {
+    if (seen.has(name)) return;
+    seen.add(name);
+    caches.open(CACHE).then((cache) => cache.put(PREFIX + encodeURIComponent(name), new Response(''))).catch(() => {});
+  };
+  const originalFetch = self.fetch;
+  self.fetch = function (input, init) {
+    try { keep(new Request(input, init).url); } catch (error) { keep(String(input)); }
+    return originalFetch.apply(this, arguments);
+  };
+  new PerformanceObserver((list) => { for (const entry of list.getEntries()) keep(entry.name); })
+    .observe({ type: 'resource', buffered: true });
+  self.addEventListener('message', (event) => {
+    if (!event.data || event.data.type !== 'almamesh:egress-probe' || !event.ports[0]) return;
+    for (const entry of performance.getEntriesByType('resource')) keep(entry.name);
+    caches.open(CACHE).then((cache) => cache.keys()).then((requests) => {
+      for (const request of requests) {
+        const path = new URL(request.url).pathname;
+        if (path.startsWith(PREFIX)) seen.add(decodeURIComponent(path.slice(PREFIX.length)));
+      }
+      event.ports[0].postMessage([...seen]);
+    });
+  });
+})();
+`
+
+function swEgressProbePlugin(): Plugin {
+  if (!EXIT_GATE_HOOKS_BUILD) return { name: 'sw-egress-probe-off' }
+  let outDir = 'dist'
+  return {
+    name: 'sw-egress-probe',
+    enforce: 'post',
+    configResolved(config) {
+      outDir = config.build.outDir
+    },
+    generateBundle() {
+      this.emitFile({ fileName: SW_EGRESS_PROBE, source: SW_EGRESS_PROBE_SOURCE, type: 'asset' })
+    },
+    closeBundle: {
+      order: 'post',
+      handler() {
+        const sw = path.resolve(__dirname, outDir, 'sw.js')
+        if (!existsSync(sw)) this.error('sw-egress-probe: dist sw.js is missing; the probe cannot be installed')
+        writeFileSync(sw, `importScripts(${JSON.stringify(SW_EGRESS_PROBE)});\n${readFileSync(sw, 'utf-8')}`)
+      },
+    },
+  }
+}
+
 // https://vite.dev/config/
 export default defineConfig({
   customLogger: quietLogger,
@@ -623,6 +687,7 @@ export default defineConfig({
     previewPublicRoutesMiddleware(),
     ...pwaPlugin(),
     precacheHeadersKeyedExtrasPlugin(),
+    swEgressProbePlugin(),
   ],
   // Inline the app version at build time so client code (e.g. the feedback
   // widget's X-App-Version header) reports the running release. Absent in

@@ -24,6 +24,7 @@ import {
   exportBackup,
   fakeThirdParties,
   gotoSettled,
+  settleDocument,
   importBackup,
   onboard,
   profileIdOf,
@@ -121,7 +122,18 @@ async function wipeOrigin(page: Page): Promise<void> {
  * (correctly) show its storage block screen instead of running.
  */
 async function freshBrowser(browser: Browser, testInfo: TestInfo) {
-  const options = { baseURL: testInfo.project.use.baseURL, acceptDownloads: true };
+  // The device fields come through by name, so the iphone-webkit project runs
+  // as a phone (viewport, touch, mobile UA), not as desktop Safari.
+  const { viewport, userAgent, deviceScaleFactor, isMobile, hasTouch } = testInfo.project.use;
+  const options = {
+    baseURL: testInfo.project.use.baseURL,
+    acceptDownloads: true,
+    viewport,
+    userAgent,
+    deviceScaleFactor,
+    isMobile,
+    hasTouch,
+  };
   let context: BrowserContext;
   let profileDir: string | null = null;
   if (browser.browserType().name() === 'webkit') {
@@ -468,7 +480,7 @@ test.describe('start fresh: the empty-but-valid state round-trips', () => {
       // Let the reset finish re-opening storage before the next hard load; a
       // navigation that cancels the SQLite Worker load mid-flight is reported
       // by WebKit as an uncaught "access control checks" error.
-      await page.waitForLoadState('networkidle');
+      await settleDocument(page);
       // In-app navigation, not a hard load: WebKit logs a lazy route chunk that
       // a hard load cancels mid-flight as an uncaught TypeError (the same
       // teardown-noise family as the "access control checks" blob message).
@@ -610,8 +622,24 @@ test.describe('a pinned time-travel thread round-trips (chat store v3)', () => {
     return page.evaluate(() => (window as unknown as { __almameshPinnedThreads: PinnedThreads }).__almameshPinnedThreads());
   }
 
+  /**
+   * The Day pin is full-tier only (TimeTravelSheet `dayAllowed`). WebKit and
+   * Firefox have no navigator.deviceMemory, so without this pin desktop Safari
+   * reads as lite and offers Month and Year only (as e2e/time-travel.spec.ts
+   * pins it). iOS is always minimal, so the iphone-webkit project leaves this
+   * journey out (see the config).
+   */
+  async function pinFullTier(context: BrowserContext): Promise<void> {
+    await context.addInitScript(() => {
+      for (const [name, value] of Object.entries({ deviceMemory: 8, hardwareConcurrency: 8 })) {
+        Object.defineProperty(Navigator.prototype, name, { get: () => value, configurable: true });
+      }
+    });
+  }
+
   test('a Day pin with a place survives export and import field for field', async ({ browser }, testInfo) => {
     const a = await freshBrowser(browser, testInfo);
+    await pinFullTier(a.context);
     await test.step('seed: onboard, connect AI, pin 15 June 2026 in Bogotá', async () => {
       await gotoSettled(a.page, '/onboarding');
       await onboard(a.page, SELF);
@@ -641,6 +669,7 @@ test.describe('a pinned time-travel thread round-trips (chat store v3)', () => {
     await a.close();
 
     const b = await freshBrowser(browser, testInfo);
+    await pinFullTier(b.context);
     await test.step('import into browser B: the same pin, field for field, and its banner', async () => {
       await importBackup(b.page, exportPath);
       await spaNavigate(b.page, '/dashboard');
