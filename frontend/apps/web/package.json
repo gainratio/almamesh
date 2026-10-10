@@ -95,7 +95,7 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260929.1",
-    "@gainratio/avow": "^0.5.2",
+    "@gainratio/avow": "^0.5.3",
     "@playwright/test": "^1.63.0",
     "@resvg/resvg-js": "^2.6.2",
     "@tailwindcss/typography": "^0.5.20",
