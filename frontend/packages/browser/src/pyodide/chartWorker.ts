@@ -520,8 +520,8 @@ async function handle(request: ChartWorkerRequest): Promise<ChartWorkerResponse>
       return { ok: true, kind: "prewarm", id: request.id };
     }
     if (request.kind === "boot") {
-      if (import.meta.env.VITE_EXIT_GATE_HOOKS === "1" && request.injectWasmTrap === true) {
-        raiseWasmTrap();
+      if (import.meta.env.VITE_EXIT_GATE_HOOKS === "1" && request.injectWasmTrap !== undefined) {
+        raiseWasmTrap(request.injectWasmTrap);
       }
       await boot(request.config, (progress) => {
         workerScope?.postMessage({

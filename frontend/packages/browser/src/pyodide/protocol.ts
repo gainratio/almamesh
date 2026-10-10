@@ -2,6 +2,7 @@
 // Worker. Discriminated on `kind`/`ok`, correlated by `id` — mirroring the
 // edge-proc EngineClient/worker protocol.
 
+import type { BootFaultKind } from "./bootFaultInjection";
 import type { SiderealChart } from "./chart";
 import type { MatchRole, MeshEdgeContext, MeshRelationship } from "./mesh";
 import type { PredictiveContexts } from "./predictive";
@@ -115,8 +116,8 @@ export interface BootRequest {
   readonly kind: "boot";
   readonly id: number;
   readonly config: BootConfig;
-  /** Exit-gate hooks builds only (./bootFaultInjection.ts): trap before booting. */
-  readonly injectWasmTrap?: true;
+  /** Exit-gate hooks builds only (./bootFaultInjection.ts): fault before booting. */
+  readonly injectWasmTrap?: BootFaultKind;
 }
 
 export interface GenerateChartRequest {

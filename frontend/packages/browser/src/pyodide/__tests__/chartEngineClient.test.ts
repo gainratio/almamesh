@@ -318,7 +318,7 @@ describe("ChartEngineClient", () => {
       const second = withReply(bootOk);
       await second.boot(bootConfig());
 
-      expect(firstWorker.posted[0]).toMatchObject({ kind: "boot", injectWasmTrap: true });
+      expect(firstWorker.posted[0]).toMatchObject({ kind: "boot", injectWasmTrap: "trap" });
       expect(worker.posted[0]).not.toHaveProperty("injectWasmTrap");
     });
 

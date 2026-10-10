@@ -307,6 +307,15 @@ describe("canonical GitHub ingress contract", () => {
     }
   })
 
+  test("the macOS lane drives the one automatic boot retry on WebKit against the hooked preview", () => {
+    const script = readFileSync(resolve(root, MACOS_LANE_SCRIPT), "utf8")
+    // The fault switch exists only in the hooks build the lane already serves.
+    expect(script).toContain('BOOT_RETRY_E2E_BASE_URL="${BASE_URL}" bun run test:e2e:boot-retry --project=webkit --retries=0')
+    const config = readFileSync(resolve(root, "frontend/apps/web/playwright.boot-retry.config.ts"), "utf8")
+    expect(config).toContain('name: "webkit", use: { ...devices["Desktop Safari"]')
+    expect(config).toContain("process.env.BOOT_RETRY_E2E_BASE_URL")
+  })
+
   test("every post-merge publisher exception is main-only, path-filtered, PR-free, and thin Dagger", () => {
     for (const name of Object.keys(POST_MERGE_PUBLISHERS)) {
       expect(publisherViolations(name)).toEqual([])
