@@ -133,6 +133,7 @@
     "transits_title": "Planets in the sky then",
     "failed": "Couldn't work out the sky for this moment.",
     "retry": "Try again",
+    "sky_ready": "The sky for {{period}} is ready.",
     "today_label": "Today"
   }
 }

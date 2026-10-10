@@ -100,21 +100,42 @@ describe('DashboardMomentCard', () => {
     if (!transits) throw new Error('fixture has no transits');
     render(<DashboardMomentCard asOf={MARCH_2025} dashas={FOUNDER_DASHAS} birthYear={1980}
       sky={{ kind: 'ready', transits }} onRetry={() => {}} language="en" />);
-    expect(text('time-travel-moment-transits')).not.toContain('Current Sky');
+    const transitsText = text('time-travel-moment-transits');
+    expect(transitsText).not.toContain('Current Sky');
+    expect(transitsText).not.toContain("today's sky");
+    expect(transitsText).not.toMatch(/currently/);
     expect(screen.getByTestId('gochara-table')).not.toBeNull();
   });
 
-  it('one polite live region stays mounted while the sky goes from working to ready', () => {
+  it('one polite live region carries only the short status line, working to ready', () => {
     const transits = toTransitCtx(SKY_CHART.transit_context);
     if (!transits) throw new Error('fixture has no transits');
     const props = { asOf: MARCH_2025, dashas: FOUNDER_DASHAS, birthYear: 1980, onRetry: () => {}, language: 'en' };
     const { rerender } = render(<DashboardMomentCard {...props} sky={{ kind: 'working' }} />);
-    const region = screen.getByTestId('time-travel-moment-sky');
+    const region = screen.getByTestId('time-travel-moment-status');
     expect(region.getAttribute('aria-live')).toBe('polite');
     expect(region.contains(screen.getByTestId('time-travel-moment-working'))).toBe(true);
     rerender(<DashboardMomentCard {...props} sky={{ kind: 'ready', transits }} />);
-    expect(screen.getByTestId('time-travel-moment-sky')).toBe(region);
-    expect(region.contains(screen.getByTestId('time-travel-moment-transits'))).toBe(true);
+    expect(screen.getByTestId('time-travel-moment-status')).toBe(region);
+    // A one-line "ready" announcement; the table itself is never inside the live region.
+    expect((region.textContent ?? '').replace(/\s+/g, ' ')).toBe('The sky for March 2025 is ready.');
+    expect(region.contains(screen.getByTestId('gochara-table'))).toBe(false);
+    expect(region.contains(screen.getByTestId('time-travel-moment-transits'))).toBe(false);
+  });
+
+  it('a failure is an alert outside the polite region', () => {
+    render(<DashboardMomentCard asOf={MARCH_2025} dashas={FOUNDER_DASHAS} birthYear={1980}
+      sky={{ kind: 'failed' }} onRetry={() => {}} language="en" />);
+    const region = screen.getByTestId('time-travel-moment-status');
+    expect(region.contains(screen.getByTestId('time-travel-moment-failed'))).toBe(false);
+  });
+
+  it.each([
+    ['es', 'El cielo de marzo de 2025 está listo.'],
+    ['pt', 'O céu de março de 2025 está pronto.'],
+  ] as const)('the ready line is translated (%s)', async (language, expected) => {
+    await i18n.changeLanguage(language);
+    expect(i18n.t('dashboard:time_travel.sky_ready', { period: formatPinLabel(MARCH_2025, language) })).toBe(expected);
   });
 
   it('the progress line is the chat\'s own "working" string (one copy, es)', async () => {

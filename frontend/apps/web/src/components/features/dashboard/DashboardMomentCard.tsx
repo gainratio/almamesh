@@ -27,10 +27,13 @@ export interface DashboardMomentCardProps {
 interface SkyPartProps {
   readonly sky: MomentSky;
   readonly period: string;
-  readonly onRetry: () => void;
 }
 
-function SkyPart({ sky, period, onRetry }: SkyPartProps): ReactElement {
+/**
+ * The short line the polite live region announces: dashas only, working, or a
+ * one-line "ready". Never the transits table, never the failure (that is an alert).
+ */
+function SkyStatus({ sky, period }: SkyPartProps): ReactElement | null {
   const { t } = useTranslation(['dashboard', 'chat']);
   if (sky.kind === 'dashas-only') {
     return <p data-testid="time-travel-moment-dashas-only" className="text-sm text-text-secondary">{t('dashboard:time_travel.dashas_only')}</p>;
@@ -39,25 +42,41 @@ function SkyPart({ sky, period, onRetry }: SkyPartProps): ReactElement {
     // The chat's own progress line: one string for one compute.
     return <p data-testid="time-travel-moment-working" className="text-sm text-text-secondary">{t('chat:time_travel.status_working', { period })}</p>;
   }
+  if (sky.kind === 'ready') {
+    return <p className="sr-only">{t('dashboard:time_travel.sky_ready', { period })}</p>;
+  }
+  return null;
+}
+
+interface SkyBodyProps {
+  readonly sky: MomentSky;
+  readonly onRetry: () => void;
+}
+
+/** What sits under the status line: the failure alert or the transits. */
+function SkyBody({ sky, onRetry }: SkyBodyProps): ReactElement | null {
+  const { t } = useTranslation('dashboard');
   if (sky.kind === 'failed') {
     return (
       <p data-testid="time-travel-moment-failed" role="alert" className="text-sm text-status-error">
-        {t('dashboard:time_travel.failed')}{' '}
-        <button type="button" onClick={onRetry} className="min-h-11 underline">{t('dashboard:time_travel.retry')}</button>
+        {t('time_travel.failed')}{' '}
+        <button type="button" onClick={onRetry} className="min-h-11 underline">{t('time_travel.retry')}</button>
       </p>
     );
   }
+  if (sky.kind !== 'ready') return null;
   return (
-    <section data-testid="time-travel-moment-transits" aria-label={t('dashboard:time_travel.transits_title')}>
-      <h3 className="mb-2 text-sm font-semibold text-text-primary">{t('dashboard:time_travel.transits_title')}</h3>
-      {/* The card's own heading names the moment; "Current Sky" would read as now. */}
-      <TransitsPanel transitCtx={sky.transits} gocharaHeading={null} />
+    <section data-testid="time-travel-moment-transits" aria-label={t('time_travel.transits_title')}>
+      <h3 className="mb-2 text-sm font-semibold text-text-primary">{t('time_travel.transits_title')}</h3>
+      {/* The card's own heading names the moment; no line may read as now. */}
+      <TransitsPanel transitCtx={sky.transits} frame="moment" />
     </section>
   );
 }
 
 export function DashboardMomentCard({ asOf, dashas, birthYear, sky, onRetry, language }: DashboardMomentCardProps): ReactElement {
   const { t } = useTranslation(['dashboard', 'predictive']);
+  const period = formatPinLabel(asOf, language);
   const selected = dashas ? selectDashasForPeriod(dashas, momentPeriod(asOf), birthYear) : undefined;
   // Every row that overlaps the moment, in order: a Year can cross a boundary.
   const lords = (rows: readonly { readonly lord: string }[] | undefined): string =>
@@ -71,11 +90,13 @@ export function DashboardMomentCard({ asOf, dashas, birthYear, sky, onRetry, lan
         <dt>{t('dashboard:time_travel.antar')}</dt>
         <dd data-testid="time-travel-moment-antar">{lords(selected?.antar)}</dd>
       </dl>
-      {/* One live region that stays mounted while its text changes, so screen
-          readers announce working → ready. A failure inside it is role="alert". */}
-      <div data-testid="time-travel-moment-sky" aria-live="polite">
-        <SkyPart sky={sky} period={formatPinLabel(asOf, language)} onRetry={onRetry} />
+      {/* One live region that stays mounted while its short text changes, so
+          screen readers announce working → ready. The table and the failure
+          (role="alert") sit outside it. */}
+      <div data-testid="time-travel-moment-status" aria-live="polite">
+        <SkyStatus sky={sky} period={period} />
       </div>
+      <SkyBody sky={sky} onRetry={onRetry} />
     </div>
   );
 }

@@ -14,20 +14,37 @@ describe('TransitsPanel', () => {
     await i18next.changeLanguage('en');
   });
 
-  it('titles the gochara card "Current Sky (Gochara)" by default', () => {
-    render(<TransitsPanel transitCtx={TRANSIT_CTX} />);
-    expect(screen.getByTestId('gochara-card').textContent).toContain('Current Sky (Gochara)');
+  // Sade Sati inactive, so its "none" line renders too.
+  const QUIET_SATURN: TransitCtx = { ...TRANSIT_CTX, sade_sati: { ...TRANSIT_CTX.sade_sati, is_active: false } };
+
+  it('by default reads as now: "Current Sky", "today\'s sky", "currently"', () => {
+    render(<TransitsPanel transitCtx={QUIET_SATURN} />);
+    const text = screen.getByTestId('transits-panel').textContent ?? '';
+    expect(text).toContain('Current Sky (Gochara)');
+    expect(text).toContain("today's sky");
+    expect(text).toContain('currently');
   });
 
-  it('a host showing another moment can drop the "Current Sky" heading', () => {
-    render(<TransitsPanel transitCtx={TRANSIT_CTX} gocharaHeading={null} />);
-    expect(screen.getByTestId('gochara-card').textContent).not.toContain('Current Sky');
+  it('framed as another moment, no line reads as now and the table stays', () => {
+    render(<TransitsPanel transitCtx={QUIET_SATURN} frame="moment" />);
+    const text = screen.getByTestId('transits-panel').textContent ?? '';
+    expect(text).not.toContain('Current Sky');
+    expect(text).not.toMatch(/today/i);
+    expect(text).not.toMatch(/current/i);
+    expect(text).toContain('Saturn is not inside the three-sign Sade Sati corridor');
     expect(screen.getByTestId('gochara-table')).toBeTruthy();
+    expect(screen.getByTestId('fusion-card')).toBeTruthy();
   });
 
-  it('a host can name the gochara heading itself', () => {
-    render(<TransitsPanel transitCtx={TRANSIT_CTX} gocharaHeading="Sky in 2019" />);
-    expect(screen.getByRole('heading', { name: 'Sky in 2019' })).toBeTruthy();
+  it.each([
+    ['es', /actualmente|hoy/],
+    ['pt', /atualmente|hoje/],
+  ] as const)('framed as another moment, %s has no "now" words either', async (language, now) => {
+    useLanguageStore.setState({ language });
+    await i18next.changeLanguage(language);
+    render(<TransitsPanel transitCtx={QUIET_SATURN} frame="moment" />);
+    expect(screen.getByTestId('transits-panel').textContent ?? '').not.toMatch(now);
+    await i18next.changeLanguage('en');
   });
 
   it('renders the gochara table with localized graha/sign names and houses', () => {

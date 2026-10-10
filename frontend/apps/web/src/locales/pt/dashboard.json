@@ -136,6 +136,7 @@
     "transits_title": "Os planetas no céu naquela época",
     "failed": "Não foi possível calcular o céu para este momento.",
     "retry": "Tentar de novo",
+    "sky_ready": "O céu de {{period}} está pronto.",
     "today_label": "Hoje"
   }
 }

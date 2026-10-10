@@ -41,14 +41,14 @@ const GRAHA_ORDER = [
   'ketu',
 ] as const;
 
-function GocharaTable({ ctx, heading }: { ctx: TransitCtx; heading?: string | null }): ReactElement {
+function GocharaTable({ ctx, frame }: { ctx: TransitCtx; frame: TransitsFrame }): ReactElement {
   const { t } = useTranslation('predictive');
   const placements = GRAHA_ORDER.map((g) => ctx.gochara.placements[g]).filter(
     (p): p is TransitPlacementData => p !== undefined,
   );
   return (
     <Card
-      title={heading === undefined ? t('gochara.heading') : (heading ?? undefined)}
+      title={frame === 'now' ? t('gochara.heading') : undefined}
       subtitle={t('gochara.subtitle', { date: formatReferenceDay(ctx.gochara.instant) })}
       data-testid="gochara-card"
     >
@@ -92,7 +92,7 @@ function GocharaTable({ ctx, heading }: { ctx: TransitCtx; heading?: string | nu
   );
 }
 
-function SadeSatiCard({ data }: { data: SadeSatiData }): ReactElement {
+function SadeSatiCard({ data, frame }: { data: SadeSatiData; frame: TransitsFrame }): ReactElement {
   const { t } = useTranslation('predictive');
   return (
     <Card
@@ -111,7 +111,7 @@ function SadeSatiCard({ data }: { data: SadeSatiData }): ReactElement {
         </p>
       )}
       {!data.is_active && (
-        <p className="mb-3 text-sm leading-relaxed text-text-secondary">{t('sade_sati.none_body')}</p>
+        <p className="mb-3 text-sm leading-relaxed text-text-secondary">{t(frame === 'now' ? 'sade_sati.none_body' : 'sade_sati.none_body_moment')}</p>
       )}
       {data.cycle.length > 0 && (
         <ol className="space-y-2" data-testid="sade-sati-cycle">
@@ -175,7 +175,7 @@ function SlowHitsCard({ ctx }: { ctx: TransitCtx }): ReactElement {
   );
 }
 
-function FusionCard({ ctx }: { ctx: TransitCtx }): ReactElement {
+function FusionCard({ ctx, frame }: { ctx: TransitCtx; frame: TransitsFrame }): ReactElement {
   const { t } = useTranslation('predictive');
   const { fusion } = ctx;
   const list = (names: readonly string[]): string =>
@@ -183,7 +183,7 @@ function FusionCard({ ctx }: { ctx: TransitCtx }): ReactElement {
   return (
     <Card
       title={t('fusion.heading')}
-      subtitle={t('fusion.subtitle')}
+      subtitle={frame === 'now' ? t('fusion.subtitle') : undefined}
       actions={<SeverityBadge severity={fusion.severity} />}
       data-testid="fusion-card"
     >
@@ -259,23 +259,27 @@ function TimelineCard({ ctx }: { ctx: TransitCtx }): ReactElement {
   );
 }
 
+/** Whether the panel shows today's sky or another moment's. */
+export type TransitsFrame = 'now' | 'moment';
+
 export interface TransitsPanelProps {
   readonly transitCtx: TransitCtx;
   /**
-   * The gochara card's title. Default (undefined): "Current Sky (Gochara)".
-   * null drops it, for a host that shows another moment under its own heading.
+   * 'now' (default): the copy reads as today ("Current Sky", "today's sky").
+   * 'moment': a host showing another moment under its own heading; every line
+   * that would read as now is dropped or reworded.
    */
-  readonly gocharaHeading?: string | null;
+  readonly frame?: TransitsFrame;
 }
 
 /** The full Transits & Timing surface, engine TransitCtx rendered verbatim. */
-export function TransitsPanel({ transitCtx, gocharaHeading }: TransitsPanelProps): ReactElement {
+export function TransitsPanel({ transitCtx, frame = 'now' }: TransitsPanelProps): ReactElement {
   return (
     <div className="space-y-6" data-testid="transits-panel">
-      <GocharaTable ctx={transitCtx} heading={gocharaHeading} />
+      <GocharaTable ctx={transitCtx} frame={frame} />
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <SadeSatiCard data={transitCtx.sade_sati} />
-        <FusionCard ctx={transitCtx} />
+        <SadeSatiCard data={transitCtx.sade_sati} frame={frame} />
+        <FusionCard ctx={transitCtx} frame={frame} />
       </div>
       <SlowHitsCard ctx={transitCtx} />
       <TimelineCard ctx={transitCtx} />
