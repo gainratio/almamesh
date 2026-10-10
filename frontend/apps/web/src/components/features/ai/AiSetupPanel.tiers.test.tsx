@@ -1,5 +1,5 @@
 /**
- * LlmModelSettings — the tier structure (Spec 063 D3).
+ * AiSetupPanel — the tier structure (Spec 063 D3).
  *
  * Asserts: the None + Cloud tiers render; None is the ACTIVE default; the cloud
  * tier carries the honest "redacted chart data leaves your device" one-liner;
@@ -14,7 +14,7 @@ import {
   hydrateLlmSettings,
   readLlmSettings,
 } from '@almamesh/llm';
-import LlmModelSettings from './LlmModelSettings';
+import { AiSetupPanel } from './AiSetupPanel';
 
 function readSaved(): Record<string, unknown> {
   return { ...readLlmSettings() };
@@ -26,10 +26,10 @@ const fetchCredits = vi.fn().mockResolvedValue({ totalCredits: 5, totalUsage: 1,
 const fetchModels = vi.fn().mockResolvedValue([]);
 
 function renderTiers() {
-  return render(<LlmModelSettings fetchCredits={fetchCredits} fetchModels={fetchModels} />);
+  return render(<AiSetupPanel fetchCredits={fetchCredits} fetchModels={fetchModels} />);
 }
 
-describe('LlmModelSettings — tiers', () => {
+describe('AiSetupPanel — tiers', () => {
   beforeEach(() => {
     hydrateLlmSettings(null);
     configureLlmSettingsPersistence(undefined);

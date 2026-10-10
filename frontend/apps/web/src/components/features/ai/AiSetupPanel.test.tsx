@@ -10,7 +10,7 @@ import {
   RECOMMENDED_CLOUD_MODEL,
   type ProviderConfig,
 } from '@almamesh/llm';
-import LlmModelSettings from './LlmModelSettings';
+import { AiSetupPanel } from './AiSetupPanel';
 import { notifyLlmSettingsChanged } from '../../../lib/llmSettingsEvents';
 import { hydrateSlowModelSuggestion } from '../../../lib/modelSuggestion';
 
@@ -38,7 +38,7 @@ function requestError(message: string, status: number): Error {
   return Object.assign(new Error(message), { name: 'LlmRequestError', status });
 }
 
-describe('LlmModelSettings — OpenRouter-first, test-on-save', () => {
+describe('AiSetupPanel — OpenRouter-first, test-on-save', () => {
   beforeEach(() => {
     hydrateLlmSettings(null);
     hydrateSlowModelSuggestion(null);
@@ -53,7 +53,7 @@ describe('LlmModelSettings — OpenRouter-first, test-on-save', () => {
   });
 
   it('renders the two choices: AI off, and a guided Connect-AI card with an Advanced panel', () => {
-    render(<LlmModelSettings resolveConfig={resolveConfig} fetchCredits={fetchCredits} fetchModels={fetchModels} testConnection={vi.fn()} />);
+    render(<AiSetupPanel resolveConfig={resolveConfig} fetchCredits={fetchCredits} fetchModels={fetchModels} testConnection={vi.fn()} />);
     expect(screen.getByTestId('tier-none')).toBeTruthy();
     expect(screen.getByTestId('tier-cloud')).toBeTruthy();
     expect(screen.getByTestId('llm-openrouter-key')).toBeTruthy();
@@ -68,7 +68,7 @@ describe('LlmModelSettings — OpenRouter-first, test-on-save', () => {
   });
 
   it('disables the guided Save until an OpenRouter key is entered', () => {
-    render(<LlmModelSettings resolveConfig={resolveConfig} fetchCredits={fetchCredits} fetchModels={fetchModels} testConnection={vi.fn()} />);
+    render(<AiSetupPanel resolveConfig={resolveConfig} fetchCredits={fetchCredits} fetchModels={fetchModels} testConnection={vi.fn()} />);
     expect((screen.getByTestId('llm-save') as HTMLButtonElement).disabled).toBe(true);
     fireEvent.change(screen.getByTestId('llm-openrouter-key'), { target: { value: 'sk-or-abc' } });
     expect((screen.getByTestId('llm-save') as HTMLButtonElement).disabled).toBe(false);
@@ -79,7 +79,7 @@ describe('LlmModelSettings — OpenRouter-first, test-on-save', () => {
       JSON.stringify({ apiKey: 'old-key', apiBase: 'https://openrouter.ai/api/v1' }),
     );
     render(
-      <LlmModelSettings
+      <AiSetupPanel
         resolveConfig={resolveConfig}
         fetchCredits={fetchCredits}
         fetchModels={fetchModels}
@@ -102,7 +102,7 @@ describe('LlmModelSettings — OpenRouter-first, test-on-save', () => {
 
   it('guided save persists the OpenRouter preset and, on a passing test, shows Connected', async () => {
     const testConnection = vi.fn().mockResolvedValue(undefined);
-    render(<LlmModelSettings resolveConfig={resolveConfig} fetchCredits={fetchCredits} fetchModels={fetchModels} testConnection={testConnection} />);
+    render(<AiSetupPanel resolveConfig={resolveConfig} fetchCredits={fetchCredits} fetchModels={fetchModels} testConnection={testConnection} />);
 
     fireEvent.change(screen.getByTestId('llm-openrouter-key'), { target: { value: 'sk-or-abc' } });
     fireEvent.click(screen.getByTestId('llm-save'));
@@ -125,7 +125,7 @@ describe('LlmModelSettings — OpenRouter-first, test-on-save', () => {
 
   it('shows a SPECIFIC error (bad key) when the connectivity test fails — config still saved', async () => {
     const testConnection = vi.fn().mockRejectedValue(requestError('returned 401 Unauthorized', 401));
-    render(<LlmModelSettings resolveConfig={resolveConfig} fetchCredits={fetchCredits} fetchModels={fetchModels} testConnection={testConnection} />);
+    render(<AiSetupPanel resolveConfig={resolveConfig} fetchCredits={fetchCredits} fetchModels={fetchModels} testConnection={testConnection} />);
 
     fireEvent.change(screen.getByTestId('llm-openrouter-key'), { target: { value: 'bad-key' } });
     fireEvent.click(screen.getByTestId('llm-save'));
@@ -142,7 +142,7 @@ describe('LlmModelSettings — OpenRouter-first, test-on-save', () => {
     const testConnection = vi
       .fn()
       .mockRejectedValue(requestError('returned 402 Payment Required: Insufficient credits', 402));
-    render(<LlmModelSettings resolveConfig={resolveConfig} fetchCredits={fetchCredits} fetchModels={fetchModels} testConnection={testConnection} />);
+    render(<AiSetupPanel resolveConfig={resolveConfig} fetchCredits={fetchCredits} fetchModels={fetchModels} testConnection={testConnection} />);
 
     fireEvent.change(screen.getByTestId('llm-openrouter-key'), { target: { value: 'sk-or-abc' } });
     fireEvent.click(screen.getByTestId('llm-save'));
@@ -164,7 +164,7 @@ describe('LlmModelSettings — OpenRouter-first, test-on-save', () => {
     });
     const testConnection = vi.fn().mockRejectedValue(err);
     render(
-      <LlmModelSettings
+      <AiSetupPanel
         resolveConfig={resolveConfig}
         fetchCredits={fetchCredits}
         fetchModels={fetchModels}
@@ -183,7 +183,7 @@ describe('LlmModelSettings — OpenRouter-first, test-on-save', () => {
   });
 
   it('disables the advanced Save until an endpoint is entered (no empty-form probe)', () => {
-    render(<LlmModelSettings resolveConfig={resolveConfig} fetchCredits={fetchCredits} fetchModels={fetchModels} testConnection={vi.fn()} />);
+    render(<AiSetupPanel resolveConfig={resolveConfig} fetchCredits={fetchCredits} fetchModels={fetchModels} testConnection={vi.fn()} />);
     expect((screen.getByTestId('llm-save-advanced') as HTMLButtonElement).disabled).toBe(true);
     fireEvent.change(screen.getByTestId('llm-api-base'), { target: { value: 'http://localhost:11434/v1' } });
     expect((screen.getByTestId('llm-save-advanced') as HTMLButtonElement).disabled).toBe(false);
@@ -191,7 +191,7 @@ describe('LlmModelSettings — OpenRouter-first, test-on-save', () => {
 
   it('advanced save persists a hand-typed endpoint + tiered models and tests them', async () => {
     const testConnection = vi.fn().mockResolvedValue(undefined);
-    render(<LlmModelSettings resolveConfig={resolveConfig} fetchCredits={fetchCredits} fetchModels={fetchModels} testConnection={testConnection} />);
+    render(<AiSetupPanel resolveConfig={resolveConfig} fetchCredits={fetchCredits} fetchModels={fetchModels} testConnection={testConnection} />);
 
     fireEvent.change(screen.getByTestId('llm-api-base'), {
       target: { value: 'http://localhost:11434/v1' },
@@ -211,7 +211,7 @@ describe('LlmModelSettings — OpenRouter-first, test-on-save', () => {
     const testConnection = vi.fn().mockResolvedValue(undefined);
     const flushSettings = vi.fn().mockRejectedValue(new Error('canonical SQLite write failed'));
     render(
-      <LlmModelSettings
+      <AiSetupPanel
         resolveConfig={resolveConfig}
         fetchCredits={fetchCredits}
         fetchModels={fetchModels}
@@ -242,7 +242,7 @@ describe('LlmModelSettings — OpenRouter-first, test-on-save', () => {
           resolveProbe = res;
         }),
     );
-    render(<LlmModelSettings resolveConfig={resolveConfig} fetchCredits={fetchCredits} fetchModels={fetchModels} testConnection={testConnection} />);
+    render(<AiSetupPanel resolveConfig={resolveConfig} fetchCredits={fetchCredits} fetchModels={fetchModels} testConnection={testConnection} />);
 
     fireEvent.change(screen.getByTestId('llm-openrouter-key'), { target: { value: 'sk-or-abc' } });
     fireEvent.click(screen.getByTestId('llm-save'));
@@ -262,7 +262,7 @@ describe('LlmModelSettings — OpenRouter-first, test-on-save', () => {
   });
 });
 
-describe('LlmModelSettings — OpenRouter credits balance', () => {
+describe('AiSetupPanel — OpenRouter credits balance', () => {
   beforeEach(() => {
     hydrateLlmSettings(null);
     hydrateSlowModelSuggestion(null);
@@ -274,7 +274,7 @@ describe('LlmModelSettings — OpenRouter credits balance', () => {
   it('reads the balance after a guided OpenRouter connect and shows dollars remaining', async () => {
     const testConnection = vi.fn().mockResolvedValue(undefined);
     render(
-      <LlmModelSettings
+      <AiSetupPanel
         resolveConfig={resolveConfig}
         testConnection={testConnection}
         fetchCredits={fetchCredits} fetchModels={fetchModels}
@@ -297,7 +297,7 @@ describe('LlmModelSettings — OpenRouter credits balance', () => {
   it('never reads credits for a LOCAL endpoint (no key sent to loopback)', async () => {
     const testConnection = vi.fn().mockResolvedValue(undefined);
     render(
-      <LlmModelSettings
+      <AiSetupPanel
         resolveConfig={resolveConfig}
         testConnection={testConnection}
         fetchCredits={fetchCredits} fetchModels={fetchModels}
@@ -320,7 +320,7 @@ describe('LlmModelSettings — OpenRouter credits balance', () => {
     const testConnection = vi.fn().mockResolvedValue(undefined);
     const failingCredits = vi.fn().mockRejectedValue(requestError('returned 401 Unauthorized', 401));
     render(
-      <LlmModelSettings
+      <AiSetupPanel
         resolveConfig={resolveConfig}
         testConnection={testConnection}
         fetchCredits={failingCredits}
@@ -338,7 +338,7 @@ describe('LlmModelSettings — OpenRouter credits balance', () => {
   it('re-reads the balance when Refresh is pressed', async () => {
     const testConnection = vi.fn().mockResolvedValue(undefined);
     render(
-      <LlmModelSettings
+      <AiSetupPanel
         resolveConfig={resolveConfig}
         testConnection={testConnection}
         fetchCredits={fetchCredits} fetchModels={fetchModels}
@@ -355,7 +355,7 @@ describe('LlmModelSettings — OpenRouter credits balance', () => {
   });
 });
 
-describe('LlmModelSettings — live OpenRouter model picker', () => {
+describe('AiSetupPanel — live OpenRouter model picker', () => {
   beforeEach(() => {
     hydrateLlmSettings(null);
     hydrateSlowModelSuggestion(null);
@@ -377,7 +377,7 @@ describe('LlmModelSettings — live OpenRouter model picker', () => {
       { id: 'openai/gpt-5.6-sol', name: 'GPT-5.6 Sol' },
     ]);
     render(
-      <LlmModelSettings
+      <AiSetupPanel
         resolveConfig={resolveConfig}
         fetchCredits={fetchCredits}
         fetchModels={catalog}
@@ -404,7 +404,7 @@ describe('LlmModelSettings — live OpenRouter model picker', () => {
     );
     const catalog = vi.fn().mockResolvedValue([]);
     render(
-      <LlmModelSettings
+      <AiSetupPanel
         resolveConfig={resolveConfig}
         fetchCredits={fetchCredits}
         fetchModels={catalog}
@@ -418,7 +418,7 @@ describe('LlmModelSettings — live OpenRouter model picker', () => {
 
 // A user still on z-ai/glm-5.3-flash gets a one-time, dismissible suggestion to
 // switch to the new default. Their saved model is never changed without a click.
-describe('LlmModelSettings — one-time switch suggestion for glm-5.3-flash users', () => {
+describe('AiSetupPanel — one-time switch suggestion for glm-5.3-flash users', () => {
   const GLM = 'z-ai/glm-5.3-flash';
   const seed = (models: Record<string, string>) =>
     hydrateLlmSettings(
@@ -431,7 +431,7 @@ describe('LlmModelSettings — one-time switch suggestion for glm-5.3-flash user
     );
   const renderSettings = (testConnection = vi.fn().mockResolvedValue(undefined)) =>
     render(
-      <LlmModelSettings
+      <AiSetupPanel
         resolveConfig={resolveConfig}
         fetchCredits={fetchCredits}
         fetchModels={fetchModels}

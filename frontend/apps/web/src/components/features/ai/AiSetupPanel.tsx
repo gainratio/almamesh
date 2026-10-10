@@ -1,5 +1,5 @@
 /**
- * LlmModelSettings — the AI configuration screen.
+ * AiSetupPanel — the one AI setup UI (Settings → AI, and onboarding from PR 4).
  *
  * Two choices, stated plainly:
  *   1. AI off (the DEFAULT) — the chart is pure calculation and nothing leaves
@@ -95,7 +95,7 @@ type ModelsState =
  * — default to the real interpretation-config resolver + connectivity probe +
  * OpenRouter balance reader.
  */
-export interface LlmModelSettingsProps {
+export interface AiSetupPanelProps {
   resolveConfig?: () => ProviderConfig;
   testConnection?: (opts: { config: ProviderConfig; signal?: AbortSignal }) => Promise<void>;
   fetchCredits?: (opts: {
@@ -110,13 +110,13 @@ export interface LlmModelSettingsProps {
   flushSettings?: () => Promise<void>;
 }
 
-export default function LlmModelSettings({
+export function AiSetupPanel({
   resolveConfig = resolveInterpretationConfig,
   testConnection = testProviderConnection,
   fetchCredits = fetchOpenRouterCredits,
   fetchModels = fetchOpenRouterModels,
   flushSettings = flushPortablePersistence,
-}: LlmModelSettingsProps = {}) {
+}: AiSetupPanelProps = {}) {
   const { t } = useTranslation('settings');
   const [status, setStatus] = useState<LlmStatus>(() => describeLlmStatus());
   const [settings, setSettings] = useState<LlmSettings>(() => readLlmSettings());

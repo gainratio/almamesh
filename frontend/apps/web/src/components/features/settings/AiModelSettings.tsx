@@ -9,13 +9,13 @@
  */
 
 import { Card } from '../../ui';
-import LlmModelSettings from './LlmModelSettings';
+import { AiSetupPanel } from '../ai/AiSetupPanel';
 
 export function AiModelSettings() {
   return (
     <section data-testid="ai-model-settings">
       <Card className="p-5">
-        <LlmModelSettings />
+        <AiSetupPanel />
       </Card>
     </section>
   );
