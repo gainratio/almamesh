@@ -1,6 +1,6 @@
 # Cloud drive backup: back up to your own drive, restore on any device
 
-Status: draft design for owner review (2026-10-10). Written against `main` at `821bd6e8`.
+Status: approved by the owner (2026-10-10, "go to all"); see [Owner rulings](#owner-rulings-2026-10-10). Written against `main` at `821bd6e8`.
 Revision 2 (2026-10-10): drive sign-in is now stored per device, encrypted (owner's question:
 "why can't we store a token in SQLite?"). OneDrive moves from MSAL to `oauth4webapi`. Automatic
 backup is planned as PR 6.
@@ -156,7 +156,7 @@ export interface BackupDrive {
   readonly provider: DriveProviderId;
   /** Starts consent. May navigate the tab away; resolves 'connected' only after the callback. */
   connect(returnTo: string): Promise<'connected' | 'redirecting'>;
-  isConnected(): boolean;
+  isConnected(): Promise<boolean>;
   list(): Promise<readonly DriveBackupEntry[]>;
   upload(name: BackupFileName, sealed: SealedBackup): Promise<DriveBackupEntry>;
   download(id: string): Promise<Uint8Array>;
@@ -167,7 +167,8 @@ export interface BackupDrive {
 
 export type DriveErrorKind =
   | 'not_connected' | 'consent_denied' | 'token_expired' | 'offline'
-  | 'quota_exceeded' | 'rate_limited' | 'not_found' | 'provider_error';
+  | 'quota_exceeded' | 'rate_limited' | 'not_found' | 'not_sealed' | 'bad_name'
+  | 'provider_error';
 export class DriveError extends Error { /* kind: DriveErrorKind; status?: number */ }
 ```
 
@@ -295,7 +296,7 @@ to press "Connect Google Drive" again (a normal interactive redirect). It never 
 try per user action.
 
 The silent bounce runs only when the user presses a drive button, never at page load. It reloads
-the app, so it must not interrupt anything else (see open question 1).
+the app, so it must not interrupt anything else (ruling 1).
 
 **`login_hint`: not possible without asking for identity.** Google says `login_hint` "can be the
 user's email address or the `sub` string, which is equivalent to the user's Google ID"
@@ -304,7 +305,7 @@ user's email address or the `sub` string, which is equivalent to the user's Goog
 token, so AlmaMesh would hold a stable Google account ID. We don't do that in v1. Without a hint,
 `prompt=none` still works when Google can tell which account to use. A user signed in to several
 Google accounts may get `account_selection_required` and see the account picker each hour. The
-live run checks this with two accounts signed in (open question 8).
+live run checks this with two accounts signed in (ruling 8).
 
 **Where and how credentials are stored.**
 
@@ -356,7 +357,7 @@ in the account. Mitigations:
   origin. Turnstile is the one third-party script origin; it predates this feature and is listed
   here so nobody forgets it shares the origin with stored tokens.
 - The passphrase is never stored, so no stored secret on the device decrypts backups. This is
-  why automatic backup needs recipient-key sealing rather than a stored passphrase (open question 1).
+  why automatic backup needs recipient-key sealing rather than a stored passphrase (ruling 1).
 
 ### Encryption
 
@@ -430,7 +431,7 @@ almamesh-backup-2026-10-10T18-04-05-123Z-chrome-macos-7f3a2c.almamesh
 - Verification before pruning: download the file back and compare SHA-256 with what was uploaded.
   Only a byte-equal read-back counts as "Backed up". If verification fails, nothing is pruned and
   the UI says "Uploaded, but the check failed. Try again." (Cost: one extra download per backup.
-  See open question 4.)
+  See ruling 4.)
 
 ### Conflicts across devices
 
@@ -457,7 +458,7 @@ safety copy). The cases that remain:
 | Token expired mid-flow | One refresh (Dropbox, Microsoft) or one `prompt=none` bounce (Google), then "Reconnect" if that fails. The sealed bytes are kept in memory for a refresh retry; a Google bounce reloads the page, so the user presses Back up again and it re-seals. |
 | Drive full | `quota_exceeded`: "Your Google Drive is full. Free some space or trash old AlmaMesh backups." |
 | 429 / 5xx | One retry with backoff for idempotent reads (`list`, `download`). Uploads are not auto-retried; the user presses Retry. |
-| No background queue in v1 | v1 does not queue backups for later or run them on a timer. PR 6 adds automatic backup; see open question 1. |
+| No background queue in v1 | v1 does not queue backups for later or run them on a timer. PR 6 adds automatic backup; see ruling 1. |
 
 ## Privacy
 
@@ -689,19 +690,29 @@ reads the origin and hides the buttons on unlisted origins).
 - Partial restore (one profile out of a backup).
 - Changing the passphrase of existing drive backups (re-sealing old files).
 
-## Open questions
+## Owner rulings (2026-10-10)
 
-| # | Question | Recommendation |
+The owner approved the spec as written ("go to all"), taking the recommended answer every time.
+
+**Owner ruling R0: the one-key IndexedDB exception.** The `almamesh-device-keys` IndexedDB
+database may hold exactly one non-extractable AES-GCM `CryptoKey`. It is a device-bound key
+handle, not user data, so the "SQLite only for user data" rule stands unchanged. Only
+`deviceKey.ts` opens it, and a test fails the gate if the database ever holds anything else.
+CLAUDE.md records the exception next to the SQLite rule.
+
+The twelve open questions are closed:
+
+| # | Question | Ruling |
 |---|---|---|
-| 1 | Now that sign-in is stored, should v1 back up automatically (on open, or on change, debounced)? | **Not in the launch PRs; yes in PR 6, right after.** Stored tokens remove the sign-in obstacle, but not the passphrase. A sealed backup needs the passphrase, and we never store it. Storing it, even encrypted with the device key, would let anyone who steals the device's storage open every backup on the drive, old ones included. The fix is recipient-key sealing (question 2): automatic backups seal to a public key, which is safe to store. PR 6 then adds "Back up automatically": on change, debounced 10 minutes, at most one per hour, and only when a usable token exists **without a redirect** (Dropbox always; Microsoft within its 24 h; Google within its hour). It never bounces the page on its own. Google users past the hour see "Last drive backup: 3 h ago, Back up now". Not backup-on-open: a backup at boot competes with the ~38 MB engine bootstrap, and on-change covers the same need. Until PR 6, show "Last drive backup: N days ago" on Settings → Data and a dashboard nudge after 14 days. |
-| 2 | Should the user type the passphrase on every backup? One-click backup would need an age X25519 key pair: back up to the public key with no passphrase, keep the private key sealed by the passphrase in a small key file on the drive. | **Launch: ask once per tab session. PR 6: adopt the key pair.** The private key exists only inside a passphrase-sealed key file on the drive, so a restore still needs only the passphrase. The device stores only the public key. This is what makes question 1 safe. It also gives a cheap passphrase check: open the small key file instead of a whole backup. |
-| 3 | How many backups to keep? | **10 newest per device**, trashed (recoverable 30 days) not deleted. Make the number a constant now, not a setting. |
-| 4 | Is the read-back verification worth an extra download? | **Yes.** Backups are small (measure in PR 3; expect low MB). "Backed up" should mean "we read it back". If measured sizes are large on mobile data, switch to comparing the provider's reported size and checksum (Drive `sha256Checksum`, Dropbox `content_hash`, Graph `sha256Hash` where present). |
-| 5 | Check the passphrase against existing backups when the user types it, so they don't create a set they can't open together? | **Not in v1.** It needs a download plus a scrypt run. Revisit with question 2. The hint text covers it. |
-| 6 | MSAL or our own PKCE for OneDrive? | **Our own, via `oauth4webapi`.** `@azure/msal-browser` 5.25.0 has no cache plugin, its `memoryStorage` can't do redirects, and it hides the refresh token. We'd have to keep tokens in `localStorage` outside our encryption and reset. The redirect-bridge question goes away with it. |
-| 7 | Google implicit flow is discouraged by the OAuth security BCP, and we now store its token. Is that acceptable? | **Yes.** It is Google's documented browser-only path. We mitigate the known risks: `state` check, fragment scrubbed at once, strict CSP with no provider scripts, a 1-hour token encrypted at rest, the narrowest scope. A stolen token reaches only our own encrypted backups, for an hour at most (see the threat model). Revisit if Google allows PKCE without a secret for web clients. |
-| 8 | Ask for `openid` so we can send `login_hint` (the `sub` ID) and avoid the hourly account picker for people signed in to several Google accounts? Or show the email? | **No to both in v1.** Either one makes AlmaMesh hold a Google identity. First measure in the live run whether `prompt=none` without a hint shows the picker for a two-account browser. If it does and users complain, add `openid` only (no email), keep `sub` in the same encrypted device-local row, and send it as `login_hint`. |
-| 9 | Device label: auto "Chrome on macOS", or let the user name it ("Mum's iPad")? | **Auto only.** A typed label would go into a plaintext filename and could carry a person name. The 6-character code tells same-type devices apart. |
-| 10 | Should the safety copy before a drive restore go to the drive or to a local file? | **To the drive by default** when connected (one less file to save), with "Save to this device instead" as a link. It uses the same passphrase prompt. |
-| 11 | Keep the "Export to a file" button? | **Yes.** It works offline and needs no account. Drive backup is an extra destination, not a replacement. |
-| 12 | Enable on Pages preview deploys? | **No.** Only `almamesh.com` and `localhost:4173` are registered; the buttons hide elsewhere. |
+| 1 | Automatic backup in v1? | Ruling: no automatic backup in launch PRs 1–5; PR 6 adds on-change backup (debounced 10 min, at most hourly, only with a token usable without a redirect, never on open), because a sealed backup needs the passphrase, storing it would expose every backup on the drive to whoever steals the device's storage, and recipient-key sealing removes that need; if this is wrong it costs users manual backups until PR 6 ships, which the 14-day nudge softens. |
+| 2 | Passphrase on every backup? | Ruling: ask once per tab session at launch; PR 6 switches to an age X25519 key pair whose private key lives only in a passphrase-sealed key file on the drive, because that keeps "restore needs only the passphrase" while letting backups run without it; if this is wrong it costs one passphrase prompt per session until PR 6, and a key-file format we must support afterwards. |
+| 3 | How many backups to keep? | Ruling: the 10 newest per device, older ones moved to the provider's trash, as a constant (not a setting), because per-device pruning avoids cross-device races and trash keeps 30 days of recovery; if this is wrong it costs either some drive quota (too many) or a lost older restore point after 30 days (too few), both fixable by changing one constant. |
+| 4 | Read-back verification? | Ruling: download every upload back and compare SHA-256 before saying "Backed up" or pruning, because "backed up" must mean "we read it back"; if this is wrong it costs one extra download per backup, and PR 3 measures real sizes so we can switch to provider checksums if that's too heavy on mobile data. |
+| 5 | Check the passphrase against existing backups as it's typed? | Ruling: no at launch; PR 6 gets it free by opening the small key file, because checking now means downloading a whole backup and running scrypt; if this is wrong it costs some users a mixed set of backups with different passphrases, which the hint text and the "may use an older passphrase" error mitigate. |
+| 6 | MSAL or our own PKCE for OneDrive? | Ruling: our own auth-code + PKCE via `oauth4webapi` (shared with Dropbox), because msal-browser 5.25.0 has no cache plugin, its `memoryStorage` can't do redirects, and it hides the refresh token; if this is wrong it costs us owning Microsoft-specific auth details MSAL would have handled, contained in one seam file. |
+| 7 | Google's implicit flow, with a stored token? | Ruling: accept it, with `state`, immediate fragment scrub, strict CSP, a 1 h token encrypted at rest and the `drive.file` scope, because it is Google's only documented browser-only path and a stolen token reaches only our ciphertext for an hour; if this is wrong it costs an hour of delete-or-corrupt access to backups per stolen token, and a move to PKCE if Google ever allows it without a secret. |
+| 8 | `openid` for `login_hint`, or show the email? | Ruling: neither in v1; measure the multi-account picker in the live run first, because both make AlmaMesh hold a Google identity; if this is wrong it costs people signed in to several Google accounts an account picker once an hour, fixable later by adding `openid` alone. |
+| 9 | Auto device label or user-typed? | Ruling: auto only ("Chrome on macOS" plus a 6-hex code), because a typed label would go into a plaintext filename and could carry a person's name; if this is wrong it costs a little friction telling two same-type devices apart. |
+| 10 | Safety copy before a drive restore: drive or local? | Ruling: to the drive by default when connected, with "Save to this device instead", because it's one less file to save and the user is already online; if this is wrong it costs one extra backup in the drive, which retention trims. |
+| 11 | Keep "Export to a file"? | Ruling: keep it, because it works offline and without any account; if this is wrong it costs one extra button in Settings → Data. |
+| 12 | Drive backup on Pages preview deploys? | Ruling: no, only `almamesh.com` and `localhost:4173` are registered and the buttons hide elsewhere, because Google allows no wildcard redirect URIs; if this is wrong it costs testing drive flows on previews, which the stubbed CI journey covers. |
