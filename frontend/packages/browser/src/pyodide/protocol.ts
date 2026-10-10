@@ -115,6 +115,8 @@ export interface BootRequest {
   readonly kind: "boot";
   readonly id: number;
   readonly config: BootConfig;
+  /** Exit-gate hooks builds only (./bootFaultInjection.ts): trap before booting. */
+  readonly injectWasmTrap?: true;
 }
 
 export interface GenerateChartRequest {
@@ -265,6 +267,8 @@ export interface WorkerErr {
   readonly ok: false;
   readonly id: number;
   readonly error: string;
+  /** The thrown error's class (`RuntimeError` for a wasm trap), when it was an Error. */
+  readonly errorName?: string;
 }
 
 export type ChartWorkerResponse =
