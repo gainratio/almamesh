@@ -55,6 +55,17 @@ describe('IdentityStrip', () => {
     useLanguageStore.setState({ language: 'en' });
   });
 
+  it('labels the running dasha with the chip it is given, and only then', () => {
+    const { unmount } = renderStrip();
+    expect(screen.queryByTestId('dashboard-today-label-dasha')).toBeNull();
+    unmount();
+    renderStrip({ dashaLabel: 'Today' });
+    const chip = screen.getByTestId('dashboard-today-label-dasha');
+    expect(chip.textContent).toBe('Today');
+    // It sits with the running dasha, not elsewhere in the strip.
+    expect(chip.closest('div')?.querySelector('dt')?.textContent).toContain('Running');
+  });
+
   it('renders the person name as the page heading', () => {
     renderStrip();
     expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Asha Rao');

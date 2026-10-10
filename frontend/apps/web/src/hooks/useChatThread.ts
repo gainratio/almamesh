@@ -41,7 +41,7 @@ import { chatErrorMessage, getChatErrorMessage } from '../lib/errors';
 import { LLM_SETTINGS_CHANGED_EVENT } from '../lib/llmSettingsEvents';
 import { asOfKey } from '../lib/pinnedPeriod';
 import { waitForStoreSaved } from '../lib/storeSaved';
-import { repinThread, startPinnedThread, todayThread } from '../lib/timeTravelThreads';
+import { applyBackToToday, applyTravel, type TravelSource, type TravelThread } from '../lib/timeTravel';
 
 /** Input the caller's stream fn receives; it wires `streamChartChat` with these. */
 export interface ChatStreamInput {
@@ -87,6 +87,8 @@ export interface UseChatThreadResult {
   readonly pin: (asOf: ChatThreadAsOf) => Promise<void>;
   /** Change this thread's pin (saved first). */
   readonly repin: (asOf: ChatThreadAsOf) => Promise<void>;
+  /** The chat tool's move: repin the open thread if pinned, else open a pinned thread. */
+  readonly travelFromTool: (asOf: ChatThreadAsOf) => Promise<void>;
   /** Open the latest normal thread, or a new one. */
   readonly backToToday: () => Promise<void>;
 }
@@ -439,20 +441,29 @@ export function useChatThread(
     [profileId],
   );
 
-  const pin = useCallback(
-    async (asOf: ChatThreadAsOf) => {
-      if (profileId) setSelectedThreadId(await startPinnedThread(profileId, chartId, asOf));
+  const go = useCallback(
+    async (asOf: ChatThreadAsOf, source: TravelSource, thread: TravelThread) => {
+      if (!profileId) return;
+      const { threadId: moved } = await applyTravel({ asOf, source }, { profileId, chartId, thread });
+      if (moved) setSelectedThreadId(moved);
     },
     [profileId, chartId],
   );
+  const pin = useCallback((asOf: ChatThreadAsOf) => go(asOf, 'chat-sheet', 'new'), [go]);
   const repin = useCallback(
     async (asOf: ChatThreadAsOf) => {
-      if (threadId && activeThread?.as_of) await repinThread(threadId, asOf);
+      if (threadId && activeThread?.as_of) await go(asOf, 'chat-sheet', { id: threadId });
     },
-    [threadId, activeThread?.as_of],
+    [go, threadId, activeThread?.as_of],
+  );
+  const travelFromTool = useCallback(
+    (asOf: ChatThreadAsOf) => go(asOf, 'chat-tool', threadId ? { id: threadId } : 'new'),
+    [go, threadId],
   );
   const backToToday = useCallback(async () => {
-    if (profileId) setSelectedThreadId(await todayThread(profileId, chartId));
+    if (!profileId) return;
+    const { threadId: today } = await applyBackToToday({ profileId, chartId });
+    if (today) setSelectedThreadId(today);
   }, [profileId, chartId]);
 
   return {
@@ -465,6 +476,7 @@ export function useChatThread(
     asOf: activeThread?.as_of,
     pin,
     repin,
+    travelFromTool,
     backToToday,
   };
 }

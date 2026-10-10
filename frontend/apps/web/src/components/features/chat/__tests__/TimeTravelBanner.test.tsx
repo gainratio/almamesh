@@ -29,7 +29,30 @@ function renderBanner(language: string): HTMLElement {
   return screen.getByTestId('time-travel-banner');
 }
 
+const MARCH_2019 = { start: '2019-03-01', end: '2019-03-31', granularity: 'month' } as const;
+
 describe('TimeTravelBanner', () => {
+  it('takes a testid prefix and its own "about" line for the Dashboard', async () => {
+    const { default: i18n } = await import('../../../../i18n/config');
+    await i18n.changeLanguage('en');
+    render(<TimeTravelBanner asOf={MARCH_2019} language="en" onChange={() => {}} onBack={() => {}}
+      testIdPrefix="dashboard-time-travel" about="the cards below are about this moment" />);
+    expect(screen.getByTestId('dashboard-time-travel-banner').textContent).toContain('the cards below are about this moment');
+    expect(screen.getByTestId('dashboard-time-travel-title').textContent?.replace(/\s+/g, ' ')).toBe('Time travel · March 2019');
+    expect(screen.getByTestId('dashboard-time-travel-change')).toBeTruthy();
+    expect(screen.getByTestId('dashboard-time-travel-back')).toBeTruthy();
+    expect(screen.queryByTestId('time-travel-banner')).toBeNull();
+  });
+
+  it.each(['time-travel', 'dashboard-time-travel'])('Change and Back to today are 44 px touch targets (%s)', (prefix) => {
+    render(<TimeTravelBanner asOf={MARCH_2019} language="en" onChange={() => {}} onBack={() => {}} testIdPrefix={prefix} />);
+    for (const part of ['change', 'back']) {
+      const classes = screen.getByTestId(`${prefix}-${part}`).className.split(/\s+/);
+      expect(classes).toContain('min-h-11');
+      expect(classes).toContain('px-2');
+    }
+  });
+
   it.each(['en', 'es', 'pt'])('never lets a separator start a line (%s)', async (language) => {
     const { default: i18n } = await import('../../../../i18n/config');
     await i18n.changeLanguage(language);

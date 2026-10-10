@@ -20,7 +20,8 @@
     "connect_ai": "Conectar un modelo de IA",
     "switch_recommended": "Cambiar al recomendado (DeepSeek V4.1 Flash)",
     "ai_settings": "Configuración de IA",
-    "dismiss": "Descartar"
+    "dismiss": "Descartar",
+    "time_travel": "Viaje en el tiempo"
   },
   "loading": {
     "title": "Cargando tu carta",
@@ -124,5 +125,18 @@
     "force_field_title": "Campo de fuerza planetario",
     "force_field_unavailable": "Este navegador no puede dibujar aquí la vista 3D. Tu carta, más abajo, lo tiene todo.",
     "kundli_title": "Kundli y posición planetaria"
+  },
+  "time_travel": {
+    "sheet_intro": "Elige un momento. El panel mostrará ese momento.",
+    "banner_about": "las tarjetas de abajo hablan de este momento",
+    "dashas_only": "Este dispositivo muestra solo los dashas para otras fechas, para no gastar demasiada memoria.",
+    "moment_title": "En ese momento",
+    "maha": "Periodo principal (maha dasha)",
+    "antar": "Subperiodo (antar dasha)",
+    "transits_title": "Los planetas en el cielo entonces",
+    "failed": "No se pudo calcular el cielo para este momento.",
+    "retry": "Reintentar",
+    "sky_ready": "El cielo de {{period}} está listo.",
+    "today_label": "Hoy"
   }
 }

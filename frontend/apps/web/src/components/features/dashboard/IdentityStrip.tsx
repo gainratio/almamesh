@@ -74,6 +74,11 @@ export interface IdentityStripProps {
   readonly timeConfidence?: string;
   /** Right-aligned action cluster (mode toggle, quiet page actions). */
   readonly actions?: ReactNode;
+  /**
+   * A chip beside the running daśā, e.g. "Today" while the Dashboard shows
+   * another moment (time travel). Default: none.
+   */
+  readonly dashaLabel?: string;
 }
 
 /** "328.84" → "28°50′" (in-sign degrees, arc-minutes). */
@@ -347,7 +352,18 @@ function NextPeriodsLine({ dasha }: { dasha: PeriodDepthSource }): ReactElement 
   );
 }
 
-function DashaFact({ dasha }: { dasha?: VimshottariDashaData }): ReactElement {
+function DashaLabelChip({ label }: { label?: string }): ReactElement | null {
+  if (label === undefined) {
+    return null;
+  }
+  return (
+    <span data-testid="dashboard-today-label-dasha" className="mb-1 inline-block rounded bg-ui-border/40 px-2 py-0.5 text-xs">
+      {label}
+    </span>
+  );
+}
+
+function DashaFact({ dasha, label }: { dasha?: VimshottariDashaData; label?: string }): ReactElement {
   const { t } = useTranslation(['life', 'astrology', 'predictive']);
   if (!dasha) {
     return (
@@ -361,6 +377,7 @@ function DashaFact({ dasha }: { dasha?: VimshottariDashaData }): ReactElement {
   );
   return (
     <Fact label={t('life:identity.dasha')}>
+      <DashaLabelChip label={label} />
       <span className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
         {legs.map((leg) => (
           <span key={leg.level} className="whitespace-nowrap">
@@ -392,6 +409,7 @@ export function IdentityStrip({
   rectification,
   timeConfidence,
   actions,
+  dashaLabel,
 }: IdentityStripProps): ReactElement {
   const { t } = useTranslation('life');
   const profileId = useProfilesStore((s) => s.activeProfileId);
@@ -416,7 +434,7 @@ export function IdentityStrip({
       <dl className="mt-6 grid grid-cols-1 gap-x-10 gap-y-4 sm:grid-cols-3">
         <LagnaFact lagna={lagna} />
         <MoonFact moon={moon} />
-        <DashaFact dasha={dasha} />
+        <DashaFact dasha={dasha} label={dashaLabel} />
       </dl>
 
       <RectificationNote rectification={rectification} />
