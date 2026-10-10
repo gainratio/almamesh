@@ -12,6 +12,8 @@
 #   - e2e/time-travel.spec.ts (webkit: the six full-tier journeys; iphone-webkit:
 #     the iPhone journey, minimal tier)
 #   - e2e/portable-invariants.spec.ts (export/import, incl. the Day-pin round trip)
+#   - e2e/boot-retry.spec.ts (webkit: one automatic engine boot retry, bare and
+#     Pyodide-wrapped wasm traps; needs this hooks build)
 #
 # Run from frontend/apps/web after `bun install` and `uv` are available.
 set -euo pipefail
@@ -33,8 +35,9 @@ done
 curl -fsS -o /dev/null "${BASE_URL}/"
 
 # No retries: a WebKit page that crashes once is a red lane, never a pass on
-# retry. Both specs always run, so one red run reports both.
+# retry. Every spec always runs, so one red run reports them all.
 status=0
 TIME_TRAVEL_E2E_BASE_URL="${BASE_URL}" bun run test:e2e:time-travel --project=webkit --project=iphone-webkit --retries=0 || status=1
 PORTABLE_INVARIANTS_E2E_BASE_URL="${BASE_URL}" bun run test:e2e:portable-invariants --project=webkit --project=iphone-webkit --retries=0 || status=1
+BOOT_RETRY_E2E_BASE_URL="${BASE_URL}" bun run test:e2e:boot-retry --project=webkit --retries=0 || status=1
 exit "${status}"

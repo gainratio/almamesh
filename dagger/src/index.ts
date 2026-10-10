@@ -437,10 +437,11 @@ exec ${inline.join(" ")}`,
           "frontend/bun.lock",
           // The memory-budget contract pins the test:e2e:memory-budget script.
           "frontend/apps/web/package.json",
-          // The macOS WebKit lane contract reads its script and the two configs it runs.
+          // The macOS WebKit lane contract reads its script and the configs it runs.
           "frontend/apps/web/scripts/webkit-macos-lane.sh",
           "frontend/apps/web/playwright.time-travel.config.ts",
           "frontend/apps/web/playwright.portable-invariants.config.ts",
+          "frontend/apps/web/playwright.boot-retry.config.ts",
           // The browser Lego pin contract ties BROWSER_LEGO_SPEC to these.
           "frontend/packages/browser/package.json",
           "frontend/packages/memory/package.json",

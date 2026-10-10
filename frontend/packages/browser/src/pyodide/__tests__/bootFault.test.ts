@@ -85,12 +85,14 @@ describe("isWasmBootFault: a trap wrapped by Pyodide", () => {
       "RuntimeError: Unreachable code should not be executed",
       "RuntimeError: unreachable",
       "RuntimeError: memory access out of bounds",
+      "RuntimeError: index out of bounds",
     ]) {
       const traceback =
         "Traceback (most recent call last):\n" +
         '  File "<exec>", line 1, in <module>\n' +
         '  File "/lib/python3.13/site-packages/pytz/__init__.py", line 20, in <module>\n' +
-        `pyodide.ffi.JsException: ${trap}`;
+        // A formatted traceback ends with a newline.
+        `pyodide.ffi.JsException: ${trap}\n`;
       expect(isWasmBootFault(pythonError(traceback)), trap).toBe(true);
     }
   });
@@ -141,6 +143,41 @@ describe("isWasmBootFault: failures that are not a wasm trap stay unretried", ()
     expect(isWasmBootFault(new Error("Network is unreachable"))).toBe(false);
     expect(isWasmBootFault(pythonError("Traceback ...\nRuntimeError: unreachable state in the engine"))).toBe(false);
     expect(isWasmBootFault(pythonError("Traceback ...\nIndexError: index 5 is out of bounds for axis 0 with size 3"))).toBe(false);
+  });
+
+  // Real CPython 3.13 tracebacks, each raised by plain Python code. The last
+  // line is a Python exception, never a JS error relayed through JsException.
+  it.each([
+    ["memoryview", "IndexError: index out of bounds on dimension 1"],
+    ["a Python RuntimeError", "RuntimeError: unreachable"],
+    ["a Python assertion", "AssertionError: unreachable"],
+    ["an OS network error", "OSError: [Errno 101] Network is unreachable"],
+  ])("does not retry a CPython traceback from %s", (_source, last) => {
+    const traceback =
+      "Traceback (most recent call last):\n" +
+      '  File "<stdin>", line 3, in msg\n' +
+      '  File "<stdin>", line 7, in <lambda>\n' +
+      `${last}\n`;
+    expect(isWasmBootFault(pythonError(traceback))).toBe(false);
+  });
+
+  it("does not retry the same trap words outside a Pyodide wrapper", () => {
+    // SpiderMonkey's WebAssembly.Table.get range error, and a Rust panic.
+    expect(isWasmBootFault(new RangeError("index out of bounds"))).toBe(false);
+    expect(isWasmBootFault(new Error("panicked at src/lib.rs:1:1:\nindex out of bounds: the len is 3 but the index is 5"))).toBe(false);
+    expect(isWasmBootFault(pythonError("Traceback ...\npyodide.ffi.JsException: RangeError: index out of bounds"))).toBe(false);
+  });
+
+  it("counts the ambiguous words only as a whole wrapped segment, never as the start of a sentence", () => {
+    const details = ["The following error occurred while loading pytz:", "index out of bounds on dimension 1"];
+    expect(isWasmBootFault(new PyodidePackageLoadError(["pytz"], details))).toBe(false);
+    expect(isWasmBootFault(pythonError("Traceback ...\npyodide.ffi.JsException: RuntimeError: unreachable state\n"))).toBe(false);
+  });
+
+  it("rejects a plain JS Error('unreachable') (an assertNever guard): a real V8 trap carries the RuntimeError class", () => {
+    expect(isWasmBootFault(new Error("unreachable"))).toBe(false);
+    expect(isWasmBootFault(new Error("unreachable executed"))).toBe(false);
+    expect(isWasmBootFault(new Error("index out of bounds"))).toBe(false);
   });
 
   it("keeps a non-trap error's class off the Worker wire", () => {

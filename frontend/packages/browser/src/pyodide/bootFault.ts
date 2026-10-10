@@ -15,20 +15,25 @@
 const WASM_TRAP_NAME = "RuntimeError";
 
 /**
- * The engines' own trap wordings (JavaScriptCore, V8, SpiderMonkey). Each is
- * specific to a wasm trap: a fetch failure, "Network is unreachable" or a
- * Python RuntimeError never matches. V8's trap message is the single word
- * "unreachable", so that word counts only as a whole message segment: the
- * whole text, or right after "RuntimeError:" or loadPackage's "pytz:;".
+ * The engines' own trap wordings that nothing else uses (JavaScriptCore, V8),
+ * so they count anywhere in the text.
  */
-const WASM_TRAP_TEXT: readonly RegExp[] = [
+const DISTINCT_TRAP_TEXT: readonly RegExp[] = [
   /out of bounds memory access/i,
   /memory access out of bounds/i,
-  /\bindex out of bounds\b/i,
   /unreachable code should not be executed/i,
-  /\bunreachable executed\b/i,
-  /(?:^|[:;]\s*)unreachable(?:\s*$|\s*;|\s+\()/im,
 ];
+
+/**
+ * V8's "unreachable" and SpiderMonkey's "unreachable executed" / "index out of
+ * bounds" are also ordinary words: a Python `RuntimeError: unreachable`, a
+ * memoryview `IndexError: index out of bounds on dimension 1`, an assertNever
+ * `Error("unreachable")`. So they count only where Pyodide wrapped a JS trap:
+ * right after "JsException: RuntimeError: ", or as a whole "; "-joined
+ * loadPackage segment. A bare trap is caught by its RuntimeError class instead.
+ */
+const WRAPPED_AMBIGUOUS_TRAP =
+  /(?:JsException: RuntimeError: |; )(?:unreachable(?: executed)?|index out of bounds)(?=;|\n|$)/;
 
 /** How many errors of a `.cause` chain are inspected (the error itself included). */
 const MAX_CAUSE_DEPTH = 8;
@@ -60,7 +65,8 @@ export function errorFromWorker(message: string, errorName?: string): Error {
 }
 
 function isTrapItself(error: Error): boolean {
-  return error.name === WASM_TRAP_NAME || WASM_TRAP_TEXT.some((trap) => trap.test(error.message));
+  if (error.name === WASM_TRAP_NAME) return true;
+  return DISTINCT_TRAP_TEXT.some((trap) => trap.test(error.message)) || WRAPPED_AMBIGUOUS_TRAP.test(error.message);
 }
 
 /**
