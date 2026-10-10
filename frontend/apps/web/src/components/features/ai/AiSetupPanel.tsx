@@ -116,7 +116,9 @@ export interface AiSetupPanelProps {
   /**
    * Called once per save, only after the settings are durable AND the probe
    * passed for the config still on screen. Onboarding advances on it.
-   * Must not throw: it runs after the probe, so a throw becomes an unhandled rejection.
+   * Not called if the panel unmounts, AI is turned off, a remote Replace lands, or
+   * the form is edited or re-saved before the probe settles. A throw is logged and
+   * the verdict stays Connected.
    */
   onConnected?: (status: LlmStatus) => void;
 }
@@ -156,6 +158,18 @@ export function AiSetupPanel({
     window.addEventListener(LLM_SETTINGS_CHANGED_EVENT, refreshFromCanonicalState);
     return () =>
       window.removeEventListener(LLM_SETTINGS_CHANGED_EVENT, refreshFromCanonicalState);
+  }, []);
+
+  // Leaving the screen supersedes whatever is in flight: a probe that settles after
+  // unmount must never report a connection to a caller that has moved on. The refs
+  // are read at cleanup time on purpose — the LATEST in-flight probe is the one to cancel.
+  useEffect(() => {
+    const gens = probeGen;
+    const aborts = probeAbort;
+    return () => {
+      gens.current += 1; // unmount supersedes the probe
+      aborts.current?.abort();
+    };
   }, []);
 
   const noneActive = status.kind === 'none';
@@ -259,7 +273,7 @@ export function AiSetupPanel({
   // inert for this browser. Reset to `local_only` and drop the per-tier models so
   // nothing sensitive lingers; describeLlmStatus reads "none" again.
   const turnAiOff = async () => {
-    probeGen.current += 1;
+    const offGen = (probeGen.current += 1);
     probeAbort.current?.abort();
     try {
       writeLlmSettings({
@@ -276,7 +290,19 @@ export function AiSetupPanel({
       // Canonical SQLite can reject. Keep
       // the active badge and surface a retryable storage verdict.
       safeError('provider.disable_failed', err);
+      // A newer save or edit owns the verdict now; a late off-failure must not paint over it.
+      if (offGen !== probeGen.current) {
+        return;
+      }
       setConn({ phase: 'error', source: 'guided', kind: 'storage' });
+      return;
+    }
+    // Superseded while the off flush was in flight: refresh the status surfaces from
+    // durable truth (a newer save may have written since), but leave the form and
+    // the verdict to whoever superseded this turn-off.
+    if (offGen !== probeGen.current) {
+      setStatus(describeLlmStatus());
+      notifyLlmSettingsChanged();
       return;
     }
     setSettings(readLlmSettings());
@@ -350,7 +376,13 @@ export function AiSetupPanel({
     // config) AND the probe passed. Called outside the try so a throwing caller
     // can never be misreported as a connection error.
     setConn({ phase: 'connected', source });
-    onConnected?.(describeLlmStatus(persisted));
+    try {
+      onConnected?.(describeLlmStatus(persisted));
+    } catch (err) {
+      // The caller's bug, not a connection failure: keep Connected, log it, and never
+      // let it escape as an unhandled rejection from this async handler.
+      safeError('app.typed_error', err);
+    }
   };
 
   // Guided OpenRouter: apply the cloud preset (recommended interpretation/chat pair +

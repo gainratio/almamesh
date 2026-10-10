@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
 
 import '../../../i18n/config';
 import {
@@ -643,10 +643,11 @@ describe('AiSetupPanel — onConnected', () => {
 
   it('does not report connected when the settings write fails', async () => {
     const onConnected = vi.fn();
+    const testConnection = vi.fn().mockResolvedValue(undefined);
     renderPanel({
       onConnected,
       flushSettings: vi.fn().mockRejectedValue(new Error('canonical SQLite write failed')),
-      testConnection: vi.fn().mockResolvedValue(undefined),
+      testConnection,
     });
     saveKey('sk-or-abc');
     await waitFor(() =>
@@ -654,6 +655,8 @@ describe('AiSetupPanel — onConnected', () => {
     );
     await settle();
     expect(onConnected).not.toHaveBeenCalled();
+    // A config that will vanish on reload is never probed.
+    expect(testConnection).not.toHaveBeenCalled();
   });
 
   it('does not report connected when a newer save superseded the probe', async () => {
@@ -757,6 +760,195 @@ describe('AiSetupPanel — onConnected', () => {
       expect(onConnected).not.toHaveBeenCalled();
     } finally {
       window.removeEventListener(LLM_SETTINGS_CHANGED_EVENT, changed);
+    }
+  });
+
+  // ── Round 2 (grader PR #328): every way the screen can go away or change owner
+  // mid-flight must cancel the pending onConnected and keep the newest verdict.
+  const verdict = () => screen.queryByTestId('llm-connection-result')?.textContent ?? '(none)';
+
+  it('does not report connected after unmount, and aborts the in-flight probe', async () => {
+    const onConnected = vi.fn();
+    const probe = deferred();
+    let signal: AbortSignal | undefined;
+    const { unmount } = renderPanel({
+      onConnected,
+      testConnection: vi.fn((opts: { signal?: AbortSignal }) => {
+        signal = opts.signal;
+        return probe.promise;
+      }),
+    });
+    saveKey('sk-or-abc');
+    await waitFor(() => expect(verdict()).toContain('Testing'));
+    unmount();
+    expect(signal?.aborted).toBe(true);
+    probe.resolve();
+    await settle();
+    expect(onConnected).not.toHaveBeenCalled();
+  });
+
+  it('does not report connected when a remote Replace lands mid-probe', async () => {
+    const onConnected = vi.fn();
+    const probe = deferred();
+    renderPanel({ onConnected, testConnection: vi.fn(() => probe.promise) });
+    saveKey('sk-or-abc');
+    await waitFor(() => expect(verdict()).toContain('Testing'));
+    act(() => notifyLlmSettingsChanged({ replace: true }));
+    probe.resolve();
+    await settle();
+    expect(onConnected).not.toHaveBeenCalled();
+    expect(verdict()).toBe('(none)');
+  });
+
+  it('still reports connected when an ordinary (non-Replace) settings signal lands mid-probe', async () => {
+    const onConnected = vi.fn();
+    const probe = deferred();
+    renderPanel({ onConnected, testConnection: vi.fn(() => probe.promise) });
+    saveKey('sk-or-abc');
+    await waitFor(() => expect(verdict()).toContain('Testing'));
+    act(() => notifyLlmSettingsChanged());
+    probe.resolve();
+    await waitFor(() => expect(onConnected).toHaveBeenCalledOnce());
+  });
+
+  it('does not report connected when AI is turned off mid-probe', async () => {
+    const onConnected = vi.fn();
+    const probe = deferred();
+    const testConnection = vi
+      .fn()
+      .mockResolvedValueOnce(undefined)
+      .mockImplementationOnce(() => probe.promise);
+    renderPanel({ onConnected, testConnection });
+    saveKey('sk-or-first');
+    await waitFor(() => expect(onConnected).toHaveBeenCalledOnce());
+    saveKey('sk-or-second');
+    await waitFor(() => expect(verdict()).toContain('Testing'));
+    fireEvent.click(screen.getByTestId('tier-none-select'));
+    await waitFor(() => expect(screen.queryByTestId('tier-none-active')).toBeTruthy());
+    probe.resolve();
+    await settle();
+    expect(onConnected).toHaveBeenCalledOnce();
+    expect(verdict()).toBe('(none)');
+    expect(readSaved().apiKey).toBe('');
+  });
+
+  it('reports exactly once, for the newer save, when an older probe passes first', async () => {
+    const onConnected = vi.fn();
+    const first = deferred();
+    const second = deferred();
+    const testConnection = vi
+      .fn()
+      .mockImplementationOnce(() => first.promise)
+      .mockImplementationOnce(() => second.promise);
+    renderPanel({ onConnected, testConnection });
+    saveKey('sk-or-first');
+    await waitFor(() => expect(verdict()).toContain('Testing'));
+    saveKey('sk-or-second');
+    await waitFor(() => expect(testConnection).toHaveBeenCalledTimes(2));
+    first.resolve();
+    await settle();
+    expect(onConnected).not.toHaveBeenCalled();
+    second.resolve();
+    await waitFor(() => expect(onConnected).toHaveBeenCalledOnce());
+  });
+
+  it('keeps the newer Testing verdict when a superseded save rejects late', async () => {
+    const onConnected = vi.fn();
+    const firstFlush = deferred();
+    const probe = deferred();
+    const flushSettings = vi
+      .fn()
+      .mockImplementationOnce(() => firstFlush.promise)
+      .mockResolvedValue(undefined);
+    renderPanel({ onConnected, flushSettings, testConnection: vi.fn(() => probe.promise) });
+    saveKey('sk-or-first');
+    await waitFor(() => expect(flushSettings).toHaveBeenCalledOnce());
+    saveKey('sk-or-second');
+    await waitFor(() => expect(verdict()).toContain('Testing'));
+    firstFlush.reject(new Error('late'));
+    await settle();
+    expect(verdict()).toContain('Testing');
+    probe.resolve();
+    await waitFor(() => expect(onConnected).toHaveBeenCalledOnce());
+  });
+
+  it('ignores a superseded probe that FAILS late (no error painted over the edit)', async () => {
+    const onConnected = vi.fn();
+    const probe = deferred();
+    renderPanel({ onConnected, testConnection: vi.fn(() => probe.promise) });
+    saveKey('sk-or-abc');
+    await waitFor(() => expect(verdict()).toContain('Testing'));
+    fireEvent.change(screen.getByTestId('llm-openrouter-key'), { target: { value: 'sk-or-edited' } });
+    probe.reject(requestError('returned 401 Unauthorized', 401));
+    await settle();
+    expect(verdict()).toBe('(none)');
+    expect(onConnected).not.toHaveBeenCalled();
+  });
+
+  it('shows a storage error, and keeps AI on, when turning AI off cannot be saved', async () => {
+    const flushSettings = vi.fn().mockResolvedValue(undefined);
+    renderPanel({ flushSettings, testConnection: vi.fn().mockResolvedValue(undefined) });
+    saveKey('sk-or-abc');
+    await waitFor(() => expect(verdict()).toContain('Connected'));
+    flushSettings.mockRejectedValueOnce(new Error('canonical SQLite write failed'));
+    fireEvent.click(screen.getByTestId('tier-none-select'));
+    await waitFor(() => expect(verdict()).toContain("Couldn't save"));
+    expect(screen.getByTestId('tier-cloud-active')).toBeTruthy();
+    expect(screen.queryByTestId('tier-none-active')).toBeNull();
+  });
+
+  // Connected, then Turn AI off (its flush held), then a newer save connects. The
+  // off flush settling late must not repaint over the newer Connected verdict.
+  const offSupersededBySave = async (settleOff: (flush: ReturnType<typeof deferred<void>>) => void) => {
+    const onConnected = vi.fn();
+    const offFlush = deferred();
+    const flushSettings = vi.fn().mockResolvedValue(undefined);
+    renderPanel({ onConnected, flushSettings, testConnection: vi.fn().mockResolvedValue(undefined) });
+    saveKey('sk-or-first');
+    await waitFor(() => expect(verdict()).toContain('Connected'));
+    flushSettings.mockImplementationOnce(() => offFlush.promise);
+    fireEvent.click(screen.getByTestId('tier-none-select'));
+    await settle();
+    saveKey('sk-or-second');
+    await waitFor(() => expect(onConnected).toHaveBeenCalledTimes(2));
+    expect(verdict()).toContain('Connected');
+    await act(async () => {
+      settleOff(offFlush);
+      await settle();
+    });
+    return onConnected;
+  };
+
+  it('keeps the newer Connected verdict when a superseded Turn-AI-off flushes late', async () => {
+    const onConnected = await offSupersededBySave((flush) => flush.resolve());
+    expect(verdict()).toContain('Connected');
+    expect((screen.getByTestId('llm-openrouter-key') as HTMLInputElement).value).toBe('sk-or-second');
+    expect(screen.getByTestId('tier-cloud-active')).toBeTruthy();
+    expect(onConnected).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps the newer Connected verdict when a superseded Turn-AI-off rejects late', async () => {
+    await offSupersededBySave((flush) => flush.reject(new Error('canonical SQLite write failed')));
+    expect(verdict()).toContain('Connected');
+    expect(verdict()).not.toContain("Couldn't save");
+  });
+
+  it('keeps Connected, and raises no unhandled rejection, when onConnected throws', async () => {
+    const seen: unknown[] = [];
+    const onUnhandled = (reason: unknown) => seen.push(reason);
+    process.on('unhandledRejection', onUnhandled);
+    try {
+      const onConnected = vi.fn(() => {
+        throw new Error('caller boom');
+      });
+      renderPanel({ onConnected, testConnection: vi.fn().mockResolvedValue(undefined) });
+      saveKey('sk-or-abc');
+      await waitFor(() => expect(onConnected).toHaveBeenCalledOnce());
+      await new Promise((r) => setTimeout(r, 20));
+      expect(verdict()).toContain('Connected');
+      expect(seen.map(String)).toEqual([]);
+    } finally {
+      process.off('unhandledRejection', onUnhandled);
     }
   });
 });
