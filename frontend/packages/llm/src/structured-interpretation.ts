@@ -35,6 +35,13 @@ import { estimateTokens } from "./budget";
 import { chatCompletionJson, LlmRequestError, type ChatMessage } from "./client";
 import { createJsonProseExtractor, createWordCounter } from "./json-prose";
 import { streamChatCompletionJson } from "./json-stream";
+import {
+  REPORT_SECTION_IDLE_TIMEOUT_MS,
+  REPORT_SECTION_TIMEOUT_MS,
+  SectionTimeoutError,
+  withSectionDeadline,
+  type SectionTimeLimits,
+} from "./section-timeout";
 import { LAYMAN_JARGON_TERMS } from "./layman-jargon";
 import { asPersona, asRecord, parsePersona, parseTitledPersonas } from "./persona-parse";
 import { REPORT_SECTION_REASONING_MAX_TOKENS, SECTION_REASONING_MAX_TOKENS } from "./reasoning";
@@ -119,7 +126,14 @@ export type NatalInterpretationEvent =
   | { type: "section_start"; section: NatalInterpretationSectionKey }
   | { type: "section_complete"; section: NatalInterpretationSectionKey }
   | { type: "complete"; interpretation: NatalInterpretation }
-  | { type: "error"; section: NatalInterpretationSectionKey; message: string; status?: number };
+  | {
+      type: "error";
+      section: NatalInterpretationSectionKey;
+      message: string;
+      status?: number;
+      /** Set when the section ran past a report time cap. */
+      timeout?: SectionTimeoutError;
+    };
 
 export type CurrentTimelineEvent =
   | { type: "section_start"; section: CurrentTimelineSectionKey }
@@ -164,6 +178,17 @@ export interface StructuredInterpretationParams {
    * prompts, byte-identical.
    */
   readonly promptSet?: ReportPromptSet;
+  /**
+   * Report sections only, remote endpoints only: total wall-clock cap per
+   * section in ms (default REPORT_SECTION_TIMEOUT_MS). Local endpoints have no
+   * total cap. Legacy (non-report) sections are never capped.
+   */
+  readonly sectionTimeoutMs?: number;
+  /**
+   * Report sections only, streamed path only: fail a section that receives no
+   * token for this many ms (default REPORT_SECTION_IDLE_TIMEOUT_MS).
+   */
+  readonly sectionIdleTimeoutMs?: number;
 }
 
 type AnySectionKey = InterpretationSectionKey | ReportTimelineSectionKey;
@@ -182,7 +207,14 @@ export type ReportTimelineEvent =
   | { type: "section_start"; section: ReportTimelineSectionKey }
   | { type: "section_complete"; section: ReportTimelineSectionKey }
   | { type: "complete"; timeline: ReportTimelineContent; asOfMonth: string; dateGuardRemovals: number }
-  | { type: "error"; section: ReportTimelineSectionKey; message: string; status?: number };
+  | {
+      type: "error";
+      section: ReportTimelineSectionKey;
+      message: string;
+      status?: number;
+      /** Set when the section ran past a report time cap. */
+      timeout?: SectionTimeoutError;
+    };
 
 /** A section's live, still-unvalidated prose while it streams. */
 export interface SectionProgressSnapshot {
@@ -1372,7 +1404,7 @@ type SectionOutcome<Section extends AnySectionKey = InterpretationSectionKey> =
 type SectionLifecycleEvent<Section extends AnySectionKey> =
   | { type: "section_start"; section: Section }
   | { type: "section_complete"; section: Section }
-  | { type: "error"; section: Section; message: string; status?: number };
+  | { type: "error"; section: Section; message: string; status?: number; timeout?: SectionTimeoutError };
 
 /**
  * The LITE-prompt gate: a local OpenAI-compatible endpoint (Ollama et al.) means
@@ -1410,6 +1442,7 @@ function requestSection<Section extends AnySectionKey>(
   section: Section,
   messages: ChatMessage[],
   params: SectionRunParams<Section>,
+  touch: () => void = () => undefined,
 ): Promise<string> {
   const base = {
     config: params.config,
@@ -1432,10 +1465,12 @@ function requestSection<Section extends AnySectionKey>(
     ...base,
     ...(params.reasoningTimeoutMs === undefined ? {} : { reasoningTimeoutMs: params.reasoningTimeoutMs }),
     onDelta: (delta) => {
+      touch();
       prose.push(delta);
       report(section, snapshot());
     },
     onReasoning: (delta) => {
+      touch();
       thinking.push(delta);
       report(section, snapshot());
     },
@@ -1452,6 +1487,55 @@ function reasoningBudget(section: AnySectionKey, promptSet: ReportPromptSet | un
   return isReportRequest(section, promptSet) ? REPORT_SECTION_REASONING_MAX_TOKENS : SECTION_REASONING_MAX_TOKENS;
 }
 
+/**
+ * The time caps for one section. Legacy sections: none (unchanged). Report
+ * sections: a total cap on remote endpoints only (a weak local device may be
+ * slow but still writing), and an idle cap where tokens are observable (the
+ * streamed path; a non-streamed call shows no progress until it is done).
+ */
+function sectionLimits<Section extends AnySectionKey>(
+  section: Section,
+  params: SectionRunParams<Section>,
+): SectionTimeLimits | null {
+  if (!isReportRequest(section, params.promptSet)) return null;
+  const remote = !usesLitePrompt(params.config);
+  const streamed = params.onSectionProgress !== undefined;
+  return {
+    ...(remote ? { totalMs: params.sectionTimeoutMs ?? REPORT_SECTION_TIMEOUT_MS } : {}),
+    ...(streamed ? { idleMs: params.sectionIdleTimeoutMs ?? REPORT_SECTION_IDLE_TIMEOUT_MS } : {}),
+  };
+}
+
+/** One completion plus #192's single retry of a transient failure. */
+function requestWithRetry<Section extends AnySectionKey>(
+  section: Section,
+  messages: ChatMessage[],
+  params: SectionRunParams<Section>,
+  touch?: () => void,
+): Promise<string> {
+  const request = () => requestSection(section, messages, params, touch);
+  return request().catch((err: unknown) => {
+    if (params.signal?.aborted || !isTransientFailure(err)) throw err;
+    return request();
+  });
+}
+
+/**
+ * The section's raw completion, under its time caps when it has any. The caps
+ * span the retry: a capped section is bounded end to end.
+ */
+function requestCapped<Section extends AnySectionKey>(
+  section: Section,
+  messages: ChatMessage[],
+  params: SectionRunParams<Section>,
+): Promise<string> {
+  const limits = sectionLimits(section, params);
+  if (!limits) return requestWithRetry(section, messages, params);
+  return withSectionDeadline(limits, params.signal, ({ signal, touch }) =>
+    requestWithRetry(section, messages, { ...params, signal }, touch),
+  );
+}
+
 function runOneSection<Section extends AnySectionKey>(
   section: Section,
   chart: SanitizedChart,
@@ -1466,12 +1550,7 @@ function runOneSection<Section extends AnySectionKey>(
     params.language ?? "en",
     params.promptSet,
   );
-  const request = () => requestSection(section, messages, params);
-  return request()
-    .catch((err: unknown) => {
-      if (params.signal?.aborted || !isTransientFailure(err)) throw err;
-      return request();
-    })
+  return requestCapped(section, messages, params)
     .then((raw): SectionOutcome<Section> => ({ section, ok: true, raw }))
     // Keep the ORIGINAL error (not just its message) so the aggregation can
     // preserve the HTTP status/body of a representative failure — the caller
@@ -1553,7 +1632,13 @@ async function* streamSections<Section extends AnySectionKey>(
       const message = outcomeErrorMessage(outcome.error);
       failures.push(message);
       const status = outcomeStatus(outcome.error);
-      yield { type: "error", section: outcome.section, message, ...(status === undefined ? {} : { status }) };
+      yield {
+        type: "error",
+        section: outcome.section,
+        message,
+        ...(status === undefined ? {} : { status }),
+        ...(outcome.error instanceof SectionTimeoutError ? { timeout: outcome.error } : {}),
+      };
       continue;
     }
     try {

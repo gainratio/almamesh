@@ -430,6 +430,14 @@ export {
   SECTION_REASONING_MAX_TOKENS,
 } from "./reasoning";
 
+// Report sections: per-section total + idle time caps.
+export {
+  REPORT_SECTION_IDLE_TIMEOUT_MS,
+  REPORT_SECTION_TIMEOUT_MS,
+  SectionTimeoutError,
+  type SectionTimeoutKind,
+} from "./section-timeout";
+
 // Time travel: argument rules for the timing tool's optional start/end.
 export {
   BEFORE_BIRTH_MESSAGE,

@@ -125,6 +125,17 @@ function summarize(runs: readonly ReportRun[]): RunSummary {
   };
 }
 
+/** code/name/message of a rejected fetch and its `cause` only: never headers or the key. */
+function describeFetchFailure(err: unknown): string {
+  const part = (value: unknown): string => {
+    if (typeof value !== 'object' || value === null) return String(value);
+    const row = value as { code?: unknown; name?: unknown; message?: unknown };
+    return [row.code, row.name, row.message].filter((v) => v !== undefined).map(String).join(' ');
+  };
+  const cause = typeof err === 'object' && err !== null ? (err as { cause?: unknown }).cause : undefined;
+  return cause === undefined ? part(err) : `${part(err)}; cause: ${part(cause)}`;
+}
+
 function writeResult(result: object): void {
   mkdirSync('test-results', { recursive: true });
   writeFileSync(`test-results/report-real-${MODEL.replace(/\W/g, '_')}.json`, JSON.stringify(result, null, 2));
@@ -152,11 +163,19 @@ async function runOnce(chart: SiderealChart, config: ProviderConfig, pricing: Mo
   const sectionMs: SectionTiming[] = [];
   const bodies: Record<string, unknown>[] = [];
   const t0 = Date.now();
+  const errors: string[] = [];
   const fetchImpl: typeof fetch = async (input, init) => {
     const requestBody = String(init?.body ?? '');
     bodies.push(JSON.parse(requestBody) as Record<string, unknown>);
     const started = Date.now();
-    const res = await fetch(input, init);
+    let res: Response;
+    try {
+      res = await fetch(input, init);
+    } catch (err) {
+      const section = /SECTION:([a-z0-9_]+)/.exec(requestBody)?.[1] ?? '?';
+      errors.push(`fetch rejected (${section}) after ${Date.now() - started} ms: ${describeFetchFailure(err)}`);
+      throw err;
+    }
     const row = sectionUsageRow(requestBody, res.status, await res.clone().text());
     if (row) {
       rows.push(row);
@@ -164,7 +183,6 @@ async function runOnce(chart: SiderealChart, config: ProviderConfig, pricing: Mo
     }
     return res;
   };
-  const errors: string[] = [];
   const out: ReportOutput = { natal: null, timeline: null };
   const deadline = new AbortController();
   const timer = setTimeout(() => deadline.abort(), RUN_DEADLINE_MS);
