@@ -1105,7 +1105,7 @@ test.describe('Dashboard time travel', () => {
     await openDashboard(page);
     const button = page.getByTestId(DASHBOARD_BUTTON);
     await expect(button).toBeVisible();
-    await expect(button).toHaveText(/Time travel/);
+    await expect(button.getByText('Time travel', { exact: true })).toBeVisible();
     await expect(button).toBeEnabled();
     // Mouse first, from nothing focused: a WebKit click never focuses a button, so
     // the Dashboard must return focus itself.
@@ -1188,7 +1188,7 @@ test.describe('Dashboard time travel on an iPhone 15', () => {
     await openDashboard(page);
     const button = page.getByTestId(DASHBOARD_BUTTON);
     await expect(button).toBeVisible();
-    await expect(button).toHaveText(/Time travel/);
+    await expect(button.getByText('Time travel', { exact: true })).toBeVisible();
     const box = await button.boundingBox();
     expect(box?.width ?? 0).toBeGreaterThanOrEqual(44);
     expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
