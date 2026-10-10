@@ -76,3 +76,62 @@ export function safeError(code: SafeDiagnosticCode, _cause?: unknown): void {
 export function safeWarn(code: SafeDiagnosticCode, _cause?: unknown): void {
   console.warn(`[almamesh:warn:${code}]`);
 }
+
+/*
+ * Test-build cause line. `safeError` drops the raw cause, so a red CI run only
+ * shows `[almamesh:error:app.typed_error]`. Behind a VITE_EXIT_GATE_HOOKS
+ * guard, `safeCauseWarn` adds ONE line naming each error in the cause chain by
+ * class, its `code`, and the SQLite result-code name if the message carries
+ * one. Message text is never printed (it can hold names, dates and places).
+ * The guard folds away in production builds, so this is tree-shaken out; the
+ * frontend gate proves it (apps/web/scripts/verify-boot-fault-hook.mjs).
+ */
+
+export const TYPED_ERROR_CAUSE_MARKER = 'almamesh:diag:typed_error_cause';
+
+const MAX_DEPTH = 8;
+const IDENTIFIER = /^[A-Za-z][A-Za-z0-9_]{0,63}$/;
+const CODE = /^[A-Za-z0-9_.:-]{1,64}$/;
+const SQLITE_CODE = /\bSQLITE_[A-Z]+(?:_[A-Z]+)*\b/;
+
+function className(error: Error): string {
+  if (IDENTIFIER.test(error.name)) return error.name;
+  const ctor = error.constructor?.name ?? '';
+  return IDENTIFIER.test(ctor) ? ctor : 'Error';
+}
+
+function codeOf(error: Error): string | null {
+  const code: unknown = (error as { code?: unknown }).code;
+  if (typeof code === 'number' && Number.isFinite(code)) return String(code);
+  return typeof code === 'string' && CODE.test(code) ? code : null;
+}
+
+function describeOne(error: unknown): string {
+  if (!(error instanceof Error)) return error === null ? 'null' : typeof error;
+  const fields: string[] = [];
+  const code = codeOf(error);
+  if (code !== null) fields.push(`code=${code}`);
+  const sqlite = SQLITE_CODE.exec(error.message)?.[0];
+  if (sqlite !== undefined) fields.push(`sqlite=${sqlite}`);
+  const name = className(error);
+  return fields.length === 0 ? name : `${name}(${fields.join(', ')})`;
+}
+
+/** "Outer <- Cause(code=x) <- ..." for `error` and its `.cause` chain. */
+export function describeErrorCauses(error: unknown): string {
+  if (error === undefined) return 'none';
+  const parts: string[] = [];
+  const seen = new Set<unknown>();
+  let current: unknown = error;
+  while (current !== undefined && !seen.has(current) && parts.length < MAX_DEPTH) {
+    seen.add(current);
+    parts.push(describeOne(current));
+    current = current instanceof Error ? current.cause : undefined;
+  }
+  return parts.join(' <- ');
+}
+
+/** One console line; call only behind the VITE_EXIT_GATE_HOOKS guard. */
+export function safeCauseWarn(cause: unknown): void {
+  console.warn(`[${TYPED_ERROR_CAUSE_MARKER}] ${describeErrorCauses(cause)}`);
+}

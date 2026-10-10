@@ -1,5 +1,5 @@
 import { starterPack } from '@gainratio/errors';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import i18n from '../i18n/config';
 import {
   aiErrorRegistry,
@@ -52,6 +52,37 @@ describe('getUserFriendlyError', () => {
     expect(msg).toContain('dificultades técnicas');
     expect(msg).toContain('CHART_GEN_001');
     expect(msg).not.toContain('technical difficulties');
+  });
+
+  describe('cause diagnostics (hooks builds only)', () => {
+    const cause = Object.assign(new Error('SQLITE_ERROR: no such table: chunk (Invariant Ada)'), {
+      name: 'EngineOperationError',
+      code: 'internal',
+    });
+    const typed = new Error('boot failed for Invariant Ada', { cause });
+
+    afterEach(() => {
+      vi.unstubAllEnvs();
+      vi.restoreAllMocks();
+    });
+
+    it('names the cause chain by class and code in a hooks build', () => {
+      vi.stubEnv('VITE_EXIT_GATE_HOOKS', '1');
+      vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      getUserFriendlyError('CHART_GEN_001', typed);
+      expect(warn).toHaveBeenCalledWith(
+        '[almamesh:diag:typed_error_cause] Error <- EngineOperationError(code=internal, sqlite=SQLITE_ERROR)',
+      );
+    });
+
+    it('stays silent without the hooks flag', () => {
+      vi.stubEnv('VITE_EXIT_GATE_HOOKS', '');
+      vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      getUserFriendlyError('CHART_GEN_001', typed);
+      expect(warn).not.toHaveBeenCalled();
+    });
   });
 });
 

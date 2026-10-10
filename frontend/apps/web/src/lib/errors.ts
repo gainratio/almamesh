@@ -14,7 +14,7 @@
  */
 
 import { type Catalog, defineErrors, httpStatusOf, starterPack } from '@gainratio/errors';
-import { safeError } from '@almamesh/shared-types';
+import { safeCauseWarn, safeError } from '@almamesh/shared-types';
 import i18n from '../i18n/config';
 
 /**
@@ -65,6 +65,9 @@ export function getUserFriendlyError(
   // Log the actual error for developers
   if (actualError) {
     safeError('app.typed_error', actualError);
+    // Hooks builds only (the guard folds away in production): name the cause
+    // by class and code so a red CI run says what failed.
+    if (import.meta.env.VITE_EXIT_GATE_HOOKS === '1') safeCauseWarn(actualError);
   }
 
   return i18n.t('errors:generic', { code });
