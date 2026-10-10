@@ -349,6 +349,72 @@ describe("validateTimelineDates: final review shapes", () => {
   });
 });
 
+// Task D. Part 1: a replay of the life_outlook facts (engine months 2026-06,
+// 2026-10, 2027-01, 2027-06) found that two engine months joined by a slash
+// ("2026-10/2027-01") were read as a numeric MM/YYYY day-precision date
+// ("10/2027") and the sentence removed. Part 2: ruling R16 residual shapes.
+describe("validateTimelineDates: task D (R16)", () => {
+  const removesFirst = (sentence: string, allowed: ReadonlySet<string> = ALLOWED): void => {
+    const { section, removals } = validateTimelineDates({ layman: `${sentence} Rest.` }, allowed);
+    expect({ sentence, text: section.layman, removals }).toEqual({ sentence, text: "Rest.", removals: 1 });
+  };
+  const keeps = (sentence: string, allowed: ReadonlySet<string> = ALLOWED): void => {
+    const input = { layman: `${sentence} Rest.` };
+    expect({ sentence, result: validateTimelineDates(input, allowed) }).toEqual({
+      sentence,
+      result: { section: input, removals: 0 },
+    });
+  };
+
+  it("keeps two supplied months joined by a slash (life_outlook replay)", () => {
+    keeps("Windows 2027-03/2027-06 mark Jupiter shifts.");
+    keeps("Jupiter moves in 2027-03/2027-06/2027-03.");
+  });
+
+  it("still reads each month of a slash pair against the engine months", () => {
+    removesFirst("Windows 2027-03/2028-01 mark Jupiter shifts.");
+    removesFirst("Act by 03/2027.");
+  });
+
+  it.each([
+    ["en", "Act on 12 Oct."],
+    ["en", "Act on 12 OCT now."],
+    ["en", "Act on the 3rd of Dec."],
+    ["es", "Actúa el 3 Dic."],
+    ["es", "Actúa el 14 de dic."],
+    ["pt", "Aja em 14 de out."],
+    ["pt", "Aja em 3 de set."],
+  ])("removes a %s day before a 3-letter month with no year: %s (R16a)", (_lang, sentence) => {
+    removesFirst(sentence);
+  });
+
+  it("keeps a lowercase 3-letter word after a count with no 'de' (R16a false positive)", () => {
+    keeps("Give it 3 set tries.");
+    keeps("The top 5 may change.");
+    keeps("Walk 2 mar trails.");
+  });
+
+  it.each([
+    ["en", "Act on 12-14."],
+    ["en", "Act on 12.14."],
+    ["en", "On 14.03 act."],
+    ["es", "El 14-03 actúa."],
+    ["pt", "Aja em 14.03 cedo."],
+    ["pt", "No dia 14-03 aja."],
+  ])("removes a %s cued numeric day-month with '-' or '.': %s (R16b)", (_lang, sentence) => {
+    removesFirst(sentence);
+  });
+
+  it("keeps ranges, decimals, fractions and scores (R16b false positive)", () => {
+    keeps("Rest by 3-4 weeks.");
+    keeps("Score 3.5 points.");
+    keeps("Add 1/2 cup.");
+    keeps("Score 10/10 today.");
+    keeps("Rest on 3-4 days.");
+    keeps("Rated on 3.5 stars.");
+  });
+});
+
 describe("monthsIn", () => {
   it("collects every YYYY-MM the engine put in a slice", () => {
     const slice = { a: "2027-03", b: [{ month: "2027-06" }], c: "birth", d: 2027 };

@@ -11,9 +11,15 @@
 //
 // Day precision is always removed, whatever the month: ISO dates and
 // timestamps, "March 14, 2027", "14 de marzo de 2027", "1º de junho", a month
-// then a day with no year ("October 12", "Oct 12"), a cued numeric day ("on
-// 12/14"), and the numeric forms the engine never emits ("03/2027", "2027.03",
-// "3/14/2027").
+// then a day with no year ("October 12", "Oct 12"), a day then a 3-letter
+// month ("12 Oct", "14 de out"), a cued numeric day ("on 12/14", "on 12-14",
+// "On 14.03"), and the numeric forms the engine never emits ("03/2027",
+// "2027.03", "3/14/2027"). Two engine months joined by a slash
+// ("2026-10/2027-01") are months, not a day.
+//
+// Known limits (not read as dates): a decade ("the 2040s"), years in words,
+// a month name with no year and no day ("in October"), fiscal years
+// ("FY2031"), and a season span ("2027-28 season").
 //
 // A bare year (1900-2199: "in 2031", "Q3 2029", "mid-2029") is removed unless
 // it is the year of a supplied month. YYYY-MM is read with any hyphen or dash
@@ -61,8 +67,10 @@ const LONG_MONTH_NAMES = Object.keys(MONTH_NUMBER)
 
 // 3-letter names count before a day number only when written as a name
 // ("Oct", "OCT"), so lowercase prose ("may 5 times", "set 3 goals") is left alone.
-const CAPITALIZED_SHORT_NAMES = Object.keys(MONTH_NUMBER)
+const SHORT_NAMES = Object.keys(MONTH_NUMBER)
   .filter((name) => name.length === 3)
+  .join("|");
+const CAPITALIZED_SHORT_NAMES = SHORT_NAMES.split("|")
   .flatMap((name) => [name[0].toUpperCase() + name.slice(1), name.toUpperCase()])
   .join("|");
 
@@ -99,8 +107,15 @@ const DAY_PRECISION: readonly RegExp[] = [
   new RegExp(`(?<![\\d\\p{L}])\\d{1,2}${DAY_SUFFIX}(?:\\s+(?:de|of))?\\s+(?:${LONG_MONTH_NAMES})(?!\\p{L})`, "iu"),
   // Day before any month name with a year: "3 de jun. de 2027".
   new RegExp(`(?<![\\d\\p{L}])\\d{1,2}${DAY_SUFFIX}(?:\\s+(?:de|of))?\\s+${MONTH}${TO_YEAR}\\d{4}\\b`, "iu"),
-  // Numeric: 3/14/2027, 14.03.2027, 03/2027, 2027/03, 2027.03.
-  /(?<![\d/.])(?:\d{1,2}[/.]\d{1,2}[/.]\d{4}|\d{1,2}[/.]\d{4}|\d{4}[/.]\d{1,2})(?!\d)/,
+  // Day before a 3-letter name, no year: "12 Oct", "3rd of Dec" written as a
+  // name, or any case after "de" ("14 de out"), so "3 set tries" is left alone.
+  new RegExp(`(?<![\\d\\p{L}])\\d{1,2}${DAY_SUFFIX}(?:\\s+(?:de|of))?\\s+(?:${CAPITALIZED_SHORT_NAMES})(?!\\p{L})`, "u"),
+  new RegExp(`(?<![\\d\\p{L}])\\d{1,2}${DAY_SUFFIX}\\s+de\\s+(?:${SHORT_NAMES})(?!\\p{L})`, "iu"),
+  // Numeric: 3/14/2027, 14.03.2027, 03/2027, 2027/03, 2027.03. The month of a
+  // YYYY-MM is not a day ("2026-10/2027-01" is two engine months).
+  new RegExp(
+    `(?<![\\d/.])(?<!\\d{4}${DASH})(?:\\d{1,2}[/.]\\d{1,2}[/.]\\d{4}|\\d{1,2}[/.]\\d{4}|\\d{4}[/.]\\d{1,2})(?!\\d)`,
+  ),
 ];
 
 // The jargon guard's sentence splitter, except that two kinds of period do not
@@ -123,8 +138,16 @@ function isDayMonthPair(a: number, b: number): boolean {
   return a >= 1 && b >= 1 && a <= 31 && b <= 31 && (a <= 12 || b <= 12);
 }
 
+// The same with "-" or "." ("on 12-14", "On 14.03"), only after an "on"-type
+// cue and with a two-digit second number, so "by 3-4 weeks" and "on 3.5
+// stars" are left alone.
+const CUED_DASH_DAY_MONTH =
+  /(?<!\p{L})(?:on|el|em|dia)\s+(?:the\s+|o\s+|dia\s+)?(\d{1,2})[-.](\d{2})(?!\d|[-./]\d)/giu;
+
 function hasCuedDayMonth(sentence: string): boolean {
-  return [...sentence.matchAll(CUED_DAY_MONTH)].some(([, a, b]) => isDayMonthPair(Number(a), Number(b)));
+  return [...sentence.matchAll(CUED_DAY_MONTH), ...sentence.matchAll(CUED_DASH_DAY_MONTH)].some(([, a, b]) =>
+    isDayMonthPair(Number(a), Number(b)),
+  );
 }
 
 // A standalone year 1900-2199, not glued to a digit, letter or currency mark
