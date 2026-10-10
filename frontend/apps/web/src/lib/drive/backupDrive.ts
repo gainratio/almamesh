@@ -83,6 +83,12 @@ const MAC_LINE = /^--- [A-Za-z0-9+/]{43}$/;
 /** 16-byte payload nonce plus at least one 16-byte Poly1305 tag (an empty plaintext). */
 const MIN_AGE_PAYLOAD_BYTES = 32;
 const NEWLINE = 0x0a;
+/**
+ * Longest header line read, in bytes (excluding '\n'). Large enough for
+ * post-quantum stanza arguments; checked before decoding, so a giant line is
+ * refused as not_sealed instead of allocating (or overflowing) a huge string.
+ */
+export const MAX_AGE_HEADER_LINE_BYTES = 65_536;
 /** Single-byte decode: every byte maps to one char, so offsets stay byte offsets. */
 const HEADER_TEXT = new TextDecoder('latin1');
 
@@ -105,7 +111,7 @@ interface HeaderLine {
  */
 function lineAt(bytes: Uint8Array, start: number): HeaderLine | null {
   const end = bytes.indexOf(NEWLINE, start);
-  if (end < 0) return null;
+  if (end < 0 || end - start > MAX_AGE_HEADER_LINE_BYTES) return null;
   return { text: HEADER_TEXT.decode(bytes.subarray(start, end)), next: end + 1 };
 }
 

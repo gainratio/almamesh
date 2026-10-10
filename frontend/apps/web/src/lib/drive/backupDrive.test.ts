@@ -1,6 +1,6 @@
 import { Decrypter, Encrypter, generateX25519Identity, identityToRecipient } from 'age-encryption';
 import { describe, expect, it } from 'vitest';
-import { DriveError, sealedBackupOf } from './backupDrive';
+import { DriveError, MAX_AGE_HEADER_LINE_BYTES, sealedBackupOf } from './backupDrive';
 import { passphraseSealedFixtureBytes, sealedFixtureBytes } from './testing/sealedFixture';
 
 const enc = (text: string): Uint8Array => new TextEncoder().encode(text);
@@ -93,6 +93,29 @@ describe('sealedBackupOf', () => {
   it('refuses a real age file whose payload was truncated under 32 bytes', async () => {
     const real = await sealedFixtureBytes(new Uint8Array());
     expectNotSealed(real.slice(0, real.length - 1));
+  });
+});
+
+describe('header line cap', () => {
+  /** A stanza line of exactly `total` bytes (excluding '\n'), with a valid body, MAC and payload. */
+  const withStanzaLine = (total: number): Uint8Array =>
+    join(enc(`${PREFIX}-> X25519 ${'a'.repeat(total - '-> X25519 '.length)}\nQUJD\n${MAC}`), payload(64));
+
+  it('pins the documented cap of 65536 bytes per header line', () => {
+    expect(MAX_AGE_HEADER_LINE_BYTES).toBe(65536);
+  });
+
+  it('accepts a header line of exactly the cap', () => {
+    expect(() => sealedBackupOf(withStanzaLine(65536))).not.toThrow();
+  });
+
+  it('refuses a header line one byte over the cap, before decoding it', () => {
+    expectNotSealed(withStanzaLine(65537));
+  });
+
+  it('accepts a real age file, whose header lines are all under the cap', async () => {
+    const bytes = await sealedFixtureBytes();
+    expect(sealedBackupOf(bytes).bytes).toBe(bytes);
   });
 });
 
