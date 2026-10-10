@@ -381,6 +381,11 @@ describe('PortableStateRepository', () => {
     });
   });
 
+  it('pins the device-local SQLite namespace to its documented name', () => {
+    // Renaming it orphans every stored device code and drive credential.
+    expect(PORTABLE_DEVICE_NAMESPACE).toBe('device');
+  });
+
   it('keeps device rows out of snapshots and the exported file, and reads them back locally', async () => {
     const sqlite = new MemorySqliteStore();
     let exportedRows: ReadonlyMap<string, string> = new Map();

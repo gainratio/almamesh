@@ -1,17 +1,23 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
-import {
-  beginBackupRestore,
-  commitDatasetGeneration,
-  setPortableStateRepositoryForTests,
-} from './deletionTombstones';
+import { importPortableBrowserState } from './backup';
+import { setPortableStateRepositoryForTests } from './deletionTombstones';
 import { DEVICE_CODE_KEY, type DeviceRows, deviceRows, getDeviceCode } from './deviceRows';
 import { PortableMemoryStore } from './portableMemoryStore.testkit';
-import {
-  PORTABLE_DEVICE_NAMESPACE,
-  PORTABLE_STATE_KEYS,
-  PortableStateRepository,
-} from './portableState';
+import { EMPTY_PORTABLE_REPAIR_REPORT } from './portableRepair';
+import { PORTABLE_DEVICE_NAMESPACE, PortableStateRepository } from './portableState';
+
+// The other device's backup file, as readPortableStateDatabase would decode it:
+// canonical rows only. Everything after the decode is the real import path.
+vi.mock('./portableState', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./portableState')>()),
+  readPortableStateDatabase: vi.fn(async () => ({
+    epoch: 1,
+    values: new Map([['almamesh-language', JSON.stringify({ state: { language: 'pt' }, version: 1 })]]),
+    quarantine: new Map(),
+    repairs: EMPTY_PORTABLE_REPAIR_REPORT,
+  })),
+}));
 
 function memoryRows(): DeviceRows & { map: Map<string, string> } {
   const map = new Map<string, string>();
@@ -63,17 +69,7 @@ describe('device rows across a restore', () => {
         ['device-code', 'drive-credential/google-drive'].map((key) => [key, structuredClone(rowOf(key))]),
       );
 
-      // The same commit importPortableBrowserState runs: every canonical key
-      // replaced by the other device's file (absent keys cleared).
-      const otherDevice = new Map([
-        ['almamesh-language', JSON.stringify({ state: { language: 'pt' }, version: 1 })],
-      ]);
-      const epoch = await beginBackupRestore({});
-      await commitDatasetGeneration(
-        epoch,
-        PORTABLE_STATE_KEYS.map((key) => ({ key, value: otherDevice.get(key) ?? null })),
-        { memoryRebuildPending: true },
-      );
+      await importPortableBrowserState(new Uint8Array([1]));
 
       // The restore really applied: the other device's row is now canonical here.
       expect(await repository.read('almamesh-language')).toContain('"pt"');
