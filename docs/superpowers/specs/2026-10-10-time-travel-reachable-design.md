@@ -1,6 +1,8 @@
 # Time travel you can find: Dashboard entry, no-AI view, phone parity, chat tool
 
-Date: 2026-10-10. Status: design approved by the owner ("ok to all"). Builds on
+Date: 2026-10-10. Status: design approved by the owner ("ok to all"); open
+questions ruled 2026-10-10 ("yes to all", see Rulings). Plan:
+`docs/superpowers/plans/2026-10-10-time-travel-reachable.md`. Builds on
 `2026-10-08-time-travel-design.md` (steps A–D, shipped).
 
 ## TL;DR
@@ -9,7 +11,8 @@ Time travel works, but almost nobody can reach it. The only way in is a ⏳ icon
 inside the chat composer. That icon is hidden when AI is off, and on a phone it
 has no label. On iPhone and Safari the Day tab and "Where?" are switched off.
 
-We fix that in four PRs, merged in this order:
+We fix that in four parts. Parts 1 and 2 ship as one PR (Ruling 2), then 3,
+then 4:
 
 | # | PR | What the user gets |
 |---|----|--------------------|
@@ -45,7 +48,7 @@ Today three things move a pin: the sheet's Go, the banner's Change, and Back to
 today. They call `pin`, `repin` and `backToToday` from `useChatThread`, which
 write through `lib/timeTravelThreads.ts`. After this work there is a fourth
 caller (the chat tool) and a second surface (the Dashboard). So we add one seam
-first, in PR 1, and route everything through it:
+first, in Part 1, and route everything through it:
 
 ```ts
 // frontend/apps/web/src/lib/timeTravel.ts (new)
@@ -55,7 +58,7 @@ export interface TravelRequest {
 }
 export interface TimeTravelController {
   readonly moment: ChatThreadAsOf | undefined;   // what the Dashboard shows
-  travel(request: TravelRequest): Promise<void>; // saved before it resolves (Ruling 12)
+  travel(request: TravelRequest): Promise<void>; // chat pin saved before it resolves (Inc D plan, Ruling 12)
   backToToday(): Promise<void>;
 }
 export function useTimeTravel(profileId: string | null, chartId: string | null): TimeTravelController;
@@ -71,8 +74,8 @@ export function useTimeTravel(profileId: string | null, chartId: string | null):
    thread is unpinned, `repinThread` when it is pinned. Same functions as today,
    so a failed save still rolls back and rethrows.
 
-The Dashboard moment is view state, not user data, so it is not persisted (see
-open question 1). The chat pin stays where it is today: on the thread, in the
+The Dashboard moment is view state, not user data, so it is not persisted
+(Ruling 1). The chat pin stays where it is today: on the thread, in the
 SQLite-backed chat store, exported with the thread.
 
 ### PR 1 — Dashboard "Time travel" button
@@ -96,7 +99,7 @@ SQLite-backed chat store, exported with the thread.
   (`dashboard-time-travel-banner`, reusing `TimeTravelBanner` with a new
   `testIdPrefix` prop). The moment card arrives in PR 2; PR 1 shows the banner
   only, so PR 1 must not ship to users alone if the banner promises content.
-  Rule: PR 1 and PR 2 deploy in the same release (open question 2).
+  Rule: Parts 1 and 2 are one PR (Ruling 2).
 
 Acceptance:
 
@@ -132,7 +135,7 @@ Rules:
   `usePredictiveStore`, which holds today's one Life Atlas result
   (`lib/periodSky.ts` header explains why).
 - While a moment is set, today's sections (Life Atlas, Sky & Timing link) get a
-  small "Today" label so nobody mistakes them for the moment (open question 3).
+  small "Today" label so nobody mistakes them for the moment (Ruling 3).
 - Back to today clears the moment and, with AI on, calls the existing
   `backToToday`.
 
@@ -151,6 +154,11 @@ Claim touched: **"The chart is pure calculation; AI is optional."** and
 
 ### PR 3 — Full parity on iPhone and Safari
 
+**Dependency: PR #317 (the macOS WebKit RSS sampler,
+`scripts/webkitProcessMemory.mjs`) must be merged first, or that sampler must
+land on `main` on its own.** PR 3's baseline and its WebKit budget both read
+it. PR 3 does not start its measurement task until it is on `main`.
+
 Turn on Day and "Where?" on every tier, and keep memory bounded with SQLite.
 
 What changes:
@@ -162,7 +170,7 @@ What changes:
    `e2e/memoryBudget.ts`, `PLACE_LOOKUP_HEAP_GROWTH_MIB`). Instead, the rows go
    into a `cities` table in the app's SQLite database on OPFS, with an index on
    the normalised name (FTS5 if the edgeproc-browser build has it; see open
-   question 5). Lookups become SQL queries. JS holds only the ≤ 5 candidates
+   Ruling 5). Lookups become SQL queries. JS holds only the ≤ 5 candidates
    (`PLACE_CANDIDATE_LIMIT`). The import runs once per city-list hash, in
    batches, so its peak is a batch, not the whole file.
 3. **Per-day period-sky results in SQLite.** A `period_sky` table keyed by
@@ -187,6 +195,33 @@ What changes:
    No IndexedDB, no localStorage.
 5. `chatToolset.ts:159,181`: `resolve_place`, `placeFromRef` and
    `loadMoonWindow` are registered on every tier.
+
+Corrections found while planning (read from the code on 2026-10-10; they
+change how, not what):
+
+- The app's SQLite store today (`@gainratio/browser/sqlite`, used by
+  `packages/store/src/portableState.ts`) is a key-value store, not SQL. Tables
+  and FTS5 need edgeproc-browser's SQL surface, `@gainratio/browser/sql`
+  (`openSqlDatabase`). Part 3 opens one derived-data database,
+  `almamesh-derived`, holding both `cities` and `period_sky`, through one seam
+  file (`lib/derivedDb.ts`). It is the same pinned SQLite build, but it is one
+  more database Worker, opened lazily on the first lookup or period compute.
+  Its memory is inside the budgets below; there is still no in-memory fallback
+  (`fallback: 'none'`).
+- `place_ref` is `city:<row index in the city list>`. The `cities` table keeps
+  that index as its rowid, so refs in saved pins keep working.
+- The period sky does not depend on the travel place (the Moon window does, and
+  it is a separate engine entry). So the `period_sky` key is
+  `(engine manifest hash, predictiveRequestKey(input))`; the request key already
+  holds the natal identity and the reference instant.
+- The engine manifest hash is not visible to the app today (it stops at
+  `memoizeChartEngine`); Part 3 exposes it on the runtime.
+  `withoutBootProof` is private to the predictive store; Part 3 exports it.
+- There is no engine-call counter; Part 3 adds an exit-gate hook for it.
+- `portable-invariants.spec.ts` has no "cache, not exported" list; Part 3 adds
+  one.
+- The city list is split at build time into same-origin parts, so the one-time
+  import parses one part at a time instead of the whole 2 MB file.
 
 Honest limit. SQLite bounds what we **keep**. It does not bound what **one
 engine run** allocates. Step A measured one period compute growing the
@@ -264,7 +299,7 @@ parameters: {
   wins if the model calls it twice.
 - "What about the day I moved to Pune" works only when the date is in the
   conversation. The model does not see life-event dates (rectification sends a
-  PII-safe slice with no dates). See open question 6.
+  PII-safe slice with no dates). See Ruling 6.
 - The tool is registered on every tier (after PR 3) and only when AI is
   configured (it is a chat tool).
 
@@ -376,24 +411,53 @@ The privacy policy and legal copy (en/es/pt) gain one line in PR 3 about the
 derived `period_sky` cache and its deletion. The online geocoder (Open-Meteo,
 onboarding only) is not touched; the Dashboard and chat use the offline list.
 
-## Open questions
+## Rulings
 
-1. Should the Dashboard moment survive a reload? Proposed: no. A reload returns
-   to today, so nobody reads an old moment as today. The chat pin persists as
-   it does now.
-2. Should PR 1 ship to production before PR 2? Proposed: no. Merge both, then
-   deploy, so the banner never promises a card that isn't there.
-3. While a moment is set, should Life Atlas switch to the moment too? Proposed:
-   no, label it "Today" for now. Switching it means a second domains compute.
-4. If PR 3's first Day compute breaks the budget, is the slim Python entry
-   (`compute_period_sky`) acceptable as PR 3a, ahead of the tier change?
-5. Does the edgeproc-browser SQLite build include FTS5? If not, a normalised-name
-   prefix index is enough for ≤ 5 candidates. Could edgeproc-browser instead
-   open a prebuilt read-only cities database shipped with the bundle (no import
-   step)? That would be an upstream feature.
-6. "The day I moved to Pune": should chat get a life-events tool that returns
-   the user's own event dates? That is a new disclosure (dates reach the model)
-   and is out of scope here.
-7. When the chat tool fires in an unpinned thread, should the move open a new
-   pinned thread right away, or show a one-tap "Go to March 2019" chip first?
-   Proposed: move right away, same as the sheet's Go.
+The owner approved every recommended answer on 2026-10-10 ("yes to all").
+Numbering matches the open questions these replace.
+
+1. **Dashboard moment and reload.** Ruling: the Dashboard moment does not
+   survive a reload; a reload returns to today, because a page that silently
+   reopens on March 2019 is easy to read as today, and the moment is view state,
+   not user data. The chat pin persists as it does now. If this is wrong it
+   costs one re-pick in the sheet after a reload, and a later change to persist
+   it would need a store row and a backup-format decision.
+2. **PR 1 alone in production.** Ruling: Parts 1 and 2 ship as one PR, one
+   merge, one deploy, because the banner from Part 1 promises a moment card
+   that only Part 2 draws, and a banner over nothing is a broken screen. If this
+   is wrong it costs one larger review instead of two smaller ones; nothing
+   reaches users later than it would have.
+3. **Life Atlas while a moment is set.** Ruling: Life Atlas stays on today and
+   gets a "Today" label, because switching it means a second ~30 s domains
+   compute per moment, which doubles engine runs on iPhone (see the JSC wasm
+   fault below). If this is wrong it costs a follow-up PR that computes domains
+   for the moment; nothing built here has to be undone.
+4. **Slim engine entry if the first Day compute breaks the budget.** Ruling:
+   yes. If Part 3's baseline task shows the first Day compute over budget, the
+   slim Python entry `compute_period_sky` ships first as PR 3a (with a golden
+   CPython==Pyodide parity fixture), and PR 3b turns the tiers on, because
+   raising the budget would hide the exact iPhone jetsam risk the budget
+   exists to catch. If this is wrong it costs one extra engine entry and parity
+   fixture to maintain that a bigger budget would have avoided.
+5. **FTS5 and a prebuilt cities database.** Ruling: use FTS5, and do not ship a prebuilt
+   cities database. FTS5 is in the pinned build (edgeproc-browser `./sql`:
+   SQLite 3.53.4 + FTS5; `sqlite3.wasm` is compiled with `ENABLE_FTS5`). The
+   `cities` table gets an FTS5 `trigram` index, because today's matcher is
+   substring-based (`name.includes(query)` plus country and code qualifiers),
+   and a trigram index keeps that meaning where a prefix index would not. SQL
+   returns at most 200 candidates; the existing ranking runs on those, and a
+   parity test proves the top 5 match today's lookup over a fixed query corpus.
+   A prebuilt read-only database is an upstream edgeproc-browser feature and is
+   out of scope. If this is wrong it costs a slower first lookup (the one-time
+   import) that a prebuilt file would have skipped; the table and queries stay.
+6. **"The day I moved to Pune".** Ruling: no life-events tool in this work; the
+   chat tool moves only to dates already in the conversation, because a tool
+   that returns the user's event dates is a new disclosure (dates reach the
+   model) and needs its own privacy claim, copy and review. If this is wrong it
+   costs the user typing the date once; a later spec can add the tool.
+7. **Chat tool in an unpinned thread.** Ruling: the move happens right away,
+   exactly like the sheet's Go (a new pinned thread opens and the Dashboard
+   moment moves), because the user asked for it in words and "Back to today" is
+   one tap; a confirm chip would make the tool path differ from the sheet path
+   that Part 4 must match byte for byte. If this is wrong it costs one tap to
+   undo an unwanted move; the thread the user was in is kept unchanged.
