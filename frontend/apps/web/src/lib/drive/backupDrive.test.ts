@@ -1,4 +1,4 @@
-import { Decrypter, Encrypter, generateX25519Identity, identityToRecipient } from 'age-encryption';
+import { Decrypter, Encrypter, generateX25519Identity, identityToRecipient, type Recipient, Stanza } from 'age-encryption';
 import { describe, expect, it } from 'vitest';
 import { DriveError, MAX_AGE_HEADER_LINE_BYTES, sealedBackupOf } from './backupDrive';
 import { passphraseSealedFixtureBytes, sealedFixtureBytes } from './testing/sealedFixture';
@@ -62,6 +62,17 @@ describe('sealedBackupOf', () => {
     expect(() => sealedBackupOf(join(enc(`${PREFIX}-> scrypt c2FsdA 18\n${body}${MAC}`), payload(32)))).not.toThrow();
   });
 
+  it('accepts a real age file whose stanza body ends in a 63-column line (47-byte body)', async () => {
+    const recipient: Recipient = { wrapFileKey: () => [new Stanza(['example.com/test'], new Uint8Array(47).fill(7))] };
+    const encrypter = new Encrypter();
+    encrypter.addRecipient(recipient);
+    const bytes = await encrypter.encrypt('almamesh drive fixture');
+    // Line 0 is the version, line 1 the `-> ` stanza, line 2 its whole (short, final) body line.
+    const bodyLine = new TextDecoder('latin1').decode(bytes.subarray(0, 200)).split('\n')[2];
+    expect(bodyLine).toHaveLength(63);
+    expect(sealedBackupOf(bytes).bytes).toBe(bytes);
+  });
+
   it.each([
     ['plain SQLite', SQLITE],
     ['ASCII-armored age', ARMORED],
@@ -77,6 +88,8 @@ describe('sealedBackupOf', () => {
     ['a SQLite database after the age prefix', join(enc(`${PREFIX}SQLite format 3\0`), new Uint8Array(4096))],
     ['a header with no MAC line', join(enc(`${PREFIX}${STANZA}`), payload(64))],
     ['a bare --- line with no MAC', join(enc(`${PREFIX}${STANZA}---\n`), payload(64))],
+    ['a long (44-char) MAC', join(enc(`${PREFIX}${STANZA}--- ${'A'.repeat(44)}\n`), payload(64))],
+    ['a stanza body line with a non-base64 character', join(enc(`${PREFIX}-> X25519 a\nQU!D\n${MAC}`), payload(64))],
     ['a short (42-char) MAC', join(enc(`${PREFIX}${STANZA}--- ${'A'.repeat(42)}\n`), payload(64))],
     ['a MAC line not ending in a newline', join(enc(`${PREFIX}${STANZA}--- ${'A'.repeat(43)}`), payload(64))],
     ['a header with no recipient stanza', join(enc(`${PREFIX}${MAC}`), payload(64))],

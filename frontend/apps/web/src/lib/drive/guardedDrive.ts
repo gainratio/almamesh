@@ -1,4 +1,7 @@
-/** The one place the "only ciphertext, only neutral names" rule is enforced. */
+/**
+ * The one place the upload rule is enforced: uploads refuse anything not
+ * structured as a binary age v1 file, and any name that is not a neutral backup name.
+ */
 import { type BackupDrive, type DriveBackupEntry, DriveError, sealedBackupOf } from './backupDrive';
 import { backupNameOf, parseBackupName } from './backupName';
 

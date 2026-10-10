@@ -8,7 +8,7 @@ export type DriveProviderId = 'google-drive' | 'dropbox' | 'onedrive';
 declare const sealedBrand: unique symbol;
 declare const nameBrand: unique symbol;
 
-/** Bytes proven to be a binary age file and not a SQLite database. */
+/** Bytes structured as a binary age v1 file (shape only, see sealedBackupOf) and not a SQLite database. */
 export interface SealedBackup {
   readonly bytes: Uint8Array;
   readonly [sealedBrand]: true;
@@ -141,8 +141,9 @@ function ageHeaderEnd(bytes: Uint8Array): number | null {
 /**
  * Structural check of a binary age v1 file (https://age-encryption.org/v1):
  * one or more `-> ` stanzas, a `--- <43-char MAC>` line, then a payload of at
- * least MIN_AGE_PAYLOAD_BYTES. It cannot verify the MAC (that needs the key);
- * it proves the bytes are shaped like ciphertext, not plaintext behind a prefix.
+ * least MIN_AGE_PAYLOAD_BYTES. Uploads refuse anything not structured as a
+ * binary age v1 file. This is a shape check only: it cannot verify the MAC
+ * (that needs the key), so it does not prove the payload is ciphertext.
  * The age-encryption package keeps its header parser private (its package.json
  * exports only `.`, and `parseHeader` is not re-exported), so this is local.
  */
