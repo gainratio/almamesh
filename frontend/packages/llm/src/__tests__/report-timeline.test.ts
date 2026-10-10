@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { ProviderConfig } from "../config";
 import {
   REPORT_PROMPT_SET,
+  REPORT_PROVIDER_ROUTING,
   REPORT_SECTION_REASONING_MAX_TOKENS,
   SECTION_REASONING_MAX_TOKENS,
   streamNatalInterpretation,
@@ -149,6 +150,43 @@ describe("streamReportTimeline", () => {
     expect(log).toHaveLength(9);
     for (const row of log) expect(row.body.reasoning).toEqual({ max_tokens: 6000 });
     expect(log.every((row) => !("max_tokens" in row.body))).toBe(true);
+  });
+
+  async function allReportBodies(config: ProviderConfig, streamed = false) {
+    const log: { section: string; body: Record<string, unknown> }[] = [];
+    const progress = streamed ? { onSectionProgress: () => undefined } : {};
+    await collect(streamReportTimeline({ chart: REPORT_RAW_CHART, asOf: REPORT_AS_OF, config, fetchImpl: stubFetch(log), ...progress }));
+    for await (const _ of streamNatalInterpretation({ chart: REPORT_RAW_CHART, asOf: REPORT_AS_OF, config, fetchImpl: stubFetch(log), promptSet: REPORT_PROMPT_SET, ...progress })) {
+      // drain
+    }
+    return log;
+  }
+
+  it("asks OpenRouter for the cheapest provider on every report section", async () => {
+    expect(REPORT_PROVIDER_ROUTING).toEqual({ sort: "price" });
+    for (const streamed of [false, true]) {
+      const log = await allReportBodies(OPENROUTER, streamed);
+      expect(log).toHaveLength(9);
+      for (const row of log) expect(row.body.provider).toEqual({ sort: "price" });
+    }
+  });
+
+  it("sends no provider field to a local or a non-OpenRouter endpoint", async () => {
+    const other: ProviderConfig = { ...OPENROUTER, baseUrl: "https://api.together.xyz/v1" };
+    for (const config of [LOCAL, other]) {
+      const log = await allReportBodies(config);
+      expect(log).toHaveLength(9);
+      expect(log.every((row) => !("provider" in row.body))).toBe(true);
+    }
+  });
+
+  it("sends no provider field on legacy natal calls, even on OpenRouter", async () => {
+    const log: { section: string; body: Record<string, unknown> }[] = [];
+    for await (const _ of streamNatalInterpretation({ chart: REPORT_RAW_CHART, asOf: REPORT_AS_OF, config: OPENROUTER, fetchImpl: stubFetch(log) })) {
+      // drain
+    }
+    expect(log.length).toBeGreaterThan(0);
+    for (const row of log) expect(Object.keys(row.body)).toEqual(["model", "messages", "stream", "response_format", "reasoning"]);
   });
 
   it("leaves legacy natal calls at the 12,000 cap", async () => {

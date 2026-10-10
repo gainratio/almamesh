@@ -167,7 +167,7 @@ export type {
   RawEvidenceAnnotationPayload,
 } from "./evidence-annotation";
 
-export { chatCompletionJson } from "./client";
+export { chatCompletionJson, REPORT_PROVIDER_ROUTING } from "./client";
 export type { ChatCompletionJsonOptions } from "./client";
 
 export {

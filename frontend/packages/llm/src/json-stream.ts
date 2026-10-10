@@ -14,6 +14,7 @@ import {
   joinUrl,
   LlmRequestError,
   requestErrorFor,
+  providerField,
   reasoningField,
   requireBaseUrl,
   stripJsonFence,
@@ -58,6 +59,7 @@ async function openJsonStream(options: StreamChatCompletionJsonOptions): Promise
       stream: true,
       response_format: { type: "json_object" },
       ...reasoningField(options.config, options.reasoningMaxTokens),
+      ...providerField(options.config, options.cheapestProvider),
     }),
     signal: options.signal,
   });

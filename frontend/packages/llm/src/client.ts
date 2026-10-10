@@ -126,6 +126,25 @@ export interface ChatCompletionJsonOptions {
    * endpoints only; see reasoning.ts). Unset: the model's own default.
    */
   readonly reasoningMaxTokens?: number;
+  /**
+   * Ask OpenRouter for the cheapest provider ({@link REPORT_PROVIDER_ROUTING}).
+   * OpenRouter endpoints only; ignored elsewhere.
+   */
+  readonly cheapestProvider?: boolean;
+}
+
+/**
+ * OpenRouter provider preference for report sections. `sort: "price"` always
+ * tries the cheapest provider first instead of OpenRouter's default
+ * price-weighted load balancing, which sometimes picked an upstream billing
+ * 4-5x the catalog price. Fallbacks stay allowed (OpenRouter's default): a
+ * failed reading costs the user more than a pricier fallback.
+ * https://openrouter.ai/docs/guides/routing/provider-selection#provider-sorting
+ */
+export const REPORT_PROVIDER_ROUTING = { sort: "price" } as const;
+
+function isOpenRouter(config: ProviderConfig): boolean {
+  return config.baseUrl?.startsWith(OPENROUTER_API_BASE) === true;
 }
 
 /**
@@ -137,8 +156,17 @@ export function reasoningField(
   config: ProviderConfig,
   maxTokens: number | undefined,
 ): { readonly reasoning?: { readonly max_tokens: number } } {
-  if (maxTokens === undefined || !config.baseUrl?.startsWith(OPENROUTER_API_BASE)) return {};
+  if (maxTokens === undefined || !isOpenRouter(config)) return {};
   return { reasoning: { max_tokens: maxTokens } };
+}
+
+/** The `provider` request field, OpenRouter only (same reason as `reasoningField`). */
+export function providerField(
+  config: ProviderConfig,
+  cheapest: boolean | undefined,
+): { readonly provider?: typeof REPORT_PROVIDER_ROUTING } {
+  if (cheapest !== true || !isOpenRouter(config)) return {};
+  return { provider: REPORT_PROVIDER_ROUTING };
 }
 
 /** Strip a ```json … ``` (or plain ```) fence some models wrap JSON in. */
@@ -169,6 +197,7 @@ export async function chatCompletionJson(
       stream: false,
       response_format: { type: "json_object" },
       ...reasoningField(options.config, options.reasoningMaxTokens),
+      ...providerField(options.config, options.cheapestProvider),
     }),
     signal: options.signal,
   });

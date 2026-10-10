@@ -1415,6 +1415,7 @@ function requestSection<Section extends AnySectionKey>(
     config: params.config,
     messages,
     reasoningMaxTokens: reasoningBudget(section, params.promptSet),
+    cheapestProvider: isReportRequest(section, params.promptSet),
     ...(params.signal ? { signal: params.signal } : {}),
     ...(params.fetchImpl ? { fetchImpl: params.fetchImpl } : {}),
   };
@@ -1441,11 +1442,14 @@ function requestSection<Section extends AnySectionKey>(
   });
 }
 
-/** Report sections (the report-v2 natal set and every timeline section) get the smaller cap. */
+/** A report section: the report-v2 natal set or any report timeline section. */
+function isReportRequest(section: AnySectionKey, promptSet: ReportPromptSet | undefined): boolean {
+  return promptSet === REPORT_PROMPT_SET || isReportTimelineSection(section);
+}
+
+/** Report sections get the smaller cap. */
 function reasoningBudget(section: AnySectionKey, promptSet: ReportPromptSet | undefined): number {
-  return promptSet === REPORT_PROMPT_SET || isReportTimelineSection(section)
-    ? REPORT_SECTION_REASONING_MAX_TOKENS
-    : SECTION_REASONING_MAX_TOKENS;
+  return isReportRequest(section, promptSet) ? REPORT_SECTION_REASONING_MAX_TOKENS : SECTION_REASONING_MAX_TOKENS;
 }
 
 function runOneSection<Section extends AnySectionKey>(

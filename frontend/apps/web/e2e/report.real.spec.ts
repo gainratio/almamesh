@@ -37,12 +37,15 @@ import {
  * lands; each run's CATALOG-priced cost (its tokens at the catalog price the
  * estimate uses) is inside estimateReadingCost's range; the per-section,
  * per-voice MEDIAN of words across runs is within REPORT_WORD_TARGETS +/-30 %;
- * every request carries reasoning.max_tokens 6000 and no max_tokens. P90 is
+ * every request carries reasoning.max_tokens 6000, provider sort "price" and
+ * no max_tokens; each run's 200 usage rows cover all nine sections. P90 is
  * asserted only when REPORT_P90_BUDGET_MS is set (the default-model run).
+ * Section failures are soft so a failed run still reports cost and words.
  *
- * Billed usage.cost depends on which upstream provider OpenRouter routes to,
- * which the library does not control: a billed total above the estimate, and
- * any provider that ignored the reasoning cap, are annotations, not failures.
+ * Billed usage.cost depends on which upstream provider OpenRouter routes to.
+ * The library asks for the cheapest first but fallbacks stay allowed: a billed
+ * total above the estimate, and any provider that ignored the reasoning cap,
+ * are annotations, not failures.
  *
  * Nightly:  OPENROUTER_API_KEY=... bun run test:e2e:report:real
  * Default model (PR evidence): set REPORT_REAL_MODEL to the app's default
@@ -55,6 +58,7 @@ const P90_BUDGET_MS = process.env.REPORT_P90_BUDGET_MS ? Number(process.env.REPO
 const KEY = '1990-01-15T12:00:00+00:00';
 const FIXTURES = new URL('../../../../backend/tests/fixtures/', import.meta.url);
 const REASONING_CAP = 6000;
+const PROVIDER_ROUTING = { sort: 'price' };
 const AS_OF: AnalysisInstant = { basis: 'chart', instant: new Date('2026-06-09T12:00:00Z') };
 
 interface ReportRun {
@@ -153,6 +157,7 @@ test('[real] full report-v2 reading against live OpenRouter (3 runs)', async () 
     const words = Object.fromEntries(REPORT_SECTIONS.map((s) => [s, reportSectionWords(s, natal, timeline)]));
     for (const body of bodies) {
       expect(body.reasoning).toEqual({ max_tokens: REASONING_CAP });
+      expect(body.provider).toEqual(PROVIDER_ROUTING);
       expect(body).not.toHaveProperty('max_tokens');
     }
     runs.push({
@@ -179,7 +184,9 @@ test('[real] full report-v2 reading against live OpenRouter (3 runs)', async () 
 
   for (const overrun of capOverruns) annotate(`provider ignored the reasoning cap: ${overrun}`);
   runs.forEach((run, i) => {
-    expect(run.errors, 'every section lands').toEqual([]);
+    expect.soft(run.errors, `run ${i + 1} every section lands`).toEqual([]);
+    const covered = new Set(run.rows.filter((row) => row.status === 200).map((row) => row.section));
+    expect.soft([...covered].sort(), `run ${i + 1} usage rows cover all nine sections`).toEqual([...REPORT_SECTIONS].sort());
     expect.soft(run.catalogUsd, `run ${i + 1} catalog-priced cost >= estimate low`).toBeGreaterThanOrEqual(estimate.lowUsd);
     expect.soft(run.catalogUsd, `run ${i + 1} catalog-priced cost <= estimate high`).toBeLessThanOrEqual(estimate.highUsd);
     if (run.billedUsd > estimate.highUsd) {
