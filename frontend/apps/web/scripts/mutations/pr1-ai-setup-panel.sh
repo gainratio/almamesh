@@ -20,7 +20,7 @@ TEST=src/components/features/ai/AiSetupPanel.test.tsx
 MARKERS=(
   MUTATION_EARLY_CONNECTED MUTATION_NO_FLUSH_AWAIT MUTATION_SKIP_FLUSH
   MUTATION_PROBEGEN MUTATION_POSTFLUSH_GUARD MUTATION_HIDE_DISCLOSURE
-  MUTATION_HIDE_WARNING
+  MUTATION_HIDE_WARNING MUTATION_POSTFLUSH_CATCH
 )
 REPORTS="$(mktemp -d)"
 
@@ -112,6 +112,10 @@ expect_red "drop the post-flush supersede guard" MUTATION_POSTFLUSH_GUARD \
   's{(the verdict that the newer save now owns\.\n\s*)if \(gen !== probeGen\.current\) \{}{${1}if (false /* MUTATION_POSTFLUSH_GUARD */) \{}' \
   "keeps the newer Connected verdict when a superseded save flushes late"
 
+expect_red "drop the supersede guard in the flush catch" MUTATION_POSTFLUSH_CATCH \
+  's{(a late failure must not paint over it\.\n\s*)if \(gen !== probeGen\.current\) \{}{${1}if (false /* MUTATION_POSTFLUSH_CATCH */) \{}' \
+  "keeps the newer Connected verdict when a superseded save rejects late"
+
 expect_red "hide the disclosure when showOffChoice is false" MUTATION_HIDE_DISCLOSURE \
   's{\{t\(\x27tiers\.cloud_body\x27\)\}}{\{showOffChoice ? t(\x27tiers.cloud_body\x27) : null /* MUTATION_HIDE_DISCLOSURE */\}}' \
   "shows the AI disclosure in the onboarding variant"
@@ -128,4 +132,4 @@ for marker in "${MARKERS[@]}"; do
     exit 1
   fi
 done
-echo "all 8 mutations went RED; source restored and clean"
+echo "all 9 mutations went RED; source restored and clean"

@@ -65,7 +65,9 @@ test.describe('Settings → AI renders the shared panel unchanged', () => {
     expect(sent.every((entry) => entry.host === 'openrouter.ai')).toBe(true);
     expect(keyed.map((entry) => entry.path)).toContain('/api/v1/chat/completions');
     expect(keyed.every((entry) => entry.host === 'openrouter.ai')).toBe(true);
-    // The model catalog is a public read: it never carries the key.
+    // The model catalog is a public read: it never carries the key. Require the read
+    // to have happened, so the `.every` below can never pass vacuously.
+    expect(sent.some((e) => e.path.endsWith('/models'))).toBe(true);
     expect(sent.filter((e) => e.path.endsWith('/models')).every((e) => e.authorization === null)).toBe(true);
     expect(errors).toEqual([]);
   });
