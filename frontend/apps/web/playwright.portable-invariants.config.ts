@@ -24,6 +24,8 @@ const PORT = Number(process.env.PORTABLE_INVARIANTS_E2E_PORT ?? 4208);
 const EXTERNAL_BASE_URL = process.env.PORTABLE_INVARIANTS_E2E_BASE_URL;
 const BASE_URL = EXTERNAL_BASE_URL ?? `http://127.0.0.1:${PORT}`;
 
+const WEBKIT_EVIDENCE = { trace: "retain-on-failure", video: "retain-on-failure" } as const;
+
 export default defineConfig({
   testDir: "./e2e",
   testMatch: /portable-invariants\.spec\.ts/,
@@ -45,12 +47,14 @@ export default defineConfig({
   },
   projects: [
     { name: "chromium", use: { ...devices["Desktop Chrome"] } },
-    { name: "webkit", use: { ...devices["Desktop Safari"] } },
+    // WebKit keeps a trace and a video of every failed test (see
+    // playwright.time-travel.config.ts).
+    { name: "webkit", use: { ...devices["Desktop Safari"], ...WEBKIT_EVIDENCE } },
     // An iPhone: the export/import journeys at phone size with an iOS UA.
     // The Day pin is full-tier only and iOS is always the minimal tier
     // (packages/browser/src/deviceTier.ts), so that journey does not exist on
     // an iPhone and is not run there.
-    { name: "iphone-webkit", use: { ...devices["iPhone 13"] }, grepInvert: /a Day pin with a place/ },
+    { name: "iphone-webkit", use: { ...devices["iPhone 13"], ...WEBKIT_EVIDENCE }, grepInvert: /a Day pin with a place/ },
   ],
   webServer: EXTERNAL_BASE_URL
     ? undefined

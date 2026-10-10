@@ -17,6 +17,8 @@ const PORT = Number(process.env.TIME_TRAVEL_E2E_PORT ?? 4216);
 const EXTERNAL_BASE_URL = process.env.TIME_TRAVEL_E2E_BASE_URL;
 const BASE_URL = EXTERNAL_BASE_URL ?? `http://127.0.0.1:${PORT}`;
 
+const WEBKIT_EVIDENCE = { trace: "retain-on-failure", video: "retain-on-failure" } as const;
+
 export default defineConfig({
   testDir: "./e2e",
   testMatch: /time-travel\.spec\.ts/,
@@ -44,8 +46,11 @@ export default defineConfig({
     // fetches that pass through a service worker, so with the app's worker
     // active the stubbed provider would be bypassed and the real one called.
     // The worker is blocked there; the Chromium project keeps it.
-    { name: "webkit", use: { ...devices["Desktop Safari"], serviceWorkers: "block" }, grepInvert: /@iphone/ },
-    { name: "iphone-webkit", use: { ...devices["iPhone 13"], serviceWorkers: "block" }, grep: /@iphone|@sw/ },
+    // WebKit keeps a trace and a video of every failed test: the macOS lane
+    // uploads them with each test's WebKit log and RSS samples
+    // (e2e/webkitDiagnostics.ts), so a lost page can be diagnosed.
+    { name: "webkit", use: { ...devices["Desktop Safari"], serviceWorkers: "block", ...WEBKIT_EVIDENCE }, grepInvert: /@iphone/ },
+    { name: "iphone-webkit", use: { ...devices["iPhone 13"], serviceWorkers: "block", ...WEBKIT_EVIDENCE }, grep: /@iphone|@sw/ },
   ],
   // Build with the exit-gate hooks ON (bootEngine/seedChart need
   // window.__almameshGenerate), as CI's hookedBuild() does, then serve it.
