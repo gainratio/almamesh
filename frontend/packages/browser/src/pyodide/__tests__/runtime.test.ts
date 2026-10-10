@@ -18,6 +18,7 @@ import type { RectificationInput, RectificationResultRaw } from "../rectificatio
 import type { SyncProgress, SyncResult } from "@gainratio/browser";
 import type { BootStage, IdleScheduler } from "../runtime";
 import { EngineBootCancelledError } from "../teardown";
+import { errorFromWorker } from "../bootFault";
 
 const CONFIG: RuntimeConfig = {
   bundleBaseUrl: "https://cdn.test/almamesh",
@@ -709,6 +710,121 @@ describe("AlmaMeshRuntime.bootstrap", () => {
 
       await runtime.bootstrap(CONFIG);
       expect(chart.bootCount).toBe(1);
+    });
+  });
+
+  describe("one automatic retry after a WebAssembly fault during boot", () => {
+    /** A Pyodide Worker whose boot traps the way WebKit's cold wasm compile did. */
+    class FaultingChartEngine extends FakeChartEngine {
+      public override async boot(config: BootConfig): Promise<void> {
+        this.bootConfig = config;
+        this.bootCount += 1;
+        throw errorFromWorker("Out of bounds memory access", "RuntimeError");
+      }
+    }
+
+    const harness = (chartEngines: FakeChartEngine[]) => {
+      const spawnedCharts: FakeChartEngine[] = [];
+      const spawnedSyncs: FakeSyncEngine[] = [];
+      const lines: string[] = [];
+      const runtime = new AlmaMeshRuntime({
+        spawnSyncEngine: () => {
+          const sync = new FakeSyncEngine(FILES);
+          spawnedSyncs.push(sync);
+          return sync;
+        },
+        spawnChartEngine: () => {
+          const next = chartEngines.shift();
+          if (next === undefined) throw new Error("no chart engine left to spawn");
+          spawnedCharts.push(next);
+          return next;
+        },
+        decideBootMode: () => ({ mode: "sequential", reason: "test" }),
+        log: (line) => lines.push(line),
+      });
+      return { runtime, spawnedCharts, spawnedSyncs, lines };
+    };
+
+    it("terminates the faulted Worker and boots a fresh one that succeeds", async () => {
+      const faulted = new FaultingChartEngine();
+      const fresh = new FakeChartEngine();
+      const { runtime, spawnedCharts, lines } = harness([faulted, fresh]);
+
+      const engine = await runtime.bootstrap(CONFIG);
+
+      expect(spawnedCharts).toEqual([faulted, fresh]);
+      expect(faulted.terminated).toBe(true);
+      expect(fresh.terminated).toBe(false);
+      expect(fresh.bootCount).toBe(1);
+      expect(runtime.engine()).toBe(engine);
+      await engine.generateChart(BIRTH);
+      expect(fresh.chartCalls).toBe(1);
+      expect(lines).toContain("[almamesh] engine.boot_retry error=RuntimeError");
+    });
+
+    it("retries once only: a second fault rejects so the recovery card shows", async () => {
+      const first = new FaultingChartEngine();
+      const second = new FaultingChartEngine();
+      const { runtime, spawnedCharts, spawnedSyncs, lines } = harness([first, second]);
+
+      await expect(runtime.bootstrap(CONFIG)).rejects.toMatchObject({
+        name: "RuntimeError",
+        message: "Out of bounds memory access",
+      });
+
+      expect(spawnedCharts).toEqual([first, second]);
+      // No leak: every Worker either boot attempt spawned is terminated.
+      expect(spawnedCharts.every((chart) => chart.terminated)).toBe(true);
+      expect(spawnedSyncs.every((sync) => sync.terminated)).toBe(true);
+      expect(runtime.engine()).toBeNull();
+      expect(lines.filter((line) => line.includes("engine.boot_retry"))).toHaveLength(1);
+    });
+
+    it("does not retry a failure that is not a wasm fault", async () => {
+      const broken = new FakeChartEngine();
+      broken.boot = async () => {
+        throw new Error("bundle signature verification failed");
+      };
+      const { runtime, spawnedCharts, lines } = harness([broken, new FakeChartEngine()]);
+
+      await expect(runtime.bootstrap(CONFIG)).rejects.toThrow("bundle signature verification failed");
+
+      expect(spawnedCharts).toEqual([broken]);
+      expect(broken.terminated).toBe(true);
+      expect(lines.some((line) => line.includes("engine.boot_retry"))).toBe(false);
+    });
+
+    it("keeps the sequential policy on the retry: the fresh Worker starts only after its sync Worker is gone", async () => {
+      const faulted = new FaultingChartEngine();
+      const fresh = new FakeChartEngine();
+      const { runtime, spawnedSyncs, spawnedCharts } = harness([faulted, fresh]);
+      const syncAliveAtSpawn: boolean[] = [];
+      fresh.boot = async (config) => {
+        syncAliveAtSpawn.push(spawnedSyncs.some((sync) => !sync.terminated));
+        fresh.bootConfig = config;
+        fresh.bootCount += 1;
+      };
+
+      await runtime.bootstrap(CONFIG);
+
+      expect(spawnedSyncs).toHaveLength(2);
+      expect(syncAliveAtSpawn).toEqual([false]);
+      expect(fresh.prewarmUrls).toEqual([]);
+      expect(spawnedCharts).toHaveLength(2);
+    });
+
+    it("does not retry a boot that dispose() superseded", async () => {
+      const faulted = new FaultingChartEngine();
+      const fresh = new FakeChartEngine();
+      const { runtime, spawnedCharts } = harness([faulted, fresh]);
+      faulted.boot = async () => {
+        runtime.dispose();
+        throw errorFromWorker("Out of bounds memory access", "RuntimeError");
+      };
+
+      await expect(runtime.bootstrap(CONFIG)).rejects.toMatchObject({ name: "RuntimeError" });
+
+      expect(spawnedCharts).toEqual([faulted]);
     });
   });
 });

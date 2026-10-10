@@ -19,6 +19,7 @@
 import type { SyncProgress, SyncResult } from "@gainratio/browser";
 
 import { spawnAlmaSyncEngine } from "../edgeprocClient";
+import { isWasmBootFault } from "./bootFault";
 import { decideBootPolicy, readBootSignals } from "./bootPolicy";
 import type { BootDecision } from "./bootPolicy";
 import type { SiderealChart } from "./chart";
@@ -253,7 +254,7 @@ export class AlmaMeshRuntime {
   public bootstrap(config: RuntimeConfig, onStage: OnStage = () => {}): Promise<ChartEngine> {
     if (this.#enginePromise === null) {
       const generation = this.#generation;
-      this.#enginePromise = this.#build(config, onStage, generation).catch(
+      this.#enginePromise = this.#buildWithOneRetry(config, onStage, generation).catch(
         (error: unknown) => {
           // A superseded build must not clear state belonging to a newer boot.
           if (this.#generation === generation) {
@@ -268,6 +269,28 @@ export class AlmaMeshRuntime {
       );
     }
     return this.#enginePromise;
+  }
+
+  /**
+   * A WebAssembly trap during boot (WebKit once raised "Out of bounds memory
+   * access" on the first Python statement of a cold compile) is a fault of that
+   * one wasm instance. `#build` has already terminated the faulted Workers, so
+   * boot once more in fresh ones — same boot policy, same OPFS-cached bundle.
+   * Any other failure, a second fault, or a boot superseded meanwhile is
+   * surfaced unchanged (the provider's recovery card).
+   */
+  async #buildWithOneRetry(
+    config: RuntimeConfig,
+    onStage: OnStage,
+    generation: number,
+  ): Promise<ChartEngine> {
+    try {
+      return await this.#build(config, onStage, generation);
+    } catch (error) {
+      if (!isWasmBootFault(error) || this.#generation !== generation) throw error;
+      (this.#deps.log ?? defaultLog)(`[almamesh] engine.boot_retry error=${(error as Error).name}`);
+      return this.#build(config, onStage, generation);
+    }
   }
 
   async #build(

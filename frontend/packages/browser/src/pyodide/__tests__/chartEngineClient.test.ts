@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ChartEngineClient } from "../chartEngineClient";
 import type { SiderealChart } from "../chart";
@@ -295,6 +295,60 @@ describe("ChartEngineClient", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  describe("exit-gate boot fault switch", () => {
+    const armKey = "__almameshArmBootWasmFault";
+    const arm = (): void => {
+      (globalThis as Record<string, unknown>)[armKey] = true;
+    };
+    const bootOk = (req: ChartWorkerRequest): ChartWorkerResponse => ({ ok: true, kind: "boot", id: req.id });
+
+    afterEach(() => {
+      vi.unstubAllEnvs();
+      delete (globalThis as Record<string, unknown>)[armKey];
+    });
+
+    it("asks only the first boot's Worker to trap, in a hooks build with the switch armed", async () => {
+      vi.stubEnv("VITE_EXIT_GATE_HOOKS", "1");
+      arm();
+      const first = withReply(bootOk);
+      const firstWorker = worker;
+      await first.boot(bootConfig());
+      const second = withReply(bootOk);
+      await second.boot(bootConfig());
+
+      expect(firstWorker.posted[0]).toMatchObject({ kind: "boot", injectWasmTrap: true });
+      expect(worker.posted[0]).not.toHaveProperty("injectWasmTrap");
+    });
+
+    it("never asks a Worker to trap in a build without the hooks", async () => {
+      vi.stubEnv("VITE_EXIT_GATE_HOOKS", "");
+      arm();
+      const client = withReply(bootOk);
+
+      await client.boot(bootConfig());
+
+      expect(worker.posted[0]).not.toHaveProperty("injectWasmTrap");
+    });
+  });
+
+  it("boot rejects with the Worker's error class, so a wasm trap stays recognisable", async () => {
+    const client = withReply((req) => ({
+      ok: false,
+      id: req.id,
+      error: "Out of bounds memory access",
+      errorName: "RuntimeError",
+    }));
+
+    const failure = await client.boot(bootConfig()).then(
+      () => null,
+      (error: unknown) => error,
+    );
+
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).name).toBe("RuntimeError");
+    expect((failure as Error).message).toBe("Out of bounds memory access");
   });
 
   it("generates a chart, returning the worker's chart payload once its snapshot verifies", async () => {

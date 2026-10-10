@@ -13,7 +13,7 @@
     "typecheck": "bun run --filter '*' typecheck",
     "lint": "eslint .",
     "knip": "bunx knip@6.26.0 --no-progress",
-    "gate": "node scripts/check-tsc-native.mjs && bunx tsc -b packages/shared-types packages/constants packages/store packages/llm --force && bun run --filter '*' typecheck && bun run lint && bun test ../tests/frontend-lint-coverage-contract.test.ts && bun run knip && bun run --filter @almamesh/browser test && bun run --filter @almamesh/store test && bun run --filter @almamesh/llm test && bun run --filter @almamesh/web test:unit && bun run --filter @almamesh/web build && node apps/web/scripts/verify-prerender-dist.mjs apps/web/dist",
+    "gate": "node scripts/check-tsc-native.mjs && bunx tsc -b packages/shared-types packages/constants packages/store packages/llm --force && bun run --filter '*' typecheck && bun run lint && bun test ../tests/frontend-lint-coverage-contract.test.ts && bun run knip && bun run --filter @almamesh/browser test && bun run --filter @almamesh/store test && bun run --filter @almamesh/llm test && bun run --filter @almamesh/web test:unit && bun run --filter @almamesh/web build && node apps/web/scripts/verify-prerender-dist.mjs apps/web/dist && node apps/web/scripts/verify-boot-fault-hook.mjs apps/web/dist --absent",
     "clean": "bun run --filter '*' clean && rm -rf node_modules",
     "prepare": "cd .. && husky frontend/.husky"
   },
