@@ -76,6 +76,20 @@ describe('getUserFriendlyError', () => {
       );
     });
 
+    it('still returns the error card when the cause is hostile', () => {
+      vi.stubEnv('VITE_EXIT_GATE_HOOKS', '1');
+      vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      const boom = () => {
+        throw new Error('trap');
+      };
+      const hostileCause = new Proxy(new Error('x'), { get: boom, has: boom, getPrototypeOf: boom });
+      expect(getUserFriendlyError('CHART_GEN_001', new Error('outer', { cause: hostileCause }))).toBe(
+        "Sorry, we're experiencing technical difficulties. Error code: CHART_GEN_001",
+      );
+      expect(getUserFriendlyError('CHART_GEN_001', hostileCause)).toContain('CHART_GEN_001');
+    });
+
     it('stays silent without the hooks flag', () => {
       vi.stubEnv('VITE_EXIT_GATE_HOOKS', '');
       vi.spyOn(console, 'error').mockImplementation(() => undefined);

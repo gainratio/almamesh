@@ -99,7 +99,12 @@ const MAX_DEPTH = 8;
  */
 export const KNOWN_ERROR_CLASSES: ReadonlySet<string> = new Set([
   // ECMAScript
-  'Error', 'AggregateError', 'EvalError', 'RangeError', 'ReferenceError', 'SyntaxError', 'TypeError', 'URIError',
+  'Error', 'AggregateError', 'EvalError', 'RangeError', 'ReferenceError', 'SuppressedError', 'SyntaxError',
+  'TypeError', 'URIError',
+  // WebAssembly (a trap relayed from the chart Worker arrives as RuntimeError)
+  'CompileError', 'LinkError', 'RuntimeError', 'SuspendError',
+  // Pyodide
+  'FatalPyodideError', 'NoGilError', 'PythonError',
   // DOMException and the names browsers give it
   'DOMException', 'AbortError', 'DataCloneError', 'InvalidStateError', 'NetworkError', 'NoModificationAllowedError',
   'NotAllowedError', 'NotFoundError', 'NotReadableError', 'NotSupportedError', 'QuotaExceededError', 'SecurityError',
@@ -149,54 +154,93 @@ export const SQLITE_PRIMARY_CODES: ReadonlySet<string> = new Set([
 
 const SQLITE_TOKEN = /\bSQLITE_[A-Z]+(?:_[A-Z]+)*\b/;
 
+/** What a property read that threw is printed as. */
+const UNREADABLE = '?';
+
+/** `read()`, or `fallback` when it throws (a hostile Proxy, a throwing getter). */
+function attempt<T>(read: () => T, fallback: T): T {
+  try {
+    return read();
+  } catch {
+    return fallback;
+  }
+}
+
 function className(error: Error): string {
-  if (KNOWN_ERROR_CLASSES.has(error.name)) return error.name;
-  const ctor = error.constructor?.name ?? '';
-  return KNOWN_ERROR_CLASSES.has(ctor) ? ctor : 'Error';
+  const name = attempt<unknown>(() => error.name, UNREADABLE);
+  if (name === UNREADABLE) return UNREADABLE;
+  if (typeof name === 'string' && KNOWN_ERROR_CLASSES.has(name)) return name;
+  const ctor = attempt<unknown>(() => error.constructor?.name, undefined);
+  return typeof ctor === 'string' && KNOWN_ERROR_CLASSES.has(ctor) ? ctor : 'Error';
 }
 
-/** null: no `code` at all. '?': a code that is not a fixed constant. */
+/** null: no `code` at all. '?': a code that is not a fixed constant, or unreadable. */
 function codeOf(error: Error): string | null {
-  if (!('code' in error) || error.code === undefined) return null;
-  return typeof error.code === 'string' && KNOWN_ERROR_CODES.has(error.code) ? error.code : '?';
+  return attempt<string | null>(() => {
+    if (!('code' in error) || error.code === undefined) return null;
+    return typeof error.code === 'string' && KNOWN_ERROR_CODES.has(error.code) ? error.code : UNREADABLE;
+  }, UNREADABLE);
 }
 
-/** The primary SQLite result-code name in `message`, '?' for an unknown SQLITE_ token. */
-function sqliteCodeOf(message: string): string | null {
+/** The primary SQLite result-code name in the message; '?' for an unknown SQLITE_ token or an unreadable message. */
+function sqliteCodeOf(error: Error): string | null {
+  const message = attempt<unknown>(() => error.message, UNREADABLE);
+  if (message === UNREADABLE) return UNREADABLE;
+  if (typeof message !== 'string') return null;
   const token = SQLITE_TOKEN.exec(message)?.[0];
   if (token === undefined) return null;
   for (const primary of SQLITE_PRIMARY_CODES) {
     if (token === primary || token.startsWith(`${primary}_`)) return primary;
   }
-  return '?';
+  return UNREADABLE;
 }
 
 function describeOne(error: unknown): string {
-  if (!(error instanceof Error)) return error === null ? 'null' : typeof error;
+  const isError = attempt<boolean | null>(() => error instanceof Error, null);
+  if (isError === null) return UNREADABLE;
+  if (!isError) return error === null ? 'null' : typeof error;
+  const typed = error as Error;
   const fields: string[] = [];
-  const code = codeOf(error);
+  const code = codeOf(typed);
   if (code !== null) fields.push(`code=${code}`);
-  const sqlite = sqliteCodeOf(error.message);
+  const sqlite = sqliteCodeOf(typed);
   if (sqlite !== null) fields.push(`sqlite=${sqlite}`);
-  const name = className(error);
+  const name = className(typed);
   return fields.length === 0 ? name : `${name}(${fields.join(', ')})`;
 }
 
-/** "Outer <- Cause(code=x) <- ..." for `error` and its `.cause` chain. */
+const NO_CAUSE = Symbol('no cause');
+const UNREADABLE_CAUSE = Symbol('unreadable cause');
+
+/** The next link. An error whose class cannot be read was already printed as '?' and ends the chain. */
+function causeOf(error: unknown): unknown {
+  if (!attempt<boolean>(() => error instanceof Error, false)) return NO_CAUSE;
+  return attempt<unknown>(() => (error as Error).cause, UNREADABLE_CAUSE);
+}
+
+/** "Outer <- Cause(code=x) <- ..." for `error` and its `.cause` chain. Never throws. */
 export function describeErrorCauses(error: unknown): string {
   if (error === undefined) return 'none';
   const parts: string[] = [];
   const seen = new Set<unknown>();
   let current: unknown = error;
-  while (current !== undefined && !seen.has(current) && parts.length < MAX_DEPTH) {
+  while (current !== undefined && current !== NO_CAUSE && !seen.has(current) && parts.length < MAX_DEPTH) {
+    if (current === UNREADABLE_CAUSE) {
+      parts.push(UNREADABLE);
+      break;
+    }
     seen.add(current);
     parts.push(describeOne(current));
-    current = current instanceof Error ? current.cause : undefined;
+    current = causeOf(current);
   }
   return parts.join(' <- ');
 }
 
-/** One console line; call only behind the VITE_EXIT_GATE_HOOKS guard. */
+/** One console line; call only behind the VITE_EXIT_GATE_HOOKS guard. Never throws. */
 export function safeCauseWarn(cause: unknown): void {
-  console.warn(`[${TYPED_ERROR_CAUSE_MARKER}] ${describeErrorCauses(cause)}`);
+  try {
+    console.warn(`[${TYPED_ERROR_CAUSE_MARKER}] ${describeErrorCauses(cause)}`);
+  } catch {
+    // A diagnostic must never stop the caller from showing its error card.
+  }
 }
