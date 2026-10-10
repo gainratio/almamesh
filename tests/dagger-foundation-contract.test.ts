@@ -6,7 +6,7 @@ import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 
 const root = resolve(import.meta.dir, "..")
-const centralSha = "8fbde750dafd431c1777f2bf63b3170ef6db2caf"
+const centralSha = "528eaec76121b75810c58bab610d9f2064b95227"
 const repository = "hseshadr/almamesh"
 const providerMarkers = [
   "CLOUDFLARE_API_TOKEN",
