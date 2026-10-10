@@ -77,29 +77,45 @@ export async function stubLocalEndpoint(page: Page): Promise<void> {
 export interface EgressEntry {
   host: string;
   path: string;
+  /** True for requests to the app's own origin (assets, a future /api proxy). */
+  sameOrigin: boolean;
+  url: string;
   authorization: string | null;
+  body: string | null;
 }
 
 export interface EgressLog {
-  /** Every cross-origin request seen so far, with its Authorization header. */
+  /** Every request seen so far (same-origin included), with header, URL and body. */
   settle(): Promise<readonly EgressEntry[]>;
 }
 
-/** Record every request that leaves the app's own origin. */
+/**
+ * Record every request the browser context makes: the page, popups, and the
+ * service worker, same-origin included (tagged), so a key sent to the app's own
+ * origin or hidden in a URL or body is visible too.
+ */
 export function recordEgress(page: Page, appOrigin: string): EgressLog {
   const pending: Promise<EgressEntry>[] = [];
-  page.on('request', (request: Request) => {
+  page.context().on('request', (request: Request) => {
     const url = new URL(request.url());
-    if (url.origin === appOrigin || url.protocol === 'data:' || url.protocol === 'blob:') return;
+    if (url.protocol === 'data:' || url.protocol === 'blob:') return;
     pending.push(
       request.headerValue('authorization').then((authorization) => ({
         host: url.host,
         path: url.pathname,
+        sameOrigin: url.origin === appOrigin,
+        url: request.url(),
         authorization,
+        body: request.postData(),
       })),
     );
   });
   return { settle: () => Promise.all(pending) };
+}
+
+/** True when the dummy key is anywhere in the request: header, URL, or body. */
+export function carriesKey(entry: EgressEntry): boolean {
+  return [entry.authorization, entry.url, entry.body].some((part) => part?.includes(DUMMY_KEY) ?? false);
 }
 
 /** Hosts that count as "a provider": the hosted one and the local endpoint. */

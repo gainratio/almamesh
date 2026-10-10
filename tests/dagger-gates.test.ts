@@ -331,11 +331,17 @@ describe("browser gate shards", () => {
     const config = readFileSync(resolve(web, "playwright.ai-setup-panel.egress.config.ts"), "utf8")
     expect(config).toContain("testMatch: /ai-setup-panel\\.egress\\.spec\\.ts/")
     expect(config).toContain("process.env.AI_PANEL_EGRESS_E2E_BASE_URL")
-    expect(config.match(/name: '/g)).toEqual(["name: '"])
-    expect(config).toContain("name: 'chromium'")
+    expect(config.match(/\bname:\s*'[^']*'/g)).toEqual(["name: 'chromium'"])
     const spec = readFileSync(resolve(web, "e2e/ai-setup-panel.egress.spec.ts"), "utf8")
     expect(spec).not.toContain("toHaveScreenshot")
-    expect(spec).toContain("expect(errors).toEqual([])")
+    // Every test asserts a clean console.
+    const tests = spec.match(/^\s+test\(/gm) ?? []
+    expect(tests.length).toBeGreaterThan(0)
+    expect(spec.split("expect(errors).toEqual([])").length - 1).toBe(tests.length)
+    // The positive anchors, so no check can pass vacuously.
+    expect(spec).toContain("toContain('/api/v1/chat/completions')")
+    expect(spec).toContain("toContain('localhost:11434/v1/chat/completions')")
+    expect(spec).toContain("expect(catalog.length).toBeGreaterThan(0)")
   })
 
   test("each shard is one of the product gates and serves the one hooked build", () => {
