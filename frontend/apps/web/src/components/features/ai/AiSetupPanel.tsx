@@ -7,9 +7,10 @@
  *   2. Connect AI — an OpenRouter key (the guided, recommended path) or, under
  *      "Advanced", any OpenAI-compatible endpoint (incl. a local Ollama).
  *
- * Saving is NOT fire-and-forget: it persists the config, then runs a real 1-token
- * connectivity probe (`testProviderConnection`) against the exact model/endpoint
- * the reading will use, and reports an honest **Connected** or a specific error
+ * Saving is NOT fire-and-forget: it persists the config, then runs a real
+ * connectivity probe that mirrors the JSON-mode reading (`testProviderConnection`)
+ * against the exact model/endpoint the reading will use, and reports an honest
+ * **Connected** or a specific error
  * (bad key / bad model / out of credits / unreachable) right here — so the user
  * never has to leave the screen to discover their config is broken. Everything is
  * stored in canonical browser-local SQLite; synchronous reads use a boot-hydrated
@@ -307,9 +308,13 @@ export function AiSetupPanel({
       setConn({ phase: 'error', source, kind: 'storage' });
       return;
     }
-    // A save superseded while its flush was in flight must not repaint the form,
-    // the status, or the verdict that the newer save now owns.
+    // A save superseded while its flush was in flight still wrote durable settings,
+    // so the status surfaces (this panel's badge, the header badge) refresh from
+    // that truth. It must not repaint the user's in-progress form or
+    // the verdict that the newer save now owns.
     if (gen !== probeGen.current) {
+      setStatus(describeLlmStatus());
+      notifyLlmSettingsChanged();
       return;
     }
 

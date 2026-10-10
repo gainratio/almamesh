@@ -11,7 +11,7 @@ import {
   type ProviderConfig,
 } from '@almamesh/llm';
 import { AiSetupPanel, type AiSetupPanelProps } from './AiSetupPanel';
-import { notifyLlmSettingsChanged } from '../../../lib/llmSettingsEvents';
+import { LLM_SETTINGS_CHANGED_EVENT, notifyLlmSettingsChanged } from '../../../lib/llmSettingsEvents';
 import { hydrateSlowModelSuggestion } from '../../../lib/modelSuggestion';
 
 function readSaved(): Record<string, unknown> {
@@ -729,5 +729,34 @@ describe('AiSetupPanel — onConnected', () => {
     expect(result).toContain('Connected');
     expect(result).not.toContain("Couldn't save");
     expect(onConnected).toHaveBeenCalledOnce();
+  });
+
+  it('refreshes the status surfaces, but keeps the edit, when a save flushes after a field edit', async () => {
+    const onConnected = vi.fn();
+    const flush = deferred();
+    const testConnection = vi.fn().mockResolvedValue(undefined);
+    renderPanel({ onConnected, testConnection, flushSettings: vi.fn(() => flush.promise) });
+    const changed = vi.fn();
+    window.addEventListener(LLM_SETTINGS_CHANGED_EVENT, changed);
+    try {
+      saveKey('sk-or-first');
+      await waitFor(() => expect(readSaved().apiKey).toBe('sk-or-first'));
+      // An edit (not a re-save) supersedes save A while its flush is in flight.
+      fireEvent.change(screen.getByTestId('llm-openrouter-key'), { target: { value: 'sk-or-edited' } });
+      flush.resolve();
+      await settle();
+
+      // A's write is durable, so the badge and the header signal reflect it…
+      expect(changed).toHaveBeenCalled();
+      expect(screen.getByTestId('tier-cloud-active')).toBeTruthy();
+      expect(screen.queryByTestId('tier-none-active')).toBeNull();
+      // …but the user's in-progress edit and the (absent) verdict are untouched.
+      expect((screen.getByTestId('llm-openrouter-key') as HTMLInputElement).value).toBe('sk-or-edited');
+      expect(screen.queryByTestId('llm-connection-result')).toBeNull();
+      expect(testConnection).not.toHaveBeenCalled();
+      expect(onConnected).not.toHaveBeenCalled();
+    } finally {
+      window.removeEventListener(LLM_SETTINGS_CHANGED_EVENT, changed);
+    }
   });
 });
