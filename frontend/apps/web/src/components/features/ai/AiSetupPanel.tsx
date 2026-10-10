@@ -25,6 +25,7 @@ import {
   CHAT_CLOUD_MODEL,
   describeLlmStatus,
   fetchOpenRouterCredits,
+  hydrateLlmSettings,
   fetchOpenRouterModels,
   isLocalEndpoint,
   openRouterPreset,
@@ -117,10 +118,10 @@ export interface AiSetupPanelProps {
    * Called once per save, only after the settings are durable AND the probe
    * passed for the config still on screen. Onboarding advances on it.
    * Not called if the panel unmounts, AI is turned off, a remote Replace lands, or
-   * the form is edited or re-saved before the probe settles. A throw is logged and
-   * the verdict stays Connected.
+   * the form is edited or re-saved before the probe settles. It may be async; it is
+   * awaited, and a throw or rejection is logged while the verdict stays Connected.
    */
-  onConnected?: (status: LlmStatus) => void;
+  onConnected?: (status: LlmStatus) => void | Promise<void>;
 }
 
 export function AiSetupPanel({
@@ -163,14 +164,13 @@ export function AiSetupPanel({
   // Leaving the screen supersedes whatever is in flight: a probe that settles after
   // unmount must never report a connection to a caller that has moved on. The refs
   // are read at cleanup time on purpose — the LATEST in-flight probe is the one to cancel.
-  useEffect(() => {
-    const gens = probeGen;
-    const aborts = probeAbort;
-    return () => {
-      gens.current += 1; // unmount supersedes the probe
-      aborts.current?.abort();
-    };
-  }, []);
+  useEffect(
+    () => () => {
+      probeGen.current += 1; // unmount supersedes the probe
+      probeAbort.current?.abort(); // unmount aborts the probe
+    },
+    [],
+  );
 
   const noneActive = status.kind === 'none';
   const aiOn =
@@ -275,6 +275,7 @@ export function AiSetupPanel({
   const turnAiOff = async () => {
     const offGen = (probeGen.current += 1);
     probeAbort.current?.abort();
+    const beforeOff = readLlmSettings();
     try {
       writeLlmSettings({
         engine: '',
@@ -294,6 +295,9 @@ export function AiSetupPanel({
       if (offGen !== probeGen.current) {
         return;
       }
+      // writeLlmSettings already flipped the in-memory snapshot; put it back so
+      // memory agrees with the badge (and with the durable row) until a retry.
+      hydrateLlmSettings(JSON.stringify(beforeOff)); // restore after a failed turn-off
       setConn({ phase: 'error', source: 'guided', kind: 'storage' });
       return;
     }
@@ -319,6 +323,7 @@ export function AiSetupPanel({
     probeAbort.current?.abort();
     const controller = new AbortController();
     probeAbort.current = controller;
+    const beforeSave = readLlmSettings();
 
     try {
       writeLlmSettings({ ...next, engine: '' });
@@ -331,6 +336,8 @@ export function AiSetupPanel({
       if (gen !== probeGen.current) {
         return;
       }
+      // Never leave an unsaved config live in memory until the next reload.
+      hydrateLlmSettings(JSON.stringify(beforeSave)); // restore after a failed save
       setConn({ phase: 'error', source, kind: 'storage' });
       return;
     }
@@ -377,10 +384,10 @@ export function AiSetupPanel({
     // can never be misreported as a connection error.
     setConn({ phase: 'connected', source });
     try {
-      onConnected?.(describeLlmStatus(persisted));
+      await onConnected?.(describeLlmStatus(persisted));
     } catch (err) {
       // The caller's bug, not a connection failure: keep Connected, log it, and never
-      // let it escape as an unhandled rejection from this async handler.
+      // let a throw or an async rejection escape as an unhandled rejection.
       safeError('app.typed_error', err);
     }
   };

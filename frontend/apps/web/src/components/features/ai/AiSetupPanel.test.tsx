@@ -895,6 +895,43 @@ describe('AiSetupPanel — onConnected', () => {
     await waitFor(() => expect(verdict()).toContain("Couldn't save"));
     expect(screen.getByTestId('tier-cloud-active')).toBeTruthy();
     expect(screen.queryByTestId('tier-none-active')).toBeNull();
+    // The in-memory snapshot agrees with the badge and the durable row: still on.
+    expect(readSaved().apiKey).toBe('sk-or-abc');
+    expect(readSaved().privacyMode).toBe('cloud_premium');
+  });
+
+  it('turns AI off only after the off write is durable', async () => {
+    const offFlush = deferred();
+    const flushSettings = vi.fn().mockResolvedValue(undefined);
+    renderPanel({ flushSettings, testConnection: vi.fn().mockResolvedValue(undefined) });
+    saveKey('sk-or-abc');
+    await waitFor(() => expect(verdict()).toContain('Connected'));
+    flushSettings.mockImplementationOnce(() => offFlush.promise);
+    fireEvent.click(screen.getByTestId('tier-none-select'));
+    await settle();
+    expect(screen.getByTestId('tier-cloud-active')).toBeTruthy();
+    expect(screen.queryByTestId('tier-none-active')).toBeNull();
+    await act(async () => {
+      offFlush.resolve();
+      await settle();
+    });
+    expect(screen.getByTestId('tier-none-active')).toBeTruthy();
+  });
+
+  it('restores the previous in-memory settings when a save cannot be made durable', async () => {
+    hydrateLlmSettings(
+      JSON.stringify({ apiKey: 'sk-or-old', apiBase: 'https://openrouter.ai/api/v1', privacyMode: 'cloud_premium' }),
+    );
+    renderPanel({
+      flushSettings: vi.fn().mockRejectedValue(new Error('canonical SQLite write failed')),
+      testConnection: vi.fn().mockResolvedValue(undefined),
+    });
+    saveKey('sk-or-new');
+    await waitFor(() => expect(verdict()).toContain("Couldn't save"));
+    // The unsaved key must not be live in memory until the next reload.
+    expect(readSaved().apiKey).toBe('sk-or-old');
+    // The form still holds what the user typed, so they can retry.
+    expect((screen.getByTestId('llm-openrouter-key') as HTMLInputElement).value).toBe('sk-or-new');
   });
 
   // Connected, then Turn AI off (its flush held), then a newer save connects. The
@@ -960,6 +997,33 @@ describe('AiSetupPanel — onConnected', () => {
       expect(verdict()).toBe('(none)');
     } finally {
       window.removeEventListener(LLM_SETTINGS_CHANGED_EVENT, changed);
+    }
+  });
+
+  it('keeps Connected, logs, and raises no unhandled rejection, when an async onConnected rejects', async () => {
+    const seen: unknown[] = [];
+    const onUnhandled = (reason: unknown) => seen.push(reason);
+    process.on('unhandledRejection', onUnhandled);
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      // A plain function, not vi.fn: Vitest's mock attaches its own handler to a
+      // returned promise (settledResults), which would hide the unhandled rejection.
+      let calls = 0;
+      const onConnected = async () => {
+        calls += 1;
+        await Promise.resolve();
+        throw new Error('async caller boom');
+      };
+      renderPanel({ onConnected, testConnection: vi.fn().mockResolvedValue(undefined) });
+      saveKey('sk-or-abc');
+      await waitFor(() => expect(calls).toBe(1));
+      await new Promise((r) => setTimeout(r, 20));
+      expect(verdict()).toContain('Connected');
+      expect(seen.map(String)).toEqual([]);
+      expect(consoleError).toHaveBeenCalledWith('[almamesh:error:app.typed_error]');
+    } finally {
+      consoleError.mockRestore();
+      process.off('unhandledRejection', onUnhandled);
     }
   });
 

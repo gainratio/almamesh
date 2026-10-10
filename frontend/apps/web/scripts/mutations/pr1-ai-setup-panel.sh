@@ -20,10 +20,11 @@ TEST=src/components/features/ai/AiSetupPanel.test.tsx
 MARKERS=(
   MUTATION_EARLY_CONNECTED MUTATION_NO_FLUSH_AWAIT MUTATION_SKIP_FLUSH
   MUTATION_PROBEGEN MUTATION_POSTFLUSH_GUARD MUTATION_HIDE_DISCLOSURE
-  MUTATION_HIDE_WARNING MUTATION_POSTFLUSH_CATCH MUTATION_NO_UNMOUNT_CLEANUP
+  MUTATION_HIDE_WARNING MUTATION_POSTFLUSH_CATCH MUTATION_UNMOUNT_NO_BUMP MUTATION_UNMOUNT_NO_ABORT
   MUTATION_OFF_RESOLVE_GUARD MUTATION_OFF_REJECT_GUARD MUTATION_REPLACE_NO_BUMP
   MUTATION_OFF_NO_BUMP MUTATION_OFF_STORAGE_CATCH MUTATION_FAILED_PROBE_GUARD
-  MUTATION_OFF_NO_REFRESH MUTATION_ONCONNECTED_UNGUARDED
+  MUTATION_OFF_NO_REFRESH MUTATION_ONCONNECTED_UNGUARDED MUTATION_ONCONNECTED_NO_AWAIT
+  MUTATION_OFF_NO_RESTORE MUTATION_SAVE_NO_RESTORE MUTATION_OFF_NO_FLUSH_AWAIT
 )
 REPORTS="$(mktemp -d)"
 
@@ -127,8 +128,12 @@ expect_red "hide the refusal warning when showOffChoice is false" MUTATION_HIDE_
   's{\{willRefuse && \(}{\{willRefuse \&\& showOffChoice /* MUTATION_HIDE_WARNING */ \&\& \(}' \
   "keeps the local-only refusal warning in the onboarding variant"
 
-expect_red "no unmount cleanup (probe outlives the screen)" MUTATION_NO_UNMOUNT_CLEANUP \
-  's{gens\.current \+= 1; // unmount supersedes the probe\n\s*aborts\.current\?\.abort\(\);}{/* MUTATION_NO_UNMOUNT_CLEANUP */}' \
+expect_red "unmount no longer supersedes the probe" MUTATION_UNMOUNT_NO_BUMP \
+  's{probeGen\.current \+= 1; // unmount supersedes the probe}{/* MUTATION_UNMOUNT_NO_BUMP */}' \
+  "does not report connected after unmount, and aborts the in-flight probe"
+
+expect_red "unmount no longer aborts the probe" MUTATION_UNMOUNT_NO_ABORT \
+  's{probeAbort\.current\?\.abort\(\); // unmount aborts the probe}{/* MUTATION_UNMOUNT_NO_ABORT */}' \
   "does not report connected after unmount, and aborts the in-flight probe"
 
 expect_red "turnAiOff ignores its own gen on a late flush resolve" MUTATION_OFF_RESOLVE_GUARD \
@@ -160,8 +165,24 @@ expect_red "superseded turnAiOff skips the status refresh" MUTATION_OFF_NO_REFRE
   "refreshes the status surfaces, but keeps the edit, when a Turn-AI-off flushes after a field edit"
 
 expect_red "a throwing onConnected escapes the save handler" MUTATION_ONCONNECTED_UNGUARDED \
-  's{try \{\n(\s*onConnected\?\.\(describeLlmStatus\(persisted\)\);)\n\s*\} catch \(err\) \{.*?safeError\(\x27app\.typed_error\x27, err\);\n\s*\}}{/* MUTATION_ONCONNECTED_UNGUARDED */$1}s' \
+  's{try \{\n\s*await (onConnected\?\.\(describeLlmStatus\(persisted\)\);)\n\s*\} catch \(err\) \{.*?safeError\(\x27app\.typed_error\x27, err\);\n\s*\}}{/* MUTATION_ONCONNECTED_UNGUARDED */ $1}s' \
   "keeps Connected, and raises no unhandled rejection, when onConnected throws"
+
+expect_red "an async onConnected is not awaited" MUTATION_ONCONNECTED_NO_AWAIT \
+  's{await onConnected\?\.}{/* MUTATION_ONCONNECTED_NO_AWAIT */ onConnected?.}' \
+  "keeps Connected, logs, and raises no unhandled rejection, when an async onConnected rejects"
+
+expect_red "a failed turn-off leaves memory saying off" MUTATION_OFF_NO_RESTORE \
+  's{hydrateLlmSettings\(JSON\.stringify\(beforeOff\)\); // restore after a failed turn-off}{/* MUTATION_OFF_NO_RESTORE */}' \
+  "shows a storage error, and keeps AI on, when turning AI off cannot be saved"
+
+expect_red "a failed save leaves the unsaved config live in memory" MUTATION_SAVE_NO_RESTORE \
+  's{hydrateLlmSettings\(JSON\.stringify\(beforeSave\)\); // restore after a failed save}{/* MUTATION_SAVE_NO_RESTORE */}' \
+  "restores the previous in-memory settings when a save cannot be made durable"
+
+expect_red "turnAiOff does not await its flush" MUTATION_OFF_NO_FLUSH_AWAIT \
+  's{(privacyMode: \x27local_only\x27,\n\s*\}\);\n\s*)await flushSettings\(\);}{${1}void flushSettings(); /* MUTATION_OFF_NO_FLUSH_AWAIT */}' \
+  "turns AI off only after the off write is durable"
 
 # Restored: the source is clean and no marker survives anywhere in src.
 git diff --quiet -- "$PANEL" || { echo "FAIL: $PANEL is not clean after restore" >&2; exit 1; }
@@ -171,4 +192,4 @@ for marker in "${MARKERS[@]}"; do
     exit 1
   fi
 done
-echo "all 18 mutations went RED; source restored and clean"
+echo "all 23 mutations went RED; source restored and clean"
