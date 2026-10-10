@@ -1,11 +1,12 @@
-import '../../../../i18n/config';
-import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import i18n from '../../../../i18n/config';
+import { fireEvent, render, screen, within } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { toTransitCtx } from '@almamesh/store';
 
 import { SKY_CHART } from '../../../../lib/__tests__/timingFixtures';
 import { FOUNDER_DASHAS } from '../../../../test/dashaFixtures';
+import { formatPinLabel } from '../../../../lib/timeTravelSheet';
 import { DashboardMomentCard } from '../DashboardMomentCard';
 
 const MARCH_2025 = { start: '2025-03-01', end: '2025-03-31', granularity: 'month' } as const;
@@ -17,6 +18,10 @@ function text(testId: string): string {
 }
 
 describe('DashboardMomentCard', () => {
+  afterEach(async () => {
+    await i18n.changeLanguage('en');
+  });
+
   it('shows the maha and antar at the moment, from the chart dasha list', () => {
     render(<DashboardMomentCard asOf={MARCH_2025} dashas={FOUNDER_DASHAS} birthYear={1980}
       sky={{ kind: 'dashas-only' }} onRetry={() => {}} language="en" />);
@@ -51,13 +56,75 @@ describe('DashboardMomentCard', () => {
     expect(text('time-travel-moment-working').replace(/\s+/g, ' ')).toContain('Working out the sky for March 2025');
   });
 
-  it('a failed compute offers Try again, and the button retries', () => {
+  it('a failed compute says so once, offers a Try again button, and the button retries', () => {
     const onRetry = vi.fn();
     render(<DashboardMomentCard asOf={MARCH_2025} dashas={FOUNDER_DASHAS} birthYear={1980}
       sky={{ kind: 'failed' }} onRetry={onRetry} language="en" />);
-    expect(text('time-travel-moment-failed')).toContain('Try again');
-    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    const failed = screen.getByTestId('time-travel-moment-failed');
+    expect(failed.getAttribute('role')).toBe('alert');
+    const button = within(failed).getByRole('button', { name: 'Try again' });
+    // The message alone, without the button's label: no second "Try again." sentence.
+    const message = (failed.textContent ?? '').replace(button.textContent ?? '', '').trim();
+    expect(message).toBe("Couldn't work out the sky for this moment.");
+    fireEvent.click(button);
     expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['en', "Couldn't work out the sky for this moment."],
+    ['es', 'No se pudo calcular el cielo para este momento.'],
+    ['pt', 'Não foi possível calcular o céu para este momento.'],
+  ] as const)('the failed line has no trailing "try again" sentence (%s)', async (language, expected) => {
+    await i18n.changeLanguage(language);
+    expect(i18n.t('dashboard:time_travel.failed')).toBe(expected);
+    await i18n.changeLanguage('en');
+  });
+
+  it('reads as then, not now: the title is "At that moment"', () => {
+    render(<DashboardMomentCard asOf={MARCH_2025} dashas={FOUNDER_DASHAS} birthYear={1980}
+      sky={{ kind: 'dashas-only' }} onRetry={() => {}} language="en" />);
+    expect(screen.getByRole('heading', { level: 2 }).textContent).toBe('At that moment');
+  });
+
+  it.each([
+    ['es', 'En ese momento'],
+    ['pt', 'Naquele momento'],
+  ] as const)('the title reads as then in %s', async (language, expected) => {
+    await i18n.changeLanguage(language);
+    expect(i18n.t('dashboard:time_travel.moment_title')).toBe(expected);
+    await i18n.changeLanguage('en');
+  });
+
+  it("the transits section carries no \"Current Sky\" heading of its own", () => {
+    const transits = toTransitCtx(SKY_CHART.transit_context);
+    if (!transits) throw new Error('fixture has no transits');
+    render(<DashboardMomentCard asOf={MARCH_2025} dashas={FOUNDER_DASHAS} birthYear={1980}
+      sky={{ kind: 'ready', transits }} onRetry={() => {}} language="en" />);
+    expect(text('time-travel-moment-transits')).not.toContain('Current Sky');
+    expect(screen.getByTestId('gochara-table')).not.toBeNull();
+  });
+
+  it('one polite live region stays mounted while the sky goes from working to ready', () => {
+    const transits = toTransitCtx(SKY_CHART.transit_context);
+    if (!transits) throw new Error('fixture has no transits');
+    const props = { asOf: MARCH_2025, dashas: FOUNDER_DASHAS, birthYear: 1980, onRetry: () => {}, language: 'en' };
+    const { rerender } = render(<DashboardMomentCard {...props} sky={{ kind: 'working' }} />);
+    const region = screen.getByTestId('time-travel-moment-sky');
+    expect(region.getAttribute('aria-live')).toBe('polite');
+    expect(region.contains(screen.getByTestId('time-travel-moment-working'))).toBe(true);
+    rerender(<DashboardMomentCard {...props} sky={{ kind: 'ready', transits }} />);
+    expect(screen.getByTestId('time-travel-moment-sky')).toBe(region);
+    expect(region.contains(screen.getByTestId('time-travel-moment-transits'))).toBe(true);
+  });
+
+  it('the progress line is the chat\'s own "working" string (one copy, es)', async () => {
+    await i18n.changeLanguage('es');
+    render(<DashboardMomentCard asOf={MARCH_2025} dashas={FOUNDER_DASHAS} birthYear={1980}
+      sky={{ kind: 'working' }} onRetry={() => {}} language="es" />);
+    const expected = i18n.t('chat:time_travel.status_working', { period: formatPinLabel(MARCH_2025, 'es') });
+    expect(text('time-travel-moment-working').replace(/\s+/g, ' ')).toBe(expected.replace(/\s+/g, ' '));
+    expect(i18n.exists('dashboard:time_travel.working')).toBe(false);
+    await i18n.changeLanguage('en');
   });
 
   it('when the sky is ready, shows the transits table and no progress line', () => {

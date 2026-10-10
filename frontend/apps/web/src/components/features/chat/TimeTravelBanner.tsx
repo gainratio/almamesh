@@ -50,9 +50,9 @@ export function TimeTravelBanner({ asOf, language, onChange, onBack, backBusy = 
         <span>{about ?? t('time_travel.banner.about')}</span>
       </span>
       <span className="flex shrink-0 items-center gap-1 whitespace-nowrap">
-        <button type="button" ref={changeRef} data-testid={id('change')} onClick={onChange} className="underline">{t('time_travel.banner.change')}</button>
+        <button type="button" ref={changeRef} data-testid={id('change')} onClick={onChange} className="min-h-11 px-2 underline">{t('time_travel.banner.change')}</button>
         <span aria-hidden="true">·</span>
-        <button type="button" data-testid={id('back')} onClick={onBack} disabled={backBusy} className="underline disabled:opacity-50">{t('time_travel.banner.back')}</button>
+        <button type="button" data-testid={id('back')} onClick={onBack} disabled={backBusy} className="min-h-11 px-2 underline disabled:opacity-50">{t('time_travel.banner.back')}</button>
       </span>
       {backFailed && (
         <span role="alert" data-testid={id('back-failed')} className="basis-full text-status-error">{t('time_travel.sheet.save_failed')}</span>

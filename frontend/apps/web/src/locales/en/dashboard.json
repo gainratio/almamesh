@@ -127,12 +127,11 @@
     "sheet_intro": "Pick a time. The Dashboard will show that moment.",
     "banner_about": "the cards below are about this moment",
     "dashas_only": "This device shows dashas only for other dates, to stay within memory.",
-    "moment_title": "At this moment",
+    "moment_title": "At that moment",
     "maha": "Main period (maha dasha)",
     "antar": "Sub-period (antar dasha)",
     "transits_title": "Planets in the sky then",
-    "working": "Working out the sky for {{period}}… (about 30 s)",
-    "failed": "Couldn't work out the sky for this moment. Try again.",
+    "failed": "Couldn't work out the sky for this moment.",
     "retry": "Try again",
     "today_label": "Today"
   }

@@ -117,7 +117,7 @@ export const KNOWN_ERROR_CLASSES: ReadonlySet<string> = new Set([
   'PortableImportRevisionConflictError', 'PortableStateStartupError', 'PortableStateTooNewError',
   'PortableStateUnavailableError', 'PortableStorageUnavailableError', 'PrivacyViolationError',
   'PyodidePackageLoadError', 'ReasoningTimeoutError', 'ResetIncompleteError', 'SemanticMemoryStorageUnavailableError',
-  'SetAsideRestoreError', 'StoreSaveError',
+  'SetAsideRestoreError', 'StoreSaveError', 'TimeTravelRefusedError',
   // @gainratio/browser (and the sqlite-wasm build it ships)
   'CacheFallbackRefusedError', 'EngineOperationError', 'EngineStorageUnavailableError', 'GetSyncHandleError',
   'IntegrityError', 'KeyRevokedError', 'KeyringError', 'LegacyFloorUnavailableError', 'PointerExpiredError',

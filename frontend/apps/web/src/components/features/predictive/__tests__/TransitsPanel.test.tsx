@@ -14,6 +14,22 @@ describe('TransitsPanel', () => {
     await i18next.changeLanguage('en');
   });
 
+  it('titles the gochara card "Current Sky (Gochara)" by default', () => {
+    render(<TransitsPanel transitCtx={TRANSIT_CTX} />);
+    expect(screen.getByTestId('gochara-card').textContent).toContain('Current Sky (Gochara)');
+  });
+
+  it('a host showing another moment can drop the "Current Sky" heading', () => {
+    render(<TransitsPanel transitCtx={TRANSIT_CTX} gocharaHeading={null} />);
+    expect(screen.getByTestId('gochara-card').textContent).not.toContain('Current Sky');
+    expect(screen.getByTestId('gochara-table')).toBeTruthy();
+  });
+
+  it('a host can name the gochara heading itself', () => {
+    render(<TransitsPanel transitCtx={TRANSIT_CTX} gocharaHeading="Sky in 2019" />);
+    expect(screen.getByRole('heading', { name: 'Sky in 2019' })).toBeTruthy();
+  });
+
   it('renders the gochara table with localized graha/sign names and houses', () => {
     render(<TransitsPanel transitCtx={TRANSIT_CTX} />);
     const table = screen.getByTestId('gochara-table');

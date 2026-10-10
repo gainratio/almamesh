@@ -31,25 +31,27 @@ interface SkyPartProps {
 }
 
 function SkyPart({ sky, period, onRetry }: SkyPartProps): ReactElement {
-  const { t } = useTranslation('dashboard');
+  const { t } = useTranslation(['dashboard', 'chat']);
   if (sky.kind === 'dashas-only') {
-    return <p data-testid="time-travel-moment-dashas-only" className="text-sm text-text-secondary">{t('time_travel.dashas_only')}</p>;
+    return <p data-testid="time-travel-moment-dashas-only" className="text-sm text-text-secondary">{t('dashboard:time_travel.dashas_only')}</p>;
   }
   if (sky.kind === 'working') {
-    return <p data-testid="time-travel-moment-working" role="status" className="text-sm text-text-secondary">{t('time_travel.working', { period })}</p>;
+    // The chat's own progress line: one string for one compute.
+    return <p data-testid="time-travel-moment-working" className="text-sm text-text-secondary">{t('chat:time_travel.status_working', { period })}</p>;
   }
   if (sky.kind === 'failed') {
     return (
       <p data-testid="time-travel-moment-failed" role="alert" className="text-sm text-status-error">
-        {t('time_travel.failed')}{' '}
-        <button type="button" onClick={onRetry} className="min-h-11 underline">{t('time_travel.retry')}</button>
+        {t('dashboard:time_travel.failed')}{' '}
+        <button type="button" onClick={onRetry} className="min-h-11 underline">{t('dashboard:time_travel.retry')}</button>
       </p>
     );
   }
   return (
-    <section data-testid="time-travel-moment-transits" aria-label={t('time_travel.transits_title')}>
-      <h3 className="mb-2 text-sm font-semibold text-text-primary">{t('time_travel.transits_title')}</h3>
-      <TransitsPanel transitCtx={sky.transits} />
+    <section data-testid="time-travel-moment-transits" aria-label={t('dashboard:time_travel.transits_title')}>
+      <h3 className="mb-2 text-sm font-semibold text-text-primary">{t('dashboard:time_travel.transits_title')}</h3>
+      {/* The card's own heading names the moment; "Current Sky" would read as now. */}
+      <TransitsPanel transitCtx={sky.transits} gocharaHeading={null} />
     </section>
   );
 }
@@ -69,7 +71,11 @@ export function DashboardMomentCard({ asOf, dashas, birthYear, sky, onRetry, lan
         <dt>{t('dashboard:time_travel.antar')}</dt>
         <dd data-testid="time-travel-moment-antar">{lords(selected?.antar)}</dd>
       </dl>
-      <SkyPart sky={sky} period={formatPinLabel(asOf, language)} onRetry={onRetry} />
+      {/* One live region that stays mounted while its text changes, so screen
+          readers announce working → ready. A failure inside it is role="alert". */}
+      <div data-testid="time-travel-moment-sky" aria-live="polite">
+        <SkyPart sky={sky} period={formatPinLabel(asOf, language)} onRetry={onRetry} />
+      </div>
     </div>
   );
 }

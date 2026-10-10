@@ -1207,6 +1207,13 @@ test.describe('Dashboard time travel on an iPhone 15', () => {
     // Today is Rahu/Mercury: the antar is what proves the card is for March 2019.
     await expect(page.getByTestId('time-travel-moment-antar')).toHaveText(MARCH_2019_ANTAR);
     await expect(page.getByTestId('time-travel-moment-dashas-only')).toBeVisible();
+    // The banner's Change and Back to today are thumb-sized too.
+    for (const testId of ['dashboard-time-travel-change', 'dashboard-time-travel-back']) {
+      const target = await page.getByTestId(testId).boundingBox();
+      expect(target?.width ?? 0, `${testId} width`).toBeGreaterThanOrEqual(44);
+      expect(target?.height ?? 0, `${testId} height`).toBeGreaterThanOrEqual(44);
+    }
+    await page.getByTestId('dashboard-time-travel-banner').screenshot({ path: testInfo.outputPath('dashboard-banner-iphone15.png') });
     await page.screenshot({ path: testInfo.outputPath('dashboard-march-2019-iphone15.png'), fullPage: true });
     expect(consoleErrors, 'the journey must keep a clean console').toEqual([]);
   });

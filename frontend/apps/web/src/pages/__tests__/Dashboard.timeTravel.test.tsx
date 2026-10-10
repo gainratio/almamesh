@@ -26,7 +26,13 @@ vi.mock('../../providers/chartEngineContext', () => ({
 
 vi.mock('../../components/features/dashboard', () => ({
   ChartVisualization: () => null,
-  IdentityStrip: ({ actions }: { actions?: unknown }) => <div data-testid="identity-strip">{actions as never}</div>,
+  // dashaLabel passes through so the Dashboard's wiring is visible; IdentityStrip.test.tsx proves the real chip.
+  IdentityStrip: ({ actions, dashaLabel }: { actions?: unknown; dashaLabel?: string }) => (
+    <div data-testid="identity-strip">
+      {actions as never}
+      {dashaLabel !== undefined && <span data-testid="identity-strip-dasha-label">{dashaLabel}</span>}
+    </div>
+  ),
   LifeAtlas: () => null,
   DashboardInterpretation: () => null,
   ReadingGrounding: () => null,
@@ -252,6 +258,55 @@ describe('Dashboard Time travel', () => {
     expect(screen.getByTestId('dashboard-today-label-life-atlas').textContent).toContain('Today');
     expect(screen.getByTestId('dashboard-today-label-sky').textContent).toContain('Today');
     expect(screen.getByTestId('time-travel-moment-card')).not.toBeNull();
+  });
+
+  it("labels the strip's running dasha \"Today\" while a moment is set, and only then", async () => {
+    await renderDashboard({ ai: 'off' });
+    expect(screen.queryByTestId('identity-strip-dasha-label')).toBeNull();
+    act(() =>
+      useTimeTravelStore
+        .getState()
+        .setMoment(PROFILE_ID, { start: '2019-03-01', end: '2019-03-31', granularity: 'month' }),
+    );
+    expect(screen.getByTestId('identity-strip-dasha-label').textContent).toBe('Today');
+  });
+
+  it('a new moment remounts the moment card, so the last moment never paints under the new banner', async () => {
+    await renderDashboard({ ai: 'off' });
+    act(() =>
+      useTimeTravelStore
+        .getState()
+        .setMoment(PROFILE_ID, { start: '2019-03-01', end: '2019-03-31', granularity: 'month' }),
+    );
+    const first = screen.getByTestId('time-travel-moment-card');
+    act(() =>
+      useTimeTravelStore
+        .getState()
+        .setMoment(PROFILE_ID, { start: '2020-01-01', end: '2020-12-31', granularity: 'year' }),
+    );
+    expect(screen.getByTestId('time-travel-moment-card')).not.toBe(first);
+  });
+
+  it('a successful Back to today puts focus on the Time travel button, not <body>', async () => {
+    await renderDashboard({ ai: 'off' });
+    act(() =>
+      useTimeTravelStore
+        .getState()
+        .setMoment(PROFILE_ID, { start: '2019-01-01', end: '2019-12-31', granularity: 'year' }),
+    );
+    const back = screen.getByTestId('dashboard-time-travel-back');
+    back.focus();
+    await act(async () => {
+      fireEvent.click(back);
+    });
+    expect(screen.queryByTestId('dashboard-time-travel-banner')).toBeNull();
+    expect(document.activeElement).toBe(screen.getByTestId('dashboard-time-travel-button'));
+  });
+
+  it('with no active profile the button is disabled (a Go would have nowhere to save)', async () => {
+    useProfilesStore.setState({ activeProfileId: null });
+    await renderDashboard({ ai: 'off' });
+    expect((screen.getByTestId('dashboard-time-travel-button') as HTMLButtonElement).disabled).toBe(true);
   });
 
   it('a failed Back to today does not follow the person to the next moment', async () => {

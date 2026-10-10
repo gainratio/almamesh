@@ -41,14 +41,14 @@ const GRAHA_ORDER = [
   'ketu',
 ] as const;
 
-function GocharaTable({ ctx }: { ctx: TransitCtx }): ReactElement {
+function GocharaTable({ ctx, heading }: { ctx: TransitCtx; heading?: string | null }): ReactElement {
   const { t } = useTranslation('predictive');
   const placements = GRAHA_ORDER.map((g) => ctx.gochara.placements[g]).filter(
     (p): p is TransitPlacementData => p !== undefined,
   );
   return (
     <Card
-      title={t('gochara.heading')}
+      title={heading === undefined ? t('gochara.heading') : (heading ?? undefined)}
       subtitle={t('gochara.subtitle', { date: formatReferenceDay(ctx.gochara.instant) })}
       data-testid="gochara-card"
     >
@@ -261,13 +261,18 @@ function TimelineCard({ ctx }: { ctx: TransitCtx }): ReactElement {
 
 export interface TransitsPanelProps {
   readonly transitCtx: TransitCtx;
+  /**
+   * The gochara card's title. Default (undefined): "Current Sky (Gochara)".
+   * null drops it, for a host that shows another moment under its own heading.
+   */
+  readonly gocharaHeading?: string | null;
 }
 
 /** The full Transits & Timing surface, engine TransitCtx rendered verbatim. */
-export function TransitsPanel({ transitCtx }: TransitsPanelProps): ReactElement {
+export function TransitsPanel({ transitCtx, gocharaHeading }: TransitsPanelProps): ReactElement {
   return (
     <div className="space-y-6" data-testid="transits-panel">
-      <GocharaTable ctx={transitCtx} />
+      <GocharaTable ctx={transitCtx} heading={gocharaHeading} />
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <SadeSatiCard data={transitCtx.sade_sati} />
         <FusionCard ctx={transitCtx} />

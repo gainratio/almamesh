@@ -130,12 +130,11 @@
     "sheet_intro": "Elige un momento. El panel mostrará ese momento.",
     "banner_about": "las tarjetas de abajo hablan de este momento",
     "dashas_only": "Este dispositivo muestra solo los dashas para otras fechas, para no gastar demasiada memoria.",
-    "moment_title": "En este momento",
+    "moment_title": "En ese momento",
     "maha": "Periodo principal (maha dasha)",
     "antar": "Subperiodo (antar dasha)",
     "transits_title": "Los planetas en el cielo entonces",
-    "working": "Calculando el cielo para {{period}}… (unos 30 s)",
-    "failed": "No se pudo calcular el cielo para este momento. Inténtalo de nuevo.",
+    "failed": "No se pudo calcular el cielo para este momento.",
     "retry": "Reintentar",
     "today_label": "Hoy"
   }

@@ -89,7 +89,6 @@ import {
   type DashboardTravelSheet,
   useDashboardSheetReturnFocus,
 } from "../components/features/dashboard/useDashboardSheetReturnFocus";
-import { viewerTodayDay } from "../lib/chatAgentTools";
 import { useTimeTravel } from "../lib/timeTravel";
 import { RESOLVE_PLACE_TOOL_NAME } from "../lib/placeTool";
 import { useOptionalChartEngine } from "../providers/chartEngineContext";
@@ -196,7 +195,12 @@ export default function DashboardPage() {
   const backFromMoment = async () => {
     const key = momentKey;
     setTravelBackFor({ status: 'busy', key });
-    try { await timeTravel.backToToday(); setTravelBackFor({ status: 'idle', key }); } catch { setTravelBackFor({ status: 'failed', key }); }
+    try {
+      await timeTravel.backToToday();
+      setTravelBackFor({ status: 'idle', key });
+      // The banner (and its Back button) unmounts; keep focus on the page.
+      travelFocus.buttonRef.current?.focus();
+    } catch { setTravelBackFor({ status: 'failed', key }); }
   };
   // Whose chart is missing — named on the empty state so the screen is about a
   // person, not an abstraction. Selected as a primitive so the hook is stable.
@@ -743,6 +747,7 @@ export default function DashboardPage() {
           dasha={astronomicalData?.dasha_ctx}
           rectification={rectification}
           timeConfidence={birthData?.birth_time_confidence}
+          dashaLabel={timeTravel.moment ? t("dashboard:time_travel.today_label") : undefined}
           actions={
             <>
               <ContentModeToggle />
@@ -796,7 +801,7 @@ export default function DashboardPage() {
                 ref={travelFocus.buttonRef}
                 data-testid="dashboard-time-travel-button"
                 onClick={() => setTravelSheet('new')}
-                disabled={!chartId}
+                disabled={!chartId || !activeProfileId}
                 className={`inline-flex ${TIME_TRAVEL_BUTTON_SIZE} items-center gap-1.5 whitespace-nowrap rounded-md border border-ui-border px-3 py-1.5 text-sm text-text-secondary transition-colors hover:border-accent-gold/40 hover:text-text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-gold disabled:cursor-not-allowed disabled:border-ui-border/60 disabled:text-text-tertiary disabled:hover:border-ui-border/60`}
               >
                 <span aria-hidden="true">⏳</span>
@@ -850,12 +855,12 @@ export default function DashboardPage() {
             backBusy={travelBack === 'busy'} backFailed={travelBack === 'failed'} />
         )}
         {timeTravel.moment && (
-          <DashboardMoment asOf={timeTravel.moment} chart={siderealChart} chartId={chartId}
+          <DashboardMoment key={momentKey} asOf={timeTravel.moment} chart={siderealChart} chartId={chartId}
             engine={chartEngineContext} birthYear={travelBirthYear} language={i18n.language} />
         )}
         <DashboardTimeTravelSheet open={travelSheet !== 'closed'}
           current={travelSheet === 'change' ? timeTravel.moment : undefined}
-          birthYear={travelBirthYear} today={viewerTodayDay(new Date())}
+          birthYear={travelBirthYear}
           intro={t("dashboard:time_travel.sheet_intro")} onGo={goToMoment} onClose={() => setTravelSheet('closed')} />
 
         {/* The PDF render failed. Calm, visible, on-screen ONLY (`no-print`) —

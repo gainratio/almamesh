@@ -44,6 +44,15 @@ describe('TimeTravelBanner', () => {
     expect(screen.queryByTestId('time-travel-banner')).toBeNull();
   });
 
+  it.each(['time-travel', 'dashboard-time-travel'])('Change and Back to today are 44 px touch targets (%s)', (prefix) => {
+    render(<TimeTravelBanner asOf={MARCH_2019} language="en" onChange={() => {}} onBack={() => {}} testIdPrefix={prefix} />);
+    for (const part of ['change', 'back']) {
+      const classes = screen.getByTestId(`${prefix}-${part}`).className.split(/\s+/);
+      expect(classes).toContain('min-h-11');
+      expect(classes).toContain('px-2');
+    }
+  });
+
   it.each(['en', 'es', 'pt'])('never lets a separator start a line (%s)', async (language) => {
     const { default: i18n } = await import('../../../../i18n/config');
     await i18n.changeLanguage(language);
