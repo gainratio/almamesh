@@ -242,13 +242,6 @@ describe('the chat sheet travels through the seam', () => {
     expect(result.current.asOf).toBeUndefined();
   });
 
-  it('travelFromTool in an unpinned thread opens a pinned thread right away', async () => {
-    const { result } = renderHook(() => useChatThread(PROFILE, CHART));
-    await act(() => result.current.travelFromTool(MARCH_2019));
-    expect(result.current.asOf).toEqual(MARCH_2019);
-    expect(useTimeTravelStore.getState().moments[PROFILE]).toEqual(MARCH_2019);
-  });
-
   it('with AI off, pin sets the moment, opens no thread and does not throw', async () => {
     llm.configured = false;
     const { result } = renderHook(() => useChatThread(PROFILE, CHART));
@@ -267,15 +260,5 @@ describe('the chat sheet travels through the seam', () => {
     });
     expect(useTimeTravelStore.getState().moments[PROFILE]).toEqual(YEAR);
     expect(result.current.asOf).toEqual(YEAR);
-  });
-
-  it('travelFromTool on a pinned open thread repins it', async () => {
-    const { result } = renderHook(() => useChatThread(PROFILE, CHART));
-    await act(() => result.current.pin(YEAR));
-    const tid = result.current.threadId;
-    await act(() => result.current.travelFromTool(MARCH_2019));
-    expect(result.current.threadId).toBe(tid);
-    expect(result.current.asOf).toEqual(MARCH_2019);
-    expect(useTimeTravelStore.getState().moments[PROFILE]).toEqual(MARCH_2019);
   });
 });

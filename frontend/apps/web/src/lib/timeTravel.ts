@@ -1,8 +1,8 @@
 /**
  * The one way to travel to a moment (spec "One code path for travel to a
- * moment"). The Dashboard sheet, the chat sheet and banner, and the chat tool
- * all call applyTravel / applyBackToToday, so the same input gives the same
- * `as_of` and the same saves.
+ * moment"). The Dashboard sheet and the chat sheet and banner call
+ * applyTravel / applyBackToToday, so the same input gives the same `as_of`
+ * and the same saves. A chat tool will join them later through this same path.
  *
  * Order (plan ruling 1): check, then save the chat pin (AI on only), then set
  * the Dashboard moment. A failed save moves nothing and rethrows.
@@ -17,7 +17,7 @@ import { chatAsOfProblem, useChartLibraryStore, useChatStore } from '@almamesh/s
 import { birthYearOf } from './periodChart';
 import { repinThread, startPinnedThread, todayThread } from './timeTravelThreads';
 
-export type TravelSource = 'dashboard-sheet' | 'chat-sheet' | 'chat-tool';
+export type TravelSource = 'dashboard-sheet' | 'chat-sheet';
 export interface TravelRequest { readonly asOf: ChatThreadAsOf; readonly source: TravelSource; }
 /** 'new': always a new pinned thread. { id }: repin it if pinned, else a new pinned thread. 'latest': the thread chat shows. */
 export type TravelThread = 'new' | 'latest' | { readonly id: string };

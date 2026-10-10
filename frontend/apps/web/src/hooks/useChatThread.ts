@@ -87,8 +87,6 @@ export interface UseChatThreadResult {
   readonly pin: (asOf: ChatThreadAsOf) => Promise<void>;
   /** Change this thread's pin (saved first). */
   readonly repin: (asOf: ChatThreadAsOf) => Promise<void>;
-  /** The chat tool's move: repin the open thread if pinned, else open a pinned thread. */
-  readonly travelFromTool: (asOf: ChatThreadAsOf) => Promise<void>;
   /** Open the latest normal thread, or a new one. */
   readonly backToToday: () => Promise<void>;
 }
@@ -456,10 +454,6 @@ export function useChatThread(
     },
     [go, threadId, activeThread?.as_of],
   );
-  const travelFromTool = useCallback(
-    (asOf: ChatThreadAsOf) => go(asOf, 'chat-tool', threadId ? { id: threadId } : 'new'),
-    [go, threadId],
-  );
   const backToToday = useCallback(async () => {
     if (!profileId) return;
     const { threadId: today } = await applyBackToToday({ profileId, chartId });
@@ -476,7 +470,6 @@ export function useChatThread(
     asOf: activeThread?.as_of,
     pin,
     repin,
-    travelFromTool,
     backToToday,
   };
 }

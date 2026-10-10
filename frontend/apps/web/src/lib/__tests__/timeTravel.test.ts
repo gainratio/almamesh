@@ -86,7 +86,7 @@ describe('applyTravel: one path for every way to travel', () => {
   ])('thread { id } of an %s thread starts a new pinned thread', async (_name, makeId) => {
     const id = makeId();
     const before = useChatStore.getState().listThreads('p1').length;
-    const out = await applyTravel({ asOf: MARCH_2019, source: 'chat-tool' }, { ...DASH, thread: { id } }, aiOn);
+    const out = await applyTravel({ asOf: MARCH_2019, source: 'chat-sheet' }, { ...DASH, thread: { id } }, aiOn);
     expect(out.threadId).not.toBe(id);
     expect(useChatStore.getState().threads[out.threadId as string]?.as_of).toEqual(MARCH_2019);
     expect(useChatStore.getState().listThreads('p1')).toHaveLength(before + 1);
@@ -107,7 +107,7 @@ describe('applyTravel: one path for every way to travel', () => {
 
   it('refuses a malformed moment and names the problem', async () => {
     const bad = { start: '2019-03-01', end: '2019-02-30', granularity: 'month' } as const;
-    const refusal = applyTravel({ asOf: bad, source: 'chat-tool' }, DASH, aiOff);
+    const refusal = applyTravel({ asOf: bad, source: 'chat-sheet' }, DASH, aiOff);
     await expect(refusal).rejects.toBeInstanceOf(TimeTravelRefusedError);
     await expect(refusal).rejects.toMatchObject({ reason: 'malformed' });
   });
