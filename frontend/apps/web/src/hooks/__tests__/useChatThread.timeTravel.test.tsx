@@ -2,11 +2,13 @@ import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useChartLibraryStore, useChatStore, type StoredChart } from '@almamesh/store';
 
+const llm = vi.hoisted(() => ({ configured: true }));
 vi.mock('@almamesh/llm', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@almamesh/llm')>()),
-  describeLlmStatus: () => ({ configured: true }),
+  describeLlmStatus: () => ({ configured: llm.configured }),
 }));
 vi.mock('../../lib/storeSaved', () => ({ waitForStoreSaved: vi.fn(async () => undefined) }));
+import { waitForStoreSaved } from '../../lib/storeSaved';
 
 import i18n from '../../i18n/config';
 import { __resetMemoryForTest, __setMemoryForTest } from '../../lib/chatMemory';
@@ -206,7 +208,14 @@ describe('Change on a normal thread', () => {
 });
 
 describe('the chat sheet travels through the seam', () => {
-  beforeEach(() => useTimeTravelStore.setState({ moments: {} }));
+  beforeEach(() => {
+    useTimeTravelStore.setState({ moments: {} });
+    llm.configured = true;
+  });
+  afterEach(() => {
+    llm.configured = true;
+    vi.mocked(waitForStoreSaved).mockImplementation(async () => undefined);
+  });
   const MARCH_2019 = { start: '2019-03-01', end: '2019-03-31', granularity: 'month' } as const;
 
   it('Go in chat also sets the Dashboard moment', async () => {
@@ -236,6 +245,36 @@ describe('the chat sheet travels through the seam', () => {
   it('travelFromTool in an unpinned thread opens a pinned thread right away', async () => {
     const { result } = renderHook(() => useChatThread(PROFILE, CHART));
     await act(() => result.current.travelFromTool(MARCH_2019));
+    expect(result.current.asOf).toEqual(MARCH_2019);
+    expect(useTimeTravelStore.getState().moments[PROFILE]).toEqual(MARCH_2019);
+  });
+
+  it('with AI off, pin sets the moment, opens no thread and does not throw', async () => {
+    llm.configured = false;
+    const { result } = renderHook(() => useChatThread(PROFILE, CHART));
+    await act(() => result.current.pin(MARCH_2019));
+    expect(result.current.threadId).toBeNull();
+    expect(Object.keys(useChatStore.getState().threads)).toHaveLength(0);
+    expect(useTimeTravelStore.getState().moments[PROFILE]).toEqual(MARCH_2019);
+  });
+
+  it('a failed save rejects and moves nothing', async () => {
+    const { result } = renderHook(() => useChatThread(PROFILE, CHART));
+    await act(() => result.current.pin(YEAR));
+    vi.mocked(waitForStoreSaved).mockRejectedValue(new Error('disk full'));
+    await act(async () => {
+      await expect(result.current.repin(MARCH_2019)).rejects.toThrow('disk full');
+    });
+    expect(useTimeTravelStore.getState().moments[PROFILE]).toEqual(YEAR);
+    expect(result.current.asOf).toEqual(YEAR);
+  });
+
+  it('travelFromTool on a pinned open thread repins it', async () => {
+    const { result } = renderHook(() => useChatThread(PROFILE, CHART));
+    await act(() => result.current.pin(YEAR));
+    const tid = result.current.threadId;
+    await act(() => result.current.travelFromTool(MARCH_2019));
+    expect(result.current.threadId).toBe(tid);
     expect(result.current.asOf).toEqual(MARCH_2019);
     expect(useTimeTravelStore.getState().moments[PROFILE]).toEqual(MARCH_2019);
   });
