@@ -288,12 +288,24 @@ function isSentQuarter(key: string, sent: readonly QuarterKey[]): key is Quarter
   return (sent as readonly string[]).includes(key);
 }
 
+/**
+ * A quarter's key: the model's own, or, when it left the key empty or out,
+ * the sent quarter at the same position (the prompt asks for sent order).
+ */
+function quarterKeyAt(row: Record<string, unknown>, index: number, sent: readonly QuarterKey[]): string {
+  const key = asString(row.key);
+  return key === "" ? (sent[index] ?? "") : key;
+}
+
 export function parseYearAhead(json: unknown, sent: readonly QuarterKey[]): YearAheadSection {
   const rec = asRecord(json);
   const rows = Array.isArray(rec.quarters) ? rec.quarters.map(asRecord) : [];
+  if (rows.length > sent.length) {
+    throw new ReportParseError(`year_ahead: ${rows.length} quarters returned, ${sent.length} sent`);
+  }
   const seen = new Set<QuarterKey>();
-  const quarters = rows.map((row): QuarterProse => {
-    const key = asString(row.key);
+  const quarters = rows.map((row, index): QuarterProse => {
+    const key = quarterKeyAt(row, index, sent);
     if (!isSentQuarter(key, sent) || seen.has(key)) {
       throw new ReportParseError(`year_ahead: quarter key ${JSON.stringify(key)} was not sent (or repeated)`);
     }

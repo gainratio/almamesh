@@ -5163,15 +5163,18 @@ convention, not a verdict.",
 
 TASK: The Year Ahead — the next twelve months in four quarters.
 Return JSON: { "headline": {layman, technical}, "quarters": [ { "key": "Q1", "layman": string, "technical": string } ], "focus": {layman, technical} }.
-  - quarters: EXACTLY one entry for each quarter in the facts (Q1, Q2, Q3, Q4), in that order, key verbatim.
+  - quarters: EXACTLY one entry per quarter in the facts. Its "key" is exactly "Q1", "Q2", "Q3", "Q4" in that order; never leave it empty.
     Never add, rename, or skip a key.
+  - LENGTH: each quarter 200-278 words in EACH voice. The technical voice is as long as the layman voice:
+    for that quarter cite every dasha change, transit window and slow-planet hit listed under it (planet,
+    house or sign, and month) and what each one activates.
   - Each quarter speaks to the events listed under it (dasha changes, transit windows, slow-planet hits,
     Sade Sati) and what they ask of the person. A quarter with no events is a consolidation season: say so
     plainly; never invent an event.
   - headline: the shape of the whole year. focus: the one practical focus the events point to.
 DATES: cite only months that appear in the ENGINE REPORT FACTS block, verbatim as YYYY-MM. Never write a day. A sentence with any other date is deleted before it reaches the screen.
 
-The reader is a layperson; make the layman fields especially warm and clear. Word targets PER VOICE (layman and technical each): headline 100-140 words; each quarter 160-220; focus 60-90. Depth over length; never pad to reach a target.
+The reader is a layperson; make the layman fields especially warm and clear. Word targets PER VOICE (layman and technical each): headline 100-140 words; each quarter 200-278; focus 60-90. Depth over length; never pad to reach a target.
 
 Engine facts for this section (sanitized; month precision):
 === ENGINE REPORT FACTS (deterministic engine output) ===
@@ -5295,15 +5298,18 @@ sentence around them, and all narration, must be written in Spanish.",
 
 TASK: The Year Ahead — the next twelve months in four quarters.
 Return JSON: { "headline": {layman, technical}, "quarters": [ { "key": "Q1", "layman": string, "technical": string } ], "focus": {layman, technical} }.
-  - quarters: EXACTLY one entry for each quarter in the facts (Q1, Q2, Q3, Q4), in that order, key verbatim.
+  - quarters: EXACTLY one entry per quarter in the facts. Its "key" is exactly "Q1", "Q2", "Q3", "Q4" in that order; never leave it empty.
     Never add, rename, or skip a key.
+  - LENGTH: each quarter 200-278 words in EACH voice. The technical voice is as long as the layman voice:
+    for that quarter cite every dasha change, transit window and slow-planet hit listed under it (planet,
+    house or sign, and month) and what each one activates.
   - Each quarter speaks to the events listed under it (dasha changes, transit windows, slow-planet hits,
     Sade Sati) and what they ask of the person. A quarter with no events is a consolidation season: say so
     plainly; never invent an event.
   - headline: the shape of the whole year. focus: the one practical focus the events point to.
 DATES: cite only months that appear in the ENGINE REPORT FACTS block, verbatim as YYYY-MM. Never write a day. A sentence with any other date is deleted before it reaches the screen.
 
-The reader is a layperson; make the layman fields especially warm and clear. Word targets PER VOICE (layman and technical each): headline 100-140 words; each quarter 160-220; focus 60-90. Depth over length; never pad to reach a target.
+The reader is a layperson; make the layman fields especially warm and clear. Word targets PER VOICE (layman and technical each): headline 100-140 words; each quarter 200-278; focus 60-90. Depth over length; never pad to reach a target.
 
 Engine facts for this section (sanitized; month precision):
 === ENGINE REPORT FACTS (deterministic engine output) ===
@@ -5427,15 +5433,18 @@ sentence around them, and all narration, must be written in Portuguese.",
 
 TASK: The Year Ahead — the next twelve months in four quarters.
 Return JSON: { "headline": {layman, technical}, "quarters": [ { "key": "Q1", "layman": string, "technical": string } ], "focus": {layman, technical} }.
-  - quarters: EXACTLY one entry for each quarter in the facts (Q1, Q2, Q3, Q4), in that order, key verbatim.
+  - quarters: EXACTLY one entry per quarter in the facts. Its "key" is exactly "Q1", "Q2", "Q3", "Q4" in that order; never leave it empty.
     Never add, rename, or skip a key.
+  - LENGTH: each quarter 200-278 words in EACH voice. The technical voice is as long as the layman voice:
+    for that quarter cite every dasha change, transit window and slow-planet hit listed under it (planet,
+    house or sign, and month) and what each one activates.
   - Each quarter speaks to the events listed under it (dasha changes, transit windows, slow-planet hits,
     Sade Sati) and what they ask of the person. A quarter with no events is a consolidation season: say so
     plainly; never invent an event.
   - headline: the shape of the whole year. focus: the one practical focus the events point to.
 DATES: cite only months that appear in the ENGINE REPORT FACTS block, verbatim as YYYY-MM. Never write a day. A sentence with any other date is deleted before it reaches the screen.
 
-The reader is a layperson; make the layman fields especially warm and clear. Word targets PER VOICE (layman and technical each): headline 100-140 words; each quarter 160-220; focus 60-90. Depth over length; never pad to reach a target.
+The reader is a layperson; make the layman fields especially warm and clear. Word targets PER VOICE (layman and technical each): headline 100-140 words; each quarter 200-278; focus 60-90. Depth over length; never pad to reach a target.
 
 Engine facts for this section (sanitized; month precision):
 === ENGINE REPORT FACTS (deterministic engine output) ===
@@ -5539,7 +5548,8 @@ transit. Where this block is silent, say nothing.
 TASK: The Year Ahead — four quarters.
 Fill in this EXACT JSON shape (replace the ... with real content; keep these keys):
 { "headline": { "layman": "...", "technical": "..." }, "quarters": [ { "key": "Q1", "layman": "...", "technical": "..." } ] }
-  One quarters entry per key in the facts (Q1-Q4), key verbatim. 1-2 short sentences each.
+  One quarters entry per quarter in the facts; "key" is exactly "Q1", "Q2", "Q3", "Q4" in that order; never leave it empty.
+  1-2 short sentences each.
   Use only months written in the facts (YYYY-MM).
 
 The reader is a layperson; make the layman fields especially warm and clear. Keep every field SHORT and concrete: 1-2 short sentences per persona field. Never pad, never leave a field blank.
@@ -5646,7 +5656,8 @@ transit. Where this block is silent, say nothing.
 TASK: The Year Ahead — four quarters.
 Fill in this EXACT JSON shape (replace the ... with real content; keep these keys):
 { "headline": { "layman": "...", "technical": "..." }, "quarters": [ { "key": "Q1", "layman": "...", "technical": "..." } ] }
-  One quarters entry per key in the facts (Q1-Q4), key verbatim. 1-2 short sentences each.
+  One quarters entry per quarter in the facts; "key" is exactly "Q1", "Q2", "Q3", "Q4" in that order; never leave it empty.
+  1-2 short sentences each.
   Use only months written in the facts (YYYY-MM).
 
 The reader is a layperson; make the layman fields especially warm and clear. Keep every field SHORT and concrete: 1-2 short sentences per persona field. Never pad, never leave a field blank.
@@ -5753,7 +5764,8 @@ transit. Where this block is silent, say nothing.
 TASK: The Year Ahead — four quarters.
 Fill in this EXACT JSON shape (replace the ... with real content; keep these keys):
 { "headline": { "layman": "...", "technical": "..." }, "quarters": [ { "key": "Q1", "layman": "...", "technical": "..." } ] }
-  One quarters entry per key in the facts (Q1-Q4), key verbatim. 1-2 short sentences each.
+  One quarters entry per quarter in the facts; "key" is exactly "Q1", "Q2", "Q3", "Q4" in that order; never leave it empty.
+  1-2 short sentences each.
   Use only months written in the facts (YYYY-MM).
 
 The reader is a layperson; make the layman fields especially warm and clear. Keep every field SHORT and concrete: 1-2 short sentences per persona field. Never pad, never leave a field blank.

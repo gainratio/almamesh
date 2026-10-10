@@ -65,6 +65,7 @@ import {
 import {
   REPORT_FIELD_TARGETS,
   REPORT_PROMPT_SET,
+  YEAR_AHEAD_QUARTER_WORDS,
   type ReportPromptSet,
   type ReportSectionKey,
 } from "./report-targets";
@@ -759,8 +760,11 @@ const CURRENT_PERIOD_TASK = [
 const YEAR_AHEAD_TASK = [
   "TASK: The Year Ahead — the next twelve months in four quarters.",
   'Return JSON: { "headline": {layman, technical}, "quarters": [ { "key": "Q1", "layman": string, "technical": string } ], "focus": {layman, technical} }.',
-  "  - quarters: EXACTLY one entry for each quarter in the facts (Q1, Q2, Q3, Q4), in that order, key verbatim.",
+  '  - quarters: EXACTLY one entry per quarter in the facts. Its "key" is exactly "Q1", "Q2", "Q3", "Q4" in that order; never leave it empty.',
   "    Never add, rename, or skip a key.",
+  `  - LENGTH: each quarter ${YEAR_AHEAD_QUARTER_WORDS.low}-${YEAR_AHEAD_QUARTER_WORDS.high} words in EACH voice. The technical voice is as long as the layman voice:`,
+  "    for that quarter cite every dasha change, transit window and slow-planet hit listed under it (planet,",
+  "    house or sign, and month) and what each one activates.",
   "  - Each quarter speaks to the events listed under it (dasha changes, transit windows, slow-planet hits,",
   "    Sade Sati) and what they ask of the person. A quarter with no events is a consolidation season: say so",
   "    plainly; never invent an event.",
@@ -795,7 +799,8 @@ const YEAR_AHEAD_TASK_LITE = [
   "TASK: The Year Ahead — four quarters.",
   "Fill in this EXACT JSON shape (replace the ... with real content; keep these keys):",
   '{ "headline": { "layman": "...", "technical": "..." }, "quarters": [ { "key": "Q1", "layman": "...", "technical": "..." } ] }',
-  "  One quarters entry per key in the facts (Q1-Q4), key verbatim. 1-2 short sentences each.",
+  '  One quarters entry per quarter in the facts; "key" is exactly "Q1", "Q2", "Q3", "Q4" in that order; never leave it empty.',
+  "  1-2 short sentences each.",
   "  Use only months written in the facts (YYYY-MM).",
 ].join("\n");
 

@@ -34,6 +34,34 @@ describe("parseYearAhead", () => {
     expect(() => parseYearAhead({ headline: p("h"), quarters: [{ key: "Q1", ...p("a") }, { key: "Q1", ...p("b") }] }, KEYS)).toThrow(ReportParseError);
   });
 
+  it("maps empty and missing keys to the sent quarter at the same position", () => {
+    const rows = [{ key: "", ...p("a") }, { ...p("b") }, { key: "", ...p("c") }, { key: "", ...p("d") }];
+    const parsed = parseYearAhead({ headline: p("h"), quarters: rows }, KEYS);
+    expect(parsed.quarters.map((q) => [q.key, q.technical])).toEqual([
+      ["Q1", "a"],
+      ["Q2", "b"],
+      ["Q3", "c"],
+      ["Q4", "d"],
+    ]);
+  });
+
+  it("fills one empty key among valid keys with its positional quarter", () => {
+    const rows = [{ key: "Q1", ...p("a") }, { key: "Q2", ...p("b") }, { key: "", ...p("c") }, { key: "Q4", ...p("d") }];
+    const parsed = parseYearAhead({ headline: p("h"), quarters: rows }, KEYS);
+    expect(parsed.quarters.map((q) => q.key)).toEqual(KEYS);
+    expect(parsed.quarters[2].technical).toBe("c");
+  });
+
+  it("rejects an empty key whose positional quarter is already taken", () => {
+    const rows = [{ key: "Q2", ...p("a") }, { key: "", ...p("b") }];
+    expect(() => parseYearAhead({ headline: p("h"), quarters: rows }, KEYS)).toThrow(ReportParseError);
+  });
+
+  it("rejects a reply with more quarter entries than quarters sent", () => {
+    const rows = ["Q1", "Q2", "Q3", "Q4", ""].map((key) => ({ key, ...p(key) }));
+    expect(() => parseYearAhead({ headline: p("h"), quarters: rows }, KEYS)).toThrow(ReportParseError);
+  });
+
   it("strips jargon from the layman voice of a quarter", () => {
     const parsed = parseYearAhead({ headline: p("h"), quarters: [{ key: "Q1", layman: "Saturn moves. Rest.", technical: "Saturn." }] }, KEYS);
     expect(parsed.quarters[0].layman).toBe("Rest.");

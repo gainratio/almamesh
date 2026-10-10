@@ -36,9 +36,19 @@ export const REPORT_WORD_TARGETS: Readonly<Record<ReportSectionKey, WordTarget>>
   guidance2: { low: 390, high: 520 }, //       2 x 120-160 + life_evolution 150-200
   remedial: { low: 300, high: 400 },
   current_period: { low: 490, high: 770 }, // maha 150-200, antar 120-160, 2-3 x 60-90, next 100-140
-  year_ahead: { low: 800, high: 1110 }, //    headline 100-140, 4 x 160-220, focus 60-90
+  year_ahead: { low: 800, high: 1110 }, //    headline 100-140, 4 quarters, focus 60-90
   life_outlook_1: { low: 480, high: 640 }, //  4 x 120-160
   life_outlook_2: { low: 360, high: 480 }, //  3 x 120-160
+};
+
+/**
+ * One year-ahead quarter's share of the section target, per voice: a quarter
+ * of the section's low and high. Live runs showed the technical voice falling
+ * short when quarters were asked for less, so the quarter carries the weight.
+ */
+export const YEAR_AHEAD_QUARTER_WORDS: WordTarget = {
+  low: Math.round(REPORT_WORD_TARGETS.year_ahead.low / 4),
+  high: Math.round(REPORT_WORD_TARGETS.year_ahead.high / 4),
 };
 
 /** The per-field targets the full prompt states, one sentence per section. */
@@ -49,7 +59,7 @@ export const REPORT_FIELD_TARGETS: Readonly<Record<ReportSectionKey, string>> = 
   guidance2: "finances_guidance and spiritual_guidance 120-160 words each; life_evolution_guidance 150-200 words",
   remedial: "remedial_measures 300-400 words",
   current_period: "maha 150-200 words; antar 120-160; each activates item 60-90 (2-3 items); next_change 100-140",
-  year_ahead: "headline 100-140 words; each quarter 160-220; focus 60-90",
+  year_ahead: `headline 100-140 words; each quarter ${YEAR_AHEAD_QUARTER_WORDS.low}-${YEAR_AHEAD_QUARTER_WORDS.high}; focus 60-90`,
   life_outlook_1:
     "each area's outlook 120-160 words; lean_into and watch_for one plain sentence each, under 25 words",
   life_outlook_2:

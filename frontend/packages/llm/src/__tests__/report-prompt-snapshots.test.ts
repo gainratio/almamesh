@@ -54,6 +54,22 @@ describe("report-v2 prompts", () => {
     expect(lite).not.toContain('"focus"');
   });
 
+  it("asks each year-ahead quarter for a per-voice word target derived from the section target", () => {
+    const full = buildSectionMessages("year_ahead", REPORT_CHART, "layman", false, "en", REPORT_PROMPT_SET)[1].content;
+    // REPORT_WORD_TARGETS.year_ahead is 800-1110 per voice -> 200-278 per quarter per voice.
+    expect(REPORT_WORD_TARGETS.year_ahead).toEqual({ low: 800, high: 1110 });
+    expect(full).toContain("each quarter 200-278 words in EACH voice");
+    expect(full).toContain("technical voice is as long as the layman voice");
+    expect(full).not.toContain("each quarter 160-220");
+  });
+
+  it("tells the year ahead, full and lite, the exact quarter keys to echo", () => {
+    for (const lite of [false, true]) {
+      const user = buildSectionMessages("year_ahead", REPORT_CHART, "layman", lite, "en", REPORT_PROMPT_SET)[1].content;
+      expect(user).toContain('"key" is exactly "Q1", "Q2", "Q3", "Q4" in that order; never leave it empty');
+    }
+  });
+
   it("gives timeline sections only their engine slice, never the full chart JSON", () => {
     for (const section of REPORT_SECTIONS.filter(isReportTimelineSection)) {
       const user = buildSectionMessages(section, REPORT_CHART, "layman", false, "en", REPORT_PROMPT_SET)[1].content;
