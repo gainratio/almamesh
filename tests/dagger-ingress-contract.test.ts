@@ -139,8 +139,11 @@ function macosLaneViolations(parsed: Record<string, unknown>): string[] {
   return violations
 }
 
-/** Any read of the secrets context: `secrets.X`, `secrets['X']`, `secrets .X`. */
-const SECRETS_ACCESS = /secrets\s*[.[]/
+/**
+ * Any use of the secrets context inside an expression: `secrets.X`,
+ * `secrets['X']`, `toJSON(secrets)`, `format('{0}', secrets)`.
+ */
+const SECRETS_ACCESS = /\$\{\{(?:(?!\}\}).)*\bsecrets\b/s
 /** The lane may run only on a pull request or a push: never pull_request_target, workflow_run, or the like. */
 const MACOS_LANE_EVENTS = new Set(["pull_request", "push"])
 
@@ -267,6 +270,10 @@ describe("canonical GitHub ingress contract", () => {
     for (const name of Object.keys(NATIVE_MACOS_LANES)) expect(macosLaneViolations(workflow(name))).toEqual([])
   })
 
+  test("the secrets check ignores the word outside an expression", () => {
+    expect(SECRETS_ACCESS.test("${{ github.sha }} no secrets here ${{ github.ref }}")).toBe(false)
+  })
+
   test.each([
     ["a secret", (w: Record<string, unknown>) => ({ ...w, env: { KEY: "${{ secrets.OPENROUTER_API_KEY }}" } })],
     ["write permissions", (w: Record<string, unknown>) => ({ ...w, permissions: { contents: "write" } })],
@@ -278,6 +285,8 @@ describe("canonical GitHub ingress contract", () => {
     ["a workflow_run trigger", (w: Record<string, unknown>) => ({ ...w, on: { ...(w.on as Record<string, unknown>), workflow_run: { workflows: ["Dagger"] } } })],
     ["a bracketed secret", (w: Record<string, unknown>) => ({ ...w, env: { KEY: "${{ secrets['GH_PAT'] }}" } })],
     ["a spaced secret", (w: Record<string, unknown>) => ({ ...w, env: { KEY: "${{ secrets .GH_PAT }}" } })],
+    ["the whole secrets context", (w: Record<string, unknown>) => ({ ...w, env: { ALL: "${{ toJSON(secrets) }}" } })],
+    ["secrets passed to a function", (w: Record<string, unknown>) => ({ ...w, env: { K: "${{ format('{0}', secrets) }}" } })],
     ["persisted checkout credentials", (w: Record<string, unknown>) => withCheckout(w, (inputs) => ({ ...inputs, "persist-credentials": true }))],
     ["a checkout without persist-credentials", (w: Record<string, unknown>) => withCheckout(w, ({ "persist-credentials": _dropped, ...inputs }) => inputs)],
   ])("the macOS lane contract rejects %s", (_name, mutate) => {

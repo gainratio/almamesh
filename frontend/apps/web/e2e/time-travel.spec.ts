@@ -973,23 +973,63 @@ test.describe("desktop Safari's own device tier", () => {
 });
 
 /**
+ * Off-origin URLs the controlling service worker has fetched, from its own
+ * Resource Timing record. Playwright WebKit does not report requests a service
+ * worker sends, so a `context.on('request')` check is blind to them; the
+ * worker's own record is not. The probe (sw-egress-probe.js) exists only in
+ * hooked builds (VITE_EXIT_GATE_HOOKS=1); with no answer this throws.
+ */
+async function serviceWorkerOffOrigin(page: Page, origin: string): Promise<string[]> {
+  const names = await serviceWorkerFetches(page);
+  // Not vacuous: the worker's precache fetches are same-origin and must be on record.
+  expect(names.length, 'the egress probe saw the service worker fetch').toBeGreaterThan(0);
+  return names.filter((name) => new URL(name).origin !== origin);
+}
+
+/** Every URL the controlling service worker has fetched (see serviceWorkerOffOrigin). */
+async function serviceWorkerFetches(page: Page): Promise<string[]> {
+  const names = await page.evaluate(
+    () =>
+      new Promise<string[]>((resolve, reject) => {
+        const worker = navigator.serviceWorker.controller;
+        if (worker === null) {
+          reject(new Error('no service worker controls the page'));
+          return;
+        }
+        const channel = new MessageChannel();
+        const timer = setTimeout(
+          () => reject(new Error('the service worker egress probe did not answer: build with VITE_EXIT_GATE_HOOKS=1')),
+          10_000,
+        );
+        channel.port1.onmessage = (event: MessageEvent<string[]>) => {
+          clearTimeout(timer);
+          resolve(event.data);
+        };
+        worker.postMessage({ type: 'almamesh:egress-probe' }, [channel.port2]);
+      }),
+  );
+  return names;
+}
+
+/**
  * The app as a visitor gets it: the service worker active, AI off, and nothing
  * stubbed or routed. The WebKit projects block the worker for the stubbed
  * journeys (Playwright cannot route through it); this journey turns it back on
- * and needs no routing, so it drives Safari's real setup. With AI off the app
- * must request only its own origin, and chat offers Connect AI, not Time travel.
+ * and needs no routing, so it drives Safari's real setup. With AI off nothing
+ * may leave the app origin: the page's requests are read from Playwright, the
+ * service worker's own from its Resource Timing record (serviceWorkerOffOrigin).
  * Runs on every project (@sw is included on the iPhone).
  */
 test.describe('as shipped: service worker on, AI off, nothing stubbed', () => {
   test.use({ serviceWorkers: 'allow' });
 
-  test('[contract/real] @sw the dashboard and chat request only the app origin under the service worker', async ({ page, baseURL }) => {
+  test('[contract/real] @sw nothing leaves the app origin, service-worker traffic included, with AI off', async ({ page, baseURL }) => {
     const consoleErrors = captureConsole(page);
     const origin = new URL(baseURL ?? '').origin;
-    const offOrigin: string[] = [];
+    const pageOffOrigin: string[] = [];
     page.context().on('request', (request) => {
       const url = new URL(request.url());
-      if (url.protocol.startsWith('http') && url.origin !== origin) offOrigin.push(request.url());
+      if (url.protocol.startsWith('http') && url.origin !== origin) pageOffOrigin.push(request.url());
     });
     await bootEngine(page);
     await seedChart(page);
@@ -1007,8 +1047,10 @@ test.describe('as shipped: service worker on, AI off, nothing stubbed', () => {
     await page.getByTestId('floating-chat-button').click({ timeout: 120_000 });
     await expect(page.getByTestId('chat-connect-ai')).toBeVisible();
     await expect(page.getByTestId('time-travel-button'), 'no AI, no Time travel').toHaveCount(0);
+    await page.waitForLoadState('networkidle');
 
-    expect(offOrigin, 'with AI off, nothing may leave the app origin').toEqual([]);
+    expect(await serviceWorkerOffOrigin(page, origin), 'with AI off, the service worker requests only the app origin').toEqual([]);
+    expect(pageOffOrigin, 'with AI off, the page requests only the app origin').toEqual([]);
     expect(consoleErrors, 'the journey must keep a clean console').toEqual([]);
   });
 });

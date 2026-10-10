@@ -4,7 +4,12 @@ import { join } from 'node:path';
 
 import { test as base, webkit, type Page } from '@playwright/test';
 
-/** Empty this origin's OPFS, IndexedDB, Cache Storage and web storage from a page that runs no app code. */
+/**
+ * Empty this origin's OPFS, IndexedDB, Cache Storage and web storage, and
+ * unregister its service workers (they live in the same shared store, so an
+ * earlier run's worker would otherwise still control the page), from a page
+ * that runs no app code.
+ */
 async function wipeOrigin(page: Page): Promise<void> {
   await page.goto('/robots.txt');
   await page.evaluate(async () => {
@@ -19,6 +24,7 @@ async function wipeOrigin(page: Page): Promise<void> {
         request.onsuccess = request.onerror = request.onblocked = resolve;
       });
     }
+    for (const registration of await navigator.serviceWorker.getRegistrations()) await registration.unregister();
     for (const key of await caches.keys()) await caches.delete(key);
     localStorage.clear();
     sessionStorage.clear();
