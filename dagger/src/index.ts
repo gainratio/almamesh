@@ -109,6 +109,7 @@ const NIGHTLY_REPORTED_E2E = [
   "chat:rag:real",
   "dashboard:agentic:real",
   "timeline:real",
+  "report:real",
 ]
 // The product gates are independent, but they are heavy (real browsers, Pyodide, vitest
 // workers) and a 4 vCPU machine running `ci` locally turned six-at-once CPU contention

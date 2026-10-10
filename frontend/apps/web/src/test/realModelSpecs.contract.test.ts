@@ -111,6 +111,7 @@ describe('real-model e2e specs', () => {
         'dashboard.agentic.real.spec.ts',
         'interpretation.heal.real.spec.ts',
         'interpretation.real.spec.ts',
+        'report.real.spec.ts',
         'timeline.real.spec.ts',
       ]),
     );
