@@ -45,10 +45,48 @@ describe('guardedDrive', () => {
     expect(entry?.meta.browser).toBe('chrome');
   });
 
-  it('maps offline before any call', async () => {
+  it('reports meta from the name on the upload return path', async () => {
     const inner = createFakeDrive();
-    const list = vi.spyOn(inner, 'list');
-    await expect(guardedDrive(inner, () => false).list()).rejects.toMatchObject({ kind: 'offline' });
-    expect(list).not.toHaveBeenCalled();
+    const lying: BackupDrive = {
+      ...inner,
+      upload: async (name, sealed) => {
+        const real = await inner.upload(name, sealed);
+        return { ...real, meta: { ...real.meta, deviceCode: 'bbbbbb' } };
+      },
+    };
+    const entry = await guardedDrive(lying).upload(NAME, { bytes: AGE } as SealedBackup);
+    expect(entry.meta.deviceCode).toBe('7f3a2c');
   });
+
+  it('fails with provider_error when the adapter returns an entry with an unparseable name', async () => {
+    const inner = createFakeDrive();
+    const bad: BackupDrive = {
+      ...inner,
+      upload: async (name, sealed) => {
+        const real = await inner.upload(name, sealed);
+        return { ...real, name: { value: 'Copy of x.almamesh' } as typeof real.name };
+      },
+    };
+    await expect(guardedDrive(bad).upload(NAME, { bytes: AGE } as SealedBackup)).rejects.toMatchObject({
+      kind: 'provider_error',
+    });
+  });
+
+  it.each(['connect', 'list', 'upload', 'download', 'remove'] as const)(
+    'refuses %s when offline and never calls the adapter',
+    async (method) => {
+      const inner = createFakeDrive();
+      const spy = vi.spyOn(inner, method);
+      const guarded = guardedDrive(inner, () => false);
+      const calls = {
+        connect: () => guarded.connect('/'),
+        list: () => guarded.list(),
+        upload: () => guarded.upload(NAME, { bytes: AGE } as SealedBackup),
+        download: () => guarded.download('f1'),
+        remove: () => guarded.remove('f1'),
+      };
+      await expect(calls[method]()).rejects.toMatchObject({ kind: 'offline' });
+      expect(spy).not.toHaveBeenCalled();
+    },
+  );
 });
