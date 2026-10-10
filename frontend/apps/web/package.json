@@ -76,7 +76,7 @@
     "clsx": "^2.1.1",
     "date-fns": "^4.4.0",
     "dayjs": "^1.11.23",
-    "framer-motion": "^13.5.0",
+    "framer-motion": "^14.0.0",
     "gsap": "^3.15.0",
     "i18next": "^26.4.2",
     "idb-keyval": "^6.3.0",
