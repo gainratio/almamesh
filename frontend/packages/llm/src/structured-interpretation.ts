@@ -17,6 +17,7 @@
 import type {
   CareerGuidance,
   EducationGuidance,
+  FamilyGuidance,
   FinanceGuidance,
   HealthGuidance,
   IntegratedYogaNarrative,
@@ -831,6 +832,7 @@ interface Guidance1Slice {
   readonly education_guidance: EducationGuidance | null;
   readonly career_guidance: CareerGuidance | null;
   readonly relationship_guidance: RelationshipGuidance | null;
+  readonly family_guidance: FamilyGuidance | null;
 }
 
 function parseGuidance1(json: unknown): Guidance1Slice {
@@ -840,6 +842,7 @@ function parseGuidance1(json: unknown): Guidance1Slice {
     education_guidance: parsePersona(rec.education_guidance),
     career_guidance: parsePersona(rec.career_guidance),
     relationship_guidance: parsePersona(rec.relationship_guidance),
+    family_guidance: parsePersona(rec.family_guidance),
   };
 }
 
@@ -901,6 +904,7 @@ function emptyResults(): SectionResults {
       education_guidance: null,
       career_guidance: null,
       relationship_guidance: null,
+      family_guidance: null,
     },
     guidance2: {
       finances_guidance: null,
@@ -957,6 +961,9 @@ function mergeResults(results: SectionResults): VedicInterpretation {
     education_guidance: results.guidance1.education_guidance,
     career_guidance: results.guidance1.career_guidance,
     relationship_guidance: results.guidance1.relationship_guidance,
+    ...(results.guidance1.family_guidance
+      ? { family_guidance: results.guidance1.family_guidance }
+      : {}),
     finances_guidance: results.guidance2.finances_guidance,
     spiritual_guidance: results.guidance2.spiritual_guidance,
     life_evolution_guidance: results.guidance2.life_evolution_guidance,
@@ -980,6 +987,9 @@ function mergeNatalResults(results: SectionResults): NatalInterpretation {
     education_guidance: results.guidance1.education_guidance,
     career_guidance: results.guidance1.career_guidance,
     relationship_guidance: results.guidance1.relationship_guidance,
+    ...(results.guidance1.family_guidance
+      ? { family_guidance: results.guidance1.family_guidance }
+      : {}),
     finances_guidance: results.guidance2.finances_guidance,
     spiritual_guidance: results.guidance2.spiritual_guidance,
     life_evolution_guidance: results.guidance2.life_evolution_guidance,
