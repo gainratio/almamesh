@@ -23,19 +23,25 @@ MARKERS=(
   MUTATION_HIDE_WARNING
 )
 REPORTS="$(mktemp -d)"
-trap 'git checkout -- "$PANEL"; rm -rf "$REPORTS"' EXIT
 
 if ! git diff --quiet -- "$PANEL" "$TEST"; then
   echo "refusing: $PANEL or $TEST has uncommitted changes" >&2
   exit 1
 fi
 
+# Installed only after the dirty check, so a refusal never wipes the caller's edits.
+trap 'git checkout -- "$PANEL"; rm -rf "$REPORTS"' EXIT
+trap 'exit 130' INT TERM
+ROW=0
+
 # run_named NAME REPORT -> returns Vitest's exit code. NAME is matched as a
 # regex by -t, so metacharacters are escaped to keep it a literal substring.
 run_named() {
   local code=0 pattern
   pattern="$(printf '%s' "$1" | sed 's/[][\.*^$()+?{}|]/\\&/g')"
-  bunx vitest run "$TEST" -t "$pattern" --reporter=json --outputFile="$2" >/dev/null 2>&1 || code=$?
+  rm -f "$2" # a crash must never be judged from a stale report
+  # perl alarm is the portable timeout (no GNU timeout on macOS): SIGALRM kills a hung run.
+  perl -e 'alarm 180; exec @ARGV' bunx vitest run "$TEST" -t "$pattern" --reporter=json --outputFile="$2" >/dev/null 2>&1 || code=$?
   return "$code"
 }
 
@@ -53,10 +59,12 @@ restore_and_fail() {
 # expect_red LABEL MARKER PERL_EXPR TEST_NAME
 expect_red() {
   local label="$1" marker="$2" expr="$3" name="$4"
-  local base="$REPORTS/$marker.base.json" mut="$REPORTS/$marker.mut.json"
+  ROW=$((ROW + 1))
+  local base="$REPORTS/row$ROW.base.json" mut="$REPORTS/row$ROW.mut.json"
   local before_hash after_hash
 
   run_named "$name" "$base" || restore_and_fail "$label: '$name' is not green on the real code"
+  [ -f "$base" ] || restore_and_fail "$label: no report written for the baseline run"
   [ "$(count "$base" numPassedTests)" -ge 1 ] || restore_and_fail "$label: '$name' matched no test"
 
   before_hash="$(git hash-object "$PANEL")"
@@ -68,6 +76,7 @@ expect_red() {
   local code=0
   run_named "$name" "$mut" || code=$?
   [ "$code" -ne 0 ] || restore_and_fail "$label: '$name' stayed GREEN under the mutation"
+  [ -f "$mut" ] || restore_and_fail "$label: the run crashed (exit $code) and wrote no report"
   local failed
   failed="$(count "$mut" numFailedTests)"
   [ "$failed" -ge 1 ] || restore_and_fail "$label: the run errored (exit $code) without a failing test"
