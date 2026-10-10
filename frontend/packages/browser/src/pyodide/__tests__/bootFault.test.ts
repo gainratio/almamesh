@@ -49,6 +49,15 @@ describe("worker error wire shape", () => {
     expect(rebuilt.message).toBe(fields.error);
   });
 
+  it("passes only the wasm-trap class through: any other class is omitted", () => {
+    const python = new Error("Traceback ...\nRuntimeError: boom");
+    python.name = "PythonError";
+
+    expect(workerErrorFields(new TypeError("Failed to fetch"))).toEqual({ error: "Failed to fetch" });
+    expect(workerErrorFields(python)).toEqual({ error: "Traceback ...\nRuntimeError: boom" });
+    expect(workerErrorFields(new Error("plain"))).toEqual({ error: "plain" });
+  });
+
   it("serialises a non-Error throw as its string with no class", () => {
     expect(workerErrorFields("boom")).toEqual({ error: "boom" });
     expect(errorFromWorker("boom").name).toBe("Error");

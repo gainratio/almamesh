@@ -506,6 +506,13 @@ exec ${inline.join(" ")}`,
       // A saved AI key and a finished chat turn survive an immediate full page
       // load (each save is on disk before the app says it is done). Chromium only.
       "DURABLE_SAVES_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:durable-saves",
+      // The exit-gate boot fault switch is in this hooks build (the frontend
+      // gate proves the production build lacks it), and with it armed the
+      // first boot's Worker throws a real WebAssembly RuntimeError: one
+      // engine.boot_retry, a chart, no recovery card. Chromium here; the
+      // WebKit project needs macOS OPFS.
+      "node scripts/verify-boot-fault-hook.mjs dist-verify --present",
+      "BOOT_RETRY_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:boot-retry --project=chromium",
     ])
   }
   // The hooked Playwright suites. Each used to rebuild this same bundle in its

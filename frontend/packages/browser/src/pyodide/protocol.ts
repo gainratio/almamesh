@@ -115,6 +115,8 @@ export interface BootRequest {
   readonly kind: "boot";
   readonly id: number;
   readonly config: BootConfig;
+  /** Exit-gate hooks builds only (./bootFaultInjection.ts): trap before booting. */
+  readonly injectWasmTrap?: true;
 }
 
 export interface GenerateChartRequest {

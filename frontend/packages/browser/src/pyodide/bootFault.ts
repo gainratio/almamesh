@@ -14,10 +14,15 @@ export interface WorkerErrorFields {
   readonly errorName?: string;
 }
 
-/** Serialise a caught error for a Worker reply, keeping its class name. */
+/**
+ * Serialise a caught error for a Worker reply. Only the wasm-trap class is
+ * passed through (an allowlist of one): no other class name crosses the
+ * boundary, so nothing but a trap can ever look like one.
+ */
 export function workerErrorFields(error: unknown): WorkerErrorFields {
-  if (error instanceof Error) return { error: error.message, errorName: error.name };
-  return { error: String(error) };
+  if (!(error instanceof Error)) return { error: String(error) };
+  if (error.name === WASM_TRAP_NAME) return { error: error.message, errorName: WASM_TRAP_NAME };
+  return { error: error.message };
 }
 
 /** Rebuild a Worker-side error on the main thread, restoring its class name. */
