@@ -933,6 +933,36 @@ describe('AiSetupPanel — onConnected', () => {
     expect(verdict()).not.toContain("Couldn't save");
   });
 
+  it('refreshes the status surfaces, but keeps the edit, when a Turn-AI-off flushes after a field edit', async () => {
+    const offFlush = deferred();
+    const flushSettings = vi.fn().mockResolvedValue(undefined);
+    renderPanel({ flushSettings, testConnection: vi.fn().mockResolvedValue(undefined) });
+    saveKey('sk-or-first');
+    await waitFor(() => expect(verdict()).toContain('Connected'));
+    flushSettings.mockImplementationOnce(() => offFlush.promise);
+    const changed = vi.fn();
+    window.addEventListener(LLM_SETTINGS_CHANGED_EVENT, changed);
+    try {
+      fireEvent.click(screen.getByTestId('tier-none-select'));
+      await settle();
+      // An edit (not a save) supersedes the turn-off while its flush is in flight.
+      fireEvent.change(screen.getByTestId('llm-openrouter-key'), { target: { value: 'sk-or-edited' } });
+      await act(async () => {
+        offFlush.resolve();
+        await settle();
+      });
+      // The off write is durable, so the badge and the header signal reflect it…
+      expect(changed).toHaveBeenCalled();
+      expect(screen.getByTestId('tier-none-active')).toBeTruthy();
+      expect(screen.queryByTestId('tier-cloud-active')).toBeNull();
+      // …but the in-progress edit and the (absent) verdict are untouched.
+      expect((screen.getByTestId('llm-openrouter-key') as HTMLInputElement).value).toBe('sk-or-edited');
+      expect(verdict()).toBe('(none)');
+    } finally {
+      window.removeEventListener(LLM_SETTINGS_CHANGED_EVENT, changed);
+    }
+  });
+
   it('keeps Connected, and raises no unhandled rejection, when onConnected throws', async () => {
     const seen: unknown[] = [];
     const onUnhandled = (reason: unknown) => seen.push(reason);

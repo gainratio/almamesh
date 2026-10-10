@@ -23,6 +23,7 @@ MARKERS=(
   MUTATION_HIDE_WARNING MUTATION_POSTFLUSH_CATCH MUTATION_NO_UNMOUNT_CLEANUP
   MUTATION_OFF_RESOLVE_GUARD MUTATION_OFF_REJECT_GUARD MUTATION_REPLACE_NO_BUMP
   MUTATION_OFF_NO_BUMP MUTATION_OFF_STORAGE_CATCH MUTATION_FAILED_PROBE_GUARD
+  MUTATION_OFF_NO_REFRESH MUTATION_ONCONNECTED_UNGUARDED
 )
 REPORTS="$(mktemp -d)"
 
@@ -154,6 +155,14 @@ expect_red "drop the supersede guard on a FAILED probe" MUTATION_FAILED_PROBE_GU
   's{(current verdict; ignore its result\.\n\s*)if \(gen !== probeGen\.current\) \{}{${1}if (false /* MUTATION_FAILED_PROBE_GUARD */) \{}' \
   "ignores a superseded probe that FAILS late"
 
+expect_red "superseded turnAiOff skips the status refresh" MUTATION_OFF_NO_REFRESH \
+  's{(the verdict to whoever superseded this turn-off\.\n\s*if \(offGen !== probeGen\.current\) \{\n)\s*setStatus\(describeLlmStatus\(\)\);\n\s*notifyLlmSettingsChanged\(\);\n}{${1}      /* MUTATION_OFF_NO_REFRESH */\n}' \
+  "refreshes the status surfaces, but keeps the edit, when a Turn-AI-off flushes after a field edit"
+
+expect_red "a throwing onConnected escapes the save handler" MUTATION_ONCONNECTED_UNGUARDED \
+  's{try \{\n(\s*onConnected\?\.\(describeLlmStatus\(persisted\)\);)\n\s*\} catch \(err\) \{.*?safeError\(\x27app\.typed_error\x27, err\);\n\s*\}}{/* MUTATION_ONCONNECTED_UNGUARDED */$1}s' \
+  "keeps Connected, and raises no unhandled rejection, when onConnected throws"
+
 # Restored: the source is clean and no marker survives anywhere in src.
 git diff --quiet -- "$PANEL" || { echo "FAIL: $PANEL is not clean after restore" >&2; exit 1; }
 for marker in "${MARKERS[@]}"; do
@@ -162,4 +171,4 @@ for marker in "${MARKERS[@]}"; do
     exit 1
   fi
 done
-echo "all 16 mutations went RED; source restored and clean"
+echo "all 18 mutations went RED; source restored and clean"
