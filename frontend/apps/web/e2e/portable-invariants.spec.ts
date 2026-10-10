@@ -34,6 +34,7 @@ import {
   watchBrowser,
   type Native,
 } from './portableInvariants.helpers';
+import { startWebKitDiagnostics, type WebKitDiagnostics } from './webkitDiagnostics';
 
 /**
  * Portable-state invariants — the standing guard for "move ALL my data and
@@ -115,6 +116,38 @@ async function wipeOrigin(page: Page): Promise<void> {
   });
 }
 
+/** Numbers each WebKit browser a test opens, so their diagnostics files do not collide. */
+let webkitBrowsers = 0;
+/**
+ * Every browser the running test opened and has not closed yet. A test closes
+ * its browsers on the success path; when it fails or times out first, the
+ * afterEach hook below closes them, so the browser log, RSS samples and video
+ * of the failing test still land in its output directory.
+ */
+const openBrowsers = new Set<() => Promise<void>>();
+/** Video directories of the running test, removed again when it passes under `retain-on-failure`. */
+const videoDirs: string[] = [];
+
+test.afterEach(async () => {
+  const testInfo = test.info();
+  for (const close of [...openBrowsers]) await close();
+  const { video } = testInfo.project.use;
+  const mode = typeof video === 'string' ? video : video?.mode;
+  const passed = testInfo.status === testInfo.expectedStatus;
+  const dirs = videoDirs.splice(0);
+  if (mode === 'retain-on-failure' && passed) for (const dir of dirs) await rm(dir, { recursive: true, force: true });
+});
+
+/** Playwright's own `recordVideo` for a persistent WebKit context, which the `video` option does not reach. */
+function videoOption(testInfo: TestInfo, name: string): { recordVideo?: { dir: string } } {
+  const { video } = testInfo.project.use;
+  const mode = typeof video === 'string' ? video : video?.mode;
+  if (mode === undefined || mode === 'off') return {};
+  const dir = testInfo.outputPath(`${name}-video`);
+  videoDirs.push(dir);
+  return { recordVideo: { dir } };
+}
+
 /**
  * A new browser profile = a new, empty OPFS root, plus faked third parties and
  * the iOS file paths. WebKit needs an on-disk profile: a default WebKit
@@ -136,7 +169,10 @@ async function freshBrowser(browser: Browser, testInfo: TestInfo) {
   };
   let context: BrowserContext;
   let profileDir: string | null = null;
+  let diagnostics: WebKitDiagnostics | null = null;
   if (browser.browserType().name() === 'webkit') {
+    const name = `webkit-${++webkitBrowsers}`;
+    diagnostics = startWebKitDiagnostics(testInfo, name);
     profileDir = await mkdtemp(join(tmpdir(), 'almamesh-portable-invariants-'));
     // Playwright's WebKit does not route fetches a service worker makes, so
     // with the app's worker active the LLM and geocoder fakes would be
@@ -146,19 +182,28 @@ async function freshBrowser(browser: Browser, testInfo: TestInfo) {
       ...options,
       headless: true,
       serviceWorkers: 'block',
+      logger: diagnostics.logger,
+      ...videoOption(testInfo, name),
     });
+    diagnostics.watch(context);
   } else {
     context = await browser.newContext(options);
   }
+  const close = async () => {
+    if (!openBrowsers.delete(close)) return;
+    try {
+      await context.close();
+    } finally {
+      await diagnostics?.finish();
+      if (profileDir) await rm(profileDir, { recursive: true, force: true });
+    }
+  };
+  openBrowsers.add(close);
   await forceDownloadAndFileInputPaths(context);
   const llmCalls = await fakeThirdParties(context);
   const problems = watchBrowser(context, originOf(testInfo));
   const page = context.pages()[0] ?? (await context.newPage());
   if (profileDir) await wipeOrigin(page);
-  const close = async () => {
-    await context.close();
-    if (profileDir) await rm(profileDir, { recursive: true, force: true });
-  };
   return { context, page, problems, llmCalls, close };
 }
 

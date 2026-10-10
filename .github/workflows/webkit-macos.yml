@@ -18,6 +18,12 @@ concurrency:
 # there. macOS WebKit can: this lane runs the time-travel and export/import
 # journeys on desktop Safari and an iPhone profile. Read-only, no secrets, every
 # action SHA-pinned; all logic is in frontend/apps/web/scripts/webkit-macos-lane.sh.
+# The last step uploads that script's evidence directory (traces, videos and
+# screenshots of failed tests, every test's WebKit log and RSS samples, macOS
+# crash reports), pass or fail, so a lost WebKit page can be diagnosed, but
+# only after scripts/artifactLeakScan.mjs found none of the runner's secrets
+# in it. The job holds no secrets and the checkout persists no credentials;
+# the scan is the backstop for evidence written by accident.
 
 jobs:
   webkit-macos:
@@ -38,3 +44,17 @@ jobs:
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
       - run: bun install --frozen-lockfile
       - run: bash scripts/webkit-macos-lane.sh
+      # The content check on what is about to be uploaded: every non-public
+      # environment value and the contents of ~/.gitconfig and ~/.netrc. On a
+      # match it prints only the name, deletes the directory and fails, and the
+      # upload below does not run (scripts/artifactLeakScan.mjs).
+      - id: leak-scan
+        if: always()
+        run: node scripts/artifactLeakScan.mjs webkit-lane-artifacts
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always() && steps.leak-scan.outcome == 'success'
+        with:
+          name: webkit-lane-evidence
+          path: frontend/apps/web/webkit-lane-artifacts
+          retention-days: 14
+          if-no-files-found: warn
