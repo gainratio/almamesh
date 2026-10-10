@@ -152,7 +152,7 @@ mutate 1 "$DG" \
 
 # 2. Day-precision dates are let through (only month checks remain).
 mutate 2 "$DG" \
-  's/if \(DAY_PRECISION\.some\(\(pattern\) => pattern\.test\(sentence\)\)\) return true;/if (false) return true; \/\/ MUTATION-PR2-2/' \
+  's/return DAY_PRECISION\.some\(\(pattern\) => pattern\.test\(sentence\)\) \|\| hasCuedDayMonth\(sentence\);/return false; \/\/ MUTATION-PR2-2/' \
   'MUTATION-PR2-2' src/__tests__/date-guard.test.ts 'removes day-precision dates'
 
 # 3. life_outlook gets the full predictive block.
@@ -219,6 +219,32 @@ mutate 13 "$RS" \
   's/if \(!isSentQuarter\(key, sent\) \|\| seen\.has\(key\)\) \{/if ((key === "" \&\& !isSentQuarter(key, sent)) || seen.has(key as QuarterKey)) { \/\/ MUTATION-PR2-13/' \
   'MUTATION-PR2-13' src/__tests__/report-parsers.test.ts 'rejects a quarter key it did not send' \
   "expected function to throw an error, but it didn't"
+
+# 14. A month then a day with no year is let through (final review F1).
+mutate 14 "$DG" \
+  's/(const THEN_DAY = )(`[^\n]*`);/$1"(?!)" + $2; \/\/ MUTATION-PR2-14/' \
+  'MUTATION-PR2-14' src/__tests__/date-guard.test.ts 'removes a en month-then-day with no year: Act on October 12. (F1)'
+
+# 15. A cued numeric day ("on 12/14") is let through (final review F1).
+mutate 15 "$DG" \
+  's/return \[\.\.\.sentence\.matchAll\(CUED_DAY_MONTH\)\]/return false \&\& [...sentence.matchAll(CUED_DAY_MONTH)] \/\/ MUTATION-PR2-15\n   /' \
+  'MUTATION-PR2-15' src/__tests__/date-guard.test.ts 'removes a en numeric day/month after a date cue: On 12/14 act. (F1)'
+
+# 16. A bare year outside the supplied months is let through (final review F2).
+mutate 16 "$DG" \
+  's/return bareYears\(sentence\)\.some\(\(year\) => !allowed\.years\.has\(year\)\);/return false; \/\/ MUTATION-PR2-16/' \
+  'MUTATION-PR2-16' src/__tests__/date-guard.test.ts 'removes a en bare year the engine did not supply: In 2031 you rise. (F2)'
+
+# 17. The live timeline preview reaches the caller unguarded (final review F3).
+mutate 17 "$SI" \
+  's/preview: guardedPreview\(progress\.preview, allowed\) \}\),/preview: progress.preview }), \/\/ MUTATION-PR2-17/' \
+  'MUTATION-PR2-17' src/__tests__/report-timeline.test.ts 'never hands onSectionProgress a timeline preview carrying an invented date'
+
+# 18. A repeated life_outlook domain is accepted (final review F5).
+mutate 18 "$RS" \
+  's/if \(seen\.has\(domain\)\) \{/if (false \&\& seen.has(domain)) { \/\/ MUTATION-PR2-18/' \
+  'MUTATION-PR2-18' src/__tests__/report-parsers.test.ts 'rejects a repeated domain' \
+  "to throw an error"
 
 if [ -n "$(git status --porcelain -- "$SRC_REL")" ]; then
   echo "$SRC_REL not clean after restoring mutations" >&2
