@@ -27,7 +27,14 @@ function mintCode(): string {
   return [...bytes].map((byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
-/** This device's 6-hex backup code, minted on first use. */
+/**
+ * This device's 6-hex backup code, minted on first use.
+ *
+ * The code is 24 random bits, so two devices share one with probability about
+ * 1 in 16.7 million per pair (2^-24). Retention ("only this device's backups
+ * are pruned") identifies "this device" by the code alone, so on a collision
+ * it would treat the other device's files as its own.
+ */
 export async function getDeviceCode(rows: DeviceRows = deviceRows): Promise<string> {
   const stored = await rows.read(DEVICE_CODE_KEY);
   if (stored !== null && DEVICE_CODE.test(stored)) return stored;

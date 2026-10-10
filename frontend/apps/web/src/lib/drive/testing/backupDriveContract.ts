@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { BackupDrive, SealedBackup } from '../backupDrive';
 import { backupNameOf } from '../backupName';
+import { sealedFixtureBytes } from './sealedFixture';
 
 const NAME = backupNameOf('almamesh-backup-2026-10-10T18-04-05-123Z-chrome-macos-7f3a2c.almamesh');
-const BYTES = new TextEncoder().encode('age-encryption.org/v1\n-> scrypt c2FsdA 18\n--- mac\n\u0001\u0002binary');
+const BYTES = await sealedFixtureBytes();
 
 /** Every adapter must pass this, against a fake or recorded provider. */
 export function runBackupDriveContract(label: string, make: () => Promise<BackupDrive>): void {

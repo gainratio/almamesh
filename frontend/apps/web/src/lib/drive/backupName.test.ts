@@ -89,4 +89,13 @@ describe('parseBackupName', () => {
     expect(parseBackupName(raw)).toBeNull();
     expect(() => backupNameOf(raw)).toThrow(DriveError);
   });
+  // The regex accepts these digits, and V8's Date parser rolls them forward
+  // (Feb 30 -> Mar 2, T24:00 -> next midnight). Only the ISO round-trip refuses them.
+  it.each([
+    ['Feb 30', 'almamesh-backup-2026-02-30T18-04-05-123Z-chrome-macos-7f3a2c.almamesh'],
+    ['hour 24', 'almamesh-backup-2026-10-10T24-00-00-000Z-chrome-macos-7f3a2c.almamesh'],
+  ])('rejects a calendar-impossible time the Date parser would roll over: %s', (_label, raw) => {
+    expect(parseBackupName(raw)).toBeNull();
+    expect(() => backupNameOf(raw)).toThrow(DriveError);
+  });
 });

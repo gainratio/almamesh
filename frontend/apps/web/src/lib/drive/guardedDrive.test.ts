@@ -4,9 +4,10 @@ import { backupNameOf } from './backupName';
 import { guardedDrive } from './guardedDrive';
 import { runBackupDriveContract } from './testing/backupDriveContract';
 import { createFakeDrive } from './testing/fakeDrive';
+import { sealedFixtureBytes } from './testing/sealedFixture';
 
 const NAME = backupNameOf('almamesh-backup-2026-10-10T18-04-05-123Z-chrome-macos-7f3a2c.almamesh');
-const AGE = new TextEncoder().encode('age-encryption.org/v1\n-> scrypt x 18\n---\n');
+const AGE = await sealedFixtureBytes();
 
 runBackupDriveContract('guarded fake drive', async () => guardedDrive(createFakeDrive(), () => true));
 
