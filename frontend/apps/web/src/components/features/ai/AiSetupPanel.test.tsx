@@ -568,6 +568,19 @@ describe('AiSetupPanel — surface props (showOffChoice, intro)', () => {
     renderPanel();
     expect(screen.queryByTestId('ai-setup-intro')).toBeNull();
   });
+
+  it('shows the AI disclosure in the onboarding variant', () => {
+    renderPanel({ showOffChoice: false, intro: <p>Your key stays on this device.</p> });
+    const disclosure = screen.getByTestId('tier-cloud-honesty');
+    expect(disclosure.textContent).toContain('can reveal your birth date');
+    expect(disclosure.textContent).toContain('without your name or birth date');
+  });
+
+  it('keeps the local-only refusal warning in the onboarding variant', () => {
+    renderPanel({ showOffChoice: false });
+    fireEvent.change(screen.getByTestId('llm-api-base'), { target: { value: 'https://example.com/v1' } });
+    expect(screen.getByTestId('llm-privacy-warning').textContent).toContain('local-only');
+  });
 });
 
 describe('AiSetupPanel — onConnected', () => {
