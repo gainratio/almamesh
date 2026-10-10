@@ -22,6 +22,10 @@ import { join } from 'node:path'
 // Both are property names, so minification keeps them verbatim.
 const ARM_KEY = '__almameshArmBootWasmFault'
 const WORKER_FIELD = 'injectWasmTrap'
+// The wasm trap module's bytes ("trap" export + code section), as a minifier
+// prints the Uint8Array literal. A module-level constant once survived as
+// dead code in production, so the bytes themselves are checked too.
+const TRAP_BYTES = '116,114,97,112,0,0,10,5'
 
 const [distDir, mode] = process.argv.slice(2)
 if (!distDir || (mode !== '--absent' && mode !== '--present')) {
@@ -41,20 +45,21 @@ if (scripts.length === 0) {
 const holding = (marker) => scripts.filter((s) => s.text.includes(marker)).map((s) => s.name)
 const armHolders = holding(ARM_KEY)
 const fieldHolders = holding(WORKER_FIELD)
+const trapHolders = holding(TRAP_BYTES)
 
 if (mode === '--absent') {
-  const leaked = [...new Set([...armHolders, ...fieldHolders])]
+  const leaked = [...new Set([...armHolders, ...fieldHolders, ...trapHolders])]
   if (leaked.length > 0) {
     console.error(`boot fault switch shipped in a production build: ${leaked.join(', ')}`)
     process.exit(1)
   }
   console.log(`ok  boot fault switch absent from ${scripts.length} production scripts`)
 } else {
-  const workerHasIt = fieldHolders.some((name) => name.startsWith('chartWorker-'))
+  const workerHasIt = [fieldHolders, trapHolders].every((holders) => holders.some((name) => name.startsWith('chartWorker-')))
   const mainHasIt = armHolders.some((name) => !name.startsWith('chartWorker-'))
   if (!workerHasIt || !mainHasIt) {
     console.error(
-      `boot fault switch missing from the hooks build: arm=${armHolders.join(',') || 'none'} field=${fieldHolders.join(',') || 'none'}`,
+      `boot fault switch missing from the hooks build: arm=${armHolders.join(',') || 'none'} field=${fieldHolders.join(',') || 'none'} trap=${trapHolders.join(',') || 'none'}`,
     )
     process.exit(1)
   }
