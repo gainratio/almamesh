@@ -90,20 +90,85 @@ export function safeWarn(code: SafeDiagnosticCode, _cause?: unknown): void {
 export const TYPED_ERROR_CAUSE_MARKER = 'almamesh:diag:typed_error_cause';
 
 const MAX_DEPTH = 8;
-const IDENTIFIER = /^[A-Za-z][A-Za-z0-9_]{0,63}$/;
-const CODE = /^[A-Za-z0-9_.:-]{1,64}$/;
-const SQLITE_CODE = /\bSQLITE_[A-Z]+(?:_[A-Z]+)*\b/;
+
+/**
+ * Class names that may be printed: the JS/DOM built-ins and every error class
+ * AlmaMesh and @gainratio/browser declare (apps/web typedErrorCause.test.ts
+ * fails when a new one is missing). Anything else prints as `Error`, because a
+ * `name` can be set to user text.
+ */
+export const KNOWN_ERROR_CLASSES: ReadonlySet<string> = new Set([
+  // ECMAScript
+  'Error', 'AggregateError', 'EvalError', 'RangeError', 'ReferenceError', 'SyntaxError', 'TypeError', 'URIError',
+  // DOMException and the names browsers give it
+  'DOMException', 'AbortError', 'DataCloneError', 'InvalidStateError', 'NetworkError', 'NoModificationAllowedError',
+  'NotAllowedError', 'NotFoundError', 'NotReadableError', 'NotSupportedError', 'QuotaExceededError', 'SecurityError',
+  'TimeoutError', 'TypeMismatchError', 'UnknownError',
+  // AlmaMesh (apps/web, packages/browser, llm, memory, store)
+  'BackupCryptoError', 'BackupError', 'ChartComputeError', 'ChartSaveError', 'ChartSnapshotError',
+  'ChatSummaryGenerationError', 'EngineBootCancelledError', 'EngineBootstrapError', 'EngineCacheNotDurableError',
+  'EngineNotReadyError', 'EngineStorageBlockedError', 'EngineWarmingError', 'InterpretationSetAsideError',
+  'JsonBoundsError', 'LlmRequestError', 'LocalTimeError', 'PeriodSkyTimeoutError', 'PeriodSkyUnavailableError',
+  'PortableImportRevisionConflictError', 'PortableStateStartupError', 'PortableStateTooNewError',
+  'PortableStateUnavailableError', 'PortableStorageUnavailableError', 'PrivacyViolationError',
+  'PyodidePackageLoadError', 'ReasoningTimeoutError', 'ResetIncompleteError', 'SemanticMemoryStorageUnavailableError',
+  'SetAsideRestoreError', 'StoreSaveError',
+  // @gainratio/browser (and the sqlite-wasm build it ships)
+  'CacheFallbackRefusedError', 'EngineOperationError', 'EngineStorageUnavailableError', 'GetSyncHandleError',
+  'IntegrityError', 'KeyRevokedError', 'KeyringError', 'LegacyFloorUnavailableError', 'PointerExpiredError',
+  'ResponseTooLargeError', 'RollbackError', 'SQLite3Error', 'SignatureError', 'SqlImportRejectedError',
+  'SqlStorageUnavailableError', 'SqlTransactionEndedError', 'SqliteStateConflictError', 'SqliteStateSchemaError',
+  'StorageQuotaError', 'SyncCapError', 'UnknownKeyError', 'WasmAllocError', 'WorkerCrashError', 'WorkerTimeoutError',
+]);
+
+/**
+ * `code` values that may be printed: fixed constants only. A code from
+ * anywhere else (a provider's JSON body, a numeric HTTP code) prints as `?`.
+ */
+export const KNOWN_ERROR_CODES: ReadonlySet<string> = new Set([
+  // @gainratio/browser EngineErrorCode
+  'integrity', 'rollback', 'network', 'lock', 'storage', 'internal',
+  // @almamesh/llm
+  'ai.reasoning_timeout', 'invalid_plan', 'malformed_json', 'invalid_shape', 'invalid_citation',
+  // @almamesh/memory
+  'memory.opfs_unavailable',
+  // @almamesh/store: BackupCryptoErrorCode, BackupError, SetAsideRestoreErrorCode
+  'bad_passphrase', 'unsupported', 'too_costly', 'out_of_memory', 'unavailable',
+  'bad_format', 'too_new', 'corrupt',
+  'missing', 'unreadable', 'unknown_person', 'has_record', 'not_saved',
+]);
+
+/** SQLite's primary result-code names (sqlite3.h); extended codes reduce to these. */
+export const SQLITE_PRIMARY_CODES: ReadonlySet<string> = new Set([
+  'SQLITE_OK', 'SQLITE_ERROR', 'SQLITE_INTERNAL', 'SQLITE_PERM', 'SQLITE_ABORT', 'SQLITE_BUSY', 'SQLITE_LOCKED',
+  'SQLITE_NOMEM', 'SQLITE_READONLY', 'SQLITE_INTERRUPT', 'SQLITE_IOERR', 'SQLITE_CORRUPT', 'SQLITE_NOTFOUND',
+  'SQLITE_FULL', 'SQLITE_CANTOPEN', 'SQLITE_PROTOCOL', 'SQLITE_EMPTY', 'SQLITE_SCHEMA', 'SQLITE_TOOBIG',
+  'SQLITE_CONSTRAINT', 'SQLITE_MISMATCH', 'SQLITE_MISUSE', 'SQLITE_NOLFS', 'SQLITE_AUTH', 'SQLITE_FORMAT',
+  'SQLITE_RANGE', 'SQLITE_NOTADB', 'SQLITE_NOTICE', 'SQLITE_WARNING', 'SQLITE_ROW', 'SQLITE_DONE',
+]);
+
+const SQLITE_TOKEN = /\bSQLITE_[A-Z]+(?:_[A-Z]+)*\b/;
 
 function className(error: Error): string {
-  if (IDENTIFIER.test(error.name)) return error.name;
+  if (KNOWN_ERROR_CLASSES.has(error.name)) return error.name;
   const ctor = error.constructor?.name ?? '';
-  return IDENTIFIER.test(ctor) ? ctor : 'Error';
+  return KNOWN_ERROR_CLASSES.has(ctor) ? ctor : 'Error';
 }
 
+/** null: no `code` at all. '?': a code that is not a fixed constant. */
 function codeOf(error: Error): string | null {
-  const code: unknown = (error as { code?: unknown }).code;
-  if (typeof code === 'number' && Number.isFinite(code)) return String(code);
-  return typeof code === 'string' && CODE.test(code) ? code : null;
+  if (!('code' in error) || error.code === undefined) return null;
+  return typeof error.code === 'string' && KNOWN_ERROR_CODES.has(error.code) ? error.code : '?';
+}
+
+/** The primary SQLite result-code name in `message`, '?' for an unknown SQLITE_ token. */
+function sqliteCodeOf(message: string): string | null {
+  const token = SQLITE_TOKEN.exec(message)?.[0];
+  if (token === undefined) return null;
+  for (const primary of SQLITE_PRIMARY_CODES) {
+    if (token === primary || token.startsWith(`${primary}_`)) return primary;
+  }
+  return '?';
 }
 
 function describeOne(error: unknown): string {
@@ -111,8 +176,8 @@ function describeOne(error: unknown): string {
   const fields: string[] = [];
   const code = codeOf(error);
   if (code !== null) fields.push(`code=${code}`);
-  const sqlite = SQLITE_CODE.exec(error.message)?.[0];
-  if (sqlite !== undefined) fields.push(`sqlite=${sqlite}`);
+  const sqlite = sqliteCodeOf(error.message);
+  if (sqlite !== null) fields.push(`sqlite=${sqlite}`);
   const name = className(error);
   return fields.length === 0 ? name : `${name}(${fields.join(', ')})`;
 }

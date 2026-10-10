@@ -78,5 +78,7 @@ if (mode === '--absent') {
     )
     process.exit(1)
   }
-  console.log(`ok  boot fault switch present in the hooks build (${armHolders.join(', ')}; ${fieldHolders.join(', ')})`)
+  console.log(
+    `ok  boot fault switch present in the hooks build (${armHolders.join(', ')}; ${fieldHolders.join(', ')}); typed-error cause marker ${CAUSE_MARKER} present (${causeHolders.join(', ')})`,
+  )
 }
