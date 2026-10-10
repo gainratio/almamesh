@@ -160,6 +160,91 @@ describe("validateTimelineDates: short month forms", () => {
   );
 });
 
+// Review round 1. Each removal case names a month that IS allowed (2027-03 or
+// 2027-06), so only the day-precision / numeric rule can remove the sentence.
+describe("validateTimelineDates: day precision and numeric shapes", () => {
+  const removesFirst = (sentence: string, allowed: ReadonlySet<string> = ALLOWED): void => {
+    const { section, removals } = validateTimelineDates({ layman: `${sentence} Rest.` }, allowed);
+    expect({ sentence, text: section.layman, removals }).toEqual({ sentence, text: "Rest.", removals: 1 });
+  };
+  const keeps = (sentence: string, allowed: ReadonlySet<string> = ALLOWED): void => {
+    const input = { layman: `${sentence} Rest.` };
+    expect({ sentence, result: validateTimelineDates(input, allowed) }).toEqual({
+      sentence,
+      result: { section: input, removals: 0 },
+    });
+  };
+
+  it("removes an ISO timestamp (C1)", () => {
+    removesFirst("On 2027-03-14T00:00 act.");
+  });
+
+  it.each([
+    "On March 14, 2027 act.",
+    "On Mar. 14, 2027 act.",
+    "On March 14th 2027 act.",
+    "On jun 3, 2027 act.",
+  ])("removes month-day-year %s (C2)", (sentence) => {
+    removesFirst(sentence);
+  });
+
+  it("reads a comma between month and year (C2)", () => {
+    removesFirst("In March, 2028 act.");
+    keeps("In March, 2027 act.");
+  });
+
+  it.each([
+    ["en", "On 14 March 2027 act."],
+    ["en", "On the 14th of March 2027 act."],
+    ["en", "On 14 March act."],
+    ["es", "El 14 de marzo de 2027 actúa."],
+    ["es", "El 3 de junio actúa."],
+    ["pt", "Em 14 de março de 2027 aja."],
+    ["pt", "Em 1º de junho de 2027 aja."],
+    ["pt", "Em 3 de jun. de 2027 aja."],
+  ])("removes %s day-before-month %s (I1)", (_lang, sentence) => {
+    removesFirst(sentence);
+  });
+
+  it("keeps a short word after a count with no year (I1 false positive)", () => {
+    keeps("The top 5 may change.");
+    keeps("Give it 3 set tries.");
+  });
+
+  it("reads Spanish 'del' before the year (I2)", () => {
+    removesFirst("En marzo del 2028 actúa.");
+    keeps("En marzo del 2027 actúa.");
+    removesFirst("En mar. del 2028 actúa.");
+  });
+
+  it.each([
+    "Act by 2027/03.",
+    "Act by 03/2027.",
+    "Act by 3/2027.",
+    "Act by 2027.03 now.",
+    "Act on 3/14/2027.",
+    "Act on 14.03.2027 now.",
+  ])("removes numeric date %s (I3)", (sentence) => {
+    removesFirst(sentence);
+  });
+
+  it("reads 'of' and '/' between month and year (I3)", () => {
+    removesFirst("Act in março/2028.");
+    keeps("Act in março/2027.");
+    removesFirst("Act in March of 2028.");
+    keeps("Act in March of 2027.");
+  });
+
+  it("checks the start month of a slash range (I3)", () => {
+    removesFirst("Act in Feb/Mar 2027.", new Set(["2027-03"]));
+    keeps("Act in Feb/Mar 2027.", new Set(["2027-02", "2027-03"]));
+  });
+
+  it("keeps ordinary prose numbers", () => {
+    keeps("Sleep 3.5 hours more. Add 1/2 cup. Score 10/10 and 2.25 points.");
+  });
+});
+
 describe("monthsIn", () => {
   it("collects every YYYY-MM the engine put in a slice", () => {
     const slice = { a: "2027-03", b: [{ month: "2027-06" }], c: "birth", d: 2027 };

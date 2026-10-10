@@ -6,12 +6,15 @@
 // a model that keeps inventing dates is visible.
 //
 // Month names are a fixed list, not built from Intl: ICU's short forms vary by
-// browser. A name only counts as a date when a 4-digit year follows it, so
+// browser. A name only counts as a month when a 4-digit year follows it, so
 // ordinary words ("Mar", "set", "may") without a year are left alone.
+//
+// Day precision is always removed, whatever the month: ISO dates and
+// timestamps, "March 14, 2027", "14 de marzo de 2027", "1º de junho", and the
+// numeric forms the engine never emits ("03/2027", "2027.03", "3/14/2027").
 
 import { dropSentences } from "./layman-jargon";
 
-const DAY_DATE = /\b\d{4}-\d{2}-\d{2}\b/;
 const YEAR_MONTH = /\b(\d{4})-(\d{2})\b/g;
 
 const MONTH_NUMBER: Readonly<Record<string, number>> = {
@@ -35,27 +38,50 @@ const MONTH_NAMES = Object.keys(MONTH_NUMBER)
   .sort((a, b) => b.length - a.length)
   .join("|");
 
-// "<month>[.] [de ]<year>", case-insensitive; the name must start a word.
-const NAMED_MONTH = new RegExp(
-  `(?<!\\p{L})(${MONTH_NAMES})\\.?(?:\\s+de)?\\s+(\\d{4})\\b`,
-  "giu",
-);
+// Names of 4+ letters ("March", "junio", "sept") are never ordinary words
+// after a day number; 3-letter ones ("may", "set", "mar") need a year too.
+const LONG_MONTH_NAMES = Object.keys(MONTH_NUMBER)
+  .filter((name) => name.length >= 4)
+  .sort((a, b) => b.length - a.length)
+  .join("|");
+
+// Between a month name and its year: "March 2027", "March, 2027",
+// "marzo de/del 2027", "March of 2027", "março/2027".
+const TO_YEAR = `(?:,?(?:\\s+(?:del?|of))?\\s+|\\s*/\\s*)`;
+const MONTH = `(?<!\\p{L})(?:${MONTH_NAMES})\\.?`;
+
+// "<month> <year>"; the name must start a word.
+const NAMED_MONTH = new RegExp(`(?<!\\p{L})(${MONTH_NAMES})\\.?${TO_YEAR}(\\d{4})\\b`, "giu");
 
 // The start of a month range that shares the end month's year, as quarter
-// titles print it: "Feb-Apr 2027", "fev.-abr. 2027". The start month is read
-// with that year.
+// titles print it: "Feb-Apr 2027", "fev.-abr. 2027", "Feb/Mar 2027". The start
+// month is read with that year.
 const RANGE_START = new RegExp(
-  `(?<!\\p{L})(${MONTH_NAMES})\\.?\\s*[-–]\\s*(?:${MONTH_NAMES})\\.?(?:\\s+de)?\\s+(\\d{4})\\b`,
+  `(?<!\\p{L})(${MONTH_NAMES})\\.?\\s*[-–/]\\s*${MONTH}${TO_YEAR}(\\d{4})\\b`,
   "giu",
 );
 
-// The jargon guard's sentence splitter, except that the period of an
-// abbreviated month followed by a year or a range dash ("dez. 2027",
-// "Sept. de 2027", "fev.-abr.") does not end the sentence. Concatenating every
-// piece still reproduces the input.
-const ABBREVIATION_DOT = `(?<!\\p{L})(?:${MONTH_NAMES})\\.(?=\\s+(?:de\\s+)?\\d{4}\\b|\\s*[-–])`;
+const DAY_SUFFIX = `(?:st|nd|rd|th|º|°)?`;
+const DAY_PRECISION: readonly RegExp[] = [
+  // ISO date or timestamp: 2027-03-14, 2027-03-14T00:00.
+  /\b\d{4}-\d{2}-\d{2}(?!\d)/,
+  // Month, day, year: "March 14, 2027", "Mar. 14th 2027".
+  new RegExp(`${MONTH}\\s+\\d{1,2}${DAY_SUFFIX},?\\s+\\d{4}\\b`, "iu"),
+  // Day before a long month name, year optional: "14 March", "1º de junho".
+  new RegExp(`(?<![\\d\\p{L}])\\d{1,2}${DAY_SUFFIX}(?:\\s+(?:de|of))?\\s+(?:${LONG_MONTH_NAMES})(?!\\p{L})`, "iu"),
+  // Day before any month name with a year: "3 de jun. de 2027".
+  new RegExp(`(?<![\\d\\p{L}])\\d{1,2}${DAY_SUFFIX}(?:\\s+(?:de|of))?\\s+${MONTH}${TO_YEAR}\\d{4}\\b`, "iu"),
+  // Numeric: 3/14/2027, 14.03.2027, 03/2027, 2027/03, 2027.03.
+  /(?<![\d/.])(?:\d{1,2}[/.]\d{1,2}[/.]\d{4}|\d{1,2}[/.]\d{4}|\d{4}[/.]\d{1,2})(?!\d)/,
+];
+
+// The jargon guard's sentence splitter, except that two kinds of period do not
+// end a sentence: an abbreviated month's, when a number, connector or range
+// mark follows ("dez. 2027", "Mar. 14", "fev.-abr."), and one between digits
+// ("14.03.2027"). Concatenating every piece still reproduces the input.
+const ABBREVIATION_DOT = `(?<!\\p{L})(?:${MONTH_NAMES})\\.(?=\\s*[-–/,]|\\s+(?:(?:del?|of)\\s+)?\\d)`;
 const SENTENCE_OR_BREAK = new RegExp(
-  `(?:${ABBREVIATION_DOT}|[^.!?…\\n])+(?:[.!?…]+["'”’)\\]]*)?[ \\t]*|[.!?…]+[ \\t]*|\\n+`,
+  `(?:${ABBREVIATION_DOT}|(?<=\\d)\\.(?=\\d)|[^.!?…\\n])+(?:[.!?…]+["'”’)\\]]*)?[ \\t]*|[.!?…]+[ \\t]*|\\n+`,
   "giu",
 );
 
@@ -74,7 +100,7 @@ function monthsMentioned(sentence: string): string[] {
 }
 
 function offends(sentence: string, allowed: ReadonlySet<string>): boolean {
-  if (DAY_DATE.test(sentence)) return true;
+  if (DAY_PRECISION.some((pattern) => pattern.test(sentence))) return true;
   return monthsMentioned(sentence).some((month) => !allowed.has(month));
 }
 
