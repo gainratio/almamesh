@@ -37,10 +37,12 @@ import {
  * lands; each run's CATALOG-priced cost (its tokens at the catalog price the
  * estimate uses) is inside estimateReadingCost's range; the per-section,
  * per-voice MEDIAN of words across runs is within REPORT_WORD_TARGETS +/-30 %;
- * every request carries reasoning.max_tokens 6000, provider sort "price" and
- * no max_tokens; each run's 200 usage rows cover all nine sections. P90 is
- * asserted only when REPORT_P90_BUDGET_MS is set (the default-model run).
- * Section failures are soft so a failed run still reports cost and words.
+ * every request carries reasoning.max_tokens 6000, the report provider
+ * preference (sort "price", preferred p50 throughput floor) and no max_tokens;
+ * each run's 200 usage rows cover all nine sections. P90 is asserted only when
+ * REPORT_P90_BUDGET_MS is set (the default-model run). Each run is aborted at
+ * RUN_DEADLINE_MS; section failures and aborts are soft, and the result JSON
+ * (with per-section wall times) is written even when a run fails.
  *
  * Billed usage.cost depends on which upstream provider OpenRouter routes to.
  * The library asks for the cheapest first but fallbacks stay allowed: a billed
@@ -58,7 +60,9 @@ const P90_BUDGET_MS = process.env.REPORT_P90_BUDGET_MS ? Number(process.env.REPO
 const KEY = '1990-01-15T12:00:00+00:00';
 const FIXTURES = new URL('../../../../backend/tests/fixtures/', import.meta.url);
 const REASONING_CAP = 6000;
-const PROVIDER_ROUTING = { sort: 'price' };
+const PROVIDER_ROUTING = { sort: 'price', preferred_min_throughput: { p50: 25 } };
+/** Per-run wall-clock cap: twice the P90 budget, at least 10 minutes. */
+const RUN_DEADLINE_MS = Math.max(2 * (P90_BUDGET_MS ?? 0), 600_000);
 const AS_OF: AnalysisInstant = { basis: 'chart', instant: new Date('2026-06-09T12:00:00Z') };
 
 interface ReportRun {
@@ -67,8 +71,16 @@ interface ReportRun {
   readonly catalogUsd: number;
   readonly providers: readonly string[];
   readonly rows: readonly SectionUsageRow[];
+  readonly sectionMs: readonly SectionTiming[];
   readonly words: Readonly<Record<string, Voices>>;
   readonly errors: readonly string[];
+}
+
+/** Wall time of one section request, from send to the full response body. */
+interface SectionTiming {
+  readonly section: string;
+  readonly status: number;
+  readonly ms: number;
 }
 
 interface ReportOutput {
@@ -97,10 +109,108 @@ function nearestRankP90(values: readonly number[]): number {
   return sorted[Math.ceil(0.9 * sorted.length) - 1];
 }
 
+interface RunSummary {
+  readonly p90Ms: number;
+  readonly medianWords: Readonly<Record<string, Voices>>;
+  readonly capOverruns: readonly string[];
+}
+
+function summarize(runs: readonly ReportRun[]): RunSummary {
+  return {
+    p90Ms: runs.length > 0 ? nearestRankP90(runs.map((r) => r.totalMs)) : Number.NaN,
+    medianWords: Object.fromEntries(
+      REPORT_SECTIONS.map((s) => [s, medianVoices(runs.map((r) => r.words[s] ?? { layman: 0, technical: 0 }))]),
+    ),
+    capOverruns: runs.flatMap((r, i) => reasoningCapOverruns(r.rows, REASONING_CAP).map((o) => `run ${i + 1} ${o}`)),
+  };
+}
+
+function writeResult(result: object): void {
+  mkdirSync('test-results', { recursive: true });
+  writeFileSync(`test-results/report-real-${MODEL.replace(/\W/g, '_')}.json`, JSON.stringify(result, null, 2));
+}
+
+/** Drain one generator, collecting its error events and its completed result. */
+async function drain<E extends { readonly type: string }>(
+  events: AsyncGenerator<E>,
+  errors: string[],
+  onComplete: (event: E) => void,
+): Promise<void> {
+  for await (const e of events) {
+    if (e.type === 'error' && 'section' in e && 'message' in e) errors.push(`${String(e.section)}: ${String(e.message)}`);
+    if (e.type === 'complete') onComplete(e);
+  }
+}
+
+/**
+ * One full reading, natal and timeline concurrently, as the app runs them.
+ * Aborted at RUN_DEADLINE_MS so a slow upstream fails the run (with its
+ * partial rows) instead of hanging the test to its timeout.
+ */
+async function runOnce(chart: SiderealChart, config: ProviderConfig, pricing: ModelPricing): Promise<ReportRun> {
+  const rows: SectionUsageRow[] = [];
+  const sectionMs: SectionTiming[] = [];
+  const bodies: Record<string, unknown>[] = [];
+  const t0 = Date.now();
+  const fetchImpl: typeof fetch = async (input, init) => {
+    const requestBody = String(init?.body ?? '');
+    bodies.push(JSON.parse(requestBody) as Record<string, unknown>);
+    const started = Date.now();
+    const res = await fetch(input, init);
+    const row = sectionUsageRow(requestBody, res.status, await res.clone().text());
+    if (row) {
+      rows.push(row);
+      sectionMs.push({ section: row.section, status: res.status, ms: Date.now() - started });
+    }
+    return res;
+  };
+  const errors: string[] = [];
+  const out: ReportOutput = { natal: null, timeline: null };
+  const deadline = new AbortController();
+  const timer = setTimeout(() => deadline.abort(), RUN_DEADLINE_MS);
+  const signal = deadline.signal;
+  try {
+    await Promise.all([
+      drain(streamNatalInterpretation({ chart, asOf: AS_OF, config, fetchImpl, signal, promptSet: REPORT_PROMPT_SET }), errors, (e) => {
+        if (e.type === 'complete') out.natal = e.interpretation;
+      }),
+      drain(streamReportTimeline({ chart, asOf: AS_OF, config, fetchImpl, signal }), errors, (e) => {
+        if (e.type === 'complete') out.timeline = e.timeline;
+      }),
+    ]);
+  } catch (err) {
+    const reason = signal.aborted ? `deadline ${RUN_DEADLINE_MS / 1000} s exceeded` : String(err);
+    errors.push(`run aborted: ${reason}`);
+  } finally {
+    clearTimeout(timer);
+  }
+  const totalMs = Date.now() - t0;
+  for (const body of bodies) {
+    expect.soft(body.reasoning).toEqual({ max_tokens: REASONING_CAP });
+    expect.soft(body.provider).toEqual(PROVIDER_ROUTING);
+    expect.soft(body).not.toHaveProperty('max_tokens');
+  }
+  const { natal, timeline } = out;
+  const words =
+    natal !== null && timeline !== null
+      ? Object.fromEntries(REPORT_SECTIONS.map((s) => [s, reportSectionWords(s, natal, timeline)]))
+      : {};
+  return {
+    totalMs,
+    billedUsd: rows.reduce((s, r) => s + r.costUsd, 0),
+    catalogUsd: catalogCostUsd(rows, pricing),
+    providers: [...new Set(rows.map((r) => r.provider))],
+    rows,
+    sectionMs,
+    words,
+    errors,
+  };
+}
+
 test('[real] full report-v2 reading against live OpenRouter (3 runs)', async () => {
   const apiKey = process.env.OPENROUTER_API_KEY;
   test.skip(!apiKey, 'OPENROUTER_API_KEY not set');
-  test.setTimeout(2_400_000);
+  test.setTimeout(RUNS * RUN_DEADLINE_MS + 600_000);
 
   const config: ProviderConfig = {
     engine: 'openai-http',
@@ -121,66 +231,12 @@ test('[real] full report-v2 reading against live OpenRouter (3 runs)', async () 
   if (estimate === null || pricing === null) return;
 
   const runs: ReportRun[] = [];
-  for (let run = 0; run < RUNS; run += 1) {
-    const rows: SectionUsageRow[] = [];
-    const bodies: Record<string, unknown>[] = [];
-    const fetchImpl: typeof fetch = async (input, init) => {
-      const requestBody = String(init?.body ?? '');
-      bodies.push(JSON.parse(requestBody) as Record<string, unknown>);
-      const res = await fetch(input, init);
-      const row = sectionUsageRow(requestBody, res.status, await res.clone().text());
-      if (row) rows.push(row);
-      return res;
-    };
-    const errors: string[] = [];
-    const out: ReportOutput = { natal: null, timeline: null };
-    const t0 = Date.now();
-    await Promise.all([
-      (async () => {
-        for await (const e of streamNatalInterpretation({ chart, asOf: AS_OF, config, fetchImpl, promptSet: REPORT_PROMPT_SET })) {
-          if (e.type === 'error') errors.push(`${e.section}: ${e.message}`);
-          if (e.type === 'complete') out.natal = e.interpretation;
-        }
-      })(),
-      (async () => {
-        for await (const e of streamReportTimeline({ chart, asOf: AS_OF, config, fetchImpl })) {
-          if (e.type === 'error') errors.push(`${e.section}: ${e.message}`);
-          if (e.type === 'complete') out.timeline = e.timeline;
-        }
-      })(),
-    ]);
-    const totalMs = Date.now() - t0;
-    const { natal, timeline } = out;
-    expect(natal).not.toBeNull();
-    expect(timeline).not.toBeNull();
-    if (natal === null || timeline === null) return;
-    const words = Object.fromEntries(REPORT_SECTIONS.map((s) => [s, reportSectionWords(s, natal, timeline)]));
-    for (const body of bodies) {
-      expect(body.reasoning).toEqual({ max_tokens: REASONING_CAP });
-      expect(body.provider).toEqual(PROVIDER_ROUTING);
-      expect(body).not.toHaveProperty('max_tokens');
-    }
-    runs.push({
-      totalMs,
-      billedUsd: rows.reduce((s, r) => s + r.costUsd, 0),
-      catalogUsd: catalogCostUsd(rows, pricing),
-      providers: [...new Set(rows.map((r) => r.provider))],
-      rows,
-      words,
-      errors,
-    });
+  try {
+    for (let run = 0; run < RUNS; run += 1) runs.push(await runOnce(chart, config, pricing));
+  } finally {
+    writeResult({ model: MODEL, estimate, pricing, ...summarize(runs), runs });
   }
-
-  const p90Ms = nearestRankP90(runs.map((r) => r.totalMs));
-  const medianWords = Object.fromEntries(
-    REPORT_SECTIONS.map((s) => [s, medianVoices(runs.map((r) => r.words[s] ?? { layman: 0, technical: 0 }))]),
-  );
-  const capOverruns = runs.flatMap((r, i) => reasoningCapOverruns(r.rows, REASONING_CAP).map((o) => `run ${i + 1} ${o}`));
-  mkdirSync('test-results', { recursive: true });
-  writeFileSync(
-    `test-results/report-real-${MODEL.replace(/\W/g, '_')}.json`,
-    JSON.stringify({ model: MODEL, estimate, pricing, p90Ms, medianWords, capOverruns, runs }, null, 2),
-  );
+  const { p90Ms, medianWords, capOverruns } = summarize(runs);
 
   for (const overrun of capOverruns) annotate(`provider ignored the reasoning cap: ${overrun}`);
   runs.forEach((run, i) => {

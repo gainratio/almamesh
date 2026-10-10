@@ -163,11 +163,11 @@ describe("streamReportTimeline", () => {
   }
 
   it("asks OpenRouter for the cheapest provider on every report section", async () => {
-    expect(REPORT_PROVIDER_ROUTING).toEqual({ sort: "price" });
+    expect(REPORT_PROVIDER_ROUTING).toEqual({ sort: "price", preferred_min_throughput: { p50: 25 } });
     for (const streamed of [false, true]) {
       const log = await allReportBodies(OPENROUTER, streamed);
       expect(log).toHaveLength(9);
-      for (const row of log) expect(row.body.provider).toEqual({ sort: "price" });
+      for (const row of log) expect(row.body.provider).toEqual({ sort: "price", preferred_min_throughput: { p50: 25 } });
     }
   });
 

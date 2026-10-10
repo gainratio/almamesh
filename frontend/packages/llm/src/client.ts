@@ -134,14 +134,28 @@ export interface ChatCompletionJsonOptions {
 }
 
 /**
- * OpenRouter provider preference for report sections. `sort: "price"` always
- * tries the cheapest provider first instead of OpenRouter's default
- * price-weighted load balancing, which sometimes picked an upstream billing
- * 4-5x the catalog price. Fallbacks stay allowed (OpenRouter's default): a
- * failed reading costs the user more than a pricier fallback.
- * https://openrouter.ai/docs/guides/routing/provider-selection#provider-sorting
+ * Preferred minimum median (p50) throughput, tokens/s, for report sections.
+ * From OpenRouter's endpoint stats on 2026-10-10 (last 30 min): the slow tier
+ * to avoid, OpenInference on deepseek-v4.1-flash, ran p50 17 tok/s (report
+ * sections took 80-300+ s); the cheap tier to keep, StreamLake and Baidu on
+ * deepseek-v4-pro, ran p50 36 and 42. 25 is about the geometric mean of 17
+ * and 36, roughly 1.45x clear of each.
  */
-export const REPORT_PROVIDER_ROUTING = { sort: "price" } as const;
+export const REPORT_MIN_THROUGHPUT_P50 = 25;
+
+/**
+ * OpenRouter provider preference for report sections. `sort: "price"` tries
+ * the cheapest provider first instead of OpenRouter's default price-weighted
+ * load balancing, which sometimes picked an upstream billing 4-5x the catalog
+ * price. `preferred_min_throughput` moves providers below the floor to the end
+ * of that list; per the docs it never blocks a request. Fallbacks stay allowed
+ * (OpenRouter's default): a failed reading costs more than a pricier fallback.
+ * https://openrouter.ai/docs/guides/routing/provider-selection#performance-thresholds
+ */
+export const REPORT_PROVIDER_ROUTING = {
+  sort: "price",
+  preferred_min_throughput: { p50: REPORT_MIN_THROUGHPUT_P50 },
+} as const;
 
 function isOpenRouter(config: ProviderConfig): boolean {
   return config.baseUrl?.startsWith(OPENROUTER_API_BASE) === true;
