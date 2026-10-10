@@ -287,18 +287,19 @@ export function AiSetupPanel({
       });
       await flushSettings();
     } catch (err) {
-      // Canonical SQLite can reject. Keep
-      // the active badge and surface a retryable storage verdict.
+      // Canonical SQLite can reject. Fail CLOSED: writeLlmSettings already set the
+      // in-memory snapshot to off, and it stays off. The flush can reject because
+      // ANOTHER store failed while this row committed, so restoring the old key
+      // would keep cloud calls going. The badge and the header follow memory, even
+      // when superseded (a newer save's snapshot is simply what memory now holds).
       safeError('provider.disable_failed', err);
+      setStatus(describeLlmStatus()); // fail-closed badge after a failed turn-off
+      notifyLlmSettingsChanged(); // fail-closed header after a failed turn-off
       // A newer save or edit owns the verdict now; a late off-failure must not paint over it.
       if (offGen !== probeGen.current) {
         return;
       }
-      // Fail CLOSED. writeLlmSettings already set the in-memory snapshot to off, and
-      // it stays off: the flush can reject because ANOTHER store failed while this
-      // row committed, so restoring the old key would keep cloud calls going. The
-      // badge follows memory, and the storage error tells the user it may not persist.
-      setStatus(describeLlmStatus()); // fail-closed badge after a failed turn-off
+      // The storage error tells the user the off state may not survive a reload.
       setConn({ phase: 'error', source: 'guided', kind: 'storage' });
       return;
     }

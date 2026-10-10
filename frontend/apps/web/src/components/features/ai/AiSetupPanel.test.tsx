@@ -905,6 +905,56 @@ describe('AiSetupPanel — onConnected', () => {
     expect(screen.queryByTestId('tier-cloud-active')).toBeNull();
   });
 
+  it('superseded turn-off that fails late still shows AI off', async () => {
+    const offFlush = deferred();
+    const flushSettings = vi.fn().mockResolvedValue(undefined);
+    renderPanel({ flushSettings, testConnection: vi.fn().mockResolvedValue(undefined) });
+    saveKey('sk-or-abc');
+    await waitFor(() => expect(verdict()).toContain('Connected'));
+    flushSettings.mockImplementationOnce(() => offFlush.promise);
+    const changed = vi.fn();
+    window.addEventListener(LLM_SETTINGS_CHANGED_EVENT, changed);
+    try {
+      fireEvent.click(screen.getByTestId('tier-none-select'));
+      await settle();
+      // An edit (not a save) supersedes the turn-off while its flush is in flight.
+      fireEvent.change(screen.getByTestId('llm-openrouter-key'), { target: { value: 'sk-or-edited' } });
+      changed.mockClear();
+      await act(async () => {
+        offFlush.reject(new Error('canonical SQLite write failed'));
+        await settle();
+      });
+      // Memory is off (fail closed), so the badge and the header signal must say so…
+      expect(readSaved().apiKey).toBe('');
+      expect(screen.getByTestId('tier-none-active')).toBeTruthy();
+      expect(screen.queryByTestId('tier-cloud-active')).toBeNull();
+      expect(changed).toHaveBeenCalled();
+      // …while the edit owns the form and the (absent) verdict.
+      expect((screen.getByTestId('llm-openrouter-key') as HTMLInputElement).value).toBe('sk-or-edited');
+      expect(verdict()).toBe('(none)');
+    } finally {
+      window.removeEventListener(LLM_SETTINGS_CHANGED_EVENT, changed);
+    }
+  });
+
+  it('notifies the status surfaces when an un-superseded turn-off fails', async () => {
+    const flushSettings = vi.fn().mockResolvedValue(undefined);
+    renderPanel({ flushSettings, testConnection: vi.fn().mockResolvedValue(undefined) });
+    saveKey('sk-or-abc');
+    await waitFor(() => expect(verdict()).toContain('Connected'));
+    flushSettings.mockRejectedValueOnce(new Error('canonical SQLite write failed'));
+    const changed = vi.fn();
+    window.addEventListener(LLM_SETTINGS_CHANGED_EVENT, changed);
+    try {
+      fireEvent.click(screen.getByTestId('tier-none-select'));
+      await waitFor(() => expect(verdict()).toContain("Couldn't save"));
+      // The header badge reads the same in-memory snapshot, which is now off.
+      expect(changed).toHaveBeenCalled();
+    } finally {
+      window.removeEventListener(LLM_SETTINGS_CHANGED_EVENT, changed);
+    }
+  });
+
   it('turns AI off only after the off write is durable', async () => {
     const offFlush = deferred();
     const flushSettings = vi.fn().mockResolvedValue(undefined);

@@ -25,7 +25,7 @@ MARKERS=(
   MUTATION_OFF_NO_BUMP MUTATION_OFF_STORAGE_CATCH MUTATION_FAILED_PROBE_GUARD
   MUTATION_OFF_NO_REFRESH MUTATION_ONCONNECTED_UNGUARDED MUTATION_ONCONNECTED_NO_AWAIT
   MUTATION_OFF_FAILOPEN_RESTORE MUTATION_OFF_FAILED_BADGE MUTATION_SAVE_NO_RESTORE
-  MUTATION_OFF_NO_FLUSH_AWAIT
+  MUTATION_OFF_NO_FLUSH_AWAIT MUTATION_OFF_FAILED_HEADER MUTATION_OFF_LATE_FAIL_NO_REFRESH
 )
 REPORTS="$(mktemp -d)"
 
@@ -181,6 +181,14 @@ expect_red "a failed turn-off leaves the badge claiming AI is on" MUTATION_OFF_F
   's{setStatus\(describeLlmStatus\(\)\); // fail-closed badge after a failed turn-off}{/* MUTATION_OFF_FAILED_BADGE */}' \
   "shows a storage error, and fails closed (AI off in memory and on the badge), when turning AI off cannot be saved"
 
+expect_red "a failed turn-off does not signal the header" MUTATION_OFF_FAILED_HEADER \
+  's{notifyLlmSettingsChanged\(\); // fail-closed header after a failed turn-off}{/* MUTATION_OFF_FAILED_HEADER */}' \
+  "notifies the status surfaces when an un-superseded turn-off fails"
+
+expect_red "a superseded turn-off that fails late skips the refresh" MUTATION_OFF_LATE_FAIL_NO_REFRESH \
+  's{setStatus\(describeLlmStatus\(\)\); // fail-closed badge after a failed turn-off\n\s*notifyLlmSettingsChanged\(\); // fail-closed header after a failed turn-off\n}{/* MUTATION_OFF_LATE_FAIL_NO_REFRESH */\n}' \
+  "superseded turn-off that fails late still shows AI off"
+
 expect_red "a failed save leaves the unsaved config live in memory" MUTATION_SAVE_NO_RESTORE \
   's{hydrateLlmSettings\(JSON\.stringify\(beforeSave\)\); // restore after a failed save}{/* MUTATION_SAVE_NO_RESTORE */}' \
   "restores the previous in-memory settings when a save cannot be made durable"
@@ -197,4 +205,4 @@ for marker in "${MARKERS[@]}"; do
     exit 1
   fi
 done
-echo "all 24 mutations went RED; source restored and clean"
+echo "all 26 mutations went RED; source restored and clean"
