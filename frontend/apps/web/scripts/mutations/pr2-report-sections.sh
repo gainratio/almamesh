@@ -227,7 +227,7 @@ mutate 14 "$DG" \
 
 # 15. A cued numeric day ("on 12/14") is let through (final review F1).
 mutate 15 "$DG" \
-  's/return \[\.\.\.sentence\.matchAll\(CUED_DAY_MONTH\)\]/return false \&\& [...sentence.matchAll(CUED_DAY_MONTH)] \/\/ MUTATION-PR2-15\n   /' \
+  's/\[\.\.\.sentence\.matchAll\(CUED_DAY_MONTH\), /[\/* MUTATION-PR2-15 *\/ /' \
   'MUTATION-PR2-15' src/__tests__/date-guard.test.ts 'removes a en numeric day/month after a date cue: On 12/14 act. (F1)'
 
 # 16. A bare year outside the supplied months is let through (final review F2).
@@ -245,6 +245,37 @@ mutate 18 "$RS" \
   's/if \(seen\.has\(domain\)\) \{/if (false \&\& seen.has(domain)) { \/\/ MUTATION-PR2-18/' \
   'MUTATION-PR2-18' src/__tests__/report-parsers.test.ts 'rejects a repeated domain' \
   "to throw an error"
+
+# 19. Two engine months joined by a slash are read as a numeric day again (task D replay).
+mutate 19 "$DG" \
+  's/\(\?<!\\\\d\{4\}\$\{DASH\}\)/\$\{"" \/* MUTATION-PR2-19 *\/\}/' \
+  'MUTATION-PR2-19' src/__tests__/date-guard.test.ts 'keeps two supplied months joined by a slash (life_outlook replay)'
+
+# 20. A day before a capitalised 3-letter month with no year is let through (R16a).
+mutate 20 "$DG" \
+  's/(\(\?:\$\{CAPITALIZED_SHORT_NAMES\}\)\(\?!\\\\p\{L\}\)`, "u"\),)/(?!)$1 \/\/ MUTATION-PR2-20/' \
+  'MUTATION-PR2-20' src/__tests__/date-guard.test.ts 'removes a en day before a 3-letter month with no year: Act on 12 Oct. (R16a)'
+
+# 21. A day, "de", then a lowercase 3-letter month is let through (R16a).
+mutate 21 "$DG" \
+  's/(\(\?:\$\{SHORT_NAMES\}\)\(\?!\\\\p\{L\}\)`, "iu"\),)/(?!)$1 \/\/ MUTATION-PR2-21/' \
+  'MUTATION-PR2-21' src/__tests__/date-guard.test.ts 'removes a pt day before a 3-letter month with no year: Aja em 14 de out. (R16a)'
+
+# 22. A cued numeric day-month with "-" or "." is let through (R16b).
+mutate 22 "$DG" \
+  's/, \.\.\.sentence\.matchAll\(CUED_DASH_DAY_MONTH\)\]/] \/* MUTATION-PR2-22 *\//' \
+  'MUTATION-PR2-22' src/__tests__/date-guard.test.ts "removes a en cued numeric day-month with '-' or '.': Act on 12-14. (R16b)"
+
+# 23. Only the capitalised short-name month-then-day rule is disabled (R16c;
+# #14 disables THEN_DAY for the long names too).
+mutate 23 "$DG" \
+  's/(\(\?:\$\{CAPITALIZED_SHORT_NAMES\}\)\$\{THEN_DAY\}`, "u"\),)/(?!)$1 \/\/ MUTATION-PR2-23/' \
+  'MUTATION-PR2-23' src/__tests__/date-guard.test.ts 'removes a en month-then-day with no year: Act on Oct 12. (F1)'
+
+# 24. A full live preview keeps its cut-off first sentence (R16c, F3 fragment).
+mutate 24 "$SI" \
+  's/const whole = preview\.length < PROSE_PREVIEW_CHARS \? preview : preview\.replace\(LEADING_FRAGMENT, ""\);/const whole = preview; \/\/ MUTATION-PR2-24/' \
+  'MUTATION-PR2-24' src/__tests__/report-timeline.test.ts 'drops the cut-off first sentence of a full preview so a half date never shows'
 
 if [ -n "$(git status --porcelain -- "$SRC_REL")" ]; then
   echo "$SRC_REL not clean after restoring mutations" >&2
