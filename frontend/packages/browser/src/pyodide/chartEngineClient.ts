@@ -3,6 +3,7 @@
 // replies. One in-flight map keyed by request id correlates responses to
 // promises (mirrors the edge-proc EngineClient).
 
+import { errorFromWorker } from "./bootFault";
 import { verifyChartSnapshot } from "./chartSnapshot";
 import type { SiderealChart } from "./chart";
 import type { MeshEdgeContext } from "./mesh";
@@ -128,7 +129,7 @@ export class ChartEngineClient {
       bootTransferables(config),
     );
     if (!response.ok) {
-      throw new Error(response.error);
+      throw errorFromWorker(response.error, response.errorName);
     }
   }
 
@@ -143,7 +144,7 @@ export class ChartEngineClient {
       await verifyChartSnapshot(response.chart, birth);
       return response.chart;
     }
-    throw new Error(response.ok ? "unexpected response kind" : response.error);
+    throw response.ok ? new Error("unexpected response kind") : errorFromWorker(response.error, response.errorName);
   }
 
   /**
@@ -157,7 +158,7 @@ export class ChartEngineClient {
     if (response.ok && response.kind === "computePredictive") {
       return response.predictive;
     }
-    throw new Error(response.ok ? "unexpected response kind" : response.error);
+    throw response.ok ? new Error("unexpected response kind") : errorFromWorker(response.error, response.errorName);
   }
 
   /**
@@ -169,7 +170,7 @@ export class ChartEngineClient {
     if (response.ok && response.kind === "computeMoonWindow") {
       return response.moonWindow;
     }
-    throw new Error(response.ok ? "unexpected response kind" : response.error);
+    throw response.ok ? new Error("unexpected response kind") : errorFromWorker(response.error, response.errorName);
   }
 
   /**
@@ -183,7 +184,7 @@ export class ChartEngineClient {
     if (response.ok && response.kind === "computeMeshEdge") {
       return response.meshEdge;
     }
-    throw new Error(response.ok ? "unexpected response kind" : response.error);
+    throw response.ok ? new Error("unexpected response kind") : errorFromWorker(response.error, response.errorName);
   }
 
   /**
@@ -196,7 +197,7 @@ export class ChartEngineClient {
     if (response.ok && response.kind === "computeRectification") {
       return response.rectification;
     }
-    throw new Error(response.ok ? "unexpected response kind" : response.error);
+    throw response.ok ? new Error("unexpected response kind") : errorFromWorker(response.error, response.errorName);
   }
 
   public terminate(): void {

@@ -297,6 +297,24 @@ describe("ChartEngineClient", () => {
     }
   });
 
+  it("boot rejects with the Worker's error class, so a wasm trap stays recognisable", async () => {
+    const client = withReply((req) => ({
+      ok: false,
+      id: req.id,
+      error: "Out of bounds memory access",
+      errorName: "RuntimeError",
+    }));
+
+    const failure = await client.boot(bootConfig()).then(
+      () => null,
+      (error: unknown) => error,
+    );
+
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).name).toBe("RuntimeError");
+    expect((failure as Error).message).toBe("Out of bounds memory access");
+  });
+
   it("generates a chart, returning the worker's chart payload once its snapshot verifies", async () => {
     const client = withReply((req) => ({
       ok: true,

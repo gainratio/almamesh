@@ -265,6 +265,8 @@ export interface WorkerErr {
   readonly ok: false;
   readonly id: number;
   readonly error: string;
+  /** The thrown error's class (`RuntimeError` for a wasm trap), when it was an Error. */
+  readonly errorName?: string;
 }
 
 export type ChartWorkerResponse =

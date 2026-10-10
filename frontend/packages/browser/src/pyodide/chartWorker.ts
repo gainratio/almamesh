@@ -11,6 +11,7 @@
 import { generateSeedHex, publicKeyHex } from "@gainratio/avow";
 import { loadPyodide, type PyodideInterface } from "pyodide";
 
+import { workerErrorFields } from "./bootFault";
 import type { SiderealChart } from "./chart";
 import { LOAD_PACKAGES } from "./loadPackages";
 import { versionedPyodideIndexUrl } from "./pyodideDist";
@@ -562,7 +563,7 @@ async function handle(request: ChartWorkerRequest): Promise<ChartWorkerResponse>
     }
     return { ok: true, kind: "generateChart", id: request.id, chart: generateChart(request.birth) };
   } catch (error) {
-    return { ok: false, id: request.id, error: error instanceof Error ? error.message : String(error) };
+    return { ok: false, id: request.id, ...workerErrorFields(error) };
   }
 }
 

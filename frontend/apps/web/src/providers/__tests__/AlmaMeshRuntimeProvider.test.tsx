@@ -3,11 +3,14 @@ import { render, screen, waitFor, act } from '@testing-library/react';
 import { useEffect, useState } from 'react';
 
 import {
+  AlmaMeshRuntime,
   EngineOperationError,
   EngineStorageBlockedError,
   WorkerCrashError,
   type BootStage,
   type ChartEngine,
+  type ChartEnginePort,
+  type EnginePort,
   type OnStage,
   type RuntimeConfig,
 } from '@almamesh/browser';
@@ -869,5 +872,82 @@ describe('AlmaMeshRuntimeProvider — severed service-worker channel', () => {
 
     await waitFor(() => expect(screen.getByTestId('error').textContent).toBe('signature verification failed'));
     expect(recoverSeveredServiceWorkerChannel).not.toHaveBeenCalled();
+  });
+});
+
+describe('AlmaMeshRuntimeProvider — one-off wasm boot fault (real runtime, fake Workers)', () => {
+  /** A Pyodide Worker whose boot traps like WebKit's cold wasm compile did. */
+  function chartWorker(outcome: 'trap' | 'ok'): ChartEnginePort & { terminated: boolean } {
+    return {
+      terminated: false,
+      async boot() {
+        if (outcome === 'trap') {
+          const fault = new Error('Out of bounds memory access');
+          fault.name = 'RuntimeError';
+          throw fault;
+        }
+      },
+      generateChart: vi.fn(),
+      computePredictive: vi.fn(),
+      computeMoonWindow: vi.fn(),
+      computeMeshEdge: vi.fn(),
+      computeRectification: vi.fn(),
+      terminate() {
+        this.terminated = true;
+      },
+    };
+  }
+
+  function syncWorker(): EnginePort {
+    return {
+      sync: async () => ({ version: 'v', manifestHash: 'm', chunksFetched: 0, chunksReused: 1, bytesFetched: 0 }),
+      readFile: async () => new Uint8Array([1]),
+      terminate: () => {},
+    };
+  }
+
+  function runtimeWith(workers: Array<ChartEnginePort & { terminated: boolean }>) {
+    const spawned: Array<ChartEnginePort & { terminated: boolean }> = [];
+    const runtime = new AlmaMeshRuntime({
+      spawnSyncEngine: syncWorker,
+      spawnChartEngine: () => {
+        const next = workers.shift() ?? chartWorker('ok');
+        spawned.push(next);
+        return next;
+      },
+      decideBootMode: () => ({ mode: 'sequential', reason: 'test' }),
+      log: () => {},
+    });
+    return { runtime, spawned };
+  }
+
+  it('recovers from one fault without user action: engine ready, no error shown', async () => {
+    const { runtime, spawned } = runtimeWith([chartWorker('trap'), chartWorker('ok')]);
+
+    render(
+      <AlmaMeshRuntimeProvider runtime={runtime}>
+        <Probe capture={() => {}} />
+      </AlmaMeshRuntimeProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId('engine').textContent).toBe('engine-ready'));
+    expect(screen.getByTestId('error').textContent).toBe('no-error');
+    expect(spawned).toHaveLength(2);
+    expect(spawned[0].terminated).toBe(true);
+  });
+
+  it('two faults in a row surface the error that drives the recovery card', async () => {
+    const { runtime, spawned } = runtimeWith([chartWorker('trap'), chartWorker('trap')]);
+
+    render(
+      <AlmaMeshRuntimeProvider runtime={runtime}>
+        <Probe capture={() => {}} />
+      </AlmaMeshRuntimeProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId('error').textContent).toBe('Out of bounds memory access'));
+    expect(screen.getByTestId('engine').textContent).toBe('no-engine');
+    expect(spawned).toHaveLength(2);
+    expect(spawned.every((worker) => worker.terminated)).toBe(true);
   });
 });
