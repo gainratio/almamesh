@@ -16,7 +16,7 @@
  * memory snapshot and no user setting is duplicated in Web Storage.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { safeError } from '@almamesh/shared-types';
 import { flushPortablePersistence } from '@almamesh/store';
@@ -108,6 +108,10 @@ export interface AiSetupPanelProps {
   }) => Promise<OpenRouterModel[]>;
   /** Await the canonical SQLite write before reporting a saved configuration. */
   flushSettings?: () => Promise<void>;
+  /** Show the "AI off" choice. Settings: true (default). Onboarding: false. */
+  showOffChoice?: boolean;
+  /** Surface-specific copy above the choices. Settings passes none. */
+  intro?: ReactNode;
 }
 
 export function AiSetupPanel({
@@ -116,6 +120,8 @@ export function AiSetupPanel({
   fetchCredits = fetchOpenRouterCredits,
   fetchModels = fetchOpenRouterModels,
   flushSettings = flushPortablePersistence,
+  showOffChoice = true,
+  intro,
 }: AiSetupPanelProps = {}) {
   const { t } = useTranslation('settings');
   const [status, setStatus] = useState<LlmStatus>(() => describeLlmStatus());
@@ -349,37 +355,45 @@ export function AiSetupPanel({
 
   return (
     <section className="space-y-4">
-      {/* ── AI off (the default) ── */}
-      <div
-        data-testid="tier-none"
-        className={`rounded-lg border p-4 ${
-          noneActive ? 'border-accent-gold/40 bg-accent-gold/5' : 'border-ui-border bg-background-secondary'
-        }`}
-      >
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-text-primary text-sm font-medium">
-            {t('tiers.none_title')}
-            <span className="ml-2 rounded-full border border-ui-border px-2 py-0.5 text-[0.65rem] font-medium uppercase tracking-wide text-text-secondary">
-              {t('tiers.none_default_badge')}
-            </span>
-          </p>
-          {noneActive ? (
-            <Badge variant="brass" data-testid="tier-none-active">
-              {t('tiers.active_badge')}
-            </Badge>
-          ) : (
-            <button
-              type="button"
-              onClick={() => void turnAiOff()}
-              className="rounded-md border border-ui-border px-3 py-1.5 text-sm text-text-secondary transition-colors hover:text-text-primary"
-              data-testid="tier-none-select"
-            >
-              {t('tiers.none_button')}
-            </button>
-          )}
+      {intro ? (
+        <div className="space-y-2 text-sm text-text-secondary" data-testid="ai-setup-intro">
+          {intro}
         </div>
-        <p className="text-text-secondary text-xs mt-1">{t('tiers.none_body')}</p>
-      </div>
+      ) : null}
+
+      {/* ── AI off (the default). Onboarding offers "Skip for now" outside the panel instead. ── */}
+      {showOffChoice && (
+        <div
+          data-testid="tier-none"
+          className={`rounded-lg border p-4 ${
+            noneActive ? 'border-accent-gold/40 bg-accent-gold/5' : 'border-ui-border bg-background-secondary'
+          }`}
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-text-primary text-sm font-medium">
+              {t('tiers.none_title')}
+              <span className="ml-2 rounded-full border border-ui-border px-2 py-0.5 text-[0.65rem] font-medium uppercase tracking-wide text-text-secondary">
+                {t('tiers.none_default_badge')}
+              </span>
+            </p>
+            {noneActive ? (
+              <Badge variant="brass" data-testid="tier-none-active">
+                {t('tiers.active_badge')}
+              </Badge>
+            ) : (
+              <button
+                type="button"
+                onClick={() => void turnAiOff()}
+                className="rounded-md border border-ui-border px-3 py-1.5 text-sm text-text-secondary transition-colors hover:text-text-primary"
+                data-testid="tier-none-select"
+              >
+                {t('tiers.none_button')}
+              </button>
+            )}
+          </div>
+          <p className="text-text-secondary text-xs mt-1">{t('tiers.none_body')}</p>
+        </div>
+      )}
 
       {/* ── Connect AI ── */}
       <div

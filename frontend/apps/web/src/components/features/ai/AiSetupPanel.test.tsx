@@ -10,7 +10,7 @@ import {
   RECOMMENDED_CLOUD_MODEL,
   type ProviderConfig,
 } from '@almamesh/llm';
-import { AiSetupPanel } from './AiSetupPanel';
+import { AiSetupPanel, type AiSetupPanelProps } from './AiSetupPanel';
 import { notifyLlmSettingsChanged } from '../../../lib/llmSettingsEvents';
 import { hydrateSlowModelSuggestion } from '../../../lib/modelSuggestion';
 
@@ -505,5 +505,54 @@ describe('AiSetupPanel — one-time switch suggestion for glm-5.3-flash users', 
     );
     renderSettings();
     expect(screen.queryByTestId('model-switch-suggestion')).toBeNull();
+  });
+});
+
+describe('AiSetupPanel — surface props (showOffChoice, intro)', () => {
+  beforeEach(() => {
+    hydrateLlmSettings(null);
+    hydrateSlowModelSuggestion(null);
+    configureLlmSettingsPersistence(undefined);
+  });
+  afterEach(() => {
+    hydrateLlmSettings(null);
+    hydrateSlowModelSuggestion(null);
+    configureLlmSettingsPersistence(undefined);
+  });
+
+  const renderPanel = (props: Partial<AiSetupPanelProps> = {}) =>
+    render(
+      <AiSetupPanel
+        resolveConfig={resolveConfig}
+        fetchCredits={fetchCredits}
+        fetchModels={fetchModels}
+        testConnection={vi.fn()}
+        {...props}
+      />,
+    );
+
+  it('shows the AI-off choice by default, so Settings needs no props', () => {
+    renderPanel();
+    expect(screen.getByTestId('tier-none')).toBeTruthy();
+  });
+
+  it('hides the AI-off choice when showOffChoice is false', () => {
+    renderPanel({ showOffChoice: false });
+    expect(screen.queryByTestId('tier-none')).toBeNull();
+    expect(screen.getByTestId('tier-cloud')).toBeTruthy();
+    expect(screen.getByTestId('llm-openrouter-key')).toBeTruthy();
+  });
+
+  it('renders the intro above the choices', () => {
+    renderPanel({ intro: <p>Your reading is a full report.</p> });
+    const intro = screen.getByTestId('ai-setup-intro');
+    expect(intro.textContent).toBe('Your reading is a full report.');
+    const order = intro.compareDocumentPosition(screen.getByTestId('tier-cloud'));
+    expect(order & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('renders no intro wrapper when none is given', () => {
+    renderPanel();
+    expect(screen.queryByTestId('ai-setup-intro')).toBeNull();
   });
 });
