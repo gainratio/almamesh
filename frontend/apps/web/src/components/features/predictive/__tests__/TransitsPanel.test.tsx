@@ -105,7 +105,7 @@ describe('TransitsPanel', () => {
     expect(within(card).getByText('Mercury')).toBeTruthy();
     expect(within(card).getByText('Jupiter')).toBeTruthy(); // reinforcing
     expect(within(card).getByText('Mars')).toBeTruthy(); // afflicting
-    expect(within(card).getByText('-0.5')).toBeTruthy(); // net weight verbatim
+    expect(within(card).getByText('-0.50')).toBeTruthy(); // net weight, two decimals
   });
 
   it('renders the 12-month timeline chronologically with human event copy', () => {
@@ -157,6 +157,17 @@ describe('TransitsPanel', () => {
     expect(within(rows[0]!).getByText('Supportive')).toBeTruthy();
     expect(within(rows[1]!).queryByText('Neutral')).toBeNull();
     expect(within(rows[2]!).getByText('Challenging')).toBeTruthy();
+  });
+
+  it.each([
+    [0.04999999999999999, '0.05'],
+    [-0.3, '-0.30'],
+    [-0.001, '0.00'],
+  ])('shows fusion net weight %s as %s (two decimals, sign kept)', (netWeight, shown) => {
+    const ctx: TransitCtx = { ...TRANSIT_CTX, fusion: { ...TRANSIT_CTX.fusion!, net_weight: netWeight } };
+    render(<TransitsPanel transitCtx={ctx} />);
+    const value = screen.getByText('Net weight').nextElementSibling;
+    expect(value?.textContent).toBe(shown);
   });
 
   describe('in a timezone west of UTC (America/Los_Angeles)', () => {

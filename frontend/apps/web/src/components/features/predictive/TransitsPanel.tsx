@@ -175,6 +175,12 @@ function SlowHitsCard({ ctx }: { ctx: TransitCtx }): ReactElement {
   );
 }
 
+/** Two decimals, sign kept; a value that rounds to zero shows as "0.00", never "-0.00". */
+function formatNetWeight(value: number): string {
+  const fixed = value.toFixed(2);
+  return fixed === '-0.00' ? '0.00' : fixed;
+}
+
 function FusionCard({ ctx, frame }: { ctx: TransitCtx; frame: TransitsFrame }): ReactElement {
   const { t } = useTranslation('predictive');
   const { fusion } = ctx;
@@ -205,7 +211,7 @@ function FusionCard({ ctx, frame }: { ctx: TransitCtx; frame: TransitsFrame }): 
         </div>
         <div>
           <dt className="text-xs uppercase tracking-wider text-text-tertiary">{t('fusion.net_weight')}</dt>
-          <dd className="font-mono text-text-primary">{fusion.net_weight}</dd>
+          <dd className="font-mono text-text-primary">{formatNetWeight(fusion.net_weight)}</dd>
         </div>
         <div>
           <dt className="text-xs uppercase tracking-wider text-text-tertiary">{t('fusion.reinforcing')}</dt>
