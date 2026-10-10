@@ -18,6 +18,7 @@ import {
   type ProviderConfig,
   type ReportTimelineContent,
 } from '@almamesh/llm';
+import { completionUsage } from './openrouterUsage';
 import { E2E_REAL_MODEL } from './realModel';
 import {
   catalogCostUsd,
@@ -34,7 +35,9 @@ import {
  * Full report REAL check (no browser): the nine report-v2 sections against
  * live OpenRouter, three runs. Records per run: wall time (natal and timeline
  * run concurrently, as the app does), billed usage.cost and the upstream
- * provider per section, words per voice per section. Asserts: every section
+ * provider per section, words per voice per section, the date guard's removal
+ * count, and the raw reply of any section whose on-screen words differ from
+ * the words the model wrote (a dropped voice is replayable offline). Asserts: every section
  * lands; each run's CATALOG-priced cost (its tokens at the catalog price the
  * estimate uses) is inside estimateReadingCost's range; the per-section,
  * per-voice MEDIAN of words across runs is within REPORT_WORD_TARGETS +/-30 %;
@@ -76,6 +79,13 @@ interface ReportRun {
   readonly sectionMs: readonly SectionTiming[];
   readonly words: Readonly<Record<string, Voices>>;
   readonly errors: readonly string[];
+  /** Sentences the date guard removed across the four timeline sections. */
+  readonly dateGuardRemovals: number | null;
+  /**
+   * The raw reply of every section whose on-screen words differ from the
+   * words the model wrote, so a dropped voice can be replayed offline.
+   */
+  readonly lostWordReplies: Readonly<Record<string, string>>;
 }
 
 /** Wall time of one section request, from send to the full response body. */
@@ -88,6 +98,20 @@ interface SectionTiming {
 interface ReportOutput {
   natal: NatalInterpretation | null;
   timeline: ReportTimelineContent | null;
+  dateGuardRemovals: number | null;
+}
+
+/** Raw replies of the sections whose parsed words differ from the reply's words. */
+function lostWordReplies(
+  rows: readonly SectionUsageRow[],
+  words: Readonly<Record<string, Voices>>,
+  replies: Readonly<Record<string, string>>,
+): Record<string, string> {
+  const lost = rows.filter((row) => {
+    const shown = words[row.section];
+    return shown !== undefined && (shown.layman !== row.layman || shown.technical !== row.technical);
+  });
+  return Object.fromEntries(lost.map((row) => [row.section, replies[row.section] ?? '']));
 }
 
 function goldenChart(): SiderealChart {
@@ -157,6 +181,7 @@ async function runOnce(chart: SiderealChart, config: ProviderConfig, pricing: Mo
   const bodies: Record<string, unknown>[] = [];
   const t0 = Date.now();
   const errors: string[] = [];
+  const replies: Record<string, string> = {};
   const fetchImpl: typeof fetch = async (input, init) => {
     const requestBody = String(init?.body ?? '');
     bodies.push(JSON.parse(requestBody) as Record<string, unknown>);
@@ -183,15 +208,17 @@ async function runOnce(chart: SiderealChart, config: ProviderConfig, pricing: Mo
         controller.enqueue(chunk);
       },
       flush() {
-        const row = sectionUsageRow(requestBody, res.status, text + decoder.decode());
+        text += decoder.decode();
+        const row = sectionUsageRow(requestBody, res.status, text);
         if (!row) return;
         rows.push(row);
+        replies[row.section] = completionUsage(text).content;
         sectionMs.push({ section: row.section, status: res.status, ms: Date.now() - started });
       },
     });
     return new Response(res.body.pipeThrough(tap), { status: res.status, statusText: res.statusText, headers: res.headers });
   };
-  const out: ReportOutput = { natal: null, timeline: null };
+  const out: ReportOutput = { natal: null, timeline: null, dateGuardRemovals: null };
   const deadline = new AbortController();
   const timer = setTimeout(() => deadline.abort(), RUN_DEADLINE_MS);
   const signal = deadline.signal;
@@ -201,7 +228,9 @@ async function runOnce(chart: SiderealChart, config: ProviderConfig, pricing: Mo
         if (e.type === 'complete') out.natal = e.interpretation;
       }),
       drain(streamReportTimeline({ chart, asOf: AS_OF, config, fetchImpl, signal }), errors, (e) => {
-        if (e.type === 'complete') out.timeline = e.timeline;
+        if (e.type !== 'complete') return;
+        out.timeline = e.timeline;
+        out.dateGuardRemovals = e.dateGuardRemovals;
       }),
     ]);
   } catch (err) {
@@ -230,6 +259,8 @@ async function runOnce(chart: SiderealChart, config: ProviderConfig, pricing: Mo
     sectionMs,
     words,
     errors,
+    dateGuardRemovals: out.dateGuardRemovals,
+    lostWordReplies: lostWordReplies(rows, words, replies),
   };
 }
 
