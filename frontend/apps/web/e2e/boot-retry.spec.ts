@@ -8,6 +8,11 @@
  * must log one `engine.boot_retry` line, boot a fresh Worker, and the real
  * onboarding must reach a rendered chart with no recovery card ever shown and
  * an otherwise clean console.
+ *
+ * Arming it with "wrapped" throws the same real trap the way Pyodide's
+ * loadPackage reports it on WebKit: a PyodidePackageLoadError for pytz whose
+ * text carries the trap message (PR #317's macOS lane). That form must be
+ * retried the same way.
  */
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -61,44 +66,51 @@ async function typeSections(page: Page, testId: string, digits: string, trailing
   if (trailing) await page.keyboard.type(trailing, { delay: 50 });
 }
 
-test('a wasm trap on the first boot is retried once in a fresh Worker; the chart renders', async ({ page }) => {
-  const consoleLines: string[] = [];
-  const consoleErrors: string[] = [];
-  page.on('console', (message) => {
-    consoleLines.push(message.text());
-    if (message.type() === 'error') consoleErrors.push(message.text());
+const FAULTS = [
+  { label: 'a wasm trap', arm: true },
+  { label: 'a wasm trap wrapped in a Pyodide package load error', arm: 'wrapped' },
+] as const;
+
+for (const fault of FAULTS) {
+  test(`${fault.label} on the first boot is retried once in a fresh Worker; the chart renders`, async ({ page }) => {
+    const consoleLines: string[] = [];
+    const consoleErrors: string[] = [];
+    page.on('console', (message) => {
+      consoleLines.push(message.text());
+      if (message.type() === 'error') consoleErrors.push(message.text());
+    });
+    page.on('pageerror', (error) => consoleErrors.push(`pageerror: ${error.message}`));
+
+    await page.addInitScript(({ card, arm }) => {
+      (window as unknown as Record<string, unknown>).__almameshArmBootWasmFault = arm;
+      // Record the recovery card if it is EVER rendered, not only at the end.
+      const seen = (): void => {
+        if (document.querySelector(card)) (window as unknown as Record<string, unknown>).__recoveryCardSeen = true;
+      };
+      new MutationObserver(seen).observe(document, { childList: true, subtree: true });
+    }, { card: RECOVERY_CARD, arm: fault.arm });
+
+    await page.goto('/onboarding');
+    await expect.poll(() => consoleLines.filter((line) => line.includes('engine.boot_retry'))).toEqual([RETRY_LINE]);
+
+    await page.getByTestId('name-input').fill('Reference Native');
+    await page.getByTestId('next-button').click();
+    await typeSections(page, 'birth-date-input', '08081988');
+    await page.getByTestId('next-button').click();
+    await page.getByTestId('location-search-input').fill('Bengaluru');
+    await page.locator('[role="option"]').first().click();
+    await page.getByTestId('next-button').click();
+    await typeSections(page, 'birth-time-input', '0644', 'a');
+    await page.getByTestId('confidence-option-exact').click();
+    await page.getByTestId('next-button').click();
+    await page.getByTestId('skip-life-events-button').click();
+
+    await page.waitForURL('**/dashboard', { timeout: 120_000 });
+    await expect(page.getByTestId('chart-visualization').first()).toBeVisible();
+    await page.screenshot({ path: test.info().outputPath(`dashboard-after-boot-retry-${fault.arm === true ? 'trap' : 'wrapped'}.png`) });
+
+    expect(consoleLines.filter((line) => line.includes('engine.boot_retry'))).toEqual([RETRY_LINE]);
+    expect(await page.evaluate(() => (window as unknown as Record<string, unknown>).__recoveryCardSeen ?? false)).toBe(false);
+    expect(consoleErrors).toEqual([]);
   });
-  page.on('pageerror', (error) => consoleErrors.push(`pageerror: ${error.message}`));
-
-  await page.addInitScript((card) => {
-    (window as unknown as Record<string, unknown>).__almameshArmBootWasmFault = true;
-    // Record the recovery card if it is EVER rendered, not only at the end.
-    const seen = (): void => {
-      if (document.querySelector(card)) (window as unknown as Record<string, unknown>).__recoveryCardSeen = true;
-    };
-    new MutationObserver(seen).observe(document, { childList: true, subtree: true });
-  }, RECOVERY_CARD);
-
-  await page.goto('/onboarding');
-  await expect.poll(() => consoleLines.filter((line) => line.includes('engine.boot_retry'))).toEqual([RETRY_LINE]);
-
-  await page.getByTestId('name-input').fill('Reference Native');
-  await page.getByTestId('next-button').click();
-  await typeSections(page, 'birth-date-input', '08081988');
-  await page.getByTestId('next-button').click();
-  await page.getByTestId('location-search-input').fill('Bengaluru');
-  await page.locator('[role="option"]').first().click();
-  await page.getByTestId('next-button').click();
-  await typeSections(page, 'birth-time-input', '0644', 'a');
-  await page.getByTestId('confidence-option-exact').click();
-  await page.getByTestId('next-button').click();
-  await page.getByTestId('skip-life-events-button').click();
-
-  await page.waitForURL('**/dashboard', { timeout: 120_000 });
-  await expect(page.getByTestId('chart-visualization').first()).toBeVisible();
-  await page.screenshot({ path: test.info().outputPath('dashboard-after-boot-retry.png') });
-
-  expect(consoleLines.filter((line) => line.includes('engine.boot_retry'))).toEqual([RETRY_LINE]);
-  expect(await page.evaluate(() => (window as unknown as Record<string, unknown>).__recoveryCardSeen ?? false)).toBe(false);
-  expect(consoleErrors).toEqual([]);
-});
+}

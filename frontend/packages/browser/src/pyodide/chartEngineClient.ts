@@ -125,13 +125,13 @@ export class ChartEngineClient {
     onProgress?: (progress: BootProgress) => void,
   ): Promise<void> {
     const injectWasmTrap =
-      import.meta.env.VITE_EXIT_GATE_HOOKS === "1" && takeArmedBootFault();
+      import.meta.env.VITE_EXIT_GATE_HOOKS === "1" ? takeArmedBootFault() : null;
     const response = await this.#send(
       {
         kind: "boot",
         id: this.#allocId(),
         config,
-        ...(injectWasmTrap ? { injectWasmTrap: true as const } : {}),
+        ...(injectWasmTrap !== null ? { injectWasmTrap } : {}),
       },
       onProgress,
       bootTransferables(config),
