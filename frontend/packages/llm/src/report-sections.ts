@@ -5,6 +5,7 @@
 
 import type { LifeDomain, Persona, TitledPersona } from "@almamesh/shared-types";
 
+import { asLayman, asPersona, asRecord, asString, parsePersona, parseTitledPersonas } from "./persona-parse";
 import { computeQuarters, type Quarter, type QuarterKey } from "./quarters";
 import type {
   SanitizedChart,
@@ -263,4 +264,64 @@ export function reportSlice(
     case "life_outlook_2":
       return lifeOutlookSlice(chart, section);
   }
+}
+
+/** A model reply that names a quarter or a life area the app did not send. */
+export class ReportParseError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ReportParseError";
+  }
+}
+
+export function parseCurrentPeriod(json: unknown): CurrentPeriodSection {
+  const rec = asRecord(json);
+  return {
+    maha: asPersona(rec.maha),
+    antar: asPersona(rec.antar),
+    activates: parseTitledPersonas(rec.activates),
+    next_change: asPersona(rec.next_change),
+  };
+}
+
+function isSentQuarter(key: string, sent: readonly QuarterKey[]): key is QuarterKey {
+  return (sent as readonly string[]).includes(key);
+}
+
+export function parseYearAhead(json: unknown, sent: readonly QuarterKey[]): YearAheadSection {
+  const rec = asRecord(json);
+  const rows = Array.isArray(rec.quarters) ? rec.quarters.map(asRecord) : [];
+  const seen = new Set<QuarterKey>();
+  const quarters = rows.map((row): QuarterProse => {
+    const key = asString(row.key);
+    if (!isSentQuarter(key, sent) || seen.has(key)) {
+      throw new ReportParseError(`year_ahead: quarter key ${JSON.stringify(key)} was not sent (or repeated)`);
+    }
+    seen.add(key);
+    return { key, layman: asLayman(row.layman), technical: asString(row.technical) };
+  });
+  const focus = parsePersona(rec.focus);
+  return { headline: asPersona(rec.headline), quarters, ...(focus ? { focus } : {}) };
+}
+
+function isGroupDomain(domain: string, group: readonly LifeDomain[]): domain is LifeDomain {
+  return (group as readonly string[]).includes(domain);
+}
+
+export function parseLifeOutlook(json: unknown, group: readonly LifeDomain[]): LifeOutlookDomain[] {
+  const rows = asRecord(json).domains;
+  return (Array.isArray(rows) ? rows.map(asRecord) : []).map((row) => {
+    const domain = asString(row.domain);
+    if (!isGroupDomain(domain, group)) {
+      throw new ReportParseError(`life_outlook: domain ${JSON.stringify(domain)} is not in this section`);
+    }
+    const leanInto = asLayman(row.lean_into);
+    const watchFor = asLayman(row.watch_for);
+    return {
+      domain,
+      outlook: asPersona(row.outlook),
+      ...(leanInto ? { lean_into: leanInto } : {}),
+      ...(watchFor ? { watch_for: watchFor } : {}),
+    };
+  });
 }
