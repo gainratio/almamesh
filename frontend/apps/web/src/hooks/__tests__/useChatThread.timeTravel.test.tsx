@@ -2,10 +2,15 @@ import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useChartLibraryStore, useChatStore, type StoredChart } from '@almamesh/store';
 
+vi.mock('@almamesh/llm', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@almamesh/llm')>()),
+  describeLlmStatus: () => ({ configured: true }),
+}));
 vi.mock('../../lib/storeSaved', () => ({ waitForStoreSaved: vi.fn(async () => undefined) }));
 
 import i18n from '../../i18n/config';
 import { __resetMemoryForTest, __setMemoryForTest } from '../../lib/chatMemory';
+import { useTimeTravelStore } from '../../lib/timeTravel';
 import { useChatThread, type ChatStreamInput } from '../useChatThread';
 
 const PROFILE = 'profile-A';
@@ -197,5 +202,41 @@ describe('Change on a normal thread', () => {
     });
     await act(() => result.current.repin(JUNE));
     expect(useChatStore.getState().threads[result.current.threadId!]?.as_of).toBeUndefined();
+  });
+});
+
+describe('the chat sheet travels through the seam', () => {
+  beforeEach(() => useTimeTravelStore.setState({ moments: {} }));
+  const MARCH_2019 = { start: '2019-03-01', end: '2019-03-31', granularity: 'month' } as const;
+
+  it('Go in chat also sets the Dashboard moment', async () => {
+    const { result } = renderHook(() => useChatThread(PROFILE, CHART));
+    await act(() => result.current.pin(MARCH_2019));
+    expect(useTimeTravelStore.getState().moments[PROFILE]).toEqual(MARCH_2019);
+    expect(result.current.asOf).toEqual(MARCH_2019);
+  });
+
+  it('Change in chat repins the open thread and moves the Dashboard moment', async () => {
+    const { result } = renderHook(() => useChatThread(PROFILE, CHART));
+    await act(() => result.current.pin(YEAR));
+    const tid = result.current.threadId;
+    await act(() => result.current.repin(MARCH_2019));
+    expect(result.current.threadId).toBe(tid);
+    expect(useTimeTravelStore.getState().moments[PROFILE]).toEqual(MARCH_2019);
+  });
+
+  it('Back to today in chat clears the Dashboard moment', async () => {
+    const { result } = renderHook(() => useChatThread(PROFILE, CHART));
+    await act(() => result.current.pin(MARCH_2019));
+    await act(() => result.current.backToToday());
+    expect(useTimeTravelStore.getState().moments[PROFILE]).toBeUndefined();
+    expect(result.current.asOf).toBeUndefined();
+  });
+
+  it('travelFromTool in an unpinned thread opens a pinned thread right away', async () => {
+    const { result } = renderHook(() => useChatThread(PROFILE, CHART));
+    await act(() => result.current.travelFromTool(MARCH_2019));
+    expect(result.current.asOf).toEqual(MARCH_2019);
+    expect(useTimeTravelStore.getState().moments[PROFILE]).toEqual(MARCH_2019);
   });
 });
