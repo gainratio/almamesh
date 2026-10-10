@@ -24,7 +24,8 @@ MARKERS=(
   MUTATION_OFF_RESOLVE_GUARD MUTATION_OFF_REJECT_GUARD MUTATION_REPLACE_NO_BUMP
   MUTATION_OFF_NO_BUMP MUTATION_OFF_STORAGE_CATCH MUTATION_FAILED_PROBE_GUARD
   MUTATION_OFF_NO_REFRESH MUTATION_ONCONNECTED_UNGUARDED MUTATION_ONCONNECTED_NO_AWAIT
-  MUTATION_OFF_NO_RESTORE MUTATION_SAVE_NO_RESTORE MUTATION_OFF_NO_FLUSH_AWAIT
+  MUTATION_OFF_FAILOPEN_RESTORE MUTATION_OFF_FAILED_BADGE MUTATION_SAVE_NO_RESTORE
+  MUTATION_OFF_NO_FLUSH_AWAIT
 )
 REPORTS="$(mktemp -d)"
 
@@ -154,7 +155,7 @@ expect_red "turnAiOff no longer bumps probeGen (M9)" MUTATION_OFF_NO_BUMP \
 
 expect_red "turnAiOff storage catch swallows the failure" MUTATION_OFF_STORAGE_CATCH \
   's{setConn\(\{ phase: \x27error\x27, source: \x27guided\x27, kind: \x27storage\x27 \}\);}{/* MUTATION_OFF_STORAGE_CATCH */}' \
-  "shows a storage error, and keeps AI on, when turning AI off cannot be saved"
+  "shows a storage error, and fails closed (AI off in memory and on the badge), when turning AI off cannot be saved"
 
 expect_red "drop the supersede guard on a FAILED probe" MUTATION_FAILED_PROBE_GUARD \
   's{(current verdict; ignore its result\.\n\s*)if \(gen !== probeGen\.current\) \{}{${1}if (false /* MUTATION_FAILED_PROBE_GUARD */) \{}' \
@@ -172,9 +173,13 @@ expect_red "an async onConnected is not awaited" MUTATION_ONCONNECTED_NO_AWAIT \
   's{await onConnected\?\.}{/* MUTATION_ONCONNECTED_NO_AWAIT */ onConnected?.}' \
   "keeps Connected, logs, and raises no unhandled rejection, when an async onConnected rejects"
 
-expect_red "a failed turn-off leaves memory saying off" MUTATION_OFF_NO_RESTORE \
-  's{hydrateLlmSettings\(JSON\.stringify\(beforeOff\)\); // restore after a failed turn-off}{/* MUTATION_OFF_NO_RESTORE */}' \
-  "shows a storage error, and keeps AI on, when turning AI off cannot be saved"
+expect_red "a failed turn-off restores the old key (fails OPEN)" MUTATION_OFF_FAILOPEN_RESTORE \
+  's{(const offGen = \(probeGen\.current \+= 1\);)}{$1 const beforeOffM = readLlmSettings();}; s{(setStatus\(describeLlmStatus\(\)\); // fail-closed badge after a failed turn-off)}{hydrateLlmSettings(JSON.stringify(beforeOffM)); /* MUTATION_OFF_FAILOPEN_RESTORE */ $1}' \
+  "shows a storage error, and fails closed (AI off in memory and on the badge), when turning AI off cannot be saved"
+
+expect_red "a failed turn-off leaves the badge claiming AI is on" MUTATION_OFF_FAILED_BADGE \
+  's{setStatus\(describeLlmStatus\(\)\); // fail-closed badge after a failed turn-off}{/* MUTATION_OFF_FAILED_BADGE */}' \
+  "shows a storage error, and fails closed (AI off in memory and on the badge), when turning AI off cannot be saved"
 
 expect_red "a failed save leaves the unsaved config live in memory" MUTATION_SAVE_NO_RESTORE \
   's{hydrateLlmSettings\(JSON\.stringify\(beforeSave\)\); // restore after a failed save}{/* MUTATION_SAVE_NO_RESTORE */}' \
@@ -192,4 +197,4 @@ for marker in "${MARKERS[@]}"; do
     exit 1
   fi
 done
-echo "all 23 mutations went RED; source restored and clean"
+echo "all 24 mutations went RED; source restored and clean"

@@ -275,7 +275,6 @@ export function AiSetupPanel({
   const turnAiOff = async () => {
     const offGen = (probeGen.current += 1);
     probeAbort.current?.abort();
-    const beforeOff = readLlmSettings();
     try {
       writeLlmSettings({
         engine: '',
@@ -295,9 +294,11 @@ export function AiSetupPanel({
       if (offGen !== probeGen.current) {
         return;
       }
-      // writeLlmSettings already flipped the in-memory snapshot; put it back so
-      // memory agrees with the badge (and with the durable row) until a retry.
-      hydrateLlmSettings(JSON.stringify(beforeOff)); // restore after a failed turn-off
+      // Fail CLOSED. writeLlmSettings already set the in-memory snapshot to off, and
+      // it stays off: the flush can reject because ANOTHER store failed while this
+      // row committed, so restoring the old key would keep cloud calls going. The
+      // badge follows memory, and the storage error tells the user it may not persist.
+      setStatus(describeLlmStatus()); // fail-closed badge after a failed turn-off
       setConn({ phase: 'error', source: 'guided', kind: 'storage' });
       return;
     }

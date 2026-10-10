@@ -885,7 +885,11 @@ describe('AiSetupPanel — onConnected', () => {
     expect(onConnected).not.toHaveBeenCalled();
   });
 
-  it('shows a storage error, and keeps AI on, when turning AI off cannot be saved', async () => {
+  // CONTRACT REVERSED (round 4): a failed turn-off used to restore the previous
+  // in-memory settings (AI on). flushPortablePersistence can reject because ANOTHER
+  // store failed while the off row committed, so restoring fails OPEN. The turn-off
+  // now fails CLOSED: memory and the badge stay off, and the storage error shows.
+  it('shows a storage error, and fails closed (AI off in memory and on the badge), when turning AI off cannot be saved', async () => {
     const flushSettings = vi.fn().mockResolvedValue(undefined);
     renderPanel({ flushSettings, testConnection: vi.fn().mockResolvedValue(undefined) });
     saveKey('sk-or-abc');
@@ -893,11 +897,12 @@ describe('AiSetupPanel — onConnected', () => {
     flushSettings.mockRejectedValueOnce(new Error('canonical SQLite write failed'));
     fireEvent.click(screen.getByTestId('tier-none-select'));
     await waitFor(() => expect(verdict()).toContain("Couldn't save"));
-    expect(screen.getByTestId('tier-cloud-active')).toBeTruthy();
-    expect(screen.queryByTestId('tier-none-active')).toBeNull();
-    // The in-memory snapshot agrees with the badge and the durable row: still on.
-    expect(readSaved().apiKey).toBe('sk-or-abc');
-    expect(readSaved().privacyMode).toBe('cloud_premium');
+    // The privacy fence wins: no key, local_only, for the rest of the session.
+    expect(readSaved().apiKey).toBe('');
+    expect(readSaved().privacyMode).toBe('local_only');
+    // And the badge is honest about it.
+    expect(screen.getByTestId('tier-none-active')).toBeTruthy();
+    expect(screen.queryByTestId('tier-cloud-active')).toBeNull();
   });
 
   it('turns AI off only after the off write is durable', async () => {
