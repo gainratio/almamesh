@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 
-import { expect, type Page } from '@playwright/test';
+import { expect, type Locator, type Page } from '@playwright/test';
 
 import { DELHI_BIRTH, DELHI_SEED, LLM_SETTINGS_KEY, bootEngine, seedChart, waitForEngineReady } from './interpretation.helpers';
 import { gotoSettled } from './portableInvariants.helpers';
@@ -1076,6 +1076,24 @@ test.describe('as shipped: service worker on, AI off, nothing stubbed', () => {
 const MARCH_2019_MAHA = 'Rahu';
 const MARCH_2019_ANTAR = 'Rahu';
 const DASHBOARD_BUTTON = 'dashboard-time-travel-button';
+/**
+ * Slow planets for March 2019 (sidereal, Lahiri), re-derived from the engine CLI on
+ * 2026-10-10 for 1 and 31 March 2019. Saturn was in Sagittarius from January 2017
+ * to January 2020 and Jupiter left Libra in October 2018, so a table computed for
+ * today (Saturn in Pisces, Jupiter in Cancer) or a year either side fails one of them.
+ */
+const MARCH_2019_SIGNS = { Saturn: 'Sagittarius', Jupiter: 'Scorpio' } as const;
+
+/** The sign cell of one graha's row in the moment card's transits table. */
+function momentSignCell(page: Page, graha: string): Locator {
+  return page
+    .getByTestId('time-travel-moment-transits')
+    .getByTestId('gochara-table')
+    .getByRole('row')
+    .filter({ has: page.getByRole('cell', { name: graha, exact: true }) })
+    .getByRole('cell')
+    .nth(1);
+}
 
 /** Open the Dashboard sheet, pick a `YYYY-MM` month and go; the sheet closes. */
 async function pickMonth(page: Page, month: string): Promise<void> {
@@ -1129,6 +1147,9 @@ test.describe('Dashboard time travel', () => {
     await expect(page.getByTestId('time-travel-moment-maha')).toHaveText(MARCH_2019_MAHA);
     await expect(page.getByTestId('time-travel-moment-antar')).toHaveText(MARCH_2019_ANTAR);
     await expect(page.getByTestId('time-travel-moment-transits')).toBeVisible({ timeout: 180_000 });
+    for (const [graha, sign] of Object.entries(MARCH_2019_SIGNS)) {
+      await expect(momentSignCell(page, graha), `${graha} in March 2019`).toHaveText(sign);
+    }
     await expect(page.getByTestId('dashboard-today-label-life-atlas')).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath('dashboard-march-2019-desktop.png'), fullPage: true });
     await page.getByTestId('dashboard-time-travel-change').click();
@@ -1163,6 +1184,25 @@ test.describe('Dashboard time travel', () => {
       (await predictiveRequestKeys(page)).slice(keysBefore.length),
       'no second Life Atlas compute after Back to today',
     ).toEqual([]);
+    expect(consoleErrors, 'the journey must keep a clean console').toEqual([]);
+  });
+
+  test('[contract/real] a reload returns the Dashboard to today: the moment is never persisted', async ({ page }) => {
+    const consoleErrors = captureConsole(page);
+    await pinFullTier(page);
+    await bootEngine(page);
+    await seedChart(page);
+    await openDashboard(page);
+    await pickMonth(page, '2019-03');
+    await expect(page.getByTestId('dashboard-time-travel-banner')).toBeVisible();
+    await expect(page.getByTestId('time-travel-moment-card')).toBeVisible();
+    await page.reload();
+    // Settled: the chart and profile are back, so a persisted moment would render now.
+    await expect(page.getByTestId(DASHBOARD_BUTTON)).toBeEnabled({ timeout: 180_000 });
+    await expect(page.getByTestId('life-atlas')).toBeVisible();
+    await expect(page.getByTestId('dashboard-time-travel-banner'), 'spec ruling 1: a reload returns to today').toHaveCount(0);
+    await expect(page.getByTestId('time-travel-moment-card')).toHaveCount(0);
+    await expect(page.getByTestId('dashboard-today-label-life-atlas')).toHaveCount(0);
     expect(consoleErrors, 'the journey must keep a clean console').toEqual([]);
   });
 
