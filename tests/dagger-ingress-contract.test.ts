@@ -91,6 +91,58 @@ const NATIVE_MACOS_LANES: Readonly<Record<string, string>> = {
     "Time travel and export/import on desktop Safari and an iPhone profile: macOS WebKit has the OPFS the engine needs",
 }
 const MACOS_LANE_SCRIPT = "frontend/apps/web/scripts/webkit-macos-lane.sh"
+/**
+ * The only actions the lane may use, in order: check out, install Bun and uv,
+ * and upload the lane's evidence directory (traces, videos, WebKit logs, crash
+ * reports; scripts/webkit-macos-lane.sh) even when the lane fails.
+ */
+const UPLOAD_ARTIFACT = "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"
+const MACOS_LANE_ACTIONS = [
+  checkout,
+  "oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6",
+  "astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9",
+  UPLOAD_ARTIFACT,
+]
+const MACOS_LANE_EVIDENCE = "frontend/apps/web/webkit-lane-artifacts"
+const UPLOAD_INPUTS = new Set(["name", "path", "retention-days", "if-no-files-found", "include-hidden-files"])
+const LANE_RUN = "bash scripts/webkit-macos-lane.sh"
+/**
+ * The content check on what the lane is about to upload
+ * (frontend/apps/web/scripts/artifactLeakScan.mjs): every non-public
+ * environment value and the contents of ~/.gitconfig and ~/.netrc. It runs
+ * after the lane, pass or fail, and the upload runs only if it passed; on a
+ * match it has already deleted the directory.
+ */
+const LEAK_SCAN_RUN = "node scripts/artifactLeakScan.mjs webkit-lane-artifacts"
+const LEAK_SCAN_ID = "leak-scan"
+const UPLOAD_IF = `always() && steps.${LEAK_SCAN_ID}.outcome == 'success'`
+
+function leakScanViolations(jobSteps: Array<Record<string, unknown>>): string[] {
+  const scans = jobSteps.filter((step) => String(step.run ?? "").trim() === LEAK_SCAN_RUN)
+  if (scans.length !== 1) return ["leak-scan-count"]
+  const scan = scans[0] as Record<string, unknown>
+  const at = jobSteps.indexOf(scan)
+  const violations: string[] = []
+  if (scan.id !== LEAK_SCAN_ID) violations.push("leak-scan-id")
+  if (scan.if !== "always()") violations.push("leak-scan-not-always")
+  if ("continue-on-error" in scan) violations.push("leak-scan-continue-on-error")
+  if (at < jobSteps.findIndex((step) => String(step.run ?? "").trim() === LANE_RUN)) violations.push("leak-scan-before-lane")
+  if (jobSteps[at + 1]?.uses !== UPLOAD_ARTIFACT) violations.push("leak-scan-not-just-before-upload")
+  return violations
+}
+
+function evidenceUploadViolations(jobSteps: Array<Record<string, unknown>>): string[] {
+  const uploads = jobSteps.filter((step) => step.uses === UPLOAD_ARTIFACT)
+  if (uploads.length !== 1) return ["evidence-upload-count"]
+  const upload = uploads[0] as Record<string, unknown>
+  const inputs = (upload.with ?? {}) as Record<string, unknown>
+  const violations: string[] = [...leakScanViolations(jobSteps)]
+  if (upload.if !== UPLOAD_IF) violations.push("evidence-upload-not-gated-on-leak-scan")
+  if (inputs.path !== MACOS_LANE_EVIDENCE) violations.push("evidence-upload-path")
+  if (Object.keys(inputs).some((key) => !UPLOAD_INPUTS.has(key))) violations.push("evidence-upload-inputs")
+  if (jobSteps.at(-1) !== upload) violations.push("evidence-upload-not-last")
+  return violations
+}
 const PINNED_ACTION = /^[\w.-]+\/[\w.-]+@[0-9a-f]{40}$/
 
 function withJob(
@@ -112,6 +164,89 @@ function withCheckout(
   }))
 }
 
+/**
+ * A cheap tripwire, not the guard. Every script line that mentions ARTIFACTS
+ * must be one of these exact lines, so an obvious new write into the uploaded
+ * directory shows up in review. Shell cannot be guarded by regex: here-docs,
+ * `exec >>`, `eval`, a subshell `cd`, line continuations and writes from the
+ * Playwright specs (testInfo.outputPath) all get past it. The guard is the
+ * content scan that runs before the upload (LEAK_SCAN_RUN,
+ * scripts/artifactLeakScan.mjs).
+ */
+const LANE_ARTIFACT_LINES: readonly string[] = [
+  'ARTIFACTS="${WEBKIT_LANE_ARTIFACTS:-webkit-lane-artifacts}"',
+  'rm -rf "${ARTIFACTS}"',
+  'mkdir -p "${ARTIFACTS}/crash-reports"',
+  'touch "${ARTIFACTS}/.lane-start"',
+  '{ sw_vers; sysctl hw.memsize hw.ncpu hw.model; } > "${ARTIFACTS}/machine.txt" 2>&1 || true',
+  'done ) > "${ARTIFACTS}/system-memory.log" 2>&1 &',
+  'find "${dir}" -newer "${ARTIFACTS}/.lane-start" -type f 2>/dev/null | while read -r report; do',
+  'cp "${report}" "${ARTIFACTS}/crash-reports/" || true',
+  '> "${ARTIFACTS}/unified-log.txt" 2>&1 || true',
+  'echo "unified log: $(wc -l < "${ARTIFACTS}/unified-log.txt") lines about WebContent, memory kills and jetsam"',
+  `grep -iE 'memorystatus.*kill|exceed|crash|terminat' "\${ARTIFACTS}/unified-log.txt" | grep -v 'coalition roles' | head -40 || true`,
+  'TIME_TRAVEL_E2E_BASE_URL="${BASE_URL}" bun run test:e2e:time-travel --project=webkit --project=iphone-webkit --retries=0 --output="${ARTIFACTS}/time-travel" || status=1',
+  'PORTABLE_INVARIANTS_E2E_BASE_URL="${BASE_URL}" bun run test:e2e:portable-invariants --project=webkit --project=iphone-webkit --retries=0 --output="${ARTIFACTS}/portable-invariants" || status=1',
+  'BOOT_RETRY_E2E_BASE_URL="${BASE_URL}" bun run test:e2e:boot-retry --project=webkit --retries=0 --output="${ARTIFACTS}/boot-retry" || status=1',
+  `grep -rh "page crashed" "\${ARTIFACTS}" --include='*-browser.log' || true`,
+]
+
+/** Ways to read the environment or another process's, banned anywhere in the script. */
+const LANE_ENV_READS: ReadonlyArray<readonly [string, RegExp]> = [
+  ["env-dump", /(^|[\s;&|({`]|\$\()(env|printenv)(\s|$|[>|;)])/],
+  ["set-dump", /(^|[;&|({]|\$\()\s*set\s*($|[>|;)])/],
+  ["declare", /\b(declare|typeset)\b/],
+  ["export-p", /\bexport\s+-\w*p/],
+  ["compgen", /\bcompgen\b/],
+  ["proc", /\/proc\//],
+  ["ps-env", /\bps\s+(-?\w*e\w*)(\s|$)/],
+  ["indirect", /\$\{!/],
+  ["runner-env", /\$\{?(GITHUB|ACTIONS|RUNNER)_/],
+]
+
+function laneScriptViolations(script: string): string[] {
+  const violations: string[] = []
+  const pinned = new Set(LANE_ARTIFACT_LINES)
+  const lines = script.split("\n").slice(1).map((line) => line.trim()).filter((line) => line !== "" && !line.startsWith("#"))
+  for (const line of lines) {
+    for (const [name, pattern] of LANE_ENV_READS) if (pattern.test(line)) violations.push(`${name}: ${line}`)
+    if (!line.includes("ARTIFACTS")) continue
+    if (!pinned.has(line)) violations.push(`unpinned-artifacts-line: ${line}`)
+    if (/^(?!ARTIFACTS=)\w+=\S*ARTIFACTS/.test(line) || /[;&|]\s*\w+=\S*ARTIFACTS/.test(line)) violations.push(`artifacts-alias: ${line}`)
+    if (/\b(cd|pushd|mv|rsync|ln|tee|install)\b/.test(line)) violations.push(`artifacts-move: ${line}`)
+    const copy = /\bcp\b(.*?)\s+"?\$\{?ARTIFACTS/.exec(line)
+    if (copy !== null && copy[1]?.trim() !== '"${report}"') violations.push(`artifacts-copy-source: ${line}`)
+  }
+  return violations
+}
+
+function withUpload(
+  parsed: Record<string, unknown>,
+  mutate: (step: Record<string, unknown>) => Record<string, unknown> | null,
+): Record<string, unknown> {
+  return withJob(parsed, (job) => ({
+    ...job,
+    steps: (job.steps as Array<Record<string, unknown>>).flatMap((step) => {
+      if (step.uses !== UPLOAD_ARTIFACT) return [step]
+      const mutated = mutate(step)
+      return mutated === null ? [] : [mutated]
+    }),
+  }))
+}
+
+function withSteps(
+  parsed: Record<string, unknown>,
+  mutate: (steps: Array<Record<string, unknown>>) => Array<Record<string, unknown>>,
+): Record<string, unknown> {
+  return withJob(parsed, (job) => ({ ...job, steps: mutate(job.steps as Array<Record<string, unknown>>) }))
+}
+
+function moveLeakScan(steps: Array<Record<string, unknown>>, to: number): Array<Record<string, unknown>> {
+  const scan = steps.find((step) => step.id === "leak-scan")
+  const rest = steps.filter((step) => step !== scan)
+  return scan === undefined ? rest : [...rest.slice(0, to), scan, ...rest.slice(to)]
+}
+
 function macosLaneViolations(parsed: Record<string, unknown>): string[] {
   const violations: string[] = []
   const jobs = Object.values(parsed.jobs as Record<string, Record<string, unknown>>)
@@ -123,8 +258,11 @@ function macosLaneViolations(parsed: Record<string, unknown>): string[] {
     if ("permissions" in job) violations.push("job-permissions")
     const jobSteps = job.steps as Array<Record<string, unknown>>
     if (jobSteps.some((step) => "uses" in step && !PINNED_ACTION.test(String(step.uses)))) violations.push("unpinned-action")
+    const actions = jobSteps.filter((step) => "uses" in step).map((step) => String(step.uses))
+    if (JSON.stringify(actions) !== JSON.stringify(MACOS_LANE_ACTIONS)) violations.push("actions")
+    violations.push(...evidenceUploadViolations(jobSteps))
     const runs = jobSteps.filter((step) => "run" in step).map((step) => String(step.run).trim())
-    if (JSON.stringify(runs) !== JSON.stringify(["bun install --frozen-lockfile", "bash scripts/webkit-macos-lane.sh"])) {
+    if (JSON.stringify(runs) !== JSON.stringify(["bun install --frozen-lockfile", LANE_RUN, LEAK_SCAN_RUN])) {
       violations.push("run-steps")
     }
   }
@@ -289,8 +427,63 @@ describe("canonical GitHub ingress contract", () => {
     ["secrets passed to a function", (w: Record<string, unknown>) => ({ ...w, env: { K: "${{ format('{0}', secrets) }}" } })],
     ["persisted checkout credentials", (w: Record<string, unknown>) => withCheckout(w, (inputs) => ({ ...inputs, "persist-credentials": true }))],
     ["a checkout without persist-credentials", (w: Record<string, unknown>) => withCheckout(w, ({ "persist-credentials": _dropped, ...inputs }) => inputs)],
+    ["an unlisted SHA-pinned action", (w: Record<string, unknown>) => withJob(w, (job) => ({ ...job, steps: [...(job.steps as unknown[]), { uses: `someone/exfiltrate@${"a".repeat(40)}` }] }))],
+    ["no evidence upload", (w: Record<string, unknown>) => withUpload(w, () => null)],
+    ["an evidence upload of the home directory", (w: Record<string, unknown>) => withUpload(w, (step) => ({ ...step, with: { ...(step.with as object), path: "~" } }))],
+    ["an evidence upload of the whole checkout", (w: Record<string, unknown>) => withUpload(w, (step) => ({ ...step, with: { ...(step.with as object), path: "." } }))],
+    ["an evidence upload only on success", (w: Record<string, unknown>) => withUpload(w, (step) => ({ ...step, if: "success()" }))],
+    ["an evidence upload with extra inputs", (w: Record<string, unknown>) => withUpload(w, (step) => ({ ...step, with: { ...(step.with as object), overwrite: true } }))],
+    ["no leak scan", (w: Record<string, unknown>) => withSteps(w, (steps) => steps.filter((step) => step.id !== "leak-scan"))],
+    ["a leak scan before the tests", (w: Record<string, unknown>) => withSteps(w, (steps) => moveLeakScan(steps, 3))],
+    ["a leak scan after the upload", (w: Record<string, unknown>) => withSteps(w, (steps) => moveLeakScan(steps, steps.length))],
+    ["a leak scan that runs only on success", (w: Record<string, unknown>) => withSteps(w, (steps) => steps.map((step) => (step.id === "leak-scan" ? { ...step, if: "success()" } : step)))],
+    ["a leak scan allowed to fail", (w: Record<string, unknown>) => withSteps(w, (steps) => steps.map((step) => (step.id === "leak-scan" ? { ...step, "continue-on-error": true } : step)))],
+    ["a leak scan of another directory", (w: Record<string, unknown>) => withSteps(w, (steps) => steps.map((step) => (step.id === "leak-scan" ? { ...step, run: "node scripts/artifactLeakScan.mjs /tmp/empty" } : step)))],
+    ["an upload that does not wait for the leak scan", (w: Record<string, unknown>) => withUpload(w, (step) => ({ ...step, if: "always()" }))],
+    ["an upload gated on a different step", (w: Record<string, unknown>) => withUpload(w, (step) => ({ ...step, if: "always() && steps.other.outcome == 'success'" }))],
   ])("the macOS lane contract rejects %s", (_name, mutate) => {
     expect(macosLaneViolations(mutate(workflow("webkit-macos.yml")))).not.toEqual([])
+  })
+
+  test("the macOS lane script writes only allowlisted evidence and never the runner's environment", () => {
+    expect(laneScriptViolations(readFileSync(resolve(root, MACOS_LANE_SCRIPT), "utf8"))).toEqual([])
+  })
+
+  test.each([
+    ["env", 'env > "${ARTIFACTS}/env.txt"'],
+    ["printenv", 'printenv >> "${ARTIFACTS}/machine.txt"'],
+    ["a bare set", 'set > "${ARTIFACTS}/machine.txt"'],
+    ["set piped", "set | grep TOKEN"],
+    ["a GITHUB_ variable", 'echo "${GITHUB_TOKEN}" > "${ARTIFACTS}/machine.txt"'],
+    ["an ACTIONS_ variable", 'echo "$ACTIONS_RUNTIME_TOKEN" >> "${ARTIFACTS}/unified-log.txt"'],
+    ["a write to an unlisted file", 'date > "${ARTIFACTS}/notes.txt"'],
+    ["a tee to an unlisted file", 'date | tee "${ARTIFACTS}/notes.txt"'],
+    ["a copy to an unlisted place", 'cp ~/.netrc "${ARTIFACTS}/"'],
+    ["$(env)", 'echo "$(env)" > "${ARTIFACTS}/machine.txt"'],
+    ["declare -p", 'declare -p > "${ARTIFACTS}/machine.txt"'],
+    ["export -p", 'export -p >> "${ARTIFACTS}/machine.txt"'],
+    ["typeset -p", "typeset -p | grep TOKEN"],
+    ["/proc/self/environ", 'cat /proc/self/environ > "${ARTIFACTS}/machine.txt"'],
+    ["ps with environment", 'ps eww -A >> "${ARTIFACTS}/machine.txt"'],
+    ["ps -e", "ps -eww >> /tmp/x"],
+    ["cp ~/.gitconfig into crash-reports", 'cp ~/.gitconfig "${ARTIFACTS}/crash-reports/"'],
+    ["cp -R $HOME into crash-reports", 'cp -R "$HOME"/* "${ARTIFACTS}/crash-reports/"'],
+    ["an alias then declare", 'A="${ARTIFACTS}"; declare -p > "$A/x.txt"'],
+    ["an alias then date", 'A="${ARTIFACTS}"; date > "$A/notes.txt"'],
+    ["unquoted ${ARTIFACTS}", "date > ${ARTIFACTS}/notes.txt"],
+    ["$ARTIFACTS without braces", 'date > "$ARTIFACTS/notes.txt"'],
+    ["an indirect ${!v}", 'v=GITHUB_TOKEN; echo "${!v}" > "${ARTIFACTS}/machine.txt"'],
+    ["an indirect ${!v} away from ARTIFACTS", 'v=HOME; echo "${!v}"'],
+    ["compgen -e", 'for k in $(compgen -e); do echo "$k=${!k}"; done >> "${ARTIFACTS}/machine.txt"'],
+    ["mv into ARTIFACTS", 'mv /tmp/x "${ARTIFACTS}/x"'],
+    ["rsync into ARTIFACTS", 'rsync -a "$HOME/.ssh" "${ARTIFACTS}/"'],
+    ["ln into ARTIFACTS", 'ln -s "$HOME/.ssh" "${ARTIFACTS}/ssh"'],
+    ["install into ARTIFACTS", 'install -m 644 ~/.gitconfig "${ARTIFACTS}/g"'],
+    ["cd into ARTIFACTS", 'cd "${ARTIFACTS}" && cp ~/.gitconfig .'],
+    ["a pinned line with a second command", 'touch "${ARTIFACTS}/.lane-start"; env > "${ARTIFACTS}/machine.txt"'],
+  ])("the macOS lane script contract rejects %s", (_name, line) => {
+    const script = readFileSync(resolve(root, MACOS_LANE_SCRIPT), "utf8")
+    expect(laneScriptViolations(`${script}\n${line}\n`)).not.toEqual([])
   })
 
   test("the macOS lane runs time travel and export/import on desktop Safari and an iPhone", () => {

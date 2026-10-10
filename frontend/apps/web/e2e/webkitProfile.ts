@@ -4,6 +4,8 @@ import { join } from 'node:path';
 
 import { test as base, webkit, type Page } from '@playwright/test';
 
+import { startWebKitDiagnostics } from './webkitDiagnostics';
+
 /**
  * Empty this origin's OPFS, IndexedDB, Cache Storage and web storage, and
  * unregister its service workers (they live in the same shared store, so an
@@ -59,14 +61,18 @@ export const test = base.extend({
       locale,
       timezoneId,
       serviceWorkers,
+      video,
     },
     provide,
+    testInfo,
   ) => {
     if (browserName !== 'webkit') {
       await provide(context);
       return;
     }
     const profile = await mkdtemp(join(tmpdir(), 'almamesh-webkit-profile-'));
+    const diagnostics = startWebKitDiagnostics(testInfo);
+    const videoMode = typeof video === 'string' ? video : video.mode;
     const persistent = await webkit.launchPersistentContext(profile, {
       ...contextOptions,
       baseURL,
@@ -79,13 +85,19 @@ export const test = base.extend({
       timezoneId,
       serviceWorkers,
       headless: true,
+      logger: diagnostics.logger,
+      recordVideo: videoMode === 'off' ? undefined : { dir: testInfo.outputPath('video') },
     });
+    diagnostics.watch(persistent);
     try {
       await wipeOrigin(persistent.pages()[0] ?? (await persistent.newPage()));
       await provide(persistent);
     } finally {
       await persistent.close();
+      await diagnostics.finish();
       await rm(profile, { recursive: true, force: true });
+      const passed = testInfo.status === testInfo.expectedStatus;
+      if (videoMode === 'retain-on-failure' && passed) await rm(testInfo.outputPath('video'), { recursive: true, force: true });
     }
   },
   page: async ({ context }, provide) => {
