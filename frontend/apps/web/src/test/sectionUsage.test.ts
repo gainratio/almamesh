@@ -1,7 +1,17 @@
 import type { NatalInterpretation, ReportTimelineContent } from '@almamesh/llm';
 import { describe, expect, it } from 'vitest';
 
-import { countWords, reportSectionWords, sectionOf, sectionUsageRow, wordsPerVoice } from '../../e2e/sectionUsage';
+import {
+  catalogCostUsd,
+  countWords,
+  medianVoices,
+  reasoningCapOverruns,
+  reportSectionWords,
+  sectionOf,
+  sectionUsageRow,
+  type SectionUsageRow,
+  wordsPerVoice,
+} from '../../e2e/sectionUsage';
 
 describe('sectionOf', () => {
   it('reads the SECTION marker the structured generator embeds', () => {
@@ -80,5 +90,54 @@ describe('reportSectionWords', () => {
     expect(reportSectionWords('year_ahead', natal, timeline)).toEqual({ layman: 3, technical: 2 });
     expect(reportSectionWords('life_outlook_1', natal, timeline)).toEqual({ layman: 2, technical: 1 });
     expect(reportSectionWords('life_outlook_2', natal, timeline)).toEqual({ layman: 1, technical: 2 });
+  });
+});
+
+function usageRow(overrides: Partial<SectionUsageRow>): SectionUsageRow {
+  return {
+    section: 'core', status: 200, layman: 0, technical: 0, costUsd: 0,
+    promptTokens: 0, completionTokens: 0, reasoningTokens: 0, provider: 'Baidu', ...overrides,
+  };
+}
+
+describe('catalogCostUsd', () => {
+  it('prices every response at the catalog rate: prompt x prompt price + completion x completion price', () => {
+    const pricing = { promptUsdPerToken: 0.000001, completionUsdPerToken: 0.000004 };
+    const rows = [
+      usageRow({ promptTokens: 1000, completionTokens: 500, reasoningTokens: 300, costUsd: 9 }),
+      usageRow({ promptTokens: 2000, completionTokens: 250 }),
+    ];
+    // Reasoning is inside completion_tokens on OpenRouter, so it is not added again;
+    // the billed costUsd plays no part.
+    expect(catalogCostUsd(rows, pricing)).toBeCloseTo(0.001 + 0.002 + 0.002 + 0.001, 12);
+  });
+
+  it('is zero for no responses', () => {
+    expect(catalogCostUsd([], { promptUsdPerToken: 1, completionUsdPerToken: 1 })).toBe(0);
+  });
+});
+
+describe('reasoningCapOverruns', () => {
+  it('names the sections and providers whose reasoning went past the cap', () => {
+    const rows = [
+      usageRow({ section: 'core', reasoningTokens: 6000 }),
+      usageRow({ section: 'life_outlook_2', reasoningTokens: 10263, provider: 'GMICloud' }),
+    ];
+    expect(reasoningCapOverruns(rows, 6000)).toEqual(['life_outlook_2 (GMICloud): 10263 reasoning tokens']);
+  });
+});
+
+describe('medianVoices', () => {
+  it('takes the median of each voice separately', () => {
+    expect(medianVoices([{ layman: 828, technical: 582 }, { layman: 737, technical: 609 }, { layman: 743, technical: 555 }]))
+      .toEqual({ layman: 743, technical: 582 });
+  });
+
+  it('averages the two middle values for an even count', () => {
+    expect(medianVoices([{ layman: 1, technical: 10 }, { layman: 3, technical: 20 }])).toEqual({ layman: 2, technical: 15 });
+  });
+
+  it('throws on no runs rather than inventing a number', () => {
+    expect(() => medianVoices([])).toThrow('no runs');
   });
 });

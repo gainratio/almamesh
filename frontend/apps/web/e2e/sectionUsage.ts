@@ -2,7 +2,7 @@
  * Per-section numbers for the [real] specs: which section a request was,
  * how many words each voice got, and what OpenRouter charged for it.
  */
-import type { NatalInterpretation, ReportTimelineContent } from '@almamesh/llm';
+import type { ModelPricing, NatalInterpretation, ReportTimelineContent } from '@almamesh/llm';
 
 import { completionUsage } from './openrouterUsage';
 
@@ -111,4 +111,35 @@ export function sectionUsageRow(requestBody: string, status: number, responseBod
     reasoningTokens: usage.reasoningTokens,
     provider: usage.provider,
   };
+}
+
+/**
+ * What the responses cost at the catalog price the estimate uses. OpenRouter
+ * counts reasoning inside completion_tokens, so it is not added again. The
+ * billed usage.cost can differ: it depends on the upstream provider.
+ */
+export function catalogCostUsd(rows: readonly SectionUsageRow[], pricing: ModelPricing): number {
+  return rows.reduce(
+    (sum, row) => sum + row.promptTokens * pricing.promptUsdPerToken + row.completionTokens * pricing.completionUsdPerToken,
+    0,
+  );
+}
+
+/** Responses whose reasoning went past the requested cap (the provider ignored it). */
+export function reasoningCapOverruns(rows: readonly SectionUsageRow[], cap: number): string[] {
+  return rows
+    .filter((row) => row.reasoningTokens > cap)
+    .map((row) => `${row.section} (${row.provider}): ${row.reasoningTokens} reasoning tokens`);
+}
+
+function median(values: readonly number[]): number {
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 1 ? (sorted[mid] as number) : ((sorted[mid - 1] as number) + (sorted[mid] as number)) / 2;
+}
+
+/** Per-voice median across runs. */
+export function medianVoices(runs: readonly Voices[]): Voices {
+  if (runs.length === 0) throw new Error('medianVoices: no runs');
+  return { layman: median(runs.map((r) => r.layman)), technical: median(runs.map((r) => r.technical)) };
 }
