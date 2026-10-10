@@ -81,8 +81,15 @@ import { rectificationDelta } from "../lib/rectification";
 import { buildChatToolset } from "../lib/chatToolset";
 import { formatPinLabel } from "../lib/timeTravelSheet";
 import { birthYearOf } from "../lib/periodChart";
+import { TimeTravelBanner } from "../components/features/chat/TimeTravelBanner";
+import { DashboardTimeTravelSheet } from "../components/features/dashboard/DashboardTimeTravelSheet";
+import { viewerTodayDay } from "../lib/chatAgentTools";
+import { useTimeTravel } from "../lib/timeTravel";
 import { RESOLVE_PLACE_TOOL_NAME } from "../lib/placeTool";
 import { useOptionalChartEngine } from "../providers/chartEngineContext";
+
+/** 44×44 CSS px, the touch-target floor (spec Part 1). Pinned by Dashboard.timeTravel.test.tsx and the @iphone15 box check. */
+const TIME_TRAVEL_BUTTON_SIZE = "min-h-11 min-w-11";
 
 // Resolve the LLM env: build-time Vite env with any browser-local Settings
 // overrides taking precedence — mirrors useStreamingInterpretation so the
@@ -168,6 +175,17 @@ export default function DashboardPage() {
   // how charts are scoped per profile). Read it via the store HOOK so the chat
   // re-binds when the person switches.
   const activeProfileId = useProfilesStore((s) => s.activeProfileId);
+  const timeTravel = useTimeTravel(activeProfileId, chartId);
+  const [travelSheet, setTravelSheet] = useState<'closed' | 'new' | 'change'>('closed');
+  const [travelBack, setTravelBack] = useState<'idle' | 'busy' | 'failed'>('idle');
+  const travelBirthYear = birthYearOf(chartId
+    ? (useChartLibraryStore.getState().getChart(chartId)?.birth_data as ProcessedBirthData | undefined)
+    : undefined);
+  const goToMoment = (asOf: ChatThreadAsOf) => timeTravel.travel({ asOf, source: 'dashboard-sheet' });
+  const backFromMoment = async () => {
+    setTravelBack('busy');
+    try { await timeTravel.backToToday(); setTravelBack('idle'); } catch { setTravelBack('failed'); }
+  };
   // Whose chart is missing — named on the empty state so the screen is about a
   // person, not an abstraction. Selected as a primitive so the hook is stable.
   const activeProfileName = useProfilesStore((s) =>
@@ -763,6 +781,16 @@ export default function DashboardPage() {
               </button>
               <button
                 type="button"
+                data-testid="dashboard-time-travel-button"
+                onClick={() => setTravelSheet('new')}
+                disabled={!chartId}
+                className={`inline-flex ${TIME_TRAVEL_BUTTON_SIZE} items-center gap-1.5 whitespace-nowrap rounded-md border border-ui-border px-3 py-1.5 text-sm text-text-secondary transition-colors hover:border-accent-gold/40 hover:text-text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-gold disabled:cursor-not-allowed disabled:border-ui-border/60 disabled:text-text-tertiary disabled:hover:border-ui-border/60`}
+              >
+                <span aria-hidden="true">⏳</span>
+                <span>{t("dashboard:actions.time_travel")}</span>
+              </button>
+              <button
+                type="button"
                 onClick={handleRegenerateTimeline}
                 disabled={
                   isStreamingInterpretation ||
@@ -801,6 +829,16 @@ export default function DashboardPage() {
             </>
           }
         />
+        {timeTravel.moment && (
+          <TimeTravelBanner asOf={timeTravel.moment} language={i18n.language}
+            testIdPrefix="dashboard-time-travel" about={t("dashboard:time_travel.banner_about")}
+            onChange={() => setTravelSheet('change')} onBack={() => void backFromMoment()}
+            backBusy={travelBack === 'busy'} backFailed={travelBack === 'failed'} />
+        )}
+        <DashboardTimeTravelSheet open={travelSheet !== 'closed'}
+          current={travelSheet === 'change' ? timeTravel.moment : undefined}
+          birthYear={travelBirthYear} today={viewerTodayDay(new Date())}
+          onGo={goToMoment} onClose={() => setTravelSheet('closed')} />
 
         {/* The PDF render failed. Calm, visible, on-screen ONLY (`no-print`) —
             never a silent unhandled rejection, and never printed into a
