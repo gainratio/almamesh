@@ -24,6 +24,7 @@ import {
   exportBackup,
   fakeThirdParties,
   gotoSettled,
+  settleDocument,
   importBackup,
   onboard,
   profileIdOf,
@@ -479,7 +480,7 @@ test.describe('start fresh: the empty-but-valid state round-trips', () => {
       // Let the reset finish re-opening storage before the next hard load; a
       // navigation that cancels the SQLite Worker load mid-flight is reported
       // by WebKit as an uncaught "access control checks" error.
-      await page.waitForLoadState('networkidle');
+      await settleDocument(page);
       // In-app navigation, not a hard load: WebKit logs a lazy route chunk that
       // a hard load cancels mid-flight as an uncaught TypeError (the same
       // teardown-noise family as the "access control checks" blob message).
