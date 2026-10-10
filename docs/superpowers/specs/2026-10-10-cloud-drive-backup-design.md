@@ -119,7 +119,8 @@ The restore shows "That passphrase doesn't open this backup." after a wrong try,
 
 > Nobody can recover a lost passphrase. Your backups on Google Drive stay locked forever.
 > Your data on this device is not affected. To start a fresh set of backups, choose a new
-> passphrase on your next backup. You can delete the old, locked backups from the list.
+> passphrase on your next backup. You can trash this device's old, locked backups from the list;
+> backups made on other devices are trashed from that device or in your drive's own app.
 
 No reset, no hint, no escrow. That is the price of "Google only stores ciphertext".
 
@@ -139,7 +140,7 @@ One interface, one file per provider, and the provider SDK is imported only insi
 // frontend/apps/web/src/lib/drive/backupDrive.ts
 export type DriveProviderId = 'google-drive' | 'dropbox' | 'onedrive';
 
-/** Bytes that passed isSealedBackup(). Only sealForDrive() can make one. */
+/** Bytes that passed isSealedBackup() and are not SQLite. Only sealedBackupOf() can make one. */
 export interface SealedBackup { readonly bytes: Uint8Array; readonly __sealed: unique symbol }
 
 /** A name built by backupName.ts and re-checked by its parser. */
@@ -174,10 +175,15 @@ export class DriveError extends Error { /* kind: DriveErrorKind; status?: number
 
 `guardedDrive(drive)` wraps every adapter. It is the one place the privacy rule is enforced:
 
-- `upload` re-checks `isSealedBackup(sealed.bytes)` and that the bytes do **not** start with the
-  SQLite header, and fails closed with `DriveError('provider_error')` before any network call.
-- `upload` re-parses the name with the strict name regex and fails closed on any mismatch.
-- `list` drops any entry whose name does not parse (another tool's file in the folder).
+- `upload` re-checks the bytes through `sealedBackupOf` (age header, not SQLite) and fails closed
+  with `DriveError('not_sealed')` before any network call.
+- `upload` re-parses the name with the strict name regex and fails closed with
+  `DriveError('bad_name')` on any mismatch.
+- `list` rebuilds every entry's meta from its name alone and drops any entry whose name does not
+  parse (another tool's file in the folder). The adapter's meta is never trusted.
+- `remove` refuses (`DriveError('not_found')`, no network call) any id that was not in the last
+  `list()` result with this device's code. So retention, the UI, or a bug can only ever trash
+  this device's own backups. (Carry-forward from PR 1, #330; lands in PR 2.)
 - Every method maps `navigator.onLine === false` to `offline` up front.
 
 Files:
@@ -197,7 +203,7 @@ Files:
 | `lib/drive/dropboxDrive.ts` | Dropbox adapter (REST via `fetch`; auth via `oauthClient.ts`) |
 | `lib/drive/oneDrive.ts` | OneDrive adapter (Graph via `fetch`; auth via `oauthClient.ts`) |
 | `lib/drive/providerConfig.ts` | Public client IDs and redirect URIs (not secrets) |
-| `lib/drive/testing/fakeDrive.ts` + `backupDrive.contract.ts` | In-memory drive and the shared contract suite |
+| `lib/drive/testing/fakeDrive.ts` + `testing/backupDriveContract.ts` (`runBackupDriveContract`) + `testing/sealedFixture.ts` | In-memory drive, the shared contract suite, real age-sealed fixture bytes |
 | `hooks/useDriveBackup.ts` | Back up, list, restore, delete; reuses `buildBackupExport` and `useBackupRestore` staging |
 | `components/features/backup/drive/*` | Provider picker, passphrase setup, backup list |
 | `pages/OAuthCallback.tsx` | The `/oauth/callback` route |
@@ -318,7 +324,7 @@ live run checks this with two accounts signed in (ruling 8).
 | Ruling on "SQLite only for user data" | **The rule holds.** This key handle is not user data. It is not a record, a setting, or a mirror of anything in SQLite. It is an opaque, device-bound capability that can't be serialised. `deviceKey.ts` is the only module that opens this database. A test asserts it holds exactly one record and that the record is a `CryptoKey` with `extractable === false`. Anything else in that database fails the gate. Add a one-line exception to CLAUDE.md where the SQLite rule is stated, naming this database. |
 | Lost key, kept rows | If site data is partly cleared and the key is gone but the rows remain, decryption fails. Treat this as disconnected, delete the rows and show "Reconnect". Never a crash, never a retry loop. |
 | Deleted on Disconnect | Delete the row. Revoke at the provider where there's an endpoint: Google `POST https://oauth2.googleapis.com/revoke`; Dropbox `POST /2/auth/token/revoke`; Microsoft has no revoke for a single SPA refresh token, so we only delete it. Clear in-memory access tokens. |
-| Deleted on full reset | "Reset chart / start fresh" and "Reset & reload" (`lib/resetEverything.ts`) delete every `drive-credential/*` row **and** the `almamesh-device-keys` database. The data deletion page says so. |
+| Deleted on full reset | "Reset chart / start fresh" (`lib/resetEverything.ts`) deletes every `drive-*` device row (credentials and drive settings, keeping `device-code`) **and** the `almamesh-device-keys` database; "Reset & reload" (`resetAppData`) already deletes all IndexedDB and OPFS. Today Start fresh only commits a canonical generation (`resetEverything.ts:153`), so the device namespace would survive it: this lands in PR 2, the PR that first writes a credential, with a test that reads storage back. The data deletion page says so. |
 | Never logged | Tokens and ciphertext rows never reach diagnostics, error messages, `console`, or test snapshots. `DriveError` messages carry a kind and an HTTP status, never a body or a URL with a token. |
 | No identity | No `openid`, `email` or `profile` scope, so AlmaMesh never learns who the user is. The UI says "Connected to Google Drive", never an address. |
 | Expiry | Before each call, a token within 60 s of `expiresAt` counts as expired. A 401 maps to `token_expired`, which triggers one refresh (Dropbox, Microsoft) or one silent bounce (Google), and then "Reconnect". |
@@ -384,7 +390,7 @@ file key, the header MAC), the ciphertext length, the filename, and upload times
   your other backups", and a wrong-passphrase error on restore adds "This backup may use an older
   passphrase."
 - Lost passphrase: see journey 3. Local data is untouched; old backups stay locked; the user can
-  trash them from the list.
+  trash this device's ones from the list (other devices' from that device or the drive's own app).
 - The passphrase never leaves the Worker boundary except as the seal input. The egress test plants
   a canary passphrase and asserts it never appears in any request.
 
@@ -409,8 +415,11 @@ almamesh-backup-2026-10-10T18-04-05-123Z-chrome-macos-7f3a2c.almamesh
   `^almamesh-backup-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z-(chrome|edge|…)-(macos|…)-[0-9a-f]{6}\.almamesh$`.
   No free text can enter a name, so no person name, city, birth date or user-typed device label
   can leak.
-- The device code lives in a new **device-local** SQLite namespace (`device`), like `quarantine`
-  and `set-aside`: never in a snapshot, restore or backup. This matters: if the device code
+- The device code lives in a new **device-local** SQLite namespace (`device`,
+  `PORTABLE_DEVICE_NAMESPACE`), like `quarantine` and `set-aside`: never in a snapshot, restore or
+  backup. `@almamesh/store`'s `deviceRows.ts` owns it (`getDeviceCode`, `DEVICE_CODE_KEY =
+  'device-code'`, the `DeviceRows` seam). The first mint is insert-if-absent and then read back, so
+  two tabs racing on first use agree on one code. This matters: if the device code
   travelled in a backup, a restored phone would claim the laptop's code, and retention on the
   phone would trash the laptop's backups. A test pins it.
 - The UI shows "Chrome on macOS" and adds "(this device)" when the code matches. Two devices with
@@ -427,7 +436,8 @@ almamesh-backup-2026-10-10T18-04-05-123Z-chrome-macos-7f3a2c.almamesh
   with this device's code**; trash older ones with this device's code. It never touches another
   device's files. That avoids every cross-device race: each device prunes only what it wrote.
 - Trash, not delete, so the provider's 30-day recovery still applies.
-- The user can trash any listed backup by hand (with a confirm).
+- The user can trash any of **this device's** listed backups by hand (with a confirm). Other
+  devices' backups are listed for restore but can't be trashed from here (`guardedDrive.remove`).
 - Verification before pruning: download the file back and compare SHA-256 with what was uploaded.
   Only a byte-equal read-back counts as "Backed up". If verification fails, nothing is pruned and
   the UI says "Uploaded, but the check failed. Try again." (Cost: one extra download per backup.
@@ -537,7 +547,7 @@ commit.
 | Disconnect and reset | Disconnect deletes the row and calls the revoke endpoint (Google, Dropbox). `resetEverything` deletes every `drive-credential/*` row and the `almamesh-device-keys` database. Both are asserted by reading storage afterwards, not by spying on calls. |
 | Renewal | Expired Google token: one `prompt=none` redirect URL built (`prompt=none`, same scope, new `state`), no second attempt after an error. Each of the four OIDC errors maps to "Reconnect". Dropbox `invalid_grant` deletes the row. Microsoft refresh after 24 h falls back to `prompt=none`. |
 | Lost key | Rows present, key database deleted: reads as disconnected, rows removed, no throw. |
-| Contract suite | `backupDrive.contract.ts` runs against `fakeDrive` and each adapter (with a recorded fake server): upload then list shows it, download is byte-equal, remove hides it, 401 maps to `token_expired`, 403 storage quota maps to `quota_exceeded`, 429 maps to `rate_limited`. |
+| Contract suite | `runBackupDriveContract` (`testing/backupDriveContract.ts`) runs against `fakeDrive` and each adapter (with a recorded fake server): upload then list shows it, download is byte-equal, remove hides it, 401 maps to `token_expired`, 403 storage quota maps to `quota_exceeded`, 429 maps to `rate_limited`. |
 | `useDriveBackup` | Backup reuses `buildBackupExport` (one seal path); restore hands downloaded bytes to `stageBackupImport` (one import path); safety copy can go to the drive. |
 | Egress | `driveEgress.test.ts` above. |
 

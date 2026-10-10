@@ -850,7 +850,219 @@ git commit -m "feat(drive): guarded drive wrapper, fake drive and the adapter co
 
 # PR 2: Google adapter, credentials, callback (flag off)
 
-Branch: `feat/drive-backup-2-google`. Claims: "only ciphertext goes to the drive"; "drive credentials are encrypted, device-local, and gone after Disconnect or reset"; "connect-src is closed". **External:** steps 53–54 for the live check only; everything else is stubbed.
+Branch: `feat/drive-backup-2-google`. Also closes PR 1's three carry-forwards (CF1–CF3). Claims: "only ciphertext goes to the drive"; "drive credentials are encrypted, device-local, and gone after Disconnect or reset"; "connect-src is closed". **External:** steps 53–54 for the live check only; everything else is stubbed.
+
+### PR 1 carry-forwards (from #330's northstar grade B)
+
+Three findings from PR 1 land here, each with its own red test. Tasks 2.0a and 2.0b come first.
+The third is folded into Task 2.7, which must merge in this PR because Task 2.2 is the first code
+that writes a credential.
+
+| # | Finding | Where it lands |
+|---|---|---|
+| CF1 | `guardedDrive.remove` passes any id straight to the adapter, so a bug or the UI could trash another device's backup | Task 2.0a |
+| CF2 | `getDeviceCode` is read-then-write. Two tabs racing on first use can mint two codes, and the loser's backups then carry a code the device no longer owns | Task 2.0b |
+| CF3 | "Start fresh" only commits a canonical generation (`lib/resetEverything.ts:153`), so the `device` namespace, and with it any `drive-credential/*` row, survives a reset | Task 2.7 (rewritten) |
+
+### Task 2.0a: `guardedDrive.remove` only trashes this device's listed backups (CF1)
+
+**Files:**
+- Modify: `frontend/apps/web/src/lib/drive/guardedDrive.ts` (shipped in #330 as `guardedDrive(inner, isOnline = browserOnline)`)
+- Test: `frontend/apps/web/src/lib/drive/guardedDrive.test.ts`
+
+**Interfaces:**
+- Consumes: `getDeviceCode` from `@almamesh/store` (`deviceRows.ts`), `createFakeDrive` and `sealedFixtureBytes` from `testing/` (both shipped in #330).
+- Produces: `guardedDrive(inner: BackupDrive, isOnline: () => boolean = browserOnline, deviceCode: () => Promise<string> = getDeviceCode): BackupDrive`. Its `remove(id)` throws `DriveError('not_found')` with **no adapter call** unless `id` was in the most recent `list()` result of this same guarded instance **and** that entry's `meta.deviceCode` equals `await deviceCode()`. A successful `upload` adds its own entry to the allowed set (so retention can prune right after upload without a second listing race). A successful `remove` drops the id from the set.
+
+- [ ] **Step 1: Write the failing tests**
+
+```ts
+describe('guardedDrive.remove ownership (CF1)', () => {
+  const MINE = backupNameOf('almamesh-backup-2026-10-10T18-04-05-123Z-chrome-macos-aaaaaa.almamesh');
+  const THEIRS = backupNameOf('almamesh-backup-2026-10-10T18-04-05-123Z-safari-ios-bbbbbb.almamesh');
+
+  async function seeded() {
+    const inner = createFakeDrive();
+    const sealed = sealedBackupOf(await sealedFixtureBytes());
+    const mine = await inner.upload(MINE, sealed);
+    const theirs = await inner.upload(THEIRS, sealed);
+    const remove = vi.spyOn(inner, 'remove');
+    const drive = guardedDrive(inner, () => true, async () => 'aaaaaa');
+    return { inner, drive, mine, theirs, remove };
+  }
+
+  it('refuses an id never seen in list()', async () => {
+    const { drive, mine, remove } = await seeded();
+    await expect(drive.remove(mine.id)).rejects.toMatchObject({ kind: 'not_found' });
+    expect(remove).not.toHaveBeenCalled();
+  });
+  it('refuses another device\'s listed backup', async () => {
+    const { drive, theirs, remove } = await seeded();
+    await drive.list();
+    await expect(drive.remove(theirs.id)).rejects.toMatchObject({ kind: 'not_found' });
+    expect(remove).not.toHaveBeenCalled();
+  });
+  it('allows this device\'s listed backup, once', async () => {
+    const { drive, mine, remove } = await seeded();
+    await drive.list();
+    await drive.remove(mine.id);
+    expect(remove).toHaveBeenCalledWith(mine.id);
+    await expect(drive.remove(mine.id)).rejects.toMatchObject({ kind: 'not_found' });
+  });
+  it('a newer list() replaces the allowed set', async () => {
+    const { inner, drive, mine, remove } = await seeded();
+    await drive.list();
+    inner.files.get(mine.id)!.trashed = true; // gone elsewhere
+    await drive.list();
+    await expect(drive.remove(mine.id)).rejects.toMatchObject({ kind: 'not_found' });
+    expect(remove).not.toHaveBeenCalled();
+  });
+  it('an id this instance just uploaded is removable without a new list()', async () => {
+    const { drive, remove } = await seeded();
+    const up = await drive.upload(MINE, sealedBackupOf(await sealedFixtureBytes()));
+    await drive.remove(up.id);
+    expect(remove).toHaveBeenCalledWith(up.id);
+  });
+});
+```
+
+- [ ] **Step 2: Run and watch them fail.** `bunx vitest run src/lib/drive/guardedDrive.test.ts`. Expected: the first four FAIL (remove currently forwards every id).
+
+- [ ] **Step 3: Implement.** Inside `guardedDrive`, keep `let removable = new Set<string>()`. In `list`, after building `checked`: `const code = await deviceCode(); removable = new Set(checked.filter((e) => e.meta.deviceCode === code).map((e) => e.id));`. In `upload`, after the checked entry: `if (entry.meta.deviceCode === (await deviceCode())) removable.add(entry.id);`. In `remove`: `online(); if (!removable.has(id)) throw new DriveError('not_found'); await inner.remove(id); removable.delete(id);`. Update the file's header comment: "…only ciphertext, only neutral names, and only this device's backups are ever trashed."
+
+- [ ] **Step 4: Run and watch them pass,** plus `src/lib/drive/testing/fakeDrive.test.ts` (the contract suite runs on the unguarded fake, so it is unaffected).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add frontend/apps/web/src/lib/drive/guardedDrive.ts frontend/apps/web/src/lib/drive/guardedDrive.test.ts
+git commit -m "fix(drive): guarded remove only trashes this device's listed backups"
+```
+
+### Task 2.0b: First device code is insert-if-absent, then read back (CF2)
+
+**Files:**
+- Modify: `frontend/packages/store/src/portableState.ts` (add `insertDeviceIfAbsent` next to `writeDevice`, shipped in #330), `frontend/packages/store/src/deviceRows.ts` (`DeviceRows` gains `insertIfAbsent`; `getDeviceCode` uses it)
+- Test: `frontend/packages/store/src/portableState.test.ts` (its `MemorySqliteStore` already honours `expectedEpoch`, line ~68), `frontend/packages/store/src/deviceRows.test.ts`
+
+**Interfaces:**
+- Produces: repository `insertDeviceIfAbsent(key: string, value: string): Promise<string>`. It returns the value stored after the call: the existing one if present, else `value`. `DeviceRows.insertIfAbsent(key, value): Promise<string>`. `getDeviceCode` returns the read-back value, never its own mint unless that mint won.
+- `SqliteStateStore` (`@gainratio/browser` 0.4.1) has no per-key conditional put. It does have `batch(…, { expectedEpoch })`, which throws `SqliteStateConflictError` when any write landed in between. That is the compare-and-swap.
+
+- [ ] **Step 1: Write the failing tests**
+
+```ts
+// portableState.test.ts
+it('insertDeviceIfAbsent: two racing inserts agree on the first value', async () => {
+  const sqlite = new MemorySqliteStore();
+  const a = new PortableStateRepository(sqlite);
+  const b = new PortableStateRepository(sqlite);
+  const [x, y] = await Promise.all([
+    a.insertDeviceIfAbsent('device-code', 'aaaaaa'),
+    b.insertDeviceIfAbsent('device-code', 'bbbbbb'),
+  ]);
+  expect(x).toBe(y);
+  expect(await a.readDevice('device-code')).toBe(x);
+});
+it('insertDeviceIfAbsent never overwrites an existing value', async () => {
+  const sqlite = new MemorySqliteStore();
+  const repository = new PortableStateRepository(sqlite);
+  await repository.writeDevice('device-code', 'cccccc');
+  expect(await repository.insertDeviceIfAbsent('device-code', 'dddddd')).toBe('cccccc');
+});
+```
+
+```ts
+// deviceRows.test.ts: a DeviceRows fake whose read() yields to the event loop, so two
+// getDeviceCode calls both see "absent" before either writes (the race #330 left open).
+function racyRows() {
+  const map = new Map<string, string>();
+  const tick = () => new Promise((r) => setTimeout(r, 0));
+  const rows: DeviceRows = {
+    read: async (k) => { await tick(); return map.get(k) ?? null; },
+    write: async (k, v) => { await tick(); map.set(k, v); },
+    insertIfAbsent: async (k, v) => { if (!map.has(k)) map.set(k, v); await tick(); return map.get(k)!; },
+    remove: async (ks) => { ks.forEach((k) => map.delete(k)); },
+    list: async (p) => new Map([...map].filter(([k]) => k.startsWith(p))),
+  };
+  return { map, rows };
+}
+
+it('two tabs minting at once get the same code (CF2)', async () => {
+  const { map, rows } = racyRows();
+  const [a, b] = await Promise.all([getDeviceCode(rows), getDeviceCode(rows)]);
+  expect(a).toBe(b);
+  expect(map.get('device-code')).toBe(a);
+});
+it('a corrupt stored code is replaced once, and racers agree', async () => {
+  const { map, rows } = racyRows();
+  map.set('device-code', 'Priya');
+  const [a, b] = await Promise.all([getDeviceCode(rows), getDeviceCode(rows)]);
+  expect(a).toMatch(/^[0-9a-f]{6}$/);
+  expect(a).toBe(b);
+});
+```
+
+- [ ] **Step 2: Run and watch them fail.** `cd frontend && bun run --filter @almamesh/store test -- portableState deviceRows`. Expected: `insertDeviceIfAbsent is not a function`; the race test FAILS with two different codes.
+
+- [ ] **Step 3: Implement**
+
+```ts
+// portableState.ts, in PortableStateRepository
+  /** Insert only if absent (multi-tab safe via the store epoch), then return what is stored. */
+  public async insertDeviceIfAbsent(key: string, value: string): Promise<string> {
+    for (let attempt = 0; attempt < MAX_TRANSACTION_ATTEMPTS; attempt += 1) {
+      const { epoch } = await this.#store.runtimeInfo();
+      const existing = await this.#store.get(PORTABLE_DEVICE_NAMESPACE, key);
+      if (existing !== undefined) return decode(existing.value, key);
+      try {
+        await this.#store.batch(
+          [{ type: 'put', namespace: PORTABLE_DEVICE_NAMESPACE, key, value: encoder.encode(value) }],
+          { expectedEpoch: epoch },
+        );
+      } catch (error) {
+        if (error instanceof SqliteStateConflictError) continue;
+        throw error;
+      }
+      const stored = await this.#store.get(PORTABLE_DEVICE_NAMESPACE, key);
+      if (stored !== undefined) return decode(stored.value, key);
+    }
+    throw new Error('Device row stayed busy while inserting.');
+  }
+```
+
+```ts
+// deviceRows.ts
+export interface DeviceRows {
+  read(key: string): Promise<string | null>;
+  write(key: string, value: string): Promise<void>;
+  /** Insert only if absent; resolves to the value stored afterwards (the winner of any race). */
+  insertIfAbsent(key: string, value: string): Promise<string>;
+  remove(keys: readonly string[]): Promise<void>;
+  list(prefix: string): Promise<ReadonlyMap<string, string>>;
+}
+// deviceRows: add
+//   insertIfAbsent: async (key, value) => (await requirePortableStateRepository()).insertDeviceIfAbsent(key, value),
+
+export async function getDeviceCode(rows: DeviceRows = deviceRows): Promise<string> {
+  const stored = await rows.read(DEVICE_CODE_KEY);
+  if (stored !== null && DEVICE_CODE.test(stored)) return stored;
+  if (stored !== null) await rows.remove([DEVICE_CODE_KEY]); // corrupt: clear, then race fairly
+  const winner = await rows.insertIfAbsent(DEVICE_CODE_KEY, mintCode());
+  if (!DEVICE_CODE.test(winner)) throw new Error('Device code did not verify in SQLite.');
+  return winner;
+}
+```
+
+Keep #330's 2^-24 collision comment. Every other `DeviceRows` fake in the codebase (`credentialStore.test.ts`, `testing/memoryCredentials.ts`) gains an `insertIfAbsent` that does `if (!map.has(k)) map.set(k, v); return map.get(k)!`.
+
+- [ ] **Step 4: Run and watch them pass.**
+- [ ] **Step 5: Commit**
+
+```bash
+git add frontend/packages/store/src/portableState.ts frontend/packages/store/src/portableState.test.ts frontend/packages/store/src/deviceRows.ts frontend/packages/store/src/deviceRows.test.ts
+git commit -m "fix(store): mint the device code with insert-if-absent and read it back"
+```
 
 ### Task 2.1: Device key (owner ruling R0)
 
@@ -1460,7 +1672,8 @@ git commit -m "feat(drive): Google Drive adapter (drive.file, resumable upload, 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createGoogleSession } from './driveSession';
 // reuse the memory rows + generated key helper from credentialStore.test.ts by moving it to
-// testing/memoryCredentials.ts in this task (export `memoryCredentialDeps()`).
+// testing/memoryCredentials.ts in this task (export `memoryDeviceRows()` -> { rows, map }, with
+// insertIfAbsent, and `memoryCredentialDeps()` built on it).
 import { memoryCredentialDeps } from './testing/memoryCredentials';
 
 beforeEach(() => sessionStorage.clear());
@@ -1693,35 +1906,63 @@ git add frontend/apps/web/src/pages/OAuthCallback.tsx frontend/apps/web/src/page
 git commit -m "feat(drive): OAuth callback route, Google CSP hosts, exact connect-src pin, egress test"
 ```
 
-### Task 2.7: Reset deletes credentials and the device key
+### Task 2.7: Start fresh deletes drive rows and the device key (CF3)
+
+This must merge in PR 2, because Task 2.2 is the first code that writes a `drive-credential/*`
+row. Today "Start fresh" only commits a canonical generation (`lib/resetEverything.ts:153`,
+`clearPersisted` → `commitDatasetGeneration`), so every `device` row survives it.
 
 **Files:**
-- Modify: `frontend/apps/web/src/lib/resetEverything.ts` (`ResetEverythingDeps` ~line 111: add `clearDriveCredentials?: () => Promise<void>`; `DEFAULT_DEPS`: `clearDriveCredentials: async () => { if (supportsPortableState()) await deleteAllCredentials(); await deleteDeviceKey(); }`; call it right after `await deps.clearSetAside?.();`). Update the header comment's CLEARED list with "stored drive sign-in (credentials and the device key)".
-- Test: `frontend/apps/web/src/lib/resetEverything.test.ts`
+- Modify: `frontend/apps/web/src/lib/resetEverything.ts`. In `ResetEverythingDeps` (~line 111) add `clearDriveState?: () => Promise<void>`. In `DEFAULT_DEPS`: `clearDriveState: async () => { if (supportsPortableState()) await deleteDriveDeviceRows(); await deleteDeviceKey(); }`. Call it right after `await deps.clearSetAside?.();` (before the generation commit: a crash after it leaves less data, never more, matching the set-aside rule). Add "stored drive sign-in and drive settings (credentials, the device key)" to the header's CLEARED list and "this device's backup code" to PRESERVED.
+- Modify: `frontend/apps/web/src/lib/drive/credentialStore.ts`: add `deleteDriveDeviceRows(deps?)`, which removes every device row whose key starts with `drive-` (covers `drive-credential/*` now, and `drive-last-backup/*`, `drive-recipient/*` and `drive-auto/*` from later PRs). It keeps `device-code`.
+- Test: `frontend/apps/web/src/lib/resetEverything.test.ts`, `frontend/packages/store/src/portableState.test.ts`, `frontend/apps/web/src/lib/resetAppData.test.ts`
 
-- [ ] **Step 1: Failing test.** Add to `resetEverything.test.ts`:
+- [ ] **Step 1: Write the failing tests.** Each reads storage back; none just spies on calls.
 
 ```ts
-it('deletes stored drive credentials and the device key', async () => {
-  const clearDriveCredentials = vi.fn(async () => undefined);
-  await resetEverything({ ...testDeps(), clearDriveCredentials });
-  expect(clearDriveCredentials).toHaveBeenCalledTimes(1);
+// resetEverything.test.ts: wire the real credential store to an in-memory DeviceRows and a
+// fake-indexeddb device key, run the real DEFAULT clearDriveState through resetEverything's deps.
+it('Start fresh leaves no drive rows and no device key, and keeps the device code (CF3)', async () => {
+  const { rows, map } = memoryDeviceRows(); // the shared helper from testing/memoryCredentials.ts
+  map.set('device-code', '7f3a2c');
+  await saveCredential({ provider: 'google-drive', accessToken: 'ya29.CANARY', expiresAt: 9e15 }, { rows, key: getDeviceKey });
+  map.set('drive-last-backup/google-drive', '2026-10-10T18:04:05.123Z');
+
+  await resetEverything({ ...testDeps(), clearDriveState: async () => { await deleteDriveDeviceRows({ rows, key: getDeviceKey }); await deleteDeviceKey(); } });
+
+  expect([...map.keys()]).toEqual(['device-code']);
+  expect(await readDeviceKeyRecords()).toEqual([]);
+});
+it('the default deps include clearDriveState', () => {
+  expect(DEFAULT_RESET_DEPS.clearDriveState).toBeTypeOf('function'); // export DEFAULT_DEPS as DEFAULT_RESET_DEPS for this
 });
 ```
 
-(Use the file's existing deps factory; check its name at the top of the test file.) Add a second, storage-level test in `credentialStore.test.ts`: after `deleteAllCredentials` + `deleteDeviceKey` (with `fake-indexeddb`), `readDeviceKeyRecords()` is `[]` and the rows map is empty.
+```ts
+// portableState.test.ts: the namespace really is outside the generation commit, which is why
+// the explicit delete is needed. Pins the premise so nobody "simplifies" Task 2.7 away.
+it('a canonical generation commit does not touch device rows', async () => {
+  const sqlite = new MemorySqliteStore();
+  const repository = new PortableStateRepository(sqlite);
+  await repository.writeDevice('drive-credential/google-drive', 'sealed');
+  await repository.transact(async () => [{ type: 'delete', key: 'almamesh-profiles' }]); // use the file's existing generation helper if transact's shape differs
+  expect(await repository.readDevice('drive-credential/google-drive')).toBe('sealed');
+});
+```
 
-- [ ] **Step 2: Run, watch it fail.** `bunx vitest run src/lib/resetEverything.test.ts`.
+Add to `resetAppData.test.ts`: with `almamesh-device-keys` present in the faked `indexedDB.databases()`, it is among the deleted names.
+
+Use the file's existing deps factory (check its name at the top of `resetEverything.test.ts`) in place of `testDeps()`.
+
+- [ ] **Step 2: Run and watch them fail.** `bunx vitest run src/lib/resetEverything.test.ts` (FAIL: `credential` row still present; `clearDriveState` undefined). The `portableState` premise test should PASS at once. It documents behaviour; it is not a red test.
 - [ ] **Step 3: Implement** as described.
-- [ ] **Step 4: Run, watch it pass.**
+- [ ] **Step 4: Run and watch them pass.**
 - [ ] **Step 5: Commit**
 
 ```bash
-git add frontend/apps/web/src/lib/resetEverything.ts frontend/apps/web/src/lib/resetEverything.test.ts frontend/apps/web/src/lib/drive/credentialStore.test.ts
-git commit -m "feat(drive): start-fresh reset deletes drive credentials and the device key"
+git add frontend/apps/web/src/lib/resetEverything.ts frontend/apps/web/src/lib/resetEverything.test.ts frontend/apps/web/src/lib/drive/credentialStore.ts frontend/packages/store/src/portableState.test.ts frontend/apps/web/src/lib/resetAppData.test.ts
+git commit -m "fix(drive): Start fresh deletes drive rows and the device key, keeps the device code"
 ```
-
-(`resetAppData` already deletes every IndexedDB database and OPFS, so it needs no change; add one assertion to `resetAppData.test.ts` that `almamesh-device-keys` is among the deleted names when present.)
 
 ### Task 2.8: PR 2 close-out
 
@@ -1734,8 +1975,10 @@ git commit -m "feat(drive): start-fresh reset deletes drive credentials and the 
 | `deviceKey` generates with `extractable: true` | `deviceKey.test.ts` |
 | `takePendingSignIn` skips the state comparison | `oauthRedirect.test.ts`, `driveSession.test.ts` replay test |
 | `driveSession.token` drops the `SILENT_TRIED` check | `driveSession.test.ts` ("ONE silent bounce") |
-| Remove `clearDriveCredentials` from `resetEverything` | `resetEverything.test.ts` |
 | Add `https:` to `connect-src` in `_headers` | `connectSrc.test.ts` |
+| CF1: `guardedDrive.remove` forwards every id (drop the `removable` check) | `guardedDrive.test.ts` ownership tests |
+| CF2: `getDeviceCode` goes back to `read` → `write(mintCode())` | `deviceRows.test.ts` race test |
+| CF3: drop `clearDriveState` from `DEFAULT_DEPS` | `resetEverything.test.ts` storage read-back |
 | Upload metadata adds `description: passphrase` | `driveEgress.test.ts` |
 
 - [ ] **Step 2: Live checks.**
@@ -1807,7 +2050,7 @@ Write each body in full in the test file (fixtures: `buildBackupExport` override
 3. First backup on this device: passphrase twice plus the required checkbox "I understand that if I forget this passphrase, nobody can open these backups. Not AlmaMesh, not Google."; the Back up button stays disabled until both match, are ≥12 characters, and the box is ticked.
 4. Second backup in the same tab: no passphrase prompt.
 5. Offline: both buttons disabled with "You're offline. Your data is safe on this device. Back up when you're back online."
-6. List: newest first; "Chrome on macOS · 7f3a2c (this device)"; local time; size in MB; a Restore and a Trash button per row; Trash asks to confirm.
+6. List: newest first; "Chrome on macOS · 7f3a2c (this device)"; local time; size in MB; a Restore button on every row; a Trash button only on this device's rows (CF1: `guardedDrive.remove` refuses the others); Trash asks to confirm.
 7. Each `DriveErrorKind` shows its sentence from the spec (`quota_exceeded`: "Your Google Drive is full. Free some space or trash old AlmaMesh backups.", `token_expired`/`not_connected`: "Reconnect", `verify_failed`: "Uploaded, but the check failed. Try again.").
 8. Restore → `restore.stageContent(bytes)` with `useBackupRestore({ afterRestoreHref: '/dashboard', safetyTarget: openDriveSafetyTarget(...) })`; the confirm dialog offers "Save to this device instead" which swaps to `openBackupSaveTarget`.
 9. "Last drive backup: 12 days ago" when `lastBackupAt` is 12 days old.
