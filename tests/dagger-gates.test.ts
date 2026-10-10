@@ -329,7 +329,7 @@ describe("browser gate shards", () => {
     const scripts = JSON.parse(readFileSync(resolve(web, "package.json"), "utf8")).scripts as Record<string, string>
     expect(scripts["test:e2e:ai-panel:egress"]).toBe("playwright test --config=playwright.ai-setup-panel.egress.config.ts")
     const config = readFileSync(resolve(web, "playwright.ai-setup-panel.egress.config.ts"), "utf8")
-    expect(config).toContain("testMatch: /ai-setup-panel\\.egress\\.spec\\.ts/")
+    expect(config).toContain("testMatch: /ai-setup-panel\\.(egress|recorder)\\.spec\\.ts/")
     expect(config).toContain("process.env.AI_PANEL_EGRESS_E2E_BASE_URL")
     expect(config.match(/\bname:\s*'[^']*'/g)).toEqual(["name: 'chromium'"])
     const spec = readFileSync(resolve(web, "e2e/ai-setup-panel.egress.spec.ts"), "utf8")

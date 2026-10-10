@@ -89,6 +89,38 @@ export interface EgressLog {
   settle(): Promise<readonly EgressEntry[]>;
 }
 
+/** How long one request's full-header read may take before falling back. */
+const HEADER_READ_MS = 2_000;
+
+/** The Authorization header as the page set it (provisional headers). Never throws. */
+function provisionalAuthorization(request: Request): string | null {
+  try {
+    return request.headers()['authorization'] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The request's Authorization header. The full read rejects or never settles
+ * when the request's worker has closed ("Worker closed"); then fall back to the
+ * provisional headers, which carry any Authorization the page's JS set. So a
+ * closed worker can neither hang nor crash the recorder, and the header is
+ * still checked.
+ */
+export function readAuthorization(request: Request, timeoutMs = HEADER_READ_MS): Promise<string | null> {
+  const fallback = (): string | null => provisionalAuthorization(request);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timedOut = new Promise<string | null>((resolve) => {
+    timer = setTimeout(() => resolve(fallback()), timeoutMs);
+  });
+  const full = request.headerValue('authorization').then(
+    (value) => value ?? fallback(),
+    () => fallback(),
+  );
+  return Promise.race([full, timedOut]).finally(() => clearTimeout(timer));
+}
+
 /**
  * Record every request the browser context makes: the page, popups, and the
  * service worker, same-origin included (tagged), so a key sent to the app's own
@@ -100,7 +132,7 @@ export function recordEgress(page: Page, appOrigin: string): EgressLog {
     const url = new URL(request.url());
     if (url.protocol === 'data:' || url.protocol === 'blob:') return;
     pending.push(
-      request.headerValue('authorization').then((authorization) => ({
+      readAuthorization(request).then((authorization) => ({
         host: url.host,
         path: url.pathname,
         sameOrigin: url.origin === appOrigin,

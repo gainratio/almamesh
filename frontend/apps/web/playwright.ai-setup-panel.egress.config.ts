@@ -25,7 +25,7 @@ const BASE_URL = EXTERNAL_BASE_URL ?? `http://127.0.0.1:${PORT}`;
 
 export default defineConfig({
   testDir: './e2e',
-  testMatch: /ai-setup-panel\.egress\.spec\.ts/,
+  testMatch: /ai-setup-panel\.(egress|recorder)\.spec\.ts/,
   fullyParallel: false,
   workers: 1,
   forbidOnly: !!process.env.CI,
