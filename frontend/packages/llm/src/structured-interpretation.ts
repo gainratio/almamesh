@@ -1533,8 +1533,9 @@ async function* streamSections<Section extends AnySectionKey>(
   while (pending.size > 0) {
     const outcome = await Promise.race(pending.values());
     pending.delete(outcome.section);
-    launch();
+    // Check the abort first, so an aborted run never starts another section.
     if (params.signal?.aborted) throw abortError();
+    launch();
 
     if (!outcome.ok) {
       if (representative === undefined && outcome.error instanceof LlmRequestError) {

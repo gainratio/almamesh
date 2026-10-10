@@ -21,8 +21,13 @@ const LOCAL: ProviderConfig = {
 
 const p = (text: string) => ({ layman: text, technical: text });
 // As-of month is 2026-06 (REPORT_AS_OF), so Q1 = 2026-06..08.
+// Each timeline section carries one invented month that is in none of the four
+// engine input slices (2031-01, 2041-03), in the layman voice or the technical one,
+// so each section's date guard is proven separately.
 const REPLIES: Record<string, unknown> = {
-  current_period: { maha: p("Steady building."), antar: p("A learning sub-chapter."), activates: [], next_change: p("A change comes.") },
+  current_period: {
+    maha: { layman: "Steady building. A shift arrives in March 2041.", technical: "Steady building." },
+    antar: p("A learning sub-chapter."), activates: [], next_change: p("A change comes.") },
   year_ahead: {
     headline: p("A year of consolidation."),
     quarters: [
@@ -31,8 +36,18 @@ const REPLIES: Record<string, unknown> = {
     ],
     focus: p("Rest."),
   },
-  life_outlook_1: { domains: ["career", "finances", "relationships", "family"].map((domain) => ({ domain, outlook: p(`${domain}.`) })) },
-  life_outlook_2: { domains: ["health", "education", "spiritual"].map((domain) => ({ domain, outlook: p(`${domain}.`) })) },
+  life_outlook_1: {
+    domains: ["career", "finances", "relationships", "family"].map((domain) => ({
+      domain,
+      outlook: domain === "career" ? { layman: "career.", technical: "career. Jupiter peaks in 2041-03." } : p(`${domain}.`),
+    })),
+  },
+  life_outlook_2: {
+    domains: ["health", "education", "spiritual"].map((domain) => ({
+      domain,
+      outlook: domain === "health" ? { layman: "health. Rest well in 2041-03.", technical: "health." } : p(`${domain}.`),
+    })),
+  },
   core: { summary: p("Natal."), strengths: [], challenges: [], life_themes: [] },
   yoga: { integrated_yoga_narrative: p("Yoga.") },
   guidance1: { family_guidance: p("Home.") },
@@ -75,12 +90,36 @@ describe("streamReportTimeline", () => {
     ]);
   });
 
-  it("removes the invented month and counts it", async () => {
+  it("removes the invented month from every timeline section and counts each", async () => {
     const events = await collect(streamReportTimeline({ chart: REPORT_RAW_CHART, asOf: REPORT_AS_OF, config: OPENROUTER, fetchImpl: stubFetch([]) }));
     const complete = events.find((e) => e.type === "complete");
     if (complete?.type !== "complete") throw new Error("no complete event");
-    expect(complete.dateGuardRemovals).toBe(1);
-    expect(complete.timeline.year_ahead?.quarters[0].technical).toBe("Fine.");
+    expect(complete.dateGuardRemovals).toBe(4);
+    const { current_period, year_ahead, life_outlook } = complete.timeline;
+    // current_period, layman voice
+    expect(current_period?.maha.layman).toBe("Steady building.");
+    // year_ahead, technical voice
+    expect(year_ahead?.quarters[0].technical).toBe("Fine.");
+    // life_outlook_1, technical voice
+    expect(life_outlook.life_outlook_1?.domains[0].outlook.technical).toBe("career.");
+    // life_outlook_2, layman voice
+    expect(life_outlook.life_outlook_2?.domains[0].outlook.layman).toBe("health.");
+  });
+
+  it("starts no further section after an abort on a local endpoint", async () => {
+    const controller = new AbortController();
+    const sections: string[] = [];
+    const fetchImpl = vi.fn(async (_url: string, init: RequestInit) => {
+      const section = sectionOf(String(init.body));
+      sections.push(section);
+      controller.abort();
+      return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(REPLIES[section]) } }] }));
+    }) as unknown as typeof fetch;
+    await expect(
+      collect(streamReportTimeline({ chart: REPORT_RAW_CHART, asOf: REPORT_AS_OF, config: LOCAL, fetchImpl, signal: controller.signal })),
+    ).rejects.toThrow(/aborted/);
+    await new Promise((r) => setTimeout(r, 10));
+    expect(sections).toEqual(["current_period"]);
   });
 
   it("fails only year_ahead when the model invents a quarter key", async () => {
