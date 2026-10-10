@@ -1,0 +1,168 @@
+import { describe, expect, it } from "vitest";
+
+import { monthsIn, validateTimelineDates } from "../date-guard";
+import type { PromptLanguage } from "../language";
+import { computeQuarters, quarterTitle } from "../quarters";
+
+const ALLOWED = new Set(["2027-03", "2027-06"]);
+
+describe("validateTimelineDates", () => {
+  it("removes a month the engine did not supply", () => {
+    const { section, removals } = validateTimelineDates(
+      { layman: "Things open up. A new door appears in 2031-01. Keep going.", technical: "Jupiter." },
+      ALLOWED,
+    );
+    expect(section.layman).toBe("Things open up. Keep going.");
+    expect(removals).toBe(1);
+  });
+
+  it("keeps a month the engine supplied", () => {
+    const input = { layman: "Momentum builds around 2027-03.", technical: "Sun antar from 2027-06." };
+    expect(validateTimelineDates(input, ALLOWED)).toEqual({ section: input, removals: 0 });
+  });
+
+  it("removes day-precision dates", () => {
+    // 2027-03 IS allowed: only the day rule can remove this sentence.
+    const { section, removals } = validateTimelineDates(
+      { layman: "Mark 2027-03-14 in your calendar. Rest well.", technical: "" },
+      ALLOWED,
+    );
+    expect(section.layman).toBe("Rest well.");
+    expect(removals).toBe(1);
+  });
+
+  it.each([
+    ["en", "A shift comes in March 2028. Stay steady."],
+    ["es", "Un cambio llega en marzo de 2028. Mantente firme."],
+    ["pt", "Uma mudança chega em março de 2028. Mantenha-se firme."],
+  ])("removes a %s month name with a year the engine did not supply", (_lang, text) => {
+    const { section, removals } = validateTimelineDates({ layman: text, technical: "" }, ALLOWED);
+    expect(section.layman).not.toMatch(/2028/);
+    expect(section.layman.length).toBeGreaterThan(0);
+    expect(removals).toBe(1);
+  });
+
+  it("keeps a month name that matches a supplied month", () => {
+    const input = { layman: "Plans firm up in March 2027 and again in junio de 2027.", technical: "" };
+    expect(validateTimelineDates(input, ALLOWED).removals).toBe(0);
+  });
+
+  it("guards the technical voice on its own", () => {
+    const { section, removals } = validateTimelineDates(
+      { layman: "A good season for steady work.", technical: "Saturn ingress 2029-11. Mars antar from 2027-06." },
+      ALLOWED,
+    );
+    expect(section.layman).toBe("A good season for steady work.");
+    expect(section.technical).toBe("Mars antar from 2027-06.");
+    expect(removals).toBe(1);
+  });
+
+  it("counts every removal across nested arrays and fields", () => {
+    const { section, removals } = validateTimelineDates(
+      {
+        quarters: [
+          { key: "Q1", layman: "Fine in 2027-03. Bad in 2030-01.", technical: "On 2027-03-02 exact." },
+          { key: "Q2", layman: "Quiet.", technical: "Also 2030-02. And 2030-03." },
+        ],
+      },
+      ALLOWED,
+    );
+    expect(removals).toBe(4);
+    expect(section.quarters[0]).toEqual({ key: "Q1", layman: "Fine in 2027-03.", technical: "" });
+    expect(section.quarters[1].technical).toBe("");
+  });
+
+  it("does not mutate its input", () => {
+    const input = { layman: "Gone in 2031-01." };
+    validateTimelineDates(input, ALLOWED);
+    expect(input.layman).toBe("Gone in 2031-01.");
+  });
+});
+
+describe("validateTimelineDates: short month forms", () => {
+  // The short forms quarterTitle prints, matched case-insensitively with an
+  // optional trailing period. 2027-09 and 2027-12 are NOT in ALLOWED.
+  it.each([
+    ["en", "Sept 2027", "A turn in Sept 2027. Stay steady."],
+    ["en", "Sep. 2027", "A turn in Sep. 2027. Stay steady."],
+    ["en", "Dec 2027", "Rest in Dec 2027. Stay steady."],
+    ["es", "sept 2027", "Un giro en sept 2027. Mantente firme."],
+    ["es", "dic 2027", "Descanso en dic 2027. Mantente firme."],
+    ["es", "dic. de 2027", "Descanso en dic. de 2027. Mantente firme."],
+    ["pt", "dez. 2027", "Descanso em dez. 2027. Mantenha-se firme."],
+    ["pt", "set 2027", "Uma virada em set 2027. Mantenha-se firme."],
+    ["pt", "DEZ de 2027", "Descanso em DEZ de 2027. Mantenha-se firme."],
+  ])("removes %s short form %s the engine did not supply", (_lang, _form, text) => {
+    const { section, removals } = validateTimelineDates({ layman: text }, ALLOWED);
+    expect(section.layman).not.toMatch(/2027/);
+    expect(section.layman.length).toBeGreaterThan(0);
+    expect(removals).toBe(1);
+  });
+
+  it.each([
+    ["en", "Plans firm up in Mar 2027 and again in Jun. 2027."],
+    ["es", "Los planes se afirman en mar. de 2027 y otra vez en jun 2027."],
+    ["pt", "Os planos se firmam em mar. 2027 e de novo em jun. de 2027."],
+    ["pt", "Os planos se firmam em março de 2027 e em junho de 2027."],
+  ])("keeps a %s short form the engine supplied", (_lang, text) => {
+    const input = { layman: text };
+    expect(validateTimelineDates(input, ALLOWED)).toEqual({ section: input, removals: 0 });
+  });
+
+  it("reads each language's short forms as the right month", () => {
+    const allowed = new Set([
+      "2027-01", "2027-02", "2027-04", "2027-05", "2027-08", "2027-09", "2027-10", "2027-12",
+    ]);
+    const input = {
+      es: "En ene 2027, feb 2027, abr 2027, may 2027, ago 2027, sep 2027, oct 2027 y dic 2027.",
+      pt: "Em jan. 2027, fev. 2027, abr. 2027, mai. 2027, ago. 2027, set. 2027, out. 2027 e dez. 2027.",
+      en: "In Jan 2027, Feb 2027, Apr 2027, May 2027, Aug 2027, Sept 2027, Oct 2027 and Dec 2027.",
+    };
+    expect(validateTimelineDates(input, allowed).removals).toBe(0);
+    // Without those months every sentence goes: the forms really were read as dates.
+    expect(validateTimelineDates(input, ALLOWED).removals).toBe(3);
+  });
+
+  it("keeps ordinary words that look like short months when no year follows", () => {
+    const input = {
+      layman: "Mar is a word. Set your intention. May you rest. Out of the woods by 2027-03.",
+      technical: "Jan and Dec stay quiet. Sept is a prefix.",
+    };
+    expect(validateTimelineDates(input, ALLOWED)).toEqual({ section: input, removals: 0 });
+  });
+
+  it.each([
+    ["en", "Feb-Apr 2027"],
+    ["es", "feb-abr 2027"],
+    ["pt", "fev.-abr. 2027"],
+    ["pt", "fev. – abr. de 2027"],
+  ])("checks both ends of a %s month range %s", (_lang, range) => {
+    const input = { layman: `Focus on ${range}. Rest.` };
+    // Only the end month supplied: the range's start is an invented month.
+    const endOnly = validateTimelineDates(input, new Set(["2027-04"]));
+    expect(endOnly).toEqual({ section: { layman: "Rest." }, removals: 1 });
+    const both = new Set(["2027-02", "2027-04"]);
+    expect(validateTimelineDates(input, both)).toEqual({ section: input, removals: 0 });
+  });
+
+  it.each<PromptLanguage>(["en", "es", "pt"])(
+    "guards the %s quarter titles quarterTitle prints",
+    (language) => {
+      for (const quarter of computeQuarters("2026-11")) {
+        const title = quarterTitle(quarter, language);
+        const input = { layman: `Focus on ${title}. Rest.` };
+        const supplied = new Set(quarter.months);
+        expect(validateTimelineDates(input, supplied)).toEqual({ section: input, removals: 0 });
+        const { section, removals } = validateTimelineDates(input, new Set<string>());
+        expect({ title, text: section.layman, removals }).toEqual({ title, text: "Rest.", removals: 1 });
+      }
+    },
+  );
+});
+
+describe("monthsIn", () => {
+  it("collects every YYYY-MM the engine put in a slice", () => {
+    const slice = { a: "2027-03", b: [{ month: "2027-06" }], c: "birth", d: 2027 };
+    expect([...monthsIn(slice)].sort()).toEqual(["2027-03", "2027-06"]);
+  });
+});
