@@ -137,6 +137,28 @@ describe("fetchOpenRouterModels", () => {
     ]);
   });
 
+  it("parses per-token USD pricing from the catalog row", async () => {
+    const fetchImpl = stubFetch({
+      data: [
+        { id: "deepseek/deepseek-v4.1-flash", name: "Flash", pricing: { prompt: "0.0000003", completion: "0.0000012" } },
+        { id: "meta/free", name: "Free", pricing: { prompt: "0", completion: "0" } },
+        { id: "openrouter/auto", name: "Auto", pricing: { prompt: "-1", completion: "-1" } },
+        { id: "odd/model", name: "Odd", pricing: { prompt: "abc", completion: "0.000001" } },
+        { id: "no/pricing", name: "None" },
+      ],
+    });
+    const models = await fetchOpenRouterModels({ config: openRouterConfig, fetchImpl });
+    const byId = Object.fromEntries(models.map((m) => [m.id, m]));
+    expect(byId["deepseek/deepseek-v4.1-flash"].pricing).toEqual({
+      promptUsdPerToken: 0.0000003,
+      completionUsdPerToken: 0.0000012,
+    });
+    expect(byId["meta/free"].pricing).toEqual({ promptUsdPerToken: 0, completionUsdPerToken: 0 });
+    expect(byId["openrouter/auto"].pricing).toBeUndefined();
+    expect(byId["odd/model"].pricing).toBeUndefined();
+    expect(byId["no/pricing"]).not.toHaveProperty("pricing");
+  });
+
   it("refuses fail-closed for a non-OpenRouter endpoint (no key leaves the host)", async () => {
     const local: ProviderConfig = { ...openRouterConfig, baseUrl: "http://localhost:11434/v1" };
     const fetchImpl = stubFetch({ data: [] });

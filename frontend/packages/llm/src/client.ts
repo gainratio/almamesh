@@ -8,6 +8,7 @@
 // the device.
 
 import { ensurePrivacy, OPENROUTER_API_BASE, type ProviderConfig } from "./config";
+import { type ModelPricing, parseModelPricing } from "./pricing";
 
 export interface ChatMessage {
   readonly role: "system" | "user" | "assistant";
@@ -329,10 +330,16 @@ export interface OpenRouterModel {
   readonly id: string;
   /** Human-friendly display name; falls back to `id` when the catalog omits it. */
   readonly name: string;
+  /** Per-token USD price from the catalog; absent when missing or unparseable. */
+  readonly pricing?: ModelPricing;
 }
 
 interface OpenRouterModelsResponse {
-  readonly data?: ReadonlyArray<{ readonly id?: unknown; readonly name?: unknown }>;
+  readonly data?: ReadonlyArray<{
+    readonly id?: unknown;
+    readonly name?: unknown;
+    readonly pricing?: unknown;
+  }>;
 }
 
 /** Options for reading the OpenRouter model catalog. */
@@ -387,7 +394,8 @@ export async function fetchOpenRouterModels(
       continue;
     }
     const name = typeof row.name === "string" && row.name.length > 0 ? row.name : row.id;
-    models.push({ id: row.id, name });
+    const pricing = parseModelPricing(row.pricing);
+    models.push({ id: row.id, name, ...(pricing ? { pricing } : {}) });
   }
   models.sort((a, b) => a.id.localeCompare(b.id));
   return models;
