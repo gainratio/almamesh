@@ -81,6 +81,8 @@ import { rectificationDelta } from "../lib/rectification";
 import { buildChatToolset } from "../lib/chatToolset";
 import { formatPinLabel } from "../lib/timeTravelSheet";
 import { birthYearOf } from "../lib/periodChart";
+import { asOfKey } from "../lib/pinnedPeriod";
+import { DashboardMoment } from "../components/features/dashboard/DashboardMomentCard";
 import { TimeTravelBanner } from "../components/features/chat/TimeTravelBanner";
 import { DashboardTimeTravelSheet } from "../components/features/dashboard/DashboardTimeTravelSheet";
 import { viewerTodayDay } from "../lib/chatAgentTools";
@@ -177,14 +179,19 @@ export default function DashboardPage() {
   const activeProfileId = useProfilesStore((s) => s.activeProfileId);
   const timeTravel = useTimeTravel(activeProfileId, chartId);
   const [travelSheet, setTravelSheet] = useState<'closed' | 'new' | 'change'>('closed');
-  const [travelBack, setTravelBack] = useState<'idle' | 'busy' | 'failed'>('idle');
+  // Back to today's state belongs to the moment it ran on: a failure on one
+  // moment must not greet the person on the next one (however it was reached).
+  const [travelBackFor, setTravelBackFor] = useState<{ readonly status: 'idle' | 'busy' | 'failed'; readonly key: string }>({ status: 'idle', key: 'today' });
+  const momentKey = asOfKey(timeTravel.moment);
+  const travelBack = travelBackFor.key === momentKey ? travelBackFor.status : 'idle';
   const travelBirthYear = birthYearOf(chartId
     ? (useChartLibraryStore.getState().getChart(chartId)?.birth_data as ProcessedBirthData | undefined)
     : undefined);
   const goToMoment = (asOf: ChatThreadAsOf) => timeTravel.travel({ asOf, source: 'dashboard-sheet' });
   const backFromMoment = async () => {
-    setTravelBack('busy');
-    try { await timeTravel.backToToday(); setTravelBack('idle'); } catch { setTravelBack('failed'); }
+    const key = momentKey;
+    setTravelBackFor({ status: 'busy', key });
+    try { await timeTravel.backToToday(); setTravelBackFor({ status: 'idle', key }); } catch { setTravelBackFor({ status: 'failed', key }); }
   };
   // Whose chart is missing — named on the empty state so the screen is about a
   // person, not an abstraction. Selected as a primitive so the hook is stable.
@@ -835,6 +842,10 @@ export default function DashboardPage() {
             onChange={() => setTravelSheet('change')} onBack={() => void backFromMoment()}
             backBusy={travelBack === 'busy'} backFailed={travelBack === 'failed'} />
         )}
+        {timeTravel.moment && (
+          <DashboardMoment asOf={timeTravel.moment} chart={siderealChart} chartId={chartId}
+            engine={chartEngineContext} birthYear={travelBirthYear} language={i18n.language} />
+        )}
         <DashboardTimeTravelSheet open={travelSheet !== 'closed'}
           current={travelSheet === 'change' ? timeTravel.moment : undefined}
           birthYear={travelBirthYear} today={viewerTodayDay(new Date())}
@@ -1191,7 +1202,14 @@ export default function DashboardPage() {
 
         {/* 4 — Life Atlas: the seven-domain centerpiece (engine forecasts,
                lazy compute behind one explicit affordance). */}
-        <LifeAtlas />
+        <div className="space-y-2">
+          {timeTravel.moment && (
+            <span data-testid="dashboard-today-label-life-atlas" className="inline-block rounded bg-ui-border/40 px-2 py-0.5 text-xs">
+              {t("dashboard:time_travel.today_label")}
+            </span>
+          )}
+          <LifeAtlas />
+        </div>
 
         {/* 5 — The observatory: 3D force field, kundli and planetary table,
                rendered for both modes (depth lives inside, not in the layout). */}
@@ -1201,6 +1219,11 @@ export default function DashboardPage() {
                + Feedback now live in the top identity-strip actions row.) */}
         <Card title={t('predictive:page.title')}>
           <div className="flex flex-col gap-4">
+            {timeTravel.moment && (
+              <span data-testid="dashboard-today-label-sky" className="self-start rounded bg-ui-border/40 px-2 py-0.5 text-xs">
+                {t("dashboard:time_travel.today_label")}
+              </span>
+            )}
             <p className="text-sm leading-relaxed text-text-secondary">
               {t('life:continue.timing_body')}
             </p>

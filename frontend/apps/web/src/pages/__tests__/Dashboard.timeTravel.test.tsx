@@ -91,6 +91,7 @@ function response(chart: StoredChart): BirthChartGenerationResponse {
 }
 
 const PROFILE_ID = 'profile-1';
+const REAL_SET_MOMENT = useTimeTravelStore.getState().setMoment;
 
 async function renderDashboard({ ai }: { ai: 'on' | 'off' }) {
   const chart = chartWithZone('Asia/Kolkata');
@@ -112,7 +113,7 @@ async function renderDashboard({ ai }: { ai: 'on' | 'off' }) {
 describe('Dashboard Time travel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    useTimeTravelStore.setState({ moments: {} });
+    useTimeTravelStore.setState({ moments: {}, setMoment: REAL_SET_MOMENT });
     useProfilesStore.setState({ activeProfileId: PROFILE_ID });
     useInterpretationStore.setState({ byChart: {} });
     usePredictiveStore.getState().reset();
@@ -190,5 +191,45 @@ describe('Dashboard Time travel', () => {
       fireEvent.click(screen.getByTestId('dashboard-time-travel-back'));
     });
     expect(screen.queryByTestId('dashboard-time-travel-banner')).toBeNull();
+  });
+
+  it('labels Life Atlas and Sky & Timing "Today" while a moment is set, and only then', async () => {
+    await renderDashboard({ ai: 'off' });
+    expect(screen.queryByTestId('dashboard-today-label-life-atlas')).toBeNull();
+    expect(screen.queryByTestId('dashboard-today-label-sky')).toBeNull();
+    expect(screen.queryByTestId('time-travel-moment-card')).toBeNull();
+    act(() =>
+      useTimeTravelStore
+        .getState()
+        .setMoment(PROFILE_ID, { start: '2019-03-01', end: '2019-03-31', granularity: 'month' }),
+    );
+    expect(screen.getByTestId('dashboard-today-label-life-atlas').textContent).toContain('Today');
+    expect(screen.getByTestId('dashboard-today-label-sky').textContent).toContain('Today');
+    expect(screen.getByTestId('time-travel-moment-card')).not.toBeNull();
+  });
+
+  it('a failed Back to today does not follow the person to the next moment', async () => {
+    await renderDashboard({ ai: 'off' });
+    const realSetMoment = useTimeTravelStore.getState().setMoment;
+    // The seam's last step fails on the way back to today, and only then.
+    useTimeTravelStore.setState({
+      setMoment: (profileId, asOf) => {
+        if (!asOf) throw new Error('save failed');
+        realSetMoment(profileId, asOf);
+      },
+    });
+    act(() => realSetMoment(PROFILE_ID, { start: '2019-01-01', end: '2019-12-31', granularity: 'year' }));
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('dashboard-time-travel-back'));
+    });
+    expect(screen.getByTestId('dashboard-time-travel-back-failed')).not.toBeNull();
+
+    fireEvent.click(screen.getByTestId('dashboard-time-travel-change'));
+    fireEvent.change(screen.getByTestId('time-travel-year'), { target: { value: '2020' } });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('time-travel-go'));
+    });
+    expect((screen.getByTestId('dashboard-time-travel-title').textContent ?? '').replace(/\s+/g, ' ')).toContain('2020');
+    expect(screen.queryByTestId('dashboard-time-travel-back-failed')).toBeNull();
   });
 });
