@@ -1,3 +1,4 @@
+import { renderHook, act } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useChatStore } from '@almamesh/store';
 
@@ -9,7 +10,7 @@ vi.mock('../storeSaved', () => ({
   },
 }));
 
-import { applyBackToToday, applyTravel, TimeTravelRefusedError, useTimeTravelStore, type TravelDeps } from '../timeTravel';
+import { applyBackToToday, applyTravel, TimeTravelRefusedError, useTimeTravel, useTimeTravelStore, type TravelDeps } from '../timeTravel';
 
 const MARCH_2019 = { start: '2019-03-01', end: '2019-03-31', granularity: 'month' } as const;
 const YEAR_2027 = { start: '2027-01-01', end: '2027-12-31', granularity: 'year' } as const;
@@ -141,5 +142,41 @@ describe('applyBackToToday', () => {
     save.fail = true;
     await expect(applyBackToToday({ profileId: 'p1', chartId: 'c1' }, aiOn)).rejects.toThrow('Saving chat failed.');
     expect(moment()).toEqual(MARCH_2019);
+  });
+});
+
+describe('default deps: the birth year comes from the chart library', () => {
+  const ancient = { start: '1900-01-01', end: '1900-12-31', granularity: 'year' } as const;
+
+  it('with no chartId there is no birth year to refuse against', async () => {
+    await applyTravel({ asOf: ancient, source: 'dashboard-sheet' }, { profileId: 'p1', chartId: null, thread: 'new' });
+    expect(moment()).toEqual(ancient);
+  });
+
+  it('with a chartId the library does not hold, there is no birth year either', async () => {
+    await applyTravel({ asOf: ancient, source: 'dashboard-sheet' }, { profileId: 'p1', chartId: 'missing', thread: 'new' });
+    expect(moment()).toEqual(ancient);
+  });
+});
+
+describe('useTimeTravel', () => {
+  it('with no profile: no moment, and travel and backToToday touch nothing', async () => {
+    const { result } = renderHook(() => useTimeTravel(null, null));
+    expect(result.current.moment).toBeUndefined();
+    await act(async () => { await result.current.travel({ asOf: MARCH_2019, source: 'dashboard-sheet' }); });
+    await act(async () => { await result.current.backToToday(); });
+    expect(useTimeTravelStore.getState().moments).toEqual({});
+    expect(useChatStore.getState().listThreads('p1')).toEqual([]);
+    expect(save.calls).toBe(0);
+  });
+
+  it('with a profile: reads its moment, travels, and goes back to today', async () => {
+    useTimeTravelStore.setState({ moments: { p1: YEAR_2027 } });
+    const { result } = renderHook(() => useTimeTravel('p1', null));
+    expect(result.current.moment).toEqual(YEAR_2027);
+    await act(async () => { await result.current.travel({ asOf: MARCH_2019, source: 'dashboard-sheet' }); });
+    expect(result.current.moment).toEqual(MARCH_2019);
+    await act(async () => { await result.current.backToToday(); });
+    expect(result.current.moment).toBeUndefined();
   });
 });
