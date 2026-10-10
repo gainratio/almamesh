@@ -9,7 +9,8 @@
 #      report showing >=1 failed test whose name is the named test. A crash or
 #      collection error (no failed test in the JSON) is NOT a red;
 #   4. the file is restored and `git diff --quiet` proves it.
-# At the end the tracked tree must be clean and no marker may be left behind.
+# At the end frontend/packages/llm/src must be clean (unrelated edits elsewhere
+# do not matter) and no marker may be left behind. Ctrl-C restores and exits 130.
 #
 # Run: bash frontend/apps/web/scripts/mutations/pr2-report-sections.sh
 # Exit 0 = every mutation went red. Non-zero = a guard measured shape, or the
@@ -37,7 +38,8 @@ restore_current() {
     CURRENT_FILE=""
   fi
 }
-trap restore_current EXIT INT TERM
+trap restore_current EXIT
+trap 'restore_current; exit 130' INT TERM
 
 # vitest -t takes a regex; test names contain ( ) / . , so escape them.
 regex_escape() {
@@ -56,7 +58,8 @@ run_test() {
 
 # count <json> <status> <test-name> [needle]: assertions in vitest's JSON report
 # with that status whose title is the test name (and, with a needle, whose
-# failure message is "... not to contain '<needle>'"). A missing or unreadable
+# failure message contains that exact text, so an unrelated TypeError or
+# timeout cannot count as the expected red). A missing or unreadable
 # report counts 0, so a crash can never read as a red.
 count() {
   node -e '
@@ -65,7 +68,7 @@ count() {
     try { report = JSON.parse(require("fs").readFileSync(file, "utf8")); } catch { console.log(0); process.exit(0); }
     const hits = (report.testResults ?? []).flatMap((f) => f.assertionResults ?? []).filter((a) =>
       a.status === status && a.title === title &&
-      (!needle || (a.failureMessages ?? []).some((m) => m.includes(`not to contain '"'"'${needle}'"'"'`))));
+      (!needle || (a.failureMessages ?? []).some((m) => m.includes(needle))));
     console.log(hits.length);
   ' "$@"
 }
@@ -155,7 +158,8 @@ mutate 2 "$DG" \
 # 3. life_outlook gets the full predictive block.
 mutate 3 "$RS" \
   's/return forecast \? \[\{ \.\.\.forecast, house_lords: houses\[domain\] \?\? \[\] \}\] : \[\];/return forecast ? [{ ...forecast, ...chart.predictive, house_lords: houses[domain] ?? [] }] : []; \/\/ MUTATION-PR2-3/' \
-  'MUTATION-PR2-3' src/__tests__/report-slices.test.ts 'passes life_outlook_1 only its four domain forecasts plus their house-lord rows'
+  'MUTATION-PR2-3' src/__tests__/report-slices.test.ts 'passes life_outlook_1 only its four domain forecasts plus their house-lord rows' \
+  "not to contain 'gochara'"
 
 # 4. A price is invented when the catalog has none.
 mutate 4 "$CE" \
@@ -165,7 +169,8 @@ mutate 4 "$CE" \
 # 5. Any quarter key is accepted (whole check gone).
 mutate 5 "$RS" \
   's/if \(!isSentQuarter\(key, sent\) \|\| seen\.has\(key\)\) \{/if (false && seen.has(key as QuarterKey)) { \/\/ MUTATION-PR2-5/' \
-  'MUTATION-PR2-5' src/__tests__/report-parsers.test.ts 'rejects a quarter key it did not send'
+  'MUTATION-PR2-5' src/__tests__/report-parsers.test.ts 'rejects a quarter key it did not send' \
+  "expected function to throw an error, but it didn't"
 
 # 6. Report sections get the legacy 12k reasoning cap.
 mutate 6 "$SI" \
@@ -181,7 +186,7 @@ mutate 7 "$SI" \
 mutate 8 "$RS" \
   's/(as_of_month: reportAsOfMonth\(chart\),\n)(\s+domains: group\.flatMap)/$1    sade_sati: chart.predictive?.transits?.sade_sati, \/\/ MUTATION-PR2-8\n$2/' \
   'MUTATION-PR2-8' src/__tests__/report-slices.test.ts 'passes life_outlook_1 only its four domain forecasts plus their house-lord rows' \
-  '"sade_sati"'
+  "not to contain '\"sade_sati\"'"
 
 # 9. buildReportMessages sends the raw (time-sensitive) chart to natal sections.
 # The natal leak has two independent layers: buildReportMessages strips the
@@ -192,7 +197,7 @@ mutate 8 "$RS" \
 mutate 9 "$SI" \
   's/const natal = sanitizeChartForLlm\(stableNatalChart\(input\.chart\), asOf\);/const natal = sanitizeChartForLlm(input.chart, asOf); \/\/ MUTATION-PR2-9/; s/const \{ predictive: _predictive, dashas: _dashas, as_of: _asOf, \.\.\.natal \} = chart;/const { predictive: _predictive, as_of: _asOf, ...natal } = chart; \/\/ MUTATION-PR2-9/' \
   'MUTATION-PR2-9' src/__tests__/report-messages.test.ts 'never puts dashas or predictive data in a natal message' \
-  '"maha_dasha_sequence"' 2
+  "not to contain '\"maha_dasha_sequence\"'" 2
 
 # 10. Every host is treated as OpenRouter.
 mutate 10 "$CL" \
@@ -212,11 +217,12 @@ mutate 12 "$ST" \
 # 13. A non-empty quarter key that was not sent is accepted (repeat check kept).
 mutate 13 "$RS" \
   's/if \(!isSentQuarter\(key, sent\) \|\| seen\.has\(key\)\) \{/if ((key === "" \&\& !isSentQuarter(key, sent)) || seen.has(key as QuarterKey)) { \/\/ MUTATION-PR2-13/' \
-  'MUTATION-PR2-13' src/__tests__/report-parsers.test.ts 'rejects a quarter key it did not send'
+  'MUTATION-PR2-13' src/__tests__/report-parsers.test.ts 'rejects a quarter key it did not send' \
+  "expected function to throw an error, but it didn't"
 
-if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
-  echo "tracked tree not clean after restoring mutations" >&2
-  git status --porcelain --untracked-files=no >&2
+if [ -n "$(git status --porcelain -- "$SRC_REL")" ]; then
+  echo "$SRC_REL not clean after restoring mutations" >&2
+  git status --porcelain -- "$SRC_REL" >&2
   exit 1
 fi
 for marker in "${MARKERS[@]}"; do
