@@ -63,6 +63,13 @@ describe('ChatPanel time travel', () => {
     expect(screen.queryByTestId('time-travel-button')).toBeNull();
   });
 
+  it('the composer button shows its text label at every width (no sm:inline)', () => {
+    renderPanel();
+    const label = screen.getByTestId('time-travel-button').querySelector('span:not([aria-hidden])');
+    expect(label?.textContent).toBe('Time travel');
+    expect(label?.className ?? '').not.toMatch(/\bhidden\b/);
+  });
+
   it('Year 2050 → Go opens a pinned thread with badge, title, banner and future starters', async () => {
     renderPanel();
     await pinYear('2050');
