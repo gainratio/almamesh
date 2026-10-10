@@ -209,7 +209,11 @@ describe("streamReportTimeline", () => {
       order.push(section);
       await new Promise((r) => setTimeout(r, 5));
       inFlight -= 1;
-      return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(REPLIES[section]) } }] }));
+      // Report sections always stream now; a JSON body needs its content type
+      // to take the non-streamed-answer branch (as a real server sends it).
+      return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(REPLIES[section]) } }] }), {
+        headers: { "Content-Type": "application/json" },
+      });
     }) as unknown as typeof fetch;
     await collect(streamReportTimeline({ chart: REPORT_RAW_CHART, asOf: REPORT_AS_OF, config: LOCAL, fetchImpl }));
     expect(order).toEqual(["current_period", "year_ahead", "life_outlook_1", "life_outlook_2"]);

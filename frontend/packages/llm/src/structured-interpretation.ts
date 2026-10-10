@@ -36,6 +36,7 @@ import { chatCompletionJson, LlmRequestError, type ChatMessage } from "./client"
 import { createJsonProseExtractor, createWordCounter } from "./json-prose";
 import { streamChatCompletionJson } from "./json-stream";
 import {
+  REPORT_LOCAL_FIRST_TOKEN_TIMEOUT_MS,
   REPORT_SECTION_IDLE_TIMEOUT_MS,
   REPORT_SECTION_TIMEOUT_MS,
   SectionTimeoutError,
@@ -185,10 +186,16 @@ export interface StructuredInterpretationParams {
    */
   readonly sectionTimeoutMs?: number;
   /**
-   * Report sections only, streamed path only: fail a section that receives no
-   * token for this many ms (default REPORT_SECTION_IDLE_TIMEOUT_MS).
+   * Report sections only: fail a section that receives no token for this many
+   * ms (default REPORT_SECTION_IDLE_TIMEOUT_MS). Remote: from launch. Local:
+   * from the section's first token.
    */
   readonly sectionIdleTimeoutMs?: number;
+  /**
+   * Report sections on local endpoints only: cap on the wait for a section's
+   * first token, in ms (default REPORT_LOCAL_FIRST_TOKEN_TIMEOUT_MS).
+   */
+  readonly sectionFirstTokenTimeoutMs?: number;
 }
 
 type AnySectionKey = InterpretationSectionKey | ReportTimelineSectionKey;
@@ -1453,7 +1460,9 @@ function requestSection<Section extends AnySectionKey>(
     ...(params.fetchImpl ? { fetchImpl: params.fetchImpl } : {}),
   };
   const report = params.onSectionProgress;
-  if (!report) return chatCompletionJson(base);
+  // Report sections always stream, callback or not: tokens are the only sign
+  // of life the idle and first-token caps can watch (#2.14b).
+  if (!report && !isReportRequest(section, params.promptSet)) return chatCompletionJson(base);
   const prose = createJsonProseExtractor();
   const thinking = createWordCounter();
   const snapshot = (): SectionProgressSnapshot => ({
@@ -1467,12 +1476,12 @@ function requestSection<Section extends AnySectionKey>(
     onDelta: (delta) => {
       touch();
       prose.push(delta);
-      report(section, snapshot());
+      report?.(section, snapshot());
     },
     onReasoning: (delta) => {
       touch();
       thinking.push(delta);
-      report(section, snapshot());
+      report?.(section, snapshot());
     },
   });
 }
@@ -1489,21 +1498,22 @@ function reasoningBudget(section: AnySectionKey, promptSet: ReportPromptSet | un
 
 /**
  * The time caps for one section. Legacy sections: none (unchanged). Report
- * sections: a total cap on remote endpoints only (a weak local device may be
- * slow but still writing), and an idle cap where tokens are observable (the
- * streamed path; a non-streamed call shows no progress until it is done).
+ * sections always stream (requestSection), so tokens are observable on every
+ * path. Remote: a total cap plus an idle cap from launch. Local: no total cap
+ * (a weak device may be slow but still writing); the idle cap starts at the
+ * first token, and a generous first-token cap bounds the wait before it
+ * (queueing on a single-slot server, cold model load, slow prefill).
  */
 function sectionLimits<Section extends AnySectionKey>(
   section: Section,
   params: SectionRunParams<Section>,
 ): SectionTimeLimits | null {
   if (!isReportRequest(section, params.promptSet)) return null;
-  const remote = !usesLitePrompt(params.config);
-  const streamed = params.onSectionProgress !== undefined;
-  return {
-    ...(remote ? { totalMs: params.sectionTimeoutMs ?? REPORT_SECTION_TIMEOUT_MS } : {}),
-    ...(streamed ? { idleMs: params.sectionIdleTimeoutMs ?? REPORT_SECTION_IDLE_TIMEOUT_MS } : {}),
-  };
+  const idleMs = params.sectionIdleTimeoutMs ?? REPORT_SECTION_IDLE_TIMEOUT_MS;
+  if (usesLitePrompt(params.config)) {
+    return { idleMs, firstTokenMs: params.sectionFirstTokenTimeoutMs ?? REPORT_LOCAL_FIRST_TOKEN_TIMEOUT_MS };
+  }
+  return { totalMs: params.sectionTimeoutMs ?? REPORT_SECTION_TIMEOUT_MS, idleMs };
 }
 
 /** One completion plus #192's single retry of a transient failure. */
@@ -1601,10 +1611,12 @@ async function* streamSections<Section extends AnySectionKey>(
   const results = emptyResults();
   results.asOfMonth = reportAsOfMonth(chart);
 
-  // A local endpoint (Ollama) serves one request at a time; for report
-  // timeline sections we run them in order so the two life-outlook calls are
-  // last (owner ruling 7). Cloud runs stay fully parallel.
-  const sequential = usesLitePrompt(params.config) && sections.some((s) => isReportTimelineSection(s));
+  // A local endpoint (Ollama) serves one request at a time; report sections
+  // (timeline and report-v2 natal) run in order so none waits queued behind
+  // another under its time caps, and the two life-outlook calls are last
+  // (owner ruling 7). Legacy natal and cloud runs stay fully parallel.
+  const sequential =
+    usesLitePrompt(params.config) && sections.some((s) => isReportRequest(s, params.promptSet));
   const queue = [...sections];
   const pending = new Map<Section, Promise<SectionOutcome<Section>>>();
   const launch = (): void => {

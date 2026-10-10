@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ProviderConfig } from "../config";
 import {
+  REPORT_LOCAL_FIRST_TOKEN_TIMEOUT_MS,
   REPORT_PROMPT_SET,
   REPORT_SECTION_IDLE_TIMEOUT_MS,
   REPORT_SECTION_TIMEOUT_MS,
@@ -60,26 +61,30 @@ function jsonReply(section: string): Response {
   });
 }
 
-/** Headers arrive, then `sent` deltas, then nothing ever again. */
-function stalledStream(sent: readonly string[] = []): Response {
+/**
+ * Headers arrive, then `sent` deltas, then nothing ever again. Like a real
+ * fetch, an abort of the request's signal errors the body.
+ */
+function stalledStream(sent: readonly string[] = [], signal?: AbortSignal | null): Response {
   const encoder = new TextEncoder();
   const body = new ReadableStream<Uint8Array>({
     start(controller) {
       for (const text of sent) controller.enqueue(encoder.encode(delta(text)));
+      signal?.addEventListener("abort", () => controller.error(new DOMException("aborted", "AbortError")));
     },
   });
   return new Response(body, { headers: SSE_HEADERS });
 }
 
-/** The section's reply split into `pieces` deltas, one every `gapMs`. */
-function slowStream(section: string, pieces: number, gapMs: number): Response {
+/** The section's reply split into `pieces` deltas, one every `gapMs` (the first after `firstGapMs`). */
+function slowStream(section: string, pieces: number, gapMs: number, firstGapMs = gapMs): Response {
   const text = JSON.stringify(REPLIES[section]);
   const size = Math.ceil(text.length / pieces);
   const encoder = new TextEncoder();
   let at = 0;
   const body = new ReadableStream<Uint8Array>({
     async pull(controller) {
-      await new Promise((resolve) => setTimeout(resolve, gapMs));
+      await new Promise((resolve) => setTimeout(resolve, at === 0 ? firstGapMs : gapMs));
       if (at >= text.length) {
         controller.enqueue(encoder.encode(sse("[DONE]")));
         controller.close();
@@ -96,16 +101,70 @@ type Answer = (init: RequestInit) => Response | Promise<Response>;
 
 function fetchWith(answers: Partial<Record<string, Answer>>) {
   const signals = new Map<string, AbortSignal | undefined>();
+  const bodies = new Map<string, Record<string, unknown>>();
+  let inFlight = 0;
+  let maxInFlight = 0;
   const fetchImpl = vi.fn(async (_url: string, init: RequestInit) => {
     const section = sectionOf(init);
     signals.set(section, init.signal ?? undefined);
-    const answer = answers[section];
-    return answer ? answer(init) : jsonReply(section);
+    bodies.set(section, JSON.parse(String(init.body)) as Record<string, unknown>);
+    inFlight += 1;
+    maxInFlight = Math.max(maxInFlight, inFlight);
+    try {
+      const answer = answers[section];
+      // A tick of latency so concurrent launches overlap.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      return await (answer ? answer(init) : jsonReply(section));
+    } finally {
+      inFlight -= 1;
+    }
   }) as unknown as typeof fetch;
-  return { fetchImpl, signals };
+  return { fetchImpl, signals, bodies, maxInFlight: () => maxInFlight };
 }
 
 const never = (): Promise<Response> => new Promise<Response>(() => undefined);
+
+/** No headers ever; rejects like a real fetch when its signal aborts. */
+const abortableNever = (init: RequestInit): Promise<Response> =>
+  new Promise<Response>((_, reject) => {
+    init.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+  });
+
+/** Keeps writing a whitespace delta every `gapMs`, never finishing. */
+function endlessStream(gapMs: number, signal?: AbortSignal | null): Response {
+  const encoder = new TextEncoder();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      const tick = (): void => {
+        controller.enqueue(encoder.encode(delta(" ")));
+        timer = setTimeout(tick, gapMs);
+      };
+      controller.enqueue(encoder.encode(delta("{")));
+      timer = setTimeout(tick, gapMs);
+      signal?.addEventListener("abort", () => {
+        clearTimeout(timer);
+        controller.error(new DOMException("aborted", "AbortError"));
+      });
+    },
+  });
+  return new Response(body, { headers: SSE_HEADERS });
+}
+
+/** Drain a generator into `events` in the background. */
+async function drainInto<E>(gen: AsyncGenerator<E>, events: E[]): Promise<void> {
+  for await (const e of gen) events.push(e);
+}
+
+/** Fake timers: advance in small steps until `run` settles (later sections launch on ticks). */
+async function settle(run: Promise<void>): Promise<void> {
+  let done = false;
+  void run.finally(() => {
+    done = true;
+  });
+  for (let i = 0; i < 200 && !done; i += 1) await vi.advanceTimersByTimeAsync(1);
+  await run;
+}
 
 async function collect<E>(gen: AsyncGenerator<E>): Promise<E[]> {
   const out: E[] = [];
@@ -125,7 +184,7 @@ afterEach(() => {
 
 describe("report section time caps", () => {
   it("remote: a stalled stream fails that section with an idle timeout; the rest complete", async () => {
-    const { fetchImpl, signals } = fetchWith({ year_ahead: () => stalledStream() });
+    const { fetchImpl, signals } = fetchWith({ year_ahead: (init) => stalledStream([], init.signal) });
     const events = await collect(streamReportTimeline({
       chart: REPORT_RAW_CHART, asOf: REPORT_AS_OF, config: OPENROUTER, fetchImpl,
       onSectionProgress: progress, sectionIdleTimeoutMs: 40, sectionTimeoutMs: 5_000,
@@ -141,7 +200,7 @@ describe("report section time caps", () => {
     expect(events.at(-1)?.type).toBe("complete");
   });
 
-  it("remote: a never-resolving non-streamed fetch fails with a total timeout within the cap", async () => {
+  it("remote: a never-resolving fetch fails with a total timeout within the cap", async () => {
     const { fetchImpl, signals } = fetchWith({ current_period: never });
     const started = Date.now();
     const events = await collect(streamReportTimeline({
@@ -182,7 +241,7 @@ describe("report section time caps", () => {
   });
 
   it("local: a stream that stalls past the idle limit fails with an idle timeout", async () => {
-    const { fetchImpl } = fetchWith({ current_period: () => stalledStream(["{\"maha\":"]) });
+    const { fetchImpl } = fetchWith({ current_period: (init) => stalledStream(["{\"maha\":"], init.signal) });
     const events = await collect(streamReportTimeline({
       chart: REPORT_RAW_CHART, asOf: REPORT_AS_OF, config: LOCAL, fetchImpl,
       onSectionProgress: progress, sectionIdleTimeoutMs: 40,
@@ -222,42 +281,130 @@ describe("report section time caps", () => {
     controller.abort();
   });
 
-  it("defaults: a remote section is cut at exactly 300 s", async () => {
+  it("defaults: a remote section that keeps writing is cut at exactly 300 s (total cap)", async () => {
     vi.useFakeTimers();
-    const { fetchImpl } = fetchWith({ current_period: never });
+    const { fetchImpl } = fetchWith({ current_period: (init) => endlessStream(60_000, init.signal) });
     const events: ReportTimelineEvent[] = [];
-    const run = (async () => {
-      for await (const e of streamReportTimeline({ chart: REPORT_RAW_CHART, asOf: REPORT_AS_OF, config: OPENROUTER, fetchImpl })) {
-        events.push(e);
-      }
-    })();
+    const run = drainInto(streamReportTimeline({ chart: REPORT_RAW_CHART, asOf: REPORT_AS_OF, config: OPENROUTER, fetchImpl }), events);
     await vi.advanceTimersByTimeAsync(299_999);
     expect(errorsOf(events)).toEqual([]);
     await vi.advanceTimersByTimeAsync(1);
-    await run;
+    await settle(run);
     expect(errorsOf(events)[0]).toMatchObject({ section: "current_period", timeout: { kind: "total", limitMs: 300_000 } });
+    expect(vi.getTimerCount()).toBe(0);
   });
 
-  it("defaults: a local streamed section idles out at exactly 120 s", async () => {
+  it("defaults: a remote section with no byte at all idles out at exactly 120 s", async () => {
     vi.useFakeTimers();
-    const { fetchImpl } = fetchWith({ current_period: () => stalledStream() });
+    const { fetchImpl } = fetchWith({ current_period: never });
     const events: ReportTimelineEvent[] = [];
-    const run = (async () => {
-      for await (const e of streamReportTimeline({
-        chart: REPORT_RAW_CHART, asOf: REPORT_AS_OF, config: LOCAL, fetchImpl, onSectionProgress: progress,
-      })) {
-        events.push(e);
-      }
-    })();
+    const run = drainInto(streamReportTimeline({ chart: REPORT_RAW_CHART, asOf: REPORT_AS_OF, config: OPENROUTER, fetchImpl }), events);
     await vi.advanceTimersByTimeAsync(119_999);
     expect(errorsOf(events)).toEqual([]);
     await vi.advanceTimersByTimeAsync(1);
-    await run;
+    await settle(run);
     expect(errorsOf(events)[0]).toMatchObject({ section: "current_period", timeout: { kind: "idle", limitMs: 120_000 } });
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("defaults: a local section idles out exactly 120 s after its last token", async () => {
+    vi.useFakeTimers();
+    const { fetchImpl } = fetchWith({ current_period: (init) => stalledStream(["{\"maha\":"], init.signal) });
+    const events: ReportTimelineEvent[] = [];
+    const run = drainInto(streamReportTimeline({ chart: REPORT_RAW_CHART, asOf: REPORT_AS_OF, config: LOCAL, fetchImpl }), events);
+    await vi.advanceTimersByTimeAsync(1);
+    await vi.advanceTimersByTimeAsync(119_998);
+    expect(errorsOf(events)).toEqual([]);
+    await vi.advanceTimersByTimeAsync(1);
+    await settle(run);
+    expect(errorsOf(events)[0]).toMatchObject({ section: "current_period", timeout: { kind: "idle", limitMs: 120_000 } });
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("defaults: a local section with no byte at all is cut at exactly 900 s (first-token cap)", async () => {
+    vi.useFakeTimers();
+    const { fetchImpl } = fetchWith({ current_period: abortableNever });
+    const events: ReportTimelineEvent[] = [];
+    const run = drainInto(streamReportTimeline({ chart: REPORT_RAW_CHART, asOf: REPORT_AS_OF, config: LOCAL, fetchImpl }), events);
+    await vi.advanceTimersByTimeAsync(899_999);
+    expect(errorsOf(events)).toEqual([]);
+    await vi.advanceTimersByTimeAsync(1);
+    await settle(run);
+    expect(errorsOf(events)[0]).toMatchObject({
+      section: "current_period",
+      timeout: { kind: "first_token", limitMs: 900_000 },
+    });
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("local: a slow first token (queue / prefill) longer than the idle limit does not trip idle", async () => {
+    const { fetchImpl } = fetchWith({ current_period: () => slowStream("current_period", 4, 15, 100) });
+    const events = await collect(streamReportTimeline({
+      chart: REPORT_RAW_CHART, asOf: REPORT_AS_OF, config: LOCAL, fetchImpl,
+      onSectionProgress: progress, sectionIdleTimeoutMs: 40,
+    }));
+    expect(errorsOf(events)).toEqual([]);
+    expect(completed(events)).toContain("current_period");
+  });
+
+  it("local: no byte ever fails with a first_token timeout at the first-token cap", async () => {
+    const { fetchImpl } = fetchWith({ current_period: abortableNever });
+    const events = await collect(streamReportTimeline({
+      chart: REPORT_RAW_CHART, asOf: REPORT_AS_OF, config: LOCAL, fetchImpl,
+      sectionIdleTimeoutMs: 20, sectionFirstTokenTimeoutMs: 60,
+    }));
+    const [error] = errorsOf(events);
+    expect(error).toMatchObject({ section: "current_period" });
+    expect(error.type === "error" ? error.timeout : undefined).toMatchObject({ kind: "first_token", limitMs: 60 });
+    expect(error.type === "error" ? error.message : "").toBe("Section timed out: no first token within 60 ms");
+  });
+
+  it("local: report natal sections run one at a time; legacy natal stays parallel", async () => {
+    const report = fetchWith({});
+    await collect(streamNatalInterpretation({
+      chart: REPORT_RAW_CHART, asOf: REPORT_AS_OF, config: LOCAL, fetchImpl: report.fetchImpl, promptSet: REPORT_PROMPT_SET,
+    }));
+    expect(report.maxInFlight()).toBe(1);
+    const legacy = fetchWith({});
+    await collect(streamNatalInterpretation({ chart: REPORT_RAW_CHART, asOf: REPORT_AS_OF, config: LOCAL, fetchImpl: legacy.fetchImpl }));
+    expect(legacy.maxInFlight()).toBeGreaterThan(1);
+  });
+
+  it("remote: idle detection works with no progress callback (the library streams report sections itself)", async () => {
+    const { fetchImpl, bodies } = fetchWith({ year_ahead: (init) => stalledStream([], init.signal) });
+    const events = await collect(streamReportTimeline({
+      chart: REPORT_RAW_CHART, asOf: REPORT_AS_OF, config: OPENROUTER, fetchImpl,
+      sectionIdleTimeoutMs: 40, sectionTimeoutMs: 5_000,
+    }));
+    const [error] = errorsOf(events);
+    expect(error).toMatchObject({ section: "year_ahead", timeout: { kind: "idle", limitMs: 40 } });
+    expect(bodies.get("year_ahead")?.stream).toBe(true);
+  });
+
+  it("local: report sections stream even without a progress callback (so they are capped)", async () => {
+    const { fetchImpl, bodies } = fetchWith({});
+    await collect(streamReportTimeline({ chart: REPORT_RAW_CHART, asOf: REPORT_AS_OF, config: LOCAL, fetchImpl }));
+    expect(bodies.get("current_period")?.stream).toBe(true);
+  });
+
+  it("a caller abort settles the section at once and leaves no timer behind", async () => {
+    vi.useFakeTimers();
+    const controller = new AbortController();
+    const { fetchImpl } = fetchWith({ current_period: never, year_ahead: never, life_outlook_1: never, life_outlook_2: never });
+    const run = collect(streamReportTimeline({
+      chart: REPORT_RAW_CHART, asOf: REPORT_AS_OF, config: OPENROUTER, fetchImpl, signal: controller.signal,
+    }));
+    const outcome = run.then(() => "resolved", (err: unknown) => (err as Error).name);
+    await vi.advanceTimersByTimeAsync(10);
+    controller.abort();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(await outcome).toBe("AbortError");
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it("pins the promised literal values", () => {
     expect(REPORT_SECTION_TIMEOUT_MS).toBe(300_000);
     expect(REPORT_SECTION_IDLE_TIMEOUT_MS).toBe(120_000);
+    expect(REPORT_LOCAL_FIRST_TOKEN_TIMEOUT_MS).toBe(900_000);
   });
 });

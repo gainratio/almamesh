@@ -432,6 +432,7 @@ export {
 
 // Report sections: per-section total + idle time caps.
 export {
+  REPORT_LOCAL_FIRST_TOKEN_TIMEOUT_MS,
   REPORT_SECTION_IDLE_TIMEOUT_MS,
   REPORT_SECTION_TIMEOUT_MS,
   SectionTimeoutError,
