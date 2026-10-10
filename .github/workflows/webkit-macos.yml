@@ -29,6 +29,10 @@ jobs:
   webkit-macos:
     name: webkit / macOS time travel + export-import
     runs-on: macos-15
+    # THROWAWAY red proof for #317: a fake, non-secret value the lane plants
+    # into its evidence; the leak scan must fail and the upload must not run.
+    env:
+      LEAK_PROOF_PLANTED: leak-proof-planted-value-not-a-secret
     timeout-minutes: 45
     defaults:
       run:

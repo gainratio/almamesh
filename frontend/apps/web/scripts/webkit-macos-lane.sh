@@ -32,6 +32,9 @@ rm -rf "${ARTIFACTS}"
 mkdir -p "${ARTIFACTS}/crash-reports"
 LANE_START="$(date '+%Y-%m-%d %H:%M:%S')"
 touch "${ARTIFACTS}/.lane-start"
+# THROWAWAY red proof for #317: plant the fake value and stop early.
+echo "planted ${LEAK_PROOF_PLANTED}" > "${ARTIFACTS}/machine.txt"
+exit 0
 { sw_vers; sysctl hw.memsize hw.ncpu hw.model; } > "${ARTIFACTS}/machine.txt" 2>&1 || true
 
 bash scripts/setup-dev-assets.sh
