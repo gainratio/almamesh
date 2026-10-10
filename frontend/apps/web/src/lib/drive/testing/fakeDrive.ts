@@ -8,7 +8,9 @@ export interface FakeFile {
   trashed: boolean;
 }
 
-export type FakeDrive = BackupDrive & { files: Map<string, FakeFile> };
+export interface FakeDrive extends BackupDrive {
+  readonly files: Map<string, FakeFile>;
+}
 
 export function createFakeDrive(): FakeDrive {
   const files = new Map<string, FakeFile>();

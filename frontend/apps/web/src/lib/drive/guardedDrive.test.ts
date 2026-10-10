@@ -2,12 +2,29 @@ import { describe, expect, it, vi } from 'vitest';
 import type { BackupDrive, SealedBackup } from './backupDrive';
 import { backupNameOf } from './backupName';
 import { guardedDrive } from './guardedDrive';
+import { runBackupDriveContract } from './testing/backupDriveContract';
 import { createFakeDrive } from './testing/fakeDrive';
 
 const NAME = backupNameOf('almamesh-backup-2026-10-10T18-04-05-123Z-chrome-macos-7f3a2c.almamesh');
 const AGE = new TextEncoder().encode('age-encryption.org/v1\n-> scrypt x 18\n---\n');
 
+runBackupDriveContract('guarded fake drive', async () => guardedDrive(createFakeDrive(), () => true));
+
 describe('guardedDrive', () => {
+  it('passes isConnected through to the adapter', async () => {
+    const inner = createFakeDrive();
+    const isConnected = vi.spyOn(inner, 'isConnected').mockResolvedValue(false);
+    expect(await guardedDrive(inner, () => true).isConnected()).toBe(false);
+    expect(isConnected).toHaveBeenCalledOnce();
+  });
+
+  it('passes disconnect through to the adapter', async () => {
+    const inner = createFakeDrive();
+    const disconnect = vi.spyOn(inner, 'disconnect');
+    await guardedDrive(inner, () => true).disconnect();
+    expect(disconnect).toHaveBeenCalledOnce();
+  });
+
   it('refuses forged sealed bytes before the adapter is called', async () => {
     const inner = createFakeDrive();
     const upload = vi.spyOn(inner, 'upload');

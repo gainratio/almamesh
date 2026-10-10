@@ -2,7 +2,11 @@ import type { DriveBackupEntry } from './backupDrive';
 
 export const KEEP_PER_DEVICE = 10;
 
-/** Ids to move to trash: this device's files beyond the newest KEEP_PER_DEVICE. */
+/**
+ * Ids to move to trash: this device's files beyond the newest KEEP_PER_DEVICE.
+ * The just-uploaded file is never trashed, so under clock skew (it sorts
+ * outside the newest KEEP_PER_DEVICE by name time) this keeps KEEP_PER_DEVICE + 1.
+ */
 export function planPrune(
   entries: readonly DriveBackupEntry[],
   deviceCode: string,

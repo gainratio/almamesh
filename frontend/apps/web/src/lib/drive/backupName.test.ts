@@ -10,6 +10,11 @@ const IPHONE_SAFARI =
 const WIN_EDGE =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36 Edg/130.0.0.0';
 const AT = new Date('2026-10-10T18:04:05.123Z');
+// The global constraint, written out here so the module cannot loosen it.
+const CONSTRAINT_NAME =
+  /^almamesh-backup-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z-(chrome|edge|firefox|safari|samsung|other)-(macos|windows|linux|ios|android|chromeos|other)-[0-9a-f]{6}\.almamesh$/;
+const PINNED_PATTERN_SOURCE =
+  '^almamesh-backup-(\\d{4})-(\\d{2})-(\\d{2})T(\\d{2})-(\\d{2})-(\\d{2})-(\\d{3})Z-(chrome|edge|firefox|safari|samsung|other)-(macos|windows|linux|ios|android|chromeos|other)-([0-9a-f]{6})\\.almamesh$';
 
 describe('buildBackupName', () => {
   it('builds the documented shape', () => {
@@ -21,15 +26,44 @@ describe('buildBackupName', () => {
     [IPHONE_SAFARI, 'safari-ios'],
     [WIN_EDGE, 'edge-windows'],
     ['curl/8', 'other-other'],
+    [
+      'Mozilla/5.0 (Linux; Android 14; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) SamsungBrowser/25.0 Chrome/121.0.0.0 Mobile Safari/537.36',
+      'samsung-android',
+    ],
+    ['Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:131.0) Gecko/20100101 Firefox/131.0', 'firefox-windows'],
+    [
+      'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) FxiOS/131.0 Mobile/15E148 Safari/605.1.15',
+      'firefox-ios',
+    ],
+    [
+      'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36 EdgA/130.0.0.0',
+      'edge-android',
+    ],
+    [
+      'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36',
+      'chrome-android',
+    ],
+    [
+      'Mozilla/5.0 (X11; CrOS x86_64 15917.71.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+      'chrome-chromeos',
+    ],
+    ['Mozilla/5.0 (X11; Linux x86_64; rv:131.0) Gecko/20100101 Firefox/131.0', 'firefox-linux'],
   ])('maps %s', (ua, pair) => {
     expect(buildBackupName(AT, ua, '000000').value).toContain(`-${pair}-000000.`);
   });
   it('refuses a device code that is not 6 lowercase hex', () => {
     expect(() => buildBackupName(AT, MAC_CHROME, 'Alice!')).toThrow(DriveError);
   });
+  it('pins the name pattern to the global constraint', () => {
+    expect(BACKUP_NAME_PATTERN.source).toBe(PINNED_PATTERN_SOURCE);
+  });
   it('never carries free text from the UA, whatever the UA says', () => {
     for (const ua of ['Priya Sharma 1987-03-14 Pune', '../../etc', 'x'.repeat(5000)]) {
-      expect(buildBackupName(AT, ua, 'abcdef').value).toMatch(BACKUP_NAME_PATTERN);
+      const name = buildBackupName(AT, ua, 'abcdef').value;
+      expect(name).toMatch(CONSTRAINT_NAME);
+      for (const freeText of ['Priya', 'Sharma', '1987', 'Pune', '..', 'xx']) {
+        expect(name).not.toContain(freeText);
+      }
     }
   });
   it('starts with the same timestamp text the local export filename uses', () => {

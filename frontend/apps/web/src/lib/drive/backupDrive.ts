@@ -84,6 +84,9 @@ function startsWith(bytes: Uint8Array, prefix: string): boolean {
 
 /** The only way to make a SealedBackup. Throws DriveError('not_sealed'). */
 export function sealedBackupOf(bytes: Uint8Array): SealedBackup {
+  // The SQLite check is intentional redundancy: the age-prefix check already
+  // refuses SQLite bytes, so deleting it is an equivalent (surviving) mutant.
+  // It stays so the "never upload the raw database" rule reads on its own.
   if (startsWith(bytes, SQLITE_MAGIC) || !startsWith(bytes, AGE_BINARY_PREFIX)) {
     throw new DriveError('not_sealed');
   }
