@@ -112,6 +112,11 @@ export interface AiSetupPanelProps {
   showOffChoice?: boolean;
   /** Surface-specific copy above the choices. Settings passes none. */
   intro?: ReactNode;
+  /**
+   * Called once per save, only after the settings are durable AND the probe
+   * passed for the config still on screen. Onboarding advances on it.
+   */
+  onConnected?: (status: LlmStatus) => void;
 }
 
 export function AiSetupPanel({
@@ -122,6 +127,7 @@ export function AiSetupPanel({
   flushSettings = flushPortablePersistence,
   showOffChoice = true,
   intro,
+  onConnected,
 }: AiSetupPanelProps = {}) {
   const { t } = useTranslation('settings');
   const [status, setStatus] = useState<LlmStatus>(() => describeLlmStatus());
@@ -304,9 +310,6 @@ export function AiSetupPanel({
     setConn({ phase: 'testing', source });
     try {
       await testConnection({ config: resolveConfig(), signal: controller.signal });
-      if (gen === probeGen.current) {
-        setConn({ phase: 'connected', source });
-      }
     } catch (err) {
       // A superseded probe (the user edited or re-saved) must not overwrite the
       // current verdict; ignore its result.
@@ -321,7 +324,18 @@ export function AiSetupPanel({
       // isn't stuck on a blind "couldn't connect" with no next step.
       const detail = kind === 'unknown' ? connectionErrorDetail(err) : undefined;
       setConn({ phase: 'error', source, kind, ...(detail ? { detail } : {}) });
+      return;
     }
+    // Probe-race guard: a superseded probe (edit, re-save, or remote Replace)
+    // must never paint Connected or report a connection for a config that is gone.
+    if (gen !== probeGen.current) {
+      return;
+    }
+    // Reached only after `await flushSettings()` above resolved (SQLite has the
+    // config) AND the probe passed. Called outside the try so a throwing caller
+    // can never be misreported as a connection error.
+    setConn({ phase: 'connected', source });
+    onConnected?.(describeLlmStatus(persisted));
   };
 
   // Guided OpenRouter: apply the cloud preset (recommended interpretation/chat pair +

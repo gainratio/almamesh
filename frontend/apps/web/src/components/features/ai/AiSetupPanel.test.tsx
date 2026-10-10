@@ -38,6 +38,19 @@ function requestError(message: string, status: number): Error {
   return Object.assign(new Error(message), { name: 'LlmRequestError', status });
 }
 
+function deferred<T = void>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
+/** Let every queued promise continuation and timer-0 task run. */
+const settle = () => new Promise((r) => setTimeout(r, 0));
+
 describe('AiSetupPanel — OpenRouter-first, test-on-save', () => {
   beforeEach(() => {
     hydrateLlmSettings(null);
@@ -257,7 +270,7 @@ describe('AiSetupPanel — OpenRouter-first, test-on-save', () => {
 
     // The stale probe finally resolves — it must NOT paint a Connected verdict.
     resolveProbe?.();
-    await Promise.resolve();
+    await settle();
     expect(screen.queryByTestId('llm-connection-result')).toBeNull();
   });
 });
@@ -554,5 +567,113 @@ describe('AiSetupPanel — surface props (showOffChoice, intro)', () => {
   it('renders no intro wrapper when none is given', () => {
     renderPanel();
     expect(screen.queryByTestId('ai-setup-intro')).toBeNull();
+  });
+});
+
+describe('AiSetupPanel — onConnected', () => {
+  beforeEach(() => {
+    hydrateLlmSettings(null);
+    hydrateSlowModelSuggestion(null);
+    configureLlmSettingsPersistence(undefined);
+  });
+  afterEach(() => {
+    hydrateLlmSettings(null);
+    hydrateSlowModelSuggestion(null);
+    configureLlmSettingsPersistence(undefined);
+  });
+
+  const renderPanel = (props: Partial<AiSetupPanelProps>) =>
+    render(
+      <AiSetupPanel resolveConfig={resolveConfig} fetchCredits={fetchCredits} fetchModels={fetchModels} {...props} />,
+    );
+  const saveKey = (key: string) => {
+    fireEvent.change(screen.getByTestId('llm-openrouter-key'), { target: { value: key } });
+    fireEvent.click(screen.getByTestId('llm-save'));
+  };
+
+  it('reports connected once, with the saved status, after a passing probe', async () => {
+    const onConnected = vi.fn();
+    renderPanel({ onConnected, testConnection: vi.fn().mockResolvedValue(undefined) });
+    saveKey('sk-or-abc');
+    await waitFor(() => expect(onConnected).toHaveBeenCalledOnce());
+    expect(onConnected).toHaveBeenCalledWith({ kind: 'openrouter', label: 'OpenRouter', configured: true });
+    await settle();
+    expect(onConnected).toHaveBeenCalledOnce();
+  });
+
+  it('does not report connected on a failed probe', async () => {
+    const onConnected = vi.fn();
+    renderPanel({
+      onConnected,
+      testConnection: vi.fn().mockRejectedValue(requestError('returned 401 Unauthorized', 401)),
+    });
+    saveKey('bad-key');
+    await waitFor(() =>
+      expect(screen.getByTestId('llm-connection-result').textContent).toContain('API key rejected'),
+    );
+    await settle();
+    expect(onConnected).not.toHaveBeenCalled();
+  });
+
+  it('reports connected only after the settings are durable', async () => {
+    const onConnected = vi.fn();
+    const flush = deferred();
+    const flushSettings = vi.fn(() => flush.promise);
+    renderPanel({ onConnected, flushSettings, testConnection: vi.fn().mockResolvedValue(undefined) });
+    saveKey('sk-or-abc');
+    await waitFor(() => expect(flushSettings).toHaveBeenCalledOnce());
+    await settle();
+    expect(onConnected).not.toHaveBeenCalled();
+    flush.resolve();
+    await waitFor(() => expect(onConnected).toHaveBeenCalledOnce());
+  });
+
+  it('does not report connected when the settings write fails', async () => {
+    const onConnected = vi.fn();
+    renderPanel({
+      onConnected,
+      flushSettings: vi.fn().mockRejectedValue(new Error('canonical SQLite write failed')),
+      testConnection: vi.fn().mockResolvedValue(undefined),
+    });
+    saveKey('sk-or-abc');
+    await waitFor(() =>
+      expect(screen.getByTestId('llm-connection-result').textContent).toContain("Couldn't save"),
+    );
+    await settle();
+    expect(onConnected).not.toHaveBeenCalled();
+  });
+
+  it('does not report connected when a newer save superseded the probe', async () => {
+    const onConnected = vi.fn();
+    const first = deferred();
+    const testConnection = vi
+      .fn()
+      .mockImplementationOnce(() => first.promise)
+      .mockResolvedValueOnce(undefined);
+    renderPanel({ onConnected, testConnection });
+
+    saveKey('sk-or-first');
+    await waitFor(() => expect(testConnection).toHaveBeenCalledOnce());
+    saveKey('sk-or-second');
+    await waitFor(() => expect(onConnected).toHaveBeenCalledOnce());
+
+    first.resolve();
+    await settle();
+    expect(onConnected).toHaveBeenCalledOnce();
+    expect(readSaved().apiKey).toBe('sk-or-second');
+  });
+
+  it('does not report connected when the config is edited mid-probe', async () => {
+    const onConnected = vi.fn();
+    const probe = deferred();
+    renderPanel({ onConnected, testConnection: vi.fn(() => probe.promise) });
+    saveKey('sk-or-abc');
+    await waitFor(() =>
+      expect(screen.getByTestId('llm-connection-result').textContent).toContain('Testing'),
+    );
+    fireEvent.change(screen.getByTestId('llm-openrouter-key'), { target: { value: 'sk-or-edited' } });
+    probe.resolve();
+    await settle();
+    expect(onConnected).not.toHaveBeenCalled();
   });
 });
