@@ -32,12 +32,16 @@ export type {
   SanitizedVargaSummary,
   SanitizedDomainForecast,
   SanitizedDomainWindow,
+  SanitizedHouseLord,
 } from "./sanitize";
 
 export {
   buildPredictiveFactsBlock,
   PREDICTIVE_BLOCK_START,
   PREDICTIVE_BLOCK_END,
+  buildReportFactsBlock,
+  REPORT_FACTS_START,
+  REPORT_FACTS_END,
 } from "./predictive-facts";
 
 // --- Mesh edge narration (relationships between two charts) ---
@@ -198,10 +202,36 @@ export type {
 } from "./structured-interpretation";
 
 // --- Report v2: sections, prompt set ---
-export { REPORT_TIMELINE_SECTIONS } from "./report-sections";
-export type { ReportTimelineSectionKey } from "./report-sections";
-export { REPORT_PROMPT_SET, REPORT_SECTIONS } from "./report-targets";
+export { computeQuarters, quarterTitle } from "./quarters";
+export type { Quarter, QuarterKey } from "./quarters";
+export { monthsIn, validateTimelineDates } from "./date-guard";
+export {
+  currentPeriodSlice,
+  LIFE_DOMAIN_ORDER,
+  LIFE_OUTLOOK_GROUPS,
+  lifeOutlookSlice,
+  quarterEvents,
+  REPORT_TIMELINE_SECTIONS,
+  ReportParseError,
+  reportAsOfMonth,
+  yearAheadSlice,
+} from "./report-sections";
+export type {
+  CurrentPeriodSection,
+  LifeOutlookDomain,
+  LifeOutlookSection,
+  QuarterEvent,
+  QuarterProse,
+  ReportTimelineContent,
+  ReportTimelineSectionKey,
+  YearAheadSection,
+} from "./report-sections";
+export { REPORT_PROMPT_SET, REPORT_SECTIONS, REPORT_SECTION_ORDER, REPORT_WORD_TARGETS } from "./report-targets";
 export type { ReportPromptSet, ReportSectionKey } from "./report-targets";
+export { findModelPricing, parseModelPricing } from "./pricing";
+export type { ModelPricing } from "./pricing";
+export { estimateReadingCost, READING_OUTPUT_BUDGET } from "./cost-estimate";
+export type { CostEstimate, ReadingOutputBudget } from "./cost-estimate";
 
 // --- Chat transport + multi-turn public surface ---
 export { routeChatCompletion, routeCompletionJson } from "./route";

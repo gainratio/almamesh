@@ -91,7 +91,7 @@ export function reportAsOfMonth(chart: SanitizedChart): string {
   return chart.as_of.date.slice(0, 7);
 }
 
-export interface LordFacts {
+interface LordFacts {
   readonly lord: string;
   readonly sign?: string;
   readonly house?: number;
@@ -121,7 +121,7 @@ function lordFacts(chart: SanitizedChart, lord: string): LordFacts {
   };
 }
 
-export interface NextMaha {
+interface NextMaha {
   readonly lord: string;
   readonly start_month: string | null;
   readonly end_month: string | null;
@@ -229,7 +229,7 @@ export function yearAheadSlice(chart: SanitizedChart): YearAheadInput {
   };
 }
 
-export interface LifeOutlookDomainInput extends SanitizedDomainForecast {
+interface LifeOutlookDomainInput extends SanitizedDomainForecast {
   readonly house_lords: readonly SanitizedHouseLord[];
 }
 
