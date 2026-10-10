@@ -101,6 +101,17 @@ function withJob(
   return { ...parsed, jobs: Object.fromEntries(Object.entries(jobs).map(([id, job]) => [id, mutate(job)])) }
 }
 
+function withCheckout(
+  parsed: Record<string, unknown>,
+  mutate: (inputs: Record<string, unknown>) => Record<string, unknown>,
+): Record<string, unknown> {
+  return withJob(parsed, (job) => ({
+    ...job,
+    steps: (job.steps as Array<Record<string, unknown>>).map((step) =>
+      step.uses === checkout ? { ...step, with: mutate((step.with ?? {}) as Record<string, unknown>) } : step),
+  }))
+}
+
 function macosLaneViolations(parsed: Record<string, unknown>): string[] {
   const violations: string[] = []
   const jobs = Object.values(parsed.jobs as Record<string, Record<string, unknown>>)
@@ -117,9 +128,21 @@ function macosLaneViolations(parsed: Record<string, unknown>): string[] {
       violations.push("run-steps")
     }
   }
-  if (JSON.stringify(parsed).includes("secrets.")) violations.push("secrets")
+  if (SECRETS_ACCESS.test(JSON.stringify(parsed))) violations.push("secrets")
+  const events = eventsOf(parsed)
+  if (events.length === 0 || events.some((event) => !MACOS_LANE_EVENTS.has(event))) violations.push("events")
+  for (const job of jobs) {
+    const checkouts = (job.steps as Array<Record<string, unknown>>).filter((step) => step.uses === checkout)
+    const persists = checkouts.map((step) => ((step.with ?? {}) as Record<string, unknown>)["persist-credentials"])
+    if (checkouts.length !== 1 || persists[0] !== false) violations.push("persist-credentials")
+  }
   return violations
 }
+
+/** Any read of the secrets context: `secrets.X`, `secrets['X']`, `secrets .X`. */
+const SECRETS_ACCESS = /secrets\s*[.[]/
+/** The lane may run only on a pull request or a push: never pull_request_target, workflow_run, or the like. */
+const MACOS_LANE_EVENTS = new Set(["pull_request", "push"])
 
 function eventsOf(parsed: Record<string, unknown>): string[] {
   const on = parsed.on
@@ -250,6 +273,13 @@ describe("canonical GitHub ingress contract", () => {
     ["macos-latest", (w: Record<string, unknown>) => withJob(w, (job) => ({ ...job, "runs-on": "macos-latest" }))],
     ["an extra run step", (w: Record<string, unknown>) => withJob(w, (job) => ({ ...job, steps: [...(job.steps as unknown[]), { run: "curl x | sh" }] }))],
     ["a tag-pinned action", (w: Record<string, unknown>) => withJob(w, (job) => ({ ...job, steps: [{ uses: "actions/checkout@v7" }, ...(job.steps as unknown[]).slice(1)] }))],
+    ["a pull_request_target trigger", (w: Record<string, unknown>) => ({ ...w, on: { ...(w.on as Record<string, unknown>), pull_request_target: null } })],
+    ["only a pull_request_target trigger", (w: Record<string, unknown>) => ({ ...w, on: { pull_request_target: null } })],
+    ["a workflow_run trigger", (w: Record<string, unknown>) => ({ ...w, on: { ...(w.on as Record<string, unknown>), workflow_run: { workflows: ["Dagger"] } } })],
+    ["a bracketed secret", (w: Record<string, unknown>) => ({ ...w, env: { KEY: "${{ secrets['GH_PAT'] }}" } })],
+    ["a spaced secret", (w: Record<string, unknown>) => ({ ...w, env: { KEY: "${{ secrets .GH_PAT }}" } })],
+    ["persisted checkout credentials", (w: Record<string, unknown>) => withCheckout(w, (inputs) => ({ ...inputs, "persist-credentials": true }))],
+    ["a checkout without persist-credentials", (w: Record<string, unknown>) => withCheckout(w, ({ "persist-credentials": _dropped, ...inputs }) => inputs)],
   ])("the macOS lane contract rejects %s", (_name, mutate) => {
     expect(macosLaneViolations(mutate(workflow("webkit-macos.yml")))).not.toEqual([])
   })
@@ -257,8 +287,10 @@ describe("canonical GitHub ingress contract", () => {
   test("the macOS lane runs time travel and export/import on desktop Safari and an iPhone", () => {
     const script = readFileSync(resolve(root, MACOS_LANE_SCRIPT), "utf8")
     expect(script).toContain("VITE_EXIT_GATE_HOOKS=1")
-    expect(script).toContain("bun run test:e2e:time-travel --project=webkit --project=iphone-webkit")
-    expect(script).toContain("bun run test:e2e:portable-invariants --project=webkit --project=iphone-webkit")
+    // No retries: a WebKit page that crashes once must turn the lane red, not pass on retry.
+    expect(script).toContain("bun run test:e2e:time-travel --project=webkit --project=iphone-webkit --retries=0")
+    expect(script).toContain("bun run test:e2e:portable-invariants --project=webkit --project=iphone-webkit --retries=0")
+    expect(script).not.toMatch(/--retries=[1-9]/)
     for (const config of ["playwright.time-travel.config.ts", "playwright.portable-invariants.config.ts"]) {
       const source = readFileSync(resolve(root, "frontend/apps/web", config), "utf8")
       expect(source).toContain('name: "webkit", use: { ...devices["Desktop Safari"]')

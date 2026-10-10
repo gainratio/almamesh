@@ -34,9 +34,10 @@ export default defineConfig({
     screenshot: "only-on-failure",
   },
   projects: [
-    // The six journeys pin a full-tier device; @iphone tests run only on the
-    // iPhone project, where iOS is always the minimal tier.
-    { name: "chromium", use: { ...devices["Desktop Chrome"] }, grepInvert: /@iphone/ },
+    // The full-tier journeys pin the tier. @iphone runs only on the iPhone
+    // project (iOS is always minimal), @safari only on desktop WebKit (its own
+    // lite tier), and @sw (service worker on, nothing stubbed) everywhere.
+    { name: "chromium", use: { ...devices["Desktop Chrome"] }, grepInvert: /@iphone|@safari/ },
     // WebKit runs need an on-disk profile (e2e/webkitProfile.ts: an ephemeral
     // WebKit context refuses OPFS) and macOS (Linux Playwright WebKit cannot
     // open SQLite's nested-Worker OPFS). Playwright's WebKit does not route
@@ -44,7 +45,7 @@ export default defineConfig({
     // active the stubbed provider would be bypassed and the real one called.
     // The worker is blocked there; the Chromium project keeps it.
     { name: "webkit", use: { ...devices["Desktop Safari"], serviceWorkers: "block" }, grepInvert: /@iphone/ },
-    { name: "iphone-webkit", use: { ...devices["iPhone 13"], serviceWorkers: "block" }, grep: /@iphone/ },
+    { name: "iphone-webkit", use: { ...devices["iPhone 13"], serviceWorkers: "block" }, grep: /@iphone|@sw/ },
   ],
   // Build with the exit-gate hooks ON (bootEngine/seedChart need
   // window.__almameshGenerate), as CI's hookedBuild() does, then serve it.

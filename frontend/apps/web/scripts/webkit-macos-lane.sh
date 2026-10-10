@@ -32,5 +32,9 @@ for _ in $(seq 1 60); do
 done
 curl -fsS -o /dev/null "${BASE_URL}/"
 
-TIME_TRAVEL_E2E_BASE_URL="${BASE_URL}" bun run test:e2e:time-travel --project=webkit --project=iphone-webkit
-PORTABLE_INVARIANTS_E2E_BASE_URL="${BASE_URL}" bun run test:e2e:portable-invariants --project=webkit --project=iphone-webkit
+# No retries: a WebKit page that crashes once is a red lane, never a pass on
+# retry. Both specs always run, so one red run reports both.
+status=0
+TIME_TRAVEL_E2E_BASE_URL="${BASE_URL}" bun run test:e2e:time-travel --project=webkit --project=iphone-webkit --retries=0 || status=1
+PORTABLE_INVARIANTS_E2E_BASE_URL="${BASE_URL}" bun run test:e2e:portable-invariants --project=webkit --project=iphone-webkit --retries=0 || status=1
+exit "${status}"

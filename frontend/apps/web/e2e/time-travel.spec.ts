@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 
 import { expect, type Page } from '@playwright/test';
 
-import { DELHI_BIRTH, DELHI_SEED, LLM_SETTINGS_KEY, bootEngine, seedChart } from './interpretation.helpers';
+import { DELHI_BIRTH, DELHI_SEED, LLM_SETTINGS_KEY, bootEngine, seedChart, waitForEngineReady } from './interpretation.helpers';
 import { gotoSettled } from './portableInvariants.helpers';
 import { test } from './webkitProfile';
 
@@ -62,22 +62,33 @@ async function openDashboard(page: Page): Promise<void> {
   await gotoSettled(page, '/dashboard');
 }
 
-/** Console capture, a full-tier device pin and the stubbed provider's settings: every journey's set-up. */
-async function prepare(page: Page): Promise<string[]> {
+/** Every console error and uncaught page error, for the clean-console checks. */
+function captureConsole(page: Page): string[] {
   const consoleErrors: string[] = [];
   page.on('pageerror', (error) => consoleErrors.push(`pageerror: ${error.message}`));
   page.on('console', (message) => {
     if (message.type() === 'error') consoleErrors.push(`console: ${message.text()}`);
   });
+  return consoleErrors;
+}
+
+/** The stubbed provider's settings, so chat shows its composer and the Time travel button. */
+async function configureStubbedAi(page: Page): Promise<void> {
+  await page.addInitScript(
+    ([key, cfg]) => window.localStorage.setItem(key as string, cfg as string),
+    [LLM_SETTINGS_KEY, JSON.stringify(LLM_CONFIG)] as const,
+  );
+}
+
+/** Console capture, a full-tier device pin and the stubbed provider's settings: every full-tier journey's set-up. */
+async function prepare(page: Page): Promise<string[]> {
+  const consoleErrors = captureConsole(page);
   await page.addInitScript((tier) => {
     for (const [name, value] of Object.entries(tier)) {
       Object.defineProperty(Navigator.prototype, name, { get: () => value, configurable: true });
     }
   }, FULL_TIER);
-  await page.addInitScript(
-    ([key, cfg]) => window.localStorage.setItem(key as string, cfg as string),
-    [LLM_SETTINGS_KEY, JSON.stringify(LLM_CONFIG)] as const,
-  );
+  await configureStubbedAi(page);
   return consoleErrors;
 }
 
@@ -926,6 +937,78 @@ test.describe('time travel on an iPhone', () => {
     expect(bodies.filter((body) => body.includes(DEVICE_ZONE)), 'the device zone must not reach the model').toEqual([]);
 
     await expectBannerWrapsCleanlyAt380(page);
+    expect(consoleErrors, 'the journey must keep a clean console').toEqual([]);
+  });
+});
+
+/**
+ * Desktop Safari as it ships: no tier pin. Safari has no navigator.deviceMemory,
+ * so the app reads it as the lite tier, where the Day pin (full tier only) is not
+ * offered. Month and Year are. WebKit project only (@safari).
+ */
+test.describe("desktop Safari's own device tier", () => {
+  test('[contract/stubbed] @safari no Day pin on the lite tier; a Year pin still works', async ({ page }) => {
+    const consoleErrors = captureConsole(page);
+    await configureStubbedAi(page);
+    await bootEngine(page);
+    expect(await page.evaluate(() => 'deviceMemory' in navigator), 'Safari reports no deviceMemory').toBe(false);
+    await seedChart(page);
+    await openDashboard(page);
+
+    await page.getByTestId('floating-chat-button').click({ timeout: 120_000 });
+    await page.getByTestId('time-travel-button').click();
+    await expect(page.getByTestId('time-travel-sheet')).toBeVisible();
+    await expect(page.getByTestId('time-travel-tab-month')).toBeVisible();
+    await expect(page.getByTestId('time-travel-tab-day'), 'the Day pin is full-tier only; desktop Safari is lite').toHaveCount(0);
+    await page.getByTestId('time-travel-tab-year').click();
+    await page.getByTestId('time-travel-year').selectOption(PIN_YEAR);
+    await page.getByTestId('time-travel-go').click();
+    await expect(page.getByTestId('time-travel-sheet')).toBeHidden();
+    await expect(page.getByTestId('time-travel-title')).toHaveText(`Time travel · ${PIN_YEAR}`);
+    expect((await pinnedThreads(page)).map((row) => row.as_of)).toEqual([
+      { start: `${PIN_YEAR}-01-01`, end: `${PIN_YEAR}-12-31`, granularity: 'year' },
+    ]);
+    expect(consoleErrors, 'the journey must keep a clean console').toEqual([]);
+  });
+});
+
+/**
+ * The app as a visitor gets it: the service worker active, AI off, and nothing
+ * stubbed or routed. The WebKit projects block the worker for the stubbed
+ * journeys (Playwright cannot route through it); this journey turns it back on
+ * and needs no routing, so it drives Safari's real setup. With AI off the app
+ * must request only its own origin, and chat offers Connect AI, not Time travel.
+ * Runs on every project (@sw is included on the iPhone).
+ */
+test.describe('as shipped: service worker on, AI off, nothing stubbed', () => {
+  test.use({ serviceWorkers: 'allow' });
+
+  test('[contract/real] @sw the dashboard and chat request only the app origin under the service worker', async ({ page, baseURL }) => {
+    const consoleErrors = captureConsole(page);
+    const origin = new URL(baseURL ?? '').origin;
+    const offOrigin: string[] = [];
+    page.context().on('request', (request) => {
+      const url = new URL(request.url());
+      if (url.protocol.startsWith('http') && url.origin !== origin) offOrigin.push(request.url());
+    });
+    await bootEngine(page);
+    await seedChart(page);
+    await openDashboard(page);
+    // Bounded: with the worker blocked `ready` never settles, and the check below must say so.
+    await page.evaluate(() =>
+      Promise.race([navigator.serviceWorker.ready, new Promise((resolve) => setTimeout(resolve, 60_000))]),
+    );
+    // A fresh navigation now goes through the active worker.
+    await gotoSettled(page, '/dashboard');
+    expect(await page.evaluate(() => navigator.serviceWorker.controller !== null), 'the service worker controls the page').toBe(true);
+    await waitForEngineReady(page);
+    await expect(page.getByTestId('provenance-footer')).toContainText('As of', { timeout: 120_000 });
+
+    await page.getByTestId('floating-chat-button').click({ timeout: 120_000 });
+    await expect(page.getByTestId('chat-connect-ai')).toBeVisible();
+    await expect(page.getByTestId('time-travel-button'), 'no AI, no Time travel').toHaveCount(0);
+
+    expect(offOrigin, 'with AI off, nothing may leave the app origin').toEqual([]);
     expect(consoleErrors, 'the journey must keep a clean console').toEqual([]);
   });
 });
