@@ -21,10 +21,11 @@ import {
 import { E2E_REAL_MODEL } from './realModel';
 import {
   catalogCostUsd,
-  medianVoices,
+  completedRunStats,
   reasoningCapOverruns,
   reportSectionWords,
   sectionUsageRow,
+  type RunStats,
   type SectionUsageRow,
   type Voices,
 } from './sectionUsage';
@@ -39,8 +40,9 @@ import {
  * per-voice MEDIAN of words across runs is within REPORT_WORD_TARGETS +/-30 %;
  * every request carries reasoning.max_tokens 6000, the report provider
  * preference (sort "price", preferred p50 throughput floor) and no max_tokens;
- * each run's 200 usage rows cover all nine sections. P90 is asserted only when
- * REPORT_P90_BUDGET_MS is set (the default-model run). Each run is aborted at
+ * each run's 200 usage rows cover all nine sections. P90 and the medians read
+ * completed runs only (a failed run still fails its own soft checks). P90 is
+ * asserted only when REPORT_P90_BUDGET_MS is set (the default-model run). Each run is aborted at
  * RUN_DEADLINE_MS; section failures and aborts are soft, and the result JSON
  * (with per-section wall times) is written even when a run fails.
  *
@@ -104,23 +106,14 @@ function annotate(description: string): void {
   console.warn(description);
 }
 
-function nearestRankP90(values: readonly number[]): number {
-  const sorted = [...values].sort((a, b) => a - b);
-  return sorted[Math.ceil(0.9 * sorted.length) - 1];
-}
-
-interface RunSummary {
-  readonly p90Ms: number;
-  readonly medianWords: Readonly<Record<string, Voices>>;
+interface RunSummary extends RunStats {
   readonly capOverruns: readonly string[];
 }
 
+/** P90 and medians over completed runs only; cap overruns over every run. */
 function summarize(runs: readonly ReportRun[]): RunSummary {
   return {
-    p90Ms: runs.length > 0 ? nearestRankP90(runs.map((r) => r.totalMs)) : Number.NaN,
-    medianWords: Object.fromEntries(
-      REPORT_SECTIONS.map((s) => [s, medianVoices(runs.map((r) => r.words[s] ?? { layman: 0, technical: 0 }))]),
-    ),
+    ...completedRunStats(runs, REPORT_SECTIONS),
     capOverruns: runs.flatMap((r, i) => reasoningCapOverruns(r.rows, REASONING_CAP).map((o) => `run ${i + 1} ${o}`)),
   };
 }
@@ -269,7 +262,7 @@ test('[real] full report-v2 reading against live OpenRouter (3 runs)', async () 
   } finally {
     writeResult({ model: MODEL, estimate, pricing, ...summarize(runs), runs });
   }
-  const { p90Ms, medianWords, capOverruns } = summarize(runs);
+  const { p90Ms, medianWords, capOverruns, completedRuns } = summarize(runs);
 
   for (const overrun of capOverruns) annotate(`provider ignored the reasoning cap: ${overrun}`);
   runs.forEach((run, i) => {
@@ -295,5 +288,5 @@ test('[real] full report-v2 reading against live OpenRouter (3 runs)', async () 
       expect.soft(n, `${section} ${voice} median words <= ${high}`).toBeLessThanOrEqual(high);
     }
   }
-  if (P90_BUDGET_MS !== null) expect(p90Ms, `P90 over ${RUNS} runs`).toBeLessThan(P90_BUDGET_MS);
+  if (P90_BUDGET_MS !== null) expect(p90Ms, `P90 over ${completedRuns} completed of ${RUNS} runs`).toBeLessThan(P90_BUDGET_MS);
 });

@@ -143,3 +143,38 @@ export function medianVoices(runs: readonly Voices[]): Voices {
   if (runs.length === 0) throw new Error('medianVoices: no runs');
   return { layman: median(runs.map((r) => r.layman)), technical: median(runs.map((r) => r.technical)) };
 }
+
+/** What the run summary reads from one live run. */
+export interface RunOutcome {
+  readonly totalMs: number;
+  readonly words: Readonly<Record<string, Voices>>;
+  /** Non-empty when the run failed (a section error or an aborted run). */
+  readonly errors: readonly string[];
+}
+
+export interface RunStats {
+  readonly completedRuns: number;
+  /** Nearest-rank P90 of completed runs' wall time; NaN when none completed. */
+  readonly p90Ms: number;
+  /** Per-section median words over completed runs; empty when none completed. */
+  readonly medianWords: Readonly<Record<string, Voices>>;
+}
+
+function nearestRankP90(values: readonly number[]): number {
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted[Math.ceil(0.9 * sorted.length) - 1] as number;
+}
+
+/**
+ * P90 and median words over the runs that completed. A failed run (often a
+ * 0 s fetch rejection with no words) would drag both down, so it is left out
+ * here; it stays in the recorded runs and fails the run's own checks.
+ */
+export function completedRunStats(runs: readonly RunOutcome[], sections: readonly string[]): RunStats {
+  const done = runs.filter((run) => run.errors.length === 0);
+  if (done.length === 0) return { completedRuns: 0, p90Ms: Number.NaN, medianWords: {} };
+  const medianWords = Object.fromEntries(
+    sections.map((s) => [s, medianVoices(done.map((run) => run.words[s] ?? { layman: 0, technical: 0 }))]),
+  );
+  return { completedRuns: done.length, p90Ms: nearestRankP90(done.map((run) => run.totalMs)), medianWords };
+}

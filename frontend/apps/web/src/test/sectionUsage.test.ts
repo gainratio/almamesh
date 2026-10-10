@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   catalogCostUsd,
+  completedRunStats,
   countWords,
   medianVoices,
   reasoningCapOverruns,
@@ -139,5 +140,28 @@ describe('medianVoices', () => {
 
   it('throws on no runs rather than inventing a number', () => {
     expect(() => medianVoices([])).toThrow('no runs');
+  });
+});
+
+describe('completedRunStats', () => {
+  const words = (n: number) => ({ a: { layman: n, technical: n } });
+  const ok = (totalMs: number, n: number) => ({ totalMs, words: words(n), errors: [] });
+  const failed = { totalMs: 0, words: {}, errors: ['run aborted: fetch failed'] };
+
+  it('leaves a failed 0 s run out of the P90 and the medians', () => {
+    const stats = completedRunStats([ok(100_000, 700), failed, ok(120_000, 800)], ['a']);
+    expect(stats).toEqual({ completedRuns: 2, p90Ms: 120_000, medianWords: { a: { layman: 750, technical: 750 } } });
+  });
+
+  it('reads P90 as the nearest rank over completed runs', () => {
+    const runs = [5, 1, 4, 2, 3, 6, 7, 8, 9, 10].map((s) => ok(s * 1000, 1));
+    expect(completedRunStats(runs, ['a']).p90Ms).toBe(9000);
+  });
+
+  it('reports NaN P90 and no medians when every run failed', () => {
+    const stats = completedRunStats([failed, failed], ['a']);
+    expect(stats.completedRuns).toBe(0);
+    expect(stats.p90Ms).toBeNaN();
+    expect(stats.medianWords).toEqual({});
   });
 });
