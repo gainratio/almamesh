@@ -14,6 +14,10 @@
  * `--present` is the half that proves this check can fail: the same markers
  * must be found in the hooked build, in the main bundle AND the chart Worker.
  * Exit code is the verdict.
+ *
+ * The same contract covers the typed-error cause line (shared-types safeCauseWarn):
+ * it names an error's cause chain by class and code, so only a hooks build may
+ * carry it.
  */
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -26,6 +30,8 @@ const WORKER_FIELD = 'injectWasmTrap'
 // prints the Uint8Array literal. A module-level constant once survived as
 // dead code in production, so the bytes themselves are checked too.
 const TRAP_BYTES = '116,114,97,112,0,0,10,5'
+// The console prefix of the hooks-only typed-error cause line (a string literal).
+const CAUSE_MARKER = 'almamesh:diag:typed_error_cause'
 
 const [distDir, mode] = process.argv.slice(2)
 if (!distDir || (mode !== '--absent' && mode !== '--present')) {
@@ -46,6 +52,7 @@ const holding = (marker) => scripts.filter((s) => s.text.includes(marker)).map((
 const armHolders = holding(ARM_KEY)
 const fieldHolders = holding(WORKER_FIELD)
 const trapHolders = holding(TRAP_BYTES)
+const causeHolders = holding(CAUSE_MARKER)
 
 if (mode === '--absent') {
   const leaked = [...new Set([...armHolders, ...fieldHolders, ...trapHolders])]
@@ -53,15 +60,25 @@ if (mode === '--absent') {
     console.error(`boot fault switch shipped in a production build: ${leaked.join(', ')}`)
     process.exit(1)
   }
-  console.log(`ok  boot fault switch absent from ${scripts.length} production scripts`)
+  if (causeHolders.length > 0) {
+    console.error(`typed-error cause diagnostics shipped in a production build: ${causeHolders.join(', ')}`)
+    process.exit(1)
+  }
+  console.log(`ok  boot fault switch and typed-error cause diagnostics absent from ${scripts.length} production scripts`)
 } else {
   const workerHasIt = [fieldHolders, trapHolders].every((holders) => holders.some((name) => name.startsWith('chartWorker-')))
   const mainHasIt = armHolders.some((name) => !name.startsWith('chartWorker-'))
+  if (causeHolders.length === 0) {
+    console.error('typed-error cause diagnostics missing from the hooks build')
+    process.exit(1)
+  }
   if (!workerHasIt || !mainHasIt) {
     console.error(
       `boot fault switch missing from the hooks build: arm=${armHolders.join(',') || 'none'} field=${fieldHolders.join(',') || 'none'} trap=${trapHolders.join(',') || 'none'}`,
     )
     process.exit(1)
   }
-  console.log(`ok  boot fault switch present in the hooks build (${armHolders.join(', ')}; ${fieldHolders.join(', ')})`)
+  console.log(
+    `ok  boot fault switch present in the hooks build (${armHolders.join(', ')}; ${fieldHolders.join(', ')}); typed-error cause marker ${CAUSE_MARKER} present (${causeHolders.join(', ')})`,
+  )
 }
