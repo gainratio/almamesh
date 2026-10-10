@@ -10,12 +10,26 @@
 // ordinary words ("Mar", "set", "may") without a year are left alone.
 //
 // Day precision is always removed, whatever the month: ISO dates and
-// timestamps, "March 14, 2027", "14 de marzo de 2027", "1º de junho", and the
-// numeric forms the engine never emits ("03/2027", "2027.03", "3/14/2027").
+// timestamps, "March 14, 2027", "14 de marzo de 2027", "1º de junho", a month
+// then a day with no year ("October 12", "Oct 12"), a cued numeric day ("on
+// 12/14"), and the numeric forms the engine never emits ("03/2027", "2027.03",
+// "3/14/2027").
+//
+// A bare year (1900-2199: "in 2031", "Q3 2029", "mid-2029") is removed unless
+// it is the year of a supplied month. YYYY-MM is read with any hyphen or dash
+// and a one- or two-digit month ("2027–03", "2027-3").
 
 import { dropSentences } from "./layman-jargon";
 
-const YEAR_MONTH = /\b(\d{4})-(\d{2})\b/g;
+/** Exactly what the engine emits: read only from engine input slices. */
+const ENGINE_MONTH = /\b(\d{4})-(\d{2})\b/g;
+
+// ASCII hyphen-minus plus U+2010..U+2015 (hyphen, non-breaking hyphen, figure
+// dash, en dash, em dash, horizontal bar).
+const DASH = "[-\\u2010-\\u2015]";
+
+/** A year-month in model prose, any dash, one- or two-digit month. */
+const YEAR_MONTH = new RegExp(`(?<!\\d)(\\d{4})${DASH}(\\d{1,2})(?!\\d)`, "g");
 
 const MONTH_NUMBER: Readonly<Record<string, number>> = {
   // en
@@ -45,6 +59,13 @@ const LONG_MONTH_NAMES = Object.keys(MONTH_NUMBER)
   .sort((a, b) => b.length - a.length)
   .join("|");
 
+// 3-letter names count before a day number only when written as a name
+// ("Oct", "OCT"), so lowercase prose ("may 5 times", "set 3 goals") is left alone.
+const CAPITALIZED_SHORT_NAMES = Object.keys(MONTH_NUMBER)
+  .filter((name) => name.length === 3)
+  .flatMap((name) => [name[0].toUpperCase() + name.slice(1), name.toUpperCase()])
+  .join("|");
+
 // Between a month name and its year: "March 2027", "March, 2027",
 // "marzo de/del 2027", "March of 2027", "março/2027".
 const TO_YEAR = `(?:,?(?:\\s+(?:del?|of))?\\s+|\\s*/\\s*)`;
@@ -57,16 +78,23 @@ const NAMED_MONTH = new RegExp(`(?<!\\p{L})(${MONTH_NAMES})\\.?${TO_YEAR}(\\d{4}
 // titles print it: "Feb-Apr 2027", "fev.-abr. 2027", "Feb/Mar 2027". The start
 // month is read with that year.
 const RANGE_START = new RegExp(
-  `(?<!\\p{L})(${MONTH_NAMES})\\.?\\s*[-–/]\\s*${MONTH}${TO_YEAR}(\\d{4})\\b`,
+  `(?<!\\p{L})(${MONTH_NAMES})\\.?\\s*(?:${DASH}|/)\\s*${MONTH}${TO_YEAR}(\\d{4})\\b`,
   "giu",
 );
 
 const DAY_SUFFIX = `(?:st|nd|rd|th|º|°)?`;
+// A day number after a month name, year or not: "October 12", "marzo 14",
+// "março de 14", "March 14th".
+const THEN_DAY = `\\.?(?:\\s+de)?\\s+\\d{1,2}${DAY_SUFFIX}(?![\\d\\p{L}])`;
 const DAY_PRECISION: readonly RegExp[] = [
-  // ISO date or timestamp: 2027-03-14, 2027-03-14T00:00.
-  /\b\d{4}-\d{2}-\d{2}(?!\d)/,
+  // ISO date or timestamp, any dash: 2027-03-14, 2027‑03‑14, 2027-03-14T00:00.
+  new RegExp(`(?<!\\d)\\d{4}${DASH}\\d{1,2}${DASH}\\d{1,2}(?!\\d)`),
   // Month, day, year: "March 14, 2027", "Mar. 14th 2027".
   new RegExp(`${MONTH}\\s+\\d{1,2}${DAY_SUFFIX},?\\s+\\d{4}\\b`, "iu"),
+  // Long month name then a day, no year: "October 12", "marzo 14", "MARCH 3".
+  new RegExp(`(?<!\\p{L})(?:${LONG_MONTH_NAMES})${THEN_DAY}`, "iu"),
+  // Capitalized 3-letter name then a day, no year: "Oct 12", "Oct. 12", "Set 3".
+  new RegExp(`(?<!\\p{L})(?:${CAPITALIZED_SHORT_NAMES})${THEN_DAY}`, "u"),
   // Day before a long month name, year optional: "14 March", "1º de junho".
   new RegExp(`(?<![\\d\\p{L}])\\d{1,2}${DAY_SUFFIX}(?:\\s+(?:de|of))?\\s+(?:${LONG_MONTH_NAMES})(?!\\p{L})`, "iu"),
   // Day before any month name with a year: "3 de jun. de 2027".
@@ -85,6 +113,42 @@ const SENTENCE_OR_BREAK = new RegExp(
   "giu",
 );
 
+// A date cue before a bare "d/d": "on 12/14", "by 3/14", "el 14/3", "a partir
+// de 1/7". Without a cue "d/d" is a fraction or a score ("1/2 cup", "10/10"),
+// which no shape test can tell from a date, so the cue is required.
+const CUED_DAY_MONTH =
+  /(?<!\p{L})(?:on|by|from|until|till|before|after|el|em|desde|hasta|até|a partir de|antes de|después de|depois de)\s+(?:the\s+|o\s+|dia\s+)?(\d{1,2})\/(\d{1,2})(?![\d/])/giu;
+
+function isDayMonthPair(a: number, b: number): boolean {
+  return a >= 1 && b >= 1 && a <= 31 && b <= 31 && (a <= 12 || b <= 12);
+}
+
+function hasCuedDayMonth(sentence: string): boolean {
+  return [...sentence.matchAll(CUED_DAY_MONTH)].some(([, a, b]) => isDayMonthPair(Number(a), Number(b)));
+}
+
+// A standalone year 1900-2199, not glued to a digit, letter or currency mark
+// and not a digit group ("2,050"): "in 2031", "Q3 2029", "mid-2029".
+const BARE_YEAR = /(?<![\d\p{L}$€£]|\d[,.])((?:19|20|21)\d\d)(?![\d\p{L}])/gu;
+
+function isMonthNumber(month: number): boolean {
+  return month >= 1 && month <= 12;
+}
+
+function yearMonthsIn(sentence: string): string[] {
+  return [...sentence.matchAll(YEAR_MONTH)]
+    .filter(([, , month]) => isMonthNumber(Number(month)))
+    .map(([, year, month]) => `${year}-${month.padStart(2, "0")}`);
+}
+
+/** Years outside every YYYY-MM in the sentence, which the month rule reads instead. */
+function bareYears(sentence: string): string[] {
+  const rest = sentence.replace(YEAR_MONTH, (match, _year: string, month: string) =>
+    isMonthNumber(Number(month)) ? " " : match,
+  );
+  return [...rest.matchAll(BARE_YEAR)].map(([, year]) => year);
+}
+
 function namedMonths(sentence: string, pattern: RegExp): string[] {
   const out: string[] = [];
   for (const [, name, year] of sentence.matchAll(pattern)) {
@@ -95,18 +159,29 @@ function namedMonths(sentence: string, pattern: RegExp): string[] {
 }
 
 function monthsMentioned(sentence: string): string[] {
-  const numeric = [...sentence.matchAll(YEAR_MONTH)].map(([, year, month]) => `${year}-${month}`);
-  return [...numeric, ...namedMonths(sentence, NAMED_MONTH), ...namedMonths(sentence, RANGE_START)];
+  return [...yearMonthsIn(sentence), ...namedMonths(sentence, NAMED_MONTH), ...namedMonths(sentence, RANGE_START)];
 }
 
-function offends(sentence: string, allowed: ReadonlySet<string>): boolean {
-  if (DAY_PRECISION.some((pattern) => pattern.test(sentence))) return true;
-  return monthsMentioned(sentence).some((month) => !allowed.has(month));
+/** The months a section may name, and the years those months fall in. */
+interface AllowedDates {
+  readonly months: ReadonlySet<string>;
+  readonly years: ReadonlySet<string>;
+}
+
+function hasDayPrecision(sentence: string): boolean {
+  return DAY_PRECISION.some((pattern) => pattern.test(sentence)) || hasCuedDayMonth(sentence);
+}
+
+function offends(sentence: string, allowed: AllowedDates): boolean {
+  if (hasDayPrecision(sentence)) return true;
+  if (monthsMentioned(sentence).some((month) => !allowed.months.has(month))) return true;
+  return bareYears(sentence).some((year) => !allowed.years.has(year));
 }
 
 /**
  * Remove every sentence, in every string anywhere in `section`, that carries a
- * day-precision date or a month not in `allowedMonths`. Returns a new value of
+ * day-precision date, a month not in `allowedMonths`, or a bare year that is
+ * not the year of an allowed month. Returns a new value of
  * the same shape (the input is not mutated) and the number of sentences removed.
  */
 export function validateTimelineDates<T>(
@@ -114,9 +189,13 @@ export function validateTimelineDates<T>(
   allowedMonths: ReadonlySet<string>,
 ): { section: T; removals: number } {
   let removals = 0;
+  const allowed: AllowedDates = {
+    months: allowedMonths,
+    years: new Set([...allowedMonths].map((month) => month.slice(0, 4))),
+  };
   const visit = (value: unknown): unknown => {
     if (typeof value === "string") {
-      const result = dropSentences(value, (sentence) => offends(sentence, allowedMonths), SENTENCE_OR_BREAK);
+      const result = dropSentences(value, (sentence) => offends(sentence, allowed), SENTENCE_OR_BREAK);
       removals += result.dropped;
       return result.text;
     }
@@ -134,6 +213,6 @@ export function validateTimelineDates<T>(
 /** Every `YYYY-MM` that appears anywhere in an engine input slice. */
 export function monthsIn(value: unknown): ReadonlySet<string> {
   const months = new Set<string>();
-  for (const [, year, month] of JSON.stringify(value).matchAll(YEAR_MONTH)) months.add(`${year}-${month}`);
+  for (const [, year, month] of JSON.stringify(value).matchAll(ENGINE_MONTH)) months.add(`${year}-${month}`);
   return months;
 }

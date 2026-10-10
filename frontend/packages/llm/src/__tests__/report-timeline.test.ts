@@ -235,3 +235,59 @@ describe("streamReportTimeline", () => {
     expect([...seen].sort()).toEqual(["current_period", "life_outlook_1", "life_outlook_2", "year_ahead"]);
   });
 });
+
+/** An SSE stub that streams each section's reply in small deltas. */
+function streamingFetch(replies: Record<string, unknown>): typeof fetch {
+  const encoder = new TextEncoder();
+  return vi.fn(async (_url: string, init: RequestInit) => {
+    const content = JSON.stringify(replies[sectionOf(String(init.body))]);
+    const chunks = content.match(/[\s\S]{1,7}/g) ?? [];
+    const sse = chunks.map((c) => `data: ${JSON.stringify({ choices: [{ delta: { content: c } }] })}\n\n`).join("");
+    return new Response(encoder.encode(`${sse}data: [DONE]\n\n`), { headers: { "Content-Type": "text/event-stream" } });
+  }) as unknown as typeof fetch;
+}
+
+describe("streamReportTimeline: live preview (F3)", () => {
+  it("never hands onSectionProgress a timeline preview carrying an invented date", async () => {
+    const previews: { section: string; preview: string }[] = [];
+    await collect(streamReportTimeline({
+      chart: REPORT_RAW_CHART, asOf: REPORT_AS_OF, config: OPENROUTER, fetchImpl: streamingFetch(REPLIES),
+      onSectionProgress: (section, progress) => previews.push({ section, preview: progress.preview }),
+    }));
+    expect(new Set(previews.map((p) => p.section)).size).toBe(4);
+    const leaks = previews.filter((p) => /2031|2041/.test(p.preview));
+    expect(leaks).toEqual([]);
+    // The guard drops sentences, not the preview: the engine-free prose still shows.
+    expect(previews.some((p) => p.preview.includes("Steady building."))).toBe(true);
+  });
+
+  it("drops the cut-off first sentence of a full preview so a half date never shows", async () => {
+    // The preview is the prose's last 480 characters. Here they start inside
+    // "March", so the tail would open on "rch 14 now." without the guard.
+    const tail = `rch 14 now. ${"Rest well. ".repeat(42)}Calm. `;
+    expect(tail.length).toBe(480);
+    const replies = {
+      ...REPLIES,
+      current_period: { ...(REPLIES.current_period as object), next_change: p(`Steady. Act on Ma${tail}`) },
+    };
+    const last: Record<string, string> = {};
+    await collect(streamReportTimeline({
+      chart: REPORT_RAW_CHART, asOf: REPORT_AS_OF, config: OPENROUTER, fetchImpl: streamingFetch(replies),
+      onSectionProgress: (section, progress) => { last[section] = progress.preview; },
+    }));
+    expect(last.current_period).not.toMatch(/14 now/);
+    expect(last.current_period).toMatch(/^Rest well\./);
+  });
+
+  it("leaves natal previews unguarded", async () => {
+    const replies = { ...REPLIES, core: { ...(REPLIES.core as object), summary: p("Natal arc peaks in 2031-01.") } };
+    const previews: string[] = [];
+    for await (const _ of streamNatalInterpretation({
+      chart: REPORT_RAW_CHART, asOf: REPORT_AS_OF, config: OPENROUTER, fetchImpl: streamingFetch(replies),
+      onSectionProgress: (section, progress) => { if (section === "core") previews.push(progress.preview); },
+    })) {
+      // drain
+    }
+    expect(previews.some((preview) => preview.includes("2031-01"))).toBe(true);
+  });
+});

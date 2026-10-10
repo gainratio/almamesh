@@ -33,7 +33,7 @@ import type { SiderealChart } from "@almamesh/browser/types";
 
 import { estimateTokens } from "./budget";
 import { chatCompletionJson, LlmRequestError, type ChatMessage } from "./client";
-import { createJsonProseExtractor, createWordCounter } from "./json-prose";
+import { createJsonProseExtractor, createWordCounter, PROSE_PREVIEW_CHARS } from "./json-prose";
 import { streamChatCompletionJson } from "./json-stream";
 import {
   REPORT_LOCAL_FIRST_TOKEN_TIMEOUT_MS,
@@ -1297,6 +1297,51 @@ function guarded<T>(results: SectionResults, parsed: T, slice: object): T {
   return section;
 }
 
+/** The engine input a timeline section is sent: its date guard's allowed months come from it. */
+function timelineSlice(section: ReportTimelineSectionKey, chart: SanitizedChart): object {
+  switch (section) {
+    case "current_period":
+      return currentPeriodSlice(chart);
+    case "year_ahead":
+      return yearAheadSlice(chart);
+    case "life_outlook_1":
+    case "life_outlook_2":
+      return lifeOutlookSlice(chart, section);
+  }
+}
+
+// Up to the end of the first sentence (or the whole text when none ends).
+const LEADING_FRAGMENT = /^[^.!?…\n]*(?:[.!?…\n]+\s*|$)/u;
+
+/**
+ * A live timeline preview as the date guard leaves it. A full-length preview
+ * is a tail cut at an arbitrary character, so its first sentence may be a
+ * fragment ("rch 14 now.") the guard cannot read: it is dropped first.
+ */
+function guardedPreview(preview: string, allowed: ReadonlySet<string>): string {
+  const whole = preview.length < PROSE_PREVIEW_CHARS ? preview : preview.replace(LEADING_FRAGMENT, "");
+  return validateTimelineDates(whole, allowed).section;
+}
+
+/**
+ * The run params with a timeline section's progress previews date-guarded
+ * against the same months as its final text, so no caller can show an
+ * invented date while the section streams. Natal sections are unchanged.
+ */
+function withGuardedPreview<Section extends AnySectionKey>(
+  section: Section,
+  chart: SanitizedChart,
+  params: SectionRunParams<Section>,
+): SectionRunParams<Section> {
+  const report = params.onSectionProgress;
+  if (!report || !isReportTimelineSection(section)) return params;
+  const allowed = monthsIn(timelineSlice(section, chart));
+  return {
+    ...params,
+    onSectionProgress: (key, progress) => report(key, { ...progress, preview: guardedPreview(progress.preview, allowed) }),
+  };
+}
+
 /** Parse one section's raw JSON string into the results container in place. */
 function applySection(
   results: SectionResults,
@@ -1562,7 +1607,7 @@ function runOneSection<Section extends AnySectionKey>(
     params.language ?? "en",
     params.promptSet,
   );
-  return requestCapped(section, messages, params)
+  return requestCapped(section, messages, withGuardedPreview(section, chart, params))
     .then((raw): SectionOutcome<Section> => ({ section, ok: true, raw }))
     // Keep the ORIGINAL error (not just its message) so the aggregation can
     // preserve the HTTP status/body of a representative failure — the caller

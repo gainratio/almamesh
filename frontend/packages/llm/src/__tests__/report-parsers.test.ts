@@ -85,6 +85,11 @@ describe("parseLifeOutlook", () => {
     expect(() => parseLifeOutlook({ domains: [{ domain: "health", outlook: p("x") }] }, LIFE_OUTLOOK_GROUPS.life_outlook_1)).toThrow(/not in this section/);
   });
 
+  it("rejects a repeated domain", () => {
+    const twice = { domains: [{ domain: "career", outlook: p("A.") }, { domain: "career", outlook: p("B.") }] };
+    expect(() => parseLifeOutlook(twice, LIFE_OUTLOOK_GROUPS.life_outlook_1)).toThrow(/repeated/);
+  });
+
   it("drops empty one-liners instead of storing blanks (lite)", () => {
     expect(parseLifeOutlook({ domains: [{ domain: "health", outlook: "Rest." }] }, LIFE_OUTLOOK_GROUPS.life_outlook_2)).toEqual([
       { domain: "health", outlook: { layman: "Rest.", technical: "Rest." } },

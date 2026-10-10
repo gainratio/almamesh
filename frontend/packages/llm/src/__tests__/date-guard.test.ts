@@ -245,6 +245,110 @@ describe("validateTimelineDates: day precision and numeric shapes", () => {
   });
 });
 
+// Final review. ALLOWED holds 2027-03 and 2027-06, so a year of 2027 is an
+// allowed year; each removal below can only come from the new rule.
+describe("validateTimelineDates: final review shapes", () => {
+  const removesFirst = (sentence: string, allowed: ReadonlySet<string> = ALLOWED): void => {
+    const { section, removals } = validateTimelineDates({ layman: `${sentence} Rest.` }, allowed);
+    expect({ sentence, text: section.layman, removals }).toEqual({ sentence, text: "Rest.", removals: 1 });
+  };
+  const keeps = (sentence: string, allowed: ReadonlySet<string> = ALLOWED): void => {
+    const input = { layman: `${sentence} Rest.` };
+    expect({ sentence, result: validateTimelineDates(input, allowed) }).toEqual({
+      sentence,
+      result: { section: input, removals: 0 },
+    });
+  };
+
+  it.each([
+    ["en", "Act on October 12."],
+    ["en", "Things shift on March 14th."],
+    ["en", "Act on Oct 12."],
+    ["en", "Act on Oct. 12 sharp."],
+    ["en", "Watch May 14 closely."],
+    ["en", "Act on MARCH 3."],
+    ["es", "Actúa en marzo 14."],
+    ["es", "Actúa el Dic 3."],
+    ["pt", "Aja em março de 14."],
+    ["pt", "Aja em Set 3."],
+  ])("removes a %s month-then-day with no year: %s (F1)", (_lang, sentence) => {
+    removesFirst(sentence);
+  });
+
+  it("keeps a lowercase 3-letter word before a count (F1 false positive)", () => {
+    keeps("Things may 5 times improve.");
+    keeps("We set 3 goals.");
+    keeps("March 2027 is the month.");
+  });
+
+  it.each([
+    ["en", "On 12/14 act."],
+    ["en", "Act by 3/14."],
+    ["es", "El 14/3 actúa."],
+    ["pt", "Em 14/3 aja."],
+    ["pt", "A partir de 1/7 aja."],
+  ])("removes a %s numeric day/month after a date cue: %s (F1)", (_lang, sentence) => {
+    removesFirst(sentence);
+  });
+
+  it("keeps numeric fractions and scores with no date cue (F1 false positive)", () => {
+    keeps("Add 1/2 cup.");
+    keeps("Score 10/10 today.");
+    keeps("Give it 3/4 effort.");
+    keeps("On 45/60 tries it held.");
+  });
+
+  it.each([
+    ["en", "In 2031 you rise."],
+    ["en", "Q3 2029 brings a turn."],
+    ["en", "By early 2031 it settles."],
+    ["en", "Around mid-2029 it settles."],
+    ["es", "En 2031 te elevas."],
+    ["es", "El T3 de 2029 trae un giro."],
+    ["pt", "Em 2031 você cresce."],
+    ["pt", "No meio de 2029 se acalma."],
+  ])("removes a %s bare year the engine did not supply: %s (F2)", (_lang, sentence) => {
+    removesFirst(sentence);
+  });
+
+  it.each([
+    ["en", "In 2027 you rise."],
+    ["en", "Q3 2027 brings a turn."],
+    ["es", "En 2027 te elevas."],
+    ["pt", "Em meados de 2027 se acalma."],
+  ])("keeps a %s year of an allowed month: %s (F2)", (_lang, sentence) => {
+    keeps(sentence);
+  });
+
+  it("keeps a year range whose years are allowed and ordinary 4-digit counts (F2)", () => {
+    keeps("Walk 5000 steps.");
+    keeps("Spend $2,050 wisely.");
+    keeps("From 2027-03 on, rest.");
+  });
+
+  it.each([
+    ["U+2011", "Act in 2028‑03."],
+    ["U+2013", "Act in 2028–03."],
+    ["U+2014", "Act in 2028—03."],
+    ["single digit", "Act in 2028-3 now."],
+  ])("removes a YYYY-MM with a %s separator the engine did not supply (F4)", (_form, sentence) => {
+    // 2028 is not an allowed year; allow it so only the month rule can remove.
+    removesFirst(sentence, new Set([...ALLOWED, "2028-01"]));
+  });
+
+  it.each([
+    ["U+2011", "Act in 2027‑03."],
+    ["U+2013", "Act in 2027–03."],
+    ["single digit", "Act in 2027-3 now."],
+  ])("keeps a supplied month written with a %s separator (F4)", (_form, sentence) => {
+    keeps(sentence);
+  });
+
+  it("removes an ISO day written with non-ASCII dashes (F4)", () => {
+    removesFirst("Mark 2027‑03‑14 now.");
+  });
+});
+
 describe("monthsIn", () => {
   it("collects every YYYY-MM the engine put in a slice", () => {
     const slice = { a: "2027-03", b: [{ month: "2027-06" }], c: "birth", d: 2027 };

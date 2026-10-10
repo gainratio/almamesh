@@ -322,11 +322,16 @@ function isGroupDomain(domain: string, group: readonly LifeDomain[]): domain is 
 
 export function parseLifeOutlook(json: unknown, group: readonly LifeDomain[]): LifeOutlookDomain[] {
   const rows = asRecord(json).domains;
+  const seen = new Set<LifeDomain>();
   return (Array.isArray(rows) ? rows.map(asRecord) : []).map((row) => {
     const domain = asString(row.domain);
     if (!isGroupDomain(domain, group)) {
       throw new ReportParseError(`life_outlook: domain ${JSON.stringify(domain)} is not in this section`);
     }
+    if (seen.has(domain)) {
+      throw new ReportParseError(`life_outlook: domain ${JSON.stringify(domain)} repeated`);
+    }
+    seen.add(domain);
     const leanInto = asLayman(row.lean_into);
     const watchFor = asLayman(row.watch_for);
     return {
