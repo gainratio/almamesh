@@ -1649,3 +1649,36 @@ export async function* streamReportTimeline(params: ReportTimelineParams): Async
     dateGuardRemovals: results.dateGuardRemovals,
   };
 }
+
+export interface ReportMessagesInput {
+  readonly chart: SiderealChart;
+  readonly asOf?: AnalysisInstant;
+}
+
+export interface ReportMessagesOptions {
+  readonly mode: ViewMode;
+  readonly language: PromptLanguage;
+  readonly lite: boolean;
+}
+
+export type ReportMessages = Readonly<Record<ReportSectionKey, readonly ChatMessage[]>>;
+
+/**
+ * The nine report-v2 message arrays, built exactly as the generators build
+ * them, so the app can count input tokens (estimateReadingCost) before any
+ * request is sent.
+ */
+export function buildReportMessages(input: ReportMessagesInput, opts: ReportMessagesOptions): ReportMessages {
+  const asOf = input.asOf ?? chartAnalysisInstant(input.chart);
+  const natal = sanitizeChartForLlm(stableNatalChart(input.chart), asOf);
+  const timeline = sanitizeChartForLlm(input.chart, asOf);
+  const n = (section: NatalInterpretationSectionKey) =>
+    buildSectionMessages(section, natal, opts.mode, opts.lite, opts.language, REPORT_PROMPT_SET);
+  const t = (section: ReportTimelineSectionKey) =>
+    buildSectionMessages(section, timeline, opts.mode, opts.lite, opts.language, REPORT_PROMPT_SET);
+  return {
+    core: n("core"), yoga: n("yoga"), guidance1: n("guidance1"), guidance2: n("guidance2"), remedial: n("remedial"),
+    current_period: t("current_period"), year_ahead: t("year_ahead"),
+    life_outlook_1: t("life_outlook_1"), life_outlook_2: t("life_outlook_2"),
+  };
+}
