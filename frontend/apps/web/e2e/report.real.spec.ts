@@ -164,7 +164,6 @@ async function runOnce(chart: SiderealChart, config: ProviderConfig, pricing: Mo
   const bodies: Record<string, unknown>[] = [];
   const t0 = Date.now();
   const errors: string[] = [];
-  const usageReads: Promise<void>[] = [];
   const fetchImpl: typeof fetch = async (input, init) => {
     const requestBody = String(init?.body ?? '');
     bodies.push(JSON.parse(requestBody) as Record<string, unknown>);
@@ -178,20 +177,26 @@ async function runOnce(chart: SiderealChart, config: ProviderConfig, pricing: Mo
       throw err;
     }
     // Report sections stream, and their idle cap watches the bytes: hand the
-    // Response back at once and read the usage off a tee'd copy in the
-    // background (awaited before the run's rows are used).
-    usageReads.push(
-      res
-        .clone()
-        .text()
-        .then((text) => {
-          const row = sectionUsageRow(requestBody, res.status, text);
-          if (!row) return;
-          rows.push(row);
-          sectionMs.push({ section: row.section, status: res.status, ms: Date.now() - started });
-        }),
-    );
-    return res;
+    // body to the library as it arrives and read the usage on the way
+    // through. A pass-through, not res.clone(): a clone keeps the connection
+    // open after the library cancels its reader (reasoning cap, in-band
+    // error), and awaiting it hung a live run for 40 minutes.
+    if (!res.body) return res;
+    const decoder = new TextDecoder();
+    let text = '';
+    const tap = new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controller) {
+        text += decoder.decode(chunk, { stream: true });
+        controller.enqueue(chunk);
+      },
+      flush() {
+        const row = sectionUsageRow(requestBody, res.status, text + decoder.decode());
+        if (!row) return;
+        rows.push(row);
+        sectionMs.push({ section: row.section, status: res.status, ms: Date.now() - started });
+      },
+    });
+    return new Response(res.body.pipeThrough(tap), { status: res.status, statusText: res.statusText, headers: res.headers });
   };
   const out: ReportOutput = { natal: null, timeline: null };
   const deadline = new AbortController();
@@ -213,8 +218,6 @@ async function runOnce(chart: SiderealChart, config: ProviderConfig, pricing: Mo
     clearTimeout(timer);
   }
   const totalMs = Date.now() - t0;
-  // An aborted section's copy rejects with its stream; it has no usage row.
-  await Promise.allSettled(usageReads);
   for (const body of bodies) {
     expect.soft(body.reasoning).toEqual({ max_tokens: REASONING_CAP });
     expect.soft(body.provider).toEqual(PROVIDER_ROUTING);
