@@ -409,6 +409,15 @@ describe("sanitizeChartForLlm — predictive contexts (transits/strength/vargas/
     });
   });
 
+  it("carries each life area's engine house-lord rows, without the rule text", () => {
+    const predictive = sanitizeChartForLlm(predictiveChart, { basis: "chart", instant: NOW }).predictive;
+    expect(predictive?.domain_houses?.career).toEqual([
+      { house: 10, sign: "leo", lord: "sun", lord_house: 11, lord_sign: "virgo", lord_dignity: "neutral" },
+    ]);
+    // The chat timing tool reads `domains`; the new rows must not grow it.
+    expect(JSON.stringify(predictive?.domains)).not.toContain("lord_house");
+  });
+
   it("drops the bulky raw context fields (sunrise, bindus tables, full charts)", () => {
     const serialized = JSON.stringify(sanitizeChartForLlm(predictiveChart, { basis: "chart", instant: NOW }).predictive);
     expect(serialized).not.toContain("sunrise_utc_iso");
