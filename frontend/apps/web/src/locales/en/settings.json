@@ -163,6 +163,7 @@
     "error_server": "The provider is having trouble right now. Try again shortly.",
     "error_detail": "The provider said: {{detail}}",
     "error_storage": "Couldn't save your settings in this browser — storage may be full or blocked (e.g. private mode). Free up space or try a normal window.",
+    "error_storage_off": "AI is off for now, but this browser couldn't save that. It may turn back on after a reload. Try again.",
     "credits_remaining": "{{remaining}} of {{total}} OpenRouter credits left",
     "credits_loading": "Checking your OpenRouter balance…",
     "credits_unavailable": "Couldn't read your balance right now.",

@@ -26,6 +26,8 @@ MARKERS=(
   MUTATION_OFF_NO_REFRESH MUTATION_ONCONNECTED_UNGUARDED MUTATION_ONCONNECTED_NO_AWAIT
   MUTATION_OFF_FAILOPEN_RESTORE MUTATION_OFF_FAILED_BADGE MUTATION_SAVE_NO_RESTORE
   MUTATION_OFF_NO_FLUSH_AWAIT MUTATION_OFF_FAILED_HEADER MUTATION_OFF_LATE_FAIL_NO_REFRESH
+  MUTATION_RESTORE_AFTER_SUPERSEDE MUTATION_RESTORE_FROM_MEMORY MUTATION_RESTORE_IGNORES_NEWER_WRITE
+  MUTATION_OFF_GENERIC_COPY MUTATION_OFF_KEEPS_FORM MUTATION_OFF_NO_RESTORE_TARGET
 )
 REPORTS="$(mktemp -d)"
 
@@ -98,11 +100,11 @@ expect_red "onConnected before the probe resolves" MUTATION_EARLY_CONNECTED \
   "does not report connected on a failed probe"
 
 expect_red "do not await flushSettings before probing" MUTATION_NO_FLUSH_AWAIT \
-  's{(writeLlmSettings\(\{ \.\.\.next, engine: \x27\x27 \}\);\s+)await flushSettings\(\);}{${1}void flushSettings(); /* MUTATION_NO_FLUSH_AWAIT */}' \
+  's{(writeLlmSettings\(\{ \.\.\.next, engine: \x27\x27 \}\);\n\s*const written = readLlmSettings\(\);\s+)await flushSettings\(\);}{${1}void flushSettings(); /* MUTATION_NO_FLUSH_AWAIT */}' \
   "reports connected only after the settings are durable"
 
 expect_red "skip flushSettings entirely" MUTATION_SKIP_FLUSH \
-  's{(writeLlmSettings\(\{ \.\.\.next, engine: \x27\x27 \}\);\s+)await flushSettings\(\);}{${1}/* MUTATION_SKIP_FLUSH */}' \
+  's{(writeLlmSettings\(\{ \.\.\.next, engine: \x27\x27 \}\);\n\s*const written = readLlmSettings\(\);\s+)await flushSettings\(\);}{${1}/* MUTATION_SKIP_FLUSH */}' \
   "does not report connected when the settings write fails"
 
 expect_red "skip the probeGen check on the probe result" MUTATION_PROBEGEN \
@@ -154,7 +156,7 @@ expect_red "turnAiOff no longer bumps probeGen (M9)" MUTATION_OFF_NO_BUMP \
   "does not report connected when AI is turned off mid-probe"
 
 expect_red "turnAiOff storage catch swallows the failure" MUTATION_OFF_STORAGE_CATCH \
-  's{setConn\(\{ phase: \x27error\x27, source: \x27guided\x27, kind: \x27storage\x27 \}\);}{/* MUTATION_OFF_STORAGE_CATCH */}' \
+  's{setConn\(\{ phase: \x27error\x27, source: \x27guided\x27, kind: \x27storage_off\x27 \}\);}{/* MUTATION_OFF_STORAGE_CATCH */}' \
   "shows a storage error, and fails closed (AI off in memory and on the badge), when turning AI off cannot be saved"
 
 expect_red "drop the supersede guard on a FAILED probe" MUTATION_FAILED_PROBE_GUARD \
@@ -190,12 +192,40 @@ expect_red "a superseded turn-off that fails late skips the refresh" MUTATION_OF
   "superseded turn-off that fails late still shows AI off"
 
 expect_red "a failed save leaves the unsaved config live in memory" MUTATION_SAVE_NO_RESTORE \
-  's{hydrateLlmSettings\(JSON\.stringify\(beforeSave\)\); // restore after a failed save}{/* MUTATION_SAVE_NO_RESTORE */}' \
+  's{hydrateLlmSettings\(JSON\.stringify\(durable\.current\)\); // restore the last durable config}{/* MUTATION_SAVE_NO_RESTORE */}' \
   "restores the previous in-memory settings when a save cannot be made durable"
 
 expect_red "turnAiOff does not await its flush" MUTATION_OFF_NO_FLUSH_AWAIT \
   's{(privacyMode: \x27local_only\x27,\n\s*\}\);\n\s*)await flushSettings\(\);}{${1}void flushSettings(); /* MUTATION_OFF_NO_FLUSH_AWAIT */}' \
   "turns AI off only after the off write is durable"
+
+expect_red "N5: restore only when the save still owns the verdict (edit)" MUTATION_RESTORE_AFTER_SUPERSEDE \
+  's{if \(saveWrite === writeGen\.current\) \{}{if (saveWrite === writeGen.current \&\& gen === probeGen.current /* MUTATION_RESTORE_AFTER_SUPERSEDE */) \{}' \
+  "P4b-edit: a failed save superseded by a field EDIT"
+
+expect_red "N5: restore only when the save still owns the verdict (unmount)" MUTATION_RESTORE_AFTER_SUPERSEDE \
+  's{if \(saveWrite === writeGen\.current\) \{}{if (saveWrite === writeGen.current \&\& gen === probeGen.current /* MUTATION_RESTORE_AFTER_SUPERSEDE */) \{}' \
+  "P4b-unmount: a failed save superseded by UNMOUNT"
+
+expect_red "restore reads memory, not the last durable config" MUTATION_RESTORE_FROM_MEMORY \
+  's{(const saveWrite = \(writeGen\.current \+= 1\);)}{$1 const beforeSaveM = readLlmSettings();}; s{hydrateLlmSettings\(JSON\.stringify\(durable\.current\)\); // restore the last durable config}{hydrateLlmSettings(JSON.stringify(beforeSaveM)); /* MUTATION_RESTORE_FROM_MEMORY */}' \
+  "P4b-chain: two failed saves (A superseded by B)"
+
+expect_red "an older failed save restores over a newer write" MUTATION_RESTORE_IGNORES_NEWER_WRITE \
+  's{if \(saveWrite === writeGen\.current\) \{}{if (true /* MUTATION_RESTORE_IGNORES_NEWER_WRITE */) \{}' \
+  "a failed older save does not wipe a newer save whose flush is still pending"
+
+expect_red "a failed turn-off shows the generic storage copy" MUTATION_OFF_GENERIC_COPY \
+  's{kind: \x27storage_off\x27 \}\);}{kind: \x27storage\x27 /* MUTATION_OFF_GENERIC_COPY */ \});}' \
+  "says AI is off for now, and clears the key field, when turning AI off cannot be saved"
+
+expect_red "a failed turn-off leaves the key in the form" MUTATION_OFF_KEEPS_FORM \
+  's{setSettings\(readLlmSettings\(\)\); // clear the form after a failed turn-off}{/* MUTATION_OFF_KEEPS_FORM */}' \
+  "says AI is off for now, and clears the key field, when turning AI off cannot be saved"
+
+expect_red "a failed turn-off keeps the old key as the restore target" MUTATION_OFF_NO_RESTORE_TARGET \
+  's{markRestoreTarget\(offWrite, readLlmSettings\(\)\); // fail-closed restore target}{/* MUTATION_OFF_NO_RESTORE_TARGET */}' \
+  "a failed save after a failed turn-off restores memory to off, not the old key"
 
 # Restored: the source is clean and no marker survives anywhere in src.
 git diff --quiet -- "$PANEL" || { echo "FAIL: $PANEL is not clean after restore" >&2; exit 1; }
@@ -205,4 +235,4 @@ for marker in "${MARKERS[@]}"; do
     exit 1
   fi
 done
-echo "all 26 mutations went RED; source restored and clean"
+echo "all 33 mutations went RED; source restored and clean"

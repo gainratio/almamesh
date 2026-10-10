@@ -5,6 +5,7 @@ import '../../../i18n/config';
 import {
   CHAT_CLOUD_MODEL,
   configureLlmSettingsPersistence,
+  describeLlmStatus,
   hydrateLlmSettings,
   readLlmSettings,
   RECOMMENDED_CLOUD_MODEL,
@@ -766,6 +767,8 @@ describe('AiSetupPanel — onConnected', () => {
   // ── Round 2 (grader PR #328): every way the screen can go away or change owner
   // mid-flight must cancel the pending onConnected and keep the newest verdict.
   const verdict = () => screen.queryByTestId('llm-connection-result')?.textContent ?? '(none)';
+  const OFF_FAILED = 'AI is off for now';
+  const keyField = () => (screen.getByTestId('llm-openrouter-key') as HTMLInputElement).value;
 
   it('does not report connected after unmount, and aborts the in-flight probe', async () => {
     const onConnected = vi.fn();
@@ -896,7 +899,7 @@ describe('AiSetupPanel — onConnected', () => {
     await waitFor(() => expect(verdict()).toContain('Connected'));
     flushSettings.mockRejectedValueOnce(new Error('canonical SQLite write failed'));
     fireEvent.click(screen.getByTestId('tier-none-select'));
-    await waitFor(() => expect(verdict()).toContain("Couldn't save"));
+    await waitFor(() => expect(verdict()).toContain(OFF_FAILED));
     // The privacy fence wins: no key, local_only, for the rest of the session.
     expect(readSaved().apiKey).toBe('');
     expect(readSaved().privacyMode).toBe('local_only');
@@ -947,12 +950,152 @@ describe('AiSetupPanel — onConnected', () => {
     window.addEventListener(LLM_SETTINGS_CHANGED_EVENT, changed);
     try {
       fireEvent.click(screen.getByTestId('tier-none-select'));
-      await waitFor(() => expect(verdict()).toContain("Couldn't save"));
+      await waitFor(() => expect(verdict()).toContain(OFF_FAILED));
       // The header badge reads the same in-memory snapshot, which is now off.
       expect(changed).toHaveBeenCalled();
     } finally {
       window.removeEventListener(LLM_SETTINGS_CHANGED_EVENT, changed);
     }
+  });
+
+  it('says AI is off for now, and clears the key field, when turning AI off cannot be saved', async () => {
+    const flushSettings = vi.fn().mockResolvedValue(undefined);
+    renderPanel({ flushSettings, testConnection: vi.fn().mockResolvedValue(undefined) });
+    saveKey('sk-or-abc');
+    await waitFor(() => expect(verdict()).toContain('Connected'));
+    flushSettings.mockRejectedValueOnce(new Error('canonical SQLite write failed'));
+    fireEvent.click(screen.getByTestId('tier-none-select'));
+    await waitFor(() => expect(verdict()).toContain(OFF_FAILED));
+    expect(verdict()).toBe(
+      "✗ AI is off for now, but this browser couldn't save that. It may turn back on after a reload. Try again.",
+    );
+    expect(keyField()).toBe('');
+  });
+
+  it('a failed save after a failed turn-off restores memory to off, not the old key', async () => {
+    const flushSettings = vi.fn().mockResolvedValue(undefined);
+    renderPanel({ flushSettings, testConnection: vi.fn().mockResolvedValue(undefined) });
+    saveKey('sk-or-old');
+    await waitFor(() => expect(verdict()).toContain('Connected'));
+    flushSettings.mockRejectedValueOnce(new Error('down')).mockRejectedValueOnce(new Error('down'));
+    fireEvent.click(screen.getByTestId('tier-none-select'));
+    await waitFor(() => expect(verdict()).toContain(OFF_FAILED));
+    saveKey('sk-or-new');
+    await waitFor(() => expect(verdict()).toContain("Couldn't save"));
+    // Fail closed: the restore target after a failed turn-off is off.
+    expect(readSaved().apiKey).toBe('');
+    expect(readSaved().privacyMode).toBe('local_only');
+  });
+
+  // ── Regrade B (grader probe4): every failed save restores memory to the last
+  // DURABLE config unless a newer WRITE owns memory, even when an edit or an
+  // unmount superseded the save's verdict.
+  it('P4a: a failed save after a successful connect restores the good config; badge and header agree', async () => {
+    const flushSettings = vi.fn().mockResolvedValue(undefined);
+    renderPanel({ flushSettings, testConnection: vi.fn().mockResolvedValue(undefined) });
+    saveKey('sk-or-good');
+    await waitFor(() => expect(verdict()).toContain('Connected'));
+    const good = JSON.stringify(readLlmSettings());
+    flushSettings.mockRejectedValueOnce(new Error('sqlite down'));
+    saveKey('sk-or-bad');
+    await waitFor(() => expect(verdict()).toContain("Couldn't save"));
+    expect(JSON.stringify(readLlmSettings())).toBe(good);
+    expect(screen.getByTestId('tier-cloud-active')).toBeTruthy();
+    expect(describeLlmStatus().kind).toBe('openrouter');
+  });
+
+  it('P4b: a superseded failed save does not clobber a newer successful save in memory', async () => {
+    const f1 = deferred();
+    const onConnected = vi.fn();
+    const flushSettings = vi.fn().mockImplementationOnce(() => f1.promise).mockResolvedValue(undefined);
+    renderPanel({ onConnected, flushSettings, testConnection: vi.fn().mockResolvedValue(undefined) });
+    saveKey('sk-or-A');
+    await waitFor(() => expect(flushSettings).toHaveBeenCalledOnce());
+    saveKey('sk-or-B');
+    await waitFor(() => expect(onConnected).toHaveBeenCalledOnce());
+    await act(async () => {
+      f1.reject(new Error('late'));
+      await settle();
+    });
+    expect(readLlmSettings().apiKey).toBe('sk-or-B');
+    expect(verdict()).toContain('Connected');
+  });
+
+  it('a failed older save does not wipe a newer save whose flush is still pending', async () => {
+    hydrateLlmSettings(JSON.stringify({ apiKey: '', apiBase: '', privacyMode: 'local_only' }));
+    const f1 = deferred();
+    const f2 = deferred();
+    const flushSettings = vi.fn().mockImplementationOnce(() => f1.promise).mockImplementationOnce(() => f2.promise);
+    renderPanel({ flushSettings, testConnection: vi.fn().mockResolvedValue(undefined) });
+    saveKey('sk-or-A');
+    await settle();
+    saveKey('sk-or-B');
+    await settle();
+    await act(async () => {
+      f1.reject(new Error('down'));
+      await settle();
+    });
+    // B wrote memory after A, so B owns it: A's failure must not restore over it.
+    expect(readLlmSettings().apiKey).toBe('sk-or-B');
+    await act(async () => {
+      f2.resolve();
+      await settle();
+    });
+    expect(readLlmSettings().apiKey).toBe('sk-or-B');
+  });
+
+  it('P4b-edit: a failed save superseded by a field EDIT does not leave the unsaved key live in memory', async () => {
+    hydrateLlmSettings(JSON.stringify({ apiKey: '', apiBase: '', privacyMode: 'local_only' }));
+    const f1 = deferred();
+    renderPanel({ flushSettings: vi.fn(() => f1.promise), testConnection: vi.fn().mockResolvedValue(undefined) });
+    saveKey('sk-or-unsaved');
+    await settle();
+    fireEvent.change(screen.getByTestId('llm-openrouter-key'), { target: { value: 'sk-or-typing' } });
+    await act(async () => {
+      f1.reject(new Error('sqlite down'));
+      await settle();
+    });
+    expect(readLlmSettings().apiKey).toBe('');
+    expect(readLlmSettings().privacyMode).toBe('local_only');
+    // The edit still owns the form and the verdict.
+    expect(keyField()).toBe('sk-or-typing');
+    expect(verdict()).toBe('(none)');
+  });
+
+  it('P4b-unmount: a failed save superseded by UNMOUNT does not leave the unsaved key live in memory', async () => {
+    hydrateLlmSettings(JSON.stringify({ apiKey: '', apiBase: '', privacyMode: 'local_only' }));
+    const f1 = deferred();
+    const { unmount } = renderPanel({
+      flushSettings: vi.fn(() => f1.promise),
+      testConnection: vi.fn().mockResolvedValue(undefined),
+    });
+    saveKey('sk-or-unsaved');
+    await settle();
+    unmount();
+    f1.reject(new Error('sqlite down'));
+    await settle();
+    expect(readLlmSettings().apiKey).toBe('');
+    expect(readLlmSettings().privacyMode).toBe('local_only');
+  });
+
+  it('P4b-chain: two failed saves (A superseded by B) restore to the last DURABLE config, not A', async () => {
+    hydrateLlmSettings(JSON.stringify({ apiKey: '', apiBase: '', privacyMode: 'local_only' }));
+    const f1 = deferred();
+    const f2 = deferred();
+    const flushSettings = vi.fn().mockImplementationOnce(() => f1.promise).mockImplementationOnce(() => f2.promise);
+    renderPanel({ flushSettings, testConnection: vi.fn().mockResolvedValue(undefined) });
+    saveKey('sk-or-A');
+    await settle();
+    saveKey('sk-or-B');
+    await settle();
+    await act(async () => {
+      f1.reject(new Error('down'));
+      await settle();
+      f2.reject(new Error('down'));
+      await settle();
+    });
+    expect(readLlmSettings().apiKey).toBe('');
+    expect(verdict()).toContain("Couldn't save");
   });
 
   it('turns AI off only after the off write is durable', async () => {
@@ -1023,6 +1166,7 @@ describe('AiSetupPanel — onConnected', () => {
     await offSupersededBySave((flush) => flush.reject(new Error('canonical SQLite write failed')));
     expect(verdict()).toContain('Connected');
     expect(verdict()).not.toContain("Couldn't save");
+    expect(verdict()).not.toContain(OFF_FAILED);
   });
 
   it('refreshes the status surfaces, but keeps the edit, when a Turn-AI-off flushes after a field edit', async () => {

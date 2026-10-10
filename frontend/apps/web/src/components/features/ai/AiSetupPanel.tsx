@@ -65,11 +65,12 @@ const PLACEHOLDER_CHAT_MODEL = CHAT_CLOUD_MODEL;
 type ConnSource = 'guided' | 'advanced';
 
 /**
- * The verdict kinds: every connection-error class, plus `'storage'` for the case
+ * The verdict kinds: every connection-error class, plus `'storage_off'` for a
+ * turn-off that is live in memory but could not be persisted, and `'storage'` for the case
  * where persisting canonical SQLite failed — a save no-op the user must be told
  * about, never swallowed.
  */
-type ResultKind = ReturnType<typeof classifyConnectionError> | 'storage';
+type ResultKind = ReturnType<typeof classifyConnectionError> | 'storage' | 'storage_off';
 
 /** The live state of the save-time connectivity probe. */
 type ConnState =
@@ -142,6 +143,21 @@ export function AiSetupPanel({
   // fetch, so a stale verdict from a superseded config can never land on screen.
   const probeGen = useRef(0);
   const probeAbort = useRef<AbortController | null>(null);
+  // Memory-ownership guard, separate from probeGen: only a WRITE to the in-memory
+  // settings (a save, a turn-off, a remote Replace) bumps it. Edits and unmount
+  // supersede a verdict but never write memory, so they must not stop a failed
+  // save from putting memory back.
+  const writeGen = useRef(0);
+  // The restore target for a failed save: the newest write known to be durable
+  // (boot hydrate, a flushed save or turn-off, a Replace), or the off snapshot
+  // after a failed turn-off (fail closed). Never memory as it stands.
+  const durable = useRef<LlmSettings>(readLlmSettings());
+  const durableGen = useRef(0);
+  const markRestoreTarget = (writeId: number, snapshot: LlmSettings) => {
+    if (writeId < durableGen.current) return; // an older write never replaces a newer target
+    durableGen.current = writeId;
+    durable.current = snapshot;
+  };
 
   // A remote Replace reconstructs the synchronous memory snapshot, then emits the same
   // settings signal used by local saves. Re-read the whole form so a tab left
@@ -152,6 +168,10 @@ export function AiSetupPanel({
       probeGen.current += 1;
       probeAbort.current?.abort();
       const restored = readLlmSettings();
+      // The Replace snapshot came from the canonical row: it owns memory now and is
+      // the restore target.
+      durableGen.current = writeGen.current += 1;
+      durable.current = restored;
       setSettings(restored);
       setStatus(describeLlmStatus(restored));
       setConn({ phase: 'idle' });
@@ -275,6 +295,7 @@ export function AiSetupPanel({
   const turnAiOff = async () => {
     const offGen = (probeGen.current += 1);
     probeAbort.current?.abort();
+    const offWrite = (writeGen.current += 1);
     try {
       writeLlmSettings({
         engine: '',
@@ -286,6 +307,7 @@ export function AiSetupPanel({
         privacyMode: 'local_only',
       });
       await flushSettings();
+      markRestoreTarget(offWrite, readLlmSettings());
     } catch (err) {
       // Canonical SQLite can reject. Fail CLOSED: writeLlmSettings already set the
       // in-memory snapshot to off, and it stays off. The flush can reject because
@@ -293,14 +315,18 @@ export function AiSetupPanel({
       // would keep cloud calls going. The badge and the header follow memory, even
       // when superseded (a newer save's snapshot is simply what memory now holds).
       safeError('provider.disable_failed', err);
+      // Fail closed for later failed saves too: their restore target becomes off.
+      markRestoreTarget(offWrite, readLlmSettings()); // fail-closed restore target
       setStatus(describeLlmStatus()); // fail-closed badge after a failed turn-off
       notifyLlmSettingsChanged(); // fail-closed header after a failed turn-off
       // A newer save or edit owns the verdict now; a late off-failure must not paint over it.
       if (offGen !== probeGen.current) {
         return;
       }
-      // The storage error tells the user the off state may not survive a reload.
-      setConn({ phase: 'error', source: 'guided', kind: 'storage' });
+      // Say exactly what happened: off now, maybe not after a reload. The form
+      // follows memory, so no key is left sitting in the field.
+      setSettings(readLlmSettings()); // clear the form after a failed turn-off
+      setConn({ phase: 'error', source: 'guided', kind: 'storage_off' });
       return;
     }
     // Superseded while the off flush was in flight: refresh the status surfaces from
@@ -325,21 +351,29 @@ export function AiSetupPanel({
     probeAbort.current?.abort();
     const controller = new AbortController();
     probeAbort.current = controller;
-    const beforeSave = readLlmSettings();
+    const saveWrite = (writeGen.current += 1);
 
     try {
       writeLlmSettings({ ...next, engine: '' });
+      const written = readLlmSettings();
       await flushSettings();
+      markRestoreTarget(saveWrite, written);
     } catch (err) {
       // A canonical SQLite write can fail. Do not
       // probe or report a configuration that will disappear on reload.
       safeError('provider.settings_save_failed', err);
+      // Never leave an unsaved config live in memory until the next reload — even
+      // when an edit or unmount superseded this save's verdict. Only a newer WRITE
+      // owns memory; then it is that write's job to restore or keep it.
+      if (saveWrite === writeGen.current) {
+        hydrateLlmSettings(JSON.stringify(durable.current)); // restore the last durable config
+        setStatus(describeLlmStatus());
+        notifyLlmSettingsChanged();
+      }
       // A newer save or edit owns the verdict now; a late failure must not paint over it.
       if (gen !== probeGen.current) {
         return;
       }
-      // Never leave an unsaved config live in memory until the next reload.
-      hydrateLlmSettings(JSON.stringify(beforeSave)); // restore after a failed save
       setConn({ phase: 'error', source, kind: 'storage' });
       return;
     }
