@@ -180,3 +180,45 @@ describe('useTimeTravel', () => {
     expect(result.current.moment).toBeUndefined();
   });
 });
+
+describe('the Dashboard moment is memory only (Ruling 1)', () => {
+  type Snapshot = Record<string, string>;
+  const snapshot = (): Snapshot => {
+    const out: Snapshot = {};
+    for (const area of [localStorage, sessionStorage]) {
+      for (let i = 0; i < area.length; i += 1) {
+        const key = area.key(i) as string;
+        out[`${area === localStorage ? 'local' : 'session'}:${key}`] = area.getItem(key) ?? '';
+      }
+    }
+    return out;
+  };
+  // The chat store persists pinned threads (with as_of) through its own adapters, not the Web Storage
+  // areas this test watches. If that ever changes, the assertion below fails loudly instead of being
+  // silently excused: every changed key must then be named here by its owner.
+  const CHAT_OWNED_KEYS: readonly string[] = [];
+
+  function expectNothingStored(before: Snapshot): void {
+    const after = snapshot();
+    const changed = Object.keys(after).filter((k) => before[k] !== after[k] && !CHAT_OWNED_KEYS.includes(k));
+    expect(changed).toEqual([]);
+    expect(Object.keys(before).filter((k) => !(k in after))).toEqual([]);
+    for (const value of Object.values(after)) expect(value).not.toContain('2019-03-01');
+  }
+
+  it.each([['AI off', aiOff], ['AI on', aiOn]])('with %s, travelling and going back leave Web Storage untouched', async (_label, deps) => {
+    localStorage.clear();
+    sessionStorage.clear();
+    const before = snapshot();
+    await applyTravel({ asOf: MARCH_2019, source: 'dashboard-sheet' }, DASH, deps);
+    expect(moment()).toEqual(MARCH_2019);
+    expectNothingStored(before);
+    await applyBackToToday(DASH, deps);
+    expect(moment()).toBeUndefined();
+    expectNothingStored(before);
+  });
+
+  it('the store exposes no zustand persist API', () => {
+    expect('persist' in useTimeTravelStore).toBe(false);
+  });
+});
