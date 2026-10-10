@@ -151,6 +151,44 @@ describe('Dashboard Time travel', () => {
     expect(document.activeElement).toBe(button);
   });
 
+  // WebKit never focuses a button on a click or tap, so the sheet's own opener
+  // (document.activeElement at mount) is <body> there. A click without a prior
+  // focus() reproduces that: the Dashboard must still put focus back.
+  it('a click (no prior focus, as on WebKit) then Cancel returns focus to the button', async () => {
+    await renderDashboard({ ai: 'off' });
+    const button = screen.getByTestId('dashboard-time-travel-button');
+    expect(document.activeElement).not.toBe(button);
+    fireEvent.click(button);
+    fireEvent.click(screen.getByTestId('time-travel-cancel'));
+    expect(screen.queryByTestId('time-travel-sheet')).toBeNull();
+    expect(document.activeElement).toBe(button);
+  });
+
+  it('a click then a successful Go returns focus to the button', async () => {
+    await renderDashboard({ ai: 'off' });
+    const button = screen.getByTestId('dashboard-time-travel-button');
+    fireEvent.click(button);
+    fireEvent.click(screen.getByTestId('time-travel-tab-year'));
+    fireEvent.change(screen.getByTestId('time-travel-year'), { target: { value: '2019' } });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('time-travel-go'));
+    });
+    expect(screen.queryByTestId('time-travel-sheet')).toBeNull();
+    expect(document.activeElement).toBe(button);
+  });
+
+  it("opened from the banner's Change, a click then Cancel returns focus to Change", async () => {
+    await renderDashboard({ ai: 'off' });
+    act(() =>
+      useTimeTravelStore
+        .getState()
+        .setMoment(PROFILE_ID, { start: '2019-01-01', end: '2019-12-31', granularity: 'year' }),
+    );
+    fireEvent.click(screen.getByTestId('dashboard-time-travel-change'));
+    fireEvent.click(screen.getByTestId('time-travel-cancel'));
+    expect(document.activeElement).toBe(screen.getByTestId('dashboard-time-travel-change'));
+  });
+
   it('the sheet speaks for the Dashboard, not for a chat', async () => {
     await renderDashboard({ ai: 'off' });
     fireEvent.click(screen.getByTestId('dashboard-time-travel-button'));

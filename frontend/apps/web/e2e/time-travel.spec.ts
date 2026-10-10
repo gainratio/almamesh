@@ -1107,17 +1107,23 @@ test.describe('Dashboard time travel', () => {
     await expect(button).toBeVisible();
     await expect(button).toHaveText(/Time travel/);
     await expect(button).toBeEnabled();
-    // Keyboard open: focus returns to the opener. (A WebKit mouse click never focuses
-    // a button, so the mouse path returns focus to <body> there; see the @iphone15 note.)
-    await button.focus();
-    await page.keyboard.press('Enter');
+    // Mouse first, from nothing focused: a WebKit click never focuses a button, so
+    // the Dashboard must return focus itself.
+    await expect(button).not.toBeFocused();
+    await button.click();
     await expect(page.getByTestId('time-travel-sheet')).toBeVisible();
     await expect(page.getByTestId('time-travel-sheet'), 'the Dashboard sheet speaks for the Dashboard').toContainText(
       'The Dashboard will show that moment.',
     );
+    await page.getByTestId('time-travel-cancel').click();
+    await expect(page.getByTestId('time-travel-sheet')).toBeHidden();
+    await expect(button, 'a click then Cancel returns focus to the button').toBeFocused();
+    // Then the keyboard: Enter opens, Escape closes, focus comes back.
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId('time-travel-sheet')).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(page.getByTestId('time-travel-sheet')).toBeHidden();
-    await expect(button, 'closing the sheet returns focus to the button').toBeFocused();
+    await expect(button, 'Escape returns focus to the button').toBeFocused();
     await pickMonth(page, '2019-03');
     await expect(page.getByTestId('dashboard-time-travel-title')).toHaveText(/March 2019/);
     await expect(page.getByTestId('time-travel-moment-maha')).toHaveText(MARCH_2019_MAHA);
@@ -1187,12 +1193,12 @@ test.describe('Dashboard time travel on an iPhone 15', () => {
     expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
     await page.screenshot({ path: testInfo.outputPath('dashboard-button-iphone15.png') });
 
-    // Observed, not asserted: WebKit does not focus a button on tap, so focus
-    // may return to <body> after Cancel (A4 review). Recorded for the report.
+    // WebKit does not focus a button on tap; the Dashboard returns focus itself.
     await button.tap();
     await expect(page.getByTestId('time-travel-sheet')).toBeVisible();
     await page.getByTestId('time-travel-cancel').tap();
     await expect(page.getByTestId('time-travel-sheet')).toBeHidden();
+    await expect(button, 'a tap then Cancel returns focus to the button').toBeFocused();
     const focused = await page.evaluate(
       () => document.activeElement?.getAttribute('data-testid') ?? document.activeElement?.tagName ?? 'none',
     );

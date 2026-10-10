@@ -84,7 +84,11 @@ import { birthYearOf } from "../lib/periodChart";
 import { asOfKey } from "../lib/pinnedPeriod";
 import { DashboardMoment } from "../components/features/dashboard/DashboardMomentCard";
 import { TimeTravelBanner } from "../components/features/chat/TimeTravelBanner";
-import { DashboardTimeTravelSheet } from "../components/features/dashboard/DashboardTimeTravelSheet";
+import {
+  DashboardTimeTravelSheet,
+  type DashboardTravelSheet,
+  useDashboardSheetReturnFocus,
+} from "../components/features/dashboard/DashboardTimeTravelSheet";
 import { viewerTodayDay } from "../lib/chatAgentTools";
 import { useTimeTravel } from "../lib/timeTravel";
 import { RESOLVE_PLACE_TOOL_NAME } from "../lib/placeTool";
@@ -178,7 +182,8 @@ export default function DashboardPage() {
   // re-binds when the person switches.
   const activeProfileId = useProfilesStore((s) => s.activeProfileId);
   const timeTravel = useTimeTravel(activeProfileId, chartId);
-  const [travelSheet, setTravelSheet] = useState<'closed' | 'new' | 'change'>('closed');
+  const [travelSheet, setTravelSheet] = useState<DashboardTravelSheet>('closed');
+  const travelButtonRef = useDashboardSheetReturnFocus(travelSheet);
   // Back to today's state belongs to the moment it ran on: a failure on one
   // moment must not greet the person on the next one (however it was reached).
   const [travelBackFor, setTravelBackFor] = useState<{ readonly status: 'idle' | 'busy' | 'failed'; readonly key: string }>({ status: 'idle', key: 'today' });
@@ -788,6 +793,7 @@ export default function DashboardPage() {
               </button>
               <button
                 type="button"
+                ref={travelButtonRef}
                 data-testid="dashboard-time-travel-button"
                 onClick={() => setTravelSheet('new')}
                 disabled={!chartId}
