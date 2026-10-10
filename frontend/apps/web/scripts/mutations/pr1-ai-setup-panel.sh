@@ -195,7 +195,7 @@ expect_red "a superseded turn-off that fails late skips the refresh" MUTATION_OF
   "superseded turn-off that fails late still shows AI off"
 
 expect_red "a failed save leaves the unsaved config live in memory" MUTATION_SAVE_NO_RESTORE \
-  's{hydrateLlmSettings\(JSON\.stringify\(durable\.current\)\); // restore the last durable config}{/* MUTATION_SAVE_NO_RESTORE */}' \
+  's{hydrateLlmSettings\(JSON\.stringify\(restoreTargetSettings\(\)\)\); // restore the last durable config}{/* MUTATION_SAVE_NO_RESTORE */}' \
   "restores the previous in-memory settings when a save cannot be made durable"
 
 expect_red "turnAiOff does not await its flush" MUTATION_OFF_NO_FLUSH_AWAIT \
@@ -203,19 +203,19 @@ expect_red "turnAiOff does not await its flush" MUTATION_OFF_NO_FLUSH_AWAIT \
   "turns AI off only after the off write is durable"
 
 expect_red "N5: restore only when the save still owns the verdict (edit)" MUTATION_RESTORE_AFTER_SUPERSEDE \
-  's{if \(saveWrite === writeGen\.current\) \{}{if (saveWrite === writeGen.current \&\& gen === probeGen.current /* MUTATION_RESTORE_AFTER_SUPERSEDE */) \{}' \
+  's{if \(ownsSettingsMemory\(saveWrite\)\) \{}{if (ownsSettingsMemory(saveWrite) \&\& gen === probeGen.current /* MUTATION_RESTORE_AFTER_SUPERSEDE */) \{}' \
   "P4b-edit: a failed save superseded by a field EDIT"
 
 expect_red "N5: restore only when the save still owns the verdict (unmount)" MUTATION_RESTORE_AFTER_SUPERSEDE \
-  's{if \(saveWrite === writeGen\.current\) \{}{if (saveWrite === writeGen.current \&\& gen === probeGen.current /* MUTATION_RESTORE_AFTER_SUPERSEDE */) \{}' \
+  's{if \(ownsSettingsMemory\(saveWrite\)\) \{}{if (ownsSettingsMemory(saveWrite) \&\& gen === probeGen.current /* MUTATION_RESTORE_AFTER_SUPERSEDE */) \{}' \
   "P4b-unmount: a failed save superseded by UNMOUNT"
 
 expect_red "restore reads memory, not the last durable config" MUTATION_RESTORE_FROM_MEMORY \
-  's{(const saveWrite = \(writeGen\.current \+= 1\);)}{$1 const beforeSaveM = readLlmSettings();}; s{hydrateLlmSettings\(JSON\.stringify\(durable\.current\)\); // restore the last durable config}{hydrateLlmSettings(JSON.stringify(beforeSaveM)); /* MUTATION_RESTORE_FROM_MEMORY */}' \
+  's{(const saveWrite = beginSettingsWrite\(\);)}{$1 const beforeSaveM = readLlmSettings();}; s{hydrateLlmSettings\(JSON\.stringify\(restoreTargetSettings\(\)\)\); // restore the last durable config}{hydrateLlmSettings(JSON.stringify(beforeSaveM)); /* MUTATION_RESTORE_FROM_MEMORY */}' \
   "P4b-chain: two failed saves (A superseded by B)"
 
 expect_red "an older failed save restores over a newer write" MUTATION_RESTORE_IGNORES_NEWER_WRITE \
-  's{if \(saveWrite === writeGen\.current\) \{}{if (true /* MUTATION_RESTORE_IGNORES_NEWER_WRITE */) \{}' \
+  's{if \(ownsSettingsMemory\(saveWrite\)\) \{}{if (true /* MUTATION_RESTORE_IGNORES_NEWER_WRITE */) \{}' \
   "a failed older save does not wipe a newer save whose flush is still pending"
 
 expect_red "a failed turn-off shows the generic storage copy" MUTATION_OFF_GENERIC_COPY \
