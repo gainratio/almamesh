@@ -119,7 +119,7 @@ describe('LlmModelSettings — OpenRouter-first, test-on-save', () => {
     expect(saved.interpretationModel).toBe(RECOMMENDED_CLOUD_MODEL);
     expect(saved.chatModel).toBe(CHAT_CLOUD_MODEL);
     // Literal on purpose — the constant asserted against itself guards nothing.
-    expect(saved.chatModel).toBe('deepseek/deepseek-v4.1-flash');
+    expect(saved.chatModel).toBe('openai/gpt-6-luna');
     expect(saved.privacyMode).toBe('cloud_premium');
   });
 
@@ -448,8 +448,8 @@ describe('LlmModelSettings — one-time switch suggestion for glm-5.3-flash user
     hydrateSlowModelSuggestion(null);
   });
 
-  it('pins the new default: deepseek-v4.1-flash', () => {
-    expect(RECOMMENDED_CLOUD_MODEL).toBe('deepseek/deepseek-v4.1-flash');
+  it('pins the new default: openai/gpt-6-luna', () => {
+    expect(RECOMMENDED_CLOUD_MODEL).toBe('openai/gpt-6-luna');
   });
 
   it('suggests the switch with the measured reason, and switching keeps the key and chat model', async () => {
@@ -458,7 +458,7 @@ describe('LlmModelSettings — one-time switch suggestion for glm-5.3-flash user
     renderSettings(testConnection);
 
     const card = screen.getByTestId('model-switch-suggestion');
-    expect(card.textContent).toContain('DeepSeek V4.1 Flash');
+    expect(card.textContent).toContain('GPT-6 Luna');
     expect(card.textContent).toMatch(/GLM 5\.3 Flash/);
     expect(card.textContent).toMatch(/\d+ s/);
     expect(readSaved().interpretationModel).toBe(GLM);
@@ -466,8 +466,8 @@ describe('LlmModelSettings — one-time switch suggestion for glm-5.3-flash user
     fireEvent.click(screen.getByTestId('model-switch-accept'));
     await waitFor(() => expect(testConnection).toHaveBeenCalled());
     const saved = readSaved();
-    expect(saved.interpretationModel).toBe('deepseek/deepseek-v4.1-flash');
-    expect(saved.model).toBe('deepseek/deepseek-v4.1-flash');
+    expect(saved.interpretationModel).toBe('openai/gpt-6-luna');
+    expect(saved.model).toBe('openai/gpt-6-luna');
     expect(saved.chatModel).toBe('minimax/minimax-m2.7');
     expect(saved.apiKey).toBe('sk-or-kept');
     expect(screen.queryByTestId('model-switch-suggestion')).toBeNull();
@@ -477,7 +477,7 @@ describe('LlmModelSettings — one-time switch suggestion for glm-5.3-flash user
     seed({ model: 'openai/gpt-5.6-sol', interpretationModel: 'openai/gpt-5.6-sol', chatModel: GLM });
     renderSettings();
     fireEvent.click(screen.getByTestId('model-switch-accept'));
-    await waitFor(() => expect(readSaved().chatModel).toBe('deepseek/deepseek-v4.1-flash'));
+    await waitFor(() => expect(readSaved().chatModel).toBe('openai/gpt-6-luna'));
     expect(readSaved().interpretationModel).toBe('openai/gpt-5.6-sol');
   });
 

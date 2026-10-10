@@ -16,7 +16,7 @@ import { PRODUCT_DEFAULT_MODEL } from './realModel';
  *   1. `@almamesh/llm` `readLlmSettings()` self-heals a saved
  *      `anthropic/claude-3.5-sonnet` on an OpenRouter base → the recommended model
  *      (a real OpenRouter slug) AND persists the rewrite back to localStorage.
- *   2. The Dashboard shows an actionable "Switch to recommended (DeepSeek V4.1 Flash)"
+ *   2. The Dashboard shows an actionable "Switch to recommended (GPT-6 Luna)"
  *      button on a model-not-found error (belt-and-suspenders recovery).
  *
  * This spec installs the STALE Sonnet config (the bricking blob), boots the real

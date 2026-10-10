@@ -15,4 +15,4 @@
 export const E2E_REAL_MODEL = 'deepseek/deepseek-v4-pro';
 
 /** Mirrors `RECOMMENDED_CLOUD_MODEL` / `CHAT_CLOUD_MODEL` in @almamesh/llm. */
-export const PRODUCT_DEFAULT_MODEL = 'deepseek/deepseek-v4.1-flash';
+export const PRODUCT_DEFAULT_MODEL = 'openai/gpt-6-luna';

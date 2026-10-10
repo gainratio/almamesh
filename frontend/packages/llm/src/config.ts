@@ -186,11 +186,15 @@ export function resolveProviderConfig(env: LlmEnv = {}): ProviderConfig {
  * one-click preset, the settings UI default, and the "switch to recommended"
  * self-heal. A real OpenRouter slug (verified against the live models catalog).
  *
- * deepseek-v4.1-flash since 2026-10-01: in the live timeline benchmark (3 runs
- * each) it finished all 3 in 49-65 s, vs 111-170 s for deepseek-v4-pro and 1 of
- * 3 for z-ai/glm-5.3-flash. Changing this never rewrites a model a user saved.
+ * openai/gpt-6-luna since 2026-10-10: in the live nine-section report benchmark
+ * (e2e/report.real.spec.ts, 3 runs) it finished all 3 in 39-43 s for $0.013
+ * billed each, with every voice inside its word band. deepseek-v4-pro billed
+ * $0.019-0.025 per report. Pinned, never the `~openai/gpt-luna-latest` alias, so
+ * quality, latency and cost cannot move without a code change. deepseek-v4.1-flash
+ * (the default from 2026-10-01) stays selectable. Changing this never rewrites a
+ * model a user saved.
  */
-export const RECOMMENDED_CLOUD_MODEL = "deepseek/deepseek-v4.1-flash";
+export const RECOMMENDED_CLOUD_MODEL = "openai/gpt-6-luna";
 
 /**
  * The default cloud model the CHAT panel uses. Deliberately the SAME id as
