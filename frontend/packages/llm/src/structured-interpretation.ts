@@ -37,16 +37,30 @@ import { createJsonProseExtractor, createWordCounter } from "./json-prose";
 import { streamChatCompletionJson } from "./json-stream";
 import { LAYMAN_JARGON_TERMS } from "./layman-jargon";
 import { asPersona, asRecord, parsePersona, parseTitledPersonas } from "./persona-parse";
-import { SECTION_REASONING_MAX_TOKENS } from "./reasoning";
+import { REPORT_SECTION_REASONING_MAX_TOKENS, SECTION_REASONING_MAX_TOKENS } from "./reasoning";
 import { ensurePrivacy, isLocalEndpoint, type ProviderConfig } from "./config";
 import { withLanguage, type PromptLanguage } from "./language";
 import { buildPredictiveFactsBlock, buildReportFactsBlock } from "./predictive-facts";
 import { OUTPUT_DISCIPLINE_RULES, PRIVACY_RULE, type ViewMode } from "./prompt";
+import { monthsIn, validateTimelineDates } from "./date-guard";
+import { computeQuarters } from "./quarters";
 import {
+  currentPeriodSlice,
   isReportTimelineSection,
   LIFE_OUTLOOK_GROUPS,
+  lifeOutlookSlice,
+  parseCurrentPeriod,
+  parseLifeOutlook,
+  parseYearAhead,
+  REPORT_TIMELINE_SECTIONS,
+  reportAsOfMonth,
   reportSlice,
+  yearAheadSlice,
+  type CurrentPeriodSection,
+  type LifeOutlookSection,
+  type ReportTimelineContent,
   type ReportTimelineSectionKey,
+  type YearAheadSection,
 } from "./report-sections";
 import {
   REPORT_FIELD_TARGETS,
@@ -143,7 +157,31 @@ export interface StructuredInterpretationParams {
     section: InterpretationSectionKey,
     progress: SectionProgressSnapshot,
   ) => void;
+  /**
+   * `REPORT_PROMPT_SET` selects the report-v2 natal prompts (longer targets,
+   * family_guidance) and the 6,000-token reasoning cap; absent = the legacy
+   * prompts, byte-identical.
+   */
+  readonly promptSet?: ReportPromptSet;
 }
+
+type AnySectionKey = InterpretationSectionKey | ReportTimelineSectionKey;
+
+/** The params the shared section runner takes, with progress keyed by its own section type. */
+interface SectionRunParams<Section extends AnySectionKey>
+  extends Omit<StructuredInterpretationParams, "onSectionProgress"> {
+  readonly onSectionProgress?: (section: Section, progress: SectionProgressSnapshot) => void;
+}
+
+export interface ReportTimelineParams extends Omit<StructuredInterpretationParams, "onSectionProgress" | "promptSet"> {
+  readonly onSectionProgress?: (section: ReportTimelineSectionKey, progress: SectionProgressSnapshot) => void;
+}
+
+export type ReportTimelineEvent =
+  | { type: "section_start"; section: ReportTimelineSectionKey }
+  | { type: "section_complete"; section: ReportTimelineSectionKey }
+  | { type: "complete"; timeline: ReportTimelineContent; asOfMonth: string; dateGuardRemovals: number }
+  | { type: "error"; section: ReportTimelineSectionKey; message: string; status?: number };
 
 /** A section's live, still-unvalidated prose while it streams. */
 export interface SectionProgressSnapshot {
@@ -1155,6 +1193,14 @@ interface SectionResults {
   remedial: RemedialMeasures | null;
   upcoming_periods: TitledPersona[];
   current_sky: TitledPersona[];
+  current_period: CurrentPeriodSection | null;
+  year_ahead: YearAheadSection | null;
+  life_outlook_1: LifeOutlookSection | null;
+  life_outlook_2: LifeOutlookSection | null;
+  /** Sentences the date guard removed across the report timeline sections. */
+  dateGuardRemovals: number;
+  /** The report's as-of month (`YYYY-MM`), set once the chart is sanitized. */
+  asOfMonth: string;
 }
 
 function emptyResults(): SectionResults {
@@ -1181,14 +1227,28 @@ function emptyResults(): SectionResults {
     remedial: null,
     upcoming_periods: [],
     current_sky: [],
+    current_period: null,
+    year_ahead: null,
+    life_outlook_1: null,
+    life_outlook_2: null,
+    dateGuardRemovals: 0,
+    asOfMonth: "",
   };
+}
+
+/** Run the date guard against the months the engine put in this section's input. */
+function guarded<T>(results: SectionResults, parsed: T, slice: object): T {
+  const { section, removals } = validateTimelineDates(parsed, monthsIn(slice));
+  results.dateGuardRemovals += removals;
+  return section;
 }
 
 /** Parse one section's raw JSON string into the results container in place. */
 function applySection(
   results: SectionResults,
-  section: InterpretationSectionKey,
+  section: AnySectionKey,
   raw: string,
+  chart: SanitizedChart,
 ): void {
   const json: unknown = JSON.parse(raw);
   switch (section) {
@@ -1212,6 +1272,20 @@ function applySection(
       return;
     case "current_sky":
       results.current_sky = parseCurrentSky(json);
+      return;
+    case "current_period":
+      results.current_period = guarded(results, parseCurrentPeriod(json), currentPeriodSlice(chart));
+      return;
+    case "year_ahead": {
+      const sent = computeQuarters(reportAsOfMonth(chart)).map((q) => q.key);
+      results.year_ahead = guarded(results, parseYearAhead(json, sent), yearAheadSlice(chart));
+      return;
+    }
+    case "life_outlook_1":
+    case "life_outlook_2":
+      results[section] = {
+        domains: guarded(results, parseLifeOutlook(json, LIFE_OUTLOOK_GROUPS[section]), lifeOutlookSlice(chart, section)),
+      };
       return;
   }
 }
@@ -1277,11 +1351,11 @@ function mergeTimelineResults(results: SectionResults): CurrentTimelineContent {
 // =============================================================================
 
 /** Internal per-section outcome reported back to the event loop. */
-type SectionOutcome<Section extends InterpretationSectionKey = InterpretationSectionKey> =
+type SectionOutcome<Section extends AnySectionKey = InterpretationSectionKey> =
   | { section: Section; ok: true; raw: string }
   | { section: Section; ok: false; error: unknown };
 
-type SectionLifecycleEvent<Section extends InterpretationSectionKey> =
+type SectionLifecycleEvent<Section extends AnySectionKey> =
   | { type: "section_start"; section: Section }
   | { type: "section_complete"; section: Section }
   | { type: "error"; section: Section; message: string; status?: number };
@@ -1318,15 +1392,15 @@ function outcomeStatus(err: unknown): number | undefined {
  * decoded prose per delta (a fresh extractor per attempt, so a retry restarts
  * the count); otherwise it is the single non-streaming JSON call.
  */
-function requestSection(
-  section: InterpretationSectionKey,
+function requestSection<Section extends AnySectionKey>(
+  section: Section,
   messages: ChatMessage[],
-  params: StructuredInterpretationParams,
+  params: SectionRunParams<Section>,
 ): Promise<string> {
   const base = {
     config: params.config,
     messages,
-    reasoningMaxTokens: SECTION_REASONING_MAX_TOKENS,
+    reasoningMaxTokens: reasoningBudget(section, params.promptSet),
     ...(params.signal ? { signal: params.signal } : {}),
     ...(params.fetchImpl ? { fetchImpl: params.fetchImpl } : {}),
   };
@@ -1353,10 +1427,17 @@ function requestSection(
   });
 }
 
-function runOneSection<Section extends InterpretationSectionKey>(
+/** Report sections (the report-v2 natal set and every timeline section) get the smaller cap. */
+function reasoningBudget(section: AnySectionKey, promptSet: ReportPromptSet | undefined): number {
+  return promptSet === REPORT_PROMPT_SET || isReportTimelineSection(section)
+    ? REPORT_SECTION_REASONING_MAX_TOKENS
+    : SECTION_REASONING_MAX_TOKENS;
+}
+
+function runOneSection<Section extends AnySectionKey>(
   section: Section,
   chart: SanitizedChart,
-  params: StructuredInterpretationParams,
+  params: SectionRunParams<Section>,
 ): Promise<SectionOutcome<Section>> {
   const lite = usesLitePrompt(params.config);
   const messages = buildSectionMessages(
@@ -1365,6 +1446,7 @@ function runOneSection<Section extends InterpretationSectionKey>(
     params.mode ?? "layman",
     lite,
     params.language ?? "en",
+    params.promptSet,
   );
   const request = () => requestSection(section, messages, params);
   return request()
@@ -1399,8 +1481,8 @@ function summarizeFailures(messages: readonly string[]): string {
   return unique.join(" / ");
 }
 
-async function* streamSections<Section extends InterpretationSectionKey>(
-  params: StructuredInterpretationParams,
+async function* streamSections<Section extends AnySectionKey>(
+  params: SectionRunParams<Section>,
   sections: readonly Section[],
 ): AsyncGenerator<SectionLifecycleEvent<Section>, SectionResults> {
   if (params.signal?.aborted) {
@@ -1419,10 +1501,22 @@ async function* streamSections<Section extends InterpretationSectionKey>(
     yield { type: "section_start", section };
   }
 
-  const pending = new Map(
-    sections.map((section) => [section, runOneSection(section, chart, params)] as const),
-  );
   const results = emptyResults();
+  results.asOfMonth = reportAsOfMonth(chart);
+
+  // A local endpoint (Ollama) serves one request at a time; for report
+  // timeline sections we run them in order so the two life-outlook calls are
+  // last (owner ruling 7). Cloud runs stay fully parallel.
+  const sequential = usesLitePrompt(params.config) && sections.some((s) => isReportTimelineSection(s));
+  const queue = [...sections];
+  const pending = new Map<Section, Promise<SectionOutcome<Section>>>();
+  const launch = (): void => {
+    while (queue.length > 0 && (!sequential || pending.size === 0)) {
+      const next = queue.shift() as Section;
+      pending.set(next, runOneSection(next, chart, params));
+    }
+  };
+  launch();
   let applied = 0;
   const failures: string[] = [];
   let representative: LlmRequestError | undefined;
@@ -1430,6 +1524,7 @@ async function* streamSections<Section extends InterpretationSectionKey>(
   while (pending.size > 0) {
     const outcome = await Promise.race(pending.values());
     pending.delete(outcome.section);
+    launch();
     if (params.signal?.aborted) throw abortError();
 
     if (!outcome.ok) {
@@ -1443,7 +1538,7 @@ async function* streamSections<Section extends InterpretationSectionKey>(
       continue;
     }
     try {
-      applySection(results, outcome.section, outcome.raw);
+      applySection(results, outcome.section, outcome.raw, chart);
       applied += 1;
       yield { type: "section_complete", section: outcome.section };
     } catch (error) {
@@ -1467,9 +1562,17 @@ async function* streamSections<Section extends InterpretationSectionKey>(
 export async function* streamNatalInterpretation(
   params: NatalInterpretationParams,
 ): AsyncGenerator<NatalInterpretationEvent> {
-  // Defense in depth: stable natal calls never receive the reference-date-
-  // derived dasha snapshot, even if a caller passes the full engine chart.
-  const fullChart = params.chart as SiderealChart & {
+  const results = yield* streamSections({ ...params, chart: stableNatalChart(params.chart) }, NATAL_SECTIONS);
+  yield { type: "complete", interpretation: mergeNatalResults(results) };
+}
+
+/**
+ * The engine chart without anything time-sensitive. Defense in depth: stable
+ * natal calls never receive the reference-date-derived dasha snapshot, even if
+ * a caller passes the full engine chart.
+ */
+export function stableNatalChart(chart: SiderealChart): SiderealChart {
+  const fullChart = chart as SiderealChart & {
     transit_context?: unknown;
     varga_context_full?: unknown;
     strength_context?: unknown;
@@ -1483,14 +1586,16 @@ export async function* streamNatalInterpretation(
     domains_context: _domains,
     ...stableChart
   } = fullChart;
-  const results = yield* streamSections(
-    { ...params, chart: stableChart as SiderealChart },
-    NATAL_SECTIONS,
-  );
-  yield { type: "complete", interpretation: mergeNatalResults(results) };
+  return stableChart as SiderealChart;
 }
 
-/** Stream only the Road Ahead and current-sky timeline sections. */
+/**
+ * Stream only the Road Ahead and current-sky timeline sections.
+ *
+ * @deprecated Generation moves to streamReportTimeline (PR 3 switches the hook,
+ * then removes this). CurrentTimelineContent stays as the reader type for
+ * stored v1 timelines.
+ */
 export async function* streamCurrentTimeline(
   params: CurrentTimelineParams,
 ): AsyncGenerator<CurrentTimelineEvent> {
@@ -1509,4 +1614,28 @@ export async function* streamStructuredInterpretation(
   const results = yield* streamSections(params, ALL_SECTIONS);
 
   yield { type: "complete", interpretation: mergeResults(results) };
+}
+
+function mergeReportTimeline(results: SectionResults): ReportTimelineContent {
+  return {
+    current_period: results.current_period,
+    year_ahead: results.year_ahead,
+    life_outlook: { life_outlook_1: results.life_outlook_1, life_outlook_2: results.life_outlook_2 },
+  };
+}
+
+/**
+ * Stream the four report-v2 timeline sections: current period, year ahead,
+ * and the two life-area outlooks. Every section runs the date guard after
+ * parse. Fails closed like the v1 timeline: callers send this only when the
+ * predictive data is ready.
+ */
+export async function* streamReportTimeline(params: ReportTimelineParams): AsyncGenerator<ReportTimelineEvent> {
+  const results = yield* streamSections({ ...params, promptSet: REPORT_PROMPT_SET }, REPORT_TIMELINE_SECTIONS);
+  yield {
+    type: "complete",
+    timeline: mergeReportTimeline(results),
+    asOfMonth: results.asOfMonth,
+    dateGuardRemovals: results.dateGuardRemovals,
+  };
 }

@@ -172,6 +172,7 @@ export {
   NATAL_SECTIONS,
   streamCurrentTimeline,
   streamNatalInterpretation,
+  streamReportTimeline,
   streamStructuredInterpretation,
   usesLitePrompt,
 } from "./structured-interpretation";
@@ -186,9 +187,17 @@ export type {
   NatalInterpretationEvent,
   NatalInterpretationParams,
   NatalInterpretationSectionKey,
+  ReportTimelineEvent,
+  ReportTimelineParams,
   SectionProgressSnapshot,
   StructuredInterpretationParams,
 } from "./structured-interpretation";
+
+// --- Report v2: sections, prompt set ---
+export { REPORT_TIMELINE_SECTIONS } from "./report-sections";
+export type { ReportTimelineSectionKey } from "./report-sections";
+export { REPORT_PROMPT_SET, REPORT_SECTIONS } from "./report-targets";
+export type { ReportPromptSet, ReportSectionKey } from "./report-targets";
 
 // --- Chat transport + multi-turn public surface ---
 export { routeChatCompletion, routeCompletionJson } from "./route";
@@ -383,6 +392,7 @@ export {
   REASONING_TIMEOUT_CODE,
   REASONING_TIMEOUT_MS,
   ReasoningTimeoutError,
+  REPORT_SECTION_REASONING_MAX_TOKENS,
   SECTION_REASONING_MAX_TOKENS,
 } from "./reasoning";
 
