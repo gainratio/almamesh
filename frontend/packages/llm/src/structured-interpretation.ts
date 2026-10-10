@@ -40,8 +40,20 @@ import { asPersona, asRecord, parsePersona, parseTitledPersonas } from "./person
 import { SECTION_REASONING_MAX_TOKENS } from "./reasoning";
 import { ensurePrivacy, isLocalEndpoint, type ProviderConfig } from "./config";
 import { withLanguage, type PromptLanguage } from "./language";
-import { buildPredictiveFactsBlock } from "./predictive-facts";
+import { buildPredictiveFactsBlock, buildReportFactsBlock } from "./predictive-facts";
 import { OUTPUT_DISCIPLINE_RULES, PRIVACY_RULE, type ViewMode } from "./prompt";
+import {
+  isReportTimelineSection,
+  LIFE_OUTLOOK_GROUPS,
+  reportSlice,
+  type ReportTimelineSectionKey,
+} from "./report-sections";
+import {
+  REPORT_FIELD_TARGETS,
+  REPORT_PROMPT_SET,
+  type ReportPromptSet,
+  type ReportSectionKey,
+} from "./report-targets";
 import {
   chartAnalysisInstant,
   sanitizeChartForLlm,
@@ -188,77 +200,83 @@ const LAYMAN_GUARD_RULE = [
   "    not 'yoga'; 'home', not 'house').",
 ].join("\n");
 
-const SYSTEM_PROMPT = [
-  "You are a grand master Vedic Astrologer (Sidereal / Lahiri ayanamsa) and a",
-  "positive, empowering life guide. You produce STRUCTURED interpretation data.",
-  "You NARRATE the chart you are given; you never compute, recalculate, or invent",
-  "astrological facts that are not already present in the chart JSON.",
-  "",
-  "DUAL-MODE OUTPUT (MANDATORY): every persona object has TWO fields with ZERO overlap:",
-  '  - "layman": everyday language for someone who has NEVER heard of astrology.',
-  "    FORBIDDEN here: planet names (Sun, Moon, Mars, …), house numbers, sign names,",
-  "    conjunction, dasha, yoga, nakshatra, zodiac-sign names, Sanskrit terms. Speak",
-  "    only of the LIVED THEMES (creativity, security, communication, partnership,",
-  "    discipline, growth). Warm, practical, caring — a wise friend over coffee.",
-  LAYMAN_GUARD_RULE,
-  '  - "technical": for a practicing Jyotish scholar. Cite exact placements from the',
-  "    data: degree-within-sign (sign + sign_degrees), nakshatra + nakshatra_pada +",
-  "    nakshatra_lord, dignity, retrograde/combust flags, house-lord (dispositor)",
-  "    chains, and dasha lord/status/sequence. Use Sanskrit terms with a short gloss.",
-  "",
-  "STRENGTH-SIGNAL HIERARCHY (this chart provides ONLY these signals — use no others):",
-  "  - PER-PLANET strength comes ONLY from these fields: `dignity` (one of exactly four",
-  "    values: exalted, own, neutral, debilitated), `is_retrograde`, `is_combust`, the",
-  "    houses a graha rules (`houses_ruled`), and `is_yogakaraka`. There is NO numeric",
-  "    planet strength (no shadbala field, no shadbala_ratio) — NEVER state a numeric",
-  "    or percentage strength for a planet.",
-  "  - PER-YOGA strength comes ONLY from each yoga's qualitative `grade` (exactly one",
-  "    of strong, moderate, weak) and its `strength_factors[]` (each factor's `value`",
-  "    and `basis` already phrase the 'why' in the engine's own words — QUOTE or",
-  "    paraphrase them; never invent numbers). The engine DOES compute a numeric",
-  "    yoga strength (`strength_pct`), and the report prints it — but it is",
-  "    deliberately WITHHELD from the facts you are given, so that you can neither",
-  "    re-weight it nor reason about a number you cannot verify. If no percentage",
-  "    appears in your input, that is by design: narrate the grade, never a number.",
-  "",
-  "DIGNITY VOCABULARY FENCE (ABSOLUTE): the ONLY dignities that exist in this chart are",
-  "  exalted, own, neutral, debilitated. NEVER assert moolatrikona, friendly, enemy,",
-  "  great-friend, or 'cancelled / Neechabhanga' dignity — that data is NOT provided.",
-  "  Use signs, houses, and dignities EXACTLY as given; if a value is absent, say nothing.",
-  "  DEBILITY HONESTY: never call a debilitated, retrograde-strained, or combust planet",
-  "  simply 'strong' — name the condition and the struggle/delay/effort theme it implies.",
-  "",
-  "ASPECT HONESTY (ABSOLUTE): this chart contains NO graha-aspect / drishti data. NEVER",
-  "  say one planet 'aspects', 'casts a glance on', or 'sees' another. The ONLY relation",
-  "  you may assert between two planets is CONJUNCTION — and only when they share the",
-  "  same `house` value. State nothing about any other inter-planetary relationship.",
-  "",
-  "TIMING OWNERSHIP (ABSOLUTE): stable natal sections never discuss the current or next",
-  "  dasha, months remaining, dated windows, transits, or 'this period'. Those belong",
-  "  only to the separate Road Ahead / Current Sky timeline sections. Never infer age,",
-  "  dates, Saturn returns, or present-day timing from natal placements.",
-  "",
-  "YOGA CONSTRAINT (ZERO TOLERANCE — THE MOST IMPORTANT RULE):",
-  "  You may ONLY discuss yogas that appear EXPLICITLY in the chart's yoga list.",
-  "  If a yoga is not in that list, it DOES NOT EXIST in this chart — never invent,",
-  "  fabricate, or name it (e.g. do not mention Gajakesari unless it is listed).",
-  "  Achieve depth by analyzing the EXISTING yogas more deeply, never by adding new ones.",
-  "",
-  "ANTI-GENERIC MANDATE: every claim must be anchored to a NAMED placement from the data",
-  "  (a specific planet's sign/house/dignity/nakshatra, a house-lord chain, or a listed",
-  "  yoga). A sentence that could appear in any other person's reading must be rewritten",
-  "  to cite this chart's specifics. No fortune-cookie generalities.",
-  "",
-  "ANTI-REPETITION: do not reuse the same yoga, placement, phrase, or metaphor across",
-  "  sections — each section foregrounds different planets/houses and fresh vocabulary.",
-  "",
-  PRIVACY_RULE,
-  "",
-  OUTPUT_DISCIPLINE_RULES,
-  "",
-  "OUTPUT: respond with a SINGLE strict JSON object matching the requested schema for",
-  "the section. No prose outside the JSON. No markdown fences. Escape quotes in strings.",
-].join("\n");
+function systemPrompt(timelineNames: string): string {
+  return [
+    "You are a grand master Vedic Astrologer (Sidereal / Lahiri ayanamsa) and a",
+    "positive, empowering life guide. You produce STRUCTURED interpretation data.",
+    "You NARRATE the chart you are given; you never compute, recalculate, or invent",
+    "astrological facts that are not already present in the chart JSON.",
+    "",
+    "DUAL-MODE OUTPUT (MANDATORY): every persona object has TWO fields with ZERO overlap:",
+    '  - "layman": everyday language for someone who has NEVER heard of astrology.',
+    "    FORBIDDEN here: planet names (Sun, Moon, Mars, …), house numbers, sign names,",
+    "    conjunction, dasha, yoga, nakshatra, zodiac-sign names, Sanskrit terms. Speak",
+    "    only of the LIVED THEMES (creativity, security, communication, partnership,",
+    "    discipline, growth). Warm, practical, caring — a wise friend over coffee.",
+    LAYMAN_GUARD_RULE,
+    '  - "technical": for a practicing Jyotish scholar. Cite exact placements from the',
+    "    data: degree-within-sign (sign + sign_degrees), nakshatra + nakshatra_pada +",
+    "    nakshatra_lord, dignity, retrograde/combust flags, house-lord (dispositor)",
+    "    chains, and dasha lord/status/sequence. Use Sanskrit terms with a short gloss.",
+    "",
+    "STRENGTH-SIGNAL HIERARCHY (this chart provides ONLY these signals — use no others):",
+    "  - PER-PLANET strength comes ONLY from these fields: `dignity` (one of exactly four",
+    "    values: exalted, own, neutral, debilitated), `is_retrograde`, `is_combust`, the",
+    "    houses a graha rules (`houses_ruled`), and `is_yogakaraka`. There is NO numeric",
+    "    planet strength (no shadbala field, no shadbala_ratio) — NEVER state a numeric",
+    "    or percentage strength for a planet.",
+    "  - PER-YOGA strength comes ONLY from each yoga's qualitative `grade` (exactly one",
+    "    of strong, moderate, weak) and its `strength_factors[]` (each factor's `value`",
+    "    and `basis` already phrase the 'why' in the engine's own words — QUOTE or",
+    "    paraphrase them; never invent numbers). The engine DOES compute a numeric",
+    "    yoga strength (`strength_pct`), and the report prints it — but it is",
+    "    deliberately WITHHELD from the facts you are given, so that you can neither",
+    "    re-weight it nor reason about a number you cannot verify. If no percentage",
+    "    appears in your input, that is by design: narrate the grade, never a number.",
+    "",
+    "DIGNITY VOCABULARY FENCE (ABSOLUTE): the ONLY dignities that exist in this chart are",
+    "  exalted, own, neutral, debilitated. NEVER assert moolatrikona, friendly, enemy,",
+    "  great-friend, or 'cancelled / Neechabhanga' dignity — that data is NOT provided.",
+    "  Use signs, houses, and dignities EXACTLY as given; if a value is absent, say nothing.",
+    "  DEBILITY HONESTY: never call a debilitated, retrograde-strained, or combust planet",
+    "  simply 'strong' — name the condition and the struggle/delay/effort theme it implies.",
+    "",
+    "ASPECT HONESTY (ABSOLUTE): this chart contains NO graha-aspect / drishti data. NEVER",
+    "  say one planet 'aspects', 'casts a glance on', or 'sees' another. The ONLY relation",
+    "  you may assert between two planets is CONJUNCTION — and only when they share the",
+    "  same `house` value. State nothing about any other inter-planetary relationship.",
+    "",
+    "TIMING OWNERSHIP (ABSOLUTE): stable natal sections never discuss the current or next",
+    "  dasha, months remaining, dated windows, transits, or 'this period'. Those belong",
+    `  only to the separate ${timelineNames} timeline sections. Never infer age,`,
+    "  dates, Saturn returns, or present-day timing from natal placements.",
+    "",
+    "YOGA CONSTRAINT (ZERO TOLERANCE — THE MOST IMPORTANT RULE):",
+    "  You may ONLY discuss yogas that appear EXPLICITLY in the chart's yoga list.",
+    "  If a yoga is not in that list, it DOES NOT EXIST in this chart — never invent,",
+    "  fabricate, or name it (e.g. do not mention Gajakesari unless it is listed).",
+    "  Achieve depth by analyzing the EXISTING yogas more deeply, never by adding new ones.",
+    "",
+    "ANTI-GENERIC MANDATE: every claim must be anchored to a NAMED placement from the data",
+    "  (a specific planet's sign/house/dignity/nakshatra, a house-lord chain, or a listed",
+    "  yoga). A sentence that could appear in any other person's reading must be rewritten",
+    "  to cite this chart's specifics. No fortune-cookie generalities.",
+    "",
+    "ANTI-REPETITION: do not reuse the same yoga, placement, phrase, or metaphor across",
+    "  sections — each section foregrounds different planets/houses and fresh vocabulary.",
+    "",
+    PRIVACY_RULE,
+    "",
+    OUTPUT_DISCIPLINE_RULES,
+    "",
+    "OUTPUT: respond with a SINGLE strict JSON object matching the requested schema for",
+    "the section. No prose outside the JSON. No markdown fences. Escape quotes in strings.",
+  ].join("\n");
+}
+
+const LEGACY_TIMELINE_NAMES = "Road Ahead / Current Sky";
+const REPORT_TIMELINE_NAMES = "Current Period / Year Ahead / This Year";
+const SYSTEM_PROMPT = systemPrompt(LEGACY_TIMELINE_NAMES);
 
 // =============================================================================
 // LITE system prompt — for SMALL LOCAL models (gemma3:4b, qwen2.5:3b, …)
@@ -272,48 +290,52 @@ const SYSTEM_PROMPT = [
 // fences: no graha aspects/drishti, no ages/dates/Saturn-returns, no invented
 // shadbala numbers, dignity only exalted/own/neutral/debilitated) but DROPS the
 // analytical-depth requirements and asks for SHORT, plain, concrete content.
-const SYSTEM_PROMPT_LITE = [
-  "You are a kind, encouraging Vedic Astrologer (Sidereal / Lahiri ayanamsa).",
-  "You NARRATE the chart JSON you are given. You NEVER compute, recalculate, or",
-  "invent any astrological fact that is not already in the chart JSON.",
-  "",
-  "WRITE SHORT, PLAIN, CONCRETE content. Do not pad. Do not write essays.",
-  "",
-  "DUAL-MODE (MANDATORY): every persona object has TWO fields, no overlap:",
-  '  - "layman": everyday words for someone who has NEVER heard of astrology. NO',
-  "    planet names, NO house numbers, NO sign names, NO Sanskrit, NO jargon — speak",
-  "    only of lived themes (creativity, security, communication, partnership, growth).",
-  LAYMAN_GUARD_RULE,
-  '  - "technical": for an astrologer. Name the actual placements from the data',
-  "    (planet, sign, house, dignity, nakshatra, dasha lord). One or two specifics is enough.",
-  "",
-  "HARD FACT FENCES (ABSOLUTE — these protect correctness, never relax them):",
-  "  - DIGNITY: the ONLY dignity values are exalted, own, neutral, debilitated. NEVER",
-  "    say moolatrikona, friendly, enemy, or 'cancelled / Neechabhanga'. A debilitated,",
-  "    combust, or retrograde planet is NOT plainly 'strong' — name the effort it asks.",
-  "  - STRENGTH NUMBERS: never state a numeric or percentage strength for any planet",
-  "    or yoga. No such number is in your input — the report renders the engine's own",
-  "    `strength_pct` directly from the chart, so anything YOU write would be a second,",
-  "    unverifiable figure beside it. Use only the dignity/retrograde/combust flags,",
-  "    each yoga's `grade`, and its `strength_factors[]` (value + basis).",
-  "  - ASPECTS: this chart has NO aspect/drishti data. NEVER say a planet 'aspects',",
-  "    'sees', or 'casts a glance on' another. The only relation you may state is",
-  "    CONJUNCTION, and only when two planets share the same `house` value.",
-  "  - TIMING OWNERSHIP: stable natal sections never discuss current/next periods,",
-  "    dates, ages, or transits. Only Road Ahead / Current Sky may use timing fields,",
-  "    and they must use only values explicitly present in their input.",
-  "  - YOGAS (ZERO TOLERANCE): discuss ONLY yogas that appear in the chart's yoga list.",
-  "    If a yoga is not listed it DOES NOT EXIST here — never invent or name one.",
-  "",
-  PRIVACY_RULE,
-  "",
-  OUTPUT_DISCIPLINE_RULES,
-  "",
-  "OUTPUT: respond with ONE strict JSON object matching the requested schema. No prose",
-  "outside the JSON. No markdown code fences. Escape any quotes inside strings. Fill in",
-  "every requested field with real content — never leave a field blank, null, or a",
-  "placeholder like 'N/A' or 'pending'.",
-].join("\n");
+function systemPromptLite(timelineNames: string): string {
+  return [
+    "You are a kind, encouraging Vedic Astrologer (Sidereal / Lahiri ayanamsa).",
+    "You NARRATE the chart JSON you are given. You NEVER compute, recalculate, or",
+    "invent any astrological fact that is not already in the chart JSON.",
+    "",
+    "WRITE SHORT, PLAIN, CONCRETE content. Do not pad. Do not write essays.",
+    "",
+    "DUAL-MODE (MANDATORY): every persona object has TWO fields, no overlap:",
+    '  - "layman": everyday words for someone who has NEVER heard of astrology. NO',
+    "    planet names, NO house numbers, NO sign names, NO Sanskrit, NO jargon — speak",
+    "    only of lived themes (creativity, security, communication, partnership, growth).",
+    LAYMAN_GUARD_RULE,
+    '  - "technical": for an astrologer. Name the actual placements from the data',
+    "    (planet, sign, house, dignity, nakshatra, dasha lord). One or two specifics is enough.",
+    "",
+    "HARD FACT FENCES (ABSOLUTE — these protect correctness, never relax them):",
+    "  - DIGNITY: the ONLY dignity values are exalted, own, neutral, debilitated. NEVER",
+    "    say moolatrikona, friendly, enemy, or 'cancelled / Neechabhanga'. A debilitated,",
+    "    combust, or retrograde planet is NOT plainly 'strong' — name the effort it asks.",
+    "  - STRENGTH NUMBERS: never state a numeric or percentage strength for any planet",
+    "    or yoga. No such number is in your input — the report renders the engine's own",
+    "    `strength_pct` directly from the chart, so anything YOU write would be a second,",
+    "    unverifiable figure beside it. Use only the dignity/retrograde/combust flags,",
+    "    each yoga's `grade`, and its `strength_factors[]` (value + basis).",
+    "  - ASPECTS: this chart has NO aspect/drishti data. NEVER say a planet 'aspects',",
+    "    'sees', or 'casts a glance on' another. The only relation you may state is",
+    "    CONJUNCTION, and only when two planets share the same `house` value.",
+    "  - TIMING OWNERSHIP: stable natal sections never discuss current/next periods,",
+    `    dates, ages, or transits. Only ${timelineNames} may use timing fields,`,
+    "    and they must use only values explicitly present in their input.",
+    "  - YOGAS (ZERO TOLERANCE): discuss ONLY yogas that appear in the chart's yoga list.",
+    "    If a yoga is not listed it DOES NOT EXIST here — never invent or name one.",
+    "",
+    PRIVACY_RULE,
+    "",
+    OUTPUT_DISCIPLINE_RULES,
+    "",
+    "OUTPUT: respond with ONE strict JSON object matching the requested schema. No prose",
+    "outside the JSON. No markdown code fences. Escape any quotes inside strings. Fill in",
+    "every requested field with real content — never leave a field blank, null, or a",
+    "placeholder like 'N/A' or 'pending'.",
+  ].join("\n");
+}
+
+const SYSTEM_PROMPT_LITE = systemPromptLite(LEGACY_TIMELINE_NAMES);
 
 // =============================================================================
 // Per-section task prompts (ported from the .j2 section templates)
@@ -615,26 +637,181 @@ const SECTION_TASKS_LITE: Record<InterpretationSectionKey, string> = {
   current_sky: CURRENT_SKY_TASK,
 };
 
+// =============================================================================
+// Report-v2 tasks (promptSet "report-v2"): the five natal sections with guidance1
+// widened to Family, plus the four timeline sections that read ONLY their
+// engine report-facts slice. Without a promptSet the legacy tasks above apply.
+// =============================================================================
+
+const GUIDANCE1_TASK_LINES = GUIDANCE1_TASK.split("\n");
+const GUIDANCE1_TASK_LITE_LINES = GUIDANCE1_TASK_LITE.split("\n");
+
+const GUIDANCE1_TASK_V2 = [
+  "TASK: Life Guidance Part 1 — practical application across five life areas.",
+  "Return JSON with FIVE persona objects, each { layman, technical }:",
+  "  health_guidance, education_guidance, career_guidance, relationship_guidance, family_guidance.",
+  // The blank line and the house-lord chain rule, through "Relationships = 7th."
+  ...GUIDANCE1_TASK_LINES.slice(3, 9),
+  "  Family = 2nd, 4th, 5th & 9th (home, lineage, children, elders).",
+  "PER-AREA KARAKA CONDITION: also read the area's natural significator and report its",
+  "  `dignity`, `is_combust`, `is_retrograde` — Health: Sun & Mars; Education: Mercury &",
+  "  Jupiter; Career: Saturn & the Sun; Relationships: Venus & the Moon; Family: Jupiter.",
+  "  If a karaka is debilitated/combust, be honest that the area asks for more effort before it flowers.",
+  // DISTINCT VOCABULARY through "what makes them feel secure,"
+  ...GUIDANCE1_TASK_LINES.slice(13, 17),
+  "  communication in partnership. Family = belonging, home life, children, parents and elders.",
+  "  Do NOT bleed one area's framing into another.",
+  // DEBILITY HONESTY through the closing stable-natal line.
+  ...GUIDANCE1_TASK_LINES.slice(18),
+].join("\n");
+
+const GUIDANCE1_TASK_LITE_V2 = [
+  "TASK: Life Guidance Part 1 — five life areas. Return JSON with EXACTLY these FIVE",
+  "top-level keys, each a persona object with its own layman + technical fields. Copy",
+  "this skeleton EXACTLY — do NOT collapse it into a single { layman, technical }:",
+  "{",
+  '  "health_guidance":       { "layman": "...", "technical": "..." },',
+  '  "education_guidance":    { "layman": "...", "technical": "..." },',
+  '  "career_guidance":       { "layman": "...", "technical": "..." },',
+  '  "relationship_guidance": { "layman": "...", "technical": "..." },',
+  '  "family_guidance":       { "layman": "...", "technical": "..." }',
+  "}",
+  // "Every field MUST be non-empty" through the houses list up to Career.
+  ...GUIDANCE1_TASK_LITE_LINES.slice(9, 13),
+  "    Relationships = 7th, Family = 2nd/4th/5th/9th. Be honest about any debilitated/combust",
+  "    significator.",
+].join("\n");
+
+const REPORT_NATAL_TASKS: Record<NatalInterpretationSectionKey, string> = {
+  core: CORE_TASK,
+  yoga: YOGA_TASK,
+  guidance1: GUIDANCE1_TASK_V2,
+  guidance2: GUIDANCE2_TASK,
+  remedial: REMEDIAL_TASK,
+};
+
+const REPORT_NATAL_TASKS_LITE: Record<NatalInterpretationSectionKey, string> = {
+  core: CORE_TASK_LITE,
+  yoga: YOGA_TASK_LITE,
+  guidance1: GUIDANCE1_TASK_LITE_V2,
+  guidance2: GUIDANCE2_TASK_LITE,
+  remedial: REMEDIAL_TASK_LITE,
+};
+
+const REPORT_DATES_RULE =
+  "DATES: cite only months that appear in the ENGINE REPORT FACTS block, verbatim as YYYY-MM. Never write a day. A sentence with any other date is deleted before it reaches the screen.";
+
+const CURRENT_PERIOD_TASK = [
+  "TASK: Your Current Period — the chapter the person is living in NOW.",
+  'Return JSON: { "maha": {layman, technical}, "antar": {layman, technical}, "activates": [ {title, layman, technical} ], "next_change": {layman, technical} }.',
+  "  - maha: the running mahadasha. What its lord's OWN facts in lord_facts (sign, house, dignity, houses_ruled,",
+  "    yogakaraka/combust/retrograde flags, listed yogas) make this long chapter about, and how the fusion",
+  "    row (reinforcing / afflicting, severity) colors it now.",
+  "  - antar: the running antardasha inside it: the sub-theme, and how its lord's facts combine with the maha lord's.",
+  "  - activates: 2-3 items, one per life area this period switches on, chosen from the houses the maha and antar",
+  "    lords rule or occupy (career for the 10th, partnership for the 7th, money for the 2nd and 11th, home for",
+  "    the 4th, learning for the 5th, health for the 6th). title = the plain area name.",
+  "  - next_change: the next change in the facts: the current antar's end_month and the antar after it in",
+  "    antar_sequence, or next_maha when the maha ends first. The app draws every window; do not list the",
+  "    remaining antardashas one by one.",
+  "DEBILITY HONESTY: a debilitated, combust, or retrograde lord's period is a growth-through-effort chapter; name the condition.",
+  REPORT_DATES_RULE,
+].join("\n");
+
+const YEAR_AHEAD_TASK = [
+  "TASK: The Year Ahead — the next twelve months in four quarters.",
+  'Return JSON: { "headline": {layman, technical}, "quarters": [ { "key": "Q1", "layman": string, "technical": string } ], "focus": {layman, technical} }.',
+  "  - quarters: EXACTLY one entry for each quarter in the facts (Q1, Q2, Q3, Q4), in that order, key verbatim.",
+  "    Never add, rename, or skip a key.",
+  "  - Each quarter speaks to the events listed under it (dasha changes, transit windows, slow-planet hits,",
+  "    Sade Sati) and what they ask of the person. A quarter with no events is a consolidation season: say so",
+  "    plainly; never invent an event.",
+  "  - headline: the shape of the whole year. focus: the one practical focus the events point to.",
+  REPORT_DATES_RULE,
+].join("\n");
+
+function lifeOutlookTask(domains: readonly string[]): string {
+  return [
+    `TASK: This Year, by life area — ${domains.join(", ")}.`,
+    'Return JSON: { "domains": [ { "domain": string, "outlook": {layman, technical}, "lean_into": string, "watch_for": string } ] }.',
+    `  - EXACTLY one entry per area in the facts, in that order; "domain" is the key verbatim (${domains.join(", ")}).`,
+    "    Never add another area.",
+    "  - outlook: this year for that area from ITS facts only: band, key graha and whether it meets its minimum,",
+    "    SAV bindus, active dasha significator (levels, lords), Sade Sati, transit severity, its windows, and its",
+    "    house_lords rows. The band is the engine's convention, not a verdict.",
+    "  - lean_into / watch_for: one plain sentence each, no astrology terms.",
+    REPORT_DATES_RULE,
+  ].join("\n");
+}
+
+const CURRENT_PERIOD_TASK_LITE = [
+  "TASK: Your Current Period — the chapter the person is living in now.",
+  "Fill in this EXACT JSON shape (replace the ... with real content; keep these keys):",
+  '{ "maha": { "layman": "...", "technical": "..." }, "antar": { "layman": "...", "technical": "..." }, "next_change": { "layman": "...", "technical": "..." } }',
+  "  Keep each layman and technical to 1-2 short sentences.",
+  "  - technical: name the period lord and one of its facts (sign, house, or dignity) from the facts block.",
+  "  - next_change: the next change month exactly as written in the facts (YYYY-MM).",
+].join("\n");
+
+const YEAR_AHEAD_TASK_LITE = [
+  "TASK: The Year Ahead — four quarters.",
+  "Fill in this EXACT JSON shape (replace the ... with real content; keep these keys):",
+  '{ "headline": { "layman": "...", "technical": "..." }, "quarters": [ { "key": "Q1", "layman": "...", "technical": "..." } ] }',
+  "  One quarters entry per key in the facts (Q1-Q4), key verbatim. 1-2 short sentences each.",
+  "  Use only months written in the facts (YYYY-MM).",
+].join("\n");
+
+function lifeOutlookTaskLite(domains: readonly string[]): string {
+  return [
+    `TASK: This Year, by life area — ${domains.join(", ")}.`,
+    "Fill in this EXACT JSON shape (replace the ... with real content; keep these keys):",
+    '{ "domains": [ { "domain": "...", "outlook": { "layman": "...", "technical": "..." } } ] }',
+    `  One entry per area (${domains.join(", ")}), domain key verbatim. 1-2 short sentences per field.`,
+  ].join("\n");
+}
+
+const REPORT_TIMELINE_TASKS: Record<ReportTimelineSectionKey, string> = {
+  current_period: CURRENT_PERIOD_TASK,
+  year_ahead: YEAR_AHEAD_TASK,
+  life_outlook_1: lifeOutlookTask(LIFE_OUTLOOK_GROUPS.life_outlook_1),
+  life_outlook_2: lifeOutlookTask(LIFE_OUTLOOK_GROUPS.life_outlook_2),
+};
+
+const REPORT_TIMELINE_TASKS_LITE: Record<ReportTimelineSectionKey, string> = {
+  current_period: CURRENT_PERIOD_TASK_LITE,
+  year_ahead: YEAR_AHEAD_TASK_LITE,
+  life_outlook_1: lifeOutlookTaskLite(LIFE_OUTLOOK_GROUPS.life_outlook_1),
+  life_outlook_2: lifeOutlookTaskLite(LIFE_OUTLOOK_GROUPS.life_outlook_2),
+};
+
+const REPORT_FACTS_EXCEPTION = [
+  "",
+  "ENGINE REPORT FACTS — USE THEM (REQUIRED):",
+  "The block below is this section's slice of the deterministic engine's timing output. It is the",
+  "ONLY timing that exists. Ground every statement in it; quote months verbatim as YYYY-MM; never",
+  "write a day, an age, or a month that is not in the block. Bands and severities are the engine's",
+  "convention, not a verdict.",
+].join("\n");
+
+function audienceHint(mode: ViewMode): string {
+  return mode === "expert"
+    ? "The reader is an astrologer; make the technical fields especially rigorous."
+    : "The reader is a layperson; make the layman fields especially warm and clear.";
+}
+
 function modeHint(mode: ViewMode, lite: boolean): string {
   const lengthGuidance = lite
     ? "Keep every field SHORT and concrete: ~2 sentences for the summary, 1-2 short sentences per persona field, 2-3 items per array. Never pad, never leave a field blank."
     : "Write 2-4 substantive paragraphs per persona field — depth over length; never pad.";
-  const audience =
-    mode === "expert"
-      ? "The reader is an astrologer; make the technical fields especially rigorous."
-      : "The reader is a layperson; make the layman fields especially warm and clear.";
-  return `${audience} ${lengthGuidance}`;
+  return `${audienceHint(mode)} ${lengthGuidance}`;
 }
 
-/**
- * Build the system+user chat messages for one section from a SANITIZED chart.
- *
- * `lite` selects the lighter prompt variant for small LOCAL models (callers pass
- * `isLocalEndpoint(config.baseUrl)`); it defaults to the full cloud-grade prompt.
- * Either way the user message embeds the same `SECTION:<key>` marker, the sanitized
- * chart JSON, and the system+user roles — only the INSTRUCTION TEXT changes — and
- * `chatCompletionJson` still requests `response_format: json_object`.
- */
+/** Report-v2 length hint: the lite hint unchanged; the full hint states per-field targets. */
+function reportLengthHint(section: ReportSectionKey, mode: ViewMode, lite: boolean): string {
+  if (lite) return modeHint(mode, true);
+  return `${audienceHint(mode)} Word targets PER VOICE (layman and technical each): ${REPORT_FIELD_TARGETS[section]}. Depth over length; never pad to reach a target.`;
+}
+
 // Stable sections always receive the natal-only fence, regardless of what a
 // compatibility caller placed on the chart. Timeline sections receive the
 // timing fence below (and the stronger predictive fence when available).
@@ -694,7 +871,7 @@ export const SECTION_CHART_TOKEN_BUDGET = 4096;
 /** The chart JSON one section embeds: compact always; slimmed when oversized. */
 function chartJsonForSection(
   section: InterpretationSectionKey,
-  chart: Omit<SanitizedChart, "predictive">,
+  chart: Omit<SanitizedChart, "predictive" | "as_of">,
 ): string {
   const full = JSON.stringify(chart);
   if (!SLIM_CHART_SECTIONS.has(section) || estimateTokens(full) <= SECTION_CHART_TOKEN_BUDGET) {
@@ -708,13 +885,33 @@ function chartJsonForSection(
   return JSON.stringify(slim);
 }
 
+/**
+ * Build the system+user chat messages for one section from a SANITIZED chart.
+ *
+ * `lite` selects the lighter prompt variant for small LOCAL models (callers pass
+ * `isLocalEndpoint(config.baseUrl)`); it defaults to the full cloud-grade prompt.
+ * Either way the user message embeds the same `SECTION:<key>` marker and the
+ * system+user roles — only the INSTRUCTION TEXT changes — and
+ * `chatCompletionJson` still requests `response_format: json_object`.
+ *
+ * `promptSet` "report-v2" selects the report prompts for the five natal
+ * sections (stated word targets, Family in guidance1, no as-of date). The four
+ * report timeline sections always use the report prompts and see only their
+ * engine report-facts slice. Without a `promptSet` the natal and legacy
+ * timeline prompts are unchanged.
+ */
 export function buildSectionMessages(
-  section: InterpretationSectionKey,
+  section: InterpretationSectionKey | ReportTimelineSectionKey,
   chart: SanitizedChart,
   mode: ViewMode,
   lite = false,
   language: PromptLanguage = "en",
+  promptSet?: ReportPromptSet,
 ): ChatMessage[] {
+  if (isReportTimelineSection(section)) return buildReportTimelineMessages(section, chart, mode, lite, language);
+  if (promptSet === REPORT_PROMPT_SET && isNatalSection(section)) {
+    return buildReportNatalMessages(section, chart, mode, lite, language);
+  }
   const timelineSection = section === "upcoming_periods" || section === "current_sky";
   // Timing is a hard section boundary, not merely a prompt instruction. Stable
   // natal sections never receive dasha or predictive fields, even through the
@@ -725,74 +922,144 @@ export function buildSectionMessages(
     : (({ dashas: _dashas, ...natalChart }) => natalChart)(chartWithoutPredictive);
   const chartJson = chartJsonForSection(section, chartForJson);
   const predictiveBlock = timelineSection ? buildPredictiveFactsBlock(predictive) : "";
+  const reference = predictiveBlock === "" ? chartJson : `${chartJson}\n${predictiveBlock}`;
   const userContent = lite
-    ? liteUserContent(section, chartJson, mode, predictiveBlock)
-    : fullUserContent(section, chartJson, mode, predictiveBlock);
+    ? liteUser(section, reference, SECTION_TASKS_LITE[section], modeHint(mode, true))
+    : fullUser(section, reference, SECTION_TASKS[section], modeHint(mode, false));
   const basePrompt = lite ? SYSTEM_PROMPT_LITE : SYSTEM_PROMPT;
   const exception = timelineSection
     ? predictiveBlock === ""
       ? TIMELINE_INPUT_HONESTY
       : PREDICTIVE_CONTEXT_EXCEPTION
     : STABLE_NATAL_HONESTY;
-  const systemPrompt = withLanguage(basePrompt + exception, language);
 
   return [
-    { role: "system", content: systemPrompt },
+    { role: "system", content: withLanguage(basePrompt + exception, language) },
     { role: "user", content: userContent },
   ];
 }
 
-/** Full cloud-grade user message: task + chart (task leads, as ported). */
-function fullUserContent(
-  section: InterpretationSectionKey,
-  chartJson: string,
+function isNatalSection(section: InterpretationSectionKey): section is NatalInterpretationSectionKey {
+  return (NATAL_SECTIONS as readonly string[]).includes(section);
+}
+
+function buildReportNatalMessages(
+  section: NatalInterpretationSectionKey,
+  chart: SanitizedChart,
   mode: ViewMode,
-  predictiveBlock: string,
+  lite: boolean,
+  language: PromptLanguage,
+): ChatMessage[] {
+  // Natal report prompts carry no timing at all: no dashas, no predictive, and
+  // no as-of date (the only day-precision value the sanitized chart has).
+  const { predictive: _predictive, dashas: _dashas, as_of: _asOf, ...natal } = chart;
+  const chartJson = chartJsonForSection(section, natal);
+  const task = (lite ? REPORT_NATAL_TASKS_LITE : REPORT_NATAL_TASKS)[section];
+  const hint = reportLengthHint(section, mode, lite);
+  const base = lite ? systemPromptLite(REPORT_TIMELINE_NAMES) : systemPrompt(REPORT_TIMELINE_NAMES);
+  return [
+    { role: "system", content: withLanguage(base + STABLE_NATAL_HONESTY, language) },
+    {
+      role: "user",
+      content: lite ? liteUser(section, chartJson, task, hint) : fullUser(section, chartJson, task, hint),
+    },
+  ];
+}
+
+function buildReportTimelineMessages(
+  section: ReportTimelineSectionKey,
+  chart: SanitizedChart,
+  mode: ViewMode,
+  lite: boolean,
+  language: PromptLanguage,
+): ChatMessage[] {
+  const facts = buildReportFactsBlock(reportSlice(section, chart));
+  const task = (lite ? REPORT_TIMELINE_TASKS_LITE : REPORT_TIMELINE_TASKS)[section];
+  const hint = reportLengthHint(section, mode, lite);
+  const base = lite ? systemPromptLite(REPORT_TIMELINE_NAMES) : systemPrompt(REPORT_TIMELINE_NAMES);
+  return [
+    { role: "system", content: withLanguage(base + REPORT_FACTS_EXCEPTION, language) },
+    {
+      role: "user",
+      content: lite
+        ? liteUser(section, facts, task, hint, FACTS_LEAD_LITE)
+        : fullUser(section, facts, task, hint, FACTS_LEAD),
+    },
+  ];
+}
+
+/** The legacy lead-in before the chart JSON in the full user message. */
+const CHART_LEAD: readonly string[] = [
+  "Chart Data (sanitized; no identifying information). The 'yogas' field is the",
+  "EXHAUSTIVE list of yogas in this chart — discuss no others. Fields that are",
+  "null or absent are simply UNKNOWN — omit them silently, never guess a value:",
+];
+
+/** The lead-in before a timeline report section's facts block (no chart JSON). */
+const FACTS_LEAD: readonly string[] = ["Engine facts for this section (sanitized; month precision):"];
+
+/** Full cloud-grade user message: task, hint, then the reference (task leads, as ported). */
+function fullUser(
+  section: string,
+  reference: string,
+  task: string,
+  hint: string,
+  lead: readonly string[] = CHART_LEAD,
 ): string {
   return [
     // A stable marker so tests (and logs) can identify the section; harmless to the model.
     `SECTION:${section}`,
     "",
-    SECTION_TASKS[section],
+    task,
     "",
-    modeHint(mode, false),
+    hint,
     "",
-    "Chart Data (sanitized; no identifying information). The 'yogas' field is the",
-    "EXHAUSTIVE list of yogas in this chart — discuss no others. Fields that are",
-    "null or absent are simply UNKNOWN — omit them silently, never guess a value:",
-    chartJson,
-    ...(predictiveBlock === "" ? [] : [predictiveBlock]),
+    ...lead,
+    reference,
   ].join("\n");
 }
 
+/** The legacy lite lead-in, ending in the label right above the chart JSON. */
+const CHART_LEAD_LITE: readonly string[] = [
+  "Below is this person's sanitized chart (no identifying info). It is REFERENCE",
+  "ONLY — read it, do NOT copy it back. The 'yogas' field is the EXHAUSTIVE list of",
+  "yogas; discuss no others. Null/absent fields are simply UNKNOWN — never guess them.",
+  "",
+  "CHART (reference):",
+];
+
+/** The lite lead-in before a timeline report section's facts block. */
+const FACTS_LEAD_LITE: readonly string[] = [
+  "Below are the engine facts for this section (sanitized; month precision). They are",
+  "REFERENCE ONLY — read them, do NOT copy them back.",
+  "",
+  "FACTS (reference):",
+];
+
 /**
- * LITE user message for small local models. The chart is given FIRST as read-only
- * reference, then the task + literal JSON skeleton come LAST so the schema is the
+ * LITE user message for small local models. The reference is given FIRST as
+ * read-only, then the task + literal JSON skeleton come LAST so the schema is the
  * final thing the model sees (recency bias dramatically improves schema-adherence
- * on 3-4B models, which otherwise collapse to `{}` or echo the chart). Still carries
- * the `SECTION:<key>` marker and the full sanitized chart JSON.
+ * on 3-4B models, which otherwise collapse to `{}` or echo the chart). Still
+ * carries the `SECTION:<key>` marker.
  */
-function liteUserContent(
-  section: InterpretationSectionKey,
-  chartJson: string,
-  mode: ViewMode,
-  predictiveBlock: string,
+function liteUser(
+  section: string,
+  reference: string,
+  task: string,
+  hint: string,
+  lead: readonly string[] = CHART_LEAD_LITE,
 ): string {
   return [
     `SECTION:${section}`,
     "",
-    "Below is this person's sanitized chart (no identifying info). It is REFERENCE",
-    "ONLY — read it, do NOT copy it back. The 'yogas' field is the EXHAUSTIVE list of",
-    "yogas; discuss no others. Null/absent fields are simply UNKNOWN — never guess them.",
-    "",
-    "CHART (reference):",
-    chartJson,
-    ...(predictiveBlock === "" ? [] : [predictiveBlock]),
+    ...lead,
+    reference,
     "",
     "------------------------------------------------------------------",
-    SECTION_TASKS_LITE[section],
+    task,
     "",
-    modeHint(mode, true),
+    hint,
     "",
     "Now output ONLY the filled-in JSON object described above — nothing else. Do not",
     "repeat the chart, the birth data, any name, or any place. Every requested field",
