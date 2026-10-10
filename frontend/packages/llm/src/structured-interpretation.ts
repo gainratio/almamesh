@@ -844,9 +844,18 @@ function modeHint(mode: ViewMode, lite: boolean): string {
   return `${audienceHint(mode)} ${lengthGuidance}`;
 }
 
-/** Report-v2 length hint: the lite hint unchanged; the full hint states per-field targets. */
+/** Lite timeline schemas have no summary and no arrays, so their hint names neither. */
+const TIMELINE_LITE_LENGTH =
+  "Keep every field SHORT and concrete: 1-2 short sentences per persona field. Never pad, never leave a field blank.";
+
+/**
+ * Report-v2 length hint. Lite: the legacy lite hint for natal sections, a
+ * timeline-shaped one for timeline sections. Full: the per-field word targets.
+ */
 function reportLengthHint(section: ReportSectionKey, mode: ViewMode, lite: boolean): string {
-  if (lite) return modeHint(mode, true);
+  if (lite) {
+    return isReportTimelineSection(section) ? `${audienceHint(mode)} ${TIMELINE_LITE_LENGTH}` : modeHint(mode, true);
+  }
   return `${audienceHint(mode)} Word targets PER VOICE (layman and technical each): ${REPORT_FIELD_TARGETS[section]}. Depth over length; never pad to reach a target.`;
 }
 
@@ -1038,7 +1047,7 @@ const FACTS_LEAD: readonly string[] = ["Engine facts for this section (sanitized
 
 /** Full cloud-grade user message: task, hint, then the reference (task leads, as ported). */
 function fullUser(
-  section: string,
+  section: InterpretationSectionKey | ReportTimelineSectionKey,
   reference: string,
   task: string,
   hint: string,
@@ -1082,7 +1091,7 @@ const FACTS_LEAD_LITE: readonly string[] = [
  * carries the `SECTION:<key>` marker.
  */
 function liteUser(
-  section: string,
+  section: InterpretationSectionKey | ReportTimelineSectionKey,
   reference: string,
   task: string,
   hint: string,
