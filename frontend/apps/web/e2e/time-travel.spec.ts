@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { expect, type Page } from '@playwright/test';
 
 import { DELHI_BIRTH, DELHI_SEED, LLM_SETTINGS_KEY, bootEngine, seedChart } from './interpretation.helpers';
+import { gotoSettled } from './portableInvariants.helpers';
 import { test } from './webkitProfile';
 
 /**
@@ -52,14 +53,13 @@ async function predictiveRequestKeys(page: Page): Promise<string[]> {
 
 /**
  * Open the dashboard after seedChart. seedChart's restore reloads the app, and
- * that load is still opening SQLite (wasm + Worker); WebKit reports a load a
- * hard navigation cancels as an "access control checks" console error, which
- * would read as an app failure. So let the load settle first, as
- * portableInvariants.helpers.ts gotoSettled does.
+ * that load is still opening SQLite and the engine; WebKit reports a load a
+ * hard navigation cancels as an "access control checks" console error, and the
+ * app's own navigation can cut the goto short ("Frame load interrupted").
+ * gotoSettled waits for the document to settle and retries an interrupted goto.
  */
 async function openDashboard(page: Page): Promise<void> {
-  await page.waitForLoadState('networkidle');
-  await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+  await gotoSettled(page, '/dashboard');
 }
 
 /** Console capture, a full-tier device pin and the stubbed provider's settings: every journey's set-up. */

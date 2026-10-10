@@ -329,20 +329,44 @@ async function spaNavigateOrGoto(page: Page, path: string): Promise<void> {
  * profile's first load may route through `/` or self-heal-reload once).
  */
 export async function gotoSettled(page: Page, path: string): Promise<void> {
-  // Never cut the current document off mid-load: WebKit reports a load that a
-  // navigation cancels (wasm, Worker, blob) as an "access control" console
-  // error, which would read as an app failure.
-  if (page.url().startsWith('http')) await page.waitForLoadState('networkidle');
   for (let attempt = 0; ; attempt += 1) {
+    // Never cut the current document off mid-load: WebKit reports a load that a
+    // navigation cancels (wasm, Worker, blob, bundle chunk) as an "access
+    // control" console error, which would read as an app failure.
+    if (page.url().startsWith('http')) await settleDocument(page);
     try {
       await page.goto(path, { waitUntil: 'domcontentloaded' });
       await page.waitForLoadState('load');
       if (new URL(page.url()).pathname === path) return;
     } catch (error) {
-      if (attempt >= 2 || !String(error).includes('interrupted by another navigation')) throw error;
+      if (attempt >= 2 || !APP_NAVIGATION_INTERRUPT.test(String(error))) throw error;
     }
     if (attempt >= 2) return;
   }
+}
+
+/** The app's own navigation (a boot redirect or self-heal reload) cut a goto short: Chromium's and WebKit's wording. */
+const APP_NAVIGATION_INTERRUPT = /interrupted by another navigation|Frame load interrupted/;
+
+/**
+ * Wait until the current document has finished what it started: the network
+ * is idle and, if the engine began booting, it reached ready or reported an
+ * error. networkidle alone is not enough on a slow runner: the engine can pause
+ * between bundle chunks for longer than its 500 ms window, and a hard
+ * navigation then cancels the rest. The stage hook needs VITE_EXIT_GATE_HOOKS=1;
+ * on a page that never boots the engine it is absent and only idle is awaited.
+ */
+export async function settleDocument(page: Page): Promise<void> {
+  await page.waitForLoadState('networkidle');
+  await page.waitForFunction(
+    () => {
+      const w = window as unknown as { __ALMAMESH_STAGE__?: string; __ALMAMESH_ERROR__?: string };
+      return w.__ALMAMESH_STAGE__ === undefined || w.__ALMAMESH_STAGE__ === 'ready' || w.__ALMAMESH_ERROR__ !== undefined;
+    },
+    undefined,
+    { timeout: 180_000, polling: 250 },
+  );
+  await page.waitForLoadState('networkidle');
 }
 
 /**
