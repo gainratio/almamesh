@@ -443,6 +443,9 @@ exec ${inline.join(" ")}`,
           "frontend/apps/web/playwright.time-travel.config.ts",
           "frontend/apps/web/playwright.portable-invariants.config.ts",
           "frontend/apps/web/playwright.boot-retry.config.ts",
+          // The AI panel egress contract reads its config and spec.
+          "frontend/apps/web/playwright.ai-setup-panel.egress.config.ts",
+          "frontend/apps/web/e2e/ai-setup-panel.egress.spec.ts",
           // The browser Lego pin contract ties BROWSER_LEGO_SPEC to these.
           "frontend/packages/browser/package.json",
           "frontend/packages/memory/package.json",
@@ -530,6 +533,10 @@ exec ${inline.join(" ")}`,
     return this.localPreview(this.hookedBuild(), "dist-verify", [
       "INTERP_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:interp",
       "CHAT_GROUNDING_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:chat:grounding",
+      // Settings -> AI: nothing reaches a provider before Save, then the key goes
+      // only to the provider chosen (never on the keyless /models read); a local
+      // endpoint sends nothing to openrouter.ai. Clean console. Chromium only.
+      "AI_PANEL_EGRESS_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:ai-panel:egress",
     ])
   }
   @func()

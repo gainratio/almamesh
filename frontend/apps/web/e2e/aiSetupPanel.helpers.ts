@@ -1,5 +1,11 @@
 // frontend/apps/web/e2e/aiSetupPanel.helpers.ts
-import type { Page, Request } from '@playwright/test';
+import { expect, type Page, type Request } from '@playwright/test';
+
+/** The dummy OpenRouter key both AI panel specs type; never a real secret. */
+export const DUMMY_KEY = 'sk-or-test-panel-key-0000000000';
+
+/** The local Ollama-style endpoint the "local" journeys point the panel at. */
+export const LOCAL_API_BASE = 'http://localhost:11434/v1';
 
 /**
  * Stubs for the AI setup panel e2e. Every OpenRouter surface the panel can touch
@@ -94,4 +100,42 @@ export function recordEgress(page: Page, appOrigin: string): EgressLog {
     );
   });
   return { settle: () => Promise.all(pending) };
+}
+
+/** Hosts that count as "a provider": the hosted one and the local endpoint. */
+export const PROVIDER_HOSTS: readonly string[] = ['openrouter.ai', new URL(LOCAL_API_BASE).host];
+
+export async function openAiSettings(page: Page): Promise<void> {
+  await page.goto('/settings/ai');
+  await expect(page.getByRole('heading', { name: 'AI Model' })).toBeVisible();
+  await expect(page.getByTestId('ai-model-settings')).toBeVisible();
+}
+
+/** Type the OpenRouter key (does not save). */
+export async function fillOpenRouterKey(page: Page): Promise<void> {
+  await page.getByTestId('llm-openrouter-key').fill(DUMMY_KEY);
+}
+
+/** Save the typed OpenRouter key and wait for the connected state. */
+export async function saveOpenRouterKey(page: Page): Promise<void> {
+  await page.getByTestId('llm-save').click();
+  await expect(page.getByTestId('llm-connection-result')).toContainText(/Connected/, { timeout: 15_000 });
+  await expect(page.getByTestId('llm-credits-value')).toContainText('$8.00');
+}
+
+/** Point the panel at the local endpoint (does not save). */
+export async function fillLocalEndpoint(page: Page): Promise<void> {
+  await page.getByTestId('llm-advanced-summary').click();
+  await page.getByTestId('llm-api-base').fill(LOCAL_API_BASE);
+  await page.getByTestId('llm-model').fill('llama3.1');
+  await page.keyboard.press('Escape');
+}
+
+/** Save the local endpoint and wait for the connected state. */
+export async function saveLocalEndpoint(page: Page): Promise<void> {
+  await page.getByTestId('llm-save-advanced').click();
+  await expect(page.getByTestId('llm-connection-result').last()).toContainText(/Connected/, {
+    timeout: 15_000,
+  });
+  await expect(page.getByTestId('llm-credits')).toHaveCount(0);
 }
