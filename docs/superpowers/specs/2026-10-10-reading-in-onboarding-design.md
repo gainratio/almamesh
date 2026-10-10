@@ -1,8 +1,8 @@
 # Your reading, right after your chart
 
-Status: draft for owner review. Section 1 (the onboarding flow) is approved. Section 2 (the
-report structure) is a proposal and is what this PR asks the owner to review. Written against
-`main` at `821bd6e8` on 2026-10-10.
+Status: approved. Section 1 (the onboarding flow) and Section 2 (the report structure) are
+approved; the owner answered "yes to all" on PR #325 and the eight open questions are resolved
+at the end of this document. Written against `main` at `821bd6e8` on 2026-10-10.
 
 ## TL;DR
 
@@ -245,8 +245,9 @@ spiritual. Each card has three parts.
 significator flags, matched dasha lords, Sade Sati, transit severity, windows) plus the natal
 house-lord facts for that domain's houses. It does not get the full transit block.
 
-Family has no natal guidance today. Its card shows the engine part and "This year" only, and the
-spec does not add a natal family section (open question 5).
+Family has no natal guidance today. Ruling 5 adds a natal `family_guidance` field to `guidance1`
+(no new call). Readings stored before that field existed show the engine part and "This year"
+only on the family card.
 
 `life_evolution_guidance` (from `guidance2`) moves to chapter 5 as "Your long arc".
 
@@ -274,7 +275,8 @@ still gives a useful card.
 
 Live OpenRouter catalog on 2026-10-10: `deepseek/deepseek-v4.1-flash` (the default,
 `config.ts:193`) is $0.30 per million input tokens and $1.20 per million output tokens.
-`deepseek/deepseek-v4-pro` is $0.24 / $0.48.
+`deepseek/deepseek-v4-pro` is $0.24 / $0.48. Re-checked at 7:44 AM PT the same day: flash
+$0.30 / $1.20, v4-pro $0.228 / $0.456 (see ruling 3).
 
 Rough estimate (to be replaced by measured numbers in PR 2):
 
@@ -294,6 +296,13 @@ allows that because quarters are keyed.
 
 Local endpoints run lite prompts. Ollama usually serves one request at a time, so nine calls run
 one after another. That is slow but free; the page shows per-section progress the whole time.
+Per ruling 7, lite keeps all nine calls and runs the two `life_outlook` calls last.
+
+Per ruling 4, every report section sends `reasoning.max_tokens = 6,000` on OpenRouter, so the
+high end of the estimate is bounded: input + the full visible budget + 9 × 6,000 reasoning
+tokens. On flash that worst case is about 11¢ (visible output at the targets +30 %, every section
+using its whole reasoning budget); typical runs stay in the 5-9¢ range above. The cost line shows
+the computed range, so it never understates the worst case.
 
 ### The cost estimate
 
@@ -309,8 +318,9 @@ New pure function in `@almamesh/llm`, `estimateReadingCost(messages, pricing, ou
 - No price, unknown model, or a non-OpenRouter cloud endpoint: no cost line. Never a made-up
   number.
 
-If the OpenRouter balance is known (`fetchOpenRouterCredits`, already used in Settings) and it is
-below the high end of the estimate, step 3 says so before the tap.
+If the OpenRouter balance is known (`fetchOpenRouterCredits`, already used in Settings), step 3
+always shows it next to the cost line. If it is below the high end of the estimate, step 3 also
+warns before the tap (ruling 8).
 
 ### The date guard
 
@@ -375,7 +385,7 @@ New `components/features/dashboard/ReadingReport.tsx` replaces the arrangement o
 - It computes no astrology and makes no model call. The onboarding step 3 reuses the same
   component to show sections as they stream.
 
-The PDF report is out of scope for this spec (open question 2).
+The PDF report is out of scope for this spec; it is a later PR 5 (ruling 2).
 
 ## Privacy and the hard rules
 
@@ -386,7 +396,7 @@ The PDF report is out of scope for this spec (open question 2).
 | LLM input is PII-redacted, month precision | Same `sanitize.ts` path. New sections take slices of the already-sanitized object, never raw engine output. | Existing sanitize tests plus a new one: v2 prompts contain no `YYYY-MM-DD`. |
 | No date invented by the model reaches the screen | Date guard above. | Mutation: return the input unchanged from `validateTimelineDates` → test with an injected fake month goes red. |
 | Free forever | Copy says the provider charges, AlmaMesh doesn't. No payment code. | i18n test pins the cost-line strings in en/es/pt. |
-| Honest AI disclosure (planet positions and period dates can reveal the birth date) | The panel's existing disclosure (`ai.privacy_warning`) is shown on step 2 too, not only in Settings. Step 3 repeats one line of it above the button. | Component test: the disclosure renders in the onboarding variant; mutation hiding it goes red. |
+| Honest AI disclosure (planet positions and period dates can reveal the birth date) | The panel's existing cloud disclosure (`tiers.cloud_body`, testid `tier-cloud-honesty`) is shown on step 2 too, not only in Settings. Step 3 repeats one line of it above the button. | Component test: the disclosure renders in the onboarding variant; mutation hiding it goes red. |
 
 ## PRs
 
@@ -537,23 +547,67 @@ Live evidence for this PR, both desktop Chromium and the iPhone 15 WebKit profil
 | Your reading, streaming | required | clean |
 | Dashboard with the report | required | clean |
 
-## Open questions
+## Open questions: resolved
 
-1. **Replace `upcoming_periods` and `current_sky`?** The proposal replaces them with
-   `current_period` and `year_ahead` and keeps old ones readable. The alternative is to keep them
-   and add the new sections beside them, at 2 more calls and some overlap.
-2. **PDF report.** Should the five-chapter report also become the PDF? It touches the maximal
-   report gate and the page planner, so it would be its own PR.
-3. **Default model.** On today's catalog `deepseek-v4-pro` is cheaper per token than
-   `v4.1-flash` but was 2-3x slower in the 2026-10-01 benchmark. Keep flash for onboarding,
-   where waiting matters most?
-4. **Reasoning cap.** Should report sections send a `reasoning.max_tokens` budget to keep the high
-   end of the cost range near 6¢ instead of 9¢?
-5. **Family.** It has engine data but no natal guidance. Add a natal family section (one more
-   call), or leave the card as engine data plus "This year"?
-6. **Quarters or months** for the year ahead. Quarters are proposed (less repetition, a third of
-   the output). Months would read more like a calendar.
-7. **Lite on slow local models.** Nine sequential calls may take several minutes on a 4B model.
-   Should lite skip the two `life_outlook` calls and show the engine part of the cards only?
-8. **Balance warning.** Show the OpenRouter balance on step 3 always, or only when it is below
-   the estimate?
+The owner approved PR #325 with "yes to all" (take the recommended answer for each) and asked
+for "more info in the structured report", so where a question traded length or depth against
+cost, the ruling leans richer as long as it stays inside the cost range and the P90 < 150 s
+budget. The plan is `docs/superpowers/plans/2026-10-10-reading-in-onboarding.md`.
+
+1. **Replace `upcoming_periods` and `current_sky`?**
+   Ruling: replace them with `current_period` and `year_ahead`, and keep stored v6 timelines
+   readable as `shape: 'v1'`, because the new sections cover the same ground with engine-drawn
+   dates and two extra overlapping calls would add cost and repeat prose; if this is wrong it
+   costs one small PR to add the two old section keys back beside the new ones (about +1¢ and
+   +2 calls per report), with no data loss since v1 content is never rewritten.
+2. **PDF report.**
+   Ruling: not in these four PRs; the five-chapter PDF is a separate PR 5 after PR 3 ships,
+   because it touches the maximal-report gate and the page planner, which need their own
+   Poppler and browser-download evidence; if this is wrong it costs a release where the web
+   report is richer than the PDF (the PDF keeps today's sections, nothing breaks).
+3. **Default model.**
+   Ruling: the product default stays `deepseek/deepseek-v4.1-flash`; real-model e2e checks use
+   `E2E_REAL_MODEL` (`deepseek/deepseek-v4-pro`), and PR 2's real spec measures P90 on both,
+   because the live OpenRouter catalog at 7:44 AM PT on 2026-10-10 lists v4-pro at $0.228 /
+   $0.456 per million input/output tokens against flash at $0.30 / $1.20 (pro is cheaper, so
+   it is the right test model under the cheapest-model rule for e2e), but pro took 111-170 s on
+   the 2026-10-01 timeline benchmark that flash finished in 49-65 s, so pro as the default
+   would likely break the P90 < 150 s budget on the step where waiting matters most; if this
+   is wrong it costs each user about 2.5¢ more per report than necessary (about 5.5¢ vs 3¢ at
+   the typical estimate), and the fix is the one-line `RECOMMENDED_CLOUD_MODEL` change once
+   PR 2's measured P90 on pro is under 150 s.
+4. **Reasoning cap.**
+   Ruling: yes, report sections send `reasoning.max_tokens = 6,000`
+   (`REPORT_SECTION_REASONING_MAX_TOKENS`, OpenRouter only, never a cap on visible output),
+   because measured runs use about 5k reasoning tokens per section, so 6k leaves normal
+   thinking untouched while giving the cost line a hard, computable high end (the existing 12k
+   runaway cap stays for other callers); if this is wrong it costs somewhat thinner prose on a
+   section that needed more thinking, which PR 2's word-count check (targets ±30 %) catches,
+   and the fix is one constant.
+5. **Family.**
+   Ruling: add a natal `family_guidance` field (120-160 words per voice) to the existing
+   `guidance1` section rather than a new call, because the owner asked for richer content and
+   a field in an existing call adds about 400 output tokens (about 0.05¢) and no latency, while
+   leaving family as the only card without a natal reading would look like a gap; if this is
+   wrong it costs a slightly longer `guidance1` output and one optional field that old stored
+   readings lack (their family card shows engine data plus "This year", as originally
+   proposed).
+6. **Quarters or months.**
+   Ruling: quarters, with the engine's month-level event list drawn under each quarter,
+   because twelve monthly prose blocks repeat themselves in quiet months and triple the
+   longest section's output (and its latency), while the month detail is still on screen from
+   the engine; if this is wrong it costs a calendar-style rewrite of `year_ahead`'s schema
+   later, which the keyed quarter schema makes local to one section and one card.
+7. **Lite on slow local models.**
+   Ruling: keep all nine calls in lite, including both `life_outlook` calls, but run the two
+   `life_outlook` calls last; every card shows its engine part immediately and each section
+   renders as it lands, because the owner asked for more content and local models are free,
+   so the only cost is waiting, and the person can leave to the dashboard at any time while
+   the run continues; if this is wrong it costs a few extra minutes of sequential local
+   generation before the "This year" halves fill in.
+8. **Balance warning.**
+   Ruling: when the OpenRouter balance is known, step 3 always shows it next to the cost line,
+   and adds a warning only when it is below the high end of the estimate, because the owner
+   asked for more information and the balance is already read in Settings through the same
+   OpenRouter-only path; if this is wrong it costs one line of screen space and one keyed
+   credits read to OpenRouter (never to any other host) when step 3 opens.
