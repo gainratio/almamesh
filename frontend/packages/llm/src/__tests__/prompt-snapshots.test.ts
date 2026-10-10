@@ -176,6 +176,29 @@ describe("prompt golden-snapshots (Spec 062 delta 5)", () => {
     expect(buildSectionMessages("core", CHART, "layman", false, "en")).toMatchSnapshot();
   });
 
+  // Legacy section prompts beyond core/full/en: pinned before the report-v2
+  // refactor made the system prompts functions and split the user builders, so
+  // these prove the legacy (no promptSet) text did not move by a byte.
+  const { predictive: _predictive, ...CHART_WITHOUT_PREDICTIVE } = CHART;
+  const LEGACY_CASES = [
+    ["core", "lite", true, "layman", "en", "with predictive", CHART],
+    ["core", "full", false, "expert", "en", "with predictive", CHART],
+    ["core", "lite", true, "expert", "es", "with predictive", CHART],
+    ["guidance1", "full", false, "layman", "en", "with predictive", CHART],
+    ["guidance1", "lite", true, "layman", "en", "with predictive", CHART],
+    ["upcoming_periods", "full", false, "layman", "en", "with predictive", CHART],
+    ["upcoming_periods", "lite", true, "layman", "en", "with predictive", CHART],
+    ["upcoming_periods", "lite", true, "layman", "pt", "no predictive", CHART_WITHOUT_PREDICTIVE],
+    ["current_sky", "full", false, "layman", "en", "no predictive", CHART_WITHOUT_PREDICTIVE],
+  ] as const;
+
+  it.each(LEGACY_CASES)(
+    "buildSectionMessages — legacy %s / %s (lite=%s) / %s / %s / %s",
+    (section, _variant, lite, mode, lang, _chartLabel, chart) => {
+      expect(buildSectionMessages(section, chart, mode, lite, lang)).toMatchSnapshot();
+    },
+  );
+
   it("buildMeshFactsBlock — spouse edge from the synthetic mesh golden", () => {
     const edges = Object.values(meshGolden as unknown as Record<string, MeshEdgeContext>);
     const spouse = edges.find((e) => e.relationship === "spouse");
