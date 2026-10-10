@@ -2,12 +2,19 @@ import i18n from '../../../../i18n/config';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { toTransitCtx } from '@almamesh/store';
+import type { SiderealChart } from '@almamesh/browser/types';
+import { toTransitCtx, useChartLibraryStore } from '@almamesh/store';
 
 import { SKY_CHART } from '../../../../lib/__tests__/timingFixtures';
 import { FOUNDER_DASHAS } from '../../../../test/dashaFixtures';
+import { useMomentSky } from '../../../../lib/momentSky';
 import { formatPinLabel } from '../../../../lib/timeTravelSheet';
-import { DashboardMomentCard } from '../DashboardMomentCard';
+import { DashboardMoment, DashboardMomentCard } from '../DashboardMomentCard';
+
+vi.mock('../../../../lib/momentSky', async (importActual) => ({
+  ...(await importActual<typeof import('../../../../lib/momentSky')>()),
+  useMomentSky: vi.fn(() => ({ sky: { kind: 'dashas-only' }, retry: () => {} })),
+}));
 
 const MARCH_2025 = { start: '2025-03-01', end: '2025-03-31', granularity: 'month' } as const;
 // Crosses the Venus -> Sun antar boundary (2027-01-31) inside the Saturn maha.
@@ -155,5 +162,37 @@ describe('DashboardMomentCard', () => {
       sky={{ kind: 'ready', transits }} onRetry={() => {}} language="en" />);
     expect(text('time-travel-moment-transits')).toContain('Planets in the sky then');
     expect(screen.queryByTestId('time-travel-moment-working')).toBeNull();
+  });
+});
+
+describe('DashboardMoment (the card wired to the period sky)', () => {
+  afterEach(() => {
+    useChartLibraryStore.setState({ charts: {} });
+    vi.mocked(useMomentSky).mockClear();
+  });
+
+  const profileKeyUsed = (): string | undefined => vi.mocked(useMomentSky).mock.calls.at(-1)?.[0].profileKey;
+
+  it('keys the sky by the stored chart\'s profile, so it shares the chat\'s compute', () => {
+    useChartLibraryStore.setState({ charts: { c1: { chart_id: 'c1', profile_id: 'p9' } } as never });
+    render(<DashboardMoment asOf={MARCH_2025} chart={null} chartId="c1" engine={null} birthYear={1980} language="en" />);
+    expect(profileKeyUsed()).toBe('p9');
+  });
+
+  it('falls back to the chart id when the chart is not in the library', () => {
+    render(<DashboardMoment asOf={MARCH_2025} chart={null} chartId="c2" engine={null} birthYear={1980} language="en" />);
+    expect(profileKeyUsed()).toBe('c2');
+  });
+
+  it('with no chart id, keys the sky as "primary" and shows a dash for the dashas', () => {
+    render(<DashboardMoment asOf={MARCH_2025} chart={null} chartId={null} engine={null} birthYear={undefined} language="en" />);
+    expect(profileKeyUsed()).toBe('primary');
+    expect(text('time-travel-moment-maha')).toBe('—');
+  });
+
+  it('reads the dashas from the chart it is given', () => {
+    const chart = { dashas: FOUNDER_DASHAS } as unknown as SiderealChart;
+    render(<DashboardMoment asOf={MARCH_2025} chart={chart} chartId={null} engine={null} birthYear={1980} language="en" />);
+    expect(text('time-travel-moment-maha')).toContain('Saturn');
   });
 });

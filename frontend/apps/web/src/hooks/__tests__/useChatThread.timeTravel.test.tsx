@@ -242,6 +242,16 @@ describe('the chat sheet travels through the seam', () => {
     expect(result.current.asOf).toBeUndefined();
   });
 
+  it('with no profile, pin and Back to today do nothing and do not throw', async () => {
+    useTimeTravelStore.setState({ moments: { [PROFILE]: YEAR } });
+    const { result } = renderHook(() => useChatThread(null, CHART));
+    await act(() => result.current.pin(MARCH_2019));
+    await act(() => result.current.backToToday());
+    expect(result.current.threadId).toBeNull();
+    expect(Object.keys(useChatStore.getState().threads)).toHaveLength(0);
+    expect(useTimeTravelStore.getState().moments).toEqual({ [PROFILE]: YEAR });
+  });
+
   it('with AI off, pin sets the moment, opens no thread and does not throw', async () => {
     llm.configured = false;
     const { result } = renderHook(() => useChatThread(PROFILE, CHART));
