@@ -1172,6 +1172,7 @@ test.describe('Dashboard time travel', () => {
     await seedChart(page);
     await openDashboard(page);
     await pickMonth(page, '2019-03');
+    await expect(page.getByTestId('dashboard-time-travel-title')).toHaveText(/March 2019/);
     await page.getByTestId('floating-chat-button').click();
     await expect(page.getByTestId('time-travel-title')).toHaveText(/March 2019/);
     expect((await pinnedThreads(page)).length).toBe(1);
@@ -1199,14 +1200,12 @@ test.describe('Dashboard time travel on an iPhone 15', () => {
     await page.getByTestId('time-travel-cancel').tap();
     await expect(page.getByTestId('time-travel-sheet')).toBeHidden();
     await expect(button, 'a tap then Cancel returns focus to the button').toBeFocused();
-    const focused = await page.evaluate(
-      () => document.activeElement?.getAttribute('data-testid') ?? document.activeElement?.tagName ?? 'none',
-    );
-    testInfo.annotations.push({ type: 'focus-after-cancel', description: focused });
-    console.log(`[iphone15] focus after tap + Cancel: ${focused}`);
 
     await pickMonth(page, '2019-03');
+    await expect(page.getByTestId('dashboard-time-travel-title')).toHaveText(/March 2019/);
     await expect(page.getByTestId('time-travel-moment-maha')).toHaveText(MARCH_2019_MAHA);
+    // Today is Rahu/Mercury: the antar is what proves the card is for March 2019.
+    await expect(page.getByTestId('time-travel-moment-antar')).toHaveText(MARCH_2019_ANTAR);
     await expect(page.getByTestId('time-travel-moment-dashas-only')).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath('dashboard-march-2019-iphone15.png'), fullPage: true });
     expect(consoleErrors, 'the journey must keep a clean console').toEqual([]);

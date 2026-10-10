@@ -2,6 +2,7 @@
  * "⏳ Time travel · 2027 · answers are about this period · Change · Back to today" (plan Ruling 1).
  * The Dashboard reuses it with its own testid prefix and "about" line (plan Ruling 3).
  */
+import type { Ref } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ChatThreadAsOf } from '@almamesh/shared-types';
 
@@ -20,6 +21,8 @@ interface TimeTravelBannerProps {
   readonly testIdPrefix?: string;
   /** The "about" line. Default: chat's "answers are about this period". */
   readonly about?: string;
+  /** A ref on the Change button, so a host can return focus to it. Default: none (chat). */
+  readonly changeRef?: Ref<HTMLButtonElement>;
 }
 
 /**
@@ -30,7 +33,7 @@ function Separator() {
   return <span aria-hidden="true">{'\u00a0·'}</span>;
 }
 
-export function TimeTravelBanner({ asOf, language, onChange, onBack, backBusy = false, backFailed = false, testIdPrefix = 'time-travel', about }: TimeTravelBannerProps) {
+export function TimeTravelBanner({ asOf, language, onChange, onBack, backBusy = false, backFailed = false, testIdPrefix = 'time-travel', about, changeRef }: TimeTravelBannerProps) {
   const { t } = useTranslation('chat');
   const id = (part: string) => `${testIdPrefix}-${part}`;
   const period = formatPinLabel(asOf, language);
@@ -47,7 +50,7 @@ export function TimeTravelBanner({ asOf, language, onChange, onBack, backBusy = 
         <span>{about ?? t('time_travel.banner.about')}</span>
       </span>
       <span className="flex shrink-0 items-center gap-1 whitespace-nowrap">
-        <button type="button" data-testid={id('change')} onClick={onChange} className="underline">{t('time_travel.banner.change')}</button>
+        <button type="button" ref={changeRef} data-testid={id('change')} onClick={onChange} className="underline">{t('time_travel.banner.change')}</button>
         <span aria-hidden="true">·</span>
         <button type="button" data-testid={id('back')} onClick={onBack} disabled={backBusy} className="underline disabled:opacity-50">{t('time_travel.banner.back')}</button>
       </span>
