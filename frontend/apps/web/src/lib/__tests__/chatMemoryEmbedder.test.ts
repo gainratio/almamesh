@@ -14,6 +14,10 @@ const spawned: string[] = [];
 let terminated = 0;
 const IPHONE =
   'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.6 Mobile/15E148 Safari/604.1';
+const DESKTOP = {
+  userAgent: 'Mozilla/5.0 Chrome/153.0.0.0', platform: 'MacIntel',
+  maxTouchPoints: 0, deviceMemory: 8, hardwareConcurrency: 8,
+};
 
 class StubEmbedderWorker extends EventTarget {
   constructor(url: URL | string) {
@@ -39,6 +43,7 @@ describe('chatMemory embedder lifecycle', () => {
     terminated = 0;
     vi.resetModules();
     vi.stubGlobal('Worker', StubEmbedderWorker);
+    vi.stubGlobal('navigator', DESKTOP);
     // The embedder arms an idle-release timer after each answer; fake it so
     // tests can step through it and nothing is left pending.
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
@@ -77,19 +82,34 @@ describe('chatMemory embedder lifecycle', () => {
     expect(embedderSpawns()).toBe(1);
   });
 
-  it('on a 3 GB iPhone (minimal tier) releases the embedder after 60 s idle, reports idle, and reloads on demand', async () => {
-    vi.stubGlobal('navigator', { userAgent: IPHONE, platform: 'iPhone', maxTouchPoints: 5, hardwareConcurrency: 6 });
+  it.each(['minimal', 'lite'])('%s devices never start an embedder for a chat send or search', async (tier) => {
+    vi.stubGlobal('navigator', tier === 'minimal'
+      ? { userAgent: IPHONE, platform: 'iPhone', maxTouchPoints: 5, hardwareConcurrency: 6 }
+      : { ...DESKTOP, deviceMemory: 4 });
+    const { embedderStatus } = await import('../embedderStatus');
+    const { indexChatMessage, retrieveContext, searchMemory, rebuildMemory } = await import('../chatMemory');
+    const message = { id: 'm', thread_id: 't', profile_id: 'p1', content: 'career' };
+    await indexChatMessage(message);
+    await retrieveContext('career', 'p1');
+    await searchMemory('career', 'p1');
+    await rebuildMemory([message]);
+    expect(embedderStatus.get()).toBe('idle');
+    vi.advanceTimersByTime(600_000);
+    await searchMemory('health', 'p1');
+    expect(embedderSpawns()).toBe(0);
+    expect(terminated).toBe(0);
+  });
+
+  it('full devices release the embedder after ten idle minutes and reload it on demand', async () => {
     const { embedderStatus } = await import('../embedderStatus');
     const { searchMemory } = await import('../chatMemory');
     await searchMemory('career', 'p1');
     expect(embedderStatus.get()).toBe('ready');
-
-    vi.advanceTimersByTime(59_999);
+    vi.advanceTimersByTime(599_999);
     expect(terminated).toBe(0);
     vi.advanceTimersByTime(1);
     expect(terminated).toBe(1);
     expect(embedderStatus.get()).toBe('idle');
-
     await searchMemory('health', 'p1');
     expect(embedderSpawns()).toBe(2);
   });

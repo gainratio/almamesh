@@ -20,6 +20,10 @@ import { formatMemoryReport } from '../scripts/processMemory.mjs';
 import { BOOT_MEMORY_BUDGET, PLACE_LOOKUP_HEAP_GROWTH_MIB, overBudget, type BootMemorySample } from './memoryBudget';
 
 const MiB = 1024 * 1024;
+const cityManifest = JSON.parse(readFileSync(new URL('../public/cities/manifest.json', import.meta.url), 'utf8')) as { parts: number };
+type PlaceLookupWindow = Window & {
+  __almameshResolvePlace?: (query: string) => Promise<{ status?: string }>;
+};
 const SETTLE_SAMPLES = 5;
 // The report-only boot sampler. Each measureUserAgentSpecificMemory call
 // interrupts every worker, so it runs in its own test, never in the gated one.
@@ -200,9 +204,18 @@ test('cold boot to a ready chart stays inside the memory budget without the chat
   });
 
   await onboardToDashboard(page);
+  // The natal chart attaches before the lazy predictive work completes. Start
+  // the settled window after that work, while retaining the whole boot RSS peak.
+  await expect(page.getByTestId('life-atlas').getByText(/^As of /)).toBeVisible({ timeout: 240_000 });
   const readyAt = Date.now();
   const heap = await settledHeap(page);
   await rssLoop.stop();
+  const { processInfo } = (await session.send('SystemInfo.getProcessInfo')) as {
+    processInfo: { id: number; type: string }[];
+  };
+  console.log(`memory-budget renderer processes ${JSON.stringify(processInfo.filter((p) => p.type === 'renderer').map((p) => {
+    try { return { pid: p.id, rssMiB: rssBytes(p.id) / MiB }; } catch { return { pid: p.id, exited: true }; }
+  }))}`);
   await session.detach();
 
   const settled = rss.filter((s) => s.t >= readyAt).map((s) => s.bytes).sort((a, b) => a - b);
@@ -256,16 +269,17 @@ test('report only: heap peak during boot, and after a chat search loads the embe
 });
 
 /**
- * The city list is a lazy chunk: not requested at boot, requested once (same
- * origin) by the first resolve_place, and the heap growth that costs is gated.
+ * City reference data is lazy: not requested at boot, imported in bounded
+ * same-origin parts by the first resolve_place, then queried from SQLite.
+ * Service-worker precaching does not count as the page importing the data.
  * Needs the VITE_EXIT_GATE_HOOKS=1 build (window.__almameshResolvePlace).
  * PLACE_CPU_THROTTLE=4 re-runs the cold first lookup on a 4x slower CPU.
  */
-test('first place lookup loads the city list once, same-origin, inside its heap growth gate', async ({ page }) => {
+test('first place lookup imports city parts once, same-origin, inside its heap growth gate', async ({ page }) => {
   const consoleErrors: string[] = [];
   page.on('pageerror', (error) => consoleErrors.push(String(error)));
   const urls: string[] = [];
-  page.on('request', (request) => urls.push(request.url()));
+  page.on('request', (request) => { if (request.serviceWorker() === null) urls.push(request.url()); });
   const throttle = Number(process.env.PLACE_CPU_THROTTLE ?? '1');
   if (throttle > 1) {
     const cdp = await page.context().newCDPSession(page);
@@ -273,39 +287,42 @@ test('first place lookup loads the city list once, same-origin, inside its heap 
   }
 
   await onboardToDashboard(page);
-  const hasHook = await page.evaluate(() => typeof window.__almameshResolvePlace === 'function');
+  const hasHook = await page.evaluate(() => typeof (window as PlaceLookupWindow).__almameshResolvePlace === 'function');
   test.skip(!hasHook, 'needs a VITE_EXIT_GATE_HOOKS=1 build');
-  const isCitiesChunk = (url: string): boolean => url.includes('cities.min');
-  expect(urls.filter(isCitiesChunk), 'the city list is not requested at boot').toEqual([]);
+  const isCitiesPart = (url: string): boolean => /\/cities\/cities-part-\d+\.json$/.test(new URL(url).pathname);
+  expect(urls.filter(isCitiesPart), 'city parts are not requested by the page at boot').toEqual([]);
   const requestsBeforeLookup = urls.length;
 
   const before = Math.max(...(await settledHeap(page)));
   const { result, firstLookupMs } = await page.evaluate(async () => {
     const started = performance.now();
-    const found = await window.__almameshResolvePlace?.('Bogotá');
+    const found = await (window as PlaceLookupWindow).__almameshResolvePlace?.('Bogotá');
     return { result: found as { status?: string } | undefined, firstLookupMs: performance.now() - started };
   });
   const after = Math.max(...(await settledHeap(page)));
 
   const growthMiB = (after - before) / MiB;
   const lookupUrls = urls.slice(requestsBeforeLookup);
-  const cityRequests = lookupUrls.filter(isCitiesChunk);
+  const cityRequests = lookupUrls.filter(isCitiesPart);
   const origin = new URL(page.url()).origin;
   const report = { beforeMiB: before / MiB, afterMiB: after / MiB, growthMiB, firstLookupMs, cityRequests: cityRequests.length, throttle };
   recordMemoryReport(formatMemoryReport('first-place-lookup', report));
   await test.info().attach('first-place-lookup', { body: JSON.stringify(report), contentType: 'application/json' });
 
   expect(result?.status).toBe('found');
-  expect(cityRequests, 'exactly one request for the city list').toHaveLength(1);
-  expect(cityRequests.every((url) => new URL(url).origin === origin), 'city list is same-origin').toBe(true);
+  expect(cityRequests, 'each bounded city part is imported once').toHaveLength(cityManifest.parts);
+  expect(new Set(cityRequests).size, 'there are no duplicate part requests').toBe(cityManifest.parts);
+  expect(cityRequests.every((url) => new URL(url).origin === origin), 'city parts are same-origin').toBe(true);
   expect(lookupUrls.filter((url) => new URL(url).origin !== origin && /^https?:/.test(url)), 'no cross-origin request').toEqual([]);
   expect(growthMiB, `first lookup heap growth (limit ${PLACE_LOOKUP_HEAP_GROWTH_MIB} MiB)`).toBeLessThanOrEqual(PLACE_LOOKUP_HEAP_GROWTH_MIB);
+  await page.evaluate(async () => (window as PlaceLookupWindow).__almameshResolvePlace?.('Sao Paulo'));
+  expect(urls.filter(isCitiesPart), 'the next lookup reads SQLite without reimporting city parts').toEqual(cityRequests);
   expect(consoleErrors).toEqual([]);
 });
 
 /**
- * Lite/minimal devices never register resolve_place, so the chat path never
- * imports the city list. The service worker still precaches the chunk at
+ * Opening chat does not perform a place lookup, so it never imports city
+ * rows. The service worker still precaches the reference parts at
  * install (pre-existing, from the context's request stream, not the page's);
  * what must not happen is a page-initiated request for it.
  *
@@ -320,18 +337,18 @@ test('on a lite device opening chat never requests the city list', async ({ page
     }
   }, { deviceMemory: 2, hardwareConcurrency: 2 });
   const urls: string[] = [];
-  page.on('request', (request) => urls.push(request.url()));
+  page.on('request', (request) => { if (request.serviceWorker() === null) urls.push(request.url()); });
   const consoleErrors: string[] = [];
   page.on('pageerror', (error) => consoleErrors.push(String(error)));
 
   await onboardToDashboard(page);
-  const isCitiesChunk = (url: string): boolean => url.includes('cities.min');
-  expect(urls.filter(isCitiesChunk), 'onboarding did not load the city list, so chat is observable').toEqual([]);
+  const isCitiesPart = (url: string): boolean => /\/cities\/cities-part-\d+\.json$/.test(new URL(url).pathname);
+  expect(urls.filter(isCitiesPart), 'onboarding did not import city parts, so chat is observable').toEqual([]);
   const requestsBeforeChat = urls.length;
   await page.getByTestId('floating-chat-button').click();
   await page.getByTestId('chat-search-input').waitFor({ timeout: 30_000 });
   await page.waitForTimeout(3_000);
 
-  expect(urls.slice(requestsBeforeChat).filter(isCitiesChunk), 'no page request for the city list on lite').toEqual([]);
+  expect(urls.slice(requestsBeforeChat).filter(isCitiesPart), 'opening chat makes no page request for city reference data').toEqual([]);
   expect(consoleErrors).toEqual([]);
 });

@@ -15,7 +15,7 @@ const { defaultBrowserType: _webkit, ...iPhone } = devices['iPhone 13'];
 
 export default defineConfig({
   testDir: './e2e',
-  testMatch: /memory-budget\.e2e\.spec\.ts/,
+  testMatch: /(?:memory-budget|time-travel-memory)\.e2e\.spec\.ts/,
   fullyParallel: false,
   workers: 1,
   forbidOnly: Boolean(process.env.CI),

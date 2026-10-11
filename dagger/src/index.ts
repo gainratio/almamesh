@@ -99,6 +99,7 @@ const CONTRACT_TESTS = [
   "tests/dagger-repository-identity.test.ts",
   "tests/dagger-toolchain-contract.test.ts",
   "tests/dagger-workflow-contract.test.ts",
+  "tests/webkit-memory-baseline.test.ts",
 ]
 const SMOKE_OUTPUT_LINES = 60
 const NIGHTLY_REPORTS_DIR = "nightly-reports"
@@ -441,6 +442,7 @@ exec ${inline.join(" ")}`,
           "frontend/apps/web/package.json",
           // The macOS WebKit lane contract reads its script and the configs it runs.
           "frontend/apps/web/scripts/webkit-macos-lane.sh",
+          "frontend/apps/web/scripts/webkit-memory-baseline.mjs",
           "frontend/apps/web/playwright.time-travel.config.ts",
           "frontend/apps/web/playwright.portable-invariants.config.ts",
           "frontend/apps/web/playwright.boot-retry.config.ts",

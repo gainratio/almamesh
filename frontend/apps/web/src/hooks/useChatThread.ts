@@ -41,7 +41,8 @@ import { chatErrorMessage, getChatErrorMessage } from '../lib/errors';
 import { LLM_SETTINGS_CHANGED_EVENT } from '../lib/llmSettingsEvents';
 import { asOfKey } from '../lib/pinnedPeriod';
 import { waitForStoreSaved } from '../lib/storeSaved';
-import { applyBackToToday, applyTravel, type TravelSource, type TravelThread } from '../lib/timeTravel';
+import { applyBackToToday, applyTravel, travelIntentVersion, type TravelSource, type TravelThread } from '../lib/timeTravel';
+import { createTravelSlot, type TravelRecorder } from '../lib/timeTravelTool';
 
 /** Input the caller's stream fn receives; it wires `streamChartChat` with these. */
 export interface ChatStreamInput {
@@ -51,6 +52,8 @@ export interface ChatStreamInput {
   readonly onToken: (token: string) => void;
   /** The thread's time-travel pin; absent in a normal thread. */
   readonly asOf?: ChatThreadAsOf;
+  /** Record only; the hook applies this turn's last action after its durable answer. */
+  readonly onTravel?: TravelRecorder;
 }
 
 /** A function that streams an answer (delegated to the Dashboard's LLM wiring). */
@@ -240,9 +243,10 @@ export function describeChatStreamError(error: unknown): string {
  * reload before that used to lose the answer. A failed save leaves a flagged
  * notice (excluded from history and RAG) instead of failing silently.
  */
-async function settleChatTurn(threadId: string): Promise<void> {
+async function settleChatTurn(threadId: string): Promise<boolean> {
   try {
     await waitForStoreSaved('chat');
+    return true;
   } catch {
     // waitForStoreSaved already logged a fixed code. The thread can be gone
     // (deleted mid-turn); then there is nothing left to annotate.
@@ -251,6 +255,7 @@ async function settleChatTurn(threadId: string): Promise<void> {
         .getState()
         .appendMessage(threadId, 'assistant', i18n.t('chat:errors.save_failed'), { error: true });
     }
+    return false;
   }
 }
 
@@ -293,9 +298,23 @@ export function useChatThread(
   const sendInFlight = useRef(false);
   // The chart on screen NOW (the in-flight send's closure holds the old one).
   const currentChartId = useRef(chartId);
+  const currentProfileId = useRef(profileId);
+  currentChartId.current = chartId;
+  currentProfileId.current = profileId;
+  const selectionVersion = useRef(0);
+  const mounted = useRef(true);
   useEffect(() => {
-    currentChartId.current = chartId;
-  }, [chartId]);
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
+  useEffect(() => {
+    selectionVersion.current += 1;
+  }, [profileId, chartId]);
+
+  const selectionIsCurrent = useCallback((profile: string, chart: string | null, selection: number) => (
+    mounted.current && currentProfileId.current === profile && currentChartId.current === chart
+    && selectionVersion.current === selection
+  ), []);
 
   useEffect(() => {
     const abortOwned = () => {
@@ -342,6 +361,10 @@ export function useChatThread(
       // chart changed describes a chart the user is no longer looking at.
       const askedAsOf = useChatStore.getState().threads[tid]?.as_of;
       const askedAbout = answerIdentity(chartId, askedAsOf);
+      const askedIntent = travelIntentVersion(profileId);
+      const askedSelection = selectionVersion.current;
+      const travelSlot = createTravelSlot();
+      let completed = false;
       const userMessage = store.appendMessage(tid, 'user', q);
       void indexChatMessage({ id: userMessage.id, thread_id: tid, profile_id: profileId, content: q });
 
@@ -366,12 +389,14 @@ export function useChatThread(
           history,
           retrievedContext,
           ...(askedAsOf ? { asOf: askedAsOf } : {}),
+          onTravel: travelSlot.record,
           onToken: (token) => {
             draft += token;
             setStreamingDraft(draft);
           },
         });
         const finalAnswer = answer || draft;
+        if (!finalAnswer.trim()) throw new Error('The chat provider returned an empty final answer.');
         // Deleted mid-answer: nothing to attach the answer to.
         if (useChatStore.getState().threads[tid] === undefined) return;
         const liveAsOf = useChatStore.getState().threads[tid]?.as_of;
@@ -385,6 +410,7 @@ export function useChatThread(
           return;
         }
         const assistantMessage = store.appendMessage(tid, 'assistant', finalAnswer);
+        completed = true;
         void indexChatMessage({
           id: assistantMessage.id,
           thread_id: tid,
@@ -421,18 +447,44 @@ export function useChatThread(
         // The answer (or error) is in the store now: drop the draft first, or
         // it renders a second copy for as long as the save takes.
         setStreamingDraft('');
-        await settleChatTurn(tid);
-        sendInFlight.current = false;
-        setIsStreaming(false);
+        const saved = await settleChatTurn(tid);
+        const action = travelSlot.take();
+        try {
+          const live = useChatStore.getState().threads[tid];
+          if (action && completed && saved && mounted.current
+            && currentProfileId.current === profileId && live?.profile_id === profileId
+            && selectionVersion.current === askedSelection && travelIntentVersion(profileId) === askedIntent
+            && answerIdentity(currentChartId.current, live.as_of) === askedAbout) {
+            // Recheck inside the seam after its save, before it changes the
+            // Dashboard; opening another thread must also cancel that move.
+            const canApply = () => useChatStore.getState().threads[tid]?.profile_id === profileId
+              && selectionIsCurrent(profileId, chartId, askedSelection)
+              && answerIdentity(currentChartId.current, askedAsOf) === askedAbout;
+            const outcome = action.kind === 'back_to_today'
+              ? await applyBackToToday({ profileId, chartId, canApply })
+              : await applyTravel({ asOf: action.asOf, source: 'chat-tool' }, { profileId, chartId, thread: { id: tid }, canApply });
+            if (outcome.threadId && canApply()) setSelectedThreadId(outcome.threadId);
+          }
+        } catch (error) {
+          safeError('chat.stream_failed', error);
+          if (useChatStore.getState().threads[tid]) {
+            store.appendMessage(tid, 'assistant', i18n.t('chat:errors.save_failed'), { error: true });
+            await settleChatTurn(tid);
+          }
+        } finally {
+          sendInFlight.current = false;
+          setIsStreaming(false);
+        }
       }
     },
-    [activeThread?.id, profileId, chartId, isStreaming, summarize],
+    [activeThread?.id, profileId, chartId, isStreaming, summarize, selectionIsCurrent],
   );
 
   const openThread = useCallback(
     (candidateThreadId: string) => {
       const candidate = useChatStore.getState().threads[candidateThreadId];
       if (profileId !== null && candidate?.profile_id === profileId) {
+        selectionVersion.current += 1;
         setSelectedThreadId(candidateThreadId);
       }
     },
@@ -442,10 +494,12 @@ export function useChatThread(
   const go = useCallback(
     async (asOf: ChatThreadAsOf, source: TravelSource, thread: TravelThread) => {
       if (!profileId) return;
-      const { threadId: moved } = await applyTravel({ asOf, source }, { profileId, chartId, thread });
-      if (moved) setSelectedThreadId(moved);
+      const selection = ++selectionVersion.current;
+      const canApply = () => selectionIsCurrent(profileId, chartId, selection);
+      const { threadId: moved } = await applyTravel({ asOf, source }, { profileId, chartId, thread, canApply });
+      if (moved && canApply()) setSelectedThreadId(moved);
     },
-    [profileId, chartId],
+    [profileId, chartId, selectionIsCurrent],
   );
   const pin = useCallback((asOf: ChatThreadAsOf) => go(asOf, 'chat-sheet', 'new'), [go]);
   const repin = useCallback(
@@ -456,9 +510,11 @@ export function useChatThread(
   );
   const backToToday = useCallback(async () => {
     if (!profileId) return;
-    const { threadId: today } = await applyBackToToday({ profileId, chartId });
-    if (today) setSelectedThreadId(today);
-  }, [profileId, chartId]);
+    const selection = ++selectionVersion.current;
+    const canApply = () => selectionIsCurrent(profileId, chartId, selection);
+    const { threadId: today } = await applyBackToToday({ profileId, chartId, canApply });
+    if (today && canApply()) setSelectedThreadId(today);
+  }, [profileId, chartId, selectionIsCurrent]);
 
   return {
     messages,

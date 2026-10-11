@@ -9,9 +9,10 @@
  * which resolves a typed city to { latitude, longitude, timezone (IANA) }
  * entirely from bundled data — so birthplace search still works offline:
  *
- *   - city list: `cities.min.json` (pre-baked from `all-the-cities`, GeoNames,
- *     population > 15k; see scripts/generate-cities.mjs). Lazy-loaded via dynamic
- *     import so it never bloats the initial chunk.
+ *   - city list: same-origin JSON batches imported into SQLite on OPFS,
+ *     pre-baked from `all-the-cities` (GeoNames,
+ *     population > 15k; see scripts/generate-cities.mjs). Only one batch is parsed
+ *     at a time, and lookups retain bounded SQL result pages.
  *   - timezone: `tz-lookup` maps lat/lon -> IANA zone offline.
  *
  * The engine path (`toBirthInput`) fails closed without a valid IANA timezone,
@@ -21,6 +22,10 @@ import tzlookup from 'tz-lookup';
 import { safeWarn } from '@almamesh/shared-types';
 
 import { geocodeCitiesOnline } from './onlineGeocoder';
+import { withDerivedDb } from '../derivedDb';
+import { cityCandidates, cityRowAt, ensureCitiesImported, CITY_SQL_CANDIDATES } from './citySql';
+import { cityMatchRank, placeTokens, type CityRow } from './cityMatch';
+export { cityMatchRank, citySearchText, foldPlaceText, type CityRow } from './cityMatch';
 
 /** A city match ready to feed the onboarding store / engine. */
 export interface CityMatch {
@@ -45,35 +50,6 @@ export interface CityMatch {
   population: number;
 }
 
-/** Compact row shape stored in cities.min.json (keys minimised for size). */
-export interface CityRow {
-  n: string;
-  c: string;
-  cc: string;
-  lat: number;
-  lon: number;
-  p: number;
-}
-
-let cityDbPromise: Promise<readonly CityRow[]> | null = null;
-
-/**
- * Lazy-load the bundled city database exactly once.
- * The dynamic import keeps the ~2 MB JSON out of the initial bundle.
- */
-async function loadCityDb(): Promise<readonly CityRow[]> {
-  if (!cityDbPromise) {
-    cityDbPromise = import('../../data/cities.min.json').then(
-      (module) => module.default,
-    );
-    // A failed import must not stay cached as a rejected promise: a later call retries.
-    cityDbPromise.catch(() => {
-      cityDbPromise = null;
-    });
-  }
-  return cityDbPromise;
-}
-
 /** Resolve the IANA timezone for a coordinate, offline. */
 export function timezoneForCoordinates(latitude: number, longitude: number): string {
   return tzlookup(latitude, longitude);
@@ -90,90 +66,6 @@ function toMatch(row: CityRow): CityMatch {
     timezone: timezoneForCoordinates(row.lat, row.lon),
     population: row.p,
   };
-}
-
-/**
- * Fold diacritics and lower-case so "Sao Paulo" matches stored "São Paulo" and
- * "Zurich" matches "Zürich". NFD splits accented letters into base + combining
- * mark; stripping the marks leaves the plain ASCII base.
- */
-function fold(text: string): string {
-  return text
-    .normalize('NFD')
-    .replace(/\p{Diacritic}/gu, '')
-    .toLowerCase();
-}
-
-/** Split (already-folded) text into non-empty word tokens. */
-function splitWords(folded: string): string[] {
-  return folded.split(/[\s,]+/).filter(Boolean);
-}
-
-/** Diacritic-fold then tokenize free text into words. */
-function tokenize(text: string): string[] {
-  return splitWords(fold(text));
-}
-
-/**
- * Extra qualifier words the dataset's country name/code don't spell out
- * literally. Keyed by ISO 3166-1 alpha-2 code so a query like "San Francisco,
- * USA" or "London UK" resolves. "US"/"United States"/"United Kingdom"/"United
- * Arab Emirates" already fold out of the code + country name.
- */
-const COUNTRY_ALIASES: Readonly<Record<string, readonly string[]>> = {
-  US: ['usa'],
-  GB: ['uk'],
-  AE: ['uae'],
-};
-
-/** Country name words + code + aliases — the searchable "where" of a row. */
-function qualifierWords(row: CityRow): string[] {
-  return [...tokenize(row.c), fold(row.cc), ...(COUNTRY_ALIASES[row.cc] ?? [])];
-}
-
-/**
- * Do the trailing (post-city) tokens read as location qualifiers? Each must
- * prefix-match a country word / code / alias — except a SINGLE trailing token
- * may go unverified: the dataset has no state/province field, so "San
- * Francisco, CA" and "San Francisco California" each strand one qualifier we
- * can't confirm. A non-trailing stray (e.g. a stranded city word like the
- * "francisco" left over when "san" alone anchored on "Sanford") rejects the row,
- * which keeps the tolerance from producing false positives.
- */
-function qualifiersOk(remainder: readonly string[], qualWords: readonly string[]): boolean {
-  let unverified = 0;
-  for (let i = 0; i < remainder.length; i += 1) {
-    if (qualWords.some((w) => w.startsWith(remainder[i]))) continue;
-    unverified += 1;
-    if (unverified > 1 || i !== remainder.length - 1) return false;
-  }
-  return true;
-}
-
-/**
- * Match a "<city> <qualifiers>" query: the leading tokens must form the city
- * name as a contiguous word-prefix phrase (anchored from the first token, so
- * "san francisco" can't scatter across "Santiago … Caballeros"), and the rest
- * must read as location qualifiers.
- */
-function cityWithQualifiers(
-  nameTokens: readonly string[],
-  qualWords: readonly string[],
-  tokens: readonly string[],
-): boolean {
-  if (tokens.length <= nameTokens.length) return false;
-  for (let i = 0; i < nameTokens.length; i += 1) {
-    if (!nameTokens[i].startsWith(tokens[i])) return false;
-  }
-  return qualifiersOk(tokens.slice(nameTokens.length), qualWords);
-}
-
-/** Rank: exact name > prefix > substring > qualifier-only, then by population. */
-function nameScore(foldedName: string, normQuery: string): number {
-  if (foldedName === normQuery) return 3;
-  if (foldedName.startsWith(normQuery)) return 2;
-  if (foldedName.includes(normQuery)) return 1;
-  return 0;
 }
 
 /**
@@ -196,39 +88,38 @@ export interface IndexedCityMatch {
   readonly match: CityMatch;
 }
 
-/** The offline scan with each row's index in the bundled list (a stable ref within one build). */
+/** Search SQL in bounded pages; JS retains only one page and the requested matches. */
 export async function searchCityRowsOffline(query: string, limit = 8): Promise<IndexedCityMatch[]> {
-  if (query.trim().length < 2) return [];
-  const tokens = tokenize(query);
+  if (query.trim().length < 2 || limit <= 0) return [];
+  const tokens = placeTokens(query);
   if (tokens.length === 0) return [];
   const normQuery = tokens.join(' ');
-
-  const db = await loadCityDb();
-  const scored: Array<{ index: number; row: CityRow; score: number }> = [];
-  db.forEach((row, index) => {
-    const name = fold(row.n);
-    const nameTokens = splitWords(name);
-    const qualWords = qualifierWords(row);
-    const matched =
-      name.includes(normQuery) ||
-      cityWithQualifiers(nameTokens, qualWords, tokens) ||
-      tokens.every((token) => qualWords.some((w) => w.startsWith(token)));
-    if (matched) scored.push({ index, row, score: nameScore(name, normQuery) });
+  return withDerivedDb(async (db) => {
+    await ensureCitiesImported(db);
+    const results: IndexedCityMatch[] = [];
+    for (let offset = 0; ; offset += CITY_SQL_CANDIDATES) {
+      const candidates = await cityCandidates(db, query, offset);
+      // SQL uses the original rank/population/index order. Qualifier tolerance is
+      // checked here; paging preserves answers even with >200 rejected candidates.
+      for (const { index, row } of candidates) {
+        if (cityMatchRank(row, normQuery, tokens) < 0) continue;
+        results.push({ index, match: toMatch(row) });
+        if (results.length >= limit) return results;
+      }
+      if (candidates.length < CITY_SQL_CANDIDATES) return results;
+    }
   });
-
-  scored.sort((a, b) => b.score - a.score || b.row.p - a.row.p);
-  return scored.slice(0, limit).map(({ index, row }) => ({ index, match: toMatch(row) }));
 }
 
-/** One bundled row by index, offline. Undefined for an index outside the list. */
+/** One bundled reference row by its original list index. */
 export async function cityAtIndexOffline(index: number): Promise<CityMatch | undefined> {
   if (!Number.isSafeInteger(index) || index < 0) return undefined;
-  const row = (await loadCityDb())[index];
-  return row ? toMatch(row) : undefined;
+  return withDerivedDb(async (db) => {
+    await ensureCitiesImported(db);
+    const row = await cityRowAt(db, index);
+    return row ? toMatch(row) : undefined;
+  });
 }
-
-/** The fold every offline match uses (NFD, strip diacritics, lower-case). */
-export const foldPlaceText = fold;
 
 /**
  * Birthplace search — ONLINE-PRIMARY with an OFFLINE FALLBACK.

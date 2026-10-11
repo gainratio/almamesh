@@ -56,6 +56,8 @@ export type CachedPredictiveContexts = Omit<PredictiveContexts, WorkerResultKeys
  * satisfies this structurally.
  */
 export interface PredictiveRuntime {
+  /** Signed bundle manifest identity. Missing runtimes never persist period rows. */
+  identity?(): string;
   /** `options` only picks the engine memo's retention bound (time-travel periods). */
   computePredictive(input: PredictiveInput, options?: PredictiveCallOptions): Promise<PredictiveContexts>;
 }
@@ -151,8 +153,10 @@ export function predictiveRequestKey(input: EnsurePredictiveInput): string {
  * v2 → v3: expired receipts and signer keys that belonged to a prior Worker boot.
  * v3 → v4 (time travel step B): the engine timeline and Life Atlas changed, so
  * every older snapshot is a cache miss and is recomputed (derived data only).
+ * v4 → v5: circular-contact selection excludes false oppositions; recompute
+ * older slow-hit results without changing profiles, charts or life events.
  */
-export const PREDICTIVE_PERSIST_VERSION = 4;
+export const PREDICTIVE_PERSIST_VERSION = 5;
 
 /** The canonical SQLite key holding the persisted predictive slice. */
 export const PREDICTIVE_PERSIST_NAME = 'almamesh-predictive';
@@ -189,7 +193,7 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /** Keep cached calculations, but never carry per-Worker-boot proof across reloads. */
-function withoutBootProof(
+export function withoutBootProof(
   raw: CachedPredictiveContexts | undefined,
 ): CachedPredictiveContexts | undefined {
   if (!raw) return undefined;
@@ -293,8 +297,8 @@ export function coercePersistedPredictive(persisted: unknown): PersistedPredicti
 }
 
 /**
- * Every older version (v1-v3) was computed by an engine from before time travel
- * step B: its timeline can show "enters X" twice and its Life Atlas is stale.
+ * Older versions predate corrected circular contacts (v5); v1-v3 also predate
+ * the time-travel timeline correction. Their derived timings may be stale.
  * The snapshot is derived data, so it becomes a clean idle slate and the next
  * `ensurePredictive` recomputes it. Current-version blobs never reach `migrate`;
  * they flow through `merge`, which applies the proof-expiry rule.

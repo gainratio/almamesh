@@ -23,6 +23,8 @@ export interface DevicePolicy {
   readonly tier: DeviceTier;
   /** Terminate the chat embedder worker after this long with no embed in flight. */
   readonly embedderIdleReleaseMs: number;
+  /** May chat load MiniLM and keep a semantic-vector SQLite Worker resident? */
+  readonly semanticMemoryAllowed: boolean;
   /** Force-field post-processing: full bloom + vignette, one soft bloom, or none. */
   readonly forceFieldEffects: "full" | "lite" | "none";
   /** Upper bound of the force-field canvas device-pixel ratio. */
@@ -31,14 +33,13 @@ export interface DevicePolicy {
   readonly bootOverlapAllowed: boolean;
   /**
    * How many time-travel period computes stay in memory (apps/web periodSky.ts).
-   * Each holds a full predictive payload; recomputing one costs ~30 s.
+   * Other periods live in SQLite and are queried when revisited.
    */
   readonly periodSkyCacheSize: number;
   /**
-   * May a dated chat question run the engine for that period's sky? Measured
-   * 2026-10-09 at 4x CPU throttle: one period compute grows page+workers heap
-   * by ~165 MiB (to 425 lite / 419 minimal), past the 300 MiB budget in
-   * e2e/memoryBudget.ts. Where false, get_timing answers with dashas only.
+   * May a dated question run the deterministic engine for that period's sky?
+   * Day/place journeys are measured on minimal devices; SQLite keeps revisits
+   * from retaining an in-memory cache of every computed period.
    */
   readonly periodSkyComputeAllowed: boolean;
 }
@@ -47,28 +48,31 @@ export const DEVICE_POLICIES: Readonly<Record<DeviceTier, DevicePolicy>> = Objec
   minimal: Object.freeze({
     tier: "minimal",
     embedderIdleReleaseMs: 60_000,
+    semanticMemoryAllowed: false,
     forceFieldEffects: "none",
     forceFieldMaxDpr: 1,
     bootOverlapAllowed: false,
     periodSkyCacheSize: 1,
-    periodSkyComputeAllowed: false,
+    periodSkyComputeAllowed: true,
   }),
   lite: Object.freeze({
     tier: "lite",
     embedderIdleReleaseMs: 120_000,
+    semanticMemoryAllowed: false,
     forceFieldEffects: "lite",
     forceFieldMaxDpr: 1.5,
     bootOverlapAllowed: false,
-    periodSkyCacheSize: 3,
-    periodSkyComputeAllowed: false,
+    periodSkyCacheSize: 1,
+    periodSkyComputeAllowed: true,
   }),
   full: Object.freeze({
     tier: "full",
     embedderIdleReleaseMs: 600_000,
+    semanticMemoryAllowed: true,
     forceFieldEffects: "full",
     forceFieldMaxDpr: 2,
     bootOverlapAllowed: true,
-    periodSkyCacheSize: 5,
+    periodSkyCacheSize: 1,
     periodSkyComputeAllowed: true,
   }),
 });

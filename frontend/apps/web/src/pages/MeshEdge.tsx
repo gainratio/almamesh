@@ -298,6 +298,7 @@ function MeshEdgeContent({
     retrievedContext: readonly string[] = [],
     onAgentStatus?: (label: string | null) => void,
     asOf?: ChatThreadAsOf,
+    onTravel?: import('../lib/timeTravelTool').TravelRecorder,
   ): AsyncGenerator<string> {
     if (!siderealChart) {
       throw new Error(t('errors:needs_regeneration'));
@@ -325,6 +326,8 @@ function MeshEdgeContent({
       profileKey: anchorChart?.profile_id ?? anchorChart?.chart_id ?? anchor.id,
       birth: anchorChart?.birth_data as ProcessedBirthData | undefined,
       engine: chartEngineContext,
+      onTravel,
+      language,
       ...(asOf ? { pinned: asOf } : {}),
     });
     const prepared = await toolset.prepare(question, {
@@ -348,6 +351,13 @@ function MeshEdgeContent({
       toolset.tools.some((tool) => tool.name === RESOLVE_PLACE_TOOL_NAME),
       prepared.pinned,
     );
+    if (prepared.timingFacts?.length) {
+      const [system, ...rest] = messages;
+      messages = [{
+        ...system,
+        content: `${system.content ?? ''}\n\nVERIFIED LOCAL TIMING: These are local engine facts or an explicit timing clarification status for this question. Use available facts even if no additional tools are called, respecting their periods and availability notes. If clarification is required, ask for it rather than inventing timing or claiming the tools are unavailable. Astrological patterns do not identify a person's life events. Do not guess life events; ask what occurred and offer a grounded interpretation.\n${JSON.stringify(prepared.timingFacts)}`,
+      }, ...rest];
+    }
     if (prepared.currentContextUnavailable) {
       const [system, ...rest] = messages;
       messages = [
@@ -355,7 +365,7 @@ function MeshEdgeContent({
           ...system,
           content:
             `${system.content ?? ''}\n\n` +
-            'CURRENT-CONTEXT SAFETY: This question requires exact-day planetary facts, but the on-device calculation was unavailable. Say that plainly and do not infer current transits or timing from natal or relationship facts.',
+            'CURRENT-CONTEXT SAFETY: The on-device calculation of current transits was unavailable. Say that plainly and do not infer unavailable current transits from natal or relationship facts. Use any verified local dasha facts supplied above.',
         },
         ...rest,
       ];
@@ -403,6 +413,7 @@ function MeshEdgeContent({
     retrievedContext: readonly string[] = [],
     onAgentStatus?: (label: string | null) => void,
     asOf?: ChatThreadAsOf,
+    onTravel?: import('../lib/timeTravelTool').TravelRecorder,
   ): Promise<{ answer: string; timing_guidance?: string | null; remedies?: string[] | null }> => {
     const controller = new AbortController();
     let answer = '';
@@ -415,6 +426,7 @@ function MeshEdgeContent({
         retrievedContext,
         onAgentStatus,
         asOf,
+        onTravel,
       )) {
         answer += delta;
         onToken(delta);

@@ -338,6 +338,8 @@ describe('MeshEdgePage', () => {
       'get_current_datetime',
       'get_chart_facts',
       'get_timing',
+      'resolve_place',
+      'time_travel',
     ]);
     expect(JSON.stringify(options.messages)).toContain('ENGINE RELATIONSHIP CONTEXT');
     expect(JSON.stringify(options.messages)).not.toContain(ANCHOR.name);

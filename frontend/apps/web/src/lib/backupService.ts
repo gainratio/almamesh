@@ -60,6 +60,8 @@ import { safeWarn } from '@almamesh/shared-types';
 import type { BackupEnvelopePlain } from '@almamesh/shared-types';
 import type { IndexableMessage } from '@almamesh/memory';
 import { clearMemory, rebuildMemory } from './chatMemory';
+import { devicePolicy } from '@almamesh/browser';
+import { clearPeriodSky as clearDerivedPeriodSky } from './derivedDataLifecycle';
 import { publishDeletionNotice } from './deletionPropagation';
 
 const MEMORY_REBUILD_SLA_MS = 30_000;
@@ -97,7 +99,9 @@ export interface BackupDepsOverride {
   finalizeBackupRestore?: typeof finalizeBackupRestore;
   abortBackupRestore?: typeof abortBackupRestore;
   clearChatMemory?: () => Promise<void>;
+  clearPeriodSky?: () => Promise<void>;
   rebuildChatMemory?: (messages: readonly IndexableMessage[]) => Promise<void>;
+  semanticMemoryAllowed?: () => boolean;
   completeMemoryRebuild?: (epoch: number) => Promise<void>;
   publishDatasetNotice?: (notice: {
     readonly kind: 'dataset';
@@ -466,7 +470,8 @@ async function readPortableEnvelope(
 /**
  * Write a staged envelope into the stores (Replace), revive only IDs explicitly
  * carried by that backup, then drain/replace semantic memory from restored chat.
- * The promise resolves only after search backfill succeeds. Deliberately does
+ * Constrained devices defer semantic backfill and retain its recovery marker.
+ * The canonical restore still completes. Deliberately does
  * NOT reload the page or take the pre-import safety-net export — the caller owns
  * both.
  */
@@ -484,7 +489,25 @@ export async function commitBackupImport(
     override?.beginBackupRestore ?? (browserEffects ? beginBackupRestore : async () => 0);
   const rebuild =
     override?.rebuildChatMemory ?? (browserEffects ? rebuildMemory : async () => undefined);
+  const rebuildAfterRestore = async (restoredEpoch?: number): Promise<void> => {
+    const allowed = override?.semanticMemoryAllowed?.() ?? (!browserEffects || devicePolicy().semanticMemoryAllowed);
+    if (!allowed) return;
+    try {
+      await withinMemoryRebuildSla(rebuild(restoredChatMessages(plain)));
+      const epoch = restoredEpoch ?? await (override?.readActiveEpoch ?? (async () =>
+        (await readDeletionTombstones()).activeEpoch))();
+      await (override?.completeMemoryRebuild ??
+        (browserEffects ? clearMemoryRebuildPending : async () => undefined))(epoch);
+    } catch {
+      safeWarn('backup.memory_rebuild_deferred');
+    }
+  };
   const clear = override?.clearChatMemory ?? (browserEffects ? clearMemory : async () => undefined);
+  const clearSky = override?.clearPeriodSky ?? (browserEffects ? clearDerivedPeriodSky : async () => undefined);
+  const purgeSky = async (): Promise<void> => {
+    try { await withinMemoryRebuildSla(clearSky()); }
+    catch { safeWarn('backup.period_sky_purge_failed'); }
+  };
   const publish =
     override?.publishDatasetNotice ?? (browserEffects ? publishDeletionNotice : () => undefined);
   const finalizeRestore =
@@ -507,15 +530,8 @@ export async function commitBackupImport(
       publish({ kind: 'dataset', operation: 'replace', phase: 'abort', presentStoreKeys });
       throw error;
     }
-    try {
-      await withinMemoryRebuildSla(rebuild(restoredChatMessages(plain)));
-      const epoch = await (override?.readActiveEpoch ?? (async () =>
-        (await readDeletionTombstones()).activeEpoch))();
-      await (override?.completeMemoryRebuild ??
-        (browserEffects ? clearMemoryRebuildPending : async () => undefined))(epoch);
-    } catch {
-      safeWarn('backup.memory_rebuild_deferred');
-    }
+    await purgeSky();
+    await rebuildAfterRestore();
     publish({ kind: 'dataset', operation: 'replace', phase: 'complete', presentStoreKeys });
     return;
   }
@@ -545,6 +561,7 @@ export async function commitBackupImport(
     }
   };
   try {
+    await purgeSky();
     if (!browserEffects) await clear();
     await applyGeneration(plain, epoch);
   } catch (error) {
@@ -565,13 +582,7 @@ export async function commitBackupImport(
     });
     throw error;
   }
-  try {
-    await withinMemoryRebuildSla(rebuild(restoredChatMessages(plain)));
-    await (override?.completeMemoryRebuild ??
-      (browserEffects ? clearMemoryRebuildPending : async () => undefined))(epoch);
-  } catch {
-    safeWarn('backup.memory_rebuild_deferred');
-  }
+  await rebuildAfterRestore(epoch);
   publish({ kind: 'dataset', operation: 'replace', phase: 'complete', presentStoreKeys });
 }
 

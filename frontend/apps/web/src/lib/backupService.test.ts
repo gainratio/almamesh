@@ -34,6 +34,7 @@ import {
   buildBackupExport,
   commitBackupImport,
   stageBackupImport,
+  type StagedImport,
 } from './backupService';
 
 // --- golden files written by the pre-age app (packages/store fixtures) --------
@@ -121,6 +122,54 @@ function seededSource() {
   const tiers = { local, idb } as Record<'local' | 'idb', StorageTier>;
   return { tiers, override: { tiers, now: FIXED_NOW, appVersion: FIXED_VERSION } };
 }
+
+describe('restored dataset period skies', () => {
+  it.each(['json', 'sqlite', 'bundle'] as const)('restores %s without starting or completing a deferred semantic rebuild', async (kind) => {
+    const { tiers } = seededSource();
+    const plain = await collectBackup({ tiers, appVersion: FIXED_VERSION, now: FIXED_NOW });
+    const destination = { local: memTier(), idb: memTier() };
+    const importPortableState = vi.fn().mockResolvedValue(undefined);
+    const rebuildChatMemory = vi.fn().mockResolvedValue(undefined);
+    const completeMemoryRebuild = vi.fn().mockResolvedValue(undefined);
+    const publishDatasetNotice = vi.fn();
+    const staged: BackupEnvelopePlain | StagedImport = kind === 'json' ? plain
+      : kind === 'sqlite'
+        ? { kind, envelope: plain, bytes: new Uint8Array(), wasEncrypted: false }
+        : { kind, envelope: plain, bytes: new Uint8Array(), wasEncrypted: true };
+    await commitBackupImport(staged, {
+      tiers: destination, semanticMemoryAllowed: () => false,
+      importPortableState, rebuildChatMemory, completeMemoryRebuild, publishDatasetNotice,
+      readActiveEpoch: async () => 1,
+    });
+
+    expect(rebuildChatMemory).not.toHaveBeenCalled();
+    expect(completeMemoryRebuild).not.toHaveBeenCalled();
+    expect(publishDatasetNotice.mock.calls.map(([notice]) => notice.phase)).toEqual(['begin', 'complete']);
+    if (kind === 'json') {
+      expect(JSON.parse((await destination.idb.get('almamesh-profiles'))!)).toMatchObject({ state: PROFILES_STATE });
+    } else {
+      expect(importPortableState).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it('clears the derived sky cache during a legacy JSON restore', async () => {
+    const { tiers, override } = seededSource();
+    const plain = await collectBackup({ tiers, appVersion: FIXED_VERSION, now: FIXED_NOW });
+    const clearPeriodSky = vi.fn(async () => undefined);
+    await commitBackupImport(plain, { ...override, clearPeriodSky });
+    expect(clearPeriodSky).toHaveBeenCalledTimes(1);
+  });
+
+  it('clears the derived sky cache after a SQLite restore too', async () => {
+    const { tiers, override } = seededSource();
+    const plain = await collectBackup({ tiers, appVersion: FIXED_VERSION, now: FIXED_NOW });
+    const clearPeriodSky = vi.fn(async () => undefined);
+    await commitBackupImport({ kind: 'sqlite', envelope: plain, bytes: new Uint8Array(), wasEncrypted: false }, {
+      ...override, clearPeriodSky, importPortableState: async () => undefined, readActiveEpoch: async () => 1,
+    });
+    expect(clearPeriodSky).toHaveBeenCalledTimes(1);
+  });
+});
 
 // --- buildBackupExport -------------------------------------------------------
 
@@ -285,6 +334,7 @@ describe('portable SQLite import', () => {
 
     await commitBackupImport(staged, {
       importPortableState,
+      semanticMemoryAllowed: () => true,
       rebuildChatMemory,
       completeMemoryRebuild,
       readActiveEpoch: vi.fn().mockResolvedValue(8),
@@ -364,6 +414,7 @@ describe('encrypted bundle round-trip (format v3)', () => {
 
   function browserB() {
     return {
+      semanticMemoryAllowed: () => true,
       importPortableState: vi.fn().mockResolvedValue(undefined),
       rebuildChatMemory: vi.fn().mockResolvedValue(undefined),
       completeMemoryRebuild: vi.fn().mockResolvedValue(undefined),
@@ -994,4 +1045,3 @@ describe('legacy JSON import repairs dangling references (2026-10-05 audit)', ()
     expect(staged.repairs).toBe(repairs);
   });
 });
-

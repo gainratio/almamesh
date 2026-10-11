@@ -251,6 +251,17 @@ export function readObservedDatasetEpoch(): number {
   return observedActiveEpoch;
 }
 
+/**
+ * Whether each live store hydrated at this settled dataset generation.
+ * Await the stores' hydration barriers and read the durable ledger first;
+ * observing a newer ledger alone never makes an older snapshot current.
+ */
+export function areDatasetStoresCurrent(names: readonly string[], epoch: number): boolean {
+  return Number.isSafeInteger(epoch) && epoch >= 0 && names.length > 0
+    && !observedRestoreInProgress && observedActiveEpoch === epoch
+    && names.every((name) => locallyHydratedDatasetEpochs.get(name) === epoch);
+}
+
 function markPreferencesHydrated(ledger: DeletionTombstones): void {
   if (ledger.restoreInProgress) return;
   for (const key of PORTABLE_PREFERENCE_HYDRATION_KEYS) {
@@ -1638,11 +1649,13 @@ async function readDeletionAwareValue(
     const { snapshot, tombstones } = await settledSnapshot(repository);
     observeDurableLedger(tombstones);
     const value = snapshot.values.get(name);
-    if (!tombstones.restoreInProgress) {
-      locallyHydratedDatasetEpochs.set(name, tombstones.activeEpoch);
-      leaseHydratedDatasetEpochs.delete(name);
-    } else if (acknowledgeHydration) {
-      leaseHydratedDatasetEpochs.set(name, tombstones.activeEpoch);
+    if (acknowledgeHydration) {
+      if (!tombstones.restoreInProgress) {
+        locallyHydratedDatasetEpochs.set(name, tombstones.activeEpoch);
+        leaseHydratedDatasetEpochs.delete(name);
+      } else {
+        leaseHydratedDatasetEpochs.set(name, tombstones.activeEpoch);
+      }
     }
     if (value === undefined || persistedEpoch(value) !== tombstones.activeEpoch) {
       if (acknowledgeHydration) locallyAcknowledgedDatasetValues.set(name, null);
@@ -1654,7 +1667,7 @@ async function readDeletionAwareValue(
   }
   const { value, ledger: tombstones } = readSessionValueAndLedger(name);
   observeDurableLedger(tombstones);
-  if (!tombstones.restoreInProgress) {
+  if (acknowledgeHydration && !tombstones.restoreInProgress) {
     locallyHydratedDatasetEpochs.set(name, tombstones.activeEpoch);
   }
   if (typeof value !== 'string' || persistedEpoch(value) !== tombstones.activeEpoch) {

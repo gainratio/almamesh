@@ -21,9 +21,11 @@ vi.mock('../chatAgentTools', async (importOriginal) => {
 
 import { createChatAgentTools } from '../chatAgentTools';
 import { buildChatToolset, type BuildChatToolsetInput } from '../chatToolset';
+import { TIME_TRAVEL_TOOL_NAME } from '../timeTravelTool';
+import { CHART as TIMING_CHART, SKY_CHART } from './timingFixtures';
 
 const CHART = { ayanamsa_value: 23.7, lagna: {}, planets: [], houses: [], yogas: [] } as unknown as SiderealChart;
-const TODAY_CHART = { ...CHART, ayanamsa_value: 23.71 } as unknown as SiderealChart;
+const TODAY_CHART = { ...SKY_CHART, ayanamsa_value: 23.71 } as unknown as SiderealChart;
 const BIRTH = {
   birth_datetime_utc: '1990-01-15T06:30:00Z',
   birth_datetime_local: '1990-01-15T12:00:00',
@@ -60,6 +62,19 @@ function toolset(overrides: Partial<BuildChatToolsetInput> = {}) {
 const options = () => ({ now: SPLIT_DAY_NOW, signal: new AbortController().signal });
 const timingOf = (built: ReturnType<typeof toolset>) => built.tools.find((tool) => tool.name === 'get_timing')!;
 
+describe('chat time travel registration', () => {
+  it('only advertises a move when this turn has a recorder, and actually records both directions', async () => {
+    expect(toolset().tools.map((tool) => tool.name)).not.toContain(TIME_TRAVEL_TOOL_NAME);
+    const onTravel = vi.fn();
+    const tool = toolset({ onTravel, language: 'en' }).tools.find((candidate) => candidate.name === TIME_TRAVEL_TOOL_NAME);
+    expect(tool).toBeDefined();
+    await tool!.execute({ action: 'travel', period: 'year', date: '2027' }, options());
+    expect(onTravel).toHaveBeenLastCalledWith({ kind: 'travel', asOf: { start: '2027-01-01', end: '2027-12-31', granularity: 'year' } });
+    await tool!.execute({ action: 'back_to_today' }, options());
+    expect(onTravel).toHaveBeenLastCalledWith({ kind: 'back_to_today' });
+  });
+});
+
 beforeEach(() => {
   ensureMock.mockReset().mockResolvedValue(TODAY_CHART);
   loadMock.mockReset().mockResolvedValue({});
@@ -85,10 +100,96 @@ describe('buildChatToolset: one "today", the viewer zone', () => {
 });
 
 describe('buildChatToolset: router', () => {
+  it('grounds a named month before inference without requiring a model tool call', async () => {
+    loadMock.mockResolvedValue({ transit_context: SKY_CHART.transit_context });
+    const prepared = await toolset({ chart: TIMING_CHART, periodSkyAllowed: true })
+      .prepare('What happened in September 2017?', options());
+    expect(prepared.asOf).toMatchObject({ basis: 'period', period: { start: '2017-09-01', end: '2017-09-30' } });
+    expect(prepared.timingFacts).toHaveLength(2);
+    expect(prepared.timingFacts[0]?.result).toMatchObject({ section: 'dashas', data: { maha: [{ lord: 'jupiter' }], antar: [{ lord: 'saturn' }] } });
+    expect(prepared.timingFacts[1]?.result).toMatchObject({ section: 'transits', shown: 'transits', period: { start: '2017-09-01', end: '2017-09-30' } });
+    expect(loadMock).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(loadMock.mock.calls[0])).toContain('2017-09-01');
+    expect(ensureMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['2017-09', '2017-09-01', '2017-09-30'],
+    ['2017', '2017-01-01', '2017-12-31'],
+    ['septiembre de 2017', '2017-09-01', '2017-09-30'],
+    ['setembro de 2017', '2017-09-01', '2017-09-30'],
+  ])('grounds the supported literal period %s', async (question, start, end) => {
+    const prepared = await toolset({ chart: TIMING_CHART, periodSkyAllowed: false }).prepare(question, options());
+    expect(prepared.asOf).toMatchObject({ basis: 'period', period: { start, end } });
+    expect(prepared.timingFacts[0]?.result).toMatchObject({ period: { start, end }, section: 'dashas' });
+  });
+
+  it('uses an explicitly requested period for this turn without changing the selected pin', async () => {
+    const pin = { start: '2017-09-01', end: '2017-09-30', granularity: 'month' } as const;
+    const onTravel = vi.fn();
+    const built = toolset({ chart: TIMING_CHART, pinned: pin, periodSkyAllowed: false, onTravel });
+    const dated = await built.prepare('What changed in June 2019?', options());
+    expect(dated.asOf).toMatchObject({ basis: 'period', period: { start: '2019-06-01', end: '2019-06-30' } });
+    const followup = await built.prepare('What was happening then?', options());
+    expect(followup.asOf).toMatchObject({ basis: 'period', period: { start: pin.start, end: pin.end } });
+    expect(onTravel).not.toHaveBeenCalled();
+    expect(pin).toEqual({ start: '2017-09-01', end: '2017-09-30', granularity: 'month' });
+  });
+
+  it.each(['June and September 2017', '2017 to 2019', 'summer 2017', '03/04/2017', '1899', '2053'])(
+    'does not silently reuse the pin or invent a period for %s', async (question) => {
+      const pin = { start: '2017-09-01', end: '2017-09-30', granularity: 'month' } as const;
+      const prepared = await toolset({ chart: TIMING_CHART, pinned: pin, periodSkyAllowed: true }).prepare(question, options());
+      expect(prepared.pinned).toBeUndefined();
+      expect(prepared.currentContextUnavailable).toBe(false);
+      expect(prepared.timingFacts[0]?.result).toMatchObject({ status: 'needs_clarification', data: { available: false, reason: expect.stringMatching(/period/) } });
+      expect(loadMock).not.toHaveBeenCalled();
+      expect(ensureMock).not.toHaveBeenCalled();
+    });
+
+  it('uses the existing before-birth refusal before any period engine call', async () => {
+    const prepared = await toolset({ chart: TIMING_CHART, periodSkyAllowed: true }).prepare('1980', options());
+    expect(prepared.asOf).toMatchObject({ basis: 'period', period: { start: '1980-01-01', end: '1980-12-31' } });
+    expect(prepared.timingFacts).toHaveLength(2);
+    expect(prepared.timingFacts[0]?.result).toMatchObject({ error: expect.stringContaining('before') });
+    expect(loadMock).not.toHaveBeenCalled();
+  });
+
+  it('does not relabel an unrelated current predictive block as historical facts', async () => {
+    const prepared = await toolset({ chart: TIMING_CHART, promptChart: TODAY_CHART, periodSkyAllowed: false })
+      .prepare('September 2017', options());
+    expect(prepared.chart.transit_context).toBeUndefined();
+    expect(prepared.chart.strength_context).toBeUndefined();
+    expect(prepared.chart.varga_context_full).toBeUndefined();
+    expect(prepared.chart.domains_context).toBeUndefined();
+    expect(prepared.chart.dashas).toEqual(TIMING_CHART.dashas);
+    expect(TODAY_CHART.transit_context).toBeDefined();
+  });
+
+  it.each([
+    'Compare June 2019 with today',
+    'June 2019 and today',
+    'Compare octubre de 2026 con hoy',
+    'Compare outubro de 2026 com hoje',
+    'Compare September 11, 2017 with today',
+    'Compare 03/04/2017 with today',
+    'Compare summer 2017 with today',
+    'September 11, 2017 versus today',
+    'Compara 11 septiembre de 2017 con hoy',
+    'Compare verão de 2017 com hoje',
+  ])('does not choose one period from a current-day comparison: %s', async (question) => {
+    const prepared = await toolset({ pinned: { start: '2017-09-01', end: '2017-09-30', granularity: 'month' }, periodSkyAllowed: true })
+      .prepare(question, { ...options(), now: new Date('2026-10-11T17:00:00Z') });
+    expect(prepared.timingFacts[0]?.result).toMatchObject({ status: 'needs_clarification', data: { reason: 'ambiguous_period' } });
+    expect(prepared.pinned).toBeUndefined();
+    expect(ensureMock).not.toHaveBeenCalled();
+    expect(loadMock).not.toHaveBeenCalled();
+  });
+
   it('does not pre-run today for a dated question', async () => {
     const prepared = await toolset().prepare('transits in June 2019', options());
     expect(ensureMock).not.toHaveBeenCalled();
-    expect(prepared.asOf.basis).toBe('chart');
+    expect(prepared.asOf).toMatchObject({ basis: 'period', period: { start: '2019-06-01', end: '2019-06-30' } });
     expect(prepared.chart).toBe(CHART);
   });
 
@@ -165,17 +266,15 @@ describe('buildChatToolset: period sky', () => {
   beforeEach(() => setDeviceMemory(8));
   afterEach(() => Reflect.deleteProperty(navigator, 'deviceMemory'));
 
-  it('a lite device (4 GB) answers a dated question with dashas only and never computes the sky', async () => {
+  it('a lite device (4 GB) computes dated transits through the bounded period cache', async () => {
     setDeviceMemory(4);
-    const result = await timingOf(toolset()).execute(
-      { section: 'transits', start: '2019-06-01', end: '2019-06-30' },
-      options(),
+    await timingOf(toolset()).execute(
+      { section: 'transits', start: '2019-06-01', end: '2019-06-30' }, options(),
     );
-    expect(loadMock).not.toHaveBeenCalled();
-    expect(result).toMatchObject({
-      shown: 'dashas',
-      notes: expect.arrayContaining(['This device answers dated questions with dashas only, to stay within memory.']),
-    });
+    expect(loadMock).toHaveBeenCalledWith(
+      expect.objectContaining({ referenceInstant: '2019-06-01T00:00:00Z' }),
+      expect.anything(), expect.any(AbortSignal),
+    );
   });
 
   it('loads a period through the period-sky cache at the period start', async () => {
@@ -220,7 +319,7 @@ describe('buildChatToolset: places', () => {
     expect(names(false)).toEqual(['get_current_datetime', 'get_chart_facts', 'get_timing']);
   });
 
-  it('follows devicePolicy when no seam is passed: full tier gets resolve_place, lite does not', () => {
+  it('follows devicePolicy when no seam is passed: full and lite tiers get resolve_place', () => {
     const names = (gib: number) => {
       Object.defineProperty(navigator, 'deviceMemory', { value: gib, configurable: true });
       Object.defineProperty(navigator, 'hardwareConcurrency', { value: 8, configurable: true });
@@ -232,10 +331,10 @@ describe('buildChatToolset: places', () => {
       }
     };
     expect(names(8)).toContain('resolve_place');
-    expect(names(4)).not.toContain('resolve_place');
+    expect(names(4)).toContain('resolve_place');
   });
 
-  it('a lite device gets no place reader and no Moon loader at all', () => {
+  it('the explicit disabled-compute seam gets no place reader or Moon loader', () => {
     toolset({ periodSkyAllowed: false });
     const lite = vi.mocked(createChatAgentTools).mock.lastCall?.[0];
     expect(lite).toMatchObject({ periodSkyAllowed: false });
@@ -247,7 +346,7 @@ describe('buildChatToolset: places', () => {
     expect(full?.loadMoonWindow).toBeTypeOf('function');
   });
 
-  it('a lite device never looks a place up, even for dashas over a month with segments', async () => {
+  it('the explicit disabled-compute seam never looks up a segmented place', async () => {
     const placeFromRef = vi.fn(async () => LIMA);
     const segments = [{ start: '2026-06-01', end: '2026-06-15', place_ref: 'city:5' }, { start: '2026-06-16', end: '2026-06-30', place_ref: 'city:5' }];
     const result = await timingOf(toolset({ periodSkyAllowed: false, placeFromRef })).execute({ section: 'dashas', segments }, options());
@@ -255,7 +354,7 @@ describe('buildChatToolset: places', () => {
     expect(placeFromRef).not.toHaveBeenCalled();
   });
 
-  it('a lite device never asks where: a day of transits is dashas only', async () => {
+  it('the explicit disabled-compute seam answers a day with dashas only', async () => {
     const result = await timingOf(toolset({ periodSkyAllowed: false })).execute({ section: 'transits', start: '2026-06-15' }, options());
     expect(result).toMatchObject({ shown: 'dashas' });
   });
@@ -298,12 +397,76 @@ describe('a pinned thread', () => {
     loadMock.mockResolvedValue(CHART);
   });
 
-  it('warms the pinned period before the model runs, and never today, whatever the question', async () => {
+  it('warms the pinned period before the model runs for contextual questions', async () => {
     const pinned = toolset({ pinned: YEAR_2027, periodSkyAllowed: true });
-    await pinned.prepare("what's happening today?", options());
+    await pinned.prepare("what was happening then?", options());
     expect(ensureMock).not.toHaveBeenCalled();
     expect(loadMock).toHaveBeenCalledTimes(1);
     expect(JSON.stringify(loadMock.mock.calls[0])).toContain('2027-01-01');
+  });
+
+  it('grounds the exact September 2017 question in selected engine dashas even if the model uses no tool', async () => {
+    const pin = { start: '2017-09-01', end: '2017-09-30', granularity: 'month' } as const;
+    const prepared = await toolset({ chart: TIMING_CHART, pinned: pin, periodSkyAllowed: false })
+      .prepare('this was a challenging time what do you think happened', options());
+    const facts = JSON.stringify(prepared.timingFacts);
+    expect(facts).toContain('2017-09-01');
+    expect(facts).toContain('jupiter');
+    expect(facts).toContain('saturn');
+    expect(loadMock).not.toHaveBeenCalled();
+  });
+
+  it('bounds grounding including wrappers, preserving dashas and an explicit period-labelled sky overflow', async () => {
+    const period = { start: '2027-01-01', end: '2027-12-31', basis: 'period', days: 365 };
+    vi.mocked(createChatAgentTools).mockReturnValueOnce([{ name: 'get_timing', execute: vi.fn(async (args) => ({
+      period, section: args.section, shown: args.section, notes: ['A full year was selected.'],
+      data: args.section === 'dashas' ? { maha: [{ lord: 'saturn' }] } : { rows: 'x'.repeat(20_000) },
+    })) } as never]);
+    const prepared = await toolset({ pinned: YEAR_2027 }).prepare('What matters then?', options());
+    expect(JSON.stringify(prepared.timingFacts).length).toBeLessThanOrEqual(16_384);
+    expect(prepared.timingFacts[0]?.result).toMatchObject({ data: { maha: [{ lord: 'saturn' }] } });
+    expect(prepared.timingFacts[1]?.result).toMatchObject({ period,
+      notes: expect.arrayContaining(['A full year was selected.', expect.stringContaining('too large')]),
+      data: { available: false, reason: 'result_too_large' },
+    });
+  });
+
+  it('keeps selected dasha facts when the period engine reports unavailable sky', async () => {
+    loadMock.mockRejectedValue(new Error('engine down'));
+    const pin = { start: '2017-09-01', end: '2017-09-30', granularity: 'month' } as const;
+    const prepared = await toolset({ chart: TIMING_CHART, pinned: pin, periodSkyAllowed: true }).prepare('What happened?', options());
+    expect(prepared.timingFacts[0]?.result).toMatchObject({ data: { maha: [{ lord: 'jupiter' }], antar: [{ lord: 'saturn' }] } });
+    expect(prepared.timingFacts[1]?.result).toMatchObject({ period: { start: pin.start, end: pin.end }, data: { available: false, reason: 'engine_unavailable' } });
+  });
+
+  it('outlook today reads real current context even in a persisted September pin', async () => {
+    ensureMock.mockResolvedValue(TODAY_CHART);
+    const pin = { start: '2017-09-01', end: '2017-09-30', granularity: 'month' } as const;
+    const set = toolset({ pinned: pin, periodSkyAllowed: true });
+    const now = new Date('2026-10-11T17:00:00Z');
+    const prepared = await set.prepare('outlook today?', { ...options(), now });
+    expect(prepared.asOf.basis).toBe('today');
+    expect(prepared.pinned).toBeUndefined();
+    expect(prepared.currentContextUnavailable).toBe(false);
+    expect(ensureMock).toHaveBeenCalledTimes(1);
+    expect(loadMock).not.toHaveBeenCalled();
+    const read = await timingOf(set).execute({ section: 'dashas' }, { ...options(), now });
+    expect(read).toMatchObject({ period: { start: '2026-10-11', end: '2026-10-11', basis: 'today' } });
+  });
+
+  it.each([
+    'What are my transits today, October 11?',
+    'Mis tránsitos hoy, 11 octubre',
+    'Meus trânsitos hoje, 11 outubro',
+  ])('an explicit today question with a calendar label ignores the historical pin for this turn: %s', async (question) => {
+    ensureMock.mockResolvedValue(TODAY_CHART);
+    const pin = { start: '2017-09-01', end: '2017-09-30', granularity: 'month' } as const;
+    const built = toolset({ pinned: pin, periodSkyAllowed: true });
+    const prepared = await built.prepare(question, { ...options(), now: new Date('2026-10-11T17:00:00Z') });
+    expect(prepared.asOf.basis).toBe('today');
+    expect(prepared.pinned).toBeUndefined();
+    expect(ensureMock).toHaveBeenCalledTimes(1);
+    expect(loadMock).not.toHaveBeenCalled();
   });
 
   it('labels the prompt with the period and hands back the pin with its tense (viewer day)', async () => {
@@ -326,7 +489,7 @@ describe('a pinned thread', () => {
     expect(lite).toHaveBeenCalledWith('Reading dasha periods');
   });
 
-  it('a lite device answers a Day pin with dashas only and reads no place', async () => {
+  it('the explicit disabled-compute seam answers a Day pin with dashas only', async () => {
     const placeFromRef = vi.fn();
     const pinned = toolset({ pinned: DAY_PIN, periodSkyAllowed: false, placeFromRef });
     await pinned.prepare('q', options());

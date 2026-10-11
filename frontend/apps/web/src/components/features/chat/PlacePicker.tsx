@@ -5,7 +5,7 @@
  */
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { ChatThreadAsOf } from '@almamesh/shared-types';
+import { safeWarn, type ChatThreadAsOf } from '@almamesh/shared-types';
 
 import type { PlaceLookup, ResolvedPlace } from '../../../lib/geo/placeLookup';
 
@@ -36,9 +36,13 @@ export function PlacePicker({ place, lookup, onPick }: PlacePickerProps) {
   const { t } = useTranslation('chat');
   const [query, setQuery] = useState(place?.label ?? '');
   const [options, setOptions] = useState<readonly ResolvedPlace[] | null>(null);
+  const [lookupFailed, setLookupFailed] = useState(false);
+  const [retry, setRetry] = useState(0);
 
   useEffect(() => {
     const text = query.trim();
+    setLookupFailed(false);
+    setOptions(null);
     if (text.length < 2) {
       setOptions(null);
       return;
@@ -46,18 +50,22 @@ export function PlacePicker({ place, lookup, onPick }: PlacePickerProps) {
     if (text === place?.label) return;
     let cancelled = false;
     const handle = setTimeout(() => {
-      lookup(text)
-        .then((result) => candidatesOf(result))
-        .catch(() => [] as readonly ResolvedPlace[])
-        .then((found) => {
-          if (!cancelled) setOptions(found);
+      void lookup(text)
+        .then((result) => {
+          if (!cancelled) setOptions(candidatesOf(result));
+        })
+        .catch((error: unknown) => {
+          if (!cancelled) {
+            safeWarn('geo.city_lookup_failed', error);
+            setLookupFailed(true);
+          }
         });
     }, DEBOUNCE_MS);
     return () => {
       cancelled = true;
       clearTimeout(handle);
     };
-  }, [query, lookup, place?.label]);
+  }, [query, lookup, place?.label, retry]);
 
   return (
     <div data-testid="time-travel-where" className="mt-3">
@@ -79,6 +87,12 @@ export function PlacePicker({ place, lookup, onPick }: PlacePickerProps) {
         className="mt-1 w-full rounded-lg border border-ui-border bg-background-primary px-3 py-2 text-sm text-text-primary"
       />
       {!place && <p data-testid="time-travel-where-required" className="mt-1 text-xs text-text-muted">{t('time_travel.sheet.where_required')}</p>}
+      {lookupFailed && <div data-testid="time-travel-where-failed" role="alert" className="mt-1 text-xs text-text-muted">
+        <p>{t('time_travel.sheet.where_failed')}</p>
+        <button type="button" data-testid="time-travel-where-retry" onClick={() => setRetry((value) => value + 1)} className="mt-1 underline">
+          {t('time_travel.sheet.retry_lookup')}
+        </button>
+      </div>}
       {options?.length === 0 && <p data-testid="time-travel-where-none" className="mt-1 text-xs text-text-muted">{t('time_travel.sheet.where_none')}</p>}
       {!place && options && options.length > 0 && (
         <ul className="mt-1 flex flex-col gap-1">

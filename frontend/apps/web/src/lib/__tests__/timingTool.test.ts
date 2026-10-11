@@ -42,6 +42,13 @@ function tool(overrides: Partial<Parameters<typeof createTimingTool>[0]> = {}) {
 }
 
 describe('get_timing contract', () => {
+  it.each([true, false])('requires clarified dates for vague periods when period sky is allowed: %s', (periodSkyAllowed) => {
+    const description = tool({ periodSkyAllowed }).description;
+    expect(description).toMatch(/vague ranges.*ask the user to clarify.*before calling this tool/u);
+    expect(description).toContain('never choose dates for them');
+    expect(description).not.toContain('pick a sensible range');
+  });
+
   it('is named get_timing, takes optional start/end days, and waits up to 150 s', () => {
     const timing = tool();
     expect(timing.name).toBe('get_timing');
@@ -59,6 +66,21 @@ describe('get_timing contract', () => {
 });
 
 describe('get_timing with no dates', () => {
+  it('selects today from dated engine rows rather than stale current dasha markers', async () => {
+    const chart = { ...CHART, dashas: { ...DASHAS,
+      current_maha: DASHAS.maha_dasha_sequence[0], current_antar: DASHAS.maha_dasha_sequence[0].antar_sequence[0],
+      maha_dasha_sequence: [...DASHAS.maha_dasha_sequence, {
+        lord: 'saturn', start_date: '2023-06-01T00:00:00Z', end_date: '2042-06-01T00:00:00Z', duration_years: 19,
+        antar_sequence: [{ lord: 'venus', start_date: '2025-01-01T00:00:00Z', end_date: '2028-01-01T00:00:00Z', duration_years: 3 }],
+      }],
+    } } as unknown as SiderealChart;
+    const loadCurrentChart = vi.fn();
+    const result = await tool({ chart, loadCurrentChart }).execute({ section: 'dashas' }, context());
+    expect(result).toMatchObject({ data: { maha: [{ lord: 'saturn' }], antar: [{ lord: 'venus' }] } });
+    expect(JSON.stringify(result)).not.toContain('rahu');
+    expect(loadCurrentChart).not.toHaveBeenCalled();
+  });
+
   it("means today, labelled 'today', and never loads a period sky", async () => {
     const loadPeriodChart = vi.fn();
     const result = await tool({ loadPeriodChart }).execute({ section: 'dashas' }, context());

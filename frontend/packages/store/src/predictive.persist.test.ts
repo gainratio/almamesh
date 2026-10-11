@@ -367,15 +367,14 @@ describe("usePredictiveStore — raw contexts persistence (Spec 062 delta 1)", (
     expect(raw).not.toHaveProperty("strength_signer_public_key");
   });
 
-  // v4 (time travel step B): every older snapshot was computed by a pre-Inc-B
-  // engine (old timeline with double "enters X", old Life Atlas). It is derived
-  // data, so dropping it costs one recompute and never loses user data.
-  it("pins the persist version at 4 (the step B timeline invalidates v1-v3 snapshots)", () => {
-    expect(PREDICTIVE_PERSIST_VERSION).toBe(4);
+  // Older cached slow contacts can contain an opposition mistaken for a
+  // conjunction. Recompute calculations while preserving the source profile.
+  it("pins the persist version at 5 (corrected circular contacts invalidate v1-v4 snapshots)", () => {
+    expect(PREDICTIVE_PERSIST_VERSION).toBe(5);
   });
 
-  it.each([1, 2, 3])(
-    "drops a v%i (pre-step-B) ready snapshot: rehydrates idle and the same input recomputes",
+  it.each([1, 2, 3, 4])(
+    "drops a v%i ready snapshot: rehydrates idle and the same input recomputes",
     async (version) => {
       memMap.set(
         PREDICTIVE_PERSIST_NAME,

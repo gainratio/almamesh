@@ -307,7 +307,8 @@ function pwaPlugin(): Plugin[] {
       // `wasm` covers the small hashed yoga-layout asset and the SQLite runtime
       // used by local semantic memory. The giant engine/model wasms stay out
       // via the directory globIgnores below (pyodide/**, models/**).
-      globPatterns: ['**/*.{js,css,html,woff,woff2,ttf,otf,wasm}'],
+      // Fetch batches stay available offline without retaining parsed JS modules.
+      globPatterns: ['**/*.{js,css,html,woff,woff2,ttf,otf,wasm}', 'cities/*.json'],
       globIgnores: [
         'pyodide/**',
         'bundle/**',

@@ -38,6 +38,7 @@ import {
 } from '@almamesh/store';
 import { safeError, safeWarn } from '@almamesh/shared-types';
 import type { IndexableMessage } from '@almamesh/memory';
+import { devicePolicy } from '@almamesh/browser';
 
 import {
   clearMemory as clearPersistedMemory,
@@ -50,9 +51,11 @@ import { publishDeletionNotice, subscribeDeletionNotices } from './deletionPropa
 import { notifyLlmSettingsChanged } from './llmSettingsEvents';
 import { rehydratePortablePreferences } from './portablePreferences';
 import { useDataRepairNotice } from './dataRepairNotice';
+import { clearPeriodSky, deletePeriodSkyForProfile } from './derivedDataLifecycle';
 
 export interface ProfileDataLifecycleDeps {
   deleteMemoryForProfile: (profileId: string) => Promise<void>;
+  deletePeriodSkyForProfile?: (profileId: string) => Promise<void>;
   beginDatasetMutation?: () => Promise<number>;
   abortDatasetMutation?: (epoch: number) => Promise<void>;
   recordDeletionTombstones?: (
@@ -113,6 +116,7 @@ function provableInterpretationOwners(): Readonly<Record<string, string>> {
 
 const DEFAULT_DEPS: ProfileDataLifecycleDeps = {
   deleteMemoryForProfile: deletePersistedMemoryForProfile,
+  deletePeriodSkyForProfile,
   beginDatasetMutation,
   abortDatasetMutation: abortBackupRestore,
   recordDeletionTombstones: recordDurableDeletionTombstones,
@@ -148,6 +152,8 @@ export interface RemoteDeletionDeps {
   deleteMemoryForProfile: (profileId: string) => Promise<void>;
   deleteMemoryForThread: (threadId: string) => Promise<void>;
   clearMemory?: () => Promise<void>;
+  deletePeriodSkyForProfile?: (profileId: string) => Promise<void>;
+  clearPeriodSky?: () => Promise<void>;
   invalidateMemoryRuntime?: () => void;
   refreshPreferences?: () => Promise<void>;
 }
@@ -243,6 +249,11 @@ export async function deleteProfileData(
       await withinDerivedMemoryDeleteSla(deps.deleteMemoryForProfile(profileId));
     } catch {
       safeWarn('lifecycle.memory_drain_failed');
+    }
+    try {
+      await withinDerivedMemoryDeleteSla(deps.deletePeriodSkyForProfile?.(profileId) ?? Promise.resolve());
+    } catch {
+      safeWarn('lifecycle.period_sky_purge_failed');
     }
     assertDeletableProfile(profileId);
     useLifeEventsStore.getState().clearEvents(profileId);
@@ -389,6 +400,8 @@ export async function applyRemoteDeletionNotice(
     deleteMemoryForProfile: deletePersistedMemoryForProfile,
     deleteMemoryForThread: deletePersistedMemoryForThread,
     clearMemory: clearPersistedMemory,
+    deletePeriodSkyForProfile,
+    clearPeriodSky,
     invalidateMemoryRuntime,
   },
 ): Promise<void> {
@@ -399,6 +412,11 @@ export async function applyRemoteDeletionNotice(
       if (notice.phase === 'begin') {
         deps.invalidateMemoryRuntime?.();
         return;
+      }
+      try {
+        await withinDerivedMemoryDeleteSla(deps.clearPeriodSky?.() ?? Promise.resolve());
+      } catch {
+        safeWarn('lifecycle.period_sky_purge_failed');
       }
       if (notice.phase === 'complete' || notice.phase === undefined) {
         await (deps.refreshPreferences ?? refreshLivePreferences)();
@@ -442,6 +460,11 @@ export async function applyRemoteDeletionNotice(
       await withinDerivedMemoryDeleteSla(deps.deleteMemoryForProfile(notice.profileId));
     } catch {
       safeWarn('lifecycle.memory_drain_failed');
+    }
+    try {
+      await withinDerivedMemoryDeleteSla(deps.deletePeriodSkyForProfile?.(notice.profileId) ?? Promise.resolve());
+    } catch {
+      safeWarn('lifecycle.period_sky_purge_failed');
     }
     purgeLocalProfile(notice.profileId, notice.chartIds);
     await persistProfileDeletion();
@@ -490,6 +513,7 @@ function restoredMemoryMessages(): readonly IndexableMessage[] {
 }
 
 export interface PendingMemoryRebuildDeps {
+  readonly semanticMemoryAllowed?: () => boolean;
   readonly readLedger?: typeof readDeletionTombstones;
   readonly waitForChat?: typeof whenChatHydrated;
   readonly rebuild?: (messages: readonly IndexableMessage[]) => Promise<void>;
@@ -499,6 +523,9 @@ export interface PendingMemoryRebuildDeps {
 export async function resumePendingMemoryRebuild(
   deps: PendingMemoryRebuildDeps = {},
 ): Promise<void> {
+  // Leave the durable marker for a future capable device. Canonical chat is
+  // already restored; lexical retrieval needs neither backfill nor a model.
+  if (!(deps.semanticMemoryAllowed ?? (() => devicePolicy().semanticMemoryAllowed))()) return;
   const ledger = await (deps.readLedger ?? readDeletionTombstones)();
   if (!ledger.memoryRebuildPending) return;
   await (deps.waitForChat ?? whenChatHydrated)();

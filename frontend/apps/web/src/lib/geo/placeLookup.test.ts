@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { lookupPlaceOffline, placeFromRef, PLACE_CANDIDATE_LIMIT } from './placeLookup';
+import { installCityTestDatabase } from './__tests__/cityTestDb';
+
+installCityTestDatabase();
 
 afterEach(() => vi.unstubAllGlobals());
 

@@ -19,6 +19,7 @@ from almamesh.calculations import (
     AyanamsaType,
     SkyfieldAstronomy,
     _resolve_ayanamsa,
+    astronomy_scope,
     get_nakshatra_info,
     validate_coordinates,
 )
@@ -114,11 +115,11 @@ def compute_moon_window(
 ) -> MoonWindow:
     """The Moon at ``start`` and ``end`` (a place's local bounds), and optionally at one event."""
     _checked_bounds(start, end)
-    astro = astronomy if astronomy is not None else SkyfieldAstronomy()
-    ends = MoonEnds(at_start=_moon_mark(astro, start), at_end=_moon_mark(astro, end))
-    return MoonWindow(
-        at_place=ends, event=None if event is None else _event_sky(astro, start, end, event)
-    )
+    with astronomy_scope(astronomy) as astro:
+        ends = MoonEnds(at_start=_moon_mark(astro, start), at_end=_moon_mark(astro, end))
+        return MoonWindow(
+            at_place=ends, event=None if event is None else _event_sky(astro, start, end, event)
+        )
 
 
 def _wire_instant(value: object, field: str) -> datetime:

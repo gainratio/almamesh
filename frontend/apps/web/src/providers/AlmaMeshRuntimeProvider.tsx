@@ -36,6 +36,7 @@ import {
 import { hasLocalChart } from '../lib/localChart'
 import { recordEngineBootFailure, registerEngineTeardown } from '../lib/engineLifecycle'
 import { recoverSeveredServiceWorkerChannel } from '../lib/swSelfHeal'
+import { periodEngineCallCount } from '../lib/periodSky'
 import {
   clearRuntimeError,
   clearRuntimeGenerator,
@@ -43,6 +44,7 @@ import {
   clearRuntimePredictive,
   clearRuntimeResolvePlace,
   publishPinnedThreads,
+  publishPeriodEngineCalls,
   publishPredictiveRequestKeys,
   publishRuntimeError,
   publishRuntimeGenerator,
@@ -146,6 +148,7 @@ if (typeof window !== 'undefined' && EXIT_GATE_HOOKS) {
   // Every requestKey the Life Atlas slot holds: the time-travel journey proves
   // a period compute never borrows it, not even briefly.
   publishPredictiveRequestKeys(usePredictiveStore)
+  publishPeriodEngineCalls(periodEngineCallCount)
   publishPinnedThreads(() =>
     Object.values(useChatStore.getState().threads).flatMap((thread) =>
       thread.as_of ? [{ id: thread.id, as_of: thread.as_of }] : [],

@@ -307,6 +307,7 @@ export default function DashboardPage() {
     retrievedContext: readonly string[] = [],
     onAgentStatus?: (label: string | null) => void,
     asOf?: ChatThreadAsOf,
+    onTravel?: import('../lib/timeTravelTool').TravelRecorder,
   ) {
     const storedChart = chartId ? useChartLibraryStore.getState().getChart(chartId) : undefined;
     const chart = storedChart?.sidereal_chart;
@@ -364,6 +365,8 @@ export default function DashboardPage() {
       profileKey: storedChart?.profile_id ?? chartId ?? 'primary',
       birth: storedChart?.birth_data as ProcessedBirthData | undefined,
       engine: chartEngineContext,
+      onTravel,
+      language,
       ...(asOf ? { pinned: asOf } : {}),
     });
     const prepared = await toolset.prepare(question, {
@@ -387,6 +390,13 @@ export default function DashboardPage() {
       toolset.tools.some((tool) => tool.name === RESOLVE_PLACE_TOOL_NAME),
       prepared.pinned,
     );
+    if (prepared.timingFacts?.length) {
+      const [system, ...rest] = messages;
+      messages = [{
+        ...system,
+        content: `${system.content ?? ''}\n\nVERIFIED LOCAL TIMING: These are local engine facts or an explicit timing clarification status for this question. Use available facts even if no additional tools are called, respecting their periods and availability notes. If clarification is required, ask for it rather than inventing timing or claiming the tools are unavailable. Astrological patterns do not identify a person's life events. Do not guess life events; ask what occurred and offer a grounded interpretation.\n${JSON.stringify(prepared.timingFacts)}`,
+      }, ...rest];
+    }
     if (prepared.currentContextUnavailable) {
       const [system, ...rest] = messages;
       messages = [
@@ -394,7 +404,7 @@ export default function DashboardPage() {
           ...system,
           content:
             `${system.content ?? ''}\n\n` +
-            'CURRENT-CONTEXT SAFETY: This question requires exact-day planetary facts, but the on-device calculation was unavailable. Say that plainly and do not infer current transits or timing from natal facts.',
+            'CURRENT-CONTEXT SAFETY: The on-device calculation of current transits was unavailable. Say that plainly and do not infer unavailable current transits from natal facts. Use any verified local dasha facts supplied above.',
         },
         ...rest,
       ];
@@ -432,6 +442,7 @@ export default function DashboardPage() {
     retrievedContext: readonly string[] = [],
     onAgentStatus?: (label: string | null) => void,
     asOf?: ChatThreadAsOf,
+    onTravel?: import('../lib/timeTravelTool').TravelRecorder,
   ) => {
     const controller = new AbortController();
     let answer = '';
@@ -444,6 +455,7 @@ export default function DashboardPage() {
         retrievedContext,
         onAgentStatus,
         asOf,
+        onTravel,
       )) {
         answer += delta;
         onToken(delta);

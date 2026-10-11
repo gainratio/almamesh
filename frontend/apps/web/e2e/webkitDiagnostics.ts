@@ -11,6 +11,7 @@ import {
   parseWebKitPs,
   summarizeWebKitRss,
   type WebKitRssSample,
+  type WebKitRssSummary,
 } from '../scripts/webkitProcessMemory.mjs';
 
 const run = promisify(execFile);
@@ -26,7 +27,7 @@ const SAMPLE_INTERVAL_MS = 2_000;
 export interface WebKitDiagnostics {
   logger: Logger;
   watch(context: BrowserContext): void;
-  finish(): Promise<void>;
+  finish(): Promise<WebKitRssSummary>;
 }
 
 function stamp(): string {
@@ -80,6 +81,7 @@ export function startWebKitDiagnostics(testInfo: TestInfo, name = 'webkit'): Web
       writeFileSync(testInfo.outputPath(`${name}-rss.csv`), formatWebKitRssCsv(samples));
       writeFileSync(testInfo.outputPath(`${name}-browser.log`), `${lines.join('\n')}\n`);
       console.log(`webkit-rss ${testInfo.project.name} ${name} ${JSON.stringify(testInfo.title)} ${JSON.stringify(summary)}`);
+      return summary;
     },
   };
 }

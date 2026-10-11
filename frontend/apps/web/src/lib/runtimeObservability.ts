@@ -19,6 +19,7 @@ declare global {
     __almameshPortableStatePersistence?: () => PortableStatePersistence
     __almameshPredictiveRequestKeys?: string[]
     __almameshPinnedThreads?: () => readonly PinnedThreadRow[]
+    __almameshPeriodEngineCalls?: () => number
   }
 }
 
@@ -103,4 +104,9 @@ export interface PinnedThreadRow {
 /** Exit-gate builds only: lets the time-travel and backup suites compare pins field for field. */
 export const publishPinnedThreads = (read: () => readonly PinnedThreadRow[]): void => {
   window.__almameshPinnedThreads = read
+}
+
+/** Exit-gate builds only: a revisit must add no period engine call. */
+export const publishPeriodEngineCalls = (read: () => number): void => {
+  window.__almameshPeriodEngineCalls = read
 }

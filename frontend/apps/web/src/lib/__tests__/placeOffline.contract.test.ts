@@ -35,9 +35,14 @@ describe('a chat-typed city never leaves the device', () => {
     expect("(ref) => import('./geo/placeLookup').then((m) => m.placeFromRef(ref))").not.toMatch(STATIC_GEO_IMPORT);
   });
 
-  it('the city list is only ever loaded by a dynamic import', () => {
-    const statics = sourceFiles(SRC).filter((path) => /^\s*import[^(]*cities\.min\.json/m.test(readFileSync(path, 'utf8')));
-    expect(statics).toEqual([]);
-    expect(readFileSync(join(SRC, 'lib/geo/cityLookup.ts'), 'utf8')).toContain("import('../../data/cities.min.json')");
+  it('city rows are fetched in batches, never imported into the JS module cache', () => {
+    const imports = sourceFiles(SRC).filter((path) => /(?:from\s*|import\s*\()["'][^"']*(?:cities\.min\.json|cities-part-)/m.test(
+      readFileSync(path, 'utf8').replace(/\/\*[\s\S]*?\*\/|^\s*\/\/.*$/gm, ''),
+    ));
+    expect(imports).toEqual([]);
+    const sql = readFileSync(join(SRC, 'lib/geo/citySql.ts'), 'utf8');
+    expect(sql).toContain('await fetch(url');
+    expect(sql).not.toContain('import.meta.glob');
+    expect(readFileSync(join(SRC, 'lib/geo/cityLookup.ts'), 'utf8')).not.toContain('cities.min.json');
   });
 });

@@ -185,7 +185,11 @@ const LANE_ARTIFACT_LINES: readonly string[] = [
   '> "${ARTIFACTS}/unified-log.txt" 2>&1 || true',
   'echo "unified log: $(wc -l < "${ARTIFACTS}/unified-log.txt") lines about WebContent, memory kills and jetsam"',
   `grep -iE 'memorystatus.*kill|exceed|crash|terminat' "\${ARTIFACTS}/unified-log.txt" | grep -v 'coalition roles' | head -40 || true`,
-  'TIME_TRAVEL_E2E_BASE_URL="${BASE_URL}" bun run test:e2e:time-travel --project=webkit --project=iphone-webkit --project=iphone-15-webkit --retries=0 --output="${ARTIFACTS}/time-travel" || status=1',
+  'node scripts/webkit-memory-baseline.mjs --local-baseline "${TT_WEBKIT_BASELINE_MIB}" --measurement-commit "${MEASUREMENT_REF}" --provenance "${ARTIFACTS}/time-travel-memory-baseline-provenance.json"',
+  `TT_MEMORY_BASELINE_REF="\${REFERENCE_REF}" TT_MEMORY_MEASUREMENT_REF="\${MEASUREMENT_REF}" TIME_TRAVEL_E2E_BASE_URL="\${REFERENCE_URL}" bun x playwright test --config=playwright.time-travel.config.ts e2e/time-travel-memory.webkit.spec.ts --project=iphone-15-webkit --grep 'boot baseline' --repeat-each=5 --retries=0 --reporter=json --output="\${ARTIFACTS}/time-travel-memory-baseline" > "\${ARTIFACTS}/time-travel-memory-baseline-report.json"`,
+  'node scripts/webkit-memory-baseline.mjs --report "${ARTIFACTS}/time-travel-memory-baseline-report.json" --measurement-commit "${MEASUREMENT_REF}" --provenance "${ARTIFACTS}/time-travel-memory-baseline-provenance.json"',
+  `TT_MEMORY_PHASE=final TT_MEMORY_GRANULARITY=day TT_MEMORY_REPORT_ONLY=0 TT_WEBKIT_BASELINE_MIB="\${BASELINE_MIB}" TIME_TRAVEL_E2E_BASE_URL="\${MEMORY_URL}" bun run test:e2e:time-travel e2e/time-travel-memory.webkit.spec.ts --project=iphone-15-webkit --grep 'WebContent RSS budget' --repeat-each=5 --retries=0 --output="\${ARTIFACTS}/time-travel-memory" || status=1`,
+  'TIME_TRAVEL_E2E_BASE_URL="${BASE_URL}" bun run test:e2e:time-travel e2e/time-travel.spec.ts --project=webkit --project=iphone-webkit --project=iphone-15-webkit --retries=0 --output="${ARTIFACTS}/time-travel" || status=1',
   'PORTABLE_INVARIANTS_E2E_BASE_URL="${BASE_URL}" bun run test:e2e:portable-invariants --project=webkit --project=iphone-webkit --retries=0 --output="${ARTIFACTS}/portable-invariants" || status=1',
   'BOOT_RETRY_E2E_BASE_URL="${BASE_URL}" bun run test:e2e:boot-retry --project=webkit --retries=0 --output="${ARTIFACTS}/boot-retry" || status=1',
   `grep -rh "page crashed" "\${ARTIFACTS}" --include='*-browser.log' || true`,
@@ -217,6 +221,29 @@ function laneScriptViolations(script: string): string[] {
     const copy = /\bcp\b(.*?)\s+"?\$\{?ARTIFACTS/.exec(line)
     if (copy !== null && copy[1]?.trim() !== '"${report}"') violations.push(`artifacts-copy-source: ${line}`)
   }
+  return violations
+}
+
+/** Keep the original/candidate memory comparison separate from seeded hooks journeys. */
+const MEMORY_LANE_REQUIREMENTS = [
+  'REFERENCE_REF="8d10fbbb76336a8a5efe272912e392e260b3fef5"',
+  'MEASUREMENT_REF="$(git rev-parse HEAD)"',
+  'git cat-file -e "${REFERENCE_REF}^{commit}"',
+  'git archive "${REFERENCE_REF}" | tar -x -C "${REFERENCE_ROOT}"',
+  '( cd "${REFERENCE_ROOT}/frontend" && HUSKY=0 bun install --frozen-lockfile )',
+  '( cd "${REFERENCE_WEB}" && DEV_BUNDLE_SEQUENCE="${REFERENCE_SEQUENCE}" bash scripts/setup-dev-assets.sh )',
+  '( cd "${REFERENCE_WEB}" && BUILD_COMMIT="${REFERENCE_REF}" VITE_API_URL= VITE_EXIT_GATE_HOOKS= ./node_modules/.bin/vite build --outDir "${REFERENCE_DIST}" )',
+  '( cd "${REFERENCE_WEB}" && VITE_API_URL= exec ./node_modules/.bin/vite preview --outDir "${REFERENCE_DIST}" --host 127.0.0.1 --port "${REFERENCE_PORT}" --strictPort ) &',
+  'BUILD_COMMIT="${MEASUREMENT_REF}" VITE_API_URL= VITE_EXIT_GATE_HOOKS= ./node_modules/.bin/vite build --outDir "${MEMORY_DIST}"',
+  'VITE_API_URL= ./node_modules/.bin/vite preview --outDir "${MEMORY_DIST}" --host 127.0.0.1 --port "${MEMORY_PORT}" --strictPort &',
+] as const
+
+function memoryLaneViolations(script: string): string[] {
+  const violations: string[] = MEMORY_LANE_REQUIREMENTS.filter((line) => !script.includes(line))
+  const baseline = script.indexOf('TT_MEMORY_BASELINE_REF="${REFERENCE_REF}"')
+  const journey = script.indexOf('TT_MEMORY_PHASE=final TT_MEMORY_GRANULARITY=day TT_MEMORY_REPORT_ONLY=0')
+  const functional = script.indexOf('TIME_TRAVEL_E2E_BASE_URL="${BASE_URL}" bun run test:e2e:time-travel')
+  if (baseline === -1 || journey <= baseline || functional <= journey) violations.push("memory-comparison-order")
   return violations
 }
 
@@ -273,6 +300,7 @@ function macosLaneViolations(parsed: Record<string, unknown>): string[] {
     const checkouts = (job.steps as Array<Record<string, unknown>>).filter((step) => step.uses === checkout)
     const persists = checkouts.map((step) => ((step.with ?? {}) as Record<string, unknown>)["persist-credentials"])
     if (checkouts.length !== 1 || persists[0] !== false) violations.push("persist-credentials")
+    if (checkouts.some((step) => ((step.with ?? {}) as Record<string, unknown>)["fetch-depth"] !== 0)) violations.push("reference-history-unavailable")
   }
   return violations
 }
@@ -427,6 +455,7 @@ describe("canonical GitHub ingress contract", () => {
     ["secrets passed to a function", (w: Record<string, unknown>) => ({ ...w, env: { K: "${{ format('{0}', secrets) }}" } })],
     ["persisted checkout credentials", (w: Record<string, unknown>) => withCheckout(w, (inputs) => ({ ...inputs, "persist-credentials": true }))],
     ["a checkout without persist-credentials", (w: Record<string, unknown>) => withCheckout(w, ({ "persist-credentials": _dropped, ...inputs }) => inputs)],
+    ["a shallow checkout without the pinned original release", (w: Record<string, unknown>) => withCheckout(w, (inputs) => ({ ...inputs, "fetch-depth": 1 }))],
     ["an unlisted SHA-pinned action", (w: Record<string, unknown>) => withJob(w, (job) => ({ ...job, steps: [...(job.steps as unknown[]), { uses: `someone/exfiltrate@${"a".repeat(40)}` }] }))],
     ["no evidence upload", (w: Record<string, unknown>) => withUpload(w, () => null)],
     ["an evidence upload of the home directory", (w: Record<string, unknown>) => withUpload(w, (step) => ({ ...step, with: { ...(step.with as object), path: "~" } }))],
@@ -490,7 +519,7 @@ describe("canonical GitHub ingress contract", () => {
     const script = readFileSync(resolve(root, MACOS_LANE_SCRIPT), "utf8")
     expect(script).toContain("VITE_EXIT_GATE_HOOKS=1")
     // No retries: a WebKit page that crashes once must turn the lane red, not pass on retry.
-    expect(script).toContain("bun run test:e2e:time-travel --project=webkit --project=iphone-webkit --project=iphone-15-webkit --retries=0")
+    expect(script).toContain("bun run test:e2e:time-travel e2e/time-travel.spec.ts --project=webkit --project=iphone-webkit --project=iphone-15-webkit --retries=0")
     expect(script).toContain("bun run test:e2e:portable-invariants --project=webkit --project=iphone-webkit --retries=0")
     expect(script).not.toMatch(/--retries=[1-9]/)
     for (const config of ["playwright.time-travel.config.ts", "playwright.portable-invariants.config.ts"]) {
@@ -498,6 +527,29 @@ describe("canonical GitHub ingress contract", () => {
       expect(source).toContain('name: "webkit", use: { ...devices["Desktop Safari"]')
       expect(source).toContain('name: "iphone-webkit", use: { ...devices["iPhone 13"]')
     }
+  })
+
+  test("the macOS lane compares five original-release boots with five final Day journeys on separate no-hooks builds", () => {
+    const script = readFileSync(resolve(root, MACOS_LANE_SCRIPT), "utf8")
+    expect(memoryLaneViolations(script)).toEqual([])
+    expect(script).toContain("--grep 'boot baseline' --repeat-each=5 --retries=0 --reporter=json")
+    expect(script).toContain("--grep 'WebContent RSS budget' --repeat-each=5 --retries=0")
+    expect(script).toContain('TT_WEBKIT_BASELINE_MIB="${BASELINE_MIB}" TIME_TRAVEL_E2E_BASE_URL="${MEMORY_URL}"')
+    const source = readFileSync(resolve(root, "dagger/src/index.ts"), "utf8")
+    expect(source).toContain('"tests/webkit-memory-baseline.test.ts"')
+    expect(source).toContain('"frontend/apps/web/scripts/webkit-memory-baseline.mjs"')
+  })
+
+  test.each([
+    ["a candidate baseline", 'REFERENCE_REF="8d10fbbb76336a8a5efe272912e392e260b3fef5"', 'REFERENCE_REF="${MEASUREMENT_REF}"'],
+    ["candidate code signed for the reference", 'cd "${REFERENCE_WEB}" && DEV_BUNDLE_SEQUENCE=', 'cd . && DEV_BUNDLE_SEQUENCE='],
+    ["a hooked reference build", 'BUILD_COMMIT="${REFERENCE_REF}" VITE_API_URL= VITE_EXIT_GATE_HOOKS= ', 'BUILD_COMMIT="${REFERENCE_REF}" VITE_API_URL= VITE_EXIT_GATE_HOOKS=1 '],
+    ["a hooked candidate memory build", 'BUILD_COMMIT="${MEASUREMENT_REF}" VITE_API_URL= VITE_EXIT_GATE_HOOKS= ', 'BUILD_COMMIT="${MEASUREMENT_REF}" VITE_API_URL= VITE_EXIT_GATE_HOOKS=1 '],
+    ["a report-only candidate", 'TT_MEMORY_REPORT_ONLY=0', 'TT_MEMORY_REPORT_ONLY=1'],
+    ["a preliminary candidate", 'TT_MEMORY_PHASE=final', 'TT_MEMORY_PHASE=initial'],
+  ])("the memory comparison contract rejects %s", (_name, from, to) => {
+    const script = readFileSync(resolve(root, MACOS_LANE_SCRIPT), "utf8")
+    expect(memoryLaneViolations(script.replace(from, to))).not.toEqual([])
   })
 
   test("the macOS lane drives the one automatic boot retry on WebKit against the hooked preview", () => {

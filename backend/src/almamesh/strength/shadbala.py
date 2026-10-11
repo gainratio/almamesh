@@ -11,7 +11,7 @@ from __future__ import annotations
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Final
 
-from almamesh.calculations import SkyfieldAstronomy
+from almamesh.calculations import SkyfieldAstronomy, astronomy_scope
 from almamesh.constants.astrology import PlanetName
 from almamesh.schemas.strength import (
     SHADBALA_PLANETS,
@@ -114,15 +114,17 @@ def compute_shadbala(
     lon: float,
     *,
     civil_offset: timedelta,
+    astronomy: SkyfieldAstronomy | None = None,
 ) -> ShadbalaContext:
     """Shadbala for the seven grahas (rigorous Kalabala via true civil sunrise).
 
     ``civil_offset`` is the birthplace's civil UTC offset at birth; the Vedic
     weekday lords are read off the civil date of each day-opening sunrise.
     """
-    astro = SkyfieldAstronomy()
-    window = sun_window(astro, birth_utc, lat, lon, civil_offset=civil_offset)
-    planets = {
-        p: _planet_shadbala(astro, natal, p, birth_utc, lat, lon, window) for p in SHADBALA_PLANETS
-    }
-    return ShadbalaContext(planets=planets)
+    with astronomy_scope(astronomy) as astro:
+        window = sun_window(astro, birth_utc, lat, lon, civil_offset=civil_offset)
+        planets = {
+            p: _planet_shadbala(astro, natal, p, birth_utc, lat, lon, window)
+            for p in SHADBALA_PLANETS
+        }
+        return ShadbalaContext(planets=planets)

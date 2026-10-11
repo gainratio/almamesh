@@ -22,6 +22,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { gzipSync } from 'node:zlib';
 import { createRequire } from 'node:module';
+import { writeCityParts } from './split-cities.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const webRoot = resolve(here, '../apps/web');
@@ -49,7 +50,10 @@ const rows = cities
   .sort((a, b) => b.p - a.p);
 
 const json = JSON.stringify(rows);
+// This fixture is for reproducible regeneration and test/reference consumers.
+// Production fetches the bounded public JSON parts instead of importing it.
 writeFileSync(outPath, json);
+writeCityParts(rows);
 
 const gzipped = gzipSync(Buffer.from(json)).length;
 const fmt = (bytes) => `${(bytes / 1024 / 1024).toFixed(2)} MB`;

@@ -1,7 +1,7 @@
 // Bounded, browser-native OpenAI-compatible tool loop.
 //
 // This is intentionally a capability shell, not a general autonomous agent:
-// callers inject a small allowlist of read-only tools, every turn carries a
+// callers inject a small allowlist of local tools, every turn carries a
 // caller-pinned clock, and the model never receives shell, filesystem, network,
 // or storage access through this module. Tool arguments/results stay inside the
 // request transcript and are never surfaced through status events.
@@ -32,7 +32,7 @@ export interface AgentToolContext {
   readonly signal: AbortSignal;
 }
 
-/** One explicitly allowlisted capability. Executors should be local/read-only. */
+/** One explicitly allowlisted local capability. UI changes are queued by the caller. */
 export interface AgentTool {
   readonly name: string;
   readonly description: string;
@@ -127,6 +127,7 @@ interface ToolCallDraft {
 /** Whether any answer text has reached the caller yet this turn. */
 interface EmitState {
   emitted: boolean;
+  meaningful: boolean;
 }
 
 interface OpenAiDecisionPayload {
@@ -148,9 +149,14 @@ const FINALIZATION_INSTRUCTION =
   "If a required fact is unavailable or a tool returned an error, say so plainly; do not infer it.";
 const TOOLS_UNAVAILABLE_INSTRUCTION =
   "LOCAL TOOLS ARE UNAVAILABLE for this turn. Answer only from facts already present in the " +
-  "conversation. Never guess a current date, current time, timezone, chart fact, or current " +
+  "conversation. Verified local facts already supplied remain available; interpret those facts " +
+  "and do not claim they could not be verified. Additional local lookups or UI actions cannot run. " +
+  "Never guess a current date, current time, timezone, chart fact, or current " +
   "planetary context that is not explicitly supplied; say that the required local fact is " +
   "unavailable instead.";
+const TOOLS_UNAVAILABLE_NOTICE =
+  "Your AI provider does not support chat tools. I can interpret the verified local facts already supplied, " +
+  "but cannot run additional tools or change the selected date this turn.\n\n";
 
 function endpoint(config: ProviderConfig): string {
   if (!config.baseUrl) {
@@ -415,6 +421,7 @@ async function* relayTokens<T>(
         if (needsBreak) yield "\n\n";
       }
       state.emitted = true;
+      if (step.value.trim()) state.meaningful = true;
       yield step.value;
     }
   } finally {
@@ -601,7 +608,7 @@ export async function* streamAgentChat(
   let executedCalls = 0;
   let aggregateResultChars = 0;
   let forceFinal = false;
-  const emit: EmitState = { emitted: false };
+  const emit: EmitState = { emitted: false, meaningful: false };
 
   for (let round = 1; round <= AGENT_LIMITS.maxDecisionRounds; round += 1) {
     options.onStatus?.({ phase: "deciding", round });
@@ -618,6 +625,7 @@ export async function* streamAgentChat(
       // and grounded messages while degrading to their ordinary SSE contract.
       if (round === 1 && !emit.emitted && explicitlyRejectsTools(error)) {
         options.onStatus?.({ phase: "answering" });
+        yield TOOLS_UNAVAILABLE_NOTICE;
         yield* streamWithoutTools(options, [
           { role: "system", content: TOOLS_UNAVAILABLE_INSTRUCTION },
           ...options.messages,
@@ -728,5 +736,6 @@ export async function* streamAgentChat(
 
   options.onStatus?.({ phase: "answering" });
   yield* relayTokens(finalRequest(options, transcript, definitions), emit);
+  if (!emit.meaningful) throw new LlmRequestError("LLM endpoint returned an empty agent completion");
   options.onStatus?.({ phase: "complete" });
 }

@@ -78,7 +78,7 @@ describe('createChatAgentTools', () => {
 
   it.each([
     [8, true],
-    [4, false],
+    [4, true],
   ])('with no seam, a %i GB device follows devicePolicy (period sky computed: %s)', async (gib, computed) => {
     Object.defineProperty(navigator, 'deviceMemory', { value: gib, configurable: true });
     try {
@@ -199,6 +199,17 @@ describe('createChatAgentTools', () => {
     expect(JSON.stringify(overview)).not.toContain('Secret City');
   });
 
+  it('get_chart_facts dashas agrees with get_timing in a historical pin', async () => {
+    const tools = createChatAgentTools({ chart: CHART, chartAsOf, chartTimeZone: 'UTC',
+      pinned: { period: { start: '2017-09-01', end: '2017-09-30' } },
+    });
+    const context = { now: new Date('2026-10-11T17:00:00Z'), signal: new AbortController().signal };
+    const facts = await tools[1].execute({ section: 'dashas' }, context);
+    const timing = await tools[2].execute({ section: 'dashas' }, context) as { data: unknown };
+    expect(facts).toEqual(timing.data);
+    expect(facts).toMatchObject({ maha: [{ lord: 'jupiter' }], antar: [{ lord: 'saturn' }] });
+  });
+
   it('calculates current timing on demand from the pinned turn clock', async () => {
     const currentChart = {
       ...chart,
@@ -263,12 +274,12 @@ describe('requiresCurrentPlanetaryContext', () => {
     const facts = (await tools[1].execute({ section: 'dashas' }, context)) as {
       maha_dasha_sequence: Array<{ lord: string; status?: string }>;
     };
-    const timing = ((await tools[2].execute({ section: 'dashas' }, context)) as { data: typeof facts }).data;
+    const timing = ((await tools[2].execute({ section: 'dashas' }, context)) as { data: { maha: Array<{ lord: string }> } }).data;
 
     const current = (rows: typeof facts.maha_dasha_sequence) =>
       rows.filter((row) => row.status?.startsWith('current')).map((row) => row.lord);
     expect(current(facts.maha_dasha_sequence)).toEqual(['jupiter']);
-    expect(current(timing.maha_dasha_sequence)).toEqual(['saturn']);
+    expect(timing.maha.map((row) => row.lord)).toEqual(['saturn']);
   });
 });
 
@@ -307,6 +318,14 @@ describe('mentionsExplicitPeriod', () => {
 });
 
 describe('shouldPreRunToday', () => {
+  it.each([
+    'What are my transits today, October 11?',
+    '¿Cómo están mis tránsitos hoy, 11 de octubre?',
+    'Como estão meus trânsitos hoje, 11 de outubro?',
+  ])('explicit today wins over its calendar label: %s', (question) => {
+    expect(shouldPreRunToday(question)).toBe(true);
+  });
+
   it('pre-runs today only for "today" questions with no explicit period', () => {
     expect(shouldPreRunToday('What are my current transits?')).toBe(true);
     expect(shouldPreRunToday('What may happen today?')).toBe(true);

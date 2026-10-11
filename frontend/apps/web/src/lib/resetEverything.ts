@@ -57,6 +57,7 @@ import {
 import { SemanticMemoryStorageUnavailableError } from '@almamesh/memory';
 import { clearMemory } from './chatMemory';
 import { publishDeletionNotice } from './deletionPropagation';
+import { removeDerivedData } from './derivedDataLifecycle';
 
 /** Legacy browser keys removed after canonical SQLite has taken authority. */
 const INTERPRETATIONS_KEY = 'almamesh-interpretations';
@@ -111,6 +112,7 @@ function getUsableLocalStorage(): Pick<Storage, 'removeItem'> | null {
 export interface ResetEverythingDeps {
   waitForHydration: () => Promise<void>;
   clearPersisted: (epoch?: number) => Promise<void>;
+  clearDerivedData?: () => Promise<void>;
   /**
    * Set-aside records (user-written, person gone) are personal data too. They
    * live outside the dataset generation, so they go first: a crash after this
@@ -142,6 +144,7 @@ async function waitForResetStoresHydrated(): Promise<void> {
 
 const DEFAULT_DEPS: ResetEverythingDeps = {
   waitForHydration: waitForResetStoresHydrated,
+  clearDerivedData: removeDerivedData,
   // Runtimes without the SQLite Worker (Node tests, prerender) hold no set-aside rows.
   clearSetAside: async () => {
     if (supportsPortableState()) await clearSetAsideRecords();
@@ -189,6 +192,7 @@ export async function resetEverything(deps: ResetEverythingDeps = DEFAULT_DEPS):
       }
     }
 
+    await deps.clearDerivedData?.();
     useChartLibraryStore.getState().clearAll();
     useProfilesStore.getState().clearAll();
     useLifeEventsStore.getState().clearAll();

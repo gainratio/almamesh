@@ -4,24 +4,22 @@
  * holds ONE persisted result, and a period compute there would evict today's
  * Life Atlas (which then recomputes for ~30 s on next open).
  *
- * What this module owns: store reuse, the one-at-a-time period queue with
- * join-while-in-flight, and the waiter's deadline. What it deliberately does
- * NOT own: retaining results. The engine memo (`@almamesh/browser`
- * engineMemo.ts) already keeps settled predictive payloads; calls made with
- * `{ retention: 'period' }` count against its device-tier bound
- * (`devicePolicy().periodSkyCacheSize`: 5 / 3 / 1), so that bound is the only
- * cap on retained period payloads. Memory only, never persisted or exported.
+ * One serial period queue, joined while in flight. Recomputable results are
+ * kept in the derived SQLite database, without boot proofs and outside exports.
+ * The engine memo retains at most the device's period bound in JavaScript.
  */
 import type { PredictiveCallOptions, PredictiveInput } from '@almamesh/browser/types';
 import {
   predictiveRequestKey,
   usePredictiveStore,
+  withoutBootProof,
   type CachedPredictiveContexts,
   type EnsurePredictiveInput,
   type PredictiveRuntime,
 } from '@almamesh/store';
 
 import { abortReason, withDeadline, type DeadlineOptions } from './deadline';
+import { periodSkyRows, type PeriodSkyRows } from './periodSkyRows';
 
 /**
  * One queued Life Atlas compute (~30 s) plus this one (~30 s+). Kept under the
@@ -54,6 +52,8 @@ interface PredictiveStoreSnapshot {
 export interface PeriodSkyCacheOptions {
   readonly readStore?: () => PredictiveStoreSnapshot;
   readonly timeoutMs?: number;
+  /** Default: SQLite on OPFS. null keeps only the engine's bounded memory memo. */
+  readonly rows?: PeriodSkyRows | null;
 }
 
 export interface PeriodSkyCache {
@@ -61,6 +61,8 @@ export interface PeriodSkyCache {
 }
 
 const PERIOD_RETENTION: PredictiveCallOptions = { retention: 'period' };
+let engineCalls = 0;
+export function periodEngineCallCount(): number { return engineCalls; }
 
 /** The engine's reference instant for a calendar day (the `predictiveReferenceInstant` shape). */
 export function periodReferenceInstant(day: string): string {
@@ -85,19 +87,89 @@ function engineInput(input: EnsurePredictiveInput): PredictiveInput {
 export function createPeriodSkyCache(options: PeriodSkyCacheOptions): PeriodSkyCache {
   const readStore = options.readStore ?? ((): PredictiveStoreSnapshot => usePredictiveStore.getState());
   const deadline = periodSkyDeadline(options.timeoutMs);
-  const inFlight = new Map<string, Promise<CachedPredictiveContexts>>();
-  let queue: Promise<unknown> = Promise.resolve();
+  const rows = options.rows === undefined ? periodSkyRows() : options.rows;
+  const swept = new Map<string, Promise<unknown>>();
+  interface Work {
+    readonly promise: Promise<CachedPredictiveContexts>;
+    readonly reject: (error: Error) => void;
+    waiters: number;
+    started: boolean;
+    abandoned: boolean;
+    cancelQueued?: () => void;
+  }
+  interface Job { readonly work: Work; begin(): void; }
+  const inFlight = new Map<string, Work>();
+  const queued: Job[] = [];
+  let computing = false;
+  const abandoned = () => new DOMException('The period is no longer needed.', 'AbortError');
 
-  const start = (key: string, input: EnsurePredictiveInput, runtime: PredictiveRuntime) => {
-    // One period compute at a time: the Pyodide worker is serial anyway.
-    const run = queue.then(() => runtime.computePredictive(engineInput(input), PERIOD_RETENTION));
-    queue = run.catch(() => undefined);
-    inFlight.set(key, run);
+  function drain(): void {
+    if (!computing) queued.shift()?.begin();
+  }
+
+  function compute(work: Work, input: EnsurePredictiveInput, runtime: PredictiveRuntime): Promise<CachedPredictiveContexts> {
+    if (work.abandoned) return Promise.reject(abandoned());
+    return new Promise((resolve, reject) => {
+      const job: Job = {
+        work,
+        begin() {
+          work.cancelQueued = undefined;
+          computing = true;
+          // The microtask lets a synchronous abort release its waiter before
+          // crossing the worker boundary. Once started, a compute can finish.
+          void Promise.resolve().then(() => {
+            if (work.abandoned) throw abandoned();
+            work.started = true;
+            engineCalls += 1;
+            return runtime.computePredictive(engineInput(input), PERIOD_RETENTION);
+          }).then(resolve, reject).finally(() => {
+            computing = false;
+            drain();
+          });
+        },
+      };
+      work.cancelQueued = () => {
+        const index = queued.indexOf(job);
+        if (index >= 0) queued.splice(index, 1);
+        reject(abandoned());
+      };
+      queued.push(job);
+      drain();
+    });
+  }
+
+  const start = (key: string, input: EnsurePredictiveInput, runtime: PredictiveRuntime, engineHash?: string) => {
+    let resolve!: (value: CachedPredictiveContexts) => void;
+    let reject!: (error: Error) => void;
+    const promise = new Promise<CachedPredictiveContexts>((yes, no) => { resolve = yes; reject = no; });
+    const work: Work = { promise, reject, waiters: 0, started: false, abandoned: false };
+    // Publish before any asynchronous SQLite read so every caller joins.
+    inFlight.set(key, work);
+    void Promise.resolve().then(async () => {
+      if (work.abandoned) throw abandoned();
+      if (!rows || !engineHash) return compute(work, input, runtime);
+      const epoch = rows.captureEpoch ? await rows.captureEpoch().catch(() => undefined) : 0;
+      if (work.abandoned) throw abandoned();
+      if (epoch === undefined) return compute(work, input, runtime);
+      let sweep = swept.get(engineHash);
+      if (!sweep) {
+        sweep = rows.sweepOtherEngines(engineHash).catch(() => undefined);
+        swept.set(engineHash, sweep);
+      }
+      await sweep;
+      const hit = await rows.read(engineHash, predictiveRequestKey(input), epoch).catch(() => undefined);
+      if (work.abandoned) throw abandoned();
+      if (hit) return hit;
+      const fresh = await compute(work, input, runtime);
+      const safe = withoutBootProof(fresh);
+      if (safe) await rows.write(engineHash, predictiveRequestKey(input), input.profileKey, safe, epoch).catch(() => undefined);
+      return fresh;
+    }).then(resolve, reject);
     const settle = (): void => {
-      if (inFlight.get(key) === run) inFlight.delete(key);
+      if (inFlight.get(key) === work) inFlight.delete(key);
     };
-    run.then(settle, settle);
-    return run;
+    promise.then(settle, settle);
+    return work;
   };
 
   return {
@@ -108,7 +180,18 @@ export function createPeriodSkyCache(options: PeriodSkyCacheOptions): PeriodSkyC
       if (store.status === 'ready' && store.requestKey === key && store.rawContexts) {
         return Promise.resolve(store.rawContexts);
       }
-      return withDeadline(inFlight.get(key) ?? start(key, input, runtime), signal, deadline);
+      const engineHash = runtime.identity?.();
+      const flightKey = JSON.stringify([engineHash ?? null, key]);
+      const work = inFlight.get(flightKey) ?? start(flightKey, input, runtime, engineHash);
+      work.waiters += 1;
+      return withDeadline(work.promise, signal, deadline).finally(() => {
+        work.waiters -= 1;
+        if (work.waiters > 0 || work.started) return;
+        work.abandoned = true;
+        work.cancelQueued?.();
+        work.reject(abandoned());
+        if (inFlight.get(flightKey) === work) inFlight.delete(flightKey);
+      });
     },
   };
 }

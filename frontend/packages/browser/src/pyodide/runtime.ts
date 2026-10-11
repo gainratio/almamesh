@@ -118,6 +118,8 @@ export interface BundleMeta {
 
 /** The ready engine returned by bootstrap. */
 export interface ChartEngine {
+  /** Signed bundle manifest identity, exposed by the memo wrapper. */
+  identity?(): string;
   generateChart(birth: BirthInput): Promise<SiderealChart>;
   /**
    * The LAZY predictive payload at an EXPLICIT reference instant. Heavy

@@ -38,6 +38,20 @@ function heldSave(): () => void {
 }
 
 describe('a later request supersedes an earlier one still saving', () => {
+  it.each(['travel', 'today'] as const)('a no-longer-current %s selection changes no Dashboard moment after its save', async (action) => {
+    useTimeTravelStore.getState().setMoment('p1', YEAR_2027);
+    let current = true;
+    const release = heldSave();
+    const target = { ...DASH, canApply: () => current };
+    const pending = action === 'travel'
+      ? applyTravel({ asOf: MARCH_2019, source: 'chat-tool' }, target, aiOn)
+      : applyBackToToday(target, aiOn);
+    current = false;
+    release();
+    await expect(pending).resolves.toEqual({ threadId: undefined });
+    expect(moment()).toEqual(YEAR_2027);
+  });
+
   it('Change then Back: the slow Change save lands last and moves nothing', async () => {
     useChatStore.getState().startThread('p1', 'c1');
     const release = heldSave();

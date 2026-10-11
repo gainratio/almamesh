@@ -110,6 +110,8 @@
       "where_placeholder": "Busque uma cidade",
       "where_required": "Escolha onde você estava (ou estará) nesse dia.",
       "where_none": "Cidade não encontrada. Tente uma cidade maior perto dali.",
+      "where_failed": "A busca de lugares está temporariamente indisponível. Tente novamente.",
+      "retry_lookup": "Tentar busca novamente",
       "before_birth": "Isso é antes de você nascer. Escolha um período depois.",
       "save_failed": "Não foi possível salvar no seu dispositivo. Tente de novo.",
       "go": "Ir",

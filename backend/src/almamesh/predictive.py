@@ -24,7 +24,7 @@ from typing import Final
 
 from pydantic import BaseModel, ConfigDict
 
-from almamesh.calculations import calculate_sidereal_context
+from almamesh.calculations import SkyfieldAstronomy, calculate_sidereal_context
 from almamesh.domains import compute_life_domains
 from almamesh.schemas.astrology import SiderealContext
 from almamesh.schemas.domains import LifeDomainsContext
@@ -114,13 +114,20 @@ def compute_predictive_contexts(
     period of up to two years is one compute.
     """
     checked_window_months(window_months)
-    natal = calculate_sidereal_context(
-        birth_dt, latitude, longitude, reference_date=reference_instant
-    )
-    transits = calculate_transit_context(
-        natal, birth_dt, transit_instant=reference_instant, window_months=window_months
-    )
-    return _compose(natal, transits, birth_dt, latitude, longitude, civil_offset)
+    # A kernel holds mapped ephemeris arrays in reference cycles. One owner per
+    # invocation bounds both duplicates and resource lifetime, including failures.
+    with SkyfieldAstronomy() as astronomy:
+        natal = calculate_sidereal_context(
+            birth_dt, latitude, longitude, reference_date=reference_instant, astronomy=astronomy
+        )
+        transits = calculate_transit_context(
+            natal,
+            birth_dt,
+            transit_instant=reference_instant,
+            window_months=window_months,
+            astronomy=astronomy,
+        )
+        return _compose(natal, transits, birth_dt, latitude, longitude, civil_offset, astronomy)
 
 
 def _compose(
@@ -130,11 +137,12 @@ def _compose(
     latitude: float,
     longitude: float,
     civil_offset: timedelta,
+    astronomy: SkyfieldAstronomy,
 ) -> PredictiveContexts:
     """The varga, strength and domain contexts, assembled with the transits."""
     vargas = compute_varga_context(natal)
     strength = compute_strength_context(
-        natal, birth_dt, latitude, longitude, civil_offset=civil_offset
+        natal, birth_dt, latitude, longitude, civil_offset=civil_offset, astronomy=astronomy
     )
     domains = compute_life_domains(natal, transits, vargas, strength)
     return PredictiveContexts(

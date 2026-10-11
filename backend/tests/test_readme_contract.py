@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 import tomllib
 import unicodedata
 from pathlib import Path
@@ -165,12 +166,23 @@ def test_developer_section_links_getting_started() -> None:
 
 
 def test_more_detail_links_every_technical_doc() -> None:
-    docs = REPO_ROOT / "docs"
     linked = _more_detail_links()
-    expected = {f"docs/{p.name}" for p in docs.iterdir() if p.suffix == ".md"}
+    # Public docs include tracked and new non-ignored files; local/private
+    # notes must never require a public README link or be read by this test.
+    listed = subprocess.run(
+        ["git", "ls-files", "--cached", "--others", "--exclude-standard", "--", "docs/"],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    docs = {Path(path) for path in listed.stdout.splitlines() if not path.endswith(".local.md")}
+    expected = {
+        path.as_posix() for path in docs if path.parent == Path("docs") and path.suffix == ".md"
+    }
     expected |= set(ROOT_DOCS)
     missing = sorted(expected - linked)
-    folders = [p.name for p in docs.iterdir() if p.is_dir() and p.name not in {"assets"}]
+    folders = {path.parts[1] for path in docs if len(path.parts) > 2 and path.parts[1] != "assets"}
     for folder in folders:
         if not any(t.startswith(f"docs/{folder}") for t in linked):
             missing.append(f"docs/{folder}/")

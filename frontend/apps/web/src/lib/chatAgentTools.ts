@@ -15,6 +15,7 @@ import { predictiveReferenceInstant } from './predictive';
 import type { MoonWindowLoader } from './moonWindow';
 import type { PlaceReader } from './timingPlaces';
 import { createTimingTool, type PinnedTiming } from './timingTool';
+import { parseExplicitTimingPeriod } from './timingQuestion';
 
 export interface ZonedDateTime {
   readonly isoUtc: string;
@@ -115,50 +116,49 @@ export function requiresCurrentPlanetaryContext(question: string): boolean {
   return CURRENT_CONTEXT_PATTERN.test(foldQuestion(question));
 }
 
-// Month names in en/es/pt (folded). "may" and "march" are also an English
-// verb and "marco" is a first name, so those three count only beside a date
-// word. Portuguese "março" is caught before folding.
-const MONTH_WORDS = [
-  'january', 'february', 'april', 'june', 'july', 'august', 'september', 'october', 'november', 'december',
-  'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'setiembre',
-  'octubre', 'noviembre', 'diciembre',
-  'janeiro', 'fevereiro', 'maio', 'junho', 'julho', 'setembro', 'outubro', 'novembro', 'dezembro',
-];
-const YEAR_PATTERN = /\b(?:19|20)\d{2}\b/;
-const MONTH_PATTERN = new RegExp(`\\b(?:${MONTH_WORDS.join('|')})\\b`);
-const MARCO_PATTERN = /\bmarço\b/;
-const AMBIGUOUS_MONTH = '(?:may|march|marco)';
-const AMBIGUOUS_MONTH_PATTERN = new RegExp(
-  [
-    `\\b(?:in|of|since|until|by|en|em|de|desde|hasta|ate)\\s+${AMBIGUOUS_MONTH}\\b`,
-    `\\b${AMBIGUOUS_MONTH}\\s+(?:de\\s+)?\\d{1,4}\\b`,
-    `\\b\\d{1,2}(?:st|nd|rd|th)?\\s+(?:de\\s+)?${AMBIGUOUS_MONTH}\\b`,
-  ].join('|'),
-);
-
-/** True when the question names a year or a month: the model should send dates, not get today. */
+/** Explicit calendar language must not silently fall back to today's sky. */
 export function mentionsExplicitPeriod(question: string): boolean {
-  const folded = foldQuestion(question);
-  return (
-    YEAR_PATTERN.test(folded) ||
-    MONTH_PATTERN.test(folded) ||
-    MARCO_PATTERN.test(question.normalize('NFC').toLowerCase()) ||
-    AMBIGUOUS_MONTH_PATTERN.test(folded)
-  );
+  return parseExplicitTimingPeriod(question).kind !== 'none';
 }
 
 /**
- * The router: pre-run TODAY's sky only for a "today" question with no
- * explicit period. "Transits in June 2019" matches "transits", but pre-running
- * today would label the prompt "today" and spend 30 s on the wrong sky.
+ * Pre-run today's sky for a current question or explicit today instruction.
+ * Literal calendar periods and comparisons are prepared separately, so
+ * "Transits in June 2019" never spends time computing the wrong sky.
  */
 export function shouldPreRunToday(question: string): boolean {
-  return requiresCurrentPlanetaryContext(question) && !mentionsExplicitPeriod(question);
+  const explicit = parseExplicitTimingPeriod(question);
+  if (explicit.kind === 'unresolved' && explicit.reason === 'ambiguous_period') return false;
+  if (explicit.kind === 'period' && hasExplicitCurrentDay(question) && mentionsPeriodComparison(question)) return false;
+  return requiresCurrentPlanetaryContext(question)
+    && (hasExplicitCurrentDay(question) || explicit.kind === 'none');
+}
+
+/** A current-day instruction takes precedence over the saved historical pin. */
+export function hasExplicitCurrentDay(question: string): boolean {
+  return /\b(?:today|now|hoy|ahora|hoje|agora)\b/.test(foldQuestion(question));
+}
+
+/** An explicit comparison requires both periods, never a silently chosen one. */
+export function mentionsPeriodComparison(question: string): boolean {
+  return /\b(?:compar[a-z]*|versus|vs|differen[a-z]*|diferen[a-z]*)\b/.test(foldQuestion(question));
 }
 
 /** Build the fixed, read-only capability set for one already-loaded chart. */
 export function createChatAgentTools(input: CreateChatAgentToolsInput): readonly AgentTool[] {
   const chartSections = ['overview', 'planets', 'houses', 'yogas', 'dashas'] as const;
+  const timing = createTimingTool({
+    chart: input.chart,
+    birthYear: input.birthYear,
+    birthUtcYear: input.birthUtcYear,
+    todayDay: input.todayDay ?? viewerTodayDay,
+    loadCurrentChart: input.loadCurrentChart,
+    loadPeriodChart: input.loadPeriodChart,
+    periodSkyAllowed: input.periodSkyAllowed ?? devicePolicy().periodSkyComputeAllowed,
+    loadMoonWindow: input.loadMoonWindow,
+    placeFromRef: input.placeFromRef,
+    pinned: input.pinned,
+  });
 
   return [
     {
@@ -196,8 +196,12 @@ export function createChatAgentTools(input: CreateChatAgentToolsInput): readonly
         required: ['section'],
         additionalProperties: false,
       },
-      execute: (args) => {
+      execute: (args, context) => {
         const section = enumArgument(args, 'section', chartSections);
+        if (section === 'dashas' && (input.pinned || input.chartAsOf.basis === 'today')) {
+          return Promise.resolve(timing.execute({ section }, context)).then((result) =>
+            (result as { data?: unknown }).data ?? result);
+        }
         const chart = sanitizeChartForLlm(input.chart, input.chartAsOf);
         switch (section) {
           case 'overview':
@@ -219,17 +223,6 @@ export function createChatAgentTools(input: CreateChatAgentToolsInput): readonly
         }
       },
     },
-    createTimingTool({
-      chart: input.chart,
-      birthYear: input.birthYear,
-      birthUtcYear: input.birthUtcYear,
-      todayDay: input.todayDay ?? viewerTodayDay,
-      loadCurrentChart: input.loadCurrentChart,
-      loadPeriodChart: input.loadPeriodChart,
-      periodSkyAllowed: input.periodSkyAllowed ?? devicePolicy().periodSkyComputeAllowed,
-      loadMoonWindow: input.loadMoonWindow,
-      placeFromRef: input.placeFromRef,
-      pinned: input.pinned,
-    }),
+    timing,
   ];
 }

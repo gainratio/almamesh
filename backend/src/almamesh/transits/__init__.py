@@ -13,7 +13,13 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from almamesh.calculations import AyanamsaType, NodeType, SkyfieldAstronomy, _to_utc
+from almamesh.calculations import (
+    AyanamsaType,
+    NodeType,
+    SkyfieldAstronomy,
+    _to_utc,
+    astronomy_scope,
+)
 from almamesh.constants.astrology import PlanetName
 from almamesh.schemas.transits import SlowTransitHit, TransitContext
 from almamesh.transits.fusion import build_fusion
@@ -50,16 +56,18 @@ def calculate_transit_context(
     window_months: int = 12,
     ayanamsa_type: AyanamsaType = AyanamsaType.LAHIRI,
     node_type: NodeType = NodeType.MEAN,
+    *,
+    astronomy: SkyfieldAstronomy | None = None,
 ) -> TransitContext:
     """Compute the full Phase-1 transit context for a natal chart + instant."""
     instant = _to_utc(transit_instant if transit_instant is not None else datetime.now(UTC))
-    astro = SkyfieldAstronomy()
-    moon_idx = natal_moon_index(natal)
-    return TransitContext(
-        instant=instant,
-        gochara=build_gochara_context(astro, natal, instant, ayanamsa_type, node_type),
-        sade_sati=build_sade_sati_context(astro, moon_idx, instant),
-        slow_hits=_slow_hits(astro, natal, instant),
-        fusion=build_fusion(astro, natal, birth_dt, instant, ayanamsa_type, node_type),
-        timeline=build_timeline(astro, natal, birth_dt, instant, window_months),
-    )
+    with astronomy_scope(astronomy) as astro:
+        moon_idx = natal_moon_index(natal)
+        return TransitContext(
+            instant=instant,
+            gochara=build_gochara_context(astro, natal, instant, ayanamsa_type, node_type),
+            sade_sati=build_sade_sati_context(astro, moon_idx, instant),
+            slow_hits=_slow_hits(astro, natal, instant),
+            fusion=build_fusion(astro, natal, birth_dt, instant, ayanamsa_type, node_type),
+            timeline=build_timeline(astro, natal, birth_dt, instant, window_months),
+        )

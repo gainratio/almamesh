@@ -45,6 +45,7 @@
         "@fontsource-variable/fraunces": "^5.3.0",
         "@fontsource-variable/hanken-grotesk": "^5.3.0",
         "@fontsource-variable/spline-sans-mono": "^5.3.0",
+        "@gainratio/browser": "^0.4.1",
         "@gainratio/errors": "^0.2.1",
         "@gainratio/receipt-ui": "0.3.0",
         "@huggingface/transformers": "^4.3.0",

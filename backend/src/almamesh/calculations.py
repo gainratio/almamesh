@@ -24,9 +24,12 @@ import importlib.resources
 import logging
 import math
 from bisect import bisect_right
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from pathlib import Path
+from types import TracebackType
 from typing import Any
 
 import numpy as np
@@ -309,7 +312,39 @@ class SkyfieldAstronomy:
         # exactly as before. Same de421 bytes -> byte-identical numbers.
         path = resolve_ephemeris_path(ephemeris_file)
         self.eph = load_file(str(path)) if path.exists() else self.loader(ephemeris_file)
-        self.ts = self.loader.timescale()
+        self._closed = False
+        try:
+            self.ts = self.loader.timescale()
+        except BaseException as error:
+            self._close_after_error(error)
+            raise
+
+    def close(self) -> None:
+        """Release the ephemeris file and mapped arrays without waiting for cyclic GC."""
+        if not self._closed:
+            self.eph.close()
+            self._closed = True
+
+    def _close_after_error(self, error: BaseException) -> None:
+        """Keep the primary failure, while recording any failed cleanup without payloads."""
+        try:
+            self.close()
+        except BaseException as cleanup_error:
+            error.add_note(f"Ephemeris cleanup failed ({type(cleanup_error).__name__}).")
+
+    def __enter__(self) -> "SkyfieldAstronomy":
+        return self
+
+    def __exit__(
+        self,
+        _exc_type: type[BaseException] | None,
+        _exc_value: BaseException | None,
+        _traceback: TracebackType | None,
+    ) -> None:
+        if _exc_value is None:
+            self.close()
+        else:
+            self._close_after_error(_exc_value)
 
     def _apparent_tropical_longitude(self, target: str, when: datetime) -> float:
         """Apparent ecliptic longitude (aberration + deflection, equinox of date)."""
@@ -712,6 +747,16 @@ def _calculate_navamsa(
     )
 
 
+@contextmanager
+def astronomy_scope(astronomy: SkyfieldAstronomy | None = None) -> Iterator[SkyfieldAstronomy]:
+    """Borrow an injected astronomy instance, or own and close a fresh one."""
+    if astronomy is not None:
+        yield astronomy
+    else:
+        with SkyfieldAstronomy() as owned:
+            yield owned
+
+
 def _resolve_ayanamsa(
     astro: SkyfieldAstronomy, dt_utc: datetime, ayanamsa_type: AyanamsaType
 ) -> float:
@@ -758,29 +803,31 @@ def calculate_sidereal_context(
     # Normalize to a true UTC instant (CONVERT aware datetimes; never relabel).
     dt_utc = _to_utc(dt_utc)
 
-    astro = astronomy if astronomy is not None else SkyfieldAstronomy()
-    ayanamsa = _resolve_ayanamsa(astro, dt_utc, ayanamsa_type)
+    with astronomy_scope(astronomy) as astro:
+        ayanamsa = _resolve_ayanamsa(astro, dt_utc, ayanamsa_type)
 
-    # Stages
-    lagna_data, lagna_sign_idx = _calculate_lagna_data(astro, dt_utc, latitude, longitude, ayanamsa)
-    planets = _calculate_planetary_positions(astro, dt_utc, ayanamsa, lagna_sign_idx, node_type)
-    houses = _calculate_house_data(lagna_sign_idx)
-    dashas = calculate_vimshottari_dashas(
-        planets[PlanetName.MOON].longitude, dt_utc, reference_date=reference_date
-    )
+        # Stages
+        lagna_data, lagna_sign_idx = _calculate_lagna_data(
+            astro, dt_utc, latitude, longitude, ayanamsa
+        )
+        planets = _calculate_planetary_positions(astro, dt_utc, ayanamsa, lagna_sign_idx, node_type)
+        houses = _calculate_house_data(lagna_sign_idx)
+        dashas = calculate_vimshottari_dashas(
+            planets[PlanetName.MOON].longitude, dt_utc, reference_date=reference_date
+        )
 
-    context = SiderealContext(
-        ayanamsa_value=ayanamsa,
-        lagna=lagna_data,
-        planets=planets,
-        houses=houses,
-        dashas=dashas,
-        yogas=[],
-        navamsa=_calculate_navamsa(lagna_data.longitude, planets),
-    )
-    context.yogas = detect_yogas(context)
+        context = SiderealContext(
+            ayanamsa_value=ayanamsa,
+            lagna=lagna_data,
+            planets=planets,
+            houses=houses,
+            dashas=dashas,
+            yogas=[],
+            navamsa=_calculate_navamsa(lagna_data.longitude, planets),
+        )
+        context.yogas = detect_yogas(context)
 
-    return context
+        return context
 
 
 # --- Dasha Calculation ---
