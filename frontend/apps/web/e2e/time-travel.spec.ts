@@ -4,6 +4,7 @@ import { expect, type Locator, type Page } from '@playwright/test';
 
 import { DELHI_BIRTH, DELHI_SEED, LLM_SETTINGS_KEY, bootEngine, seedChart, waitForEngineReady } from './interpretation.helpers';
 import { gotoSettled } from './portableInvariants.helpers';
+import { captureReloadConsole, type ReloadConsoleCapture } from './reloadConsole';
 import { test } from './webkitProfile';
 
 /**
@@ -62,13 +63,18 @@ async function openDashboard(page: Page): Promise<void> {
 }
 
 /** Every console error and uncaught page error, for the clean-console checks. */
+const consoleCaptures = new WeakMap<Page, ReloadConsoleCapture>();
+
 function captureConsole(page: Page): string[] {
-  const consoleErrors: string[] = [];
-  page.on('pageerror', (error) => consoleErrors.push(`pageerror: ${error.message}`));
-  page.on('console', (message) => {
-    if (message.type() === 'error') consoleErrors.push(`console: ${message.text()}`);
-  });
-  return consoleErrors;
+  const capture = captureReloadConsole(page, test.info());
+  consoleCaptures.set(page, capture);
+  return capture.errors;
+}
+
+function explicitReload<T>(page: Page, reload: () => Promise<T>): Promise<T> {
+  const capture = consoleCaptures.get(page);
+  if (!capture) throw new Error('Explicit reload requires console capture');
+  return capture.duringReload(reload);
 }
 
 function captureLocalModelDownloads(page: Page): string[] {
@@ -769,7 +775,7 @@ test.describe('pinned threads on a device in another zone', () => {
     await expect(page.getByRole('button', { name: 'Which months look strongest?' })).toBeVisible();
 
     // The pin was on disk before the sheet closed: a full reload keeps it.
-    await page.reload({ waitUntil: 'domcontentloaded' });
+    await explicitReload(page, () => page.reload({ waitUntil: 'domcontentloaded' }));
     await page.getByTestId('floating-chat-button').click({ timeout: 120_000 });
     await expect(page.getByTestId('time-travel-title')).toHaveText(`Time travel · ${PIN_YEAR}`);
     expect((await pinnedThreads(page)).map((row) => row.as_of)).toEqual([
@@ -1003,7 +1009,7 @@ test.describe('time travel on an iPhone', () => {
     await expect(page.getByTestId('time-travel-banner')).toContainText('answers are about this period');
 
     // The pin was on disk before the sheet closed: a full reload keeps it.
-    await page.reload({ waitUntil: 'domcontentloaded' });
+    await explicitReload(page, () => page.reload({ waitUntil: 'domcontentloaded' }));
     await page.getByTestId('floating-chat-button').click({ timeout: 120_000 });
     await expect(page.getByTestId('time-travel-title')).toHaveText(`Time travel · ${PIN_YEAR}`);
     expect((await pinnedThreads(page)).map((row) => row.as_of)).toEqual([
@@ -1317,7 +1323,7 @@ test.describe('Dashboard time travel', () => {
     await pickMonth(page, '2019-03');
     await expect(page.getByTestId('dashboard-time-travel-banner')).toBeVisible();
     await expect(page.getByTestId('time-travel-moment-card')).toBeVisible();
-    await page.reload();
+    await explicitReload(page, () => page.reload());
     // Settled: the chart and profile are back, so a persisted moment would render now.
     await expect(page.getByTestId(DASHBOARD_BUTTON)).toBeEnabled({ timeout: 180_000 });
     await expect(page.getByTestId('life-atlas')).toBeVisible();

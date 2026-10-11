@@ -92,10 +92,10 @@ Both cases assert that no `/models/` requests occur. The ten recorded `peakSingl
 
 ## Current candidate checks
 
-The candidate is on `codex/iphone-time-travel`, based on release #331 (`8d10fbbb`). The final local frontend gate rebuilt the normal review build as `ed3e61395b7a` at `2026-10-11T19:13:20.892Z`; the separate hooked test build is `f2bddbf84f7c`, built at `2026-10-11T18:25:12.847Z`.
+The candidate is on `codex/iphone-time-travel`, based on release #331 (`8d10fbbb`). The final local frontend gate rebuilt the normal review build as `2fa6ef951273` at `2026-10-11T19:36:31.267Z`; the separate hooked review build is `f2bddbf84f7c`, built at `2026-10-11T18:25:12.847Z`.
 
 - Backend gate: 1,186 tests passed, 98.46% coverage; Ruff, formatting, mypy and complexity checks passed. Seven corrected slow-hit dates changed in reference fixtures; other fixture fields were unchanged.
-- Final frontend gate: 5,848 tests plus four lint-contract checks passed, including the constrained-device memory policy and restore-generation regressions. TypeScript, ESLint, production build, public-route prerender checks and absence of test hooks passed. The configured Knip report completed successfully but still reports unused-code/dependency diagnostics; it is not a clean unused-code result.
+- Final frontend gate: 5,877 tests plus four lint-contract checks passed, including the constrained-device memory policy, restore-generation and reload-diagnostic regressions. TypeScript, ESLint, production build, public-route prerender checks and absence of test hooks passed. The configured Knip report completed successfully but still reports unused-code/dependency diagnostics; it is not a clean unused-code result.
 - Real-browser engine parity: 11/11 checks passed against the CPython reference, including updated predictive fixtures, explicit-date sensitivity, Moon windows, clean console and same-origin engine traffic.
 - The broad Chromium functional run passed 16 journeys and exposed one stale test assertion: it expected one city download instead of the new 25 bounded parts. After updating that assertion to the manifest count and proving no repeated part downloads, all seven affected journeys passed on the candidate before the constrained-device recall policy. These cover typed historical questions, multi-place timing, slow-save Back to today, Day/revisit, two tabs, September 2017 → today, and chat tool movement in both directions. The engine is real; provider replies in chat cases are locally stubbed.
 - Mac WebKit iPhone 15 functional checks before the recall policy passed 4/4: Day/revisit/Back, two tabs, September 2017 → today, and chat tool movement. Single-WebContent RSS peaks were 1069, 862, 1326 and 1362 MiB respectively. Those were functional checks, not memory-budget passes: the chat peaks exceeded the 1306 MiB reference allowance and motivated the recall policy change.
@@ -166,3 +166,25 @@ and creates the reference public directory before copying downloaded runtime
 assets. Two failing regressions became green; the ingress suite passed 102/102.
 The initial failure is retained in
 `/tmp/almamesh-codex-final-native-mac-archive-setup-failure.log`.
+
+The next complete Mac run measured five original-release boots (1010, 1017,
+1023, 1028 and 1040 MiB single-WebContent RSS). All five candidate Day/place
+journeys passed against 1040 + 250 MiB, measuring 1072, 1067, 1111, 1068 and
+1105 MiB. The travel suite passed 27/28, portable-state checks passed 8/8 and
+boot-retry checks passed 2/2. No `page crashed` failure was recorded.
+
+The remaining travel failure was a clean-console assertion during an explicit
+reload. Its trace showed an old SQL worker's nested Blob request cancelled
+before navigation committed; the optional `opfs-wl` initializer logged an Event
+before new-page scripts loaded. Pin persistence, timing, prompt and privacy
+assertions had passed. The test now classifies only that exact error when the
+same previously requested worker has a matching cancelled Blob request before
+commit, retaining the proof as an attachment. New-page, unmatched and all
+uncaught page errors remain fatal. Twenty-nine classifier/wrapper regressions
+passed after six initially failed. The complete lane must be rerun with this
+test correction. The first run is retained at
+`/tmp/almamesh-codex-final-native-mac-old-document-cancellation.log`.
+
+After the reload-diagnostic correction, the full frontend gate passed again:
+5,877 tests plus four lint-contract checks, with production build and public-route
+verification. Log: `/tmp/almamesh-codex-prepush-final-frontend-gate.log`.
