@@ -63,6 +63,8 @@ export * from './durablePersistence';
 export * from './deletionTombstones';
 export { deleteLegacyKeyval } from './legacyKeyval';
 export * from './portableState';
+// Device-local rows (device code, drive credentials): never exported or restored.
+export { DEVICE_CODE_KEY, deviceRows, getDeviceCode, type DeviceRows } from './deviceRows';
 export * from './webStorage';
 // Backup & Restore (Spec 061): export/import all user data. `backup` = storage
 // collect/apply + registry; `backupSealing` = passphrase encryption: new files

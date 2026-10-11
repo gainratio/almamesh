@@ -11,6 +11,7 @@ import {
   streamNatalInterpretation,
   type CurrentTimelineEvent,
   type InterpretationSectionKey,
+  type NatalInterpretation,
   type NatalInterpretationEvent,
 } from "../index";
 
@@ -164,4 +165,39 @@ describe("explicit structured interpretation generators", () => {
       expect(fetchImpl).not.toHaveBeenCalled();
     },
   );
+});
+
+async function natalComplete(): Promise<NatalInterpretation | undefined> {
+  const fetchImpl = vi.fn(async (_url: string, init: RequestInit) =>
+    response(sectionFrom(String(init.body))),
+  ) as unknown as typeof fetch;
+  const events = await collect<NatalInterpretationEvent>(
+    streamNatalInterpretation({ chart, config, fetchImpl }),
+  );
+  const complete = events.find((e) => e.type === "complete");
+  return complete?.type === "complete" ? complete.interpretation : undefined;
+}
+
+describe("family_guidance (natal, optional)", () => {
+  it("is kept when guidance1 returns it", async () => {
+    payloads.guidance1 = {
+      family_guidance: { layman: "Home is your anchor.", technical: "4th lord Moon own sign." },
+    };
+    try {
+      const interpretation = await natalComplete();
+      expect(interpretation).toBeDefined();
+      expect(interpretation?.family_guidance).toEqual({
+        layman: "Home is your anchor.",
+        technical: "4th lord Moon own sign.",
+      });
+    } finally {
+      payloads.guidance1 = {};
+    }
+  });
+
+  it("is absent (not null) when the reply has none, so old readings and legacy prompts are unchanged", async () => {
+    const interpretation = await natalComplete();
+    expect(interpretation).toBeDefined();
+    expect("family_guidance" in (interpretation ?? {})).toBe(false);
+  });
 });

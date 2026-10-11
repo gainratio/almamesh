@@ -18,6 +18,8 @@ interface TimeTravelSheetProps {
   readonly current?: ChatThreadAsOf;
   readonly birthYear?: number;
   readonly today: string;
+  /** Words under the title. Default: the chat's (new vs change). */
+  readonly intro?: string;
   /** Test seam. Default: this device's `devicePolicy().periodSkyComputeAllowed` (plan Ruling 5). */
   readonly dayAllowed?: boolean;
   /** Test seam. Default: the offline city list, loaded on first use. */
@@ -118,7 +120,7 @@ export function TimeTravelSheet(props: TimeTravelSheetProps) {
       className="absolute inset-x-0 bottom-0 z-20 max-h-full overflow-y-auto rounded-t-2xl border border-ui-border bg-background-secondary p-4 shadow-xl"
       onKeyDown={onKeyDown}>
       <h4 id="time-travel-sheet-title" className="font-semibold text-text-primary">⏳ {t('time_travel.sheet.title')}</h4>
-      <p className="text-xs text-text-muted">{t(current ? 'time_travel.sheet.intro_change' : 'time_travel.sheet.intro')}</p>
+      <p className="text-xs text-text-muted">{props.intro ?? t(current ? 'time_travel.sheet.intro_change' : 'time_travel.sheet.intro')}</p>
       <p className="mt-3 text-sm font-medium text-text-primary">{t('time_travel.sheet.when')}</p>
       <div role="tablist" aria-label={t('time_travel.sheet.when')} className="mt-1 flex gap-2">
         {tabs.map((tab) => (

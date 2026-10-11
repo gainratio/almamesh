@@ -217,12 +217,23 @@ export interface SanitizedDomainForecast {
   readonly windows: readonly SanitizedDomainWindow[];
 }
 
+/** One engine house-lord row for a life area (LifeDomainForecast.houses, minus its rule text). */
+export interface SanitizedHouseLord {
+  readonly house: number;
+  readonly sign: string;
+  readonly lord: string;
+  readonly lord_house: number;
+  readonly lord_sign: string;
+  readonly lord_dignity: string;
+}
+
 /** All present predictive contexts, compacted; each key absent when not emitted. */
 export interface SanitizedPredictive {
   readonly transits?: SanitizedTransits;
   readonly strength?: SanitizedStrength;
   readonly vargas?: SanitizedVargaSummary;
   readonly domains?: readonly SanitizedDomainForecast[];
+  readonly domain_houses?: Readonly<Record<string, readonly SanitizedHouseLord[]>>;
 }
 
 /** A calendar period, both ends inclusive, as `YYYY-MM-DD` days. */
@@ -555,6 +566,24 @@ function sanitizeDomains(ctx: LifeDomainsContext): readonly SanitizedDomainForec
   }));
 }
 
+function sanitizeDomainHouses(ctx: LifeDomainsContext): Readonly<Record<string, readonly SanitizedHouseLord[]>> {
+  return Object.fromEntries(
+    Object.values(ctx.forecasts).map((forecast) => [
+      forecast.domain,
+      // `houses` is required by the engine type; a hand-built forecast in an
+      // older test may omit it, and an absent list is simply no rows.
+      (forecast.houses ?? []).map(({ house, sign, lord, lord_house, lord_sign, lord_dignity }) => ({
+        house,
+        sign,
+        lord,
+        lord_house,
+        lord_sign,
+        lord_dignity,
+      })),
+    ]),
+  );
+}
+
 /** Compact every PRESENT predictive context, or undefined when none exist. */
 function sanitizePredictive(chart: SiderealChart): SanitizedPredictive | undefined {
   const transits = chart.transit_context;
@@ -568,7 +597,7 @@ function sanitizePredictive(chart: SiderealChart): SanitizedPredictive | undefin
     ...(transits ? { transits: sanitizeTransits(transits) } : {}),
     ...(strength ? { strength: sanitizeStrength(strength) } : {}),
     ...(vargas ? { vargas: sanitizeVargaSummary(vargas) } : {}),
-    ...(domains ? { domains: sanitizeDomains(domains) } : {}),
+    ...(domains ? { domains: sanitizeDomains(domains), domain_houses: sanitizeDomainHouses(domains) } : {}),
   };
 }
 

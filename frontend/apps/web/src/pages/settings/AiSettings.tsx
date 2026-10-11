@@ -1,14 +1,16 @@
 /**
  * AiSettings — the dedicated "AI Model" settings tab.
  *
- * Two choices: AI off (the default — the chart is pure calculation) and Connect
- * AI (an OpenRouter key, or any OpenAI-compatible endpoint under "Advanced").
- * Saving runs a real connectivity probe and reports Connected or a specific
- * error. Linked from the header AI-status badge.
+ * Renders the shared AiSetupPanel (the only AI setup UI in the app): AI off
+ * (the default — the chart is pure calculation) and Connect AI (an OpenRouter
+ * key, or any OpenAI-compatible endpoint under "Advanced"). Saving runs a real
+ * connectivity probe and reports Connected or a specific error. Linked from the
+ * header AI-status badge.
  */
 
 import { useTranslation } from 'react-i18next';
-import { AiModelSettings } from '../../components/features/settings/AiModelSettings';
+import { Card } from '../../components/ui';
+import { AiSetupPanel } from '../../components/features/ai/AiSetupPanel';
 
 export default function AiSettings() {
   const { t } = useTranslation('settings');
@@ -20,7 +22,11 @@ export default function AiSettings() {
         <p className="text-text-secondary text-sm mt-1">{t('ai.description')}</p>
       </div>
 
-      <AiModelSettings />
+      <section data-testid="ai-model-settings">
+        <Card className="p-5">
+          <AiSetupPanel />
+        </Card>
+      </section>
 
       {/* Info Box */}
       <div className="flex items-start gap-3 p-4 bg-background-tertiary border border-ui-border rounded-lg">

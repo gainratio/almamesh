@@ -31,6 +31,14 @@ async function pickBogota() {
 const go = () => screen.getByTestId('time-travel-go') as HTMLButtonElement;
 
 describe('TimeTravelSheet', () => {
+  it('shows the intro it is given, else the chat copy', () => {
+    const view = renderSheet({ intro: 'Custom words.' });
+    expect(screen.getByTestId('time-travel-sheet').textContent).toContain('Custom words.');
+    expect(screen.getByTestId('time-travel-sheet').textContent).not.toContain('new chat');
+    view.rerender(<TimeTravelSheet open today="2026-10-09" birthYear={1990} dayAllowed onGo={vi.fn()} onClose={vi.fn()} />);
+    expect(screen.getByTestId('time-travel-sheet').textContent).toContain('new chat');
+  });
+
   it('opens on Month with the current month and no "Where?"', () => {
     renderSheet();
     expect(screen.getByTestId('time-travel-tab-month').getAttribute('aria-selected')).toBe('true');

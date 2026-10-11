@@ -111,13 +111,14 @@ export const KNOWN_ERROR_CLASSES: ReadonlySet<string> = new Set([
   'TimeoutError', 'TypeMismatchError', 'UnknownError',
   // AlmaMesh (apps/web, packages/browser, llm, memory, store)
   'BackupCryptoError', 'BackupError', 'ChartComputeError', 'ChartSaveError', 'ChartSnapshotError',
-  'ChatSummaryGenerationError', 'EngineBootCancelledError', 'EngineBootstrapError', 'EngineCacheNotDurableError',
+  'ChatSummaryGenerationError', 'DriveError', 'EngineBootCancelledError', 'EngineBootstrapError', 'EngineCacheNotDurableError',
   'EngineNotReadyError', 'EngineStorageBlockedError', 'EngineWarmingError', 'InterpretationSetAsideError',
   'JsonBoundsError', 'LlmRequestError', 'LocalTimeError', 'PeriodSkyTimeoutError', 'PeriodSkyUnavailableError',
   'PortableImportRevisionConflictError', 'PortableStateStartupError', 'PortableStateTooNewError',
   'PortableStateUnavailableError', 'PortableStorageUnavailableError', 'PrivacyViolationError',
-  'PyodidePackageLoadError', 'ReasoningTimeoutError', 'ResetIncompleteError', 'SemanticMemoryStorageUnavailableError',
-  'SetAsideRestoreError', 'StoreSaveError',
+  'PyodidePackageLoadError', 'ReasoningTimeoutError', 'ReportParseError', 'ResetIncompleteError',
+  'SectionTimeoutError', 'SemanticMemoryStorageUnavailableError', 'SetAsideRestoreError', 'StoreSaveError',
+  'TimeTravelRefusedError',
   // @gainratio/browser (and the sqlite-wasm build it ships)
   'CacheFallbackRefusedError', 'EngineOperationError', 'EngineStorageUnavailableError', 'GetSyncHandleError',
   'IntegrityError', 'KeyRevokedError', 'KeyringError', 'LegacyFloorUnavailableError', 'PointerExpiredError',
