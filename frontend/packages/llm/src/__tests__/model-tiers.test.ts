@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { CHAT_CLOUD_MODEL, openRouterPreset, RECOMMENDED_CLOUD_MODEL, type LlmEnv } from "../config";
+import { CHAT_CLOUD_MODEL, openRouterPreset, RECOMMENDED_CLOUD_MODEL, REPORT_ENGINE_MODEL, type LlmEnv } from "../config";
 import {
   applyChatSettings,
   applyInterpretationSettings,
@@ -90,13 +90,15 @@ describe("applyInterpretationSettings / applyChatSettings — explicit env resol
     expect(openRouterPreset("sk-or-x", "any/interp").chatModel).toBe("deepseek/deepseek-v4.1-flash");
   });
 
-  it("interpretation defaults to openai/gpt-6-luna (literal)", () => {
-    expect(RECOMMENDED_CLOUD_MODEL).toBe("openai/gpt-6-luna");
+  it("interpretation defaults to deepseek/deepseek-v4.1-flash (literal)", () => {
+    expect(RECOMMENDED_CLOUD_MODEL).toBe("deepseek/deepseek-v4.1-flash");
   });
 
-  it("chat and interpretation defaults differ on purpose: chat stays on deepseek-v4.1-flash until tool calling on Luna is measured", () => {
+  it("chat and interpretation share the one measured default, and neither is the report engine's Luna", () => {
     expect(CHAT_CLOUD_MODEL).toBe("deepseek/deepseek-v4.1-flash");
-    expect(CHAT_CLOUD_MODEL).not.toBe(RECOMMENDED_CLOUD_MODEL);
+    expect(CHAT_CLOUD_MODEL).toBe(RECOMMENDED_CLOUD_MODEL);
+    expect(CHAT_CLOUD_MODEL).not.toBe(REPORT_ENGINE_MODEL);
+    expect(RECOMMENDED_CLOUD_MODEL).not.toBe(REPORT_ENGINE_MODEL);
   });
 
   it("each path uses the user's explicit per-tier override", () => {

@@ -18,9 +18,14 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-import { CHAT_CLOUD_MODEL, RECOMMENDED_CLOUD_MODEL } from '@almamesh/llm';
+import { CHAT_CLOUD_MODEL, RECOMMENDED_CLOUD_MODEL, REPORT_ENGINE_MODEL } from '@almamesh/llm';
 
-import { E2E_REAL_MODEL, PRODUCT_CHAT_DEFAULT_MODEL, PRODUCT_DEFAULT_MODEL } from '../../e2e/realModel';
+import {
+  E2E_REAL_MODEL,
+  PRODUCT_CHAT_DEFAULT_MODEL,
+  PRODUCT_DEFAULT_MODEL,
+  REPORT_ENGINE_DEFAULT_MODEL,
+} from '../../e2e/realModel';
 
 const E2E_DIR = resolve(__dirname, '../../e2e');
 
@@ -105,6 +110,13 @@ describe('real-model e2e specs', () => {
   it("assert the app's real default models, one per tier", () => {
     expect(PRODUCT_DEFAULT_MODEL).toBe(RECOMMENDED_CLOUD_MODEL);
     expect(PRODUCT_CHAT_DEFAULT_MODEL).toBe(CHAT_CLOUD_MODEL);
+  });
+
+  it("mirrors the report engine's own pinned model, which neither the reading nor the chat default is", () => {
+    expect(REPORT_ENGINE_DEFAULT_MODEL).toBe('openai/gpt-6-luna');
+    expect(REPORT_ENGINE_DEFAULT_MODEL).toBe(REPORT_ENGINE_MODEL);
+    expect(PRODUCT_DEFAULT_MODEL).not.toBe(REPORT_ENGINE_DEFAULT_MODEL);
+    expect(PRODUCT_CHAT_DEFAULT_MODEL).not.toBe(REPORT_ENGINE_DEFAULT_MODEL);
   });
 
   it('configure a model that is neither product default, so "used the default, not the seeded model" can fail', () => {

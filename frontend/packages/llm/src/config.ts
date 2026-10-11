@@ -186,25 +186,37 @@ export function resolveProviderConfig(env: LlmEnv = {}): ProviderConfig {
  * one-click preset, the settings UI default, and the "switch to recommended"
  * self-heal. A real OpenRouter slug (verified against the live models catalog).
  *
- * openai/gpt-6-luna since 2026-10-10: in the live nine-section report benchmark
- * (e2e/report.real.spec.ts, 3 runs) it finished all 3 in 39-43 s for $0.013
- * billed each, with every voice inside its word band. deepseek-v4-pro billed
- * $0.019-0.025 per report. Pinned, never the `~openai/gpt-luna-latest` alias, so
- * quality, latency and cost cannot move without a code change. deepseek-v4.1-flash
- * (the default from 2026-10-01) stays selectable. Changing this never rewrites a
- * model a user saved.
+ * deepseek-v4.1-flash since 2026-10-01: in the live timeline benchmark (3 runs
+ * each) it finished all 3 in 49-65 s, vs 111-170 s for deepseek-v4-pro and 1 of
+ * 3 for z-ai/glm-5.3-flash. It is the default of the LEGACY live reading
+ * (`streamNatalInterpretation` / `streamCurrentTimeline`), the only path it was
+ * driven and measured on. Changing this never rewrites a model a user saved.
  */
-export const RECOMMENDED_CLOUD_MODEL = "openai/gpt-6-luna";
+export const RECOMMENDED_CLOUD_MODEL = "deepseek/deepseek-v4.1-flash";
 
 /**
- * The default cloud model the CHAT panel uses. Its own literal, and deliberately
- * NOT {@link RECOMMENDED_CLOUD_MODEL}: readings moved to openai/gpt-6-luna on
- * 2026-10-10 on a report benchmark, but chat is a tool-calling loop and tool
- * calling on Luna has not been measured, so chat stays on deepseek-v4.1-flash
- * until it is.
+ * The model the nine-section REPORT engine (`streamReportTimeline` with
+ * `REPORT_PROMPT_SET`) is pinned to. Its own literal, deliberately NOT
+ * {@link RECOMMENDED_CLOUD_MODEL}: openai/gpt-6-luna was measured on the report
+ * engine only (e2e/report.real.spec.ts, 3 runs on 2026-10-10: 39-43 s, $0.013
+ * billed each, every voice inside its word band). The legacy live reading was
+ * never driven or measured on it, so it must not inherit it.
+ *
+ * Pinned, never the `~openai/gpt-luna-latest` alias, so quality, latency and cost
+ * cannot move without a code change. The report engine takes its model from the
+ * caller's provider config; use this when a report-engine caller needs a default.
+ */
+export const REPORT_ENGINE_MODEL = "openai/gpt-6-luna";
+
+/**
+ * The default cloud model the CHAT panel uses. Deliberately the SAME id as
+ * {@link RECOMMENDED_CLOUD_MODEL} — an alias, not a second literal — so the two
+ * defaults cannot drift apart.
  *
  * Chat used to default to `minimax/minimax-m2.7` for first-token latency. On the
- * live site (2026-10-02) that model took 26.7 s to produce a first token.
+ * live site (2026-10-02) that model took 26.7 s to produce a first token, so chat
+ * now takes the same fast default as readings. Not {@link REPORT_ENGINE_MODEL}:
+ * tool calling on Luna has not been measured.
  *
  * Used as the chat-tier default by `applyChatSettings` (applied on the OpenRouter
  * cloud preset only when the user has set no explicit `chatModel`) and as the
@@ -212,7 +224,7 @@ export const RECOMMENDED_CLOUD_MODEL = "openai/gpt-6-luna";
  * a user's settings — including one an earlier preset wrote — and a local/custom
  * endpoint's own model are never overridden.
  */
-export const CHAT_CLOUD_MODEL = "deepseek/deepseek-v4.1-flash";
+export const CHAT_CLOUD_MODEL = RECOMMENDED_CLOUD_MODEL;
 
 /**
  * Model ids AlmaMesh itself once shipped as a DEFAULT OpenRouter preset and that
