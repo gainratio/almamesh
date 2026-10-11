@@ -149,8 +149,10 @@ test.describe('Settings → AI: the key goes only to the provider you choose', (
     await expect(page.getByTestId('tier-cloud-active')).toHaveCount(0);
     await expect(page.getByTestId('llm-openrouter-key')).toHaveValue('');
     await expect(page.getByTestId('llm-credits')).toHaveCount(0);
-    // Only the two lines this failure is meant to log: the app's own coded diagnostic and the browser's 401 resource line.
+    // This failure is meant to log two lines: the app's own coded diagnostic and the browser's 401
+    // resource line. Drop exactly those, then hold the same clean-console bar as every test here.
     const expected = /almamesh:error:provider\.connection_test_failed|status of 401/;
-    expect(errors.filter((message) => !expected.test(message))).toEqual([]);
+    errors.splice(0, errors.length, ...errors.filter((message) => !expected.test(message)));
+    expect(errors).toEqual([]);
   });
 });
