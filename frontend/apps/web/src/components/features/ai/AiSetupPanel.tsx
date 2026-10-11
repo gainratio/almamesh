@@ -332,6 +332,29 @@ export function AiSetupPanel({
     notifyLlmSettingsChanged();
   };
 
+  // Put the last durable config back in memory AND storage after the provider
+  // rejected the key just saved, refresh every status surface, and drop the credits
+  // line that belonged to the rejected key. Skipped when a newer write owns memory.
+  const revertRejectedKey = async (saveWrite: number, lastDurable: LlmSettings) => {
+    if (!ownsSettingsMemory(saveWrite)) return;
+    const revertWrite = beginSettingsWrite();
+    hydrateLlmSettings(JSON.stringify(lastDurable)); // replace memory wholesale
+    writeLlmSettings(lastDurable); // and hand the same snapshot to storage
+    markRestoreTarget(revertWrite, readLlmSettings());
+    const restored = describeLlmStatus();
+    setStatus(restored);
+    notifyLlmSettingsChanged();
+    setCredits({ phase: 'idle' });
+    if (restored.kind === 'openrouter' && restored.configured) loadCredits();
+    try {
+      await flushSettings();
+    } catch (err) {
+      // Memory is already back on the old config; only a reload could resurrect the
+      // rejected key, and the user is told the key was rejected either way.
+      safeError('provider.settings_save_failed', err);
+    }
+  };
+
   // The shared save→test path: persist, refresh every status surface, then probe
   // the resolved interpretation config and report an honest verdict under the
   // Save button that triggered it (`source`).
@@ -341,6 +364,9 @@ export function AiSetupPanel({
     const controller = new AbortController();
     probeAbort.current = controller;
     const saveWrite = beginSettingsWrite();
+    // Read AFTER beginSettingsWrite (it pins the durable boot read) and BEFORE this
+    // save is marked durable: this is what a rejected key must put back.
+    const lastDurable = restoreTargetSettings();
 
     try {
       writeLlmSettings({ ...next, engine: '' });
@@ -384,6 +410,14 @@ export function AiSetupPanel({
     try {
       await testConnection({ config: resolveConfig(), signal: controller.signal });
     } catch (err) {
+      const kind = classifyConnectionError(err);
+      // A DEFINITIVE key rejection (401/403): the key is not valid, so it must not
+      // stay saved and active, even when the user has since edited the form. A
+      // newer WRITE owns memory instead (revertRejectedKey checks that). A network
+      // error, 5xx, 429 or out-of-credits says nothing about the key: kept as saved.
+      if (kind === 'auth') {
+        void revertRejectedKey(saveWrite, lastDurable);
+      }
       // A superseded probe (the user edited or re-saved) must not overwrite the
       // current verdict; ignore its result.
       if (gen !== probeGen.current) {
@@ -391,7 +425,6 @@ export function AiSetupPanel({
       }
       // Never swallow — the specific verdict below is all the user sees.
       safeError('provider.connection_test_failed', err);
-      const kind = classifyConnectionError(err);
       // When the failure is otherwise unclassifiable (a 400/429/5xx, e.g. a model
       // rejecting a request param), surface the PROVIDER'S OWN reason so the user
       // isn't stuck on a blind "couldn't connect" with no next step.

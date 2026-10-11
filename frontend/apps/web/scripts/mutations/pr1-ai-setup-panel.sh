@@ -30,7 +30,7 @@ MARKERS=(
   MUTATION_RESTORE_AFTER_SUPERSEDE MUTATION_RESTORE_FROM_MEMORY MUTATION_RESTORE_IGNORES_NEWER_WRITE
   MUTATION_OFF_GENERIC_COPY MUTATION_OFF_KEEPS_FORM MUTATION_OFF_NO_RESTORE_TARGET
   MUTATION_OFF_TARGET_AFTER_AWAIT MUTATION_OFF_TARGET_IN_CATCH MUTATION_PER_INSTANCE
-  MUTATION_REPLACE_NO_TARGET
+  MUTATION_REPLACE_NO_TARGET MUTATION_REVERT_SKIPPED_ON_AUTH MUTATION_REVERT_ON_NETWORK
 )
 REPORTS="$(mktemp -d)"
 
@@ -254,6 +254,14 @@ expect_red "I3: a Replace is not the restore target" MUTATION_REPLACE_NO_TARGET 
   's{target = \{ writeId: writeCounter, settings: readLlmSettings\(\) \}; // Replace is the restore target}{/* MUTATION_REPLACE_NO_TARGET */}' \
   "after a remote Replace, a failed save restores the replaced config" "$DURABILITY"
 
+expect_red "a 401 no longer restores the last durable config" MUTATION_REVERT_SKIPPED_ON_AUTH \
+  's{if \(kind === \x27auth\x27\) \{}{if (false /* MUTATION_REVERT_SKIPPED_ON_AUTH */) \{}' \
+  "a 401 on a key CHANGE restores the previous working key in memory and storage"
+
+expect_red "a network error also restores (wipes) the saved key" MUTATION_REVERT_ON_NETWORK \
+  's{if \(kind === \x27auth\x27\) \{}{if (kind === \x27auth\x27 || kind === \x27network\x27 /* MUTATION_REVERT_ON_NETWORK */) \{}' \
+  "a network error is not a rejection: the new key stays saved"
+
 # Restored: the source is clean and no marker survives anywhere in src.
 git diff --quiet -- "$PANEL" "$DURABILITY" || { echo "FAIL: $PANEL or $DURABILITY is not clean after restore" >&2; exit 1; }
 for marker in "${MARKERS[@]}"; do
@@ -262,4 +270,4 @@ for marker in "${MARKERS[@]}"; do
     exit 1
   fi
 done
-echo "all 39 mutations went RED; source restored and clean"
+echo "all 41 mutations went RED; source restored and clean"

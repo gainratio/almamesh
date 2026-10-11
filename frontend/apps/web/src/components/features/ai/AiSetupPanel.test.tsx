@@ -140,19 +140,114 @@ describe('AiSetupPanel — OpenRouter-first, test-on-save', () => {
     expect(saved.privacyMode).toBe('cloud_premium');
   });
 
-  it('shows a SPECIFIC error (bad key) when the connectivity test fails — config still saved', async () => {
-    const testConnection = vi.fn().mockRejectedValue(requestError('returned 401 Unauthorized', 401));
-    render(<AiSetupPanel resolveConfig={resolveConfig} fetchCredits={fetchCredits} fetchModels={fetchModels} testConnection={testConnection} />);
+  describe('a definitive key rejection (401/403) does not leave the key saved and active', () => {
+    const GOOD = {
+      apiBase: 'https://openrouter.ai/api/v1',
+      apiKey: 'sk-or-good',
+      model: RECOMMENDED_CLOUD_MODEL,
+      interpretationModel: RECOMMENDED_CLOUD_MODEL,
+      chatModel: CHAT_CLOUD_MODEL,
+      privacyMode: 'cloud_premium',
+    };
 
-    fireEvent.change(screen.getByTestId('llm-openrouter-key'), { target: { value: 'bad-key' } });
-    fireEvent.click(screen.getByTestId('llm-save'));
+    function captureDurableWrites(): string[] {
+      const writes: string[] = [];
+      configureLlmSettingsPersistence((serialized) => {
+        writes.push(serialized);
+      });
+      return writes;
+    }
 
-    await waitFor(() => {
-      const result = screen.getByTestId('llm-connection-result').textContent ?? '';
-      expect(result).toContain('API key rejected');
+    function panel(testConnection: AiSetupPanelProps['testConnection']) {
+      return (
+        <AiSetupPanel
+          resolveConfig={resolveConfig}
+          fetchCredits={fetchCredits}
+          fetchModels={fetchModels}
+          testConnection={testConnection}
+          flushSettings={vi.fn().mockResolvedValue(undefined)}
+        />
+      );
+    }
+
+    async function saveKeyAndWaitFor(text: string, key: string) {
+      fireEvent.change(screen.getByTestId('llm-openrouter-key'), { target: { value: key } });
+      fireEvent.click(screen.getByTestId('llm-save'));
+      await waitFor(() =>
+        expect(screen.getByTestId('llm-connection-result').textContent ?? '').toContain(text),
+      );
+      await settle();
+    }
+
+    it('a 401 on the first-ever connect leaves AI off, stores no key, and stays off after a reload', async () => {
+      const writes = captureDurableWrites();
+      const reject = vi.fn().mockRejectedValue(requestError('returned 401 Unauthorized', 401));
+      const { unmount } = render(panel(reject));
+
+      await saveKeyAndWaitFor('API key rejected', 'bad-key');
+
+      expect(describeLlmStatus().kind).toBe('none');
+      expect(readSaved().apiKey ?? '').toBe('');
+      expect(screen.queryByTestId('tier-cloud-active')).toBeNull();
+      expect(screen.getByTestId('tier-none-active')).toBeTruthy();
+      expect(screen.queryByTestId('llm-credits')).toBeNull();
+      const stored = JSON.parse(writes.at(-1) ?? '{}') as Record<string, unknown>;
+      expect(stored.apiKey ?? '').toBe('');
+
+      // Reload: a fresh module state hydrated from what storage last received.
+      unmount();
+      hydrateLlmSettings(writes.at(-1) ?? null);
+      resetSettingsDurabilityForTests();
+      render(panel(vi.fn()));
+      expect(describeLlmStatus().kind).toBe('none');
+      expect(screen.queryByTestId('tier-cloud-active')).toBeNull();
+      expect(readSaved().apiKey ?? '').toBe('');
     });
-    // The config is still persisted so the user can fix & retry — not lost.
-    expect(readSaved().apiKey).toBe('bad-key');
+
+    it('a 403 is also a definitive rejection', async () => {
+      render(panel(vi.fn().mockRejectedValue(requestError('returned 403 Forbidden', 403))));
+      await saveKeyAndWaitFor('API key rejected', 'bad-key');
+      expect(describeLlmStatus().kind).toBe('none');
+    });
+
+    it('a 401 on a key CHANGE restores the previous working key in memory and storage', async () => {
+      hydrateLlmSettings(JSON.stringify(GOOD));
+      resetSettingsDurabilityForTests();
+      const writes = captureDurableWrites();
+      render(panel(vi.fn().mockRejectedValue(requestError('returned 401 Unauthorized', 401))));
+      await waitFor(() => expect(screen.getByTestId('llm-credits-value')).toBeTruthy());
+
+      await saveKeyAndWaitFor('API key rejected', 'sk-or-bad');
+
+      expect(readSaved().apiKey).toBe('sk-or-good');
+      expect(readSaved().interpretationModel).toBe(RECOMMENDED_CLOUD_MODEL);
+      expect(readSaved().privacyMode).toBe('cloud_premium');
+      const stored = JSON.parse(writes.at(-1) ?? '{}') as Record<string, unknown>;
+      expect(stored.apiKey).toBe('sk-or-good');
+      expect(stored.interpretationModel).toBe(RECOMMENDED_CLOUD_MODEL);
+      // Still Active, on the OLD key, with the rejection shown.
+      expect(screen.getByTestId('tier-cloud-active')).toBeTruthy();
+      expect(screen.getByTestId('llm-connection-result').textContent).toContain('API key rejected');
+    });
+
+    it('a network error is not a rejection: the new key stays saved', async () => {
+      hydrateLlmSettings(JSON.stringify(GOOD));
+      resetSettingsDurabilityForTests();
+      const writes = captureDurableWrites();
+      render(panel(vi.fn().mockRejectedValue(new TypeError('Failed to fetch'))));
+
+      await saveKeyAndWaitFor("Couldn't reach the endpoint", 'sk-or-new');
+
+      expect(readSaved().apiKey).toBe('sk-or-new');
+      const stored = JSON.parse(writes.at(-1) ?? '{}') as Record<string, unknown>;
+      expect(stored.apiKey).toBe('sk-or-new');
+    });
+
+    it('a 5xx outage is not a rejection either: the new key stays saved', async () => {
+      render(panel(vi.fn().mockRejectedValue(requestError('returned 503 Service Unavailable', 503))));
+      await saveKeyAndWaitFor('having trouble', 'sk-or-new');
+      expect(readSaved().apiKey).toBe('sk-or-new');
+    });
   });
 
   it('maps an out-of-credits failure to billing copy, not a model error', async () => {
@@ -469,8 +564,8 @@ describe('AiSetupPanel — one-time switch suggestion for glm-5.3-flash users', 
     hydrateSlowModelSuggestion(null);
   });
 
-  it('pins the new default: openai/gpt-6-luna', () => {
-    expect(RECOMMENDED_CLOUD_MODEL).toBe('openai/gpt-6-luna');
+  it('pins the new default: deepseek/deepseek-v4.1-flash', () => {
+    expect(RECOMMENDED_CLOUD_MODEL).toBe('deepseek/deepseek-v4.1-flash');
   });
 
   it('suggests the switch with the measured reason, and switching keeps the key and chat model', async () => {
@@ -479,7 +574,6 @@ describe('AiSetupPanel — one-time switch suggestion for glm-5.3-flash users', 
     renderSettings(testConnection);
 
     const card = screen.getByTestId('model-switch-suggestion');
-    expect(card.textContent).toContain('GPT-6 Luna');
     // Chat keeps its own default: the card names the model each tier lands on.
     expect(card.textContent).toContain('DeepSeek V4.1 Flash');
     expect(card.textContent).toMatch(/GLM 5\.3 Flash/);
@@ -489,8 +583,8 @@ describe('AiSetupPanel — one-time switch suggestion for glm-5.3-flash users', 
     fireEvent.click(screen.getByTestId('model-switch-accept'));
     await waitFor(() => expect(testConnection).toHaveBeenCalled());
     const saved = readSaved();
-    expect(saved.interpretationModel).toBe('openai/gpt-6-luna');
-    expect(saved.model).toBe('openai/gpt-6-luna');
+    expect(saved.interpretationModel).toBe('deepseek/deepseek-v4.1-flash');
+    expect(saved.model).toBe('deepseek/deepseek-v4.1-flash');
     expect(saved.chatModel).toBe('minimax/minimax-m2.7');
     expect(saved.apiKey).toBe('sk-or-kept');
     expect(screen.queryByTestId('model-switch-suggestion')).toBeNull();
