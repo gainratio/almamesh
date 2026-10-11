@@ -111,7 +111,7 @@ export const KNOWN_ERROR_CLASSES: ReadonlySet<string> = new Set([
   'TimeoutError', 'TypeMismatchError', 'UnknownError',
   // AlmaMesh (apps/web, packages/browser, llm, memory, store)
   'BackupCryptoError', 'BackupError', 'ChartComputeError', 'ChartSaveError', 'ChartSnapshotError',
-  'ChatSummaryGenerationError', 'EngineBootCancelledError', 'EngineBootstrapError', 'EngineCacheNotDurableError',
+  'ChatSummaryGenerationError', 'DriveError', 'EngineBootCancelledError', 'EngineBootstrapError', 'EngineCacheNotDurableError',
   'EngineNotReadyError', 'EngineStorageBlockedError', 'EngineWarmingError', 'InterpretationSetAsideError',
   'JsonBoundsError', 'LlmRequestError', 'LocalTimeError', 'PeriodSkyTimeoutError', 'PeriodSkyUnavailableError',
   'PortableImportRevisionConflictError', 'PortableStateStartupError', 'PortableStateTooNewError',
