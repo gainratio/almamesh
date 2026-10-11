@@ -1,6 +1,7 @@
 import { test, expect, type Page, type Request } from '@playwright/test';
 import { bootEngine, seedChart, DELHI_SEED, LLM_SETTINGS_KEY } from './interpretation.helpers';
 import { E2E_REAL_MODEL, PRODUCT_CHAT_DEFAULT_MODEL } from './realModel';
+import { parseSuccessfulToolResult } from './agenticToolResult.helpers';
 
 /**
  * Dashboard LIVE validation against REAL OpenRouter — three headline changes:
@@ -106,9 +107,7 @@ async function successfulToolPairs(requests: ObservedAgentRequest[]) {
     expect(providerCallIds.has(call.id), 'the call ID was emitted by the real provider').toBe(true);
     const message = results.get(call.id);
     expect(message?.name).toBe(call.function.name);
-    const result = JSON.parse(message?.content ?? 'null') as Record<string, unknown>;
-    expect(result).not.toBeNull();
-    expect(result).not.toHaveProperty('error');
+    const result = parseSuccessfulToolResult(message?.content);
     return { name: call.function.name, args: JSON.parse(call.function.arguments) as Record<string, unknown>, result };
   });
 }

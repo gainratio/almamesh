@@ -92,10 +92,10 @@ Both cases assert that no `/models/` requests occur. The ten recorded `peakSingl
 
 ## Current candidate checks
 
-The candidate is on `codex/iphone-time-travel`, based on release #331 (`8d10fbbb`). The final local frontend gate rebuilt the normal review build as `8d3e1416e09d` at `2026-10-11T21:22:39.380Z`; the separate hooked review build is `f2bddbf84f7c`, built at `2026-10-11T18:25:12.847Z`.
+The candidate is on `codex/iphone-time-travel`, based on release #331 (`8d10fbbb`). The final local frontend gate rebuilt the normal review build as `e412ac1eb2a8` at `2026-10-11T21:49:13.275Z`; the separate hooked review build is `f2bddbf84f7c`, built at `2026-10-11T18:25:12.847Z`.
 
 - Backend gate in Dagger: 1,214 tests passed, 98.46% coverage; Ruff, formatting, mypy and complexity checks passed. This includes 28 new public-doc export regressions. Seven corrected slow-hit dates changed in reference fixtures; other fixture fields were unchanged. Log: `/tmp/almamesh-codex-pr333-backend-dagger-green.log`.
-- Final frontend gate: 5,982 tests plus four lint-contract checks passed, including the constrained-device memory policy, restore-generation, reload-diagnostic and artifact-scanner regressions. TypeScript, ESLint, production build, public-route prerender checks and absence of test hooks passed. The configured Knip report completed successfully but still reports unused-code/dependency diagnostics; it is not a clean unused-code result. Log: `/tmp/almamesh-codex-pr333-scanner-final-frontend-gate.log`.
+- Final frontend gate: 6,010 tests plus four lint-contract checks passed, including the constrained-device memory policy, restore-generation, reload-diagnostic, artifact-scanner and real-tool-envelope regressions. TypeScript, ESLint, production build, public-route prerender checks and absence of test hooks passed. The configured Knip report completed successfully but still reports unused-code/dependency diagnostics; it is not a clean unused-code result. Log: `/tmp/almamesh-codex-pr333-envelope-frontend-gate.log`.
 - Real-browser engine parity: 11/11 checks passed against the CPython reference, including updated predictive fixtures, explicit-date sensitivity, Moon windows, clean console and same-origin engine traffic.
 - The broad Chromium functional run passed 16 journeys and exposed one stale test assertion: it expected one city download instead of the new 25 bounded parts. After updating that assertion to the manifest count and proving no repeated part downloads, all seven affected journeys passed on the candidate before the constrained-device recall policy. These cover typed historical questions, multi-place timing, slow-save Back to today, Day/revisit, two tabs, September 2017 → today, and chat tool movement in both directions. The engine is real; provider replies in chat cases are locally stubbed.
 - Mac WebKit iPhone 15 functional checks before the recall policy passed 4/4: Day/revisit/Back, two tabs, September 2017 → today, and chat tool movement. Single-WebContent RSS peaks were 1069, 862, 1326 and 1362 MiB respectively. Those were functional checks, not memory-budget passes: the chat peaks exceeded the 1306 MiB reference allowance and motivated the recall policy change.
@@ -360,3 +360,38 @@ cancelled early to avoid rerunning the known scanner failure. Neither supplies
 release acceptance or live-provider proof. Application behavior and memory
 limits are unchanged by this scanner correction. Fresh complete hosted checks,
 including clearance and upload of the Mac diagnostics, remain required.
+
+## Hosted Dagger pass and real-tool test correction
+
+Dagger run `38176164704` passed all 12 product gates and its aggregate check on
+candidate `22d89beae086cde962ba5ba967187b64825526ef`. The hosted backend passed
+1,214 tests. The frontend passed 5,981 Vitest tests plus four lint contracts,
+with its existing Node-SQLite-dependent fixture skip. All 17 Chromium
+time-travel tests, two boot-retry cases and 11 engine parity checks ran and
+passed. Four PDF exports passed. The final Chromium Day journey measured
+218.02 MiB heap, 0.102 MiB revisit growth and 0.126 MiB city-lookup growth,
+inside the unchanged limits. All four corrected device-tier memory cases ran;
+the separate hook-only lookup retained its explicit no-hooks-build skip.
+
+Nightly `38176165810` failed the new September 2017 real-provider test at its
+first movement-result assertion. The provider emitted actual tool calls and
+the movement returned `{ok: true, value: {status: "queued", action: "travel"}}`.
+The test incorrectly expected an unwrapped result. Four earlier live tests
+passed; the new test's today/return legs and the final no-real-skips guard did
+not run. This does not establish complete live-provider acceptance.
+
+The test now requires an object envelope with `ok === true`, rejects protocol
+and domain errors, and then reads the object value. Provider-emitted IDs,
+matching result names, three-call limit, exact period/lord summaries and all
+movement/Today/Back UI assertions are preserved. The separately pregrounded
+today facts keep their raw-result contract. The extracted old parser failed
+21 regressions; all 28 now pass. The complete local frontend gate passed
+6,010 tests plus four lint contracts, and strict E2E TypeScript passed.
+
+This is a test-only correction. Fresh Dagger, complete native Mac and nightly
+results on the corrected head remain required. Logs:
+`/tmp/almamesh-codex-pr333-dagger-22d89be.log`,
+`/tmp/almamesh-codex-pr333-nightly-22d89be.log`,
+`/tmp/almamesh-codex-pr333-envelope-frontend-gate.log` and
+`/tmp/almamesh-codex-pr333-envelope-e2e-types.log`. Completed job details:
+`/tmp/almamesh-codex-pr333-dagger-22d89be-jobs/EVIDENCE.md`.
