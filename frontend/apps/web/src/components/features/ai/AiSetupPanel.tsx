@@ -1,5 +1,5 @@
 /**
- * LlmModelSettings — the AI configuration screen.
+ * AiSetupPanel — the one AI setup UI (Settings → AI, and onboarding from PR 4).
  *
  * Two choices, stated plainly:
  *   1. AI off (the DEFAULT) — the chart is pure calculation and nothing leaves
@@ -7,16 +7,17 @@
  *   2. Connect AI — an OpenRouter key (the guided, recommended path) or, under
  *      "Advanced", any OpenAI-compatible endpoint (incl. a local Ollama).
  *
- * Saving is NOT fire-and-forget: it persists the config, then runs a real 1-token
- * connectivity probe (`testProviderConnection`) against the exact model/endpoint
- * the reading will use, and reports an honest **Connected** or a specific error
+ * Saving is NOT fire-and-forget: it persists the config, then runs a real
+ * connectivity probe that mirrors the JSON-mode reading (`testProviderConnection`)
+ * against the exact model/endpoint the reading will use, and reports an honest
+ * **Connected** or a specific error
  * (bad key / bad model / out of credits / unreachable) right here — so the user
  * never has to leave the screen to discover their config is broken. Everything is
  * stored in canonical browser-local SQLite; synchronous reads use a boot-hydrated
  * memory snapshot and no user setting is duplicated in Web Storage.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { safeError } from '@almamesh/shared-types';
 import { flushPortablePersistence } from '@almamesh/store';
@@ -24,6 +25,7 @@ import {
   CHAT_CLOUD_MODEL,
   describeLlmStatus,
   fetchOpenRouterCredits,
+  hydrateLlmSettings,
   fetchOpenRouterModels,
   isLocalEndpoint,
   openRouterPreset,
@@ -51,6 +53,12 @@ import {
   slowModelSwitch,
 } from '../../../lib/modelSuggestion';
 import { resolveInterpretationConfig } from '../../../hooks/useStreamingInterpretation';
+import {
+  beginSettingsWrite,
+  markRestoreTarget,
+  ownsSettingsMemory,
+  restoreTargetSettings,
+} from './aiSettingsDurability';
 
 const OPENROUTER_KEYS_URL = 'https://openrouter.ai/keys';
 const PLACEHOLDER_BASE = 'http://localhost:11434/v1';
@@ -63,11 +71,12 @@ const PLACEHOLDER_CHAT_MODEL = CHAT_CLOUD_MODEL;
 type ConnSource = 'guided' | 'advanced';
 
 /**
- * The verdict kinds: every connection-error class, plus `'storage'` for the case
+ * The verdict kinds: every connection-error class, plus `'storage_off'` for a
+ * turn-off that is live in memory but could not be persisted, and `'storage'` for the case
  * where persisting canonical SQLite failed — a save no-op the user must be told
  * about, never swallowed.
  */
-type ResultKind = ReturnType<typeof classifyConnectionError> | 'storage';
+type ResultKind = ReturnType<typeof classifyConnectionError> | 'storage' | 'storage_off';
 
 /** The live state of the save-time connectivity probe. */
 type ConnState =
@@ -95,7 +104,7 @@ type ModelsState =
  * — default to the real interpretation-config resolver + connectivity probe +
  * OpenRouter balance reader.
  */
-export interface LlmModelSettingsProps {
+export interface AiSetupPanelProps {
   resolveConfig?: () => ProviderConfig;
   testConnection?: (opts: { config: ProviderConfig; signal?: AbortSignal }) => Promise<void>;
   fetchCredits?: (opts: {
@@ -108,15 +117,30 @@ export interface LlmModelSettingsProps {
   }) => Promise<OpenRouterModel[]>;
   /** Await the canonical SQLite write before reporting a saved configuration. */
   flushSettings?: () => Promise<void>;
+  /** Show the "AI off" choice. Settings: true (default). Onboarding: false. */
+  showOffChoice?: boolean;
+  /** Surface-specific copy above the choices. Settings passes none. */
+  intro?: ReactNode;
+  /**
+   * Called once per save, only after the settings are durable AND the probe
+   * passed for the config still on screen. Onboarding advances on it.
+   * Not called if the panel unmounts, AI is turned off, a remote Replace lands, or
+   * the form is edited or re-saved before the probe settles. It may be async; it is
+   * awaited, and a throw or rejection is logged while the verdict stays Connected.
+   */
+  onConnected?: (status: LlmStatus) => void | Promise<void>;
 }
 
-export default function LlmModelSettings({
+export function AiSetupPanel({
   resolveConfig = resolveInterpretationConfig,
   testConnection = testProviderConnection,
   fetchCredits = fetchOpenRouterCredits,
   fetchModels = fetchOpenRouterModels,
   flushSettings = flushPortablePersistence,
-}: LlmModelSettingsProps = {}) {
+  showOffChoice = true,
+  intro,
+  onConnected,
+}: AiSetupPanelProps = {}) {
   const { t } = useTranslation('settings');
   const [status, setStatus] = useState<LlmStatus>(() => describeLlmStatus());
   const [settings, setSettings] = useState<LlmSettings>(() => readLlmSettings());
@@ -125,6 +149,8 @@ export default function LlmModelSettings({
   // fetch, so a stale verdict from a superseded config can never land on screen.
   const probeGen = useRef(0);
   const probeAbort = useRef<AbortController | null>(null);
+  // Which memory a failed save may restore is tracked in ./aiSettingsDurability,
+  // shared by every panel instance because the settings snapshot is module-global.
 
   // A remote Replace reconstructs the synchronous memory snapshot, then emits the same
   // settings signal used by local saves. Re-read the whole form so a tab left
@@ -143,6 +169,17 @@ export default function LlmModelSettings({
     return () =>
       window.removeEventListener(LLM_SETTINGS_CHANGED_EVENT, refreshFromCanonicalState);
   }, []);
+
+  // Leaving the screen supersedes whatever is in flight: a probe that settles after
+  // unmount must never report a connection to a caller that has moved on. The refs
+  // are read at cleanup time on purpose — the LATEST in-flight probe is the one to cancel.
+  useEffect(
+    () => () => {
+      probeGen.current += 1; // unmount supersedes the probe
+      probeAbort.current?.abort(); // unmount aborts the probe
+    },
+    [],
+  );
 
   const noneActive = status.kind === 'none';
   const aiOn =
@@ -245,8 +282,9 @@ export default function LlmModelSettings({
   // inert for this browser. Reset to `local_only` and drop the per-tier models so
   // nothing sensitive lingers; describeLlmStatus reads "none" again.
   const turnAiOff = async () => {
-    probeGen.current += 1;
+    const offGen = (probeGen.current += 1);
     probeAbort.current?.abort();
+    const offWrite = beginSettingsWrite();
     try {
       writeLlmSettings({
         engine: '',
@@ -257,12 +295,35 @@ export default function LlmModelSettings({
         chatModel: '',
         privacyMode: 'local_only',
       });
+      // Off is the restore target whether its flush succeeds or fails (fail closed),
+      // and it is THIS write's own snapshot, taken before any newer write can land.
+      markRestoreTarget(offWrite, readLlmSettings()); // off is the restore target
       await flushSettings();
     } catch (err) {
-      // Canonical SQLite can reject. Keep
-      // the active badge and surface a retryable storage verdict.
+      // Canonical SQLite can reject. Fail CLOSED: writeLlmSettings already set the
+      // in-memory snapshot to off, and it stays off. The flush can reject because
+      // ANOTHER store failed while this row committed, so restoring the old key
+      // would keep cloud calls going. The badge and the header follow memory, even
+      // when superseded (a newer save's snapshot is simply what memory now holds).
       safeError('provider.disable_failed', err);
-      setConn({ phase: 'error', source: 'guided', kind: 'storage' });
+      setStatus(describeLlmStatus()); // fail-closed badge after a failed turn-off
+      notifyLlmSettingsChanged(); // fail-closed header after a failed turn-off
+      // A newer save or edit owns the verdict now; a late off-failure must not paint over it.
+      if (offGen !== probeGen.current) {
+        return;
+      }
+      // Say exactly what happened: off now, maybe not after a reload. The form
+      // follows memory, so no key is left sitting in the field.
+      setSettings(readLlmSettings()); // clear the form after a failed turn-off
+      setConn({ phase: 'error', source: 'guided', kind: 'storage_off' });
+      return;
+    }
+    // Superseded while the off flush was in flight: refresh the status surfaces from
+    // durable truth (a newer save may have written since), but leave the form and
+    // the verdict to whoever superseded this turn-off.
+    if (offGen !== probeGen.current) {
+      setStatus(describeLlmStatus());
+      notifyLlmSettingsChanged();
       return;
     }
     setSettings(readLlmSettings());
@@ -279,15 +340,39 @@ export default function LlmModelSettings({
     probeAbort.current?.abort();
     const controller = new AbortController();
     probeAbort.current = controller;
+    const saveWrite = beginSettingsWrite();
 
     try {
       writeLlmSettings({ ...next, engine: '' });
+      const written = readLlmSettings();
       await flushSettings();
+      markRestoreTarget(saveWrite, written);
     } catch (err) {
       // A canonical SQLite write can fail. Do not
       // probe or report a configuration that will disappear on reload.
       safeError('provider.settings_save_failed', err);
+      // Never leave an unsaved config live in memory until the next reload — even
+      // when an edit or unmount superseded this save's verdict. Only a newer WRITE
+      // owns memory; then it is that write's job to restore or keep it.
+      if (ownsSettingsMemory(saveWrite)) {
+        hydrateLlmSettings(JSON.stringify(restoreTargetSettings())); // restore the last durable config
+        setStatus(describeLlmStatus());
+        notifyLlmSettingsChanged();
+      }
+      // A newer save or edit owns the verdict now; a late failure must not paint over it.
+      if (gen !== probeGen.current) {
+        return;
+      }
       setConn({ phase: 'error', source, kind: 'storage' });
+      return;
+    }
+    // A save superseded while its flush was in flight still wrote durable settings,
+    // so the status surfaces (this panel's badge, the header badge) refresh from
+    // that truth. It must not repaint the user's in-progress form or
+    // the verdict that the newer save now owns.
+    if (gen !== probeGen.current) {
+      setStatus(describeLlmStatus());
+      notifyLlmSettingsChanged();
       return;
     }
 
@@ -298,9 +383,6 @@ export default function LlmModelSettings({
     setConn({ phase: 'testing', source });
     try {
       await testConnection({ config: resolveConfig(), signal: controller.signal });
-      if (gen === probeGen.current) {
-        setConn({ phase: 'connected', source });
-      }
     } catch (err) {
       // A superseded probe (the user edited or re-saved) must not overwrite the
       // current verdict; ignore its result.
@@ -315,6 +397,23 @@ export default function LlmModelSettings({
       // isn't stuck on a blind "couldn't connect" with no next step.
       const detail = kind === 'unknown' ? connectionErrorDetail(err) : undefined;
       setConn({ phase: 'error', source, kind, ...(detail ? { detail } : {}) });
+      return;
+    }
+    // Probe-race guard: a superseded probe (edit, re-save, or remote Replace)
+    // must never paint Connected or report a connection for a config that is gone.
+    if (gen !== probeGen.current) {
+      return;
+    }
+    // Reached only after `await flushSettings()` above resolved (SQLite has the
+    // config) AND the probe passed. Called outside the try so a throwing caller
+    // can never be misreported as a connection error.
+    setConn({ phase: 'connected', source });
+    try {
+      await onConnected?.(describeLlmStatus(persisted));
+    } catch (err) {
+      // The caller's bug, not a connection failure: keep Connected, log it, and never
+      // let a throw or an async rejection escape as an unhandled rejection.
+      safeError('app.typed_error', err);
     }
   };
 
@@ -349,37 +448,45 @@ export default function LlmModelSettings({
 
   return (
     <section className="space-y-4">
-      {/* ── AI off (the default) ── */}
-      <div
-        data-testid="tier-none"
-        className={`rounded-lg border p-4 ${
-          noneActive ? 'border-accent-gold/40 bg-accent-gold/5' : 'border-ui-border bg-background-secondary'
-        }`}
-      >
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-text-primary text-sm font-medium">
-            {t('tiers.none_title')}
-            <span className="ml-2 rounded-full border border-ui-border px-2 py-0.5 text-[0.65rem] font-medium uppercase tracking-wide text-text-secondary">
-              {t('tiers.none_default_badge')}
-            </span>
-          </p>
-          {noneActive ? (
-            <Badge variant="brass" data-testid="tier-none-active">
-              {t('tiers.active_badge')}
-            </Badge>
-          ) : (
-            <button
-              type="button"
-              onClick={() => void turnAiOff()}
-              className="rounded-md border border-ui-border px-3 py-1.5 text-sm text-text-secondary transition-colors hover:text-text-primary"
-              data-testid="tier-none-select"
-            >
-              {t('tiers.none_button')}
-            </button>
-          )}
+      {intro ? (
+        <div className="space-y-2 text-sm text-text-secondary" data-testid="ai-setup-intro">
+          {intro}
         </div>
-        <p className="text-text-secondary text-xs mt-1">{t('tiers.none_body')}</p>
-      </div>
+      ) : null}
+
+      {/* ── AI off (the default). Onboarding offers "Skip for now" outside the panel instead. ── */}
+      {showOffChoice && (
+        <div
+          data-testid="tier-none"
+          className={`rounded-lg border p-4 ${
+            noneActive ? 'border-accent-gold/40 bg-accent-gold/5' : 'border-ui-border bg-background-secondary'
+          }`}
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-text-primary text-sm font-medium">
+              {t('tiers.none_title')}
+              <span className="ml-2 rounded-full border border-ui-border px-2 py-0.5 text-[0.65rem] font-medium uppercase tracking-wide text-text-secondary">
+                {t('tiers.none_default_badge')}
+              </span>
+            </p>
+            {noneActive ? (
+              <Badge variant="brass" data-testid="tier-none-active">
+                {t('tiers.active_badge')}
+              </Badge>
+            ) : (
+              <button
+                type="button"
+                onClick={() => void turnAiOff()}
+                className="rounded-md border border-ui-border px-3 py-1.5 text-sm text-text-secondary transition-colors hover:text-text-primary"
+                data-testid="tier-none-select"
+              >
+                {t('tiers.none_button')}
+              </button>
+            )}
+          </div>
+          <p className="text-text-secondary text-xs mt-1">{t('tiers.none_body')}</p>
+        </div>
+      )}
 
       {/* ── Connect AI ── */}
       <div
