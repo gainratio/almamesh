@@ -158,3 +158,11 @@ again (5,848 tests plus four lint-contract checks), and all 472 selected Dagger
 and WebKit-baseline contracts passed. Logs:
 `/tmp/almamesh-codex-prepush-frontend-gate.log` and
 `/tmp/almamesh-codex-prepush-pure-contracts.log`.
+
+The first complete native lane stopped before browser measurements because
+`git archive` inherited the web-app working directory and omitted the reference
+repository paths. The lane now archives explicitly from the repository root
+and creates the reference public directory before copying downloaded runtime
+assets. Two failing regressions became green; the ingress suite passed 102/102.
+The initial failure is retained in
+`/tmp/almamesh-codex-final-native-mac-archive-setup-failure.log`.

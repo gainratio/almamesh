@@ -228,8 +228,10 @@ function laneScriptViolations(script: string): string[] {
 const MEMORY_LANE_REQUIREMENTS = [
   'REFERENCE_REF="8d10fbbb76336a8a5efe272912e392e260b3fef5"',
   'MEASUREMENT_REF="$(git rev-parse HEAD)"',
+  'REPO_ROOT="$(git rev-parse --show-toplevel)"',
   'git cat-file -e "${REFERENCE_REF}^{commit}"',
-  'git archive "${REFERENCE_REF}" | tar -x -C "${REFERENCE_ROOT}"',
+  'git -C "${REPO_ROOT}" archive "${REFERENCE_REF}" | tar -x -C "${REFERENCE_ROOT}"',
+  'mkdir -p "${REFERENCE_WEB}/public"',
   '( cd "${REFERENCE_ROOT}/frontend" && HUSKY=0 bun install --frozen-lockfile )',
   '( cd "${REFERENCE_WEB}" && DEV_BUNDLE_SEQUENCE="${REFERENCE_SEQUENCE}" bash scripts/setup-dev-assets.sh )',
   '( cd "${REFERENCE_WEB}" && BUILD_COMMIT="${REFERENCE_REF}" VITE_API_URL= VITE_EXIT_GATE_HOOKS= ./node_modules/.bin/vite build --outDir "${REFERENCE_DIST}" )',
@@ -244,6 +246,11 @@ function memoryLaneViolations(script: string): string[] {
   const journey = script.indexOf('TT_MEMORY_PHASE=final TT_MEMORY_GRANULARITY=day TT_MEMORY_REPORT_ONLY=0')
   const functional = script.indexOf('TIME_TRAVEL_E2E_BASE_URL="${BASE_URL}" bun run test:e2e:time-travel')
   if (baseline === -1 || journey <= baseline || functional <= journey) violations.push("memory-comparison-order")
+  const archive = script.indexOf('git -C "${REPO_ROOT}" archive "${REFERENCE_REF}"')
+  const publicDirectory = script.indexOf('mkdir -p "${REFERENCE_WEB}/public"')
+  const pyodideCopy = script.indexOf('cp -R public/pyodide "${REFERENCE_WEB}/public/"')
+  const modelsCopy = script.indexOf('cp -R public/models "${REFERENCE_WEB}/public/"')
+  if (archive === -1 || publicDirectory <= archive || pyodideCopy <= publicDirectory || modelsCopy <= publicDirectory) violations.push("reference-public-directory-order")
   return violations
 }
 
@@ -547,9 +554,21 @@ describe("canonical GitHub ingress contract", () => {
     ["a hooked candidate memory build", 'BUILD_COMMIT="${MEASUREMENT_REF}" VITE_API_URL= VITE_EXIT_GATE_HOOKS= ', 'BUILD_COMMIT="${MEASUREMENT_REF}" VITE_API_URL= VITE_EXIT_GATE_HOOKS=1 '],
     ["a report-only candidate", 'TT_MEMORY_REPORT_ONLY=0', 'TT_MEMORY_REPORT_ONLY=1'],
     ["a preliminary candidate", 'TT_MEMORY_PHASE=final', 'TT_MEMORY_PHASE=initial'],
+    ["an archive limited to the lane's web working directory", 'git -C "${REPO_ROOT}" archive', 'git archive'],
+    ["reference asset copies without a destination directory", 'mkdir -p "${REFERENCE_WEB}/public"', ':'],
   ])("the memory comparison contract rejects %s", (_name, from, to) => {
     const script = readFileSync(resolve(root, MACOS_LANE_SCRIPT), "utf8")
     expect(memoryLaneViolations(script.replace(from, to))).not.toEqual([])
+  })
+
+  test("the reference public directory exists before either runtime asset copy", () => {
+    const script = readFileSync(resolve(root, MACOS_LANE_SCRIPT), "utf8")
+    const directory = script.indexOf('mkdir -p "${REFERENCE_WEB}/public"')
+    expect(directory).toBeGreaterThan(-1)
+    expect(directory).toBeLessThan(script.indexOf('cp -R public/pyodide'))
+    expect(directory).toBeLessThan(script.indexOf('cp -R public/models'))
+    const lateDirectory = script.replace('mkdir -p "${REFERENCE_WEB}/public"', ':') + '\nmkdir -p "${REFERENCE_WEB}/public"\n'
+    expect(memoryLaneViolations(lateDirectory)).toContain("reference-public-directory-order")
   })
 
   test("the macOS lane drives the one automatic boot retry on WebKit against the hooked preview", () => {

@@ -36,6 +36,7 @@ MEMORY_PORT=$((PORT + 2))
 MEMORY_URL="http://127.0.0.1:${MEMORY_PORT}"
 REFERENCE_REF="8d10fbbb76336a8a5efe272912e392e260b3fef5"
 MEASUREMENT_REF="$(git rev-parse HEAD)"
+REPO_ROOT="$(git rev-parse --show-toplevel)"
 MEMORY_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/almamesh-webkit-memory.XXXXXX")"
 REFERENCE_ROOT="${MEMORY_ROOT}/reference"
 REFERENCE_WEB="${REFERENCE_ROOT}/frontend/apps/web"
@@ -123,7 +124,10 @@ if [[ -n "${TT_WEBKIT_BASELINE_MIB:-}" ]]; then
 else
   git cat-file -e "${REFERENCE_REF}^{commit}"
   mkdir -p "${REFERENCE_ROOT}"
-  git archive "${REFERENCE_REF}" | tar -x -C "${REFERENCE_ROOT}"
+  # git archive follows the invocation directory; archive from the repository
+  # root so the reference includes its backend and frontend workspace.
+  git -C "${REPO_ROOT}" archive "${REFERENCE_REF}" | tar -x -C "${REFERENCE_ROOT}"
+  mkdir -p "${REFERENCE_WEB}/public"
   # Reuse only downloaded third-party runtime assets. The reference script
   # builds its own Python wheel and signs it from the archived original tree;
   # no candidate bundle, wheel, key or application build is copied across.
