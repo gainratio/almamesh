@@ -139,7 +139,7 @@ describe("nightly fails when a [real] spec skips itself", () => {
     expect(nightly).toContain('.withExec(["bun", "-e", nightlyRealSkipCheckScript(NIGHTLY_REPORTS_DIR)])')
     expect(nightly).toContain('"--reporter=list,json"')
     expect(nightly).toContain("PLAYWRIGHT_JSON_OUTPUT_FILE")
-    for (const suite of ["dual-voice", "interp:real", "interp:heal:real", "chat:rag:real", "dashboard:agentic:real", "timeline:real"]) {
+    for (const suite of ["dual-voice", "interp:real", "interp:heal:real", "chat:rag:real", "dashboard:agentic:real", "timeline:real", "ai:real", "report:real"]) {
       expect(source).toContain(`  "${suite}",\n`)
       expect(nightly).not.toContain(`"test:e2e:${suite}"]`)
     }

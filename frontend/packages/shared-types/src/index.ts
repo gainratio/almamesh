@@ -934,6 +934,9 @@ export interface TitledPersona extends Persona {
  */
 export interface HealthGuidance extends Persona {}
 
+/** Natal family guidance (report-v2 prompts); same dual-mode shape. */
+export interface FamilyGuidance extends Persona {}
+
 /**
  * Education guidance with dual-mode content
  * Matches backend EducationGuidance class
@@ -1020,6 +1023,9 @@ export interface VedicInterpretation {
   finances_guidance?: FinanceGuidance | null;
   spiritual_guidance?: SpiritualGuidance | null;
   life_evolution_guidance?: LifeEvolutionGuidance | null;
+  // Family (natal): added with the report-v2 prompts. Optional: readings saved
+  // before it have none, and the family card then shows engine data only.
+  family_guidance?: FamilyGuidance | null;
 
   // Remedial measures
   remedial_measures?: RemedialMeasures | null;

@@ -8,7 +8,8 @@ indices the same way the natal pipeline does. No new astronomy here.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any, Final
 
 from almamesh.calculations import (
     AyanamsaType,
@@ -19,9 +20,11 @@ from almamesh.calculations import (
 from almamesh.constants.astrology import PlanetName
 
 if TYPE_CHECKING:
-    from datetime import datetime
-
     from almamesh.calculations import SkyfieldAstronomy
+
+# DE421 covers 1899-07-29..2053-10-09. Every forward scan clamps its end here so a probe
+# never reads past the file; the app offers nothing after 2052-12-31.
+EPHEMERIS_LAST_INSTANT: Final[datetime] = datetime(2053, 1, 1, tzinfo=UTC)
 
 
 def transit_positions(

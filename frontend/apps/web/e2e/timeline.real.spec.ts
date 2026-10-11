@@ -3,6 +3,7 @@ import { test, expect } from '@playwright/test';
 import { bootEngine, seedChart, LLM_SETTINGS_KEY } from './interpretation.helpers';
 import { E2E_REAL_MODEL } from './realModel';
 import { completionUsage, type CompletionUsage } from './openrouterUsage';
+import { sectionUsageRow, type SectionUsageRow } from './sectionUsage';
 
 /**
  * Current-timeline REAL integration test — REAL chart, LIVE OpenRouter.
@@ -55,6 +56,7 @@ test('[real] current timeline generates The road ahead against live OpenRouter',
   page.on('pageerror', (e) => errors.push(`[pageerror] ${String(e)}`));
 
   const roadAheadResponses: string[] = [];
+  const usageRows: SectionUsageRow[] = [];
   const sectionUsage: (CompletionUsage & { section: string; status: number })[] = [];
   page.on('response', async (res) => {
     const body = res.request().postData() ?? '';
@@ -70,6 +72,8 @@ test('[real] current timeline generates The road ahead against live OpenRouter',
       return;
     }
     sectionUsage.push({ section, status: res.status(), ...completionUsage(text) });
+    const row = sectionUsageRow(body, res.status(), text);
+    if (row) usageRows.push(row);
     if (section === 'upcoming_periods') {
       roadAheadResponses.push(`HTTP ${res.status()}\nREQUEST ${body}\nRESPONSE ${text}`);
     }
@@ -126,6 +130,7 @@ test('[real] current timeline generates The road ahead against live OpenRouter',
       firstProseMs,
       totalMs,
       requests: sectionUsage.length,
+      sections: usageRows,
       costUsd: sectionUsage.reduce((sum, u) => sum + u.cost, 0),
       reasoningWords: sectionUsage.reduce((sum, u) => sum + u.reasoningWords, 0),
       reasoningTokens: sectionUsage.reduce((sum, u) => sum + u.reasoningTokens, 0),

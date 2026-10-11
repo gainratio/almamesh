@@ -205,6 +205,7 @@ full set of dev/build/test commands.
   password prompt. The decrypted payload is standard SQLite; rebuildable caches
   and signed engine assets are left out —
   [spec](docs/specs/061-backup-restore-your-data.md).
+- Travel to any day, month or year with the ⏳ **Time travel** button on the Dashboard, on any device and with or without AI. You see the dashas and the planets for that moment, worked out on your device.
 - Optionally turn on AI interpretation and chat. AI is off by default. If you enable it,
   requests go directly from your browser to the endpoint you configure. Asking
   AI to organize free-form life events sends that narrative as written only

@@ -7,8 +7,13 @@ export const ISO_DAY_PATTERN = "^\\d{4}-\\d{2}-\\d{2}$";
 const ISO_DAY = new RegExp(ISO_DAY_PATTERN);
 const MS_PER_DAY = 86_400_000;
 
-/** The last day the on-device ephemeris covers (DE421 ends 2053; slow_hits.py `_EPHEMERIS_MAX`). */
-const EPHEMERIS_LAST_DAY = "2052-12-31";
+/**
+ * The last year the engine computes. Mirrors backend `EPHEMERIS_LAST_INSTANT`
+ * (transits/positions.py, 2053-01-01 exclusive); DE421 itself ends 2053-10-09.
+ * The only TS copy: the Time travel sheet derives its last year from this.
+ */
+export const EPHEMERIS_LAST_YEAR = 2052;
+const EPHEMERIS_LAST_DAY = `${EPHEMERIS_LAST_YEAR}-12-31`;
 /** Longer spans get dashas only. */
 const MAX_TRANSIT_SPAN_YEARS = 2;
 /** The engine's month for its timeline window (`_DAYS_PER_MONTH`, backend/src/almamesh/transits/timeline.py). */

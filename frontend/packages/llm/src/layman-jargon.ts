@@ -32,17 +32,34 @@ export function findLaymanJargon(text: string): string[] {
 const SENTENCE_OR_BREAK = /[^.!?…\n]+(?:[.!?…]+["'”’)\]]*)?[ \t]*|[.!?…]+[ \t]*|\n+/g;
 
 /**
+ * Drop every sentence for which `drop` is true; everything else is kept
+ * byte-for-byte. Text with nothing dropped is returned unchanged. Shared by
+ * the jargon guard and the date guard (date-guard.ts). `pieces` is the global
+ * splitter; any replacement must also reproduce the input when concatenated.
+ */
+export function dropSentences(
+  text: string,
+  drop: (sentence: string) => boolean,
+  pieces: RegExp = SENTENCE_OR_BREAK,
+): { text: string; dropped: number } {
+  const all = text.match(pieces) ?? [];
+  const kept = all.filter((piece) => !drop(piece));
+  const dropped = all.length - kept.length;
+  if (dropped === 0) return { text, dropped: 0 };
+  const joined = kept
+    .join("")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  return { text: joined, dropped };
+}
+
+/**
  * Drop every sentence of `text` that carries a banned term; everything else is
  * kept byte-for-byte. Clean text is returned unchanged. May return "" when
  * every sentence leaked — an empty layman field drops its section from view.
  */
 export function stripLaymanJargon(text: string): string {
   if (!LAYMAN_JARGON.test(text)) return text;
-  const pieces = text.match(SENTENCE_OR_BREAK) ?? [];
-  return pieces
-    .filter((piece) => !LAYMAN_JARGON.test(piece))
-    .join("")
-    .replace(/[ \t]+\n/g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+  return dropSentences(text, (piece) => LAYMAN_JARGON.test(piece)).text;
 }

@@ -301,6 +301,7 @@ describe("browser gate shards", () => {
     "node scripts/verify-webkit-engine.mjs http://127.0.0.1:4200",
     "INTERP_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:interp",
     "CHAT_GROUNDING_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:chat:grounding",
+    "AI_PANEL_EGRESS_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:ai-panel:egress",
     "RECTIFY_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:rectification",
     "WIZARD_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:wizard",
     '"bun", "run", "test:e2e:returning-visitor"',
@@ -317,6 +318,31 @@ describe("browser gate shards", () => {
       expect(shards.split(literal).length - 1).toBe(1)
     })
   }
+
+  test("the AI panel egress guard runs in the browserSuites shard on Chromium", () => {
+    const suites = source.slice(source.indexOf("  browserSuites(): Container {"), source.indexOf("  browserWizards(): Container {"))
+    expect(suites).toContain('"AI_PANEL_EGRESS_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:ai-panel:egress"')
+  })
+
+  test("the AI panel egress suite is Chromium-only, matches only its spec, and never diffs pixels", () => {
+    const web = resolve(root, "frontend/apps/web")
+    const scripts = JSON.parse(readFileSync(resolve(web, "package.json"), "utf8")).scripts as Record<string, string>
+    expect(scripts["test:e2e:ai-panel:egress"]).toBe("playwright test --config=playwright.ai-setup-panel.egress.config.ts")
+    const config = readFileSync(resolve(web, "playwright.ai-setup-panel.egress.config.ts"), "utf8")
+    expect(config).toContain("testMatch: /ai-setup-panel\\.(egress|recorder)\\.spec\\.ts/")
+    expect(config).toContain("process.env.AI_PANEL_EGRESS_E2E_BASE_URL")
+    expect(config.match(/\bname:\s*'[^']*'/g)).toEqual(["name: 'chromium'"])
+    const spec = readFileSync(resolve(web, "e2e/ai-setup-panel.egress.spec.ts"), "utf8")
+    expect(spec).not.toContain("toHaveScreenshot")
+    // Every test asserts a clean console.
+    const tests = spec.match(/^\s+test\(/gm) ?? []
+    expect(tests.length).toBeGreaterThan(0)
+    expect(spec.split("expect(errors).toEqual([])").length - 1).toBe(tests.length)
+    // The positive anchors, so no check can pass vacuously.
+    expect(spec).toContain("toContain('/api/v1/chat/completions')")
+    expect(spec).toContain("toContain('localhost:11434/v1/chat/completions')")
+    expect(spec).toContain("expect(catalog.length).toBeGreaterThan(0)")
+  })
 
   test("each shard is one of the product gates and serves the one hooked build", () => {
     for (const shard of PRODUCT_GATES.filter((gate) => gate.startsWith("browser") && gate !== "browserMatrix")) {

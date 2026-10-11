@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { EPHEMERIS_LAST_YEAR } from '@almamesh/llm';
 import { asOfFromDraft, formatPinLabel, sheetDefaults, sheetYears, SHEET_LAST_YEAR } from '../timeTravelSheet';
 
 const BOGOTA = { label: 'Bogotá, Colombia', timezone: 'America/Bogota', latitude: 4.711, longitude: -74.0721 };
@@ -46,6 +47,7 @@ describe('timeTravelSheet', () => {
 
   it('offers years from the birth year (or 1900) to 2052', () => {
     expect(SHEET_LAST_YEAR).toBe(2052);
+    expect(SHEET_LAST_YEAR, 'one source of truth: the engine range').toBe(EPHEMERIS_LAST_YEAR);
     expect(sheetYears(1990)[0]).toBe(1990);
     expect(sheetYears(1990).at(-1)).toBe(2052);
     expect(sheetYears(undefined)[0]).toBe(1900);

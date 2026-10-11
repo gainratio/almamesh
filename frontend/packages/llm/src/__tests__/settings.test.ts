@@ -103,6 +103,21 @@ describe("readLlmSettings — self-heals AlmaMesh's retired default cloud model"
     expect(persisted).toEqual([]);
   });
 
+  it("keeps a user on the 2026-10-01 default (deepseek-v4.1-flash): it stays a selectable model, never healed away", () => {
+    const saved = {
+      apiBase: "https://openrouter.ai/api/v1",
+      apiKey: "sk-or-123",
+      model: "deepseek/deepseek-v4.1-flash",
+      interpretationModel: "deepseek/deepseek-v4.1-flash",
+      chatModel: "deepseek/deepseek-v4.1-flash",
+      privacyMode: "cloud_premium",
+    };
+    hydrateLlmSettings(JSON.stringify(saved));
+    expect(readLlmSettings().interpretationModel).toBe("deepseek/deepseek-v4.1-flash");
+    expect(readLlmSettings().chatModel).toBe("deepseek/deepseek-v4.1-flash");
+    expect(persisted).toEqual([]);
+  });
+
   it("leaves a model the user deliberately chose untouched", () => {
     hydrateLlmSettings(
       JSON.stringify({

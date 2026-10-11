@@ -46,6 +46,12 @@ export const PORTABLE_QUARANTINE_NAMESPACE = 'quarantine';
  * `<personId>/<row>/<sha256>`; never part of a snapshot, restore, or backup.
  */
 export const PORTABLE_SET_ASIDE_NAMESPACE = 'set-aside';
+/**
+ * Device-local rows: this device's backup code and encrypted drive
+ * credentials. Like quarantine and set-aside, never part of a snapshot,
+ * restore, export, or backup. See the cloud drive backup spec.
+ */
+export const PORTABLE_DEVICE_NAMESPACE = 'device';
 export const PORTABLE_STATE_UNAVAILABLE_MESSAGE =
   'Portable SQLite requires cross-origin isolation, Web Workers, OPFS, SharedArrayBuffer, and Atomics.waitAsync.';
 
@@ -428,6 +434,43 @@ export class PortableStateRepository {
     if (left.some((row) => row !== undefined)) {
       throw new Error('Set-aside records were not removed from SQLite.');
     }
+  }
+
+  /** One device-local row (never exported), or null when it is absent. */
+  public async readDevice(key: string): Promise<string | null> {
+    const row = await this.#store.get(PORTABLE_DEVICE_NAMESPACE, key);
+    return row === undefined ? null : decode(row.value, key);
+  }
+
+  /** Write one device-local row; it never joins the canonical dataset. */
+  public async writeDevice(key: string, value: string): Promise<void> {
+    await this.#store.put(PORTABLE_DEVICE_NAMESPACE, key, encoder.encode(value));
+  }
+
+  /** Remove device-local rows in one SQLite batch. */
+  public async deleteDevice(keys: readonly string[]): Promise<void> {
+    if (keys.length === 0) return;
+    await this.#store.batch(
+      keys.map((key) => ({ type: 'delete', namespace: PORTABLE_DEVICE_NAMESPACE, key }) as const),
+    );
+  }
+
+  /** Every device-local row whose key starts with `prefix`. */
+  public async listDevice(prefix: string): Promise<ReadonlyMap<string, string>> {
+    const held = new Map<string, string>();
+    let afterKey: string | undefined;
+    do {
+      const page = await this.#store.list({
+        namespace: PORTABLE_DEVICE_NAMESPACE,
+        limit: MAX_CANONICAL_ROWS,
+        ...(afterKey === undefined ? {} : { afterKey }),
+      });
+      for (const row of page.rows) {
+        if (row.key.startsWith(prefix)) held.set(row.key, decode(row.value, row.key));
+      }
+      afterKey = page.nextKey;
+    } while (afterKey !== undefined);
+    return held;
   }
 
   public async exportBytes(): Promise<Uint8Array> {

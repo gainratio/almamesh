@@ -12,6 +12,7 @@ import {
   mergeLegacyPreferencesIntoPortableState,
   migrateLegacyState,
   PORTABLE_DATASET_KEYS,
+  PORTABLE_DEVICE_NAMESPACE,
   PORTABLE_PREFERENCES_KEY,
   PORTABLE_QUARANTINE_NAMESPACE,
   PORTABLE_STORE_MAX_VERSIONS,
@@ -378,6 +379,67 @@ describe('PortableStateRepository', () => {
       restoreEpoch: 0,
       restoreInProgress: false,
     });
+  });
+
+  it('pins the device-local SQLite namespace to its documented name', () => {
+    // Renaming it orphans every stored device code and drive credential.
+    expect(PORTABLE_DEVICE_NAMESPACE).toBe('device');
+  });
+
+  it('keeps device rows out of snapshots and the exported file, and reads them back locally', async () => {
+    const sqlite = new MemorySqliteStore();
+    let exportedRows: ReadonlyMap<string, string> = new Map();
+    // The fake file is [epoch, ...JSON of every row the rebuild was handed], so
+    // the assertions below read the exact bytes that would leave the device.
+    const repository = new PortableStateRepository(
+      sqlite,
+      async (bytes) => bytes[0]!,
+      async (canonical) => {
+        exportedRows = canonical;
+        const body = new TextEncoder().encode(JSON.stringify([...canonical]));
+        return new Uint8Array([sqlite.epoch, ...body]);
+      },
+    );
+    await migrateLegacyState(repository, { get: async () => null, delete: async () => undefined }, []);
+    await repository.writeDevice('drive-credential/google-drive', 'CANARY-CREDENTIAL');
+    await repository.writeDevice('device-code', '7f3a2c');
+
+    const snapshot = await repository.snapshot();
+    expect([...snapshot.values.values()].join()).not.toContain('CANARY-CREDENTIAL');
+    const exported = new TextDecoder().decode((await repository.exportBytes()).subarray(1));
+    expect(exportedRows.size).toBeGreaterThan(0);
+    expect(exported).not.toContain('CANARY-CREDENTIAL');
+    expect(exported).not.toContain('7f3a2c');
+    expect(exported).not.toContain('device-code');
+    expect(exported).not.toContain('drive-credential/');
+    expect([...exportedRows.keys()].filter((key) => key === 'device-code' || key.startsWith('drive-credential/')))
+      .toEqual([]);
+
+    expect(await repository.readDevice('device-code')).toBe('7f3a2c');
+    expect([...(await repository.listDevice('drive-credential/')).entries()]).toEqual([
+      ['drive-credential/google-drive', 'CANARY-CREDENTIAL'],
+    ]);
+    await repository.deleteDevice([]);
+    await repository.deleteDevice(['drive-credential/google-drive']);
+    expect(await repository.readDevice('drive-credential/google-drive')).toBeNull();
+    expect(await repository.readDevice('device-code')).toBe('7f3a2c');
+  });
+
+  it('pages through every device row when listing more than one page', async () => {
+    const sqlite = new MemorySqliteStore();
+    const repository = new PortableStateRepository(sqlite, async (bytes) => bytes[0]!, rebuildAtEpoch(sqlite));
+    const keys = Array.from({ length: 1_001 }, (_, index) => `drive-credential/p${String(index).padStart(4, '0')}`);
+    await sqlite.batch(keys.map((key) => ({
+      type: 'put' as const,
+      namespace: PORTABLE_DEVICE_NAMESPACE,
+      key,
+      value: new TextEncoder().encode('x'),
+    })));
+    await repository.writeDevice('device-code', '7f3a2c');
+
+    const listed = await repository.listDevice('drive-credential/');
+    expect(listed.size).toBe(1_001);
+    expect(listed.has('device-code')).toBe(false);
   });
 
   it('retries when another runtime changes the live epoch during export', async () => {

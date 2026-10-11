@@ -185,7 +185,7 @@ const LANE_ARTIFACT_LINES: readonly string[] = [
   '> "${ARTIFACTS}/unified-log.txt" 2>&1 || true',
   'echo "unified log: $(wc -l < "${ARTIFACTS}/unified-log.txt") lines about WebContent, memory kills and jetsam"',
   `grep -iE 'memorystatus.*kill|exceed|crash|terminat' "\${ARTIFACTS}/unified-log.txt" | grep -v 'coalition roles' | head -40 || true`,
-  'TIME_TRAVEL_E2E_BASE_URL="${BASE_URL}" bun run test:e2e:time-travel --project=webkit --project=iphone-webkit --retries=0 --output="${ARTIFACTS}/time-travel" || status=1',
+  'TIME_TRAVEL_E2E_BASE_URL="${BASE_URL}" bun run test:e2e:time-travel --project=webkit --project=iphone-webkit --project=iphone-15-webkit --retries=0 --output="${ARTIFACTS}/time-travel" || status=1',
   'PORTABLE_INVARIANTS_E2E_BASE_URL="${BASE_URL}" bun run test:e2e:portable-invariants --project=webkit --project=iphone-webkit --retries=0 --output="${ARTIFACTS}/portable-invariants" || status=1',
   'BOOT_RETRY_E2E_BASE_URL="${BASE_URL}" bun run test:e2e:boot-retry --project=webkit --retries=0 --output="${ARTIFACTS}/boot-retry" || status=1',
   `grep -rh "page crashed" "\${ARTIFACTS}" --include='*-browser.log' || true`,
@@ -490,7 +490,7 @@ describe("canonical GitHub ingress contract", () => {
     const script = readFileSync(resolve(root, MACOS_LANE_SCRIPT), "utf8")
     expect(script).toContain("VITE_EXIT_GATE_HOOKS=1")
     // No retries: a WebKit page that crashes once must turn the lane red, not pass on retry.
-    expect(script).toContain("bun run test:e2e:time-travel --project=webkit --project=iphone-webkit --retries=0")
+    expect(script).toContain("bun run test:e2e:time-travel --project=webkit --project=iphone-webkit --project=iphone-15-webkit --retries=0")
     expect(script).toContain("bun run test:e2e:portable-invariants --project=webkit --project=iphone-webkit --retries=0")
     expect(script).not.toMatch(/--retries=[1-9]/)
     for (const config of ["playwright.time-travel.config.ts", "playwright.portable-invariants.config.ts"]) {

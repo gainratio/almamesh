@@ -111,7 +111,8 @@
     "natal_moon": "Lua natal em {{sign}}",
     "saturn_in": "Saturno em {{sign}}",
     "window": "{{start}} – {{end}}",
-    "none_body": "Saturno não está atualmente dentro do corredor de três signos do Sade Sati ao redor da sua Lua natal."
+    "none_body": "Saturno não está atualmente dentro do corredor de três signos do Sade Sati ao redor da sua Lua natal.",
+    "none_body_moment": "Naquele momento, Saturno não está dentro do corredor de três signos do Sade Sati ao redor da sua Lua natal."
   },
   "slow_hits": {
     "heading": "Impactos Lentos e Retornos",

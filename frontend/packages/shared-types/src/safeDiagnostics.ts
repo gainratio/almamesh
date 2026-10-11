@@ -65,6 +65,8 @@ export const SAFE_DIAGNOSTIC_CODES = [
   'sw.heal_failed',
   'sw.shell_cleanup_failed',
   'sw.update_check_failed',
+  'time_travel.back_to_today_failed',
+  'time_travel.moment_sky_failed',
 ] as const;
 
 export type SafeDiagnosticCode = (typeof SAFE_DIAGNOSTIC_CODES)[number];
@@ -111,13 +113,14 @@ export const KNOWN_ERROR_CLASSES: ReadonlySet<string> = new Set([
   'TimeoutError', 'TypeMismatchError', 'UnknownError',
   // AlmaMesh (apps/web, packages/browser, llm, memory, store)
   'BackupCryptoError', 'BackupError', 'ChartComputeError', 'ChartSaveError', 'ChartSnapshotError',
-  'ChatSummaryGenerationError', 'EngineBootCancelledError', 'EngineBootstrapError', 'EngineCacheNotDurableError',
+  'ChatSummaryGenerationError', 'DriveError', 'EngineBootCancelledError', 'EngineBootstrapError', 'EngineCacheNotDurableError',
   'EngineNotReadyError', 'EngineStorageBlockedError', 'EngineWarmingError', 'InterpretationSetAsideError',
   'JsonBoundsError', 'LlmRequestError', 'LocalTimeError', 'PeriodSkyTimeoutError', 'PeriodSkyUnavailableError',
   'PortableImportRevisionConflictError', 'PortableStateStartupError', 'PortableStateTooNewError',
   'PortableStateUnavailableError', 'PortableStorageUnavailableError', 'PrivacyViolationError',
-  'PyodidePackageLoadError', 'ReasoningTimeoutError', 'ResetIncompleteError', 'SemanticMemoryStorageUnavailableError',
-  'SetAsideRestoreError', 'StoreSaveError',
+  'PyodidePackageLoadError', 'ReasoningTimeoutError', 'ReportParseError', 'ResetIncompleteError',
+  'SectionTimeoutError', 'SemanticMemoryStorageUnavailableError', 'SetAsideRestoreError', 'StoreSaveError',
+  'TimeTravelRefusedError',
   // @gainratio/browser (and the sqlite-wasm build it ships)
   'CacheFallbackRefusedError', 'EngineOperationError', 'EngineStorageUnavailableError', 'GetSyncHandleError',
   'IntegrityError', 'KeyRevokedError', 'KeyringError', 'LegacyFloorUnavailableError', 'PointerExpiredError',

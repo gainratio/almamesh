@@ -295,7 +295,7 @@ export function ChatPanel({
             aria-label={t('time_travel.button')}
             className="flex-shrink-0 rounded-xl border border-ui-border px-3 py-3 text-sm text-text-secondary hover:border-accent-gold disabled:cursor-not-allowed disabled:opacity-50">
             <span aria-hidden="true">⏳</span>
-            <span className="ml-1 hidden sm:inline">{t('time_travel.button')}</span>
+            <span className="ml-1">{t('time_travel.button')}</span>
           </button>
           <ComposerPrimitive.Input
             placeholder={t('input.placeholder')}

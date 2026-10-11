@@ -8,6 +8,7 @@
 // the device.
 
 import { ensurePrivacy, OPENROUTER_API_BASE, type ProviderConfig } from "./config";
+import { type ModelPricing, parseModelPricing } from "./pricing";
 
 export interface ChatMessage {
   readonly role: "system" | "user" | "assistant";
@@ -125,6 +126,39 @@ export interface ChatCompletionJsonOptions {
    * endpoints only; see reasoning.ts). Unset: the model's own default.
    */
   readonly reasoningMaxTokens?: number;
+  /**
+   * Ask OpenRouter for the cheapest provider ({@link REPORT_PROVIDER_ROUTING}).
+   * OpenRouter endpoints only; ignored elsewhere.
+   */
+  readonly cheapestProvider?: boolean;
+}
+
+/**
+ * Preferred minimum median (p50) throughput, tokens/s, for report sections.
+ * From OpenRouter's endpoint stats on 2026-10-10 (last 30 min): the slow tier
+ * to avoid, OpenInference on deepseek-v4.1-flash, ran p50 17 tok/s (report
+ * sections took 80-300+ s); the cheap tier to keep, StreamLake and Baidu on
+ * deepseek-v4-pro, ran p50 36 and 42. 25 is about the geometric mean of 17
+ * and 36, roughly 1.45x clear of each.
+ */
+export const REPORT_MIN_THROUGHPUT_P50 = 25;
+
+/**
+ * OpenRouter provider preference for report sections. `sort: "price"` tries
+ * the cheapest provider first instead of OpenRouter's default price-weighted
+ * load balancing, which sometimes picked an upstream billing 4-5x the catalog
+ * price. `preferred_min_throughput` moves providers below the floor to the end
+ * of that list; per the docs it never blocks a request. Fallbacks stay allowed
+ * (OpenRouter's default): a failed reading costs more than a pricier fallback.
+ * https://openrouter.ai/docs/guides/routing/provider-selection#performance-thresholds
+ */
+export const REPORT_PROVIDER_ROUTING = {
+  sort: "price",
+  preferred_min_throughput: { p50: REPORT_MIN_THROUGHPUT_P50 },
+} as const;
+
+function isOpenRouter(config: ProviderConfig): boolean {
+  return config.baseUrl?.startsWith(OPENROUTER_API_BASE) === true;
 }
 
 /**
@@ -136,8 +170,17 @@ export function reasoningField(
   config: ProviderConfig,
   maxTokens: number | undefined,
 ): { readonly reasoning?: { readonly max_tokens: number } } {
-  if (maxTokens === undefined || !config.baseUrl?.startsWith(OPENROUTER_API_BASE)) return {};
+  if (maxTokens === undefined || !isOpenRouter(config)) return {};
   return { reasoning: { max_tokens: maxTokens } };
+}
+
+/** The `provider` request field, OpenRouter only (same reason as `reasoningField`). */
+export function providerField(
+  config: ProviderConfig,
+  cheapest: boolean | undefined,
+): { readonly provider?: typeof REPORT_PROVIDER_ROUTING } {
+  if (cheapest !== true || !isOpenRouter(config)) return {};
+  return { provider: REPORT_PROVIDER_ROUTING };
 }
 
 /** Strip a ```json … ``` (or plain ```) fence some models wrap JSON in. */
@@ -168,6 +211,7 @@ export async function chatCompletionJson(
       stream: false,
       response_format: { type: "json_object" },
       ...reasoningField(options.config, options.reasoningMaxTokens),
+      ...providerField(options.config, options.cheapestProvider),
     }),
     signal: options.signal,
   });
@@ -329,10 +373,16 @@ export interface OpenRouterModel {
   readonly id: string;
   /** Human-friendly display name; falls back to `id` when the catalog omits it. */
   readonly name: string;
+  /** Per-token USD price from the catalog; absent when missing or unparseable. */
+  readonly pricing?: ModelPricing;
 }
 
 interface OpenRouterModelsResponse {
-  readonly data?: ReadonlyArray<{ readonly id?: unknown; readonly name?: unknown }>;
+  readonly data?: ReadonlyArray<{
+    readonly id?: unknown;
+    readonly name?: unknown;
+    readonly pricing?: unknown;
+  }>;
 }
 
 /** Options for reading the OpenRouter model catalog. */
@@ -387,7 +437,8 @@ export async function fetchOpenRouterModels(
       continue;
     }
     const name = typeof row.name === "string" && row.name.length > 0 ? row.name : row.id;
-    models.push({ id: row.id, name });
+    const pricing = parseModelPricing(row.pricing);
+    models.push({ id: row.id, name, ...(pricing ? { pricing } : {}) });
   }
   models.sort((a, b) => a.id.localeCompare(b.id));
   return models;

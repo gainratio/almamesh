@@ -166,6 +166,7 @@
     "error_server": "El proveedor está teniendo problemas ahora mismo. Inténtalo de nuevo en breve.",
     "error_detail": "El proveedor respondió: {{detail}}",
     "error_storage": "No se pudo guardar tu configuración en este navegador — el almacenamiento puede estar lleno o bloqueado (p. ej. modo privado). Libera espacio o usa una ventana normal.",
+    "error_storage_off": "La IA está desactivada por ahora, pero este navegador no pudo guardarlo. Puede volver a activarse al recargar. Inténtalo de nuevo.",
     "credits_remaining": "Quedan {{remaining}} de {{total}} en créditos de OpenRouter",
     "credits_loading": "Consultando tu saldo de OpenRouter…",
     "credits_unavailable": "No se pudo leer tu saldo en este momento.",

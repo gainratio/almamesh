@@ -2,6 +2,9 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { test, expect, type Page } from '@playwright/test';
 import { bootEngine, seedChart, LLM_SETTINGS_KEY } from './interpretation.helpers';
 import { E2E_REAL_MODEL } from './realModel';
+import { sectionUsageRow, type SectionUsageRow } from './sectionUsage';
+
+const MODEL = process.env.INTERP_REAL_MODEL ?? E2E_REAL_MODEL;
 
 /**
  * Structured Vedic interpretation REAL integration test — REAL chart, REAL LLM.
@@ -190,7 +193,7 @@ test('[real] interpretation renders against live OpenRouter', async ({ page }) =
   const config = JSON.stringify({
     apiBase: 'https://openrouter.ai/api/v1',
     apiKey: KEY,
-    model: E2E_REAL_MODEL,
+    model: MODEL,
     privacyMode: 'cloud_premium',
     engine: 'openai-http',
   });
@@ -213,6 +216,15 @@ test('[real] interpretation renders against live OpenRouter', async ({ page }) =
     if (m.type() === 'error') errors.push(m.text());
   });
   page.on('pageerror', (e) => errors.push(String(e)));
+
+  const usageRows: SectionUsageRow[] = [];
+  page.on('response', async (res) => {
+    if (!res.url().includes('openrouter.ai/api/v1/chat/completions')) return;
+    const request = res.request().postData() ?? '';
+    const body = await res.text().catch(() => '');
+    const row = sectionUsageRow(request, res.status(), body);
+    if (row) usageRows.push(row);
+  });
 
   await bootEngine(page);
   const seeded = await seedChart(page);
@@ -248,6 +260,10 @@ test('[real] interpretation renders against live OpenRouter', async ({ page }) =
   mkdirSync('test-results', { recursive: true });
   const fullTextPath = 'test-results/interpretation-real-openrouter-fulltext.txt';
   writeFileSync(fullTextPath, captured.join('\n\n'));
+  writeFileSync(
+    `test-results/interpretation-real-sections-${MODEL.replace(/\W/g, '_')}.json`,
+    JSON.stringify({ model: MODEL, sections: usageRows, costUsd: usageRows.reduce((s, r) => s + r.costUsd, 0) }, null, 2),
+  );
   console.log(`[real] full rendered narration saved to ${fullTextPath}`);
 
   await page.screenshot({

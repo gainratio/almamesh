@@ -110,7 +110,8 @@
     "natal_moon": "Natal Moon in {{sign}}",
     "saturn_in": "Saturn in {{sign}}",
     "window": "{{start}} – {{end}}",
-    "none_body": "Saturn is not currently inside the three-sign Sade Sati corridor around your natal Moon."
+    "none_body": "Saturn is not currently inside the three-sign Sade Sati corridor around your natal Moon.",
+    "none_body_moment": "Saturn is not inside the three-sign Sade Sati corridor around your natal Moon at that moment."
   },
   "slow_hits": {
     "heading": "Slow-planet Hits & Returns",

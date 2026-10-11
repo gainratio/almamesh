@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 
-import { expect, type Page } from '@playwright/test';
+import { expect, type Locator, type Page } from '@playwright/test';
 
 import { DELHI_BIRTH, DELHI_SEED, LLM_SETTINGS_KEY, bootEngine, seedChart, waitForEngineReady } from './interpretation.helpers';
 import { gotoSettled } from './portableInvariants.helpers';
@@ -857,6 +857,9 @@ test.describe('pinned threads on a device in another zone', () => {
     await page.getByTestId('time-travel-go').click();
     await expect(page.getByTestId('time-travel-title')).toHaveText('Time travel · June 2026');
     await expect(page.getByTestId('time-travel-banner')).not.toContainText('Bogotá');
+    // The chat banner shows the pin from memory before it is saved. The Dashboard moment is set only
+    // after the save, so waiting for it pins the order: Change has landed before Back is clicked.
+    await expect(page.getByTestId('dashboard-time-travel-title')).toHaveText(/June 2026/);
 
     await page.getByTestId('time-travel-back').click();
     await expect(page.getByTestId('time-travel-banner')).toHaveCount(0);
@@ -869,6 +872,77 @@ test.describe('pinned threads on a device in another zone', () => {
     expect(timingResult.filter((m) => COORDINATES.test(m.content ?? '')), 'the tool result carries the place label, not its coordinates').toEqual([]);
     expect(bodies.filter((body) => COORDINATES.test(body)), 'no model request body carries coordinates').toEqual([]);
     expect(bodies.some((body) => body.includes('Bogot')), 'the place label reaches the model').toBe(true);
+    expect(consoleErrors, 'the journey must keep a clean console').toEqual([]);
+  });
+});
+
+/**
+ * Delay every message the page posts to a Worker that names the chat store's
+ * row, by `window.__chatWriteDelayMs` (0 = off). That is the slow save of a
+ * busy device: the pin is in memory at once, on disk seconds later. Nothing
+ * else is delayed, and the delay is switched on only after boot.
+ */
+async function slowChatWrites(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const w = window as unknown as { __chatWriteDelayMs: number; __chatWritesDelayed: number };
+    w.__chatWriteDelayMs = 0;
+    w.__chatWritesDelayed = 0;
+    const post = Worker.prototype.postMessage;
+    Worker.prototype.postMessage = function (this: Worker, ...args: Parameters<Worker['postMessage']>) {
+      let named = false;
+      if (w.__chatWriteDelayMs > 0) {
+        try {
+          named = JSON.stringify(args[0]).includes('almamesh-chat-history');
+        } catch {
+          named = false;
+        }
+      }
+      if (!named) return post.apply(this, args);
+      w.__chatWritesDelayed += 1;
+      setTimeout(() => post.apply(this, args), w.__chatWriteDelayMs);
+      return undefined;
+    };
+  });
+}
+
+test.describe('Change then Back to today while the pin is still saving', () => {
+  test.use({ timezoneId: DEVICE_ZONE });
+  const SLOW_SAVE_MS = 4_000;
+  const HELLO = 'Say hello to me.';
+
+  test('[contract/stubbed] a slow Change save landing after Back to today moves nothing', async ({ page }) => {
+    const consoleErrors = await prepare(page);
+    await slowChatWrites(page);
+    await scripted(page, { [HELLO]: () => ({ content: 'Hello.' }) }, [], [], new Set<string>());
+    await bootEngine(page);
+    await seedChart(page);
+    await openDashboard(page);
+    await page.getByTestId('floating-chat-button').click({ timeout: 120_000 });
+    // An ordinary unpinned thread: Back to today will find it without waiting on any save.
+    await page.getByTestId('chat-input').fill(HELLO);
+    await page.getByTestId('chat-send-button').click();
+    await expect(page.getByTestId('chat-panel').getByText('Hello.', { exact: true })).toBeVisible({ timeout: 240_000 });
+    await openPinnedYear(page, PIN_YEAR);
+
+    await page.evaluate((ms) => ((window as unknown as { __chatWriteDelayMs: number }).__chatWriteDelayMs = ms), SLOW_SAVE_MS);
+    await page.getByTestId('time-travel-change').click();
+    await page.getByTestId('time-travel-tab-month').click();
+    await page.getByTestId('time-travel-month').selectOption('06');
+    await page.getByTestId('time-travel-month-year').selectOption('2026');
+    await page.getByTestId('time-travel-go').click();
+    // In memory at once, on disk in SLOW_SAVE_MS: press Back inside that window.
+    await expect(page.getByTestId('time-travel-title')).toHaveText('Time travel · June 2026');
+    await page.getByTestId('time-travel-back').click();
+    await expect(page.getByTestId('time-travel-banner')).toHaveCount(0);
+
+    // Let the slow save land, then require the Change not to have been re-applied.
+    await expect
+      .poll(() => page.evaluate(() => (window as unknown as { __chatWritesDelayed: number }).__chatWritesDelayed))
+      .toBeGreaterThan(0);
+    await page.waitForTimeout(SLOW_SAVE_MS + 2_000);
+    await expect(page.getByTestId('time-travel-banner'), 'the slow Change must not re-pin the thread').toHaveCount(0);
+    await expect(page.getByTestId('dashboard-time-travel-banner')).toHaveCount(0);
+    await expect(page.getByTestId('dashboard-time-travel-title')).toHaveCount(0);
     expect(consoleErrors, 'the journey must keep a clean console').toEqual([]);
   });
 });
@@ -1018,7 +1092,9 @@ async function serviceWorkerFetches(page: Page): Promise<string[]> {
  * and needs no routing, so it drives Safari's real setup. With AI off nothing
  * may leave the app origin: the page's requests are read from Playwright, the
  * service worker's own from its Resource Timing record (serviceWorkerOffOrigin).
- * Runs on every project (@sw is included on the iPhone).
+ * The Dashboard moment journey (Time travel with AI off) runs inside it, so the
+ * egress checks cover it too. Runs on every project but the iPhone 15 (@sw is
+ * included on the iPhone 13).
  */
 test.describe('as shipped: service worker on, AI off, nothing stubbed', () => {
   test.use({ serviceWorkers: 'allow' });
@@ -1046,11 +1122,267 @@ test.describe('as shipped: service worker on, AI off, nothing stubbed', () => {
 
     await page.getByTestId('floating-chat-button').click({ timeout: 120_000 });
     await expect(page.getByTestId('chat-connect-ai')).toBeVisible();
-    await expect(page.getByTestId('time-travel-button'), 'no AI, no Time travel').toHaveCount(0);
+    await expect(page.getByTestId('time-travel-button'), 'no AI, no Time travel in the composer').toHaveCount(0);
+    await page.getByTestId('floating-chat-close').click();
+    await expect(page.getByTestId(DASHBOARD_BUTTON), 'Time travel works without AI').toBeEnabled();
+    await pickMonth(page, '2019-03');
+    await expect(page.getByTestId('time-travel-moment-maha')).toBeVisible();
+    await expect(page.getByTestId('time-travel-moment-card')).toBeVisible();
+    // The tier decides which: full computes the period sky, lite/minimal show dashas only.
+    await expect(
+      page.getByTestId('time-travel-moment-transits').or(page.getByTestId('time-travel-moment-dashas-only')),
+    ).toBeVisible({ timeout: 180_000 });
     await page.waitForLoadState('networkidle');
 
     expect(await serviceWorkerOffOrigin(page, origin), 'with AI off, the service worker requests only the app origin').toEqual([]);
     expect(pageOffOrigin, 'with AI off, the page requests only the app origin').toEqual([]);
+    expect(consoleErrors, 'the journey must keep a clean console').toEqual([]);
+  });
+});
+
+/**
+ * Dashboard time travel (spec 2026-10-10, PR A): the Dashboard's own Time travel
+ * button, with or without AI. March 2019 is a known boundary for DELHI_BIRTH
+ * (plan ruling 5, re-derived from the engine CLI on 2026-10-10): Rahu maha
+ * 2017-05-13 → 2035-05-14, Rahu antar 2017-05-13 → 2020-01-24. Today (October
+ * 2026) is Rahu/Mercury, so a card computed for today fails the antar check.
+ */
+const MARCH_2019_MAHA = 'Rahu';
+const MARCH_2019_ANTAR = 'Rahu';
+const DASHBOARD_BUTTON = 'dashboard-time-travel-button';
+/**
+ * Slow planets for March 2019 (sidereal, Lahiri), re-derived from the engine CLI on
+ * 2026-10-10 for 1 and 31 March 2019. Saturn was in Sagittarius from January 2017
+ * to January 2020 and Jupiter left Libra in October 2018, so a table computed for
+ * today (Saturn in Pisces, Jupiter in Cancer) or a year either side fails one of them.
+ */
+const MARCH_2019_SIGNS = { Saturn: 'Sagittarius', Jupiter: 'Scorpio' } as const;
+
+/** The sign cell of one graha's row in the moment card's transits table. */
+function momentSignCell(page: Page, graha: string): Locator {
+  return page
+    .getByTestId('time-travel-moment-transits')
+    .getByTestId('gochara-table')
+    .getByRole('row')
+    .filter({ has: page.getByRole('cell', { name: graha, exact: true }) })
+    .getByRole('cell')
+    .nth(1);
+}
+
+/** Open the Dashboard sheet, pick a `YYYY-MM` month and go; the sheet closes. */
+async function pickMonth(page: Page, month: string): Promise<void> {
+  await page.getByTestId(DASHBOARD_BUTTON).click();
+  await page.getByTestId('time-travel-tab-month').click();
+  await page.getByTestId('time-travel-month').selectOption(month.slice(5));
+  await page.getByTestId('time-travel-month-year').selectOption(month.slice(0, 4));
+  await page.getByTestId('time-travel-go').click();
+  await expect(page.getByTestId('time-travel-sheet')).toBeHidden();
+}
+
+/** Pin a full-tier device without the stubbed AI settings (AI stays off). */
+async function pinFullTier(page: Page): Promise<void> {
+  await page.addInitScript((tier) => {
+    for (const [name, value] of Object.entries(tier)) {
+      Object.defineProperty(Navigator.prototype, name, { get: () => value, configurable: true });
+    }
+  }, FULL_TIER);
+}
+
+
+/**
+ * The engine's last supported year (backend EPHEMERIS_LAST_INSTANT, 2053-01-01 exclusive). A year the
+ * sheet offers must compute: 2051 and 2052 once failed with a bare "failed" because Saturn's
+ * look-ahead read DE421 past its end. Literal on purpose: it guards the sheet's range, not itself.
+ */
+const LAST_YEAR = '2052';
+const PAST_LAST_YEAR = '2053';
+
+/** Open the Dashboard sheet and read the Year selector's options; the sheet stays open. */
+async function openYearOptions(page: Page): Promise<string[]> {
+  await page.getByTestId(DASHBOARD_BUTTON).click();
+  await page.getByTestId('time-travel-tab-year').click();
+  return page.getByTestId('time-travel-year').locator('option').evaluateAll((options) =>
+    options.map((option) => (option as HTMLOptionElement).value),
+  );
+}
+
+async function goToLastYear(page: Page): Promise<void> {
+  await page.getByTestId('time-travel-year').selectOption(LAST_YEAR);
+  await page.getByTestId('time-travel-go').click();
+  await expect(page.getByTestId('time-travel-sheet')).toBeHidden();
+  await expect(page.getByTestId('dashboard-time-travel-title')).toHaveText(new RegExp(LAST_YEAR));
+}
+
+test.describe('Dashboard time travel', () => {
+  test('[contract/real] with AI off, desktop: the button opens the sheet and March 2019 shows its dashas and transits', async ({ page }, testInfo) => {
+    const consoleErrors = captureConsole(page);
+    await pinFullTier(page);
+    await bootEngine(page);
+    await seedChart(page);
+    await openDashboard(page);
+    const button = page.getByTestId(DASHBOARD_BUTTON);
+    await expect(button).toBeVisible();
+    await expect(button.getByText('Time travel', { exact: true })).toBeVisible();
+    await expect(button).toBeEnabled();
+    // Mouse first, from nothing focused: a WebKit click never focuses a button, so
+    // the Dashboard must return focus itself.
+    await expect(button).not.toBeFocused();
+    await button.click();
+    await expect(page.getByTestId('time-travel-sheet')).toBeVisible();
+    await expect(page.getByTestId('time-travel-sheet'), 'the Dashboard sheet speaks for the Dashboard').toContainText(
+      'The Dashboard will show that moment.',
+    );
+    await page.getByTestId('time-travel-cancel').click();
+    await expect(page.getByTestId('time-travel-sheet')).toBeHidden();
+    await expect(button, 'a click then Cancel returns focus to the button').toBeFocused();
+    // Then the keyboard: Enter opens, Escape closes, focus comes back.
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId('time-travel-sheet')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('time-travel-sheet')).toBeHidden();
+    await expect(button, 'Escape returns focus to the button').toBeFocused();
+    await pickMonth(page, '2019-03');
+    await expect(page.getByTestId('dashboard-time-travel-title')).toHaveText(/March 2019/);
+    await expect(page.getByTestId('time-travel-moment-maha')).toHaveText(MARCH_2019_MAHA);
+    await expect(page.getByTestId('time-travel-moment-antar')).toHaveText(MARCH_2019_ANTAR);
+    await expect(page.getByTestId('time-travel-moment-transits')).toBeVisible({ timeout: 180_000 });
+    for (const [graha, sign] of Object.entries(MARCH_2019_SIGNS)) {
+      await expect(momentSignCell(page, graha), `${graha} in March 2019`).toHaveText(sign);
+    }
+    await expect(page.getByTestId('dashboard-today-label-life-atlas')).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath('dashboard-march-2019-desktop.png'), fullPage: true });
+    await page.getByTestId('dashboard-time-travel-change').click();
+    await expect(page.getByTestId('time-travel-month')).toHaveValue('03');
+    await page.getByTestId('time-travel-cancel').click();
+    await page.getByTestId('dashboard-time-travel-back').click();
+    await expect(page.getByTestId('dashboard-time-travel-banner')).toHaveCount(0);
+    await expect(page.getByTestId('time-travel-moment-card')).toHaveCount(0);
+    expect(consoleErrors, 'the journey must keep a clean console').toEqual([]);
+  });
+
+  test('[contract/real] the last supported year computes its sky, and the year after it is not offered', async ({ page }) => {
+    const consoleErrors = captureConsole(page);
+    await pinFullTier(page);
+    await bootEngine(page);
+    await seedChart(page);
+    await openDashboard(page);
+    const years = await openYearOptions(page);
+    expect(years.at(-1), 'the sheet ends at the engine range').toBe(LAST_YEAR);
+    expect(years, 'the year after the engine range is never offered').not.toContain(PAST_LAST_YEAR);
+    await goToLastYear(page);
+    await expect(page.getByTestId('time-travel-moment-transits'), 'the last year computes a sky, not a failure').toBeVisible({ timeout: 180_000 });
+    await expect(page.getByTestId('time-travel-moment-failed')).toHaveCount(0);
+    expect(consoleErrors, 'the journey must keep a clean console').toEqual([]);
+  });
+
+  test("[contract/real] Back to today shows today's Life Atlas at once: the moment never evicted it", async ({ page }) => {
+    const consoleErrors = captureConsole(page);
+    await pinFullTier(page);
+    await bootEngine(page);
+    await seedChart(page);
+    await openDashboard(page);
+    // The history starts with '(none)' (the empty slot); wait for today's computed reading.
+    await expect
+      .poll(async () => (await predictiveRequestKeys(page)).slice(-1)[0], { timeout: 180_000 })
+      .not.toBe('(none)');
+    await expect(page.getByTestId('life-atlas').getByText(/^As of /)).toBeVisible({ timeout: 240_000 });
+    const keysBefore = await predictiveRequestKeys(page);
+    await pickMonth(page, '2019-03');
+    await expect(page.getByTestId('time-travel-moment-transits')).toBeVisible({ timeout: 180_000 });
+    await page.getByTestId('dashboard-time-travel-back').click();
+    await expect(page.getByTestId('time-travel-moment-card')).toHaveCount(0);
+    await expect(page.getByTestId('life-atlas').getByText(/^As of /), "today's Life Atlas shows at once").toBeVisible({
+      timeout: 5_000,
+    });
+    expect(
+      (await predictiveRequestKeys(page)).slice(keysBefore.length),
+      'no second Life Atlas compute after Back to today',
+    ).toEqual([]);
+    expect(consoleErrors, 'the journey must keep a clean console').toEqual([]);
+  });
+
+  test('[contract/real] a reload returns the Dashboard to today: the moment is never persisted', async ({ page }) => {
+    const consoleErrors = captureConsole(page);
+    await pinFullTier(page);
+    await bootEngine(page);
+    await seedChart(page);
+    await openDashboard(page);
+    await pickMonth(page, '2019-03');
+    await expect(page.getByTestId('dashboard-time-travel-banner')).toBeVisible();
+    await expect(page.getByTestId('time-travel-moment-card')).toBeVisible();
+    await page.reload();
+    // Settled: the chart and profile are back, so a persisted moment would render now.
+    await expect(page.getByTestId(DASHBOARD_BUTTON)).toBeEnabled({ timeout: 180_000 });
+    await expect(page.getByTestId('life-atlas')).toBeVisible();
+    await expect(page.getByTestId('dashboard-time-travel-banner'), 'spec ruling 1: a reload returns to today').toHaveCount(0);
+    await expect(page.getByTestId('time-travel-moment-card')).toHaveCount(0);
+    await expect(page.getByTestId('dashboard-today-label-life-atlas')).toHaveCount(0);
+    expect(consoleErrors, 'the journey must keep a clean console').toEqual([]);
+  });
+
+  test('[contract/stubbed] with AI on, Go from the Dashboard also opens a pinned chat thread', async ({ page }) => {
+    const consoleErrors = await prepare(page);
+    await bootEngine(page);
+    await seedChart(page);
+    await openDashboard(page);
+    await pickMonth(page, '2019-03');
+    await expect(page.getByTestId('dashboard-time-travel-title')).toHaveText(/March 2019/);
+    await page.getByTestId('floating-chat-button').click();
+    await expect(page.getByTestId('time-travel-title')).toHaveText(/March 2019/);
+    expect((await pinnedThreads(page)).length).toBe(1);
+    expect(consoleErrors, 'the journey must keep a clean console').toEqual([]);
+  });
+});
+
+test.describe('Dashboard time travel on an iPhone 15', () => {
+  test('[contract/real] @iphone15 the button reads "Time travel", is at least 44×44, and with AI off shows dashas only', async ({ page }, testInfo) => {
+    const consoleErrors = captureConsole(page);
+    await bootEngine(page);
+    await seedChart(page);
+    await openDashboard(page);
+    const button = page.getByTestId(DASHBOARD_BUTTON);
+    await expect(button).toBeVisible();
+    await expect(button.getByText('Time travel', { exact: true })).toBeVisible();
+    const box = await button.boundingBox();
+    expect(box?.width ?? 0).toBeGreaterThanOrEqual(44);
+    expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
+    await page.screenshot({ path: testInfo.outputPath('dashboard-button-iphone15.png') });
+
+    // WebKit does not focus a button on tap; the Dashboard returns focus itself.
+    await button.tap();
+    await expect(page.getByTestId('time-travel-sheet')).toBeVisible();
+    await page.getByTestId('time-travel-cancel').tap();
+    await expect(page.getByTestId('time-travel-sheet')).toBeHidden();
+    await expect(button, 'a tap then Cancel returns focus to the button').toBeFocused();
+
+    await pickMonth(page, '2019-03');
+    await expect(page.getByTestId('dashboard-time-travel-title')).toHaveText(/March 2019/);
+    await expect(page.getByTestId('time-travel-moment-maha')).toHaveText(MARCH_2019_MAHA);
+    // Today is Rahu/Mercury: the antar is what proves the card is for March 2019.
+    await expect(page.getByTestId('time-travel-moment-antar')).toHaveText(MARCH_2019_ANTAR);
+    await expect(page.getByTestId('time-travel-moment-dashas-only')).toBeVisible();
+    // The banner's Change and Back to today are thumb-sized too.
+    for (const testId of ['dashboard-time-travel-change', 'dashboard-time-travel-back']) {
+      const target = await page.getByTestId(testId).boundingBox();
+      expect(target?.width ?? 0, `${testId} width`).toBeGreaterThanOrEqual(44);
+      expect(target?.height ?? 0, `${testId} height`).toBeGreaterThanOrEqual(44);
+    }
+    await page.getByTestId('dashboard-time-travel-banner').screenshot({ path: testInfo.outputPath('dashboard-banner-iphone15.png') });
+    await page.screenshot({ path: testInfo.outputPath('dashboard-march-2019-iphone15.png'), fullPage: true });
+    expect(consoleErrors, 'the journey must keep a clean console').toEqual([]);
+  });
+  test('[contract/real] @iphone15 the last supported year gives a moment card, and the year after it is not offered', async ({ page }) => {
+    const consoleErrors = captureConsole(page);
+    await bootEngine(page);
+    await seedChart(page);
+    await openDashboard(page);
+    const years = await openYearOptions(page);
+    expect(years.at(-1), 'the sheet ends at the engine range').toBe(LAST_YEAR);
+    expect(years, 'the year after the engine range is never offered').not.toContain(PAST_LAST_YEAR);
+    await goToLastYear(page);
+    await expect(page.getByTestId('time-travel-moment-card')).toBeVisible();
+    await expect(page.getByTestId('time-travel-moment-failed')).toHaveCount(0);
+    await expect(page.getByTestId('time-travel-moment-dashas-only')).toBeVisible();
     expect(consoleErrors, 'the journey must keep a clean console').toEqual([]);
   });
 });

@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Final
 from almamesh.calculations import AyanamsaType, NodeType
 from almamesh.constants.astrology import PlanetName
 from almamesh.transits.ingress import find_crossings
-from almamesh.transits.positions import transit_longitude
+from almamesh.transits.positions import EPHEMERIS_LAST_INSTANT, transit_longitude
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -79,7 +79,11 @@ def ingress_before(astro: SkyfieldAstronomy, sign_idx: int, anchor: datetime) ->
 
 
 def ingress_after(astro: SkyfieldAstronomy, sign_idx: int, anchor: datetime) -> datetime | None:
-    """Saturn's last sticking entry into sign_idx after `anchor` (~3y forward)."""
-    end = anchor + timedelta(days=_INGRESS_WINDOW_DAYS)
+    """Saturn's last sticking entry into sign_idx after `anchor` (~3y forward).
+
+    The look-ahead stops at the ephemeris end, so an entry past it reads as None
+    (no hit), like `slow_hits`; reading past DE421 would raise instead.
+    """
+    end = min(anchor + timedelta(days=_INGRESS_WINDOW_DAYS), EPHEMERIS_LAST_INSTANT)
     entries = [c for c in _entries_in(astro, sign_idx, anchor, end) if c > anchor]
     return entries[-1] if entries else None

@@ -66,7 +66,7 @@ function assertRealSummary(text: string | null): void {
  */
 const FORBIDDEN_LLM_ERROR_FRAGMENTS = ['No endpoints found', RETIRED_MODEL, 'LlmRequestError'];
 
-test('[real][self-heal] stale anthropic/claude-3.5-sonnet self-heals to DeepSeek V4.1 Flash and renders a real reading', async ({
+test('[real][self-heal] stale anthropic/claude-3.5-sonnet self-heals to the recommended reading model (DeepSeek V4.1 Flash) and renders a real reading', async ({
   page,
 }) => {
   const KEY = process.env.OPENROUTER_API_KEY;

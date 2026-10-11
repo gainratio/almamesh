@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   BEFORE_BIRTH_MESSAGE,
   ENGINE_DAYS_PER_MONTH,
+  EPHEMERIS_LAST_YEAR,
   LONG_PERIOD_WINDOW_MONTHS,
   periodWindowMonths,
   windowEndsBeforePeriodEnd,
@@ -158,5 +159,13 @@ describe("instantEndsBeforePeriodEnd", () => {
   it("is true for the 2028-12-31T06:00Z leap-year window end", () => {
     const leap = { start: "2028-01-01", end: "2028-12-31" };
     expect(instantEndsBeforePeriodEnd(Date.parse("2028-12-31T06:00:00Z"), leap)).toBe(true);
+  });
+});
+
+describe("EPHEMERIS_LAST_YEAR", () => {
+  // Pinned to the literal: backend positions.py EPHEMERIS_LAST_INSTANT is 2053-01-01 (exclusive),
+  // so 2052 is the last year the engine computes.
+  it("is the engine's last supported year", () => {
+    expect(EPHEMERIS_LAST_YEAR).toBe(2052);
   });
 });
