@@ -53,9 +53,10 @@ async function predictiveRequestKeys(page: Page): Promise<string[]> {
 
 /**
  * Open the dashboard after seedChart. seedChart's restore reloads the app, and
- * that load is still opening SQLite and the engine; WebKit reports a load a
- * hard navigation cancels as an "access control checks" console error, and the
- * app's own navigation can cut the goto short ("Frame load interrupted").
+ * that load is still opening SQLite and the engine. WebKit can emit a native
+ * navigation diagnostic; reloadConsole distinguishes proven resource evidence
+ * from the explicit exception with unproven source and cause. The app's own
+ * navigation can cut the goto short ("Frame load interrupted").
  * gotoSettled waits for the document to settle and retries an interrupted goto.
  */
 async function openDashboard(page: Page): Promise<void> {
@@ -810,7 +811,7 @@ test.describe('pinned threads on a device in another zone', () => {
     // The chart zone (get_current_datetime scope 'chart') legitimately names the birth zone; only the device's must stay out.
     expect(bodies.filter((body) => body.includes(DEVICE_ZONE)), 'the device zone must not reach the model').toEqual([]);
     await page.screenshot({ path: PIN_SCREENSHOT, fullPage: true });
-    expect(consoleErrors, 'the journey must keep a clean console').toEqual([]);
+    expect(consoleErrors, 'the journey must have no unexpected runtime or page errors').toEqual([]);
   });
 
   /**
@@ -1028,7 +1029,7 @@ test.describe('time travel on an iPhone', () => {
     expect(bodies.filter((body) => body.includes(DEVICE_ZONE)), 'the device zone must not reach the model').toEqual([]);
 
     await expectBannerWrapsCleanlyAt380(page);
-    expect(consoleErrors, 'the journey must keep a clean console').toEqual([]);
+    expect(consoleErrors, 'the journey must have no unexpected runtime or page errors').toEqual([]);
   });
 });
 
@@ -1330,7 +1331,7 @@ test.describe('Dashboard time travel', () => {
     await expect(page.getByTestId('dashboard-time-travel-banner'), 'spec ruling 1: a reload returns to today').toHaveCount(0);
     await expect(page.getByTestId('time-travel-moment-card')).toHaveCount(0);
     await expect(page.getByTestId('dashboard-today-label-life-atlas')).toHaveCount(0);
-    expect(consoleErrors, 'the journey must keep a clean console').toEqual([]);
+    expect(consoleErrors, 'the journey must have no unexpected runtime or page errors').toEqual([]);
   });
 
   test('[contract/stubbed] with AI on, Go from the Dashboard also opens a pinned chat thread', async ({ page }) => {

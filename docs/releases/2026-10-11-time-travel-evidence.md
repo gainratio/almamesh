@@ -92,10 +92,10 @@ Both cases assert that no `/models/` requests occur. The ten recorded `peakSingl
 
 ## Current candidate checks
 
-The candidate is on `codex/iphone-time-travel`, based on release #331 (`8d10fbbb`). The final local frontend gate rebuilt the normal review build as `2fa6ef951273` at `2026-10-11T19:36:31.267Z`; the separate hooked review build is `f2bddbf84f7c`, built at `2026-10-11T18:25:12.847Z`.
+The candidate is on `codex/iphone-time-travel`, based on release #331 (`8d10fbbb`). The final local frontend gate rebuilt the normal review build as `c92208781d44` at `2026-10-11T20:15:55.398Z`; the separate hooked review build is `f2bddbf84f7c`, built at `2026-10-11T18:25:12.847Z`.
 
 - Backend gate: 1,186 tests passed, 98.46% coverage; Ruff, formatting, mypy and complexity checks passed. Seven corrected slow-hit dates changed in reference fixtures; other fixture fields were unchanged.
-- Final frontend gate: 5,877 tests plus four lint-contract checks passed, including the constrained-device memory policy, restore-generation and reload-diagnostic regressions. TypeScript, ESLint, production build, public-route prerender checks and absence of test hooks passed. The configured Knip report completed successfully but still reports unused-code/dependency diagnostics; it is not a clean unused-code result.
+- Final frontend gate: 5,955 tests plus four lint-contract checks passed, including the constrained-device memory policy, restore-generation and reload-diagnostic regressions. TypeScript, ESLint, production build, public-route prerender checks and absence of test hooks passed. The configured Knip report completed successfully but still reports unused-code/dependency diagnostics; it is not a clean unused-code result. Log: `/tmp/almamesh-codex-release-final-frontend-gate.log`.
 - Real-browser engine parity: 11/11 checks passed against the CPython reference, including updated predictive fixtures, explicit-date sensitivity, Moon windows, clean console and same-origin engine traffic.
 - The broad Chromium functional run passed 16 journeys and exposed one stale test assertion: it expected one city download instead of the new 25 bounded parts. After updating that assertion to the manifest count and proving no repeated part downloads, all seven affected journeys passed on the candidate before the constrained-device recall policy. These cover typed historical questions, multi-place timing, slow-save Back to today, Day/revisit, two tabs, September 2017 → today, and chat tool movement in both directions. The engine is real; provider replies in chat cases are locally stubbed.
 - Mac WebKit iPhone 15 functional checks before the recall policy passed 4/4: Day/revisit/Back, two tabs, September 2017 → today, and chat tool movement. Single-WebContent RSS peaks were 1069, 862, 1326 and 1362 MiB respectively. Those were functional checks, not memory-budget passes: the chat peaks exceeded the 1306 MiB reference allowance and motivated the recall policy change.
@@ -188,3 +188,55 @@ test correction. The first run is retained at
 After the reload-diagnostic correction, the full frontend gate passed again:
 5,877 tests plus four lint-contract checks, with production build and public-route
 verification. Log: `/tmp/almamesh-codex-prepush-final-frontend-gate.log`.
+
+The next Mac run passed all five original boots (1020, 1028, 1024, 1053 and
+1036 MiB) and five candidate Day/place journeys (1084, 1089, 1059, 1084 and
+1086 MiB, against 1053 + 250 MiB). The same reload assertion exposed a different
+old-document diagnostic: an exact Blob access-control message before navigation
+commit, with no cancelled-request event. The existing classifier correctly kept
+it fatal. The run was stopped to investigate rather than repeating the remaining
+journeys. Its evidence is retained at
+`/tmp/almamesh-codex-final-native-mac-access-control-diagnostic.log`.
+
+A targeted three-repeat probe passed once and reproduced the assertion failure
+twice. Public Playwright events tied each Blob request's Referer to the SQL worker
+requested before reload. In one failure the Blob completed with status 200 before
+the access-control message; in the other it was cancelled and both `opfs` and
+`opfs-wl` initializer Events were recorded. All occurred before the first main-frame
+commit, and the functional persistence assertions passed. [WebKit's pinned source](https://github.com/WebKit/WebKit/blob/4d05d732e5a84f32675bef4cc135a2e7a9269a87/Source/WebCore/loader/cache/CachedResourceLoader.cpp#L1370)
+supports a navigation-related resource rejection being labelled access control;
+the exact native branch remains an inference, not a demonstrated CORS defect or
+an explanation of previous Safari crashes. Log:
+`/tmp/almamesh-codex-opfs-reload-observe.log`. The test harness is being corrected
+to distinguish this narrowly evidenced old-document case, while retaining all
+unmatched errors and all uncaught exceptions. The complete Mac lane remains
+pending.
+
+The strict resource classifier then passed four of five targeted reloads,
+retaining actual cancellation/completed-resource proof in three passing runs.
+The remaining failure contained no matching Blob request anywhere in the trace.
+It occurred after the explicit HTTP reload began and before the first main-frame
+commit; new-page entry scripts loaded afterward. Log:
+`/tmp/almamesh-codex-opfs-reload-final.log`.
+
+The harness therefore distinguishes a third category: an outgoing-navigation
+diagnostic with source and cause explicitly unproven. This accepts at most one
+exact native, empty-location, same-origin Blob access-control message strictly
+before commit, only when the old and committed HTTP(S) document URLs match and
+a complete bounded capture history contains no matching resource event. Blob URL
+history and overflow survive public frame-navigation events, including SPA
+navigation; retaining prior documents is a conservative superset.
+Any matching event, missing evidence, history overflow, different target/origin,
+post-commit message or uncaught exception stays fatal. This category cannot
+justify initializer errors. Every scope and matched category is written to a
+physical JSON file, including successful runs with the list reporter. The
+107 focused contracts passed. The next native reload probe passed 5/5 with five
+physical scope files retained, including actual cancellation and resource-rejection
+proofs; no outgoing-navigation exception was needed in those five runs. Log:
+`/tmp/almamesh-codex-opfs-reload-navigation-final.log`. Two subsequently added
+regressions failed before the conservative history-retention fix and passed
+afterward; the complete native lane will verify that final source. These are
+functional journeys with archived pre-commit diagnostics, not an assertion that
+the outgoing page emitted no console messages. A coincident outgoing-document
+Blob defect remains a residual risk; post-reload persistence, timing and privacy
+assertions remain unchanged.

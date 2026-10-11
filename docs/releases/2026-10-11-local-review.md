@@ -6,7 +6,7 @@ The user reviewed this local candidate and authorized the CI/CD release process 
 
 Open <http://127.0.0.1:4297> while the local preview is running. This is a production build without test hooks. Browser storage belongs to this local origin, so existing production data does not appear automatically.
 
-Review build: `2fa6ef951273`, built `2026-10-11T19:36:31.267Z` by the final frontend gate. The candidate is on `codex/iphone-time-travel`, based on release #331 (`8d10fbbb`). Reload an already-open local tab to load this candidate.
+Review build: `c92208781d44`, built `2026-10-11T20:15:55.398Z` by the final frontend gate. The candidate is on `codex/iphone-time-travel`, based on release #331 (`8d10fbbb`). Reload an already-open local tab to load this candidate.
 
 Use **Settings → Data** to import an encrypted `.almamesh` backup, or create a test profile. Configure AI locally to exercise a real provider; time travel itself works without AI. Never paste keys into a test report or issue.
 
