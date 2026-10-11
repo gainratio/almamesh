@@ -17,7 +17,8 @@
     "connect_ai": "Connect an AI model",
     "switch_recommended": "Switch to recommended (GPT-6 Luna for readings)",
     "ai_settings": "AI settings",
-    "dismiss": "Dismiss"
+    "dismiss": "Dismiss",
+    "time_travel": "Time travel"
   },
   "loading": {
     "title": "Loading Your Chart",
@@ -121,5 +122,18 @@
     "force_field_title": "Planetary Force Field",
     "force_field_unavailable": "This browser can't draw the 3D view here. Your chart below has everything.",
     "kundli_title": "Kundli & Planetary Position"
+  },
+  "time_travel": {
+    "sheet_intro": "Pick a time. The Dashboard will show that moment.",
+    "banner_about": "the cards below are about this moment",
+    "dashas_only": "This device shows dashas only for other dates, to stay within memory.",
+    "moment_title": "At that moment",
+    "maha": "Main period (maha dasha)",
+    "antar": "Sub-period (antar dasha)",
+    "transits_title": "Planets in the sky then",
+    "failed": "Couldn't work out the sky for this moment.",
+    "retry": "Try again",
+    "sky_ready": "The sky for {{period}} is ready.",
+    "today_label": "Today"
   }
 }

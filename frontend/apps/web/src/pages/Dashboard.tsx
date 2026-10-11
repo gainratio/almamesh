@@ -81,8 +81,20 @@ import { rectificationDelta } from "../lib/rectification";
 import { buildChatToolset } from "../lib/chatToolset";
 import { formatPinLabel } from "../lib/timeTravelSheet";
 import { birthYearOf } from "../lib/periodChart";
+import { asOfKey } from "../lib/pinnedPeriod";
+import { DashboardMoment } from "../components/features/dashboard/DashboardMomentCard";
+import { TimeTravelBanner } from "../components/features/chat/TimeTravelBanner";
+import { DashboardTimeTravelSheet } from "../components/features/dashboard/DashboardTimeTravelSheet";
+import {
+  type DashboardTravelSheet,
+  useDashboardSheetReturnFocus,
+} from "../components/features/dashboard/useDashboardSheetReturnFocus";
+import { useTimeTravel } from "../lib/timeTravel";
 import { RESOLVE_PLACE_TOOL_NAME } from "../lib/placeTool";
 import { useOptionalChartEngine } from "../providers/chartEngineContext";
+
+/** 44×44 CSS px, the touch-target floor (spec Part 1). Pinned by Dashboard.timeTravel.test.tsx and the @iphone15 box check. */
+const TIME_TRAVEL_BUTTON_SIZE = "min-h-11 min-w-11";
 
 // Resolve the LLM env: build-time Vite env with any browser-local Settings
 // overrides taking precedence — mirrors useStreamingInterpretation so the
@@ -168,6 +180,28 @@ export default function DashboardPage() {
   // how charts are scoped per profile). Read it via the store HOOK so the chat
   // re-binds when the person switches.
   const activeProfileId = useProfilesStore((s) => s.activeProfileId);
+  const timeTravel = useTimeTravel(activeProfileId, chartId);
+  const [travelSheet, setTravelSheet] = useState<DashboardTravelSheet>('closed');
+  const travelFocus = useDashboardSheetReturnFocus(travelSheet);
+  // Back to today's state belongs to the moment it ran on: a failure on one
+  // moment must not greet the person on the next one (however it was reached).
+  const [travelBackFor, setTravelBackFor] = useState<{ readonly status: 'idle' | 'busy' | 'failed'; readonly key: string }>({ status: 'idle', key: 'today' });
+  const momentKey = asOfKey(timeTravel.moment);
+  const travelBack = travelBackFor.key === momentKey ? travelBackFor.status : 'idle';
+  const travelBirthYear = birthYearOf(chartId
+    ? (useChartLibraryStore.getState().getChart(chartId)?.birth_data as ProcessedBirthData | undefined)
+    : undefined);
+  const goToMoment = (asOf: ChatThreadAsOf) => timeTravel.travel({ asOf, source: 'dashboard-sheet' });
+  const backFromMoment = async () => {
+    const key = momentKey;
+    setTravelBackFor({ status: 'busy', key });
+    try {
+      await timeTravel.backToToday();
+      setTravelBackFor({ status: 'idle', key });
+      // The banner (and its Back button) unmounts; keep focus on the page.
+      travelFocus.buttonRef.current?.focus();
+    } catch { setTravelBackFor({ status: 'failed', key }); }
+  };
   // Whose chart is missing — named on the empty state so the screen is about a
   // person, not an abstraction. Selected as a primitive so the hook is stable.
   const activeProfileName = useProfilesStore((s) =>
@@ -713,6 +747,7 @@ export default function DashboardPage() {
           dasha={astronomicalData?.dasha_ctx}
           rectification={rectification}
           timeConfidence={birthData?.birth_time_confidence}
+          dashaLabel={timeTravel.moment ? t("dashboard:time_travel.today_label") : undefined}
           actions={
             <>
               <ContentModeToggle />
@@ -763,6 +798,17 @@ export default function DashboardPage() {
               </button>
               <button
                 type="button"
+                ref={travelFocus.buttonRef}
+                data-testid="dashboard-time-travel-button"
+                onClick={() => setTravelSheet('new')}
+                disabled={!chartId || !activeProfileId}
+                className={`inline-flex ${TIME_TRAVEL_BUTTON_SIZE} items-center gap-1.5 whitespace-nowrap rounded-md border border-ui-border px-3 py-1.5 text-sm text-text-secondary transition-colors hover:border-accent-gold/40 hover:text-text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-gold disabled:cursor-not-allowed disabled:border-ui-border/60 disabled:text-text-tertiary disabled:hover:border-ui-border/60`}
+              >
+                <span aria-hidden="true">⏳</span>
+                <span>{t("dashboard:actions.time_travel")}</span>
+              </button>
+              <button
+                type="button"
                 onClick={handleRegenerateTimeline}
                 disabled={
                   isStreamingInterpretation ||
@@ -801,6 +847,21 @@ export default function DashboardPage() {
             </>
           }
         />
+        {timeTravel.moment && (
+          <TimeTravelBanner asOf={timeTravel.moment} language={i18n.language}
+            testIdPrefix="dashboard-time-travel" about={t("dashboard:time_travel.banner_about")}
+            changeRef={travelFocus.changeRef}
+            onChange={() => setTravelSheet('change')} onBack={() => void backFromMoment()}
+            backBusy={travelBack === 'busy'} backFailed={travelBack === 'failed'} />
+        )}
+        {timeTravel.moment && (
+          <DashboardMoment key={momentKey} asOf={timeTravel.moment} chart={siderealChart} chartId={chartId}
+            engine={chartEngineContext} birthYear={travelBirthYear} language={i18n.language} />
+        )}
+        <DashboardTimeTravelSheet open={travelSheet !== 'closed'}
+          current={travelSheet === 'change' ? timeTravel.moment : undefined}
+          birthYear={travelBirthYear}
+          intro={t("dashboard:time_travel.sheet_intro")} onGo={goToMoment} onClose={() => setTravelSheet('closed')} />
 
         {/* The PDF render failed. Calm, visible, on-screen ONLY (`no-print`) —
             never a silent unhandled rejection, and never printed into a
@@ -1153,7 +1214,14 @@ export default function DashboardPage() {
 
         {/* 4 — Life Atlas: the seven-domain centerpiece (engine forecasts,
                lazy compute behind one explicit affordance). */}
-        <LifeAtlas />
+        <div className="space-y-2">
+          {timeTravel.moment && (
+            <span data-testid="dashboard-today-label-life-atlas" className="inline-block rounded bg-ui-border/40 px-2 py-0.5 text-xs">
+              {t("dashboard:time_travel.today_label")}
+            </span>
+          )}
+          <LifeAtlas />
+        </div>
 
         {/* 5 — The observatory: 3D force field, kundli and planetary table,
                rendered for both modes (depth lives inside, not in the layout). */}
@@ -1163,6 +1231,11 @@ export default function DashboardPage() {
                + Feedback now live in the top identity-strip actions row.) */}
         <Card title={t('predictive:page.title')}>
           <div className="flex flex-col gap-4">
+            {timeTravel.moment && (
+              <span data-testid="dashboard-today-label-sky" className="self-start rounded bg-ui-border/40 px-2 py-0.5 text-xs">
+                {t("dashboard:time_travel.today_label")}
+              </span>
+            )}
             <p className="text-sm leading-relaxed text-text-secondary">
               {t('life:continue.timing_body')}
             </p>

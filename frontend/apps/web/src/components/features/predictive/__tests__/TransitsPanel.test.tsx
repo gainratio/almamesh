@@ -14,6 +14,39 @@ describe('TransitsPanel', () => {
     await i18next.changeLanguage('en');
   });
 
+  // Sade Sati inactive, so its "none" line renders too.
+  const QUIET_SATURN: TransitCtx = { ...TRANSIT_CTX, sade_sati: { ...TRANSIT_CTX.sade_sati, is_active: false } };
+
+  it('by default reads as now: "Current Sky", "today\'s sky", "currently"', () => {
+    render(<TransitsPanel transitCtx={QUIET_SATURN} />);
+    const text = screen.getByTestId('transits-panel').textContent ?? '';
+    expect(text).toContain('Current Sky (Gochara)');
+    expect(text).toContain("today's sky");
+    expect(text).toContain('currently');
+  });
+
+  it('framed as another moment, no line reads as now and the table stays', () => {
+    render(<TransitsPanel transitCtx={QUIET_SATURN} frame="moment" />);
+    const text = screen.getByTestId('transits-panel').textContent ?? '';
+    expect(text).not.toContain('Current Sky');
+    expect(text).not.toMatch(/today/i);
+    expect(text).not.toMatch(/current/i);
+    expect(text).toContain('Saturn is not inside the three-sign Sade Sati corridor');
+    expect(screen.getByTestId('gochara-table')).toBeTruthy();
+    expect(screen.getByTestId('fusion-card')).toBeTruthy();
+  });
+
+  it.each([
+    ['es', /actualmente|hoy/],
+    ['pt', /atualmente|hoje/],
+  ] as const)('framed as another moment, %s has no "now" words either', async (language, now) => {
+    useLanguageStore.setState({ language });
+    await i18next.changeLanguage(language);
+    render(<TransitsPanel transitCtx={QUIET_SATURN} frame="moment" />);
+    expect(screen.getByTestId('transits-panel').textContent ?? '').not.toMatch(now);
+    await i18next.changeLanguage('en');
+  });
+
   it('renders the gochara table with localized graha/sign names and houses', () => {
     render(<TransitsPanel transitCtx={TRANSIT_CTX} />);
     const table = screen.getByTestId('gochara-table');
@@ -72,7 +105,7 @@ describe('TransitsPanel', () => {
     expect(within(card).getByText('Mercury')).toBeTruthy();
     expect(within(card).getByText('Jupiter')).toBeTruthy(); // reinforcing
     expect(within(card).getByText('Mars')).toBeTruthy(); // afflicting
-    expect(within(card).getByText('-0.5')).toBeTruthy(); // net weight verbatim
+    expect(within(card).getByText('-0.50')).toBeTruthy(); // net weight, two decimals
   });
 
   it('renders the 12-month timeline chronologically with human event copy', () => {
@@ -124,6 +157,17 @@ describe('TransitsPanel', () => {
     expect(within(rows[0]!).getByText('Supportive')).toBeTruthy();
     expect(within(rows[1]!).queryByText('Neutral')).toBeNull();
     expect(within(rows[2]!).getByText('Challenging')).toBeTruthy();
+  });
+
+  it.each([
+    [0.04999999999999999, '0.05'],
+    [-0.3, '-0.30'],
+    [-0.001, '0.00'],
+  ])('shows fusion net weight %s as %s (two decimals, sign kept)', (netWeight, shown) => {
+    const ctx: TransitCtx = { ...TRANSIT_CTX, fusion: { ...TRANSIT_CTX.fusion!, net_weight: netWeight } };
+    render(<TransitsPanel transitCtx={ctx} />);
+    const value = screen.getByText('Net weight').nextElementSibling;
+    expect(value?.textContent).toBe(shown);
   });
 
   describe('in a timezone west of UTC (America/Los_Angeles)', () => {

@@ -6,6 +6,13 @@ All notable changes to AlmaMesh are documented here. Format follows
 
 ## [Unreleased]
 
+### Added
+- **The Dashboard has a ⏳ Time travel button, and it works on every device, with
+  or without AI (#329).** Pick a day, a month or a year to see that moment's
+  dashas and, where the device allows, the planets then, all computed on the
+  device. "Today" chips mark the panels that still show today, and Back to today
+  returns you to now.
+
 ### Fixed
 - **An older commit's deploy no longer shows red when a newer commit has landed.**
   Main runs stopped cancelling each other (#263/#266), so the deploy for an older
