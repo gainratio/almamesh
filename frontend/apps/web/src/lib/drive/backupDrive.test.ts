@@ -107,6 +107,19 @@ describe('sealedBackupOf', () => {
     const real = await sealedFixtureBytes(new Uint8Array());
     expectNotSealed(real.slice(0, real.length - 1));
   });
+
+  it.each([
+    ['a different version (v2)', 'age-encryption.org/v2\n'],
+    ['a different host', 'age-encryption.org/x1\n'],
+    ['a swapped separator (CR for LF)', 'age-encryption.org/v1\r'],
+  ])('refuses a real age file whose version line was rewritten to %s', async (_label, line) => {
+    const real = await sealedFixtureBytes();
+    const rewritten = real.slice();
+    rewritten.set(enc(line), 0);
+    expect(rewritten.slice(PREFIX.length)).toEqual(real.slice(PREFIX.length));
+    expect(line).toHaveLength(PREFIX.length);
+    expectNotSealed(rewritten);
+  });
 });
 
 describe('header line cap', () => {

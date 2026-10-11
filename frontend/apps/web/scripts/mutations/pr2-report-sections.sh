@@ -152,7 +152,7 @@ mutate 1 "$DG" \
 
 # 2. Day-precision dates are let through (only month checks remain).
 mutate 2 "$DG" \
-  's/return DAY_PRECISION\.some\(\(pattern\) => pattern\.test\(sentence\)\) \|\| hasCuedDayMonth\(sentence\);/return false; \/\/ MUTATION-PR2-2/' \
+  's/return DAY_PRECISION\.some\(\(pattern\) => pattern\.test\(sentence\)\) \|\| hasCuedDayMonth\(sentence\) \|\| hasOrdinalDay\(sentence\);/return false; \/\/ MUTATION-PR2-2/' \
   'MUTATION-PR2-2' src/__tests__/date-guard.test.ts 'removes day-precision dates'
 
 # 3. life_outlook gets the full predictive block.
@@ -276,6 +276,21 @@ mutate 23 "$DG" \
 mutate 24 "$SI" \
   's/const whole = preview\.length < PROSE_PREVIEW_CHARS \? preview : preview\.replace\(LEADING_FRAGMENT, ""\);/const whole = preview; \/\/ MUTATION-PR2-24/' \
   'MUTATION-PR2-24' src/__tests__/report-timeline.test.ts 'drops the cut-off first sentence of a full preview so a half date never shows'
+
+# 25. An ordinal day with no month ("the 14th") is let through (round 3).
+mutate 25 "$DG" \
+  's/ \|\| hasCuedDayMonth\(sentence\) \|\| hasOrdinalDay\(sentence\);/ || hasCuedDayMonth(sentence); \/\/ MUTATION-PR2-25/' \
+  'MUTATION-PR2-25' src/__tests__/date-guard.test.ts 'removes a en ordinal day with no month: Act by the 14th.'
+
+# 26. The house/quarter/cycle exclusion is removed: every "the Nth" is a date.
+mutate 26 "$DG" \
+  's/if \(!isHouse\) return true;/return true; \/\/ MUTATION-PR2-26/' \
+  'MUTATION-PR2-26' src/__tests__/date-guard.test.ts 'keeps astrology vocabulary and non-dates: The 3rd house rules your family.'
+
+# 27. A year with an era mark glued on ("2031AD") is let through again.
+mutate 27 "$DG" \
+  's/\(\?:\(\?!\[\\d\\p\{L\}\]\)\|\(\?=\(\?:AD\|CE\)\(\?!\\p\{L\}\)\)\)\/gu;/(?![\\d\\p{L}])\/gu; \/\/ MUTATION-PR2-27/' \
+  'MUTATION-PR2-27' src/__tests__/date-guard.test.ts 'removes a year with an era mark the engine did not supply: Act in 2031AD.'
 
 if [ -n "$(git status --porcelain -- "$SRC_REL")" ]; then
   echo "$SRC_REL not clean after restoring mutations" >&2

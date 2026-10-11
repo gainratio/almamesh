@@ -415,6 +415,80 @@ describe("validateTimelineDates: task D (R16)", () => {
   });
 });
 
+// Round 3: an ordinal day number with no month ("the 14th") and an era suffix
+// glued to a year ("2031AD"). Houses, quarters and cycles are astrology
+// vocabulary: an ordinal followed by one of those nouns, or part of a list of
+// ordinals, or in house context ("lord of the 10th") is not a date.
+describe("validateTimelineDates: ordinal days and glued era suffix", () => {
+  const removesFirst = (sentence: string): void => {
+    const { section, removals } = validateTimelineDates({ layman: `${sentence} Rest.` }, ALLOWED);
+    expect({ sentence, text: section.layman, removals }).toEqual({ sentence, text: "Rest.", removals: 1 });
+  };
+  const keeps = (sentence: string): void => {
+    const input = { layman: `${sentence} Rest.` };
+    expect({ sentence, result: validateTimelineDates(input, ALLOWED) }).toEqual({
+      sentence,
+      result: { section: input, removals: 0 },
+    });
+  };
+
+  it.each([
+    ["en", "Act by the 14th."],
+    ["en", "The 1st brings a turn."],
+    ["en", "Expect news around the 22nd of the month."],
+    ["en", "Sign on the 3rd, then rest."],
+    ["en", "It peaks on the 31st."],
+    ["en", "Things shift from the 3rd to the 14th."],
+    ["es", "Firma el día 14."],
+    ["pt", "Aja no dia 3."],
+  ])("removes a %s ordinal day with no month: %s", (_lang, sentence) => {
+    removesFirst(sentence);
+  });
+
+  it.each([
+    "The 3rd house rules your family.",
+    "Look to the 1st house for identity.",
+    "Mars crosses the 2nd quarter of the year.",
+    "The 10th house lord sits well.",
+    "The 10th-house lord sits well.",
+    "Saturn is the lord of the 10th.",
+    "Jupiter aspects the 7th and 8th houses.",
+    "Work the 5th, 9th and 11th houses together.",
+    "Venus rules the 4th degree of Libra.",
+    "This is the 2nd cycle of Saturn.",
+    "Read the 3rd chapter slowly.",
+    "The 1st part is quiet; the 2nd part is busy.",
+    "Your 10th house is strong.",
+    "Mars in the 8th shifts your focus.",
+    "Pensa en el día a día.",
+    "Ten days later, rest.",
+  ])("keeps astrology vocabulary and non-dates: %s", (sentence) => {
+    keeps(sentence);
+  });
+
+  it("documents the limit: a bare ordinal after a list connector has no 'the' and is not read", () => {
+    // "the 3rd" is read as a list head (houses: "the 7th and 8th houses"); "14th" has no "the".
+    keeps("Act on the 3rd and 14th.");
+  });
+
+  it.each([
+    "Act in 2031AD.",
+    "Act in 2031 AD.",
+    "Act in AD 2031.",
+    "Act in AD2031.",
+    "Act in 2031CE.",
+    "Act in 2031 CE.",
+  ])("removes a year with an era mark the engine did not supply: %s", (sentence) => {
+    removesFirst(sentence);
+  });
+
+  it("keeps an allowed year with an era mark and words that merely start with AD", () => {
+    keeps("Act in 2027AD.");
+    keeps("Act in 2027 AD.");
+    keeps("The 2031ADHD label is not a year.");
+  });
+});
+
 describe("monthsIn", () => {
   it("collects every YYYY-MM the engine put in a slice", () => {
     const slice = { a: "2027-03", b: [{ month: "2027-06" }], c: "birth", d: 2027 };

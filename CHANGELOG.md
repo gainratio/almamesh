@@ -12,8 +12,28 @@ All notable changes to AlmaMesh are documented here. Format follows
   dashas and, where the device allows, the planets then, all computed on the
   device. "Today" chips mark the panels that still show today, and Back to today
   returns you to now.
+- **One shared AI setup panel (#331).** Settings → AI and the coming onboarding
+  step use the same `AiSetupPanel`. Settings behaves as before. A failed save,
+  a failed turn-off, or a key the provider rejects (401/403) now puts the last
+  working setup back, in memory and in storage, instead of leaving a rejected
+  key saved and "Active".
+- **A nine-section reading report engine, in the library only (#331).**
+  `streamReportTimeline` in `@almamesh/llm` builds the report sections with an
+  engine-date guard, word targets, time caps and OpenRouter provider routing,
+  and has its own pinned report model. Nothing in the app calls it yet: it is
+  wired in the next two reading PRs, so users see no change from it.
+- **Cloud backup foundation, not wired (#331).** A `BackupDrive` seam, a guard
+  that refuses anything not shaped like an age file, neutral backup file names,
+  and device-local rows that never travel in a backup. No provider and no
+  network code yet.
 
 ### Fixed
+- **Time travel works for every year the sheet offers (#331).** Reference dates after
+  about October 2050 (earlier for some charts) made the Saturn look-ahead and the
+  24-month leap-year window read past the end of the DE421 ephemeris, so 2051 and
+  2052 always failed with nothing logged. Both are clamped to the ephemeris end,
+  the sheet's last year comes from one constant, and a failed moment is now logged
+  by code.
 - **An older commit's deploy no longer shows red when a newer commit has landed.**
   Main runs stopped cancelling each other (#263/#266), so the deploy for an older
   commit asked "is main green?" about the newer HEAD and failed ("applicable Dagger
@@ -39,6 +59,10 @@ All notable changes to AlmaMesh are documented here. Format follows
   worker until the engine is ready, so every run tests this worst case.
 
 ### Changed
+- **The legacy live reading keeps its default model.** The recommended cloud
+  model for the natal reading, the timeline and chat stays
+  `deepseek/deepseek-v4.1-flash`. The settings copy no longer quotes timing or
+  cost numbers.
 - **Backups are now standard age files, and every old backup still opens.**
   Export seals the canonical SQLite file as an age v1 file (scrypt, 128 MiB) via
   `@gainratio/browser@^0.4.1`'s `./seal` entry, behind one seam

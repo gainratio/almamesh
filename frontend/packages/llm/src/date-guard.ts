@@ -17,6 +17,9 @@
 // "2027.03", "3/14/2027"). Two engine months joined by a slash
 // ("2026-10/2027-01") are months, not a day.
 //
+// An ordinal day with no month ("the 14th") is removed unless it reads as a
+// house, quarter or cycle (see hasOrdinalDay); "el día 14" / "dia 3" always.
+//
 // Known limits (not read as dates): a decade ("the 2040s"), years in words,
 // a month name with no year and no day ("in October"), fiscal years
 // ("FY2031"), and a season span ("2027-28 season").
@@ -151,8 +154,10 @@ function hasCuedDayMonth(sentence: string): boolean {
 }
 
 // A standalone year 1900-2199, not glued to a digit, letter or currency mark
-// and not a digit group ("2,050"): "in 2031", "Q3 2029", "mid-2029".
-const BARE_YEAR = /(?<![\d\p{L}$€£]|\d[,.])((?:19|20|21)\d\d)(?![\d\p{L}])/gu;
+// and not a digit group ("2,050"): "in 2031", "Q3 2029", "mid-2029". An era
+// mark may be glued on: "2031AD", "AD2031", "2031CE".
+const BARE_YEAR =
+  /(?:(?<![\d\p{L}$€£]|\d[,.])|(?<=(?<!\p{L})(?:AD|CE)))((?:19|20|21)\d\d)(?:(?![\d\p{L}])|(?=(?:AD|CE)(?!\p{L})))/gu;
 
 function isMonthNumber(month: number): boolean {
   return month >= 1 && month <= 12;
@@ -191,8 +196,40 @@ interface AllowedDates {
   readonly years: ReadonlySet<string>;
 }
 
+// An ordinal day with no month: "the 14th", "the 1st", "the 22nd". It is a
+// date only when nothing makes it a house, a quarter or a cycle, so a match
+// is skipped when (decided to fail open, since "the 10th" alone is also the
+// 10th house):
+//  - a house/period noun follows ("the 3rd house", "the 10th-house lord");
+//  - another ordinal follows in a list ("the 7th and 8th houses");
+//  - the word before "the" puts it in house context ("lord of the 10th",
+//    "Mars in the 8th", "aspects the 7th"). "to" and "from" are not house
+//    context: "from the 3rd to the 14th" is a date range.
+const ORDINAL_DAY = /(?<![\p{L}\d])the\s+(0?[1-9]|[12]\d|3[01])(?:st|nd|rd|th)(?![\p{L}\d])/giu;
+const ASTRO_NOUN = new RegExp(
+  `^[-\\s]*(?:houses?|lords?|rulers?|quarters?|degrees?|parts?|cycles?|chapters?|harmonics?|bhavas?|divisions?|` +
+    `divisional|vargas?|nakshatras?|padas?|decans?|decanates?|signs?|years?|weeks?|months?|periods?|dashas?|` +
+    `antardashas?|aspects?|cusps?|planets?|stations?|steps?|stages?|phases?|points?|positions?|places?|` +
+    `sections?|paragraphs?|lines?)(?![\\p{L}])`,
+  "iu",
+);
+const ORDINAL_LIST = /^\s*(?:,|and|or|&|to|through|–|-)\s*(?:the\s+)?\d{1,2}(?:st|nd|rd|th)(?![\p{L}\d])/iu;
+const HOUSE_CONTEXT = /(?<![\p{L}])(?:of|in|into|rules?|ruling|ruler|lords?|owns?|owner|aspects?|aspecting|over|with|activates?|occupies|occupying)\s+$/iu;
+// Spanish and Portuguese: "el día 14", "no dia 3".
+const DIA_NUMBER = /(?<!\p{L})d[ií]a\s+(0?[1-9]|[12]\d|3[01])(?![\d\p{L}])/giu;
+
+function hasOrdinalDay(sentence: string): boolean {
+  for (const match of sentence.matchAll(ORDINAL_DAY)) {
+    const before = sentence.slice(0, match.index).replace(/\s+$/u, " ");
+    const after = sentence.slice(match.index + match[0].length);
+    const isHouse = ASTRO_NOUN.test(after) || ORDINAL_LIST.test(after) || HOUSE_CONTEXT.test(before);
+    if (!isHouse) return true;
+  }
+  return DIA_NUMBER.test(sentence);
+}
+
 function hasDayPrecision(sentence: string): boolean {
-  return DAY_PRECISION.some((pattern) => pattern.test(sentence)) || hasCuedDayMonth(sentence);
+  return DAY_PRECISION.some((pattern) => pattern.test(sentence)) || hasCuedDayMonth(sentence) || hasOrdinalDay(sentence);
 }
 
 function offends(sentence: string, allowed: AllowedDates): boolean {
