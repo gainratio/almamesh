@@ -272,3 +272,31 @@ describe('the chat sheet travels through the seam', () => {
     expect(result.current.asOf).toEqual(YEAR);
   });
 });
+
+describe('Change then Back to today with a slow save', () => {
+  it('ends on today: no moment, the today thread selected, no banner', async () => {
+    const today = useChatStore.getState().startThread(PROFILE, CHART);
+    const { result } = renderHook(() => useChatThread(PROFILE, CHART));
+    await act(() => result.current.pin(YEAR));
+    const pinned = result.current.threadId!;
+    expect(result.current.asOf).toEqual(YEAR);
+
+    let release!: () => void;
+    const slow = new Promise<void>((resolve) => (release = resolve));
+    vi.mocked(waitForStoreSaved).mockImplementationOnce(() => slow);
+    let change!: Promise<void>;
+    act(() => {
+      change = result.current.repin(JUNE);
+    });
+    await act(() => result.current.backToToday());
+    expect(result.current.threadId).toBe(today);
+    await act(async () => {
+      release();
+      await change;
+    });
+    expect(result.current.threadId).toBe(today);
+    expect(result.current.asOf).toBeUndefined();
+    expect(useTimeTravelStore.getState().moments[PROFILE]).toBeUndefined();
+    expect(pinned).not.toBe(today);
+  });
+});

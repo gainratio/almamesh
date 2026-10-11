@@ -857,6 +857,9 @@ test.describe('pinned threads on a device in another zone', () => {
     await page.getByTestId('time-travel-go').click();
     await expect(page.getByTestId('time-travel-title')).toHaveText('Time travel · June 2026');
     await expect(page.getByTestId('time-travel-banner')).not.toContainText('Bogotá');
+    // The chat banner shows the pin from memory before it is saved. The Dashboard moment is set only
+    // after the save, so waiting for it pins the order: Change has landed before Back is clicked.
+    await expect(page.getByTestId('dashboard-time-travel-title')).toHaveText(/June 2026/);
 
     await page.getByTestId('time-travel-back').click();
     await expect(page.getByTestId('time-travel-banner')).toHaveCount(0);
@@ -869,6 +872,77 @@ test.describe('pinned threads on a device in another zone', () => {
     expect(timingResult.filter((m) => COORDINATES.test(m.content ?? '')), 'the tool result carries the place label, not its coordinates').toEqual([]);
     expect(bodies.filter((body) => COORDINATES.test(body)), 'no model request body carries coordinates').toEqual([]);
     expect(bodies.some((body) => body.includes('Bogot')), 'the place label reaches the model').toBe(true);
+    expect(consoleErrors, 'the journey must keep a clean console').toEqual([]);
+  });
+});
+
+/**
+ * Delay every message the page posts to a Worker that names the chat store's
+ * row, by `window.__chatWriteDelayMs` (0 = off). That is the slow save of a
+ * busy device: the pin is in memory at once, on disk seconds later. Nothing
+ * else is delayed, and the delay is switched on only after boot.
+ */
+async function slowChatWrites(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const w = window as unknown as { __chatWriteDelayMs: number; __chatWritesDelayed: number };
+    w.__chatWriteDelayMs = 0;
+    w.__chatWritesDelayed = 0;
+    const post = Worker.prototype.postMessage;
+    Worker.prototype.postMessage = function (this: Worker, ...args: Parameters<Worker['postMessage']>) {
+      let named = false;
+      if (w.__chatWriteDelayMs > 0) {
+        try {
+          named = JSON.stringify(args[0]).includes('almamesh-chat-history');
+        } catch {
+          named = false;
+        }
+      }
+      if (!named) return post.apply(this, args);
+      w.__chatWritesDelayed += 1;
+      setTimeout(() => post.apply(this, args), w.__chatWriteDelayMs);
+      return undefined;
+    };
+  });
+}
+
+test.describe('Change then Back to today while the pin is still saving', () => {
+  test.use({ timezoneId: DEVICE_ZONE });
+  const SLOW_SAVE_MS = 4_000;
+  const HELLO = 'Say hello to me.';
+
+  test('[contract/stubbed] a slow Change save landing after Back to today moves nothing', async ({ page }) => {
+    const consoleErrors = await prepare(page);
+    await slowChatWrites(page);
+    await scripted(page, { [HELLO]: () => ({ content: 'Hello.' }) }, [], [], new Set<string>());
+    await bootEngine(page);
+    await seedChart(page);
+    await openDashboard(page);
+    await page.getByTestId('floating-chat-button').click({ timeout: 120_000 });
+    // An ordinary unpinned thread: Back to today will find it without waiting on any save.
+    await page.getByTestId('chat-input').fill(HELLO);
+    await page.getByTestId('chat-send-button').click();
+    await expect(page.getByTestId('chat-panel').getByText('Hello.', { exact: true })).toBeVisible({ timeout: 240_000 });
+    await openPinnedYear(page, PIN_YEAR);
+
+    await page.evaluate((ms) => ((window as unknown as { __chatWriteDelayMs: number }).__chatWriteDelayMs = ms), SLOW_SAVE_MS);
+    await page.getByTestId('time-travel-change').click();
+    await page.getByTestId('time-travel-tab-month').click();
+    await page.getByTestId('time-travel-month').selectOption('06');
+    await page.getByTestId('time-travel-month-year').selectOption('2026');
+    await page.getByTestId('time-travel-go').click();
+    // In memory at once, on disk in SLOW_SAVE_MS: press Back inside that window.
+    await expect(page.getByTestId('time-travel-title')).toHaveText('Time travel · June 2026');
+    await page.getByTestId('time-travel-back').click();
+    await expect(page.getByTestId('time-travel-banner')).toHaveCount(0);
+
+    // Let the slow save land, then require the Change not to have been re-applied.
+    await expect
+      .poll(() => page.evaluate(() => (window as unknown as { __chatWritesDelayed: number }).__chatWritesDelayed))
+      .toBeGreaterThan(0);
+    await page.waitForTimeout(SLOW_SAVE_MS + 2_000);
+    await expect(page.getByTestId('time-travel-banner'), 'the slow Change must not re-pin the thread').toHaveCount(0);
+    await expect(page.getByTestId('dashboard-time-travel-banner')).toHaveCount(0);
+    await expect(page.getByTestId('dashboard-time-travel-title')).toHaveCount(0);
     expect(consoleErrors, 'the journey must keep a clean console').toEqual([]);
   });
 });

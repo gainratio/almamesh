@@ -2,10 +2,12 @@ import { renderHook, act } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useChatStore } from '@almamesh/store';
 
-const save = vi.hoisted(() => ({ calls: 0, fail: false }));
+const save = vi.hoisted(() => ({ calls: 0, fail: false, gates: [] as Array<Promise<void>> }));
 vi.mock('../storeSaved', () => ({
   waitForStoreSaved: async () => {
     save.calls += 1;
+    const gate = save.gates.shift();
+    if (gate) await gate;
     if (save.fail) throw Object.assign(new Error('Saving chat failed.'), { name: 'StoreSaveError' });
   },
 }));
@@ -22,11 +24,64 @@ const moment = (profileId = 'p1') => useTimeTravelStore.getState().moments[profi
 function reset() {
   save.calls = 0;
   save.fail = false;
+  save.gates = [];
   useChatStore.setState({ threads: {}, messages: {}, summaries: {} });
   useTimeTravelStore.setState({ moments: {} });
 }
 beforeEach(reset);
 afterEach(reset);
+
+function heldSave(): () => void {
+  let release!: () => void;
+  save.gates.push(new Promise<void>((resolve) => (release = resolve)));
+  return release;
+}
+
+describe('a later request supersedes an earlier one still saving', () => {
+  it('Change then Back: the slow Change save lands last and moves nothing', async () => {
+    useChatStore.getState().startThread('p1', 'c1');
+    const release = heldSave();
+    const change = applyTravel({ asOf: MARCH_2019, source: 'chat-sheet' }, DASH, aiOn);
+    const today = await applyBackToToday({ profileId: 'p1', chartId: 'c1' }, aiOn);
+    expect(today.threadId).toBeDefined();
+    expect(moment()).toBeUndefined();
+    release();
+    await expect(change).resolves.toEqual({ threadId: undefined });
+    expect(moment()).toBeUndefined();
+  });
+
+  it('Back then Change: the slow Back is superseded and the Change wins', async () => {
+    const release = heldSave();
+    const back = applyBackToToday({ profileId: 'p1', chartId: 'c1' }, aiOn);
+    const change = await applyTravel({ asOf: MARCH_2019, source: 'chat-sheet' }, DASH, aiOn);
+    expect(change.threadId).toBeDefined();
+    release();
+    await expect(back).resolves.toEqual({ threadId: undefined });
+    expect(moment()).toEqual(MARCH_2019);
+  });
+
+  it('another profile is not superseded', async () => {
+    const release = heldSave();
+    const change = applyTravel({ asOf: MARCH_2019, source: 'chat-sheet' }, DASH, aiOn);
+    await applyBackToToday({ profileId: 'p2', chartId: null }, aiOn);
+    release();
+    expect((await change).threadId).toBeDefined();
+    expect(moment()).toEqual(MARCH_2019);
+  });
+
+  it('a superseded call whose save fails still rethrows and moves nothing', async () => {
+    useChatStore.getState().startThread('p1', 'c1');
+    save.fail = true;
+    const release = heldSave();
+    const change = applyTravel({ asOf: MARCH_2019, source: 'chat-sheet' }, DASH, aiOn);
+    save.fail = false;
+    await applyBackToToday({ profileId: 'p1', chartId: 'c1' }, aiOn);
+    save.fail = true;
+    release();
+    await expect(change).rejects.toThrow('Saving chat failed.');
+    expect(moment()).toBeUndefined();
+  });
+});
 
 describe('applyTravel: one path for every way to travel', () => {
   it('with AI off, sets the Dashboard moment and touches no chat thread', async () => {

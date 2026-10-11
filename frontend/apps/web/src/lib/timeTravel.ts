@@ -75,15 +75,38 @@ async function pinChat(asOf: ChatThreadAsOf, target: TravelTarget): Promise<stri
   return pinned;
 }
 
+/**
+ * Latest intent per profile. The pin save can take seconds on a slow device, so
+ * a Change still saving can land after the person has pressed Back to today.
+ * Last-resolve-wins would re-apply the old moment. Instead every request takes
+ * a token before it awaits; after the await a call that is no longer the latest
+ * for its profile moves nothing and selects nothing. The token (not a promise
+ * chain) keeps Back to today immediate: it never waits for a stale save.
+ */
+const latestIntent = new Map<string, number>();
+let intentCounter = 0;
+
+function takeIntent(profileId: string): () => boolean {
+  const seq = ++intentCounter;
+  latestIntent.set(profileId, seq);
+  return () => latestIntent.get(profileId) === seq;
+}
+
+const SUPERSEDED: TravelOutcome = { threadId: undefined };
+
 export async function applyTravel(request: TravelRequest, target: TravelTarget, deps: TravelDeps = DEFAULT_DEPS): Promise<TravelOutcome> {
   check(request.asOf, deps.birthYear(target.chartId));
+  const isLatest = takeIntent(target.profileId);
   const threadId = deps.aiConfigured() ? await pinChat(request.asOf, target) : undefined;
+  if (!isLatest()) return SUPERSEDED;
   useTimeTravelStore.getState().setMoment(target.profileId, request.asOf);
   return { threadId };
 }
 
 export async function applyBackToToday(target: Omit<TravelTarget, 'thread'>, deps: TravelDeps = DEFAULT_DEPS): Promise<TravelOutcome> {
+  const isLatest = takeIntent(target.profileId);
   const threadId = deps.aiConfigured() ? await todayThread(target.profileId, target.chartId) : undefined;
+  if (!isLatest()) return SUPERSEDED;
   useTimeTravelStore.getState().setMoment(target.profileId, undefined);
   return { threadId };
 }

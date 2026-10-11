@@ -15,6 +15,7 @@ import {
   saveOpenRouterKey,
   stubLocalEndpoint,
   stubOpenRouter,
+  stubOpenRouterRejectingKey,
 } from './aiSetupPanel.helpers';
 
 /**
@@ -114,5 +115,42 @@ test.describe('Settings → AI: the key goes only to the provider you choose', (
     expect(sent.filter((entry) => entry.host === 'openrouter.ai')).toEqual([]);
     expect(sent.map((entry) => `${entry.host}${entry.path}`)).toContain('localhost:11434/v1/chat/completions');
     expect(errors).toEqual([]);
+  });
+
+  /**
+   * A REAL HTTP 401 on the first-ever connect, through the real fetch and the
+   * real error classifier (the unit tests hand the panel a pre-built error).
+   * The rejected key must not stay saved or active, now or after a reload.
+   */
+  test('a 401 on the first-ever connect leaves AI off, and a reload still has no key', async ({ page }) => {
+    const errors = collectConsoleErrors(page);
+    await stubOpenRouter(page);
+    await stubOpenRouterRejectingKey(page);
+    await stubLocalEndpoint(page);
+    const statuses: number[] = [];
+    page.on('response', (response) => {
+      if (response.url().startsWith('https://openrouter.ai/') && response.url().endsWith('/chat/completions')) {
+        statuses.push(response.status());
+      }
+    });
+    await openAiSettings(page);
+
+    await fillOpenRouterKey(page);
+    await page.getByTestId('llm-save').click();
+    await expect(page.getByTestId('llm-connection-result')).toContainText(/rejected/i, { timeout: 15_000 });
+    expect(statuses, 'the provider really answered 401 over the wire').toContain(401);
+    await expect(page.getByTestId('tier-none-active')).toBeVisible();
+    await expect(page.getByTestId('tier-cloud-active')).toHaveCount(0);
+    await expect(page.getByTestId('llm-credits')).toHaveCount(0);
+
+    await page.reload();
+    await expect(page.getByTestId('ai-model-settings')).toBeVisible();
+    await expect(page.getByTestId('tier-none-active')).toBeVisible();
+    await expect(page.getByTestId('tier-cloud-active')).toHaveCount(0);
+    await expect(page.getByTestId('llm-openrouter-key')).toHaveValue('');
+    await expect(page.getByTestId('llm-credits')).toHaveCount(0);
+    // Only the two lines this failure is meant to log: the app's own coded diagnostic and the browser's 401 resource line.
+    const expected = /almamesh:error:provider\.connection_test_failed|status of 401/;
+    expect(errors.filter((message) => !expected.test(message))).toEqual([]);
   });
 });

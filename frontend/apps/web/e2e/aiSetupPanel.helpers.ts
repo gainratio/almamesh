@@ -53,6 +53,25 @@ export async function stubOpenRouter(page: Page): Promise<void> {
   });
 }
 
+/**
+ * Call AFTER stubOpenRouter (a later route wins): the provider answers the
+ * chat probe with a real HTTP 401, as it does for a revoked or mistyped key.
+ */
+export async function stubOpenRouterRejectingKey(page: Page): Promise<void> {
+  await page.route('https://openrouter.ai/**/chat/completions', async (route) => {
+    if (route.request().method() === 'OPTIONS') {
+      await route.fulfill({ status: 204, headers: CORS });
+      return;
+    }
+    await route.fulfill({
+      status: 401,
+      headers: CORS,
+      contentType: 'application/json',
+      body: JSON.stringify({ error: { code: 401, message: 'No auth credentials found' } }),
+    });
+  });
+}
+
 /** A local Ollama-style endpoint that answers only the connectivity probe. */
 export async function stubLocalEndpoint(page: Page): Promise<void> {
   await page.route('http://localhost:11434/**', async (route) => {
