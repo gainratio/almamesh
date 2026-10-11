@@ -32,12 +32,16 @@ export type {
   SanitizedVargaSummary,
   SanitizedDomainForecast,
   SanitizedDomainWindow,
+  SanitizedHouseLord,
 } from "./sanitize";
 
 export {
   buildPredictiveFactsBlock,
   PREDICTIVE_BLOCK_START,
   PREDICTIVE_BLOCK_END,
+  buildReportFactsBlock,
+  REPORT_FACTS_START,
+  REPORT_FACTS_END,
 } from "./predictive-facts";
 
 // --- Mesh edge narration (relationships between two charts) ---
@@ -163,15 +167,17 @@ export type {
   RawEvidenceAnnotationPayload,
 } from "./evidence-annotation";
 
-export { chatCompletionJson } from "./client";
+export { chatCompletionJson, REPORT_PROVIDER_ROUTING } from "./client";
 export type { ChatCompletionJsonOptions } from "./client";
 
 export {
   ALL_SECTIONS,
   CURRENT_TIMELINE_SECTIONS,
   NATAL_SECTIONS,
+  buildReportMessages,
   streamCurrentTimeline,
   streamNatalInterpretation,
+  streamReportTimeline,
   streamStructuredInterpretation,
   usesLitePrompt,
 } from "./structured-interpretation";
@@ -186,9 +192,46 @@ export type {
   NatalInterpretationEvent,
   NatalInterpretationParams,
   NatalInterpretationSectionKey,
+  ReportMessages,
+  ReportMessagesInput,
+  ReportMessagesOptions,
+  ReportTimelineEvent,
+  ReportTimelineParams,
   SectionProgressSnapshot,
   StructuredInterpretationParams,
 } from "./structured-interpretation";
+
+// --- Report v2: sections, prompt set ---
+export { computeQuarters, quarterTitle } from "./quarters";
+export type { Quarter, QuarterKey } from "./quarters";
+export { monthsIn, validateTimelineDates } from "./date-guard";
+export {
+  currentPeriodSlice,
+  LIFE_DOMAIN_ORDER,
+  LIFE_OUTLOOK_GROUPS,
+  lifeOutlookSlice,
+  quarterEvents,
+  REPORT_TIMELINE_SECTIONS,
+  ReportParseError,
+  reportAsOfMonth,
+  yearAheadSlice,
+} from "./report-sections";
+export type {
+  CurrentPeriodSection,
+  LifeOutlookDomain,
+  LifeOutlookSection,
+  QuarterEvent,
+  QuarterProse,
+  ReportTimelineContent,
+  ReportTimelineSectionKey,
+  YearAheadSection,
+} from "./report-sections";
+export { REPORT_PROMPT_SET, REPORT_SECTIONS, REPORT_SECTION_ORDER, REPORT_WORD_TARGETS } from "./report-targets";
+export type { ReportPromptSet, ReportSectionKey } from "./report-targets";
+export { findModelPricing, parseModelPricing } from "./pricing";
+export type { ModelPricing } from "./pricing";
+export { estimateReadingCost, READING_OUTPUT_BUDGET } from "./cost-estimate";
+export type { CostEstimate, ReadingOutputBudget } from "./cost-estimate";
 
 // --- Chat transport + multi-turn public surface ---
 export { routeChatCompletion, routeCompletionJson } from "./route";
@@ -383,8 +426,18 @@ export {
   REASONING_TIMEOUT_CODE,
   REASONING_TIMEOUT_MS,
   ReasoningTimeoutError,
+  REPORT_SECTION_REASONING_MAX_TOKENS,
   SECTION_REASONING_MAX_TOKENS,
 } from "./reasoning";
+
+// Report sections: per-section total + idle time caps.
+export {
+  REPORT_LOCAL_FIRST_TOKEN_TIMEOUT_MS,
+  REPORT_SECTION_IDLE_TIMEOUT_MS,
+  REPORT_SECTION_TIMEOUT_MS,
+  SectionTimeoutError,
+  type SectionTimeoutKind,
+} from "./section-timeout";
 
 // Time travel: argument rules for the timing tool's optional start/end.
 export {

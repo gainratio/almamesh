@@ -1,12 +1,12 @@
 /**
  * One-time suggestion for users still on z-ai/glm-5.3-flash to switch to the
- * new default (RECOMMENDED_CLOUD_MODEL). We never rewrite a model the user
+ * new defaults (RECOMMENDED_CLOUD_MODEL for readings, CHAT_CLOUD_MODEL for chat). We never rewrite a model the user
  * chose: the switch happens only when they click it. "Keep" or "Switch" both
  * dismiss it for good. SQLite owns the portable preference; a boot-hydrated
  * module value supports synchronous rendering.
  */
 
-import { OPENROUTER_API_BASE, RECOMMENDED_CLOUD_MODEL, type LlmSettings } from '@almamesh/llm';
+import { CHAT_CLOUD_MODEL, OPENROUTER_API_BASE, RECOMMENDED_CLOUD_MODEL, type LlmSettings } from '@almamesh/llm';
 import { portablePreferenceStorage } from '@almamesh/store';
 
 /** The model the suggestion is about. It once reasoned 20+ minutes on one section. */
@@ -20,7 +20,7 @@ export function hydrateSlowModelSuggestion(raw: string | null): void {
 }
 
 /**
- * The settings after switching every tier that is on SLOW_MODEL to the new
+ * The settings after switching every tier that is on SLOW_MODEL to that tier's
  * default, or null when there is nothing to suggest (another model, or not
  * OpenRouter: a local/BYO endpoint cannot serve an OpenRouter slug).
  */
@@ -33,7 +33,7 @@ export function slowModelSwitch(settings: LlmSettings): LlmSettings | null {
   return {
     ...settings,
     ...(swapInterp ? { model: RECOMMENDED_CLOUD_MODEL, interpretationModel: RECOMMENDED_CLOUD_MODEL } : {}),
-    ...(settings.chatModel === SLOW_MODEL ? { chatModel: RECOMMENDED_CLOUD_MODEL } : {}),
+    ...(settings.chatModel === SLOW_MODEL ? { chatModel: CHAT_CLOUD_MODEL } : {}),
   };
 }
 

@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { test, expect, type Request } from '@playwright/test';
 import { bootEngine, LLM_SETTINGS_KEY, seedChart } from './interpretation.helpers';
-import { E2E_REAL_MODEL, PRODUCT_DEFAULT_MODEL } from './realModel';
+import { E2E_REAL_MODEL, PRODUCT_CHAT_DEFAULT_MODEL } from './realModel';
 import { completionUsage } from './openrouterUsage';
 
 /**
@@ -26,7 +26,7 @@ const SHOT = '/tmp/almamesh-verify/chat';
  * finished first answer, and the turn's cost (OpenRouter `usage`) are written
  * to test-results/chat-real-timing-<model>.json.
  */
-const CHAT_MODEL = process.env.CHAT_REAL_MODEL ?? PRODUCT_DEFAULT_MODEL;
+const CHAT_MODEL = process.env.CHAT_REAL_MODEL ?? PRODUCT_CHAT_DEFAULT_MODEL;
 
 test('[real] chat: single-pass streaming + self-hosted RAG + persistence + search', async ({
   page,
@@ -211,7 +211,7 @@ test('[real] chat: single-pass streaming + self-hosted RAG + persistence + searc
 
   // ===========================================================================
   // B2) ON-THE-WIRE MODEL — the chat turn must use the FAST chat model
-  //     (CHAT_MODEL: the app's own chat default, PRODUCT_DEFAULT_MODEL, unless
+  //     (CHAT_MODEL: the app's own chat default, PRODUCT_CHAT_DEFAULT_MODEL, unless
   //     CHAT_REAL_MODEL benchmarks another; NOT the seeded reading model), stream:true, and carry the chart
   //     facts + reused-reading grounding blocks. applyChatModelPreference swaps
   //     the model ONLY on the default OpenRouter cloud preset (the one seeded).

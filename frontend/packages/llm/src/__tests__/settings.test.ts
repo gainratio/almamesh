@@ -84,9 +84,9 @@ describe("readLlmSettings — self-heals AlmaMesh's retired default cloud model"
         privacyMode: "cloud_premium",
       }),
     );
-    expect(readLlmSettings().model).toBe("deepseek/deepseek-v4.1-flash");
+    expect(readLlmSettings().model).toBe("openai/gpt-6-luna");
     const healed = JSON.parse(persisted.at(-1)!);
-    expect(healed.model).toBe("deepseek/deepseek-v4.1-flash");
+    expect(healed.model).toBe("openai/gpt-6-luna");
     expect(healed.apiKey).toBe("sk-or-123"); // key + base preserved
   });
 
@@ -100,6 +100,21 @@ describe("readLlmSettings — self-heals AlmaMesh's retired default cloud model"
     };
     hydrateLlmSettings(JSON.stringify(saved));
     expect(readLlmSettings().interpretationModel).toBe("deepseek/deepseek-v4-pro");
+    expect(persisted).toEqual([]);
+  });
+
+  it("keeps a user on the 2026-10-01 default (deepseek-v4.1-flash): it stays a selectable model, never healed away", () => {
+    const saved = {
+      apiBase: "https://openrouter.ai/api/v1",
+      apiKey: "sk-or-123",
+      model: "deepseek/deepseek-v4.1-flash",
+      interpretationModel: "deepseek/deepseek-v4.1-flash",
+      chatModel: "deepseek/deepseek-v4.1-flash",
+      privacyMode: "cloud_premium",
+    };
+    hydrateLlmSettings(JSON.stringify(saved));
+    expect(readLlmSettings().interpretationModel).toBe("deepseek/deepseek-v4.1-flash");
+    expect(readLlmSettings().chatModel).toBe("deepseek/deepseek-v4.1-flash");
     expect(persisted).toEqual([]);
   });
 

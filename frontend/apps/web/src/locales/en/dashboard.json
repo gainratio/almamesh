@@ -15,7 +15,7 @@
     "generate_timeline": "Generate current timeline",
     "refresh_timeline": "Refresh current timeline",
     "connect_ai": "Connect an AI model",
-    "switch_recommended": "Switch to recommended (DeepSeek V4.1 Flash)",
+    "switch_recommended": "Switch to recommended (GPT-6 Luna for readings)",
     "ai_settings": "AI settings",
     "dismiss": "Dismiss"
   },

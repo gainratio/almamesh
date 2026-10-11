@@ -25,6 +25,13 @@ export const REASONING_TIMEOUT_MS = 180_000;
  */
 export const SECTION_REASONING_MAX_TOKENS = 12_000;
 
+/**
+ * Reasoning budget for each of the nine report-v2 sections (OpenRouter only,
+ * via `reasoning.max_tokens`). Keeps the high end of the cost estimate at
+ * input + visible budget + 9 x 6,000. Never a `max_tokens` on visible output.
+ */
+export const REPORT_SECTION_REASONING_MAX_TOKENS = 6_000;
+
 /** Reasoning budget for one chat request; chat answers are shorter. */
 export const CHAT_REASONING_MAX_TOKENS = 6_000;
 

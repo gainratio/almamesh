@@ -172,3 +172,11 @@ export function buildPredictiveFactsBlock(predictive?: SanitizedPredictive): str
     "\n",
   );
 }
+
+export const REPORT_FACTS_START = "=== ENGINE REPORT FACTS (deterministic engine output) ===";
+export const REPORT_FACTS_END = "=== END ENGINE REPORT FACTS ===";
+
+/** One report section's engine slice (report-sections.ts) as a delimited, narrate-only block. */
+export function buildReportFactsBlock(slice: object): string {
+  return [REPORT_FACTS_START, PREDICTIVE_GUARD, "", JSON.stringify(slice), REPORT_FACTS_END].join("\n");
+}

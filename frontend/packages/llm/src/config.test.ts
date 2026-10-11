@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { OPENROUTER_API_BASE, openRouterPreset, resolveProviderConfig } from "./config";
+import { OPENROUTER_API_BASE, openRouterPreset, RECOMMENDED_CLOUD_MODEL, resolveProviderConfig } from "./config";
 
 // The single-engine world: either no AI (no config at all) or the
 // OpenAI-compatible HTTP path ("openai-http"). Every resolution lands on
@@ -72,5 +72,19 @@ describe("openRouterPreset", () => {
     expect(p.model).toBe("anthropic/claude-3.5-sonnet");
     expect(p.apiKey).toBe("my-key");
     expect(p.engine).toBe("openai-http");
+  });
+});
+
+describe("the product default model", () => {
+  // Pinned as a literal: asserting the constant against itself passes for any value.
+  // GPT-6 Luna since 2026-10-10: 3 full report runs at 39-43 s, $0.013 billed each
+  // (deepseek-v4-pro billed $0.019-0.025).
+  it("is openai/gpt-6-luna", () => {
+    expect(RECOMMENDED_CLOUD_MODEL).toBe("openai/gpt-6-luna");
+  });
+
+  it("is a pinned model id, not a ~ moving alias, so quality/latency/cost cannot shift without a code change", () => {
+    expect(RECOMMENDED_CLOUD_MODEL.startsWith("~")).toBe(false);
+    expect(RECOMMENDED_CLOUD_MODEL).not.toMatch(/:/);
   });
 });

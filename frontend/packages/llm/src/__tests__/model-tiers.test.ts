@@ -90,8 +90,13 @@ describe("applyInterpretationSettings / applyChatSettings — explicit env resol
     expect(openRouterPreset("sk-or-x", "any/interp").chatModel).toBe("deepseek/deepseek-v4.1-flash");
   });
 
-  it("chat and interpretation share ONE default model id (no second literal to drift)", () => {
-    expect(CHAT_CLOUD_MODEL).toBe(RECOMMENDED_CLOUD_MODEL);
+  it("interpretation defaults to openai/gpt-6-luna (literal)", () => {
+    expect(RECOMMENDED_CLOUD_MODEL).toBe("openai/gpt-6-luna");
+  });
+
+  it("chat and interpretation defaults differ on purpose: chat stays on deepseek-v4.1-flash until tool calling on Luna is measured", () => {
+    expect(CHAT_CLOUD_MODEL).toBe("deepseek/deepseek-v4.1-flash");
+    expect(CHAT_CLOUD_MODEL).not.toBe(RECOMMENDED_CLOUD_MODEL);
   });
 
   it("each path uses the user's explicit per-tier override", () => {

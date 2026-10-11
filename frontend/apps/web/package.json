@@ -21,6 +21,8 @@
     "test:e2e:interp:real": "playwright test --config=playwright.interpretation.real.config.ts",
     "test:e2e:timeline:real": "playwright test --config=playwright.timeline.real.config.ts",
     "test:e2e:ai:real": "playwright test --config=playwright.ai-setup.real.config.ts",
+    "test:e2e:report:real": "playwright test --config=playwright.report.real.config.ts",
+    "test:e2e:report:regression": "playwright test --config=playwright.report-regression.config.ts",
     "test:e2e:interp:heal:real": "playwright test --config=playwright.interpretation.heal.real.config.ts",
     "test:e2e:dashboard:agentic:real": "playwright test --config=playwright.dashboard.agentic.real.config.ts",
     "test:e2e:chat:rag:real": "playwright test --config=playwright.chat.rag.real.config.ts",

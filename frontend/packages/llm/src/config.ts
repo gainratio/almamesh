@@ -186,20 +186,25 @@ export function resolveProviderConfig(env: LlmEnv = {}): ProviderConfig {
  * one-click preset, the settings UI default, and the "switch to recommended"
  * self-heal. A real OpenRouter slug (verified against the live models catalog).
  *
- * deepseek-v4.1-flash since 2026-10-01: in the live timeline benchmark (3 runs
- * each) it finished all 3 in 49-65 s, vs 111-170 s for deepseek-v4-pro and 1 of
- * 3 for z-ai/glm-5.3-flash. Changing this never rewrites a model a user saved.
+ * openai/gpt-6-luna since 2026-10-10: in the live nine-section report benchmark
+ * (e2e/report.real.spec.ts, 3 runs) it finished all 3 in 39-43 s for $0.013
+ * billed each, with every voice inside its word band. deepseek-v4-pro billed
+ * $0.019-0.025 per report. Pinned, never the `~openai/gpt-luna-latest` alias, so
+ * quality, latency and cost cannot move without a code change. deepseek-v4.1-flash
+ * (the default from 2026-10-01) stays selectable. Changing this never rewrites a
+ * model a user saved.
  */
-export const RECOMMENDED_CLOUD_MODEL = "deepseek/deepseek-v4.1-flash";
+export const RECOMMENDED_CLOUD_MODEL = "openai/gpt-6-luna";
 
 /**
- * The default cloud model the CHAT panel uses. Deliberately the SAME id as
- * {@link RECOMMENDED_CLOUD_MODEL} — an alias, not a second literal — so the two
- * defaults cannot drift apart.
+ * The default cloud model the CHAT panel uses. Its own literal, and deliberately
+ * NOT {@link RECOMMENDED_CLOUD_MODEL}: readings moved to openai/gpt-6-luna on
+ * 2026-10-10 on a report benchmark, but chat is a tool-calling loop and tool
+ * calling on Luna has not been measured, so chat stays on deepseek-v4.1-flash
+ * until it is.
  *
  * Chat used to default to `minimax/minimax-m2.7` for first-token latency. On the
- * live site (2026-10-02) that model took 26.7 s to produce a first token, so chat
- * now takes the same fast default as readings.
+ * live site (2026-10-02) that model took 26.7 s to produce a first token.
  *
  * Used as the chat-tier default by `applyChatSettings` (applied on the OpenRouter
  * cloud preset only when the user has set no explicit `chatModel`) and as the
@@ -207,7 +212,7 @@ export const RECOMMENDED_CLOUD_MODEL = "deepseek/deepseek-v4.1-flash";
  * a user's settings — including one an earlier preset wrote — and a local/custom
  * endpoint's own model are never overridden.
  */
-export const CHAT_CLOUD_MODEL = RECOMMENDED_CLOUD_MODEL;
+export const CHAT_CLOUD_MODEL = "deepseek/deepseek-v4.1-flash";
 
 /**
  * Model ids AlmaMesh itself once shipped as a DEFAULT OpenRouter preset and that

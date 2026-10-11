@@ -7,12 +7,15 @@
  *   deepseek/deepseek-v4.1-flash  $0.30  in / $1.20  out
  * Re-check the prices before changing it.
  *
- * PRODUCT_DEFAULT_MODEL is what the APP picks on its own (its recommended cloud
- * model, which chat also defaults to). Specs only ASSERT it; they never
- * configure it. src/test/realModelSpecs.contract.test.ts pins both values and
+ * PRODUCT_DEFAULT_MODEL is the reading model the APP picks on its own (its
+ * recommended cloud model); PRODUCT_CHAT_DEFAULT_MODEL is its chat default.
+ * The two differ on purpose. Specs only ASSERT them; they never configure them. src/test/realModelSpecs.contract.test.ts pins both values and
  * fails on any other model id in a real spec.
  */
 export const E2E_REAL_MODEL = 'deepseek/deepseek-v4-pro';
 
-/** Mirrors `RECOMMENDED_CLOUD_MODEL` / `CHAT_CLOUD_MODEL` in @almamesh/llm. */
-export const PRODUCT_DEFAULT_MODEL = 'deepseek/deepseek-v4.1-flash';
+/** Mirrors `RECOMMENDED_CLOUD_MODEL` in @almamesh/llm (readings). */
+export const PRODUCT_DEFAULT_MODEL = 'openai/gpt-6-luna';
+
+/** Mirrors `CHAT_CLOUD_MODEL` in @almamesh/llm (chat). */
+export const PRODUCT_CHAT_DEFAULT_MODEL = 'deepseek/deepseek-v4.1-flash';
