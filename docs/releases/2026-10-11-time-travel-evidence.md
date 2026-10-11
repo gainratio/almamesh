@@ -92,10 +92,10 @@ Both cases assert that no `/models/` requests occur. The ten recorded `peakSingl
 
 ## Current candidate checks
 
-The candidate is on `codex/iphone-time-travel`, based on release #331 (`8d10fbbb`). The final local frontend gate rebuilt the normal review build as `bf6275ceab51` at `2026-10-11T20:38:21.685Z`; the separate hooked review build is `f2bddbf84f7c`, built at `2026-10-11T18:25:12.847Z`.
+The candidate is on `codex/iphone-time-travel`, based on release #331 (`8d10fbbb`). The final local frontend gate rebuilt the normal review build as `f74a4d090377` at `2026-10-11T21:13:50.172Z`; the separate hooked review build is `f2bddbf84f7c`, built at `2026-10-11T18:25:12.847Z`.
 
-- Backend gate: 1,186 tests passed, 98.46% coverage; Ruff, formatting, mypy and complexity checks passed. Seven corrected slow-hit dates changed in reference fixtures; other fixture fields were unchanged.
-- Final frontend gate: 5,963 tests plus four lint-contract checks passed, including the constrained-device memory policy, restore-generation and reload-diagnostic regressions. TypeScript, ESLint, production build, public-route prerender checks and absence of test hooks passed. The configured Knip report completed successfully but still reports unused-code/dependency diagnostics; it is not a clean unused-code result. Log: `/tmp/almamesh-codex-release-final-scanner-frontend-gate.log`.
+- Backend gate in Dagger: 1,214 tests passed, 98.46% coverage; Ruff, formatting, mypy and complexity checks passed. This includes 28 new public-doc export regressions. Seven corrected slow-hit dates changed in reference fixtures; other fixture fields were unchanged. Log: `/tmp/almamesh-codex-pr333-backend-dagger-green.log`.
+- Final frontend gate: 5,963 tests plus four lint-contract checks passed, including the constrained-device memory policy, restore-generation and reload-diagnostic regressions. TypeScript, ESLint, production build, public-route prerender checks and absence of test hooks passed. The configured Knip report completed successfully but still reports unused-code/dependency diagnostics; it is not a clean unused-code result. Log: `/tmp/almamesh-codex-pr333-final-frontend-gate.log`.
 - Real-browser engine parity: 11/11 checks passed against the CPython reference, including updated predictive fixtures, explicit-date sensitivity, Moon windows, clean console and same-origin engine traffic.
 - The broad Chromium functional run passed 16 journeys and exposed one stale test assertion: it expected one city download instead of the new 25 bounded parts. After updating that assertion to the manifest count and proving no repeated part downloads, all seven affected journeys passed on the candidate before the constrained-device recall policy. These cover typed historical questions, multi-place timing, slow-save Back to today, Day/revisit, two tabs, September 2017 → today, and chat tool movement in both directions. The engine is real; provider replies in chat cases are locally stubbed.
 - Mac WebKit iPhone 15 functional checks before the recall policy passed 4/4: Day/revisit/Back, two tabs, September 2017 → today, and chat tool movement. Single-WebContent RSS peaks were 1069, 862, 1326 and 1362 MiB respectively. Those were functional checks, not memory-budget passes: the chat peaks exceeded the 1306 MiB reference allowance and motivated the recall policy change.
@@ -268,3 +268,66 @@ The scanner-only correction does not change the application or memory sampler.
 The final hosted Mac lane must rerun the full protocol and clear its complete
 diagnostic artifacts before merge. Its green check cannot be replaced by the
 local retained-log scan.
+
+## Candidate PDF fixture correction
+
+The first PR #333 Dagger run (`38173156241`, candidate `0078a19c`) failed the
+synthetic maximal PDF assertion for `transits & timing`. The same test failed
+locally before any correction. Its fixture still seeded predictive persistence
+version 4; version 5 deliberately invalidates those older astronomy results.
+The real computed-predictive PDF journey passed in that hosted run.
+
+The fixture now imports the current persistence version and both synthetic
+journeys require all four comprehensive report sections to be visible before
+export. Existing downloaded-PDF content assertions remain unchanged. This
+changes test data rather than application cache migration or report behavior.
+The first candidate nightly (`38173157417`) was cancelled before the real-model
+suites because it would encounter the same PDF failure. The corrected candidate
+must pass a fresh nightly and the full PR workflows before merge.
+
+The corrected local PDF gate passed 4/4, including the real no-hooks onboarding
+and the complete synthetic download. Its yoga fixture also uses the current
+`factor_type` contract and a supported `dignity` value. Strict all-E2E TypeScript
+with the current ECMAScript library and scoped ESLint passed. The frontend gate
+passed again with 5,963 tests plus four lint-contract checks. Logs:
+`/tmp/almamesh-codex-pr333-pdf-schema-final.log`,
+`/tmp/almamesh-codex-pr333-fixture-e2e-types-final.log` and
+`/tmp/almamesh-codex-pr333-fixture-frontend-gate.log`.
+
+The same first hosted candidate also exposed two CI integration mismatches.
+The report-only embedder memory case inherited an iPhone context, which is now
+minimal and deliberately never starts that Worker. The backend documentation
+contract invoked Git inside the Git-free source export. Both failures are
+retained; neither can be replaced by the earlier local frontend/backend pass.
+Logs: `/tmp/almamesh-codex-pr333-linux-webkit-failure.log` and
+`/tmp/almamesh-codex-pr333-backend-failure.log`.
+
+The corrected memory cases passed 4/4 on the production build: full-tier desktop
+semantic search, true-lite chat opening, and minimal/lite saved-answer keyword
+hits followed by unmatched queries after reload. The full-tier report measured
+202 MiB before and 297 MiB after semantic search (95 MiB model delta); it remains
+report-only. Both constrained journeys observed no embedder/ORT Worker or
+page-initiated model traffic. The original gated iPhone boot case and all memory
+budgets remain unchanged. An initial new-test assertion incorrectly expected
+Send to stay enabled after its composer cleared; it was replaced with the
+existing turn-settlement control, and the canonical reload/search proof remains.
+Red and green logs: `/tmp/almamesh-codex-pr333-memory-policy-green.log` and
+`/tmp/almamesh-codex-pr333-memory-policy-final.log`.
+
+The backend job now exports a sorted public-doc inventory from host Git after
+checkout and before Dagger, recording that checkout's full SHA. Local checks
+continue to use Git; a Git-free export must carry a valid manifest and never
+falls back to walking all files. This preserves tracked ignored documentation
+and excludes private/local notes from the README inventory. It does not change
+Dagger's broader workspace selection rules. Manifest freshness comes from the
+host export step; its recorded SHA is provenance rather than an independent
+archive identity check.
+
+Forty focused documentation tests passed in a real-docs Git-free archive with
+Git absent from `PATH`. The complete local backend then passed inside Dagger
+(1,214 tests, 98.46% coverage), and the final frontend gate passed again (5,963
+tests plus four lint contracts). All 487 selected CI contracts and strict E2E
+TypeScript passed. Logs: `/tmp/almamesh-codex-pr333-backend-dagger-green.log`,
+`/tmp/almamesh-codex-pr333-final-frontend-gate.log`,
+`/tmp/almamesh-codex-pr333-final-pure-contracts.log` and
+`/tmp/almamesh-codex-pr333-final-e2e-types.log`.

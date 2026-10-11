@@ -5,6 +5,7 @@ import { promisify } from 'node:util';
 import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { PREDICTIVE_PERSIST_VERSION } from '../../../packages/store/src/predictive';
 import type { SiderealChart } from '@almamesh/browser/types';
 import type { DivisionalChartId, VargaCtxFull } from '@almamesh/shared-types';
 import { FOUNDER_DASHAS } from '../src/test/dashaFixtures';
@@ -237,8 +238,8 @@ function syntheticYoga(index: number) {
     strength_factors: [
       {
         planet: 'saturn',
-        factor: 'synthetic',
-        value: 'present',
+        factor_type: 'dignity',
+        value: 'exalted',
         basis: 'browser PDF acceptance fixture',
         mark: 1,
       },
@@ -539,7 +540,7 @@ async function seedSyntheticMaximalReport(
           requestKey,
         },
         // The current predictive persist version: an older one is a cache miss.
-        version: 4,
+        version: PREDICTIVE_PERSIST_VERSION,
       }),
     ],
     [
@@ -1498,6 +1499,9 @@ test('synthetic maximal state -> real browser download preserves report families
   await mkdir(OUT_DIR, { recursive: true });
   await seedSyntheticMaximalReport(page);
   await page.goto('/report?mode=astrologer', { waitUntil: 'domcontentloaded' });
+  for (const section of ['transits', 'vargas', 'strength', 'domains']) {
+    await expect(page.getByTestId(`report-${section}`)).toBeVisible();
+  }
 
   const downloadBtn = page.getByTestId('report-download-pdf');
   await expect(downloadBtn).toBeVisible({ timeout: 30_000 });
@@ -1601,6 +1605,9 @@ test('a natal-only reading still prints after predictive facts refresh', async (
   // the report; changing current timing facts no longer invalidates natal prose.
   await seedSyntheticMaximalReport(page, { staleNatalOnlyReading: true });
   await page.goto('/report?mode=astrologer', { waitUntil: 'domcontentloaded' });
+  for (const section of ['transits', 'vargas', 'strength', 'domains']) {
+    await expect(page.getByTestId(`report-${section}`)).toBeVisible();
+  }
 
   const downloadBtn = page.getByTestId('report-download-pdf');
   await expect(

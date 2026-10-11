@@ -541,6 +541,15 @@ commands CI runs. The required native Dagger checks also generate the signed
 browser assets and drive real onboarding, parity, offline, privacy/reset,
 Chromium/WebKit, and report-PDF journeys; run them locally with `dagger check`.
 
+Before running Dagger locally, export the public documentation paths from your
+checkout. Its Python container uses this ignored manifest because the source
+export has no Git metadata; ordinary `make gate` checks still use Git directly.
+
+```sh
+python3 scripts/public_docs_manifest.py --repo-root . --output .almamesh-public-docs.json
+dagger check
+```
+
 New here? [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) takes you from a
 fresh clone to a green local build and your first change.
 

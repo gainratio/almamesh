@@ -8,6 +8,7 @@ const workflowPath = resolve(root, ".github/workflows/dagger.yml")
 const deployWorkflowPath = resolve(root, ".github/workflows/deploy.yml")
 const checkout = "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
 const daggerAction = "dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77"
+const publicDocsCommand = "python3 scripts/public_docs_manifest.py --repo-root . --output .almamesh-public-docs.json"
 const expectedDeployFlags = [
   "--github-token",
   "--cloudflare-api-token",
@@ -66,6 +67,10 @@ function daggerStep(call: string): Mapping {
   return { uses: daggerAction, env: { XDG_CONFIG_HOME: "${{ github.workspace }}/.github/xdg" }, with: { version: "0.21.8", call } }
 }
 
+function publicDocsStep(): Mapping {
+  return { name: "Export public documentation paths", run: publicDocsCommand }
+}
+
 // The browser toolchain image is a private GHCR package, so every gate job may
 // read packages and hands its GITHUB_TOKEN to the module as a typed Secret
 // (`env:`), which Dagger never prints. The workflow keeps contents:read only.
@@ -79,6 +84,7 @@ function expectedGateJob(gate: string): Mapping {
     permissions: { contents: "read", packages: "read" },
     steps: [
       checkoutStep(),
+      ...(gate === "backend" ? [publicDocsStep()] : []),
       {
         uses: daggerAction,
         env: { XDG_CONFIG_HOME: "${{ github.workspace }}/.github/xdg", GITHUB_TOKEN: "${{ github.token }}" },
@@ -222,6 +228,10 @@ function gateJobFixture(gate: string): string[] {
     "          fetch-depth: 0",
     "          persist-credentials: false",
     "          ref: ${{ github.sha }}",
+    ...(gate === "backend" ? [
+      "      - name: Export public documentation paths",
+      `        run: ${publicDocsCommand}`,
+    ] : []),
     `      - uses: ${daggerAction} # v8.4.1`,
     "        env:",
     "          XDG_CONFIG_HOME: ${{ github.workspace }}/.github/xdg",
@@ -269,6 +279,13 @@ const canonicalFixture = [
   "          call: verdict --results=\"${{ join(needs.*.result, ',') }}\"",
   "",
 ].join("\n")
+
+function mutateGateSteps(gate: string, mutate: (steps: Mapping[]) => void): string {
+  const workflow = mapping(Bun.YAML.parse(canonicalFixture))
+  const job = mapping(mapping(workflow.jobs)[gateJobKey(gate)])
+  mutate(job.steps as Mapping[])
+  return Bun.YAML.stringify(workflow)
+}
 
 const canonicalDeployFixture = [
   "name: Deploy almamesh.com",
@@ -345,6 +362,41 @@ describe("atomic hosted Dagger workflow", () => {
 
   test("the canonical fixture is itself clean", () => {
     expect(exactDaggerWorkflowViolations(canonicalFixture)).toEqual([])
+  })
+
+  test.each([
+    {
+      name: "a missing public documentation export",
+      source: mutateGateSteps("backend", (steps) => { steps.splice(1, 1) }),
+      violation: "gate-job:backend",
+    },
+    {
+      name: "a public documentation export before checkout",
+      source: mutateGateSteps("backend", (steps) => { steps.unshift(...steps.splice(1, 1)) }),
+      violation: "gate-job:backend",
+    },
+    {
+      name: "a public documentation export after Dagger",
+      source: mutateGateSteps("backend", (steps) => { steps.push(...steps.splice(1, 1)) }),
+      violation: "gate-job:backend",
+    },
+    {
+      name: "a public documentation export in another gate",
+      source: mutateGateSteps("frontend", (steps) => { steps.splice(1, 0, publicDocsStep()) }),
+      violation: "gate-job:frontend",
+    },
+    {
+      name: "a public documentation export with continue-on-error",
+      source: mutateGateSteps("backend", (steps) => { steps[1]["continue-on-error"] = true }),
+      violation: "gate-job:backend",
+    },
+    {
+      name: "a public documentation export that masks shell failure",
+      source: mutateGateSteps("backend", (steps) => { steps[1].run = `${publicDocsCommand} || true` }),
+      violation: "gate-job:backend",
+    },
+  ])("rejects $name", ({ source, violation }) => {
+    expect(exactDaggerWorkflowViolations(source)).toContain(violation)
   })
 
   test.each([

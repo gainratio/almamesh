@@ -108,6 +108,8 @@ docs/superpowers/
 
 # Local-only docs (owner runbooks / private notes — never committed)
 docs/*.local.md
+# Host Git inventory passed to the source-only backend CI container.
+/.almamesh-public-docs.json
 
 # Skyfield ephemeris (downloaded at runtime, ~17MB)
 *.bsp

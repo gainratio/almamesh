@@ -29,15 +29,28 @@ function workflowNames(): string[] {
 const checkout = "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
 const daggerAction = "dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77"
 
-function ingressViolations(ingressSteps: Array<Record<string, unknown>>): string[] {
+function ingressViolations(
+  ingressSteps: Array<Record<string, unknown>>,
+  backendPublicDocsExport = false,
+): string[] {
   const expectedUses = [checkout, daggerAction]
   const violations: string[] = []
+  let protectedSteps = ingressSteps
+  if (backendPublicDocsExport) {
+    const step = ingressSteps[1] ?? {}
+    if (
+      JSON.stringify(Object.keys(step).sort()) !== JSON.stringify(["name", "run"])
+      || step.name !== "Export public documentation paths"
+      || step.run !== "python3 scripts/public_docs_manifest.py --repo-root . --output .almamesh-public-docs.json"
+    ) violations.push("public-doc-export")
+    protectedSteps = ingressSteps.filter((_step, index) => index !== 1)
+  }
 
-  if (ingressSteps.length !== expectedUses.length) violations.push("step-count")
-  if (JSON.stringify(ingressSteps.map((step) => step.uses)) !== JSON.stringify(expectedUses)) {
+  if (protectedSteps.length !== expectedUses.length) violations.push("step-count")
+  if (JSON.stringify(protectedSteps.map((step) => step.uses)) !== JSON.stringify(expectedUses)) {
     violations.push("step-order")
   }
-  if (ingressSteps.some((step) => "run" in step)) {
+  if (protectedSteps.some((step) => "run" in step)) {
     violations.push("unexpected-run")
   }
   return violations
@@ -63,7 +76,9 @@ function daggerArgsExpressionViolations(workflowSteps: Array<Record<string, unkn
 
 function expectThinDaggerIngress(name: string): void {
   const jobs = workflow(name).jobs as Record<string, { steps: Array<Record<string, unknown>> }>
-  for (const job of Object.values(jobs)) expect(ingressViolations(job.steps)).toEqual([])
+  for (const [id, job] of Object.entries(jobs)) {
+    expect(ingressViolations(job.steps, name === "dagger.yml" && id === "backend")).toEqual([])
+  }
 }
 
 /**
@@ -359,7 +374,7 @@ describe("canonical GitHub ingress contract", () => {
     }
   })
 
-  test("every repository-authored CI/CD workflow only checks out and invokes Dagger", () => {
+  test("CI/CD ingress only checks out and invokes Dagger, plus the backend host-doc export", () => {
     for (const name of [
       "dagger.yml",
       "security-audit.yml",
@@ -367,6 +382,27 @@ describe("canonical GitHub ingress contract", () => {
       "deploy.yml",
       "live-probe.yml",
     ]) expectThinDaggerIngress(name)
+  })
+
+  test("the backend alone exports host Git documentation paths before Dagger", () => {
+    const jobs = workflow("dagger.yml").jobs as Record<string, { steps: Array<Record<string, unknown>> }>
+    expect(ingressViolations(jobs.backend.steps, true)).toEqual([])
+    expect(ingressViolations(jobs.backend.steps)).not.toEqual([])
+    const source = readFileSync(resolve(root, "dagger/src/index.ts"), "utf8")
+    const uvBase = source.slice(source.indexOf("private uvBase()"), source.indexOf("private releaseBase("))
+    expect(uvBase).toContain('".almamesh-public-docs.json"')
+    expect(uvBase).toContain('"scripts/public_docs_manifest.py"')
+  })
+
+  test.each([
+    ["missing export", (steps: Array<Record<string, unknown>>) => [steps[0], steps[2]]],
+    ["export after Dagger", (steps: Array<Record<string, unknown>>) => [steps[0], steps[2], steps[1]]],
+    ["masked failure", (steps: Array<Record<string, unknown>>) => [steps[0], { ...steps[1], "continue-on-error": true }, steps[2]]],
+    ["another command", (steps: Array<Record<string, unknown>>) => [steps[0], { ...steps[1], run: `${steps[1].run} || true` }, steps[2]]],
+    ["extra shell step", (steps: Array<Record<string, unknown>>) => [...steps, { run: "echo unexpected" }]],
+  ])("the backend export exception rejects %s", (_name, mutate) => {
+    const jobs = workflow("dagger.yml").jobs as Record<string, { steps: Array<Record<string, unknown>> }>
+    expect(ingressViolations(mutate(structuredClone(jobs.backend.steps)), true)).not.toEqual([])
   })
 
   test("the scheduled live probe runs its native function read-only and without secrets", () => {

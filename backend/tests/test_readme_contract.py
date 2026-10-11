@@ -11,12 +11,15 @@ from __future__ import annotations
 
 import json
 import re
-import subprocess
+import runpy
 import tomllib
 import unicodedata
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+PUBLIC_DOC_PATHS = runpy.run_path(str(REPO_ROOT / "scripts/public_docs_manifest.py"))[
+    "public_doc_paths"
+]
 README = REPO_ROOT / "README.md"
 FIRST_SCREEN_END = "## How it works"
 REQUIRED_LABELS = (
@@ -169,14 +172,9 @@ def test_more_detail_links_every_technical_doc() -> None:
     linked = _more_detail_links()
     # Public docs include tracked and new non-ignored files; local/private
     # notes must never require a public README link or be read by this test.
-    listed = subprocess.run(
-        ["git", "ls-files", "--cached", "--others", "--exclude-standard", "--", "docs/"],
-        cwd=REPO_ROOT,
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    docs = {Path(path) for path in listed.stdout.splitlines() if not path.endswith(".local.md")}
+    # Source-only CI exports carry the host Git inventory explicitly; no walk
+    # of private or ignored files may substitute for missing Git metadata.
+    docs = {Path(path) for path in PUBLIC_DOC_PATHS(REPO_ROOT)}
     expected = {
         path.as_posix() for path in docs if path.parent == Path("docs") and path.suffix == ".md"
     }
@@ -186,7 +184,7 @@ def test_more_detail_links_every_technical_doc() -> None:
     for folder in folders:
         if not any(t.startswith(f"docs/{folder}") for t in linked):
             missing.append(f"docs/{folder}/")
-    assert missing == []
+    assert missing == [], missing
 
 
 def test_more_detail_comes_right_before_the_license() -> None:

@@ -254,6 +254,9 @@ export class AlmameshCi {
           "LICENSE",
           "SECURITY.md",
           "THIRD_PARTY_NOTICES.md",
+          // Host Git exports public doc ownership before the source-only backend gate.
+          ".almamesh-public-docs.json",
+          "scripts/public_docs_manifest.py",
           "docs/**",
           "examples/**",
           "frontend/README.md",
