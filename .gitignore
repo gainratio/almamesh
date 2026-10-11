@@ -77,6 +77,8 @@ htmlcov/
 playwright-report/
 test-results/
 webkit-lane-artifacts/
+webkit-lane-artifacts-*/
+webkit-lane-evidence-*/
 
 # wrangler scratch dir (wrangler pages dev — see docs/deploy/almamesh-com.md)
 .wrangler/

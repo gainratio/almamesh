@@ -3,7 +3,7 @@
 // replies. One in-flight map keyed by request id correlates responses to
 // promises (mirrors the edge-proc EngineClient).
 
-import { errorFromWorker } from "./bootFault";
+import { errorFromWorker, isWasmBootFault } from "./bootFault";
 import { takeArmedBootFault } from "./bootFaultInjection";
 import { verifyChartSnapshot } from "./chartSnapshot";
 import type { SiderealChart } from "./chart";
@@ -282,6 +282,17 @@ export class ChartEngineClient {
     const pending = this.#pending.get(response.id);
     if (pending === undefined) {
       return;
+    }
+    if (!response.ok) {
+      const error = errorFromWorker(response.error, response.errorName);
+      // workerErrorFields reserves RuntimeError for recognised wasm traps. The
+      // shared classifier also supports distinctive legacy/wrapped trap text;
+      // ordinary Python RuntimeError tracebacks do not imply a fatal instance.
+      // Reject outstanding/future callers and terminate the failed instance.
+      if (isWasmBootFault(error)) {
+        this.#close(error);
+        return;
+      }
     }
     if (response.ok && response.kind === "bootProgress") {
       if (pending.kind === "boot") {

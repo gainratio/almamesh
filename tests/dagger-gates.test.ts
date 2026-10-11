@@ -14,6 +14,24 @@ import {
 
 const root = resolve(import.meta.dir, "..")
 
+test("local Dagger source excludes WebKit diagnostics while retaining application and test source", () => {
+  const source = readFileSync(resolve(root, "dagger/src/index.ts"), "utf8")
+  const block = source.slice(source.indexOf("const SOURCE_EXCLUDES = ["), source.indexOf("const CONTRACT_TESTS = ["))
+  const excludes = [...block.matchAll(/"([^"\n]+)"/g)].map((match) => new Bun.Glob(match[1]))
+  const excluded = (path: string) => excludes.some((glob) => glob.match(path))
+  for (const directory of [
+    "webkit-lane-artifacts", "webkit-lane-artifacts-memory", "webkit-lane-artifacts-functional",
+    "webkit-lane-evidence-memory", "webkit-lane-evidence-functional", "webkit-lane-evidence-all",
+  ]) {
+    expect(excluded(`frontend/apps/web/${directory}/travel/trace.zip`), directory).toBe(true)
+  }
+  for (const path of [
+    "frontend/apps/web/e2e/time-travel.spec.ts",
+    "frontend/apps/web/scripts/webkit-macos-lane.sh",
+    "frontend/packages/browser/src/pyodide/chartEngineClient.ts",
+  ]) expect(excluded(path), path).toBe(false)
+})
+
 /** Resolves once `count` callers have arrived; rejects if they never all do. */
 function barrier(count: number, timeoutMs = 1500): () => Promise<void> {
   let arrived = 0
@@ -289,7 +307,8 @@ describe("browser gate shards", () => {
     "node scripts/verify-i18n.mjs http://127.0.0.1:4199",
     "node scripts/verify-browser-parity.mjs http://127.0.0.1:4199 --reference-date=2025-01-01T00:00:00+00:00",
     "TIME_HANDLING_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:time-handling --project=chromium",
-    "TIME_TRAVEL_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:time-travel --project=chromium",
+    "TIME_TRAVEL_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:time-travel e2e/time-travel.spec.ts --project=chromium --fully-parallel --workers=1 --shard=1/2",
+    "TIME_TRAVEL_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:time-travel e2e/time-travel.spec.ts --project=chromium --fully-parallel --workers=1 --shard=2/2",
     "MESH_PERSIST_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:mesh-add-persist",
     "DURABLE_SAVES_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:durable-saves",
     "node scripts/verify-boot-fault-hook.mjs dist-verify --present",

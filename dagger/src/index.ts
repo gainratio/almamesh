@@ -84,6 +84,8 @@ const SOURCE_EXCLUDES = [
   "**/*private*.key",
   "**/node_modules/**",
   "**/dist*/**",
+  "**/webkit-lane-artifacts*/**",
+  "**/webkit-lane-evidence*/**",
   "**/.venv/**",
   "dagger/sdk/**",
 ]
@@ -515,7 +517,11 @@ exec ${inline.join(" ")}`,
       // button (2027 pinned; a Day pin found on the device). A stubbed
       // provider, the real engine. Chromium here; WebKit and an iPhone run on
       // macOS (.github/workflows/webkit-macos.yml), as Linux WebKit cannot boot the engine.
-      "TIME_TRAVEL_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:time-travel --project=chromium",
+      // Distribute this single spec by test, with one worker in each sequential
+      // command. The full 17-test command exceeded the 900-second watchdog on
+      // slower hosted runners; neither shard changes the test or job budgets.
+      "TIME_TRAVEL_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:time-travel e2e/time-travel.spec.ts --project=chromium --fully-parallel --workers=1 --shard=1/2",
+      "TIME_TRAVEL_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:time-travel e2e/time-travel.spec.ts --project=chromium --fully-parallel --workers=1 --shard=2/2",
       // A person added on /mesh survives an immediate full page load (the
       // write is on disk before the dialog moves on). Chromium only.
       "MESH_PERSIST_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:mesh-add-persist",

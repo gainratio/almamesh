@@ -1,6 +1,6 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 
-import { expect, type Locator, type Page } from '@playwright/test';
+import { expect, type ConsoleMessage, type Frame, type Locator, type Page, type Worker as PlaywrightWorker } from '@playwright/test';
 
 import { DELHI_BIRTH, DELHI_SEED, LLM_SETTINGS_KEY, bootEngine, seedChart, waitForEngineReady } from './interpretation.helpers';
 import { gotoSettled } from './portableInvariants.helpers';
@@ -1116,41 +1116,101 @@ async function serviceWorkerFetches(page: Page): Promise<string[]> {
 test.describe('as shipped: service worker on, AI off, nothing stubbed', () => {
   test.use({ serviceWorkers: 'allow' });
 
-  test('[contract/real] @sw nothing leaves the app origin, service-worker traffic included, with AI off', async ({ page, baseURL }) => {
+  test('[contract/real] @sw nothing leaves the app origin, service-worker traffic included, with AI off', async ({ page, baseURL }, testInfo) => {
     const consoleErrors = captureConsole(page);
-    const origin = new URL(baseURL ?? '').origin;
-    const pageOffOrigin: string[] = [];
-    page.context().on('request', (request) => {
-      const url = new URL(request.url());
-      if (url.protocol.startsWith('http') && url.origin !== origin) pageOffOrigin.push(request.url());
-    });
-    await bootEngine(page);
-    await seedChart(page);
-    await openDashboard(page);
-    // Bounded: with the worker blocked `ready` never settles, and the check below must say so.
-    await page.evaluate(() =>
-      Promise.race([navigator.serviceWorker.ready, new Promise((resolve) => setTimeout(resolve, 60_000))]),
-    );
-    // A fresh navigation now goes through the active worker.
-    await gotoSettled(page, '/dashboard');
-    expect(await page.evaluate(() => navigator.serviceWorker.controller !== null), 'the service worker controls the page').toBe(true);
-    await waitForEngineReady(page);
-    await expect(page.getByTestId('provenance-footer')).toContainText('As of', { timeout: 120_000 });
+    type Phase = 'boot' | 'restore' | 'openDashboard' | 'SWready' | 'SWnavigation' | 'waitengine' | 'chat' | 'month' | 'finalasserts';
+    let phase: Phase = 'boot';
+    const started = Date.now();
+    const events: Array<Record<string, unknown>> = [];
+    const record = (event: string, detail: Record<string, unknown> = {}): void => {
+      const at = Date.now();
+      events.push({ sequence: events.length + 1, at: new Date(at).toISOString(), elapsedMs: at - started,
+        phase, event, observedPageUrlAtReceipt: page.url(), ...detail });
+    };
+    const enterPhase = (next: Phase): void => { phase = next; record('phase-start'); };
+    const onConsole = (message: ConsoleMessage): void => {
+      if (message.type() === 'error' || message.text().startsWith('[almamesh] engine')) {
+        record('console', { type: message.type(), text: message.text(), location: message.location() });
+      }
+    };
+    const onPageError = (error: Error): void => { record('pageerror', { text: error.message, stack: error.stack }); };
+    const onNavigation = (frame: Frame): void => {
+      if (frame === page.mainFrame()) record('main-frame-framenavigated', { frameUrl: frame.url() });
+    };
+    const workerCloseListeners = new Map<PlaywrightWorker, () => void>();
+    const onWorker = (worker: PlaywrightWorker): void => {
+      const workerId = workerCloseListeners.size + 1;
+      record('worker-created', { workerId, workerUrl: worker.url() });
+      const onClose = (): void => { record('worker-closed', { workerId, workerUrl: worker.url() }); };
+      workerCloseListeners.set(worker, onClose);
+      worker.on('close', onClose);
+    };
+    page.on('console', onConsole);
+    page.on('pageerror', onPageError);
+    page.on('framenavigated', onNavigation);
+    page.on('worker', onWorker);
+    let bodyCompleted = false;
+    try {
+      const origin = new URL(baseURL ?? '').origin;
+      const pageOffOrigin: string[] = [];
+      page.context().on('request', (request) => {
+        const url = new URL(request.url());
+        if (url.protocol.startsWith('http') && url.origin !== origin) pageOffOrigin.push(request.url());
+      });
+      enterPhase('boot');
+      await bootEngine(page);
+      enterPhase('restore');
+      await seedChart(page);
+      enterPhase('openDashboard');
+      await openDashboard(page);
+      enterPhase('SWready');
+      // Bounded: with the worker blocked `ready` never settles, and the check below must say so.
+      await page.evaluate(() =>
+        Promise.race([navigator.serviceWorker.ready, new Promise((resolve) => setTimeout(resolve, 60_000))]),
+      );
+      enterPhase('SWnavigation');
+      // A fresh navigation now goes through the active worker.
+      await gotoSettled(page, '/dashboard');
+      expect(await page.evaluate(() => navigator.serviceWorker.controller !== null), 'the service worker controls the page').toBe(true);
+      enterPhase('waitengine');
+      await waitForEngineReady(page);
+      await expect(page.getByTestId('provenance-footer')).toContainText('As of', { timeout: 120_000 });
 
-    await page.getByTestId('floating-chat-button').click({ timeout: 120_000 });
-    await expect(page.getByTestId('chat-connect-ai')).toBeVisible();
-    await expect(page.getByTestId('time-travel-button'), 'no AI, no Time travel in the composer').toHaveCount(0);
-    await page.getByTestId('floating-chat-close').click();
-    await expect(page.getByTestId(DASHBOARD_BUTTON), 'Time travel works without AI').toBeEnabled();
-    await pickMonth(page, '2019-03');
-    await expect(page.getByTestId('time-travel-moment-maha')).toBeVisible();
-    await expect(page.getByTestId('time-travel-moment-card')).toBeVisible();
-    await expect(page.getByTestId('time-travel-moment-transits')).toBeVisible({ timeout: 180_000 });
-    await page.waitForLoadState('networkidle');
+      enterPhase('chat');
+      await page.getByTestId('floating-chat-button').click({ timeout: 120_000 });
+      await expect(page.getByTestId('chat-connect-ai')).toBeVisible();
+      await expect(page.getByTestId('time-travel-button'), 'no AI, no Time travel in the composer').toHaveCount(0);
+      await page.getByTestId('floating-chat-close').click();
+      enterPhase('month');
+      await expect(page.getByTestId(DASHBOARD_BUTTON), 'Time travel works without AI').toBeEnabled();
+      await pickMonth(page, '2019-03');
+      await expect(page.getByTestId('time-travel-moment-maha')).toBeVisible();
+      await expect(page.getByTestId('time-travel-moment-card')).toBeVisible();
+      await expect(page.getByTestId('time-travel-moment-transits')).toBeVisible({ timeout: 180_000 });
+      await page.waitForLoadState('networkidle');
 
-    expect(await serviceWorkerOffOrigin(page, origin), 'with AI off, the service worker requests only the app origin').toEqual([]);
-    expect(pageOffOrigin, 'with AI off, the page requests only the app origin').toEqual([]);
-    expect(consoleErrors, 'the journey must keep a clean console').toEqual([]);
+      enterPhase('finalasserts');
+      expect(await serviceWorkerOffOrigin(page, origin), 'with AI off, the service worker requests only the app origin').toEqual([]);
+      expect(pageOffOrigin, 'with AI off, the page requests only the app origin').toEqual([]);
+      expect(consoleErrors, 'the journey must keep a clean console').toEqual([]);
+      bodyCompleted = true;
+    } finally {
+      record('capture-finished', { bodyCompleted });
+      page.off('console', onConsole);
+      page.off('pageerror', onPageError);
+      page.off('framenavigated', onNavigation);
+      page.off('worker', onWorker);
+      for (const [worker, onClose] of workerCloseListeners) worker.off('close', onClose);
+      const path = testInfo.outputPath('sw-engine-lifecycle.json');
+      writeFileSync(path, JSON.stringify({
+        notes: [
+          'observedPageUrlAtReceipt is the page URL when the event arrived, not proof of its source document or Worker.',
+          'main-frame-framenavigated includes same-document navigation; Worker events cover only Workers exposed by Playwright.',
+        ],
+        bodyCompleted, events,
+      }, null, 2));
+      await testInfo.attach('sw-engine-lifecycle', { path, contentType: 'application/json' });
+    }
   });
 });
 

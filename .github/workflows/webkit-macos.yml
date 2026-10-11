@@ -12,22 +12,14 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.run_id || github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
-# The one gating workflow that is not Dagger (tests/dagger-ingress-contract.test.ts,
-# NATIVE_MACOS_LANES). Dagger runs Linux containers, and Linux Playwright WebKit
-# cannot open SQLite's nested-Worker OPFS, so the in-browser engine never boots
-# there. macOS WebKit can: this lane runs the time-travel and export/import
-# journeys on desktop Safari and an iPhone profile. Read-only, no secrets, every
-# action SHA-pinned; all logic is in frontend/apps/web/scripts/webkit-macos-lane.sh.
-# The last step uploads that script's evidence directory (traces, videos and
-# screenshots of failed tests, every test's WebKit log and RSS samples, macOS
-# crash reports), pass or fail, so a lost WebKit page can be diagnosed, but
-# only after scripts/artifactLeakScan.mjs found none of the runner's secrets
-# in it. The job holds no secrets and the checkout persists no credentials;
-# the scan is the backstop for evidence written by accident.
+# Linux WebKit cannot boot the nested-Worker OPFS engine. Keep native memory
+# and functional acceptance independent, with the original 45-minute bound
+# for each. The stable acceptance check below succeeds only if both passed.
+# Upload only a finalized evidence snapshot after its secret scan.
 
 jobs:
-  webkit-macos:
-    name: webkit / macOS time travel + export-import
+  webkit-memory:
+    name: webkit / macOS memory
     runs-on: macos-15
     timeout-minutes: 45
     defaults:
@@ -38,25 +30,68 @@ jobs:
         with:
           persist-credentials: false
           ref: ${{ github.sha }}
-          # The lane archives the pinned previous release for paired RSS samples.
           fetch-depth: 0
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: frontend/.bun-version
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
       - run: bun install --frozen-lockfile
-      - run: bash scripts/webkit-macos-lane.sh
-      # The content check on what is about to be uploaded: every non-public
-      # environment value and the contents of ~/.gitconfig and ~/.netrc. On a
-      # match it prints only the name, deletes the directory and fails, and the
-      # upload below does not run (scripts/artifactLeakScan.mjs).
-      - id: leak-scan
+      - run: bash scripts/webkit-macos-lane.sh memory
+      - id: finalize-evidence
         if: always()
-        run: node scripts/artifactLeakScan.mjs webkit-lane-artifacts
+        run: bash scripts/webkit-macos-lane.sh --finalize-evidence memory
+      - id: leak-scan
+        if: always() && steps.finalize-evidence.outcome == 'success'
+        run: node scripts/artifactLeakScan.mjs webkit-lane-evidence-memory
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always() && steps.leak-scan.outcome == 'success'
         with:
-          name: webkit-lane-evidence
-          path: frontend/apps/web/webkit-lane-artifacts
+          name: webkit-lane-memory-evidence
+          path: frontend/apps/web/webkit-lane-evidence-memory
           retention-days: 14
-          if-no-files-found: warn
+          if-no-files-found: error
+
+  webkit-functional:
+    name: webkit / macOS functional
+    runs-on: macos-15
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: frontend/apps/web
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: frontend/.bun-version
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+      - run: bun install --frozen-lockfile
+      - run: bash scripts/webkit-macos-lane.sh functional
+      - id: finalize-evidence
+        if: always()
+        run: bash scripts/webkit-macos-lane.sh --finalize-evidence functional
+      - id: leak-scan
+        if: always() && steps.finalize-evidence.outcome == 'success'
+        run: node scripts/artifactLeakScan.mjs webkit-lane-evidence-functional
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always() && steps.leak-scan.outcome == 'success'
+        with:
+          name: webkit-lane-functional-evidence
+          path: frontend/apps/web/webkit-lane-evidence-functional
+          retention-days: 14
+          if-no-files-found: error
+
+  webkit-macos:
+    name: webkit / macOS time travel + export-import
+    needs: [webkit-memory, webkit-functional]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - env:
+          MEMORY_RESULT: ${{ needs.webkit-memory.result }}
+          FUNCTIONAL_RESULT: ${{ needs.webkit-functional.result }}
+        run: test "$MEMORY_RESULT" = success && test "$FUNCTIONAL_RESULT" = success

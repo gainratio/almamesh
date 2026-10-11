@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test"
-import { existsSync, readFileSync, readdirSync } from "node:fs"
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync, mkdirSync } from "node:fs"
+import { spawn, spawnSync } from "node:child_process"
+import { tmpdir } from "node:os"
 import { resolve } from "node:path"
 
 // Pure workflow-YAML contracts: no Dagger CLI, so the `contracts` gate runs them
@@ -118,7 +120,10 @@ const MACOS_LANE_ACTIONS = [
   "astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9",
   UPLOAD_ARTIFACT,
 ]
-const MACOS_LANE_EVIDENCE = "frontend/apps/web/webkit-lane-artifacts"
+const MACOS_LANE_MODES = ["memory", "functional"] as const
+type MacosLaneMode = typeof MACOS_LANE_MODES[number]
+const FINALIZE_IF = "always()"
+const SCAN_IF = "always() && steps.finalize-evidence.outcome == 'success'"
 const UPLOAD_INPUTS = new Set(["name", "path", "retention-days", "if-no-files-found", "include-hidden-files"])
 const LANE_RUN = "bash scripts/webkit-macos-lane.sh"
 /**
@@ -128,32 +133,36 @@ const LANE_RUN = "bash scripts/webkit-macos-lane.sh"
  * after the lane, pass or fail, and the upload runs only if it passed; on a
  * match it has already deleted the directory.
  */
-const LEAK_SCAN_RUN = "node scripts/artifactLeakScan.mjs webkit-lane-artifacts"
+const LEAK_SCAN_RUN = "node scripts/artifactLeakScan.mjs webkit-lane-evidence-"
 const LEAK_SCAN_ID = "leak-scan"
 const UPLOAD_IF = `always() && steps.${LEAK_SCAN_ID}.outcome == 'success'`
 
-function leakScanViolations(jobSteps: Array<Record<string, unknown>>): string[] {
-  const scans = jobSteps.filter((step) => String(step.run ?? "").trim() === LEAK_SCAN_RUN)
+function leakScanViolations(jobSteps: Array<Record<string, unknown>>, mode: MacosLaneMode): string[] {
+  const scans = jobSteps.filter((step) => String(step.run ?? "").trim() === `${LEAK_SCAN_RUN}${mode}`)
   if (scans.length !== 1) return ["leak-scan-count"]
   const scan = scans[0] as Record<string, unknown>
   const at = jobSteps.indexOf(scan)
   const violations: string[] = []
   if (scan.id !== LEAK_SCAN_ID) violations.push("leak-scan-id")
-  if (scan.if !== "always()") violations.push("leak-scan-not-always")
+  if (scan.if !== SCAN_IF) violations.push("leak-scan-not-finalized")
   if ("continue-on-error" in scan) violations.push("leak-scan-continue-on-error")
-  if (at < jobSteps.findIndex((step) => String(step.run ?? "").trim() === LANE_RUN)) violations.push("leak-scan-before-lane")
+  const finalize = jobSteps[at - 1] ?? {}
+  if (finalize.id !== "finalize-evidence" || finalize.if !== FINALIZE_IF || finalize.run !== `${LANE_RUN} --finalize-evidence ${mode}` || "continue-on-error" in finalize) violations.push("evidence-not-finalized")
+  if (jobSteps[at - 2]?.run !== `${LANE_RUN} ${mode}`) violations.push("leak-scan-before-lane")
   if (jobSteps[at + 1]?.uses !== UPLOAD_ARTIFACT) violations.push("leak-scan-not-just-before-upload")
   return violations
 }
 
-function evidenceUploadViolations(jobSteps: Array<Record<string, unknown>>): string[] {
+function evidenceUploadViolations(jobSteps: Array<Record<string, unknown>>, mode: MacosLaneMode): string[] {
   const uploads = jobSteps.filter((step) => step.uses === UPLOAD_ARTIFACT)
   if (uploads.length !== 1) return ["evidence-upload-count"]
   const upload = uploads[0] as Record<string, unknown>
   const inputs = (upload.with ?? {}) as Record<string, unknown>
-  const violations: string[] = [...leakScanViolations(jobSteps)]
+  const violations: string[] = [...leakScanViolations(jobSteps, mode)]
   if (upload.if !== UPLOAD_IF) violations.push("evidence-upload-not-gated-on-leak-scan")
-  if (inputs.path !== MACOS_LANE_EVIDENCE) violations.push("evidence-upload-path")
+  if (inputs.path !== `frontend/apps/web/webkit-lane-evidence-${mode}`) violations.push("evidence-upload-path")
+  if (inputs.name !== `webkit-lane-${mode}-evidence`) violations.push("evidence-upload-name")
+  if (inputs["retention-days"] !== 14 || inputs["if-no-files-found"] !== "error") violations.push("evidence-upload-completeness")
   if (Object.keys(inputs).some((key) => !UPLOAD_INPUTS.has(key))) violations.push("evidence-upload-inputs")
   if (jobSteps.at(-1) !== upload) violations.push("evidence-upload-not-last")
   return violations
@@ -165,7 +174,7 @@ function withJob(
   mutate: (job: Record<string, unknown>) => Record<string, unknown>,
 ): Record<string, unknown> {
   const jobs = parsed.jobs as Record<string, Record<string, unknown>>
-  return { ...parsed, jobs: Object.fromEntries(Object.entries(jobs).map(([id, job]) => [id, mutate(job)])) }
+  return { ...parsed, jobs: Object.fromEntries(Object.entries(jobs).map(([id, job]) => [id, id === "webkit-macos" ? job : mutate(job)])) }
 }
 
 function withCheckout(
@@ -190,6 +199,11 @@ function withCheckout(
  */
 const LANE_ARTIFACT_LINES: readonly string[] = [
   'ARTIFACTS="${WEBKIT_LANE_ARTIFACTS:-webkit-lane-artifacts}"',
+  'if [[ "${MODE}" != all && -z "${WEBKIT_LANE_ARTIFACTS:-}" ]]; then ARTIFACTS="webkit-lane-artifacts-${MODE}"; fi',
+  '[[ -d "${ARTIFACTS}" && ! -L "${ARTIFACTS}" ]]',
+  '[[ -f "${ARTIFACTS}/.lane-cleanup-finished" && ! -L "${ARTIFACTS}/.lane-cleanup-finished" ]]',
+  'cp -R "${ARTIFACTS}" "${EVIDENCE_ROOT}"',
+  'touch "${ARTIFACTS}/.lane-cleanup-finished"',
   'rm -rf "${ARTIFACTS}"',
   'mkdir -p "${ARTIFACTS}/crash-reports"',
   'touch "${ARTIFACTS}/.lane-start"',
@@ -201,12 +215,12 @@ const LANE_ARTIFACT_LINES: readonly string[] = [
   'echo "unified log: $(wc -l < "${ARTIFACTS}/unified-log.txt") lines about WebContent, memory kills and jetsam"',
   `grep -iE 'memorystatus.*kill|exceed|crash|terminat' "\${ARTIFACTS}/unified-log.txt" | grep -v 'coalition roles' | head -40 || true`,
   'node scripts/webkit-memory-baseline.mjs --local-baseline "${TT_WEBKIT_BASELINE_MIB}" --measurement-commit "${MEASUREMENT_REF}" --provenance "${ARTIFACTS}/time-travel-memory-baseline-provenance.json"',
-  `TT_MEMORY_BASELINE_REF="\${REFERENCE_REF}" TT_MEMORY_MEASUREMENT_REF="\${MEASUREMENT_REF}" TIME_TRAVEL_E2E_BASE_URL="\${REFERENCE_URL}" bun x playwright test --config=playwright.time-travel.config.ts e2e/time-travel-memory.webkit.spec.ts --project=iphone-15-webkit --grep 'boot baseline' --repeat-each=5 --retries=0 --reporter=json --output="\${ARTIFACTS}/time-travel-memory-baseline" > "\${ARTIFACTS}/time-travel-memory-baseline-report.json"`,
+  `TT_MEMORY_BASELINE_REF="\${REFERENCE_REF}" TT_MEMORY_MEASUREMENT_REF="\${MEASUREMENT_REF}" TIME_TRAVEL_E2E_BASE_URL="\${REFERENCE_URL}" run_lane_command bun x playwright test --config=playwright.time-travel.config.ts e2e/time-travel-memory.webkit.spec.ts --project=iphone-15-webkit --grep 'boot baseline' --repeat-each=5 --retries=0 --reporter=json --output="\${ARTIFACTS}/time-travel-memory-baseline" > "\${ARTIFACTS}/time-travel-memory-baseline-report.json"`,
   'node scripts/webkit-memory-baseline.mjs --report "${ARTIFACTS}/time-travel-memory-baseline-report.json" --measurement-commit "${MEASUREMENT_REF}" --provenance "${ARTIFACTS}/time-travel-memory-baseline-provenance.json"',
-  `TT_MEMORY_PHASE=final TT_MEMORY_GRANULARITY=day TT_MEMORY_REPORT_ONLY=0 TT_WEBKIT_BASELINE_MIB="\${BASELINE_MIB}" TIME_TRAVEL_E2E_BASE_URL="\${MEMORY_URL}" bun run test:e2e:time-travel e2e/time-travel-memory.webkit.spec.ts --project=iphone-15-webkit --grep 'WebContent RSS budget' --repeat-each=5 --retries=0 --output="\${ARTIFACTS}/time-travel-memory" || status=1`,
-  'TIME_TRAVEL_E2E_BASE_URL="${BASE_URL}" bun run test:e2e:time-travel e2e/time-travel.spec.ts --project=webkit --project=iphone-webkit --project=iphone-15-webkit --retries=0 --output="${ARTIFACTS}/time-travel" || status=1',
-  'PORTABLE_INVARIANTS_E2E_BASE_URL="${BASE_URL}" bun run test:e2e:portable-invariants --project=webkit --project=iphone-webkit --retries=0 --output="${ARTIFACTS}/portable-invariants" || status=1',
-  'BOOT_RETRY_E2E_BASE_URL="${BASE_URL}" bun run test:e2e:boot-retry --project=webkit --retries=0 --output="${ARTIFACTS}/boot-retry" || status=1',
+  `TT_MEMORY_PHASE=final TT_MEMORY_GRANULARITY=day TT_MEMORY_REPORT_ONLY=0 TT_WEBKIT_BASELINE_MIB="\${BASELINE_MIB}" TIME_TRAVEL_E2E_BASE_URL="\${MEMORY_URL}" run_lane_command bun run test:e2e:time-travel e2e/time-travel-memory.webkit.spec.ts --project=iphone-15-webkit --grep 'WebContent RSS budget' --repeat-each=5 --retries=0 --output="\${ARTIFACTS}/time-travel-memory" || status=1`,
+  'TIME_TRAVEL_E2E_BASE_URL="${BASE_URL}" run_lane_command bun run test:e2e:time-travel e2e/time-travel.spec.ts --project=webkit --project=iphone-webkit --project=iphone-15-webkit --retries=0 --output="${ARTIFACTS}/time-travel" || status=1',
+  'PORTABLE_INVARIANTS_E2E_BASE_URL="${BASE_URL}" run_lane_command bun run test:e2e:portable-invariants --project=webkit --project=iphone-webkit --retries=0 --output="${ARTIFACTS}/portable-invariants" || status=1',
+  'BOOT_RETRY_E2E_BASE_URL="${BASE_URL}" run_lane_command bun run test:e2e:boot-retry --project=webkit --retries=0 --output="${ARTIFACTS}/boot-retry" || status=1',
   `grep -rh "page crashed" "\${ARTIFACTS}" --include='*-browser.log' || true`,
 ]
 
@@ -234,7 +248,7 @@ function laneScriptViolations(script: string): string[] {
     if (/^(?!ARTIFACTS=)\w+=\S*ARTIFACTS/.test(line) || /[;&|]\s*\w+=\S*ARTIFACTS/.test(line)) violations.push(`artifacts-alias: ${line}`)
     if (/\b(cd|pushd|mv|rsync|ln|tee|install)\b/.test(line)) violations.push(`artifacts-move: ${line}`)
     const copy = /\bcp\b(.*?)\s+"?\$\{?ARTIFACTS/.exec(line)
-    if (copy !== null && copy[1]?.trim() !== '"${report}"') violations.push(`artifacts-copy-source: ${line}`)
+    if (copy !== null && copy[1]?.trim() !== '"${report}"' && line !== 'cp -R "${ARTIFACTS}" "${EVIDENCE_ROOT}"') violations.push(`artifacts-copy-source: ${line}`)
   }
   return violations
 }
@@ -259,7 +273,7 @@ function memoryLaneViolations(script: string): string[] {
   const violations: string[] = MEMORY_LANE_REQUIREMENTS.filter((line) => !script.includes(line))
   const baseline = script.indexOf('TT_MEMORY_BASELINE_REF="${REFERENCE_REF}"')
   const journey = script.indexOf('TT_MEMORY_PHASE=final TT_MEMORY_GRANULARITY=day TT_MEMORY_REPORT_ONLY=0')
-  const functional = script.indexOf('TIME_TRAVEL_E2E_BASE_URL="${BASE_URL}" bun run test:e2e:time-travel')
+  const functional = script.indexOf('TIME_TRAVEL_E2E_BASE_URL="${BASE_URL}" run_lane_command bun run test:e2e:time-travel')
   if (baseline === -1 || journey <= baseline || functional <= journey) violations.push("memory-comparison-order")
   const archive = script.indexOf('git -C "${REPO_ROOT}" archive "${REFERENCE_REF}"')
   const publicDirectory = script.indexOf('mkdir -p "${REFERENCE_WEB}/public"')
@@ -298,32 +312,50 @@ function moveLeakScan(steps: Array<Record<string, unknown>>, to: number): Array<
 
 function macosLaneViolations(parsed: Record<string, unknown>): string[] {
   const violations: string[] = []
-  const jobs = Object.values(parsed.jobs as Record<string, Record<string, unknown>>)
+  const jobs = parsed.jobs as Record<string, Record<string, unknown>>
   if (JSON.stringify(parsed.permissions) !== JSON.stringify({ contents: "read" })) violations.push("workflow-permissions")
-  if (jobs.length !== 1) violations.push("job-count")
-  for (const job of jobs) {
-    if (typeof job["runs-on"] !== "string" || !/^macos-\d+$/.test(job["runs-on"] as string)) violations.push("runner-not-pinned-macos")
-    if (typeof job["timeout-minutes"] !== "number" || (job["timeout-minutes"] as number) > 45) violations.push("timeout")
+  if ("env" in parsed) violations.push("workflow-env")
+  if (JSON.stringify(Object.keys(jobs).sort()) !== JSON.stringify(["webkit-functional", "webkit-macos", "webkit-memory"])) violations.push("job-count")
+  const aggregate = jobs["webkit-macos"]
+  if (JSON.stringify(aggregate) !== JSON.stringify({
+    name: "webkit / macOS time travel + export-import",
+    needs: ["webkit-memory", "webkit-functional"],
+    if: "${{ !cancelled() }}",
+    "runs-on": "ubuntu-24.04",
+    "timeout-minutes": 5,
+    steps: [{
+      env: {
+        MEMORY_RESULT: "${{ needs.webkit-memory.result }}",
+        FUNCTIONAL_RESULT: "${{ needs.webkit-functional.result }}",
+      },
+      run: 'test "$MEMORY_RESULT" = success && test "$FUNCTIONAL_RESULT" = success',
+    }],
+  })) violations.push("aggregate")
+  for (const mode of MACOS_LANE_MODES) {
+    const job = jobs[`webkit-${mode}`]
+    if (!job) { violations.push("missing-lane"); continue }
+    if (job["runs-on"] !== "macos-15") violations.push("runner-not-pinned-macos")
+    if (job["timeout-minutes"] !== 45) violations.push("timeout")
     if ("permissions" in job) violations.push("job-permissions")
+    if ("if" in job || "continue-on-error" in job || "needs" in job) violations.push("lane-bypass")
+    if ("env" in job) violations.push("lane-env")
+    if (JSON.stringify(job.defaults) !== JSON.stringify({ run: { "working-directory": "frontend/apps/web" } })) violations.push("lane-workdir")
     const jobSteps = job.steps as Array<Record<string, unknown>>
     if (jobSteps.some((step) => "uses" in step && !PINNED_ACTION.test(String(step.uses)))) violations.push("unpinned-action")
     const actions = jobSteps.filter((step) => "uses" in step).map((step) => String(step.uses))
     if (JSON.stringify(actions) !== JSON.stringify(MACOS_LANE_ACTIONS)) violations.push("actions")
-    violations.push(...evidenceUploadViolations(jobSteps))
+    violations.push(...evidenceUploadViolations(jobSteps, mode))
     const runs = jobSteps.filter((step) => "run" in step).map((step) => String(step.run).trim())
-    if (JSON.stringify(runs) !== JSON.stringify(["bun install --frozen-lockfile", LANE_RUN, LEAK_SCAN_RUN])) {
-      violations.push("run-steps")
-    }
+    if (JSON.stringify(runs) !== JSON.stringify(["bun install --frozen-lockfile", `${LANE_RUN} ${mode}`, `${LANE_RUN} --finalize-evidence ${mode}`, `${LEAK_SCAN_RUN}${mode}`])) violations.push("run-steps")
+    if (jobSteps.some((step) => "continue-on-error" in step || "env" in step || "working-directory" in step || "shell" in step)) violations.push("step-bypass")
+    if (jobSteps.filter((step) => "run" in step).slice(0, 2).some((step) => "if" in step || "env" in step || "working-directory" in step)) violations.push("run-bypass")
+    const checkouts = jobSteps.filter((step) => step.uses === checkout)
+    if (checkouts.length !== 1 || ((checkouts[0]?.with ?? {}) as Record<string, unknown>)["persist-credentials"] !== false) violations.push("persist-credentials")
+    if (checkouts.some((step) => ((step.with ?? {}) as Record<string, unknown>)["fetch-depth"] !== 0 || ((step.with ?? {}) as Record<string, unknown>).ref !== "${{ github.sha }}")) violations.push("reference-history-unavailable")
   }
   if (SECRETS_ACCESS.test(JSON.stringify(parsed))) violations.push("secrets")
   const events = eventsOf(parsed)
   if (events.length === 0 || events.some((event) => !MACOS_LANE_EVENTS.has(event))) violations.push("events")
-  for (const job of jobs) {
-    const checkouts = (job.steps as Array<Record<string, unknown>>).filter((step) => step.uses === checkout)
-    const persists = checkouts.map((step) => ((step.with ?? {}) as Record<string, unknown>)["persist-credentials"])
-    if (checkouts.length !== 1 || persists[0] !== false) violations.push("persist-credentials")
-    if (checkouts.some((step) => ((step.with ?? {}) as Record<string, unknown>)["fetch-depth"] !== 0)) violations.push("reference-history-unavailable")
-  }
   return violations
 }
 
@@ -479,6 +511,190 @@ describe("canonical GitHub ingress contract", () => {
     for (const name of Object.keys(NATIVE_MACOS_LANES)) expect(macosLaneViolations(workflow(name))).toEqual([])
   })
 
+  test("the Mac gate keeps its required identity while two independent 45-minute lanes must both pass", () => {
+    const jobs = workflow("webkit-macos.yml").jobs as Record<string, Record<string, unknown>>
+    expect(Object.keys(jobs).sort()).toEqual(["webkit-functional", "webkit-macos", "webkit-memory"])
+    for (const mode of ["memory", "functional"]) {
+      const job = jobs[`webkit-${mode}`]
+      expect(job["runs-on"]).toBe("macos-15")
+      expect(job["timeout-minutes"]).toBe(45)
+      expect(job).not.toHaveProperty("env")
+      expect((job.steps as Array<Record<string, unknown>>).map((step) => step.run)).toContain(`bash scripts/webkit-macos-lane.sh ${mode}`)
+      expect((job.steps as Array<Record<string, unknown>>).map((step) => step.run)).toContain(`bash scripts/webkit-macos-lane.sh --finalize-evidence ${mode}`)
+    }
+    expect(jobs["webkit-macos"].name).toBe("webkit / macOS time travel + export-import")
+    expect(jobs["webkit-macos"].needs).toEqual(["webkit-memory", "webkit-functional"])
+    expect(jobs["webkit-macos"].if).toBe("${{ !cancelled() }}")
+    expect(jobs["webkit-macos"].steps).toEqual([{
+      env: {
+        MEMORY_RESULT: "${{ needs.webkit-memory.result }}",
+        FUNCTIONAL_RESULT: "${{ needs.webkit-functional.result }}",
+      },
+      run: 'test "$MEMORY_RESULT" = success && test "$FUNCTIONAL_RESULT" = success',
+    }])
+  })
+
+  test("memory and functional commands are isolated behind closed modes, with fail-closed evidence snapshots", () => {
+    const script = readFileSync(resolve(root, MACOS_LANE_SCRIPT), "utf8")
+    expect(script).toContain('case "${MODE}" in memory|functional|all) ;; *)')
+    expect(script).toContain('run_memory_lane() {')
+    expect(script).toContain('run_functional_lane() {')
+    expect(script).toContain('if [[ "${MODE}" == memory || "${MODE}" == all ]]; then run_memory_lane; fi')
+    expect(script).toContain('if [[ "${MODE}" == functional || "${MODE}" == all ]]; then run_functional_lane; fi')
+    expect(script).toContain('[[ -f "${ARTIFACTS}/.lane-cleanup-finished" && ! -L "${ARTIFACTS}/.lane-cleanup-finished" ]]')
+    expect(script).toContain('cp -R "${ARTIFACTS}" "${EVIDENCE_ROOT}"')
+    expect(script).toContain("trap 'exit 130' INT")
+    expect(script).toContain("trap 'exit 143' TERM")
+  })
+
+  test.each(["memory", "functional", "all"])("closed mode %s dispatches only its intended acceptance", (mode) => {
+    const script = readFileSync(resolve(root, MACOS_LANE_SCRIPT), "utf8")
+    const memory = script.slice(script.indexOf("run_memory_lane() {"), script.indexOf("run_functional_lane() {"))
+    const functional = script.slice(script.indexOf("run_functional_lane() {"), script.indexOf('if [[ "${MODE}" == memory ||'))
+    expect(memory).toContain("e2e/time-travel-memory.webkit.spec.ts")
+    expect(memory).not.toContain("e2e/time-travel.spec.ts")
+    expect(functional).toContain("test:e2e:portable-invariants")
+    expect(functional).toContain("test:e2e:boot-retry")
+    expect(functional).not.toMatch(/TT_MEMORY_|TT_WEBKIT_BASELINE|REFERENCE_|time-travel-memory/)
+    const dispatch = script.split("\n").filter((line) => line.startsWith('if [[ "${MODE}" ==') && line.includes("run_")).join("\n")
+    const result = spawnSync("bash", ["-c", `MODE="$1"; run_memory_lane() { echo memory; }; run_functional_lane() { echo functional; }; ${dispatch}`, "dispatch", mode], { encoding: "utf8" })
+    expect(result.status).toBe(0)
+    expect(result.stdout.trim().split("\n")).toEqual(mode === "all" ? ["memory", "functional"] : [mode])
+  })
+
+  test.each([["typo"], ["memory", "unexpected"], ["--finalize-evidence", "typo"]])("unknown/extra lane arguments fail before any producer starts: %j", (...args) => {
+    const result = spawnSync("bash", [resolve(root, MACOS_LANE_SCRIPT), ...args], { encoding: "utf8" })
+    expect(result.status).toBe(64)
+    expect(result.stderr).toMatch(/Unknown WebKit lane mode|Unexpected WebKit lane arguments/)
+  })
+
+  test.each(["memory", "functional", "all"])("%s finalization requires shell cleanup and copies evidence, failing closed on a stale destination", (mode) => {
+    const sandbox = mkdtempSync(resolve(tmpdir(), "almamesh-webkit-finalize-"))
+    try {
+      const source = resolve(sandbox, mode === "all" ? "webkit-lane-artifacts" : `webkit-lane-artifacts-${mode}`)
+      const snapshot = resolve(sandbox, `webkit-lane-evidence-${mode}`)
+      mkdirSync(source)
+      writeFileSync(resolve(source, "completed.log"), "completed evidence\n")
+      const finalize = () => spawnSync("bash", [resolve(root, MACOS_LANE_SCRIPT), "--finalize-evidence", mode], {
+        cwd: sandbox, env: { PATH: process.env.PATH, HOME: sandbox }, encoding: "utf8",
+      })
+      expect(finalize().status).not.toBe(0)
+      expect(existsSync(snapshot)).toBe(false)
+      writeFileSync(resolve(source, ".lane-cleanup-finished"), "")
+      expect(finalize().status).toBe(0)
+      expect(readFileSync(resolve(snapshot, "completed.log"), "utf8")).toBe("completed evidence\n")
+      writeFileSync(resolve(source, "completed.log"), "later source mutation\n")
+      rmSync(source, { recursive: true })
+      expect(readFileSync(resolve(snapshot, "completed.log"), "utf8")).toBe("completed evidence\n")
+      const scan = spawnSync("node", [resolve(root, "frontend/apps/web/scripts/artifactLeakScan.mjs"), snapshot], {
+        env: { PATH: process.env.PATH, HOME: sandbox }, encoding: "utf8",
+      })
+      expect(scan.status).toBe(0)
+      mkdirSync(source)
+      writeFileSync(resolve(source, ".lane-cleanup-finished"), "")
+      expect(finalize().status).not.toBe(0)
+      expect(readFileSync(resolve(snapshot, "completed.log"), "utf8")).toBe("completed evidence\n")
+    } finally { rmSync(sandbox, { recursive: true, force: true }) }
+  })
+
+  test("TERM performs direct-owned cleanup before the shell-cleanup marker", () => {
+    const sandbox = mkdtempSync(resolve(tmpdir(), "almamesh-webkit-cancel-"))
+    try {
+      const script = readFileSync(resolve(root, MACOS_LANE_SCRIPT), "utf8")
+      const helpers = script.slice(0, script.indexOf('PORT="'))
+      const cleanup = script.slice(script.indexOf("cleanup_lane() {"), script.indexOf("wait_for_preview() {"))
+      const harness = `${helpers}
+MEMORY_ROOT=""
+CRASH_EVIDENCE_COLLECTED=1
+mkdir -p "\${ARTIFACTS}"
+${cleanup}
+( while [[ ! -f "\${ARTIFACTS}/writer.log" ]]; do sleep 0.01; done; kill -TERM "$$" ) &
+run_lane_command bash -c 'while true; do printf "sample\\n" >> "$1"; sleep 0.01; done' writer "\${ARTIFACTS}/writer.log"
+`
+      const source = resolve(sandbox, "evidence")
+      const result = spawnSync("bash", ["-c", harness], {
+        cwd: sandbox, env: { PATH: process.env.PATH, HOME: sandbox, WEBKIT_LANE_ARTIFACTS: source }, encoding: "utf8", timeout: 10_000,
+      })
+      expect(result.error).toBeUndefined()
+      expect(result.status).toBe(143)
+      expect(existsSync(resolve(source, ".lane-cleanup-finished"))).toBe(true)
+      expect(readFileSync(resolve(source, "writer.log"), "utf8").length).toBeGreaterThan(0)
+    } finally { rmSync(sandbox, { recursive: true, force: true }) }
+  })
+
+  test("normal command completion forgets its PID without any historical process kill", () => {
+    const script = readFileSync(resolve(root, MACOS_LANE_SCRIPT), "utf8")
+    const helpers = script.slice(0, script.indexOf('PORT="'))
+    const result = spawnSync("bash", ["-c", `${helpers}
+KILL_CALLS=0
+kill() { KILL_CALLS=$((KILL_CALLS + 1)); return 1; }
+run_lane_command true
+[[ -z "$PRODUCER_PIDS" && "$KILL_CALLS" == 0 ]]
+`], { encoding: "utf8" })
+    expect(result.status).toBe(0)
+    expect(result.stderr).not.toContain("unexpected-historical-kill")
+  })
+
+  test("a detached source writer may outlive shell cleanup while the finalized snapshot stays unchanged and scans", async () => {
+    const sandbox = mkdtempSync(resolve(tmpdir(), "almamesh-webkit-detached-"))
+    const source = resolve(sandbox, "webkit-lane-artifacts-functional")
+    const snapshot = resolve(sandbox, "webkit-lane-evidence-functional")
+    mkdirSync(source)
+    writeFileSync(resolve(source, ".lane-cleanup-finished"), "")
+    const sourceLog = resolve(source, "detached-writer.log")
+    const child = spawn("node", ["-e", 'const fs=require("node:fs");setInterval(()=>fs.appendFileSync(process.argv[1],"sample\\n"),10)', sourceLog], {
+      detached: true, stdio: "ignore",
+    })
+    const exited = new Promise<void>((done) => child.once("exit", () => done()))
+    try {
+      const waitFor = async (predicate: () => boolean) => {
+        const deadline = Date.now() + 3000
+        while (!predicate() && Date.now() < deadline) await new Promise((done) => setTimeout(done, 10))
+        expect(predicate()).toBe(true)
+      }
+      await waitFor(() => existsSync(sourceLog))
+      const group = spawnSync("ps", ["-o", "pgid=", "-p", String(child.pid)], { encoding: "utf8" })
+      expect(group.status).toBe(0)
+      expect(Number(group.stdout.trim())).toBe(child.pid)
+      const finalize = spawnSync("bash", [resolve(root, MACOS_LANE_SCRIPT), "--finalize-evidence", "functional"], {
+        cwd: sandbox, env: { PATH: process.env.PATH, HOME: sandbox }, encoding: "utf8",
+      })
+      expect(finalize.status).toBe(0)
+      const snapshotLog = resolve(snapshot, "detached-writer.log")
+      const copied = readFileSync(snapshotLog, "utf8")
+      await waitFor(() => readFileSync(sourceLog, "utf8").length > copied.length)
+      expect(readFileSync(snapshotLog, "utf8")).toBe(copied)
+      const scan = spawnSync("node", [resolve(root, "frontend/apps/web/scripts/artifactLeakScan.mjs"), snapshot], {
+        env: { PATH: process.env.PATH, HOME: sandbox }, encoding: "utf8",
+      })
+      expect(scan.status).toBe(0)
+      expect(readFileSync(snapshotLog, "utf8")).toBe(copied)
+    } finally {
+      child.kill("SIGTERM")
+      await exited
+      rmSync(sandbox, { recursive: true, force: true })
+    }
+  })
+
+  test.each([
+    ["missing memory lane", (w: Record<string, unknown>) => { const jobs = { ...(w.jobs as Record<string, unknown>) }; delete jobs["webkit-memory"]; return { ...w, jobs } }],
+    ["aggregate ignores functional result", (w: Record<string, unknown>) => { const jobs = structuredClone(w.jobs) as Record<string, Record<string, unknown>>; jobs["webkit-macos"].needs = ["webkit-memory"]; return { ...w, jobs } }],
+    ["aggregate allows failure", (w: Record<string, unknown>) => { const jobs = structuredClone(w.jobs) as Record<string, Record<string, unknown>>; jobs["webkit-macos"].steps = [{ run: "true" }]; return { ...w, jobs } }],
+    ["workflow exports artifact path", (w: Record<string, unknown>) => ({ ...w, env: { WEBKIT_LANE_ARTIFACTS: "webkit-lane-artifacts-memory" } })],
+    ["lane exports artifact path", (w: Record<string, unknown>) => withJob(w, (job) => ({ ...job, env: { WEBKIT_LANE_ARTIFACTS: "webkit-lane-artifacts-memory" } }))],
+    ["finalizer changes source path", (w: Record<string, unknown>) => withSteps(w, (steps) => steps.map((step) => step.id === "finalize-evidence" ? { ...step, env: { WEBKIT_LANE_ARTIFACTS: "/tmp/elsewhere" } } : step))],
+    ["lane skipped", (w: Record<string, unknown>) => withJob(w, (job) => ({ ...job, if: "false" }))],
+    ["lane allowed failure", (w: Record<string, unknown>) => withJob(w, (job) => ({ ...job, "continue-on-error": true }))],
+    ["expanded time budget", (w: Record<string, unknown>) => withJob(w, (job) => ({ ...job, "timeout-minutes": 60 }))],
+    ["finalization omitted", (w: Record<string, unknown>) => withSteps(w, (steps) => steps.filter((step) => step.id !== "finalize-evidence"))],
+    ["finalization allowed failure", (w: Record<string, unknown>) => withSteps(w, (steps) => steps.map((step) => step.id === "finalize-evidence" ? { ...step, "continue-on-error": true } : step))],
+    ["scan live source", (w: Record<string, unknown>) => withSteps(w, (steps) => steps.map((step) => step.id === "leak-scan" ? { ...step, run: "node scripts/artifactLeakScan.mjs webkit-lane-artifacts-functional" } : step))],
+    ["upload live source", (w: Record<string, unknown>) => withUpload(w, (step) => ({ ...step, with: { ...(step.with as object), path: "frontend/apps/web/webkit-lane-artifacts-functional" } }))],
+    ["skip tests", (w: Record<string, unknown>) => withSteps(w, (steps) => steps.map((step) => typeof step.run === "string" && /^bash scripts\/webkit-macos-lane.sh (memory|functional)$/.test(step.run) ? { ...step, if: "false" } : step))],
+  ])("split acceptance rejects %s", (_name, mutate) => {
+    expect(macosLaneViolations(mutate(workflow("webkit-macos.yml")))).not.toEqual([])
+  })
+
   test("the secrets check ignores the word outside an expression", () => {
     expect(SECRETS_ACCESS.test("${{ github.sha }} no secrets here ${{ github.ref }}")).toBe(false)
   })
@@ -610,7 +826,7 @@ describe("canonical GitHub ingress contract", () => {
   test("the macOS lane drives the one automatic boot retry on WebKit against the hooked preview", () => {
     const script = readFileSync(resolve(root, MACOS_LANE_SCRIPT), "utf8")
     // The fault switch exists only in the hooks build the lane already serves.
-    expect(script).toContain('BOOT_RETRY_E2E_BASE_URL="${BASE_URL}" bun run test:e2e:boot-retry --project=webkit --retries=0')
+    expect(script).toContain('BOOT_RETRY_E2E_BASE_URL="${BASE_URL}" run_lane_command bun run test:e2e:boot-retry --project=webkit --retries=0')
     const config = readFileSync(resolve(root, "frontend/apps/web/playwright.boot-retry.config.ts"), "utf8")
     expect(config).toContain('name: "webkit", use: { ...devices["Desktop Safari"]')
     expect(config).toContain("process.env.BOOT_RETRY_E2E_BASE_URL")

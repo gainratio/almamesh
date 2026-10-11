@@ -1,32 +1,84 @@
 #!/usr/bin/env bash
-# The macOS WebKit lane (.github/workflows/webkit-macos.yml).
-#
-# Why it is not a Dagger gate: Dagger runs in Linux containers, and Linux
-# Playwright WebKit cannot open SQLite's nested-Worker OPFS (see
-# scripts/verify-webkit-engine.mjs), so the engine never boots there and every
-# journey that needs it would fail or have to be skipped. macOS WebKit can.
-#
-# Builds the hooked preview once (VITE_EXIT_GATE_HOOKS=1, as the Dagger browser
-# shards do), serves it, and runs the journeys on desktop Safari and an iPhone
-# profile:
-#   - five original-release cold boots, followed by five candidate Day/place
-#     journeys on separate production builds with exit hooks disabled
-#   - e2e/time-travel.spec.ts (webkit: the full-tier and Dashboard journeys; iphone-webkit:
-#     the iPhone journey, minimal tier; iphone-15-webkit: the @iphone15 Dashboard
-#     time-travel journey, minimal tier)
-#   - e2e/portable-invariants.spec.ts (export/import, incl. the Day-pin round trip)
-#   - e2e/boot-retry.spec.ts (webkit: one automatic engine boot retry, bare and
-#     Pyodide-wrapped wasm traps; needs this hooks build)
-#
-# Every run leaves its evidence in webkit-lane-artifacts/: each spec's
-# Playwright output (traces, videos and screenshots of failed tests; every
-# test's WebKit log and RSS samples, e2e/webkitDiagnostics.ts), the macOS crash
-# reports and unified-log lines WebKit wrote during the run, and the machine's
-# memory pressure every 10 s. The workflow uploads it only after
-# scripts/artifactLeakScan.mjs has found no runner secret in it.
-#
-# Run from frontend/apps/web after `bun install` and `uv` are available.
+# Native macOS WebKit acceptance. Hosted CI runs independent memory and
+# functional jobs, each bounded to 45 minutes. Local callers may run all.
+# memory: five original-release boots then five candidate Day/place journeys,
+# on this same runner with the same sampler and production builds without hooks.
+# functional: all desktop/iPhone time-travel, portable restore and boot recovery
+# cases, against one hooks-enabled preview, with zero test retries.
+# Evidence is uploaded only from a finalized snapshot after its content scan.
 set -euo pipefail
+
+FINALIZE=0
+if [[ "${1:-}" == --finalize-evidence ]]; then FINALIZE=1; shift; fi
+MODE="${1:-all}"
+case "${MODE}" in memory|functional|all) ;; *) echo "Unknown WebKit lane mode: ${MODE}" >&2; exit 64 ;; esac
+if (( $# > 1 )); then echo "Unexpected WebKit lane arguments" >&2; exit 64; fi
+ARTIFACTS="${WEBKIT_LANE_ARTIFACTS:-webkit-lane-artifacts}"
+if [[ "${MODE}" != all && -z "${WEBKIT_LANE_ARTIFACTS:-}" ]]; then ARTIFACTS="webkit-lane-artifacts-${MODE}"; fi
+EVIDENCE_ROOT="webkit-lane-evidence-${MODE}"
+
+finalize_evidence() {
+  # The source remains diagnostic-only. The scanner and upload both use this
+  # private copy after cp succeeds. No test or browser receives its path.
+  # Detached source writers can outlive shell cleanup; interrupted evidence
+  # may be incomplete. A failed copy is fatal and never reaches scan/upload.
+  [[ -d "${ARTIFACTS}" && ! -L "${ARTIFACTS}" ]]
+  [[ -f "${ARTIFACTS}/.lane-cleanup-finished" && ! -L "${ARTIFACTS}/.lane-cleanup-finished" ]]
+  [[ ! -e "${EVIDENCE_ROOT}" && ! -L "${EVIDENCE_ROOT}" ]]
+  cp -R "${ARTIFACTS}" "${EVIDENCE_ROOT}"
+}
+if [[ "${FINALIZE}" == 1 ]]; then finalize_evidence; exit; fi
+
+# Direct-owned shell jobs get best-effort cleanup on signals. Playwright may
+# start detached browsers/ffmpeg; this does not prove their quiescence. Never
+# kill historical process groups or retain command PIDs after wait completes.
+set -m
+PRODUCER_PIDS=""
+register_producer() { PRODUCER_PIDS="${PRODUCER_PIDS} $1"; }
+forget_producer() {
+  local remaining="" pid
+  for pid in ${PRODUCER_PIDS}; do
+    if [[ "${pid}" != "$1" ]]; then remaining="${remaining} ${pid}"; fi
+  done
+  PRODUCER_PIDS="${remaining}"
+}
+stop_producers() {
+  local pid running
+  # jobs -pr limits signals to this shell's currently running direct jobs.
+  # Descendants and detached processes are deliberately not inferred by PID.
+  for pid in "$@"; do
+    for running in $(jobs -pr); do
+      if [[ "${running}" == "${pid}" ]]; then kill -TERM "${pid}" 2>/dev/null || true; fi
+    done
+  done
+  # Give live direct jobs a bounded grace period, with no delay for a command
+  # that has already completed and been forgotten by run_lane_command.
+  for _ in $(seq 1 20); do
+    local live=0
+    for pid in "$@"; do
+      for running in $(jobs -pr); do
+        if [[ "${running}" == "${pid}" ]]; then live=1; fi
+      done
+    done
+    if [[ "${live}" == 0 ]]; then break; fi
+    sleep 0.1
+  done
+  for pid in "$@"; do
+    for running in $(jobs -pr); do
+      if [[ "${running}" == "${pid}" ]]; then kill -KILL "${pid}" 2>/dev/null || true; fi
+    done
+    wait "${pid}" 2>/dev/null || true
+  done
+}
+run_lane_command() {
+  local command_pid command_status=0
+  "$@" &
+  command_pid=$!
+  register_producer "${command_pid}"
+  if wait "${command_pid}"; then command_status=0; else command_status=$?; fi
+  forget_producer "${command_pid}"
+  return "${command_status}"
+}
 
 PORT="${WEBKIT_LANE_PORT:-4199}"
 BASE_URL="http://127.0.0.1:${PORT}"
@@ -34,20 +86,8 @@ REFERENCE_PORT=$((PORT + 1))
 REFERENCE_URL="http://127.0.0.1:${REFERENCE_PORT}"
 MEMORY_PORT=$((PORT + 2))
 MEMORY_URL="http://127.0.0.1:${MEMORY_PORT}"
-REFERENCE_REF="8d10fbbb76336a8a5efe272912e392e260b3fef5"
-MEASUREMENT_REF="$(git rev-parse HEAD)"
-REPO_ROOT="$(git rev-parse --show-toplevel)"
-MEMORY_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/almamesh-webkit-memory.XXXXXX")"
-REFERENCE_ROOT="${MEMORY_ROOT}/reference"
-REFERENCE_WEB="${REFERENCE_ROOT}/frontend/apps/web"
-REFERENCE_DIST="${MEMORY_ROOT}/reference-dist"
-MEMORY_DIST="${MEMORY_ROOT}/candidate-dist"
-PREVIEW_PID=""
-REFERENCE_PREVIEW_PID=""
-MEMORY_PREVIEW_PID=""
-MEMORY_PID=""
+MEMORY_ROOT=""
 CRASH_EVIDENCE_COLLECTED=0
-ARTIFACTS="${WEBKIT_LANE_ARTIFACTS:-webkit-lane-artifacts}"
 rm -rf "${ARTIFACTS}"
 mkdir -p "${ARTIFACTS}/crash-reports"
 LANE_START="$(date '+%Y-%m-%d %H:%M:%S')"
@@ -56,16 +96,20 @@ touch "${ARTIFACTS}/.lane-start"
 
 cleanup_lane() {
   local lane_status=$?
+  trap '' INT TERM
+  stop_producers ${PRODUCER_PIDS}
   if [[ "${CRASH_EVIDENCE_COLLECTED}" == 0 ]] && command -v collect_crash_evidence >/dev/null; then
     collect_crash_evidence || true
   fi
-  for pid in "${PREVIEW_PID}" "${REFERENCE_PREVIEW_PID}" "${MEMORY_PREVIEW_PID}" "${MEMORY_PID}"; do
-    if [[ -n "${pid}" ]]; then kill "${pid}" 2>/dev/null || true; fi
-  done
-  rm -rf "${MEMORY_ROOT}"
+  if [[ -n "${MEMORY_ROOT}" ]]; then rm -rf "${MEMORY_ROOT}"; fi
+  # This marks shell cleanup only, not detached-process quiescence.
+  # Source evidence may still change; only the later private copy is scanned.
+  touch "${ARTIFACTS}/.lane-cleanup-finished"
   return "${lane_status}"
 }
 trap cleanup_lane EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 wait_for_preview() {
   local url="$1"
@@ -76,25 +120,6 @@ wait_for_preview() {
   curl -fsS -o /dev/null "${url}/"
 }
 
-bash scripts/setup-dev-assets.sh
-bun x playwright install webkit
-VITE_API_URL= VITE_EXIT_GATE_HOOKS=1 ./node_modules/.bin/vite build --outDir dist-webkit
-
-VITE_API_URL= ./node_modules/.bin/vite preview --outDir dist-webkit --host 127.0.0.1 --port "${PORT}" --strictPort &
-PREVIEW_PID=$!
-( while true; do
-    echo "$(date '+%H:%M:%S') $(memory_pressure -Q 2>/dev/null | tail -1) $(sysctl -n vm.swapusage 2>/dev/null)"
-    sleep 10
-  done ) > "${ARTIFACTS}/system-memory.log" 2>&1 &
-MEMORY_PID=$!
-
-# What WebKit and macOS recorded about a lost web process: the WebKit,
-# Playwright and bun reports written since the lane started, plus JetsamEvent
-# (macOS's memory-kill report), each labelled crash report or resource report
-# (.diag). The kernel's GPU-restart reports, which the runner's paravirtual GPU
-# writes every run, are left out. Also the unified-log lines about WebContent
-# terminations, memory kills and jetsam. Each .ips headline goes to the job log
-# (scripts/crashReportSummary.mjs).
 collect_crash_evidence() {
   for dir in "${HOME}/Library/Logs/DiagnosticReports" /Library/Logs/DiagnosticReports; do
     find "${dir}" -newer "${ARTIFACTS}/.lane-start" -type f 2>/dev/null | while read -r report; do
@@ -110,8 +135,25 @@ collect_crash_evidence() {
   echo "unified log: $(wc -l < "${ARTIFACTS}/unified-log.txt") lines about WebContent, memory kills and jetsam"
   grep -iE 'memorystatus.*kill|exceed|crash|terminat' "${ARTIFACTS}/unified-log.txt" | grep -v 'coalition roles' | head -40 || true
 }
-wait_for_preview "${BASE_URL}"
 
+bash scripts/setup-dev-assets.sh
+bun x playwright install webkit
+( while true; do
+    echo "$(date '+%H:%M:%S') $(memory_pressure -Q 2>/dev/null | tail -1) $(sysctl -n vm.swapusage 2>/dev/null)"
+    sleep 10
+  done ) > "${ARTIFACTS}/system-memory.log" 2>&1 &
+register_producer "$!"
+
+status=0
+run_memory_lane() {
+REFERENCE_REF="8d10fbbb76336a8a5efe272912e392e260b3fef5"
+MEASUREMENT_REF="$(git rev-parse HEAD)"
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+MEMORY_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/almamesh-webkit-memory.XXXXXX")"
+REFERENCE_ROOT="${MEMORY_ROOT}/reference"
+REFERENCE_WEB="${REFERENCE_ROOT}/frontend/apps/web"
+REFERENCE_DIST="${MEMORY_ROOT}/reference-dist"
+MEMORY_DIST="${MEMORY_ROOT}/candidate-dist"
 # Hosted memory acceptance pairs the ORIGINAL release with this candidate on
 # this runner, using the same installed Playwright, sampler and five fresh
 # profiles. Neither build exposes exit hooks. A local caller may reuse an
@@ -139,13 +181,14 @@ else
   ( cd "${REFERENCE_WEB}" && BUILD_COMMIT="${REFERENCE_REF}" VITE_API_URL= VITE_EXIT_GATE_HOOKS= ./node_modules/.bin/vite build --outDir "${REFERENCE_DIST}" )
   ( cd "${REFERENCE_WEB}" && VITE_API_URL= exec ./node_modules/.bin/vite preview --outDir "${REFERENCE_DIST}" --host 127.0.0.1 --port "${REFERENCE_PORT}" --strictPort ) &
   REFERENCE_PREVIEW_PID=$!
+  register_producer "${REFERENCE_PREVIEW_PID}"
   wait_for_preview "${REFERENCE_URL}"
-  TT_MEMORY_BASELINE_REF="${REFERENCE_REF}" TT_MEMORY_MEASUREMENT_REF="${MEASUREMENT_REF}" TIME_TRAVEL_E2E_BASE_URL="${REFERENCE_URL}" bun x playwright test --config=playwright.time-travel.config.ts e2e/time-travel-memory.webkit.spec.ts --project=iphone-15-webkit --grep 'boot baseline' --repeat-each=5 --retries=0 --reporter=json --output="${ARTIFACTS}/time-travel-memory-baseline" > "${ARTIFACTS}/time-travel-memory-baseline-report.json"
+  TT_MEMORY_BASELINE_REF="${REFERENCE_REF}" TT_MEMORY_MEASUREMENT_REF="${MEASUREMENT_REF}" TIME_TRAVEL_E2E_BASE_URL="${REFERENCE_URL}" run_lane_command bun x playwright test --config=playwright.time-travel.config.ts e2e/time-travel-memory.webkit.spec.ts --project=iphone-15-webkit --grep 'boot baseline' --repeat-each=5 --retries=0 --reporter=json --output="${ARTIFACTS}/time-travel-memory-baseline" > "${ARTIFACTS}/time-travel-memory-baseline-report.json"
   BASELINE_MIB="$(
     node scripts/webkit-memory-baseline.mjs --report "${ARTIFACTS}/time-travel-memory-baseline-report.json" --measurement-commit "${MEASUREMENT_REF}" --provenance "${ARTIFACTS}/time-travel-memory-baseline-provenance.json"
   )"
-  kill "${REFERENCE_PREVIEW_PID}"
-  wait "${REFERENCE_PREVIEW_PID}" 2>/dev/null || true
+  stop_producers "${REFERENCE_PREVIEW_PID}"
+  forget_producer "${REFERENCE_PREVIEW_PID}"
   REFERENCE_PREVIEW_PID=""
 fi
 
@@ -154,17 +197,25 @@ fi
 BUILD_COMMIT="${MEASUREMENT_REF}" VITE_API_URL= VITE_EXIT_GATE_HOOKS= ./node_modules/.bin/vite build --outDir "${MEMORY_DIST}"
 VITE_API_URL= ./node_modules/.bin/vite preview --outDir "${MEMORY_DIST}" --host 127.0.0.1 --port "${MEMORY_PORT}" --strictPort &
 MEMORY_PREVIEW_PID=$!
+register_producer "${MEMORY_PREVIEW_PID}"
 wait_for_preview "${MEMORY_URL}"
 
-# No retries: a WebKit page that crashes once is a red lane, never a pass on
-# retry. After baseline validation, every spec runs even if one fails. Each spec
-# writes to its own output directory, so a later run does not wipe an earlier
-# one's evidence.
-status=0
-TT_MEMORY_PHASE=final TT_MEMORY_GRANULARITY=day TT_MEMORY_REPORT_ONLY=0 TT_WEBKIT_BASELINE_MIB="${BASELINE_MIB}" TIME_TRAVEL_E2E_BASE_URL="${MEMORY_URL}" bun run test:e2e:time-travel e2e/time-travel-memory.webkit.spec.ts --project=iphone-15-webkit --grep 'WebContent RSS budget' --repeat-each=5 --retries=0 --output="${ARTIFACTS}/time-travel-memory" || status=1
-TIME_TRAVEL_E2E_BASE_URL="${BASE_URL}" bun run test:e2e:time-travel e2e/time-travel.spec.ts --project=webkit --project=iphone-webkit --project=iphone-15-webkit --retries=0 --output="${ARTIFACTS}/time-travel" || status=1
-PORTABLE_INVARIANTS_E2E_BASE_URL="${BASE_URL}" bun run test:e2e:portable-invariants --project=webkit --project=iphone-webkit --retries=0 --output="${ARTIFACTS}/portable-invariants" || status=1
-BOOT_RETRY_E2E_BASE_URL="${BASE_URL}" bun run test:e2e:boot-retry --project=webkit --retries=0 --output="${ARTIFACTS}/boot-retry" || status=1
+TT_MEMORY_PHASE=final TT_MEMORY_GRANULARITY=day TT_MEMORY_REPORT_ONLY=0 TT_WEBKIT_BASELINE_MIB="${BASELINE_MIB}" TIME_TRAVEL_E2E_BASE_URL="${MEMORY_URL}" run_lane_command bun run test:e2e:time-travel e2e/time-travel-memory.webkit.spec.ts --project=iphone-15-webkit --grep 'WebContent RSS budget' --repeat-each=5 --retries=0 --output="${ARTIFACTS}/time-travel-memory" || status=1
+}
+
+run_functional_lane() {
+VITE_API_URL= VITE_EXIT_GATE_HOOKS=1 ./node_modules/.bin/vite build --outDir dist-webkit
+VITE_API_URL= ./node_modules/.bin/vite preview --outDir dist-webkit --host 127.0.0.1 --port "${PORT}" --strictPort &
+register_producer "$!"
+wait_for_preview "${BASE_URL}"
+# Zero retries, and run each independent suite even if a preceding one fails.
+TIME_TRAVEL_E2E_BASE_URL="${BASE_URL}" run_lane_command bun run test:e2e:time-travel e2e/time-travel.spec.ts --project=webkit --project=iphone-webkit --project=iphone-15-webkit --retries=0 --output="${ARTIFACTS}/time-travel" || status=1
+PORTABLE_INVARIANTS_E2E_BASE_URL="${BASE_URL}" run_lane_command bun run test:e2e:portable-invariants --project=webkit --project=iphone-webkit --retries=0 --output="${ARTIFACTS}/portable-invariants" || status=1
+BOOT_RETRY_E2E_BASE_URL="${BASE_URL}" run_lane_command bun run test:e2e:boot-retry --project=webkit --retries=0 --output="${ARTIFACTS}/boot-retry" || status=1
+}
+
+if [[ "${MODE}" == memory || "${MODE}" == all ]]; then run_memory_lane; fi
+if [[ "${MODE}" == functional || "${MODE}" == all ]]; then run_functional_lane; fi
 collect_crash_evidence
 CRASH_EVIDENCE_COLLECTED=1
 grep -rh "page crashed" "${ARTIFACTS}" --include='*-browser.log' || true
