@@ -3,6 +3,7 @@
  * draft → pin, the year range, and the period label (Intl in the UI language).
  * Calendar strings only; no astrology, no clock reads.
  */
+import { EPHEMERIS_LAST_YEAR } from '@almamesh/llm';
 import type { ChatThreadAsOf } from '@almamesh/shared-types';
 
 export type PinGranularity = ChatThreadAsOf['granularity'];
@@ -15,8 +16,8 @@ export interface SheetDraft {
   readonly place?: ChatThreadAsOf['place'];
 }
 
-/** The ephemeris ends in 2052 (step A); the sheet offers nothing later. */
-export const SHEET_LAST_YEAR = 2052;
+/** The engine's last supported year (one source: @almamesh/llm period.ts); the sheet offers nothing later. */
+export const SHEET_LAST_YEAR = EPHEMERIS_LAST_YEAR;
 const SHEET_FIRST_YEAR = 1900;
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 

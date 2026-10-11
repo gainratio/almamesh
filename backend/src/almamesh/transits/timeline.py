@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING
 from almamesh.constants.astrology import PlanetName
 from almamesh.schemas.transits import TimelineEvent, TransitTimeline
 from almamesh.transits.natal import natal_moon_index
+from almamesh.transits.positions import EPHEMERIS_LAST_INSTANT
 from almamesh.transits.timeline_dasha import dasha_change_events
 from almamesh.transits.timeline_sade_sati import sade_sati_phase_events
 from almamesh.transits.timeline_sign_changes import node_sign_change_events, sign_change_events
@@ -60,7 +61,8 @@ def build_timeline(
     window_months: int = 12,
 ) -> TransitTimeline:
     """Build the chronologically-sorted forward timeline over the window."""
-    end = start + timedelta(days=_DAYS_PER_MONTH * window_months)
+    # The window stops at the ephemeris end: a period near 2052 asks for months past DE421.
+    end = min(start + timedelta(days=_DAYS_PER_MONTH * window_months), EPHEMERIS_LAST_INSTANT)
     events = _collect(astro, natal, birth_dt, start, end)
     events.sort(key=lambda e: e.date)
     return TransitTimeline(window_start=start, window_end=end, events=events)

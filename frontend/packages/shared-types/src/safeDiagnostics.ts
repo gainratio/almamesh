@@ -65,6 +65,8 @@ export const SAFE_DIAGNOSTIC_CODES = [
   'sw.heal_failed',
   'sw.shell_cleanup_failed',
   'sw.update_check_failed',
+  'time_travel.back_to_today_failed',
+  'time_travel.moment_sky_failed',
 ] as const;
 
 export type SafeDiagnosticCode = (typeof SAFE_DIAGNOSTIC_CODES)[number];

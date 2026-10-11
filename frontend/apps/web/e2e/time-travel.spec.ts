@@ -1114,6 +1114,31 @@ async function pinFullTier(page: Page): Promise<void> {
   }, FULL_TIER);
 }
 
+
+/**
+ * The engine's last supported year (backend EPHEMERIS_LAST_INSTANT, 2053-01-01 exclusive). A year the
+ * sheet offers must compute: 2051 and 2052 once failed with a bare "failed" because Saturn's
+ * look-ahead read DE421 past its end. Literal on purpose: it guards the sheet's range, not itself.
+ */
+const LAST_YEAR = '2052';
+const PAST_LAST_YEAR = '2053';
+
+/** Open the Dashboard sheet and read the Year selector's options; the sheet stays open. */
+async function openYearOptions(page: Page): Promise<string[]> {
+  await page.getByTestId(DASHBOARD_BUTTON).click();
+  await page.getByTestId('time-travel-tab-year').click();
+  return page.getByTestId('time-travel-year').locator('option').evaluateAll((options) =>
+    options.map((option) => (option as HTMLOptionElement).value),
+  );
+}
+
+async function goToLastYear(page: Page): Promise<void> {
+  await page.getByTestId('time-travel-year').selectOption(LAST_YEAR);
+  await page.getByTestId('time-travel-go').click();
+  await expect(page.getByTestId('time-travel-sheet')).toBeHidden();
+  await expect(page.getByTestId('dashboard-time-travel-title')).toHaveText(new RegExp(LAST_YEAR));
+}
+
 test.describe('Dashboard time travel', () => {
   test('[contract/real] with AI off, desktop: the button opens the sheet and March 2019 shows its dashas and transits', async ({ page }, testInfo) => {
     const consoleErrors = captureConsole(page);
@@ -1158,6 +1183,21 @@ test.describe('Dashboard time travel', () => {
     await page.getByTestId('dashboard-time-travel-back').click();
     await expect(page.getByTestId('dashboard-time-travel-banner')).toHaveCount(0);
     await expect(page.getByTestId('time-travel-moment-card')).toHaveCount(0);
+    expect(consoleErrors, 'the journey must keep a clean console').toEqual([]);
+  });
+
+  test('[contract/real] the last supported year computes its sky, and the year after it is not offered', async ({ page }) => {
+    const consoleErrors = captureConsole(page);
+    await pinFullTier(page);
+    await bootEngine(page);
+    await seedChart(page);
+    await openDashboard(page);
+    const years = await openYearOptions(page);
+    expect(years.at(-1), 'the sheet ends at the engine range').toBe(LAST_YEAR);
+    expect(years, 'the year after the engine range is never offered').not.toContain(PAST_LAST_YEAR);
+    await goToLastYear(page);
+    await expect(page.getByTestId('time-travel-moment-transits'), 'the last year computes a sky, not a failure').toBeVisible({ timeout: 180_000 });
+    await expect(page.getByTestId('time-travel-moment-failed')).toHaveCount(0);
     expect(consoleErrors, 'the journey must keep a clean console').toEqual([]);
   });
 
@@ -1255,6 +1295,20 @@ test.describe('Dashboard time travel on an iPhone 15', () => {
     }
     await page.getByTestId('dashboard-time-travel-banner').screenshot({ path: testInfo.outputPath('dashboard-banner-iphone15.png') });
     await page.screenshot({ path: testInfo.outputPath('dashboard-march-2019-iphone15.png'), fullPage: true });
+    expect(consoleErrors, 'the journey must keep a clean console').toEqual([]);
+  });
+  test('[contract/real] @iphone15 the last supported year gives a moment card, and the year after it is not offered', async ({ page }) => {
+    const consoleErrors = captureConsole(page);
+    await bootEngine(page);
+    await seedChart(page);
+    await openDashboard(page);
+    const years = await openYearOptions(page);
+    expect(years.at(-1), 'the sheet ends at the engine range').toBe(LAST_YEAR);
+    expect(years, 'the year after the engine range is never offered').not.toContain(PAST_LAST_YEAR);
+    await goToLastYear(page);
+    await expect(page.getByTestId('time-travel-moment-card')).toBeVisible();
+    await expect(page.getByTestId('time-travel-moment-failed')).toHaveCount(0);
+    await expect(page.getByTestId('time-travel-moment-dashas-only')).toBeVisible();
     expect(consoleErrors, 'the journey must keep a clean console').toEqual([]);
   });
 });

@@ -64,6 +64,15 @@ describe('useMomentSky', () => {
     await waitFor(() => expect(result.current.sky.kind).toBe('ready'));
   });
 
+  it('logs a failed compute with the safe code only, never the raw error', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const loader = vi.fn().mockRejectedValueOnce(new Error('ephemeris range, birth 1990-05-17'));
+    const { result } = renderHook(() => useMomentSky(input({ loader })));
+    await waitFor(() => expect(result.current.sky.kind).toBe('failed'));
+    expect(spy.mock.calls).toEqual([['[almamesh:error:time_travel.moment_sky_failed]']]);
+    spy.mockRestore();
+  });
+
   it("never touches today's Life Atlas result in usePredictiveStore", async () => {
     const before = usePredictiveStore.getState();
     const ensure = vi.spyOn(before, 'ensurePredictive');

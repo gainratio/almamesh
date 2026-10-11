@@ -310,6 +310,7 @@ describe('Dashboard Time travel', () => {
   });
 
   it('a failed Back to today does not follow the person to the next moment', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     await renderDashboard({ ai: 'off' });
     const realSetMoment = useTimeTravelStore.getState().setMoment;
     // The seam's last step fails on the way back to today, and only then.
@@ -324,6 +325,8 @@ describe('Dashboard Time travel', () => {
       fireEvent.click(screen.getByTestId('dashboard-time-travel-back'));
     });
     expect(screen.getByTestId('dashboard-time-travel-back-failed')).not.toBeNull();
+    expect(errorSpy.mock.calls).toContainEqual(['[almamesh:error:time_travel.back_to_today_failed]']);
+    errorSpy.mockRestore();
 
     fireEvent.click(screen.getByTestId('dashboard-time-travel-change'));
     fireEvent.change(screen.getByTestId('time-travel-year'), { target: { value: '2020' } });

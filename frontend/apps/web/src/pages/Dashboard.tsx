@@ -200,7 +200,10 @@ export default function DashboardPage() {
       setTravelBackFor({ status: 'idle', key });
       // The banner (and its Back button) unmounts; keep focus on the page.
       travelFocus.buttonRef.current?.focus();
-    } catch { setTravelBackFor({ status: 'failed', key }); }
+    } catch (cause) {
+      safeError('time_travel.back_to_today_failed', cause);
+      setTravelBackFor({ status: 'failed', key });
+    }
   };
   // Whose chart is missing — named on the empty state so the screen is about a
   // person, not an abstraction. Selected as a primitive so the hook is stable.

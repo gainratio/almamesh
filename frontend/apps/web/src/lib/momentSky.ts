@@ -8,7 +8,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { devicePolicy } from '@almamesh/browser';
 import type { SiderealChart } from '@almamesh/browser/types';
 import { restrictTransitsToPeriod, type PeriodRange } from '@almamesh/llm';
-import type { ChatThreadAsOf, ProcessedBirthData, TransitCtx } from '@almamesh/shared-types';
+import { safeError, type ChatThreadAsOf, type ProcessedBirthData, type TransitCtx } from '@almamesh/shared-types';
 import { toTransitCtx } from '@almamesh/store';
 
 import type { ChartEngineContextValue } from '../providers/chartEngineContext';
@@ -58,7 +58,11 @@ export function useMomentSky(input: MomentSkyInput): { readonly sky: MomentSky; 
     setSky({ kind: 'working' });
     computeSky({ start, end }, granularity !== 'day', load, controller.signal)
       .then((next) => { if (!controller.signal.aborted) setSky(next); })
-      .catch(() => { if (!controller.signal.aborted) setSky({ kind: 'failed' }); });
+      .catch((cause: unknown) => {
+        if (controller.signal.aborted) return;
+        safeError('time_travel.moment_sky_failed', cause);
+        setSky({ kind: 'failed' });
+      });
     return () => controller.abort();
   }, [start, end, granularity, chart, profileKey, birth, engine, loader, skyAllowed, attempt]);
   const retry = useCallback(() => setAttempt((n) => n + 1), []);
