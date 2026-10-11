@@ -26,6 +26,11 @@ function fakeValue(): string {
   return ['Fx', randomBytes(12).toString('hex'), 'Qz'].join('');
 }
 const SECRET = fakeValue();
+const HOMEBREW_PATHS = {
+  HOMEBREW_CELLAR: '/opt/homebrew/Cellar',
+  HOMEBREW_PREFIX: '/opt/homebrew',
+  HOMEBREW_REPOSITORY: '/opt/homebrew',
+};
 const b64 = (text: string): string => Buffer.from(text).toString('base64');
 const roots: string[] = [];
 
@@ -58,6 +63,18 @@ describe('envNeedles', () => {
     expect(PUBLIC_ENV_NAMES).toEqual(expect.arrayContaining(['PATH', 'HOME', 'TMPDIR', 'GITHUB_WORKSPACE']));
     expect(PUBLIC_ENV_NAMES.filter((name: string) => /TOKEN|SECRET|KEY|PASS|AUTH|CRED/.test(name))).toEqual([]);
   });
+
+  it.each(Object.entries(HOMEBREW_PATHS))('excludes the exact public installation metadata name %s', (name, value) => {
+    expect(envNeedles({ [name]: value })).toEqual([]);
+  });
+
+  it.each(['HOMEBREW_GITHUB_API_TOKEN', 'HOMEBREW_PASSWORD', 'HOMEBREW_CELLAR_SECRET', 'UNRELATED_API_KEY'])(
+    'still scans the unlisted environment secret %s', (name) => {
+      const needles = envNeedles({ ...HOMEBREW_PATHS, [name]: SECRET });
+      expect(needles.map((needle) => needle.label)).toContain(`environment variable ${name}`);
+      expect(scanDirectory(evidenceDir({ 'worker.log': SECRET }), needles)).toEqual([`environment variable ${name}`]);
+    },
+  );
 });
 
 describe('scanDirectory', () => {
@@ -184,6 +201,13 @@ describe('the command line', () => {
   it('exits 0 and keeps a clean directory', () => {
     const dir = evidenceDir({ 'machine.txt': 'macOS 15' });
     const result = runScan(dir, { LANE_TOKEN: SECRET });
+    expect(result.status).toBe(0);
+    expect(existsSync(dir)).toBe(true);
+  });
+
+  it('keeps evidence containing only public Homebrew installation paths', () => {
+    const dir = evidenceDir({ 'webkit-browser.log': Object.values(HOMEBREW_PATHS).join('\n') });
+    const result = runScan(dir, HOMEBREW_PATHS);
     expect(result.status).toBe(0);
     expect(existsSync(dir)).toBe(true);
   });

@@ -1,6 +1,6 @@
 # Time travel and deterministic chat verification — 11 October 2026
 
-Status: the backend and frontend quality gates passed. Repeated constrained-device chat checks and the portable-state checks passed. On 11 October 2026 the user accepted local coherence and authorized the CI/CD release process. Hosted release verification is pending; cold-boot memory, wider restore memory, live inference and physical iPhone verification remain open. Nothing in this document establishes deployment of these changes.
+Status: local verification snapshot before hosted release. The backend/frontend gates and complete native Mac functional lane passed. On 11 October 2026 the user accepted local coherence and authorized CI/CD. Hosted Dagger, Mac artifact clearance and candidate live inference must pass before merge; their final outcomes belong to the release PR. Cold-boot aggregate memory, wider restore memory and physical iPhone verification remain open. Nothing in this document establishes deployment of these changes.
 
 The engine computes planetary facts deterministically. AI interprets those facts; it cannot identify a person's life events from a chart. Historical questions must receive selected-period engine facts, and explicit questions about today must use the viewer's current day even while a historical conversation remains pinned.
 
@@ -92,10 +92,10 @@ Both cases assert that no `/models/` requests occur. The ten recorded `peakSingl
 
 ## Current candidate checks
 
-The candidate is on `codex/iphone-time-travel`, based on release #331 (`8d10fbbb`). The final local frontend gate rebuilt the normal review build as `c92208781d44` at `2026-10-11T20:15:55.398Z`; the separate hooked review build is `f2bddbf84f7c`, built at `2026-10-11T18:25:12.847Z`.
+The candidate is on `codex/iphone-time-travel`, based on release #331 (`8d10fbbb`). The final local frontend gate rebuilt the normal review build as `bf6275ceab51` at `2026-10-11T20:38:21.685Z`; the separate hooked review build is `f2bddbf84f7c`, built at `2026-10-11T18:25:12.847Z`.
 
 - Backend gate: 1,186 tests passed, 98.46% coverage; Ruff, formatting, mypy and complexity checks passed. Seven corrected slow-hit dates changed in reference fixtures; other fixture fields were unchanged.
-- Final frontend gate: 5,955 tests plus four lint-contract checks passed, including the constrained-device memory policy, restore-generation and reload-diagnostic regressions. TypeScript, ESLint, production build, public-route prerender checks and absence of test hooks passed. The configured Knip report completed successfully but still reports unused-code/dependency diagnostics; it is not a clean unused-code result. Log: `/tmp/almamesh-codex-release-final-frontend-gate.log`.
+- Final frontend gate: 5,963 tests plus four lint-contract checks passed, including the constrained-device memory policy, restore-generation and reload-diagnostic regressions. TypeScript, ESLint, production build, public-route prerender checks and absence of test hooks passed. The configured Knip report completed successfully but still reports unused-code/dependency diagnostics; it is not a clean unused-code result. Log: `/tmp/almamesh-codex-release-final-scanner-frontend-gate.log`.
 - Real-browser engine parity: 11/11 checks passed against the CPython reference, including updated predictive fixtures, explicit-date sensitivity, Moon windows, clean console and same-origin engine traffic.
 - The broad Chromium functional run passed 16 journeys and exposed one stale test assertion: it expected one city download instead of the new 25 bounded parts. After updating that assertion to the manifest count and proving no repeated part downloads, all seven affected journeys passed on the candidate before the constrained-device recall policy. These cover typed historical questions, multi-place timing, slow-save Back to today, Day/revisit, two tabs, September 2017 → today, and chat tool movement in both directions. The engine is real; provider replies in chat cases are locally stubbed.
 - Mac WebKit iPhone 15 functional checks before the recall policy passed 4/4: Day/revisit/Back, two tabs, September 2017 → today, and chat tool movement. Single-WebContent RSS peaks were 1069, 862, 1326 and 1362 MiB respectively. Those were functional checks, not memory-budget passes: the chat peaks exceeded the 1306 MiB reference allowance and motivated the recall policy change.
@@ -177,7 +177,7 @@ The remaining travel failure was a clean-console assertion during an explicit
 reload. Its trace showed an old SQL worker's nested Blob request cancelled
 before navigation committed; the optional `opfs-wl` initializer logged an Event
 before new-page scripts loaded. Pin persistence, timing, prompt and privacy
-assertions had passed. The test now classifies only that exact error when the
+assertions had passed. At that stage, the test classified only that exact error when the
 same previously requested worker has a matching cancelled Blob request before
 commit, retaining the proof as an attachment. New-page, unmatched and all
 uncaught page errors remain fatal. Twenty-nine classifier/wrapper regressions
@@ -207,10 +207,9 @@ commit, and the functional persistence assertions passed. [WebKit's pinned sourc
 supports a navigation-related resource rejection being labelled access control;
 the exact native branch remains an inference, not a demonstrated CORS defect or
 an explanation of previous Safari crashes. Log:
-`/tmp/almamesh-codex-opfs-reload-observe.log`. The test harness is being corrected
-to distinguish this narrowly evidenced old-document case, while retaining all
-unmatched errors and all uncaught exceptions. The complete Mac lane remains
-pending.
+`/tmp/almamesh-codex-opfs-reload-observe.log`. The test harness was extended with
+the narrowly bounded categories below, while retaining all unmatched errors and
+all uncaught exceptions. The complete Mac lane was pending at that stage.
 
 The strict resource classifier then passed four of five targeted reloads,
 retaining actual cancellation/completed-resource proof in three passing runs.
@@ -240,3 +239,32 @@ functional journeys with archived pre-commit diagnostics, not an assertion that
 the outgoing page emitted no console messages. A coincident outgoing-document
 Blob defect remains a residual risk; post-reload persistence, timing and privacy
 assertions remain unchanged.
+
+## Final local Mac snapshot
+
+The complete lane passed on `e80d708a64a24ff8dc4634d2b7c6a52e4f1ae026`, without
+test retries: 28/28 time-travel/chat journeys, 8/8 portable-state journeys and
+2/2 intentional engine boot-recovery cases. Five original boots measured 1041,
+1022, 1029, 1040 and 1038 MiB. Five candidate Day/place journeys measured 1083,
+1079, 1063, 1071 and 1060 MiB against the unchanged 1041 + 250 MiB limit.
+There was no `page crashed` failure. The three explicit reload scopes retained
+actual cancellation/resource-rejection proof; none needed the unproven outgoing
+exception in this run. Log: `/tmp/almamesh-codex-final-native-mac.log`.
+
+The subsequent local artifact scan falsely classified the public installation
+paths `HOMEBREW_CELLAR`, `HOMEBREW_PREFIX` and `HOMEBREW_REPOSITORY` as secrets
+and deleted the raw evidence directory. The run log survives. The scanner now
+excludes only those three exact public names; other Homebrew variables and
+arbitrary secrets remain scanned. Four regressions failed before the correction;
+all 40 scanner tests then passed. No environment variable was unset to bypass
+the scan. The retained run log and an explicitly derived summary passed the
+corrected scanner against the full local environment (16 secret needles).
+Those retained files are not recreated raw diagnostics. Logs:
+`/tmp/almamesh-codex-final-native-mac-artifact-scan.log` and
+`/tmp/almamesh-codex-final-native-mac-retained-scan.log`; retained directory:
+`/tmp/almamesh-codex-final-native-mac-retained`.
+
+The scanner-only correction does not change the application or memory sampler.
+The final hosted Mac lane must rerun the full protocol and clear its complete
+diagnostic artifacts before merge. Its green check cannot be replaced by the
+local retained-log scan.
