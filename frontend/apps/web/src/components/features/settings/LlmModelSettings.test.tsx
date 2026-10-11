@@ -119,7 +119,7 @@ describe('LlmModelSettings — OpenRouter-first, test-on-save', () => {
     expect(saved.interpretationModel).toBe(RECOMMENDED_CLOUD_MODEL);
     expect(saved.chatModel).toBe(CHAT_CLOUD_MODEL);
     // Literal on purpose — the constant asserted against itself guards nothing.
-    expect(saved.chatModel).toBe('openai/gpt-6-luna');
+    expect(saved.chatModel).toBe('deepseek/deepseek-v4.1-flash');
     expect(saved.privacyMode).toBe('cloud_premium');
   });
 
@@ -459,6 +459,8 @@ describe('LlmModelSettings — one-time switch suggestion for glm-5.3-flash user
 
     const card = screen.getByTestId('model-switch-suggestion');
     expect(card.textContent).toContain('GPT-6 Luna');
+    // Chat keeps its own default: the card names the model each tier lands on.
+    expect(card.textContent).toContain('DeepSeek V4.1 Flash');
     expect(card.textContent).toMatch(/GLM 5\.3 Flash/);
     expect(card.textContent).toMatch(/\d+ s/);
     expect(readSaved().interpretationModel).toBe(GLM);
@@ -477,7 +479,7 @@ describe('LlmModelSettings — one-time switch suggestion for glm-5.3-flash user
     seed({ model: 'openai/gpt-5.6-sol', interpretationModel: 'openai/gpt-5.6-sol', chatModel: GLM });
     renderSettings();
     fireEvent.click(screen.getByTestId('model-switch-accept'));
-    await waitFor(() => expect(readSaved().chatModel).toBe('openai/gpt-6-luna'));
+    await waitFor(() => expect(readSaved().chatModel).toBe('deepseek/deepseek-v4.1-flash'));
     expect(readSaved().interpretationModel).toBe('openai/gpt-5.6-sol');
   });
 

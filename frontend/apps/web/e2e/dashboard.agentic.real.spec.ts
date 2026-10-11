@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { bootEngine, seedChart, LLM_SETTINGS_KEY } from './interpretation.helpers';
-import { E2E_REAL_MODEL, PRODUCT_DEFAULT_MODEL } from './realModel';
+import { E2E_REAL_MODEL, PRODUCT_CHAT_DEFAULT_MODEL } from './realModel';
 
 /**
  * Dashboard LIVE validation against REAL OpenRouter — three headline changes:
@@ -19,7 +19,7 @@ import { E2E_REAL_MODEL, PRODUCT_DEFAULT_MODEL } from './realModel';
  * sidereal chart generated in-tab, and a LIVE OpenRouter round-trip. The reading
  * uses the seeded `model` (E2E_REAL_MODEL, the cheapest); chat has no `chatModel`
  * saved, so it runs on the default chat tier (CHAT_CLOUD_MODEL,
- * PRODUCT_DEFAULT_MODEL). The OpenRouter key is read ONLY from
+ * PRODUCT_CHAT_DEFAULT_MODEL). The OpenRouter key is read ONLY from
  * process.env (never bundled).
  *
  * Run:  bun run test:e2e:dashboard:agentic:real   (from apps/web)
@@ -196,7 +196,7 @@ test('[real] dashboard: timer + life phase + exact-day agentic chat', async ({
     messages?: unknown[];
   };
   // Chat runs on the default chat tier, not the seeded reading model.
-  expect(firstAgentRequest.model).toBe(PRODUCT_DEFAULT_MODEL);
+  expect(firstAgentRequest.model).toBe(PRODUCT_CHAT_DEFAULT_MODEL);
   // Inverted 2026-10: this asserted `stream: false`. Since 5c99027 the
   // tool-decision round streams so a no-tool answer shows token by token
   // (agent.test.ts and chat.grounding.spec.ts already pin `stream: true`).

@@ -79,19 +79,24 @@ describe("applyInterpretationSettings / applyChatSettings — explicit env resol
     expect(out.VITE_LLM_MODEL).toBe(CHAT_CLOUD_MODEL);
   });
 
-  it("chat on the OpenRouter preset defaults to openai/gpt-6-luna, the literal id sent on the wire", () => {
+  it("chat on the OpenRouter preset defaults to deepseek-v4.1-flash, the literal id sent on the wire", () => {
     // Pinned as a literal on purpose: asserting CHAT_CLOUD_MODEL against itself
     // passes for any value. The previous default (minimax/minimax-m2.7) measured
     // 26.7 s to first token on the live site (2026-10-02).
-    expect(applyChatSettings(ENV, {}).VITE_LLM_MODEL).toBe("openai/gpt-6-luna");
+    expect(applyChatSettings(ENV, {}).VITE_LLM_MODEL).toBe("deepseek/deepseek-v4.1-flash");
   });
 
-  it("the one-click OpenRouter preset seeds chat with openai/gpt-6-luna", () => {
-    expect(openRouterPreset("sk-or-x", "any/interp").chatModel).toBe("openai/gpt-6-luna");
+  it("the one-click OpenRouter preset seeds chat with deepseek-v4.1-flash", () => {
+    expect(openRouterPreset("sk-or-x", "any/interp").chatModel).toBe("deepseek/deepseek-v4.1-flash");
   });
 
-  it("chat and interpretation share ONE default model id (no second literal to drift)", () => {
-    expect(CHAT_CLOUD_MODEL).toBe(RECOMMENDED_CLOUD_MODEL);
+  it("interpretation defaults to openai/gpt-6-luna (literal)", () => {
+    expect(RECOMMENDED_CLOUD_MODEL).toBe("openai/gpt-6-luna");
+  });
+
+  it("chat and interpretation defaults differ on purpose: chat stays on deepseek-v4.1-flash until tool calling on Luna is measured", () => {
+    expect(CHAT_CLOUD_MODEL).toBe("deepseek/deepseek-v4.1-flash");
+    expect(CHAT_CLOUD_MODEL).not.toBe(RECOMMENDED_CLOUD_MODEL);
   });
 
   it("each path uses the user's explicit per-tier override", () => {

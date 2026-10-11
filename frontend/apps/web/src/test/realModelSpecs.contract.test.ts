@@ -7,9 +7,12 @@
  * - A real spec names no model id of its own: models come from e2e/realModel.ts
  *   (env-override fallbacks included). The one exception is the retired slug
  *   the self-heal spec seeds on purpose; the app rewrites it before any call.
- * - `PRODUCT_DEFAULT_MODEL` (what the app picks itself) and any alias of it is
- *   only ever asserted or logged, never configured or passed along, and it
- *   must match the app's real default.
+ * - `PRODUCT_DEFAULT_MODEL` (the reading default the app picks itself),
+ *   `PRODUCT_CHAT_DEFAULT_MODEL` (its chat default) and any alias of either are
+ *   only ever asserted or logged, never configured or passed along, and each
+ *   must match the app's real default. E2E_REAL_MODEL differs from both, or a
+ *   spec asserting "the app used its own default, not the seeded model" could
+ *   never fail.
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -17,7 +20,7 @@ import { describe, expect, it } from 'vitest';
 
 import { CHAT_CLOUD_MODEL, RECOMMENDED_CLOUD_MODEL } from '@almamesh/llm';
 
-import { E2E_REAL_MODEL, PRODUCT_DEFAULT_MODEL } from '../../e2e/realModel';
+import { E2E_REAL_MODEL, PRODUCT_CHAT_DEFAULT_MODEL, PRODUCT_DEFAULT_MODEL } from '../../e2e/realModel';
 
 const E2E_DIR = resolve(__dirname, '../../e2e');
 
@@ -35,7 +38,7 @@ const PROVIDER_SLUG =
  * alias (and aliases of aliases).
  */
 function productDefaultAliases(code: string): ReadonlySet<string> {
-  const names = new Set(['PRODUCT_DEFAULT_MODEL']);
+  const names = new Set(['PRODUCT_DEFAULT_MODEL', 'PRODUCT_CHAT_DEFAULT_MODEL']);
   const declaration = /const\s+(\w+)\s*=\s*(?:[^;\n]*\?\?\s*)?(\w+)\s*;/g;
   let grew = true;
   while (grew) {
@@ -99,9 +102,14 @@ describe('real-model e2e specs', () => {
     expect(E2E_REAL_MODEL).toBe('deepseek/deepseek-v4-pro');
   });
 
-  it("assert the app's real default model", () => {
+  it("assert the app's real default models, one per tier", () => {
     expect(PRODUCT_DEFAULT_MODEL).toBe(RECOMMENDED_CLOUD_MODEL);
-    expect(PRODUCT_DEFAULT_MODEL).toBe(CHAT_CLOUD_MODEL);
+    expect(PRODUCT_CHAT_DEFAULT_MODEL).toBe(CHAT_CLOUD_MODEL);
+  });
+
+  it('configure a model that is neither product default, so "used the default, not the seeded model" can fail', () => {
+    expect(E2E_REAL_MODEL).not.toBe(PRODUCT_DEFAULT_MODEL);
+    expect(E2E_REAL_MODEL).not.toBe(PRODUCT_CHAT_DEFAULT_MODEL);
   });
 
   it('finds the real specs it guards', () => {
