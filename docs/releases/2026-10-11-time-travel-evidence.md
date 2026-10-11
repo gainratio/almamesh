@@ -92,10 +92,10 @@ Both cases assert that no `/models/` requests occur. The ten recorded `peakSingl
 
 ## Current candidate checks
 
-The candidate is on `codex/iphone-time-travel`, based on release #331 (`8d10fbbb`). The final local frontend gate rebuilt the normal review build as `f74a4d090377` at `2026-10-11T21:13:50.172Z`; the separate hooked review build is `f2bddbf84f7c`, built at `2026-10-11T18:25:12.847Z`.
+The candidate is on `codex/iphone-time-travel`, based on release #331 (`8d10fbbb`). The final local frontend gate rebuilt the normal review build as `8d3e1416e09d` at `2026-10-11T21:22:39.380Z`; the separate hooked review build is `f2bddbf84f7c`, built at `2026-10-11T18:25:12.847Z`.
 
 - Backend gate in Dagger: 1,214 tests passed, 98.46% coverage; Ruff, formatting, mypy and complexity checks passed. This includes 28 new public-doc export regressions. Seven corrected slow-hit dates changed in reference fixtures; other fixture fields were unchanged. Log: `/tmp/almamesh-codex-pr333-backend-dagger-green.log`.
-- Final frontend gate: 5,963 tests plus four lint-contract checks passed, including the constrained-device memory policy, restore-generation and reload-diagnostic regressions. TypeScript, ESLint, production build, public-route prerender checks and absence of test hooks passed. The configured Knip report completed successfully but still reports unused-code/dependency diagnostics; it is not a clean unused-code result. Log: `/tmp/almamesh-codex-pr333-final-frontend-gate.log`.
+- Final frontend gate: 5,982 tests plus four lint-contract checks passed, including the constrained-device memory policy, restore-generation, reload-diagnostic and artifact-scanner regressions. TypeScript, ESLint, production build, public-route prerender checks and absence of test hooks passed. The configured Knip report completed successfully but still reports unused-code/dependency diagnostics; it is not a clean unused-code result. Log: `/tmp/almamesh-codex-pr333-scanner-final-frontend-gate.log`.
 - Real-browser engine parity: 11/11 checks passed against the CPython reference, including updated predictive fixtures, explicit-date sensitivity, Moon windows, clean console and same-origin engine traffic.
 - The broad Chromium functional run passed 16 journeys and exposed one stale test assertion: it expected one city download instead of the new 25 bounded parts. After updating that assertion to the manifest count and proving no repeated part downloads, all seven affected journeys passed on the candidate before the constrained-device recall policy. These cover typed historical questions, multi-place timing, slow-save Back to today, Day/revisit, two tabs, September 2017 → today, and chat tool movement in both directions. The engine is real; provider replies in chat cases are locally stubbed.
 - Mac WebKit iPhone 15 functional checks before the recall policy passed 4/4: Day/revisit/Back, two tabs, September 2017 → today, and chat tool movement. Single-WebContent RSS peaks were 1069, 862, 1326 and 1362 MiB respectively. Those were functional checks, not memory-budget passes: the chat peaks exceeded the 1306 MiB reference allowance and motivated the recall policy change.
@@ -331,3 +331,32 @@ TypeScript passed. Logs: `/tmp/almamesh-codex-pr333-backend-dagger-green.log`,
 `/tmp/almamesh-codex-pr333-final-frontend-gate.log`,
 `/tmp/almamesh-codex-pr333-final-pure-contracts.log` and
 `/tmp/almamesh-codex-pr333-final-e2e-types.log`.
+
+## Hosted artifact metadata correction
+
+The first hosted Mac run (`38173156264`, candidate `0078a19c`) was cancelled
+when its replacement started. It completed five candidate Day measurements
+(1359, 1450, 1365, 1386 and 1268 MiB, below the fresh 1388 + 250 MiB allowance)
+and 26 of 28 travel cases. Export/import and boot recovery had not started.
+These are partial results, not a complete hosted Mac pass.
+
+Its always-run artifact scan mistook the public `GITHUB_RUN_ID` and
+`GITHUB_WORKFLOW_SHA` for secrets and deleted its raw evidence. Playwright
+records the public Actions run URL in its trace metadata; the checkout SHA is
+also public provenance. The scanner now excludes only those two exact names.
+Neighboring token/secret/control names still fail, including a secret whose
+value happens to equal either public metadata value. Compressed trace ZIPs
+remain scanned and real credential matches still delete the artifact directory.
+
+Five focused regressions failed before this correction; all 59 scanner tests
+then passed. Independent diff review found no material issue. The complete
+frontend gate passed with 5,982 tests plus four lint contracts, and all 487
+selected CI contracts passed again. Logs:
+`/tmp/almamesh-codex-pr333-scanner-final-frontend-gate.log` and
+`/tmp/almamesh-codex-pr333-scanner-final-contracts.log`.
+
+The replacement Mac run (`38175621224`) and nightly (`38175631068`) were
+cancelled early to avoid rerunning the known scanner failure. Neither supplies
+release acceptance or live-provider proof. Application behavior and memory
+limits are unchanged by this scanner correction. Fresh complete hosted checks,
+including clearance and upload of the Mac diagnostics, remain required.

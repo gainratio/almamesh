@@ -31,6 +31,14 @@ const HOMEBREW_PATHS = {
   HOMEBREW_PREFIX: '/opt/homebrew',
   HOMEBREW_REPOSITORY: '/opt/homebrew',
 };
+const PUBLIC_CI_PROVENANCE = {
+  GITHUB_RUN_ID: '38175621224',
+  GITHUB_WORKFLOW_SHA: 'a5d1c61cc1968f40b2495c6db083ad7ffdc3f3f6',
+};
+const PRIVATE_CI_NAMES = [
+  'GITHUB_TOKEN', 'GITHUB_SECRET', 'GITHUB_RUN_ID_SECRET', 'GITHUB_WORKFLOW_SHA_SECRET',
+  'GITHUB_RUN_ID_CONTROL', 'GITHUB_WORKFLOW_SHA_CONTROL',
+];
 const b64 = (text: string): string => Buffer.from(text).toString('base64');
 const roots: string[] = [];
 
@@ -66,6 +74,23 @@ describe('envNeedles', () => {
 
   it.each(Object.entries(HOMEBREW_PATHS))('excludes the exact public installation metadata name %s', (name, value) => {
     expect(envNeedles({ [name]: value })).toEqual([]);
+  });
+
+  it.each(Object.entries(PUBLIC_CI_PROVENANCE))('excludes the exact public CI provenance name %s', (name, value) => {
+    expect(PUBLIC_ENV_NAMES).toContain(name);
+    expect(envNeedles({ [name]: value })).toEqual([]);
+  });
+
+  it.each(Object.entries(PUBLIC_CI_PROVENANCE))('retains a secret needle sharing the public %s value', (_name, value) => {
+    const needles = envNeedles({ ...PUBLIC_CI_PROVENANCE, GITHUB_TOKEN: value });
+    expect(needles.map((needle) => needle.label)).toEqual(['environment variable GITHUB_TOKEN']);
+    expect(scanDirectory(evidenceDir({ 'worker.log': value }), needles)).toEqual(['environment variable GITHUB_TOKEN']);
+  });
+
+  it.each(PRIVATE_CI_NAMES)('still scans the neighboring CI secret or control name %s', (name) => {
+    const needles = envNeedles({ ...PUBLIC_CI_PROVENANCE, [name]: SECRET });
+    expect(needles.map((needle) => needle.label)).toContain(`environment variable ${name}`);
+    expect(scanDirectory(evidenceDir({ 'worker.log': SECRET }), needles)).toEqual([`environment variable ${name}`]);
   });
 
   it.each(['HOMEBREW_GITHUB_API_TOKEN', 'HOMEBREW_PASSWORD', 'HOMEBREW_CELLAR_SECRET', 'UNRELATED_API_KEY'])(
@@ -210,6 +235,38 @@ describe('the command line', () => {
     const result = runScan(dir, HOMEBREW_PATHS);
     expect(result.status).toBe(0);
     expect(existsSync(dir)).toBe(true);
+  });
+
+  it('keeps a real trace artifact containing the public CI run URL and full workflow SHA', () => {
+    const trace = zipSync({ 'trace.trace': strToU8(JSON.stringify({
+      ci: { runUrl: `https://github.com/gainratio/almamesh/actions/runs/${PUBLIC_CI_PROVENANCE.GITHUB_RUN_ID}` },
+      workflowSha: PUBLIC_CI_PROVENANCE.GITHUB_WORKFLOW_SHA,
+    })) });
+    const dir = evidenceDir({
+      'time-travel/t/trace.zip': trace,
+      'machine.txt': `workflow checkout: ${PUBLIC_CI_PROVENANCE.GITHUB_WORKFLOW_SHA}`,
+    });
+    const result = runScan(dir, { ...PUBLIC_CI_PROVENANCE, GITHUB_TOKEN: SECRET });
+    expect(result.status).toBe(0);
+    expect(existsSync(dir)).toBe(true);
+  });
+
+  it.each(Object.entries(PUBLIC_CI_PROVENANCE))('deletes an artifact when a secret shares the public %s value', (_name, value) => {
+    const dir = evidenceDir({ 'machine.txt': value });
+    const result = runScan(dir, { ...PUBLIC_CI_PROVENANCE, GITHUB_TOKEN: value });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('environment variable GITHUB_TOKEN');
+    expect(result.stdout + result.stderr).not.toContain(value);
+    expect(existsSync(dir)).toBe(false);
+  });
+
+  it.each(PRIVATE_CI_NAMES)('deletes an artifact containing the neighboring CI secret or control %s', (name) => {
+    const dir = evidenceDir({ 'worker.log': SECRET });
+    const result = runScan(dir, { ...PUBLIC_CI_PROVENANCE, [name]: SECRET });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(`environment variable ${name}`);
+    expect(result.stdout + result.stderr).not.toContain(SECRET);
+    expect(existsSync(dir)).toBe(false);
   });
 
   it('on a leak prints only the variable name, deletes the directory and exits 1', () => {
