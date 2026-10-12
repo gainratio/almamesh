@@ -713,6 +713,10 @@ exec ${inline.join(" ")}`,
       // Settings: a birth-time-only edit recomputes the chart (or says the
       // rectified time governs), never a false "Chart Updated!"; Export after.
       "BIRTH_TIME_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:birth-time-edit --project=chromium",
+      // OPFS refused (a private window): in-memory SQLite, the honest notice,
+      // and the backup it asks for: export, then restore into a fresh private
+      // window. Chromium and WebKit; both refuse OPFS without needing it.
+      "PRIVATE_MODE_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:private-mode --project=chromium --project=webkit",
       // A reload the moment /dashboard appears (after onboarding or a rectify
       // confirm) keeps the chart: pages navigate only after it is saved.
       "CHART_RELOAD_E2E_BASE_URL=http://127.0.0.1:4199 RELOAD_DELAYS=0,200 bun run test:e2e:chart-durable-reload --project=chromium",

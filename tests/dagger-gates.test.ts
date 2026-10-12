@@ -330,6 +330,7 @@ describe("browser gate shards", () => {
     "node scripts/verify-onboarding-recovery.mjs http://127.0.0.1:4199",
     "MEMORY_BUDGET_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:memory-budget",
     "BIRTH_TIME_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:birth-time-edit --project=chromium",
+    "PRIVATE_MODE_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:private-mode --project=chromium --project=webkit",
     "CHART_RELOAD_E2E_BASE_URL=http://127.0.0.1:4199 RELOAD_DELAYS=0,200 bun run test:e2e:chart-durable-reload --project=chromium",
   ]
 
