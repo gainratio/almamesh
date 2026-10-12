@@ -1,6 +1,6 @@
 # Time travel and deterministic chat verification — 11 October 2026
 
-Status: release blocked pending final acceptance. On 11 October 2026 the user accepted local coherence and authorized CI/CD. The latest product passed 6,128 native frontend tests and 6,127 Linux tests (one existing environment skip), with all build/type/lint checks; the preceding recovery product passed all 39 native functional cases. Final native functional, paired memory and hosted acceptance are pending. Cold-boot aggregate memory, wider restore memory and physical iPhone verification remain open. Nothing in this document establishes deployment of these changes.
+Status: local acceptance complete; release blocked pending final hosted acceptance. On 11 October 2026 the user accepted local coherence and authorized CI/CD. Product source `22f2a947` passed 6,128 native frontend tests and 6,127 Linux tests (one existing environment skip), all 557 CI contracts in the actual Linux Dagger container, and all build/type/lint checks. The complete native lane passed 39 functional cases, five original-release boots and five candidate Day/place journeys, with zero retries. Evidence finalization and leak scanning passed. Cold-boot aggregate memory, wider restore memory and physical iPhone verification remain open. Nothing in this document establishes deployment of these changes.
 
 Hosted candidates `67addf61` and `ba2837a2` are both rejected. Their outcomes,
 including real browser failures, command/job timeouts, a report-section timeout
@@ -69,6 +69,24 @@ An independent original-release cold-boot check passed functional onboarding and
 
 ## Reproduce
 
+Run the complete current native lane from `frontend/apps/web`:
+
+```sh
+env -u TT_WEBKIT_BASELINE_MIB -u WEBKIT_LANE_ARTIFACTS \
+  BUILD_COMMIT="$(git rev-parse HEAD)" \
+  bash scripts/webkit-macos-lane.sh all
+bash scripts/webkit-macos-lane.sh --collect-native-evidence all
+bash scripts/webkit-macos-lane.sh --finalize-evidence all
+node scripts/artifactLeakScan.mjs webkit-lane-evidence-all
+```
+
+This measures five original-release boots and five candidate Day/place journeys
+on the same host, followed by all 28 travel, eight portable-state and three
+boot/recovery cases. It does not accept a scalar baseline override. The final
+snapshot and its provenance must be retained together.
+
+The earlier focused measurement commands were:
+
 From `frontend/apps/web`, serve a production build with signed engine assets, then run:
 
 ```sh
@@ -98,10 +116,10 @@ Both cases assert that no `/models/` requests occur. The ten recorded `peakSingl
 
 ## Current candidate checks
 
-The candidate is on `codex/iphone-time-travel`, based on release #331 (`8d10fbbb`). The latest local frontend gate rebuilt the normal review build as `b6fd7053e4c0` at `2026-10-11T23:51:12.479Z`. Post-ready recovery verification and hosted failures are recorded below; release remains blocked.
+The candidate is on `codex/iphone-time-travel`, based on release #331 (`8d10fbbb`). The latest local frontend gate rebuilt the normal review build as `e59cfce23f34` at `2026-10-12T00:15:23.358Z`. Final source native acceptance and earlier rejected hosted results are recorded below; release remains blocked pending hosted acceptance.
 
 - Backend gate in Dagger: 1,214 tests passed, 98.46% coverage; Ruff, formatting, mypy and complexity checks passed. This includes 28 new public-doc export regressions. Seven corrected slow-hit dates changed in reference fixtures; other fixture fields were unchanged. Log: `/tmp/almamesh-codex-pr333-backend-dagger-green.log`.
-- Latest local frontend gate: 6,099 tests plus four lint-contract checks passed, including constrained-device memory, restore generations, terminal-Worker containment and recovery, reload diagnostics, artifact scanning and real-tool envelopes. TypeScript, ESLint, production build, public-route prerender checks and absence of test hooks passed. Knip completed with its documented unused-code/dependency diagnostics. Log: `/tmp/almamesh-codex-pr333-recovery-final-frontend-gate.log`.
+- Latest local frontend gate: 6,128 tests plus four lint-contract checks passed, including constrained-device memory, restore generations, terminal-Worker containment and recovery, SQL teardown, reload diagnostics, artifact scanning and real-tool envelopes. TypeScript, ESLint, production build, public-route prerender checks and absence of test hooks passed. Knip completed with its documented unused-code/dependency diagnostics. Log: `/tmp/almamesh-codex-pr333-final-source-frontend-gate.log`.
 - Real-browser engine parity: 11/11 checks passed against the CPython reference, including updated predictive fixtures, explicit-date sensitivity, Moon windows, clean console and same-origin engine traffic.
 - The broad Chromium functional run passed 16 journeys and exposed one stale test assertion: it expected one city download instead of the new 25 bounded parts. After updating that assertion to the manifest count and proving no repeated part downloads, all seven affected journeys passed on the candidate before the constrained-device recall policy. These cover typed historical questions, multi-place timing, slow-save Back to today, Day/revisit, two tabs, September 2017 → today, and chat tool movement in both directions. The engine is real; provider replies in chat cases are locally stubbed.
 - Mac WebKit iPhone 15 functional checks before the recall policy passed 4/4: Day/revisit/Back, two tabs, September 2017 → today, and chat tool movement. Single-WebContent RSS peaks were 1069, 862, 1326 and 1362 MiB respectively. Those were functional checks, not memory-budget passes: the chat peaks exceeded the 1306 MiB reference allowance and motivated the recall policy change.
@@ -771,3 +789,48 @@ Logs: `/tmp/almamesh-codex-pr333-native-collector-green.log`,
 `/tmp/almamesh-codex-pr333-native-term-thin-red.log` and
 `/tmp/almamesh-codex-pr333-native-ingress-thin-green.log`. Full green Dagger:
 `/tmp/almamesh-codex-pr333-final-source-dagger-contracts-green.log`.
+
+## Complete final-source local native acceptance
+
+The frozen product commit was `22f2a9478f3e65d264f6c377a48d8332ade45caa`.
+The actual in-repository `all` script completed with exit zero, zero retries,
+28/28 travel cases in 9.4 minutes, 8/8 portable-state cases in 5.0 minutes and
+3/3 boot cases in 36.2 seconds. This includes the final SQL lifecycle guard and
+the previously failing iPhone-viewport chat/tools and reload journeys.
+
+The same-host original-release provenance records reference `8d10fbbb`,
+measurement commit `22f2a947`, Playwright 1.63.0 and five boot peaks of 1031,
+1042, 1049, 1037 and 1009 MiB. Five candidate production Day/place journeys
+passed at 1085, 1104, 1086, 1064 and 1073 MiB. Candidate maximum growth is
+55 MiB against the unchanged 250 MiB allowance, with no scalar override,
+report-only mode or test hooks in those memory builds.
+
+Both service-worker receipts contain 61 events across all nine phases and
+completed bodies; their five console events each are informational. All three
+reload scopes record no page errors or fatal diagnostics. The pinned-year
+scope retains two matched old-document resource console rejections: a blob
+request with a successful response/completion, then access-control and OPFS
+asyncer messages before the new document committed. These are explicit scoped
+exceptions, not a universally clean console or evidence that the earlier
+hosted top-level Worker page error was harmless.
+
+The post-ready test passed in 21.4 seconds. Its receipt records one deliberately
+injected correlated error, termination of Worker 1, explicit Retry, two ready
+generations, and Worker 2 calculating a chart, March 2019 and the viewer's
+current day in the same document. No automatic retry was recorded. This
+controlled error is not a reproduction or explanation of the native crashes.
+
+Normal and independent native collection completed with both report roots
+searched and unified logs collected. One report, `JetsamEvent-2026-10-11-174019.ips`,
+identified only `stickersd` PID 82580 as killed for `per-process-limit`; that PID
+does not occur in lane RSS samples. Other listed processes are a system
+snapshot, not killed-process evidence. This report does not identify a lane
+WebContent termination or establish the earlier crashes' cause.
+
+The same finalized snapshot passed the artifact leak scanner (16 configured
+secrets checked). Logs: `/tmp/almamesh-codex-pr333-final-native-all.log` and
+`/tmp/almamesh-codex-pr333-final-native-all-scan.log`. Snapshot:
+`frontend/apps/web/webkit-lane-evidence-all`. These are local Mac WebKit
+results; physical iPhone Safari, broad restore/long-history memory and the
+pre-existing aggregate settled RSS limit remain open. Hosted acceptance must
+still bind to the final pushed head and actual synthetic checkout.

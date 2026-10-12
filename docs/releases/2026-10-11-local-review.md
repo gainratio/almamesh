@@ -1,6 +1,6 @@
 # Local review before deployment
 
-The user reviewed this local candidate and authorized the CI/CD release process on 11 October 2026. Hosted release checks, merge and deployment are pending. Production remains on release #331; the known limitations below remain visible and are not converted into passing checks.
+The user reviewed this local candidate and authorized the CI/CD release process on 11 October 2026. Final source `22f2a947` passed all 39 native functional cases and the five paired candidate Day/place memory journeys; evidence finalization and leak scanning passed. Hosted release checks, merge and deployment are pending. Production remains on release #331; the known limitations below remain visible and are not converted into passing checks.
 
 ## Start here
 
