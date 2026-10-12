@@ -12,6 +12,7 @@ dist-verify/
 dist-real/
 dist-sw-update/
 dist-webkit/
+dist-safari/
 build/
 *.egg-info/
 .next/
@@ -79,6 +80,7 @@ test-results/
 webkit-lane-artifacts/
 webkit-lane-artifacts-*/
 webkit-lane-evidence-*/
+safari-smoke-evidence/
 
 # wrangler scratch dir (wrangler pages dev — see docs/deploy/almamesh-com.md)
 .wrangler/

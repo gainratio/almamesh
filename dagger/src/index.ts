@@ -119,6 +119,7 @@ const SOURCE_EXCLUDES = [
   "**/dist*/**",
   "**/webkit-lane-artifacts*/**",
   "**/webkit-lane-evidence*/**",
+  "**/safari-smoke-evidence/**",
   "**/browser-journeys-artifacts/**",
   "**/browser-journeys-evidence/**",
   "**/.venv/**",
