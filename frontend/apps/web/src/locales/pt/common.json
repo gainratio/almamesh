@@ -117,6 +117,12 @@
     "body": "O AlmaMesh não conseguiu abrir ou ler o banco de dados local necessário para carregar e salvar seus dados.",
     "fix": "Recarregue esta página para tentar novamente. Se o problema continuar, verifique se você está usando um navegador atualizado em uma janela normal (não privada)."
   },
+  "storage_in_memory": {
+    "title": "Este navegador não está salvando seus dados.",
+    "body": "Aqui ele recusa o armazenamento no dispositivo (por exemplo, numa janela privada), então o AlmaMesh roda na memória: tudo o que você adicionar desaparece ao fechar ou recarregar esta aba.",
+    "export": "Exporte um backup para guardá-lo.",
+    "engine": "O motor de mapas também não fica guardado, então recomeçar exige conexão com a internet."
+  },
   "error_boundary": {
     "title": "Algo deu errado",
     "body": "Ocorreu um erro inesperado. Tente atualizar a página.",

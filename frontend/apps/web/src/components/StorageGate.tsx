@@ -4,14 +4,15 @@ import { DatabaseUnavailableCard, StorageBlockedScreen } from './storage/Storage
 import { useStorageRecheck } from './storage/useStorageRecheck';
 
 /**
- * AlmaMesh keeps product data in one persistent on-device SQLite database
- * (OPFS). That is the only option: there is no in-memory fallback.
+ * AlmaMesh keeps product data in one on-device SQLite database: on OPFS, or in
+ * memory for this tab when the browser refuses OPFS (Safari Private Browsing;
+ * InMemoryStorageNotice says nothing is kept, and the page renders).
  *
  * - site storage refused (Safari "Block all cookies" makes every storage API
- *   throw) or OPFS refused (private windows, blocked site data): show the
- *   block screen with this browser's steps and an in-place "Check again";
+ *   throw) or an OPFS probe that never answers: show the block screen with
+ *   this browser's steps and an in-place "Check again";
  * - no on-device database can start at all: say so instead of hydrating forever;
- * - 'pending' and 'opfs': render the page (it shows its own loading state).
+ * - 'pending', 'opfs' and 'memory': render the page (it shows its own loading state).
  */
 interface StorageGateProps {
   readonly children: ReactNode;

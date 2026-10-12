@@ -114,6 +114,12 @@
     "body": "AlmaMesh could not open or read the local database it needs to load and save your data.",
     "fix": "Reload this page to try again. If the problem continues, check that you are using a current browser in a normal (not private) window."
   },
+  "storage_in_memory": {
+    "title": "This browser is not saving your data.",
+    "body": "It refuses on-device storage here (for example, a private window), so AlmaMesh runs in memory: everything you add disappears when you close or reload this tab.",
+    "export": "Export a backup to keep it.",
+    "engine": "The chart engine is not kept either, so starting again needs an internet connection."
+  },
   "error_boundary": {
     "title": "Something went wrong",
     "body": "We encountered an unexpected error. Please try refreshing the page.",

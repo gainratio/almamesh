@@ -98,6 +98,49 @@ describe("SQLite on OPFS or nothing: the engine never opens a memory cache", () 
   });
 });
 
+// OPFS refused while site storage works (Safari Private Browsing): the app's
+// data already runs on SQLite in memory and says so, so the engine cache may
+// too. Only the caller that knows that (AlmaMeshRuntimeProvider) opts in.
+describe("in-memory engine cache, only when app data is in memory", () => {
+  const memorySync = {
+    version: "v1",
+    manifestHash: "a".repeat(64),
+    chunksFetched: 2,
+    chunksReused: 0,
+    bytesFetched: 1024,
+    cacheBackend: "sqlite-memory",
+    cacheStorage: { persistence: "memory", reason: "opfs-unavailable", detail: "UnknownError" },
+  } as const;
+
+  it("asks for the memory fallback on sync, readFile and clear", () => {
+    const worker = new FakeWorker();
+    const engine = createAlmaSyncEngine(worker, { cacheFallback: "memory" });
+    void engine.sync("/bundle", "/public.key", "almamesh", "stable").catch(() => undefined);
+    void engine.readFile("almamesh.whl").catch(() => undefined);
+    void engine.clearCache().catch(() => undefined);
+    expect(worker.sent.map((request) => [request.kind, (request as { cacheFallback?: string }).cacheFallback])).toEqual([
+      ["sync", "memory"],
+      ["readFile", "memory"],
+      ["clear", "memory"],
+    ]);
+    engine.terminate();
+  });
+
+  it("boots on the in-memory cache it asked for", async () => {
+    const worker = new FakeWorker();
+    const pending = createAlmaSyncEngine(worker, { cacheFallback: "memory" })
+      .sync("/bundle", "/public.key", "almamesh", "stable");
+    worker.reply({ ok: true, id: worker.sent[0]?.id ?? 0, kind: "sync", result: memorySync } as never);
+    await expect(pending).resolves.toMatchObject({ cacheBackend: "sqlite-memory" });
+  });
+
+  it("asks for no fallback when not told otherwise", () => {
+    const worker = new FakeWorker();
+    void createAlmaSyncEngine(worker, {}).sync("/bundle", "/public.key", "almamesh", "stable").catch(() => undefined);
+    expect((worker.sent[0] as { cacheFallback?: string }).cacheFallback).toBe("none");
+  });
+});
+
 describe("AlmaMesh edgeproc adapter", () => {
   it("pins the legacy cache layout while keeping automatic OPFS selection", async () => {
     const worker = new FakeWorker();

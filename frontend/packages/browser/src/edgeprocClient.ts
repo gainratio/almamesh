@@ -29,8 +29,8 @@ type ExitGateGlobals = typeof globalThis & {
 };
 
 /**
- * Defense in depth. Since @gainratio/browser 0.3.1 every call passes
- * `cacheFallback: "none"`, so the library refuses its in-memory cache up front
+ * Defense in depth. Unless the app's data is itself in memory, every call
+ * passes `cacheFallback: "none"`, so the library refuses its in-memory cache up front
  * (EngineStorageBlockedError, nothing downloaded) and should never report one.
  * If a memory cache is ever reported anyway, the engine still never boots on a
  * cache that dies with the Worker. Not transient: never auto-retried.
@@ -66,8 +66,14 @@ export class EngineStorageBlockedError extends Error {
   }
 }
 
-/** SQLite on OPFS or nothing: never let the library fall back to a RAM cache. */
-const NO_CACHE_FALLBACK = { cacheFallback: "none" } as const;
+/**
+ * Where the engine cache may live. "none" (the default): SQLite on OPFS or a
+ * typed refusal, never a RAM cache. "memory": only when the app's own data
+ * already runs on SQLite in memory because OPFS is refused, and the UI says so.
+ */
+export interface AlmaSyncEngineOptions {
+  readonly cacheFallback?: "none" | "memory";
+}
 
 /** Translate the library's storage refusal into AlmaMesh's typed error. */
 function asStorageBlocked(error: unknown): unknown {
@@ -105,8 +111,13 @@ export interface AlmaSyncEngine {
   terminate(): void;
 }
 
-export function createAlmaSyncEngine(worker: EngineWorkerLike): AlmaSyncEngine {
+export function createAlmaSyncEngine(
+  worker: EngineWorkerLike,
+  options: AlmaSyncEngineOptions = {},
+): AlmaSyncEngine {
   const client = new EngineClient(worker);
+  const fallback = { cacheFallback: options.cacheFallback ?? "none" } as const;
+  const durableOnly = fallback.cacheFallback === "none";
   return {
     async sync(baseUrl, pubkeyUrl, expectedBundleId, expectedChannel, onProgress) {
       const hooks = globalThis as ExitGateGlobals;
@@ -116,7 +127,7 @@ export function createAlmaSyncEngine(worker: EngineWorkerLike): AlmaSyncEngine {
           expectedChannel,
           cacheNamespace: CACHE_NAMESPACE,
           indexedDbLayout: LEGACY_INDEXED_DB_LAYOUT,
-          ...NO_CACHE_FALLBACK,
+          ...fallback,
           ...(onProgress === undefined ? {} : { onProgress }),
         }),
       );
@@ -126,16 +137,18 @@ export function createAlmaSyncEngine(worker: EngineWorkerLike): AlmaSyncEngine {
       }
       // Defense in depth: with cacheFallback "none" the library never reports
       // a memory cache, but if one ever appears the engine still never runs on it.
-      if (result.cacheBackend !== "sqlite-opfs") throw new EngineCacheNotDurableError(result.cacheBackend);
+      if (durableOnly && result.cacheBackend !== "sqlite-opfs") {
+        throw new EngineCacheNotDurableError(result.cacheBackend);
+      }
       return result;
     },
-    readFile: (path) => translated(client.readFile(path, NO_CACHE_FALLBACK)),
+    readFile: (path) => translated(client.readFile(path, fallback)),
     clearCache: () =>
       translated(
         client.clear({
           cacheNamespace: CACHE_NAMESPACE,
           indexedDbLayout: LEGACY_INDEXED_DB_LAYOUT,
-          ...NO_CACHE_FALLBACK,
+          ...fallback,
         }),
       ),
     terminate: () => client.dispose(),
@@ -143,8 +156,8 @@ export function createAlmaSyncEngine(worker: EngineWorkerLike): AlmaSyncEngine {
 }
 
 /** Consumer-owned Worker construction keeps Vite in control of the asset URL. */
-export function spawnAlmaSyncEngine(): AlmaSyncEngine {
-  return createAlmaSyncEngine(new EdgeProcWorker());
+export function spawnAlmaSyncEngine(options: AlmaSyncEngineOptions = {}): AlmaSyncEngine {
+  return createAlmaSyncEngine(new EdgeProcWorker(), options);
 }
 
 /**

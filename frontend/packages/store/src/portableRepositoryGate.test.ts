@@ -1,13 +1,21 @@
 /**
  * The production wiring behind every zustand hydration: `portableRepository()`
- * in deletionTombstones.ts. Product rule (2026-10-05): durable OPFS SQLite or
- * nothing. A refused OPFS must report 'blocked' and keep hydration waiting on
- * the SAME pending open (no RAM repository, no throw); allowing storage and
- * rechecking must let that waiting hydration finish without a reload.
+ * in deletionTombstones.ts.
+ *
+ * - OPFS refused (Safari Private Browsing): open the SAME store in memory,
+ *   report 'memory', and never run the legacy migration (it deletes the legacy
+ *   rows it copies, and a RAM copy dies with the tab). Rule 2026-10-11.
+ * - Site storage blocked: report 'blocked' and keep hydration waiting on the
+ *   SAME pending open; allowing storage and rechecking lets that waiting
+ *   hydration finish on OPFS without a reload.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-const { openRepository } = vi.hoisted(() => ({ openRepository: vi.fn() }));
+const { openRepository, readLegacy, deleteLegacy } = vi.hoisted(() => ({
+  openRepository: vi.fn(),
+  readLegacy: vi.fn(async (): Promise<unknown> => undefined),
+  deleteLegacy: vi.fn(async () => undefined),
+}));
 
 vi.mock('./portableState', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./portableState')>();
@@ -19,39 +27,72 @@ vi.mock('./portableState', async (importOriginal) => {
 });
 
 vi.mock('./legacyKeyval', () => ({
-  readLegacyKeyval: async () => undefined,
-  deleteLegacyKeyval: async () => undefined,
+  readLegacyKeyval: readLegacy,
+  deleteLegacyKeyval: deleteLegacy,
 }));
 
-import { requirePortableStateRepository } from './deletionTombstones';
-import { PortableMemoryStore } from './portableMemoryStore.testkit';
-import {
-  checkPortableStorageAgain,
-  portableStatePersistence,
-  resetPortableStatePersistenceForTests,
-} from './portablePersistence';
-import { PortableStateRepository } from './portableState';
+/** A fresh module graph per test: portableRepository() caches its one open. */
+async function load() {
+  vi.resetModules();
+  const { requirePortableStateRepository } = await import('./deletionTombstones');
+  const persistence = await import('./portablePersistence');
+  const { PortableMemoryStore } = await import('./portableMemoryStore.testkit');
+  const { PortableStateRepository } = await import('./portableState');
+  return {
+    requirePortableStateRepository,
+    ...persistence,
+    repository: new PortableStateRepository(new PortableMemoryStore()),
+  };
+}
 
 afterEach(() => {
   vi.unstubAllGlobals();
-  resetPortableStatePersistenceForTests();
+  Reflect.deleteProperty(globalThis, 'localStorage');
+  openRepository.mockReset();
+  readLegacy.mockClear();
+  deleteLegacy.mockClear();
 });
 
+/** Safari "Block all cookies": the localStorage getter throws until lifted. */
+function blockSiteStorage(): { allow: () => void } {
+  let allowed = false;
+  Object.defineProperty(globalThis, 'localStorage', {
+    configurable: true,
+    get() {
+      if (!allowed) throw new DOMException('The operation is insecure.', 'SecurityError');
+      return undefined;
+    },
+  });
+  return { allow: () => (allowed = true) };
+}
+
 describe('portableRepository() gate', () => {
-  it('waits while OPFS is refused, never opens memory, and resolves the same pending hydration after a recheck', async () => {
-    let allowed = false;
+  it('opens the store in memory when OPFS is refused, and leaves legacy rows alone', async () => {
     vi.stubGlobal('navigator', {
       storage: {
         getDirectory: () =>
-          allowed
-            ? Promise.resolve({ kind: 'directory' })
-            : Promise.reject(new DOMException('The operation is insecure.', 'SecurityError')),
+          Promise.reject(new DOMException('The operation failed for an unknown transient reason.', 'UnknownError')),
       },
     });
-    const repository = new PortableStateRepository(new PortableMemoryStore());
+    readLegacy.mockResolvedValue('{"state":{"legacy":true}}');
+    const { requirePortableStateRepository, portableStatePersistence, repository } = await load();
     openRepository.mockResolvedValue(repository);
 
-    let hydrated: PortableStateRepository | undefined;
+    await expect(requirePortableStateRepository()).resolves.toBe(repository);
+    expect(portableStatePersistence()).toBe('memory');
+    expect(openRepository).toHaveBeenCalledOnce();
+    expect(openRepository).toHaveBeenCalledWith('memory');
+    expect(readLegacy).not.toHaveBeenCalled();
+    expect(deleteLegacy).not.toHaveBeenCalled();
+  });
+
+  it('waits while site storage is blocked and resolves the same pending hydration on OPFS after a recheck', async () => {
+    const site = blockSiteStorage();
+    vi.stubGlobal('navigator', { storage: { getDirectory: () => Promise.resolve({ kind: 'directory' }) } });
+    const { requirePortableStateRepository, portableStatePersistence, checkPortableStorageAgain, repository } = await load();
+    openRepository.mockResolvedValue(repository);
+
+    let hydrated: typeof repository | undefined;
     const hydration = requirePortableStateRepository().then((opened) => {
       hydrated = opened;
       return opened;
@@ -61,12 +102,11 @@ describe('portableRepository() gate', () => {
     expect(hydrated).toBeUndefined();
     expect(openRepository).not.toHaveBeenCalled();
 
-    allowed = true;
+    site.allow();
     await expect(checkPortableStorageAgain()).resolves.toBe('opfs');
     await expect(hydration).resolves.toBe(repository);
     expect(openRepository).toHaveBeenCalledOnce();
-    // Durable OPFS only: the open is never asked for an in-memory database.
-    expect(openRepository.mock.calls[0]).not.toContain('memory');
+    expect(openRepository).toHaveBeenCalledWith('opfs');
     await expect(requirePortableStateRepository()).resolves.toBe(repository);
     expect(openRepository).toHaveBeenCalledOnce();
   });

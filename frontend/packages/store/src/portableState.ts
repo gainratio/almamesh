@@ -562,17 +562,19 @@ async function canonicalOnlyExport(values: ReadonlyMap<string, string>): Promise
 }
 
 /**
- * The canonical app-data store: SQLite on OPFS, always. There is no in-memory
- * mode for app data; a browser that refuses OPFS is blocked until the user
- * allows storage (see portablePersistence.ts). The 'memory' stores elsewhere in
- * this file are short-lived scratch files that validate or build an export.
+ * The canonical app-data store: SQLite on OPFS. Only when the browser refuses
+ * OPFS (Safari Private Browsing) does the same store run in memory for this
+ * tab, and the UI says so (see portablePersistence.ts). Exports from it are
+ * rebuilt from live rows (canonicalOnlyExport), so no deleted bytes leak.
  */
-export async function openPortableStateRepository(): Promise<PortableStateRepository> {
+export async function openPortableStateRepository(
+  persistence: 'opfs' | 'memory' = 'opfs',
+): Promise<PortableStateRepository> {
   return new PortableStateRepository(
     await createSqliteStateStore({
       name: PORTABLE_STATE_DATABASE,
       initialSchemaVersion: PORTABLE_STATE_SCHEMA_VERSION,
-      persistence: 'opfs',
+      persistence,
     }),
     validatePortableExportDatabase,
     canonicalOnlyExport,

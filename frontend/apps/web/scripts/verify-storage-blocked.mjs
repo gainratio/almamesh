@@ -23,16 +23,11 @@
  * (UnknownError, see verify-sqlite-memory.mjs), so the chart can never load
  * there. macOS WebKit passes it.
  *
- * A second blocked realm refuses ONLY the Origin Private File System while
+ * A second realm refuses ONLY the Origin Private File System while
  * localStorage and IndexedDB keep working: Safari Private Browsing, older iOS,
- * some embedded WebViews, and every throwaway Playwright WebKit context.
- * SQLite on OPFS is the only place AlmaMesh keeps data (Harish, 2026-10-05:
- * "sqlite persistent is the only option"), so this realm must show the block
- * screen within a time bound: no in-memory SQLite, no engine, no IndexedDB.
- * The screen must say AlmaMesh needs permission to store data on this device,
- * never claim AlmaMesh uses cookies, list numbered steps for this browser, and
- * offer "Allow storage" and "Check again". Once storage is allowed, "Check
- * again" must continue into the app without reloading the page.
+ * some embedded WebViews, and every throwaway Playwright WebKit context. Rule
+ * 2026-10-11: the app runs on SQLite in memory there and says so (no block
+ * screen, never IndexedDB). --journey also requires the dashboard chart.
  *
  * STORAGE_BLOCKED_SCREENSHOT_DIR=<dir> saves both block screens as PNGs.
  *
@@ -81,17 +76,10 @@ function blockSiteStorage() {
 
 const ONBOARDED_NAME = 'Reference Native'
 
-/**
- * Runs before any app script: OPFS refuses until the test flips
- * `window.__allowOpfs`, so "Check again" can be proven without a reload.
- */
-function refuseOpfsUntilAllowed() {
+/** Runs before any app script: OPFS refuses, as in a Safari private window. */
+function refuseOpfs() {
   if (typeof globalThis.StorageManager === 'undefined') return
-  const real = globalThis.StorageManager.prototype.getDirectory
-  window.__allowOpfs = false
-  window.__loadMarker = Math.random()
   globalThis.StorageManager.prototype.getDirectory = function getDirectory() {
-    if (window.__allowOpfs) return real.call(this)
     return Promise.reject(new globalThis.DOMException(
       'The operation failed for an unknown transient reason (e.g. out of memory).',
       'UnknownError',
@@ -103,7 +91,7 @@ function refuseOpfsUntilAllowed() {
 const COOKIE_CLAIM = /\b(we|almamesh)\s+(use|uses|store|stores|set|sets)\s+cookies\b/i
 const PERMISSION_COPY = /permission to store data on this device/i
 
-/** How long the block screen may take to appear when OPFS is refused (no hang, no RAM fallback). */
+/** How long the block screen (or, OPFS refused, the in-memory notice) may take to appear. */
 const BLOCK_SCREEN_BUDGET_MS = 20_000
 
 /** Assert the block screen is the whole story: clear copy, numbered steps, both buttons. */
@@ -194,65 +182,43 @@ try {
   }
   await blocked.close()
 
-  // CONTRACT REVERSED (2026-10-05, Harish: "sqlite persistent is the only
-  // option"). This realm used to require an in-memory SQLite chart plus an
-  // ephemeral "won't be saved" note. OPFS refused now means the block screen,
-  // within a time bound: no app, no engine, no IndexedDB, no RAM SQLite. Then
-  // storage is allowed and "Check again" must move into the app WITHOUT a reload.
-  // A persistent profile, so OPFS really works once the init script stops
-  // refusing it (an ephemeral WebKit context refuses OPFS by itself). Linux
-  // Playwright WebKit has no nested-Worker OPFS even then: there the allow leg
-  // is skipped and said so; the block leg runs everywhere.
-  const canAllowOpfs = BROWSER_NAME !== 'webkit' || process.platform !== 'linux'
-  const refusedProfile = mkdtempSync(join(tmpdir(), 'almamesh-opfs-refused-'))
-  const opfsRefused = await browserType.launchPersistentContext(refusedProfile, { headless: true, serviceWorkers: 'block' })
-  await opfsRefused.addInitScript(refuseOpfsUntilAllowed)
+  // CONTRACT REVERSED AGAIN (2026-10-12, AGENTS.md: "If OPFS is refused, fall
+  // back to in-memory SQLite with an honest notice"). From 2026-10-05 this realm
+  // required the block screen. OPFS refused (Safari Private Browsing) now runs
+  // the app on SQLite in memory: no block screen, the "not saving" notice, the
+  // onboarding form, no IndexedDB, no page errors. --journey also onboards and
+  // requires the dashboard chart (engine cache in memory too).
+  const refused = await browser.newContext({ serviceWorkers: 'block' })
+  await refused.addInitScript(refuseOpfs)
   try {
-    const visited = await visit(opfsRefused, '/onboarding')
-    const engineWorkers = []
-    visited.page.on('worker', (worker) => {
-      if (/edgeproc|pyodide|chart|engine/i.test(worker.url())) engineWorkers.push(worker.url())
-    })
+    const visited = await visit(refused, '/onboarding')
     const started = Date.now()
-    const shown = await expectBlockScreen(visited.page, 'OPFS refused')
+    const notice = visited.page.getByTestId('in-memory-storage-notice')
+    await notice.waitFor({ state: 'visible', timeout: BLOCK_SCREEN_BUDGET_MS }).catch(() => undefined)
     const seconds = ((Date.now() - started) / 1000).toFixed(1)
-    invariant(shown.reason === 'storage-blocked', `OPFS refused: expected data-reason storage-blocked, got ${shown.reason}`)
+    const screen = (await visited.page.locator('body').innerText().catch(() => '')).replace(/\s+/g, ' ').slice(0, 400)
+    invariant(await notice.isVisible(), `OPFS refused: no in-memory notice within ${BLOCK_SCREEN_BUDGET_MS} ms: ${screen}`)
+    invariant(/not saving your data/i.test(await notice.innerText()), `OPFS refused: the notice does not say data is not saved: ${await notice.innerText()}`)
+    await visited.page.getByTestId('name-input').waitFor({ state: 'visible', timeout: 30_000 })
+    invariant(!(await visited.page.getByTestId('storage-blocked-notice').isVisible()), 'OPFS refused: the block screen walled the app')
     if (process.env.STORAGE_BLOCKED_SCREENSHOT_DIR) {
       await visited.page.screenshot({
         path: join(process.env.STORAGE_BLOCKED_SCREENSHOT_DIR, `opfs-refused-${BROWSER_NAME}.png`),
         fullPage: true,
       })
     }
-    await visited.page.waitForTimeout(2_000)
+    if (RUN_JOURNEY) {
+      await onboard(visited.page)
+      await visited.page.waitForURL('**/dashboard', { timeout: 60_000 })
+      await visited.page.getByTestId('chart-visualization').first().waitFor({ state: 'visible', timeout: 60_000 })
+      invariant(await notice.isVisible(), 'OPFS refused: the notice disappeared on the dashboard')
+    }
     const databases = await visited.page.evaluate(async () => (await indexedDB.databases()).map((d) => d.name))
     invariant(databases.length === 0, `OPFS refused: IndexedDB databases were created: ${JSON.stringify(databases)}`)
-    invariant(engineWorkers.length === 0, `OPFS refused: the engine started behind the block screen: ${engineWorkers.join(', ')}`)
-    const marker = await visited.page.evaluate(() => window.__loadMarker)
-
-    // Still refused: Check again keeps the screen and says so.
-    await visited.page.getByTestId('storage-check-again-button').click()
-    await visited.page.waitForTimeout(1_500)
-    invariant(await visited.page.getByTestId('storage-blocked-notice').isVisible(), 'OPFS refused: Check again let the app run while storage is still refused')
-    invariant(visited.pageErrors.length === 0, `OPFS refused: page errors behind the block screen: ${visited.pageErrors.join(' | ')}`)
-
-    if (canAllowOpfs) {
-      // The user allows storage; Check again continues into the app, no reload.
-      await visited.page.evaluate(() => { window.__allowOpfs = true })
-      await visited.page.getByTestId('storage-check-again-button').click()
-      await visited.page.getByTestId('name-input').waitFor({ state: 'visible', timeout: 30_000 })
-      invariant(
-        (await visited.page.evaluate(() => window.__loadMarker)) === marker,
-        'OPFS allowed: Check again reloaded the page instead of continuing in place',
-      )
-      invariant(!(await visited.page.getByTestId('storage-blocked-notice').isVisible()), 'OPFS allowed: the block screen stayed up')
-      invariant(visited.pageErrors.length === 0, `OPFS refused run threw: ${visited.pageErrors.join(' | ')}`)
-      console.log(`storage-blocked: ${BROWSER_NAME} OPFS refused -> block screen in ${seconds}s (${shown.browserBranch}, ${shown.steps} steps); allowed -> Check again opens the app in place`)
-    } else {
-      console.log(`storage-blocked: ${BROWSER_NAME} OPFS refused -> block screen in ${seconds}s; skipped the allow -> Check again leg on Linux WebKit (no nested-Worker OPFS)`)
-    }
+    invariant(visited.pageErrors.length === 0, `OPFS refused: page errors: ${visited.pageErrors.join(' | ')}`)
+    console.log(`storage-blocked: ${BROWSER_NAME} OPFS refused -> in-memory SQLite + notice in ${seconds}s${RUN_JOURNEY ? ', dashboard chart rendered' : ''}`)
   } finally {
-    await opfsRefused.close()
-    rmSync(refusedProfile, { recursive: true, force: true })
+    await refused.close()
   }
 
   // Playwright's Linux WebKit port exposes document OPFS in a persistent

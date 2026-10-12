@@ -36,9 +36,9 @@ async function wipeOrigin(page: Page): Promise<void> {
 
 /**
  * `test` with a WebKit context that can run AlmaMesh. A default WebKit context
- * is an ephemeral data store that refuses OPFS, and SQLite on OPFS is the app's
- * only store, so the app (correctly) shows its storage block screen there, as
- * Safari does in a Private window. Real Safari and iOS give a normal page a
+ * is an ephemeral data store that refuses OPFS, so the app (correctly) runs on
+ * SQLite in memory there with a "not saving" notice, as in a Safari Private
+ * window (e2e/private-mode.spec.ts). Real Safari and iOS give a normal page a
  * persistent store, so on WebKit each test gets an on-disk profile.
  *
  * The device fields are passed through by name, so a project such as
