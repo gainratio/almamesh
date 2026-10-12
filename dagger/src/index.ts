@@ -43,6 +43,7 @@ import { nightlyRealSkipCheckScript } from "./nightlyRealSkips.js"
 import { pagesUploadLimitsCheckScript as releasePagesUploadLimitsScript } from "./pagesUploadLimits.js"
 import { laneScript } from "./laneScript.js"
 import { BROWSER_JOURNEY_ARTIFACTS, BROWSER_JOURNEY_EVIDENCE, browserJourneyEvidenceScript, validateBrowserJourneyExitCode } from "./browserJourneyEvidence.js"
+import { nativeMacAcceptanceScript } from "./nativeMacAcceptance.js"
 import { ALLOWED_OWNERS, repositoryGitUrl, requireAllowedRepository } from "./repositoryIdentity.js"
 import {
   BUN_IMAGE,
@@ -95,6 +96,7 @@ const SOURCE_EXCLUDES = [
 const CONTRACT_TESTS = [
   "tests/dagger-audit-exceptions-contract.test.ts",
   "tests/browser-journey-evidence.test.ts",
+  "tests/native-mac-acceptance.test.ts",
   "tests/dagger-deployment-contract.test.ts",
   "tests/dagger-foundation-contract.test.ts",
   "tests/dagger-gates.test.ts",
@@ -798,7 +800,7 @@ exec ${inline.join(" ")}`,
       .withDirectory("functions", functions)
     return this.pagesFunctionsProof(roots, expectedSha)
   }
-  @func()
+  @func({ cache: "never" })
   async deploy(
     githubToken: Secret,
     cloudflareApiToken: Secret,
@@ -814,6 +816,14 @@ exec ${inline.join(" ")}`,
     const runRepository = requireAllowedRepository(repository)
     const result = await deliverProduction({
       greenMain: async () => dag.foundation().greenMainDecision(githubToken, runRepository, expectedSha).serialization(),
+      verifyNativeMain: async (evidence) => {
+        await dag.container().from(NODE_IMAGE)
+          // A cached success must not hide a newer failed native attempt.
+          .withEnvVariable("NATIVE_MAC_CHECK_NONCE", randomUUID())
+          .withSecretVariable("GITHUB_TOKEN", githubToken)
+          .withExec(["node", "-e", nativeMacAcceptanceScript(evidence.repository, evidence.commitSha)])
+          .sync()
+      },
       bindSource: async (evidence) => this.materializedPublicSource(evidence.commitSha, evidence.repository),
       guardSource: async (source, evidence) => {
         await dag.foundation().guard(source, evidence.repository, evidence.commitSha).sync()

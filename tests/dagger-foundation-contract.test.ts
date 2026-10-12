@@ -52,6 +52,13 @@ describe("central Dagger Lego pins", () => {
     expect(source).toContain(`const CENTRAL_MODULE_SHA = "${centralSha}"`)
   })
 
+  test("every deployment invocation rechecks live acceptance instead of reusing a function result", () => {
+    const source = readFileSync(resolve(root, "dagger/src/index.ts"), "utf8")
+    expect(source).toMatch(/@func\(\{\s*cache:\s*"never"\s*\}\)\s*async deploy\(/)
+    const deploy = source.slice(source.indexOf("async deploy("), source.indexOf("@func()", source.indexOf("async deploy(")))
+    expect(deploy).toContain('.withEnvVariable("NATIVE_MAC_CHECK_NONCE", randomUUID())')
+  })
+
   test("keeps the shared Foundation guard as the only secret scanner", () => {
     expect(existsSync(resolve(root, "dagger/scripts/secret-scan.sh"))).toBe(false)
   })
@@ -108,7 +115,7 @@ describe("central Dagger Lego pins", () => {
     )
     const dryRun = source.slice(
       source.indexOf("deployDryRun(expectedSha: string)"),
-      source.indexOf("  @func()\n  async deploy(", source.indexOf("deployDryRun(expectedSha: string)")),
+      source.indexOf("  async deploy(", source.indexOf("deployDryRun(expectedSha: string)")),
     )
     const proofSetup = source.slice(
       source.indexOf("private pagesFunctionsProof("),
