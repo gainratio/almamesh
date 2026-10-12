@@ -5,11 +5,16 @@ import {
 } from '@almamesh/llm';
 import {
   hydrateContentModePreference,
+  markPortableStateUnavailable,
   portablePreferenceStorage,
+  runProfileMigration,
   useLanguageStore,
   whenChartLibraryHydrated,
+  whenChatHydrated,
   whenInterpretationHydrated,
+  whenProfilesHydrated,
 } from '@almamesh/store';
+import { safeWarn } from '@almamesh/shared-types';
 import {
   hydrateSlowModelSuggestion,
   MODEL_SUGGESTION_DISMISSED_KEY,
@@ -42,12 +47,45 @@ export async function rehydratePortablePreferences(): Promise<void> {
  * mirror, and language/settings consumers start from the imported dataset.
  */
 export async function initializePortableState(): Promise<void> {
-  await initializePortablePreferences();
-  await Promise.all([
-    useLanguageStore.persist.hasHydrated()
-      ? Promise.resolve()
-      : useLanguageStore.persist.rehydrate(),
-    whenChartLibraryHydrated(),
-    whenInterpretationHydrated(),
-  ]);
+  try {
+    await initializePortablePreferences();
+    const stores = [
+      whenChartLibraryHydrated(),
+      whenProfilesHydrated(),
+      whenChatHydrated(),
+    ];
+    await Promise.all([
+      useLanguageStore.persist.hasHydrated()
+        ? Promise.resolve()
+        : useLanguageStore.persist.rehydrate(),
+      // Unreadable interpretations already pause new readings and preserve
+      // their rows. They do not prevent the chart and chat from opening.
+      whenInterpretationHydrated(),
+      ...stores.map(async (hydration) => {
+        const outcome = await hydration;
+        if (outcome.status === 'failed') {
+          throw new Error('SQLite-backed state could not be read.', { cause: outcome.error });
+        }
+      }),
+    ]);
+  } catch (error) {
+    // An open database does not imply its state was read successfully. Keep
+    // route guards and writers behind StorageGate rather than exposing empty
+    // default snapshots that could replace the user's existing dataset.
+    markPortableStateUnavailable();
+    throw error;
+  }
+}
+
+/** Refuse route guards and background writers until state and ownership are safe. */
+export async function preparePortableState(hydration: Promise<void>): Promise<boolean> {
+  try {
+    await hydration;
+    await runProfileMigration();
+    return true;
+  } catch (error) {
+    markPortableStateUnavailable();
+    safeWarn('storage.state_open_failed', error);
+    return false;
+  }
 }

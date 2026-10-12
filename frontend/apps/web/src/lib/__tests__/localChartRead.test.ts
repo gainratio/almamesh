@@ -13,6 +13,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { StoredChart } from '@almamesh/store';
+import type { HydrationOutcome } from '../../../../../packages/store/src/hydrationBarrier';
 
 // Controllable test doubles for the persist hydration hooks + the read.
 const hasHydrated = vi.fn<() => boolean>();
@@ -26,6 +27,7 @@ const onFinishHydration = vi.fn((cb: () => void) => {
 });
 const getPrimaryChart = vi.fn<() => StoredChart | undefined>();
 const persisted = { current: Promise.resolve() as Promise<void> };
+const hydrationFailure = { current: undefined as Error | undefined };
 
 vi.mock('@almamesh/store', () => ({
   useChartLibraryStore: {
@@ -36,12 +38,13 @@ vi.mock('@almamesh/store', () => ({
     },
   },
   // The real helper closes over the mocked store above.
-  whenChartLibraryHydrated: (): Promise<void> => {
-    if (hasHydrated()) return Promise.resolve();
-    return new Promise<void>((resolve) => {
+  whenChartLibraryHydrated: (): Promise<HydrationOutcome> => {
+    if (hydrationFailure.current) return Promise.resolve({ status: 'failed', error: hydrationFailure.current });
+    if (hasHydrated()) return Promise.resolve({ status: 'hydrated' });
+    return new Promise<HydrationOutcome>((resolve) => {
       const unsub = onFinishHydration(() => {
         unsub?.();
-        resolve();
+        resolve({ status: 'hydrated' });
       });
     });
   },
@@ -76,9 +79,11 @@ describe('readLocalPrimaryChart hydration race', () => {
     getPrimaryChart.mockReset();
     finishHydrationCallbacks.length = 0;
     persisted.current = Promise.resolve();
+    hydrationFailure.current = undefined;
   });
 
   afterEach(() => {
+    hydrationFailure.current = undefined;
     vi.resetModules();
   });
 
@@ -125,6 +130,15 @@ describe('readLocalPrimaryChart hydration race', () => {
 
     expect(res.success).toBe(false);
     expect(res.message).toBe('No chart found on this device.');
+  });
+
+  it('rejects a failed hydration instead of presenting it as a missing chart', async () => {
+    const error = new Error('stored chart could not be read');
+    hydrationFailure.current = error;
+
+    const { readLocalPrimaryChart } = await import('../localChartRead');
+    await expect(readLocalPrimaryChart()).rejects.toThrow('Chart state could not be read');
+    expect(getPrimaryChart).not.toHaveBeenCalled();
   });
 });
 

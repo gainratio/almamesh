@@ -113,9 +113,9 @@
     "retry": "Tentar novamente"
   },
   "storage_unavailable": {
-    "title": "O AlmaMesh não consegue iniciar seu banco de dados no dispositivo",
-    "body": "O AlmaMesh calcula e guarda seu mapa apenas neste dispositivo, e este navegador não consegue executar o banco de dados local de que ele precisa.",
-    "fix": "Use uma versão atual do Safari, Chrome, Firefox ou Edge em uma janela normal (não privada) e recarregue esta página."
+    "title": "O AlmaMesh não consegue acessar seu banco de dados no dispositivo",
+    "body": "O AlmaMesh não conseguiu abrir ou ler o banco de dados local necessário para carregar e salvar seus dados.",
+    "fix": "Recarregue esta página para tentar novamente. Se o problema continuar, verifique se você está usando um navegador atualizado em uma janela normal (não privada)."
   },
   "error_boundary": {
     "title": "Algo deu errado",

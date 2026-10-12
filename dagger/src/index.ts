@@ -42,6 +42,7 @@ import {
 import { nightlyRealSkipCheckScript } from "./nightlyRealSkips.js"
 import { pagesUploadLimitsCheckScript as releasePagesUploadLimitsScript } from "./pagesUploadLimits.js"
 import { laneScript } from "./laneScript.js"
+import { BROWSER_JOURNEY_ARTIFACTS, BROWSER_JOURNEY_EVIDENCE, browserJourneyEvidenceScript, validateBrowserJourneyExitCode } from "./browserJourneyEvidence.js"
 import { ALLOWED_OWNERS, repositoryGitUrl, requireAllowedRepository } from "./repositoryIdentity.js"
 import {
   BUN_IMAGE,
@@ -86,11 +87,14 @@ const SOURCE_EXCLUDES = [
   "**/dist*/**",
   "**/webkit-lane-artifacts*/**",
   "**/webkit-lane-evidence*/**",
+  "**/browser-journeys-artifacts/**",
+  "**/browser-journeys-evidence/**",
   "**/.venv/**",
   "dagger/sdk/**",
 ]
 const CONTRACT_TESTS = [
   "tests/dagger-audit-exceptions-contract.test.ts",
+  "tests/browser-journey-evidence.test.ts",
   "tests/dagger-deployment-contract.test.ts",
   "tests/dagger-foundation-contract.test.ts",
   "tests/dagger-gates.test.ts",
@@ -508,7 +512,27 @@ exec ${inline.join(" ")}`,
   }
   @func()
   browserJourneys(): Container {
-    return this.localPreview(this.hookedBuild(), "dist-verify", [
+    return this.browserJourneysRun()
+  }
+  /** Execute once, retain the original result, and export only a scanned snapshot. */
+  @func()
+  async browserJourneysEvidence(commitSha: string, repository: string): Promise<Directory> {
+    requireAllowedRepository(repository)
+    if (!/^[0-9a-f]{40}$/.test(commitSha)) throw new Error("Browser journey commit is invalid.")
+    let evidence: Directory | undefined
+    assertAllPassed([await startGate("browserJourneys", async () => {
+      await dag.foundation().guard(this.source, requireAllowedRepository(repository), commitSha).sync()
+      const completed = this.browserJourneysRun(true)
+      const exitCode = validateBrowserJourneyExitCode(await completed.exitCode())
+      const scanned = await completed.withExec(["bash", "-c", browserJourneyEvidenceScript(exitCode, commitSha)]).sync()
+      evidence = scanned.directory(`${WEB}/${BROWSER_JOURNEY_EVIDENCE}`)
+    })])
+    if (!evidence) throw new Error("Browser journey evidence is unavailable.")
+    return evidence
+  }
+  private browserJourneysRun(retainFailure = false): Container {
+    const prepared = this.hookedBuild().withExec(["mkdir", "-p", BROWSER_JOURNEY_ARTIFACTS])
+    return this.localPreview(prepared, "dist-verify", [
       // A brand-new browser restores a backup from the landing page (Chromium only, as above).
       "FIRST_RUN_RESTORE_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:first-run-restore --project=chromium",
       // The landing header fits 320/360/390/414 px phones in en/es/pt: no
@@ -529,8 +553,8 @@ exec ${inline.join(" ")}`,
       // Distribute this single spec by test, with one worker in each sequential
       // command. The full 17-test command exceeded the 900-second watchdog on
       // slower hosted runners; neither shard changes the test or job budgets.
-      "TIME_TRAVEL_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:time-travel e2e/time-travel.spec.ts --project=chromium --fully-parallel --workers=1 --shard=1/2",
-      "TIME_TRAVEL_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:time-travel e2e/time-travel.spec.ts --project=chromium --fully-parallel --workers=1 --shard=2/2",
+      "TIME_TRAVEL_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:time-travel e2e/time-travel.spec.ts --project=chromium --fully-parallel --workers=1 --shard=1/2 --output=browser-journeys-artifacts/time-travel-shard-1",
+      "TIME_TRAVEL_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:time-travel e2e/time-travel.spec.ts --project=chromium --fully-parallel --workers=1 --shard=2/2 --output=browser-journeys-artifacts/time-travel-shard-2",
       // A person added on /mesh survives an immediate full page load (the
       // write is on disk before the dialog moves on). Chromium only.
       "MESH_PERSIST_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:mesh-add-persist",
@@ -544,7 +568,7 @@ exec ${inline.join(" ")}`,
       // WebKit project needs macOS OPFS.
       "node scripts/verify-boot-fault-hook.mjs dist-verify --present",
       "BOOT_RETRY_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:boot-retry --project=chromium",
-    ])
+    ], retainFailure)
   }
   // The hooked Playwright suites. Each used to rebuild this same bundle in its
   // own webServer (`tsc -b && vite build`); *_BASE_URL points it at the lane's
@@ -1147,13 +1171,13 @@ echo "Wrangler Pages Functions dry-run verified closed feedback route for $EXPEC
       `https://${PAGES_TARGET.domains[0]}`,
     )
   }
-  private localPreview(container: Container, output: string, commands: readonly string[]): Container {
+  private localPreview(container: Container, output: string, commands: readonly string[], retainFailure = false): Container {
     const preview = `./node_modules/.bin/vite preview --outDir ${output} --host 127.0.0.1 --port 4199 --strictPort`
-    return this.localServer(container, preview, 4199, commands)
+    return this.localServer(container, preview, 4199, commands, retainFailure)
   }
-  private localServer(container: Container, server: string, port: number, commands: readonly string[]): Container {
+  private localServer(container: Container, server: string, port: number, commands: readonly string[], retainFailure = false): Container {
     // Every command is bounded (laneScript.ts): a hang fails with its name.
-    return container.withExec(["bash", "-c", laneScript({ server, port, commands })])
+    return container.withExec(["bash", "-c", laneScript({ server, port, commands })], { expect: retainFailure ? ReturnType.Any : ReturnType.Success })
   }
   private preview(
     container: Container,

@@ -284,8 +284,20 @@ describe('StorageGate when SQLite cannot run at all', () => {
     renderGate();
     const notice = screen.getByTestId('storage-blocked-notice');
     expect(notice.getAttribute('data-reason')).toBe('database-unavailable');
-    expect(notice.textContent).toContain('cannot start its on-device database');
+    expect(notice.textContent).toContain('cannot access its on-device database');
     expect(screen.queryByTestId('storage-steps')).toBeNull();
+    expect(screen.queryByText('dashboard chart')).toBeNull();
+  });
+
+  it('offers a reload after a failed database read without clearing stored data', () => {
+    const reload = vi.fn();
+    vi.spyOn(window, 'location', 'get').mockReturnValue({ ...window.location, reload });
+    store.persistence = 'unavailable';
+    renderGate();
+
+    fireEvent.click(screen.getByTestId('storage-reload-button'));
+    expect(reload).toHaveBeenCalledOnce();
+    expect(store.checkAgain).not.toHaveBeenCalled();
     expect(screen.queryByText('dashboard chart')).toBeNull();
   });
 });

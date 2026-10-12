@@ -38,7 +38,10 @@ function emptyPrimaryChart(): BirthChartGenerationResponse {
  * response when none exists.
  */
 export async function readLocalPrimaryChart(): Promise<BirthChartGenerationResponse> {
-  await whenChartLibraryHydrated()
+  const hydration = await whenChartLibraryHydrated()
+  if (hydration.status === 'failed') {
+    throw new Error('Chart state could not be read.', { cause: hydration.error })
+  }
   await whenChartLibraryPersisted()
   const primary = useChartLibraryStore.getState().getPrimaryChart()
   if (!primary) {

@@ -8,10 +8,10 @@ import { I18nextProvider } from 'react-i18next'
 import i18n from './i18n/config'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { AlmaMeshRuntimeProvider } from './providers/AlmaMeshRuntimeProvider'
-import { runProfileMigration, useLanguageStore } from '@almamesh/store'
+import { useLanguageStore } from '@almamesh/store'
 import { safeWarn } from '@almamesh/shared-types'
 import { installChunkErrorRecovery } from './lib/swSelfHeal'
-import { initializePortableState } from './lib/portablePreferences'
+import { initializePortableState, preparePortableState } from './lib/portablePreferences'
 import { startupOutcome } from './lib/storageStartup'
 import { BlockedStartup } from './components/BlockedStartup'
 import App from './App'
@@ -61,22 +61,16 @@ queryClient = new QueryClient({
 installChunkErrorRecovery()
 
 /** Hydrate SQLite, migrate profiles, apply the language. Never throws. */
-async function prepareState(hydration: Promise<void>): Promise<void> {
+async function prepareState(hydration: Promise<void>): Promise<boolean> {
+  if (!(await preparePortableState(hydration))) return false
   try {
-    await hydration
-
-    // Named-profiles migration (no data loss) reads the now-hydrated chart,
-    // profile, and chat stores. Complete it before any route guard renders.
-    await runProfileMigration()
-
     const language = useLanguageStore.getState().language
     await i18n.changeLanguage(language)
     document.documentElement.lang = language
   } catch (error) {
-    // The persistence-status UI handles unavailable SQLite. Render the app so
-    // it can explain the degraded state instead of leaving a blank document.
-    safeWarn('storage.state_open_failed', error)
+    safeWarn('i18n.language_change_failed', error)
   }
+  return true
 }
 
 function Shell({ children }: { children: React.ReactNode }) {
@@ -85,7 +79,7 @@ function Shell({ children }: { children: React.ReactNode }) {
       <ErrorBoundary>
         <I18nextProvider i18n={i18n}>
           <QueryClientProvider client={queryClient}>
-            <AlmaMeshRuntimeProvider>{children}</AlmaMeshRuntimeProvider>
+            {children}
           </QueryClientProvider>
         </I18nextProvider>
       </ErrorBoundary>
@@ -106,12 +100,18 @@ async function bootstrap(): Promise<void> {
       </Shell>,
     )
   }
-  await prepareState(hydration)
+  if (!(await prepareState(hydration))) {
+    root.render(<Shell><BlockedStartup /></Shell>)
+    return
+  }
   root.render(
     <Shell>
-      <BrowserRouter>
-        <App />
-      </BrowserRouter>
+      {/* Core state and profile ownership are ready before any engine work. */}
+      <AlmaMeshRuntimeProvider>
+        <BrowserRouter>
+          <App />
+        </BrowserRouter>
+      </AlmaMeshRuntimeProvider>
     </Shell>,
   )
 }

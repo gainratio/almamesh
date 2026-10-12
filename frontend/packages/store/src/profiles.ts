@@ -32,7 +32,7 @@ import {
 import { assignOrphanChatThreads, whenChatHydrated } from './chat';
 import { deletionAwareIdbStorage, whenPersistenceCommitted } from './deletionTombstones';
 import { clearDroppedWrites, reportDroppedWrite } from './droppedWrites';
-import { whenHydrated, type HydrationOutcome } from './hydrationBarrier';
+import { reportHydrationFailure, whenHydrated, type HydrationOutcome } from './hydrationBarrier';
 
 /** A named person on this device. No credentials — local-first by design. */
 export interface Profile {
@@ -490,7 +490,12 @@ export const useProfilesStore = create<ProfilesStore>()(
       profiles: state.profiles,
       activeProfileId: state.activeProfileId,
     }),
-    onRehydrateStorage: () => (state) => {
+    onRehydrateStorage: () => (state, error) => {
+      if (state === undefined || error !== undefined) {
+        safeWarn('storage.hydration_failed');
+        reportHydrationFailure(useProfilesStore.persist, error);
+        return;
+      }
       // Push the rehydrated active scope into chartLibrary so per-profile chart
       // resolution is correct on first paint, then mark hydrated.
       setActiveProfileScope(state?.activeProfileId ?? null);
@@ -522,6 +527,7 @@ export function useMeshReady(): boolean {
  * Resolve once the profiles store has finished rehydrating from portable storage.
  * Mirrors `whenChartLibraryHydrated` — await before any read that must reflect
  * the persisted truth (avoids the async-rehydrate false-empty race).
+ * Failed hydration resolves as `failed`, preserving the existing profile scope.
  */
 export function whenProfilesHydrated(): Promise<HydrationOutcome> {
   return whenHydrated(useProfilesStore.persist);
@@ -554,7 +560,15 @@ export function whenProfilesCommitted(): Promise<void> {
  * nothing. Safe to call on every app boot.
  */
 export async function runProfileMigration(): Promise<void> {
-  await Promise.all([whenProfilesHydrated(), whenChartLibraryHydrated(), whenChatHydrated()]);
+  await Promise.all(
+    [whenProfilesHydrated(), whenChartLibraryHydrated(), whenChatHydrated()].map(async (hydration) => {
+      if ((await hydration).status === 'failed') {
+        // Refuse replacement/ownership writes even if another store is still
+        // loading. Source errors may contain saved values; expose fixed text.
+        throw new Error('Profile migration requires successful hydration.');
+      }
+    }),
+  );
 
   const profiles = useProfilesStore.getState();
   const hasCharts = useChartLibraryStore.getState().listAllCharts().length > 0;

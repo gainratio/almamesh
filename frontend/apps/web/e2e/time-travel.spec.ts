@@ -5,6 +5,7 @@ import { expect, type ConsoleMessage, type Frame, type Locator, type Page, type 
 import { DELHI_BIRTH, DELHI_SEED, LLM_SETTINGS_KEY, bootEngine, seedChart, waitForEngineReady } from './interpretation.helpers';
 import { gotoSettled } from './portableInvariants.helpers';
 import { captureReloadConsole, type ReloadConsoleCapture } from './reloadConsole';
+import { withReloadJourneyDiagnostics } from './reloadJourneyDiagnostics';
 import { test } from './webkitProfile';
 
 /**
@@ -1375,23 +1376,34 @@ test.describe('Dashboard time travel', () => {
     expect(consoleErrors, 'the journey must keep a clean console').toEqual([]);
   });
 
-  test('[contract/real] a reload returns the Dashboard to today: the moment is never persisted', async ({ page }) => {
-    const consoleErrors = captureConsole(page);
-    await pinFullTier(page);
-    await bootEngine(page);
-    await seedChart(page);
-    await openDashboard(page);
-    await pickMonth(page, '2019-03');
-    await expect(page.getByTestId('dashboard-time-travel-banner')).toBeVisible();
-    await expect(page.getByTestId('time-travel-moment-card')).toBeVisible();
-    await explicitReload(page, () => page.reload());
-    // Settled: the chart and profile are back, so a persisted moment would render now.
-    await expect(page.getByTestId(DASHBOARD_BUTTON)).toBeEnabled({ timeout: 180_000 });
-    await expect(page.getByTestId('life-atlas')).toBeVisible();
-    await expect(page.getByTestId('dashboard-time-travel-banner'), 'spec ruling 1: a reload returns to today').toHaveCount(0);
-    await expect(page.getByTestId('time-travel-moment-card')).toHaveCount(0);
-    await expect(page.getByTestId('dashboard-today-label-life-atlas')).toHaveCount(0);
-    expect(consoleErrors, 'the journey must have no unexpected runtime or page errors').toEqual([]);
+  test('[contract/real] a reload returns the Dashboard to today: the moment is never persisted', async ({ page }, testInfo) => {
+    await withReloadJourneyDiagnostics(page, testInfo, async (diagnostics) => {
+      const consoleErrors = captureConsole(page);
+      await pinFullTier(page);
+      diagnostics.phase('engine-boot');
+      await bootEngine(page);
+      diagnostics.phase('chart-seed');
+      await seedChart(page);
+      diagnostics.phase('dashboard-open');
+      await openDashboard(page);
+      diagnostics.phase('period-open');
+      await pickMonth(page, '2019-03');
+      await expect(page.getByTestId('dashboard-time-travel-banner')).toBeVisible();
+      await expect(page.getByTestId('time-travel-moment-card')).toBeVisible();
+      diagnostics.phase('period-visible');
+      diagnostics.phase('reload-start');
+      await explicitReload(page, () => page.reload());
+      diagnostics.phase('reload-complete');
+      // Settled: the chart and profile are back, so a persisted moment would render now.
+      await expect(page.getByTestId(DASHBOARD_BUTTON)).toBeEnabled({ timeout: 180_000 });
+      await expect(page.getByTestId('life-atlas')).toBeVisible();
+      diagnostics.phase('dashboard-ready');
+      await expect(page.getByTestId('dashboard-time-travel-banner'), 'spec ruling 1: a reload returns to today').toHaveCount(0);
+      await expect(page.getByTestId('time-travel-moment-card')).toHaveCount(0);
+      await expect(page.getByTestId('dashboard-today-label-life-atlas')).toHaveCount(0);
+      expect(consoleErrors, 'the journey must have no unexpected runtime or page errors').toEqual([]);
+      diagnostics.phase('verified');
+    });
   });
 
   test('[contract/stubbed] with AI on, Go from the Dashboard also opens a pinned chat thread', async ({ page }) => {

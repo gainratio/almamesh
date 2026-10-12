@@ -1,0 +1,60 @@
+import { describe, expect, test } from 'bun:test';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { browserJourneyEvidenceScript, browserJourneyStatusCheckScript, validateBrowserJourneyExitCode } from '../dagger/src/browserJourneyEvidence.ts';
+
+const root = resolve(import.meta.dir, '..');
+const sha = 'd'.repeat(40);
+
+describe('browser journey evidence remains available on failure', () => {
+  test('Chromium retains traces without relying on a retry', () => {
+    const source = readFileSync(join(root, 'frontend/apps/web/playwright.time-travel.config.ts'), 'utf8');
+    expect(source).toContain('trace: "retain-on-failure"');
+    expect(source).not.toContain('trace: "on-first-retry"');
+  });
+
+  test('validates original process exits without converting failures into success', () => {
+    for (const code of [0, 1, 3, 124, 255]) expect(validateBrowserJourneyExitCode(code)).toBe(code);
+    for (const invalid of [-1, 256, NaN, Infinity, 0.5, '1', null]) expect(() => validateBrowserJourneyExitCode(invalid)).toThrow();
+  });
+
+  test('host status check preserves the original failure and rejects absent/corrupt/provenance-mismatched evidence', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'almamesh-journey-status-'));
+    const run = () => spawnSync(process.execPath, ['--eval', browserJourneyStatusCheckScript()], { cwd: dir, env: { ...process.env, EXPECTED_SHA: sha }, encoding: 'utf8' });
+    try {
+      expect(run().status).not.toBe(0);
+      mkdirSync(join(dir, 'browser-journeys-evidence'));
+      const path = join(dir, 'browser-journeys-evidence/journey-status.json');
+      for (const code of [0, 1, 3, 124]) {
+        writeFileSync(path, JSON.stringify({ schemaVersion: 1, commitSha: sha, exitCode: code, scanned: true }));
+        expect(run().status).toBe(code);
+      }
+      for (const invalid of [{}, { schemaVersion: 1, commitSha: 'a'.repeat(40), exitCode: 0, scanned: true }, { schemaVersion: 1, commitSha: sha, exitCode: 0, scanned: false }, { schemaVersion: 1, commitSha: sha, exitCode: '0', scanned: true }]) {
+        writeFileSync(path, JSON.stringify(invalid)); expect(run().status).not.toBe(0);
+      }
+      writeFileSync(path, 'PRIVATE malformed');
+      const malformed = run(); expect(malformed.status).not.toBe(0); expect(malformed.stderr).not.toContain('PRIVATE');
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  test('collects only the named browser results, requires a successful scanner, and records original status', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'almamesh-journey-evidence-'));
+    try {
+      mkdirSync(join(dir, 'browser-journeys-artifacts/time-travel'), { recursive: true });
+      mkdirSync(join(dir, 'scripts'));
+      writeFileSync(join(dir, 'browser-journeys-artifacts/time-travel/trace.zip'), 'synthetic test trace');
+      writeFileSync(join(dir, 'private-note.txt'), 'PRIVATE');
+      writeFileSync(join(dir, 'scripts/artifactLeakScan.mjs'), 'if(process.argv[2]!=="browser-journeys-evidence")process.exit(9)');
+      const run = spawnSync('bash', ['-c', browserJourneyEvidenceScript(3, sha)], { cwd: dir, encoding: 'utf8' });
+      expect(run.status, run.stderr).toBe(0);
+      expect(JSON.parse(readFileSync(join(dir, 'browser-journeys-evidence/journey-status.json'), 'utf8'))).toEqual({ schemaVersion: 1, commitSha: sha, exitCode: 3, scanned: true });
+      expect(readFileSync(join(dir, 'browser-journeys-evidence/time-travel/trace.zip'), 'utf8')).toBe('synthetic test trace');
+      expect(existsSync(join(dir, 'browser-journeys-evidence/private-note.txt'))).toBe(false);
+      rmSync(join(dir, 'browser-journeys-evidence'), { recursive: true, force: true });
+      writeFileSync(join(dir, 'scripts/artifactLeakScan.mjs'), 'process.exit(7)');
+      expect(spawnSync('bash', ['-c', browserJourneyEvidenceScript(3, sha)], { cwd: dir }).status).toBe(7);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+});

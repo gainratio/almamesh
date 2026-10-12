@@ -32,7 +32,8 @@ export default defineConfig({
   use: {
     baseURL: BASE_URL,
     headless: true,
-    trace: "on-first-retry",
+    // CI deliberately runs with zero retries; retain the failing first execution.
+    trace: "retain-on-failure",
     screenshot: "only-on-failure",
   },
   projects: [
