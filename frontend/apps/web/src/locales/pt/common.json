@@ -151,6 +151,7 @@
     "search_placeholder": "Procure uma cidade...",
     "no_results": "Nenhuma cidade encontrada",
     "offline_hint": "O nome da cidade e metadados normais da solicitação HTTPS são enviados · também funciona offline",
+    "memory_notice": "Este navegador não permite que o AlmaMesh guarde a lista de cidades offline neste dispositivo, então ela fica na memória apenas durante esta visita.",
     "search_aria": "Procurar uma cidade",
     "clear_aria": "Limpar busca de localização",
     "coordinates": {

@@ -25,6 +25,7 @@ import userEvent from '@testing-library/user-event';
 
 import { LocationSearch, type LocationResult } from './LocationSearch';
 import { timezoneForCoordinates } from '../../lib/geo/cityLookup';
+import { __setDerivedDbStorageForTest } from '../../lib/derivedDb';
 
 function renderSearch(onChange: (l: LocationResult | null) => void) {
   return render(<LocationSearch value={null} onChange={onChange} />);
@@ -131,5 +132,27 @@ describe('LocationSearch — coordinate fallback', () => {
 
     await user.type(screen.getByTestId('coordinate-lon-input'), '77.59');
     expect(submit.hasAttribute('disabled')).toBe(false);
+  });
+});
+
+describe('LocationSearch — refused on-device storage', () => {
+  it('says plainly when the offline city list only lives in memory for this visit', () => {
+    __setDerivedDbStorageForTest('memory');
+    try {
+      renderSearch(vi.fn());
+      expect(screen.getByTestId('city-lookup-memory-notice').textContent).toMatch(/memory/i);
+    } finally {
+      __setDerivedDbStorageForTest('unknown');
+    }
+  });
+
+  it('shows no storage notice while the city list is on device', () => {
+    __setDerivedDbStorageForTest('opfs');
+    try {
+      renderSearch(vi.fn());
+      expect(screen.queryByTestId('city-lookup-memory-notice')).toBeNull();
+    } finally {
+      __setDerivedDbStorageForTest('unknown');
+    }
   });
 });

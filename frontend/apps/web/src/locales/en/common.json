@@ -148,6 +148,7 @@
     "search_placeholder": "Search for a city...",
     "no_results": "No matching cities found",
     "offline_hint": "City name + ordinary HTTPS request metadata are sent · works offline too",
+    "memory_notice": "This browser won't let AlmaMesh keep the offline city list on this device, so it is held in memory for this visit only.",
     "search_aria": "Search for a city",
     "clear_aria": "Clear location search",
     "coordinates": {

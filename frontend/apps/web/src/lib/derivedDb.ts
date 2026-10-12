@@ -1,11 +1,20 @@
 /**
  * Lazy OPFS database for reference cities and recomputable period skies.
- * This is the app's only SQL-library boundary. No in-memory fallback.
+ * This is the app's only SQL-library boundary.
+ *
+ * Everything here is rebuildable (bundled city batches, engine-recomputed
+ * skies), so it is the one place an in-memory fallback is allowed: when the
+ * browser refuses OPFS for this pool, the library opens SQLite in memory and
+ * reports why. That handle is kept for the tab (re-importing the city list on
+ * every keystroke would be too slow), the UI says the list lives in memory for
+ * this visit, and reset drops it. User data never takes this path: the
+ * portable store stays OPFS-only and blocks instead (portablePersistence.ts).
  */
 import { openSqlDatabase, removeSqlDatabase, type SqlDatabase } from '@gainratio/browser/sql';
 import { readDeletionTombstones } from '@almamesh/store';
 
 export type { SqlDatabase } from '@gainratio/browser/sql';
+type SqlStorage = SqlDatabase['storage'];
 export const DERIVED_DB_NAME = 'almamesh-derived';
 export const DERIVED_SCHEMA_VERSION = 1;
 
@@ -33,6 +42,13 @@ export interface DerivedDbLocks {
   request<T>(name: string, work: () => Promise<T>, signal?: AbortSignal): Promise<T>;
 }
 export interface DerivedDbSessions extends DerivedDbAccess { remove(): Promise<void>; }
+/** Where the derived database lives: not opened yet, on OPFS, or in memory because OPFS was refused. */
+export type DerivedDbStorage = 'unknown' | 'opfs' | 'memory';
+
+/** A library fallback ('opfs-unavailable' / 'pool-in-use'), never an explicit memory request. */
+function classifyStorage(storage: SqlStorage | undefined): Exclude<DerivedDbStorage, 'unknown'> {
+  return storage?.persistence === 'memory' && storage.reason !== 'requested' ? 'memory' : 'opfs';
+}
 export const DERIVED_SESSION_TIMEOUT_MS = 30_000;
 const SESSION_LOCK = 'almamesh-derived-session-v1';
 
@@ -82,11 +98,14 @@ export function createDerivedDbSessions(options: {
   readonly epoch: () => Promise<number>;
   readonly timeoutMs?: number;
   readonly lifecycle?: EventTarget;
+  readonly onStorage?: (storage: Exclude<DerivedDbStorage, 'unknown'>) => void;
 }): DerivedDbSessions {
   const lifecycle = options.lifecycle ? documentLifecycle(options.lifecycle) : undefined;
   let generation = 0;
   let pendingOpen: Promise<SqlDatabase> | undefined;
   let pendingClose: Promise<void> | undefined;
+  /** The refused-OPFS fallback handle, kept for the tab until reset. */
+  let memory: SqlDatabase | undefined;
   const activeCancellations = new Set<() => void>();
   const resetError = () => new Error('The derived database changed during a reset. Retry the lookup.');
   function close(db: SqlDatabase): Promise<void> {
@@ -133,16 +152,20 @@ export function createDerivedDbSessions(options: {
               // WebKit refuses Worker construction after pagehide. Recheck in
               // this microtask, immediately before entering the public opener.
               check();
-              return options.openDatabase();
+              return memory ?? options.openDatabase();
             }).then(async (opened) => {
               if (controller.signal.aborted) {
                 // This runs outside the expired lock callback. A late handle is
-                // closed before migration or user work can observe it.
-                await close(opened);
+                // closed before migration or user work can observe it. The
+                // retained in-memory handle stays open for the next lookup.
+                if (opened !== memory) await close(opened);
                 controller.signal.throwIfAborted();
               }
               db = opened;
               adopted = true;
+              const storage = classifyStorage(opened.storage);
+              if (storage === 'memory') memory = opened;
+              options.onStorage?.(storage);
               return opened;
             });
             pendingOpen = opening;
@@ -163,7 +186,7 @@ export function createDerivedDbSessions(options: {
           } finally {
             // An adopted connection rolls back and releases its owner before
             // this lock is released. Only an opener without a handle detaches.
-            if (db) await close(db);
+            if (db && db !== memory) await close(db);
           }
         }, controller.signal);
         try {
@@ -188,22 +211,44 @@ export function createDerivedDbSessions(options: {
     remove() {
       generation += 1;
       for (const cancel of activeCancellations) cancel();
-      return options.locks.request(SESSION_LOCK, async () => { await options.removeDatabase(); });
+      return options.locks.request(SESSION_LOCK, async () => {
+        const dropped = memory;
+        memory = undefined;
+        if (dropped) await close(dropped);
+        await options.removeDatabase();
+      });
     },
   };
 }
 
 let sessions: DerivedDbSessions | undefined;
 let injected: SqlDatabase | undefined;
+let storageState: DerivedDbStorage = 'unknown';
+const storageListeners = new Set<() => void>();
+
+function recordStorage(next: DerivedDbStorage): void {
+  if (next === storageState) return;
+  storageState = next;
+  for (const listener of storageListeners) listener();
+}
+
+/** Where the derived database lives right now (for the honest in-memory notice). */
+export function derivedDbStorage(): DerivedDbStorage { return storageState; }
+
+export function subscribeDerivedDbStorage(listener: () => void): () => void {
+  storageListeners.add(listener);
+  return () => { storageListeners.delete(listener); };
+}
 
 function browserSessions(): DerivedDbSessions {
   if (!navigator.locks) throw new Error('Derived SQLite requires Web Locks and OPFS.');
   sessions ??= createDerivedDbSessions({
-    openDatabase: () => openSqlDatabase({ name: DERIVED_DB_NAME, persistence: 'opfs', fallback: 'none' }),
+    openDatabase: () => openSqlDatabase({ name: DERIVED_DB_NAME, persistence: 'opfs', fallback: 'memory' }),
     removeDatabase: () => removeSqlDatabase(DERIVED_DB_NAME),
     locks: { request: (name, work, signal) => navigator.locks.request(name, { signal }, work) },
     epoch: async () => (await readDeletionTombstones()).restoreEpoch,
     lifecycle: typeof window === 'undefined' ? undefined : window,
+    onStorage: recordStorage,
   });
   return sessions;
 }
@@ -217,4 +262,9 @@ export function removeDerivedDb(): Promise<void> { return browserSessions().remo
 /** Inject the same pinned SQLite API in unit tests without opening browser OPFS. */
 export function __setDerivedDbForTest(db: SqlDatabase | undefined): void {
   injected = db;
+}
+
+/** Drive the in-memory notice in component tests without opening SQLite. */
+export function __setDerivedDbStorageForTest(storage: DerivedDbStorage): void {
+  recordStorage(storage);
 }
