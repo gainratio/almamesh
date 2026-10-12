@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { browserJourneyEvidenceScript, browserJourneyStatusCheckScript, validateBrowserJourneyExitCode } from '../dagger/src/browserJourneyEvidence.ts';
+import { BROWSER_JOURNEY_STATUS_CHECK, browserJourneyEvidenceScript, validateBrowserJourneyExitCode } from '../dagger/src/browserJourneyEvidence.ts';
 
 const root = resolve(import.meta.dir, '..');
 const sha = 'd'.repeat(40);
@@ -22,7 +22,7 @@ describe('browser journey evidence remains available on failure', () => {
 
   test('host status check preserves the original failure and rejects absent/corrupt/provenance-mismatched evidence', () => {
     const dir = mkdtempSync(join(tmpdir(), 'almamesh-journey-status-'));
-    const run = () => spawnSync(process.execPath, ['--eval', browserJourneyStatusCheckScript()], { cwd: dir, env: { ...process.env, EXPECTED_SHA: sha }, encoding: 'utf8' });
+    const run = () => spawnSync('node', [join(root, BROWSER_JOURNEY_STATUS_CHECK)], { cwd: dir, env: { ...process.env, EXPECTED_SHA: sha }, encoding: 'utf8' });
     try {
       expect(run().status).not.toBe(0);
       mkdirSync(join(dir, 'browser-journeys-evidence'));
@@ -37,6 +37,14 @@ describe('browser journey evidence remains available on failure', () => {
       writeFileSync(path, 'PRIVATE malformed');
       const malformed = run(); expect(malformed.status).not.toBe(0); expect(malformed.stderr).not.toContain('PRIVATE');
     } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  test('the workflow and this test run the same single status-check file', () => {
+    expect(BROWSER_JOURNEY_STATUS_CHECK).toBe('frontend/apps/web/scripts/browserJourneyStatusCheck.mjs');
+    expect(existsSync(join(root, BROWSER_JOURNEY_STATUS_CHECK))).toBe(true);
+    const workflow = readFileSync(join(root, '.github/workflows/dagger.yml'), 'utf8');
+    expect(workflow).toContain(`run: node ${BROWSER_JOURNEY_STATUS_CHECK}`);
+    expect(workflow).not.toContain('journey-status.json');
   });
 
   test('collects only the named browser results, requires a successful scanner, and records original status', () => {

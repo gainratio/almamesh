@@ -22,21 +22,8 @@ printf '%s\\n' '${receipt}' > ${BROWSER_JOURNEY_EVIDENCE}/journey-status.json
 bun scripts/artifactLeakScan.mjs ${BROWSER_JOURNEY_EVIDENCE}`
 }
 
-/** Host-side check AFTER export; any missing/corrupt receipt fails closed. */
-export function browserJourneyStatusCheckScript(): string {
-  return `const fs = require("node:fs");
-try {
-  const value = JSON.parse(fs.readFileSync("browser-journeys-evidence/journey-status.json", "utf8"));
-  const sha = process.env.EXPECTED_SHA;
-  if (!value || typeof value !== "object" || Array.isArray(value)
-    || Object.keys(value).sort().join(",") !== "commitSha,exitCode,scanned,schemaVersion"
-    || value.schemaVersion !== 1 || value.scanned !== true
-    || typeof sha !== "string" || !/^[0-9a-f]{40}$/.test(sha) || value.commitSha !== sha
-    || !Number.isInteger(value.exitCode) || value.exitCode < 0 || value.exitCode > 255) throw 0;
-  console.log("Browser journey original exit status: " + value.exitCode);
-  process.exit(value.exitCode);
-} catch {
-  console.error("Browser journey evidence receipt is missing or invalid.");
-  process.exit(1);
-}`
-}
+/**
+ * The one host-side receipt check, run AFTER export by dagger.yml and by the
+ * contract tests. Any missing/corrupt/mismatched receipt fails closed.
+ */
+export const BROWSER_JOURNEY_STATUS_CHECK = "frontend/apps/web/scripts/browserJourneyStatusCheck.mjs"

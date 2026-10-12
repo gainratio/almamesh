@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSy
 import { spawn, spawnSync } from "node:child_process"
 import { tmpdir } from "node:os"
 import { resolve } from "node:path"
-import { browserJourneyStatusCheckScript } from "../dagger/src/browserJourneyEvidence.ts"
+import { BROWSER_JOURNEY_STATUS_CHECK } from "../dagger/src/browserJourneyEvidence.ts"
 
 // Pure workflow-YAML contracts: no Dagger CLI, so the `contracts` gate runs them
 // on every PR (tests/dagger-contracts.test.ts needs a host `dagger` and does not).
@@ -46,7 +46,7 @@ function ingressViolations(
     const upload = ingressSteps[3] ?? {}
     if (action.id !== "browser-journeys-evidence"
       || (action.with as Record<string, unknown>)?.call !== "--registry-token=env:GITHUB_TOKEN browser-journeys-evidence --commit-sha=${{ github.sha }} --repository=${{ github.repository }} export --path=browser-journeys-evidence"
-      || JSON.stringify(status) !== JSON.stringify({ name: "Enforce original browser journey result", env: { EXPECTED_SHA: "${{ github.sha }}" }, run: `node <<'NODE'\n${browserJourneyStatusCheckScript()}\nNODE\n` })
+      || JSON.stringify(status) !== JSON.stringify({ name: "Enforce original browser journey result", env: { EXPECTED_SHA: "${{ github.sha }}" }, run: `node ${BROWSER_JOURNEY_STATUS_CHECK}` })
       || JSON.stringify(upload) !== JSON.stringify({ uses: "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a", if: "always() && steps.browser-journeys-evidence.outcome == 'success'", with: { name: "browser-journeys-evidence", path: "browser-journeys-evidence", "retention-days": 14, "if-no-files-found": "error" } })
       || ingressSteps.length !== 4) violations.push("browser-journey-evidence")
     protectedSteps = ingressSteps.slice(0, 2)

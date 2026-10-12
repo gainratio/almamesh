@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
 import { CI_GATES } from "../dagger/src/gates.ts"
-import { browserJourneyStatusCheckScript } from "../dagger/src/browserJourneyEvidence.ts"
+import { BROWSER_JOURNEY_STATUS_CHECK } from "../dagger/src/browserJourneyEvidence.ts"
 
 const root = resolve(import.meta.dir, "..")
 const workflowPath = resolve(root, ".github/workflows/dagger.yml")
@@ -102,7 +102,7 @@ function expectedGateJob(gate: string): Mapping {
         {
           name: "Enforce original browser journey result",
           env: { EXPECTED_SHA: "${{ github.sha }}" },
-          run: `node <<'NODE'\n${browserJourneyStatusCheckScript()}\nNODE\n`,
+          run: `node ${BROWSER_JOURNEY_STATUS_CHECK}`,
         },
         {
           uses: "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
@@ -263,10 +263,7 @@ function gateJobFixture(gate: string): string[] {
       "      - name: Enforce original browser journey result",
       "        env:",
       "          EXPECTED_SHA: ${{ github.sha }}",
-      "        run: |",
-      "          node <<'NODE'",
-      ...browserJourneyStatusCheckScript().split("\n").map((line) => `          ${line}`),
-      "          NODE",
+      `        run: node ${BROWSER_JOURNEY_STATUS_CHECK}`,
       "      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
       "        if: always() && steps.browser-journeys-evidence.outcome == 'success'",
       "        with:",
