@@ -4,6 +4,7 @@ import type { SiderealChart } from "@almamesh/browser/types";
 
 import golden from "../../../../../backend/tests/fixtures/chart_golden_de421.json";
 import type { ProviderConfig } from "../config";
+import { TRANSIT_CTX_FIXTURE } from "./predictive-fixture";
 import {
   CURRENT_TIMELINE_SECTIONS,
   NATAL_SECTIONS,
@@ -62,6 +63,129 @@ async function collect<Event>(events: AsyncGenerator<Event>): Promise<Event[]> {
   for await (const event of events) collected.push(event);
   return collected;
 }
+
+const invalidTimelineItems: readonly [string, unknown][] = [
+  ["null item", null],
+  ["non-object item", "A future chapter"],
+  ["missing fields", {}],
+  ["missing title", { layman: "A season of growth.", technical: "Sun antar." }],
+  ["blank title", { title: " \n", layman: "A season of growth.", technical: "Sun antar." }],
+  ["missing layman voice", { title: "Next", technical: "Sun antar." }],
+  ["blank layman voice", { title: "Next", layman: " \n", technical: "Sun antar." }],
+  ["missing technical voice", { title: "Next", layman: "A season of growth." }],
+  ["blank technical voice", { title: "Next", layman: "A season of growth.", technical: " \n" }],
+  ["non-string voice", { title: "Next", layman: 42, technical: "Sun antar." }],
+  ["layman voice removed by jargon guard", { title: "Next", layman: "Saturn rules this house.", technical: "Sun antar." }],
+];
+
+async function timelineWithResponse(
+  section: "upcoming_periods" | "current_sky",
+  payload: unknown,
+  input: SiderealChart = { ...chart, transit_context: TRANSIT_CTX_FIXTURE },
+): Promise<{ events: CurrentTimelineEvent[]; seen: InterpretationSectionKey[] }> {
+  const seen: InterpretationSectionKey[] = [];
+  const fetchImpl = vi.fn(async (_url: string, init: RequestInit) => {
+    const requested = sectionFrom(String(init.body));
+    seen.push(requested);
+    if (requested !== section) return response(requested);
+    return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(payload) } }] }), {
+      headers: { "Content-Type": "application/json" },
+    });
+  }) as unknown as typeof fetch;
+  return { events: await collect(streamCurrentTimeline({ chart: input, config, fetchImpl })), seen };
+}
+
+describe.each(["upcoming_periods", "current_sky"] as const)("%s required output", (section) => {
+  const invalidResponses: readonly [string, unknown][] = [
+    ["missing section key", {}],
+    ["null section", { [section]: null }],
+    ["non-array section", { [section]: "A future chapter" }],
+    ...invalidTimelineItems.map(([label, item]): [string, unknown] => [label, { [section]: [item] }]),
+    ["one malformed item among valid items", { [section]: [
+      { title: "Next", layman: "A season of growth.", technical: "Sun antar." },
+      { title: "Later", technical: "Moon antar." },
+    ] }],
+  ];
+
+  it.each(invalidResponses)("reports %s as a section failure instead of a successful hidden section", async (_label, payload) => {
+    const { events, seen } = await timelineWithResponse(section, payload);
+    expect(events).toContainEqual(expect.objectContaining({ type: "error", section }));
+    expect(events).not.toContainEqual({ type: "section_complete", section });
+    const complete = events.find((event) => event.type === "complete");
+    if (complete?.type !== "complete") throw new Error("missing surviving timeline section");
+    expect(complete.timeline[section]).toEqual([]);
+    const other = section === "upcoming_periods" ? "current_sky" : "upcoming_periods";
+    expect(complete.timeline[other]).toHaveLength(1);
+    expect(seen).toHaveLength(2);
+  });
+
+  it("rejects an empty array when the engine supplied facts for the requested section", async () => {
+    const { events } = await timelineWithResponse(section, { [section]: [] });
+    expect(events).toContainEqual(expect.objectContaining({ type: "error", section }));
+    expect(events).not.toContainEqual({ type: "section_complete", section });
+  });
+});
+
+describe("timeline sections with no eligible engine facts", () => {
+  it("accepts an empty current-sky section when the predictive context is absent", async () => {
+    const { events } = await timelineWithResponse("current_sky", { current_sky: [] }, chart);
+    expect(events).toContainEqual({ type: "section_complete", section: "current_sky" });
+    expect(events).not.toContainEqual(expect.objectContaining({ type: "error", section: "current_sky" }));
+  });
+
+  it("accepts an empty upcoming-periods section when timing data is absent", async () => {
+    const { dashas: _dashas, ...withoutTiming } = chart;
+    const { events } = await timelineWithResponse("upcoming_periods", { upcoming_periods: [] }, withoutTiming);
+    expect(events).toContainEqual({ type: "section_complete", section: "upcoming_periods" });
+    expect(events).not.toContainEqual(expect.objectContaining({ type: "error", section: "upcoming_periods" }));
+  });
+
+  it("accepts an empty upcoming-periods section at the final engine maha and antar", async () => {
+    if (!chart.dashas?.current_maha) throw new Error("fixture needs a current maha");
+    const rows = chart.dashas.maha_dasha_sequence;
+    const currentIndex = rows.findIndex((row) => row.lord === chart.dashas?.current_maha?.lord);
+    const current = rows[currentIndex];
+    const lastAntar = current.antar_sequence?.at(-1);
+    if (!lastAntar) throw new Error("fixture needs a dated antar tree");
+    const finalWindowChart: SiderealChart = {
+      ...chart,
+      dashas: {
+        ...chart.dashas,
+        maha_dasha_sequence: rows.slice(0, currentIndex + 1),
+        current_antar: lastAntar,
+        current_pratyantar: null,
+        pratyantar_sequence: null,
+      },
+    };
+    const { events } = await timelineWithResponse("upcoming_periods", { upcoming_periods: [] }, finalWindowChart);
+    expect(events).toContainEqual({ type: "section_complete", section: "upcoming_periods" });
+    expect(events).not.toContainEqual(expect.objectContaining({ type: "error", section: "upcoming_periods" }));
+  });
+});
+
+describe("legacy upcoming windows without a dated antar tree", () => {
+  it.each([
+    ["omitted", undefined],
+    ["empty", []],
+  ] as const)("rejects empty upcoming output when the current antar tree is %s and future maha rows exist", async (_label, antarSequence) => {
+    const dashas = chart.dashas;
+    if (!dashas?.current_maha) throw new Error("fixture needs a current maha");
+    const currentLord = dashas.current_maha.lord;
+    const legacyChart: SiderealChart = {
+      ...chart,
+      dashas: {
+        ...dashas,
+        maha_dasha_sequence: dashas.maha_dasha_sequence.map((row) => ({
+          ...row,
+          antar_sequence: row.lord === currentLord ? antarSequence : undefined,
+        })),
+      },
+    };
+    const { events } = await timelineWithResponse("upcoming_periods", { upcoming_periods: [] }, legacyChart);
+    expect(events).toContainEqual(expect.objectContaining({ type: "error", section: "upcoming_periods" }));
+    expect(events).not.toContainEqual({ type: "section_complete", section: "upcoming_periods" });
+  });
+});
 
 describe("explicit structured interpretation generators", () => {
   it("runs only the five natal sections and returns no timeline fields", async () => {

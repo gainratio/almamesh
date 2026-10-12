@@ -142,11 +142,31 @@ test('[real] current timeline generates The road ahead against live OpenRouter',
   );
   writeFileSync('test-results/timeline-real-road-ahead-responses.txt', roadAheadResponses.join('\n\n----\n\n'));
   writeFileSync('test-results/timeline-real-console.txt', errors.join('\n'));
+  // Closed metadata survives a failed hosted container without logging chart
+  // facts, request bodies or model prose. Keep the visible-content assertions.
+  console.log(`timeline-real-result ${JSON.stringify({
+    schemaVersion: 1,
+    firstProgressMs,
+    totalMs,
+    responses: usageRows
+      .filter(({ section }) => section === 'upcoming_periods' || section === 'current_sky')
+      .map(({ section, status, layman, technical, promptTokens, completionTokens, reasoningTokens }) => ({
+        section, status, laymanWords: layman, technicalWords: technical,
+        promptTokens, completionTokens, reasoningTokens,
+      })),
+    ui: {
+      currentSkyGroups: await page.getByTestId('dashboard-current-sky').count(),
+      roadAheadGroups: await page.getByTestId('dashboard-road-ahead').count(),
+      partialFailureNotices: await page.getByTestId('timeline-partial-failure').count(),
+    },
+  })}`);
   await page.screenshot({ path: 'test-results/timeline-real-openrouter.png', fullPage: true });
 
   await expect(page.getByTestId('timeline-partial-failure')).toHaveCount(0);
   const section = page.getByTestId('current-timeline-section');
   await expect(section).toBeVisible();
+  await expect(section.getByTestId('dashboard-current-sky')).toBeVisible();
+  await expect(section.getByTestId('dashboard-road-ahead')).toBeVisible();
   await expect(section).toContainText(/the road ahead/i);
   expect(errors.filter((e) => e.startsWith('[error]') || e.startsWith('[pageerror]'))).toEqual([]);
 });

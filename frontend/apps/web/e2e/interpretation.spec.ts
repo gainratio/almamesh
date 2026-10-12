@@ -112,7 +112,11 @@ interface StubLlmControl {
   readonly holdRequests: () => () => void;
 }
 
-async function stubLlm(page: Page): Promise<StubLlmControl> {
+async function stubLlm(
+  page: Page,
+  overrides: Partial<Record<SectionKey, unknown>> = {},
+): Promise<StubLlmControl> {
+  const responses = { ...SECTION_JSON, ...overrides };
   let providerCalls = 0;
   const requestedSections: SectionKey[] = [];
   let held: Promise<void> | null = null;
@@ -127,7 +131,7 @@ async function stubLlm(page: Page): Promise<StubLlmControl> {
     }
     requestedSections.push(section);
     if (held) await held;
-    const content = JSON.stringify(SECTION_JSON[section]);
+    const content = JSON.stringify(responses[section]);
     const openAiBody = JSON.stringify({ choices: [{ message: { content } }] });
     return route.fulfill({
       status: 200,
@@ -348,6 +352,28 @@ test('current timeline is generated only by its explicit control', async ({ page
   await expect(page.getByTestId('dashboard-current-sky')).toContainText('Pause before acting.');
   expect(llm.requestedSections()).toEqual(['upcoming_periods', 'current_sky']);
   await expect(page.getByTestId('generate-reading')).toBeVisible();
+});
+
+test('an empty required timeline section shows a partial failure and retains the current sky', async ({ page }) => {
+  await page.addInitScript(
+    ([key, cfg]) => window.localStorage.setItem(key as string, cfg as string),
+    [LLM_SETTINGS_KEY, JSON.stringify(LLM_CONFIG)] as const,
+  );
+  const llm = await stubLlm(page, { upcoming_periods: { upcoming_periods: [] } });
+  await bootEngine(page);
+  await seedChart(page);
+  await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+
+  const generateTimeline = page.getByTestId('generate-timeline');
+  await expect(generateTimeline).toBeEnabled({ timeout: 90_000 });
+  await generateTimeline.click();
+  await expect(page.getByTestId('dashboard-current-sky')).toContainText('Pause before acting.');
+  await expect(page.getByTestId('timeline-progress')).toHaveCount(0);
+  await expect(page.getByTestId('timeline-partial-failure')).toContainText('The road ahead');
+  await expect(page.getByTestId('dashboard-road-ahead')).toHaveCount(0);
+  expect(llm.requestedSections()).toEqual(['upcoming_periods', 'current_sky']);
+  await expect(page.getByTestId('regenerate-timeline')).toBeEnabled();
+  await page.screenshot({ path: 'test-results/timeline-empty-section-partial-failure.png', fullPage: true });
 });
 
 // ===========================================================================
