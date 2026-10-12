@@ -14,7 +14,7 @@
  * same one the first-run surfaces (landing, onboarding) use. The safety copy is
  * skipped only when this browser holds nothing to protect.
  */
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   BackupCryptoError,
@@ -68,6 +68,12 @@ export function DataSettingsPanel() {
   // One status/error banner for the panel: the latest action's message.
   const status = exportStatus ?? restore.status;
   const error = exportError ?? restore.error;
+  // Results land at the top of the panel, often far above the button that
+  // caused them: bring them into view, clear of the sticky app header.
+  const bannerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (status || error) bannerRef.current?.scrollIntoView?.({ block: 'nearest' });
+  }, [status, error]);
 
   const clearBanners = () => {
     setExportStatus(null);
@@ -153,15 +159,19 @@ export function DataSettingsPanel() {
       <DataRepairNotice />
 
       {/* Status / error banners */}
-      {status && (
-        <p data-testid="backup-status" role="status" className="text-sm text-status-success">
-          {status}
-        </p>
-      )}
-      {error && (
-        <p data-testid="backup-error" role="alert" className="text-sm text-status-error">
-          {error}
-        </p>
+      {(status || error) && (
+        <div ref={bannerRef} className="space-y-2 scroll-mt-24">
+          {status && (
+            <p data-testid="backup-status" role="status" className="text-sm text-status-success">
+              {status}
+            </p>
+          )}
+          {error && (
+            <p data-testid="backup-error" role="alert" className="text-sm text-status-error">
+              {error}
+            </p>
+          )}
+        </div>
       )}
 
       {/* Export */}

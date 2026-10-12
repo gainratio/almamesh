@@ -1,4 +1,4 @@
-import { expect, test, type BrowserContext, type Page } from '@playwright/test';
+import { expect, test, type BrowserContext, type Download, type Page } from '@playwright/test';
 
 import { collectConsoleErrors, expectChartRenders } from './live/liveJourney';
 
@@ -41,15 +41,30 @@ test.beforeEach(async ({ context }) => {
   await privateContext(context);
 });
 
+/**
+ * The download, or a fast failure carrying the app's own error text: when the
+ * export errors, no download ever comes and waiting out its timeout hides why.
+ */
+async function exportDownloadOrError(page: Page): Promise<Download> {
+  const error = page.getByTestId('backup-error');
+  const outcome = Promise.race([
+    page.waitForEvent('download', { timeout: 120_000 }).then((download) => ({ download })),
+    error.waitFor({ state: 'visible', timeout: 120_000 }).then(async () => ({ error: await error.innerText() })),
+  ]);
+  // Marks the race handled if the click throws first; `await` below still rejects.
+  outcome.catch(() => undefined);
+  await page.getByTestId('backup-export-button').click();
+  const settled = await outcome;
+  if ('error' in settled) throw new Error(`Backup export failed in the app: ${settled.error}`);
+  return settled.download;
+}
+
 /** Settings > Data export, reached in-app: a reload would empty in-memory SQLite. */
 async function exportBackup(page: Page, path: string): Promise<void> {
   await expect(page.getByTestId('backup-export-button')).toBeVisible({ timeout: 60_000 });
   await page.getByTestId('backup-passphrase-input').fill(PASSPHRASE);
   await page.getByTestId('backup-passphrase-confirm-input').fill(PASSPHRASE);
-  const [download] = await Promise.all([
-    page.waitForEvent('download', { timeout: 120_000 }),
-    page.getByTestId('backup-export-button').click(),
-  ]);
+  const download = await exportDownloadOrError(page);
   expect(download.suggestedFilename()).toMatch(/^almamesh-backup-.*\.almamesh$/);
   expect(await download.failure()).toBeNull();
   await download.saveAs(path);
@@ -125,6 +140,15 @@ test('OPFS refused: onboarding reaches a chart, the backup the notice asks for e
   await expect(restored.getByTestId('backup-status')).toHaveText(/^Restored\. This tab still keeps nothing/, {
     timeout: 120_000,
   });
+  // The person clicked Replace down by Import: the status must come into view
+  // on its own, below the sticky app header, not off-screen or under it.
+  const status = restored.getByTestId('backup-status');
+  await expect.poll(() => status.evaluate((node) => {
+    const box = node.getBoundingClientRect();
+    const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+    return hit !== null && node.contains(hit);
+  }), { timeout: 5_000 }).toBe(true);
+  await restored.screenshot({ path: test.info().outputPath('private-mode-restored-status.png') });
   await restored.getByRole('link', { name: /Back to Dashboard/ }).click();
   await expect(restored.getByTestId('identity-strip')).toContainText('Reference Native', { timeout: 120_000 });
   await expect(restored.getByTestId('chart-visualization').first()).toBeVisible();
