@@ -32,6 +32,16 @@ pytz were below the corresponding floors in `backend/pyproject.toml`.
 Skyfield alignment addresses that package's mismatch; it does not resolve or
 silently redefine the other supported-version contracts.
 
+History attributes the Pydantic minimum to routine grouped update
+[`8653a4ea`](https://github.com/gainratio/almamesh/commit/8653a4ea6984aa8c3fa0ec887fa2fb3c432ca9f7)
+and the pytz minimum to routine grouped update
+[`abf1a1d`](https://github.com/gainratio/almamesh/commit/abf1a1d13790d340139177217314cd3b757c6119).
+Neither introducing change records a security advisory or chart-correctness
+requirement. No executable pytz use was found in the inspected engine/Worker
+path; chart calculation receives UTC and uses Python's `datetime.UTC`.
+This narrows the evidence for a version-specific release blocker; it does not
+prove compatibility. The declared floors remain unchanged.
+
 The Skyfield regression first failed against the actual 1.53 wheel metadata
 (below the declared 1.54 minimum and the locked 1.55 backend). Replacing the
 wheel then failed the three old runtime-path checks before those paths were
@@ -108,8 +118,14 @@ The candidate backend gate passed 1219 tests with 98.46% coverage, plus Ruff,
 formatting, mypy and complexity checks. Both source-only CI closures now export
 the three exact public browser configuration files needed by the new dependency
 contract. A missing-input regression failed before the correction, then the
-177 ingress contracts passed. Full frontend and actual browser/native checks
-for the refreshed candidate remain pending at this checkpoint.
+177 ingress contracts passed. The refreshed frozen product `46a0dab`
+subsequently passed the full frontend gate (6283 tests plus four lint contracts),
+558 CI contracts, 11 actual browser parity checks and the complete 49-check
+native lane. Five original boots peaked at 1045 MiB and five candidate
+Day/place journeys at 1152 MiB, within the unchanged +250 MiB allowance.
+Native evidence finalization and scanning passed. Final-head hosted acceptance
+remains required; see the companion
+[time-travel evidence](2026-10-11-time-travel-evidence.md).
 
 The existing Dagger toolchain image records Playwright 1.63. Its installer
 explicitly detects a lock/image mismatch and installs matching browsers and

@@ -1,6 +1,6 @@
 # Time travel and deterministic chat verification — 11 October 2026
 
-Status: hosted follow-up head `757cb225` is rejected; release is blocked. The refreshed candidate updates stable Playwright/WebKit and aligns the browser Skyfield wheel with backend 1.55; its complete frontend/browser/native checks remain pending. Earlier frozen product source `ce2548a709202f836b6ca14c169705233229692f` passed the complete native frontend gate (6,179 tests plus four lint contracts, types, lint, build, public routes and no-hooks checks) and the complete native Mac lane (49/49 checks, zero retries). The root independently finalized and scanned that saved evidence successfully. Earlier hosted Mac failures remain retained; local passes do not establish their cause or resolution. The user authorized the CI/CD process on 11 October 2026. Cold-boot aggregate memory, wider restore memory and physical iPhone verification remain open. Production remains on #331; merge and deployment require complete final-head hosted proof.
+Status: frozen refreshed product `46a0dab798d1e508d4cfa8878b57516fb3e249e6` passed the complete frontend gate (6,283 tests plus four lint contracts), 558 CI contracts, 11/11 actual browser parity checks and the complete native Mac lane (49/49, zero retries). Backend verification passed 1219 tests / 98.46% coverage and all code checks. Native evidence finalization and secret scanning passed. Hosted follow-up head `757cb225` remains rejected; merge and deployment require complete final-head hosted proof. Earlier failures are retained; local passes do not establish their cause or resolution. The user authorized the CI/CD process on 11 October 2026. Cold-boot aggregate memory, wider restore memory and physical iPhone verification remain open. Production remains on #331.
 
 Hosted candidates `67addf61`, `ba2837a2` and `d42886cc` are rejected. Their outcomes,
 including real browser failures, command/job timeouts, a report-section timeout
@@ -1159,3 +1159,51 @@ three exact browser configuration files required by the metadata regression;
 177 ingress contracts pass after a missing-input regression failed. Complete
 frontend, actual browser parity and native acceptance for this refreshed source
 remain pending at this checkpoint. Budgets, retries and deadlines are unchanged.
+
+## Refreshed frozen product 46a0dab: complete local acceptance
+
+Root-observed commands on `46a0dab798d1e508d4cfa8878b57516fb3e249e6` completed
+successfully. The frontend gate passed 6283 tests plus four lint contracts,
+types, lint, dead-module enforcement, production build, prerender/public-route
+and absent-test-hook verification. All 558 CI contracts passed. Backend source
+was unchanged after its 1219-test / 98.46% coverage gate and code checks.
+
+The complete native Mac lane passed 49/49 with zero retries on Darwin 27 arm64,
+64 GiB and Playwright 1.64 / WebKit 2370. Five original-release boots measured
+1037, 1025, 1045, 1041 and 1033 MiB. Five candidate Day/place journeys measured
+1152, 1146, 1128, 1128 and 1150 MiB using the acceptance sampler. The 1152 MiB
+candidate maximum is 107 MiB above the 1045 MiB original maximum, within the
+unchanged +250 MiB allowance. Both builds were without hooks; the baseline
+archive built and signed its own original engine. No scalar baseline override
+was supplied.
+
+All 28 travel checks, eight portable checks and three recovery checks passed.
+The post-ready recovery receipt records two real Workers, ready generations
+1/2, termination of Worker 1, one injected fatal, no automatic boot retry,
+and fresh-chart/historical/today requests on Worker 2 without document reload.
+Both service-worker journeys retain 57 events with completed bodies. Three
+reload scopes have zero fatal/page errors; the desktop pinned-year scope
+retains two proved old-resource rejections and one cancellation, so it is not
+universally console-clean.
+
+All ten memory diagnostic snapshots are available with zero instrumentation
+failures, unobserved Workers or pending correlations. No error reply appears
+in their retained tails; bounded histories dropped 88 baseline / 464 candidate
+events per snapshot. All 63 public Worker-lifecycle receipts have zero observer
+failures, dropped Workers or page-crash events. These receipts are diagnostics,
+not complete allocation traces or proof of a native crash's cause.
+
+Native collection completed with zero reports and a successful unified-log
+capture. Root-observed finalization and the finalized-snapshot scan passed
+(16 configured secrets checked). Actual Chromium browser parity then passed
+11/11, including predictive and moon-window goldens, reference-date sensitivity,
+zero console/page errors and same-origin engine requests only. The browser ran
+the rebuilt signed 1.55 bundle through the real app Worker.
+
+The no-hooks review build is `6caf4018313f`, built
+`2026-10-12T03:54:39.247Z`, with exact commit `46a0dab798d1e508d4cfa8878b57516fb3e249e6`,
+served locally on port 4297. Public-route and absent-hook checks passed on that
+artifact. Logs, source evidence and the private finalized snapshot are retained
+under `/tmp/almamesh-codex-pr333-runtime-refresh-*` and
+`frontend/apps/web/webkit-lane-evidence-all`. Complete final-head hosted Dagger,
+native Mac and required real-provider nightly remain required before merge.
