@@ -20,6 +20,7 @@ const expectedDeployFlags = [
   "--workflow-run-id",
   "--run-attempt",
   "--repository",
+  "--trigger-workflow",
 ]
 
 type Mapping = Record<string, unknown>
@@ -173,7 +174,7 @@ function exactDeployWorkflowViolations(source: string): string[] {
   }
   if (!sameValue(mapping(workflow.on), {
     workflow_run: {
-      workflows: ["Dagger"],
+      workflows: ["Dagger", "WebKit (macOS)"],
       types: ["completed"],
       branches: ["main"],
     },
@@ -214,13 +215,14 @@ function exactDeployWorkflowViolations(source: string): string[] {
           GITHUB_TOKEN: "${{ github.token }}",
           HEAD_SHA: "${{ github.event.workflow_run.head_sha }}",
           RUN_ATTEMPT: "${{ github.event.workflow_run.run_attempt }}",
+          TRIGGER_WORKFLOW: "${{ github.event.workflow_run.path }}",
           WORKFLOW_RUN_ID: "${{ github.event.workflow_run.id }}",
           XDG_CONFIG_HOME: "${{ github.workspace }}/.github/xdg",
         },
         with: {
           version: "0.21.8",
           verb: "call",
-          args: "deploy --github-token=env:GITHUB_TOKEN --cloudflare-api-token=env:CLOUDFLARE_API_TOKEN --cloudflare-account-id=env:CLOUDFLARE_ACCOUNT_ID --bundle-private-key-b-64=env:BUNDLE_PRIVATE_KEY_B64 --bundle-public-key-b-64=env:BUNDLE_PUBLIC_KEY_B64 --expected-sha=\"$HEAD_SHA\" --workflow-run-id=\"$WORKFLOW_RUN_ID\" --run-attempt=\"$RUN_ATTEMPT\" --repository=\"$GITHUB_REPOSITORY\"",
+          args: "deploy --github-token=env:GITHUB_TOKEN --cloudflare-api-token=env:CLOUDFLARE_API_TOKEN --cloudflare-account-id=env:CLOUDFLARE_ACCOUNT_ID --bundle-private-key-b-64=env:BUNDLE_PRIVATE_KEY_B64 --bundle-public-key-b-64=env:BUNDLE_PUBLIC_KEY_B64 --expected-sha=\"$HEAD_SHA\" --workflow-run-id=\"$WORKFLOW_RUN_ID\" --run-attempt=\"$RUN_ATTEMPT\" --repository=\"$GITHUB_REPOSITORY\" --trigger-workflow=\"$TRIGGER_WORKFLOW\"",
         },
       },
     ],
@@ -326,7 +328,7 @@ const canonicalDeployFixture = [
   "",
   "on: # zizmor: ignore[dangerous-triggers] deploy-after-CI by design; exact same-repo push/main/success attempt is revalidated before secrets or provider access",
   "  workflow_run:",
-  "    workflows: [\"Dagger\"]",
+  "    workflows: [\"Dagger\", \"WebKit (macOS)\"]",
   "    types: [completed]",
   "    branches: [main]",
   "",
@@ -367,6 +369,7 @@ const canonicalDeployFixture = [
   "          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}",
   "          WORKFLOW_RUN_ID: ${{ github.event.workflow_run.id }}",
   "          RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}",
+  "          TRIGGER_WORKFLOW: ${{ github.event.workflow_run.path }}",
   "          XDG_CONFIG_HOME: ${{ github.workspace }}/.github/xdg",
   "        with:",
   "          version: \"0.21.8\"",
@@ -382,6 +385,7 @@ const canonicalDeployFixture = [
   "            --workflow-run-id=\"$WORKFLOW_RUN_ID\"",
   "            --run-attempt=\"$RUN_ATTEMPT\"",
   "            --repository=\"$GITHUB_REPOSITORY\"",
+  "            --trigger-workflow=\"$TRIGGER_WORKFLOW\"",
   "",
 ].join("\n")
 
@@ -665,6 +669,24 @@ describe("privileged production delivery workflow", () => {
       source: canonicalDeployFixture.replace(
         '--run-attempt="$RUN_ATTEMPT"',
         '--run-attempt="$RUN_ATTEMPT" sync',
+      ),
+      violation: "deploy-job",
+    },
+    {
+      name: "the WebKit (macOS) re-trigger removed",
+      source: canonicalDeployFixture.replace('["Dagger", "WebKit (macOS)"]', '["Dagger"]'),
+      violation: "triggers",
+    },
+    {
+      name: "an unrelated workflow added as a trigger",
+      source: canonicalDeployFixture.replace('["Dagger", "WebKit (macOS)"]', '["Dagger", "WebKit (macOS)", "Nightly E2E"]'),
+      violation: "triggers",
+    },
+    {
+      name: "trigger workflow taken from the run name instead of its path",
+      source: canonicalDeployFixture.replace(
+        "TRIGGER_WORKFLOW: ${{ github.event.workflow_run.path }}",
+        "TRIGGER_WORKFLOW: ${{ github.event.workflow_run.name }}",
       ),
       violation: "deploy-job",
     },

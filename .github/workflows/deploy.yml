@@ -3,11 +3,16 @@
 # Functions, delegates one upload to the central provider, then proves live identity.
 name: Deploy almamesh.com
 
-# The exact workflow contract below makes this exemption conditional: only one
-# workflow_run trigger plus the same-repository push/main/success gate is allowed.
+# The exact workflow contract below makes this exemption conditional: only the
+# Dagger and WebKit (macOS) completions plus the same-repository push/main/success
+# gate are allowed. Production needs both green for the SHA, and a Mac lane rerun
+# must be able to restart a deploy its first red attempt stopped. The module
+# (dagger/src/deployTrigger.ts) binds a WebKit completion to the newest green
+# Dagger attempt, skips while Dagger still runs, and skips a SHA production already
+# serves; the mutex below serializes the two, so neither double-deploys.
 on: # zizmor: ignore[dangerous-triggers] deploy-after-CI by design; exact same-repo push/main/success attempt is revalidated before secrets or provider access
   workflow_run:
-    workflows: ["Dagger"]
+    workflows: ["Dagger", "WebKit (macOS)"]
     types: [completed]
     branches: [main]
 
@@ -52,6 +57,7 @@ jobs:
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
           WORKFLOW_RUN_ID: ${{ github.event.workflow_run.id }}
           RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+          TRIGGER_WORKFLOW: ${{ github.event.workflow_run.path }}
         with:
           version: "0.21.8"
           verb: call
@@ -66,3 +72,4 @@ jobs:
             --workflow-run-id="$WORKFLOW_RUN_ID"
             --run-attempt="$RUN_ATTEMPT"
             --repository="$GITHUB_REPOSITORY"
+            --trigger-workflow="$TRIGGER_WORKFLOW"

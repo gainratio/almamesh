@@ -44,6 +44,14 @@ import { pagesUploadLimitsCheckScript as releasePagesUploadLimitsScript } from "
 import { laneScript } from "./laneScript.js"
 import { BROWSER_JOURNEY_ARTIFACTS, BROWSER_JOURNEY_EVIDENCE, browserJourneyEvidenceScript, validateBrowserJourneyExitCode } from "./browserJourneyEvidence.js"
 import { nativeMacAcceptanceScript } from "./nativeMacAcceptance.js"
+import {
+  bindDeployTrigger,
+  daggerAttemptScript,
+  liveCommitScript,
+  parseDaggerAttempt,
+  parseDeployTrigger,
+  parseLiveCommit,
+} from "./deployTrigger.js"
 import { ALLOWED_OWNERS, repositoryGitUrl, requireAllowedRepository } from "./repositoryIdentity.js"
 import {
   BUN_IMAGE,
@@ -97,6 +105,7 @@ const CONTRACT_TESTS = [
   "tests/dagger-audit-exceptions-contract.test.ts",
   "tests/browser-journey-evidence.test.ts",
   "tests/native-mac-acceptance.test.ts",
+  "tests/deploy-trigger.test.ts",
   "tests/dagger-deployment-contract.test.ts",
   "tests/dagger-foundation-contract.test.ts",
   "tests/dagger-gates.test.ts",
@@ -811,9 +820,23 @@ exec ${inline.join(" ")}`,
     workflowRunId: string,
     runAttempt: number,
     repository: string,
+    triggerWorkflow: string,
   ): Promise<string> {
     this.registryToken ??= githubToken
     const runRepository = requireAllowedRepository(repository)
+    // Dagger and WebKit (macOS) both trigger this; see deployTrigger.ts.
+    const bound = await bindDeployTrigger({
+      liveCommit: async () => parseLiveCommit(await dag.container().from(NODE_IMAGE)
+        .withEnvVariable("DEPLOY_TRIGGER_NONCE", randomUUID())
+        .withExec(["node", "-e", liveCommitScript(LIVE_ORIGIN)])
+        .stdout()),
+      daggerAttempt: async () => parseDaggerAttempt(await dag.container().from(NODE_IMAGE)
+        .withEnvVariable("DEPLOY_TRIGGER_NONCE", randomUUID())
+        .withSecretVariable("GITHUB_TOKEN", githubToken)
+        .withExec(["node", "-e", daggerAttemptScript(runRepository, expectedSha)])
+        .stdout()),
+    }, parseDeployTrigger(triggerWorkflow), expectedSha, { workflowRunId, runAttempt })
+    if ("skip" in bound) return bound.skip
     const result = await deliverProduction({
       greenMain: async () => dag.foundation().greenMainDecision(githubToken, runRepository, expectedSha).serialization(),
       verifyNativeMain: async (evidence) => {
@@ -871,7 +894,7 @@ exec ${inline.join(" ")}`,
         cloudflareAccountId,
         deploymentId,
       ),
-    }, expectedSha, workflowRunId, runAttempt, CENTRAL_MODULE_SHA, runRepository)
+    }, expectedSha, bound.workflowRunId, bound.runAttempt, CENTRAL_MODULE_SHA, runRepository)
     // A superseded commit exits green without deploying; the newer commit ships.
     if ("skipped" in result) return result.message
     return [
