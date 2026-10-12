@@ -1,6 +1,6 @@
 # Time travel and deterministic chat verification — 11 October 2026
 
-Status: release blocked by retained hosted Mac failures; follow-up source validation is in progress. On 11 October 2026 the user accepted local coherence and authorized CI/CD. Product source `22f2a947` passed 6,128 native frontend tests and 6,127 Linux tests (one existing environment skip), all 557 CI contracts in the actual Linux Dagger container, and all build/type/lint checks. Its complete native lane passed 39 functional cases, five original-release boots and five candidate Day/place journeys, with zero retries. Evidence finalization and leak scanning passed. Later harness execution and rejected hosted results are recorded below. Cold-boot aggregate memory, wider restore memory and physical iPhone verification remain open. Nothing in this document establishes deployment of these changes.
+Status: final hosted acceptance is pending. Frozen product source `ce2548a709202f836b6ca14c169705233229692f` passed the complete native frontend gate (6,179 tests plus four lint contracts, types, lint, build, public routes and no-hooks checks) and the complete native Mac lane (49/49 checks, zero retries). The root independently finalized and scanned the saved evidence successfully. Earlier hosted Mac failures remain retained; this local pass does not establish their cause or resolution. The user authorized the CI/CD process on 11 October 2026. Cold-boot aggregate memory, wider restore memory and physical iPhone verification remain open. Production remains on #331; merge and deployment require complete final-head hosted proof.
 
 Hosted candidates `67addf61`, `ba2837a2` and `d42886cc` are rejected. Their outcomes,
 including real browser failures, command/job timeouts, a report-section timeout
@@ -114,12 +114,12 @@ TIME_TRAVEL_E2E_BASE_URL=http://127.0.0.1:4296 \
 
 Both cases assert that no `/models/` requests occur. The ten recorded `peakSingleWebMiB` values were checked for finite positive samples and compared with the unchanged 1306 MiB allowance; all passed. These seeded chat cases use the real engine and a stubbed provider, rather than actual onboarding or live inference.
 
-## Current candidate checks
+## Earlier candidate checks through 22f2a947
 
-The candidate is on `codex/iphone-time-travel`, based on release #331 (`8d10fbbb`). The latest local frontend gate rebuilt the normal review build as `e59cfce23f34` at `2026-10-12T00:15:23.358Z`. Final source native acceptance and earlier rejected hosted results are recorded below; release remains blocked pending hosted acceptance.
+The candidate is on `codex/iphone-time-travel`, based on release #331 (`8d10fbbb`). At this earlier checkpoint, the local frontend gate rebuilt the normal review build as `e59cfce23f34` at `2026-10-12T00:15:23.358Z`. Final source native acceptance and earlier rejected hosted results are recorded below; release remains blocked pending hosted acceptance.
 
 - Backend gate in Dagger: 1,214 tests passed, 98.46% coverage; Ruff, formatting, mypy and complexity checks passed. This includes 28 new public-doc export regressions. Seven corrected slow-hit dates changed in reference fixtures; other fixture fields were unchanged. Log: `/tmp/almamesh-codex-pr333-backend-dagger-green.log`.
-- Latest local frontend gate: 6,128 tests plus four lint-contract checks passed, including constrained-device memory, restore generations, terminal-Worker containment and recovery, SQL teardown, reload diagnostics, artifact scanning and real-tool envelopes. TypeScript, ESLint, production build, public-route prerender checks and absence of test hooks passed. Knip completed with its documented unused-code/dependency diagnostics. Log: `/tmp/almamesh-codex-pr333-final-source-frontend-gate.log`.
+- Earlier `22f2a947` local frontend gate: 6,128 tests plus four lint-contract checks passed, including constrained-device memory, restore generations, terminal-Worker containment and recovery, SQL teardown, reload diagnostics, artifact scanning and real-tool envelopes. TypeScript, ESLint, production build, public-route prerender checks and absence of test hooks passed. Knip completed with its documented unused-code/dependency diagnostics. Log: `/tmp/almamesh-codex-pr333-final-source-frontend-gate.log`.
 - Real-browser engine parity: 11/11 checks passed against the CPython reference, including updated predictive fixtures, explicit-date sensitivity, Moon windows, clean console and same-origin engine traffic.
 - The broad Chromium functional run passed 16 journeys and exposed one stale test assertion: it expected one city download instead of the new 25 bounded parts. After updating that assertion to the manifest count and proving no repeated part downloads, all seven affected journeys passed on the candidate before the constrained-device recall policy. These cover typed historical questions, multi-place timing, slow-save Back to today, Day/revisit, two tabs, September 2017 → today, and chat tool movement in both directions. The engine is real; provider replies in chat cases are locally stubbed.
 - Mac WebKit iPhone 15 functional checks before the recall policy passed 4/4: Day/revisit/Back, two tabs, September 2017 → today, and chat tool movement. Single-WebContent RSS peaks were 1069, 862, 1326 and 1362 MiB respectively. Those were functional checks, not memory-budget passes: the chat peaks exceeded the 1306 MiB reference allowance and motivated the recall policy change.
@@ -134,7 +134,7 @@ The legacy cold-boot aggregate renderer RSS gate remains red on this Mac. With i
 
 The user's local checklist and outstanding report work are recorded in [local review](2026-10-11-local-review.md). Private chart material and the supplied report were not added to this repository. The remaining report presentation/evidence findings are reviewed work, not implemented changes.
 
-## Release preparation after local review
+## Earlier release preparation after local review
 
 The release is one batched PR. Local production → candidate smoke passed 2/2
 (`@fresh`, `@returning`), using the original `8d10fbbb` source and wheel for the
@@ -157,7 +157,7 @@ and measures five fresh original boots using the candidate's sampler. It rejects
 incomplete, retried, wrongly identified or caller-supplied hosted measurements.
 The same host then runs five candidate Day/place journeys against the measured
 original maximum plus the unchanged 250 MiB allowance. The baseline and ingress
-regressions pass; the complete native Mac lane is pending. Hosted Mac evidence
+regressions passed; the complete native Mac lane was pending at this checkpoint. Hosted Mac evidence
 must be checked before merge: main's automatic deploy waits for Dagger, not the
 parallel Mac workflow.
 
@@ -166,7 +166,8 @@ movement and calculated dasha facts, today's calculated facts while the historic
 pin remains selected, then actual tool-driven Back to today. It checks provider
 call IDs against successful local tool results and checks the final factual
 summary against engine data. Scoped lint, E2E TypeScript and 22 real-model
-contracts pass; live execution on the candidate is pending the hosted nightly.
+contracts passed; live execution was pending at this checkpoint. The later
+`d42886cc` nightly result is recorded below; final-head hosted acceptance remains required.
 The prompts explicitly request tool use and a structured factual summary. This
 checks the live routing/facts contract rather than spontaneous tool selection or
 the quality of a complete interpretation.
@@ -975,8 +976,8 @@ boot-policy, fault and teardown tests; package types and lint passed. Independen
 review found no material issue. The existing pagehide/pageshow boolean policy
 is deliberately preserved; this does not add a durable runtime document fence.
 Logs: `/tmp/almamesh-codex-runtime-pagehide-{red,green,focused,types,lint}.log`.
-The complete frontend gate and native lane on the combined follow-up source
-remain pending until the separately owned cache-session change is frozen.
+At this stage the complete frontend gate and native lane were pending; their
+subsequent frozen-source results are recorded below.
 
 The first-period lookup previously opened three derived SQL sessions for its
 epoch fence, engine sweep and cache read, followed by a separate write session
@@ -1008,4 +1009,62 @@ cancellation guard and regression, the root repeated that complete gate:
 public-route verification and absence of test hooks. Logs:
 `/tmp/almamesh-codex-pr333-followup-frontend-gate.log` and
 `/tmp/almamesh-codex-pr333-followup-final-frontend-gate.log`.
-The native full-lane run remains pending on a frozen combined product commit.
+The subsequently completed frozen-source native full lane is recorded below.
+
+
+## Frozen follow-up source ce2548a: complete local acceptance
+
+Product source `ce2548a709202f836b6ca14c169705233229692f` includes the bounded
+external diagnostics, lifecycle checks and batched period lookup described
+above. The complete native `all` lane ran once with no supplied baseline,
+no application hooks, no report-only mode and zero Playwright retries. The
+root observed process exit zero, then independently collected native evidence,
+finalized it and scanned that same immutable snapshot; all exited zero. The
+scanner checked 16 configured secrets. No limits or retry settings were raised.
+
+| Phase | Result |
+| --- | --- |
+| Original-release reference boots | 5/5; peaks 1039, 1043, 1047, 1014, 1050 MiB |
+| Candidate Day/place journeys | 5/5; peaks 1088, 1061, 1094, 1101, 1070 MiB |
+| Travel, tools, reload and service-worker journeys | 28/28; 9.3 minutes |
+| Portable data and pin round trips | 8/8; 4.9 minutes |
+| Boot and post-ready fresh-Worker recovery | 3/3; 36.1 seconds |
+| Total | 49/49, zero retries |
+
+Provenance records original release `8d10fbbb`, reference build `948e9bb45782`,
+measurement commit exact `ce2548a`, Playwright 1.63.0 and Darwin 27 arm64 with
+64 GiB RAM. The candidate maximum is 1101 MiB against the measured original
+maximum of 1050 MiB plus the unchanged 250 MiB allowance. This paired acceptance
+does not prove a reduction from an earlier candidate on a different run.
+
+All ten bounded Worker snapshots were available, with zero instrumentation
+failures, unobserved Workers, pending correlations or recorded error replies
+in the retained events. Original boots dropped 88 older events each; candidate
+journeys dropped 464 each. These are bounded latest-event snapshots, not full
+protocol histories. Both service-worker receipts completed all nine phases,
+with 57 events each and no recorded error-console, page-error or crash events.
+
+Three reload scopes contain no fatal diagnostics or page errors. The pinned-year
+scope retains one explicitly correlated old-document resource rejection; the
+other two contain no exceptions. The console is therefore not universally
+error-free. Post-ready recovery records one injected fatal request, termination
+of Worker 1, explicit recovery into Worker 2, a chart and both historical and
+current-day predictive results. No automatic post-ready retry occurred.
+
+The final native manifest is complete: both diagnostic-report roots were
+searched, zero matching reports were found and unified-log collection succeeded
+without timeout. Raw evidence is in `frontend/apps/web/webkit-lane-artifacts`;
+finalized evidence is in `frontend/apps/web/webkit-lane-evidence-all`. Root logs:
+`/tmp/almamesh-codex-pr333-followup-native-all.log` and
+`/tmp/almamesh-codex-pr333-followup-native-scan.log`.
+
+The separate normal production review build identifies exact `ce2548a`, version
+`0b4104ac4c36`, built at `2026-10-12T01:48:59.218Z`; public-route and no-hooks
+checks passed. It is served locally on port 4297. Build log:
+`/tmp/almamesh-codex-pr333-followup-review-build.log`.
+
+This local pass permits submitting the frozen candidate for hosted acceptance.
+Dagger, the complete native Mac workflow and the required real-provider nightly
+must all pass on the final pushed head before protected merge. The rejected
+`d42886cc` results remain evidence of actual prior failures. Native crash
+causality, physical iPhone behavior and wider memory limitations remain open.
