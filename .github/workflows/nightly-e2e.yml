@@ -27,6 +27,6 @@ jobs:
           XDG_CONFIG_HOME: ${{ github.workspace }}/.github/xdg
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         with:
-          version: "0.21.10"
+          version: "0.21.8"
           verb: call
           args: nightly --openrouter-api-key=env:OPENROUTER_API_KEY sync

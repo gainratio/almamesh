@@ -50,7 +50,7 @@ jobs:
           XDG_CONFIG_HOME: ${{ github.workspace }}/.github/xdg
           GITHUB_TOKEN: ${{ github.token }}
         with:
-          version: "0.21.10"
+          version: "0.21.8"
           call: --registry-token=env:GITHUB_TOKEN gate --name=secretScan --commit-sha=${{ github.sha }} --repository=${{ github.repository }}
 
   contracts:
@@ -72,7 +72,7 @@ jobs:
           XDG_CONFIG_HOME: ${{ github.workspace }}/.github/xdg
           GITHUB_TOKEN: ${{ github.token }}
         with:
-          version: "0.21.10"
+          version: "0.21.8"
           call: --registry-token=env:GITHUB_TOKEN gate --name=contracts --commit-sha=${{ github.sha }} --repository=${{ github.repository }}
 
   browser-chromium:
@@ -94,7 +94,7 @@ jobs:
           XDG_CONFIG_HOME: ${{ github.workspace }}/.github/xdg
           GITHUB_TOKEN: ${{ github.token }}
         with:
-          version: "0.21.10"
+          version: "0.21.8"
           call: --registry-token=env:GITHUB_TOKEN gate --name=browserChromium --commit-sha=${{ github.sha }} --repository=${{ github.repository }}
 
   # Fleet rules shell-step / candidate-order / artifact-identity (gainratio/ci):
@@ -120,7 +120,7 @@ jobs:
           XDG_CONFIG_HOME: ${{ github.workspace }}/.github/xdg
           GITHUB_TOKEN: ${{ github.token }}
         with:
-          version: "0.21.10"
+          version: "0.21.8"
           call: --registry-token=env:GITHUB_TOKEN browser-journeys-evidence --commit-sha=${{ github.sha }} --repository=${{ github.repository }} export --path=candidate
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -153,7 +153,7 @@ jobs:
           XDG_CONFIG_HOME: ${{ github.workspace }}/.github/xdg
           GITHUB_TOKEN: ${{ github.token }}
         with:
-          version: "0.21.10"
+          version: "0.21.8"
           call: browser-journeys-status --github-token=env:GITHUB_TOKEN --commit-sha=${{ github.sha }} --repository=${{ github.repository }} --run-id=${{ github.run_id }}
 
   browser-suites:
@@ -175,7 +175,7 @@ jobs:
           XDG_CONFIG_HOME: ${{ github.workspace }}/.github/xdg
           GITHUB_TOKEN: ${{ github.token }}
         with:
-          version: "0.21.10"
+          version: "0.21.8"
           call: --registry-token=env:GITHUB_TOKEN gate --name=browserSuites --commit-sha=${{ github.sha }} --repository=${{ github.repository }}
 
   browser-wizards:
@@ -197,7 +197,7 @@ jobs:
           XDG_CONFIG_HOME: ${{ github.workspace }}/.github/xdg
           GITHUB_TOKEN: ${{ github.token }}
         with:
-          version: "0.21.10"
+          version: "0.21.8"
           call: --registry-token=env:GITHUB_TOKEN gate --name=browserWizards --commit-sha=${{ github.sha }} --repository=${{ github.repository }}
 
   browser-webkit-real:
@@ -219,7 +219,7 @@ jobs:
           XDG_CONFIG_HOME: ${{ github.workspace }}/.github/xdg
           GITHUB_TOKEN: ${{ github.token }}
         with:
-          version: "0.21.10"
+          version: "0.21.8"
           call: --registry-token=env:GITHUB_TOKEN gate --name=browserWebkitReal --commit-sha=${{ github.sha }} --repository=${{ github.repository }}
 
   browser-matrix:
@@ -241,7 +241,7 @@ jobs:
           XDG_CONFIG_HOME: ${{ github.workspace }}/.github/xdg
           GITHUB_TOKEN: ${{ github.token }}
         with:
-          version: "0.21.10"
+          version: "0.21.8"
           call: --registry-token=env:GITHUB_TOKEN gate --name=browserMatrix --commit-sha=${{ github.sha }} --repository=${{ github.repository }}
 
   frontend:
@@ -263,7 +263,7 @@ jobs:
           XDG_CONFIG_HOME: ${{ github.workspace }}/.github/xdg
           GITHUB_TOKEN: ${{ github.token }}
         with:
-          version: "0.21.10"
+          version: "0.21.8"
           call: --registry-token=env:GITHUB_TOKEN gate --name=frontend --commit-sha=${{ github.sha }} --repository=${{ github.repository }}
 
   backend:
@@ -285,7 +285,7 @@ jobs:
           XDG_CONFIG_HOME: ${{ github.workspace }}/.github/xdg
           GITHUB_TOKEN: ${{ github.token }}
         with:
-          version: "0.21.10"
+          version: "0.21.8"
           call: --registry-token=env:GITHUB_TOKEN gate --name=backend --commit-sha=${{ github.sha }} --repository=${{ github.repository }}
 
   pdf:
@@ -307,7 +307,7 @@ jobs:
           XDG_CONFIG_HOME: ${{ github.workspace }}/.github/xdg
           GITHUB_TOKEN: ${{ github.token }}
         with:
-          version: "0.21.10"
+          version: "0.21.8"
           call: --registry-token=env:GITHUB_TOKEN gate --name=pdf --commit-sha=${{ github.sha }} --repository=${{ github.repository }}
 
   privacy:
@@ -329,7 +329,7 @@ jobs:
           XDG_CONFIG_HOME: ${{ github.workspace }}/.github/xdg
           GITHUB_TOKEN: ${{ github.token }}
         with:
-          version: "0.21.10"
+          version: "0.21.8"
           call: --registry-token=env:GITHUB_TOKEN gate --name=privacy --commit-sha=${{ github.sha }} --repository=${{ github.repository }}
 
   # The one required check (branch protection and the deploy's green-main
@@ -353,5 +353,5 @@ jobs:
           # Engine config: pull Docker Hub images via the GHCR mirror (.github/xdg/dagger/engine.json).
           XDG_CONFIG_HOME: ${{ github.workspace }}/.github/xdg
         with:
-          version: "0.21.10"
+          version: "0.21.8"
           call: verdict --results="${{ join(needs.*.result, ',') }}"

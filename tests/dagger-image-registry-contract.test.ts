@@ -17,7 +17,7 @@ const MIRROR = "ghcr.io/gainratio/mirror/docker.io"
 const ENGINE_CONFIG = ".github/xdg/dagger/engine.json"
 const XDG_CONFIG_HOME = "${{ github.workspace }}/.github/xdg"
 const DAGGER_ACTION = "dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77"
-// The Node runtime image the TypeScript SDK v0.21.10 would pull from Docker Hub
+// The Node runtime image the TypeScript SDK v0.21.8 would pull from Docker Hub
 // (sdk/typescript/runtime/tsdistconsts DefaultNodeImageRef), pinned by digest on
 // the GHCR mirror.
 const SDK_NODE_BASE_IMAGE =
