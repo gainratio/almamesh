@@ -14,6 +14,11 @@ export class DurableReceiptError extends Error {
 }
 
 export interface PeriodSkyRows {
+  /** Fence, optionally sweep, and read within one short database session. */
+  lookup(engineHash: string, requestKey: string, sweep: boolean): Promise<{
+    readonly epoch: number | undefined;
+    readonly hit?: CachedPredictiveContexts;
+  }>;
   /** Undefined while the canonical dataset is being replaced or deleted. */
   captureEpoch?(): Promise<number | undefined>;
   read(engineHash: string, requestKey: string, epoch?: number): Promise<CachedPredictiveContexts | undefined>;
@@ -53,8 +58,8 @@ export function createPeriodSkyRows(
 
   // The monotonic fence and purge are one transaction in the derived database.
   // A write whose canonical check raced a deletion still fails its SQL condition.
-  async function fence(epoch: number, profileKey?: string, clear = false): Promise<void> {
-    await withDb((db) => db.transaction(async (tx) => {
+  async function fenceInDb(db: SqlDatabase, epoch: number, profileKey?: string, clear = false): Promise<void> {
+    await db.transaction(async (tx) => {
       await tx.exec(
         'INSERT INTO dataset_meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value WHERE CAST(excluded.value AS INTEGER) > CAST(dataset_meta.value AS INTEGER)',
         [EPOCH_KEY, String(epoch)],
@@ -62,7 +67,11 @@ export function createPeriodSkyRows(
       if (clear) await tx.exec('DELETE FROM period_sky');
       else if (profileKey !== undefined) await tx.exec('DELETE FROM period_sky WHERE profile_id = ?', [profileKey]);
       await tx.exec('DELETE FROM period_sky WHERE epoch <> (SELECT CAST(value AS INTEGER) FROM dataset_meta WHERE key = ?)', [EPOCH_KEY]);
-    }));
+    });
+  }
+
+  function fence(epoch: number, profileKey?: string, clear = false): Promise<void> {
+    return withDb((db) => fenceInDb(db, epoch, profileKey, clear));
   }
 
   async function captureEpoch(): Promise<number | undefined> {
@@ -76,23 +85,46 @@ export function createPeriodSkyRows(
     return !ledger.restoreInProgress && ledger.activeEpoch === epoch && ledger.restoreEpoch === epoch;
   }
 
+  async function readInDb(conn: SqlDatabase, engineHash: string, requestKey: string, epoch: number): Promise<CachedPredictiveContexts | undefined> {
+    if (!(await accepts(epoch))) return undefined;
+    const found = await conn.query<{ payload: string }>(
+      'SELECT payload FROM period_sky WHERE key = ? AND engine = ? AND epoch = ? AND epoch = (SELECT CAST(value AS INTEGER) FROM dataset_meta WHERE key = ?)',
+      [requestKey, engineHash, epoch, EPOCH_KEY],
+    );
+    if (!found[0]) return undefined;
+    const payload = payloadFromText(found[0].payload);
+    if (payload && await accepts(epoch)) return payload;
+    await conn.exec('DELETE FROM period_sky WHERE key = ? AND engine = ? AND epoch = ?', [requestKey, engineHash, epoch]);
+    return undefined;
+  }
+
+  function sweepInDb(db: SqlDatabase, engineHash: string): Promise<number> {
+    return db.transaction(async (tx) => {
+      const stale = await tx.query<{ n: number }>('SELECT count(*) AS n FROM period_sky WHERE engine <> ?', [engineHash]);
+      await tx.exec('DELETE FROM period_sky WHERE engine <> ?', [engineHash]);
+      return stale[0]?.n ?? 0;
+    });
+  }
+
   return {
+    async lookup(engineHash, requestKey, sweep) {
+      const ledger = await readLedger();
+      return withDb(async (db) => {
+        await fenceInDb(db, ledger.restoreEpoch);
+        const epoch = !ledger.restoreInProgress && ledger.activeEpoch === ledger.restoreEpoch ? ledger.activeEpoch : undefined;
+        if (epoch === undefined || !(await accepts(epoch))) return { epoch: undefined };
+        // A failed sweep/read is a cache miss; a failed epoch fence is not a
+        // usable generation. The later write still checks both durable fences.
+        if (sweep) await sweepInDb(db, engineHash).catch(() => undefined);
+        const hit = await readInDb(db, engineHash, requestKey, epoch).catch(() => undefined);
+        return await accepts(epoch) ? { epoch, hit } : { epoch: undefined };
+      });
+    },
     captureEpoch,
     async read(engineHash, requestKey, expectedEpoch) {
       const epoch = expectedEpoch ?? await captureEpoch();
       if (epoch === undefined || !(await accepts(epoch))) return undefined;
-      return withDb(async (conn) => {
-        if (!(await accepts(epoch))) return undefined;
-        const found = await conn.query<{ payload: string }>(
-          'SELECT payload FROM period_sky WHERE key = ? AND engine = ? AND epoch = ? AND epoch = (SELECT CAST(value AS INTEGER) FROM dataset_meta WHERE key = ?)',
-          [requestKey, engineHash, epoch, EPOCH_KEY],
-        );
-        if (!found[0]) return undefined;
-        const payload = payloadFromText(found[0].payload);
-        if (payload && await accepts(epoch)) return payload;
-        await conn.exec('DELETE FROM period_sky WHERE key = ? AND engine = ? AND epoch = ?', [requestKey, engineHash, epoch]);
-        return undefined;
-      });
+      return withDb((conn) => readInDb(conn, engineHash, requestKey, epoch));
     },
     async write(engineHash, requestKey, profileKey, payload, expectedEpoch) {
       if (carriesBootProof(payload)) throw new DurableReceiptError();
@@ -112,11 +144,7 @@ export function createPeriodSkyRows(
       await fence((await readLedger()).restoreEpoch, profileKey);
     },
     async sweepOtherEngines(engineHash) {
-      return withDb((db) => db.transaction(async (tx) => {
-        const stale = await tx.query<{ n: number }>('SELECT count(*) AS n FROM period_sky WHERE engine <> ?', [engineHash]);
-        await tx.exec('DELETE FROM period_sky WHERE engine <> ?', [engineHash]);
-        return stale[0]?.n ?? 0;
-      }));
+      return withDb((db) => sweepInDb(db, engineHash));
     },
     async clear() { await fence((await readLedger()).restoreEpoch, undefined, true); },
   };

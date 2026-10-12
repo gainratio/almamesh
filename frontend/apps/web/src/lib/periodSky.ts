@@ -88,7 +88,7 @@ export function createPeriodSkyCache(options: PeriodSkyCacheOptions): PeriodSkyC
   const readStore = options.readStore ?? ((): PredictiveStoreSnapshot => usePredictiveStore.getState());
   const deadline = periodSkyDeadline(options.timeoutMs);
   const rows = options.rows === undefined ? periodSkyRows() : options.rows;
-  const swept = new Map<string, Promise<unknown>>();
+  const swept = new Map<string, Promise<void>>();
   interface Work {
     readonly promise: Promise<CachedPredictiveContexts>;
     readonly reject: (error: Error) => void;
@@ -148,17 +148,21 @@ export function createPeriodSkyCache(options: PeriodSkyCacheOptions): PeriodSkyC
     void Promise.resolve().then(async () => {
       if (work.abandoned) throw abandoned();
       if (!rows || !engineHash) return compute(work, input, runtime);
-      const epoch = rows.captureEpoch ? await rows.captureEpoch().catch(() => undefined) : 0;
+      await swept.get(engineHash);
       if (work.abandoned) throw abandoned();
-      if (epoch === undefined) return compute(work, input, runtime);
-      let sweep = swept.get(engineHash);
-      if (!sweep) {
-        sweep = rows.sweepOtherEngines(engineHash).catch(() => undefined);
-        swept.set(engineHash, sweep);
+      const sweep = !swept.has(engineHash);
+      const lookup = rows.lookup(engineHash, predictiveRequestKey(input), sweep);
+      if (sweep) {
+        swept.set(engineHash, lookup.then((result) => {
+          if (result.epoch === undefined) swept.delete(engineHash);
+        }, () => { swept.delete(engineHash); }));
       }
-      await sweep;
-      const hit = await rows.read(engineHash, predictiveRequestKey(input), epoch).catch(() => undefined);
+      // The session is closed before this resolves. Keep no SQL owner while
+      // the engine computes; writing reacquires a separately fenced session.
+      const prepared = await lookup.catch(() => undefined);
       if (work.abandoned) throw abandoned();
+      if (!prepared || prepared.epoch === undefined) return compute(work, input, runtime);
+      const { epoch, hit } = prepared;
       if (hit) return hit;
       const fresh = await compute(work, input, runtime);
       const safe = withoutBootProof(fresh);

@@ -1,6 +1,6 @@
 # Time travel and deterministic chat verification — 11 October 2026
 
-Status: local acceptance complete; release blocked pending final hosted acceptance. On 11 October 2026 the user accepted local coherence and authorized CI/CD. Product source `22f2a947` passed 6,128 native frontend tests and 6,127 Linux tests (one existing environment skip), all 557 CI contracts in the actual Linux Dagger container, and all build/type/lint checks. The complete native lane passed 39 functional cases, five original-release boots and five candidate Day/place journeys, with zero retries. Evidence finalization and leak scanning passed. Cold-boot aggregate memory, wider restore memory and physical iPhone verification remain open. Nothing in this document establishes deployment of these changes.
+Status: release blocked by retained hosted Mac failures; follow-up source validation is in progress. On 11 October 2026 the user accepted local coherence and authorized CI/CD. Product source `22f2a947` passed 6,128 native frontend tests and 6,127 Linux tests (one existing environment skip), all 557 CI contracts in the actual Linux Dagger container, and all build/type/lint checks. Its complete native lane passed 39 functional cases, five original-release boots and five candidate Day/place journeys, with zero retries. Evidence finalization and leak scanning passed. Later harness execution and rejected hosted results are recorded below. Cold-boot aggregate memory, wider restore memory and physical iPhone verification remain open. Nothing in this document establishes deployment of these changes.
 
 Hosted candidates `67addf61`, `ba2837a2` and `d42886cc` are rejected. Their outcomes,
 including real browser failures, command/job timeouts, a report-section timeout
@@ -925,3 +925,87 @@ snapshot deadline cannot prevent native RSS cleanup/reporting; evidence
 attachment failures remain fatal and preserve an existing journey error.
 Original-release and candidate tests use the same external observer. The
 controlled native execution of this harness remains pending at this point.
+
+## Controlled diagnostic execution on e2bde09
+
+The test-harness source was frozen at
+`e2bde09de74f6cddac3caa0f71877f34686dcbe5`, with product code unchanged from
+`22f2a947`. The root ran the native `memory` lane once, without a supplied
+baseline, hooks, report-only mode or retries. All five original-release boots
+and five candidate Day/place journeys passed. Original peaks were 1044, 1058,
+1016, 1035 and 1014 MiB; candidate peaks were 1078, 1067, 1090, 1080 and
+1099 MiB. The comparison is 1099 against 1058 + the unchanged 250 MiB allowance.
+Reference `8d10fbbb` served build `88b6bb44dbee`; recorded measurement source is
+exact `e2bde09`. The machine was Darwin 27 arm64 with 64 GiB RAM.
+
+All ten diagnostic snapshots were available, with zero observer failures,
+unobserved Workers, pending correlations or recorded error replies. The bounded
+latest-event buffer dropped 88 earlier events per original boot and 574 per
+candidate journey, explicitly reported; it is not a full protocol history.
+The native manifest is complete, both report roots were searched, unified-log
+collection succeeded and one Bun diagnostic was retained. Independent
+collection, finalization and the finalized-snapshot scan all exited zero
+(16 configured secrets). Raw source and finalized snapshot remain in
+`frontend/apps/web/webkit-lane-artifacts-memory` and
+`frontend/apps/web/webkit-lane-evidence-memory`; logs are
+`/tmp/almamesh-codex-pr333-memory-diagnostics-native.log`,
+`/tmp/almamesh-codex-pr333-memory-diagnostics-finalization.log` and
+`/tmp/almamesh-codex-pr333-memory-diagnostics-scan.log`.
+
+This establishes that the external diagnostics run on actual original and
+candidate production builds. It neither reproduces the hosted failures nor
+establishes their resolution. The earlier complete `22f2a947` native artifacts
+and finalized evidence were preserved, without deletion, at
+`/tmp/almamesh-codex-pr333-22f2a947-native-all-artifacts` and
+`/tmp/almamesh-codex-pr333-22f2a947-native-all-evidence` before the next full lane.
+
+## Follow-up lifecycle and cache-session changes
+
+Read-only native triage identified a source-reproducible lifecycle gap, without
+establishing that it caused either hosted crash. In overlap boot mode, a held
+sync or asset read could resume after pagehide and prewarm/boot the existing
+Worker; a held boot could publish readiness after pagehide. Three regression
+tests failed against the prior runtime. The fix suppresses idle prewarm while
+tearing down and checks page liveness after sync, asset assembly and boot, plus
+immediately before booting either a new or an already-created Worker. Existing
+cancellation, cleanup, generation checks and explicit retry are reused.
+
+The three cases passed after the fix, followed by 115 focused runtime,
+boot-policy, fault and teardown tests; package types and lint passed. Independent
+review found no material issue. The existing pagehide/pageshow boolean policy
+is deliberately preserved; this does not add a durable runtime document fence.
+Logs: `/tmp/almamesh-codex-runtime-pagehide-{red,green,focused,types,lint}.log`.
+The complete frontend gate and native lane on the combined follow-up source
+remain pending until the separately owned cache-session change is frozen.
+
+The first-period lookup previously opened three derived SQL sessions for its
+epoch fence, engine sweep and cache read, followed by a separate write session
+after calculation. A regression observed all three precompute opens. The
+combined lookup now performs those operations in one scoped session, closes
+before engine calculation and retains a separately fenced write. It reuses
+connection-taking helpers, avoiding a recursive acquisition of the same Web
+Lock. Cache payload validation, exact engine/request keys, canonical and SQL
+epoch checks, transactional purge, proof exclusion, city namespace and the
+existing derived-database lifecycle/reset fences are preserved. This reduces
+Worker startups; it does not establish a measured memory reduction or a native
+crash fix.
+
+Initial cache regressions produced five failures / 37 passes before the change,
+then 69/69 passed across period cache, rows and derived-database tests. Final
+review found a cancellation boundary introduced by waiting for the initial
+lookup: an aborted later date could still open another SQL Worker. A new
+regression failed with two lookups instead of one; one post-await cancellation
+guard fixed it. The final focused suites passed 70/70, with web types, scoped
+lint and whitespace checks passing. Independent review confirmed the scoped
+session, close-before-compute, fenced-write and data-lifecycle invariants.
+Logs: `/tmp/almamesh-codex-period-batching-{red,green,types,lint}.log` and
+`/tmp/almamesh-codex-period-batching-cancel-{red,green,types,lint}.log`.
+
+The first combined complete frontend gate passed 6,178 tests plus four lint
+contracts and all type/lint/build/public-route/no-hooks checks. After the final
+cancellation guard and regression, the root repeated that complete gate:
+6,179 tests plus four lint contracts passed, along with types, lint, build,
+public-route verification and absence of test hooks. Logs:
+`/tmp/almamesh-codex-pr333-followup-frontend-gate.log` and
+`/tmp/almamesh-codex-pr333-followup-final-frontend-gate.log`.
+The native full-lane run remains pending on a frozen combined product commit.

@@ -335,7 +335,12 @@ export class AlmaMeshRuntime {
         this.#chartEngine = warming;
         cancelPrewarm = (this.#deps.scheduleIdle ?? defaultScheduleIdle)(() => {
           cancelPrewarm = null;
-          if (this.#chartEngine === warming) warming.prewarm?.(config.pyodideIndexUrl);
+          // Do not throw from an idle callback. The awaited boot path reports
+          // cancellation and releases both Workers at its next boundary.
+          if (this.#chartEngine === warming &&
+            !(this.#deps.isPageTearingDown ?? defaultIsPageTearingDown)()) {
+            warming.prewarm?.(config.pyodideIndexUrl);
+          }
         });
       }
 
@@ -348,6 +353,7 @@ export class AlmaMeshRuntime {
         (progress) => onStage({ kind: "syncing", progress }),
       );
       this.#assertCurrent(generation);
+      this.#assertPageAlive();
       // The sync settled before an idle slot came: `boot` warms the runtime
       // itself (cold), which is exactly the sequential path.
       cancelPrewarm?.();
@@ -360,6 +366,7 @@ export class AlmaMeshRuntime {
         readMeta(syncEngine),
       ]);
       this.#assertCurrent(generation);
+      this.#assertPageAlive();
 
       // The sync Worker is only needed to materialize the boot assets. Release
       // its OPFS handles and wasm memory as soon as they are in hand — in
@@ -368,12 +375,13 @@ export class AlmaMeshRuntime {
       if (this.#syncEngine === syncEngine) this.#syncEngine = null;
 
       onStage({ kind: "booting-engine" });
-      if (chartEngine === null) this.#assertPageAlive();
+      this.#assertPageAlive();
       const booted = chartEngine ?? this.#deps.spawnChartEngine();
       chartEngine = booted;
       this.#chartEngine = booted;
       await booted.boot(bootConfig, (progress) => onStage({ kind: "booting-engine", progress }));
       this.#assertCurrent(generation);
+      this.#assertPageAlive();
 
       // Identical inputs are computed once per booted engine, keyed on the
       // signed bundle's content-addressed manifest (see ./engineMemo.ts).

@@ -702,6 +702,195 @@ describe("AlmaMeshRuntime.bootstrap", () => {
       expect(sync.terminated).toBe(true);
     });
 
+    it("does not prewarm or boot an overlap Worker after pagehide during sync", async () => {
+      let tearingDown = false;
+      let releaseSync!: () => void;
+      const sync = new FakeSyncEngine(FILES);
+      const originalSync = sync.sync.bind(sync);
+      sync.sync = async (...args) => {
+        await new Promise<void>((resolve) => { releaseSync = resolve; });
+        return originalSync(...args);
+      };
+      const chart = new FakeChartEngine();
+      const idle = new FakeIdleScheduler();
+      const stages: BootStage[] = [];
+      const runtime = new AlmaMeshRuntime({
+        spawnSyncEngine: () => sync,
+        spawnChartEngine: () => chart,
+        decideBootMode: () => ({ mode: "overlap", reason: "test" }),
+        scheduleIdle: idle.schedule,
+        isPageTearingDown: () => tearingDown,
+      });
+
+      const outcome = runtime.bootstrap(CONFIG, (stage) => stages.push(stage))
+        .then(() => null, (error: unknown) => error);
+      tearingDown = true;
+      try { idle.runPending(); }
+      finally { releaseSync(); }
+      const error = await outcome;
+
+      expect(chart.prewarmUrls).toEqual([]);
+      expect(chart.bootCount).toBe(0);
+      expect(error).toBeInstanceOf(EngineBootCancelledError);
+      expect(runtime.engine()).toBeNull();
+      expect(stages.some((stage) => stage.kind === "ready")).toBe(false);
+      expect(sync.terminated).toBe(true);
+      expect(chart.terminated).toBe(true);
+    });
+
+    it("does not boot an overlap Worker after pagehide during asset reads", async () => {
+      let tearingDown = false;
+      let releaseAssets!: () => void;
+      let reportReadStarted!: () => void;
+      const assets = new Promise<void>((resolve) => { releaseAssets = resolve; });
+      const readStarted = new Promise<void>((resolve) => { reportReadStarted = resolve; });
+      const sync = new FakeSyncEngine(FILES);
+      const originalRead = sync.readFile.bind(sync);
+      sync.readFile = async (path) => {
+        reportReadStarted();
+        await assets;
+        return originalRead(path);
+      };
+      const chart = new FakeChartEngine();
+      const idle = new FakeIdleScheduler();
+      const stages: BootStage[] = [];
+      const runtime = new AlmaMeshRuntime({
+        spawnSyncEngine: () => sync,
+        spawnChartEngine: () => chart,
+        decideBootMode: () => ({ mode: "overlap", reason: "test" }),
+        scheduleIdle: idle.schedule,
+        isPageTearingDown: () => tearingDown,
+      });
+
+      const outcome = runtime.bootstrap(CONFIG, (stage) => stages.push(stage))
+        .then(() => null, (error: unknown) => error);
+      await readStarted;
+      tearingDown = true;
+      releaseAssets();
+      const error = await outcome;
+
+      expect(chart.bootCount).toBe(0);
+      expect(error).toBeInstanceOf(EngineBootCancelledError);
+      expect(runtime.engine()).toBeNull();
+      expect(stages.some((stage) => stage.kind === "ready")).toBe(false);
+      expect(idle.cancelled).toBe(1);
+      expect(chart.prewarmUrls).toEqual([]);
+      expect(sync.terminated).toBe(true);
+      expect(chart.terminated).toBe(true);
+    });
+
+    it("does not publish readiness when an overlap boot completes after pagehide", async () => {
+      let tearingDown = false;
+      let releaseBoot!: () => void;
+      let reportBootStarted!: () => void;
+      const boot = new Promise<void>((resolve) => { releaseBoot = resolve; });
+      const bootStarted = new Promise<void>((resolve) => { reportBootStarted = resolve; });
+      const sync = new FakeSyncEngine(FILES);
+      const chart = new FakeChartEngine();
+      const originalBoot = chart.boot.bind(chart);
+      chart.boot = async (...args) => {
+        await originalBoot(...args);
+        reportBootStarted();
+        await boot;
+      };
+      const stages: BootStage[] = [];
+      const runtime = new AlmaMeshRuntime({
+        spawnSyncEngine: () => sync,
+        spawnChartEngine: () => chart,
+        decideBootMode: () => ({ mode: "overlap", reason: "test" }),
+        scheduleIdle: new FakeIdleScheduler().schedule,
+        isPageTearingDown: () => tearingDown,
+      });
+
+      const outcome = runtime.bootstrap(CONFIG, (stage) => stages.push(stage))
+        .then(() => null, (error: unknown) => error);
+      await bootStarted;
+      tearingDown = true;
+      releaseBoot();
+      const error = await outcome;
+
+      expect(chart.bootCount).toBe(1);
+      expect(error).toBeInstanceOf(EngineBootCancelledError);
+      expect(runtime.engine()).toBeNull();
+      expect(stages.some((stage) => stage.kind === "ready")).toBe(false);
+      expect(sync.terminated).toBe(true);
+      expect(chart.terminated).toBe(true);
+    });
+
+    it("allows an explicit fresh bootstrap after cancellation without automatically retrying", async () => {
+      let tearingDown = false;
+      const abandonedSync = new FakeSyncEngine(FILES);
+      abandonedSync.sync = async () => {
+        tearingDown = true;
+        return SYNC_RESULT;
+      };
+      const abandonedChart = new FakeChartEngine();
+      const freshSync = new FakeSyncEngine(FILES);
+      const freshChart = new FakeChartEngine();
+      const syncs = [abandonedSync, freshSync];
+      const charts = [abandonedChart, freshChart];
+      const spawnSyncEngine = vi.fn(() => syncs.shift() ?? freshSync);
+      const spawnChartEngine = vi.fn(() => charts.shift() ?? freshChart);
+      const runtime = new AlmaMeshRuntime({
+        spawnSyncEngine,
+        spawnChartEngine,
+        decideBootMode: () => ({ mode: "overlap", reason: "test" }),
+        scheduleIdle: new FakeIdleScheduler().schedule,
+        isPageTearingDown: () => tearingDown,
+      });
+
+      await expect(runtime.bootstrap(CONFIG)).rejects.toBeInstanceOf(EngineBootCancelledError);
+      expect(spawnSyncEngine).toHaveBeenCalledTimes(1);
+      expect(spawnChartEngine).toHaveBeenCalledTimes(1);
+      expect(abandonedSync.terminated).toBe(true);
+      expect(abandonedChart.terminated).toBe(true);
+      expect(runtime.engine()).toBeNull();
+
+      tearingDown = false;
+      const engine = await runtime.bootstrap(CONFIG);
+      await engine.generateChart(BIRTH);
+      expect(runtime.engine()).toBe(engine);
+      expect(spawnSyncEngine).toHaveBeenCalledTimes(2);
+      expect(spawnChartEngine).toHaveBeenCalledTimes(2);
+      expect(freshChart.bootCount).toBe(1);
+      expect(freshChart.chartCalls).toBe(1);
+      expect(freshChart.terminated).toBe(false);
+    });
+
+    it("keeps the current pagehide/pageshow boolean semantics across a held overlap sync", async () => {
+      let tearingDown = false;
+      let releaseSync!: () => void;
+      const sync = new FakeSyncEngine(FILES);
+      const originalSync = sync.sync.bind(sync);
+      sync.sync = async (...args) => {
+        await new Promise<void>((resolve) => { releaseSync = resolve; });
+        return originalSync(...args);
+      };
+      const chart = new FakeChartEngine();
+      const idle = new FakeIdleScheduler();
+      const runtime = new AlmaMeshRuntime({
+        spawnSyncEngine: () => sync,
+        spawnChartEngine: () => chart,
+        decideBootMode: () => ({ mode: "overlap", reason: "test" }),
+        scheduleIdle: idle.schedule,
+        isPageTearingDown: () => tearingDown,
+      });
+
+      const pending = runtime.bootstrap(CONFIG);
+      tearingDown = true;
+      try { idle.runPending(); }
+      finally {
+        tearingDown = false;
+        releaseSync();
+      }
+      const engine = await pending;
+
+      expect(chart.prewarmUrls).toEqual([]);
+      expect(chart.bootCount).toBe(1);
+      expect(runtime.engine()).toBe(engine);
+      expect(chart.terminated).toBe(false);
+    });
+
     it("a live page boots normally", async () => {
       const chart = new FakeChartEngine();
       const runtime = new AlmaMeshRuntime({

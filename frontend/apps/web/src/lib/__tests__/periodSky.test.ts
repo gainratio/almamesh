@@ -50,6 +50,12 @@ const signal = () => new AbortController().signal;
 function durableRows() {
   const values = new Map<string, CachedPredictiveContexts>();
   const rows: PeriodSkyRows = {
+    lookup: vi.fn(async (h, k, sweep) => {
+      const epoch = await rows.captureEpoch!();
+      if (epoch === undefined) return { epoch };
+      if (sweep) await rows.sweepOtherEngines(h).catch(() => undefined);
+      return { epoch, hit: await rows.read(h, k, epoch).catch(() => undefined) };
+    }),
     captureEpoch: vi.fn(async () => 0),
     read: vi.fn(async (h, k) => values.get(`${h}|${k}`)),
     write: vi.fn(async (h, k, _p, value) => { values.set(`${h}|${k}`, value); }),
@@ -86,6 +92,27 @@ describe('durable period sky', () => {
     await Promise.all([first, second]);
     expect(rows.read).toHaveBeenCalledTimes(1);
     expect(runtime.computePredictive).toHaveBeenCalledTimes(1);
+  });
+
+  it('opens no lookup for an abandoned date after waiting for the first engine sweep', async () => {
+    const { rows } = durableRows();
+    const held = Promise.withResolvers<Awaited<ReturnType<PeriodSkyRows['lookup']>>>();
+    rows.lookup = vi.fn().mockReturnValueOnce(held.promise).mockResolvedValue({ epoch: 0 });
+    const runtime = { computePredictive: vi.fn(async () => SKY), identity: () => 'hash-a' };
+    const cache = createPeriodSkyCache({ rows, readStore: idle });
+    const first = cache.load(input('2019-06-01'), runtime, signal());
+    await vi.waitFor(() => expect(rows.lookup).toHaveBeenCalledTimes(1));
+    const controller = new AbortController();
+    const second = cache.load(input('2019-06-02'), runtime, controller.signal);
+    // Let the second request enter the await on the first lookup's sweep.
+    await Promise.resolve();
+    controller.abort(new DOMException('back to today', 'AbortError'));
+    await expect(second).rejects.toThrow('back to today');
+    held.resolve({ epoch: 0 });
+    await first;
+    expect(rows.lookup).toHaveBeenCalledTimes(1);
+    expect(runtime.computePredictive).toHaveBeenCalledTimes(1);
+    expect(rows.write).toHaveBeenCalledTimes(1);
   });
 
   it('sweeps once per engine identity and captures the epoch before computing', async () => {
