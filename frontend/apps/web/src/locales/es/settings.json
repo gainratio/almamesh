@@ -323,6 +323,8 @@
     "error_export_unavailable": "AlmaMesh no pudo cifrar la copia de seguridad ahora. No se guardó nada; inténtalo de nuevo.",
     "error_stage_failed": "No se pudo leer esa copia: {{reason}}",
     "error_import_failed": "La restauración falló: {{reason}}. No se reemplazó nada; inténtalo de nuevo o restaura la copia de seguridad.",
+    "error_restored_not_shown": "Tu copia de seguridad se restauró, pero esta pestaña no pudo abrirla: {{reason}}. Recarga la página para verla.",
+    "error_restored_not_shown_in_memory": "Tu copia de seguridad se restauró en esta pestaña, pero la app no pudo mostrarla: {{reason}}. No recargues: esta ventana privada guarda los datos solo en memoria, así que recargar los borraría. Restaura el mismo archivo otra vez para cargarla.",
     "set_aside_heading": "Registros apartados",
     "set_aside_hint": "Estos registros pertenecen a personas que ya no están en este dispositivo. AlmaMesh los guarda aquí hasta que los restaures o los elimines, y nunca los borra por su cuenta. No se incluyen en las copias de seguridad: para llevar uno a otro dispositivo, primero restáuralo a una persona y luego exporta.",
     "set_aside_events_one": "{{count}} evento de vida",

@@ -252,20 +252,45 @@ export function useBackupRestore(options: BackupRestoreOptions = {}): BackupRest
   async function replaceData(toImport: StagedImport, protect: () => Promise<number>) {
     setImporting(true);
     try {
-      const protectedRevision = await protect();
-      armPortableImportRevision(protectedRevision);
+      if (await commitStaged(toImport, protect)) await finishCommittedRestore();
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  /** Commit behind the revision fence. False (with the error shown) when nothing was replaced. */
+  async function commitStaged(toImport: StagedImport, protect: () => Promise<number>): Promise<boolean> {
+    try {
+      armPortableImportRevision(await protect());
       try {
         await commitBackupImport(toImport);
       } finally {
         clearPortableImportRevisionFence();
       }
-      await finishRestore();
+      return true;
     } catch (err) {
       closeConfirm();
       const key = needsSafetyCopy ? 'backup.error_import_failed' : 'backup.error_restore_failed_empty';
       setError(t(key, { reason: reasonOf(err) }));
-    } finally {
-      setImporting(false);
+      return false;
+    }
+  }
+
+  /**
+   * SQLite already holds the backup, so a failure here must never say
+   * "nothing was replaced". In memory mode a reload would erase the restore,
+   * so that message must not suggest one.
+   */
+  async function finishCommittedRestore() {
+    try {
+      await finishRestore();
+    } catch (err) {
+      closeConfirm();
+      const key =
+        portableStatePersistence() === 'memory'
+          ? 'backup.error_restored_not_shown_in_memory'
+          : 'backup.error_restored_not_shown';
+      setError(t(key, { reason: reasonOf(err) }));
     }
   }
 

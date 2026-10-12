@@ -323,6 +323,8 @@
     "error_export_unavailable": "O AlmaMesh não conseguiu criptografar o backup agora. Nada foi salvo; tente novamente.",
     "error_stage_failed": "Não foi possível ler esse backup: {{reason}}",
     "error_import_failed": "A restauração falhou: {{reason}}. Nada foi substituído; tente novamente ou restaure a cópia de segurança.",
+    "error_restored_not_shown": "Seu backup foi restaurado, mas esta aba não conseguiu abri-lo: {{reason}}. Recarregue a página para vê-lo.",
+    "error_restored_not_shown_in_memory": "Seu backup foi restaurado nesta aba, mas o app não conseguiu exibi-lo: {{reason}}. Não recarregue: esta janela privada guarda os dados só na memória, então recarregar os apagaria. Restaure o mesmo arquivo de novo para carregá-lo.",
     "set_aside_heading": "Registros separados",
     "set_aside_hint": "Estes registros pertencem a pessoas que não estão mais neste dispositivo. O AlmaMesh os guarda aqui até você restaurá-los ou excluí-los, e nunca os apaga por conta própria. Eles não entram nos backups: para levar um a outro dispositivo, restaure-o a uma pessoa primeiro e depois exporte.",
     "set_aside_events_one": "{{count}} evento de vida",

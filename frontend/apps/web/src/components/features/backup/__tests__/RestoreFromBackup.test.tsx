@@ -284,8 +284,46 @@ describe('RestoreFromBackup (first run)', () => {
     await unlockWith(PASSWORD);
     fireEvent.click(await screen.findByTestId('backup-confirm-import'));
 
-    expect((await screen.findByTestId('first-run-restore-error')).textContent).toContain('disk full');
+    const text = (await screen.findByTestId('first-run-restore-error')).textContent ?? '';
+    expect(text).toContain('disk full');
+    expect(text).toContain('Nothing was replaced');
     expect(assignSpy).not.toHaveBeenCalled();
+  });
+
+  it('private window: if the tab cannot show a restore that already committed, it never claims nothing was replaced or asks for a reload', async () => {
+    vi.mocked(portableStatePersistence).mockReturnValue('memory');
+    vi.mocked(adoptRestoredDatasetInPlace).mockRejectedValueOnce(new Error('stores stuck'));
+    render(<RestoreFromBackup />);
+
+    fireEvent.click(screen.getByTestId('first-run-restore-button'));
+    await unlockWith(PASSWORD);
+    fireEvent.click(await screen.findByTestId('backup-confirm-import'));
+
+    const text = (await screen.findByTestId('first-run-restore-error')).textContent ?? '';
+    expect(vi.mocked(commitBackupImport)).toHaveBeenCalledWith(STAGED_BUNDLE);
+    expect(text).toContain('stores stuck');
+    expect(text).not.toContain('Nothing was replaced');
+    // A page load empties in-memory SQLite, so it must warn against one.
+    expect(text).toContain("Don't reload");
+    expect(text).toContain('Restore the same file again');
+    expect(screen.queryByTestId('dashboard-route')).toBeNull();
+  });
+
+  it('saved browser: if opening the restored data fails after the commit, it says the backup was restored and to reload', async () => {
+    assignSpy.mockImplementation(() => {
+      throw new Error('navigation blocked');
+    });
+    render(<RestoreFromBackup />);
+
+    fireEvent.click(screen.getByTestId('first-run-restore-button'));
+    await unlockWith(PASSWORD);
+    fireEvent.click(await screen.findByTestId('backup-confirm-import'));
+
+    const text = (await screen.findByTestId('first-run-restore-error')).textContent ?? '';
+    expect(text).toContain('navigation blocked');
+    expect(text).not.toContain('Nothing was replaced');
+    expect(text).toContain('Your backup was restored');
+    expect(text).toContain('Reload the page');
   });
 
   it('if the database revision moves during the emptiness re-check, it refuses', async () => {
