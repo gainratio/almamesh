@@ -19,6 +19,8 @@
 
 import type { ChartEngine } from '@almamesh/browser';
 
+import { isTransientBootFailure } from './transientBootFailure';
+
 /** The slice of the chart-engine context this decision needs. */
 export interface EngineReadiness {
   readonly engine: ChartEngine | null;
@@ -77,6 +79,26 @@ function withIdleBudget(
   });
 }
 
+/**
+ * How many boot attempts a waiting page follows. A transient failure (a Worker
+ * that went silent, a stalled fetch) makes the provider boot again on its own;
+ * without following it the page showed CHART_GEN_001 while the engine became
+ * ready behind the card (CI run 38267574533). Bounded so a boot that keeps
+ * failing still reaches the Retry card.
+ */
+const MAX_FOLLOWED_BOOT_ATTEMPTS = 3;
+
+async function followTransientRetries(whenReady: () => Promise<ChartEngine>): Promise<ChartEngine> {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return await whenReady();
+    } catch (error) {
+      const failure = error instanceof Error ? error : new Error(String(error));
+      if (attempt >= MAX_FOLLOWED_BOOT_ATTEMPTS || !isTransientBootFailure(failure)) throw failure;
+    }
+  }
+}
+
 export async function resolveReadyEngine(
   readiness: EngineReadiness,
   timeoutMs: number = DEFAULT_READY_TIMEOUT_MS,
@@ -84,6 +106,6 @@ export async function resolveReadyEngine(
   if (readiness.engine) {
     return readiness.engine;
   }
-  const work = readiness.error ? readiness.reboot() : readiness.whenReady();
+  const work = readiness.error ? readiness.reboot() : followTransientRetries(readiness.whenReady);
   return withIdleBudget(work, timeoutMs, readiness.lastProgressAt);
 }

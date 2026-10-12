@@ -20,6 +20,7 @@ import { detectMemoryTier, type MemoryTier } from '@gainratio/browser/sqlite';
 
 import { formatMemoryReport } from '../scripts/processMemory.mjs';
 import { BOOT_MEMORY_BUDGET, PLACE_LOOKUP_HEAP_GROWTH_MIB, overBudget, type BootMemorySample } from './memoryBudget';
+import { waitForMemoryDashboard } from './timeTravelMemory.helpers';
 
 const MiB = 1024 * 1024;
 const cityManifest = JSON.parse(readFileSync(new URL('../public/cities/manifest.json', import.meta.url), 'utf8')) as { parts: number };
@@ -131,7 +132,25 @@ async function answerGeocoder(route: Route): Promise<void> {
   });
 }
 
+/**
+ * Fail fast on the CHART_GEN_001 card instead of a bare 5-minute waitForURL,
+ * and say where onboarding stopped: route, visible heading, console tail.
+ */
+async function waitForDashboardOrExplain(page: Page, consoleTail: readonly string[]): Promise<void> {
+  try {
+    await waitForMemoryDashboard(page);
+  } catch (error) {
+    const heading = await page.getByRole('heading').first().textContent({ timeout: 1_000 }).catch(() => null);
+    const where = `route=${new URL(page.url()).pathname} heading=${JSON.stringify(heading)}`;
+    throw new Error(`${String(error)} ${where} console=${JSON.stringify(consoleTail.slice(-12))}`, { cause: error });
+  }
+}
+
 async function onboardToDashboard(page: Page): Promise<void> {
+  const consoleTail: string[] = [];
+  page.on('console', (message) => {
+    if (message.type() !== 'debug') consoleTail.push(`${message.type()}: ${message.text()}`.slice(0, 300));
+  });
   await page.route(GEOCODER_URL, answerGeocoder);
   await page.goto('/onboarding');
   await page.getByTestId('name-input').fill('Memory Budget');
@@ -145,7 +164,7 @@ async function onboardToDashboard(page: Page): Promise<void> {
   await page.getByTestId('confidence-option-exact').click();
   await page.getByTestId('next-button').click();
   await page.getByTestId('skip-life-events-button').click();
-  await page.waitForURL('**/dashboard', { timeout: 300_000 });
+  await waitForDashboardOrExplain(page, consoleTail);
   await page.getByTestId('chart-visualization').first().waitFor({ state: 'attached', timeout: 300_000 });
 }
 

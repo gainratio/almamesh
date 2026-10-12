@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 
-import type { ChartEngine } from '@almamesh/browser';
+import { WorkerCrashError, WorkerTimeoutError, type ChartEngine } from '@almamesh/browser';
 import { resolveReadyEngine, type EngineReadiness } from '../resolveReadyEngine';
 
 const engineA = { tag: 'A' } as unknown as ChartEngine;
@@ -132,5 +132,57 @@ describe('resolveReadyEngine', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+  // CI run 38267574533: under load one OPFS step in the sync Worker stalled, the
+  // first boot failed with "engine request 1 (sync) was idle for 60000ms", and
+  // the provider booted again 250 ms later and became ready. Onboarding had
+  // been awaiting that first attempt, so it showed CHART_GEN_001 and stayed on
+  // the error card although the engine was ready seconds later.
+  it('follows the automatic boot retry when the in-flight boot fails with a transient Worker timeout', async () => {
+    const reboot = vi.fn();
+    const whenReady = vi
+      .fn()
+      .mockRejectedValueOnce(new WorkerTimeoutError('engine request 1 (sync) was idle for 60000ms'))
+      .mockResolvedValueOnce(engineA);
+    const r = makeReadiness({ engine: null, error: null, reboot, whenReady });
+
+    await expect(resolveReadyEngine(r)).resolves.toBe(engineA);
+    expect(whenReady).toHaveBeenCalledTimes(2);
+    expect(reboot).not.toHaveBeenCalled();
+  });
+
+  it('follows the automatic boot retry after a stalled bundle fetch or a Worker crash', async () => {
+    const whenReady = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('fetch /public.key failed: stalled: no bytes for 30000ms'))
+      .mockRejectedValueOnce(new WorkerCrashError('engine worker crashed'))
+      .mockResolvedValueOnce(engineA);
+    const r = makeReadiness({ engine: null, error: null, whenReady });
+
+    await expect(resolveReadyEngine(r)).resolves.toBe(engineA);
+    expect(whenReady).toHaveBeenCalledTimes(3);
+  });
+
+  it('surfaces a non-transient boot failure (integrity, rollback) without waiting for another boot', async () => {
+    const integrity = new Error('bundle signature verification failed');
+    const whenReady = vi.fn().mockRejectedValue(integrity);
+    const r = makeReadiness({ engine: null, error: null, whenReady });
+
+    await expect(resolveReadyEngine(r)).rejects.toBe(integrity);
+    expect(whenReady).toHaveBeenCalledTimes(1);
+  });
+
+  it('gives up after three transient boot failures in a row and surfaces the last one', async () => {
+    const last = new WorkerTimeoutError('engine request 3 (sync) was idle for 60000ms');
+    const whenReady = vi
+      .fn()
+      .mockRejectedValueOnce(new WorkerTimeoutError('engine request 1 (sync) was idle for 60000ms'))
+      .mockRejectedValueOnce(new WorkerTimeoutError('engine request 2 (sync) was idle for 60000ms'))
+      .mockRejectedValueOnce(last)
+      .mockResolvedValue(engineA);
+    const r = makeReadiness({ engine: null, error: null, whenReady });
+
+    await expect(resolveReadyEngine(r)).rejects.toBe(last);
+    expect(whenReady).toHaveBeenCalledTimes(3);
   });
 });

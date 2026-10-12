@@ -24,8 +24,6 @@ import {
   defaultRuntimeDeps,
   EngineStorageBlockedError,
   spawnAlmaSyncEngine,
-  WorkerCrashError,
-  WorkerTimeoutError,
 } from '@almamesh/browser'
 import type { BootStage, BundleMeta, ChartEngine, OnStage, RuntimeConfig } from '@almamesh/browser'
 import {
@@ -45,6 +43,7 @@ import { engineCacheFallback } from '../lib/engineCacheFallback'
 import { hasLocalChart } from '../lib/localChart'
 import { recordEngineBootFailure, registerEngineTeardown } from '../lib/engineLifecycle'
 import { recoverSeveredServiceWorkerChannel } from '../lib/swSelfHeal'
+import { isTransientBootFailure, isTransientLocalWorkerFailure } from '../lib/transientBootFailure'
 import { periodEngineCallCount } from '../lib/periodSky'
 import {
   clearRuntimeError,
@@ -221,18 +220,7 @@ function engineStorageBlocked(error: unknown): EngineStorageBlockedError | null 
   return null
 }
 
-// `stalled`: the sync transport's stall error (no bytes for 30 s) after its
-// own bounded retries. A network condition, so it gets the same online retry.
-const TRANSIENT_BOOT_FAILURE = /network unreachable|failed to fetch|load failed|networkerror|timed out after|stalled|importing a module script failed/i
 const REPORTED_ONLINE_RETRY_DELAYS_MS = [250, 1_000, 5_000, 15_000] as const
-
-function isTransientBootFailure(error: Error): boolean {
-  return isTransientLocalWorkerFailure(error) || TRANSIENT_BOOT_FAILURE.test(error.message)
-}
-
-function isTransientLocalWorkerFailure(error: Error): boolean {
-  return error instanceof WorkerCrashError || error instanceof WorkerTimeoutError
-}
 
 /** The marketing splash: `/welcome` always, `/` only before a chart exists. */
 function isEngineFreeSplash(pathname: string): boolean {

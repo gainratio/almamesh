@@ -119,6 +119,44 @@ for (const fault of FAULTS) {
   });
 }
 
+/**
+ * CI run 38267574533 (memory-budget lane): one OPFS step in the sync Worker
+ * stalled under load, the first boot failed as transient, and the provider
+ * booted again on its own 250 ms later. Onboarding had been awaiting that
+ * first attempt and parked on CHART_GEN_001 with the engine ready behind it.
+ * Here the first trust-root fetch never answers, so the sync's stall watchdog
+ * fails the first boot the same transient way while the form is submitted.
+ */
+test('a first engine sync that stalls while onboarding waits follows the automatic retry to the chart', async ({ page, context, browserName }) => {
+  test.skip(browserName !== 'chromium', 'routes the sync Worker fetch; WebKit runs the wasm-trap cases');
+  const consoleErrors: string[] = [];
+  page.on('console', (message) => {
+    if (message.type() === 'error') consoleErrors.push(message.text());
+  });
+  page.on('pageerror', (error) => consoleErrors.push(`pageerror: ${error.message}`));
+  let trustRootRequests = 0;
+  await context.route('**/public.key', async (route) => {
+    trustRootRequests += 1;
+    if (trustRootRequests === 1) return; // never answered: the first boot stalls
+    await route.continue();
+  });
+  await page.addInitScript((card) => {
+    const seen = (): void => {
+      if (document.querySelector(card)) (window as unknown as Record<string, unknown>).__recoveryCardSeen = true;
+    };
+    new MutationObserver(seen).observe(document, { childList: true, subtree: true });
+  }, RECOVERY_CARD);
+
+  await page.goto('/onboarding');
+  await submitReferenceBirth(page);
+
+  await page.waitForURL('**/dashboard', { timeout: 150_000 });
+  await expect(page.getByTestId('chart-visualization').first()).toBeVisible();
+  expect(trustRootRequests).toBeGreaterThanOrEqual(2);
+  expect(await page.evaluate(() => (window as unknown as Record<string, unknown>).__recoveryCardSeen ?? false)).toBe(false);
+  expect(consoleErrors).toEqual([]);
+});
+
 interface RecoveryRequest {
   id: number;
   kind: string;
