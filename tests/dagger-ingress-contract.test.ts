@@ -425,6 +425,23 @@ describe("canonical GitHub ingress contract", () => {
     expect(uvBase).toContain('"scripts/public_docs_manifest.py"')
   })
 
+  test("the backend astronomy contract gets its exact browser configuration inputs", () => {
+    const source = readFileSync(resolve(root, "dagger/src/index.ts"), "utf8")
+    const uvBase = source.slice(source.indexOf("private uvBase()"), source.indexOf("private releaseBase("))
+    const contractsStart = source.indexOf("async contracts()")
+    const contractInputs = source.slice(contractsStart, source.indexOf(".withWorkdir(ROOT)", contractsStart))
+    for (const path of [
+      "frontend/apps/web/src/providers/AlmaMeshRuntimeProvider.tsx",
+      "frontend/packages/browser/integration/parity.mjs",
+      "frontend/packages/browser/integration/rectification-precision.mjs",
+    ]) {
+      expect(uvBase).toContain(`"${path}"`)
+      expect(contractInputs).toContain(`"${path}"`)
+      expect(existsSync(resolve(root, path))).toBe(true)
+    }
+    expect(uvBase).not.toContain('"frontend/**"')
+  })
+
   test.each([
     ["missing export", (steps: Array<Record<string, unknown>>) => [steps[0], steps[2]]],
     ["export after Dagger", (steps: Array<Record<string, unknown>>) => [steps[0], steps[2], steps[1]]],

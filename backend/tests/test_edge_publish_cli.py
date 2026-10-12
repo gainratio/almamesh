@@ -80,7 +80,7 @@ def test_bundle_offline_mode_ships_full_asset_set(tmp_path) -> None:
     verifier = Ed25519Verifier.from_public_bytes((keys / "public.key").read_bytes())
     synced = sync_constructs(str(origin), cache, verifier)
     assert read_synced_file(cache, synced, "skyfield-data/de421.bsp") == b"DE421-STUB"
-    assert read_synced_file(cache, synced, "wheels/skyfield-1.53-py3-none-any.whl")
+    assert read_synced_file(cache, synced, "wheels/skyfield-1.55-py3-none-any.whl")
 
 
 def test_keygen_prints_the_key_id_a_keyring_names_the_key_by(tmp_path) -> None:

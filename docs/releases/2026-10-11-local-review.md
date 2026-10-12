@@ -1,6 +1,6 @@
 # Local review before deployment
 
-The user reviewed the local candidate and authorized the CI/CD release process on 11 October 2026. The frozen follow-up product source `ce2548a` passed 6,179 frontend tests plus four lint contracts and the complete 49-check native Mac lane with zero retries. Evidence finalization and leak scanning passed. Complete final-head hosted acceptance, merge and deployment remain pending. Production remains on release #331; the limitations below remain visible.
+The user reviewed the local candidate and authorized the CI/CD release process on 11 October 2026. The frozen follow-up product source `ce2548a` passed 6,179 frontend tests plus four lint contracts and the complete 49-check native Mac lane with zero retries. Evidence finalization and leak scanning passed. Hosted head `757cb225` failed native travel and required nightly acceptance; release remains blocked, with no merge or deployment. Production remains on release #331; the limitations below remain visible.
 
 ## Start here
 

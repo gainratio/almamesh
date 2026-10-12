@@ -68,7 +68,7 @@ export {
 const WHEEL_PATHS = [
   'wheels/jplephem-2.23-py3-none-any.whl',
   'wheels/sgp4-2.25-py3-none-any.whl',
-  'wheels/skyfield-1.53-py3-none-any.whl',
+  'wheels/skyfield-1.55-py3-none-any.whl',
   // NO avow / rfc8785 wheels. Strength receipts are signed in TypeScript by
   // `@gainratio/avow` (see packages/browser/src/pyodide/strengthReceipt.ts), so
   // the Python engine is crypto-free and the signed bundle no longer carries

@@ -1,6 +1,6 @@
 # Time travel and deterministic chat verification — 11 October 2026
 
-Status: final hosted acceptance is pending. Frozen product source `ce2548a709202f836b6ca14c169705233229692f` passed the complete native frontend gate (6,179 tests plus four lint contracts, types, lint, build, public routes and no-hooks checks) and the complete native Mac lane (49/49 checks, zero retries). The root independently finalized and scanned the saved evidence successfully. Earlier hosted Mac failures remain retained; this local pass does not establish their cause or resolution. The user authorized the CI/CD process on 11 October 2026. Cold-boot aggregate memory, wider restore memory and physical iPhone verification remain open. Production remains on #331; merge and deployment require complete final-head hosted proof.
+Status: hosted follow-up head `757cb225` is rejected; release is blocked. The refreshed candidate updates stable Playwright/WebKit and aligns the browser Skyfield wheel with backend 1.55; its complete frontend/browser/native checks remain pending. Earlier frozen product source `ce2548a709202f836b6ca14c169705233229692f` passed the complete native frontend gate (6,179 tests plus four lint contracts, types, lint, build, public routes and no-hooks checks) and the complete native Mac lane (49/49 checks, zero retries). The root independently finalized and scanned that saved evidence successfully. Earlier hosted Mac failures remain retained; local passes do not establish their cause or resolution. The user authorized the CI/CD process on 11 October 2026. Cold-boot aggregate memory, wider restore memory and physical iPhone verification remain open. Production remains on #331; merge and deployment require complete final-head hosted proof.
 
 Hosted candidates `67addf61`, `ba2837a2` and `d42886cc` are rejected. Their outcomes,
 including real browser failures, command/job timeouts, a report-section timeout
@@ -1068,3 +1068,94 @@ Dagger, the complete native Mac workflow and the required real-provider nightly
 must all pass on the final pushed head before protected merge. The rejected
 `d42886cc` results remain evidence of actual prior failures. Native crash
 causality, physical iPhone behavior and wider memory limitations remain open.
+
+
+## Hosted follow-up 757cb225: rejected
+
+The documentation-only release head `757cb2259c1225301d8ec1a13100ead14dae259a`
+was tested against synthetic merge `76d058faa998c0ecede1f3669ef1cc20fd224579`,
+whose parents are the original base and exact head and whose tree matches the
+candidate. All runs were attempt 1; no blind rerun was accepted.
+
+[Dagger 38195293391](https://github.com/gainratio/almamesh/actions/runs/38195293391)
+passed all 12 gates and stable aggregate `114642648633`: 557 contracts; 6,178
+frontend tests plus four lint contracts and the existing container-only skip;
+1,214 backend tests / 98.46% coverage; PDF prerequisite plus four PDF cases;
+all browser groups. Local native frontend had passed the skipped fixture.
+
+[Mac 38195293416](https://github.com/gainratio/almamesh/actions/runs/38195293416)
+failed its stable aggregate `114643307766`: 47/49 checks passed, zero retries.
+Memory `114636489764` passed all five original and five candidate runs. Original
+peaks were 1163, 1337, 1444, 1445 and 1336 MiB; candidate peaks were 1334, 1579,
+1348, 1473 and 1379 MiB. Maximum 1579 is within baseline 1445 + unchanged 250.
+Reference build `8cad9737b891`, Playwright 1.63.0, Darwin 24.6 arm64 / 7 GiB,
+measurement source exact synthetic `76d058f`. Ten diagnostic snapshots were
+available with zero instrumentation failures or retained error replies;
+bounded events were dropped explicitly.
+
+Portable/recovery `114636489906` passed 8 + 3 cases, including explicit fresh
+Worker recovery. Travel `114636489828` passed 26/28 (31.0 minutes). The desktop
+pinned-year reload recorded an outgoing SQL WASM request cancelled after reload
+started, followed by seven fatal console diagnostics; none were exempted. The
+desktop tool case had a native page crash on `/settings/data` during setup,
+before tool execution. Its native WebContent `.ips` is retained. All iPhone
+travel cases passed. This does not establish physical iPhone acceptance, OOM,
+or the native crash cause.
+
+All three snapshots finalized, scanned clean against 51 configured secrets and
+uploaded. Native manifests are complete; portable and travel unified-log reads
+explicitly timed out at 15 seconds. Artifact identities:
+
+| Snapshot | Artifact | SHA-256 |
+| --- | ---: | --- |
+| Memory | 11723332873 | `ac728f6cb0edb14f149b3583612c75ddc08b2b6658fea3f3cfdd4764e79bccfe` |
+| Portable | 11723632404 | `526dbb3d722766dbd397e5a4e7fd6f4c1001cfe2a1c261ad547983299d3a4f04` |
+| Travel | 11724445671 | `ae5787286f3e91d3946555a54180ecdc1fdc79609fe86a45afa35e39d66c5ffd` |
+
+[Required nightly 38195302977](https://github.com/gainratio/almamesh/actions/runs/38195302977)
+failed: 21 passed, one failed, one exempt local-Ollama skip. The self-heal test
+passed initial engine/chart, persisted repaired-model and retired-localStorage
+assertions; `reading-section` did not appear within its unchanged 480000 ms
+wait. Five subsequent suites containing six required real cases, the three
+Luna full reports and the executed none-skipped guard did not run. No failure
+artifact was uploaded. Logs cannot distinguish a held provider request, section
+failure, invalid core summary or blocked persistence; no deadline increase or
+product/model substitution is justified by this receipt.
+
+Private logs and snapshots are under
+`/tmp/almamesh-codex-pr333-{dagger,mac,nightly}-757cb225*`. Production remains
+unchanged; there has been no merge or deployment. Further diagnosis is required.
+
+## Stable runtime refresh and retained failure diagnostics
+
+The next candidate upgrades Playwright to stable 1.64.0 (WebKit 2370 / 27.2)
+and aligns the signed browser Skyfield wheel with the backend's locked 1.55.
+See the [dependency audit](2026-10-11-runtime-dependency-audit.md) for upstream
+versions, compatible Wasm constraints and the isolated preview comparison.
+Both stable and preview passed the two previously failing journeys once;
+neither reproduced the hosted crash. This is diagnostic evidence only.
+
+New regression coverage requires the complete seven-message outgoing SQLite
+Wasm cancellation chain, corroborated by the old Worker request, readable
+Referer, exact cancelled request, same origin and pre-commit ordering. Partial,
+incoming, unproven or page-error cases remain fatal. The retained hosted receipt
+replays as seven explicitly classified messages with zero fatal messages; the
+physical console/request receipt remains available. This classification is not
+a product correction or a claim that the console was clean.
+
+Public Playwright Worker/page events now produce bounded Node-side lifecycle
+receipts that survive page loss, without injecting a Worker wrapper. Generic
+Worker assets and unobserved nested Workers remain explicitly unattributed.
+Fixture cleanup attempts diagnostic retention and profile removal even when
+launch, watch or close fails, and preserves the original failure and video.
+Real-reading diagnostics retain only closed endpoint categories, HTTP status,
+elapsed lifecycle values and UI-presence bits; no keys, chart/prompt bodies or
+raw provider errors enter those receipts. They preserve the original assertion
+and the existing reading deadline. No provider failure is claimed fixed.
+
+The backend gate passed 1219 tests / 98.46% coverage, Ruff, formatting, mypy
+and complexity checks. Both backend and contract CI source closures include the
+three exact browser configuration files required by the metadata regression;
+177 ingress contracts pass after a missing-input regression failed. Complete
+frontend, actual browser parity and native acceptance for this refreshed source
+remain pending at this checkpoint. Budgets, retries and deadlines are unchanged.

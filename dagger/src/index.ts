@@ -246,6 +246,10 @@ export class AlmameshCi {
           ".github/workflows/deploy.yml",
           "backend/**",
           "frontend/packages/browser/src/pyodide/*.ts",
+          // Backend astronomy tests verify the actual browser wheel configuration.
+          "frontend/apps/web/src/providers/AlmaMeshRuntimeProvider.tsx",
+          "frontend/packages/browser/integration/parity.mjs",
+          "frontend/packages/browser/integration/rectification-precision.mjs",
           "testdata/**",
           // backend/tests/test_readme_contract.py: the README, the package
           // description it must equal, and every file the README links to.
@@ -443,6 +447,10 @@ exec ${inline.join(" ")}`,
           "frontend/apps/web/vitest.config.ts",
           // The toolchain contract reads the locked Playwright version.
           "frontend/bun.lock",
+          // The astronomy ingress contract also checks these files exist.
+          "frontend/apps/web/src/providers/AlmaMeshRuntimeProvider.tsx",
+          "frontend/packages/browser/integration/parity.mjs",
+          "frontend/packages/browser/integration/rectification-precision.mjs",
           // The memory-budget contract pins the test:e2e:memory-budget script.
           "frontend/apps/web/package.json",
           // The macOS WebKit lane contract reads its script and the configs it runs.

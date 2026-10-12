@@ -4,6 +4,7 @@ import { freemem, totalmem } from 'node:os';
 import { promisify } from 'node:util';
 
 import type { BrowserContext, Logger, Page, TestInfo } from '@playwright/test';
+import { createNativeWorkerLifecycle } from './nativeWorkerLifecycle';
 
 import {
   PS_ARGS,
@@ -54,6 +55,7 @@ export function startWebKitDiagnostics(testInfo: TestInfo, name = 'webkit'): Web
     console.error(`[webkit-diagnostics] ${line} (${testInfo.title})`);
   };
   const started = Date.now();
+  const workerLifecycle = createNativeWorkerLifecycle();
   const samples: WebKitRssSample[] = [];
   const timer = setInterval(() => {
     void sampleWebKit().then((processes) => samples.push({ atMs: Date.now() - started, processes }));
@@ -65,6 +67,7 @@ export function startWebKitDiagnostics(testInfo: TestInfo, name = 'webkit'): Web
       log: (name, severity, message) => note(`[${name}:${severity}] ${String(message)}`),
     },
     watch(context) {
+      workerLifecycle.watch(context);
       const watchPage = (page: Page): void => {
         page.on('crash', () => shout(`page crashed: ${page.url()}`));
         page.on('close', () => note(`page closed: ${page.url()}`));
@@ -75,12 +78,21 @@ export function startWebKitDiagnostics(testInfo: TestInfo, name = 'webkit'): Web
     },
     async finish() {
       clearInterval(timer);
+      const lifecycleSnapshot = workerLifecycle.finish();
+      let lifecycleRetentionFailed = false;
+      try {
+        console.log(JSON.stringify({ event: 'native-worker-lifecycle', snapshot: lifecycleSnapshot }));
+        writeFileSync(testInfo.outputPath(`${name}-worker-lifecycle.json`), `${JSON.stringify(lifecycleSnapshot)}\n`);
+      } catch {
+        lifecycleRetentionFailed = true;
+      }
       samples.push({ atMs: Date.now() - started, processes: await sampleWebKit() });
       const summary = summarizeWebKitRss(samples);
       note(`end status=${testInfo.status ?? 'unknown'} free=${Math.round(freemem() / 2 ** 20)}MiB rss=${JSON.stringify(summary)}`);
       writeFileSync(testInfo.outputPath(`${name}-rss.csv`), formatWebKitRssCsv(samples));
       writeFileSync(testInfo.outputPath(`${name}-browser.log`), `${lines.join('\n')}\n`);
       console.log(`webkit-rss ${testInfo.project.name} ${name} ${JSON.stringify(testInfo.title)} ${JSON.stringify(summary)}`);
+      if (lifecycleRetentionFailed) throw new Error('Native worker lifecycle diagnostics could not be retained.');
       return summary;
     },
   };

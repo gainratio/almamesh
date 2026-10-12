@@ -309,6 +309,128 @@ describe('explicit unproven outgoing-navigation diagnostic exception', () => {
   });
 });
 
+// Exact public metadata/messages from the retained 757cb225 Mac reload receipt.
+const WASM_WORKER = 'http://127.0.0.1:4199/assets/worker-CJnCC9AM.js';
+const WASM_URL = 'http://127.0.0.1:4199/assets/sqlite3-C1o5_k_G.wasm';
+const wasmFailure = { url: WASM_URL, referer: WASM_WORKER, errorText: 'cancelled', at: 39 };
+const wasmEvidence = {
+  startedAt: 37, committedAt: 47,
+  oldDocumentUrl: 'http://127.0.0.1:4199/dashboard',
+  committedDocumentUrl: 'http://127.0.0.1:4199/dashboard',
+  oldSqlWorkerUrls: [WASM_WORKER], oldSqlWorkerRequests: [{ url: WASM_WORKER, at: 36 }],
+  failures: [wasmFailure],
+  requestEvents: [{ kind: 'requestfailed' as const, ...wasmFailure }],
+};
+const wasmDiagnostics: ReloadDiagnostic[] = [
+  'wasm streaming compile failed: TypeError: Load failed',
+  'falling back to ArrayBuffer instantiation',
+  `Fetch API cannot load ${WASM_URL} due to access control checks.`,
+  `XMLHttpRequest cannot load ${WASM_URL} due to access control checks.`,
+  'failed to asynchronously prepare wasm: NetworkError:  A network error occurred.',
+  'Aborted(NetworkError:  A network error occurred.)',
+  'Exception loading sqlite3 module: RuntimeError: Aborted(NetworkError:  A network error occurred.). Build with -sASSERTIONS for more info.',
+].map((text, index) => ({ kind: 'console', text, url: index === 2 || index === 3 ? '' : WASM_WORKER, at: 40 + index }));
+
+describe('separate proved outgoing SQLite WASM cancellation chain', () => {
+  it('archives the exact seven-error old-worker chain after cancellation and before commit', () => {
+    const result = classifyReloadConsole(wasmDiagnostics, wasmEvidence);
+    expect(result.fatal).toEqual([]);
+    expect(result.matched).toEqual(wasmDiagnostics.map((diagnostic) => ({
+      category: 'old-document-sqlite-wasm-cancellation', diagnostic, cancellation: wasmFailure,
+      workerRequest: { url: WASM_WORKER, at: 36 },
+    })));
+  });
+
+  it.each([
+    ['missing cancelled failure', { failures: [] }],
+    ['missing public failure event', { requestEvents: [] }],
+    ['unknown worker', { oldSqlWorkerUrls: [] }],
+    ['missing worker start proof', { oldSqlWorkerRequests: [] }],
+    ['omitted worker start proof', { oldSqlWorkerRequests: undefined }],
+    ['worker requested at reload start', { oldSqlWorkerRequests: [{ url: WASM_WORKER, at: 37 }] }],
+    ['worker requested after reload start', { oldSqlWorkerRequests: [{ url: WASM_WORKER, at: 38 }] }],
+    ['different worker start proof', { oldSqlWorkerRequests: [{ url: OTHER_WORKER, at: 36 }] }],
+    ['no commit', { committedAt: null }],
+    ['different committed document', { committedDocumentUrl: 'http://127.0.0.1:4199/settings/data' }],
+    ['commit before the last diagnostic', { committedAt: 46 }],
+    ['missing document origin', { oldDocumentUrl: undefined }],
+    ['wrong document origin', { oldDocumentUrl: 'https://example.invalid/dashboard' }],
+    ['non-HTTP document', { oldDocumentUrl: 'file:///dashboard' }],
+    ['failed Referer read', { requestEvents: [{ kind: 'requestfailed' as const, ...wasmFailure, refererReadFailed: true }] }],
+    ['different public failure Referer', { requestEvents: [{ kind: 'requestfailed' as const, ...wasmFailure, referer: OTHER_WORKER }] }],
+    ['different public failure URL', { requestEvents: [{ kind: 'requestfailed' as const, ...wasmFailure, url: `${WASM_URL}?other` }] }],
+    ['noncancel public failure', { requestEvents: [{ kind: 'requestfailed' as const, ...wasmFailure, errorText: 'Failed to fetch' }] }],
+  ])('keeps the whole chain fatal with %s', (_name, change) => {
+    expect(classifyReloadConsole(wasmDiagnostics, { ...wasmEvidence, ...change })).toEqual({ fatal: wasmDiagnostics, matched: [] });
+  });
+
+  it.each([
+    ['noncancel failure', { errorText: 'net::ERR_ABORTED' }],
+    ['different worker Referer', { referer: OTHER_WORKER }],
+    ['missing Referer', { referer: null }],
+    ['failed Referer read', { refererReadFailed: true }],
+    ['wrong URL', { url: WASM_URL.replace('sqlite3-', 'other-') }],
+    ['wrong origin', { url: WASM_URL.replace('127.0.0.1:4199', 'example.invalid') }],
+    ['query-bearing asset', { url: `${WASM_URL}?private=value` }],
+    ['failure at start', { at: 37 }],
+    ['failure at first diagnostic', { at: 40 }],
+    ['failure at commit', { at: 47 }],
+  ])('keeps the whole chain fatal with %s', (_name, change) => {
+    const failure = { ...wasmFailure, ...change };
+    expect(classifyReloadConsole(wasmDiagnostics, {
+      ...wasmEvidence, failures: [failure], requestEvents: [{ kind: 'requestfailed', ...failure }],
+    }))
+      .toEqual({ fatal: wasmDiagnostics, matched: [] });
+  });
+
+  it.each([
+    WASM_URL.replace('sqlite3-', 'other-'),
+    WASM_URL.replace('127.0.0.1:4199', 'example.invalid'),
+    `${WASM_URL}?query=value`, `${WASM_URL}#fragment`,
+    'file:///assets/sqlite3-C1o5_k_G.wasm',
+    WASM_URL.replace('http://', 'http://user:password@'),
+  ])('requires a same-origin public SQLite WASM asset even with a corroborated complete chain: %s', (url) => {
+    const failure = { ...wasmFailure, url };
+    const changed = wasmDiagnostics.map((diagnostic) => ({ ...diagnostic, text: diagnostic.text.replace(WASM_URL, url) }));
+    expect(classifyReloadConsole(changed, {
+      ...wasmEvidence, failures: [failure], requestEvents: [{ kind: 'requestfailed', ...failure }],
+    })).toEqual({ fatal: changed, matched: [] });
+  });
+
+  it.each(wasmDiagnostics.map((_diagnostic, index) => index))('requires exact message/location/order for chain diagnostic %i', (index) => {
+    for (const change of [
+      { text: `${wasmDiagnostics[index].text} additional error` },
+      { url: index === 2 || index === 3 ? WASM_WORKER : '' },
+      { kind: 'pageerror' as const },
+      { at: 39 },
+      { at: 47 },
+    ]) {
+      const changed = wasmDiagnostics.map((diagnostic, position) => position === index ? { ...diagnostic, ...change } : diagnostic);
+      expect(classifyReloadConsole(changed, wasmEvidence)).toEqual({ fatal: changed, matched: [] });
+    }
+  });
+
+  it('does not accept a partial, duplicated, reordered or mismatched-URL chain', () => {
+    const reordered = wasmDiagnostics.map((diagnostic, index) => ({ ...diagnostic, at: index === 0 ? 41 : index === 1 ? 40 : diagnostic.at }));
+    const differentUrl = wasmDiagnostics.map((diagnostic, index) => index === 2 ? { ...diagnostic, text: diagnostic.text.replace(WASM_URL, `${WASM_URL}?other`) } : diagnostic);
+    for (const changed of [wasmDiagnostics.slice(1), [...wasmDiagnostics, { ...wasmDiagnostics[0], at: 40.5 }], reordered, differentUrl]) {
+      expect(classifyReloadConsole(changed, wasmEvidence)).toEqual({ fatal: changed, matched: [] });
+    }
+  });
+
+  it('retains unsupported errors, page errors and incoming errors even with identical asset URLs', () => {
+    const extras: ReloadDiagnostic[] = [
+      { ...wasmDiagnostics[0], text: 'SQLite could not open its database' },
+      { ...wasmDiagnostics[0], text: TEXT },
+      { ...wasmDiagnostics[0], kind: 'pageerror' },
+      ...wasmDiagnostics.map((diagnostic) => ({ ...diagnostic, at: diagnostic.at + 10 })),
+    ];
+    const result = classifyReloadConsole([...wasmDiagnostics, ...extras], wasmEvidence);
+    expect(result.fatal).toEqual(extras);
+    expect(result.matched.map((match) => match.diagnostic)).toEqual(wasmDiagnostics);
+  });
+});
+
 function fakeCapture() {
   const events = new EventEmitter();
   const mainFrame = { url: () => DOCUMENT };
@@ -325,6 +447,37 @@ function consoleError(url = WORKER, text = TEXT) {
 }
 
 describe('explicit reload console observation', () => {
+  it('archives the complete distinct SQLite WASM proof and keeps incoming identical errors fatal', async () => {
+    const { events, mainFrame, attach, capture } = fakeCapture();
+    const url = WASM_URL.replace('127.0.0.1:4199', '127.0.0.1:4350');
+    const chain = wasmDiagnostics.map((diagnostic) => ({
+      ...diagnostic, text: diagnostic.text.replace(WASM_URL, url), url: diagnostic.url ? WORKER : '',
+    }));
+    events.emit('request', { url: () => WORKER });
+    await capture.duringReload(async () => {
+      events.emit('request', { url: () => url, headerValue: async () => WORKER });
+      events.emit('requestfailed', {
+        url: () => url, failure: () => ({ errorText: 'cancelled' }), headerValue: async () => WORKER,
+      });
+      for (const diagnostic of chain) events.emit('console', consoleError(diagnostic.url, diagnostic.text));
+      events.emit('framenavigated', mainFrame);
+      events.emit('console', consoleError(chain[0].url, chain[0].text));
+      events.emit('pageerror', new Error(chain[0].text));
+    });
+    expect(capture.errors).toEqual([`console: ${chain[0].text}`, `pageerror: ${chain[0].text}`]);
+    for (const name of ['reload-console-scope-1.json', 'reload-old-document-sqlite-wasm-cancellations-1.json']) {
+      const [, attachment] = attach.mock.calls.find(([called]) => called === name)!;
+      expect(existsSync(attachment.path)).toBe(true);
+      const proof = attachmentProof(attachment);
+      expect(proof.matched).toHaveLength(7);
+      expect(proof.matched.every((match: { category: string }) => match.category === 'old-document-sqlite-wasm-cancellation')).toBe(true);
+      expect(proof.evidence.oldSqlWorkerRequests).toEqual([{ url: WORKER, at: 1 }]);
+      expect(proof.evidence.requestEvents).toMatchObject([
+        { kind: 'request', url, referer: WORKER }, { kind: 'requestfailed', url, referer: WORKER, errorText: 'cancelled' },
+      ]);
+    }
+  });
+
   it('classifies after commit even when Referer resolves later, and archives complete proof', async () => {
     const { events, mainFrame, attach, capture } = fakeCapture();
     events.emit('request', { url: () => WORKER });

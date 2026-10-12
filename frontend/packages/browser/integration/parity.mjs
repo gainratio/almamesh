@@ -145,7 +145,7 @@ const MESH_PAIRS = [
 const SKYFIELD_STACK = [
   "jplephem-2.23-py3-none-any.whl",
   "sgp4-2.25-py3-none-any.whl",
-  "skyfield-1.53-py3-none-any.whl",
+  "skyfield-1.55-py3-none-any.whl",
 ];
 
 // Pyodide-shipped base packages (all in the self-hosted lock — no PyPI).

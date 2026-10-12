@@ -26,7 +26,7 @@ from almamesh.edge.bundle import (
 _VENDORED_WHEELS = (
     "wheels/jplephem-2.23-py3-none-any.whl",
     "wheels/sgp4-2.25-py3-none-any.whl",
-    "wheels/skyfield-1.53-py3-none-any.whl",
+    "wheels/skyfield-1.55-py3-none-any.whl",
 )
 
 

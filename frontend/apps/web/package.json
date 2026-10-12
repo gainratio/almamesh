@@ -102,7 +102,7 @@
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260929.1",
     "@gainratio/avow": "^0.5.2",
-    "@playwright/test": "^1.63.0",
+    "@playwright/test": "^1.64.0",
     "@resvg/resvg-js": "^2.6.2",
     "@tailwindcss/typography": "^0.5.20",
     "@testing-library/react": "^16.3.3",

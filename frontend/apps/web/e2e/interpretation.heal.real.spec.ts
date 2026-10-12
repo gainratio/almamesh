@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { bootEngine, seedChart, LLM_SETTINGS_KEY } from './interpretation.helpers';
 import { PRODUCT_DEFAULT_MODEL } from './realModel';
+import { withRealReadingDiagnostics } from './realReadingDiagnostics';
 
 /**
  * Self-heal REAL integration test — reproduces the USER'S EXACT BUG and proves
@@ -68,7 +69,7 @@ const FORBIDDEN_LLM_ERROR_FRAGMENTS = ['No endpoints found', RETIRED_MODEL, 'Llm
 
 test('[real][self-heal] stale anthropic/claude-3.5-sonnet self-heals to the recommended reading model (DeepSeek V4.1 Flash) and renders a real reading', async ({
   page,
-}) => {
+}, testInfo) => {
   const KEY = process.env.OPENROUTER_API_KEY;
   test.skip(!KEY, 'OPENROUTER_API_KEY not set');
 
@@ -108,78 +109,80 @@ test('[real][self-heal] stale anthropic/claude-3.5-sonnet self-heals to the reco
     if (r.status() === 404) notFoundUrls.push(r.url());
   });
 
-  await bootEngine(page);
-  const seeded = await seedChart(page);
-  // Sanity: the REAL engine ran (Delhi 1990-01-15 12:00Z lagna == Gemini).
-  expect(String(seeded.lagna).toLowerCase()).toBe('gemini');
+  await withRealReadingDiagnostics(page, testInfo, async () => {
+    await bootEngine(page);
+    const seeded = await seedChart(page);
+    // Sanity: the REAL engine ran (Delhi 1990-01-15 12:00Z lagna == Gemini).
+    expect(String(seeded.lagna).toLowerCase()).toBe('gemini');
 
-  // The heal runs when boot hydrates settings from SQLite, before any Generate.
-  // Settings now live in canonical SQLite (localStorage is one-time migration
-  // input and is removed after it), so the heal is observed where the user sees
-  // it: reload onto Settings -> AI and read the persisted model from the form.
-  // The init script re-seeds the stale localStorage blob on every load; the
-  // already-migrated SQLite row must win, so a healed field proves the rewrite
-  // reached SQLite and stuck.
-  await expect
-    .poll(
-      async () => {
-        await page.goto('/settings/ai', { waitUntil: 'domcontentloaded' });
-        await page.getByTestId('llm-advanced-summary').click();
-        return page.getByTestId('llm-model').inputValue();
-      },
-      { timeout: 60_000, message: 'persisted model should self-heal to the recommended slug' },
-    )
-    .toBe(RECOMMENDED_MODEL);
-  expect(
-    await page.evaluate((k) => window.localStorage.getItem(k), LLM_SETTINGS_KEY),
-    'retired localStorage copy must not become a second source of truth',
-  ).toBeNull();
-  await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
-  await page.getByTestId('generate-reading').click();
+    // The heal runs when boot hydrates settings from SQLite, before any Generate.
+    // Settings now live in canonical SQLite (localStorage is one-time migration
+    // input and is removed after it), so the heal is observed where the user sees
+    // it: reload onto Settings -> AI and read the persisted model from the form.
+    // The init script re-seeds the stale localStorage blob on every load; the
+    // already-migrated SQLite row must win, so a healed field proves the rewrite
+    // reached SQLite and stuck.
+    await expect
+      .poll(
+        async () => {
+          await page.goto('/settings/ai', { waitUntil: 'domcontentloaded' });
+          await page.getByTestId('llm-advanced-summary').click();
+          return page.getByTestId('llm-model').inputValue();
+        },
+        { timeout: 60_000, message: 'persisted model should self-heal to the recommended slug' },
+      )
+      .toBe(RECOMMENDED_MODEL);
+    expect(
+      await page.evaluate((k) => window.localStorage.getItem(k), LLM_SETTINGS_KEY),
+      'retired localStorage copy must not become a second source of truth',
+    ).toBeNull();
+    await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+    await page.getByTestId('generate-reading').click();
 
-  // A REAL reading renders: the redesigned dashboard shows the summary as open
-  // editorial prose under "The reading" (data-testid="reading-section") — the
-  // old "Summary" accordion is gone.
-  const reading = page.getByTestId('reading-section');
-  await expect(reading).toBeVisible({ timeout: 480_000 });
-  const summaryP = reading.locator('p').first();
-  await expect(summaryP).toBeVisible({ timeout: 30_000 });
-  assertRealSummary(await summaryP.textContent());
+    // A REAL reading renders: the redesigned dashboard shows the summary as open
+    // editorial prose under "The reading" (data-testid="reading-section") — the
+    // old "Summary" accordion is gone.
+    const reading = page.getByTestId('reading-section');
+    await expect(reading).toBeVisible({ timeout: 480_000 });
+    const summaryP = reading.locator('p').first();
+    await expect(summaryP).toBeVisible({ timeout: 30_000 });
+    assertRealSummary(await summaryP.textContent());
 
-  // Progress checklist gone (generation completed), no error panel, no CTA.
-  await expect(page.getByTestId('interpretation-progress')).toHaveCount(0, {
-    timeout: 480_000,
-  });
-  await expect(page.getByText('Interpretation could not be generated')).toHaveCount(0);
-  await expect(page.getByTestId('connect-ai-link')).toHaveCount(0);
+    // Progress checklist gone (generation completed), no error panel, no CTA.
+    await expect(page.getByTestId('interpretation-progress')).toHaveCount(0, {
+      timeout: 480_000,
+    });
+    await expect(page.getByText('Interpretation could not be generated')).toHaveCount(0);
+    await expect(page.getByTestId('connect-ai-link')).toHaveCount(0);
 
-  // Capture the proof screenshot of the rendered reading FIRST, so the evidence
-  // exists regardless of the assertions that follow.
-  await page.screenshot({ path: '/tmp/almamesh-verify/dashboard-healed.png', fullPage: true });
+    // Capture the proof screenshot of the rendered reading FIRST, so the evidence
+    // exists regardless of the assertions that follow.
+    await page.screenshot({ path: '/tmp/almamesh-verify/dashboard-healed.png', fullPage: true });
 
-  // Final read-back of the healed model from where it lives (SQLite, shown on
-  // Settings -> AI), after a real reading ran. The retired localStorage key is
-  // asserted null above, so reading it here could only ever return null.
-  await page.goto('/settings/ai', { waitUntil: 'domcontentloaded' });
-  await page.getByTestId('llm-advanced-summary').click();
-  const healedModel = await page.getByTestId('llm-model').inputValue();
-  expect(healedModel).toBe(RECOMMENDED_MODEL);
+    // Final read-back of the healed model from where it lives (SQLite, shown on
+    // Settings -> AI), after a real reading ran. The retired localStorage key is
+    // asserted null above, so reading it here could only ever return null.
+    await page.goto('/settings/ai', { waitUntil: 'domcontentloaded' });
+    await page.getByTestId('llm-advanced-summary').click();
+    const healedModel = await page.getByTestId('llm-model').inputValue();
+    expect(healedModel).toBe(RECOMMENDED_MODEL);
    
-  console.log(`[self-heal] persisted model after dashboard load: ${healedModel}`);
+    console.log(`[self-heal] persisted model after dashboard load: ${healedModel}`);
 
-  // The LLM call itself must NOT have 404'd — that was the bug. A 404 from the
-  // OpenRouter endpoint is the regression; benign non-LLM 404s are logged, not failed.
-  const llmNotFound = notFoundUrls.filter((u) => u.includes('openrouter.ai'));
-  expect(llmNotFound, `OpenRouter endpoint 404'd: ${llmNotFound.join(' | ')}`).toEqual([]);
-  const benign404 = notFoundUrls.filter((u) => !u.includes('openrouter.ai'));
-  if (benign404.length) {
+    // The LLM call itself must NOT have 404'd — that was the bug. A 404 from the
+    // OpenRouter endpoint is the regression; benign non-LLM 404s are logged, not failed.
+    const llmNotFound = notFoundUrls.filter((u) => u.includes('openrouter.ai'));
+    expect(llmNotFound, `OpenRouter endpoint 404'd: ${llmNotFound.join(' | ')}`).toEqual([]);
+    const benign404 = notFoundUrls.filter((u) => !u.includes('openrouter.ai'));
+    if (benign404.length) {
      
-    console.log(`[self-heal] benign non-LLM 404s (ignored): ${benign404.join(' | ')}`);
-  }
+      console.log(`[self-heal] benign non-LLM 404s (ignored): ${benign404.join(' | ')}`);
+    }
 
-  // No LLM-specific failure markers in the console (a dead model / failed call).
-  for (const fragment of FORBIDDEN_LLM_ERROR_FRAGMENTS) {
-    const offending = consoleAll.filter((e) => e.includes(fragment));
-    expect(offending.length, `console contained "${fragment}": ${offending.join(' | ')}`).toBe(0);
-  }
+    // No LLM-specific failure markers in the console (a dead model / failed call).
+    for (const fragment of FORBIDDEN_LLM_ERROR_FRAGMENTS) {
+      const offending = consoleAll.filter((e) => e.includes(fragment));
+      expect(offending.length, `console contained "${fragment}": ${offending.join(' | ')}`).toBe(0);
+    }
+  });
 });

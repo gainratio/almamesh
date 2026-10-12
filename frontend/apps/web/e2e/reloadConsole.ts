@@ -11,6 +11,7 @@ export interface ReloadDiagnostic {
 export interface ReloadRequestFailure {
   url: string;
   referer: string | null;
+  refererReadFailed?: boolean;
   errorText: string;
   at: number;
 }
@@ -33,6 +34,7 @@ export interface ReloadEvidence {
   oldDocumentBlobUrls?: readonly string[];
   oldDocumentBlobHistoryOverflow?: boolean;
   oldSqlWorkerUrls: readonly string[];
+  oldSqlWorkerRequests?: readonly { url: string; at: number }[];
   failures: readonly ReloadRequestFailure[];
   requestEvents?: readonly ReloadRequestEvent[];
 }
@@ -47,6 +49,7 @@ interface ResourceProof {
 type ReloadMatch =
   | { category: 'old-document-cancellation'; diagnostic: ReloadDiagnostic; cancellation: ReloadRequestFailure }
   | { category: 'old-document-resource-rejection'; diagnostic: ReloadDiagnostic; accessControl: ReloadDiagnostic; resource: ResourceProof }
+  | { category: 'old-document-sqlite-wasm-cancellation'; diagnostic: ReloadDiagnostic; cancellation: ReloadRequestFailure; workerRequest: { url: string; at: number } }
   | { category: 'outgoing-navigation-diagnostic'; diagnostic: ReloadDiagnostic; source: 'unproven'; cause: 'unproven' };
 
 export interface ReloadClassification {
@@ -67,6 +70,71 @@ function isSqlWorker(url: string): boolean {
 
 function duringReload(at: number, evidence: ReloadEvidence): boolean {
   return evidence.committedAt !== null && at > evidence.startedAt && at < evidence.committedAt;
+}
+
+function isSqliteWasm(url: string): boolean {
+  try {
+    const asset = new URL(url);
+    return ['http:', 'https:'].includes(asset.protocol) && !asset.username && !asset.password
+      && !asset.search && !asset.hash && /^\/assets\/sqlite3-[\w-]+\.wasm$/.test(asset.pathname);
+  } catch {
+    return false;
+  }
+}
+
+/** Only the complete observed seven-message chain may share this cancelled load's proof. */
+function sqliteWasmCancellationChains(diagnostics: readonly ReloadDiagnostic[], evidence: ReloadEvidence) {
+  const chains: Array<{
+    diagnostics: ReloadDiagnostic[];
+    cancellation: ReloadRequestFailure;
+    workerRequest: { url: string; at: number };
+  }> = [];
+  const used = new Set<ReloadDiagnostic>();
+  for (const cancellation of evidence.failures) {
+    const workerUrl = cancellation.referer;
+    if (cancellation.errorText !== 'cancelled' || cancellation.refererReadFailed || !isSqliteWasm(cancellation.url)
+      || !duringReload(cancellation.at, evidence) || !workerUrl || !isSqlWorker(workerUrl)
+      || !evidence.oldSqlWorkerUrls.includes(workerUrl) || !evidence.oldDocumentUrl
+      || evidence.oldDocumentUrl !== evidence.committedDocumentUrl) continue;
+    try {
+      const document = new URL(evidence.oldDocumentUrl);
+      const worker = new URL(workerUrl);
+      if (!['http:', 'https:'].includes(document.protocol) || document.origin !== worker.origin
+        || document.origin !== new URL(cancellation.url).origin || worker.username || worker.password
+        || worker.search || worker.hash) continue;
+    } catch {
+      continue;
+    }
+    const workerRequest = evidence.oldSqlWorkerRequests?.find((request) => request.url === workerUrl
+      && Number.isFinite(request.at) && request.at < evidence.startedAt);
+    const failedEvent = evidence.requestEvents?.find((event) => event.kind === 'requestfailed'
+      && event.url === cancellation.url && event.at === cancellation.at && event.errorText === 'cancelled'
+      && event.referer === workerUrl && !event.refererReadFailed);
+    if (!workerRequest || !failedEvent) continue;
+    const messages = [
+      ['wasm streaming compile failed: TypeError: Load failed', workerUrl],
+      ['falling back to ArrayBuffer instantiation', workerUrl],
+      [`Fetch API cannot load ${cancellation.url} due to access control checks.`, ''],
+      [`XMLHttpRequest cannot load ${cancellation.url} due to access control checks.`, ''],
+      ['failed to asynchronously prepare wasm: NetworkError:  A network error occurred.', workerUrl],
+      ['Aborted(NetworkError:  A network error occurred.)', workerUrl],
+      ['Exception loading sqlite3 module: RuntimeError: Aborted(NetworkError:  A network error occurred.). Build with -sASSERTIONS for more info.', workerUrl],
+    ];
+    const chain: ReloadDiagnostic[] = [];
+    let previous = cancellation.at;
+    for (const [text, url] of messages) {
+      const candidates = diagnostics.filter((diagnostic) => diagnostic.kind === 'console'
+        && diagnostic.text === text && diagnostic.url === url && !used.has(diagnostic)
+        && duringReload(diagnostic.at, evidence) && cancellation.at < diagnostic.at);
+      if (candidates.length !== 1 || candidates[0].at <= previous) break;
+      chain.push(candidates[0]);
+      previous = candidates[0].at;
+    }
+    if (chain.length !== messages.length) continue;
+    chain.forEach((diagnostic) => used.add(diagnostic));
+    chains.push({ diagnostics: chain, cancellation, workerRequest });
+  }
+  return chains;
 }
 
 /** This names the observed rejection; it does not infer which WebKit loader branch caused it. */
@@ -152,6 +220,17 @@ export function classifyReloadConsole(diagnostics: readonly ReloadDiagnostic[], 
     result.matched.push({ category: 'old-document-resource-rejection', diagnostic, accessControl: rejection.diagnostic, resource: rejection.resource });
     return false;
   });
+  const wasmMatched = new Set<ReloadDiagnostic>();
+  for (const chain of sqliteWasmCancellationChains(result.fatal, evidence)) {
+    for (const diagnostic of chain.diagnostics) {
+      wasmMatched.add(diagnostic);
+      result.matched.push({
+        category: 'old-document-sqlite-wasm-cancellation', diagnostic,
+        cancellation: chain.cancellation, workerRequest: chain.workerRequest,
+      });
+    }
+  }
+  result.fatal = result.fatal.filter((diagnostic) => !wasmMatched.has(diagnostic));
   let outgoingMatched = false;
   result.fatal = result.fatal.filter((diagnostic) => {
     if (outgoingMatched || !unprovenOutgoingDiagnostic(diagnostic, evidence)) return true;
@@ -201,7 +280,7 @@ export function captureReloadConsole(page: Page, testInfo: Pick<TestInfo, 'attac
   let active: Scope | undefined;
   let reloading = false;
   const recordFatal = (diagnostic: ReloadDiagnostic) => errors.push(`${diagnostic.kind}: ${diagnostic.text}`);
-  const relevantRequest = (url: string) => url.startsWith('blob:') || isSqlWorker(url);
+  const relevantRequest = (url: string) => url.startsWith('blob:') || isSqlWorker(url) || isSqliteWasm(url);
   const readReferer = (request: Request) => request.headerValue('referer').then(
     (referer) => ({ referer }),
     () => ({ referer: null, refererReadFailed: true }),
@@ -266,13 +345,15 @@ export function captureReloadConsole(page: Page, testInfo: Pick<TestInfo, 'attac
       if (reloading) throw new Error('Explicit reload console scopes cannot overlap');
       reloading = true;
       const number = ++reloadNumber;
+      const oldSqlWorkerRequests = [...requestedWorkers].map(([url, at]) => ({ url, at }));
       const scope: Scope = {
         evidence: {
           startedAt: ++sequence, committedAt: null, oldDocumentUrl: page.url(),
           oldDocumentBlobUrls: [...documentBlobUrls], oldDocumentBlobHistoryOverflow: documentBlobHistoryOverflow,
           oldSqlWorkerUrls: [...requestedWorkers.keys()], failures: [],
+          oldSqlWorkerRequests,
         },
-        oldSqlWorkerRequests: [...requestedWorkers].map(([url, at]) => ({ url, at })),
+        oldSqlWorkerRequests,
         diagnostics: [], failures: [], requestEvents: [], consoleEvents: [], pageErrors: [],
       };
       active = scope;
@@ -304,6 +385,12 @@ export function captureReloadConsole(page: Page, testInfo: Pick<TestInfo, 'attac
           if (rejections.length) {
             await archive(`reload-old-document-resource-rejections-${number}.json`, {
               evidence: scope.evidence, matched: rejections,
+            });
+          }
+          const wasmCancellations = classified.matched.filter((match) => match.category === 'old-document-sqlite-wasm-cancellation');
+          if (wasmCancellations.length) {
+            await archive(`reload-old-document-sqlite-wasm-cancellations-${number}.json`, {
+              evidence: scope.evidence, matched: wasmCancellations,
             });
           }
           const outgoing = classified.matched.filter((match) => match.category === 'outgoing-navigation-diagnostic');
