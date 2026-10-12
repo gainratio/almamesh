@@ -2,7 +2,7 @@
 
 Status: local acceptance complete; release blocked pending final hosted acceptance. On 11 October 2026 the user accepted local coherence and authorized CI/CD. Product source `22f2a947` passed 6,128 native frontend tests and 6,127 Linux tests (one existing environment skip), all 557 CI contracts in the actual Linux Dagger container, and all build/type/lint checks. The complete native lane passed 39 functional cases, five original-release boots and five candidate Day/place journeys, with zero retries. Evidence finalization and leak scanning passed. Cold-boot aggregate memory, wider restore memory and physical iPhone verification remain open. Nothing in this document establishes deployment of these changes.
 
-Hosted candidates `67addf61` and `ba2837a2` are both rejected. Their outcomes,
+Hosted candidates `67addf61`, `ba2837a2` and `d42886cc` are rejected. Their outcomes,
 including real browser failures, command/job timeouts, a report-section timeout
 and thin-container/artifact harness failures, are recorded below. The follow-up
 changes do not establish the native crashes' cause or resolution. Production
@@ -647,12 +647,15 @@ Logs: `/tmp/almamesh-codex-pr333-nightly-ba2837a.log` and
 
 ## Timeout separation and retained native diagnostics
 
-The timeout layers are distinct: Dagger's per-command watchdog is 900 seconds,
+The timeout layers are distinct: Dagger's browser-lane per-command watchdog is 900 seconds,
 its gate runner is 45 minutes, and its hosted jobs are 60 minutes. Native Mac
 jobs are 45 minutes. Nightly's job is 120 minutes; the full-report case has a
 40-minute bound, each default report run has a 10-minute deadline, and production
 report sections have a five-minute deadline. Predictive Worker requests have
 their own three-minute application deadline. These limits were not raised.
+Nightly uses direct commands rather than that browser-lane watchdog, so its
+full-report test is not truncated after 900 seconds. The required Dagger
+verdict job has a separate 20-minute limit.
 
 The Mac workflow now schedules memory, travel and portable/boot as three
 independent 45-minute jobs. Travel retains every one of its 28 cases; the
@@ -834,3 +837,91 @@ secrets checked). Logs: `/tmp/almamesh-codex-pr333-final-native-all.log` and
 results; physical iPhone Safari, broad restore/long-history memory and the
 pre-existing aggregate settled RSS limit remain open. Hosted acceptance must
 still bind to the final pushed head and actual synthetic checkout.
+
+## Rejected hosted reference measurement on d42886cc
+
+Candidate `d42886cc4137e306af723acf2c9db5896a2d1d04` contains product
+`22f2a947` plus the two evidence-document updates. Its PR synthetic checkout
+was `9d382828e7ad23e128612b6d330fa85791fd31ff`, with exact ordered parents
+`8d10fbbb` and `d42886cc`; its tree matches the candidate tree.
+
+[Dagger run 38189548221](https://github.com/gainratio/almamesh/actions/runs/38189548221)
+passed all 12 gates and the required Dagger verdict on attempt 1. Actual hosted
+logs record 557 contracts, 6,127 frontend tests plus the existing environment
+skip and four lint contracts, and 1,214 backend tests.
+
+[Mac run 38189548234](https://github.com/gainratio/almamesh/actions/runs/38189548234)
+failed its memory lane on the **original release**, before any candidate Day
+measurement. Four original onboarding runs passed (peaks 1117, 1308, 1102 and
+1175 MiB); the fifth reached `CHART_GEN_001` and timed out waiting 300,000 ms
+for the Dashboard. Its result is failed, `completed:false`, retry zero and
+peak 1207 MiB. There is no final baseline provenance or candidate comparison;
+this is neither a candidate memory-budget failure nor accepted memory proof.
+
+The failed reference served exact original commit `8d10fbbb`, build
+`df32701185cb`. Its trace has 609 HTTP 200 responses, no recorded failed
+request/page error/page crash, and a sanitized typed-error event about one
+second after Pyodide assets arrived. The original recovery card maps both
+bootstrap and compute/persistence errors to this code. Worker response metadata
+was absent, so the underlying cause cannot be distinguished from this trace.
+
+Memory collection, finalization, scanning (51 configured secrets) and upload
+passed. Both native report roots were searched; one earlier Bun disk-write
+diagnostic records no action taken. Unified-log collection explicitly timed
+out. This evidence does not establish a browser kill or memory exhaustion.
+Memory artifact 11720812180 has SHA-256
+`2404e98ac1b0e8d54c234a8c7a3ec09d438edac0a25469c2a486a5e1d194616c`.
+
+The separate hosted portable job passed all eight state cases and three boot
+recovery cases, with zero retries, finalization, scanning and upload successful.
+Travel finished with 26 passed and two failed, zero retries, in 34.6 minutes,
+before its 45-minute job limit. The desktop chat-tool contract page crashed on
+Settings / Data; the iPhone service-worker journey crashed on the Dashboard.
+The required aggregate correctly failed. Native reports were retained for both
+WebContent processes: the desktop report records `EXC_BREAKPOINT`, a Foundation
+termination and a WebCore Worker stack through WebAssembly runtime-error stack
+generation; the iPhone report records `EXC_BAD_ACCESS` / `SIGSEGV` in a WebCore
+Worker. Neither report establishes Jetsam or memory exhaustion. The precise
+application operation and causal defect remain unproved. Travel artifact
+11721554745 has SHA-256
+`41962ea69ddda068884077543dc3c9755ad308954be1887f1ed3cdad26e657db`.
+
+Logs: `/tmp/almamesh-codex-pr333-mac-d42886cc-memory.log`,
+`/tmp/almamesh-codex-pr333-mac-d42886cc-portable.log` and
+`/tmp/almamesh-codex-pr333-mac-d42886cc-travel.log`; finalized artifacts:
+`/tmp/almamesh-codex-pr333-mac-d42886cc-artifacts`.
+
+[Required nightly 38189557787](https://github.com/gainratio/almamesh/actions/runs/38189557787)
+passed on exact `d42886cc`, attempt 1, in 35 minutes 36 seconds. Actual output
+records 28 passed and one exempt local-Ollama skip; the required guard explicitly
+reports eight real-provider tests executed and none skipped. The September
+2017 / grounded today / tool-return case passed. The full report used the
+production `REPORT_ENGINE_MODEL` default (`openai/gpt-6-luna`) through the
+unchanged request path. All three report runs recorded nine starts and nine
+completions, with no section errors, and completed their last sections at
+33,016 / 34,809 / 34,609 ms. Existing nine-section HTTP-200 coverage, catalog-cost
+bounds, request-shape assertions and both-voice word-median limits passed.
+The hosted log does not export exact word counts, billed costs or upstream
+provider names; those values cannot be claimed from this receipt. Actual
+executed guard and safe lifecycle extraction are in
+`/tmp/almamesh-codex-pr333-nightly-d42886c-safe-evidence.log`; full log:
+`/tmp/almamesh-codex-pr333-nightly-d42886c.log`.
+
+A bounded external Worker observer and early error-card failure are being
+added to the memory test harness. They change neither original product code
+nor retries, memory limits or deadlines. They close a diagnostic gap; they do
+not establish an underlying engine fix or authorize accepting four samples.
+
+The diagnostic harness passed red-to-green regressions (three failing
+finalization cases, then 37/37 focused tests), independent review, strict web
+and E2E types, and lint. A subsequent complete native frontend gate passed
+6,165 tests plus four lint contracts, types, lint, build, public-route checks
+and absence of application test hooks. Its log is
+`/tmp/almamesh-codex-pr333-memory-diagnostics-frontend-gate.log`.
+The observer forwards native Worker constructor/options, transferables,
+return values and exceptions unchanged. It retains only bounded operation,
+correlation, elapsed-time and closed error-category metadata. A two-second
+snapshot deadline cannot prevent native RSS cleanup/reporting; evidence
+attachment failures remain fatal and preserve an existing journey error.
+Original-release and candidate tests use the same external observer. The
+controlled native execution of this harness remains pending at this point.

@@ -24,6 +24,32 @@ export async function forceMinimalTier(page: Page): Promise<void> {
   });
 }
 
+/** Keep the existing navigation deadline while observing terminal onboarding UI. */
+export async function waitForMemoryDashboard(page: Page): Promise<void> {
+  let watching = true;
+  let delay: ReturnType<typeof setTimeout> | undefined;
+  let wake: (() => void) | undefined;
+  const navigation = Promise.resolve().then(() => page.waitForURL('**/dashboard', { timeout: 300_000 }));
+  const error = (async () => {
+    while (watching) {
+      const visible = await page.getByText(/CHART_GEN_001/).first().isVisible();
+      if (!watching) return;
+      if (visible) throw new Error('Memory onboarding failed: CHART_GEN_001 is visible.');
+      await new Promise<void>((resolve) => {
+        wake = resolve;
+        delay = setTimeout(resolve, 100);
+      });
+    }
+  })();
+  try {
+    await Promise.race([navigation, error]);
+  } finally {
+    watching = false;
+    clearTimeout(delay);
+    wake?.();
+  }
+}
+
 async function typeSections(page: Page, testId: string, digits: string, trailing = ''): Promise<void> {
   await page.locator(`[data-testid="${testId}"] [role="spinbutton"]`).first().click();
   await page.keyboard.type(digits, { delay: 30 });
@@ -55,7 +81,7 @@ export async function onboardForTimeTravelMemory(page: Page): Promise<void> {
   await page.getByTestId('confidence-option-exact').click();
   await page.getByTestId('next-button').click();
   await page.getByTestId('skip-life-events-button').click();
-  await page.waitForURL('**/dashboard', { timeout: 300_000 });
+  await waitForMemoryDashboard(page);
   await page.getByTestId('chart-visualization').first().waitFor({ state: 'attached', timeout: 300_000 });
   await expect(page.getByTestId('dashboard-time-travel-button')).toBeEnabled();
   // The chart appears before today's lazy predictive compute finishes. Include
