@@ -472,6 +472,8 @@ exec ${inline.join(" ")}`,
           "frontend/apps/web/scripts/webkit-macos-lane.sh",
           "frontend/apps/web/scripts/crashReportSummary.mjs",
           "frontend/apps/web/scripts/webkit-memory-baseline.mjs",
+          // The browser-journey receipt contract runs the one status-check script.
+          "frontend/apps/web/scripts/browserJourneyStatusCheck.mjs",
           "frontend/apps/web/playwright.time-travel.config.ts",
           "frontend/apps/web/playwright.portable-invariants.config.ts",
           "frontend/apps/web/playwright.boot-retry.config.ts",
