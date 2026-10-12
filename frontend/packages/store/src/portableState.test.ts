@@ -26,6 +26,7 @@ import {
   assertSupportedPortableStateSchema,
   repairPortableReferences,
   EMPTY_PORTABLE_REPAIR_REPORT,
+  seedPortableLedger,
 } from './portableState';
 import { CHAT_PERSIST_VERSION } from './chat';
 
@@ -379,6 +380,21 @@ describe('PortableStateRepository', () => {
       restoreEpoch: 0,
       restoreInProgress: false,
     });
+  });
+
+  it('seeds only the ledger in a fresh in-memory database, and never replaces an existing one', async () => {
+    const sqlite = new MemorySqliteStore();
+    const repository = new PortableStateRepository(sqlite, async (bytes) => bytes[0]!, rebuildAtEpoch(sqlite));
+
+    await seedPortableLedger(repository);
+    const seeded = (await repository.snapshot()).values;
+    expect([...seeded.keys()]).toEqual(['almamesh-deletion-tombstones']);
+    expect(seeded.has(LEGACY_MIGRATION_MARKER)).toBe(false);
+
+    const advanced = JSON.stringify({ ...JSON.parse(seeded.get('almamesh-deletion-tombstones')!), activeEpoch: 3, restoreEpoch: 3 });
+    await repository.write('almamesh-deletion-tombstones', advanced);
+    await seedPortableLedger(repository);
+    await expect(repository.read('almamesh-deletion-tombstones')).resolves.toBe(advanced);
   });
 
   it('pins the device-local SQLite namespace to its documented name', () => {

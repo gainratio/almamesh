@@ -304,6 +304,7 @@
     "repair_notice_dismiss": "Entendi",
     "status_export_started": "O download foi iniciado. Confirme que o arquivo aparece em Downloads antes de confiar nele.",
     "status_imported": "Restaurado. Recarregando…",
+    "status_imported_in_memory": "Restaurado. Esta aba continua sem guardar nada ao ser fechada, então exporte um backup antes de sair.",
     "error_bad_format": "Esse arquivo não é um backup do AlmaMesh.",
     "error_too_new": "Este backup é de uma versão mais recente do AlmaMesh. Atualize o app primeiro.",
     "error_bad_passphrase": "Senha incorreta, ou o arquivo foi alterado depois da exportação. Nada foi importado.",

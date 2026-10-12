@@ -637,6 +637,25 @@ describe('durable memory rebuild recovery', () => {
     expect(complete).not.toHaveBeenCalled();
   });
 
+  it('leaves the marker alone while SQLite runs in memory: semantic memory needs OPFS, which that browser refused', async () => {
+    const readLedger = vi.fn().mockResolvedValue({ memoryRebuildPending: true, activeEpoch: 4 });
+    const rebuild = vi.fn().mockResolvedValue(undefined);
+    const complete = vi.fn().mockResolvedValue(undefined);
+
+    await resumePendingMemoryRebuild({
+      semanticMemoryAllowed: () => true,
+      persistence: () => 'memory',
+      readLedger,
+      waitForChat: vi.fn().mockResolvedValue(undefined),
+      rebuild,
+      complete,
+    });
+
+    expect(readLedger).not.toHaveBeenCalled();
+    expect(rebuild).not.toHaveBeenCalled();
+    expect(complete).not.toHaveBeenCalled();
+  });
+
   it('rebuilds from durable chat and clears the marker only after success', async () => {
     const threadId = useChatStore.getState().ensureThread('profile', 'chart');
     useChatStore.getState().appendMessage(threadId, 'user', 'restored question');

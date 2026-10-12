@@ -304,6 +304,7 @@
     "repair_notice_dismiss": "Entendido",
     "status_export_started": "Se inició la descarga. Confirma que el archivo aparece en Descargas antes de confiar en él.",
     "status_imported": "Restaurado. Recargando…",
+    "status_imported_in_memory": "Restaurado. Esta pestaña sigue sin guardar nada al cerrarse, así que exporta una copia de seguridad antes de salir.",
     "error_bad_format": "Ese archivo no es una copia de seguridad de AlmaMesh.",
     "error_too_new": "Esta copia es de una versión más reciente de AlmaMesh. Actualiza la app primero.",
     "error_bad_passphrase": "Contraseña incorrecta, o el archivo se modificó después de exportarlo. No se importó nada.",

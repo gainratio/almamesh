@@ -5,7 +5,9 @@
  * pick a file → stage it (validate, decrypt, repair portable references) →
  * ask for the password when the file is encrypted → confirm → safety copy of
  * the current data FIRST when there is any → Replace → reload (or open
- * `afterRestoreHref`). Nothing is uploaded.
+ * `afterRestoreHref`). Nothing is uploaded. With SQLite in memory (a private
+ * window) a page load would erase the restore, so the restored data is adopted
+ * in place and `afterRestoreHref` opens in-app instead.
  *
  * Safety copy rule: it protects what Replace would destroy. On a browser that
  * holds nothing (`hasDataToProtect` is false) there is nothing to protect, so
@@ -22,6 +24,7 @@ import {
   checkBackupPassphrase,
   clearPortableImportRevisionFence,
   PortableStateUnavailableError,
+  portableStatePersistence,
   readPortableStateRevision,
 } from '@almamesh/store';
 import {
@@ -39,6 +42,7 @@ import {
   type BackupFileContent,
   type BackupSaveTarget,
 } from '../lib/backupFile';
+import { adoptRestoredDatasetInPlace } from '../lib/profileDataLifecycle';
 import { suppressNextServiceWorkerHeal } from '../lib/swSelfHeal';
 
 /** True when a password may seal a NEW file (the safety copy): the export rule. */
@@ -49,6 +53,8 @@ function canSealWith(password: string): boolean {
 export interface BackupRestoreOptions {
   /** Where to go after a successful restore. Omitted: reload the current page. */
   readonly afterRestoreHref?: string;
+  /** In-app navigation to `afterRestoreHref` when a page load would erase the restore (SQLite in memory). */
+  readonly navigateInApp?: (href: string) => void;
 }
 
 export interface BackupRestore {
@@ -222,8 +228,15 @@ export function useBackupRestore(options: BackupRestoreOptions = {}): BackupRest
     return after;
   }
 
-  function finishRestore() {
+  async function finishRestore() {
     closeConfirm();
+    if (portableStatePersistence() === 'memory') {
+      // A reload would empty in-memory SQLite, and the restore with it.
+      await adoptRestoredDatasetInPlace();
+      setStatus(t('backup.status_imported_in_memory'));
+      if (options.afterRestoreHref !== undefined) options.navigateInApp?.(options.afterRestoreHref);
+      return;
+    }
     setStatus(t('backup.status_imported'));
     // The restore owns the next load. Prevent the SW self-heal check from
     // stacking a second reload while the fresh realm hydrates its stores.
@@ -246,7 +259,7 @@ export function useBackupRestore(options: BackupRestoreOptions = {}): BackupRest
       } finally {
         clearPortableImportRevisionFence();
       }
-      finishRestore();
+      await finishRestore();
     } catch (err) {
       closeConfirm();
       const key = needsSafetyCopy ? 'backup.error_import_failed' : 'backup.error_restore_failed_empty';

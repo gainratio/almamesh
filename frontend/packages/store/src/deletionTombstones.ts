@@ -2,6 +2,7 @@ import type { StateStorage } from 'zustand/middleware';
 import { deleteLegacyKeyval, readLegacyKeyval } from './legacyKeyval';
 import {
   migrateLegacyState,
+  seedPortableLedger,
   openPortableStateRepository,
   isPortableStateKey,
   isPortablePreferenceKey,
@@ -359,8 +360,12 @@ async function portableRepository(): Promise<PortableStateRepository | null> {
     openInMemory: () => openPortableStateRepository('memory'),
   }).then(async (repository) => {
     // The migration below deletes each legacy row it copies. A RAM copy dies
-    // with the tab, so an in-memory session leaves legacy rows untouched.
-    if (portableStatePersistence() === 'memory') return repository;
+    // with the tab, so an in-memory session leaves legacy rows untouched; it
+    // still needs the generation ledger, or backup export/import cannot run.
+    if (portableStatePersistence() === 'memory') {
+      await seedPortableLedger(repository);
+      return repository;
+    }
     // TODO(remove after 2026-11-04, one release after the SQLite-only move):
     // legacy idb-keyval/localStorage reader for the one-time migration below.
     const legacy: LegacyStateStorage = {

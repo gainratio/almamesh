@@ -301,6 +301,7 @@
     "repair_notice_dismiss": "Got it",
     "status_export_started": "Backup download started. Confirm the file appears in Downloads before relying on it.",
     "status_imported": "Restored. Reloading…",
+    "status_imported_in_memory": "Restored. This tab still keeps nothing after it closes, so export a backup before you leave.",
     "error_bad_format": "That file isn't an AlmaMesh backup.",
     "error_too_new": "This backup is from a newer version of AlmaMesh. Update the app first.",
     "error_bad_passphrase": "Wrong password, or the file was changed after export. Nothing was imported.",

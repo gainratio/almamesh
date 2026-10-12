@@ -721,6 +721,20 @@ export async function mergeLegacyPreferencesIntoPortableState(
 }
 
 /**
+ * Give a database with no generation ledger the initial one, touching nothing
+ * else. An in-memory session (OPFS refused) skips the legacy migration, which
+ * is the other place the ledger is seeded; without it export and import fail.
+ */
+export async function seedPortableLedger(repository: PortableStateRepository): Promise<void> {
+  await repository.transactWithResult(({ values }) => ({
+    mutations: values.has(PORTABLE_LEDGER_KEY)
+      ? []
+      : [{ type: 'put' as const, key: PORTABLE_LEDGER_KEY, value: INITIAL_PORTABLE_LEDGER }],
+    result: undefined,
+  }));
+}
+
+/**
  * One-time, crash-resumable migration from the old idb-keyval records. The
  * SQLite batch lands before legacy deletion, so interruption can only leave a
  * redundant source copy which the next start safely removes.
