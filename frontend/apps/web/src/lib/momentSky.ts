@@ -4,7 +4,7 @@
  * which holds today's Life Atlas (lib/periodSky.ts header). No AI is loaded or
  * called: restrictTransitsToPeriod is a pure selector.
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { devicePolicy } from '@almamesh/browser';
 import type { SiderealChart } from '@almamesh/browser/types';
 import { restrictTransitsToPeriod, type PeriodRange } from '@almamesh/llm';
@@ -51,6 +51,18 @@ export function useMomentSky(input: MomentSkyInput): { readonly sky: MomentSky; 
   const skyAllowed = input.skyAllowed ?? devicePolicy().periodSkyComputeAllowed;
   const [sky, setSky] = useState<MomentSky>(skyAllowed ? { kind: 'working' } : { kind: 'dashas-only' });
   const [attempt, setAttempt] = useState(0);
+  // Provider boot stages change during recovery. Only a different requested
+  // moment/profile/chart (or unmount) makes the user's pending Retry stale.
+  const request = useMemo(() => ({ start, end, granularity, chart, profileKey, birth, loader, skyAllowed }),
+    [start, end, granularity, chart, profileKey, birth, loader, skyAllowed]);
+  const activeRequest = useRef<typeof request | null>(null);
+  const publishedEngine = useRef(engine?.engine);
+  const pendingRecovery = useRef<Promise<void> | null>(null);
+  useEffect(() => {
+    activeRequest.current = request;
+    return () => { activeRequest.current = null; };
+  }, [request]);
+  useEffect(() => { publishedEngine.current = engine?.engine; }, [engine?.engine]);
   useEffect(() => {
     if (!skyAllowed || !chart) { setSky({ kind: 'dashas-only' }); return undefined; }
     const controller = new AbortController();
@@ -65,6 +77,24 @@ export function useMomentSky(input: MomentSkyInput): { readonly sky: MomentSky; 
       });
     return () => controller.abort();
   }, [start, end, granularity, chart, profileKey, birth, engine, loader, skyAllowed, attempt]);
-  const retry = useCallback(() => setAttempt((n) => n + 1), []);
+  const retry = useCallback(() => {
+    if (!chart || !skyAllowed || pendingRecovery.current !== null) return;
+    const requested = activeRequest.current;
+    if (requested === null) return;
+    if (!engine?.error) { setAttempt((n) => n + 1); return; }
+    setSky({ kind: 'working' });
+    const recovery = Promise.resolve().then(() => engine.reboot()).then((fresh) => {
+      // reboot publishes the fresh engine context before resolving. The usual
+      // effect owns calculation/cancellation; never resume an old moment here.
+      // If the published context already changed, its effect is doing this
+      // computation. Do not start a second one after that calculation settles.
+      if (activeRequest.current === requested && publishedEngine.current !== fresh) setAttempt((n) => n + 1);
+    }).catch(() => {
+      if (activeRequest.current === requested) setSky({ kind: 'failed' });
+    }).finally(() => {
+      if (pendingRecovery.current === recovery) pendingRecovery.current = null;
+    });
+    pendingRecovery.current = recovery;
+  }, [chart, skyAllowed, engine]);
   return { sky, retry };
 }

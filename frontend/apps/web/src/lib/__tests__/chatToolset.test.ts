@@ -260,6 +260,103 @@ describe('buildChatToolset: charts', () => {
   });
 });
 
+describe('buildChatToolset: explicit-turn engine recovery', () => {
+  function failedContext(reboot = vi.fn(async () => engineContext().engine!)) {
+    return {
+      ...engineContext(), engine: null, error: new Error('Out of bounds memory access'),
+      reboot, whenReady: vi.fn(async () => { throw new Error('latched fatal'); }),
+    } as unknown as ChartEngineContextValue;
+  }
+
+  it('does not reboot on construction or a natal-only question', async () => {
+    const context = failedContext();
+    const built = toolset({ engine: context });
+    expect(context.reboot).not.toHaveBeenCalled();
+    await built.prepare('Where is my Mars?', options());
+    expect(context.reboot).not.toHaveBeenCalled();
+  });
+
+  it('a new today question recovers and grounds facts with the fresh engine', async () => {
+    const fresh = engineContext().engine!;
+    const context = failedContext(vi.fn(async () => fresh));
+    const prepared = await toolset({ engine: context }).prepare('What matters today?', options());
+    expect(context.reboot).toHaveBeenCalledTimes(1);
+    expect(context.whenReady).not.toHaveBeenCalled();
+    expect(ensureMock).toHaveBeenCalledWith(expect.objectContaining({ runtime: fresh }));
+    expect(prepared.currentContextUnavailable).toBe(false);
+  });
+
+  it('a new historical question recovers before querying its deterministic sky', async () => {
+    const fresh = engineContext().engine!;
+    const context = failedContext(vi.fn(async () => fresh));
+    loadMock.mockResolvedValue({ transit_context: SKY_CHART.transit_context });
+    const prepared = await toolset({ chart: TIMING_CHART, engine: context, periodSkyAllowed: true })
+      .prepare('September 2017', options());
+    expect(context.reboot).toHaveBeenCalledTimes(1);
+    expect(context.whenReady).not.toHaveBeenCalled();
+    expect(loadMock).toHaveBeenCalledWith(
+      expect.objectContaining({ referenceInstant: '2017-09-01T00:00:00Z' }), fresh, expect.any(AbortSignal),
+    );
+    expect(prepared.timingFacts[1]?.result).toMatchObject({ shown: 'transits' });
+  });
+
+  it('concurrent today and period tools share one recovery for the turn', async () => {
+    const fresh = engineContext().engine!;
+    let finish!: (engine: NonNullable<ChartEngineContextValue['engine']>) => void;
+    const context = failedContext(vi.fn(() => new Promise((resolve) => { finish = resolve; })));
+    const built = toolset({ engine: context, periodSkyAllowed: true });
+    const today = timingOf(built).execute({ section: 'transits' }, options());
+    const historical = timingOf(built).execute({ section: 'strength', start: '2017-09-01', end: '2017-09-30' }, options());
+    const completed = Promise.allSettled([today, historical]);
+    expect(context.reboot).toHaveBeenCalledTimes(1);
+    expect(ensureMock).not.toHaveBeenCalled();
+    expect(loadMock).not.toHaveBeenCalled();
+    finish(fresh);
+    expect((await completed).every((result) => result.status === 'fulfilled')).toBe(true);
+    expect(ensureMock).toHaveBeenCalledWith(expect.objectContaining({ runtime: fresh }));
+    expect(loadMock.mock.calls[0]?.[1]).toBe(fresh);
+    expect(context.reboot).toHaveBeenCalledTimes(1);
+  });
+
+  it('a rejected recovery stays failed for this turn instead of repeatedly booting', async () => {
+    const context = failedContext(vi.fn(async () => { throw new Error('fresh boot failed'); }));
+    const built = toolset({ engine: context, periodSkyAllowed: true });
+    const prepared = await built.prepare('What matters today?', options());
+    await timingOf(built).execute({ section: 'transits', start: '2017-09-01', end: '2017-09-30' }, options());
+    expect(prepared.currentContextUnavailable).toBe(true);
+    expect(context.reboot).toHaveBeenCalledTimes(1);
+    expect(ensureMock).not.toHaveBeenCalled();
+    expect(loadMock).not.toHaveBeenCalled();
+  });
+
+  it('a placed-day tool uses the same recovered engine for its Moon calculation', async () => {
+    const mark = { sign: 'taurus', nakshatra: 'Rohini', tithi: 3, paksha: 'shukla' } as const;
+    const computeMoonWindow = vi.fn(async () => ({ at_place: { at_start: mark, at_end: mark }, event: null }));
+    const fresh = engineContextWith({ computeMoonWindow }).engine!;
+    const context = failedContext(vi.fn(async () => fresh));
+    const built = toolset({ engine: context, periodSkyAllowed: true, placeFromRef: async () => ({
+      summary: { place_ref: 'city:5', label: 'Lima, Peru', timezone: 'America/Lima' }, latitude: -12.04, longitude: -77.03,
+    }) });
+    const result = await timingOf(built).execute({ section: 'transits', start: '2026-06-15', place_ref: 'city:5' }, options());
+    expect(context.reboot).toHaveBeenCalledTimes(1);
+    expect(loadMock.mock.calls[0]?.[1]).toBe(fresh);
+    expect(computeMoonWindow).toHaveBeenCalledWith({ placeStartUtc: '2026-06-15T05:00:00.000Z', placeEndUtc: '2026-06-16T05:00:00.000Z' });
+    expect(result).toMatchObject({ places: [{ moon: { at_start: mark } }] });
+  });
+
+  it('a later submitted question can recover after the previous turn failed', async () => {
+    const fresh = engineContext().engine!;
+    const reboot = vi.fn().mockRejectedValueOnce(new Error('temporary boot failure')).mockResolvedValueOnce(fresh);
+    const context = failedContext(reboot);
+    const first = await toolset({ engine: context }).prepare('What matters today?', options());
+    const second = await toolset({ engine: context }).prepare('What matters today?', options());
+    expect(first.currentContextUnavailable).toBe(true);
+    expect(second.currentContextUnavailable).toBe(false);
+    expect(reboot).toHaveBeenCalledTimes(2);
+    expect(ensureMock).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('buildChatToolset: period sky', () => {
   // devicePolicy reads navigator.deviceMemory: 8 GB is the full tier, 4 GB lite.
   const setDeviceMemory = (gib: number) => Object.defineProperty(navigator, 'deviceMemory', { value: gib, configurable: true });

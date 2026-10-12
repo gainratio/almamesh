@@ -206,3 +206,306 @@ describe('short derived database sessions', () => {
     await expect(session.withDb(async (db) => (await db.query('SELECT 1 AS n'))[0])).resolves.toEqual({ n: 1 });
   });
 });
+
+describe('derived database page lifecycle', () => {
+  function databaseDouble() {
+    const close = vi.fn<() => Promise<void>>(async () => undefined);
+    const db = {
+      close,
+      query: vi.fn(async () => [{ user_version: 0 }]),
+      exec: vi.fn(async () => ({ changes: 0, lastInsertRowId: 0 })),
+      transaction: async (work: (connection: SqlDatabase) => Promise<unknown>) => work(db as unknown as SqlDatabase),
+    };
+    return { db: db as unknown as SqlDatabase, close };
+  }
+
+  function lifecycleSession(overrides: Partial<Parameters<typeof createDerivedDbSessions>[0]> = {}) {
+    const lifecycle = new EventTarget();
+    const { db, close } = databaseDouble();
+    const openDatabase = vi.fn(async () => db);
+    const dependencies = {
+      openDatabase, removeDatabase: async () => undefined, epoch: async () => 0,
+      locks: nativeLocksDouble(), lifecycle, timeoutMs: 1_000,
+      ...overrides,
+    };
+    const session = createDerivedDbSessions(dependencies);
+    return { session, lifecycle, openDatabase, close, db };
+  }
+
+  async function promptOutcome(result: Promise<unknown>): Promise<unknown> {
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([result, new Promise((resolve) => {
+        timeout = setTimeout(() => resolve('still pending'), 40);
+      })]);
+    } finally { clearTimeout(timeout); }
+  }
+
+  it('pagehide cancels an outer epoch wait before a SQL Worker can open', async () => {
+    const epoch = Promise.withResolvers<number>();
+    const fixture = lifecycleSession({ epoch: () => epoch.promise });
+    const work = vi.fn(async () => 'old work');
+    const result = fixture.session.withDb(work).catch((error: unknown) => error);
+    fixture.lifecycle.dispatchEvent(new Event('pagehide'));
+    try {
+      expect(await promptOutcome(result)).toMatchObject({ name: 'AbortError' });
+      expect(fixture.openDatabase).not.toHaveBeenCalled();
+    } finally { epoch.resolve(0); await result; }
+    expect(fixture.openDatabase).not.toHaveBeenCalled();
+    expect(work).not.toHaveBeenCalled();
+  });
+
+  it('pagehide cancels work waiting for its session lock before the callback may run', async () => {
+    const lock = Promise.withResolvers<void>();
+    const entered = Promise.withResolvers<void>();
+    const fixture = lifecycleSession({ locks: { request: (_name, work) => {
+      entered.resolve();
+      return lock.promise.then(work);
+    } } });
+    const work = vi.fn(async () => 'old work');
+    const result = fixture.session.withDb(work).catch((error: unknown) => error);
+    await entered.promise;
+    fixture.lifecycle.dispatchEvent(new Event('pagehide'));
+    try {
+      expect(await promptOutcome(result)).toMatchObject({ name: 'AbortError' });
+    } finally { lock.resolve(); await result; }
+    expect(fixture.openDatabase).not.toHaveBeenCalled();
+    expect(work).not.toHaveBeenCalled();
+  });
+
+  it('pagehide cancels the inner epoch await after the session lock was acquired', async () => {
+    const epoch = Promise.withResolvers<number>();
+    const entered = Promise.withResolvers<void>();
+    let reads = 0;
+    const fixture = lifecycleSession({ epoch: () => {
+      if (++reads === 2) { entered.resolve(); return epoch.promise; }
+      return Promise.resolve(0);
+    } });
+    const work = vi.fn(async () => 'old work');
+    const result = fixture.session.withDb(work).catch((error: unknown) => error);
+    await entered.promise;
+    fixture.lifecycle.dispatchEvent(new Event('pagehide'));
+    try {
+      expect(await promptOutcome(result)).toMatchObject({ name: 'AbortError' });
+    } finally { epoch.resolve(0); await result; }
+    expect(fixture.openDatabase).not.toHaveBeenCalled();
+    expect(work).not.toHaveBeenCalled();
+  });
+
+  it('rechecks pagehide in the last microtask immediately before the public SQL opener', async () => {
+    const epoch = Promise.withResolvers<number>();
+    const entered = Promise.withResolvers<void>();
+    let reads = 0;
+    const fixture = lifecycleSession({ epoch: () => {
+      if (++reads === 2) { entered.resolve(); return epoch.promise; }
+      return Promise.resolve(0);
+    } });
+    const result = fixture.session.withDb(async () => 'old work').catch((error: unknown) => error);
+    await entered.promise;
+    epoch.resolve(0);
+    // Promise.race first settles the epoch wait, whose continuation queues
+    // the opener. This event runs between that continuation and the opener.
+    queueMicrotask(() => queueMicrotask(() => fixture.lifecycle.dispatchEvent(new Event('pagehide'))));
+    expect(await result).toMatchObject({ name: 'AbortError' });
+    expect(fixture.openDatabase).not.toHaveBeenCalled();
+  });
+
+  it('refuses new work while hidden, then pageshow permits a new session', async () => {
+    const epoch = vi.fn(async () => 0);
+    const fixture = lifecycleSession({ epoch });
+    fixture.lifecycle.dispatchEvent(new Event('pagehide'));
+    const work = vi.fn(async () => 'fresh work');
+    await expect(fixture.session.withDb(work)).rejects.toMatchObject({ name: 'AbortError' });
+    expect(epoch).not.toHaveBeenCalled();
+    expect(fixture.openDatabase).not.toHaveBeenCalled();
+    fixture.lifecycle.dispatchEvent(new Event('pageshow'));
+    await expect(fixture.session.withDb(work)).resolves.toBe('fresh work');
+    expect(fixture.openDatabase).toHaveBeenCalledOnce();
+    expect(fixture.close).toHaveBeenCalledOnce();
+  });
+
+  it('pageshow never revives old epoch work abandoned on pagehide', async () => {
+    const epoch = Promise.withResolvers<number>();
+    let reads = 0;
+    const fixture = lifecycleSession({ epoch: () => ++reads === 1 ? epoch.promise : Promise.resolve(0) });
+    const oldWork = vi.fn(async () => 'old work');
+    const result = fixture.session.withDb(oldWork).catch((error: unknown) => error);
+    fixture.lifecycle.dispatchEvent(new Event('pagehide'));
+    fixture.lifecycle.dispatchEvent(new Event('pageshow'));
+    epoch.resolve(0);
+    expect(await result).toMatchObject({ name: 'AbortError' });
+    expect(oldWork).not.toHaveBeenCalled();
+    expect(fixture.openDatabase).not.toHaveBeenCalled();
+    await expect(fixture.session.withDb(async () => 'new work')).resolves.toBe('new work');
+    expect(fixture.openDatabase).toHaveBeenCalledOnce();
+  });
+
+  it('closes a late handle after pagehide even when pageshow already restored the document', async () => {
+    const opening = Promise.withResolvers<SqlDatabase>();
+    const entered = Promise.withResolvers<void>();
+    const fixture = lifecycleSession();
+    fixture.openDatabase.mockImplementation(() => { entered.resolve(); return opening.promise; });
+    const work = vi.fn(async () => 'old work');
+    const result = fixture.session.withDb(work).catch((error: unknown) => error);
+    await entered.promise;
+    fixture.lifecycle.dispatchEvent(new Event('pagehide'));
+    fixture.lifecycle.dispatchEvent(new Event('pageshow'));
+    try {
+      expect(await promptOutcome(result)).toMatchObject({ name: 'AbortError' });
+    } finally { opening.resolve(fixture.db); await result; }
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(fixture.close).toHaveBeenCalledOnce();
+    expect(work).not.toHaveBeenCalled();
+    fixture.openDatabase.mockResolvedValue(fixture.db);
+    await expect(fixture.session.withDb(async () => 'new work')).resolves.toBe('new work');
+    expect(fixture.openDatabase).toHaveBeenCalledTimes(2);
+    expect(fixture.close).toHaveBeenCalledTimes(2);
+  });
+
+  it('pagehide closes an adopted handle while migration is still awaiting its query', async () => {
+    const migration = Promise.withResolvers<Array<{ user_version: number }>>();
+    const entered = Promise.withResolvers<void>();
+    const fixture = lifecycleSession();
+    vi.mocked(fixture.db.query).mockImplementationOnce(() => {
+      entered.resolve();
+      return migration.promise;
+    });
+    const work = vi.fn(async () => 'old work');
+    const result = fixture.session.withDb(work).catch((error: unknown) => error);
+    await entered.promise;
+    fixture.lifecycle.dispatchEvent(new Event('pagehide'));
+    try {
+      expect(await promptOutcome(result)).toMatchObject({ name: 'AbortError' });
+      expect(fixture.close).toHaveBeenCalledOnce();
+    } finally {
+      migration.resolve([{ user_version: 0 }]);
+      await result;
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    expect(work).not.toHaveBeenCalled();
+    expect(fixture.close).toHaveBeenCalledOnce();
+  });
+
+  it('rechecks pagehide after the adopted handle epoch settles before starting migration', async () => {
+    const epoch = Promise.withResolvers<number>();
+    const entered = Promise.withResolvers<void>();
+    let reads = 0;
+    const fixture = lifecycleSession({ epoch: () => {
+      if (++reads === 3) { entered.resolve(); return epoch.promise; }
+      return Promise.resolve(0);
+    } });
+    const work = vi.fn(async () => 'old work');
+    const result = fixture.session.withDb(work).catch((error: unknown) => error);
+    await entered.promise;
+    epoch.resolve(0);
+    // The epoch race settles before its await continuation runs. Teardown
+    // in between must prevent migration from touching the adopted handle.
+    queueMicrotask(() => fixture.lifecycle.dispatchEvent(new Event('pagehide')));
+    expect(await result).toMatchObject({ name: 'AbortError' });
+    expect(fixture.db.query).not.toHaveBeenCalled();
+    expect(work).not.toHaveBeenCalled();
+    expect(fixture.close).toHaveBeenCalledOnce();
+  });
+
+  it('pagehide closes an adopted query and never publishes its late rows after pageshow', async () => {
+    const rows = Promise.withResolvers<Array<{ value: string }>>();
+    const entered = Promise.withResolvers<void>();
+    const fixture = lifecycleSession();
+    const publish = vi.fn();
+    const result = fixture.session.withDb(async () => {
+      entered.resolve();
+      return rows.promise;
+    }).then(publish).catch((error: unknown) => error);
+    await entered.promise;
+    fixture.lifecycle.dispatchEvent(new Event('pagehide'));
+    fixture.lifecycle.dispatchEvent(new Event('pageshow'));
+    try {
+      expect(await promptOutcome(result)).toMatchObject({ name: 'AbortError' });
+      expect(fixture.close).toHaveBeenCalledOnce();
+    } finally { rows.resolve([{ value: 'old rows' }]); await result; }
+    expect(publish).not.toHaveBeenCalled();
+    expect(fixture.close).toHaveBeenCalledOnce();
+    await expect(fixture.session.withDb(async () => 'fresh result')).resolves.toBe('fresh result');
+  });
+
+  it('pagehide during close rejects an already computed result and blocks replacement opens', async () => {
+    const closing = Promise.withResolvers<void>();
+    const entered = Promise.withResolvers<void>();
+    const fixture = lifecycleSession();
+    fixture.close.mockImplementationOnce(() => { entered.resolve(); return closing.promise; });
+    const publish = vi.fn();
+    const result = fixture.session.withDb(async () => 'old result').then(publish).catch((error: unknown) => error);
+    await entered.promise;
+    fixture.lifecycle.dispatchEvent(new Event('pagehide'));
+    fixture.lifecycle.dispatchEvent(new Event('pageshow'));
+    try {
+      await expect(fixture.session.withDb(async () => 'too soon')).rejects.toThrow(/closing|retry/i);
+      expect(fixture.openDatabase).toHaveBeenCalledOnce();
+      expect(publish).not.toHaveBeenCalled();
+    } finally { closing.resolve(); }
+    expect(await result).toMatchObject({ name: 'AbortError' });
+    expect(publish).not.toHaveBeenCalled();
+    expect(fixture.close).toHaveBeenCalledOnce();
+    await expect(fixture.session.withDb(async () => 'fresh result')).resolves.toBe('fresh result');
+    expect(fixture.openDatabase).toHaveBeenCalledTimes(2);
+  });
+
+  async function withBrowserModule(assert: (fixture: {
+    module: typeof import('../derivedDb');
+    openDatabase: ReturnType<typeof vi.fn<() => Promise<SqlDatabase>>>;
+    addListener: { mock: { calls: Parameters<EventTarget['addEventListener']>[] } };
+    close: ReturnType<typeof vi.fn<() => Promise<void>>>;
+  }) => Promise<void>) {
+    const { db, close } = databaseDouble();
+    const openDatabase = vi.fn(async () => db);
+    const locks = nativeLocksDouble();
+    const descriptor = Object.getOwnPropertyDescriptor(navigator, 'locks');
+    Object.defineProperty(navigator, 'locks', { configurable: true, value: {
+      request: (name: string, options: { signal?: AbortSignal }, work: () => Promise<unknown>) => locks.request(name, work, options.signal),
+    } });
+    vi.resetModules();
+    vi.doMock('@gainratio/browser/sql', () => ({ openSqlDatabase: openDatabase, removeSqlDatabase: async () => undefined }));
+    vi.doMock('@almamesh/store', () => ({ readDeletionTombstones: async () => ({ restoreEpoch: 0 }) }));
+    const addListener = vi.spyOn(window as EventTarget, 'addEventListener');
+    try {
+      const module = await import('../derivedDb');
+      await assert({ module, openDatabase, addListener, close });
+    } finally {
+      // Fresh module imports deliberately create document-scoped listeners.
+      // Remove this fixture's pair so later tests do not inherit its state.
+      for (const [type, listener, options] of addListener.mock.calls) {
+        if ((type === 'pagehide' || type === 'pageshow') && listener) window.removeEventListener(type, listener, options);
+      }
+      addListener.mockRestore();
+      if (descriptor) Object.defineProperty(navigator, 'locks', descriptor);
+      else Reflect.deleteProperty(navigator, 'locks');
+      vi.doUnmock('@gainratio/browser/sql');
+      vi.doUnmock('@almamesh/store');
+      vi.resetModules();
+    }
+  }
+
+  it('observes pagehide before the first browser session is requested', async () => {
+    await withBrowserModule(async ({ module, openDatabase }) => {
+      window.dispatchEvent(new Event('pagehide'));
+      await expect(module.withDerivedDb(async () => 'late first work')).rejects.toMatchObject({ name: 'AbortError' });
+      expect(openDatabase).not.toHaveBeenCalled();
+      window.dispatchEvent(new Event('pageshow'));
+      await expect(module.withDerivedDb(async () => 'fresh work')).resolves.toBe('fresh work');
+      expect(openDatabase).toHaveBeenCalledOnce();
+    });
+  });
+
+  it('installs one browser listener pair without opening SQLite and keeps it across sessions', async () => {
+    await withBrowserModule(async ({ module, openDatabase, addListener, close }) => {
+      const lifecycleCalls = () => addListener.mock.calls.filter(([type]) => type === 'pagehide' || type === 'pageshow');
+      expect(lifecycleCalls().map(([type]) => type).sort()).toEqual(['pagehide', 'pageshow']);
+      expect(openDatabase).not.toHaveBeenCalled();
+      await module.withDerivedDb(async () => 'first');
+      await module.withDerivedDb(async () => 'second');
+      expect(lifecycleCalls()).toHaveLength(2);
+      expect(openDatabase).toHaveBeenCalledTimes(2);
+      expect(close).toHaveBeenCalledTimes(2);
+    });
+  });
+});

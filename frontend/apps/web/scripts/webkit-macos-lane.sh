@@ -1,21 +1,125 @@
 #!/usr/bin/env bash
-# Native macOS WebKit acceptance. Hosted CI runs independent memory and
-# functional jobs, each bounded to 45 minutes. Local callers may run all.
+# Native macOS WebKit acceptance. Hosted CI runs independent memory, travel
+# and portable/boot jobs, each bounded to 45 minutes. Local callers may run all.
 # memory: five original-release boots then five candidate Day/place journeys,
 # on this same runner with the same sampler and production builds without hooks.
-# functional: all desktop/iPhone time-travel, portable restore and boot recovery
-# cases, against one hooks-enabled preview, with zero test retries.
+# travel: all desktop/iPhone time-travel cases; portable: all portable restore
+# and boot recovery cases. Each uses its own hooks-enabled preview, no retries.
+# Local functional runs both suites; local all also runs the memory comparison.
 # Evidence is uploaded only from a finalized snapshot after its content scan.
 set -euo pipefail
 
 FINALIZE=0
-if [[ "${1:-}" == --finalize-evidence ]]; then FINALIZE=1; shift; fi
+COLLECT=0
+case "${1:-}" in
+  --finalize-evidence) FINALIZE=1; shift ;;
+  --collect-native-evidence) COLLECT=1; shift ;;
+esac
 MODE="${1:-all}"
-case "${MODE}" in memory|functional|all) ;; *) echo "Unknown WebKit lane mode: ${MODE}" >&2; exit 64 ;; esac
+case "${MODE}" in memory|travel|portable|functional|all) ;; *) echo "Unknown WebKit lane mode: ${MODE}" >&2; exit 64 ;; esac
 if (( $# > 1 )); then echo "Unexpected WebKit lane arguments" >&2; exit 64; fi
 ARTIFACTS="${WEBKIT_LANE_ARTIFACTS:-webkit-lane-artifacts}"
 if [[ "${MODE}" != all && -z "${WEBKIT_LANE_ARTIFACTS:-}" ]]; then ARTIFACTS="webkit-lane-artifacts-${MODE}"; fi
 EVIDENCE_ROOT="webkit-lane-evidence-${MODE}"
+
+collect_crash_evidence() {
+  # Diagnostic availability is not a product gate. Persist each attempt and its
+  # outcome, including missing roots and failed/timed-out commands. Only failure
+  # to write the required manifest is fatal. CI also invokes this independently
+  # after the lane, so an interrupted shell trap is not our only collection path.
+  node --input-type=module - "${ARTIFACTS}" "${BASH_SOURCE[0]:-$0}" "${HOME}" <<'NATIVE_EVIDENCE'
+import { appendFileSync, closeSync, fstatSync, lstatSync, mkdirSync, openSync, readSync, statSync, writeFileSync } from 'node:fs';
+import { Buffer } from 'node:buffer';
+import { spawnSync } from 'node:child_process';
+import { basename, dirname, join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
+
+const directory = resolve(process.argv[2]);
+const { isLaneCrashReport } = await import(pathToFileURL(join(dirname(resolve(process.argv[3])), 'crashReportSummary.mjs')));
+if (!lstatSync(directory).isDirectory()) throw new Error('Native evidence source must be a directory');
+const manifestPath = join(directory, 'native-collection-status.json');
+const limits = { maxReports: 32, maxReportBytes: 16 * 1024 * 1024, maxTotalBytes: 64 * 1024 * 1024 };
+const copyTotals = { consideredCount: 0, readAttempts: 0, reservedBytes: 0, copiedCount: 0, copiedBytes: 0 };
+const manifest = { state: 'collecting', startedAt: new Date().toISOString(), laneStartedAt: null, limits, copyTotals, roots: [], reports: [], unifiedLog: { status: 'not-attempted' } };
+const save = () => writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+save();
+const marker = join(directory, '.lane-start');
+let started;
+try { started = statSync(marker).mtime; manifest.laneStartedAt = started.toISOString(); }
+catch (error) { manifest.startError = error.code ?? String(error); }
+if (started) {
+  try { mkdirSync(join(directory, 'crash-reports'), { recursive: true }); }
+  catch (error) { manifest.reportsDirectoryError = error.code ?? String(error); }
+  for (const [name, root] of [['user', join(process.argv[4], 'Library/Logs/DiagnosticReports')], ['system', '/Library/Logs/DiagnosticReports']]) {
+    const entry = { name, status: 'searching', matchedCount: 0, copiedCount: 0 };
+    manifest.roots.push(entry);
+    save();
+    try {
+      if (!lstatSync(root).isDirectory()) { entry.status = 'not-directory'; save(); continue; }
+    } catch (error) {
+      entry.status = error.code === 'ENOENT' ? 'missing' : 'error';
+      entry.error = error.code ?? String(error);
+      save(); continue;
+    }
+    const found = spawnSync('find', [root, '-newer', marker, '-type', 'f', '-print0'], { encoding: 'utf8', timeout: 5_000, maxBuffer: 1024 * 1024, killSignal: 'SIGKILL' });
+    entry.status = found.error?.code === 'ETIMEDOUT' ? 'timeout' : found.status === 0 ? 'searched' : 'error';
+    entry.exitCode = found.status;
+    if (found.error) entry.error = found.error.code ?? String(found.error);
+    if (found.stderr) entry.stderr = found.stderr;
+    for (const report of (found.stdout ?? '').split('\0').filter(Boolean)) {
+      if (!isLaneCrashReport(report)) continue;
+      const record = { name: basename(report), status: 'copying' };
+      entry.matchedCount += 1;
+      manifest.reports.push(record);
+      if (copyTotals.consideredCount >= limits.maxReports) { record.status = 'skipped-count-limit'; save(); continue; }
+      copyTotals.consideredCount += 1;
+      try {
+        const details = lstatSync(report);
+        if (!details.isFile()) throw new Error('Report is not a regular file');
+        if (details.mtime <= started) { record.status = 'stale'; continue; }
+        record.bytes = details.size;
+        if (details.size > limits.maxReportBytes) { record.status = 'skipped-size-limit'; save(); continue; }
+        if (copyTotals.reservedBytes + details.size > limits.maxTotalBytes) { record.status = 'skipped-total-size-limit'; save(); continue; }
+        // Reserve the read budget even if the copy fails. Read a fixed amount;
+        // a growing native report cannot bypass either byte ceiling.
+        copyTotals.readAttempts += 1; copyTotals.reservedBytes += details.size; save();
+        const contents = Buffer.allocUnsafe(details.size);
+        const descriptor = openSync(report, 'r');
+        try {
+          let offset = 0;
+          while (offset < contents.length) {
+            const count = readSync(descriptor, contents, offset, contents.length - offset, offset);
+            if (count === 0) throw new Error('Report changed while reading');
+            offset += count;
+          }
+          const after = fstatSync(descriptor);
+          if (after.size !== details.size || after.mtimeMs !== details.mtimeMs) throw new Error('Report changed while reading');
+        } finally { closeSync(descriptor); }
+        writeFileSync(join(directory, 'crash-reports', record.name), contents);
+        record.status = 'copied'; entry.copiedCount += 1;
+        copyTotals.copiedCount += 1; copyTotals.copiedBytes += details.size;
+      } catch (error) { record.status = 'copy-error'; record.error = error.code ?? String(error); }
+      save();
+    }
+    save();
+  }
+  const pad = (value) => String(value).padStart(2, '0');
+  const start = `${started.getFullYear()}-${pad(started.getMonth() + 1)}-${pad(started.getDate())} ${pad(started.getHours())}:${pad(started.getMinutes())}:${pad(started.getSeconds())}`;
+  const predicate = 'eventMessage CONTAINS[c] "WebContent" OR eventMessage CONTAINS[c] "memorystatus" OR eventMessage CONTAINS[c] "jetsam" OR eventMessage CONTAINS[c] "didExceed" OR eventMessage CONTAINS[c] "processDidTerminate" OR eventMessage CONTAINS[c] "webProcessDidCrash"';
+  manifest.unifiedLog = { status: 'collecting' }; save();
+  const result = spawnSync('log', ['show', '--style', 'compact', '--start', start, '--predicate', predicate], { encoding: 'utf8', timeout: 15_000, maxBuffer: 8 * 1024 * 1024, killSignal: 'SIGKILL' });
+  const timedOut = result.error?.code === 'ETIMEDOUT';
+  manifest.unifiedLog = { status: timedOut ? 'timeout' : result.status === 0 ? 'collected' : 'error', exitCode: result.status, timedOut, signal: result.signal };
+  if (result.error) manifest.unifiedLog.error = result.error.code ?? String(result.error);
+  // The independent CI attempt must not erase a successful shell-trap capture.
+  try { appendFileSync(join(directory, 'unified-log.txt'), `\n== native collection ${manifest.startedAt}: ${manifest.unifiedLog.status} ==\n${result.stdout ?? ''}${result.stderr ?? ''}${result.error ? `\ncollector error: ${result.error.code ?? String(result.error)}\n` : ''}`); }
+  catch (error) { manifest.unifiedLog.status = 'write-error'; manifest.unifiedLog.writeError = error.code ?? String(error); }
+}
+manifest.state = 'complete'; manifest.completedAt = new Date().toISOString(); save();
+console.log(`native evidence: ${manifest.reports.filter((report) => report.status === 'copied').length} reports copied; unified log ${manifest.unifiedLog.status}; details in native-collection-status.json`);
+NATIVE_EVIDENCE
+}
+if [[ "${COLLECT}" == 1 ]]; then collect_crash_evidence; exit; fi
 
 finalize_evidence() {
   # The source remains diagnostic-only. The scanner and upload both use this
@@ -120,22 +224,6 @@ wait_for_preview() {
   curl -fsS -o /dev/null "${url}/"
 }
 
-collect_crash_evidence() {
-  for dir in "${HOME}/Library/Logs/DiagnosticReports" /Library/Logs/DiagnosticReports; do
-    find "${dir}" -newer "${ARTIFACTS}/.lane-start" -type f 2>/dev/null | while read -r report; do
-      label="$(node scripts/crashReportSummary.mjs --lane-report "${report}")" || continue
-      cp "${report}" "${ARTIFACTS}/crash-reports/" || true
-      echo "${label}: ${report}"
-      case "${report}" in *.ips) node scripts/crashReportSummary.mjs "${report}" || true ;; esac
-    done
-  done
-  log show --style compact --start "${LANE_START}" --predicate \
-    'eventMessage CONTAINS[c] "WebContent" OR eventMessage CONTAINS[c] "memorystatus" OR eventMessage CONTAINS[c] "jetsam" OR eventMessage CONTAINS[c] "didExceed" OR eventMessage CONTAINS[c] "processDidTerminate" OR eventMessage CONTAINS[c] "webProcessDidCrash"' \
-    > "${ARTIFACTS}/unified-log.txt" 2>&1 || true
-  echo "unified log: $(wc -l < "${ARTIFACTS}/unified-log.txt") lines about WebContent, memory kills and jetsam"
-  grep -iE 'memorystatus.*kill|exceed|crash|terminat' "${ARTIFACTS}/unified-log.txt" | grep -v 'coalition roles' | head -40 || true
-}
-
 bash scripts/setup-dev-assets.sh
 bun x playwright install webkit
 ( while true; do
@@ -203,19 +291,27 @@ wait_for_preview "${MEMORY_URL}"
 TT_MEMORY_PHASE=final TT_MEMORY_GRANULARITY=day TT_MEMORY_REPORT_ONLY=0 TT_WEBKIT_BASELINE_MIB="${BASELINE_MIB}" TIME_TRAVEL_E2E_BASE_URL="${MEMORY_URL}" run_lane_command bun run test:e2e:time-travel e2e/time-travel-memory.webkit.spec.ts --project=iphone-15-webkit --grep 'WebContent RSS budget' --repeat-each=5 --retries=0 --output="${ARTIFACTS}/time-travel-memory" || status=1
 }
 
-run_functional_lane() {
+start_functional_preview() {
 VITE_API_URL= VITE_EXIT_GATE_HOOKS=1 ./node_modules/.bin/vite build --outDir dist-webkit
 VITE_API_URL= ./node_modules/.bin/vite preview --outDir dist-webkit --host 127.0.0.1 --port "${PORT}" --strictPort &
 register_producer "$!"
 wait_for_preview "${BASE_URL}"
+}
+
+run_travel_lane() {
 # Zero retries, and run each independent suite even if a preceding one fails.
 TIME_TRAVEL_E2E_BASE_URL="${BASE_URL}" run_lane_command bun run test:e2e:time-travel e2e/time-travel.spec.ts --project=webkit --project=iphone-webkit --project=iphone-15-webkit --retries=0 --output="${ARTIFACTS}/time-travel" || status=1
+}
+
+run_portable_lane() {
 PORTABLE_INVARIANTS_E2E_BASE_URL="${BASE_URL}" run_lane_command bun run test:e2e:portable-invariants --project=webkit --project=iphone-webkit --retries=0 --output="${ARTIFACTS}/portable-invariants" || status=1
 BOOT_RETRY_E2E_BASE_URL="${BASE_URL}" run_lane_command bun run test:e2e:boot-retry --project=webkit --retries=0 --output="${ARTIFACTS}/boot-retry" || status=1
 }
 
 if [[ "${MODE}" == memory || "${MODE}" == all ]]; then run_memory_lane; fi
-if [[ "${MODE}" == functional || "${MODE}" == all ]]; then run_functional_lane; fi
+if [[ "${MODE}" == travel || "${MODE}" == portable || "${MODE}" == functional || "${MODE}" == all ]]; then start_functional_preview; fi
+if [[ "${MODE}" == travel || "${MODE}" == functional || "${MODE}" == all ]]; then run_travel_lane; fi
+if [[ "${MODE}" == portable || "${MODE}" == functional || "${MODE}" == all ]]; then run_portable_lane; fi
 collect_crash_evidence
 CRASH_EVIDENCE_COLLECTED=1
 grep -rh "page crashed" "${ARTIFACTS}" --include='*-browser.log' || true

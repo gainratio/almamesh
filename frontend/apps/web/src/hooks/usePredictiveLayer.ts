@@ -97,7 +97,7 @@ export interface PredictiveLayer {
   readonly engineReady: boolean;
   /** The stored chart carries the birth fields the engine needs. */
   readonly hasBirthData: boolean;
-  /** Engine ready AND birth data present — `compute()` will actually run. */
+  /** Birth data and either a ready engine or an engine failure eligible for explicit Retry. */
   readonly canCompute: boolean;
   /** Kick off (or retry) the idempotent lazy computation. */
   readonly compute: () => void;
@@ -162,11 +162,33 @@ export function usePredictiveLayer({ auto = false }: UsePredictiveLayerOptions =
   // input + reference instant has been computed.
   const visibleStatus: PredictiveStatus = cacheMatchesInput ? status : 'idle';
 
+  const activeInput = useRef(input);
+  const pendingRecovery = useRef<Promise<void> | null>(null);
+  useEffect(() => {
+    activeInput.current = input;
+    return () => { activeInput.current = null; };
+  }, [input]);
+
   const compute = useCallback(() => {
-    if (engine && input) {
+    if (!input || activeInput.current !== input || pendingRecovery.current !== null) return;
+    if (engineCtx?.error) {
+      const recovery = Promise.resolve().then(() => engineCtx.reboot()).then((fresh) => {
+        // Share only the boot. The store owns compute idempotency; holding this
+        // gate through a long calculation would block a newly selected profile.
+        if (pendingRecovery.current === recovery) pendingRecovery.current = null;
+        // A profile, birth, or reference-day change/unmount cancels this user's
+        // old request even if the shared provider reboot succeeds afterward.
+        if (activeInput.current === input) return ensurePredictive(fresh, input);
+      }).catch(() => {
+        // The provider exposes a failed reboot; another explicit Retry may run.
+      }).finally(() => {
+        if (pendingRecovery.current === recovery) pendingRecovery.current = null;
+      });
+      pendingRecovery.current = recovery;
+    } else if (engine) {
       void ensurePredictive(engine, input);
     }
-  }, [engine, input, ensurePredictive]);
+  }, [engine, engineCtx, input, ensurePredictive]);
 
   // Auto mode: start once the engine + chart are there — but DEFER the kickoff
   // (idle/short-timeout) and CANCEL it on cleanup. Deferring keeps the single
@@ -182,7 +204,7 @@ export function usePredictiveLayer({ auto = false }: UsePredictiveLayerOptions =
 
   const pendingKickoff = useRef<ScheduledKickoff | null>(null);
   useEffect(() => {
-    if (!auto || !engine || !input || rectGateActive) {
+    if (!auto || !engine || engineCtx?.error || !input || rectGateActive) {
       return;
     }
     const staleInput = loadedProfileKey !== profileKey || !cacheMatchesInput;
@@ -207,6 +229,7 @@ export function usePredictiveLayer({ auto = false }: UsePredictiveLayerOptions =
   }, [
     auto,
     engine,
+    engineCtx?.error,
     input,
     rectGateActive,
     status,
@@ -226,7 +249,7 @@ export function usePredictiveLayer({ auto = false }: UsePredictiveLayerOptions =
     rawContexts: cacheMatchesInput ? rawContexts : undefined,
     engineReady: engine !== null,
     hasBirthData: input !== null,
-    canCompute: engine !== null && input !== null,
+    canCompute: (engine !== null || Boolean(engineCtx?.error)) && input !== null,
     compute,
     natalDashas: storedChart?.sidereal_chart?.dashas,
     birthTimeZone: birth?.birth_location_details?.timezone || undefined,

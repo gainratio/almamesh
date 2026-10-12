@@ -7,6 +7,7 @@ import {
   fetchOpenRouterModels,
   findModelPricing,
   READING_OUTPUT_BUDGET,
+  REPORT_ENGINE_MODEL,
   REPORT_PROMPT_SET,
   REPORT_SECTIONS,
   REPORT_WORD_TARGETS,
@@ -19,7 +20,6 @@ import {
   type ReportTimelineContent,
 } from '@almamesh/llm';
 import { completionUsage } from './openrouterUsage';
-import { E2E_REAL_MODEL } from './realModel';
 import {
   catalogCostUsd,
   completedRunStats,
@@ -47,7 +47,11 @@ import {
  * completed runs only (a failed run still fails its own soft checks). P90 is
  * asserted only when REPORT_P90_BUDGET_MS is set (the default-model run). Each run is aborted at
  * RUN_DEADLINE_MS; section failures and aborts are soft, and the result JSON
- * (with per-section wall times) is written even when a run fails.
+ * (with per-section wall times and safe lifecycle diagnostics) is written even
+ * when a run fails. Lifecycle diagnostics contain only section names, elapsed
+ * time, HTTP status and fixed error/timeout codes, never request contents.
+ * A bounded lifecycle summary also prints to stdout when each run finishes,
+ * including a failed run, so hosted logs retain its safe failure evidence.
  *
  * Billed usage.cost depends on which upstream provider OpenRouter routes to.
  * The library asks for the cheapest first but fallbacks stay allowed: a billed
@@ -55,11 +59,11 @@ import {
  * are annotations, not failures.
  *
  * Nightly:  OPENROUTER_API_KEY=... bun run test:e2e:report:real
- * Default model (PR evidence): set REPORT_REAL_MODEL to the app's default
- * model and REPORT_P90_BUDGET_MS=150000 (the exact command is in the PR body).
+ * The default is the production report-engine model. REPORT_REAL_MODEL is the
+ * explicit alternate-model override. REPORT_P90_BUDGET_MS adds a latency gate.
  */
 
-const MODEL = process.env.REPORT_REAL_MODEL ?? E2E_REAL_MODEL;
+const MODEL = process.env.REPORT_REAL_MODEL ?? REPORT_ENGINE_MODEL;
 const RUNS = 3;
 const P90_BUDGET_MS = process.env.REPORT_P90_BUDGET_MS ? Number(process.env.REPORT_P90_BUDGET_MS) : null;
 const KEY = '1990-01-15T12:00:00+00:00';
@@ -77,6 +81,7 @@ interface ReportRun {
   readonly providers: readonly string[];
   readonly rows: readonly SectionUsageRow[];
   readonly sectionMs: readonly SectionTiming[];
+  readonly sectionDiagnostics: readonly SectionDiagnostic[];
   readonly words: Readonly<Record<string, Voices>>;
   readonly errors: readonly string[];
   /** Sentences the date guard removed across the four timeline sections. */
@@ -93,6 +98,59 @@ interface SectionTiming {
   readonly section: string;
   readonly status: number;
   readonly ms: number;
+}
+
+interface SectionDiagnostic {
+  readonly type: 'section_start' | 'section_complete' | 'error';
+  readonly section: string;
+  readonly elapsedMs: number;
+  readonly errorCode?: 'SECTION_ERROR' | 'SECTION_TIMEOUT';
+  readonly status?: number;
+  readonly timeoutKind?: 'total' | 'idle' | 'first_token';
+  readonly timeoutLimitMs?: number;
+}
+
+/** Closed metadata allowlist: an error message can contain provider content. */
+function sectionDiagnostic(event: unknown, elapsedMs: number): SectionDiagnostic | null {
+  if (!Number.isFinite(elapsedMs) || elapsedMs < 0) return null;
+  if (typeof event !== 'object' || event === null) return null;
+  const value = event as Record<string, unknown>;
+  if (typeof value.section !== 'string' || !REPORT_SECTIONS.some((section) => section === value.section)) return null;
+  if (value.type !== 'section_start' && value.type !== 'section_complete' && value.type !== 'error') return null;
+  const base: SectionDiagnostic = { type: value.type, section: value.section, elapsedMs };
+  if (value.type !== 'error') return base;
+  const timeout = typeof value.timeout === 'object' && value.timeout !== null
+    ? value.timeout as Record<string, unknown>
+    : null;
+  const kind = timeout?.kind;
+  const limit = timeout?.limitMs;
+  const validTimeout = (kind === 'total' || kind === 'idle' || kind === 'first_token') &&
+    typeof limit === 'number' && Number.isFinite(limit) && limit > 0;
+  return {
+    ...base,
+    errorCode: validTimeout ? 'SECTION_TIMEOUT' : 'SECTION_ERROR',
+    ...(typeof value.status === 'number' && Number.isInteger(value.status) && value.status >= 100 && value.status <= 599
+      ? { status: value.status } : {}),
+    ...(validTimeout ? { timeoutKind: kind, timeoutLimitMs: limit } : {}),
+  };
+}
+
+/** Only closed, bounded lifecycle metadata reaches hosted stdout. */
+function printRunDiagnostics(runNumber: number, diagnostics: readonly SectionDiagnostic[]): void {
+  const sections = diagnostics.slice(0, REPORT_SECTIONS.length * 2).flatMap((event) => {
+    const safe = sectionDiagnostic({
+      type: event.type,
+      section: event.section,
+      status: event.status,
+      timeout: { kind: event.timeoutKind, limitMs: event.timeoutLimitMs },
+    }, event.elapsedMs);
+    return safe === null ? [] : [safe];
+  });
+  console.log(JSON.stringify({
+    event: 'report-run-diagnostics',
+    run: Number.isInteger(runNumber) && runNumber >= 1 && runNumber <= RUNS ? runNumber : null,
+    sections,
+  }));
 }
 
 interface ReportOutput {
@@ -163,8 +221,12 @@ async function drain<E extends { readonly type: string }>(
   events: AsyncGenerator<E>,
   errors: string[],
   onComplete: (event: E) => void,
+  sectionDiagnostics: SectionDiagnostic[],
+  started: number,
 ): Promise<void> {
   for await (const e of events) {
+    const diagnostic = sectionDiagnostic(e, Date.now() - started);
+    if (diagnostic !== null) sectionDiagnostics.push(diagnostic);
     if (e.type === 'error' && 'section' in e && 'message' in e) errors.push(`${String(e.section)}: ${String(e.message)}`);
     if (e.type === 'complete') onComplete(e);
   }
@@ -175,9 +237,10 @@ async function drain<E extends { readonly type: string }>(
  * Aborted at RUN_DEADLINE_MS so a slow upstream fails the run (with its
  * partial rows) instead of hanging the test to its timeout.
  */
-async function runOnce(chart: SiderealChart, config: ProviderConfig, pricing: ModelPricing): Promise<ReportRun> {
+async function runOnce(chart: SiderealChart, config: ProviderConfig, pricing: ModelPricing, runNumber: number): Promise<ReportRun> {
   const rows: SectionUsageRow[] = [];
   const sectionMs: SectionTiming[] = [];
+  const sectionDiagnostics: SectionDiagnostic[] = [];
   const bodies: Record<string, unknown>[] = [];
   const t0 = Date.now();
   const errors: string[] = [];
@@ -226,18 +289,19 @@ async function runOnce(chart: SiderealChart, config: ProviderConfig, pricing: Mo
     await Promise.all([
       drain(streamNatalInterpretation({ chart, asOf: AS_OF, config, fetchImpl, signal, promptSet: REPORT_PROMPT_SET }), errors, (e) => {
         if (e.type === 'complete') out.natal = e.interpretation;
-      }),
+      }, sectionDiagnostics, t0),
       drain(streamReportTimeline({ chart, asOf: AS_OF, config, fetchImpl, signal }), errors, (e) => {
         if (e.type !== 'complete') return;
         out.timeline = e.timeline;
         out.dateGuardRemovals = e.dateGuardRemovals;
-      }),
+      }, sectionDiagnostics, t0),
     ]);
   } catch (err) {
     const reason = signal.aborted ? `deadline ${RUN_DEADLINE_MS / 1000} s exceeded` : String(err);
     errors.push(`run aborted: ${reason}`);
   } finally {
     clearTimeout(timer);
+    printRunDiagnostics(runNumber, sectionDiagnostics);
   }
   const totalMs = Date.now() - t0;
   for (const body of bodies) {
@@ -257,6 +321,7 @@ async function runOnce(chart: SiderealChart, config: ProviderConfig, pricing: Mo
     providers: [...new Set(rows.map((r) => r.provider))],
     rows,
     sectionMs,
+    sectionDiagnostics,
     words,
     errors,
     dateGuardRemovals: out.dateGuardRemovals,
@@ -289,7 +354,7 @@ test('[real] full report-v2 reading against live OpenRouter (3 runs)', async () 
 
   const runs: ReportRun[] = [];
   try {
-    for (let run = 0; run < RUNS; run += 1) runs.push(await runOnce(chart, config, pricing));
+    for (let run = 0; run < RUNS; run += 1) runs.push(await runOnce(chart, config, pricing, run + 1));
   } finally {
     writeResult({ model: MODEL, estimate, pricing, ...summarize(runs), runs });
   }

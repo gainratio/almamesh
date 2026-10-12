@@ -604,6 +604,41 @@ describe("ChartEngineClient", () => {
 		expect(worker.terminated).toBe(true);
 	});
 
+  it.each(["error", "messageerror", "timeout"] as const)("exposes the exact persistent terminal error after %s", async (failure) => {
+    vi.useFakeTimers();
+    try {
+      const client = new ChartEngineClient(worker, { predictiveRequestTimeoutMs: 5 });
+      expect(client.closedError()).toBeNull();
+      const result = client.computePredictive(PREDICTIVE_INPUT).catch((error: unknown) => error);
+      if (failure === "error") worker.emitError("Worker process exited");
+      else if (failure === "messageerror") worker.emitMessageError();
+      else vi.advanceTimersByTime(6);
+
+      const error = await result;
+      expect(error).toBeInstanceOf(Error);
+      expect(client.closedError()).toBe(error);
+      await expect(client.computePredictive(PREDICTIVE_INPUT)).rejects.toBe(error);
+      expect(worker.posted).toHaveLength(1);
+      client.terminate();
+      worker.emitError("a later error");
+      expect(client.closedError()).toBe(error);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps closedError null after an ordinary Python failure and a later successful computation", async () => {
+    let domainFailure = true;
+    const client = withReply((request) => domainFailure
+      ? { ok: false, id: request.id, error: "Traceback ...\nRuntimeError: unreachable\n" }
+      : { ok: true, kind: "computePredictive", id: request.id, predictive: STUB_PREDICTIVE });
+    await expect(client.computePredictive(PREDICTIVE_INPUT)).rejects.toThrow("RuntimeError: unreachable");
+    expect(client.closedError()).toBeNull();
+    domainFailure = false;
+    await expect(client.computePredictive(PREDICTIVE_INPUT)).resolves.toBe(STUB_PREDICTIVE);
+    expect(client.closedError()).toBeNull();
+  });
+
 	it("rejects every pending request when the worker crashes", async () => {
 		const client = withReply(() => null);
 		const pending = client.generateChart(BIRTH);

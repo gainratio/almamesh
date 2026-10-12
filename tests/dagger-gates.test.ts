@@ -22,6 +22,8 @@ test("local Dagger source excludes WebKit diagnostics while retaining applicatio
   for (const directory of [
     "webkit-lane-artifacts", "webkit-lane-artifacts-memory", "webkit-lane-artifacts-functional",
     "webkit-lane-evidence-memory", "webkit-lane-evidence-functional", "webkit-lane-evidence-all",
+    "webkit-lane-artifacts-travel", "webkit-lane-artifacts-portable",
+    "webkit-lane-evidence-travel", "webkit-lane-evidence-portable",
   ]) {
     expect(excluded(`frontend/apps/web/${directory}/travel/trace.zip`), directory).toBe(true)
   }

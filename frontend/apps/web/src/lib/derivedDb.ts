@@ -36,6 +36,40 @@ export interface DerivedDbSessions extends DerivedDbAccess { remove(): Promise<v
 export const DERIVED_SESSION_TIMEOUT_MS = 30_000;
 const SESSION_LOCK = 'almamesh-derived-session-v1';
 
+interface DocumentLifecycle {
+  isHidden(): boolean;
+  generation(): number;
+  subscribePagehide(cancel: () => void): () => void;
+}
+const documentLifecycles = new WeakMap<EventTarget, DocumentLifecycle>();
+function documentLifecycle(target: EventTarget): DocumentLifecycle {
+  const existing = documentLifecycles.get(target);
+  if (existing) return existing;
+  let hidden = false;
+  let generation = 0;
+  const cancellations = new Set<() => void>();
+  target.addEventListener('pagehide', () => {
+    hidden = true;
+    generation += 1;
+    for (const cancel of cancellations) cancel();
+  });
+  target.addEventListener('pageshow', () => { hidden = false; });
+  const lifecycle = {
+    isHidden: () => hidden,
+    generation: () => generation,
+    subscribePagehide: (cancel: () => void) => {
+      cancellations.add(cancel);
+      return () => { cancellations.delete(cancel); };
+    },
+  };
+  documentLifecycles.set(target, lifecycle);
+  return lifecycle;
+}
+// Observe teardown before the first lookup: a caller can still be awaiting
+// canonical hydration when pagehide occurs. This creates no SQL Worker.
+if (typeof window !== 'undefined') documentLifecycle(window);
+const teardownError = () => new DOMException('The derived database lookup was cancelled because the page is unloading.', 'AbortError');
+
 /**
  * The SQL library owns its sahpool exclusively until close. Keep that ownership
  * only for a logical import/query/transaction, never for the lifetime of a tab.
@@ -47,7 +81,9 @@ export function createDerivedDbSessions(options: {
   readonly locks: DerivedDbLocks;
   readonly epoch: () => Promise<number>;
   readonly timeoutMs?: number;
+  readonly lifecycle?: EventTarget;
 }): DerivedDbSessions {
+  const lifecycle = options.lifecycle ? documentLifecycle(options.lifecycle) : undefined;
   let generation = 0;
   let pendingOpen: Promise<SqlDatabase> | undefined;
   let pendingClose: Promise<void> | undefined;
@@ -62,9 +98,12 @@ export function createDerivedDbSessions(options: {
   }
   return {
     async withDb(work) {
+      if (lifecycle?.isHidden()) throw teardownError();
       const expectedGeneration = generation;
+      const expectedDocumentGeneration = lifecycle?.generation();
       const controller = new AbortController();
       const cancel = () => controller.abort(resetError());
+      const unsubscribeLifecycle = lifecycle?.subscribePagehide(() => controller.abort(teardownError()));
       const stopped = new Promise<never>((_resolve, reject) => {
         controller.signal.addEventListener('abort', () => reject(controller.signal.reason), { once: true });
       });
@@ -75,6 +114,7 @@ export function createDerivedDbSessions(options: {
       const check = () => {
         controller.signal.throwIfAborted();
         if (generation !== expectedGeneration) throw resetError();
+        if (lifecycle?.isHidden() || lifecycle?.generation() !== expectedDocumentGeneration) throw teardownError();
       };
       try {
         const expectedEpoch = await bounded(options.epoch());
@@ -89,7 +129,12 @@ export function createDerivedDbSessions(options: {
           if (pendingOpen || pendingClose) throw new Error('The derived database is still opening or closing. Retry the lookup.');
           let db: SqlDatabase | undefined;
           try {
-            const opening = Promise.resolve().then(() => options.openDatabase()).then(async (opened) => {
+            const opening = Promise.resolve().then(() => {
+              // WebKit refuses Worker construction after pagehide. Recheck in
+              // this microtask, immediately before entering the public opener.
+              check();
+              return options.openDatabase();
+            }).then(async (opened) => {
               if (controller.signal.aborted) {
                 // This runs outside the expired lock callback. A late handle is
                 // closed before migration or user work can observe it.
@@ -106,7 +151,14 @@ export function createDerivedDbSessions(options: {
             await bounded(opening);
             check();
             if (await bounded(options.epoch()) !== expectedEpoch) throw resetError();
-            const operation = (async () => { await migrateDerivedDb(db!); check(); return work(db!); })();
+            check();
+            const operation = (async () => {
+              await migrateDerivedDb(db!);
+              check();
+              const value = await work(db!);
+              check();
+              return value;
+            })();
             return await bounded(operation);
           } finally {
             // An adopted connection rolls back and releases its owner before
@@ -114,7 +166,13 @@ export function createDerivedDbSessions(options: {
             if (db) await close(db);
           }
         }, controller.signal);
-        try { return await bounded(locked); }
+        try {
+          const value = await bounded(locked);
+          // A completed callback still awaits close under the lock. Teardown
+          // during that close must not publish an old document's result.
+          check();
+          return value;
+        }
         catch (error) {
           // Ready handles finish their rollback/close before callers retry.
           // A stalled opener has no handle to wait on and releases promptly.
@@ -124,6 +182,7 @@ export function createDerivedDbSessions(options: {
       } finally {
         clearTimeout(timeout);
         activeCancellations.delete(cancel);
+        unsubscribeLifecycle?.();
       }
     },
     remove() {
@@ -144,6 +203,7 @@ function browserSessions(): DerivedDbSessions {
     removeDatabase: () => removeSqlDatabase(DERIVED_DB_NAME),
     locks: { request: (name, work, signal) => navigator.locks.request(name, { signal }, work) },
     epoch: async () => (await readDeletionTombstones()).restoreEpoch,
+    lifecycle: typeof window === 'undefined' ? undefined : window,
   });
   return sessions;
 }

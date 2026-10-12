@@ -1,12 +1,12 @@
 # Time travel and deterministic chat verification — 11 October 2026
 
-Status: local verification snapshot before hosted release. The backend/frontend gates and complete native Mac functional lane passed. On 11 October 2026 the user accepted local coherence and authorized CI/CD. Hosted Dagger, Mac artifact clearance and candidate live inference must pass before merge; their final outcomes belong to the release PR. Cold-boot aggregate memory, wider restore memory and physical iPhone verification remain open. Nothing in this document establishes deployment of these changes.
+Status: release blocked pending final acceptance. On 11 October 2026 the user accepted local coherence and authorized CI/CD. The latest product passed 6,128 native frontend tests and 6,127 Linux tests (one existing environment skip), with all build/type/lint checks; the preceding recovery product passed all 39 native functional cases. Final native functional, paired memory and hosted acceptance are pending. Cold-boot aggregate memory, wider restore memory and physical iPhone verification remain open. Nothing in this document establishes deployment of these changes.
 
-Subsequent hosted status: candidate `67addf61` is not accepted for release.
-Its real-provider nightly passed, but the Chromium command timed out twice and
-native Mac captured a Pyodide fatal error before its whole-job timeout. The
-investigation and follow-up changes below do not establish the trap's cause or
-resolution. Production remains unchanged pending complete final-head proof.
+Hosted candidates `67addf61` and `ba2837a2` are both rejected. Their outcomes,
+including real browser failures, command/job timeouts, a report-section timeout
+and thin-container/artifact harness failures, are recorded below. The follow-up
+changes do not establish the native crashes' cause or resolution. Production
+remains unchanged pending complete final-head proof.
 
 The engine computes planetary facts deterministically. AI interprets those facts; it cannot identify a person's life events from a chart. Historical questions must receive selected-period engine facts, and explicit questions about today must use the viewer's current day even while a historical conversation remains pinned.
 
@@ -98,10 +98,10 @@ Both cases assert that no `/models/` requests occur. The ten recorded `peakSingl
 
 ## Current candidate checks
 
-The candidate is on `codex/iphone-time-travel`, based on release #331 (`8d10fbbb`). The latest local frontend gate rebuilt the normal review build as `68e74f1fb9eb` at `2026-10-11T22:47:03.770Z`; the separate hooked review build is `606f55a2e572`, built at `2026-10-11T22:48:10.125Z`.
+The candidate is on `codex/iphone-time-travel`, based on release #331 (`8d10fbbb`). The latest local frontend gate rebuilt the normal review build as `b6fd7053e4c0` at `2026-10-11T23:51:12.479Z`. Post-ready recovery verification and hosted failures are recorded below; release remains blocked.
 
 - Backend gate in Dagger: 1,214 tests passed, 98.46% coverage; Ruff, formatting, mypy and complexity checks passed. This includes 28 new public-doc export regressions. Seven corrected slow-hit dates changed in reference fixtures; other fixture fields were unchanged. Log: `/tmp/almamesh-codex-pr333-backend-dagger-green.log`.
-- Final frontend gate: 6,020 tests plus four lint-contract checks passed, including the constrained-device memory policy, restore-generation, fatal-Worker containment, reload-diagnostic, artifact-scanner and real-tool-envelope regressions. TypeScript, ESLint, production build, public-route prerender checks and absence of test hooks passed. The configured Knip report completed successfully but still reports unused-code/dependency diagnostics; it is not a clean unused-code result. Log: `/tmp/almamesh-codex-pr333-fatal-containment-frontend-gate.log`.
+- Latest local frontend gate: 6,099 tests plus four lint-contract checks passed, including constrained-device memory, restore generations, terminal-Worker containment and recovery, reload diagnostics, artifact scanning and real-tool envelopes. TypeScript, ESLint, production build, public-route prerender checks and absence of test hooks passed. Knip completed with its documented unused-code/dependency diagnostics. Log: `/tmp/almamesh-codex-pr333-recovery-final-frontend-gate.log`.
 - Real-browser engine parity: 11/11 checks passed against the CPython reference, including updated predictive fixtures, explicit-date sensitivity, Moon windows, clean console and same-origin engine traffic.
 - The broad Chromium functional run passed 16 journeys and exposed one stale test assertion: it expected one city download instead of the new 25 bounded parts. After updating that assertion to the manifest count and proving no repeated part downloads, all seven affected journeys passed on the candidate before the constrained-device recall policy. These cover typed historical questions, multi-place timing, slow-save Back to today, Day/revisit, two tabs, September 2017 → today, and chat tool movement in both directions. The engine is real; provider replies in chat cases are locally stubbed.
 - Mac WebKit iPhone 15 functional checks before the recall policy passed 4/4: Day/revisit/Back, two tabs, September 2017 → today, and chat tool movement. Single-WebContent RSS peaks were 1069, 862, 1326 and 1362 MiB respectively. Those were functional checks, not memory-budget passes: the chat peaks exceeded the 1306 MiB reference allowance and motivated the recall policy change.
@@ -476,3 +476,298 @@ Logs and receipts: `/tmp/almamesh-codex-pr333-mac-67addf6.log`,
 `/tmp/almamesh-codex-pr333-sw-diagnostic-repro.log`,
 `/tmp/almamesh-codex-pr333-fatal-containment-frontend-gate.log` and
 `/tmp/almamesh-codex-pr333-timeout-followup-contracts.log`.
+
+
+## Minimal-container artifact test correction
+
+Candidate `ba2837a26cd8c8ebc70ecd8d4b1339475d2d1cca` exposed four artifact
+harness failures in hosted contracts `38183027018` (513 passed). The thin
+Bun container deliberately has no copied scanner or installed `fflate`.
+Its fallback `node` alias also dropped the detached fixture's eval argument;
+`ps` was unavailable. These fixtures passed on the fully installed Mac and
+therefore did not establish the container contract.
+
+The detached fixture now uses the guaranteed current runtime and a native
+process-group existence probe, with explicit spawn/exit diagnostics. Snapshot
+copy/path/stability assertions stay in the thin contract. The four actual
+finalizer/scanner CLI checks moved to the frontend suite, which already owns
+the scanner and its locked dependencies. The workflow still scans the actual
+snapshot before upload; no scanner bypass or test skip was added.
+
+The original selected-source closure reproduced 132 passed / four failed in
+the exact cached Bun image with network disabled. The corrected closure
+passed 136/136; frontend scanner tests passed 63/63. These focused results do
+not replace the complete gates or final-head hosted acceptance. Logs:
+`/tmp/almamesh-codex-pr333-contracts-bun-closure-red.log`,
+`/tmp/almamesh-codex-pr333-contracts-bun-closure-green.log` and
+`/tmp/almamesh-codex-pr333-artifact-integration-green.log`.
+
+## Hosted artifact metadata and completed local functional checks
+
+On the same `ba2837a2` candidate, Dagger `38183027018` completed all eleven
+other product gates successfully. The split Chromium time-travel commands ran
+9/9 cases in 7.2 minutes and 8/8 in 5.6 minutes, within the unchanged
+900-second command limits. The aggregate remains failed because of the four
+container fixture failures above; this is not final-head release acceptance.
+
+The native Mac memory job in `38183027014` completed its original-release
+baseline validation and five candidate Day/place journeys. Candidate peaks
+were 1,356, 1,353, 1,385, 1,306 and 1,341 MiB against 1,463 + 250 = 1,713 MiB.
+Evidence finalization passed, but the scanner rejected the public
+`GITHUB_ACTION` step identifier. Upload was skipped and the failed snapshot was
+removed; the original individual baseline samples and provenance cannot be
+recovered from the surviving log. This rejected job is not an artifact-backed
+memory acceptance result.
+
+The scanner now recognizes only the exact `GITHUB_ACTION` variable as public
+runner metadata. Eight new regressions failed before that correction; all
+77 scanner tests now pass. Plain and ZIP snapshots with the public step name
+pass; the same value in `GITHUB_TOKEN`, similarly named token/secret variables
+and an unrelated API key still fails and removes unsafe artifacts. No prefix
+allowlist was added.
+
+With these harness and metadata corrections, the complete local frontend
+gate passed 6,038 tests plus four lint contracts, types, lint, build,
+public-route checks and the production no-hooks check. Knip retained its
+documented diagnostics. The actual Dagger contracts entrypoint also passed
+517/517 in its selected-source Linux container and completed the Wrangler
+deployment dry-run. The normal build was `80eac01dd855`, built at
+`2026-10-11T23:27:27.854Z`.
+
+The complete local native Mac functional lane on the `ba2837a2` application
+passed 28/28 travel, 8/8 portable-state and 2/2 boot-recovery cases with zero
+retries. Both service-worker diagnostic receipts contained 61 events, all nine
+phases and no recorded errors. Its finalized snapshot passed the scanner.
+These results do not cover the subsequent post-ready fatal recovery fix and
+do not explain the earlier hosted Pyodide trap or establish physical iPhone
+Safari acceptance.
+
+Logs: `/tmp/almamesh-codex-pr333-journeys-ba2837a.log`,
+`/tmp/almamesh-codex-pr333-mac-ba2837a-memory.log`,
+`/tmp/almamesh-codex-pr333-github-action-scanner-red.log`,
+`/tmp/almamesh-codex-pr333-github-action-scanner-green.log`,
+`/tmp/almamesh-codex-pr333-action-final-frontend-gate.log`,
+`/tmp/almamesh-codex-pr333-harness-final-dagger-contracts.log`,
+`/tmp/almamesh-codex-pr333-local-functional-ba2837a.log` and
+`/tmp/almamesh-codex-pr333-local-functional-ba2837a-scan.log`.
+
+## Post-ready engine recovery
+
+The next audit reproduced a recovery defect: fatal compute containment closed
+the client, but the runtime retained its resolved engine and bootstrap promise.
+Retry could therefore reuse the closed Worker. The same defect applied to
+terminal client errors, unreadable messages and request deadlines.
+
+The runtime now invalidates readiness and notifies the provider once for an
+active terminal failure. Generation guards surround memo access and awaited
+results, so retained references, cached calls and late failures cannot return
+old results or dispose a replacement. Exact client terminal state handles
+non-Wasm closure without classifying ordinary calculation/network errors as
+fatal. Boot-time Wasm retry remains unchanged; failed calculations are not
+automatically replayed.
+
+The provider fences pending boot awaiters and disposes the old runtime before
+an explicit shared recovery. Time-travel and Life Atlas Retry use the fresh
+engine, while changed inputs and unmounted views cannot resume old requests.
+The predictive retry gate releases after boot so an older long calculation
+cannot block a new profile. Each submitted chat question lazily shares one
+recovery across current, historical and placed-day tools; natal-only questions
+do not reboot, and a failed recovery is not repeated within the same turn.
+
+Failing regressions preceded these changes. Focused verification passed 151
+browser runtime/client checks, 78 consumer checks, 34 provider checks and 120
+chat/tool checks (overlapping suites, not additive totals). Independent source
+review found no material integration bugs. The full native frontend gate
+passed 6,099 tests plus four lint contracts. The actual Linux Dagger frontend
+gate passed 6,098 tests plus four lint contracts, with one existing
+`node:sqlite` fixture-identity test skipped because its Node lacks that builtin;
+the native gate ran and passed that test. All 517 selected CI contracts passed.
+
+The new browser regression injects one correlated terminal error after a real
+engine boot. It requires an explicit Retry, a second real Worker, a newly
+computed chart and March 2019 transits without a page reload. Browser execution
+subsequently passed on the frozen recovery product: all 28 native travel,
+eight portable-state and three boot cases passed with zero retries. The new
+case passed in 22.5 seconds and verified same-document fresh-Worker recovery.
+This run precedes the later derived-database teardown guard; complete final
+source native/hosted acceptance remains pending. Its test-only correlated error
+does not reproduce the hosted native crash or explain the Wasm trap's cause.
+
+Logs: `/tmp/almamesh-codex-pr333-runtime-fatal-recovery-red.log`,
+`/tmp/almamesh-codex-pr333-runtime-terminal-recovery-red.log`,
+`/tmp/almamesh-codex-pr333-consumer-fatal-retry-red.log`,
+`/tmp/almamesh-codex-pr333-predictive-recovery-liveness-red.log`,
+`/tmp/almamesh-codex-provider-fatal-red.log`,
+`/tmp/almamesh-codex-pr333-chat-fatal-retry-red.log`,
+`/tmp/almamesh-codex-pr333-recovery-final-frontend-gate.log`,
+`/tmp/almamesh-codex-pr333-recovery-final-dagger-frontend.log` and
+`/tmp/almamesh-codex-pr333-recovery-final-contracts.log`. Browser log:
+`/tmp/almamesh-codex-pr333-local-functional-recovery.log`.
+
+## Additional rejected hosted results on ba2837a2
+
+Nightly `38183033157` passed seven required real-provider cases, including the
+new September 2017 → grounded today → tool return journey in 1.3 minutes. The
+full-report case failed: run three's `guidance2` section reached its production
+300,000 ms deadline. Separately, successful runs one's and two's technical
+median was 271.5 words against the 273-word threshold. The timeout is excluded
+from that median and does not explain the short result. The final none-skipped
+guard did not execute. This is a failed acceptance run.
+
+Native Mac functional `114599420607` completed travel with 26 passes and two
+failures in 38 minutes: a desktop SQL Worker access-control page error during
+reload, and an iPhone 15 viewport page crash before initial Life Atlas
+readiness. Both service-worker lifecycle cases passed; no Pyodide out-of-bounds
+fatal appears in the surviving log. Portable-state tests completed three
+passes before the 45-minute job cancellation; boot recovery did not run.
+Evidence finalization, scanning and upload succeeded. Neither the native
+failures nor the timeout can be treated as acceptance. Diagnostics and the
+report-model configuration require investigation before another release claim.
+
+Logs: `/tmp/almamesh-codex-pr333-nightly-ba2837a.log` and
+`/tmp/almamesh-codex-pr333-mac-functional-ba2837a.log`.
+
+## Timeout separation and retained native diagnostics
+
+The timeout layers are distinct: Dagger's per-command watchdog is 900 seconds,
+its gate runner is 45 minutes, and its hosted jobs are 60 minutes. Native Mac
+jobs are 45 minutes. Nightly's job is 120 minutes; the full-report case has a
+40-minute bound, each default report run has a 10-minute deadline, and production
+report sections have a five-minute deadline. Predictive Worker requests have
+their own three-minute application deadline. These limits were not raised.
+
+The Mac workflow now schedules memory, travel and portable/boot as three
+independent 45-minute jobs. Travel retains every one of its 28 cases; the
+portable job retains all eight state cases and all three boot cases. Every
+browser invocation still uses zero retries. The stable acceptance job requires
+all three jobs to succeed, including rejecting cancelled or skipped lanes.
+Memory retains five original boots followed by five candidate Day journeys on
+the same host, without test hooks or a scalar baseline override. Local
+`functional` remains the complete travel + portable + boot sequence.
+
+This prevents travel consuming the portable/boot job's budget; it does not fix
+or waive browser errors. Failing contracts preceded the split: 13 new failures
+became 155 passing ingress contracts; 79 scanner checks passed. An independent
+source review found no material issue. Hosted timing and complete final-head
+acceptance remain pending.
+
+The retained desktop trace maps the reload page error to the derived database's
+top-level SQL Worker constructor. It occurred after reload began and before the
+new document committed. The exact initiating lookup and pagehide timing were
+not recorded. The opener has asynchronous epoch/lock gaps without a pagehide
+guard; a regression and a guard are being prepared without relaxing the fatal
+page-error assertion.
+
+The iPhone 15 viewport crash preceded initial Life Atlas readiness and all
+chat/provider requests. Its last sole observed WebContent process measured
+1,019 MiB RSS just before disappearing (peak 1,024 MiB); the host reported 74%
+free memory and no swap. These measurements do not identify the termination
+cause or exclude a per-process limit. No native crash report or unified log was
+retained in the uploaded snapshot. The last navigation requested canonical SQL
+and EdgeProc workers, with no new chart Worker/Pyodide request afterward; this
+does not establish a Pyodide cause. Native termination capture remains an
+evidence gap.
+
+The real full-report test also used the generic DeepSeek test model instead of
+the production report model. Its default now imports `REPORT_ENGINE_MODEL`
+(GPT-6 Luna), retaining the dedicated alternate-model override, all three full
+runs, all nine sections, the production 300-second section deadline and all
+length/cost/provider assertions. Safe section lifecycle metadata was added.
+Failing model/diagnostic contracts preceded the correction: eight failures
+became 31 passing contracts; the combined focused suite passed 49 checks.
+The follow-up stdout regression reproduced missing hosted diagnostics with five
+failures; 36 model/diagnostic contracts and 54 combined focused checks now pass.
+Each run's `finally` emits at most 18 closed-allowlist metadata entries, including
+failed runs, without report/chart/prompt/key/request/raw-error content.
+This correction has not yet supplied a successful Luna acceptance run.
+
+Logs: `/tmp/almamesh-codex-mac-three-lanes-red.log`,
+`/tmp/almamesh-codex-mac-three-lanes-green.log`,
+`/tmp/almamesh-codex-mac-three-lanes-scanner.log` and
+`/tmp/almamesh-codex-pr333-report-model-default-red.log`.
+
+## Derived SQL teardown guard
+
+Thirteen failing regressions reproduced delayed-session teardown gaps. The app
+now observes pagehide/pageshow before the first derived lookup, without eagerly
+opening SQLite or reading the ledger. One listener pair per target tracks the
+document generation; active sessions unsubscribe their cancellation callbacks
+when finished. Hidden documents reject new lookups, and pageshow permits fresh
+sessions without reviving abandoned work.
+
+Checks immediately before the public SQL opener, before migration, after user
+work and after connection close prevent late Worker creation and publication of
+old results. Unadopted late handles still close, and ready handles retain the
+existing rollback/close barrier. Reset generation, deletion and native-lock
+semantics are unchanged. The public removal API uses OPFS directly and does not
+create a Worker, so this change does not expand destructive-operation behavior.
+
+All 24 owned session checks and 97 checks across seven related suites passed;
+strict web types and scoped lint passed. Independent source review found no
+material issue. This proves the tested lifetime guard; it does not establish
+the unrecorded hosted pagehide timing or explain the separate iPhone page crash.
+Complete gates and native checks on this final product remain pending.
+
+The subsequent complete native frontend gate passed 6,128 tests plus four lint
+contracts, strict types, lint, build, public-route verification and the check
+that production scripts contain no boot-fault/test diagnostic hooks. Knip
+retains its documented diagnostic backlog. Normal review build:
+`e59cfce23f34`, built `2026-10-12T00:15:23.358Z`. The actual Linux Dagger
+frontend gate then passed 6,127 tests plus four lint contracts, with the same
+single existing `node:sqlite` fixture-identity skip described above. All build,
+types, lint and production-route/hook checks passed there as well. Final native
+and hosted acceptance remain pending.
+
+Logs: `/tmp/almamesh-codex-derived-pagehide-red.log`,
+`/tmp/almamesh-codex-derived-pagehide-expanded-red.log`,
+`/tmp/almamesh-codex-derived-pagehide-final-boundary-red.log` and
+`/tmp/almamesh-codex-derived-pagehide-final.log`. Complete gate:
+`/tmp/almamesh-codex-pr333-final-source-frontend-gate.log`; Linux:
+`/tmp/almamesh-codex-pr333-final-source-dagger-frontend.log`.
+
+## Observable native collection and final harness checks
+
+Each native job now has an explicit `always()` collection step before evidence
+finalization, in addition to normal shell cleanup. A non-hidden
+`native-collection-status.json` records missing/searchable roots, matched and
+copied report counts, copy failures and unified-log success/error/timeout.
+Collection is bounded to 32 considered reports, 16 MiB per report and 64 MiB
+reserved reads; excluded reports receive explicit limit statuses. Fixed-size
+reads reject changed/truncated files. Find calls have five-second limits and
+the unified-log query has a 15-second limit; later attempts append logs rather
+than erasing an earlier capture.
+
+Diagnostic unavailability is recorded without changing product acceptance.
+Failure to write the required manifest is fatal; browser failures, snapshot
+finalization, scanning and upload retain their failure behavior. A hard runner
+termination can still leave incomplete evidence. No native cause is inferred
+from a missing report or a successful zero-report collection.
+
+Nine initial collector regressions and three later copy-cap regressions failed
+before their fixes. All 176 ingress contracts now pass. Root verification
+passed all 557 selected contracts across 12 files and 79 actual scanner/CLI
+checks. Tests use Bun's executable in the thin environment; the selected source
+closure adds only the existing dependency-free crash-report helper. Bash
+syntax, scoped lint and independent source review passed. Actual Linux
+contracts and native collection remain pending at this point.
+
+The first actual Linux contracts gate passed 556 checks but failed the TERM
+fixture: Linux's `bash -c` function source was `environment`, so the test's
+collector resolved its adjacent helper from the wrong directory. Its stderr
+confirmed the missing module. The test now executes a physical extracted Bash
+file with the exact helper beside it, matching actual lane invocation; the
+143 exit, complete manifest and cleanup-marker assertions remain, with added
+no-error/no-stderr checks. Production code is unchanged. The exact 45-file thin
+closure on pinned Bun 1.3.5 reproduced red then passed the targeted case and all
+176 ingress contracts without network, Node or `ps`. The full root Dagger
+rerun passed all 557 selected checks and the deployment dry-run dependency.
+Native collection and final native/memory acceptance remain pending.
+
+Logs: `/tmp/almamesh-codex-pr333-native-collector-green.log`,
+`/tmp/almamesh-codex-pr333-native-copy-caps-red.log`,
+`/tmp/almamesh-codex-pr333-final-source-contracts.log` and
+`/tmp/almamesh-codex-pr333-final-source-scanner.log`. Linux failure and fix:
+`/tmp/almamesh-codex-pr333-final-source-dagger-contracts.log`,
+`/tmp/almamesh-codex-pr333-native-term-thin-red.log` and
+`/tmp/almamesh-codex-pr333-native-ingress-thin-green.log`. Full green Dagger:
+`/tmp/almamesh-codex-pr333-final-source-dagger-contracts-green.log`.

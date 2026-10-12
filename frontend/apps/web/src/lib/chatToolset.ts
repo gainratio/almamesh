@@ -4,7 +4,7 @@
  * router, and the one "today": the viewer's (device) zone for every page
  * (open question 1, decided 2026-10-08). Pages pass no zone.
  */
-import { devicePolicy } from '@almamesh/browser';
+import { devicePolicy, type ChartEngine } from '@almamesh/browser';
 import type { SiderealChart } from '@almamesh/browser/types';
 import {
   AGENT_LIMITS,
@@ -176,12 +176,24 @@ async function preparePinned(
 export function buildChatToolset(input: BuildChatToolsetInput): ChatToolset {
   const zone = input.viewerZone ?? viewerTimeZone;
   const natalPrompt = input.promptChart ?? input.chart;
+  // Each submitted question owns a toolset. Recover lazily if this explicit
+  // turn needs calculations after an engine failure, sharing one fresh boot
+  // across its tools. Construction/natal-only questions never start a reboot,
+  // and a failed recovery is not replayed within the same turn.
+  const failedEngine = input.engine?.error ? input.engine : null;
+  let recovery: Promise<ChartEngine> | null = null;
+  const engine = failedEngine ? {
+    ...failedEngine,
+    engine: null,
+    startBootstrap: () => {},
+    whenReady: () => recovery ??= failedEngine.reboot(),
+  } : input.engine;
   let todayChart: SiderealChart | undefined;
   let todayChartNowMs: number | undefined;
 
   const loadCurrentChart = async (context: AgentToolContext): Promise<SiderealChart> => {
     if (todayChart && todayChartNowMs === context.now.getTime()) return todayChart;
-    const runtime = await readyEngine(input.engine);
+    const runtime = await readyEngine(engine);
     todayChart = await ensureCurrentPlanetaryContext({
       chart: input.chart,
       profileKey: input.profileKey,
@@ -215,12 +227,12 @@ export function buildChatToolset(input: BuildChatToolsetInput): ChatToolset {
         chart: input.chart,
         profileKey: input.profileKey,
         birth: input.birth,
-        engine: input.engine,
+        engine,
       }),
       periodSkyAllowed: skyAllowed,
       ...(activePin ? { pinned: pinnedTiming(activePin) } : {}),
       ...(skyAllowed
-        ? { loadMoonWindow: createMoonWindowLoader(input.engine), placeFromRef: reader }
+        ? { loadMoonWindow: createMoonWindowLoader(engine), placeFromRef: reader }
         : {}),
     });
     return [

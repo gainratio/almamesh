@@ -208,6 +208,11 @@ export class ChartEngineClient {
     throw response.ok ? new Error("unexpected response kind") : errorFromWorker(response.error, response.errorName);
   }
 
+  /** The exact terminal error, or null while this Worker can accept requests. */
+  public closedError(): Error | null {
+    return this.#closed;
+  }
+
   public terminate(): void {
     this.#close(new Error("chart worker terminated"));
   }

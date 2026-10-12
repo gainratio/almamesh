@@ -6,7 +6,7 @@ The user reviewed this local candidate and authorized the CI/CD release process 
 
 Open <http://127.0.0.1:4297> while the local preview is running. This is a production build without test hooks. Browser storage belongs to this local origin, so existing production data does not appear automatically.
 
-Review build: `68e74f1fb9eb`, built `2026-10-11T22:47:03.770Z` by the latest frontend gate. The candidate is on `codex/iphone-time-travel`, based on release #331 (`8d10fbbb`). Reload an already-open local tab to load this candidate. This adds fatal-Worker containment; the earlier hosted Pyodide trap remains unexplained, and release is blocked pending investigation and final hosted checks.
+Review build: `e59cfce23f34`, built `2026-10-12T00:15:23.358Z` by the latest frontend gate. The candidate is on `codex/iphone-time-travel`, based on release #331 (`8d10fbbb`). Reload an already-open local tab to load this candidate. This adds terminal-Worker containment, explicit fresh-engine recovery and a derived-SQL teardown guard. Hosted native failures remain under investigation, and release is blocked pending their resolution and final hosted checks.
 
 Use **Settings → Data** to import an encrypted `.almamesh` backup, or create a test profile. Configure AI locally to exercise a real provider; time travel itself works without AI. Never paste keys into a test report or issue.
 

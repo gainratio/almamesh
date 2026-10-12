@@ -447,6 +447,7 @@ exec ${inline.join(" ")}`,
           "frontend/apps/web/package.json",
           // The macOS WebKit lane contract reads its script and the configs it runs.
           "frontend/apps/web/scripts/webkit-macos-lane.sh",
+          "frontend/apps/web/scripts/crashReportSummary.mjs",
           "frontend/apps/web/scripts/webkit-memory-baseline.mjs",
           "frontend/apps/web/playwright.time-travel.config.ts",
           "frontend/apps/web/playwright.portable-invariants.config.ts",
