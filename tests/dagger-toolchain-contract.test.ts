@@ -230,7 +230,7 @@ describe("toolchain image workflow", () => {
               uses: daggerAction,
               env: { XDG_CONFIG_HOME: "${{ github.workspace }}/.github/xdg", GITHUB_TOKEN: "${{ github.token }}" },
               with: {
-                version: "0.21.8",
+                version: "0.21.10",
                 call: "publish-toolchain --github-token=env:GITHUB_TOKEN"
                   + " --repository=${{ github.repository }} --repository-owner=${{ github.repository_owner }}",
               },

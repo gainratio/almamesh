@@ -59,7 +59,7 @@ jobs:
           RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
           TRIGGER_WORKFLOW: ${{ github.event.workflow_run.path }}
         with:
-          version: "0.21.8"
+          version: "0.21.10"
           verb: call
           args: >-
             deploy

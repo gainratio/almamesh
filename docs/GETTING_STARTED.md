@@ -17,7 +17,7 @@ Every command below was run from a fresh clone on macOS (Apple Silicon) on
 | Node | 22.x (CI image `node:22`) | runs Vitest, ESLint and the scripts under `frontend/apps/web/scripts/` |
 | poppler | any | `brew install poppler` or `sudo apt-get install -y poppler-utils`; only for PDF tests |
 | Playwright browsers | from the lockfile | `cd frontend/apps/web && bunx playwright install chromium webkit`; only for e2e journeys |
-| [Dagger](https://dagger.io/) | v0.21.8, pinned in `dagger.json` | only to run the full CI pipeline locally (`dagger check`); needs Docker |
+| [Dagger](https://dagger.io/) | v0.21.10, pinned in `dagger.json` | only to run the full CI pipeline locally (`dagger check`); needs Docker |
 
 Local traps we hit:
 

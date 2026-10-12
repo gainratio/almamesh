@@ -30,6 +30,6 @@ jobs:
           # Engine config: pull Docker Hub images via the GHCR mirror (.github/xdg/dagger/engine.json).
           XDG_CONFIG_HOME: ${{ github.workspace }}/.github/xdg
         with:
-          version: "0.21.8"
+          version: "0.21.10"
           verb: call
           args: live-probe
