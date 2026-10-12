@@ -180,9 +180,8 @@ test('[contract/stubbed] chat reuses the reading + sends the fast chat model on 
     },
     [LLM_SETTINGS_KEY, JSON.stringify(LLM_CONFIG)] as const,
   );
-  // Pin a full-tier device (devicePolicy: >= 8 GB and > 2 cores): only full
-  // tier registers resolve_place, so the pinned tool list below must not
-  // depend on the runner's hardware (time travel step C).
+  // Pin a full-tier device for this desktop journey. Every tier offers the
+  // same local capabilities; separate iPhone journeys exercise minimal.
   await page.addInitScript((tier) => {
     for (const [name, value] of Object.entries(tier)) {
       Object.defineProperty(Navigator.prototype, name, { get: () => value, configurable: true });
@@ -433,12 +432,13 @@ test('[contract/stubbed] chat reuses the reading + sends the fast chat model on 
   };
   expect(firstAgentRequest.stream).toBe(true);
   expect(firstAgentRequest.tool_choice).toBe('auto');
-  // Extended 2026-10 (time travel step C): full tier adds resolve_place.
+  // The live turn offers the local read tools and deferred date movement.
   expect(firstAgentRequest.tools.map((tool) => tool.function.name)).toEqual([
     'get_current_datetime',
     'get_chart_facts',
     'get_timing',
     'resolve_place',
+    'time_travel',
   ]);
 
   const secondAgentRequest = agentRequestBodies[1] as {

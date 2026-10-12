@@ -77,6 +77,8 @@ htmlcov/
 playwright-report/
 test-results/
 webkit-lane-artifacts/
+webkit-lane-artifacts-*/
+webkit-lane-evidence-*/
 
 # wrangler scratch dir (wrangler pages dev — see docs/deploy/almamesh-com.md)
 .wrangler/
@@ -108,6 +110,8 @@ docs/superpowers/
 
 # Local-only docs (owner runbooks / private notes — never committed)
 docs/*.local.md
+# Host Git inventory passed to the source-only backend CI container.
+/.almamesh-public-docs.json
 
 # Skyfield ephemeris (downloaded at runtime, ~17MB)
 *.bsp

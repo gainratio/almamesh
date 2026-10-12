@@ -51,7 +51,56 @@ beforeEach(() => {
   useMeshReadingsStore.setState({ byPair: {} });
 });
 
+describe('remote period sky cleanup', () => {
+  it('purges a deleted profile in another open tab', async () => {
+    const target = useProfilesStore.getState().createProfile('Target');
+    useProfilesStore.getState().createProfile('Survivor');
+    const purge = vi.fn(async () => undefined);
+    await applyRemoteDeletionNotice({ kind: 'profile', profileId: target, chartIds: [], threadIds: [] }, {
+      deleteMemoryForProfile: async () => undefined,
+      deleteMemoryForThread: async () => undefined,
+      deletePeriodSkyForProfile: purge,
+    });
+    expect(purge).toHaveBeenCalledWith(target);
+  });
+
+  it.each(['reset', 'replace'] as const)('clears period skies when a remote %s completes', async (operation) => {
+    const clearPeriodSky = vi.fn(async () => undefined);
+    await applyRemoteDeletionNotice({ kind: 'dataset', operation, phase: 'complete' }, {
+      deleteMemoryForProfile: async () => undefined,
+      deleteMemoryForThread: async () => undefined,
+      refreshPreferences: async () => undefined,
+      clearPeriodSky,
+    });
+    expect(clearPeriodSky).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('deleteProfileData', () => {
+  it('purges the deleted profile period skies after the durable fence', async () => {
+    const target = useProfilesStore.getState().createProfile('Target');
+    useProfilesStore.getState().createProfile('Survivor');
+    const calls: string[] = [];
+    await deleteProfileData(target, {
+      deleteMemoryForProfile: async () => undefined,
+      recordDeletionTombstones: async () => { calls.push('fence'); },
+      deletePeriodSkyForProfile: async (id) => { expect(id).toBe(target); calls.push('sky'); },
+    });
+    expect(calls).toEqual(['fence', 'sky']);
+  });
+
+  it('finishes source deletion when the recomputable sky purge fails', async () => {
+    const target = useProfilesStore.getState().createProfile('Target');
+    const survivor = useProfilesStore.getState().createProfile('Survivor');
+    const purge = vi.fn(async () => { throw new Error('OPFS gone'); });
+    await deleteProfileData(target, {
+      deleteMemoryForProfile: async () => undefined,
+      recordDeletionTombstones: async () => undefined,
+      deletePeriodSkyForProfile: purge,
+    });
+    expect(purge).toHaveBeenCalledWith(target);
+    expect(Object.keys(useProfilesStore.getState().profiles)).toEqual([survivor]);
+  });
   it('does not resolve until the deleted profile snapshot is durable', async () => {
     const target = useProfilesStore.getState().createProfile('Target');
     useProfilesStore.getState().createProfile('Survivor');
@@ -572,6 +621,22 @@ describe('deleteChatThreadData', () => {
 });
 
 describe('durable memory rebuild recovery', () => {
+  it('defers semantic rebuild on a constrained device without consuming its durable marker', async () => {
+    const readLedger = vi.fn().mockResolvedValue({ memoryRebuildPending: true, activeEpoch: 4 });
+    const waitForChat = vi.fn().mockResolvedValue(undefined);
+    const rebuild = vi.fn().mockResolvedValue(undefined);
+    const complete = vi.fn().mockResolvedValue(undefined);
+
+    await resumePendingMemoryRebuild({
+      semanticMemoryAllowed: () => false, readLedger, waitForChat, rebuild, complete,
+    });
+
+    expect(readLedger).not.toHaveBeenCalled();
+    expect(waitForChat).not.toHaveBeenCalled();
+    expect(rebuild).not.toHaveBeenCalled();
+    expect(complete).not.toHaveBeenCalled();
+  });
+
   it('rebuilds from durable chat and clears the marker only after success', async () => {
     const threadId = useChatStore.getState().ensureThread('profile', 'chart');
     useChatStore.getState().appendMessage(threadId, 'user', 'restored question');
@@ -579,6 +644,7 @@ describe('durable memory rebuild recovery', () => {
     const complete = vi.fn().mockResolvedValue(undefined);
 
     await resumePendingMemoryRebuild({
+      semanticMemoryAllowed: () => true,
       readLedger: vi.fn().mockResolvedValue({
         version: 1,
         activeEpoch: 4,
@@ -608,6 +674,7 @@ describe('durable memory rebuild recovery', () => {
     const complete = vi.fn();
     await expect(
       resumePendingMemoryRebuild({
+        semanticMemoryAllowed: () => true,
         readLedger: vi.fn().mockResolvedValue({
           version: 1,
           activeEpoch: 4,

@@ -1,0 +1,337 @@
+[
+  {
+    "query": "bogota",
+    "results": [
+      25
+    ]
+  },
+  {
+    "query": "Bogotá",
+    "results": [
+      25
+    ]
+  },
+  {
+    "query": "BOGOTÁ, Colombia",
+    "results": [
+      25
+    ]
+  },
+  {
+    "query": "Sao Paulo",
+    "results": [
+      14,
+      14230,
+      22352
+    ]
+  },
+  {
+    "query": "são paulo brazil",
+    "results": [
+      14
+    ]
+  },
+  {
+    "query": "Paris FR",
+    "results": [
+      140,
+      16522
+    ]
+  },
+  {
+    "query": "paris, france",
+    "results": [
+      140,
+      16522
+    ]
+  },
+  {
+    "query": "paris tx",
+    "results": [
+      140,
+      16522
+    ]
+  },
+  {
+    "query": "delhi",
+    "results": [
+      9,
+      1326
+    ]
+  },
+  {
+    "query": "New Delhi",
+    "results": [
+      1326,
+      1025,
+      1376,
+      1384,
+      1518,
+      5024,
+      6063,
+      7112
+    ]
+  },
+  {
+    "query": "york",
+    "results": [
+      2838,
+      10118,
+      20897,
+      23550,
+      19,
+      605,
+      2508,
+      3863
+    ]
+  },
+  {
+    "query": "new york usa",
+    "results": []
+  },
+  {
+    "query": "london gb",
+    "results": [
+      26,
+      1203
+    ]
+  },
+  {
+    "query": "london uk",
+    "results": [
+      26,
+      1203
+    ]
+  },
+  {
+    "query": "Dubai AE",
+    "results": [
+      94
+    ]
+  },
+  {
+    "query": "dubai uae",
+    "results": [
+      94
+    ]
+  },
+  {
+    "query": "springfield",
+    "results": [
+      2602,
+      2823,
+      3823,
+      7491,
+      7652,
+      13875,
+      17350,
+      22358
+    ]
+  },
+  {
+    "query": "santiago",
+    "results": [
+      46,
+      4095,
+      9646,
+      11811,
+      292,
+      622,
+      719,
+      1177
+    ]
+  },
+  {
+    "query": "san",
+    "results": [
+      16506,
+      46,
+      136,
+      154,
+      207,
+      230,
+      244,
+      292
+    ]
+  },
+  {
+    "query": "la",
+    "results": [
+      16,
+      35,
+      109,
+      444,
+      520,
+      546,
+      626,
+      672
+    ]
+  },
+  {
+    "query": "mexico",
+    "results": [
+      10181,
+      4,
+      14845,
+      162,
+      178,
+      202,
+      217,
+      254
+    ]
+  },
+  {
+    "query": "méxico df",
+    "results": [
+      10181
+    ]
+  },
+  {
+    "query": "zürich",
+    "results": [
+      1221,
+      8406,
+      9729,
+      9940,
+      11964,
+      12717,
+      14103,
+      14405
+    ]
+  },
+  {
+    "query": "zurich",
+    "results": [
+      1221,
+      8406,
+      9729,
+      9940,
+      11964,
+      12717,
+      14103,
+      14405
+    ]
+  },
+  {
+    "query": "kyiv",
+    "results": [
+      100
+    ]
+  },
+  {
+    "query": "st petersburg",
+    "results": [
+      200,
+      674,
+      1117,
+      1143,
+      1392,
+      1557,
+      1592,
+      2883
+    ]
+  },
+  {
+    "query": "saint petersburg russia",
+    "results": [
+      45
+    ]
+  },
+  {
+    "query": "xx",
+    "results": [
+      5896,
+      7176,
+      8954,
+      19295,
+      22420
+    ]
+  },
+  {
+    "query": "qqqq",
+    "results": []
+  },
+  {
+    "query": " ",
+    "results": []
+  },
+  {
+    "query": "San Francisco CA",
+    "results": [
+      417,
+      7727,
+      8159,
+      19951,
+      20826,
+      23034
+    ]
+  },
+  {
+    "query": "San Francisco California",
+    "results": [
+      417,
+      7727,
+      8159,
+      19951,
+      20826,
+      23034
+    ]
+  },
+  {
+    "query": "united states",
+    "results": [
+      19,
+      57,
+      105,
+      130,
+      131,
+      132,
+      192,
+      193
+    ]
+  },
+  {
+    "query": "usa",
+    "results": [
+      2861,
+      20665,
+      23714,
+      63,
+      272,
+      451,
+      965,
+      1038
+    ]
+  },
+  {
+    "query": "london, united kingdom",
+    "results": [
+      26
+    ]
+  },
+  {
+    "query": "saint",
+    "results": [
+      45,
+      1496,
+      2468,
+      2472,
+      3008,
+      3197,
+      3541,
+      4469
+    ]
+  },
+  {
+    "query": "c%ty",
+    "results": []
+  },
+  {
+    "query": "c_ty",
+    "results": []
+  },
+  {
+    "query": "\"city\"",
+    "results": []
+  }
+]

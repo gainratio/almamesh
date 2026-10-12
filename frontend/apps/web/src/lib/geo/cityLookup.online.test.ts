@@ -1,6 +1,9 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 
 import { searchCities } from './cityLookup';
+import { installCityTestDatabase } from './__tests__/cityTestDb';
+
+installCityTestDatabase();
 
 const CHENNAI_ONLINE = {
   name: 'Chennai',

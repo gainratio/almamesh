@@ -15,6 +15,9 @@ vi.mock('../periodSky', async (importOriginal) => {
 });
 
 import { buildChatToolset, type BuildChatToolsetInput } from '../chatToolset';
+import { installCityTestDatabase } from '../geo/__tests__/cityTestDb';
+
+installCityTestDatabase();
 
 const CHART = { ayanamsa_value: 23.7, lagna: {}, planets: [], houses: [], yogas: [] } as unknown as SiderealChart;
 const BIRTH = {

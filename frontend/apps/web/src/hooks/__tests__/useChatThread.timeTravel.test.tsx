@@ -300,3 +300,193 @@ describe('Change then Back to today with a slow save', () => {
     expect(pinned).not.toBe(today);
   });
 });
+
+describe('chat tool actions apply after a successful durable turn', () => {
+  beforeEach(() => {
+    useTimeTravelStore.setState({ moments: {} });
+    llm.configured = true;
+    vi.mocked(waitForStoreSaved).mockImplementation(async () => undefined);
+  });
+  afterEach(() => vi.mocked(waitForStoreSaved).mockImplementation(async () => undefined));
+
+  it('keeps the current pin during streaming, then moves Dashboard and the next question', async () => {
+    const { result } = renderHook(() => useChatThread(PROFILE, CHART));
+    await act(() => result.current.pin(YEAR));
+    const originalThread = result.current.threadId;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    let pending!: Promise<void>;
+    const stream = vi.fn(async (input: ChatStreamInput) => {
+      input.onTravel?.({ kind: 'travel', asOf: JUNE });
+      await gate;
+      return 'Moving to June.';
+    });
+    act(() => { pending = result.current.submit('Take me to June', stream); });
+    await act(async () => { await Promise.resolve(); });
+    expect(result.current.asOf).toEqual(YEAR);
+    expect(useTimeTravelStore.getState().moments[PROFILE]).toEqual(YEAR);
+    await act(async () => { release(); await pending; });
+    expect(result.current.threadId).toBe(originalThread);
+    expect(result.current.asOf).toEqual(JUNE);
+    expect(useTimeTravelStore.getState().moments[PROFILE]).toEqual(JUNE);
+    const next = vi.fn(async (_input: ChatStreamInput) => 'June facts.');
+    await act(() => result.current.submit('What about work?', next));
+    expect(next.mock.calls[0]?.[0].asOf).toEqual(JUNE);
+  });
+
+  it('a tool Back to today leaves the pin and clears the Dashboard moment', async () => {
+    const { result } = renderHook(() => useChatThread(PROFILE, CHART));
+    await act(() => result.current.pin(YEAR));
+    await act(() => result.current.submit('Back to today', async ({ onTravel }) => {
+      onTravel?.({ kind: 'back_to_today' });
+      return 'Returning to today.';
+    }));
+    expect(result.current.asOf).toBeUndefined();
+    expect(useTimeTravelStore.getState().moments[PROFILE]).toBeUndefined();
+  });
+
+  it.each(['stream', 'save'])('discards a pending move after a %s failure', async (failure) => {
+    const { result } = renderHook(() => useChatThread(PROFILE, CHART));
+    await act(() => result.current.pin(YEAR));
+    if (failure === 'save') vi.mocked(waitForStoreSaved).mockRejectedValueOnce(new Error('disk full'));
+    await act(() => result.current.submit('Go to June', async ({ onTravel }) => {
+      onTravel?.({ kind: 'travel', asOf: JUNE });
+      if (failure === 'stream') throw new Error('provider failed');
+      return 'Moving.';
+    }));
+    expect(result.current.asOf).toEqual(YEAR);
+    expect(useTimeTravelStore.getState().moments[PROFILE]).toEqual(YEAR);
+  });
+
+  it.each(['', '   '])('discards movement and shows an error after an empty final answer (%j)', async (answer) => {
+    const { result } = renderHook(() => useChatThread(PROFILE, CHART));
+    await act(() => result.current.pin(YEAR));
+    await act(() => result.current.submit('Go to June', async ({ onTravel }) => {
+      onTravel?.({ kind: 'travel', asOf: JUNE });
+      return answer;
+    }));
+    expect(result.current.asOf).toEqual(YEAR);
+    expect(useTimeTravelStore.getState().moments[PROFILE]).toEqual(YEAR);
+    expect(result.current.messages.at(-1)?.error).toBe(true);
+    expect(result.current.messages.filter((message) => message.role === 'assistant' && !message.error)).toEqual([]);
+  });
+
+  it('drops a tool action if the user chooses Back to today while it streams', async () => {
+    const { result } = renderHook(() => useChatThread(PROFILE, CHART));
+    await act(() => result.current.pin(YEAR));
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    let pending!: Promise<void>;
+    act(() => { pending = result.current.submit('Go to June', async ({ onTravel }) => {
+      onTravel?.({ kind: 'travel', asOf: JUNE });
+      await gate;
+      return 'Moving.';
+    }); });
+    await act(() => result.current.backToToday());
+    await act(async () => { release(); await pending; });
+    expect(result.current.asOf).toBeUndefined();
+    expect(useTimeTravelStore.getState().moments[PROFILE]).toBeUndefined();
+  });
+
+  it('drops a tool action after switching profiles even when both use the same chart', async () => {
+    const { result, rerender } = renderHook(({ profileId }) => useChatThread(profileId, CHART), { initialProps: { profileId: PROFILE } });
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    let pending!: Promise<void>;
+    act(() => { pending = result.current.submit('Go to June', async ({ onTravel }) => {
+      onTravel?.({ kind: 'travel', asOf: JUNE });
+      await gate;
+      return 'Moving.';
+    }); });
+    rerender({ profileId: 'profile-B' });
+    await act(async () => { release(); await pending; });
+    expect(useTimeTravelStore.getState().moments).toEqual({});
+    expect(result.current.asOf).toBeUndefined();
+  });
+
+  it.each(['thread', 'profile', 'chart', 'today'] as const)('does not finish a tool move after a %s change during its pin save', async (change) => {
+    let otherThread!: string;
+    act(() => { otherThread = useChatStore.getState().startThread(PROFILE, CHART); });
+    const { result, rerender } = renderHook(
+      ({ profileId, chartId }) => useChatThread(profileId, chartId),
+      { initialProps: { profileId: PROFILE, chartId: CHART } },
+    );
+    await act(() => result.current.pin(YEAR));
+    let release!: () => void;
+    let saving!: () => void;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    const started = new Promise<void>((resolve) => { saving = resolve; });
+    vi.mocked(waitForStoreSaved)
+      .mockResolvedValueOnce(undefined) // The answer is durable before the move.
+      .mockImplementationOnce(() => { saving(); return held; });
+    let pending!: Promise<void>;
+    act(() => { pending = result.current.submit('Go to June', async ({ onTravel }) => {
+      onTravel?.({ kind: 'travel', asOf: JUNE });
+      return 'Moving to June.';
+    }); });
+    await act(async () => { await started; });
+    expect(useTimeTravelStore.getState().moments[PROFILE]).toEqual(YEAR);
+    if (change === 'thread') act(() => result.current.openThread(otherThread));
+    if (change === 'profile') rerender({ profileId: 'profile-B', chartId: CHART });
+    if (change === 'chart') rerender({ profileId: PROFILE, chartId: 'chart-B' });
+    if (change === 'today') await act(() => result.current.backToToday());
+    const selected = result.current.threadId;
+    await act(async () => { release(); await pending; });
+    expect(result.current.threadId).toBe(selected);
+    expect(useTimeTravelStore.getState().moments[PROFILE]).toEqual(change === 'today' ? undefined : YEAR);
+    expect(useTimeTravelStore.getState().moments['profile-B']).toBeUndefined();
+    expect(result.current.isStreaming).toBe(false);
+  });
+
+  it('keeps a newly selected today thread and no Dashboard moment when an old unpinned turn finishes saving its move', async () => {
+    const source = useChatStore.getState().startThread(PROFILE, CHART);
+    const selected = useChatStore.getState().startThread(PROFILE, CHART);
+    const { result } = renderHook(() => useChatThread(PROFILE, CHART));
+    act(() => result.current.openThread(source));
+    let release!: () => void;
+    let saving!: () => void;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    const started = new Promise<void>((resolve) => { saving = resolve; });
+    vi.mocked(waitForStoreSaved).mockResolvedValueOnce(undefined)
+      .mockImplementationOnce(() => { saving(); return held; });
+    let pending!: Promise<void>;
+    act(() => { pending = result.current.submit('Go to June', async ({ onTravel }) => {
+      onTravel?.({ kind: 'travel', asOf: JUNE });
+      return 'Moving to June.';
+    }); });
+    await act(async () => { await started; });
+    act(() => result.current.openThread(selected));
+    await act(async () => { release(); await pending; });
+    expect(result.current.threadId).toBe(selected);
+    expect(result.current.asOf).toBeUndefined();
+    expect(useTimeTravelStore.getState().moments[PROFILE]).toBeUndefined();
+    expect(useChatStore.getState().getMessages(source).at(-1)?.content).toBe('Moving to June.');
+  });
+
+  it('does not move the Dashboard after the source pinned thread is deleted during the movement save', async () => {
+    let fallback!: string;
+    act(() => { fallback = useChatStore.getState().startThread(PROFILE, CHART); });
+    const { result } = renderHook(() => useChatThread(PROFILE, CHART));
+    await act(() => result.current.pin(YEAR));
+    const source = result.current.threadId!;
+    let release!: () => void;
+    let saving!: () => void;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    const started = new Promise<void>((resolve) => { saving = resolve; });
+    vi.mocked(waitForStoreSaved).mockResolvedValueOnce(undefined)
+      .mockImplementationOnce(() => { saving(); return held; });
+    let pending!: Promise<void>;
+    act(() => { pending = result.current.submit('Go to June', async ({ onTravel }) => {
+      onTravel?.({ kind: 'travel', asOf: JUNE });
+      return 'Moving to June.';
+    }); });
+    await act(async () => { await started; });
+    act(() => useChatStore.getState().deleteThread(source));
+    expect(result.current.threadId).toBe(fallback);
+    await act(async () => { release(); await pending; });
+    expect(useChatStore.getState().threads[source]).toBeUndefined();
+    expect(result.current.threadId).toBe(fallback);
+    expect(useTimeTravelStore.getState().moments[PROFILE]).toEqual(YEAR);
+    expect(result.current.isStreaming).toBe(false);
+  });
+});

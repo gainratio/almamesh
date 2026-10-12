@@ -1,11 +1,11 @@
 /**
- * Every e2e spec that calls a REAL model (`e2e/*.real.spec.ts`, run by the
- * nightly against live OpenRouter) configures the cheapest model, the one
- * constant `E2E_REAL_MODEL` in e2e/realModel.ts (prices and date are there).
+ * Live-model specs use the cheapest shared E2E model, except the full report
+ * acceptance check, which must exercise the production report-engine model.
  *
  * - The constant itself is pinned to its literal.
  * - A real spec names no model id of its own: models come from e2e/realModel.ts
- *   (env-override fallbacks included). The one exception is the retired slug
+ *   or the production report-model constant (env-override fallbacks included).
+ *   The one literal exception is the retired slug
  *   the self-heal spec seeds on purpose; the app rewrites it before any call.
  * - `PRODUCT_DEFAULT_MODEL` (the reading default the app picks itself),
  *   `PRODUCT_CHAT_DEFAULT_MODEL` (its chat default) and any alias of either are
@@ -16,9 +16,11 @@
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { runInNewContext } from 'node:vm';
+import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 
-import { CHAT_CLOUD_MODEL, RECOMMENDED_CLOUD_MODEL, REPORT_ENGINE_MODEL } from '@almamesh/llm';
+import { CHAT_CLOUD_MODEL, RECOMMENDED_CLOUD_MODEL, REPORT_ENGINE_MODEL, REPORT_SECTIONS } from '@almamesh/llm';
 
 import {
   E2E_REAL_MODEL,
@@ -102,6 +104,39 @@ function source(spec: string): string {
   return readFileSync(join(E2E_DIR, spec), 'utf8');
 }
 
+/** Evaluate only the spec's model initializer, without registering a live test. */
+function configuredReportModel(env: Readonly<Record<string, string | undefined>>): unknown {
+  const expression = /const MODEL = ([^;]+);/.exec(source('report.real.spec.ts'))?.[1];
+  if (expression === undefined) throw new Error('report MODEL initializer missing');
+  return runInNewContext(expression, { process: { env }, E2E_REAL_MODEL, REPORT_ENGINE_MODEL });
+}
+
+/** Compile only named harness functions, without registering a live test. */
+function reportHarnessSource(names: readonly string[], optionalNames: readonly string[] = []): string {
+  const ast = ts.createSourceFile('report.real.spec.ts', source('report.real.spec.ts'), ts.ScriptTarget.Latest, true);
+  const functions = [...names, ...optionalNames].map((name) => {
+    const declaration = ast.statements.find(
+      (statement): statement is ts.FunctionDeclaration =>
+        ts.isFunctionDeclaration(statement) && statement.name?.text === name,
+    );
+    if (declaration === undefined && !optionalNames.includes(name)) throw new Error(`report harness function missing: ${name}`);
+    return declaration?.getText(ast) ?? '';
+  });
+  return ts.transpileModule(functions.join('\n'), {
+    compilerOptions: { target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.ESNext },
+  }).outputText;
+}
+
+/** Exercise the actual pure diagnostic mapper without importing Playwright. */
+function reportSectionDiagnostic(event: unknown, elapsedMs: number): unknown {
+  const outputText = reportHarnessSource(['sectionDiagnostic']);
+  return runInNewContext(`${outputText}\nsectionDiagnostic(event, elapsedMs);`, {
+    event,
+    elapsedMs,
+    REPORT_SECTIONS,
+  });
+}
+
 describe('real-model e2e specs', () => {
   it('configure deepseek/deepseek-v4-pro, the cheapest model on 2026-10-09', () => {
     expect(E2E_REAL_MODEL).toBe('deepseek/deepseek-v4-pro');
@@ -117,6 +152,17 @@ describe('real-model e2e specs', () => {
     expect(REPORT_ENGINE_DEFAULT_MODEL).toBe(REPORT_ENGINE_MODEL);
     expect(PRODUCT_DEFAULT_MODEL).not.toBe(REPORT_ENGINE_DEFAULT_MODEL);
     expect(PRODUCT_CHAT_DEFAULT_MODEL).not.toBe(REPORT_ENGINE_DEFAULT_MODEL);
+  });
+
+  it('runs full-report acceptance on the imported production report model by default', () => {
+    expect(configuredReportModel({})).toBe(REPORT_ENGINE_MODEL);
+    expect(configuredReportModel({ E2E_REAL_MODEL: 'unrelated-chat-override' })).toBe(REPORT_ENGINE_MODEL);
+    expect(source('report.real.spec.ts')).toMatch(/import\s*\{[^}]*\bREPORT_ENGINE_MODEL\b[^}]*\}\s*from '@almamesh\/llm'/s);
+  });
+
+  it('preserves the dedicated REPORT_REAL_MODEL override', () => {
+    expect(configuredReportModel({ REPORT_REAL_MODEL: E2E_REAL_MODEL })).toBe(E2E_REAL_MODEL);
+    expect(configuredReportModel({ REPORT_REAL_MODEL: 'explicit/report-model' })).toBe('explicit/report-model');
   });
 
   it('configure a model that is neither product default, so "used the default, not the seeded model" can fail', () => {
@@ -147,6 +193,114 @@ describe('real-model e2e specs', () => {
   // outside an assertion or a log line, the product default is never used.
   it.each(realSpecs())('%s never sends the product default model', (spec) => {
     expect(sendsProductDefault(source(spec))).toEqual([]);
+  });
+});
+
+describe('live-report safe section diagnostics', () => {
+  it.each(['section_start', 'section_complete'] as const)('records %s with section and elapsed time only', (type) => {
+    expect(reportSectionDiagnostic({ type, section: 'guidance2', chart: 'private chart', messages: ['private prompt'] }, 123))
+      .toEqual({ type, section: 'guidance2', elapsedMs: 123 });
+  });
+
+  it('records timeout and HTTP metadata without error messages or request contents', () => {
+    const diagnostic = reportSectionDiagnostic({
+      type: 'error', section: 'guidance2', status: 504,
+      message: 'private prompt and key', timeout: { kind: 'total', limitMs: 300_000, secret: 'private' },
+      chart: 'private chart', headers: { authorization: 'private key' },
+    }, 300_042);
+    expect(diagnostic).toEqual({
+      type: 'error', section: 'guidance2', elapsedMs: 300_042,
+      errorCode: 'SECTION_TIMEOUT', status: 504, timeoutKind: 'total', timeoutLimitMs: 300_000,
+    });
+    expect(JSON.stringify(diagnostic)).not.toContain('private');
+  });
+
+  it('classifies ordinary section errors without trusting arbitrary error fields', () => {
+    expect(reportSectionDiagnostic({ type: 'error', section: 'core', status: 'private', code: 'private', timeout: { kind: 'private', limitMs: -1 } }, 12))
+      .toEqual({ type: 'error', section: 'core', elapsedMs: 12, errorCode: 'SECTION_ERROR' });
+  });
+
+  it.each([null, { type: 'complete', section: 'core' }, { type: 'section_start', section: 'private-chart-id' }])('ignores non-section lifecycle data: %j', (event) => {
+    expect(reportSectionDiagnostic(event, 1)).toBeNull();
+  });
+});
+
+describe('hosted live-report diagnostic output', () => {
+  it('prints a bounded closed metadata record without report, chart, prompt, key or raw failure contents', () => {
+    const output: string[] = [];
+    const events = Array.from({ length: REPORT_SECTIONS.length * 3 }, () => ({
+      type: 'error', section: 'guidance2', elapsedMs: 300_001,
+      errorCode: 'private-provider-error', status: 504, timeoutKind: 'total', timeoutLimitMs: 300_000,
+      report: 'private-report', chart: 'private-chart', messages: ['private-prompt'],
+      key: 'private-key', message: 'private-failure', provider: 'private-provider-request',
+    }));
+    runInNewContext(`${reportHarnessSource(['sectionDiagnostic', 'printRunDiagnostics'])}\nprintRunDiagnostics(3, events);`, {
+      events, REPORT_SECTIONS, RUNS: 3, console: { log: (line: string) => output.push(line) },
+    });
+    expect(output).toHaveLength(1);
+    const record = JSON.parse(output[0] as string) as { event: string; run: number; sections: unknown[] };
+    expect(Object.keys(record).sort()).toEqual(['event', 'run', 'sections']);
+    expect(record.event).toBe('report-run-diagnostics');
+    expect(record.run).toBe(3);
+    expect(record.sections).toHaveLength(REPORT_SECTIONS.length * 2);
+    expect(record.sections.every((section) => JSON.stringify(section) === JSON.stringify({
+      type: 'error', section: 'guidance2', elapsedMs: 300_001,
+      errorCode: 'SECTION_TIMEOUT', status: 504, timeoutKind: 'total', timeoutLimitMs: 300_000,
+    }))).toBe(true);
+    expect(output.join('\n')).not.toContain('private');
+  });
+
+  it('rejects unsafe section identifiers and timing values before printing', () => {
+    const output: string[] = [];
+    runInNewContext(`${reportHarnessSource(['sectionDiagnostic', 'printRunDiagnostics'])}\nprintRunDiagnostics(1, events);`, {
+      events: [
+        { type: 'section_start', section: 'private-chart-id', elapsedMs: 1 },
+        { type: 'section_complete', section: 'core', elapsedMs: 'private-timing' },
+        { type: 'section_complete', section: 'core', elapsedMs: Number.NaN },
+        { type: 'section_complete', section: 'core', elapsedMs: -1 },
+        { type: 'section_complete', section: 'core', elapsedMs: 42 },
+      ],
+      REPORT_SECTIONS, RUNS: 3, console: { log: (line: string) => output.push(line) },
+    });
+    expect(output).toHaveLength(1);
+    expect(JSON.parse(output[0] as string)).toEqual({
+      event: 'report-run-diagnostics', run: 1,
+      sections: [{ type: 'section_complete', section: 'core', elapsedMs: 42 }],
+    });
+  });
+
+  it.each(['complete', 'section-failure', 'run-failure'] as const)('makes safe diagnostics available in stdout when a run ends with %s', async (outcome) => {
+    const output: string[] = [];
+    const streamNatalInterpretation = async function* () {
+      yield { type: 'section_start', section: 'guidance2' };
+      if (outcome === 'run-failure') throw new Error('private-run-failure');
+      if (outcome === 'section-failure') {
+        yield { type: 'error', section: 'guidance2', message: 'private-provider-failure', timeout: { kind: 'total', limitMs: 300_000 } };
+      } else {
+        yield { type: 'section_complete', section: 'guidance2' };
+      }
+      yield { type: 'complete', interpretation: { chart: 'private-chart', report: 'private-report' } };
+    };
+    const streamReportTimeline = async function* () {
+      yield { type: 'complete', timeline: { report: 'private-report' }, dateGuardRemovals: 0 };
+    };
+    const result = await runInNewContext(`${reportHarnessSource(['sectionDiagnostic', 'drain', 'runOnce'], ['printRunDiagnostics'])}\nrunOnce(chart, config, pricing, 3);`, {
+      chart: { private: 'private-chart' }, config: { apiKey: 'private-key' }, pricing: {},
+      REPORT_SECTIONS, RUNS: 3, RUN_DEADLINE_MS: 600_000, REPORT_PROMPT_SET: {}, AS_OF: {},
+      Date: { now: () => 1_000 }, setTimeout, clearTimeout, AbortController,
+      streamNatalInterpretation, streamReportTimeline,
+      catalogCostUsd: () => 0, reportSectionWords: () => ({ layman: 0, technical: 0 }), lostWordReplies: () => ({}),
+      console: { log: (line: string) => output.push(line) },
+      fetch: () => { throw new Error('Unit harness must not send provider requests'); },
+    }) as { errors: string[] };
+    expect(result.errors.length > 0).toBe(outcome !== 'complete');
+    expect(output).toHaveLength(1);
+    const record = JSON.parse(output[0] as string) as { event: string; run: number; sections: unknown[] };
+    expect(record.event).toBe('report-run-diagnostics');
+    expect(record.run).toBe(3);
+    expect(record.sections[0]).toEqual({ type: 'section_start', section: 'guidance2', elapsedMs: 0 });
+    if (outcome === 'section-failure') expect(record.sections[1]).toMatchObject({ errorCode: 'SECTION_TIMEOUT', timeoutKind: 'total', timeoutLimitMs: 300_000 });
+    expect(output.join('\n')).not.toContain('private');
   });
 });
 

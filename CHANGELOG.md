@@ -7,6 +7,14 @@ All notable changes to AlmaMesh are documented here. Format follows
 ## [Unreleased]
 
 ### Added
+- **Day and place time travel on every device tier.** Phones can compute the
+  selected day's dashas and transits without AI. Offline city searches and
+  reusable period skies use derived SQLite; one computed period stays in the
+  JavaScript memo. Derived rows are excluded from portable backups.
+- **Deterministic tools for chat on every device tier.** Chat can read the
+  clock, chart facts, dated timing and offline places, and move to a selected
+  moment or Back to today. Selected-period facts are supplied before inference;
+  ambiguous dates request clarification.
 - **The Dashboard has a ⏳ Time travel button, and it works on every device, with
   or without AI (#329).** Pick a day, a month or a year to see that moment's
   dashas and, where the device allows, the planets then, all computed on the
@@ -28,6 +36,17 @@ All notable changes to AlmaMesh are documented here. Format follows
   network code yet.
 
 ### Fixed
+- **Historical chat and today's outlook use their own dates.** A historical
+  thread no longer substitutes current dasha markers for the selected period,
+  and an explicit question about today reads today's facts. Failed answers,
+  stale saves, deleted threads and changed profiles cannot apply an old travel
+  action to the Dashboard.
+- **Slow conjunctions and returns reject opposite-side discontinuities.**
+  Circular root searches now validate genuine angular contacts for every chart;
+  an opposition is no longer published as a conjunction or Saturn return. Old
+  predictive caches are invalidated.
+- **A failed city lookup offers Retry.** A lookup error is distinct from a
+  valid search with no matches.
 - **Time travel works for every year the sheet offers (#331).** Reference dates after
   about October 2050 (earlier for some charts) made the Saturn look-ahead and the
   24-month leap-year window read past the end of the DE421 ephemeris, so 2051 and
@@ -59,6 +78,15 @@ All notable changes to AlmaMesh are documented here. Format follows
   worker until the engine is ready, so every run tests this worst case.
 
 ### Changed
+- **Constrained-device chat uses bounded keyword recall.** Minimal and lite
+  devices no longer start the optional MiniLM embedding model or duplicate
+  their chat into a vector index. Full devices retain semantic recall. Restore
+  preserves a deferred rebuild marker, and recalled messages must belong to
+  the current profile and hydrated dataset generation.
+- **Astronomy kernels have explicit ownership and cleanup.** A predictive
+  calculation shares one borrowed ephemeris kernel and releases owned resources
+  deterministically. This reduces retained resources; it does not establish
+  the cause or resolution of earlier Safari crashes.
 - **The legacy live reading keeps its default model.** The recommended cloud
   model for the natal reading, the timeline and chat stays
   `deepseek/deepseek-v4.1-flash`. The settings copy no longer quotes timing or

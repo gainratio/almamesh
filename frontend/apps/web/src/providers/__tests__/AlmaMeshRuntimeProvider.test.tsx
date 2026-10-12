@@ -951,3 +951,125 @@ describe('AlmaMeshRuntimeProvider — one-off wasm boot fault (real runtime, fak
     expect(spawned.every((worker) => worker.terminated)).toBe(true);
   });
 });
+
+describe('AlmaMeshRuntimeProvider — post-ready failure and fresh recovery', () => {
+  function realRuntime() {
+    const workers: Array<ChartEnginePort & { terminated: boolean }> = [];
+    const runtime = new AlmaMeshRuntime({
+      spawnSyncEngine: () => ({
+        sync: async () => ({ version: 'v', manifestHash: 'm', chunksFetched: 0, chunksReused: 1, bytesFetched: 0 }),
+        readFile: async (path) => path === 'almamesh_meta.json'
+          ? new TextEncoder().encode(JSON.stringify(makeFakeEngine('real-cache').meta()))
+          : new Uint8Array([1]),
+        terminate: vi.fn(),
+      }),
+      spawnChartEngine: () => {
+        const worker: ChartEnginePort & { terminated: boolean } = {
+          terminated: false,
+          boot: vi.fn().mockResolvedValue(undefined),
+          generateChart: vi.fn().mockResolvedValue({}),
+          computePredictive: vi.fn().mockResolvedValue({}),
+          computeMoonWindow: vi.fn().mockResolvedValue({}),
+          computeMeshEdge: vi.fn().mockResolvedValue({}),
+          computeRectification: vi.fn().mockResolvedValue({}),
+          terminate() { this.terminated = true; },
+        };
+        workers.push(worker);
+        return worker;
+      },
+      decideBootMode: () => ({ mode: 'sequential', reason: 'test' }),
+      log: vi.fn(),
+    });
+    return { runtime, workers };
+  }
+
+  it('explicit reboot disposes the actual ready runtime cache and boots exactly one fresh Worker', async () => {
+    const { runtime, workers } = realRuntime();
+    let ctx: ReturnType<typeof useChartEngine> | null = null;
+    render(<AlmaMeshRuntimeProvider runtime={runtime}><Probe capture={(value) => { ctx = value; }} /></AlmaMeshRuntimeProvider>);
+    await waitFor(() => expect(ctx?.engine).not.toBeNull());
+    const original = ctx!.engine;
+    await act(async () => { await ctx!.reboot(); });
+    expect(workers).toHaveLength(2);
+    expect(workers[0].terminated).toBe(true);
+    expect(ctx!.engine).not.toBe(original);
+    expect(ctx!.engine).toBe(runtime.engine());
+    await expect(ctx!.whenReady()).resolves.toBe(runtime.engine());
+  });
+
+  it('a real post-ready Wasm fatal clears engine/provenance and requires explicit Retry, with no automatic replay', async () => {
+    const { runtime, workers } = realRuntime();
+    let ctx: ReturnType<typeof useChartEngine> | null = null;
+    const subscribe = runtime.subscribeFailures.bind(runtime);
+    const unsubscribe = vi.fn();
+    const subscription = vi.spyOn(runtime, 'subscribeFailures').mockImplementation((listener) => {
+      const stop = subscribe(listener);
+      return () => { unsubscribe(); stop(); };
+    });
+    const view = render(<AlmaMeshRuntimeProvider runtime={runtime}><Probe capture={(value) => { ctx = value; }} /></AlmaMeshRuntimeProvider>);
+    await waitFor(() => expect(ctx?.engine).not.toBeNull());
+    expect(ctx!.meta).not.toBeNull();
+    const fatal = new Error('Out of bounds memory access');
+    fatal.name = 'RuntimeError';
+    vi.mocked(workers[0].generateChart).mockRejectedValueOnce(fatal);
+    await act(async () => {
+      await expect(ctx!.engine!.generateChart({ datetimeUtc: '1990-03-30T06:30:00Z', latitude: 12.97, longitude: 77.59, referenceDate: '2026-10-11T00:00:00Z' })).rejects.toBe(fatal);
+    });
+    expect(subscription).toHaveBeenCalledOnce();
+    expect(ctx!.engine).toBeNull();
+    expect(ctx!.meta).toBeNull();
+    expect(ctx!.stage).toBeNull();
+    expect(ctx!.error).toBe(fatal);
+    expect(window.__almameshGenerate).toBeUndefined();
+    await expect(ctx!.whenReady()).rejects.toBe(fatal);
+    act(() => { ctx!.startBootstrap(); window.dispatchEvent(new Event('online')); });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 300)); });
+    expect(workers).toHaveLength(1);
+    await act(async () => { await ctx!.reboot(); });
+    expect(workers).toHaveLength(2);
+    expect(ctx!.error).toBeNull();
+    expect(ctx!.engine).toBe(runtime.engine());
+    view.unmount();
+    expect(unsubscribe).toHaveBeenCalledOnce();
+  });
+
+  it('fences stale awaiters/stages/completion before asynchronous cache clearing, then shares one explicit reboot', async () => {
+    let oldResolve!: (engine: ChartEngine) => void;
+    let oldStage!: OnStage;
+    let cachesResolve!: (names: string[]) => void;
+    const cachesKeys = vi.fn(() => new Promise<string[]>((resolve) => { cachesResolve = resolve; }));
+    vi.stubGlobal('caches', { keys: cachesKeys, delete: vi.fn() });
+    const runtime = makeFakeRuntime([
+      (onStage) => { oldStage = onStage; return new Promise((resolve) => { oldResolve = resolve; }); },
+      () => Promise.resolve(makeFakeEngine('new-generation')),
+    ]);
+    runtime.dispose = vi.fn();
+    let ctx: ReturnType<typeof useChartEngine> | null = null;
+    try {
+      render(<AlmaMeshRuntimeProvider runtime={runtime}><Probe capture={(value) => { ctx = value; }} /></AlmaMeshRuntimeProvider>);
+      await waitFor(() => expect(runtime.bootstrapCalls).toBe(1));
+      const oldOutcome = ctx!.whenReady().then(() => 'stale resolved', (error: Error) => error.message);
+      let retry!: Promise<ChartEngine>;
+      act(() => { retry = ctx!.reboot(); });
+      const repeated = ctx!.reboot();
+      expect(repeated).toBe(retry);
+      expect(ctx!.whenReady()).toBe(retry);
+      expect(runtime.dispose).toHaveBeenCalledOnce();
+      await act(async () => { await Promise.resolve(); });
+      expect(cachesKeys).toHaveBeenCalledOnce();
+      // Awaiters are rejected while the old Worker and cache clear are still
+      // pending, rather than only after a late Worker completion arrives.
+      await expect(oldOutcome).resolves.toMatch(/superseded/);
+      await act(async () => {
+        oldStage({ kind: 'ready' });
+        oldResolve(makeFakeEngine('stale-generation'));
+        await Promise.resolve();
+      });
+      expect(ctx!.engine).toBeNull();
+      expect(ctx!.stage).toBeNull();
+      await act(async () => { cachesResolve([]); await retry; });
+      expect(runtime.bootstrapCalls).toBe(2);
+      expect(ctx!.meta?.bundle_id).toBe('new-generation');
+    } finally { vi.unstubAllGlobals(); }
+  });
+});

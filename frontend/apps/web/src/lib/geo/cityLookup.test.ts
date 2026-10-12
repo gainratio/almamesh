@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { searchCitiesOffline, timezoneForCoordinates } from './cityLookup';
+import { installCityTestDatabase } from './__tests__/cityTestDb';
+
+installCityTestDatabase();
 
 describe('cityLookup (offline geocoder)', () => {
     it('resolves Chennai to its coordinates and IANA timezone', async () => {

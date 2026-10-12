@@ -17,11 +17,17 @@ import { chatAsOfProblem, useChartLibraryStore, useChatStore } from '@almamesh/s
 import { birthYearOf } from './periodChart';
 import { repinThread, startPinnedThread, todayThread } from './timeTravelThreads';
 
-export type TravelSource = 'dashboard-sheet' | 'chat-sheet';
+export type TravelSource = 'dashboard-sheet' | 'chat-sheet' | 'chat-tool';
 export interface TravelRequest { readonly asOf: ChatThreadAsOf; readonly source: TravelSource; }
 /** 'new': always a new pinned thread. { id }: repin it if pinned, else a new pinned thread. 'latest': the thread chat shows. */
 export type TravelThread = 'new' | 'latest' | { readonly id: string };
-export interface TravelTarget { readonly profileId: string; readonly chartId: string | null; readonly thread: TravelThread; }
+export interface TravelTarget {
+  readonly profileId: string;
+  readonly chartId: string | null;
+  readonly thread: TravelThread;
+  /** A caller's selection can change while the chat pin is saving. */
+  readonly canApply?: () => boolean;
+}
 export interface TravelDeps { aiConfigured(): boolean; birthYear(chartId: string | null): number | undefined; }
 export interface TravelOutcome { readonly threadId: string | undefined; }
 
@@ -86,6 +92,11 @@ async function pinChat(asOf: ChatThreadAsOf, target: TravelTarget): Promise<stri
 const latestIntent = new Map<string, number>();
 let intentCounter = 0;
 
+/** A chat action must not replace a newer sheet or Back to today action. */
+export function travelIntentVersion(profileId: string): number {
+  return latestIntent.get(profileId) ?? 0;
+}
+
 function takeIntent(profileId: string): () => boolean {
   const seq = ++intentCounter;
   latestIntent.set(profileId, seq);
@@ -98,7 +109,7 @@ export async function applyTravel(request: TravelRequest, target: TravelTarget, 
   check(request.asOf, deps.birthYear(target.chartId));
   const isLatest = takeIntent(target.profileId);
   const threadId = deps.aiConfigured() ? await pinChat(request.asOf, target) : undefined;
-  if (!isLatest()) return SUPERSEDED;
+  if (!isLatest() || target.canApply?.() === false) return SUPERSEDED;
   useTimeTravelStore.getState().setMoment(target.profileId, request.asOf);
   return { threadId };
 }
@@ -106,7 +117,7 @@ export async function applyTravel(request: TravelRequest, target: TravelTarget, 
 export async function applyBackToToday(target: Omit<TravelTarget, 'thread'>, deps: TravelDeps = DEFAULT_DEPS): Promise<TravelOutcome> {
   const isLatest = takeIntent(target.profileId);
   const threadId = deps.aiConfigured() ? await todayThread(target.profileId, target.chartId) : undefined;
-  if (!isLatest()) return SUPERSEDED;
+  if (!isLatest() || target.canApply?.() === false) return SUPERSEDED;
   useTimeTravelStore.getState().setMoment(target.profileId, undefined);
   return { threadId };
 }

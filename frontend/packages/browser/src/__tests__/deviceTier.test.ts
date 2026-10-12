@@ -33,27 +33,29 @@ describe("deviceTier (one tier per tab, decided by @gainratio/browser)", () => {
 });
 
 describe("devicePolicy (pinned literals: what each tier may keep resident)", () => {
-  it("minimal (3 GB iPhone): embedder released after 60 s idle, no bloom, dpr 1, no boot overlap", () => {
+  it("minimal (3 GB iPhone): keyword recall, no bloom, dpr 1, no boot overlap", () => {
     expect(devicePolicy("minimal")).toEqual({
       tier: "minimal",
       embedderIdleReleaseMs: 60_000,
+      semanticMemoryAllowed: false,
       forceFieldEffects: "none",
       forceFieldMaxDpr: 1,
       bootOverlapAllowed: false,
       periodSkyCacheSize: 1,
-      periodSkyComputeAllowed: false,
+      periodSkyComputeAllowed: true,
     });
   });
 
-  it("lite (4 GB Android, 2-core laptop): embedder released after 120 s idle, lite bloom, dpr 1.5", () => {
+  it("lite (4 GB Android, 2-core laptop): keyword recall, lite bloom, dpr 1.5", () => {
     expect(devicePolicy("lite")).toEqual({
       tier: "lite",
       embedderIdleReleaseMs: 120_000,
+      semanticMemoryAllowed: false,
       forceFieldEffects: "lite",
       forceFieldMaxDpr: 1.5,
       bootOverlapAllowed: false,
-      periodSkyCacheSize: 3,
-      periodSkyComputeAllowed: false,
+      periodSkyCacheSize: 1,
+      periodSkyComputeAllowed: true,
     });
   });
 
@@ -61,29 +63,30 @@ describe("devicePolicy (pinned literals: what each tier may keep resident)", () 
     expect(devicePolicy("full")).toEqual({
       tier: "full",
       embedderIdleReleaseMs: 600_000,
+      semanticMemoryAllowed: true,
       forceFieldEffects: "full",
       forceFieldMaxDpr: 2,
       bootOverlapAllowed: true,
-      periodSkyCacheSize: 5,
+      periodSkyCacheSize: 1,
       periodSkyComputeAllowed: true,
     });
   });
 
-  it("period-sky cache: full keeps 5 periods, lite 3, minimal 1", () => {
-    expect(devicePolicy("full").periodSkyCacheSize).toBe(5);
-    expect(devicePolicy("lite").periodSkyCacheSize).toBe(3);
-    expect(devicePolicy("minimal").periodSkyCacheSize).toBe(1);
+  it("every tier retains one period in memory; revisits belong to SQLite", () => {
+    for (const tier of ["full", "lite", "minimal"] as const) expect(devicePolicy(tier).periodSkyCacheSize).toBe(1);
   });
 
-  it("period skies: only full computes them; lite and minimal answer dated questions with dashas", () => {
-    // Measured 2026-10-09 at 4x CPU throttle: one period compute takes page+workers heap
-    // to 425 MiB (lite) and 419 MiB (minimal), over the 300 MiB budget in e2e/memoryBudget.ts.
-    expect(devicePolicy("full").periodSkyComputeAllowed).toBe(true);
-    expect(devicePolicy("lite").periodSkyComputeAllowed).toBe(false);
-    expect(devicePolicy("minimal").periodSkyComputeAllowed).toBe(false);
+  it("Day and place computations are available on every tier", () => {
+    for (const tier of ["full", "lite", "minimal"] as const) expect(devicePolicy(tier).periodSkyComputeAllowed).toBe(true);
   });
 
   it("every tier has a policy", () => {
     expect(Object.keys(DEVICE_POLICIES).sort()).toEqual(["full", "lite", "minimal"]);
+  });
+
+  it("only full devices may start semantic memory", () => {
+    expect(devicePolicy("minimal").semanticMemoryAllowed).toBe(false);
+    expect(devicePolicy("lite").semanticMemoryAllowed).toBe(false);
+    expect(devicePolicy("full").semanticMemoryAllowed).toBe(true);
   });
 });

@@ -1,6 +1,8 @@
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { openNodeSqlDatabase } from '@gainratio/browser/sql/node';
+import { openBackup } from '../../../packages/store/src/backupSealing';
 
 import {
   test,
@@ -17,6 +19,7 @@ import {
   CHAT_QUESTION,
   EVENT_SUMMARY,
   MESH_SENTINEL,
+  PASSPHRASE,
   READING_SENTINEL,
   confirmRegeneration,
   expectCleanBrowser,
@@ -59,6 +62,23 @@ const SELF: Native = {
   narrative: 'I got married on 2015-06-20 in Pune.',
 };
 const RENAMED_SELF = 'Invariant Ada Renamed';
+const DERIVED_CACHES_NOT_EXPORTED = ['almamesh-derived'] as const;
+
+async function expectDerivedCachesExcluded(bytes: Buffer): Promise<void> {
+  // Inspect the decrypted canonical database. Looking for cache text in the
+  // encrypted download alone would pass even if personal cache rows leaked.
+  const opened = await openBackup(Uint8Array.from(bytes), PASSPHRASE);
+  expect(opened.kind).toBe('database');
+  if (opened.kind !== 'database') throw new Error('Expected an encrypted SQLite backup.');
+  const db = await openNodeSqlDatabase({ name: 'portable-cache-exclusion' });
+  try {
+    await db.importDatabase(opened.database);
+    const tables = (await db.query<{ name: string }>("SELECT name FROM sqlite_schema WHERE type = 'table'")).map((row) => row.name);
+    for (const table of ['period_sky', 'cities', 'cities_fts']) expect(tables).not.toContain(table);
+    const exported = new TextDecoder().decode(opened.database);
+    for (const cache of DERIVED_CACHES_NOT_EXPORTED) expect(exported).not.toContain(cache);
+  } finally { await db.close(); }
+}
 const EDITED_BIRTH_TIME = '06:47';
 const KEPT_FRIEND: Native = {
   name: 'Invariant Grace',
@@ -402,6 +422,10 @@ async function expectRestoredJourney(page: Page, ids: ExpectedPeople): Promise<v
 
   await page.getByTestId('floating-chat-button').click({ timeout: 60_000 });
   const panel = page.getByTestId('chat-panel');
+  // The cache-exclusion journey also keeps a legitimate pinned conversation.
+  // Return through the chat's visible control to inspect the original history.
+  const backToToday = panel.getByTestId('time-travel-back');
+  if (await backToToday.isVisible()) await backToToday.click();
   await expect(panel.getByTestId('chat-message-user')).toContainText(CHAT_QUESTION);
   await expect(panel.getByTestId('chat-message-assistant')).toContainText(CHAT_ANSWER);
   await page.keyboard.press('Escape');
@@ -486,10 +510,23 @@ test.describe('full journey: seed, mutate, export, import into a new browser', (
       );
     });
 
+    await test.step('cache a time travel sky through the Dashboard, then return to today', async () => {
+      await spaNavigate(page, '/dashboard');
+      await page.getByTestId('dashboard-time-travel-button').click();
+      await page.getByTestId('time-travel-tab-month').click();
+      await page.getByTestId('time-travel-month').selectOption('03');
+      await page.getByTestId('time-travel-month-year').selectOption('2019');
+      await page.getByTestId('time-travel-go').click();
+      await expect(page.getByTestId('time-travel-moment-transits')).toBeVisible({ timeout: 180_000 });
+      await page.getByTestId('dashboard-time-travel-back').click();
+      await expect(page.getByTestId('dashboard-time-travel-banner')).toHaveCount(0);
+    });
+
     const exportPath = testInfo.outputPath('journey.almamesh');
     await test.step('export from browser A', async () => {
       const bytes = await exportBackup(page, exportPath);
       expectNoLeak(bytes, [AI_KEY, READING_SENTINEL, RENAMED_SELF, EVENT_SUMMARY]);
+      await expectDerivedCachesExcluded(bytes);
       expectCleanBrowser(a.problems, 'browser A');
     });
     await a.close();
@@ -667,24 +704,8 @@ test.describe('a pinned time-travel thread round-trips (chat store v3)', () => {
     return page.evaluate(() => (window as unknown as { __almameshPinnedThreads: PinnedThreads }).__almameshPinnedThreads());
   }
 
-  /**
-   * The Day pin is full-tier only (TimeTravelSheet `dayAllowed`). WebKit and
-   * Firefox have no navigator.deviceMemory, so without this pin desktop Safari
-   * reads as lite and offers Month and Year only (as e2e/time-travel.spec.ts
-   * pins it). iOS is always minimal, so the iphone-webkit project leaves this
-   * journey out (see the config).
-   */
-  async function pinFullTier(context: BrowserContext): Promise<void> {
-    await context.addInitScript(() => {
-      for (const [name, value] of Object.entries({ deviceMemory: 8, hardwareConcurrency: 8 })) {
-        Object.defineProperty(Navigator.prototype, name, { get: () => value, configurable: true });
-      }
-    });
-  }
-
   test('a Day pin with a place survives export and import field for field', async ({ browser }, testInfo) => {
     const a = await freshBrowser(browser, testInfo);
-    await pinFullTier(a.context);
     await test.step('seed: onboard, connect AI, pin 15 June 2026 in Bogotá', async () => {
       await gotoSettled(a.page, '/onboarding');
       await onboard(a.page, SELF);
@@ -714,7 +735,6 @@ test.describe('a pinned time-travel thread round-trips (chat store v3)', () => {
     await a.close();
 
     const b = await freshBrowser(browser, testInfo);
-    await pinFullTier(b.context);
     await test.step('import into browser B: the same pin, field for field, and its banner', async () => {
       await importBackup(b.page, exportPath);
       await spaNavigate(b.page, '/dashboard');

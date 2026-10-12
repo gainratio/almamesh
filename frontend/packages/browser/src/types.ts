@@ -144,6 +144,8 @@ import type { RectificationInput, RectificationResultRaw } from "./pyodide/recti
  * build. Kept structurally identical to the `ChartEngine` the runtime returns.
  */
 export interface ChartEngine {
+  /** Signed bundle manifest identity, exposed by the memo wrapper. */
+  identity?(): string;
   generateChart(birth: BirthInput): Promise<SiderealChart>;
   /** LAZY predictive payload at an EXPLICIT instant (~35s under Pyodide). */
   computePredictive(input: PredictiveInput, options?: PredictiveCallOptions): Promise<PredictiveContexts>;

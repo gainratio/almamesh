@@ -97,6 +97,8 @@ export interface ChartEnginePort {
   computeMoonWindow(input: MoonWindowInput): Promise<MoonWindow>;
   computeMeshEdge(input: MeshEdgeInput): Promise<MeshEdgeContext>;
   computeRectification(input: RectificationInput): Promise<RectificationResultRaw>;
+  /** Exact terminal client error; optional for ports without a client lifecycle. */
+  closedError?(): Error | null;
   /** Stop the chart Worker and release Pyodide resources. */
   terminate?(): void;
 }
@@ -118,6 +120,8 @@ export interface BundleMeta {
 
 /** The ready engine returned by bootstrap. */
 export interface ChartEngine {
+  /** Signed bundle manifest identity, exposed by the memo wrapper. */
+  identity?(): string;
   generateChart(birth: BirthInput): Promise<SiderealChart>;
   /**
    * The LAZY predictive payload at an EXPLICIT reference instant. Heavy
@@ -224,6 +228,7 @@ async function readMeta(engine: EnginePort): Promise<BundleMeta | null> {
 
 export class AlmaMeshRuntime {
   readonly #deps: RuntimeDeps;
+  readonly #failureListeners = new Set<(error: Error) => void>();
   #enginePromise: Promise<ChartEngine> | null = null;
   #ready: ChartEngine | null = null;
   #syncEngine: EnginePort | null = null;
@@ -237,6 +242,12 @@ export class AlmaMeshRuntime {
   /** The ready engine, or null before the first successful bootstrap. */
   public engine(): ChartEngine | null {
     return this.#ready;
+  }
+
+  /** Observe a terminal compute failure after readiness. Recovery requires an explicit bootstrap. */
+  public subscribeFailures(listener: (error: Error) => void): () => void {
+    this.#failureListeners.add(listener);
+    return () => { this.#failureListeners.delete(listener); };
   }
 
   /** Stop all Workers, invalidate an in-flight build, and clear the ready engine. */
@@ -324,7 +335,12 @@ export class AlmaMeshRuntime {
         this.#chartEngine = warming;
         cancelPrewarm = (this.#deps.scheduleIdle ?? defaultScheduleIdle)(() => {
           cancelPrewarm = null;
-          if (this.#chartEngine === warming) warming.prewarm?.(config.pyodideIndexUrl);
+          // Do not throw from an idle callback. The awaited boot path reports
+          // cancellation and releases both Workers at its next boundary.
+          if (this.#chartEngine === warming &&
+            !(this.#deps.isPageTearingDown ?? defaultIsPageTearingDown)()) {
+            warming.prewarm?.(config.pyodideIndexUrl);
+          }
         });
       }
 
@@ -337,6 +353,7 @@ export class AlmaMeshRuntime {
         (progress) => onStage({ kind: "syncing", progress }),
       );
       this.#assertCurrent(generation);
+      this.#assertPageAlive();
       // The sync settled before an idle slot came: `boot` warms the runtime
       // itself (cold), which is exactly the sequential path.
       cancelPrewarm?.();
@@ -349,6 +366,7 @@ export class AlmaMeshRuntime {
         readMeta(syncEngine),
       ]);
       this.#assertCurrent(generation);
+      this.#assertPageAlive();
 
       // The sync Worker is only needed to materialize the boot assets. Release
       // its OPFS handles and wasm memory as soon as they are in hand — in
@@ -357,16 +375,17 @@ export class AlmaMeshRuntime {
       if (this.#syncEngine === syncEngine) this.#syncEngine = null;
 
       onStage({ kind: "booting-engine" });
-      if (chartEngine === null) this.#assertPageAlive();
+      this.#assertPageAlive();
       const booted = chartEngine ?? this.#deps.spawnChartEngine();
       chartEngine = booted;
       this.#chartEngine = booted;
       await booted.boot(bootConfig, (progress) => onStage({ kind: "booting-engine", progress }));
       this.#assertCurrent(generation);
+      this.#assertPageAlive();
 
       // Identical inputs are computed once per booted engine, keyed on the
       // signed bundle's content-addressed manifest (see ./engineMemo.ts).
-      const engine: ChartEngine = memoizeChartEngine(
+      const memoized = memoizeChartEngine(
         {
           generateChart: (birth) => booted.generateChart(birth),
           computePredictive: (input) => booted.computePredictive(input),
@@ -377,6 +396,19 @@ export class AlmaMeshRuntime {
         },
         result.manifestHash,
       );
+      // Guard OUTSIDE the memo: a caller can retain this object after disposal,
+      // including inputs whose old result is already cached. Neither a memo hit
+      // nor a late completion may escape a superseded Worker generation.
+      const engine: ChartEngine = {
+        identity: () => result.manifestHash,
+        generateChart: (birth) => this.#compute(generation, booted, () => memoized.generateChart(birth)),
+        computePredictive: (input, options) =>
+          this.#compute(generation, booted, () => memoized.computePredictive(input, options)),
+        computeMoonWindow: (input) => this.#compute(generation, booted, () => memoized.computeMoonWindow(input)),
+        computeMeshEdge: (input) => this.#compute(generation, booted, () => memoized.computeMeshEdge(input)),
+        computeRectification: (input) => this.#compute(generation, booted, () => memoized.computeRectification(input)),
+        meta: () => meta,
+      };
       this.#ready = engine;
       onStage({ kind: "ready" });
       return engine;
@@ -386,6 +418,39 @@ export class AlmaMeshRuntime {
       chartEngine?.terminate?.();
       if (this.#syncEngine === syncEngine) this.#syncEngine = null;
       if (this.#chartEngine === chartEngine) this.#chartEngine = null;
+      throw error;
+    }
+  }
+
+  async #compute<T>(generation: number, port: ChartEnginePort, compute: () => Promise<T>): Promise<T> {
+    this.#assertCurrent(generation);
+    try {
+      // Idle client errors have no pending request to reject. Consult actual
+      // client state before even a memo hit, rather than guessing from text.
+      const alreadyClosed = port.closedError?.();
+      if (alreadyClosed) throw alreadyClosed;
+      const value = await compute();
+      this.#assertCurrent(generation);
+      const closedAfterReply = port.closedError?.();
+      if (closedAfterReply) throw closedAfterReply;
+      return value;
+    } catch (error) {
+      // The client fences traps, Worker errors and request deadlines. Discard
+      // readiness only for its exact terminal error or a recognised Wasm trap,
+      // so ordinary Python/domain/network errors remain local to their call.
+      // This does not diagnose a trap's cause or replay a failed calculation.
+      // A concurrent old failure must never tear down a replacement instance.
+      if (this.#generation === generation && this.#ready !== null &&
+        error instanceof Error && (error === port.closedError?.() || isWasmBootFault(error))) {
+        this.dispose();
+        for (const listener of [...this.#failureListeners]) {
+          try {
+            listener(error);
+          } catch {
+            // Observability must not hide the original fault or other listeners.
+          }
+        }
+      }
       throw error;
     }
   }

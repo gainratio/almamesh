@@ -2,9 +2,10 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { test as base, webkit, type Page } from '@playwright/test';
+import { test as base, webkit, type BrowserContext, type Page } from '@playwright/test';
 
 import { startWebKitDiagnostics } from './webkitDiagnostics';
+import { withWebKitProfileCleanup } from './webkitProfileCleanup';
 
 /**
  * Empty this origin's OPFS, IndexedDB, Cache Storage and web storage, and
@@ -73,32 +74,33 @@ export const test = base.extend({
     const profile = await mkdtemp(join(tmpdir(), 'almamesh-webkit-profile-'));
     const diagnostics = startWebKitDiagnostics(testInfo);
     const videoMode = typeof video === 'string' ? video : video.mode;
-    const persistent = await webkit.launchPersistentContext(profile, {
-      ...contextOptions,
-      baseURL,
-      viewport,
-      userAgent,
-      deviceScaleFactor,
-      isMobile,
-      hasTouch,
-      locale,
-      timezoneId,
-      serviceWorkers,
-      headless: true,
-      logger: diagnostics.logger,
-      recordVideo: videoMode === 'off' ? undefined : { dir: testInfo.outputPath('video') },
-    });
-    diagnostics.watch(persistent);
-    try {
+    let persistent: BrowserContext | undefined;
+    await withWebKitProfileCleanup(async () => {
+      persistent = await webkit.launchPersistentContext(profile, {
+        ...contextOptions,
+        baseURL,
+        viewport,
+        userAgent,
+        deviceScaleFactor,
+        isMobile,
+        hasTouch,
+        locale,
+        timezoneId,
+        serviceWorkers,
+        headless: true,
+        logger: diagnostics.logger,
+        recordVideo: videoMode === 'off' ? undefined : { dir: testInfo.outputPath('video') },
+      });
+      diagnostics.watch(persistent);
       await wipeOrigin(persistent.pages()[0] ?? (await persistent.newPage()));
       await provide(persistent);
-    } finally {
-      await persistent.close();
-      await diagnostics.finish();
-      await rm(profile, { recursive: true, force: true });
-      const passed = testInfo.status === testInfo.expectedStatus;
-      if (videoMode === 'retain-on-failure' && passed) await rm(testInfo.outputPath('video'), { recursive: true, force: true });
-    }
+    }, [
+      async () => { await persistent?.close(); },
+      () => diagnostics.finish(),
+      () => rm(profile, { recursive: true, force: true }),
+    ]);
+    const passed = testInfo.status === testInfo.expectedStatus;
+    if (videoMode === 'retain-on-failure' && passed) await rm(testInfo.outputPath('video'), { recursive: true, force: true });
   },
   page: async ({ context }, provide) => {
     await provide(context.pages()[0] ?? (await context.newPage()));

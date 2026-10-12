@@ -74,8 +74,51 @@ export function overBudget(sample: BootMemorySample, budget: MemoryBudget): stri
 
 
 /**
- * Heap growth allowed for the first offline place lookup (resolve_place, full
- * tier only): the ~2 MB cities.min.json chunk parsed into rows. Plan Ruling 15.
+ * Heap growth allowed for the first offline place lookup on every tier:
+ * bounded city batches are imported into SQLite and queried in small pages.
  * Over this the PR stops; the number is never raised to get a run green.
  */
-export const PLACE_LOOKUP_HEAP_GROWTH_MIB = 48;
+export const PLACE_LOOKUP_HEAP_GROWTH_MIB = 8;
+
+/** Limits lowered from the provisional cap using the five original Day probes. Never raise to pass. */
+export interface TimeTravelMemoryBudget {
+  readonly heapPeakMiB: number;
+  readonly revisitHeapGrowthMiB: number;
+  readonly cityLookupHeapGrowthMiB: number;
+  readonly webContentRssOverBaselineMiB: number;
+}
+
+export const TIME_TRAVEL_MEMORY_BUDGET: TimeTravelMemoryBudget = {
+  heapPeakMiB: 399.1,
+  revisitHeapGrowthMiB: 5,
+  cityLookupHeapGrowthMiB: 8,
+  webContentRssOverBaselineMiB: 250,
+};
+
+export interface TimeTravelMemorySample {
+  readonly heapPeakMiB: number;
+  readonly revisitHeapGrowthMiB: number;
+  readonly cityLookupHeapGrowthMiB: number;
+}
+
+/** Before SQLite is wired, growth is evidence only; the first-compute peak is still gated. */
+export type TimeTravelMemoryPhase = 'baseline' | 'probe' | 'final';
+
+export function overTimeTravelBudget(
+  sample: TimeTravelMemorySample,
+  phase: TimeTravelMemoryPhase = 'final',
+  budget: TimeTravelMemoryBudget = TIME_TRAVEL_MEMORY_BUDGET,
+): string[] {
+  const keys = phase === 'final'
+    ? ['heapPeakMiB', 'revisitHeapGrowthMiB', 'cityLookupHeapGrowthMiB'] as const
+    : ['heapPeakMiB'] as const;
+  return keys.filter((key) => !Number.isFinite(sample[key]) || !(sample[key] <= budget[key]));
+}
+
+export function parseWebKitBaselineMiB(value: string | undefined): number {
+  const baseline = value?.trim() ? Number(value) : Number.NaN;
+  if (!Number.isFinite(baseline) || baseline <= 0) {
+    throw new Error('TT_WEBKIT_BASELINE_MIB must be a finite positive boot baseline');
+  }
+  return baseline;
+}

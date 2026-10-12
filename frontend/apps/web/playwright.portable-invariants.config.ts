@@ -50,11 +50,8 @@ export default defineConfig({
     // WebKit keeps a trace and a video of every failed test (see
     // playwright.time-travel.config.ts).
     { name: "webkit", use: { ...devices["Desktop Safari"], ...WEBKIT_EVIDENCE } },
-    // An iPhone: the export/import journeys at phone size with an iOS UA.
-    // The Day pin is full-tier only and iOS is always the minimal tier
-    // (packages/browser/src/deviceTier.ts), so that journey does not exist on
-    // an iPhone and is not run there.
-    { name: "iphone-webkit", use: { ...devices["iPhone 13"], ...WEBKIT_EVIDENCE }, grepInvert: /a Day pin with a place/ },
+    // An iPhone: all export/import journeys, including Day and place.
+    { name: "iphone-webkit", use: { ...devices["iPhone 13"], ...WEBKIT_EVIDENCE } },
   ],
   webServer: EXTERNAL_BASE_URL
     ? undefined

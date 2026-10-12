@@ -1,7 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { AlmaMeshRuntime } from "../runtime";
-import type { ChartEnginePort, EnginePort, RuntimeConfig } from "../runtime";
+import type { ChartEngine, ChartEnginePort, EnginePort, RuntimeConfig } from "../runtime";
 import type { SiderealChart } from "../chart";
 import type { MeshEdgeContext } from "../mesh";
 import type { PredictiveContexts } from "../predictive";
@@ -19,6 +19,8 @@ import type { SyncProgress, SyncResult } from "@gainratio/browser";
 import type { BootStage, IdleScheduler } from "../runtime";
 import { EngineBootCancelledError } from "../teardown";
 import { errorFromWorker } from "../bootFault";
+import { ChartEngineClient } from "../chartEngineClient";
+import type { ChartWorkerRequest, ChartWorkerResponse, WorkerLike } from "../protocol";
 
 const CONFIG: RuntimeConfig = {
   bundleBaseUrl: "https://cdn.test/almamesh",
@@ -700,6 +702,195 @@ describe("AlmaMeshRuntime.bootstrap", () => {
       expect(sync.terminated).toBe(true);
     });
 
+    it("does not prewarm or boot an overlap Worker after pagehide during sync", async () => {
+      let tearingDown = false;
+      let releaseSync!: () => void;
+      const sync = new FakeSyncEngine(FILES);
+      const originalSync = sync.sync.bind(sync);
+      sync.sync = async (...args) => {
+        await new Promise<void>((resolve) => { releaseSync = resolve; });
+        return originalSync(...args);
+      };
+      const chart = new FakeChartEngine();
+      const idle = new FakeIdleScheduler();
+      const stages: BootStage[] = [];
+      const runtime = new AlmaMeshRuntime({
+        spawnSyncEngine: () => sync,
+        spawnChartEngine: () => chart,
+        decideBootMode: () => ({ mode: "overlap", reason: "test" }),
+        scheduleIdle: idle.schedule,
+        isPageTearingDown: () => tearingDown,
+      });
+
+      const outcome = runtime.bootstrap(CONFIG, (stage) => stages.push(stage))
+        .then(() => null, (error: unknown) => error);
+      tearingDown = true;
+      try { idle.runPending(); }
+      finally { releaseSync(); }
+      const error = await outcome;
+
+      expect(chart.prewarmUrls).toEqual([]);
+      expect(chart.bootCount).toBe(0);
+      expect(error).toBeInstanceOf(EngineBootCancelledError);
+      expect(runtime.engine()).toBeNull();
+      expect(stages.some((stage) => stage.kind === "ready")).toBe(false);
+      expect(sync.terminated).toBe(true);
+      expect(chart.terminated).toBe(true);
+    });
+
+    it("does not boot an overlap Worker after pagehide during asset reads", async () => {
+      let tearingDown = false;
+      let releaseAssets!: () => void;
+      let reportReadStarted!: () => void;
+      const assets = new Promise<void>((resolve) => { releaseAssets = resolve; });
+      const readStarted = new Promise<void>((resolve) => { reportReadStarted = resolve; });
+      const sync = new FakeSyncEngine(FILES);
+      const originalRead = sync.readFile.bind(sync);
+      sync.readFile = async (path) => {
+        reportReadStarted();
+        await assets;
+        return originalRead(path);
+      };
+      const chart = new FakeChartEngine();
+      const idle = new FakeIdleScheduler();
+      const stages: BootStage[] = [];
+      const runtime = new AlmaMeshRuntime({
+        spawnSyncEngine: () => sync,
+        spawnChartEngine: () => chart,
+        decideBootMode: () => ({ mode: "overlap", reason: "test" }),
+        scheduleIdle: idle.schedule,
+        isPageTearingDown: () => tearingDown,
+      });
+
+      const outcome = runtime.bootstrap(CONFIG, (stage) => stages.push(stage))
+        .then(() => null, (error: unknown) => error);
+      await readStarted;
+      tearingDown = true;
+      releaseAssets();
+      const error = await outcome;
+
+      expect(chart.bootCount).toBe(0);
+      expect(error).toBeInstanceOf(EngineBootCancelledError);
+      expect(runtime.engine()).toBeNull();
+      expect(stages.some((stage) => stage.kind === "ready")).toBe(false);
+      expect(idle.cancelled).toBe(1);
+      expect(chart.prewarmUrls).toEqual([]);
+      expect(sync.terminated).toBe(true);
+      expect(chart.terminated).toBe(true);
+    });
+
+    it("does not publish readiness when an overlap boot completes after pagehide", async () => {
+      let tearingDown = false;
+      let releaseBoot!: () => void;
+      let reportBootStarted!: () => void;
+      const boot = new Promise<void>((resolve) => { releaseBoot = resolve; });
+      const bootStarted = new Promise<void>((resolve) => { reportBootStarted = resolve; });
+      const sync = new FakeSyncEngine(FILES);
+      const chart = new FakeChartEngine();
+      const originalBoot = chart.boot.bind(chart);
+      chart.boot = async (...args) => {
+        await originalBoot(...args);
+        reportBootStarted();
+        await boot;
+      };
+      const stages: BootStage[] = [];
+      const runtime = new AlmaMeshRuntime({
+        spawnSyncEngine: () => sync,
+        spawnChartEngine: () => chart,
+        decideBootMode: () => ({ mode: "overlap", reason: "test" }),
+        scheduleIdle: new FakeIdleScheduler().schedule,
+        isPageTearingDown: () => tearingDown,
+      });
+
+      const outcome = runtime.bootstrap(CONFIG, (stage) => stages.push(stage))
+        .then(() => null, (error: unknown) => error);
+      await bootStarted;
+      tearingDown = true;
+      releaseBoot();
+      const error = await outcome;
+
+      expect(chart.bootCount).toBe(1);
+      expect(error).toBeInstanceOf(EngineBootCancelledError);
+      expect(runtime.engine()).toBeNull();
+      expect(stages.some((stage) => stage.kind === "ready")).toBe(false);
+      expect(sync.terminated).toBe(true);
+      expect(chart.terminated).toBe(true);
+    });
+
+    it("allows an explicit fresh bootstrap after cancellation without automatically retrying", async () => {
+      let tearingDown = false;
+      const abandonedSync = new FakeSyncEngine(FILES);
+      abandonedSync.sync = async () => {
+        tearingDown = true;
+        return SYNC_RESULT;
+      };
+      const abandonedChart = new FakeChartEngine();
+      const freshSync = new FakeSyncEngine(FILES);
+      const freshChart = new FakeChartEngine();
+      const syncs = [abandonedSync, freshSync];
+      const charts = [abandonedChart, freshChart];
+      const spawnSyncEngine = vi.fn(() => syncs.shift() ?? freshSync);
+      const spawnChartEngine = vi.fn(() => charts.shift() ?? freshChart);
+      const runtime = new AlmaMeshRuntime({
+        spawnSyncEngine,
+        spawnChartEngine,
+        decideBootMode: () => ({ mode: "overlap", reason: "test" }),
+        scheduleIdle: new FakeIdleScheduler().schedule,
+        isPageTearingDown: () => tearingDown,
+      });
+
+      await expect(runtime.bootstrap(CONFIG)).rejects.toBeInstanceOf(EngineBootCancelledError);
+      expect(spawnSyncEngine).toHaveBeenCalledTimes(1);
+      expect(spawnChartEngine).toHaveBeenCalledTimes(1);
+      expect(abandonedSync.terminated).toBe(true);
+      expect(abandonedChart.terminated).toBe(true);
+      expect(runtime.engine()).toBeNull();
+
+      tearingDown = false;
+      const engine = await runtime.bootstrap(CONFIG);
+      await engine.generateChart(BIRTH);
+      expect(runtime.engine()).toBe(engine);
+      expect(spawnSyncEngine).toHaveBeenCalledTimes(2);
+      expect(spawnChartEngine).toHaveBeenCalledTimes(2);
+      expect(freshChart.bootCount).toBe(1);
+      expect(freshChart.chartCalls).toBe(1);
+      expect(freshChart.terminated).toBe(false);
+    });
+
+    it("keeps the current pagehide/pageshow boolean semantics across a held overlap sync", async () => {
+      let tearingDown = false;
+      let releaseSync!: () => void;
+      const sync = new FakeSyncEngine(FILES);
+      const originalSync = sync.sync.bind(sync);
+      sync.sync = async (...args) => {
+        await new Promise<void>((resolve) => { releaseSync = resolve; });
+        return originalSync(...args);
+      };
+      const chart = new FakeChartEngine();
+      const idle = new FakeIdleScheduler();
+      const runtime = new AlmaMeshRuntime({
+        spawnSyncEngine: () => sync,
+        spawnChartEngine: () => chart,
+        decideBootMode: () => ({ mode: "overlap", reason: "test" }),
+        scheduleIdle: idle.schedule,
+        isPageTearingDown: () => tearingDown,
+      });
+
+      const pending = runtime.bootstrap(CONFIG);
+      tearingDown = true;
+      try { idle.runPending(); }
+      finally {
+        tearingDown = false;
+        releaseSync();
+      }
+      const engine = await pending;
+
+      expect(chart.prewarmUrls).toEqual([]);
+      expect(chart.bootCount).toBe(1);
+      expect(runtime.engine()).toBe(engine);
+      expect(chart.terminated).toBe(false);
+    });
+
     it("a live page boots normally", async () => {
       const chart = new FakeChartEngine();
       const runtime = new AlmaMeshRuntime({
@@ -826,5 +1017,349 @@ describe("AlmaMeshRuntime.bootstrap", () => {
 
       expect(spawnedCharts).toEqual([faulted]);
     });
+  });
+});
+
+describe("AlmaMeshRuntime terminal client failures", () => {
+  const predictive: PredictiveInput = {
+    ...BIRTH,
+    referenceInstant: "2026-06-09T12:00:00+00:00",
+    utcOffsetMinutes: 330,
+  };
+
+  /** The actual client/Worker protocol, with only the Worker I/O replaced. */
+  function harness() {
+    let message: (event: MessageEvent<ChartWorkerResponse>) => void = () => {};
+    let error: (event: { message?: string }) => void = () => {};
+    let messageerror: () => void = () => {};
+    let mode: "ok" | "silent" | "python" = "ok";
+    let closeAfterReply = false;
+    const posted: ChartWorkerRequest[] = [];
+    const worker: WorkerLike = {
+      postMessage(request) {
+        posted.push(request);
+        const response: ChartWorkerResponse | null = request.kind === "boot"
+          ? { ok: true, kind: "boot", id: request.id }
+          : mode === "python" ? { ok: false, id: request.id, error: "Traceback ...\nRuntimeError: unreachable\n" }
+            : mode === "silent" ? null
+              : { ok: true, kind: "computePredictive", id: request.id, predictive: {} as PredictiveContexts };
+        if (response) queueMicrotask(() => {
+          message(new MessageEvent("message", { data: response }));
+          if (closeAfterReply) error({ message: "Worker exited just after reply" });
+        });
+      },
+      addEventListener(type: "message" | "error" | "messageerror", listener:
+        ((event: MessageEvent<ChartWorkerResponse>) => void) | ((event: { message?: string }) => void) | (() => void)) {
+        if (type === "message") message = listener as typeof message;
+        else if (type === "error") error = listener as typeof error;
+        else messageerror = listener as typeof messageerror;
+      },
+      terminate: vi.fn(),
+    };
+    const client = new ChartEngineClient(worker, { predictiveRequestTimeoutMs: 5 });
+    const fresh = new FakeChartEngine();
+    let spawns = 0;
+    const runtime = new AlmaMeshRuntime({
+      spawnSyncEngine: () => new FakeSyncEngine(FILES),
+      spawnChartEngine: () => ++spawns === 1 ? client : fresh,
+      decideBootMode: () => ({ mode: "sequential", reason: "test" }),
+      log: () => {},
+    });
+    return { runtime, client, fresh, posted, worker,
+      mode(value: typeof mode) { mode = value; },
+      fail(type: "error" | "messageerror") {
+        if (type === "error") error({ message: "Worker process exited" });
+        else messageerror();
+      },
+      closeAfterReply() { closeAfterReply = true; },
+      spawns: () => spawns,
+    };
+  }
+
+  it.each(["error", "messageerror", "timeout"] as const)("invalidates a terminal %s from the real client and explicitly boots a replacement", async (failure) => {
+    vi.useFakeTimers();
+    try {
+      const h = harness();
+      const notifications = vi.fn();
+      h.runtime.subscribeFailures(notifications);
+      const engine = await h.runtime.bootstrap(CONFIG);
+      h.mode("silent");
+      const first = engine.computePredictive(predictive).catch((error: unknown) => error);
+      const second = engine.computePredictive({ ...predictive, referenceInstant: "2027-01-01T00:00:00Z" })
+        .catch((error: unknown) => error);
+      if (failure === "timeout") vi.advanceTimersByTime(6);
+      else h.fail(failure);
+      const [error, concurrent] = await Promise.all([first, second]);
+
+      expect(h.runtime.engine()).toBeNull();
+      expect(concurrent).toBe(error);
+      expect(error).toBe(h.client.closedError());
+      expect((error as Error).name).toBe("Error"); // No Wasm marker/message heuristic.
+      expect(notifications).toHaveBeenCalledExactlyOnceWith(error);
+      expect(h.worker.terminate).toHaveBeenCalledTimes(1);
+      expect(h.spawns()).toBe(1);
+      const posts = h.posted.length;
+      await expect(engine.computePredictive(predictive)).rejects.toThrow("superseded");
+      expect(h.posted).toHaveLength(posts);
+      const replacement = await h.runtime.bootstrap(CONFIG);
+      expect(h.spawns()).toBe(2);
+      expect(replacement).not.toBe(engine);
+      await expect(replacement.computePredictive(predictive)).resolves.toBeDefined();
+      expect(h.fresh.terminated).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it.each(["error", "messageerror"] as const)("detects an idle client %s before a populated memo can return a stale result", async (failure) => {
+    const h = harness();
+    const engine = await h.runtime.bootstrap(CONFIG);
+    await engine.computePredictive(predictive);
+    const posts = h.posted.length;
+    const notifications = vi.fn();
+    h.runtime.subscribeFailures(notifications);
+    h.fail(failure);
+
+    await expect(engine.computePredictive(predictive)).rejects.toThrow("chart worker failed");
+    expect(h.runtime.engine()).toBeNull();
+    expect(h.posted).toHaveLength(posts);
+    expect(notifications).toHaveBeenCalledExactlyOnceWith(h.client.closedError());
+  });
+
+  it("checks client closure again after a successful reply but before delivering the result", async () => {
+    const h = harness();
+    const engine = await h.runtime.bootstrap(CONFIG);
+    const notifications = vi.fn();
+    h.runtime.subscribeFailures(notifications);
+    h.closeAfterReply();
+
+    await expect(engine.computePredictive(predictive)).rejects.toThrow("Worker exited just after reply");
+    expect(h.runtime.engine()).toBeNull();
+    expect(notifications).toHaveBeenCalledExactlyOnceWith(h.client.closedError());
+  });
+
+  it("keeps an ordinary Python protocol failure local and permits a later computation", async () => {
+    const h = harness();
+    const engine = await h.runtime.bootstrap(CONFIG);
+    const notifications = vi.fn();
+    h.runtime.subscribeFailures(notifications);
+    h.mode("python");
+
+    await expect(engine.computePredictive(predictive)).rejects.toThrow("RuntimeError: unreachable");
+    expect(h.client.closedError()).toBeNull();
+    expect(h.runtime.engine()).toBe(engine);
+    expect(h.worker.terminate).not.toHaveBeenCalled();
+    expect(notifications).not.toHaveBeenCalled();
+    h.mode("ok");
+    await expect(engine.computePredictive(predictive)).resolves.toBeDefined();
+    expect(h.spawns()).toBe(1);
+  });
+});
+
+describe("AlmaMeshRuntime post-ready failures", () => {
+  const predictive: PredictiveInput = {
+    ...BIRTH,
+    referenceInstant: "2026-06-09T12:00:00+00:00",
+    utcOffsetMinutes: 330,
+  };
+  const moon: MoonWindowInput = {
+    placeStartUtc: "2026-06-09T00:00:00Z",
+    placeEndUtc: "2026-06-10T00:00:00Z",
+  };
+  const mesh: MeshEdgeInput = {
+    a: BIRTH,
+    b: BIRTH,
+    relationship: "spouse",
+    roleA: "bride",
+    roleB: "groom",
+    windowStart: "2026-01-01T00:00:00Z",
+    windowEnd: "2027-01-01T00:00:00Z",
+    referenceInstant: "2026-06-09T12:00:00Z",
+  };
+  const rectification: RectificationInput = {
+    ...BIRTH,
+    utcOffsetMinutes: 330,
+    events: [{ date: "2017-09-01", category: "relocation" }],
+    mode: "window",
+  };
+  const calls: ReadonlyArray<{
+    method: "generateChart" | "computePredictive" | "computeMoonWindow" | "computeMeshEdge" | "computeRectification";
+    run(engine: ChartEngine): Promise<unknown>;
+  }> = [
+    { method: "generateChart", run: (engine) => engine.generateChart(BIRTH) },
+    { method: "computePredictive", run: (engine) => engine.computePredictive(predictive, { retention: "period" }) },
+    { method: "computeMoonWindow", run: (engine) => engine.computeMoonWindow(moon) },
+    { method: "computeMeshEdge", run: (engine) => engine.computeMeshEdge(mesh) },
+    { method: "computeRectification", run: (engine) => engine.computeRectification(rectification) },
+  ];
+
+  function harness(charts = [new FakeChartEngine(), new FakeChartEngine()]) {
+    const spawned: FakeChartEngine[] = [];
+    const syncs: FakeSyncEngine[] = [];
+    const runtime = new AlmaMeshRuntime({
+      spawnSyncEngine: () => {
+        const sync = new FakeSyncEngine(FILES);
+        syncs.push(sync);
+        return sync;
+      },
+      spawnChartEngine: () => {
+        const chart = charts.shift();
+        if (!chart) throw new Error("unexpected chart Worker spawn");
+        spawned.push(chart);
+        return chart;
+      },
+      decideBootMode: () => ({ mode: "sequential", reason: "test" }),
+      log: () => {},
+    });
+    return { runtime, spawned, syncs };
+  }
+
+  function deferred<T>() {
+    let resolve!: (value: T) => void;
+    let reject!: (error: Error) => void;
+    const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; });
+    return { promise, resolve, reject };
+  }
+
+  it.each(calls)("invalidates a fatal $method failure and boots a fresh instance only when explicitly requested", async ({ method, run }) => {
+    const { runtime, spawned, syncs } = harness();
+    const engine = await runtime.bootstrap(CONFIG);
+    const fault = errorFromWorker("Out of bounds memory access", "RuntimeError");
+    vi.spyOn(spawned[0], method).mockRejectedValueOnce(fault);
+    const terminate = vi.spyOn(spawned[0], "terminate");
+
+    await expect(run(engine)).rejects.toBe(fault);
+
+    expect(runtime.engine()).toBeNull();
+    expect(terminate).toHaveBeenCalledTimes(1);
+    expect(spawned).toHaveLength(1); // A failed calculation is never replayed.
+    const fresh = await runtime.bootstrap(CONFIG);
+    expect(fresh).not.toBe(engine);
+    expect(spawned).toHaveLength(2);
+    expect(syncs).toHaveLength(2);
+    expect(syncs.every((sync) => sync.terminated)).toBe(true);
+    expect(spawned[1].terminated).toBe(false);
+    await expect(run(fresh)).resolves.toBeDefined();
+  });
+
+  it.each(calls)("rejects a disposed engine's $method before accessing even a populated memo", async ({ method, run }) => {
+    const { runtime, spawned } = harness();
+    const old = await runtime.bootstrap(CONFIG);
+    const compute = vi.spyOn(spawned[0], method);
+    await run(old); // Chart and predictive calls now have settled memo entries.
+    runtime.dispose();
+    const fresh = await runtime.bootstrap(CONFIG);
+
+    await expect(run(old)).rejects.toThrow("superseded");
+    expect(compute).toHaveBeenCalledTimes(1);
+    expect(runtime.engine()).toBe(fresh);
+    expect(spawned[1].terminated).toBe(false);
+  });
+
+  it.each([
+    new Error("invalid birth coordinates"),
+    new Error("Traceback ...\nRuntimeError: unreachable\n"),
+    new Error("network unreachable"),
+    new Error("unreachable"),
+    "invalid input",
+  ])("does not reset or notify for an ordinary compute error: %s", async (error) => {
+    const { runtime, spawned } = harness();
+    const failure = vi.fn();
+    runtime.subscribeFailures(failure);
+    const engine = await runtime.bootstrap(CONFIG);
+    vi.spyOn(spawned[0], "computePredictive").mockRejectedValueOnce(error);
+
+    await expect(engine.computePredictive(predictive)).rejects.toBe(error);
+    expect(await runtime.bootstrap(CONFIG)).toBe(engine);
+    await expect(engine.computePredictive(predictive)).resolves.toBeDefined();
+    expect(runtime.engine()).toBe(engine);
+    expect(spawned).toHaveLength(1);
+    expect(spawned[0].terminated).toBe(false);
+    expect(failure).not.toHaveBeenCalled();
+  });
+
+  it("notifies once after invalidation and fences a concurrent old failure from the replacement instance", async () => {
+    const { runtime, spawned } = harness();
+    const engine = await runtime.bootstrap(CONFIG);
+    const first = deferred<PredictiveContexts>();
+    const second = deferred<MeshEdgeContext>();
+    vi.spyOn(spawned[0], "computePredictive").mockReturnValue(first.promise);
+    vi.spyOn(spawned[0], "computeMeshEdge").mockReturnValue(second.promise);
+    const notifications: Error[] = [];
+    runtime.subscribeFailures((error) => {
+      expect(runtime.engine()).toBeNull();
+      expect(spawned[0].terminated).toBe(true);
+      notifications.push(error);
+    });
+    const firstResult = engine.computePredictive(predictive).catch((error: unknown) => error);
+    const secondResult = engine.computeMeshEdge(mesh).catch((error: unknown) => error);
+    const fault = errorFromWorker("memory access out of bounds");
+    first.reject(fault);
+    expect(await firstResult).toBe(fault);
+    expect(notifications).toEqual([fault]);
+
+    const fresh = await runtime.bootstrap(CONFIG);
+    const lateFault = errorFromWorker("unreachable", "RuntimeError");
+    second.reject(lateFault);
+    expect(await secondResult).toBe(lateFault);
+    expect(notifications).toEqual([fault]);
+    expect(runtime.engine()).toBe(fresh);
+    expect(spawned[1].terminated).toBe(false);
+    await expect(fresh.computePredictive(predictive)).resolves.toBeDefined();
+  });
+
+  it.each(["success", "fatal failure"])("fences a late %s after explicit disposal and replacement", async (outcome) => {
+    const { runtime, spawned } = harness();
+    const old = await runtime.bootstrap(CONFIG);
+    const pending = deferred<PredictiveContexts>();
+    vi.spyOn(spawned[0], "computePredictive").mockReturnValue(pending.promise);
+    const failure = vi.fn();
+    runtime.subscribeFailures(failure);
+    const result = old.computePredictive(predictive).catch((error: unknown) => error);
+    runtime.dispose();
+    const fresh = await runtime.bootstrap(CONFIG);
+
+    if (outcome === "success") {
+      pending.resolve({} as PredictiveContexts);
+      expect(await result).toEqual(expect.objectContaining({ message: expect.stringContaining("superseded") }));
+    } else {
+      const fault = errorFromWorker("Out of bounds memory access", "RuntimeError");
+      pending.reject(fault);
+      expect(await result).toBe(fault);
+    }
+    expect(runtime.engine()).toBe(fresh);
+    expect(spawned[1].terminated).toBe(false);
+    expect(failure).not.toHaveBeenCalled();
+  });
+
+  it("supports unsubscribe and keeps listener exceptions from replacing the fatal error or other notifications", async () => {
+    const { runtime, spawned } = harness();
+    const unsubscribed = vi.fn();
+    const unsubscribe = runtime.subscribeFailures(unsubscribed);
+    unsubscribe();
+    runtime.subscribeFailures(() => { throw new Error("observer failed"); });
+    const listener = vi.fn();
+    runtime.subscribeFailures(listener);
+    const engine = await runtime.bootstrap(CONFIG);
+    const fault = errorFromWorker("unreachable", "RuntimeError");
+    vi.spyOn(spawned[0], "computePredictive").mockRejectedValueOnce(fault);
+
+    await expect(engine.computePredictive(predictive)).rejects.toBe(fault);
+    expect(unsubscribed).not.toHaveBeenCalled();
+    expect(listener).toHaveBeenCalledExactlyOnceWith(fault);
+    expect(runtime.engine()).toBeNull();
+  });
+
+  it("does not report the existing automatic boot retry as a post-ready failure", async () => {
+    const faulted = new FakeChartEngine();
+    vi.spyOn(faulted, "boot").mockRejectedValue(errorFromWorker("Out of bounds memory access", "RuntimeError"));
+    const { runtime, spawned } = harness([faulted, new FakeChartEngine()]);
+    const failure = vi.fn();
+    runtime.subscribeFailures(failure);
+
+    const engine = await runtime.bootstrap(CONFIG);
+    expect(runtime.engine()).toBe(engine);
+    expect(spawned).toHaveLength(2);
+    expect(failure).not.toHaveBeenCalled();
   });
 });

@@ -116,7 +116,7 @@ export const PORTABLE_STORE_MAX_VERSIONS = {
   'almamesh-chat-history': 3,
   'almamesh-interpretations': 6,
   'almamesh-mesh-readings': 1,
-  'almamesh-predictive': 4,
+  'almamesh-predictive': 5,
   'almamesh-language': 1,
   'almamesh-preferences': 1,
   'almamesh-deletion-tombstones': 1,

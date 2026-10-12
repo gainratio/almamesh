@@ -37,6 +37,7 @@ interface FloatingChatPanelProps {
     retrievedContext?: readonly string[],
     onAgentStatus?: (label: string | null) => void,
     asOf?: ChatThreadAsOf,
+    onTravel?: import('../../../lib/timeTravelTool').TravelRecorder,
   ) => Promise<{
     answer: string;
     timing_guidance?: string | null;

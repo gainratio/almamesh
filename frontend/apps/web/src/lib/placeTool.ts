@@ -9,6 +9,8 @@ import type { PlaceLookup, ResolvedPlace } from './geo/placeLookup';
 
 export const RESOLVE_PLACE_TOOL_NAME = 'resolve_place';
 export const RESOLVE_PLACE_STATUS_LABEL = 'Looking up the place on this device';
+/** A cold, bounded SQLite import can outlast the ordinary small-tool deadline. */
+export const PLACE_LOOKUP_TIMEOUT_MS = 30_000;
 const QUERY_ERROR = 'query must be a place name of 2–120 characters';
 
 const DESCRIPTION = [
@@ -40,15 +42,20 @@ export function createResolvePlaceTool(lookup: (query: string) => Promise<PlaceL
     name: RESOLVE_PLACE_TOOL_NAME,
     description: DESCRIPTION,
     statusLabel: RESOLVE_PLACE_STATUS_LABEL,
+    timeoutMs: PLACE_LOOKUP_TIMEOUT_MS,
     parameters: {
       type: 'object',
       properties: { query: { type: 'string', minLength: 2, maxLength: 120 } },
       required: ['query'],
       additionalProperties: false,
     },
-    execute: async (args: AgentJsonObject) => {
+    execute: async (args: AgentJsonObject, context) => {
+      context.signal.throwIfAborted();
       const text = query(args);
-      return text === undefined ? { error: QUERY_ERROR } : forModel(await lookup(text));
+      if (text === undefined) return { error: QUERY_ERROR };
+      const found = await lookup(text);
+      context.signal.throwIfAborted();
+      return forModel(found);
     },
   };
 }

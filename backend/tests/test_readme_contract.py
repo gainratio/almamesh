@@ -11,11 +11,15 @@ from __future__ import annotations
 
 import json
 import re
+import runpy
 import tomllib
 import unicodedata
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+PUBLIC_DOC_PATHS = runpy.run_path(str(REPO_ROOT / "scripts/public_docs_manifest.py"))[
+    "public_doc_paths"
+]
 README = REPO_ROOT / "README.md"
 FIRST_SCREEN_END = "## How it works"
 REQUIRED_LABELS = (
@@ -165,16 +169,22 @@ def test_developer_section_links_getting_started() -> None:
 
 
 def test_more_detail_links_every_technical_doc() -> None:
-    docs = REPO_ROOT / "docs"
     linked = _more_detail_links()
-    expected = {f"docs/{p.name}" for p in docs.iterdir() if p.suffix == ".md"}
+    # Public docs include tracked and new non-ignored files; local/private
+    # notes must never require a public README link or be read by this test.
+    # Source-only CI exports carry the host Git inventory explicitly; no walk
+    # of private or ignored files may substitute for missing Git metadata.
+    docs = {Path(path) for path in PUBLIC_DOC_PATHS(REPO_ROOT)}
+    expected = {
+        path.as_posix() for path in docs if path.parent == Path("docs") and path.suffix == ".md"
+    }
     expected |= set(ROOT_DOCS)
     missing = sorted(expected - linked)
-    folders = [p.name for p in docs.iterdir() if p.is_dir() and p.name not in {"assets"}]
+    folders = {path.parts[1] for path in docs if len(path.parts) > 2 and path.parts[1] != "assets"}
     for folder in folders:
         if not any(t.startswith(f"docs/{folder}") for t in linked):
             missing.append(f"docs/{folder}/")
-    assert missing == []
+    assert missing == [], missing
 
 
 def test_more_detail_comes_right_before_the_license() -> None:

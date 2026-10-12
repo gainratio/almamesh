@@ -127,7 +127,7 @@ const DESCRIPTION = [
   'Read deterministic planetary timing on this device, for today or for any period. It never makes a network request.',
   'Omit start and end for today. For a period send YYYY-MM-DD dates, end inclusive:',
   '"12 March 2019" -> start=end=2019-03-12; "June 2026" -> start=2026-06-01, end=2026-06-30;',
-  '"2019" -> start=2019-01-01, end=2019-12-31. For vague ranges ("summer 2019") pick a sensible range and say which.',
+  '"2019" -> start=2019-01-01, end=2019-12-31. For vague ranges ("summer 2019"), ask the user to clarify the start and end dates before calling this tool; never choose dates for them.',
   'Every result carries `period`: name it in your answer, e.g. "I looked at 1–30 June 2026."',
   'Respect `notes`. Only the events in `covered_events` were checked; do not claim anything about other planets.',
 ].join(' ');
@@ -175,10 +175,14 @@ async function todayTiming(
   context: AgentToolContext,
 ): Promise<TimingResult> {
   // Dashas need no engine run: the stored tree already carries every date.
-  const source =
-    section === 'dashas' || !input.loadCurrentChart ? input.chart : await input.loadCurrentChart(context);
-  const chart = sanitizeChartForLlm(source, todayAnalysisInstant(context.now));
   const today = input.todayDay(context.now);
+  if (section === 'dashas') {
+    const period = { start: today, end: today };
+    return dashasTiming(input, section, period, periodEcho(period, 'today'), []);
+  }
+  const source =
+    !input.loadCurrentChart ? input.chart : await input.loadCurrentChart(context);
+  const chart = sanitizeChartForLlm(source, todayAnalysisInstant(context.now));
   const { data, notes } = sectionPayload(chart, section);
   return { period: periodEcho({ start: today, end: today }, 'today'), section, shown: section, notes: [...notes], data };
 }

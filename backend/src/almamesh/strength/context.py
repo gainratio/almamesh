@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from almamesh.calculations import SkyfieldAstronomy, _to_utc
+from almamesh.calculations import SkyfieldAstronomy, _to_utc, astronomy_scope
 from almamesh.schemas.strength import StrengthContext
 from almamesh.strength.ashtakavarga import compute_ashtakavarga
 from almamesh.strength.shadbala import compute_shadbala
@@ -32,6 +32,7 @@ def compute_strength_context(
     lon: float,
     *,
     civil_offset: timedelta,
+    astronomy: SkyfieldAstronomy | None = None,
 ) -> StrengthContext:
     """Compute the full Ashtakavarga + Shadbala strength context for a natal chart.
 
@@ -39,10 +40,12 @@ def compute_strength_context(
     the Vedic weekday is the civil date of the sunrise, see ``SunWindow``).
     """
     birth_utc = _to_utc(birth_dt)
-    astro = SkyfieldAstronomy()
-    window = sun_window(astro, birth_utc, lat, lon, civil_offset=civil_offset)
-    return StrengthContext(
-        sunrise_utc_iso=window.sunrise.isoformat(),
-        ashtakavarga=compute_ashtakavarga(natal),
-        shadbala=compute_shadbala(natal, birth_utc, lat, lon, civil_offset=civil_offset),
-    )
+    with astronomy_scope(astronomy) as astro:
+        window = sun_window(astro, birth_utc, lat, lon, civil_offset=civil_offset)
+        return StrengthContext(
+            sunrise_utc_iso=window.sunrise.isoformat(),
+            ashtakavarga=compute_ashtakavarga(natal),
+            shadbala=compute_shadbala(
+                natal, birth_utc, lat, lon, civil_offset=civil_offset, astronomy=astro
+            ),
+        )

@@ -48,15 +48,15 @@ describe.each(pages)('$name chat wiring', ({ source }) => {
     expect(code).not.toContain('pinnedPlaceReader(');
   });
 
-  it('handleAskQuestionStream takes asOf last and passes it as the last argument to the LLM generator', () => {
+  it('forwards the thread pin and the per-turn movement recorder to the LLM generator', () => {
     const code = stripComments(source);
     const handler = code.slice(code.indexOf('const handleAskQuestionStream'));
-    expect(handler).toMatch(/onAgentStatus\?: \(label: string \| null\) => void,\s*asOf\?: ChatThreadAsOf,\s*\)/);
-    expect(handler).toMatch(/of ask(?:Mesh|Local)Llm\(\s*question,[^)]*?onAgentStatus,\s*asOf,\s*\)\)/);
+    expect(handler).toMatch(/onAgentStatus\?: \(label: string \| null\) => void,\s*asOf\?: ChatThreadAsOf,\s*onTravel\?:[^,]+TravelRecorder,\s*\)/);
+    expect(handler).toMatch(/of ask(?:Mesh|Local)Llm\(\s*question,[^)]*?onAgentStatus,\s*asOf,\s*onTravel,\s*\)\)/);
   });
 
-  it('the LLM generator takes asOf after onAgentStatus', () => {
+  it('the LLM generator takes the movement recorder after the thread pin', () => {
     const code = stripComments(source);
-    expect(code).toMatch(/const ask(?:Mesh|Local)Llm = async function\* \([^)]*?onAgentStatus\?: \(label: string \| null\) => void,\s*asOf\?: ChatThreadAsOf,\s*\)/);
+    expect(code).toMatch(/const ask(?:Mesh|Local)Llm = async function\* \([^)]*?onAgentStatus\?: \(label: string \| null\) => void,\s*asOf\?: ChatThreadAsOf,\s*onTravel\?:[^,]+TravelRecorder,\s*\)/);
   });
 });

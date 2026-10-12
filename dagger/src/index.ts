@@ -84,6 +84,8 @@ const SOURCE_EXCLUDES = [
   "**/*private*.key",
   "**/node_modules/**",
   "**/dist*/**",
+  "**/webkit-lane-artifacts*/**",
+  "**/webkit-lane-evidence*/**",
   "**/.venv/**",
   "dagger/sdk/**",
 ]
@@ -99,6 +101,7 @@ const CONTRACT_TESTS = [
   "tests/dagger-repository-identity.test.ts",
   "tests/dagger-toolchain-contract.test.ts",
   "tests/dagger-workflow-contract.test.ts",
+  "tests/webkit-memory-baseline.test.ts",
 ]
 const SMOKE_OUTPUT_LINES = 60
 const NIGHTLY_REPORTS_DIR = "nightly-reports"
@@ -243,6 +246,10 @@ export class AlmameshCi {
           ".github/workflows/deploy.yml",
           "backend/**",
           "frontend/packages/browser/src/pyodide/*.ts",
+          // Backend astronomy tests verify the actual browser wheel configuration.
+          "frontend/apps/web/src/providers/AlmaMeshRuntimeProvider.tsx",
+          "frontend/packages/browser/integration/parity.mjs",
+          "frontend/packages/browser/integration/rectification-precision.mjs",
           "testdata/**",
           // backend/tests/test_readme_contract.py: the README, the package
           // description it must equal, and every file the README links to.
@@ -253,6 +260,9 @@ export class AlmameshCi {
           "LICENSE",
           "SECURITY.md",
           "THIRD_PARTY_NOTICES.md",
+          // Host Git exports public doc ownership before the source-only backend gate.
+          ".almamesh-public-docs.json",
+          "scripts/public_docs_manifest.py",
           "docs/**",
           "examples/**",
           "frontend/README.md",
@@ -437,10 +447,16 @@ exec ${inline.join(" ")}`,
           "frontend/apps/web/vitest.config.ts",
           // The toolchain contract reads the locked Playwright version.
           "frontend/bun.lock",
+          // The astronomy ingress contract also checks these files exist.
+          "frontend/apps/web/src/providers/AlmaMeshRuntimeProvider.tsx",
+          "frontend/packages/browser/integration/parity.mjs",
+          "frontend/packages/browser/integration/rectification-precision.mjs",
           // The memory-budget contract pins the test:e2e:memory-budget script.
           "frontend/apps/web/package.json",
           // The macOS WebKit lane contract reads its script and the configs it runs.
           "frontend/apps/web/scripts/webkit-macos-lane.sh",
+          "frontend/apps/web/scripts/crashReportSummary.mjs",
+          "frontend/apps/web/scripts/webkit-memory-baseline.mjs",
           "frontend/apps/web/playwright.time-travel.config.ts",
           "frontend/apps/web/playwright.portable-invariants.config.ts",
           "frontend/apps/web/playwright.boot-retry.config.ts",
@@ -510,7 +526,11 @@ exec ${inline.join(" ")}`,
       // button (2027 pinned; a Day pin found on the device). A stubbed
       // provider, the real engine. Chromium here; WebKit and an iPhone run on
       // macOS (.github/workflows/webkit-macos.yml), as Linux WebKit cannot boot the engine.
-      "TIME_TRAVEL_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:time-travel --project=chromium",
+      // Distribute this single spec by test, with one worker in each sequential
+      // command. The full 17-test command exceeded the 900-second watchdog on
+      // slower hosted runners; neither shard changes the test or job budgets.
+      "TIME_TRAVEL_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:time-travel e2e/time-travel.spec.ts --project=chromium --fully-parallel --workers=1 --shard=1/2",
+      "TIME_TRAVEL_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:time-travel e2e/time-travel.spec.ts --project=chromium --fully-parallel --workers=1 --shard=2/2",
       // A person added on /mesh survives an immediate full page load (the
       // write is on disk before the dialog moves on). Chromium only.
       "MESH_PERSIST_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:mesh-add-persist",

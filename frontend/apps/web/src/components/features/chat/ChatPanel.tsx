@@ -37,6 +37,7 @@ import { generateProviderChatSummary } from '../../../lib/chatSummaryProvider';
 import { viewerTodayDay } from '../../../lib/chatAgentTools';
 import { TimeTravelSheet } from './TimeTravelSheet';
 import { TimeTravelBanner } from './TimeTravelBanner';
+import type { TravelRecorder } from '../../../lib/timeTravelTool';
 
 interface ChatPanelProps {
   personName: string;
@@ -58,6 +59,7 @@ interface ChatPanelProps {
     retrievedContext?: readonly string[],
     onAgentStatus?: (label: string | null) => void,
     asOf?: ChatThreadAsOf,
+    onTravel?: TravelRecorder,
   ) => Promise<{
     answer: string;
     timing_guidance?: string | null;
@@ -430,6 +432,7 @@ async function streamAnswer(
       input.retrievedContext,
       onAgentStatus,
       input.asOf,
+      input.onTravel,
     );
     return response.answer;
   } finally {

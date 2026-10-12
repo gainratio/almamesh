@@ -152,7 +152,7 @@
         "severity": "challenging"
       },
       {
-        "exact": "2033-08-31T03:57:20.871705Z",
+        "exact": "2049-01-06T09:30:20.800838Z",
         "graha": "saturn",
         "kind": "return",
         "natal_point": "natal_saturn",
@@ -544,7 +544,7 @@
     },
     "slow_hits": [
       {
-        "exact": "2027-10-25T07:17:52.128213Z",
+        "exact": "2034-03-06T13:25:02.602029Z",
         "graha": "jupiter",
         "kind": "sign_ingress",
         "natal_point": "moon",
@@ -966,14 +966,14 @@
     },
     "slow_hits": [
       {
-        "exact": "2028-11-03T11:23:55.241166Z",
+        "exact": "2035-02-25T13:00:17.052456Z",
         "graha": "jupiter",
         "kind": "sign_ingress",
         "natal_point": "moon",
         "severity": "supportive"
       },
       {
-        "exact": "2033-08-15T12:55:44.028455Z",
+        "exact": "2048-12-23T06:45:28.730441Z",
         "graha": "saturn",
         "kind": "return",
         "natal_point": "natal_saturn",

@@ -116,6 +116,7 @@ export function memoizeChartEngine(
   memo: EngineMemo = new EngineMemo(),
 ): ChartEngine {
   return {
+    identity: () => identity,
     generateChart: (birth: BirthInput): Promise<SiderealChart> =>
       memo.run(memoKey(identity, "generateChart", birth), () => engine.generateChart(birth)),
     computePredictive: (

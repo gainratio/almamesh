@@ -3,6 +3,7 @@ import { IDBFactory } from 'fake-indexeddb';
 
 import {
   adoptLatestDatasetEpoch,
+  areDatasetStoresCurrent,
   mergeDeletionTombstones,
   abortBackupRestore,
   beginBackupRestore,
@@ -59,6 +60,79 @@ function envelope(state: Record<string, unknown>): string {
 function stateOf(value: string): Record<string, unknown> {
   return (JSON.parse(value) as { state: Record<string, unknown> }).state;
 }
+
+describe.each(['sqlite', 'session'] as const)('live dataset snapshot generation in %s mode', (mode) => {
+  const names = ['almamesh-chat-history', 'almamesh-profiles'] as const;
+
+  async function withDataset(run: (advance: (epoch: number) => Promise<void>) => Promise<void>) {
+    const repository = mode === 'sqlite' ? new PortableStateRepository(new PortableMemoryStore()) : null;
+    setPortableStateRepositoryForTests(repository);
+    const advance = async (epoch: number) => {
+      const ledger = { ...TOMBSTONES, activeEpoch: epoch, restoreEpoch: epoch, profileIds: [], threadIds: [], chartIds: [] };
+      if (repository) await repository.write(PORTABLE_LEDGER_KEY, JSON.stringify(ledger));
+      else sessionRowsForTests().set(PORTABLE_LEDGER_KEY, ledger);
+    };
+    try { await run(advance); } finally { setPortableStateRepositoryForTests(undefined); }
+  }
+
+  it('acknowledges both fresh empty stores only through their actual hydration reads', async () => {
+    await withDataset(async () => {
+      await readDeletionTombstones();
+      expect(areDatasetStoresCurrent(names, 0)).toBe(false);
+      await Promise.all(names.map((name) => readCanonicalDatasetValue(name)));
+      expect(areDatasetStoresCurrent(names, 0)).toBe(false);
+      await expect(deletionAwareIdbStorage.getItem(names[0])).resolves.toBeNull();
+      expect(areDatasetStoresCurrent(names, 0)).toBe(false);
+      await expect(deletionAwareIdbStorage.getItem(names[1])).resolves.toBeNull();
+      expect(areDatasetStoresCurrent(names, 0)).toBe(true);
+    });
+  });
+
+  it.each(names)('fails closed when %s has not hydrated', async (missing) => {
+    await withDataset(async () => {
+      await deletionAwareIdbStorage.getItem(names.find((name) => name !== missing)!);
+      expect(areDatasetStoresCurrent(names, 0)).toBe(false);
+    });
+  });
+
+  it.each(names)('fails closed when only %s has hydrated the new generation', async (current) => {
+    await withDataset(async (advance) => {
+      await Promise.all(names.map((name) => deletionAwareIdbStorage.getItem(name)));
+      await advance(1);
+      await deletionAwareIdbStorage.getItem(current);
+      expect(areDatasetStoresCurrent(names, 1)).toBe(false);
+    });
+  });
+
+  it('does not let an observed epoch or canonical diagnostic read promote stale live stores', async () => {
+    await withDataset(async (advance) => {
+      await Promise.all(names.map((name) => deletionAwareIdbStorage.getItem(name)));
+      expect(areDatasetStoresCurrent(names, 0)).toBe(true);
+      await advance(1);
+      await adoptLatestDatasetEpoch();
+      expect(areDatasetStoresCurrent(names, 1)).toBe(false);
+      expect(areDatasetStoresCurrent(names, 0)).toBe(false);
+      await Promise.all(names.map((name) => readCanonicalDatasetValue(name)));
+      expect(areDatasetStoresCurrent(names, 1)).toBe(false);
+      await Promise.all(names.map((name) => deletionAwareIdbStorage.getItem(name)));
+      expect(areDatasetStoresCurrent(names, 1)).toBe(true);
+    });
+  });
+
+  it('does not mark restored SQL writes as adopted live snapshots before rehydration', async () => {
+    await withDataset(async () => {
+      await Promise.all(names.map((name) => deletionAwareIdbStorage.getItem(name)));
+      const epoch = await beginBackupRestore({});
+      expect(areDatasetStoresCurrent(names, 0)).toBe(false);
+      await commitDatasetGeneration(epoch, names.map((key) => ({ key, value: envelope({}) })));
+      expect(areDatasetStoresCurrent(names, epoch)).toBe(false);
+      await Promise.all(names.map((name) => readCanonicalDatasetValue(name)));
+      expect(areDatasetStoresCurrent(names, epoch)).toBe(false);
+      await Promise.all(names.map((name) => deletionAwareIdbStorage.getItem(name)));
+      expect(areDatasetStoresCurrent(names, epoch)).toBe(true);
+    });
+  });
+});
 
 describe('deletion tombstones', () => {
   it('does not revive pending deletion IDs until a Replace commit succeeds', async () => {

@@ -42,7 +42,7 @@ const CHART_WORKER = join(HERE, "..", "src", "pyodide", "chartWorker.ts");
 const SKYFIELD_STACK = [
   "jplephem-2.23-py3-none-any.whl",
   "sgp4-2.25-py3-none-any.whl",
-  "skyfield-1.53-py3-none-any.whl",
+  "skyfield-1.55-py3-none-any.whl",
   "rfc8785-0.1.4-py3-none-any.whl",
   "avow-0.1.0-py3-none-any.whl",
 ];

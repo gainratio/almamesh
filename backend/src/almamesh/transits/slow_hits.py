@@ -1,6 +1,6 @@
 """Jupiter/Saturn transits over natal points, and Saturn/Jupiter returns.
 
-A conjunction/return is a root-find of the seam-unwrapped gap between a transiting
+A conjunction/return is a root-find of the circular gap between a transiting
 graha's longitude and a fixed natal target. Severity is a coarse, deterministic,
 classical-leaning heuristic (Saturn-on-Moon/Lagna challenges, Jupiter supports,
 returns are neutral milestones); the LLM refines downstream."""
@@ -22,8 +22,12 @@ if TYPE_CHECKING:
     from almamesh.calculations import SkyfieldAstronomy
 
 _STEP_DAYS: Final[float] = 5.0
+# Numerical contact tolerance in degrees (0.0036 arcseconds), not an aspect orb.
+# Bisection must finish on the conjunction branch, never the antipodal wrap.
+_CONTACT_TOLERANCE_DEG: Final[float] = 1e-6
 # Jupiter conjuncts a fixed point every ~12 yr; Saturn returns every ~29.5 yr.
-# Search a full period + slack so the next exact crossing is always bracketed.
+# Conjunctions share a ~13-year search horizon; a later Saturn contact may be absent.
+# Saturn returns search a full period + slack, subject to the ephemeris clamp below.
 _JUPITER_PERIOD_DAYS: Final[float] = 11.862 * 365.25
 _CONJ_WINDOW_DAYS: Final[float] = _JUPITER_PERIOD_DAYS + 365.25
 _SATURN_PERIOD_DAYS: Final[float] = 29.457 * 365.25
@@ -44,7 +48,7 @@ def _clamp(when: datetime) -> datetime:
 def _gap_fn(
     astro: SkyfieldAstronomy, graha: PlanetName, target: float
 ) -> Callable[[datetime], float]:
-    """f(t) = seam-unwrapped (transit graha longitude - target) in (-180, 180]."""
+    """Circular gap in [-180, 180), discontinuous at opposition, not conjunction."""
 
     def f(when: datetime) -> float:
         lon = transit_longitude(astro, graha, when, AyanamsaType.LAHIRI, NodeType.MEAN)
@@ -56,8 +60,32 @@ def _gap_fn(
 def _first_crossing(
     astro: SkyfieldAstronomy, graha: PlanetName, target: float, start: datetime, end: datetime
 ) -> datetime | None:
-    """The earliest exact crossing of the graha over the target in [start, end]."""
-    return find_first_crossing(_gap_fn(astro, graha, target), start, end, _STEP_DAYS)
+    """The earliest true contact; a circular gap's opposition jump is not a root.
+
+    Jupiter and Saturn cannot move 180 degrees in one five-day sample interval.
+    A sign change with a jump that large therefore crosses the wrapper's seam,
+    not the target. Refine only continuous near-zero brackets and independently
+    validate their angular residual before publishing a conjunction or return.
+    Keep scanning after a rejected bracket rather than losing a later contact.
+    """
+    gap = _gap_fn(astro, graha, target)
+    lo = start
+    gap_lo = gap(lo)
+    if abs(gap_lo) <= _CONTACT_TOLERANCE_DEG:
+        return lo
+    step = timedelta(days=_STEP_DAYS)
+    while lo < end:
+        hi = min(lo + step, end)
+        gap_hi = gap(hi)
+        continuous_crossing = (gap_lo >= 0.0) != (gap_hi >= 0.0) and abs(gap_hi - gap_lo) < 180.0
+        if continuous_crossing:
+            exact = find_first_crossing(gap, lo, hi, _STEP_DAYS)
+            if exact is not None and abs(gap(exact)) <= _CONTACT_TOLERANCE_DEG:
+                return exact
+        if abs(gap_hi) <= _CONTACT_TOLERANCE_DEG:
+            return hi
+        lo, gap_lo = hi, gap_hi
+    return None
 
 
 def _hit(

@@ -10,8 +10,8 @@ const WITHIN: BootMemorySample = {
 };
 
 describe('boot memory budget (memory-budget e2e lane)', () => {
-  it('pins the first place-lookup heap growth gate at 48 MiB (plan Ruling 15)', () => {
-    expect(PLACE_LOOKUP_HEAP_GROWTH_MIB).toBe(48);
+  it('pins the first SQLite place-lookup heap growth gate at 8 MiB', () => {
+    expect(PLACE_LOOKUP_HEAP_GROWTH_MIB).toBe(8);
   });
 
   it('pins the documented budgets as literals, not as references to themselves', () => {

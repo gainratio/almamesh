@@ -1,9 +1,10 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 
-import { expect, type Locator, type Page } from '@playwright/test';
+import { expect, type ConsoleMessage, type Frame, type Locator, type Page, type Worker as PlaywrightWorker } from '@playwright/test';
 
 import { DELHI_BIRTH, DELHI_SEED, LLM_SETTINGS_KEY, bootEngine, seedChart, waitForEngineReady } from './interpretation.helpers';
 import { gotoSettled } from './portableInvariants.helpers';
+import { captureReloadConsole, type ReloadConsoleCapture } from './reloadConsole';
 import { test } from './webkitProfile';
 
 /**
@@ -25,9 +26,8 @@ const ANSWER = 'I looked at 1–30 June 2019. A Saturn antar was ending and Jupi
 const BIRTH_MONTH = '1990-01'; // DELHI_BIRTH.datetimeUtc
 const SCREENSHOT = 'test-results/time-travel-june-2019.png';
 /**
- * Pin a full-tier device (devicePolicy: >= 8 GB and > 2 cores). Lite and minimal
- * answer dated questions with dashas only, so without this pin the period-sky
- * path this spec covers would depend on the runner's hardware.
+ * Pin a full-tier device for the desktop journeys. Separate iPhone journeys
+ * exercise the minimal tier with the same deterministic period capabilities.
  */
 const FULL_TIER = { deviceMemory: 8, hardwareConcurrency: 8 };
 
@@ -53,9 +53,10 @@ async function predictiveRequestKeys(page: Page): Promise<string[]> {
 
 /**
  * Open the dashboard after seedChart. seedChart's restore reloads the app, and
- * that load is still opening SQLite and the engine; WebKit reports a load a
- * hard navigation cancels as an "access control checks" console error, and the
- * app's own navigation can cut the goto short ("Frame load interrupted").
+ * that load is still opening SQLite and the engine. WebKit can emit a native
+ * navigation diagnostic; reloadConsole distinguishes proven resource evidence
+ * from the explicit exception with unproven source and cause. The app's own
+ * navigation can cut the goto short ("Frame load interrupted").
  * gotoSettled waits for the document to settle and retries an interrupted goto.
  */
 async function openDashboard(page: Page): Promise<void> {
@@ -63,13 +64,27 @@ async function openDashboard(page: Page): Promise<void> {
 }
 
 /** Every console error and uncaught page error, for the clean-console checks. */
+const consoleCaptures = new WeakMap<Page, ReloadConsoleCapture>();
+
 function captureConsole(page: Page): string[] {
-  const consoleErrors: string[] = [];
-  page.on('pageerror', (error) => consoleErrors.push(`pageerror: ${error.message}`));
-  page.on('console', (message) => {
-    if (message.type() === 'error') consoleErrors.push(`console: ${message.text()}`);
+  const capture = captureReloadConsole(page, test.info());
+  consoleCaptures.set(page, capture);
+  return capture.errors;
+}
+
+function explicitReload<T>(page: Page, reload: () => Promise<T>): Promise<T> {
+  const capture = consoleCaptures.get(page);
+  if (!capture) throw new Error('Explicit reload requires console capture');
+  return capture.duringReload(reload);
+}
+
+function captureLocalModelDownloads(page: Page): string[] {
+  const paths: string[] = [];
+  page.context().on('request', (request) => {
+    const path = new URL(request.url()).pathname;
+    if (path.startsWith('/models/')) paths.push(path);
   });
-  return consoleErrors;
+  return paths;
 }
 
 /** The stubbed provider's settings, so chat shows its composer and the Time travel button. */
@@ -178,12 +193,13 @@ test('[contract/stubbed] a typed June 2019 question reads June 2019, not today',
   const [decision] = agentRequests;
   const prompt = decision.messages.map((message) => message.content ?? '').join('\n');
   expect(prompt, 'a dated question must not pre-run and label today').not.toContain(', today):');
-  // Extended 2026-10 (time travel step C): the pinned full tier adds resolve_place.
+  // Every tier has read tools, place lookup and deferred time-travel actions.
   expect(decision.tools.map((tool) => tool.function.name)).toEqual([
     'get_current_datetime',
     'get_chart_facts',
     'get_timing',
     'resolve_place',
+    'time_travel',
   ]);
 
   const chatPanel = page.getByTestId('chat-panel');
@@ -539,7 +555,7 @@ test.describe('places', () => {
     const cityChunks: string[] = [];
     // Registered before the first navigation, so app boot traffic is covered too.
     page.on('request', (request) => {
-      if (new URL(request.url()).pathname.includes('cities.min')) cityChunks.push(request.url());
+      if (/\/cities\/cities-part-\d{2}\.json$/.test(new URL(request.url()).pathname)) cityChunks.push(request.url());
     });
     // Ruling 16: context level, so service-worker and worker requests count too, not only the page's.
     let serviceWorkerRequests = 0;
@@ -610,7 +626,9 @@ test.describe('places', () => {
     } else {
       expect(serviceWorkerRequests, 'the off-origin check must see service-worker traffic too').toBeGreaterThan(0);
     }
-    expect(cityChunks, 'the city list loads once, from the app origin').toHaveLength(1);
+    const cityManifest = JSON.parse(readFileSync(new URL('../src/data/cities.manifest.json', import.meta.url), 'utf8')) as { parts: number };
+    expect(cityChunks, 'each bounded city part loads once for the shared SQL import').toHaveLength(cityManifest.parts);
+    expect(new Set(cityChunks).size, 'later place questions reuse the imported SQL dataset').toBe(cityManifest.parts);
     expect(cityChunks.every((url) => new URL(url).origin === origin)).toBe(true);
     expect(
       (await predictiveRequestKeys(page)).slice(keysBefore.length),
@@ -758,7 +776,7 @@ test.describe('pinned threads on a device in another zone', () => {
     await expect(page.getByRole('button', { name: 'Which months look strongest?' })).toBeVisible();
 
     // The pin was on disk before the sheet closed: a full reload keeps it.
-    await page.reload({ waitUntil: 'domcontentloaded' });
+    await explicitReload(page, () => page.reload({ waitUntil: 'domcontentloaded' }));
     await page.getByTestId('floating-chat-button').click({ timeout: 120_000 });
     await expect(page.getByTestId('time-travel-title')).toHaveText(`Time travel · ${PIN_YEAR}`);
     expect((await pinnedThreads(page)).map((row) => row.as_of)).toEqual([
@@ -793,7 +811,7 @@ test.describe('pinned threads on a device in another zone', () => {
     // The chart zone (get_current_datetime scope 'chart') legitimately names the birth zone; only the device's must stay out.
     expect(bodies.filter((body) => body.includes(DEVICE_ZONE)), 'the device zone must not reach the model').toEqual([]);
     await page.screenshot({ path: PIN_SCREENSHOT, fullPage: true });
-    expect(consoleErrors, 'the journey must keep a clean console').toEqual([]);
+    expect(consoleErrors, 'the journey must have no unexpected runtime or page errors').toEqual([]);
   });
 
   /**
@@ -901,7 +919,7 @@ async function slowChatWrites(page: Page): Promise<void> {
       w.__chatWritesDelayed += 1;
       setTimeout(() => post.apply(this, args), w.__chatWriteDelayMs);
       return undefined;
-    };
+    } as Worker['postMessage'];
   });
 }
 
@@ -950,14 +968,14 @@ test.describe('Change then Back to today while the pin is still saving', () => {
 /**
  * The iPhone (iphone-webkit project only). iOS is always the minimal device tier
  * (packages/browser/src/deviceTier.ts), whatever navigator reports, so the
- * full-tier journeys above do not exist there: no Day pin, no places. What an
- * iPhone user does get is Month and Year. Pin next year, keep it across a
+ * Day and place controls are available with bounded SQLite-backed queries.
+ * Month and Year remain available too. Pin next year, keep it across a
  * reload, ask a question with no dates, and the banner wraps cleanly at 380 px.
  */
 test.describe('time travel on an iPhone', () => {
   test.use({ timezoneId: DEVICE_ZONE });
 
-  test('[contract/stubbed] @iphone offers Month and Year, pins next year and reads it without dates', async ({ page }) => {
+  test('[contract/stubbed] @iphone offers Day, Month and Year, pins next year and reads it without dates', async ({ page }) => {
     const consoleErrors = await prepare(page);
     const seen: AgentRequest[] = [];
     const bodies: string[] = [];
@@ -983,7 +1001,7 @@ test.describe('time travel on an iPhone', () => {
     await expect(page.getByTestId('time-travel-sheet')).toBeVisible();
     await expect(page.getByTestId('time-travel-tab-month')).toBeVisible();
     await expect(page.getByTestId('time-travel-tab-year')).toBeVisible();
-    await expect(page.getByTestId('time-travel-tab-day'), 'the Day pin is full-tier only, and iOS is minimal').toHaveCount(0);
+    await expect(page.getByTestId('time-travel-tab-day'), 'Day is available on iOS').toBeVisible();
     await page.getByTestId('time-travel-tab-year').click();
     await page.getByTestId('time-travel-year').selectOption(PIN_YEAR);
     await page.getByTestId('time-travel-go').click();
@@ -992,7 +1010,7 @@ test.describe('time travel on an iPhone', () => {
     await expect(page.getByTestId('time-travel-banner')).toContainText('answers are about this period');
 
     // The pin was on disk before the sheet closed: a full reload keeps it.
-    await page.reload({ waitUntil: 'domcontentloaded' });
+    await explicitReload(page, () => page.reload({ waitUntil: 'domcontentloaded' }));
     await page.getByTestId('floating-chat-button').click({ timeout: 120_000 });
     await expect(page.getByTestId('time-travel-title')).toHaveText(`Time travel · ${PIN_YEAR}`);
     expect((await pinnedThreads(page)).map((row) => row.as_of)).toEqual([
@@ -1003,7 +1021,7 @@ test.describe('time travel on an iPhone', () => {
     await page.getByTestId('chat-send-button').click();
     await expect(page.getByTestId('chat-panel').getByText(PIN_ANSWER)).toBeVisible({ timeout: 240_000 });
     const last = seen.at(-1)!;
-    expect(last.tools.map((tool) => tool.function.name), 'minimal tier: no place tool').not.toContain('resolve_place');
+    expect(last.tools.map((tool) => tool.function.name), 'minimal tier has the place tool').toContain('resolve_place');
     const tools = turnTools(last.messages);
     expect(tools.map((m) => m.name)).toEqual(['get_current_datetime', 'get_timing']);
     expect(tools[0]?.content).toContain(`"pinned_period":{"start":"${PIN_YEAR}-01-01","end":"${PIN_YEAR}-12-31"}`);
@@ -1011,17 +1029,16 @@ test.describe('time travel on an iPhone', () => {
     expect(bodies.filter((body) => body.includes(DEVICE_ZONE)), 'the device zone must not reach the model').toEqual([]);
 
     await expectBannerWrapsCleanlyAt380(page);
-    expect(consoleErrors, 'the journey must keep a clean console').toEqual([]);
+    expect(consoleErrors, 'the journey must have no unexpected runtime or page errors').toEqual([]);
   });
 });
 
 /**
  * Desktop Safari as it ships: no tier pin. Safari has no navigator.deviceMemory,
- * so the app reads it as the lite tier, where the Day pin (full tier only) is not
- * offered. Month and Year are. WebKit project only (@safari).
+ * so the app reads it as the lite tier. Day, Month and Year are available. WebKit project only (@safari).
  */
 test.describe("desktop Safari's own device tier", () => {
-  test('[contract/stubbed] @safari no Day pin on the lite tier; a Year pin still works', async ({ page }) => {
+  test('[contract/stubbed] @safari offers Day on the lite tier; a Year pin still works', async ({ page }) => {
     const consoleErrors = captureConsole(page);
     await configureStubbedAi(page);
     await bootEngine(page);
@@ -1033,7 +1050,7 @@ test.describe("desktop Safari's own device tier", () => {
     await page.getByTestId('time-travel-button').click();
     await expect(page.getByTestId('time-travel-sheet')).toBeVisible();
     await expect(page.getByTestId('time-travel-tab-month')).toBeVisible();
-    await expect(page.getByTestId('time-travel-tab-day'), 'the Day pin is full-tier only; desktop Safari is lite').toHaveCount(0);
+    await expect(page.getByTestId('time-travel-tab-day'), 'Day is available on desktop Safari').toBeVisible();
     await page.getByTestId('time-travel-tab-year').click();
     await page.getByTestId('time-travel-year').selectOption(PIN_YEAR);
     await page.getByTestId('time-travel-go').click();
@@ -1099,44 +1116,101 @@ async function serviceWorkerFetches(page: Page): Promise<string[]> {
 test.describe('as shipped: service worker on, AI off, nothing stubbed', () => {
   test.use({ serviceWorkers: 'allow' });
 
-  test('[contract/real] @sw nothing leaves the app origin, service-worker traffic included, with AI off', async ({ page, baseURL }) => {
+  test('[contract/real] @sw nothing leaves the app origin, service-worker traffic included, with AI off', async ({ page, baseURL }, testInfo) => {
     const consoleErrors = captureConsole(page);
-    const origin = new URL(baseURL ?? '').origin;
-    const pageOffOrigin: string[] = [];
-    page.context().on('request', (request) => {
-      const url = new URL(request.url());
-      if (url.protocol.startsWith('http') && url.origin !== origin) pageOffOrigin.push(request.url());
-    });
-    await bootEngine(page);
-    await seedChart(page);
-    await openDashboard(page);
-    // Bounded: with the worker blocked `ready` never settles, and the check below must say so.
-    await page.evaluate(() =>
-      Promise.race([navigator.serviceWorker.ready, new Promise((resolve) => setTimeout(resolve, 60_000))]),
-    );
-    // A fresh navigation now goes through the active worker.
-    await gotoSettled(page, '/dashboard');
-    expect(await page.evaluate(() => navigator.serviceWorker.controller !== null), 'the service worker controls the page').toBe(true);
-    await waitForEngineReady(page);
-    await expect(page.getByTestId('provenance-footer')).toContainText('As of', { timeout: 120_000 });
+    type Phase = 'boot' | 'restore' | 'openDashboard' | 'SWready' | 'SWnavigation' | 'waitengine' | 'chat' | 'month' | 'finalasserts';
+    let phase: Phase = 'boot';
+    const started = Date.now();
+    const events: Array<Record<string, unknown>> = [];
+    const record = (event: string, detail: Record<string, unknown> = {}): void => {
+      const at = Date.now();
+      events.push({ sequence: events.length + 1, at: new Date(at).toISOString(), elapsedMs: at - started,
+        phase, event, observedPageUrlAtReceipt: page.url(), ...detail });
+    };
+    const enterPhase = (next: Phase): void => { phase = next; record('phase-start'); };
+    const onConsole = (message: ConsoleMessage): void => {
+      if (message.type() === 'error' || message.text().startsWith('[almamesh] engine')) {
+        record('console', { type: message.type(), text: message.text(), location: message.location() });
+      }
+    };
+    const onPageError = (error: Error): void => { record('pageerror', { text: error.message, stack: error.stack }); };
+    const onNavigation = (frame: Frame): void => {
+      if (frame === page.mainFrame()) record('main-frame-framenavigated', { frameUrl: frame.url() });
+    };
+    const workerCloseListeners = new Map<PlaywrightWorker, () => void>();
+    const onWorker = (worker: PlaywrightWorker): void => {
+      const workerId = workerCloseListeners.size + 1;
+      record('worker-created', { workerId, workerUrl: worker.url() });
+      const onClose = (): void => { record('worker-closed', { workerId, workerUrl: worker.url() }); };
+      workerCloseListeners.set(worker, onClose);
+      worker.on('close', onClose);
+    };
+    page.on('console', onConsole);
+    page.on('pageerror', onPageError);
+    page.on('framenavigated', onNavigation);
+    page.on('worker', onWorker);
+    let bodyCompleted = false;
+    try {
+      const origin = new URL(baseURL ?? '').origin;
+      const pageOffOrigin: string[] = [];
+      page.context().on('request', (request) => {
+        const url = new URL(request.url());
+        if (url.protocol.startsWith('http') && url.origin !== origin) pageOffOrigin.push(request.url());
+      });
+      enterPhase('boot');
+      await bootEngine(page);
+      enterPhase('restore');
+      await seedChart(page);
+      enterPhase('openDashboard');
+      await openDashboard(page);
+      enterPhase('SWready');
+      // Bounded: with the worker blocked `ready` never settles, and the check below must say so.
+      await page.evaluate(() =>
+        Promise.race([navigator.serviceWorker.ready, new Promise((resolve) => setTimeout(resolve, 60_000))]),
+      );
+      enterPhase('SWnavigation');
+      // A fresh navigation now goes through the active worker.
+      await gotoSettled(page, '/dashboard');
+      expect(await page.evaluate(() => navigator.serviceWorker.controller !== null), 'the service worker controls the page').toBe(true);
+      enterPhase('waitengine');
+      await waitForEngineReady(page);
+      await expect(page.getByTestId('provenance-footer')).toContainText('As of', { timeout: 120_000 });
 
-    await page.getByTestId('floating-chat-button').click({ timeout: 120_000 });
-    await expect(page.getByTestId('chat-connect-ai')).toBeVisible();
-    await expect(page.getByTestId('time-travel-button'), 'no AI, no Time travel in the composer').toHaveCount(0);
-    await page.getByTestId('floating-chat-close').click();
-    await expect(page.getByTestId(DASHBOARD_BUTTON), 'Time travel works without AI').toBeEnabled();
-    await pickMonth(page, '2019-03');
-    await expect(page.getByTestId('time-travel-moment-maha')).toBeVisible();
-    await expect(page.getByTestId('time-travel-moment-card')).toBeVisible();
-    // The tier decides which: full computes the period sky, lite/minimal show dashas only.
-    await expect(
-      page.getByTestId('time-travel-moment-transits').or(page.getByTestId('time-travel-moment-dashas-only')),
-    ).toBeVisible({ timeout: 180_000 });
-    await page.waitForLoadState('networkidle');
+      enterPhase('chat');
+      await page.getByTestId('floating-chat-button').click({ timeout: 120_000 });
+      await expect(page.getByTestId('chat-connect-ai')).toBeVisible();
+      await expect(page.getByTestId('time-travel-button'), 'no AI, no Time travel in the composer').toHaveCount(0);
+      await page.getByTestId('floating-chat-close').click();
+      enterPhase('month');
+      await expect(page.getByTestId(DASHBOARD_BUTTON), 'Time travel works without AI').toBeEnabled();
+      await pickMonth(page, '2019-03');
+      await expect(page.getByTestId('time-travel-moment-maha')).toBeVisible();
+      await expect(page.getByTestId('time-travel-moment-card')).toBeVisible();
+      await expect(page.getByTestId('time-travel-moment-transits')).toBeVisible({ timeout: 180_000 });
+      await page.waitForLoadState('networkidle');
 
-    expect(await serviceWorkerOffOrigin(page, origin), 'with AI off, the service worker requests only the app origin').toEqual([]);
-    expect(pageOffOrigin, 'with AI off, the page requests only the app origin').toEqual([]);
-    expect(consoleErrors, 'the journey must keep a clean console').toEqual([]);
+      enterPhase('finalasserts');
+      expect(await serviceWorkerOffOrigin(page, origin), 'with AI off, the service worker requests only the app origin').toEqual([]);
+      expect(pageOffOrigin, 'with AI off, the page requests only the app origin').toEqual([]);
+      expect(consoleErrors, 'the journey must keep a clean console').toEqual([]);
+      bodyCompleted = true;
+    } finally {
+      record('capture-finished', { bodyCompleted });
+      page.off('console', onConsole);
+      page.off('pageerror', onPageError);
+      page.off('framenavigated', onNavigation);
+      page.off('worker', onWorker);
+      for (const [worker, onClose] of workerCloseListeners) worker.off('close', onClose);
+      const path = testInfo.outputPath('sw-engine-lifecycle.json');
+      writeFileSync(path, JSON.stringify({
+        notes: [
+          'observedPageUrlAtReceipt is the page URL when the event arrived, not proof of its source document or Worker.',
+          'main-frame-framenavigated includes same-document navigation; Worker events cover only Workers exposed by Playwright.',
+        ],
+        bodyCompleted, events,
+      }, null, 2));
+      await testInfo.attach('sw-engine-lifecycle', { path, contentType: 'application/json' });
+    }
   });
 });
 
@@ -1310,14 +1384,14 @@ test.describe('Dashboard time travel', () => {
     await pickMonth(page, '2019-03');
     await expect(page.getByTestId('dashboard-time-travel-banner')).toBeVisible();
     await expect(page.getByTestId('time-travel-moment-card')).toBeVisible();
-    await page.reload();
+    await explicitReload(page, () => page.reload());
     // Settled: the chart and profile are back, so a persisted moment would render now.
     await expect(page.getByTestId(DASHBOARD_BUTTON)).toBeEnabled({ timeout: 180_000 });
     await expect(page.getByTestId('life-atlas')).toBeVisible();
     await expect(page.getByTestId('dashboard-time-travel-banner'), 'spec ruling 1: a reload returns to today').toHaveCount(0);
     await expect(page.getByTestId('time-travel-moment-card')).toHaveCount(0);
     await expect(page.getByTestId('dashboard-today-label-life-atlas')).toHaveCount(0);
-    expect(consoleErrors, 'the journey must keep a clean console').toEqual([]);
+    expect(consoleErrors, 'the journey must have no unexpected runtime or page errors').toEqual([]);
   });
 
   test('[contract/stubbed] with AI on, Go from the Dashboard also opens a pinned chat thread', async ({ page }) => {
@@ -1335,7 +1409,7 @@ test.describe('Dashboard time travel', () => {
 });
 
 test.describe('Dashboard time travel on an iPhone 15', () => {
-  test('[contract/real] @iphone15 the button reads "Time travel", is at least 44×44, and with AI off shows dashas only', async ({ page }, testInfo) => {
+  test('[contract/real] @iphone15 the button reads "Time travel", is at least 44×44, and with AI off shows dashas and transits', async ({ page }, testInfo) => {
     const consoleErrors = captureConsole(page);
     await bootEngine(page);
     await seedChart(page);
@@ -1360,7 +1434,7 @@ test.describe('Dashboard time travel on an iPhone 15', () => {
     await expect(page.getByTestId('time-travel-moment-maha')).toHaveText(MARCH_2019_MAHA);
     // Today is Rahu/Mercury: the antar is what proves the card is for March 2019.
     await expect(page.getByTestId('time-travel-moment-antar')).toHaveText(MARCH_2019_ANTAR);
-    await expect(page.getByTestId('time-travel-moment-dashas-only')).toBeVisible();
+    await expect(page.getByTestId('time-travel-moment-transits')).toBeVisible({ timeout: 180_000 });
     // The banner's Change and Back to today are thumb-sized too.
     for (const testId of ['dashboard-time-travel-change', 'dashboard-time-travel-back']) {
       const target = await page.getByTestId(testId).boundingBox();
@@ -1382,7 +1456,193 @@ test.describe('Dashboard time travel on an iPhone 15', () => {
     await goToLastYear(page);
     await expect(page.getByTestId('time-travel-moment-card')).toBeVisible();
     await expect(page.getByTestId('time-travel-moment-failed')).toHaveCount(0);
-    await expect(page.getByTestId('time-travel-moment-dashas-only')).toBeVisible();
+    await expect(page.getByTestId('time-travel-moment-transits')).toBeVisible({ timeout: 180_000 });
     expect(consoleErrors, 'the journey must keep a clean console').toEqual([]);
   });
 });
+
+
+async function pickDashboardDay(page: Page, day: string): Promise<void> {
+  await page.getByTestId('dashboard-time-travel-button').click();
+  await page.getByTestId('time-travel-tab-day').click();
+  await page.getByTestId('time-travel-day').fill(day);
+  await page.getByTestId('time-travel-where-input').fill('Bogotá');
+  await page.getByTestId('time-travel-where-option-0').click({ timeout: 120_000 });
+  await page.getByTestId('time-travel-go').click();
+  await expect(page.getByTestId('time-travel-sheet')).toBeHidden();
+  await expect(page.getByTestId('time-travel-moment-transits')).toBeVisible({ timeout: 240_000 });
+  await expect(page.getByTestId('dashboard-time-travel-banner')).toContainText('Bogotá');
+}
+
+async function periodEngineCalls(page: Page): Promise<number> {
+  return page.evaluate(() => {
+    const read = (window as unknown as { __almameshPeriodEngineCalls?: () => number }).__almameshPeriodEngineCalls;
+    if (!read) throw new Error('Period engine call hook missing');
+    return read();
+  });
+}
+
+for (const tag of ['', '@iphone', '@iphone15', '@safari']) {
+  test(`[contract/real] ${tag} Day and place revisit reads SQLite; Back to today restores Life Atlas`, async ({ page }, testInfo) => {
+    const errors = captureConsole(page);
+    await bootEngine(page);
+    await seedChart(page);
+    await openDashboard(page);
+    await expect(page.getByTestId('life-atlas').getByText(/^As of /)).toBeVisible({ timeout: 240_000 });
+    const atlasKeys = await predictiveRequestKeys(page);
+    const before = await periodEngineCalls(page);
+    await pickDashboardDay(page, '2019-03-14');
+    await expect(page.getByTestId('time-travel-moment-dasha')).toBeVisible();
+    expect(await periodEngineCalls(page)).toBeGreaterThan(before);
+    await page.screenshot({ path: testInfo.outputPath('day-bogota.png'), fullPage: true });
+    await pickDashboardDay(page, '2019-03-15');
+    const calls = await periodEngineCalls(page);
+    await pickDashboardDay(page, '2019-03-14');
+    expect(await periodEngineCalls(page), 'revisiting the evicted period reads SQLite without the engine').toBe(calls);
+    await page.getByTestId('dashboard-time-travel-back').click();
+    await expect(page.getByTestId('dashboard-time-travel-banner')).toHaveCount(0);
+    await expect(page.getByTestId('time-travel-moment-card')).toHaveCount(0);
+    await expect(page.getByTestId('life-atlas').getByText(/^As of /)).toBeVisible({ timeout: 5_000 });
+    expect((await predictiveRequestKeys(page)).slice(atlasKeys.length), 'travel never replaces today’s Life Atlas').toEqual([]);
+    expect(errors, 'the Day journey has a clean console').toEqual([]);
+  });
+}
+
+for (const tag of ['', '@iphone15']) {
+  test(`[contract/real] ${tag} two open tabs share the city database without retaining its owner`, async ({ page }) => {
+    const errors = captureConsole(page);
+    const partRequests: string[] = [];
+    page.context().on('request', (request) => {
+      if (request.serviceWorker() === null && /\/cities\/cities-part-\d{2}\.json$/.test(new URL(request.url()).pathname)) partRequests.push(request.url());
+    });
+    const lookup = async (target: Page) => {
+      await target.waitForFunction(() => typeof (window as unknown as { __almameshResolvePlace?: unknown }).__almameshResolvePlace === 'function');
+      return target.evaluate(async () => {
+        const resolve = (window as unknown as { __almameshResolvePlace: (query: string) => Promise<unknown> }).__almameshResolvePlace;
+        return resolve('Bogotá');
+      });
+    };
+    await bootEngine(page);
+    const first = await lookup(page);
+    expect(first).toMatchObject({ status: 'found' });
+    expect(partRequests).toHaveLength(25);
+    const other = await page.context().newPage();
+    const otherErrors = captureConsole(other);
+    try {
+      await bootEngine(other);
+      expect(await lookup(other), 'the first tab stays alive while the second reads the same SQLite database').toEqual(first);
+      expect(await lookup(page), 'ownership returns to the first tab for another session').toEqual(first);
+      expect(partRequests, 'other tabs query the imported rows instead of importing again').toHaveLength(25);
+    } finally {
+      await other.close();
+    }
+    expect([...errors, ...otherErrors]).toEqual([]);
+  });
+
+  test(`[contract/stubbed] ${tag} September 2017 is grounded before inference and outlook today escapes the old pin`, async ({ page }, testInfo) => {
+    const errors = await prepare(page);
+    const modelDownloads = captureLocalModelDownloads(page);
+    const seen: AgentRequest[] = [];
+    const pastQuestion = 'this was a challenging time what do you think happened';
+    const todayQuestion = 'outlook today?';
+    await scripted(page, {
+      // The first answer deliberately elects no tools. Local grounding must
+      // already contain the selected dashas and sky before this decision.
+      [pastQuestion]: () => ({ content: 'The September timing can describe pressure, but cannot identify what happened in your life.' }),
+      [todayQuestion]: (tools) => tools.length === 0
+        ? { content: null, tool_calls: [call('today-clock', 'get_current_datetime', { scope: 'utc' }), call('today-dashas', 'get_timing', { section: 'dashas' })] }
+        : tools.length === 2
+          ? { content: null, tool_calls: [call('today-sky', 'get_timing', { section: 'transits' })] }
+          : { content: 'Here is the outlook for today using the calculated timing.' },
+    }, seen, [], new Set<string>());
+    await bootEngine(page);
+    await seedChart(page);
+    await openDashboard(page);
+    await expect(page.getByTestId('life-atlas').getByText(/^As of /)).toBeVisible({ timeout: 240_000 });
+    await page.getByTestId('floating-chat-button').click();
+    await page.getByTestId('time-travel-button').click();
+    await page.getByTestId('time-travel-tab-month').click();
+    await page.getByTestId('time-travel-month').selectOption('09');
+    await page.getByTestId('time-travel-month-year').selectOption('2017');
+    await page.getByTestId('time-travel-go').click();
+    await expect(page.getByTestId('time-travel-title')).toHaveText('Time travel · September 2017');
+    await page.getByTestId('chat-input').fill(pastQuestion);
+    await page.getByTestId('chat-send-button').click();
+    await expect(page.getByTestId('chat-panel').getByText('The September timing can describe pressure, but cannot identify what happened in your life.')).toBeVisible({ timeout: 240_000 });
+    const pastSystem = seen[0]?.messages.find((message) => message.role === 'system')?.content ?? '';
+    expect(pastSystem).toContain('VERIFIED LOCAL TIMING');
+    for (const fact of ['"start":"2017-09-01"', '"end":"2017-09-30"', '"section":"dashas"', '"antar"', '"section":"transits"', '"covered_events"']) expect(pastSystem).toContain(fact);
+    const today = await page.evaluate(() => new Intl.DateTimeFormat('en-CA').format(new Date()));
+    const beforeToday = seen.length;
+    await page.getByTestId('chat-input').fill(todayQuestion);
+    await page.getByTestId('chat-send-button').click();
+    await expect(page.getByTestId('chat-panel').getByText('Here is the outlook for today using the calculated timing.')).toBeVisible({ timeout: 240_000 });
+    const todaySystem = seen[beforeToday]?.messages.find((message) => message.role === 'system')?.content ?? '';
+    expect(todaySystem).toContain('VERIFIED LOCAL TIMING');
+    expect(todaySystem).toContain(`"start":"${today}"`);
+    expect(todaySystem).not.toContain('PINNED PERIOD:');
+    const results = turnTools(seen.at(-1)!.messages);
+    expect(results.map((message) => message.name)).toEqual(['get_current_datetime', 'get_timing', 'get_timing']);
+    for (const result of results.filter((message) => message.name === 'get_timing')) {
+      expect(result.content).toContain(`"start":"${today}"`);
+      expect(result.content).toContain('"basis":"today"');
+      expect(result.content).not.toContain('2017-09-01');
+    }
+    await expect(page.getByTestId('time-travel-title')).toHaveText('Time travel · September 2017');
+    await page.screenshot({ path: testInfo.outputPath('september-then-today.png'), fullPage: true });
+    if (tag) expect(modelDownloads, 'constrained chat must not boot the optional embedding model').toEqual([]);
+    expect(errors, 'the regression journey keeps a clean console').toEqual([]);
+  });
+
+  test(`[contract/stubbed] ${tag} chat executes place, facts, timing and movement tools in both directions`, async ({ page }, testInfo) => {
+    const errors = await prepare(page);
+    const modelDownloads = captureLocalModelDownloads(page);
+    const seen: AgentRequest[] = [];
+    const go = 'Take me to March 14, 2019 in Bogotá and show that day.';
+    const back = 'Back to today, please.';
+    const facts = 'Please check the planets in my chart.';
+    await scripted(page, {
+      [facts]: (tools) => tools.length === 0
+        ? { content: null, tool_calls: [call('natal-facts', 'get_chart_facts', { section: 'planets' })] }
+        : { content: 'I checked the calculated planets in your chart.' },
+      [go]: (tools) => {
+        if (tools.length === 0) return { content: null, tool_calls: [call('bogota', 'resolve_place', { query: 'Bogotá' })] };
+        if (!tools.some((message) => message.name === 'time_travel')) {
+          const place_ref = refFrom(tools.find((message) => message.name === 'resolve_place')?.content);
+          return { content: null, tool_calls: [call('day-timing', 'get_timing', { section: 'transits', start: '2019-03-14', end: '2019-03-14', place_ref }), call('move-day', 'time_travel', { action: 'travel', period: 'day', date: '2019-03-14', place_ref })] };
+        }
+        return { content: 'I am opening 14 March 2019 in Bogotá using the calculated timing.' };
+      },
+      [back]: (tools) => tools.length === 0
+        ? { content: null, tool_calls: [call('return-today', 'time_travel', { action: 'back_to_today' })] }
+        : { content: 'Returning to today.' },
+    }, seen, [], new Set<string>());
+    await bootEngine(page);
+    await seedChart(page);
+    await openDashboard(page);
+    await expect(page.getByTestId('life-atlas').getByText(/^As of /)).toBeVisible({ timeout: 240_000 });
+    const keys = await predictiveRequestKeys(page);
+    await page.getByTestId('floating-chat-button').click();
+    await page.getByTestId('chat-input').fill(facts);
+    await page.getByTestId('chat-send-button').click();
+    await expect(page.getByTestId('chat-panel').getByText('I checked the calculated planets in your chart.')).toBeVisible({ timeout: 240_000 });
+    await page.getByTestId('chat-input').fill(go);
+    await page.getByTestId('chat-send-button').click();
+    await expect(page.getByTestId('dashboard-time-travel-banner')).toContainText('Bogotá', { timeout: 240_000 });
+    await expect(page.getByTestId('time-travel-moment-transits')).toBeVisible({ timeout: 240_000 });
+    const tools = seen.flatMap((request) => turnTools(request.messages));
+    for (const name of ['resolve_place', 'get_chart_facts', 'get_timing', 'time_travel']) expect(tools.some((message) => message.name === name), `${name} actually executed`).toBe(true);
+    expect(tools.find((message) => message.name === 'time_travel')?.content).toContain('"status":"queued"');
+    expect(tools.find((message) => message.name === 'get_timing')?.content).toContain('"covered_events"');
+    await page.getByTestId('chat-input').fill(back);
+    await page.getByTestId('chat-send-button').click();
+    await expect(page.getByTestId('dashboard-time-travel-banner')).toHaveCount(0, { timeout: 240_000 });
+    await expect(page.getByTestId('time-travel-banner')).toHaveCount(0);
+    await expect(page.getByTestId('life-atlas').getByText(/^As of /)).toBeVisible();
+    expect(seen.flatMap((request) => turnTools(request.messages)).some((message) => message.name === 'time_travel' && message.content?.includes('"action":"back_to_today"'))).toBe(true);
+    expect((await predictiveRequestKeys(page)).slice(keys.length)).toEqual([]);
+    await page.screenshot({ path: testInfo.outputPath('chat-returned-to-today.png'), fullPage: true });
+    if (tag) expect(modelDownloads, 'constrained tool use must not boot the optional embedding model').toEqual([]);
+    expect(errors, 'the tool journey keeps a clean console').toEqual([]);
+  });
+}

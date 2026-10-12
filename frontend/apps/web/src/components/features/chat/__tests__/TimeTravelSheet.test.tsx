@@ -174,11 +174,19 @@ describe('TimeTravelSheet', () => {
     expect(document.activeElement).toBe(screen.getByTestId('time-travel-go'));
   });
 
-  it('shows "none found" instead of an unhandled rejection when the lookup fails', async () => {
-    renderSheet({ lookupPlace: vi.fn(async () => Promise.reject(new Error('city list failed'))) });
+  it('distinguishes an unavailable lookup from no matches and retries the same query', async () => {
+    const lookupPlace = vi.fn()
+      .mockRejectedValueOnce(new Error('city list failed'))
+      .mockResolvedValueOnce({ status: 'found', place: BOGOTA });
+    renderSheet({ lookupPlace });
     fireEvent.click(screen.getByTestId('time-travel-tab-day'));
     fireEvent.change(screen.getByTestId('time-travel-where-input'), { target: { value: 'Bogotá' } });
-    expect(await screen.findByTestId('time-travel-where-none')).toBeTruthy();
+    expect(await screen.findByTestId('time-travel-where-failed')).toBeTruthy();
+    expect(screen.queryByTestId('time-travel-where-none')).toBeNull();
+    fireEvent.click(screen.getByTestId('time-travel-where-retry'));
+    expect((await screen.findByTestId('time-travel-where-option-0')).textContent).toContain('Bogotá');
+    expect(lookupPlace.mock.calls).toEqual([['Bogotá'], ['Bogotá']]);
+    expect(screen.queryByTestId('time-travel-where-failed')).toBeNull();
   });
 
   it('clears stale "none found" when the query is cleared', async () => {

@@ -72,6 +72,9 @@ const memoized = (engine: ChartEngine, identity = "manifest-a", memo = new Engin
   memoizeChartEngine(engine, identity, memo);
 
 describe("memoizeChartEngine — identical input is computed once", () => {
+  it("exposes the signed manifest identity used by its memo", () => {
+    expect(memoized(new CountingEngine()).identity?.()).toBe("manifest-a");
+  });
   it("does not invoke the engine again for an identical chart input", async () => {
     const engine = new CountingEngine();
     const cached = memoized(engine);

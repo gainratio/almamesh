@@ -36,6 +36,7 @@ import {
 import { hasLocalChart } from '../lib/localChart'
 import { recordEngineBootFailure, registerEngineTeardown } from '../lib/engineLifecycle'
 import { recoverSeveredServiceWorkerChannel } from '../lib/swSelfHeal'
+import { periodEngineCallCount } from '../lib/periodSky'
 import {
   clearRuntimeError,
   clearRuntimeGenerator,
@@ -43,6 +44,7 @@ import {
   clearRuntimePredictive,
   clearRuntimeResolvePlace,
   publishPinnedThreads,
+  publishPeriodEngineCalls,
   publishPredictiveRequestKeys,
   publishRuntimeError,
   publishRuntimeGenerator,
@@ -66,7 +68,7 @@ export {
 const WHEEL_PATHS = [
   'wheels/jplephem-2.23-py3-none-any.whl',
   'wheels/sgp4-2.25-py3-none-any.whl',
-  'wheels/skyfield-1.53-py3-none-any.whl',
+  'wheels/skyfield-1.55-py3-none-any.whl',
   // NO avow / rfc8785 wheels. Strength receipts are signed in TypeScript by
   // `@gainratio/avow` (see packages/browser/src/pyodide/strengthReceipt.ts), so
   // the Python engine is crypto-free and the signed bundle no longer carries
@@ -146,6 +148,7 @@ if (typeof window !== 'undefined' && EXIT_GATE_HOOKS) {
   // Every requestKey the Life Atlas slot holds: the time-travel journey proves
   // a period compute never borrows it, not even briefly.
   publishPredictiveRequestKeys(usePredictiveStore)
+  publishPeriodEngineCalls(periodEngineCallCount)
   publishPinnedThreads(() =>
     Object.values(useChatStore.getState().threads).flatMap((thread) =>
       thread.as_of ? [{ id: thread.id, as_of: thread.as_of }] : [],
@@ -191,6 +194,8 @@ function whenStorageDurable(): Promise<void> {
 export interface BootstrapRuntime {
   bootstrap(config: RuntimeConfig, onStage?: OnStage): Promise<ChartEngine>
   dispose?(): Promise<void> | void
+  /** Real runtimes publish terminal post-ready failures; legacy test fakes may omit it. */
+  subscribeFailures?(listener: (error: Error) => void): () => void
 }
 
 /** The engine-cache refusal anywhere in an error's cause chain, if any. */
@@ -230,9 +235,8 @@ interface ProviderProps {
 }
 
 export function AlmaMeshRuntimeProvider({ children, runtime }: ProviderProps) {
-  // One runtime instance for the provider's lifetime. `AlmaMeshRuntime.bootstrap`
-  // re-runs a fresh sync + boot after a failure, so we can reuse this instance
-  // for reboot()s rather than building a new one each time.
+  // One runtime instance for this provider. Explicit recovery disposes its
+  // ready cache and old Workers before bootstrapping a fresh generation.
   const runtimeRef = useRef<BootstrapRuntime | null>(runtime ?? null)
   if (runtimeRef.current === null) {
     runtimeRef.current = new AlmaMeshRuntime()
@@ -250,6 +254,10 @@ export function AlmaMeshRuntimeProvider({ children, runtime }: ProviderProps) {
   // The CURRENT in-flight (or last) bootstrap promise, shared by every awaiter
   // of whenReady(). A ref (not state) so stable callbacks always see the latest.
   const inFlightRef = useRef<Promise<ChartEngine> | null>(null)
+  const bootEpochRef = useRef(0)
+  const rejectBootRef = useRef<((error: Error) => void) | null>(null)
+  const recoveryRef = useRef<Promise<ChartEngine> | null>(null)
+  const postReadyFailureRef = useRef<Error | null>(null)
   // The latest runBootstrap, for the storage-refusal path that re-arms itself.
   const runBootstrapRef = useRef<(() => Promise<ChartEngine>) | null>(null)
   const startedRef = useRef(false)
@@ -319,6 +327,45 @@ export function AlmaMeshRuntimeProvider({ children, runtime }: ProviderProps) {
     }
   }, [dropHeldProgress, publishProgress])
 
+  const clearPublishedEngine = useCallback(() => {
+    setEngine(null)
+    setMeta(null)
+    setStage(null)
+    coarseKindRef.current = null
+    dropHeldProgress()
+    setBootProgress(null)
+    progressAtRef.current = 0
+    if (EXIT_GATE_HOOKS) {
+      clearRuntimeGenerator()
+      clearRuntimePredictive()
+      clearRuntimeMoonWindow()
+      clearRuntimeResolvePlace()
+    }
+  }, [dropHeldProgress])
+
+  const fencePendingBoot = useCallback((failure: Error) => {
+    bootEpochRef.current += 1
+    inFlightRef.current = null
+    const reject = rejectBootRef.current
+    rejectBootRef.current = null
+    reject?.(failure)
+  }, [])
+
+  // A terminal runtime failure invalidates its ready cache before notifying.
+  // Consumers see a controlled error; only an explicit Retry may restart it.
+  useEffect(() => runtimeRef.current?.subscribeFailures?.((failure) => {
+    postReadyFailureRef.current = failure
+    fencePendingBoot(failure)
+    startedRef.current = false
+    bootstrapFailedRef.current = false
+    retryableFailureRef.current = false
+    retryWithoutConnectivityRef.current = false
+    clearPublishedEngine()
+    setError(failure)
+    recordEngineBootFailure(failure)
+    if (EXIT_GATE_HOOKS) publishRuntimeError(failure.message)
+  }), [clearPublishedEngine, fencePendingBoot])
+
   // Run (or re-run) the bootstrap, wiring engine/meta/error and sharing the
   // promise via the ref. Returns the promise so callers can await readiness.
   const runBootstrap = useCallback((): Promise<ChartEngine> => {
@@ -335,7 +382,13 @@ export function AlmaMeshRuntimeProvider({ children, runtime }: ProviderProps) {
     bootstrapFailedRef.current = false
     retryableFailureRef.current = false
     retryWithoutConnectivityRef.current = false
-    const boot = (): Promise<ChartEngine> => runtimeInstance.bootstrap(readRuntimeConfig(), onStage)
+    const epoch = ++bootEpochRef.current
+    const boot = (): Promise<ChartEngine> => runtimeInstance.bootstrap(readRuntimeConfig(), (next) => {
+      if (bootEpochRef.current === epoch) onStage(next)
+    })
+    let rejectBoot!: (error: Error) => void
+    const cancelled = new Promise<never>((_resolve, reject) => { rejectBoot = reject })
+    rejectBootRef.current = rejectBoot
     let promise: Promise<ChartEngine>
     // Already durable: boot now. Otherwise wait for OPFS, and drop the boot if
     // a reboot or unmount superseded this attempt meanwhile.
@@ -345,11 +398,12 @@ export function AlmaMeshRuntimeProvider({ children, runtime }: ProviderProps) {
         if (inFlightRef.current !== promise) throw new Error('AlmaMesh engine boot superseded')
         return boot()
       })
-    promise = booting
+    promise = Promise.race([booting, cancelled])
       .then((ready) => {
-        if (inFlightRef.current !== promise) {
-          return ready
+        if (bootEpochRef.current !== epoch || inFlightRef.current !== promise) {
+          throw new Error('AlmaMesh engine boot superseded')
         }
+        if (rejectBootRef.current === rejectBoot) rejectBootRef.current = null
         bootstrapFailedRef.current = false
         retryableFailureRef.current = false
         retryWithoutConnectivityRef.current = false
@@ -374,6 +428,7 @@ export function AlmaMeshRuntimeProvider({ children, runtime }: ProviderProps) {
       })
       .catch((err: unknown) => {
         const e = err instanceof Error ? err : new Error(String(err))
+        if (rejectBootRef.current === rejectBoot) rejectBootRef.current = null
         // Release only THIS failed attempt. The runtime already discarded its
         // failed workers and bootstrap promise; keeping the provider's rejected
         // promise latched made every later whenReady()/online recovery return
@@ -426,7 +481,7 @@ export function AlmaMeshRuntimeProvider({ children, runtime }: ProviderProps) {
   // reason as the mount boot: it is published via `error` and recovered through
   // whenReady()/reboot(); an unhandled rejection would noise the console.
   const startBootstrap = useCallback((): void => {
-    if (startedRef.current) {
+    if (startedRef.current || postReadyFailureRef.current !== null) {
       return
     }
     startedRef.current = true
@@ -435,6 +490,7 @@ export function AlmaMeshRuntimeProvider({ children, runtime }: ProviderProps) {
 
   // Await the current in-flight bootstrap; if none is tracked yet, start one.
   const whenReady = useCallback((): Promise<ChartEngine> => {
+    if (postReadyFailureRef.current !== null) return Promise.reject(postReadyFailureRef.current)
     if (inFlightRef.current !== null) {
       return inFlightRef.current
     }
@@ -444,24 +500,50 @@ export function AlmaMeshRuntimeProvider({ children, runtime }: ProviderProps) {
     return runBootstrap()
   }, [runBootstrap])
 
-  // Reset to a clean pre-boot state and run a FRESH bootstrap.
+  // Retry is single-flight. Fence old awaiters and dispose old Workers BEFORE
+  // cache cleanup or bootstrap, so the runtime cannot return its cached engine.
   const reboot = useCallback((): Promise<ChartEngine> => {
-    // A reboot is an explicit boot — keep the idempotency guard coherent so a
-    // later prewarm-on-intent doesn't fire a redundant second sync.
+    if (recoveryRef.current !== null) return recoveryRef.current
+    fencePendingBoot(new Error('AlmaMesh engine boot superseded'))
+    const recoveryEpoch = bootEpochRef.current
     startedRef.current = true
-    setEngine(null)
-    setError(null)
-    setStage(null)
-    coarseKindRef.current = null
-    dropHeldProgress()
-    setBootProgress(null)
-    reportedOnlineRetryCountRef.current = 0
+    postReadyFailureRef.current = null
+    bootstrapFailedRef.current = false
+    retryableFailureRef.current = false
     retryWithoutConnectivityRef.current = false
-    // Drop the stale verify key / update pointer first: a CacheFirst-pinned dev
-    // key is the classic cause of a fail-closed "signature verification failed",
-    // and a plain reboot would just re-read the same stale key. Best-effort.
-    return clearStaleEngineCaches().then(() => runBootstrap())
-  }, [dropHeldProgress, runBootstrap])
+    clearPublishedEngine()
+    setError(null)
+    reportedOnlineRetryCountRef.current = 0
+    let disposal: Promise<void>
+    try { disposal = Promise.resolve(runtimeRef.current?.dispose?.()) }
+    catch (failure) { disposal = Promise.reject(failure) }
+    const recovery = disposal
+      .then(() => {
+        if (bootEpochRef.current !== recoveryEpoch) throw new Error('AlmaMesh engine boot superseded')
+        return clearStaleEngineCaches()
+      })
+      .then(() => {
+        if (bootEpochRef.current !== recoveryEpoch) throw new Error('AlmaMesh engine boot superseded')
+        return runBootstrap()
+      })
+      .catch((failure: unknown) => {
+        if (inFlightRef.current === recovery) {
+          const e = failure instanceof Error ? failure : new Error(String(failure))
+          inFlightRef.current = null
+          postReadyFailureRef.current = e
+          setError(e)
+          recordEngineBootFailure(e)
+          if (EXIT_GATE_HOOKS) publishRuntimeError(e.message)
+        }
+        throw failure
+      })
+      .finally(() => {
+        if (recoveryRef.current === recovery) recoveryRef.current = null
+      })
+    recoveryRef.current = recovery
+    inFlightRef.current = recovery
+    return recovery
+  }, [clearPublishedEngine, fencePendingBoot, runBootstrap])
 
   // Initial mount bootstrap — auto-run once, EXCEPT on the marketing splash.
   // A visitor reading the pitch must NOT pay the ~38 MB engine download: that is
@@ -523,10 +605,12 @@ export function AlmaMeshRuntimeProvider({ children, runtime }: ProviderProps) {
     retryWithoutConnectivityRef.current = false
     consumedOnlineEpochRef.current = 0
     reportedOnlineRetryCountRef.current = 0
-    inFlightRef.current = null
+    fencePendingBoot(new Error('AlmaMesh engine boot superseded'))
+    recoveryRef.current = null
+    postReadyFailureRef.current = null
     dropHeldProgress()
     void runtimeRef.current?.dispose?.()
-  }, [dropHeldProgress])
+  }, [dropHeldProgress, fencePendingBoot])
 
   const value = useMemo(
     () => ({ engine, stage, lastProgressAt, error, meta, reboot, whenReady, startBootstrap }),

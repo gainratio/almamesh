@@ -352,6 +352,171 @@ describe('usePredictiveLayer({ auto: true })', () => {
   });
 });
 
+describe('usePredictiveLayer explicit engine recovery', () => {
+  const fault = new Error('Out of bounds memory access');
+  const fresh = {} as NonNullable<ChartEngineContextValue['engine']>;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-07-12T12:00:00Z'));
+    useChartLibraryStore.setState({ charts: { 'chart-1': storedChart() }, hydrated: true });
+    useProfilesStore.setState({ activeProfileId: 'chart-1' });
+    usePredictiveStore.getState().reset();
+  });
+  afterEach(() => {
+    vi.clearAllTimers();
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  function failedContext(reboot: () => Promise<NonNullable<ChartEngineContextValue['engine']>>): ChartEngineContextValue {
+    return { ...engineCtx(), engine: null, error: fault, reboot };
+  }
+
+  function pendingRecovery() {
+    let resolve!: (engine: NonNullable<ChartEngineContextValue['engine']>) => void;
+    let reject!: (error: Error) => void;
+    const promise = new Promise<NonNullable<ChartEngineContextValue['engine']>>((yes, no) => { resolve = yes; reject = no; });
+    return { resolve, reject, reboot: vi.fn(() => promise) };
+  }
+
+  it('enables explicit Retry after a fatal engine failure, without rebooting automatically', async () => {
+    const ensure = readyingEnsure();
+    usePredictiveStore.setState({ ensurePredictive: ensure });
+    const reboot = vi.fn(async () => fresh);
+    const { result } = renderHook(() => usePredictiveLayer({ auto: true }), { wrapper: makeWrapper(failedContext(reboot)) });
+    act(() => vi.advanceTimersByTime(10_000));
+    expect(result.current.engineReady).toBe(false);
+    expect(result.current.canCompute).toBe(true);
+    expect(reboot).not.toHaveBeenCalled();
+    expect(ensure).not.toHaveBeenCalled();
+
+    await act(async () => result.current.compute());
+    expect(reboot).toHaveBeenCalledTimes(1);
+    expect(ensure).toHaveBeenCalledExactlyOnceWith(fresh, expect.objectContaining({ profileKey: 'chart-1' }));
+  });
+
+  it('shares one pending reboot across repeated clicks and provider ready-state changes', async () => {
+    const pending = pendingRecovery();
+    const ensure = readyingEnsure();
+    usePredictiveStore.setState({ ensurePredictive: ensure });
+    let ctx = failedContext(pending.reboot);
+    function Wrapper({ children }: { children: ReactNode }): ReactElement {
+      return <ChartEngineContext.Provider value={ctx}>{children}</ChartEngineContext.Provider>;
+    }
+    const { result, rerender } = renderHook(() => usePredictiveLayer({ auto: true }), { wrapper: Wrapper });
+    await act(async () => { result.current.compute(); result.current.compute(); result.current.compute(); });
+    expect(pending.reboot).toHaveBeenCalledTimes(1);
+    expect(ensure).not.toHaveBeenCalled();
+    ctx = { ...ctx, engine: fresh, error: null };
+    rerender();
+    act(() => result.current.compute());
+    expect(ensure).not.toHaveBeenCalled();
+    await act(async () => pending.resolve(fresh));
+    act(() => vi.advanceTimersByTime(2_500));
+    expect(ensure).toHaveBeenCalledTimes(1);
+    expect(pending.reboot).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves a failed reboot available for another explicit Retry', async () => {
+    const ensure = readyingEnsure();
+    usePredictiveStore.setState({ ensurePredictive: ensure });
+    const reboot = vi.fn().mockRejectedValueOnce(new Error('fresh boot failed')).mockResolvedValueOnce(fresh);
+    const { result } = renderHook(() => usePredictiveLayer(), { wrapper: makeWrapper(failedContext(reboot)) });
+    await act(async () => result.current.compute());
+    expect(ensure).not.toHaveBeenCalled();
+    await act(async () => result.current.compute());
+    expect(reboot).toHaveBeenCalledTimes(2);
+    expect(ensure).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['explicit', 'auto'] as const)('allows a new profile to %s compute while the old recovered computation is still pending', async (mode) => {
+    let finishOld!: () => void;
+    const oldCompute = new Promise<void>((resolve) => { finishOld = resolve; });
+    const ensure = vi.fn((_runtime: PredictiveRuntime, input: EnsurePredictiveInput) =>
+      input.profileKey === 'chart-1' ? oldCompute : Promise.resolve());
+    usePredictiveStore.setState({ ensurePredictive: ensure });
+    let ctx: ChartEngineContextValue = failedContext(async () => {
+      ctx = { ...ctx, engine: fresh, error: null };
+      rerender();
+      return fresh;
+    });
+    function Wrapper({ children }: { children: ReactNode }): ReactElement {
+      return <ChartEngineContext.Provider value={ctx}>{children}</ChartEngineContext.Provider>;
+    }
+    const { result, rerender } = renderHook(() => usePredictiveLayer({ auto: mode === 'auto' }), { wrapper: Wrapper });
+    await act(async () => result.current.compute());
+    expect(ensure).toHaveBeenCalledTimes(1);
+    act(() => {
+      useChartLibraryStore.setState({ charts: { 'chart-2': storedChart('chart-2') }, hydrated: true });
+      useProfilesStore.setState({ activeProfileId: 'chart-2' });
+    });
+    if (mode === 'explicit') act(() => result.current.compute());
+    else act(() => vi.advanceTimersByTime(2_500));
+
+    expect(ensure).toHaveBeenCalledTimes(2);
+    expect(ensure.mock.calls[1]).toEqual([fresh, expect.objectContaining({ profileKey: 'chart-2' })]);
+    await act(async () => finishOld());
+  });
+
+  it.each(['profile', 'birth', 'day'] as const)('does not compute the captured input when its %s changes during reboot', async (change) => {
+    const pending = pendingRecovery();
+    const ensure = readyingEnsure();
+    usePredictiveStore.setState({ ensurePredictive: ensure });
+    const { result } = renderHook(() => usePredictiveLayer(), { wrapper: makeWrapper(failedContext(pending.reboot)) });
+    await act(async () => result.current.compute());
+    expect(pending.reboot).toHaveBeenCalledTimes(1);
+    act(() => {
+      if (change === 'profile') {
+        useChartLibraryStore.setState({ charts: { 'chart-2': storedChart('chart-2') }, hydrated: true });
+        useProfilesStore.setState({ activeProfileId: 'chart-2' });
+      } else if (change === 'birth') {
+        const updated = storedChart();
+        updated.birth_data = { ...updated.birth_data!, birth_datetime_utc: '1990-03-30T06:45:00Z' };
+        useChartLibraryStore.setState({ charts: { 'chart-1': updated }, hydrated: true });
+      } else {
+        vi.advanceTimersByTime(24 * 60 * 60 * 1000);
+      }
+    });
+    await act(async () => pending.resolve(fresh));
+    expect(ensure).not.toHaveBeenCalled();
+  });
+
+  it('does not compute after unmount while reboot is pending', async () => {
+    const pending = pendingRecovery();
+    const ensure = readyingEnsure();
+    usePredictiveStore.setState({ ensurePredictive: ensure });
+    const { result, unmount } = renderHook(() => usePredictiveLayer(), { wrapper: makeWrapper(failedContext(pending.reboot)) });
+    await act(async () => result.current.compute());
+    expect(pending.reboot).toHaveBeenCalledTimes(1);
+    unmount();
+    await act(async () => pending.resolve(fresh));
+    expect(ensure).not.toHaveBeenCalled();
+  });
+
+  it('does not offer or start recovery without usable birth data', async () => {
+    useChartLibraryStore.setState({ charts: {}, hydrated: true });
+    const ensure = readyingEnsure();
+    usePredictiveStore.setState({ ensurePredictive: ensure });
+    const reboot = vi.fn(async () => fresh);
+    const { result } = renderHook(() => usePredictiveLayer(), { wrapper: makeWrapper(failedContext(reboot)) });
+    expect(result.current.canCompute).toBe(false);
+    await act(async () => result.current.compute());
+    expect(reboot).not.toHaveBeenCalled();
+    expect(ensure).not.toHaveBeenCalled();
+  });
+
+  it('keeps ordinary compute Retry on its existing ready engine', async () => {
+    const ensure = readyingEnsure();
+    usePredictiveStore.setState({ ensurePredictive: ensure });
+    const ctx = { ...engineCtx(), reboot: vi.fn(async () => fresh) };
+    const { result } = renderHook(() => usePredictiveLayer(), { wrapper: makeWrapper(ctx) });
+    act(() => result.current.compute());
+    expect(ensure).toHaveBeenCalledExactlyOnceWith(ctx.engine, expect.objectContaining({ profileKey: 'chart-1' }));
+    expect(ctx.reboot).not.toHaveBeenCalled();
+  });
+});
+
 describe('usePredictiveLayer — raw engine contexts passthrough', () => {
   beforeEach(() => {
     vi.useFakeTimers();

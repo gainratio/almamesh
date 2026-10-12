@@ -16,7 +16,9 @@ import {
   createPeriodSkyCache,
   periodReferenceInstant,
   periodSkyCache,
+  periodEngineCallCount,
 } from '../periodSky';
+import type { PeriodSkyRows } from '../periodSkyRows';
 
 const SKY = { transit_context: { instant: 'x' } } as unknown as PredictiveContexts;
 const PERIOD = { retention: 'period' };
@@ -44,6 +46,103 @@ function deferred<T>() {
 
 const idle = () => ({ status: 'idle' });
 const signal = () => new AbortController().signal;
+
+function durableRows() {
+  const values = new Map<string, CachedPredictiveContexts>();
+  const rows: PeriodSkyRows = {
+    lookup: vi.fn(async (h, k, sweep) => {
+      const epoch = await rows.captureEpoch!();
+      if (epoch === undefined) return { epoch };
+      if (sweep) await rows.sweepOtherEngines(h).catch(() => undefined);
+      return { epoch, hit: await rows.read(h, k, epoch).catch(() => undefined) };
+    }),
+    captureEpoch: vi.fn(async () => 0),
+    read: vi.fn(async (h, k) => values.get(`${h}|${k}`)),
+    write: vi.fn(async (h, k, _p, value) => { values.set(`${h}|${k}`, value); }),
+    deleteForProfile: vi.fn(async () => undefined),
+    sweepOtherEngines: vi.fn(async () => 0),
+    clear: vi.fn(async () => { values.clear(); }),
+  };
+  return { rows, values };
+}
+
+describe('durable period sky', () => {
+  it('revisits a day in another cache instance without another engine call', async () => {
+    const { rows, values } = durableRows();
+    const fresh = { ...SKY, domain_strength_receipts: [], strength_signer_public_key: 'x' } as unknown as PredictiveContexts;
+    const runtime = { computePredictive: vi.fn(async () => fresh), identity: () => 'hash-a' };
+    const before = periodEngineCallCount();
+    await createPeriodSkyCache({ rows, readStore: idle }).load(input('2019-06-01'), runtime, signal());
+    await createPeriodSkyCache({ rows, readStore: idle }).load(input('2019-06-01'), runtime, signal());
+    expect(runtime.computePredictive).toHaveBeenCalledTimes(1);
+    expect(periodEngineCallCount() - before).toBe(1);
+    expect([...values.values()][0]).not.toHaveProperty('domain_strength_receipts');
+    expect([...values.values()][0]).not.toHaveProperty('strength_signer_public_key');
+  });
+
+  it('joins while a durable read is pending, before computing', async () => {
+    const { rows } = durableRows();
+    const read = Promise.withResolvers<CachedPredictiveContexts | undefined>();
+    rows.read = vi.fn(() => read.promise);
+    const runtime = { computePredictive: vi.fn(async () => SKY), identity: () => 'hash-a' };
+    const cache = createPeriodSkyCache({ rows, readStore: idle });
+    const first = cache.load(input('2019-06-01'), runtime, signal());
+    const second = cache.load(input('2019-06-01'), runtime, signal());
+    read.resolve(undefined);
+    await Promise.all([first, second]);
+    expect(rows.read).toHaveBeenCalledTimes(1);
+    expect(runtime.computePredictive).toHaveBeenCalledTimes(1);
+  });
+
+  it('opens no lookup for an abandoned date after waiting for the first engine sweep', async () => {
+    const { rows } = durableRows();
+    const held = Promise.withResolvers<Awaited<ReturnType<PeriodSkyRows['lookup']>>>();
+    rows.lookup = vi.fn().mockReturnValueOnce(held.promise).mockResolvedValue({ epoch: 0 });
+    const runtime = { computePredictive: vi.fn(async () => SKY), identity: () => 'hash-a' };
+    const cache = createPeriodSkyCache({ rows, readStore: idle });
+    const first = cache.load(input('2019-06-01'), runtime, signal());
+    await vi.waitFor(() => expect(rows.lookup).toHaveBeenCalledTimes(1));
+    const controller = new AbortController();
+    const second = cache.load(input('2019-06-02'), runtime, controller.signal);
+    // Let the second request enter the await on the first lookup's sweep.
+    await Promise.resolve();
+    controller.abort(new DOMException('back to today', 'AbortError'));
+    await expect(second).rejects.toThrow('back to today');
+    held.resolve({ epoch: 0 });
+    await first;
+    expect(rows.lookup).toHaveBeenCalledTimes(1);
+    expect(runtime.computePredictive).toHaveBeenCalledTimes(1);
+    expect(rows.write).toHaveBeenCalledTimes(1);
+  });
+
+  it('sweeps once per engine identity and captures the epoch before computing', async () => {
+    const { rows } = durableRows();
+    const cache = createPeriodSkyCache({ rows, readStore: idle });
+    for (const hash of ['a', 'a', 'b']) {
+      await cache.load(input('2019-06-01'), { computePredictive: async () => SKY, identity: () => hash }, signal());
+    }
+    expect(rows.sweepOtherEngines).toHaveBeenCalledTimes(2);
+    expect(rows.write).toHaveBeenCalledWith('a', predictiveRequestKey(input('2019-06-01')), 'p1', SKY, 0);
+  });
+
+  it('without a stable epoch or manifest identity, never persists a payload', async () => {
+    const { rows } = durableRows();
+    const runtime = { computePredictive: vi.fn(async () => SKY), identity: () => 'a' };
+    rows.captureEpoch = async () => undefined;
+    await createPeriodSkyCache({ rows, readStore: idle }).load(input('2019-06-01'), runtime, signal());
+    await createPeriodSkyCache({ rows, readStore: idle }).load(input('2019-06-01'), { computePredictive: runtime.computePredictive }, signal());
+    expect(rows.write).not.toHaveBeenCalled();
+  });
+
+  it('storage read/write failure still returns the fresh calculation', async () => {
+    const { rows } = durableRows();
+    rows.read = vi.fn(async () => { throw new Error('disk'); });
+    rows.write = vi.fn(async () => { throw new Error('disk'); });
+    const runtime = { computePredictive: vi.fn(async () => SKY), identity: () => 'a' };
+    await expect(createPeriodSkyCache({ rows, readStore: idle }).load(input('2019-06-01'), runtime, signal())).resolves.toEqual(SKY);
+    expect(rows.write).toHaveBeenCalled();
+  });
+});
 
 afterEach(() => {
   usePredictiveStore.getState().reset();
@@ -183,6 +282,39 @@ describe('createPeriodSkyCache', () => {
     const cache = createPeriodSkyCache({ readStore: idle });
     await expect(cache.load(input('2019-06-01'), runtime, controller.signal)).rejects.toThrow('cancelled');
     expect(runtime.computePredictive).not.toHaveBeenCalled();
+  });
+
+  it('drops every queued unique date whose last waiter cancels before engine start', async () => {
+    const active = deferred<PredictiveContexts>();
+    const runtime = { computePredictive: vi.fn().mockReturnValueOnce(active.promise).mockResolvedValue(SKY) };
+    const cache = createPeriodSkyCache({ readStore: idle, rows: null });
+    const first = cache.load(input('2019-06-01'), runtime, signal());
+    await vi.waitFor(() => expect(runtime.computePredictive).toHaveBeenCalledTimes(1));
+    for (const day of ['2019-06-02', '2019-06-03', '2019-06-04']) {
+      const controller = new AbortController();
+      const wait = cache.load(input(day), runtime, controller.signal);
+      controller.abort(new DOMException('back to today', 'AbortError'));
+      await expect(wait).rejects.toThrow('back to today');
+    }
+    active.resolve(SKY);
+    await first;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(runtime.computePredictive).toHaveBeenCalledTimes(1);
+  });
+
+  it('retains queued work while another joined consumer still needs it', async () => {
+    const active = deferred<PredictiveContexts>();
+    const runtime = { computePredictive: vi.fn().mockReturnValueOnce(active.promise).mockResolvedValue(SKY) };
+    const cache = createPeriodSkyCache({ readStore: idle, rows: null });
+    const first = cache.load(input('2019-06-01'), runtime, signal());
+    const controller = new AbortController();
+    const canceled = cache.load(input('2019-06-02'), runtime, controller.signal);
+    const joined = cache.load(input('2019-06-02'), runtime, signal());
+    controller.abort(new DOMException('cancelled', 'AbortError'));
+    await expect(canceled).rejects.toThrow('cancelled');
+    active.resolve(SKY);
+    await Promise.all([first, joined]);
+    expect(runtime.computePredictive).toHaveBeenCalledTimes(2);
   });
 });
 

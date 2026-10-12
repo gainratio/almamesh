@@ -1,11 +1,134 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { toTransitCtx, usePredictiveStore } from '@almamesh/store';
+import type { ChartEngine } from '@almamesh/browser';
+import type { ProcessedBirthData } from '@almamesh/shared-types';
+import type { ChartEngineContextValue } from '../../providers/chartEngineContext';
 
 const policy = vi.hoisted(() => ({ periodSkyComputeAllowed: true }));
 vi.mock('@almamesh/browser', async (orig) => {
   const actual = await orig<typeof import('@almamesh/browser')>();
   return { ...actual, devicePolicy: () => ({ ...actual.devicePolicy(), periodSkyComputeAllowed: policy.periodSkyComputeAllowed }) };
+});
+
+describe('useMomentSky explicit engine recovery', () => {
+  const fault = new Error('Out of bounds memory access');
+  const fresh = {} as ChartEngine;
+
+  function context(reboot: () => Promise<ChartEngine>, error: Error | null = fault): ChartEngineContextValue {
+    return { engine: null, error, reboot, stage: null, meta: null,
+      startBootstrap: vi.fn(), whenReady: vi.fn(async () => { throw fault; }) };
+  }
+
+  function pendingRecovery() {
+    let resolve!: (engine: ChartEngine) => void;
+    let reject!: (error: Error) => void;
+    const promise = new Promise<ChartEngine>((yes, no) => { resolve = yes; reject = no; });
+    const reboot = vi.fn(() => promise);
+    return { resolve, reject, reboot };
+  }
+
+  it('does not reboot automatically, and repeated explicit Retry clicks share one reboot before recomputing', async () => {
+    const pending = pendingRecovery();
+    let recovered = false;
+    const reboot = vi.fn(() => pending.reboot().then((engine) => { recovered = true; return engine; }));
+    const loader = vi.fn(async () => { if (!recovered) throw fault; return SKY_CHART; });
+    const options = input({ engine: context(reboot), loader });
+    const { result, rerender } = renderHook(() => useMomentSky(options));
+    await waitFor(() => expect(result.current.sky.kind).toBe('failed'));
+    rerender();
+    expect(reboot).not.toHaveBeenCalled();
+
+    act(() => { result.current.retry(); result.current.retry(); result.current.retry(); });
+    await waitFor(() => expect(reboot).toHaveBeenCalledTimes(1));
+    expect(loader).toHaveBeenCalledTimes(1);
+    await act(async () => { pending.resolve(fresh); });
+    await waitFor(() => expect(result.current.sky.kind).toBe('ready'));
+    expect(loader).toHaveBeenCalledTimes(2);
+  });
+
+  it('recovers through the real period loader from a latched whenReady error', async () => {
+    const pending = pendingRecovery();
+    const computePredictive = vi.fn(async () => SKY_CHART);
+    const ready = { computePredictive, meta: () => null } as unknown as ChartEngine;
+    let current: ChartEngineContextValue = context(vi.fn(async () => {
+      const engine = await pending.reboot();
+      current = { ...current, engine, error: null };
+      rerender();
+      return engine;
+    }));
+    const birth = { birth_datetime_utc: '1990-01-15T12:00:00Z',
+      birth_location_details: { latitude: 28.6139, longitude: 77.209, timezone: 'Asia/Kolkata' } } as ProcessedBirthData;
+    const { result, rerender } = renderHook(() => useMomentSky(input({ engine: current, birth, loader: undefined })));
+    await waitFor(() => expect(result.current.sky.kind).toBe('failed'));
+
+    act(() => result.current.retry());
+    await waitFor(() => expect(pending.reboot).toHaveBeenCalledTimes(1));
+    await act(async () => { pending.resolve(ready); });
+    await waitFor(() => expect(result.current.sky.kind).toBe('ready'));
+    expect(computePredictive).toHaveBeenCalledTimes(1);
+    expect(computePredictive.mock.calls[0]).toMatchObject([{ referenceInstant: '2019-03-01T00:00:00Z' }, { retention: 'period' }]);
+  });
+
+  it('keeps a failed reboot retryable without rerunning the loader on the closed engine', async () => {
+    const reboot = vi.fn().mockRejectedValueOnce(new Error('fresh boot failed')).mockResolvedValueOnce(fresh);
+    const loader = vi.fn().mockRejectedValueOnce(fault).mockResolvedValue(SKY_CHART);
+    const options = input({ engine: context(reboot), loader });
+    const { result } = renderHook(() => useMomentSky(options));
+    await waitFor(() => expect(result.current.sky.kind).toBe('failed'));
+    await act(async () => result.current.retry());
+    expect(result.current.sky.kind).toBe('failed');
+    expect(loader).toHaveBeenCalledTimes(1);
+    await act(async () => result.current.retry());
+    await waitFor(() => expect(result.current.sky.kind).toBe('ready'));
+    expect(reboot).toHaveBeenCalledTimes(2);
+    expect(loader).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(['moment', 'profile', 'chart', 'birth'] as const)('does not resume the old retry after its %s changes', async (change) => {
+    const pending = pendingRecovery();
+    const loader = vi.fn(async () => { throw fault; });
+    const initial = input({ engine: context(pending.reboot), loader });
+    const { result, rerender } = renderHook((props: MomentSkyInput) => useMomentSky(props), { initialProps: initial });
+    await waitFor(() => expect(result.current.sky.kind).toBe('failed'));
+    act(() => result.current.retry());
+    await waitFor(() => expect(pending.reboot).toHaveBeenCalledTimes(1));
+    const changed = { ...initial,
+      ...(change === 'moment' ? { asOf: YEAR_2027 } : {}),
+      ...(change === 'profile' ? { profileKey: 'p2' } : {}),
+      ...(change === 'chart' ? { chart: { ...CHART } } : {}),
+      ...(change === 'birth' ? { birth: { birth_datetime_utc: '1991-01-01T00:00:00Z' } as ProcessedBirthData } : {}),
+    };
+    rerender(changed);
+    await waitFor(() => expect(result.current.sky.kind).toBe('failed'));
+    const calls = loader.mock.calls.length;
+    await act(async () => { pending.resolve(fresh); });
+    expect(loader).toHaveBeenCalledTimes(calls);
+  });
+
+  it('does not resume a pending Retry after unmount', async () => {
+    const pending = pendingRecovery();
+    const loader = vi.fn(async () => { throw fault; });
+    const options = input({ engine: context(pending.reboot), loader });
+    const { result, unmount } = renderHook(() => useMomentSky(options));
+    await waitFor(() => expect(result.current.sky.kind).toBe('failed'));
+    act(() => result.current.retry());
+    await waitFor(() => expect(pending.reboot).toHaveBeenCalledTimes(1));
+    unmount();
+    await act(async () => { pending.resolve(fresh); });
+    expect(loader).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps ordinary compute Retry on the existing engine without reboot', async () => {
+    const reboot = vi.fn();
+    const loader = vi.fn().mockRejectedValueOnce(new Error('ordinary calculation error')).mockResolvedValueOnce(SKY_CHART);
+    const options = input({ engine: context(reboot, null), loader });
+    const { result } = renderHook(() => useMomentSky(options));
+    await waitFor(() => expect(result.current.sky.kind).toBe('failed'));
+    act(() => result.current.retry());
+    await waitFor(() => expect(result.current.sky.kind).toBe('ready'));
+    expect(reboot).not.toHaveBeenCalled();
+  });
 });
 vi.mock('@almamesh/store', async (orig) => {
   const actual = await orig<typeof import('@almamesh/store')>();

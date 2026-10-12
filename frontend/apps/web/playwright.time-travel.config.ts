@@ -21,7 +21,7 @@ const WEBKIT_EVIDENCE = { trace: "retain-on-failure", video: "retain-on-failure"
 
 export default defineConfig({
   testDir: "./e2e",
-  testMatch: /time-travel\.spec\.ts/,
+  testMatch: /(?:time-travel\.spec|time-travel-memory\.webkit\.spec)\.ts/,
   fullyParallel: false,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 1 : 0,

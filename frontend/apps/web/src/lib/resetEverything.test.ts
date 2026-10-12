@@ -37,6 +37,20 @@ import {
 import { clearMemory } from './chatMemory';
 import { resetEverything } from './resetEverything';
 
+describe('derived sky reset', () => {
+  it('removes the derived database after the dataset fence and before commit', async () => {
+    const calls: string[] = [];
+    await resetEverything({
+      waitForHydration: async () => undefined,
+      beginDatasetReset: async () => { calls.push('fence'); return 1; },
+      clearDerivedData: async () => { calls.push('derived'); },
+      clearPersisted: async () => { calls.push('commit'); },
+      publishDatasetReset: () => undefined,
+    });
+    expect(calls).toEqual(['fence', 'derived', 'commit']);
+  });
+});
+
 vi.mock('./chatMemory', () => ({ clearMemory: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('idb-keyval', async (importOriginal) => {
   const actual = await importOriginal<typeof import('idb-keyval')>();

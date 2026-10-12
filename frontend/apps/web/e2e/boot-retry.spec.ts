@@ -14,7 +14,7 @@
  * text carries the trap message (PR #317's macOS lane). That form must be
  * retried the same way.
  */
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -66,6 +66,20 @@ async function typeSections(page: Page, testId: string, digits: string, trailing
   if (trailing) await page.keyboard.type(trailing, { delay: 50 });
 }
 
+async function submitReferenceBirth(page: Page): Promise<void> {
+  await page.getByTestId('name-input').fill('Reference Native');
+  await page.getByTestId('next-button').click();
+  await typeSections(page, 'birth-date-input', '08081988');
+  await page.getByTestId('next-button').click();
+  await page.getByTestId('location-search-input').fill('Bengaluru');
+  await page.locator('[role="option"]').first().click();
+  await page.getByTestId('next-button').click();
+  await typeSections(page, 'birth-time-input', '0644', 'a');
+  await page.getByTestId('confidence-option-exact').click();
+  await page.getByTestId('next-button').click();
+  await page.getByTestId('skip-life-events-button').click();
+}
+
 const FAULTS = [
   { label: 'a wasm trap', arm: true },
   { label: 'a wasm trap wrapped in a Pyodide package load error', arm: 'wrapped' },
@@ -93,17 +107,7 @@ for (const fault of FAULTS) {
     await page.goto('/onboarding');
     await expect.poll(() => consoleLines.filter((line) => line.includes('engine.boot_retry'))).toEqual([RETRY_LINE]);
 
-    await page.getByTestId('name-input').fill('Reference Native');
-    await page.getByTestId('next-button').click();
-    await typeSections(page, 'birth-date-input', '08081988');
-    await page.getByTestId('next-button').click();
-    await page.getByTestId('location-search-input').fill('Bengaluru');
-    await page.locator('[role="option"]').first().click();
-    await page.getByTestId('next-button').click();
-    await typeSections(page, 'birth-time-input', '0644', 'a');
-    await page.getByTestId('confidence-option-exact').click();
-    await page.getByTestId('next-button').click();
-    await page.getByTestId('skip-life-events-button').click();
+    await submitReferenceBirth(page);
 
     await page.waitForURL('**/dashboard', { timeout: 120_000 });
     await expect(page.getByTestId('chart-visualization').first()).toBeVisible();
@@ -114,3 +118,135 @@ for (const fault of FAULTS) {
     expect(consoleErrors).toEqual([]);
   });
 }
+
+interface RecoveryRequest {
+  id: number;
+  kind: string;
+  worker: number;
+  referenceInstant?: string;
+}
+
+interface RecoveryProof {
+  document: string;
+  workers: number;
+  ready: number[];
+  terminated: number[];
+  armed: boolean;
+  injected: RecoveryRequest[];
+  sent: RecoveryRequest[];
+}
+
+async function recoveryProof(page: Page): Promise<RecoveryProof> {
+  return page.evaluate(() => (window as unknown as { __almameshRecoveryProof: RecoveryProof }).__almameshRecoveryProof);
+}
+
+test('a post-ready correlated fatal requires Retry, then a fresh real Worker renders a chart and historical transits without reload', async ({ page }, testInfo) => {
+  const consoleErrors: string[] = [];
+  const bootRetries: string[] = [];
+  page.on('console', (message) => {
+    if (message.type() === 'error') consoleErrors.push(message.text());
+    if (message.text().includes('engine.boot_retry')) bootRetries.push(message.text());
+  });
+  page.on('pageerror', (error) => consoleErrors.push(`pageerror: ${error.message}`));
+
+  // Intercept one correlated reply at the browser's public Worker boundary.
+  // Both boots and every successful computation still run the actual Worker.
+  // No product hook, fake chart, or persisted-chart success can satisfy this.
+  await page.addInitScript(() => {
+    interface Request { id: number; kind: string; input?: { referenceInstant?: string } }
+    interface ProofRequest { id: number; kind: string; worker: number; referenceInstant?: string }
+    const proof = {
+      document: crypto.randomUUID(), workers: 0, ready: [] as number[], terminated: [] as number[],
+      armed: false, injected: [] as ProofRequest[], sent: [] as ProofRequest[],
+    };
+    (window as unknown as Record<string, unknown>).__almameshRecoveryProof = proof;
+    const NativeWorker = window.Worker;
+    window.Worker = new Proxy(NativeWorker, {
+      construct(Target, args: [string | URL, WorkerOptions?]) {
+        const worker = Reflect.construct(Target, args) as Worker;
+        if (!String(args[0]).includes('chartWorker')) return worker;
+        const index = ++proof.workers;
+        worker.addEventListener('message', (event: MessageEvent<{ ok?: boolean; kind?: string }>) => {
+          if (event.data?.ok && event.data.kind === 'boot') proof.ready.push(index);
+        });
+        const postMessage = worker.postMessage.bind(worker);
+        worker.postMessage = ((request: Request, transfer?: Transferable[] | StructuredSerializeOptions) => {
+          const fact: ProofRequest = { id: request.id, kind: request.kind, worker: index };
+          if (request.input?.referenceInstant) fact.referenceInstant = request.input.referenceInstant;
+          if (proof.armed && proof.injected.length === 0 && request.kind === 'generateChart' && proof.ready.includes(index)) {
+            proof.armed = false;
+            proof.injected.push(fact);
+            queueMicrotask(() => worker.dispatchEvent(new MessageEvent('message', {
+              data: { ok: false, id: request.id, error: 'Out of bounds memory access', errorName: 'RuntimeError' },
+            })));
+            return;
+          }
+          proof.sent.push(fact);
+          if (Array.isArray(transfer)) postMessage(request, transfer);
+          else postMessage(request, transfer);
+        }) as Worker['postMessage'];
+        const terminate = worker.terminate.bind(worker);
+        worker.terminate = () => { proof.terminated.push(index); terminate(); };
+        return worker;
+      },
+    });
+  });
+
+  await page.goto('/onboarding');
+  await expect.poll(async () => (await recoveryProof(page)).ready).toEqual([1]);
+  const originalDocument = (await recoveryProof(page)).document;
+  await page.evaluate(() => { (window as unknown as { __almameshRecoveryProof: RecoveryProof }).__almameshRecoveryProof.armed = true; });
+  await submitReferenceBirth(page);
+  await expect(page.getByTestId('retry-generation-button')).toBeVisible();
+  await expect(page.getByTestId('reset-app-data-button')).toBeVisible();
+  expect(page.url()).toContain('/onboarding');
+  expect(await page.getByTestId('chart-visualization').count()).toBe(0);
+  const failed = await recoveryProof(page);
+  expect(failed.workers).toBe(1);
+  expect(failed.injected).toHaveLength(1);
+  expect(failed.injected[0]).toMatchObject({ worker: 1, kind: 'generateChart' });
+  expect(Number.isSafeInteger(failed.injected[0].id)).toBe(true);
+  expect(failed.sent.some((request) => request.kind === 'generateChart')).toBe(false);
+  expect(bootRetries).toEqual([]);
+  // The controlled onboarding error deliberately logs this one stable code.
+  // Require its exact cardinality here; every additional console/page error
+  // remains fatal throughout recovery and the subsequent computation.
+  expect(consoleErrors).toEqual(['[almamesh:error:app.typed_error]']);
+
+  await page.getByTestId('retry-generation-button').click();
+  await page.waitForURL('**/dashboard', { timeout: 120_000 });
+  await expect(page.getByTestId('chart-visualization').first()).toBeVisible();
+  const recovered = await recoveryProof(page);
+  expect(recovered.document).toBe(originalDocument);
+  expect(recovered.workers).toBe(2);
+  expect(recovered.ready).toEqual([1, 2]);
+  expect(recovered.terminated).toContain(1);
+  expect(recovered.injected).toEqual(failed.injected);
+  expect(recovered.sent.some((request) => request.worker === 2 && request.kind === 'generateChart')).toBe(true);
+
+  // A date computation after Retry proves the new engine can do fresh work.
+  await page.getByTestId('dashboard-time-travel-button').click();
+  await page.getByTestId('time-travel-tab-month').click();
+  await page.getByTestId('time-travel-month').selectOption('03');
+  await page.getByTestId('time-travel-month-year').selectOption('2019');
+  await page.getByTestId('time-travel-go').click();
+  await expect(page.getByTestId('time-travel-sheet')).toBeHidden();
+  await expect(page.getByTestId('dashboard-time-travel-banner')).toContainText('March');
+  await expect(page.getByTestId('dashboard-time-travel-banner')).toContainText('2019');
+  const transits = page.getByTestId('time-travel-moment-transits');
+  await expect(transits).toBeVisible();
+  const saturn = transits.getByTestId('gochara-table').getByRole('row')
+    .filter({ has: page.getByRole('cell', { name: 'Saturn', exact: true }) }).getByRole('cell').nth(1);
+  await expect(saturn).toHaveText('Sagittarius');
+  const final = await recoveryProof(page);
+  expect(final.document).toBe(originalDocument);
+  expect(final.workers).toBe(2);
+  expect(final.sent.some((request) => request.worker === 2 && request.kind === 'computePredictive'
+    && request.referenceInstant?.startsWith('2019-03'))).toBe(true);
+  expect(bootRetries).toEqual([]);
+  const proofPath = testInfo.outputPath('post-ready-recovery.json');
+  await writeFile(proofPath, JSON.stringify({ ...final, consoleErrors, bootRetries }, null, 2));
+  await testInfo.attach('post-ready-recovery', { path: proofPath, contentType: 'application/json' });
+  expect(consoleErrors).toEqual(['[almamesh:error:app.typed_error]']);
+  await page.screenshot({ path: testInfo.outputPath('dashboard-after-post-ready-recovery.png') });
+});

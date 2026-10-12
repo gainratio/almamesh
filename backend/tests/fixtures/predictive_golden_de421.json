@@ -1874,7 +1874,7 @@
           "severity": "challenging"
         },
         {
-          "exact": "2033-08-31T03:57:20.871705Z",
+          "exact": "2049-01-06T09:30:20.800838Z",
           "graha": "saturn",
           "kind": "return",
           "natal_point": "natal_saturn",
@@ -5375,7 +5375,7 @@
           "severity": "challenging"
         },
         {
-          "exact": "2033-08-31T03:57:20.871705Z",
+          "exact": "2049-01-06T09:30:20.800838Z",
           "graha": "saturn",
           "kind": "return",
           "natal_point": "natal_saturn",
@@ -8819,7 +8819,7 @@
       },
       "slow_hits": [
         {
-          "exact": "2027-10-25T07:17:52.128213Z",
+          "exact": "2034-03-06T13:25:02.602029Z",
           "graha": "jupiter",
           "kind": "sign_ingress",
           "natal_point": "moon",

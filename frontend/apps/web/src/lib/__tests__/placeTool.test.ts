@@ -1,7 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
+import { streamAgentChat } from '@almamesh/llm';
 
 import type { PlaceLookup } from '../geo/placeLookup';
 import { createResolvePlaceTool, RESOLVE_PLACE_STATUS_LABEL, RESOLVE_PLACE_TOOL_NAME } from '../placeTool';
+import { installCityTestDatabase } from '../geo/__tests__/cityTestDb';
+
+installCityTestDatabase();
 
 const context = () => ({ now: new Date('2026-06-20T00:00:00Z'), signal: new AbortController().signal });
 const BOGOTA = { summary: { place_ref: 'city:42', label: 'Bogotá, Colombia', timezone: 'America/Bogota' }, latitude: 4.711, longitude: -74.0721 };
@@ -13,6 +17,36 @@ function numbersIn(value: unknown): number[] {
 }
 
 describe('resolve_place', () => {
+  it('finishes a cold local lookup beyond the generic two-second agent deadline', async () => {
+    vi.useFakeTimers();
+    try {
+      const lookup = vi.fn(() => new Promise<PlaceLookup>((resolve) => setTimeout(() => resolve({ status: 'found', place: BOGOTA }), 2_500)));
+      const bodies: Array<{ messages: unknown[] }> = [];
+      const fetchImpl = vi.fn(async (_url: unknown, init?: RequestInit) => {
+        bodies.push(JSON.parse(String(init?.body)));
+        return Response.json({ choices: [{ message: bodies.length === 1
+          ? { role: 'assistant', content: null, tool_calls: [{ id: 'place-call', type: 'function', function: { name: 'resolve_place', arguments: '{"query":"Bogotá"}' } }] }
+          : { role: 'assistant', content: 'Bogotá is resolved.' } }] });
+      });
+      const answer = (async () => {
+        let text = '';
+        for await (const token of streamAgentChat({
+          config: { engine: 'openai-http', model: 'fixture', baseUrl: 'http://localhost:11434/v1', privacyMode: 'local_only' },
+          messages: [{ role: 'user', content: 'Look up Bogotá' }], tools: [createResolvePlaceTool(lookup)],
+          now: context().now, fetchImpl: fetchImpl as typeof fetch,
+        })) text += token;
+        return text;
+      })();
+      await vi.advanceTimersByTimeAsync(2_600);
+      const text = await answer;
+      const results = JSON.stringify(bodies[1]?.messages);
+      expect(results).not.toContain('tool_timeout');
+      expect(results).toContain('America/Bogota');
+      expect(results).not.toMatch(/latitude|longitude/);
+      expect(text).toBe('Bogotá is resolved.');
+    } finally { vi.useRealTimers(); }
+  });
+
   it('is named resolve_place and takes only a query string', () => {
     const tool = createResolvePlaceTool(vi.fn());
     expect(tool.name).toBe(RESOLVE_PLACE_TOOL_NAME);

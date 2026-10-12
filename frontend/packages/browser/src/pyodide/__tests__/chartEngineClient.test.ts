@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ChartEngineClient } from "../chartEngineClient";
+import { workerErrorFields } from "../bootFault";
 import type { SiderealChart } from "../chart";
 import type { MeshEdgeContext } from "../mesh";
 import type { PredictiveContexts } from "../predictive";
@@ -412,6 +413,103 @@ describe("ChartEngineClient", () => {
     await expect(client.computePredictive(PREDICTIVE_INPUT)).rejects.toThrow("engine not booted");
   });
 
+  it.each([
+    {
+      label: "the recorded JavaScriptCore trap",
+      fields: workerErrorFields(new WebAssembly.RuntimeError(
+        "Out of bounds memory access (evaluating '__pyproxy_apply(t,e,n,o,s)')",
+      )),
+    },
+    {
+      label: "a V8 trap identified by the Worker's reserved error marker",
+      fields: workerErrorFields(new WebAssembly.RuntimeError("unreachable")),
+    },
+    {
+      label: "an older Worker carrying distinctive trap text without a class",
+      fields: { error: "memory access out of bounds" },
+    },
+    {
+      label: "a trap wrapped inside a Python traceback",
+      fields: { error: "Traceback ...\npyodide.ffi.JsException: RuntimeError: unreachable\n" },
+    },
+  ])("fences all engine calls after $label", async ({ fields }) => {
+    vi.useFakeTimers();
+    const client = withReply(() => null);
+    const terminate = vi.spyOn(worker, "terminate");
+    const results = Promise.allSettled([
+      client.computePredictive(PREDICTIVE_INPUT),
+      client.computeRectification(RECTIFICATION_INPUT),
+      client.generateChart(STAMPED_BIRTH),
+    ]);
+    try {
+      worker.respond({ ok: false, id: worker.posted[0].id, ...fields });
+
+      expect(terminate).toHaveBeenCalledTimes(1);
+      for (const result of await results) {
+        expect(result.status).toBe("rejected");
+        if (result.status === "rejected") expect(result.reason).toMatchObject({ message: fields.error });
+      }
+      expect(vi.getTimerCount(), "the trap clears every pending request's deadline").toBe(0);
+
+      for (const call of [
+        () => client.boot(bootConfig()),
+        () => client.generateChart(STAMPED_BIRTH),
+        () => client.computePredictive(PREDICTIVE_INPUT),
+        () => client.computeMoonWindow({ placeStartUtc: "2026-06-15T00:00:00Z", placeEndUtc: "2026-06-16T00:00:00Z" }),
+        () => client.computeMeshEdge(MESH_INPUT),
+        () => client.computeRectification(RECTIFICATION_INPUT),
+      ]) {
+        await expect(call()).rejects.toMatchObject({ message: fields.error });
+      }
+      client.prewarm(PYODIDE_INDEX_URL);
+      expect(worker.posted).toHaveLength(3);
+      // A duplicate reply, later worker error, explicit close and stale timers
+      // must not terminate the already-fenced Worker again.
+      worker.respond({ ok: false, id: worker.posted[0].id, ...fields });
+      worker.emitError("late Worker error");
+      client.terminate();
+      vi.advanceTimersByTime(180_001);
+      expect(terminate).toHaveBeenCalledTimes(1);
+    } finally {
+      client.terminate();
+      await results;
+      vi.useRealTimers();
+    }
+  });
+
+  it.each([
+    "Traceback ...\nRuntimeError: boom",
+    "Traceback ...\nRuntimeError: unreachable",
+    "Traceback ...\nIndexError: index out of bounds on dimension 1",
+    "Traceback ...\npyodide.ffi.JsException: RangeError: index out of bounds",
+    "invalid place_start_utc: outside the on-device ephemeris (1900..2052)",
+    "Network is unreachable",
+  ])("keeps the Worker usable after the ordinary error %s", async (message) => {
+    const pythonError = new Error(message);
+    pythonError.name = "PythonError";
+    const fields = workerErrorFields(pythonError);
+    const client = withReply(() => null);
+    const terminate = vi.spyOn(worker, "terminate");
+    const failed = client.computePredictive(PREDICTIVE_INPUT);
+    const other = client.computeMeshEdge(MESH_INPUT);
+    try {
+      worker.respond({ ok: false, id: worker.posted[0].id, ...fields });
+      await expect(failed).rejects.toThrow(message);
+      expect(terminate).not.toHaveBeenCalled();
+
+      worker.respond({ ok: true, kind: "computeMeshEdge", id: worker.posted[1].id, meshEdge: STUB_MESH_EDGE });
+      await expect(other).resolves.toBe(STUB_MESH_EDGE);
+
+      const later = client.computePredictive(PREDICTIVE_INPUT);
+      worker.respond({ ok: true, kind: "computePredictive", id: worker.posted[2].id, predictive: STUB_PREDICTIVE });
+      await expect(later).resolves.toBe(STUB_PREDICTIVE);
+      expect(terminate).not.toHaveBeenCalled();
+    } finally {
+      client.terminate();
+      await Promise.allSettled([failed, other]);
+    }
+  });
+
   it("computeMoonWindow sends a computeMoonWindow request and returns the window", async () => {
     const mark = { sign: "taurus", nakshatra: "Rohini", tithi: 3, paksha: "shukla" } as const;
     const moonWindow = { at_place: { at_start: mark, at_end: mark }, event: null };
@@ -505,6 +603,41 @@ describe("ChartEngineClient", () => {
 
 		expect(worker.terminated).toBe(true);
 	});
+
+  it.each(["error", "messageerror", "timeout"] as const)("exposes the exact persistent terminal error after %s", async (failure) => {
+    vi.useFakeTimers();
+    try {
+      const client = new ChartEngineClient(worker, { predictiveRequestTimeoutMs: 5 });
+      expect(client.closedError()).toBeNull();
+      const result = client.computePredictive(PREDICTIVE_INPUT).catch((error: unknown) => error);
+      if (failure === "error") worker.emitError("Worker process exited");
+      else if (failure === "messageerror") worker.emitMessageError();
+      else vi.advanceTimersByTime(6);
+
+      const error = await result;
+      expect(error).toBeInstanceOf(Error);
+      expect(client.closedError()).toBe(error);
+      await expect(client.computePredictive(PREDICTIVE_INPUT)).rejects.toBe(error);
+      expect(worker.posted).toHaveLength(1);
+      client.terminate();
+      worker.emitError("a later error");
+      expect(client.closedError()).toBe(error);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps closedError null after an ordinary Python failure and a later successful computation", async () => {
+    let domainFailure = true;
+    const client = withReply((request) => domainFailure
+      ? { ok: false, id: request.id, error: "Traceback ...\nRuntimeError: unreachable\n" }
+      : { ok: true, kind: "computePredictive", id: request.id, predictive: STUB_PREDICTIVE });
+    await expect(client.computePredictive(PREDICTIVE_INPUT)).rejects.toThrow("RuntimeError: unreachable");
+    expect(client.closedError()).toBeNull();
+    domainFailure = false;
+    await expect(client.computePredictive(PREDICTIVE_INPUT)).resolves.toBe(STUB_PREDICTIVE);
+    expect(client.closedError()).toBeNull();
+  });
 
 	it("rejects every pending request when the worker crashes", async () => {
 		const client = withReply(() => null);

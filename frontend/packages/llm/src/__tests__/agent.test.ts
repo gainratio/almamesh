@@ -68,6 +68,17 @@ function tool(
 }
 
 describe("streamAgentChat", () => {
+  it.each(['', '   '])('rejects a forced final stream containing no answer (%j)', async (final) => {
+    const execute = vi.fn(() => ({ status: 'queued' }));
+    let requests = 0;
+    const fetchImpl = vi.fn(async () => ++requests === 1
+      ? decision({ role: 'assistant', content: null, tool_calls: [call('a', 'lookup'), call('b', 'lookup'), call('c', 'lookup')] })
+      : streamed(final));
+    await expect(collect(streamAgentChat({ config: CONFIG, messages: [{ role: 'user', content: 'Move the date.' }],
+      tools: [tool(execute, { name: 'lookup' })], now: NOW, fetchImpl: fetchImpl as typeof fetch,
+    }))).rejects.toThrow('empty agent completion');
+  });
+
   it("falls back to ordinary streaming when an endpoint explicitly rejects tools", async () => {
     const bodies: Array<Record<string, unknown>> = [];
     const fetchImpl = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
@@ -85,18 +96,20 @@ describe("streamAgentChat", () => {
       collect(
         streamAgentChat({
           config: CONFIG,
-          messages: [{ role: "user", content: "Answer safely." }],
+          messages: [{ role: "system", content: 'VERIFIED LOCAL TIMING: Jupiter/Saturn for 2017-09-01 to 2017-09-30.' }, { role: "user", content: "Answer safely." }],
           tools: [tool(() => ({ ok: true }))],
           now: NOW,
           fetchImpl: fetchImpl as typeof fetch,
         }),
       ),
-    ).resolves.toBe('Compatible answer');
+    ).resolves.toContain('Your AI provider does not support chat tools');
     expect(bodies).toHaveLength(2);
     expect(bodies[1]?.stream).toBe(true);
     expect(bodies[1]?.tools).toBeUndefined();
     expect(bodies[1]?.tool_choice).toBeUndefined();
     expect(JSON.stringify(bodies[1]?.messages)).toContain('LOCAL TOOLS ARE UNAVAILABLE');
+    expect(JSON.stringify(bodies[1]?.messages)).toContain('VERIFIED LOCAL TIMING: Jupiter/Saturn');
+    expect(JSON.stringify(bodies[1]?.messages)).toContain('Verified local facts already supplied remain available');
   });
 
   it("advertises only injected tools and returns OpenAI-compatible tool results", async () => {
