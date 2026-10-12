@@ -113,9 +113,9 @@
     "retry": "Intentar de nuevo"
   },
   "storage_unavailable": {
-    "title": "AlmaMesh no puede iniciar su base de datos en el dispositivo",
-    "body": "AlmaMesh calcula y guarda tu carta solo en este dispositivo, y este navegador no puede ejecutar la base de datos local que necesita.",
-    "fix": "Prueba una versión actual de Safari, Chrome, Firefox o Edge en una ventana normal (no privada) y vuelve a cargar esta página."
+    "title": "AlmaMesh no puede acceder a su base de datos en el dispositivo",
+    "body": "AlmaMesh no pudo abrir o leer la base de datos local que necesita para cargar y guardar tus datos.",
+    "fix": "Vuelve a cargar esta página para intentarlo de nuevo. Si el problema continúa, comprueba que usas un navegador actualizado en una ventana normal (no privada)."
   },
   "error_boundary": {
     "title": "Algo salió mal",

@@ -410,7 +410,8 @@ async function boot(config: BootConfig, report: ReportBoot): Promise<void> {
     enter("data");
     seedSkyfieldData(pyodide, config);
     enter("engine");
-    await pyodide.runPythonAsync(PY_BOOTSTRAP);
+    // Imports and function definitions need no asynchronous Python evaluation.
+    pyodide.runPython(PY_BOOTSTRAP);
     enginePyodide = pyodide;
   } finally {
     runtimeStart.listener = undefined;

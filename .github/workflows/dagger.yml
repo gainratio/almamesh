@@ -110,14 +110,45 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
           ref: ${{ github.sha }}
-      - uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77 # v8.4.1
+      - id: browser-journeys-evidence
+        uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77 # v8.4.1
         env:
           # Engine config: pull Docker Hub images via the GHCR mirror (.github/xdg/dagger/engine.json).
           XDG_CONFIG_HOME: ${{ github.workspace }}/.github/xdg
           GITHUB_TOKEN: ${{ github.token }}
         with:
           version: "0.21.8"
-          call: --registry-token=env:GITHUB_TOKEN gate --name=browserJourneys --commit-sha=${{ github.sha }} --repository=${{ github.repository }}
+          call: --registry-token=env:GITHUB_TOKEN browser-journeys-evidence --commit-sha=${{ github.sha }} --repository=${{ github.repository }} export --path=browser-journeys-evidence
+      # Export the completed, scanned container snapshot before enforcing its
+      # original status. A failed journey remains a failed required gate.
+      - name: Enforce original browser journey result
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+        run: |
+          node <<'NODE'
+          const fs = require("node:fs");
+          try {
+            const value = JSON.parse(fs.readFileSync("browser-journeys-evidence/journey-status.json", "utf8"));
+            const sha = process.env.EXPECTED_SHA;
+            if (!value || typeof value !== "object" || Array.isArray(value)
+              || Object.keys(value).sort().join(",") !== "commitSha,exitCode,scanned,schemaVersion"
+              || value.schemaVersion !== 1 || value.scanned !== true
+              || typeof sha !== "string" || !/^[0-9a-f]{40}$/.test(sha) || value.commitSha !== sha
+              || !Number.isInteger(value.exitCode) || value.exitCode < 0 || value.exitCode > 255) throw 0;
+            console.log("Browser journey original exit status: " + value.exitCode);
+            process.exit(value.exitCode);
+          } catch {
+            console.error("Browser journey evidence receipt is missing or invalid.");
+            process.exit(1);
+          }
+          NODE
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always() && steps.browser-journeys-evidence.outcome == 'success'
+        with:
+          name: browser-journeys-evidence
+          path: browser-journeys-evidence
+          retention-days: 14
+          if-no-files-found: error
 
   browser-suites:
     name: gate / browserSuites

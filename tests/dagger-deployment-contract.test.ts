@@ -157,6 +157,10 @@ describe("single-transaction delivery orchestration", () => {
         events.push("green-main")
         return serializedDecision()
       },
+      verifyNativeMain: async (evidence) => {
+        expect(evidence).toMatchObject({ repository: runRepository, commitSha, branch: "main" })
+        events.push("native-main")
+      },
       bindSource: async () => {
         events.push("bind-source")
         return "bound-source"
@@ -246,12 +250,14 @@ describe("single-transaction delivery orchestration", () => {
     expect(reloadCalls).toBe(1)
     expect(events).toEqual([
       "green-main",
+      "native-main",
       "bind-source",
       "guard-source",
       "signed-build",
       "preview",
       "envelope",
       "previous-production",
+      "native-main",
       "deploy",
       "evidence-id",
       "reload",
@@ -467,6 +473,7 @@ function failClosedPort(events: string[]) {
       events.push("green-main")
       return serializedDecision()
     },
+    verifyNativeMain: async () => {},
     bindSource: async () => {
       events.push("bind-source")
       return "bound-source"
@@ -515,6 +522,66 @@ const PREVIOUS = {
   deploymentId: "11111111-1111-4111-8111-111111111111",
   deploymentUrl: "https://11111111.almamesh.pages.dev",
 }
+
+describe("native Mac acceptance before production", () => {
+  test("a failed native main check blocks source, build and upload", async () => {
+    const events: string[] = []
+    const failure = new Error("Native Mac acceptance failed.")
+    const port = Object.assign(failClosedPort(events), {
+      verifyNativeMain: async () => { events.push("native-main"); throw failure },
+    })
+    await expect(deliverProduction(port, commitSha, "781", 3, centralSha, runRepository)).rejects.toBe(failure)
+    expect(events).toEqual(["green-main", "native-main"])
+  })
+
+  test("a pending native check holds the exact source before any build or upload", async () => {
+    const events: string[] = []
+    let release!: () => void
+    const held = new Promise<void>((resolve) => { release = resolve })
+    const port = Object.assign(failClosedPort(events), {
+      verifyNativeMain: async (evidence: { repository: string; commitSha: string; branch: string }) => {
+        expect(evidence).toMatchObject({ repository: runRepository, commitSha, branch: "main" })
+        events.push("native-main")
+        await held
+      },
+    })
+    const delivery = deliverProduction(port, commitSha, "781", 3, centralSha, runRepository)
+    try {
+      await new Promise<void>((resolve) => setImmediate(resolve))
+      expect(events).toEqual(["green-main", "native-main"])
+    } finally { release() }
+    await expect(delivery).resolves.toMatchObject({ deploymentId: "deployment-id" })
+    expect(events.indexOf("bind-source")).toBeGreaterThan(events.indexOf("native-main"))
+  })
+
+  test("a superseded Foundation decision never waits on native acceptance", async () => {
+    let checks = 0
+    const port = Object.assign(failClosedPort([]), {
+      greenMain: async () => serializedSkip(),
+      verifyNativeMain: async () => { checks += 1; throw new Error("Must not run") },
+    })
+    await expect(deliverProduction(port, commitSha, "781", 3, centralSha, runRepository)).resolves.toMatchObject({ skipped: true })
+    expect(checks).toBe(0)
+  })
+
+  test("a newer failed native attempt during the build prevents the upload", async () => {
+    const events: string[] = []
+    let checks = 0
+    const failure = new Error("Native acceptance changed before upload.")
+    const port = Object.assign(failClosedPort(events), {
+      verifyNativeMain: async () => {
+        checks += 1
+        events.push(`native-main:${checks}`)
+        if (checks === 2) throw failure
+      },
+    })
+    await expect(deliverProduction(port, commitSha, "781", 3, centralSha, runRepository)).rejects.toBe(failure)
+    expect(checks).toBe(2)
+    expect(events).toContain("signed-build")
+    expect(events).toContain("native-main:2")
+    expect(events).not.toContain("deploy")
+  })
+})
 
 describe("post-deploy live smoke and rollback through the central module", () => {
   test("the pre-release deployment is read before the upload and drives the returning pass", async () => {

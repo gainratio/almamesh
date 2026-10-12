@@ -15,11 +15,17 @@
 import { create, type StateCreator } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
-import type { ChatMessage, ChatThread, ChatThreadAsOf, ChatThreadSummary } from '@almamesh/shared-types';
+import {
+  safeWarn,
+  type ChatMessage,
+  type ChatThread,
+  type ChatThreadAsOf,
+  type ChatThreadSummary,
+} from '@almamesh/shared-types';
 import { hasValidChatSummaryShape, summaryMatchesMessages } from '@almamesh/llm';
 import { unlinkMissingChartLinks } from './chatChartLinks';
 import { deletionAwareIdbStorage, whenPersistenceCommitted } from './deletionTombstones';
-import { whenHydrated, type HydrationOutcome } from './hydrationBarrier';
+import { reportHydrationFailure, whenHydrated, type HydrationOutcome } from './hydrationBarrier';
 import { chatAsOfProblem, isChatThreadAsOf } from './chatAsOf';
 
 type ChatRole = ChatMessage['role'];
@@ -402,7 +408,12 @@ export const useChatStore = create<ChatStore>()(
       messages: state.messages,
       summaries: state.summaries,
     }),
-    onRehydrateStorage: () => () => {
+    onRehydrateStorage: () => (state, error) => {
+      if (state === undefined || error !== undefined) {
+        safeWarn('storage.hydration_failed');
+        reportHydrationFailure(useChatStore.persist, error);
+        return;
+      }
       useChatStore.setState({ hydrated: true });
     },
   }),

@@ -11,14 +11,14 @@
 import { create, type StateCreator } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
-import type { ChartData } from '@almamesh/shared-types';
+import { safeWarn, type ChartData } from '@almamesh/shared-types';
 import type { SiderealChart } from '@almamesh/browser/types';
 import {
   deletionAwareIdbStorage,
   whenPersistenceCommitted,
   whenPersistenceSettled,
 } from './deletionTombstones';
-import { whenHydrated, type HydrationOutcome } from './hydrationBarrier';
+import { reportHydrationFailure, whenHydrated, type HydrationOutcome } from './hydrationBarrier';
 
 /** A chart as held on-device: the rendered shape plus its identity + primacy. */
 export interface StoredChart extends ChartData {
@@ -231,7 +231,12 @@ export const useChartLibraryStore = create<ChartLibraryStore>()(
     migrate: migrateChartLibraryPersistedState,
     storage: createJSONStorage(() => deletionAwareIdbStorage),
     partialize: (state) => ({ charts: state.charts }),
-    onRehydrateStorage: () => () => {
+    onRehydrateStorage: () => (state, error) => {
+      if (state === undefined || error !== undefined) {
+        safeWarn('storage.hydration_failed');
+        reportHydrationFailure(useChartLibraryStore.persist, error);
+        return;
+      }
       useChartLibraryStore.setState({ hydrated: true });
     },
   }),
@@ -244,6 +249,8 @@ export const useChartLibraryStore = create<ChartLibraryStore>()(
  * the store is created empty and `persist` rehydrates it on a later microtask.
  * Reading `getPrimaryChart()` before that completes returns a false miss. Any
  * caller that needs the persisted truth must `await` this first.
+ * A failed read, parse or migration resolves as `failed`; it never replaces
+ * saved charts with the initial empty library or leaves callers waiting.
  *
  * Resolves immediately when hydration is already done (or when persistence is
  * unavailable — SSR/tests — where `persist.hasHydrated()` reports `true`).

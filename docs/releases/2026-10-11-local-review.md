@@ -1,6 +1,6 @@
 # Local review before deployment
 
-The user reviewed the local candidate and authorized the CI/CD release process on 11 October 2026. Refreshed frozen product `46a0dab` passed 6,283 frontend tests plus four lint contracts, 558 CI contracts, 11 browser parity checks and the complete 49-check native Mac lane with zero retries. Backend verification passed 1219 tests / 98.46% coverage and all code checks. Evidence finalization and leak scanning passed. Hosted head `757cb225` failed native travel and required nightly acceptance; release remains blocked pending complete final-head hosted proof, with no merge or deployment. Production remains on release #331; the limitations below remain visible.
+The user authorized the CI/CD release process on 11 October 2026. PR #333 passed its final-head hosted checks and merged as `dd2941c588c490ce1da26ba65859a6f982465d3b`, but main subsequently failed Chromium reload and native Mac startup checks. Deployment remains blocked and production remains release #331. The [reload recovery follow-up](2026-10-12-reload-lifecycle-evidence.md) records the failures, changes and fresh verification required. The local preview and measurements below describe the earlier candidate and do not clear the follow-up.
 
 ## Start here
 

@@ -52,6 +52,13 @@ describe("central Dagger Lego pins", () => {
     expect(source).toContain(`const CENTRAL_MODULE_SHA = "${centralSha}"`)
   })
 
+  test("every deployment invocation rechecks live acceptance instead of reusing a function result", () => {
+    const source = readFileSync(resolve(root, "dagger/src/index.ts"), "utf8")
+    expect(source).toMatch(/@func\(\{\s*cache:\s*"never"\s*\}\)\s*async deploy\(/)
+    const deploy = source.slice(source.indexOf("async deploy("), source.indexOf("@func()", source.indexOf("async deploy(")))
+    expect(deploy).toContain('.withEnvVariable("NATIVE_MAC_CHECK_NONCE", randomUUID())')
+  })
+
   test("keeps the shared Foundation guard as the only secret scanner", () => {
     expect(existsSync(resolve(root, "dagger/scripts/secret-scan.sh"))).toBe(false)
   })
@@ -108,7 +115,7 @@ describe("central Dagger Lego pins", () => {
     )
     const dryRun = source.slice(
       source.indexOf("deployDryRun(expectedSha: string)"),
-      source.indexOf("  @func()\n  async deploy(", source.indexOf("deployDryRun(expectedSha: string)")),
+      source.indexOf("  async deploy(", source.indexOf("deployDryRun(expectedSha: string)")),
     )
     const proofSetup = source.slice(
       source.indexOf("private pagesFunctionsProof("),
@@ -439,7 +446,10 @@ describe("the Pages upload keeps the Git source bound to today's owner", () => {
 })
 
 describe("ci runs independent gates concurrently", () => {
-  async function ciModule(gates: Record<string, () => Promise<void>>) {
+  async function ciModule(
+    gates: Record<string, () => Promise<void>>,
+    guard: (source: unknown, runRepository: string, commitSha: string) => Promise<void> = async () => undefined,
+  ) {
     const noOpDecorator = () => () => undefined
     const inert: unknown = new Proxy({}, { get: () => () => inert })
     mock.module("@dagger.io/dagger", () => ({
@@ -453,7 +463,11 @@ describe("ci runs independent gates concurrently", () => {
       check: noOpDecorator,
       func: noOpDecorator,
       object: noOpDecorator,
-      dag: { cacheVolume: () => ({}), container: () => inert },
+      dag: {
+        cacheVolume: () => ({}),
+        container: () => inert,
+        foundation: () => ({ guard: (...args: Parameters<typeof guard>) => ({ sync: () => guard(...args) }) }),
+      },
     }))
     const { AlmameshCi } = await import("../dagger/src/index.ts")
     const module = new AlmameshCi({ directory: () => ({}) } as never)
@@ -507,6 +521,70 @@ describe("ci runs independent gates concurrently", () => {
       },
     })
     await expect(module.gate("privacy", "1".repeat(40), repository)).rejects.toThrow("privacy: verify-privacy-reset exited 1")
+  })
+
+  test("journey evidence uses one completed failed container and retains its original status before scanning", async () => {
+    const events: string[] = []
+    let releaseGuard: () => void = () => undefined
+    const guardPending = new Promise<void>((resolve) => { releaseGuard = resolve })
+    const module = await ciModule({}, async (source, runRepository, commitSha) => {
+      expect(source).toBe(module.source)
+      expect(runRepository).toBe(repository)
+      expect(commitSha).toBe("1".repeat(40))
+      events.push("guard-start")
+      await guardPending
+      events.push("guard-complete")
+    })
+    const evidence = {}
+    Object.assign(module, { browserJourneysRun: (retainFailure: boolean) => {
+      expect(retainFailure).toBe(true)
+      events.push("execute")
+      return {
+        exitCode: async () => { events.push("status"); return 3 },
+        withExec: (args: string[]) => {
+          events.push("snapshot-scan")
+          expect(args[2]).toContain('"exitCode":3')
+          expect(args[2]).toContain("bun scripts/artifactLeakScan.mjs browser-journeys-evidence")
+          return { sync: async () => ({ directory: (path: string) => { expect(path).toBe("/workspace/frontend/apps/web/browser-journeys-evidence"); return evidence } }) }
+        },
+      }
+    } })
+    const pending = module.browserJourneysEvidence("1".repeat(40), repository)
+    try {
+      await Promise.resolve()
+      expect(events).toEqual(["guard-start"])
+      releaseGuard()
+      await expect(pending).resolves.toBe(evidence)
+      expect(events).toEqual(["guard-start", "guard-complete", "execute", "status", "snapshot-scan"])
+    } finally {
+      releaseGuard()
+      await pending.catch(() => undefined)
+    }
+  })
+
+  test("journey evidence rejects a source identity guard failure before browser execution or receipt creation", async () => {
+    const module = await ciModule({}, async () => { throw new Error("source identity rejected") })
+    let executions = 0
+    Object.assign(module, { browserJourneysRun: () => {
+      executions += 1
+      throw new Error("browser must not execute")
+    } })
+    await expect(module.browserJourneysEvidence("1".repeat(40), repository)).rejects.toThrow("source identity rejected")
+    expect(executions).toBe(0)
+  })
+
+  test("journey evidence refuses invalid identity/status without producing an export", async () => {
+    const module = await ciModule({})
+    let executions = 0
+    Object.assign(module, { browserJourneysRun: () => {
+      executions += 1
+      return { exitCode: async () => -1, withExec: () => { throw new Error("unexpected export") } }
+    } })
+    await expect(module.browserJourneysEvidence("invalid", repository)).rejects.toThrow("commit is invalid")
+    await expect(module.browserJourneysEvidence("1".repeat(40), "foreign/repo")).rejects.toThrow("not an allowed repository")
+    expect(executions).toBe(0)
+    await expect(module.browserJourneysEvidence("1".repeat(40), repository)).rejects.toThrow("exit status is invalid")
+    expect(executions).toBe(1)
   })
 
   test("an unknown gate name is refused before anything runs", async () => {

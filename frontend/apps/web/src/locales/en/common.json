@@ -110,9 +110,9 @@
     "retry": "Try again"
   },
   "storage_unavailable": {
-    "title": "AlmaMesh cannot start its on-device database",
-    "body": "AlmaMesh computes and keeps your chart only on this device, and this browser cannot run the local database it needs.",
-    "fix": "Try a current version of Safari, Chrome, Firefox or Edge in a normal (not private) window, then reload this page."
+    "title": "AlmaMesh cannot access its on-device database",
+    "body": "AlmaMesh could not open or read the local database it needs to load and save your data.",
+    "fix": "Reload this page to try again. If the problem continues, check that you are using a current browser in a normal (not private) window."
   },
   "error_boundary": {
     "title": "Something went wrong",

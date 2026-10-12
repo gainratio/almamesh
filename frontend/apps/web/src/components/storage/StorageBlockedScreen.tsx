@@ -51,7 +51,7 @@ function Headline({ children }: HeadlineProps) {
   );
 }
 
-/** The runtime cannot host SQLite at all: nothing to switch on, so no steps. */
+/** SQLite could not open or read its state. Reload without replacing any data. */
 export function DatabaseUnavailableCard() {
   const { t } = useTranslation();
   return (
@@ -59,6 +59,9 @@ export function DatabaseUnavailableCard() {
       <Headline>{t('storage_unavailable.title')}</Headline>
       <p className="mt-3 text-text-body">{t('storage_unavailable.body')}</p>
       <p className="mt-3 text-text-secondary">{t('storage_unavailable.fix')}</p>
+      <Button className="mt-6" data-testid="storage-reload-button" onClick={() => window.location.reload()}>
+        {t('error_boundary.refresh')}
+      </Button>
     </Panel>
   );
 }

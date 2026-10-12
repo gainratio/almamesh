@@ -44,6 +44,7 @@ export * from './contentMode';
 export * from './language';
 export {
   checkPortableStorageAgain,
+  markPortableStateUnavailable,
   markPortableStorageBlockedByEngine,
   portableStatePersistence,
   subscribePortableStatePersistence,

@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
 import { CI_GATES } from "../dagger/src/gates.ts"
+import { browserJourneyStatusCheckScript } from "../dagger/src/browserJourneyEvidence.ts"
 
 const root = resolve(import.meta.dir, "..")
 const workflowPath = resolve(root, ".github/workflows/dagger.yml")
@@ -86,13 +87,28 @@ function expectedGateJob(gate: string): Mapping {
       checkoutStep(),
       ...(gate === "backend" ? [publicDocsStep()] : []),
       {
+        ...(gate === "browserJourneys" ? { id: "browser-journeys-evidence" } : {}),
         uses: daggerAction,
         env: { XDG_CONFIG_HOME: "${{ github.workspace }}/.github/xdg", GITHUB_TOKEN: "${{ github.token }}" },
         with: {
           version: "0.21.8",
-          call: `${GATE_REGISTRY_TOKEN} gate --name=${gate} --commit-sha=\${{ github.sha }} --repository=\${{ github.repository }}`,
+          call: gate === "browserJourneys"
+            ? `${GATE_REGISTRY_TOKEN} browser-journeys-evidence --commit-sha=\${{ github.sha }} --repository=\${{ github.repository }} export --path=browser-journeys-evidence`
+            : `${GATE_REGISTRY_TOKEN} gate --name=${gate} --commit-sha=\${{ github.sha }} --repository=\${{ github.repository }}`,
         },
       },
+      ...(gate === "browserJourneys" ? [
+        {
+          name: "Enforce original browser journey result",
+          env: { EXPECTED_SHA: "${{ github.sha }}" },
+          run: `node <<'NODE'\n${browserJourneyStatusCheckScript()}\nNODE\n`,
+        },
+        {
+          uses: "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
+          if: "always() && steps.browser-journeys-evidence.outcome == 'success'",
+          with: { name: "browser-journeys-evidence", path: "browser-journeys-evidence", "retention-days": 14, "if-no-files-found": "error" },
+        },
+      ] : []),
     ],
   }
 }
@@ -232,13 +248,31 @@ function gateJobFixture(gate: string): string[] {
       "      - name: Export public documentation paths",
       `        run: ${publicDocsCommand}`,
     ] : []),
-    `      - uses: ${daggerAction} # v8.4.1`,
+    ...(gate === "browserJourneys" ? ["      - id: browser-journeys-evidence", `        uses: ${daggerAction} # v8.4.1`] : [`      - uses: ${daggerAction} # v8.4.1`]),
     "        env:",
     "          XDG_CONFIG_HOME: ${{ github.workspace }}/.github/xdg",
     "          GITHUB_TOKEN: ${{ github.token }}",
     "        with:",
     "          version: \"0.21.8\"",
-    `          call: ${GATE_REGISTRY_TOKEN} gate --name=${gate} --commit-sha=\${{ github.sha }} --repository=\${{ github.repository }}`,
+    gate === "browserJourneys"
+      ? `          call: ${GATE_REGISTRY_TOKEN} browser-journeys-evidence --commit-sha=\${{ github.sha }} --repository=\${{ github.repository }} export --path=browser-journeys-evidence`
+      : `          call: ${GATE_REGISTRY_TOKEN} gate --name=${gate} --commit-sha=\${{ github.sha }} --repository=\${{ github.repository }}`,
+    ...(gate === "browserJourneys" ? [
+      "      - name: Enforce original browser journey result",
+      "        env:",
+      "          EXPECTED_SHA: ${{ github.sha }}",
+      "        run: |",
+      "          node <<'NODE'",
+      ...browserJourneyStatusCheckScript().split("\n").map((line) => `          ${line}`),
+      "          NODE",
+      "      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
+      "        if: always() && steps.browser-journeys-evidence.outcome == 'success'",
+      "        with:",
+      "          name: browser-journeys-evidence",
+      "          path: browser-journeys-evidence",
+      "          retention-days: 14",
+      "          if-no-files-found: error",
+    ] : []),
   ]
 }
 
@@ -362,6 +396,19 @@ describe("atomic hosted Dagger workflow", () => {
 
   test("the canonical fixture is itself clean", () => {
     expect(exactDaggerWorkflowViolations(canonicalFixture)).toEqual([])
+  })
+
+  test.each([
+    ["missing original-status enforcement", (steps: Mapping[]) => { steps.splice(2, 1) }],
+    ["ignored original failure", (steps: Mapping[]) => { steps[2]["continue-on-error"] = true }],
+    ["status check masked by shell", (steps: Mapping[]) => { steps[2].run = `${steps[2].run}true\n` }],
+    ["status bound to another SHA", (steps: Mapping[]) => { steps[2].env = { EXPECTED_SHA: "a".repeat(40) } }],
+    ["unconditionally uploaded evidence", (steps: Mapping[]) => { delete steps[3].if }],
+    ["another artifact path", (steps: Mapping[]) => { (steps[3].with as Mapping).path = "." }],
+    ["a second browser execution", (steps: Mapping[]) => { steps.push(structuredClone(steps[1])) }],
+    ["an export failure allowed to pass", (steps: Mapping[]) => { steps[1]["continue-on-error"] = true }],
+  ] as const)("rejects browser-journey evidence bypass: %s", (_name, mutate) => {
+    expect(exactDaggerWorkflowViolations(mutateGateSteps("browserJourneys", mutate))).toContain("gate-job:browserJourneys")
   })
 
   test.each([

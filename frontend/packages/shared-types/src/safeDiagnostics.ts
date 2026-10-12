@@ -27,6 +27,7 @@ export const SAFE_DIAGNOSTIC_CODES = [
   'feedback.turnstile_init_failed',
   'geo.city_lookup_failed',
   'geo.online_lookup_failed',
+  'i18n.language_change_failed',
   'interpretation.stream_failed',
   'life_events.save_failed',
   'life_events.save_timed_out',

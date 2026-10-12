@@ -75,6 +75,8 @@ export interface SmokeRun {
 
 export interface DeliveryPort<Source, Artifact, Envelope, LazyEvidence, StoredEvidence> {
   greenMain(): Promise<string>
+  /** Exact main commit must also pass the independent native Mac workflow. */
+  verifyNativeMain(evidence: GreenMainEvidence): Promise<void>
   bindSource(evidence: GreenMainEvidence): Promise<Source>
   guardSource(source: Source, evidence: GreenMainEvidence): Promise<void>
   buildRelease(source: Source, evidence: GreenMainEvidence): Promise<Artifact>
@@ -257,6 +259,7 @@ export async function deliverProduction<Source, Artifact, Envelope, LazyEvidence
     return { skipped: true, supersededBy: decision.supersededBy, message: decision.message }
   }
   const evidence = decision.evidence
+  await port.verifyNativeMain(evidence)
   const identities = releaseIdentities(evidence, centralSha)
   const source = await port.bindSource(evidence)
   await port.guardSource(source, evidence)
@@ -267,6 +270,9 @@ export async function deliverProduction<Source, Artifact, Envelope, LazyEvidence
   if (previous.deploymentId.length === 0 || !validDeploymentUrl(previous.deploymentUrl)) {
     throw new Error("previous production deployment differs")
   }
+  // A rerun may have started while the release was being built. Recheck at
+  // the upload boundary, using a fresh request rather than the first proof.
+  await port.verifyNativeMain(evidence)
   const lazyEvidence = port.deployPages(envelope, providerRequest(evidence, identities))
   let evidenceId: string
   try {
