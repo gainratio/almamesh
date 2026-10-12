@@ -43,6 +43,7 @@ describe("devicePolicy (pinned literals: what each tier may keep resident)", () 
       bootOverlapAllowed: false,
       periodSkyCacheSize: 1,
       periodSkyComputeAllowed: true,
+      periodSkyRowCap: 16,
     });
   });
 
@@ -56,6 +57,7 @@ describe("devicePolicy (pinned literals: what each tier may keep resident)", () 
       bootOverlapAllowed: false,
       periodSkyCacheSize: 1,
       periodSkyComputeAllowed: true,
+      periodSkyRowCap: 32,
     });
   });
 
@@ -69,11 +71,18 @@ describe("devicePolicy (pinned literals: what each tier may keep resident)", () 
       bootOverlapAllowed: true,
       periodSkyCacheSize: 1,
       periodSkyComputeAllowed: true,
+      periodSkyRowCap: 128,
     });
   });
 
   it("every tier retains one period in memory; revisits belong to SQLite", () => {
     for (const tier of ["full", "lite", "minimal"] as const) expect(devicePolicy(tier).periodSkyCacheSize).toBe(1);
+  });
+
+  it("period sky SQLite rows are capped smallest on the weakest devices", () => {
+    expect(devicePolicy("minimal").periodSkyRowCap).toBe(16);
+    expect(devicePolicy("lite").periodSkyRowCap).toBe(32);
+    expect(devicePolicy("full").periodSkyRowCap).toBe(128);
   });
 
   it("Day and place computations are available on every tier", () => {

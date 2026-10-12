@@ -7,6 +7,7 @@ import type { PredictiveContexts } from '@almamesh/browser';
 import { createDerivedDbSessions, migrateDerivedDb, type SqlDatabase } from '../derivedDb';
 import { createPeriodSkyCache } from '../periodSky';
 import { createPeriodSkyRows, DurableReceiptError } from '../periodSkyRows';
+import { devicePolicy } from '@almamesh/browser';
 
 const databases: SqlDatabase[] = [];
 afterEach(async () => { await Promise.all(databases.splice(0).map((db) => db.close())); });
@@ -269,5 +270,44 @@ describe('period sky durable rows', () => {
     resume.resolve();
     await write;
     expect((await db.query<{ n: number }>('SELECT count(*) AS n FROM period_sky'))[0]?.n).toBe(0);
+  });
+});
+
+describe('period sky row cap', () => {
+  async function capped(maxRows?: number) {
+    const db = await openNodeSqlDatabase({ name: `sky-cap-${crypto.randomUUID()}` });
+    databases.push(db);
+    await migrateDerivedDb(db);
+    const rows = createPeriodSkyRows(async () => db, {
+      readLedger: async () => ({ activeEpoch: 0, restoreEpoch: 0, restoreInProgress: false }),
+      ...(maxRows === undefined ? {} : { maxRows }),
+    });
+    const keys = async () => (await db.query<{ key: string }>('SELECT key FROM period_sky ORDER BY key')).map(({ key }) => key);
+    return { rows, keys };
+  }
+
+  it('evicts the oldest-written rows beyond the cap and keeps the newest', async () => {
+    const { rows, keys } = await capped(3);
+    for (const key of ['k1', 'k2', 'k3', 'k4', 'k5']) await rows.write('a', key, 'p1', PAYLOAD);
+    expect(await keys()).toEqual(['k3', 'k4', 'k5']);
+    expect(await rows.read('a', 'k5')).toEqual(PAYLOAD);
+  });
+
+  it('a rewritten period counts as the newest row', async () => {
+    const { rows, keys } = await capped(2);
+    await rows.write('a', 'k1', 'p1', PAYLOAD);
+    await rows.write('a', 'k2', 'p1', PAYLOAD);
+    await rows.write('a', 'k1', 'p1', PAYLOAD);
+    await rows.write('a', 'k3', 'p1', PAYLOAD);
+    expect(await keys()).toEqual(['k1', 'k3']);
+  });
+
+  it('defaults to this device tier\'s cap', async () => {
+    const cap = devicePolicy().periodSkyRowCap;
+    const { rows, keys } = await capped();
+    for (let i = 0; i <= cap; i += 1) await rows.write('a', `k${String(i).padStart(4, '0')}`, 'p1', PAYLOAD);
+    const kept = await keys();
+    expect(kept).toHaveLength(cap);
+    expect(kept[0]).toBe('k0001');
   });
 });
