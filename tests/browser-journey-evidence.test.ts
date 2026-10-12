@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { BROWSER_JOURNEY_STATUS_CHECK, browserJourneyEvidenceScript, validateBrowserJourneyExitCode } from '../dagger/src/browserJourneyEvidence.ts';
+import { BROWSER_JOURNEY_STATUS_CHECK, browserJourneyArtifactName, browserJourneyEvidenceScript, browserJourneyFetchArgs, validateBrowserJourneyExitCode } from '../dagger/src/browserJourneyEvidence.ts';
 
 const root = resolve(import.meta.dir, '..');
 const sha = 'd'.repeat(40);
@@ -39,12 +39,31 @@ describe('browser journey evidence remains available on failure', () => {
     } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 
-  test('the workflow and this test run the same single status-check file', () => {
+  test('the Dagger status gate and this test run the same single status-check file', () => {
     expect(BROWSER_JOURNEY_STATUS_CHECK).toBe('frontend/apps/web/scripts/browserJourneyStatusCheck.mjs');
     expect(existsSync(join(root, BROWSER_JOURNEY_STATUS_CHECK))).toBe(true);
     const workflow = readFileSync(join(root, '.github/workflows/dagger.yml'), 'utf8');
-    expect(workflow).toContain(`run: node ${BROWSER_JOURNEY_STATUS_CHECK}`);
+    // Fleet rule shell-step: the workflow runs no shell; Dagger enforces the receipt.
+    expect(workflow).not.toContain('run:');
     expect(workflow).not.toContain('journey-status.json');
+    const source = readFileSync(join(root, 'dagger/src/index.ts'), 'utf8');
+    const status = source.slice(source.indexOf('async browserJourneysStatus('), source.indexOf('private browserJourneysRun('));
+    expect(status).toContain('browserJourneyFetchArgs(');
+    expect(status).toContain('"node", BROWSER_JOURNEY_STATUS_CHECK');
+    expect(status).toContain('withEnvVariable("EXPECTED_SHA", commitSha)');
+  });
+
+  test('the status gate fetches only this run\'s artifact for this exact SHA', () => {
+    expect(browserJourneyArtifactName(sha)).toBe(`browser-journeys-evidence-${sha}`);
+    expect(browserJourneyFetchArgs('gainratio/almamesh', '987654321', sha)).toEqual([
+      'python3', '/opt/fetch_run_artifact.py', '--repository', 'gainratio/almamesh', '--run-id', '987654321',
+      '--name', `browser-journeys-evidence-${sha}`, '--output', '/evidence',
+    ]);
+    for (const runId of ['', '0', '12a', '1 --name x', '${{ github.run_id }}']) {
+      expect(() => browserJourneyFetchArgs('gainratio/almamesh', runId, sha)).toThrow('run id');
+    }
+    expect(() => browserJourneyFetchArgs('gainratio/almamesh', '1', 'D'.repeat(40))).toThrow('commit');
+    expect(() => browserJourneyFetchArgs('evil/almamesh', '1', sha)).toThrow();
   });
 
   test('collects only the named browser results, requires a successful scanner, and records original status', () => {
