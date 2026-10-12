@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 
 import { expect, type BrowserContext, type Page, type Route } from '@playwright/test';
+import type { EventDatePrecision, LifeEventCategory } from '@almamesh/shared-types';
 
 /**
  * Helpers for the portable-state invariants suite (portable-invariants.spec.ts).
@@ -220,7 +221,7 @@ export async function fakeThirdParties(context: BrowserContext): Promise<string[
 // Real onboarding
 // ---------------------------------------------------------------------------
 
-export interface Native {
+interface NativeBirthDetails {
   readonly name: string;
   /** MMDDYYYY typed into the segmented (en-US) date field. */
   readonly date: string;
@@ -228,9 +229,22 @@ export interface Native {
   readonly time: string;
   readonly meridiem: 'a' | 'p';
   readonly city: 'Bengaluru' | 'Mumbai';
-  /** Optional life-events narrative (structured on-device when AI is off). */
-  readonly narrative?: string;
 }
+
+export interface ExpectedOnboardingEvent {
+  readonly summary: string;
+  readonly date: string;
+  readonly category: LifeEventCategory;
+  readonly precision: EventDatePrecision;
+}
+
+type ExpectedOnboardingEvents = readonly [ExpectedOnboardingEvent, ...ExpectedOnboardingEvent[]];
+
+/** Narrative fixtures declare independent retained-row expectations. */
+export type Native = NativeBirthDetails & (
+  | { readonly narrative?: undefined; readonly expectedEvents?: never }
+  | { readonly narrative: string; readonly expectedEvents: ExpectedOnboardingEvents }
+);
 
 async function typeSegments(page: Page, testId: string, keys: string): Promise<void> {
   await page.locator(`[data-testid="${testId}"] [role="spinbutton"]`).first().click();
@@ -254,12 +268,16 @@ export async function onboard(page: Page, native: Native): Promise<void> {
   if (native.narrative) {
     await page.getByTestId('life-events-input').fill(native.narrative);
     await page.getByTestId('extract-events-button').click();
-    await expect(page.getByTestId('captured-life-events')).toBeVisible();
   } else {
     await page.getByTestId('skip-life-events-button').click();
   }
   await page.waitForURL('**/dashboard', { timeout: 240_000 });
   await expectDashboardChart(page, native.name);
+  if (native.narrative) {
+    // The captured-events feedback auto-advances after 1.5 seconds. Inspect
+    // retained rows through the shipped review UI once onboarding is done.
+    await expectOnboardingEvents(page, native.name, native.expectedEvents);
+  }
 }
 
 export async function expectDashboardChart(page: Page, name: string): Promise<void> {
@@ -280,6 +298,44 @@ export async function profileIdOf(page: Page, name: string): Promise<string> {
   const row = page.locator('[data-testid^="person-row-"]').filter({ hasText: name });
   await expect(row).toHaveCount(1);
   return ((await row.getAttribute('data-testid')) ?? '').replace('person-row-', '');
+}
+
+/** Open the manual event tray, including its intro when no events exist yet. */
+export async function openRectifyEvents(page: Page, profileId: string): Promise<void> {
+  await spaNavigate(page, `/rectify/${profileId}`);
+  const intro = page.getByTestId('intro-start-btn');
+  const manual = page.locator('button').filter({ hasText: /enter events manually instead/i });
+  await expect(intro.or(manual)).toBeVisible();
+  if (await intro.isVisible()) await intro.click();
+  await manual.click();
+  const addEvent = page.locator('button').filter({ hasText: /add event/i });
+  if (!(await addEvent.isVisible())) {
+    await page.locator('button').filter({ hasText: /gathered/i }).first().click();
+  }
+  await expect(addEvent).toBeVisible();
+}
+
+/** Review every expected retained row, then leave the caller on dashboard. */
+export async function expectOnboardingEvents(
+  page: Page,
+  name: string,
+  expectedEvents: ExpectedOnboardingEvents,
+): Promise<void> {
+  await spaNavigate(page, '/settings/people');
+  await openRectifyEvents(page, await profileIdOf(page, name));
+  const summaries = page.getByTestId('event-summary-input');
+  const rows = page.getByTestId('event-row');
+  await expect(summaries).toHaveCount(expectedEvents.length);
+  await expect(rows).toHaveCount(expectedEvents.length);
+  for (const [index, event] of expectedEvents.entries()) {
+    await expect(summaries.nth(index)).toHaveValue(event.summary);
+    const row = rows.nth(index);
+    await expect(row.locator('input[type="date"]')).toHaveValue(event.date);
+    await expect(row.getByRole('combobox', { name: 'Category', exact: true })).toHaveValue(event.category);
+    await expect(row.getByRole('combobox', { name: 'Date precision', exact: true })).toHaveValue(event.precision);
+  }
+  await spaNavigate(page, '/dashboard');
+  await expectDashboardChart(page, name);
 }
 
 /** Switch the active person through the header's profile switcher. */

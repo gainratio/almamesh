@@ -24,12 +24,14 @@ import {
   confirmRegeneration,
   expectCleanBrowser,
   expectDashboardChart,
+  expectOnboardingEvents,
   exportBackup,
   fakeThirdParties,
   gotoSettled,
   settleDocument,
   importBackup,
   onboard,
+  openRectifyEvents,
   profileIdOf,
   spaNavigate,
   switchActivePerson,
@@ -60,6 +62,12 @@ const SELF: Native = {
   meridiem: 'a',
   city: 'Bengaluru',
   narrative: 'I got married on 2015-06-20 in Pune.',
+  expectedEvents: [{
+    summary: 'I got married on 2015-06-20',
+    date: '2015-06-20',
+    category: 'marriage',
+    precision: 'exact',
+  }],
 };
 const RENAMED_SELF = 'Invariant Ada Renamed';
 const DERIVED_CACHES_NOT_EXPORTED = ['almamesh-derived'] as const;
@@ -257,24 +265,6 @@ async function chat(page: Page): Promise<void> {
   await page.keyboard.press('Escape');
 }
 
-/**
- * Open the wizard's manual event tray. The intro step only shows while the
- * person has no events yet; with events it opens straight on the tray.
- */
-async function openRectifyEvents(page: Page, profileId: string): Promise<void> {
-  await spaNavigate(page, `/rectify/${profileId}`);
-  const intro = page.getByTestId('intro-start-btn');
-  const manual = page.locator('button').filter({ hasText: /enter events manually instead/i });
-  await expect(intro.or(manual)).toBeVisible();
-  if (await intro.isVisible()) await intro.click();
-  await manual.click();
-  const addEvent = page.locator('button').filter({ hasText: /add event/i });
-  if (!(await addEvent.isVisible())) {
-    await page.locator('button').filter({ hasText: /gathered/i }).first().click();
-  }
-  await expect(addEvent).toBeVisible();
-}
-
 async function rectify(page: Page, profileId: string): Promise<void> {
   await openRectifyEvents(page, profileId);
   await page.locator('button').filter({ hasText: /add event/i }).click();
@@ -454,6 +444,56 @@ function expectNoLeak(bytes: Buffer, secrets: readonly string[]): void {
 // ---------------------------------------------------------------------------
 // Scenarios
 // ---------------------------------------------------------------------------
+
+test('onboarding retains captured events with a late observer', async ({ browser }, testInfo) => {
+  const a = await freshBrowser(browser, testInfo);
+  await gotoSettled(a.page, '/onboarding');
+  let observedAfterDashboard = false;
+  // The real app briefly shows its captured-events panel, then advances on
+  // its own. Model a busy runner observing the completed click only after
+  // that transition, without changing the app's timers or extraction.
+  const lateObserver = new Proxy(a.page, {
+    get(page, property) {
+      if (property === 'getByTestId') {
+        return (testId: string | RegExp) => {
+          const locator = page.getByTestId(testId);
+          if (testId !== 'extract-events-button') return locator;
+          return new Proxy(locator, {
+            get(button, method) {
+              if (method === 'click') {
+                return async (...args: Parameters<typeof button.click>) => {
+                  await button.click(...args);
+                  await page.waitForURL('**/dashboard', { timeout: 240_000 });
+                  await expectDashboardChart(page, SELF.name);
+                  observedAfterDashboard = true;
+                };
+              }
+              const value: unknown = Reflect.get(button, method, button);
+              return typeof value === 'function' ? value.bind(button) : value;
+            },
+          });
+        };
+      }
+      const value: unknown = Reflect.get(page, property, page);
+      return typeof value === 'function' ? value.bind(page) : value;
+    },
+  });
+
+  await onboard(lateObserver, SELF);
+  expect(observedAfterDashboard).toBe(true);
+  await spaNavigate(a.page, '/settings/people');
+  await openRectifyEvents(a.page, await profileIdOf(a.page, SELF.name));
+  await expect(a.page.getByTestId('event-summary-input')).toHaveCount(1);
+  await expect(a.page.getByTestId('event-summary-input')).toHaveValue('I got married on 2015-06-20');
+  const row = a.page.getByTestId('event-row');
+  await expect(row).toHaveCount(1);
+  await expect(row.locator('input[type="date"]')).toHaveValue('2015-06-20');
+  await expect(row.getByRole('combobox', { name: 'Category', exact: true })).toHaveValue('marriage');
+  await expect(row.getByRole('combobox', { name: 'Date precision', exact: true })).toHaveValue('exact');
+  expect(a.llmCalls, 'onboarding event extraction stays on device without AI').toEqual([]);
+  expectCleanBrowser(a.problems, 'late onboarding observer');
+  await a.close();
+});
 
 test.describe('full journey: seed, mutate, export, import into a new browser', () => {
   test('every entity round-trips and deleted rows stay deleted', async ({ browser }, testInfo) => {
@@ -737,6 +777,7 @@ test.describe('a pinned time-travel thread round-trips (chat store v3)', () => {
     const b = await freshBrowser(browser, testInfo);
     await test.step('import into browser B: the same pin, field for field, and its banner', async () => {
       await importBackup(b.page, exportPath);
+      await expectOnboardingEvents(b.page, SELF.name, SELF.expectedEvents);
       await spaNavigate(b.page, '/dashboard');
       const restored = await pinnedThreads(b.page);
       expect(restored).toEqual(before);
