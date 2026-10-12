@@ -1,5 +1,6 @@
 import { test, expect, type Page, type TestInfo } from '@playwright/test';
 import { bootEngine, seedChart, LLM_SETTINGS_KEY } from './interpretation.helpers';
+import { withRealReadingDiagnostics } from './realReadingDiagnostics';
 
 /**
  * Structured Vedic interpretation UNIT / CONTRACT test — REAL chart, STUBBED LLM.
@@ -354,26 +355,52 @@ test('current timeline is generated only by its explicit control', async ({ page
   await expect(page.getByTestId('generate-reading')).toBeVisible();
 });
 
-test('an empty required timeline section shows a partial failure and retains the current sky', async ({ page }) => {
+test('an empty required timeline section shows a partial failure and retains the current sky', async ({ page }, testInfo) => {
   await page.addInitScript(
     ([key, cfg]) => window.localStorage.setItem(key as string, cfg as string),
     [LLM_SETTINGS_KEY, JSON.stringify(LLM_CONFIG)] as const,
   );
   const llm = await stubLlm(page, { upcoming_periods: { upcoming_periods: [] } });
-  await bootEngine(page);
-  await seedChart(page);
-  await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+  const consoleErrors: string[] = [];
+  page.on('console', (message) => {
+    if (message.type() === 'error') consoleErrors.push(message.text());
+  });
+  page.on('pageerror', (error) => consoleErrors.push(String(error)));
+  try {
+    // Dagger cannot export attachments from a failed container, so the UI and
+    // network state at failure time is printed to stdout as JSON.
+    await withRealReadingDiagnostics(page, testInfo, async () => {
+      await bootEngine(page);
+      await seedChart(page);
+      await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
 
-  const generateTimeline = page.getByTestId('generate-timeline');
-  await expect(generateTimeline).toBeEnabled({ timeout: 90_000 });
-  await generateTimeline.click();
-  await expect(page.getByTestId('dashboard-current-sky')).toContainText('Pause before acting.');
-  await expect(page.getByTestId('timeline-progress')).toHaveCount(0);
-  await expect(page.getByTestId('timeline-partial-failure')).toContainText('The road ahead');
-  await expect(page.getByTestId('dashboard-road-ahead')).toHaveCount(0);
-  expect(llm.requestedSections()).toEqual(['upcoming_periods', 'current_sky']);
-  await expect(page.getByTestId('regenerate-timeline')).toBeEnabled();
-  await page.screenshot({ path: 'test-results/timeline-empty-section-partial-failure.png', fullPage: true });
+      const generateTimeline = page.getByTestId('generate-timeline');
+      await expect(generateTimeline).toBeEnabled({ timeout: 90_000 });
+      await generateTimeline.click();
+      // Same budget as the sibling test: on a loaded CI runner the two sections
+      // can take well past the default 30 s expect timeout to land.
+      await expect(page.getByTestId('current-timeline-section')).toBeVisible({ timeout: 120_000 });
+      await expect(page.getByTestId('dashboard-current-sky')).toContainText('Pause before acting.');
+      await expect(page.getByTestId('timeline-progress')).toHaveCount(0);
+      await expect(page.getByTestId('timeline-partial-failure')).toContainText('The road ahead');
+      await expect(page.getByTestId('dashboard-road-ahead')).toHaveCount(0);
+      expect(llm.requestedSections()).toEqual(['upcoming_periods', 'current_sky']);
+      await expect(page.getByTestId('regenerate-timeline')).toBeEnabled();
+      await page.screenshot({ path: 'test-results/timeline-empty-section-partial-failure.png', fullPage: true });
+    });
+  } finally {
+    // The provider is a stub and the chart synthetic, so its state is safe to print.
+    const partialFailure = page.isClosed()
+      ? null
+      : await page.getByTestId('timeline-partial-failure').textContent({ timeout: 1_000 }).catch(() => null);
+    console.log(JSON.stringify({
+      event: 'timeline-partial-failure-diagnostics',
+      requestedSections: llm.requestedSections(),
+      providerCalls: llm.providerCalls(),
+      partialFailure,
+      consoleErrors,
+    }));
+  }
 });
 
 // ===========================================================================

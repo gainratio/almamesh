@@ -50,6 +50,18 @@ function evidenceOutput() {
   return { log, attach, info };
 }
 
+/** Timeline bits and route of a page showing none of the timeline controls, at `/`. */
+const NO_TIMELINE = {
+  generateTimeline: false,
+  generateTimelineEnabled: false,
+  timelineProgress: false,
+  timelineSection: false,
+  currentSky: false,
+  timelinePartialFailure: false,
+  regenerateTimeline: false,
+  route: '/',
+} as const;
+
 afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
@@ -179,7 +191,7 @@ describe('safe real reading evidence finalization', () => {
     expect(report.network.pendingCount).toBe(0);
     expect(report.network.requests).toHaveLength(5);
     expect(report.network.requests.every((row: { phase: string; status: number }) => row.phase === 'finished' && row.status === 200)).toBe(true);
-    expect(report.ui).toEqual({ state: 'available', reading: false, progress: false, error: false, unavailable: false, cta: false });
+    expect(report.ui).toEqual({ state: 'available', reading: false, progress: false, error: false, unavailable: false, cta: false, ...NO_TIMELINE });
     expect(report).not.toHaveProperty('cause');
   });
 
@@ -202,7 +214,35 @@ describe('safe real reading evidence finalization', () => {
   it('captures present reading/progress/error bits without reading the DOM prose', async () => {
     const page = new PageDouble();
     document.body.innerHTML = '<section data-testid="reading-section">PRIVATE REPORT</section><div data-testid="interpretation-progress">PRIVATE STAGE</div><div data-testid="interpretation-error">PRIVATE ERROR</div>';
-    expect(await captureRealReadingUi(page.asPage())).toEqual({ state: 'available', reading: true, progress: true, error: true, unavailable: false, cta: false });
+    expect(await captureRealReadingUi(page.asPage())).toEqual({ state: 'available', reading: true, progress: true, error: true, unavailable: false, cta: false, ...NO_TIMELINE });
+  });
+
+  it('captures the timeline controls as presence bits and the route, never their prose', async () => {
+    const page = new PageDouble();
+    window.history.pushState(null, '', '/dashboard');
+    document.body.innerHTML = [
+      '<button data-testid="generate-timeline" disabled>PRIVATE</button>',
+      '<div data-testid="timeline-progress">PRIVATE STAGE</div>',
+      '<section data-testid="current-timeline-section"><p data-testid="dashboard-current-sky">PRIVATE SKY</p></section>',
+      '<p data-testid="timeline-partial-failure">PRIVATE SECTION</p>',
+      '<button data-testid="regenerate-timeline">PRIVATE</button>',
+    ].join('');
+    const ui = await captureRealReadingUi(page.asPage());
+    window.history.pushState(null, '', '/');
+    expect(ui).toEqual({
+      state: 'available', reading: false, progress: false, error: false, unavailable: false, cta: false,
+      generateTimeline: true, generateTimelineEnabled: false, timelineProgress: true, timelineSection: true,
+      currentSky: true, timelinePartialFailure: true, regenerateTimeline: true, route: '/dashboard',
+    });
+    expect(JSON.stringify(ui)).not.toContain('PRIVATE');
+  });
+
+  it('reports an enabled timeline control and replaces an unexpected route shape with "other"', async () => {
+    const page = new PageDouble();
+    page.evaluate.mockResolvedValue({ generateTimeline: true, generateTimelineEnabled: true, route: '/mesh/PRIVATE?name=Ada' });
+    expect(await captureRealReadingUi(page.asPage())).toMatchObject({ generateTimeline: true, generateTimelineEnabled: true, route: 'other' });
+    page.evaluate.mockResolvedValue({ route: { toString: () => '/dashboard' } });
+    expect(await captureRealReadingUi(page.asPage())).toMatchObject({ route: 'other' });
   });
 
   it('emits and attaches diagnostics in finally after assertion failure while rethrowing the identical original error', async () => {
@@ -240,7 +280,7 @@ describe('safe real reading evidence finalization', () => {
   it('normalizes hostile snapshot fields to closed booleans and handles page failure without raw errors', async () => {
     const page = new PageDouble();
     page.evaluate.mockResolvedValue({ reading: 'PRIVATE', progress: true, error: false, unavailable: true, cta: { key: 'PRIVATE' }, raw: 'PRIVATE BIRTH' });
-    expect(await captureRealReadingUi(page.asPage())).toEqual({ state: 'available', reading: false, progress: true, error: false, unavailable: true, cta: false });
+    expect(await captureRealReadingUi(page.asPage())).toEqual({ state: 'available', reading: false, progress: true, error: false, unavailable: true, cta: false, ...NO_TIMELINE, route: 'other' });
     page.evaluate.mockRejectedValue(new Error('PRIVATE PAGE URL'));
     expect(await captureRealReadingUi(page.asPage())).toEqual({ state: 'page-unavailable' });
   });
@@ -248,8 +288,8 @@ describe('safe real reading evidence finalization', () => {
   it('never invokes accessors supplied by a malformed page snapshot', async () => {
     const page = new PageDouble();
     const getter = vi.fn(() => { throw new Error('PRIVATE GETTER'); });
-    page.evaluate.mockResolvedValue(Object.defineProperty({ progress: true }, 'reading', { get: getter }));
-    expect(await captureRealReadingUi(page.asPage())).toEqual({ state: 'available', reading: false, progress: true, error: false, unavailable: false, cta: false });
+    page.evaluate.mockResolvedValue(Object.defineProperty(Object.defineProperty({ progress: true }, 'reading', { get: getter }), 'route', { get: getter }));
+    expect(await captureRealReadingUi(page.asPage())).toEqual({ state: 'available', reading: false, progress: true, error: false, unavailable: false, cta: false, ...NO_TIMELINE, route: 'other' });
     expect(getter).not.toHaveBeenCalled();
   });
 

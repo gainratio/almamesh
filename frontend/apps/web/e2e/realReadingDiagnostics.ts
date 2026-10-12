@@ -97,8 +97,17 @@ export function observeRealReadingRequests(page: Page, now: () => number = () =>
   };
 }
 
+const UI_BITS = [
+  'reading', 'progress', 'error', 'unavailable', 'cta',
+  'generateTimeline', 'generateTimelineEnabled', 'timelineProgress', 'timelineSection',
+  'currentSky', 'timelinePartialFailure', 'regenerateTimeline',
+] as const;
+type UiBit = (typeof UI_BITS)[number];
+/** A plain route like `/dashboard` or `/settings/data`; anything else (ids, queries) is reported as `other`. */
+const PLAIN_ROUTE = /^\/(?:[a-z-]{1,24}(?:\/[a-z-]{1,24})?)?$/;
+
 type UiSnapshot =
-  | { state: 'available'; reading: boolean; progress: boolean; error: boolean; unavailable: boolean; cta: boolean }
+  | ({ state: 'available'; route: string } & Record<UiBit, boolean>)
   | { state: 'snapshot-timeout' | 'page-unavailable' };
 
 /** Handle both synchronous throws and late rejection after a bounded deadline. */
@@ -118,24 +127,36 @@ async function withinDeadline<T>(work: () => Promise<T>): Promise<
 
 export async function captureRealReadingUi(page: Page): Promise<UiSnapshot> {
   const result = await withinDeadline(() => page.evaluate(() => {
-    const present = (testId: string) => document.querySelector(`[data-testid="${testId}"]`) !== null;
+    const find = (testId: string) => document.querySelector(`[data-testid="${testId}"]`);
+    const present = (testId: string) => find(testId) !== null;
+    const generate = find('generate-timeline');
     return {
       reading: present('reading-section'),
       progress: present('interpretation-progress'),
       error: present('interpretation-error'),
       unavailable: present('interpretation-unavailable'),
       cta: present('connect-ai-link'),
+      generateTimeline: generate !== null,
+      generateTimelineEnabled: generate !== null && !generate.hasAttribute('disabled'),
+      timelineProgress: present('timeline-progress'),
+      timelineSection: present('current-timeline-section'),
+      currentSky: present('dashboard-current-sky'),
+      timelinePartialFailure: present('timeline-partial-failure'),
+      regenerateTimeline: present('regenerate-timeline'),
+      route: window.location.pathname,
     };
   }));
   if (result.state !== 'completed') return { state: result.state === 'timeout' ? 'snapshot-timeout' : 'page-unavailable' };
-  // Only literal own-data booleans cross the page boundary; never spread its value.
+  // Only literal own-data booleans and a plain route cross the page boundary; never spread its value.
   const value: unknown = result.value;
-  const bit = (key: string): boolean => {
-    if (typeof value !== 'object' || value === null) return false;
+  const own = (key: string): unknown => {
+    if (typeof value !== 'object' || value === null) return undefined;
     const descriptor = Object.getOwnPropertyDescriptor(value, key);
-    return descriptor !== undefined && 'value' in descriptor && descriptor.value === true;
+    return descriptor !== undefined && 'value' in descriptor ? descriptor.value : undefined;
   };
-  return { state: 'available', reading: bit('reading'), progress: bit('progress'), error: bit('error'), unavailable: bit('unavailable'), cta: bit('cta') };
+  const bits = Object.fromEntries(UI_BITS.map((key) => [key, own(key) === true])) as Record<UiBit, boolean>;
+  const route = own('route');
+  return { state: 'available', ...bits, route: typeof route === 'string' && PLAIN_ROUTE.test(route) ? route : 'other' };
 }
 
 async function retainRealReadingDiagnostics(
