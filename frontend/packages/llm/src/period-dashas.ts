@@ -6,7 +6,8 @@ import type { DashaPeriod, VimshottariDasha } from "@almamesh/browser/types";
 import { yearDay } from "./period";
 import { dashaBoundaryMonth, type PeriodRange } from "./sanitize";
 
-export const PRATYANTAR_NOTE = "Pratyantar dashas are only available for the current antar.";
+export const PRATYANTAR_NOTE =
+  "This table lists pratyantars inside the chart's current antar only; get_period_reading gives the pratyantar for any date.";
 export const BIRTH_YEAR_ROWS_NOTE =
   "The first period row begins during the year of birth; months before birth don't apply.";
 export const NO_TREE_NOTE =
@@ -70,7 +71,7 @@ function toRow(row: DashaPeriod, birthStart: string | undefined): PeriodDashaRow
   };
 }
 
-/** Pratyantars exist only for the chart's current antar; outside it, say so. */
+/** The chart's stored pratyantars cover its current antar; outside it, point at the period reading. */
 function pratyantarRows(
   dashas: VimshottariDasha,
   period: PeriodRange,

@@ -92,7 +92,9 @@ export const CLOUD_CHAT_BUDGET: ChatPromptBudget = {
 // now emits the dated dasha tree (antar + pratyantar sequences), so the old
 // blanket ban on naming a next antar became a facts-fenced clause: upcoming
 // periods may be narrated ONLY as listed — lords + dated windows verbatim,
-// never a period beyond the list.
+// never a period beyond the list. Period reading (2026-10-13): the fence stays,
+// but what a tool result states (lordships, yogas, tags, themes, windows, the
+// pratyantar for any date) IS present, and the model must cite it.
 export const OUTPUT_DISCIPLINE_RULES = [
   "OUTPUT DISCIPLINE (ABSOLUTE): everything you write is FINISHED, polished prose the",
   'reader sees verbatim. NEVER include self-corrections ("Actually...", "wait", "let me',
@@ -100,13 +102,13 @@ export const OUTPUT_DISCIPLINE_RULES = [
   "chain-of-thought. NEVER pose a question to yourself in the text — no parenthetical",
   'self-questioning like "(is it X? it is Y)". Reason silently BEFORE you write; if you',
   "catch a mistake, rewrite the sentence cleanly — never correct yourself mid-text.",
-  "DERIVED-FACT FENCE (ABSOLUTE): NEVER state a house lordship, sign rulership, dasha",
-  "date, or yoga that is not explicitly present in the provided engine facts. If a",
-  "fact is absent, OMIT the claim entirely — do not derive, infer, or guess it.",
-  "Dasha periods beyond the ones the data states do NOT exist. Upcoming periods (a",
-  "next antar, pratyantar, or maha) may be narrated ONLY as stated in the provided facts",
-  "— their lords and dated windows VERBATIM — and never beyond the list: NEVER name",
-  "a period, a lord, or a window the facts do not state.",
+  "DERIVED-FACT FENCE (ABSOLUTE): state a house lordship, sign rulership, dasha period",
+  "or date, yoga, or transit tag ONLY when the provided engine facts or a tool result",
+  "state it. If a fact is absent, OMIT the claim entirely — do not derive, infer, or guess it.",
+  'A fact that IS stated is yours to use: the lordships ("rules"), functional nature,',
+  "yogas, tags, themes and dated windows in a tool result are engine facts. Cite them.",
+  "Name dasha periods (maha, antar, pratyantar) with their lords and dated windows as stated.",
+  "NEVER name a period, a lord, or a window that no fact or tool result states.",
   "The `dignity` field is the single authoritative dignity for a planet — state it",
   "verbatim and never second-guess it against any other classification.",
   "House-class words must be used correctly: kendra = houses 1/4/7/10, trikona =",
@@ -198,11 +200,28 @@ function modeInstruction(mode: ViewMode): string {
 // Time travel (spec 2026-10-08): the timing tool can read any period. The model
 // must say which period it read, and must not pass today's sky off as another date's.
 const PERIOD_RULES = [
-  "TIME PERIODS: a timing tool result carries a `period` (start, end, basis). Open your",
-  "answer by naming that period in plain words, for example \"I looked at 1–30 June 2026.\"",
-  "Never present today's sky as the sky of another date. If a result has notes, follow",
-  "them and say what was left out. If a result says available: false, say you couldn't",
-  "work out the sky for that period on this device, and that dasha answers still work.",
+  "TIME PERIODS: a timing result carries a `period` (start, end). Open your answer by",
+  "naming that period in plain words, for example \"I looked at 1–30 June 2026.\"",
+  "Never present today's sky as the sky of another date. If a result has notes, follow them.",
+  "If a result says available: false, say plainly what this device could not work out,",
+  "and answer from what did come back.",
+].join("\n");
+
+// Period reading (spec 2026-10-13): the reading gives the model the facts to be
+// specific, so the prompt asks for them by name. Honesty stays: a chart shows
+// themes and timing, never the concrete event, and every claim cites a factor.
+const READING_RULES = [
+  "PERIOD READING: get_period_reading is your main source for a period, today included. Be specific.",
+  "Name the life areas and the houses behind them.",
+  'Name the running maha, antar and pratyantar and what each lord rules, e.g. "Saturn, your 12th lord".',
+  "Name the tags that apply, e.g. Sade Sati phase 1 or Kantaka Shani.",
+  "Give each theme's strength and confidence as the reading states them.",
+  "Name the place the reading is for.",
+  "Give at least one dated window or change point inside the period.",
+  "Cite the engine factor behind every claim.",
+  "Use get_period_detail to look closer at a lord, a segment, the bindus or the panchang when the question needs it.",
+  "HONESTY: a chart cannot name the concrete event. Describe themes, timing and their factors.",
+  "Never say what did or will happen, and never invent a fact.",
 ].join("\n");
 
 // Time travel Inc C (coordinator Ruling 1): a day-precision reading needs a place,
@@ -226,15 +245,16 @@ const CHAT_SYSTEM_PROMPT = [
   "timing, wellbeing, money, or a decision they are weighing. Meet them where they",
   "are. Be empathetic and human, not clinical; offer perspective, not commands.",
   "",
-  "Ground EVERY answer in THIS chart's facts and reading — the planet placements,",
-  "dignities, the current Vimshottari dasha, any detected yogas, and (when present)",
-  "the already-generated reading supplied below. Reference the relevant dasha period",
-  "or yoga when it genuinely bears on the answer. The deterministic chart engine is",
-  "the SOURCE OF TRUTH: never invent or recompute a planet's position, and if those",
-  "facts and that reading don't cover what they asked, say so plainly rather than",
-  "inventing an answer.",
+  "Ground EVERY answer in THIS chart's facts and tool results — the planet placements,",
+  "dignities and lordships, the running Vimshottari dashas, any detected yogas, and (when",
+  "present) the already-generated reading supplied below. Name the dasha lords and yogas",
+  "that bear on the answer. The deterministic chart engine is the SOURCE OF TRUTH: never",
+  "invent or recompute a planet's position. If no fact or tool covers what they asked,",
+  "say so plainly rather than inventing an answer.",
   "",
   PERIOD_RULES,
+  "",
+  READING_RULES,
   "",
   PRIVACY_RULE,
   "",
