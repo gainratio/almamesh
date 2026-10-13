@@ -74,6 +74,19 @@ export interface AgentToolFailure {
   readonly error: unknown;
 }
 
+/**
+ * One executed (or refused) tool call, for the transcript the UI shows. `result`
+ * is exactly the value the model received: the tool's sanitized value, or the
+ * error object when the call failed.
+ */
+export interface AgentToolCallRecord {
+  readonly toolCallId: string;
+  readonly toolName: string;
+  readonly args: AgentJsonObject;
+  readonly result: unknown;
+  readonly status: "complete" | "error";
+}
+
 export interface StreamAgentChatOptions {
   readonly config: ProviderConfig;
   readonly messages: readonly ChatMessage[];
@@ -88,6 +101,19 @@ export interface StreamAgentChatOptions {
    * A throwing handler is ignored.
    */
   readonly onToolError?: (failure: AgentToolFailure) => void;
+  /** Every tool call this turn, in order, with the value the model received. A throwing handler is ignored. */
+  readonly onToolCall?: (record: AgentToolCallRecord) => void;
+  /**
+   * 'required' makes the first decision round call a tool (a trip grounds
+   * itself before it answers). Later rounds are always 'auto'. Default 'auto'.
+   */
+  readonly firstRoundToolChoice?: "auto" | "required";
+  /**
+   * With 'required': the no-argument tool the loop runs itself when the
+   * provider refuses tool_choice 'required'. Its result reaches the model as a
+   * tool message, never as prompt text.
+   */
+  readonly groundingToolName?: string;
   readonly signal?: AbortSignal;
   /** Injectable for deterministic tests; defaults to global `fetch`. */
   readonly fetchImpl?: typeof fetch;
@@ -241,6 +267,9 @@ function validateOptions(options: StreamAgentChatOptions): Map<string, AgentTool
     }
     registry.set(tool.name, tool);
   }
+  if (options.groundingToolName !== undefined && !registry.has(options.groundingToolName)) {
+    throw new LlmRequestError(`Grounding tool is not allowlisted: ${options.groundingToolName}`);
+  }
   return registry;
 }
 
@@ -371,6 +400,7 @@ async function* decisionRequest(
   options: StreamAgentChatOptions,
   messages: readonly AgentWireMessage[],
   definitions: ReadonlyArray<Record<string, unknown>>,
+  toolChoice: "auto" | "required" = "auto",
 ): AsyncGenerator<string, DecisionMessage> {
   throwIfAborted(options.signal);
   // Re-check immediately before every request; callers can retain/mutate a
@@ -384,7 +414,7 @@ async function* decisionRequest(
       messages,
       stream: true,
       tools: definitions,
-      tool_choice: "auto",
+      tool_choice: toolChoice,
       ...reasoningField(options.config, CHAT_REASONING_MAX_TOKENS),
     }),
     signal: options.signal,
@@ -496,6 +526,23 @@ function safeToolResult(value: unknown): { readonly content: string; readonly fa
       ),
       failed: true,
     };
+  }
+}
+
+function reportToolCall(options: StreamAgentChatOptions, call: OpenAiToolCall, args: AgentJsonObject, content: string): void {
+  let result: unknown;
+  let status: AgentToolCallRecord["status"] = "error";
+  try {
+    const parsed = JSON.parse(content) as { ok?: boolean; value?: unknown; error?: unknown };
+    status = parsed.ok === true ? "complete" : "error";
+    result = parsed.ok === true ? parsed.value : parsed.error;
+  } catch {
+    result = undefined;
+  }
+  try {
+    options.onToolCall?.({ toolCallId: call.id, toolName: call.function.name, args, result, status });
+  } catch {
+    // A transcript sink must never change the turn's outcome.
   }
 }
 
@@ -631,17 +678,45 @@ export async function* streamAgentChat(
   let aggregateResultChars = 0;
   let forceFinal = false;
   const emit: EmitState = { emitted: false, meaningful: false };
+  let toolChoice = options.firstRoundToolChoice ?? "auto";
 
   for (let round = 1; round <= AGENT_LIMITS.maxDecisionRounds; round += 1) {
     options.onStatus?.({ phase: "deciding", round });
     let decision: DecisionMessage;
     try {
       decision = yield* relayTokens(
-        decisionRequest(options, transcript, definitions),
+        decisionRequest(options, transcript, definitions, round === 1 ? toolChoice : "auto"),
         emit,
         () => options.onStatus?.({ phase: "answering" }),
       );
     } catch (error) {
+      // A provider that refuses tool_choice 'required' still gets grounded: the
+      // loop runs the grounding tool itself and the result arrives as a tool
+      // message. The first round is then retried with 'auto'.
+      const grounding = options.groundingToolName ? registry.get(options.groundingToolName) : undefined;
+      if (round === 1 && toolChoice === "required" && grounding && !emit.emitted && explicitlyRejectsTools(error)) {
+        toolChoice = "auto";
+        const localCall: OpenAiToolCall = { id: "local-grounding-1", type: "function", function: { name: grounding.name, arguments: "{}" } };
+        transcript.push({ role: "assistant", content: null, tool_calls: [localCall] });
+        options.onStatus?.({ phase: "using_tool", round, toolName: grounding.name,
+          label: grounding.statusLabelFor?.({}) ?? grounding.statusLabel ?? `Using ${grounding.name}`, callNumber: 1 });
+        let content: string;
+        try {
+          content = safeToolResult(await executeWithDeadline(grounding, {}, options, pinnedNowMs)).content;
+        } catch (failure) {
+          throwIfAborted(options.signal);
+          reportToolFailure(options, { toolName: grounding.name, code: "tool_failed", error: failure });
+          content = toolError("tool_failed", "The local tool could not complete safely.");
+        }
+        seen.add(callSignature(grounding.name, {}));
+        seenCallIds.add(localCall.id);
+        executedCalls += 1;
+        aggregateResultChars += content.length;
+        transcript.push({ role: "tool", tool_call_id: localCall.id, name: grounding.name, content });
+        reportToolCall(options, localCall, {}, content);
+        round -= 1;
+        continue;
+      }
       // Some otherwise-valid Ollama/llama.cpp/OpenAI-compatible models reject
       // the tools fields outright. On the first request only, retain privacy
       // and grounded messages while degrading to their ordinary SSE contract.
@@ -676,6 +751,7 @@ export async function* streamAgentChat(
     for (const modelCall of roundCalls) {
       const name = modelCall.function.name;
       let content: string;
+      let callArgs: AgentJsonObject = {};
 
       if (seenCallIds.has(modelCall.id)) {
         content = toolError("duplicate_call_id", "This tool-call id was already used.");
@@ -696,9 +772,11 @@ export async function* streamAgentChat(
         } catch {
           content = toolError("invalid_arguments", "Tool arguments must be a JSON object.");
           transcript.push({ role: "tool", tool_call_id: modelCall.id, name, content });
+          reportToolCall(options, modelCall, {}, content);
           forceFinal = true;
           continue;
         }
+        callArgs = args;
         const signature = callSignature(name, args);
         const selectedTool = registry.get(name);
         if (seen.has(signature)) {
@@ -746,6 +824,7 @@ export async function* streamAgentChat(
       }
       aggregateResultChars += content.length;
       transcript.push({ role: "tool", tool_call_id: modelCall.id, name, content });
+      reportToolCall(options, modelCall, callArgs, content);
     }
 
     if (

@@ -542,11 +542,14 @@ export function buildChatMessages(
   // facts; the rectification record line (when present) follows so the birth-time
   // story is pinned; the already-generated reading sits after those and before
   // any RAG context. Absent blocks are "" and filtered, keeping today's bytes.
+  // A trip grounds itself through its tools (period-pin.ts): no facts block.
+  const facts = pinned?.place
+    ? ["Chart facts: read them with get_natal_summary and get_timing (this trip's tools)."]
+    : ["Chart facts (sanitized; no identifying information):", factsBlock];
   const userContent = [
     chatRegister(mode),
     "",
-    "Chart facts (sanitized; no identifying information):",
-    factsBlock,
+    ...facts,
     meshBlock,
     rectificationBlock(rectification),
     interpretationBlock(reading),

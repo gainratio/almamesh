@@ -13,7 +13,7 @@ export {
   periodAnalysisInstant,
 } from "./sanitize";
 export type { AnalysisInstant, PeriodRange, SanitizedAsOf } from "./sanitize";
-export { pinRelative, pinnedPeriodRules, type PinRelative, type PinnedPrompt } from "./period-pin";
+export { TRIP_GROUNDING_TOOLS, pinRelative, pinnedPeriodRules, type PinRelative, type PinnedPlace, type PinnedPrompt } from "./period-pin";
 export type {
   SanitizedChart,
   SanitizedDashas,
@@ -129,6 +129,7 @@ export type {
   AgentJsonObject,
   AgentStatusEvent,
   AgentTool,
+  AgentToolCallRecord,
   AgentToolContext,
   AgentToolFailure,
   StreamAgentChatOptions,
