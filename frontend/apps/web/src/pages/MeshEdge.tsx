@@ -83,6 +83,7 @@ import type { SSEMetaData } from '../lib/streaming';
 import type { ViewMode } from '../lib/types';
 import { storedChartAnalysisInstant } from '../lib/analysisInstant';
 import { reportAgentToolFailure } from '../lib/agentToolDiagnostics';
+import { chatContextFor } from '../lib/chatContextBudget';
 
 /** The chat-tuned provider env (mirrors the dashboard's chat wiring): the
  * EXPLICIT chat model via applyChatSettings (replaces the silent swap). */
@@ -333,6 +334,8 @@ function MeshEdgeContent({
     const effectiveViewMode = questionViewMode || viewMode;
     const chatMode = effectiveViewMode === 'astrologer' ? 'expert' : 'layman';
     const config = resolveProviderConfig(readMeshChatEnv());
+    // The model's context window sizes the prompt and bounds every round (lib/chatContextBudget.ts).
+    const turnContext = await chatContextFor(config, signal);
     const language = useLanguageStore.getState().language;
     // `now` is ONLY for questions genuinely about today. Everything else
     // describes the chart as of its own analysis instant.
@@ -372,7 +375,7 @@ function MeshEdgeContent({
       language,
       entry.edge ? sanitizeMeshEdgeForLlm(entry.edge) : undefined,
       undefined,
-      undefined,
+      turnContext.promptBudget,
       modelTools.some((tool) => tool.name === RESOLVE_PLACE_TOOL_NAME),
       prepared.pinned,
     );
@@ -403,6 +406,8 @@ function MeshEdgeContent({
       tools: modelTools,
       now,
       signal,
+      ...(turnContext.contextTokens ? { contextTokens: turnContext.contextTokens } : {}),
+      onRoundUsage: turnContext.onRoundUsage,
       onToolError: reportAgentToolFailure,
       // A trip grounds itself through its tools first (chatToolset.ts prepare).
       firstRoundToolChoice: prepared.toolChoice,

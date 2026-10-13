@@ -674,6 +674,27 @@ export function AiSetupPanel({
               </p>
             </div>
 
+            {!showModels && (
+              <label className="block">
+                <span className="text-text-primary text-sm font-medium">{t('aiModels.context_label')}</span>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  step={1024}
+                  value={settings.chatContextTokens ?? ''}
+                  placeholder="8192"
+                  onChange={(e) => {
+                    const tokens = Number(e.target.value);
+                    patch({ chatContextTokens: Number.isSafeInteger(tokens) && tokens > 0 ? tokens : undefined });
+                  }}
+                  className="mt-1 w-full px-3 py-2 bg-background-secondary border border-ui-border rounded-lg text-text-primary text-sm"
+                  data-testid="llm-context-tokens"
+                />
+                <span className="text-text-muted text-xs mt-1 block">{t('aiModels.context_advice')}</span>
+              </label>
+            )}
+
             <label className="flex items-center justify-between">
               <span className="text-text-primary text-sm font-medium">{t('ai.allow_cloud_label')}</span>
               <input

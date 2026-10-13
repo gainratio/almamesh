@@ -319,6 +319,33 @@ describe('AiSetupPanel — OpenRouter-first, test-on-save', () => {
     expect(saved.chatModel).toBe('llama3.1');
   });
 
+  it('a custom endpoint can set its context window, which the chat budget reads', async () => {
+    const testConnection = vi.fn().mockResolvedValue(undefined);
+    render(<AiSetupPanel resolveConfig={resolveConfig} fetchCredits={fetchCredits} fetchModels={fetchModels} testConnection={testConnection} />);
+
+    fireEvent.change(screen.getByTestId('llm-api-base'), { target: { value: 'http://localhost:11434/v1' } });
+    fireEvent.change(screen.getByTestId('llm-chat-model'), { target: { value: 'llama3.1' } });
+    fireEvent.change(screen.getByTestId('llm-context-tokens'), { target: { value: '16384' } });
+    fireEvent.click(screen.getByTestId('llm-save-advanced'));
+
+    await waitFor(() => expect(testConnection).toHaveBeenCalledOnce());
+    expect(readSaved().chatContextTokens).toBe(16_384);
+  });
+
+  it('a blank or nonsense context window is not saved (the chat assumes 8k)', () => {
+    render(<AiSetupPanel resolveConfig={resolveConfig} fetchCredits={fetchCredits} fetchModels={fetchModels} testConnection={vi.fn()} />);
+    fireEvent.change(screen.getByTestId('llm-api-base'), { target: { value: 'http://localhost:11434/v1' } });
+    const field = screen.getByTestId('llm-context-tokens') as HTMLInputElement;
+    fireEvent.change(field, { target: { value: '-3' } });
+    expect(field.value).toBe('');
+  });
+
+  it('the context-window field is not shown for OpenRouter (its catalog says the window)', () => {
+    render(<AiSetupPanel resolveConfig={resolveConfig} fetchCredits={fetchCredits} fetchModels={fetchModels} testConnection={vi.fn()} />);
+    fireEvent.change(screen.getByTestId('llm-api-base'), { target: { value: 'https://openrouter.ai/api/v1' } });
+    expect(screen.queryByTestId('llm-context-tokens')).toBeNull();
+  });
+
   it('does not report success when the canonical SQLite settings write fails', async () => {
     const testConnection = vi.fn().mockResolvedValue(undefined);
     const flushSettings = vi.fn().mockRejectedValue(new Error('canonical SQLite write failed'));

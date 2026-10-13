@@ -189,6 +189,8 @@
     "switch_accept": "Mudar para DeepSeek V4.1 Flash",
     "switch_dismiss": "Manter GLM 5.3 Flash",
     "chat_advice": "Recomenda-se um modelo menor e mais rápido. O chat já reutiliza os dados do mapa e a leitura gerada, então não precisa de um modelo pesado — um rápido mantém as respostas ágeis.",
+    "context_label": "Janela de contexto (tokens)",
+    "context_advice": "Quanto este modelo consegue ler de uma vez. O chat mantém cada pedido dentro da metade disso. Deixe em branco se não souber: o chat assume uma janela pequena de 8k.",
     "loading_models": "Carregando modelos…",
     "more_models": "Digite para buscar…",
     "catalog_hint": "Escolha entre {{count}} modelos do OpenRouter — ou digite qualquer id de modelo.",

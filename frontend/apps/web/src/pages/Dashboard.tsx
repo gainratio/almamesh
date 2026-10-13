@@ -95,6 +95,7 @@ import { useTimeTravel } from "../lib/timeTravel";
 import { RESOLVE_PLACE_TOOL_NAME } from "../lib/placeTool";
 import { useOptionalChartEngine } from "../providers/chartEngineContext";
 import { reportAgentToolFailure } from "../lib/agentToolDiagnostics";
+import { chatContextFor } from "../lib/chatContextBudget";
 
 /** 44×44 CSS px, the touch-target floor (spec Part 1). Pinned by Dashboard.timeTravel.test.tsx and the @iphone15 box check. */
 const TIME_TRAVEL_BUTTON_SIZE = "min-h-11 min-w-11";
@@ -355,6 +356,8 @@ export default function DashboardPage() {
     const effectiveViewMode = questionViewMode || viewMode;
     const chatMode = effectiveViewMode === 'astrologer' ? 'expert' : 'layman';
     const config = resolveProviderConfig(readChatLlmEnv());
+    // The model's context window sizes the prompt and bounds every round (lib/chatContextBudget.ts).
+    const turnContext = await chatContextFor(config, signal);
     // Reuse the already-generated natal reading (when complete) so a fast/small
     // chat model can lean on the frontier reading instead of re-deriving from raw
     // facts. Absent/incomplete → chat behaves exactly as before (facts only).
@@ -417,7 +420,7 @@ export default function DashboardPage() {
       language,
       undefined,
       rectification,
-      undefined,
+      turnContext.promptBudget,
       modelTools.some((tool) => tool.name === RESOLVE_PLACE_TOOL_NAME),
       prepared.pinned,
     );
@@ -448,6 +451,8 @@ export default function DashboardPage() {
       tools: modelTools,
       now,
       signal,
+      ...(turnContext.contextTokens ? { contextTokens: turnContext.contextTokens } : {}),
+      onRoundUsage: turnContext.onRoundUsage,
       onToolError: reportAgentToolFailure,
       // A trip grounds itself through its tools first (chatToolset.ts prepare).
       firstRoundToolChoice: prepared.toolChoice,

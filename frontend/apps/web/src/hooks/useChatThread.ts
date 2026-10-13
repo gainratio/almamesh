@@ -31,7 +31,9 @@ import {
   finalizeChatSummary,
   planChatSummary,
   summaryMatchesMessages,
+  toolFactsNote,
   type ChatSummaryPlan,
+  type PriorToolCall,
   type AgentToolCallRecord,
   type ChatTurn,
   type LlmRequestError,
@@ -122,6 +124,16 @@ function toHistory(messages: readonly ChatMessage[]): ChatTurn[] {
     }
   }
   return turns;
+}
+
+/**
+ * Earlier answers' tool calls, oldest first. The next turn sees them only as
+ * one-line summaries (`toolFactsNote`), never their full results (context
+ * budget spec 2026-10-13, rule 3).
+ */
+function priorToolCalls(messages: readonly ChatMessage[]): PriorToolCall[] {
+  return messages.flatMap((message) => (message.error ? [] : (message.parts ?? []).flatMap((part) =>
+    part.type === 'tool-call' ? [{ toolName: part.toolName, result: part.result, status: part.status }] : [])));
 }
 
 function summaryContext(summary: ChatThreadSummary): string {
@@ -402,6 +414,8 @@ export function useChatThread(
         ) {
           retrievedContext.unshift(summaryContext(existingSummary));
         }
+        const toolFacts = toolFactsNote(priorToolCalls(priorMessages));
+        if (toolFacts !== undefined) retrievedContext.push(toolFacts);
         let draft = '';
         const toolCalls: ChatMessagePart[] = [];
         const answer = await stream({
