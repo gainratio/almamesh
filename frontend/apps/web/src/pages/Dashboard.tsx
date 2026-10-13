@@ -92,6 +92,7 @@ import {
 import { useTimeTravel } from "../lib/timeTravel";
 import { RESOLVE_PLACE_TOOL_NAME } from "../lib/placeTool";
 import { useOptionalChartEngine } from "../providers/chartEngineContext";
+import { reportAgentToolFailure } from "../lib/agentToolDiagnostics";
 
 /** 44×44 CSS px, the touch-target floor (spec Part 1). Pinned by Dashboard.timeTravel.test.tsx and the @iphone15 box check. */
 const TIME_TRAVEL_BUTTON_SIZE = "min-h-11 min-w-11";
@@ -417,6 +418,7 @@ export default function DashboardPage() {
       tools: toolset.tools,
       now,
       signal,
+      onToolError: reportAgentToolFailure,
       onStatus: (event) => {
         if (event.phase === 'using_tool') {
           activeToolLabel = event.label;

@@ -18,6 +18,7 @@
  */
 
 import { isChunkLoadError } from './chunkError';
+import { isDocumentLeaving } from './documentLeaving';
 import { safeWarn } from '@almamesh/shared-types';
 
 /** One heal attempt per tab session, so a persistent fault can never loop-reload. */
@@ -154,6 +155,10 @@ async function performServiceWorkerHeal(): Promise<void> {
     if (!(await hasVisibleActiveRegistration())) {
       return;
     }
+    // A reload now would replace the visitor's own navigation (see documentLeaving).
+    if (isDocumentLeaving()) {
+      return;
+    }
     markHealAttempted(HEAL_KEY);
     await unregisterAllServiceWorkers();
     await clearShellCaches();
@@ -209,6 +214,8 @@ export async function recoverSeveredServiceWorkerChannel(): Promise<boolean> {
     if (healAlreadyAttempted(CHANNEL_RELOAD_KEY)) return false;
     if (!(await hasHealthyPrecache())) return false;
     if (!(await isControllerChannelSevered())) return false;
+    // A navigation away also cancels these loads; it is not a severed channel.
+    if (isDocumentLeaving()) return false;
     markHealAttempted(CHANNEL_RELOAD_KEY);
     window.location.reload();
     return true;
@@ -252,6 +259,11 @@ export function installChunkErrorRecovery(target: Window = window): void {
       return;
     }
     if (healAlreadyAttempted(CHUNK_HEAL_KEY)) {
+      return;
+    }
+    // WebKit cancels chunk loads when the visitor navigates away; that is not
+    // a stale shell, and a reload here would replace their navigation.
+    if (isDocumentLeaving()) {
       return;
     }
     preventDefault?.();

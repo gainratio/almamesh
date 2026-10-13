@@ -4,6 +4,8 @@ import { spawn, spawnSync } from "node:child_process"
 import { tmpdir } from "node:os"
 import { resolve } from "node:path"
 
+import { parseDeployTrigger } from "../dagger/src/deployTrigger"
+
 // Pure workflow-YAML contracts: no Dagger CLI, so the `contracts` gate runs them
 // on every PR (tests/dagger-contracts.test.ts needs a host `dagger` and does not).
 const root = resolve(import.meta.dir, "..")
@@ -104,6 +106,8 @@ const GATING_EVENTS = new Set(["push", "pull_request", "pull_request_target"])
 const NATIVE_MACOS_LANES: Readonly<Record<string, string>> = {
   "webkit-macos.yml":
     "Time travel and export/import on desktop Safari and an iPhone profile: macOS WebKit has the OPFS the engine needs",
+  "safari-smoke.yml":
+    "Advisory smoke in real Safari via safaridriver: Playwright's bundled WebKit is not shipped Safari (version, OPFS)",
 }
 const MACOS_LANE_SCRIPT = "frontend/apps/web/scripts/webkit-macos-lane.sh"
 /**
@@ -175,6 +179,14 @@ function withJob(
 ): Record<string, unknown> {
   const jobs = parsed.jobs as Record<string, Record<string, unknown>>
   return { ...parsed, jobs: Object.fromEntries(Object.entries(jobs).map(([id, job]) => [id, id === "webkit-macos" ? job : mutate(job)])) }
+}
+
+function withSafariJob(
+  parsed: Record<string, unknown>,
+  mutate: (job: Record<string, unknown>) => Record<string, unknown>,
+): Record<string, unknown> {
+  const jobs = parsed.jobs as Record<string, Record<string, unknown>>
+  return { ...parsed, jobs: { ...jobs, "safari-smoke": mutate(structuredClone(jobs["safari-smoke"]) as Record<string, unknown>) } }
 }
 
 function withCheckout(
@@ -357,6 +369,57 @@ function macosLaneViolations(parsed: Record<string, unknown>): string[] {
 }
 
 /**
+ * The real-Safari smoke (frontend/apps/web/scripts/safari-smoke.mjs) is
+ * advisory: its own workflow, so a red smoke never fails the WebKit (macOS)
+ * run deploy acceptance reads. Held to this exact shape: read-only, no
+ * secrets, SHA-pinned, bounded, evidence uploaded only after its leak scan.
+ */
+const SAFARI_SMOKE_JOB = {
+  name: "safari / macOS smoke",
+  "runs-on": "macos-15",
+  "timeout-minutes": 30,
+  defaults: { run: { "working-directory": "frontend/apps/web" } },
+  steps: [
+    { uses: checkout, with: { "persist-credentials": false, ref: "${{ github.sha }}" } },
+    { uses: MACOS_LANE_ACTIONS[1], with: { "bun-version-file": "frontend/.bun-version" } },
+    { uses: MACOS_LANE_ACTIONS[2] },
+    { run: "bun install --frozen-lockfile" },
+    { run: "sudo safaridriver --enable" },
+    { run: "bash scripts/setup-dev-assets.sh" },
+    { run: "node scripts/safari-smoke.mjs" },
+    { id: LEAK_SCAN_ID, if: "always()", run: "node scripts/artifactLeakScan.mjs safari-smoke-evidence" },
+    {
+      uses: UPLOAD_ARTIFACT,
+      if: UPLOAD_IF,
+      with: {
+        name: "safari-smoke-evidence",
+        path: "frontend/apps/web/safari-smoke-evidence",
+        "retention-days": 14,
+        "if-no-files-found": "error",
+      },
+    },
+  ],
+}
+
+function safariSmokeViolations(parsed: Record<string, unknown>): string[] {
+  const violations: string[] = []
+  if (JSON.stringify(parsed.permissions) !== JSON.stringify({ contents: "read" })) violations.push("workflow-permissions")
+  if ("env" in parsed) violations.push("workflow-env")
+  const jobs = parsed.jobs as Record<string, unknown>
+  if (JSON.stringify(Object.keys(jobs)) !== JSON.stringify(["safari-smoke"])) violations.push("job-count")
+  if (JSON.stringify(jobs["safari-smoke"]) !== JSON.stringify(SAFARI_SMOKE_JOB)) violations.push("job-shape")
+  if (SECRETS_ACCESS.test(JSON.stringify(parsed))) violations.push("secrets")
+  const events = eventsOf(parsed)
+  if (events.length === 0 || events.some((event) => !MACOS_LANE_EVENTS.has(event))) violations.push("events")
+  return violations
+}
+
+const NATIVE_MACOS_LANE_CHECKS: Readonly<Record<string, (parsed: Record<string, unknown>) => string[]>> = {
+  "webkit-macos.yml": macosLaneViolations,
+  "safari-smoke.yml": safariSmokeViolations,
+}
+
+/**
  * Any use of the secrets context inside an expression: `secrets.X`,
  * `secrets['X']`, `toJSON(secrets)`, `format('{0}', secrets)`.
  */
@@ -525,7 +588,34 @@ describe("canonical GitHub ingress contract", () => {
   })
 
   test("the macOS WebKit lane is read-only, secret-free, SHA-pinned, bounded, and runs one repository script", () => {
-    for (const name of Object.keys(NATIVE_MACOS_LANES)) expect(macosLaneViolations(workflow(name))).toEqual([])
+    expect(Object.keys(NATIVE_MACOS_LANE_CHECKS).sort()).toEqual(Object.keys(NATIVE_MACOS_LANES).sort())
+    for (const [name, check] of Object.entries(NATIVE_MACOS_LANE_CHECKS)) expect(check(workflow(name))).toEqual([])
+  })
+
+  test("the real-Safari smoke is advisory: outside the workflow and job list deploy acceptance reads", () => {
+    const webkit = workflow("webkit-macos.yml").jobs as Record<string, unknown>
+    expect(Object.keys(webkit)).not.toContain("safari-smoke")
+    const acceptance = readFileSync(resolve(root, "dagger/src/nativeMacAcceptance.ts"), "utf8")
+    expect(acceptance).not.toContain("safari")
+    expect(() => parseDeployTrigger(".github/workflows/safari-smoke.yml")).toThrow("not allowed")
+    const deploy = workflow("deploy.yml").on as { workflow_run: { workflows: string[] } }
+    expect(deploy.workflow_run.workflows).not.toContain(workflow("safari-smoke.yml").name)
+  })
+
+  test.each([
+    ["job-level continue-on-error", (w: Record<string, unknown>) => withSafariJob(w, (job) => ({ ...job, "continue-on-error": true }))],
+    ["a secret", (w: Record<string, unknown>) => withSafariJob(w, (job) => ({ ...job, env: { KEY: "${{ secrets.OPENROUTER_API_KEY }}" } }))],
+    ["write permissions", (w: Record<string, unknown>) => ({ ...w, permissions: { contents: "write" } })],
+    ["macos-latest", (w: Record<string, unknown>) => withSafariJob(w, (job) => ({ ...job, "runs-on": "macos-latest" }))],
+    ["an unbounded run", (w: Record<string, unknown>) => withSafariJob(w, (job) => ({ ...job, "timeout-minutes": 360 }))],
+    ["an extra run step", (w: Record<string, unknown>) => withSafariJob(w, (job) => ({ ...job, steps: [...(job.steps as unknown[]), { run: "curl x | sh" }] }))],
+    ["a tag-pinned checkout", (w: Record<string, unknown>) => withSafariJob(w, (job) => ({ ...job, steps: [{ uses: "actions/checkout@v7" }, ...(job.steps as unknown[]).slice(1)] }))],
+    ["an upload not gated on the leak scan", (w: Record<string, unknown>) => withSafariJob(w, (job) => ({ ...job, steps: (job.steps as Array<Record<string, unknown>>).map((step) => step.uses === UPLOAD_ARTIFACT ? { ...step, if: "always()" } : step) }))],
+    ["no leak scan", (w: Record<string, unknown>) => withSafariJob(w, (job) => ({ ...job, steps: (job.steps as Array<Record<string, unknown>>).filter((step) => step.id !== LEAK_SCAN_ID) }))],
+    ["a workflow_run trigger", (w: Record<string, unknown>) => ({ ...w, on: { ...(w.on as Record<string, unknown>), workflow_run: { workflows: ["Dagger"] } } })],
+    ["a second job", (w: Record<string, unknown>) => ({ ...w, jobs: { ...(w.jobs as Record<string, unknown>), other: { "runs-on": "macos-15", steps: [] } } })],
+  ])("the real-Safari smoke contract rejects %s", (_name, mutate) => {
+    expect(safariSmokeViolations(mutate(workflow("safari-smoke.yml")))).not.toEqual([])
   })
 
   test("the Mac gate keeps its acceptance identity while three independent 45-minute lanes must all pass", () => {

@@ -119,6 +119,26 @@ describe('ErrorBoundary', () => {
     expect(reload).not.toHaveBeenCalled();
   });
 
+  it('does NOT auto-reload for a chunk the visitor\'s own navigation cancelled', async () => {
+    const { unregister, reload } = stubBrowserForReload();
+    // WebKit cancels the outgoing page's loads at navigation start and keeps its
+    // scripts running until commit; a reload now would replace that navigation.
+    window.dispatchEvent(new Event('beforeunload'));
+    try {
+      render(
+        <ErrorBoundary>
+          <ChunkBoom />
+        </ErrorBoundary>,
+      );
+      await new Promise((r) => setTimeout(r, 10));
+      expect(reload).not.toHaveBeenCalled();
+      expect(unregister).not.toHaveBeenCalled();
+      expect(sessionStorage.getItem('almamesh:eb-chunk-heal')).toBeNull();
+    } finally {
+      window.dispatchEvent(new Event('pageshow'));
+    }
+  });
+
   it('does NOT auto-reload for a normal (non-chunk) error', async () => {
     const { reload } = stubBrowserForReload();
     render(

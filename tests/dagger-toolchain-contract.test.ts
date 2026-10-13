@@ -27,8 +27,18 @@ const COMMITTED_PIN =
 
 describe("prebuilt toolchain image", () => {
   test("reads the exact Playwright version the frontend lock resolves", () => {
-    expect(playwrightVersion(lock)).toMatch(/^\d+\.\d+\.\d+$/)
+    expect(playwrightVersion(lock)).toMatch(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/)
     expect(playwrightVersion('"playwright-core": ["playwright-core@1.63.0", ""')).toBe("1.63.0")
+  })
+
+  // The lock may pin an npm `next` build (1.65.0-alpha-2026-10-13 ships WebKit
+  // r2375 with the JSC wasm fixes). The full prerelease string is the version.
+  test("reads a prerelease Playwright version whole, not just its numeric core", () => {
+    const alpha = "1.65.0-alpha-2026-10-13"
+    expect(playwrightVersion(`"playwright-core": ["playwright-core@${alpha}", ""`)).toBe(alpha)
+    expect(toolchainTag(TOOLCHAIN_RECIPE, alpha)).toBe(`${recipeTag(TOOLCHAIN_RECIPE)}-pw${alpha}`)
+    const image = `${TOOLCHAIN_REPOSITORY}:${toolchainTag(TOOLCHAIN_RECIPE, alpha)}@${digest}`
+    expect(pinnedToolchain(image, TOOLCHAIN_RECIPE)).toBe(image)
   })
 
   test("refuses a lock with no Playwright, instead of building an image without browsers", () => {
