@@ -22,6 +22,8 @@ def _sun_antardasha() -> VimPeriod:
         ad_lord=PlanetName.SUN,
         start_date=_AD_START,
         end_date=_AD_START + timedelta(days=120),
+        antar_start=_AD_START,
+        antar_end=_AD_START + timedelta(days=120),
     )
 
 
@@ -35,3 +37,23 @@ def test_pratyantardasha_advances_through_sequence() -> None:
     """Past the first PD's span, the next lord in sequence is active."""
     state = find_active_vimshottari([_sun_antardasha()], _AD_START + timedelta(days=8))
     assert state.pd_lord == PlanetName.MOON  # Sun's 6-day PD has elapsed
+
+
+def test_clipped_window_keeps_the_true_pratyantar() -> None:
+    """A window that starts mid-antar must not restart the PD sequence at the clip.
+
+    Regression (B1): DELHI_BIRTH's Rahu-Rahu antar runs 2017-05-13 -> 2020-01-24;
+    a window opening 2019-05-01 clipped it, and the PD arithmetic then started a
+    fresh Rahu PD at the clip instead of the true Venus PD (2019-02-05 -> 07-19).
+    """
+    from almamesh.calculations import calculate_sidereal_context
+    from almamesh.dasha.vimshottari import compute_vimshottari_periods
+
+    when = datetime(2019, 5, 1, tzinfo=UTC)
+    natal = calculate_sidereal_context(
+        datetime(1990, 1, 15, 12, tzinfo=UTC), 28.6139, 77.209, reference_date=when
+    )
+    periods = compute_vimshottari_periods(natal, when, when + timedelta(days=30))
+    assert natal.dashas.current_pratyantar is not None
+    assert natal.dashas.current_pratyantar.lord == PlanetName.VENUS
+    assert find_active_vimshottari(periods, when).pd_lord == PlanetName.VENUS
