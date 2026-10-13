@@ -19,6 +19,7 @@ const BIRTH = {
 const planet = (name: string, sign: string, house: number, nakshatra: string) => ({
   name, longitude: 123.4567, latitude: 1.2345, distance: 1.01, speed: 0.98, is_retrograde: name === 'saturn',
   sign, sign_degrees: 3.4567, sign_lord: 'mars', nakshatra, nakshatra_pada: 2, nakshatra_lord: 'ketu', house, dignity: 'neutral',
+  houses_ruled: name === 'saturn' ? [3, 4] : [9], is_combust: name === 'saturn', is_yogakaraka: name === 'saturn',
 });
 const CHART = {
   snapshot: { birth_utc: '1990-01-15T06:30:00Z', reference_date: '2026-03-08T00:00:00Z', snapshot_id: 'a'.repeat(64) },
@@ -26,7 +27,7 @@ const CHART = {
   lagna: { longitude: 215.25, sign: 'scorpio', sign_degrees: 5.25, sign_lord: 'mars', nakshatra: 'anuradha', nakshatra_pada: 1, nakshatra_lord: 'saturn' },
   planets: { moon: planet('moon', 'cancer', 9, 'pushya'), saturn: planet('saturn', 'capricorn', 3, 'shravana') },
   houses: {},
-  yogas: [{ name: 'gaja_kesari', display_name: 'Gaja Kesari', category: 'auspicious', description: 'd', effects: 'e' }],
+  yogas: [{ name: 'gaja_kesari', display_name: 'Gaja Kesari', category: 'auspicious', description: 'd', effects: 'e', planets_involved: ['jupiter', 'moon'] }],
   dashas: DASHAS,
 } as unknown as SiderealChart;
 
@@ -86,12 +87,17 @@ describe('a trip at the birth place reads like any other trip, unmarked', () => 
 });
 
 describe('the model-facing natal summary and trip context hold no raw birth data', () => {
-  const RAW = [/1990-01-15/, /06:30/, /12:00:00/, /28\.61/, /77\.20/, /latitude/i, /longitude/i, /123\.45/, /1\.2897|103\.85/, /snapshot/];
+  const RAW = [/1990-01-15/, /06:30/, /12:00:00/, /28\.61/, /77\.20/, /latitude/i, /longitude/i, /123\.45/, /3\.4567/, /5\.25/, /degree/i, /1\.2897|103\.85/, /snapshot/];
 
   it('natal summary: lagna, Moon, planets by sign and house, yogas; no dates, times, coordinates or degrees', () => {
     const summary = natalSummary(CHART);
-    expect(summary.planets).toContainEqual({ name: 'saturn', sign: 'capricorn', house: 3, nakshatra: 'shravana', dignity: 'neutral', retrograde: true });
-    expect(summary.yogas).toEqual([{ name: 'Gaja Kesari', category: 'auspicious' }]);
+    // Lordships, combustion and yogakaraka ride per planet (2026-10-13), so the model can say "Saturn, your 4th lord".
+    expect(summary.planets).toContainEqual({
+      name: 'saturn', sign: 'capricorn', house: 3, nakshatra: 'shravana', dignity: 'neutral', retrograde: true,
+      houses_ruled: [3, 4], combust: true, yogakaraka: true,
+    });
+    expect(summary.planets).toContainEqual(expect.objectContaining({ name: 'moon', houses_ruled: [9], combust: false, yogakaraka: false }));
+    expect(summary.yogas).toEqual([{ name: 'Gaja Kesari', category: 'auspicious', planets_involved: ['jupiter', 'moon'] }]);
     const text = JSON.stringify(summary);
     for (const pattern of RAW) expect(text).not.toMatch(pattern);
   });
