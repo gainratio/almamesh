@@ -9,6 +9,7 @@
 import type {
   DashaYearConvention,
   LifeDomainsContext,
+  PeriodReadingContext,
   StrengthContext,
   TransitContext,
   VargaContextFull,
@@ -244,4 +245,6 @@ export interface SiderealChart {
   readonly strength_context?: StrengthContext | null;
   /** Per-life-domain deterministic synthesis (7 LifeDomainForecast entries). */
   readonly domains_context?: LifeDomainsContext | null;
+  /** The period reading (spec 2026-10-13): dashas, running lords, slow sky, themes. */
+  readonly period_reading?: PeriodReadingContext | null;
 }

@@ -361,6 +361,151 @@ export interface LifeDomainsContext {
   readonly forecasts: Readonly<Record<string, LifeDomainForecast>>;
 }
 
+// --- the period reading: backend almamesh/predictive.py `period_reading` (spec 2026-10-13) ---
+//
+// Dates are ISO strings: a calendar day ("2019-05-01") or a UTC instant. The
+// browser only clips, joins, selects and caps these; every rule lives in Python.
+
+/** Functional nature by lagna lordship (BPHS), as the engine states it. */
+export type FunctionalNature = "yogakaraka" | "benefic" | "malefic" | "maraka" | "neutral";
+
+export type PeriodDashaLevel = "maha" | "antar" | "pratyantar";
+
+export type ThemeDirection = "supportive" | "mixed" | "challenging";
+
+export type ThemeConfidence = "high" | "medium" | "low";
+
+/** Natal-only facts for one graha: stored once per profile, never per period. */
+export interface PeriodNatalLord {
+  readonly rules: readonly number[];
+  readonly house: number;
+  readonly sign: string;
+  readonly dignity: string;
+  readonly combust: boolean;
+  readonly retro: boolean;
+  readonly functional: FunctionalNature;
+  readonly d9_sign: string;
+  readonly d10_sign: string;
+  readonly vargottama: boolean;
+  /** Natal yogas whose planets_involved include this graha. */
+  readonly yogas: readonly string[];
+}
+
+export interface PeriodWindow {
+  readonly start: string;
+  readonly end: string;
+}
+
+export interface PeriodDashaSpan extends PeriodWindow {
+  readonly level: PeriodDashaLevel;
+  readonly lord: string;
+}
+
+export interface PeriodLordSpan extends PeriodWindow {
+  readonly lord: string;
+}
+
+export interface PeriodSandhi {
+  readonly level: "maha" | "antar";
+  readonly date: string;
+}
+
+export interface PeriodYogini extends PeriodLordSpan {
+  readonly name: string;
+}
+
+export interface PeriodSegment extends PeriodWindow {
+  readonly maha: string;
+  readonly antar: string;
+  readonly pratyantar: string;
+  /** Timeline descriptors inside the segment, e.g. "saturn.station.direct". */
+  readonly events: readonly string[];
+}
+
+/** One slow graha (Jupiter, Saturn, Rahu, Ketu) sign span from the timeline. */
+export interface PeriodSkySpan extends PeriodWindow {
+  readonly graha: string;
+  readonly sign: string;
+  readonly retro: boolean;
+  readonly from_moon: number;
+  readonly from_lagna: number;
+  readonly sav: number;
+  readonly bav: number;
+  /** e.g. sade_sati_phase_1, kantaka_shani, ashtama_shani, jupiter_from_moon_N. */
+  readonly tags: readonly string[];
+}
+
+/** A running lord's gochara at the reference instant. */
+export interface PeriodTransitLord {
+  readonly sign: string;
+  readonly from_moon: number;
+  readonly from_lagna: number;
+  readonly sav: number;
+  readonly bav: number;
+  readonly retro: boolean;
+}
+
+export interface PeriodThemeWindow {
+  readonly date: string;
+  readonly descriptor: string;
+  readonly severity: TransitSeverity;
+}
+
+export interface PeriodThemeAgreement {
+  readonly vimshottari: boolean;
+  readonly yogini: boolean;
+  readonly transit: boolean;
+}
+
+export interface PeriodTheme {
+  readonly domain: string;
+  readonly houses: readonly number[];
+  readonly direction: ThemeDirection;
+  readonly strength: StrengthBand;
+  readonly strength_pct: number;
+  readonly confidence: ThemeConfidence;
+  readonly agreement: PeriodThemeAgreement;
+  /** Each generated from an engine fact; never free text. */
+  readonly factors: readonly string[];
+  readonly windows: readonly PeriodThemeWindow[];
+}
+
+export interface PeriodPanchang {
+  readonly instant: string;
+  readonly tithi: number;
+  readonly tithi_name: string;
+  readonly paksha: string;
+  readonly nakshatra: string;
+  readonly karana: string;
+  readonly yoga: string;
+  readonly vara: string;
+}
+
+/** The engine's period-only reading, as a period_sky row stores it (no natal lords). */
+export interface PeriodReadingSlice {
+  readonly window: PeriodWindow;
+  readonly dasha_spans: readonly PeriodDashaSpan[];
+  /** Reference day only. */
+  readonly sookshma?: PeriodLordSpan | null;
+  /** A maha/antar change inside the window. */
+  readonly sandhi?: PeriodSandhi | null;
+  readonly yogini?: PeriodYogini | null;
+  readonly segments: readonly PeriodSegment[];
+  readonly sky: readonly PeriodSkySpan[];
+  readonly transit_lords: Readonly<Record<string, PeriodTransitLord>>;
+  readonly double_transit: readonly number[];
+  readonly themes: readonly PeriodTheme[];
+  /** Reference day only. */
+  readonly panchang?: PeriodPanchang | null;
+  readonly rules: readonly string[];
+}
+
+/** The fifth predictive context, exactly as the engine emits it. */
+export interface PeriodReadingContext extends PeriodReadingSlice {
+  /** Natal-only: all 9 grahas. */
+  readonly natal_lords: Readonly<Record<string, PeriodNatalLord>>;
+}
+
 // --- the LAZY predictive payload: backend almamesh/predictive.py ---
 
 export type { DomainStrengthReceipt } from "./strengthReceipt";
@@ -377,6 +522,12 @@ export interface EnginePredictiveContexts {
   readonly varga_context_full: VargaContextFull;
   readonly strength_context: StrengthContext;
   readonly domains_context: LifeDomainsContext;
+  /**
+   * The period reading (spec 2026-10-13). OPTIONAL at this boundary: an engine
+   * wheel older than the reading omits it, and so does any cache written by
+   * one. Absent means "reading unavailable"; nothing is synthesized in TS.
+   */
+  readonly period_reading?: PeriodReadingContext;
 }
 
 /**
