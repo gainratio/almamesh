@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
-import { useChatStore } from '@almamesh/store';
+import { useChartLibraryStore, useChatStore, type StoredChart } from '@almamesh/store';
 import { hydrateLlmSettings, openRouterPreset, writeLlmSettings } from '@almamesh/llm';
 
 vi.mock('../../../../lib/storeSaved', () => ({ waitForStoreSaved: vi.fn(async () => undefined) }));
@@ -16,6 +16,9 @@ import { useChartReanchorStatus } from '../../../../lib/chartReanchorStatus';
 // 2050: stays in the future for decades, so 'future' starters do not flip with the calendar.
 const YEAR_2050 = { start: '2050-01-01', end: '2050-12-31', granularity: 'year' } as const;
 const PAST = { start: '2019-06-01', end: '2019-06-30', granularity: 'month' } as const;
+// Every trip has a place (2026-10-13): the sheet prefills the birth place.
+const DELHI = { city: 'Delhi', country: 'India', latitude: 28.6139, longitude: 77.209, timezone: 'Asia/Kolkata' };
+const CHART = { chart_id: 'c1', profile_id: 'p1', birth_data: { birth_location_details: DELHI } } as unknown as StoredChart;
 
 type AskFn = NonNullable<ComponentProps<typeof ChatPanel>['onAskQuestionStream']>;
 
@@ -38,6 +41,7 @@ async function pinYear(year: string) {
 }
 
 beforeEach(() => {
+  useChartLibraryStore.setState({ charts: { c1: CHART } });
   hydrateLlmSettings(null);
   useChatStore.setState({ threads: {}, messages: {}, summaries: {} });
   useChartReanchorStatus.setState({ pendingAttempts: new Map() });
@@ -80,7 +84,7 @@ describe('ChatPanel time travel', () => {
     expect(screen.getByRole('button', { name: 'Which months look strongest?' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'What are my career strengths?' })).toBeNull();
     const threads = Object.values(useChatStore.getState().threads);
-    expect(threads.map((thread) => thread.as_of)).toEqual([YEAR_2050]);
+    expect(threads.map((thread) => thread.as_of)).toEqual([{ ...YEAR_2050, place: expect.objectContaining({ timezone: 'Asia/Kolkata', latitude: 28.6139 }) }]);
   });
 
   it('shows past starters for a pin that is over', async () => {
@@ -96,7 +100,7 @@ describe('ChatPanel time travel', () => {
     fireEvent.change(screen.getByTestId('chat-input'), { target: { value: 'Will work get easier?' } });
     fireEvent.click(screen.getByTestId('chat-send-button'));
     await waitFor(() => expect(onAsk).toHaveBeenCalled());
-    expect((onAsk.mock.calls[0] as unknown[])[7]).toEqual(YEAR_2050);
+    expect((onAsk.mock.calls[0] as unknown[])[7]).toEqual({ ...YEAR_2050, place: expect.objectContaining({ timezone: 'Asia/Kolkata' }) });
   });
 
   it('a pinned thread can send while the chart re-anchors to a new day', async () => {

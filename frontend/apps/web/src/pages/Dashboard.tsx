@@ -36,6 +36,7 @@ import {
   useProfilesStore,
   useRectificationRecordsStore,
   requireBirthTimeZone,
+  useChatStore,
 } from "@almamesh/store";
 import { safeError } from "@almamesh/shared-types";
 
@@ -878,6 +879,8 @@ export default function DashboardPage() {
         <DashboardTimeTravelSheet open={travelSheet !== 'closed'}
           current={travelSheet === 'change' ? timeTravel.moment : undefined}
           birthYear={travelBirthYear}
+          birthLocation={chartId ? useChartLibraryStore.getState().getChart(chartId)?.birth_data?.birth_location_details : undefined}
+          pins={activeProfileId ? useChatStore.getState().listThreads(activeProfileId) : []}
           intro={t("dashboard:time_travel.sheet_intro")} onGo={goToMoment} onClose={() => setTravelSheet('closed')} />
 
         {/* The PDF render failed. Calm, visible, on-screen ONLY (`no-print`) —

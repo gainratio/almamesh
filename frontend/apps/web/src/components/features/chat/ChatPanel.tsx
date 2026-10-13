@@ -20,7 +20,7 @@ import { useTranslation } from 'react-i18next';
 import { Link, useNavigate } from 'react-router-dom';
 import { ComposerPrimitive, ThreadPrimitive, type MessageState } from '@assistant-ui/react';
 import { type ChatTurn, pinRelative } from '@almamesh/llm';
-import { useLanguageStore } from '@almamesh/store';
+import { useChartLibraryStore, useChatStore, useLanguageStore } from '@almamesh/store';
 import type { ChatThreadAsOf } from '@almamesh/shared-types';
 import { MessageBubble } from './MessageBubble';
 import { ReferenceEntry } from './ReferenceEntry';
@@ -105,6 +105,9 @@ export function ChatPanel({
   const today = viewerTodayDay(new Date());
   const relative = asOf ? pinRelative(asOf, today) : undefined;
   const [sheet, setSheet] = useState<'closed' | 'new' | 'change'>('closed');
+  // Every trip has a place: prefill from the profile's pins, else the birth place.
+  const birthLocation = useChartLibraryStore((s) => (chartId ? s.getChart(chartId)?.birth_data?.birth_location_details : undefined));
+  const tripPins = useChatStore((s) => s.threads);
   const [backState, setBackState] = useState<'idle' | 'busy' | 'failed'>('idle');
   // Back to today saves a fresh thread first; a failed save must stay visible (Ruling 12).
   const handleBack = useCallback(async () => {
@@ -327,6 +330,8 @@ export function ChatPanel({
         open={sheet !== 'closed'}
         current={sheet === 'change' ? asOf : undefined}
         birthYear={birthYear}
+        birthLocation={birthLocation}
+        pins={profileId ? Object.values(tripPins).filter((thread) => thread.profile_id === profileId) : []}
         today={today}
         onGo={sheet === 'change' ? repin : pin}
         onClose={() => setSheet('closed')}
