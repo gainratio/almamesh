@@ -29,6 +29,12 @@ const SCHEMA = [
   // No foreign keys: profiles live in the canonical store, a separate file.
   'CREATE TABLE IF NOT EXISTS period_sky (key TEXT PRIMARY KEY CHECK (length(key) > 0), engine TEXT NOT NULL CHECK (length(engine) > 0), profile_id TEXT NOT NULL CHECK (length(profile_id) > 0), payload TEXT NOT NULL CHECK (json_valid(payload)), epoch INTEGER NOT NULL DEFAULT 0 CHECK (epoch >= 0)) STRICT',
   'CREATE INDEX IF NOT EXISTS period_sky_profile ON period_sky(profile_id)',
+  // Natal-only parts of period_sky payloads (vargas, strength, the reading's
+  // natal lords), stored once per profile and natal chart, content-addressed
+  // by `ref`. Additive within v3: an older build ignores the table, and every
+  // period_sky purge also drops the natal rows no period row references.
+  'CREATE TABLE IF NOT EXISTS period_natal (ref TEXT PRIMARY KEY CHECK (length(ref) > 0), engine TEXT NOT NULL CHECK (length(engine) > 0), profile_id TEXT NOT NULL CHECK (length(profile_id) > 0), payload TEXT NOT NULL CHECK (json_valid(payload)), epoch INTEGER NOT NULL DEFAULT 0 CHECK (epoch >= 0)) STRICT',
+  'CREATE INDEX IF NOT EXISTS period_natal_profile ON period_natal(profile_id)',
   // v3: keyword search over chat messages, rebuildable from the chat store row.
   // Contentless-delete (SQLite >= 3.43; contentless_unindexed >= 3.47; the
   // pinned build is 3.53): the message text is tokenized but never stored, so

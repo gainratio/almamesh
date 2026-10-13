@@ -14,6 +14,7 @@ vi.mock('../periodSky', async (importOriginal) => {
 import type { AgentTool } from '@almamesh/llm';
 
 import { buildChatToolset, type BuildChatToolsetInput } from '../chatToolset';
+import { periodReadingFixture } from './periodReadingFixtures';
 import { CHART, SKY_CHART } from './timingFixtures';
 
 const SINGAPORE = { label: 'Singapore', timezone: 'Asia/Singapore', latitude: 1.2897, longitude: 103.8501 };
@@ -59,7 +60,7 @@ beforeEach(() => loadMock.mockReset().mockResolvedValue({ transit_context: SKY_C
 describe('a trip thread registers its own context tools', () => {
   it('a trip has natal summary, trip context, timing, place lookup and travel; no today-only chart facts', () => {
     const names = toolset({ pinned: MAY_2019_SG, onTravel: vi.fn(), toolOverrides: undefined }).tools.map((tool) => tool.name);
-    expect(names).toEqual(['get_natal_summary', 'get_trip_context', 'get_timing', 'resolve_place', 'time_travel']);
+    expect(names).toEqual(['get_natal_summary', 'get_trip_context', 'get_timing', 'get_period_reading', 'get_period_detail', 'resolve_place', 'time_travel']);
   });
 
   it('a today thread keeps its tools and has no trip tools', () => {
@@ -81,6 +82,34 @@ describe('a trip thread registers its own context tools', () => {
     const result = await toolOf(toolset({ pinned: MAY_2019_SG }), 'get_natal_summary').execute({}, options());
     expect(result).toMatchObject({ lagna: { sign: 'scorpio' }, moon: { sign: 'cancer', nakshatra: 'pushya' } });
     expect(JSON.stringify(result)).not.toMatch(/1990|06:30|28\.61|77\.20|215\.25|100\.5|latitude|longitude/);
+  });
+});
+
+describe('the period reading tools are bound to the trip', () => {
+  it('get_period_reading with no args reads the trip period through the period-sky queue, at the trip place', async () => {
+    loadMock.mockResolvedValue({ transit_context: SKY_CHART.transit_context, period_reading: periodReadingFixture('delhi-2019-05') });
+    const result = await toolOf(toolset({ pinned: MAY_2019_SG, toolOverrides: undefined }), 'get_period_reading').execute({}, options());
+    expect(loadMock).toHaveBeenCalledTimes(1);
+    expect(loadMock.mock.calls[0]?.[0]).toMatchObject({ profileKey: 'p1', referenceInstant: '2019-05-01T00:00:00Z' });
+    expect(result).toMatchObject({
+      period: { start: '2019-05-01', end: '2019-05-31', granularity: 'month', label: 'May 2019', tense: 'past' },
+      place: { label: 'Singapore', timezone: 'Asia/Singapore' },
+      dashas: { pratyantar: [{ lord: 'venus' }] },
+    });
+    expect(JSON.stringify(result)).not.toMatch(/Delhi|Kolkata|1\.2897|103\.85|1990|28\.61|77\.20/);
+  });
+
+  it('an explicit question period inside a trip rebinds the reading to that period', async () => {
+    loadMock.mockResolvedValue({ transit_context: SKY_CHART.transit_context, period_reading: periodReadingFixture('delhi-2019-year') });
+    const built = toolset({ pinned: MAY_2019_SG, toolOverrides: undefined });
+    await built.prepare('What about 2019?', options());
+    const result = await toolOf(built, 'get_period_reading').execute({}, options());
+    expect(result).toMatchObject({ period: { start: '2019-01-01', end: '2019-12-31', granularity: 'year' } });
+  });
+
+  it('a reading-less cache row (an older engine) answers reading_unavailable, not an invented reading', async () => {
+    const result = await toolOf(toolset({ pinned: MAY_2019_SG, toolOverrides: undefined }), 'get_period_detail').execute({ section: 'dashas' }, options());
+    expect(result).toMatchObject({ available: false, reason: 'reading_unavailable', place: { label: 'Singapore' } });
   });
 });
 

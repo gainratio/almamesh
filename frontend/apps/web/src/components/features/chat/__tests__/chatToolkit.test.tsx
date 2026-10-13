@@ -111,3 +111,37 @@ describe('tool-call row periods as people say them', () => {
     expect(screen.getByTestId('chat-tool-call-summary').textContent).toBe(expected);
   });
 });
+
+describe('the period reading tools (spec 2026-10-13)', () => {
+  it('both are in the catalog, so the model and the Tools list get them', () => {
+    const toolkit = buildChatToolkit([tool('get_period_reading'), tool('get_period_detail')]);
+    expect(Object.keys(toolkit)).toEqual(['get_period_reading', 'get_period_detail']);
+    expect(toolListOf(toolkit, (key) => key).map((row) => row.label)).toEqual(['tools.get_period_reading', 'tools.get_period_detail']);
+  });
+
+  it('a reading row: "Looked up the period reading · Singapore · May 2019"', () => {
+    render(<ToolCallRow toolName="get_period_reading" toolCallId="r1" args={{}} argsText="{}"
+      result={{ period: { label: 'May 2019' }, place: { label: 'Singapore', timezone: 'Asia/Singapore' }, dashas: {} }} status={{ type: 'complete' }} />);
+    expect(screen.getByTestId('chat-tool-call-summary').textContent).toBe('Looked up the period reading · Singapore · May 2019');
+    expect(screen.getByTestId('chat-tool-call').getAttribute('data-status')).toBe('complete');
+  });
+
+  it('a today reading has no place label and still reads as a sentence', () => {
+    render(<ToolCallRow toolName="get_period_reading" toolCallId="r2" args={{}} argsText="{}"
+      result={{ period: { label: 'October 13, 2026' }, place: { label: null, timezone: 'America/Los_Angeles' } }} status={{ type: 'complete' }} />);
+    expect(screen.getByTestId('chat-tool-call-summary').textContent).toBe('Looked up the period reading · October 13, 2026');
+  });
+
+  it('a detail row names its section', () => {
+    render(<ToolCallRow toolName="get_period_detail" toolCallId="d1" args={{ section: 'lord', key: 'saturn' }} argsText=""
+      result={{ period: { label: 'May 2019' }, place: { label: 'Singapore' }, section: 'lord', facts: {} }} status={{ type: 'complete' }} />);
+    expect(screen.getByTestId('chat-tool-call-summary').textContent).toBe('Looked up a running lord · Singapore · May 2019');
+  });
+
+  it('an unavailable reading is shown as a failed lookup, not a success', () => {
+    render(<ToolCallRow toolName="get_period_reading" toolCallId="r3" args={{}} argsText="{}"
+      result={{ period: { label: 'May 2019' }, place: { label: 'Singapore' }, available: false, reason: 'timeout' }} status={{ type: 'complete' }} />);
+    expect(screen.getByTestId('chat-tool-call').getAttribute('data-status')).toBe('error');
+    expect(screen.getByTestId('chat-tool-call-summary').textContent).toBe('Could not look up the period reading · Singapore · May 2019');
+  });
+});

@@ -20,6 +20,13 @@ vi.mock('../chatAgentTools', async (importOriginal) => {
   return { ...actual, createChatAgentTools: vi.fn(actual.createChatAgentTools) };
 });
 
+// The period reading tools are always registered; two tests turn them off to prove prepare() refuses loudly.
+const readingTools = vi.hoisted(() => ({ off: false }));
+vi.mock('../periodReadingTool', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../periodReadingTool')>();
+  return { ...actual, createPeriodReadingTools: (...args: Parameters<typeof actual.createPeriodReadingTools>) => (readingTools.off ? [] : actual.createPeriodReadingTools(...args)) };
+});
+
 import { createChatAgentTools } from '../chatAgentTools';
 import { buildChatToolset, type BuildChatToolsetInput } from '../chatToolset';
 import { TIME_TRAVEL_TOOL_NAME } from '../timeTravelTool';
@@ -255,8 +262,13 @@ describe('buildChatToolset: router', () => {
   });
 
   it('refuses a today question loudly when the period reading tool is missing', async () => {
-    await expect(toolset({ toolOverrides: [] }).prepare('What matters today?', options()))
-      .rejects.toThrow('The get_period_reading tool is unavailable.');
+    readingTools.off = true;
+    try {
+      await expect(toolset({ toolOverrides: undefined }).prepare('What matters today?', options()))
+        .rejects.toThrow('The get_period_reading tool is unavailable.');
+    } finally {
+      readingTools.off = false;
+    }
   });
 
   it('waits for a booting engine before the today load of get_timing', async () => {
@@ -436,8 +448,8 @@ describe('buildChatToolset: places', () => {
 
   it('registers resolve_place only where the device computes the sky', () => {
     const names = (allowed: boolean) => toolset({ periodSkyAllowed: allowed, toolOverrides: undefined }).tools.map((t) => t.name);
-    expect(names(true)).toEqual(['get_current_datetime', 'get_chart_facts', 'get_timing', 'resolve_place']);
-    expect(names(false)).toEqual(['get_current_datetime', 'get_chart_facts', 'get_timing']);
+    expect(names(true)).toEqual(['get_current_datetime', 'get_chart_facts', 'get_timing', 'get_period_reading', 'get_period_detail', 'resolve_place']);
+    expect(names(false)).toEqual(['get_current_datetime', 'get_chart_facts', 'get_timing', 'get_period_reading', 'get_period_detail']);
   });
 
   it('follows devicePolicy when no seam is passed: full and lite tiers get resolve_place', () => {
@@ -748,8 +760,13 @@ describe('a pinned thread', () => {
   });
 
   it('refuses a trip loudly when the period reading tool is missing', async () => {
-    await expect(toolset({ pinned: YEAR_2027, toolOverrides: [] }).prepare('q', options()))
-      .rejects.toThrow('The get_period_reading tool is unavailable.');
+    readingTools.off = true;
+    try {
+      await expect(toolset({ pinned: YEAR_2027, toolOverrides: undefined }).prepare('q', options()))
+        .rejects.toThrow('The get_period_reading tool is unavailable.');
+    } finally {
+      readingTools.off = false;
+    }
   });
 
   it('an unpinned thread routes a today question to the period reading', async () => {

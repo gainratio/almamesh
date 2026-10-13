@@ -127,3 +127,103 @@ export function isCachedTransitContext(value: unknown): value is TransitContext 
     && sadeSati(value.sade_sati) && arrayOf(value.slow_hits, slowHit)
     && fusion(value.fusion) && timeline(value.timeline);
 }
+
+// --- period_reading (spec 2026-10-13): the parts the period tools read ---
+
+const DASHA_LEVELS = new Set(['maha', 'antar', 'pratyantar']);
+const SANDHI_LEVELS = new Set(['maha', 'antar']);
+const FUNCTIONAL = new Set(['yogakaraka', 'benefic', 'malefic', 'maraka', 'neutral']);
+const DIRECTIONS = new Set(['supportive', 'mixed', 'challenging']);
+const CONFIDENCES = new Set(['high', 'medium', 'low']);
+const BANDS = new Set(['strong', 'moderate', 'weak']);
+
+/** A calendar day (YYYY-MM-DD) or a Python UTC instant. */
+function dayOrInstant(value: unknown): boolean {
+  return string(value) && (/^\d{4}-\d{2}-\d{2}$/.test(value) ? instant(`${value}T00:00:00Z`) : instant(value));
+}
+
+function house(value: unknown): boolean {
+  return integerInRange(value, 1, 12);
+}
+
+function optional(value: unknown, accepts: (item: unknown) => boolean): boolean {
+  return value === undefined || value === null || accepts(value);
+}
+
+function span(value: unknown): value is Record<string, unknown> {
+  return record(value) && dayOrInstant(value.start) && dayOrInstant(value.end);
+}
+
+function lordSpan(value: unknown): boolean {
+  return span(value) && string(value.lord);
+}
+
+function dashaSpan(value: unknown): boolean {
+  return lordSpan(value) && member((value as Record<string, unknown>).level, DASHA_LEVELS);
+}
+
+function segment(value: unknown): boolean {
+  return span(value) && string(value.maha) && string(value.antar) && string(value.pratyantar)
+    && arrayOf(value.events, string);
+}
+
+function skySpan(value: unknown): boolean {
+  return span(value) && string(value.graha) && string(value.sign) && typeof value.retro === 'boolean'
+    && house(value.from_moon) && house(value.from_lagna)
+    && integerInRange(value.sav, 0, 56) && (value.bav === null || integerInRange(value.bav, 0, 8)) && arrayOf(value.tags, string);
+}
+
+function transitLord(value: unknown): boolean {
+  return record(value) && string(value.sign) && house(value.from_moon) && house(value.from_lagna)
+    && integerInRange(value.sav, 0, 56) && (value.bav === null || integerInRange(value.bav, 0, 8)) && typeof value.retro === 'boolean';
+}
+
+function themeWindow(value: unknown): boolean {
+  return record(value) && dayOrInstant(value.date) && string(value.descriptor) && member(value.severity, SEVERITIES);
+}
+
+function agreement(value: unknown): boolean {
+  return record(value) && typeof value.vimshottari === 'boolean' && typeof value.yogini === 'boolean'
+    && typeof value.transit === 'boolean';
+}
+
+function theme(value: unknown): boolean {
+  return record(value) && string(value.domain) && arrayOf(value.houses, house)
+    && member(value.direction, DIRECTIONS) && member(value.strength, BANDS)
+    && inRange(value.strength_pct, 0, 100) && member(value.confidence, CONFIDENCES)
+    && agreement(value.agreement) && arrayOf(value.factors, string) && arrayOf(value.windows, themeWindow);
+}
+
+function sandhi(value: unknown): boolean {
+  return record(value) && member(value.level, SANDHI_LEVELS) && dayOrInstant(value.date);
+}
+
+function panchang(value: unknown): boolean {
+  return record(value) && dayOrInstant(value.instant) && integerInRange(value.tithi, 1, 30)
+    && string(value.tithi_name) && string(value.paksha) && string(value.nakshatra)
+    && string(value.karana) && string(value.yoga) && string(value.vara);
+}
+
+function natalLord(value: unknown): boolean {
+  return record(value) && arrayOf(value.rules, house) && house(value.house) && string(value.sign)
+    && string(value.dignity) && typeof value.combust === 'boolean' && typeof value.retro === 'boolean'
+    && member(value.functional, FUNCTIONAL) && string(value.d9_sign) && string(value.d10_sign)
+    && typeof value.vargottama === 'boolean' && arrayOf(value.yogas, string);
+}
+
+/** The natal-only lords, stored once per profile (periodSkyRows.ts). */
+export function isCachedNatalLords(value: unknown): boolean {
+  return record(value) && Object.values(value).every(natalLord);
+}
+
+/** A period reading read from the cache; `natal_lords` is absent on a stored period row. */
+export function isCachedPeriodReading(value: unknown): boolean {
+  return record(value) && span(value.window)
+    && arrayOf(value.dasha_spans, dashaSpan) && optional(value.sookshma, lordSpan)
+    && optional(value.sandhi, sandhi) && optional(value.yogini, (item) => lordSpan(item) && string((item as Record<string, unknown>).name))
+    && arrayOf(value.segments, segment) && arrayOf(value.sky, skySpan)
+    && record(value.transit_lords) && Object.values(value.transit_lords).every(transitLord)
+    && arrayOf(value.double_transit, house) && arrayOf(value.themes, theme)
+    && optional(value.panchang, panchang) && arrayOf(value.rules, string)
+    && (value.natal_lords === undefined || isCachedNatalLords(value.natal_lords));
+}

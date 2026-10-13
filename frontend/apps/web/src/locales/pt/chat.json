@@ -154,6 +154,8 @@
     "get_natal_summary": "Resumo natal",
     "get_trip_context": "Período e lugar da viagem",
     "get_timing": "Tempos: dashas, trânsitos, força, áreas",
+    "get_period_reading": "Leitura do período: dashas, regentes, céu, temas",
+    "get_period_detail": "Detalhe do período: um regente, segmento, bindus, panchang ou dashas",
     "resolve_place": "Encontrar um lugar",
     "time_travel": "Viajar para outro momento",
     "get_chart_facts": "Dados do mapa",
@@ -162,6 +164,8 @@
       "get_natal_summary": "o mapa natal",
       "get_trip_context": "o período e lugar da viagem",
       "get_timing": "os tempos",
+      "get_period_reading": "a leitura do período",
+      "get_period_detail": "o detalhe do período",
       "resolve_place": "um lugar",
       "time_travel": "uma viagem no tempo",
       "get_chart_facts": "dados do mapa",
@@ -172,6 +176,13 @@
       "transits": "trânsitos",
       "strength": "força",
       "domains": "áreas da vida"
+    },
+    "detail_sections": {
+      "lord": "um regente ativo",
+      "segment": "um segmento",
+      "bindus": "os bindus de ashtakavarga",
+      "panchang": "o panchang",
+      "dashas": "todos os dashas"
     }
   },
   "threads": {
