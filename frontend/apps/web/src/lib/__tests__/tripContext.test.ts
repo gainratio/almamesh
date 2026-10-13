@@ -82,3 +82,26 @@ describe('the model-facing natal summary and trip context hold no raw birth data
     for (const pattern of RAW) expect(text).not.toMatch(pattern);
   });
 });
+
+describe('tripContext edges', () => {
+  it('a chart with no dasha tree still has a trip, with no dasha rows', () => {
+    const trip = tripContext({ chart: { ...CHART, dashas: undefined } as unknown as SiderealChart, asOf: JUNE_2019_SG, today: TODAY, birth: BIRTH, language: 'en' });
+    expect(trip.dashas).toEqual({ maha: [], antar: [], notes: [] });
+    expect(tripDashaLine(trip)).toBe('');
+  });
+
+  it('with maha rows but no antar rows the line names the maha lords', () => {
+    const trip = tripContext({ chart: CHART, asOf: JUNE_2019_SG, today: TODAY, birth: BIRTH, language: 'en' });
+    expect(tripDashaLine({ ...trip, dashas: { ...trip.dashas, antar: [] } })).toBe('Jupiter');
+  });
+
+  it('no Moon and no birth place: the summary has no Moon and the default place is in UTC', () => {
+    const chart = { ...CHART, planets: {}, yogas: undefined } as unknown as SiderealChart;
+    const old = { start: '2019-06-01', end: '2019-06-30', granularity: 'month' } as const;
+    const trip = tripContext({ chart, asOf: old, today: TODAY, birth: undefined, language: 'en' });
+    expect(trip.natal.moon).toBeNull();
+    expect(trip.natal.yogas).toEqual([]);
+    expect(trip.place).toEqual({ label: DEFAULT_PLACE_LABEL, timezone: 'UTC', source: 'birth_place', display: '' });
+    expect(tripPin(old, undefined)).toBe(old);
+  });
+});

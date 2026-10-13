@@ -150,7 +150,14 @@ export function tripContext(input: TripContextInput): TripContext {
 }
 
 /** get_trip_context's value: the trip as the model sees it. The place is a label and a zone, nothing else. */
-export function tripToolResult(trip: TripContext) {
+export interface TripToolResult {
+  readonly period: TripPeriod;
+  readonly place: { readonly label: string; readonly timezone: string };
+  readonly today: string;
+  readonly dashas: Pick<PeriodDashas, 'maha' | 'antar' | 'notes'>;
+}
+
+export function tripToolResult(trip: TripContext): TripToolResult {
   return {
     period: trip.period,
     place: { label: trip.place.label, timezone: trip.place.timezone },

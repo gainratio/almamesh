@@ -62,3 +62,17 @@ describe('a tool-call row shows what the AI pulled', () => {
     expect(screen.getByTestId('chat-tool-call').getAttribute('data-status')).toBe('error');
   });
 });
+
+describe('tool-call row edges', () => {
+  it('summarises a period by its dates when it has no label, and an unknown tool by its name', () => {
+    render(<ToolCallRow toolName="mystery_tool" toolCallId="c3" args={{}} argsText="{}" result={{ period: { start: '2019-05-01', end: '2019-05-31' }, place: { label: 'Singapore' } }} status={{ type: 'complete' }} />);
+    const row = screen.getByTestId('chat-tool-call');
+    expect(row.textContent).toContain('mystery_tool');
+    expect(row.textContent).toContain('Singapore · 2019-05-01 – 2019-05-31');
+  });
+
+  it('a row with no result still renders', () => {
+    render(<ToolCallRow toolName="get_timing" toolCallId="c4" args={{ section: 'dashas' }} argsText="" result={undefined} status={{ type: 'running' }} />);
+    expect(screen.getByTestId('chat-tool-call').getAttribute('data-status')).toBe('complete');
+  });
+});
