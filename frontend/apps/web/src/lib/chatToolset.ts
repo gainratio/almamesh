@@ -7,7 +7,7 @@
 import { devicePolicy, type ChartEngine } from '@almamesh/browser';
 import type { SiderealChart } from '@almamesh/browser/types';
 import {
-  AGENT_LIMITS,
+  PERIOD_READING_TOOL_NAME,
   periodAnalysisInstant,
   pinRelative,
   todayAnalysisInstant,
@@ -31,7 +31,7 @@ import { createPeriodReadingTools } from './periodReadingTool';
 import { createResolvePlaceTool } from './placeTool';
 import type { PlaceReader } from './timingPlaces';
 import { TIMING_TOOL_NAME } from './timingTool';
-import { parseExplicitTimingPeriod } from './timingQuestion';
+import { parseExplicitTimingPeriod, type ExplicitTimingPeriod } from './timingQuestion';
 import { createTimeTravelTool, type TravelRecorder } from './timeTravelTool';
 import { formatPinLabel } from './timeTravelSheet';
 import { natalSummary, tripContext, tripPin, tripToolResult } from './tripContext';
@@ -40,12 +40,15 @@ import { natalSummary, tripContext, tripPin, tripToolResult } from './tripContex
 export const NATAL_SUMMARY_TOOL_NAME = 'get_natal_summary';
 export const TRIP_CONTEXT_TOOL_NAME = 'get_trip_context';
 const NO_ARGS = { type: 'object', properties: {}, additionalProperties: false } as const;
-/** A trip grounded by the app itself: its period and place, the natal chart, and that period's transits. */
-const TRIP_GROUNDING_CALLS = [
-  { name: TRIP_CONTEXT_TOOL_NAME, args: {} },
-  { name: NATAL_SUMMARY_TOOL_NAME, args: {} },
-  { name: TIMING_TOOL_NAME, args: { section: 'transits' } },
-] as const;
+interface GroundingCall {
+  readonly name: string;
+  readonly args: AgentJsonObject;
+}
+/** A trip grounded by the app itself: the period reading (period, place, dashas, sky, themes) and the natal chart. */
+const [TRIP_READING, TRIP_NATAL] = TRIP_GROUNDING_TOOLS;
+const TRIP_GROUNDING_CALLS: readonly [GroundingCall, ...GroundingCall[]] = [{ name: TRIP_READING, args: {} }, { name: TRIP_NATAL, args: {} }];
+/** A today question grounds the same way, through the reading bound to today at the viewer's place. */
+const TODAY_GROUNDING_CALLS: readonly [GroundingCall, ...GroundingCall[]] = [{ name: PERIOD_READING_TOOL_NAME, args: {} }];
 
 export interface BuildChatToolsetInput {
   /** The natal chart engine loads (today, a period) merge their sky onto. */
@@ -69,6 +72,8 @@ export interface BuildChatToolsetInput {
   /** Present only for a live chat turn; records a move without mutating mid-answer. */
   readonly onTravel?: TravelRecorder;
   readonly language?: string;
+  /** Test seam only (pinned as above): each replaces the built tool of its name, or joins the list. */
+  readonly toolOverrides?: readonly AgentTool[];
 }
 
 interface PrepareOptions {
@@ -77,35 +82,35 @@ interface PrepareOptions {
   readonly onStatus?: (label: string) => void;
 }
 
+/** A question that names no single supported period: the model must ask, never pick one. */
+export interface TimingClarification {
+  readonly reason: Extract<ExplicitTimingPeriod, { kind: 'unresolved' }>['reason'];
+  /** Appended to the system prompt by the page. Instructions only, no engine facts. */
+  readonly note: string;
+}
+
 interface PreparedChatContext {
   /** The chart to sanitize into the prompt. */
   readonly chart: SiderealChart;
   readonly asOf: AnalysisInstant;
-  /** A today question whose engine facts could not be computed. */
-  readonly currentContextUnavailable: boolean;
   /** The selected or explicitly requested period and its tense for this prompt. */
   readonly pinned?: PinnedPrompt;
-  /** Sanitized engine results supplied even when the model elects no tools. Empty for a trip. */
-  readonly timingFacts: readonly { readonly tool: typeof TIMING_TOOL_NAME; readonly result: unknown }[];
-  /** 'required' on a trip's first round: it grounds itself through its tools before it answers. */
+  /** Present when the question's dates need clarifying before any timing is read. */
+  readonly clarification?: TimingClarification;
+  /** 'required' on a trip's or a today question's first round: it grounds itself through its tools before it answers. */
   readonly toolChoice: 'auto' | 'required';
   /** The tool the agent loop runs itself if the provider refuses 'required'. */
   readonly groundingTool?: string;
-  /** A trip's rounds stay 'required' until each of these has run once (the brief's grounding tools). */
+  /** The rounds stay 'required' until each of these has run once (the grounding tools). */
   readonly requiredTools?: readonly string[];
   /** What the agent loop runs itself if a required round gets no tool call. */
-  readonly groundingCalls?: ReadonlyArray<{ readonly name: string; readonly args: AgentJsonObject }>;
+  readonly groundingCalls?: readonly GroundingCall[];
 }
 
 export interface ChatToolset {
   readonly tools: readonly AgentTool[];
   prepare(question: string, options: PrepareOptions): Promise<PreparedChatContext>;
 }
-
-/** Shown while today's facts compute, if the timing tool carries no label of its own. */
-const TODAY_STATUS_FALLBACK = "Working out today's sky";
-// Reserve room for the two tool labels and JSON wrappers as well as their results.
-const GROUNDING_RESULT_CHARS = Math.min(AGENT_LIMITS.maxResultChars, Math.floor((AGENT_LIMITS.maxAggregateResultChars - 512) / 2));
 
 /**
  * Re-read a place_ref from the offline city list. A dynamic import, so tz-lookup
@@ -119,56 +124,50 @@ function natalOnly(chart: SiderealChart): SiderealChart {
   return { ...chart, transit_context: undefined, strength_context: undefined, varga_context_full: undefined, domains_context: undefined };
 }
 
-function oversizedTimingFact(result: unknown, section: 'dashas' | 'transits') {
-  const source = result as { period?: { start?: unknown; end?: unknown; basis?: unknown; days?: unknown }; notes?: unknown } | null;
-  const period = source?.period;
-  const safePeriod = period && typeof period.start === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(period.start)
-    && typeof period.end === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(period.end)
-    && (period.basis === 'period' || period.basis === 'today') && Number.isSafeInteger(period.days)
-    ? { start: period.start, end: period.end, basis: period.basis, days: period.days }
-    : undefined;
-  const notes = Array.isArray(source?.notes)
-    ? source.notes.filter((note): note is string => typeof note === 'string' && note.length <= 512).slice(0, 8)
-    : [];
-  return { ...(safePeriod ? { period: safePeriod } : {}), section, shown: section,
-    notes: [...notes, 'This local result was too large to include safely; no partial planetary facts are supplied.'],
-    data: { available: false, reason: 'result_too_large' },
+function clarificationFor(reason: TimingClarification['reason']): TimingClarification {
+  return {
+    reason,
+    note: `TIMING CLARIFICATION (${reason}): the question does not name one supported calendar period. `
+      + 'Ask for one explicit month and year, a year, or an ISO date before you interpret timing. '
+      + 'Do not use the saved trip period and do not invent a range.',
   };
 }
 
-/** Read sanitized, bounded engine facts before the model can elect to skip tools. */
-async function timingFact(timing: AgentTool, section: 'dashas' | 'transits', options: PrepareOptions): Promise<unknown> {
-  try {
-    const result = await timing.execute({ section }, { now: new Date(options.now.getTime()), signal: options.signal });
-    const encoded = JSON.stringify(result);
-    return typeof encoded === 'string' && encoded.length <= GROUNDING_RESULT_CHARS
-      ? result
-      : oversizedTimingFact(result, section);
-  } catch (error) {
-    if (options.signal.aborted) throw error;
-    return { section, notes: ['This local timing calculation could not complete; other supplied sections remain usable.'],
-      data: { available: false, reason: 'local_calculation_failed' } };
+/**
+ * The grounding fields for a turn whose first rounds must call these tools.
+ * A missing tool fails loudly here, never as a silently ungrounded answer.
+ */
+function requiredGrounding(
+  tools: readonly AgentTool[],
+  [first, ...rest]: readonly [GroundingCall, ...GroundingCall[]],
+): Pick<PreparedChatContext, 'toolChoice' | 'groundingTool' | 'requiredTools' | 'groundingCalls'> {
+  const calls = [first, ...rest];
+  for (const call of calls) {
+    if (!tools.some((tool) => tool.name === call.name)) throw new Error(`The ${call.name} tool is unavailable.`);
   }
+  return {
+    toolChoice: 'required',
+    groundingTool: first.name,
+    requiredTools: calls.map((call) => call.name),
+    groundingCalls: calls,
+  };
 }
 
-async function preRunToday(tools: readonly AgentTool[], options: PrepareOptions) {
-  const timing = tools.find((tool) => tool.name === TIMING_TOOL_NAME);
-  if (!timing) throw new Error('The timing tool is unavailable.');
-  options.onStatus?.(timing.statusLabel ?? TODAY_STATUS_FALLBACK);
-  const transits = await timingFact(timing, 'transits', options);
-  const dashas = await timingFact(timing, 'dashas', options);
-  const unavailable = (transits as { data?: { available?: boolean } } | null)?.data?.available === false;
-  return { unavailable, timingFacts: [dashas, transits].map((result) => ({ tool: TIMING_TOOL_NAME as typeof TIMING_TOOL_NAME, result })) };
+/** The test seam: an override replaces the built tool of its name, or joins the list. */
+function withOverrides(built: readonly AgentTool[], overrides: readonly AgentTool[] | undefined): AgentTool[] {
+  if (!overrides) return [...built];
+  const replaced = built.map((tool) => overrides.find((override) => override.name === tool.name) ?? tool);
+  return [...replaced, ...overrides.filter((override) => !built.some((tool) => tool.name === override.name))];
 }
 
 /** A trip turn: tools bound to the trip, the brief's inputs, and no pre-computed facts. */
 function preparePinned(
   pinned: ChatThreadAsOf,
   chart: SiderealChart,
-  viewerZone: string,
-  language: string,
-  now: Date,
+  tools: readonly AgentTool[],
+  scope: { readonly viewerZone: string; readonly language: string; readonly now: Date },
 ): PreparedChatContext {
+  const { viewerZone, language, now } = scope;
   const period = { start: pinned.start, end: pinned.end };
   const relative = pinRelative(period, viewerTodayDay(now, viewerZone));
   // Every trip names its place and zone (tripPin filled an old trip's from the birth place, unmarked).
@@ -176,13 +175,8 @@ function preparePinned(
   return {
     chart: natalOnly(chart),
     asOf: periodAnalysisInstant(pinned.start, pinned.end),
-    currentContextUnavailable: false,
     pinned: { ...period, relative, granularity: pinned.granularity, label: formatPinLabel(pinned, language), ...place },
-    timingFacts: [],
-    toolChoice: 'required',
-    groundingTool: TRIP_CONTEXT_TOOL_NAME,
-    requiredTools: TRIP_GROUNDING_TOOLS,
-    groundingCalls: TRIP_GROUNDING_CALLS,
+    ...requiredGrounding(tools, TRIP_GROUNDING_CALLS),
   };
 }
 
@@ -287,7 +281,9 @@ export function buildChatToolset(input: BuildChatToolsetInput): ChatToolset {
       })] : []),
     ];
   };
-  let tools = makeTools(pinned);
+  // Every build goes through the test seam; pages never pass toolOverrides.
+  const toolsFor = (...args: Parameters<typeof makeTools>) => withOverrides(makeTools(...args), input.toolOverrides);
+  let tools = toolsFor(pinned);
   let hasPrepared = false;
 
   return {
@@ -295,7 +291,7 @@ export function buildChatToolset(input: BuildChatToolsetInput): ChatToolset {
     async prepare(question, options) {
       // Each turn starts from the selected pin. A question-specific context
       // neither records a movement nor changes later undated follow-ups.
-      if (hasPrepared) tools = makeTools(pinned);
+      if (hasPrepared) tools = toolsFor(pinned);
       hasPrepared = true;
       let explicit = parseExplicitTimingPeriod(question);
       const currentDay = hasExplicitCurrentDay(question);
@@ -313,41 +309,35 @@ export function buildChatToolset(input: BuildChatToolsetInput): ChatToolset {
       const explicitToday = currentDay
         && !(explicit.kind === 'unresolved' && explicit.reason === 'ambiguous_period');
       if (!explicitToday && explicit.kind === 'unresolved') {
-        tools = makeTools(undefined);
+        tools = toolsFor(undefined);
         return {
           chart: natalOnly(natalPrompt),
           asOf: input.chartAsOf,
-          currentContextUnavailable: false,
-          timingFacts: [{ tool: TIMING_TOOL_NAME, result: {
-            status: 'needs_clarification',
-            notes: ['The question does not identify one supported calendar period. Ask for one explicit month and year, year, or ISO date before interpreting timing. Do not substitute the saved pin or invent a range.'],
-            data: { available: false, reason: explicit.reason },
-          } }],
+          clarification: clarificationFor(explicit.reason),
           toolChoice: 'auto',
         };
       }
+      const scope = { viewerZone: zone(), language, now: options.now };
       if (!explicitToday && explicit.kind === 'period') {
         const { start, end } = explicit.period;
+        // Another period asked inside a trip keeps the trip's place and zone, not the birth place.
         const questionPin: ChatThreadAsOf = pinned && pinned.start === start && pinned.end === end
           ? pinned
-          : { start, end, granularity: start === end ? 'day' : start.slice(5) === '01-01' && end.slice(5) === '12-31' ? 'year' : 'month' };
-        tools = makeTools(tripPin(questionPin, input.birth), natalPrompt, periodAnalysisInstant(start, end));
-        return preparePinned(tripPin(questionPin, input.birth), natalPrompt, zone(), language, options.now);
+          : { start, end, granularity: start === end ? 'day' : start.slice(5) === '01-01' && end.slice(5) === '12-31' ? 'year' : 'month',
+            ...(pinned?.place ? { place: pinned.place } : {}) };
+        tools = toolsFor(tripPin(questionPin, input.birth), natalPrompt, periodAnalysisInstant(start, end));
+        return preparePinned(tripPin(questionPin, input.birth), natalPrompt, tools, scope);
       }
-      if (pinned && !explicitToday) return preparePinned(pinned, natalPrompt, zone(), language, options.now);
-      if (pinned) tools = makeTools(undefined);
-      // A small deterministic router: an undated today-question gets exact-day
-      // engine facts before the model runs, as do explicit current-day questions.
-      const needsToday = shouldPreRunToday(question);
-      const prepared = needsToday ? await preRunToday(tools, options) : undefined;
-      const currentChart = needsToday && todayChartNowMs === options.now.getTime() ? todayChart : undefined;
-      if (currentChart) tools = makeTools(undefined, currentChart, todayAnalysisInstant(options.now));
+      if (pinned && !explicitToday) return preparePinned(pinned, natalPrompt, tools, scope);
+      if (pinned) tools = toolsFor(undefined);
+      // A small deterministic router: an undated today question, or an explicit
+      // current-day one, must read the period reading for today before it answers.
+      // Nothing is pre-computed into the prompt, and stored transits never pose as today's.
+      if (!shouldPreRunToday(question)) return { chart: natalPrompt, asOf: input.chartAsOf, toolChoice: 'auto' };
       return {
-        chart: currentChart ?? (needsToday ? natalOnly(natalPrompt) : natalPrompt),
-        asOf: currentChart ? todayAnalysisInstant(options.now) : input.chartAsOf,
-        currentContextUnavailable: prepared?.unavailable ?? false,
-        timingFacts: prepared?.timingFacts ?? [],
-        toolChoice: 'auto',
+        chart: natalOnly(natalPrompt),
+        asOf: todayAnalysisInstant(options.now),
+        ...requiredGrounding(tools, TODAY_GROUNDING_CALLS),
       };
     },
   };

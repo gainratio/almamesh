@@ -39,8 +39,17 @@ const TENSE: Readonly<Record<PinRelative, string>> = {
 
 const TENSE_WORD: Readonly<Record<PinRelative, string>> = { past: "past", future: "future", contains_today: "present" };
 
-/** The tools a trip thread registers to ground itself (chatToolset.ts / chatToolkit.ts). */
-export const TRIP_GROUNDING_TOOLS = ["get_natal_summary", "get_trip_context", "get_timing"] as const;
+/** The period reading (spec 2026-10-13): dashas to pratyantar, lords, sky, themes, for a bound period and place. */
+export const PERIOD_READING_TOOL_NAME = "get_period_reading";
+/** The reading's drill-down: one lord, segment, bindu row, the panchang or every dasha span. */
+export const PERIOD_DETAIL_TOOL_NAME = "get_period_detail";
+
+/**
+ * The tools a trip must call before it answers (chatToolset.ts). The reading
+ * carries the period and the place, so get_trip_context and get_timing stay
+ * registered but are no longer required.
+ */
+export const TRIP_GROUNDING_TOOLS = [PERIOD_READING_TOOL_NAME, "get_natal_summary"] as const;
 
 function tripLine(pin: PinnedPrompt): string | undefined {
   if (!pin.granularity || !pin.label) return undefined;
@@ -56,7 +65,8 @@ export function pinnedPeriodRules(pin: PinnedPrompt): string {
     ...(trip
       ? [
           trip,
-          `Before interpreting, use ${TRIP_GROUNDING_TOOLS.join(", ")} (sections dashas, transits, strength, domains); they already read this trip's period and place, so call them without dates or a place.`,
+          `Before interpreting, call ${TRIP_GROUNDING_TOOLS.join(" and ")} with no arguments: they already read this trip's period and place.`,
+          `Use ${PERIOD_DETAIL_TOOL_NAME} to look closer at one lord, segment, bindu row or the panchang.`,
           "Interpret for that place and time.",
         ]
       : []),

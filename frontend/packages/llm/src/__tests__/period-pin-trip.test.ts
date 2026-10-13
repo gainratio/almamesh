@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildChatMessages, pinnedPeriodRules, type PinnedPrompt } from '../index';
+import { PERIOD_DETAIL_TOOL_NAME, PERIOD_READING_TOOL_NAME, TRIP_GROUNDING_TOOLS, buildChatMessages, pinnedPeriodRules, type PinnedPrompt } from '../index';
 import type { SanitizedChart } from '../sanitize';
 
 const MAY_2019_SG: PinnedPrompt = {
@@ -17,11 +17,17 @@ describe('pinnedPeriodRules is a trip brief', () => {
     expect(brief).toContain('past tense');
   });
 
-  it('tells the model which trip-bound tools ground it, and that they need no dates or place', () => {
+  // Contract reversed 2026-10-13 (period reading): the reading carries the period and place, so a trip is
+  // grounded by get_period_reading + get_natal_summary; get_trip_context and get_timing stay optional.
+  it('the period reading and the natal summary ground a trip; the tool names are one exported contract', () => {
+    expect(PERIOD_READING_TOOL_NAME).toBe('get_period_reading');
+    expect(PERIOD_DETAIL_TOOL_NAME).toBe('get_period_detail');
+    expect(TRIP_GROUNDING_TOOLS).toEqual(['get_period_reading', 'get_natal_summary']);
     const brief = pinnedPeriodRules(MAY_2019_SG);
-    for (const name of ['get_natal_summary', 'get_trip_context', 'get_timing']) expect(brief).toContain(name);
-    expect(brief).toContain('dashas, transits, strength, domains');
+    expect(brief).toContain('Before interpreting, call get_period_reading and get_natal_summary with no arguments');
     expect(brief).toContain("already read this trip's period and place");
+    expect(brief).toContain('get_period_detail');
+    expect(brief).not.toContain('dashas, transits, strength, domains');
   });
 
   // Contract reversed 2026-10-13: every trip names its place and zone; none is marked as the birth place.
@@ -51,6 +57,7 @@ describe('a trip prompt carries the brief, not pre-computed facts', () => {
     expect(system?.content).toContain('time-travel trip to May 2019');
     expect(user?.content).not.toContain('Scorpio-LAGNA-MARK');
     expect(user?.content).toContain('get_natal_summary');
+    expect(user?.content).toContain('get_period_reading');
   });
 
   it('a today thread keeps its chart facts', () => {

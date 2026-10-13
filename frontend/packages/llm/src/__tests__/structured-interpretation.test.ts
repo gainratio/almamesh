@@ -560,10 +560,14 @@ describe("streamStructuredInterpretation — output discipline (full + lite prom
     "meta-commentary",
     "chain-of-thought",
     "NEVER pose a question to yourself",
-    "NEVER state a house lordship, sign rulership, dasha",
+    // Contract reworded 2026-10-13 (period reading): the fence stays, and a fact a tool result
+    // states (lordships, yogas, tags, windows) counts as present and must be cited.
+    "DERIVED-FACT FENCE (ABSOLUTE)",
+    "ONLY when the provided engine facts or a tool result",
     "OMIT the claim entirely",
-    "may be narrated ONLY as stated in the provided facts",
-    "a period, a lord, or a window the facts do not state",
+    "do not derive, infer, or guess it",
+    "with their lords and dated windows as stated",
+    "NEVER name a period, a lord, or a window that no fact or tool result states",
     "single authoritative dignity",
     "kendra = houses 1/4/7/10",
   ] as const;

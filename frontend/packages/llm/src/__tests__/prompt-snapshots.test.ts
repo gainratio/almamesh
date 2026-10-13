@@ -156,6 +156,17 @@ describe("prompt golden-snapshots (Spec 062 delta 5)", () => {
     expect(buildChatMessages(CHART, "Where is my Mars?")).toMatchSnapshot();
   });
 
+  // Period reading (2026-10-13): the snapshot was updated for the rewritten hedges; these pin the honesty
+  // lines any later -u must keep, and the removed "do NOT exist" line staying gone.
+  it("buildChatMessages — the chat snapshot keeps its honesty lines", () => {
+    const system = buildChatMessages(CHART, "Where is my Mars?")[0]?.content ?? "";
+    expect(system).toContain("HONESTY: a chart cannot name the concrete event.");
+    expect(system).toContain("Cite the engine factor behind every claim.");
+    expect(system).toContain("never invent a fact");
+    expect(system).toContain("do not derive, infer, or guess it");
+    expect(system).not.toMatch(/do NOT exist/i);
+  });
+
   it("buildChatMessages — fully loaded (history + RAG + reading + rectification)", () => {
     expect(
       buildChatMessages(

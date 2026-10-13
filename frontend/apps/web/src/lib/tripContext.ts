@@ -67,13 +67,23 @@ export interface NatalPlanet {
   readonly nakshatra: string;
   readonly dignity: string;
   readonly retrograde: boolean;
+  /** The houses this planet rules from the lagna (engine-stated). */
+  readonly houses_ruled: readonly number[];
+  readonly combust: boolean;
+  readonly yogakaraka: boolean;
+}
+
+export interface NatalYoga {
+  readonly name: string;
+  readonly category: string;
+  readonly planets_involved: readonly string[];
 }
 
 export interface NatalSummary {
   readonly lagna: NatalPoint;
   readonly moon: NatalPoint | null;
   readonly planets: readonly NatalPlanet[];
-  readonly yogas: readonly { readonly name: string; readonly category: string }[];
+  readonly yogas: readonly NatalYoga[];
 }
 
 export interface TripContext {
@@ -99,7 +109,11 @@ function point(source: { sign: string; nakshatra: string; nakshatra_pada: number
   return { sign: source.sign, nakshatra: source.nakshatra, pada: source.nakshatra_pada, sign_lord: source.sign_lord };
 }
 
-/** Lagna, Moon, planets by sign and house, yogas: no degrees, dates or coordinates. */
+/**
+ * Lagna, Moon, planets by sign and house with their lordships, combustion and
+ * yogakaraka, and yogas with their planets: no degrees, dates or coordinates.
+ * A chart stored before a field existed reads it as empty or false.
+ */
 export function natalSummary(chart: SiderealChart): NatalSummary {
   const planets = Object.values(chart.planets ?? {}).map((planet) => ({
     name: planet.name,
@@ -108,13 +122,18 @@ export function natalSummary(chart: SiderealChart): NatalSummary {
     nakshatra: planet.nakshatra,
     dignity: planet.dignity,
     retrograde: planet.is_retrograde,
+    houses_ruled: planet.houses_ruled ?? [],
+    combust: planet.is_combust ?? false,
+    yogakaraka: planet.is_yogakaraka ?? false,
   }));
   const moon = chart.planets?.moon;
   return {
     lagna: point(chart.lagna),
     moon: moon ? point(moon) : null,
     planets,
-    yogas: (chart.yogas ?? []).map((yoga) => ({ name: yoga.display_name, category: yoga.category })),
+    yogas: (chart.yogas ?? []).map((yoga) => ({
+      name: yoga.display_name, category: yoga.category, planets_involved: yoga.planets_involved ?? [],
+    })),
   };
 }
 

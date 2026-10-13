@@ -11,6 +11,8 @@ import {
   BEFORE_BIRTH_MESSAGE,
   BIRTH_YEAR_SKY_NOTE,
   endsBeforeBirthYear,
+  PERIOD_DETAIL_TOOL_NAME,
+  PERIOD_READING_TOOL_NAME,
   startsInOrBeforeBirthYear,
   type AgentJsonObject,
   type AgentTool,
@@ -36,9 +38,6 @@ import { isCachedNatalLords, isCachedPeriodReading } from './periodSkyValidation
 import { formatPinLabel } from './timeTravelSheet';
 import { DEVICE_DASHAS_ONLY_NOTE, PeriodSkyUnavailableError, TIMING_TOOL_TIMEOUT_MS } from './timingTool';
 import { tripContext } from './tripContext';
-
-export const PERIOD_READING_TOOL_NAME = 'get_period_reading';
-export const PERIOD_DETAIL_TOOL_NAME = 'get_period_detail';
 
 export interface PeriodReadingToolsInput {
   /** A trip's pin (tripPin: an old trip carries the birth place's label and zone); undefined for today. */

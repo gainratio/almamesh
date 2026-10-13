@@ -331,7 +331,7 @@ function panchangOf(source: PeriodReadingContext, period: ReadingPeriod): Readin
 
 // --- the 4 KB budget ---
 
-export function jsonBytes(value: unknown): number {
+function jsonBytes(value: unknown): number {
   return new TextEncoder().encode(JSON.stringify(value)).length;
 }
 

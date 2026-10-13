@@ -6,14 +6,19 @@ export type ExplicitTimingPeriod =
   | { readonly kind: 'period'; readonly period: PeriodRange }
   | { readonly kind: 'unresolved'; readonly reason: 'ambiguous_period' | 'unsupported_period' };
 
+// Full names, then the en/es/pt short forms ("Sep", "Sept", "set.", "dez").
 const MONTH_NAMES = [
-  'january enero janeiro', 'february febrero fevereiro', 'march marzo março marco',
-  'april abril', 'may mayo maio', 'june junio junho', 'july julio julho',
-  'august agosto', 'september septiembre setiembre setembro', 'october octubre outubro',
-  'november noviembre novembro', 'december diciembre dezembro',
+  'january enero janeiro jan ene', 'february febrero fevereiro feb fev', 'march marzo março marco mar',
+  'april abril apr abr', 'may mayo maio mai', 'june junio junho jun', 'july julio julho jul',
+  'august agosto aug ago', 'september septiembre setiembre setembro sep sept set', 'october octubre outubro oct out',
+  'november noviembre novembro nov', 'december diciembre dezembro dec dic dez',
 ] as const;
 const MONTHS = new Map(MONTH_NAMES.flatMap((names, index) => names.split(' ').map((name) => [name, index + 1] as const)));
-const MONTH_PATTERN = [...MONTHS.keys()].join('|');
+// A short form may carry a trailing dot ("Sep. 2019"); it belongs to the month token.
+const MONTH_PATTERN = `(?:${[...MONTHS.keys()].join('|')})\\.?`;
+/** Months that are also everyday words or names: they count only in calendar syntax. */
+const WORD_MONTHS = new Set(['may', 'march', 'marco', 'mar', 'jan', 'set', 'out', 'ago', 'dez']);
+const monthName = (token: string) => token.replace(/\.$/u, '');
 const UNSUPPORTED: ExplicitTimingPeriod = { kind: 'unresolved', reason: 'unsupported_period' };
 const AMBIGUOUS: ExplicitTimingPeriod = { kind: 'unresolved', reason: 'ambiguous_period' };
 const NONE: ExplicitTimingPeriod = { kind: 'none' };
@@ -44,10 +49,10 @@ function monthPeriod(year: string, month: number): ExplicitTimingPeriod {
 
 /** May and March can be verbs; Marco can be a person. Require calendar syntax. */
 function monthMention(match: RegExpMatchArray, text: string, total: number): boolean {
-  const name = match[0];
-  if (!['may', 'march', 'marco'].includes(name)) return true;
+  const name = monthName(match[0]);
+  if (!WORD_MONTHS.has(name)) return true;
   const before = text.slice(0, match.index);
-  const after = text.slice((match.index ?? 0) + name.length);
+  const after = text.slice((match.index ?? 0) + match[0].length);
   return /^\s*,?\s*(?:de\s+)?\d{4}(?!\d)/u.test(after)
     || /^\s+\d{1,2}(?:st|nd|rd|th)?(?:\D|$)/u.test(after)
     || /\b\d{1,2}(?:st|nd|rd|th)?\s+(?:(?:de|of)\s+)?$/u.test(before)
@@ -57,7 +62,7 @@ function monthMention(match: RegExpMatchArray, text: string, total: number): boo
 }
 
 /**
- * Supported forms: one full en/es/pt month + year (optional "de"), YYYY-MM,
+ * Supported forms: one en/es/pt month (full or short, e.g. "Sep.") + year (optional "de"), YYYY-MM,
  * YYYY-MM-DD, or one four-digit year. Today remains the caller's decision.
  */
 export function parseExplicitTimingPeriod(question: string): ExplicitTimingPeriod {
@@ -94,7 +99,7 @@ export function parseExplicitTimingPeriod(question: string): ExplicitTimingPerio
     const year = /^\s*,?\s*(?:de\s+)?(\d{4})(?![\p{L}\p{N}])/u.exec(after)?.[1];
     // An attached named day cannot quietly become its containing month.
     if (years.length !== 1 || !year || /\b\d{1,2}(?:st|nd|rd|th)?\s+(?:(?:de|of)\s+)?$/u.test(before)) return UNSUPPORTED;
-    return monthPeriod(year, MONTHS.get(month[0])!);
+    return monthPeriod(year, MONTHS.get(monthName(month[0]))!);
   }
   if (years.length === 1) return checked(`${years[0]![0]}-01-01`, `${years[0]![0]}-12-31`);
   return UNSUPPORTED;

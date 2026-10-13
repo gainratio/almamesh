@@ -5,7 +5,7 @@
  * birth_location_details field and no birth-place marker reaches the model.
  */
 import type { SiderealChart } from '@almamesh/browser/types';
-import { buildChatMessages, sanitizeChartForLlm, streamAgentChat, type ProviderConfig } from '@almamesh/llm';
+import { buildChatMessages, sanitizeChartForLlm, streamAgentChat, type AgentTool, type ProviderConfig } from '@almamesh/llm';
 import type { ProcessedBirthData } from '@almamesh/shared-types';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -52,12 +52,20 @@ function call(id: string, name: string, args: Record<string, unknown> = {}) {
 
 beforeEach(() => loadMock.mockReset().mockResolvedValue({ transit_context: SKY_CHART.transit_context }));
 
+/** Stands in for get_period_reading (its own agent's work): a period, a place label and zone, and lords. */
+const READING_STUB: AgentTool = {
+  name: 'get_period_reading', description: 'Read the period reading.',
+  parameters: { type: 'object', properties: {}, additionalProperties: false },
+  execute: async () => ({ period: { start: '2026-03-08', end: '2026-03-08' }, place: { label: 'Los Angeles', timezone: 'America/Los_Angeles' },
+    lords: [{ lord: 'saturn', level: ['maha'], rules: [3, 4] }] }),
+};
+const ENGINE = { engine: { computePredictive: vi.fn() }, startBootstrap: vi.fn(), whenReady: vi.fn() } as unknown as ChartEngineContextValue;
+
 async function tripRequestBodies(asOf: Parameters<typeof buildChatToolset>[0]['pinned']): Promise<string[]> {
   const toolset = buildChatToolset({
     chart: NATAL, chartAsOf: { basis: 'chart', instant: new Date('2025-01-01T00:00:00Z') }, chartTimeZone: 'Asia/Kolkata',
     profileKey: 'p1', birth: BIRTH, viewerZone: () => 'America/Los_Angeles', periodSkyAllowed: true, language: 'en',
-    engine: { engine: { computePredictive: vi.fn() }, startBootstrap: vi.fn(), whenReady: vi.fn() } as unknown as ChartEngineContextValue,
-    pinned: asOf,
+    engine: ENGINE, pinned: asOf, toolOverrides: [READING_STUB],
   });
   const options = { now: SPLIT_DAY_NOW, signal: new AbortController().signal };
   const prepared = await toolset.prepare('How was work then?', options);
@@ -71,6 +79,7 @@ async function tripRequestBodies(asOf: Parameters<typeof buildChatToolset>[0]['p
     if (round === 1) {
       return Response.json({ choices: [{ message: { role: 'assistant', content: null, tool_calls: [
         call('a', 'get_natal_summary'), call('b', 'get_trip_context'), call('c', 'get_timing', { section: 'transits' }), call('d', 'get_timing', { section: 'dashas' }),
+        call('e', 'get_period_reading'),
       ] } }] });
     }
     const sse = `data: ${JSON.stringify({ choices: [{ delta: { content: 'Work was steady.' } }] })}\n\ndata: [DONE]\n\n`;
@@ -105,6 +114,53 @@ describe('a trip turn sends only a place label and zone', () => {
     for (const body of bodies) {
       for (const leak of LEAKS) expect(body).not.toMatch(leak);
       expect(tripData(body)).not.toMatch(MARKER);
+    }
+  });
+});
+
+/**
+ * The today path (2026-10-13, period reading): no timing facts are pre-run into the prompt any more.
+ * The first round must call get_period_reading; when the provider answers with text instead, the loop
+ * runs the grounding call itself. Every request body still carries no raw birth date, time or coordinate.
+ */
+async function todayRequestBodies(question: string): Promise<string[]> {
+  const toolset = buildChatToolset({
+    chart: NATAL, chartAsOf: { basis: 'chart', instant: new Date('2025-01-01T00:00:00Z') }, chartTimeZone: 'Asia/Kolkata',
+    profileKey: 'p1', birth: BIRTH, viewerZone: () => 'America/Los_Angeles', periodSkyAllowed: true, language: 'en',
+    engine: ENGINE, toolOverrides: [READING_STUB],
+  });
+  const options = { now: SPLIT_DAY_NOW, signal: new AbortController().signal };
+  const prepared = await toolset.prepare(question, options);
+  expect(prepared.toolChoice).toBe('required');
+  const messages = buildChatMessages(sanitizeChartForLlm(prepared.chart, prepared.asOf), question, 'layman', [], [],
+    undefined, 'en', undefined, undefined, undefined, true, prepared.pinned);
+  const bodies: string[] = [];
+  const fetchImpl = vi.fn(async (_url: unknown, init?: RequestInit) => {
+    bodies.push(String(init?.body));
+    // Round 1 ignores tool_choice and answers in text, so the loop grounds itself; later rounds stream an answer.
+    if (bodies.length === 1) return Response.json({ choices: [{ message: { role: 'assistant', content: 'Skipping tools.' } }] });
+    const sse = `data: ${JSON.stringify({ choices: [{ delta: { content: 'Today is steady.' } }] })}\n\ndata: [DONE]\n\n`;
+    return new Response(sse, { headers: { 'content-type': 'text/event-stream' } });
+  });
+  for await (const _token of streamAgentChat({ config: CONFIG, messages, tools: toolset.tools, now: SPLIT_DAY_NOW,
+    firstRoundToolChoice: prepared.toolChoice, groundingToolName: prepared.groundingTool,
+    requiredToolNames: prepared.requiredTools, groundingCalls: prepared.groundingCalls, fetchImpl: fetchImpl as typeof fetch })) {
+    // drain
+  }
+  return bodies;
+}
+
+describe('a today turn grounds through the period reading, not pre-computed facts', () => {
+  it.each(['What matters today?', 'What are my transits today?'])('%s: the reading reaches the model; no raw birth data in any request', async (question) => {
+    const bodies = await todayRequestBodies(question);
+    expect(bodies.length).toBeGreaterThanOrEqual(2);
+    expect(JSON.parse(bodies[0]!)).toMatchObject({ tool_choice: 'required' });
+    expect(bodies[0]).not.toContain('VERIFIED LOCAL TIMING');
+    const later = bodies.slice(1).join('\n');
+    expect(later).toContain('get_period_reading');
+    expect(later).toContain('\\"rules\\":[3,4]');
+    for (const body of bodies) {
+      for (const leak of LEAKS) expect(body).not.toMatch(leak);
     }
   });
 });

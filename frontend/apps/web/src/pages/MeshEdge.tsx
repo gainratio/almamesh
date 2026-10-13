@@ -376,24 +376,10 @@ function MeshEdgeContent({
       modelTools.some((tool) => tool.name === RESOLVE_PLACE_TOOL_NAME),
       prepared.pinned,
     );
-    if (prepared.timingFacts?.length) {
+    // A question with no single supported period: ask for one, never pick it (chatToolset.ts prepare).
+    if (prepared.clarification) {
       const [system, ...rest] = messages;
-      messages = [{
-        ...system,
-        content: `${system.content ?? ''}\n\nVERIFIED LOCAL TIMING: These are local engine facts or an explicit timing clarification status for this question. Use available facts even if no additional tools are called, respecting their periods and availability notes. If clarification is required, ask for it rather than inventing timing or claiming the tools are unavailable. Astrological patterns do not identify a person's life events. Do not guess life events; ask what occurred and offer a grounded interpretation.\n${JSON.stringify(prepared.timingFacts)}`,
-      }, ...rest];
-    }
-    if (prepared.currentContextUnavailable) {
-      const [system, ...rest] = messages;
-      messages = [
-        {
-          ...system,
-          content:
-            `${system.content ?? ''}\n\n` +
-            'CURRENT-CONTEXT SAFETY: The on-device calculation of current transits was unavailable. Say that plainly and do not infer unavailable current transits from natal or relationship facts. Use any verified local dasha facts supplied above.',
-        },
-        ...rest,
-      ];
+      messages = [{ ...system, content: `${system.content ?? ''}\n\n${prepared.clarification.note}` }, ...rest];
     }
 
     let activeToolLabel: string | null = null;

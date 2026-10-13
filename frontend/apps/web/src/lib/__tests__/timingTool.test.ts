@@ -2,6 +2,7 @@ import type { SiderealChart } from '@almamesh/browser/types';
 import {
   BEFORE_BIRTH_MESSAGE,
   BIRTH_YEAR_ROWS_NOTE,
+  PRATYANTAR_NOTE,
   BIRTH_YEAR_SKY_NOTE,
   NEEDS_PLACE_ERROR,
   OVER_TWO_YEARS_NOTE, PAST_EPHEMERIS_NOTE, placementsAsOfNote } from '@almamesh/llm';
@@ -47,6 +48,10 @@ describe('get_timing contract', () => {
     expect(description).toMatch(/vague ranges.*ask the user to clarify.*before calling this tool/u);
     expect(description).toContain('never choose dates for them');
     expect(description).not.toContain('pick a sensible range');
+    // Period reading (2026-10-13): the covered_events note names what was checked and where the rest lives.
+    expect(description).not.toContain('do not claim anything about other planets');
+    expect(description).toContain('`covered_events` lists the sky events this result checked');
+    expect(description).toContain('get_period_reading');
   });
 
   it('is named get_timing, takes optional start/end days, and waits up to 150 s', () => {
@@ -143,7 +148,7 @@ describe('get_timing with dates', () => {
     expect((answered as { notes: string[] }).notes).toEqual([
       BIRTH_YEAR_SKY_NOTE,
       BIRTH_YEAR_ROWS_NOTE,
-      'Pratyantar dashas are only available for the current antar.',
+      PRATYANTAR_NOTE,
     ]);
   });
 

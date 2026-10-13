@@ -130,7 +130,8 @@ const DESCRIPTION = [
   '"12 March 2019" -> start=end=2019-03-12; "June 2026" -> start=2026-06-01, end=2026-06-30;',
   '"2019" -> start=2019-01-01, end=2019-12-31. For vague ranges ("summer 2019"), ask the user to clarify the start and end dates before calling this tool; never choose dates for them.',
   'Every result carries `period`: name it in your answer, e.g. "I looked at 1–30 June 2026."',
-  'Respect `notes`. Only the events in `covered_events` were checked; do not claim anything about other planets.',
+  'Respect `notes`. `covered_events` lists the sky events this result checked;',
+  'for the slow-planet sky, the running lords and their lordships, and dated windows, use get_period_reading.',
 ].join(' ');
 
 /** Full tier only: lite/minimal answer every period with dashas, so they never hear of places. */
