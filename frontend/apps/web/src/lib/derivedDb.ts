@@ -1,5 +1,6 @@
 /**
- * Lazy OPFS database for reference cities and recomputable period skies.
+ * Lazy OPFS database for reference cities, recomputable period skies and the
+ * chat keyword index (a cache rebuilt from the canonical chat rows).
  * This is the app's only SQL-library boundary.
  *
  * Everything here is rebuildable (bundled city batches, engine-recomputed
@@ -11,12 +12,12 @@
  * portable store stays OPFS-only and blocks instead (portablePersistence.ts).
  */
 import { openSqlDatabase, removeSqlDatabase, type SqlDatabase } from '@gainratio/browser/sql';
-import { readDeletionTombstones } from '@almamesh/store';
+import { readDeletionTombstones, supportsPortableState } from '@almamesh/store';
 
 export type { SqlDatabase } from '@gainratio/browser/sql';
 type SqlStorage = SqlDatabase['storage'];
 export const DERIVED_DB_NAME = 'almamesh-derived';
-export const DERIVED_SCHEMA_VERSION = 1;
+export const DERIVED_SCHEMA_VERSION = 2;
 
 const SCHEMA = [
   'CREATE TABLE IF NOT EXISTS dataset_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL) STRICT',
@@ -24,6 +25,8 @@ const SCHEMA = [
   "CREATE VIRTUAL TABLE IF NOT EXISTS cities_fts USING fts5(search_fold, content='cities', content_rowid='idx', tokenize='trigram')",
   'CREATE TABLE IF NOT EXISTS period_sky (key TEXT PRIMARY KEY, engine TEXT NOT NULL, profile_id TEXT NOT NULL, payload TEXT NOT NULL, epoch INTEGER NOT NULL DEFAULT 0) STRICT',
   'CREATE INDEX IF NOT EXISTS period_sky_profile ON period_sky(profile_id)',
+  // v2: keyword search over chat messages. Rebuildable from the chat store row.
+  "CREATE VIRTUAL TABLE IF NOT EXISTS chat_fts USING fts5(profile_id UNINDEXED, thread_id UNINDEXED, message_id UNINDEXED, text, tokenize='unicode61 remove_diacritics 2')",
   `PRAGMA user_version=${DERIVED_SCHEMA_VERSION}`,
 ];
 
@@ -258,6 +261,11 @@ export function withDerivedDb<T>(work: (db: SqlDatabase) => Promise<T>): Promise
 }
 
 export function removeDerivedDb(): Promise<void> { return browserSessions().remove(); }
+
+/** Node/prerender and browsers without OPFS SQLite have no derived database. */
+export function derivedDbAvailable(): boolean {
+  return injected !== undefined || supportsPortableState();
+}
 
 /** Inject the same pinned SQLite API in unit tests without opening browser OPFS. */
 export function __setDerivedDbForTest(db: SqlDatabase | undefined): void {

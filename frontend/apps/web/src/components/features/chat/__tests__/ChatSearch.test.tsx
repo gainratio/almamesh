@@ -155,4 +155,34 @@ describe('ChatSearch', () => {
     expect(await screen.findByText('⏳ Time travel · 2050')).toBeTruthy();
     expect(screen.queryByText('Will work get easier?')).toBeNull();
   });
+
+  it('finds a time-travel thread by its place or year with no message hits, and opens it', async () => {
+    const tid = useChatStore.getState().startThread(PROFILE, undefined, {
+      start: '2019-05-14', end: '2019-05-14', granularity: 'day',
+      place: { label: 'Singapore', timezone: 'Asia/Singapore', latitude: 1.29, longitude: 103.85 },
+    });
+    useChatStore.getState().startThread('someone-else', undefined, {
+      start: '2019-05-14', end: '2019-05-14', granularity: 'day',
+      place: { label: 'Singapore', timezone: 'Asia/Singapore', latitude: 1.29, longitude: 103.85 },
+    });
+    __setMemoryForTest({
+      indexMessage: vi.fn(),
+      retrieve: vi.fn().mockResolvedValue([]),
+      deleteForProfile: vi.fn().mockResolvedValue(undefined),
+      deleteForThread: vi.fn().mockResolvedValue(undefined),
+      clear: vi.fn().mockResolvedValue(undefined),
+    });
+    const onOpen = vi.fn();
+    render(<ChatSearch profileId={PROFILE} onOpenResult={onOpen} />);
+    const input = screen.getByTestId('chat-search-input');
+
+    fireEvent.change(input, { target: { value: 'Singapore' } });
+    const hit = await screen.findByTestId(`chat-search-thread-${tid}`);
+    expect(screen.getAllByTestId(/^chat-search-thread-/)).toHaveLength(1);
+    expect(hit.textContent).toContain('2019');
+
+    fireEvent.change(input, { target: { value: '2019' } });
+    fireEvent.click(await screen.findByTestId(`chat-search-thread-${tid}`));
+    expect(onOpen).toHaveBeenCalledWith('', tid);
+  });
 });

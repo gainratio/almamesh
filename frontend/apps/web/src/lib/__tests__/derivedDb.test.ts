@@ -24,6 +24,19 @@ describe('derived SQLite schema', () => {
     expect(await db.query("SELECT rowid FROM cities_fts WHERE cities_fts MATCH '" + '"ogot"' + "'")).toEqual([{ rowid: 7 }]);
   });
 
+  it('schema v2 adds the chat keyword index to a v1 database without losing rows', async () => {
+    expect(DERIVED_SCHEMA_VERSION).toBe(2);
+    const db = await open();
+    await db.exec('CREATE TABLE dataset_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL) STRICT');
+    await db.exec("INSERT INTO dataset_meta VALUES ('period-sky-epoch', '3')");
+    await db.exec('PRAGMA user_version=1');
+    await migrateDerivedDb(db);
+    const tables = await db.query<{ name: string }>("SELECT name FROM sqlite_schema WHERE type='table'");
+    expect(tables.map(({ name }) => name)).toContain('chat_fts');
+    expect(await db.query('SELECT value FROM dataset_meta WHERE key=?', ['period-sky-epoch'])).toEqual([{ value: '3' }]);
+    expect((await db.query<{ user_version: number }>('PRAGMA user_version'))[0]?.user_version).toBe(2);
+  });
+
   it('migration is atomic and idempotent and retains rows', async () => {
     const db = await open();
     await migrateDerivedDb(db);

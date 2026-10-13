@@ -42,7 +42,8 @@
     "no_results": "Nenhuma mensagem anterior corresponde.",
     "thread_fallback": "Conversa",
     "match": "{{percent}}% de correspondência",
-    "loading_model": "Carregando a busca no seu dispositivo (só na primeira vez)…"
+    "loading_model": "Carregando a busca no seu dispositivo (só na primeira vez)…",
+    "thread_match": "Corresponde ao período ou ao lugar desta conversa"
   },
   "suggested": {
     "label": "Perguntas sugeridas:",

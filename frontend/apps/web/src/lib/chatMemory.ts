@@ -1,6 +1,8 @@
 /**
  * On-device chat recall: semantic memory on full devices, bounded keyword
- * retrieval from canonical SQLite-backed chat on minimal/lite devices.
+ * retrieval from canonical SQLite-backed chat on minimal/lite devices, and on
+ * every device an SQLite FTS5 keyword index (`chatFtsRows.ts`) that search
+ * fuses with the semantic results by reciprocal rank.
  *
  * Design:
  * - ONE lazily-booted memory singleton. The embedder Web Worker (its ~25 MB
@@ -39,6 +41,14 @@ import {
   whenProfilesHydrated,
 } from '@almamesh/store';
 
+import { chatFtsRows, type ChatFtsRows } from './chatFtsRows';
+import {
+  fuseByReciprocalRank,
+  matchThreadTitles,
+  type ChatSearchHit,
+  type ThreadTitle,
+} from './chatSearchFusion';
+import { derivedDbAvailable } from './derivedDb';
 import { embedderStatus } from './embedderStatus';
 import { lexicalChatMemory } from './lexicalChatMemory';
 
@@ -159,22 +169,44 @@ export function invalidateMemoryRuntime(): void {
   singleton = null;
 }
 
-/** Delete every persisted semantic-memory record owned by one profile. */
+/** The keyword index, or undefined where there is no derived database. */
+function keywordIndex(): ChatFtsRows | undefined {
+  return derivedDbAvailable() ? chatFtsRows() : undefined;
+}
+
+/**
+ * Run the keyword and the semantic purge; neither failure skips the other.
+ * The keyword failure is reported first: it is never a capability limit.
+ */
+async function purgeBoth(keyword: (rows: ChatFtsRows) => Promise<void>, semantic: () => Promise<void>): Promise<void> {
+  const index = keywordIndex();
+  const outcomes = await Promise.allSettled([index ? keyword(index) : Promise.resolve(), semantic()]);
+  const failed = outcomes.find((outcome) => outcome.status === 'rejected');
+  if (failed) throw failed.reason;
+}
+
+/** Delete every derived chat-memory record (vectors + keyword rows) of one profile. */
 export async function deleteMemoryForProfile(profileId: string): Promise<void> {
-  if (usesSemanticMemory()) await getMemory().deleteForProfile(profileId);
-  else await cleanOldVectors((store) => store.deleteForProfile(profileId));
+  await purgeBoth((rows) => rows.deleteForProfile(profileId), async () => {
+    if (usesSemanticMemory()) await getMemory().deleteForProfile(profileId);
+    else await cleanOldVectors((store) => store.deleteForProfile(profileId));
+  });
 }
 
-/** Delete every persisted semantic-memory record owned by one chat thread. */
+/** Delete every derived chat-memory record (vectors + keyword rows) of one thread. */
 export async function deleteMemoryForThread(threadId: string): Promise<void> {
-  if (usesSemanticMemory()) await getMemory().deleteForThread(threadId);
-  else await cleanOldVectors((store) => store.deleteForThread(threadId));
+  await purgeBoth((rows) => rows.deleteForThread(threadId), async () => {
+    if (usesSemanticMemory()) await getMemory().deleteForThread(threadId);
+    else await cleanOldVectors((store) => store.deleteForThread(threadId));
+  });
 }
 
-/** Delete the entire persisted semantic-memory index. */
+/** Delete the entire derived chat memory: the vector index and the keyword index. */
 export async function clearMemory(): Promise<void> {
-  if (usesSemanticMemory()) await getMemory().clear();
-  else await cleanOldVectors((store) => store.clear());
+  await purgeBoth((rows) => rows.clear(), async () => {
+    if (usesSemanticMemory()) await getMemory().clear();
+    else await cleanOldVectors((store) => store.clear());
+  });
 }
 
 /** Old vectors must still be deleted, without retaining a cleanup-only Worker. */
@@ -191,8 +223,33 @@ function cleanOldVectors(clean: (store: VectorStore) => Promise<void>): Promise<
   return next;
 }
 
-/** Full devices rebuild vectors; constrained devices keep canonical chat only. */
+/** Every nonblank, non-error message of the canonical chat store, for rebuilds. */
+export function canonicalChatMessages(): readonly IndexableMessage[] {
+  const chat = useChatStore.getState();
+  const messages: IndexableMessage[] = [];
+  for (const thread of Object.values(chat.threads)) {
+    for (const message of chat.messages[thread.id] ?? []) {
+      if (message.error === true || message.content.trim().length === 0) continue;
+      messages.push({ id: message.id, thread_id: thread.id, profile_id: thread.profile_id, content: message.content });
+    }
+  }
+  return messages;
+}
+
+function keywordRow(message: IndexableMessage) {
+  return { profile_id: message.profile_id, thread_id: message.thread_id, message_id: message.id, text: message.content };
+}
+
+/**
+ * Rebuild derived chat memory from durable chat: the keyword index on every
+ * device (best-effort, it is a cache), vectors only on full devices.
+ */
 export async function rebuildMemory(messages: readonly IndexableMessage[]): Promise<void> {
+  try {
+    await keywordIndex()?.rebuild(messages.map(keywordRow));
+  } catch (error) {
+    safeWarn('memory.index_failed', error);
+  }
   if (!usesSemanticMemory()) return;
   const memory = getMemory();
   await memory.clear();
@@ -209,9 +266,13 @@ export async function rebuildMemory(messages: readonly IndexableMessage[]): Prom
  * swallowed so it can never block the conversation.
  */
 export async function indexChatMessage(msg: IndexableMessage): Promise<void> {
-  if (!usesSemanticMemory() || msg.content.trim().length === 0) {
-    return;
+  if (msg.content.trim().length === 0) return;
+  try {
+    await keywordIndex()?.index(keywordRow(msg));
+  } catch (error) {
+    safeWarn('memory.index_failed', error);
   }
+  if (!usesSemanticMemory()) return;
   try {
     await getMemory().indexMessage(msg);
   } catch (error) {
@@ -264,6 +325,49 @@ export async function searchMemory(
     safeWarn('memory.search_failed', error);
     return [];
   }
+}
+
+/** Keyword hits, backfilling the index once from hydrated canonical chat. */
+async function searchKeywords(query: string, profileId: string, k: number): Promise<readonly ChatSearchHit[]> {
+  const index = keywordIndex();
+  if (!index) return [];
+  try {
+    if (!(await index.isBuilt()) && (await whenChatHydrated()).status === 'hydrated') {
+      await index.rebuild(canonicalChatMessages().map(keywordRow));
+    }
+    return await index.search(query, profileId, k);
+  } catch (error) {
+    safeWarn('memory.search_failed', error);
+    return [];
+  }
+}
+
+export interface ChatHistorySearchOptions {
+  /** Top-k of the fused results (default 8). */
+  readonly k?: number;
+  /** Searchable title text per thread (title, period and place). */
+  readonly titles?: readonly ThreadTitle[];
+}
+
+/**
+ * Hybrid search for the chat search box: semantic (or canonical lexical)
+ * results, FTS5 keyword hits and thread-title matches, merged by reciprocal
+ * rank (k=60). Every hit belongs to a live thread of `profileId` in the
+ * canonical chat store. Best-effort: each retriever degrades to no hits.
+ */
+export async function searchChatHistory(
+  query: string,
+  profileId: string,
+  options: ChatHistorySearchOptions = {},
+): Promise<readonly ChatSearchHit[]> {
+  const k = options.k ?? SEARCH_K;
+  if (query.trim().length === 0) return [];
+  const [semantic, keyword] = await Promise.all([searchMemory(query, profileId, k), searchKeywords(query, profileId, k)]);
+  const titles = matchThreadTitles(query, options.titles ?? [], profileId);
+  const threads = useChatStore.getState().threads;
+  const live = (hit: ChatSearchHit) => threads[hit.thread_id]?.profile_id === profileId;
+  const lists = [semantic.map((chunk) => ({ ...chunk, source: 'message' as const })), keyword, titles];
+  return fuseByReciprocalRank(lists.map((list) => list.filter(live)), k);
 }
 
 async function retrieveCanonicalContext(

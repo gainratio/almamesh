@@ -1,23 +1,25 @@
 /**
- * ChatSearch — discoverable semantic search over this profile's chat history.
+ * ChatSearch — discoverable hybrid search over this profile's chat history.
  *
  * Reachable directly from the dashboard chat surface (a search input pinned
  * above the conversation), NOT buried in settings. Typing a query runs an
- * on-device embedding search via `@almamesh/memory` (zero egress); each hit
+ * on-device search (zero egress): semantic matches, SQLite FTS5 keyword
+ * matches and thread-title matches (a trip's period and place, e.g. "2019" or
+ * "Singapore"), merged by reciprocal rank in `searchChatHistory`. Each hit
  * shows the matched snippet, the owning thread's title, and a relevance score.
- * Clicking a hit hands its `message_id` + `thread_id` back to the parent so the
- * conversation can scroll to / open that message.
+ * Clicking a hit hands its `message_id` (empty for a whole-thread match) and
+ * `thread_id` back to the parent so the conversation can open that thread.
  *
- * Best-effort: a missing/failed embedder degrades to no results (never throws).
+ * Best-effort: a missing/failed retriever degrades to fewer results (never throws).
  */
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useChatStore, useLanguageStore } from '@almamesh/store';
 import type { ChatThread } from '@almamesh/shared-types';
-import type { RetrievedChunk } from '@almamesh/memory';
 
-import { searchMemory } from '../../../lib/chatMemory';
+import { searchChatHistory } from '../../../lib/chatMemory';
+import type { ChatSearchHit, ThreadTitle } from '../../../lib/chatSearchFusion';
 import { useEmbedderStatus } from '../../../hooks/useEmbedderStatus';
 import { formatPinLabel } from '../../../lib/timeTravelSheet';
 
@@ -37,14 +39,22 @@ export function ChatSearch({ profileId, onOpenResult }: ChatSearchProps) {
 
   const language = useLanguageStore((s) => s.language);
   /** A pinned thread is "⏳ Time travel · <period>"; others their title, else a fallback. */
-  const threadLabel = (thread: ChatThread | undefined): string =>
+  const threadLabel = useCallback((thread: ChatThread | undefined): string =>
     thread?.as_of
       ? `⏳ ${t('time_travel.title', { period: formatPinLabel(thread.as_of, language) })}`
-      : thread?.title?.trim() || t('search.thread_fallback');
+      : thread?.title?.trim() || t('search.thread_fallback'), [t, language]);
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<readonly RetrievedChunk[]>([]);
+  const [results, setResults] = useState<readonly ChatSearchHit[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const modelLoading = useEmbedderStatus() === 'loading';
+  /** What a title search sees: the stored title, the shown label and the trip's place. */
+  const titles = useMemo<readonly ThreadTitle[]>(() => Object.values(threadsById)
+    .filter((thread) => thread.profile_id === profileId)
+    .map((thread) => ({
+      thread_id: thread.id,
+      profile_id: thread.profile_id,
+      text: [thread.title, threadLabel(thread), thread.as_of?.place?.label].filter(Boolean).join(' · '),
+    })), [threadsById, profileId, threadLabel]);
 
   useEffect(() => {
     const q = query.trim();
@@ -56,7 +66,7 @@ export function ChatSearch({ profileId, onOpenResult }: ChatSearchProps) {
     let cancelled = false;
     setIsSearching(true);
     const handle = setTimeout(() => {
-      void searchMemory(q, profileId, SEARCH_K).then((hits) => {
+      void searchChatHistory(q, profileId, { k: SEARCH_K, titles }).then((hits) => {
         if (!cancelled) {
           setResults(hits);
           setIsSearching(false);
@@ -67,7 +77,7 @@ export function ChatSearch({ profileId, onOpenResult }: ChatSearchProps) {
       cancelled = true;
       clearTimeout(handle);
     };
-  }, [query, profileId]);
+  }, [query, profileId, titles]);
 
   return (
     <div className="px-4 pt-3" data-testid="chat-search">
@@ -114,14 +124,14 @@ export function ChatSearch({ profileId, onOpenResult }: ChatSearchProps) {
           ) : (
             <ul className="flex flex-col gap-1.5">
               {results.map((hit) => (
-                <li key={hit.message_id}>
+                <li key={`${hit.source}:${hit.thread_id}:${hit.message_id}`}>
                   <button
                     type="button"
                     onClick={() => {
                       onOpenResult(hit.message_id, hit.thread_id);
                       setQuery('');
                     }}
-                    data-testid={`chat-search-result-${hit.message_id}`}
+                    data-testid={hit.source === 'thread' ? `chat-search-thread-${hit.thread_id}` : `chat-search-result-${hit.message_id}`}
                     className="block w-full rounded-lg border border-ui-border bg-background-tertiary px-3 py-2 text-left transition-colors hover:border-accent-gold hover:bg-background-secondary"
                   >
                     <div className="mb-1 flex items-center justify-between gap-2">
@@ -132,7 +142,9 @@ export function ChatSearch({ profileId, onOpenResult }: ChatSearchProps) {
                         {t('search.match', { percent: Math.round(hit.score * 100) })}
                       </span>
                     </div>
-                    <p className="line-clamp-2 text-xs text-text-primary">{hit.text}</p>
+                    <p className="line-clamp-2 text-xs text-text-primary">
+                      {hit.source === 'thread' ? t('search.thread_match') : hit.text}
+                    </p>
                   </button>
                 </li>
               ))}

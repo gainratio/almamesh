@@ -39,7 +39,8 @@
     "no_results": "No matching past messages.",
     "thread_fallback": "Conversation",
     "match": "{{percent}}% match",
-    "loading_model": "Loading on-device search (first time only)…"
+    "loading_model": "Loading on-device search (first time only)…",
+    "thread_match": "Matches this conversation’s period or place"
   },
   "suggested": {
     "label": "Suggested questions:",

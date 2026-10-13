@@ -26,6 +26,16 @@ import {
   resumePendingMemoryRebuild,
 } from './profileDataLifecycle';
 import { LLM_SETTINGS_CHANGED_EVENT } from './llmSettingsEvents';
+import { openNodeSqlDatabase } from '@gainratio/browser/sql/node';
+import {
+  __resetMemoryForTest,
+  __setMemoryForTest,
+  deleteMemoryForProfile,
+  deleteMemoryForThread,
+  indexChatMessage,
+  searchChatHistory,
+} from './chatMemory';
+import { __setDerivedDbForTest, migrateDerivedDb } from './derivedDb';
 import { useDataRepairNotice } from './dataRepairNotice';
 
 function chart(chartId: string, profileId: string): StoredChart {
@@ -1094,5 +1104,61 @@ describe('startup data-lifecycle readiness', () => {
       vi.doUnmock('@almamesh/store');
       vi.doUnmock('@almamesh/shared-types');
     }
+  });
+});
+
+describe('chat keyword index deletion', () => {
+  async function withKeywordIndex(run: (ids: () => Promise<string[]>) => Promise<void>): Promise<void> {
+    const db = await openNodeSqlDatabase({ name: `lifecycle-fts-${crypto.randomUUID()}` });
+    await migrateDerivedDb(db);
+    __setDerivedDbForTest(db);
+    __setMemoryForTest({
+      indexMessage: vi.fn().mockResolvedValue(undefined),
+      retrieve: vi.fn().mockResolvedValue([]),
+      deleteForProfile: vi.fn().mockResolvedValue(undefined),
+      deleteForThread: vi.fn().mockResolvedValue(undefined),
+      clear: vi.fn().mockResolvedValue(undefined),
+    });
+    try {
+      await run(async () => (await db.query<{ message_id: string }>('SELECT message_id FROM chat_fts ORDER BY message_id')).map((row) => row.message_id));
+    } finally {
+      __setDerivedDbForTest(undefined);
+      __resetMemoryForTest();
+      await db.close();
+    }
+  }
+
+  async function say(profileId: string, content: string): Promise<{ threadId: string; messageId: string }> {
+    const threadId = useChatStore.getState().startThread(profileId);
+    const messageId = useChatStore.getState().appendMessage(threadId, 'user', content).id;
+    await indexChatMessage({ id: messageId, thread_id: threadId, profile_id: profileId, content });
+    return { threadId, messageId };
+  }
+
+  it('deleting a profile purges its keyword rows, so search cannot find them', async () => {
+    await withKeywordIndex(async (ftsIds) => {
+      const target = useProfilesStore.getState().createProfile('Target');
+      const survivor = useProfilesStore.getState().createProfile('Survivor');
+      const deleted = await say(target, 'singapore promotion question');
+      const kept = await say(survivor, 'singapore promotion question');
+      expect(await ftsIds()).toEqual([deleted.messageId, kept.messageId].sort());
+
+      await deleteProfileData(target, { deleteMemoryForProfile, recordDeletionTombstones: async () => undefined });
+
+      expect(await ftsIds()).toEqual([kept.messageId]);
+      expect(await searchChatHistory('promotion', target)).toEqual([]);
+    });
+  });
+
+  it('deleting a thread purges its keyword rows only', async () => {
+    await withKeywordIndex(async (ftsIds) => {
+      const profile = useProfilesStore.getState().createProfile('Only');
+      const deleted = await say(profile, 'jupiter question');
+      const kept = await say(profile, 'jupiter question again');
+
+      await deleteChatThreadData(deleted.threadId, { deleteMemoryForThread, recordDeletionTombstones: async () => undefined });
+
+      expect(await ftsIds()).toEqual([kept.messageId]);
+    });
   });
 });

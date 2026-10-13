@@ -42,7 +42,8 @@
     "no_results": "No hay mensajes anteriores que coincidan.",
     "thread_fallback": "Conversación",
     "match": "{{percent}}% de coincidencia",
-    "loading_model": "Cargando la búsqueda en tu dispositivo (solo la primera vez)…"
+    "loading_model": "Cargando la búsqueda en tu dispositivo (solo la primera vez)…",
+    "thread_match": "Coincide con el periodo o el lugar de esta conversación"
   },
   "suggested": {
     "label": "Preguntas sugeridas:",
