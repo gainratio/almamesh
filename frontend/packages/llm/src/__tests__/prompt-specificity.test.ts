@@ -36,8 +36,9 @@ describe("the chat prompt asks for specificity and keeps honesty", () => {
   it.each([
     "Name the life areas and the houses behind them.",
     'Name the running maha, antar and pratyantar and what each lord rules, e.g. "Saturn, your 12th lord".',
-    "Name the tags that apply, e.g. Sade Sati phase 1 or Kantaka Shani.",
-    "Give each theme's strength and confidence as the reading states them.",
+    'For every theme you cover, give its life area and houses, its direction, its strength and its confidence in words (e.g. "strong, medium confidence"), the engine factor behind it, and its dated window when it has one.',
+    "Name every tag in the reading's sky once, with what it traditionally signifies: a Sade Sati phase, Kantaka or Ashtama Shani, Jupiter Nth from the Moon.",
+    "For the user's own date, time and zone today, use the reading's period and place.current. get_current_datetime scope chart is the birth place's zone, not where the user is now.",
     "Name the place the reading is for.",
     "Give at least one dated window or change point inside the period.",
     "Use get_period_detail to look closer at a lord, a segment, the bindus or the panchang when the question needs it.",
@@ -50,6 +51,11 @@ describe("the chat prompt asks for specificity and keeps honesty", () => {
     expect(system).toContain("HONESTY: a chart cannot name the concrete event.");
     expect(system).toContain("Cite the engine factor behind every claim.");
     expect(system).toContain("never invent a fact");
+  });
+
+  it("drops the weaker theme and tag asks it replaced", () => {
+    expect(chatSystem()).not.toContain("Give each theme's strength and confidence as the reading states them.");
+    expect(chatSystem()).not.toContain("Name the tags that apply, e.g.");
   });
 
   it("drops the old hedges", () => {

@@ -21,7 +21,7 @@ import {
 } from '@almamesh/llm';
 import type { ChatThreadAsOf, ProcessedBirthData } from '@almamesh/shared-types';
 
-import { viewerTodayDay } from './chatAgentTools';
+import { currentDateTimeForZone, viewerTodayDay } from './chatAgentTools';
 import { birthUtcYearOf, birthYearOf, type PeriodChartLoader } from './periodChart';
 import {
   buildPeriodDetail,
@@ -91,7 +91,10 @@ function frameOf(input: PeriodReadingToolsInput, now: Date): ReadingFrame {
   const today = viewerTodayDay(now, input.viewerZone());
   if (!input.pin) {
     const label = formatPinLabel({ start: today, granularity: 'day' }, input.language);
-    return { period: { start: today, end: today, granularity: 'day', label, tense: 'present' }, place: { label: null, timezone: input.viewerZone() } };
+    const timezone = input.viewerZone();
+    const clock = currentDateTimeForZone(now, timezone);
+    const current = { zone: `your current zone (${timezone})`, local_date: clock.localDate, local_time: clock.localTime.slice(0, 5) };
+    return { period: { start: today, end: today, granularity: 'day', label, tense: 'present' }, place: { label: null, timezone, current } };
   }
   const trip = tripContext({ chart: input.chart, asOf: input.pin, today, birth: input.birth, language: input.language });
   const { start, end, granularity, label, tense } = trip.period;

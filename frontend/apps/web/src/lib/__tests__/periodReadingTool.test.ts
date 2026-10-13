@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { SPLIT_DAY_NOW } from '../../test/viewerToday';
 import { buildPeriodReading, PERIOD_TOOL_SUMMARIZERS, periodDetailSummary, periodReadingSummary, type PeriodDetail, type PeriodReading } from '../periodReading';
 import { PeriodSkyTimeoutError } from '../periodSky';
+import { currentDateTimeForZone } from '../chatAgentTools';
 import { createPeriodReadingTools, type PeriodReadingToolsInput } from '../periodReadingTool';
 import { PeriodSkyUnavailableError } from '../timingTool';
 import { DELHI_BIRTH_LEAKS, periodReadingFixture } from './periodReadingFixtures';
@@ -59,7 +60,18 @@ describe('get_period_reading', () => {
     expect(loadPeriodChart).not.toHaveBeenCalled();
     expect(result.period).toMatchObject({ granularity: 'day', tense: 'present' });
     expect(result.period.start).toBe(result.period.end);
-    expect(result.place).toEqual({ label: null, timezone: 'America/Los_Angeles' });
+    const local = currentDateTimeForZone(SPLIT_DAY_NOW, 'America/Los_Angeles');
+    expect(result.place).toEqual({
+      label: null, timezone: 'America/Los_Angeles',
+      current: { zone: 'your current zone (America/Los_Angeles)', local_date: result.period.start, local_time: local.localTime.slice(0, 5) },
+    });
+    expect(local.localDate).toBe(result.period.start);
+  });
+
+  it('a trip carries no current local time: its place is where the user was, not where they are', async () => {
+    const { reading } = tools();
+    const result = await reading.execute({}, context()) as PeriodReading;
+    expect(result.place).not.toHaveProperty('current');
   });
 
   it.each([

@@ -164,7 +164,7 @@ export function createChatAgentTools(input: CreateChatAgentToolsInput): readonly
     {
       name: 'get_current_datetime',
       description:
-        'Return the pinned current date and time for the chart timezone or UTC.',
+        "Return the pinned current date and time in the birth place's time zone (scope chart) or UTC. Neither is the user's current zone: for today, get_period_reading's place.current has the user's local date and time.",
       statusLabel: 'Checking the current time',
       parameters: {
         type: 'object',

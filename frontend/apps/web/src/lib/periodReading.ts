@@ -43,10 +43,20 @@ export interface ReadingPeriod {
   readonly tense: ReadingTense;
 }
 
+/** Today only: the user's own clock, so the model never reads the birth zone as theirs. */
+export interface ReadingCurrent {
+  /** e.g. "your current zone (America/Los_Angeles)". */
+  readonly zone: string;
+  readonly local_date: string;
+  /** HH:MM in that zone. */
+  readonly local_time: string;
+}
+
 export interface ReadingPlace {
   /** The trip's place label; null for today (the viewer's own place has no label). */
   readonly label: string | null;
   readonly timezone: string;
+  readonly current?: ReadingCurrent;
 }
 
 export interface ReadingFrame {
@@ -140,7 +150,8 @@ export interface ReadingPanchang {
   readonly nakshatra: string;
   readonly karana: string;
   readonly yoga: string;
-  readonly vara: string;
+  /** The engine's vara: the UTC weekday of the reference instant, not the local day-lord. */
+  readonly vara_utc: string;
 }
 
 export interface PeriodReading extends ReadingFrame {
@@ -326,7 +337,7 @@ function panchangOf(source: PeriodReadingContext, period: ReadingPeriod): Readin
   if (period.granularity !== 'day' || !panchang) return undefined;
   return {
     tithi: panchang.tithi, tithi_name: panchang.tithi_name, paksha: panchang.paksha, nakshatra: panchang.nakshatra,
-    karana: panchang.karana, yoga: panchang.yoga, vara: panchang.vara,
+    karana: panchang.karana, yoga: panchang.yoga, vara_utc: panchang.vara,
   };
 }
 
@@ -414,7 +425,7 @@ export function buildPeriodReading(source: PeriodReadingContext, frame: ReadingF
   const panchang = panchangOf(source, period);
   return fitBudget({
     period: { ...frame.period },
-    place: { label: frame.place.label, timezone: frame.place.timezone },
+    place: { ...frame.place },
     dashas,
     lords: lordsOf(source, dashas),
     segments,
@@ -544,7 +555,7 @@ function panchangDigest(source: PeriodReadingContext, period: ReadingPeriod): Di
   if (!panchang) return { error: 'panchang is unavailable for this day.' };
   return {
     facts: { ...panchang },
-    factors: [`tithi ${panchang.tithi_name} (${panchang.paksha})`, `nakshatra ${panchang.nakshatra}`, `yoga ${panchang.yoga}`, `karana ${panchang.karana}`, `vara ${panchang.vara}`],
+    factors: [`tithi ${panchang.tithi_name} (${panchang.paksha})`, `nakshatra ${panchang.nakshatra}`, `yoga ${panchang.yoga}`, `karana ${panchang.karana}`, `vara (UTC weekday, not the local day-lord) ${panchang.vara_utc}`],
   };
 }
 
@@ -590,7 +601,7 @@ export function buildPeriodDetail(source: DetailSource, frame: ReadingFrame, sec
   if ('error' in result) return result;
   return fitDetail({
     period: { ...frame.period },
-    place: { label: frame.place.label, timezone: frame.place.timezone },
+    place: { ...frame.place },
     section: known,
     ...(key === undefined ? {} : { key }),
     facts: result.facts,
@@ -606,7 +617,7 @@ function detailLine(detail: PeriodDetail): string {
     const segment = facts.segment as ReadingSegment;
     return `Segment ${segment.start} – ${segment.end} · ${[segment.maha, segment.antar, segment.pratyantar].map(title).join('–')}`;
   }
-  if (detail.section === 'panchang') return `Panchang ${String(facts.tithi_name)} (${String(facts.paksha)}) · ${String(facts.nakshatra)} · ${String(facts.vara)}`;
+  if (detail.section === 'panchang') return `Panchang ${String(facts.tithi_name)} (${String(facts.paksha)}) · ${String(facts.nakshatra)} · ${String(facts.vara_utc)} (UTC)`;
   return `Dashas · ${(facts.spans as unknown[]).length} spans`;
 }
 

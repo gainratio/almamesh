@@ -134,7 +134,7 @@ describe('the period reading (get_period_reading)', () => {
     // The sookshma started 2019-09-14 and ends 2019-09-18: the day's next dasha change.
     expect(result.dashas.sookshma).toEqual({ lord: 'mars', start: '2019-09-15', end: '2019-09-18' });
     expect(result.lords.find((lord) => lord.lord === 'mars')?.level).toEqual(['sookshma']);
-    expect(result.panchang).toEqual({ tithi: 16, tithi_name: 'Pratipada', paksha: 'krishna', nakshatra: 'Uttara Bhadrapada', karana: 'Kaulava', yoga: 'Ganda', vara: 'Sunday' });
+    expect(result.panchang).toEqual({ tithi: 16, tithi_name: 'Pratipada', paksha: 'krishna', nakshatra: 'Uttara Bhadrapada', karana: 'Kaulava', yoga: 'Ganda', vara_utc: 'Sunday' });
     expect(reading('delhi-2019-05').panchang).toBeUndefined();
   });
 
@@ -254,7 +254,12 @@ describe('the period detail digests (get_period_detail)', () => {
   });
 
   it('panchang: the reference day, only for a Day period', () => {
-    expect(detail('panchang', undefined, DAY, DAY_FRAME)).toMatchObject({ facts: { tithi_name: 'Pratipada', vara: 'Sunday' } });
+    // The engine's vara is the UTC weekday of the reference instant, not the local day-lord: say so.
+    const panchang = detail('panchang', undefined, DAY, DAY_FRAME);
+    expect(panchang).toMatchObject({ facts: { tithi_name: 'Pratipada', vara_utc: 'Sunday' } });
+    expect(panchang).not.toHaveProperty('facts.vara');
+    if (!('factors' in panchang)) throw new Error('expected factors');
+    expect(panchang.factors).toContain('vara (UTC weekday, not the local day-lord) Sunday');
     expect(detail('panchang')).toEqual({ error: 'panchang is computed for a single day; this period is 2019.' });
     expect(detail('panchang', undefined, { ...DAY, panchang: null }, DAY_FRAME)).toEqual({ error: 'panchang is unavailable for this day.' });
   });
@@ -293,7 +298,7 @@ describe('the period detail digests (get_period_detail)', () => {
     expect(periodDetailSummary(detail('bindus', 'sav')).line).toBe('Ashtakavarga SAV · total 337');
     expect(periodDetailSummary(detail('bindus', 'saturn')).line).toBe('Ashtakavarga Saturn · total 39');
     expect(periodDetailSummary(detail('segment', '2019-03-29')).line).toBe('Segment 2019-03-29 – 2019-04-22 · Rahu–Rahu–Venus');
-    expect(periodDetailSummary(detail('panchang', undefined, DAY, DAY_FRAME)).line).toBe('Panchang Pratipada (krishna) · Uttara Bhadrapada · Sunday');
+    expect(periodDetailSummary(detail('panchang', undefined, DAY, DAY_FRAME)).line).toBe('Panchang Pratipada (krishna) · Uttara Bhadrapada · Sunday (UTC)');
     expect(periodDetailSummary(detail('dashas')).line).toBe('Dashas · 7 spans');
     expect(periodDetailSummary(detail('houses'))).toEqual({ line: 'Period detail failed: section must be one of: lord, segment, bindus, panchang, dashas', factors: [] });
     expect(periodDetailSummary({ available: false, reason: 'timeout' }).line).toBe('Period detail unavailable (timeout)');

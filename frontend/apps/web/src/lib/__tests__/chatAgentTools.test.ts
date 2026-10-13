@@ -349,6 +349,15 @@ describe('get_current_datetime in a pinned thread', () => {
     return tool!.execute({ scope: 'chart' }, { now: NOW, signal: new AbortController().signal }) as Record<string, unknown>;
   }
 
+  it("says the chart scope is the birth place's zone, not where the user is now (P1 drive 2026-10-13)", () => {
+    const tool = createChatAgentTools({
+      chart: CHART, chartAsOf: { basis: 'chart', instant: new Date('2025-01-01T00:00:00Z') }, chartTimeZone: 'Asia/Kolkata', periodSkyAllowed: false,
+    }).find((candidate) => candidate.name === 'get_current_datetime');
+    expect(tool?.description).toBe(
+      "Return the pinned current date and time in the birth place's time zone (scope chart) or UTC. Neither is the user's current zone: for today, get_period_reading's place.current has the user's local date and time.",
+    );
+  });
+
   it('returns the real now plus the pinned period and where today falls', () => {
     const result = datetime({ period: { start: '2050-01-01', end: '2050-12-31' } });
     expect(result.isoUtc).toBe('2026-03-08T20:00:00.000Z');
