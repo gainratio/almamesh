@@ -116,6 +116,19 @@ describe('prepare: a trip grounds through tools, not a facts blob', () => {
     });
   });
 
+  // Regression 2026-10-13: the question-period override dropped the trip's place and read the birth place.
+  it('inside the May 2019 Singapore trip, "what about Sep 2019?" reads September 2019 in Singapore', async () => {
+    const built = toolset({ pinned: MAY_2019_SG });
+    const prepared = await built.prepare('what about Sep 2019?', options());
+    expect(prepared.pinned).toEqual({
+      start: '2019-09-01', end: '2019-09-30', relative: 'past', granularity: 'month', label: 'September 2019',
+      place: { label: 'Singapore', timezone: 'Asia/Singapore' },
+    });
+    const trip = await toolOf(built, 'get_trip_context').execute({}, options());
+    expect(trip).toMatchObject({ period: { start: '2019-09-01', end: '2019-09-30' }, place: { label: 'Singapore', timezone: 'Asia/Singapore' } });
+    expect(JSON.stringify([prepared.pinned, trip])).not.toMatch(/Delhi|Kolkata|1\.2897|103\.85/);
+  });
+
   it('a today question in a today thread is unchanged: auto tool choice', async () => {
     const prepared = await toolset().prepare('What are my career strengths?', options());
     expect(prepared.toolChoice).toBe('auto');

@@ -322,9 +322,11 @@ export function buildChatToolset(input: BuildChatToolsetInput): ChatToolset {
       }
       if (!explicitToday && explicit.kind === 'period') {
         const { start, end } = explicit.period;
+        // Another period asked inside a trip keeps the trip's place and zone, not the birth place.
         const questionPin: ChatThreadAsOf = pinned && pinned.start === start && pinned.end === end
           ? pinned
-          : { start, end, granularity: start === end ? 'day' : start.slice(5) === '01-01' && end.slice(5) === '12-31' ? 'year' : 'month' };
+          : { start, end, granularity: start === end ? 'day' : start.slice(5) === '01-01' && end.slice(5) === '12-31' ? 'year' : 'month',
+            ...(pinned?.place ? { place: pinned.place } : {}) };
         tools = makeTools(tripPin(questionPin, input.birth), natalPrompt, periodAnalysisInstant(start, end));
         return preparePinned(tripPin(questionPin, input.birth), natalPrompt, zone(), language, options.now);
       }
