@@ -1,5 +1,7 @@
 import { type Page } from '@playwright/test';
 
+import { settleDocument } from './portableInvariants.helpers';
+
 /**
  * Shared helpers for the structured-interpretation e2e suites.
  *
@@ -271,6 +273,13 @@ export async function seedChart(
     Reflect.deleteProperty(window, 'showSaveFilePicker');
   });
   await page.goto('/settings/data', { waitUntil: 'domcontentloaded' });
+  // Let this page's boot finish (SQLite wasm + Worker, the engine's Pyodide
+  // wheels) before the restore reloads it. WebKit cancels every in-flight load
+  // of the page it leaves and logs each as a console error ("Fetch API cannot
+  // load …/pyodide/…whl due to access control checks"), which reads as an app
+  // failure (WebKit lane, main 71dab55, run 38375522003). importBackup in
+  // portableInvariants.helpers.ts settles for the same reason.
+  await settleDocument(page);
   const [chooser] = await Promise.all([
     page.waitForEvent('filechooser'),
     page.getByTestId('backup-import-button').click(),
