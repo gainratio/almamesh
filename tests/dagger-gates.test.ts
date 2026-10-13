@@ -311,6 +311,7 @@ describe("browser gate shards", () => {
     "TIME_HANDLING_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:time-handling --project=chromium",
     "TIME_TRAVEL_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:time-travel e2e/time-travel.spec.ts --project=chromium --fully-parallel --workers=1 --shard=1/2 --output=browser-journeys-artifacts/time-travel-shard-1",
     "TIME_TRAVEL_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:time-travel e2e/time-travel.spec.ts --project=chromium --fully-parallel --workers=1 --shard=2/2 --output=browser-journeys-artifacts/time-travel-shard-2",
+    "TIME_TRAVEL_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:time-travel e2e/time-travel-threads.spec.ts --project=chromium --workers=1 --output=browser-journeys-artifacts/time-travel-threads",
     "MESH_PERSIST_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:mesh-add-persist",
     "DURABLE_SAVES_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:durable-saves",
     "node scripts/verify-boot-fault-hook.mjs dist-verify --present",

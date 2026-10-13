@@ -641,6 +641,9 @@ exec ${inline.join(" ")}`,
       // slower hosted runners; neither shard changes the test or job budgets.
       "TIME_TRAVEL_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:time-travel e2e/time-travel.spec.ts --project=chromium --fully-parallel --workers=1 --shard=1/2 --output=browser-journeys-artifacts/time-travel-shard-1",
       "TIME_TRAVEL_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:time-travel e2e/time-travel.spec.ts --project=chromium --fully-parallel --workers=1 --shard=2/2 --output=browser-journeys-artifacts/time-travel-shard-2",
+      // Trip threads (2026-10-13): a new thread per trip with its place, trip-bound
+      // tools, tool-call rows, the thread list, search and layout. Stubbed provider.
+      "TIME_TRAVEL_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:time-travel e2e/time-travel-threads.spec.ts --project=chromium --workers=1 --output=browser-journeys-artifacts/time-travel-threads",
       // A person added on /mesh survives an immediate full page load (the
       // write is on disk before the dialog moves on). Chromium only.
       "MESH_PERSIST_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:mesh-add-persist",
