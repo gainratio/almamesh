@@ -7,16 +7,21 @@
 // request transcript and are never surfaced through status events.
 
 import { LlmRequestError, reasoningField, type ChatMessage } from "./client";
+import { compactToolContent, summarizeToolResult, type ToolSummarizer } from "./compaction";
 import { ensurePrivacy, type ProviderConfig } from "./config";
+import { calibratedEstimate, estimateRequestTokens, turnTokenBudget, type TokenCalibration } from "./contextBudget";
 import { CHAT_REASONING_MAX_TOKENS, REASONING_TIMEOUT_MS } from "./reasoning";
 import { sseChunks } from "./sse";
 
 export const AGENT_LIMITS = Object.freeze({
   maxDecisionRounds: 2,
-  maxToolCalls: 3,
-  maxToolCallsPerRound: 2,
+  // One full parallel round plus a follow-up; a trip's grounding calls do not count.
+  maxToolCalls: 6,
+  // Calls past this in one decision are answered "skipped", never run.
+  maxToolCallsPerRound: 4,
   maxArgumentChars: 2_048,
   maxResultChars: 8_192,
+  // Full results one round may add; past it a result arrives as its compact summary.
   maxAggregateResultChars: 16_384,
   toolTimeoutMs: 2_000,
   // The timing tool's period computes (time travel): 150 s, under the worker's own 180 s.
@@ -49,6 +54,12 @@ export interface AgentTool {
    * phrase, never the arguments or private data. Undefined falls back to `statusLabel`.
    */
   readonly statusLabelFor?: (args: AgentJsonObject) => string | undefined;
+  /**
+   * Optional deterministic one-line summary of a result (plus its key cited
+   * factors). Later rounds and later turns see a consumed result only as this.
+   * Without it, `defaultToolSummary` describes the result.
+   */
+  readonly summarize?: ToolSummarizer;
   /** Optional local deadline for known-long deterministic work, capped globally. */
   readonly timeoutMs?: number;
   readonly execute: (
@@ -90,8 +101,35 @@ export interface AgentToolCallRecord {
   readonly status: "complete" | "error";
 }
 
+/**
+ * One model request of a turn, for the transcript and dev diagnostics only
+ * (never sent anywhere). `round` counts requests, the final answer included.
+ */
+export interface AgentRoundUsage {
+  readonly round: number;
+  readonly phase: "decision" | "final";
+  /** The provider's `usage.prompt_tokens` when it reported one, else `estimate`. */
+  readonly prompt_tokens: number;
+  readonly completion_tokens: number | null;
+  /** True when the provider reported no usage and `prompt_tokens` is the estimate. */
+  readonly estimated: boolean;
+  /** ceil(chars / 4) of the request, scaled by an earlier provider count. */
+  readonly estimate: number;
+  /** The turn's token budget: half the model's context window. */
+  readonly budget: number;
+  /** Tool messages this request carried as compact summaries. */
+  readonly compacted: number;
+}
+
 export interface StreamAgentChatOptions {
   readonly config: ProviderConfig;
+  /**
+   * The model's context window in tokens (OpenRouter's `context_length`, or a
+   * configured value). No request of the turn may exceed half of it. Unknown: 8k.
+   */
+  readonly contextTokens?: number;
+  /** Diagnostics only: one row per model request. A throwing handler is ignored. */
+  readonly onRoundUsage?: (usage: AgentRoundUsage) => void;
   readonly messages: readonly ChatMessage[];
   readonly tools: readonly AgentTool[];
   /** Required: capture once at the start of the user turn. */
@@ -187,7 +225,25 @@ interface EmitState {
   meaningful: boolean;
 }
 
+/** The provider's own token counts for one request, when it reports them. */
+interface UsageSink {
+  prompt?: number;
+  completion?: number;
+}
+
+function count(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : undefined;
+}
+
+function readUsage(raw: unknown, sink: UsageSink): void {
+  if (typeof raw !== "object" || raw === null) return;
+  const usage = raw as { prompt_tokens?: unknown; completion_tokens?: unknown };
+  sink.prompt = count(usage.prompt_tokens) ?? sink.prompt;
+  sink.completion = count(usage.completion_tokens) ?? sink.completion;
+}
+
 interface OpenAiDecisionPayload {
+  readonly usage?: unknown;
   readonly choices?: ReadonlyArray<{
     readonly message?: {
       readonly content?: unknown;
@@ -256,8 +312,10 @@ function explicitlyRejectsTools(error: unknown): boolean {
   return namesCapability.test(detail) && namesRejection.test(detail);
 }
 
+/** Tool schemas in name order, so every round and turn sends a byte-identical prefix. */
 function toolDefinitions(tools: readonly AgentTool[]): ReadonlyArray<Record<string, unknown>> {
-  return tools.map((tool) => ({
+  const byName = [...tools].sort((left, right) => (left.name < right.name ? -1 : left.name > right.name ? 1 : 0));
+  return byName.map((tool) => ({
     type: "function",
     function: {
       name: tool.name,
@@ -402,9 +460,11 @@ function isJsonResponse(response: Response): boolean {
   return /\bapplication\/json\b/i.test(response.headers.get("content-type") ?? "");
 }
 
-async function parseJsonDecision(response: Response): Promise<DecisionMessage> {
+async function parseJsonDecision(response: Response, usage: UsageSink): Promise<DecisionMessage> {
   try {
-    return parseDecision(await response.json());
+    const payload: unknown = await response.json();
+    readUsage((payload as OpenAiDecisionPayload | null)?.usage, usage);
+    return parseDecision(payload);
   } catch (error) {
     if (error instanceof LlmRequestError) throw error;
     throw new LlmRequestError("LLM endpoint returned invalid JSON for an agent completion");
@@ -420,7 +480,8 @@ async function* decisionRequest(
   options: StreamAgentChatOptions,
   messages: readonly AgentWireMessage[],
   definitions: ReadonlyArray<Record<string, unknown>>,
-  toolChoice: "auto" | "required" = "auto",
+  toolChoice: "auto" | "required",
+  usage: UsageSink,
 ): AsyncGenerator<string, DecisionMessage> {
   throwIfAborted(options.signal);
   // Re-check immediately before every request; callers can retain/mutate a
@@ -442,7 +503,7 @@ async function* decisionRequest(
   if (!response.ok) throw await requestError(response);
   // Compatibility: a server that ignores `stream:true` answers with one JSON body.
   if (isJsonResponse(response)) {
-    const decision = await parseJsonDecision(response);
+    const decision = await parseJsonDecision(response, usage);
     if (decision.toolCalls.length === 0 && decision.content?.trim()) yield decision.content;
     return decision;
   }
@@ -450,6 +511,7 @@ async function* decisionRequest(
   const drafts = new Map<number, ToolCallDraft>();
   let content = "";
   for await (const chunk of sseChunks(response, capOf(options))) {
+    readUsage(chunk.usage, usage);
     const delta = chunk.choices?.[0]?.delta;
     if (!delta) continue;
     if (typeof delta.content === "string" && delta.content) {
@@ -574,7 +636,8 @@ function reportToolCall(options: StreamAgentChatOptions, call: OpenAiToolCall, a
     const parsed = JSON.parse(content) as { ok?: boolean; value?: unknown; error?: unknown };
     // A tool that answered { error } ran, but did not succeed: the row says so.
     status = parsed.ok === true && !isErrorValue(parsed.value) ? "complete" : "error";
-    result = parsed.ok === true ? parsed.value : parsed.error;
+    // A compacted result carries no `value`: the model got the summary object itself.
+    result = parsed.ok === true ? ("value" in parsed ? parsed.value : parsed) : parsed.error;
   } catch {
     result = undefined;
   }
@@ -633,16 +696,13 @@ async function executeWithDeadline(
   }
 }
 
+/** The forced last request: tools off (`tool_choice: none`), the messages already assembled to fit. */
 async function* finalRequest(
   options: StreamAgentChatOptions,
   messages: readonly AgentWireMessage[],
   definitions: ReadonlyArray<Record<string, unknown>>,
-  missing: readonly string[] = [],
+  usage: UsageSink,
 ): AsyncGenerator<string> {
-  const honest = missing.length === 0 ? [] : [{
-    role: "system" as const,
-    content: `${missing.join(", ")} did not succeed this turn. Say plainly which facts could not be read; do not guess or infer them.`,
-  }];
   throwIfAborted(options.signal);
   ensurePrivacy(options.config);
   const response = await (options.fetchImpl ?? fetch)(endpoint(options.config), {
@@ -650,7 +710,7 @@ async function* finalRequest(
     headers: headers(options.config),
     body: JSON.stringify({
       model: options.config.model,
-      messages: [...messages, { role: "system", content: FINALIZATION_INSTRUCTION }, ...honest],
+      messages,
       stream: true,
       tools: definitions,
       tool_choice: "none",
@@ -659,7 +719,7 @@ async function* finalRequest(
     signal: options.signal,
   });
   if (!response.ok || !response.body) throw await requestError(response);
-  yield* streamContent(response, options);
+  yield* streamContent(response, options, usage);
 }
 
 /** Compatibility path for OpenAI-compatible endpoints without function calling. */
@@ -689,11 +749,131 @@ function capOf(options: StreamAgentChatOptions): { readonly answerDeadlineMs: nu
   return { answerDeadlineMs: options.reasoningTimeoutMs ?? REASONING_TIMEOUT_MS };
 }
 
-async function* streamContent(response: Response, options: StreamAgentChatOptions): AsyncGenerator<string> {
+async function* streamContent(response: Response, options: StreamAgentChatOptions, usage: UsageSink = {}): AsyncGenerator<string> {
   for await (const chunk of sseChunks(response, capOf(options))) {
+    readUsage(chunk.usage, usage);
     const content = chunk.choices?.[0]?.delta?.content;
     if (typeof content === "string" && content) yield content;
   }
+}
+
+const BUDGET_INSTRUCTION =
+  "The context budget for this turn is used up, so no more tools can run. Answer from the facts " +
+  "gathered so far and say plainly which facts you could not check.";
+const COMPACTED_PREFIX = '{"ok":true,"compacted":true';
+const SKIPPED_CALL = toolError("skipped", "skipped: too many calls this round");
+
+/** One message of the turn's wire transcript, with what compaction needs to know about it. */
+interface TranscriptEntry {
+  readonly message: AgentWireMessage;
+  /** A tool result: the results round it arrived in. */
+  readonly resultRound?: number;
+  /** A tool result's compact form, kept only when shorter than its full content. */
+  readonly compact?: string;
+  /** One of the caller's earlier conversation turns: dropped oldest-first under budget pressure. */
+  readonly history?: boolean;
+}
+
+/** One request, assembled to fit the turn's budget. */
+interface RequestPlan {
+  readonly messages: readonly AgentWireMessage[];
+  /** ceil(chars / 4), before calibration (what a provider count is compared with). */
+  readonly raw: number;
+  readonly estimate: number;
+  readonly compacted: number;
+  readonly fits: boolean;
+}
+
+/**
+ * The turn's wire transcript and how each request is cut to fit the budget.
+ * A tool result read by an earlier request goes out as its compact summary;
+ * only the newest round's results stay in full. Under budget pressure the
+ * caller's earlier turns are dropped (oldest first, whole user turns), and the
+ * final answer may carry the newest round compact too. Every tool message keeps
+ * its tool_call pairing; only its content shrinks.
+ */
+class TurnTranscript {
+  private readonly entries: TranscriptEntry[];
+  private resultRound = 0;
+
+  constructor(messages: readonly ChatMessage[]) {
+    const lastUser = messages.map((message) => message.role).lastIndexOf("user");
+    this.entries = messages.map((message, index) => ({ message, history: index < lastUser && message.role !== "system" }));
+  }
+
+  /** Every decision round's (or local grounding's) results form one results round. */
+  beginRound(): void {
+    this.resultRound += 1;
+  }
+
+  push(message: AgentWireMessage): void {
+    this.entries.push({ message });
+  }
+
+  pushResult(message: ToolResultMessage, compact: string | undefined): void {
+    const shorter = compact !== undefined && compact.length < message.content.length;
+    this.entries.push({ message, resultRound: this.resultRound, ...(shorter ? { compact } : {}) });
+  }
+
+  /** The first variant that fits, from fullest to leanest; the leanest when none does. */
+  plan(budget: number, definitions: readonly unknown[], calibration: TokenCalibration | undefined,
+    extra: readonly AgentWireMessage[], final: boolean): RequestPlan {
+    const cuts = this.historyCuts();
+    const leanest = cuts.at(-1) ?? 0;
+    const variants = [...cuts.map((drop) => ({ compactNewest: false, drop })),
+      ...(final ? [{ compactNewest: true, drop: leanest }] : [])];
+    const build = ({ compactNewest, drop }: { compactNewest: boolean; drop: number }): RequestPlan => {
+      const messages = [...this.view(compactNewest, drop), ...extra];
+      const raw = estimateRequestTokens(messages, definitions);
+      const estimate = calibratedEstimate(raw, calibration);
+      const compacted = messages.filter((message) => message.role === "tool" && message.content.startsWith(COMPACTED_PREFIX)).length;
+      return { messages, raw, estimate, compacted, fits: estimate <= budget };
+    };
+    let plan = build({ compactNewest: false, drop: 0 });
+    for (const variant of variants.slice(1)) {
+      if (plan.fits) break;
+      plan = build(variant);
+    }
+    return plan;
+  }
+
+  private view(compactNewest: boolean, drop: number): AgentWireMessage[] {
+    let dropped = 0;
+    const messages: AgentWireMessage[] = [];
+    for (const entry of this.entries) {
+      if (entry.history && dropped < drop) {
+        dropped += 1;
+        continue;
+      }
+      const consumed = entry.resultRound !== undefined && (compactNewest || entry.resultRound < this.resultRound);
+      messages.push(consumed && entry.compact !== undefined ? { ...(entry.message as ToolResultMessage), content: entry.compact } : entry.message);
+    }
+    return messages;
+  }
+
+  /** How many earlier-turn messages to drop: none, then up to each later user turn, then all. */
+  private historyCuts(): number[] {
+    const history = this.entries.filter((entry) => entry.history);
+    const cuts = [0];
+    history.forEach((entry, index) => {
+      if (index > 0 && entry.message.role === "user") cuts.push(index);
+    });
+    if (history.length > 0) cuts.push(history.length);
+    return cuts;
+  }
+}
+
+function reportRoundUsage(options: StreamAgentChatOptions, usage: AgentRoundUsage): void {
+  try {
+    options.onRoundUsage?.(usage);
+  } catch {
+    // A diagnostic sink must never change the turn's outcome.
+  }
+}
+
+/** A succeeded result's compact form: the tool's own summary, else the default one. */
+function compactOf(tool: AgentTool, value: unknown): string {
+  return compactToolContent(summarizeToolResult(tool.summarize, value));
 }
 
 /**
@@ -706,6 +886,12 @@ async function* streamContent(response: Response, options: StreamAgentChatOption
  * the model uses the full round/call budget (or makes a rejected call), a final
  * streaming request is forced with `tool_choice: "none"` so the turn always
  * converges instead of looping.
+ *
+ * Context budget (spec 2026-10-13): no request may exceed half the model's
+ * context window (`contextTokens`, 8k when unknown). Consumed tool results are
+ * sent compact, an identical successful call gets a pointer to the first, and
+ * when the next decision round would not fit, one final round with tools off
+ * answers from what was gathered and says what it could not check.
  */
 export async function* streamAgentChat(
   options: StreamAgentChatOptions,
@@ -715,15 +901,29 @@ export async function* streamAgentChat(
   // the turn observes exactly one instant even if the caller retains the Date.
   const pinnedNowMs = options.now.getTime();
   const definitions = toolDefinitions(options.tools);
-  const transcript: AgentWireMessage[] = [...options.messages];
+  const transcript = new TurnTranscript(options.messages);
+  const budget = turnTokenBudget(options.contextTokens);
+  let calibration: TokenCalibration | undefined;
+  let requestNumber = 0;
+  /** After each request: telemetry, and calibrate later estimates by the provider's own count. */
+  const settle = (phase: AgentRoundUsage["phase"], plan: RequestPlan, usage: UsageSink): void => {
+    requestNumber += 1;
+    if (usage.prompt !== undefined) calibration = { estimate: plan.raw, reported: usage.prompt };
+    reportRoundUsage(options, {
+      round: requestNumber, phase, prompt_tokens: usage.prompt ?? plan.estimate, completion_tokens: usage.completion ?? null,
+      estimated: usage.prompt === undefined, estimate: plan.estimate, budget, compacted: plan.compacted,
+    });
+  };
   const seen = new Set<string>();
   // Calls that ran and failed, by signature: an identical retry gets the same error back with
   // instructions instead of ending the turn as a duplicate (2026-10-13: Harish's dead end).
   const failedCalls = new Map<string, string>();
+  // Calls that succeeded, by signature: an identical call later in the turn gets a pointer to the first.
+  const succeededCalls = new Map<string, string>();
   const seenCallIds = new Set<string>();
   let executedCalls = 0;
-  let aggregateResultChars = 0;
   let forceFinal = false;
+  let budgetExhausted = false;
   const emit: EmitState = { emitted: false, meaningful: false };
   let toolChoice = options.firstRoundToolChoice ?? "auto";
   const groundingPlan = (options.groundingCalls ?? (options.groundingToolName ? [{ name: options.groundingToolName, args: {} }] : []))
@@ -741,6 +941,7 @@ export async function* streamAgentChat(
       const call: OpenAiToolCall = { id: `local-grounding-${localCallNumber}`, type: "function", function: { name: tool.name, arguments: JSON.stringify(args) } };
       return { tool, args, call };
     });
+    transcript.beginRound();
     transcript.push({ role: "assistant", content: null, tool_calls: calls.map(({ call }) => call) });
     for (const { tool, args, call } of calls) {
       options.onStatus?.({ phase: "using_tool", round, toolName: tool.name,
@@ -757,11 +958,14 @@ export async function* streamAgentChat(
       }
       const signature = callSignature(tool.name, args);
       seen.add(signature);
+      const succeeded = !isErrorValue(value) && !content.startsWith('{"ok":false');
       if (isErrorValue(value)) failedCalls.set(signature, errorText(value));
-      else if (!content.startsWith('{"ok":false')) stillRequired.delete(tool.name);
+      else if (succeeded) {
+        stillRequired.delete(tool.name);
+        succeededCalls.set(signature, call.id);
+      }
       seenCallIds.add(call.id);
-      aggregateResultChars += content.length;
-      transcript.push({ role: "tool", tool_call_id: call.id, name: tool.name, content });
+      transcript.pushResult({ role: "tool", tool_call_id: call.id, name: tool.name, content }, succeeded ? compactOf(tool, value) : undefined);
       reportToolCall(options, call, args, content);
     }
   };
@@ -771,16 +975,23 @@ export async function* streamAgentChat(
 
   const lastRound = AGENT_LIMITS.maxDecisionRounds + (stillRequired.size > 0 ? GROUNDING_RETRY_ROUNDS : 0);
   for (let round = 1; round <= lastRound; round += 1) {
+    // The next decision round must fit; if it cannot, the turn answers now with tools off.
+    const plan = transcript.plan(budget, definitions, calibration, [], false);
+    if (!plan.fits) {
+      budgetExhausted = true;
+      break;
+    }
     options.onStatus?.({ phase: "deciding", round });
     let decision: DecisionMessage;
     const choice = choiceFor(round);
+    const usage: UsageSink = {};
     try {
       // A required round must call a tool, so its text is never streamed: a
       // text-only reply there is an ungrounded answer and is thrown away.
       decision = choice === "required" && groundingPlan.length > 0
-        ? await drain(decisionRequest(options, transcript, definitions, choice))
+        ? await drain(decisionRequest(options, plan.messages, definitions, choice, usage))
         : yield* relayTokens(
-          decisionRequest(options, transcript, definitions, choice),
+          decisionRequest(options, plan.messages, definitions, choice, usage),
           emit,
           () => options.onStatus?.({ phase: "answering" }),
         );
@@ -809,6 +1020,7 @@ export async function* streamAgentChat(
       }
       throw error;
     }
+    settle("decision", plan, usage);
     if (decision.toolCalls.length === 0 && choice === "required" && pendingGrounding().length > 0) {
       // No tool call under 'required' (2026-10-13: qwen answered from nothing; a host
       // routed for gpt-oss returned finish_reason "error" with no content). Ground the
@@ -825,22 +1037,27 @@ export async function* streamAgentChat(
       return;
     }
 
-    const roundCalls = decision.toolCalls.slice(0, AGENT_LIMITS.maxToolCallsPerRound);
-    const truncated = roundCalls.length < decision.toolCalls.length;
+    // Every requested call is echoed (each needs its tool message); only the first few run.
+    const roundCalls = decision.toolCalls.slice(0, MAX_STREAMED_TOOL_CALLS);
+    transcript.beginRound();
     transcript.push({
       role: "assistant",
       content: decision.content,
       tool_calls: roundCalls,
     });
+    let roundResultChars = 0;
 
-    for (const modelCall of roundCalls) {
+    for (const [index, modelCall] of roundCalls.entries()) {
       const name = modelCall.function.name;
       let content: string;
       let callArgs: AgentJsonObject = {};
+      let compact: string | undefined;
 
       if (seenCallIds.has(modelCall.id)) {
         content = toolError("duplicate_call_id", "This tool-call id was already used.");
         forceFinal = true;
+      } else if (index >= AGENT_LIMITS.maxToolCallsPerRound) {
+        content = SKIPPED_CALL;
       } else if (executedCalls >= AGENT_LIMITS.maxToolCalls) {
         content = toolError("tool_call_limit", "The tool-call budget is exhausted.");
         forceFinal = true;
@@ -856,7 +1073,8 @@ export async function* streamAgentChat(
           args = parseArguments(modelCall.function.arguments);
         } catch {
           content = toolError("invalid_arguments", "Tool arguments must be a JSON object.");
-          transcript.push({ role: "tool", tool_call_id: modelCall.id, name, content });
+          seenCallIds.add(modelCall.id);
+          transcript.pushResult({ role: "tool", tool_call_id: modelCall.id, name, content }, undefined);
           reportToolCall(options, modelCall, {}, content);
           forceFinal = true;
           continue;
@@ -865,8 +1083,11 @@ export async function* streamAgentChat(
         const signature = callSignature(name, args);
         const selectedTool = registry.get(name);
         const earlierFailure = failedCalls.get(signature);
+        const earlierSuccess = succeededCalls.get(signature);
         if (earlierFailure !== undefined) {
           content = toolError("repeated_failed_call", `This exact call already failed: ${earlierFailure} Change the arguments as that error says before calling again.`);
+        } else if (earlierSuccess !== undefined) {
+          content = JSON.stringify({ ok: true, value: `unchanged; see the earlier result ${earlierSuccess}` });
         } else if (seen.has(signature)) {
           content = toolError("duplicate_tool_call", "This tool call was already attempted.");
           forceFinal = true;
@@ -894,7 +1115,11 @@ export async function* streamAgentChat(
             if (encoded.failed) forceFinal = true;
             // Only a call that succeeded grounds the trip; an { error } result lets the model retry.
             else if (isErrorValue(value)) failedCalls.set(signature, errorText(value));
-            else if (grounding) stillRequired.delete(selectedTool.name);
+            else {
+              if (grounding) stillRequired.delete(selectedTool.name);
+              succeededCalls.set(signature, modelCall.id);
+              compact = compactOf(selectedTool, value);
+            }
           } catch (error) {
             throwIfAborted(options.signal);
             const code =
@@ -909,21 +1134,15 @@ export async function* streamAgentChat(
       }
 
       seenCallIds.add(modelCall.id);
-      if (aggregateResultChars + content.length > AGENT_LIMITS.maxAggregateResultChars) {
-        content = toolError(
-          "aggregate_results_too_large",
-          "The tool-result budget is exhausted.",
-        );
-        forceFinal = true;
+      // Past the round's full-result allowance, a result arrives as its summary.
+      if (compact !== undefined && roundResultChars + content.length > AGENT_LIMITS.maxAggregateResultChars) {
+        content = compact;
       }
-      aggregateResultChars += content.length;
-      transcript.push({ role: "tool", tool_call_id: modelCall.id, name, content });
+      roundResultChars += content.length;
+      transcript.pushResult({ role: "tool", tool_call_id: modelCall.id, name, content }, compact);
       reportToolCall(options, modelCall, callArgs, content);
     }
 
-    // Calls past the per-round cap are dropped. That ends the turn, unless a
-    // required grounding tool is still missing: then the next round asks again.
-    if (truncated && stillRequired.size === 0) forceFinal = true;
     // Past the normal round budget only while a required grounding tool has not succeeded.
     const outOfRounds = round >= AGENT_LIMITS.maxDecisionRounds && (stillRequired.size === 0 || round >= lastRound);
     if (
@@ -936,7 +1155,19 @@ export async function* streamAgentChat(
   }
 
   options.onStatus?.({ phase: "answering" });
-  yield* relayTokens(finalRequest(options, transcript, definitions, [...stillRequired]), emit);
+  const missing = [...stillRequired];
+  const closing: ChatMessage[] = [
+    { role: "system", content: FINALIZATION_INSTRUCTION },
+    ...(missing.length === 0 ? [] : [{
+      role: "system" as const,
+      content: `${missing.join(", ")} did not succeed this turn. Say plainly which facts could not be read; do not guess or infer them.`,
+    }]),
+    ...(budgetExhausted ? [{ role: "system" as const, content: BUDGET_INSTRUCTION }] : []),
+  ];
+  const finalPlan = transcript.plan(budget, definitions, calibration, closing, true);
+  const usage: UsageSink = {};
+  yield* relayTokens(finalRequest(options, finalPlan.messages, definitions, usage), emit);
+  settle("final", finalPlan, usage);
   if (!emit.meaningful) throw new LlmRequestError("LLM endpoint returned an empty agent completion");
   options.onStatus?.({ phase: "complete" });
 }

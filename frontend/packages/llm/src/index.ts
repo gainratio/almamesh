@@ -132,8 +132,22 @@ export type {
   AgentToolCallRecord,
   AgentToolContext,
   AgentToolFailure,
+  AgentRoundUsage,
   StreamAgentChatOptions,
 } from "./agent";
+// The agent loop's context budget and tool-result compaction.
+export {
+  DEFAULT_CONTEXT_TOKENS,
+  calibratedEstimate,
+  chatPromptBudgetFor,
+  estimateRequestTokens,
+  turnTokenBudget,
+} from "./contextBudget";
+export type { TokenCalibration } from "./contextBudget";
+export { compactToolContent, defaultToolSummary, summarizeToolResult, toolFactsNote } from "./compaction";
+export { resolveModelContextTokens } from "./model-context";
+export type { ResolveModelContextOptions } from "./model-context";
+export type { PriorToolCall, ToolSummarizer, ToolSummary } from "./compaction";
 
 // Reading provenance: which resolved config (engine/model/endpoint — never a
 // secret) produced a stored reading, so the UI can caption it and a config
