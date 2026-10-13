@@ -24,8 +24,7 @@ describe('derived SQLite schema', () => {
     expect(await db.query("SELECT rowid FROM cities_fts WHERE cities_fts MATCH '" + '"ogot"' + "'")).toEqual([{ rowid: 7 }]);
   });
 
-  it('schema v2 adds the chat keyword index to a v1 database without losing rows', async () => {
-    expect(DERIVED_SCHEMA_VERSION).toBe(2);
+  it('adds the chat keyword index to a v1 database without losing rows', async () => {
     const db = await open();
     await db.exec('CREATE TABLE dataset_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL) STRICT');
     await db.exec("INSERT INTO dataset_meta VALUES ('period-sky-epoch', '3')");
@@ -34,7 +33,44 @@ describe('derived SQLite schema', () => {
     const tables = await db.query<{ name: string }>("SELECT name FROM sqlite_schema WHERE type='table'");
     expect(tables.map(({ name }) => name)).toContain('chat_fts');
     expect(await db.query('SELECT value FROM dataset_meta WHERE key=?', ['period-sky-epoch'])).toEqual([{ value: '3' }]);
-    expect((await db.query<{ user_version: number }>('PRAGMA user_version'))[0]?.user_version).toBe(2);
+    expect((await db.query<{ user_version: number }>('PRAGMA user_version'))[0]?.user_version).toBe(3);
+  });
+
+  it('schema v3 replaces a v2 keyword index with a contentless one and leaves no old text behind', async () => {
+    expect(DERIVED_SCHEMA_VERSION).toBe(3);
+    const db = await open();
+    await db.exec('CREATE TABLE dataset_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL) STRICT');
+    await db.exec("CREATE VIRTUAL TABLE chat_fts USING fts5(profile_id UNINDEXED, thread_id UNINDEXED, message_id UNINDEXED, text, tokenize='unicode61 remove_diacritics 2')");
+    await db.exec("INSERT INTO chat_fts VALUES ('p1', 't1', 'm1', 'my zqxjkvbeacon note')");
+    await db.exec("INSERT INTO dataset_meta VALUES ('chat-fts-built', '1'), ('period-sky-epoch', '3')");
+    await db.exec('PRAGMA user_version=2');
+    await migrateDerivedDb(db);
+    expect(await db.query('SELECT count(*) AS n FROM chat_fts')).toEqual([{ n: 0 }]);
+    await db.exec("INSERT INTO chat_fts (profile_id, thread_id, message_id, text) VALUES ('p1', 't1', 'm2', 'fresh text')");
+    expect(await db.query('SELECT message_id, text FROM chat_fts')).toEqual([{ message_id: 'm2', text: null }]);
+    expect(await db.query('SELECT key FROM dataset_meta ORDER BY key')).toEqual([{ key: 'period-sky-epoch' }]);
+    const hex = Buffer.from('zqxjkvbeacon').toString('hex');
+    expect(await db.query('SELECT pgno FROM sqlite_dbpage WHERE instr(lower(hex(data)), ?) > 0', [hex])).toEqual([]);
+    expect((await db.query<{ user_version: number }>('PRAGMA user_version'))[0]?.user_version).toBe(3);
+  });
+
+  it('zeroes deleted content and lets a fresh database return freed pages', async () => {
+    const db = await open();
+    await migrateDerivedDb(db);
+    expect(await db.query('PRAGMA secure_delete')).toEqual([{ secure_delete: 1 }]);
+    expect(await db.query('PRAGMA auto_vacuum')).toEqual([{ auto_vacuum: 2 }]);
+  });
+
+  it('a refused VACUUM on a new file does not block the migration', async () => {
+    const db = await open();
+    const exec = db.exec.bind(db);
+    const refusing = Object.assign(Object.create(db) as SqlDatabase, {
+      exec: (sql: string, bind?: Parameters<SqlDatabase['exec']>[1]) => sql === 'VACUUM' ? Promise.reject(new Error('refused')) : exec(sql, bind),
+      query: db.query.bind(db),
+      transaction: db.transaction.bind(db),
+    });
+    await migrateDerivedDb(refusing);
+    expect((await db.query<{ user_version: number }>('PRAGMA user_version'))[0]?.user_version).toBe(DERIVED_SCHEMA_VERSION);
   });
 
   it('migration is atomic and idempotent and retains rows', async () => {

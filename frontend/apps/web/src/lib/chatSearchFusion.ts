@@ -39,6 +39,29 @@ export function searchTerms(query: string): readonly string[] {
   return terms;
 }
 
+/** Longest keyword snippet, before its ellipses. */
+export const SNIPPET_CHARS = 200;
+/** Context kept before the first matched word. */
+const SNIPPET_LEAD = 60;
+
+/**
+ * A short excerpt of a canonical message around the first word that starts
+ * with a query term, accents and case kept. The keyword index stores no text,
+ * so this is how a keyword hit shows what it matched.
+ */
+export function snippetAround(text: string, query: string): string {
+  if (text.length <= SNIPPET_CHARS) return text;
+  const terms = searchTerms(query);
+  let first = 0;
+  for (const match of text.matchAll(/[\p{L}\p{N}]+/gu)) {
+    const word = fold(match[0]);
+    if (terms.some((term) => word.startsWith(term))) { first = match.index; break; }
+  }
+  const start = Math.max(0, Math.min(first - SNIPPET_LEAD, text.length - SNIPPET_CHARS));
+  const end = start + SNIPPET_CHARS;
+  return `${start > 0 ? '…' : ''}${text.slice(start, end).trim()}${end < text.length ? '…' : ''}`;
+}
+
 /**
  * Threads of `profileId` whose title text contains a token starting with a
  * query term ("singa" finds "Singapore"), ranked by the share of terms matched.

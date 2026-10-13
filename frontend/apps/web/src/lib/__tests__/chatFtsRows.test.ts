@@ -21,6 +21,33 @@ function row(id: string, text: string, profile = 'p1', thread = 't1') {
   return { profile_id: profile, thread_id: thread, message_id: id, text };
 }
 
+/** The secret is lowercase so FTS5 keeps it as one term, and shares no prefix with the filler. */
+const SECRET = 'zqxjkvbeacon';
+const secretHex = Buffer.from(SECRET).toString('hex');
+
+function holdsSecret(value: unknown): boolean {
+  if (typeof value === 'string') return value.toLowerCase().includes(SECRET);
+  if (value instanceof Uint8Array) return Buffer.from(value).toString('hex').includes(secretHex);
+  return false;
+}
+
+/** Every shadow-table cell and every database page (free pages included) that still holds the secret. */
+async function traces(db: SqlDatabase): Promise<readonly string[]> {
+  const found: string[] = [];
+  const shadows = await db.query<{ name: string }>("SELECT name FROM sqlite_schema WHERE type = 'table' AND name LIKE 'chat_fts_%'");
+  for (const { name } of shadows) {
+    const rows = await db.query(`SELECT * FROM "${name}"`);
+    if (rows.some((cells) => Object.values(cells).some(holdsSecret))) found.push(name);
+  }
+  const pages = await db.query<{ pgno: number }>('SELECT pgno FROM sqlite_dbpage WHERE instr(lower(hex(data)), ?) > 0', [secretHex]);
+  return [...found, ...pages.map(({ pgno }) => `page ${pgno}`)];
+}
+
+async function seedSecret(rows: ReturnType<typeof createChatFtsRows>): Promise<void> {
+  for (let i = 0; i < 40; i += 1) await rows.index(row(`keep${i}`, 'alpha bravo charlie delta', 'p2', 't2'));
+  await rows.index(row('secret', `my ${SECRET} note`, 'p1', 't1'));
+}
+
 async function count(db: SqlDatabase): Promise<number> {
   return (await db.query<{ n: number }>('SELECT count(*) AS n FROM chat_fts'))[0]?.n ?? 0;
 }
@@ -37,8 +64,8 @@ describe('chat keyword index (SQLite FTS5)', () => {
     await rows.index(row('m3', 'Venus favours love.'));
     const hits = await rows.search('saturn', 'p1', 8);
     expect(hits.map((hit) => hit.message_id)).toEqual(['m2']);
-    expect(hits[0]).toMatchObject({ source: 'message', thread_id: 't1' });
-    expect(hits[0]?.text).toContain('Saturn');
+    expect(hits[0]).toMatchObject({ thread_id: 't1' });
+    expect(hits[0]?.score).toBeGreaterThan(0);
     const career = await rows.search('saturn career', 'p1', 8);
     expect(career.map((hit) => hit.message_id)).toEqual(['m2', 'm1']);
   });
@@ -168,6 +195,39 @@ describe('chat keyword index (SQLite FTS5)', () => {
     await rows.rebuild([row('old', 'stale snapshot')]);
     expect(await db.query('SELECT message_id FROM chat_fts')).toEqual([{ message_id: 'm1' }]);
     expect(await rows.isBuilt()).toBe(false);
+  });
+
+  it('keeps no message text in the derived database, only the index terms', async () => {
+    const { db, rows } = await fixture();
+    await rows.index(row('m1', `my ${SECRET} note`));
+    expect(await db.query('SELECT message_id, text FROM chat_fts')).toEqual([{ message_id: 'm1', text: null }]);
+    expect((await rows.search(SECRET, 'p1', 8)).map((hit) => hit.message_id)).toEqual(['m1']);
+  });
+
+  describe('a purge leaves no trace of the deleted text (remanence)', () => {
+    it('after a profile purge', async () => {
+      const { db, rows } = await fixture();
+      await seedSecret(rows);
+      expect(await traces(db)).not.toEqual([]);
+      await rows.deleteForProfile('p1');
+      expect(await traces(db)).toEqual([]);
+      expect(await count(db)).toBe(40);
+    });
+
+    it('after a thread purge', async () => {
+      const { db, rows } = await fixture();
+      await seedSecret(rows);
+      await rows.deleteForThread('t1');
+      expect(await traces(db)).toEqual([]);
+      expect(await count(db)).toBe(40);
+    });
+
+    it('after clearing the whole index', async () => {
+      const { db, rows } = await fixture();
+      await seedSecret(rows);
+      await rows.clear();
+      expect(await traces(db)).toEqual([]);
+    });
   });
 
   it('purges by profile, by thread, and entirely', async () => {

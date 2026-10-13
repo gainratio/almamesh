@@ -17,7 +17,9 @@ import { readDeletionTombstones, supportsPortableState } from '@almamesh/store';
 export type { SqlDatabase } from '@gainratio/browser/sql';
 type SqlStorage = SqlDatabase['storage'];
 export const DERIVED_DB_NAME = 'almamesh-derived';
-export const DERIVED_SCHEMA_VERSION = 2;
+export const DERIVED_SCHEMA_VERSION = 3;
+/** dataset_meta key: the keyword index was rebuilt from canonical chat at least once. */
+export const CHAT_FTS_BUILT_KEY = 'chat-fts-built';
 
 const SCHEMA = [
   'CREATE TABLE IF NOT EXISTS dataset_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL) STRICT',
@@ -25,16 +27,41 @@ const SCHEMA = [
   "CREATE VIRTUAL TABLE IF NOT EXISTS cities_fts USING fts5(search_fold, content='cities', content_rowid='idx', tokenize='trigram')",
   'CREATE TABLE IF NOT EXISTS period_sky (key TEXT PRIMARY KEY, engine TEXT NOT NULL, profile_id TEXT NOT NULL, payload TEXT NOT NULL, epoch INTEGER NOT NULL DEFAULT 0) STRICT',
   'CREATE INDEX IF NOT EXISTS period_sky_profile ON period_sky(profile_id)',
-  // v2: keyword search over chat messages. Rebuildable from the chat store row.
-  "CREATE VIRTUAL TABLE IF NOT EXISTS chat_fts USING fts5(profile_id UNINDEXED, thread_id UNINDEXED, message_id UNINDEXED, text, tokenize='unicode61 remove_diacritics 2')",
+  // v3: keyword search over chat messages, rebuildable from the chat store row.
+  // Contentless-delete (SQLite >= 3.43; contentless_unindexed >= 3.47; the
+  // pinned build is 3.53): the message text is tokenized but never stored, so
+  // the only text copy stays in the canonical chat store. The UNINDEXED ids are
+  // kept so rows can be filtered and purged by profile and thread.
+  "CREATE VIRTUAL TABLE IF NOT EXISTS chat_fts USING fts5(profile_id UNINDEXED, thread_id UNINDEXED, message_id UNINDEXED, text, content='', contentless_delete=1, contentless_unindexed=1, tokenize='unicode61 remove_diacritics 2')",
   `PRAGMA user_version=${DERIVED_SCHEMA_VERSION}`,
 ];
 
+/**
+ * secure_delete zeroes deleted rows and freed pages, so a purged chat message
+ * leaves no bytes behind. The library already sets it on OPFS connections;
+ * setting it here covers the in-memory fallback too. auto_vacuum only takes
+ * effect before the first table exists, so only a new database gets it; on an
+ * older file incremental_vacuum is a no-op and secure_delete does the zeroing.
+ */
 export async function migrateDerivedDb(db: SqlDatabase): Promise<void> {
+  await db.exec('PRAGMA secure_delete=ON');
+  // auto_vacuum is ignored inside a transaction, and once any table exists
+  // (sqlite-vector adds one at open) it needs a VACUUM to apply. Only a new
+  // file (user_version 0, nearly empty, so the VACUUM is cheap) gets it.
+  if ((await db.query<{ user_version: number }>('PRAGMA user_version'))[0]?.user_version === 0) {
+    await db.exec('PRAGMA auto_vacuum=INCREMENTAL');
+    // Space reclaim only: without it freed pages stay in the file, zeroed by
+    // secure_delete. Never let it block the city list or the keyword index.
+    await db.exec('VACUUM').catch(() => undefined);
+  }
   await db.transaction(async (tx) => {
     const version = (await tx.query<{ user_version: number }>('PRAGMA user_version'))[0]?.user_version ?? 0;
     if (version > DERIVED_SCHEMA_VERSION) throw new Error('Derived database uses a newer schema. Update the app.');
+    // v2 stored message text in chat_fts_content. Drop it (secure_delete
+    // zeroes the pages) and let the next search backfill from canonical chat.
+    if (version === 2) await tx.exec('DROP TABLE IF EXISTS chat_fts');
     for (const sql of SCHEMA) await tx.exec(sql);
+    if (version === 2) await tx.exec('DELETE FROM dataset_meta WHERE key = ?', [CHAT_FTS_BUILT_KEY]);
   });
 }
 

@@ -93,6 +93,23 @@ describe('hybrid chat search', () => {
     expect(hits.map((hit) => hit.message_id)).toEqual([other.messageId]);
   });
 
+  it('shows the keyword hit text from the canonical chat message, around the match', async () => {
+    const long = `${'Opening words about the chart. '.repeat(12)}Saturn returns slow your promotion.`;
+    const { messageId } = await say('p1', long);
+    const [hit] = await searchChatHistory('promotion', 'p1');
+    expect(hit?.message_id).toBe(messageId);
+    expect(hit?.text).toContain('Saturn returns slow your promotion.');
+    expect(hit?.text.startsWith('…')).toBe(true);
+    expect(hit?.text.length).toBeLessThan(long.length);
+  });
+
+  it('drops a keyword row whose message is gone from the canonical chat store', async () => {
+    const { threadId } = await say('p1', 'ketu axis question');
+    expect(await searchChatHistory('ketu', 'p1')).toHaveLength(1);
+    useChatStore.setState((state) => ({ messages: { ...state.messages, [threadId]: [] } }));
+    expect(await searchChatHistory('ketu', 'p1')).toEqual([]);
+  });
+
   it('drops a keyword row whose thread is gone from the canonical chat store', async () => {
     const { threadId } = await say('p1', 'ketu axis question');
     useChatStore.getState().deleteThread(threadId);

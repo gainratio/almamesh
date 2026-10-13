@@ -4,6 +4,8 @@ import {
   fuseByReciprocalRank,
   matchThreadTitles,
   RRF_K,
+  SNIPPET_CHARS,
+  snippetAround,
   type ChatSearchHit,
 } from '../chatSearchFusion';
 
@@ -85,5 +87,25 @@ describe('thread title matching', () => {
   it('returns nothing for a blank or punctuation-only query', () => {
     expect(matchThreadTitles('  ', titles, 'p1')).toEqual([]);
     expect(matchThreadTitles('·', titles, 'p1')).toEqual([]);
+  });
+});
+
+describe('keyword snippet', () => {
+  it('returns a short message whole', () => {
+    expect(snippetAround('Saturn slows your career.', 'career')).toBe('Saturn slows your career.');
+  });
+
+  it('centres a long message on the first matched term, keeping its accents', () => {
+    const text = `${'Palabras de apertura. '.repeat(20)}Júpiter mejora tu carrera. ${'Cierre. '.repeat(40)}`;
+    const snippet = snippetAround(text, 'jupiter');
+    expect(snippet).toContain('Júpiter mejora tu carrera.');
+    expect(snippet.startsWith('…')).toBe(true);
+    expect(snippet.endsWith('…')).toBe(true);
+    expect(snippet.length).toBeLessThanOrEqual(SNIPPET_CHARS + 2);
+  });
+
+  it('matches a typed prefix, and falls back to the start when nothing matches', () => {
+    expect(snippetAround(`${'x '.repeat(200)}promotion`, 'promo')).toContain('promotion');
+    expect(snippetAround(`opening ${'y '.repeat(200)}`, 'zzz').startsWith('opening')).toBe(true);
   });
 });

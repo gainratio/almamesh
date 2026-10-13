@@ -41,10 +41,11 @@ import {
   whenProfilesHydrated,
 } from '@almamesh/store';
 
-import { chatFtsRows, type ChatFtsRows } from './chatFtsRows';
+import { chatFtsRows, type ChatFtsRows, type ChatKeywordHit } from './chatFtsRows';
 import {
   fuseByReciprocalRank,
   matchThreadTitles,
+  snippetAround,
   type ChatSearchHit,
   type ThreadTitle,
 } from './chatSearchFusion';
@@ -327,6 +328,21 @@ export async function searchMemory(
   }
 }
 
+/**
+ * The keyword index stores no text: each hit shows a snippet of its canonical
+ * chat message, and a hit whose message is gone from canonical chat is dropped.
+ */
+function withCanonicalText(hits: readonly ChatKeywordHit[], query: string): readonly ChatSearchHit[] {
+  const messages = useChatStore.getState().messages;
+  const shown: ChatSearchHit[] = [];
+  for (const hit of hits) {
+    const message = messages[hit.thread_id]?.find((candidate) => candidate.id === hit.message_id);
+    if (!message || message.error === true || message.content.trim().length === 0) continue;
+    shown.push({ source: 'message', thread_id: hit.thread_id, message_id: hit.message_id, text: snippetAround(message.content, query), score: hit.score });
+  }
+  return shown;
+}
+
 /** Keyword hits, backfilling the index once from hydrated canonical chat. */
 async function searchKeywords(query: string, profileId: string, k: number): Promise<readonly ChatSearchHit[]> {
   const index = keywordIndex();
@@ -335,7 +351,7 @@ async function searchKeywords(query: string, profileId: string, k: number): Prom
     if (!(await index.isBuilt()) && (await whenChatHydrated()).status === 'hydrated') {
       await index.rebuild(canonicalChatMessages().map(keywordRow));
     }
-    return await index.search(query, profileId, k);
+    return withCanonicalText(await index.search(query, profileId, k), query);
   } catch (error) {
     safeWarn('memory.search_failed', error);
     return [];
