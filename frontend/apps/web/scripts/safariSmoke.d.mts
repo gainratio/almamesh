@@ -24,3 +24,5 @@ export interface SafariSmokeOptions {
 }
 
 export function parseSmokeArgs(argv: readonly string[]): SafariSmokeOptions;
+
+export function deepLinkFailure(navigation: { readonly requested: string; readonly landedPath: string }): string | null;

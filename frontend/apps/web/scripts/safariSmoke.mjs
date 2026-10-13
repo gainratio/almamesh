@@ -73,3 +73,15 @@ export function parseSmokeArgs(argv) {
   }
   return options
 }
+
+const withoutTrailingSlash = (path) => path.replace(/\/+$/, '') || '/'
+
+/**
+ * Null when a direct navigation to `requested` stayed there; otherwise the
+ * failure to report. The smoke then continues the way a visitor would (the
+ * landing CTA), so one run also shows whether the rest of the journey works.
+ */
+export function deepLinkFailure({ requested, landedPath }) {
+  if (withoutTrailingSlash(landedPath) === withoutTrailingSlash(requested)) return null
+  return `deep link to ${requested} landed on ${landedPath} (the landing CTA path was used to continue)`
+}

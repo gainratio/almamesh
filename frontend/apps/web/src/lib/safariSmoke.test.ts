@@ -5,6 +5,7 @@ import {
   parseSmokeArgs,
   runStage,
   SafariSmokeStageError,
+  deepLinkFailure,
   storageModeFrom,
 } from '../../scripts/safariSmoke.mjs';
 
@@ -109,5 +110,21 @@ describe('parseSmokeArgs', () => {
 
   it('rejects a flag with no value', () => {
     expect(() => parseSmokeArgs(['--base-url'])).toThrow('--base-url needs a value');
+  });
+});
+
+describe('deepLinkFailure', () => {
+  it('passes when Safari lands on the requested route', () => {
+    expect(deepLinkFailure({ requested: '/onboarding', landedPath: '/onboarding' })).toBeNull();
+  });
+
+  it('ignores a trailing slash on the landed path', () => {
+    expect(deepLinkFailure({ requested: '/onboarding', landedPath: '/onboarding/' })).toBeNull();
+  });
+
+  it('names both paths when a deep link lands somewhere else', () => {
+    expect(deepLinkFailure({ requested: '/onboarding', landedPath: '/' })).toBe(
+      'deep link to /onboarding landed on / (the landing CTA path was used to continue)',
+    );
   });
 });

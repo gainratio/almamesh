@@ -41,7 +41,14 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { Browser, Builder, By, until } from 'selenium-webdriver'
 
-import { formatStageFailure, parseSmokeArgs, runStage, SafariSmokeStageError, storageModeFrom } from './safariSmoke.mjs'
+import {
+  deepLinkFailure,
+  formatStageFailure,
+  parseSmokeArgs,
+  runStage,
+  SafariSmokeStageError,
+  storageModeFrom,
+} from './safariSmoke.mjs'
 
 const PORT = 4310
 const DIST = 'dist-safari'
@@ -98,8 +105,13 @@ const INSTALL_ERROR_CAPTURE = `
   }`
 
 const SNAPSHOT = `
+  const navigation = performance.getEntriesByType('navigation')[0]
   return {
     route: location.pathname,
+    url: location.href,
+    readyState: document.readyState,
+    navigation: navigation ? { name: navigation.name, type: navigation.type, redirectCount: navigation.redirectCount } : null,
+    serviceWorkerControlled: Boolean(navigator.serviceWorker?.controller),
     heading: (document.querySelector('h1, h2')?.textContent ?? '').trim().slice(0, 120) || null,
     inMemoryNotice: document.querySelector('[data-testid="in-memory-storage-notice"]') !== null,
     runtimeStage: window.__ALMAMESH_STAGE__ ?? null,
@@ -110,7 +122,8 @@ const SNAPSHOT = `
 async function snapshotOf(driver) {
   const raw = await driver.executeScript(SNAPSHOT)
   const { inMemoryNotice, ...rest } = raw
-  return { ...rest, storageMode: storageModeFrom({ inMemoryNotice }) }
+  const driverUrl = await driver.getCurrentUrl().catch((error) => `getCurrentUrl failed: ${error.message}`)
+  return { ...rest, driverUrl, storageMode: storageModeFrom({ inMemoryNotice }) }
 }
 
 async function capturedErrors(driver) {
@@ -166,8 +179,25 @@ function stages(driver, baseUrl, record) {
       if (!isolated) throw new Error('crossOriginIsolated is not true on /')
       record.consoleErrors.push(...(await capturedErrors(driver)))
     }],
-    ['open-route', 30, async () => {
+    ['open-route', 45, async () => {
+      // A direct load of the route (a shared link, a bookmark). Wait for the
+      // page to settle on it; if it lands elsewhere, record exactly where and
+      // continue the way a first-time visitor would, through the landing CTA.
       await driver.get(`${baseUrl}${options.route}`)
+      const landedPath = await driver
+        .wait(async () => {
+          const path = await driver.executeScript('return document.readyState === "complete" ? location.pathname : null')
+          return path === options.route ? path : false
+        }, 15 * SECONDS)
+        .catch(() => driver.executeScript('return location.pathname'))
+      record.deepLink = { requested: options.route, landedPath, snapshot: await snapshotOf(driver) }
+      record.deepLinkFailure = deepLinkFailure({ requested: options.route, landedPath })
+      if (record.deepLinkFailure) {
+        console.log(`safari-smoke: [WARN] ${record.deepLinkFailure}`)
+        record.screenshots.push(await screenshot(driver, 'safari-deep-link.png'))
+        await clickTestId(driver, 'hero-cta')
+        record.landingCta = await snapshotOf(driver)
+      }
       await driver.executeScript(INSTALL_ERROR_CAPTURE)
     }],
     ['onboarding-name', 30, async () => {
@@ -249,8 +279,11 @@ async function main() {
       await runStage(stage, seconds * SECONDS, body, () => snapshotOf(driver))
       console.log(`safari-smoke: [PASS] ${stage}`)
     }
-    record.result = 'pass'
     console.log(`safari-smoke: storage mode ${record.dashboard.storageMode}; chart rendered on ${record.dashboard.route}`)
+    if (record.deepLinkFailure) {
+      throw new SafariSmokeStageError('deep-link', record.deepLinkFailure, record.deepLink.snapshot)
+    }
+    record.result = 'pass'
   } catch (error) {
     record.result = 'fail'
     if (error instanceof SafariSmokeStageError) {
