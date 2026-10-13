@@ -3,6 +3,7 @@ import { openNodeSqlDatabase } from '@gainratio/browser/sql/node';
 
 import { migrateDerivedDb, type SqlDatabase } from '../derivedDb';
 import { CHAT_FTS_MAX_ROWS, createChatFtsRows, type ChatFtsLedger } from '../chatFtsRows';
+import { failingAt } from './failingSql';
 
 const databases: SqlDatabase[] = [];
 afterEach(async () => { await Promise.all(databases.splice(0).map((db) => db.close())); });
@@ -227,6 +228,35 @@ describe('chat keyword index (SQLite FTS5)', () => {
       await seedSecret(rows);
       await rows.clear();
       expect(await traces(db)).toEqual([]);
+    });
+  });
+
+  describe('every write is one transaction (atomic)', () => {
+    const quietLedger = async (): Promise<ChatFtsLedger> => ({ profileIds: [], threadIds: [], activeEpoch: 0, restoreEpoch: 0, restoreInProgress: false });
+
+    it('an index write that fails after its insert persists nothing', async () => {
+      const { db } = await fixture();
+      const rows = createChatFtsRows(async () => failingAt(db, /ORDER BY rowid DESC LIMIT -1/), { readLedger: quietLedger, generation: () => 0 });
+      await expect(rows.index(row('m1', 'half written'))).rejects.toThrow(/injected/);
+      expect(await count(db)).toBe(0);
+    });
+
+    it('a purge that fails at optimize keeps every row, so the caller sees the failure and retries', async () => {
+      const { db, rows } = await fixture();
+      await rows.index(row('a', 'sun', 'p1', 't1'));
+      await rows.index(row('b', 'sun', 'p2', 't2'));
+      const failing = createChatFtsRows(async () => failingAt(db, /'optimize'/), { readLedger: quietLedger, generation: () => 0 });
+      await expect(failing.deleteForProfile('p1')).rejects.toThrow(/injected/);
+      expect(await count(db)).toBe(2);
+    });
+
+    it('a rebuild that fails before its marker keeps the old rows and stays unbuilt', async () => {
+      const { db, rows } = await fixture();
+      await rows.index(row('old', 'mercury'));
+      const failing = createChatFtsRows(async () => failingAt(db, /dataset_meta/), { readLedger: quietLedger, generation: () => 0 });
+      await expect(failing.rebuild([row('new', 'mars')])).rejects.toThrow(/injected/);
+      expect(await db.query('SELECT message_id FROM chat_fts')).toEqual([{ message_id: 'old' }]);
+      expect(await rows.isBuilt()).toBe(false);
     });
   });
 

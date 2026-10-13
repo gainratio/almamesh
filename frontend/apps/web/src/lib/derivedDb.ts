@@ -25,7 +25,9 @@ const SCHEMA = [
   'CREATE TABLE IF NOT EXISTS dataset_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL) STRICT',
   'CREATE TABLE IF NOT EXISTS cities (idx INTEGER PRIMARY KEY, n TEXT NOT NULL, c TEXT NOT NULL, cc TEXT NOT NULL, lat REAL NOT NULL, lon REAL NOT NULL, p INTEGER NOT NULL, name_fold TEXT NOT NULL, search_fold TEXT NOT NULL) STRICT',
   "CREATE VIRTUAL TABLE IF NOT EXISTS cities_fts USING fts5(search_fold, content='cities', content_rowid='idx', tokenize='trigram')",
-  'CREATE TABLE IF NOT EXISTS period_sky (key TEXT PRIMARY KEY, engine TEXT NOT NULL, profile_id TEXT NOT NULL, payload TEXT NOT NULL, epoch INTEGER NOT NULL DEFAULT 0) STRICT',
+  // v3: the schema refuses empty ids, non-JSON payloads and negative epochs.
+  // No foreign keys: profiles live in the canonical store, a separate file.
+  'CREATE TABLE IF NOT EXISTS period_sky (key TEXT PRIMARY KEY CHECK (length(key) > 0), engine TEXT NOT NULL CHECK (length(engine) > 0), profile_id TEXT NOT NULL CHECK (length(profile_id) > 0), payload TEXT NOT NULL CHECK (json_valid(payload)), epoch INTEGER NOT NULL DEFAULT 0 CHECK (epoch >= 0)) STRICT',
   'CREATE INDEX IF NOT EXISTS period_sky_profile ON period_sky(profile_id)',
   // v3: keyword search over chat messages, rebuildable from the chat store row.
   // Contentless-delete (SQLite >= 3.43; contentless_unindexed >= 3.47; the
@@ -37,6 +39,30 @@ const SCHEMA = [
 ];
 
 /**
+ * Durability. The OPFS SAH-pool VFS has no shared memory, so WAL is out: the
+ * library opens OPFS files with journal_mode=DELETE (and refuses otherwise);
+ * the in-memory fallback has a memory journal by definition. synchronous=FULL
+ * syncs the journal and the file at every commit. Both are read back, and a
+ * connection that did not take them is refused.
+ *
+ * Isolation. The SAH pool holds exclusive OPFS access handles, so one
+ * connection owns the file at a time; every session takes the cross-tab Web
+ * Lock below first; and the client queues calls behind an open transaction.
+ * Each multi-statement write is one `db.transaction` (BEGIN IMMEDIATE …
+ * COMMIT, ROLLBACK on any error): it takes the write lock up front and runs no
+ * non-SQL await inside.
+ */
+async function requireDurability(db: SqlDatabase): Promise<void> {
+  await db.exec('PRAGMA synchronous=FULL');
+  const journal = (await db.query<{ journal_mode: string }>('PRAGMA journal_mode=DELETE'))[0]?.journal_mode;
+  const synchronous = (await db.query<{ synchronous: number }>('PRAGMA synchronous'))[0]?.synchronous;
+  const expectedJournal = db.storage?.persistence === 'memory' ? 'memory' : 'delete';
+  if (journal !== expectedJournal || synchronous !== 2) {
+    throw new Error('The derived database durability pragmas were not applied.');
+  }
+}
+
+/**
  * secure_delete zeroes deleted rows and freed pages, so a purged chat message
  * leaves no bytes behind. The library already sets it on OPFS connections;
  * setting it here covers the in-memory fallback too. auto_vacuum only takes
@@ -44,6 +70,7 @@ const SCHEMA = [
  * older file incremental_vacuum is a no-op and secure_delete does the zeroing.
  */
 export async function migrateDerivedDb(db: SqlDatabase): Promise<void> {
+  await requireDurability(db);
   await db.exec('PRAGMA secure_delete=ON');
   // auto_vacuum is ignored inside a transaction, and once any table exists
   // (sqlite-vector adds one at open) it needs a VACUUM to apply. Only a new
@@ -60,6 +87,8 @@ export async function migrateDerivedDb(db: SqlDatabase): Promise<void> {
     // v2 stored message text in chat_fts_content. Drop it (secure_delete
     // zeroes the pages) and let the next search backfill from canonical chat.
     if (version === 2) await tx.exec('DROP TABLE IF EXISTS chat_fts');
+    // A recomputable cache: recreate it with the v3 constraints.
+    if (version > 0 && version < 3) await tx.exec('DROP TABLE IF EXISTS period_sky');
     for (const sql of SCHEMA) await tx.exec(sql);
     if (version === 2) await tx.exec('DELETE FROM dataset_meta WHERE key = ?', [CHAT_FTS_BUILT_KEY]);
   });

@@ -61,6 +61,52 @@ describe('derived SQLite schema', () => {
     expect(await db.query('PRAGMA auto_vacuum')).toEqual([{ auto_vacuum: 2 }]);
   });
 
+  it('sets and reads back the durability pragmas on every connection', async () => {
+    const db = await open();
+    await db.exec('PRAGMA synchronous=OFF');
+    await migrateDerivedDb(db);
+    expect(await db.query('PRAGMA synchronous')).toEqual([{ synchronous: 2 }]);
+    // Node opens this fixture in memory; on OPFS the library sets DELETE and refuses anything else.
+    expect(await db.query('PRAGMA journal_mode')).toEqual([{ journal_mode: 'memory' }]);
+  });
+
+  it('refuses a connection whose durability pragmas did not apply', async () => {
+    const db = await open();
+    const query = db.query.bind(db);
+    const ignoring = Object.assign(Object.create(db) as SqlDatabase, {
+      exec: db.exec.bind(db),
+      query: ((sql: string, bind?: Parameters<SqlDatabase['query']>[1]) => sql === 'PRAGMA synchronous' ? Promise.resolve([{ synchronous: 1 }]) : query(sql, bind)) as SqlDatabase['query'],
+      transaction: db.transaction.bind(db),
+    });
+    await expect(migrateDerivedDb(ignoring)).rejects.toThrow(/durab/i);
+  });
+
+  it('the schema itself refuses malformed period-sky rows', async () => {
+    const db = await open();
+    await migrateDerivedDb(db);
+    const insert = (key: string, profile: string, payload: string, epoch: number) =>
+      db.exec('INSERT INTO period_sky (key, engine, profile_id, payload, epoch) VALUES (?, ?, ?, ?, ?)', [key, 'engine', profile, payload, epoch]);
+    await insert('ok', 'p1', '{}', 0);
+    await expect(insert('', 'p1', '{}', 0)).rejects.toThrow(/CHECK/);
+    await expect(insert('k2', '', '{}', 0)).rejects.toThrow(/CHECK/);
+    await expect(insert('k3', 'p1', 'not json', 0)).rejects.toThrow(/CHECK/);
+    await expect(insert('k4', 'p1', '{}', -1)).rejects.toThrow(/CHECK/);
+    expect(await db.query('SELECT key FROM period_sky')).toEqual([{ key: 'ok' }]);
+  });
+
+  it('upgrading an older file recreates period_sky with its constraints and keeps the epoch fence', async () => {
+    const db = await open();
+    await db.exec('CREATE TABLE dataset_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL) STRICT');
+    await db.exec('CREATE TABLE period_sky (key TEXT PRIMARY KEY, engine TEXT NOT NULL, profile_id TEXT NOT NULL, payload TEXT NOT NULL, epoch INTEGER NOT NULL DEFAULT 0) STRICT');
+    await db.exec("INSERT INTO period_sky VALUES ('old', 'engine', '', 'not json', 0)");
+    await db.exec("INSERT INTO dataset_meta VALUES ('period-sky-epoch', '4')");
+    await db.exec('PRAGMA user_version=2');
+    await migrateDerivedDb(db);
+    expect(await db.query('SELECT key FROM period_sky')).toEqual([]);
+    await expect(db.exec("INSERT INTO period_sky VALUES ('k', 'engine', '', '{}', 0)")).rejects.toThrow(/CHECK/);
+    expect(await db.query("SELECT value FROM dataset_meta WHERE key = 'period-sky-epoch'")).toEqual([{ value: '4' }]);
+  });
+
   it('a refused VACUUM on a new file does not block the migration', async () => {
     const db = await open();
     const exec = db.exec.bind(db);
@@ -257,13 +303,21 @@ describe('short derived database sessions', () => {
 });
 
 describe('derived database page lifecycle', () => {
+  /** What a healthy OPFS connection answers to the migration's pragma reads. */
+  function pragmaAnswer(sql: string): readonly object[] {
+    if (sql.startsWith('PRAGMA journal_mode')) return [{ journal_mode: 'delete' }];
+    if (sql === 'PRAGMA synchronous') return [{ synchronous: 2 }];
+    return [{ user_version: 0 }];
+  }
+
   function databaseDouble() {
     const close = vi.fn<() => Promise<void>>(async () => undefined);
     const db = {
       close,
-      query: vi.fn(async () => [{ user_version: 0 }]),
+      query: vi.fn(async (sql: string) => pragmaAnswer(sql)),
       exec: vi.fn(async () => ({ changes: 0, lastInsertRowId: 0 })),
       transaction: async (work: (connection: SqlDatabase) => Promise<unknown>) => work(db as unknown as SqlDatabase),
+      storage: { persistence: 'opfs' },
     };
     return { db: db as unknown as SqlDatabase, close };
   }

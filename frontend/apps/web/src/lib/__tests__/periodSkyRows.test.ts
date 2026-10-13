@@ -7,6 +7,7 @@ import type { PredictiveContexts } from '@almamesh/browser';
 import { createDerivedDbSessions, migrateDerivedDb, type SqlDatabase } from '../derivedDb';
 import { createPeriodSkyCache } from '../periodSky';
 import { createPeriodSkyRows, DurableReceiptError } from '../periodSkyRows';
+import { failingAt } from './failingSql';
 import { devicePolicy } from '@almamesh/browser';
 
 const databases: SqlDatabase[] = [];
@@ -161,7 +162,7 @@ describe('period sky durable rows', () => {
   it('invalidates a malformed lookup payload inside its one session', async () => {
     const { db, rows } = await fixture();
     await rows.captureEpoch!();
-    await db.exec('INSERT INTO period_sky (key, engine, profile_id, payload, epoch) VALUES (?, ?, ?, ?, ?)', ['key', 'a', 'p1', '{broken', 0]);
+    await db.exec('INSERT INTO period_sky (key, engine, profile_id, payload, epoch) VALUES (?, ?, ?, ?, ?)', ['key', 'a', 'p1', '{"transit_context":null}', 0]);
     await expect(rows.lookup('a', 'key', true)).resolves.toEqual({ epoch: 0, hit: undefined });
     expect(await db.query('SELECT key FROM period_sky')).toEqual([]);
   });
@@ -196,7 +197,13 @@ describe('period sky durable rows', () => {
     }
   });
 
-  it.each(['{broken', 'null', '[]', '{}', '{"transit_context":null}', '{"transit_context":{}}', '{"transit_context":{},"domain_strength_receipts":[]}'])('deletes an invalid persisted payload: %s', async (payload) => {
+  it('the schema refuses a non-JSON payload, so one can never be read back', async () => {
+    const { db, rows } = await fixture();
+    await rows.captureEpoch!();
+    await expect(db.exec('INSERT INTO period_sky (key, engine, profile_id, payload, epoch) VALUES (?, ?, ?, ?, ?)', ['k', 'a', 'p1', '{broken', 0])).rejects.toThrow(/CHECK/);
+  });
+
+  it.each(['null', '[]', '{}', '{"transit_context":null}', '{"transit_context":{}}', '{"transit_context":{},"domain_strength_receipts":[]}'])('deletes an invalid persisted payload: %s', async (payload) => {
     const { db, rows } = await fixture();
     await rows.captureEpoch!();
     await db.exec('INSERT INTO period_sky (key, engine, profile_id, payload, epoch) VALUES (?, ?, ?, ?, ?)', ['k', 'a', 'p1', payload, 0]);
@@ -270,6 +277,26 @@ describe('period sky durable rows', () => {
     resume.resolve();
     await write;
     expect((await db.query<{ n: number }>('SELECT count(*) AS n FROM period_sky'))[0]?.n).toBe(0);
+  });
+});
+
+describe('period sky writes are one transaction (atomic)', () => {
+  it('a write that fails at its eviction persists nothing', async () => {
+    const { db, ledger, rows } = await fixture();
+    await rows.write('engine', 'landed', 'p1', PAYLOAD);
+    const failing = createPeriodSkyRows(async () => failingAt(db, /ORDER BY rowid DESC LIMIT -1/), { readLedger: async () => ({ ...ledger }) });
+    await expect(failing.write('engine', 'key', 'p1', PAYLOAD, 0)).rejects.toThrow(/injected/);
+    expect(await db.query('SELECT key FROM period_sky')).toEqual([{ key: 'landed' }]);
+  });
+
+  it('a profile purge that fails after advancing the epoch fence leaves the fence and rows as they were', async () => {
+    const { db, ledger, rows } = await fixture();
+    await rows.write('engine', 'key', 'p1', PAYLOAD);
+    ledger.restoreEpoch = 1;
+    const failing = createPeriodSkyRows(async () => failingAt(db, /WHERE profile_id = \?/), { readLedger: async () => ({ ...ledger }) });
+    await expect(failing.deleteForProfile('p1')).rejects.toThrow(/injected/);
+    expect(await db.query("SELECT value FROM dataset_meta WHERE key = 'period-sky-epoch'")).toEqual([{ value: '0' }]);
+    expect(await db.query('SELECT key FROM period_sky')).toEqual([{ key: 'key' }]);
   });
 });
 
