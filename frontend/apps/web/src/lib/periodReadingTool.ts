@@ -40,13 +40,14 @@ import { isCachedNatalLords, isCachedPeriodReading } from './periodSkyValidation
 import { formatPinLabel } from './timeTravelSheet';
 import { DEVICE_DASHAS_ONLY_NOTE, PeriodSkyUnavailableError, TIMING_TOOL_TIMEOUT_MS } from './timingTool';
 import { tripContext } from './tripContext';
+import { birthPlaceOf } from './tripPlacePrefill';
 
 export interface PeriodReadingToolsInput {
   /** A trip's pin (tripPin: an old trip carries the birth place's label and zone); undefined for today. */
   readonly pin: ChatThreadAsOf | undefined;
   /** The stored natal chart (the trip frame's dasha tree and natal summary). */
   readonly chart: SiderealChart;
-  /** Only its birth year is read, for the before-birth gates. Never echoed. */
+  /** Read for the before-birth gates (birth year) and today's place label (current location). Never echoed. */
   readonly birth: ProcessedBirthData | undefined;
   readonly language: string;
   readonly viewerZone: () => string;
@@ -86,6 +87,12 @@ const DETAIL_PARAMETERS = {
   additionalProperties: false,
 } as const;
 
+/** Today's place label: the profile's current location, label only (never its coordinates); absent when unset. */
+function currentPlaceLabel(birth: ProcessedBirthData | undefined): { readonly label?: string } {
+  const label = birthPlaceOf(birth?.transit_location_details ?? undefined)?.label;
+  return label ? { label } : {};
+}
+
 /** The period and place the tools are bound to, for this call's `now`. */
 function frameOf(input: PeriodReadingToolsInput, now: Date): ReadingFrame {
   const today = viewerTodayDay(now, input.viewerZone());
@@ -94,7 +101,7 @@ function frameOf(input: PeriodReadingToolsInput, now: Date): ReadingFrame {
     const timezone = input.viewerZone();
     const clock = currentDateTimeForZone(now, timezone);
     const current = { zone: `your current zone (${timezone})`, local_date: clock.localDate, local_time: clock.localTime.slice(0, 5) };
-    return { period: { start: today, end: today, granularity: 'day', label, tense: 'present' }, place: { label: null, timezone, current } };
+    return { period: { start: today, end: today, granularity: 'day', label, tense: 'present' }, place: { ...currentPlaceLabel(input.birth), timezone, current } };
   }
   const trip = tripContext({ chart: input.chart, asOf: input.pin, today, birth: input.birth, language: input.language });
   const { start, end, granularity, label, tense } = trip.period;

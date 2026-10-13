@@ -128,7 +128,7 @@ describe('the period reading tools (spec 2026-10-13)', () => {
 
   it('a today reading has no place label and still reads as a sentence', () => {
     render(<ToolCallRow toolName="get_period_reading" toolCallId="r2" args={{}} argsText="{}"
-      result={{ period: { label: 'October 13, 2026' }, place: { label: null, timezone: 'America/Los_Angeles' } }} status={{ type: 'complete' }} />);
+      result={{ period: { label: 'October 13, 2026' }, place: { timezone: 'America/Los_Angeles' } }} status={{ type: 'complete' }} />);
     expect(screen.getByTestId('chat-tool-call-summary').textContent).toBe('Looked up the period reading · October 13, 2026');
   });
 

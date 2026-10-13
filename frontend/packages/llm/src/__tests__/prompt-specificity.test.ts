@@ -39,7 +39,7 @@ describe("the chat prompt asks for specificity and keeps honesty", () => {
     'For every theme you cover, give its life area and houses, its direction, its strength and its confidence in words (e.g. "strong, medium confidence"), the engine factor behind it, and its dated window when it has one.',
     "Name every tag in the reading's sky once, with what it traditionally signifies: a Sade Sati phase, Kantaka or Ashtama Shani, Jupiter Nth from the Moon.",
     "For the user's own date, time and zone today, use the reading's period and place.current. get_current_datetime scope chart is the birth place's zone, not where the user is now.",
-    "Name the place the reading is for.",
+    "Name the place when the reading's place has a label. With no label, name no city and never say a tool left one out.",
     "Give at least one dated window or change point inside the period.",
     "Use get_period_detail to look closer at a lord, a segment, the bindus or the panchang when the question needs it.",
   ])("asks: %s", (line) => {
@@ -51,6 +51,10 @@ describe("the chat prompt asks for specificity and keeps honesty", () => {
     expect(system).toContain("HONESTY: a chart cannot name the concrete event.");
     expect(system).toContain("Cite the engine factor behind every claim.");
     expect(system).toContain("never invent a fact");
+  });
+
+  it("never asks the model to name a place it was not given (today has no city)", () => {
+    expect(chatSystem()).not.toContain("Name the place the reading is for.");
   });
 
   it("drops the weaker theme and tag asks it replaced", () => {

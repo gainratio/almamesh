@@ -61,11 +61,30 @@ describe('get_period_reading', () => {
     expect(result.period).toMatchObject({ granularity: 'day', tense: 'present' });
     expect(result.period.start).toBe(result.period.end);
     const local = currentDateTimeForZone(SPLIT_DAY_NOW, 'America/Los_Angeles');
+    // Contract reversed (2026-10-13): today used to send `label: null`, and the model told the
+    // user "the tool hasn't supplied a city name". With no known current place, no label key at all.
     expect(result.place).toEqual({
-      label: null, timezone: 'America/Los_Angeles',
+      timezone: 'America/Los_Angeles',
       current: { zone: 'your current zone (America/Los_Angeles)', local_date: result.period.start, local_time: local.localTime.slice(0, 5) },
     });
+    expect(result.place).not.toHaveProperty('label');
     expect(local.localDate).toBe(result.period.start);
+  });
+
+  it("today: names the profile's current place by label only, never its coordinates or the birth place", async () => {
+    const lisbon = { city: 'Lisbon', country: 'Portugal', latitude: 38.7223, longitude: -9.1393, timezone: 'Europe/Lisbon' };
+    const { reading } = tools({ pin: undefined, birth: { ...BIRTH, transit_location_details: lisbon } });
+    const result = await reading.execute({}, context()) as PeriodReading;
+    expect(result.place).toMatchObject({ label: 'Lisbon, Portugal', timezone: 'America/Los_Angeles' });
+    const sent = JSON.stringify(result);
+    for (const leak of ['38.72', '-9.13', 'Delhi', '28.61', '77.20', '1990-01-15', '17:30']) expect(sent).not.toContain(leak);
+  });
+
+  it('today: an unusable current place (no label) sends no label, not an empty one', async () => {
+    const blank = { city: ' ', latitude: 38.7223, longitude: -9.1393, timezone: 'Europe/Lisbon' };
+    const { reading } = tools({ pin: undefined, birth: { ...BIRTH, transit_location_details: blank } });
+    const result = await reading.execute({}, context()) as PeriodReading;
+    expect(result.place).not.toHaveProperty('label');
   });
 
   it('a trip carries no current local time: its place is where the user was, not where they are', async () => {

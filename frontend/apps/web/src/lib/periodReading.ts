@@ -53,8 +53,11 @@ export interface ReadingCurrent {
 }
 
 export interface ReadingPlace {
-  /** The trip's place label; null for today (the viewer's own place has no label). */
-  readonly label: string | null;
+  /**
+   * The trip's place label. Today: the profile's current place label when one is set,
+   * else absent (never null or empty: the model then says nothing about a city).
+   */
+  readonly label?: string;
   readonly timezone: string;
   readonly current?: ReadingCurrent;
 }
