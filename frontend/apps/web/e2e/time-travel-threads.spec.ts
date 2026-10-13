@@ -505,7 +505,8 @@ for (const tag of ['', '@iphone']) {
       expect(prompt, `no pre-computed timing JSON (${precomputed}) in the prompt`).not.toContain(precomputed);
     }
     // No-argument calls answer for the trip: Singapore, May 2019. Round 1's results are read in full
-    // by round 2; the answer round carries them as their compact summaries (context budget).
+    // by round 2. Contract reversed 2026-10-13 (P1 drive): compaction is budget-driven, so with room
+    // to spare the answer round still carries them in full (it used to carry compact summaries).
     const grounding = turnTools(second.messages);
     expect(grounding.map((m) => m.name)).toEqual(TRIP_CALLS.slice(0, 2));
     expect(grounding[0]?.content).toContain('"period":{"start":"2019-05-01","end":"2019-05-31","granularity":"month","label":"May 2019","tense":"past"}');
@@ -514,7 +515,8 @@ for (const tag of ['', '@iphone']) {
     expect(grounding[1]?.content).toContain('"lagna"');
     const results = turnTools(final.messages);
     expect(results.map((m) => m.name)).toEqual([...TRIP_CALLS]);
-    expect(results[0]?.content, 'the consumed reading rides as its own summary').toContain('"compacted":true,"facts":"Rahu–Rahu');
+    expect(results[0]?.content, 'the consumed reading rides in full while it fits').toContain('"period":{"start":"2019-05-01","end":"2019-05-31"');
+    expect(results[0]?.content).not.toContain('"compacted":true');
     expect(results[2]?.content).toContain('"place":{"label":"Singapore');
     expect(results[2]?.content).toContain('"timezone":"Asia/Singapore"');
     expect(results[2]?.content).toContain('"start":"2019-05-01"');

@@ -626,7 +626,9 @@ test.describe('places', () => {
 
     await ask(DAY_QUESTION, DAY_ANSWER);
     expect(lastTools().map((m) => m.name)).toEqual(['resolve_place', 'get_timing']);
-    expect(lastTools()[0]?.content).toContain('"compacted":true,"facts":"Los Angeles, United States');
+    // Contract reversed 2026-10-13 (P1 drive): with room to spare the consumed resolve_place result rides in full.
+    expect(lastTools()[0]?.content).toContain('"label":"Los Angeles, United States"');
+    expect(lastTools()[0]?.content).not.toContain('"compacted":true');
     expect(roundTwoTools()[0]?.content).toContain('"label":"Los Angeles, United States"');
     expect(roundTwoTools()[0]?.content).toContain('"timezone":"America/Los_Angeles"');
     expect(lastTools()[1]?.content).toContain('"label":"Los Angeles, United States"');
