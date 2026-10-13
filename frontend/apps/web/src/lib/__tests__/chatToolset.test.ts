@@ -1,5 +1,5 @@
 import type { SiderealChart } from '@almamesh/browser/types';
-import { streamAgentChat } from '@almamesh/llm';
+import { streamAgentChat, type AgentTool } from '@almamesh/llm';
 import type { ProcessedBirthData } from '@almamesh/shared-types';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -47,8 +47,19 @@ function engineContextWith(overrides: Record<string, unknown>): ChartEngineConte
   return { engine, startBootstrap: vi.fn(), whenReady: vi.fn(async () => engine) } as unknown as ChartEngineContextValue;
 }
 
+/** Stands in for the period-reading tool (apps/web periodReadingTool.ts, its own agent's work). */
+const READING_STUB: AgentTool = {
+  name: 'get_period_reading', description: 'Read the period reading.', statusLabel: 'Reading the period',
+  parameters: { type: 'object', properties: {}, additionalProperties: false }, execute: async () => ({ ok: true }),
+};
+const READING_GROUNDING = {
+  toolChoice: 'required', groundingTool: 'get_period_reading',
+  requiredTools: ['get_period_reading'], groundingCalls: [{ name: 'get_period_reading', args: {} }],
+};
+
 function toolset(overrides: Partial<BuildChatToolsetInput> = {}) {
   return buildChatToolset({
+    toolOverrides: [READING_STUB],
     chart: CHART,
     chartAsOf: { basis: 'chart', instant: new Date('2025-01-01T00:00:00Z') },
     chartTimeZone: 'Asia/Kolkata',
@@ -87,8 +98,8 @@ describe('buildChatToolset: one "today", the viewer zone', () => {
     expect(result).toMatchObject({ period: { start: '2026-03-08', basis: 'today' } }); // Kolkata is already 03-09
   });
 
-  it("the router's today pre-run asks the engine for the viewer's day", async () => {
-    await toolset().prepare('What are my transits today?', options());
+  it("today's get_timing asks the engine for the viewer's day", async () => {
+    await timingOf(toolset()).execute({ section: 'transits' }, options());
     expect(ensureMock).toHaveBeenCalledWith(expect.objectContaining({ chartTimeZone: 'America/Los_Angeles' }));
   });
 
@@ -108,9 +119,9 @@ describe('buildChatToolset: router', () => {
     const built = toolset({ chart: TIMING_CHART, periodSkyAllowed: true });
     const prepared = await built.prepare('What happened in September 2017?', options());
     expect(prepared.asOf).toMatchObject({ basis: 'period', period: { start: '2017-09-01', end: '2017-09-30' } });
-    expect(prepared.timingFacts).toEqual([]);
+    expect(prepared.clarification).toBeUndefined();
     expect(prepared.toolChoice).toBe('required');
-    expect(prepared.groundingTool).toBe('get_trip_context');
+    expect(prepared.groundingTool).toBe('get_period_reading');
     expect(loadMock).not.toHaveBeenCalled();
     expect(await timingOf(built).execute({ section: 'dashas' }, options()))
       .toMatchObject({ section: 'dashas', data: { maha: [{ lord: 'jupiter' }], antar: [{ lord: 'saturn' }] } });
@@ -131,7 +142,7 @@ describe('buildChatToolset: router', () => {
     const built = toolset({ chart: TIMING_CHART, periodSkyAllowed: false });
     const prepared = await built.prepare(question, options());
     expect(prepared.asOf).toMatchObject({ basis: 'period', period: { start, end } });
-    expect(prepared.timingFacts).toEqual([]);
+    expect(prepared.clarification).toBeUndefined();
     expect(prepared.toolChoice).toBe('required');
     expect(prepared.pinned).toMatchObject({ start, end });
     expect(await timingOf(built).execute({ section: 'dashas' }, options())).toMatchObject({ period: { start, end }, section: 'dashas' });
@@ -154,8 +165,10 @@ describe('buildChatToolset: router', () => {
       const pin = { start: '2017-09-01', end: '2017-09-30', granularity: 'month' } as const;
       const prepared = await toolset({ chart: TIMING_CHART, pinned: pin, periodSkyAllowed: true }).prepare(question, options());
       expect(prepared.pinned).toBeUndefined();
-      expect(prepared.currentContextUnavailable).toBe(false);
-      expect(prepared.timingFacts[0]?.result).toMatchObject({ status: 'needs_clarification', data: { available: false, reason: expect.stringMatching(/period/) } });
+      expect(prepared.toolChoice).toBe('auto');
+      expect(prepared.clarification?.reason).toMatch(/_period$/);
+      expect(prepared.clarification?.note).toContain('TIMING CLARIFICATION');
+      expect(prepared.clarification?.note).toContain('Ask for one explicit month and year, a year, or an ISO date');
       expect(loadMock).not.toHaveBeenCalled();
       expect(ensureMock).not.toHaveBeenCalled();
     });
@@ -165,7 +178,7 @@ describe('buildChatToolset: router', () => {
     const built = toolset({ chart: TIMING_CHART, periodSkyAllowed: true });
     const prepared = await built.prepare('1980', options());
     expect(prepared.asOf).toMatchObject({ basis: 'period', period: { start: '1980-01-01', end: '1980-12-31' } });
-    expect(prepared.timingFacts).toEqual([]);
+    expect(prepared.clarification).toBeUndefined();
     expect(prepared.toolChoice).toBe('required');
     expect(await timingOf(built).execute({ section: 'dashas' }, options())).toMatchObject({ error: expect.stringContaining('before') });
     expect(await timingOf(built).execute({ section: 'transits' }, options())).toMatchObject({ error: expect.stringContaining('before') });
@@ -197,7 +210,7 @@ describe('buildChatToolset: router', () => {
   ])('does not choose one period from a current-day comparison: %s', async (question) => {
     const prepared = await toolset({ pinned: { start: '2017-09-01', end: '2017-09-30', granularity: 'month' }, periodSkyAllowed: true })
       .prepare(question, { ...options(), now: new Date('2026-10-11T17:00:00Z') });
-    expect(prepared.timingFacts[0]?.result).toMatchObject({ status: 'needs_clarification', data: { reason: 'ambiguous_period' } });
+    expect(prepared.clarification?.reason).toBe('ambiguous_period');
     expect(prepared.pinned).toBeUndefined();
     expect(ensureMock).not.toHaveBeenCalled();
     expect(loadMock).not.toHaveBeenCalled();
@@ -210,56 +223,45 @@ describe('buildChatToolset: router', () => {
     expect(prepared.chart).toBe(CHART);
   });
 
-  it('labels the prompt "today" and hands over today\'s chart after a today pre-run', async () => {
+  // Contract reversed 2026-10-13 (period reading): a today question no longer pre-runs get_timing into the
+  // prompt. Its first round must call get_period_reading, and prepare runs no engine and shows no status.
+  it('a today question requires get_period_reading, pre-computes nothing, and labels the prompt "today"', async () => {
     const onStatus = vi.fn();
-    const prepared = await toolset().prepare('What matters today?', { ...options(), onStatus });
+    const prepared = await toolset({ promptChart: TODAY_CHART }).prepare('What matters today?', { ...options(), onStatus });
+    expect(prepared).toMatchObject(READING_GROUNDING);
     expect(prepared.asOf.basis).toBe('today');
-    expect(prepared.chart).toBe(TODAY_CHART);
-    expect(prepared.currentContextUnavailable).toBe(false);
-    expect(onStatus).toHaveBeenCalledTimes(1);
+    expect(prepared.chart.transit_context).toBeUndefined(); // stored transits never pose as today's
+    expect(prepared.clarification).toBeUndefined();
+    expect(ensureMock).not.toHaveBeenCalled();
+    expect(onStatus).not.toHaveBeenCalled();
   });
 
-  it('marks the context unavailable when the today pre-run fails', async () => {
-    ensureMock.mockRejectedValue(new Error('engine down'));
-    const prepared = await toolset().prepare('What matters today?', options());
-    expect(prepared.currentContextUnavailable).toBe(true);
-    expect(prepared.asOf.basis).toBe('chart');
+  it.each(['What are my transits today?', 'What is my current timing?', '¿Qué tránsitos tengo hoy?', 'Como estão meus trânsitos hoje?'])(
+    'routes the today question %s to the period reading', async (question) => {
+      expect(await toolset().prepare(question, options())).toMatchObject(READING_GROUNDING);
+    });
+
+  it('a natal question stays auto, with no required tool', async () => {
+    const prepared = await toolset().prepare('Where is my natal Mars?', options());
+    expect(prepared.toolChoice).toBe('auto');
+    expect(prepared.requiredTools).toBeUndefined();
+    expect(prepared.groundingCalls).toBeUndefined();
   });
 
-  it('marks the context unavailable when there is no engine at all', async () => {
+  it('prepares a today question with no engine at all: the reading tool reports what it could not compute', async () => {
     const prepared = await toolset({ engine: null }).prepare('What matters today?', options());
-    expect(prepared.currentContextUnavailable).toBe(true);
+    expect(prepared).toMatchObject(READING_GROUNDING);
     expect(ensureMock).not.toHaveBeenCalled();
   });
 
-  it('rethrows when the question was aborted mid pre-run', async () => {
-    const controller = new AbortController();
-    ensureMock.mockImplementation(async () => {
-      controller.abort(new Error('stopped'));
-      throw new Error('aborted');
-    });
-    await expect(
-      toolset().prepare('What matters today?', { now: SPLIT_DAY_NOW, signal: controller.signal }),
-    ).rejects.toThrow('aborted');
+  it('refuses a today question loudly when the period reading tool is missing', async () => {
+    await expect(toolset({ toolOverrides: [] }).prepare('What matters today?', options()))
+      .rejects.toThrow('The get_period_reading tool is unavailable.');
   });
 
-  it('refuses a today question loudly when the timing tool is missing', async () => {
-    vi.mocked(createChatAgentTools).mockReturnValueOnce([]);
-    await expect(toolset().prepare('What matters today?', options())).rejects.toThrow('The timing tool is unavailable.');
-  });
-
-  it('shows a readable status when the timing tool carries no label of its own', async () => {
-    const execute = vi.fn(async () => ({}));
-    vi.mocked(createChatAgentTools).mockReturnValueOnce([{ name: 'get_timing', execute } as never]);
-    const onStatus = vi.fn();
-    await toolset().prepare('What matters today?', { ...options(), onStatus });
-    expect(onStatus).toHaveBeenCalledWith("Working out today's sky");
-    expect(execute).toHaveBeenCalledWith({ section: 'transits' }, expect.objectContaining({ now: SPLIT_DAY_NOW }));
-  });
-
-  it('waits for a booting engine before the today load', async () => {
+  it('waits for a booting engine before the today load of get_timing', async () => {
     const engine = { engine: null, startBootstrap: vi.fn(), whenReady: vi.fn(async () => ({})) };
-    await toolset({ engine: engine as unknown as ChartEngineContextValue }).prepare('What matters today?', options());
+    await timingOf(toolset({ engine: engine as unknown as ChartEngineContextValue })).execute({ section: 'transits' }, options());
     expect(engine.startBootstrap).toHaveBeenCalledTimes(1);
     expect(engine.whenReady).toHaveBeenCalledTimes(1);
     expect(ensureMock).toHaveBeenCalledTimes(1);
@@ -272,7 +274,7 @@ describe('buildChatToolset: charts', () => {
   it('the prompt and natal facts read promptChart; engine loads merge onto the base chart', async () => {
     const built = toolset({ promptChart: PROMPT });
     expect((await built.prepare('Where is my Mars?', options())).chart).toBe(PROMPT);
-    await built.prepare('What matters today?', options());
+    await timingOf(built).execute({ section: 'transits' }, options());
     expect(ensureMock).toHaveBeenCalledWith(expect.objectContaining({ chart: CHART }));
   });
 });
@@ -293,14 +295,17 @@ describe('buildChatToolset: explicit-turn engine recovery', () => {
     expect(context.reboot).not.toHaveBeenCalled();
   });
 
-  it('a new today question recovers and grounds facts with the fresh engine', async () => {
+  // Contract reversed 2026-10-13 (period reading): a today question pre-computes nothing, so recovery starts on its first tool call.
+  it('a new today question recovers on its first tool call, with the fresh engine', async () => {
     const fresh = engineContext().engine!;
     const context = failedContext(vi.fn(async () => fresh));
-    const prepared = await toolset({ engine: context }).prepare('What matters today?', options());
+    const built = toolset({ engine: context });
+    await built.prepare('What matters today?', options());
+    expect(context.reboot).not.toHaveBeenCalled();
+    await timingOf(built).execute({ section: 'transits' }, options());
     expect(context.reboot).toHaveBeenCalledTimes(1);
     expect(context.whenReady).not.toHaveBeenCalled();
     expect(ensureMock).toHaveBeenCalledWith(expect.objectContaining({ runtime: fresh }));
-    expect(prepared.currentContextUnavailable).toBe(false);
   });
 
   // Contract reversed 2026-10-13: a historical question pre-computes nothing, so recovery starts on its first tool call.
@@ -341,9 +346,10 @@ describe('buildChatToolset: explicit-turn engine recovery', () => {
   it('a rejected recovery stays failed for this turn instead of repeatedly booting', async () => {
     const context = failedContext(vi.fn(async () => { throw new Error('fresh boot failed'); }));
     const built = toolset({ engine: context, periodSkyAllowed: true });
-    const prepared = await built.prepare('What matters today?', options());
+    await built.prepare('What matters today?', options());
+    // The agent loop turns this refusal into a tool error the model reads; the turn does not reboot again.
+    await expect(timingOf(built).execute({ section: 'transits' }, options())).rejects.toThrow('fresh boot failed');
     await timingOf(built).execute({ section: 'transits', start: '2017-09-01', end: '2017-09-30' }, options());
-    expect(prepared.currentContextUnavailable).toBe(true);
     expect(context.reboot).toHaveBeenCalledTimes(1);
     expect(ensureMock).not.toHaveBeenCalled();
     expect(loadMock).not.toHaveBeenCalled();
@@ -368,10 +374,8 @@ describe('buildChatToolset: explicit-turn engine recovery', () => {
     const fresh = engineContext().engine!;
     const reboot = vi.fn().mockRejectedValueOnce(new Error('temporary boot failure')).mockResolvedValueOnce(fresh);
     const context = failedContext(reboot);
-    const first = await toolset({ engine: context }).prepare('What matters today?', options());
-    const second = await toolset({ engine: context }).prepare('What matters today?', options());
-    expect(first.currentContextUnavailable).toBe(true);
-    expect(second.currentContextUnavailable).toBe(false);
+    await expect(timingOf(toolset({ engine: context })).execute({ section: 'transits' }, options())).rejects.toThrow('temporary boot failure');
+    await timingOf(toolset({ engine: context })).execute({ section: 'transits' }, options());
     expect(reboot).toHaveBeenCalledTimes(2);
     expect(ensureMock).toHaveBeenCalledTimes(1);
   });
@@ -431,7 +435,7 @@ describe('buildChatToolset: places', () => {
   const LIMA = { summary: { place_ref: 'city:5', label: 'Lima, Peru', timezone: 'America/Lima' }, latitude: -12.04, longitude: -77.03 };
 
   it('registers resolve_place only where the device computes the sky', () => {
-    const names = (allowed: boolean) => toolset({ periodSkyAllowed: allowed }).tools.map((t) => t.name);
+    const names = (allowed: boolean) => toolset({ periodSkyAllowed: allowed, toolOverrides: undefined }).tools.map((t) => t.name);
     expect(names(true)).toEqual(['get_current_datetime', 'get_chart_facts', 'get_timing', 'resolve_place']);
     expect(names(false)).toEqual(['get_current_datetime', 'get_chart_facts', 'get_timing']);
   });
@@ -531,9 +535,9 @@ describe('a pinned thread', () => {
     const pin = { start: '2017-09-01', end: '2017-09-30', granularity: 'month' } as const;
     const built = toolset({ chart: TIMING_CHART, pinned: pin, periodSkyAllowed: false });
     const prepared = await built.prepare('this was a challenging time what do you think happened', options());
-    expect(prepared.timingFacts).toEqual([]);
+    expect(prepared.clarification).toBeUndefined();
     expect(prepared.toolChoice).toBe('required');
-    expect(prepared.groundingTool).toBe('get_trip_context');
+    expect(prepared.groundingTool).toBe('get_period_reading');
     const trip = await built.tools.find((tool) => tool.name === 'get_trip_context')!.execute({}, options());
     expect(trip).toMatchObject({ period: { start: '2017-09-01' }, dashas: { maha: [{ lord: 'jupiter' }], antar: [{ lord: 'saturn' }] } });
     const facts = JSON.stringify(await timingOf(built).execute({ section: 'dashas' }, options()));
@@ -556,7 +560,7 @@ describe('a pinned thread', () => {
     } as never]);
     const built = toolset({ pinned: YEAR_2027 });
     const prepared = await built.prepare('What matters then?', options());
-    expect(prepared.timingFacts).toEqual([]);
+    expect(prepared.clarification).toBeUndefined();
     const requests: Array<{ tool_choice?: unknown; messages: Array<{ role: string; name?: string; content: string }> }> = [];
     const call = (id: string, section: string) => ({ id, type: 'function', function: { name: 'get_timing', arguments: JSON.stringify({ section }) } });
     const fetchImpl = vi.fn(async (_url: unknown, init?: RequestInit) => {
@@ -586,7 +590,7 @@ describe('a pinned thread', () => {
     loadMock.mockRejectedValue(new Error('engine down'));
     const pin = { start: '2017-09-01', end: '2017-09-30', granularity: 'month' } as const;
     const built = toolset({ chart: TIMING_CHART, pinned: pin, periodSkyAllowed: true });
-    expect((await built.prepare('What happened?', options())).timingFacts).toEqual([]);
+    expect((await built.prepare('What happened?', options())).clarification).toBeUndefined();
     expect(await timingOf(built).execute({ section: 'dashas' }, options()))
       .toMatchObject({ data: { maha: [{ lord: 'jupiter' }], antar: [{ lord: 'saturn' }] } });
     expect(await timingOf(built).execute({ section: 'transits' }, options()))
@@ -601,8 +605,8 @@ describe('a pinned thread', () => {
     const prepared = await set.prepare('outlook today?', { ...options(), now });
     expect(prepared.asOf.basis).toBe('today');
     expect(prepared.pinned).toBeUndefined();
-    expect(prepared.currentContextUnavailable).toBe(false);
-    expect(ensureMock).toHaveBeenCalledTimes(1);
+    expect(prepared).toMatchObject(READING_GROUNDING);
+    expect(ensureMock).not.toHaveBeenCalled();
     expect(loadMock).not.toHaveBeenCalled();
     const read = await timingOf(set).execute({ section: 'dashas' }, { ...options(), now });
     expect(read).toMatchObject({ period: { start: '2026-10-11', end: '2026-10-11', basis: 'today' } });
@@ -619,7 +623,8 @@ describe('a pinned thread', () => {
     const prepared = await built.prepare(question, { ...options(), now: new Date('2026-10-11T17:00:00Z') });
     expect(prepared.asOf.basis).toBe('today');
     expect(prepared.pinned).toBeUndefined();
-    expect(ensureMock).toHaveBeenCalledTimes(1);
+    expect(prepared).toMatchObject(READING_GROUNDING);
+    expect(built.tools.map((tool) => tool.name)).not.toContain('get_trip_context');
     expect(loadMock).not.toHaveBeenCalled();
   });
 
@@ -633,7 +638,6 @@ describe('a pinned thread', () => {
       place: { label: 'Delhi', timezone: 'Asia/Kolkata' }, // an old trip reads the birth place, unmarked
     });
     expect(JSON.stringify(prepared.pinned)).not.toMatch(/birth.?place|28\.61|77\.21/i); // label + zone yes; coordinates or a marker no
-    expect(prepared.currentContextUnavailable).toBe(false);
   });
 
   // Contract reversed 2026-10-13: pinnedStatus was removed; no engine runs in a trip's prepare, so it shows no
@@ -730,23 +734,28 @@ describe('a pinned thread', () => {
     loadMock.mockRejectedValue(new Error('engine down'));
     const prepared = await toolset({ pinned: YEAR_2050, periodSkyAllowed: true }).prepare('q', options());
     expect(prepared.pinned).toMatchObject({ start: '2050-01-01', relative: 'future' });
-    expect(prepared.currentContextUnavailable).toBe(false);
   });
 
-  // Contract reversed 2026-10-13: a trip's prepare runs no timing tool, so it no longer refuses when get_timing is
-  // missing; it grounds through get_trip_context, which the trip always registers itself.
-  it('prepares a pinned thread without the timing tool, grounding through its own get_trip_context', async () => {
+  // Contract reversed 2026-10-13 (period reading): a trip grounds through get_period_reading and its own
+  // get_natal_summary; get_timing is not required, so a missing timing tool does not stop it.
+  it('prepares a pinned thread without the timing tool, grounding through the period reading and natal summary', async () => {
     vi.mocked(createChatAgentTools).mockReturnValueOnce([]);
     const built = toolset({ pinned: YEAR_2027, periodSkyAllowed: true });
     const prepared = await built.prepare('q', options());
-    expect(prepared.groundingTool).toBe('get_trip_context');
+    expect(prepared.groundingTool).toBe('get_period_reading');
+    expect(prepared.requiredTools).toEqual(['get_period_reading', 'get_natal_summary']);
     expect(built.tools.map((tool) => tool.name)).toEqual(expect.arrayContaining(['get_natal_summary', 'get_trip_context']));
   });
 
-  it('an unpinned thread keeps the step A router (today pre-run for a today question)', async () => {
-    ensureMock.mockResolvedValue(TODAY_CHART);
+  it('refuses a trip loudly when the period reading tool is missing', async () => {
+    await expect(toolset({ pinned: YEAR_2027, toolOverrides: [] }).prepare('q', options()))
+      .rejects.toThrow('The get_period_reading tool is unavailable.');
+  });
+
+  it('an unpinned thread routes a today question to the period reading', async () => {
     const prepared = await toolset({ periodSkyAllowed: true }).prepare("what's happening today?", options());
-    expect(ensureMock).toHaveBeenCalledTimes(1);
+    expect(prepared).toMatchObject(READING_GROUNDING);
+    expect(ensureMock).not.toHaveBeenCalled();
     expect(prepared.pinned).toBeUndefined();
   });
 });

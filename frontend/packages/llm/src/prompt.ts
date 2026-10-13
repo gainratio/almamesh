@@ -13,7 +13,7 @@ import { withLanguage, type PromptLanguage } from "./language";
 import { buildMeshFactsBlock } from "./mesh-facts";
 import type { SanitizedMeshEdge } from "./mesh-sanitize";
 import { buildPredictiveFactsBlock } from "./predictive-facts";
-import { pinnedPeriodRules, type PinnedPrompt } from "./period-pin";
+import { TRIP_GROUNDING_TOOLS, pinnedPeriodRules, type PinnedPrompt } from "./period-pin";
 import type { SanitizedChart } from "./sanitize";
 import type {
   VedicInterpretation,
@@ -544,7 +544,7 @@ export function buildChatMessages(
   // any RAG context. Absent blocks are "" and filtered, keeping today's bytes.
   // A trip grounds itself through its tools (period-pin.ts): no facts block.
   const facts = pinned?.place
-    ? ["Chart facts: read them with get_natal_summary and get_timing (this trip's tools)."]
+    ? [`Chart facts: read them with ${TRIP_GROUNDING_TOOLS.join(" and ")} (this trip's tools).`]
     : ["Chart facts (sanitized; no identifying information):", factsBlock];
   const userContent = [
     chatRegister(mode),

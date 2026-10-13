@@ -30,6 +30,18 @@ describe.each(pages)('$name chat wiring', ({ source }) => {
     // Step C test seams: the device tier and the place reader come from the builder.
     expect(source).not.toContain('periodSkyAllowed');
     expect(source).not.toContain('placeFromRef');
+    expect(source).not.toContain('toolOverrides');
+  });
+
+  // Contract reversed 2026-10-13 (period reading): a today question no longer pre-runs timing facts into
+  // the prompt; it must call get_period_reading. The page only appends a dates clarification when asked.
+  it('appends no pre-computed timing facts, only the toolset clarification note', () => {
+    const code = stripComments(source);
+    expect(code).not.toContain('VERIFIED LOCAL TIMING');
+    expect(code).not.toContain('timingFacts');
+    expect(code).not.toContain('currentContextUnavailable');
+    expect(code).not.toMatch(/Do not guess life events/);
+    expect(code).toContain("if (prepared.clarification) {\n      const [system, ...rest] = messages;\n      messages = [{ ...system, content: `${system.content ?? ''}\\n\\n${prepared.clarification.note}` }, ...rest];");
   });
 
   it('names the place tool by its constant, not a literal', () => {
