@@ -80,6 +80,12 @@ export interface DeliveryPort<Source, Artifact, Envelope, LazyEvidence, StoredEv
   bindSource(evidence: GreenMainEvidence): Promise<Source>
   guardSource(source: Source, evidence: GreenMainEvidence): Promise<void>
   buildRelease(source: Source, evidence: GreenMainEvidence): Promise<Artifact>
+  /**
+   * Deploy skew protection: add the previous releases' hashed /assets/* (read
+   * from `previous`, the deployment live right now) to the release, so a tab
+   * still running them keeps loading its lazy chunks after this deploy.
+   */
+  carryForwardAssets(artifact: Artifact, previous: ProviderIdentity): Promise<Artifact>
   verifyPreview(artifact: Artifact, evidence: GreenMainEvidence): Promise<void>
   createEnvelope(
     artifact: Artifact,
@@ -263,13 +269,16 @@ export async function deliverProduction<Source, Artifact, Envelope, LazyEvidence
   const identities = releaseIdentities(evidence, centralSha)
   const source = await port.bindSource(evidence)
   await port.guardSource(source, evidence)
-  const artifact = await port.buildRelease(source, evidence)
-  await port.verifyPreview(artifact, evidence)
-  const envelope = await port.createEnvelope(artifact, identities, PAGES_TARGET.allowedRoots)
+  const built = await port.buildRelease(source, evidence)
+  // Recorded before the upload (for the carry-forward and the @returning smoke)
+  // and validated before anything is fetched from it.
   const previous = await port.previousProduction()
   if (previous.deploymentId.length === 0 || !validDeploymentUrl(previous.deploymentUrl)) {
     throw new Error("previous production deployment differs")
   }
+  const artifact = await port.carryForwardAssets(built, previous)
+  await port.verifyPreview(artifact, evidence)
+  const envelope = await port.createEnvelope(artifact, identities, PAGES_TARGET.allowedRoots)
   // A rerun may have started while the release was being built. Recheck at
   // the upload boundary, using a fresh request rather than the first proof.
   await port.verifyNativeMain(evidence)

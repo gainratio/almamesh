@@ -30,6 +30,7 @@ import {
   type SmokePass,
   type SmokeRun,
 } from "./deployment.js"
+import { CARRY_FORWARD_TOOL, CARRY_FORWARD_TOOL_SOURCE, carryForwardCommand } from "./assetCarryForward.js"
 import { AUDIT_EXCEPTIONS_FILE, auditIgnoreArgs, parseAuditExceptions } from "./auditExceptions.js"
 import {
   PRODUCT_GATES,
@@ -177,6 +178,8 @@ fi`
 interface ReleaseArtifact {
   dist: Directory
   roots: Directory
+  /** scripts/carryForwardAssets.mjs from the same verified source (deploy skew protection). */
+  carryTool: File
 }
 
 type PagesClient = ReturnType<typeof dag.cloudflarePages>
@@ -885,9 +888,16 @@ exec ${inline.join(" ")}`,
       "api/feedback.ts",
       this.source.file("frontend/apps/web/functions/api/feedback.ts"),
     )
+    // No predecessor in the dry run: the carry-forward tool still runs on the
+    // real dist (manifest written, missing-chunk-404 check enforced).
+    const dist = this.carriedDist(
+      release.directory(DIST),
+      this.source.file(CARRY_FORWARD_TOOL_SOURCE),
+      null,
+    )
     const roots = dag
       .directory()
-      .withDirectory("dist", release.directory(DIST))
+      .withDirectory("dist", dist)
       .withDirectory("functions", functions)
     return this.pagesFunctionsProof(roots, expectedSha)
   }
@@ -943,6 +953,11 @@ exec ${inline.join(" ")}`,
           evidence.repository,
         ),
       ),
+      carryForwardAssets: async (artifact, previous) => {
+        const carried = this.carriedRelease(artifact, previous.deploymentUrl)
+        await carried.dist.sync()
+        return carried
+      },
       verifyPreview: async (artifact, evidence) => {
         await this.pagesFunctionsProof(artifact.roots, evidence.commitSha).sync()
       },
@@ -1067,7 +1082,31 @@ exec ${inline.join(" ")}`,
       .directory()
       .withDirectory(PAGES_TARGET.deployRoot, dist)
       .withDirectory("functions", functions)
-    return { dist, roots }
+    return { dist, roots, carryTool: source.file(CARRY_FORWARD_TOOL_SOURCE) }
+  }
+  /**
+   * Deploy skew protection: the release's dist plus the previous releases'
+   * hashed /assets/*, downloaded from the live deployment's immutable URL and
+   * verified against its assets-manifest.json (assetCarryForward.ts). Not
+   * nonced: a deployment URL never changes content, so a cached result for the
+   * same dist and the same previous deployment is the right result.
+   */
+  private carriedDist(dist: Directory, tool: File, previousUrl: string | null): Directory {
+    return dag
+      .container()
+      .from(NODE_IMAGE)
+      .withDirectory("/release/dist", dist)
+      .withFile(CARRY_FORWARD_TOOL, tool)
+      .withExec(carryForwardCommand("/release/dist", previousUrl))
+      .directory("/release/dist")
+  }
+  private carriedRelease(artifact: ReleaseArtifact, previousUrl: string): ReleaseArtifact {
+    const dist = this.carriedDist(artifact.dist, artifact.carryTool, previousUrl)
+    const roots = dag
+      .directory()
+      .withDirectory(PAGES_TARGET.deployRoot, dist)
+      .withDirectory("functions", artifact.roots.directory("functions"))
+    return { dist, roots, carryTool: artifact.carryTool }
   }
   private pagesFunctionsProof(roots: Directory, expectedSha: string): Container {
     const derived = this.pagesFunctionsBuild(roots).directory("/derived")
