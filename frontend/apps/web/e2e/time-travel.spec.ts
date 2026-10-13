@@ -669,15 +669,30 @@ async function pinnedThreads(page: Page): Promise<Array<{ id: string; as_of: unk
   return rows;
 }
 
+/**
+ * Contract reversed 2026-10-13 (071faf4f): with no earlier trip, "Where?" no longer starts
+ * silently on the birth place. It starts empty and asks; the birth place is a suggestion the
+ * person taps (or they pick a city), and Go stays disabled until then.
+ */
+async function confirmBirthPlaceSuggestion(page: Page, day = false): Promise<void> {
+  await expect(page.getByTestId('time-travel-where-input')).toHaveValue('');
+  await expect(page.getByTestId('time-travel-where-question')).toHaveText(day ? 'Where were you that day?' : 'Where were you living then?');
+  await expect(page.getByTestId('time-travel-where-suggestion')).toHaveText(`Use ${DELHI_SEED.locationName} (your birth place)`);
+  await expect(page.getByTestId('time-travel-go'), 'Go waits for a place').toBeDisabled();
+  await page.getByTestId('time-travel-where-suggestion').click();
+  await expect(page.getByTestId('time-travel-where-input')).toHaveValue(DELHI_SEED.locationName);
+  await expect(page.getByTestId('time-travel-go')).toBeEnabled();
+}
+
 async function openPinnedYear(page: Page, year: string): Promise<void> {
   await page.getByTestId('time-travel-button').click();
   await expect(page.getByTestId('time-travel-sheet')).toBeVisible();
   await page.getByTestId('time-travel-tab-year').click();
-  // Contract reversed 2026-10-13: every trip has a place, so "Where?" shows for a Year too,
-  // prefilled (nearest pin, else the birth place) and ready to Go.
+  // Contract reversed 2026-10-13: every trip has a place, so "Where?" shows for a Year too.
   await expect(page.getByTestId('time-travel-where')).toBeVisible();
-  await expect(page.getByTestId('time-travel-where-prefilled')).toBeVisible();
   await page.getByTestId('time-travel-year').selectOption(year);
+  // The first trip of the profile: no earlier trip to prefill from.
+  await confirmBirthPlaceSuggestion(page);
   await page.getByTestId('time-travel-go').click();
   // The banner shows from memory at once; the sheet closes only after the pin is saved (Ruling 12).
   await expect(page.getByTestId('time-travel-sheet')).toBeHidden();
@@ -782,7 +797,8 @@ test.describe('pinned threads on a device in another zone', () => {
     await page.getByTestId('floating-chat-button').click({ timeout: 60_000 });
     await openPinnedYear(page, PIN_YEAR);
     await expect(page.getByTestId('time-travel-badge')).toHaveText('⏳');
-    await expect(page.getByTestId('time-travel-title')).toHaveText(`Time travel · ${PIN_YEAR}`);
+    // Contract reversed 2026-10-13 (4869958b): the chat's period row shows the short period, with no "Time travel ·" prefix.
+    await expect(page.getByTestId('time-travel-title')).toHaveText(PIN_YEAR);
     await expect(page.getByTestId('time-travel-banner')).toContainText('answers are about this period');
     await expect(page.getByRole('button', { name: 'What should I prepare for?' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Which months look strongest?' })).toBeVisible();
@@ -790,7 +806,8 @@ test.describe('pinned threads on a device in another zone', () => {
     // The pin was on disk before the sheet closed: a full reload keeps it.
     await explicitReload(page, () => page.reload({ waitUntil: 'domcontentloaded' }));
     await page.getByTestId('floating-chat-button').click({ timeout: 120_000 });
-    await expect(page.getByTestId('time-travel-title')).toHaveText(`Time travel · ${PIN_YEAR}`);
+    // Contract reversed 2026-10-13 (4869958b): the chat's period row shows the short period, with no "Time travel ·" prefix.
+    await expect(page.getByTestId('time-travel-title')).toHaveText(PIN_YEAR);
     // Contract reversed 2026-10-13: every trip has a place; with no pins it is the birth place.
     expect((await pinnedThreads(page)).map((row) => row.as_of)).toEqual([
       { start: `${PIN_YEAR}-01-01`, end: `${PIN_YEAR}-12-31`, granularity: 'year', place: expect.objectContaining({ label: DELHI_SEED.locationName, timezone: DELHI_SEED.timezone }) },
@@ -869,14 +886,15 @@ test.describe('pinned threads on a device in another zone', () => {
 
     await page.getByTestId('floating-chat-button').click({ timeout: 120_000 });
     await page.getByTestId('time-travel-button').click();
-    // Contract reversed 2026-10-13: "Where?" shows on Month (the default) too, and every
-    // granularity starts on a prefilled place: no pins yet, so the birth place.
+    // Contract reversed 2026-10-13: "Where?" shows on Month (the default) too. Reversed again
+    // (071faf4f): with no earlier trip it starts empty, asks, and offers the birth place to tap.
     await expect(page.getByTestId('time-travel-where')).toBeVisible();
     await page.getByTestId('time-travel-tab-day').click();
-    await expect(page.getByTestId('time-travel-where-input')).toHaveValue(DELHI_SEED.locationName);
-    await expect(page.getByTestId('time-travel-where-prefilled')).toBeVisible();
+    await expect(page.getByTestId('time-travel-where-input')).toHaveValue('');
+    await expect(page.getByTestId('time-travel-where-question')).toHaveText('Where were you that day?');
+    await expect(page.getByTestId('time-travel-where-suggestion')).toHaveText(`Use ${DELHI_SEED.locationName} (your birth place)`);
     await page.getByTestId('time-travel-day').fill('2026-06-15');
-    await expect(page.getByTestId('time-travel-go')).toBeEnabled();
+    await expect(page.getByTestId('time-travel-go')).toBeDisabled();
     // Editing the place clears it until a city is picked: still required.
     await page.getByTestId('time-travel-where-input').fill('Bogotá');
     await expect(page.getByTestId('time-travel-where-required')).toBeVisible();
@@ -898,7 +916,8 @@ test.describe('pinned threads on a device in another zone', () => {
     await page.getByTestId('time-travel-month').selectOption('06');
     await page.getByTestId('time-travel-month-year').selectOption('2026');
     await page.getByTestId('time-travel-go').click();
-    await expect(page.getByTestId('time-travel-title')).toHaveText('Time travel · June 2026');
+    // Contract reversed 2026-10-13 (4869958b): the chat's period row shows the short period, with no "Time travel ·" prefix.
+    await expect(page.getByTestId('time-travel-title')).toHaveText('Jun 2026');
     // Contract reversed 2026-10-13: the month keeps a place (prefilled from the Day pin it
     // contains), and Change on a thread with messages opens a NEW thread: the Day thread stays.
     await expect(page.getByTestId('time-travel-banner')).toContainText('Bogotá, Colombia');
@@ -981,7 +1000,8 @@ test.describe('Change then Back to today while the pin is still saving', () => {
     await page.getByTestId('time-travel-month-year').selectOption('2026');
     await page.getByTestId('time-travel-go').click();
     // In memory at once, on disk in SLOW_SAVE_MS: press Back inside that window.
-    await expect(page.getByTestId('time-travel-title')).toHaveText('Time travel · June 2026');
+    // Contract reversed 2026-10-13 (4869958b): the chat's period row shows the short period, with no "Time travel ·" prefix.
+    await expect(page.getByTestId('time-travel-title')).toHaveText('Jun 2026');
     await page.getByTestId('time-travel-back').click();
     await expect(page.getByTestId('time-travel-banner')).toHaveCount(0);
 
@@ -1037,15 +1057,18 @@ test.describe('time travel on an iPhone', () => {
     await expect(page.getByTestId('time-travel-tab-day'), 'Day is available on iOS').toBeVisible();
     await page.getByTestId('time-travel-tab-year').click();
     await page.getByTestId('time-travel-year').selectOption(PIN_YEAR);
+    await confirmBirthPlaceSuggestion(page);
     await page.getByTestId('time-travel-go').click();
     await expect(page.getByTestId('time-travel-sheet')).toBeHidden();
-    await expect(page.getByTestId('time-travel-title')).toHaveText(`Time travel · ${PIN_YEAR}`);
+    // Contract reversed 2026-10-13 (4869958b): the chat's period row shows the short period, with no "Time travel ·" prefix.
+    await expect(page.getByTestId('time-travel-title')).toHaveText(PIN_YEAR);
     await expect(page.getByTestId('time-travel-banner')).toContainText('answers are about this period');
 
     // The pin was on disk before the sheet closed: a full reload keeps it.
     await explicitReload(page, () => page.reload({ waitUntil: 'domcontentloaded' }));
     await page.getByTestId('floating-chat-button').click({ timeout: 120_000 });
-    await expect(page.getByTestId('time-travel-title')).toHaveText(`Time travel · ${PIN_YEAR}`);
+    // Contract reversed 2026-10-13 (4869958b): the chat's period row shows the short period, with no "Time travel ·" prefix.
+    await expect(page.getByTestId('time-travel-title')).toHaveText(PIN_YEAR);
     // Contract reversed 2026-10-13: every trip has a place; with no pins it is the birth place.
     expect((await pinnedThreads(page)).map((row) => row.as_of)).toEqual([
       { start: `${PIN_YEAR}-01-01`, end: `${PIN_YEAR}-12-31`, granularity: 'year', place: expect.objectContaining({ label: DELHI_SEED.locationName, timezone: DELHI_SEED.timezone }) },
@@ -1087,9 +1110,11 @@ test.describe("desktop Safari's own device tier", () => {
     await expect(page.getByTestId('time-travel-tab-day'), 'Day is available on desktop Safari').toBeVisible();
     await page.getByTestId('time-travel-tab-year').click();
     await page.getByTestId('time-travel-year').selectOption(PIN_YEAR);
+    await confirmBirthPlaceSuggestion(page);
     await page.getByTestId('time-travel-go').click();
     await expect(page.getByTestId('time-travel-sheet')).toBeHidden();
-    await expect(page.getByTestId('time-travel-title')).toHaveText(`Time travel · ${PIN_YEAR}`);
+    // Contract reversed 2026-10-13 (4869958b): the chat's period row shows the short period, with no "Time travel ·" prefix.
+    await expect(page.getByTestId('time-travel-title')).toHaveText(PIN_YEAR);
     // Contract reversed 2026-10-13: every trip has a place; with no pins it is the birth place.
     expect((await pinnedThreads(page)).map((row) => row.as_of)).toEqual([
       { start: `${PIN_YEAR}-01-01`, end: `${PIN_YEAR}-12-31`, granularity: 'year', place: expect.objectContaining({ label: DELHI_SEED.locationName, timezone: DELHI_SEED.timezone }) },
@@ -1284,6 +1309,7 @@ async function pickMonth(page: Page, month: string): Promise<void> {
   await page.getByTestId('time-travel-tab-month').click();
   await page.getByTestId('time-travel-month').selectOption(month.slice(5));
   await page.getByTestId('time-travel-month-year').selectOption(month.slice(0, 4));
+  await confirmBirthPlaceSuggestion(page);
   await page.getByTestId('time-travel-go').click();
   await expect(page.getByTestId('time-travel-sheet')).toBeHidden();
 }
@@ -1317,6 +1343,7 @@ async function openYearOptions(page: Page): Promise<string[]> {
 
 async function goToLastYear(page: Page): Promise<void> {
   await page.getByTestId('time-travel-year').selectOption(LAST_YEAR);
+  await confirmBirthPlaceSuggestion(page);
   await page.getByTestId('time-travel-go').click();
   await expect(page.getByTestId('time-travel-sheet')).toBeHidden();
   await expect(page.getByTestId('dashboard-time-travel-title')).toHaveText(new RegExp(LAST_YEAR));
@@ -1448,7 +1475,8 @@ test.describe('Dashboard time travel', () => {
     await pickMonth(page, '2019-03');
     await expect(page.getByTestId('dashboard-time-travel-title')).toHaveText(/March 2019/);
     await page.getByTestId('floating-chat-button').click();
-    await expect(page.getByTestId('time-travel-title')).toHaveText(/March 2019/);
+    // Contract reversed 2026-10-13 (4869958b): the chat's period row shows the short period, with no "Time travel ·" prefix.
+    await expect(page.getByTestId('time-travel-title')).toHaveText('Mar 2019');
     expect((await pinnedThreads(page)).length).toBe(1);
     expect(consoleErrors, 'the journey must keep a clean console').toEqual([]);
   });
@@ -1615,8 +1643,10 @@ for (const tag of ['', '@iphone15']) {
     await page.getByTestId('time-travel-tab-month').click();
     await page.getByTestId('time-travel-month').selectOption('09');
     await page.getByTestId('time-travel-month-year').selectOption('2017');
+    await confirmBirthPlaceSuggestion(page);
     await page.getByTestId('time-travel-go').click();
-    await expect(page.getByTestId('time-travel-title')).toHaveText('Time travel · September 2017');
+    // Contract reversed 2026-10-13 (4869958b): the chat's period row shows the short period, with no "Time travel ·" prefix.
+    await expect(page.getByTestId('time-travel-title')).toHaveText('Sep 2017');
     await page.getByTestId('chat-input').fill(pastQuestion);
     await page.getByTestId('chat-send-button').click();
     await expect(page.getByTestId('chat-panel').getByText('The September timing can describe pressure, but cannot identify what happened in your life.')).toBeVisible({ timeout: 240_000 });
@@ -1648,7 +1678,8 @@ for (const tag of ['', '@iphone15']) {
       expect(result.content).toContain('"basis":"today"');
       expect(result.content).not.toContain('2017-09-01');
     }
-    await expect(page.getByTestId('time-travel-title')).toHaveText('Time travel · September 2017');
+    // Contract reversed 2026-10-13 (4869958b): the chat's period row shows the short period, with no "Time travel ·" prefix.
+    await expect(page.getByTestId('time-travel-title')).toHaveText('Sep 2017');
     await page.screenshot({ path: testInfo.outputPath('september-then-today.png'), fullPage: true });
     if (tag) expect(modelDownloads, 'constrained chat must not boot the optional embedding model').toEqual([]);
     expect(errors, 'the regression journey keeps a clean console').toEqual([]);

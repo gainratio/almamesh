@@ -67,11 +67,11 @@ const sse = (content: string) => `data: ${JSON.stringify({ choices: [{ delta: { 
  * The stubbed provider. A trip turn stays tool_choice "required" until
  * get_natal_summary, get_trip_context and get_timing have each run (two calls
  * per round), so round 1 reads the natal summary and the trip, round 2 the
- * dashas, all with NO period or place arguments (the tools are bound to the
+ * dashas and the transits, all with NO period or place arguments (the tools are bound to the
  * trip), and the forced final round (tool_choice "none", streamed) answers.
  * Everything else (summaries) gets a harmless empty answer.
  */
-async function stubProvider(page: Page, seen: ProviderRequest[], bodies: string[]): Promise<void> {
+async function stubProvider(page: Page, seen: ProviderRequest[], bodies: string[], timingArgs: object = {}): Promise<void> {
   await page.route('**/chat/completions', async (route) => {
     const body = route.request().postData() ?? '{}';
     bodies.push(body);
@@ -85,8 +85,8 @@ async function stubProvider(page: Page, seen: ProviderRequest[], bodies: string[
     const ran = turnTools(messages).length;
     const message = ran === 0
       ? { content: null, tool_calls: [call('natal-1', 'get_natal_summary', {}), call('trip-1', 'get_trip_context', {})] }
-      : ran === 1 || ran === 2
-        ? { content: null, tool_calls: [call('dashas-1', 'get_timing', { section: 'dashas' })] }
+      : ran === 2
+        ? { content: null, tool_calls: [call('dashas-1', 'get_timing', { section: 'dashas', ...timingArgs }), call('sky-1', 'get_timing', { section: 'transits', ...timingArgs })] }
         : { content: TRIP_ANSWER };
     if (parsed.tool_choice === 'none') return route.fulfill({ status: 200, contentType: 'text/event-stream', body: sse(message.content ?? '') });
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ choices: [{ message }] }) });
@@ -143,10 +143,20 @@ async function travel(page: Page, opener: 'time-travel-button' | 'time-travel-ch
   await page.getByTestId('time-travel-tab-month').click();
   await page.getByTestId('time-travel-month').selectOption(month);
   await page.getByTestId('time-travel-month-year').selectOption(year);
-  // Every trip has a place, prefilled (nearest pin, else the birth place) before the user edits it.
+  // Every trip has a place. An earlier trip's place prefills it; with none (contract reversed
+  // 2026-10-13, 071faf4f: no silent birth-place default) the field is empty, asks where the person
+  // lived, offers the birth place as a suggestion, and Go waits for a place.
   await expect(page.getByTestId('time-travel-where')).toBeVisible();
-  await expect(page.getByTestId('time-travel-where-prefilled')).toBeVisible();
-  await expect(page.getByTestId('time-travel-go')).toBeEnabled();
+  if (opener === 'time-travel-button') {
+    await expect(page.getByTestId('time-travel-where-input')).toHaveValue('');
+    await expect(page.getByTestId('time-travel-where-question')).toHaveText('Where were you living then?');
+    await expect(page.getByTestId('time-travel-where-suggestion')).toHaveText(`Use ${DELHI_SEED.locationName} (your birth place)`);
+    await expect(page.getByTestId('time-travel-go'), 'no place yet: Go waits').toBeDisabled();
+  } else {
+    await expect(page.getByTestId('time-travel-where-prefilled')).toBeVisible();
+    await expect(page.getByTestId('time-travel-where-suggestion')).toHaveCount(0);
+    await expect(page.getByTestId('time-travel-go')).toBeEnabled();
+  }
   await page.getByTestId('time-travel-where-input').fill(place);
   await expect(page.getByTestId('time-travel-go'), 'an edited, unpicked place cannot be saved').toBeDisabled();
   await page.getByTestId('time-travel-where-option-0').click({ timeout: 60_000 });
@@ -179,30 +189,62 @@ async function threadListTitles(page: Page): Promise<{ trips: string[]; ids: str
   return { trips, ids };
 }
 
-/** One row per persisted tool call, in call order; each expands to its args and result. */
+/** The tool calls the stub makes for the trip question, in call order. */
+const TRIP_CALLS = ['get_natal_summary', 'get_trip_context', 'get_timing', 'get_timing'] as const;
+
+/** Open a collapsed row by its summary and wait for it to render its args and result. */
+async function openRow(row: Locator): Promise<void> {
+  await row.getByTestId('chat-tool-call-summary').click();
+  await expect(row).toHaveJSProperty('open', true);
+  await expect(row.getByTestId('chat-tool-call-result')).toBeVisible();
+}
+
+async function closeRow(row: Locator): Promise<void> {
+  await row.getByTestId('chat-tool-call-summary').click();
+  await expect(row).toHaveJSProperty('open', false);
+}
+
+/**
+ * One row per persisted tool call, in call order, each a one-line summary.
+ * Contract reversed 2026-10-13 (4869958b): rows used to name the tool ("Trip
+ * period & place") with args and result in the DOM; now they are collapsed by
+ * default to "Looked up <what> · <where> · <when>", and args/result render only
+ * once a row is opened.
+ */
 async function expectToolRows(page: Page): Promise<void> {
   const rows = page.getByTestId('chat-tool-call');
-  await expect(rows).toHaveCount(3);
-  expect(await rows.evaluateAll((nodes) => nodes.map((node) => node.getAttribute('data-tool-name')))).toEqual(['get_natal_summary', 'get_trip_context', 'get_timing']);
-  const natal = page.locator('[data-testid="chat-tool-call"][data-tool-name="get_natal_summary"]');
-  await expect(natal.locator('summary')).toContainText('Natal summary');
-  await natal.locator('summary').click();
+  await expect(rows).toHaveCount(TRIP_CALLS.length);
+  expect(await rows.evaluateAll((nodes) => nodes.map((node) => node.getAttribute('data-tool-name')))).toEqual([...TRIP_CALLS]);
+  expect(await rows.evaluateAll((nodes) => nodes.map((node) => (node as HTMLDetailsElement).open)), 'every row starts collapsed').toEqual(TRIP_CALLS.map(() => false));
+  await expect(page.getByTestId('chat-tool-call-result'), 'no result is rendered before a row is opened').toHaveCount(0);
+  await expect(page.getByTestId('chat-tool-call-args')).toHaveCount(0);
+  const natal = rows.nth(0);
+  const trip = rows.nth(1);
+  const dashas = rows.nth(2);
+  const transits = rows.nth(3);
+  await expect(natal.getByTestId('chat-tool-call-summary')).toHaveText('Looked up natal chart');
+  await expect(trip.getByTestId('chat-tool-call-summary')).toHaveText(/^Looked up trip period & place · Singapore[^·]* · May 2019$/);
+  await expect(dashas.getByTestId('chat-tool-call-summary')).toHaveText(/^Looked up dashas\b.*May 2019$/);
+  await expect(transits.getByTestId('chat-tool-call-summary')).toHaveText(/^Looked up transits · Singapore[^·]* · May 2019$/);
+  for (const row of [natal, trip, dashas, transits]) await expect(row).toHaveAttribute('data-status', 'complete');
+  await openRow(natal);
   await expect(natal.getByTestId('chat-tool-call-result')).toContainText('"lagna"');
-  await natal.locator('summary').click();
-  const trip = page.locator('[data-testid="chat-tool-call"][data-tool-name="get_trip_context"]');
-  await expect(trip).toHaveAttribute('data-status', 'complete');
-  await expect(trip.locator('summary')).toContainText('Trip period & place');
-  await trip.locator('summary').click();
+  await closeRow(natal);
+  await openRow(trip);
   await expect(trip.getByTestId('chat-tool-call-args')).toHaveText('{}');
   await expect(trip.getByTestId('chat-tool-call-result')).toContainText('"label": "Singapore');
   await expect(trip.getByTestId('chat-tool-call-result')).toContainText('"start": "2019-05-01"');
-  const timing = page.locator('[data-testid="chat-tool-call"][data-tool-name="get_timing"]');
-  await timing.locator('summary').click();
-  await expect(timing.getByTestId('chat-tool-call-args')).toContainText('"section": "dashas"');
-  await expect(timing.getByTestId('chat-tool-call-result')).toContainText('"start": "2019-05-01"');
-  // Collapse both again, so the layout checks read the transcript as a person first sees it.
-  await trip.locator('summary').click();
-  await timing.locator('summary').click();
+  await closeRow(trip);
+  await openRow(dashas);
+  await expect(dashas.getByTestId('chat-tool-call-args')).toContainText('"section": "dashas"');
+  await expect(dashas.getByTestId('chat-tool-call-result')).toContainText('"start": "2019-05-01"');
+  await closeRow(dashas);
+  await openRow(transits);
+  await expect(transits.getByTestId('chat-tool-call-args')).toContainText('"section": "transits"');
+  await expect(transits.getByTestId('chat-tool-call-result')).toContainText('"label": "Singapore');
+  // Collapsed again, so the layout checks read the transcript as a person first sees it.
+  await closeRow(transits);
+  await expect(page.getByTestId('chat-tool-call-result')).toHaveCount(0);
 }
 
 /** A coordinate rendered with two or more decimals, sign dropped, truncated or rounded. */
@@ -268,20 +310,64 @@ async function boxesOf(locator: Locator): Promise<Box[]> {
   return boxes;
 }
 
+/** How many times `label` shows in the panel outside the transcript (messages, tool rows), the search box and screen-reader-only text. */
+async function periodLabelCount(page: Page, label: string): Promise<number> {
+  return page.getByTestId('chat-panel').evaluate((panel, wanted) => {
+    const skip = '[data-testid^="chat-message-"], [data-testid="chat-tool-call"], [data-testid="chat-search"], .sr-only';
+    const walker = document.createTreeWalker(panel, NodeFilter.SHOW_TEXT);
+    let count = 0;
+    for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
+      const parent = node.parentElement;
+      if (!parent || parent.closest(skip) || !parent.checkVisibility()) continue;
+      count += (node.textContent ?? '').split(wanted).length - 1;
+    }
+    return count;
+  }, label);
+}
+
+/** What sits at a point: whether it is inside the element with `testId`. */
+async function pointIsInside(page: Page, x: number, y: number, testId: string): Promise<boolean> {
+  return page.evaluate(([px, py, id]) => {
+    const hit = document.elementFromPoint(px as number, py as number);
+    return hit?.closest(`[data-testid="${id as string}"]`) !== null && hit !== null;
+  }, [x, y, testId] as const);
+}
+
 /**
- * The drawer's one flex column: the banner sits above the scrolling thread and
- * the composer below it, and nothing inside the thread (the card, the chips,
- * the messages) overlaps anything else that is in sight. The empty composer
- * shows its placeholder unclipped.
+ * The drawer's one flex column: the period header row sits above the scrolling
+ * thread and the composer below it, and nothing inside the thread (the card,
+ * the chips, the tool rows, the messages) overlaps anything else in sight.
+ * With an answer, the thread is scrolled to its middle first: the header must
+ * still end where the thread begins (no answer runs beneath it). The period
+ * label shows once outside the transcript, every chip fits inside the thread,
+ * and the empty composer shows its placeholder unclipped.
  */
-async function expectCleanLayout(page: Page, shot: string): Promise<void> {
-  const viewport = await page.getByTestId('chat-viewport').boundingBox();
+async function expectCleanLayout(page: Page, shot: string, period: string, answered: boolean): Promise<void> {
+  const viewportLocator = page.getByTestId('chat-viewport');
+  if (answered) {
+    const scroll = await viewportLocator.evaluate((node) => {
+      node.scrollTop = Math.max(0, (node.scrollHeight - node.clientHeight) / 2);
+      return { top: node.scrollTop, overflow: node.scrollHeight - node.clientHeight };
+    });
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    // On a phone the answered trip is taller than the thread, so this really is scrolled mid-thread.
+    if ((page.viewportSize()?.width ?? 0) <= 390) expect(scroll.top, `scrolled to the middle at a phone width: ${JSON.stringify(scroll)}`).toBeGreaterThan(0);
+  }
+  const viewport = await viewportLocator.boundingBox();
   const banner = await page.getByTestId('time-travel-banner').boundingBox();
+  const header = await page.getByTestId('chat-thread-header').boundingBox();
   const composer = await page.getByTestId('chat-composer').boundingBox();
-  if (!viewport || !banner || !composer) throw new Error('chat viewport, banner and composer must all render');
-  expect(intersects(banner, viewport), `banner ${JSON.stringify(banner)} overlaps the thread ${JSON.stringify(viewport)}`).toBe(false);
+  if (!viewport || !banner || !header || !composer) throw new Error('chat viewport, header, banner and composer must all render');
+  const bannerBottom = banner.y + banner.height;
+  expect(bannerBottom, `the period row ends (${bannerBottom}) where the thread begins (${viewport.y})`).toBeLessThanOrEqual(viewport.y + 0.5);
+  // The search box is its own bordered row (577d175f), also above the thread.
+  const searchRow = await page.getByTestId('chat-search-row').boundingBox();
+  if (!searchRow) throw new Error('the search row must render');
+  expect(searchRow.y + searchRow.height, `the search row ends (${searchRow.y + searchRow.height}) where the thread begins (${viewport.y})`).toBeLessThanOrEqual(viewport.y + 0.5);
   expect(intersects(composer, viewport), `composer ${JSON.stringify(composer)} overlaps the thread ${JSON.stringify(viewport)}`).toBe(false);
   expect(viewport.height, 'the thread has room to read').toBeGreaterThan(120);
+  expect(await pointIsInside(page, banner.x + banner.width / 2, bannerBottom - 2, 'chat-thread-header'), 'just above the period row\'s bottom edge is the header').toBe(true);
+  expect(await pointIsInside(page, viewport.x + viewport.width / 2, viewport.y + 2, 'chat-viewport'), 'just below it is the thread').toBe(true);
   const inThread = [
     ...(await boxesOf(page.getByTestId('trip-context-card'))).map((box) => ['card', box] as const),
     ...(await boxesOf(page.getByTestId('chat-suggestion'))).map((box) => ['chip', box] as const),
@@ -291,6 +377,11 @@ async function expectCleanLayout(page: Page, shot: string): Promise<void> {
     const seen = clipTo(box, viewport);
     return seen ? [[name, seen] as const] : [];
   });
+  if (answered) {
+    const first = inThread.filter(([name]) => name === 'message' || name === 'tool row').sort((a, b) => a[1].y - b[1].y)[0];
+    expect(first, 'the middle of an answered thread shows a message or a tool row').toBeDefined();
+    expect(Math.max(first![1].y, viewport.y), 'the first message in sight starts below the period row').toBeGreaterThanOrEqual(bannerBottom - 0.5);
+  }
   const overlaps: string[] = [];
   for (let i = 0; i < inThread.length; i += 1) {
     for (let j = i + 1; j < inThread.length; j += 1) {
@@ -299,10 +390,15 @@ async function expectCleanLayout(page: Page, shot: string): Promise<void> {
       if (intersects(boxA, boxB)) overlaps.push(`${a} ${JSON.stringify(boxA)} × ${b} ${JSON.stringify(boxB)}`);
     }
     const [name, box] = inThread[i]!;
-    if (intersects(box, banner)) overlaps.push(`${name} × banner`);
+    if (intersects(box, header)) overlaps.push(`${name} × header`);
     if (intersects(box, composer)) overlaps.push(`${name} × composer`);
   }
   expect(overlaps, 'nothing in the thread overlays anything else').toEqual([]);
+  // Chips wrap (4869958b): none runs past the thread's right edge.
+  const chips = await boxesOf(page.getByTestId('chat-suggestion'));
+  const overflowing = chips.filter((chip) => chip.x + chip.width > viewport.x + viewport.width + 0.5);
+  expect(overflowing, `every chip fits inside the thread (right edge ${viewport.x + viewport.width})`).toEqual([]);
+  expect(await periodLabelCount(page, period), `"${period}" shows once outside the transcript (the period row)`).toBe(1);
   const input = page.getByTestId('chat-input');
   await expect(input).toHaveValue('');
   const fit = await input.evaluate((node) => ({ scroll: node.scrollHeight, client: node.clientHeight, rows: (node as HTMLTextAreaElement).rows }));
@@ -311,17 +407,25 @@ async function expectCleanLayout(page: Page, shot: string): Promise<void> {
   await page.screenshot({ path: shot });
 }
 
-/** At each width the chromium variant checks; the iPhone checks its own 390 px screen. */
-async function expectCleanLayoutAtWidths(page: Page, testInfo: TestInfo, state: string): Promise<void> {
+/** Phone, laptop and desktop widths on Chromium (390, 1280, 1512); the iPhone checks its own 390 px screen. */
+const LAYOUT_WIDTHS = [
+  // The iPhone 13's own viewport (devices['iPhone 13']), so Chromium's phone check matches the WebKit one.
+  { width: 390, height: 664 },
+  { width: 1280, height: 800 },
+  { width: 1512, height: 982 },
+] as const;
+
+async function expectCleanLayoutAtWidths(page: Page, testInfo: TestInfo, state: 'trip-empty' | 'trip-answered', period: string): Promise<void> {
   const project = testInfo.project.name;
+  const answered = state === 'trip-answered';
   if (project !== 'chromium') {
-    await expectCleanLayout(page, `${SCREENS}/e2e-${project}-${state}.png`);
+    await expectCleanLayout(page, `${SCREENS}/e2e-${project}-${state}-v2.png`, period, answered);
     return;
   }
   const original = page.viewportSize();
-  for (const width of [390, 1280]) {
-    await page.setViewportSize({ width, height: width === 390 ? 844 : 800 });
-    await expectCleanLayout(page, `${SCREENS}/e2e-${project}-${width}-${state}.png`);
+  for (const size of LAYOUT_WIDTHS) {
+    await page.setViewportSize(size);
+    await expectCleanLayout(page, `${SCREENS}/e2e-${project}-${size.width}-${state}-v2.png`, period, answered);
   }
   if (original) await page.setViewportSize(original);
 }
@@ -343,10 +447,14 @@ for (const tag of ['', '@iphone']) {
     expect(listed.trips.filter((title) => SINGAPORE_TITLE.test(title)), JSON.stringify(listed.trips)).toHaveLength(1);
     const [trip2019] = await pinnedThreads(page);
     expect(trip2019?.as_of).toMatchObject({ start: '2019-05-01', end: '2019-05-31', granularity: 'month', place: { timezone: 'Asia/Singapore' } });
+    // Contract reversed 2026-10-13 (4869958b): the card repeated the period, place and tense; now the
+    // header row names the trip and the card shows facts only (the dashas; transits once the AI reads them).
+    await expect(page.getByTestId('time-travel-title')).toHaveText('May 2019');
     const card = page.getByTestId('trip-context-card');
-    await expect(card).toContainText('May 2019');
-    await expect(card).toContainText('Singapore');
     await expect(card.getByTestId('trip-context-dasha')).toContainText(MAY_2019_DASHA);
+    await expect(card).not.toContainText('May 2019');
+    await expect(card).not.toContainText('Singapore');
+    await expect(card.getByTestId('trip-context-transits'), 'no transits before the AI has looked them up').toHaveCount(0);
     await expect(page.getByTestId('chat-suggestion').first()).toBeVisible();
 
     // e (part 1). The Tools list: what this thread registers.
@@ -358,7 +466,7 @@ for (const tag of ['', '@iphone']) {
     await expect(toolsList).toHaveCount(0);
 
     // h (empty thread). Banner, context card and chips never overlap; the placeholder shows whole.
-    await expectCleanLayoutAtWidths(page, testInfo, 'trip-empty');
+    await expectCleanLayoutAtWidths(page, testInfo, 'trip-empty', 'May 2019');
 
     // b. Ask: the first decision must call a tool, and the prompt carries no pre-computed facts.
     await page.getByTestId('chat-input').fill(TRIP_QUESTION);
@@ -381,7 +489,7 @@ for (const tag of ['', '@iphone']) {
     }
     // No-argument calls answer for the trip: Singapore, May 2019.
     const results = turnTools(final.messages);
-    expect(results.map((m) => m.name)).toEqual(['get_natal_summary', 'get_trip_context', 'get_timing']);
+    expect(results.map((m) => m.name)).toEqual([...TRIP_CALLS]);
     expect(results[0]?.content).toContain('"lagna"');
     expect(results[1]?.content).toContain('"place":{"label":"Singapore');
     expect(results[1]?.content).toContain('"timezone":"Asia/Singapore"');
@@ -389,6 +497,10 @@ for (const tag of ['', '@iphone']) {
     expect(results[1]?.content).toContain('"tense":"past"');
     expect(results[2]?.content).toContain('"start":"2019-05-01"');
     expect(results[2]?.content).toContain('"antar"');
+    expect(results[3]?.content).toContain('"start":"2019-05-01"');
+    expect(results[3]?.content).toContain('"label":"Singapore');
+    // The card now shows the slow planets the AI's transits call returned (May 2019: Saturn in Sagittarius).
+    await expect(page.getByTestId('trip-context-transits')).toContainText('Saturn in Sagittarius');
 
     // e (part 2). The visible Tools list is exactly what the model was offered.
     expect(listedTools).toEqual(first.tools);
@@ -400,7 +512,7 @@ for (const tag of ['', '@iphone']) {
 
     // d. One row per tool call, expandable, surviving a reload.
     await expectToolRows(page);
-    await expectCleanLayoutAtWidths(page, testInfo, 'trip-answered');
+    await expectCleanLayoutAtWidths(page, testInfo, 'trip-answered', 'May 2019');
     await explicitReload(page, () => page.reload({ waitUntil: 'domcontentloaded' }));
     await page.getByTestId('floating-chat-button').click({ timeout: 120_000 });
     if (!SINGAPORE_TITLE.test((await page.getByTestId('chat-thread-title').textContent()) ?? '')) await openThread(page, SINGAPORE_TITLE);
@@ -411,7 +523,11 @@ for (const tag of ['', '@iphone']) {
     await travel(page, 'time-travel-change', '01', '2027', 'San Francisco');
     await expect(page.getByTestId('chat-thread-title')).toHaveText(SAN_FRANCISCO_TITLE);
     await expect(page.getByTestId('chat-message-assistant')).toHaveCount(0);
-    await expect(page.getByTestId('trip-context-card')).toContainText('San Francisco');
+    // Contract reversed 2026-10-13 (4869958b): the header names the place; the card shows the 2027 dashas only.
+    await expect(page.getByTestId('time-travel-banner')).toContainText('San Francisco');
+    await expect(page.getByTestId('time-travel-title')).toHaveText('Jan 2027');
+    await expect(page.getByTestId('trip-context-dasha')).toBeVisible();
+    await expect(page.getByTestId('trip-context-card')).not.toContainText('San Francisco');
     const pins = await pinnedThreads(page);
     expect(pins.map((row) => row.as_of.start).sort()).toEqual(['2019-05-01', '2027-01-01']);
     expect(pins.find((row) => row.as_of.start === '2019-05-01')?.id, 'Change opened a new thread').toBe(trip2019?.id);
@@ -495,7 +611,7 @@ test('[contract/stubbed] trip tool-call rows survive an export → import round 
  * identifies the birth: coordinates, the birth date and time, the stored field
  * names, and any marker saying the place is the birth place.
  */
-test('[contract/stubbed] a trip that keeps the prefilled birth place names it by label and zone, with no coordinates, birth date or marker', async ({ page }, testInfo) => {
+test('[contract/stubbed] a trip at the confirmed birth place names it by label and zone, with no coordinates, birth date or marker', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'chromium', 'One project is enough for a request-body check.');
   const consoleErrors = await prepare(page, testInfo);
   const seen: ProviderRequest[] = [];
@@ -506,7 +622,12 @@ test('[contract/stubbed] a trip that keeps the prefilled birth place names it by
   await page.getByTestId('time-travel-tab-month').click();
   await page.getByTestId('time-travel-month').selectOption('05');
   await page.getByTestId('time-travel-month-year').selectOption('2019');
-  await expect(page.getByTestId('time-travel-where-prefilled')).toBeVisible();
+  // Contract reversed 2026-10-13 (071faf4f): the birth place is no longer a silent prefill; the
+  // person confirms it by tapping the suggestion, and only then can Go.
+  await expect(page.getByTestId('time-travel-where-input')).toHaveValue('');
+  await expect(page.getByTestId('time-travel-go')).toBeDisabled();
+  await page.getByTestId('time-travel-where-suggestion').click();
+  await expect(page.getByTestId('time-travel-go')).toBeEnabled();
   await page.getByTestId('time-travel-go').click();
   await expect(page.getByTestId('time-travel-sheet')).toBeHidden();
   await page.getByTestId('chat-input').fill(TRIP_QUESTION);
@@ -518,5 +639,44 @@ test('[contract/stubbed] a trip that keeps the prefilled birth place names it by
   const trip = turnTools(seen[seen.length - 1]?.messages ?? []).find((m) => m.name === 'get_trip_context');
   expect(trip?.content).toContain(`"place":{"label":"${DELHI_SEED.locationName}","timezone":"${DELHI_SEED.timezone}"}`);
   expect(bodies.flatMap(privacyLeaks), 'no coordinate, birth date or time, field name or birth-place marker reaches the model').toEqual([]);
+  expect(consoleErrors, 'the journey must keep a clean console').toEqual([]);
+});
+
+/**
+ * Regression (a6db610f): a model that restates the trip's own dates, place and a
+ * time to get_timing (redundant but consistent with the trip) gets the trip's
+ * facts back, not an error. Before, these args were refused, and the turn
+ * answered without its timing.
+ */
+const REDUNDANT_TIMING_ARGS = {
+  start: '2019-05-01',
+  end: '2019-05-31',
+  place_ref: 'city:0',
+  time: '12:00',
+  segments: [{ start: '2019-05-01', end: '2019-05-31', place_ref: 'city:0' }],
+};
+
+test('[contract/stubbed] get_timing with the trip restated in its args reads May 2019 in Singapore, no error', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'chromium', 'One project is enough for a tool-argument regression.');
+  const consoleErrors = await prepare(page, testInfo);
+  const seen: ProviderRequest[] = [];
+  await stubProvider(page, seen, [], REDUNDANT_TIMING_ARGS);
+  await openChat(page);
+  await travel(page, 'time-travel-button', '05', '2019', 'Singapore');
+  await page.getByTestId('chat-input').fill(TRIP_QUESTION);
+  await page.getByTestId('chat-send-button').click();
+  await expect(page.getByTestId('chat-message-assistant').filter({ hasText: TRIP_ANSWER })).toBeVisible({ timeout: 240_000 });
+  expect(seen.map((request) => request.toolChoice)).toEqual(['required', 'required', 'none']);
+  const timing = turnTools(seen[seen.length - 1]?.messages ?? []).filter((m) => m.name === 'get_timing');
+  expect(timing).toHaveLength(2);
+  for (const result of timing) {
+    expect(result.content, 'no error comes back for consistent args').not.toMatch(/"error"|"ok":false|Retry: call get_timing/);
+    expect(result.content).toContain('"start":"2019-05-01","end":"2019-05-31"');
+  }
+  expect(timing[1]?.content, 'the transits read Singapore').toContain('"label":"Singapore');
+  const rows = page.locator('[data-testid="chat-tool-call"][data-tool-name="get_timing"]');
+  await expect(rows).toHaveCount(2);
+  expect(await rows.evaluateAll((nodes) => nodes.map((node) => node.getAttribute('data-status')))).toEqual(['complete', 'complete']);
+  await expect(page.getByTestId('trip-context-transits')).toContainText('Saturn in Sagittarius');
   expect(consoleErrors, 'the journey must keep a clean console').toEqual([]);
 });
