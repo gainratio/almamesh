@@ -38,7 +38,9 @@ import {
 } from '@almamesh/llm';
 
 import i18n from '../i18n/config';
+import { noteIfStaleChunk } from '../lib/appStale';
 import { indexChatMessage, retrieveContext } from '../lib/chatMemory';
+import { isChunkLoadError } from '../lib/chunkError';
 import { chatErrorMessage, getChatErrorMessage } from '../lib/errors';
 import { LLM_SETTINGS_CHANGED_EVENT } from '../lib/llmSettingsEvents';
 import { asOfKey } from '../lib/pinnedPeriod';
@@ -208,10 +210,15 @@ export const CHAT_STREAM_ERROR_COPY: Readonly<
   TypeError: () => i18n.t('chat:errors.endpoint_unreachable'),
 };
 
+/** A failed lazy chunk is an app update, never an AI failure (it is often a TypeError too). */
+const STALE_CHUNK_COPY = () => i18n.t('chat:errors.app_updated');
+
 /** The map entry for a thrown cause, or undefined for unmapped/untyped ones. */
 function chatStreamErrorCopy(
   error: unknown,
 ): ((error: Error & Partial<LlmRequestError>) => string) | undefined {
+  // Checked first: "Failed to fetch dynamically imported module" is a TypeError.
+  if (isChunkLoadError(error)) return STALE_CHUNK_COPY;
   if (!(error instanceof Error) || !Object.hasOwn(CHAT_STREAM_ERROR_COPY, error.name)) {
     return undefined;
   }
@@ -451,6 +458,7 @@ export function useChatThread(
         }
       } catch (error) {
         safeError('chat.stream_failed', error);
+        noteIfStaleChunk(error);
         // Flagged as an error turn: rendered as an error bubble, excluded from
         // the model-visible history (see `toHistory`), never indexed for RAG.
         if (useChatStore.getState().threads[tid] !== undefined) {

@@ -143,7 +143,8 @@
     "finishing_previous": "Terminando la descarga anterior… se actualizará al acabar.",
     "activating": "Actualizando…",
     "stalled": "La actualización no pudo terminar. Cierra las demás pestañas de AlmaMesh y vuelve a cargar.",
-    "reload_now": "Recargar ahora"
+    "reload_now": "Recargar ahora",
+    "stale": "AlmaMesh se actualizó. Recarga para continuar."
   },
   "footer": {
     "privacy": "Política de privacidad",

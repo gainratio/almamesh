@@ -140,7 +140,8 @@
     "finishing_previous": "Finishing the previous download… updating when it's done.",
     "activating": "Updating…",
     "stalled": "The update couldn't finish. Close other AlmaMesh tabs, then reload.",
-    "reload_now": "Reload now"
+    "reload_now": "Reload now",
+    "stale": "AlmaMesh was updated. Reload to continue."
   },
   "footer": {
     "privacy": "Privacy Policy",
