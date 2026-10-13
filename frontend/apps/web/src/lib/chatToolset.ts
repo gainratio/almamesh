@@ -39,11 +39,15 @@ import { natalSummary, tripContext, tripPin, tripToolResult } from './tripContex
 export const NATAL_SUMMARY_TOOL_NAME = 'get_natal_summary';
 export const TRIP_CONTEXT_TOOL_NAME = 'get_trip_context';
 const NO_ARGS = { type: 'object', properties: {}, additionalProperties: false } as const;
-type GroundingCall = { readonly name: string; readonly args: AgentJsonObject };
+interface GroundingCall {
+  readonly name: string;
+  readonly args: AgentJsonObject;
+}
 /** A trip grounded by the app itself: the period reading (period, place, dashas, sky, themes) and the natal chart. */
-const TRIP_GROUNDING_CALLS: readonly GroundingCall[] = TRIP_GROUNDING_TOOLS.map((name) => ({ name, args: {} }));
+const [TRIP_READING, TRIP_NATAL] = TRIP_GROUNDING_TOOLS;
+const TRIP_GROUNDING_CALLS: readonly [GroundingCall, ...GroundingCall[]] = [{ name: TRIP_READING, args: {} }, { name: TRIP_NATAL, args: {} }];
 /** A today question grounds the same way, through the reading bound to today at the viewer's place. */
-const TODAY_GROUNDING_CALLS: readonly GroundingCall[] = [{ name: PERIOD_READING_TOOL_NAME, args: {} }];
+const TODAY_GROUNDING_CALLS: readonly [GroundingCall, ...GroundingCall[]] = [{ name: PERIOD_READING_TOOL_NAME, args: {} }];
 
 export interface BuildChatToolsetInput {
   /** The natal chart engine loads (today, a period) merge their sky onto. */
@@ -132,13 +136,17 @@ function clarificationFor(reason: TimingClarification['reason']): TimingClarific
  * The grounding fields for a turn whose first rounds must call these tools.
  * A missing tool fails loudly here, never as a silently ungrounded answer.
  */
-function requiredGrounding(tools: readonly AgentTool[], calls: readonly GroundingCall[]) {
+function requiredGrounding(
+  tools: readonly AgentTool[],
+  [first, ...rest]: readonly [GroundingCall, ...GroundingCall[]],
+): Pick<PreparedChatContext, 'toolChoice' | 'groundingTool' | 'requiredTools' | 'groundingCalls'> {
+  const calls = [first, ...rest];
   for (const call of calls) {
     if (!tools.some((tool) => tool.name === call.name)) throw new Error(`The ${call.name} tool is unavailable.`);
   }
   return {
-    toolChoice: 'required' as const,
-    groundingTool: calls[0]!.name,
+    toolChoice: 'required',
+    groundingTool: first.name,
     requiredTools: calls.map((call) => call.name),
     groundingCalls: calls,
   };
