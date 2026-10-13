@@ -27,7 +27,7 @@ _PHASE_OFFSETS: tuple[tuple[SadeSatiPhase, int], ...] = (
 )
 
 
-def _current_phase(saturn_idx: int, moon_idx: int) -> SadeSatiPhase:
+def sade_sati_phase(saturn_idx: int, moon_idx: int) -> SadeSatiPhase:
     """Which Sade Sati phase (or NONE) Saturn's current sign corresponds to."""
     for phase, offset in _PHASE_OFFSETS:
         if saturn_idx == (moon_idx + offset) % 12:
@@ -90,7 +90,7 @@ def build_sade_sati_context(
 ) -> SadeSatiContext:
     """Detect the phase, active flag, and dated 3-phase cycle for a Moon sign."""
     saturn_idx = _saturn_sign_index(astro, instant)
-    phase = _current_phase(saturn_idx, moon_idx)
+    phase = sade_sati_phase(saturn_idx, moon_idx)
     cycle = _build_cycle(astro, moon_idx, instant)
     active = phase is not SadeSatiPhase.NONE
     return SadeSatiContext(

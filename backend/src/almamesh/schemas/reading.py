@@ -192,7 +192,7 @@ class ReadingTheme(BaseModel):
     confidence: Literal["high", "medium", "low"]
     agreement: ThemeAgreement
     factors: Annotated[list[Factor], Field(max_length=3)]
-    windows: list[ThemeWindow]
+    windows: Annotated[list[ThemeWindow], Field(max_length=3)]
 
 
 class Panchang(BaseModel):

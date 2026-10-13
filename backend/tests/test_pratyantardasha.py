@@ -7,9 +7,10 @@ sequence starting from the antardasha lord, so the nine PDs tile the AD.
 
 from datetime import UTC, datetime, timedelta
 
+from almamesh.calculations import calculate_sidereal_context
 from almamesh.constants.astrology import PlanetName
 from almamesh.dasha.models import VimPeriod
-from almamesh.dasha.vimshottari import find_active_vimshottari
+from almamesh.dasha.vimshottari import compute_vimshottari_periods, find_active_vimshottari
 
 # A Sun antardasha spanning 120 days: PD lengths are DASHA_YEARS/120 of the
 # span, so Sun's PD is the first 6 days, Moon's the next 10, and so on.
@@ -46,9 +47,6 @@ def test_clipped_window_keeps_the_true_pratyantar() -> None:
     a window opening 2019-05-01 clipped it, and the PD arithmetic then started a
     fresh Rahu PD at the clip instead of the true Venus PD (2019-02-05 -> 07-19).
     """
-    from almamesh.calculations import calculate_sidereal_context
-    from almamesh.dasha.vimshottari import compute_vimshottari_periods
-
     when = datetime(2019, 5, 1, tzinfo=UTC)
     natal = calculate_sidereal_context(
         datetime(1990, 1, 15, 12, tzinfo=UTC), 28.6139, 77.209, reference_date=when

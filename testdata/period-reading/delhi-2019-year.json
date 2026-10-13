@@ -1,0 +1,765 @@
+{
+  "window": {
+    "start": "2019-01-01",
+    "end": "2020-01-01"
+  },
+  "natal_lords": {
+    "sun": {
+      "rules": [
+        3
+      ],
+      "house": 8,
+      "sign": "capricorn",
+      "dignity": "neutral",
+      "combust": false,
+      "retro": false,
+      "functional": "malefic",
+      "d9_sign": "capricorn",
+      "d10_sign": "virgo",
+      "vargottama": true,
+      "yogas": [
+        "Vasi Yoga"
+      ]
+    },
+    "moon": {
+      "rules": [
+        2
+      ],
+      "house": 3,
+      "sign": "leo",
+      "dignity": "neutral",
+      "combust": false,
+      "retro": false,
+      "functional": "maraka",
+      "d9_sign": "scorpio",
+      "d10_sign": "pisces",
+      "vargottama": false,
+      "yogas": [
+        "Kemadruma Yoga"
+      ]
+    },
+    "mars": {
+      "rules": [
+        6,
+        11
+      ],
+      "house": 6,
+      "sign": "scorpio",
+      "dignity": "own",
+      "combust": false,
+      "retro": false,
+      "functional": "malefic",
+      "d9_sign": "aquarius",
+      "d10_sign": "pisces",
+      "vargottama": false,
+      "yogas": [
+        "Vipareeta Raja Yoga"
+      ]
+    },
+    "mercury": {
+      "rules": [
+        1,
+        4
+      ],
+      "house": 7,
+      "sign": "sagittarius",
+      "dignity": "neutral",
+      "combust": false,
+      "retro": true,
+      "functional": "benefic",
+      "d9_sign": "virgo",
+      "d10_sign": "taurus",
+      "vargottama": false,
+      "yogas": [
+        "Parivartana Yoga",
+        "Raja Yoga",
+        "Vasi Yoga"
+      ]
+    },
+    "jupiter": {
+      "rules": [
+        7,
+        10
+      ],
+      "house": 1,
+      "sign": "gemini",
+      "dignity": "neutral",
+      "combust": false,
+      "retro": true,
+      "functional": "maraka",
+      "d9_sign": "sagittarius",
+      "d10_sign": "virgo",
+      "vargottama": false,
+      "yogas": [
+        "Parivartana Yoga",
+        "Raja Yoga"
+      ]
+    },
+    "venus": {
+      "rules": [
+        5,
+        12
+      ],
+      "house": 8,
+      "sign": "capricorn",
+      "dignity": "neutral",
+      "combust": true,
+      "retro": true,
+      "functional": "benefic",
+      "d9_sign": "pisces",
+      "d10_sign": "scorpio",
+      "vargottama": false,
+      "yogas": [
+        "Vipareeta Raja Yoga"
+      ]
+    },
+    "saturn": {
+      "rules": [
+        8,
+        9
+      ],
+      "house": 7,
+      "sign": "sagittarius",
+      "dignity": "neutral",
+      "combust": true,
+      "retro": false,
+      "functional": "benefic",
+      "d9_sign": "scorpio",
+      "d10_sign": "cancer",
+      "vargottama": false,
+      "yogas": [
+        "Raja Yoga",
+        "Vasi Yoga"
+      ]
+    },
+    "rahu": {
+      "rules": [],
+      "house": 8,
+      "sign": "capricorn",
+      "dignity": "neutral",
+      "combust": false,
+      "retro": true,
+      "functional": "neutral",
+      "d9_sign": "leo",
+      "d10_sign": "aries",
+      "vargottama": false,
+      "yogas": []
+    },
+    "ketu": {
+      "rules": [],
+      "house": 2,
+      "sign": "cancer",
+      "dignity": "neutral",
+      "combust": false,
+      "retro": true,
+      "functional": "neutral",
+      "d9_sign": "aquarius",
+      "d10_sign": "libra",
+      "vargottama": false,
+      "yogas": []
+    }
+  },
+  "dasha_spans": [
+    {
+      "level": "maha",
+      "lord": "rahu",
+      "start": "2019-01-01",
+      "end": "2020-01-01"
+    },
+    {
+      "level": "antar",
+      "lord": "rahu",
+      "start": "2019-01-01",
+      "end": "2020-01-01"
+    },
+    {
+      "level": "pratyantar",
+      "lord": "ketu",
+      "start": "2019-01-01",
+      "end": "2019-02-05"
+    },
+    {
+      "level": "pratyantar",
+      "lord": "venus",
+      "start": "2019-02-05",
+      "end": "2019-07-19"
+    },
+    {
+      "level": "pratyantar",
+      "lord": "sun",
+      "start": "2019-07-19",
+      "end": "2019-09-07"
+    },
+    {
+      "level": "pratyantar",
+      "lord": "moon",
+      "start": "2019-09-07",
+      "end": "2019-11-28"
+    },
+    {
+      "level": "pratyantar",
+      "lord": "mars",
+      "start": "2019-11-28",
+      "end": "2020-01-01"
+    }
+  ],
+  "sookshma": {
+    "lord": "mars",
+    "start": "2018-12-30",
+    "end": "2019-01-02"
+  },
+  "sandhi": null,
+  "yogini": {
+    "name": "bhadrika",
+    "lord": "mercury",
+    "start": "2016-05-03",
+    "end": "2021-05-03"
+  },
+  "segments": [
+    {
+      "start": "2019-01-01",
+      "end": "2019-02-05",
+      "maha": "rahu",
+      "antar": "rahu",
+      "pratyantar": "ketu",
+      "events": []
+    },
+    {
+      "start": "2019-02-05",
+      "end": "2019-03-07",
+      "maha": "rahu",
+      "antar": "rahu",
+      "pratyantar": "venus",
+      "events": [
+        "mars.ingress.aries"
+      ]
+    },
+    {
+      "start": "2019-03-07",
+      "end": "2019-03-29",
+      "maha": "rahu",
+      "antar": "rahu",
+      "pratyantar": "venus",
+      "events": [
+        "rahu.ingress.gemini",
+        "ketu.ingress.sagittarius",
+        "mars.ingress.taurus"
+      ]
+    },
+    {
+      "start": "2019-03-29",
+      "end": "2019-04-22",
+      "maha": "rahu",
+      "antar": "rahu",
+      "pratyantar": "venus",
+      "events": [
+        "jupiter.ingress.sagittarius",
+        "jupiter.station.retrograde"
+      ]
+    },
+    {
+      "start": "2019-04-22",
+      "end": "2019-07-19",
+      "maha": "rahu",
+      "antar": "rahu",
+      "pratyantar": "venus",
+      "events": [
+        "jupiter.ingress.scorpio",
+        "saturn.station.retrograde",
+        "mars.ingress.gemini",
+        "mars.ingress.cancer"
+      ]
+    },
+    {
+      "start": "2019-07-19",
+      "end": "2019-09-07",
+      "maha": "rahu",
+      "antar": "rahu",
+      "pratyantar": "sun",
+      "events": [
+        "mars.ingress.leo",
+        "jupiter.station.direct"
+      ]
+    },
+    {
+      "start": "2019-09-07",
+      "end": "2019-11-05",
+      "maha": "rahu",
+      "antar": "rahu",
+      "pratyantar": "moon",
+      "events": [
+        "saturn.station.direct",
+        "mars.ingress.virgo"
+      ]
+    },
+    {
+      "start": "2019-11-05",
+      "end": "2019-11-28",
+      "maha": "rahu",
+      "antar": "rahu",
+      "pratyantar": "moon",
+      "events": [
+        "jupiter.ingress.sagittarius",
+        "mars.ingress.libra"
+      ]
+    },
+    {
+      "start": "2019-11-28",
+      "end": "2020-01-01",
+      "maha": "rahu",
+      "antar": "rahu",
+      "pratyantar": "mars",
+      "events": [
+        "mars.ingress.scorpio"
+      ]
+    }
+  ],
+  "sky": [
+    {
+      "graha": "jupiter",
+      "start": "2019-01-01",
+      "end": "2019-03-29",
+      "sign": "scorpio",
+      "retro": false,
+      "from_moon": 4,
+      "from_lagna": 6,
+      "sav": 33,
+      "bav": 5,
+      "tags": [
+        "jupiter_from_moon_4"
+      ]
+    },
+    {
+      "graha": "jupiter",
+      "start": "2019-03-29",
+      "end": "2019-04-10",
+      "sign": "sagittarius",
+      "retro": false,
+      "from_moon": 5,
+      "from_lagna": 7,
+      "sav": 21,
+      "bav": 5,
+      "tags": [
+        "jupiter_from_moon_5"
+      ]
+    },
+    {
+      "graha": "jupiter",
+      "start": "2019-04-10",
+      "end": "2019-04-22",
+      "sign": "sagittarius",
+      "retro": true,
+      "from_moon": 5,
+      "from_lagna": 7,
+      "sav": 21,
+      "bav": 5,
+      "tags": [
+        "jupiter_from_moon_5"
+      ]
+    },
+    {
+      "graha": "jupiter",
+      "start": "2019-04-22",
+      "end": "2019-08-11",
+      "sign": "scorpio",
+      "retro": true,
+      "from_moon": 4,
+      "from_lagna": 6,
+      "sav": 33,
+      "bav": 5,
+      "tags": [
+        "jupiter_from_moon_4"
+      ]
+    },
+    {
+      "graha": "jupiter",
+      "start": "2019-08-11",
+      "end": "2019-11-05",
+      "sign": "scorpio",
+      "retro": false,
+      "from_moon": 4,
+      "from_lagna": 6,
+      "sav": 33,
+      "bav": 5,
+      "tags": [
+        "jupiter_from_moon_4"
+      ]
+    },
+    {
+      "graha": "jupiter",
+      "start": "2019-11-05",
+      "end": "2020-01-01",
+      "sign": "sagittarius",
+      "retro": false,
+      "from_moon": 5,
+      "from_lagna": 7,
+      "sav": 21,
+      "bav": 5,
+      "tags": [
+        "jupiter_from_moon_5"
+      ]
+    },
+    {
+      "graha": "saturn",
+      "start": "2019-01-01",
+      "end": "2019-04-29",
+      "sign": "sagittarius",
+      "retro": false,
+      "from_moon": 5,
+      "from_lagna": 7,
+      "sav": 21,
+      "bav": 1,
+      "tags": []
+    },
+    {
+      "graha": "saturn",
+      "start": "2019-04-29",
+      "end": "2019-09-17",
+      "sign": "sagittarius",
+      "retro": true,
+      "from_moon": 5,
+      "from_lagna": 7,
+      "sav": 21,
+      "bav": 1,
+      "tags": []
+    },
+    {
+      "graha": "saturn",
+      "start": "2019-09-17",
+      "end": "2020-01-01",
+      "sign": "sagittarius",
+      "retro": false,
+      "from_moon": 5,
+      "from_lagna": 7,
+      "sav": 21,
+      "bav": 1,
+      "tags": []
+    },
+    {
+      "graha": "rahu",
+      "start": "2019-01-01",
+      "end": "2019-03-07",
+      "sign": "cancer",
+      "retro": true,
+      "from_moon": 12,
+      "from_lagna": 2,
+      "sav": 22,
+      "bav": null,
+      "tags": []
+    },
+    {
+      "graha": "rahu",
+      "start": "2019-03-07",
+      "end": "2020-01-01",
+      "sign": "gemini",
+      "retro": true,
+      "from_moon": 11,
+      "from_lagna": 1,
+      "sav": 29,
+      "bav": null,
+      "tags": []
+    },
+    {
+      "graha": "ketu",
+      "start": "2019-01-01",
+      "end": "2019-03-07",
+      "sign": "capricorn",
+      "retro": true,
+      "from_moon": 6,
+      "from_lagna": 8,
+      "sav": 22,
+      "bav": null,
+      "tags": []
+    },
+    {
+      "graha": "ketu",
+      "start": "2019-03-07",
+      "end": "2020-01-01",
+      "sign": "sagittarius",
+      "retro": true,
+      "from_moon": 5,
+      "from_lagna": 7,
+      "sav": 21,
+      "bav": null,
+      "tags": []
+    }
+  ],
+  "transit_lords": {
+    "rahu": {
+      "sign": "cancer",
+      "from_moon": 12,
+      "from_lagna": 2,
+      "sav": 22,
+      "bav": null,
+      "retro": true
+    },
+    "ketu": {
+      "sign": "capricorn",
+      "from_moon": 6,
+      "from_lagna": 8,
+      "sav": 22,
+      "bav": null,
+      "retro": true
+    },
+    "mars": {
+      "sign": "pisces",
+      "from_moon": 8,
+      "from_lagna": 10,
+      "sav": 27,
+      "bav": 4,
+      "retro": false
+    }
+  },
+  "double_transit": [],
+  "themes": [
+    {
+      "domain": "education",
+      "houses": [
+        4,
+        5
+      ],
+      "direction": "mixed",
+      "strength": "strong",
+      "strength_pct": 59,
+      "confidence": "high",
+      "agreement": {
+        "vimshottari": true,
+        "yogini": true,
+        "transit": true
+      },
+      "factors": [
+        "Venus (pratyantar) rules the 5th",
+        "Jupiter transits the 4th from the Moon",
+        "Yogini Bhadrika (Mercury) rules the 4th"
+      ],
+      "windows": [
+        {
+          "date": "2019-03-29",
+          "descriptor": "education.transit.jupiter.ingress.sagittarius",
+          "severity": "neutral"
+        },
+        {
+          "date": "2019-04-22",
+          "descriptor": "education.transit.jupiter.ingress.scorpio",
+          "severity": "neutral"
+        },
+        {
+          "date": "2019-11-05",
+          "descriptor": "education.transit.jupiter.ingress.sagittarius",
+          "severity": "neutral"
+        }
+      ]
+    },
+    {
+      "domain": "family",
+      "houses": [
+        2,
+        4,
+        5,
+        9
+      ],
+      "direction": "mixed",
+      "strength": "strong",
+      "strength_pct": 50,
+      "confidence": "high",
+      "agreement": {
+        "vimshottari": true,
+        "yogini": true,
+        "transit": true
+      },
+      "factors": [
+        "Venus (pratyantar) rules the 5th",
+        "Jupiter transits the 4th from the Moon",
+        "Yogini Bhadrika (Mercury) rules the 4th"
+      ],
+      "windows": [
+        {
+          "date": "2019-03-29",
+          "descriptor": "family.transit.jupiter.ingress.sagittarius",
+          "severity": "neutral"
+        },
+        {
+          "date": "2019-04-22",
+          "descriptor": "family.transit.jupiter.ingress.scorpio",
+          "severity": "neutral"
+        },
+        {
+          "date": "2019-11-05",
+          "descriptor": "family.transit.jupiter.ingress.sagittarius",
+          "severity": "neutral"
+        }
+      ]
+    },
+    {
+      "domain": "health",
+      "houses": [
+        1,
+        6,
+        8
+      ],
+      "direction": "mixed",
+      "strength": "moderate",
+      "strength_pct": 45,
+      "confidence": "high",
+      "agreement": {
+        "vimshottari": true,
+        "yogini": true,
+        "transit": true
+      },
+      "factors": [
+        "Sun (pratyantar) is a karaka of health",
+        "Jupiter transits the 6th from the lagna",
+        "Yogini Bhadrika (Mercury) rules the 1st"
+      ],
+      "windows": [
+        {
+          "date": "2019-03-29",
+          "descriptor": "health.transit.jupiter.ingress.sagittarius",
+          "severity": "neutral"
+        },
+        {
+          "date": "2019-04-22",
+          "descriptor": "health.transit.jupiter.ingress.scorpio",
+          "severity": "neutral"
+        },
+        {
+          "date": "2019-11-05",
+          "descriptor": "health.transit.jupiter.ingress.sagittarius",
+          "severity": "neutral"
+        }
+      ]
+    },
+    {
+      "domain": "spiritual",
+      "houses": [
+        9,
+        12,
+        5
+      ],
+      "direction": "mixed",
+      "strength": "strong",
+      "strength_pct": 50,
+      "confidence": "medium",
+      "agreement": {
+        "vimshottari": true,
+        "yogini": false,
+        "transit": true
+      },
+      "factors": [
+        "Ketu (pratyantar) is a karaka of spiritual",
+        "Jupiter transits the 5th from the Moon",
+        "Jupiter's SAV in Sagittarius is 21"
+      ],
+      "windows": [
+        {
+          "date": "2019-03-29",
+          "descriptor": "spiritual.transit.jupiter.ingress.sagittarius",
+          "severity": "neutral"
+        },
+        {
+          "date": "2019-04-22",
+          "descriptor": "spiritual.transit.jupiter.ingress.scorpio",
+          "severity": "neutral"
+        },
+        {
+          "date": "2019-11-05",
+          "descriptor": "spiritual.transit.jupiter.ingress.sagittarius",
+          "severity": "neutral"
+        }
+      ]
+    },
+    {
+      "domain": "career",
+      "houses": [
+        10
+      ],
+      "direction": "mixed",
+      "strength": "moderate",
+      "strength_pct": 48,
+      "confidence": "medium",
+      "agreement": {
+        "vimshottari": true,
+        "yogini": true,
+        "transit": false
+      },
+      "factors": [
+        "Sun (pratyantar) is a karaka of career",
+        "Yogini Bhadrika (Mercury) is a karaka of career",
+        "Saturn strength is 48% (moderate)"
+      ],
+      "windows": [
+        {
+          "date": "2019-03-29",
+          "descriptor": "career.transit.jupiter.ingress.sagittarius",
+          "severity": "neutral"
+        },
+        {
+          "date": "2019-04-22",
+          "descriptor": "career.transit.jupiter.ingress.scorpio",
+          "severity": "neutral"
+        },
+        {
+          "date": "2019-11-05",
+          "descriptor": "career.transit.jupiter.ingress.sagittarius",
+          "severity": "neutral"
+        }
+      ]
+    },
+    {
+      "domain": "relationships",
+      "houses": [
+        7
+      ],
+      "direction": "challenging",
+      "strength": "moderate",
+      "strength_pct": 38,
+      "confidence": "medium",
+      "agreement": {
+        "vimshottari": true,
+        "yogini": false,
+        "transit": true
+      },
+      "factors": [
+        "Venus (pratyantar) is a karaka of relationships",
+        "Jupiter transits the 7th from the lagna",
+        "Jupiter's SAV in Sagittarius is 21"
+      ],
+      "windows": [
+        {
+          "date": "2019-03-29",
+          "descriptor": "relationships.transit.jupiter.ingress.sagittarius",
+          "severity": "neutral"
+        },
+        {
+          "date": "2019-04-22",
+          "descriptor": "relationships.transit.jupiter.ingress.scorpio",
+          "severity": "neutral"
+        },
+        {
+          "date": "2019-11-05",
+          "descriptor": "relationships.transit.jupiter.ingress.sagittarius",
+          "severity": "neutral"
+        }
+      ]
+    }
+  ],
+  "panchang": {
+    "instant": "2019-01-01T00:00:00Z",
+    "tithi": 26,
+    "tithi_name": "Ekadashi",
+    "paksha": "krishna",
+    "nakshatra": "Swati",
+    "karana": "Bava",
+    "yoga": "Dhriti",
+    "vara": "Tuesday"
+  },
+  "rules": [
+    "functional nature (BPHS): yogakaraka; lord of 1/5/9 benefic; else of 3/6/8/11 malefic; else of 2/7 maraka; else neutral",
+    "agreement: vimshottari = a running dasha lord, yogini = the Yogini lord, rules a domain house or is its karaka; transit = Jupiter/Saturn in a domain house from lagna or Moon",
+    "confidence = agreeing techniques: 3 high, 2 medium, 0-1 low",
+    "direction = domain transit severity + its window severities, neutral ignored: all supportive, all challenging, else mixed",
+    "whole-sign houses; Saturn 12th/1st/2nd from Moon = sade_sati_phase_1/2/3, 1/4/7/10 = kantaka_shani, 8th = ashtama_shani",
+    "double_transit = houses from lagna Jupiter and Saturn both occupy or aspect now",
+    "sookshma and panchang are for the reference instant; vara is the UTC weekday"
+  ]
+}
