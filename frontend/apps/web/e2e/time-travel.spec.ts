@@ -7,6 +7,7 @@ import { gotoSettled } from './portableInvariants.helpers';
 import { captureReloadConsole, type ReloadConsoleCapture } from './reloadConsole';
 import { waitForLifeAtlasAsOf } from './lifeAtlas.helpers';
 import { withReloadJourneyDiagnostics } from './reloadJourneyDiagnostics';
+import { BIRTH_FIELD_NAMES, birthPlaceMarkers } from './tripPrivacy.helpers';
 import { test } from './webkitProfile';
 
 /**
@@ -42,6 +43,7 @@ interface WireMessage {
 interface AgentRequest {
   messages: WireMessage[];
   tools: Array<{ function: { name: string } }>;
+  toolChoice?: string;
 }
 
 /** Every requestKey the predictive store held on this page (the exit-gate hook). */
@@ -194,10 +196,12 @@ test('[contract/stubbed] a typed June 2019 question reads June 2019, not today',
   const [decision] = agentRequests;
   const prompt = decision.messages.map((message) => message.content ?? '').join('\n');
   expect(prompt, 'a dated question must not pre-run and label today').not.toContain(', today):');
-  // Every tier has read tools, place lookup and deferred time-travel actions.
+  // Contract reversed 2026-10-13: a dated question is read as a trip to that period, so it
+  // registers the trip's context tools (get_natal_summary, get_trip_context) instead of
+  // get_current_datetime and get_chart_facts (plan 2026-10-13, "Context bootstrap").
   expect(decision.tools.map((tool) => tool.function.name)).toEqual([
-    'get_current_datetime',
-    'get_chart_facts',
+    'get_natal_summary',
+    'get_trip_context',
     'get_timing',
     'resolve_place',
     'time_travel',
@@ -429,17 +433,22 @@ const LEAK_PATTERNS: readonly RegExp[] = [
   coordinatePattern(DELHI_BIRTH.latitude),
   coordinatePattern(DELHI_BIRTH.longitude),
   /latitude|longitude|home_time_zone/i,
+  BIRTH_FIELD_NAMES,
   new RegExp(DEVICE_ZONE.replace('/', '\\/')),
+  // These journeys open no trip at the birth place, so nothing names the birth city or zone. (A
+  // trip at the birth place names its label and zone since 39d51337; time-travel-threads.spec.ts
+  // covers that. A marker saying a place is the birth place is banned everywhere: leaks below.)
   new RegExp(DELHI_SEED.timezone.replace('/', '\\/')),
   new RegExp(`\\b(?:${DELHI_SEED.city}|${DELHI_SEED.locationName.split(', ')[1]})\\b`),
 ];
 
 /** Every leak pattern that matches, with the text around the match. */
 function leaks(body: string): string[] {
-  return LEAK_PATTERNS.flatMap((pattern) => {
+  const patterns = LEAK_PATTERNS.flatMap((pattern) => {
     const match = pattern.exec(body);
     return match ? [`${pattern} ~ ${body.slice(Math.max(0, match.index - 40), match.index + 40)}`] : [];
   });
+  return body.trimStart().startsWith('{') ? [...patterns, ...birthPlaceMarkers(body)] : patterns;
 }
 
 type Script = (turn: WireMessage[]) => object;
@@ -486,7 +495,7 @@ function scripted(
       const empty = { choices: [{ message: { content: '' } }] };
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(empty) });
     }
-    seen.push({ messages, tools: parsed.tools });
+    seen.push({ messages, tools: parsed.tools, toolChoice: parsed.tool_choice });
     const message = scripts[key](turnTools(messages)) as { content?: string | null };
     if (parsed.tool_choice === 'none') {
       return route.fulfill({ status: 200, contentType: 'text/event-stream', body: sse(message.content ?? '') });
@@ -612,7 +621,7 @@ test.describe('places', () => {
     expect(lastTools()[1]?.content).toContain('"event":{"local_time":"15:00","lagna_sign":');
 
     // Every body the provider was sent (system prompt, history, tool results, all four turns).
-    expect(bodies.flatMap(leaks), 'no coordinate, device zone or birth place may reach the model').toEqual([]);
+    expect(bodies.flatMap(leaks), 'no coordinate, field name, device zone, birth place or birth-place marker may reach the model').toEqual([]);
     expect(
       offOrigin.filter((url) => !(fulfilled.has(url) && new URL(url).origin === PROVIDER_ORIGIN)),
       'no request may leave the app origin (only stubbed provider calls, fulfilled locally, are allowed)',
@@ -664,7 +673,10 @@ async function openPinnedYear(page: Page, year: string): Promise<void> {
   await page.getByTestId('time-travel-button').click();
   await expect(page.getByTestId('time-travel-sheet')).toBeVisible();
   await page.getByTestId('time-travel-tab-year').click();
-  await expect(page.getByTestId('time-travel-where')).toHaveCount(0);
+  // Contract reversed 2026-10-13: every trip has a place, so "Where?" shows for a Year too,
+  // prefilled (nearest pin, else the birth place) and ready to Go.
+  await expect(page.getByTestId('time-travel-where')).toBeVisible();
+  await expect(page.getByTestId('time-travel-where-prefilled')).toBeVisible();
   await page.getByTestId('time-travel-year').selectOption(year);
   await page.getByTestId('time-travel-go').click();
   // The banner shows from memory at once; the sheet closes only after the pin is saved (Ruling 12).
@@ -749,7 +761,8 @@ test.describe('pinned threads on a device in another zone', () => {
       {
         [PIN_QUESTION]: (tools) =>
           tools.length === 0
-            ? { content: null, tool_calls: [call('when', 'get_current_datetime', { scope: 'chart' }), call('sky', 'get_timing', { section: 'transits' })] }
+            // Contract reversed 2026-10-13: a trip registers get_trip_context, not get_current_datetime.
+            ? { content: null, tool_calls: [call('when', 'get_trip_context', {}), call('sky', 'get_timing', { section: 'transits' })] }
             : { content: PIN_ANSWER },
       },
       seen,
@@ -778,8 +791,9 @@ test.describe('pinned threads on a device in another zone', () => {
     await explicitReload(page, () => page.reload({ waitUntil: 'domcontentloaded' }));
     await page.getByTestId('floating-chat-button').click({ timeout: 120_000 });
     await expect(page.getByTestId('time-travel-title')).toHaveText(`Time travel · ${PIN_YEAR}`);
+    // Contract reversed 2026-10-13: every trip has a place; with no pins it is the birth place.
     expect((await pinnedThreads(page)).map((row) => row.as_of)).toEqual([
-      { start: `${PIN_YEAR}-01-01`, end: `${PIN_YEAR}-12-31`, granularity: 'year' },
+      { start: `${PIN_YEAR}-01-01`, end: `${PIN_YEAR}-12-31`, granularity: 'year', place: expect.objectContaining({ label: DELHI_SEED.locationName, timezone: DELHI_SEED.timezone }) },
     ]);
 
     await page.evaluate(() => {
@@ -796,27 +810,33 @@ test.describe('pinned threads on a device in another zone', () => {
 
     const last = seen.at(-1)!;
     const tools = turnTools(last.messages);
-    expect(tools.map((m) => m.name)).toEqual(['get_current_datetime', 'get_timing']);
-    expect(tools[0]?.content).toContain(`"pinned_period":{"start":"${PIN_YEAR}-01-01","end":"${PIN_YEAR}-12-31"}`);
-    expect(tools[0]?.content).toContain('"relative":"future"');
+    // Contract reversed 2026-10-13: the trip's period comes from get_trip_context (no arguments).
+    expect(tools.map((m) => m.name)).toEqual(['get_trip_context', 'get_timing']);
+    expect(tools[0]?.content).toContain(`"start":"${PIN_YEAR}-01-01","end":"${PIN_YEAR}-12-31","granularity":"year","tense":"future"`);
+    expect(seen.map((request) => request.toolChoice), 'a trip stays "required" until natal, trip and timing tools ran').toEqual(['required', 'required']);
     expect(tools[1]?.content).toContain(`"period":{"start":"${PIN_YEAR}-01-01","end":"${PIN_YEAR}-12-31","days":${PIN_DAYS},"basis":"period"}`);
     const system = last.messages.find((m) => m.role === 'system')?.content ?? '';
     expect(system).toContain(`PINNED PERIOD: this conversation is about ${PIN_YEAR}-01-01 to ${PIN_YEAR}-12-31 (relative: future)`);
     expect(system).toContain('future tense');
     const statuses = await page.evaluate(() => (window as unknown as { __agentStatusHistory: string[] }).__agentStatusHistory);
-    expect(statuses.some((text) => text.startsWith(`Working out the sky for ${PIN_YEAR}`))).toBe(true);
+    // Contract reversed 2026-10-13: the pin is no longer pre-run before the model ("Working out the
+    // sky for <period>" was that pre-run's status); the sky is worked out by the get_timing call itself.
+    expect(statuses.some((text) => text.startsWith('Working out the sky')), statuses.join(' | ')).toBe(true);
+    expect(statuses.some((text) => text.startsWith(`Working out the sky for ${PIN_YEAR}`)), 'no pre-run of the pinned period').toBe(false);
     expect((await predictiveRequestKeys(page)).slice(keysBefore.length), 'the Life Atlas slot keeps its requestKey').toEqual([]);
     expect(bodies.length, 'the question reached the stubbed model').toBeGreaterThan(0);
-    // The chart zone (get_current_datetime scope 'chart') legitimately names the birth zone; only the device's must stay out.
+    // Only the device zone is checked here; the trip's place (prefilled from the birth place) is a separate finding.
     expect(bodies.filter((body) => body.includes(DEVICE_ZONE)), 'the device zone must not reach the model').toEqual([]);
     await page.screenshot({ path: PIN_SCREENSHOT, fullPage: true });
     expect(consoleErrors, 'the journey must have no unexpected runtime or page errors').toEqual([]);
   });
 
   /**
-   * The Day pin (spec Testing, e2e): "Where?" shows on Day only, starts empty, is
-   * required, and the city search makes no request off the app origin. Then
-   * Change → Month and Back to today. No coordinates reach the model.
+   * The Day pin (spec Testing, e2e): "Where?" is required, and the city search
+   * makes no request off the app origin. Then Change → Month and Back to today.
+   * No coordinates reach the model. Contract reversed 2026-10-13 (plan "Place is
+   * part of every trip"): "Where?" shows for every granularity and starts on the
+   * birth place, and Change on a thread with messages opens a new thread.
    */
   test('[contract/stubbed] a Day pin needs a place found on the device, then Change and Back to today', async ({ page }) => {
     const consoleErrors = await prepare(page);
@@ -830,7 +850,8 @@ test.describe('pinned threads on a device in another zone', () => {
         // get_timing without dates reads the pinned Day with the pinned place.
         'How was that day?': (tools) =>
           tools.length === 0
-            ? { content: null, tool_calls: [call('when', 'get_current_datetime', { scope: 'utc' }), call('sky', 'get_timing', { section: 'transits' })] }
+            // Contract reversed 2026-10-13: a trip registers get_trip_context, not get_current_datetime.
+            ? { content: null, tool_calls: [call('when', 'get_trip_context', {}), call('sky', 'get_timing', { section: 'transits' })] }
             : { content: DAY_ANSWER_TEXT },
       },
       seen,
@@ -848,13 +869,18 @@ test.describe('pinned threads on a device in another zone', () => {
 
     await page.getByTestId('floating-chat-button').click({ timeout: 120_000 });
     await page.getByTestId('time-travel-button').click();
-    await expect(page.getByTestId('time-travel-where')).toHaveCount(0);
+    // Contract reversed 2026-10-13: "Where?" shows on Month (the default) too, and every
+    // granularity starts on a prefilled place: no pins yet, so the birth place.
+    await expect(page.getByTestId('time-travel-where')).toBeVisible();
     await page.getByTestId('time-travel-tab-day').click();
-    await expect(page.getByTestId('time-travel-where-input')).toHaveValue('');
-    await expect(page.getByTestId('time-travel-where-required')).toBeVisible();
+    await expect(page.getByTestId('time-travel-where-input')).toHaveValue(DELHI_SEED.locationName);
+    await expect(page.getByTestId('time-travel-where-prefilled')).toBeVisible();
     await page.getByTestId('time-travel-day').fill('2026-06-15');
-    await expect(page.getByTestId('time-travel-go')).toBeDisabled();
+    await expect(page.getByTestId('time-travel-go')).toBeEnabled();
+    // Editing the place clears it until a city is picked: still required.
     await page.getByTestId('time-travel-where-input').fill('Bogotá');
+    await expect(page.getByTestId('time-travel-where-required')).toBeVisible();
+    await expect(page.getByTestId('time-travel-go')).toBeDisabled();
     await page.getByTestId('time-travel-where-option-0').click({ timeout: 30_000 });
     await expect(page.getByTestId('time-travel-go')).toBeEnabled();
     await page.getByTestId('time-travel-go').click();
@@ -873,7 +899,14 @@ test.describe('pinned threads on a device in another zone', () => {
     await page.getByTestId('time-travel-month-year').selectOption('2026');
     await page.getByTestId('time-travel-go').click();
     await expect(page.getByTestId('time-travel-title')).toHaveText('Time travel · June 2026');
-    await expect(page.getByTestId('time-travel-banner')).not.toContainText('Bogotá');
+    // Contract reversed 2026-10-13: the month keeps a place (prefilled from the Day pin it
+    // contains), and Change on a thread with messages opens a NEW thread: the Day thread stays.
+    await expect(page.getByTestId('time-travel-banner')).toContainText('Bogotá, Colombia');
+    await expect(page.getByTestId('chat-panel').getByText(DAY_ANSWER_TEXT)).toHaveCount(0);
+    expect((await pinnedThreads(page)).map((row) => row.as_of)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ start: '2026-06-15', end: '2026-06-15', granularity: 'day' }),
+      expect.objectContaining({ start: '2026-06-01', end: '2026-06-30', granularity: 'month' }),
+    ]));
     // The chat banner shows the pin from memory before it is saved. The Dashboard moment is set only
     // after the save, so waiting for it pins the order: Change has landed before Back is clicked.
     await expect(page.getByTestId('dashboard-time-travel-title')).toHaveText(/June 2026/);
@@ -984,7 +1017,8 @@ test.describe('time travel on an iPhone', () => {
       {
         [PIN_QUESTION]: (tools) =>
           tools.length === 0
-            ? { content: null, tool_calls: [call('when', 'get_current_datetime', { scope: 'chart' }), call('sky', 'get_timing', { section: 'transits' })] }
+            // Contract reversed 2026-10-13: a trip registers get_trip_context, not get_current_datetime.
+            ? { content: null, tool_calls: [call('when', 'get_trip_context', {}), call('sky', 'get_timing', { section: 'transits' })] }
             : { content: PIN_ANSWER },
       },
       seen,
@@ -1012,8 +1046,9 @@ test.describe('time travel on an iPhone', () => {
     await explicitReload(page, () => page.reload({ waitUntil: 'domcontentloaded' }));
     await page.getByTestId('floating-chat-button').click({ timeout: 120_000 });
     await expect(page.getByTestId('time-travel-title')).toHaveText(`Time travel · ${PIN_YEAR}`);
+    // Contract reversed 2026-10-13: every trip has a place; with no pins it is the birth place.
     expect((await pinnedThreads(page)).map((row) => row.as_of)).toEqual([
-      { start: `${PIN_YEAR}-01-01`, end: `${PIN_YEAR}-12-31`, granularity: 'year' },
+      { start: `${PIN_YEAR}-01-01`, end: `${PIN_YEAR}-12-31`, granularity: 'year', place: expect.objectContaining({ label: DELHI_SEED.locationName, timezone: DELHI_SEED.timezone }) },
     ]);
 
     await page.getByTestId('chat-input').fill(PIN_QUESTION);
@@ -1022,9 +1057,9 @@ test.describe('time travel on an iPhone', () => {
     const last = seen.at(-1)!;
     expect(last.tools.map((tool) => tool.function.name), 'minimal tier has the place tool').toContain('resolve_place');
     const tools = turnTools(last.messages);
-    expect(tools.map((m) => m.name)).toEqual(['get_current_datetime', 'get_timing']);
-    expect(tools[0]?.content).toContain(`"pinned_period":{"start":"${PIN_YEAR}-01-01","end":"${PIN_YEAR}-12-31"}`);
-    expect(tools[0]?.content).toContain('"relative":"future"');
+    // Contract reversed 2026-10-13: the trip's period comes from get_trip_context (no arguments).
+    expect(tools.map((m) => m.name)).toEqual(['get_trip_context', 'get_timing']);
+    expect(tools[0]?.content).toContain(`"start":"${PIN_YEAR}-01-01","end":"${PIN_YEAR}-12-31","granularity":"year","tense":"future"`);
     expect(bodies.filter((body) => body.includes(DEVICE_ZONE)), 'the device zone must not reach the model').toEqual([]);
 
     await expectBannerWrapsCleanlyAt380(page);
@@ -1055,8 +1090,9 @@ test.describe("desktop Safari's own device tier", () => {
     await page.getByTestId('time-travel-go').click();
     await expect(page.getByTestId('time-travel-sheet')).toBeHidden();
     await expect(page.getByTestId('time-travel-title')).toHaveText(`Time travel · ${PIN_YEAR}`);
+    // Contract reversed 2026-10-13: every trip has a place; with no pins it is the birth place.
     expect((await pinnedThreads(page)).map((row) => row.as_of)).toEqual([
-      { start: `${PIN_YEAR}-01-01`, end: `${PIN_YEAR}-12-31`, granularity: 'year' },
+      { start: `${PIN_YEAR}-01-01`, end: `${PIN_YEAR}-12-31`, granularity: 'year', place: expect.objectContaining({ label: DELHI_SEED.locationName, timezone: DELHI_SEED.timezone }) },
     ]);
     expect(consoleErrors, 'the journey must keep a clean console').toEqual([]);
   });
@@ -1549,16 +1585,21 @@ for (const tag of ['', '@iphone15']) {
     expect([...errors, ...otherErrors]).toEqual([]);
   });
 
-  test(`[contract/stubbed] ${tag} September 2017 is grounded before inference and outlook today escapes the old pin`, async ({ page }, testInfo) => {
+  test(`[contract/stubbed] ${tag} September 2017 grounds itself through its tools and outlook today escapes the old pin`, async ({ page }, testInfo) => {
     const errors = await prepare(page);
     const modelDownloads = captureLocalModelDownloads(page);
     const seen: AgentRequest[] = [];
     const pastQuestion = 'this was a challenging time what do you think happened';
     const todayQuestion = 'outlook today?';
     await scripted(page, {
-      // The first answer deliberately elects no tools. Local grounding must
-      // already contain the selected dashas and sky before this decision.
-      [pastQuestion]: () => ({ content: 'The September timing can describe pressure, but cannot identify what happened in your life.' }),
+      // Contract reversed 2026-10-13: a trip carries no pre-computed grounding. Its first
+      // round is sent with tool_choice "required", so the stub calls the trip's tools with
+      // no arguments; their results are September 2017's.
+      [pastQuestion]: (tools) => tools.length === 0
+        ? { content: null, tool_calls: [call('past-natal', 'get_natal_summary', {}), call('past-trip', 'get_trip_context', {})] }
+        : tools.length === 2
+          ? { content: null, tool_calls: [call('past-dashas', 'get_timing', { section: 'dashas' })] }
+          : { content: 'The September timing can describe pressure, but cannot identify what happened in your life.' },
       [todayQuestion]: (tools) => tools.length === 0
         ? { content: null, tool_calls: [call('today-clock', 'get_current_datetime', { scope: 'utc' }), call('today-dashas', 'get_timing', { section: 'dashas' })] }
         : tools.length === 2
@@ -1580,8 +1621,17 @@ for (const tag of ['', '@iphone15']) {
     await page.getByTestId('chat-send-button').click();
     await expect(page.getByTestId('chat-panel').getByText('The September timing can describe pressure, but cannot identify what happened in your life.')).toBeVisible({ timeout: 240_000 });
     const pastSystem = seen[0]?.messages.find((message) => message.role === 'system')?.content ?? '';
-    expect(pastSystem).toContain('VERIFIED LOCAL TIMING');
-    for (const fact of ['"start":"2017-09-01"', '"end":"2017-09-30"', '"section":"dashas"', '"antar"', '"section":"transits"', '"covered_events"']) expect(pastSystem).toContain(fact);
+    // Contract reversed 2026-10-13: no VERIFIED LOCAL TIMING block and no timing JSON in the
+    // prompt; the trip brief names the period and the first round must call a tool.
+    expect(pastSystem).not.toContain('VERIFIED LOCAL TIMING');
+    expect(pastSystem).toContain('TIME-TRAVEL TRIP: this thread is a time-travel trip to September 2017 (month, past)');
+    for (const fact of ['"section":"dashas"', '"antar"', '"section":"transits"', '"covered_events"']) expect(pastSystem).not.toContain(fact);
+    // Round 1 (natal + trip) and round 2 (timing) must call tools; the forced final round answers.
+    expect(seen.slice(0, 3).map((request) => request.toolChoice)).toEqual(['required', 'required', 'none']);
+    const pastResults = turnTools(seen[2]?.messages ?? []);
+    expect(pastResults.map((message) => message.name)).toEqual(['get_natal_summary', 'get_trip_context', 'get_timing']);
+    for (const result of pastResults.slice(1)) expect(result.content).toContain('"start":"2017-09-01"');
+    expect(pastResults[2]?.content).toContain('"antar"');
     const today = await page.evaluate(() => new Intl.DateTimeFormat('en-CA').format(new Date()));
     const beforeToday = seen.length;
     await page.getByTestId('chat-input').fill(todayQuestion);
