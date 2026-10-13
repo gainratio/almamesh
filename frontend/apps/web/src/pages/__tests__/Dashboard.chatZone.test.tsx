@@ -30,6 +30,14 @@ vi.mock('@almamesh/llm', async (importOriginal) => {
   };
 });
 
+
+// The chat turn's context budget: a fixed small window, and no catalog read from a unit test.
+const budgetMocks = vi.hoisted(() => ({ onRoundUsage: vi.fn() }));
+vi.mock('../../lib/chatContextBudget', async () => {
+  const { chatPromptBudgetFor } = await vi.importActual<typeof import('@almamesh/llm')>('@almamesh/llm');
+  return { chatContextFor: vi.fn(async () => ({ contextTokens: 8_192, promptBudget: chatPromptBudgetFor(8_192), onRoundUsage: budgetMocks.onRoundUsage })) };
+});
+
 vi.mock('../../lib/localChartRead', () => ({ readLocalPrimaryChart: vi.fn() }));
 
 vi.mock('../../providers/chartEngineContext', () => ({
@@ -170,6 +178,8 @@ describe('Dashboard chat — no silent UTC for the chart zone', () => {
     await ask('What does my chart say about career?');
 
     await waitFor(() => expect(llmMocks.streamAgentChat).toHaveBeenCalledTimes(1));
+    // The context budget reaches the agent loop: the window and the telemetry sink.
+    expect(llmMocks.streamAgentChat.mock.calls[0][0]).toMatchObject({ contextTokens: 8_192, onRoundUsage: budgetMocks.onRoundUsage });
   });
   it('reads chat "today" in the viewer zone, like MeshEdge', async () => {
     const chart = chartWithZone('Asia/Kolkata');

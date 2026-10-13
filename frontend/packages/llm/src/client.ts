@@ -375,6 +375,8 @@ export interface OpenRouterModel {
   readonly name: string;
   /** Per-token USD price from the catalog; absent when missing or unparseable. */
   readonly pricing?: ModelPricing;
+  /** The model's context window in tokens (`context_length`); absent when missing or invalid. */
+  readonly contextLength?: number;
 }
 
 interface OpenRouterModelsResponse {
@@ -382,6 +384,7 @@ interface OpenRouterModelsResponse {
     readonly id?: unknown;
     readonly name?: unknown;
     readonly pricing?: unknown;
+    readonly context_length?: unknown;
   }>;
 }
 
@@ -438,7 +441,10 @@ export async function fetchOpenRouterModels(
     }
     const name = typeof row.name === "string" && row.name.length > 0 ? row.name : row.id;
     const pricing = parseModelPricing(row.pricing);
-    models.push({ id: row.id, name, ...(pricing ? { pricing } : {}) });
+    const contextLength = Number.isSafeInteger(row.context_length) && (row.context_length as number) > 0
+      ? (row.context_length as number)
+      : undefined;
+    models.push({ id: row.id, name, ...(pricing ? { pricing } : {}), ...(contextLength ? { contextLength } : {}) });
   }
   models.sort((a, b) => a.id.localeCompare(b.id));
   return models;

@@ -286,7 +286,7 @@ describe("streamAgentChat", () => {
     expect(JSON.stringify(bodies[2]?.messages)).toContain("do not infer it");
   });
 
-  it("never executes more than three tool calls and returns an error for excess calls", async () => {
+  it("never executes more than six tool calls and returns an error for excess calls", async () => {
     const bodies: Array<Record<string, unknown>> = [];
     const execute = vi.fn(() => ({ ok: true }));
     const fetchImpl = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
@@ -296,14 +296,14 @@ describe("streamAgentChat", () => {
         return decision({
           role: "assistant",
           content: null,
-          tool_calls: [call("a", "lookup", '{"n":1}'), call("b", "lookup", '{"n":2}')],
+          tool_calls: [1, 2, 3, 4].map((n) => call(`a${n}`, "lookup", `{"n":${n}}`)),
         });
       }
       if (bodies.length === 2) {
         return decision({
           role: "assistant",
           content: null,
-          tool_calls: [call("c", "lookup", '{"n":3}'), call("d", "lookup", '{"n":4}')],
+          tool_calls: [5, 6, 7].map((n) => call(`b${n}`, "lookup", `{"n":${n}}`)),
         });
       }
       return streamed("done");
@@ -312,18 +312,20 @@ describe("streamAgentChat", () => {
     await collect(
       streamAgentChat({
         config: CONFIG,
-        messages: [{ role: "user", content: "Look up four things." }],
+        messages: [{ role: "user", content: "Look up seven things." }],
         tools: [tool(execute, { name: "lookup" })],
         now: NOW,
         fetchImpl: fetchImpl as typeof fetch,
       }),
     );
 
-    expect(execute).toHaveBeenCalledTimes(AGENT_LIMITS.maxToolCalls);
+    expect(execute).toHaveBeenCalledTimes(6);
     expect(JSON.stringify(bodies[2]?.messages)).toContain("tool_call_limit");
   });
 
-  it("does not echo more than two model-requested calls from one decision", async () => {
+  // Contract reversed 2026-10-13 (context budget spec, rule 6): calls past the per-round cap used to be
+  // dropped from the echoed assistant message; now every call is echoed and answered "skipped".
+  it("echoes every requested call (each keeps its tool message) and runs at most four per round", async () => {
     const bodies: Array<Record<string, unknown>> = [];
     const execute = vi.fn(() => ({ ok: true }));
     const fetchImpl = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
@@ -336,6 +338,8 @@ describe("streamAgentChat", () => {
             call("a", "lookup", '{"n":1}'),
             call("b", "lookup", '{"n":2}'),
             call("c", "lookup", '{"n":3}'),
+            call("d", "lookup", '{"n":4}'),
+            call("e", "lookup", '{"n":5}'),
           ],
         });
       }
@@ -356,16 +360,15 @@ describe("streamAgentChat", () => {
       role: string;
       tool_calls?: unknown[];
     }>;
-    expect(execute).toHaveBeenCalledTimes(AGENT_LIMITS.maxToolCallsPerRound);
-    expect(finalMessages.find((message) => message.role === "assistant")?.tool_calls).toHaveLength(
-      AGENT_LIMITS.maxToolCallsPerRound,
-    );
-    expect(finalMessages.filter((message) => message.role === "tool")).toHaveLength(
-      AGENT_LIMITS.maxToolCallsPerRound,
-    );
+    expect(execute).toHaveBeenCalledTimes(4);
+    expect(finalMessages.find((message) => message.role === "assistant")?.tool_calls).toHaveLength(5);
+    expect(finalMessages.filter((message) => message.role === "tool")).toHaveLength(5);
+    expect(JSON.stringify(finalMessages.at(-1))).toContain("skipped: too many calls this round");
   });
 
-  it("rejects duplicate semantic calls without executing them twice", async () => {
+  // Contract reversed 2026-10-13 (context budget spec, rule 4): an identical successful call used to be
+  // refused as duplicate_tool_call and end the turn; now it gets a pointer to the earlier result.
+  it("answers a repeated semantic call with a pointer to the earlier result, without executing it twice", async () => {
     const bodies: Array<Record<string, unknown>> = [];
     const execute = vi.fn(() => ({ ok: true }));
     const fetchImpl = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
@@ -390,7 +393,8 @@ describe("streamAgentChat", () => {
     );
 
     expect(execute).toHaveBeenCalledTimes(1);
-    expect(JSON.stringify(bodies[2]?.messages)).toContain("duplicate_tool_call");
+    expect(JSON.stringify(bodies[2]?.messages)).toContain("unchanged; see the earlier result a");
+    expect(JSON.stringify(bodies[2]?.messages)).not.toContain("duplicate_tool_call");
   });
 
   it("fails closed on oversized arguments and oversized results", async () => {

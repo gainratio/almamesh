@@ -186,6 +186,8 @@
     "switch_accept": "Switch to DeepSeek V4.1 Flash",
     "switch_dismiss": "Keep GLM 5.3 Flash",
     "chat_advice": "A smaller, faster model is advised. Chat already reuses the chart facts and the generated reading, so it doesn't need a heavy model — a quick one keeps answers snappy.",
+    "context_label": "Context window (tokens)",
+    "context_advice": "How much this model can read at once. Chat keeps each request within half of it. Leave blank if unsure: chat then assumes a small 8k window.",
     "loading_models": "Loading models…",
     "more_models": "Type to search…",
     "catalog_hint": "Pick from {{count}} OpenRouter models — or type any model id.",

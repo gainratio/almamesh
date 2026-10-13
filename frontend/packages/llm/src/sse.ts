@@ -11,6 +11,8 @@ const MAX_ERROR_BODY_CHARS = 500;
 
 export interface StreamChunk {
   readonly error?: unknown;
+  /** OpenAI-compatible token counts; OpenRouter sends them on the last chunk. */
+  readonly usage?: unknown;
   readonly choices?: ReadonlyArray<{
     readonly delta?: {
       readonly content?: unknown;

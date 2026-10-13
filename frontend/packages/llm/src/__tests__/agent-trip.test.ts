@@ -74,13 +74,13 @@ describe("streamAgentChat on a trip's first round", () => {
     expect(bodies(fetchImpl).map((body) => body.tool_choice)).toEqual(["required", "required", "none"]);
   });
 
-  it("a first round that asks for more calls than the per-round cap still gets its second required round", async () => {
+  it("a first round that asks for more calls than the per-round cap (4) still gets its second required round", async () => {
     const NATAL: AgentTool = { ...TRIP_TOOL, name: "get_natal_summary", execute: () => ({ lagna: "leo" }) };
     const TIMING: AgentTool = { ...TRIP_TOOL, name: "get_timing", execute: () => ({ data: {} }) };
     let requests = 0;
     const fetchImpl = vi.fn(async () => {
       requests += 1;
-      if (requests === 1) return decision({ role: "assistant", content: null, tool_calls: [call("a", "get_natal_summary"), call("b", "get_trip_context"), call("c", "get_timing", '{"section":"transits"}')] });
+      if (requests === 1) return decision({ role: "assistant", content: null, tool_calls: [call("a", "get_natal_summary"), call("b", "get_trip_context"), call("a2", "get_natal_summary", '{"x":1}'), call("b2", "get_trip_context", '{"x":1}'), call("c", "get_timing", '{"section":"transits"}')] });
       if (requests === 2) return decision({ role: "assistant", content: null, tool_calls: [call("d", "get_timing", '{"section":"transits"}')] });
       return streamed("Grounded.");
     });
@@ -91,7 +91,7 @@ describe("streamAgentChat on a trip's first round", () => {
       onToolCall: (record) => calls.push(record), fetchImpl: fetchImpl as typeof fetch,
     }));
     expect(bodies(fetchImpl).map((body) => body.tool_choice)).toEqual(["required", "required", "none"]);
-    expect(calls.map((c) => c.toolName)).toEqual(["get_natal_summary", "get_trip_context", "get_timing"]);
+    expect(calls.filter((c) => c.status === "complete").map((c) => c.toolName)).toEqual(["get_natal_summary", "get_trip_context", "get_natal_summary", "get_trip_context", "get_timing"]);
   });
 
   it("a trip's grounding calls do not spend the model's own tool-call budget", async () => {

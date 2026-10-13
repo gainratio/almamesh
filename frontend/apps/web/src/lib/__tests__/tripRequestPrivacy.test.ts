@@ -36,8 +36,12 @@ const NATAL = {
 const PREFILLED = { label: 'Delhi, India', timezone: 'Asia/Kolkata', latitude: 28.6139, longitude: 77.209 };
 const CONFIG: ProviderConfig = { engine: 'openai-http', model: 'm', privacyMode: 'cloud_premium', baseUrl: 'https://openrouter.ai/api/v1', apiKey: 'k' };
 const LEAKS = [/28\.61/, /77\.20/, /1990-01-15/, /06:30/, /12:00:00/, /"latitude"/, /birth_location/, /timezone_offset/, /location_name/, /birth_place/];
-/** A birth-place MARKER in data the model reads (tool results, the trip brief) — the fixed privacy instructions may name the concept. */
-const MARKER = /birth/i;
+/**
+ * A birth-place MARKER in data the model reads (tool results, the trip brief) — the fixed privacy instructions may name the concept.
+ * "birth chart" is allowed: since the per-round cap rose to 4 (context budget spec, 2026-10-13) get_timing runs here too, and its
+ * fixed note says "dashas come from the birth chart", which names no place and no date.
+ */
+const MARKER = /birth(?! chart)/i;
 
 function tripData(body: string): string {
   const messages = (JSON.parse(body) as { messages: Array<{ role: string; content: string | null }> }).messages;
