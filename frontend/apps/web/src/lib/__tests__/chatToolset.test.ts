@@ -630,7 +630,7 @@ describe('a pinned thread', () => {
     expect(prepared.asOf).toMatchObject({ basis: 'period', period: { start: '2050-01-01', end: '2050-12-31' } });
     expect(prepared.pinned).toEqual({
       start: '2050-01-01', end: '2050-12-31', relative: 'future', granularity: 'year', label: '2050',
-      place: { label: 'unspecified place', timezone: 'Asia/Kolkata', source: 'default' },
+      place: { label: 'unspecified place', source: 'default' }, // no zone: it would locate the birth place
     });
     expect(JSON.stringify(prepared.pinned)).not.toMatch(/Delhi|28\.61|77\.21/);
     expect(prepared.currentContextUnavailable).toBe(false);
@@ -696,7 +696,7 @@ describe('a pinned thread', () => {
     // Contract reversed 2026-10-13: the pin also carries granularity, label and the (default) place.
     expect(prepared.pinned).toEqual({
       start: '2026-03-08', end: '2026-03-08', relative: 'contains_today', granularity: 'day', label: 'March 8, 2026',
-      place: { label: 'unspecified place', timezone: 'Asia/Kolkata', source: 'default' },
+      place: { label: 'unspecified place', source: 'default' }, // no zone: it would locate the birth place
     });
     const trip = await built.tools.find((tool) => tool.name === 'get_trip_context')!.execute({}, options());
     expect(trip).toMatchObject({ period: { tense: 'present' }, today: '2026-03-08' });

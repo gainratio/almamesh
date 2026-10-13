@@ -35,7 +35,7 @@ const NATAL = {
 // The sheet's prefill: the birth place's label, zone and coordinates.
 const PREFILLED = { label: 'Delhi, India', timezone: 'Asia/Kolkata', latitude: 28.6139, longitude: 77.209 };
 const CONFIG: ProviderConfig = { engine: 'openai-http', model: 'm', privacyMode: 'cloud_premium', baseUrl: 'https://openrouter.ai/api/v1', apiKey: 'k' };
-const LEAKS = [/28\.61/, /77\.20/, /1990-01-15/, /06:30/, /12:00:00/, /"latitude"/, /birth_location/, /timezone_offset/, /location_name/, /New Delhi/, /birth_place/];
+const LEAKS = [/28\.61/, /77\.20/, /1990-01-15/, /06:30/, /12:00:00/, /"latitude"/, /birth_location/, /timezone_offset/, /location_name/, /Delhi/, /India/, /Kolkata/, /birth_place/];
 /** A birth-place MARKER in data the model reads (tool results, the trip brief) — the fixed privacy instructions may name the concept. */
 const MARKER = /birth/i;
 
@@ -87,9 +87,10 @@ describe('a trip turn sends only a place label and zone', () => {
   it('a trip prefilled from the birth place: no coordinates, birth date/time or birth-place fields in any request', async () => {
     const bodies = await tripRequestBodies({ start: '2019-05-01', end: '2019-05-31', granularity: 'month', place: PREFILLED });
     expect(bodies).toHaveLength(2);
-    // The tool results really reached the model (the guard is not vacuous).
-    expect(bodies[1]).toContain('\\"timezone\\":\\"Asia/Kolkata\\"');
-    expect(bodies[1]).toContain('Delhi, India');
+    // Contract reversed 2026-10-13 (e2e found the birth city in the brief): the prefilled birth
+    // place reaches the model unnamed and without its zone. The tool results did reach it.
+    expect(bodies[1]).toContain('unspecified place');
+    expect(bodies[1]).toContain('2019-05-01');
     for (const body of bodies) {
       for (const leak of LEAKS) expect(body).not.toMatch(leak);
       expect(tripData(body)).not.toMatch(MARKER);

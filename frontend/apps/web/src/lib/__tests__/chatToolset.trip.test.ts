@@ -91,8 +91,9 @@ describe('trip-bound get_timing reads the trip place for every granularity', () 
     const result = await toolOf(toolset({ pinned: old }), 'get_timing').execute({ section: 'transits' }, options()) as {
       places?: Array<{ label: string; timezone: string }>;
     };
-    expect(result.places).toEqual([expect.objectContaining({ label: DEFAULT_PLACE_LABEL, timezone: 'Asia/Kolkata' })]);
-    expect(JSON.stringify(result)).not.toMatch(/Delhi|28\.61/);
+    // Contract reversed 2026-10-13: the default place reaches the model with no zone (it would locate the birth place).
+    expect(result.places).toEqual([expect.objectContaining({ label: DEFAULT_PLACE_LABEL })]);
+    expect(JSON.stringify(result)).not.toMatch(/Delhi|28\.61|Kolkata/);
   });
 });
 

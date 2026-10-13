@@ -25,8 +25,9 @@ describe('pinnedPeriodRules is a trip brief', () => {
   });
 
   it('says so when an old trip has no place, without naming or marking the birth place', () => {
-    const brief = pinnedPeriodRules({ ...MAY_2019_SG, place: { label: 'unspecified place', timezone: 'Asia/Kolkata', source: 'default' } });
+    const brief = pinnedPeriodRules({ ...MAY_2019_SG, place: { label: 'unspecified place', source: 'default' } });
     expect(brief).toContain('No place was chosen for this trip');
+    expect(brief).not.toMatch(/Kolkata|undefined/);
     expect(brief).not.toContain('when the user lived in');
     expect(brief).not.toMatch(/birth/i);
   });

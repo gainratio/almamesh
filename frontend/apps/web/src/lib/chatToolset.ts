@@ -161,9 +161,11 @@ function preparePinned(
 ): PreparedChatContext {
   const period = { start: pinned.start, end: pinned.end };
   const relative = pinRelative(period, viewerTodayDay(now, viewerZone));
-  const place = pinned.place
-    ? { place: { label: pinned.place.label, timezone: pinned.place.timezone, source: pinned.place.label === DEFAULT_PLACE_LABEL ? 'default' as const : 'trip' as const } }
-    : {};
+  // tripPin already relabelled a default/birth place; it reaches the model with no zone.
+  const place = !pinned.place ? {}
+    : pinned.place.label === DEFAULT_PLACE_LABEL
+      ? { place: { label: DEFAULT_PLACE_LABEL, source: 'default' as const } }
+      : { place: { label: pinned.place.label, timezone: pinned.place.timezone, source: 'trip' as const } };
   return {
     chart: natalOnly(chart),
     asOf: periodAnalysisInstant(pinned.start, pinned.end),

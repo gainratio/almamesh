@@ -63,6 +63,29 @@ describe('tripContext: one source for the tools, the brief and the context card'
   });
 });
 
+describe('a trip at the birth place never names it to the model', () => {
+  const PREFILLED = { label: 'Delhi, India', timezone: 'Asia/Kolkata', latitude: 28.6139, longitude: 77.209 };
+
+  it('the sheet prefilled the birth place: the model gets an unnamed place with no zone; the card keeps the city', () => {
+    const asOf = { start: '2019-06-01', end: '2019-06-30', granularity: 'month', place: PREFILLED } as const;
+    const trip = tripContext({ chart: CHART, asOf, today: TODAY, birth: BIRTH, language: 'en' });
+    expect(trip.place).toEqual({ label: DEFAULT_PLACE_LABEL, timezone: 'Asia/Kolkata', source: 'birth_place', display: 'Delhi, India' });
+    expect(tripToolResult(trip).place).toEqual({ label: DEFAULT_PLACE_LABEL });
+    expect(tripPin(asOf, BIRTH).place).toEqual({ ...PREFILLED, label: DEFAULT_PLACE_LABEL });
+  });
+
+  it('a city picked within a few km of the birth place counts as the birth place', () => {
+    const near = { ...PREFILLED, label: 'New Delhi', latitude: 28.61, longitude: 77.23 };
+    const asOf = { start: '2019-06-01', end: '2019-06-30', granularity: 'month', place: near } as const;
+    expect(tripToolResult(tripContext({ chart: CHART, asOf, today: TODAY, birth: BIRTH, language: 'en' })).place).toEqual({ label: DEFAULT_PLACE_LABEL });
+  });
+
+  it('an old trip with no place: no zone either', () => {
+    const old = { start: '2019-06-01', end: '2019-06-30', granularity: 'month' } as const;
+    expect(tripToolResult(tripContext({ chart: CHART, asOf: old, today: TODAY, birth: BIRTH, language: 'en' })).place).toEqual({ label: DEFAULT_PLACE_LABEL });
+  });
+});
+
 describe('the model-facing natal summary and trip context hold no raw birth data', () => {
   const RAW = [/1990-01-15/, /06:30/, /12:00:00/, /28\.61/, /77\.20/, /latitude/i, /longitude/i, /123\.45/, /1\.2897|103\.85/, /snapshot/];
 
