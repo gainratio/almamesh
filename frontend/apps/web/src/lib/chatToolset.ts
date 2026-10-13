@@ -266,6 +266,8 @@ export function buildChatToolset(input: BuildChatToolsetInput): ChatToolset {
       ...(input.onTravel ? [createTimeTravelTool({
         birthYear: birthYearOf(input.birth), placeFromRef: baseReader,
         language: input.language ?? 'en', record: input.onTravel,
+        // The thread's own trip place (not an old trip's birth-place fallback).
+        ...(input.pinned?.place ? { currentPlace: input.pinned.place } : {}),
       })] : []),
     ];
   };

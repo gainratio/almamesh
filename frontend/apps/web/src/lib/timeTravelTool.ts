@@ -43,6 +43,8 @@ export interface TimeTravelToolInput {
   readonly placeFromRef: PlaceReader;
   readonly language: string;
   readonly record: TravelRecorder;
+  /** The trip the user is on: a Month/Year move with no place_ref keeps it (every trip has a place). */
+  readonly currentPlace?: ChatThreadAsOf['place'];
 }
 
 async function travel(input: TimeTravelToolInput, args: AgentJsonObject, signal: AbortSignal): Promise<AgentJsonObject> {
@@ -60,9 +62,8 @@ async function travel(input: TimeTravelToolInput, args: AgentJsonObject, signal:
   const base = draftFromToolArgs(period, args.date);
   if (!base) return { error: DATE_ERROR };
   if (period === 'day' && args.place_ref === undefined) return { error: NEEDS_PLACE_ERROR };
-  let place: ChatThreadAsOf['place'];
+  let place: ChatThreadAsOf['place'] = period === 'day' ? undefined : input.currentPlace;
   if (args.place_ref !== undefined) {
-    if (period !== 'day') return { error: 'Only a day needs a place.' };
     if (typeof args.place_ref !== 'string' || !/^city:\d{1,6}$/.test(args.place_ref) || !PLACE_PATTERN.test(args.place_ref)) return { error: PLACE_REF_ERROR };
     const found = await input.placeFromRef(args.place_ref);
     signal.throwIfAborted();
@@ -83,7 +84,7 @@ async function travel(input: TimeTravelToolInput, args: AgentJsonObject, signal:
 export function createTimeTravelTool(input: TimeTravelToolInput): AgentTool {
   return {
     name: TIME_TRAVEL_TOOL_NAME,
-    description: 'Move the conversation and Dashboard when the user asks to go to a day, month or year. Use action travel with period and date. A day needs place_ref from resolve_place. For "back to today", "return to now" or "today again", use action back_to_today with no other arguments. The move is queued and applied after this answer is saved; subsequent messages use that moment. To read a period without moving, use get_timing.',
+    description: 'Move the conversation and Dashboard when the user asks to go to a day, month or year. Use action travel with period and date. A day needs place_ref from resolve_place; a month or year keeps the current trip place unless you pass place_ref. For "back to today", "return to now" or "today again", use action back_to_today with no other arguments. The move is queued and applied after this answer is saved; subsequent messages use that moment. To read a period without moving, use get_timing.',
     statusLabel: TIME_TRAVEL_STATUS_LABEL,
     timeoutMs: PLACE_LOOKUP_TIMEOUT_MS,
     parameters: {

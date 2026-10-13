@@ -84,3 +84,31 @@ describe('travel slot', () => {
     expect(draftFromToolArgs('month', '2019-03')).toEqual({ granularity: 'month', day: '2019-03-01', month: '2019-03', year: 2019 });
   });
 });
+
+describe('a Month or Year move keeps the trip the user is on (2026-10-13)', () => {
+  const SINGAPORE = { label: 'Singapore', timezone: 'Asia/Singapore', latitude: 1.2897, longitude: 103.8501 };
+  function onTrip(currentPlace?: typeof SINGAPORE) {
+    const record = vi.fn();
+    const placeFromRef = vi.fn(async (ref: string) => ref === 'city:42' ? BOGOTA : undefined);
+    return { record, tool: createTimeTravelTool({ birthYear: 1990, language: 'en', record, placeFromRef, ...(currentPlace ? { currentPlace } : {}) }) };
+  }
+
+  it.each([['month', '2020-03'], ['year', '2020']] as const)('a %s move with no place inherits the current trip place, not the birth place', async (period, date) => {
+    const { tool, record } = onTrip(SINGAPORE);
+    const result = await tool.execute({ action: 'travel', period, date }, context());
+    expect(result).toMatchObject({ status: 'queued', place_label: 'Singapore', time_zone: 'Asia/Singapore' });
+    expect(record.mock.calls[0]?.[0]?.asOf.place).toEqual(SINGAPORE);
+  });
+
+  it('a month move may name its own place instead', async () => {
+    const { tool, record } = onTrip(SINGAPORE);
+    await tool.execute({ action: 'travel', period: 'month', date: '2020-03', place_ref: 'city:42' }, context());
+    expect(record.mock.calls[0]?.[0]?.asOf.place).toMatchObject({ label: BOGOTA.summary.label });
+  });
+
+  it('from a today thread a month move has no place of its own (the trip reads the birth place)', async () => {
+    const { tool, record } = onTrip();
+    await tool.execute({ action: 'travel', period: 'month', date: '2020-03' }, context());
+    expect(record.mock.calls[0]?.[0]?.asOf.place).toBeUndefined();
+  });
+});

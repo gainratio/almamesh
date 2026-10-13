@@ -116,3 +116,11 @@ describe('prepare: a trip grounds through tools, not a facts blob', () => {
     expect(prepared.pinned).toBeUndefined();
   });
 });
+
+describe('time_travel from a trip keeps its place', () => {
+  it('a month move from the Singapore trip records Singapore, not the birth place', async () => {
+    const onTravel = vi.fn();
+    await toolOf(toolset({ pinned: MAY_2019_SG, onTravel }), 'time_travel').execute({ action: 'travel', period: 'month', date: '2020-03' }, options());
+    expect(onTravel.mock.calls[0]?.[0]?.asOf.place).toEqual(SINGAPORE);
+  });
+});
