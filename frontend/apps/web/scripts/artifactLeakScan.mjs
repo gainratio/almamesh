@@ -46,7 +46,8 @@ export const MIN_SECRET_LENGTH = 8
 /**
  * Names whose values are public and show up in honest evidence: the shell's
  * paths and locale, and the GitHub/runner run metadata and directories (a
- * trace records source paths under GITHUB_WORKSPACE; WebKit logs name TMPDIR).
+ * trace records source paths under GITHUB_WORKSPACE; WebKit logs name TMPDIR;
+ * a Dependabot PR's merge commit is authored by the actor login + ID).
  * A name not listed here is treated as a secret.
  */
 export const PUBLIC_ENV_NAMES = [
@@ -55,7 +56,7 @@ export const PUBLIC_ENV_NAMES = [
   '__CF_USER_TEXT_ENCODING', 'XPC_FLAGS', 'XPC_SERVICE_NAME',
   'GITHUB_WORKSPACE', 'GITHUB_REPOSITORY', 'GITHUB_REPOSITORY_OWNER', 'GITHUB_REF', 'GITHUB_REF_NAME', 'GITHUB_HEAD_REF',
   'GITHUB_BASE_REF', 'GITHUB_SHA', 'GITHUB_RUN_ID', 'GITHUB_WORKFLOW_SHA', 'GITHUB_ACTION', 'GITHUB_EVENT_NAME', 'GITHUB_WORKFLOW', 'GITHUB_JOB', 'GITHUB_SERVER_URL', 'GITHUB_API_URL',
-  'GITHUB_GRAPHQL_URL', 'RUNNER_WORKSPACE', 'RUNNER_TEMP', 'RUNNER_TOOL_CACHE', 'AGENT_TOOLSDIRECTORY', 'ImageOS', 'ImageVersion',
+  'GITHUB_GRAPHQL_URL', 'GITHUB_ACTOR', 'GITHUB_ACTOR_ID', 'GITHUB_TRIGGERING_ACTOR', 'RUNNER_WORKSPACE', 'RUNNER_TEMP', 'RUNNER_TOOL_CACHE', 'AGENT_TOOLSDIRECTORY', 'ImageOS', 'ImageVersion',
 ]
 
 const PUBLIC = new Set(PUBLIC_ENV_NAMES)
