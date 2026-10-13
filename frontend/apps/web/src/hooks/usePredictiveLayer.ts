@@ -160,7 +160,13 @@ export function usePredictiveLayer({ auto = false }: UsePredictiveLayerOptions =
   // Never pair one natal chart with another chart's predictive superset. A
   // stale ready/error payload is presented as absent until this exact birth
   // input + reference instant has been computed.
-  const visibleStatus: PredictiveStatus = cacheMatchesInput ? status : 'idle';
+  const storeStatus: PredictiveStatus = cacheMatchesInput ? status : 'idle';
+  // Engine-recovery invariant: a failed engine is never shown as "still
+  // starting up". Without an engine nothing will ever leave `idle` (auto mode
+  // never retries an error), so surface the engine failure as this layer's
+  // error; `compute` (the Retry) reboots the engine and then computes.
+  const engineFailure = storeStatus === 'idle' && engine === null ? engineCtx?.error ?? null : null;
+  const visibleStatus: PredictiveStatus = engineFailure !== null ? 'error' : storeStatus;
 
   const activeInput = useRef(input);
   const pendingRecovery = useRef<Promise<void> | null>(null);
@@ -241,7 +247,7 @@ export function usePredictiveLayer({ auto = false }: UsePredictiveLayerOptions =
 
   return {
     status: visibleStatus,
-    error: cacheMatchesInput ? error : undefined,
+    error: engineFailure !== null ? engineFailure.message : cacheMatchesInput ? error : undefined,
     transitCtx: cacheMatchesInput ? transitCtx : undefined,
     vargaCtxFull: cacheMatchesInput ? vargaCtxFull : undefined,
     strengthCtx: cacheMatchesInput ? strengthCtx : undefined,

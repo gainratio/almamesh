@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { expect, type Browser, type CDPSession, type Page } from '@playwright/test';
 
+import { waitForLifeAtlasAsOf } from './lifeAtlas.helpers';
 import type { TimeTravelMemoryPhase } from './memoryBudget';
 
 const MiB = 1024 * 1024;
@@ -86,7 +87,7 @@ export async function onboardForTimeTravelMemory(page: Page): Promise<void> {
   await expect(page.getByTestId('dashboard-time-travel-button')).toBeEnabled();
   // The chart appears before today's lazy predictive compute finishes. Include
   // that resident heap in both baseline and Day-probe measurements.
-  await expect(page.getByTestId('life-atlas').getByText(/^As of /)).toBeVisible({ timeout: 240_000 });
+  await waitForLifeAtlasAsOf(page);
 }
 
 /** Page and all workers' JS + wasm heaps; cross-origin isolation is mandatory. */

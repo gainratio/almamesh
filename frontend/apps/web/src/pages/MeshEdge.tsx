@@ -283,6 +283,12 @@ function MeshEdgeContent({
   useEffect(() => {
     ensure();
   }, [ensure]);
+  // A rebooted engine re-renders this page with `engine` set, and the effect
+  // above computes the edge; the provider publishes a failed reboot itself.
+  const engineFailure = chartEngineContext?.error ?? null;
+  const rebootEngine = useCallback(() => {
+    void chartEngineContext?.reboot().catch(() => undefined);
+  }, [chartEngineContext]);
 
   // "Discuss in chat": the same persisted, edge-grounded chat panel pattern as
   // the dashboard — remounted open on request via the key flip.
@@ -474,6 +480,9 @@ function MeshEdgeContent({
     );
   } else if (entry.status === 'error') {
     body = <EdgeError error={entry.error} onRetry={ensure} />;
+  } else if (entry.status !== 'ready' && engine === null && engineFailure) {
+    // Engine-recovery invariant: a failed boot is never "still starting up".
+    body = <EdgeError error={engineFailure.message} onRetry={rebootEngine} />;
   } else if (entry.status !== 'ready' || !entry.edge || !entry.requestKey) {
     body = <EdgePending engineReady={engine !== null} />;
   } else {
