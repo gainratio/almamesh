@@ -37,6 +37,50 @@ describe('explicit timing question periods', () => {
     expect(parseExplicitTimingPeriod(question)).toEqual(period(start, end));
   });
 
+  // Regression 2026-10-13: "Sep 2019" widened to all of 2019 (full month names only).
+  it.each([
+    ['what about Sep 2019?', '2019-09-01', '2019-09-30'],
+    ['Sept 2019', '2019-09-01', '2019-09-30'],
+    ['SEPT 2019', '2019-09-01', '2019-09-30'],
+    ['sep. 2019', '2019-09-01', '2019-09-30'],
+    ['Sept. 2019', '2019-09-01', '2019-09-30'],
+    ['Jan 2020', '2020-01-01', '2020-01-31'],
+    ['feb 2024', '2024-02-01', '2024-02-29'],
+    ['Mar 2019', '2019-03-01', '2019-03-31'],
+    ['Apr 2019', '2019-04-01', '2019-04-30'],
+    ['May 2019', '2019-05-01', '2019-05-31'],
+    ['Jun 2019', '2019-06-01', '2019-06-30'],
+    ['Jul 2019', '2019-07-01', '2019-07-31'],
+    ['Aug 2019', '2019-08-01', '2019-08-31'],
+    ['Oct 2019', '2019-10-01', '2019-10-31'],
+    ['Nov. 2019', '2019-11-01', '2019-11-30'],
+    ['Dec 2019', '2019-12-01', '2019-12-31'],
+    ['ene 2019', '2019-01-01', '2019-01-31'],
+    ['abr. de 2019', '2019-04-01', '2019-04-30'],
+    ['ago 2019', '2019-08-01', '2019-08-31'],
+    ['dic. 2019', '2019-12-01', '2019-12-31'],
+    ['fev 2019', '2019-02-01', '2019-02-28'],
+    ['mai de 2019', '2019-05-01', '2019-05-31'],
+    ['set 2019', '2019-09-01', '2019-09-30'],
+    ['out. 2019', '2019-10-01', '2019-10-31'],
+    ['dez de 2019', '2019-12-01', '2019-12-31'],
+  ])('accepts an abbreviated month and year, never widening it to the year: %s', (question, start, end) => {
+    expect(parseExplicitTimingPeriod(question)).toEqual(period(start, end));
+  });
+
+  it.each([
+    ['What came out in 2019?', '2019-01-01', '2019-12-31'],
+    ['Jan said 2019 was hard', '2019-01-01', '2019-12-31'],
+    ['Two years ago, in 2019', '2019-01-01', '2019-12-31'],
+    ['How did I set goals in 2019?', '2019-01-01', '2019-12-31'],
+  ])('a short form that is also a common word needs calendar syntax: %s', (question, start, end) => {
+    expect(parseExplicitTimingPeriod(question)).toEqual(period(start, end));
+  });
+
+  it.each(['Sep and Oct 2019', 'jan or feb 2020'])('clarifies two abbreviated months: %s', (question) => {
+    expect(parseExplicitTimingPeriod(question)).toEqual(unresolved('ambiguous_period'));
+  });
+
   it('uses the canonical engine upper bound inclusively', () => {
     expect(parseExplicitTimingPeriod(`${EPHEMERIS_LAST_YEAR}`)).toEqual(period(`${EPHEMERIS_LAST_YEAR}-01-01`, `${EPHEMERIS_LAST_YEAR}-12-31`));
     expect(parseExplicitTimingPeriod(`December ${EPHEMERIS_LAST_YEAR}`)).toEqual(period(`${EPHEMERIS_LAST_YEAR}-12-01`, `${EPHEMERIS_LAST_YEAR}-12-31`));
