@@ -294,7 +294,12 @@ export function ChatPanel({
       )}
 
       {/* Semantic search over this profile's past conversations (discoverable). */}
-      {profileId && <ChatSearch profileId={profileId} onOpenResult={handleOpenResult} />}
+      {/* Its own bordered row, so the thread below scrolls up to a clear edge, not under the box. */}
+      {profileId && (
+        <div className="shrink-0 border-b border-ui-border pb-3" data-testid="chat-search-row">
+          <ChatSearch profileId={profileId} onOpenResult={handleOpenResult} />
+        </div>
+      )}
 
       {reanchorWaits && aiConfigured && (
         <div className="mx-4 mt-3 rounded-lg border border-ui-border px-3 py-2 text-xs text-text-muted" data-testid="chat-reanchor-status" role="status">
