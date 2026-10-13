@@ -13,6 +13,9 @@ describe('chatAsOfProblem', () => {
     ['a Month pin', MONTH],
     ['a leap February', { start: '2028-02-01', end: '2028-02-29', granularity: 'month' }],
     ['a Day pin with a place', DAY],
+    // Contract reversed 2026-10-13 (every trip has a place): a Month/Year pin may carry one.
+    ['a Month pin with a place', { ...MONTH, place: BOGOTA }],
+    ['a Year pin with a place', { ...YEAR, place: BOGOTA }],
     ['the first year', { start: '1900-01-01', end: '1900-12-31', granularity: 'year' }],
     ['the last year', { start: '2099-01-01', end: '2099-12-31', granularity: 'year' }],
   ])('accepts %s', (_label, value) => {
@@ -35,7 +38,8 @@ describe('chatAsOfProblem', () => {
     ['a year ending early', { ...YEAR, end: '2027-12-30' }, 'as_of.end'],
     ['a day spanning two days', { ...DAY, end: '2026-06-16' }, 'as_of.end'],
     ['a Day pin with no place', { start: '2026-06-15', end: '2026-06-15', granularity: 'day' }, 'as_of.place'],
-    ['a Month pin with a place', { ...MONTH, place: BOGOTA }, 'as_of.place'],
+    ['a Month pin with a malformed place', { ...MONTH, place: { ...BOGOTA, label: '' } }, 'as_of.place.label'],
+    ['a Year pin with a non-object place', { ...YEAR, place: 'Bogotá' }, 'as_of.place'],
     ['a place with an extra key', { ...DAY, place: { ...BOGOTA, altitude: 2640 } }, 'as_of.place'],
     ['an empty label', { ...DAY, place: { ...BOGOTA, label: '' } }, 'as_of.place.label'],
     ['a long label', { ...DAY, place: { ...BOGOTA, label: 'x'.repeat(121) } }, 'as_of.place.label'],

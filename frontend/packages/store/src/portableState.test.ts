@@ -1349,7 +1349,8 @@ describe('time-travel pins in a backup (chat store v3)', () => {
     ['latitude 91', { ...DAY_PIN, place: { ...DAY_PIN.place, latitude: 91 } }, 'as_of.place.latitude'],
     ['an extra key', { ...DAY_PIN, birth_place: 'Delhi' }, 'as_of'],
     ['granularity week', { ...DAY_PIN, granularity: 'week' }, 'as_of.granularity'],
-    ['a Month pin with a place', { ...DAY_PIN, start: '2026-06-01', end: '2026-06-30', granularity: 'month' }, 'as_of.place'],
+    // Contract reversed 2026-10-13: a Month pin may carry a place, but only a valid one.
+    ['a Month pin with a malformed place', { ...DAY_PIN, start: '2026-06-01', end: '2026-06-30', granularity: 'month', place: { ...DAY_PIN.place, label: '' } }, 'as_of.place.label'],
   ])('refuses a backup whose pin has %s, naming the row, thread and field', async (_label, asOf, field) => {
     const { repository } = await seedChat({ as_of: asOf });
     await expect(repository.exportBytes()).rejects.toThrow(

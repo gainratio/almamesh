@@ -149,6 +149,26 @@ describe('applyTravel: one path for every way to travel', () => {
     expect(useChatStore.getState().listThreads('p1')).toHaveLength(2);
   });
 
+  it('thread { id } of a pinned thread that has messages starts a new trip; the first keeps its pin and answers', async () => {
+    const chat = useChatStore.getState();
+    const target = chat.startThread('p1', 'c1', YEAR_2027);
+    chat.appendMessage(target, 'user', 'How is 2027?');
+    chat.appendMessage(target, 'assistant', 'Calm.');
+    const out = await applyTravel({ asOf: MARCH_2019, source: 'chat-sheet' }, { ...DASH, thread: { id: target } }, aiOn);
+    expect(out.threadId).not.toBe(target);
+    expect(useChatStore.getState().threads[out.threadId as string]?.as_of).toEqual(MARCH_2019);
+    expect(useChatStore.getState().threads[target]?.as_of).toEqual(YEAR_2027);
+    expect(useChatStore.getState().getMessages(target).map((m) => m.content)).toEqual(['How is 2027?', 'Calm.']);
+  });
+
+  it("thread 'latest' with messages also starts a new trip instead of re-pinning the conversation", async () => {
+    const first = await applyTravel({ asOf: YEAR_2027, source: 'dashboard-sheet' }, DASH, aiOn);
+    useChatStore.getState().appendMessage(first.threadId as string, 'user', 'And 2027?');
+    const second = await applyTravel({ asOf: MARCH_2019, source: 'dashboard-sheet' }, DASH, aiOn);
+    expect(second.threadId).not.toBe(first.threadId);
+    expect(useChatStore.getState().threads[first.threadId as string]?.as_of).toEqual(YEAR_2027);
+  });
+
   it.each([
     ['unpinned', () => useChatStore.getState().startThread('p1', 'c1')],
     ['unknown', () => 'no-such-thread'],

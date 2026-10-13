@@ -78,8 +78,9 @@ export function chatAsOfProblem(value: unknown): string | undefined {
   const period = periodProblem(value);
   if (period) return period;
   const { granularity, place } = value;
-  if (granularity === 'day') return place === undefined ? 'as_of.place' : placeProblem(place);
-  return place === undefined ? undefined : 'as_of.place';
+  // Every new trip carries a place; Month/Year pins saved before 2026-10-13 have none.
+  if (place === undefined) return granularity === 'day' ? 'as_of.place' : undefined;
+  return placeProblem(place);
 }
 
 export function isChatThreadAsOf(value: unknown): value is ChatThreadAsOf {

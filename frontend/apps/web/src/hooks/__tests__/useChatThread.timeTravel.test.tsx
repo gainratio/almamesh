@@ -234,6 +234,19 @@ describe('the chat sheet travels through the seam', () => {
     expect(useTimeTravelStore.getState().moments[PROFILE]).toEqual(MARCH_2019);
   });
 
+  it('Change after a conversation opens a second thread; the first keeps its period and messages (Jan 2027 regression)', async () => {
+    const { result } = renderHook(() => useChatThread(PROFILE, CHART));
+    await act(() => result.current.pin(MARCH_2019));
+    const first = result.current.threadId!;
+    await act(() => result.current.submit('How was March?', async () => 'Busy.'));
+    await act(() => result.current.repin(YEAR));
+    expect(result.current.threadId).not.toBe(first);
+    expect(result.current.asOf).toEqual(YEAR);
+    expect(result.current.messages).toEqual([]);
+    expect(useChatStore.getState().threads[first]?.as_of).toEqual(MARCH_2019);
+    expect(useChatStore.getState().getMessages(first).map((m) => m.content)).toEqual(['How was March?', 'Busy.']);
+  });
+
   it('Back to today in chat clears the Dashboard moment', async () => {
     const { result } = renderHook(() => useChatThread(PROFILE, CHART));
     await act(() => result.current.pin(MARCH_2019));
@@ -309,7 +322,7 @@ describe('chat tool actions apply after a successful durable turn', () => {
   });
   afterEach(() => vi.mocked(waitForStoreSaved).mockImplementation(async () => undefined));
 
-  it('keeps the current pin during streaming, then moves Dashboard and the next question', async () => {
+  it('keeps the current pin during streaming, then opens a new trip for the Dashboard and the next question', async () => {
     const { result } = renderHook(() => useChatThread(PROFILE, CHART));
     await act(() => result.current.pin(YEAR));
     const originalThread = result.current.threadId;
@@ -326,7 +339,9 @@ describe('chat tool actions apply after a successful durable turn', () => {
     expect(result.current.asOf).toEqual(YEAR);
     expect(useTimeTravelStore.getState().moments[PROFILE]).toEqual(YEAR);
     await act(async () => { release(); await pending; });
-    expect(result.current.threadId).toBe(originalThread);
+    // Contract reversed 2026-10-13: the tool opens a NEW trip; the answered one keeps its period.
+    expect(result.current.threadId).not.toBe(originalThread);
+    expect(useChatStore.getState().threads[originalThread!]?.as_of).toEqual(YEAR);
     expect(result.current.asOf).toEqual(JUNE);
     expect(useTimeTravelStore.getState().moments[PROFILE]).toEqual(JUNE);
     const next = vi.fn(async (_input: ChatStreamInput) => 'June facts.');
@@ -482,7 +497,7 @@ describe('chat tool actions apply after a successful durable turn', () => {
     }); });
     await act(async () => { await started; });
     act(() => useChatStore.getState().deleteThread(source));
-    expect(result.current.threadId).toBe(fallback);
+    // While the move saves, its new (empty) trip is listed; it is removed once the move is cancelled.
     await act(async () => { release(); await pending; });
     expect(useChatStore.getState().threads[source]).toBeUndefined();
     expect(result.current.threadId).toBe(fallback);
