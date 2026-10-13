@@ -752,7 +752,7 @@ export async function* streamAgentChat(
     }
 
     const roundCalls = decision.toolCalls.slice(0, AGENT_LIMITS.maxToolCallsPerRound);
-    if (roundCalls.length < decision.toolCalls.length) forceFinal = true;
+    const truncated = roundCalls.length < decision.toolCalls.length;
     transcript.push({
       role: "assistant",
       content: decision.content,
@@ -839,6 +839,9 @@ export async function* streamAgentChat(
       reportToolCall(options, modelCall, callArgs, content);
     }
 
+    // Calls past the per-round cap are dropped. That ends the turn, unless a
+    // required grounding tool is still missing: then the next round asks again.
+    if (truncated && stillRequired.size === 0) forceFinal = true;
     if (
       forceFinal ||
       executedCalls >= AGENT_LIMITS.maxToolCalls ||
