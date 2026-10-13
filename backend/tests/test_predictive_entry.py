@@ -35,6 +35,7 @@ PAYLOAD_KEYS = frozenset(
         "varga_context_full",
         "strength_context",
         "domains_context",
+        "period_reading",
     }
 )
 
@@ -74,8 +75,8 @@ def test_contexts_match_the_standalone_pipeline(contexts: PredictiveContexts) ->
     assert contexts.domains_context.model_dump_json() == domains.model_dump_json()
 
 
-def test_payload_has_exactly_the_four_context_keys(payload: dict[str, object]) -> None:
-    """The four contexts and NOTHING else — the engine computes, it does not sign.
+def test_payload_has_exactly_the_five_context_keys(payload: dict[str, object]) -> None:
+    """The five contexts and NOTHING else — the engine computes, it does not sign.
 
     Strength receipts are added by the browser Worker's TypeScript after this
     payload crosses the runtime boundary, so this CPython path and the Pyodide

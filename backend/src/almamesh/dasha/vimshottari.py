@@ -93,6 +93,8 @@ def compute_vimshottari_periods(
                         ad_lord=ad_lord,
                         start_date=max(ad_start, start_date),
                         end_date=min(ad_end, end_date),
+                        antar_start=ad_start,
+                        antar_end=ad_end,
                     )
                 )
 
@@ -141,7 +143,7 @@ def find_active_vimshottari(periods: list[VimPeriod], dt: datetime) -> Vimshotta
             return VimshottariState(
                 md_lord=p.md_lord,
                 ad_lord=ad_lord,
-                pd_lord=_active_pratyantardasha(ad_lord, p.start_date, p.end_date, dt),
+                pd_lord=_active_pratyantardasha(ad_lord, p.antar_start, p.antar_end, dt),
             )
     # Fallback to first period if not found
     if periods:

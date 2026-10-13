@@ -26,8 +26,10 @@ from pydantic import BaseModel, ConfigDict
 
 from almamesh.calculations import SkyfieldAstronomy, calculate_sidereal_context
 from almamesh.domains import compute_life_domains
+from almamesh.reading import compute_period_reading
 from almamesh.schemas.astrology import SiderealContext
 from almamesh.schemas.domains import LifeDomainsContext
+from almamesh.schemas.reading import PeriodReading
 from almamesh.schemas.strength import StrengthContext
 from almamesh.schemas.transits import TransitContext
 from almamesh.schemas.vargas import VargaContext
@@ -37,13 +39,14 @@ from almamesh.vargas import compute_varga_context
 
 
 class PredictiveContexts(BaseModel):
-    """The four additive predictive contexts for one chart + instant.
+    """The five additive predictive contexts for one chart + instant.
 
     ``model_dump(mode="json")`` of this model IS the wire payload the browser
     receives: each top-level key carries the bare dump of its context. The Worker
     then seals each domain's ``StrengthSummary`` into a signed receipt and adds
-    ``domain_strength_receipts`` alongside these four keys before the payload
-    reaches app code.
+    ``domain_strength_receipts`` alongside these keys before the payload
+    reaches app code. ``period_reading`` is a digest of the other four (plus the
+    natal chart), built with no further ephemeris call.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -52,6 +55,7 @@ class PredictiveContexts(BaseModel):
     varga_context_full: VargaContext
     strength_context: StrengthContext
     domains_context: LifeDomainsContext
+    period_reading: PeriodReading
 
 
 _MAX_OFFSET_MINUTES: Final[int] = 18 * 60  # real civil offsets lie within -12 h..+14 h
@@ -139,7 +143,7 @@ def _compose(
     civil_offset: timedelta,
     astronomy: SkyfieldAstronomy,
 ) -> PredictiveContexts:
-    """The varga, strength and domain contexts, assembled with the transits."""
+    """The varga, strength, domain and reading contexts, assembled with the transits."""
     vargas = compute_varga_context(natal)
     strength = compute_strength_context(
         natal, birth_dt, latitude, longitude, civil_offset=civil_offset, astronomy=astronomy
@@ -150,6 +154,7 @@ def _compose(
         varga_context_full=vargas,
         strength_context=strength,
         domains_context=domains,
+        period_reading=compute_period_reading(natal, transits, vargas, strength, domains),
     )
 
 
