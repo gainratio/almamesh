@@ -215,7 +215,11 @@ test('[contract/stubbed] a typed June 2019 question reads June 2019, not today',
   );
   expect(statuses.some((text) => text.includes('Working out the sky')), statuses.join(' | ')).toBe(true);
 
-  expect(agentRequests).toHaveLength(2);
+  // Contract changed 2026-10-13: the model's second (required) round answered without the trip's
+  // context and natal tools, so the app ran them itself and asked once more.
+  expect(agentRequests).toHaveLength(3);
+  expect(agentRequests[2].messages.filter((message) => message.role === 'tool').map((message) => message.name))
+    .toEqual(['get_timing', 'get_timing', 'get_trip_context', 'get_natal_summary']);
   const toolResults = agentRequests[1].messages.filter((message) => message.role === 'tool');
   expect(toolResults.map((message) => message.name)).toEqual(['get_timing', 'get_timing']);
   for (const result of toolResults) {
@@ -828,9 +832,11 @@ test.describe('pinned threads on a device in another zone', () => {
     const last = seen.at(-1)!;
     const tools = turnTools(last.messages);
     // Contract reversed 2026-10-13: the trip's period comes from get_trip_context (no arguments).
-    expect(tools.map((m) => m.name)).toEqual(['get_trip_context', 'get_timing']);
+    // Contract changed 2026-10-13 (6716eb17 + follow-up): a required round answered without the rest of the
+    // grounding gets the missing tools run locally (natal summary here), then one more round answers.
+    expect(tools.map((m) => m.name)).toEqual(['get_trip_context', 'get_timing', 'get_natal_summary']);
     expect(tools[0]?.content).toContain(`"start":"${PIN_YEAR}-01-01","end":"${PIN_YEAR}-12-31","granularity":"year","tense":"future"`);
-    expect(seen.map((request) => request.toolChoice), 'a trip stays "required" until natal, trip and timing tools ran').toEqual(['required', 'required']);
+    expect(seen.map((request) => request.toolChoice), 'a trip stays "required" until natal, trip and timing tools ran').toEqual(['required', 'required', 'auto']);
     expect(tools[1]?.content).toContain(`"period":{"start":"${PIN_YEAR}-01-01","end":"${PIN_YEAR}-12-31","days":${PIN_DAYS},"basis":"period"}`);
     const system = last.messages.find((m) => m.role === 'system')?.content ?? '';
     expect(system).toContain(`PINNED PERIOD: this conversation is about ${PIN_YEAR}-01-01 to ${PIN_YEAR}-12-31 (relative: future)`);
@@ -1081,7 +1087,9 @@ test.describe('time travel on an iPhone', () => {
     expect(last.tools.map((tool) => tool.function.name), 'minimal tier has the place tool').toContain('resolve_place');
     const tools = turnTools(last.messages);
     // Contract reversed 2026-10-13: the trip's period comes from get_trip_context (no arguments).
-    expect(tools.map((m) => m.name)).toEqual(['get_trip_context', 'get_timing']);
+    // Contract changed 2026-10-13 (6716eb17 + follow-up): a required round answered without the rest of the
+    // grounding gets the missing tools run locally (natal summary here), then one more round answers.
+    expect(tools.map((m) => m.name)).toEqual(['get_trip_context', 'get_timing', 'get_natal_summary']);
     expect(tools[0]?.content).toContain(`"start":"${PIN_YEAR}-01-01","end":"${PIN_YEAR}-12-31","granularity":"year","tense":"future"`);
     expect(bodies.filter((body) => body.includes(DEVICE_ZONE)), 'the device zone must not reach the model').toEqual([]);
 

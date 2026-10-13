@@ -213,6 +213,24 @@ describe("streamAgentChat on a trip's first round", () => {
     expect((second.messages as Array<{ role: string }>).filter((m) => m.role === "tool")).toHaveLength(3);
   });
 
+  it("the local grounding runs only the tools still missing, never one that already succeeded", async () => {
+    let requests = 0;
+    const fetchImpl = vi.fn(async () => {
+      requests += 1;
+      if (requests === 1) return decision({ role: "assistant", content: null, tool_calls: [call("a", "get_timing", '{"section":"dashas"}')] });
+      if (requests === 2) return decision({ role: "assistant", content: "Answer without the natal chart." });
+      return decision({ role: "assistant", content: "Grounded on all three." });
+    });
+    const calls: AgentToolCallRecord[] = [];
+    const answer = await collect(streamAgentChat({
+      config: CONFIG, messages: [{ role: "user", content: "Q" }], tools: [TRIP_TOOL, NATAL_T, TIMING_T], now: NOW,
+      firstRoundToolChoice: "required", requiredToolNames: ["get_trip_context", "get_natal_summary", "get_timing"], groundingCalls: GROUNDING,
+      onToolCall: (record) => calls.push(record), fetchImpl: fetchImpl as typeof fetch,
+    }));
+    expect(answer).toBe("Grounded on all three.");
+    expect(calls.map((c) => c.toolName)).toEqual(["get_timing", "get_trip_context", "get_natal_summary"]);
+  });
+
   it("a required round the provider answers with finish_reason error and no content falls back the same way, instead of 'empty agent completion'", async () => {
     // gpt-oss-20b, 2026-10-13: OpenRouter routed tool_choice required to a host that returned 200 + finish_reason "error".
     let requests = 0;

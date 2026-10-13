@@ -732,9 +732,11 @@ export async function* streamAgentChat(
       return tool ? [{ tool, args: call.args }] : [];
     });
   let localCallNumber = 0;
-  /** Run the grounding plan here; each result reaches the model as a tool message. */
+  /** The grounding calls for tools the turn still needs (a tool that already succeeded is not run again). */
+  const pendingGrounding = () => groundingPlan.filter(({ tool }) => stillRequired.size === 0 || stillRequired.has(tool.name));
+  /** Run the pending grounding calls here; each result reaches the model as a tool message. */
   const groundLocally = async (round: number): Promise<void> => {
-    const calls = groundingPlan.map(({ tool, args }) => {
+    const calls = pendingGrounding().map(({ tool, args }) => {
       localCallNumber += 1;
       const call: OpenAiToolCall = { id: `local-grounding-${localCallNumber}`, type: "function", function: { name: tool.name, arguments: JSON.stringify(args) } };
       return { tool, args, call };
@@ -807,7 +809,7 @@ export async function* streamAgentChat(
       }
       throw error;
     }
-    if (decision.toolCalls.length === 0 && choice === "required" && groundingPlan.length > 0) {
+    if (decision.toolCalls.length === 0 && choice === "required" && pendingGrounding().length > 0) {
       // No tool call under 'required' (2026-10-13: qwen answered from nothing; a host
       // routed for gpt-oss returned finish_reason "error" with no content). Ground the
       // trip locally, then let the model answer with 'auto'.
