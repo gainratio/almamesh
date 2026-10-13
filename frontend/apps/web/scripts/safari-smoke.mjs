@@ -112,6 +112,8 @@ const SNAPSHOT = `
     readyState: document.readyState,
     navigation: navigation ? { name: navigation.name, type: navigation.type, redirectCount: navigation.redirectCount } : null,
     serviceWorkerControlled: Boolean(navigator.serviceWorker?.controller),
+    // Key names only: which one-shot self-heal reloads this tab has used.
+    sessionMarkers: Object.keys(sessionStorage).filter((key) => key.startsWith('almamesh:')).sort(),
     heading: (document.querySelector('h1, h2')?.textContent ?? '').trim().slice(0, 120) || null,
     inMemoryNotice: document.querySelector('[data-testid="in-memory-storage-notice"]') !== null,
     runtimeStage: window.__ALMAMESH_STAGE__ ?? null,
@@ -178,6 +180,17 @@ function stages(driver, baseUrl, record) {
       record.crossOriginIsolated = isolated
       if (!isolated) throw new Error('crossOriginIsolated is not true on /')
       record.consoleErrors.push(...(await capturedErrors(driver)))
+    }],
+    ['settle', 45, async () => {
+      // A first visit can reload itself once (service worker taking control,
+      // self-heal). Let that finish before the direct load, so open-route
+      // measures the route and not a race with the first visit's reload.
+      await driver.wait(
+        () => driver.executeScript('return Boolean(navigator.serviceWorker?.controller) && document.readyState === "complete"'),
+        30 * SECONDS,
+      ).catch(() => {})
+      await driver.sleep(3 * SECONDS)
+      record.settled = await snapshotOf(driver)
     }],
     ['open-route', 45, async () => {
       // A direct load of the route (a shared link, a bookmark). Wait for the
