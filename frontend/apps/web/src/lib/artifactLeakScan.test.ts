@@ -126,6 +126,19 @@ describe('envNeedles', () => {
     expect(existsSync(dir)).toBe(true);
   });
 
+  it('still deletes evidence holding a real token-shaped secret beside the public actor', () => {
+    const token = `ghp_${randomBytes(18).toString('hex')}`;
+    const dir = evidenceDir({
+      'webkit-browser.log': `author: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>\nAuthorization: token ${token}`,
+    });
+    const result = runScan(dir, { ...PUBLIC_CI_ACTOR, GITHUB_TOKEN: token });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('environment variable GITHUB_TOKEN');
+    expect(result.stderr).not.toContain('GITHUB_ACTOR');
+    expect(result.stdout + result.stderr).not.toContain(token);
+    expect(existsSync(dir)).toBe(false);
+  });
+
   it('deletes evidence when a credential shares the public actor value', () => {
     const dir = evidenceDir({ 'worker.log': PUBLIC_CI_ACTOR.GITHUB_ACTOR });
     const result = runScan(dir, { ...PUBLIC_CI_ACTOR, GITHUB_TOKEN: PUBLIC_CI_ACTOR.GITHUB_ACTOR });
