@@ -5,7 +5,7 @@
  * count with the oldest rows evicted first, and purged with its profile,
  * thread or dataset.
  */
-import { readDeletionTombstones, type DeletionTombstones } from '@almamesh/store';
+import { readDeletionTombstones, readObservedDatasetEpoch, type DeletionTombstones } from '@almamesh/store';
 
 import type { ChatSearchHit } from './chatSearchFusion';
 import { searchTerms } from './chatSearchFusion';
@@ -45,12 +45,13 @@ function matchExpression(query: string): string | undefined {
   return terms.length === 0 ? undefined : terms.map((term) => `"${term}"*`).join(' OR ');
 }
 
-function writable(ledger: ChatFtsLedger, row: ChatFtsRow): boolean {
-  return (
-    !ledger.restoreInProgress && ledger.activeEpoch === ledger.restoreEpoch &&
-    !ledger.profileIds.includes(row.profile_id) && !ledger.threadIds.includes(row.thread_id) &&
-    row.text.trim().length > 0
-  );
+/** The vector store's write fence: no restore running, and this tab's generation is still the active one. */
+function fenceOpen(ledger: ChatFtsLedger, generation: number): boolean {
+  return !ledger.restoreInProgress && ledger.activeEpoch === generation && ledger.restoreEpoch === generation;
+}
+
+function live(ledger: ChatFtsLedger, row: ChatFtsRow): boolean {
+  return !ledger.profileIds.includes(row.profile_id) && !ledger.threadIds.includes(row.thread_id) && row.text.trim().length > 0;
 }
 
 /** The statement surface shared by a connection and its transaction. */
@@ -71,27 +72,41 @@ async function evict(db: SqlExec, maxRows: number): Promise<void> {
 
 export function createChatFtsRows(
   access: (() => Promise<SqlDatabase>) | DerivedDbAccess,
-  options: { readonly readLedger?: () => Promise<ChatFtsLedger>; readonly maxRows?: number } = {},
+  options: {
+    readonly readLedger?: () => Promise<ChatFtsLedger>;
+    /** The dataset generation this tab observed (the vector store's fence). */
+    readonly generation?: () => number;
+    readonly maxRows?: number;
+  } = {},
 ): ChatFtsRows {
   const readLedger = options.readLedger ?? readDeletionTombstones;
+  const observedGeneration = options.generation ?? readObservedDatasetEpoch;
   const maxRows = options.maxRows ?? CHAT_FTS_MAX_ROWS;
   const withDb: DerivedDbAccess['withDb'] = typeof access === 'function'
     ? async (work) => work(await access()) : (work) => access.withDb(work);
   const purge = (sql: string, binds: readonly string[]): Promise<void> => withDb(async (db) => { await db.exec(sql, [...binds]); });
 
   return {
+    // The ledger is read inside the write transaction, under the derived
+    // session lock. A delete records its tombstone before it purges, and the
+    // purge waits for this transaction: a write either commits before the
+    // purge (which then removes it) or sees the tombstone and drops itself.
     async index(row) {
-      if (!writable(await readLedger(), row)) return;
+      const generation = observedGeneration();
       await withDb((db) => db.transaction(async (tx) => {
+        const ledger = await readLedger();
+        if (!fenceOpen(ledger, generation) || !live(ledger, row)) return;
         await insert(tx, row);
         await evict(tx, maxRows);
       }));
     },
     async rebuild(rows) {
-      const ledger = await readLedger();
+      const generation = observedGeneration();
       await withDb((db) => db.transaction(async (tx) => {
+        const ledger = await readLedger();
+        if (!fenceOpen(ledger, generation)) return;
         await tx.exec('DELETE FROM chat_fts');
-        for (const row of rows) if (writable(ledger, row)) await insert(tx, row);
+        for (const row of rows) if (live(ledger, row)) await insert(tx, row);
         await evict(tx, maxRows);
         await tx.exec('INSERT OR REPLACE INTO dataset_meta (key, value) VALUES (?, ?)', [BUILT_KEY, '1']);
       }));

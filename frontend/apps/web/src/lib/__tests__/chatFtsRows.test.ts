@@ -13,7 +13,7 @@ async function fixture(maxRows?: number) {
   await migrateDerivedDb(db);
   const ledger = { profileIds: [] as string[], threadIds: [] as string[], activeEpoch: 0, restoreEpoch: 0, restoreInProgress: false };
   const readLedger = async (): Promise<ChatFtsLedger> => ({ ...ledger });
-  const rows = createChatFtsRows(async () => db, { readLedger, maxRows });
+  const rows = createChatFtsRows(async () => db, { readLedger, generation: () => 0, maxRows });
   return { db, rows, ledger };
 }
 
@@ -89,6 +89,85 @@ describe('chat keyword index (SQLite FTS5)', () => {
     ledger.restoreInProgress = true;
     await rows.index(row('c', 'ketu'));
     expect(await count(db)).toBe(0);
+  });
+
+  describe('a write queued before a delete (TOCTOU)', () => {
+    /** The first connection waits for `release`; later ones (the purge) open at once. */
+    async function heldFixture() {
+      const db = await openNodeSqlDatabase({ name: `chat-fts-${crypto.randomUUID()}` });
+      databases.push(db);
+      await migrateDerivedDb(db);
+      const ledger = { profileIds: [] as string[], threadIds: [] as string[], activeEpoch: 0, restoreEpoch: 0, restoreInProgress: false };
+      const held = Promise.withResolvers<void>();
+      let opens = 0;
+      const access = async () => { if (opens++ === 0) await held.promise; return db; };
+      const rows = createChatFtsRows(access, { readLedger: async () => ({ ...ledger }), generation: () => 0 });
+      return { db, rows, ledger, release: held.resolve };
+    }
+
+    it('drops the write when its profile is deleted before it commits', async () => {
+      const { db, rows, ledger, release } = await heldFixture();
+      const write = rows.index(row('m1', 'zebraquux secret', 'p1', 't1'));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      ledger.profileIds = ['p1'];
+      await rows.deleteForProfile('p1');
+      release();
+      await write;
+      expect(await count(db)).toBe(0);
+    });
+
+    it('drops the write when its thread is deleted before it commits', async () => {
+      const { db, rows, ledger, release } = await heldFixture();
+      const write = rows.index(row('m1', 'zebraquux secret', 'p1', 't1'));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      ledger.threadIds = ['t1'];
+      await rows.deleteForThread('t1');
+      release();
+      await write;
+      expect(await count(db)).toBe(0);
+    });
+
+    it('drops the write when the dataset generation moves before it commits', async () => {
+      const { db, rows, ledger, release } = await heldFixture();
+      const write = rows.index(row('m1', 'zebraquux secret', 'p1', 't1'));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      ledger.activeEpoch = 1;
+      ledger.restoreEpoch = 1;
+      await rows.clear();
+      release();
+      await write;
+      expect(await count(db)).toBe(0);
+    });
+
+    it('drops a rebuild row whose profile is deleted before the rebuild commits', async () => {
+      const { db, rows, ledger, release } = await heldFixture();
+      const write = rows.rebuild([row('m1', 'zebraquux secret', 'p1', 't1'), row('m2', 'kept', 'p2', 't2')]);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      ledger.profileIds = ['p1'];
+      await rows.deleteForProfile('p1');
+      release();
+      await write;
+      expect(await db.query('SELECT message_id FROM chat_fts')).toEqual([{ message_id: 'm2' }]);
+    });
+  });
+
+  it('refuses a write from a tab that observed an older dataset generation', async () => {
+    const { db, ledger } = await fixture();
+    ledger.activeEpoch = 2;
+    ledger.restoreEpoch = 2;
+    const stale = createChatFtsRows(async () => db, { readLedger: async () => ({ ...ledger }), generation: () => 1 });
+    await stale.index(row('m1', 'zebraquux secret'));
+    expect(await count(db)).toBe(0);
+  });
+
+  it('a rebuild from an older generation leaves the index as it was', async () => {
+    const { db, rows, ledger } = await fixture();
+    await rows.index(row('m1', 'current generation'));
+    ledger.activeEpoch = 1;
+    ledger.restoreEpoch = 1;
+    await rows.rebuild([row('old', 'stale snapshot')]);
+    expect(await db.query('SELECT message_id FROM chat_fts')).toEqual([{ message_id: 'm1' }]);
+    expect(await rows.isBuilt()).toBe(false);
   });
 
   it('purges by profile, by thread, and entirely', async () => {
