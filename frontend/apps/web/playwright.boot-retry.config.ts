@@ -23,7 +23,7 @@ const BASE_URL = EXTERNAL_BASE_URL ?? `http://127.0.0.1:${PORT}`;
 
 export default defineConfig({
   testDir: "./e2e",
-  testMatch: /(?:boot-retry|storage-hydration)\.spec\.ts/,
+  testMatch: /(?:boot-retry|storage-hydration|navigation-during-boot)\.spec\.ts/,
   fullyParallel: false,
   forbidOnly: Boolean(process.env.CI),
   // No retries: the property under test IS a retry; a second run would hide a miss.
