@@ -869,7 +869,7 @@ def _resolve_reference_instant(reference_date: datetime | None) -> datetime:
     return ref if ref.tzinfo is not None else ref.replace(tzinfo=UTC)
 
 
-def _subdivide_period(parent: DashaPeriod) -> list[DashaPeriod]:
+def subdivide_period(parent: DashaPeriod) -> list[DashaPeriod]:
     """The 9 sub-periods of ``parent``, each a fraction of the parent's ACTUAL
     span (so they tile it exactly under whatever year convention built it). The
     sub-sequence starts from the parent lord; the proportions are DASHA_YEARS/120.
@@ -937,17 +937,17 @@ def _active_subperiods(
     """Active (antardasha, pratyantardasha) for the active maha at ``ref``."""
     if curr_maha is None:
         return None, None
-    curr_antar = _active_period(_subdivide_period(curr_maha), ref)
+    curr_antar = _active_period(subdivide_period(curr_maha), ref)
     if curr_antar is None:
         return None, None
-    curr_pratyantar = _active_period(_subdivide_period(curr_antar), ref)
+    curr_pratyantar = _active_period(subdivide_period(curr_antar), ref)
     return curr_antar, curr_pratyantar
 
 
 def _with_antar_sequence(maha: DashaPeriod) -> MahaDashaPeriod:
     """A maha row enriched with its nine dated antardashas.
 
-    Uses the SAME ``_subdivide_period`` math (and thus convention) as the
+    Uses the SAME ``subdivide_period`` math (and thus convention) as the
     active-leg search, so ``current_antar`` always appears in its maha row's
     ``antar_sequence`` with byte-identical dates.
     """
@@ -956,7 +956,7 @@ def _with_antar_sequence(maha: DashaPeriod) -> MahaDashaPeriod:
         start_date=maha.start_date,
         end_date=maha.end_date,
         duration_years=maha.duration_years,
-        antar_sequence=_subdivide_period(maha),
+        antar_sequence=subdivide_period(maha),
     )
 
 
@@ -991,7 +991,7 @@ def calculate_vimshottari_dashas(
         current_maha=curr_maha,
         current_antar=curr_antar,
         current_pratyantar=curr_pratyantar,
-        pratyantar_sequence=None if curr_antar is None else _subdivide_period(curr_antar),
+        pratyantar_sequence=None if curr_antar is None else subdivide_period(curr_antar),
         convention=convention,
     )
 
