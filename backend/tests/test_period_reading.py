@@ -8,6 +8,7 @@ Saturn in Sagittarius (2019) is the 5th from the Leo Moon: NOT Sade Sati.
 from __future__ import annotations
 
 import json
+import re
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
@@ -23,16 +24,20 @@ from almamesh.schemas.reading import DashaLevel, FunctionalNature, PeriodReading
 _BIRTH = datetime(1990, 1, 15, 12, tzinfo=UTC)
 _FIXTURE_DIR = Path(__file__).resolve().parents[2] / "testdata" / "period-reading"
 
-# (fixture file, reference instant, window months) — the four golden readings.
-READING_CASES: dict[str, tuple[datetime, int]] = {
-    "delhi-2019-05.json": (datetime(2019, 5, 1, tzinfo=UTC), 1),
-    "delhi-2019-year.json": (datetime(2019, 1, 1, tzinfo=UTC), 12),
-    "delhi-2027-01.json": (datetime(2027, 1, 1, tzinfo=UTC), 1),
-    "delhi-2019-09-15-day.json": (datetime(2019, 9, 15, tzinfo=UTC), 1),
+# (fixture file, reference instant, window months, reading end) — the four golden
+# readings, exactly as production asks for them: every period up to a year runs the
+# default 12-month window, bounded by the period's own inclusive last day.
+READING_CASES: dict[str, tuple[datetime, int, date | None]] = {
+    "delhi-2019-05.json": (datetime(2019, 5, 1, tzinfo=UTC), 12, date(2019, 5, 31)),
+    "delhi-2019-year.json": (datetime(2019, 1, 1, tzinfo=UTC), 12, date(2019, 12, 31)),
+    "delhi-2027-01.json": (datetime(2027, 1, 1, tzinfo=UTC), 12, date(2027, 1, 31)),
+    "delhi-2019-09-15-day.json": (datetime(2019, 9, 15, tzinfo=UTC), 12, None),
 }
 
 
-def compute_delhi(reference: datetime, window_months: int) -> PredictiveContexts:
+def compute_delhi(
+    reference: datetime, window_months: int, reading_end: date | None = None
+) -> PredictiveContexts:
     """The full predictive run for DELHI_BIRTH at one reference instant."""
     return compute_predictive_contexts(
         _BIRTH,
@@ -41,6 +46,7 @@ def compute_delhi(reference: datetime, window_months: int) -> PredictiveContexts
         reference,
         civil_offset=timedelta(minutes=330),
         window_months=window_months,
+        reading_end=reading_end,
     )
 
 
@@ -49,6 +55,42 @@ def wire_reading(contexts: PredictiveContexts) -> dict[str, object]:
     dumped = contexts.model_dump(mode="json")["period_reading"]
     assert isinstance(dumped, dict)
     return dumped
+
+
+_DASHA_FACTOR = re.compile(r"\b([A-Z][a-z]+) \((maha|antar|pratyantar)\)")
+
+
+def _cited_lords(reading: PeriodReading) -> set[str]:
+    """Every graha a theme factor cites as a running dasha lord, plus every segment's lords."""
+    cited = {
+        m[0].lower() for t in reading.themes for f in t.factors for m in _DASHA_FACTOR.findall(f)
+    }
+    for s in reading.segments:
+        cited |= {s.maha.value, s.antar.value, s.pratyantar.value}
+    return cited | {span.lord.value for span in reading.dasha_spans}
+
+
+@pytest.mark.parametrize("reading_end", [None, date(2019, 5, 31)])
+def test_a_may_2019_trip_cites_only_mays_running_lords(reading_end: date | None) -> None:
+    """The app runs a 12-month window for a month; the reading must still be May's.
+
+    Regression: the reading covered the whole window and cited Jupiter (antar)
+    and Sun (pratyantar), lords that start long after May 2019.
+    """
+    contexts = compute_predictive_contexts(
+        _BIRTH,
+        28.6139,
+        77.209,
+        datetime(2019, 5, 1, tzinfo=UTC),
+        civil_offset=timedelta(minutes=330),
+        window_months=12,
+        reading_end=reading_end,
+    )
+    reading = contexts.period_reading
+    assert _cited_lords(reading) <= {"rahu", "venus"}
+    assert reading.yogini is not None and reading.yogini.lord == PlanetName.MERCURY
+    last = reading_end or date(2019, 5, 1)
+    assert (reading.window.start, reading.window.end) == (date(2019, 5, 1), last + timedelta(days=1))
 
 
 @pytest.fixture(scope="module")
@@ -201,7 +243,7 @@ def test_double_transit_after_jupiter_joins_saturn() -> None:
 
 def test_sandhi_names_the_antar_change_inside_the_window() -> None:
     """Rahu-Rahu hands over to Rahu-Jupiter on 2020-01-24."""
-    reading = compute_delhi(datetime(2020, 1, 10, tzinfo=UTC), 1).period_reading
+    reading = compute_delhi(datetime(2020, 1, 10, tzinfo=UTC), 1, date(2020, 2, 8)).period_reading
     assert reading.sandhi is not None
     assert (reading.sandhi.level, reading.sandhi.date) == (DashaLevel.ANTAR, date(2020, 1, 24))
 
@@ -281,6 +323,7 @@ def test_the_reading_makes_no_ephemeris_call(
         may.varga_context_full,
         may.strength_context,
         may.domains_context,
+        reading_end=date(2019, 5, 31),
     )
     assert rebuilt == may.period_reading
 
@@ -318,7 +361,8 @@ def test_yogini_agreement_when_the_yogini_lord_signifies(may: PredictiveContexts
 
 @pytest.fixture(scope="module")
 def two_years() -> PredictiveContexts:
-    return compute_delhi(datetime(2026, 6, 9, 12, tzinfo=UTC), 24)
+    # The last reading day the 24-month window allows: its end is 2028-06-09T00:00Z.
+    return compute_delhi(datetime(2026, 6, 9, 12, tzinfo=UTC), 24, date(2028, 6, 8))
 
 
 def test_theme_windows_are_capped_non_neutral_first(two_years: PredictiveContexts) -> None:

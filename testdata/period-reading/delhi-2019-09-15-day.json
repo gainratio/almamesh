@@ -1,7 +1,7 @@
 {
   "window": {
     "start": "2019-09-15",
-    "end": "2019-10-15"
+    "end": "2019-09-16"
   },
   "natal_lords": {
     "sun": {
@@ -164,19 +164,19 @@
       "level": "maha",
       "lord": "rahu",
       "start": "2019-09-15",
-      "end": "2019-10-15"
+      "end": "2019-09-16"
     },
     {
       "level": "antar",
       "lord": "rahu",
       "start": "2019-09-15",
-      "end": "2019-10-15"
+      "end": "2019-09-16"
     },
     {
       "level": "pratyantar",
       "lord": "moon",
       "start": "2019-09-15",
-      "end": "2019-10-15"
+      "end": "2019-09-16"
     }
   ],
   "sookshma": {
@@ -194,21 +194,18 @@
   "segments": [
     {
       "start": "2019-09-15",
-      "end": "2019-10-15",
+      "end": "2019-09-16",
       "maha": "rahu",
       "antar": "rahu",
       "pratyantar": "moon",
-      "events": [
-        "saturn.station.direct",
-        "mars.ingress.virgo"
-      ]
+      "events": []
     }
   ],
   "sky": [
     {
       "graha": "jupiter",
       "start": "2019-09-15",
-      "end": "2019-10-15",
+      "end": "2019-09-16",
       "sign": "scorpio",
       "retro": false,
       "from_moon": 4,
@@ -222,7 +219,7 @@
     {
       "graha": "saturn",
       "start": "2019-09-15",
-      "end": "2019-09-17",
+      "end": "2019-09-16",
       "sign": "sagittarius",
       "retro": true,
       "from_moon": 5,
@@ -232,21 +229,9 @@
       "tags": []
     },
     {
-      "graha": "saturn",
-      "start": "2019-09-17",
-      "end": "2019-10-15",
-      "sign": "sagittarius",
-      "retro": false,
-      "from_moon": 5,
-      "from_lagna": 7,
-      "sav": 21,
-      "bav": 1,
-      "tags": []
-    },
-    {
       "graha": "rahu",
       "start": "2019-09-15",
-      "end": "2019-10-15",
+      "end": "2019-09-16",
       "sign": "gemini",
       "retro": true,
       "from_moon": 11,
@@ -258,7 +243,7 @@
     {
       "graha": "ketu",
       "start": "2019-09-15",
-      "end": "2019-10-15",
+      "end": "2019-09-16",
       "sign": "sagittarius",
       "retro": true,
       "from_moon": 5,

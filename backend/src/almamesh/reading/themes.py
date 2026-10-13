@@ -159,11 +159,11 @@ def _factors(domain: _Domain, inputs: ThemeInputs) -> list[str]:
 
 
 def _windows(forecast: LifeDomainForecast, inputs: ThemeInputs) -> list[ThemeWindow]:
-    """The domain's dated windows inside the reading window (all of them)."""
+    """The domain's dated windows inside the half-open reading window (all of them)."""
     return [
         ThemeWindow(date=utc_date(w.date), descriptor=w.descriptor, severity=w.severity)
         for w in forecast.upcoming_windows
-        if inputs.start <= w.date <= inputs.end
+        if inputs.start <= w.date < inputs.end
     ]
 
 

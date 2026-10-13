@@ -1,7 +1,7 @@
 {
   "window": {
     "start": "2027-01-01",
-    "end": "2027-01-31"
+    "end": "2027-02-01"
   },
   "natal_lords": {
     "sun": {
@@ -164,19 +164,19 @@
       "level": "maha",
       "lord": "rahu",
       "start": "2027-01-01",
-      "end": "2027-01-31"
+      "end": "2027-02-01"
     },
     {
       "level": "antar",
       "lord": "mercury",
       "start": "2027-01-01",
-      "end": "2027-01-31"
+      "end": "2027-02-01"
     },
     {
       "level": "pratyantar",
       "lord": "rahu",
       "start": "2027-01-01",
-      "end": "2027-01-31"
+      "end": "2027-02-01"
     }
   ],
   "sookshma": {
@@ -204,7 +204,7 @@
     },
     {
       "start": "2027-01-24",
-      "end": "2027-01-31",
+      "end": "2027-02-01",
       "maha": "rahu",
       "antar": "mercury",
       "pratyantar": "rahu",
@@ -231,7 +231,7 @@
     {
       "graha": "jupiter",
       "start": "2027-01-24",
-      "end": "2027-01-31",
+      "end": "2027-02-01",
       "sign": "cancer",
       "retro": true,
       "from_moon": 12,
@@ -245,7 +245,7 @@
     {
       "graha": "saturn",
       "start": "2027-01-01",
-      "end": "2027-01-31",
+      "end": "2027-02-01",
       "sign": "pisces",
       "retro": false,
       "from_moon": 8,
@@ -259,7 +259,7 @@
     {
       "graha": "rahu",
       "start": "2027-01-01",
-      "end": "2027-01-31",
+      "end": "2027-02-01",
       "sign": "capricorn",
       "retro": true,
       "from_moon": 6,
@@ -271,7 +271,7 @@
     {
       "graha": "ketu",
       "start": "2027-01-01",
-      "end": "2027-01-31",
+      "end": "2027-02-01",
       "sign": "cancer",
       "retro": true,
       "from_moon": 12,

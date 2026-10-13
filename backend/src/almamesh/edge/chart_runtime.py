@@ -29,6 +29,7 @@ from almamesh.mesh import compute_mesh_edge
 from almamesh.predictive import (
     civil_offset_from_minutes,
     compute_predictive_contexts,
+    reading_end_from_wire,
     window_months_from_wire,
 )
 from almamesh.rectification import compute_rectification_result
@@ -90,7 +91,8 @@ def compute_predictive(payload: Mapping[str, object]) -> dict[str, JsonValue]:
     off the civil date of the sunrise, and no default offset is honest. The
     caller pins the instant, which pins both the "current" dasha and the
     transit "now", so the payload is reproducible (and byte-parity-testable)
-    by construction.
+    by construction. Optional ``reading_end`` (ISO date) is the period
+    reading's inclusive last day; absent means the reference day only.
 
     No signing happens here. The four contexts ARE the engine's output; the
     browser Worker seals each domain's strength summary into a receipt in
@@ -103,6 +105,7 @@ def compute_predictive(payload: Mapping[str, object]) -> dict[str, JsonValue]:
         datetime.fromisoformat(str(payload["reference_instant"])),
         civil_offset=civil_offset_from_minutes(payload["utc_offset_minutes"]),
         window_months=window_months_from_wire(payload.get("window_months")),
+        reading_end=reading_end_from_wire(payload.get("reading_end")),
     )
     return contexts.model_dump(mode="json")
 

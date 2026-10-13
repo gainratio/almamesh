@@ -19,7 +19,8 @@ CRYPTO-FREE BY DESIGN. This module computes; it does not sign. Each domain's
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from dataclasses import dataclass
+from datetime import date, datetime, timedelta
 from typing import Final
 
 from pydantic import BaseModel, ConfigDict
@@ -27,6 +28,7 @@ from pydantic import BaseModel, ConfigDict
 from almamesh.calculations import SkyfieldAstronomy, calculate_sidereal_context
 from almamesh.domains import compute_life_domains
 from almamesh.reading import compute_period_reading
+from almamesh.reading.bounds import reading_end_from_wire
 from almamesh.schemas.astrology import SiderealContext
 from almamesh.schemas.domains import LifeDomainsContext
 from almamesh.schemas.reading import PeriodReading
@@ -104,6 +106,7 @@ def compute_predictive_contexts(
     *,
     civil_offset: timedelta,
     window_months: int = _DEFAULT_WINDOW_MONTHS,
+    reading_end: date | None = None,
 ) -> PredictiveContexts:
     """All four predictive contexts at one EXPLICIT instant (no silent now()).
 
@@ -116,6 +119,10 @@ def compute_predictive_contexts(
 
     ``window_months`` (1..24, default 12) is the forward timeline's length; a
     period of up to two years is one compute.
+
+    ``reading_end`` is the period reading's INCLUSIVE last UTC day inside that
+    window (absent: the reference day only). It bounds ``period_reading`` alone;
+    ``transit_context`` and ``domains_context`` keep the whole window.
     """
     checked_window_months(window_months)
     # A kernel holds mapped ephemeris arrays in reference cycles. One owner per
@@ -131,30 +138,45 @@ def compute_predictive_contexts(
             window_months=window_months,
             astronomy=astronomy,
         )
-        return _compose(natal, transits, birth_dt, latitude, longitude, civil_offset, astronomy)
+        run = _Run(natal, transits, birth_dt, latitude, longitude, civil_offset, reading_end)
+        return _compose(run, astronomy)
 
 
-def _compose(
-    natal: SiderealContext,
-    transits: TransitContext,
-    birth_dt: datetime,
-    latitude: float,
-    longitude: float,
-    civil_offset: timedelta,
-    astronomy: SkyfieldAstronomy,
-) -> PredictiveContexts:
+@dataclass(frozen=True)
+class _Run:
+    """One predictive run's natal and transit contexts plus its inputs."""
+
+    natal: SiderealContext
+    transits: TransitContext
+    birth_dt: datetime
+    latitude: float
+    longitude: float
+    civil_offset: timedelta
+    reading_end: date | None
+
+
+def _compose(run: _Run, astronomy: SkyfieldAstronomy) -> PredictiveContexts:
     """The varga, strength, domain and reading contexts, assembled with the transits."""
+    natal, transits = run.natal, run.transits
     vargas = compute_varga_context(natal)
     strength = compute_strength_context(
-        natal, birth_dt, latitude, longitude, civil_offset=civil_offset, astronomy=astronomy
+        natal,
+        run.birth_dt,
+        run.latitude,
+        run.longitude,
+        civil_offset=run.civil_offset,
+        astronomy=astronomy,
     )
     domains = compute_life_domains(natal, transits, vargas, strength)
+    reading = compute_period_reading(
+        natal, transits, vargas, strength, domains, reading_end=run.reading_end
+    )
     return PredictiveContexts(
         transit_context=transits,
         varga_context_full=vargas,
         strength_context=strength,
         domains_context=domains,
-        period_reading=compute_period_reading(natal, transits, vargas, strength, domains),
+        period_reading=reading,
     )
 
 
@@ -163,5 +185,6 @@ __all__ = [
     "checked_window_months",
     "civil_offset_from_minutes",
     "compute_predictive_contexts",
+    "reading_end_from_wire",
     "window_months_from_wire",
 ]

@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from almamesh.dasha.depth import active_chain, level_spans
+from almamesh.reading.bounds import bounded_transits
 from almamesh.reading.common import ReadingFrame, utc_date
 from almamesh.reading.dashas import dasha_spans, sandhi, sookshma, yogini_span
 from almamesh.reading.lords import natal_lords
@@ -23,7 +24,7 @@ from almamesh.schemas.reading import DashaLevel, PeriodReading, ReadingWindow
 from almamesh.transits.natal import natal_lagna_index, natal_moon_index
 
 if TYPE_CHECKING:
-    from datetime import datetime
+    from datetime import date, datetime
 
     from almamesh.constants.astrology import PlanetName
     from almamesh.schemas.astrology import DashaPeriod, SiderealContext
@@ -112,9 +113,17 @@ def compute_period_reading(
     vargas: VargaContext,
     strength: StrengthContext,
     domains: LifeDomainsContext,
+    *,
+    reading_end: date | None = None,
 ) -> PeriodReading:
-    """The whole period reading for [timeline.window_start, timeline.window_end)."""
-    return _assemble(_prepare(natal, transits, vargas, strength, domains))
+    """The period reading for [reference day, reading_end] inside the transit window.
+
+    ``reading_end`` is the reading's INCLUSIVE last UTC day; absent means the
+    reference day only. Segments, spans, sandhi and themes read only the bounded
+    timeline; sookshma, panchang and the gochara rows stay at the reference instant.
+    """
+    bounded = bounded_transits(transits, reading_end)
+    return _assemble(_prepare(natal, bounded, vargas, strength, domains))
 
 
 __all__ = ["compute_period_reading"]
