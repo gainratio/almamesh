@@ -360,6 +360,8 @@ describe('MeshEdgePage', () => {
       'get_current_datetime',
       'get_chart_facts',
       'get_timing',
+      'get_period_reading',
+      'get_period_detail',
       'resolve_place',
       'time_travel',
     ]);

@@ -432,8 +432,8 @@ describe('buildChatToolset: places', () => {
 
   it('registers resolve_place only where the device computes the sky', () => {
     const names = (allowed: boolean) => toolset({ periodSkyAllowed: allowed }).tools.map((t) => t.name);
-    expect(names(true)).toEqual(['get_current_datetime', 'get_chart_facts', 'get_timing', 'resolve_place']);
-    expect(names(false)).toEqual(['get_current_datetime', 'get_chart_facts', 'get_timing']);
+    expect(names(true)).toEqual(['get_current_datetime', 'get_chart_facts', 'get_timing', 'get_period_reading', 'get_period_detail', 'resolve_place']);
+    expect(names(false)).toEqual(['get_current_datetime', 'get_chart_facts', 'get_timing', 'get_period_reading', 'get_period_detail']);
   });
 
   it('follows devicePolicy when no seam is passed: full and lite tiers get resolve_place', () => {

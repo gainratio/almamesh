@@ -62,7 +62,7 @@ describe('actual chat capabilities through the provider tool protocol', () => {
       chartTimeZone: 'UTC', profileKey: 'fixture', birth: undefined, engine: null,
       viewerZone: () => 'America/Los_Angeles', periodSkyAllowed: true, ...(trip ? { pinned } : {}),
     }).tools.map((tool) => tool.name);
-    expect(names(true)).toEqual(['get_natal_summary', 'get_trip_context', 'get_timing', 'resolve_place']);
+    expect(names(true)).toEqual(['get_natal_summary', 'get_trip_context', 'get_timing', 'get_period_reading', 'get_period_detail', 'resolve_place']);
     expect(names(false)).toEqual(expect.arrayContaining(['get_current_datetime', 'get_chart_facts']));
   });
 });

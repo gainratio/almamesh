@@ -27,6 +27,7 @@ import { ensureCurrentPlanetaryContext } from './currentPlanetaryContext';
 import { createMoonWindowLoader } from './moonWindow';
 import { birthUtcYearOf, birthYearOf, createPeriodChartLoader, readyEngine } from './periodChart';
 import { pinnedPlaceReader, pinnedTiming } from './pinnedPeriod';
+import { createPeriodReadingTools } from './periodReadingTool';
 import { createResolvePlaceTool } from './placeTool';
 import type { PlaceReader } from './timingPlaces';
 import { TIMING_TOOL_NAME } from './timingTool';
@@ -272,6 +273,11 @@ export function buildChatToolset(input: BuildChatToolsetInput): ChatToolset {
       ...trip,
       // A trip reads its natal chart through get_natal_summary; the today-only lookups stay off it.
       ...(activePin ? agentTools.filter((tool) => tool.name === TIMING_TOOL_NAME) : agentTools),
+      ...createPeriodReadingTools({
+        pin: activePin, chart: input.chart, birth: input.birth, language, viewerZone: zone, loadCurrentChart,
+        loadPeriodChart: createPeriodChartLoader({ chart: input.chart, profileKey: input.profileKey, birth: input.birth, engine }),
+        periodSkyAllowed: skyAllowed,
+      }),
       ...(skyAllowed ? [createResolvePlaceTool()] : []),
       ...(input.onTravel ? [createTimeTravelTool({
         birthYear: birthYearOf(input.birth), placeFromRef: baseReader,

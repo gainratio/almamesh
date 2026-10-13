@@ -25,6 +25,8 @@ export const CHAT_TOOL_CATALOG: Readonly<Record<string, ChatToolCatalogEntry>> =
   get_natal_summary: { labelKey: 'tools.get_natal_summary' },
   get_trip_context: { labelKey: 'tools.get_trip_context' },
   get_timing: { labelKey: 'tools.get_timing' },
+  get_period_reading: { labelKey: 'tools.get_period_reading' },
+  get_period_detail: { labelKey: 'tools.get_period_detail' },
   resolve_place: { labelKey: 'tools.resolve_place' },
   time_travel: { labelKey: 'tools.time_travel' },
   get_chart_facts: { labelKey: 'tools.get_chart_facts' },
@@ -83,6 +85,7 @@ interface ResultHints {
 }
 
 const SECTIONS = new Set(['dashas', 'transits', 'strength', 'domains']);
+const DETAIL_SECTIONS = new Set(['lord', 'segment', 'bindus', 'panchang', 'dashas']);
 
 function text(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined;
@@ -107,6 +110,7 @@ function periodText(start: string, end: string, language: string): string {
 function subjectOf(toolName: string, args: unknown, translate: (key: string) => string): string {
   const section = text((args as { section?: unknown } | null)?.section);
   if (toolName === 'get_timing' && section && SECTIONS.has(section)) return translate(`tools.sections.${section}`);
+  if (toolName === 'get_period_detail' && section && DETAIL_SECTIONS.has(section)) return translate(`tools.detail_sections.${section}`);
   return Object.hasOwn(CHAT_TOOL_CATALOG, toolName) ? translate(`tools.rows.${toolName}`) : toolName;
 }
 
@@ -135,7 +139,9 @@ function pretty(value: unknown): string {
 export function ToolCallRow({ toolName, toolCallId, args, result, isError }: ToolCallRowProps) {
   const { t, i18n } = useTranslation('chat');
   const [open, setOpen] = useState(false);
-  const failed = isError === true || (result as { code?: unknown } | null)?.code !== undefined;
+  const outcome = result as { code?: unknown; available?: unknown } | null;
+  // A returned "unavailable" (get_period_reading's typed reasons) is a lookup that got nothing.
+  const failed = isError === true || outcome?.code !== undefined || outcome?.available === false;
   const summary = summaryOf(toolName, args, result, i18n.language || 'en', (key) => t(key));
   return (
     <details className="mb-2 rounded-lg border border-ui-border bg-background-tertiary/60 px-3 py-2 text-xs text-text-secondary"
