@@ -98,7 +98,8 @@ async function successfulToolPairs(requests: ObservedAgentRequest[]) {
       if (message.role === 'assistant') {
         for (const call of message.tool_calls ?? []) calls.set(call.id, call);
       }
-      if (message.role === 'tool' && message.tool_call_id) results.set(message.tool_call_id, message);
+      // The first sighting is the full result: later rounds carry it compacted (context budget, 2026-10-13).
+      if (message.role === 'tool' && message.tool_call_id && !results.has(message.tool_call_id)) results.set(message.tool_call_id, message);
     }
   }
   expect(calls.size, 'each turn stays inside the three-call agent budget').toBeLessThanOrEqual(3);
@@ -136,11 +137,22 @@ async function finalResponseText(requests: ObservedAgentRequest[]): Promise<stri
 
 const FACT_SUMMARY_REQUEST = 'Start your answer with one compact JSON object containing period_start, period_end, maha_lords and antar_lords (arrays of the calculated lords covering that period). Use the supplied local timing data, then explain the active calculated timing in two short sentences.';
 
-function expectCalculatedSummary(answer: string, timing: DashaTimingResult): void {
+/** The calculated dashas an answer must restate: from get_timing's dashas section or get_period_reading. */
+interface CalculatedDashas {
+  readonly period: { readonly start: string; readonly end: string };
+  readonly maha: ReadonlyArray<{ readonly lord: string }>;
+  readonly antar: ReadonlyArray<{ readonly lord: string }>;
+}
+
+function timingDashas(timing: DashaTimingResult): CalculatedDashas {
   expect(timing.section).toBe('dashas');
   expect(timing.shown).toBe('dashas');
-  expect(timing.data.maha.length).toBeGreaterThan(0);
-  expect(timing.data.antar.length).toBeGreaterThan(0);
+  return { period: timing.period, maha: timing.data.maha, antar: timing.data.antar };
+}
+
+function expectCalculatedSummary(answer: string, timing: CalculatedDashas): void {
+  expect(timing.maha.length).toBeGreaterThan(0);
+  expect(timing.antar.length).toBeGreaterThan(0);
   const object = answer.match(/\{[^{}]*\}/)?.[0];
   expect(object, 'a factual summary accompanies any legitimate life-event caveat').toBeDefined();
   const summary = JSON.parse(object!) as {
@@ -152,8 +164,8 @@ function expectCalculatedSummary(answer: string, timing: DashaTimingResult): voi
     expect(Array.isArray(lords)).toBe(true);
     return [...new Set((lords as string[]).map((lord) => lord.trim().toLowerCase()))].sort();
   };
-  expect(normalized(summary.maha_lords)).toEqual(normalized(timing.data.maha.map((row) => row.lord)));
-  expect(normalized(summary.antar_lords)).toEqual(normalized(timing.data.antar.map((row) => row.lord)));
+  expect(normalized(summary.maha_lords)).toEqual(normalized(timing.maha.map((row) => row.lord)));
+  expect(normalized(summary.antar_lords)).toEqual(normalized(timing.antar.map((row) => row.lord)));
   expect(answer.slice(answer.indexOf(object!) + object!.length).replace(/[`\s]/g, '').length,
     'the answer includes an explanation after its factual summary').toBeGreaterThan(40);
 }
@@ -381,7 +393,7 @@ test('[real] dashboard: September 2017 tool movement, grounded outlook today, an
   expect(movement?.result).toMatchObject({ status: 'queued', action: 'travel' });
   const septemberTiming = septemberPairs.find((pair) => pair.name === 'get_timing' && pair.args.section === 'dashas');
   expect(septemberTiming?.result).toMatchObject({ period: { start: '2017-09-01', end: '2017-09-30', basis: 'period' } });
-  expectCalculatedSummary(await finalResponseText(september), septemberTiming!.result as unknown as DashaTimingResult);
+  expectCalculatedSummary(await finalResponseText(september), timingDashas(septemberTiming!.result as unknown as DashaTimingResult));
   await expect(page.getByTestId('time-travel-title')).toHaveText('Time travel · September 2017');
   await expect(page.getByTestId('dashboard-time-travel-title')).toHaveText(/September 2017/);
   await expect(page.getByTestId('time-travel-moment-dasha')).toBeVisible();
@@ -389,18 +401,17 @@ test('[real] dashboard: September 2017 tool movement, grounded outlook today, an
   const viewerDay = await page.evaluate(() => new Intl.DateTimeFormat('en-CA').format(new Date()));
   const today = await send('outlook today? ' + FACT_SUMMARY_REQUEST);
   const todaySystem = today[0].body.messages?.find((message) => message.role === 'system')?.content ?? '';
-  expect(todaySystem).toContain('VERIFIED LOCAL TIMING:');
+  // Contract reversed 2026-10-13 (period reading, spec 2026-10-13): today's dashas and transits were
+  // pre-run into a VERIFIED LOCAL TIMING block of the prompt. Now nothing is pre-computed: the first
+  // round is tool_choice "required" and grounds itself through get_period_reading, bound to today.
+  expect(todaySystem).not.toContain('VERIFIED LOCAL TIMING');
   expect(todaySystem).not.toContain('PINNED PERIOD:');
-  const verified = todaySystem.slice(todaySystem.indexOf('VERIFIED LOCAL TIMING:'));
-  const timingFacts = JSON.parse(verified.slice(verified.indexOf('\n') + 1)) as Array<{ tool: string; result: DashaTimingResult }>;
-  expect(timingFacts.map((fact) => fact.result.section)).toEqual(['dashas', 'transits']);
-  for (const fact of timingFacts) {
-    expect(fact.tool).toBe('get_timing');
-    expect(fact.result.period).toMatchObject({ start: viewerDay, end: viewerDay, basis: 'today' });
-  }
-  // No additional calls are necessary when the first request already has these facts.
-  await successfulToolPairs(today);
-  expectCalculatedSummary(await finalResponseText(today), timingFacts[0].result);
+  expect(today[0].body.tool_choice, 'a today question grounds itself before it answers').toBe('required');
+  // The model's own call, or the app's local grounding call when the model skipped it.
+  const readingMessage = today.flatMap(({ body }) => body.messages ?? []).find((message) => message.role === 'tool' && message.name === 'get_period_reading');
+  const reading = parseSuccessfulToolResult(readingMessage?.content) as unknown as { period: CalculatedDashas['period']; dashas: Omit<CalculatedDashas, 'period'> };
+  expect(reading.period).toMatchObject({ start: viewerDay, end: viewerDay });
+  expectCalculatedSummary(await finalResponseText(today), { period: reading.period, maha: reading.dashas.maha, antar: reading.dashas.antar });
   await expect(page.getByTestId('time-travel-title')).toHaveText('Time travel · September 2017');
   await expect(page.getByTestId('dashboard-time-travel-title')).toHaveText(/September 2017/);
 

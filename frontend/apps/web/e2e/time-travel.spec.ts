@@ -3,6 +3,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { expect, type ConsoleMessage, type Frame, type Locator, type Page, type Worker as PlaywrightWorker } from '@playwright/test';
 
 import { DELHI_BIRTH, DELHI_SEED, LLM_SETTINGS_KEY, bootEngine, seedChart, waitForEngineReady } from './interpretation.helpers';
+import { stubModelCatalog } from './modelCatalog.helpers';
 import { gotoSettled } from './portableInvariants.helpers';
 import { captureReloadConsole, type ReloadConsoleCapture } from './reloadConsole';
 import { waitForLifeAtlasAsOf } from './lifeAtlas.helpers';
@@ -97,6 +98,7 @@ async function configureStubbedAi(page: Page): Promise<void> {
     ([key, cfg]) => window.localStorage.setItem(key as string, cfg as string),
     [LLM_SETTINGS_KEY, JSON.stringify(LLM_CONFIG)] as const,
   );
+  await stubModelCatalog(page);
 }
 
 /** Console capture, a full-tier device pin and the stubbed provider's settings: every full-tier journey's set-up. */
@@ -199,10 +201,14 @@ test('[contract/stubbed] a typed June 2019 question reads June 2019, not today',
   // Contract reversed 2026-10-13: a dated question is read as a trip to that period, so it
   // registers the trip's context tools (get_natal_summary, get_trip_context) instead of
   // get_current_datetime and get_chart_facts (plan 2026-10-13, "Context bootstrap").
+  // Contract changed again 2026-10-13 (period reading): the trip also registers
+  // get_period_reading and get_period_detail, and the schemas go out sorted by name.
   expect(decision.tools.map((tool) => tool.function.name)).toEqual([
     'get_natal_summary',
-    'get_trip_context',
+    'get_period_detail',
+    'get_period_reading',
     'get_timing',
+    'get_trip_context',
     'resolve_place',
     'time_travel',
   ]);
@@ -216,10 +222,15 @@ test('[contract/stubbed] a typed June 2019 question reads June 2019, not today',
   expect(statuses.some((text) => text.includes('Working out the sky')), statuses.join(' | ')).toBe(true);
 
   // Contract changed 2026-10-13: the model's second (required) round answered without the trip's
-  // context and natal tools, so the app ran them itself and asked once more.
+  // grounding tools, so the app ran them itself and asked once more. Contract reversed 2026-10-13
+  // (period reading): the grounding is get_period_reading and get_natal_summary (was
+  // get_trip_context and get_natal_summary).
   expect(agentRequests).toHaveLength(3);
   expect(agentRequests[2].messages.filter((message) => message.role === 'tool').map((message) => message.name))
-    .toEqual(['get_timing', 'get_timing', 'get_trip_context', 'get_natal_summary']);
+    .toEqual(['get_timing', 'get_timing', 'get_period_reading', 'get_natal_summary']);
+  const reading = agentRequests[2].messages.find((message) => message.role === 'tool' && message.name === 'get_period_reading');
+  expect(reading?.content, 'the locally run reading is June 2019').toContain('"period":{"start":"2019-06-01","end":"2019-06-30"');
+  expect(reading?.content).not.toContain(BIRTH_MONTH);
   const toolResults = agentRequests[1].messages.filter((message) => message.role === 'tool');
   expect(toolResults.map((message) => message.name)).toEqual(['get_timing', 'get_timing']);
   for (const result of toolResults) {
@@ -477,13 +488,15 @@ const sse = (content: string) =>
  * body and every URL it fulfilled. The forced final round (tool_choice "none")
  * always streams, so its answer goes back as SSE.
  */
-function scripted(
+async function scripted(
   page: Page,
   scripts: Record<string, Script>,
   seen: AgentRequest[],
   bodies: string[],
   fulfilled: Set<string>,
 ): Promise<unknown> {
+  // Registered after configureStubbedAi's, so this one answers and records the catalog read.
+  await stubModelCatalog(page, fulfilled);
   return page.route('**/chat/completions', async (route) => {
     fulfilled.add(route.request().url());
     const raw = route.request().postData() ?? '{}';
@@ -600,6 +613,9 @@ test.describe('places', () => {
       await expect(page.getByTestId('chat-panel').getByText(answer, { exact: false })).toBeVisible({ timeout: 240_000 });
     };
     const lastTools = () => turnTools(seen.at(-1)?.messages ?? []);
+    // Contract changed 2026-10-13 (context budget): a result the model already read reaches later
+    // rounds as a compact summary, so round 1's resolve_place is read in full from round 2's request.
+    const roundTwoTools = () => turnTools(seen.at(-2)?.messages ?? []);
 
     await ask(SPLIT_QUESTION, SPLIT_ANSWER);
     expect(lastTools().map((m) => m.name)).toEqual(['get_timing']);
@@ -610,8 +626,9 @@ test.describe('places', () => {
 
     await ask(DAY_QUESTION, DAY_ANSWER);
     expect(lastTools().map((m) => m.name)).toEqual(['resolve_place', 'get_timing']);
-    expect(lastTools()[0]?.content).toContain('"label":"Los Angeles, United States"');
-    expect(lastTools()[0]?.content).toContain('"timezone":"America/Los_Angeles"');
+    expect(lastTools()[0]?.content).toContain('"compacted":true,"facts":"Los Angeles, United States');
+    expect(roundTwoTools()[0]?.content).toContain('"label":"Los Angeles, United States"');
+    expect(roundTwoTools()[0]?.content).toContain('"timezone":"America/Los_Angeles"');
     expect(lastTools()[1]?.content).toContain('"label":"Los Angeles, United States"');
     expect(lastTools()[1]?.content).toContain('"moon":{"at_start":');
 
@@ -620,7 +637,7 @@ test.describe('places', () => {
 
     await ask(PLACE_REPLY, EVENT_ANSWER);
     expect(lastTools().map((m) => m.name)).toEqual(['resolve_place', 'get_timing']);
-    expect(lastTools()[0]?.content).toContain('"label":"Bogotá, Colombia"');
+    expect(roundTwoTools()[0]?.content).toContain('"label":"Bogotá, Colombia"');
     expect(lastTools()[1]?.content).toContain('"label":"Bogotá, Colombia"');
     expect(lastTools()[1]?.content).toContain('"event":{"local_time":"15:00","lagna_sign":');
 
@@ -833,11 +850,16 @@ test.describe('pinned threads on a device in another zone', () => {
     const tools = turnTools(last.messages);
     // Contract reversed 2026-10-13: the trip's period comes from get_trip_context (no arguments).
     // Contract changed 2026-10-13 (6716eb17 + follow-up): a required round answered without the rest of the
-    // grounding gets the missing tools run locally (natal summary here), then one more round answers.
-    expect(tools.map((m) => m.name)).toEqual(['get_trip_context', 'get_timing', 'get_natal_summary']);
-    expect(tools[0]?.content).toContain(`"start":"${PIN_YEAR}-01-01","end":"${PIN_YEAR}-12-31","granularity":"year","tense":"future"`);
-    expect(seen.map((request) => request.toolChoice), 'a trip stays "required" until natal, trip and timing tools ran').toEqual(['required', 'required', 'auto']);
-    expect(tools[1]?.content).toContain(`"period":{"start":"${PIN_YEAR}-01-01","end":"${PIN_YEAR}-12-31","days":${PIN_DAYS},"basis":"period"}`);
+    // grounding gets the missing tools run locally, then one more round answers. Contract reversed
+    // 2026-10-13 (period reading): the grounding is get_period_reading + get_natal_summary (was natal only
+    // after trip + timing), and round 1's results reach the last round as compact summaries, so they are
+    // read in full from round 2's request.
+    expect(tools.map((m) => m.name)).toEqual(['get_trip_context', 'get_timing', 'get_period_reading', 'get_natal_summary']);
+    expect(seen.map((request) => request.toolChoice), 'a trip stays "required" until the reading and the natal chart ran').toEqual(['required', 'required', 'auto']);
+    const roundOne = turnTools(seen[1]?.messages ?? []);
+    expect(roundOne[0]?.content).toContain(`"start":"${PIN_YEAR}-01-01","end":"${PIN_YEAR}-12-31","granularity":"year","tense":"future"`);
+    expect(roundOne[1]?.content).toContain(`"period":{"start":"${PIN_YEAR}-01-01","end":"${PIN_YEAR}-12-31","days":${PIN_DAYS},"basis":"period"}`);
+    expect(tools[2]?.content, 'the locally run reading is the pinned year').toContain(`"period":{"start":"${PIN_YEAR}-01-01","end":"${PIN_YEAR}-12-31","granularity":"year"`);
     const system = last.messages.find((m) => m.role === 'system')?.content ?? '';
     expect(system).toContain(`PINNED PERIOD: this conversation is about ${PIN_YEAR}-01-01 to ${PIN_YEAR}-12-31 (relative: future)`);
     expect(system).toContain('future tense');
@@ -1088,9 +1110,11 @@ test.describe('time travel on an iPhone', () => {
     const tools = turnTools(last.messages);
     // Contract reversed 2026-10-13: the trip's period comes from get_trip_context (no arguments).
     // Contract changed 2026-10-13 (6716eb17 + follow-up): a required round answered without the rest of the
-    // grounding gets the missing tools run locally (natal summary here), then one more round answers.
-    expect(tools.map((m) => m.name)).toEqual(['get_trip_context', 'get_timing', 'get_natal_summary']);
-    expect(tools[0]?.content).toContain(`"start":"${PIN_YEAR}-01-01","end":"${PIN_YEAR}-12-31","granularity":"year","tense":"future"`);
+    // grounding gets the missing tools run locally, then one more round answers. Contract reversed
+    // 2026-10-13 (period reading): the grounding is get_period_reading + get_natal_summary, and round 1's
+    // results reach the last round as compact summaries, so the trip is read in full from round 2's request.
+    expect(tools.map((m) => m.name)).toEqual(['get_trip_context', 'get_timing', 'get_period_reading', 'get_natal_summary']);
+    expect(turnTools(seen[1]?.messages ?? [])[0]?.content).toContain(`"start":"${PIN_YEAR}-01-01","end":"${PIN_YEAR}-12-31","granularity":"year","tense":"future"`);
     expect(bodies.filter((body) => body.includes(DEVICE_ZONE)), 'the device zone must not reach the model').toEqual([]);
 
     await expectBannerWrapsCleanlyAt380(page);
@@ -1629,15 +1653,19 @@ for (const tag of ['', '@iphone15']) {
     const todayQuestion = 'outlook today?';
     await scripted(page, {
       // Contract reversed 2026-10-13: a trip carries no pre-computed grounding. Its first
-      // round is sent with tool_choice "required", so the stub calls the trip's tools with
-      // no arguments; their results are September 2017's.
+      // round is sent with tool_choice "required", so the stub calls the trip's grounding
+      // tools (period reading, spec 2026-10-13: get_period_reading and get_natal_summary;
+      // was get_natal_summary and get_trip_context) with no arguments; then, under 'auto',
+      // the trip and its dashas. Their results are September 2017's.
       [pastQuestion]: (tools) => tools.length === 0
-        ? { content: null, tool_calls: [call('past-natal', 'get_natal_summary', {}), call('past-trip', 'get_trip_context', {})] }
+        ? { content: null, tool_calls: [call('past-reading', 'get_period_reading', {}), call('past-natal', 'get_natal_summary', {})] }
         : tools.length === 2
-          ? { content: null, tool_calls: [call('past-dashas', 'get_timing', { section: 'dashas' })] }
+          ? { content: null, tool_calls: [call('past-trip', 'get_trip_context', {}), call('past-dashas', 'get_timing', { section: 'dashas' })] }
           : { content: 'The September timing can describe pressure, but cannot identify what happened in your life.' },
+      // Contract reversed 2026-10-13 (period reading): a today question is no longer pre-run into
+      // the prompt; its first round is "required" and grounds through get_period_reading.
       [todayQuestion]: (tools) => tools.length === 0
-        ? { content: null, tool_calls: [call('today-clock', 'get_current_datetime', { scope: 'utc' }), call('today-dashas', 'get_timing', { section: 'dashas' })] }
+        ? { content: null, tool_calls: [call('today-reading', 'get_period_reading', {}), call('today-clock', 'get_current_datetime', { scope: 'utc' })] }
         : tools.length === 2
           ? { content: null, tool_calls: [call('today-sky', 'get_timing', { section: 'transits' })] }
           : { content: 'Here is the outlook for today using the calculated timing.' },
@@ -1664,23 +1692,33 @@ for (const tag of ['', '@iphone15']) {
     expect(pastSystem).not.toContain('VERIFIED LOCAL TIMING');
     expect(pastSystem).toContain('TIME-TRAVEL TRIP: this thread is a time-travel trip to September 2017 (month, past)');
     for (const fact of ['"section":"dashas"', '"antar"', '"section":"transits"', '"covered_events"']) expect(pastSystem).not.toContain(fact);
-    // Round 1 (natal + trip) and round 2 (timing) must call tools; the forced final round answers.
-    expect(seen.slice(0, 3).map((request) => request.toolChoice)).toEqual(['required', 'required', 'none']);
+    // Contract reversed 2026-10-13 (period reading): only round 1 (reading + natal) is required;
+    // round 2 (trip + timing) is 'auto', then the forced final round answers. It was ['required', 'required', 'none'].
+    expect(seen.slice(0, 3).map((request) => request.toolChoice)).toEqual(['required', 'auto', 'none']);
+    const pastReading = turnTools(seen[1]?.messages ?? []).find((message) => message.name === 'get_period_reading');
+    expect(pastReading?.content).toContain('"period":{"start":"2017-09-01","end":"2017-09-30"');
     const pastResults = turnTools(seen[2]?.messages ?? []);
-    expect(pastResults.map((message) => message.name)).toEqual(['get_natal_summary', 'get_trip_context', 'get_timing']);
-    for (const result of pastResults.slice(1)) expect(result.content).toContain('"start":"2017-09-01"');
-    expect(pastResults[2]?.content).toContain('"antar"');
+    expect(pastResults.map((message) => message.name)).toEqual(['get_period_reading', 'get_natal_summary', 'get_trip_context', 'get_timing']);
+    for (const result of pastResults.slice(2)) expect(result.content).toContain('"start":"2017-09-01"');
+    expect(pastResults[3]?.content).toContain('"antar"');
     const today = await page.evaluate(() => new Intl.DateTimeFormat('en-CA').format(new Date()));
     const beforeToday = seen.length;
     await page.getByTestId('chat-input').fill(todayQuestion);
     await page.getByTestId('chat-send-button').click();
     await expect(page.getByTestId('chat-panel').getByText('Here is the outlook for today using the calculated timing.')).toBeVisible({ timeout: 240_000 });
     const todaySystem = seen[beforeToday]?.messages.find((message) => message.role === 'system')?.content ?? '';
-    expect(todaySystem).toContain('VERIFIED LOCAL TIMING');
-    expect(todaySystem).toContain(`"start":"${today}"`);
+    // Contract reversed 2026-10-13 (period reading): the today prompt carried a VERIFIED LOCAL
+    // TIMING block with today's dates; now nothing is pre-computed and the first round must call
+    // get_period_reading, which is bound to today.
+    expect(todaySystem).not.toContain('VERIFIED LOCAL TIMING');
     expect(todaySystem).not.toContain('PINNED PERIOD:');
+    expect(seen.slice(beforeToday).map((request) => request.toolChoice)).toEqual(['required', 'auto', 'none']);
+    const todayReading = turnTools(seen[beforeToday + 1]?.messages ?? []).find((message) => message.name === 'get_period_reading');
+    expect(todayReading?.content).toContain(`"period":{"start":"${today}","end":"${today}","granularity":"day"`);
+    expect(todayReading?.content).toContain('"tense":"present"');
+    expect(todayReading?.content).not.toContain('2017-09-01');
     const results = turnTools(seen.at(-1)!.messages);
-    expect(results.map((message) => message.name)).toEqual(['get_current_datetime', 'get_timing', 'get_timing']);
+    expect(results.map((message) => message.name)).toEqual(['get_period_reading', 'get_current_datetime', 'get_timing']);
     for (const result of results.filter((message) => message.name === 'get_timing')) {
       expect(result.content).toContain(`"start":"${today}"`);
       expect(result.content).toContain('"basis":"today"');

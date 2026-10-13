@@ -66,18 +66,19 @@ const timing = (section: string): PlannedCall => ({ name: 'get_timing', args: { 
 
 /**
  * The app gives a trip extra decision rounds only while a grounding tool is
- * still missing, so the stub holds get_trip_context back until round 4:
- * round 1 grounds the natal chart and the dashas; round 2 adds detail plus an
- * IDENTICAL repeat of round 1's natal call; round 3 asks for six calls at once
- * (four repeats, one new section, the trip sixth, past the per-round limit);
- * round 4 finally reads the trip and repeats a section. Only tools the request
- * actually offers are called.
+ * still missing, so the stub holds get_period_reading (with get_natal_summary,
+ * the trip's grounding since the period-reading merge; it used to hold back
+ * get_trip_context) back until round 4: round 1 grounds the natal chart, the
+ * dashas and the trip; round 2 adds detail plus an IDENTICAL repeat of round 1's
+ * natal call; round 3 asks for six calls at once (four repeats, one new section,
+ * the reading sixth, past the per-round limit); round 4 finally reads the period
+ * and repeats a section. Only tools the request actually offers are called.
  */
 const ROUND_PLANS: ReadonlyArray<readonly PlannedCall[]> = [
-  [natal, timing('dashas'), periodReading],
+  [natal, timing('dashas'), trip],
   [timing('transits'), timing('strength'), natal],
-  [timing('domains'), timing('dashas'), timing('transits'), natal, timing('strength'), trip],
-  [trip, timing('domains')],
+  [timing('domains'), timing('dashas'), timing('transits'), natal, timing('strength'), periodReading],
+  [periodReading, timing('domains')],
 ];
 
 export const answerText = (turn: number): string => `Budget answer ${turn + 1}.`;

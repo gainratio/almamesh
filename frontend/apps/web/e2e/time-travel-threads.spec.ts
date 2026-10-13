@@ -5,6 +5,7 @@ import { expect, type Browser, type Locator, type Page, type TestInfo } from '@p
 
 import { DELHI_BIRTH, DELHI_SEED, LLM_SETTINGS_KEY, bootEngine, seedChart } from './interpretation.helpers';
 import { waitForLifeAtlasAsOf } from './lifeAtlas.helpers';
+import { stubModelCatalog } from './modelCatalog.helpers';
 import { exportBackup, forceDownloadAndFileInputPaths, gotoSettled, importBackup } from './portableInvariants.helpers';
 import { captureReloadConsole, type ReloadConsoleCapture } from './reloadConsole';
 import { BIRTH_FIELD_NAMES, birthPlaceMarkers } from './tripPrivacy.helpers';
@@ -13,9 +14,10 @@ import { test } from './webkitProfile';
 /**
  * Time-travel trips as threads (plan 2026-10-13, "Testing → E2E"). Every trip
  * opens its own thread, titled from its pin ("⏳ May 2019 · Singapore"), with a
- * context card and trip-bound tools: get_natal_summary, get_trip_context and
- * get_timing read the trip's period and place with no arguments. The first
- * decision request of a trip turn is sent with tool_choice "required", the
+ * context card and trip-bound tools: get_period_reading, get_natal_summary,
+ * get_trip_context and get_timing read the trip's period and place with no
+ * arguments. A trip turn stays tool_choice "required" until its grounding tools
+ * (get_period_reading and get_natal_summary, spec 2026-10-13) have run, the
  * prompt carries no pre-computed facts, and every tool call is persisted on the
  * answer as a visible row. The provider is stubbed with page.route; the engine
  * is real.
@@ -37,7 +39,7 @@ const SINGAPORE_TITLE = /^⏳ May 2019 · Singapore/;
 const SAN_FRANCISCO_TITLE = /^⏳ Jan 2027 · San Francisco/;
 /** DELHI_BIRTH in May 2019: Rahu maha (2017-05-13 → 2035-05-14), Rahu antar (2017-05-13 → 2020-01-24). */
 const MAY_2019_DASHA = 'Rahu–Rahu';
-const TRIP_TOOLS = ['get_natal_summary', 'get_trip_context', 'get_timing'] as const;
+const TRIP_TOOLS = ['get_natal_summary', 'get_period_detail', 'get_period_reading', 'get_trip_context', 'get_timing'] as const;
 /** Retired from trips (plan 2026-10-13): the natal chart comes through get_natal_summary, the date through get_trip_context. */
 const TODAY_ONLY_TOOLS = ['get_chart_facts', 'get_current_datetime'] as const;
 
@@ -64,14 +66,17 @@ const call = (id: string, name: string, args: object) => ({ id, type: 'function'
 const sse = (content: string) => `data: ${JSON.stringify({ choices: [{ delta: { content } }] })}\n\ndata: [DONE]\n\n`;
 
 /**
- * The stubbed provider. A trip turn stays tool_choice "required" until
- * get_natal_summary, get_trip_context and get_timing have each run (two calls
- * per round), so round 1 reads the natal summary and the trip, round 2 the
- * dashas and the transits, all with NO period or place arguments (the tools are bound to the
- * trip), and the forced final round (tool_choice "none", streamed) answers.
- * Everything else (summaries) gets a harmless empty answer.
+ * The stubbed provider. Contract reversed 2026-10-13 (period reading, spec
+ * 2026-10-13): a trip turn stays tool_choice "required" only until its grounding
+ * tools, get_period_reading and get_natal_summary, have run; it used to stay
+ * required until natal, trip and timing had run, and answer in a forced
+ * tool_choice "none" round. Now round 1 (required) reads the period reading and
+ * the natal summary, round 2 ('auto') the trip, the dashas and the transits, all
+ * with NO period or place arguments (the tools are bound to the trip), and the
+ * forced final round (tool_choice "none", streamed) answers. Everything else (summaries) gets a harmless empty answer.
  */
 async function stubProvider(page: Page, seen: ProviderRequest[], bodies: string[], timingArgs: object = {}): Promise<void> {
+  await stubModelCatalog(page);
   await page.route('**/chat/completions', async (route) => {
     const body = route.request().postData() ?? '{}';
     bodies.push(body);
@@ -84,9 +89,13 @@ async function stubProvider(page: Page, seen: ProviderRequest[], bodies: string[
     seen.push({ messages, tools: parsed.tools.map((tool) => tool.function.name), toolChoice: parsed.tool_choice, body });
     const ran = turnTools(messages).length;
     const message = ran === 0
-      ? { content: null, tool_calls: [call('natal-1', 'get_natal_summary', {}), call('trip-1', 'get_trip_context', {})] }
+      ? { content: null, tool_calls: [call('reading-1', 'get_period_reading', {}), call('natal-1', 'get_natal_summary', {})] }
       : ran === 2
-        ? { content: null, tool_calls: [call('dashas-1', 'get_timing', { section: 'dashas', ...timingArgs }), call('sky-1', 'get_timing', { section: 'transits', ...timingArgs })] }
+        ? { content: null, tool_calls: [
+          call('trip-1', 'get_trip_context', {}),
+          call('dashas-1', 'get_timing', { section: 'dashas', ...timingArgs }),
+          call('sky-1', 'get_timing', { section: 'transits', ...timingArgs }),
+        ] }
         : { content: TRIP_ANSWER };
     if (parsed.tool_choice === 'none') return route.fulfill({ status: 200, contentType: 'text/event-stream', body: sse(message.content ?? '') });
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ choices: [{ message }] }) });
@@ -190,7 +199,7 @@ async function threadListTitles(page: Page): Promise<{ trips: string[]; ids: str
 }
 
 /** The tool calls the stub makes for the trip question, in call order. */
-const TRIP_CALLS = ['get_natal_summary', 'get_trip_context', 'get_timing', 'get_timing'] as const;
+const TRIP_CALLS = ['get_period_reading', 'get_natal_summary', 'get_trip_context', 'get_timing', 'get_timing'] as const;
 
 /** Open a collapsed row by its summary and wait for it to render its args and result. */
 async function openRow(row: Locator): Promise<void> {
@@ -218,15 +227,22 @@ async function expectToolRows(page: Page): Promise<void> {
   expect(await rows.evaluateAll((nodes) => nodes.map((node) => (node as HTMLDetailsElement).open)), 'every row starts collapsed').toEqual(TRIP_CALLS.map(() => false));
   await expect(page.getByTestId('chat-tool-call-result'), 'no result is rendered before a row is opened').toHaveCount(0);
   await expect(page.getByTestId('chat-tool-call-args')).toHaveCount(0);
-  const natal = rows.nth(0);
-  const trip = rows.nth(1);
-  const dashas = rows.nth(2);
-  const transits = rows.nth(3);
+  const reading = rows.nth(0);
+  const natal = rows.nth(1);
+  const trip = rows.nth(2);
+  const dashas = rows.nth(3);
+  const transits = rows.nth(4);
+  await expect(reading.getByTestId('chat-tool-call-summary')).toHaveText(/^Looked up the period reading · Singapore[^·]* · May 2019$/);
   await expect(natal.getByTestId('chat-tool-call-summary')).toHaveText('Looked up natal chart');
   await expect(trip.getByTestId('chat-tool-call-summary')).toHaveText(/^Looked up trip period & place · Singapore[^·]* · May 2019$/);
   await expect(dashas.getByTestId('chat-tool-call-summary')).toHaveText(/^Looked up dashas\b.*May 2019$/);
   await expect(transits.getByTestId('chat-tool-call-summary')).toHaveText(/^Looked up transits · Singapore[^·]* · May 2019$/);
-  for (const row of [natal, trip, dashas, transits]) await expect(row).toHaveAttribute('data-status', 'complete');
+  for (const row of [reading, natal, trip, dashas, transits]) await expect(row).toHaveAttribute('data-status', 'complete');
+  await openRow(reading);
+  await expect(reading.getByTestId('chat-tool-call-args')).toHaveText('{}');
+  await expect(reading.getByTestId('chat-tool-call-result')).toContainText('"label": "Singapore');
+  await expect(reading.getByTestId('chat-tool-call-result')).toContainText(`"lord": "rahu"`);
+  await closeRow(reading);
   await openRow(natal);
   await expect(natal.getByTestId('chat-tool-call-result')).toContainText('"lagna"');
   await closeRow(natal);
@@ -473,9 +489,10 @@ for (const tag of ['', '@iphone']) {
     await page.getByTestId('chat-send-button').click();
     const answer = page.getByTestId('chat-message-assistant').filter({ hasText: TRIP_ANSWER });
     await expect(answer).toBeVisible({ timeout: 240_000 });
-    // Round 1 (natal + trip) and round 2 (timing) must call tools; the final round answers.
-    expect(seen.map((request) => request.toolChoice), 'a trip grounds itself through all three tools before it answers').toEqual(['required', 'required', 'none']);
-    const [first, , final] = seen as [ProviderRequest, ProviderRequest, ProviderRequest];
+    // Contract reversed 2026-10-13: round 1 (reading + natal) is required; once both ran, round 2
+    // (trip + timing) is 'auto' and the forced final round answers. It was ['required', 'required', 'none'].
+    expect(seen.map((request) => request.toolChoice), 'a trip grounds itself through the reading and the natal chart before it answers').toEqual(['required', 'auto', 'none']);
+    const [first, second, final] = seen as [ProviderRequest, ProviderRequest, ProviderRequest];
     for (const name of TRIP_TOOLS) expect(first.tools, `${name} is registered for the trip`).toContain(name);
     for (const name of TODAY_ONLY_TOOLS) expect(first.tools, `${name} is not registered for a trip`).not.toContain(name);
     const system = first.messages.find((m) => m.role === 'system')?.content ?? '';
@@ -487,23 +504,31 @@ for (const tag of ['', '@iphone']) {
     for (const precomputed of ['"maha"', '"antar"', '"covered_events"', '"period":{', '"section":"dashas"', '"section":"transits"']) {
       expect(prompt, `no pre-computed timing JSON (${precomputed}) in the prompt`).not.toContain(precomputed);
     }
-    // No-argument calls answer for the trip: Singapore, May 2019.
+    // No-argument calls answer for the trip: Singapore, May 2019. Round 1's results are read in full
+    // by round 2; the answer round carries them as their compact summaries (context budget).
+    const grounding = turnTools(second.messages);
+    expect(grounding.map((m) => m.name)).toEqual(TRIP_CALLS.slice(0, 2));
+    expect(grounding[0]?.content).toContain('"period":{"start":"2019-05-01","end":"2019-05-31","granularity":"month","label":"May 2019","tense":"past"}');
+    expect(grounding[0]?.content).toContain('"place":{"label":"Singapore');
+    expect(grounding[0]?.content).toContain('"themes"');
+    expect(grounding[1]?.content).toContain('"lagna"');
     const results = turnTools(final.messages);
     expect(results.map((m) => m.name)).toEqual([...TRIP_CALLS]);
-    expect(results[0]?.content).toContain('"lagna"');
-    expect(results[1]?.content).toContain('"place":{"label":"Singapore');
-    expect(results[1]?.content).toContain('"timezone":"Asia/Singapore"');
-    expect(results[1]?.content).toContain('"start":"2019-05-01"');
-    expect(results[1]?.content).toContain('"tense":"past"');
+    expect(results[0]?.content, 'the consumed reading rides as its own summary').toContain('"compacted":true,"facts":"Rahu–Rahu');
+    expect(results[2]?.content).toContain('"place":{"label":"Singapore');
+    expect(results[2]?.content).toContain('"timezone":"Asia/Singapore"');
     expect(results[2]?.content).toContain('"start":"2019-05-01"');
-    expect(results[2]?.content).toContain('"antar"');
+    expect(results[2]?.content).toContain('"tense":"past"');
     expect(results[3]?.content).toContain('"start":"2019-05-01"');
-    expect(results[3]?.content).toContain('"label":"Singapore');
+    expect(results[3]?.content).toContain('"antar"');
+    expect(results[4]?.content).toContain('"start":"2019-05-01"');
+    expect(results[4]?.content).toContain('"label":"Singapore');
     // The card now shows the slow planets the AI's transits call returned (May 2019: Saturn in Sagittarius).
     await expect(page.getByTestId('trip-context-transits')).toContainText('Saturn in Sagittarius');
 
-    // e (part 2). The visible Tools list is exactly what the model was offered.
-    expect(listedTools).toEqual(first.tools);
+    // e (part 2). The visible Tools list is exactly what the model was offered. Contract changed
+    // 2026-10-13 (context budget): the wire sends the schemas sorted by name, so compare as sets.
+    expect([...listedTools].sort()).toEqual(first.tools);
 
     // c. Privacy, on every real request body (system brief, history, tool results).
     expect(bodies.length).toBeGreaterThan(0);
@@ -666,7 +691,8 @@ test('[contract/stubbed] get_timing with the trip restated in its args reads May
   await page.getByTestId('chat-input').fill(TRIP_QUESTION);
   await page.getByTestId('chat-send-button').click();
   await expect(page.getByTestId('chat-message-assistant').filter({ hasText: TRIP_ANSWER })).toBeVisible({ timeout: 240_000 });
-  expect(seen.map((request) => request.toolChoice)).toEqual(['required', 'required', 'none']);
+  // Contract reversed 2026-10-13: only the grounding round is required (was ['required', 'required', 'none']).
+  expect(seen.map((request) => request.toolChoice)).toEqual(['required', 'auto', 'none']);
   const timing = turnTools(seen[seen.length - 1]?.messages ?? []).filter((m) => m.name === 'get_timing');
   expect(timing).toHaveLength(2);
   for (const result of timing) {

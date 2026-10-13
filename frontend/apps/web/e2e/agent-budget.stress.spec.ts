@@ -94,16 +94,27 @@ async function appTelemetry(page: Page): Promise<readonly unknown[]> {
   return rows ?? [];
 }
 
-/** The stub's stress plan was actually reached: rounds 3-4, the six-call round, a repeat and a compaction. */
+/** The stub's stress plan was actually reached: rounds 3-4, the six-call round, a repeat and a compaction (1M); the budget gate closing the turn (8k). */
 function assertStressReached(provider: BudgetProvider, model: MockModelId): void {
   const toolRounds = provider.captured.filter((request) => request.reply !== 'answer');
   const deepest = Math.max(0, ...toolRounds.map((request) => request.round));
-  // An 8k window may end the turn early through the budget gate; the 1M window must run all four rounds.
-  if (model === 'mock/ctx-1m') expect.soft(deepest, 'the stub answered decision round 4 with tool calls').toBe(4);
-  else expect.soft(deepest, 'the stub answered decision round 3 with tool calls').toBeGreaterThanOrEqual(3);
+  expect.soft(toolMessagesContaining(provider.captured, 'compacted'), 'a consumed tool result was compacted').toBeGreaterThan(0);
+  if (model === 'mock/ctx-8k') {
+    // Contract changed 2026-10-13 (period-reading merge): this asserted that an 8k window still
+    // reaches decision round 3. The trip's first request is now ~3.2k of the 4,096-token turn
+    // budget (system prompt ~5 KB, seven tool schemas ~6.8 KB with get_period_reading and
+    // get_period_detail), so after round 1's results the budget gate closes the turn: one tool
+    // round, then the app grounds the reading locally and answers with tools off. Asserted as
+    // that, so a regression in the gate still fails here.
+    expect.soft(deepest, 'an 8k trip still runs one tool round').toBeGreaterThanOrEqual(1);
+    expect.soft(provider.captured.filter((request) => request.toolChoice === 'none' && JSON.stringify(request.messages).includes('context budget for this turn is used up')).length,
+      'the budget gate, not a crash, closed every 8k turn').toBe(new Set(provider.captured.map((request) => request.turn)).size);
+    return;
+  }
+  // The 1M window must run all four rounds.
+  expect.soft(deepest, 'the stub answered decision round 4 with tool calls').toBe(4);
   expect.soft(toolRounds.some((request) => request.reply.length === 6), 'the six-parallel round was requested').toBe(true);
   expect.soft(toolMessagesContaining(provider.captured, 'unchanged; see the earlier result'), 'an identical repeat came back "unchanged"').toBeGreaterThan(0);
-  expect.soft(toolMessagesContaining(provider.captured, 'compacted'), 'a consumed tool result was compacted').toBeGreaterThan(0);
 }
 
 async function assertBudget(page: Page, provider: BudgetProvider, model: MockModelId, journey: string, turns: number): Promise<void> {
