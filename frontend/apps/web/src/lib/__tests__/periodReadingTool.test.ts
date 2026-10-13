@@ -1,5 +1,5 @@
 import type { SiderealChart } from '@almamesh/browser/types';
-import { BEFORE_BIRTH_MESSAGE, buildChatMessages, compactToolContent, defaultToolSummary, PERIOD_DETAIL_TOOL_NAME, PERIOD_READING_TOOL_NAME, sanitizeChartForLlm, streamAgentChat, type AgentTool, type ProviderConfig } from '@almamesh/llm';
+import { BEFORE_BIRTH_MESSAGE, buildChatMessages, compactToolContent, defaultToolSummary, estimateRequestTokens, PERIOD_DETAIL_TOOL_NAME, PERIOD_READING_TOOL_NAME, sanitizeChartForLlm, streamAgentChat, type AgentTool, type ProviderConfig } from '@almamesh/llm';
 import type { ChatThreadAsOf, ProcessedBirthData } from '@almamesh/shared-types';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -172,7 +172,8 @@ describe('a consumed reading compacts to its own summary, not the generic defaul
     expect(Object.keys(PERIOD_TOOL_SUMMARIZERS).sort()).toEqual([PERIOD_DETAIL_TOOL_NAME, PERIOD_READING_TOOL_NAME]);
   });
 
-  it('the round after the reading is read carries periodReadingSummary as the compact facts', async () => {
+  /** One reading round, one detail round, then the answer; returns each request body. */
+  async function readingThenDetail(contextTokens: number): Promise<string[]> {
     const { reading, detail } = tools();
     const messages = buildChatMessages(sanitizeChartForLlm(CHART, { basis: 'chart', instant: new Date('2025-01-01T00:00:00Z') }), 'How was May 2019?', 'layman', [], [], undefined, 'en');
     const bodies: string[] = [];
@@ -182,10 +183,25 @@ describe('a consumed reading compacts to its own summary, not the generic defaul
       if (bodies.length === 2) return decision('d1', PERIOD_DETAIL_TOOL_NAME, { section: 'dashas' });
       return new Response(`data: ${JSON.stringify({ choices: [{ delta: { content: 'ok' } }] })}\n\ndata: [DONE]\n\n`, { headers: { 'content-type': 'text/event-stream' } });
     });
-    for await (const _token of streamAgentChat({ config, messages, tools: [reading, detail], now: SPLIT_DAY_NOW, fetchImpl: fetchImpl as typeof fetch })) {
+    for await (const _token of streamAgentChat({ config, messages, tools: [reading, detail], now: SPLIT_DAY_NOW, fetchImpl: fetchImpl as typeof fetch, contextTokens })) {
       // drain
     }
-    const third = (JSON.parse(bodies[2]!) as { messages: Array<{ role: string; tool_call_id?: string; content: string | null }> }).messages;
+    return bodies;
+  }
+  type WireBody = { messages: Array<{ role: string; tool_call_id?: string; content: string | null }>; tools?: unknown[] };
+
+  it('a large context window answers from the full reading, never its compact note', async () => {
+    const third = (JSON.parse((await readingThenDetail(1_000_000))[2]!) as WireBody).messages;
+    const readingMessage = third.find((m) => m.role === 'tool' && m.tool_call_id === 'r1')?.content ?? '';
+    expect(JSON.parse(readingMessage)).toMatchObject({ ok: true, value: { period: { label: 'May 2019' } } });
+  });
+
+  it('under budget pressure the round after the reading carries periodReadingSummary as the compact facts', async () => {
+    const { reading } = tools();
+    // A budget one token short of the full third request: the oldest result (the reading) must go compact.
+    const roomy = JSON.parse((await readingThenDetail(1_000_000))[2]!) as WireBody;
+    const bodies = await readingThenDetail(2 * (estimateRequestTokens(roomy.messages, roomy.tools ?? []) - 1));
+    const third = (JSON.parse(bodies[2]!) as WireBody).messages;
     const compact = third.find((m) => m.role === 'tool' && m.tool_call_id === 'r1')?.content;
     const full = await reading.execute({}, context()) as PeriodReading;
     const own = periodReadingSummary(full);

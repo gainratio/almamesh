@@ -168,10 +168,13 @@ The risk is the multi-round tool loop inside one answer. Rules:
    existing 8,192-char per-result cap stays. Token counts are estimated deterministically from
    characters (≈4 chars/token, rounded up), then reconciled with the provider's `usage` when it
    reports one.
-2. **In-turn compaction.** Once a round's tool results have been consumed by the next model call,
-   later rounds see them as one compact "facts gathered" note (each result's deterministic
-   one-line summary, the same text the collapsed tool row shows, plus its key cited factors).
-   Only the newest round's results stay in full.
+2. **In-turn compaction (budget-driven).** Results stay in full while the next request fits the
+   turn budget. Only when it would not do consumed results (already read by an earlier model call)
+   go out as one compact "facts gathered" note each (the result's deterministic one-line summary,
+   the same text the collapsed tool row shows, plus its key cited factors), oldest round first.
+   So a 1M-context model answers from the full reading and an 8k model degrades gracefully.
+   (Revised 2026-10-13 after the P1 acceptance drive: unconditional compaction left a 1M-context
+   model answering from one-line notes.)
 3. **History compaction.** In a thread's history, past turns' tool results appear only as those
    one-line summaries. Results are deterministic and cached, so re-calling is cheap.
 4. **In-turn dedupe.** A repeated identical successful call in the same turn returns

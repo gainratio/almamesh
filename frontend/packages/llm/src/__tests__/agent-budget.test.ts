@@ -98,26 +98,50 @@ function expectPaired(body: Body): void {
 }
 
 describe("in-turn compaction", () => {
-  it("later rounds see consumed results as compact facts; only the newest round stays in full", async () => {
+  // Contract reversed 2026-10-13 (P1 acceptance drive): compaction used to be unconditional, so a
+  // 1M-context model answered from one-line notes instead of the period reading it had fetched.
+  it("a large budget keeps every consumed result in full through the final answer", async () => {
     const tools = [lookup("first", () => ({ text: "A".repeat(2_000), period: { label: "May 2019" } })), lookup("second", () => ({ text: "B".repeat(2_000) }))];
-    const { bodies } = await run((n) => n === 1 ? decision([call("c1", "first")]) : n === 2 ? decision([call("c2", "second")]) : streamed("Done."), { tools });
+    const { bodies } = await run((n) => n === 1 ? decision([call("c1", "first")]) : n === 2 ? decision([call("c2", "second")]) : streamed("Done."), { tools, contextTokens: 1_000_000 });
 
-    expect(JSON.stringify(bodies[1]?.messages)).toContain("A".repeat(2_000));
     const final = bodies[2]!;
+    expect(JSON.stringify(final.messages)).toContain("A".repeat(2_000));
     expect(JSON.stringify(final.messages)).toContain("B".repeat(2_000));
-    expect(JSON.stringify(final.messages)).not.toContain("A".repeat(100));
-    const first = toolMessages(final).find((message) => message.tool_call_id === "c1");
-    expect(JSON.parse(first?.content ?? "{}")).toMatchObject({ ok: true, compacted: true, facts: expect.stringContaining("May 2019") });
+    expect(final.messages.some((message) => message.content?.includes('"compacted":true'))).toBe(false);
     for (const body of bodies) expectPaired(body);
+  });
+
+  it("under budget pressure consumed results go compact oldest first; the newest stays in full", async () => {
+    const tools = ["a", "b"].map((name) => lookup(name, () => ({ text: name.repeat(3_000), period: { label: `${name} period` } })));
+    const { bodies } = await run((n, body) => body.tool_choice === "none" ? streamed("Done.") : decision([call(`c${n}`, n === 1 ? "a" : "b")]), {
+      tools,
+      contextTokens: 8_192,
+      messages: [{ role: "system", content: "s".repeat(12_000) }, { role: "user", content: "Question." }],
+    });
+
+    const final = bodies.at(-1)!;
+    expect(bodies).toHaveLength(3);
+    expect(final.tool_choice).toBe("none");
+    const byId = (id: string) => toolMessages(final).find((message) => message.tool_call_id === id)?.content ?? "";
+    expect(JSON.parse(byId("c1"))).toMatchObject({ ok: true, compacted: true, facts: expect.stringContaining("a period") });
+    expect(byId("c2")).toContain("b".repeat(3_000));
+    for (const body of bodies) {
+      expect(promptTokens(body)).toBeLessThanOrEqual(4_096);
+      expectPaired(body);
+    }
   });
 
   it("uses the tool's own summarize for the compact line", async () => {
     const tools = [
-      { ...lookup("reading", () => ({ text: "A".repeat(500) })), summarize: () => ({ line: "Saturn antar, your 12th lord", factors: ["Sade Sati phase 1"] }) },
+      { ...lookup("reading", () => ({ text: "A".repeat(2_000) })), summarize: () => ({ line: "Saturn antar, your 12th lord", factors: ["Sade Sati phase 1"] }) },
       lookup("other", () => ({ ok: 1 })),
     ];
-    const { bodies } = await run((n) => n === 1 ? decision([call("c1", "reading")]) : n === 2 ? decision([call("c2", "other")]) : streamed("Done."), { tools });
-    const compact = toolMessages(bodies[2]!).find((message) => message.tool_call_id === "c1");
+    const { bodies } = await run((n, body) => body.tool_choice === "none" ? streamed("Done.") : decision([call(`c${n}`, n === 1 ? "reading" : "other")]), {
+      tools,
+      contextTokens: 8_192,
+      messages: [{ role: "system", content: "s".repeat(14_500) }, { role: "user", content: "Question." }],
+    });
+    const compact = toolMessages(bodies.at(-1)!).find((message) => message.tool_call_id === "c1");
     expect(JSON.parse(compact?.content ?? "{}")).toEqual({ ok: true, compacted: true, facts: "Saturn antar, your 12th lord", factors: ["Sade Sati phase 1"] });
   });
 

@@ -786,11 +786,11 @@ interface RequestPlan {
 
 /**
  * The turn's wire transcript and how each request is cut to fit the budget.
- * A tool result read by an earlier request goes out as its compact summary;
- * only the newest round's results stay in full. Under budget pressure the
- * caller's earlier turns are dropped (oldest first, whole user turns), and the
- * final answer may carry the newest round compact too. Every tool message keeps
- * its tool_call pairing; only its content shrinks.
+ * Results stay in full while the request fits. Under budget pressure, results
+ * already read by an earlier request go out as their compact summaries, oldest
+ * round first; then the caller's earlier turns are dropped (oldest first, whole
+ * user turns); and the final answer may carry the newest round compact too.
+ * Every tool message keeps its tool_call pairing; only its content shrinks.
  */
 class TurnTranscript {
   private readonly entries: TranscriptEntry[];
@@ -818,18 +818,20 @@ class TurnTranscript {
   /** The first variant that fits, from fullest to leanest; the leanest when none does. */
   plan(budget: number, definitions: readonly unknown[], calibration: TokenCalibration | undefined,
     extra: readonly AgentWireMessage[], final: boolean): RequestPlan {
-    const cuts = this.historyCuts();
-    const leanest = cuts.at(-1) ?? 0;
-    const variants = [...cuts.map((drop) => ({ compactNewest: false, drop })),
-      ...(final ? [{ compactNewest: true, drop: leanest }] : [])];
-    const build = ({ compactNewest, drop }: { compactNewest: boolean; drop: number }): RequestPlan => {
-      const messages = [...this.view(compactNewest, drop), ...extra];
+    const consumed = Math.max(this.resultRound - 1, 0);
+    const variants = [
+      ...Array.from({ length: consumed + 1 }, (_, rounds) => ({ compactThrough: rounds, drop: 0 })),
+      ...this.historyCuts().slice(1).map((drop) => ({ compactThrough: consumed, drop })),
+    ];
+    if (final) variants.push({ compactThrough: this.resultRound, drop: variants.at(-1)?.drop ?? 0 });
+    const build = ({ compactThrough, drop }: { compactThrough: number; drop: number }): RequestPlan => {
+      const messages = [...this.view(compactThrough, drop), ...extra];
       const raw = estimateRequestTokens(messages, definitions);
       const estimate = calibratedEstimate(raw, calibration);
       const compacted = messages.filter((message) => message.role === "tool" && message.content.startsWith(COMPACTED_PREFIX)).length;
       return { messages, raw, estimate, compacted, fits: estimate <= budget };
     };
-    let plan = build({ compactNewest: false, drop: 0 });
+    let plan = build(variants[0]!);
     for (const variant of variants.slice(1)) {
       if (plan.fits) break;
       plan = build(variant);
@@ -837,7 +839,8 @@ class TurnTranscript {
     return plan;
   }
 
-  private view(compactNewest: boolean, drop: number): AgentWireMessage[] {
+  /** The transcript with results of rounds 1..compactThrough compact and the first `drop` history messages gone. */
+  private view(compactThrough: number, drop: number): AgentWireMessage[] {
     let dropped = 0;
     const messages: AgentWireMessage[] = [];
     for (const entry of this.entries) {
@@ -845,8 +848,8 @@ class TurnTranscript {
         dropped += 1;
         continue;
       }
-      const consumed = entry.resultRound !== undefined && (compactNewest || entry.resultRound < this.resultRound);
-      messages.push(consumed && entry.compact !== undefined ? { ...(entry.message as ToolResultMessage), content: entry.compact } : entry.message);
+      const compact = entry.resultRound !== undefined && entry.resultRound <= compactThrough;
+      messages.push(compact && entry.compact !== undefined ? { ...(entry.message as ToolResultMessage), content: entry.compact } : entry.message);
     }
     return messages;
   }

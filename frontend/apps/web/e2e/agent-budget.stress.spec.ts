@@ -94,11 +94,17 @@ async function appTelemetry(page: Page): Promise<readonly unknown[]> {
   return rows ?? [];
 }
 
-/** The stub's stress plan was actually reached: rounds 3-4, the six-call round, a repeat and a compaction (1M); the budget gate closing the turn (8k). */
+/** The stub's stress plan was actually reached: rounds 3-4, the six-call round and a repeat with no compaction (1M); compaction and the budget gate closing the turn (8k). */
 function assertStressReached(provider: BudgetProvider, model: MockModelId): void {
   const toolRounds = provider.captured.filter((request) => request.reply !== 'answer');
   const deepest = Math.max(0, ...toolRounds.map((request) => request.round));
-  expect.soft(toolMessagesContaining(provider.captured, 'compacted'), 'a consumed tool result was compacted').toBeGreaterThan(0);
+  // Contract reversed 2026-10-13 (P1 acceptance drive): compaction is budget-driven. A 1M window keeps
+  // every result in full (it used to compact unconditionally); an 8k window must compact to fit.
+  if (model === 'mock/ctx-1m') {
+    expect.soft(toolMessagesContaining(provider.captured, 'compacted'), 'a 1M window never compacts a tool result').toBe(0);
+  } else {
+    expect.soft(toolMessagesContaining(provider.captured, 'compacted'), 'a consumed tool result was compacted').toBeGreaterThan(0);
+  }
   if (model === 'mock/ctx-8k') {
     // Contract changed 2026-10-13 (period-reading merge): this asserted that an 8k window still
     // reaches decision round 3. The trip's first request is now ~3.2k of the 4,096-token turn
