@@ -44,8 +44,8 @@ describe('registry dependency timing policy', () => {
 });
 
 // The owner's own Legos moved from the deprecated @edgeproc npm scope to
-// @gainratio (avow 0.5.2 changed the receipt envelope: `schema` is now
-// required and ReplayMismatch became PayloadHashMismatch). A manifest that
+// @gainratio (avow 0.5 changed the receipt envelope: new receipts carry `schema`,
+// ReplayMismatch became PayloadHashMismatch; 0.5.3 verifies 0.4.x receipts again). A manifest that
 // still names an @edgeproc package would install a deprecated, frozen copy.
 const WORKSPACE_MANIFESTS = [
   '../../../../package.json',
@@ -80,7 +80,7 @@ describe('own-library dependency policy', () => {
     const browser = readManifest('../../../../packages/browser/package.json');
     expect(web.dependencies?.['@gainratio/errors']).toBe('^0.2.1');
     expect(web.dependencies?.['@gainratio/receipt-ui']).toBe('0.3.0');
-    expect(web.devDependencies?.['@gainratio/avow']).toBe('^0.5.2');
-    expect(browser.dependencies?.['@gainratio/avow']).toBe('^0.5.2');
+    expect(web.devDependencies?.['@gainratio/avow']).toBe('^0.5.3');
+    expect(browser.dependencies?.['@gainratio/avow']).toBe('^0.5.3');
   });
 });

@@ -45,6 +45,27 @@ describe("prebuilt toolchain image", () => {
     expect(() => playwrightVersion('"vite": ["vite@8.3.2", ""')).toThrow("playwright-core")
   })
 
+  // The version lands in an image tag and a shell-built install line, so only an
+  // exact x.y.z or x.y.z-<prerelease> pin is a version. Ranges, dist-tags, build
+  // metadata, whitespace and shell metacharacters are refused in both readers
+  // (the lock reader and the pinned-image check both fail closed).
+  const lockWith = (version: string) => `"playwright-core": ["playwright-core@${version}", ""`
+  const imageWith = (version: string) =>
+    `${TOOLCHAIN_REPOSITORY}:${recipeTag(TOOLCHAIN_RECIPE)}-pw${version}@${digest}`
+
+  test.each(["latest", "1.65", "v1.65.0", "1.65.0+build", "1.65.0-a b", "1.65.0-x;rm"])(
+    "refuses %p as a Playwright version",
+    (version) => {
+      expect(() => playwrightVersion(lockWith(version))).toThrow("playwright-core")
+      expect(() => pinnedToolchain(imageWith(version), TOOLCHAIN_RECIPE)).toThrow("digest-pinned")
+    },
+  )
+
+  test.each(["1.65.0", "1.65.0-alpha-2026-10-13"])("accepts %p as a Playwright version", (version) => {
+    expect(playwrightVersion(lockWith(version))).toBe(version)
+    expect(pinnedToolchain(imageWith(version), TOOLCHAIN_RECIPE)).toBe(imageWith(version))
+  })
+
   test("the tag names the recipe and the Playwright version", () => {
     expect(toolchainTag(TOOLCHAIN_RECIPE, "1.63.0")).toBe(`${recipeTag(TOOLCHAIN_RECIPE)}-pw1.63.0`)
     expect(recipeTag(TOOLCHAIN_RECIPE)).toMatch(/^r-[0-9a-f]{16}$/)

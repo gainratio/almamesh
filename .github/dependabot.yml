@@ -35,6 +35,13 @@ updates:
         update-types: ["minor", "patch"]
     ignore:
       - dependency-name: "@gainratio/*"
+      # happy-dom 20.12.0 added Web Animations, but its Animation.cancel()
+      # rejects `finished` without marking it handled (the spec marks it
+      # handled), so every framer-motion cancel in a unit test becomes an
+      # unhandled rejection and fails the gate. Held at 20.11.2 until an
+      # upstream release fixes it (still unfixed in 21.0.1).
+      - dependency-name: "happy-dom"
+        versions: [">=20.12.0"]
 
   # Own libraries, daily and separate from everything else. Dependabot rejects
   # two jobs with the same ecosystem + directory + target-branch, so this one

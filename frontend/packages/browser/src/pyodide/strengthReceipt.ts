@@ -109,9 +109,10 @@ export async function sealDomainStrengths(
  * Verify a strength receipt offline against a pinned signer. Throws a coded
  * `avow` error on any failure, naming WHICH gate rejected it:
  *
- * - `ReceiptSchemaMismatch` — the receipt does not declare `avow.receipt/v1`
- *   (avow 0.5+). Receipts never outlive their Worker boot, so no stored
- *   schema-less 0.1-format receipt can reach this check.
+ * - `ReceiptSchemaMismatch` — the receipt carries a `schema` key that is not
+ *   `avow.receipt/v1`. A receipt with no `schema` key is the avow <= 0.4.x form;
+ *   since avow 0.5.3 it verifies, because `schema` is an unsigned label and both
+ *   forms sign the same bytes. The hash, signer and Ed25519 checks still apply.
  * - `PayloadHashMismatch` — the payload was edited, so its recomputed content-hash
  *   no longer matches the hash stored in the receipt.
  * - `SignerMismatch` — a PROVENANCE failure: the receipt's embedded key is not
