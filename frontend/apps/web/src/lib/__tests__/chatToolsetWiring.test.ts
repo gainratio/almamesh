@@ -68,6 +68,6 @@ describe.each(pages)('$name chat wiring', ({ source }) => {
   it("forwards the trip's first-round tool choice, grounding tool, required tools and tool-call recorder to streamAgentChat", () => {
     const code = stripComments(source);
     const call = code.slice(code.indexOf('yield* streamAgentChat({'));
-    expect(call).toMatch(/^yield\* streamAgentChat\(\{[^]*?firstRoundToolChoice: prepared\.toolChoice,\s*\.\.\.\(prepared\.groundingTool \? \{ groundingToolName: prepared\.groundingTool \} : \{\}\),\s*\.\.\.\(prepared\.requiredTools \? \{ requiredToolNames: prepared\.requiredTools \} : \{\}\),\s*\.\.\.\(onToolCall \? \{ onToolCall \} : \{\}\),/);
+    expect(call).toMatch(/^yield\* streamAgentChat\(\{[^]*?firstRoundToolChoice: prepared\.toolChoice,\s*\.\.\.\(prepared\.groundingTool \? \{ groundingToolName: prepared\.groundingTool \} : \{\}\),\s*\.\.\.\(prepared\.requiredTools \? \{ requiredToolNames: prepared\.requiredTools \} : \{\}\),\s*\.\.\.\(prepared\.groundingCalls \? \{ groundingCalls: prepared\.groundingCalls \} : \{\}\),\s*\.\.\.\(onToolCall \? \{ onToolCall \} : \{\}\),/);
   });
 });

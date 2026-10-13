@@ -104,6 +104,12 @@ describe('prepare: a trip grounds through tools, not a facts blob', () => {
     expect(prepared.toolChoice).toBe('required');
     expect(prepared.groundingTool).toBe('get_trip_context');
     expect(prepared.requiredTools).toEqual(['get_natal_summary', 'get_trip_context', 'get_timing']);
+    // What the loop runs itself if a required round gets no tool call (2026-10-13: qwen, gpt-oss).
+    expect(prepared.groundingCalls).toEqual([
+      { name: 'get_trip_context', args: {} },
+      { name: 'get_natal_summary', args: {} },
+      { name: 'get_timing', args: { section: 'transits' } },
+    ]);
     expect(prepared.pinned).toEqual({
       start: '2019-05-01', end: '2019-05-31', relative: 'past', granularity: 'month', label: 'May 2019',
       place: { label: 'Singapore', timezone: 'Asia/Singapore' },

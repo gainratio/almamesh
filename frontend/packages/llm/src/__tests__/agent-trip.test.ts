@@ -185,6 +185,51 @@ describe("streamAgentChat on a trip's first round", () => {
     expect(bodies(fetchImpl).map((body) => body.tool_choice)).toEqual(["required", "required", "required", "none"]);
   });
 
+  const NATAL_T: AgentTool = { ...TRIP_TOOL, name: "get_natal_summary", execute: () => ({ lagna: { sign: "Leo" } }) };
+  const TIMING_T: AgentTool = { ...TRIP_TOOL, name: "get_timing", execute: (args) => ({ section: args.section, data: { gochara: [] } }) };
+  const GROUNDING = [
+    { name: "get_trip_context", args: {} },
+    { name: "get_natal_summary", args: {} },
+    { name: "get_timing", args: { section: "transits" } },
+  ];
+
+  it("a required round answered with text and no tool calls is not accepted: the loop grounds the trip itself, and the made-up text never reaches the user", async () => {
+    // qwen3.7-flash, 2026-10-13: one request, no tool rows, "you were in the Mercury major period" (the engine says Rahu-Rahu).
+    let requests = 0;
+    const fetchImpl = vi.fn(async () => (++requests === 1
+      ? decision({ role: "assistant", content: "You were in the Mercury major period." })
+      : decision({ role: "assistant", content: "Rahu-Rahu, with Saturn in Sagittarius." })));
+    const calls: AgentToolCallRecord[] = [];
+    const answer = await collect(streamAgentChat({
+      config: CONFIG, messages: [{ role: "user", content: "Q" }], tools: [TRIP_TOOL, NATAL_T, TIMING_T], now: NOW,
+      firstRoundToolChoice: "required", requiredToolNames: ["get_trip_context", "get_natal_summary", "get_timing"], groundingCalls: GROUNDING,
+      onToolCall: (record) => calls.push(record), fetchImpl: fetchImpl as typeof fetch,
+    }));
+    expect(answer).toBe("Rahu-Rahu, with Saturn in Sagittarius.");
+    expect(answer).not.toContain("Mercury major period");
+    expect(calls.map((c) => [c.toolName, c.status])).toEqual([["get_trip_context", "complete"], ["get_natal_summary", "complete"], ["get_timing", "complete"]]);
+    const second = bodies(fetchImpl)[1]!;
+    expect(second.tool_choice).toBe("auto");
+    expect((second.messages as Array<{ role: string }>).filter((m) => m.role === "tool")).toHaveLength(3);
+  });
+
+  it("a required round the provider answers with finish_reason error and no content falls back the same way, instead of 'empty agent completion'", async () => {
+    // gpt-oss-20b, 2026-10-13: OpenRouter routed tool_choice required to a host that returned 200 + finish_reason "error".
+    let requests = 0;
+    const fetchImpl = vi.fn(async () => (++requests === 1
+      ? Response.json({ choices: [{ finish_reason: "error", message: { role: "assistant", content: null } }] })
+      : decision({ role: "assistant", content: "Grounded answer." })));
+    const calls: AgentToolCallRecord[] = [];
+    const answer = await collect(streamAgentChat({
+      config: CONFIG, messages: [{ role: "user", content: "Q" }], tools: [TRIP_TOOL, NATAL_T, TIMING_T], now: NOW,
+      firstRoundToolChoice: "required", requiredToolNames: ["get_trip_context", "get_natal_summary", "get_timing"], groundingCalls: GROUNDING,
+      onToolCall: (record) => calls.push(record), fetchImpl: fetchImpl as typeof fetch,
+    }));
+    expect(answer).toBe("Grounded answer.");
+    expect(calls).toHaveLength(3);
+    expect(bodies(fetchImpl)[1]?.tool_choice).toBe("auto");
+  });
+
   it("once the grounding tools have run, the next round is auto", async () => {
     let requests = 0;
     const fetchImpl = vi.fn(async () => ++requests === 1

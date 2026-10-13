@@ -453,6 +453,7 @@ export default function DashboardPage() {
       firstRoundToolChoice: prepared.toolChoice,
       ...(prepared.groundingTool ? { groundingToolName: prepared.groundingTool } : {}),
       ...(prepared.requiredTools ? { requiredToolNames: prepared.requiredTools } : {}),
+      ...(prepared.groundingCalls ? { groundingCalls: prepared.groundingCalls } : {}),
       ...(onToolCall ? { onToolCall } : {}),
       onStatus: (event) => {
         if (event.phase === 'using_tool') {

@@ -118,6 +118,13 @@ export interface StreamAgentChatOptions {
    */
   readonly groundingToolName?: string;
   /**
+   * With 'required': the calls the loop makes itself when a required round
+   * gets no tool call at all (a refused tool_choice, a text-only reply, or an
+   * empty provider error). Their results reach the model as tool messages and
+   * the turn continues with 'auto'. Defaults to `groundingToolName` with {}.
+   */
+  readonly groundingCalls?: ReadonlyArray<{ readonly name: string; readonly args: AgentJsonObject }>;
+  /**
    * With 'required': later rounds stay 'required' until each of these
    * registered tools has run once this turn (a trip reads its natal chart, its
    * period and place, and its timing before it answers). Bounded by the round
@@ -279,6 +286,9 @@ function validateOptions(options: StreamAgentChatOptions): Map<string, AgentTool
   }
   if (options.groundingToolName !== undefined && !registry.has(options.groundingToolName)) {
     throw new LlmRequestError(`Grounding tool is not allowlisted: ${options.groundingToolName}`);
+  }
+  for (const call of options.groundingCalls ?? []) {
+    if (!registry.has(call.name)) throw new LlmRequestError(`Grounding tool is not allowlisted: ${call.name}`);
   }
   return registry;
 }
@@ -549,6 +559,14 @@ function isErrorValue(value: unknown): boolean {
   return typeof value === "object" && value !== null && !Array.isArray(value) && "error" in value;
 }
 
+/** Read a decision without showing any of its text. */
+async function drain<T>(source: AsyncGenerator<string, T>): Promise<T> {
+  while (true) {
+    const step = await source.next();
+    if (step.done) return step.value;
+  }
+}
+
 function reportToolCall(options: StreamAgentChatOptions, call: OpenAiToolCall, args: AgentJsonObject, content: string): void {
   let result: unknown;
   let status: AgentToolCallRecord["status"] = "error";
@@ -708,6 +726,43 @@ export async function* streamAgentChat(
   let forceFinal = false;
   const emit: EmitState = { emitted: false, meaningful: false };
   let toolChoice = options.firstRoundToolChoice ?? "auto";
+  const groundingPlan = (options.groundingCalls ?? (options.groundingToolName ? [{ name: options.groundingToolName, args: {} }] : []))
+    .flatMap((call) => {
+      const tool = registry.get(call.name);
+      return tool ? [{ tool, args: call.args }] : [];
+    });
+  let localCallNumber = 0;
+  /** Run the grounding plan here; each result reaches the model as a tool message. */
+  const groundLocally = async (round: number): Promise<void> => {
+    const calls = groundingPlan.map(({ tool, args }) => {
+      localCallNumber += 1;
+      const call: OpenAiToolCall = { id: `local-grounding-${localCallNumber}`, type: "function", function: { name: tool.name, arguments: JSON.stringify(args) } };
+      return { tool, args, call };
+    });
+    transcript.push({ role: "assistant", content: null, tool_calls: calls.map(({ call }) => call) });
+    for (const { tool, args, call } of calls) {
+      options.onStatus?.({ phase: "using_tool", round, toolName: tool.name,
+        label: tool.statusLabelFor?.(args) ?? tool.statusLabel ?? `Using ${tool.name}`, callNumber: localCallNumber });
+      let content: string;
+      let value: unknown;
+      try {
+        value = await executeWithDeadline(tool, args, options, pinnedNowMs);
+        content = safeToolResult(value).content;
+      } catch (failure) {
+        throwIfAborted(options.signal);
+        reportToolFailure(options, { toolName: tool.name, code: "tool_failed", error: failure });
+        content = toolError("tool_failed", "The local tool could not complete safely.");
+      }
+      const signature = callSignature(tool.name, args);
+      seen.add(signature);
+      if (isErrorValue(value)) failedCalls.set(signature, errorText(value));
+      else if (!content.startsWith('{"ok":false')) stillRequired.delete(tool.name);
+      seenCallIds.add(call.id);
+      aggregateResultChars += content.length;
+      transcript.push({ role: "tool", tool_call_id: call.id, name: tool.name, content });
+      reportToolCall(options, call, args, content);
+    }
+  };
   const stillRequired = new Set((options.requiredToolNames ?? []).filter((name) => registry.has(name)));
   const choiceFor = (round: number): "auto" | "required" =>
     toolChoice === "required" && (round === 1 || stillRequired.size > 0) ? "required" : "auto";
@@ -716,37 +771,24 @@ export async function* streamAgentChat(
   for (let round = 1; round <= lastRound; round += 1) {
     options.onStatus?.({ phase: "deciding", round });
     let decision: DecisionMessage;
+    const choice = choiceFor(round);
     try {
-      decision = yield* relayTokens(
-        decisionRequest(options, transcript, definitions, choiceFor(round)),
-        emit,
-        () => options.onStatus?.({ phase: "answering" }),
-      );
+      // A required round must call a tool, so its text is never streamed: a
+      // text-only reply there is an ungrounded answer and is thrown away.
+      decision = choice === "required" && groundingPlan.length > 0
+        ? await drain(decisionRequest(options, transcript, definitions, choice))
+        : yield* relayTokens(
+          decisionRequest(options, transcript, definitions, choice),
+          emit,
+          () => options.onStatus?.({ phase: "answering" }),
+        );
     } catch (error) {
       // A provider that refuses tool_choice 'required' still gets grounded: the
       // loop runs the grounding tool itself and the result arrives as a tool
       // message. The first round is then retried with 'auto'.
-      const grounding = options.groundingToolName ? registry.get(options.groundingToolName) : undefined;
-      if (round === 1 && toolChoice === "required" && grounding && !emit.emitted && explicitlyRejectsTools(error)) {
+      if (round === 1 && toolChoice === "required" && groundingPlan.length > 0 && !emit.emitted && explicitlyRejectsTools(error)) {
         toolChoice = "auto";
-        const localCall: OpenAiToolCall = { id: "local-grounding-1", type: "function", function: { name: grounding.name, arguments: "{}" } };
-        transcript.push({ role: "assistant", content: null, tool_calls: [localCall] });
-        options.onStatus?.({ phase: "using_tool", round, toolName: grounding.name,
-          label: grounding.statusLabelFor?.({}) ?? grounding.statusLabel ?? `Using ${grounding.name}`, callNumber: 1 });
-        let content: string;
-        try {
-          content = safeToolResult(await executeWithDeadline(grounding, {}, options, pinnedNowMs)).content;
-        } catch (failure) {
-          throwIfAborted(options.signal);
-          reportToolFailure(options, { toolName: grounding.name, code: "tool_failed", error: failure });
-          content = toolError("tool_failed", "The local tool could not complete safely.");
-        }
-        seen.add(callSignature(grounding.name, {}));
-        stillRequired.clear();
-        seenCallIds.add(localCall.id);
-        aggregateResultChars += content.length;
-        transcript.push({ role: "tool", tool_call_id: localCall.id, name: grounding.name, content });
-        reportToolCall(options, localCall, {}, content);
+        await groundLocally(round);
         round -= 1;
         continue;
       }
@@ -764,6 +806,14 @@ export async function* streamAgentChat(
         return;
       }
       throw error;
+    }
+    if (decision.toolCalls.length === 0 && choice === "required" && groundingPlan.length > 0) {
+      // No tool call under 'required' (2026-10-13: qwen answered from nothing; a host
+      // routed for gpt-oss returned finish_reason "error" with no content). Ground the
+      // trip locally, then let the model answer with 'auto'.
+      toolChoice = "auto";
+      await groundLocally(round);
+      continue;
     }
     if (decision.toolCalls.length === 0) {
       if (!decision.content?.trim()) {

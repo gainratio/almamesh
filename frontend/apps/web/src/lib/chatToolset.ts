@@ -11,6 +11,7 @@ import {
   periodAnalysisInstant,
   pinRelative,
   todayAnalysisInstant,
+  type AgentJsonObject,
   type AgentTool,
   type AgentToolContext,
   type AnalysisInstant,
@@ -38,6 +39,12 @@ import { natalSummary, tripContext, tripPin, tripToolResult } from './tripContex
 export const NATAL_SUMMARY_TOOL_NAME = 'get_natal_summary';
 export const TRIP_CONTEXT_TOOL_NAME = 'get_trip_context';
 const NO_ARGS = { type: 'object', properties: {}, additionalProperties: false } as const;
+/** A trip grounded by the app itself: its period and place, the natal chart, and that period's transits. */
+const TRIP_GROUNDING_CALLS = [
+  { name: TRIP_CONTEXT_TOOL_NAME, args: {} },
+  { name: NATAL_SUMMARY_TOOL_NAME, args: {} },
+  { name: TIMING_TOOL_NAME, args: { section: 'transits' } },
+] as const;
 
 export interface BuildChatToolsetInput {
   /** The natal chart engine loads (today, a period) merge their sky onto. */
@@ -85,6 +92,8 @@ interface PreparedChatContext {
   readonly groundingTool?: string;
   /** A trip's rounds stay 'required' until each of these has run once (the brief's grounding tools). */
   readonly requiredTools?: readonly string[];
+  /** What the agent loop runs itself if a required round gets no tool call. */
+  readonly groundingCalls?: ReadonlyArray<{ readonly name: string; readonly args: AgentJsonObject }>;
 }
 
 export interface ChatToolset {
@@ -172,6 +181,7 @@ function preparePinned(
     toolChoice: 'required',
     groundingTool: TRIP_CONTEXT_TOOL_NAME,
     requiredTools: TRIP_GROUNDING_TOOLS,
+    groundingCalls: TRIP_GROUNDING_CALLS,
   };
 }
 
