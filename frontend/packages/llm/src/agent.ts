@@ -114,6 +114,13 @@ export interface StreamAgentChatOptions {
    * tool message, never as prompt text.
    */
   readonly groundingToolName?: string;
+  /**
+   * With 'required': later rounds stay 'required' until each of these
+   * registered tools has run once this turn (a trip reads its natal chart, its
+   * period and place, and its timing before it answers). Bounded by the round
+   * and call budgets; unregistered names are ignored.
+   */
+  readonly requiredToolNames?: readonly string[];
   readonly signal?: AbortSignal;
   /** Injectable for deterministic tests; defaults to global `fetch`. */
   readonly fetchImpl?: typeof fetch;
@@ -679,13 +686,16 @@ export async function* streamAgentChat(
   let forceFinal = false;
   const emit: EmitState = { emitted: false, meaningful: false };
   let toolChoice = options.firstRoundToolChoice ?? "auto";
+  const stillRequired = new Set((options.requiredToolNames ?? []).filter((name) => registry.has(name)));
+  const choiceFor = (round: number): "auto" | "required" =>
+    toolChoice === "required" && (round === 1 || stillRequired.size > 0) ? "required" : "auto";
 
   for (let round = 1; round <= AGENT_LIMITS.maxDecisionRounds; round += 1) {
     options.onStatus?.({ phase: "deciding", round });
     let decision: DecisionMessage;
     try {
       decision = yield* relayTokens(
-        decisionRequest(options, transcript, definitions, round === 1 ? toolChoice : "auto"),
+        decisionRequest(options, transcript, definitions, choiceFor(round)),
         emit,
         () => options.onStatus?.({ phase: "answering" }),
       );
@@ -709,6 +719,7 @@ export async function* streamAgentChat(
           content = toolError("tool_failed", "The local tool could not complete safely.");
         }
         seen.add(callSignature(grounding.name, {}));
+        stillRequired.clear();
         seenCallIds.add(localCall.id);
         executedCalls += 1;
         aggregateResultChars += content.length;
@@ -787,6 +798,7 @@ export async function* streamAgentChat(
           forceFinal = true;
         } else {
           seen.add(signature);
+          stillRequired.delete(selectedTool.name);
           executedCalls += 1;
           options.onStatus?.({
             phase: "using_tool",

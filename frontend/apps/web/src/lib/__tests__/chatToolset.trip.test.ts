@@ -103,6 +103,7 @@ describe('prepare: a trip grounds through tools, not a facts blob', () => {
     expect(loadMock).not.toHaveBeenCalled();
     expect(prepared.toolChoice).toBe('required');
     expect(prepared.groundingTool).toBe('get_trip_context');
+    expect(prepared.requiredTools).toEqual(['get_natal_summary', 'get_trip_context', 'get_timing']);
     expect(prepared.pinned).toEqual({
       start: '2019-05-01', end: '2019-05-31', relative: 'past', granularity: 'month', label: 'May 2019',
       place: { label: 'Singapore', timezone: 'Asia/Singapore', source: 'trip' },

@@ -15,6 +15,7 @@ import {
   type AgentToolContext,
   type AnalysisInstant,
   type PinnedPrompt,
+  TRIP_GROUNDING_TOOLS,
 } from '@almamesh/llm';
 import type { ChatThreadAsOf, ProcessedBirthData } from '@almamesh/shared-types';
 
@@ -82,6 +83,8 @@ interface PreparedChatContext {
   readonly toolChoice: 'auto' | 'required';
   /** The tool the agent loop runs itself if the provider refuses 'required'. */
   readonly groundingTool?: string;
+  /** A trip's rounds stay 'required' until each of these has run once (the brief's grounding tools). */
+  readonly requiredTools?: readonly string[];
 }
 
 export interface ChatToolset {
@@ -169,6 +172,7 @@ function preparePinned(
     timingFacts: [],
     toolChoice: 'required',
     groundingTool: TRIP_CONTEXT_TOOL_NAME,
+    requiredTools: TRIP_GROUNDING_TOOLS,
   };
 }
 

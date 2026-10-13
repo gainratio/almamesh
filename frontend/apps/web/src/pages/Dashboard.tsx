@@ -452,6 +452,7 @@ export default function DashboardPage() {
       // A trip grounds itself through its tools first (chatToolset.ts prepare).
       firstRoundToolChoice: prepared.toolChoice,
       ...(prepared.groundingTool ? { groundingToolName: prepared.groundingTool } : {}),
+      ...(prepared.requiredTools ? { requiredToolNames: prepared.requiredTools } : {}),
       ...(onToolCall ? { onToolCall } : {}),
       onStatus: (event) => {
         if (event.phase === 'using_tool') {

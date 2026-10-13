@@ -56,6 +56,36 @@ describe("streamAgentChat on a trip's first round", () => {
     expect(bodies(fetchImpl).map((body) => body.tool_choice)).toEqual(["required", "auto"]);
   });
 
+  it("keeps tool_choice required until every grounding tool has run, then auto", async () => {
+    const TIMING: AgentTool = { ...TRIP_TOOL, name: "get_timing", execute: () => ({ data: { maha: [] } }) };
+    let requests = 0;
+    const fetchImpl = vi.fn(async () => {
+      requests += 1;
+      if (requests === 1) return decision({ role: "assistant", content: null, tool_calls: [call("a", "get_trip_context")] });
+      if (requests === 2) return decision({ role: "assistant", content: null, tool_calls: [call("b", "get_timing", '{"section":"transits"}')] });
+      return streamed("Grounded.");
+    });
+    // Two decision rounds is the budget (AGENT_LIMITS): the second stays required, then the final answer streams.
+    await collect(streamAgentChat({
+      config: CONFIG, messages: [{ role: "user", content: "Q" }], tools: [TRIP_TOOL, TIMING], now: NOW,
+      firstRoundToolChoice: "required", requiredToolNames: ["get_trip_context", "get_timing", "not_registered"],
+      fetchImpl: fetchImpl as typeof fetch,
+    }));
+    expect(bodies(fetchImpl).map((body) => body.tool_choice)).toEqual(["required", "required", "none"]);
+  });
+
+  it("once the grounding tools have run, the next round is auto", async () => {
+    let requests = 0;
+    const fetchImpl = vi.fn(async () => ++requests === 1
+      ? decision({ role: "assistant", content: null, tool_calls: [call("a", "get_trip_context")] })
+      : decision({ role: "assistant", content: "Done." }));
+    await collect(streamAgentChat({
+      config: CONFIG, messages: [{ role: "user", content: "Q" }], tools: [TRIP_TOOL], now: NOW,
+      firstRoundToolChoice: "required", requiredToolNames: ["get_trip_context"], fetchImpl: fetchImpl as typeof fetch,
+    }));
+    expect(bodies(fetchImpl).map((body) => body.tool_choice)).toEqual(["required", "auto"]);
+  });
+
   it("defaults to auto when no first-round choice is given", async () => {
     const fetchImpl = vi.fn(async () => decision({ role: "assistant", content: "Hi." }));
     await collect(streamAgentChat({
