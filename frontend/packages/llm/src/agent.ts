@@ -17,8 +17,9 @@ export const AGENT_LIMITS = Object.freeze({
   maxDecisionRounds: 2,
   // One full parallel round plus a follow-up; a trip's grounding calls do not count.
   maxToolCalls: 6,
-  // Calls past this in one decision are answered "skipped", never run.
-  maxToolCallsPerRound: 4,
+  // Calls past this in one decision are answered "skipped", never run. Equal to
+  // maxToolCalls, so one round can call every registered tool once.
+  maxToolCallsPerRound: 6,
   maxArgumentChars: 2_048,
   maxResultChars: 8_192,
   // Full results one round may add; past it a result arrives as its compact summary.
@@ -98,7 +99,8 @@ export interface AgentToolCallRecord {
   readonly toolName: string;
   readonly args: AgentJsonObject;
   readonly result: unknown;
-  readonly status: "complete" | "error";
+  /** "skipped": the call was answered without running (past the round's cap); not a failure. */
+  readonly status: "complete" | "error" | "skipped";
 }
 
 /**
@@ -636,6 +638,7 @@ function reportToolCall(options: StreamAgentChatOptions, call: OpenAiToolCall, a
     const parsed = JSON.parse(content) as { ok?: boolean; value?: unknown; error?: unknown };
     // A tool that answered { error } ran, but did not succeed: the row says so.
     status = parsed.ok === true && !isErrorValue(parsed.value) ? "complete" : "error";
+    if (content === SKIPPED_CALL) status = "skipped";
     // A compacted result carries no `value`: the model got the summary object itself.
     result = parsed.ok === true ? ("value" in parsed ? parsed.value : parsed) : parsed.error;
   } catch {

@@ -149,6 +149,7 @@
     "heading": "Ferramentas que a IA pode usar nesta conversa",
     "row": "Consultou {{what}}",
     "row_failed": "Não conseguiu consultar {{what}}",
+    "row_skipped": "Ignorou {{what}}",
     "args": "Perguntou com",
     "result": "Recebeu",
     "get_natal_summary": "Resumo natal",

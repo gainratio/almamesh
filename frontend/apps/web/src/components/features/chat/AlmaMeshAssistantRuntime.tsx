@@ -55,6 +55,8 @@ function toRuntimePart(part: ChatMessagePart): RuntimePart {
     argsText: JSON.stringify(part.args),
     result: part.result,
     isError: part.status === 'error',
+    // A skipped call was answered without running: the row reads it off the artifact.
+    ...(part.status === 'skipped' ? { artifact: { status: 'skipped' } } : {}),
   };
 }
 

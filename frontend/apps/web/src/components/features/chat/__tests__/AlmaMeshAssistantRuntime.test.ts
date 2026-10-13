@@ -83,6 +83,15 @@ describe('tool-call parts reach assistant-ui', () => {
     ]);
   });
 
+  it('a skipped call reaches assistant-ui as not an error, marked skipped', () => {
+    const converted = convertChatMessage(message({
+      parts: [{ type: 'tool-call', toolCallId: 'g', toolName: 'get_timing', args: {}, status: 'skipped', result: { code: 'skipped' } }],
+    }));
+    expect(converted.content).toEqual([
+      { type: 'tool-call', toolCallId: 'g', toolName: 'get_timing', args: {}, argsText: '{}', result: { code: 'skipped' }, isError: false, artifact: { status: 'skipped' } },
+    ]);
+  });
+
   it('a message without parts stays one text part', () => {
     expect(convertChatMessage(message()).content).toEqual([{ type: 'text', text: 'A grounded answer.' }]);
   });

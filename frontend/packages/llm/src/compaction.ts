@@ -96,7 +96,7 @@ export function compactToolContent(summary: ToolSummary): string {
 export interface PriorToolCall {
   readonly toolName: string;
   readonly result: unknown;
-  readonly status: "complete" | "error";
+  readonly status: "complete" | "error" | "skipped";
 }
 
 function factLine(call: PriorToolCall, summarizers: Readonly<Record<string, ToolSummarizer>>): string {

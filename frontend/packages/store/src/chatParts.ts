@@ -12,7 +12,7 @@ const MAX_JSON_DEPTH = 64;
 const TOOL_NAME = /^[A-Za-z0-9_-]{1,64}$/;
 const TEXT_KEYS = new Set(['type', 'text']);
 const TOOL_CALL_KEYS = new Set(['type', 'toolCallId', 'toolName', 'args', 'result', 'status']);
-const STATUSES: readonly unknown[] = ['complete', 'error'];
+const STATUSES: readonly unknown[] = ['complete', 'error', 'skipped'];
 
 const encoder = new TextEncoder();
 

@@ -146,6 +146,7 @@
     "heading": "Tools the AI can use in this thread",
     "row": "Looked up {{what}}",
     "row_failed": "Could not look up {{what}}",
+    "row_skipped": "Skipped {{what}}",
     "args": "Asked with",
     "result": "Got back",
     "get_natal_summary": "Natal summary",

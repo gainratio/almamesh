@@ -54,7 +54,8 @@ export interface ChatTextPart {
   readonly text: string;
 }
 
-export type ChatToolCallStatus = 'complete' | 'error';
+/** 'skipped': answered without running (past the round's cap); shown as a neutral row, never an error. */
+export type ChatToolCallStatus = 'complete' | 'error' | 'skipped';
 
 /**
  * One tool call the assistant made while answering, shown to the user. `result`

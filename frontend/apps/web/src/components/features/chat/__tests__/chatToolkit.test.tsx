@@ -63,6 +63,38 @@ describe('a tool-call row shows what the AI pulled', () => {
   });
 });
 
+describe('a skipped call is a neutral row, never an error (P1 fix 4)', () => {
+  const skippedResult = { code: 'skipped', message: 'skipped: too many calls this round' };
+
+  it('says Skipped, is marked skipped, and does not say it failed', () => {
+    render(<ToolCallRow toolName="get_timing" toolCallId="s1" args={{ section: 'transits' }} argsText="" result={skippedResult}
+      artifact={{ status: 'skipped' }} status={{ type: 'complete' }} />);
+    const row = screen.getByTestId('chat-tool-call');
+    expect(row.getAttribute('data-status')).toBe('skipped');
+    expect(screen.getByTestId('chat-tool-call-summary').textContent).toBe('Skipped transits');
+  });
+
+  it('a real error whose result happens to carry a code stays an error', () => {
+    render(<ToolCallRow toolName="get_timing" toolCallId="s2" args={{}} argsText="" result={{ code: 'tool_failed' }} isError status={{ type: 'complete' }} />);
+    expect(screen.getByTestId('chat-tool-call').getAttribute('data-status')).toBe('error');
+  });
+
+  it('speaks Spanish and Portuguese too', async () => {
+    const { default: i18n } = await import('../../../../i18n/config');
+    try {
+      for (const [language, expected] of [['es', 'Omitió'], ['pt', 'Ignorou']] as const) {
+        await i18n.changeLanguage(language);
+        const { unmount } = render(<ToolCallRow toolName="get_timing" toolCallId="s3" args={{}} argsText="" result={skippedResult}
+          artifact={{ status: 'skipped' }} status={{ type: 'complete' }} />);
+        expect(screen.getByTestId('chat-tool-call-summary').textContent).toContain(expected);
+        unmount();
+      }
+    } finally {
+      await i18n.changeLanguage('en');
+    }
+  });
+});
+
 describe('tool-call row edges', () => {
   it('summarises a month-long period by its month when it has no label, and an unknown tool by its name', () => {
     render(<ToolCallRow toolName="mystery_tool" toolCallId="c3" args={{}} argsText="{}" result={{ period: { start: '2019-05-01', end: '2019-05-31' }, place: { label: 'Singapore' } }} status={{ type: 'complete' }} />);

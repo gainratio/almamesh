@@ -591,6 +591,13 @@ describe('chat store v4: visible tool-call parts', () => {
     expect(message).toMatchObject({ error: true, parts: [failed] });
   });
 
+  it('keeps a skipped tool-call part on the stored message', () => {
+    const store = newStore();
+    const id = store.getState().startThread('p1');
+    const skipped = { ...LOOKUP, status: 'skipped', result: { code: 'skipped' } } as const;
+    expect(store.getState().appendMessage(id, 'assistant', 'answer', { parts: [skipped] }).parts).toEqual([skipped]);
+  });
+
   it('a message without parts carries no parts key', () => {
     const store = newStore();
     const id = store.getState().startThread('p1');

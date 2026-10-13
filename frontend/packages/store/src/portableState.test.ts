@@ -1426,6 +1426,17 @@ describe('visible tool-call parts in a backup (chat store v4)', () => {
     expect('parts' in chat.state.messages.t1![1]!).toBe(false);
   });
 
+  it('exports a message whose tool call was skipped, keeping the skipped status', async () => {
+    const skipped = { ...LOOKUP, toolCallId: 'call_7', status: 'skipped', result: { code: 'skipped', message: 'skipped: too many calls this round' } };
+    const parts = [LOOKUP, skipped, { type: 'text', text: 'Saturn was in Sagittarius.' }];
+    const { repository, handed } = await seedMessages([message('m1', { parts })]);
+    await repository.exportBytes();
+    const chat = JSON.parse(handed.at(-1)!.get('almamesh-chat-history')!) as {
+      state: { messages: Record<string, Array<Record<string, unknown>>> };
+    };
+    expect(chat.state.messages.t1?.[0]?.parts).toEqual(parts);
+  });
+
   it('still accepts a v3 chat row whose messages have no parts', async () => {
     const { repository, handed } = await seedMessages([message('m1'), message('m2')], 3);
     await expect(repository.exportBytes()).resolves.toBeDefined();

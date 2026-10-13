@@ -31,6 +31,10 @@ describe('chatMessagePartsProblem', () => {
     expect(chatMessagePartsProblem([{ ...pending, status: 'error' }])).toBeUndefined();
   });
 
+  it('accepts a skipped status: a call answered without running is not an error', () => {
+    expect(chatMessagePartsProblem([{ ...TOOL_CALL, status: 'skipped', result: { code: 'skipped' } }])).toBeUndefined();
+  });
+
   it('refuses anything that is not an array', () => {
     expect(chatMessagePartsProblem({ 0: TOOL_CALL })).toBe('parts');
     expect(chatMessagePartsProblem(null)).toBe('parts');

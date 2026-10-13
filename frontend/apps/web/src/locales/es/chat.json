@@ -149,6 +149,7 @@
     "heading": "Herramientas que la IA puede usar en este hilo",
     "row": "Consultó {{what}}",
     "row_failed": "No pudo consultar {{what}}",
+    "row_skipped": "Omitió {{what}}",
     "args": "Preguntó con",
     "result": "Obtuvo",
     "get_natal_summary": "Resumen natal",

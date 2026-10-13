@@ -76,7 +76,19 @@ export function toolListOf(toolkit: Toolkit, translate: (key: string) => string)
   return Object.keys(toolkit).map((name) => ({ name, label: translate(CHAT_TOOL_CATALOG[name]?.labelKey ?? name) }));
 }
 
-type ToolCallRowProps = Pick<ToolCallMessagePartProps, 'toolName' | 'toolCallId' | 'args' | 'argsText' | 'result' | 'isError' | 'status'>;
+type ToolCallRowProps = Pick<ToolCallMessagePartProps, 'toolName' | 'toolCallId' | 'args' | 'argsText' | 'result' | 'isError' | 'status' | 'artifact'>;
+
+type RowOutcome = 'complete' | 'error' | 'skipped';
+
+/** Skipped (answered without running) is its own neutral outcome; then a failure; else complete. */
+function outcomeOf(isError: boolean | undefined, result: unknown, artifact: unknown): RowOutcome {
+  if (isError !== true && (artifact as { status?: unknown } | null | undefined)?.status === 'skipped') return 'skipped';
+  const outcome = result as { code?: unknown; available?: unknown } | null;
+  // A returned "unavailable" (get_period_reading's typed reasons) is a lookup that got nothing.
+  return isError === true || outcome?.code !== undefined || outcome?.available === false ? 'error' : 'complete';
+}
+
+const ROW_KEYS: Readonly<Record<RowOutcome, string>> = { complete: 'tools.row', error: 'tools.row_failed', skipped: 'tools.row_skipped' };
 
 interface ResultHints {
   readonly period?: { readonly label?: unknown; readonly start?: unknown; readonly end?: unknown };
@@ -136,19 +148,17 @@ function pretty(value: unknown): string {
  * One tool call in the transcript, collapsed to a sentence. Opening it shows
  * the exact args and result the model got (rendered only once opened).
  */
-export function ToolCallRow({ toolName, toolCallId, args, result, isError }: ToolCallRowProps) {
+export function ToolCallRow({ toolName, toolCallId, args, result, isError, artifact }: ToolCallRowProps) {
   const { t, i18n } = useTranslation('chat');
   const [open, setOpen] = useState(false);
-  const outcome = result as { code?: unknown; available?: unknown } | null;
-  // A returned "unavailable" (get_period_reading's typed reasons) is a lookup that got nothing.
-  const failed = isError === true || outcome?.code !== undefined || outcome?.available === false;
+  const outcome = outcomeOf(isError, result, artifact);
   const summary = summaryOf(toolName, args, result, i18n.language || 'en', (key) => t(key));
   return (
-    <details className="mb-2 rounded-lg border border-ui-border bg-background-tertiary/60 px-3 py-2 text-xs text-text-secondary"
-      data-testid="chat-tool-call" data-tool-name={toolName} data-tool-call-id={toolCallId} data-status={failed ? 'error' : 'complete'}
+    <details className={`mb-2 rounded-lg border border-ui-border bg-background-tertiary/60 px-3 py-2 text-xs ${outcome === 'skipped' ? 'text-text-muted' : 'text-text-secondary'}`}
+      data-testid="chat-tool-call" data-tool-name={toolName} data-tool-call-id={toolCallId} data-status={outcome}
       onToggle={(event) => setOpen(event.currentTarget.open)}>
       <summary className="cursor-pointer select-none truncate" data-testid="chat-tool-call-summary">
-        {t(failed ? 'tools.row_failed' : 'tools.row', { what: summary })}
+        {t(ROW_KEYS[outcome], { what: summary })}
       </summary>
       {open && (
         <div className="mt-2 space-y-2">

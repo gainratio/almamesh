@@ -6,6 +6,7 @@ import {
   estimateRequestTokens,
   streamAgentChat,
   type AgentRoundUsage,
+  type AgentToolCallRecord,
   type AgentTool,
   type StreamAgentChatOptions,
 } from "../index";
@@ -173,24 +174,50 @@ describe("in-turn dedupe", () => {
 });
 
 describe("parallel-call bound", () => {
-  it("pins the bound at 4 calls per round and 6 model calls per turn", () => {
-    expect(AGENT_LIMITS.maxToolCallsPerRound).toBe(4);
+  // Contract reversed 2026-10-13 (P1 fix 4): the per-round cap was 4, so a model asking for all
+  // five registered chat tools at once got its fifth call "skipped" and the chat drew an error row.
+  // One round may now call every tool once: the per-round cap equals the per-turn budget.
+  it("pins the bound at 6 calls per round and 6 model calls per turn", () => {
+    expect(AGENT_LIMITS.maxToolCallsPerRound).toBe(6);
     expect(AGENT_LIMITS.maxToolCalls).toBe(6);
     expect(AGENT_LIMITS.maxDecisionRounds).toBe(2);
   });
 
+  it("one round that asks for five different tools runs all five and skips none", async () => {
+    const names = ["natal", "trip", "timing", "reading", "detail"];
+    const tools = names.map((name) => lookup(name, () => ({ found: name })));
+    const records: AgentToolCallRecord[] = [];
+    const { bodies } = await run((n) => n === 1 ? decision(names.map((name, i) => call(`c${i}`, name))) : streamed("Done."), {
+      tools,
+      onToolCall: (record) => records.push(record),
+    });
+
+    for (const tool of tools) expect(tool.execute).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(bodies[1]?.messages)).not.toContain("skipped");
+    expect(records.map((record) => record.status)).toEqual(["complete", "complete", "complete", "complete", "complete"]);
+  });
+
   it("calls past the bound get a short skipped result, keep their pairing, and do not end the turn", async () => {
     const tool = lookup("lookup", () => ({ found: true }));
-    const calls = Array.from({ length: 6 }, (_, i) => call(`c${i}`, "lookup", { n: i }));
+    const calls = Array.from({ length: 8 }, (_, i) => call(`c${i}`, "lookup", { n: i }));
     const { bodies } = await run((n) => n === 1 ? decision(calls) : streamed("Done."), { tools: [tool] });
 
-    expect(tool.execute).toHaveBeenCalledTimes(4);
+    expect(tool.execute).toHaveBeenCalledTimes(6);
     const second = bodies[1]!;
-    expect(second.messages.find((message) => message.role === "assistant")?.tool_calls).toHaveLength(6);
+    expect(second.messages.find((message) => message.role === "assistant")?.tool_calls).toHaveLength(8);
     const skipped = toolMessages(second).filter((message) => message.content?.includes("skipped: too many calls this round"));
-    expect(skipped.map((message) => message.tool_call_id)).toEqual(["c4", "c5"]);
-    expect(second.tool_choice).toBe("auto");
+    expect(skipped.map((message) => message.tool_call_id)).toEqual(["c6", "c7"]);
     expectPaired(second);
+  });
+
+  it("a skipped call is reported to the transcript as skipped, not as an error", async () => {
+    const tool = lookup("lookup", () => ({ found: true }));
+    const records: AgentToolCallRecord[] = [];
+    const calls = Array.from({ length: 7 }, (_, i) => call(`c${i}`, "lookup", { n: i }));
+    await run((n) => n === 1 ? decision(calls) : streamed("Done."), { tools: [tool], onToolCall: (record) => records.push(record) });
+
+    expect(records.map((record) => record.status)).toEqual(["complete", "complete", "complete", "complete", "complete", "complete", "skipped"]);
+    expect(records.at(-1)?.result).toMatchObject({ code: "skipped" });
   });
 });
 
@@ -266,6 +293,24 @@ describe("per-turn token budget", () => {
     expect(JSON.stringify(final.messages)).not.toContain("trip did not succeed");
     expect(promptTokens(final)).toBeLessThanOrEqual(4_096);
     expectPaired(final);
+  });
+
+  it("an 8k-context model given six near-cap results in one round still fits every request in 4,096 tokens", async () => {
+    const names = ["a", "b", "c", "d", "e", "f"];
+    const tools = names.map((name) => lookup(name, () => ({ text: name.repeat(7_000), period: { label: `${name} facts` } })));
+    const { bodies, answer } = await run((n) => n === 1 ? decision(names.map((name, i) => call(`c${i}`, name))) : streamed("Small model answer."), {
+      tools,
+      contextTokens: 8_192,
+      messages: [{ role: "system", content: "s".repeat(2_000) }, { role: "user", content: "Question." }],
+    });
+
+    expect(answer).toBe("Small model answer.");
+    for (const tool of tools) expect(tool.execute).toHaveBeenCalledTimes(1);
+    expect(bodies.at(-1)?.tool_choice).toBe("none");
+    for (const body of bodies) {
+      expect(promptTokens(body)).toBeLessThanOrEqual(4_096);
+      expectPaired(body);
+    }
   });
 
   it("a 1M-context model keeps every result in full: nothing is compacted early", async () => {

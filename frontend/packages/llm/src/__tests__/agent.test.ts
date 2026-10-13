@@ -325,7 +325,8 @@ describe("streamAgentChat", () => {
 
   // Contract reversed 2026-10-13 (context budget spec, rule 6): calls past the per-round cap used to be
   // dropped from the echoed assistant message; now every call is echoed and answered "skipped".
-  it("echoes every requested call (each keeps its tool message) and runs at most four per round", async () => {
+  // Reversed again 2026-10-13 (P1 fix 4): the per-round cap went from four to six.
+  it("echoes every requested call (each keeps its tool message) and runs at most six per round", async () => {
     const bodies: Array<Record<string, unknown>> = [];
     const execute = vi.fn(() => ({ ok: true }));
     const fetchImpl = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
@@ -340,6 +341,8 @@ describe("streamAgentChat", () => {
             call("c", "lookup", '{"n":3}'),
             call("d", "lookup", '{"n":4}'),
             call("e", "lookup", '{"n":5}'),
+            call("f", "lookup", '{"n":6}'),
+            call("g", "lookup", '{"n":7}'),
           ],
         });
       }
@@ -360,10 +363,10 @@ describe("streamAgentChat", () => {
       role: string;
       tool_calls?: unknown[];
     }>;
-    expect(execute).toHaveBeenCalledTimes(4);
-    expect(finalMessages.find((message) => message.role === "assistant")?.tool_calls).toHaveLength(5);
-    expect(finalMessages.filter((message) => message.role === "tool")).toHaveLength(5);
-    expect(JSON.stringify(finalMessages.at(-1))).toContain("skipped: too many calls this round");
+    expect(execute).toHaveBeenCalledTimes(6);
+    expect(finalMessages.find((message) => message.role === "assistant")?.tool_calls).toHaveLength(7);
+    expect(finalMessages.filter((message) => message.role === "tool")).toHaveLength(7);
+    expect(JSON.stringify(finalMessages.filter((message) => message.role === "tool").at(-1))).toContain("skipped: too many calls this round");
   });
 
   // Contract reversed 2026-10-13 (context budget spec, rule 4): an identical successful call used to be
