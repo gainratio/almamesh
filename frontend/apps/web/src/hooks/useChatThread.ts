@@ -458,11 +458,12 @@ export function useChatThread(
         }
       } catch (error) {
         safeError('chat.stream_failed', error);
-        noteIfStaleChunk(error);
+        // An app update stopped the send: the notice marks the turn, so the reload can restore the question.
+        const stale = noteIfStaleChunk(error);
         // Flagged as an error turn: rendered as an error bubble, excluded from
         // the model-visible history (see `toHistory`), never indexed for RAG.
         if (useChatStore.getState().threads[tid] !== undefined) {
-          store.appendMessage(tid, 'assistant', describeChatStreamError(error), { error: true });
+          store.appendMessage(tid, 'assistant', describeChatStreamError(error), { error: true, ...(stale ? { notice: 'app_updated' as const } : {}) });
         }
       } finally {
         // The answer (or error) is in the store now: drop the draft first, or

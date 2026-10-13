@@ -151,3 +151,15 @@ describe('starter chips', () => {
     expect(row.className).not.toMatch(/overflow-x-auto/);
   });
 });
+
+describe('after the reload an app update needed', () => {
+  it('reopens the thread and puts the unsent message back in the composer', async () => {
+    const older = useChatStore.getState().startThread('p1', 'c1', MAY_2019_SG);
+    useChatStore.getState().appendMessage(older, 'user', 'How was May?');
+    useChatStore.getState().appendMessage(older, 'assistant', 'AlmaMesh was updated.', { error: true, notice: 'app_updated' });
+    useChatStore.getState().startThread('p1', 'c1');
+    renderPanel();
+    await waitFor(() => expect((screen.getByTestId('chat-input') as HTMLTextAreaElement).value).toBe('How was May?'));
+    expect(screen.getByTestId('chat-thread-title').textContent).toBe('⏳ May 2019 · Singapore');
+  });
+});

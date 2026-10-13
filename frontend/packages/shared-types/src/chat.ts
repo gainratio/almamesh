@@ -97,6 +97,12 @@ export interface ChatMessage {
    * before v4 have none, and `content` stays the model-visible text either way.
    */
   readonly parts?: readonly ChatMessagePart[];
+  /**
+   * Why an error notice was shown, when it matters later. 'app_updated': a stale
+   * chunk stopped this turn's send; after the reload the question before it goes
+   * back into the composer (2026-10-13).
+   */
+  readonly notice?: 'app_updated';
 }
 
 /** One grounded fact retained by a rolling chat summary. */

@@ -6,6 +6,7 @@ vi.mock('../../lib/storeSaved', () => ({ waitForStoreSaved: vi.fn(async () => un
 
 import i18n from '../../i18n/config';
 import { useAppStale } from '../../lib/appStale';
+import { staleDraftOf } from '../../lib/chatDraft';
 import { __resetMemoryForTest, __setMemoryForTest } from '../../lib/chatMemory';
 import { describeChatStreamError, isMappedChatStreamError, useChatThread } from '../useChatThread';
 
@@ -41,5 +42,8 @@ describe('a chunk that failed to load is an app update, never an unreachable AI 
     expect(useAppStale.getState().stale).toBe(true);
     const last = result.current.messages.at(-1);
     expect(last).toMatchObject({ role: 'assistant', error: true, content: i18n.t('chat:errors.app_updated') });
+    expect(last?.notice).toBe('app_updated');
+    const { threads, messages } = useChatStore.getState();
+    expect(staleDraftOf(threads, messages, 'p1')).toEqual({ threadId: result.current.threadId, text: 'How was May?' });
   });
 });

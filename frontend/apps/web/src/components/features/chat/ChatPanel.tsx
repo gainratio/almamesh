@@ -18,7 +18,7 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate } from 'react-router-dom';
-import { ComposerPrimitive, MessagePrimitive, ThreadPrimitive, type MessageState } from '@assistant-ui/react';
+import { ComposerPrimitive, MessagePrimitive, ThreadPrimitive, useAui, type MessageState } from '@assistant-ui/react';
 import { type AgentToolCallRecord, type ChatTurn, pinRelative } from '@almamesh/llm';
 import { useChartLibraryStore, useChatStore } from '@almamesh/store';
 import type { ChatMessage, ChatThreadAsOf } from '@almamesh/shared-types';
@@ -37,6 +37,7 @@ import { generateProviderChatSummary } from '../../../lib/chatSummaryProvider';
 import { viewerTodayDay } from '../../../lib/chatAgentTools';
 import { TimeTravelSheet } from './TimeTravelSheet';
 import type { TravelRecorder } from '../../../lib/timeTravelTool';
+import { staleDraftOf } from '../../../lib/chatDraft';
 import type { ChatTripKit } from '../../../lib/chatTripKit';
 import { tripPeriodLabel } from '../../../lib/timeTravelThreads';
 import { ChatThreadList } from './ChatThreadList';
@@ -126,6 +127,14 @@ export function ChatPanel({
   const toolkit = useMemo(() => (chatKit ? buildChatToolkit(chatKit.toolsFor(asOf)) : undefined), [chatKit, asOf]);
   const trip = useMemo(() => (chatKit && asOf ? chatKit.tripFor(asOf) : undefined), [chatKit, asOf]);
   const keyTransits = useMemo(() => keyTransitsOf(messages), [messages]);
+  // After the reload an app update needed: back to that thread, with the unsent message.
+  const [staleDraft] = useState(() => {
+    const { threads, messages: all } = useChatStore.getState();
+    return profileId ? staleDraftOf(threads, all, profileId) : undefined;
+  });
+  useEffect(() => {
+    if (staleDraft) openThread(staleDraft.threadId);
+  }, [staleDraft, openThread]);
   // An old trip with no place reads the birth place; the header says which.
   const headerPlace = asOf?.place?.label ?? trip?.place.display;
   const [threadsOpen, setThreadsOpen] = useState(false);
@@ -221,6 +230,7 @@ export function ChatPanel({
       data-testid="chat-panel"
     >
       {/* Header - adapts based on mode, hidden when used in FloatingChatPanel */}
+      {staleDraft && <RestoreComposerText text={staleDraft.text} />}
       {!hideHeader && (
         <div className="px-4 py-3 border-b border-ui-border bg-background-tertiary">
           <h3 className="text-text-primary font-semibold flex items-center gap-2">
@@ -421,6 +431,15 @@ export function ChatPanel({
     </ThreadPrimitive.Root>
     </AlmaMeshAssistantRuntime>
   );
+}
+
+/** Puts text back in the thread composer once (assistant-ui's composer API). */
+function RestoreComposerText({ text }: { readonly text: string }) {
+  const aui = useAui();
+  useEffect(() => {
+    aui.thread().composer().setText(text);
+  }, [aui, text]);
+  return null;
 }
 
 const SLOW = ['saturn', 'jupiter', 'rahu', 'ketu', 'mars'];

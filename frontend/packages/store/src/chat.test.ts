@@ -689,3 +689,13 @@ describe('setToolCallResult (assistant-ui onAddToolResult)', () => {
     expect(store.getState().getMessages(id)[0]?.parts?.[0]).toMatchObject({ status: 'error', result: { code: 'denied' } });
   });
 });
+
+describe('the app-updated notice is stored on the message (2026-10-13)', () => {
+  it('appendMessage keeps notice: app_updated with the error flag', () => {
+    const store = newStore();
+    const id = store.getState().startThread('p1');
+    const message = store.getState().appendMessage(id, 'assistant', 'AlmaMesh was updated.', { error: true, notice: 'app_updated' });
+    expect(message).toMatchObject({ error: true, notice: 'app_updated' });
+    expect(store.getState().getMessages(id)[0]?.notice).toBe('app_updated');
+  });
+});

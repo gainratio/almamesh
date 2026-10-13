@@ -154,6 +154,7 @@ function nextId(prefix: string): string {
 export interface AppendMessageOptions {
   readonly error?: true;
   readonly parts?: readonly ChatMessagePart[];
+  readonly notice?: 'app_updated';
 }
 
 /** Valid parts are kept as given; malformed ones are dropped with a warning. */
@@ -302,6 +303,7 @@ export const chatStoreCreator: StateCreator<ChatStore> = (set, get) => ({
       created_at: now,
       ...(options?.error ? { error: true as const } : {}),
       ...partsField(options?.parts),
+      ...(options?.notice === 'app_updated' ? { notice: 'app_updated' as const } : {}),
     };
     set((state) => {
       const thread = state.threads[threadId];
