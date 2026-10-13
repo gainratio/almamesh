@@ -7,7 +7,11 @@
 import type { AgentToolFailure } from '@almamesh/llm';
 import { safeCauseWarn, safeWarn } from '@almamesh/shared-types';
 
+import { noteIfStaleChunk } from './appStale';
+
 export function reportAgentToolFailure(failure: AgentToolFailure): void {
   safeWarn('chat.tool_failed', failure.error);
+  // A tool's lazy chunk of an old build is gone: the app was updated (lib/appStale.ts).
+  noteIfStaleChunk(failure.error);
   if (import.meta.env.VITE_EXIT_GATE_HOOKS === '1') safeCauseWarn(failure.error);
 }

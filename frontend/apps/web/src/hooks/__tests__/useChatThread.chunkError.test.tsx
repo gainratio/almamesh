@@ -46,4 +46,14 @@ describe('a chunk that failed to load is an app update, never an unreachable AI 
     const { threads, messages } = useChatStore.getState();
     expect(staleDraftOf(threads, messages, 'p1')).toEqual({ threadId: result.current.threadId, text: 'How was May?' });
   });
+
+  it('a turn whose tool hit a stale chunk ends on the update notice, not on the model\'s "I could not look that up"', async () => {
+    const { result } = renderHook(() => useChatThread('p1', null));
+    await act(() => result.current.submit('Where was I?', async () => {
+      useAppStale.getState().markStale(); // what reportAgentToolFailure does for a tool's chunk failure
+      return 'I could not look up that place.';
+    }));
+    const last = result.current.messages.at(-1);
+    expect(last).toMatchObject({ role: 'assistant', error: true, notice: 'app_updated', content: i18n.t('chat:errors.app_updated') });
+  });
 });

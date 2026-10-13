@@ -38,7 +38,7 @@ import {
 } from '@almamesh/llm';
 
 import i18n from '../i18n/config';
-import { noteIfStaleChunk } from '../lib/appStale';
+import { noteIfStaleChunk, StaleAppError, useAppStale } from '../lib/appStale';
 import { indexChatMessage, retrieveContext } from '../lib/chatMemory';
 import { isChunkLoadError } from '../lib/chunkError';
 import { chatErrorMessage, getChatErrorMessage } from '../lib/errors';
@@ -381,6 +381,8 @@ export function useChatThread(
       const askedIntent = travelIntentVersion(profileId);
       const askedSelection = selectionVersion.current;
       const travelSlot = createTravelSlot();
+      // A tool can hit a stale chunk without failing the turn; the turn is then the app's, not the model's.
+      const staleBefore = useAppStale.getState().stale;
       let completed = false;
       const userMessage = store.appendMessage(tid, 'user', q);
       void indexChatMessage({ id: userMessage.id, thread_id: tid, profile_id: profileId, content: q });
@@ -414,6 +416,7 @@ export function useChatThread(
             setStreamingDraft(draft);
           },
         });
+        if (!staleBefore && useAppStale.getState().stale) throw new StaleAppError();
         const finalAnswer = answer || draft;
         if (!finalAnswer.trim()) throw new Error('The chat provider returned an empty final answer.');
         // Deleted mid-answer: nothing to attach the answer to.
@@ -459,11 +462,12 @@ export function useChatThread(
       } catch (error) {
         safeError('chat.stream_failed', error);
         // An app update stopped the send: the notice marks the turn, so the reload can restore the question.
-        const stale = noteIfStaleChunk(error);
+        const stale = noteIfStaleChunk(error) || (!staleBefore && useAppStale.getState().stale);
         // Flagged as an error turn: rendered as an error bubble, excluded from
         // the model-visible history (see `toHistory`), never indexed for RAG.
         if (useChatStore.getState().threads[tid] !== undefined) {
-          store.appendMessage(tid, 'assistant', describeChatStreamError(error), { error: true, ...(stale ? { notice: 'app_updated' as const } : {}) });
+          store.appendMessage(tid, 'assistant', stale ? i18n.t('chat:errors.app_updated') : describeChatStreamError(error),
+            { error: true, ...(stale ? { notice: 'app_updated' as const } : {}) });
         }
       } finally {
         // The answer (or error) is in the store now: drop the draft first, or

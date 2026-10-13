@@ -18,6 +18,14 @@ export const useAppStale = create<AppStaleState>((set) => ({
   markStale: () => set({ stale: true }),
 }));
 
+/** Ends a chat turn whose tool ran into a stale chunk: the answer belongs to the app update. */
+export class StaleAppError extends Error {
+  constructor() {
+    super('AlmaMesh was updated while this answer was prepared.');
+    this.name = 'StaleAppError';
+  }
+}
+
 /** True (and the update notice raised) when `error` is a failed chunk load. */
 export function noteIfStaleChunk(error: unknown): boolean {
   if (!isChunkLoadError(error)) return false;
