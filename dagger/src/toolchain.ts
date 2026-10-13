@@ -77,15 +77,19 @@ export const TOOLCHAIN_RECIPE: ToolchainRecipe = {
 export const TOOLCHAIN_IMAGE: string | null =
   "ghcr.io/gainratio/almamesh-toolchain:r-81e517e120c27dea-pw1.63.0@sha256:11352b6f77703c45c8b3e17e669a48364d422cfd421aa3281050b69f17c2cfd2"
 
+// A Playwright npm version: x.y.z, or a prerelease such as 1.65.0-alpha-2026-10-13
+// (an npm `next` build pinned for a newer bundled WebKit).
+const PLAYWRIGHT_VERSION = String.raw`\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?`
+
 // A pin under any allowed owner is accepted, so the hseshadr pin keeps working
 // after the transfer until a gainratio-published digest replaces it.
 const PINNED = new RegExp(
-  `^ghcr\\.io\\/(?:${ALLOWED_OWNERS.join("|")})\\/${TOOLCHAIN_NAME}:(r-[0-9a-f]{16})-pw\\d+\\.\\d+\\.\\d+@sha256:[0-9a-f]{64}$`,
+  `^ghcr\\.io\\/(?:${ALLOWED_OWNERS.join("|")})\\/${TOOLCHAIN_NAME}:(r-[0-9a-f]{16})-pw${PLAYWRIGHT_VERSION}@sha256:[0-9a-f]{64}$`,
 )
 
 /** The exact Playwright version frontend/bun.lock resolves. */
 export function playwrightVersion(lock: string): string {
-  const match = /"playwright-core@(\d+\.\d+\.\d+)"/.exec(lock)
+  const match = new RegExp(`"playwright-core@(${PLAYWRIGHT_VERSION})"`).exec(lock)
   if (match === null) throw new Error("frontend/bun.lock resolves no playwright-core version")
   return match[1]
 }
