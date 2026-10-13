@@ -10,8 +10,8 @@ export type PinRelative = "past" | "future" | "contains_today";
 export interface PinnedPlace {
   readonly label: string;
   readonly timezone: string;
-  /** 'birth_place' when an old trip has no place of its own. */
-  readonly source: "trip" | "birth_place";
+  /** 'default' when an old trip has no place of its own (never says which place that is). */
+  readonly source: "trip" | "default";
 }
 
 export interface PinnedPrompt extends PeriodRange {
@@ -44,8 +44,8 @@ function tripLine(pin: PinnedPrompt): string | undefined {
   if (!pin.granularity || !pin.label) return undefined;
   const trip = `TIME-TRAVEL TRIP: this thread is a time-travel trip to ${pin.label} (${pin.granularity}, ${TENSE_WORD[pin.relative]})`;
   if (!pin.place) return `${trip}.`;
-  if (pin.place.source === "birth_place") {
-    return `${trip}. No place was chosen for this trip, so its tools read the birth place (${pin.place.timezone}).`;
+  if (pin.place.source === "default") {
+    return `${trip}. No place was chosen for this trip; its tools use a default place in ${pin.place.timezone}.`;
   }
   return `${trip}, when the user lived in ${pin.place.label} (${pin.place.timezone}).`;
 }

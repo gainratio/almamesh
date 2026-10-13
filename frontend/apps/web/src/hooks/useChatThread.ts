@@ -21,6 +21,7 @@ import { useChartLibraryStore, useChatStore } from '@almamesh/store';
 import { safeError } from '@almamesh/shared-types';
 import type {
   ChatMessage,
+  ChatMessagePart,
   ChatSummaryDraft,
   ChatSummaryGenerator,
   ChatThreadAsOf,
@@ -31,6 +32,7 @@ import {
   planChatSummary,
   summaryMatchesMessages,
   type ChatSummaryPlan,
+  type AgentToolCallRecord,
   type ChatTurn,
   type LlmRequestError,
 } from '@almamesh/llm';
@@ -54,6 +56,14 @@ export interface ChatStreamInput {
   readonly asOf?: ChatThreadAsOf;
   /** Record only; the hook applies this turn's last action after its durable answer. */
   readonly onTravel?: TravelRecorder;
+  /** Each tool call the agent ran this turn; persisted on the answer as tool-call parts. */
+  readonly onToolCall?: (record: AgentToolCallRecord) => void;
+}
+
+/** A tool call as a persisted part: the same args and sanitized result the model got. */
+function toolCallPart(record: AgentToolCallRecord): ChatMessagePart {
+  const { toolCallId, toolName, args, status, result } = record;
+  return { type: 'tool-call', toolCallId, toolName, args, status, ...(result === undefined ? {} : { result }) };
 }
 
 /** A function that streams an answer (delegated to the Dashboard's LLM wiring). */
@@ -384,12 +394,14 @@ export function useChatThread(
           retrievedContext.unshift(summaryContext(existingSummary));
         }
         let draft = '';
+        const toolCalls: ChatMessagePart[] = [];
         const answer = await stream({
           question: q,
           history,
           retrievedContext,
           ...(askedAsOf ? { asOf: askedAsOf } : {}),
           onTravel: travelSlot.record,
+          onToolCall: (record) => { toolCalls.push(toolCallPart(record)); },
           onToken: (token) => {
             draft += token;
             setStreamingDraft(draft);
@@ -409,7 +421,8 @@ export function useChatThread(
           store.appendMessage(tid, 'assistant', i18n.t(why), { error: true });
           return;
         }
-        const assistantMessage = store.appendMessage(tid, 'assistant', finalAnswer);
+        const assistantMessage = store.appendMessage(tid, 'assistant', finalAnswer,
+          toolCalls.length > 0 ? { parts: [...toolCalls, { type: 'text', text: finalAnswer }] } : undefined);
         completed = true;
         void indexChatMessage({
           id: assistantMessage.id,

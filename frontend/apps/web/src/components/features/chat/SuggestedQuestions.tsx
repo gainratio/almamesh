@@ -5,6 +5,7 @@
  * for quick conversation starters.
  */
 
+import { ThreadPrimitive } from '@assistant-ui/react';
 import { useTranslation } from 'react-i18next';
 import type { PinRelative } from '@almamesh/llm';
 
@@ -13,6 +14,11 @@ interface SuggestedQuestionsProps {
   disabled?: boolean;
   /** Where the pinned period sits against today; absent for a normal thread. */
   relative?: PinRelative;
+  /**
+   * With AI on, a starter is assistant-ui's ThreadPrimitive.Suggestion (it sends
+   * through the runtime). With AI off it routes to `onSelect` (Connect AI).
+   */
+  aiConfigured?: boolean;
 }
 
 /** The suggestion catalog — keys map to `chat:suggested.questions.*`. */
@@ -37,6 +43,7 @@ export function SuggestedQuestions({
   onSelect,
   disabled = false,
   relative,
+  aiConfigured = false,
 }: SuggestedQuestionsProps) {
   const { t } = useTranslation('chat');
   const keys = relative === 'past' || relative === 'future'
@@ -49,13 +56,13 @@ export function SuggestedQuestions({
       <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-ui-border scrollbar-track-transparent">
         {keys.map((key) => {
           const question = t(key);
-          return (
-            <button
-              key={key}
-              onClick={() => onSelect(question)}
-              disabled={disabled}
-              className="flex-shrink-0 px-3 py-2 bg-background-tertiary border border-ui-border rounded-full text-xs text-text-secondary hover:bg-background-secondary hover:border-accent-gold hover:text-text-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
-            >
+          const className = "flex-shrink-0 px-3 py-2 bg-background-tertiary border border-ui-border rounded-full text-xs text-text-secondary hover:bg-background-secondary hover:border-accent-gold hover:text-text-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap";
+          return aiConfigured ? (
+            <ThreadPrimitive.Suggestion key={key} prompt={question} send disabled={disabled} className={className} data-testid="chat-suggestion">
+              {question}
+            </ThreadPrimitive.Suggestion>
+          ) : (
+            <button key={key} type="button" onClick={() => onSelect(question)} disabled={disabled} className={className} data-testid="chat-suggestion">
               {question}
             </button>
           );

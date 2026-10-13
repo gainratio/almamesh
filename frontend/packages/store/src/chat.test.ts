@@ -660,3 +660,32 @@ describe('chat store v4: visible tool-call parts', () => {
     expect(migrateChatPersistedState(blob, 3).messages).toEqual({ t1: 'corrupt', t2: ['plain'] });
   });
 });
+
+describe('setToolCallResult (assistant-ui onAddToolResult)', () => {
+  it('records a result on one tool-call part of a stored message and keeps the rest', () => {
+    const store = newStore();
+    const id = store.getState().startThread('p1');
+    const pending: ChatMessagePart = { type: 'tool-call', toolCallId: 'call_2', toolName: 'time_travel', args: {}, status: 'complete' };
+    const message = store.getState().appendMessage(id, 'assistant', 'Moved.', { parts: [LOOKUP, pending] });
+    expect(store.getState().setToolCallResult(id, message.id, 'call_2', { moved: true }, false)).toBe(true);
+    expect(store.getState().getMessages(id)[0]?.parts).toEqual([LOOKUP, { ...pending, result: { moved: true }, status: 'complete' }]);
+  });
+
+  it('refuses an unknown message or call, and a result that is not plain JSON', () => {
+    const store = newStore();
+    const id = store.getState().startThread('p1');
+    const message = store.getState().appendMessage(id, 'assistant', 'A.', { parts: [LOOKUP] });
+    expect(store.getState().setToolCallResult(id, 'nope', 'call_1', 1, false)).toBe(false);
+    expect(store.getState().setToolCallResult(id, message.id, 'nope', 1, false)).toBe(false);
+    expect(store.getState().setToolCallResult(id, message.id, 'call_1', { bad: Number.NaN }, false)).toBe(false);
+    expect(store.getState().getMessages(id)[0]?.parts).toEqual([LOOKUP]);
+  });
+
+  it('marks an error result', () => {
+    const store = newStore();
+    const id = store.getState().startThread('p1');
+    const message = store.getState().appendMessage(id, 'assistant', 'A.', { parts: [LOOKUP] });
+    store.getState().setToolCallResult(id, message.id, 'call_1', { code: 'denied' }, true);
+    expect(store.getState().getMessages(id)[0]?.parts?.[0]).toMatchObject({ status: 'error', result: { code: 'denied' } });
+  });
+});

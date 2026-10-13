@@ -195,6 +195,12 @@ export interface ChatStore {
     options?: AppendMessageOptions,
   ) => ChatMessage;
   getMessages: (threadId: string) => ChatMessage[];
+  /**
+   * Record a result on one tool-call part of a stored message (assistant-ui's
+   * onAddToolResult). False, and nothing changes, for an unknown message or
+   * call, or a result the part validator refuses.
+   */
+  setToolCallResult: (threadId: string, messageId: string, toolCallId: string, result: unknown, isError: boolean) => boolean;
   getSummary: (threadId: string) => ChatThreadSummary | null;
   /** Commit only a source-current summary; invalid/stale candidates are a no-op. */
   commitSummary: (summary: ChatThreadSummary) => Promise<boolean>;
@@ -316,6 +322,24 @@ export const chatStoreCreator: StateCreator<ChatStore> = (set, get) => ({
   },
 
   getMessages: (threadId) => [...(get().messages[threadId] ?? [])],
+
+  setToolCallResult: (threadId, messageId, toolCallId, result, isError) => {
+    const list = get().messages[threadId] ?? [];
+    const message = list.find((candidate) => candidate.id === messageId);
+    const parts = message?.parts;
+    if (!message || !parts?.some((part) => part.type === 'tool-call' && part.toolCallId === toolCallId)) return false;
+    const nextParts = parts.map((part) => (part.type === 'tool-call' && part.toolCallId === toolCallId
+      ? { ...part, result, status: isError ? 'error' as const : 'complete' as const }
+      : part));
+    if (chatMessagePartsProblem(nextParts) !== undefined) return false;
+    set((state) => ({
+      messages: {
+        ...state.messages,
+        [threadId]: (state.messages[threadId] ?? []).map((candidate) => (candidate.id === messageId ? { ...candidate, parts: nextParts } : candidate)),
+      },
+    }));
+    return true;
+  },
 
   getSummary: (threadId) => get().summaries[threadId] ?? null,
 

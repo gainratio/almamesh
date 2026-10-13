@@ -67,11 +67,13 @@ describe('ChatPanel time travel', () => {
     expect(screen.queryByTestId('time-travel-button')).toBeNull();
   });
 
-  it('the composer button shows its text label at every width (no sm:inline)', () => {
+  // Contract reversed 2026-10-13: the composer button is an icon; its name is the tooltip and the accessible label.
+  it('the composer button is an icon whose tooltip and accessible name say "Time travel"', () => {
     renderPanel();
-    const label = screen.getByTestId('time-travel-button').querySelector('span:not([aria-hidden])');
-    expect(label?.textContent).toBe('Time travel');
-    expect(label?.className ?? '').not.toMatch(/\bhidden\b/);
+    const button = screen.getByTestId('time-travel-button');
+    expect(button.getAttribute('title')).toBe('Time travel');
+    expect(screen.getByRole('button', { name: 'Time travel' })).toBe(button);
+    expect(button.querySelector('span:not([aria-hidden])')).toBeNull();
   });
 
   it('Year 2050 → Go opens a pinned thread with badge, title, banner and future starters', async () => {

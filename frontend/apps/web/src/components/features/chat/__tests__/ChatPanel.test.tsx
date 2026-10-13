@@ -209,8 +209,10 @@ describe('ChatPanel — typing indicator vs streamed text', () => {
     await waitFor(() => expect(onAskQuestionStream).toHaveBeenCalledTimes(1));
     expect(typeof onAskQuestionStream.mock.calls[0][6]).toBe('function');
     // Eighth slot is the thread's pin (Time travel); a normal thread passes undefined.
-    expect(onAskQuestionStream.mock.calls[0]).toHaveLength(9);
+    // Contract reversed 2026-10-13: a tenth slot now carries the per-turn tool-call recorder (after onTravel).
+    expect(onAskQuestionStream.mock.calls[0]).toHaveLength(10);
     expect(typeof onAskQuestionStream.mock.calls[0][8]).toBe('function');
+    expect(typeof onAskQuestionStream.mock.calls[0][9]).toBe('function');
     expect(onAskQuestionStream.mock.calls[0][7]).toBeUndefined();
     expect((await screen.findByTestId('chat-agent-status')).textContent).toContain(
       'Preparing local tools',

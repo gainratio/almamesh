@@ -65,3 +65,25 @@ describe('AlmaMesh assistant-ui external-store adapter', () => {
     ).toThrow(/text-only/i);
   });
 });
+
+describe('tool-call parts reach assistant-ui', () => {
+  it('maps persisted tool calls through, in order, with their args and the result the model got', () => {
+    const converted = convertChatMessage(message({
+      content: 'Steady work in Singapore.',
+      parts: [
+        { type: 'tool-call', toolCallId: 'a', toolName: 'get_trip_context', args: {}, status: 'complete', result: { place: { label: 'Singapore' } } },
+        { type: 'tool-call', toolCallId: 'b', toolName: 'get_timing', args: { section: 'transits' }, status: 'error', result: { code: 'tool_failed' } },
+        { type: 'text', text: 'Steady work in Singapore.' },
+      ],
+    }));
+    expect(converted.content).toEqual([
+      { type: 'tool-call', toolCallId: 'a', toolName: 'get_trip_context', args: {}, argsText: '{}', result: { place: { label: 'Singapore' } }, isError: false },
+      { type: 'tool-call', toolCallId: 'b', toolName: 'get_timing', args: { section: 'transits' }, argsText: '{"section":"transits"}', result: { code: 'tool_failed' }, isError: true },
+      { type: 'text', text: 'Steady work in Singapore.' },
+    ]);
+  });
+
+  it('a message without parts stays one text part', () => {
+    expect(convertChatMessage(message()).content).toEqual([{ type: 'text', text: 'A grounded answer.' }]);
+  });
+});

@@ -1,4 +1,5 @@
 import type { SiderealChart } from '@almamesh/browser/types';
+import { streamAgentChat } from '@almamesh/llm';
 import type { ProcessedBirthData } from '@almamesh/shared-types';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -100,14 +101,21 @@ describe('buildChatToolset: one "today", the viewer zone', () => {
 });
 
 describe('buildChatToolset: router', () => {
-  it('grounds a named month before inference without requiring a model tool call', async () => {
+  // Contract reversed 2026-10-13: a named month no longer pre-computes timing facts before the model runs;
+  // it is a trip whose first round must call a tool, and the trip-bound get_timing reads that month.
+  it('a named month makes the first round require a tool, pre-computes nothing, and its trip-bound get_timing with no dates reads that month', async () => {
     loadMock.mockResolvedValue({ transit_context: SKY_CHART.transit_context });
-    const prepared = await toolset({ chart: TIMING_CHART, periodSkyAllowed: true })
-      .prepare('What happened in September 2017?', options());
+    const built = toolset({ chart: TIMING_CHART, periodSkyAllowed: true });
+    const prepared = await built.prepare('What happened in September 2017?', options());
     expect(prepared.asOf).toMatchObject({ basis: 'period', period: { start: '2017-09-01', end: '2017-09-30' } });
-    expect(prepared.timingFacts).toHaveLength(2);
-    expect(prepared.timingFacts[0]?.result).toMatchObject({ section: 'dashas', data: { maha: [{ lord: 'jupiter' }], antar: [{ lord: 'saturn' }] } });
-    expect(prepared.timingFacts[1]?.result).toMatchObject({ section: 'transits', shown: 'transits', period: { start: '2017-09-01', end: '2017-09-30' } });
+    expect(prepared.timingFacts).toEqual([]);
+    expect(prepared.toolChoice).toBe('required');
+    expect(prepared.groundingTool).toBe('get_trip_context');
+    expect(loadMock).not.toHaveBeenCalled();
+    expect(await timingOf(built).execute({ section: 'dashas' }, options()))
+      .toMatchObject({ section: 'dashas', data: { maha: [{ lord: 'jupiter' }], antar: [{ lord: 'saturn' }] } });
+    expect(await timingOf(built).execute({ section: 'transits' }, options()))
+      .toMatchObject({ section: 'transits', shown: 'transits', period: { start: '2017-09-01', end: '2017-09-30' } });
     expect(loadMock).toHaveBeenCalledTimes(1);
     expect(JSON.stringify(loadMock.mock.calls[0])).toContain('2017-09-01');
     expect(ensureMock).not.toHaveBeenCalled();
@@ -118,10 +126,15 @@ describe('buildChatToolset: router', () => {
     ['2017', '2017-01-01', '2017-12-31'],
     ['septiembre de 2017', '2017-09-01', '2017-09-30'],
     ['setembro de 2017', '2017-09-01', '2017-09-30'],
-  ])('grounds the supported literal period %s', async (question, start, end) => {
-    const prepared = await toolset({ chart: TIMING_CHART, periodSkyAllowed: false }).prepare(question, options());
+  // Contract reversed 2026-10-13: a literal period is a trip; nothing is pre-computed, the trip-bound tool reads it.
+  ])('a supported literal period %s becomes a trip whose get_timing reads that period', async (question, start, end) => {
+    const built = toolset({ chart: TIMING_CHART, periodSkyAllowed: false });
+    const prepared = await built.prepare(question, options());
     expect(prepared.asOf).toMatchObject({ basis: 'period', period: { start, end } });
-    expect(prepared.timingFacts[0]?.result).toMatchObject({ period: { start, end }, section: 'dashas' });
+    expect(prepared.timingFacts).toEqual([]);
+    expect(prepared.toolChoice).toBe('required');
+    expect(prepared.pinned).toMatchObject({ start, end });
+    expect(await timingOf(built).execute({ section: 'dashas' }, options())).toMatchObject({ period: { start, end }, section: 'dashas' });
   });
 
   it('uses an explicitly requested period for this turn without changing the selected pin', async () => {
@@ -147,11 +160,15 @@ describe('buildChatToolset: router', () => {
       expect(ensureMock).not.toHaveBeenCalled();
     });
 
-  it('uses the existing before-birth refusal before any period engine call', async () => {
-    const prepared = await toolset({ chart: TIMING_CHART, periodSkyAllowed: true }).prepare('1980', options());
+  // Contract reversed 2026-10-13: the before-birth refusal now comes from the trip's tool call, not a pre-run.
+  it('a before-birth trip refuses through its get_timing call before any period engine call', async () => {
+    const built = toolset({ chart: TIMING_CHART, periodSkyAllowed: true });
+    const prepared = await built.prepare('1980', options());
     expect(prepared.asOf).toMatchObject({ basis: 'period', period: { start: '1980-01-01', end: '1980-12-31' } });
-    expect(prepared.timingFacts).toHaveLength(2);
-    expect(prepared.timingFacts[0]?.result).toMatchObject({ error: expect.stringContaining('before') });
+    expect(prepared.timingFacts).toEqual([]);
+    expect(prepared.toolChoice).toBe('required');
+    expect(await timingOf(built).execute({ section: 'dashas' }, options())).toMatchObject({ error: expect.stringContaining('before') });
+    expect(await timingOf(built).execute({ section: 'transits' }, options())).toMatchObject({ error: expect.stringContaining('before') });
     expect(loadMock).not.toHaveBeenCalled();
   });
 
@@ -286,18 +303,21 @@ describe('buildChatToolset: explicit-turn engine recovery', () => {
     expect(prepared.currentContextUnavailable).toBe(false);
   });
 
-  it('a new historical question recovers before querying its deterministic sky', async () => {
+  // Contract reversed 2026-10-13: a historical question pre-computes nothing, so recovery starts on its first tool call.
+  it('a new historical question recovers on its first trip tool call, before querying its deterministic sky', async () => {
     const fresh = engineContext().engine!;
     const context = failedContext(vi.fn(async () => fresh));
     loadMock.mockResolvedValue({ transit_context: SKY_CHART.transit_context });
-    const prepared = await toolset({ chart: TIMING_CHART, engine: context, periodSkyAllowed: true })
-      .prepare('September 2017', options());
+    const built = toolset({ chart: TIMING_CHART, engine: context, periodSkyAllowed: true });
+    await built.prepare('September 2017', options());
+    expect(context.reboot).not.toHaveBeenCalled();
+    const result = await timingOf(built).execute({ section: 'transits' }, options());
     expect(context.reboot).toHaveBeenCalledTimes(1);
     expect(context.whenReady).not.toHaveBeenCalled();
     expect(loadMock).toHaveBeenCalledWith(
       expect.objectContaining({ referenceInstant: '2017-09-01T00:00:00Z' }), fresh, expect.any(AbortSignal),
     );
-    expect(prepared.timingFacts[1]?.result).toMatchObject({ shown: 'transits' });
+    expect(result).toMatchObject({ shown: 'transits' });
   });
 
   it('concurrent today and period tools share one recovery for the turn', async () => {
@@ -494,46 +514,83 @@ describe('a pinned thread', () => {
     loadMock.mockResolvedValue(CHART);
   });
 
-  it('warms the pinned period before the model runs for contextual questions', async () => {
+  // Contract reversed 2026-10-13: a trip no longer warms its period before the model runs; its first tool call loads it.
+  it('warms nothing before the model runs; the first trip-bound get_timing call loads the pinned period', async () => {
     const pinned = toolset({ pinned: YEAR_2027, periodSkyAllowed: true });
-    await pinned.prepare("what was happening then?", options());
+    const prepared = await pinned.prepare("what was happening then?", options());
+    expect(prepared.toolChoice).toBe('required');
+    expect(loadMock).not.toHaveBeenCalled();
+    await timingOf(pinned).execute({ section: 'transits' }, options());
     expect(ensureMock).not.toHaveBeenCalled();
     expect(loadMock).toHaveBeenCalledTimes(1);
     expect(JSON.stringify(loadMock.mock.calls[0])).toContain('2027-01-01');
   });
 
-  it('grounds the exact September 2017 question in selected engine dashas even if the model uses no tool', async () => {
+  // Contract reversed 2026-10-13: the model must ground itself (tool_choice required); the trip tools carry the dashas.
+  it('the exact September 2017 question requires a tool first, and its trip tools ground the selected engine dashas', async () => {
     const pin = { start: '2017-09-01', end: '2017-09-30', granularity: 'month' } as const;
-    const prepared = await toolset({ chart: TIMING_CHART, pinned: pin, periodSkyAllowed: false })
-      .prepare('this was a challenging time what do you think happened', options());
-    const facts = JSON.stringify(prepared.timingFacts);
+    const built = toolset({ chart: TIMING_CHART, pinned: pin, periodSkyAllowed: false });
+    const prepared = await built.prepare('this was a challenging time what do you think happened', options());
+    expect(prepared.timingFacts).toEqual([]);
+    expect(prepared.toolChoice).toBe('required');
+    expect(prepared.groundingTool).toBe('get_trip_context');
+    const trip = await built.tools.find((tool) => tool.name === 'get_trip_context')!.execute({}, options());
+    expect(trip).toMatchObject({ period: { start: '2017-09-01' }, dashas: { maha: [{ lord: 'jupiter' }], antar: [{ lord: 'saturn' }] } });
+    const facts = JSON.stringify(await timingOf(built).execute({ section: 'dashas' }, options()));
     expect(facts).toContain('2017-09-01');
     expect(facts).toContain('jupiter');
     expect(facts).toContain('saturn');
     expect(loadMock).not.toHaveBeenCalled();
   });
 
-  it('bounds grounding including wrappers, preserving dashas and an explicit period-labelled sky overflow', async () => {
+  // Contract reversed 2026-10-13: nothing is pre-computed, so the bound now holds per tool result in the agent
+  // loop: the dashas call survives and the oversized sky call gets its own result_too_large stub.
+  it('bounds each trip tool result in the agent loop, preserving dashas and stubbing an oversized sky call', async () => {
     const period = { start: '2027-01-01', end: '2027-12-31', basis: 'period', days: 365 };
-    vi.mocked(createChatAgentTools).mockReturnValueOnce([{ name: 'get_timing', execute: vi.fn(async (args) => ({
-      period, section: args.section, shown: args.section, notes: ['A full year was selected.'],
-      data: args.section === 'dashas' ? { maha: [{ lord: 'saturn' }] } : { rows: 'x'.repeat(20_000) },
-    })) } as never]);
-    const prepared = await toolset({ pinned: YEAR_2027 }).prepare('What matters then?', options());
-    expect(JSON.stringify(prepared.timingFacts).length).toBeLessThanOrEqual(16_384);
-    expect(prepared.timingFacts[0]?.result).toMatchObject({ data: { maha: [{ lord: 'saturn' }] } });
-    expect(prepared.timingFacts[1]?.result).toMatchObject({ period,
-      notes: expect.arrayContaining(['A full year was selected.', expect.stringContaining('too large')]),
-      data: { available: false, reason: 'result_too_large' },
+    vi.mocked(createChatAgentTools).mockReturnValueOnce([{
+      name: 'get_timing', description: 'timing', parameters: { type: 'object', properties: { section: { type: 'string' } } },
+      execute: vi.fn(async (args: { section: string }) => ({
+        period, section: args.section, shown: args.section, notes: ['A full year was selected.'],
+        data: args.section === 'dashas' ? { maha: [{ lord: 'saturn' }] } : { rows: 'x'.repeat(20_000) },
+      })),
+    } as never]);
+    const built = toolset({ pinned: YEAR_2027 });
+    const prepared = await built.prepare('What matters then?', options());
+    expect(prepared.timingFacts).toEqual([]);
+    const requests: Array<{ tool_choice?: unknown; messages: Array<{ role: string; name?: string; content: string }> }> = [];
+    const call = (id: string, section: string) => ({ id, type: 'function', function: { name: 'get_timing', arguments: JSON.stringify({ section }) } });
+    const fetchImpl = vi.fn(async (_url: unknown, init?: RequestInit) => {
+      requests.push(JSON.parse(String(init?.body)));
+      if (requests.length === 1) {
+        return Response.json({ choices: [{ message: { role: 'assistant', content: null, tool_calls: [call('d', 'dashas'), call('t', 'transits')] } }] });
+      }
+      // A failed (stubbed) call forces a final streamed answer.
+      return new Response('data: {"choices":[{"delta":{"content":"Bounded."}}]}\n\ndata: [DONE]\n\n', { headers: { 'content-type': 'text/event-stream' } });
     });
+    let answer = '';
+    for await (const token of streamAgentChat({
+      config: { engine: 'openai-http', model: 'fixture', baseUrl: 'http://localhost:11434/v1', privacyMode: 'local_only' },
+      messages: [{ role: 'user', content: 'What matters then?' }], tools: built.tools, now: SPLIT_DAY_NOW,
+      firstRoundToolChoice: prepared.toolChoice, fetchImpl: fetchImpl as typeof fetch,
+    })) answer += token;
+    expect(answer).toBe('Bounded.');
+    expect(requests[0]?.tool_choice).toBe('required');
+    const results = requests[1]!.messages.filter((message) => message.role === 'tool');
+    expect(results.map((message) => message.content).join('').length).toBeLessThanOrEqual(16_384);
+    expect(JSON.parse(results[0]!.content)).toMatchObject({ ok: true, value: { period, data: { maha: [{ lord: 'saturn' }] } } });
+    expect(JSON.parse(results[1]!.content)).toMatchObject({ ok: false, error: { code: 'result_too_large' } });
   });
 
-  it('keeps selected dasha facts when the period engine reports unavailable sky', async () => {
+  // Contract reversed 2026-10-13: the dasha and sky facts now come from the trip's tool calls, not a pre-run.
+  it('the trip tools keep selected dasha facts when the period engine reports unavailable sky', async () => {
     loadMock.mockRejectedValue(new Error('engine down'));
     const pin = { start: '2017-09-01', end: '2017-09-30', granularity: 'month' } as const;
-    const prepared = await toolset({ chart: TIMING_CHART, pinned: pin, periodSkyAllowed: true }).prepare('What happened?', options());
-    expect(prepared.timingFacts[0]?.result).toMatchObject({ data: { maha: [{ lord: 'jupiter' }], antar: [{ lord: 'saturn' }] } });
-    expect(prepared.timingFacts[1]?.result).toMatchObject({ period: { start: pin.start, end: pin.end }, data: { available: false, reason: 'engine_unavailable' } });
+    const built = toolset({ chart: TIMING_CHART, pinned: pin, periodSkyAllowed: true });
+    expect((await built.prepare('What happened?', options())).timingFacts).toEqual([]);
+    expect(await timingOf(built).execute({ section: 'dashas' }, options()))
+      .toMatchObject({ data: { maha: [{ lord: 'jupiter' }], antar: [{ lord: 'saturn' }] } });
+    expect(await timingOf(built).execute({ section: 'transits' }, options()))
+      .toMatchObject({ period: { start: pin.start, end: pin.end }, data: { available: false, reason: 'engine_unavailable' } });
   });
 
   it('outlook today reads real current context even in a persisted September pin', async () => {
@@ -566,24 +623,30 @@ describe('a pinned thread', () => {
     expect(loadMock).not.toHaveBeenCalled();
   });
 
-  it('labels the prompt with the period and hands back the pin with its tense (viewer day)', async () => {
+  // Contract reversed 2026-10-13: the pin now also carries granularity, label and place; an old pin with no
+  // place reads the birth place's sky under a generic label (source 'default').
+  it('labels the prompt with the period and hands back the pin with its tense (viewer day), granularity, label and place', async () => {
     const prepared = await toolset({ pinned: YEAR_2050, periodSkyAllowed: true }).prepare('Will work get easier?', options());
     expect(prepared.asOf).toMatchObject({ basis: 'period', period: { start: '2050-01-01', end: '2050-12-31' } });
-    expect(prepared.pinned).toEqual({ start: '2050-01-01', end: '2050-12-31', relative: 'future' });
+    expect(prepared.pinned).toEqual({
+      start: '2050-01-01', end: '2050-12-31', relative: 'future', granularity: 'year', label: '2050',
+      place: { label: 'unspecified place', timezone: 'Asia/Kolkata', source: 'default' },
+    });
+    expect(JSON.stringify(prepared.pinned)).not.toMatch(/Delhi|28\.61|77\.21/);
     expect(prepared.currentContextUnavailable).toBe(false);
   });
 
-  it('shows the page\'s localized status only when the engine will run', async () => {
-    const full = vi.fn();
-    await toolset({ pinned: YEAR_2027, periodSkyAllowed: true }).prepare('q', {
-      ...options(), onStatus: full, pinnedStatus: 'Working out the sky for 2027… (about 30 s)',
-    });
-    expect(full).toHaveBeenCalledWith('Working out the sky for 2027… (about 30 s)');
-    const lite = vi.fn();
-    await toolset({ pinned: YEAR_2027, periodSkyAllowed: false }).prepare('q', {
-      ...options(), onStatus: lite, pinnedStatus: 'Working out the sky for 2027… (about 30 s)',
-    });
-    expect(lite).toHaveBeenCalledWith('Reading dasha periods');
+  // Contract reversed 2026-10-13: pinnedStatus was removed; no engine runs in a trip's prepare, so it shows no
+  // status on any tier, and each trip tool carries its own status label for the agent loop.
+  it('a trip prepare shows no status on a full or lite device; its tools carry their own labels', async () => {
+    for (const periodSkyAllowed of [true, false]) {
+      const onStatus = vi.fn();
+      const built = toolset({ pinned: YEAR_2027, periodSkyAllowed });
+      await built.prepare('q', { ...options(), onStatus });
+      expect(onStatus).not.toHaveBeenCalled();
+      expect(built.tools.find((tool) => tool.name === 'get_trip_context')?.statusLabel).toBe('Reading this trip');
+    }
+    expect(loadMock).not.toHaveBeenCalled();
   });
 
   it('the explicit disabled-compute seam answers a Day pin with dashas only', async () => {
@@ -600,12 +663,16 @@ describe('a pinned thread', () => {
   it('a full device reads a Day pin at its place and sends no coordinate anywhere', async () => {
     // The Moon read fails fast here, so the 8 s Moon deadline never runs in a unit test.
     const engine = engineContextWith({ computeMoonWindow: vi.fn(async () => Promise.reject(new Error('no moon in tests'))) });
-    const pinned = toolset({ pinned: DAY_PIN, periodSkyAllowed: true, placeFromRef: vi.fn(async () => undefined), engine });
+    const pinned = toolset({ chart: TIMING_CHART, pinned: DAY_PIN, periodSkyAllowed: true, placeFromRef: vi.fn(async () => undefined), engine });
     const timing = pinned.tools.find((tool) => tool.name === 'get_timing')!;
-    const datetime = pinned.tools.find((tool) => tool.name === 'get_current_datetime')!;
+    // Contract reversed 2026-10-13: a trip does not register get_current_datetime; its own context tools run instead.
+    expect(pinned.tools.map((tool) => tool.name)).not.toContain('get_current_datetime');
+    const trip = pinned.tools.find((tool) => tool.name === 'get_trip_context')!;
+    const natal = pinned.tools.find((tool) => tool.name === 'get_natal_summary')!;
     const results = [
       await timing.execute({ section: 'transits' }, options()),
-      await datetime.execute({ scope: 'utc' }, options()),
+      await trip.execute({}, options()),
+      await natal.execute({}, options()),
       await pinned.prepare('q', options()),
     ];
     const text = JSON.stringify(results);
@@ -624,8 +691,15 @@ describe('a pinned thread', () => {
   it('tells the pin\'s tense in the viewer zone, not the birth zone', async () => {
     // SPLIT_DAY_NOW is 2026-03-08 in Los Angeles (viewer) and already 03-09 in Kolkata (birth).
     const today = { start: '2026-03-08', end: '2026-03-08', granularity: 'day' } as const;
-    const prepared = await toolset({ pinned: today, periodSkyAllowed: true }).prepare('q', options());
-    expect(prepared.pinned).toEqual({ start: '2026-03-08', end: '2026-03-08', relative: 'contains_today' });
+    const built = toolset({ chart: TIMING_CHART, pinned: today, periodSkyAllowed: true });
+    const prepared = await built.prepare('q', options());
+    // Contract reversed 2026-10-13: the pin also carries granularity, label and the (default) place.
+    expect(prepared.pinned).toEqual({
+      start: '2026-03-08', end: '2026-03-08', relative: 'contains_today', granularity: 'day', label: 'March 8, 2026',
+      place: { label: 'unspecified place', timezone: 'Asia/Kolkata', source: 'default' },
+    });
+    const trip = await built.tools.find((tool) => tool.name === 'get_trip_context')!.execute({}, options());
+    expect(trip).toMatchObject({ period: { tense: 'present' }, today: '2026-03-08' });
   });
 
   it('hands a lite device no place reader at all, whatever the pin', async () => {
@@ -638,14 +712,18 @@ describe('a pinned thread', () => {
     expect(spy.mock.calls[0]?.[0]).toHaveProperty('placeFromRef');
   });
 
-  it('stops the pinned warm when the user aborts it', async () => {
+  // Contract reversed 2026-10-13: there is no pinned warm; an abort now stops the trip's get_timing call.
+  it('stops the trip-bound get_timing call when the user aborts it', async () => {
     const controller = new AbortController();
     loadMock.mockImplementation(async () => {
       controller.abort();
-      throw new Error('aborted mid-warm');
+      throw new Error('aborted mid-load');
     });
     const pinned = toolset({ pinned: YEAR_2027, periodSkyAllowed: true });
-    await expect(pinned.prepare('q', { now: SPLIT_DAY_NOW, signal: controller.signal })).rejects.toThrow();
+    await pinned.prepare('q', { now: SPLIT_DAY_NOW, signal: controller.signal });
+    expect(loadMock).not.toHaveBeenCalled();
+    await expect(timingOf(pinned).execute({ section: 'transits' }, { now: SPLIT_DAY_NOW, signal: controller.signal }))
+      .rejects.toThrow();
   });
 
   it('leaves a failed (not aborted) warm to the model: prepare still resolves with the pin', async () => {
@@ -655,9 +733,14 @@ describe('a pinned thread', () => {
     expect(prepared.currentContextUnavailable).toBe(false);
   });
 
-  it('refuses to prepare a pinned thread that has no timing tool', async () => {
+  // Contract reversed 2026-10-13: a trip's prepare runs no timing tool, so it no longer refuses when get_timing is
+  // missing; it grounds through get_trip_context, which the trip always registers itself.
+  it('prepares a pinned thread without the timing tool, grounding through its own get_trip_context', async () => {
     vi.mocked(createChatAgentTools).mockReturnValueOnce([]);
-    await expect(toolset({ pinned: YEAR_2027, periodSkyAllowed: true }).prepare('q', options())).rejects.toThrow('timing tool is unavailable');
+    const built = toolset({ pinned: YEAR_2027, periodSkyAllowed: true });
+    const prepared = await built.prepare('q', options());
+    expect(prepared.groundingTool).toBe('get_trip_context');
+    expect(built.tools.map((tool) => tool.name)).toEqual(expect.arrayContaining(['get_natal_summary', 'get_trip_context']));
   });
 
   it('an unpinned thread keeps the step A router (today pre-run for a today question)', async () => {

@@ -37,26 +37,37 @@ describe.each(pages)('$name chat wiring', ({ source }) => {
     expect(source).toContain('RESOLVE_PLACE_TOOL_NAME');
   });
 
-  it('forwards the thread pin to the toolset and the prompt, and bounds the sheet by birth year', () => {
+  // Contract reversed 2026-10-13: a trip no longer warms its period before the model runs, so the
+  // page passes no localized pinnedStatus to prepare (plan cuddly-wandering-cocoa, section 3).
+  it('forwards the thread pin to the toolset and the prompt, passes no pinned status, and bounds the sheet by birth year', () => {
     const code = stripComments(source);
     // Each assertion is scoped to its own call site, so a comment or the other
     // branch cannot satisfy it.
     expect(code).toMatch(/buildChatToolset\(\{[^}]*?\.\.\.\(asOf \? \{ pinned: asOf \} : \{\}\),[^}]*?\}\)/s);
-    expect(code).toMatch(/toolset\.prepare\(question, \{[^]*?pinnedStatus: asOf \? t\('chat:time_travel\.status_working'[^]*?\}\);/);
+    expect(code).toMatch(/toolset\.prepare\(question, \{\s*now,\s*signal,\s*onStatus: \(label\) => onAgentStatus\?\.\(label\),\s*\}\);/);
+    expect(code).not.toContain('pinnedStatus');
     expect(code).toMatch(/RESOLVE_PLACE_TOOL_NAME\),\s*prepared\.pinned,\s*\);/);
     expect(code).toContain('birthYear={birthYearOf(');
     expect(code).not.toContain('pinnedPlaceReader(');
   });
 
-  it('forwards the thread pin and the per-turn movement recorder to the LLM generator', () => {
+  // Contract reversed 2026-10-13: the handler now also forwards a tool-call recorder after onTravel.
+  it('forwards the thread pin, the per-turn movement recorder and the tool-call recorder to the LLM generator', () => {
     const code = stripComments(source);
     const handler = code.slice(code.indexOf('const handleAskQuestionStream'));
-    expect(handler).toMatch(/onAgentStatus\?: \(label: string \| null\) => void,\s*asOf\?: ChatThreadAsOf,\s*onTravel\?:[^,]+TravelRecorder,\s*\)/);
-    expect(handler).toMatch(/of ask(?:Mesh|Local)Llm\(\s*question,[^)]*?onAgentStatus,\s*asOf,\s*onTravel,\s*\)\)/);
+    expect(handler).toMatch(/onAgentStatus\?: \(label: string \| null\) => void,\s*asOf\?: ChatThreadAsOf,\s*onTravel\?:[^,]+TravelRecorder,\s*onToolCall\?:[^,]+AgentToolCallRecord\) => void,\s*\)/);
+    expect(handler).toMatch(/of ask(?:Mesh|Local)Llm\(\s*question,[^)]*?onAgentStatus,\s*asOf,\s*onTravel,\s*onToolCall,\s*\)\)/);
   });
 
-  it('the LLM generator takes the movement recorder after the thread pin', () => {
+  // Contract reversed 2026-10-13: the generator's last param is now the tool-call recorder, after onTravel.
+  it('the LLM generator takes the movement recorder after the thread pin, then the tool-call recorder', () => {
     const code = stripComments(source);
-    expect(code).toMatch(/const ask(?:Mesh|Local)Llm = async function\* \([^)]*?onAgentStatus\?: \(label: string \| null\) => void,\s*asOf\?: ChatThreadAsOf,\s*onTravel\?:[^,]+TravelRecorder,\s*\)/);
+    expect(code).toMatch(/const ask(?:Mesh|Local)Llm = async function\* \([^)]*?onAgentStatus\?: \(label: string \| null\) => void,\s*asOf\?: ChatThreadAsOf,\s*onTravel\?:[^,]+TravelRecorder,\s*onToolCall\?:[^,]+AgentToolCallRecord\) => void,\s*\)/);
+  });
+
+  it("forwards the trip's first-round tool choice, grounding tool and tool-call recorder to streamAgentChat", () => {
+    const code = stripComments(source);
+    const call = code.slice(code.indexOf('yield* streamAgentChat({'));
+    expect(call).toMatch(/^yield\* streamAgentChat\(\{[^]*?firstRoundToolChoice: prepared\.toolChoice,\s*\.\.\.\(prepared\.groundingTool \? \{ groundingToolName: prepared\.groundingTool \} : \{\}\),\s*\.\.\.\(onToolCall \? \{ onToolCall \} : \{\}\),/);
   });
 });

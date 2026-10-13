@@ -102,7 +102,11 @@
       "intro": "Escolha um momento. As respostas no novo chat serão sobre ele.",
       "intro_change": "Escolha um novo período. As próximas respostas deste chat serão sobre ele.",
       "when": "Quando?",
-      "tabs": { "day": "Dia", "month": "Mês", "year": "Ano" },
+      "tabs": {
+        "day": "Dia",
+        "month": "Mês",
+        "year": "Ano"
+      },
       "day_label": "Dia",
       "month_label": "Mês",
       "year_label": "Ano",
@@ -126,8 +130,45 @@
       "back": "Voltar para hoje"
     },
     "starters": {
-      "past": { "hard": "Por que essa época foi difícil?", "teaching": "O que esse período estava me ensinando?" },
-      "future": { "prepare": "Para o que devo me preparar?", "strongest": "Quais meses parecem mais fortes?" }
+      "past": {
+        "hard": "Por que essa época foi difícil?",
+        "teaching": "O que esse período estava me ensinando?"
+      },
+      "future": {
+        "prepare": "Para o que devo me preparar?",
+        "strongest": "Quais meses parecem mais fortes?"
+      }
+    }
+  },
+  "tools": {
+    "button": "Ferramentas",
+    "heading": "Ferramentas que a IA pode usar nesta conversa",
+    "row": "Consultou {{tool}}",
+    "row_failed": "Não conseguiu consultar {{tool}}",
+    "args": "Perguntou com",
+    "result": "Recebeu",
+    "get_natal_summary": "Resumo natal",
+    "get_trip_context": "Período e lugar da viagem",
+    "get_timing": "Tempos: dashas, trânsitos, força, áreas",
+    "resolve_place": "Encontrar um lugar",
+    "time_travel": "Viajar para outro momento",
+    "get_chart_facts": "Dados do mapa",
+    "get_current_datetime": "Data e hora atuais"
+  },
+  "threads": {
+    "label": "Conversas",
+    "button": "Conversas",
+    "today": "Hoje",
+    "trips": "Viagem no tempo"
+  },
+  "trip": {
+    "card_label": "O que esta viagem lê",
+    "dasha": "Dasha: {{dasha}}",
+    "birth_place_fallback": "{{place}} (local de nascimento: nenhum lugar foi escolhido para esta viagem)",
+    "tense": {
+      "past": "Este período já passou.",
+      "present": "Hoje está dentro deste período.",
+      "future": "Este período ainda não começou."
     }
   }
 }

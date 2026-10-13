@@ -102,7 +102,11 @@
       "intro": "Elige un momento. Las respuestas del nuevo chat serán sobre él.",
       "intro_change": "Elige un nuevo periodo. Las próximas respuestas de este chat serán sobre él.",
       "when": "¿Cuándo?",
-      "tabs": { "day": "Día", "month": "Mes", "year": "Año" },
+      "tabs": {
+        "day": "Día",
+        "month": "Mes",
+        "year": "Año"
+      },
       "day_label": "Día",
       "month_label": "Mes",
       "year_label": "Año",
@@ -126,8 +130,45 @@
       "back": "Volver a hoy"
     },
     "starters": {
-      "past": { "hard": "¿Por qué fue difícil esta época?", "teaching": "¿Qué me estaba enseñando este periodo?" },
-      "future": { "prepare": "¿Para qué debo prepararme?", "strongest": "¿Qué meses se ven más fuertes?" }
+      "past": {
+        "hard": "¿Por qué fue difícil esta época?",
+        "teaching": "¿Qué me estaba enseñando este periodo?"
+      },
+      "future": {
+        "prepare": "¿Para qué debo prepararme?",
+        "strongest": "¿Qué meses se ven más fuertes?"
+      }
+    }
+  },
+  "tools": {
+    "button": "Herramientas",
+    "heading": "Herramientas que la IA puede usar en este hilo",
+    "row": "Consultó {{tool}}",
+    "row_failed": "No pudo consultar {{tool}}",
+    "args": "Preguntó con",
+    "result": "Obtuvo",
+    "get_natal_summary": "Resumen natal",
+    "get_trip_context": "Periodo y lugar del viaje",
+    "get_timing": "Tiempos: dashas, tránsitos, fuerza, áreas",
+    "resolve_place": "Buscar un lugar",
+    "time_travel": "Viajar a otro momento",
+    "get_chart_facts": "Datos de la carta",
+    "get_current_datetime": "Fecha y hora actuales"
+  },
+  "threads": {
+    "label": "Conversaciones",
+    "button": "Conversaciones",
+    "today": "Hoy",
+    "trips": "Viaje en el tiempo"
+  },
+  "trip": {
+    "card_label": "Lo que lee este viaje",
+    "dasha": "Dasha: {{dasha}}",
+    "birth_place_fallback": "{{place}} (lugar de nacimiento: no se eligió lugar para este viaje)",
+    "tense": {
+      "past": "Este periodo ya pasó.",
+      "present": "Hoy está dentro de este periodo.",
+      "future": "Este periodo aún no empieza."
     }
   }
 }

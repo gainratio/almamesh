@@ -11,20 +11,27 @@ const now = new Date('2026-10-11T17:00:00Z');
 const pinned = { start: '2017-09-01', end: '2017-09-30', granularity: 'month' } as const;
 const place = { summary: { place_ref: 'city:42', label: 'Bogotá, Colombia', timezone: 'America/Bogota' }, latitude: 4.711, longitude: -74.0721 };
 
+// Contract reversed 2026-10-13: get_current_datetime and get_chart_facts are today-thread tools; a trip
+// (pinned thread) no longer registers them, so they run in a today thread and the trip runs its own tools.
+const TODAY = 'today';
+const TRIP = 'trip';
+
 describe('actual chat capabilities through the provider tool protocol', () => {
   it.each([
-    ['get_current_datetime', { scope: 'utc' }, '2026-10-11T17:00:00.000Z'],
-    ['get_chart_facts', { section: 'dashas' }, 'saturn'],
-    ['get_timing', { section: 'dashas' }, '2017-09-01'],
-    ['resolve_place', { query: 'Bogotá' }, 'America/Bogota'],
-    ['time_travel', { action: 'travel', period: 'day', date: '2017-09-15', place_ref: 'city:42' }, 'queued'],
-    ['time_travel', { action: 'back_to_today' }, 'back_to_today'],
-  ])('executes %s and sends its safe result back, beyond merely advertising it', async (name, args, expected) => {
+    ['get_current_datetime', TODAY, { scope: 'utc' }, '2026-10-11T17:00:00.000Z'],
+    ['get_chart_facts', TODAY, { section: 'dashas' }, 'jupiter'], // today-relative: the 2017 antar is no longer selected
+    ['get_natal_summary', TRIP, {}, 'lagna'],
+    ['get_trip_context', TRIP, {}, 'September 2017'],
+    ['get_timing', TRIP, { section: 'dashas' }, '2017-09-01'],
+    ['resolve_place', TRIP, { query: 'Bogotá' }, 'America/Bogota'],
+    ['time_travel', TRIP, { action: 'travel', period: 'day', date: '2017-09-15', place_ref: 'city:42' }, 'queued'],
+    ['time_travel', TRIP, { action: 'back_to_today' }, 'back_to_today'],
+  ])('executes %s (%s thread) and sends its safe result back, beyond merely advertising it', async (name, thread, args, expected) => {
     const record = vi.fn();
     const toolset = buildChatToolset({ chart: CHART, chartAsOf: { basis: 'chart', instant: now },
       chartTimeZone: 'UTC', profileKey: 'fixture', birth: undefined, engine: null,
       viewerZone: () => 'America/Los_Angeles', periodSkyAllowed: true,
-      pinned, placeFromRef: async () => place, onTravel: record,
+      ...(thread === TRIP ? { pinned } : {}), placeFromRef: async () => place, onTravel: record,
     });
     const statuses: AgentStatusEvent[] = [];
     const requests: Array<{ tools?: Array<{ function: { name: string } }>; messages: Array<{ role: string; name?: string; content: string }> }> = [];
@@ -48,5 +55,14 @@ describe('actual chat capabilities through the provider tool protocol', () => {
     expect(result?.content).toContain(expected);
     expect(result?.content).not.toMatch(/tool_timeout|tool_failed|latitude|longitude|4\.711|74\.0721/);
     expect(record).toHaveBeenCalledTimes(name === 'time_travel' ? 1 : 0);
+  });
+
+  it('a trip does not register the today-only get_current_datetime or get_chart_facts', () => {
+    const names = (trip: boolean) => buildChatToolset({ chart: CHART, chartAsOf: { basis: 'chart', instant: now },
+      chartTimeZone: 'UTC', profileKey: 'fixture', birth: undefined, engine: null,
+      viewerZone: () => 'America/Los_Angeles', periodSkyAllowed: true, ...(trip ? { pinned } : {}),
+    }).tools.map((tool) => tool.name);
+    expect(names(true)).toEqual(['get_natal_summary', 'get_trip_context', 'get_timing', 'resolve_place']);
+    expect(names(false)).toEqual(expect.arrayContaining(['get_current_datetime', 'get_chart_facts']));
   });
 });

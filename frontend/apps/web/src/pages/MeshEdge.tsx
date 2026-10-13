@@ -75,7 +75,8 @@ import {
 } from '../lib/mesh';
 import { predictiveReferenceInstant } from '../lib/predictive';
 import { buildChatToolset } from '../lib/chatToolset';
-import { formatPinLabel } from '../lib/timeTravelSheet';
+import { chatTripKit } from '../lib/chatTripKit';
+import { agentToolsOf, buildChatToolkit } from '../components/features/chat/chatToolkit';
 import { birthYearOf } from '../lib/periodChart';
 import { RESOLVE_PLACE_TOOL_NAME } from '../lib/placeTool';
 import type { SSEMetaData } from '../lib/streaming';
@@ -296,6 +297,21 @@ function MeshEdgeContent({
   const [discussRequested, setDiscussRequested] = useState(false);
   const anchorChart = profileChartOf(charts, anchor.id);
   const siderealChart = anchorChart?.sidereal_chart;
+  const chatLanguage = useLanguageStore((s) => s.language);
+  // The chat panel's per-thread tools and trip card: the same builders a live turn uses.
+  const chatKit = useMemo(() => {
+    const zone = anchorChart?.birth_data?.birth_location_details?.timezone;
+    if (!anchorChart || !siderealChart || !zone) return undefined;
+    return chatTripKit({
+      chart: siderealChart,
+      chartAsOf: storedChartAnalysisInstant(anchorChart),
+      chartTimeZone: zone,
+      profileKey: anchorChart.profile_id ?? anchorChart.chart_id ?? anchor.id,
+      birth: anchorChart.birth_data as ProcessedBirthData | undefined,
+      engine: chartEngineContext,
+      language: chatLanguage,
+    });
+  }, [anchorChart, siderealChart, anchor.id, chartEngineContext, chatLanguage]);
 
   const askMeshLlm = async function* (
     question: string,
@@ -306,6 +322,7 @@ function MeshEdgeContent({
     onAgentStatus?: (label: string | null) => void,
     asOf?: ChatThreadAsOf,
     onTravel?: import('../lib/timeTravelTool').TravelRecorder,
+    onToolCall?: (record: import('@almamesh/llm').AgentToolCallRecord) => void,
   ): AsyncGenerator<string> {
     if (!siderealChart) {
       throw new Error(t('errors:needs_regeneration'));
@@ -341,9 +358,10 @@ function MeshEdgeContent({
       now,
       signal,
       onStatus: (label) => onAgentStatus?.(label),
-      pinnedStatus: asOf ? t('chat:time_travel.status_working', { period: formatPinLabel(asOf, language) }) : undefined,
     });
 
+    // The model's tools come out of the same toolkit the chat UI registers (chatToolkit.tsx).
+    const modelTools = agentToolsOf(buildChatToolkit(toolset.tools));
     let messages = buildChatMessages(
       sanitizeChartForLlm(prepared.chart, prepared.asOf),
       question,
@@ -355,7 +373,7 @@ function MeshEdgeContent({
       entry.edge ? sanitizeMeshEdgeForLlm(entry.edge) : undefined,
       undefined,
       undefined,
-      toolset.tools.some((tool) => tool.name === RESOLVE_PLACE_TOOL_NAME),
+      modelTools.some((tool) => tool.name === RESOLVE_PLACE_TOOL_NAME),
       prepared.pinned,
     );
     if (prepared.timingFacts?.length) {
@@ -382,10 +400,14 @@ function MeshEdgeContent({
     yield* streamAgentChat({
       config,
       messages,
-      tools: toolset.tools,
+      tools: modelTools,
       now,
       signal,
       onToolError: reportAgentToolFailure,
+      // A trip grounds itself through its tools first (chatToolset.ts prepare).
+      firstRoundToolChoice: prepared.toolChoice,
+      ...(prepared.groundingTool ? { groundingToolName: prepared.groundingTool } : {}),
+      ...(onToolCall ? { onToolCall } : {}),
       onStatus: (event) => {
         if (event.phase === 'using_tool') {
           activeToolLabel = event.label;
@@ -422,6 +444,7 @@ function MeshEdgeContent({
     onAgentStatus?: (label: string | null) => void,
     asOf?: ChatThreadAsOf,
     onTravel?: import('../lib/timeTravelTool').TravelRecorder,
+    onToolCall?: (record: import('@almamesh/llm').AgentToolCallRecord) => void,
   ): Promise<{ answer: string; timing_guidance?: string | null; remedies?: string[] | null }> => {
     const controller = new AbortController();
     let answer = '';
@@ -435,6 +458,7 @@ function MeshEdgeContent({
         onAgentStatus,
         asOf,
         onTravel,
+        onToolCall,
       )) {
         answer += delta;
         onToken(delta);
@@ -555,6 +579,7 @@ function MeshEdgeContent({
           chartId={anchorChart?.chart_id ?? null}
           viewMode={viewMode}
           onAskQuestionStream={handleAskQuestionStream}
+          chatKit={chatKit}
           birthYear={birthYearOf(anchorChart?.birth_data as ProcessedBirthData | undefined)}
           initialOpen={discussRequested}
         />

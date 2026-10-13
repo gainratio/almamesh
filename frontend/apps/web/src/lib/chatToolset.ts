@@ -30,6 +30,13 @@ import type { PlaceReader } from './timingPlaces';
 import { TIMING_TOOL_NAME } from './timingTool';
 import { parseExplicitTimingPeriod } from './timingQuestion';
 import { createTimeTravelTool, type TravelRecorder } from './timeTravelTool';
+import { formatPinLabel } from './timeTravelSheet';
+import { DEFAULT_PLACE_LABEL, natalSummary, tripContext, tripPin, tripToolResult } from './tripContext';
+
+/** A trip's context tools (plan 2026-10-13): bound to the trip, no arguments. */
+export const NATAL_SUMMARY_TOOL_NAME = 'get_natal_summary';
+export const TRIP_CONTEXT_TOOL_NAME = 'get_trip_context';
+const NO_ARGS = { type: 'object', properties: {}, additionalProperties: false } as const;
 
 export interface BuildChatToolsetInput {
   /** The natal chart engine loads (today, a period) merge their sky onto. */
@@ -59,8 +66,6 @@ interface PrepareOptions {
   readonly now: Date;
   readonly signal: AbortSignal;
   readonly onStatus?: (label: string) => void;
-  /** Localized 'Working out the sky for <period>…' shown when the pinned pre-run computes. */
-  readonly pinnedStatus?: string;
 }
 
 interface PreparedChatContext {
@@ -71,8 +76,12 @@ interface PreparedChatContext {
   readonly currentContextUnavailable: boolean;
   /** The selected or explicitly requested period and its tense for this prompt. */
   readonly pinned?: PinnedPrompt;
-  /** Sanitized engine results supplied even when the model elects no tools. */
+  /** Sanitized engine results supplied even when the model elects no tools. Empty for a trip. */
   readonly timingFacts: readonly { readonly tool: typeof TIMING_TOOL_NAME; readonly result: unknown }[];
+  /** 'required' on a trip's first round: it grounds itself through its tools before it answers. */
+  readonly toolChoice: 'auto' | 'required';
+  /** The tool the agent loop runs itself if the provider refuses 'required'. */
+  readonly groundingTool?: string;
 }
 
 export interface ChatToolset {
@@ -82,8 +91,6 @@ export interface ChatToolset {
 
 /** Shown while today's facts compute, if the timing tool carries no label of its own. */
 const TODAY_STATUS_FALLBACK = "Working out today's sky";
-/** Neutral wording for the pinned warm when neither the page nor the tool supplies a label. */
-const PINNED_STATUS_FALLBACK = 'Working out the sky for this period';
 // Reserve room for the two tool labels and JSON wrappers as well as their results.
 const GROUNDING_RESULT_CHARS = Math.min(AGENT_LIMITS.maxResultChars, Math.floor((AGENT_LIMITS.maxAggregateResultChars - 512) / 2));
 
@@ -141,35 +148,27 @@ async function preRunToday(tools: readonly AgentTool[], options: PrepareOptions)
   return { unavailable, timingFacts: [dashas, transits].map((result) => ({ tool: TIMING_TOOL_NAME as typeof TIMING_TOOL_NAME, result })) };
 }
 
-/** Read the pin's dashas and available sky before interpretation, including any failure notes. */
-async function preRunPin(tools: readonly AgentTool[], options: PrepareOptions) {
-  const timing = tools.find((tool) => tool.name === TIMING_TOOL_NAME);
-  if (!timing) throw new Error('The timing tool is unavailable.');
-  const args = { section: 'transits' };
-  // A fixed tool label (dashas only, needs a place) wins: the engine will not run.
-  options.onStatus?.(timing.statusLabelFor?.(args) ?? options.pinnedStatus ?? PINNED_STATUS_FALLBACK);
-  const dashas = await timingFact(timing, 'dashas', options);
-  const transits = await timingFact(timing, 'transits', options);
-  return [dashas, transits].map((result) => ({ tool: TIMING_TOOL_NAME as typeof TIMING_TOOL_NAME, result }));
-}
-
-/** Contextual historical questions read the pin; an explicit today question is routed separately. */
-async function preparePinned(
-  tools: readonly AgentTool[],
+/** A trip turn: tools bound to the trip, the brief's inputs, and no pre-computed facts. */
+function preparePinned(
   pinned: ChatThreadAsOf,
   chart: SiderealChart,
   viewerZone: string,
-  options: PrepareOptions,
-): Promise<PreparedChatContext> {
-  const timingFacts = await preRunPin(tools, options);
+  language: string,
+  now: Date,
+): PreparedChatContext {
   const period = { start: pinned.start, end: pinned.end };
-  const relative = pinRelative(period, viewerTodayDay(options.now, viewerZone));
+  const relative = pinRelative(period, viewerTodayDay(now, viewerZone));
+  const place = pinned.place
+    ? { place: { label: pinned.place.label, timezone: pinned.place.timezone, source: pinned.place.label === DEFAULT_PLACE_LABEL ? 'default' as const : 'trip' as const } }
+    : {};
   return {
     chart: natalOnly(chart),
     asOf: periodAnalysisInstant(pinned.start, pinned.end),
     currentContextUnavailable: false,
-    pinned: { ...period, relative },
-    timingFacts,
+    pinned: { ...period, relative, granularity: pinned.granularity, label: formatPinLabel(pinned, language), ...place },
+    timingFacts: [],
+    toolChoice: 'required',
+    groundingTool: TRIP_CONTEXT_TOOL_NAME,
   };
 }
 
@@ -209,10 +208,30 @@ export function buildChatToolset(input: BuildChatToolsetInput): ChatToolset {
     return todayChart;
   };
 
-  const pinned = input.pinned;
+  // An old trip with no place reads the birth place (tripContext.ts).
+  const pinned = input.pinned ? tripPin(input.pinned, input.birth) : undefined;
+  const language = input.language ?? 'en';
   const baseReader = input.placeFromRef ?? lazyPlaceFromRef;
 
   const skyAllowed = input.periodSkyAllowed ?? devicePolicy().periodSkyComputeAllowed;
+  const tripTools = (activePin: ChatThreadAsOf): AgentTool[] => [
+    {
+      name: NATAL_SUMMARY_TOOL_NAME,
+      description: 'Read the natal chart summary for this person: lagna, Moon sign and nakshatra, planets by sign and house, yogas. Identifier-free. No arguments.',
+      statusLabel: 'Reading the natal chart',
+      parameters: NO_ARGS,
+      execute: () => natalSummary(natalOnly(input.chart)),
+    },
+    {
+      name: TRIP_CONTEXT_TOOL_NAME,
+      description: "Read this time-travel trip: its period (start, end, granularity, tense, label), the place the user lived then (label and time zone), today's date, and the dasha periods that cover it. No arguments.",
+      statusLabel: 'Reading this trip',
+      parameters: NO_ARGS,
+      execute: (_args, context) => tripToolResult(tripContext({
+        chart: input.chart, asOf: activePin, today: viewerTodayDay(context.now, zone()), birth: input.birth, language,
+      })),
+    },
+  ];
   const makeTools = (activePin: ChatThreadAsOf | undefined, promptChart = natalPrompt, chartAsOf = input.chartAsOf) => {
     const reader = activePin ? pinnedPlaceReader(activePin, baseReader) : baseReader;
     const agentTools = createChatAgentTools({
@@ -235,8 +254,11 @@ export function buildChatToolset(input: BuildChatToolsetInput): ChatToolset {
         ? { loadMoonWindow: createMoonWindowLoader(engine), placeFromRef: reader }
         : {}),
     });
+    const trip = activePin ? tripTools(activePin) : [];
     return [
-      ...agentTools,
+      ...trip,
+      // A trip reads its natal chart through get_natal_summary; the today-only lookups stay off it.
+      ...(activePin ? agentTools.filter((tool) => tool.name === TIMING_TOOL_NAME) : agentTools),
       ...(skyAllowed ? [createResolvePlaceTool()] : []),
       ...(input.onTravel ? [createTimeTravelTool({
         birthYear: birthYearOf(input.birth), placeFromRef: baseReader,
@@ -280,6 +302,7 @@ export function buildChatToolset(input: BuildChatToolsetInput): ChatToolset {
             notes: ['The question does not identify one supported calendar period. Ask for one explicit month and year, year, or ISO date before interpreting timing. Do not substitute the saved pin or invent a range.'],
             data: { available: false, reason: explicit.reason },
           } }],
+          toolChoice: 'auto',
         };
       }
       if (!explicitToday && explicit.kind === 'period') {
@@ -287,15 +310,10 @@ export function buildChatToolset(input: BuildChatToolsetInput): ChatToolset {
         const questionPin: ChatThreadAsOf = pinned && pinned.start === start && pinned.end === end
           ? pinned
           : { start, end, granularity: start === end ? 'day' : start.slice(5) === '01-01' && end.slice(5) === '12-31' ? 'year' : 'month' };
-        tools = makeTools(questionPin, natalPrompt, periodAnalysisInstant(start, end));
-        // The page's localized pin label describes the saved pin, which may
-        // differ from this question. Use the tool's neutral status instead.
-        return preparePinned(tools, questionPin, natalPrompt, zone(), {
-          now: options.now, signal: options.signal,
-          ...(options.onStatus ? { onStatus: options.onStatus } : {}),
-        });
+        tools = makeTools(tripPin(questionPin, input.birth), natalPrompt, periodAnalysisInstant(start, end));
+        return preparePinned(tripPin(questionPin, input.birth), natalPrompt, zone(), language, options.now);
       }
-      if (pinned && !explicitToday) return preparePinned(tools, pinned, natalPrompt, zone(), options);
+      if (pinned && !explicitToday) return preparePinned(pinned, natalPrompt, zone(), language, options.now);
       if (pinned) tools = makeTools(undefined);
       // A small deterministic router: an undated today-question gets exact-day
       // engine facts before the model runs, as do explicit current-day questions.
@@ -308,6 +326,7 @@ export function buildChatToolset(input: BuildChatToolsetInput): ChatToolset {
         asOf: currentChart ? todayAnalysisInstant(options.now) : input.chartAsOf,
         currentContextUnavailable: prepared?.unavailable ?? false,
         timingFacts: prepared?.timingFacts ?? [],
+        toolChoice: 'auto',
       };
     },
   };

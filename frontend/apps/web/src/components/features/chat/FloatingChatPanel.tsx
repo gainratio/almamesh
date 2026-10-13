@@ -5,15 +5,15 @@
  * Supports three size states:
  * - closed: Shows only a floating button
  * - minimized: Shows only the header bar
- * - normal: Shows 400px width panel with full chat
- * - maximized: Shows larger panel (700px, or near full-screen on mobile)
+ * - normal: a full-height right drawer (a full-screen sheet on phones)
+ * - maximized: a wider drawer (up to 800px)
  */
 
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ChatTurn } from '@almamesh/llm';
 import type { ChatThreadAsOf } from '@almamesh/shared-types';
-import { ChatPanel } from './ChatPanel';
+import { ChatPanel, type ChatTripKit } from './ChatPanel';
 import type { SSEMetaData } from '../../../lib/streaming';
 import type { ViewMode } from '../../../lib/types';
 
@@ -38,6 +38,7 @@ interface FloatingChatPanelProps {
     onAgentStatus?: (label: string | null) => void,
     asOf?: ChatThreadAsOf,
     onTravel?: import('../../../lib/timeTravelTool').TravelRecorder,
+    onToolCall?: (record: import('@almamesh/llm').AgentToolCallRecord) => void,
   ) => Promise<{
     answer: string;
     timing_guidance?: string | null;
@@ -45,6 +46,8 @@ interface FloatingChatPanelProps {
   }>;
   /** Start with the panel open (e.g. arriving via a "discuss in chat" link). */
   initialOpen?: boolean;
+  /** Each thread's tools and trip context (chatTripKit.ts). */
+  chatKit?: ChatTripKit;
 }
 
 // Icons as separate components for cleaner code
@@ -111,35 +114,26 @@ export function FloatingChatPanel({
   birthYear,
   onAskQuestionStream,
   initialOpen = false,
+  chatKit,
 }: FloatingChatPanelProps) {
   const { t } = useTranslation('chat');
   const [panelState, setPanelState] = useState<PanelState>(initialOpen ? 'normal' : 'closed');
 
   // Get width class based on panel state
-  const getWidthClass = () => {
+  // Open, the chat is a full-height drawer on the right (a full-screen sheet on
+  // phones), so the thread gets the viewport instead of a fixed 500px window.
+  // Minimized it is just its header bar, bottom-right.
+  const getPlacementClass = () => {
     switch (panelState) {
       case 'minimized':
-        return 'w-[320px] sm:w-[400px]';
-      case 'normal':
-        return 'w-[320px] sm:w-[400px]';
+        return 'bottom-6 right-6 w-[320px] sm:w-[400px] max-w-[calc(100vw-3rem)]';
       case 'maximized':
-        return 'w-[calc(100vw-2rem)] sm:w-[600px] md:w-[700px] lg:w-[800px]';
+        return 'inset-0 sm:left-auto sm:w-[min(800px,100vw)]';
       default:
-        return '';
+        return 'inset-0 sm:left-auto sm:w-[440px]';
     }
   };
 
-  // Get height class based on panel state
-  const getHeightClass = () => {
-    switch (panelState) {
-      case 'maximized':
-        return 'max-h-[calc(100vh-6rem)]';
-      default:
-        return '';
-    }
-  };
-
-  // Handle header bar click to restore from minimized
   const handleHeaderClick = () => {
     if (panelState === 'minimized') {
       setPanelState('normal');
@@ -189,10 +183,12 @@ export function FloatingChatPanel({
       {/* Chat Panel - shown when not closed */}
       {panelState !== 'closed' && (
         <div
-          className={`fixed bottom-6 right-6 z-50 ${getWidthClass()} max-w-[calc(100vw-3rem)] animate-in slide-in-from-bottom-4 fade-in duration-200 transition-all ${getHeightClass()}`}
+          className={`fixed z-50 ${getPlacementClass()} animate-in fade-in duration-200 transition-all`}
+          data-testid="floating-chat-drawer"
+          data-state={panelState}
         >
           {/* Panel container with shadow */}
-          <div className="shadow-2xl rounded-xl overflow-hidden bg-background-secondary border border-ui-border flex flex-col h-full">
+          <div className={`shadow-2xl overflow-hidden bg-background-secondary border-ui-border flex flex-col ${panelState === 'minimized' ? 'rounded-xl border' : 'h-full sm:border-l'}`}>
             {/* Header bar */}
             <div
               className={`flex items-center justify-between px-4 py-3 bg-background-tertiary border-b border-ui-border ${
@@ -256,7 +252,7 @@ export function FloatingChatPanel({
 
             {/* Chat content - hidden when minimized */}
             {panelState !== 'minimized' && (
-              <div className={`flex-1 overflow-hidden ${panelState === 'maximized' ? 'h-[calc(100vh-10rem)]' : ''}`}>
+              <div className="min-h-0 flex-1 overflow-hidden">
                 <ChatPanel
                   personName={personName}
                   profileId={profileId}
@@ -264,6 +260,7 @@ export function FloatingChatPanel({
                   viewMode={viewMode}
                   birthYear={birthYear}
                   onAskQuestionStream={onAskQuestionStream}
+                  {...(chatKit ? { chatKit } : {})}
                   hideHeader
                 />
               </div>

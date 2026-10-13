@@ -1,4 +1,4 @@
-import { useCallback, useState, useEffect } from "react";
+import { useCallback, useMemo, useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
@@ -80,7 +80,8 @@ import { isPlaceholderContent } from "./exportGate";
 import { personaText, resolveReportAudience } from "../lib/reportSelectors";
 import { rectificationDelta } from "../lib/rectification";
 import { buildChatToolset } from "../lib/chatToolset";
-import { formatPinLabel } from "../lib/timeTravelSheet";
+import { chatTripKit } from "../lib/chatTripKit";
+import { agentToolsOf, buildChatToolkit } from "../components/features/chat/chatToolkit";
 import { birthYearOf } from "../lib/periodChart";
 import { asOfKey } from "../lib/pinnedPeriod";
 import { DashboardMoment } from "../components/features/dashboard/DashboardMomentCard";
@@ -193,6 +194,14 @@ export default function DashboardPage() {
   const travelBirthYear = birthYearOf(chartId
     ? (useChartLibraryStore.getState().getChart(chartId)?.birth_data as ProcessedBirthData | undefined)
     : undefined);
+  // Every trip has a place: the sheet prefills it from the profile's pins, else
+  // the birth place. Selector hooks, so a regenerated chart or a new pin re-renders.
+  const travelBirthLocation = useChartLibraryStore((s) => (chartId ? s.getChart(chartId)?.birth_data?.birth_location_details : undefined));
+  const chatThreads = useChatStore((s) => s.threads);
+  const travelPins = useMemo(
+    () => (activeProfileId ? Object.values(chatThreads).filter((thread) => thread.profile_id === activeProfileId) : []),
+    [chatThreads, activeProfileId],
+  );
   const goToMoment = (asOf: ChatThreadAsOf) => timeTravel.travel({ asOf, source: 'dashboard-sheet' });
   const backFromMoment = async () => {
     const key = momentKey;
@@ -221,6 +230,24 @@ export default function DashboardPage() {
   const siderealChart = useChartLibraryStore((s) =>
     chartId ? (s.charts[chartId]?.sidereal_chart ?? null) : null,
   );
+  // The chat panel's per-thread tools and trip card: the same builders a live turn uses.
+  const chatStoredChart = useChartLibraryStore((s) => (chartId ? s.charts[chartId] : undefined));
+  const chatLanguage = useLanguageStore((s) => s.language);
+  const chatKit = useMemo(() => {
+    const chart = chatStoredChart?.sidereal_chart;
+    const zone = chatStoredChart?.birth_data?.birth_location_details?.timezone;
+    if (!chatStoredChart || !chart || !zone) return undefined;
+    return chatTripKit({
+      chart,
+      promptChart: withRawPredictive(chart, chartId),
+      chartAsOf: storedChartAnalysisInstant(chatStoredChart),
+      chartTimeZone: zone,
+      profileKey: chatStoredChart.profile_id ?? chartId ?? 'primary',
+      birth: chatStoredChart.birth_data as ProcessedBirthData | undefined,
+      engine: chartEngineContext,
+      language: chatLanguage,
+    });
+  }, [chatStoredChart, chartId, chartEngineContext, chatLanguage]);
 
   // Structured in-browser interpretation: drives @almamesh/llm's 5-section
   // generator and writes its progress + result into useInterpretationStore,
@@ -310,6 +337,7 @@ export default function DashboardPage() {
     onAgentStatus?: (label: string | null) => void,
     asOf?: ChatThreadAsOf,
     onTravel?: import('../lib/timeTravelTool').TravelRecorder,
+    onToolCall?: (record: import('@almamesh/llm').AgentToolCallRecord) => void,
   ) {
     const storedChart = chartId ? useChartLibraryStore.getState().getChart(chartId) : undefined;
     const chart = storedChart?.sidereal_chart;
@@ -375,9 +403,10 @@ export default function DashboardPage() {
       now,
       signal,
       onStatus: (label) => onAgentStatus?.(label),
-      pinnedStatus: asOf ? t('chat:time_travel.status_working', { period: formatPinLabel(asOf, language) }) : undefined,
     });
 
+    // The model's tools come out of the same toolkit the chat UI registers (chatToolkit.tsx).
+    const modelTools = agentToolsOf(buildChatToolkit(toolset.tools));
     let messages = buildChatMessages(
       sanitizeChartForLlm(prepared.chart, prepared.asOf),
       question,
@@ -389,7 +418,7 @@ export default function DashboardPage() {
       undefined,
       rectification,
       undefined,
-      toolset.tools.some((tool) => tool.name === RESOLVE_PLACE_TOOL_NAME),
+      modelTools.some((tool) => tool.name === RESOLVE_PLACE_TOOL_NAME),
       prepared.pinned,
     );
     if (prepared.timingFacts?.length) {
@@ -416,10 +445,14 @@ export default function DashboardPage() {
     yield* streamAgentChat({
       config,
       messages,
-      tools: toolset.tools,
+      tools: modelTools,
       now,
       signal,
       onToolError: reportAgentToolFailure,
+      // A trip grounds itself through its tools first (chatToolset.ts prepare).
+      firstRoundToolChoice: prepared.toolChoice,
+      ...(prepared.groundingTool ? { groundingToolName: prepared.groundingTool } : {}),
+      ...(onToolCall ? { onToolCall } : {}),
       onStatus: (event) => {
         if (event.phase === 'using_tool') {
           activeToolLabel = event.label;
@@ -446,6 +479,7 @@ export default function DashboardPage() {
     onAgentStatus?: (label: string | null) => void,
     asOf?: ChatThreadAsOf,
     onTravel?: import('../lib/timeTravelTool').TravelRecorder,
+    onToolCall?: (record: import('@almamesh/llm').AgentToolCallRecord) => void,
   ) => {
     const controller = new AbortController();
     let answer = '';
@@ -459,6 +493,7 @@ export default function DashboardPage() {
         onAgentStatus,
         asOf,
         onTravel,
+        onToolCall,
       )) {
         answer += delta;
         onToken(delta);
@@ -879,8 +914,8 @@ export default function DashboardPage() {
         <DashboardTimeTravelSheet open={travelSheet !== 'closed'}
           current={travelSheet === 'change' ? timeTravel.moment : undefined}
           birthYear={travelBirthYear}
-          birthLocation={chartId ? useChartLibraryStore.getState().getChart(chartId)?.birth_data?.birth_location_details : undefined}
-          pins={activeProfileId ? useChatStore.getState().listThreads(activeProfileId) : []}
+          birthLocation={travelBirthLocation}
+          pins={travelPins}
           intro={t("dashboard:time_travel.sheet_intro")} onGo={goToMoment} onClose={() => setTravelSheet('closed')} />
 
         {/* The PDF render failed. Calm, visible, on-screen ONLY (`no-print`) —
@@ -1283,6 +1318,7 @@ export default function DashboardPage() {
         chartId={chartId}
         viewMode={viewMode}
         onAskQuestionStream={handleAskQuestionStream}
+        chatKit={chatKit}
         birthYear={birthYearOf(chartId ? (useChartLibraryStore.getState().getChart(chartId)?.birth_data as ProcessedBirthData | undefined) : undefined)}
         initialOpen={chatInitiallyOpen}
       />

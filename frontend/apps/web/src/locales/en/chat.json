@@ -99,7 +99,11 @@
       "intro": "Pick a time. Answers in the new chat will be about it.",
       "intro_change": "Pick a new period. This chat's next answers will be about it.",
       "when": "When?",
-      "tabs": { "day": "Day", "month": "Month", "year": "Year" },
+      "tabs": {
+        "day": "Day",
+        "month": "Month",
+        "year": "Year"
+      },
       "day_label": "Day",
       "month_label": "Month",
       "year_label": "Year",
@@ -123,8 +127,45 @@
       "back": "Back to today"
     },
     "starters": {
-      "past": { "hard": "Why did this time feel hard?", "teaching": "What was this period teaching me?" },
-      "future": { "prepare": "What should I prepare for?", "strongest": "Which months look strongest?" }
+      "past": {
+        "hard": "Why did this time feel hard?",
+        "teaching": "What was this period teaching me?"
+      },
+      "future": {
+        "prepare": "What should I prepare for?",
+        "strongest": "Which months look strongest?"
+      }
+    }
+  },
+  "tools": {
+    "button": "Tools",
+    "heading": "Tools the AI can use in this thread",
+    "row": "Looked up {{tool}}",
+    "row_failed": "Could not look up {{tool}}",
+    "args": "Asked with",
+    "result": "Got back",
+    "get_natal_summary": "Natal summary",
+    "get_trip_context": "Trip period & place",
+    "get_timing": "Timing: dashas, transits, strength, domains",
+    "resolve_place": "Find a place",
+    "time_travel": "Travel to another time",
+    "get_chart_facts": "Chart facts",
+    "get_current_datetime": "Current date and time"
+  },
+  "threads": {
+    "label": "Conversations",
+    "button": "Conversations",
+    "today": "Today",
+    "trips": "Time travel"
+  },
+  "trip": {
+    "card_label": "What this trip reads",
+    "dasha": "Dasha: {{dasha}}",
+    "birth_place_fallback": "{{place}} (birth place: no place was chosen for this trip)",
+    "tense": {
+      "past": "This period is over.",
+      "present": "Today is inside this period.",
+      "future": "This period has not started yet."
     }
   }
 }

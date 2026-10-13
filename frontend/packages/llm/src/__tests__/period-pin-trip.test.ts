@@ -24,10 +24,11 @@ describe('pinnedPeriodRules is a trip brief', () => {
     expect(brief).toContain("already read this trip's period and place");
   });
 
-  it('says so when an old trip has no place and the tools read the birth place', () => {
-    const brief = pinnedPeriodRules({ ...MAY_2019_SG, place: { label: 'the birth place', timezone: 'Asia/Kolkata', source: 'birth_place' } });
+  it('says so when an old trip has no place, without naming or marking the birth place', () => {
+    const brief = pinnedPeriodRules({ ...MAY_2019_SG, place: { label: 'unspecified place', timezone: 'Asia/Kolkata', source: 'default' } });
     expect(brief).toContain('No place was chosen for this trip');
     expect(brief).not.toContain('when the user lived in');
+    expect(brief).not.toMatch(/birth/i);
   });
 
   it('a future trip is in the future tense', () => {
