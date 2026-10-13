@@ -54,6 +54,12 @@ import { useTimeTravelStore } from '../../lib/timeTravel';
 import { readLocalPrimaryChart } from '../../lib/localChartRead';
 import DashboardPage from '../Dashboard';
 
+/** 2026-10-13: the birth place is a suggestion the person confirms; a test that relies on it taps it. */
+function confirmSuggestedPlace(): void {
+  const suggestion = screen.queryByTestId('time-travel-where-suggestion');
+  if (suggestion) fireEvent.click(suggestion);
+}
+
 function chartWithZone(timezone: string): StoredChart {
   return {
     chart_id: 'chart-1',
@@ -176,6 +182,7 @@ describe('Dashboard Time travel', () => {
     fireEvent.click(button);
     fireEvent.click(screen.getByTestId('time-travel-tab-year'));
     fireEvent.change(screen.getByTestId('time-travel-year'), { target: { value: '2019' } });
+    confirmSuggestedPlace();
     await act(async () => {
       fireEvent.click(screen.getByTestId('time-travel-go'));
     });
@@ -218,6 +225,7 @@ describe('Dashboard Time travel', () => {
     fireEvent.click(screen.getByTestId('dashboard-time-travel-button'));
     fireEvent.click(screen.getByTestId('time-travel-tab-year'));
     fireEvent.change(screen.getByTestId('time-travel-year'), { target: { value: '2019' } });
+    confirmSuggestedPlace();
     await act(async () => {
       fireEvent.click(screen.getByTestId('time-travel-go'));
     });
@@ -330,6 +338,7 @@ describe('Dashboard Time travel', () => {
 
     fireEvent.click(screen.getByTestId('dashboard-time-travel-change'));
     fireEvent.change(screen.getByTestId('time-travel-year'), { target: { value: '2020' } });
+    confirmSuggestedPlace();
     await act(async () => {
       fireEvent.click(screen.getByTestId('time-travel-go'));
     });

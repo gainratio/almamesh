@@ -29,15 +29,17 @@ interface PlacePickerProps {
   readonly place: PinPlace | undefined;
   readonly lookup: (query: string) => Promise<PlaceLookup>;
   readonly onPick: (place: PinPlace | undefined) => void;
-  /** The place came from the nearest pin or the birth place, not from the user. */
+  /** The place came from the nearest earlier trip, not from the user. */
   readonly prefilled?: boolean;
   /** Month/Year say "at that time"; Day says "that day". */
   readonly forDay?: boolean;
+  /** The birth place, offered (never assumed) when there is no earlier trip to prefill from. */
+  readonly suggestion?: PinPlace;
 }
 
 const DEBOUNCE_MS = 200;
 
-export function PlacePicker({ place, lookup, onPick, prefilled = false, forDay = true }: PlacePickerProps) {
+export function PlacePicker({ place, lookup, onPick, prefilled = false, forDay = true, suggestion }: PlacePickerProps) {
   const { t } = useTranslation('chat');
   const [query, setQuery] = useState(place?.label ?? '');
   const [options, setOptions] = useState<readonly ResolvedPlace[] | null>(null);
@@ -97,6 +99,14 @@ export function PlacePicker({ place, lookup, onPick, prefilled = false, forDay =
         }}
         className="mt-1 w-full rounded-lg border border-ui-border bg-background-primary px-3 py-2 text-sm text-text-primary"
       />
+      {!place && <p data-testid="time-travel-where-question" className="mt-1 text-sm text-text-primary">{t(forDay ? 'time_travel.sheet.where_question_day' : 'time_travel.sheet.where_question')}</p>}
+      {!place && suggestion && (
+        <button type="button" data-testid="time-travel-where-suggestion"
+          onClick={() => { onPick(suggestion); setQuery(suggestion.label); setOptions(null); }}
+          className="mt-1 rounded-full border border-accent-gold/60 px-3 py-1 text-xs text-accent-gold hover:bg-accent-gold/10">
+          {t('time_travel.sheet.where_suggestion', { place: suggestion.label })}
+        </button>
+      )}
       {!place && <p data-testid="time-travel-where-required" className="mt-1 text-xs text-text-muted">{t(forDay ? 'time_travel.sheet.where_required' : 'time_travel.sheet.where_required_period')}</p>}
       {place && prefilled && <p data-testid="time-travel-where-prefilled" className="mt-1 text-xs text-text-muted">{t('time_travel.sheet.where_prefilled')}</p>}
       {lookupFailed && <div data-testid="time-travel-where-failed" role="alert" className="mt-1 text-xs text-text-muted">

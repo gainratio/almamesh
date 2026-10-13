@@ -17,35 +17,35 @@ const pin = (start: string, end: string, place: ChatThreadAsOf['place'], updated
 describe('prefillTripPlace', () => {
   it('picks the place of the pin whose range is nearest the new date', () => {
     const pins = [pin('2019-05-01', '2019-05-31', SINGAPORE), pin('2027-01-01', '2027-01-31', SF)];
-    expect(prefillTripPlace({ start: '2019-08-01', end: '2019-08-31' }, pins, BIRTH)).toEqual(SINGAPORE);
-    expect(prefillTripPlace({ start: '2026-06-01', end: '2026-06-30' }, pins, BIRTH)).toEqual(SF);
+    expect(prefillTripPlace({ start: '2019-08-01', end: '2019-08-31' }, pins)).toEqual(SINGAPORE);
+    expect(prefillTripPlace({ start: '2026-06-01', end: '2026-06-30' }, pins)).toEqual(SF);
   });
 
   it('treats a pin that overlaps the new range as nearest (distance zero)', () => {
     const pins = [pin('2018-12-01', '2018-12-31', SF), pin('2019-01-01', '2019-12-31', SINGAPORE)];
-    expect(prefillTripPlace({ start: '2019-06-15', end: '2019-06-15' }, pins, BIRTH)).toEqual(SINGAPORE);
+    expect(prefillTripPlace({ start: '2019-06-15', end: '2019-06-15' }, pins)).toEqual(SINGAPORE);
   });
 
   it('breaks a distance tie with the most recently updated pin', () => {
     const pins = [pin('2019-05-01', '2019-05-31', SINGAPORE, '2026-01-01T00:00:00Z'), pin('2019-05-01', '2019-05-31', BOGOTA, '2026-09-01T00:00:00Z')];
-    expect(prefillTripPlace({ start: '2019-05-01', end: '2019-05-31' }, pins, BIRTH)).toEqual(BOGOTA);
-    expect(prefillTripPlace({ start: '2019-05-01', end: '2019-05-31' }, [...pins].reverse(), BIRTH)).toEqual(BOGOTA);
+    expect(prefillTripPlace({ start: '2019-05-01', end: '2019-05-31' }, pins)).toEqual(BOGOTA);
+    expect(prefillTripPlace({ start: '2019-05-01', end: '2019-05-31' }, [...pins].reverse())).toEqual(BOGOTA);
   });
 
   it('ranks a pin with no update time below a dated one at the same distance', () => {
     const undated: TripPin = { as_of: { start: '2019-05-01', end: '2019-05-31', granularity: 'month', place: SINGAPORE } };
-    expect(prefillTripPlace({ start: '2019-05-01', end: '2019-05-31' }, [undated, pin('2019-05-01', '2019-05-31', SF)], BIRTH)).toEqual(SF);
+    expect(prefillTripPlace({ start: '2019-05-01', end: '2019-05-31' }, [undated, pin('2019-05-01', '2019-05-31', SF)])).toEqual(SF);
   });
 
   it('ignores threads with no pin or a pin with no place', () => {
     const pins: TripPin[] = [{ updated_at: '2026-10-01T00:00:00Z' }, pin('2019-05-01', '2019-05-31', undefined)];
-    expect(prefillTripPlace({ start: '2019-05-01', end: '2019-05-31' }, pins, BIRTH)).toEqual(BIRTH);
+    expect(prefillTripPlace({ start: '2019-05-01', end: '2019-05-31' }, pins)).toBeUndefined();
   });
 
-  it('falls back to the birth place, else nothing', () => {
-    expect(prefillTripPlace({ start: '2019-05-01', end: '2019-05-31' }, [], BIRTH)).toEqual(BIRTH);
-    expect(prefillTripPlace({ start: '2019-05-01', end: '2019-05-31' }, [], undefined)).toBeUndefined();
-    expect(prefillTripPlace(undefined, [pin('2019-05-01', '2019-05-31', SINGAPORE)], BIRTH)).toEqual(BIRTH);
+  // Contract reversed 2026-10-13: the birth place is a suggestion the user confirms, never a silent prefill.
+  it('with no earlier trip there is nothing to prefill', () => {
+    expect(prefillTripPlace({ start: '2019-05-01', end: '2019-05-31' }, [])).toBeUndefined();
+    expect(prefillTripPlace(undefined, [pin('2019-05-01', '2019-05-31', SINGAPORE)])).toBeUndefined();
   });
 });
 

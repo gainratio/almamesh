@@ -69,10 +69,10 @@ function moveTab(event: KeyboardEvent<HTMLElement>, tabs: readonly PinGranularit
 
 const NO_PINS: readonly TripPin[] = [];
 
-/** Until the user edits "Where?", the place follows the date: nearest pin, then the birth place. */
-function withPrefilledPlace(draft: SheetDraft, placeEdited: boolean, pins: readonly TripPin[], birthLocation: LocationDetails | undefined): SheetDraft {
+/** Until the user edits "Where?", the place follows the date: the nearest earlier trip's place, or nothing. */
+function withPrefilledPlace(draft: SheetDraft, placeEdited: boolean, pins: readonly TripPin[]): SheetDraft {
   if (placeEdited) return draft;
-  const place = prefillTripPlace(rangeOfDraft(draft), pins, birthPlaceOf(birthLocation));
+  const place = prefillTripPlace(rangeOfDraft(draft), pins);
   return place ? { ...draft, place } : draft;
 }
 
@@ -106,7 +106,9 @@ export function TimeTravelSheet(props: TimeTravelSheetProps) {
   }, [open]);
   if (!props.open) return null;
 
-  const trip = withPrefilledPlace(draft, placeEdited, current ? [...(props.pins ?? NO_PINS), { as_of: current }] : (props.pins ?? NO_PINS), props.birthLocation);
+  const trip = withPrefilledPlace(draft, placeEdited, current ? [...(props.pins ?? NO_PINS), { as_of: current }] : (props.pins ?? NO_PINS));
+  // The birth place is offered, never assumed: the user confirms it with one tap.
+  const suggestion = trip.place ? undefined : birthPlaceOf(props.birthLocation);
   const asOf = asOfFromDraft(trip);
   const range = rangeOfDraft(trip);
   const beforeBirth = range !== undefined && endsBeforeBirthYear(range, props.birthYear);
@@ -180,6 +182,7 @@ export function TimeTravelSheet(props: TimeTravelSheetProps) {
         </select>
       )}
       <PlacePicker place={trip.place} lookup={props.lookupPlace ?? lookupPlaceLazily} prefilled={!placeEdited} forDay={draft.granularity === 'day'}
+        {...(suggestion ? { suggestion } : {})}
         onPick={(place) => {
           setPlaceEdited(true);
           setDraft({ ...draft, place });

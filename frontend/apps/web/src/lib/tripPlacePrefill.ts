@@ -1,6 +1,8 @@
 /**
  * Where a new time-travel trip starts (plan 2026-10-13 §2, "Place is part of every
- * trip"): the place of the profile's pin nearest the new date, else the birth place.
+ * trip"): the place of the profile's pin nearest the new date. With no earlier trip
+ * there is no prefill: the birth place is only a suggestion the user must confirm
+ * (2026-10-13: a silent birth-place default put a trip in the wrong city).
  * Pure: calendar strings and the chart's stored birth location only. No device
  * location, no clock, no lookups.
  */
@@ -46,10 +48,10 @@ function candidatesFor(range: DayRange, pins: readonly TripPin[]): Candidate[] {
   );
 }
 
-/** The nearest pinned place to `range` (ties: the most recently updated pin), else the birth place. */
-export function prefillTripPlace(range: DayRange | undefined, pins: readonly TripPin[], birthPlace: TripPlace | undefined): TripPlace | undefined {
+/** The nearest pinned place to `range` (ties: the most recently updated pin), or nothing. */
+export function prefillTripPlace(range: DayRange | undefined, pins: readonly TripPin[]): TripPlace | undefined {
   const nearest = range ? candidatesFor(range, pins).reduce<Candidate | undefined>((best, next) => (best ? closer(best, next) : next), undefined) : undefined;
-  return nearest?.place ?? birthPlace;
+  return nearest?.place;
 }
 
 function isZone(value: string): boolean {

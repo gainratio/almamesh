@@ -13,6 +13,12 @@ import { waitForStoreSaved } from '../../../../lib/storeSaved';
 import { __resetMemoryForTest, __setMemoryForTest } from '../../../../lib/chatMemory';
 import { useChartReanchorStatus } from '../../../../lib/chartReanchorStatus';
 
+/** 2026-10-13: the birth place is a suggestion the person confirms; a test that relies on it taps it. */
+function confirmSuggestedPlace(): void {
+  const suggestion = screen.queryByTestId('time-travel-where-suggestion');
+  if (suggestion) fireEvent.click(suggestion);
+}
+
 // 2050: stays in the future for decades, so 'future' starters do not flip with the calendar.
 const YEAR_2050 = { start: '2050-01-01', end: '2050-12-31', granularity: 'year' } as const;
 const PAST = { start: '2019-06-01', end: '2019-06-30', granularity: 'month' } as const;
@@ -36,6 +42,7 @@ async function pinYear(year: string) {
   fireEvent.click(screen.getByTestId('time-travel-button'));
   fireEvent.click(screen.getByTestId('time-travel-tab-year'));
   fireEvent.change(screen.getByTestId('time-travel-year'), { target: { value: year } });
+  confirmSuggestedPlace();
   fireEvent.click(screen.getByTestId('time-travel-go'));
   await screen.findByTestId('time-travel-banner');
 }
@@ -121,6 +128,7 @@ describe('ChatPanel time travel', () => {
     fireEvent.click(screen.getByTestId('time-travel-change'));
     expect((screen.getByTestId('time-travel-year') as HTMLSelectElement).value).toBe('2050');
     fireEvent.change(screen.getByTestId('time-travel-year'), { target: { value: '2051' } });
+    confirmSuggestedPlace();
     fireEvent.click(screen.getByTestId('time-travel-go'));
     // Contract changed 2026-10-13: one period header row; the title is the period itself.
     await waitFor(() => expect(screen.getByTestId('time-travel-title').textContent?.replace(/\u00a0/g, ' ')).toBe('2051'));

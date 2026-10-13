@@ -112,14 +112,17 @@
       "where_placeholder": "Search for a city",
       "where_required": "Pick where you were (or will be) that day.",
       "where_required_period": "Pick where you were (or will be) at that time.",
-      "where_prefilled": "Filled in from your nearest trip or your birth place. Change it if you were somewhere else.",
+      "where_prefilled": "Filled in from your nearest trip. Change it if you were somewhere else.",
       "where_none": "No city found. Try a nearby larger city.",
       "where_failed": "Place search is temporarily unavailable. Try again.",
       "retry_lookup": "Retry search",
       "before_birth": "That's before you were born. Pick a later period.",
       "save_failed": "Couldn't save this on your device. Try again.",
       "go": "Go",
-      "cancel": "Cancel"
+      "cancel": "Cancel",
+      "where_question": "Where were you living then?",
+      "where_question_day": "Where were you that day?",
+      "where_suggestion": "Use {{place}} (your birth place)"
     },
     "banner": {
       "about": "answers are about this period",

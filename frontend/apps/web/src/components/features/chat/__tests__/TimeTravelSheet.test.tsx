@@ -8,6 +8,12 @@ import { chatAsOfProblem } from '@almamesh/store';
 import '../../../../i18n/config';
 import { TimeTravelSheet } from '../TimeTravelSheet';
 
+/** 2026-10-13: the birth place is a suggestion the person confirms; a test that relies on it taps it. */
+function confirmSuggestedPlace(): void {
+  const suggestion = screen.queryByTestId('time-travel-where-suggestion');
+  if (suggestion) fireEvent.click(suggestion);
+}
+
 const CHENNAI = {
   city: 'Chennai', state: 'Tamil Nadu', country: 'India', latitude: 13.08, longitude: 80.27, timezone: 'Asia/Kolkata',
   location_name: 'Chennai, Tamil Nadu, India',
@@ -52,22 +58,36 @@ describe('TimeTravelSheet', () => {
     expect(screen.getByTestId('time-travel-sheet').textContent).toContain('new chat');
   });
 
-  // Contract reversed (plan 2026-10-13 §2): Month and Year now show "Where?" too.
-  it('opens on Month with the current month and a "Where?" prefilled with the birth place', () => {
+  // Contract reversed 2026-10-13 (Harish's trip came out as his birth place, silently): with no
+  // earlier trip, "Where?" is empty and asks where they lived, offering the birth place to CONFIRM.
+  it('opens on Month; with no earlier trip it asks where they were living and offers the birth place to confirm', () => {
     renderSheet();
     expect(screen.getByTestId('time-travel-tab-month').getAttribute('aria-selected')).toBe('true');
     expect((screen.getByTestId('time-travel-month') as HTMLSelectElement).value).toBe('10');
     expect(screen.getByTestId('time-travel-where')).toBeTruthy();
+    expect(whereValue()).toBe('');
+    expect(screen.getByTestId('time-travel-where-question').textContent).toBe('Where were you living then?');
+    expect(screen.getByTestId('time-travel-where-suggestion').textContent).toBe('Use Chennai, Tamil Nadu, India (your birth place)');
+    expect(screen.queryByTestId('time-travel-where-prefilled')).toBeNull();
+    expect(go().disabled).toBe(true);
+  });
+
+  it('confirming the birth-place suggestion fills "Where?" and enables Go', () => {
+    renderSheet();
+    fireEvent.click(screen.getByTestId('time-travel-where-suggestion'));
     expect(whereValue()).toBe('Chennai, Tamil Nadu, India');
-    expect(screen.getByTestId('time-travel-where-prefilled').textContent).toBe('Filled in from your nearest trip or your birth place. Change it if you were somewhere else.');
+    expect(screen.queryByTestId('time-travel-where-suggestion')).toBeNull();
+    expect(go().disabled).toBe(false);
   });
 
   // Contract reversed (plan 2026-10-13 §2): a Year pin carries its place.
-  it('Year 2027 → Go opens a pin for all of 2027 at the "Where?" place', async () => {
+  it('Year 2027 → Go opens a pin for all of 2027 at the confirmed place', async () => {
     const { onGo } = renderSheet();
     fireEvent.click(screen.getByTestId('time-travel-tab-year'));
     expect(screen.getByTestId('time-travel-where')).toBeTruthy();
     fireEvent.change(screen.getByTestId('time-travel-year'), { target: { value: '2027' } });
+    fireEvent.click(screen.getByTestId('time-travel-where-suggestion'));
+    confirmSuggestedPlace();
     fireEvent.click(go());
     await waitFor(() => expect(onGo).toHaveBeenCalledWith({ start: '2027-01-01', end: '2027-12-31', granularity: 'year', place: BIRTH_PLACE }));
   });
@@ -91,6 +111,7 @@ describe('TimeTravelSheet', () => {
     expect(whereValue()).toBe('Singapore');
     fireEvent.change(screen.getByTestId('time-travel-month-year'), { target: { value: '2028' } });
     expect(whereValue()).toBe('San Francisco, United States');
+    confirmSuggestedPlace();
     fireEvent.click(go());
     await waitFor(() => expect(onGo).toHaveBeenCalledWith({ start: '2028-08-01', end: '2028-08-31', granularity: 'month', place: SF }));
   });
@@ -102,6 +123,7 @@ describe('TimeTravelSheet', () => {
     fireEvent.change(screen.getByTestId('time-travel-month'), { target: { value: '05' } });
     expect(whereValue()).toBe('Bogotá, Colombia');
     expect(screen.queryByTestId('time-travel-where-prefilled')).toBeNull();
+    confirmSuggestedPlace();
     fireEvent.click(go());
     await waitFor(() => expect(onGo).toHaveBeenCalledWith(expect.objectContaining({ place: expect.objectContaining({ label: 'Bogotá, Colombia' }) })));
   });
@@ -128,6 +150,7 @@ describe('TimeTravelSheet', () => {
     await waitFor(() => expect(lookupPlace).toHaveBeenCalledWith('Bogotá'));
     fireEvent.click(await screen.findByTestId('time-travel-where-option-0'));
     expect(go().disabled).toBe(false);
+    confirmSuggestedPlace();
     fireEvent.click(go());
     await waitFor(() =>
       expect(onGo).toHaveBeenCalledWith({
@@ -137,11 +160,13 @@ describe('TimeTravelSheet', () => {
     );
   });
 
-  it('prefills Day with the birth place when there is no nearer pin', () => {
+  // Contract reversed 2026-10-13: the birth place is never a silent default, on Day either.
+  it('Day with no nearer pin offers the birth place as a suggestion, not a prefill', () => {
     renderSheet();
     fireEvent.click(screen.getByTestId('time-travel-tab-day'));
-    expect(whereValue()).toBe('Chennai, Tamil Nadu, India');
-    expect(screen.queryByTestId('time-travel-where-required')).toBeNull();
+    expect(whereValue()).toBe('');
+    expect(screen.getByTestId('time-travel-where-suggestion')).toBeTruthy();
+    expect(go().disabled).toBe(true);
   });
 
   it('says so when no city matches', async () => {
@@ -168,6 +193,7 @@ describe('TimeTravelSheet', () => {
   it('keeps the sheet open and says so when the pin could not be saved', async () => {
     const onClose = vi.fn();
     renderSheet({ onGo: vi.fn(async () => Promise.reject(new Error('Saving chat failed.'))), onClose });
+    confirmSuggestedPlace();
     fireEvent.click(go());
     expect(await screen.findByTestId('time-travel-save-failed')).toBeTruthy();
     expect(onClose).not.toHaveBeenCalled();
@@ -175,6 +201,7 @@ describe('TimeTravelSheet', () => {
 
   it('emits only pins that pass the strict store validator (a Month pin with its place)', async () => {
     const { onGo } = renderSheet();
+    confirmSuggestedPlace();
     fireEvent.click(go());
     await waitFor(() => expect(onGo).toHaveBeenCalled());
     const [pin] = onGo.mock.calls[0] as unknown as [unknown];
@@ -185,6 +212,7 @@ describe('TimeTravelSheet', () => {
     const { onGo } = renderSheet();
     fireEvent.click(screen.getByTestId('time-travel-tab-day'));
     await pickBogota();
+    confirmSuggestedPlace();
     fireEvent.click(go());
     await waitFor(() => expect(onGo).toHaveBeenCalled());
     const [pin] = onGo.mock.calls[0] as unknown as [unknown];
@@ -232,6 +260,7 @@ describe('TimeTravelSheet', () => {
 
   it('wraps Tab at the end and Shift+Tab at the start of the sheet', () => {
     renderSheet();
+    confirmSuggestedPlace(); // Go is the last focusable control once a place is set.
     const dialog = screen.getByRole('dialog');
     const cancel = screen.getByTestId('time-travel-go');
     cancel.focus();
@@ -270,6 +299,7 @@ describe('TimeTravelSheet', () => {
     const onGo = vi.fn(() => new Promise<void>((resolveGo) => { release = resolveGo; }));
     const onClose = vi.fn();
     renderSheet({ onGo, onClose });
+    confirmSuggestedPlace();
     fireEvent.click(go());
     fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
     expect(onClose).not.toHaveBeenCalled();
@@ -280,6 +310,7 @@ describe('TimeTravelSheet', () => {
   it('clears an old save error when the sheet reopens', async () => {
     const onGo = vi.fn(async () => Promise.reject(new Error('x')));
     const view = renderSheet({ onGo });
+    confirmSuggestedPlace();
     fireEvent.click(go());
     await screen.findByTestId('time-travel-save-failed');
     view.rerender(<TimeTravelSheet open={false} today="2026-10-09" onGo={onGo} onClose={vi.fn()} />);
@@ -314,6 +345,7 @@ describe('TimeTravelSheet', () => {
       <TimeTravelSheet open today="2026-10-09" birthYear={1990} dayAllowed current={current} onGo={onGo} onClose={vi.fn()} />,
     );
     fireEvent.change(screen.getByTestId('time-travel-year'), { target: { value: '2030' } });
+    confirmSuggestedPlace();
     fireEvent.click(go());
     expect(await screen.findByTestId('time-travel-save-failed')).toBeTruthy();
     expect((screen.getByTestId('time-travel-year') as HTMLSelectElement).value).toBe('2030');
@@ -336,6 +368,8 @@ describe('TimeTravelSheet', () => {
 
   it('Go saves the clamped year the select shows', async () => {
     const { onGo } = renderSheet({ current: { start: '2099-01-01', end: '2099-12-31', granularity: 'year' } });
+    fireEvent.click(screen.getByTestId('time-travel-where-suggestion'));
+    confirmSuggestedPlace();
     fireEvent.click(go());
     await waitFor(() => expect(onGo).toHaveBeenCalledWith({ start: '2052-01-01', end: '2052-12-31', granularity: 'year', place: BIRTH_PLACE }));
   });

@@ -115,14 +115,17 @@
       "where_placeholder": "Busca una ciudad",
       "where_required": "Elige dónde estabas (o estarás) ese día.",
       "where_required_period": "Elige dónde estabas (o estarás) en ese momento.",
-      "where_prefilled": "Lo completamos con tu viaje más cercano o tu lugar de nacimiento. Cámbialo si estabas en otro lugar.",
+      "where_prefilled": "Tomado de tu viaje más cercano. Cámbialo si estabas en otro lugar.",
       "where_none": "No se encontró la ciudad. Prueba con una ciudad grande cercana.",
       "where_failed": "La búsqueda de lugares no está disponible temporalmente. Inténtalo de nuevo.",
       "retry_lookup": "Reintentar búsqueda",
       "before_birth": "Eso es antes de que nacieras. Elige un periodo posterior.",
       "save_failed": "No se pudo guardar en tu dispositivo. Inténtalo de nuevo.",
       "go": "Ir",
-      "cancel": "Cancelar"
+      "cancel": "Cancelar",
+      "where_question": "¿Dónde vivías entonces?",
+      "where_question_day": "¿Dónde estabas ese día?",
+      "where_suggestion": "Usar {{place}} (tu lugar de nacimiento)"
     },
     "banner": {
       "about": "las respuestas son sobre este periodo",
