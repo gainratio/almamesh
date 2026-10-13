@@ -5,11 +5,13 @@ export interface IpsSignature {
   signal: string | null;
   capturedAtMs: number | null;
   jscFrame: string | null;
+  topFrame: string | null;
 }
+export type KnownFlakeFamily = 'jsc-execution-tier' | 'wasm-gc-visit';
 export interface FlakeRetry {
   testId: string;
   ips: string;
-  signature: IpsSignature;
+  signature: IpsSignature & { family: KnownFlakeFamily };
 }
 export interface FlakeRefusal {
   testId: string;
@@ -27,7 +29,14 @@ export interface CrashReportFile {
   name: string;
   text: string;
 }
-export const KNOWN_FLAKE: Readonly<{ process: RegExp; thread: string; exceptions: string[]; jscFrame: RegExp }>;
+export interface KnownFlakeFamilyRule {
+  readonly name: KnownFlakeFamily;
+  readonly exceptions: readonly string[];
+  readonly field: 'jscFrame' | 'topFrame';
+  readonly frame?: RegExp;
+}
+export const KNOWN_FLAKE: Readonly<{ process: RegExp; thread: string; jscFrame: RegExp; families: readonly KnownFlakeFamilyRule[] }>;
+export function knownFlakeFamily(signature: IpsSignature | null): KnownFlakeFamily | null;
 export function readIpsSignature(text: string): IpsSignature | null;
 export function matchesKnownWebKitFlake(signature: IpsSignature | null): boolean;
 export function planRetries(report: unknown, crashReports: CrashReportFile[]): FlakeRetryPlan;
