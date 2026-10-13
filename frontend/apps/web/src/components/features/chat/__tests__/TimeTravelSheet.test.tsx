@@ -8,6 +8,18 @@ import { chatAsOfProblem } from '@almamesh/store';
 import '../../../../i18n/config';
 import { TimeTravelSheet } from '../TimeTravelSheet';
 
+const CHENNAI = {
+  city: 'Chennai', state: 'Tamil Nadu', country: 'India', latitude: 13.08, longitude: 80.27, timezone: 'Asia/Kolkata',
+  location_name: 'Chennai, Tamil Nadu, India',
+};
+const BIRTH_PLACE = { label: 'Chennai, Tamil Nadu, India', timezone: 'Asia/Kolkata', latitude: 13.08, longitude: 80.27 };
+const SINGAPORE = { label: 'Singapore', timezone: 'Asia/Singapore', latitude: 1.29, longitude: 103.85 };
+const SF = { label: 'San Francisco, United States', timezone: 'America/Los_Angeles', latitude: 37.77, longitude: -122.42 };
+const PINS = [
+  { as_of: { start: '2019-05-01', end: '2019-05-31', granularity: 'month' as const, place: SINGAPORE }, updated_at: '2026-10-01T00:00:00Z' },
+  { as_of: { start: '2027-01-01', end: '2027-01-31', granularity: 'month' as const, place: SF }, updated_at: '2026-10-02T00:00:00Z' },
+];
+
 const BOGOTA = {
   summary: { place_ref: 'city:202', label: 'Bogotá, Colombia', timezone: 'America/Bogota' },
   latitude: 4.711,
@@ -18,7 +30,7 @@ function renderSheet(overrides: Partial<Parameters<typeof TimeTravelSheet>[0]> =
   const onGo = vi.fn(async () => undefined);
   const lookupPlace = vi.fn(async () => ({ status: 'found' as const, place: BOGOTA }));
   const view = render(
-    <TimeTravelSheet open today="2026-10-09" birthYear={1990} dayAllowed onGo={onGo} onClose={vi.fn()} lookupPlace={lookupPlace} {...overrides} />,
+    <TimeTravelSheet open today="2026-10-09" birthYear={1990} dayAllowed birthLocation={CHENNAI} onGo={onGo} onClose={vi.fn()} lookupPlace={lookupPlace} {...overrides} />,
   );
   return { onGo, lookupPlace, rerender: view.rerender };
 }
@@ -29,6 +41,7 @@ async function pickBogota() {
 }
 
 const go = () => screen.getByTestId('time-travel-go') as HTMLButtonElement;
+const whereValue = () => (screen.getByTestId('time-travel-where-input') as HTMLInputElement).value;
 
 describe('TimeTravelSheet', () => {
   it('shows the intro it is given, else the chat copy', () => {
@@ -39,24 +52,71 @@ describe('TimeTravelSheet', () => {
     expect(screen.getByTestId('time-travel-sheet').textContent).toContain('new chat');
   });
 
-  it('opens on Month with the current month and no "Where?"', () => {
+  // Contract reversed (plan 2026-10-13 §2): Month and Year now show "Where?" too.
+  it('opens on Month with the current month and a "Where?" prefilled with the birth place', () => {
     renderSheet();
     expect(screen.getByTestId('time-travel-tab-month').getAttribute('aria-selected')).toBe('true');
     expect((screen.getByTestId('time-travel-month') as HTMLSelectElement).value).toBe('10');
-    expect(screen.queryByTestId('time-travel-where')).toBeNull();
+    expect(screen.getByTestId('time-travel-where')).toBeTruthy();
+    expect(whereValue()).toBe('Chennai, Tamil Nadu, India');
+    expect(screen.getByTestId('time-travel-where-prefilled').textContent).toBe('Filled in from your nearest trip or your birth place. Change it if you were somewhere else.');
   });
 
-  it('Year 2027 → Go opens a pin for all of 2027; there is no "Where?"', async () => {
+  // Contract reversed (plan 2026-10-13 §2): a Year pin carries its place.
+  it('Year 2027 → Go opens a pin for all of 2027 at the "Where?" place', async () => {
     const { onGo } = renderSheet();
     fireEvent.click(screen.getByTestId('time-travel-tab-year'));
-    expect(screen.queryByTestId('time-travel-where')).toBeNull();
+    expect(screen.getByTestId('time-travel-where')).toBeTruthy();
     fireEvent.change(screen.getByTestId('time-travel-year'), { target: { value: '2027' } });
     fireEvent.click(go());
-    await waitFor(() => expect(onGo).toHaveBeenCalledWith({ start: '2027-01-01', end: '2027-12-31', granularity: 'year' }));
+    await waitFor(() => expect(onGo).toHaveBeenCalledWith({ start: '2027-01-01', end: '2027-12-31', granularity: 'year', place: BIRTH_PLACE }));
   });
 
-  it('Day shows an empty, required "Where?" that searches only what the user types', async () => {
-    const { onGo, lookupPlace } = renderSheet();
+  it('keeps Go disabled on Month and Year until there is a place', async () => {
+    renderSheet({ birthLocation: undefined });
+    expect(whereValue()).toBe('');
+    expect(screen.getByTestId('time-travel-where-required').textContent).toBe('Pick where you were (or will be) at that time.');
+    expect(screen.queryByTestId('time-travel-where-prefilled')).toBeNull();
+    expect(go().disabled).toBe(true);
+    fireEvent.click(screen.getByTestId('time-travel-tab-year'));
+    expect(go().disabled).toBe(true);
+    await pickBogota();
+    expect(go().disabled).toBe(false);
+  });
+
+  it('prefills the place of the pin nearest the chosen date, and follows the date', async () => {
+    const { onGo } = renderSheet({ pins: PINS });
+    fireEvent.change(screen.getByTestId('time-travel-month-year'), { target: { value: '2019' } });
+    fireEvent.change(screen.getByTestId('time-travel-month'), { target: { value: '08' } });
+    expect(whereValue()).toBe('Singapore');
+    fireEvent.change(screen.getByTestId('time-travel-month-year'), { target: { value: '2028' } });
+    expect(whereValue()).toBe('San Francisco, United States');
+    fireEvent.click(go());
+    await waitFor(() => expect(onGo).toHaveBeenCalledWith({ start: '2028-08-01', end: '2028-08-31', granularity: 'month', place: SF }));
+  });
+
+  it('keeps a place the user picked when the date changes', async () => {
+    const { onGo } = renderSheet({ pins: PINS });
+    await pickBogota();
+    fireEvent.change(screen.getByTestId('time-travel-month-year'), { target: { value: '2019' } });
+    fireEvent.change(screen.getByTestId('time-travel-month'), { target: { value: '05' } });
+    expect(whereValue()).toBe('Bogotá, Colombia');
+    expect(screen.queryByTestId('time-travel-where-prefilled')).toBeNull();
+    fireEvent.click(go());
+    await waitFor(() => expect(onGo).toHaveBeenCalledWith(expect.objectContaining({ place: expect.objectContaining({ label: 'Bogotá, Colombia' }) })));
+  });
+
+  it('does not refill a place the user cleared', () => {
+    renderSheet({ pins: PINS });
+    fireEvent.change(screen.getByTestId('time-travel-where-input'), { target: { value: '' } });
+    fireEvent.change(screen.getByTestId('time-travel-month-year'), { target: { value: '2019' } });
+    expect(whereValue()).toBe('');
+    expect(go().disabled).toBe(true);
+  });
+
+  // Contract narrowed (plan 2026-10-13 §2): Day starts empty only when there is no pin or birth place to prefill.
+  it('Day shows an empty, required "Where?" (nothing to prefill) that searches only what the user types', async () => {
+    const { onGo, lookupPlace } = renderSheet({ birthLocation: undefined });
     fireEvent.click(screen.getByTestId('time-travel-tab-day'));
     expect((screen.getByTestId('time-travel-where-input') as HTMLInputElement).value).toBe('');
     expect(screen.getByTestId('time-travel-where-required')).toBeTruthy();
@@ -75,6 +135,13 @@ describe('TimeTravelSheet', () => {
         place: { label: 'Bogotá, Colombia', timezone: 'America/Bogota', latitude: 4.711, longitude: -74.0721 },
       }),
     );
+  });
+
+  it('prefills Day with the birth place when there is no nearer pin', () => {
+    renderSheet();
+    fireEvent.click(screen.getByTestId('time-travel-tab-day'));
+    expect(whereValue()).toBe('Chennai, Tamil Nadu, India');
+    expect(screen.queryByTestId('time-travel-where-required')).toBeNull();
   });
 
   it('says so when no city matches', async () => {
@@ -106,7 +173,7 @@ describe('TimeTravelSheet', () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
-  it('emits only pins that pass the strict store validator', async () => {
+  it('emits only pins that pass the strict store validator (a Month pin with its place)', async () => {
     const { onGo } = renderSheet();
     fireEvent.click(go());
     await waitFor(() => expect(onGo).toHaveBeenCalled());
@@ -270,7 +337,7 @@ describe('TimeTravelSheet', () => {
   it('Go saves the clamped year the select shows', async () => {
     const { onGo } = renderSheet({ current: { start: '2099-01-01', end: '2099-12-31', granularity: 'year' } });
     fireEvent.click(go());
-    await waitFor(() => expect(onGo).toHaveBeenCalledWith({ start: '2052-01-01', end: '2052-12-31', granularity: 'year' }));
+    await waitFor(() => expect(onGo).toHaveBeenCalledWith({ start: '2052-01-01', end: '2052-12-31', granularity: 'year', place: BIRTH_PLACE }));
   });
 
   it('loads the city list lazily, from the offline lookup only (source contract)', () => {

@@ -109,6 +109,8 @@
       "where_hint": "Escribe una ciudad. La búsqueda se queda en este dispositivo.",
       "where_placeholder": "Busca una ciudad",
       "where_required": "Elige dónde estabas (o estarás) ese día.",
+      "where_required_period": "Elige dónde estabas (o estarás) en ese momento.",
+      "where_prefilled": "Lo completamos con tu viaje más cercano o tu lugar de nacimiento. Cámbialo si estabas en otro lugar.",
       "where_none": "No se encontró la ciudad. Prueba con una ciudad grande cercana.",
       "where_failed": "La búsqueda de lugares no está disponible temporalmente. Inténtalo de nuevo.",
       "retry_lookup": "Reintentar búsqueda",

@@ -7,7 +7,7 @@ import type { ChatThreadAsOf } from '@almamesh/shared-types';
 import { chatAsOfProblem } from '@almamesh/store';
 import type { PlaceReader } from './timingPlaces';
 import { PLACE_LOOKUP_TIMEOUT_MS } from './placeTool';
-import { asOfFromDraft, formatPinLabel, SHEET_LAST_YEAR, type SheetDraft } from './timeTravelSheet';
+import { formatPinLabel, periodAsOfFromDraft, SHEET_LAST_YEAR, type SheetDraft } from './timeTravelSheet';
 
 export const TIME_TRAVEL_TOOL_NAME = 'time_travel';
 export const TIME_TRAVEL_STATUS_LABEL = 'Preparing time travel';
@@ -69,7 +69,7 @@ async function travel(input: TimeTravelToolInput, args: AgentJsonObject, signal:
     if (!found) return { error: PLACE_REF_ERROR };
     place = { label: found.summary.label, timezone: found.summary.timezone, latitude: found.latitude, longitude: found.longitude };
   }
-  const asOf = asOfFromDraft({ ...base, ...(place ? { place } : {}) });
+  const asOf = periodAsOfFromDraft({ ...base, ...(place ? { place } : {}) });
   if (!asOf || chatAsOfProblem(asOf)) return { error: DATE_ERROR };
   if (endsBeforeBirthYear(asOf, input.birthYear)) return { error: BEFORE_BIRTH_MESSAGE };
   signal.throwIfAborted();

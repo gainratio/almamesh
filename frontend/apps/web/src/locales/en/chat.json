@@ -106,6 +106,8 @@
       "where_hint": "Type a city. The search stays on this device.",
       "where_placeholder": "Search for a city",
       "where_required": "Pick where you were (or will be) that day.",
+      "where_required_period": "Pick where you were (or will be) at that time.",
+      "where_prefilled": "Filled in from your nearest trip or your birth place. Change it if you were somewhere else.",
       "where_none": "No city found. Try a nearby larger city.",
       "where_failed": "Place search is temporarily unavailable. Try again.",
       "retry_lookup": "Retry search",

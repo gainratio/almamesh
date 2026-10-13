@@ -1,7 +1,8 @@
 /**
- * "Where?" for a Day pin. Offline only (step C Ruling 16): the bundled city list,
- * loaded lazily the first time someone types, never the online geocoder.
- * Never pre-filled from the device zone or the birth place.
+ * "Where?" for every trip (Day, Month, Year). Offline only (step C Ruling 16): the
+ * bundled city list, loaded lazily the first time someone types, never the online
+ * geocoder. The sheet may hand it a prefilled place (nearest pin, else the birth
+ * place); never the device location or zone.
  */
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -28,16 +29,26 @@ interface PlacePickerProps {
   readonly place: PinPlace | undefined;
   readonly lookup: (query: string) => Promise<PlaceLookup>;
   readonly onPick: (place: PinPlace | undefined) => void;
+  /** The place came from the nearest pin or the birth place, not from the user. */
+  readonly prefilled?: boolean;
+  /** Month/Year say "at that time"; Day says "that day". */
+  readonly forDay?: boolean;
 }
 
 const DEBOUNCE_MS = 200;
 
-export function PlacePicker({ place, lookup, onPick }: PlacePickerProps) {
+export function PlacePicker({ place, lookup, onPick, prefilled = false, forDay = true }: PlacePickerProps) {
   const { t } = useTranslation('chat');
   const [query, setQuery] = useState(place?.label ?? '');
   const [options, setOptions] = useState<readonly ResolvedPlace[] | null>(null);
   const [lookupFailed, setLookupFailed] = useState(false);
   const [retry, setRetry] = useState(0);
+  const placeLabel = place?.label;
+
+  // A prefilled place can change under the picker (the user moved the date): show it.
+  useEffect(() => {
+    if (placeLabel !== undefined) setQuery(placeLabel);
+  }, [placeLabel]);
 
   useEffect(() => {
     const text = query.trim();
@@ -86,7 +97,8 @@ export function PlacePicker({ place, lookup, onPick }: PlacePickerProps) {
         }}
         className="mt-1 w-full rounded-lg border border-ui-border bg-background-primary px-3 py-2 text-sm text-text-primary"
       />
-      {!place && <p data-testid="time-travel-where-required" className="mt-1 text-xs text-text-muted">{t('time_travel.sheet.where_required')}</p>}
+      {!place && <p data-testid="time-travel-where-required" className="mt-1 text-xs text-text-muted">{t(forDay ? 'time_travel.sheet.where_required' : 'time_travel.sheet.where_required_period')}</p>}
+      {place && prefilled && <p data-testid="time-travel-where-prefilled" className="mt-1 text-xs text-text-muted">{t('time_travel.sheet.where_prefilled')}</p>}
       {lookupFailed && <div data-testid="time-travel-where-failed" role="alert" className="mt-1 text-xs text-text-muted">
         <p>{t('time_travel.sheet.where_failed')}</p>
         <button type="button" data-testid="time-travel-where-retry" onClick={() => setRetry((value) => value + 1)} className="mt-1 underline">

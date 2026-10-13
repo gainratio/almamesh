@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { BEFORE_BIRTH_MESSAGE, NEEDS_PLACE_ERROR, PLACE_REF_ERROR } from '@almamesh/llm';
-import { asOfFromDraft } from '../timeTravelSheet';
+import { periodAsOfFromDraft } from '../timeTravelSheet';
 import { createTimeTravelTool, createTravelSlot, draftFromToolArgs } from '../timeTravelTool';
 
 const BOGOTA = { summary: { place_ref: 'city:42', label: 'Bogotá, Colombia', timezone: 'America/Bogota' }, latitude: 4.60971, longitude: -74.08175 };
@@ -16,7 +16,7 @@ describe('time_travel records an action without moving the UI during the turn', 
     const { tool, record } = setup();
     expect(await tool.execute({ action: 'travel', period: 'month', date: '2019-03' }, context()))
       .toEqual({ status: 'queued', action: 'travel', period_label: 'March 2019' });
-    expect(record).toHaveBeenCalledWith({ kind: 'travel', asOf: asOfFromDraft({ granularity: 'month', day: '2019-03-01', month: '2019-03', year: 2019 }) });
+    expect(record).toHaveBeenCalledWith({ kind: 'travel', asOf: periodAsOfFromDraft({ granularity: 'month', day: '2019-03-01', month: '2019-03', year: 2019 }) });
   });
 
   it('queues Back to today with no date, place or engine call', async () => {

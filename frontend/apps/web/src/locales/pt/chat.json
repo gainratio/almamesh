@@ -109,6 +109,8 @@
       "where_hint": "Digite uma cidade. A busca fica neste dispositivo.",
       "where_placeholder": "Busque uma cidade",
       "where_required": "Escolha onde você estava (ou estará) nesse dia.",
+      "where_required_period": "Escolha onde você estava (ou estará) nessa época.",
+      "where_prefilled": "Preenchido com sua viagem mais próxima ou seu local de nascimento. Mude se você estava em outro lugar.",
       "where_none": "Cidade não encontrada. Tente uma cidade maior perto dali.",
       "where_failed": "A busca de lugares está temporariamente indisponível. Tente novamente.",
       "retry_lookup": "Tentar busca novamente",
