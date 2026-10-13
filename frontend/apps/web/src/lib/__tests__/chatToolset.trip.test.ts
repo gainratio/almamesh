@@ -124,3 +124,29 @@ describe('time_travel from a trip keeps its place', () => {
     expect(onTravel.mock.calls[0]?.[0]?.asOf.place).toEqual(SINGAPORE);
   });
 });
+
+describe('trip-bound get_timing forgives redundant arguments (2026-10-13 regression)', () => {
+  // Exactly what openai/gpt-sol-latest sent in a May 2019 trip; both calls failed before.
+  const SENT = {
+    start: '2019-05-01', end: '2019-05-31', place_ref: 'city:0', time: '12:00',
+    segments: [{ start: '2019-05-01', end: '2019-05-31', place_ref: 'city:0' }],
+  };
+
+  it.each(['dashas', 'transits'])('%s: reads the trip period at the trip place, with a note, and no error', async (section) => {
+    const result = await toolOf(toolset({ pinned: MAY_2019_SG }), 'get_timing').execute({ section, ...SENT }, options()) as {
+      error?: string; period?: { start: string; end: string }; places?: Array<{ label: string }>; notes?: string[];
+    };
+    expect(result.error).toBeUndefined();
+    expect(result.period).toMatchObject({ start: '2019-05-01', end: '2019-05-31' });
+    if (section === 'transits') expect(result.places?.map((place) => place.label)).toEqual(['Singapore']);
+    expect(result.notes).toEqual(expect.arrayContaining([expect.stringMatching(/this trip's place/i)]));
+  });
+
+  it('a real conflict in a trip says exactly how to retry', async () => {
+    const result = await toolOf(toolset({ pinned: MAY_2019_SG }), 'get_timing')
+      .execute({ section: 'transits', start: '2019-04-01', end: '2019-05-31', segments: [{ start: '2019-05-01', end: '2019-05-31' }] }, options()) as { error?: string };
+    expect(result.error).toContain('send either start/end or segments, not both');
+    expect(result.error).toContain('call get_timing with only {"section": "transits"}');
+    expect(result.error).toContain("this trip's dates and place are already bound");
+  });
+});

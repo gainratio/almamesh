@@ -479,7 +479,9 @@ export {
   TIME_NEEDS_PLACE_ERROR,
   TIME_OF_DAY_PATTERN,
   needsPlace,
+  normalizeTimingArgs,
   parseTimingArgs,
+  TIME_IGNORED_NOTE,
 } from "./period-places";
 export type { TimingArgs, TimingSegment } from "./period-places";
 export { BIRTH_YEAR_ROWS_NOTE, NO_TREE_NOTE, PRATYANTAR_NOTE, selectDashasForPeriod } from "./period-dashas";

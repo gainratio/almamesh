@@ -2,7 +2,7 @@ import type { SiderealChart } from '@almamesh/browser/types';
 import { AGENT_LIMITS, NEEDS_PLACE_ERROR, PLACE_REF_ERROR } from '@almamesh/llm';
 import { describe, expect, it, vi } from 'vitest';
 
-import { DASHAS_STATUS_LABEL, createTimingTool, withPin, type PinnedTiming } from '../timingTool';
+import { DASHAS_STATUS_LABEL, createTimingTool, tripRetryHint, withPin, type PinnedTiming } from '../timingTool';
 import domainsGolden from '../../../../../../backend/tests/fixtures/domains_golden_de421.json';
 import { CHART, SKY_CHART } from './timingFixtures';
 
@@ -100,8 +100,9 @@ describe('get_timing in a pinned thread', () => {
       { section: 'transits', segments: [{ start: '2026-06-15', end: '2026-06-15', place_ref: 'pinned' }] },
       context(),
     );
-    expect(top).toEqual({ error: PLACE_REF_ERROR });
-    expect(segment).toEqual({ error: PLACE_REF_ERROR });
+    // Contract changed 2026-10-13: in a trip every get_timing error also says how to retry.
+    expect(top).toEqual({ error: `${PLACE_REF_ERROR}${tripRetryHint('transits')}` });
+    expect(segment).toEqual({ error: `${PLACE_REF_ERROR}${tripRetryHint('transits')}` });
     expect(placeFromRef).not.toHaveBeenCalledWith('pinned');
   });
 

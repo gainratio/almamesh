@@ -15,6 +15,7 @@ import {
   MAX_SEGMENTS,
   NEEDS_PLACE_ERROR,
   needsPlace,
+  normalizeTimingArgs,
   parseTimingArgs,
   PLACE_NEEDED_BELOW_DAYS,
   PLACE_REF_ARG_PATTERN,
@@ -143,12 +144,19 @@ const PLACE_DESCRIPTION = [
   `For a few days in different places send segments (up to ${MAX_SEGMENTS}); one turn can resolve at most 2 places.`,
 ].join(' ');
 
-const BASE_PROPERTIES = { section: { type: 'string', enum: TIMING_SECTIONS }, start: DAY, end: DAY } as const;
-const PLACE_PROPERTIES = {
-  place_ref: PLACE_REF,
-  time: { type: 'string', pattern: TIME_OF_DAY_PATTERN },
-  segments: { type: 'array', minItems: 1, maxItems: MAX_SEGMENTS, items: SEGMENT },
+const BASE_PROPERTIES = {
+  section: { type: 'string', enum: TIMING_SECTIONS },
+  start: { ...DAY, description: 'First day, YYYY-MM-DD. Omit for today, or in a trip for the trip period.' },
+  end: { ...DAY, description: 'Last day, inclusive. Use with start; never together with segments.' },
 } as const;
+const PLACE_PROPERTIES = {
+  place_ref: { ...PLACE_REF, description: 'From resolve_place, for a single day. Omit in a trip: its place is bound.' },
+  time: { type: 'string', pattern: TIME_OF_DAY_PATTERN, description: 'HH:MM, 24-hour, only with a single day.' },
+  segments: { type: 'array', minItems: 1, maxItems: MAX_SEGMENTS, items: SEGMENT, description: 'Several places in a few days, instead of start/end (never with them).' },
+} as const;
+
+/** A trip's own description line: no dates or place are needed for the trip period. */
+const TRIP_DESCRIPTION = "In a time-travel trip, call with only {section} for the trip's own period: its dates and place are already bound. Send dates only to compare another period.";
 
 const UNAVAILABLE = { available: false } as const;
 
@@ -336,7 +344,7 @@ export const NEEDS_PLACE_STATUS_LABEL = 'Checking where you were';
 /** The status line for one call: no sky wording when the engine will not run. */
 function statusLabelFor(input: TimingToolInput, args: AgentJsonObject): string | undefined {
   const section = TIMING_SECTIONS.find((value) => value === args.section);
-  const parsed = withPin(input.pinned, parseTimingArgs(args));
+  const parsed = withPin(input.pinned, parseTimingArgs(bindToTrip(input.pinned, normalizeTimingArgs(args).args).args));
   if (!section || parsed.kind !== 'period') return undefined;
   if (endsBeforeBirthYear(parsed.period, input.birthYear)) return DASHAS_STATUS_LABEL;
   if (dashasOnlyNotes(input, section, parsed.period)) return DASHAS_STATUS_LABEL;
@@ -362,10 +370,53 @@ export function withPin(pinned: PinnedTiming | undefined, parsed: TimingArgs): T
   return unplaced && samePeriod(parsed.period, pinned.period) ? { ...parsed, ...place } : parsed;
 }
 
+/** Said when a trip's own place replaced the place arguments the model sent for the trip's period. */
+export const TRIP_PLACE_USED_NOTE = "This trip's place was used: in a time-travel trip, call get_timing with only a section for the trip's own period.";
+
+/** Appended to every get_timing error in a trip: exactly how to retry. */
+export function tripRetryHint(section: string): string {
+  return ` Retry: call get_timing with only {"section": "${section}"}; this trip's dates and place are already bound.`;
+}
+
+type RawArgs = Readonly<Record<string, unknown>>;
+
+type RawSegments = ReadonlyArray<{ readonly start?: unknown; readonly end?: unknown; readonly place_ref?: unknown }>;
+
+/** True when every set of dates the call names (start/end, the segments' span) is the trip's own period. */
+function namesOnlyTripPeriod(args: RawArgs, period: PeriodRange): boolean {
+  const segments = Array.isArray(args.segments) ? (args.segments as RawSegments) : undefined;
+  const datesOk = args.start === undefined || (args.start === period.start && (args.end ?? args.start) === period.end);
+  const segmentsOk = !segments || (segments[0]?.start === period.start && segments[segments.length - 1]?.end === period.end);
+  return datesOk && segmentsOk;
+}
+
+/** The reserved pin ref is never the model's to send: such a call is left for the parser to refuse. */
+function sendsReservedRef(args: RawArgs): boolean {
+  const segments = Array.isArray(args.segments) ? (args.segments as RawSegments) : [];
+  return args.place_ref === 'pinned' || segments.some((segment) => segment?.place_ref === 'pinned');
+}
+
+/**
+ * In a trip, a call for the trip's own period reads the trip's place: place
+ * arguments the model invented for it (it only ever saw the place's label)
+ * are dropped, with a note. A call for another period keeps its own places.
+ */
+function bindToTrip(pinned: PinnedTiming | undefined, args: RawArgs): { readonly args: RawArgs; readonly notes: readonly string[] } {
+  if (!pinned?.placeRef || (args.place_ref === undefined && args.segments === undefined)) return { args, notes: [] };
+  if (sendsReservedRef(args) || !namesOnlyTripPeriod(args, pinned.period)) return { args, notes: [] };
+  const { place_ref: _place, segments: _segments, ...rest } = args;
+  return { args: rest, notes: [TRIP_PLACE_USED_NOTE] };
+}
+
+function withNotes(result: TimingResult | TimingError, notes: readonly string[]): TimingResult | TimingError {
+  if (notes.length === 0 || 'error' in result) return result;
+  return { ...result, notes: [...result.notes, ...notes] };
+}
+
 export function createTimingTool(input: TimingToolInput): AgentTool {
   return {
     name: TIMING_TOOL_NAME,
-    description: input.periodSkyAllowed ? `${DESCRIPTION} ${PLACE_DESCRIPTION}` : DESCRIPTION,
+    description: [DESCRIPTION, ...(input.periodSkyAllowed ? [PLACE_DESCRIPTION] : []), ...(input.pinned ? [TRIP_DESCRIPTION] : [])].join(' '),
     statusLabel: SKY_STATUS_LABEL,
     statusLabelFor: (args: AgentJsonObject) => statusLabelFor(input, args),
     timeoutMs: TIMING_TOOL_TIMEOUT_MS,
@@ -378,10 +429,19 @@ export function createTimingTool(input: TimingToolInput): AgentTool {
     execute: async (args: AgentJsonObject, context: AgentToolContext) => {
       const section = TIMING_SECTIONS.find((value) => value === args.section);
       if (!section) return { error: SECTION_ERROR };
-      const parsed = withPin(input.pinned, parseTimingArgs(args));
-      if (parsed.kind === 'invalid') return { error: parsed.error };
-      if (parsed.kind === 'today') return todayTiming(input, section, context);
-      return periodTiming(input, section, parsed, context);
+      const normalized = normalizeTimingArgs(args);
+      const bound = bindToTrip(input.pinned, normalized.args);
+      const notes = [...normalized.notes, ...bound.notes];
+      const hint = input.pinned ? tripRetryHint(section) : '';
+      const parsed = withPin(input.pinned, parseTimingArgs(bound.args));
+      if (parsed.kind === 'invalid') return { error: `${parsed.error}${hint}` };
+      const result = parsed.kind === 'today'
+        ? await todayTiming(input, section, context)
+        : await periodTiming(input, section, parsed, context);
+      if ('error' in result && hint && result.error !== BEFORE_BIRTH_MESSAGE && result.error !== NEEDS_PLACE_ERROR) {
+        return { error: `${result.error}${hint}` };
+      }
+      return withNotes(result, notes);
     },
   };
 }

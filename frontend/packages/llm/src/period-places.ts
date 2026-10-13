@@ -140,3 +140,68 @@ export function needsPlace(
 function segmentDays(segments: readonly TimingSegment[]): number {
   return segments.reduce((sum, segment) => sum + periodEcho(segment, "period").days, 0);
 }
+
+/** Said once when a time of day came with a multi-day period: it was dropped, not refused. */
+export const TIME_IGNORED_NOTE = "A time of day applies only to a single day, so it was ignored for this period.";
+
+type RawArgs = Readonly<Record<string, unknown>>;
+type RawSegment = { readonly start?: unknown; readonly end?: unknown; readonly place_ref?: unknown };
+
+function rawSegments(value: unknown): readonly RawSegment[] | undefined {
+  if (!Array.isArray(value) || value.length === 0) return undefined;
+  return value.every((item) => typeof item === "object" && item !== null && !Array.isArray(item)) ? (value as RawSegment[]) : undefined;
+}
+
+/** Dates that only restate the segments' own span carry nothing: keep the segments. */
+function withoutRedundantDates(args: RawArgs, segments: readonly RawSegment[]): RawArgs {
+  const first = segments[0];
+  const last = segments[segments.length - 1];
+  const startOk = args.start === undefined || args.start === first?.start;
+  const endOk = args.end === undefined || args.end === last?.end;
+  if (!startOk || !endOk || (args.start === undefined && args.end === undefined)) return args;
+  const { start: _start, end: _end, ...rest } = args;
+  return rest;
+}
+
+/** A top-level place that every segment shares (or lacks) moves onto the segments. */
+function withPlaceOnSegments(args: RawArgs, segments: readonly RawSegment[]): RawArgs {
+  const place = args.place_ref;
+  if (place === undefined || !segments.every((segment) => segment.place_ref === undefined || segment.place_ref === place)) return args;
+  const { place_ref: _place, ...rest } = args;
+  return { ...rest, segments: segments.map((segment) => ({ ...segment, place_ref: place })) };
+}
+
+/** One segment and no dates is just a period with a place. */
+function withSingleSegmentAsDates(args: RawArgs): RawArgs {
+  const segments = rawSegments(args.segments);
+  if (segments?.length !== 1 || args.start !== undefined || args.end !== undefined) return args;
+  const only = segments[0] as RawSegment;
+  const { segments: _segments, ...rest } = args;
+  return { ...rest, start: only.start, end: only.end, ...(only.place_ref !== undefined ? { place_ref: only.place_ref } : {}) };
+}
+
+function isMultiDay(args: RawArgs): boolean {
+  const segments = rawSegments(args.segments);
+  if (segments && (segments.length > 1 || segments[0]?.start !== segments[0]?.end)) return true;
+  return typeof args.start === "string" && typeof args.end === "string" && args.start !== args.end;
+}
+
+/**
+ * Accept redundant-but-consistent get_timing arguments (2026-10-13: a real model
+ * sent dates, one equal segment, the same place twice and a noon time for a
+ * month, and every call failed). Only a real conflict is left for
+ * parseTimingArgs to refuse; anything malformed passes through untouched.
+ */
+export function normalizeTimingArgs(args: RawArgs): { readonly args: RawArgs; readonly notes: readonly string[] } {
+  const segments = rawSegments(args.segments);
+  if (args.segments !== undefined && !segments) return { args, notes: [] };
+  let next = args;
+  if (segments) next = withSingleSegmentAsDates(withPlaceOnSegments(withoutRedundantDates(next, segments), segments));
+  const notes: string[] = [];
+  if (next.time !== undefined && isMultiDay(next)) {
+    const { time: _time, ...rest } = next;
+    next = rest;
+    notes.push(TIME_IGNORED_NOTE);
+  }
+  return { args: next, notes };
+}
