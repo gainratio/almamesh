@@ -133,7 +133,8 @@ describe("streamAgentChat on a trip's first round", () => {
     }));
     expect(answer).toBe("Grounded.");
     expect(bodies(fetchImpl).map((body) => body.tool_choice)).toEqual(["required", "required", "none"]);
-    expect(calls.map((c) => c.status)).toEqual(["complete", "complete", "complete"]);
+    // A tool that answered { error } is recorded as an error row (2026-10-13), not "complete".
+    expect(calls.map((c) => c.status)).toEqual(["complete", "error", "complete"]);
     expect(calls.map((c) => c.toolName)).toEqual(["get_trip_context", "get_timing", "get_timing"]);
   });
 
@@ -154,6 +155,34 @@ describe("streamAgentChat on a trip's first round", () => {
     expect(all.at(-1)?.tool_choice).toBe("none");
     const finalMessages = all.at(-1)?.messages as Array<{ role: string; content: string }>;
     expect(finalMessages.some((m) => m.role === "system" && m.content.includes("get_timing did not succeed"))).toBe(true);
+  });
+
+  it("2026-10-13 regression: an identical retry of a call that errored is not a dead end", async () => {
+    // Harish's sequence: get_timing errored, the model retried with IDENTICAL args, and the
+    // duplicate-call guard ended the turn ("I tried again, but I still can't get the timing").
+    const SAME = '{"section":"transits","start":"2019-05-01","end":"2019-05-31","segments":[{"start":"2019-05-01","end":"2019-05-31"}]}';
+    const TIMING: AgentTool = { ...TRIP_TOOL, name: "get_timing", execute: (args) => (args.start ? { error: "send either start/end or segments, not both" } : { data: { gochara: [] } }) };
+    let requests = 0;
+    const fetchImpl = vi.fn(async () => {
+      requests += 1;
+      if (requests === 1) return decision({ role: "assistant", content: null, tool_calls: [call("a", "get_timing", SAME)] });
+      if (requests === 2) return decision({ role: "assistant", content: null, tool_calls: [call("b", "get_timing", SAME)] });
+      if (requests === 3) return decision({ role: "assistant", content: null, tool_calls: [call("c", "get_timing", '{"section":"transits"}')] });
+      return streamed("Saturn in Sagittarius.");
+    });
+    const calls: AgentToolCallRecord[] = [];
+    const answer = await collect(streamAgentChat({
+      config: CONFIG, messages: [{ role: "user", content: "Q" }], tools: [TRIP_TOOL, TIMING], now: NOW,
+      firstRoundToolChoice: "required", requiredToolNames: ["get_timing"],
+      onToolCall: (record) => calls.push(record), fetchImpl: fetchImpl as typeof fetch,
+    }));
+    expect(answer).toBe("Saturn in Sagittarius.");
+    const retry = (bodies(fetchImpl)[2]?.messages as Array<{ role: string; tool_call_id?: string; content: string }>).find((m) => m.tool_call_id === "b");
+    expect(retry?.content).toContain("already failed");
+    expect(retry?.content).toContain("send either start/end or segments, not both");
+    expect(retry?.content).not.toContain("duplicate_tool_call");
+    expect(calls.map((c) => c.status)).toEqual(["error", "error", "complete"]);
+    expect(bodies(fetchImpl).map((body) => body.tool_choice)).toEqual(["required", "required", "required", "none"]);
   });
 
   it("once the grounding tools have run, the next round is auto", async () => {

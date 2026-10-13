@@ -539,6 +539,11 @@ function safeToolResult(value: unknown): { readonly content: string; readonly fa
   }
 }
 
+function errorText(value: unknown): string {
+  const error = (value as { error?: unknown }).error;
+  return typeof error === "string" ? error : JSON.stringify(error);
+}
+
 /** A tool that answered with { error } returned, but did not succeed. */
 function isErrorValue(value: unknown): boolean {
   return typeof value === "object" && value !== null && !Array.isArray(value) && "error" in value;
@@ -549,7 +554,8 @@ function reportToolCall(options: StreamAgentChatOptions, call: OpenAiToolCall, a
   let status: AgentToolCallRecord["status"] = "error";
   try {
     const parsed = JSON.parse(content) as { ok?: boolean; value?: unknown; error?: unknown };
-    status = parsed.ok === true ? "complete" : "error";
+    // A tool that answered { error } ran, but did not succeed: the row says so.
+    status = parsed.ok === true && !isErrorValue(parsed.value) ? "complete" : "error";
     result = parsed.ok === true ? parsed.value : parsed.error;
   } catch {
     result = undefined;
@@ -693,6 +699,9 @@ export async function* streamAgentChat(
   const definitions = toolDefinitions(options.tools);
   const transcript: AgentWireMessage[] = [...options.messages];
   const seen = new Set<string>();
+  // Calls that ran and failed, by signature: an identical retry gets the same error back with
+  // instructions instead of ending the turn as a duplicate (2026-10-13: Harish's dead end).
+  const failedCalls = new Map<string, string>();
   const seenCallIds = new Set<string>();
   let executedCalls = 0;
   let aggregateResultChars = 0;
@@ -803,7 +812,10 @@ export async function* streamAgentChat(
         callArgs = args;
         const signature = callSignature(name, args);
         const selectedTool = registry.get(name);
-        if (seen.has(signature)) {
+        const earlierFailure = failedCalls.get(signature);
+        if (earlierFailure !== undefined) {
+          content = toolError("repeated_failed_call", `This exact call already failed: ${earlierFailure} Change the arguments as that error says before calling again.`);
+        } else if (seen.has(signature)) {
           content = toolError("duplicate_tool_call", "This tool call was already attempted.");
           forceFinal = true;
         } else if (!selectedTool) {
@@ -829,7 +841,8 @@ export async function* streamAgentChat(
             content = encoded.content;
             if (encoded.failed) forceFinal = true;
             // Only a call that succeeded grounds the trip; an { error } result lets the model retry.
-            else if (grounding && !isErrorValue(value)) stillRequired.delete(selectedTool.name);
+            else if (isErrorValue(value)) failedCalls.set(signature, errorText(value));
+            else if (grounding) stillRequired.delete(selectedTool.name);
           } catch (error) {
             throwIfAborted(options.signal);
             const code =
