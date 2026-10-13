@@ -4,7 +4,9 @@
 # memory: five original-release boots then five candidate Day/place journeys,
 # on this same runner with the same sampler and production builds without hooks.
 # travel: all desktop/iPhone time-travel cases; portable: all portable restore
-# and boot recovery cases. Each uses its own hooks-enabled preview, no retries.
+# and boot recovery cases. Each uses its own hooks-enabled preview, no retries,
+# except one rerun of a test that failed with the known WebKit flake: a page
+# crash plus a matching .ips report (scripts/webkitFlakeRetry.mjs).
 # Local functional runs both suites; local all also runs the memory comparison.
 # Evidence is uploaded only from a finalized snapshot after its content scan.
 set -euo pipefail
@@ -298,14 +300,31 @@ register_producer "$!"
 wait_for_preview "${BASE_URL}"
 }
 
+# Run one functional suite with zero Playwright retries. If it fails, rerun
+# once only the tests whose failure is the known WebKit flake (a page crash
+# with a matching .ips captured during the test), and only when every failure
+# is that flake; anything else stays red. The rerun must pass every one of them.
+#   run_suite_with_flake_retry <suite> <package script> <output dir> <args...>
+run_suite_with_flake_retry() {
+  local suite="$1" script="$2" output="$3" first=0
+  shift 3
+  local reporter="list,json"
+  if [[ -n "${CI:-}" ]]; then reporter="github,list,json"; fi
+  PLAYWRIGHT_JSON_OUTPUT_FILE="${output}-report.json" run_lane_command bun run "${script}" "$@" --retries=0 --reporter="${reporter}" --output="${output}" || first=$?
+  node scripts/webkitFlakeRetry.mjs plan --suite "${suite}" --report "${output}-report.json" --test-list "${output}-retry-list.txt" --reports-dir "${HOME}/Library/Logs/DiagnosticReports" --reports-dir /Library/Logs/DiagnosticReports --since "${ARTIFACTS}/.lane-start" --out "${ARTIFACTS}/flake-retry-${suite}.json" || return "${first}"
+  if (( first == 0 )); then return 0; fi
+  PLAYWRIGHT_JSON_OUTPUT_FILE="${output}-retry-report.json" run_lane_command bun run "${script}" "$@" --test-list="${output}-retry-list.txt" --retries=0 --reporter="${reporter}" --output="${output}-retry" || true
+  node scripts/webkitFlakeRetry.mjs verify --report "${output}-retry-report.json" --plan "${ARTIFACTS}/flake-retry-${suite}.json"
+}
+
 run_travel_lane() {
-# Zero retries, and run each independent suite even if a preceding one fails.
-TIME_TRAVEL_E2E_BASE_URL="${BASE_URL}" run_lane_command bun run test:e2e:time-travel e2e/time-travel.spec.ts --project=webkit --project=iphone-webkit --project=iphone-15-webkit --retries=0 --output="${ARTIFACTS}/time-travel" || status=1
+# Run each independent suite even if a preceding one fails.
+TIME_TRAVEL_E2E_BASE_URL="${BASE_URL}" run_suite_with_flake_retry travel test:e2e:time-travel "${ARTIFACTS}/time-travel" e2e/time-travel.spec.ts --project=webkit --project=iphone-webkit --project=iphone-15-webkit || status=1
 }
 
 run_portable_lane() {
-PORTABLE_INVARIANTS_E2E_BASE_URL="${BASE_URL}" run_lane_command bun run test:e2e:portable-invariants --project=webkit --project=iphone-webkit --retries=0 --output="${ARTIFACTS}/portable-invariants" || status=1
-BOOT_RETRY_E2E_BASE_URL="${BASE_URL}" run_lane_command bun run test:e2e:boot-retry --project=webkit --retries=0 --output="${ARTIFACTS}/boot-retry" || status=1
+PORTABLE_INVARIANTS_E2E_BASE_URL="${BASE_URL}" run_suite_with_flake_retry portable-invariants test:e2e:portable-invariants "${ARTIFACTS}/portable-invariants" --project=webkit --project=iphone-webkit || status=1
+BOOT_RETRY_E2E_BASE_URL="${BASE_URL}" run_suite_with_flake_retry boot-retry test:e2e:boot-retry "${ARTIFACTS}/boot-retry" --project=webkit || status=1
 }
 
 if [[ "${MODE}" == memory || "${MODE}" == all ]]; then run_memory_lane; fi
@@ -315,4 +334,5 @@ if [[ "${MODE}" == portable || "${MODE}" == functional || "${MODE}" == all ]]; t
 collect_crash_evidence
 CRASH_EVIDENCE_COLLECTED=1
 grep -rh "page crashed" "${ARTIFACTS}" --include='*-browser.log' || true
+node scripts/webkitFlakeRetry.mjs summary "${ARTIFACTS}" || true
 exit "${status}"

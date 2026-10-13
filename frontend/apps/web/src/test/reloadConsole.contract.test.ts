@@ -556,6 +556,48 @@ describe('explicit reload console observation', () => {
     expect(proof.requestEvents[0]).toMatchObject({ kind: 'requestfailed', referer: null, refererReadFailed: true });
   });
 
+  // Playwright settles a Referer read only at the request's response or failure
+  // event. A request the outgoing document starts after the reload begins can be
+  // orphaned by the commit with neither, and then its read stays open until the
+  // page closes: CI's explicit reload held the journey to its 420 s timeout.
+  it('closes the scope 5 s after the reload when the commit orphans a request whose Referer read never settles', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const { events, mainFrame, capture, attach } = fakeCapture();
+      const orphan = 'blob:http://127.0.0.1:4350/orphaned-by-commit';
+      let closed = false;
+      const scope = capture.duringReload(async () => {
+        events.emit('request', { url: () => orphan, headerValue: () => new Promise<string | null>(() => undefined) });
+        events.emit('framenavigated', mainFrame);
+        return 'reload complete';
+      }).then((result) => { closed = true; return result; });
+      await vi.advanceTimersByTimeAsync(4_999);
+      expect(closed, 'a late Referer still has its grace').toBe(false);
+      expect(vi.getTimerCount(), 'the grace has not lapsed at 4.999 s').toBe(1);
+      await vi.advanceTimersByTimeAsync(1);
+      await vi.waitFor(() => expect(closed, 'the scope closes once the grace lapses').toBe(true));
+      expect(await scope).toBe('reload complete');
+      const proof = attachmentProof(attach.mock.calls[0][1]);
+      expect(proof.requestEvents).toMatchObject([{ kind: 'request', url: orphan, referer: null, refererReadFailed: true }]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('leaves no grace timer behind when every Referer read settles', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const { events, mainFrame, capture } = fakeCapture();
+      await capture.duringReload(async () => {
+        events.emit('request', { url: () => cancellation.url, headerValue: async () => WORKER });
+        events.emit('framenavigated', mainFrame);
+      });
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('retains errors outside the explicit reload and errors from a failed reload without commit', async () => {
     const { events, capture, attach } = fakeCapture();
     events.emit('request', { url: () => WORKER });

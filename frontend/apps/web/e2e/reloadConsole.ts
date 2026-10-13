@@ -242,6 +242,18 @@ export function classifyReloadConsole(diagnostics: readonly ReloadDiagnostic[], 
   return result;
 }
 
+/**
+ * Playwright settles a Referer read only at the request's response or failure
+ * event. A request the outgoing document starts after the reload begins can be
+ * orphaned by the commit with neither, and its read then stays open until the
+ * page closes: the explicit reload held the journey until the test timeout.
+ * Once the reload returns, each open read gets this long; one still open then
+ * counts as unread, which proves nothing (fail-closed).
+ */
+const REFERER_READ_GRACE_MS = 5_000;
+
+interface RefererRead { referer: string | null; refererReadFailed?: boolean }
+
 export interface ReloadConsoleCapture {
   errors: string[];
   duringReload<T>(reload: () => Promise<T>): Promise<T>;
@@ -256,6 +268,8 @@ export function captureReloadConsole(page: Page, testInfo: Pick<TestInfo, 'attac
     requestEvents: Array<ReloadRequestEvent | Promise<ReloadRequestEvent>>;
     consoleEvents: Array<{ type: string; text: string; url: string; at: number }>;
     pageErrors: ReloadDiagnostic[];
+    /** Settles as unread once the grace after the reload lapses. */
+    readsExpired: Promise<RefererRead>;
   }
   const errors: string[] = [];
   const archive = async (name: string, proof: unknown) => {
@@ -281,17 +295,20 @@ export function captureReloadConsole(page: Page, testInfo: Pick<TestInfo, 'attac
   let reloading = false;
   const recordFatal = (diagnostic: ReloadDiagnostic) => errors.push(`${diagnostic.kind}: ${diagnostic.text}`);
   const relevantRequest = (url: string) => url.startsWith('blob:') || isSqlWorker(url) || isSqliteWasm(url);
-  const readReferer = (request: Request) => request.headerValue('referer').then(
-    (referer) => ({ referer }),
-    () => ({ referer: null, refererReadFailed: true }),
-  );
+  const readReferer = (request: Request, scope: Scope): Promise<RefererRead> => Promise.race([
+    request.headerValue('referer').then(
+      (referer) => ({ referer }),
+      () => ({ referer: null, refererReadFailed: true }),
+    ),
+    scope.readsExpired,
+  ]);
   page.on('request', (request) => {
     const url = request.url();
     observeBlob(url);
     if (!relevantRequest(url)) return;
     const at = ++sequence;
     if (isSqlWorker(url)) requestedWorkers.set(url, at);
-    if (active) active.requestEvents.push(readReferer(request).then((headers) => ({ kind: 'request', url, at, ...headers })));
+    if (active) active.requestEvents.push(readReferer(request, active).then((headers) => ({ kind: 'request', url, at, ...headers })));
   });
   page.on('console', (message) => {
     const type = message.type();
@@ -314,7 +331,7 @@ export function captureReloadConsole(page: Page, testInfo: Pick<TestInfo, 'attac
     if (!active) return;
     const failure = { url: request.url(), errorText: request.failure()?.errorText ?? '', at: ++sequence };
     // Capture event order now, even if the header lookup finishes after commit.
-    const observed = readReferer(request).then((headers) => ({ kind: 'requestfailed' as const, ...failure, ...headers }));
+    const observed = readReferer(request, active).then((headers) => ({ kind: 'requestfailed' as const, ...failure, ...headers }));
     active.failures.push(observed);
     active.requestEvents.push(observed);
   });
@@ -346,6 +363,10 @@ export function captureReloadConsole(page: Page, testInfo: Pick<TestInfo, 'attac
       reloading = true;
       const number = ++reloadNumber;
       const oldSqlWorkerRequests = [...requestedWorkers].map(([url, at]) => ({ url, at }));
+      let expireReads!: () => void;
+      const readsExpired = new Promise<RefererRead>((resolve) => {
+        expireReads = () => resolve({ referer: null, refererReadFailed: true });
+      });
       const scope: Scope = {
         evidence: {
           startedAt: ++sequence, committedAt: null, oldDocumentUrl: page.url(),
@@ -354,16 +375,18 @@ export function captureReloadConsole(page: Page, testInfo: Pick<TestInfo, 'attac
           oldSqlWorkerRequests,
         },
         oldSqlWorkerRequests,
-        diagnostics: [], failures: [], requestEvents: [], consoleEvents: [], pageErrors: [],
+        diagnostics: [], failures: [], requestEvents: [], consoleEvents: [], pageErrors: [], readsExpired,
       };
       active = scope;
       try {
         return await reload();
       } finally {
         if (active === scope) active = undefined;
+        const grace = setTimeout(expireReads, REFERER_READ_GRACE_MS);
         try {
           scope.evidence.failures = await Promise.all(scope.failures);
           scope.evidence.requestEvents = await Promise.all(scope.requestEvents);
+          clearTimeout(grace);
           const classified = classifyReloadConsole(scope.diagnostics, scope.evidence);
           classified.fatal.forEach(recordFatal);
           // Preserve even unmatched scopes so the public API's actual evidence

@@ -226,10 +226,13 @@ const LANE_ARTIFACT_LINES: readonly string[] = [
   `TT_MEMORY_BASELINE_REF="\${REFERENCE_REF}" TT_MEMORY_MEASUREMENT_REF="\${MEASUREMENT_REF}" TIME_TRAVEL_E2E_BASE_URL="\${REFERENCE_URL}" run_lane_command bun x playwright test --config=playwright.time-travel.config.ts e2e/time-travel-memory.webkit.spec.ts --project=iphone-15-webkit --grep 'boot baseline' --repeat-each=5 --retries=0 --reporter=json --output="\${ARTIFACTS}/time-travel-memory-baseline" > "\${ARTIFACTS}/time-travel-memory-baseline-report.json"`,
   'node scripts/webkit-memory-baseline.mjs --report "${ARTIFACTS}/time-travel-memory-baseline-report.json" --measurement-commit "${MEASUREMENT_REF}" --provenance "${ARTIFACTS}/time-travel-memory-baseline-provenance.json"',
   `TT_MEMORY_PHASE=final TT_MEMORY_GRANULARITY=day TT_MEMORY_REPORT_ONLY=0 TT_WEBKIT_BASELINE_MIB="\${BASELINE_MIB}" TIME_TRAVEL_E2E_BASE_URL="\${MEMORY_URL}" run_lane_command bun run test:e2e:time-travel e2e/time-travel-memory.webkit.spec.ts --project=iphone-15-webkit --grep 'WebContent RSS budget' --repeat-each=5 --retries=0 --output="\${ARTIFACTS}/time-travel-memory" || status=1`,
-  'TIME_TRAVEL_E2E_BASE_URL="${BASE_URL}" run_lane_command bun run test:e2e:time-travel e2e/time-travel.spec.ts --project=webkit --project=iphone-webkit --project=iphone-15-webkit --retries=0 --output="${ARTIFACTS}/time-travel" || status=1',
-  'PORTABLE_INVARIANTS_E2E_BASE_URL="${BASE_URL}" run_lane_command bun run test:e2e:portable-invariants --project=webkit --project=iphone-webkit --retries=0 --output="${ARTIFACTS}/portable-invariants" || status=1',
-  'BOOT_RETRY_E2E_BASE_URL="${BASE_URL}" run_lane_command bun run test:e2e:boot-retry --project=webkit --retries=0 --output="${ARTIFACTS}/boot-retry" || status=1',
+  'node scripts/webkitFlakeRetry.mjs plan --suite "${suite}" --report "${output}-report.json" --test-list "${output}-retry-list.txt" --reports-dir "${HOME}/Library/Logs/DiagnosticReports" --reports-dir /Library/Logs/DiagnosticReports --since "${ARTIFACTS}/.lane-start" --out "${ARTIFACTS}/flake-retry-${suite}.json" || return "${first}"',
+  'node scripts/webkitFlakeRetry.mjs verify --report "${output}-retry-report.json" --plan "${ARTIFACTS}/flake-retry-${suite}.json"',
+  'TIME_TRAVEL_E2E_BASE_URL="${BASE_URL}" run_suite_with_flake_retry travel test:e2e:time-travel "${ARTIFACTS}/time-travel" e2e/time-travel.spec.ts --project=webkit --project=iphone-webkit --project=iphone-15-webkit || status=1',
+  'PORTABLE_INVARIANTS_E2E_BASE_URL="${BASE_URL}" run_suite_with_flake_retry portable-invariants test:e2e:portable-invariants "${ARTIFACTS}/portable-invariants" --project=webkit --project=iphone-webkit || status=1',
+  'BOOT_RETRY_E2E_BASE_URL="${BASE_URL}" run_suite_with_flake_retry boot-retry test:e2e:boot-retry "${ARTIFACTS}/boot-retry" --project=webkit || status=1',
   `grep -rh "page crashed" "\${ARTIFACTS}" --include='*-browser.log' || true`,
+  'node scripts/webkitFlakeRetry.mjs summary "${ARTIFACTS}" || true',
 ]
 
 /** Ways to read the environment or another process's, banned anywhere in the script. */
@@ -281,7 +284,7 @@ function memoryLaneViolations(script: string): string[] {
   const violations: string[] = MEMORY_LANE_REQUIREMENTS.filter((line) => !script.includes(line))
   const baseline = script.indexOf('TT_MEMORY_BASELINE_REF="${REFERENCE_REF}"')
   const journey = script.indexOf('TT_MEMORY_PHASE=final TT_MEMORY_GRANULARITY=day TT_MEMORY_REPORT_ONLY=0')
-  const functional = script.indexOf('TIME_TRAVEL_E2E_BASE_URL="${BASE_URL}" run_lane_command bun run test:e2e:time-travel')
+  const functional = script.indexOf('TIME_TRAVEL_E2E_BASE_URL="${BASE_URL}" run_suite_with_flake_retry travel test:e2e:time-travel')
   if (baseline === -1 || journey <= baseline || functional <= journey) violations.push("memory-comparison-order")
   const archive = script.indexOf('git -C "${REPO_ROOT}" archive "${REFERENCE_REF}"')
   const publicDirectory = script.indexOf('mkdir -p "${REFERENCE_WEB}/public"')
@@ -680,27 +683,69 @@ describe("canonical GitHub ingress contract", () => {
     expect(result.stdout.trim().split("\n")).toEqual(expected)
   })
 
-  test.each(["travel", "portable"])("%s executes every assigned suite with no retries and retains failure status", (mode) => {
+  /**
+   * Runs a lane mode's suites with stubbed commands. `failing` lists the
+   * run_lane_command calls (1-based) that fail; `node` maps the flake-retry
+   * subcommand (plan/verify) to its exit status.
+   */
+  function stubbedLane(mode: string, failing: number[], node: Record<string, number>) {
     const script = readFileSync(resolve(root, MACOS_LANE_SCRIPT), "utf8")
-    const suites = script.slice(script.indexOf("run_travel_lane() {"), script.indexOf('if [[ "${MODE}" == memory ||'))
-    const result = spawnSync("bash", ["-c", `set -eu
+    const suites = script.slice(script.indexOf("run_suite_with_flake_retry() {"), script.indexOf('if [[ "${MODE}" == memory ||'))
+    return spawnSync("bash", ["-c", `set -eu
+unset CI
+HOME=/home/runner
 BASE_URL=http://127.0.0.1:4199
 ARTIFACTS=evidence
 status=0
 calls=0
-run_lane_command() { calls=$((calls + 1)); printf '%s\\n' "$*"; [[ "$calls" != 1 ]]; }
+run_lane_command() { calls=$((calls + 1)); printf '%s\\n' "$*"; [[ " $FAILING " != *" $calls "* ]]; }
+node() { printf 'node %s %s\\n' "$1" "$2"; case "$2" in plan) return "$PLAN" ;; verify) return "$VERIFY" ;; esac; }
 ${suites}
 run_${mode}_lane
 exit "$status"
-`], { encoding: "utf8" })
+`], { encoding: "utf8", env: { PATH: process.env.PATH, FAILING: failing.join(" "), PLAN: String(node.plan ?? 1), VERIFY: String(node.verify ?? 1) } })
+  }
+
+  const TRAVEL_RUN = "bun run test:e2e:time-travel e2e/time-travel.spec.ts --project=webkit --project=iphone-webkit --project=iphone-15-webkit"
+  const PLAN = "node scripts/webkitFlakeRetry.mjs plan"
+  const VERIFY = "node scripts/webkitFlakeRetry.mjs verify"
+
+  test.each(["travel", "portable"])("%s executes every assigned suite with no Playwright retries and retains failure status", (mode) => {
+    // The first suite fails with something other than the known flake: the plan
+    // refuses, nothing reruns, and the lane stays red.
+    const result = stubbedLane(mode, [1], { plan: 1 })
     expect(result.status).toBe(1)
     expect(result.stderr).toBe("")
     expect(result.stdout.trim().split("\n")).toEqual(mode === "travel" ? [
-      "bun run test:e2e:time-travel e2e/time-travel.spec.ts --project=webkit --project=iphone-webkit --project=iphone-15-webkit --retries=0 --output=evidence/time-travel",
+      `${TRAVEL_RUN} --retries=0 --reporter=list,json --output=evidence/time-travel`, PLAN,
     ] : [
-      "bun run test:e2e:portable-invariants --project=webkit --project=iphone-webkit --retries=0 --output=evidence/portable-invariants",
-      "bun run test:e2e:boot-retry --project=webkit --retries=0 --output=evidence/boot-retry",
+      "bun run test:e2e:portable-invariants --project=webkit --project=iphone-webkit --retries=0 --reporter=list,json --output=evidence/portable-invariants", PLAN,
+      "bun run test:e2e:boot-retry --project=webkit --retries=0 --reporter=list,json --output=evidence/boot-retry", PLAN,
     ])
+  })
+
+  test("a green suite is never rerun", () => {
+    const result = stubbedLane("travel", [], { plan: 0, verify: 0 })
+    expect(result.status).toBe(0)
+    expect(result.stdout.trim().split("\n")).toEqual([`${TRAVEL_RUN} --retries=0 --reporter=list,json --output=evidence/time-travel`, PLAN])
+  })
+
+  test("a known-flake failure reruns only the planned tests, once, and the passing rerun keeps the lane green", () => {
+    const result = stubbedLane("travel", [1], { plan: 0, verify: 0 })
+    expect(result.status).toBe(0)
+    expect(result.stdout.trim().split("\n")).toEqual([
+      `${TRAVEL_RUN} --retries=0 --reporter=list,json --output=evidence/time-travel`, PLAN,
+      `${TRAVEL_RUN} --test-list=evidence/time-travel-retry-list.txt --retries=0 --reporter=list,json --output=evidence/time-travel-retry`, VERIFY,
+    ])
+  })
+
+  test.each([
+    ["the rerun fails", [1, 2]],
+    ["the rerun passes but does not prove every retried test passed", [1]],
+  ])("a known-flake rerun stays red when %s", (_name, failing) => {
+    const result = stubbedLane("travel", failing, { plan: 0, verify: 1 })
+    expect(result.status).toBe(1)
+    expect(result.stdout.trim().split("\n").filter((line) => line.startsWith("bun run"))).toHaveLength(2)
   })
 
   test.each([
@@ -1165,10 +1210,17 @@ run_lane_command true
   test("the macOS lane runs time travel and export/import on desktop Safari and an iPhone", () => {
     const script = readFileSync(resolve(root, MACOS_LANE_SCRIPT), "utf8")
     expect(script).toContain("VITE_EXIT_GATE_HOOKS=1")
-    // No retries: a WebKit page that crashes once must turn the lane red, not pass on retry.
-    expect(script).toContain("bun run test:e2e:time-travel e2e/time-travel.spec.ts --project=webkit --project=iphone-webkit --project=iphone-15-webkit --retries=0")
-    expect(script).toContain("bun run test:e2e:portable-invariants --project=webkit --project=iphone-webkit --retries=0")
+    // CONTRACT NARROWED 2026-10-13 (was: "No retries: a WebKit page that crashes
+    // once must turn the lane red"). Still no Playwright retries; a crash turns
+    // the lane red unless its .ips matches the one known macOS-VM flake
+    // (scripts/webkitFlakeRetry.mjs), which earns that test exactly one rerun.
+    expect(script).toContain('run_suite_with_flake_retry travel test:e2e:time-travel "${ARTIFACTS}/time-travel" e2e/time-travel.spec.ts --project=webkit --project=iphone-webkit --project=iphone-15-webkit || status=1')
+    expect(script).toContain('run_suite_with_flake_retry portable-invariants test:e2e:portable-invariants "${ARTIFACTS}/portable-invariants" --project=webkit --project=iphone-webkit || status=1')
+    expect(script).toContain('run_lane_command bun run "${script}" "$@" --retries=0 --reporter="${reporter}" --output="${output}" || first=$?')
+    expect(script).toContain('--out "${ARTIFACTS}/flake-retry-${suite}.json" || return "${first}"')
+    expect(script).toContain('run_lane_command bun run "${script}" "$@" --test-list="${output}-retry-list.txt" --retries=0')
     expect(script).not.toMatch(/--retries=[1-9]/)
+    expect(script).not.toMatch(/--last-failed|--repeat-each=[0-9]+ [^\n]*time-travel\.spec/)
     for (const config of ["playwright.time-travel.config.ts", "playwright.portable-invariants.config.ts"]) {
       const source = readFileSync(resolve(root, "frontend/apps/web", config), "utf8")
       expect(source).toContain('name: "webkit", use: { ...devices["Desktop Safari"]')
@@ -1214,7 +1266,7 @@ run_lane_command true
   test("the macOS lane drives the one automatic boot retry on WebKit against the hooked preview", () => {
     const script = readFileSync(resolve(root, MACOS_LANE_SCRIPT), "utf8")
     // The fault switch exists only in the hooks build the lane already serves.
-    expect(script).toContain('BOOT_RETRY_E2E_BASE_URL="${BASE_URL}" run_lane_command bun run test:e2e:boot-retry --project=webkit --retries=0')
+    expect(script).toContain('BOOT_RETRY_E2E_BASE_URL="${BASE_URL}" run_suite_with_flake_retry boot-retry test:e2e:boot-retry "${ARTIFACTS}/boot-retry" --project=webkit || status=1')
     const config = readFileSync(resolve(root, "frontend/apps/web/playwright.boot-retry.config.ts"), "utf8")
     expect(config).toContain('name: "webkit", use: { ...devices["Desktop Safari"]')
     expect(config).toContain("process.env.BOOT_RETRY_E2E_BASE_URL")
