@@ -17,6 +17,7 @@ export const SAFE_DIAGNOSTIC_CODES = [
   'chat.save_timed_out',
   'chat.stream_failed',
   'chat.summary_failed',
+  'chat.tool_failed',
   'dashboard.chart_fetch_failed',
   'dashboard.interpretation_failed',
   'engine.prewarm_failed',
@@ -116,7 +117,7 @@ export const KNOWN_ERROR_CLASSES: ReadonlySet<string> = new Set([
   'NotAllowedError', 'NotFoundError', 'NotReadableError', 'NotSupportedError', 'QuotaExceededError', 'SecurityError',
   'TimeoutError', 'TypeMismatchError', 'UnknownError',
   // AlmaMesh (apps/web, packages/browser, llm, memory, store)
-  'BackupCryptoError', 'BackupError', 'ChartComputeError', 'ChartSaveError', 'ChartSnapshotError',
+  'BackupCryptoError', 'BackupError', 'CityLookupError', 'ChartComputeError', 'ChartSaveError', 'ChartSnapshotError',
   'ChatSummaryGenerationError', 'DriveError', 'EngineBootCancelledError', 'EngineBootstrapError', 'EngineCacheNotDurableError',
   'EngineNotReadyError', 'EngineStorageBlockedError', 'EngineWarmingError', 'InterpretationSetAsideError',
   'JsonBoundsError', 'LlmRequestError', 'LocalTimeError', 'PeriodSkyTimeoutError', 'PeriodSkyUnavailableError', 'DurableReceiptError',
@@ -144,6 +145,8 @@ export const KNOWN_ERROR_CODES: ReadonlySet<string> = new Set([
   'ai.reasoning_timeout', 'invalid_plan', 'malformed_json', 'invalid_shape', 'invalid_citation',
   // @almamesh/memory
   'memory.opfs_unavailable',
+  // apps/web offline city lookup (CityLookupErrorCode)
+  'geo.city_session', 'geo.city_import', 'geo.city_query',
   // @almamesh/store: BackupCryptoErrorCode, BackupError, SetAsideRestoreErrorCode
   'bad_passphrase', 'unsupported', 'too_costly', 'out_of_memory', 'unavailable',
   'bad_format', 'too_new', 'corrupt',

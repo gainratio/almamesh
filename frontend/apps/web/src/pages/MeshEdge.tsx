@@ -81,6 +81,7 @@ import { RESOLVE_PLACE_TOOL_NAME } from '../lib/placeTool';
 import type { SSEMetaData } from '../lib/streaming';
 import type { ViewMode } from '../lib/types';
 import { storedChartAnalysisInstant } from '../lib/analysisInstant';
+import { reportAgentToolFailure } from '../lib/agentToolDiagnostics';
 
 /** The chat-tuned provider env (mirrors the dashboard's chat wiring): the
  * EXPLICIT chat model via applyChatSettings (replaces the silent swap). */
@@ -384,6 +385,7 @@ function MeshEdgeContent({
       tools: toolset.tools,
       now,
       signal,
+      onToolError: reportAgentToolFailure,
       onStatus: (event) => {
         if (event.phase === 'using_tool') {
           activeToolLabel = event.label;

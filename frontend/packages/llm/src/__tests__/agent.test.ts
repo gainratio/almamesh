@@ -511,6 +511,67 @@ describe("streamAgentChat", () => {
 });
 
 describe("AGENT_LIMITS", () => {
+  it("hands a failed tool's own error to onToolError while the model sees only the opaque code", async () => {
+    const bodies: Array<Record<string, unknown>> = [];
+    const cause = new TypeError("Load failed");
+    const failures: unknown[] = [];
+    const fetchImpl = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      bodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+      if (bodies.length === 1) {
+        return decision({ role: "assistant", content: null, tool_calls: [call("p", "resolve_place", '{"query":"Bogota"}')] });
+      }
+      return streamed("The lookup failed.");
+    });
+
+    await collect(
+      streamAgentChat({
+        config: CONFIG,
+        messages: [{ role: "user", content: "Where?" }],
+        tools: [tool(() => { throw cause; }, { name: "resolve_place" })],
+        now: NOW,
+        fetchImpl: fetchImpl as typeof fetch,
+        onToolError: (failure) => failures.push(failure),
+      }),
+    );
+
+    expect(failures).toEqual([{ toolName: "resolve_place", code: "tool_failed", error: cause }]);
+    const modelBound = JSON.stringify(bodies[1]?.messages);
+    expect(modelBound).toContain("tool_failed");
+    expect(modelBound).not.toContain("Load failed");
+  });
+
+  it("reports a timed-out tool as tool_timeout, and a throwing onToolError never breaks the turn", async () => {
+    vi.useFakeTimers();
+    try {
+      let calls = 0;
+      const fetchImpl = vi.fn(async () => {
+        calls += 1;
+        return calls === 1
+          ? decision({ role: "assistant", content: null, tool_calls: [call("slow", "lookup")] })
+          : streamed("Timed out.");
+      });
+      const failures: string[] = [];
+      const run = collect(
+        streamAgentChat({
+          config: CONFIG,
+          messages: [{ role: "user", content: "Slow?" }],
+          tools: [tool(() => new Promise(() => undefined), { name: "lookup", timeoutMs: 50 })],
+          now: NOW,
+          fetchImpl: fetchImpl as typeof fetch,
+          onToolError: (failure) => {
+            failures.push(failure.code);
+            throw new Error("diagnostic sink failed");
+          },
+        }),
+      );
+      await vi.advanceTimersByTimeAsync(100);
+      await expect(run).resolves.toBe("Timed out.");
+      expect(failures).toEqual(["tool_timeout"]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("lets a period compute run 150 s (one queued Life Atlas compute plus its own)", () => {
     expect(AGENT_LIMITS.maxToolTimeoutMs).toBe(150_000);
     expect(AGENT_LIMITS.toolTimeoutMs).toBe(2_000);
