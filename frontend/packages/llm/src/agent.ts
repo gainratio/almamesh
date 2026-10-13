@@ -721,7 +721,6 @@ export async function* streamAgentChat(
         seen.add(callSignature(grounding.name, {}));
         stillRequired.clear();
         seenCallIds.add(localCall.id);
-        executedCalls += 1;
         aggregateResultChars += content.length;
         transcript.push({ role: "tool", tool_call_id: localCall.id, name: grounding.name, content });
         reportToolCall(options, localCall, {}, content);
@@ -798,8 +797,9 @@ export async function* streamAgentChat(
           forceFinal = true;
         } else {
           seen.add(signature);
-          stillRequired.delete(selectedTool.name);
-          executedCalls += 1;
+          // A trip's first call to each grounding tool is the trip's, not the
+          // model's: it does not spend the model's own tool-call budget.
+          if (!stillRequired.delete(selectedTool.name)) executedCalls += 1;
           options.onStatus?.({
             phase: "using_tool",
             round,

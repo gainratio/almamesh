@@ -94,6 +94,27 @@ describe("streamAgentChat on a trip's first round", () => {
     expect(calls.map((c) => c.toolName)).toEqual(["get_natal_summary", "get_trip_context", "get_timing"]);
   });
 
+  it("a trip's grounding calls do not spend the model's own tool-call budget", async () => {
+    const NATAL: AgentTool = { ...TRIP_TOOL, name: "get_natal_summary", execute: () => ({ lagna: "leo" }) };
+    const TIMING: AgentTool = { ...TRIP_TOOL, name: "get_timing", execute: (args) => ({ section: args.section }) };
+    let requests = 0;
+    const fetchImpl = vi.fn(async () => {
+      requests += 1;
+      if (requests === 1) return decision({ role: "assistant", content: null, tool_calls: [call("a", "get_natal_summary"), call("b", "get_trip_context")] });
+      if (requests === 2) return decision({ role: "assistant", content: null, tool_calls: [call("c", "get_timing", '{"section":"domains"}'), call("d", "get_timing", '{"section":"transits"}')] });
+      return streamed("Grounded.");
+    });
+    const calls: AgentToolCallRecord[] = [];
+    await collect(streamAgentChat({
+      config: CONFIG, messages: [{ role: "user", content: "Q" }], tools: [NATAL, TRIP_TOOL, TIMING], now: NOW,
+      firstRoundToolChoice: "required", requiredToolNames: ["get_natal_summary", "get_trip_context", "get_timing"],
+      onToolCall: (record) => calls.push(record), fetchImpl: fetchImpl as typeof fetch,
+    }));
+    expect(calls.map((c) => [c.toolName, c.status])).toEqual([
+      ["get_natal_summary", "complete"], ["get_trip_context", "complete"], ["get_timing", "complete"], ["get_timing", "complete"],
+    ]);
+  });
+
   it("once the grounding tools have run, the next round is auto", async () => {
     let requests = 0;
     const fetchImpl = vi.fn(async () => ++requests === 1
