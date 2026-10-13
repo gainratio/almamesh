@@ -115,6 +115,47 @@ describe("streamAgentChat on a trip's first round", () => {
     ]);
   });
 
+  it("a grounding call that returns an error does not count as run: the model may retry until it succeeds", async () => {
+    let timingCalls = 0;
+    const TIMING: AgentTool = { ...TRIP_TOOL, name: "get_timing", execute: () => (++timingCalls === 1 ? { error: "send either start/end or segments, not both" } : { data: { maha: [] } }) };
+    let requests = 0;
+    const fetchImpl = vi.fn(async () => {
+      requests += 1;
+      if (requests === 1) return decision({ role: "assistant", content: null, tool_calls: [call("a", "get_trip_context"), call("b", "get_timing", '{"section":"transits","start":"x"}')] });
+      if (requests === 2) return decision({ role: "assistant", content: null, tool_calls: [call("c", "get_timing", '{"section":"transits"}')] });
+      return streamed("Grounded.");
+    });
+    const calls: AgentToolCallRecord[] = [];
+    const answer = await collect(streamAgentChat({
+      config: CONFIG, messages: [{ role: "user", content: "Q" }], tools: [TRIP_TOOL, TIMING], now: NOW,
+      firstRoundToolChoice: "required", requiredToolNames: ["get_trip_context", "get_timing"],
+      onToolCall: (record) => calls.push(record), fetchImpl: fetchImpl as typeof fetch,
+    }));
+    expect(answer).toBe("Grounded.");
+    expect(bodies(fetchImpl).map((body) => body.tool_choice)).toEqual(["required", "required", "none"]);
+    expect(calls.map((c) => c.status)).toEqual(["complete", "complete", "complete"]);
+    expect(calls.map((c) => c.toolName)).toEqual(["get_trip_context", "get_timing", "get_timing"]);
+  });
+
+  it("retries are bounded; if timing never succeeds the final answer is told to say so plainly", async () => {
+    const TIMING: AgentTool = { ...TRIP_TOOL, name: "get_timing", execute: () => ({ error: "engine unavailable" }) };
+    let requests = 0;
+    const fetchImpl = vi.fn(async () => {
+      requests += 1;
+      if (requests <= 4) return decision({ role: "assistant", content: null, tool_calls: [call(`t${requests}`, "get_timing", `{"section":"transits","n":${requests}}`)] });
+      return streamed("I could not read the transits for that month.");
+    });
+    await collect(streamAgentChat({
+      config: CONFIG, messages: [{ role: "user", content: "Q" }], tools: [TRIP_TOOL, TIMING], now: NOW,
+      firstRoundToolChoice: "required", requiredToolNames: ["get_timing"], fetchImpl: fetchImpl as typeof fetch,
+    }));
+    const all = bodies(fetchImpl);
+    expect(all.length).toBeLessThanOrEqual(5);
+    expect(all.at(-1)?.tool_choice).toBe("none");
+    const finalMessages = all.at(-1)?.messages as Array<{ role: string; content: string }>;
+    expect(finalMessages.some((m) => m.role === "system" && m.content.includes("get_timing did not succeed"))).toBe(true);
+  });
+
   it("once the grounding tools have run, the next round is auto", async () => {
     let requests = 0;
     const fetchImpl = vi.fn(async () => ++requests === 1

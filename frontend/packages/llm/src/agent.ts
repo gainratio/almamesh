@@ -23,6 +23,9 @@ export const AGENT_LIMITS = Object.freeze({
   maxToolTimeoutMs: 150_000,
 });
 
+/** Extra decision rounds a trip may spend retrying a required grounding tool that has not yet succeeded. */
+export const GROUNDING_RETRY_ROUNDS = 2;
+
 export type AgentJsonObject = Readonly<Record<string, unknown>>;
 
 export interface AgentToolContext {
@@ -536,6 +539,11 @@ function safeToolResult(value: unknown): { readonly content: string; readonly fa
   }
 }
 
+/** A tool that answered with { error } returned, but did not succeed. */
+function isErrorValue(value: unknown): boolean {
+  return typeof value === "object" && value !== null && !Array.isArray(value) && "error" in value;
+}
+
 function reportToolCall(options: StreamAgentChatOptions, call: OpenAiToolCall, args: AgentJsonObject, content: string): void {
   let result: unknown;
   let status: AgentToolCallRecord["status"] = "error";
@@ -605,7 +613,12 @@ async function* finalRequest(
   options: StreamAgentChatOptions,
   messages: readonly AgentWireMessage[],
   definitions: ReadonlyArray<Record<string, unknown>>,
+  missing: readonly string[] = [],
 ): AsyncGenerator<string> {
+  const honest = missing.length === 0 ? [] : [{
+    role: "system" as const,
+    content: `${missing.join(", ")} did not succeed this turn. Say plainly which facts could not be read; do not guess or infer them.`,
+  }];
   throwIfAborted(options.signal);
   ensurePrivacy(options.config);
   const response = await (options.fetchImpl ?? fetch)(endpoint(options.config), {
@@ -613,7 +626,7 @@ async function* finalRequest(
     headers: headers(options.config),
     body: JSON.stringify({
       model: options.config.model,
-      messages: [...messages, { role: "system", content: FINALIZATION_INSTRUCTION }],
+      messages: [...messages, { role: "system", content: FINALIZATION_INSTRUCTION }, ...honest],
       stream: true,
       tools: definitions,
       tool_choice: "none",
@@ -690,7 +703,8 @@ export async function* streamAgentChat(
   const choiceFor = (round: number): "auto" | "required" =>
     toolChoice === "required" && (round === 1 || stillRequired.size > 0) ? "required" : "auto";
 
-  for (let round = 1; round <= AGENT_LIMITS.maxDecisionRounds; round += 1) {
+  const lastRound = AGENT_LIMITS.maxDecisionRounds + (stillRequired.size > 0 ? GROUNDING_RETRY_ROUNDS : 0);
+  for (let round = 1; round <= lastRound; round += 1) {
     options.onStatus?.({ phase: "deciding", round });
     let decision: DecisionMessage;
     try {
@@ -797,9 +811,10 @@ export async function* streamAgentChat(
           forceFinal = true;
         } else {
           seen.add(signature);
-          // A trip's first call to each grounding tool is the trip's, not the
-          // model's: it does not spend the model's own tool-call budget.
-          if (!stillRequired.delete(selectedTool.name)) executedCalls += 1;
+          // A trip's calls to a grounding tool it still needs are the trip's,
+          // not the model's: they do not spend the model's own tool budget.
+          const grounding = stillRequired.has(selectedTool.name);
+          if (!grounding) executedCalls += 1;
           options.onStatus?.({
             phase: "using_tool",
             round,
@@ -813,6 +828,8 @@ export async function* streamAgentChat(
             const encoded = safeToolResult(value);
             content = encoded.content;
             if (encoded.failed) forceFinal = true;
+            // Only a call that succeeded grounds the trip; an { error } result lets the model retry.
+            else if (grounding && !isErrorValue(value)) stillRequired.delete(selectedTool.name);
           } catch (error) {
             throwIfAborted(options.signal);
             const code =
@@ -842,17 +859,19 @@ export async function* streamAgentChat(
     // Calls past the per-round cap are dropped. That ends the turn, unless a
     // required grounding tool is still missing: then the next round asks again.
     if (truncated && stillRequired.size === 0) forceFinal = true;
+    // Past the normal round budget only while a required grounding tool has not succeeded.
+    const outOfRounds = round >= AGENT_LIMITS.maxDecisionRounds && (stillRequired.size === 0 || round >= lastRound);
     if (
       forceFinal ||
       executedCalls >= AGENT_LIMITS.maxToolCalls ||
-      round === AGENT_LIMITS.maxDecisionRounds
+      outOfRounds
     ) {
       break;
     }
   }
 
   options.onStatus?.({ phase: "answering" });
-  yield* relayTokens(finalRequest(options, transcript, definitions), emit);
+  yield* relayTokens(finalRequest(options, transcript, definitions, [...stillRequired]), emit);
   if (!emit.meaningful) throw new LlmRequestError("LLM endpoint returned an empty agent completion");
   options.onStatus?.({ phase: "complete" });
 }
