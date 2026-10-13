@@ -126,19 +126,43 @@ describe("golden vectors: TS signing is byte-identical to the Python avow kernel
     expect(RECEIPT_SCHEMA).toBe(vectors.receipt_schema);
   });
 
-  it("refuses a schema-less (avow 0.1-format) receipt", async () => {
-    // AlmaMesh never persists receipts (the per-boot signer dies with the Worker,
-    // and the predictive store strips them), so no stored 0.1 receipt can reach
-    // this path. Pin the refusal so a future persistence change cannot quietly
-    // start verifying a format the kernel rejects.
+  // avow 0.5.0-0.5.2 refused every receipt without a `schema` key, which broke
+  // every receipt sealed by avow <= 0.4.x. avow 0.5.3 reversed that: `schema` is
+  // an unsigned label, so the schema-less form signs the same bytes and verifies
+  // under the same hash, signer and Ed25519 checks. These three tests replace
+  // the old "refuses a schema-less receipt" pin, which asserted the defect.
+  function legacyReceipt(signature: string): Parameters<typeof verifyDomainStrength>[0] {
     const [vector] = vectors.receipts;
-    const legacy = {
+    return {
       payload: vector.subject,
       payload_hash: vector.payload_hash,
       public_key: vectors.public_key,
-      signature: vector.signature,
+      signature,
     } as unknown as Parameters<typeof verifyDomainStrength>[0];
-    await expect(verifyDomainStrength(legacy, vectors.public_key)).rejects.toBeInstanceOf(
+  }
+
+  it("verifies a schema-less (avow <= 0.4.x) receipt with a valid signature", async () => {
+    const [vector] = vectors.receipts;
+    await expect(
+      verifyDomainStrength(legacyReceipt(vector.signature), vectors.public_key),
+    ).resolves.toBeUndefined();
+  });
+
+  it("still runs Ed25519 on a schema-less receipt: a flipped signature byte is refused", async () => {
+    const [vector] = vectors.receipts;
+    const flipped = `${vector.signature.slice(0, -2)}${vector.signature.endsWith("00") ? "01" : "00"}`;
+    await expect(
+      verifyDomainStrength(legacyReceipt(flipped), vectors.public_key),
+    ).rejects.toBeInstanceOf(SignatureBytesInvalid);
+  });
+
+  it("refuses a schema key that is present but is not avow.receipt/v1", async () => {
+    const [vector] = vectors.receipts;
+    const relabelled = {
+      ...legacyReceipt(vector.signature),
+      schema: "avow.receipt/v0",
+    } as unknown as Parameters<typeof verifyDomainStrength>[0];
+    await expect(verifyDomainStrength(relabelled, vectors.public_key)).rejects.toBeInstanceOf(
       ReceiptSchemaMismatch,
     );
   });
