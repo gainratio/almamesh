@@ -22,13 +22,13 @@ describe('chatContextFor (the chat turn\'s context budget seam)', () => {
     const fetchImpl = vi.fn();
     const context = await chatContextFor(LOCAL, undefined, fetchImpl as unknown as typeof fetch);
     expect(context.contextTokens).toBe(8_192);
-    expect(context.promptBudget.promptTokens).toBe(2_048);
+    expect(context.promptBudget.promptTokens).toBe(1_638);
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
   it('an unknown window leaves contextTokens unset and caps the prompt as for 8k', async () => {
     const context = await chatContextFor(LOCAL, undefined, vi.fn() as unknown as typeof fetch);
     expect(context.contextTokens).toBeUndefined();
-    expect(context.promptBudget.promptTokens).toBe(2_048);
+    expect(context.promptBudget.promptTokens).toBe(1_638);
   });
 });

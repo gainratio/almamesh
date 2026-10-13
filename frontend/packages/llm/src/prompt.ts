@@ -528,6 +528,13 @@ function interpretationBlock(text?: string): string {
  * The optional `pinned` is a time-travel thread's period and tense; when absent,
  * the prompt is byte-identical to the unpinned path.
  */
+/** The longest best-first prefix of `recalled` whose composed user turn fits `tokens`. */
+function recalledWithin(recalled: readonly string[], tokens: number, compose: (kept: readonly string[]) => string): readonly string[] {
+  let kept = recalled.length;
+  while (kept > 0 && estimateTokens(compose(recalled.slice(0, kept))) > tokens) kept -= 1;
+  return recalled.slice(0, kept);
+}
+
 export function buildChatMessages(
   chart: SanitizedChart,
   question: string,
@@ -567,14 +574,14 @@ export function buildChatMessages(
   const facts = pinned?.place
     ? [`Chart facts: read them with ${TRIP_GROUNDING_TOOLS.join(" and ")} (this trip's tools).`]
     : ["Chart facts (sanitized; no identifying information):", factsBlock];
-  const userContent = [
+  const userWith = (recalled: readonly string[]): string => [
     chatRegister(mode),
     "",
     ...facts,
     meshBlock,
     rectificationBlock(rectification),
     interpretationBlock(reading),
-    retrievedContextBlock(retrievedContext),
+    retrievedContextBlock(recalled),
     "",
     "Question:",
     question,
@@ -590,6 +597,11 @@ export function buildChatMessages(
   const base = pinned ? withPlaces + "\n\n" + pinnedPeriodRules(pinned) : withPlaces;
   const systemPrompt = meshBlock === "" ? base : base + MESH_CONTEXT_EXCEPTION;
   const systemContent = withLanguage(systemPrompt, language);
+  // Under a capped profile, recalled memories (best first) keep only what fits
+  // beside the system prompt; the cloud profile keeps them all (bytes unchanged).
+  const userContent = budget.promptTokens === null
+    ? userWith(retrievedContext)
+    : userWith(recalledWithin(retrievedContext, budget.promptTokens - estimateTokens(systemContent), userWith));
 
   // Prior turns are model-authored prose + the user's own questions — plain UI
   // strings carrying no raw chart identifiers — inserted between the system

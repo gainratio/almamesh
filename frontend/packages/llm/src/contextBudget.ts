@@ -22,6 +22,13 @@ const CHARS_PER_TOKEN = 4;
 
 /** Below this window the composed chat prompt is capped so tool rounds still fit. */
 const SMALL_CONTEXT_TOKENS = 65_536;
+/**
+ * Share of the turn budget the composed prompt (system + history + user turn) may
+ * fill on a small window. The rest carries the tool schemas (about 1.7k tokens for
+ * the trip toolset) and one round of compact results. 0.5 left too little: an 8k
+ * six-turn trip thread's answer request reached 4,183 of 4,096 (P1 drive 2026-10-13).
+ */
+const SMALL_PROMPT_SHARE = 0.4;
 
 function validContext(contextTokens: number | undefined): number {
   return contextTokens !== undefined && Number.isSafeInteger(contextTokens) && contextTokens > 0
@@ -54,13 +61,13 @@ export function calibratedEstimate(estimate: number, calibration: TokenCalibrati
 /**
  * The chat prompt sizing for a model's context window. Large windows keep
  * today's cloud sizing (snapshot-locked bytes). A small window caps the composed
- * prompt at half the turn budget, so the other half is left for tool schemas and
- * tool results across rounds.
+ * prompt at SMALL_PROMPT_SHARE of the turn budget, so the rest is left for tool
+ * schemas and tool results across rounds.
  */
 export function chatPromptBudgetFor(contextTokens: number | undefined): ChatPromptBudget {
   const context = validContext(contextTokens);
   if (context >= SMALL_CONTEXT_TOKENS) return CLOUD_CHAT_BUDGET;
-  const promptTokens = Math.floor(turnTokenBudget(context) / 2);
+  const promptTokens = Math.floor(turnTokenBudget(context) * SMALL_PROMPT_SHARE);
   return {
     historyTokens: Math.min(CLOUD_CHAT_BUDGET.historyTokens, Math.floor(promptTokens / 2)),
     interpTokens: Math.min(CLOUD_CHAT_BUDGET.interpTokens, Math.floor(promptTokens / 4)),

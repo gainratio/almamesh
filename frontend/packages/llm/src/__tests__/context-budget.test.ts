@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
 
+import { estimateTokens } from "../budget";
+import { buildChatMessages } from "../prompt";
+import type { SanitizedChart } from "../sanitize";
+
+const CHART = {
+  as_of: { date: "2026-01-01", basis: "chart" },
+  ayanamsa_value: 24.1, lagna: { sign: "aries" }, planets: {}, houses: {}, yogas: [],
+} as unknown as SanitizedChart;
+
 import {
   CLOUD_CHAT_BUDGET,
   DEFAULT_CONTEXT_TOKENS,
@@ -63,9 +72,28 @@ describe("chatPromptBudgetFor", () => {
   it("caps the composed chat prompt for a small context, leaving room for tool rounds", () => {
     const small = chatPromptBudgetFor(8_192);
     expect(small.includeRawPredictive).toBe(false);
-    expect(small.promptTokens).toBe(2_048);
-    expect(small.historyTokens).toBeLessThanOrEqual(1_024);
+    // 40% of the 4,096-token turn budget: tool schemas and a compact round need the rest.
+    expect(small.promptTokens).toBe(1_638);
+    expect(small.historyTokens).toBeLessThanOrEqual(819);
     expect(chatPromptBudgetFor(undefined)).toEqual(small);
+  });
+
+  // P1 drive 2026-10-13: recalled memories grew with the thread on an 8k window, so a six-turn
+  // trip thread's answer request crossed the turn budget (4,183 > 4,096).
+  it("a small context keeps recalled memories inside the composed-prompt cap, best first", () => {
+    const small = chatPromptBudgetFor(8_192);
+    const memories = Array.from({ length: 12 }, (_, i) => `memory ${i} ${"m".repeat(600)}`);
+    const [system, user] = buildChatMessages(CHART, "How is work?", "layman", [], memories, undefined, "en", undefined, undefined, small);
+    const tokens = estimateTokens(system!.content) + estimateTokens(user!.content);
+    expect(tokens).toBeLessThanOrEqual(small.promptTokens!);
+    expect(user!.content).toContain("memory 0 ");
+    expect(user!.content).not.toContain("memory 11 ");
+  });
+
+  it("the cloud budget keeps every recalled memory (bytes unchanged)", () => {
+    const memories = Array.from({ length: 12 }, (_, i) => `memory ${i} ${"m".repeat(600)}`);
+    const user = buildChatMessages(CHART, "How is work?", "layman", [], memories)[1]!;
+    expect(user.content).toContain("memory 11 ");
   });
 });
 
