@@ -12,7 +12,8 @@ import type { PeriodReadingContext } from '@almamesh/browser/types';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const DIR = resolve(HERE, '../../../../../../testdata/period-reading');
 
-export type PeriodReadingFixture = 'year-2019' | 'month-2019-05' | 'month-2027-01' | 'day-2019-09-15';
+/** The backend goldens (p1-be), DELHI_BIRTH: Year 2019, May 2019, Jan 2027, Day 2019-09-15. */
+export type PeriodReadingFixture = 'delhi-2019-year' | 'delhi-2019-05' | 'delhi-2027-01' | 'delhi-2019-09-15-day';
 
 export function periodReadingFixture(name: PeriodReadingFixture): PeriodReadingContext {
   const value = JSON.parse(readFileSync(resolve(DIR, `${name}.json`), 'utf8')) as Record<string, unknown>;

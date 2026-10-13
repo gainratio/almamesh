@@ -1,0 +1,442 @@
+{
+  "window": {
+    "start": "2019-05-01",
+    "end": "2019-05-31"
+  },
+  "natal_lords": {
+    "sun": {
+      "rules": [
+        3
+      ],
+      "house": 8,
+      "sign": "capricorn",
+      "dignity": "neutral",
+      "combust": false,
+      "retro": false,
+      "functional": "malefic",
+      "d9_sign": "capricorn",
+      "d10_sign": "virgo",
+      "vargottama": true,
+      "yogas": [
+        "Vasi Yoga"
+      ]
+    },
+    "moon": {
+      "rules": [
+        2
+      ],
+      "house": 3,
+      "sign": "leo",
+      "dignity": "neutral",
+      "combust": false,
+      "retro": false,
+      "functional": "maraka",
+      "d9_sign": "scorpio",
+      "d10_sign": "pisces",
+      "vargottama": false,
+      "yogas": [
+        "Kemadruma Yoga"
+      ]
+    },
+    "mars": {
+      "rules": [
+        6,
+        11
+      ],
+      "house": 6,
+      "sign": "scorpio",
+      "dignity": "own",
+      "combust": false,
+      "retro": false,
+      "functional": "malefic",
+      "d9_sign": "aquarius",
+      "d10_sign": "pisces",
+      "vargottama": false,
+      "yogas": [
+        "Vipareeta Raja Yoga"
+      ]
+    },
+    "mercury": {
+      "rules": [
+        1,
+        4
+      ],
+      "house": 7,
+      "sign": "sagittarius",
+      "dignity": "neutral",
+      "combust": false,
+      "retro": true,
+      "functional": "benefic",
+      "d9_sign": "virgo",
+      "d10_sign": "taurus",
+      "vargottama": false,
+      "yogas": [
+        "Parivartana Yoga",
+        "Raja Yoga",
+        "Vasi Yoga"
+      ]
+    },
+    "jupiter": {
+      "rules": [
+        7,
+        10
+      ],
+      "house": 1,
+      "sign": "gemini",
+      "dignity": "neutral",
+      "combust": false,
+      "retro": true,
+      "functional": "maraka",
+      "d9_sign": "sagittarius",
+      "d10_sign": "virgo",
+      "vargottama": false,
+      "yogas": [
+        "Parivartana Yoga",
+        "Raja Yoga"
+      ]
+    },
+    "venus": {
+      "rules": [
+        5,
+        12
+      ],
+      "house": 8,
+      "sign": "capricorn",
+      "dignity": "neutral",
+      "combust": true,
+      "retro": true,
+      "functional": "benefic",
+      "d9_sign": "pisces",
+      "d10_sign": "scorpio",
+      "vargottama": false,
+      "yogas": [
+        "Vipareeta Raja Yoga"
+      ]
+    },
+    "saturn": {
+      "rules": [
+        8,
+        9
+      ],
+      "house": 7,
+      "sign": "sagittarius",
+      "dignity": "neutral",
+      "combust": true,
+      "retro": false,
+      "functional": "benefic",
+      "d9_sign": "scorpio",
+      "d10_sign": "cancer",
+      "vargottama": false,
+      "yogas": [
+        "Raja Yoga",
+        "Vasi Yoga"
+      ]
+    },
+    "rahu": {
+      "rules": [],
+      "house": 8,
+      "sign": "capricorn",
+      "dignity": "neutral",
+      "combust": false,
+      "retro": true,
+      "functional": "neutral",
+      "d9_sign": "leo",
+      "d10_sign": "aries",
+      "vargottama": false,
+      "yogas": []
+    },
+    "ketu": {
+      "rules": [],
+      "house": 2,
+      "sign": "cancer",
+      "dignity": "neutral",
+      "combust": false,
+      "retro": true,
+      "functional": "neutral",
+      "d9_sign": "aquarius",
+      "d10_sign": "libra",
+      "vargottama": false,
+      "yogas": []
+    }
+  },
+  "dasha_spans": [
+    {
+      "level": "maha",
+      "lord": "rahu",
+      "start": "2019-05-01",
+      "end": "2019-05-31"
+    },
+    {
+      "level": "antar",
+      "lord": "rahu",
+      "start": "2019-05-01",
+      "end": "2019-05-31"
+    },
+    {
+      "level": "pratyantar",
+      "lord": "venus",
+      "start": "2019-05-01",
+      "end": "2019-05-31"
+    }
+  ],
+  "sookshma": {
+    "lord": "jupiter",
+    "start": "2019-04-30",
+    "end": "2019-05-22"
+  },
+  "sandhi": null,
+  "yogini": {
+    "name": "bhadrika",
+    "lord": "mercury",
+    "start": "2016-05-03",
+    "end": "2021-05-03"
+  },
+  "segments": [
+    {
+      "start": "2019-05-01",
+      "end": "2019-05-31",
+      "maha": "rahu",
+      "antar": "rahu",
+      "pratyantar": "venus",
+      "events": [
+        "mars.ingress.gemini"
+      ]
+    }
+  ],
+  "sky": [
+    {
+      "graha": "jupiter",
+      "start": "2019-05-01",
+      "end": "2019-05-31",
+      "sign": "scorpio",
+      "retro": true,
+      "from_moon": 4,
+      "from_lagna": 6,
+      "sav": 33,
+      "bav": 5,
+      "tags": [
+        "jupiter_from_moon_4"
+      ]
+    },
+    {
+      "graha": "saturn",
+      "start": "2019-05-01",
+      "end": "2019-05-31",
+      "sign": "sagittarius",
+      "retro": true,
+      "from_moon": 5,
+      "from_lagna": 7,
+      "sav": 21,
+      "bav": 1,
+      "tags": []
+    },
+    {
+      "graha": "rahu",
+      "start": "2019-05-01",
+      "end": "2019-05-31",
+      "sign": "gemini",
+      "retro": true,
+      "from_moon": 11,
+      "from_lagna": 1,
+      "sav": 29,
+      "bav": null,
+      "tags": []
+    },
+    {
+      "graha": "ketu",
+      "start": "2019-05-01",
+      "end": "2019-05-31",
+      "sign": "sagittarius",
+      "retro": true,
+      "from_moon": 5,
+      "from_lagna": 7,
+      "sav": 21,
+      "bav": null,
+      "tags": []
+    }
+  ],
+  "transit_lords": {
+    "rahu": {
+      "sign": "gemini",
+      "from_moon": 11,
+      "from_lagna": 1,
+      "sav": 29,
+      "bav": null,
+      "retro": true
+    },
+    "venus": {
+      "sign": "pisces",
+      "from_moon": 8,
+      "from_lagna": 10,
+      "sav": 27,
+      "bav": 5,
+      "retro": false
+    },
+    "jupiter": {
+      "sign": "scorpio",
+      "from_moon": 4,
+      "from_lagna": 6,
+      "sav": 33,
+      "bav": 5,
+      "retro": true
+    }
+  },
+  "double_transit": [],
+  "themes": [
+    {
+      "domain": "education",
+      "houses": [
+        4,
+        5
+      ],
+      "direction": "mixed",
+      "strength": "strong",
+      "strength_pct": 59,
+      "confidence": "high",
+      "agreement": {
+        "vimshottari": true,
+        "yogini": true,
+        "transit": true
+      },
+      "factors": [
+        "Venus (pratyantar) rules the 5th",
+        "Jupiter transits the 4th from the Moon",
+        "Yogini Bhadrika (Mercury) rules the 4th"
+      ],
+      "windows": []
+    },
+    {
+      "domain": "family",
+      "houses": [
+        2,
+        4,
+        5,
+        9
+      ],
+      "direction": "supportive",
+      "strength": "strong",
+      "strength_pct": 50,
+      "confidence": "high",
+      "agreement": {
+        "vimshottari": true,
+        "yogini": true,
+        "transit": true
+      },
+      "factors": [
+        "Venus (pratyantar) rules the 5th",
+        "Jupiter transits the 4th from the Moon",
+        "Yogini Bhadrika (Mercury) rules the 4th"
+      ],
+      "windows": []
+    },
+    {
+      "domain": "spiritual",
+      "houses": [
+        9,
+        12,
+        5
+      ],
+      "direction": "mixed",
+      "strength": "strong",
+      "strength_pct": 50,
+      "confidence": "medium",
+      "agreement": {
+        "vimshottari": true,
+        "yogini": false,
+        "transit": true
+      },
+      "factors": [
+        "Venus (pratyantar) rules the 12th",
+        "Saturn transits the 5th from the Moon",
+        "Saturn's SAV in Sagittarius is 21"
+      ],
+      "windows": []
+    },
+    {
+      "domain": "health",
+      "houses": [
+        1,
+        6,
+        8
+      ],
+      "direction": "mixed",
+      "strength": "moderate",
+      "strength_pct": 45,
+      "confidence": "medium",
+      "agreement": {
+        "vimshottari": false,
+        "yogini": true,
+        "transit": true
+      },
+      "factors": [
+        "Jupiter transits the 6th from the lagna",
+        "Yogini Bhadrika (Mercury) rules the 1st",
+        "Jupiter's SAV in Scorpio is 33"
+      ],
+      "windows": []
+    },
+    {
+      "domain": "relationships",
+      "houses": [
+        7
+      ],
+      "direction": "challenging",
+      "strength": "moderate",
+      "strength_pct": 38,
+      "confidence": "medium",
+      "agreement": {
+        "vimshottari": true,
+        "yogini": false,
+        "transit": true
+      },
+      "factors": [
+        "Venus (pratyantar) is a karaka of relationships",
+        "Saturn transits the 7th from the lagna",
+        "Saturn's SAV in Sagittarius is 21"
+      ],
+      "windows": []
+    },
+    {
+      "domain": "career",
+      "houses": [
+        10
+      ],
+      "direction": "mixed",
+      "strength": "moderate",
+      "strength_pct": 48,
+      "confidence": "low",
+      "agreement": {
+        "vimshottari": false,
+        "yogini": true,
+        "transit": false
+      },
+      "factors": [
+        "Yogini Bhadrika (Mercury) is a karaka of career",
+        "Saturn strength is 48% (moderate)"
+      ],
+      "windows": []
+    }
+  ],
+  "panchang": {
+    "instant": "2019-05-01T00:00:00Z",
+    "tithi": 27,
+    "tithi_name": "Dwadashi",
+    "paksha": "krishna",
+    "nakshatra": "Purva Bhadrapada",
+    "karana": "Kaulava",
+    "yoga": "Vaidhriti",
+    "vara": "Wednesday"
+  },
+  "rules": [
+    "functional nature by lagna lordship (BPHS): yogakaraka if flagged; lagna, 5th or 9th lord = benefic; else a 3/6/8/11 lord = malefic; else a 2/7 lord = maraka; else neutral",
+    "agreement vimshottari: a running maha/antar/pratyantar lord rules a domain house or is its karaka",
+    "agreement yogini: the Yogini maha lord rules a domain house or is its karaka",
+    "agreement transit: Jupiter or Saturn occupies a domain house from the lagna or the Moon in some sky span of the window",
+    "confidence = count of agreeing techniques: 3 = high, 2 = medium, 0-1 = low",
+    "direction: the domain's transit severity plus its windows' severities, neutral ignored; all supportive = supportive, all challenging = challenging, else mixed",
+    "houses are whole-sign from the natal lagna and Moon; sade_sati_phase_1/2/3 = Saturn 12th/1st/2nd from the Moon; kantaka_shani = 1/4/7/10; ashtama_shani = 8th",
+    "double_transit: houses from the lagna both Jupiter (1/5/7/9) and Saturn (1/3/7/10) occupy or aspect at the reference instant",
+    "dashas: each level splits its parent in Vimshottari years / 120, starting at the parent lord; sookshma and panchang are for the reference instant only",
+    "panchang: tithi = Moon-Sun elongation / 12 deg, karana = / 6 deg, yoga = (Sun+Moon) / 13.33 deg; vara is the UTC weekday"
+  ]
+}

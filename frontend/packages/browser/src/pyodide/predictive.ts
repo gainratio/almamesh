@@ -430,7 +430,8 @@ export interface PeriodSkySpan extends PeriodWindow {
   readonly from_moon: number;
   readonly from_lagna: number;
   readonly sav: number;
-  readonly bav: number;
+  /** Null for Rahu and Ketu: they have no Bhinnashtakavarga. */
+  readonly bav: number | null;
   /** e.g. sade_sati_phase_1, kantaka_shani, ashtama_shani, jupiter_from_moon_N. */
   readonly tags: readonly string[];
 }
@@ -441,7 +442,8 @@ export interface PeriodTransitLord {
   readonly from_moon: number;
   readonly from_lagna: number;
   readonly sav: number;
-  readonly bav: number;
+  /** Null for Rahu and Ketu: they have no Bhinnashtakavarga. */
+  readonly bav: number | null;
   readonly retro: boolean;
 }
 

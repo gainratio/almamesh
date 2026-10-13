@@ -34,7 +34,7 @@ const TRANSIT = {
 const VARGA = { charts: { D9: { chart: 'D9', lagna_sign: 'leo', lagna_sign_lord: 'sun', placements: {} } }, vargottama: [], shadvarga_own_sign: [], vimshopaka: [] };
 const STRENGTH = { sunrise_utc_iso: '1990-01-15T01:40:00Z', ashtakavarga: { bhinna: {}, sarva: { bindus: { aries: 28 }, total: 337 } }, shadbala: { planets: {} } };
 
-function payload(reading = periodReadingFixture('month-2019-05'), varga: object = VARGA): CachedPredictiveContexts {
+function payload(reading = periodReadingFixture('delhi-2019-05'), varga: object = VARGA): CachedPredictiveContexts {
   return {
     transit_context: TRANSIT,
     varga_context_full: varga,
@@ -61,7 +61,7 @@ describe('period sky rows keep natal data once per profile', () => {
   it('two periods of one profile store one natal row, and no period row carries natal data', async () => {
     const { db, rows } = await fixture();
     await rows.write('engine', 'may', 'p1', payload());
-    await rows.write('engine', 'year', 'p1', payload(periodReadingFixture('year-2019')));
+    await rows.write('engine', 'year', 'p1', payload(periodReadingFixture('delhi-2019-year')));
     expect(await count(db, 'period_sky')).toBe(2);
     expect(await count(db, 'period_natal')).toBe(1);
     for (const { payload: text } of await db.query<{ payload: string }>('SELECT payload FROM period_sky')) {
@@ -69,7 +69,7 @@ describe('period sky rows keep natal data once per profile', () => {
       expect(text).not.toContain('strength_context');
       expect(text).not.toContain('natal_lords');
     }
-    expect((await rows.read('engine', 'year'))?.period_reading?.natal_lords.saturn?.rules).toEqual([1, 2]);
+    expect((await rows.read('engine', 'year'))?.period_reading?.natal_lords.saturn?.rules).toEqual([8, 9]);
   });
 
   it('a changed natal chart (rectified birth time) gets its own natal row; each period joins its own', async () => {
@@ -135,7 +135,7 @@ describe('period sky rows keep natal data once per profile', () => {
 
   it('refuses to persist a malformed period reading', async () => {
     const { db, rows } = await fixture();
-    const reading = { ...periodReadingFixture('month-2019-05'), themes: [{ domain: 'career' }] };
+    const reading = { ...periodReadingFixture('delhi-2019-05'), themes: [{ domain: 'career' }] };
     await expect(rows.write('engine', 'a', 'p1', payload(reading as never))).rejects.toThrow(/malformed/);
     expect(await count(db, 'period_sky')).toBe(0);
     expect(await count(db, 'period_natal')).toBe(0);

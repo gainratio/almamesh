@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { isCachedNatalLords, isCachedPeriodReading } from '../periodSkyValidation';
 import { periodReadingFixture } from './periodReadingFixtures';
 
-const seed = periodReadingFixture('year-2019');
+const seed = periodReadingFixture('delhi-2019-year');
 
 function changed(path: string, value: unknown, remove = false): unknown {
   const copy = structuredClone(seed) as unknown as Record<string, unknown>;
@@ -36,8 +36,15 @@ describe('period reading cache validation', () => {
     expect(isCachedNatalLords(seed.natal_lords)).toBe(true);
   });
 
+  it.each(['delhi-2019-year', 'delhi-2019-05', 'delhi-2027-01', 'delhi-2019-09-15-day'] as const)('accepts the backend golden %s, Rahu and Ketu with a null BAV', (name) => {
+    const reading = periodReadingFixture(name);
+    expect(reading.sky.some((span) => span.bav === null)).toBe(true);
+    expect(isCachedPeriodReading(reading)).toBe(true);
+    expect(isCachedPeriodReading(changed('sky.0.bav', 9))).toBe(false);
+  });
+
   it('accepts the optional reference-day parts as null or absent', () => {
-    expect(isCachedPeriodReading(periodReadingFixture('day-2019-09-15'))).toBe(true);
+    expect(isCachedPeriodReading(periodReadingFixture('delhi-2019-09-15-day'))).toBe(true);
     for (const key of ['sookshma', 'sandhi', 'yogini', 'panchang']) {
       expect(isCachedPeriodReading(changed(key, null)), key).toBe(true);
       expect(isCachedPeriodReading(changed(key, undefined, true)), key).toBe(true);

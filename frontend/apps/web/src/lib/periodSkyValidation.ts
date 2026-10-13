@@ -170,12 +170,12 @@ function segment(value: unknown): boolean {
 function skySpan(value: unknown): boolean {
   return span(value) && string(value.graha) && string(value.sign) && typeof value.retro === 'boolean'
     && house(value.from_moon) && house(value.from_lagna)
-    && integerInRange(value.sav, 0, 56) && integerInRange(value.bav, 0, 8) && arrayOf(value.tags, string);
+    && integerInRange(value.sav, 0, 56) && (value.bav === null || integerInRange(value.bav, 0, 8)) && arrayOf(value.tags, string);
 }
 
 function transitLord(value: unknown): boolean {
   return record(value) && string(value.sign) && house(value.from_moon) && house(value.from_lagna)
-    && integerInRange(value.sav, 0, 56) && integerInRange(value.bav, 0, 8) && typeof value.retro === 'boolean';
+    && integerInRange(value.sav, 0, 56) && (value.bav === null || integerInRange(value.bav, 0, 8)) && typeof value.retro === 'boolean';
 }
 
 function themeWindow(value: unknown): boolean {
