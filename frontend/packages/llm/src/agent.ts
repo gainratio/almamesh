@@ -979,6 +979,9 @@ export async function* streamAgentChat(
     const plan = transcript.plan(budget, definitions, calibration, [], false);
     if (!plan.fits) {
       budgetExhausted = true;
+      // A trip still missing a required grounding tool runs it here, so the answer has its facts
+      // (the final round may carry the result compact). Grounding is local and costs no model round.
+      if (stillRequired.size > 0 && pendingGrounding().length > 0) await groundLocally(round);
       break;
     }
     options.onStatus?.({ phase: "deciding", round });

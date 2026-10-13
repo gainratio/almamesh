@@ -222,6 +222,28 @@ describe("per-turn token budget", () => {
     }
   });
 
+  it("when the budget closes a trip turn with a required grounding tool still missing, the loop runs it itself first", async () => {
+    const natal = lookup("natal", () => ({ text: "n".repeat(8_000) }));
+    const trip = lookup("trip", () => ({ place: { label: "Singapore" }, period: { label: "May 2019" } }));
+    const { bodies } = await run((n) => n === 1 ? decision([call("c1", "natal")]) : streamed("Answer with the trip."), {
+      tools: [natal, trip],
+      contextTokens: 8_192,
+      firstRoundToolChoice: "required",
+      requiredToolNames: ["natal", "trip"],
+      groundingCalls: [{ name: "natal", args: {} }, { name: "trip", args: {} }],
+      messages: [{ role: "system", content: "s".repeat(8_000) }, { role: "user", content: "Question." }],
+    });
+
+    expect(trip.execute).toHaveBeenCalledTimes(1);
+    expect(natal.execute).toHaveBeenCalledTimes(1);
+    const final = bodies.at(-1)!;
+    expect(final.tool_choice).toBe("none");
+    expect(JSON.stringify(final.messages)).toContain("Singapore");
+    expect(JSON.stringify(final.messages)).not.toContain("trip did not succeed");
+    expect(promptTokens(final)).toBeLessThanOrEqual(4_096);
+    expectPaired(final);
+  });
+
   it("a 1M-context model keeps every result in full: nothing is compacted early", async () => {
     const tools = [lookup("a", () => ({ text: "A".repeat(4_000) })), lookup("b", () => ({ text: "B".repeat(4_000) }))];
     const { bodies } = await run((n) => n === 1 ? decision([call("1", "a"), call("2", "b")]) : streamed("Done."), { tools, contextTokens: 1_000_000 });
