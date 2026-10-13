@@ -13,6 +13,7 @@ import type {
   SanitizedCurrentPeriod,
   SanitizedDashas,
   SanitizedDatedPeriod,
+  SanitizedMahaPeriod,
 } from "./sanitize";
 
 /**
@@ -181,11 +182,17 @@ function rowsAfter<T extends { readonly lord: string }>(
   return idx === -1 ? [] : rows.slice(idx + 1);
 }
 
+/** The engine rows after the current antar, without inventing a missing anchor. */
+function remainingAntars(dashas: SanitizedDashas): readonly SanitizedDatedPeriod[] {
+  const mahaLord = dashas.current_maha?.lord;
+  const mahaRow = dashas.maha_dasha_sequence.find((row) => row.lord === mahaLord);
+  return rowsAfter(mahaRow?.antar_sequence ?? [], dashas.current_antar?.lord);
+}
+
 /** The remaining antardashas of the current maha, or "" without tree/anchor. */
 function remainingAntarsLine(dashas: SanitizedDashas): string {
   const mahaLord = dashas.current_maha?.lord;
-  const mahaRow = dashas.maha_dasha_sequence.find((row) => row.lord === mahaLord);
-  const remaining = rowsAfter(mahaRow?.antar_sequence ?? [], dashas.current_antar?.lord);
+  const remaining = remainingAntars(dashas);
   if (mahaLord === undefined || remaining.length === 0) {
     return "";
   }
@@ -207,13 +214,37 @@ function remainingPratyantarsLine(dashas: SanitizedDashas): string {
   return `- Remaining pratyantardashas of the ${antarLord} antardasha: ${spans}`;
 }
 
-/** The next mahadasha's dated window, or "" when last/undated. */
-function nextMahaLine(dashas: SanitizedDashas): string {
+/** The next engine-declared maha, only when it has a dated window. */
+function nextDatedMaha(dashas: SanitizedDashas): SanitizedMahaPeriod | undefined {
   const next = rowsAfter(dashas.maha_dasha_sequence, dashas.current_maha?.lord)[0];
   if (!next?.start_month || !next.end_month) {
+    return undefined;
+  }
+  return next;
+}
+
+/** The next mahadasha's dated window, or "" when last/undated. */
+function nextMahaLine(dashas: SanitizedDashas): string {
+  const next = nextDatedMaha(dashas);
+  if (!next) {
     return "";
   }
   return `- Next mahadasha: ${next.lord} ${next.start_month} -> ${next.end_month}`;
+}
+
+/**
+ * Whether the Road Ahead prompt has any engine-owned windows to narrate.
+ * It requests remaining antars and the next maha, not pratyantars. Legacy
+ * charts without a dated antar tree use only their engine's future statuses.
+ */
+export function hasUpcomingRoadAheadWindows(chart: SanitizedChart): boolean {
+  const dashas = chart.dashas;
+  if (!dashas || chart.as_of.basis === "period") return false;
+  const mahaRow = dashas.maha_dasha_sequence.find((row) => row.lord === dashas.current_maha?.lord);
+  if ((mahaRow?.antar_sequence?.length ?? 0) === 0) {
+    return dashas.maha_dasha_sequence.some((row) => row.status.startsWith("future"));
+  }
+  return remainingAntars(dashas).length > 0 || nextDatedMaha(dashas) !== undefined;
 }
 
 /**

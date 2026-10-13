@@ -185,7 +185,7 @@ describe('repository truth', () => {
     expect(setup).toContain('--version dev --sequence "${DEV_BUNDLE_SEQUENCE}" --offline');
   });
 
-  it('requires the live-like WebKit gate: OPFS refused shows the block screen, never RAM SQLite', () => {
+  it('requires the live-like WebKit gate: OPFS refused runs on in-memory SQLite with the notice, never the block screen', () => {
     const workflow = readRoot('dagger/src/index.ts');
     const gate = readRoot('frontend/apps/web/scripts/verify-webkit-engine.mjs');
     const frontendPackage = readRoot('frontend/package.json');
@@ -197,8 +197,8 @@ describe('repository truth', () => {
       'node scripts/verify-webkit-engine.mjs http://127.0.0.1:4200',
     );
     // The offline first-session pass needs working OPFS; Linux Playwright
-    // WebKit has none, and the app no longer runs on RAM SQLite, so it runs
-    // on macOS and the script refuses Linux rather than pass vacuously.
+    // WebKit has none, so it runs on macOS and the script refuses Linux
+    // rather than pass vacuously.
     expect(workflow).not.toContain('verify-webkit-engine.mjs http://127.0.0.1:4200 --first-session');
     expect(gate).toContain("process.platform !== 'linux'");
     expect(workflow).toContain(
@@ -212,20 +212,20 @@ describe('repository truth', () => {
       'node scripts/verify-cross-origin-isolation.mjs http://127.0.0.1:4200 --browser=webkit',
     );
     expect(gate).toContain('webkit.launch({ headless: true })');
-    // CONTRACT REVERSED TWICE (2026-10-05). The gate first forced an IndexedDB
-    // engine cache, then (increment 2) required in-memory SQLite plus a "not
-    // saving" note. Harish: "sqlite persistent is the only option". With OPFS
-    // refused the gate now requires the block screen, no engine cache, no
-    // engine Worker and zero IndexedDB databases.
+    // CONTRACT REVERSED THREE TIMES. The gate first forced an IndexedDB
+    // engine cache, then required in-memory SQLite plus a "not saving" note,
+    // then (2026-10-05) the block screen. Rule 2026-10-11 (AGENTS.md): OPFS
+    // refused -> in-memory SQLite with an honest notice. The gate requires the
+    // notice, no block screen, 'memory' persistence, the engine on its
+    // in-memory cache, the reference chart, and zero IndexedDB databases.
     expect(gate).not.toContain('force-indexeddb-engine-cache');
     expect(gate).not.toContain("storage.selectedCache === 'indexeddb'");
-    expect(gate).not.toContain("storage.selectedCache === 'sqlite-memory'");
-    expect(gate).not.toContain('ephemeral-storage-notice');
-    expect(gate).toContain("reason === 'storage-blocked'");
-    expect(gate).toContain("storage.statePersistence === 'blocked'");
-    expect(gate).toContain('storage.selectedCache === null');
+    expect(gate).not.toContain("reason === 'storage-blocked'");
+    expect(gate).toContain("getByTestId('in-memory-storage-notice')");
+    expect(gate).toContain("storage.statePersistence === 'memory'");
+    expect(gate).toContain("storage.selectedCache === 'sqlite-memory'");
     expect(gate).toContain('storage.databases.length === 0');
-    expect(gate).toContain('engineWorkers.length === 0');
+    expect(gate).toContain("chart.lagna === 'gemini'");
     expect(gate).toContain("serviceWorkers: 'allow'");
     expect(gate).toContain('initialDocumentControlled: !uncontrolled');
     expect(gate).toContain('offlineDocumentControlled: controlled');

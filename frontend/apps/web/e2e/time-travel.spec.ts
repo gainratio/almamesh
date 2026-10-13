@@ -5,6 +5,7 @@ import { expect, type ConsoleMessage, type Frame, type Locator, type Page, type 
 import { DELHI_BIRTH, DELHI_SEED, LLM_SETTINGS_KEY, bootEngine, seedChart, waitForEngineReady } from './interpretation.helpers';
 import { gotoSettled } from './portableInvariants.helpers';
 import { captureReloadConsole, type ReloadConsoleCapture } from './reloadConsole';
+import { waitForLifeAtlasAsOf } from './lifeAtlas.helpers';
 import { withReloadJourneyDiagnostics } from './reloadJourneyDiagnostics';
 import { test } from './webkitProfile';
 
@@ -164,8 +165,7 @@ test('[contract/stubbed] a typed June 2019 question reads June 2019, not today',
 
   // The Life Atlas reads the predictive-store slot; wait for today's reading
   // so the period compute below has a slot it could (wrongly) take.
-  const atlasAsOf = page.getByTestId('life-atlas').getByText(/^As of /);
-  await expect(atlasAsOf).toBeVisible({ timeout: 240_000 });
+  const atlasAsOf = await waitForLifeAtlasAsOf(page);
   const atlasBefore = (await atlasAsOf.textContent()) ?? '';
   expect(atlasBefore).not.toContain('2019');
   // The predictive store's requestKey history (an exit-gate hook) from here
@@ -328,8 +328,7 @@ test('[contract/stubbed] an 18-month period is one engine run with Mars, nodes a
   );
   await expect(page.getByTestId('provenance-footer')).toContainText(`As of ${today}`, { timeout: 120_000 });
   // Today's Life Atlas reading, recorded before the 24-month compute can touch its slot.
-  const atlasAsOf = page.getByTestId('life-atlas').getByText(/^As of /);
-  await expect(atlasAsOf).toBeVisible({ timeout: 240_000 });
+  const atlasAsOf = await waitForLifeAtlasAsOf(page);
   const atlasBefore = (await atlasAsOf.textContent()) ?? '';
   expect(atlasBefore).not.toContain('2027');
   await page.getByTestId('floating-chat-button').click({ timeout: 120_000 });
@@ -577,8 +576,7 @@ test.describe('places', () => {
       new Intl.DateTimeFormat('en', { year: 'numeric', month: 'short', day: 'numeric' }).format(new Date()),
     );
     await expect(page.getByTestId('provenance-footer')).toContainText(`As of ${today}`, { timeout: 120_000 });
-    const atlasAsOf = page.getByTestId('life-atlas').getByText(/^As of /);
-    await expect(atlasAsOf).toBeVisible({ timeout: 240_000 });
+    await waitForLifeAtlasAsOf(page);
     const keysBefore = await predictiveRequestKeys(page);
     expect(cityChunks, 'the city list must not load before a place is asked about').toEqual([]);
 
@@ -765,7 +763,7 @@ test.describe('pinned threads on a device in another zone', () => {
       new Intl.DateTimeFormat('en', { year: 'numeric', month: 'short', day: 'numeric' }).format(new Date()),
     );
     await expect(page.getByTestId('provenance-footer')).toContainText(`As of ${today}`, { timeout: 120_000 });
-    await expect(page.getByTestId('life-atlas').getByText(/^As of /)).toBeVisible({ timeout: 240_000 });
+    await waitForLifeAtlasAsOf(page);
     const keysBefore = await predictiveRequestKeys(page);
 
     await page.getByTestId('floating-chat-button').click({ timeout: 60_000 });
@@ -1360,7 +1358,7 @@ test.describe('Dashboard time travel', () => {
     await expect
       .poll(async () => (await predictiveRequestKeys(page)).slice(-1)[0], { timeout: 180_000 })
       .not.toBe('(none)');
-    await expect(page.getByTestId('life-atlas').getByText(/^As of /)).toBeVisible({ timeout: 240_000 });
+    await waitForLifeAtlasAsOf(page);
     const keysBefore = await predictiveRequestKeys(page);
     await pickMonth(page, '2019-03');
     await expect(page.getByTestId('time-travel-moment-transits')).toBeVisible({ timeout: 180_000 });
@@ -1500,7 +1498,7 @@ for (const tag of ['', '@iphone', '@iphone15', '@safari']) {
     await bootEngine(page);
     await seedChart(page);
     await openDashboard(page);
-    await expect(page.getByTestId('life-atlas').getByText(/^As of /)).toBeVisible({ timeout: 240_000 });
+    await waitForLifeAtlasAsOf(page);
     const atlasKeys = await predictiveRequestKeys(page);
     const before = await periodEngineCalls(page);
     await pickDashboardDay(page, '2019-03-14');
@@ -1570,7 +1568,7 @@ for (const tag of ['', '@iphone15']) {
     await bootEngine(page);
     await seedChart(page);
     await openDashboard(page);
-    await expect(page.getByTestId('life-atlas').getByText(/^As of /)).toBeVisible({ timeout: 240_000 });
+    await waitForLifeAtlasAsOf(page);
     await page.getByTestId('floating-chat-button').click();
     await page.getByTestId('time-travel-button').click();
     await page.getByTestId('time-travel-tab-month').click();
@@ -1632,7 +1630,7 @@ for (const tag of ['', '@iphone15']) {
     await bootEngine(page);
     await seedChart(page);
     await openDashboard(page);
-    await expect(page.getByTestId('life-atlas').getByText(/^As of /)).toBeVisible({ timeout: 240_000 });
+    await waitForLifeAtlasAsOf(page);
     const keys = await predictiveRequestKeys(page);
     await page.getByTestId('floating-chat-button').click();
     await page.getByTestId('chat-input').fill(facts);

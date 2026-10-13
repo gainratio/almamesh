@@ -2,6 +2,7 @@ import type { StateStorage } from 'zustand/middleware';
 import { deleteLegacyKeyval, readLegacyKeyval } from './legacyKeyval';
 import {
   migrateLegacyState,
+  seedPortableLedger,
   openPortableStateRepository,
   isPortableStateKey,
   isPortablePreferenceKey,
@@ -19,7 +20,7 @@ import {
   type PortableStateRepository,
   type PortableStateSnapshot,
 } from './portableState';
-import { markPortableStateUnavailable, openPortableStateWhenAllowed } from './portablePersistence';
+import { markPortableStateUnavailable, openPortableStateWhenAllowed, portableStatePersistence } from './portablePersistence';
 import {
   absorbLegacyQuarantine,
   memoryQuarantineRows,
@@ -350,12 +351,21 @@ async function portableRepository(): Promise<PortableStateRepository | null> {
     throw error;
   }
   if (mode === 'node-test-fallback') return null;
-  // Durable OPFS SQLite or nothing. While the browser refuses storage this
-  // stays pending ('blocked') and every hydration waits on it; a successful
+  // Durable OPFS SQLite when allowed; SQLite in memory when OPFS is refused
+  // (Safari Private Browsing). While site storage is blocked this stays
+  // pending ('blocked') and every hydration waits on it; a successful
   // checkPortableStorageAgain() resolves this same promise, no reload needed.
   portableRepositoryPromise ??= openPortableStateWhenAllowed({
-    open: () => openPortableStateRepository(),
+    open: () => openPortableStateRepository('opfs'),
+    openInMemory: () => openPortableStateRepository('memory'),
   }).then(async (repository) => {
+    // The migration below deletes each legacy row it copies. A RAM copy dies
+    // with the tab, so an in-memory session leaves legacy rows untouched; it
+    // still needs the generation ledger, or backup export/import cannot run.
+    if (portableStatePersistence() === 'memory') {
+      await seedPortableLedger(repository);
+      return repository;
+    }
     // TODO(remove after 2026-11-04, one release after the SQLite-only move):
     // legacy idb-keyval/localStorage reader for the one-time migration below.
     const legacy: LegacyStateStorage = {

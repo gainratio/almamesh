@@ -29,6 +29,7 @@ import { buildChatToolset, type ChatToolset } from '../../lib/chatToolset';
 import { expectToolsetReadsViewerToday } from '../../test/viewerToday';
 import { MESH_EDGE_FRIEND, MESH_EDGE_SPOUSE } from '../../test/meshFixtures';
 import { __resetMemoryForTest, __setMemoryForTest } from '../../lib/chatMemory';
+import { ChartEngineContext, type ChartEngineContextValue } from '../../providers/chartEngineContext';
 
 const llmMocks = vi.hoisted(() => ({
   streamAgentChat: vi.fn(),
@@ -137,17 +138,19 @@ function seedEdge(member: Profile, edge: MeshEdgeCtx): void {
   });
 }
 
-function renderAt(path: string): ReturnType<typeof render> {
+function renderAt(path: string, engine: ChartEngineContextValue | null = null): ReturnType<typeof render> {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={[path]}>
-        <Routes>
-          <Route path="/mesh" element={<div data-testid="mesh-stub" />} />
-          <Route path="/mesh/:memberId" element={<MeshEdgePage />} />
-          <Route path="/onboarding" element={<div data-testid="onboarding-stub" />} />
-        </Routes>
-      </MemoryRouter>
+      <ChartEngineContext.Provider value={engine}>
+        <MemoryRouter initialEntries={[path]}>
+          <Routes>
+            <Route path="/mesh" element={<div data-testid="mesh-stub" />} />
+            <Route path="/mesh/:memberId" element={<MeshEdgePage />} />
+            <Route path="/onboarding" element={<div data-testid="onboarding-stub" />} />
+          </Routes>
+        </MemoryRouter>
+      </ChartEngineContext.Provider>
     </QueryClientProvider>,
   );
 }
@@ -197,6 +200,25 @@ describe('MeshEdgePage', () => {
     });
     renderAt('/mesh/p-spouse');
     expect(screen.getByTestId('mesh-edge-pending')).toBeTruthy();
+  });
+
+  it('never says the engine is still starting after its boot failed: it shows the failure and a Retry that reboots', () => {
+    seedPeople(SPOUSE);
+    seedCharts(SPOUSE);
+    const reboot = vi.fn(() => new Promise<never>(() => {}));
+    renderAt('/mesh/p-spouse', {
+      engine: null,
+      stage: null,
+      error: new Error('chart worker request 1 (boot) timed out after 60000ms without progress'),
+      meta: null,
+      reboot,
+      whenReady: () => new Promise<never>(() => {}),
+      startBootstrap: () => {},
+    });
+    expect(screen.queryByTestId('mesh-edge-pending')).toBeNull();
+    expect(screen.getByTestId('mesh-edge-error').textContent).toContain('timed out after 60000ms');
+    fireEvent.click(screen.getByTestId('mesh-edge-retry'));
+    expect(reboot).toHaveBeenCalledTimes(1);
   });
 
   it('surfaces an engine failure with a retry affordance', () => {

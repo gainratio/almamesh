@@ -95,11 +95,12 @@ describe('selectPortablePersistence', () => {
     expect(selectPortablePersistence({ status: 'available' })).toBe('opfs');
   });
 
-  // CONTRACT REVERSED (2026-10-05, product rule "SQLite on OPFS or no dice"):
-  // this test used to require an in-memory SQLite fallback ('memory') on
-  // refusal. A refused OPFS now blocks the app until the user allows storage.
-  it('blocks, never falls back to in-memory SQLite, when OPFS is refused', () => {
-    expect(selectPortablePersistence({ status: 'refused', reason: 'x' })).toBe('blocked');
+  // CONTRACT REVERSED AGAIN (2026-10-12, AGENTS.md "If OPFS is refused, fall
+  // back to in-memory SQLite with an honest notice"). From 2026-10-05 this
+  // test required 'blocked': Safari Private Browsing hit a wall instead of
+  // the app. A refused OPFS now runs SQLite in memory and says so.
+  it('falls back to in-memory SQLite when OPFS is refused (Safari Private Browsing)', () => {
+    expect(selectPortablePersistence({ status: 'refused', reason: 'x' })).toBe('memory');
   });
 
   // CONTRACT REVERSED (2026-10-05): a timed-out probe used to select OPFS and
@@ -111,23 +112,24 @@ describe('selectPortablePersistence', () => {
   });
 });
 
-/** A storage whose refusal can be lifted mid-test, as when the user allows site data. */
+/**
+ * Site storage blocked ("Block all cookies") that the user lifts mid-test.
+ * That realm still shows the block screen; only a refused OPFS runs in memory.
+ */
 function switchableStorage() {
   let allowed = false;
   return {
     allow: () => {
       allowed = true;
     },
-    storage: {
-      getDirectory: () =>
-        allowed
-          ? Promise.resolve({ kind: 'directory' })
-          : Promise.reject(new DOMException('The operation is insecure.', 'SecurityError')),
-    },
+    storage: workingStorage,
+    storageBlocked: () => !allowed,
   };
 }
 
 const notBlocked = () => false;
+const inMemory = { durable: false };
+const openInMemory = vi.fn(async () => inMemory);
 
 describe('openPortableStateWhenAllowed', () => {
   it('starts pending before any open', () => {
@@ -139,32 +141,42 @@ describe('openPortableStateWhenAllowed', () => {
     const seen: string[] = [];
     subscribePortableStatePersistence(() => seen.push(portableStatePersistence()));
     await expect(
-      openPortableStateWhenAllowed({ storage: workingStorage, storageBlocked: notBlocked, open }),
+      openPortableStateWhenAllowed({ storage: workingStorage, storageBlocked: notBlocked, open, openInMemory }),
     ).resolves.toEqual({ durable: true });
     expect(open).toHaveBeenCalledOnce();
     expect(portableStatePersistence()).toBe('opfs');
     expect(seen).toEqual(['opfs']);
   });
 
-  // CONTRACT REVERSED (2026-10-05): this used to open in-memory SQLite and
-  // report 'memory' when OPFS was refused. Now: report 'blocked', never open,
-  // and keep the caller waiting (no throw, no RAM repository).
-  it('reports blocked and never opens when OPFS is refused', async () => {
+  // CONTRACT REVERSED AGAIN (2026-10-12): from 2026-10-05 a refused OPFS
+  // reported 'blocked' and kept the caller waiting behind the block screen.
+  // Now it opens SQLite in memory, reports 'memory', and never touches OPFS.
+  it('opens in-memory SQLite and reports memory when OPFS is refused', async () => {
     const open = vi.fn(async () => ({ durable: true }));
-    let settled = false;
-    void openPortableStateWhenAllowed({ storage: refusingStorage, storageBlocked: notBlocked, open }).then(
-      () => (settled = true),
-      () => (settled = true),
-    );
-    await vi.waitFor(() => expect(portableStatePersistence()).toBe('blocked'));
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    const seen: string[] = [];
+    subscribePortableStatePersistence(() => seen.push(portableStatePersistence()));
+    await expect(
+      openPortableStateWhenAllowed({ storage: refusingStorage, storageBlocked: notBlocked, open, openInMemory }),
+    ).resolves.toBe(inMemory);
     expect(open).not.toHaveBeenCalled();
-    expect(settled).toBe(false);
+    expect(portableStatePersistence()).toBe('memory');
+    expect(seen).toEqual(['memory']);
+    // Nothing is left pending: a recheck reports memory, it does not reopen.
+    await expect(checkPortableStorageAgain()).resolves.toBe('memory');
+  });
+
+  it('reports unavailable when even the in-memory open fails', async () => {
+    const open = vi.fn(async () => ({ durable: true }));
+    const failingMemory = vi.fn(() => Promise.reject(new Error('no Worker')));
+    await expect(
+      openPortableStateWhenAllowed({ storage: refusingStorage, storageBlocked: notBlocked, open, openInMemory: failingMemory }),
+    ).rejects.toThrow('no Worker');
+    expect(portableStatePersistence()).toBe('unavailable');
   });
 
   it('reports blocked when the browser blocks site storage even if OPFS answers', async () => {
     const open = vi.fn(async () => ({ durable: true }));
-    void openPortableStateWhenAllowed({ storage: workingStorage, storageBlocked: () => true, open });
+    void openPortableStateWhenAllowed({ storage: workingStorage, storageBlocked: () => true, open, openInMemory });
     await vi.waitFor(() => expect(portableStatePersistence()).toBe('blocked'));
     expect(open).not.toHaveBeenCalled();
   });
@@ -174,7 +186,7 @@ describe('openPortableStateWhenAllowed', () => {
   it('reports blocked, bounded by the probe budget, when the probe never answers', async () => {
     vi.useFakeTimers();
     const open = vi.fn(async () => ({ durable: true }));
-    void openPortableStateWhenAllowed({ storage: hangingStorage, storageBlocked: notBlocked, open });
+    void openPortableStateWhenAllowed({ storage: hangingStorage, storageBlocked: notBlocked, open, openInMemory });
     await vi.advanceTimersByTimeAsync(OPFS_PROBE_TIMEOUT_MS);
     expect(portableStatePersistence()).toBe('blocked');
     expect(open).not.toHaveBeenCalled();
@@ -185,8 +197,9 @@ describe('openPortableStateWhenAllowed', () => {
     const open = vi.fn(async () => ({ durable: true }));
     const waiting = openPortableStateWhenAllowed({
       storage: switchable.storage,
-      storageBlocked: notBlocked,
+      storageBlocked: switchable.storageBlocked,
       open,
+      openInMemory,
     });
     const hydrated = waiting.then((repository) => ({ hydratedFrom: repository }));
     await vi.waitFor(() => expect(portableStatePersistence()).toBe('blocked'));
@@ -202,7 +215,7 @@ describe('openPortableStateWhenAllowed', () => {
   it('keeps waiting and reports blocked when the recheck is still refused', async () => {
     const open = vi.fn(async () => ({ durable: true }));
     let settled = false;
-    void openPortableStateWhenAllowed({ storage: refusingStorage, storageBlocked: notBlocked, open }).then(
+    void openPortableStateWhenAllowed({ storage: workingStorage, storageBlocked: () => true, open, openInMemory }).then(
       () => (settled = true),
     );
     await vi.waitFor(() => expect(portableStatePersistence()).toBe('blocked'));
@@ -216,8 +229,9 @@ describe('openPortableStateWhenAllowed', () => {
     const open = vi.fn(async () => ({ durable: true }));
     const waiting = openPortableStateWhenAllowed({
       storage: switchable.storage,
-      storageBlocked: notBlocked,
+      storageBlocked: switchable.storageBlocked,
       open,
+      openInMemory,
     });
     await vi.waitFor(() => expect(portableStatePersistence()).toBe('blocked'));
     switchable.allow();
@@ -239,7 +253,7 @@ describe('openPortableStateWhenAllowed', () => {
     const open = vi.fn(
       () => new Promise<{ durable: boolean }>((resolve) => setTimeout(() => resolve({ durable: true }), 180_000)),
     );
-    const opening = openPortableStateWhenAllowed({ storage: workingStorage, storageBlocked: notBlocked, open });
+    const opening = openPortableStateWhenAllowed({ storage: workingStorage, storageBlocked: notBlocked, open, openInMemory });
     await vi.advanceTimersByTimeAsync(180_000);
     await expect(opening).resolves.toEqual({ durable: true });
     expect(portableStatePersistence()).toBe('opfs');
@@ -248,7 +262,7 @@ describe('openPortableStateWhenAllowed', () => {
   it('reports unavailable and rethrows when the open itself fails', async () => {
     const open = vi.fn(() => Promise.reject(new Error('SQLite OPFS Web Locks support is unavailable')));
     await expect(
-      openPortableStateWhenAllowed({ storage: workingStorage, storageBlocked: notBlocked, open }),
+      openPortableStateWhenAllowed({ storage: workingStorage, storageBlocked: notBlocked, open, openInMemory }),
     ).rejects.toThrow('SQLite OPFS Web Locks support is unavailable');
     expect(portableStatePersistence()).toBe('unavailable');
   });
@@ -258,8 +272,9 @@ describe('openPortableStateWhenAllowed', () => {
     const open = vi.fn(() => Promise.reject(new Error('Worker crashed')));
     const waiting = openPortableStateWhenAllowed({
       storage: switchable.storage,
-      storageBlocked: notBlocked,
+      storageBlocked: switchable.storageBlocked,
       open,
+      openInMemory,
     });
     const outcome = waiting.catch((error: unknown) => error);
     await vi.waitFor(() => expect(portableStatePersistence()).toBe('blocked'));

@@ -46,6 +46,7 @@ import {
 } from "./section-timeout";
 import { LAYMAN_JARGON_TERMS } from "./layman-jargon";
 import { asPersona, asRecord, parsePersona, parseTitledPersonas } from "./persona-parse";
+import { hasUpcomingRoadAheadWindows } from "./facts";
 import { REPORT_SECTION_REASONING_MAX_TOKENS, SECTION_REASONING_MAX_TOKENS } from "./reasoning";
 import { ensurePrivacy, isLocalEndpoint, type ProviderConfig } from "./config";
 import { withLanguage, type PromptLanguage } from "./language";
@@ -1225,14 +1226,33 @@ function parseRemedial(json: unknown): RemedialMeasures | null {
   return parsePersona(rec.remedial_measures);
 }
 
-function parseUpcomingPeriods(json: unknown): TitledPersona[] {
+/** Accept only complete timeline entries that remain visible in both voices. */
+function parseTimelinePersonas(
+  json: unknown,
+  section: CurrentTimelineSectionKey,
+  contentRequired: boolean,
+): TitledPersona[] {
   const rec = asRecord(json);
-  return parseTitledPersonas(rec.upcoming_periods);
+  const raw = rec[section];
+  if (!Array.isArray(raw)) {
+    throw new Error(`Invalid ${section} output: the required section must be an array.`);
+  }
+  const items = parseTitledPersonas(raw);
+  if (contentRequired && items.length === 0) {
+    throw new Error(`Invalid ${section} output: engine facts require section content.`);
+  }
+  if (items.some((item) => !(item.title ?? "").trim() || !(item.layman ?? "").trim() || !(item.technical ?? "").trim())) {
+    throw new Error(`Invalid ${section} output: every entry needs a title and both reading voices.`);
+  }
+  return items;
 }
 
-function parseCurrentSky(json: unknown): TitledPersona[] {
-  const rec = asRecord(json);
-  return parseTitledPersonas(rec.current_sky);
+function parseUpcomingPeriods(json: unknown, chart: SanitizedChart): TitledPersona[] {
+  return parseTimelinePersonas(json, "upcoming_periods", hasUpcomingRoadAheadWindows(chart));
+}
+
+function parseCurrentSky(json: unknown, chart: SanitizedChart): TitledPersona[] {
+  return parseTimelinePersonas(json, "current_sky", chart.predictive !== undefined);
 }
 
 // =============================================================================
@@ -1367,10 +1387,10 @@ function applySection(
       results.remedial = parseRemedial(json);
       return;
     case "upcoming_periods":
-      results.upcoming_periods = parseUpcomingPeriods(json);
+      results.upcoming_periods = parseUpcomingPeriods(json, chart);
       return;
     case "current_sky":
-      results.current_sky = parseCurrentSky(json);
+      results.current_sky = parseCurrentSky(json, chart);
       return;
     case "current_period":
       results.current_period = guarded(results, parseCurrentPeriod(json), currentPeriodSlice(chart));

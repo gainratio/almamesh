@@ -187,6 +187,44 @@ describe("isWasmBootFault: failures that are not a wasm trap stay unretried", ()
   });
 });
 
+/**
+ * Emscripten's own `ExitStatus`, exactly as Pyodide 314.0.7 declares it: NOT an
+ * Error subclass. `loadPyodide` rejects with one when CPython exits during
+ * start-up ("Fatal Python error: Failed to import encodings module": WebKit CI
+ * run 38295121396, where the stdlib zip read back corrupt under load).
+ */
+class EmscriptenExitStatus {
+  public readonly name = "ExitStatus";
+  public readonly message: string;
+  public constructor(public readonly status: number) {
+    this.message = `Program terminated with exit(${status})`;
+  }
+}
+
+describe("a Pyodide runtime that exited during start-up", () => {
+  it("is a fault of that one instance, like a wasm trap", () => {
+    expect(isWasmBootFault(new EmscriptenExitStatus(1))).toBe(true);
+  });
+
+  it("crosses the Worker boundary as a fault with its real message, never '[object Object]'", () => {
+    const fields = workerErrorFields(new EmscriptenExitStatus(1));
+
+    expect(fields).toEqual({ error: "Program terminated with exit(1)", errorName: "RuntimeError" });
+    expect(isWasmBootFault(errorFromWorker(fields.error, fields.errorName))).toBe(true);
+  });
+
+  it("recognises a call into a Pyodide that already failed fatally", () => {
+    expect(isWasmBootFault(new Error("Pyodide already fatally failed and can no longer be used."))).toBe(true);
+  });
+
+  it("does not mistake an ordinary object or Python's SystemExit for an exited runtime", () => {
+    expect(isWasmBootFault({ name: "ExitStatus" })).toBe(false);
+    expect(isWasmBootFault({ message: "Program terminated with exit(1)" })).toBe(false);
+    expect(isWasmBootFault(pythonError("Traceback ...\nSystemExit: 1"))).toBe(false);
+    expect(workerErrorFields({ name: "Other", message: "x" })).toEqual({ error: "[object Object]" });
+  });
+});
+
 describe("worker error wire shape", () => {
   it("carries the error class across the Worker boundary", () => {
     const fields = workerErrorFields(realWasmTrap());

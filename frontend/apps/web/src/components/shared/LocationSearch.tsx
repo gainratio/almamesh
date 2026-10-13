@@ -1,7 +1,8 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
 import { safeError } from '@almamesh/shared-types';
 import { searchCities, timezoneForCoordinates, type CityMatch } from '../../lib/geo/cityLookup';
+import { derivedDbStorage, subscribeDerivedDbStorage } from '../../lib/derivedDb';
 
 export interface LocationResult {
     displayName: string;
@@ -74,6 +75,9 @@ export function LocationSearch({
     const [isLoading, setIsLoading] = useState(false);
     const [selectedIndex, setSelectedIndex] = useState(-1);
     const [isSearching, setIsSearching] = useState(false);
+    // OPFS refused for the offline city list: it runs from SQLite in memory
+    // for this visit. Say so; nothing is silently degraded.
+    const derivedStorage = useSyncExternalStore(subscribeDerivedDbStorage, derivedDbStorage, derivedDbStorage);
     // Coordinate fallback: some birthplaces (small towns/villages under the
     // dataset's population cutoff) are genuinely absent from the offline city
     // list. This secondary affordance lets the user enter lat/long directly and
@@ -408,6 +412,12 @@ export function LocationSearch({
                 >
                     <p className="text-text-muted text-center text-sm">{t('location.no_results')}</p>
                 </div>
+            )}
+
+            {derivedStorage === 'memory' && (
+                <p role="status" className="mt-2 text-xs text-text-muted" data-testid="city-lookup-memory-notice">
+                    {t('location.memory_notice')}
+                </p>
             )}
 
             {/* Coordinate fallback — a secondary affordance for birthplaces

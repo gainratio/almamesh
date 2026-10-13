@@ -41,6 +41,14 @@ describe("exit-gate boot fault switch", () => {
     expect(takeArmedBootFault()).toBeNull();
   });
 
+  it("arms a Pyodide runtime exit when the page sets 'exit'", () => {
+    vi.stubEnv("VITE_EXIT_GATE_HOOKS", "1");
+    (globalThis as Armable)[BOOT_FAULT_ARM_KEY] = "exit";
+
+    expect(takeArmedBootFault()).toBe("exit");
+    expect(takeArmedBootFault()).toBeNull();
+  });
+
   it("ignores any other armed value", () => {
     vi.stubEnv("VITE_EXIT_GATE_HOOKS", "1");
     (globalThis as Armable)[BOOT_FAULT_ARM_KEY] = "yes";
@@ -77,5 +85,14 @@ describe("exit-gate boot fault switch", () => {
     );
     expect(isWasmBootFault(caught)).toBe(true);
     expect(workerErrorFields(caught).errorName).toBe("RuntimeError");
+  });
+
+  it("exits the way loadPyodide does when CPython dies in start-up (a non-Error ExitStatus); the runtime still retries", () => {
+    const caught = thrownBy(() => raiseWasmTrap("exit"));
+
+    expect(caught).not.toBeInstanceOf(Error);
+    expect(caught).toMatchObject({ name: "ExitStatus", message: "Program terminated with exit(1)" });
+    expect(isWasmBootFault(caught)).toBe(true);
+    expect(workerErrorFields(caught)).toEqual({ error: "Program terminated with exit(1)", errorName: "RuntimeError" });
   });
 });

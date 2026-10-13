@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildChartFactsBlock } from "../facts";
+import { buildChartFactsBlock, hasUpcomingRoadAheadWindows } from "../facts";
 import type { SanitizedChart, SanitizedPredictive } from "../sanitize";
 
 // A hand-built SanitizedChart fixture carrying ONLY the astrological fields the
@@ -491,6 +491,93 @@ const FOUNDER_DASHAS: NonNullable<SanitizedChart["dashas"]> = {
 };
 
 const TREE_CHART: SanitizedChart = { ...CHART, dashas: FOUNDER_DASHAS };
+
+describe("hasUpcomingRoadAheadWindows — engine-owned eligibility", () => {
+  it("includes remaining dated antardashas when the current maha is the final row", () => {
+    expect(hasUpcomingRoadAheadWindows({
+      ...TREE_CHART,
+      dashas: { ...FOUNDER_DASHAS, maha_dasha_sequence: FOUNDER_DASHAS.maha_dasha_sequence.slice(0, 5) },
+    })).toBe(true);
+  });
+
+  it("includes the next dated maha when there are no remaining antardashas", () => {
+    expect(hasUpcomingRoadAheadWindows({
+      ...TREE_CHART,
+      dashas: { ...FOUNDER_DASHAS, current_antar: { lord: "jupiter", months_remaining: 1 } },
+    })).toBe(true);
+  });
+
+  it("excludes remaining pratyantars when the final maha and antar have no road-ahead windows", () => {
+    expect(hasUpcomingRoadAheadWindows({
+      ...TREE_CHART,
+      dashas: {
+        ...FOUNDER_DASHAS,
+        maha_dasha_sequence: FOUNDER_DASHAS.maha_dasha_sequence.slice(0, 5),
+        current_antar: { lord: "jupiter", months_remaining: 1 },
+      },
+    })).toBe(false);
+  });
+
+  it("does not infer remaining rows without a matching current anchor", () => {
+    expect(hasUpcomingRoadAheadWindows({
+      ...TREE_CHART,
+      dashas: {
+        ...FOUNDER_DASHAS,
+        maha_dasha_sequence: FOUNDER_DASHAS.maha_dasha_sequence.slice(0, 5),
+        current_maha: null,
+        current_antar: null,
+      },
+    })).toBe(false);
+  });
+
+  it("uses only the engine's future statuses for legacy charts without a dated antar tree", () => {
+    expect(hasUpcomingRoadAheadWindows({
+      ...CHART,
+      dashas: {
+        ...FOUNDER_DASHAS,
+        maha_dasha_sequence: [
+          { lord: "saturn", status: "current (9 years remaining)" },
+          { lord: "mercury", status: "future (starts in 9 years)" },
+        ],
+      },
+    })).toBe(true);
+    expect(hasUpcomingRoadAheadWindows({
+      ...CHART,
+      dashas: {
+        ...FOUNDER_DASHAS,
+        maha_dasha_sequence: [{ lord: "saturn", status: "current (9 years remaining)" }],
+      },
+    })).toBe(false);
+  });
+
+  it.each([
+    ["omitted", undefined],
+    ["empty", []],
+  ] as const)("uses legacy future statuses when the current antar tree is %s", (_label, antarSequence) => {
+    expect(hasUpcomingRoadAheadWindows({
+      ...CHART,
+      dashas: {
+        ...FOUNDER_DASHAS,
+        maha_dasha_sequence: [
+          { lord: "saturn", status: "current (9 years remaining)", antar_sequence: antarSequence },
+          { lord: "mercury", status: "future (starts in 9 years)" },
+        ],
+      },
+    })).toBe(true);
+  });
+
+  it("omits today's current-row windows for a period basis", () => {
+    expect(hasUpcomingRoadAheadWindows({
+      ...TREE_CHART,
+      as_of: { date: "2026-06-01", basis: "period", period_start: "2026-06-01", period_end: "2026-06-30" },
+    })).toBe(false);
+  });
+
+  it("has no eligible windows when engine timing data is absent", () => {
+    const { dashas: _dashas, ...withoutTiming } = TREE_CHART;
+    expect(hasUpcomingRoadAheadWindows(withoutTiming)).toBe(false);
+  });
+});
 
 const EXPECTED_CURRENT_BLOCK = [
   "Current period (engine-dated):",

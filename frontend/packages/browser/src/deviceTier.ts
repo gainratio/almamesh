@@ -42,6 +42,16 @@ export interface DevicePolicy {
    * from retaining an in-memory cache of every computed period.
    */
   readonly periodSkyComputeAllowed: boolean;
+  /**
+   * Most period-sky rows kept in the derived SQLite file (apps/web
+   * periodSkyRows.ts); the oldest-written are evicted first. A row is one
+   * computed period for one person, typically tens of KB but allowed up to
+   * the 4 MB payload ceiling, so the cap bounds the worst case on disk:
+   * minimal 16 rows (<= 64 MB, a few people x a handful of revisited
+   * periods), lite 32 (<= 128 MB), full 128 (<= 512 MB, still a small slice
+   * of a desktop OPFS quota). Revisits past the cap just recompute.
+   */
+  readonly periodSkyRowCap: number;
 }
 
 export const DEVICE_POLICIES: Readonly<Record<DeviceTier, DevicePolicy>> = Object.freeze({
@@ -54,6 +64,7 @@ export const DEVICE_POLICIES: Readonly<Record<DeviceTier, DevicePolicy>> = Objec
     bootOverlapAllowed: false,
     periodSkyCacheSize: 1,
     periodSkyComputeAllowed: true,
+    periodSkyRowCap: 16,
   }),
   lite: Object.freeze({
     tier: "lite",
@@ -64,6 +75,7 @@ export const DEVICE_POLICIES: Readonly<Record<DeviceTier, DevicePolicy>> = Objec
     bootOverlapAllowed: false,
     periodSkyCacheSize: 1,
     periodSkyComputeAllowed: true,
+    periodSkyRowCap: 32,
   }),
   full: Object.freeze({
     tier: "full",
@@ -74,6 +86,7 @@ export const DEVICE_POLICIES: Readonly<Record<DeviceTier, DevicePolicy>> = Objec
     bootOverlapAllowed: true,
     periodSkyCacheSize: 1,
     periodSkyComputeAllowed: true,
+    periodSkyRowCap: 128,
   }),
 });
 

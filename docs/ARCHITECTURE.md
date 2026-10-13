@@ -125,13 +125,16 @@ once and installs ordinary SQLite into the destination browser's OPFS, so later
 launches do not ask for that password. Predictive results travel in canonical
 SQLite. Semantic vectors, embedding assets, and signed engine-delivery caches
 are not exported; they are rebuilt or downloaded from restored source records.
-AlmaMesh runs only on
-SQLite in OPFS. When a browser refuses on-device storage (Safari "Block all
-cookies", Private Browsing, some WebViews), AlmaMesh does not fall back to an
-in-memory database or IndexedDB: it shows a storage block screen with the steps
-for that browser, an "Allow storage" button (`navigator.storage.persist()`), and
+AlmaMesh keeps
+data in SQLite on OPFS. When a browser refuses OPFS but allows site storage
+(Safari Private Browsing, older iOS, some WebViews), the same SQLite database
+runs in memory for that tab, the engine's bundle cache does too, and a notice
+says plainly that nothing is kept after the tab closes or reloads, with a link
+to export a backup. It never falls back to IndexedDB or localStorage. When the
+browser blocks site storage entirely (Safari "Block all cookies") or the OPFS
+probe never answers, AlmaMesh shows a storage block screen with the steps for
+that browser, an "Allow storage" button (`navigator.storage.persist()`), and
 "Check again", which re-probes OPFS and continues into the app without a reload.
-Nothing runs behind that screen, Import and Export included.
 
 The key portability path is deliberately browser-independent: Chrome exports
 one encrypted `.almamesh` file, the user transfers it to an iPhone, and iOS

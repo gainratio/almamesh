@@ -358,7 +358,7 @@ describe("the source guard runs as the run's own repository", () => {
     ["gate", 3],
     ["secretScan", 2],
     ["productionArtifact", 6],
-    ["deploy", 9],
+    ["deploy", 10],
     ["publishToolchain", 3],
   ])("%s requires the run repository (arity %i, no default)", async (name, arity) => {
     const module = await guardedModule([])

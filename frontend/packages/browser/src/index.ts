@@ -34,7 +34,13 @@ export { DEVICE_POLICIES, devicePolicy, deviceTier } from "./deviceTier";
 export type { DevicePolicy, DeviceTier } from "./deviceTier";
 
 // --- explicit user reset only: wipe the synced bundle cache + rollback floor ---
-export { clearAlmaBundleCache, EngineCacheNotDurableError, EngineStorageBlockedError } from "./edgeprocClient";
+export {
+  clearAlmaBundleCache,
+  EngineCacheNotDurableError,
+  EngineStorageBlockedError,
+  spawnAlmaSyncEngine,
+  type AlmaSyncEngineOptions,
+} from "./edgeprocClient";
 
 // --- the runtime: sync the bundle -> boot Pyodide -> on-device chart engine ---
 export { AlmaMeshRuntime, defaultRuntimeDeps } from "./pyodide/runtime";

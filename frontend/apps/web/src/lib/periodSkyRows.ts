@@ -1,4 +1,5 @@
 /** Recomputable personal sky rows. Separate from canonical state and never exported. */
+import { devicePolicy } from '@almamesh/browser';
 import { readDeletionTombstones, type CachedPredictiveContexts } from '@almamesh/store';
 
 import { withDerivedDb, type DerivedDbAccess, type SqlDatabase } from './derivedDb';
@@ -50,9 +51,14 @@ function payloadFromText(text: string): CachedPredictiveContexts | undefined {
 
 export function createPeriodSkyRows(
   access: (() => Promise<SqlDatabase>) | DerivedDbAccess,
-  options: { readonly readLedger?: () => Promise<Ledger> } = {},
+  options: {
+    readonly readLedger?: () => Promise<Ledger>;
+    /** Row cap; the oldest-written rows go first. Default: this device tier's cap. */
+    readonly maxRows?: number;
+  } = {},
 ): PeriodSkyRows {
   const readLedger = options.readLedger ?? readDeletionTombstones;
+  const maxRows = options.maxRows ?? devicePolicy().periodSkyRowCap;
   const withDb: DerivedDbAccess['withDb'] = typeof access === 'function'
     ? async (work) => work(await access()) : (work) => access.withDb(work);
 
@@ -134,10 +140,15 @@ export function createPeriodSkyRows(
       if (epoch === undefined || !(await accepts(epoch))) return;
       await withDb(async (db) => {
         if (!(await accepts(epoch))) return;
-        await db.exec(
-          'INSERT OR REPLACE INTO period_sky (key, engine, profile_id, payload, epoch) SELECT ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM dataset_meta WHERE key = ? AND CAST(value AS INTEGER) = ?)',
-          [requestKey, engineHash, profileKey, text, epoch, EPOCH_KEY, epoch],
-        );
+        await db.transaction(async (tx) => {
+          await tx.exec(
+            'INSERT OR REPLACE INTO period_sky (key, engine, profile_id, payload, epoch) SELECT ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM dataset_meta WHERE key = ? AND CAST(value AS INTEGER) = ?)',
+            [requestKey, engineHash, profileKey, text, epoch, EPOCH_KEY, epoch],
+          );
+          // INSERT OR REPLACE gives the row a fresh rowid (max + 1), so rowid
+          // order is write order: keep the newest maxRows, evict the rest.
+          await tx.exec('DELETE FROM period_sky WHERE rowid IN (SELECT rowid FROM period_sky ORDER BY rowid DESC LIMIT -1 OFFSET ?)', [maxRows]);
+        });
       });
     },
     async deleteForProfile(profileKey) {

@@ -2,14 +2,12 @@ import { describe, expect, test } from "bun:test"
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
 import { CI_GATES } from "../dagger/src/gates.ts"
-import { browserJourneyStatusCheckScript } from "../dagger/src/browserJourneyEvidence.ts"
 
 const root = resolve(import.meta.dir, "..")
 const workflowPath = resolve(root, ".github/workflows/dagger.yml")
 const deployWorkflowPath = resolve(root, ".github/workflows/deploy.yml")
 const checkout = "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
 const daggerAction = "dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77"
-const publicDocsCommand = "python3 scripts/public_docs_manifest.py --repo-root . --output .almamesh-public-docs.json"
 const expectedDeployFlags = [
   "--github-token",
   "--cloudflare-api-token",
@@ -20,6 +18,7 @@ const expectedDeployFlags = [
   "--workflow-run-id",
   "--run-attempt",
   "--repository",
+  "--trigger-workflow",
 ]
 
 type Mapping = Record<string, unknown>
@@ -68,16 +67,16 @@ function daggerStep(call: string): Mapping {
   return { uses: daggerAction, env: { XDG_CONFIG_HOME: "${{ github.workspace }}/.github/xdg" }, with: { version: "0.21.8", call } }
 }
 
-function publicDocsStep(): Mapping {
-  return { name: "Export public documentation paths", run: publicDocsCommand }
-}
-
 // The browser toolchain image is a private GHCR package, so every gate job may
 // read packages and hands its GITHUB_TOKEN to the module as a typed Secret
 // (`env:`), which Dagger never prints. The workflow keeps contents:read only.
 const GATE_REGISTRY_TOKEN = "--registry-token=env:GITHUB_TOKEN"
 
+const uploadAction = "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"
+const gateEnv = { XDG_CONFIG_HOME: "${{ github.workspace }}/.github/xdg", GITHUB_TOKEN: "${{ github.token }}" }
+
 function expectedGateJob(gate: string): Mapping {
+  if (gate === "browserJourneys") return expectedJourneyStatusJob
   return {
     name: `gate / ${gate}`,
     "runs-on": "ubuntu-latest",
@@ -85,32 +84,63 @@ function expectedGateJob(gate: string): Mapping {
     permissions: { contents: "read", packages: "read" },
     steps: [
       checkoutStep(),
-      ...(gate === "backend" ? [publicDocsStep()] : []),
       {
-        ...(gate === "browserJourneys" ? { id: "browser-journeys-evidence" } : {}),
         uses: daggerAction,
-        env: { XDG_CONFIG_HOME: "${{ github.workspace }}/.github/xdg", GITHUB_TOKEN: "${{ github.token }}" },
+        env: gateEnv,
         with: {
           version: "0.21.8",
-          call: gate === "browserJourneys"
-            ? `${GATE_REGISTRY_TOKEN} browser-journeys-evidence --commit-sha=\${{ github.sha }} --repository=\${{ github.repository }} export --path=browser-journeys-evidence`
-            : `${GATE_REGISTRY_TOKEN} gate --name=${gate} --commit-sha=\${{ github.sha }} --repository=\${{ github.repository }}`,
+          call: `${GATE_REGISTRY_TOKEN} gate --name=${gate} --commit-sha=\${{ github.sha }} --repository=\${{ github.repository }}`,
         },
       },
-      ...(gate === "browserJourneys" ? [
-        {
-          name: "Enforce original browser journey result",
-          env: { EXPECTED_SHA: "${{ github.sha }}" },
-          run: `node <<'NODE'\n${browserJourneyStatusCheckScript()}\nNODE\n`,
-        },
-        {
-          uses: "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
-          if: "always() && steps.browser-journeys-evidence.outcome == 'success'",
-          with: { name: "browser-journeys-evidence", path: "browser-journeys-evidence", "retention-days": 14, "if-no-files-found": "error" },
-        },
-      ] : []),
     ],
   }
+}
+
+// Fleet rule candidate-order / artifact-identity: an upload job is exactly
+// checkout -> Dagger -> upload, its bytes bound to this SHA, kept one day. The
+// journeys run once here; their original exit status rides in the receipt.
+const expectedJourneyEvidenceJob: Mapping = {
+  name: "evidence / browserJourneys",
+  "runs-on": "ubuntu-latest",
+  "timeout-minutes": 60,
+  permissions: { contents: "read", packages: "read" },
+  steps: [
+    checkoutStep(),
+    {
+      uses: daggerAction,
+      env: gateEnv,
+      with: {
+        version: "0.21.8",
+        call: `${GATE_REGISTRY_TOKEN} browser-journeys-evidence --commit-sha=\${{ github.sha }} --repository=\${{ github.repository }} export --path=candidate`,
+      },
+    },
+    {
+      uses: uploadAction,
+      with: { name: "browser-journeys-evidence-${{ github.sha }}", path: "candidate", "retention-days": 1, "if-no-files-found": "error" },
+    },
+  ],
+}
+
+// The browserJourneys gate enforces that receipt in Dagger (fleet rule shell-step:
+// no run steps). It runs even when the evidence job failed, and then fails closed.
+const expectedJourneyStatusJob: Mapping = {
+  name: "gate / browserJourneys",
+  needs: ["browser-journeys-evidence"],
+  if: "${{ !cancelled() }}",
+  "runs-on": "ubuntu-latest",
+  "timeout-minutes": 20,
+  permissions: { actions: "read", contents: "read" },
+  steps: [
+    checkoutStep(),
+    {
+      uses: daggerAction,
+      env: gateEnv,
+      with: {
+        version: "0.21.8",
+        call: "browser-journeys-status --github-token=env:GITHUB_TOKEN --commit-sha=${{ github.sha }} --repository=${{ github.repository }} --run-id=${{ github.run_id }}",
+      },
+    },
+  ],
 }
 
 // The one required check. `!cancelled()` makes it run (and go red) when a gate
@@ -141,7 +171,8 @@ function exactDaggerWorkflowViolations(source: string): string[] {
     group: "${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.run_id || github.ref }}",
     "cancel-in-progress": "${{ github.ref != 'refs/heads/main' }}",
   })) violations.push("concurrency")
-  if (!sameValue(Object.keys(jobs).sort(), [...CI_GATES.map(gateJobKey), "dagger"].sort())) violations.push("jobs")
+  if (!sameValue(Object.keys(jobs).sort(), [...CI_GATES.map(gateJobKey), "browser-journeys-evidence", "dagger"].sort())) violations.push("jobs")
+  if (!sameValue(jobs["browser-journeys-evidence"], expectedJourneyEvidenceJob)) violations.push("journey-evidence-job")
   for (const gate of CI_GATES) {
     if (!sameValue(jobs[gateJobKey(gate)], expectedGateJob(gate))) violations.push(`gate-job:${gate}`)
   }
@@ -173,7 +204,7 @@ function exactDeployWorkflowViolations(source: string): string[] {
   }
   if (!sameValue(mapping(workflow.on), {
     workflow_run: {
-      workflows: ["Dagger"],
+      workflows: ["Dagger", "WebKit (macOS)"],
       types: ["completed"],
       branches: ["main"],
     },
@@ -214,13 +245,14 @@ function exactDeployWorkflowViolations(source: string): string[] {
           GITHUB_TOKEN: "${{ github.token }}",
           HEAD_SHA: "${{ github.event.workflow_run.head_sha }}",
           RUN_ATTEMPT: "${{ github.event.workflow_run.run_attempt }}",
+          TRIGGER_WORKFLOW: "${{ github.event.workflow_run.path }}",
           WORKFLOW_RUN_ID: "${{ github.event.workflow_run.id }}",
           XDG_CONFIG_HOME: "${{ github.workspace }}/.github/xdg",
         },
         with: {
           version: "0.21.8",
           verb: "call",
-          args: "deploy --github-token=env:GITHUB_TOKEN --cloudflare-api-token=env:CLOUDFLARE_API_TOKEN --cloudflare-account-id=env:CLOUDFLARE_ACCOUNT_ID --bundle-private-key-b-64=env:BUNDLE_PRIVATE_KEY_B64 --bundle-public-key-b-64=env:BUNDLE_PUBLIC_KEY_B64 --expected-sha=\"$HEAD_SHA\" --workflow-run-id=\"$WORKFLOW_RUN_ID\" --run-attempt=\"$RUN_ATTEMPT\" --repository=\"$GITHUB_REPOSITORY\"",
+          args: "deploy --github-token=env:GITHUB_TOKEN --cloudflare-api-token=env:CLOUDFLARE_API_TOKEN --cloudflare-account-id=env:CLOUDFLARE_ACCOUNT_ID --bundle-private-key-b-64=env:BUNDLE_PRIVATE_KEY_B64 --bundle-public-key-b-64=env:BUNDLE_PUBLIC_KEY_B64 --expected-sha=\"$HEAD_SHA\" --workflow-run-id=\"$WORKFLOW_RUN_ID\" --run-attempt=\"$RUN_ATTEMPT\" --repository=\"$GITHUB_REPOSITORY\" --trigger-workflow=\"$TRIGGER_WORKFLOW\"",
         },
       },
     ],
@@ -229,7 +261,59 @@ function exactDeployWorkflowViolations(source: string): string[] {
   return violations
 }
 
+const checkoutFixture = [
+  `      - uses: ${checkout} # v7`,
+  "        with:",
+  "          fetch-depth: 0",
+  "          persist-credentials: false",
+  "          ref: ${{ github.sha }}",
+]
+
+function daggerFixture(call: string): string[] {
+  return [
+    `      - uses: ${daggerAction} # v8.4.1`,
+    "        env:",
+    "          XDG_CONFIG_HOME: ${{ github.workspace }}/.github/xdg",
+    "          GITHUB_TOKEN: ${{ github.token }}",
+    "        with:",
+    "          version: \"0.21.8\"",
+    `          call: ${call}`,
+  ]
+}
+
+const journeyFixture = [
+  "  browser-journeys-evidence:",
+  "    name: evidence / browserJourneys",
+  "    runs-on: ubuntu-latest",
+  "    timeout-minutes: 60",
+  "    permissions:",
+  "      contents: read",
+  "      packages: read",
+  "    steps:",
+  ...checkoutFixture,
+  ...daggerFixture(`${GATE_REGISTRY_TOKEN} browser-journeys-evidence --commit-sha=\${{ github.sha }} --repository=\${{ github.repository }} export --path=candidate`),
+  `      - uses: ${uploadAction} # v7.0.1`,
+  "        with:",
+  "          name: browser-journeys-evidence-${{ github.sha }}",
+  "          path: candidate",
+  "          retention-days: 1",
+  "          if-no-files-found: error",
+  "  browser-journeys:",
+  "    name: gate / browserJourneys",
+  "    needs: [browser-journeys-evidence]",
+  "    if: ${{ !cancelled() }}",
+  "    runs-on: ubuntu-latest",
+  "    timeout-minutes: 20",
+  "    permissions:",
+  "      actions: read",
+  "      contents: read",
+  "    steps:",
+  ...checkoutFixture,
+  ...daggerFixture("browser-journeys-status --github-token=env:GITHUB_TOKEN --commit-sha=${{ github.sha }} --repository=${{ github.repository }} --run-id=${{ github.run_id }}"),
+]
+
 function gateJobFixture(gate: string): string[] {
+  if (gate === "browserJourneys") return journeyFixture
   return [
     `  ${gateJobKey(gate)}:`,
     `    name: gate / ${gate}`,
@@ -239,40 +323,8 @@ function gateJobFixture(gate: string): string[] {
     "      contents: read",
     "      packages: read",
     "    steps:",
-    `      - uses: ${checkout} # v7`,
-    "        with:",
-    "          fetch-depth: 0",
-    "          persist-credentials: false",
-    "          ref: ${{ github.sha }}",
-    ...(gate === "backend" ? [
-      "      - name: Export public documentation paths",
-      `        run: ${publicDocsCommand}`,
-    ] : []),
-    ...(gate === "browserJourneys" ? ["      - id: browser-journeys-evidence", `        uses: ${daggerAction} # v8.4.1`] : [`      - uses: ${daggerAction} # v8.4.1`]),
-    "        env:",
-    "          XDG_CONFIG_HOME: ${{ github.workspace }}/.github/xdg",
-    "          GITHUB_TOKEN: ${{ github.token }}",
-    "        with:",
-    "          version: \"0.21.8\"",
-    gate === "browserJourneys"
-      ? `          call: ${GATE_REGISTRY_TOKEN} browser-journeys-evidence --commit-sha=\${{ github.sha }} --repository=\${{ github.repository }} export --path=browser-journeys-evidence`
-      : `          call: ${GATE_REGISTRY_TOKEN} gate --name=${gate} --commit-sha=\${{ github.sha }} --repository=\${{ github.repository }}`,
-    ...(gate === "browserJourneys" ? [
-      "      - name: Enforce original browser journey result",
-      "        env:",
-      "          EXPECTED_SHA: ${{ github.sha }}",
-      "        run: |",
-      "          node <<'NODE'",
-      ...browserJourneyStatusCheckScript().split("\n").map((line) => `          ${line}`),
-      "          NODE",
-      "      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
-      "        if: always() && steps.browser-journeys-evidence.outcome == 'success'",
-      "        with:",
-      "          name: browser-journeys-evidence",
-      "          path: browser-journeys-evidence",
-      "          retention-days: 14",
-      "          if-no-files-found: error",
-    ] : []),
+    ...checkoutFixture,
+    ...daggerFixture(`${GATE_REGISTRY_TOKEN} gate --name=${gate} --commit-sha=\${{ github.sha }} --repository=\${{ github.repository }}`),
   ]
 }
 
@@ -326,7 +378,7 @@ const canonicalDeployFixture = [
   "",
   "on: # zizmor: ignore[dangerous-triggers] deploy-after-CI by design; exact same-repo push/main/success attempt is revalidated before secrets or provider access",
   "  workflow_run:",
-  "    workflows: [\"Dagger\"]",
+  "    workflows: [\"Dagger\", \"WebKit (macOS)\"]",
   "    types: [completed]",
   "    branches: [main]",
   "",
@@ -367,6 +419,7 @@ const canonicalDeployFixture = [
   "          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}",
   "          WORKFLOW_RUN_ID: ${{ github.event.workflow_run.id }}",
   "          RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}",
+  "          TRIGGER_WORKFLOW: ${{ github.event.workflow_run.path }}",
   "          XDG_CONFIG_HOME: ${{ github.workspace }}/.github/xdg",
   "        with:",
   "          version: \"0.21.8\"",
@@ -382,6 +435,7 @@ const canonicalDeployFixture = [
   "            --workflow-run-id=\"$WORKFLOW_RUN_ID\"",
   "            --run-attempt=\"$RUN_ATTEMPT\"",
   "            --repository=\"$GITHUB_REPOSITORY\"",
+  "            --trigger-workflow=\"$TRIGGER_WORKFLOW\"",
   "",
 ].join("\n")
 
@@ -398,52 +452,37 @@ describe("atomic hosted Dagger workflow", () => {
     expect(exactDaggerWorkflowViolations(canonicalFixture)).toEqual([])
   })
 
+  function mutateJobSteps(job: string, mutate: (steps: Mapping[]) => void): string {
+    const workflow = mapping(Bun.YAML.parse(canonicalFixture))
+    mutate(mapping(mapping(workflow.jobs)[job]).steps as Mapping[])
+    return Bun.YAML.stringify(workflow)
+  }
+
   test.each([
-    ["missing original-status enforcement", (steps: Mapping[]) => { steps.splice(2, 1) }],
-    ["ignored original failure", (steps: Mapping[]) => { steps[2]["continue-on-error"] = true }],
-    ["status check masked by shell", (steps: Mapping[]) => { steps[2].run = `${steps[2].run}true\n` }],
-    ["status bound to another SHA", (steps: Mapping[]) => { steps[2].env = { EXPECTED_SHA: "a".repeat(40) } }],
-    ["unconditionally uploaded evidence", (steps: Mapping[]) => { delete steps[3].if }],
-    ["another artifact path", (steps: Mapping[]) => { (steps[3].with as Mapping).path = "." }],
     ["a second browser execution", (steps: Mapping[]) => { steps.push(structuredClone(steps[1])) }],
     ["an export failure allowed to pass", (steps: Mapping[]) => { steps[1]["continue-on-error"] = true }],
+    ["another artifact path", (steps: Mapping[]) => { (steps[2].with as Mapping).path = "." }],
+    ["an artifact not bound to the SHA", (steps: Mapping[]) => { (steps[2].with as Mapping).name = "browser-journeys-evidence" }],
+    ["a shell step before upload", (steps: Mapping[]) => { steps.splice(2, 0, { run: "true" }) }],
   ] as const)("rejects browser-journey evidence bypass: %s", (_name, mutate) => {
-    expect(exactDaggerWorkflowViolations(mutateGateSteps("browserJourneys", mutate))).toContain("gate-job:browserJourneys")
+    expect(exactDaggerWorkflowViolations(mutateJobSteps("browser-journeys-evidence", mutate))).toContain("journey-evidence-job")
   })
 
   test.each([
-    {
-      name: "a missing public documentation export",
-      source: mutateGateSteps("backend", (steps) => { steps.splice(1, 1) }),
-      violation: "gate-job:backend",
-    },
-    {
-      name: "a public documentation export before checkout",
-      source: mutateGateSteps("backend", (steps) => { steps.unshift(...steps.splice(1, 1)) }),
-      violation: "gate-job:backend",
-    },
-    {
-      name: "a public documentation export after Dagger",
-      source: mutateGateSteps("backend", (steps) => { steps.push(...steps.splice(1, 1)) }),
-      violation: "gate-job:backend",
-    },
-    {
-      name: "a public documentation export in another gate",
-      source: mutateGateSteps("frontend", (steps) => { steps.splice(1, 0, publicDocsStep()) }),
-      violation: "gate-job:frontend",
-    },
-    {
-      name: "a public documentation export with continue-on-error",
-      source: mutateGateSteps("backend", (steps) => { steps[1]["continue-on-error"] = true }),
-      violation: "gate-job:backend",
-    },
-    {
-      name: "a public documentation export that masks shell failure",
-      source: mutateGateSteps("backend", (steps) => { steps[1].run = `${publicDocsCommand} || true` }),
-      violation: "gate-job:backend",
-    },
-  ])("rejects $name", ({ source, violation }) => {
-    expect(exactDaggerWorkflowViolations(source)).toContain(violation)
+    ["missing original-status enforcement", (steps: Mapping[]) => { steps.splice(1, 1) }],
+    ["ignored original failure", (steps: Mapping[]) => { steps[1]["continue-on-error"] = true }],
+    ["status bound to another run", (steps: Mapping[]) => { (steps[1].with as Mapping).call = "browser-journeys-status --github-token=env:GITHUB_TOKEN --commit-sha=${{ github.sha }} --repository=${{ github.repository }} --run-id=1" }],
+    ["status enforced by shell", (steps: Mapping[]) => { steps[1] = { run: "node frontend/apps/web/scripts/browserJourneyStatusCheck.mjs" } }],
+  ] as const)("rejects browser-journey status bypass: %s", (_name, mutate) => {
+    expect(exactDaggerWorkflowViolations(mutateJobSteps("browser-journeys", mutate))).toContain("gate-job:browserJourneys")
+  })
+
+  test("the browser-journey gate still runs, and fails closed, when its evidence job failed", () => {
+    expect(exactDaggerWorkflowViolations(canonicalFixture.replace("    needs: [browser-journeys-evidence]\n    if: ${{ !cancelled() }}\n", "    needs: [browser-journeys-evidence]\n"))).toContain("gate-job:browserJourneys")
+  })
+
+  test("no gate job runs a shell step (fleet rule shell-step)", () => {
+    expect(exactDaggerWorkflowViolations(mutateGateSteps("backend", (steps) => { steps.splice(1, 0, { name: "Export public documentation paths", run: "python3 scripts/public_docs_manifest.py --repo-root . --output .almamesh-public-docs.json" }) }))).toContain("gate-job:backend")
   })
 
   test.each([
@@ -454,7 +493,7 @@ describe("atomic hosted Dagger workflow", () => {
     },
     {
       name: "an aggregate that is skipped when a gate fails",
-      source: canonicalFixture.replace("    if: ${{ !cancelled() }}\n", ""),
+      source: canonicalFixture.replace("    if: ${{ !cancelled() }}\n    runs-on: ubuntu-latest\n    timeout-minutes: 20\n    steps:", "    runs-on: ubuntu-latest\n    timeout-minutes: 20\n    steps:"),
       violation: "dagger-job",
     },
     {
@@ -665,6 +704,24 @@ describe("privileged production delivery workflow", () => {
       source: canonicalDeployFixture.replace(
         '--run-attempt="$RUN_ATTEMPT"',
         '--run-attempt="$RUN_ATTEMPT" sync',
+      ),
+      violation: "deploy-job",
+    },
+    {
+      name: "the WebKit (macOS) re-trigger removed",
+      source: canonicalDeployFixture.replace('["Dagger", "WebKit (macOS)"]', '["Dagger"]'),
+      violation: "triggers",
+    },
+    {
+      name: "an unrelated workflow added as a trigger",
+      source: canonicalDeployFixture.replace('["Dagger", "WebKit (macOS)"]', '["Dagger", "WebKit (macOS)", "Nightly E2E"]'),
+      violation: "triggers",
+    },
+    {
+      name: "trigger workflow taken from the run name instead of its path",
+      source: canonicalDeployFixture.replace(
+        "TRIGGER_WORKFLOW: ${{ github.event.workflow_run.path }}",
+        "TRIGGER_WORKFLOW: ${{ github.event.workflow_run.name }}",
       ),
       violation: "deploy-job",
     },

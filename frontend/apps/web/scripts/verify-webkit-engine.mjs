@@ -3,10 +3,10 @@
  * Required WebKit runtime gate, at iPhone 13 size.
  *
  * Default pass: a WebKit that refuses OPFS (any ephemeral Playwright WebKit
- * context; Safari Private Browsing refuses the same way). SQLite on OPFS is
- * the only place AlmaMesh keeps data, so the app must show the storage block
- * screen within a time bound, start no engine, choose no engine cache, run no
- * SQLite in memory, and create no IndexedDB database.
+ * context; Safari Private Browsing refuses the same way). The app runs on
+ * SQLite in memory (rule 2026-10-11): the "not saving" notice within a time
+ * bound, never the block screen, the engine on its in-memory cache, the
+ * reference chart, and no IndexedDB database.
  *
  * `--first-session`: a durable profile with working OPFS (macOS WebKit; Linux
  * Playwright WebKit cannot open SQLite's nested-Worker OPFS, so the pass
@@ -445,15 +445,14 @@ async function verifyFirstSessionOffline() {
   }
 }
 
-/** How long the block screen may take when OPFS is refused (no hang, no RAM fallback). */
-const BLOCK_SCREEN_BUDGET_MS = 20_000
+/** How long the in-memory notice may take when OPFS is refused (no hang). */
+const NOTICE_BUDGET_MS = 20_000
 
 async function main() {
   if (FIRST_SESSION_ONLY) {
     // The first session needs durable OPFS SQLite. Linux Playwright WebKit
-    // cannot open SQLite's nested-Worker OPFS, and since 2026-10-05 the app
-    // refuses to run on RAM SQLite, so on Linux this pass could only ever see
-    // the block screen. Fail loudly rather than pass vacuously: run it on macOS.
+    // cannot open SQLite's nested-Worker OPFS, so on Linux this pass could
+    // never prove durable storage. Fail loudly rather than pass vacuously: run it on macOS.
     invariant(process.platform !== 'linux', '--first-session needs a WebKit with working OPFS (macOS); Linux Playwright WebKit refuses it')
     await verifyFirstSessionOffline()
     return
@@ -481,32 +480,30 @@ async function main() {
     const coldIsolation = await assertBrowserIsolation(page, 'WebKit cold navigation')
     await openEngineRoute(page)
 
-    // CONTRACT REVERSED TWICE. Before 2026-10-05 this pass forced an IndexedDB
-    // engine cache; increment 2 replaced that with in-memory SQLite plus a
-    // "not saving" note. Harish, 2026-10-05: "sqlite persistent is the only
-    // option; they have to enable writing to sqlite, otherwise no dice." With
-    // OPFS refused the app now shows the storage block screen within a time
-    // bound, starts no engine, opens no SQLite (in memory or otherwise), and
-    // creates no IndexedDB database.
-    const notice = page.getByTestId('storage-blocked-notice')
-    await notice.waitFor({ state: 'visible', timeout: BLOCK_SCREEN_BUDGET_MS })
-      .catch(() => invariant(false, `OPFS refused: no block screen within ${BLOCK_SCREEN_BUDGET_MS} ms`))
-    const reason = await notice.getAttribute('data-reason')
-    invariant(reason === 'storage-blocked', `OPFS refused: expected the storage-blocked screen, got ${reason}`)
+    // CONTRACT REVERSED THREE TIMES. Before 2026-10-05 this pass forced an
+    // IndexedDB engine cache, then in-memory SQLite with a note; from
+    // 2026-10-05 it required the storage block screen. Rule 2026-10-11
+    // (AGENTS.md): OPFS refused -> in-memory SQLite with an honest notice. The
+    // app must report 'memory', show the "not saving" notice (never the block
+    // screen), boot the engine on an in-memory cache, compute the reference
+    // chart, and create no IndexedDB database.
+    const notice = page.getByTestId('in-memory-storage-notice')
+    await notice.waitFor({ state: 'visible', timeout: NOTICE_BUDGET_MS })
+      .catch(() => invariant(false, `OPFS refused: no in-memory notice within ${NOTICE_BUDGET_MS} ms`))
     const text = (await notice.innerText()).replace(/\s+/g, ' ')
-    invariant(/permission to store data on this device/i.test(text), `block screen copy is not the agreed one: ${text}`)
-    // Give anything that would start behind the screen time to start.
-    await page.waitForTimeout(5_000)
+    invariant(/not saving your data/i.test(text), `in-memory notice copy is not the agreed one: ${text}`)
+    invariant(!(await page.getByTestId('storage-blocked-notice').isVisible()), 'OPFS refused: the block screen walled the app')
+    const engine = await waitForRecoveredEngine(page, 'OPFS refused engine boot')
+    invariant(engine.error === null, `OPFS refused: engine boot failed: ${engine.error}`)
+    const chart = await generateReferenceChart(page)
+    invariant(chart.lagna === 'gemini', `OPFS refused: unexpected reference chart: ${JSON.stringify(chart)}`)
     const storage = await storageEvidence(page)
-    invariant(storage.statePersistence === 'blocked', `the app does not report storage as blocked: ${JSON.stringify(storage)}`)
-    invariant(storage.selectedCache === null, `the engine chose a cache behind the block screen: ${JSON.stringify(storage)}`)
+    invariant(storage.statePersistence === 'memory', `the app does not report in-memory storage: ${JSON.stringify(storage)}`)
+    invariant(storage.selectedCache === 'sqlite-memory', `the engine did not use its in-memory cache: ${JSON.stringify(storage)}`)
     invariant(storage.databases.length === 0, `something wrote IndexedDB with OPFS refused: ${JSON.stringify(storage)}`)
-    const engineWorkers = [...workerUrls].filter((url) => /edgeproc\.worker|pyodide|chart/i.test(url))
-    invariant(engineWorkers.length === 0, `the engine started behind the block screen: ${JSON.stringify(engineWorkers)}`)
-    invariant(bundleRequests.length === 0, `the engine bundle was fetched behind the block screen: ${JSON.stringify(bundleRequests)}`)
-    invariant(pageErrors.length === 0, `page errors behind the block screen: ${pageErrors.join(' | ')}`)
+    invariant(pageErrors.length === 0, `page errors with OPFS refused: ${pageErrors.join(' | ')}`)
 
-    console.log(JSON.stringify({ reason, storage, workers: [...workerUrls], bundleRequests: bundleRequests.length, coldIsolation }, null, 2))
+    console.log(JSON.stringify({ storage, chart, workers: [...workerUrls], bundleRequests: bundleRequests.length, coldIsolation }, null, 2))
     await context.close()
   } finally {
     await browser.close()
@@ -516,7 +513,7 @@ async function main() {
 const rssSampler = sampleProcessTreePeak(1_000)
 main()
   .then(async () => {
-    const lane = FIRST_SESSION_ONLY ? 'webkit-first-session' : 'webkit-storage-blocked'
+    const lane = FIRST_SESSION_ONLY ? 'webkit-first-session' : 'webkit-opfs-refused'
     console.log(formatMemoryReport(lane, processTreeReport(await rssSampler.stop(), ['webkit-web', 'webkit-network'])))
   })
   .catch(async (error) => {

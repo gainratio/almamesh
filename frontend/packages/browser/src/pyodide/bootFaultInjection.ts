@@ -5,6 +5,10 @@
 // Setting it to "wrapped" throws that same real trap wrapped the way Pyodide's
 // loadPackage reports it on WebKit (a PyodidePackageLoadError for pytz whose
 // text carries the trap message), the form PR #317 recorded on the macOS lane.
+// Setting it to "exit" rejects the boot the way `loadPyodide` does when CPython
+// dies during start-up ("Fatal Python error: Failed to import encodings
+// module", WebKit CI run 38295121396): with Emscripten's ExitStatus, which is
+// not an Error.
 //
 // Every caller guards on `import.meta.env.VITE_EXIT_GATE_HOOKS === "1"` at
 // the call site, so a production build folds the guard to `false` and drops
@@ -27,8 +31,9 @@ declare global {
 /** The page global an e2e sets (via an init script) to arm the fault. */
 export const BOOT_FAULT_ARM_KEY = "__almameshArmBootWasmFault";
 
-/** "trap": the bare WebAssembly.RuntimeError. "wrapped": that trap as Pyodide reports it. */
-export type BootFaultKind = "trap" | "wrapped";
+/** "trap": the bare WebAssembly.RuntimeError. "wrapped": that trap as Pyodide
+ * reports it. "exit": the runtime exiting in start-up, as loadPyodide reports it. */
+export type BootFaultKind = "trap" | "wrapped" | "exit";
 
 type Armable = typeof globalThis & { [BOOT_FAULT_ARM_KEY]?: unknown };
 
@@ -37,7 +42,7 @@ export function takeArmedBootFault(): BootFaultKind | null {
   if (import.meta.env.VITE_EXIT_GATE_HOOKS !== "1") return null;
   const scope = globalThis as Armable;
   const armed = scope[BOOT_FAULT_ARM_KEY];
-  const kind = armed === true ? "trap" : armed === "wrapped" ? "wrapped" : null;
+  const kind = armed === true ? "trap" : armed === "wrapped" || armed === "exit" ? armed : null;
   if (kind !== null) scope[BOOT_FAULT_ARM_KEY] = false;
   return kind;
 }
@@ -45,12 +50,22 @@ export function takeArmedBootFault(): BootFaultKind | null {
 /** Worker: raise the armed fault, built on a genuine WebAssembly.RuntimeError. */
 export function raiseWasmTrap(kind: BootFaultKind): never {
   if (kind === "trap") executeTrap();
+  if (kind === "exit") throw new EmscriptenExitStatus(1);
   try {
     executeTrap();
   } catch (trap) {
     // Pyodide's loadPackage reports a failed package as these two lines.
     const details = ["The following error occurred while loading pytz:", (trap as Error).message];
     throw new PyodidePackageLoadError(["pytz"], details);
+  }
+}
+
+/** Emscripten's ExitStatus, shaped exactly as Pyodide 314.0.7 declares it (not an Error). */
+class EmscriptenExitStatus {
+  public readonly name = "ExitStatus";
+  public readonly message: string;
+  public constructor(public readonly status: number) {
+    this.message = `Program terminated with exit(${status})`;
   }
 }
 

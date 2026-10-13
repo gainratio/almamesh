@@ -162,6 +162,20 @@ describe("chart Worker bootstrap", () => {
     expect(scope.responses.some((response) => response.ok && response.kind === "boot")).toBe(false);
   });
 
+  it("reports a Pyodide that exited during start-up as an instance fault the runtime retries, not '[object Object]'", async () => {
+    // Emscripten's ExitStatus as Pyodide 314.0.7 declares it: not an Error.
+    class ExitStatus {
+      public readonly name = "ExitStatus";
+      public readonly message = "Program terminated with exit(1)";
+    }
+    loadPyodide.mockRejectedValue(new ExitStatus());
+    const { scope } = await startWorker();
+
+    expect(await scope.request({ kind: "boot", id: 1, config: CONFIG })).toEqual({
+      ok: false, id: 1, error: "Program terminated with exit(1)", errorName: "RuntimeError",
+    });
+  });
+
   it("shares one package-loading promise when prewarm and boot overlap", async () => {
     const { pyodide } = pyodideFixture();
     const loading = deferred<typeof pyodide>();

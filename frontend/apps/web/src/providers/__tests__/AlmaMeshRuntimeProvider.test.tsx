@@ -15,6 +15,7 @@ import {
   type RuntimeConfig,
 } from '@almamesh/browser';
 import { AlmaMeshRuntimeProvider } from '../AlmaMeshRuntimeProvider';
+import { engineCacheFallback } from '../../lib/engineCacheFallback';
 import { useChartEngine } from '../chartEngineContext';
 import { clearRuntimeGenerator, clearRuntimeResolvePlace } from '../../lib/runtimeObservability';
 import {
@@ -33,7 +34,7 @@ vi.mock('../../lib/swSelfHeal', () => ({ recoverSeveredServiceWorkerChannel }));
 // here starts with storage ready; the gating tests drive it explicitly.
 const storage = vi.hoisted(() => {
   const listeners = new Set<() => void>();
-  const state = { current: 'opfs' as 'pending' | 'opfs' | 'blocked' | 'unavailable' };
+  const state = { current: 'opfs' as 'pending' | 'opfs' | 'memory' | 'blocked' | 'unavailable' };
   return {
     state,
     listeners,
@@ -158,6 +159,33 @@ describe('AlmaMeshRuntimeProvider — durable storage gate', () => {
     act(() => storage.set('opfs'));
     await waitFor(() => expect(screen.getByTestId('engine').textContent).toBe('engine-ready'));
     expect(runtime.bootstrapCalls).toBe(1);
+  });
+
+  // OPFS refused (Safari Private Browsing): app data runs in memory, and so
+  // may the engine cache. The engine boots instead of waiting behind a wall.
+  it('boots once storage settles in memory', async () => {
+    storage.state.current = 'pending';
+    const runtime = makeFakeRuntime([(onStage) => {
+      onStage({ kind: 'ready' } as BootStage);
+      return Promise.resolve(makeFakeEngine('in-memory'));
+    }]);
+    render(
+      <AlmaMeshRuntimeProvider runtime={runtime}>
+        <Probe capture={() => {}} />
+      </AlmaMeshRuntimeProvider>,
+    );
+    expect(runtime.bootstrapCalls).toBe(0);
+    act(() => storage.set('memory'));
+    await waitFor(() => expect(screen.getByTestId('engine').textContent).toBe('engine-ready'));
+    expect(runtime.bootstrapCalls).toBe(1);
+    expect(markBlockedByEngine).not.toHaveBeenCalled();
+  });
+
+  it('asks for an in-memory engine cache only when app data is in memory', () => {
+    expect(engineCacheFallback('memory')).toBe('memory');
+    for (const persistence of ['opfs', 'pending', 'blocked', 'unavailable'] as const) {
+      expect(engineCacheFallback(persistence)).toBe('none');
+    }
   });
 
   it('never boots and surfaces an error when storage is unavailable', async () => {

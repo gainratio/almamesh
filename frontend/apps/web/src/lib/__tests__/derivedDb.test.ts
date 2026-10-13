@@ -508,4 +508,63 @@ describe('derived database page lifecycle', () => {
       expect(close).toHaveBeenCalledTimes(2);
     });
   });
+
+  it('asks the SQL library for an in-memory fallback when OPFS is refused', async () => {
+    await withBrowserModule(async ({ module, openDatabase }) => {
+      expect(module.derivedDbStorage()).toBe('unknown');
+      await module.withDerivedDb(async () => 'first');
+      expect(openDatabase).toHaveBeenCalledWith({ name: 'almamesh-derived', persistence: 'opfs', fallback: 'memory' });
+      expect(module.derivedDbStorage()).toBe('opfs');
+    });
+  });
+});
+
+describe('derived database refused-OPFS fallback', () => {
+  /** A real pinned SQLite handle that reports the library's OPFS-refused fallback. */
+  async function refusedOpfsDatabase(): Promise<{ db: SqlDatabase; close: ReturnType<typeof vi.fn> }> {
+    const db = await openNodeSqlDatabase({ name: 'derived-memory-fallback' });
+    handles.push(db);
+    Object.defineProperty(db, 'storage', { value: { persistence: 'memory', reason: 'opfs-unavailable' } });
+    const close = vi.fn(async () => undefined);
+    Object.defineProperty(db, 'close', { value: close });
+    return { db, close };
+  }
+
+  it('keeps one in-memory city import for the tab, reports it, and drops it on reset', async () => {
+    const first = await refusedOpfsDatabase();
+    const second = await refusedOpfsDatabase();
+    const openDatabase = vi.fn().mockResolvedValueOnce(first.db).mockResolvedValueOnce(second.db);
+    const onStorage = vi.fn();
+    const session = createDerivedDbSessions({
+      openDatabase, removeDatabase: async () => undefined, locks: nativeLocksDouble(), epoch: async () => 0, onStorage,
+    });
+    const part = vi.fn(async () => [{ n: 'Lisboa', c: 'Portugal', cc: 'PT', lat: 38.7, lon: -9.1, p: 1 }]);
+    const load = async () => ({ version: 'one', parts: [part] });
+    const lookup = () => session.withDb(async (db) => {
+      await ensureCitiesImported(db, load);
+      return (await cityRowAt(db, 0))?.n;
+    });
+
+    expect(await lookup()).toBe('Lisboa');
+    expect(await lookup()).toBe('Lisboa');
+    expect(openDatabase).toHaveBeenCalledTimes(1);
+    expect(part).toHaveBeenCalledTimes(1);
+    expect(first.close).not.toHaveBeenCalled();
+    expect(onStorage).toHaveBeenLastCalledWith('memory');
+
+    await session.remove();
+    expect(first.close).toHaveBeenCalledTimes(1);
+    expect(await lookup()).toBe('Lisboa');
+    expect(openDatabase).toHaveBeenCalledTimes(2);
+    expect(part).toHaveBeenCalledTimes(2);
+  });
+
+  it('still closes an OPFS session handle after each logical operation', async () => {
+    const backend = persistedBackend();
+    const onStorage = vi.fn();
+    const session = createDerivedDbSessions({ ...backend, locks: nativeLocksDouble(), epoch: async () => 0, onStorage });
+    await session.withDb(async () => undefined);
+    expect(backend.isOwned()).toBe(false);
+    expect(onStorage).toHaveBeenLastCalledWith('opfs');
+  });
 });

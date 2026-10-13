@@ -13,8 +13,10 @@ import {
   armPortableImportRevision,
   BackupCryptoError,
   BackupError,
+  portableStatePersistence,
   readPortableStateRevision,
 } from '@almamesh/store';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import type { BackupEnvelopePlain } from '@almamesh/shared-types';
 
 vi.mock('@almamesh/store', async (importOriginal) => {
@@ -24,8 +26,13 @@ vi.mock('@almamesh/store', async (importOriginal) => {
     readPortableStateRevision: vi.fn(),
     armPortableImportRevision: vi.fn(),
     clearPortableImportRevisionFence: vi.fn(),
+    portableStatePersistence: vi.fn(() => 'opfs'),
   };
 });
+
+vi.mock('../../../../lib/profileDataLifecycle', () => ({
+  adoptRestoredDatasetInPlace: vi.fn(async () => undefined),
+}));
 
 import '../../../../i18n/config';
 
@@ -51,7 +58,20 @@ import {
   stageBackupImport,
 } from '../../../../lib/backupService';
 import { openBackupSaveTarget, pickBackupFile } from '../../../../lib/backupFile';
-import { RestoreFromBackup } from '../RestoreFromBackup';
+import { adoptRestoredDatasetInPlace } from '../../../../lib/profileDataLifecycle';
+import { RestoreFromBackup as RestoreFromBackupPanel } from '../RestoreFromBackup';
+
+/** Hero and Onboarding render it inside the app router; so do these tests. */
+function RestoreFromBackup() {
+  return (
+    <MemoryRouter initialEntries={['/']}>
+      <Routes>
+        <Route path="/" element={<RestoreFromBackupPanel />} />
+        <Route path="/dashboard" element={<p data-testid="dashboard-route">dashboard</p>} />
+      </Routes>
+    </MemoryRouter>
+  );
+}
 
 const ENVELOPE: BackupEnvelopePlain = {
   format: 'almamesh-backup',
@@ -85,6 +105,7 @@ beforeEach(() => {
   vi.mocked(commitBackupImport).mockResolvedValue(undefined);
   vi.mocked(hasDataToProtect).mockResolvedValue(false);
   vi.mocked(readPortableStateRevision).mockResolvedValue(3);
+  vi.mocked(portableStatePersistence).mockReturnValue('opfs');
   assignSpy = vi.fn();
   reloadSpy = vi.fn();
   Object.defineProperty(window, 'location', {
@@ -126,6 +147,21 @@ describe('RestoreFromBackup (first run)', () => {
     // The emptiness re-check is fenced to the revision the commit must follow.
     expect(vi.mocked(armPortableImportRevision)).toHaveBeenCalledExactlyOnceWith(3);
     expect(sessionStorage.getItem('almamesh:restore-reload')).toBe('1');
+    expect(reloadSpy).not.toHaveBeenCalled();
+  });
+
+  it('in a private window (SQLite in memory) opens the dashboard in-app, with no page load to erase the restore', async () => {
+    vi.mocked(portableStatePersistence).mockReturnValue('memory');
+    render(<RestoreFromBackup />);
+
+    fireEvent.click(screen.getByTestId('first-run-restore-button'));
+    await unlockWith(PASSWORD);
+    fireEvent.click(await screen.findByTestId('backup-confirm-import'));
+
+    expect(await screen.findByTestId('dashboard-route')).toBeTruthy();
+    expect(vi.mocked(commitBackupImport)).toHaveBeenCalledWith(STAGED_BUNDLE);
+    expect(vi.mocked(adoptRestoredDatasetInPlace)).toHaveBeenCalledOnce();
+    expect(assignSpy).not.toHaveBeenCalled();
     expect(reloadSpy).not.toHaveBeenCalled();
   });
 
@@ -248,8 +284,46 @@ describe('RestoreFromBackup (first run)', () => {
     await unlockWith(PASSWORD);
     fireEvent.click(await screen.findByTestId('backup-confirm-import'));
 
-    expect((await screen.findByTestId('first-run-restore-error')).textContent).toContain('disk full');
+    const text = (await screen.findByTestId('first-run-restore-error')).textContent ?? '';
+    expect(text).toContain('disk full');
+    expect(text).toContain('Nothing was replaced');
     expect(assignSpy).not.toHaveBeenCalled();
+  });
+
+  it('private window: if the tab cannot show a restore that already committed, it never claims nothing was replaced or asks for a reload', async () => {
+    vi.mocked(portableStatePersistence).mockReturnValue('memory');
+    vi.mocked(adoptRestoredDatasetInPlace).mockRejectedValueOnce(new Error('stores stuck'));
+    render(<RestoreFromBackup />);
+
+    fireEvent.click(screen.getByTestId('first-run-restore-button'));
+    await unlockWith(PASSWORD);
+    fireEvent.click(await screen.findByTestId('backup-confirm-import'));
+
+    const text = (await screen.findByTestId('first-run-restore-error')).textContent ?? '';
+    expect(vi.mocked(commitBackupImport)).toHaveBeenCalledWith(STAGED_BUNDLE);
+    expect(text).toContain('stores stuck');
+    expect(text).not.toContain('Nothing was replaced');
+    // A page load empties in-memory SQLite, so it must warn against one.
+    expect(text).toContain("Don't reload");
+    expect(text).toContain('Restore the same file again');
+    expect(screen.queryByTestId('dashboard-route')).toBeNull();
+  });
+
+  it('saved browser: if opening the restored data fails after the commit, it says the backup was restored and to reload', async () => {
+    assignSpy.mockImplementation(() => {
+      throw new Error('navigation blocked');
+    });
+    render(<RestoreFromBackup />);
+
+    fireEvent.click(screen.getByTestId('first-run-restore-button'));
+    await unlockWith(PASSWORD);
+    fireEvent.click(await screen.findByTestId('backup-confirm-import'));
+
+    const text = (await screen.findByTestId('first-run-restore-error')).textContent ?? '';
+    expect(text).toContain('navigation blocked');
+    expect(text).not.toContain('Nothing was replaced');
+    expect(text).toContain('Your backup was restored');
+    expect(text).toContain('Reload the page');
   });
 
   it('if the database revision moves during the emptiness re-check, it refuses', async () => {

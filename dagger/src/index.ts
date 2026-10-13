@@ -11,6 +11,7 @@ import {
   object,
 } from "@dagger.io/dagger"
 import type {
+  File,
   CloudflarePagesDeploymentEvidenceID,
   CloudflarePagesProductionRollbackEvidenceID,
   Platform,
@@ -42,8 +43,25 @@ import {
 import { nightlyRealSkipCheckScript } from "./nightlyRealSkips.js"
 import { pagesUploadLimitsCheckScript as releasePagesUploadLimitsScript } from "./pagesUploadLimits.js"
 import { laneScript } from "./laneScript.js"
-import { BROWSER_JOURNEY_ARTIFACTS, BROWSER_JOURNEY_EVIDENCE, browserJourneyEvidenceScript, validateBrowserJourneyExitCode } from "./browserJourneyEvidence.js"
+import {
+  BROWSER_JOURNEY_ARTIFACTS,
+  BROWSER_JOURNEY_EVIDENCE,
+  BROWSER_JOURNEY_STATUS_CHECK,
+  FETCHED_EVIDENCE,
+  FETCH_RUN_ARTIFACT_SCRIPT,
+  browserJourneyEvidenceScript,
+  browserJourneyFetchArgs,
+  validateBrowserJourneyExitCode,
+} from "./browserJourneyEvidence.js"
 import { nativeMacAcceptanceScript } from "./nativeMacAcceptance.js"
+import {
+  bindDeployTrigger,
+  daggerAttemptScript,
+  liveCommitScript,
+  parseDaggerAttempt,
+  parseDeployTrigger,
+  parseLiveCommit,
+} from "./deployTrigger.js"
 import { ALLOWED_OWNERS, repositoryGitUrl, requireAllowedRepository } from "./repositoryIdentity.js"
 import {
   BUN_IMAGE,
@@ -78,6 +96,19 @@ const PAGES_NODE_IMAGE =
 const WRANGLER_VERSION = "4.103.0"
 const WRANGLER = "/opt/wrangler/node_modules/.bin/wrangler"
 const WRANGLER_COMPATIBILITY_DATE = "2026-06-24"
+// Fleet rule shell-step: the workflow cannot run this host step, so Dagger does.
+const PUBLIC_DOCS_COMMAND = "python3 scripts/public_docs_manifest.py --repo-root . --output .almamesh-public-docs.json"
+const PUBLIC_DOCS_MANIFEST_SCRIPT = `mkdir -p "$(dirname $OUT)"
+if [ -d .git ]; then
+  apt-get update -qq && apt-get install -y -qq --no-install-recommends git >/dev/null
+  git config --global --add safe.directory "$PWD"
+  python3 scripts/public_docs_manifest.py --repo-root . --output $OUT
+elif [ -f .almamesh-public-docs.json ]; then
+  cp .almamesh-public-docs.json $OUT
+else
+  echo "No .git directory to ask and no host manifest; run: ${PUBLIC_DOCS_COMMAND}" >&2
+  exit 1
+fi`
 const SOURCE_EXCLUDES = [
   ".git/**",
   "**/.env",
@@ -97,6 +128,7 @@ const CONTRACT_TESTS = [
   "tests/dagger-audit-exceptions-contract.test.ts",
   "tests/browser-journey-evidence.test.ts",
   "tests/native-mac-acceptance.test.ts",
+  "tests/deploy-trigger.test.ts",
   "tests/dagger-deployment-contract.test.ts",
   "tests/dagger-foundation-contract.test.ts",
   "tests/dagger-gates.test.ts",
@@ -152,6 +184,8 @@ type PagesEvidence = ReturnType<PagesClient["deploy"]>
 @object()
 export class AlmameshCi {
   source: Directory
+  /** Only `.git/**`: the backend's public-doc manifest asks Git, never a filesystem walk. */
+  gitMetadata: Directory
   registryToken?: Secret
 
   /**
@@ -164,6 +198,7 @@ export class AlmameshCi {
       exclude: SOURCE_EXCLUDES,
       gitignore: false,
     })
+    this.gitMetadata = workspace.directory("/", { include: [".git/**"], gitignore: false })
     this.registryToken = registryToken
   }
 
@@ -266,9 +301,10 @@ export class AlmameshCi {
           "LICENSE",
           "SECURITY.md",
           "THIRD_PARTY_NOTICES.md",
-          // Host Git exports public doc ownership before the source-only backend gate.
-          ".almamesh-public-docs.json",
+          // backend() mounts the public-doc manifest it builds from Git (publicDocsManifest).
           "scripts/public_docs_manifest.py",
+          // backend/tests/test_fetch_run_artifact.py: the browserJourneysStatus fetcher.
+          "scripts/fetch_run_artifact.py",
           "docs/**",
           "examples/**",
           "frontend/README.md",
@@ -280,6 +316,23 @@ export class AlmameshCi {
       .withEnvVariable("UV_PROJECT_ENVIRONMENT", "/opt/venv")
       .withMountedCache("/root/.cache/uv", this.cache("uv"))
       .withExec(["uv", "sync", "--locked", "--extra", "dev"])
+  }
+
+  /**
+   * Git-owned public doc paths for the source-only backend gate. A checkout with
+   * a `.git` directory (CI) asks Git itself; a linked worktree (whose `.git` is a
+   * file pointing outside) uses the manifest its host wrote with the same script.
+   */
+  private publicDocsManifest(): File {
+    const manifest = "/out/.almamesh-public-docs.json"
+    return dag
+      .container()
+      .from(UV_IMAGE)
+      .withDirectory(ROOT, this.selected([".gitignore", ".almamesh-public-docs.json", "docs/**", "scripts/public_docs_manifest.py"]))
+      .withDirectory(ROOT, this.gitMetadata)
+      .withWorkdir(ROOT)
+      .withExec(["sh", "-ceu", PUBLIC_DOCS_MANIFEST_SCRIPT.replaceAll("$OUT", manifest)])
+      .file(manifest)
   }
 
   private releaseBase(source: Directory): Container {
@@ -463,6 +516,8 @@ exec ${inline.join(" ")}`,
           "frontend/apps/web/scripts/webkit-macos-lane.sh",
           "frontend/apps/web/scripts/crashReportSummary.mjs",
           "frontend/apps/web/scripts/webkit-memory-baseline.mjs",
+          // The browser-journey receipt contract runs the one status-check script.
+          "frontend/apps/web/scripts/browserJourneyStatusCheck.mjs",
           "frontend/apps/web/playwright.time-travel.config.ts",
           "frontend/apps/web/playwright.portable-invariants.config.ts",
           "frontend/apps/web/playwright.boot-retry.config.ts",
@@ -484,7 +539,9 @@ exec ${inline.join(" ")}`,
 
   @func()
   backend(): Container {
-    return this.uvBase().withExec(["uv", "run", "poe", "gate"])
+    return this.uvBase()
+      .withFile(`${ROOT}/.almamesh-public-docs.json`, this.publicDocsManifest())
+      .withExec(["uv", "run", "poe", "gate"])
   }
   @func()
   frontend(): Container {
@@ -531,6 +588,32 @@ exec ${inline.join(" ")}`,
     })])
     if (!evidence) throw new Error("Browser journey evidence is unavailable.")
     return evidence
+  }
+  /**
+   * The browserJourneys gate on GitHub: read back the receipt this run's evidence
+   * job uploaded (browser-journeys-evidence-<sha>) and exit with the journeys'
+   * original status. A missing, corrupt, or other-commit receipt fails closed.
+   */
+  @func()
+  async browserJourneysStatus(commitSha: string, repository: string, runId: string, githubToken: Secret): Promise<string> {
+    const fetch = browserJourneyFetchArgs(repository, runId, commitSha)
+    const evidence = dag
+      .container()
+      .from(UV_IMAGE)
+      .withFile("/opt/fetch_run_artifact.py", this.source.file(FETCH_RUN_ARTIFACT_SCRIPT))
+      .withSecretVariable("GITHUB_TOKEN", githubToken)
+      .withExec(fetch)
+      .directory(FETCHED_EVIDENCE)
+    await dag
+      .container()
+      .from(NODE_IMAGE)
+      .withDirectory(`${ROOT}/${BROWSER_JOURNEY_EVIDENCE}`, evidence)
+      .withFile(`${ROOT}/${BROWSER_JOURNEY_STATUS_CHECK}`, this.source.file(BROWSER_JOURNEY_STATUS_CHECK))
+      .withWorkdir(ROOT)
+      .withEnvVariable("EXPECTED_SHA", commitSha)
+      .withExec(["node", BROWSER_JOURNEY_STATUS_CHECK])
+      .sync()
+    return `Browser journeys passed on ${commitSha}.`
   }
   private browserJourneysRun(retainFailure = false): Container {
     const prepared = this.hookedBuild().withExec(["mkdir", "-p", BROWSER_JOURNEY_ARTIFACTS])
@@ -630,6 +713,10 @@ exec ${inline.join(" ")}`,
       // Settings: a birth-time-only edit recomputes the chart (or says the
       // rectified time governs), never a false "Chart Updated!"; Export after.
       "BIRTH_TIME_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:birth-time-edit --project=chromium",
+      // OPFS refused (a private window): in-memory SQLite, the honest notice,
+      // and the backup it asks for: export, then restore into a fresh private
+      // window. Chromium and WebKit; both refuse OPFS without needing it.
+      "PRIVATE_MODE_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:private-mode --project=chromium --project=webkit",
       // A reload the moment /dashboard appears (after onboarding or a rectify
       // confirm) keeps the chart: pages navigate only after it is saved.
       "CHART_RELOAD_E2E_BASE_URL=http://127.0.0.1:4199 RELOAD_DELAYS=0,200 bun run test:e2e:chart-durable-reload --project=chromium",
@@ -811,9 +898,23 @@ exec ${inline.join(" ")}`,
     workflowRunId: string,
     runAttempt: number,
     repository: string,
+    triggerWorkflow: string,
   ): Promise<string> {
     this.registryToken ??= githubToken
     const runRepository = requireAllowedRepository(repository)
+    // Dagger and WebKit (macOS) both trigger this; see deployTrigger.ts.
+    const bound = await bindDeployTrigger({
+      liveCommit: async () => parseLiveCommit(await dag.container().from(NODE_IMAGE)
+        .withEnvVariable("DEPLOY_TRIGGER_NONCE", randomUUID())
+        .withExec(["node", "-e", liveCommitScript(LIVE_ORIGIN)])
+        .stdout()),
+      daggerAttempt: async () => parseDaggerAttempt(await dag.container().from(NODE_IMAGE)
+        .withEnvVariable("DEPLOY_TRIGGER_NONCE", randomUUID())
+        .withSecretVariable("GITHUB_TOKEN", githubToken)
+        .withExec(["node", "-e", daggerAttemptScript(runRepository, expectedSha)])
+        .stdout()),
+    }, parseDeployTrigger(triggerWorkflow), expectedSha, { workflowRunId, runAttempt })
+    if ("skip" in bound) return bound.skip
     const result = await deliverProduction({
       greenMain: async () => dag.foundation().greenMainDecision(githubToken, runRepository, expectedSha).serialization(),
       verifyNativeMain: async (evidence) => {
@@ -871,7 +972,7 @@ exec ${inline.join(" ")}`,
         cloudflareAccountId,
         deploymentId,
       ),
-    }, expectedSha, workflowRunId, runAttempt, CENTRAL_MODULE_SHA, runRepository)
+    }, expectedSha, bound.workflowRunId, bound.runAttempt, CENTRAL_MODULE_SHA, runRepository)
     // A superseded commit exits green without deploying; the newer commit ships.
     if ("skipped" in result) return result.message
     return [

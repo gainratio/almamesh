@@ -3,7 +3,6 @@ import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSy
 import { spawn, spawnSync } from "node:child_process"
 import { tmpdir } from "node:os"
 import { resolve } from "node:path"
-import { browserJourneyStatusCheckScript } from "../dagger/src/browserJourneyEvidence.ts"
 
 // Pure workflow-YAML contracts: no Dagger CLI, so the `contracts` gate runs them
 // on every PR (tests/dagger-contracts.test.ts needs a host `dagger` and does not).
@@ -32,41 +31,27 @@ function workflowNames(): string[] {
 const checkout = "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
 const daggerAction = "dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77"
 
-function ingressViolations(
-  ingressSteps: Array<Record<string, unknown>>,
-  backendPublicDocsExport = false,
-  browserJourneyEvidence = false,
-): string[] {
-  const expectedUses = [checkout, daggerAction]
+/**
+ * gainratio/ci fleet policy (validate_ingress / validate_candidate): a job is
+ * exactly checkout -> Dagger, or, when it uploads, checkout -> Dagger -> upload
+ * with the artifact bound to this SHA (fleet rules non-dagger-ingress,
+ * candidate-order, artifact-identity). No job runs shell (shell-step).
+ */
+function ingressViolations(ingressSteps: Array<Record<string, unknown>>): string[] {
   const violations: string[] = []
-  let protectedSteps = ingressSteps
-  if (browserJourneyEvidence) {
-    const action = ingressSteps[1] ?? {}
-    const status = ingressSteps[2] ?? {}
-    const upload = ingressSteps[3] ?? {}
-    if (action.id !== "browser-journeys-evidence"
-      || (action.with as Record<string, unknown>)?.call !== "--registry-token=env:GITHUB_TOKEN browser-journeys-evidence --commit-sha=${{ github.sha }} --repository=${{ github.repository }} export --path=browser-journeys-evidence"
-      || JSON.stringify(status) !== JSON.stringify({ name: "Enforce original browser journey result", env: { EXPECTED_SHA: "${{ github.sha }}" }, run: `node <<'NODE'\n${browserJourneyStatusCheckScript()}\nNODE\n` })
-      || JSON.stringify(upload) !== JSON.stringify({ uses: "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a", if: "always() && steps.browser-journeys-evidence.outcome == 'success'", with: { name: "browser-journeys-evidence", path: "browser-journeys-evidence", "retention-days": 14, "if-no-files-found": "error" } })
-      || ingressSteps.length !== 4) violations.push("browser-journey-evidence")
-    protectedSteps = ingressSteps.slice(0, 2)
-  }
-  if (backendPublicDocsExport) {
-    const step = ingressSteps[1] ?? {}
-    if (
-      JSON.stringify(Object.keys(step).sort()) !== JSON.stringify(["name", "run"])
-      || step.name !== "Export public documentation paths"
-      || step.run !== "python3 scripts/public_docs_manifest.py --repo-root . --output .almamesh-public-docs.json"
-    ) violations.push("public-doc-export")
-    protectedSteps = ingressSteps.filter((_step, index) => index !== 1)
-  }
-
-  if (protectedSteps.length !== expectedUses.length) violations.push("step-count")
-  if (JSON.stringify(protectedSteps.map((step) => step.uses)) !== JSON.stringify(expectedUses)) {
+  const uploads = ingressSteps[2]?.uses === UPLOAD_ARTIFACT
+  const expectedUses = uploads ? [checkout, daggerAction, UPLOAD_ARTIFACT] : [checkout, daggerAction]
+  if (ingressSteps.length !== expectedUses.length) violations.push("step-count")
+  if (JSON.stringify(ingressSteps.map((step) => step.uses)) !== JSON.stringify(expectedUses)) {
     violations.push("step-order")
   }
-  if (protectedSteps.some((step) => "run" in step)) {
-    violations.push("unexpected-run")
+  if (ingressSteps.some((step) => "run" in step)) violations.push("unexpected-run")
+  if (uploads) {
+    const upload = (ingressSteps[2].with ?? {}) as Record<string, unknown>
+    if (!String(upload.name).includes("${{ github.sha }}")
+      || !["candidate", "release"].includes(String(upload.path))
+      || upload["if-no-files-found"] !== "error"
+      || upload["retention-days"] !== 1) violations.push("artifact-identity")
   }
   return violations
 }
@@ -92,7 +77,7 @@ function daggerArgsExpressionViolations(workflowSteps: Array<Record<string, unkn
 function expectThinDaggerIngress(name: string): void {
   const jobs = workflow(name).jobs as Record<string, { steps: Array<Record<string, unknown>> }>
   for (const [id, job] of Object.entries(jobs)) {
-    expect(ingressViolations(job.steps, name === "dagger.yml" && id === "backend", name === "dagger.yml" && id === "browser-journeys")).toEqual([])
+    expect({ id, violations: ingressViolations(job.steps) }).toEqual({ id, violations: [] })
   }
 }
 
@@ -418,7 +403,7 @@ describe("canonical GitHub ingress contract", () => {
     }
   })
 
-  test("CI/CD ingress only checks out and invokes Dagger, plus the backend host-doc export", () => {
+  test("CI/CD ingress only checks out and invokes Dagger, plus one SHA-bound candidate upload", () => {
     for (const name of [
       "dagger.yml",
       "security-audit.yml",
@@ -428,14 +413,16 @@ describe("canonical GitHub ingress contract", () => {
     ]) expectThinDaggerIngress(name)
   })
 
-  test("the backend alone exports host Git documentation paths before Dagger", () => {
+  test("the backend gate builds its public-doc manifest in Dagger from the checkout's own Git", () => {
     const jobs = workflow("dagger.yml").jobs as Record<string, { steps: Array<Record<string, unknown>> }>
-    expect(ingressViolations(jobs.backend.steps, true)).toEqual([])
-    expect(ingressViolations(jobs.backend.steps)).not.toEqual([])
+    expect(ingressViolations(jobs.backend.steps)).toEqual([])
     const source = readFileSync(resolve(root, "dagger/src/index.ts"), "utf8")
-    const uvBase = source.slice(source.indexOf("private uvBase()"), source.indexOf("private releaseBase("))
-    expect(uvBase).toContain('".almamesh-public-docs.json"')
-    expect(uvBase).toContain('"scripts/public_docs_manifest.py"')
+    const backend = source.slice(source.indexOf("  backend(): Container {"), source.indexOf("  frontend(): Container {"))
+    expect(backend).toContain("this.publicDocsManifest()")
+    const manifest = source.slice(source.indexOf("private publicDocsManifest()"), source.indexOf("private releaseBase("))
+    expect(manifest).toContain("scripts/public_docs_manifest.py")
+    expect(manifest).toContain("this.gitMetadata")
+    expect(source).toContain('workspace.directory("/", { include: [".git/**"], gitignore: false })')
   })
 
   test("the backend astronomy contract gets its exact browser configuration inputs", () => {
@@ -456,14 +443,15 @@ describe("canonical GitHub ingress contract", () => {
   })
 
   test.each([
-    ["missing export", (steps: Array<Record<string, unknown>>) => [steps[0], steps[2]]],
-    ["export after Dagger", (steps: Array<Record<string, unknown>>) => [steps[0], steps[2], steps[1]]],
-    ["masked failure", (steps: Array<Record<string, unknown>>) => [steps[0], { ...steps[1], "continue-on-error": true }, steps[2]]],
-    ["another command", (steps: Array<Record<string, unknown>>) => [steps[0], { ...steps[1], run: `${steps[1].run} || true` }, steps[2]]],
-    ["extra shell step", (steps: Array<Record<string, unknown>>) => [...steps, { run: "echo unexpected" }]],
-  ])("the backend export exception rejects %s", (_name, mutate) => {
+    ["a mutable artifact name", { name: "browser-journeys-evidence" }],
+    ["an arbitrary artifact path", { path: "." }],
+    ["a long retention", { "retention-days": 14 }],
+    ["a silent empty upload", { "if-no-files-found": "warn" }],
+  ])("the candidate upload rejects %s", (_name, change) => {
     const jobs = workflow("dagger.yml").jobs as Record<string, { steps: Array<Record<string, unknown>> }>
-    expect(ingressViolations(mutate(structuredClone(jobs.backend.steps)), true)).not.toEqual([])
+    const mutant = structuredClone(jobs["browser-journeys-evidence"].steps)
+    mutant[2].with = { ...(mutant[2].with as Record<string, unknown>), ...change }
+    expect(ingressViolations(mutant)).toEqual(["artifact-identity"])
   })
 
   test("the scheduled live probe runs its native function read-only and without secrets", () => {

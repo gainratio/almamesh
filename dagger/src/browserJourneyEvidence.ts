@@ -1,3 +1,5 @@
+import { requireAllowedRepository } from "./repositoryIdentity.js"
+
 /** The one closed output tree exported by the browser-journeys CI job. */
 export const BROWSER_JOURNEY_ARTIFACTS = "browser-journeys-artifacts"
 export const BROWSER_JOURNEY_EVIDENCE = "browser-journeys-evidence"
@@ -22,21 +24,28 @@ printf '%s\\n' '${receipt}' > ${BROWSER_JOURNEY_EVIDENCE}/journey-status.json
 bun scripts/artifactLeakScan.mjs ${BROWSER_JOURNEY_EVIDENCE}`
 }
 
-/** Host-side check AFTER export; any missing/corrupt receipt fails closed. */
-export function browserJourneyStatusCheckScript(): string {
-  return `const fs = require("node:fs");
-try {
-  const value = JSON.parse(fs.readFileSync("browser-journeys-evidence/journey-status.json", "utf8"));
-  const sha = process.env.EXPECTED_SHA;
-  if (!value || typeof value !== "object" || Array.isArray(value)
-    || Object.keys(value).sort().join(",") !== "commitSha,exitCode,scanned,schemaVersion"
-    || value.schemaVersion !== 1 || value.scanned !== true
-    || typeof sha !== "string" || !/^[0-9a-f]{40}$/.test(sha) || value.commitSha !== sha
-    || !Number.isInteger(value.exitCode) || value.exitCode < 0 || value.exitCode > 255) throw 0;
-  console.log("Browser journey original exit status: " + value.exitCode);
-  process.exit(value.exitCode);
-} catch {
-  console.error("Browser journey evidence receipt is missing or invalid.");
-  process.exit(1);
-}`
+/**
+ * The one receipt check, run by the Dagger browserJourneysStatus gate on the
+ * evidence it fetched back from this run, and by the contract tests. Any
+ * missing/corrupt/mismatched receipt fails closed.
+ */
+export const BROWSER_JOURNEY_STATUS_CHECK = "frontend/apps/web/scripts/browserJourneyStatusCheck.mjs"
+
+/** The evidence job's candidate artifact name, bound to one commit (fleet rule artifact-identity). */
+export function browserJourneyArtifactName(commitSha: string): string {
+  if (!/^[0-9a-f]{40}$/.test(commitSha)) throw new Error("Browser journey commit is invalid.")
+  return `${BROWSER_JOURNEY_EVIDENCE}-${commitSha}`
+}
+
+export const FETCH_RUN_ARTIFACT_SCRIPT = "scripts/fetch_run_artifact.py"
+export const FETCHED_EVIDENCE = "/evidence"
+
+/** argv that downloads this run's evidence artifact for this commit, and nothing else. */
+export function browserJourneyFetchArgs(repository: string, runId: string, commitSha: string): string[] {
+  const allowed = requireAllowedRepository(repository)
+  if (!/^[1-9][0-9]{0,19}$/.test(runId)) throw new Error("Browser journey run id is invalid.")
+  return [
+    "python3", "/opt/fetch_run_artifact.py", "--repository", allowed, "--run-id", runId,
+    "--name", browserJourneyArtifactName(commitSha), "--output", FETCHED_EVIDENCE,
+  ]
 }

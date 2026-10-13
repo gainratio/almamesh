@@ -1,16 +1,20 @@
 /**
  * Where canonical SQLite state lives, and what happens when it cannot live there.
  *
- * AlmaMesh keeps one SQLite database in the Origin Private File System. Product
- * rule (2026-10-05): durable SQLite on OPFS is the only option. Some browsers
- * expose `navigator.storage.getDirectory` but refuse it (Safari Private
- * Browsing, "Block all cookies", older iOS, some embedded WebViews); a probe
- * may also never answer. Either way the app does NOT fall back to SQLite in
- * memory, and never to IndexedDB or localStorage: it reports 'blocked', the UI
- * shows a block screen, and every hydration keeps waiting on the same pending
- * open. `checkPortableStorageAgain()` re-runs the exact probe; once storage is
- * allowed it opens SQLite on OPFS and that pending open resolves, so waiting
- * stores simply finish hydrating with no reload.
+ * AlmaMesh keeps one SQLite database in the Origin Private File System. SQLite
+ * is the only store; never IndexedDB or localStorage.
+ *
+ * - OPFS works: durable SQLite on OPFS ('opfs').
+ * - OPFS refused while site storage works (Safari Private Browsing, older iOS,
+ *   some WebViews, every throwaway Playwright WebKit context): SQLite runs in
+ *   memory for this tab ('memory') and the UI says plainly that nothing is
+ *   saved after the tab closes (product rule 2026-10-11; from 2026-10-05 to
+ *   2026-10-12 this showed a block screen instead).
+ * - Site storage blocked ("Block all cookies") or a probe that never answers:
+ *   'blocked'. The UI shows the block screen and every hydration keeps waiting
+ *   on the same pending open. `checkPortableStorageAgain()` re-runs the exact
+ *   probe; once storage is allowed it opens SQLite on OPFS and that pending
+ *   open resolves, so waiting stores finish hydrating with no reload.
  *
  * The probe is bounded; the open itself is not. On slow 4G the SQLite Worker's
  * wasm download alone can take minutes, and a fixed budget turned that success
@@ -30,8 +34,8 @@ export type OpfsProbe =
   | { readonly status: 'refused'; readonly reason: string }
   | { readonly status: 'timed-out' };
 
-/** What a probe allows: durable OPFS SQLite, or nothing until the user allows storage. */
-export type PortablePersistence = 'opfs' | 'blocked';
+/** What a probe allows: durable OPFS SQLite, SQLite in memory for this tab, or nothing yet. */
+export type PortablePersistence = 'opfs' | 'memory' | 'blocked';
 export type PortableStatePersistence = 'pending' | PortablePersistence | 'unavailable';
 
 interface OpfsEntrypoint {
@@ -78,9 +82,10 @@ export async function probeOpfs(
   }
 }
 
-/** OPFS or nothing: a refused or unanswered probe blocks; there is no in-memory fallback. */
+/** OPFS when it works; a refusal runs in memory; an unanswered probe blocks (recheckable). */
 export function selectPortablePersistence(probe: OpfsProbe): PortablePersistence {
-  return probe.status === 'available' ? 'opfs' : 'blocked';
+  if (probe.status === 'available') return 'opfs';
+  return probe.status === 'refused' ? 'memory' : 'blocked';
 }
 
 let currentPersistence: PortableStatePersistence = 'pending';
@@ -93,7 +98,7 @@ function reportPersistence(next: PortableStatePersistence): void {
   for (const listener of listeners) listener();
 }
 
-/** 'blocked' means the browser refuses durable storage and the app is waiting for the user. */
+/** 'memory': nothing survives this tab. 'blocked': the app is waiting for the user to allow storage. */
 export function portableStatePersistence(): PortableStatePersistence {
   return currentPersistence;
 }
@@ -117,7 +122,7 @@ export function markPortableStateUnavailable(): void {
  */
 export function markPortableStorageBlockedByEngine(options: { readonly storage?: OpfsEntrypoint } = {}): void {
   pendingAttempt = async () => {
-    if (!(await probeAllows(options))) return 'blocked';
+    if ((await probePersistence(options)) !== 'opfs') return 'blocked';
     pendingAttempt = undefined;
     reportPersistence('opfs');
     return 'opfs';
@@ -142,26 +147,31 @@ export function checkPortableStorageAgain(): Promise<PortableStatePersistence> {
 
 interface WhenAllowedOptions<Repository> {
   readonly open: () => Promise<Repository>;
+  /** The same store with `persistence: 'memory'`, used only when OPFS is refused. */
+  readonly openInMemory: () => Promise<Repository>;
   readonly storage?: OpfsEntrypoint;
   /** Fast early check; defaults to whether the browser throws on site storage. */
   readonly storageBlocked?: () => boolean;
 }
 
-async function probeAllows(options: Pick<WhenAllowedOptions<unknown>, 'storage' | 'storageBlocked'>): Promise<boolean> {
+async function probePersistence(
+  options: Pick<WhenAllowedOptions<unknown>, 'storage' | 'storageBlocked'>,
+): Promise<PortablePersistence> {
   if ((options.storageBlocked ?? siteStorageBlocked)()) {
     safeWarn('storage.opfs_unavailable', 'site storage blocked');
-    return false;
+    return 'blocked';
   }
   const probe = await probeOpfs(options.storage);
   // Code-only diagnostic: the browser's refusal text never reaches the console.
   if (probe.status !== 'available') safeWarn('storage.opfs_unavailable', probe);
-  return selectPortablePersistence(probe) === 'opfs';
+  return selectPortablePersistence(probe);
 }
 
 /**
- * Open durable OPFS SQLite once storage is allowed. Refused or unanswered:
- * report 'blocked' and keep this promise pending (never a RAM repository, never
- * a throw) until a recheck succeeds. A real open failure rejects as 'unavailable'.
+ * Open durable OPFS SQLite once storage is allowed. OPFS refused: open the
+ * in-memory store and report 'memory'. Site storage blocked or no answer:
+ * report 'blocked' and keep this promise pending (never a throw) until a
+ * recheck succeeds. A real open failure rejects as 'unavailable'.
  */
 export function openPortableStateWhenAllowed<Repository>(
   options: WhenAllowedOptions<Repository>,
@@ -169,15 +179,16 @@ export function openPortableStateWhenAllowed<Repository>(
   return new Promise<Repository>((resolve, reject) => {
     let inFlight: Promise<PortableStatePersistence> | undefined;
     const run = async (): Promise<PortableStatePersistence> => {
-      if (!(await probeAllows(options))) {
+      const persistence = await probePersistence(options);
+      if (persistence === 'blocked') {
         reportPersistence('blocked');
         return 'blocked';
       }
       try {
-        resolve(await options.open());
+        resolve(await (persistence === 'opfs' ? options.open() : options.openInMemory()));
         pendingAttempt = undefined;
-        reportPersistence('opfs');
-        return 'opfs';
+        reportPersistence(persistence);
+        return persistence;
       } catch (error) {
         safeError('storage.state_open_failed', error);
         pendingAttempt = undefined;

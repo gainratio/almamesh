@@ -35,8 +35,13 @@ vi.mock('@almamesh/store', async (importOriginal) => {
     armPortableImportRevision: vi.fn(),
     clearPortableImportRevisionFence: vi.fn(),
     listSetAsideRecords: vi.fn(async () => []),
+    portableStatePersistence: vi.fn(() => 'opfs'),
   };
 });
+
+vi.mock('../../../lib/profileDataLifecycle', () => ({
+  adoptRestoredDatasetInPlace: vi.fn(async () => undefined),
+}));
 
 import '../../../i18n/config';
 
@@ -68,7 +73,8 @@ import {
   hasDataToProtect,
 } from '../../../lib/backupService';
 import { saveBackupFile, pickBackupFile, openBackupSaveTarget } from '../../../lib/backupFile';
-import { listSetAsideRecords } from '@almamesh/store';
+import { listSetAsideRecords, portableStatePersistence } from '@almamesh/store';
+import { adoptRestoredDatasetInPlace } from '../../../lib/profileDataLifecycle';
 import DataSettings, { DataSettingsPanel } from '../DataSettings';
 
 const SAMPLE_ENVELOPE: BackupEnvelopePlain = {
@@ -107,6 +113,7 @@ beforeEach(() => {
   vi.mocked(commitBackupImport).mockResolvedValue(undefined);
   vi.mocked(readPortableStateRevision).mockResolvedValue(17);
   vi.mocked(hasDataToProtect).mockResolvedValue(true);
+  vi.mocked(portableStatePersistence).mockReturnValue('opfs');
 
   // Stub reload — the panel reloads after a commit; happy-dom's is a no-op we spy.
   reloadSpy = vi.fn();
@@ -348,6 +355,24 @@ describe('DataSettings — Backup & Restore panel', () => {
     expect(vi.mocked(openBackupSaveTarget)).not.toHaveBeenCalled();
     expect(vi.mocked(buildBackupExport)).not.toHaveBeenCalled();
     expect(vi.mocked(armPortableImportRevision)).toHaveBeenCalledExactlyOnceWith(17);
+  });
+
+  it('in a private window (SQLite in memory) restores in place: a reload would erase what was just restored', async () => {
+    vi.mocked(portableStatePersistence).mockReturnValue('memory');
+    vi.mocked(hasDataToProtect).mockResolvedValue(false);
+    vi.mocked(pickBackupFile).mockResolvedValue('FILE_TEXT');
+    render(<DataSettings />);
+
+    fireEvent.click(screen.getByTestId('backup-import-button'));
+    fireEvent.click(await screen.findByTestId('backup-confirm-import'));
+
+    expect((await screen.findByTestId('backup-status')).textContent).toBe(
+      'Restored. This tab still keeps nothing after it closes, so export a backup before you leave.',
+    );
+    expect(vi.mocked(commitBackupImport)).toHaveBeenCalledOnce();
+    expect(vi.mocked(adoptRestoredDatasetInPlace)).toHaveBeenCalledOnce();
+    expect(reloadSpy).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem('almamesh:restore-reload')).toBeNull();
   });
 
   it('passes a picked SQLite backup to staging as bytes', async () => {

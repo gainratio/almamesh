@@ -97,8 +97,12 @@ jobs:
           version: "0.21.8"
           call: --registry-token=env:GITHUB_TOKEN gate --name=browserChromium --commit-sha=${{ github.sha }} --repository=${{ github.repository }}
 
-  browser-journeys:
-    name: gate / browserJourneys
+  # Fleet rules shell-step / candidate-order / artifact-identity (gainratio/ci):
+  # a job is checkout -> Dagger, or checkout -> Dagger -> upload of SHA-bound
+  # bytes. The journeys run ONCE, here; the scanned snapshot (with the original
+  # exit status in its receipt) is uploaded even when a journey failed.
+  browser-journeys-evidence:
+    name: evidence / browserJourneys
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
@@ -110,45 +114,47 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
           ref: ${{ github.sha }}
-      - id: browser-journeys-evidence
-        uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77 # v8.4.1
+      - uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77 # v8.4.1
         env:
           # Engine config: pull Docker Hub images via the GHCR mirror (.github/xdg/dagger/engine.json).
           XDG_CONFIG_HOME: ${{ github.workspace }}/.github/xdg
           GITHUB_TOKEN: ${{ github.token }}
         with:
           version: "0.21.8"
-          call: --registry-token=env:GITHUB_TOKEN browser-journeys-evidence --commit-sha=${{ github.sha }} --repository=${{ github.repository }} export --path=browser-journeys-evidence
-      # Export the completed, scanned container snapshot before enforcing its
-      # original status. A failed journey remains a failed required gate.
-      - name: Enforce original browser journey result
-        env:
-          EXPECTED_SHA: ${{ github.sha }}
-        run: |
-          node <<'NODE'
-          const fs = require("node:fs");
-          try {
-            const value = JSON.parse(fs.readFileSync("browser-journeys-evidence/journey-status.json", "utf8"));
-            const sha = process.env.EXPECTED_SHA;
-            if (!value || typeof value !== "object" || Array.isArray(value)
-              || Object.keys(value).sort().join(",") !== "commitSha,exitCode,scanned,schemaVersion"
-              || value.schemaVersion !== 1 || value.scanned !== true
-              || typeof sha !== "string" || !/^[0-9a-f]{40}$/.test(sha) || value.commitSha !== sha
-              || !Number.isInteger(value.exitCode) || value.exitCode < 0 || value.exitCode > 255) throw 0;
-            console.log("Browser journey original exit status: " + value.exitCode);
-            process.exit(value.exitCode);
-          } catch {
-            console.error("Browser journey evidence receipt is missing or invalid.");
-            process.exit(1);
-          }
-          NODE
+          call: --registry-token=env:GITHUB_TOKEN browser-journeys-evidence --commit-sha=${{ github.sha }} --repository=${{ github.repository }} export --path=candidate
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        if: always() && steps.browser-journeys-evidence.outcome == 'success'
         with:
-          name: browser-journeys-evidence
-          path: browser-journeys-evidence
-          retention-days: 14
+          name: browser-journeys-evidence-${{ github.sha }}
+          path: candidate
+          retention-days: 1
           if-no-files-found: error
+
+  # The browserJourneys gate: Dagger reads this run's receipt back and exits with
+  # the journeys' original status. It runs even if the evidence job failed, and
+  # then fails closed (no receipt), so a red journey is a red Dagger check.
+  browser-journeys:
+    name: gate / browserJourneys
+    needs: [browser-journeys-evidence]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      actions: read # Read this run's evidence artifact.
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      - uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77 # v8.4.1
+        env:
+          # Engine config: pull Docker Hub images via the GHCR mirror (.github/xdg/dagger/engine.json).
+          XDG_CONFIG_HOME: ${{ github.workspace }}/.github/xdg
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          version: "0.21.8"
+          call: browser-journeys-status --github-token=env:GITHUB_TOKEN --commit-sha=${{ github.sha }} --repository=${{ github.repository }} --run-id=${{ github.run_id }}
 
   browser-suites:
     name: gate / browserSuites
@@ -273,8 +279,6 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
           ref: ${{ github.sha }}
-      - name: Export public documentation paths
-        run: python3 scripts/public_docs_manifest.py --repo-root . --output .almamesh-public-docs.json
       - uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77 # v8.4.1
         env:
           # Engine config: pull Docker Hub images via the GHCR mirror (.github/xdg/dagger/engine.json).

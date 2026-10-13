@@ -13,6 +13,15 @@
  * loadPackage reports it on WebKit: a PyodidePackageLoadError for pytz whose
  * text carries the trap message (PR #317's macOS lane). That form must be
  * retried the same way.
+ *
+ * Arming it with "exit" rejects the first boot the way loadPyodide does when
+ * CPython dies in start-up (WebKit CI run 38295121396: "Fatal Python error:
+ * Failed to import encodings module"), with Emscripten's non-Error ExitStatus.
+ * Before the fix it crossed the Worker as "[object Object]" and was never
+ * retried; it must be retried like a trap.
+ *
+ * A boot failure the runtime does not retry must never leave the Life Atlas
+ * saying "still starting up": it shows the failure and a Retry that reboots.
  */
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -83,6 +92,7 @@ async function submitReferenceBirth(page: Page): Promise<void> {
 const FAULTS = [
   { label: 'a wasm trap', arm: true },
   { label: 'a wasm trap wrapped in a Pyodide package load error', arm: 'wrapped' },
+  { label: 'a Pyodide runtime that exited during start-up (Fatal Python error)', arm: 'exit' },
 ] as const;
 
 for (const fault of FAULTS) {
@@ -111,13 +121,51 @@ for (const fault of FAULTS) {
 
     await page.waitForURL('**/dashboard', { timeout: 120_000 });
     await expect(page.getByTestId('chart-visualization').first()).toBeVisible();
-    await page.screenshot({ path: test.info().outputPath(`dashboard-after-boot-retry-${fault.arm === true ? 'trap' : 'wrapped'}.png`) });
+    await page.screenshot({ path: test.info().outputPath(`dashboard-after-boot-retry-${fault.arm === true ? 'trap' : fault.arm}.png`) });
 
     expect(consoleLines.filter((line) => line.includes('engine.boot_retry'))).toEqual([RETRY_LINE]);
     expect(await page.evaluate(() => (window as unknown as Record<string, unknown>).__recoveryCardSeen ?? false)).toBe(false);
     expect(consoleErrors).toEqual([]);
   });
 }
+
+/**
+ * CI run 38267574533 (memory-budget lane): one OPFS step in the sync Worker
+ * stalled under load, the first boot failed as transient, and the provider
+ * booted again on its own 250 ms later. Onboarding had been awaiting that
+ * first attempt and parked on CHART_GEN_001 with the engine ready behind it.
+ * Here the first trust-root fetch never answers, so the sync's stall watchdog
+ * fails the first boot the same transient way while the form is submitted.
+ */
+test('a first engine sync that stalls while onboarding waits follows the automatic retry to the chart', async ({ page, context, browserName }) => {
+  test.skip(browserName !== 'chromium', 'routes the sync Worker fetch; WebKit runs the wasm-trap cases');
+  const consoleErrors: string[] = [];
+  page.on('console', (message) => {
+    if (message.type() === 'error') consoleErrors.push(message.text());
+  });
+  page.on('pageerror', (error) => consoleErrors.push(`pageerror: ${error.message}`));
+  let trustRootRequests = 0;
+  await context.route('**/public.key', async (route) => {
+    trustRootRequests += 1;
+    if (trustRootRequests === 1) return; // never answered: the first boot stalls
+    await route.continue();
+  });
+  await page.addInitScript((card) => {
+    const seen = (): void => {
+      if (document.querySelector(card)) (window as unknown as Record<string, unknown>).__recoveryCardSeen = true;
+    };
+    new MutationObserver(seen).observe(document, { childList: true, subtree: true });
+  }, RECOVERY_CARD);
+
+  await page.goto('/onboarding');
+  await submitReferenceBirth(page);
+
+  await page.waitForURL('**/dashboard', { timeout: 150_000 });
+  await expect(page.getByTestId('chart-visualization').first()).toBeVisible();
+  expect(trustRootRequests).toBeGreaterThanOrEqual(2);
+  expect(await page.evaluate(() => (window as unknown as Record<string, unknown>).__recoveryCardSeen ?? false)).toBe(false);
+  expect(consoleErrors).toEqual([]);
+});
 
 interface RecoveryRequest {
   id: number;
@@ -249,4 +297,54 @@ test('a post-ready correlated fatal requires Retry, then a fresh real Worker ren
   await testInfo.attach('post-ready-recovery', { path: proofPath, contentType: 'application/json' });
   expect(consoleErrors).toEqual(['[almamesh:error:app.typed_error]']);
   await page.screenshot({ path: testInfo.outputPath('dashboard-after-post-ready-recovery.png') });
+});
+
+test('a failed engine boot on the dashboard shows the Life Atlas failure and a Retry that recovers, never "still starting up"', async ({ page }, testInfo) => {
+  test.setTimeout(420_000);
+  const consoleErrors: string[] = [];
+  page.on('console', (message) => { if (message.type() === 'error') consoleErrors.push(message.text()); });
+  page.on('pageerror', (error) => consoleErrors.push(`pageerror: ${error.message}`));
+
+  await page.goto('/onboarding');
+  await submitReferenceBirth(page);
+  await page.waitForURL('**/dashboard', { timeout: 120_000 });
+  await expect(page.getByTestId('chart-visualization').first()).toBeVisible();
+
+  // From here on, the FIRST chart Worker of each document answers its boot
+  // with a failure the runtime does not retry. The Retry's fresh Worker is real.
+  await page.addInitScript(() => {
+    let workers = 0;
+    const NativeWorker = window.Worker;
+    window.Worker = new Proxy(NativeWorker, {
+      construct(Target, args: [string | URL, WorkerOptions?]) {
+        const worker = Reflect.construct(Target, args) as Worker;
+        if (!String(args[0]).includes('chartWorker') || ++workers > 1) return worker;
+        const postMessage = worker.postMessage.bind(worker);
+        worker.postMessage = ((request: { id: number; kind: string }, transfer?: Transferable[] | StructuredSerializeOptions) => {
+          if (request.kind === 'boot') {
+            queueMicrotask(() => worker.dispatchEvent(new MessageEvent('message', {
+              data: { ok: false, id: request.id, error: 'Program terminated with exit(1)' },
+            })));
+            return;
+          }
+          if (Array.isArray(transfer)) postMessage(request, transfer);
+          else postMessage(request, transfer);
+        }) as Worker['postMessage'];
+        return worker;
+      },
+    });
+  });
+  await page.goto('/dashboard');
+
+  const atlas = page.getByTestId('life-atlas');
+  const retry = atlas.getByTestId('life-atlas-retry');
+  await expect(retry, 'a failed boot must surface a Retry, not "still starting up"').toBeVisible({ timeout: 120_000 });
+  await expect(atlas.getByTestId('life-atlas-gate')).toContainText('Program terminated with exit(1)');
+  await expect(atlas).not.toContainText('still starting up');
+  await page.screenshot({ path: testInfo.outputPath('life-atlas-engine-failed.png'), fullPage: true });
+
+  await retry.click();
+  await expect(atlas.getByText(/^As of /)).toBeVisible({ timeout: 240_000 });
+  await page.screenshot({ path: testInfo.outputPath('life-atlas-after-retry.png'), fullPage: true });
+  expect(consoleErrors).toEqual([]);
 });

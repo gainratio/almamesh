@@ -117,6 +117,12 @@
     "body": "AlmaMesh no pudo abrir o leer la base de datos local que necesita para cargar y guardar tus datos.",
     "fix": "Vuelve a cargar esta página para intentarlo de nuevo. Si el problema continúa, comprueba que usas un navegador actualizado en una ventana normal (no privada)."
   },
+  "storage_in_memory": {
+    "title": "Este navegador no está guardando tus datos.",
+    "body": "Aquí rechaza el almacenamiento en el dispositivo (por ejemplo, en una ventana privada), así que AlmaMesh funciona en memoria: todo lo que añadas desaparece al cerrar o recargar esta pestaña.",
+    "export": "Exporta una copia de seguridad para conservarlo.",
+    "engine": "El motor de cartas tampoco se conserva, así que volver a empezar requiere conexión a internet."
+  },
   "error_boundary": {
     "title": "Algo salió mal",
     "body": "Se produjo un error inesperado. Intenta actualizar la página.",
@@ -151,6 +157,7 @@
     "search_placeholder": "Busca una ciudad...",
     "no_results": "No se encontraron ciudades",
     "offline_hint": "Se envían el nombre de la ciudad y metadatos normales de la solicitud HTTPS · también funciona sin conexión",
+    "memory_notice": "Este navegador no permite que AlmaMesh guarde la lista de ciudades sin conexión en este dispositivo, así que se mantiene en memoria solo durante esta visita.",
     "search_aria": "Buscar una ciudad",
     "clear_aria": "Borrar búsqueda de ubicación",
     "coordinates": {

@@ -129,6 +129,41 @@ describe('LifeAtlas', () => {
     expect(gate.textContent).toContain('engine is still starting');
   });
 
+  it('never says "still starting up" after the engine boot failed: it shows the failure and a Retry that reboots', async () => {
+    // Regression (CI 38295121396, iPhone WebKit): Pyodide failed fatally during
+    // boot, the provider recorded the error, and the Life Atlas kept saying the
+    // engine was "still starting up" for 240 s with no way out.
+    const reboot = vi.fn(() => new Promise<never>(() => {}));
+    renderAtlas({
+      ...engineCtx(),
+      engine: null,
+      error: new Error('Fatal Python error: Failed to import encodings module'),
+      reboot,
+    });
+    const gate = screen.getByTestId('life-atlas-gate');
+    expect(gate.textContent).not.toContain('engine is still starting');
+    expect(gate.textContent).toContain('Failed to import encodings module');
+    const retry = screen.getByTestId('life-atlas-retry');
+    expect(retry.hasAttribute('disabled')).toBe(false);
+    await act(async () => {
+      retry.click();
+      await Promise.resolve();
+    });
+    expect(reboot).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps a computed reading on screen when the engine later fails', () => {
+    usePredictiveStore.setState({
+      status: 'ready',
+      domainsCtx: DOMAINS_CTX,
+      profileKey: 'chart-1',
+      requestKey: currentRequestKey(),
+    });
+    renderAtlas({ ...engineCtx(), engine: null, error: new Error('chart worker terminated') });
+    expect(screen.queryByTestId('life-atlas-gate')).toBeNull();
+    expect(screen.getByTestId('life-atlas-card-career').getAttribute('href')).toBe('/life/career');
+  });
+
   it('auto-computes shortly after the engine + chart are ready (deferred, no click)', async () => {
     // The kickoff is DEFERRED (idle/short-timeout) so the dashboard mount does
     // not starve the serial engine; drive it with fake timers.

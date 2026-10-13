@@ -10,6 +10,13 @@
 // which assertPackagesLoaded turns into a PyodidePackageLoadError), and a trap
 // raised under Python surfaces in a traceback as "JsException: RuntimeError:
 // ...". So the class, the message text and the `.cause` chain all count.
+//
+// The same instance fault can end the runtime without a trap: CPython exits
+// during start-up ("Fatal Python error: Failed to import encodings module",
+// WebKit CI run 38295121396) and `loadPyodide` rejects with Emscripten's
+// `ExitStatus`, which is not an Error. Unrecognised, it crossed the Worker as
+// "[object Object]", was neither retried nor transient, and the Life Atlas
+// waited on a dead engine. It is a fault of that instance too.
 
 /** `WebAssembly.RuntimeError.prototype.name`; no other built-in error uses it. */
 const WASM_TRAP_NAME = "RuntimeError";
@@ -22,7 +29,24 @@ const DISTINCT_TRAP_TEXT: readonly RegExp[] = [
   /out of bounds memory access/i,
   /memory access out of bounds/i,
   /unreachable code should not be executed/i,
+  // Pyodide's own wording for any use of a runtime that already died.
+  /Pyodide already fatally failed/,
 ];
+
+/** Emscripten's `ExitStatus` class name (`loadPyodide` rejects with it). */
+const EMSCRIPTEN_EXIT_NAME = "ExitStatus";
+const EMSCRIPTEN_EXIT_TEXT = /^Program terminated with exit\(-?\d+\)$/;
+
+/**
+ * Emscripten's `ExitStatus` is a plain object, not an Error: recognise it by
+ * its own class name AND its exact message, so an arbitrary object cannot.
+ */
+function emscriptenExit(error: unknown): string | null {
+  if (typeof error !== "object" || error === null || error instanceof Error) return null;
+  const { name, message } = error as { readonly name?: unknown; readonly message?: unknown };
+  if (name !== EMSCRIPTEN_EXIT_NAME || typeof message !== "string") return null;
+  return EMSCRIPTEN_EXIT_TEXT.test(message) ? message : null;
+}
 
 /**
  * V8's "unreachable" and SpiderMonkey's "unreachable executed" / "index out of
@@ -52,6 +76,8 @@ export interface WorkerErrorFields {
  * cross the boundary.
  */
 export function workerErrorFields(error: unknown): WorkerErrorFields {
+  const exited = emscriptenExit(error);
+  if (exited !== null) return { error: exited, errorName: WASM_TRAP_NAME };
   if (!(error instanceof Error)) return { error: String(error) };
   if (isWasmBootFault(error)) return { error: error.message, errorName: WASM_TRAP_NAME };
   return { error: error.message };
@@ -74,6 +100,7 @@ function isTrapItself(error: Error): boolean {
  * wrapped by Pyodide (in the message or up to MAX_CAUSE_DEPTH errors deep).
  */
 export function isWasmBootFault(error: unknown): boolean {
+  if (emscriptenExit(error) !== null) return true;
   let current = error;
   for (let depth = 0; depth < MAX_CAUSE_DEPTH && current instanceof Error; depth += 1) {
     if (isTrapItself(current)) return true;

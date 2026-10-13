@@ -41,6 +41,7 @@
     "test:e2e:time-handling": "playwright test --config=playwright.time-handling.config.ts",
     "test:e2e:time-travel": "playwright test --config=playwright.time-travel.config.ts",
     "test:e2e:boot-retry": "playwright test --config=playwright.boot-retry.config.ts",
+    "test:e2e:private-mode": "playwright test --config=playwright.private-mode.config.ts",
     "test:e2e:first-run-restore": "playwright test --config=playwright.first-run-restore.config.ts",
     "test:e2e:chart-durable-reload": "playwright test --config=playwright.chart-durable-reload.config.ts",
     "test:e2e:landing-responsive": "playwright test --config=playwright.landing.responsive.config.ts",

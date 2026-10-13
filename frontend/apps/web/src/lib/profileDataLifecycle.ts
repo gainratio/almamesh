@@ -34,7 +34,9 @@ import {
   usePredictiveStore,
   useProfilesStore,
   useRectificationRecordsStore,
+  portableStatePersistence,
   type DeletionTombstoneAdditions,
+  type PortableStatePersistence,
 } from '@almamesh/store';
 import { safeError, safeWarn } from '@almamesh/shared-types';
 import type { IndexableMessage } from '@almamesh/memory';
@@ -512,8 +514,20 @@ function restoredMemoryMessages(): readonly IndexableMessage[] {
   return messages;
 }
 
+/**
+ * Adopt a restore this realm just committed without a page load: the same
+ * in-place replace other tabs apply, then the pending search-memory rebuild.
+ * Used when SQLite runs in memory, where a reload would erase the restore.
+ */
+export async function adoptRestoredDatasetInPlace(): Promise<void> {
+  await applyRemoteDeletionNotice({ kind: 'dataset', operation: 'replace' });
+  await resumePendingMemoryRebuild();
+}
+
 export interface PendingMemoryRebuildDeps {
   readonly semanticMemoryAllowed?: () => boolean;
+  /** Semantic memory lives on OPFS; with SQLite in memory that was refused too. */
+  readonly persistence?: () => PortableStatePersistence;
   readonly readLedger?: typeof readDeletionTombstones;
   readonly waitForChat?: typeof whenChatHydrated;
   readonly rebuild?: (messages: readonly IndexableMessage[]) => Promise<void>;
@@ -526,6 +540,7 @@ export async function resumePendingMemoryRebuild(
   // Leave the durable marker for a future capable device. Canonical chat is
   // already restored; lexical retrieval needs neither backfill nor a model.
   if (!(deps.semanticMemoryAllowed ?? (() => devicePolicy().semanticMemoryAllowed))()) return;
+  if ((deps.persistence ?? portableStatePersistence)() === 'memory') return;
   const ledger = await (deps.readLedger ?? readDeletionTombstones)();
   if (!ledger.memoryRebuildPending) return;
   await (deps.waitForChat ?? whenChatHydrated)();

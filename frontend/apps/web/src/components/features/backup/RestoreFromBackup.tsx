@@ -10,6 +10,7 @@
  */
 import type { ReactElement } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 import { cn } from '../../ui';
 import { useBackupRestore } from '../../../hooks/useBackupRestore';
 import { RestoreBackupDialogs } from './RestoreBackupDialogs';
@@ -20,7 +21,8 @@ interface RestoreFromBackupProps {
 
 export function RestoreFromBackup({ className }: RestoreFromBackupProps): ReactElement {
   const { t } = useTranslation('settings');
-  const restore = useBackupRestore({ afterRestoreHref: '/dashboard' });
+  const navigate = useNavigate();
+  const restore = useBackupRestore({ afterRestoreHref: '/dashboard', navigateInApp: navigate });
 
   return (
     <div data-testid="first-run-restore" className={cn('flex flex-col items-center gap-2 text-center', className)}>
