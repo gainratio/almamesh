@@ -5,7 +5,7 @@ import type { SanitizedChart } from '../sanitize';
 
 const MAY_2019_SG: PinnedPrompt = {
   start: '2019-05-01', end: '2019-05-31', relative: 'past', granularity: 'month', label: 'May 2019',
-  place: { label: 'Singapore', timezone: 'Asia/Singapore', source: 'trip' },
+  place: { label: 'Singapore', timezone: 'Asia/Singapore' },
 };
 
 describe('pinnedPeriodRules is a trip brief', () => {
@@ -24,17 +24,16 @@ describe('pinnedPeriodRules is a trip brief', () => {
     expect(brief).toContain("already read this trip's period and place");
   });
 
-  it('says so when an old trip has no place, without naming or marking the birth place', () => {
-    const brief = pinnedPeriodRules({ ...MAY_2019_SG, place: { label: 'unspecified place', source: 'default' } });
-    expect(brief).toContain('No place was chosen for this trip');
-    expect(brief).not.toMatch(/Kolkata|undefined/);
-    expect(brief).not.toContain('when the user lived in');
-    expect(brief).not.toMatch(/birth/i);
+  // Contract reversed 2026-10-13: every trip names its place and zone; none is marked as the birth place.
+  it('a trip at the birth place reads like any other: label and zone, no marker', () => {
+    const brief = pinnedPeriodRules({ ...MAY_2019_SG, place: { label: 'Delhi, India', timezone: 'Asia/Kolkata' } });
+    expect(brief).toContain('when the user lived in Delhi, India (Asia/Kolkata)');
+    expect(brief).not.toMatch(/birth|No place was chosen/i);
   });
 
   it('a future trip is in the future tense', () => {
     const brief = pinnedPeriodRules({ ...MAY_2019_SG, start: '2027-01-01', end: '2027-01-31', relative: 'future', label: 'January 2027',
-      place: { label: 'San Francisco', timezone: 'America/Los_Angeles', source: 'trip' } });
+      place: { label: 'San Francisco', timezone: 'America/Los_Angeles' } });
     expect(brief).toContain('a time-travel trip to January 2027 (month, future)');
     expect(brief).toContain('San Francisco (America/Los_Angeles)');
     expect(brief).toContain('future tense');

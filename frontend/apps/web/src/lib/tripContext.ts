@@ -18,25 +18,16 @@ import type { ChatThreadAsOf, ProcessedBirthData } from '@almamesh/shared-types'
 import { birthYearOf } from './periodChart';
 import { formatPinLabel } from './timeTravelSheet';
 
-import { DEFAULT_PLACE_LABEL } from './timingPlaces';
+import { birthPlaceOf } from './tripPlacePrefill';
 
 /**
- * What the model reads for an old trip with no place, or a trip at the birth
- * place (the sheet prefills it). Its tools read that sky, but the model is never
- * told which place it is: no city, zone, coordinate, birth_location_details
- * field or birth-place marker reaches a request.
+ * Every trip sends the model its place's label and zone (Harish: the AI must
+ * know where the trip is), including a trip at the birth place, which the sheet
+ * prefills. An old trip with no place reads the birth place the same way. What
+ * never reaches a request: coordinates, the birth date or time, and any marker
+ * saying a place is the birth place (only the local card says so).
  */
-export { DEFAULT_PLACE_LABEL };
-
-/** Within ~10 km of the birth place is the birth place (the prefill copies it exactly). */
-const SAME_PLACE_DEGREES = 0.1;
-
-function isBirthPlace(place: NonNullable<ChatThreadAsOf['place']>, birth: ProcessedBirthData | undefined): boolean {
-  const home = birth?.birth_location_details;
-  return home !== undefined
-    && Math.abs(place.latitude - home.latitude) <= SAME_PLACE_DEGREES
-    && Math.abs(place.longitude - home.longitude) <= SAME_PLACE_DEGREES;
-}
+export const UNKNOWN_PLACE_LABEL = 'unknown place';
 
 export type TripTense = 'past' | 'present' | 'future';
 
@@ -50,9 +41,8 @@ export interface TripPeriod {
 }
 
 export interface TripPlace {
-  /** Model-facing label: the trip's city, or DEFAULT_PLACE_LABEL. */
+  /** The trip's place label, sent to the model. */
   readonly label: string;
-  /** Local: the zone the tools compute in. Not sent for the default place. */
   readonly timezone: string;
   /** Local only (the card): 'birth_place' when an old trip has no place of its own. */
   readonly source: 'trip' | 'birth_place';
@@ -127,24 +117,18 @@ export function natalSummary(chart: SiderealChart): NatalSummary {
 
 /** The pin the tools read: an old trip with no place borrows the birth place. */
 export function tripPin(asOf: ChatThreadAsOf, birth: ProcessedBirthData | undefined): ChatThreadAsOf {
-  const home = birth?.birth_location_details;
-  if (asOf.place && isBirthPlace(asOf.place, birth)) return { ...asOf, place: { ...asOf.place, label: DEFAULT_PLACE_LABEL } };
-  if (asOf.place || !home) return asOf;
-  return {
-    ...asOf,
-    place: { label: DEFAULT_PLACE_LABEL, timezone: home.timezone, latitude: home.latitude, longitude: home.longitude },
-  };
+  if (asOf.place) return asOf;
+  const home = birthPlaceOf(birth?.birth_location_details);
+  return home ? { ...asOf, place: home } : asOf;
 }
 
 function tripPlace(asOf: ChatThreadAsOf, birth: ProcessedBirthData | undefined): TripPlace {
-  if (asOf.place && isBirthPlace(asOf.place, birth)) {
-    return { label: DEFAULT_PLACE_LABEL, timezone: asOf.place.timezone, source: 'birth_place', display: asOf.place.label };
-  }
   if (asOf.place) {
     return { label: asOf.place.label, timezone: asOf.place.timezone, source: 'trip', display: asOf.place.label };
   }
-  const home = birth?.birth_location_details;
-  return { label: DEFAULT_PLACE_LABEL, timezone: home?.timezone ?? 'UTC', source: 'birth_place', display: home?.city ?? '' };
+  const home = birthPlaceOf(birth?.birth_location_details);
+  if (home) return { label: home.label, timezone: home.timezone, source: 'birth_place', display: home.label };
+  return { label: UNKNOWN_PLACE_LABEL, timezone: 'UTC', source: 'birth_place', display: '' };
 }
 
 export function tripContext(input: TripContextInput): TripContext {
@@ -170,8 +154,7 @@ export function tripContext(input: TripContextInput): TripContext {
 /** get_trip_context's value: the trip as the model sees it. The place is a label and a zone, nothing else. */
 export interface TripToolResult {
   readonly period: TripPeriod;
-  /** A label and a zone; the default place gets its label only. */
-  readonly place: { readonly label: string; readonly timezone?: string };
+  readonly place: { readonly label: string; readonly timezone: string };
   readonly today: string;
   readonly dashas: Pick<PeriodDashas, 'maha' | 'antar' | 'notes'>;
 }
@@ -179,9 +162,7 @@ export interface TripToolResult {
 export function tripToolResult(trip: TripContext): TripToolResult {
   return {
     period: trip.period,
-    place: trip.place.source === 'birth_place'
-      ? { label: DEFAULT_PLACE_LABEL }
-      : { label: trip.place.label, timezone: trip.place.timezone },
+    place: { label: trip.place.label, timezone: trip.place.timezone },
     today: trip.today,
     dashas: { maha: trip.dashas.maha, antar: trip.dashas.antar, notes: trip.dashas.notes },
   };

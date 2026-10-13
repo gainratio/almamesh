@@ -2,7 +2,7 @@ import type { SiderealChart } from '@almamesh/browser/types';
 import type { ProcessedBirthData } from '@almamesh/shared-types';
 import { describe, expect, it } from 'vitest';
 
-import { DEFAULT_PLACE_LABEL, natalSummary, tripContext, tripDashaLine, tripPin, tripToolResult } from '../tripContext';
+import { UNKNOWN_PLACE_LABEL, natalSummary, tripContext, tripDashaLine, tripPin, tripToolResult } from '../tripContext';
 import { DASHAS } from './timingFixtures';
 
 const SINGAPORE = { label: 'Singapore', timezone: 'Asia/Singapore', latitude: 1.2897, longitude: 103.8501 };
@@ -53,36 +53,35 @@ describe('tripContext: one source for the tools, the brief and the context card'
     expect(trip.period.tense).toBe('present');
   });
 
-  it('an old trip with no place falls back to the birth place and says so; the model never gets the city', () => {
+  it('an old trip with no place falls back to the birth place (local card says so; no marker for the model)', () => {
     const old = { start: '2019-06-01', end: '2019-06-30', granularity: 'month' } as const;
     const trip = tripContext({ chart: CHART, asOf: old, today: TODAY, birth: BIRTH, language: 'en' });
-    expect(trip.place).toEqual({ label: DEFAULT_PLACE_LABEL, timezone: 'Asia/Kolkata', source: 'birth_place', display: 'Delhi' });
-    expect(JSON.stringify(tripToolResult(trip))).not.toMatch(/Delhi|birth/i);
-    expect(tripPin(old, BIRTH).place).toEqual({ label: DEFAULT_PLACE_LABEL, timezone: 'Asia/Kolkata', latitude: 28.6139, longitude: 77.209 });
+    expect(trip.place).toEqual({ label: 'Delhi', timezone: 'Asia/Kolkata', source: 'birth_place', display: 'Delhi' });
+    expect(JSON.stringify(tripToolResult(trip))).not.toMatch(/birth/i);
+    expect(tripPin(old, BIRTH).place).toEqual({ label: 'Delhi', timezone: 'Asia/Kolkata', latitude: 28.6139, longitude: 77.209 });
     expect(tripPin(JUNE_2019_SG, BIRTH)).toBe(JUNE_2019_SG);
   });
 });
 
-describe('a trip at the birth place never names it to the model', () => {
+// Contract reversed 2026-10-13 (Harish: the AI must know the trip's location): a trip at the
+// birth place sends its label and zone like any other trip. Never coordinates, birth date/time,
+// or a marker saying it is the birth place.
+describe('a trip at the birth place reads like any other trip, unmarked', () => {
   const PREFILLED = { label: 'Delhi, India', timezone: 'Asia/Kolkata', latitude: 28.6139, longitude: 77.209 };
 
-  it('the sheet prefilled the birth place: the model gets an unnamed place with no zone; the card keeps the city', () => {
+  it('the sheet prefilled the birth place: the model gets its label and zone, and no marker', () => {
     const asOf = { start: '2019-06-01', end: '2019-06-30', granularity: 'month', place: PREFILLED } as const;
-    const trip = tripContext({ chart: CHART, asOf, today: TODAY, birth: BIRTH, language: 'en' });
-    expect(trip.place).toEqual({ label: DEFAULT_PLACE_LABEL, timezone: 'Asia/Kolkata', source: 'birth_place', display: 'Delhi, India' });
-    expect(tripToolResult(trip).place).toEqual({ label: DEFAULT_PLACE_LABEL });
-    expect(tripPin(asOf, BIRTH).place).toEqual({ ...PREFILLED, label: DEFAULT_PLACE_LABEL });
+    const result = tripToolResult(tripContext({ chart: CHART, asOf, today: TODAY, birth: BIRTH, language: 'en' }));
+    expect(result.place).toEqual({ label: 'Delhi, India', timezone: 'Asia/Kolkata' });
+    expect(JSON.stringify(result)).not.toMatch(/birth|28\.61|77\.20/i);
   });
 
-  it('a city picked within a few km of the birth place counts as the birth place', () => {
-    const near = { ...PREFILLED, label: 'New Delhi', latitude: 28.61, longitude: 77.23 };
-    const asOf = { start: '2019-06-01', end: '2019-06-30', granularity: 'month', place: near } as const;
-    expect(tripToolResult(tripContext({ chart: CHART, asOf, today: TODAY, birth: BIRTH, language: 'en' })).place).toEqual({ label: DEFAULT_PLACE_LABEL });
-  });
-
-  it('an old trip with no place: no zone either', () => {
+  it('an old trip with no place reads the birth place by its label and zone; only the local card says why', () => {
     const old = { start: '2019-06-01', end: '2019-06-30', granularity: 'month' } as const;
-    expect(tripToolResult(tripContext({ chart: CHART, asOf: old, today: TODAY, birth: BIRTH, language: 'en' })).place).toEqual({ label: DEFAULT_PLACE_LABEL });
+    const trip = tripContext({ chart: CHART, asOf: old, today: TODAY, birth: BIRTH, language: 'en' });
+    expect(tripToolResult(trip).place).toEqual({ label: 'Delhi', timezone: 'Asia/Kolkata' });
+    expect(trip.place.source).toBe('birth_place');
+    expect(JSON.stringify(tripToolResult(trip))).not.toMatch(/birth/i);
   });
 });
 
@@ -124,7 +123,7 @@ describe('tripContext edges', () => {
     const trip = tripContext({ chart, asOf: old, today: TODAY, birth: undefined, language: 'en' });
     expect(trip.natal.moon).toBeNull();
     expect(trip.natal.yogas).toEqual([]);
-    expect(trip.place).toEqual({ label: DEFAULT_PLACE_LABEL, timezone: 'UTC', source: 'birth_place', display: '' });
+    expect(trip.place).toEqual({ label: UNKNOWN_PLACE_LABEL, timezone: 'UTC', source: 'birth_place', display: '' });
     expect(tripPin(old, undefined)).toBe(old);
   });
 });

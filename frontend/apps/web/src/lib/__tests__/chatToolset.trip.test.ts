@@ -12,7 +12,6 @@ vi.mock('../periodSky', async (importOriginal) => {
 });
 
 import { buildChatToolset, type BuildChatToolsetInput } from '../chatToolset';
-import { DEFAULT_PLACE_LABEL } from '../tripContext';
 import { CHART, SKY_CHART } from './timingFixtures';
 
 const SINGAPORE = { label: 'Singapore', timezone: 'Asia/Singapore', latitude: 1.2897, longitude: 103.8501 };
@@ -86,14 +85,14 @@ describe('trip-bound get_timing reads the trip place for every granularity', () 
     expect(JSON.stringify(result)).not.toMatch(/Delhi|Kolkata|1\.2897|103\.85/);
   });
 
-  it('an old trip with no place reads the birth place, labelled generically', async () => {
+  it('an old trip with no place reads the birth place by its label and zone, with no marker', async () => {
     const old = { start: '2019-05-01', end: '2019-05-31', granularity: 'month' } as const;
     const result = await toolOf(toolset({ pinned: old }), 'get_timing').execute({ section: 'transits' }, options()) as {
       places?: Array<{ label: string; timezone: string }>;
     };
-    // Contract reversed 2026-10-13: the default place reaches the model with no zone (it would locate the birth place).
-    expect(result.places).toEqual([expect.objectContaining({ label: DEFAULT_PLACE_LABEL })]);
-    expect(JSON.stringify(result)).not.toMatch(/Delhi|28\.61|Kolkata/);
+    // Contract reversed (twice) 2026-10-13: every trip's place reaches the model by label and zone, unmarked.
+    expect(result.places).toEqual([expect.objectContaining({ label: 'Delhi', timezone: 'Asia/Kolkata' })]);
+    expect(JSON.stringify(result)).not.toMatch(/birth.?place|28\.61|77\.20/i);
   });
 });
 
@@ -107,7 +106,7 @@ describe('prepare: a trip grounds through tools, not a facts blob', () => {
     expect(prepared.requiredTools).toEqual(['get_natal_summary', 'get_trip_context', 'get_timing']);
     expect(prepared.pinned).toEqual({
       start: '2019-05-01', end: '2019-05-31', relative: 'past', granularity: 'month', label: 'May 2019',
-      place: { label: 'Singapore', timezone: 'Asia/Singapore', source: 'trip' },
+      place: { label: 'Singapore', timezone: 'Asia/Singapore' },
     });
   });
 

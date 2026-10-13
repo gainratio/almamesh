@@ -41,8 +41,7 @@ export interface PlaceRow {
   readonly start: string;
   readonly end: string;
   readonly label: string;
-  /** Absent for the default place (DEFAULT_PLACE_LABEL). */
-  readonly timezone?: string;
+  readonly timezone: string;
   readonly moon?: MoonEnds;
 }
 
@@ -95,16 +94,8 @@ export function impossibleTime(spans: readonly PlacedSpan[], time: string | unde
   }
 }
 
-/**
- * A trip's default place: an old trip with no place, or a place at the birth
- * place. Its tools read that sky, but the model never learns which place it is:
- * its rows carry this label and no zone.
- */
-export const DEFAULT_PLACE_LABEL = 'unspecified place';
-
 function labelRow(span: PlacedSpan): PlaceRow {
-  const { label, timezone } = span.place.summary;
-  return { start: span.start, end: span.end, label, ...(label === DEFAULT_PLACE_LABEL ? {} : { timezone }) };
+  return { start: span.start, end: span.end, label: span.place.summary.label, timezone: span.place.summary.timezone };
 }
 
 function hasGap(segments: readonly TimingSegment[] | undefined): boolean {

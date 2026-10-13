@@ -32,7 +32,7 @@ import { TIMING_TOOL_NAME } from './timingTool';
 import { parseExplicitTimingPeriod } from './timingQuestion';
 import { createTimeTravelTool, type TravelRecorder } from './timeTravelTool';
 import { formatPinLabel } from './timeTravelSheet';
-import { DEFAULT_PLACE_LABEL, natalSummary, tripContext, tripPin, tripToolResult } from './tripContext';
+import { natalSummary, tripContext, tripPin, tripToolResult } from './tripContext';
 
 /** A trip's context tools (plan 2026-10-13): bound to the trip, no arguments. */
 export const NATAL_SUMMARY_TOOL_NAME = 'get_natal_summary';
@@ -161,11 +161,8 @@ function preparePinned(
 ): PreparedChatContext {
   const period = { start: pinned.start, end: pinned.end };
   const relative = pinRelative(period, viewerTodayDay(now, viewerZone));
-  // tripPin already relabelled a default/birth place; it reaches the model with no zone.
-  const place = !pinned.place ? {}
-    : pinned.place.label === DEFAULT_PLACE_LABEL
-      ? { place: { label: DEFAULT_PLACE_LABEL, source: 'default' as const } }
-      : { place: { label: pinned.place.label, timezone: pinned.place.timezone, source: 'trip' as const } };
+  // Every trip names its place and zone (tripPin filled an old trip's from the birth place, unmarked).
+  const place = pinned.place ? { place: { label: pinned.place.label, timezone: pinned.place.timezone } } : {};
   return {
     chart: natalOnly(chart),
     asOf: periodAnalysisInstant(pinned.start, pinned.end),
