@@ -30,7 +30,7 @@
     "pyodide": "^314.0.7"
   },
   "devDependencies": {
-    "@types/node": "^26.6.3",
+    "@types/node": "^26.6.5",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
     "vitest": "^5.0.2"
