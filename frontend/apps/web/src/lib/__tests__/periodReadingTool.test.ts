@@ -1,10 +1,10 @@
 import type { SiderealChart } from '@almamesh/browser/types';
-import { BEFORE_BIRTH_MESSAGE, buildChatMessages, PERIOD_DETAIL_TOOL_NAME, PERIOD_READING_TOOL_NAME, sanitizeChartForLlm, streamAgentChat, type AgentTool, type ProviderConfig } from '@almamesh/llm';
+import { BEFORE_BIRTH_MESSAGE, buildChatMessages, compactToolContent, defaultToolSummary, PERIOD_DETAIL_TOOL_NAME, PERIOD_READING_TOOL_NAME, sanitizeChartForLlm, streamAgentChat, type AgentTool, type ProviderConfig } from '@almamesh/llm';
 import type { ChatThreadAsOf, ProcessedBirthData } from '@almamesh/shared-types';
 import { describe, expect, it, vi } from 'vitest';
 
 import { SPLIT_DAY_NOW } from '../../test/viewerToday';
-import { buildPeriodReading, type PeriodReading } from '../periodReading';
+import { buildPeriodReading, PERIOD_TOOL_SUMMARIZERS, periodDetailSummary, periodReadingSummary, type PeriodDetail, type PeriodReading } from '../periodReading';
 import { PeriodSkyTimeoutError } from '../periodSky';
 import { createPeriodReadingTools, type PeriodReadingToolsInput } from '../periodReadingTool';
 import { PeriodSkyUnavailableError } from '../timingTool';
@@ -156,5 +156,50 @@ describe('the agent loop carries the reading as well-formed JSON', () => {
     expect(envelope.value).toEqual(await reading.execute({}, context()));
     expect(new TextEncoder().encode(JSON.stringify(envelope.value)).length).toBeLessThan(4096);
     for (const leak of DELHI_BIRTH_LEAKS) expect(sent?.content).not.toContain(leak);
+  });
+});
+
+describe('a consumed reading compacts to its own summary, not the generic default', () => {
+  const config: ProviderConfig = { engine: 'openai-http', model: 'm', privacyMode: 'cloud_premium', baseUrl: 'https://openrouter.ai/api/v1', apiKey: 'k' };
+  const decision = (id: string, name: string, args: Record<string, unknown>) => Response.json({ choices: [{ message: { role: 'assistant', content: null, tool_calls: [
+    { id, type: 'function', function: { name, arguments: JSON.stringify(args) } },
+  ] } }] });
+
+  it('both tools carry the period summarizers, and the shared map names exactly them', () => {
+    const { reading, detail } = tools();
+    expect(reading.summarize).toBe(PERIOD_TOOL_SUMMARIZERS[PERIOD_READING_TOOL_NAME]);
+    expect(detail.summarize).toBe(PERIOD_TOOL_SUMMARIZERS[PERIOD_DETAIL_TOOL_NAME]);
+    expect(Object.keys(PERIOD_TOOL_SUMMARIZERS).sort()).toEqual([PERIOD_DETAIL_TOOL_NAME, PERIOD_READING_TOOL_NAME]);
+  });
+
+  it('the round after the reading is read carries periodReadingSummary as the compact facts', async () => {
+    const { reading, detail } = tools();
+    const messages = buildChatMessages(sanitizeChartForLlm(CHART, { basis: 'chart', instant: new Date('2025-01-01T00:00:00Z') }), 'How was May 2019?', 'layman', [], [], undefined, 'en');
+    const bodies: string[] = [];
+    const fetchImpl = vi.fn(async (_url: unknown, init?: RequestInit) => {
+      bodies.push(String(init?.body));
+      if (bodies.length === 1) return decision('r1', PERIOD_READING_TOOL_NAME, {});
+      if (bodies.length === 2) return decision('d1', PERIOD_DETAIL_TOOL_NAME, { section: 'dashas' });
+      return new Response(`data: ${JSON.stringify({ choices: [{ delta: { content: 'ok' } }] })}\n\ndata: [DONE]\n\n`, { headers: { 'content-type': 'text/event-stream' } });
+    });
+    for await (const _token of streamAgentChat({ config, messages, tools: [reading, detail], now: SPLIT_DAY_NOW, fetchImpl: fetchImpl as typeof fetch })) {
+      // drain
+    }
+    const third = (JSON.parse(bodies[2]!) as { messages: Array<{ role: string; tool_call_id?: string; content: string | null }> }).messages;
+    const compact = third.find((m) => m.role === 'tool' && m.tool_call_id === 'r1')?.content;
+    const full = await reading.execute({}, context()) as PeriodReading;
+    const own = periodReadingSummary(full);
+    expect(own.factors.length).toBeGreaterThan(0);
+    expect(compact).toBe(compactToolContent(own));
+    expect(compact).not.toBe(compactToolContent(defaultToolSummary(full)));
+    // The newest round (the detail) still rides in full.
+    const detailMessage = third.find((m) => m.role === 'tool' && m.tool_call_id === 'd1')?.content ?? '';
+    expect(JSON.parse(detailMessage)).toMatchObject({ ok: true, value: { section: 'dashas' } });
+  });
+
+  it('a detail result summarizes through periodDetailSummary', async () => {
+    const { detail } = tools();
+    const result = await detail.execute({ section: 'dashas' }, context()) as PeriodDetail;
+    expect(detail.summarize?.(result)).toEqual(periodDetailSummary(result));
   });
 });

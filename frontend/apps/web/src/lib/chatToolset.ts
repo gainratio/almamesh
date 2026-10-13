@@ -242,6 +242,8 @@ export function buildChatToolset(input: BuildChatToolsetInput): ChatToolset {
   ];
   const makeTools = (activePin: ChatThreadAsOf | undefined, promptChart = natalPrompt, chartAsOf = input.chartAsOf) => {
     const reader = activePin ? pinnedPlaceReader(activePin, baseReader) : baseReader;
+    // get_timing and the period reading tools load a period through one loader (one shared sky cache).
+    const loadPeriodChart = createPeriodChartLoader({ chart: input.chart, profileKey: input.profileKey, birth: input.birth, engine });
     const agentTools = createChatAgentTools({
       chart: promptChart,
       chartAsOf,
@@ -250,12 +252,7 @@ export function buildChatToolset(input: BuildChatToolsetInput): ChatToolset {
       birthUtcYear: birthUtcYearOf(input.birth),
       todayDay: (now) => viewerTodayDay(now, zone()),
       loadCurrentChart,
-      loadPeriodChart: createPeriodChartLoader({
-        chart: input.chart,
-        profileKey: input.profileKey,
-        birth: input.birth,
-        engine,
-      }),
+      loadPeriodChart,
       periodSkyAllowed: skyAllowed,
       ...(activePin ? { pinned: pinnedTiming(activePin) } : {}),
       ...(skyAllowed
@@ -269,7 +266,7 @@ export function buildChatToolset(input: BuildChatToolsetInput): ChatToolset {
       ...(activePin ? agentTools.filter((tool) => tool.name === TIMING_TOOL_NAME) : agentTools),
       ...createPeriodReadingTools({
         pin: activePin, chart: input.chart, birth: input.birth, language, viewerZone: zone, loadCurrentChart,
-        loadPeriodChart: createPeriodChartLoader({ chart: input.chart, profileKey: input.profileKey, birth: input.birth, engine }),
+        loadPeriodChart,
         periodSkyAllowed: skyAllowed,
       }),
       ...(skyAllowed ? [createResolvePlaceTool()] : []),

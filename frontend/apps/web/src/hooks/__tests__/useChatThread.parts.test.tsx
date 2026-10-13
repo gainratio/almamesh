@@ -5,6 +5,8 @@ import { useChatStore } from '@almamesh/store';
 vi.mock('../../lib/storeSaved', () => ({ waitForStoreSaved: vi.fn(async () => undefined) }));
 
 import { __resetMemoryForTest, __setMemoryForTest } from '../../lib/chatMemory';
+import { buildPeriodReading, periodReadingSummary } from '../../lib/periodReading';
+import { periodReadingFixture } from '../../lib/__tests__/periodReadingFixtures';
 import { useChatThread, type ChatStreamInput } from '../useChatThread';
 
 const TRIP = { toolCallId: 'a', toolName: 'get_trip_context', args: {}, status: 'complete', result: { place: { label: 'Singapore', timezone: 'Asia/Singapore' } } } as const;
@@ -75,6 +77,25 @@ describe('history compaction: a past turn\'s tool results reach the next turn on
     expect(note).not.toContain('q'.repeat(50));
     // The prior answer's prose still rides as an ordinary history turn.
     expect(next?.history.map((turn) => turn.content)).toContain('Steady work in Singapore.');
+  });
+
+  it('an earlier period reading reaches the next turn as its own summary line, not the generic default', async () => {
+    const reading = buildPeriodReading(periodReadingFixture('delhi-2019-05'), {
+      period: { start: '2019-05-01', end: '2019-05-31', granularity: 'month', label: 'May 2019', tense: 'past' },
+      place: { label: 'Singapore', timezone: 'Asia/Singapore' },
+    });
+    const READING = { toolCallId: 'r', toolName: 'get_period_reading', args: {}, status: 'complete', result: reading } as const;
+    const { result } = renderHook(() => useChatThread('p1', null));
+    await act(() => result.current.submit('How was May 2019?', async (input) => {
+      input.onToolCall?.(READING);
+      return 'A Rahu month.';
+    }));
+    let next: ChatStreamInput | undefined;
+    await act(() => result.current.submit('And June?', async (input) => { next = input; return 'Quieter.'; }));
+    const note = next?.retrievedContext.find((entry) => entry.startsWith('Facts gathered by tools in earlier turns'));
+    const own = periodReadingSummary(reading);
+    expect(note).toContain(`- get_period_reading: ${own.line} (${own.factors.join('; ')})`);
+    expect(note).not.toContain('- get_period_reading: May 2019 · Singapore');
   });
 
   it('a thread with no earlier tool calls gets no facts note', async () => {

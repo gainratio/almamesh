@@ -26,6 +26,7 @@ import type {
   ThemeDirection,
   TransitSeverity,
 } from '@almamesh/browser/types';
+import { PERIOD_DETAIL_TOOL_NAME, PERIOD_READING_TOOL_NAME, type ToolSummarizer, type ToolSummary as AgentToolSummary } from '@almamesh/llm';
 import type { ChatThreadAsOf } from '@almamesh/shared-types';
 
 /** Each tool result's JSON stays under this many UTF-8 bytes (spec: "under 4 KB"). */
@@ -181,8 +182,8 @@ export interface PeriodToolError {
 
 export type PeriodReadingToolResult = PeriodReading | PeriodReadingUnavailable | PeriodToolError;
 
-export interface ToolSummary {
-  readonly line: string;
+/** The agent loop's tool summary, with its factors always present (possibly empty). */
+export interface ToolSummary extends AgentToolSummary {
   readonly factors: readonly string[];
 }
 
@@ -612,3 +613,15 @@ export function periodDetailSummary(result: PeriodDetailToolResult): ToolSummary
   if ('error' in result || 'available' in result) return failureLine(result, 'Period detail');
   return { line: detailLine(result), factors: result.factors.slice(0, 5) };
 }
+
+// The agent loop hands a summarizer the tool's own result (in-turn compaction)
+// or the persisted one (the next turn's facts note). A malformed persisted
+// result throws here and the loop falls back to its default summary.
+export const summarizePeriodReading: ToolSummarizer = (result) => periodReadingSummary(result as PeriodReadingToolResult);
+export const summarizePeriodDetail: ToolSummarizer = (result) => periodDetailSummary(result as PeriodDetailToolResult);
+
+/** The period tools' own one-line summaries, by tool name (useChatThread's history facts note). */
+export const PERIOD_TOOL_SUMMARIZERS: Readonly<Record<string, ToolSummarizer>> = {
+  [PERIOD_READING_TOOL_NAME]: summarizePeriodReading,
+  [PERIOD_DETAIL_TOOL_NAME]: summarizePeriodDetail,
+};

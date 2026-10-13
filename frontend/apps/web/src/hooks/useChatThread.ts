@@ -45,6 +45,7 @@ import { indexChatMessage, retrieveContext } from '../lib/chatMemory';
 import { isChunkLoadError } from '../lib/chunkError';
 import { chatErrorMessage, getChatErrorMessage } from '../lib/errors';
 import { LLM_SETTINGS_CHANGED_EVENT } from '../lib/llmSettingsEvents';
+import { PERIOD_TOOL_SUMMARIZERS } from '../lib/periodReading';
 import { asOfKey } from '../lib/pinnedPeriod';
 import { waitForStoreSaved } from '../lib/storeSaved';
 import { applyBackToToday, applyTravel, travelIntentVersion, type TravelSource, type TravelThread } from '../lib/timeTravel';
@@ -414,7 +415,7 @@ export function useChatThread(
         ) {
           retrievedContext.unshift(summaryContext(existingSummary));
         }
-        const toolFacts = toolFactsNote(priorToolCalls(priorMessages));
+        const toolFacts = toolFactsNote(priorToolCalls(priorMessages), PERIOD_TOOL_SUMMARIZERS);
         if (toolFacts !== undefined) retrievedContext.push(toolFacts);
         let draft = '';
         const toolCalls: ChatMessagePart[] = [];

@@ -27,6 +27,8 @@ import {
   buildPeriodDetail,
   buildPeriodReading,
   DETAIL_SECTIONS,
+  summarizePeriodDetail,
+  summarizePeriodReading,
   type PeriodDetailToolResult,
   type PeriodReadingFailure,
   type PeriodReadingToolResult,
@@ -174,6 +176,7 @@ export function createPeriodReadingTools(input: PeriodReadingToolsInput): AgentT
       timeoutMs: TIMING_TOOL_TIMEOUT_MS,
       parameters: NO_ARGS,
       execute: (_args, context) => readPeriod(input, context),
+      summarize: summarizePeriodReading,
     },
     {
       name: PERIOD_DETAIL_TOOL_NAME,
@@ -182,6 +185,7 @@ export function createPeriodReadingTools(input: PeriodReadingToolsInput): AgentT
       timeoutMs: TIMING_TOOL_TIMEOUT_MS,
       parameters: DETAIL_PARAMETERS,
       execute: (args, context) => readDetail(input, args, context),
+      summarize: summarizePeriodDetail,
     },
   ];
 }
