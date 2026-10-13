@@ -119,7 +119,7 @@ const UPLOAD_ARTIFACT = "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a87
 const MACOS_LANE_ACTIONS = [
   checkout,
   "oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6",
-  "astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9",
+  "astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884",
   UPLOAD_ARTIFACT,
 ]
 const MACOS_LANE_MODES = ["memory", "travel", "portable"] as const
