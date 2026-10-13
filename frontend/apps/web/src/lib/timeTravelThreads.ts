@@ -25,10 +25,15 @@ const TITLE_FORMAT: Readonly<Record<ChatThreadAsOf['granularity'], Intl.DateTime
   day: { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' },
 };
 
+/** A trip's period, short: 'May 2019', 'Jan 2027', '2050'. */
+export function tripPeriodLabel(asOf: Pick<ChatThreadAsOf, 'start' | 'granularity'>, language: string = i18n.language || 'en'): string {
+  // Noon UTC so no zone shifts the calendar day.
+  return new Intl.DateTimeFormat(language, TITLE_FORMAT[asOf.granularity]).format(new Date(`${asOf.start}T12:00:00Z`));
+}
+
 /** A trip's title, from its pin: '⏳ May 2019 · Singapore'. Never from the first message. */
 export function tripTitle(asOf: ChatThreadAsOf, language: string = i18n.language || 'en'): string {
-  // Noon UTC so no zone shifts the calendar day.
-  const period = new Intl.DateTimeFormat(language, TITLE_FORMAT[asOf.granularity]).format(new Date(`${asOf.start}T12:00:00Z`));
+  const period = tripPeriodLabel(asOf, language);
   return asOf.place ? `⏳ ${period} · ${asOf.place.label}` : `⏳ ${period}`;
 }
 

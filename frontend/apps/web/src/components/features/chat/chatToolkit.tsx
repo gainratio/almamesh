@@ -12,6 +12,7 @@
  */
 import { defineToolkit, type Toolkit, type ToolCallMessagePartProps } from '@assistant-ui/react';
 import type { AgentJsonObject, AgentTool, AgentToolContext } from '@almamesh/llm';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 export interface ChatToolCatalogEntry {
@@ -81,18 +82,42 @@ interface ResultHints {
   readonly places?: ReadonlyArray<{ readonly label?: unknown }>;
 }
 
+const SECTIONS = new Set(['dashas', 'transits', 'strength', 'domains']);
+
 function text(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined;
 }
 
-/** "transits · Singapore · May 2019": the section asked for and where/when the answer is about. */
-function summaryOf(args: unknown, result: unknown): string {
+function lastDayOf(year: number, month: number): number {
+  return new Date(Date.UTC(year, month, 0)).getUTCDate();
+}
+
+/** A period as people say it: "May 2019", "2019", "4 May 2019", else its two dates. */
+function periodText(start: string, end: string, language: string): string {
+  const [y, m, d] = start.split('-').map(Number);
+  const noon = new Date(`${start}T12:00:00Z`);
+  const format = (options: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat(language, { ...options, timeZone: 'UTC' }).format(noon);
+  if (start === end) return format({ day: 'numeric', month: 'short', year: 'numeric' });
+  if (start.endsWith('-01-01') && end === `${y}-12-31`) return String(y);
+  if (d === 1 && end === `${start.slice(0, 7)}-${String(lastDayOf(y, m)).padStart(2, '0')}`) return format({ month: 'long', year: 'numeric' });
+  return `${start} – ${end}`;
+}
+
+/** What the call was about: the section asked for, else the tool, in plain words. */
+function subjectOf(toolName: string, args: unknown, translate: (key: string) => string): string {
   const section = text((args as { section?: unknown } | null)?.section);
+  if (toolName === 'get_timing' && section && SECTIONS.has(section)) return translate(`tools.sections.${section}`);
+  return Object.hasOwn(CHAT_TOOL_CATALOG, toolName) ? translate(`tools.rows.${toolName}`) : toolName;
+}
+
+/** "Looked up transits · Singapore · May 2019": what, where and when, from the result the model got. */
+function summaryOf(toolName: string, args: unknown, result: unknown, language: string, translate: (key: string) => string): string {
   const hints = (result ?? {}) as ResultHints;
   const place = text(hints.place?.label) ?? text(hints.places?.[0]?.label);
-  const period = text(hints.period?.label)
-    ?? (text(hints.period?.start) && text(hints.period?.end) ? `${String(hints.period?.start)} – ${String(hints.period?.end)}` : undefined);
-  return [section, place, period].filter((part): part is string => part !== undefined).join(' · ');
+  const start = text(hints.period?.start);
+  const end = text(hints.period?.end);
+  const period = text(hints.period?.label) ?? (start && end ? periodText(start, end, language) : undefined);
+  return [subjectOf(toolName, args, translate), place, period].filter((part): part is string => part !== undefined).join(' · ');
 }
 
 function pretty(value: unknown): string {
@@ -103,25 +128,30 @@ function pretty(value: unknown): string {
   }
 }
 
-/** One tool call in the transcript: what was looked up, expandable to the exact args and result the model got. */
+/**
+ * One tool call in the transcript, collapsed to a sentence. Opening it shows
+ * the exact args and result the model got (rendered only once opened).
+ */
 export function ToolCallRow({ toolName, toolCallId, args, result, isError }: ToolCallRowProps) {
-  const { t } = useTranslation('chat');
-  const label = t(CHAT_TOOL_CATALOG[toolName]?.labelKey ?? toolName);
-  const summary = summaryOf(args, result);
+  const { t, i18n } = useTranslation('chat');
+  const [open, setOpen] = useState(false);
   const failed = isError === true || (result as { code?: unknown } | null)?.code !== undefined;
+  const summary = summaryOf(toolName, args, result, i18n.language || 'en', (key) => t(key));
   return (
     <details className="mb-2 rounded-lg border border-ui-border bg-background-tertiary/60 px-3 py-2 text-xs text-text-secondary"
-      data-testid="chat-tool-call" data-tool-name={toolName} data-tool-call-id={toolCallId} data-status={failed ? 'error' : 'complete'}>
-      <summary className="cursor-pointer select-none">
-        <span className="font-medium text-text-primary">{t(failed ? 'tools.row_failed' : 'tools.row', { tool: label })}</span>
-        {summary && <span className="ml-1 text-text-muted">· {summary}</span>}
+      data-testid="chat-tool-call" data-tool-name={toolName} data-tool-call-id={toolCallId} data-status={failed ? 'error' : 'complete'}
+      onToggle={(event) => setOpen(event.currentTarget.open)}>
+      <summary className="cursor-pointer select-none truncate" data-testid="chat-tool-call-summary">
+        {t(failed ? 'tools.row_failed' : 'tools.row', { what: summary })}
       </summary>
-      <div className="mt-2 space-y-2">
-        <p className="text-text-muted">{t('tools.args')}</p>
-        <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words rounded bg-background-primary p-2" data-testid="chat-tool-call-args">{pretty(args)}</pre>
-        <p className="text-text-muted">{t('tools.result')}</p>
-        <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-words rounded bg-background-primary p-2" data-testid="chat-tool-call-result">{pretty(result)}</pre>
-      </div>
+      {open && (
+        <div className="mt-2 space-y-2">
+          <p className="text-text-muted">{t('tools.args')}</p>
+          <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words rounded bg-background-primary p-2" data-testid="chat-tool-call-args">{pretty(args)}</pre>
+          <p className="text-text-muted">{t('tools.result')}</p>
+          <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-words rounded bg-background-primary p-2" data-testid="chat-tool-call-result">{pretty(result)}</pre>
+        </div>
+      )}
     </details>
   );
 }

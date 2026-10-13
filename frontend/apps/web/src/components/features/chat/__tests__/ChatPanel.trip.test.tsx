@@ -19,7 +19,7 @@ const tool = (name: string): AgentTool => ({ name, description: name, parameters
 const TRIP_TOOLS = ['get_natal_summary', 'get_trip_context', 'get_timing', 'resolve_place', 'time_travel'].map(tool);
 const TODAY_TOOLS = ['get_current_datetime', 'get_chart_facts', 'get_timing'].map(tool);
 const TRIP: TripContext = {
-  period: { start: '2019-05-01', end: '2019-05-31', granularity: 'month', tense: 'past', label: 'May 2019' },
+  period: { start: '2019-05-01', end: '2019-05-31', granularity: 'month', tense: 'past', label: 'May 2019', short: 'May 2019' },
   place: { label: 'Singapore', timezone: 'Asia/Singapore', source: 'trip', display: 'Singapore' },
   today: '2026-10-13',
   natal: { lagna: { sign: 'scorpio', nakshatra: 'anuradha', pada: 1, sign_lord: 'mars' }, moon: null, planets: [], yogas: [] },
@@ -53,13 +53,36 @@ afterEach(() => {
 });
 
 describe('a trip thread shows what grounds it', () => {
-  it('the context card names the period, the place and the dasha', () => {
+  // Contract changed 2026-10-13 (review): ONE period header row; the card shows only facts.
+  it('one header row names the trip and holds Change, Back to today and Tools; the period is shown once', () => {
+    useChatStore.getState().startThread('p1', 'c1', MAY_2019_SG);
+    renderPanel();
+    const header = screen.getByTestId('chat-thread-header');
+    expect(within(header).getByTestId('chat-thread-title').textContent).toBe('⏳ May 2019 · Singapore');
+    expect(within(header).getByTestId('time-travel-change')).toBeTruthy();
+    expect(within(header).getByTestId('time-travel-back')).toBeTruthy();
+    expect(within(header).getByTestId('chat-tools-button')).toBeTruthy();
+    expect(screen.getAllByText(/May 2019/)).toHaveLength(1);
+  });
+
+  it('the context card shows the dasha, not the period or the place again', () => {
     useChatStore.getState().startThread('p1', 'c1', MAY_2019_SG);
     renderPanel();
     const card = screen.getByTestId('trip-context-card');
-    expect(card.textContent).toContain('May 2019');
-    expect(card.textContent).toContain('Singapore');
     expect(card.textContent).toContain('Saturn–Saturn → Saturn–Mercury');
+    expect(card.textContent).not.toMatch(/May 2019|Singapore/);
+  });
+
+  it('once the AI has read the transits, the card lists the key ones', () => {
+    const id = useChatStore.getState().startThread('p1', 'c1', MAY_2019_SG);
+    useChatStore.getState().appendMessage(id, 'user', 'How was work?');
+    useChatStore.getState().appendMessage(id, 'assistant', 'Steady.', { parts: [
+      { type: 'tool-call', toolCallId: 'a', toolName: 'get_timing', args: { section: 'transits' }, status: 'complete',
+        result: { data: { gochara: [{ graha: 'saturn', sign: 'sagittarius' }, { graha: 'jupiter', sign: 'scorpio' }, { graha: 'moon', sign: 'aries' }] } } },
+      { type: 'text', text: 'Steady.' },
+    ] });
+    renderPanel();
+    expect(screen.getByTestId('trip-context-transits').textContent).toBe('Transits: Saturn in Sagittarius · Jupiter in Scorpio');
   });
 
   it('a today thread has no context card', () => {
@@ -116,5 +139,15 @@ describe('the thread list', () => {
     await waitFor(() => expect(viewport().getByText('Trip question')).toBeTruthy());
     expect(viewport().queryByText('Today question')).toBeNull();
     expect(screen.getByTestId('chat-thread-title').textContent).toBe('⏳ May 2019 · Singapore');
+  });
+});
+
+describe('starter chips', () => {
+  it('wrap onto new lines instead of scrolling sideways', () => {
+    useChatStore.getState().startThread('p1', 'c1');
+    renderPanel();
+    const row = screen.getAllByTestId('chat-suggestion')[0]!.parentElement!;
+    expect(row.className).toMatch(/\bflex-wrap\b/);
+    expect(row.className).not.toMatch(/overflow-x-auto/);
   });
 });

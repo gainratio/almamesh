@@ -80,7 +80,8 @@ describe('ChatPanel time travel', () => {
     renderPanel();
     await pinYear('2050');
     expect(screen.getByTestId('time-travel-badge').textContent).toBe('⏳');
-    expect(screen.getByTestId('time-travel-title').textContent?.replace(/\u00a0/g, ' ')).toBe('Time travel · 2050');
+    // Contract changed 2026-10-13: one period header row; the title is the period itself.
+    expect(screen.getByTestId('time-travel-title').textContent?.replace(/\u00a0/g, ' ')).toBe('2050');
     expect(screen.getByTestId('time-travel-banner').textContent).toContain('answers are about this period');
     expect(screen.getByRole('button', { name: 'What should I prepare for?' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Which months look strongest?' })).toBeTruthy();
@@ -121,7 +122,8 @@ describe('ChatPanel time travel', () => {
     expect((screen.getByTestId('time-travel-year') as HTMLSelectElement).value).toBe('2050');
     fireEvent.change(screen.getByTestId('time-travel-year'), { target: { value: '2051' } });
     fireEvent.click(screen.getByTestId('time-travel-go'));
-    await waitFor(() => expect(screen.getByTestId('time-travel-title').textContent?.replace(/\u00a0/g, ' ')).toBe('Time travel · 2051'));
+    // Contract changed 2026-10-13: one period header row; the title is the period itself.
+    await waitFor(() => expect(screen.getByTestId('time-travel-title').textContent?.replace(/\u00a0/g, ' ')).toBe('2051'));
     expect(Object.keys(useChatStore.getState().threads)).toHaveLength(1);
 
     await act(async () => fireEvent.click(screen.getByTestId('time-travel-back')));

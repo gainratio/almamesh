@@ -33,7 +33,7 @@ const CHART = {
 describe('tripContext: one source for the tools, the brief and the context card', () => {
   it('a past Singapore trip carries natal, place, period and its dashas', () => {
     const trip = tripContext({ chart: CHART, asOf: JUNE_2019_SG, today: TODAY, birth: BIRTH, language: 'en' });
-    expect(trip.period).toEqual({ start: '2019-06-01', end: '2019-06-30', granularity: 'month', tense: 'past', label: 'June 2019' });
+    expect(trip.period).toEqual({ start: '2019-06-01', end: '2019-06-30', granularity: 'month', tense: 'past', label: 'June 2019', short: 'Jun 2019' });
     expect(trip.place).toEqual({ label: 'Singapore', timezone: 'Asia/Singapore', source: 'trip', display: 'Singapore' });
     expect(trip.natal.lagna).toMatchObject({ sign: 'scorpio', nakshatra: 'anuradha' });
     expect(trip.natal.moon).toMatchObject({ sign: 'cancer', nakshatra: 'pushya' });

@@ -20,8 +20,8 @@ import { useTranslation } from 'react-i18next';
 import { Link, useNavigate } from 'react-router-dom';
 import { ComposerPrimitive, MessagePrimitive, ThreadPrimitive, type MessageState } from '@assistant-ui/react';
 import { type AgentToolCallRecord, type ChatTurn, pinRelative } from '@almamesh/llm';
-import { useChartLibraryStore, useChatStore, useLanguageStore } from '@almamesh/store';
-import type { ChatThreadAsOf } from '@almamesh/shared-types';
+import { useChartLibraryStore, useChatStore } from '@almamesh/store';
+import type { ChatMessage, ChatThreadAsOf } from '@almamesh/shared-types';
 import { MessageBubble } from './MessageBubble';
 import { ReferenceEntry } from './ReferenceEntry';
 import { SuggestedQuestions } from './SuggestedQuestions';
@@ -36,9 +36,9 @@ import { AlmaMeshAssistantRuntime } from './AlmaMeshAssistantRuntime';
 import { generateProviderChatSummary } from '../../../lib/chatSummaryProvider';
 import { viewerTodayDay } from '../../../lib/chatAgentTools';
 import { TimeTravelSheet } from './TimeTravelSheet';
-import { TimeTravelBanner } from './TimeTravelBanner';
 import type { TravelRecorder } from '../../../lib/timeTravelTool';
 import type { ChatTripKit } from '../../../lib/chatTripKit';
+import { tripPeriodLabel } from '../../../lib/timeTravelThreads';
 import { ChatThreadList } from './ChatThreadList';
 import { ToolCallRow, buildChatToolkit, toolListOf } from './chatToolkit';
 import { TripContextCard } from './TripContextCard';
@@ -111,7 +111,6 @@ export function ChatPanel({
   // A pinned thread doesn't depend on today, so it skips the re-anchor wait (spec Part 3).
   const reanchorWaits = reanchoring && asOf === undefined;
   const sendBlocked = !aiConfigured || isStreaming || reanchorWaits;
-  const language = useLanguageStore((s) => s.language);
   const today = viewerTodayDay(new Date());
   const relative = asOf ? pinRelative(asOf, today) : undefined;
   const [sheet, setSheet] = useState<'closed' | 'new' | 'change'>('closed');
@@ -126,6 +125,9 @@ export function ChatPanel({
   }, [tripPins, profileId]);
   const toolkit = useMemo(() => (chatKit ? buildChatToolkit(chatKit.toolsFor(asOf)) : undefined), [chatKit, asOf]);
   const trip = useMemo(() => (chatKit && asOf ? chatKit.tripFor(asOf) : undefined), [chatKit, asOf]);
+  const keyTransits = useMemo(() => keyTransitsOf(messages), [messages]);
+  // An old trip with no place reads the birth place; the header says which.
+  const headerPlace = asOf?.place?.label ?? trip?.place.display;
   const [threadsOpen, setThreadsOpen] = useState(false);
   const [toolsOpen, setToolsOpen] = useState(false);
   const activeTitle = threadId ? tripPins[threadId]?.title ?? null : null;
@@ -244,13 +246,35 @@ export function ChatPanel({
         </div>
       )}
 
-      <div className="flex shrink-0 items-center gap-2 border-b border-ui-border px-3 py-2" data-testid="chat-thread-header">
+      {/* The ONE period row: which trip this is, Change · Back to today, and Tools. A
+          shrink-0 sibling above the scrolling thread, with a border, so answers scroll
+          under a clear edge and never look like they run beneath it. */}
+      <div className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-b border-ui-border bg-background-secondary px-3 py-2" data-testid="chat-thread-header">
         <button type="button" data-testid="chat-threads-button" aria-expanded={threadsOpen} aria-label={t('threads.button')} title={t('threads.button')}
           onClick={() => { setThreadsOpen((open) => !open); setToolsOpen(false); }}
           className="flex min-h-11 min-w-11 items-center justify-center rounded-lg text-text-secondary hover:bg-background-tertiary">
           <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" d="M4 6h16M4 12h16M4 18h10" /></svg>
         </button>
-        <p className="min-w-0 flex-1 truncate text-sm font-medium text-text-primary" data-testid="chat-thread-title">{activeTitle ?? t('threads.today')}</p>
+        {asOf ? (
+          <div data-testid="time-travel-banner" className="flex min-w-0 flex-1 basis-48 flex-wrap items-center gap-x-2" role="group" aria-label={t('time_travel.banner.about')}>
+            <p className="min-w-0 flex-1 basis-32 text-sm font-medium text-text-primary" data-testid="chat-thread-title" role="status">
+              <span data-testid="time-travel-badge" aria-hidden="true">⏳</span>{' '}
+              <span data-testid="time-travel-title">{tripPeriodLabel(asOf)}</span>
+              {headerPlace && ` · ${headerPlace}`}
+            </p>
+            <span className="sr-only">{t('time_travel.banner.about')}</span>
+            <span className="flex shrink-0 items-center gap-1 whitespace-nowrap text-xs text-text-secondary">
+              <button type="button" data-testid="time-travel-change" onClick={() => setSheet('change')} className="min-h-11 px-1 underline">{t('time_travel.banner.change')}</button>
+              <span aria-hidden="true">·</span>
+              <button type="button" data-testid="time-travel-back" onClick={() => void handleBack()} disabled={backState === 'busy'} className="min-h-11 px-1 underline disabled:opacity-50">{t('time_travel.banner.back')}</button>
+            </span>
+            {backState === 'failed' && (
+              <span role="alert" data-testid="time-travel-back-failed" className="basis-full text-xs text-status-error">{t('time_travel.sheet.save_failed')}</span>
+            )}
+          </div>
+        ) : (
+          <p className="min-w-0 flex-1 truncate text-sm font-medium text-text-primary" data-testid="chat-thread-title">{activeTitle ?? t('threads.today')}</p>
+        )}
         {toolkit && (
           <button type="button" data-testid="chat-tools-button" aria-expanded={toolsOpen}
             onClick={() => { setToolsOpen((open) => !open); setThreadsOpen(false); }}
@@ -271,11 +295,6 @@ export function ChatPanel({
 
       {/* Semantic search over this profile's past conversations (discoverable). */}
       {profileId && <ChatSearch profileId={profileId} onOpenResult={handleOpenResult} />}
-
-      {asOf && (
-        <TimeTravelBanner asOf={asOf} language={language} onChange={() => setSheet('change')} onBack={() => void handleBack()}
-          backBusy={backState === 'busy'} backFailed={backState === 'failed'} />
-      )}
 
       {reanchorWaits && aiConfigured && (
         <div className="mx-4 mt-3 rounded-lg border border-ui-border px-3 py-2 text-xs text-text-muted" data-testid="chat-reanchor-status" role="status">
@@ -299,7 +318,7 @@ export function ChatPanel({
           renderers remain AlmaMesh-owned so sanitization and visual language do
           not change. */}
       <ThreadPrimitive.Viewport className="min-h-0 flex-1 overflow-y-auto p-4" data-testid="chat-viewport">
-        {trip && <TripContextCard trip={trip} />}
+        {trip && <TripContextCard trip={trip} keyTransits={keyTransits} />}
         <ThreadPrimitive.Empty>
           {!trip && (
           <div className="flex flex-col items-center justify-center py-6 text-center">
@@ -397,6 +416,26 @@ export function ChatPanel({
     </ThreadPrimitive.Root>
     </AlmaMeshAssistantRuntime>
   );
+}
+
+const SLOW = ['saturn', 'jupiter', 'rahu', 'ketu', 'mars'];
+const titleCase = (word: string) => word.charAt(0).toUpperCase() + word.slice(1);
+
+/** The slow planets from the thread's first transits lookup: what the AI pulled, for the card. */
+function keyTransitsOf(messages: readonly ChatMessage[]): string[] {
+  for (const message of messages) {
+    for (const part of message.parts ?? []) {
+      if (part.type !== 'tool-call' || part.toolName !== 'get_timing' || part.status !== 'complete') continue;
+      if ((part.args as { section?: unknown }).section !== 'transits') continue;
+      const rows = (part.result as { data?: { gochara?: unknown } } | undefined)?.data?.gochara;
+      if (!Array.isArray(rows)) continue;
+      return rows
+        .filter((row): row is { graha: string; sign: string } => typeof row?.graha === 'string' && typeof row?.sign === 'string')
+        .filter((row) => SLOW.includes(row.graha.toLowerCase()))
+        .map((row) => `${titleCase(row.graha)} in ${titleCase(row.sign)}`);
+    }
+  }
+  return [];
 }
 
 interface AssistantMessageRowProps {

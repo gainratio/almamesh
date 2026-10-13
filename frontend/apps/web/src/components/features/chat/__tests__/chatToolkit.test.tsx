@@ -64,15 +64,50 @@ describe('a tool-call row shows what the AI pulled', () => {
 });
 
 describe('tool-call row edges', () => {
-  it('summarises a period by its dates when it has no label, and an unknown tool by its name', () => {
+  it('summarises a month-long period by its month when it has no label, and an unknown tool by its name', () => {
     render(<ToolCallRow toolName="mystery_tool" toolCallId="c3" args={{}} argsText="{}" result={{ period: { start: '2019-05-01', end: '2019-05-31' }, place: { label: 'Singapore' } }} status={{ type: 'complete' }} />);
     const row = screen.getByTestId('chat-tool-call');
     expect(row.textContent).toContain('mystery_tool');
-    expect(row.textContent).toContain('Singapore · 2019-05-01 – 2019-05-31');
+    expect(row.textContent).toContain('Singapore · May 2019');
   });
 
   it('a row with no result still renders', () => {
     render(<ToolCallRow toolName="get_timing" toolCallId="c4" args={{ section: 'dashas' }} argsText="" result={undefined} status={{ type: 'running' }} />);
     expect(screen.getByTestId('chat-tool-call').getAttribute('data-status')).toBe('complete');
+  });
+});
+
+describe('tool-call rows read like a sentence and stay collapsed (2026-10-13)', () => {
+  it('a trip-context row: "Looked up trip period & place · Singapore · May 2019", collapsed, no raw JSON until opened', () => {
+    render(<ToolCallRow toolName="get_trip_context" toolCallId="t1" args={{}} argsText="{}"
+      result={{ period: { label: 'May 2019' }, place: { label: 'Singapore', timezone: 'Asia/Singapore' } }} status={{ type: 'complete' }} />);
+    const row = screen.getByTestId('chat-tool-call');
+    expect(row.hasAttribute('open')).toBe(false);
+    expect(screen.getByTestId('chat-tool-call-summary').textContent).toBe('Looked up trip period & place · Singapore · May 2019');
+    expect(screen.queryByTestId('chat-tool-call-result')).toBeNull();
+    fireEvent.click(screen.getByTestId('chat-tool-call-summary'));
+    expect(screen.getByTestId('chat-tool-call-result').textContent).toContain('Asia/Singapore');
+  });
+
+  it('a timing row names its section and the month it read', () => {
+    render(<ToolCallRow toolName="get_timing" toolCallId="t2" args={{ section: 'transits' }} argsText=""
+      result={{ period: { start: '2019-05-01', end: '2019-05-31', days: 31, basis: 'period' }, places: [{ label: 'Singapore' }] }} status={{ type: 'complete' }} />);
+    expect(screen.getByTestId('chat-tool-call-summary').textContent).toBe('Looked up transits · Singapore · May 2019');
+  });
+
+  it('a natal row has no place or period', () => {
+    render(<ToolCallRow toolName="get_natal_summary" toolCallId="t3" args={{}} argsText="" result={{ lagna: { sign: 'Leo' } }} status={{ type: 'complete' }} />);
+    expect(screen.getByTestId('chat-tool-call-summary').textContent).toBe('Looked up natal chart');
+  });
+});
+
+describe('tool-call row periods as people say them', () => {
+  it.each([
+    [{ start: '2019-01-01', end: '2019-12-31' }, 'Looked up dashas · 2019'],
+    [{ start: '2019-05-04', end: '2019-05-04' }, 'Looked up dashas · May 4, 2019'],
+    [{ start: '2019-05-04', end: '2019-06-10' }, 'Looked up dashas · 2019-05-04 – 2019-06-10'],
+  ])('%j', (period, expected) => {
+    render(<ToolCallRow toolName="get_timing" toolCallId="p" args={{ section: 'dashas' }} argsText="" result={{ period }} status={{ type: 'complete' }} />);
+    expect(screen.getByTestId('chat-tool-call-summary').textContent).toBe(expected);
   });
 });

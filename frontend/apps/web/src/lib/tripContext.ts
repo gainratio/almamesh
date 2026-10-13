@@ -17,6 +17,7 @@ import type { ChatThreadAsOf, ProcessedBirthData } from '@almamesh/shared-types'
 
 import { birthYearOf } from './periodChart';
 import { formatPinLabel } from './timeTravelSheet';
+import { tripPeriodLabel } from './timeTravelThreads';
 
 import { birthPlaceOf } from './tripPlacePrefill';
 
@@ -38,6 +39,8 @@ export interface TripPeriod {
   readonly tense: TripTense;
   /** The period in the UI language, e.g. "May 2019". */
   readonly label: string;
+  /** Short form for the header and thread title, e.g. "Jan 2027". */
+  readonly short: string;
 }
 
 export interface TripPlace {
@@ -140,6 +143,7 @@ export function tripContext(input: TripContextInput): TripContext {
       granularity: asOf.granularity,
       tense: TENSE[pinRelative(range, input.today)],
       label: formatPinLabel(asOf, input.language),
+      short: tripPeriodLabel(asOf, input.language),
     },
     place: tripPlace(asOf, input.birth),
     today: input.today,
