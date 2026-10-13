@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 
+import { LEAVING_WINDOW_MS } from '../documentLeaving';
 import { loadWithRetry } from '../lazyWithRetry';
 
 const FakeModule = { default: () => null };
@@ -24,6 +25,8 @@ const chunkError = () => new Error('Failed to fetch dynamically imported module:
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.useRealTimers();
+  window.dispatchEvent(new Event('pageshow'));
 });
 
 describe('loadWithRetry', () => {
@@ -71,6 +74,29 @@ describe('loadWithRetry', () => {
     const factory = vi.fn().mockRejectedValue(err);
     await expect(loadWithRetry(factory, 'Dashboard')).rejects.toBe(err);
     expect(factory).toHaveBeenCalledTimes(2);
+    expect(reload).not.toHaveBeenCalled();
+  });
+
+  // WebKit cancels the outgoing page's chunk loads when a navigation starts and
+  // keeps its scripts running until the new page commits; a reload then would
+  // replace the visitor's navigation (Safari: /onboarding landed back on `/`).
+  it('does not reload for a chunk cancelled by a navigation away; holds, then surfaces it if the page stays', async () => {
+    vi.useFakeTimers();
+    const { reload } = stubBrowser();
+    window.dispatchEvent(new Event('beforeunload'));
+    const err = new TypeError('Importing a module script failed.');
+    const factory = vi.fn().mockRejectedValue(err);
+    let outcome: unknown = 'pending';
+    void loadWithRetry(factory, 'Landing').then(
+      () => { outcome = 'resolved'; },
+      (error: unknown) => { outcome = error; },
+    );
+    await vi.advanceTimersByTimeAsync(LEAVING_WINDOW_MS - 1);
+    expect(reload).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem('almamesh:chunk-reload:Landing')).toBeNull();
+    expect(outcome).toBe('pending');
+    await vi.advanceTimersByTimeAsync(1);
+    expect(outcome).toBe(err);
     expect(reload).not.toHaveBeenCalled();
   });
 });

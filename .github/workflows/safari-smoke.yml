@@ -1,0 +1,51 @@
+name: Safari (macOS)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.run_id || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+# Advisory, not a gate: real Safari through Apple's safaridriver, where every
+# other WebKit check runs Playwright's bundled WebKit build. It is its own
+# workflow so a red smoke never fails the WebKit (macOS) run that deploy
+# acceptance reads (dagger/src/nativeMacAcceptance.ts). Evidence is uploaded
+# only after its secret scan.
+
+jobs:
+  safari-smoke:
+    name: safari / macOS smoke
+    runs-on: macos-15
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: frontend/apps/web
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: frontend/.bun-version
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+      - run: bun install --frozen-lockfile
+      - run: sudo safaridriver --enable
+      - run: bash scripts/setup-dev-assets.sh
+      - run: node scripts/safari-smoke.mjs
+      - id: leak-scan
+        if: always()
+        run: node scripts/artifactLeakScan.mjs safari-smoke-evidence
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always() && steps.leak-scan.outcome == 'success'
+        with:
+          name: safari-smoke-evidence
+          path: frontend/apps/web/safari-smoke-evidence
+          retention-days: 14
+          if-no-files-found: error

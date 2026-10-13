@@ -36,6 +36,14 @@ const PUBLIC_CI_PROVENANCE = {
   GITHUB_RUN_ID: '38175621224',
   GITHUB_WORKFLOW_SHA: 'a5d1c61cc1968f40b2495c6db083ad7ffdc3f3f6',
 };
+// Who triggered the run: shown on every run page and PR, and the author of a
+// Dependabot PR's merge commit (`49699333+dependabot[bot]@users.noreply...`).
+const PUBLIC_CI_ACTOR = {
+  GITHUB_ACTOR: 'dependabot[bot]',
+  GITHUB_ACTOR_ID: '49699333',
+  GITHUB_TRIGGERING_ACTOR: 'dependabot[bot]',
+};
+const PRIVATE_ACTOR_NAMES = ['GITHUB_ACTOR_TOKEN', 'GITHUB_ACTOR_SECRET', 'GITHUB_ACTOR_ID_SECRET', 'GITHUB_TRIGGERING_ACTOR_TOKEN'];
 const PUBLIC_ACTION = { GITHUB_ACTION: 'leak-scan' };
 const PRIVATE_ACTION_NAMES = ['GITHUB_ACTION_TOKEN', 'GITHUB_ACTION_SECRET', 'GITHUB_ACTION_CONTROL', 'UNRELATED_API_KEY'];
 const PRIVATE_CI_NAMES = [
@@ -96,6 +104,47 @@ describe('envNeedles', () => {
   it.each(Object.entries(PUBLIC_CI_PROVENANCE))('excludes the exact public CI provenance name %s', (name, value) => {
     expect(PUBLIC_ENV_NAMES).toContain(name);
     expect(envNeedles({ [name]: value })).toEqual([]);
+  });
+
+  it.each(Object.entries(PUBLIC_CI_ACTOR))('excludes the exact public CI actor name %s', (name, value) => {
+    expect(PUBLIC_ENV_NAMES).toContain(name);
+    expect(envNeedles({ [name]: value })).toEqual([]);
+  });
+
+  it.each(PRIVATE_ACTOR_NAMES)('still scans the neighboring actor secret name %s', (name) => {
+    const needles = envNeedles({ ...PUBLIC_CI_ACTOR, [name]: SECRET });
+    expect(needles.map((needle) => needle.label)).toEqual([`environment variable ${name}`]);
+    expect(scanDirectory(evidenceDir({ 'worker.log': SECRET }), needles)).toEqual([`environment variable ${name}`]);
+  });
+
+  it('keeps evidence naming the Dependabot merge-commit author', () => {
+    const dir = evidenceDir({
+      'webkit-browser.log': 'author: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>',
+    });
+    const result = runScan(dir, { ...PUBLIC_CI_ACTOR, GITHUB_TOKEN: SECRET });
+    expect(result.status, result.stderr).toBe(0);
+    expect(existsSync(dir)).toBe(true);
+  });
+
+  it('still deletes evidence holding a real token-shaped secret beside the public actor', () => {
+    const token = `ghp_${randomBytes(18).toString('hex')}`;
+    const dir = evidenceDir({
+      'webkit-browser.log': `author: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>\nAuthorization: token ${token}`,
+    });
+    const result = runScan(dir, { ...PUBLIC_CI_ACTOR, GITHUB_TOKEN: token });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('environment variable GITHUB_TOKEN');
+    expect(result.stderr).not.toContain('GITHUB_ACTOR');
+    expect(result.stdout + result.stderr).not.toContain(token);
+    expect(existsSync(dir)).toBe(false);
+  });
+
+  it('deletes evidence when a credential shares the public actor value', () => {
+    const dir = evidenceDir({ 'worker.log': PUBLIC_CI_ACTOR.GITHUB_ACTOR });
+    const result = runScan(dir, { ...PUBLIC_CI_ACTOR, GITHUB_TOKEN: PUBLIC_CI_ACTOR.GITHUB_ACTOR });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('environment variable GITHUB_TOKEN');
+    expect(existsSync(dir)).toBe(false);
   });
 
   it('excludes only the exact public GITHUB_ACTION step ID name', () => {

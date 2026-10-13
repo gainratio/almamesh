@@ -7,6 +7,7 @@
 import {
   cityAtIndexOffline,
   foldPlaceText,
+  isCancellation,
   searchCityRowsOffline,
   type CityMatch,
   type IndexedCityMatch,
@@ -95,8 +96,28 @@ function uniqueLabels(candidates: readonly Candidate[]): ResolvedPlace[] {
   return numberRepeats(qualify(candidates)).map((c) => c.place);
 }
 
+/**
+ * The chat cannot retry: a failed tool ends its tool round, and the identical
+ * call is refused as a duplicate. The first lookup in a tab may run the cold
+ * 25-batch import, so one transient failure (a batch fetch, the SQL Worker)
+ * would cost the whole request. The import restarts cleanly in a fresh
+ * session (its version marker is written last), so try exactly once more.
+ * A cancellation is final.
+ */
+export const PLACE_LOOKUP_ATTEMPTS = 2;
+
+async function withRetry<T>(work: () => Promise<T>): Promise<T> {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return await work();
+    } catch (error) {
+      if (attempt >= PLACE_LOOKUP_ATTEMPTS || isCancellation(error)) throw error;
+    }
+  }
+}
+
 export async function lookupPlaceOffline(query: string): Promise<PlaceLookup> {
-  const rows = await searchCityRowsOffline(query, PLACE_CANDIDATE_LIMIT);
+  const rows = await withRetry(() => searchCityRowsOffline(query, PLACE_CANDIDATE_LIMIT));
   const exact = uniqueExact(rows, query);
   const place = exact && resolved(exact.index, exact.match);
   if (place) return { status: 'found', place };
@@ -110,6 +131,6 @@ export async function lookupPlaceOffline(query: string): Promise<PlaceLookup> {
 export async function placeFromRef(ref: string): Promise<ResolvedPlace | undefined> {
   if (!PLACE_REF.test(ref)) return undefined;
   const index = Number(ref.slice('city:'.length));
-  const match = await cityAtIndexOffline(index);
+  const match = await withRetry(() => cityAtIndexOffline(index));
   return match && resolved(index, match);
 }
