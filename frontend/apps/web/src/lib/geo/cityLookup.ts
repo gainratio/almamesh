@@ -22,7 +22,7 @@ import tzlookup from 'tz-lookup';
 import { safeWarn } from '@almamesh/shared-types';
 
 import { geocodeCitiesOnline } from './onlineGeocoder';
-import { withDerivedDb } from '../derivedDb';
+import { withDerivedDb, type SqlDatabase } from '../derivedDb';
 import { cityCandidates, cityRowAt, ensureCitiesImported, CITY_SQL_CANDIDATES } from './citySql';
 import { cityMatchRank, placeTokens, type CityRow } from './cityMatch';
 export { cityMatchRank, citySearchText, foldPlaceText, type CityRow } from './cityMatch';
@@ -88,17 +88,53 @@ export interface IndexedCityMatch {
   readonly match: CityMatch;
 }
 
+/** Where an offline city lookup failed: the database session, the bundled import, or the query. */
+export type CityLookupErrorCode = 'geo.city_session' | 'geo.city_import' | 'geo.city_query';
+
+/**
+ * An offline city lookup that failed, naming the step and keeping the
+ * underlying error as `cause`, so diagnostics can say why (safeCauseWarn
+ * prints the class/code chain, never the text). A cancellation (AbortError)
+ * is never wrapped: callers still see the page-teardown signal as it is.
+ */
+export class CityLookupError extends Error {
+  override readonly name = 'CityLookupError';
+  constructor(readonly code: CityLookupErrorCode, cause: unknown) {
+    super(cause instanceof Error ? cause.message : 'Offline city lookup failed.', { cause });
+  }
+}
+
+export function isCancellation(error: unknown): boolean {
+  return error instanceof DOMException && error.name === 'AbortError';
+}
+
+async function atStep<T>(step: CityLookupErrorCode, work: () => Promise<T>): Promise<T> {
+  try {
+    return await work();
+  } catch (error) {
+    if (error instanceof CityLookupError || isCancellation(error)) throw error;
+    throw new CityLookupError(step, error);
+  }
+}
+
+/** One derived-database session with the bundled list imported; every failure names its step. */
+function withCityDb<T>(work: (db: SqlDatabase) => Promise<T>): Promise<T> {
+  return atStep('geo.city_session', () => withDerivedDb(async (db) => {
+    await atStep('geo.city_import', () => ensureCitiesImported(db));
+    return work(db);
+  }));
+}
+
 /** Search SQL in bounded pages; JS retains only one page and the requested matches. */
 export async function searchCityRowsOffline(query: string, limit = 8): Promise<IndexedCityMatch[]> {
   if (query.trim().length < 2 || limit <= 0) return [];
   const tokens = placeTokens(query);
   if (tokens.length === 0) return [];
   const normQuery = tokens.join(' ');
-  return withDerivedDb(async (db) => {
-    await ensureCitiesImported(db);
+  return withCityDb(async (db) => {
     const results: IndexedCityMatch[] = [];
     for (let offset = 0; ; offset += CITY_SQL_CANDIDATES) {
-      const candidates = await cityCandidates(db, query, offset);
+      const candidates = await atStep('geo.city_query', () => cityCandidates(db, query, offset));
       // SQL uses the original rank/population/index order. Qualifier tolerance is
       // checked here; paging preserves answers even with >200 rejected candidates.
       for (const { index, row } of candidates) {
@@ -114,9 +150,8 @@ export async function searchCityRowsOffline(query: string, limit = 8): Promise<I
 /** One bundled reference row by its original list index. */
 export async function cityAtIndexOffline(index: number): Promise<CityMatch | undefined> {
   if (!Number.isSafeInteger(index) || index < 0) return undefined;
-  return withDerivedDb(async (db) => {
-    await ensureCitiesImported(db);
-    const row = await cityRowAt(db, index);
+  return withCityDb(async (db) => {
+    const row = await atStep('geo.city_query', () => cityRowAt(db, index));
     return row ? toMatch(row) : undefined;
   });
 }

@@ -130,6 +130,7 @@ export type {
   AgentStatusEvent,
   AgentTool,
   AgentToolContext,
+  AgentToolFailure,
   StreamAgentChatOptions,
 } from "./agent";
 

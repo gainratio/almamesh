@@ -67,6 +67,13 @@ export type AgentStatusEvent =
   | { readonly phase: "answering" }
   | { readonly phase: "complete" };
 
+/** A tool execution that threw or timed out, for local diagnostics. */
+export interface AgentToolFailure {
+  readonly toolName: string;
+  readonly code: "tool_failed" | "tool_timeout";
+  readonly error: unknown;
+}
+
 export interface StreamAgentChatOptions {
   readonly config: ProviderConfig;
   readonly messages: readonly ChatMessage[];
@@ -74,6 +81,13 @@ export interface StreamAgentChatOptions {
   /** Required: capture once at the start of the user turn. */
   readonly now: Date;
   readonly onStatus?: (event: AgentStatusEvent) => void;
+  /**
+   * Diagnostics only: a tool threw or timed out. The model sees just the
+   * opaque code; this hands the caller the real error so a failing tool can
+   * say why. It may hold private text, so callers must never send it anywhere.
+   * A throwing handler is ignored.
+   */
+  readonly onToolError?: (failure: AgentToolFailure) => void;
   readonly signal?: AbortSignal;
   /** Injectable for deterministic tests; defaults to global `fetch`. */
   readonly fetchImpl?: typeof fetch;
@@ -485,6 +499,14 @@ function safeToolResult(value: unknown): { readonly content: string; readonly fa
   }
 }
 
+function reportToolFailure(options: StreamAgentChatOptions, failure: AgentToolFailure): void {
+  try {
+    options.onToolError?.(failure);
+  } catch {
+    // A diagnostic sink must never change the turn's outcome.
+  }
+}
+
 async function executeWithDeadline(
   tool: AgentTool,
   args: AgentJsonObject,
@@ -707,6 +729,7 @@ export async function* streamAgentChat(
               error instanceof DOMException && error.name === "TimeoutError"
                 ? "tool_timeout"
                 : "tool_failed";
+            reportToolFailure(options, { toolName: selectedTool.name, code, error });
             content = toolError(code, "The local tool could not complete safely.");
             forceFinal = true;
           }
