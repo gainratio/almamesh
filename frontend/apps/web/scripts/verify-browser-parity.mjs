@@ -405,10 +405,10 @@ async function main() {
       '2000-12-31T23:59:00+00:00': { iso: '2000-12-31T23:59:00+00:00', latitude: 40.7128, longitude: -74.006, utcOffsetMinutes: -300 },
       '1990-01-15T12:00:00+00:00@24m': { iso: '1990-01-15T12:00:00+00:00', latitude: 28.6139, longitude: 77.209, utcOffsetMinutes: 330, windowMonths: 24 },
     }
-    // The four engine contexts, named. computePredictive also returns what
+    // The five engine contexts, named. computePredictive also returns what
     // TypeScript adds (domain_strength_assays, domain_strength_receipts,
     // strength_signer_public_key); those are not engine output and not compared.
-    const ENGINE_KEYS = ['domains_context', 'strength_context', 'transit_context', 'varga_context_full']
+    const ENGINE_KEYS = ['domains_context', 'period_reading', 'strength_context', 'transit_context', 'varga_context_full']
     const predictiveGolden = JSON.parse(
       readFileSync(join(REPO_ROOT, 'backend/tests/fixtures/predictive_golden_de421.json'), 'utf8'),
     )

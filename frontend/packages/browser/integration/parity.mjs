@@ -274,6 +274,7 @@ await pyodide.runPythonAsync(`
 import json
 from datetime import UTC, datetime
 from almamesh.calculations import calculate_sidereal_context
+from almamesh.snapshot import compute_stamped_chart
 
 _REFERENCE_DATE = datetime.fromisoformat("${REFERENCE_DATE}")
 
@@ -290,7 +291,8 @@ def _canonicalize(value):
 
 def _parity_chart(iso_dt, lat, lon):
     dt = datetime.fromisoformat(iso_dt)
-    ctx = calculate_sidereal_context(dt, lat, lon, reference_date=_REFERENCE_DATE)
+    # The golden is the STAMPED chart (engine output + snapshot), as test_chart_golden.py makes it.
+    ctx = compute_stamped_chart(dt, lat, lon, reference_date=_REFERENCE_DATE)
     return json.dumps(_canonicalize(ctx.model_dump(mode="json")), sort_keys=True)
 
 # Phase-1 predictive transit parity — the SEPARATE TransitContext at a pinned
