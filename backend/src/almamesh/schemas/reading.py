@@ -131,7 +131,7 @@ class ReadingSegment(BaseModel):
     maha: PlanetName
     antar: PlanetName
     pratyantar: PlanetName
-    events: list[str]  # timeline descriptors dated inside the segment
+    events: list[str]  # "YYYY-MM-DD descriptor" for each timeline event inside the segment
 
 
 class SkySpan(BaseModel):

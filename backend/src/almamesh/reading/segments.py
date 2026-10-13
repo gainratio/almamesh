@@ -2,7 +2,8 @@
 
 A segment's lords are read at its first instant; every timeline event lands in
 the segment whose day range holds it, so stations, Mars ingresses, Sade Sati
-phases and dasha handovers are all listed by their stable descriptors.
+phases and dasha handovers are all listed as "YYYY-MM-DD descriptor" (UTC day
+first, then the stable descriptor), so each change point can be cited by date.
 """
 
 from __future__ import annotations
@@ -48,10 +49,11 @@ def _cuts(
 
 
 def _place(days: list[date], events: Sequence[TimelineEvent]) -> list[list[str]]:
-    """Each event's descriptor in the segment whose start day precedes it."""
+    """Each event as "YYYY-MM-DD descriptor", in the segment starting on or before its UTC day."""
     placed: list[list[str]] = [[] for _ in days]
     for event in events:
-        placed[max(bisect_right(days, utc_date(event.date)) - 1, 0)].append(event.descriptor)
+        day = utc_date(event.date)
+        placed[max(bisect_right(days, day) - 1, 0)].append(f"{day.isoformat()} {event.descriptor}")
     return placed
 
 

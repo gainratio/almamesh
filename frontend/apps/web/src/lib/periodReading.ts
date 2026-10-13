@@ -360,16 +360,17 @@ const lordBrief = ({ lord, level, rules, functional }: ReadingLord): ReadingLord
 /**
  * Applied in order until the reading fits, cheapest loss first; each cut that
  * changed something is named in `trimmed`, and get_period_detail returns it.
- * Segments go first: they restate the dasha changes and the sky's ingresses.
+ * Dated change points (segment events: stations, ingresses, each with its day)
+ * outrank secondary detail: they are how the model says when a period shifts.
  */
 const TRIMS: readonly Trim[] = [
-  { note: 'segment events', apply: (r) => ({ ...r, segments: r.segments.map((s) => ({ ...s, events: [] })) }) },
-  { note: 'segments', apply: (r) => (r.period.granularity === 'day' ? r : { ...r, segments: [] }) },
   { note: 'windows beyond 6', apply: (r) => ({ ...r, windows: r.windows.slice(0, 6) }) },
   { note: 'pratyantar-only lord natal detail', apply: (r) => ({ ...r, lords: r.lords.map((l) => (l.level.some((v) => v === 'maha' || v === 'antar') ? l : lordBrief(l))) }) },
   { note: 'theme factors beyond 2', apply: (r) => capThemes(r, (t) => ({ ...t, factors: t.factors.slice(0, 2) })) },
   { note: 'sky spans beyond 3 per graha', apply: (r) => ({ ...r, sky: firstPerGraha(r.sky, 3) }) },
   { note: 'themes beyond the first 4', apply: (r) => ({ ...r, themes: r.themes.slice(0, 4) }) },
+  { note: 'segment events', apply: (r) => ({ ...r, segments: r.segments.map((s) => ({ ...s, events: [] })) }) },
+  { note: 'segments', apply: (r) => (r.period.granularity === 'day' ? r : { ...r, segments: [] }) },
   { note: 'lord natal detail', apply: (r) => ({ ...r, lords: r.lords.map(lordBrief) }) },
   { note: 'windows beyond 3', apply: (r) => ({ ...r, windows: r.windows.slice(0, 3) }) },
   { note: 'sky spans beyond 2 per graha', apply: (r) => ({ ...r, sky: firstPerGraha(r.sky, 2) }) },

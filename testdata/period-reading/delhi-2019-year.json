@@ -231,7 +231,7 @@
       "antar": "rahu",
       "pratyantar": "venus",
       "events": [
-        "mars.ingress.aries"
+        "2019-02-05 mars.ingress.aries"
       ]
     },
     {
@@ -241,9 +241,9 @@
       "antar": "rahu",
       "pratyantar": "venus",
       "events": [
-        "rahu.ingress.gemini",
-        "ketu.ingress.sagittarius",
-        "mars.ingress.taurus"
+        "2019-03-07 rahu.ingress.gemini",
+        "2019-03-07 ketu.ingress.sagittarius",
+        "2019-03-22 mars.ingress.taurus"
       ]
     },
     {
@@ -253,8 +253,8 @@
       "antar": "rahu",
       "pratyantar": "venus",
       "events": [
-        "jupiter.ingress.sagittarius",
-        "jupiter.station.retrograde"
+        "2019-03-29 jupiter.ingress.sagittarius",
+        "2019-04-10 jupiter.station.retrograde"
       ]
     },
     {
@@ -264,10 +264,10 @@
       "antar": "rahu",
       "pratyantar": "venus",
       "events": [
-        "jupiter.ingress.scorpio",
-        "saturn.station.retrograde",
-        "mars.ingress.gemini",
-        "mars.ingress.cancer"
+        "2019-04-22 jupiter.ingress.scorpio",
+        "2019-04-29 saturn.station.retrograde",
+        "2019-05-07 mars.ingress.gemini",
+        "2019-06-22 mars.ingress.cancer"
       ]
     },
     {
@@ -277,8 +277,8 @@
       "antar": "rahu",
       "pratyantar": "sun",
       "events": [
-        "mars.ingress.leo",
-        "jupiter.station.direct"
+        "2019-08-08 mars.ingress.leo",
+        "2019-08-11 jupiter.station.direct"
       ]
     },
     {
@@ -288,8 +288,8 @@
       "antar": "rahu",
       "pratyantar": "moon",
       "events": [
-        "saturn.station.direct",
-        "mars.ingress.virgo"
+        "2019-09-17 saturn.station.direct",
+        "2019-09-25 mars.ingress.virgo"
       ]
     },
     {
@@ -299,8 +299,8 @@
       "antar": "rahu",
       "pratyantar": "moon",
       "events": [
-        "jupiter.ingress.sagittarius",
-        "mars.ingress.libra"
+        "2019-11-05 jupiter.ingress.sagittarius",
+        "2019-11-10 mars.ingress.libra"
       ]
     },
     {
@@ -310,7 +310,7 @@
       "antar": "rahu",
       "pratyantar": "mars",
       "events": [
-        "mars.ingress.scorpio"
+        "2019-12-25 mars.ingress.scorpio"
       ]
     }
   ],

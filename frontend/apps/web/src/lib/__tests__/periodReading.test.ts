@@ -88,7 +88,7 @@ describe('the period reading (get_period_reading)', () => {
 
   it('clips segments and the slow sky to the period', () => {
     const result = reading('delhi-2019-05');
-    expect(result.segments).toEqual([{ start: '2019-05-01', end: '2019-05-31', maha: 'rahu', antar: 'rahu', pratyantar: 'venus', events: ['mars.ingress.gemini'] }]);
+    expect(result.segments).toEqual([{ start: '2019-05-01', end: '2019-05-31', maha: 'rahu', antar: 'rahu', pratyantar: 'venus', events: ['2019-05-07 mars.ingress.gemini'] }]);
     expect(result.sky.map((span) => [span.graha, span.start, span.end, span.sign, span.tags])).toEqual([
       ['jupiter', '2019-05-01', '2019-05-31', 'scorpio', ['jupiter_from_moon_4']],
       ['saturn', '2019-05-01', '2019-05-31', 'sagittarius', []],
@@ -141,7 +141,7 @@ describe('the period reading (get_period_reading)', () => {
   it('a Day with a later segment names that change point', () => {
     const result = buildPeriodReading({ ...YEAR, themes: [] }, within('2019-03-20', '2019-03-20', 'day'));
     expect(result.segments.map((segment) => [segment.start, segment.end])).toEqual([['2019-03-20', '2019-03-29']]);
-    expect(result.next_change).toEqual({ date: '2019-03-29', maha: 'rahu', antar: 'rahu', pratyantar: 'venus', events: ['jupiter.ingress.sagittarius', 'jupiter.station.retrograde'] });
+    expect(result.next_change).toEqual({ date: '2019-03-29', maha: 'rahu', antar: 'rahu', pratyantar: 'venus', events: ['2019-03-29 jupiter.ingress.sagittarius', '2019-04-10 jupiter.station.retrograde'] });
   });
 
   it.each(NAMES)('%s stays under 4 KB of JSON', (name) => {
@@ -149,11 +149,20 @@ describe('the period reading (get_period_reading)', () => {
     expect(bytes(reading(name))).toBeLessThan(4096);
   });
 
+  // 2026-10-13 P1 drive: a Month cut its dated change points first ('segment events'), so the
+  // model could not say when January 2027 shifted. Change points now outrank secondary detail.
+  it('keeps a Month\'s dated change points ahead of secondary detail', () => {
+    const month = reading('delhi-2027-01');
+    expect(month.segments.flatMap((segment) => segment.events)).toEqual(['2027-01-10 mars.station.retrograde', '2027-01-24 jupiter.ingress.cancer']);
+    expect(month.trimmed ?? []).not.toContain('segment events');
+    expect(month.lords.every((lord) => lord.rules !== undefined)).toBe(true);
+  });
+
   it('cuts only what it must, cheapest first, and names each cut', () => {
     expect(reading('delhi-2019-05').trimmed).toBeUndefined();
-    expect(reading('delhi-2027-01').trimmed).toEqual(['segment events', 'segments']);
+    expect(reading('delhi-2027-01').trimmed).toEqual(['theme factors beyond 2']);
     const year = reading('delhi-2019-year');
-    expect(year.trimmed?.slice(0, 2)).toEqual(['segment events', 'segments']);
+    expect(year.trimmed?.slice(0, 2)).toEqual(['pratyantar-only lord natal detail', 'theme factors beyond 2']);
     // What the acceptance drive needs survives the Year cut: every dasha change, every window, lordships, confidence.
     expect(year.dashas.pratyantar).toHaveLength(5);
     expect(year.windows).toHaveLength(3);
@@ -228,7 +237,7 @@ describe('the period detail digests (get_period_detail)', () => {
   it('segment: that segment, the sky over it and the windows inside it', () => {
     const result = detail('segment', '2019-03-29');
     expect(result).toMatchObject({
-      facts: { segment: { start: '2019-03-29', end: '2019-04-22', pratyantar: 'venus', events: ['jupiter.ingress.sagittarius', 'jupiter.station.retrograde'] } },
+      facts: { segment: { start: '2019-03-29', end: '2019-04-22', pratyantar: 'venus', events: ['2019-03-29 jupiter.ingress.sagittarius', '2019-04-10 jupiter.station.retrograde'] } },
     });
     if (!('factors' in result)) throw new Error('expected factors');
     expect(result.factors).toContain('2019-03-29 career.transit.jupiter.ingress.sagittarius (neutral)');

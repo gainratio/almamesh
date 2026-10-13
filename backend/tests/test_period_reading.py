@@ -90,7 +90,8 @@ def test_a_may_2019_trip_cites_only_mays_running_lords(reading_end: date | None)
     assert _cited_lords(reading) <= {"rahu", "venus"}
     assert reading.yogini is not None and reading.yogini.lord == PlanetName.MERCURY
     last = reading_end or date(2019, 5, 1)
-    assert (reading.window.start, reading.window.end) == (date(2019, 5, 1), last + timedelta(days=1))
+    window = (reading.window.start, reading.window.end)
+    assert window == (date(2019, 5, 1), last + timedelta(days=1))
 
 
 @pytest.fixture(scope="module")
@@ -167,7 +168,20 @@ def test_segments_split_at_every_pratyantar_change(year: PredictiveContexts) -> 
 
 def test_every_window_event_lands_in_a_segment(year: PredictiveContexts) -> None:
     placed = [e for s in year.period_reading.segments for e in s.events]
-    assert placed == [e.descriptor for e in year.transit_context.timeline.events]
+    events = year.transit_context.timeline.events
+    assert placed == [f"{e.date.astimezone(UTC).date().isoformat()} {e.descriptor}" for e in events]
+
+
+def test_segment_events_carry_a_date_inside_their_segment(year: PredictiveContexts) -> None:
+    """A change point the model cites needs its day.
+
+    P1 drive 2026-10-13: the May 2019 reading listed an undated Mars ingress.
+    """
+    for segment in year.period_reading.segments:
+        for event in segment.events:
+            day, _, descriptor = event.partition(" ")
+            assert descriptor
+            assert segment.start <= date.fromisoformat(day) < segment.end
 
 
 def test_sky_spans_tile_the_window_per_graha(year: PredictiveContexts) -> None:

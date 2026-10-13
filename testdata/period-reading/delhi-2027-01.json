@@ -199,7 +199,7 @@
       "antar": "mercury",
       "pratyantar": "rahu",
       "events": [
-        "mars.station.retrograde"
+        "2027-01-10 mars.station.retrograde"
       ]
     },
     {
@@ -209,7 +209,7 @@
       "antar": "mercury",
       "pratyantar": "rahu",
       "events": [
-        "jupiter.ingress.cancer"
+        "2027-01-24 jupiter.ingress.cancer"
       ]
     }
   ],
