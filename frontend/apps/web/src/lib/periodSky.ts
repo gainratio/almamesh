@@ -71,7 +71,8 @@ export function periodReferenceInstant(day: string): string {
 
 /**
  * Exactly the fields the predictive store sends, so the engine memo key matches
- * the store's. A 12-month input sends no window, so the memo key equals the store's.
+ * the store's. A 12-month Day input sends no window and no reading end, so the
+ * memo key equals the store's.
  */
 function engineInput(input: EnsurePredictiveInput): PredictiveInput {
   return {
@@ -81,6 +82,7 @@ function engineInput(input: EnsurePredictiveInput): PredictiveInput {
     referenceInstant: input.referenceInstant,
     utcOffsetMinutes: input.utcOffsetMinutes,
     ...(input.windowMonths === undefined ? {} : { windowMonths: input.windowMonths }),
+    ...(input.readingEnd === undefined ? {} : { readingEnd: input.readingEnd }),
   };
 }
 

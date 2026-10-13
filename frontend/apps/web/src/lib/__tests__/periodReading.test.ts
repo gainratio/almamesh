@@ -53,6 +53,19 @@ describe('the period reading (get_period_reading)', () => {
     expect(dashas.sookshma).toBeUndefined();
   });
 
+  it("May 2019 (the production 12-month run, bounded to May): names only May's running lords", () => {
+    const result = reading('delhi-2019-05');
+    const running = new Set(['rahu', 'venus', 'mercury']); // maha + antar Rahu, pratyantar Venus, Yogini Mercury
+    const named = [
+      ...result.lords.map((lord) => lord.lord),
+      ...result.segments.flatMap((segment) => [segment.maha, segment.antar, segment.pratyantar]),
+      ...result.themes.flatMap((theme) => theme.factors.flatMap((factor) => [...factor.matchAll(/\b([A-Z][a-z]+) \((?:maha|antar|pratyantar)\)/g)].map((match) => match[1]!.toLowerCase()))),
+    ];
+    expect(named.length).toBeGreaterThan(0);
+    expect(named.filter((lord) => !running.has(lord))).toEqual([]);
+    expect(JSON.stringify(result)).not.toMatch(/(Jupiter|Sun) \((antar|pratyantar)\)/);
+  });
+
   it('joins the natal lords for the running lords only, with their levels, lordships and gochara', () => {
     const { lords } = reading('delhi-2019-05');
     expect(lords.map((lord) => [lord.lord, lord.level])).toEqual([['rahu', ['maha', 'antar']], ['venus', ['pratyantar']]]);
@@ -109,11 +122,14 @@ describe('the period reading (get_period_reading)', () => {
     expect(lords.find((lord) => lord.lord === 'venus')).toMatchObject({ rules: [5, 12], functional: 'benefic' });
   });
 
-  it('a Day keeps the segment containing the day up to its next change point, the sookshma and the panchang', () => {
+  it('a Day reads the day itself: one segment, no event from another day, the sookshma and the panchang', () => {
+    // Contract change (2026-10-13): the engine now bounds a Day reading to the day, so the
+    // segment no longer runs to the next change point and carries no later events
+    // (Saturn's 2019-09-18 station and the Mars ingress were cited for a 15 September).
     const source = periodReadingFixture('delhi-2019-09-15-day');
     const result = buildPeriodReading({ ...source, themes: source.themes.slice(0, 2) }, FRAMES['delhi-2019-09-15-day']);
     expect(result.trimmed).toBeUndefined();
-    expect(result.segments).toEqual([{ start: '2019-09-15', end: '2019-10-15', maha: 'rahu', antar: 'rahu', pratyantar: 'moon', events: ['saturn.station.direct', 'mars.ingress.virgo'] }]);
+    expect(result.segments).toEqual([{ start: '2019-09-15', end: '2019-09-16', maha: 'rahu', antar: 'rahu', pratyantar: 'moon', events: [] }]);
     expect(result.next_change).toBeUndefined();
     // The sookshma started 2019-09-14 and ends 2019-09-18: the day's next dasha change.
     expect(result.dashas.sookshma).toEqual({ lord: 'mars', start: '2019-09-15', end: '2019-09-18' });

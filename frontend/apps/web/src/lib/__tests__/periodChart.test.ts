@@ -55,6 +55,18 @@ describe('createPeriodChartLoader', () => {
     expect(chart).toMatchObject({ ayanamsa_value: 23.7, transit_context: { instant: 'x' } });
   });
 
+  it("bounds the reading to the period's last day; a Day sends none (the engine's default)", async () => {
+    const { engine, computePredictive } = rawEngine(async () => SKY);
+    const load = loader(engineContext(engine));
+    await load(JUNE, toolContext());
+    await load({ start: '2019-01-01', end: '2019-12-31' }, toolContext());
+    await load({ start: '2019-09-15', end: '2019-09-15' }, toolContext());
+    expect(computePredictive.mock.calls[0]?.[0]).toMatchObject({ readingEnd: '2019-06-30' });
+    expect(computePredictive.mock.calls[1]?.[0]).toMatchObject({ referenceInstant: '2019-01-01T00:00:00Z', readingEnd: '2019-12-31' });
+    expect(computePredictive.mock.calls[2]?.[0]).not.toHaveProperty('readingEnd');
+    expect(computePredictive).toHaveBeenCalledTimes(3);
+  });
+
   it('asks the engine for 24 months only when 12 would end before the period does', async () => {
     const { engine, computePredictive } = rawEngine(async () => SKY);
     const load = loader(engineContext(engine));

@@ -1,7 +1,8 @@
 /**
  * The period loader behind `get_timing` (spec 2026-10-08, "Computing a
  * period's sky"): build the engine input for the period's first day and run it
- * through this tab's period-sky queue.
+ * through this tab's period-sky queue. The reading is bounded to the period's
+ * last day, so its themes and segments are the period's own.
  *
  * The engine handed to the queue is the chart-engine context's `engine`: the
  * object `AlmaMeshRuntime.bootstrap()` returns, i.e. the booted worker wrapped
@@ -47,7 +48,7 @@ export function createPeriodChartLoader(input: PeriodChartLoaderInput): PeriodCh
       input.profileKey,
       input.birth,
       periodReferenceInstant(period.start),
-      periodWindowMonths(period),
+      { windowMonths: periodWindowMonths(period), readingEnd: period.end },
     );
     if (!predictiveInput) throw new PeriodSkyUnavailableError('incomplete_birth_data');
     // The deadline starts here, at tool entry, so a cold engine boot counts

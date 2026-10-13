@@ -62,6 +62,21 @@ export function formatReferenceDay(day: string): string {
   });
 }
 
+/** A period's engine bounds: its window length and its reading's inclusive last day. */
+export interface PredictiveBounds {
+  readonly windowMonths?: 24;
+  readonly readingEnd?: string;
+}
+
+/** The bounds as input fields; a last day equal to the reference day is the engine default. */
+function boundFields(referenceInstant: string, bounds: PredictiveBounds): PredictiveBounds {
+  const { windowMonths, readingEnd } = bounds;
+  return {
+    ...(windowMonths === undefined ? {} : { windowMonths }),
+    ...(readingEnd === undefined || readingEnd === referenceInstant.slice(0, 10) ? {} : { readingEnd }),
+  };
+}
+
 /**
  * Build the lazy-compute input from the stored chart's birth data, or `null`
  * when the chart predates the fields the engine needs (no silent guesses).
@@ -70,7 +85,7 @@ export function buildEnsurePredictiveInput(
   profileKey: string,
   birth: ProcessedBirthData | undefined,
   referenceInstant: string,
-  windowMonths?: 24,
+  bounds: PredictiveBounds = {},
 ): EnsurePredictiveInput | null {
   const datetimeUtc = birth?.birth_datetime_utc;
   const location = birth?.birth_location_details;
@@ -92,7 +107,7 @@ export function buildEnsurePredictiveInput(
     longitude: location.longitude,
     referenceInstant,
     utcOffsetMinutes,
-    ...(windowMonths === undefined ? {} : { windowMonths }),
+    ...boundFields(referenceInstant, bounds),
   };
 }
 

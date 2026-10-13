@@ -54,6 +54,13 @@ export interface PredictiveInput {
    * 12. Only 24 is ever sent, so 12-month keys (store, memo) never change.
    */
   readonly windowMonths?: 24;
+  /**
+   * The period reading's INCLUSIVE last UTC day ("YYYY-MM-DD") inside the
+   * window. Omitted means the reference day only (today's Day reading), so
+   * today's store and memo keys never change. The engine refuses a day before
+   * the reference day or past the window.
+   */
+  readonly readingEnd?: string;
 }
 
 /** One bare birth input of a mesh pair — the worker recomputes its chart on-device. */

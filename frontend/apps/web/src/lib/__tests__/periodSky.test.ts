@@ -350,4 +350,16 @@ describe('periodSky and the 24-month window', () => {
     expect(computePredictive).toHaveBeenCalledTimes(1);
     expect(computePredictive.mock.calls[0]?.[0]).toMatchObject({ windowMonths: 24 });
   });
+
+  it("never answers a Month's reading from today's Day reading, and sends the reading's last day", async () => {
+    const stored = { transit_context: 'stored' } as unknown as CachedPredictiveContexts;
+    const fresh = { transit_context: 'fresh' } as unknown as CachedPredictiveContexts;
+    const computePredictive = vi.fn(async (_input: PredictiveInput) => fresh);
+    const runtime = { computePredictive } as unknown as PredictiveRuntime;
+    const cache = createPeriodSkyCache({
+      readStore: () => ({ status: 'ready', requestKey: predictiveRequestKey(TWELVE), rawContexts: stored }),
+    });
+    await expect(cache.load({ ...TWELVE, readingEnd: '2027-01-31' }, runtime, new AbortController().signal)).resolves.toBe(fresh);
+    expect(computePredictive.mock.calls[0]?.[0]).toMatchObject({ readingEnd: '2027-01-31' });
+  });
 });

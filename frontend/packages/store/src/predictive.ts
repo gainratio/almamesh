@@ -75,6 +75,8 @@ export interface EnsurePredictiveInput {
   readonly utcOffsetMinutes: number;
   /** The engine timeline's length; omitted means 12. Only a time-travel period sends 24. */
   readonly windowMonths?: 24;
+  /** The period reading's inclusive last day; omitted means the reference day (today). */
+  readonly readingEnd?: string;
 }
 
 export interface PredictiveStore {
@@ -134,7 +136,9 @@ export function predictiveRequestKey(input: EnsurePredictiveInput): string {
     input.referenceInstant,
     input.utcOffsetMinutes,
   ];
-  return JSON.stringify(input.windowMonths === undefined ? base : [...base, input.windowMonths]);
+  const window = input.windowMonths === undefined ? [] : [input.windowMonths];
+  const reading = input.readingEnd === undefined ? [] : [{ readingEnd: input.readingEnd }];
+  return JSON.stringify([...base, ...window, ...reading]);
 }
 
 // --- Persistence (canonical OPFS SQLite) ------------------------------------
