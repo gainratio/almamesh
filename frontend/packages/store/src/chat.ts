@@ -18,6 +18,7 @@ import { createJSONStorage, persist } from 'zustand/middleware';
 import {
   safeWarn,
   type ChatMessage,
+  type ChatMessagePart,
   type ChatThread,
   type ChatThreadAsOf,
   type ChatThreadSummary,
@@ -27,6 +28,7 @@ import { unlinkMissingChartLinks } from './chatChartLinks';
 import { deletionAwareIdbStorage, whenPersistenceCommitted } from './deletionTombstones';
 import { reportHydrationFailure, whenHydrated, type HydrationOutcome } from './hydrationBarrier';
 import { chatAsOfProblem, isChatThreadAsOf } from './chatAsOf';
+import { chatMessagePartsProblem } from './chatParts';
 
 type ChatRole = ChatMessage['role'];
 
@@ -34,7 +36,7 @@ type ChatRole = ChatMessage['role'];
 const PERSIST_NAME = 'almamesh-chat-history';
 
 /** Bump when the persisted chat shape changes; always pair with `migrate`. */
-export const CHAT_PERSIST_VERSION = 3;
+export const CHAT_PERSIST_VERSION = 4;
 
 /** The slice of the store that `partialize` actually persists. */
 export interface PersistedChatState {
@@ -60,6 +62,26 @@ function withoutMalformedPins(threads: PersistedChatState['threads']): Persisted
 }
 
 /**
+ * v4 (visible tool calls): a message whose `parts` are malformed keeps its text
+ * and loses only the parts. v3 rows have no parts, so for them this is identity.
+ */
+function withoutMalformedParts(messages: PersistedChatState['messages']): PersistedChatState['messages'] {
+  return Object.fromEntries(
+    Object.entries(messages).map(([threadId, list]) => [
+      threadId,
+      Array.isArray(list)
+        ? list.map((message: unknown) => {
+            if (!isPlainRecord(message) || !('parts' in message)) return message;
+            if (chatMessagePartsProblem(message.parts) === undefined) return message;
+            const { parts: _malformed, ...kept } = message;
+            return kept;
+          })
+        : list,
+    ]),
+  ) as PersistedChatState['messages'];
+}
+
+/**
  * Defensive hydration: tolerate ANY old/unknown/corrupt persisted blob and
  * always return valid `{ threads, messages, summaries }` maps. A returning visitor whose
  * stored chat history is malformed (a string, an array, one half missing) must
@@ -73,9 +95,9 @@ export function migrateChatPersistedState(
   const threads = withoutMalformedPins(
     isPlainRecord(source.threads) ? (source.threads as PersistedChatState['threads']) : {},
   );
-  const messages = isPlainRecord(source.messages)
-    ? (source.messages as PersistedChatState['messages'])
-    : {};
+  const messages = withoutMalformedParts(
+    isPlainRecord(source.messages) ? (source.messages as PersistedChatState['messages']) : {},
+  );
   const summaries: PersistedChatState['summaries'] = isPlainRecord(source.summaries)
     ? Object.fromEntries(
         Object.entries(source.summaries).filter(
@@ -129,6 +151,19 @@ function nextId(prefix: string): string {
   return `${prefix}-${Date.now()}-${idFallbackCounter}`;
 }
 
+export interface AppendMessageOptions {
+  readonly error?: true;
+  readonly parts?: readonly ChatMessagePart[];
+}
+
+/** Valid parts are kept as given; malformed ones are dropped with a warning. */
+function partsField(parts: readonly ChatMessagePart[] | undefined): Pick<ChatMessage, 'parts'> {
+  if (parts === undefined) return {};
+  if (chatMessagePartsProblem(parts) === undefined) return { parts };
+  safeWarn('chat.tool_failed');
+  return {};
+}
+
 export interface ChatStore {
   /** All threads, keyed by thread id. */
   readonly threads: Readonly<Record<string, ChatThread>>;
@@ -150,12 +185,14 @@ export interface ChatStore {
   /**
    * Append a message. `options.error` marks a failed-turn notice: rendered as
    * an error bubble, excluded from the model-visible history by consumers.
+   * `options.parts` are the visible text and tool-call parts; malformed parts
+   * are dropped (the message and its text are kept).
    */
   appendMessage: (
     threadId: string,
     role: ChatRole,
     content: string,
-    options?: { readonly error?: true },
+    options?: AppendMessageOptions,
   ) => ChatMessage;
   getMessages: (threadId: string) => ChatMessage[];
   getSummary: (threadId: string) => ChatThreadSummary | null;
@@ -258,6 +295,7 @@ export const chatStoreCreator: StateCreator<ChatStore> = (set, get) => ({
       content,
       created_at: now,
       ...(options?.error ? { error: true as const } : {}),
+      ...partsField(options?.parts),
     };
     set((state) => {
       const thread = state.threads[threadId];

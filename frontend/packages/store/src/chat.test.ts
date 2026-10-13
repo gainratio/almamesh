@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createStore } from 'zustand/vanilla';
 
-import type { ChatThreadSummary } from '@almamesh/shared-types';
+import type { ChatMessagePart, ChatThreadSummary } from '@almamesh/shared-types';
 
 import {
   CHAT_PERSIST_VERSION,
@@ -452,10 +452,6 @@ const PIN_2027 = { start: '2027-01-01', end: '2027-12-31', granularity: 'year' }
 const PIN_JUNE = { start: '2026-06-01', end: '2026-06-30', granularity: 'month' } as const;
 
 describe('chat store v3: time-travel pins', () => {
-  it('is persisted as version 3', () => {
-    expect(CHAT_PERSIST_VERSION).toBe(3);
-  });
-
   it('migrates a v2 blob with its threads and messages intact (no as_of = a normal thread)', () => {
     const v2 = {
       threads: { t1: { id: 't1', profile_id: 'p1', title: 'Career', message_count: 1 } },
@@ -561,5 +557,106 @@ describe('chat store v3: time-travel pins', () => {
     const after = newStore();
     after.setState(JSON.parse(JSON.stringify({ threads, messages, summaries })) as Partial<ChatStore>);
     expect(after.getState().threads[id]?.as_of).toEqual(PIN_2027);
+  });
+});
+
+const LOOKUP: ChatMessagePart = {
+  type: 'tool-call',
+  toolCallId: 'call_1',
+  toolName: 'get_transits',
+  args: { place: 'Singapore', month: '2019-05' },
+  result: { saturn: 'Sagittarius' },
+  status: 'complete',
+};
+
+describe('chat store v4: visible tool-call parts', () => {
+  it('is persisted as version 4', () => {
+    expect(CHAT_PERSIST_VERSION).toBe(4);
+  });
+
+  it('appendMessage persists the parts on the message', () => {
+    const store = newStore();
+    const id = store.getState().startThread('p1');
+    const parts = [LOOKUP, { type: 'text', text: 'Saturn was in Sagittarius.' }] as const;
+    const returned = store.getState().appendMessage(id, 'assistant', 'Saturn was in Sagittarius.', { parts });
+    expect(returned.parts).toEqual(parts);
+    expect(store.getState().getMessages(id)[0]?.parts).toEqual(parts);
+  });
+
+  it('keeps both the error flag and the parts when both are given', () => {
+    const store = newStore();
+    const id = store.getState().startThread('p1');
+    const failed = { ...LOOKUP, status: 'error' } as const;
+    const message = store.getState().appendMessage(id, 'assistant', 'boom', { error: true, parts: [failed] });
+    expect(message).toMatchObject({ error: true, parts: [failed] });
+  });
+
+  it('a message without parts carries no parts key', () => {
+    const store = newStore();
+    const id = store.getState().startThread('p1');
+    expect('parts' in store.getState().appendMessage(id, 'user', 'Hi')).toBe(false);
+  });
+
+  it('drops malformed parts but keeps the message and its text', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const store = newStore();
+    const id = store.getState().startThread('p1');
+    const bad = [{ ...LOOKUP, toolName: 'get transits' }] as unknown as readonly ChatMessagePart[];
+    const message = store.getState().appendMessage(id, 'assistant', 'Saturn.', { parts: bad });
+    expect('parts' in message).toBe(false);
+    expect(store.getState().getMessages(id).map((m) => m.content)).toEqual(['Saturn.']);
+    expect(warn).toHaveBeenCalledWith('[almamesh:warn:chat.tool_failed]');
+    warn.mockRestore();
+  });
+
+  it('parts survive the serialize → fresh-store round trip', () => {
+    const before = newStore();
+    const id = before.getState().startThread('p1');
+    before.getState().appendMessage(id, 'assistant', 'Saturn.', { parts: [LOOKUP] });
+    const { threads, messages, summaries } = before.getState();
+    const after = newStore();
+    after.setState(JSON.parse(JSON.stringify({ threads, messages, summaries })) as Partial<ChatStore>);
+    expect(after.getState().getMessages(id)[0]?.parts).toEqual([LOOKUP]);
+  });
+
+  it('migrates a v3 blob unchanged: every message stays as it was, none gains parts', () => {
+    const v3 = {
+      threads: { t1: { id: 't1', profile_id: 'p1', title: 'Career', message_count: 2, as_of: PIN_2027 } },
+      messages: {
+        t1: [
+          { id: 'm1', thread_id: 't1', role: 'user', content: 'Hi', created_at: '2026-10-01T00:00:00.000Z' },
+          { id: 'm2', thread_id: 't1', role: 'assistant', content: 'Hello', created_at: '2026-10-01T00:00:01.000Z', error: true },
+        ],
+      },
+      summaries: {},
+    };
+    const out = migrateChatPersistedState(structuredClone(v3), 3);
+    expect(out).toEqual(v3);
+    expect(out.messages.t1?.some((message) => 'parts' in message)).toBe(false);
+  });
+
+  it('hydration drops malformed parts and keeps valid ones, never the message', () => {
+    const blob = {
+      threads: { t1: { id: 't1', profile_id: 'p1' } },
+      messages: {
+        t1: [
+          { id: 'm1', thread_id: 't1', role: 'assistant', content: 'a', parts: [LOOKUP] },
+          { id: 'm2', thread_id: 't1', role: 'assistant', content: 'b', parts: [{ type: 'tool-call' }] },
+          { id: 'm3', thread_id: 't1', role: 'assistant', content: 'c', parts: 'oops' },
+        ],
+      },
+      summaries: {},
+    };
+    const out = migrateChatPersistedState(blob, 3);
+    expect(out.messages.t1).toEqual([
+      { id: 'm1', thread_id: 't1', role: 'assistant', content: 'a', parts: [LOOKUP] },
+      { id: 'm2', thread_id: 't1', role: 'assistant', content: 'b' },
+      { id: 'm3', thread_id: 't1', role: 'assistant', content: 'c' },
+    ]);
+  });
+
+  it('hydration leaves a non-list message entry and a non-object message untouched', () => {
+    const blob = { threads: {}, messages: { t1: 'corrupt', t2: ['plain'] }, summaries: {} };
+    expect(migrateChatPersistedState(blob, 3).messages).toEqual({ t1: 'corrupt', t2: ['plain'] });
   });
 });

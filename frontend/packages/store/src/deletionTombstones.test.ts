@@ -1958,3 +1958,77 @@ describe('whenPersistenceCommitted (strict durable-write barrier)', () => {
     await expect(whenPersistenceCommitted('almamesh-nothing-queued')).resolves.toBeUndefined();
   });
 });
+
+describe('visible tool-call parts under deletion (chat store v4)', () => {
+  const lookup = (toolCallId: string) => ({
+    type: 'tool-call',
+    toolCallId,
+    toolName: 'get_transits',
+    args: { place: 'Singapore', month: '2019-05' },
+    result: { saturn: 'Sagittarius' },
+    status: 'complete',
+  });
+  const withParts = (id: string, threadId: string, toolCallId: string, created_at = '2026-01-01T00:00:00.000Z') => ({
+    id,
+    thread_id: threadId,
+    role: 'assistant',
+    content: `answer ${id}`,
+    created_at,
+    parts: [lookup(toolCallId), { type: 'text', text: `answer ${id}` }],
+  });
+
+  it('sanitize drops the parts of deleted threads and profiles and keeps survivors’ parts', () => {
+    const survivor = withParts('m-keep', 'survivor', 'call-keep');
+    const value = envelope({
+      threads: {
+        survivor: { id: 'survivor', profile_id: 'survivor' },
+        'deleted-thread': { id: 'deleted-thread', profile_id: 'survivor' },
+        owned: { id: 'owned', profile_id: 'deleted-profile' },
+      },
+      messages: {
+        survivor: [survivor],
+        'deleted-thread': [withParts('m-thread', 'deleted-thread', 'call-thread')],
+        owned: [withParts('m-owned', 'owned', 'call-owned')],
+      },
+      summaries: {},
+    });
+
+    const sanitized = sanitizePersistedValue('almamesh-chat-history', value, TOMBSTONES);
+
+    expect(stateOf(sanitized).messages).toEqual({ survivor: [survivor] });
+    expect(sanitized).not.toContain('call-thread');
+    expect(sanitized).not.toContain('call-owned');
+  });
+
+  it('a concurrent merge keeps each tab’s parts, and a remote thread deletion leaves none', async () => {
+    const repository = new PortableStateRepository(new PortableMemoryStore());
+    setPortableStateRepositoryForTests(repository);
+    const thread = { id: 'thread', profile_id: 'profile', title: 'T', updated_at: '2026-01-01T00:00:00.000Z', message_count: 1 };
+    const first = withParts('first', 'thread', 'call-first');
+    const fromA = withParts('tab-a', 'thread', 'call-a', '2026-01-01T00:00:01.000Z');
+    const fromB = withParts('tab-b', 'thread', 'call-b', '2026-01-01T00:00:02.000Z');
+    const chat = (messages: readonly unknown[]) =>
+      envelope({ threads: { thread: { ...thread, message_count: messages.length } }, messages: { thread: messages }, summaries: {} });
+    try {
+      await repository.write('almamesh-chat-history', tagPersistedValue(chat([first]), 0));
+      await deletionAwareIdbStorage.getItem('almamesh-chat-history');
+      await repository.write('almamesh-chat-history', tagPersistedValue(chat([first, fromA]), 0));
+      await deletionAwareIdbStorage.setItem('almamesh-chat-history', chat([first, fromB]));
+
+      const merged = stateOf((await repository.read('almamesh-chat-history')) as string);
+      expect((merged.messages as Record<string, unknown[]>).thread).toEqual([first, fromA, fromB]);
+
+      await deletionAwareIdbStorage.getItem('almamesh-chat-history');
+      await repository.write(
+        'almamesh-chat-history',
+        tagPersistedValue(envelope({ threads: {}, messages: {}, summaries: {} }), 0),
+      );
+      await deletionAwareIdbStorage.setItem('almamesh-chat-history', chat([first, fromA, fromB]));
+      const after = (await repository.read('almamesh-chat-history')) as string;
+      expect(stateOf(after)).toMatchObject({ threads: {}, messages: {} });
+      expect(after).not.toMatch(/call-(first|a|b)/);
+    } finally {
+      setPortableStateRepositoryForTests(undefined);
+    }
+  });
+});

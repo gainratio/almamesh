@@ -48,6 +48,33 @@ export interface ChatThread {
   as_of?: ChatThreadAsOf;
 }
 
+/** Plain answer text inside a message's ordered parts. */
+export interface ChatTextPart {
+  readonly type: 'text';
+  readonly text: string;
+}
+
+export type ChatToolCallStatus = 'complete' | 'error';
+
+/**
+ * One tool call the assistant made while answering, shown to the user. `result`
+ * is the same sanitized JSON value the model received, never a raw engine value.
+ */
+export interface ChatToolCallPart {
+  readonly type: 'tool-call';
+  /** 1..128 characters. */
+  readonly toolCallId: string;
+  /** Matches /^[A-Za-z0-9_-]{1,64}$/. */
+  readonly toolName: string;
+  /** A plain JSON object. */
+  readonly args: Readonly<Record<string, unknown>>;
+  /** A JSON value: the sanitized result the model got. */
+  readonly result?: unknown;
+  readonly status: ChatToolCallStatus;
+}
+
+export type ChatMessagePart = ChatTextPart | ChatToolCallPart;
+
 /**
  * Chat message within a thread
  */
@@ -65,6 +92,11 @@ export interface ChatMessage {
    * prior assistant turn poisons every subsequent answer.
    */
   error?: true;
+  /**
+   * Ordered text and tool-call parts (chat store v4). Optional: messages saved
+   * before v4 have none, and `content` stays the model-visible text either way.
+   */
+  readonly parts?: readonly ChatMessagePart[];
 }
 
 /** One grounded fact retained by a rolling chat summary. */
