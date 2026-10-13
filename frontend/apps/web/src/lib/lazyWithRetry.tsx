@@ -1,6 +1,7 @@
 import { lazy, type ComponentType } from 'react';
 
 import { isChunkLoadError } from './chunkError';
+import { isDocumentLeaving, LEAVING_WINDOW_MS } from './documentLeaving';
 
 /**
  * `React.lazy` hardened against a failed code-split `import()` — the symptom of a
@@ -36,6 +37,18 @@ function markReloaded(name: string): void {
   }
 }
 
+/**
+ * The visitor's navigation cancelled this chunk (WebKit cancels the outgoing
+ * page's loads at navigation start). Never reload: that would replace their
+ * navigation. Hold Suspense until the new page replaces this one; if this page
+ * is somehow still here after the window, surface the error to the boundary.
+ */
+function holdWhileLeaving(error: unknown): Promise<never> {
+  return new Promise<never>((_, reject) => {
+    setTimeout(() => reject(error), LEAVING_WINDOW_MS);
+  });
+}
+
 export async function loadWithRetry<T extends ComponentType<unknown>>(
   factory: () => Promise<{ default: T }>,
   name: string,
@@ -47,6 +60,9 @@ export async function loadWithRetry<T extends ComponentType<unknown>>(
     try {
       return await factory();
     } catch (retryError) {
+      if (isChunkLoadError(retryError) && isDocumentLeaving()) {
+        return holdWhileLeaving(retryError);
+      }
       if (isChunkLoadError(retryError) && !alreadyReloaded(name)) {
         markReloaded(name);
         window.location.reload();

@@ -7,6 +7,7 @@ import { isRollbackRefusal, lastEngineBootFailure } from '../lib/engineLifecycle
 import { RollbackResetGuard } from './RollbackResetGuard';
 import { incompleteDatabases, ResetIncompleteNotice } from './ResetIncompleteNotice';
 import { isChunkLoadError } from '../lib/chunkError';
+import { isDocumentLeaving } from '../lib/documentLeaving';
 import { reloadForUpdate } from '../lib/swSelfHeal';
 
 /** One automatic engine-preserving reload per session for a chunk failure. */
@@ -49,7 +50,9 @@ class ErrorBoundaryBase extends Component<Props, State> {
     // it automatically ONCE per session (unregister SW + drop the stale shell +
     // reload — engine data preserved). Guarded so a persistent fault can't loop;
     // after that the update card's manual reload button is the fallback.
-    if (isChunkLoadError(error) && !this.chunkHealAttempted()) {
+    // A chunk the visitor's own navigation cancelled (WebKit) is not stale;
+    // reloading would replace that navigation.
+    if (isChunkLoadError(error) && !isDocumentLeaving() && !this.chunkHealAttempted()) {
       this.markChunkHealAttempted();
       void reloadForUpdate();
     }

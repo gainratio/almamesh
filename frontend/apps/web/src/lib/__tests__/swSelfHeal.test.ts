@@ -355,3 +355,51 @@ describe('recoverSeveredServiceWorkerChannel', () => {
     expect(reload).not.toHaveBeenCalled();
   });
 });
+
+// WebKit cancels a page's in-flight loads as soon as a navigation away starts
+// and keeps running that page's scripts until the new page commits. A reload
+// from the outgoing page then replaces the navigation (Safari 26.6.1: a visit
+// to /onboarding landed back on `/`, navigation type "reload"). Automatic
+// recovery must stand down, without spending its once-per-session budget.
+describe('automatic recovery never overrides a navigation in progress', () => {
+  const leave = () => window.dispatchEvent(new Event('beforeunload'));
+  afterEach(() => {
+    window.dispatchEvent(new Event('pageshow'));
+  });
+
+  it('the stranded-worker heal neither unregisters nor reloads', async () => {
+    const { unregister, reload } = stubEnv({ cacheNames: [...IMMUTABLE, ...RUNTIME] });
+    leave();
+    await healStrandedServiceWorker();
+    expect(unregister).not.toHaveBeenCalled();
+    expect(reload).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem(HEAL_KEY)).toBeNull();
+  });
+
+  it('the severed-channel recovery does not reload', async () => {
+    const { reload } = stubEnv({
+      cacheNames: [...IMMUTABLE, ...RUNTIME, PRECACHE],
+      precacheEntries: ['https://almamesh.com/?__WB_REVISION__=abc'],
+    });
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Load failed')));
+    leave();
+    await expect(recoverSeveredServiceWorkerChannel()).resolves.toBe(false);
+    expect(reload).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem('almamesh:sw-channel-reload')).toBeNull();
+  });
+
+  it('a chunk load cancelled by the navigation is not treated as a stale shell', async () => {
+    const { unregister, reload } = stubEnv({ cacheNames: [...IMMUTABLE, PRECACHE] });
+    const target = new EventTarget();
+    installChunkErrorRecovery(target as unknown as Window);
+    leave();
+    const evt = new Event('vite:preloadError', { cancelable: true });
+    (evt as unknown as { payload: unknown }).payload = new TypeError('Importing a module script failed.');
+    target.dispatchEvent(evt);
+    await flush();
+    expect(evt.defaultPrevented).toBe(false);
+    expect(unregister).not.toHaveBeenCalled();
+    expect(reload).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem('almamesh:chunk-reload:global')).toBeNull();
+  });
+});
