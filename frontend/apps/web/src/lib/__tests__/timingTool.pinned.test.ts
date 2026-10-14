@@ -93,6 +93,14 @@ describe('get_timing in a pinned thread', () => {
     expect(JSON.stringify({ ok: true, value: result }).length).toBeLessThanOrEqual(AGENT_LIMITS.maxResultChars);
   });
 
+  // 2026-10-14, Harish's 09:22 PT turn: "Send dates only to compare another period" read as "a trip is
+  // only about its own period"; a question about another month must send that month's dates.
+  it("a trip's description says another period is read by sending its dates, not only to compare", () => {
+    const { description } = tool(DAY_PIN, {});
+    expect(description).toContain("In a trip, omit dates for its own period (its place is bound); for another period, send its start and end.");
+    expect(description).not.toContain('only to compare');
+  });
+
   it('the model can never send the reserved "pinned" ref itself, at top level or in a segment', async () => {
     const placeFromRef = vi.fn(async (ref: string) => (ref === 'pinned' ? PINNED_BOGOTA : undefined));
     const top = await tool(DAY_PIN, { placeFromRef }).execute({ section: 'transits', start: '2026-06-15', place_ref: 'pinned' }, context());

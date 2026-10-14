@@ -36,11 +36,10 @@ function tools(overrides: Partial<PeriodReadingToolsInput> = {}) {
 const context = () => ({ now: SPLIT_DAY_NOW, signal: new AbortController().signal });
 
 describe('get_period_reading', () => {
-  it('registers the two tools by their shared names, with no arguments for the reading', () => {
+  it('registers the two tools by their shared names', () => {
     const { reading, detail } = tools();
     expect([reading.name, detail.name]).toEqual([PERIOD_READING_TOOL_NAME, PERIOD_DETAIL_TOOL_NAME]);
     expect([PERIOD_READING_TOOL_NAME, PERIOD_DETAIL_TOOL_NAME]).toEqual(['get_period_reading', 'get_period_detail']);
-    expect(reading.parameters).toEqual({ type: 'object', properties: {}, additionalProperties: false });
     expect(reading.timeoutMs).toBe(150_000);
   });
 
@@ -101,10 +100,39 @@ describe('get_period_reading', () => {
     expect(result.period).toMatchObject({ granularity: 'day', start: '2026-03-08', end: '2026-03-08' });
   });
 
-  it('a today thread takes granularity and month; a trip stays bound with no arguments', () => {
+  // Contract reversed (2026-10-14, Harish's 09:22 PT turn): a trip's reading took no arguments, so a
+  // September question in a May trip could only read May ("the period reading I have is for May 2019,
+  // not September"). A trip now takes an optional month; with none it reads the trip's own period.
+  it('a today thread takes granularity and month; a trip takes an optional month', () => {
     const today = tools({ pin: undefined }).reading.parameters as { properties: Record<string, unknown> };
     expect(Object.keys(today.properties)).toEqual(['granularity', 'month']);
-    expect(tools().reading.parameters).toEqual({ type: 'object', properties: {}, additionalProperties: false });
+    const trip = tools().reading.parameters as { properties: Record<string, unknown>; required?: unknown };
+    expect(Object.keys(trip.properties)).toEqual(['month']);
+    expect(trip.required).toBeUndefined();
+    expect(tools().reading.description).toMatch(/another month the user asks about, send month "YYYY-MM"/);
+  });
+
+  it("a trip: the month the model names wins, read at the trip's place in the trip's tense", async () => {
+    const { reading, loadPeriodChart } = tools();
+    const result = await reading.execute({ month: '2019-09' }, context()) as PeriodReading;
+    expect(loadPeriodChart).toHaveBeenCalledWith({ start: '2019-09-01', end: '2019-09-30' }, expect.anything());
+    expect(result.period).toEqual({ start: '2019-09-01', end: '2019-09-30', granularity: 'month', label: 'September 2019', tense: 'past' });
+    expect(result.place).toEqual({ label: 'Singapore', timezone: 'Asia/Singapore' });
+  });
+
+  it("a trip: the trip's own month as an argument reads the trip; detail drills into the named month", async () => {
+    const { reading, detail, loadPeriodChart } = tools();
+    await reading.execute({ month: '2019-05' }, context());
+    await detail.execute({ section: 'dashas', month: '2019-09' }, context());
+    expect(loadPeriodChart).toHaveBeenNthCalledWith(1, { start: '2019-05-01', end: '2019-05-31' }, expect.anything());
+    expect(loadPeriodChart).toHaveBeenNthCalledWith(2, { start: '2019-09-01', end: '2019-09-30' }, expect.anything());
+  });
+
+  it('a trip: a malformed or before-birth month is a refusal the model can act on, before any engine work', async () => {
+    const { reading, loadPeriodChart } = tools();
+    await expect(reading.execute({ month: 'September 2019' }, context())).resolves.toEqual({ error: expect.stringMatching(/^month must be YYYY-MM/) });
+    await expect(reading.execute({ month: '1985-03' }, context())).resolves.toEqual({ error: BEFORE_BIRTH_MESSAGE });
+    expect(loadPeriodChart).not.toHaveBeenCalled();
   });
 
   it('today, granularity day: [today, today] at the viewer zone, through the today loader', async () => {

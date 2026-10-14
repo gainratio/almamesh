@@ -65,12 +65,13 @@ export function pinnedPeriodRules(pin: PinnedPrompt): string {
     ...(trip
       ? [
           trip,
-          `Before interpreting, call ${TRIP_GROUNDING_TOOLS.join(" and ")} with no arguments: they already read this trip's period and place.`,
+          `Before interpreting, call ${TRIP_GROUNDING_TOOLS.join(" and ")}: with no arguments they read this trip's period and place.`,
+          `For another month, now or earlier, send ${PERIOD_READING_TOOL_NAME} month "YYYY-MM".`,
           `Use ${PERIOD_DETAIL_TOOL_NAME} to look closer at one lord, segment, bindu row or the panchang.`,
           "Interpret for that place and time.",
         ]
       : []),
-    "get_timing called without dates reads this period. Answer about it unless the user asks about another one.",
+    "get_timing without dates reads this period; for another, send its start and end.",
     TENSE[pin.relative],
     "To compare with now, call get_timing with the first and last day of the current month.",
   ].join("\n");

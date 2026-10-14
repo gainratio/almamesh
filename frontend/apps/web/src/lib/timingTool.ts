@@ -157,7 +157,7 @@ const PLACE_PROPERTIES = {
 } as const;
 
 /** A trip's own description line: no dates or place are needed for the trip period. */
-const TRIP_DESCRIPTION = "In a time-travel trip, call with only {section} for the trip's own period: its dates and place are already bound. Send dates only to compare another period.";
+const TRIP_DESCRIPTION = "In a trip, omit dates for its own period (its place is bound); for another period, send its start and end.";
 
 const UNAVAILABLE = { available: false } as const;
 
@@ -374,8 +374,13 @@ export function withPin(pinned: PinnedTiming | undefined, parsed: TimingArgs): T
 /** Said when a trip's own place replaced the place arguments the model sent for the trip's period. */
 export const TRIP_PLACE_USED_NOTE = "This trip's place was used: in a time-travel trip, call get_timing with only a section for the trip's own period.";
 
-/** Appended to every get_timing error in a trip: exactly how to retry. */
-export function tripRetryHint(section: string): string {
+/**
+ * Appended to every get_timing error in a trip: exactly how to retry. A call for another period
+ * keeps its own dates (2026-10-14: "already bound" steered a September question back to May).
+ */
+export function tripRetryHint(section: string, args: Readonly<Record<string, unknown>> = {}, period?: PeriodRange): string {
+  const otherPeriod = period !== undefined && (args.start !== undefined || args.segments !== undefined) && !namesOnlyTripPeriod(args, period);
+  if (otherPeriod) return ` Retry: keep start and end for the period the user asked about (YYYY-MM-DD, end on or after start), with no segments, and omit place_ref: it is read at this trip's place.`;
   return ` Retry: call get_timing with only {"section": "${section}"}; this trip's dates and place are already bound.`;
 }
 
@@ -433,7 +438,7 @@ export function createTimingTool(input: TimingToolInput): AgentTool {
       const normalized = normalizeTimingArgs(args);
       const bound = bindToTrip(input.pinned, normalized.args);
       const notes = [...normalized.notes, ...bound.notes];
-      const hint = input.pinned ? tripRetryHint(section) : '';
+      const hint = input.pinned ? tripRetryHint(section, normalized.args, input.pinned.period) : '';
       const parsed = withPin(input.pinned, parseTimingArgs(bound.args));
       if (parsed.kind === 'invalid') return { error: `${parsed.error}${hint}` };
       const result = parsed.kind === 'today'

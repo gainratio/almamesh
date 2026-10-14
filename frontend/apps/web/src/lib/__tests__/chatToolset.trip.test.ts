@@ -200,11 +200,21 @@ describe('trip-bound get_timing forgives redundant arguments (2026-10-13 regress
     expect(result.notes).toEqual(expect.arrayContaining([expect.stringMatching(/this trip's place/i)]));
   });
 
-  it('a real conflict in a trip says exactly how to retry', async () => {
+  // Contract reversed 2026-10-14 (Harish's 09:22 PT turn): this call names April-May, not the trip's May,
+  // and "this trip's dates are already bound" steered a September question back to the trip month.
+  // A call for another period keeps its own dates in the retry hint.
+  it('a real conflict in a trip says exactly how to retry, keeping the dates the call asked about', async () => {
     const result = await toolOf(toolset({ pinned: MAY_2019_SG }), 'get_timing')
       .execute({ section: 'transits', start: '2019-04-01', end: '2019-05-31', segments: [{ start: '2019-05-01', end: '2019-05-31' }] }, options()) as { error?: string };
     expect(result.error).toContain('send either start/end or segments, not both');
+    expect(result.error).toContain('Retry: keep start and end for the period the user asked about');
+    expect(result.error).toContain('with no segments');
+    expect(result.error).not.toContain('already bound');
+  });
+
+  it("a conflict for the trip's own period still says to send only the section", async () => {
+    const result = await toolOf(toolset({ pinned: MAY_2019_SG }), 'get_timing')
+      .execute({ section: 'transits', start: '2019-05-01', end: '2019-05-31', place_ref: 'pinned' }, options()) as { error?: string };
     expect(result.error).toContain('call get_timing with only {"section": "transits"}');
-    expect(result.error).toContain("this trip's dates and place are already bound");
   });
 });

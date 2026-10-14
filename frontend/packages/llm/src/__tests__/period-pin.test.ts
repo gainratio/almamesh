@@ -31,7 +31,7 @@ describe('pinnedPeriodRules', () => {
   ] as const)('tells the model which tense to use when %s', (relative, tense) => {
     const rules = pinnedPeriodRules({ ...YEAR_2027, relative });
     expect(rules).toContain('PINNED PERIOD: this conversation is about 2027-01-01 to 2027-12-31');
-    expect(rules).toContain('get_timing called without dates reads this period');
+    expect(rules).toContain('get_timing without dates reads this period');
     expect(rules).toContain(tense);
     expect(rules).toContain('first and last day of the current month');
   });

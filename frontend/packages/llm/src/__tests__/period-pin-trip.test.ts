@@ -24,10 +24,18 @@ describe('pinnedPeriodRules is a trip brief', () => {
     expect(PERIOD_DETAIL_TOOL_NAME).toBe('get_period_detail');
     expect(TRIP_GROUNDING_TOOLS).toEqual(['get_period_reading', 'get_natal_summary']);
     const brief = pinnedPeriodRules(MAY_2019_SG);
-    expect(brief).toContain('Before interpreting, call get_period_reading and get_natal_summary with no arguments');
-    expect(brief).toContain("already read this trip's period and place");
+    expect(brief).toContain("Before interpreting, call get_period_reading and get_natal_summary: with no arguments they read this trip's period and place.");
     expect(brief).toContain('get_period_detail');
     expect(brief).not.toContain('dashas, transits, strength, domains');
+  });
+
+  // 2026-10-14, Harish's 09:22 PT turn: a September question in a May trip read May. The brief now says
+  // another month is read by naming it, and the trip month is only the default.
+  it('another month the user asks about is read by naming it, at the trip place', () => {
+    const brief = pinnedPeriodRules(MAY_2019_SG);
+    expect(brief).toContain('For another month, now or earlier, send get_period_reading month "YYYY-MM".');
+    expect(brief).toContain('for another, send its start and end');
+    expect(brief).not.toContain('Answer about it unless the user asks about another one.');
   });
 
   // Contract reversed 2026-10-13: every trip names its place and zone; none is marked as the birth place.

@@ -26,7 +26,8 @@ import { createChatAgentTools, hasExplicitCurrentDay, mentionsNextMonth, mention
 import { ensureCurrentPlanetaryContext } from './currentPlanetaryContext';
 import { createMoonWindowLoader } from './moonWindow';
 import { birthUtcYearOf, birthYearOf, createPeriodChartLoader, readyEngine } from './periodChart';
-import { pinnedPlaceReader, pinnedTiming } from './pinnedPeriod';
+import type { ResolvedPlace } from './geo/placeLookup';
+import { PINNED_PLACE_REF, pinnedPlaceReader, pinnedTiming } from './pinnedPeriod';
 import { createPeriodReadingTools } from './periodReadingTool';
 import { guardPlaceRefs, issuedPlaceReader, type IssuedPlaceRefs } from './placeRefGuard';
 import { createResolvePlaceTool } from './placeTool';
@@ -36,6 +37,10 @@ import { parseExplicitTimingPeriod, type ExplicitTimingPeriod } from './timingQu
 import { createTimeTravelTool, type TravelRecorder } from './timeTravelTool';
 import { formatPinLabel } from './timeTravelSheet';
 import { natalSummary, tripContext, tripPin, tripToolResult } from './tripContext';
+import { birthPlaceOf, type TripPlace } from './tripPlacePrefill';
+
+/** Today's current place as a ref label in results; like "pinned", never the model's to send. */
+const CURRENT_PLACE_REF = 'current';
 
 /** A trip's context tools (plan 2026-10-13): bound to the trip, no arguments. */
 export const NATAL_SUMMARY_TOOL_NAME = 'get_natal_summary';
@@ -190,6 +195,14 @@ function preparePinned(
   };
 }
 
+/** The place an invented place_ref reads: the trip's place, or (today) the profile's current place. */
+function threadPlaceOf(pin: ChatThreadAsOf | undefined, current: TripPlace | undefined): ResolvedPlace | undefined {
+  const place = pin ? pin.place : current;
+  if (!place) return undefined;
+  const placeRef = pin ? PINNED_PLACE_REF : CURRENT_PLACE_REF;
+  return { summary: { place_ref: placeRef, label: place.label, timezone: place.timezone }, latitude: place.latitude, longitude: place.longitude };
+}
+
 export function buildChatToolset(input: BuildChatToolsetInput): ChatToolset {
   const zone = input.viewerZone ?? viewerTimeZone;
   const natalPrompt = input.promptChart ?? input.chart;
@@ -231,7 +244,10 @@ export function buildChatToolset(input: BuildChatToolsetInput): ChatToolset {
   const language = input.language ?? 'en';
   // The refs resolve_place hands out this turn: the only place_refs any tool reads.
   const issuedPlaces: IssuedPlaceRefs = new Map();
-  const baseReader = issuedPlaceReader(input.placeFromRef ?? lazyPlaceFromRef, issuedPlaces);
+  const listReader = input.placeFromRef ?? lazyPlaceFromRef;
+  // time_travel moves somewhere new: an invented ref there is refused, never the thread's place.
+  const baseReader = issuedPlaceReader(listReader, issuedPlaces);
+  const currentPlace = birthPlaceOf(input.birth?.transit_location_details ?? undefined);
 
   const skyAllowed = input.periodSkyAllowed ?? devicePolicy().periodSkyComputeAllowed;
   const tripTools = (activePin: ChatThreadAsOf): AgentTool[] => [
@@ -253,7 +269,9 @@ export function buildChatToolset(input: BuildChatToolsetInput): ChatToolset {
     },
   ];
   const makeTools = (activePin: ChatThreadAsOf | undefined, promptChart = natalPrompt, chartAsOf = input.chartAsOf) => {
-    const reader = activePin ? pinnedPlaceReader(activePin, baseReader) : baseReader;
+    // An invented ref reads this thread's place: the trip's, or today's current place (placeRefGuard.ts).
+    const threadReader = issuedPlaceReader(listReader, issuedPlaces, threadPlaceOf(activePin, currentPlace));
+    const reader = activePin ? pinnedPlaceReader(activePin, threadReader) : threadReader;
     // get_timing and the period reading tools load a period through one loader (one shared sky cache).
     const loadPeriodChart = createPeriodChartLoader({ chart: input.chart, profileKey: input.profileKey, birth: input.birth, engine });
     const agentTools = createChatAgentTools({
@@ -292,7 +310,8 @@ export function buildChatToolset(input: BuildChatToolsetInput): ChatToolset {
   };
   // Every build goes through the test seam (pages never pass toolOverrides), then the place_ref gate.
   const toolsFor = (...args: Parameters<typeof makeTools>) => {
-    const bound = args[0]?.place ? { label: args[0].place.label } : undefined;
+    const trip = args[0]?.place;
+    const bound = trip ? { label: trip.label, pinned: true } : currentPlace && !args[0] ? { label: currentPlace.label, pinned: false } : undefined;
     return guardPlaceRefs(withOverrides(makeTools(...args), input.toolOverrides), issuedPlaces, bound);
   };
   let tools = toolsFor(pinned);

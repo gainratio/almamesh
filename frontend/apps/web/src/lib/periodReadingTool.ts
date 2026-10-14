@@ -1,7 +1,8 @@
 /**
  * `get_period_reading` and `get_period_detail` (spec 2026-10-13): the chat's
  * elaborate, citable period tools. Bound to the thread: a trip's period and
- * place, or today = [today, today] at the viewer's zone. They load through the
+ * place (or another month the model names, at the trip's place), or today's
+ * month at the viewer's zone. They load through the
  * same paths as get_timing (the period-sky queue, or today's Life Atlas store)
  * and return what periodReading.ts builds. Failures the model must act on are
  * RETURNED with get_timing's typed reasons, never thrown.
@@ -10,6 +11,7 @@ import type { PeriodReadingContext, SiderealChart } from '@almamesh/browser/type
 import {
   BEFORE_BIRTH_MESSAGE,
   BIRTH_YEAR_SKY_NOTE,
+  EPHEMERIS_LAST_YEAR,
   endsBeforeBirthYear,
   PERIOD_DETAIL_TOOL_NAME,
   PERIOD_READING_TOOL_NAME,
@@ -59,8 +61,6 @@ export interface PeriodReadingToolsInput {
   readonly periodSkyAllowed: boolean;
 }
 
-const NO_ARGS = { type: 'object', properties: {}, additionalProperties: false } as const;
-
 /** How far ahead a today thread may read a month at the current place. */
 const MONTHS_AHEAD = 12;
 const MONTH_PATTERN = '^\\d{4}-(0[1-9]|1[0-2])$';
@@ -79,9 +79,23 @@ const TODAY_PROPERTIES = {
 } as const;
 const TODAY_ARGS = { type: 'object', properties: TODAY_PROPERTIES, additionalProperties: false } as const;
 
+/**
+ * A trip's one optional argument (2026-10-14): another month, read at the trip's place. With
+ * none, a trip reads its own period. Live, a September question in a May trip read May.
+ */
+const TRIP_PROPERTIES = {
+  month: {
+    type: 'string', pattern: MONTH_PATTERN,
+    description: "YYYY-MM: another month the user asks about. Omit for this trip's period.",
+  },
+} as const;
+const TRIP_ARGS = { type: 'object', properties: TRIP_PROPERTIES, additionalProperties: false } as const;
+/** The detail's copy, described once in its tool description (an 8k window has no room to spare). */
+const TRIP_DETAIL_PROPERTIES = { month: { type: 'string', pattern: MONTH_PATTERN } } as const;
+
 const BOUND_READING = [
-  "Read this thread's Vedic period reading, computed on this device. It never makes a network request. No arguments:",
-  "it is bound to this time-travel trip's period and place.",
+  "Read this thread's Vedic period reading, computed on this device (no network request).",
+  "No arguments: this trip's period and place. For another month the user asks about, send month \"YYYY-MM\" (read at the trip's place).",
 ].join(' ');
 
 const TODAY_READING = [
@@ -105,6 +119,7 @@ const DETAIL_DESCRIPTION = [
   'panchang (a single-day period only, no key), dashas (every dasha span in the period, no key). Returns facts plus cited factor strings.',
 ].join(' ');
 const TODAY_DETAIL_NOTE = 'In a today thread, send the same granularity and month as the reading you are drilling into.';
+const TRIP_DETAIL_NOTE = "month: the reading's month, if any.";
 
 const DETAIL_PROPERTIES = {
   section: { type: 'string', enum: DETAIL_SECTIONS },
@@ -112,7 +127,7 @@ const DETAIL_PROPERTIES = {
 } as const;
 
 function detailParameters(today: boolean) {
-  const properties = today ? { ...DETAIL_PROPERTIES, ...TODAY_PROPERTIES } : DETAIL_PROPERTIES;
+  const properties = today ? { ...DETAIL_PROPERTIES, ...TODAY_PROPERTIES } : { ...DETAIL_PROPERTIES, ...TRIP_DETAIL_PROPERTIES };
   return { type: 'object', properties, required: ['section'], additionalProperties: false } as const;
 }
 
@@ -120,6 +135,8 @@ function detailParameters(today: boolean) {
 type TodayRequest =
   | { readonly granularity: 'day' }
   | { readonly granularity: 'month'; readonly month: string };
+/** What a call reads: today's request, or (a trip) its own period ('trip') or a named month. */
+type ReadRequest = TodayRequest | { readonly granularity: 'trip' };
 
 function shiftMonth(month: string, by: number): string {
   const [year, index] = month.split('-').map(Number) as [number, number];
@@ -171,21 +188,41 @@ function todayPeriod(request: TodayRequest, today: string, language: string): Re
   return { start, end, granularity: 'month', label: formatPinLabel({ start, granularity: 'month' }, language), tense };
 }
 
-/** The period and place the tools are bound to, for this call's `now` (a today thread: its request). */
-function frameOf(input: PeriodReadingToolsInput, now: Date, request: TodayRequest): ReadingFrame {
+/** A trip's named month, at the trip's place. */
+function tripMonth(pin: ChatThreadAsOf, month: string): ChatThreadAsOf {
+  return { ...pin, ...monthRange(month), granularity: 'month' };
+}
+
+/** The period and place the tools are bound to, for this call's `now` and request. */
+function frameOf(input: PeriodReadingToolsInput, now: Date, request: ReadRequest): ReadingFrame {
   const today = viewerTodayDay(now, input.viewerZone());
-  if (!input.pin) return { period: todayPeriod(request, today, input.language), place: todayPlace(input, now) };
-  const trip = tripContext({ chart: input.chart, asOf: input.pin, today, birth: input.birth, language: input.language });
+  if (!input.pin) {
+    // A today thread never builds a 'trip' request (requestOf); read it as the current month regardless.
+    const own: TodayRequest = request.granularity === 'trip' ? { granularity: 'month', month: today.slice(0, 7) } : request;
+    return { period: todayPeriod(own, today, input.language), place: todayPlace(input, now) };
+  }
+  const asOf = request.granularity === 'month' ? tripMonth(input.pin, request.month) : input.pin;
+  const trip = tripContext({ chart: input.chart, asOf, today, birth: input.birth, language: input.language });
   const { start, end, granularity, label, tense } = trip.period;
   return { period: { start, end, granularity, label, tense }, place: { label: trip.place.label, timezone: trip.place.timezone } };
 }
 
+/** A trip's arguments: no month reads the trip; a named month (any year the ephemeris covers) reads that month. */
+function tripRequest(args: AgentJsonObject): ReadRequest | { readonly error: string } {
+  const { month } = args;
+  if (month === undefined) return { granularity: 'trip' };
+  if (typeof month !== 'string' || !MONTH_ARG.test(month) || Number(month.slice(0, 4)) > EPHEMERIS_LAST_YEAR) {
+    return { error: `month must be YYYY-MM (e.g. 2019-09), up to ${EPHEMERIS_LAST_YEAR}-12. Omit it for this trip's own period.` };
+  }
+  return { granularity: 'month', month };
+}
+
 /**
- * The request a call reads: a trip ignores arguments (it is bound); a today thread reads its
+ * The request a call reads: a trip reads its period or the month named; a today thread reads its
  * own. A device that cannot compute a period's sky reads today, never a month it cannot load.
  */
-function requestOf(input: PeriodReadingToolsInput, args: AgentJsonObject, now: Date): TodayRequest | { readonly error: string } {
-  if (input.pin) return { granularity: 'day' };
+function requestOf(input: PeriodReadingToolsInput, args: AgentJsonObject, now: Date): ReadRequest | { readonly error: string } {
+  if (input.pin) return tripRequest(args);
   const request = todayRequest(args, viewerTodayDay(now, input.viewerZone()));
   if ('error' in request || input.periodSkyAllowed) return request;
   return { granularity: 'day' };
@@ -273,13 +310,13 @@ export function createPeriodReadingTools(input: PeriodReadingToolsInput): AgentT
       description: `${today ? TODAY_READING : BOUND_READING} ${READING_CONTENTS}`,
       statusLabel: 'Reading the period… (about 30 s)',
       timeoutMs: TIMING_TOOL_TIMEOUT_MS,
-      parameters: today ? TODAY_ARGS : NO_ARGS,
+      parameters: today ? TODAY_ARGS : TRIP_ARGS,
       execute: (args, context) => readPeriod(input, args, context),
       summarize: summarizePeriodReading,
     },
     {
       name: PERIOD_DETAIL_TOOL_NAME,
-      description: today ? `${DETAIL_DESCRIPTION} ${TODAY_DETAIL_NOTE}` : DETAIL_DESCRIPTION,
+      description: `${DETAIL_DESCRIPTION} ${today ? TODAY_DETAIL_NOTE : TRIP_DETAIL_NOTE}`,
       statusLabel: 'Looking closer at the period',
       timeoutMs: TIMING_TOOL_TIMEOUT_MS,
       parameters: detailParameters(today),
