@@ -175,9 +175,9 @@ function readPeriodDashas(pairs: ReadonlyArray<{ readonly name: string; readonly
 
 /**
  * The typed answer restates the calculated dashas: a "period" answer whose one maha and one antar
- * lord are among the reading's lords for that span (the typed answer holds one lord per level; the
- * old prose JSON listed every lord), names the period it read, explains them, and the rendered
- * answer names both lords on screen.
+ * lord are among the reading's lords for that span, names the period it read, explains them, and
+ * the rendered bubble names EVERY distinct maha and antar lord the reading covers (set coverage:
+ * the typed answer holds one lord per level, the rest must be named in its text).
  */
 async function expectCalculatedSummary(page: Page, answer: TypedAnswer, timing: CalculatedDashas, period: RegExp): Promise<void> {
   expect(timing.maha.length).toBeGreaterThan(0);
@@ -192,8 +192,9 @@ async function expectCalculatedSummary(page: Page, answer: TypedAnswer, timing: 
   expect(answer.period ?? '', 'the answer names the period it read').toMatch(period);
   expect((answer.opening ?? '').replace(/\s/g, '').length, 'the answer includes an explanation beside its factual summary').toBeGreaterThan(40);
   const shown = (await page.getByTestId('chat-message-assistant').last().textContent()) ?? '';
-  expect(shown, 'the rendered answer names the maha lord').toMatch(new RegExp(`\\b${maha}\\b`, 'i'));
-  expect(shown, 'the rendered answer names the antar lord').toMatch(new RegExp(`\\b${antar}\\b`, 'i'));
+  for (const lord of new Set([...lords(timing.maha), ...lords(timing.antar)])) {
+    expect(shown, `the rendered answer names the reading's lord ${lord}`).toMatch(new RegExp(`\\b${lord}\\b`, 'i'));
+  }
 }
 
 /** "14 October 2026", "October 14, 2026", "Oct 14" or "2026-10-14": the viewer's day as a person writes it. */

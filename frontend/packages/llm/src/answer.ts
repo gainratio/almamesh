@@ -176,6 +176,23 @@ function checkDashas(value: PeriodAnswer["dashas"], readings: readonly Grounding
   if (value.pratyantar) checkRules("pratyantar", value.pratyantar, readings, issue);
 }
 
+const wordIn = (text: string, word: string): boolean => new RegExp(`(?<![\\p{L}\\p{N}_])${word}(?![\\p{L}\\p{N}_])`, "iu").test(text);
+
+/** A span across a dasha change has several running lords; the typed answer holds one per level, so the rest must be named in the text. */
+function checkCrossings(value: PeriodAnswer, readings: readonly GroundingReading[], issue: Issue): void {
+  const { maha, antar, pratyantar } = value.dashas;
+  const text = [value.opening, ...[maha, antar, pratyantar].flatMap((line) => (line ? [line.lord, line.note] : []))].join("\n");
+  // Per reading: a comparison of two periods may legitimately answer with either one's lord.
+  const crossing = readings.flatMap((reading) =>
+    (["maha", "antar"] as const).flatMap((level) => {
+      const lords = unique(reading[level].map(lower));
+      return lords.length > 1 ? lords : [];
+    }),
+  );
+  const missing = unique(crossing).filter((lord) => !wordIn(text, lord));
+  if (missing.length > 0) issue(`This period crosses a dasha change: also name ${missing.join(", ")} in the dasha note.`, ["dashas"]);
+}
+
 function checkMoon(moon: readonly MoonLine[], readings: readonly GroundingReading[], issue: Issue): void {
   const tags = unique(readings.flatMap((reading) => reading.tags));
   if (tags.length === 0 && moon.length > 0) issue("the reading has no Moon tags: leave moon empty", ["moon"]);
@@ -231,6 +248,7 @@ function checkPeriod(value: Wire, readings: readonly GroundingReading[], issue: 
   if (missing.length > 0) return;
   const answer = value as PeriodAnswer & Wire;
   checkDashas(answer.dashas, readings, issue);
+  checkCrossings(answer, readings, issue);
   checkMoon(answer.moon, readings, issue);
   checkWindows(answer.windows, readings, issue);
   checkPlace(answer.place, readings, issue);

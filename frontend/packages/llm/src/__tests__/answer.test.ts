@@ -239,6 +239,44 @@ describe("answerSchema: grounding refinements say the fix", () => {
   });
 });
 
+describe("answerSchema: a period that crosses a dasha change names every running lord", () => {
+  const CROSSING: Reading = { ...SEPTEMBER, antar: ["saturn", "venus"], rules: { ...SEPTEMBER.rules, venus: [4, 9] } };
+  const FIX = "This period crosses a dasha change: also name venus in the dasha note.";
+
+  it("a single-lord reading is unaffected", () => {
+    expect(messages(wire(ANSWER))).toEqual([]);
+  });
+
+  it("a two-antar reading whose answer never names the second lord says the fix", () => {
+    expect(messages(wire(ANSWER), grounded(CROSSING))).toEqual([FIX]);
+  });
+
+  it("naming the second lord in the dasha note passes (any case, whole word)", () => {
+    const dashas = { ...ANSWER.dashas, antar: { ...ANSWER.dashas.antar, note: "Saturn slows things, then VENUS eases them." } };
+    expect(messages(withAnswer({ dashas }), grounded(CROSSING))).toEqual([]);
+  });
+
+  it("naming it in the opening passes", () => {
+    expect(messages(withAnswer({ opening: "Venus takes over the sub-chapter mid-month." }), grounded(CROSSING))).toEqual([]);
+  });
+
+  it("a substring of another word does not count", () => {
+    expect(messages(withAnswer({ opening: "Venusian charm abounds." }), grounded(CROSSING))).toEqual([FIX]);
+  });
+
+  it("two maha lords in one reading are both required", () => {
+    const other: Reading = { ...SEPTEMBER, maha: ["jupiter", "mars"] };
+    expect(messages(wire(ANSWER), grounded(other))).toEqual(["This period crosses a dasha change: also name mars in the dasha note."]);
+  });
+
+  it("the rendered answer names both lords", () => {
+    const dashas = { ...ANSWER.dashas, antar: { ...ANSWER.dashas.antar, note: "Saturn slows things, then Venus eases them." } };
+    const answer = { ...ANSWER, dashas };
+    expect(messages(wire(answer), grounded(CROSSING))).toEqual([]);
+    expect(renderAnswer(answer, { voice: "layman", language: "en" })).toMatch(/saturn[\s\S]*venus/i);
+  });
+});
+
 describe("moonTagLabel", () => {
   it("names the tags as a person says them", () => {
     expect(moonTagLabel("sade_sati_phase_1", "en")).toBe("Sade Sati, first phase");
