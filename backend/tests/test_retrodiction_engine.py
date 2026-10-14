@@ -2,15 +2,22 @@
 
 from __future__ import annotations
 
+import pickle
 from collections.abc import Iterator
 from datetime import UTC, datetime
 
 import pytest
+from skyfield.errors import EphemerisRangeError
 
 from almamesh.calculations import SkyfieldAstronomy
 from almamesh.constants.astrology import PlanetName as P
 from almamesh.domains.exact_signals import SLOW_MOVERS
-from almamesh.retrodiction.engine import SubjectEngine
+from almamesh.retrodiction import engine as engine_module
+from almamesh.retrodiction.engine import (
+    EngineReadingRangeError,
+    SubjectEngine,
+    obstacles_activation,
+)
 from almamesh.retrodiction.events import Birth, LifeEvent
 from almamesh.retrodiction.harness import movers_for
 from almamesh.transits.exact import astro_movers, exact_hits
@@ -89,3 +96,39 @@ def test_a_month_carries_the_engine_obstacles_activation(engine: SubjectEngine) 
     # The app's own month reading for this native: obstacles 75% in Jan 2019, 100% in Mar 2019.
     assert engine.month((2019, 1)).obstacles() == 0.75
     assert engine.month((2019, 3)).obstacles() == 1.0
+
+
+def test_should_raise_a_picklable_range_error_when_the_reading_leaves_the_ayanamsa_table() -> None:
+    # Given a 1901 birth, whose month reading searches back before 1900-01-01
+    early = Birth(datetime="1901-08-01T06:00:00+00:00", latitude=28.6, longitude=77.2)
+    # When / Then
+    with pytest.raises(EngineReadingRangeError) as caught:
+        obstacles_activation(early, (1904, 6))
+    assert pickle.loads(pickle.dumps(caught.value)).args == caught.value.args
+
+
+def test_should_raise_a_range_error_when_the_reading_leaves_de421(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def outside(*_: object) -> None:
+        raise EphemerisRangeError("segment covers 1899-07-29 through 2053-10-09", 0, 0, None, None)
+
+    monkeypatch.setattr(engine_module, "_month_reading", outside)
+    with pytest.raises(EngineReadingRangeError, match="1990-01"):
+        obstacles_activation(SYNTHETIC, (1990, 1))
+
+
+def test_should_let_any_other_reading_error_through(monkeypatch: pytest.MonkeyPatch) -> None:
+    def broken(*_: object) -> None:
+        raise ValueError("invalid reading_end: past the window end")
+
+    monkeypatch.setattr(engine_module, "_month_reading", broken)
+    with pytest.raises(ValueError, match="invalid reading_end") as caught:
+        obstacles_activation(SYNTHETIC, (1990, 1))
+    assert not isinstance(caught.value, EngineReadingRangeError)
+
+
+def test_should_refuse_a_birth_without_a_utc_offset() -> None:
+    naive = Birth.model_construct(datetime=datetime(1980, 1, 1), latitude=0.0, longitude=0.0)
+    with pytest.raises(ValueError, match="UTC offset"):
+        obstacles_activation(naive, (2000, 1))

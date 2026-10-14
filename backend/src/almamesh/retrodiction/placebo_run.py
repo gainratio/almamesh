@@ -16,6 +16,7 @@ from almamesh.retrodiction.centre import centre_hits, lazy_centre_hits
 from almamesh.retrodiction.controls import PLACEBOS, placebo_centres
 from almamesh.retrodiction.engine import (
     OUT_OF_RANGE_BIRTH,
+    EngineReadingRangeError,
     SubjectEngine,
     add_months,
     birth_in_range,
@@ -37,6 +38,7 @@ ADDED_FAMILIES: Final[tuple[str, ...]] = ("exact_transits", "engine_obstacles")
 BASELINE: Final[str] = "BASELINE"
 V1: Final[frozenset[str]] = frozenset(f.name for f in FAMILIES) - {"exact_transits"}
 _CHUNKS_PER_WORKER: Final[int] = 8
+UNREADABLE: Final[str] = "the engine's month reading reaches outside the ephemeris (amendment c)"
 
 
 @dataclass(frozen=True)
@@ -118,6 +120,16 @@ def _placebo_windows(
     return [s for s in scored if isinstance(s, EventScores)]
 
 
+def _readable_hits(
+    engine: SubjectEngine, scores: EventScores, target: Target, plan: RunPlan
+) -> dict[HitKey, float] | None:
+    """The window's centre hits, or None when an evaluated month cannot be read."""
+    try:
+        return _window_hits(engine, scores, target, plan)
+    except EngineReadingRangeError:
+        return None
+
+
 def _event_hits(
     engine: SubjectEngine, subject: str, ordinal: int, event: LifeEvent, plan: RunPlan
 ) -> EventHits | Exclusion:
@@ -125,11 +137,12 @@ def _event_hits(
     if isinstance(real, Exclusion):
         return real
     target = MAPPING[event.category].target
+    own = _readable_hits(engine, real, target, plan)
+    if own is None:
+        return Exclusion(subject, event.category, event.date, UNREADABLE)
     windows = _placebo_windows(engine, subject, ordinal, event, real, plan.placebos)
-    placebos = tuple(_window_hits(engine, w, target, plan) for w in windows)
-    return EventHits(
-        subject, ordinal, real.area, _window_hits(engine, real, target, plan), placebos
-    )
+    placebos = [_readable_hits(engine, w, target, plan) for w in windows]
+    return EventHits(subject, ordinal, real.area, own, tuple(p for p in placebos if p is not None))
 
 
 def _out_of_range(subject: Subject, events: Sequence[LifeEvent]) -> list[EventHits | Exclusion]:
@@ -181,6 +194,7 @@ def score_hits(
 __all__ = [
     "ADDED_FAMILIES",
     "BASELINE",
+    "UNREADABLE",
     "V1",
     "AddedFamily",
     "RunPlan",

@@ -366,6 +366,13 @@ is not computed (it needs every month). If a timing probe (wall-clock only, noth
 not re-tuned. DEV wins are still not evidence; nothing goes to HELD-OUT from this rescore.
 Pinned in code: `PLACEBOS = 4`, offsets 73-146, `SPLIT_SEED`.
 
+**(f6) Months the engine cannot read (added before any rescoring, after a wall-clock probe crashed
+on one).** Amendment (c) applies to the +OBSTACLES run, widened to the Lahiri table's range
+(1900-2100) as well as DE421's: both are fail-closed tables the same month reading reads, and a
+1901 birth's reading raises the first. With lazy resolution the rule covers the months actually
+evaluated. An event whose own window hits it is excluded (reason listed); a placebo window that
+hits it is dropped. Any other error still stops the run.
+
 ## Results: DEV, exact transits (technique #1), 2026-10-14
 
 The only scoring run of amendment (d). Engine and harness at `8faa4ed7` (branch

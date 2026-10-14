@@ -11,11 +11,13 @@ from datetime import UTC, datetime, timedelta
 from functools import cache, partial
 from typing import TYPE_CHECKING, Final
 
+from skyfield.errors import EphemerisRangeError
+
 from almamesh.calculations import calculate_sidereal_context
 from almamesh.constants.astrology import PlanetName
 from almamesh.dasha.depth import level_spans
 from almamesh.dasha.yogini import compute_yogini_periods
-from almamesh.predictive import compute_predictive_contexts
+from almamesh.predictive import PredictiveContexts, compute_predictive_contexts
 from almamesh.retrodiction.indicators import SKY_GRAHAS, MonthSky, NatalFrame
 from almamesh.schemas.domains import LifeDomain
 from almamesh.transits.exact import MOVERS, ContactBook, astro_movers, natal_points
@@ -129,6 +131,13 @@ class SubjectEngine:
         return signs
 
 
+_AYANAMSA_RANGE: Final[str] = "Lahiri ayanamsa table range exceeded"
+
+
+class EngineReadingRangeError(ValueError):
+    """The app's month reading needs dates DE421 does not cover (amendment c; picklable)."""
+
+
 def obstacles_activation(birth: Birth, ym: YearMonth) -> float:
     """The app's own month reading: the obstacles theme's strength, 0..1.
 
@@ -138,8 +147,24 @@ def obstacles_activation(birth: Birth, ym: YearMonth) -> float:
     offset = birth.datetime.utcoffset()
     if offset is None:
         raise ValueError("birth datetime needs its UTC offset")
+    try:
+        contexts = _month_reading(birth, ym, offset)
+    except ValueError as exc:
+        if not _outside_tables(exc):
+            raise
+        raise EngineReadingRangeError(f"{ym[0]:04d}-{ym[1]:02d}: {exc}") from None
+    theme = next(t for t in contexts.period_reading.themes if t.domain == LifeDomain.OBSTACLES)
+    return theme.strength_pct / 100
+
+
+def _outside_tables(exc: ValueError) -> bool:
+    """DE421's range, or the Lahiri table's (1900-2100): the reading cannot be computed."""
+    return isinstance(exc, EphemerisRangeError) or str(exc).startswith(_AYANAMSA_RANGE)
+
+
+def _month_reading(birth: Birth, ym: YearMonth, offset: timedelta) -> PredictiveContexts:
     last_day = (month_start(add_months(ym, 1)) - timedelta(days=1)).date()
-    contexts = compute_predictive_contexts(
+    return compute_predictive_contexts(
         birth.datetime,
         birth.latitude,
         birth.longitude,
@@ -148,9 +173,6 @@ def obstacles_activation(birth: Birth, ym: YearMonth) -> float:
         window_months=1,
         reading_end=last_day,
     )
-    themes = contexts.period_reading.themes
-    theme = next(t for t in themes if t.domain == LifeDomain.OBSTACLES)
-    return theme.strength_pct / 100
 
 
 def _yogini_lord(periods: list[YoginiPeriod], instant: datetime) -> PlanetName | None:
@@ -160,6 +182,7 @@ def _yogini_lord(periods: list[YoginiPeriod], instant: datetime) -> PlanetName |
 
 __all__ = [
     "ENGINE_FIRST_INSTANT",
+    "EngineReadingRangeError",
     "OUT_OF_RANGE_BIRTH",
     "SubjectEngine",
     "YearMonth",

@@ -10,8 +10,9 @@ from typer.testing import CliRunner
 
 from almamesh.retrodiction import engine as engine_module
 from almamesh.retrodiction.cli import app
-from almamesh.retrodiction.events import load_events
+from almamesh.retrodiction.events import RetrodictionInputError, load_events
 from almamesh.retrodiction.placebo_card import BASELINE, PlaceboCard, RunPlan, build_placebo_card
+from almamesh.retrodiction.placebo_run import UNREADABLE, score_hits
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -115,3 +116,39 @@ def _disputes_baseline(card: PlaceboCard) -> list[float]:
         for r in card.rows
         if r.family_set == BASELINE and r.area.startswith("disputes")
     ]
+
+
+def _raising_activation(bad: Callable[[YearMonth], bool]) -> Callable[[Birth, YearMonth], float]:
+    def activation(birth: Birth, ym: YearMonth) -> float:
+        if bad(ym):
+            raise engine_module.EngineReadingRangeError(f"{ym}: outside the ephemeris")
+        return 0.5
+
+    return activation
+
+
+def test_should_exclude_a_disputes_event_whose_own_window_cannot_be_read(
+    events_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Given an engine reading that fails for every month (amendment c)
+    monkeypatch.setattr(engine_module, "obstacles_activation", _raising_activation(lambda _: True))
+    plan = RunPlan(added="engine_obstacles")
+    # When / Then the only disputes event is excluded, so nothing can be ranked
+    with pytest.raises(RetrodictionInputError, match="placebo window"):
+        build_placebo_card(load_events(events_path), plan, workers=1)
+    hits, excluded = score_hits(load_events(events_path), plan)
+    assert hits == []
+    assert [x.reason for x in excluded] == [UNREADABLE]
+
+
+def test_should_drop_only_the_placebo_windows_the_engine_cannot_read(
+    events_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Given readings that fail only before 2005 (the legal event is 2012-11)
+    monkeypatch.setattr(
+        engine_module, "obstacles_activation", _raising_activation(lambda ym: ym[0] < 2005)
+    )
+    hits, _ = score_hits(load_events(events_path), RunPlan(added="engine_obstacles"))
+    # Then the event stays, with only its later placebo windows
+    assert len(hits) == 1
+    assert 0 < len(hits[0].placebos) < 4
