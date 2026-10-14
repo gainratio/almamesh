@@ -269,6 +269,12 @@ describe('the period detail digests (get_period_detail)', () => {
     expect(detail('dashas')).toMatchObject({ facts: { spans: expect.arrayContaining([{ level: 'pratyantar', lord: 'moon', start: '2019-09-07', end: '2019-11-28' }]) } });
   });
 
+  // Live drive 2026-10-14: the model asked for segment "2019-09-17", a date inside a segment rather than
+  // its start, and got an error row. A date inside the period names exactly one segment: read that one.
+  it('segment: a date inside a segment reads the segment that contains it', () => {
+    expect(detail('segment', '2019-04-10')).toMatchObject({ facts: { segment: { start: '2019-03-29', end: '2019-04-22' } } });
+  });
+
   it('refuses an unknown section or key with a retry hint, never a guess', () => {
     expect(detail('houses')).toEqual({ error: 'section must be one of: lord, segment, bindus, panchang, dashas' });
     expect(detail('lord', 'pluto')).toEqual({ error: 'key must be one of: sun, moon, mars, mercury, jupiter, venus, saturn, rahu, ketu' });

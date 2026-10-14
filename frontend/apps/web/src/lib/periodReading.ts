@@ -529,9 +529,18 @@ function lordDigest(source: PeriodReadingContext, period: ReadingPeriod, key: st
   return { facts: { lord: key, ...natalFacts, ...(transit ? { transit } : {}), runs, sky }, factors: citing(source, key) };
 }
 
+/** A real calendar day (YYYY-MM-DD) inside the period: it names exactly one segment. */
+function periodDay(key: string | undefined, period: ReadingPeriod): key is string {
+  if (key === undefined || !/^\d{4}-\d{2}-\d{2}$/.test(key) || key < period.start || key > period.end) return false;
+  const parsed = new Date(`${key}T00:00:00Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === key;
+}
+
 function segmentDigest(source: PeriodReadingContext, period: ReadingPeriod, key: string | undefined): Digest {
   const inPeriod = source.segments.filter((segment) => overlaps(segment, period));
-  const found = inPeriod.find((segment) => key !== undefined && (day(segment.start) === key || clipped(segment, period).start === key));
+  const starts = (segment: (typeof inPeriod)[number]) => key !== undefined && (day(segment.start) === key || clipped(segment, period).start === key);
+  const contains = (segment: (typeof inPeriod)[number]) => periodDay(key, period) && day(segment.start) <= key && key < day(segment.end);
+  const found = inPeriod.find(starts) ?? inPeriod.find(contains);
   if (!found) return { error: `key must be a segment start date (YYYY-MM-DD), one of: ${inPeriod.map((s) => clipped(s, period).start).join(', ')}` };
   const span = clipped(found, period);
   const sky = source.sky.filter((item) => overlaps(item, span)).map((item) => skyOf(item, span));
