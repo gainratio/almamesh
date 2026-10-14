@@ -41,7 +41,8 @@ export interface WireMessage {
 interface WireBody {
   readonly messages?: readonly WireMessage[];
   readonly tools?: ReadonlyArray<{ readonly function?: { readonly name?: string } }>;
-  readonly tool_choice?: string;
+  /** "required", or an object naming the one tool the request must call. */
+  readonly tool_choice?: unknown;
 }
 
 export interface CapturedRequest {
@@ -52,6 +53,7 @@ export interface CapturedRequest {
   readonly messages: readonly WireMessage[];
   readonly tools: readonly unknown[];
   readonly toolNames: readonly string[];
+  /** "required", or the forced tool choice as JSON (e.g. the budget's forced answer). */
   readonly toolChoice: string | undefined;
   /** What the stub answered: tool-call names, or 'answer'. */
   readonly reply: readonly string[] | 'answer';
@@ -162,7 +164,7 @@ export class BudgetProvider {
     });
     this.captured.push({
       turn, round, messages: body.messages ?? [], tools: body.tools ?? [], toolNames,
-      toolChoice: body.tool_choice, reply: plan.length > 0 ? calls.map((call) => call.name) : 'answer',
+      toolChoice: typeof body.tool_choice === 'string' || body.tool_choice === undefined ? body.tool_choice : JSON.stringify(body.tool_choice), reply: plan.length > 0 ? calls.map((call) => call.name) : 'answer',
     });
     const stream = toolCallStream(calls, raw.length);
     return route.fulfill({ status: 200, contentType: 'text/event-stream', body: stream });

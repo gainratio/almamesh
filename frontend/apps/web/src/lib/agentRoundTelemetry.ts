@@ -20,6 +20,14 @@ export interface AgentRoundRow {
   readonly input_tokens: number | null;
   readonly output_tokens: number | null;
   readonly finish_reason: string;
+  /** Our estimate of the request (chars / 4, calibrated by the provider's earlier counts). */
+  readonly estimate: number;
+  /** True when the provider reported no input tokens. */
+  readonly estimated: boolean;
+  /** The turn's token budget: half the model's context window. */
+  readonly budget: number;
+  /** Tool results the request carried in their compact form. */
+  readonly compacted: number;
 }
 
 export interface AgentCallRow {
@@ -83,6 +91,7 @@ export function beginAgentTurn(): AgentTurnTelemetry {
       pushCapped(rows, {
         turn, round: event.round, phase: final ? 'final' : 'decision',
         input_tokens: event.inputTokens ?? null, output_tokens: event.outputTokens ?? null, finish_reason: event.finishReason,
+        estimate: event.estimate, estimated: event.estimated, budget: event.budget, compacted: event.compacted,
       });
     },
     onToolCall: (event) => {

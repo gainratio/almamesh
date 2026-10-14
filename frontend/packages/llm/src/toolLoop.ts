@@ -10,7 +10,10 @@
 // - zod-typed tools whose invalid arguments go back to the model as a retry;
 // - a final `answer` tool that carries the structured answer, streamed as
 //   rendered snapshots while its arguments arrive;
-// - per-tool budgets, tool timeouts, a runaway-reasoning cap, and telemetry.
+// - per-tool budgets, tool timeouts, a runaway-reasoning cap, and telemetry;
+// - a per-turn context budget: no request carries more than half the model's
+//   context window. Older tool results go compact first (the newest result of
+//   each tool stays whole), then the turn is closed with a forced `answer`.
 //
 // `explicitlyRejectsTools`, `TOOLS_UNAVAILABLE_*` and `AgentStatusEvent` live
 // in ./toolsUnavailable (no SDK import).
@@ -25,18 +28,22 @@ import {
   tool,
   ToolChoiceViolationError,
   type JSONSchema7,
+  type JSONValue,
   type LanguageModel,
   type ModelMessage,
   type PrepareStepResult,
   type StopCondition,
   type TextStreamPart,
   type Tool,
+  type ToolResultPart,
   type ToolSet,
 } from "ai";
 import { z } from "zod";
 
 import { LlmRequestError, type ChatMessage } from "./client";
+import { compactToolResult } from "./compaction";
 import { ensurePrivacy, OPENROUTER_API_BASE, PrivacyViolationError, type ProviderConfig } from "./config";
+import { calibratedEstimate, estimateRequestTokens, turnTokenBudget, type TokenCalibration } from "./contextBudget";
 import { CHAT_REASONING_MAX_TOKENS, REASONING_TIMEOUT_MS, ReasoningTimeoutError } from "./reasoning";
 import {
   explicitlyRejectsTools,
@@ -69,6 +76,11 @@ export interface ToolDef<I> {
   /** The status line shown while the tool runs (default `Using <name>`). */
   readonly statusLabel?: string;
   execute(input: I, ctx: ToolContext): Promise<unknown>;
+  /**
+   * The compact form sent in place of a result the turn's context budget cannot
+   * carry in full (default: a one-line summary). Pure and deterministic.
+   */
+  compact?(result: unknown): unknown;
 }
 
 export function defineTool<I>(def: ToolDef<I>): ToolDef<I> {
@@ -90,9 +102,18 @@ export interface ToolCallEvent {
 
 export interface RoundEvent {
   readonly round: number;
+  /** The provider's own count; undefined when it reported none. */
   readonly inputTokens?: number;
   readonly outputTokens?: number;
   readonly finishReason: string;
+  /** Our estimate of the request (messages + tool definitions, chars / 4), calibrated by the provider's earlier counts. */
+  readonly estimate: number;
+  /** True when the provider reported no input tokens and only `estimate` is known. */
+  readonly estimated: boolean;
+  /** The turn's token budget: half the model's context window. */
+  readonly budget: number;
+  /** Tool results this request carried in their compact form. */
+  readonly compacted: number;
 }
 
 export interface ToolLoopLimits {
@@ -107,6 +128,8 @@ export interface AnswerSpec<A> {
 
 export interface RunToolTurnOptions<A> {
   readonly config: ProviderConfig;
+  /** The model's context window in tokens; no request may carry more than half of it. Unknown: 8k. */
+  readonly contextTokens?: number;
   readonly messages: readonly ChatMessage[];
   readonly tools: readonly ToolDef<unknown>[];
   readonly answer: AnswerSpec<A>;
@@ -138,6 +161,11 @@ export const TOOL_LOOP_LIMITS = Object.freeze({
 });
 
 export const TOOL_TIMEOUT_MS = Object.freeze({ default: 2_000, max: 150_000 });
+
+/** The system line of a turn the context budget closed. */
+export const BUDGET_INSTRUCTION =
+  "The context budget for this turn is used up, so no more tools can run. Answer from the facts " +
+  "gathered so far and say plainly which facts you could not check.";
 
 const SKIPPED_NOTE = "This turn already read enough; answer from the readings above.";
 const PROSE_INSTRUCTION = "Write the answer as plain prose.";
@@ -231,10 +259,15 @@ function fillMissingNullables(input: z.ZodType, value: unknown): unknown {
   return filled;
 }
 
+/** The strict (all-required) JSON schema the endpoint sees. */
+function wireSchema(input: z.ZodType): JSONSchema7 {
+  const { $schema: _dialect, ...schema } = z.toJSONSchema(input, { target: "draft-7", unrepresentable: "any" });
+  return schema as JSONSchema7;
+}
+
 /** Send the strict (all-required) JSON schema; validate leniently with zod. */
 function lenientSchema<I>(input: z.ZodType<I>) {
-  const { $schema: _dialect, ...schema } = z.toJSONSchema(input, { target: "draft-7", unrepresentable: "any" });
-  return jsonSchema<I>(schema as JSONSchema7, {
+  return jsonSchema<I>(wireSchema(input), {
     validate: (value) => {
       const parsed = input.safeParse(fillMissingNullables(input, value));
       return parsed.success
@@ -294,6 +327,28 @@ interface TurnContext {
   readonly watchdog: ReasoningWatchdog;
   readonly reads: ReadProgress;
   readonly providerOptions: ProviderOptions;
+  readonly budget: TurnBudget;
+}
+
+/** The turn's context budget and what it needs to size each request. */
+interface TurnBudget {
+  readonly limit: number;
+  /** Every tool's wire definition by name (`answer` included): what a request's tools cost. */
+  readonly definitions: ReadonlyMap<string, unknown>;
+  readonly compactors: ReadonlyMap<string, (result: unknown) => unknown>;
+  /** The provider's count for an earlier request against our estimate of it. */
+  calibration: TokenCalibration | undefined;
+  /** The budget closed the turn: every later request is a forced answer. */
+  closed: boolean;
+  /** The request in flight, settled by its finish-step. */
+  pending: RequestPlan | undefined;
+}
+
+interface RequestPlan {
+  /** ceil(chars / 4) before calibration: what a provider count is compared with. */
+  readonly raw: number;
+  readonly estimate: number;
+  readonly compacted: number;
 }
 
 /** Set by the tool wrapper (SDK side, so prepareStep sees it) when a read tool call completes. */
@@ -373,6 +428,17 @@ function toolSet<A>(o: RunToolTurnOptions<A>, signal: AbortSignal, reads: ReadPr
   return tools;
 }
 
+function wireDefinition(name: string, description: string, input: z.ZodType): unknown {
+  return { type: "function", function: { name, description, parameters: wireSchema(input) } };
+}
+
+function turnBudget<A>(o: RunToolTurnOptions<A>): TurnBudget {
+  const definitions = new Map<string, unknown>(o.tools.map((t) => [t.name, wireDefinition(t.name, t.description, t.input)]));
+  definitions.set(ANSWER_TOOL_NAME, wireDefinition(ANSWER_TOOL_NAME, ANSWER_TOOL_DESCRIPTION, o.answer.schema));
+  const compactors = new Map(o.tools.flatMap((t) => (t.compact ? [[t.name, t.compact.bind(t)] as const] : [])));
+  return { limit: turnTokenBudget(o.contextTokens), definitions, compactors, calibration: undefined, closed: false, pending: undefined };
+}
+
 function turnContext<A>(o: RunToolTurnOptions<A>): TurnContext {
   const watchdog = new ReasoningWatchdog(o.reasoningTimeoutMs ?? REASONING_TIMEOUT_MS);
   const cancel = new AbortController();
@@ -389,6 +455,7 @@ function turnContext<A>(o: RunToolTurnOptions<A>): TurnContext {
     watchdog,
     reads,
     providerOptions: { [PROVIDER_NAME]: isOpenRouter(o.config) ? { reasoning: { max_tokens: CHAT_REASONING_MAX_TOKENS } } : {} },
+    budget: turnBudget(o),
   };
 }
 
@@ -411,6 +478,116 @@ function streamOptions(ctx: TurnContext) {
 
 
 // ---------------------------------------------------------------------------
+// Context budget (spec 2026-10-13, "Context budget for the agentic loop")
+// ---------------------------------------------------------------------------
+
+type WireMessage = Readonly<Record<string, unknown>>;
+type StepPlan = NonNullable<PrepareStepResult<ToolSet>>;
+type ToolOutput = ToolResultPart["output"];
+
+function outputText(output: ToolOutput): string {
+  if (output.type === "text" || output.type === "error-text") return output.value;
+  return JSON.stringify("value" in output ? output.value : output);
+}
+
+/** A message as the OpenAI-compatible wire carries it, for estimating only. */
+function wireOf(message: ModelMessage): WireMessage[] {
+  if (typeof message.content === "string") return [{ role: message.role, content: message.content }];
+  if (message.role === "tool") {
+    return message.content.flatMap((part) => (part.type === "tool-result" ? [{ role: "tool", tool_call_id: part.toolCallId, content: outputText(part.output) }] : []));
+  }
+  const text = message.content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("");
+  const calls = message.content.flatMap((part) =>
+    part.type === "tool-call" ? [{ id: part.toolCallId, type: "function", function: { name: part.toolName, arguments: JSON.stringify(part.input) } }] : [],
+  );
+  return [{ role: message.role, content: text, ...(calls.length > 0 ? { tool_calls: calls } : {}) }];
+}
+
+function isCompacted(part: ToolResultPart): boolean {
+  return part.output.type === "json" && isRecord(part.output.value) && part.output.value.compacted === true;
+}
+
+function resultParts(messages: readonly ModelMessage[]): ToolResultPart[] {
+  return messages.flatMap((m) => (m.role === "tool" ? m.content.filter((p): p is ToolResultPart => p.type === "tool-result") : []));
+}
+
+function planOf(budget: TurnBudget, messages: readonly ModelMessage[], tools: readonly string[]): RequestPlan {
+  const raw = estimateRequestTokens(messages.flatMap(wireOf), tools.map((name) => budget.definitions.get(name)));
+  return { raw, estimate: calibratedEstimate(raw, budget.calibration), compacted: resultParts(messages).filter(isCompacted).length };
+}
+
+/** The newest full result of each tool: the one a lean request still carries whole. */
+function newestPerTool(messages: readonly ModelMessage[]): Set<ToolResultPart> {
+  const kept = new Map<string, ToolResultPart>();
+  for (const part of resultParts(messages)) {
+    if (part.output.type === "json" && !isCompacted(part) && !isSkipped(part.output.value)) kept.set(part.toolName, part);
+  }
+  return new Set(kept.values());
+}
+
+function compactPart(budget: TurnBudget, part: ToolResultPart, keep: ReadonlySet<ToolResultPart>): ToolResultPart {
+  if (keep.has(part) || part.output.type !== "json" || isCompacted(part)) return part;
+  const compact = compactToolResult(part.output.value, budget.compactors.get(part.toolName));
+  if (JSON.stringify(compact).length >= JSON.stringify(part.output.value).length) return part;
+  return { ...part, output: { type: "json", value: compact as JSONValue } };
+}
+
+/** Tool results in their compact form; with `keepNewest`, each tool's newest full result stays whole. */
+function compactMessages(budget: TurnBudget, messages: readonly ModelMessage[], keepNewest: boolean): ModelMessage[] {
+  const keep = keepNewest ? newestPerTool(messages) : new Set<ToolResultPart>();
+  return messages.map((m) =>
+    m.role === "tool" ? { ...m, content: m.content.map((p) => (p.type === "tool-result" ? compactPart(budget, p, keep) : p)) } : m,
+  );
+}
+
+function withBudgetNote(messages: readonly ModelMessage[]): ModelMessage[] {
+  const noted = messages.some((m) => m.role === "system" && m.content === BUDGET_INSTRUCTION);
+  return noted ? [...messages] : [...messages, { role: "system", content: BUDGET_INSTRUCTION }];
+}
+
+function send(budget: TurnBudget, plan: RequestPlan, step: StepPlan): StepPlan {
+  budget.pending = plan;
+  return step;
+}
+
+/** The budget closed the turn: answer now, with only the answer tool; the newest results go compact only if they must. */
+function forcedAnswer(budget: TurnBudget, messages: readonly ModelMessage[]): StepPlan {
+  const force = { toolChoice: { type: "tool", toolName: ANSWER_TOOL_NAME }, activeTools: [ANSWER_TOOL_NAME] } as const;
+  const noted = withBudgetNote(messages);
+  const lean = compactMessages(budget, noted, true);
+  const plan = planOf(budget, lean, [ANSWER_TOOL_NAME]);
+  if (plan.estimate <= budget.limit) return send(budget, plan, { ...force, messages: lean });
+  const leanest = compactMessages(budget, noted, false);
+  return send(budget, planOf(budget, leanest, [ANSWER_TOOL_NAME]), { ...force, messages: leanest });
+}
+
+/**
+ * Fit the next request to the budget: as it is; else with older results compact;
+ * else close the turn with a forced answer. A read-first round still reads (its
+ * prompt alone may be over); the system prompt and the question are never cut.
+ */
+function fitStep(ctx: TurnContext, messages: readonly ModelMessage[], choice: StepPlan, readFirst: boolean): StepPlan {
+  const { budget } = ctx;
+  if (budget.closed) return forcedAnswer(budget, messages);
+  const tools = (choice.activeTools as readonly string[] | undefined) ?? [...budget.definitions.keys()];
+  const full = planOf(budget, messages, tools);
+  if (full.estimate <= budget.limit) return send(budget, full, choice);
+  const older = compactMessages(budget, messages, true);
+  const lean = planOf(budget, older, tools);
+  if (lean.estimate <= budget.limit || mustReadFirst(ctx, readFirst)) return send(budget, lean, { ...choice, messages: older });
+  budget.closed = true;
+  return forcedAnswer(budget, messages);
+}
+
+/** After a request: calibrate later estimates by the provider's own count. */
+function settleRound(budget: TurnBudget, inputTokens: number | undefined): Pick<RoundEvent, "estimate" | "estimated" | "budget" | "compacted"> {
+  const plan = budget.pending ?? { raw: 0, estimate: 0, compacted: 0 };
+  budget.pending = undefined;
+  if (inputTokens !== undefined && plan.raw > 0) budget.calibration = { estimate: plan.raw, reported: inputTokens };
+  return { estimate: plan.estimate, estimated: inputTokens === undefined, budget: budget.limit, compacted: plan.compacted };
+}
+
+// ---------------------------------------------------------------------------
 // The tool rounds
 // ---------------------------------------------------------------------------
 
@@ -426,7 +603,7 @@ function mustReadFirst(ctx: TurnContext, readFirst: boolean): boolean {
 }
 
 /** Tool choice for a 1-based round of the whole turn; the last round always forces the answer. */
-function roundChoice(round: number, ctx: TurnContext, readFirst: boolean): PrepareStepResult<ToolSet> {
+function roundChoice(round: number, ctx: TurnContext, readFirst: boolean): StepPlan {
   if (round >= ctx.maxRounds) return { toolChoice: { type: "tool", toolName: ANSWER_TOOL_NAME } };
   if (mustReadFirst(ctx, readFirst)) return { toolChoice: "required", activeTools: ctx.readTools };
   return { toolChoice: "required" };
@@ -573,7 +750,8 @@ function onStartStep<A>(o: RunToolTurnOptions<A>, state: TurnState): void {
 function onFinishStep<A>(part: PartOf<"finish-step">, o: RunToolTurnOptions<A>, ctx: TurnContext, state: TurnState): void {
   state.finishedRounds += 1;
   const finishReason = state.stepWroteText ? "text_instead_of_tool" : part.finishReason;
-  o.onRound?.({ round: state.round, inputTokens: part.usage.inputTokens, outputTokens: part.usage.outputTokens, finishReason });
+  const usage = settleRound(ctx.budget, part.usage.inputTokens);
+  o.onRound?.({ round: state.round, inputTokens: part.usage.inputTokens, outputTokens: part.usage.outputTokens, finishReason, ...usage });
   ctx.watchdog.arm(); // the next request starts now
 }
 
@@ -623,7 +801,7 @@ async function* streamRounds<A>(o: RunToolTurnOptions<A>, ctx: TurnContext, stat
     messages,
     tools: ctx.tools,
     stopWhen: [validAnswer, stepCountIs(ctx.maxRounds - offset)],
-    prepareStep: ({ stepNumber }) => roundChoice(offset + stepNumber + 1, ctx, o.readFirst),
+    prepareStep: ({ stepNumber, messages: step }) => fitStep(ctx, step, roundChoice(offset + stepNumber + 1, ctx, o.readFirst), o.readFirst),
   });
   ctx.watchdog.arm();
   for await (const part of result.fullStream) {
@@ -719,11 +897,11 @@ async function* proseSnapshots(ctx: TurnContext, prefix: string, request: ProseR
 
 async function* proseFallback<A>(o: RunToolTurnOptions<A>, ctx: TurnContext, state: TurnState, history: ModelMessage[]): AsyncGenerator<string, ToolTurnResult<A>> {
   startAnswering(o, state);
-  const finished = yield* proseSnapshots(ctx, "", {
-    messages: [...ctx.messages, ...history, { role: "system", content: PROSE_INSTRUCTION }],
-    tools: ctx.tools,
-  });
-  o.onRound?.({ round: state.round + 1, inputTokens: finished?.usage.inputTokens, outputTokens: finished?.usage.outputTokens, finishReason: "answer_fallback" });
+  const messages: ModelMessage[] = [...ctx.messages, ...history, { role: "system", content: PROSE_INSTRUCTION }];
+  ctx.budget.pending = planOf(ctx.budget, messages, [...ctx.budget.definitions.keys()]);
+  const finished = yield* proseSnapshots(ctx, "", { messages, tools: ctx.tools });
+  const usage = settleRound(ctx.budget, finished?.usage.inputTokens);
+  o.onRound?.({ round: state.round + 1, inputTokens: finished?.usage.inputTokens, outputTokens: finished?.usage.outputTokens, finishReason: "answer_fallback", ...usage });
   o.onStatus?.({ phase: "complete" });
   return { answer: undefined };
 }

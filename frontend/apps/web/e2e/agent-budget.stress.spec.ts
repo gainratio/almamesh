@@ -94,18 +94,35 @@ async function appTelemetry(page: Page): Promise<readonly unknown[]> {
   return rows ?? [];
 }
 
+const FORCED_ANSWER = JSON.stringify({ type: 'function', function: { name: 'answer' } });
+
 /**
- * The stub's stress plan was actually reached: all three read rounds, the six-call round,
- * and the per-turn read_period cap answering the extra calls as skipped. Contract reversed
- * (Task 6, 2026-10-14): the old loop compacted consumed results and closed a turn at the
- * budget gate; both went with it, so neither is asserted. The budget itself still is (assertBudget).
+ * A 1M window: the stub's stress plan was actually reached: all three read rounds, the
+ * six-call round, and the per-turn read_period cap answering the extra calls as skipped.
+ * An 8k window: the budget closed every turn (Task 6b, 2026-10-14, restoring the old loop's
+ * budget gate on the seam): its last request offers only `answer`, forces it, and carries the
+ * budget note, and that request's estimate still fits (assertBudget).
  */
-function assertStressReached(provider: BudgetProvider): void {
+function assertStressReached(provider: BudgetProvider, model: MockModelId): void {
+  if (model === 'mock/ctx-8k') return assertBudgetClosed(provider);
   const toolRounds = provider.captured.filter((request) => request.reply !== 'answer');
   const deepest = Math.max(0, ...toolRounds.map((request) => request.round));
   expect.soft(deepest, 'the stub answered read round 3 with tool calls').toBe(3);
   expect.soft(toolRounds.some((request) => request.reply.length === 6), 'the six-parallel round was requested').toBe(true);
   expect.soft(toolMessagesContaining(provider.captured, 'already read enough'), 'calls past the read_period cap came back skipped').toBeGreaterThan(0);
+  expect.soft(provider.captured.filter((request) => request.toolChoice === FORCED_ANSWER), 'a 1M window never forces the answer').toEqual([]);
+}
+
+function assertBudgetClosed(provider: BudgetProvider): void {
+  const turns = new Set(provider.captured.map((request) => request.turn));
+  for (const turn of turns) {
+    const last = provider.captured.filter((request) => request.turn === turn).at(-1);
+    const where = `turn ${turn + 1} round ${last?.round}`;
+    expect.soft(last?.toolChoice, `${where}: the budget forces the answer`).toBe(FORCED_ANSWER);
+    expect.soft(last?.toolNames, `${where}: only the answer tool is offered`).toEqual(['answer']);
+    const notes = (last?.messages ?? []).filter((message) => message.role === 'system').map((message) => message.content ?? '');
+    expect.soft(notes.some((note) => note.startsWith('The context budget for this turn is used up')), `${where}: the budget note`).toBe(true);
+  }
 }
 
 async function assertBudget(page: Page, provider: BudgetProvider, model: MockModelId, journey: string, turns: number): Promise<void> {
@@ -120,7 +137,7 @@ async function assertBudget(page: Page, provider: BudgetProvider, model: MockMod
     expect.soft(estimatePromptTokens(request), `${where}: prompt within floor(0.5 × ${contextLength}) = ${budget}`).toBeLessThanOrEqual(budget);
     expect.soft(pairingViolations(request.messages), `${where}: every tool_call keeps its tool message`).toEqual([]);
   }
-  assertStressReached(provider);
+  assertStressReached(provider, model);
 }
 
 for (const { id: model } of MOCK_MODELS) {

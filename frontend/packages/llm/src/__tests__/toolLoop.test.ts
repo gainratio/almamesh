@@ -323,9 +323,11 @@ describe("rule 7: tool events", () => {
       { phase: "answering" },
       { phase: "complete" },
     ]);
+    // Each round also carries its budget fields (toolLoop.budget.test.ts covers them).
+    const budget = { estimate: expect.any(Number), estimated: false, budget: 4_096, compacted: 0 };
     expect(o.rounds).toEqual([
-      { round: 1, inputTokens: 120, outputTokens: 7, finishReason: "tool-calls" },
-      { round: 2, inputTokens: 10, outputTokens: 5, finishReason: "tool-calls" },
+      { round: 1, inputTokens: 120, outputTokens: 7, finishReason: "tool-calls", ...budget },
+      { round: 2, inputTokens: 10, outputTokens: 5, finishReason: "tool-calls", ...budget },
     ]);
   });
 

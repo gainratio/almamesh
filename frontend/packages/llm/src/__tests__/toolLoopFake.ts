@@ -13,6 +13,8 @@ export interface FakeTurn {
   readonly text?: string;
   readonly calls?: readonly FakeCall[];
   readonly usage?: { readonly prompt: number; readonly completion: number };
+  /** Send no usage chunk at all (a provider that reports no token counts). */
+  readonly noUsage?: boolean;
   /** Answer with this HTTP status and body instead of a stream. */
   readonly status?: number;
   readonly errorBody?: string;
@@ -65,7 +67,7 @@ export function sseBody(turn: FakeTurn): string {
   chunks.push(chunk({}, turn.calls?.length ? "tool_calls" : "stop"));
   const prompt = turn.usage?.prompt ?? 10;
   const completion = turn.usage?.completion ?? 5;
-  chunks.push({ id: "chatcmpl-1", object: "chat.completion.chunk", created: 0, model: "fake", choices: [], usage: { prompt_tokens: prompt, completion_tokens: completion, total_tokens: prompt + completion } });
+  if (!turn.noUsage) chunks.push({ id: "chatcmpl-1", object: "chat.completion.chunk", created: 0, model: "fake", choices: [], usage: { prompt_tokens: prompt, completion_tokens: completion, total_tokens: prompt + completion } });
   return frame(chunks) + "data: [DONE]\n\n";
 }
 

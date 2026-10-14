@@ -124,8 +124,9 @@ export type {
 export type { ChatMessage, StreamChatOptions } from "./client";
 
 // --- The chat turn's context budget and the earlier turns' tool facts ---
-export { DEFAULT_CONTEXT_TOKENS, chatPromptBudgetFor, turnTokenBudget } from "./contextBudget";
-export { defaultToolSummary, summarizeToolResult, toolFactsNote } from "./compaction";
+export { DEFAULT_CONTEXT_TOKENS, calibratedEstimate, chatPromptBudgetFor, estimateRequestTokens, turnTokenBudget } from "./contextBudget";
+export type { TokenCalibration } from "./contextBudget";
+export { compactToolResult, defaultToolSummary, summarizeToolResult, toolFactsNote } from "./compaction";
 export { resolveModelContextTokens } from "./model-context";
 export type { ResolveModelContextOptions } from "./model-context";
 export type { PriorToolCall, ToolSummarizer, ToolSummary } from "./compaction";

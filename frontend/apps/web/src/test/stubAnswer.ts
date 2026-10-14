@@ -43,13 +43,43 @@ function isReading(value: unknown): value is ReadingLike {
   return typeof value === 'object' && value !== null && 'period' in value && 'dashas' in value;
 }
 
+/** A reading the context budget sent compact: its grounding facts (chatTurn.ts, readPeriodGrounding). */
+interface CompactReading {
+  readonly compacted: true;
+  readonly period: { readonly label?: string };
+  readonly place?: { readonly label?: string };
+  readonly maha: readonly string[];
+  readonly antar: readonly string[];
+  readonly rules: Readonly<Record<string, readonly number[]>>;
+  readonly tags: readonly string[];
+  readonly windows: readonly string[];
+  readonly domains: readonly string[];
+}
+
+function isCompactReading(value: unknown): value is CompactReading {
+  return typeof value === 'object' && value !== null && 'compacted' in value && 'maha' in value && 'antar' in value;
+}
+
+/** The facts a compact reading still gives, in a reading's shape. */
+function fromCompact(compact: CompactReading): ReadingLike {
+  return {
+    period: compact.period,
+    ...(compact.place ? { place: compact.place } : {}),
+    dashas: { maha: compact.maha.map((lord) => ({ lord })), antar: compact.antar.map((lord) => ({ lord })) },
+    lords: Object.entries(compact.rules).map(([lord, rules]) => ({ lord, rules })),
+    sky: [{ tags: compact.tags }],
+    themes: compact.domains.map((domain) => ({ domain })),
+    windows: compact.windows.map((date) => ({ date })),
+  };
+}
+
 function toolResults(body: { readonly messages?: readonly WireMessage[] }): unknown[] {
   return (body.messages ?? []).filter((message) => message.role === 'tool').map((message) => parsed(message.content));
 }
 
-/** Every read_period reading the request carries, oldest first. */
+/** Every read_period reading the request carries (whole or compact), oldest first. */
 export function readingsOf(body: { readonly messages?: readonly WireMessage[] }): ReadingLike[] {
-  return toolResults(body).filter(isReading);
+  return toolResults(body).flatMap((result) => (isReading(result) ? [result] : isCompactReading(result) ? [fromCompact(result)] : []));
 }
 
 /** The newest read_period reading the request carries, if any. */

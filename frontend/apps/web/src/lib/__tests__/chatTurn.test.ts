@@ -4,7 +4,8 @@
  * the answer streams as rendered snapshots; a retried call is telemetry, never a transcript row.
  */
 import type { SiderealChart } from '@almamesh/browser/types';
-import type { ProviderConfig } from '@almamesh/llm';
+import { estimateRequestTokens, type ProviderConfig } from '@almamesh/llm';
+import { BUDGET_INSTRUCTION } from '@almamesh/llm/toolLoop';
 import type { ProcessedBirthData } from '@almamesh/shared-types';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -120,5 +121,59 @@ describe('runChatTurn: a tool that throws', () => {
     await drain(runChatTurn({ ...turn, seams: { ...turn.seams, lookup: async () => { throw stale; } } }));
     expect(useAppStale.getState().stale).toBe(true);
     expect(rows.map((row) => row.status)).toEqual(['error']);
+  });
+});
+
+describe('runChatTurn: the context budget follows the model window', () => {
+  const CATALOG = { data: [
+    { id: 'mock/ctx-8k', context_length: 8_192 }, { id: 'mock/ctx-9k', context_length: 9_216 }, { id: 'mock/ctx-1m', context_length: 1_000_000 },
+  ] };
+  const routerConfig = (model: string): ProviderConfig =>
+    ({ engine: 'openai-http', model, privacyMode: 'cloud_premium', baseUrl: 'https://openrouter.ai/api/v1', apiKey: 'k' });
+  /** The models catalog for a GET; the scripted chat endpoint for everything else. */
+  const withCatalog = (chat: typeof fetch): typeof fetch =>
+    (async (url: string | URL | Request, init?: RequestInit) =>
+      String(url).includes('/models') ? Response.json(CATALOG) : chat(url, init)) as typeof fetch;
+  const readWhileOffered = (start: string) => (body: Record<string, unknown>) =>
+    toolNames(body).includes('read_period') ? { name: 'read_period', args: readPeriodArgs(start) } : stubCallFor(body, {});
+  const script = [readWhileOffered('2019-05'), readWhileOffered('2019-06'), readWhileOffered('2019-07'), (body: Record<string, unknown>) => stubCallFor(body, {})];
+  const tokens = (body: Record<string, unknown>) => estimateRequestTokens(body.messages as unknown[], (body.tools ?? []) as unknown[]);
+  const messages = (body: Record<string, unknown> | undefined) => (body?.messages ?? []) as { role: string; content: string }[];
+  const toolContents = (body: Record<string, unknown> | undefined) => messages(body).filter((m) => m.role === 'tool').map((m) => m.content);
+  const compactedIn = (bodies: readonly Record<string, unknown>[]) => bodies.flatMap(toolContents).filter((content) => content.includes('"compacted":true'));
+  const turnOn = async (model: string) => {
+    const { fetchImpl, bodies } = endpoint(script);
+    const snapshots = await drain(runChatTurn(input(withCatalog(fetchImpl), { config: routerConfig(model), asOf: MAY_2019 })));
+    return { bodies, snapshots };
+  };
+
+  it('an 8k model: the read that fills the budget closes the turn; the answer is forced with the reading whole', async () => {
+    const { bodies, snapshots } = await turnOn('mock/ctx-8k');
+    expect(bodies).toHaveLength(2);
+    expect(bodies[1]?.tool_choice).toEqual({ type: 'function', function: { name: 'answer' } });
+    expect(toolNames(bodies[1])).toEqual(['answer']);
+    expect(messages(bodies[1]).some((m) => m.role === 'system' && m.content === BUDGET_INSTRUCTION)).toBe(true);
+    expect(compactedIn(bodies)).toEqual([]);
+    for (const body of bodies) expect(tokens(body)).toBeLessThanOrEqual(4_096);
+    expect(snapshots.at(-1)).toContain('May 2019');
+  });
+
+  it('a 9k model: an older reading goes to its grounding facts, the newest stays whole, and the turn keeps reading', async () => {
+    const { bodies, snapshots } = await turnOn('mock/ctx-9k');
+    expect(bodies).toHaveLength(4);
+    const compacted = compactedIn(bodies);
+    expect(compacted.length).toBeGreaterThan(0);
+    expect(JSON.parse(compacted[0]!)).toMatchObject({ compacted: true, period: { start: expect.any(String) }, maha: expect.any(Array), antar: expect.any(Array), tags: expect.any(Array) });
+    expect(bodies.every((body) => body.tool_choice === 'required')).toBe(true);
+    for (const body of bodies) expect(tokens(body)).toBeLessThanOrEqual(4_608);
+    expect(snapshots.at(-1)).toContain('May 2019');
+    expect(agentRoundRows().some((row) => row.compacted > 0 && row.budget === 4_608)).toBe(true);
+  });
+
+  it('a 1M model keeps every reading whole and reads all three', async () => {
+    const { bodies } = await turnOn('mock/ctx-1m');
+    expect(bodies).toHaveLength(4);
+    expect(compactedIn(bodies)).toEqual([]);
+    expect(Math.max(...bodies.map(tokens))).toBeGreaterThan(4_096);
   });
 });

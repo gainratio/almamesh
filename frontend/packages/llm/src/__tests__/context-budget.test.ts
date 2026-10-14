@@ -12,8 +12,11 @@ const CHART = {
 import {
   CLOUD_CHAT_BUDGET,
   DEFAULT_CONTEXT_TOKENS,
+  calibratedEstimate,
   chatPromptBudgetFor,
+  compactToolResult,
   defaultToolSummary,
+  estimateRequestTokens,
   summarizeToolResult,
   toolFactsNote,
   turnTokenBudget,
@@ -143,5 +146,35 @@ describe("toolFactsNote (history compaction)", () => {
     expect(note).toContain("n: 39");
     expect(note).not.toMatch(/n: 0 ·/u);
     expect(note.length).toBeLessThanOrEqual(1_600);
+  });
+});
+
+describe("in-turn request estimate (tool loop budget, Task 6b)", () => {
+  it("estimates a request as ceil(chars / 4) of its messages and tool definitions", () => {
+    const messages = [{ role: "user", content: "x".repeat(37) }];
+    const tools = [{ name: "t" }];
+    expect(estimateRequestTokens(messages, tools)).toBe(Math.ceil(JSON.stringify({ messages, tools }).length / 4));
+  });
+
+  it("scales an estimate up by the provider's own count, never down", () => {
+    expect(calibratedEstimate(1_000, { estimate: 500, reported: 1_500 })).toBe(3_000);
+    expect(calibratedEstimate(1_000, { estimate: 500, reported: 100 })).toBe(1_000);
+    expect(calibratedEstimate(1_000, { estimate: 0, reported: 100 })).toBe(1_000);
+    expect(calibratedEstimate(1_000, undefined)).toBe(1_000);
+  });
+});
+
+describe("compactToolResult (in-turn compaction)", () => {
+  it("uses the tool's own compact object, marked compacted", () => {
+    expect(compactToolResult({ big: "x".repeat(99) }, () => ({ period: "May 2019" }))).toEqual({ compacted: true, period: "May 2019" });
+  });
+
+  it("falls back to the default one-line summary when the tool gives none, throws, or returns a non-object", () => {
+    const result = { period: { label: "May 2019" }, text: "x".repeat(500) };
+    const fallback = { ok: true, compacted: true, facts: defaultToolSummary(result).line };
+    expect(compactToolResult(result)).toEqual(fallback);
+    expect(compactToolResult(result, () => { throw new Error("boom"); })).toEqual(fallback);
+    expect(compactToolResult(result, () => "a line")).toEqual(fallback);
+    expect(fallback.facts).toContain("May 2019");
   });
 });

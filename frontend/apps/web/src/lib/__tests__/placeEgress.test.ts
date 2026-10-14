@@ -4,9 +4,9 @@
  * carries the place's label and zone, never a coordinate or a birth field.
  */
 import type { SiderealChart } from '@almamesh/browser/types';
-import type { ProviderConfig } from '@almamesh/llm';
+import { hydrateLlmSettings, type ProviderConfig } from '@almamesh/llm';
 import type { ProcessedBirthData } from '@almamesh/shared-types';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { ChartEngineContextValue } from '../../providers/chartEngineContext';
 import { runChatTurn, type ChatToolCall } from '../chatTurn';
@@ -33,6 +33,10 @@ function engineWith(computeMoonWindow: unknown): ChartEngineContextValue {
 }
 
 describe('a chat-typed city never leaves the device, and the birth place never does', () => {
+  // A roomy window, so the context budget (8k for an unknown local model) does not close the turn before all three calls.
+  beforeEach(() => hydrateLlmSettings(JSON.stringify({ chatContextTokens: 1_000_000 })));
+  afterEach(() => hydrateLlmSettings(null));
+
   it('read_period (day, city, time), read_period (day, no place) and travel (city): no coordinate and no birth field in any request', async () => {
     const computeMoonWindow = vi.fn(async (_input: { event?: { latitude: number } }) => ({ at_place: { at_start: MARK, at_end: MARK }, event: { lagna_sign: 'leo', moon: MARK } }));
     const rows: ChatToolCall[] = [];

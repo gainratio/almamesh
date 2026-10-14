@@ -163,7 +163,9 @@ function turnTools(input: ChatTurnInput, pin: ChatThreadAsOf | undefined, onRead
   const travel = input.onTravel
     ? [createTravelTool({ ...places, threadPlace: input.asOf?.place, birthYear: birthYearOf(input.birth), language: input.language, record: input.onTravel })]
     : [];
-  return [reported(read, onReadStart), ...travel.map((tool) => reported(tool))] as ToolDef<unknown>[];
+  // Under budget pressure a reading goes out as its grounding facts: what the answer is checked against.
+  const compactRead = { ...reported(read, onReadStart), compact: (result: unknown) => (isReadPeriodReading(result) ? readPeriodGrounding(result) : result) };
+  return [compactRead, ...travel.map((tool) => reported(tool))] as ToolDef<unknown>[];
 }
 
 interface Framed {
@@ -220,7 +222,7 @@ function statusSink(input: ChatTurnInput) {
 /** Yields the answer as cumulative markdown snapshots: each one replaces the last. */
 export async function* runChatTurn(input: ChatTurnInput): AsyncGenerator<string> {
   const now = input.now ?? new Date();
-  const { promptBudget, telemetry } = await chatContextFor(input.config, input.signal, input.seams?.fetchImpl);
+  const { contextTokens, promptBudget, telemetry } = await chatContextFor(input.config, input.signal, input.seams?.fetchImpl);
   // An old trip with no place reads the birth place (tripContext.ts).
   const pin = input.asOf ? tripPin(input.asOf, input.birth) : undefined;
   const frame = frameOf(input, pin, now);
@@ -239,6 +241,7 @@ export async function* runChatTurn(input: ChatTurnInput): AsyncGenerator<string>
   };
   yield* runToolTurn({
     config: input.config,
+    ...(contextTokens !== undefined ? { contextTokens } : {}),
     messages,
     tools: turnTools(input, pin, (args) => status.showRead(readPeriodStatusLabel(args, input.language))),
     answer: chatAnswerSpec(() => ({ readings }), { voice: input.mode, language: input.language }),

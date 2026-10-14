@@ -10,6 +10,8 @@ import { chatPromptBudgetFor, readLlmSettings, resolveModelContextTokens, type C
 import { beginAgentTurn, type AgentTurnTelemetry } from './agentRoundTelemetry';
 
 export interface ChatTurnContext {
+  /** The chat model's context window; undefined when unknown (the tool loop then assumes 8k). */
+  readonly contextTokens: number | undefined;
   readonly promptBudget: ChatPromptBudget;
   /** Dev telemetry of the turn's rounds and tool calls (lib/agentRoundTelemetry.ts). */
   readonly telemetry: AgentTurnTelemetry;
@@ -22,5 +24,5 @@ export async function chatContextFor(config: ProviderConfig, signal?: AbortSigna
     ...(signal ? { signal } : {}),
     ...(fetchImpl ? { fetchImpl } : {}),
   });
-  return { promptBudget: chatPromptBudgetFor(contextTokens), telemetry: beginAgentTurn() };
+  return { contextTokens, promptBudget: chatPromptBudgetFor(contextTokens), telemetry: beginAgentTurn() };
 }

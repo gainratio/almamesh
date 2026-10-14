@@ -14,6 +14,7 @@ describe('chatContextFor (the chat turn\'s context budget seam)', () => {
     const context = await chatContextFor(OPENROUTER, undefined, fetchImpl as typeof fetch);
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     expect(context.promptBudget).toBe(CLOUD_CHAT_BUDGET);
+    expect(context.contextTokens).toBe(1_000_000);
     expect(typeof context.telemetry.onRound).toBe('function');
     expect(typeof context.telemetry.onToolCall).toBe('function');
   });
@@ -23,11 +24,13 @@ describe('chatContextFor (the chat turn\'s context budget seam)', () => {
     const fetchImpl = vi.fn();
     const context = await chatContextFor(LOCAL, undefined, fetchImpl as unknown as typeof fetch);
     expect(context.promptBudget.promptTokens).toBe(1_638);
+    expect(context.contextTokens).toBe(8_192);
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
   it('an unknown window caps the prompt as for 8k', async () => {
     const context = await chatContextFor(LOCAL, undefined, vi.fn() as unknown as typeof fetch);
     expect(context.promptBudget.promptTokens).toBe(1_638);
+    expect(context.contextTokens).toBeUndefined(); // the tool loop then assumes 8k
   });
 });

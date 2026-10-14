@@ -3,7 +3,8 @@ import { describe, expect, it } from 'vitest';
 
 import { agentCallRows, agentRoundRows, beginAgentTurn, clearAgentRoundsForTest, recordAgentCall } from '../agentRoundTelemetry';
 
-const ROUND: RoundEvent = { round: 1, inputTokens: 10, outputTokens: 2, finishReason: 'tool-calls' };
+const BUDGET = { estimate: 12, estimated: false, budget: 4_096, compacted: 0 } as const;
+const ROUND: RoundEvent = { round: 1, inputTokens: 10, outputTokens: 2, finishReason: 'tool-calls', ...BUDGET };
 const CALL: ToolCallEvent = { round: 1, toolCallId: 'c1', toolName: 'read_period', args: {}, result: {}, status: 'complete', validFirstTry: true };
 
 describe('agent round telemetry (dev diagnostics only, in memory)', () => {
@@ -18,8 +19,17 @@ describe('agent round telemetry (dev diagnostics only, in memory)', () => {
 
   it('keeps the provider token counts and why the round finished; unknown counts are null', () => {
     clearAgentRoundsForTest();
-    beginAgentTurn().onRound({ round: 1, finishReason: 'stop' });
-    expect(agentRoundRows()).toEqual([{ turn: 1, round: 1, phase: 'decision', input_tokens: null, output_tokens: null, finish_reason: 'stop' }]);
+    beginAgentTurn().onRound({ round: 1, finishReason: 'stop', ...BUDGET, estimated: true });
+    expect(agentRoundRows()).toEqual([{
+      turn: 1, round: 1, phase: 'decision', input_tokens: null, output_tokens: null, finish_reason: 'stop',
+      estimate: 12, estimated: true, budget: 4_096, compacted: 0,
+    }]);
+  });
+
+  it("keeps the turn's budget, the request's estimate and how many results it carried compact", () => {
+    clearAgentRoundsForTest();
+    beginAgentTurn().onRound({ ...ROUND, estimate: 3_900, budget: 4_096, compacted: 2 });
+    expect(agentRoundRows()[0]).toMatchObject({ estimate: 3_900, estimated: false, budget: 4_096, compacted: 2 });
   });
 
   it('the round that called answer is final, and so is the prose fallback', () => {
