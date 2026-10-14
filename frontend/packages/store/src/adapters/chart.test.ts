@@ -535,11 +535,19 @@ describe("toDashaCtx — dasha tree (antar + pratyantar sequences)", () => {
   const referenceChart = (golden as Record<string, SiderealChart>)[REFERENCE_KEY];
   const ctx = toDashaCtx(referenceChart, new Date("2026-06-11T00:00:00Z"));
 
-  it("passes each maha row's antar_sequence through (9 antars per maha, level 'antar')", () => {
+  // CONTRACT REVERSED (fix/dasha-check): this used to require 9 antars in EVERY maha,
+  // which locked in an engine bug: the birth maha squeezed all nine antars into the
+  // birth balance. The birth maha is the tail of a full maha, so it carries only the
+  // antars still running at birth (the first clipped at birth); every later maha has 9.
+  it("passes each maha row's antar_sequence through (the birth maha's tail, then 9 per maha)", () => {
     expect(ctx?.full_sequence).toHaveLength(9);
-    for (const maha of ctx?.full_sequence ?? []) {
+    const [birthMaha] = ctx?.full_sequence ?? [];
+    expect(birthMaha?.antar_sequence?.length).toBeGreaterThanOrEqual(1);
+    expect(birthMaha?.antar_sequence?.length).toBeLessThanOrEqual(9);
+    expect(birthMaha?.antar_sequence?.[0]?.start_date).toBe(birthMaha?.start_date);
+    for (const [index, maha] of (ctx?.full_sequence ?? []).entries()) {
       expect(maha.level).toBe("maha");
-      expect(maha.antar_sequence).toHaveLength(9);
+      if (index > 0) expect(maha.antar_sequence).toHaveLength(9);
       for (const antar of maha.antar_sequence ?? []) {
         expect(antar.level).toBe("antar");
         expect(antar.lord).toBeTruthy();

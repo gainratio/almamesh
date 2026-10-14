@@ -23,58 +23,22 @@
       {
         "antar_sequence": [
           {
-            "duration_years": 0.720741,
-            "end_date": "1990-10-05T18:00:50.014929Z",
-            "lord": "venus",
+            "duration_years": 0.324445,
+            "end_date": "1990-05-14T00:05:00.089572Z",
+            "lord": "saturn",
             "start_date": "1990-01-15T12:00:00Z"
           },
           {
-            "duration_years": 0.216222,
-            "end_date": "1990-12-23T17:25:05.019408Z",
-            "lord": "sun",
-            "start_date": "1990-10-05T18:00:50.014929Z"
-          },
-          {
-            "duration_years": 0.36037,
-            "end_date": "1991-05-04T08:25:30.026872Z",
-            "lord": "moon",
-            "start_date": "1990-12-23T17:25:05.019408Z"
-          },
-          {
-            "duration_years": 0.252259,
-            "end_date": "1991-08-04T11:43:47.532097Z",
-            "lord": "mars",
-            "start_date": "1991-05-04T08:25:30.026872Z"
-          },
-          {
-            "duration_years": 0.648667,
-            "end_date": "1992-03-28T09:56:32.545533Z",
-            "lord": "rahu",
-            "start_date": "1991-08-04T11:43:47.532097Z"
-          },
-          {
-            "duration_years": 0.576593,
-            "end_date": "1992-10-25T00:21:12.557476Z",
-            "lord": "jupiter",
-            "start_date": "1992-03-28T09:56:32.545533Z"
-          },
-          {
-            "duration_years": 0.684704,
-            "end_date": "1993-07-02T02:28:00.071658Z",
-            "lord": "saturn",
-            "start_date": "1992-10-25T00:21:12.557476Z"
-          },
-          {
-            "duration_years": 0.61263,
-            "end_date": "1994-02-10T20:46:42.584347Z",
+            "duration_years": 2.833333,
+            "end_date": "1993-03-13T21:05:00.089572Z",
             "lord": "mercury",
-            "start_date": "1993-07-02T02:28:00.071658Z"
+            "start_date": "1990-05-14T00:05:00.089572Z"
           },
           {
-            "duration_years": 0.252259,
+            "duration_years": 1.166667,
             "end_date": "1994-05-14T00:05:00.089572Z",
             "lord": "ketu",
-            "start_date": "1994-02-10T20:46:42.584347Z"
+            "start_date": "1993-03-13T21:05:00.089572Z"
           }
         ],
         "duration_years": 4.324445,
