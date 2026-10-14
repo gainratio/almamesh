@@ -258,7 +258,7 @@ describe("answerSchema: grounding refinements say the fix", () => {
 
 describe("answerSchema: a period that crosses a dasha change names every running lord", () => {
   const CROSSING: Reading = { ...SEPTEMBER, antar: ["saturn", "venus"], rules: { ...SEPTEMBER.rules, venus: [4, 9] } };
-  const FIX = "This period crosses a dasha change: also name venus in the dasha note.";
+  const FIX = "This period crosses a dasha change: also name Venus in the dasha note.";
 
   it("a single-lord reading is unaffected", () => {
     expect(messages(wire(ANSWER))).toEqual([]);
@@ -283,7 +283,50 @@ describe("answerSchema: a period that crosses a dasha change names every running
 
   it("two maha lords in one reading are both required", () => {
     const other: Reading = { ...SEPTEMBER, maha: ["jupiter", "mars"] };
-    expect(messages(wire(ANSWER), grounded(other))).toEqual(["This period crosses a dasha change: also name mars in the dasha note."]);
+    expect(messages(wire(ANSWER), grounded(other))).toEqual(["This period crosses a dasha change: also name Mars in the dasha note."]);
+  });
+
+  describe("in Spanish and Portuguese the lord may be named in the answer's language", () => {
+    const MERCURY: Reading = { ...SEPTEMBER, antar: ["saturn", "mercury"] };
+    const VENUS: Reading = CROSSING;
+    const inLanguage = (language: "en" | "es" | "pt", opening: string, reading: Reading): string[] => {
+      const parsed = answerSchema(grounded(reading), language).safeParse(withAnswer({ opening }));
+      return parsed.success ? [] : parsed.error.issues.map((issue) => issue.message);
+    };
+
+    it("es: Mercurio and Marte count, any case", () => {
+      expect(inLanguage("es", "Mercurio toma el relevo a mitad de mes.", MERCURY)).toEqual([]);
+      expect(inLanguage("es", "MERCURIO toma el relevo.", MERCURY)).toEqual([]);
+      const mars: Reading = { ...SEPTEMBER, maha: ["jupiter", "mars"] };
+      expect(inLanguage("es", "Júpiter cede el paso a Marte.", mars)).toEqual([]);
+    });
+
+    it("pt: Mercúrio and Vênus count, with or without accents", () => {
+      expect(inLanguage("pt", "Mercúrio assume no meio do mês.", MERCURY)).toEqual([]);
+      expect(inLanguage("pt", "Mercurio assume no meio do mês.", MERCURY)).toEqual([]);
+      expect(inLanguage("pt", "Vênus suaviza o fim do mês.", VENUS)).toEqual([]);
+      expect(inLanguage("pt", "Venus suaviza o fim do mês.", VENUS)).toEqual([]);
+    });
+
+    it("the English name still counts in es and pt prose", () => {
+      expect(inLanguage("es", "Mercury toma el relevo.", MERCURY)).toEqual([]);
+    });
+
+    it("the fix names the lord in the answer's language", () => {
+      expect(inLanguage("es", "Un mes lento.", MERCURY)).toEqual(["This period crosses a dasha change: also name Mercurio in the dasha note."]);
+      expect(inLanguage("pt", "Um mês lento.", MERCURY)).toEqual(["This period crosses a dasha change: also name Mercúrio in the dasha note."]);
+      expect(inLanguage("pt", "Um mês lento.", VENUS)).toEqual(["This period crosses a dasha change: also name Vênus in the dasha note."]);
+      expect(inLanguage("en", "A slow month.", MERCURY)).toEqual(["This period crosses a dasha change: also name Mercury in the dasha note."]);
+    });
+
+    it("another language's name does not count (Mercurio is not English)", () => {
+      expect(inLanguage("en", "Mercurio takes over.", MERCURY)).toEqual(["This period crosses a dasha change: also name Mercury in the dasha note."]);
+    });
+
+    it("the answer spec checks in its own language", () => {
+      const spec = chatAnswerSpec(grounded(MERCURY), { voice: "layman", language: "pt" });
+      expect(spec.schema.safeParse(withAnswer({ opening: "Mercúrio assume." })).success).toBe(true);
+    });
   });
 
   it("the rendered answer names both lords", () => {

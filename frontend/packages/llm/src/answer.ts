@@ -180,19 +180,32 @@ function checkDashas(value: PeriodAnswer["dashas"], readings: readonly Grounding
 
 const wordIn = (text: string, word: string): boolean => new RegExp(`(?<![\\p{L}\\p{N}_])${word}(?![\\p{L}\\p{N}_])`, "iu").test(text);
 
-/** A span across a dasha change has several running lords; the typed answer holds one per level, so the rest must be named in the text. */
-function checkCrossings(value: PeriodAnswer, readings: readonly GroundingReading[], issue: Issue): void {
+/** A graha as the answer's language names it ("Mercúrio" in pt); a name that is not a graha, as is. */
+const grahaLabel = (lord: string, language: Language): string => (isGraha(lord) ? LABELS[language].grahas[lord] : lord);
+
+/** The text names the lord in English or in the answer's language, any case, with or without accents. */
+function namesLord(text: string, lord: string, language: Language): boolean {
+  const said = plain(text);
+  return [lord, grahaLabel(lord, language)].some((name) => wordIn(said, plain(name)));
+}
+
+/**
+ * A span across a dasha change has several running lords; the typed answer holds one per level,
+ * so the rest must be named in the text. The rule: every lord of every reading that crosses a
+ * change (a comparison of two such periods names the lords of both).
+ */
+function checkCrossings(value: PeriodAnswer, readings: readonly GroundingReading[], language: Language, issue: Issue): void {
   const { maha, antar, pratyantar } = value.dashas;
   const text = [value.opening, ...[maha, antar, pratyantar].flatMap((line) => (line ? [line.lord, line.note] : []))].join("\n");
-  // Per reading: a comparison of two periods may legitimately answer with either one's lord.
   const crossing = readings.flatMap((reading) =>
     (["maha", "antar"] as const).flatMap((level) => {
       const lords = unique(reading[level].map(lower));
       return lords.length > 1 ? lords : [];
     }),
   );
-  const missing = unique(crossing).filter((lord) => !wordIn(text, lord));
-  if (missing.length > 0) issue(`This period crosses a dasha change: also name ${missing.join(", ")} in the dasha note.`, ["dashas"]);
+  const missing = unique(crossing).filter((lord) => !namesLord(text, lord, language));
+  if (missing.length === 0) return;
+  issue(`This period crosses a dasha change: also name ${missing.map((lord) => grahaLabel(lord, language)).join(", ")} in the dasha note.`, ["dashas"]);
 }
 
 function checkMoon(moon: readonly MoonLine[], readings: readonly GroundingReading[], issue: Issue): void {
@@ -242,7 +255,7 @@ function checkGeneral(value: Wire, readings: readonly GroundingReading[], issue:
   else if (!value.markdown?.trim()) issue('kind "general" needs markdown: the answer as plain prose.', ["markdown"]);
 }
 
-function checkPeriod(value: Wire, readings: readonly GroundingReading[], issue: Issue): void {
+function checkPeriod(value: Wire, readings: readonly GroundingReading[], language: Language, issue: Issue): void {
   if (readings.length === 0) {
     issue('Read the period with read_period before answering with kind "period", or answer with kind "general".', ["kind"]);
     return;
@@ -252,20 +265,23 @@ function checkPeriod(value: Wire, readings: readonly GroundingReading[], issue: 
   if (missing.length > 0) return;
   const answer = value as PeriodAnswer & Wire;
   checkDashas(answer.dashas, readings, issue);
-  checkCrossings(answer, readings, issue);
+  checkCrossings(answer, readings, language, issue);
   checkMoon(answer.moon, readings, issue);
   checkWindows(answer.windows, readings, issue);
   checkPlace(answer.place, readings, issue);
   checkThemes(answer.themes, readings, issue);
 }
 
-/** The answer tool's schema, checked against the readings `grounding()` returns at validation time. */
-export function answerSchema(grounding: () => AnswerGrounding): z.ZodType<ChatAnswer> {
+/**
+ * The answer tool's schema, checked against the readings `grounding()` returns at validation time.
+ * `language` is the answer's: its graha names count in the text, and fixes name grahas in it.
+ */
+export function answerSchema(grounding: () => AnswerGrounding, language: Language = "en"): z.ZodType<ChatAnswer> {
   const schema = wireAnswer.superRefine((value, ctx) => {
     const issue: Issue = (message, path) => ctx.addIssue({ code: "custom", message, path });
     const { readings } = grounding();
     if (value.kind === "general") checkGeneral(value, readings, issue);
-    else checkPeriod(value, readings, issue);
+    else checkPeriod(value, readings, language, issue);
   });
   // The refinement guarantees the kind's keys are filled, so the parsed wire value is a ChatAnswer.
   return schema as unknown as z.ZodType<ChatAnswer>;
@@ -555,7 +571,7 @@ function withReadingPlace<T>(value: T, readings: readonly GroundingReading[]): T
 export function chatAnswerSpec(grounding: () => AnswerGrounding, o: RenderOptions): AnswerSpec<ChatAnswer> {
   const placed = <T>(value: T): T => withReadingPlace(value, grounding().readings);
   return {
-    schema: answerSchema(grounding),
+    schema: answerSchema(grounding, o.language),
     render: (value, final) => (final ? renderAnswer(placed(value as ChatAnswer), o) : renderPartialAnswer(placed(value as DeepPartial<ChatAnswer>), o)),
   };
 }
