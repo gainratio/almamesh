@@ -26,7 +26,7 @@ const SEPTEMBER: Reading = {
   antar: ["saturn"],
   rules: { jupiter: [2, 11], saturn: [1, 12], mercury: [5, 8], rahu: [] },
   tags: ["sade_sati_phase_1", "jupiter_from_moon_11"],
-  windows: ["2019-09-25"],
+  windows: [{ date: "2019-09-25", what: "Mars enters Virgo" }],
   domains: ["career", "obstacles"],
 };
 
@@ -113,11 +113,50 @@ describe("answerSchema: grounding refinements say the fix", () => {
     ]);
   });
 
-  it("a period answer must fill its fields", () => {
+  it("a period answer must fill its fields, and each missing key says what goes in it", () => {
     expect(messages({ ...wire(ANSWER), opening: null, themes: null })).toEqual([
-      'opening is required when kind is "period"',
-      'themes is required when kind is "period"',
+      'opening is required when kind is "period": two or three plain sentences that answer the question',
+      'themes is required when kind is "period": give at least one theme with its confidence; the reading has an obstacles theme: give one theme an obstacle that says what blocks and why',
     ]);
+  });
+
+  it("a first answer missing moon and windows gets ONE rejection naming the allowed tags and dated windows", () => {
+    expect(messages({ ...wire(ANSWER), moon: null, windows: null })).toEqual([
+      'moon is required when kind is "period": name at least one Moon tag: sade_sati_phase_1, jupiter_from_moon_11',
+      'windows is required when kind is "period": give at least one dated window from the reading, e.g. 2019-09-25: Mars enters Virgo',
+    ]);
+  });
+
+  it("a missing key with nothing to cite says to send an empty list", () => {
+    expect(messages({ ...wire(ANSWER), moon: null, windows: null }, grounded({ ...SEPTEMBER, tags: [], windows: [] }))).toEqual([
+      'moon is required when kind is "period": the reading has no Moon tags, so send []',
+      'windows is required when kind is "period": the reading has no dated days, so send []',
+    ]);
+  });
+
+  it("a missing dashas key names the lords and their houses; a missing period names the reading's label", () => {
+    expect(messages({ ...wire(ANSWER), dashas: null, period: null })).toEqual([
+      'period is required when kind is "period": the period as a person says it, e.g. "September 2019"',
+      'dashas is required when kind is "period": maha lord one of: jupiter (rules 2, 11); antar lord one of: saturn (rules 1, 12)',
+    ]);
+  });
+
+  it("a missing key does not stop the other checks: every issue comes back in the same round", () => {
+    const themes = ANSWER.themes.map((theme) => ({ ...theme, obstacle: null }));
+    expect(messages({ ...wire({ ...ANSWER, themes }), moon: null, place: "Shanghai" })).toEqual([
+      'moon is required when kind is "period": name at least one Moon tag: sade_sati_phase_1, jupiter_from_moon_11',
+      "name the place as the reading does: Vadodara, India",
+      "the reading has an obstacles theme: give one theme an obstacle that says what blocks and why",
+    ]);
+  });
+
+  it("the wire schema says which keys a period answer must fill, and what goes in each", () => {
+    const schema = z.toJSONSchema(answerSchema(grounded()), { target: "draft-7", unrepresentable: "any" }) as { properties: Record<string, { description?: string }> };
+    for (const key of ["period", "opening", "dashas", "moon", "themes", "windows"]) {
+      expect(schema.properties[key]?.description, key).toMatch(/^kind "period": required\b/);
+    }
+    expect(schema.properties.windows?.description).toMatch(/dated days from the reading/);
+    expect(schema.properties.moon?.description).toMatch(/Moon tags from the reading/);
   });
 
   it("the maha lord must come from the reading", () => {
@@ -187,16 +226,27 @@ describe("answerSchema: grounding refinements say the fix", () => {
   });
 
   it("windows may not be empty while the reading has some", () => {
-    expect(messages(withAnswer({ windows: [] }))).toEqual(["give at least one dated window from the reading: 2019-09-25"]);
+    expect(messages(withAnswer({ windows: [] }))).toEqual(["give at least one dated window from the reading, e.g. 2019-09-25: Mars enters Virgo"]);
   });
 
   it("the window suggestion lists only dates inside the period read", () => {
-    const reading = { ...SEPTEMBER, windows: ["2019-08-30", "2019-09-25", "2019-10-02"] };
-    expect(messages(withAnswer({ windows: [] }), grounded(reading))).toEqual(["give at least one dated window from the reading: 2019-09-25"]);
+    const reading = { ...SEPTEMBER, windows: [{ date: "2019-08-30", what: "a" }, { date: "2019-09-25", what: "Mars enters Virgo" }, { date: "2019-10-02", what: "b" }] };
+    expect(messages(withAnswer({ windows: [] }), grounded(reading))).toEqual(["give at least one dated window from the reading, e.g. 2019-09-25: Mars enters Virgo"]);
+  });
+
+  it("a date from a segment event or a dasha change is a dated window too, named by what happens", () => {
+    const november: Reading = {
+      ...SEPTEMBER,
+      period: { start: "2026-11-01", end: "2026-11-30", label: "November 2026" },
+      windows: [{ date: "2026-11-12", what: "Mars enters Leo" }, { date: "2026-11-20", what: "pratyantar Mars begins" }],
+    };
+    expect(messages(withAnswer({ windows: [] }), grounded(november))).toEqual([
+      "give at least one dated window from the reading, e.g. 2026-11-12: Mars enters Leo; 2026-11-20: pratyantar Mars begins",
+    ]);
   });
 
   it("a reading whose windows all fall outside its period does not demand one", () => {
-    expect(messages(withAnswer({ windows: [] }), grounded({ ...SEPTEMBER, windows: ["2019-10-02"] }))).toEqual([]);
+    expect(messages(withAnswer({ windows: [] }), grounded({ ...SEPTEMBER, windows: [{ date: "2019-10-02", what: "x" }] }))).toEqual([]);
   });
 
   it("the place matches without accents on either side", () => {
@@ -230,8 +280,21 @@ describe("answerSchema: grounding refinements say the fix", () => {
     expect(schema.properties.place.description).toBe("the place as the reading names it, or null for the reading's own place");
   });
 
-  it("a reading without a place label does not constrain the place", () => {
-    expect(messages(withAnswer({ place: "home" }), grounded({ ...SEPTEMBER, place: { label: "" } }))).toEqual([]);
+  // CONTRACT REVERSAL (Task 10d): this test used to assert that a reading without a place label
+  // accepted ANY place ("home" passed). In today threads the label is empty, so gpt-sol's guess
+  // "America/Los_Angeles timezone" was accepted and rendered as the heading's place. Now, when
+  // every reading this turn has no place, a named place is refused; null or blank still passes.
+  it("a reading without a place label refuses a named place: the answer's place must be null", () => {
+    const nowhere = grounded({ ...SEPTEMBER, place: { label: "" } });
+    expect(messages(withAnswer({ place: "home" }), nowhere)).toEqual(["This reading has no place; set place to null."]);
+    expect(messages(withAnswer({ place: "America/Los_Angeles timezone" }), nowhere)).toEqual(["This reading has no place; set place to null."]);
+    expect(messages(withAnswer({ place: null }), nowhere)).toEqual([]);
+    expect(messages(withAnswer({ place: " " }), nowhere)).toEqual([]);
+  });
+
+  it("one labelled reading among unlabelled ones still names the place by its label", () => {
+    const may: Reading = { ...SEPTEMBER, period: { start: "2019-05-01", end: "2019-05-31", label: "May 2019" }, place: { label: "" } };
+    expect(messages(withAnswer({ place: "Vadodara" }), grounded(SEPTEMBER, may))).toEqual([]);
   });
 
   it("at least one theme", () => {
@@ -247,7 +310,7 @@ describe("answerSchema: grounding refinements say the fix", () => {
   });
 
   it("two readings (a comparison) allow the facts of either", () => {
-    const may: Reading = { ...SEPTEMBER, period: { start: "2019-05-01", end: "2019-05-31", label: "May 2019" }, antar: ["mercury"], windows: ["2019-05-10"] };
+    const may: Reading = { ...SEPTEMBER, period: { start: "2019-05-01", end: "2019-05-31", label: "May 2019" }, antar: ["mercury"], windows: [{ date: "2019-05-10", what: "x" }] };
     const dashas = { ...ANSWER.dashas, antar: { ...ANSWER.dashas.antar, lord: "mercury" as const, rules: [5, 8] } };
     expect(messages(withAnswer({ dashas, windows: [{ date: "2019-05-10", what: "x" }] }), grounded(SEPTEMBER, may))).toEqual([]);
     expect(messages(withAnswer({ windows: [{ date: "2019-07-04", what: "x" }] }), grounded(SEPTEMBER, may))).toEqual([
@@ -625,6 +688,14 @@ describe("answerSchema: a model that sends \"null\" or omits nullable keys (prod
     const { advice: _advice, ...sent } = wire(ANSWER);
     const events = await answerEvents(sent);
     expect(events.map((e) => [e.status, e.validFirstTry])).toEqual([["complete", true]]);
+  });
+
+  it("a first answer that leaves moon and windows null is fixed in ONE retry: the rejection lists the tags and the dated windows", async () => {
+    const events = await answerEvents({ ...wire(ANSWER), moon: null, windows: null }, wire(ANSWER));
+    expect(events.map((e) => e.status)).toEqual(["retried", "complete"]);
+    const reason = String(events[0]?.result);
+    expect(reason).toContain("name at least one Moon tag: sade_sati_phase_1, jupiter_from_moon_11");
+    expect(reason).toContain("give at least one dated window from the reading, e.g. 2019-09-25: Mars enters Virgo");
   });
 
   it("a nested wrong value still retries", async () => {

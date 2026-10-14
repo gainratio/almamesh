@@ -477,8 +477,53 @@ describe('readPeriodGrounding', () => {
     expect(grounding.antar).toEqual(['rahu']);
     expect(grounding.rules.rahu).toEqual(result.lords.find((lord) => lord.lord === 'rahu')?.rules ?? []);
     expect(grounding.tags).toEqual([...new Set(result.sky.flatMap((span) => span.tags))]);
-    expect(grounding.windows).toEqual(result.windows.map((window) => window.date));
+    expect(grounding.windows.map((fact) => fact.date)).toEqual(expect.arrayContaining(result.windows.map((window) => window.date)));
     expect(grounding.domains).toEqual(result.themes.map((theme) => theme.domain));
+  });
+
+  /** A November-like month: no theme window inside it, but a sign change and a pratyantar change. */
+  const november = (base: ReadPeriodReading): ReadPeriodReading => ({
+    ...base,
+    period: { ...base.period, start: '2026-11-01', end: '2026-11-30', label: 'November 2026' },
+    dashas: {
+      ...base.dashas,
+      maha: [{ lord: 'jupiter', start: '2026-11-01', end: '2026-11-30' }],
+      antar: [{ lord: 'venus', start: '2026-11-01', end: '2026-11-30' }],
+      pratyantar: [{ lord: 'moon', start: '2026-11-01', end: '2026-11-19' }, { lord: 'mars', start: '2026-11-20', end: '2026-11-30' }],
+      sandhi: { level: 'antar', date: '2026-11-25' },
+    },
+    segments: [
+      { start: '2026-11-01', end: '2026-11-19', maha: 'jupiter', antar: 'venus', pratyantar: 'moon', events: ['2026-11-12 mars.ingress.leo', '2026-12-02 venus.ingress.libra'] },
+      { start: '2026-11-20', end: '2026-11-30', maha: 'jupiter', antar: 'venus', pratyantar: 'mars', events: ['2026-11-28 saturn.station.direct'] },
+    ],
+    windows: [],
+  });
+
+  it('every dated fact inside the period is a window: segment events, dasha changes and the sandhi, each labelled', async () => {
+    const base = (await read({ start: '2019-06' })).result as ReadPeriodReading;
+    expect(readPeriodGrounding(november(base)).windows).toEqual([
+      { date: '2026-11-12', what: 'Mars enters Leo' },
+      { date: '2026-11-20', what: 'pratyantar Mars begins' },
+      { date: '2026-11-25', what: 'antar dasha junction (sandhi)' },
+      { date: '2026-11-28', what: 'Saturn stations direct' },
+    ]);
+  });
+
+  it('theme windows keep their place, labelled from their descriptor', async () => {
+    const base = november((await read({ start: '2019-06' })).result as ReadPeriodReading);
+    const reading = { ...base, segments: [], windows: [{ date: '2026-11-05', descriptor: 'transit.jupiter.ingress.cancer', severity: 'supportive' as const, domains: ['career'] }] };
+    expect(readPeriodGrounding(reading).windows).toEqual([
+      { date: '2026-11-05', what: 'Jupiter enters Cancer' },
+      { date: '2026-11-20', what: 'pratyantar Mars begins' },
+      { date: '2026-11-25', what: 'antar dasha junction (sandhi)' },
+    ]);
+  });
+
+  it('a reading with no events, no dasha change and no theme window grounds no windows', async () => {
+    const base = november((await read({ start: '2019-06' })).result as ReadPeriodReading);
+    const { sandhi: _sandhi, ...dashas } = base.dashas;
+    const flat = { ...base, dashas: { ...dashas, pratyantar: [{ lord: 'moon', start: '2026-11-01', end: '2026-11-30' }] }, segments: [{ ...base.segments[0]!, events: [] }] };
+    expect(readPeriodGrounding(flat).windows).toEqual([]);
   });
 
   it('an unlabelled place grounds as an empty label', async () => {

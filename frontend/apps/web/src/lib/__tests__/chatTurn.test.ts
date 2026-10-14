@@ -150,7 +150,7 @@ describe('runChatTurn: a tool that throws', () => {
 
 describe('runChatTurn: the context budget follows the model window', () => {
   const CATALOG = { data: [
-    { id: 'mock/ctx-8k', context_length: 8_192 }, { id: 'mock/ctx-9k', context_length: 9_216 }, { id: 'mock/ctx-1m', context_length: 1_000_000 },
+    { id: 'mock/ctx-8k', context_length: 8_192 }, { id: 'mock/ctx-9k', context_length: 9_472 }, { id: 'mock/ctx-1m', context_length: 1_000_000 },
   ] };
   const routerConfig = (model: string): ProviderConfig =>
     ({ engine: 'openai-http', model, privacyMode: 'cloud_premium', baseUrl: 'https://openrouter.ai/api/v1', apiKey: 'k' });
@@ -182,6 +182,9 @@ describe('runChatTurn: the context budget follows the model window', () => {
     expect(snapshots.at(-1)).toContain('May 2019');
   });
 
+  // 9_472 (was 9_216): Task 10d's answer-key descriptions add ~55 tokens to every request (216
+  // chars of schema) and compact readings carry labelled windows; that tipped the old 9_216
+  // window into a forced answer on the 4th request. The scenario is unchanged.
   it('a 9k model: an older reading goes to its grounding facts, the newest stays whole, and the turn keeps reading', async () => {
     const { bodies, snapshots } = await turnOn('mock/ctx-9k');
     expect(bodies).toHaveLength(4);
@@ -189,9 +192,9 @@ describe('runChatTurn: the context budget follows the model window', () => {
     expect(compacted.length).toBeGreaterThan(0);
     expect(JSON.parse(compacted[0]!)).toMatchObject({ compacted: true, period: { start: expect.any(String) }, maha: expect.any(Array), antar: expect.any(Array), tags: expect.any(Array) });
     expect(bodies.every((body) => body.tool_choice === 'required')).toBe(true);
-    for (const body of bodies) expect(tokens(body)).toBeLessThanOrEqual(4_608);
+    for (const body of bodies) expect(tokens(body)).toBeLessThanOrEqual(4_736);
     expect(snapshots.at(-1)).toContain('May 2019');
-    expect(agentRoundRows().some((row) => row.compacted > 0 && row.budget === 4_608)).toBe(true);
+    expect(agentRoundRows().some((row) => row.compacted > 0 && row.budget === 4_736)).toBe(true);
   });
 
   it('a 1M model keeps every reading whole and reads all three', async () => {

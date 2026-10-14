@@ -22,10 +22,19 @@ export interface GroundingReading {
   readonly rules: Readonly<Record<string, readonly number[]>>;
   /** Moon-based sky tags, e.g. sade_sati_phase_1, jupiter_from_moon_11. */
   readonly tags: readonly string[];
-  /** Window dates, YYYY-MM-DD. */
-  readonly windows: readonly string[];
+  /**
+   * Every dated fact inside the period (theme windows, segment events, dasha changes, a sandhi),
+   * with a short label of what happens that day, e.g. { date: "2026-11-12", what: "Mars enters Leo" }.
+   */
+  readonly windows: readonly DatedFact[];
   /** The reading's theme domains, e.g. career, obstacles. */
   readonly domains: readonly string[];
+}
+
+/** A dated fact from a reading: its day (YYYY-MM-DD) and a short label of what happens. */
+export interface DatedFact {
+  readonly date: string;
+  readonly what: string;
 }
 
 /** The readings completed this turn (read_period results, projected flat). */
@@ -122,16 +131,28 @@ const windowLineSchema = z.object({
   what: z.string().describe("one plain sentence on what to watch that day"),
 });
 
+/** The wire description of each key a period answer must fill (short: it rides in every request). */
+const PERIOD_KEY_TEXT = {
+  period: 'e.g. "September 2019"',
+  opening: "2-3 sentences answering the question",
+  dashas: "lords and the houses they rule",
+  moon: "Moon tags from the reading; [] if none",
+  themes: "at least one",
+  windows: "dated days from the reading; [] if none",
+} as const;
+
+const required = (key: keyof typeof PERIOD_KEY_TEXT): string => `kind "period": required, ${PERIOD_KEY_TEXT[key]}`;
+
 const wireAnswer = z.object({
   kind: z.enum(["period", "general"]).describe('"period" after read_period; "general" otherwise'),
   markdown: z.string().nullable().describe('kind "general" only: the answer as plain prose'),
-  period: z.string().nullable().describe('the period as a person says it, e.g. "September 2019"'),
+  period: z.string().nullable().describe(required("period")),
   place: z.string().nullable().describe("the place as the reading names it, or null for the reading's own place"),
-  opening: z.string().nullable().describe("two or three plain sentences that answer the question"),
-  dashas: dashasSchema.nullable(),
-  moon: z.array(moonLineSchema).nullable(),
-  themes: z.array(themeLineSchema).nullable(),
-  windows: z.array(windowLineSchema).nullable(),
+  opening: z.string().nullable().describe(required("opening")),
+  dashas: dashasSchema.nullable().describe(required("dashas")),
+  moon: z.array(moonLineSchema).nullable().describe(required("moon")),
+  themes: z.array(themeLineSchema).nullable().describe(required("themes")),
+  windows: z.array(windowLineSchema).nullable().describe(required("windows")),
   advice: z.string().nullable().describe("one practical sentence, or null"),
 });
 
@@ -208,45 +229,114 @@ function checkCrossings(value: PeriodAnswer, readings: readonly GroundingReading
   issue(`This period crosses a dasha change: also name ${missing.map((lord) => grahaLabel(lord, language)).join(", ")} in the dasha note.`, ["dashas"]);
 }
 
+const allTags = (readings: readonly GroundingReading[]): string[] => unique(readings.flatMap((reading) => reading.tags));
+
+/** The fix for an empty or missing Moon section: the tags to name, or [] when there are none. */
+function moonFix(readings: readonly GroundingReading[]): string {
+  const tags = allTags(readings);
+  return tags.length > 0 ? `name at least one Moon tag: ${tags.join(", ")}` : "the reading has no Moon tags, so send []";
+}
+
 function checkMoon(moon: readonly MoonLine[], readings: readonly GroundingReading[], issue: Issue): void {
-  const tags = unique(readings.flatMap((reading) => reading.tags));
+  const tags = allTags(readings);
   if (tags.length === 0 && moon.length > 0) issue("the reading has no Moon tags: leave moon empty", ["moon"]);
-  else if (tags.length > 0 && moon.length === 0) issue(`name at least one Moon tag: ${tags.join(", ")}`, ["moon"]);
+  else if (tags.length > 0 && moon.length === 0) issue(moonFix(readings), ["moon"]);
   else if (moon.some((line) => !tags.map(lower).includes(lower(line.tag)))) issue(`moon tags must come from the reading: ${tags.join(", ")}`, ["moon"]);
 }
 
 const dayOf = (instant: string): string => instant.slice(0, 10);
 
+const insideAny = (readings: readonly GroundingReading[]) => (date: string): boolean =>
+  readings.some(({ period }) => date >= dayOf(period.start) && date <= dayOf(period.end));
+
+/** The reading's dated facts inside a period read, one per day (the first label for a day), by date. */
+function datedFacts(readings: readonly GroundingReading[]): DatedFact[] {
+  const inside = insideAny(readings);
+  const byDay = new Map<string, DatedFact>();
+  for (const fact of readings.flatMap((reading) => reading.windows)) {
+    if (inside(fact.date) && !byDay.has(fact.date)) byDay.set(fact.date, fact);
+  }
+  return [...byDay.values()].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+}
+
+/** The fix for an empty or missing windows list: dated facts to cite, or [] when there are none. */
+function windowsFix(readings: readonly GroundingReading[]): string {
+  const facts = datedFacts(readings);
+  if (facts.length === 0) return "the reading has no dated days, so send []";
+  return `give at least one dated window from the reading, e.g. ${facts.slice(0, 6).map((fact) => `${fact.date}: ${fact.what}`).join("; ")}`;
+}
+
 function checkWindows(windows: readonly WindowLine[], readings: readonly GroundingReading[], issue: Issue): void {
-  const inside = (date: string) => readings.some(({ period }) => date >= dayOf(period.start) && date <= dayOf(period.end));
-  const dates = unique(readings.flatMap((reading) => reading.windows)).filter(inside);
-  if (windows.length === 0 && dates.length > 0) {
-    issue(`give at least one dated window from the reading: ${dates.slice(0, 6).join(", ")}`, ["windows"]);
+  if (windows.length === 0 && datedFacts(readings).length > 0) {
+    issue(windowsFix(readings), ["windows"]);
     return;
   }
   // A malformed date is already reported by its own pattern.
+  const inside = insideAny(readings);
   if (windows.every((line) => !ISO_DAY.test(line.date) || inside(line.date))) return;
   const ranges = readings.map(({ period }) => `${dayOf(period.start)}..${dayOf(period.end)}`);
   issue(`dates must fall inside ${ranges.join(", ")}`, ["windows"]);
 }
 
-/** Only a place that is given is checked: null or blank is the reading's own place. */
+/**
+ * Only a place that is given is checked: null or blank is the reading's own place. When no
+ * reading this turn has a place (a today thread reads at the viewer's zone only), a named place
+ * can only be a guess, so it is refused.
+ */
 function checkPlace(place: string | null, readings: readonly GroundingReading[], issue: Issue): void {
   if (!place?.trim()) return;
   const labels = unique(readings.map((reading) => reading.place.label.trim()).filter(Boolean));
-  if (labels.length === 0) return;
+  if (labels.length === 0) {
+    issue("This reading has no place; set place to null.", ["place"]);
+    return;
+  }
   const named = labels.some((label) => plain(place).includes(plain(label.split(",")[0]?.trim() ?? label)));
   if (!named) issue(`name the place as the reading does: ${labels.join(" or ")}`, ["place"]);
 }
 
+const NO_THEME = "give at least one theme with its confidence";
+const OBSTACLE_FIX = "the reading has an obstacles theme: give one theme an obstacle that says what blocks and why";
+const hasObstacles = (readings: readonly GroundingReading[]): boolean => readings.some((reading) => reading.domains.includes("obstacles"));
+
 function checkThemes(themes: readonly ThemeLine[], readings: readonly GroundingReading[], issue: Issue): void {
   if (themes.length === 0) {
-    issue("give at least one theme with its confidence", ["themes"]);
+    issue(NO_THEME, ["themes"]);
     return;
   }
-  const obstacles = readings.some((reading) => reading.domains.includes("obstacles"));
-  if (obstacles && !themes.some((theme) => theme.obstacle?.trim())) {
-    issue("the reading has an obstacles theme: give one theme an obstacle that says what blocks and why", ["themes"]);
+  if (hasObstacles(readings) && !themes.some((theme) => theme.obstacle?.trim())) issue(OBSTACLE_FIX, ["themes"]);
+}
+
+/** A level's allowed lords with the houses each rules, e.g. "jupiter (rules 2, 11)". */
+function lordsFix(level: "maha" | "antar", readings: readonly GroundingReading[]): string | undefined {
+  const lords = unique(readings.flatMap((reading) => reading[level].map(lower)));
+  if (lords.length === 0) return undefined;
+  const named = lords.map((lord) => {
+    const houses = isGraha(lord) ? chartRules(lord, readings) : undefined;
+    if (houses === undefined) return lord;
+    return `${lord} (rules ${houses.length === 0 ? "no houses" : [...houses].sort((x, y) => x - y).join(", ")})`;
+  });
+  return `${level} lord one of: ${named.join(", ")}`;
+}
+
+/** What a missing period key needs, from this turn's readings. */
+function missingFix(key: (typeof PERIOD_KEYS)[number], readings: readonly GroundingReading[]): string {
+  switch (key) {
+    case "period": {
+      const labels = unique(readings.map((reading) => reading.period.label.trim()).filter(Boolean));
+      return labels.length > 0 ? `the period as a person says it, e.g. ${labels.map((label) => `"${label}"`).join(" or ")}` : "the period as a person says it";
+    }
+    case "dashas": {
+      const lords = [lordsFix("maha", readings), lordsFix("antar", readings)].filter((fix) => fix !== undefined);
+      return lords.length > 0 ? lords.join("; ") : PERIOD_KEY_TEXT.dashas;
+    }
+    case "moon":
+      return moonFix(readings);
+    case "windows":
+      return windowsFix(readings);
+    case "themes":
+      return hasObstacles(readings) ? `${NO_THEME}; ${OBSTACLE_FIX}` : NO_THEME;
+    case "opening":
+      return "two or three plain sentences that answer the question";
   }
 }
 
@@ -260,16 +350,18 @@ function checkPeriod(value: Wire, readings: readonly GroundingReading[], languag
     issue('Read the period with read_period before answering with kind "period", or answer with kind "general".', ["kind"]);
     return;
   }
-  const missing = PERIOD_KEYS.filter((key) => value[key] === null);
-  for (const key of missing) issue(`${key} is required when kind is "period"`, [key]);
-  if (missing.length > 0) return;
-  const answer = value as PeriodAnswer & Wire;
-  checkDashas(answer.dashas, readings, issue);
-  checkCrossings(answer, readings, language, issue);
-  checkMoon(answer.moon, readings, issue);
-  checkWindows(answer.windows, readings, issue);
-  checkPlace(answer.place, readings, issue);
-  checkThemes(answer.themes, readings, issue);
+  // Every issue in one round: a missing key says what goes in it, and the checks of the keys
+  // that did arrive still run (a model fixes all of them in one retry, not one per round).
+  for (const key of PERIOD_KEYS) if (value[key] === null) issue(`${key} is required when kind is "period": ${missingFix(key, readings)}`, [key]);
+  const { dashas, moon, windows, themes } = value;
+  if (dashas) {
+    checkDashas(dashas, readings, issue);
+    checkCrossings({ ...value, opening: value.opening ?? "", dashas } as PeriodAnswer, readings, language, issue);
+  }
+  if (moon) checkMoon(moon, readings, issue);
+  if (windows) checkWindows(windows, readings, issue);
+  checkPlace(value.place, readings, issue);
+  if (themes) checkThemes(themes, readings, issue);
 }
 
 /**

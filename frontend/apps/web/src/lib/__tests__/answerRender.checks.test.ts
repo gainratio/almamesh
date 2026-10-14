@@ -40,7 +40,7 @@ const SADE_SATI: Fixture = {
   name: 'Sade Sati (T1, trip to Vadodara)',
   reading: {
     period: SEPTEMBER, place: VADODARA, maha: ['jupiter'], antar: ['saturn'], rules: AQUARIUS_RULES,
-    tags: ['sade_sati_phase_1'], windows: ['2019-09-12'], domains: ['career', 'health'],
+    tags: ['sade_sati_phase_1'], windows: [{ date: '2019-09-12', what: 'Mars enters Virgo' }], domains: ['career', 'health'],
   },
   answer: {
     kind: 'period', period: 'September 2019', place: 'Vadodara, India',
@@ -68,7 +68,7 @@ const JUPITER_FROM_MOON: Fixture = {
   reading: {
     period: { start: '2019-05-01', end: '2019-05-31', label: 'May 2019' }, place: { label: 'Singapore' },
     maha: ['jupiter'], antar: ['saturn'], rules: AQUARIUS_RULES,
-    tags: ['jupiter_from_moon_11'], windows: ['2019-05-20'], domains: ['wealth'],
+    tags: ['jupiter_from_moon_11'], windows: [{ date: '2019-05-20', what: 'Mars enters Virgo' }], domains: ['wealth'],
   },
   answer: {
     kind: 'period', period: 'May 2019', place: 'Singapore',
@@ -92,7 +92,7 @@ const OBSTACLES: Fixture = {
   name: 'Obstacles (O1, Saturn rules the 12th, 25 Sep window)',
   reading: {
     period: SEPTEMBER, place: VADODARA, maha: ['saturn'], antar: ['mercury'], rules: AQUARIUS_RULES,
-    tags: ['sade_sati_phase_1'], windows: ['2019-09-25'], domains: ['obstacles', 'career'],
+    tags: ['sade_sati_phase_1'], windows: [{ date: '2019-09-25', what: 'Mars enters Virgo' }], domains: ['obstacles', 'career'],
   },
   answer: {
     kind: 'period', period: 'September 2019', place: 'Vadodara, India',

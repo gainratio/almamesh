@@ -52,7 +52,8 @@ interface CompactReading {
   readonly antar: readonly string[];
   readonly rules: Readonly<Record<string, readonly number[]>>;
   readonly tags: readonly string[];
-  readonly windows: readonly string[];
+  /** Dated facts, labelled (readPeriodGrounding). */
+  readonly windows: readonly { readonly date: string; readonly what: string }[];
   readonly domains: readonly string[];
 }
 
@@ -69,7 +70,7 @@ function fromCompact(compact: CompactReading): ReadingLike {
     lords: Object.entries(compact.rules).map(([lord, rules]) => ({ lord, rules })),
     sky: [{ tags: compact.tags }],
     themes: compact.domains.map((domain) => ({ domain })),
-    windows: compact.windows.map((date) => ({ date })),
+    windows: compact.windows.map(({ date }) => ({ date })),
   };
 }
 

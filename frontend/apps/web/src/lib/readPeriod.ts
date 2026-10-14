@@ -702,6 +702,48 @@ export function createReadPeriodTool(input: ReadPeriodInput): ToolDef<ReadPeriod
   });
 }
 
+type DatedFact = AnswerGrounding['readings'][number]['windows'][number];
+
+const titled = (word: string): string => word.charAt(0).toUpperCase() + word.slice(1);
+
+/**
+ * A short English label for an engine descriptor (the answer check's fix text, read by the model):
+ * "transit.jupiter.ingress.cancer" -> "Jupiter enters Cancer", "saturn.station.direct" -> "Saturn
+ * stations direct". Any other descriptor stays as the engine wrote it.
+ */
+export function eventLabel(descriptor: string): string {
+  const ingress = /(?:^|\.)([a-z]+)\.ingress\.([a-z]+)$/.exec(descriptor);
+  if (ingress) return `${titled(ingress[1]!)} enters ${titled(ingress[2]!)}`;
+  const station = /(?:^|\.)([a-z]+)\.station\.([a-z]+)$/.exec(descriptor);
+  if (station) return `${titled(station[1]!)} stations ${station[2]}`;
+  return descriptor;
+}
+
+/** Dasha spans that begin inside the period (a clipped span starts on the period's first day). */
+function dashaChanges(dashas: ReadPeriodReading['dashas'], start: string): DatedFact[] {
+  return (['maha', 'antar', 'pratyantar'] as const).flatMap((level) =>
+    dashas[level].filter((span) => span.start > start).map((span) => ({ date: span.start, what: `${level} ${titled(span.lord)} begins` })),
+  );
+}
+
+/**
+ * Every dated fact inside the period, by date, one label per day (the first by kind): theme
+ * windows, segment events (sign changes, stations), dasha changes and the sandhi.
+ */
+function datedFacts(result: ReadPeriodReading): DatedFact[] {
+  const { start, end } = result.period;
+  const { sandhi } = result.dashas;
+  const facts: DatedFact[] = [
+    ...result.windows.map((window) => ({ date: window.date, what: eventLabel(window.descriptor) })),
+    ...result.segments.flatMap((segment) => segment.events.map((event) => ({ date: event.slice(0, 10), what: eventLabel(event.slice(11).trim()) }))),
+    ...dashaChanges(result.dashas, start),
+    ...(sandhi ? [{ date: sandhi.date, what: `${sandhi.level} dasha junction (sandhi)` }] : []),
+  ];
+  const byDay = new Map<string, DatedFact>();
+  for (const fact of facts) if (fact.date >= start && fact.date <= end && !byDay.has(fact.date)) byDay.set(fact.date, fact);
+  return [...byDay.values()].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+}
+
 /** A reading projected flat for the answer check (answer.ts): what the answer may cite. */
 export function readPeriodGrounding(result: ReadPeriodReading): AnswerGrounding['readings'][number] {
   const unique = (items: readonly string[]) => [...new Set(items)];
@@ -713,7 +755,7 @@ export function readPeriodGrounding(result: ReadPeriodReading): AnswerGrounding[
     antar: unique(result.dashas.antar.map((span) => span.lord)),
     rules: Object.fromEntries(result.lords.flatMap((lord) => (lord.rules ? [[lord.lord, [...lord.rules]]] : []))),
     tags: unique(result.sky.flatMap((span) => span.tags)),
-    windows: unique(result.windows.map((window) => window.date)),
+    windows: datedFacts(result),
     domains: unique(result.themes.map((theme) => theme.domain)),
   };
 }
