@@ -72,7 +72,7 @@ function daggerStep(call: string): Mapping {
 // (`env:`), which Dagger never prints. The workflow keeps contents:read only.
 const GATE_REGISTRY_TOKEN = "--registry-token=env:GITHUB_TOKEN"
 
-const uploadAction = "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"
+const uploadAction = "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9"
 const gateEnv = { XDG_CONFIG_HOME: "${{ github.workspace }}/.github/xdg", GITHUB_TOKEN: "${{ github.token }}" }
 
 function expectedGateJob(gate: string): Mapping {
@@ -292,7 +292,7 @@ const journeyFixture = [
   "    steps:",
   ...checkoutFixture,
   ...daggerFixture(`${GATE_REGISTRY_TOKEN} browser-journeys-evidence --commit-sha=\${{ github.sha }} --repository=\${{ github.repository }} export --path=candidate`),
-  `      - uses: ${uploadAction} # v7.0.1`,
+  `      - uses: ${uploadAction} # v7.0.2`,
   "        with:",
   "          name: browser-journeys-evidence-${{ github.sha }}",
   "          path: candidate",

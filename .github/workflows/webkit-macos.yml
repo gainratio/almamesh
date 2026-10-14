@@ -58,7 +58,7 @@ jobs:
       - id: leak-scan
         if: always() && steps.finalize-evidence.outcome == 'success'
         run: node scripts/artifactLeakScan.mjs webkit-lane-evidence-memory
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always() && steps.leak-scan.outcome == 'success'
         with:
           name: webkit-lane-memory-evidence
@@ -101,7 +101,7 @@ jobs:
       - id: leak-scan
         if: always() && steps.finalize-evidence.outcome == 'success'
         run: node scripts/artifactLeakScan.mjs webkit-lane-evidence-travel
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always() && steps.leak-scan.outcome == 'success'
         with:
           name: webkit-lane-travel-evidence
@@ -144,7 +144,7 @@ jobs:
       - id: leak-scan
         if: always() && steps.finalize-evidence.outcome == 'success'
         run: node scripts/artifactLeakScan.mjs webkit-lane-evidence-portable
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always() && steps.leak-scan.outcome == 'success'
         with:
           name: webkit-lane-portable-evidence
