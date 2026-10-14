@@ -15,6 +15,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
 
+from almamesh.calculations import subdivide_period
 from almamesh.constants.astrology import (
     DASHA_SEQUENCE,
     DASHA_YEARS,
@@ -30,7 +31,7 @@ from almamesh.dasha.models import (
     VimPeriod,
     VimshottariState,
 )
-from almamesh.schemas.astrology import PlanetPosition, SiderealContext
+from almamesh.schemas.astrology import DashaPeriod, PlanetPosition, SiderealContext
 
 if TYPE_CHECKING:
     from almamesh.dasha.models import JaiminiKarakas
@@ -60,47 +61,34 @@ def compute_vimshottari_periods(
     Returns:
         List of VimPeriod objects covering the time window.
     """
-    periods: list[VimPeriod] = []
-    maha_sequence = context.dashas.maha_dasha_sequence
+    # The engine's own antar tree: each antar a share of the maha's span, the birth
+    # maha's antars dated from its true start before birth.
+    return [
+        _vim_period(maha.lord, antar, start_date, end_date)
+        for maha in context.dashas.maha_dasha_sequence
+        if _touches(maha, start_date, end_date)
+        for antar in subdivide_period(maha)
+        if _touches(antar, start_date, end_date)
+    ]
 
-    for maha in maha_sequence:
-        # Skip if outside window
-        if maha.end_date < start_date or maha.start_date > end_date:
-            continue
 
-        # Calculate antardasha periods within this mahadasha
-        md_lord = maha.lord
-        md_start = maha.start_date
-        # Each antardasha is a fraction of the mahadasha's actual span, so the
-        # nine ADs tile the MD exactly under whatever year convention built it
-        # — no separate year-length constant, no convention mismatch.
-        md_span = maha.end_date - maha.start_date
+def _touches(period: DashaPeriod, start_date: datetime, end_date: datetime) -> bool:
+    """The period shares time with the closed window [start_date, end_date]."""
+    return period.end_date >= start_date and period.start_date <= end_date
 
-        # AD sequence starts from MD lord
-        lord_idx = DASHA_SEQUENCE.index(md_lord)
-        ad_start = md_start
 
-        for i in range(9):
-            ad_lord = DASHA_SEQUENCE[(lord_idx + i) % 9]
-            ad_fraction = DASHA_YEARS[ad_lord] / 120
-            ad_end = ad_start + md_span * ad_fraction
-
-            # Only include if overlaps with window
-            if ad_end >= start_date and ad_start <= end_date:
-                periods.append(
-                    VimPeriod(
-                        md_lord=md_lord,
-                        ad_lord=ad_lord,
-                        start_date=max(ad_start, start_date),
-                        end_date=min(ad_end, end_date),
-                    )
-                )
-
-            ad_start = ad_end
-            if ad_start > end_date:
-                break
-
-    return periods
+def _vim_period(
+    md_lord: PlanetName, antar: DashaPeriod, start_date: datetime, end_date: datetime
+) -> VimPeriod:
+    """One MD/AD period clipped to the window; ``antar_start`` is the antar's TRUE start."""
+    return VimPeriod(
+        md_lord=md_lord,
+        ad_lord=antar.lord,
+        start_date=max(antar.start_date, start_date),
+        end_date=min(antar.end_date, end_date),
+        antar_start=antar.cycle_start or antar.start_date,
+        antar_end=antar.end_date,
+    )
 
 
 def _active_pratyantardasha(
@@ -141,7 +129,7 @@ def find_active_vimshottari(periods: list[VimPeriod], dt: datetime) -> Vimshotta
             return VimshottariState(
                 md_lord=p.md_lord,
                 ad_lord=ad_lord,
-                pd_lord=_active_pratyantardasha(ad_lord, p.start_date, p.end_date, dt),
+                pd_lord=_active_pratyantardasha(ad_lord, p.antar_start, p.antar_end, dt),
             )
     # Fallback to first period if not found
     if periods:

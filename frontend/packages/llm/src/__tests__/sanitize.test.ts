@@ -614,4 +614,30 @@ describe("today's egress is not a birth-month oracle", () => {
     // Rows that do not start at birth keep their length.
     expect(a.dashas?.maha_dasha_sequence[1]?.duration_years).toBe(7);
   });
+
+  it("never crosses the birth month when the first antar or pratyantar ends in it", () => {
+    // Born mid-maha: the first antar (and its first pratyantar) is the tail of a full
+    // period, so it can end within days of birth, still inside the birth month.
+    const birth = "2000-10-02T09:00:00Z";
+    const inBirthMonth = "2000-10-20T00:00:00Z";
+    const maha = { lord: "mercury", start_date: birth, end_date: "2010-09-15T00:00:00Z", duration_years: 9.95 };
+    const firstAntar = { lord: "saturn", start_date: birth, end_date: inBirthMonth, duration_years: 0.05 };
+    const nextAntar = { lord: "mercury", start_date: inBirthMonth, end_date: "2003-03-17T00:00:00Z", duration_years: 2.4 };
+    const chart = {
+      ...BIRTH_2000_CHART,
+      dashas: {
+        maha_dasha_sequence: [{ ...maha, antar_sequence: [firstAntar, nextAntar] }],
+        current_maha: maha,
+        current_antar: firstAntar,
+        current_pratyantar: null,
+        pratyantar_sequence: [
+          { lord: "rahu", start_date: birth, end_date: "2000-10-09T00:00:00Z", duration_years: 0.02 },
+          { lord: "jupiter", start_date: "2000-10-09T00:00:00Z", end_date: inBirthMonth, duration_years: 0.03 },
+        ],
+      },
+    } as unknown as SiderealChart;
+    const out = sanitizeChartForLlm(chart, { basis: "today", instant: new Date("2000-10-05T00:00:00Z") });
+    expect(JSON.stringify(out.dashas)).not.toContain("2000-10");
+    expect(out.dashas?.maha_dasha_sequence[0]?.antar_sequence?.[1]?.start_month).toBe("birth");
+  });
 });

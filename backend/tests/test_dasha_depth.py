@@ -207,14 +207,32 @@ def _same_period(a: DashaPeriod, b: DashaPeriod) -> bool:
 
 
 @pytest.mark.parametrize("case", _TREE_CASES)
-def test_every_maha_row_carries_its_nine_dated_antardashas(case: str) -> None:
-    """Each of the 9 maha rows exposes its dated 9-antar breakdown (81 rows)."""
+def test_every_maha_row_carries_its_dated_antardashas(case: str) -> None:
+    """The birth maha keeps only the antars still running at birth; later mahas have 9.
+
+    CONTRACT REVERSED (was: 9 antars in every maha). The native is born part-way
+    through the birth maha, so the antars that ended before birth are not listed.
+    """
     # Given any chart's dasha payload
     dashas = _dashas_case(case)
     # Then the full life tree is present at antar depth
     assert len(dashas.maha_dasha_sequence) == 9
-    for maha in dashas.maha_dasha_sequence:
+    birth_maha, *later = dashas.maha_dasha_sequence
+    assert len(birth_maha.antar_sequence) == _antars_running_at_birth(birth_maha)
+    for maha in later:
         assert len(maha.antar_sequence) == 9
+
+
+def _antars_running_at_birth(maha: DashaPeriod) -> int:
+    """How many of the birth maha's nine antars end after birth (from elapsed years)."""
+    full_years = DASHA_YEARS[maha.lord]
+    elapsed = full_years - maha.duration_years
+    start = DASHA_SEQUENCE.index(maha.lord)
+    ends, total = [], 0.0
+    for i in range(9):
+        total += full_years * DASHA_YEARS[DASHA_SEQUENCE[(start + i) % 9]] / 120.0
+        ends.append(total)
+    return sum(1 for end in ends if end > elapsed)
 
 
 @pytest.mark.parametrize("case", _TREE_CASES)
@@ -238,10 +256,12 @@ def test_antar_lords_rotate_from_each_maha_lord(case: str) -> None:
     # Given each maha row
     dashas = _dashas_case(case)
     for maha in dashas.maha_dasha_sequence:
-        # Then the nine antar lords are the dasha cycle rotated to the maha lord
+        # Then the antar lords are the dasha cycle rotated to the maha lord; the
+        # birth maha lists only the tail of that rotation (antars running at birth)
         start = DASHA_SEQUENCE.index(maha.lord)
         expected = [DASHA_SEQUENCE[(start + i) % 9] for i in range(9)]
-        assert [antar.lord for antar in maha.antar_sequence] == expected
+        lords = [antar.lord for antar in maha.antar_sequence]
+        assert lords == expected[9 - len(lords) :]
 
 
 @pytest.mark.parametrize("case", _TREE_CASES)
@@ -394,7 +414,10 @@ def test_sub_period_duration_years_is_the_rows_actual_span(case: str) -> None:
     dashas = _dashas_case(case)
     days_per_year = dashas.convention.days_per_year
     # Then every antar row's duration is the maha-proportional actual span
-    for maha in dashas.maha_dasha_sequence:
+    birth_maha, *later = dashas.maha_dasha_sequence
+    for antar in birth_maha.antar_sequence:
+        _assert_row_duration_is_its_span(antar, days_per_year)
+    for maha in later:
         for antar in maha.antar_sequence:
             expected = maha.duration_years * (DASHA_YEARS[antar.lord] / 120.0)
             assert antar.duration_years == pytest.approx(expected, rel=1e-9)
