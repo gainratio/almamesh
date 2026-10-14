@@ -21,6 +21,11 @@ import { test } from './webkitProfile';
  * The persona is synthetic (Mumbai, 17 Mar 1985 06:22 IST): Aquarius lagna, Capricorn Moon in
  * Shravana, like the profile under test, so 2019 is Sade Sati phase 1. Self-skips without
  * OPENROUTER_API_KEY.
+ *
+ * trip-obstacles (2026-10-14) asks the obstacles question on OBSTACLES_PERSONA, the engine's
+ * SYNTHETIC_AQUARIUS (backend/tests/test_difficult_houses.py): Aquarius lagna ~28°53', Moon in
+ * Capricorn Shravana pada 3, Mars and Rahu in the 12th. Its September 2019 reading has a strong
+ * obstacles theme ("Saturn (maha) rules the 12th: losses and expenses") and a 25 Sep Mars window.
  */
 const PERSONA: SeedBirthSpec = {
   name: 'Acceptance Native',
@@ -35,6 +40,22 @@ const PERSONA: SeedBirthSpec = {
   state: 'Maharashtra',
   country: 'India',
   locationName: 'Mumbai, Maharashtra, India',
+};
+
+/** SYNTHETIC_AQUARIUS: not a real person (1971-09-30 11:40 UTC, 13.08 N 80.27 E, IST). */
+const OBSTACLES_PERSONA: SeedBirthSpec = {
+  name: 'Obstacles Native',
+  datetimeUtc: '1971-09-30T11:40:00.000Z',
+  latitude: 13.08,
+  longitude: 80.27,
+  referenceDate: '2026-10-14T00:00:00+00:00',
+  chartId: 'trip-acceptance-obstacles-1971',
+  birthDatetimeLocal: '1971-09-30T17:10:00',
+  timezone: 'Asia/Kolkata',
+  city: 'Chennai',
+  state: 'Tamil Nadu',
+  country: 'India',
+  locationName: 'Chennai, Tamil Nadu, India',
 };
 
 const RUNS = Number(process.env.TRIP_ACCEPTANCE_RUNS ?? 3);
@@ -58,12 +79,16 @@ interface Expectation {
   readonly place: { readonly label?: RegExp; readonly timezone: string };
   /** The answer must name Sade Sati (2019 for a Capricorn Moon). */
   readonly sadeSati: boolean;
+  /** The answer must name the obstacles theme, its factor and its 25 Sep Mars window. */
+  readonly obstacles?: boolean;
 }
 
 interface Journey {
   readonly id: string;
   /** A trip's place query and title, or undefined for a today thread. */
   readonly trip?: { readonly where: string; readonly title: RegExp };
+  /** The chart under test; PERSONA unless the journey names another. */
+  readonly persona?: SeedBirthSpec;
   readonly questions: readonly Expectation[];
 }
 
@@ -119,6 +144,10 @@ function journeys(): Journey[] {
       ],
     },
     { id: 'trip-singapore', trip: { where: 'Singapore', title: /^⏳ May 2019 · Singapore/ }, questions: tripQuestions(singapore).slice(0, 1).map((q) => ({ ...q, id: 'S1' })) },
+    {
+      id: 'trip-obstacles', persona: OBSTACLES_PERSONA, trip: { where: 'Vadodara', title: /^⏳ May 2019 · Vadodara/ },
+      questions: tripQuestions(vadodara).slice(0, 1).map((q) => ({ ...q, id: 'O1', obstacles: true })),
+    },
   ];
 }
 
@@ -199,6 +228,21 @@ function matches(period: Period | undefined, expectation: Expectation): boolean 
 const MONTH = '(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\\.?';
 const DATED_WINDOW = new RegExp(`\\b\\d{1,2}(?:st|nd|rd|th)?\\s+${MONTH}|\\b${MONTH}\\s+\\d{1,2}(?:st|nd|rd|th)?\\b|\\b\\d{4}-\\d{2}-\\d{2}\\b`, 'i');
 const CONFIDENCE = /\b(?:high|medium|moderate|low)(?:[- ]to[- ](?:high|medium|moderate|low))?[\s-]+confidence\b|\bconfidence\b[^.\n]{0,40}\b(?:high|medium|moderate|low)\b/i;
+const LEVEL = /^(?:high|medium|moderate|low)(?:[- ]to[- ](?:high|medium|moderate|low))?$/i;
+
+/**
+ * A Markdown table with a Confidence column states a confidence level (matrix 2026-10-14: an
+ * answer's "| Obstacles | Mixed | Strong | High |" row read as no confidence). The answer's text
+ * comes with its whitespace collapsed, so rows are joined as "| a | b | | c | d |".
+ */
+function tableConfidence(answer: string): boolean {
+  const chunks = answer.split(/\|\s+\|/);
+  return chunks.some((chunk, index) => {
+    const column = chunk.slice(chunk.indexOf('|') + 1).split('|').map((cell) => cell.trim()).findIndex((cell) => /^confidence$/i.test(cell));
+    return column >= 0 && chunks.slice(index + 1).some((row) => LEVEL.test(row.split('|').map((cell) => cell.trim())[column] ?? ''));
+  });
+}
+
 const GRAHA = '(?:sun|moon|mars|mercury|jupiter|venus|saturn|rahu|ketu)';
 const HOUSE = '(?:\\d{1,2}(?:st|nd|rd|th)?|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth)';
 /** "rules", and the plain-voice forms a layman answer uses for a lordship ("handles", "looks after"). */
@@ -227,6 +271,21 @@ function tagPattern(tag: string): RegExp {
   return new RegExp(`\\b${words.slice(0, 2).filter((word) => !/^(?:phase|\d+)$/.test(word)).join('[\\s-]*')}`, 'i');
 }
 
+/** The obstacles theme in its classical words (friction with rules or authorities, legal or administrative matters, losses and expenses). */
+const OBSTACLES_MEANING = /friction with (?:rules|authorit)|\blegal\b|\badministrative\b|\bloss(?:es)?\b|\bexpenses\b/i;
+/** Its factor: "Saturn rules the 12th", "Saturn, your 12th lord", "Rahu in the 12th". */
+const OBSTACLES_FACTOR = /\b(?:saturn|rahu)\b[^.\n]{0,60}\b(?:12th|twelfth)\b|\b(?:12th|twelfth)\b[^.\n]{0,40}\b(?:saturn|rahu)\b/i;
+/** The 25 Sep 2019 Mars window. */
+const SEP_25 = /\b25(?:th)?\s+sep|\bsep[a-z]*\.?\s+25(?:th)?\b|\b2019-09-25\b/i;
+
+function obstaclesMisses(answer: string): string[] {
+  const misses: string[] = [];
+  if (!OBSTACLES_MEANING.test(answer)) misses.push('answer does not name the obstacles theme (rules/authorities, legal/administrative, losses)');
+  if (!OBSTACLES_FACTOR.test(answer)) misses.push('answer names no obstacles factor (Saturn rules the 12th / Rahu in the 12th)');
+  if (!SEP_25.test(answer)) misses.push('answer does not give the 25 Sep Mars window');
+  return misses;
+}
+
 function checkAnswer(expectation: Expectation, answer: string, reading: ReadingLike | undefined): string[] {
   const misses: string[] = [];
   if (!reading) return ['no completed get_period_reading for the period asked'];
@@ -241,8 +300,9 @@ function checkAnswer(expectation: Expectation, answer: string, reading: ReadingL
   if (expectation.sadeSati && !/sade[\s-]*sati/i.test(answer)) misses.push('answer does not name Sade Sati');
   if (tags.length > 0 && !tags.some((tag) => tagPattern(tag).test(answer))) misses.push(`answer names no Moon tag (${[...new Set(tags)].join(', ')})`);
   if (!DATED_WINDOW.test(answer)) misses.push('answer gives no dated window');
-  if (!CONFIDENCE.test(answer)) misses.push('answer gives no confidence level');
+  if (!CONFIDENCE.test(answer) && !tableConfidence(answer)) misses.push('answer gives no confidence level');
   if (expectation.place.label && !expectation.place.label.test(answer)) misses.push(`answer does not name the place ${expectation.place.label}`);
+  if (expectation.obstacles) misses.push(...obstaclesMisses(answer));
   return misses;
 }
 
@@ -283,7 +343,7 @@ for (const model of MODELS) {
         test.skip(testInfo.project.name !== 'chromium', 'Chromium only.');
         await configureModel(page, model, key ?? '');
         await bootEngine(page);
-        await seedChart(page, { birth: PERSONA });
+        await seedChart(page, { birth: journey.persona ?? PERSONA });
         await gotoSettled(page, '/dashboard');
         await waitForLifeAtlasAsOf(page);
         await page.getByTestId('floating-chat-button').click({ timeout: 120_000 });
