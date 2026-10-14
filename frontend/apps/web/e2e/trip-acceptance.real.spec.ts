@@ -217,7 +217,7 @@ async function readRows(page: Page, from: number): Promise<ToolRow[]> {
 }
 
 interface TurnRow { readonly turn: number }
-interface CallRow extends TurnRow { readonly status: string; readonly validFirstTry: boolean }
+interface CallRow extends TurnRow { readonly name: string; readonly status: string; readonly validFirstTry: boolean; readonly retryReason?: string }
 
 /** The app's own telemetry (agentRoundTelemetry.ts, hook builds): every round and call row recorded so far. */
 async function telemetry(page: Page): Promise<{ readonly rounds: TurnRow[]; readonly calls: CallRow[] }> {
@@ -227,17 +227,40 @@ async function telemetry(page: Page): Promise<{ readonly rounds: TurnRow[]; read
   });
 }
 
-/** Per question: model requests, tool calls, calls valid on the first try, retries, error rows (tool layer redesign 2026-10-14). */
-interface TurnMetrics { readonly rounds: number; readonly calls: number; readonly validFirstTry: number; readonly retries: number; readonly errorRows: number }
+/**
+ * Per question (tool layer redesign 2026-10-14): model requests; every call and those valid on the first try
+ * (the answer included); the same for tool calls only (read_period, travel); 1 when the first answer submission
+ * was accepted; retries and error rows over every call; rejected answers; and why each retried call was rejected.
+ */
+interface TurnMetrics {
+  readonly rounds: number;
+  readonly calls: number;
+  readonly validFirstTry: number;
+  readonly toolCalls: number;
+  readonly toolValidFirstTry: number;
+  readonly answerValidFirstTry: number;
+  readonly retries: number;
+  readonly answerRetries: number;
+  readonly errorRows: number;
+  readonly retryReasons: string[];
+}
 
 function turnMetrics(after: { readonly rounds: TurnRow[]; readonly calls: CallRow[] }, lastTurnBefore: number): TurnMetrics {
   const calls = after.calls.filter((row) => row.turn > lastTurnBefore);
+  const tools = calls.filter((row) => row.name !== 'answer');
+  const answers = calls.filter((row) => row.name === 'answer');
+  const retried = calls.filter((row) => row.status === 'retried');
   return {
     rounds: after.rounds.filter((row) => row.turn > lastTurnBefore).length,
     calls: calls.length,
     validFirstTry: calls.filter((row) => row.validFirstTry).length,
-    retries: calls.filter((row) => row.status === 'retried').length,
+    toolCalls: tools.length,
+    toolValidFirstTry: tools.filter((row) => row.validFirstTry).length,
+    answerValidFirstTry: answers[0]?.status !== 'retried' && answers[0]?.validFirstTry === true ? 1 : 0,
+    retries: retried.length,
+    answerRetries: answers.filter((row) => row.status === 'retried').length,
     errorRows: calls.filter((row) => row.status === 'error').length,
+    retryReasons: retried.map((row) => `${row.name}: ${row.retryReason ?? '(no reason recorded)'}`),
   };
 }
 

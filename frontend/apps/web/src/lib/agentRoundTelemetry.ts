@@ -3,7 +3,8 @@
  * 2026-10-13, rule 7; tool layer redesign 2026-10-14). Each model request of a
  * turn records its input and output tokens and why it finished; each tool call
  * records its name, status, the round that asked for it and whether it was valid
- * on its first try (the trip matrix counts these per question).
+ * on its first try (the trip matrix counts these per question); a retried call
+ * also keeps why it was rejected (the start of the error the model was sent).
  *
  * Dev diagnostics only: rows live in this tab's memory (newest 64 of each), and
  * in dev or hook builds they are readable as `window.__almameshAgentRounds()`
@@ -38,6 +39,8 @@ export interface AgentCallRow {
   /** 'retried': the loop rejected the call's arguments and the model asked again. */
   readonly status: ToolCallStatus;
   readonly validFirstTry: boolean;
+  /** A retried call only: why, the first 300 characters of the error the model was sent. */
+  readonly retryReason?: string;
 }
 
 /** One turn's sinks: pass `onRound` and `onToolCall` to the tool loop. */
@@ -47,6 +50,7 @@ export interface AgentTurnTelemetry {
 }
 
 const MAX_ROWS = 64;
+const MAX_REASON_CHARS = 300;
 const rows: AgentRoundRow[] = [];
 const calls: AgentCallRow[] = [];
 let turns = 0;
@@ -77,6 +81,12 @@ export function recordAgentCall(row: AgentCallRow): void {
   pushCapped(calls, row);
 }
 
+/** A retried call's error as text: the loop hands it over as a string; anything else as JSON. */
+function retryReasonOf(result: unknown): string {
+  const text = typeof result === 'string' ? result : JSON.stringify(result) ?? String(result);
+  return text.slice(0, MAX_REASON_CHARS);
+}
+
 /** The rounds that answered: the one that called `answer`, or the loop's prose fallback. */
 const FINAL_REASONS = new Set(['answer_fallback']);
 
@@ -96,7 +106,10 @@ export function beginAgentTurn(): AgentTurnTelemetry {
     },
     onToolCall: (event) => {
       if (event.toolName === 'answer' && event.status === 'complete') answerRound = event.round;
-      recordAgentCall({ turn, round: event.round, name: event.toolName, status: event.status, validFirstTry: event.validFirstTry });
+      recordAgentCall({
+        turn, round: event.round, name: event.toolName, status: event.status, validFirstTry: event.validFirstTry,
+        ...(event.status === 'retried' ? { retryReason: retryReasonOf(event.result) } : {}),
+      });
     },
   };
 }

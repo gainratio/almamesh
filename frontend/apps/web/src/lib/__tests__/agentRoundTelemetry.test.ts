@@ -72,14 +72,36 @@ describe('agent call telemetry (dev diagnostics only, in memory)', () => {
   it('records each call with its own round, status and first-try validity', () => {
     clearAgentRoundsForTest();
     const turn = beginAgentTurn();
-    turn.onToolCall({ ...CALL, status: 'retried', validFirstTry: false });
+    turn.onToolCall({ ...CALL, status: 'retried', validFirstTry: false, result: 'start must be YYYY, YYYY-MM or YYYY-MM-DD' });
     turn.onToolCall({ ...CALL, round: 2, validFirstTry: false });
     turn.onToolCall({ ...CALL, round: 2, toolName: 'travel', status: 'skipped' });
     expect(agentCallRows()).toEqual([
-      { turn: 1, round: 1, name: 'read_period', status: 'retried', validFirstTry: false },
+      { turn: 1, round: 1, name: 'read_period', status: 'retried', validFirstTry: false, retryReason: 'start must be YYYY, YYYY-MM or YYYY-MM-DD' },
       { turn: 1, round: 2, name: 'read_period', status: 'complete', validFirstTry: false },
       { turn: 1, round: 2, name: 'travel', status: 'skipped', validFirstTry: true },
     ]);
+  });
+
+  it('a retried call keeps why: the first 300 characters of the error the model was sent', () => {
+    clearAgentRoundsForTest();
+    const why = `Invalid input for tool answer: maha lord must be one of: jupiter (from the reading) ${'x'.repeat(400)}`;
+    beginAgentTurn().onToolCall({ ...CALL, toolName: 'answer', status: 'retried', validFirstTry: false, result: why });
+    expect(agentCallRows()[0]?.retryReason).toBe(why.slice(0, 300));
+    expect(agentCallRows()[0]?.retryReason).toHaveLength(300);
+  });
+
+  it('a retried call whose error is not text keeps it as JSON', () => {
+    clearAgentRoundsForTest();
+    beginAgentTurn().onToolCall({ ...CALL, status: 'retried', validFirstTry: false, result: { issues: ['place'] } });
+    expect(agentCallRows()[0]?.retryReason).toBe('{"issues":["place"]}');
+  });
+
+  it('only a retried call carries a retry reason', () => {
+    clearAgentRoundsForTest();
+    const turn = beginAgentTurn();
+    turn.onToolCall({ ...CALL, result: 'fine' });
+    turn.onToolCall({ ...CALL, status: 'error', result: 'engine failed' });
+    expect(agentCallRows().map((row) => 'retryReason' in row)).toEqual([false, false]);
   });
 
   it('records a retried row as given and keeps only the newest 64 calls', () => {

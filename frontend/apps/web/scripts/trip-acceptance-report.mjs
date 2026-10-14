@@ -2,8 +2,9 @@
 /**
  * The pass table for the trip/today acceptance matrix (e2e/trip-acceptance.real.spec.ts):
  * reads its JSONL log and prints passes/runs per question x model, then per model the loop
- * metrics (rounds, first-try-valid calls, retries, error rows and calls per question), then
- * every miss. Exit 1 unless every cell is 100%.
+ * metrics (rounds, tool and answer first-try-valid rates, retries, answer retries, error rows and
+ * tool calls per question), then why each retried call was rejected, then every miss. Exit 1 unless
+ * every cell is 100%.
  *
  * Run:  node scripts/trip-acceptance-report.mjs [log]   (default: $TRIP_ACCEPTANCE_LOG, else
  *       test-results/trip-acceptance.jsonl)
@@ -26,6 +27,9 @@ const rows = questions.map((question) => [question, ...models.map((model) => {
 })]);
 for (const row of [header, ...rows]) console.log(`| ${row.join(' | ')} |`);
 console.log(`\n${formatModelMetrics(modelMetrics(lines))}`);
+for (const line of lines.filter((entry) => (entry.retryReasons ?? []).length > 0)) {
+  console.log(`\nRETRY ${line.model} run ${line.run} ${line.question}: ${line.retryReasons.join(' || ')}`);
+}
 for (const line of lines.filter((entry) => !entry.pass)) {
   console.log(`\nFAIL ${line.model} run ${line.run} ${line.question}: ${line.misses.join('; ')}`);
 }
