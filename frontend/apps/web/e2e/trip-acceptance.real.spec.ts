@@ -200,7 +200,7 @@ const CONFIDENCE = /\b(?:high|medium|moderate|low)(?:[- ]to[- ](?:high|medium|mo
 const GRAHA = '(?:sun|moon|mars|mercury|jupiter|venus|saturn|rahu|ketu)';
 const HOUSE = '(?:\\d{1,2}(?:st|nd|rd|th)?|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth)';
 /** "rules", and the plain-voice forms a layman answer uses for a lordship ("handles", "looks after"). */
-const RULES = '(?:rul(?:es|ed|ing|er of|ership of|e over)|governs?|handles?|looks after|oversees|is in charge of)';
+const RULES = '(?:rul(?:es|ed|ing|er of|ership of|e over|e of)|governs?|handles?|looks after|oversees|is in charge of)';
 /** A lordship: "Saturn, your 12th lord", "rules your 2nd and 11th houses", "Jupiter looks after your 2nd house", "Jupiter rules your money". */
 const LORDSHIP = new RegExp([
   `\\b${HOUSE}(?:[- ]house)?[- ]lord\\b`,
