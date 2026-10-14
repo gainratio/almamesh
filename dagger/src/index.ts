@@ -50,7 +50,7 @@ import {
   FETCHED_EVIDENCE,
   FETCH_RUN_ARTIFACT_SCRIPT,
   browserJourneyEvidenceScript,
-  browserJourneyFetchArgs,
+  browserJourneyFetchRequest,
   validateBrowserJourneyExitCode,
 } from "./browserJourneyEvidence.js"
 import { nativeMacAcceptanceScript } from "./nativeMacAcceptance.js"
@@ -599,13 +599,13 @@ exec ${inline.join(" ")}`,
    */
   @func()
   async browserJourneysStatus(commitSha: string, repository: string, runId: string, githubToken: Secret): Promise<string> {
-    const fetch = browserJourneyFetchArgs(repository, runId, commitSha)
+    const fetch = browserJourneyFetchRequest(repository, runId, commitSha)
     const evidence = dag
       .container()
       .from(UV_IMAGE)
       .withFile("/opt/fetch_run_artifact.py", this.source.file(FETCH_RUN_ARTIFACT_SCRIPT))
       .withSecretVariable("GITHUB_TOKEN", githubToken)
-      .withExec(fetch)
+      .withExec(["python3", "/opt/fetch_run_artifact.py", "--repository", fetch.repository, "--run-id", fetch.runId, "--name", fetch.artifact, "--output", FETCHED_EVIDENCE])
       .directory(FETCHED_EVIDENCE)
     await dag
       .container()
