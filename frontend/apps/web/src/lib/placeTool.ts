@@ -2,15 +2,23 @@
  * resolve_place (spec 2026-10-08 Part 2): typed place text -> label + IANA zone
  * + a place_ref, from the bundled offline list only. Coordinates never enter a
  * result: the model sees only what the user typed, the label and the zone.
+ * When several places match, the person picks one in the chat's place picker
+ * (placePick.ts) and the tool waits; the model never guesses between them.
  */
-import type { AgentJsonObject, AgentTool } from '@almamesh/llm';
+import { AGENT_LIMITS, type AgentJsonObject, type AgentTool } from '@almamesh/llm';
 
 import type { PlaceLookup, ResolvedPlace } from './geo/placeLookup';
+import { askToPickPlace, NO_PLACE_PICKER } from './placePick';
+
+type PickPlace = typeof askToPickPlace;
 
 export const RESOLVE_PLACE_TOOL_NAME = 'resolve_place';
 export const RESOLVE_PLACE_STATUS_LABEL = 'Looking up the place on this device';
-/** A cold, bounded SQLite import can outlast the ordinary small-tool deadline. */
-export const PLACE_LOOKUP_TIMEOUT_MS = 30_000;
+/**
+ * A cold, bounded SQLite import can outlast the ordinary small-tool deadline,
+ * and a person choosing between Springfields needs time: the longest any tool may run.
+ */
+export const PLACE_LOOKUP_TIMEOUT_MS = AGENT_LIMITS.maxToolTimeoutMs;
 const QUERY_ERROR = 'query must be a place name of 2–120 characters';
 
 const DESCRIPTION = [
@@ -37,7 +45,23 @@ function forModel(result: PlaceLookup): AgentJsonObject {
   return { status: 'not_found' };
 }
 
-export function createResolvePlaceTool(lookup: (query: string) => Promise<PlaceLookup> = lazyLookup): AgentTool {
+/**
+ * Several places: let the person pick. Their pick is found; a cancel is a
+ * neutral not_picked that says what to do itself, so the description (and
+ * every request) stays the size it was.
+ */
+const NOT_PICKED = {
+  status: 'not_picked',
+  note: 'The person closed the place picker without choosing. Do not guess a place: answer what needs none, or ask where they mean.',
+} as const;
+
+async function settle(text: string, candidates: readonly ResolvedPlace[], pick: PickPlace, signal: AbortSignal): Promise<AgentJsonObject> {
+  const picked = await pick(text, candidates, signal);
+  if (picked === NO_PLACE_PICKER) return forModel({ status: 'ambiguous', candidates });
+  return picked ? forModel({ status: 'found', place: picked }) : { ...NOT_PICKED };
+}
+
+export function createResolvePlaceTool(lookup: (query: string) => Promise<PlaceLookup> = lazyLookup, pick: PickPlace = askToPickPlace): AgentTool {
   return {
     name: RESOLVE_PLACE_TOOL_NAME,
     description: DESCRIPTION,
@@ -55,7 +79,10 @@ export function createResolvePlaceTool(lookup: (query: string) => Promise<PlaceL
       if (text === undefined) return { error: QUERY_ERROR };
       const found = await lookup(text);
       context.signal.throwIfAborted();
-      return forModel(found);
+      if (found.status !== 'ambiguous') return forModel(found);
+      const answer = await settle(text, found.candidates, pick, context.signal);
+      context.signal.throwIfAborted();
+      return answer;
     },
   };
 }

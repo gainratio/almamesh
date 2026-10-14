@@ -44,7 +44,7 @@ const FOCUSABLE = [
 ].join(', ');
 
 /** Keep Tab / Shift+Tab inside the open sheet (aria-modal does not do this by itself). */
-function trapFocus(event: KeyboardEvent<HTMLDivElement>, root: HTMLElement | null): void {
+export function trapFocus(event: KeyboardEvent<HTMLDivElement>, root: HTMLElement | null): void {
   const items = Array.from(root?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? []);
   const first = items[0];
   const last = items.at(-1);

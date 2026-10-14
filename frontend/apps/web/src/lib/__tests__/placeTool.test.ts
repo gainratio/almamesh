@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { streamAgentChat } from '@almamesh/llm';
+import { AGENT_LIMITS, streamAgentChat } from '@almamesh/llm';
 
 import type { PlaceLookup } from '../geo/placeLookup';
 import { createResolvePlaceTool, RESOLVE_PLACE_STATUS_LABEL, RESOLVE_PLACE_TOOL_NAME } from '../placeTool';
+import { NO_PLACE_PICKER } from '../placePick';
 import { installCityTestDatabase } from '../geo/__tests__/cityTestDb';
 
 installCityTestDatabase();
@@ -92,5 +93,43 @@ describe('resolve_place', () => {
     const result = await createResolvePlaceTool(lookup).execute(args, context());
     expect(result).toEqual({ error: 'query must be a place name of 2–120 characters' });
     expect(lookup).not.toHaveBeenCalled();
+  });
+
+  describe('several places: the person picks in the chat, the model never guesses', () => {
+    const MISSOURI = { ...BOGOTA, summary: { place_ref: 'city:2602', label: 'Springfield, Missouri, United States', timezone: 'America/Chicago' } };
+    const ILLINOIS = { ...BOGOTA, summary: { place_ref: 'city:3823', label: 'Springfield, Illinois, United States', timezone: 'America/Chicago' } };
+    const ambiguous = vi.fn(async (): Promise<PlaceLookup> => ({ status: 'ambiguous', candidates: [MISSOURI, ILLINOIS] }));
+
+    it('asks the picker with the typed text and every candidate, and returns the pick as found', async () => {
+      const pick = vi.fn(async () => ILLINOIS);
+      const result = await createResolvePlaceTool(ambiguous, pick).execute({ query: 'Springfield' }, context());
+      expect(pick).toHaveBeenCalledWith('Springfield', [MISSOURI, ILLINOIS], expect.any(AbortSignal));
+      expect(result).toEqual({ status: 'found', place: ILLINOIS.summary });
+      expect(numbersIn(result)).toEqual([]);
+    });
+
+    it('a cancel is a neutral "not picked", never an error and never a guessed city', async () => {
+      const result = await createResolvePlaceTool(ambiguous, vi.fn(async () => undefined)).execute({ query: 'Springfield' }, context());
+      expect(result).toMatchObject({ status: 'not_picked' });
+      expect(JSON.stringify(result)).toMatch(/do not guess a place/i);
+      expect(result).not.toHaveProperty('error');
+    });
+
+    it('with no picker on screen it lists the candidates for the model to ask about', async () => {
+      const result = await createResolvePlaceTool(ambiguous, vi.fn(async () => NO_PLACE_PICKER as typeof NO_PLACE_PICKER)).execute({ query: 'Springfield' }, context());
+      expect(result).toEqual({ status: 'ambiguous', candidates: [MISSOURI.summary, ILLINOIS.summary] });
+    });
+
+    it('a found place never opens the picker', async () => {
+      const pick = vi.fn();
+      await createResolvePlaceTool(vi.fn(async (): Promise<PlaceLookup> => ({ status: 'found', place: BOGOTA })), pick).execute({ query: 'Bogotá' }, context());
+      expect(pick).not.toHaveBeenCalled();
+    });
+
+    it('waits for the person as long as the agent allows any tool', () => {
+      expect(createResolvePlaceTool(ambiguous).timeoutMs).toBe(AGENT_LIMITS.maxToolTimeoutMs);
+      expect(AGENT_LIMITS.maxToolTimeoutMs).toBe(150_000);
+    });
+
   });
 });
