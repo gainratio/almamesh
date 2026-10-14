@@ -11,7 +11,9 @@ import pytest
 from almamesh.retrodiction import stats
 from almamesh.retrodiction.stats import (
     base_rate,
+    benjamini_hochberg,
     fractional_hit,
+    holm,
     null_hit_values,
     permutation_pvalue,
     wilson_interval,
@@ -136,3 +138,19 @@ def test_a_large_null_is_computed_in_seconds() -> None:
     p_value = permutation_pvalue(windows, 3000 * 3 / 73)
     assert time.perf_counter() - start < 15.0
     assert 0.3 < p_value < 0.7  # the null mean is observed: p near one half
+
+
+def test_should_reject_in_step_down_order_when_holm_corrects() -> None:
+    # Given p = 0.01, 0.04, 0.03, 0.005 (m = 4): 0.005*4 and 0.01*3 pass, 0.03*2 = 0.06 stops
+    assert holm([0.01, 0.04, 0.03, 0.005]) == [True, False, False, True]
+
+
+def test_should_reject_up_to_the_largest_passing_rank_when_bh_corrects() -> None:
+    # 0.04 <= 4/4 * 0.05, so every smaller p-value is rejected too
+    assert benjamini_hochberg([0.01, 0.04, 0.03, 0.005]) == [True, True, True, True]
+    assert benjamini_hochberg([0.2, 0.5, 0.04]) == [False, False, False]
+
+
+def test_should_reject_nothing_when_there_are_no_tests() -> None:
+    assert holm([]) == []
+    assert benjamini_hochberg([]) == []

@@ -26,10 +26,14 @@ from almamesh.retrodiction.events import (
     inside_git_tree,
     load_events,
 )
+from almamesh.retrodiction.mapping import PREREGISTERED_KS, PREREGISTERED_WINDOW
 from almamesh.retrodiction.markdown import render_markdown
 from almamesh.retrodiction.report import Report, build_report, sample_subjects
+from almamesh.retrodiction.scorecard import Scorecard, build_scorecard
+from almamesh.retrodiction.scorecard_markdown import render_scorecard
 from almamesh.retrodiction.split import (
     ADB_SPLIT_DIGEST,
+    SPLIT_SEED,
     NativeSplit,
     Part,
     checked_split,
@@ -81,8 +85,10 @@ def _load(events: Path | None, adb: Path | None) -> tuple[EventsFile, Path, bool
     raise RetrodictionInputError("give exactly one of --events or --adb")
 
 
-def _out_dir(source: Path, out: Path | None, private: bool) -> Path:
-    target = out if out is not None else source.parent / "retrodiction-report"
+def _out_dir(
+    source: Path, out: Path | None, private: bool, name: str = "retrodiction-report"
+) -> Path:
+    target = out if out is not None else source.parent / name
     if private and inside_git_tree(target / "report.json"):
         raise RetrodictionInputError(
             f"{target} is inside a git working tree; personal and licensed reports stay outside"
@@ -118,18 +124,26 @@ def _sampled(loaded: EventsFile, options: _Options) -> EventsFile:
     return sample_subjects(loaded, options.sample, options.seed)
 
 
+def _prepare(
+    events: Path | None, adb: Path | None, options: _Options
+) -> tuple[EventsFile, Path, bool]:
+    """The (split, sampled) event file, the path its output sits beside, and privacy."""
+    if options.split is not None and adb is None:
+        raise RetrodictionInputError("--split applies to an ADB export (--adb)")
+    loaded, source, private = _load(events, adb)
+    half = _half(loaded, options.split, options.release_look)
+    return _sampled(half, options), source, private
+
+
 def _report(loaded: EventsFile, options: _Options, ks: tuple[int, ...]) -> Report:
-    report = build_report(_sampled(loaded, options), options.window, ks, options.workers)
+    report = build_report(loaded, options.window, ks, options.workers)
     if options.sample is not None:
         report.run.sample_natives, report.run.sample_seed = options.sample, options.seed
     return report
 
 
 def _run(events: Path | None, adb: Path | None, options: _Options) -> str:
-    if options.split is not None and adb is None:
-        raise RetrodictionInputError("--split applies to an ADB export (--adb)")
-    loaded, source, private = _load(events, adb)
-    loaded = _half(loaded, options.split, options.release_look)
+    loaded, source, private = _prepare(events, adb, options)
     ks = parse_ks(options.k, options.window)
     target = _out_dir(source, options.out, private)
     report = _report(loaded, options, ks)
@@ -195,6 +209,47 @@ def adb_summary(
     """Import an ADB export and print counts only (no native, no date, no place)."""
     try:
         typer.echo(import_adb(adb).summary.model_dump_json(indent=2))
+    except RetrodictionInputError as exc:
+        _refuse(exc)
+
+
+def _write_card(card: Scorecard, target: Path, *, evidence: bool) -> None:
+    target.mkdir(parents=True, exist_ok=True)
+    (target / "scorecard.json").write_text(card.model_dump_json(indent=2) + "\n", "utf-8")
+    (target / "scorecard.md").write_text(render_scorecard(card, evidence=evidence), "utf-8")
+
+
+def _scorecard(events: Path | None, adb: Path | None, options: _Options) -> str:
+    loaded, source, private = _prepare(events, adb, options)
+    target = _out_dir(source, options.out, private, "scorecard")
+    card = build_scorecard(
+        loaded, PREREGISTERED_WINDOW, PREREGISTERED_KS, options.workers, SPLIT_SEED
+    )
+    _write_card(card, target, evidence=loaded.kind != "synthetic")
+    verdict = "controls ok" if card.verdicts.planted_ok and card.verdicts.shuffled_ok else "VOID"
+    return f"{card.events_scored} events scored, {verdict} -> {target}"
+
+
+@app.command()
+def scorecard(
+    events: Annotated[Path | None, typer.Option(help="Event YAML")] = None,
+    adb: Annotated[Path | None, typer.Option(help=_ADB_HELP)] = None,
+    split: Annotated[str | None, typer.Option(help="dev or held-out (ADB only)")] = None,
+    release_look: Annotated[bool, typer.Option(help="Declare a logged HELD-OUT look")] = False,
+    out: Annotated[Path | None, typer.Option(help="Scorecard directory")] = None,
+    workers: Annotated[int, typer.Option(min=1, max=64, help="Processes")] = 1,
+    sample_natives: Annotated[int | None, typer.Option(min=1, help="Native sample")] = None,
+    seed: Annotated[int | None, typer.Option(help="Seed for --sample-natives")] = None,
+) -> None:
+    """Per-area BASELINE vs +exact_transits with chart-swap, shifted and planted controls.
+
+    The bootstrap and the shifted-months control use the split seed (20261015).
+    """
+    try:
+        options = _Options(
+            PREREGISTERED_WINDOW, "", out, workers, sample_natives, seed, _part(split), release_look
+        )
+        typer.echo(_scorecard(events, adb, options))
     except RetrodictionInputError as exc:
         _refuse(exc)
 

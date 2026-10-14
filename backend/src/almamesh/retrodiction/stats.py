@@ -148,8 +148,33 @@ def wilson_interval(hits: float, n: int, z: float = _Z95) -> tuple[float, float]
     return max(0.0, centre - half), min(1.0, centre + half)
 
 
+def _ascending(pvalues: Sequence[float]) -> list[int]:
+    return sorted(range(len(pvalues)), key=lambda i: pvalues[i])
+
+
+def holm(pvalues: Sequence[float], alpha: float = 0.05) -> list[bool]:
+    """Holm step-down: reject while p_(i) <= alpha / (m - i), stop at the first failure."""
+    rejected = [False] * len(pvalues)
+    for rank, i in enumerate(_ascending(pvalues)):
+        if pvalues[i] > alpha / (len(pvalues) - rank):
+            break
+        rejected[i] = True
+    return rejected
+
+
+def benjamini_hochberg(pvalues: Sequence[float], alpha: float = 0.05) -> list[bool]:
+    """BH step-up: reject every p up to the largest rank with p_(i) <= i / m * alpha."""
+    order = _ascending(pvalues)
+    passing = [r for r, i in enumerate(order, 1) if pvalues[i] <= r / len(pvalues) * alpha]
+    cut = max(passing, default=0)
+    rank_of = {i: rank for rank, i in enumerate(order)}
+    return [rank_of[i] < cut for i in range(len(pvalues))]
+
+
 __all__ = [
     "FFT_P_FLOOR",
+    "benjamini_hochberg",
+    "holm",
     "base_rate",
     "fractional_hit",
     "null_hit_values",
