@@ -29,6 +29,7 @@ import {
   buildPeriodDetail,
   buildPeriodReading,
   DETAIL_SECTIONS,
+  detailSection,
   summarizePeriodDetail,
   summarizePeriodReading,
   type PeriodDetailToolResult,
@@ -292,7 +293,7 @@ async function readPeriod(input: PeriodReadingToolsInput, args: AgentJsonObject,
 }
 
 async function readDetail(input: PeriodReadingToolsInput, args: AgentJsonObject, context: AgentToolContext): Promise<PeriodDetailToolResult> {
-  const section = DETAIL_SECTIONS.find((value) => value === args.section);
+  const section = detailSection(args.section);
   if (!section) return { error: `section must be one of: ${DETAIL_SECTIONS.join(', ')}` };
   if (args.key !== undefined && typeof args.key !== 'string') return { error: 'key must be a string' };
   const request = requestOf(input, args, context.now);

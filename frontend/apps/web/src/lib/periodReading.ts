@@ -126,8 +126,8 @@ export interface ReadingTheme {
   readonly domain: string;
   readonly houses: readonly number[];
   readonly direction: ThemeDirection;
+  /** In words only: a bare strength_pct beside `confidence` was read as "75% confidence" (2026-10-14). */
   readonly strength: PeriodTheme['strength'];
-  readonly strength_pct: number;
   readonly confidence: ThemeConfidence;
   /** Cut first when the reading is over budget: `confidence` already counts the agreeing techniques. */
   readonly agreement?: PeriodTheme['agreement'];
@@ -314,7 +314,7 @@ function skyOf(span: PeriodSkySpan, period: PeriodWindow): ReadingSky {
 function themeOf(theme: PeriodTheme): ReadingTheme {
   return {
     domain: theme.domain, houses: [...theme.houses], direction: theme.direction, strength: theme.strength,
-    strength_pct: theme.strength_pct, confidence: theme.confidence,
+    confidence: theme.confidence,
     agreement: { vimshottari: theme.agreement.vimshottari, yogini: theme.agreement.yogini, transit: theme.agreement.transit },
     factors: [...theme.factors],
   };
@@ -513,6 +513,15 @@ export function periodReadingSummary(result: PeriodReadingToolResult): ToolSumma
 
 export const DETAIL_SECTIONS = ['lord', 'segment', 'bindus', 'panchang', 'dashas'] as const;
 export type DetailSection = (typeof DETAIL_SECTIONS)[number];
+
+/** The other number a model sends for a section ("segments", "lords"): it names that section. */
+const SECTION_ALIASES: Readonly<Record<string, DetailSection>> = { segments: 'segment', lords: 'lord', bindu: 'bindus', dasha: 'dashas' };
+
+/** The section a model's `section` names, or undefined. */
+export function detailSection(value: unknown): DetailSection | undefined {
+  if (typeof value !== 'string') return undefined;
+  return DETAIL_SECTIONS.find((section) => section === value) ?? SECTION_ALIASES[value];
+}
 const GRAHAS = ['sun', 'moon', 'mars', 'mercury', 'jupiter', 'venus', 'saturn', 'rahu', 'ketu'] as const;
 
 export interface DetailSource {
@@ -569,7 +578,15 @@ function periodDay(key: string | undefined, period: ReadingPeriod): key is strin
   return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === key;
 }
 
+/** No key: every segment in the period, so the model can pick one (its windows are the factors). */
+function allSegments(source: PeriodReadingContext, period: ReadingPeriod): Digest {
+  const segments = source.segments.filter((segment) => overlaps(segment, period)).map((segment) => segmentOf(segment, period));
+  const windows = windowsOf(source.themes, period).map((window) => `${window.date} ${window.descriptor} (${window.severity})`);
+  return { facts: { segments }, factors: windows.slice(0, MAX_FACTORS) };
+}
+
 function segmentDigest(source: PeriodReadingContext, period: ReadingPeriod, key: string | undefined): Digest {
+  if (key === undefined) return allSegments(source, period);
   const inPeriod = source.segments.filter((segment) => overlaps(segment, period));
   const starts = (segment: (typeof inPeriod)[number]) => key !== undefined && (day(segment.start) === key || clipped(segment, period).start === key);
   const contains = (segment: (typeof inPeriod)[number]) => periodDay(key, period) && day(segment.start) <= key && key < day(segment.end);
@@ -640,7 +657,7 @@ function fitDetail(detail: PeriodDetail): PeriodDetail {
 }
 
 export function buildPeriodDetail(source: DetailSource, frame: ReadingFrame, section: string, key?: string): PeriodDetail | PeriodToolError {
-  const known = DETAIL_SECTIONS.find((value) => value === section);
+  const known = detailSection(section);
   if (!known) return { error: SECTION_ERROR };
   const result = digest(source, frame.period, known, key);
   if ('error' in result) return result;
@@ -658,6 +675,7 @@ function detailLine(detail: PeriodDetail): string {
   const facts = detail.facts as Record<string, unknown>;
   if (detail.section === 'lord') return `${title(String(facts.lord))} in detail · ${(facts.runs as unknown[]).length} dasha spans`;
   if (detail.section === 'bindus') return `Ashtakavarga ${facts.key === 'sav' ? 'SAV' : title(String(facts.key))} · total ${String(facts.total)}`;
+  if (detail.section === 'segment' && Array.isArray(facts.segments)) return `Segments · ${facts.segments.length} in ${detail.period.label}`;
   if (detail.section === 'segment') {
     const segment = facts.segment as ReadingSegment;
     return `Segment ${segment.start} – ${segment.end} · ${[segment.maha, segment.antar, segment.pratyantar].map(title).join('–')}`;

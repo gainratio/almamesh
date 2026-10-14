@@ -243,6 +243,14 @@ describe('get_period_detail', () => {
     expect(loadPeriodChart).toHaveBeenCalledTimes(2);
   });
 
+  // Matrix 2026-10-14: {section: "segments"} (no key) was an error row; the plural names the segment section.
+  it('reads section "segments" with no key as every segment in the period, not an error', async () => {
+    const { detail } = tools();
+    const segments = await detail.execute({ section: 'segments' }, context());
+    expect(segments).not.toHaveProperty('error');
+    expect(segments).toMatchObject({ section: 'segment', facts: { segments: expect.any(Array) } });
+  });
+
   it('returns a refusal the model can act on for bad arguments, before any engine work', async () => {
     const { detail, loadPeriodChart } = tools();
     await expect(detail.execute({ section: 'houses' }, context())).resolves.toEqual({ error: 'section must be one of: lord, segment, bindus, panchang, dashas' });

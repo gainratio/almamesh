@@ -193,6 +193,18 @@ describe('the period reading (get_period_reading)', () => {
     });
   });
 
+  // Matrix 2026-10-14 (T3, deepseek): answers called a theme's strength_pct "confidence" ("strong
+  // (75% confidence)"). A theme now names its strength in words and its confidence by name, with no
+  // bare percentage beside them to misread.
+  it('a theme states its strength in words and its confidence by name, with no percentage to misread', () => {
+    for (const name of NAMES) {
+      for (const theme of reading(name).themes) {
+        expect(Object.keys(theme).filter((key) => key !== 'agreement')).toEqual(['domain', 'houses', 'direction', 'strength', 'confidence', 'factors']);
+        expect(JSON.stringify({ ...theme, factors: [] })).not.toMatch(/_pct|%/);
+      }
+    }
+  });
+
   it('an oversized reading is cut deterministically and still fits', () => {
     const wide = { ...YEAR, themes: [...YEAR.themes, ...YEAR.themes].map((theme) => ({ ...theme, factors: [...theme.factors, ...theme.factors] })) };
     const result = buildPeriodReading(wide, YEAR_FRAME);
@@ -296,6 +308,22 @@ describe('the period detail digests (get_period_detail)', () => {
   // its start, and got an error row. A date inside the period names exactly one segment: read that one.
   it('segment: a date inside a segment reads the segment that contains it', () => {
     expect(detail('segment', '2019-04-10')).toMatchObject({ facts: { segment: { start: '2019-03-29', end: '2019-04-22' } } });
+  });
+
+  // Matrix 2026-10-14 (T3, deepseek run 3): get_period_detail {section: "segments"} was an error row.
+  // The plural names its section, and a segment with no key lists every segment in the period.
+  it('segments: the plural reads the segment section; with no key it lists every segment in the period', () => {
+    const all = detail('segments');
+    expect(all).toMatchObject({ section: 'segment' });
+    if (!('facts' in all)) throw new Error('expected facts');
+    const segments = (all.facts as { segments: { start: string; pratyantar: string }[] }).segments;
+    expect(segments.map((segment) => [segment.start, segment.pratyantar])[0]).toEqual(['2019-01-01', 'ketu']);
+    expect(segments.length).toBeGreaterThan(5);
+    expect(detail('segment')).toMatchObject({ section: 'segment', facts: { segments } });
+    expect(detail('segments', '2019-04-10')).toMatchObject({ section: 'segment', facts: { segment: { start: '2019-03-29' } } });
+    expect(detail('lords', 'venus')).toMatchObject({ section: 'lord', facts: { lord: 'venus' } });
+    expect(periodDetailSummary(all).line).toBe(`Segments · ${segments.length} in 2019`);
+    expect(bytes(all)).toBeLessThan(4096);
   });
 
   it('refuses an unknown section or key with a retry hint, never a guess', () => {
