@@ -119,7 +119,63 @@ function rangeCallMisses(rows: readonly RangeRow[], range: RangeCall): string[] 
   return one ? [] : [RANGE_CALL_MISS];
 }
 
-export type { AnswerFacts, RangeCall, RangeRow };
+/**
+ * A span one call must cover (D3 "What are the next 3 months like?"): a start from `from` up to
+ * `latestStart`, an end by `to`, and at least `minMonths` consecutive calendar months.
+ */
+interface SpanCall {
+  readonly from: string;
+  readonly latestStart: string;
+  readonly to: string;
+  readonly minMonths: number;
+}
+
+const SPAN_CALL_MISS = 'D3 not read in one call over 3+ consecutive months';
+
+/** Months since year 0 of a YYYY-MM-DD day, so two days' months can be subtracted. */
+const monthNumber = (day: string): number => Number(day.slice(0, 4)) * 12 + Number(day.slice(5, 7)) - 1;
+
+/** The period is one D3 reading: it starts in the allowed months, ends in time, and spans the months asked. */
+function spanFits(period: { readonly start: string; readonly end: string }, span: SpanCall): boolean {
+  const { start, end } = period;
+  return start >= span.from && start <= span.latestStart && end <= span.to && monthNumber(end) - monthNumber(start) + 1 >= span.minMonths;
+}
+
+/**
+ * D3 (controller ruling, Task 10d): exactly one complete read_period, over a span that fits
+ * `span`. A CONTRACT CHANGE from "any single month 0..3": stricter, now that read_period reads
+ * ranges. Month by month reads, or one month, are a miss; the miss says what was read.
+ */
+function spanCallMisses(rows: readonly RangeRow[], span: SpanCall): string[] {
+  const reads = rows.filter((row) => row.name === 'read_period' && row.status === 'complete');
+  const periods = reads.map((row) => (row.result as { readonly period?: { readonly start?: unknown; readonly end?: unknown } } | null | undefined)?.period);
+  const read = periods.flatMap((period) => (typeof period?.start === 'string' && typeof period.end === 'string' ? [{ start: period.start, end: period.end }] : []));
+  const only = reads.length === 1 ? read[0] : undefined;
+  if (only && spanFits(only, span)) return [];
+  return [read.length > 0 ? `${SPAN_CALL_MISS}; read ${read.map((period) => `${period.start}..${period.end}`).join(', ')}` : SPAN_CALL_MISS];
+}
+
+/** A transcript tool row with the arguments the model sent. */
+interface CallRow {
+  readonly name: string;
+  readonly status: string;
+  readonly args: unknown;
+}
+
+const PLACE_CALL_MISS = 'no complete read_period named the place';
+const TRAVEL_ROW_MISS = 'a travel row in a place question';
+
+/**
+ * P1 ("…in Springfield?" in a today thread): a complete read_period whose `place` argument names
+ * the place (the call that opened the picker), and no travel row (the question is not a trip).
+ */
+function placeCallMisses(rows: readonly CallRow[], place: RegExp): string[] {
+  const placeOf = (row: CallRow): unknown => (row.args as { readonly place?: unknown } | null | undefined)?.place;
+  const named = rows.some((row) => row.name === 'read_period' && row.status === 'complete' && typeof placeOf(row) === 'string' && place.test(placeOf(row) as string));
+  return [...(named ? [] : [`${PLACE_CALL_MISS} ${place}`]), ...(rows.some((row) => row.name === 'travel') ? [TRAVEL_ROW_MISS] : [])];
+}
+
+export type { AnswerFacts, CallRow, RangeCall, RangeRow, SpanCall };
 export {
   CONFIDENCE,
   DATED_WINDOW,
@@ -131,11 +187,17 @@ export {
   OBSTACLES_FACTOR,
   OBSTACLES_MEANING,
   ORDINAL_WORDS,
+  PLACE_CALL_MISS,
   RANGE_CALL_MISS,
   RULES,
   SEP_25,
+  SPAN_CALL_MISS,
+  TRAVEL_ROW_MISS,
   obstaclesMisses,
+  placeCallMisses,
   rangeCallMisses,
+  spanCallMisses,
+  spanFits,
   tableConfidence,
   tagPattern,
   textMisses,
