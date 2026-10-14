@@ -41,7 +41,8 @@ describe("the chat prompt asks for specificity and keeps honesty", () => {
     'For every theme you cover, give its life area and houses, its direction, its strength and its confidence in words (e.g. "strong, medium confidence"), the engine factor behind it, and its dated window when it has one.',
     "Name every tag in the reading's sky once, with what it traditionally signifies: a Sade Sati phase, Kantaka or Ashtama Shani, Jupiter Nth from the Moon.",
     "For the user's own date, time and zone today, use the reading's period and place.current. get_current_datetime scope chart is the birth place's zone, not where the user is now.",
-    "Name the place when the reading's place has a label. With no label, name no city and never say a tool left one out.",
+    // Naming a labelled place moved into the opening sentence (PERIOD_RULES, 2026-10-14).
+    "With no place label, name no city and never say a tool left one out.",
     'Give at least one dated window or change point inside the period, with its day.',
     "Use get_period_detail to look closer at a lord, a segment, the bindus or the panchang.",
   ])("asks: %s", (line) => {

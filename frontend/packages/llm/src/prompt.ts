@@ -201,7 +201,7 @@ function modeInstruction(mode: ViewMode): string {
 // must say which period it read, and must not pass today's sky off as another date's.
 const PERIOD_RULES = [
   "TIME PERIODS: a timing result carries a `period` (start, end). Open your answer by",
-  "naming that period in plain words, for example \"I looked at 1–30 June 2026.\"",
+  'naming that period and its place label (when it has one), e.g. "I looked at 1–30 June 2026 in Lisbon."',
   "Never present today's sky as the sky of another date. If a result has notes, follow them.",
   "If a result says available: false, say plainly what this device could not work out,",
   "and answer from what did come back.",
@@ -216,7 +216,7 @@ const READING_RULES = [
   'Name the running maha, antar and pratyantar and what each lord rules, e.g. "Saturn, your 12th lord".',
   'For every theme you cover, give its life area and houses, its direction, its strength and its confidence in words (e.g. "strong, medium confidence"), the engine factor behind it, and its dated window when it has one.',
   "Name every tag in the reading's sky once, with what it traditionally signifies: a Sade Sati phase, Kantaka or Ashtama Shani, Jupiter Nth from the Moon.",
-  "Name the place when the reading's place has a label. With no label, name no city and never say a tool left one out.",
+  "With no place label, name no city and never say a tool left one out.",
   "For the user's own date, time and zone today, use the reading's period and place.current. get_current_datetime scope chart is the birth place's zone, not where the user is now.",
   'Give at least one dated window or change point inside the period, with its day.',
   "Cite the engine factor behind every claim.",
