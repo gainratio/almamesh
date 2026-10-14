@@ -3,7 +3,7 @@ import { dirname } from 'node:path';
 
 import { expect, type Page } from '@playwright/test';
 
-import { placeCallMisses, rangeCallMisses, spanCallMisses, spanFits, textMisses, type RangeCall, type SpanCall } from './answerChecks';
+import { placeCallMisses, rangeCallMisses, spanCallMisses, spanFits, textMisses, turnErrorBubble, type RangeCall, type SpanCall } from './answerChecks';
 import { LLM_SETTINGS_KEY, bootEngine, seedChart, type SeedBirthSpec } from './interpretation.helpers';
 import { waitForLifeAtlasAsOf } from './lifeAtlas.helpers';
 import { gotoSettled } from './portableInvariants.helpers';
@@ -136,7 +136,7 @@ function shiftMonth(month: string, by: number): string {
 
 /** "The next 3 months" from `now` (YYYY-MM): a start this month or next, 3+ months, ending by the 3rd month on. */
 function nextThreeMonths(now: string): SpanCall {
-  return { from: `${now}-01`, latestStart: monthPeriod(shiftMonth(now, 1)).end, to: monthPeriod(shiftMonth(now, 3)).end, minMonths: 3 };
+  return { from: `${now}-01`, latestStart: monthPeriod(shiftMonth(now, 1)).end, to: monthPeriod(shiftMonth(now, 3)).end, minMonths: 3, minDays: 59 };
 }
 
 /** This month in the viewer's zone (the app's one "today"). */
@@ -324,6 +324,7 @@ async function ask(page: Page, question: string, pick?: string): Promise<{ reado
   const seen = await telemetry(page);
   const lastTurnBefore = Math.max(0, ...seen.rounds.map((row) => row.turn), ...seen.calls.map((row) => row.turn));
   const answersBefore = await page.getByTestId('chat-message-assistant').count();
+  const bubblesBefore = await page.getByTestId('chat-error-bubble').count();
   await page.getByTestId('chat-input').fill(question);
   await page.getByTestId('chat-send-button').click();
   // The ⏳ button is disabled only while an answer streams.
@@ -335,7 +336,7 @@ async function ask(page: Page, question: string, pick?: string): Promise<{ reado
   return {
     rows: await readRows(page, before),
     answer: answers.length > answersBefore ? (answers[answers.length - 1] ?? '') : '',
-    errorBubble: bubbles[bubbles.length - 1],
+    errorBubble: turnErrorBubble(bubblesBefore, bubbles),
     pickMiss,
     metrics: turnMetrics(await telemetry(page), lastTurnBefore),
   };

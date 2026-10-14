@@ -17,7 +17,7 @@ import {
 } from '../../../e2e/answerChecks';
 
 /** Today is 14 Oct 2026: from 1 Oct 2026, a start by 30 Nov 2026, to 31 Jan 2027, 3+ months. */
-const NEXT_3_MONTHS = { from: '2026-10-01', latestStart: '2026-11-30', to: '2027-01-31', minMonths: 3 } as const;
+const NEXT_3_MONTHS = { from: '2026-10-01', latestStart: '2026-11-30', to: '2027-01-31', minMonths: 3, minDays: 59 } as const;
 
 function read(start: string, end: string, status = 'complete'): RangeRow {
   return { name: 'read_period', status, result: { period: { start, end } } };
@@ -56,6 +56,7 @@ describe('spanCallMisses (D3: one read over the next 3 months)', () => {
     ['a start in December', [read('2026-12-01', '2027-01-31')]],
     ['a start before October', [read('2026-09-01', '2026-12-31')]],
     ['an end past January', [read('2026-11-01', '2027-02-28')]],
+    ['33 days that touch 3 calendar months (30 Nov to 1 Jan)', [read('2026-11-30', '2027-01-01')]],
     ['a read with no period', [{ name: 'read_period', status: 'complete', result: { same_as: 'call_1' } }]],
     ['a read with a null result', [{ name: 'read_period', status: 'complete', result: null }]],
   ])('misses on %s', (_label, rows) => {

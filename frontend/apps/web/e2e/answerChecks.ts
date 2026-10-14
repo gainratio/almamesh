@@ -121,13 +121,15 @@ function rangeCallMisses(rows: readonly RangeRow[], range: RangeCall): string[] 
 
 /**
  * A span one call must cover (D3 "What are the next 3 months like?"): a start from `from` up to
- * `latestStart`, an end by `to`, and at least `minMonths` consecutive calendar months.
+ * `latestStart`, an end by `to`, at least `minMonths` consecutive calendar months, and at least
+ * `minDays` days (30 Nov to 1 Jan touches 3 calendar months in 33 days: not 3 months).
  */
 interface SpanCall {
   readonly from: string;
   readonly latestStart: string;
   readonly to: string;
   readonly minMonths: number;
+  readonly minDays: number;
 }
 
 const SPAN_CALL_MISS = 'D3 not read in one call over 3+ consecutive months';
@@ -136,9 +138,22 @@ const SPAN_CALL_MISS = 'D3 not read in one call over 3+ consecutive months';
 const monthNumber = (day: string): number => Number(day.slice(0, 4)) * 12 + Number(day.slice(5, 7)) - 1;
 
 /** The period is one D3 reading: it starts in the allowed months, ends in time, and spans the months asked. */
+/** Days from start to end, both included. */
+const daysSpanned = (start: string, end: string): number => (Date.parse(`${end}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / 86_400_000 + 1;
+
 function spanFits(period: { readonly start: string; readonly end: string }, span: SpanCall): boolean {
   const { start, end } = period;
-  return start >= span.from && start <= span.latestStart && end <= span.to && monthNumber(end) - monthNumber(start) + 1 >= span.minMonths;
+  const months = monthNumber(end) - monthNumber(start) + 1;
+  return start >= span.from && start <= span.latestStart && end <= span.to && months >= span.minMonths && daysSpanned(start, end) >= span.minDays;
+}
+
+/**
+ * The error bubble this turn produced: the last of the bubbles added since the send (`before` is
+ * the count before it). Bubbles stay in the thread, so an earlier turn's bubble is never this turn's.
+ */
+function turnErrorBubble(before: number, bubbles: readonly string[]): string | undefined {
+  const added = bubbles.slice(before);
+  return added[added.length - 1];
 }
 
 /**
@@ -201,4 +216,5 @@ export {
   tableConfidence,
   tagPattern,
   textMisses,
+  turnErrorBubble,
 };
