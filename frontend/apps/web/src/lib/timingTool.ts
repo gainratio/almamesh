@@ -157,7 +157,7 @@ const PLACE_PROPERTIES = {
 } as const;
 
 /** A trip's own description line: no dates or place are needed for the trip period. */
-const TRIP_DESCRIPTION = "In a trip, omit dates for its own period (its place is bound); for another period, send its start and end.";
+const TRIP_DESCRIPTION = "In a trip, omit dates for its own period; for another period, send its start and end.";
 
 const UNAVAILABLE = { available: false } as const;
 

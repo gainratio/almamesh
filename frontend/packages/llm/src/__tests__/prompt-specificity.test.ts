@@ -40,8 +40,8 @@ describe("the chat prompt asks for specificity and keeps honesty", () => {
     "Name every tag in the reading's sky once, with what it traditionally signifies: a Sade Sati phase, Kantaka or Ashtama Shani, Jupiter Nth from the Moon.",
     "For the user's own date, time and zone today, use the reading's period and place.current. get_current_datetime scope chart is the birth place's zone, not where the user is now.",
     "Name the place when the reading's place has a label. With no label, name no city and never say a tool left one out.",
-    "Give at least one dated window or change point inside the period.",
-    "Use get_period_detail to look closer at a lord, a segment, the bindus or the panchang when the question needs it.",
+    'Give at least one dated window or change point inside the period, with its day.',
+    "Use get_period_detail to look closer at a lord, a segment, the bindus or the panchang.",
   ])("asks: %s", (line) => {
     expect(chatSystem()).toContain(line);
   });
@@ -81,7 +81,8 @@ describe("the dasha table's pratyantar note points at the reading", () => {
 describe("present-day periods read the period reading, every time", () => {
   it.each([
     'PRESENT-DAY PERIODS (a today thread): for "this month", "next month" or "the next few weeks", call get_period_reading in every turn, follow-ups included, with granularity "month" (add month "YYYY-MM" for a later month; for "the next few weeks" read this month and the next; "day" is today only).',
-    "Every period answer names the place, at least one Moon-based tag from the reading's sky, and a confidence level.",
+    // 2026-10-14 acceptance matrix: multi-month answers ("the next 3 months") dropped the tag or the confidence.
+    'Every period answer, one month or several, names the place, a Moon-based tag by name (e.g. "Jupiter 8th from your Moon") and a confidence level.',
   ])("states: %s", (line) => {
     expect(chatSystem()).toContain(line);
   });
@@ -90,6 +91,6 @@ describe("present-day periods read the period reading, every time", () => {
     const pinned = { start: "2019-05-01", end: "2019-05-31", relative: "past", granularity: "month", label: "May 2019", place: { label: "Singapore", timezone: "Asia/Singapore" } } as const;
     const trip = buildChatMessages(CHART, "How was work?", "layman", [], [], undefined, "en", undefined, undefined, undefined, true, pinned)[0]?.content ?? "";
     expect(trip).not.toContain("PRESENT-DAY PERIODS");
-    expect(trip).toContain("Every period answer names the place");
+    expect(trip).toContain("Every period answer, one month or several, names the place");
   });
 });

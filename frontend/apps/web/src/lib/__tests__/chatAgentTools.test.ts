@@ -338,6 +338,11 @@ describe('shouldPreRunToday', () => {
     '¿Cómo se ven las próximas semanas?',
     'E o próximo mês?',
     'Como serão as próximas semanas?',
+    // 2026-10-14 acceptance matrix: a counted span matched nothing and ran with tool_choice auto.
+    'What are the next 3 months like?',
+    'How do the next two weeks look?',
+    '¿Cómo serán los próximos 3 meses?',
+    'Como serão os próximos três meses?',
   ])('pre-runs a present-day or near-future period question: %s', (question) => {
     expect(shouldPreRunToday(question)).toBe(true);
   });

@@ -106,12 +106,12 @@ export function viewerTodayDay(now: Date, timeZone: string = viewerTimeZone()): 
 const CURRENT_CONTEXT_PATTERN =
   /\b(?:today|now|currently|current|this\s+(?:week|month|year)|transits?|timing|hoy|ahora|actual(?:mente)?|esta\s+semana|este\s+(?:mes|ano)|transitos?|hoje|agora|atual(?:mente)?|esta\s+semana|este\s+(?:mes|ano)|transitos?)\b/i;
 /**
- * The near future, read from today (2026-10-14): "next month", "the next few weeks", "coming
+ * The near future, read from today (2026-10-14): "next month", "the next few weeks", "the next 3 months", "coming
  * months", "upcoming"; es/pt "próximo mes", "próximas semanas", "mês que vem". Live on ba4430ce
  * the follow-up "And next month?" matched nothing and the model answered with no tool.
  */
 const NEAR_FUTURE_PATTERN =
-  /\b(?:next\s+(?:(?:few|couple(?:\s+of)?)\s+)?(?:days?|weeks?|months?|year)|coming\s+(?:days|weeks|months)|upcoming|proxim[oa]s?\s+(?:dias?|semanas?|mes(?:es)?|ano)|(?:mes|semana|ano)\s+que\s+vem)\b/;
+  /\b(?:next\s+(?:(?:few|couple(?:\s+of)?|\d{1,2}|two|three|four|five|six)\s+)?(?:days?|weeks?|months?|year)|coming\s+(?:days|weeks|months)|upcoming|proxim[oa]s?\s+(?:(?:\d{1,2}|dos|duas|dois|tres|cuatro|quatro|cinco|seis)\s+)?(?:dias?|semanas?|mes(?:es)?|ano)|(?:mes|semana|ano)\s+que\s+vem)\b/;
 const NEXT_MONTH_PATTERN = /\b(?:next\s+month|proximo\s+mes|mes\s+que\s+vem)\b/;
 
 /** Lowercase with accents folded, the way the router has always matched. */

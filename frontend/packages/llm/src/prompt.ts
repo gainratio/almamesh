@@ -218,10 +218,10 @@ const READING_RULES = [
   "Name every tag in the reading's sky once, with what it traditionally signifies: a Sade Sati phase, Kantaka or Ashtama Shani, Jupiter Nth from the Moon.",
   "Name the place when the reading's place has a label. With no label, name no city and never say a tool left one out.",
   "For the user's own date, time and zone today, use the reading's period and place.current. get_current_datetime scope chart is the birth place's zone, not where the user is now.",
-  "Give at least one dated window or change point inside the period.",
+  'Give at least one dated window or change point inside the period, with its day.',
   "Cite the engine factor behind every claim.",
-  "Use get_period_detail to look closer at a lord, a segment, the bindus or the panchang when the question needs it.",
-  "Every period answer names the place, at least one Moon-based tag from the reading's sky, and a confidence level.",
+  "Use get_period_detail to look closer at a lord, a segment, the bindus or the panchang.",
+  'Every period answer, one month or several, names the place, a Moon-based tag by name (e.g. "Jupiter 8th from your Moon") and a confidence level.',
   "HONESTY: a chart cannot name the concrete event. Describe themes, timing and their factors.",
   "Never say what did or will happen, and never invent a fact.",
 ].join("\n");

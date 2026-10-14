@@ -97,7 +97,7 @@ describe('get_timing in a pinned thread', () => {
   // only about its own period"; a question about another month must send that month's dates.
   it("a trip's description says another period is read by sending its dates, not only to compare", () => {
     const { description } = tool(DAY_PIN, {});
-    expect(description).toContain("In a trip, omit dates for its own period (its place is bound); for another period, send its start and end.");
+    expect(description).toContain("In a trip, omit dates for its own period; for another period, send its start and end.");
     expect(description).not.toContain('only to compare');
   });
 
