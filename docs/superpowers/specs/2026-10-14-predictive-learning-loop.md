@@ -32,8 +32,8 @@ much, and could we have fooled ourselves?" It also tells users plainly which are
 - **In the PR.** The block is pasted into the PR body. A cheap public check (no data) fails an
   engine-touching PR whose block is missing or whose engine SHA isn't the PR head.
 - **Prove the guard can fail (northstar).** Every scorecard runs two controls and is void if
-  either misbehaves: a planted family that peeks at the event month (lift must be near N/k,
-  p < 1e-20) and a shuffled-months null (lift CI must include 1). A technique PR also shows one
+  either misbehaves: a planted family that peeks at the event month (lift must be N/k,
+  p at the null's floor: below 1e-20 on small sets, 1e-12 on the FFT path; eval amendment e) and a shuffled-months null (lift CI must include 1). A technique PR also shows one
   mutation: the new family's score forced constant, and its area lift returning to the
   `without:` row. A PR that claims no engine change must produce identical report bytes.
 

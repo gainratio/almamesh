@@ -291,6 +291,58 @@ aggregate before the split; that is held-out look zero.
   DEV windows. The run is void unless its lift is N/k within rounding and p < 1e-20.
 - DEV wins are not evidence (learning-loop §2). Nothing is promoted from this run.
 
+### Amendment 2026-10-14 (e): the planted control's p-value floor (after the DEV run)
+
+The DEV run printed VOID. The planted family was exactly at its ceiling (lift 24.33 = 73/3 at
+k=3, 12.17 at k=6), but its p-value was 1e-12, not below 1e-20. That is amendment (b): a large
+set takes the FFT path and its p is floored at 1e-12 by design, so "p < 1e-20" could never pass
+on thousands of events. The rule was wrong, not the run. The rule is now "lift N/k and p at or
+below the null's floor (1e-12)", with a regression test. No event was rescored: the verdict was
+recomputed from the run's stored planted and shifted summaries, and both files are kept
+(`scorecard-as-run.*` and `scorecard.*`, outside git).
+
+## Results: DEV, exact transits (technique #1), 2026-10-14
+
+The only scoring run of amendment (d). Engine and harness at `8faa4ed7` (branch
+`feat/exact-transits`); pre-registration digest `e3462748…`; split `299ec393…`, DEV half
+(5,062 natives). Window ±36, k 3 and 6, orb 1° (the only orb ever run). Aggregates only. One
+timing probe scored 120 DEV natives for wall-clock only (nothing summarised or read); the full
+run took 74 min at 6 workers. DEV results are not evidence (learning-loop §2).
+
+6,120 month-dated events scored (5,287 year-only excluded, 44 windows outside the engine's
+range). BASELINE is `without:exact_transits` (the v1 families); +EXACT adds the family. Ratio is
++EXACT hits / BASELINE hits with a bootstrap CI over natives. Swap is the same events on a
+same-birth-year partner's chart (7 natives alone in their year dropped).
+
+| area (k=3) | n | BASELINE lift [CI] | +EXACT lift [CI], p | ratio [CI] | swap +EXACT lift [CI] |
+|---|---|---|---|---|---|
+| all areas | 6,120 | 0.96 [0.84, 1.08] | 1.01 [0.89, 1.13], 0.45 | 1.05 [0.96, 1.15] | 0.94 [0.83, 1.06] |
+| career (hypothesis) | 1,045 | 0.95 [0.70, 1.28] | 1.04 [0.78, 1.38], 0.39 | 1.09 [0.90, 1.32] | 0.93 [0.68, 1.25] |
+| relationships (hypothesis) | 2,567 | 0.96 [0.79, 1.16] | 0.99 [0.82, 1.19], 0.56 | 1.03 [0.89, 1.18] | 0.90 [0.74, 1.10] |
+| disputes (secondary, Mars) | 779 | 0.89 [0.62, 1.27] | 0.88 [0.61, 1.26], 0.76 | 0.99 [0.76, 1.29] | 1.19 [0.87, 1.61] |
+| family | 1,082 | 1.01 [0.76, 1.34] | 1.10 [0.84, 1.45], 0.22 | 1.09 [0.86, 1.39] | 0.92 [0.68, 1.24] |
+| health | 439 | 0.74 [0.43, 1.24] | 0.66 [0.38, 1.14], 0.95 | 0.89 [0.54, 1.50] | 0.70 [0.41, 1.19] |
+| finances | 94 | 1.48 [0.68, 3.13] | 1.84 [0.91, 3.59], 0.046 | 1.24 [0.75, 2.50] | 1.42 [0.64, 3.05] |
+| none (relocation) | 73 | 1.18 [0.44, 3.02] | 2.12 [1.01, 4.23], 0.027 | 1.79 [0.99, 4.38] | 0.45 [0.10, 1.97] |
+| education | 41 | 1.34 [0.40, 4.14] | 1.26 [0.36, 4.03], 0.31 | 0.94 [0.00, 3.00] | 2.02 [0.74, 5.04] |
+
+At k=6 the picture is the same: all areas 0.96 → 0.98 (ratio 1.02 [0.97, 1.08]), career 0.93 →
+0.97, relationships 0.98 → 1.00; finances 1.59 (p=0.044) but its chart-swap row is higher
+(1.77 [1.07, 2.80]). Full tables: `scorecard.md` beside the export.
+
+- **Multiple comparisons.** 16 tests (+EXACT, 8 areas × 2 k). Raw p < 0.05: finances k=3 and
+  k=6, relocation k=3. Holm survivors: none. BH survivors: none.
+- **Controls.** Planted: lift exactly N/k at both k, p at the 1e-12 floor (ok under amendment e;
+  the run first printed VOID, see there). Shifted months: 0.98 [0.87, 1.11] at k=3,
+  0.93 [0.85, 1.01] at k=6, both include 1 (ok). Chart swap: the real chart does not beat it in
+  any area; every real CI overlaps its swap CI, and in disputes and finances the swap is higher.
+- **Hypothesis (career, relationships).** Not supported. Ratios 1.09 [0.90, 1.32] and
+  1.03 [0.89, 1.18] include 1; neither area's +EXACT lift CI excludes 1.
+- **Verdict.** On DEV, exact transits at a 1° orb add no measurable lift in any life area once
+  multiple comparisons and the chart-swap control are applied. The family stays off
+  (`ExactTransitSettings.enabled = False`), nothing goes to HELD-OUT, and per learning-loop §8 it
+  counts as one of the first four families toward the stop rule.
+
 ## Results: baseline 2026-10-14 (SYNTHETIC, harness sanity only, not evidence)
 
 30 random-month events, pre-registered settings. Expected: lift near 1, nothing significant.
@@ -325,4 +377,8 @@ cd backend && uv run almamesh-eval retrodiction --events ~/.almamesh/retrodictio
 cd backend && uv run almamesh-eval adb-summary --adb ~/.almamesh/retrodiction/adb/adb_export_<date>.xml
 cd backend && uv run almamesh-eval retrodiction --adb ~/.almamesh/retrodiction/adb/adb_export_<date>.xml --window 36 --k 3,6
 # -> ~/.almamesh/retrodiction/adb/retrodiction-report/{report.json,report.md}
+
+# DEV scorecard (amendment d): BASELINE vs +exact_transits per area, with the controls
+cd backend && uv run almamesh-eval scorecard --adb ~/.almamesh/retrodiction/adb/adb_export_<date>.xml --split dev --workers 6
+# -> ~/.almamesh/retrodiction/adb/scorecard/{scorecard.json,scorecard.md}
 ```
