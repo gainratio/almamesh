@@ -40,12 +40,20 @@ export function browserJourneyArtifactName(commitSha: string): string {
 export const FETCH_RUN_ARTIFACT_SCRIPT = "scripts/fetch_run_artifact.py"
 export const FETCHED_EVIDENCE = "/evidence"
 
-/** argv that downloads this run's evidence artifact for this commit, and nothing else. */
-export function browserJourneyFetchArgs(repository: string, runId: string, commitSha: string): string[] {
+/** The validated inputs for fetching this run's evidence artifact for this commit, and nothing else. */
+export interface BrowserJourneyFetchRequest {
+  readonly repository: string
+  readonly runId: string
+  readonly artifact: string
+}
+
+/**
+ * Validates the caller's inputs into data only. The executable and flags stay
+ * literal at the withExec call site (gainratio/ci fleet rule arbitrary-command):
+ * a whole argv returned from here would read as caller-controlled command structure.
+ */
+export function browserJourneyFetchRequest(repository: string, runId: string, commitSha: string): BrowserJourneyFetchRequest {
   const allowed = requireAllowedRepository(repository)
   if (!/^[1-9][0-9]{0,19}$/.test(runId)) throw new Error("Browser journey run id is invalid.")
-  return [
-    "python3", "/opt/fetch_run_artifact.py", "--repository", allowed, "--run-id", runId,
-    "--name", browserJourneyArtifactName(commitSha), "--output", FETCHED_EVIDENCE,
-  ]
+  return { repository: allowed, runId, artifact: browserJourneyArtifactName(commitSha) }
 }
