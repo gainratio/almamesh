@@ -2,9 +2,12 @@
  * Deploy skew: a tab open across a deploy keeps working.
  *
  * The regression (2026-10-13): a tab opened on release A, still open when
- * release B went live, sent a chat message. The send lazy-imports
+ * release B went live, sent a chat message. The send lazy-imported
  * `placeLookup-<hash>.js` of A; B's deployment no longer had it, the import
- * failed, and chat said "Couldn't reach your AI endpoint". Cloudflare Pages
+ * failed, and chat said "Couldn't reach your AI endpoint". Since the chat tool
+ * layer redesign (2026-10-14) the send first lazy-imports the chat turn itself
+ * (`chatTurn-<hash>.js`), then placeLookup for a named city: the first stale
+ * chunk is the chat turn's. Cloudflare Pages
  * serves only the newest deployment on the production domain, so every hashed
  * chunk of the previous release 404s the moment a new one is live.
  *
@@ -38,6 +41,7 @@ import { fileURLToPath } from 'node:url';
 import { carryForwardAssets } from '../scripts/carryForwardAssets.mjs';
 import { LLM_SETTINGS_KEY, bootEngine, seedChart } from './interpretation.helpers';
 import { gotoSettled } from './portableInvariants.helpers';
+import { chatToolBody, fulfillEmpty, fulfillReadThenAnswer, readPeriodArgs } from './stubChatProvider';
 import { startTwoBuildServer, type TwoBuildServer } from './swUpdateServer';
 
 const PORT = Number(process.env.DEPLOY_SKEW_E2E_PORT ?? 4230);
@@ -56,7 +60,7 @@ const LLM_CONFIG = {
   privacyMode: 'cloud_premium',
   engine: 'openai-http',
 };
-/** Full tier, so the chat registers resolve_place (its tool lazy-imports placeLookup). */
+/** Full tier, so read_period reads a named city (its lookup lazy-imports placeLookup). */
 const FULL_TIER = { deviceMemory: 8, hardwareConcurrency: 8 };
 const QUESTION = 'What is the sky doing over Chennai this week?';
 const ANSWER = 'Chennai sits under a calm sky this week.';
@@ -70,11 +74,11 @@ function readEntry(buildDir: string): string {
   return entry;
 }
 
-/** A's lazy chat chunk, by file name (what the open tab will request). */
-function placeLookupChunk(buildDir: string): string {
+/** A's lazy chat-turn chunk, by file name (the first chunk the open tab requests on send). */
+function chatTurnChunk(buildDir: string): string {
   const manifest = readFileSync(path.join(buildDir, 'assets-manifest.json'), 'utf8');
-  const match = manifest.match(/assets\/placeLookup-[^"]+\.js/)?.[0];
-  if (!match) throw new Error(`no placeLookup chunk listed in ${buildDir}/assets-manifest.json`);
+  const match = manifest.match(/assets\/chatTurn-[^"]+\.js/)?.[0];
+  if (!match) throw new Error(`no chatTurn chunk listed in ${buildDir}/assets-manifest.json`);
   return `/${match}`;
 }
 
@@ -108,7 +112,7 @@ function watch(page: Page): Watch {
   return { consoleErrors, assetFailures };
 }
 
-/** Full-tier pin, the stubbed provider's settings, and the provider itself: resolve_place, then the answer. */
+/** Full-tier pin, the stubbed provider's settings, and the provider itself: read_period in Chennai, then the answer. */
 async function stubAi(context: BrowserContext): Promise<void> {
   await context.addInitScript((tier) => {
     for (const [name, value] of Object.entries(tier)) {
@@ -119,18 +123,11 @@ async function stubAi(context: BrowserContext): Promise<void> {
     ([key, cfg]) => window.localStorage.setItem(key as string, cfg as string),
     [LLM_SETTINGS_KEY, JSON.stringify(LLM_CONFIG)] as const,
   );
+  const thisMonth = new Date().toISOString().slice(0, 7);
   await context.route('**/chat/completions', async (route) => {
-    const parsed = JSON.parse(route.request().postData() ?? '{}') as {
-      messages?: Array<{ role: string }>;
-      tools?: Array<{ function: { name: string } }>;
-    };
-    const asked = JSON.stringify(parsed.messages ?? []).includes('Chennai');
-    const offersPlace = (parsed.tools ?? []).some((tool) => tool.function.name === 'resolve_place');
-    const toolRan = (parsed.messages ?? []).some((message) => message.role === 'tool');
-    const message = asked && offersPlace && !toolRan
-      ? { content: null, tool_calls: [{ id: 'place-1', type: 'function', function: { name: 'resolve_place', arguments: JSON.stringify({ query: 'Chennai' }) } }] }
-      : { content: asked ? ANSWER : '' };
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ choices: [{ message }] }) });
+    const chat = chatToolBody(route.request().postData());
+    if (!chat || !JSON.stringify(chat.messages).includes('Chennai')) return fulfillEmpty(route);
+    return fulfillReadThenAnswer(route, chat, readPeriodArgs(thisMonth, { place: 'Chennai' }), ANSWER);
   });
 }
 
@@ -210,7 +207,7 @@ async function precached(page: Page, chunk: string): Promise<boolean> {
 test.describe('a tab open across a deploy', () => {
   let server: TwoBuildServer;
   const scratch: string[] = [];
-  const chunkA = placeLookupChunk(BUILD_A);
+  const chunkA = chatTurnChunk(BUILD_A);
 
   test.beforeAll(async () => {
     server = await startTwoBuildServer(BUILD_A, PORT);

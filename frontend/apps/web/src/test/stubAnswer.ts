@@ -47,9 +47,14 @@ function toolResults(body: { readonly messages?: readonly WireMessage[] }): unkn
   return (body.messages ?? []).filter((message) => message.role === 'tool').map((message) => parsed(message.content));
 }
 
+/** Every read_period reading the request carries, oldest first. */
+export function readingsOf(body: { readonly messages?: readonly WireMessage[] }): ReadingLike[] {
+  return toolResults(body).filter(isReading);
+}
+
 /** The newest read_period reading the request carries, if any. */
 export function readingOf(body: { readonly messages?: readonly WireMessage[] }): ReadingLike | undefined {
-  const readings = toolResults(body).filter(isReading);
+  const readings = readingsOf(body);
   return readings[readings.length - 1];
 }
 
@@ -59,12 +64,17 @@ export function generalAnswer(markdown: string): Readonly<Record<string, unknown
   return { ...EMPTY, kind: 'general', markdown };
 }
 
-/** A period answer that cites only what the reading says: its lords and their houses, a Moon tag, a window. */
-export function periodAnswerFrom(reading: ReadingLike, opening = 'A steady stretch for work.'): Readonly<Record<string, unknown>> {
+/**
+ * A period answer that cites only what the turn's readings say: the newest reading's period,
+ * place, lords and their houses, and a Moon tag and a window from any reading (the answer
+ * check takes them from every reading of the turn).
+ */
+export function periodAnswerFrom(readings: readonly ReadingLike[], opening = 'A steady stretch for work.'): Readonly<Record<string, unknown>> {
+  const reading = readings[readings.length - 1]!;
   const rules = (lord: string) => [...(reading.lords?.find((row) => row.lord === lord)?.rules ?? [])];
   const line = (lord: string) => ({ lord, rules: rules(lord), note: `${lord} sets the tone.` });
-  const tag = reading.sky?.flatMap((span) => span.tags)[0];
-  const window = reading.windows?.[0]?.date;
+  const tag = readings.flatMap((each) => each.sky ?? []).flatMap((span) => span.tags)[0];
+  const window = readings.flatMap((each) => each.windows ?? [])[0]?.date;
   return {
     ...EMPTY,
     kind: 'period',
@@ -84,8 +94,8 @@ export function periodAnswerFrom(reading: ReadingLike, opening = 'A steady stret
  * answer once any other tool result came back (an ask, say); else a read_period call.
  */
 export function stubCallFor(body: { readonly messages?: readonly WireMessage[] }, readArgs: Readonly<Record<string, unknown>>, opening?: string): StubToolCall {
-  const reading = readingOf(body);
-  if (reading) return { name: 'answer', args: periodAnswerFrom(reading, opening) };
+  const readings = readingsOf(body);
+  if (readings.length > 0) return { name: 'answer', args: periodAnswerFrom(readings, opening) };
   if (toolResults(body).length > 0) return { name: 'answer', args: generalAnswer('I could not read that period here.') };
   return { name: 'read_period', args: readArgs };
 }

@@ -21,6 +21,7 @@ import { detectMemoryTier, type MemoryTier } from '@gainratio/browser/sqlite';
 import { formatMemoryReport } from '../scripts/processMemory.mjs';
 import { BOOT_MEMORY_BUDGET, PLACE_LOOKUP_HEAP_GROWTH_MIB, overBudget, type BootMemorySample } from './memoryBudget';
 import { waitForMemoryDashboard } from './timeTravelMemory.helpers';
+import { fulfillToolCall, generalAnswer } from './stubChatProvider';
 
 const MiB = 1024 * 1024;
 const cityManifest = JSON.parse(readFileSync(new URL('../public/cities/manifest.json', import.meta.url), 'utf8')) as { parts: number };
@@ -447,12 +448,12 @@ for (const tier of ['minimal', 'lite'] as const) {
       await page.route('https://openrouter.ai/api/v1/chat/completions', async (route) => {
         const body = route.request().postDataJSON() as { stream?: boolean; messages?: Array<{ role?: string; content?: unknown }> };
         if (body.messages?.some((message) => message.role === 'user' && String(message.content).includes(question))) chatRequests += 1;
+        // A chat turn answers with one `answer` tool call (lib/chatTurn.ts); other requests get plain JSON.
+        if (body.stream) return fulfillToolCall(route, { name: 'answer', args: generalAnswer(answer) });
         await route.fulfill({
           status: 200,
-          contentType: body.stream ? 'text/event-stream' : 'application/json',
-          body: body.stream
-            ? `data: ${JSON.stringify({ choices: [{ delta: { content: answer } }] })}\n\ndata: [DONE]\n\n`
-            : JSON.stringify({ choices: [{ message: { role: 'assistant', content: answer }, finish_reason: 'stop' }] }),
+          contentType: 'application/json',
+          body: JSON.stringify({ choices: [{ message: { role: 'assistant', content: answer }, finish_reason: 'stop' }] }),
         });
       });
 

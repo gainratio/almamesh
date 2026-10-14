@@ -18,13 +18,13 @@ import { gotoSettled } from './portableInvariants.helpers';
 import { captureReloadConsole } from './reloadConsole';
 
 /**
- * Agent-loop context budget, stress (plan 2026-10-13 Phase 1). A stubbed
- * OpenRouter answers every decision round with as many tool calls as it can
- * (parallel grounding, detail, an identical repeat, six at once) for up to four
- * rounds, then answers in text. For a 1M and an 8k chat model, every outbound
- * request's prompt (messages + tools, chars / 4) must stay within half the
- * model's context window, every tool_call must keep its tool message, and the
- * turn must render its answer with no error row and a clean console.
+ * Chat turn context budget, stress (plan 2026-10-13 Phase 1; chat tool layer
+ * redesign 2026-10-14). A stubbed OpenRouter answers three rounds with as many
+ * read_period calls as it can (a read, an identical repeat plus a new span, six at
+ * once past the per-turn cap), then answers with an `answer` call. For a 1M and an
+ * 8k chat model, every outbound request's prompt (messages + tools, chars / 4) must
+ * stay within half the model's context window, every tool_call must keep its tool
+ * message, and the turn must render its answer with no error row and a clean console.
  * Numbers for every round land in BUDGET_REPORT (agentBudget.helpers.ts).
  */
 const FULL_TIER = { deviceMemory: 8, hardwareConcurrency: 8 };
@@ -94,33 +94,18 @@ async function appTelemetry(page: Page): Promise<readonly unknown[]> {
   return rows ?? [];
 }
 
-/** The stub's stress plan was actually reached: rounds 3-4, the six-call round and a repeat with no compaction (1M); compaction and the budget gate closing the turn (8k). */
-function assertStressReached(provider: BudgetProvider, model: MockModelId): void {
+/**
+ * The stub's stress plan was actually reached: all three read rounds, the six-call round,
+ * and the per-turn read_period cap answering the extra calls as skipped. Contract reversed
+ * (Task 6, 2026-10-14): the old loop compacted consumed results and closed a turn at the
+ * budget gate; both went with it, so neither is asserted. The budget itself still is (assertBudget).
+ */
+function assertStressReached(provider: BudgetProvider): void {
   const toolRounds = provider.captured.filter((request) => request.reply !== 'answer');
   const deepest = Math.max(0, ...toolRounds.map((request) => request.round));
-  // Contract reversed 2026-10-13 (P1 acceptance drive): compaction is budget-driven. A 1M window keeps
-  // every result in full (it used to compact unconditionally); an 8k window must compact to fit.
-  if (model === 'mock/ctx-1m') {
-    expect.soft(toolMessagesContaining(provider.captured, 'compacted'), 'a 1M window never compacts a tool result').toBe(0);
-  } else {
-    expect.soft(toolMessagesContaining(provider.captured, 'compacted'), 'a consumed tool result was compacted').toBeGreaterThan(0);
-  }
-  if (model === 'mock/ctx-8k') {
-    // Contract changed 2026-10-13 (period-reading merge): this asserted that an 8k window still
-    // reaches decision round 3. The trip's first request is now ~3.2k of the 4,096-token turn
-    // budget (system prompt ~5 KB, seven tool schemas ~6.8 KB with get_period_reading and
-    // get_period_detail), so after round 1's results the budget gate closes the turn: one tool
-    // round, then the app grounds the reading locally and answers with tools off. Asserted as
-    // that, so a regression in the gate still fails here.
-    expect.soft(deepest, 'an 8k trip still runs one tool round').toBeGreaterThanOrEqual(1);
-    expect.soft(provider.captured.filter((request) => request.toolChoice === 'none' && JSON.stringify(request.messages).includes('context budget for this turn is used up')).length,
-      'the budget gate, not a crash, closed every 8k turn').toBe(new Set(provider.captured.map((request) => request.turn)).size);
-    return;
-  }
-  // The 1M window must run all four rounds.
-  expect.soft(deepest, 'the stub answered decision round 4 with tool calls').toBe(4);
+  expect.soft(deepest, 'the stub answered read round 3 with tool calls').toBe(3);
   expect.soft(toolRounds.some((request) => request.reply.length === 6), 'the six-parallel round was requested').toBe(true);
-  expect.soft(toolMessagesContaining(provider.captured, 'unchanged; see the earlier result'), 'an identical repeat came back "unchanged"').toBeGreaterThan(0);
+  expect.soft(toolMessagesContaining(provider.captured, 'already read enough'), 'calls past the read_period cap came back skipped').toBeGreaterThan(0);
 }
 
 async function assertBudget(page: Page, provider: BudgetProvider, model: MockModelId, journey: string, turns: number): Promise<void> {
@@ -134,12 +119,8 @@ async function assertBudget(page: Page, provider: BudgetProvider, model: MockMod
     const where = `${model} ${journey} turn ${request.turn + 1} round ${request.round} (tool_choice ${request.toolChoice})`;
     expect.soft(estimatePromptTokens(request), `${where}: prompt within floor(0.5 × ${contextLength}) = ${budget}`).toBeLessThanOrEqual(budget);
     expect.soft(pairingViolations(request.messages), `${where}: every tool_call keeps its tool message`).toEqual([]);
-    // A budget-closed trip still runs its required grounding tools before it answers.
-    if (request.toolChoice === 'none') {
-      expect.soft(JSON.stringify(request.messages), `${where}: every required trip tool ran`).not.toContain('did not succeed this turn');
-    }
   }
-  assertStressReached(provider, model);
+  assertStressReached(provider);
 }
 
 for (const { id: model } of MOCK_MODELS) {

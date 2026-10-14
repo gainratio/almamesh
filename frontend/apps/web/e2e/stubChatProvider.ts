@@ -9,7 +9,7 @@ import type { Route } from '@playwright/test';
 
 import { stubCallFor, toolCallSse, type StubToolCall } from '../src/test/stubAnswer';
 
-export { generalAnswer, periodAnswerFrom, readingOf, readPeriodArgs, stubCallFor, toolCallSse } from '../src/test/stubAnswer';
+export { generalAnswer, periodAnswerFrom, readingOf, readingsOf, readPeriodArgs, stubCallFor, toolCallSse } from '../src/test/stubAnswer';
 export type { StubToolCall } from '../src/test/stubAnswer';
 
 export interface WireToolCall {

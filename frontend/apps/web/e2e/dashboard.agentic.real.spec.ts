@@ -64,7 +64,7 @@ function observeAgentRequests(page: Page): ObservedAgentRequest[] {
     if (request.method() !== 'POST' || !request.url().endsWith('/chat/completions')) return;
     try {
       const body = request.postDataJSON() as AgentRequestBody;
-      if (!body.tools?.some((tool) => tool.function?.name === 'get_current_datetime')) return;
+      if (!body.tools?.some((tool) => tool.function?.name === 'read_period')) return;
       const observed = { body };
       requests.push(observed);
       byRequest.set(request, observed);
@@ -324,15 +324,10 @@ test('[real] dashboard: timer + life phase + exact-day agentic chat', async ({
   // tool-decision round streams so a no-tool answer shows token by token
   // (agent.test.ts and chat.grounding.spec.ts already pin `stream: true`).
   expect(firstAgentRequest.stream).toBe(true);
-  expect(firstAgentRequest.tool_choice).toBe('auto');
-  // Every live turn offers the local read tools and deferred movement tool.
-  expect(firstAgentRequest.tools?.map((tool) => tool.function?.name)).toEqual([
-    'get_current_datetime',
-    'get_chart_facts',
-    'get_timing',
-    'resolve_place',
-    'time_travel',
-  ]);
+  // Contract changed (chat tool layer redesign, Task 6): every round calls a tool; a today turn
+  // offers the one read tool, the deferred move and the final answer.
+  expect(firstAgentRequest.tool_choice).toBe('required');
+  expect(firstAgentRequest.tools?.map((tool) => tool.function?.name)).toEqual(['read_period', 'travel', 'answer']);
   const firstMessages = Array.isArray(firstAgentRequest.messages)
     ? firstAgentRequest.messages
     : [];
