@@ -29,6 +29,7 @@ import {
   seedPortableLedger,
 } from './portableState';
 import { CHAT_PERSIST_VERSION } from './chat';
+import { PREDICTIVE_PERSIST_VERSION } from './predictive';
 
 class MemorySqliteStore implements SqliteStateStore {
   readonly name = 'test';
@@ -668,11 +669,12 @@ describe('PortableStateRepository', () => {
     await expect(repository.exportBytes()).rejects.toThrow(expected);
   });
 
-  it('pins the predictive row at the store persist version 5 (corrected contacts export)', () => {
-    expect(PORTABLE_STORE_MAX_VERSIONS['almamesh-predictive']).toBe(5);
+  it('pins the predictive row at the store persist version 6 (period_reading)', () => {
+    expect(PORTABLE_STORE_MAX_VERSIONS['almamesh-predictive']).toBe(6);
+    expect(PORTABLE_STORE_MAX_VERSIONS['almamesh-predictive']).toBe(PREDICTIVE_PERSIST_VERSION);
   });
 
-  it.each([3, 4, 5])('accepts a v%i predictive result keyed by a known chart fallback', async (version) => {
+  it.each([3, 4, 5, 6])('accepts a v%i predictive result keyed by a known chart fallback', async (version) => {
     const sqlite = new MemorySqliteStore();
     const repository = new PortableStateRepository(sqlite, async (bytes) => bytes[0]!, rebuildAtEpoch(sqlite));
     await migrateLegacyState(
