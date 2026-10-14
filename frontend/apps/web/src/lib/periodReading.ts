@@ -390,7 +390,9 @@ const withoutAgreement = ({ agreement: _agreement, ...theme }: ReadingTheme): Re
  * Dated change points (segment events: stations, ingresses, each with its day)
  * outrank secondary detail: they are how the model says when a period shifts.
  * Every theme's verdict and first factor outrank sky detail: a Year once lost
- * its obstacles theme while three Jupiter spans survived (2026-10-14).
+ * its obstacles theme while three Jupiter spans survived (2026-10-14). A
+ * low-confidence theme (0-1 agreeing techniques) is the exception: it goes
+ * before the sky thins further (T3 A/B, deepseek: 0/3 with it, 2/3 without).
  */
 const TRIMS: readonly Trim[] = [
   { note: 'windows beyond 6', apply: (r) => ({ ...r, windows: r.windows.slice(0, 6) }) },
@@ -400,6 +402,7 @@ const TRIMS: readonly Trim[] = [
   { note: 'sky spans beyond 3 per graha', apply: (r) => ({ ...r, sky: firstPerGraha(r.sky, 3) }) },
   { note: 'pratyantar-only lord natal detail', apply: (r) => ({ ...r, lords: r.lords.map((l) => (pratyantarOnly(l) ? lordBrief(l) : l)) }) },
   { note: 'theme factors beyond 1', apply: (r) => capThemes(r, (t) => ({ ...t, factors: t.factors.slice(0, 1) })) },
+  { note: 'low-confidence themes', apply: (r) => ({ ...r, themes: r.themes.filter((t) => t.confidence !== 'low') }) },
   { note: 'sky spans beyond 2 per graha', apply: (r) => ({ ...r, sky: firstPerGraha(r.sky, 2) }) },
   { note: 'segment events', apply: (r) => ({ ...r, segments: r.segments.map((s) => ({ ...s, events: [] })) }) },
   { note: 'segments', apply: (r) => (r.period.granularity === 'day' ? r : { ...r, segments: [] }) },

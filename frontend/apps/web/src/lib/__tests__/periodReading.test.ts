@@ -184,13 +184,21 @@ describe('the period reading (get_period_reading)', () => {
   });
 
   // 2026-10-14: the Year cut whole themes before thinning the sky, so obstacles (the 5th theme)
-  // vanished from 2019 while three Jupiter spans per graha survived. A theme's verdict outranks sky detail.
-  it('a Year keeps every life area, obstacles with its factor, before it drops any theme', () => {
+  // vanished from 2019 while three Jupiter spans survived. A theme's verdict outranks sky detail.
+  // Contract narrowed the same day (T3 A/B, deepseek x3: 0/3 with all 8 themes, 2/3 without the
+  // low-confidence ones): a theme with 0-1 agreeing techniques goes once factors are down to one,
+  // before the sky thins further. Obstacles and every medium/high theme stay.
+  it('a Year keeps every medium- or high-confidence life area, obstacles with its factor', () => {
     const year = reading('delhi-2019-year');
-    expect(year.themes.map((theme) => theme.domain)).toEqual(['education', 'family', 'health', 'relationships', 'obstacles', 'spiritual', 'career', 'finances']);
+    expect(year.themes.map((theme) => theme.domain)).toEqual(['education', 'family', 'health', 'relationships', 'obstacles', 'spiritual', 'career']);
+    expect(year.themes.every((theme) => theme.confidence !== 'low')).toBe(true);
+    expect(year.trimmed).toContain('low-confidence themes');
+    expect(year.trimmed!.indexOf('low-confidence themes')).toBe(year.trimmed!.indexOf('theme factors beyond 1') + 1);
     expect(year.themes.find((theme) => theme.domain === 'obstacles')).toMatchObject({
       houses: [6, 8, 12], strength: 'strong', confidence: 'medium', factors: expect.arrayContaining(['Rahu (maha) occupies the 8th: unexpected setbacks']),
     });
+    // A Month that fits keeps all eight, low confidence included.
+    expect(reading('delhi-2019-05').themes).toHaveLength(8);
   });
 
   // Matrix 2026-10-14 (T3, deepseek): answers called a theme's strength_pct "confidence" ("strong
@@ -241,7 +249,7 @@ describe('the period reading (get_period_reading)', () => {
       factors: ['Venus (pratyantar) rules the 5th', 'Rahu (maha) occupies the 8th: unexpected setbacks', 'Venus (pratyantar) is a karaka of relationships',
         'Venus (pratyantar) rules the 12th', 'Yogini Bhadrika (Mercury) is a karaka of career'],
     });
-    expect(periodReadingSummary(reading('delhi-2019-year')).line).toBe('Rahu–Rahu–Ketu, 4 dasha changes · 8 themes');
+    expect(periodReadingSummary(reading('delhi-2019-year')).line).toBe('Rahu–Rahu–Ketu, 4 dasha changes · 7 themes');
     expect(periodReadingSummary(reading('delhi-2027-01')).line).toBe('Rahu–Mercury–Rahu · Ashtama Shani · 8 themes');
     expect(periodReadingSummary({ available: false, reason: 'timeout' })).toEqual({ line: 'Period reading unavailable (timeout)', factors: [] });
     expect(periodReadingSummary({ error: 'nope' })).toEqual({ line: 'Period reading failed: nope', factors: [] });
