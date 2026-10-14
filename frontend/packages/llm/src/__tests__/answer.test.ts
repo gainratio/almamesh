@@ -14,7 +14,7 @@ import {
   type ChatAnswer,
   type PeriodAnswer,
 } from "../answer";
-import { runToolTurn, z } from "../toolLoop";
+import { runToolTurn, z, type ToolCallEvent } from "../toolLoop";
 import { collect, fakeEndpoint } from "./toolLoopFake";
 
 type Reading = AnswerGrounding["readings"][number];
@@ -585,5 +585,53 @@ describe("renderPartialAnswer: snapshots only grow", () => {
     }
     for (let i = 1; i < snapshots.length; i += 1) expect(snapshots[i]?.startsWith(snapshots[i - 1] ?? "\u0000")).toBe(true);
     expect(LAYMAN_EN.startsWith(snapshots.at(-1) ?? "\u0000")).toBe(true);
+  });
+});
+
+describe("answerSchema: a model that sends \"null\" or omits nullable keys (production schema, through the tool loop)", () => {
+  const CONFIG: ProviderConfig = { engine: "openai-http", model: "deepseek/deepseek-v4-pro", privacyMode: "cloud_premium", baseUrl: "https://openrouter.ai/api/v1", apiKey: "k" };
+
+  const EN = { voice: "layman", language: "en" } as const;
+
+  async function answerEvents(...sent: Record<string, unknown>[]): Promise<ToolCallEvent[]> {
+    const turns = sent.map((body, i) => ({ calls: [{ id: `a${i}`, name: "answer", args: JSON.stringify(body) }] }));
+    const toolCalls: ToolCallEvent[] = [];
+    const ep = fakeEndpoint(turns);
+    await collect(
+      runToolTurn({
+        config: CONFIG,
+        messages: [{ role: "user", content: "How is September 2019?" }],
+        tools: [],
+        answer: chatAnswerSpec(grounded(SEPTEMBER), EN),
+        readFirst: false,
+        now: new Date("2026-10-14T00:00:00Z"),
+        fetchImpl: ep.fetchImpl,
+        onToolCall: (e) => toolCalls.push(e),
+      }),
+    );
+    return toolCalls;
+  }
+
+  it('accepts "null" in dashas.pratyantar and advice, and an omitted themes[].obstacle and place, on the first try', async () => {
+    const sent = wire(ANSWER) as { dashas: Record<string, unknown>; themes: Record<string, unknown>[] } & Record<string, unknown>;
+    const [career, obstacles] = sent.themes;
+    const { obstacle: _obstacle, ...omitted } = career ?? {};
+    const themes = [omitted, obstacles, { ...career, obstacle: "Null" }];
+    const events = await answerEvents({ ...sent, dashas: { ...sent.dashas, pratyantar: "null" }, themes, advice: " NULL ", place: "null" });
+    expect(events.map((e) => [e.toolName, e.status, e.validFirstTry])).toEqual([["answer", "complete", true]]);
+  });
+
+  it("accepts a fully omitted advice key", async () => {
+    const { advice: _advice, ...sent } = wire(ANSWER);
+    const events = await answerEvents(sent);
+    expect(events.map((e) => [e.status, e.validFirstTry])).toEqual([["complete", true]]);
+  });
+
+  it("a nested wrong value still retries", async () => {
+    const sent = wire(ANSWER) as { themes: Record<string, unknown>[] } & Record<string, unknown>;
+    const wrong = { ...sent, themes: [{ ...sent.themes[0], direction: "great" }] };
+    const events = await answerEvents(wrong, wire(ANSWER));
+    expect(events.map((e) => e.status)).toEqual(["retried", "complete"]);
+    expect(events[0]?.validFirstTry).toBe(false);
   });
 });
