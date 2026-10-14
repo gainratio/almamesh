@@ -306,10 +306,17 @@ describe('short derived database sessions', () => {
 
   it('closes a session when its callback exceeds the lifetime bound', async () => {
     const backend = persistedBackend();
-    // The deadline now includes opening/importing this real SQLite fixture.
-    const session = createDerivedDbSessions({ ...backend, locks: nativeLocksDouble(), epoch: async () => 0, timeoutMs: 50 });
-    await expect(session.withDb(async () => new Promise<void>(() => undefined))).rejects.toThrow(/timed out/);
-    expect(backend.isOwned()).toBe(false);
+    const expireNow: Array<() => void> = [];
+    const session = createDerivedDbSessions({
+      ...backend, locks: nativeLocksDouble(), epoch: async () => 0,
+      deadline: (expire) => { expireNow.push(expire); return () => undefined; },
+    });
+    const entered = Promise.withResolvers<void>();
+    const stuck = session.withDb(async () => { entered.resolve(); return new Promise<void>(() => undefined); });
+    await entered.promise;
+    expireNow.at(-1)?.();
+    await expect(stuck).rejects.toThrow(/timed out/);
+    await vi.waitFor(() => expect(backend.isOwned()).toBe(false));
     await expect(session.withDb(async (db) => (await db.query('SELECT 1 AS n'))[0])).resolves.toEqual({ n: 1 });
   });
 });

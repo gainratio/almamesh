@@ -163,6 +163,11 @@ function documentLifecycle(target: EventTarget): DocumentLifecycle {
 if (typeof window !== 'undefined') documentLifecycle(window);
 const teardownError = () => new DOMException('The derived database lookup was cancelled because the page is unloading.', 'AbortError');
 
+const defaultDeadline = (expire: () => void, ms: number): (() => void) => {
+  const timer = setTimeout(expire, ms);
+  return () => clearTimeout(timer);
+};
+
 /**
  * The SQL library owns its sahpool exclusively until close. Keep that ownership
  * only for a logical import/query/transaction, never for the lifetime of a tab.
@@ -174,6 +179,8 @@ export function createDerivedDbSessions(options: {
   readonly locks: DerivedDbLocks;
   readonly epoch: () => Promise<number>;
   readonly timeoutMs?: number;
+  /** Arms the lifetime bound; returns a disarm function. Defaults to setTimeout. */
+  readonly deadline?: (expire: () => void, ms: number) => () => void;
   readonly lifecycle?: EventTarget;
   readonly onStorage?: (storage: Exclude<DerivedDbStorage, 'unknown'>) => void;
 }): DerivedDbSessions {
@@ -205,7 +212,7 @@ export function createDerivedDbSessions(options: {
       });
       void stopped.catch(() => undefined);
       activeCancellations.add(cancel);
-      const timeout = setTimeout(() => controller.abort(new Error('The derived database session timed out. Retry the lookup.')), options.timeoutMs ?? DERIVED_SESSION_TIMEOUT_MS);
+      const stopDeadline = (options.deadline ?? defaultDeadline)(() => controller.abort(new Error('The derived database session timed out. Retry the lookup.')), options.timeoutMs ?? DERIVED_SESSION_TIMEOUT_MS);
       const bounded = <T>(operation: Promise<T>): Promise<T> => Promise.race([operation, stopped]);
       const check = () => {
         controller.signal.throwIfAborted();
@@ -280,7 +287,7 @@ export function createDerivedDbSessions(options: {
           throw error;
         }
       } finally {
-        clearTimeout(timeout);
+        stopDeadline();
         activeCancellations.delete(cancel);
         unsubscribeLifecycle?.();
       }
