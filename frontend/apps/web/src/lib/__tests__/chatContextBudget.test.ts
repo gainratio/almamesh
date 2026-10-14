@@ -15,6 +15,7 @@ describe('chatContextFor (the chat turn\'s context budget seam)', () => {
     expect(context.contextTokens).toBe(1_000_000);
     expect(context.promptBudget).toBe(CLOUD_CHAT_BUDGET);
     expect(typeof context.onRoundUsage).toBe('function');
+    expect(typeof context.onToolCall).toBe('function');
   });
 
   it('a local endpoint uses the configured window from settings, with no network read', async () => {

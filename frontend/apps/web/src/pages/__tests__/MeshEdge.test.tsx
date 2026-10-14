@@ -46,10 +46,10 @@ vi.mock('@almamesh/llm', async (importOriginal) => {
 });
 
 // The chat turn's context budget: a fixed small window, and no catalog read from a unit test.
-const budgetMocks = vi.hoisted(() => ({ onRoundUsage: vi.fn() }));
+const budgetMocks = vi.hoisted(() => ({ onRoundUsage: vi.fn(), onToolCall: vi.fn() }));
 vi.mock('../../lib/chatContextBudget', async () => {
   const { chatPromptBudgetFor } = await vi.importActual<typeof import('@almamesh/llm')>('@almamesh/llm');
-  return { chatContextFor: vi.fn(async () => ({ contextTokens: 8_192, promptBudget: chatPromptBudgetFor(8_192), onRoundUsage: budgetMocks.onRoundUsage })) };
+  return { chatContextFor: vi.fn(async () => ({ contextTokens: 8_192, promptBudget: chatPromptBudgetFor(8_192), onRoundUsage: budgetMocks.onRoundUsage, onToolCall: budgetMocks.onToolCall })) };
 });
 
 // Pin the viewer's zone so the viewer-today check holds on a runner in any TZ.
@@ -364,6 +364,10 @@ describe('MeshEdgePage', () => {
     expect(llmMocks.streamChartChat).not.toHaveBeenCalled();
     const options = llmMocks.streamAgentChat.mock.calls[0][0];
     expect(options).toMatchObject({ contextTokens: 8_192, onRoundUsage: budgetMocks.onRoundUsage });
+    // Every tool call also reaches the turn's dev telemetry (window.__almameshAgentCalls).
+    const record = { toolCallId: 'c1', toolName: 'get_timing', args: {}, result: {}, status: 'complete' as const };
+    options.onToolCall?.(record);
+    expect(budgetMocks.onToolCall).toHaveBeenCalledWith(record);
     expect(options.tools.map((tool: { name: string }) => tool.name)).toEqual([
       'get_current_datetime',
       'get_chart_facts',

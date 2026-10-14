@@ -445,7 +445,10 @@ export default function DashboardPage() {
       ...(prepared.groundingTool ? { groundingToolName: prepared.groundingTool } : {}),
       ...(prepared.requiredTools ? { requiredToolNames: prepared.requiredTools } : {}),
       ...(prepared.groundingCalls ? { groundingCalls: prepared.groundingCalls } : {}),
-      ...(onToolCall ? { onToolCall } : {}),
+      onToolCall: (record) => {
+        turnContext.onToolCall(record);
+        onToolCall?.(record);
+      },
       onStatus: (event) => {
         if (event.phase === 'using_tool') {
           activeToolLabel = event.label;

@@ -188,8 +188,35 @@ async function readRows(page: Page, from: number): Promise<ToolRow[]> {
   return read;
 }
 
-async function ask(page: Page, question: string): Promise<{ readonly rows: ToolRow[]; readonly answer: string; readonly errorBubble: string | undefined }> {
+interface TurnRow { readonly turn: number }
+interface CallRow extends TurnRow { readonly status: string; readonly validFirstTry: boolean }
+
+/** The app's own telemetry (agentRoundTelemetry.ts, hook builds): every round and call row recorded so far. */
+async function telemetry(page: Page): Promise<{ readonly rounds: TurnRow[]; readonly calls: CallRow[] }> {
+  return page.evaluate(() => {
+    const w = window as unknown as { __almameshAgentRounds?: () => TurnRow[]; __almameshAgentCalls?: () => CallRow[] };
+    return { rounds: [...(w.__almameshAgentRounds?.() ?? [])], calls: [...(w.__almameshAgentCalls?.() ?? [])] };
+  });
+}
+
+/** Per question: model requests, tool calls, calls valid on the first try, retries, error rows (tool layer redesign 2026-10-14). */
+interface TurnMetrics { readonly rounds: number; readonly calls: number; readonly validFirstTry: number; readonly retries: number; readonly errorRows: number }
+
+function turnMetrics(after: { readonly rounds: TurnRow[]; readonly calls: CallRow[] }, lastTurnBefore: number): TurnMetrics {
+  const calls = after.calls.filter((row) => row.turn > lastTurnBefore);
+  return {
+    rounds: after.rounds.filter((row) => row.turn > lastTurnBefore).length,
+    calls: calls.length,
+    validFirstTry: calls.filter((row) => row.validFirstTry).length,
+    retries: calls.filter((row) => row.status === 'retried').length,
+    errorRows: calls.filter((row) => row.status === 'error').length,
+  };
+}
+
+async function ask(page: Page, question: string): Promise<{ readonly rows: ToolRow[]; readonly answer: string; readonly errorBubble: string | undefined; readonly metrics: TurnMetrics }> {
   const before = await page.getByTestId('chat-tool-call').count();
+  const seen = await telemetry(page);
+  const lastTurnBefore = Math.max(0, ...seen.rounds.map((row) => row.turn), ...seen.calls.map((row) => row.turn));
   const answersBefore = await page.getByTestId('chat-message-assistant').count();
   await page.getByTestId('chat-input').fill(question);
   await page.getByTestId('chat-send-button').click();
@@ -202,6 +229,7 @@ async function ask(page: Page, question: string): Promise<{ readonly rows: ToolR
     rows: await readRows(page, before),
     answer: answers.length > answersBefore ? (answers[answers.length - 1] ?? '') : '',
     errorBubble: bubbles[bubbles.length - 1],
+    metrics: turnMetrics(await telemetry(page), lastTurnBefore),
   };
 }
 
@@ -351,12 +379,13 @@ for (const model of MODELS) {
         const failures: string[] = [];
         for (const expectation of journey.questions) {
           const started = Date.now();
-          const { rows, answer, errorBubble } = await ask(page, expectation.question);
+          const { rows, answer, errorBubble, metrics } = await ask(page, expectation.question);
           const misses = verdict(expectation, rows, answer, errorBubble);
           const asked = readings(rows).find((reading) => matches(reading.period, expectation));
           log({
             at: new Date().toISOString(), model, run, journey: journey.id, question: expectation.id, text: expectation.question,
             pass: misses.length === 0, misses, seconds: Math.round((Date.now() - started) / 1000),
+            ...metrics,
             tools: rows.map((row) => ({ name: row.name, args: row.args, status: row.status, error: errorSummary(row),
               period: (row.result as ReadingLike | null)?.period, place: (row.result as ReadingLike | null)?.place })),
             // The facts the answer was checked against, so a log can be re-scored offline.

@@ -77,9 +77,11 @@ describe.each(pages)('$name chat wiring', ({ source }) => {
     expect(code).toMatch(/const ask(?:Mesh|Local)Llm = async function\* \([^)]*?onAgentStatus\?: \(label: string \| null\) => void,\s*asOf\?: ChatThreadAsOf,\s*onTravel\?:[^,]+TravelRecorder,\s*onToolCall\?:[^,]+AgentToolCallRecord\) => void,\s*\)/);
   });
 
+  // Changed 2026-10-14 (tool layer redesign, task 1): every call also reaches the turn's dev telemetry
+  // (window.__almameshAgentCalls), so the recorder is forwarded inside a wrapper, not spread.
   it("forwards the trip's first-round tool choice, grounding tool, required tools and tool-call recorder to streamAgentChat", () => {
     const code = stripComments(source);
     const call = code.slice(code.indexOf('yield* streamAgentChat({'));
-    expect(call).toMatch(/^yield\* streamAgentChat\(\{[^]*?firstRoundToolChoice: prepared\.toolChoice,\s*\.\.\.\(prepared\.groundingTool \? \{ groundingToolName: prepared\.groundingTool \} : \{\}\),\s*\.\.\.\(prepared\.requiredTools \? \{ requiredToolNames: prepared\.requiredTools \} : \{\}\),\s*\.\.\.\(prepared\.groundingCalls \? \{ groundingCalls: prepared\.groundingCalls \} : \{\}\),\s*\.\.\.\(onToolCall \? \{ onToolCall \} : \{\}\),/);
+    expect(call).toMatch(/^yield\* streamAgentChat\(\{[^]*?firstRoundToolChoice: prepared\.toolChoice,\s*\.\.\.\(prepared\.groundingTool \? \{ groundingToolName: prepared\.groundingTool \} : \{\}\),\s*\.\.\.\(prepared\.requiredTools \? \{ requiredToolNames: prepared\.requiredTools \} : \{\}\),\s*\.\.\.\(prepared\.groundingCalls \? \{ groundingCalls: prepared\.groundingCalls \} : \{\}\),\s*onToolCall: \(record\) => \{\s*turnContext\.onToolCall\(record\);\s*onToolCall\?\.\(record\);\s*\},/);
   });
 });

@@ -2,7 +2,7 @@
  * One seam for a chat turn's context budget (spec 2026-10-13, "Context budget
  * for the agentic loop"): the chat model's context window (a configured value,
  * else OpenRouter's catalog `context_length`, else unknown = 8k), the composed
- * prompt's sizing for that window, and the per-round telemetry sink. Dashboard
+ * prompt's sizing for that window, and the per-round and per-call telemetry sinks. Dashboard
  * and MeshEdge chat both take their budget from here.
  */
 import {
@@ -10,6 +10,7 @@ import {
   readLlmSettings,
   resolveModelContextTokens,
   type AgentRoundUsage,
+  type AgentToolCallRecord,
   type ChatPromptBudget,
   type ProviderConfig,
 } from '@almamesh/llm';
@@ -21,6 +22,8 @@ export interface ChatTurnContext {
   readonly contextTokens: number | undefined;
   readonly promptBudget: ChatPromptBudget;
   readonly onRoundUsage: (usage: AgentRoundUsage) => void;
+  /** Dev telemetry of the turn's tool calls (lib/agentRoundTelemetry.ts). */
+  readonly onToolCall: (record: AgentToolCallRecord) => void;
 }
 
 export async function chatContextFor(config: ProviderConfig, signal?: AbortSignal, fetchImpl?: typeof fetch): Promise<ChatTurnContext> {
@@ -30,5 +33,6 @@ export async function chatContextFor(config: ProviderConfig, signal?: AbortSigna
     ...(signal ? { signal } : {}),
     ...(fetchImpl ? { fetchImpl } : {}),
   });
-  return { contextTokens, promptBudget: chatPromptBudgetFor(contextTokens), onRoundUsage: beginAgentTurn() };
+  const telemetry = beginAgentTurn();
+  return { contextTokens, promptBudget: chatPromptBudgetFor(contextTokens), onRoundUsage: telemetry.onRoundUsage, onToolCall: telemetry.onToolCall };
 }
