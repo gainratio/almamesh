@@ -10,6 +10,8 @@ READING_RULES: Final[tuple[str, ...]] = (
     "agreement: vimshottari = a running dasha lord, yogini = the Yogini lord, rules or occupies"
     " a domain house or is its karaka; transit = Jupiter/Saturn in a domain house from lagna/Moon",
     "confidence = agreeing techniques: 3 high, 2 medium, 0-1 low",
+    "obstacles (6th/8th/12th): karakas Saturn/Mars/Rahu are context only; strength = agreeing"
+    " techniques + a dated window: 3-4 with the window strong, 2+ moderate, 0-1 weak",
     "direction = domain transit severity + its window severities, neutral ignored: all"
     " supportive, all challenging, else mixed",
     "whole-sign houses; Saturn 12th/1st/2nd from Moon = sade_sati_phase_1/2/3, 1/4/7/10 ="

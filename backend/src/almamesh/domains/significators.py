@@ -66,10 +66,16 @@ def domain_house_signs(natal: SiderealContext, recipe: DomainRecipe) -> frozense
     return frozenset(natal.houses[rule.house].sign for rule in recipe.houses)
 
 
+def _counted_karakas(recipe: DomainRecipe) -> frozenset[PlanetName]:
+    """The karakas that signify; an activation-only domain's karakas are context only."""
+    if recipe.activation_only:
+        return frozenset()
+    return frozenset(rule.graha for rule in recipe.karakas)
+
+
 def significator_grahas(natal: SiderealContext, recipe: DomainRecipe) -> frozenset[PlanetName]:
-    """House lords + natural karakas + occupants of the domain houses."""
+    """House lords + occupants of the domain houses + counted karakas."""
     houses = domain_house_numbers(recipe)
     lords = {natal.houses[h].sign_lord for h in houses}
-    karakas = {rule.graha for rule in recipe.karakas}
     occupants = {pos.name for pos in natal.planets.values() if pos.house in houses}
-    return frozenset(lords | karakas | occupants)
+    return frozenset(lords | occupants) | _counted_karakas(recipe)

@@ -584,6 +584,144 @@
           "vargottama": false
         }
       },
+      "obstacles": {
+        "current_emphasis": {
+          "active_dasha_significator": true,
+          "approximated": true,
+          "dasha_levels": [
+            "maha",
+            "pratyantar"
+          ],
+          "matched_dasha_lords": [
+            "jupiter",
+            "moon"
+          ],
+          "note": "transit_severity = sign of a coarse vote-sum over domain-relevant transit signals; the signals are exact, the netting is an AlmaMesh heuristic (not a BPHS quantity).",
+          "rule": "dasha-lord karakatva (maha/antar/pratyantar) + slow-graha gochara over the domain bhavas (whole-sign from lagna) + Sade Sati relevance",
+          "transit_severity": "neutral",
+          "under_sade_sati": false
+        },
+        "domain": "obstacles",
+        "houses": [
+          {
+            "house": 6,
+            "lord": "saturn",
+            "lord_dignity": "neutral",
+            "lord_house": 5,
+            "lord_sign": "Sagittarius",
+            "rule": "obstacles: 6th house of disputes, litigation, friction with rules or authorities",
+            "sign": "Capricorn"
+          },
+          {
+            "house": 8,
+            "lord": "jupiter",
+            "lord_dignity": "neutral",
+            "lord_house": 10,
+            "lord_sign": "Taurus",
+            "rule": "obstacles: 8th house of sudden setbacks and reversals",
+            "sign": "Pisces"
+          },
+          {
+            "house": 12,
+            "lord": "moon",
+            "lord_dignity": "neutral",
+            "lord_house": 11,
+            "lord_sign": "Gemini",
+            "rule": "obstacles: 12th house of losses, expenses and confinement",
+            "sign": "Cancer"
+          }
+        ],
+        "karakas": [
+          {
+            "dignity": "neutral",
+            "graha": "saturn",
+            "house": 5,
+            "is_retrograde": true,
+            "rule": "Saturn = karaka of delay, hardship & restriction (context only)",
+            "sign": "Sagittarius"
+          },
+          {
+            "dignity": "neutral",
+            "graha": "mars",
+            "house": 8,
+            "is_retrograde": false,
+            "rule": "Mars = karaka of conflict, accidents & disputes (context only)",
+            "sign": "Pisces"
+          },
+          {
+            "dignity": "neutral",
+            "graha": "rahu",
+            "house": 7,
+            "is_retrograde": true,
+            "rule": "Rahu = karaka of upheaval & the unexpected (context only)",
+            "sign": "Aquarius"
+          }
+        ],
+        "strength_summary": {
+          "approximated": true,
+          "band": "moderate",
+          "key_graha": "saturn",
+          "key_graha_meets_minimum": true,
+          "key_graha_rupas": 7.515194,
+          "note": "band = AlmaMesh heuristic over exact Shadbala Rupas + SAV bindus; inputs are BPHS-rigorous, the threshold mapping is a coarse synthesis.",
+          "sav_bindus": 79,
+          "sav_pct": 47.02381,
+          "shadbala_pct": 80.12155,
+          "strength_pct": 47.02381,
+          "strength_tier": "model"
+        },
+        "upcoming_windows": [
+          {
+            "date": "2025-03-02T19:53:39.108936Z",
+            "descriptor": "obstacles.dasha.dasha.antar.rahu_to_saturn",
+            "kind": "dasha_change",
+            "severity": "neutral",
+            "source": "dasha",
+            "trigger": "saturn"
+          },
+          {
+            "date": "2025-03-29T16:05:54.659418Z",
+            "descriptor": "obstacles.transit.saturn.ingress.pisces",
+            "kind": "sign_ingress",
+            "severity": "neutral",
+            "source": "transit",
+            "trigger": "saturn"
+          },
+          {
+            "date": "2025-05-14T17:01:40.401607Z",
+            "descriptor": "obstacles.transit.jupiter.ingress.gemini",
+            "kind": "sign_ingress",
+            "severity": "neutral",
+            "source": "transit",
+            "trigger": "jupiter"
+          },
+          {
+            "date": "2025-10-18T13:50:37.934350Z",
+            "descriptor": "obstacles.transit.jupiter.ingress.cancer",
+            "kind": "sign_ingress",
+            "severity": "neutral",
+            "source": "transit",
+            "trigger": "jupiter"
+          },
+          {
+            "date": "2025-12-05T12:27:17.451862Z",
+            "descriptor": "obstacles.transit.jupiter.ingress.gemini",
+            "kind": "sign_ingress",
+            "severity": "neutral",
+            "source": "transit",
+            "trigger": "jupiter"
+          }
+        ],
+        "varga": {
+          "chart": "D30",
+          "graha": "saturn",
+          "rule": "D30 Trimsamsa governs misfortunes & evils",
+          "same_sign_as_d1": false,
+          "sign": "Aries",
+          "sign_lord": "mars",
+          "vargottama": false
+        }
+      },
       "relationships": {
         "current_emphasis": {
           "active_dasha_significator": true,
@@ -1412,6 +1550,112 @@
           "vargottama": false
         }
       },
+      "obstacles": {
+        "current_emphasis": {
+          "active_dasha_significator": true,
+          "approximated": true,
+          "dasha_levels": [
+            "maha",
+            "antar"
+          ],
+          "matched_dasha_lords": [
+            "rahu",
+            "saturn"
+          ],
+          "note": "transit_severity = sign of a coarse vote-sum over domain-relevant transit signals; the signals are exact, the netting is an AlmaMesh heuristic (not a BPHS quantity).",
+          "rule": "dasha-lord karakatva (maha/antar/pratyantar) + slow-graha gochara over the domain bhavas (whole-sign from lagna) + Sade Sati relevance",
+          "transit_severity": "supportive",
+          "under_sade_sati": false
+        },
+        "domain": "obstacles",
+        "houses": [
+          {
+            "house": 6,
+            "lord": "mars",
+            "lord_dignity": "own",
+            "lord_house": 6,
+            "lord_sign": "Scorpio",
+            "rule": "obstacles: 6th house of disputes, litigation, friction with rules or authorities",
+            "sign": "Scorpio"
+          },
+          {
+            "house": 8,
+            "lord": "saturn",
+            "lord_dignity": "neutral",
+            "lord_house": 7,
+            "lord_sign": "Sagittarius",
+            "rule": "obstacles: 8th house of sudden setbacks and reversals",
+            "sign": "Capricorn"
+          },
+          {
+            "house": 12,
+            "lord": "venus",
+            "lord_dignity": "neutral",
+            "lord_house": 8,
+            "lord_sign": "Capricorn",
+            "rule": "obstacles: 12th house of losses, expenses and confinement",
+            "sign": "Taurus"
+          }
+        ],
+        "karakas": [
+          {
+            "dignity": "neutral",
+            "graha": "saturn",
+            "house": 7,
+            "is_retrograde": false,
+            "rule": "Saturn = karaka of delay, hardship & restriction (context only)",
+            "sign": "Sagittarius"
+          },
+          {
+            "dignity": "own",
+            "graha": "mars",
+            "house": 6,
+            "is_retrograde": false,
+            "rule": "Mars = karaka of conflict, accidents & disputes (context only)",
+            "sign": "Scorpio"
+          },
+          {
+            "dignity": "neutral",
+            "graha": "rahu",
+            "house": 8,
+            "is_retrograde": true,
+            "rule": "Rahu = karaka of upheaval & the unexpected (context only)",
+            "sign": "Capricorn"
+          }
+        ],
+        "strength_summary": {
+          "approximated": true,
+          "band": "moderate",
+          "key_graha": "saturn",
+          "key_graha_meets_minimum": true,
+          "key_graha_rupas": 6.903508,
+          "note": "band = AlmaMesh heuristic over exact Shadbala Rupas + SAV bindus; inputs are BPHS-rigorous, the threshold mapping is a coarse synthesis.",
+          "sav_bindus": 81,
+          "sav_pct": 48.214286,
+          "shadbala_pct": 75.228064,
+          "strength_pct": 48.214286,
+          "strength_tier": "model"
+        },
+        "upcoming_windows": [
+          {
+            "date": "2025-03-29T16:05:54.659418Z",
+            "descriptor": "obstacles.transit.saturn.ingress.pisces",
+            "kind": "sign_ingress",
+            "severity": "neutral",
+            "source": "transit",
+            "trigger": "saturn"
+          }
+        ],
+        "varga": {
+          "chart": "D30",
+          "graha": "saturn",
+          "rule": "D30 Trimsamsa governs misfortunes & evils",
+          "same_sign_as_d1": false,
+          "sign": "Gemini",
+          "sign_lord": "mercury",
+          "vargottama": false
+        }
+      },
       "relationships": {
         "current_emphasis": {
           "active_dasha_significator": true,
@@ -2173,6 +2417,146 @@
           "same_sign_as_d1": true,
           "sign": "Sagittarius",
           "sign_lord": "jupiter",
+          "vargottama": false
+        }
+      },
+      "obstacles": {
+        "current_emphasis": {
+          "active_dasha_significator": true,
+          "approximated": true,
+          "dasha_levels": [
+            "maha",
+            "antar",
+            "pratyantar"
+          ],
+          "matched_dasha_lords": [
+            "saturn",
+            "rahu",
+            "rahu"
+          ],
+          "note": "transit_severity = sign of a coarse vote-sum over domain-relevant transit signals; the signals are exact, the netting is an AlmaMesh heuristic (not a BPHS quantity).",
+          "rule": "dasha-lord karakatva (maha/antar/pratyantar) + slow-graha gochara over the domain bhavas (whole-sign from lagna) + Sade Sati relevance",
+          "transit_severity": "challenging",
+          "under_sade_sati": true
+        },
+        "domain": "obstacles",
+        "houses": [
+          {
+            "house": 6,
+            "lord": "jupiter",
+            "lord_dignity": "neutral",
+            "lord_house": 11,
+            "lord_sign": "Taurus",
+            "rule": "obstacles: 6th house of disputes, litigation, friction with rules or authorities",
+            "sign": "Sagittarius"
+          },
+          {
+            "house": 8,
+            "lord": "saturn",
+            "lord_dignity": "neutral",
+            "lord_house": 11,
+            "lord_sign": "Taurus",
+            "rule": "obstacles: 8th house of sudden setbacks and reversals",
+            "sign": "Aquarius"
+          },
+          {
+            "house": 12,
+            "lord": "mercury",
+            "lord_dignity": "neutral",
+            "lord_house": 6,
+            "lord_sign": "Sagittarius",
+            "rule": "obstacles: 12th house of losses, expenses and confinement",
+            "sign": "Gemini"
+          }
+        ],
+        "karakas": [
+          {
+            "dignity": "neutral",
+            "graha": "saturn",
+            "house": 11,
+            "is_retrograde": true,
+            "rule": "Saturn = karaka of delay, hardship & restriction (context only)",
+            "sign": "Taurus"
+          },
+          {
+            "dignity": "neutral",
+            "graha": "mars",
+            "house": 4,
+            "is_retrograde": false,
+            "rule": "Mars = karaka of conflict, accidents & disputes (context only)",
+            "sign": "Libra"
+          },
+          {
+            "dignity": "neutral",
+            "graha": "rahu",
+            "house": 12,
+            "is_retrograde": true,
+            "rule": "Rahu = karaka of upheaval & the unexpected (context only)",
+            "sign": "Gemini"
+          }
+        ],
+        "strength_summary": {
+          "approximated": true,
+          "band": "moderate",
+          "key_graha": "saturn",
+          "key_graha_meets_minimum": true,
+          "key_graha_rupas": 6.282915,
+          "note": "band = AlmaMesh heuristic over exact Shadbala Rupas + SAV bindus; inputs are BPHS-rigorous, the threshold mapping is a coarse synthesis.",
+          "sav_bindus": 81,
+          "sav_pct": 48.214286,
+          "shadbala_pct": 70.263318,
+          "strength_pct": 48.214286,
+          "strength_tier": "model"
+        },
+        "upcoming_windows": [
+          {
+            "date": "2025-03-29T16:05:54.659418Z",
+            "descriptor": "obstacles.transit.sade_sati.setting.start",
+            "kind": "sade_sati_phase",
+            "severity": "challenging",
+            "source": "transit",
+            "trigger": "saturn"
+          },
+          {
+            "date": "2025-03-29T16:05:54.659418Z",
+            "descriptor": "obstacles.transit.saturn.ingress.pisces",
+            "kind": "sign_ingress",
+            "severity": "neutral",
+            "source": "transit",
+            "trigger": "saturn"
+          },
+          {
+            "date": "2025-05-14T17:01:40.401607Z",
+            "descriptor": "obstacles.transit.jupiter.ingress.gemini",
+            "kind": "sign_ingress",
+            "severity": "neutral",
+            "source": "transit",
+            "trigger": "jupiter"
+          },
+          {
+            "date": "2025-10-18T13:50:37.934350Z",
+            "descriptor": "obstacles.transit.jupiter.ingress.cancer",
+            "kind": "sign_ingress",
+            "severity": "neutral",
+            "source": "transit",
+            "trigger": "jupiter"
+          },
+          {
+            "date": "2025-12-05T12:27:17.451862Z",
+            "descriptor": "obstacles.transit.jupiter.ingress.gemini",
+            "kind": "sign_ingress",
+            "severity": "neutral",
+            "source": "transit",
+            "trigger": "jupiter"
+          }
+        ],
+        "varga": {
+          "chart": "D30",
+          "graha": "saturn",
+          "rule": "D30 Trimsamsa governs misfortunes & evils",
+          "same_sign_as_d1": true,
+          "sign": "Taurus",
+          "sign_lord": "venus",
           "vargottama": false
         }
       },

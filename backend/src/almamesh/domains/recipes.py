@@ -14,6 +14,9 @@ Significators follow BPHS / standard Parashari karakatva:
 - spiritual:     9th/12th/5th + karakas Jupiter & Ketu + D20 Vimsamsa
 - education:     4th/5th + karakas Mercury & Jupiter + D24 Siddhamsa
 - family:        2nd/4th (+5th progeny) + D12 Dwadasamsa
+- obstacles:     6th (ripu), 8th (randhra), 12th (vyaya) — the dusthanas — + D30
+                 Trimsamsa; karakas Saturn/Mars/Rahu are CONTEXT ONLY (see
+                 ``DomainRecipe.activation_only``)
 """
 
 from __future__ import annotations
@@ -26,12 +29,17 @@ from almamesh.schemas.vargas import DivisionalChart
 
 
 class HouseRule(BaseModel):
-    """One bhava that signifies a domain, with its classical citation."""
+    """One bhava that signifies a domain, with its classical citation.
+
+    ``meaning`` is an optional plain-language label the period reading appends
+    to a factor that cites this house (e.g. "losses and expenses").
+    """
 
     model_config = ConfigDict(frozen=True)
 
     house: int
     rule: str
+    meaning: str | None = None
 
 
 class KarakaRule(BaseModel):
@@ -60,6 +68,13 @@ class DomainRecipe(BaseModel):
     ``sade_sati_sensitive`` marks the domains classically afflicted by Sade Sati
     itself (Saturn over the natal Moon = body/mind), beyond the generic
     Moon-as-significator relevance the engine always applies.
+
+    ``activation_only`` is the base-rate guard for a domain every chart always
+    has (the dusthanas). Its karakas are context labels only: they never make a
+    graha a significator, so a running Saturn activates the domain only when
+    Saturn rules or occupies one of its houses. And its reading strength is the
+    period's activation, never a karaka's natal Shadbala, which would read the
+    same every month for the same person.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -70,10 +85,11 @@ class DomainRecipe(BaseModel):
     varga: VargaRule
     key_graha: PlanetName
     sade_sati_sensitive: bool = False
+    activation_only: bool = False
 
 
-def _h(house: int, rule: str) -> HouseRule:
-    return HouseRule(house=house, rule=rule)
+def _h(house: int, rule: str, meaning: str | None = None) -> HouseRule:
+    return HouseRule(house=house, rule=rule, meaning=meaning)
 
 
 def _k(graha: PlanetName, rule: str) -> KarakaRule:
@@ -173,6 +189,33 @@ _FAMILY = DomainRecipe(
     key_graha=PlanetName.JUPITER,
 )
 
+# BPHS ch. 11 (bhava significations): the 6th is ripu/roga (enemies, disputes,
+# litigation, debts), the 8th randhra (sudden reversals, obstacles), the 12th
+# vyaya (losses, expenses, confinement). Saturn, Mars and Rahu are their natural
+# malefic karakas; with ``activation_only`` they label context, never count.
+_OBSTACLES = DomainRecipe(
+    domain=LifeDomain.OBSTACLES,
+    houses=(
+        _h(
+            6,
+            "obstacles: 6th house of disputes, litigation, friction with rules or authorities",
+            "legal or administrative matters",
+        ),
+        _h(8, "obstacles: 8th house of sudden setbacks and reversals", "unexpected setbacks"),
+        _h(12, "obstacles: 12th house of losses, expenses and confinement", "losses and expenses"),
+    ),
+    karakas=(
+        _k(PlanetName.SATURN, "Saturn = karaka of delay, hardship & restriction (context only)"),
+        _k(PlanetName.MARS, "Mars = karaka of conflict, accidents & disputes (context only)"),
+        _k(PlanetName.RAHU, "Rahu = karaka of upheaval & the unexpected (context only)"),
+    ),
+    varga=VargaRule(chart=DivisionalChart.D30, rule="D30 Trimsamsa governs misfortunes & evils"),
+    # Natal context only (Saturn is the classical karaka of the 8th and 12th):
+    # the reading's obstacles strength is period activation, see activation_only.
+    key_graha=PlanetName.SATURN,
+    activation_only=True,
+)
+
 
 DOMAIN_RECIPES: dict[LifeDomain, DomainRecipe] = {
     LifeDomain.CAREER: _CAREER,
@@ -182,6 +225,7 @@ DOMAIN_RECIPES: dict[LifeDomain, DomainRecipe] = {
     LifeDomain.SPIRITUAL: _SPIRITUAL,
     LifeDomain.EDUCATION: _EDUCATION,
     LifeDomain.FAMILY: _FAMILY,
+    LifeDomain.OBSTACLES: _OBSTACLES,
 }
 
 

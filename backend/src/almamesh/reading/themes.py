@@ -5,6 +5,11 @@ Agreement is one boolean per technique, never a fused score (the heuristics in
 one of its houses, occupies one, or is one of its karakas. Every factor string
 is generated from an engine fact: a lordship, an occupancy, a karaka, a transit
 house, a tag, a bindu count.
+
+An ``activation_only`` domain (obstacles: the 6th/8th/12th) is guarded against
+base rates: its karakas never signify, and its strength is the period's
+activation (agreeing techniques plus a dated window; strong needs the window),
+never natal Shadbala.
 """
 
 from __future__ import annotations
@@ -13,7 +18,10 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final, Literal
 
 from almamesh.constants.astrology import PlanetName
+from almamesh.domains.recipes import DOMAIN_RECIPES
+from almamesh.domains.significators import significator_grahas
 from almamesh.reading.common import ordinal, title, utc_date
+from almamesh.schemas.domains import StrengthBand
 from almamesh.schemas.reading import ReadingTheme, SkySpan, ThemeAgreement, ThemeWindow
 from almamesh.schemas.transits import TransitSeverity
 
@@ -21,6 +29,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
     from datetime import datetime
 
+    from almamesh.domains.recipes import DomainRecipe
     from almamesh.schemas.astrology import SiderealContext
     from almamesh.schemas.domains import LifeDomainForecast, LifeDomainsContext
     from almamesh.schemas.reading import DashaLevel, YoginiSpan
@@ -35,6 +44,12 @@ _MAX_WINDOWS: Final[int] = 3
 _MAX_DASHA_FACTORS: Final[int] = 2
 _CONFIDENCE: Final[dict[int, Confidence]] = {3: "high", 2: "medium"}
 _SLOW_TRANSITS: Final[frozenset[PlanetName]] = frozenset({PlanetName.JUPITER, PlanetName.SATURN})
+# Activation strength: vimshottari, yogini, transit agreement + a dated window.
+# A maha/antar lord or a slow transit can hold for years, so without a dated
+# window inside the period the band stops at moderate (AlmaMesh heuristic).
+_ACTIVATION_SIGNALS: Final[int] = 4
+_STRONG_ACTIVATION: Final[int] = 3
+_MODERATE_ACTIVATION: Final[int] = 2
 
 
 @dataclass(frozen=True)
@@ -52,18 +67,23 @@ class ThemeInputs:
 
 @dataclass(frozen=True)
 class _Domain:
-    """A domain's significators: its houses, their lords, their occupants and its karakas."""
+    """A domain's recipe, houses and significators (lords, occupants, counted karakas)."""
 
     forecast: LifeDomainForecast
+    recipe: DomainRecipe
     houses: tuple[int, ...]
     grahas: frozenset[PlanetName]
 
     @classmethod
     def of(cls, forecast: LifeDomainForecast, natal: SiderealContext) -> _Domain:
+        recipe = DOMAIN_RECIPES[forecast.domain]
         houses = tuple(h.house for h in forecast.houses)
-        lords = {h.lord for h in forecast.houses} | {k.graha for k in forecast.karakas}
-        occupants = {p.name for p in natal.planets.values() if p.house in houses}
-        return cls(forecast, houses, frozenset(lords | occupants))
+        return cls(forecast, recipe, houses, significator_grahas(natal, recipe))
+
+    def house_text(self, house: int) -> str:
+        """``the Nth``, plus ``: <meaning>`` when the recipe labels the house."""
+        meaning = next((r.meaning for r in self.recipe.houses if r.house == house), None)
+        return f"the {ordinal(house)}: {meaning}" if meaning else f"the {ordinal(house)}"
 
 
 def theme_direction(severities: Iterable[TransitSeverity | str]) -> Direction:
@@ -113,9 +133,9 @@ def _signifies(label: str, lord: PlanetName, domain: _Domain, natal: SiderealCon
     placement = natal.planets[lord]
     ruled = [h for h in domain.houses if h in placement.houses_ruled]
     if ruled:
-        return f"{label} rules the {ordinal(ruled[0])}"
+        return f"{label} rules {domain.house_text(ruled[0])}"
     if placement.house in domain.houses:
-        return f"{label} occupies the {ordinal(placement.house)}"
+        return f"{label} occupies {domain.house_text(placement.house)}"
     return f"{label} is a karaka of {domain.forecast.domain.value}"
 
 
@@ -149,9 +169,11 @@ def _transit_factors(domain: _Domain, sky: list[SkySpan]) -> list[str]:
     return [text, f"{title(span.graha)}'s SAV in {span.sign.capitalize()} is {span.sav}"]
 
 
-def _strength_factor(forecast: LifeDomainForecast) -> str:
-    """The domain's key graha strength, always available."""
-    s = forecast.strength_summary
+def _strength_factor(domain: _Domain) -> str | None:
+    """The domain's key graha strength; none for an activation-only domain."""
+    if domain.recipe.activation_only:
+        return None
+    s = domain.forecast.strength_summary
     return f"{title(s.key_graha)} strength is {round(s.strength_pct)}% ({s.band.value})"
 
 
@@ -165,7 +187,7 @@ def _factors(domain: _Domain, inputs: ThemeInputs) -> list[str]:
         *dasha[1:],
         _yogini_factor(domain, inputs),
         *transit[1:],
-        _strength_factor(domain.forecast),
+        _strength_factor(domain),
     ]
     return [f for f in ordered if f is not None][:_MAX_FACTORS]
 
@@ -189,18 +211,39 @@ def _shown(windows: list[ThemeWindow]) -> list[ThemeWindow]:
     return sorted(ranked[:_MAX_WINDOWS], key=lambda w: (w.date, w.descriptor))
 
 
+def _strength(
+    domain: _Domain, agreement: ThemeAgreement, windows: list[ThemeWindow]
+) -> tuple[StrengthBand, int]:
+    """Natal band and %, or for an activation-only domain the period's activation."""
+    if not domain.recipe.activation_only:
+        summary = domain.forecast.strength_summary
+        return summary.band, round(summary.strength_pct)
+    hits = _agreeing(agreement) + bool(windows)
+    return _activation_band(hits, dated=bool(windows)), round(100 * hits / _ACTIVATION_SIGNALS)
+
+
+def _activation_band(hits: int, *, dated: bool) -> StrengthBand:
+    """3-4 signals with a dated window strong; 2+ moderate; 0-1 weak."""
+    if dated and hits >= _STRONG_ACTIVATION:
+        return StrengthBand.STRONG
+    if hits >= _MODERATE_ACTIVATION:
+        return StrengthBand.MODERATE
+    return StrengthBand.WEAK
+
+
 def _theme(forecast: LifeDomainForecast, inputs: ThemeInputs) -> ReadingTheme:
     """One domain's theme."""
     domain = _Domain.of(forecast, inputs.natal)
     agreement = _agreement(domain, inputs)
     windows = _windows(forecast, inputs)
     severities = (forecast.current_emphasis.transit_severity, *(w.severity for w in windows))
+    band, pct = _strength(domain, agreement, windows)
     return ReadingTheme(
         domain=forecast.domain,
         houses=list(domain.houses),
         direction=theme_direction(severities),
-        strength=forecast.strength_summary.band,
-        strength_pct=round(forecast.strength_summary.strength_pct),
+        strength=band,
+        strength_pct=pct,
         confidence=confidence_for(_agreeing(agreement)),
         agreement=agreement,
         factors=_factors(domain, inputs),
