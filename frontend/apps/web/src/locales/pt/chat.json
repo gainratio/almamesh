@@ -25,7 +25,10 @@
     "preparing": "Preparando ferramentas locais…",
     "deciding": "Escolhendo o próximo passo seguro…",
     "answering": "Escrevendo a resposta fundamentada…",
-    "complete": "Concluído"
+    "complete": "Concluído",
+    "reading": "Lendo {{period}}…",
+    "moving": "Indo para {{period}}…",
+    "returning": "Voltando para hoje…"
   },
   "tooltip": "Pergunte sobre seu mapa",
   "controls": {

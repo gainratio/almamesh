@@ -36,10 +36,10 @@ import { chatContextFor } from './chatContextBudget';
 import { ensureCurrentPlanetaryContext } from './currentPlanetaryContext';
 import { createMoonWindowLoader } from './moonWindow';
 import { birthYearOf, createPeriodChartLoader, readyEngine } from './periodChart';
-import { createReadPeriodTool, isReadPeriodReading, readPeriodGrounding, readPeriodStatusLabel, type ReadPeriodArgs, type ReadPeriodInput } from './readPeriod';
+import { createReadPeriodTool, isReadPeriodReading, readPeriodGrounding, readPeriodSpanLabel, readPeriodStatusLabel, type ReadPeriodArgs, type ReadPeriodInput } from './readPeriod';
 import { READ_PERIOD_TOOL_NAME } from './periodReading';
 import { formatPinLabel } from './timeTravelSheet';
-import { createTravelTool } from './travelTool';
+import { createTravelTool, TRAVEL_TOOL_NAME, travelPeriodLabel, travelStatusLabel, type TravelArgs } from './travelTool';
 import type { TravelRecorder } from './travelSlot';
 import { tripPin } from './tripContext';
 import { birthPlaceOf } from './tripPlacePrefill';
@@ -49,6 +49,29 @@ export interface ChatStatusLabels {
   readonly deciding: string;
   readonly answering: string;
   readonly complete: string;
+  /** "Reading {{period}}…" in the page's language; English when absent. */
+  readonly reading?: (period: string) => string;
+  /** "Moving to {{period}}…" in the page's language; English when absent. */
+  readonly moving?: (period: string) => string;
+  /** "Back to today…" in the page's language; English when absent. */
+  readonly returning?: string;
+}
+
+/** The status line for one read_period call: the span it reads. */
+function readStatus(labels: ChatStatusLabels, args: ReadPeriodArgs, language: string): string {
+  return labels.reading ? labels.reading(readPeriodSpanLabel(args, language)) : readPeriodStatusLabel(args, language);
+}
+
+/** The status line for one travel call: where the trip goes. */
+function travelStatus(labels: ChatStatusLabels, args: TravelArgs, language: string): string {
+  const period = travelPeriodLabel(args, language);
+  const spoken = period === null ? labels.returning : labels.moving?.(period);
+  return spoken ?? travelStatusLabel(args, language);
+}
+
+interface StatusStarts {
+  readonly read: (args: ReadPeriodArgs) => void;
+  readonly travel: (args: TravelArgs) => void;
 }
 
 /** A tool call as the transcript keeps it. A retried call is telemetry only and never becomes one. */
@@ -141,7 +164,7 @@ function reported<I>(tool: ToolDef<I>, before?: (args: I) => void): ToolDef<I> {
   };
 }
 
-function turnTools(input: ChatTurnInput, pin: ChatThreadAsOf | undefined, onReadStart: (args: ReadPeriodArgs) => void): ToolDef<unknown>[] {
+function turnTools(input: ChatTurnInput, pin: ChatThreadAsOf | undefined, starts: StatusStarts): ToolDef<unknown>[] {
   const seams = input.seams ?? {};
   const zone = seams.viewerZone ?? viewerTimeZone;
   const engine = recoveringEngine(input.engine);
@@ -164,8 +187,8 @@ function turnTools(input: ChatTurnInput, pin: ChatThreadAsOf | undefined, onRead
     ? [createTravelTool({ ...places, threadPlace: input.asOf?.place, birthYear: birthYearOf(input.birth), language: input.language, record: input.onTravel })]
     : [];
   // Under budget pressure a reading goes out as its grounding facts: what the answer is checked against.
-  const compactRead = { ...reported(read, onReadStart), compact: (result: unknown) => (isReadPeriodReading(result) ? readPeriodGrounding(result) : result) };
-  return [compactRead, ...travel.map((tool) => reported(tool))] as ToolDef<unknown>[];
+  const compactRead = { ...reported(read, starts.read), compact: (result: unknown) => (isReadPeriodReading(result) ? readPeriodGrounding(result) : result) };
+  return [compactRead, ...travel.map((tool) => reported(tool, starts.travel))] as ToolDef<unknown>[];
 }
 
 interface Framed {
@@ -191,32 +214,42 @@ function frameOf(input: ChatTurnInput, pin: ChatThreadAsOf | undefined, now: Dat
   };
 }
 
+/** Tools whose status line names their span ("Reading Jun – Dec 2019…", "Moving to May 2019…"). */
+const SPAN_TOOLS: ReadonlySet<string> = new Set([READ_PERIOD_TOOL_NAME, TRAVEL_TOOL_NAME]);
+
 /**
- * The status line: the running tool stays up while the model reads its result. A read
- * names its span ("Reading June 2019…") when it starts; the loop's generic label for it
- * (which can land before or after that) is never shown.
+ * The status line: the running tool stays up while the model reads its result. A read or a
+ * trip names its span when it starts; the loop's generic label for it (which can land before
+ * or after that) is never shown.
  */
 function statusSink(input: ChatTurnInput) {
   let toolLabel: string | null = null;
-  let readLabel: string | null = null;
+  const spans = new Map<string, string>();
   const show = (label: string) => {
     toolLabel = label;
     input.onStatus?.(label);
   };
-  const showRead = (label: string) => {
-    readLabel = label;
+  const showSpan = (toolName: string, label: string) => {
+    spans.set(toolName, label);
     show(label);
   };
   const onEvent = (event: AgentStatusEvent) => {
-    if (event.phase === 'using_tool' && event.toolName === READ_PERIOD_TOOL_NAME) return readLabel === null ? undefined : show(readLabel);
+    if (event.phase === 'using_tool' && SPAN_TOOLS.has(event.toolName)) {
+      const label = spans.get(event.toolName);
+      return label === undefined ? undefined : show(label);
+    }
     if (event.phase === 'using_tool') return show(event.label);
-    if (event.phase === 'deciding') readLabel = null; // each round's read names its own span
+    if (event.phase === 'deciding') spans.clear(); // each round's call names its own span
     if (event.phase === 'deciding' && event.round > 1 && toolLabel !== null) return undefined;
     if (event.phase !== 'deciding') toolLabel = null;
     input.onStatus?.(input.labels[event.phase]);
     return undefined;
   };
-  return { showRead, onEvent };
+  const starts: StatusStarts = {
+    read: (args) => showSpan(READ_PERIOD_TOOL_NAME, readStatus(input.labels, args, input.language)),
+    travel: (args) => showSpan(TRAVEL_TOOL_NAME, travelStatus(input.labels, args, input.language)),
+  };
+  return { starts, onEvent };
 }
 
 /** Yields the answer as cumulative markdown snapshots: each one replaces the last. */
@@ -243,7 +276,7 @@ export async function* runChatTurn(input: ChatTurnInput): AsyncGenerator<string>
     config: input.config,
     ...(contextTokens !== undefined ? { contextTokens } : {}),
     messages,
-    tools: turnTools(input, pin, (args) => status.showRead(readPeriodStatusLabel(args, input.language))),
+    tools: turnTools(input, pin, status.starts),
     answer: chatAnswerSpec(() => ({ readings }), { voice: input.mode, language: input.language }),
     readFirst: pin !== undefined,
     now,

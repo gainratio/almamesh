@@ -112,6 +112,18 @@ async function travelTo(input: TravelToolInput, args: TravelArgs, context: ToolC
   return queued(asOf, input.language);
 }
 
+/** "May 2019" for a trip, in the page's language; null for "back to today". */
+export function travelPeriodLabel(args: Pick<TravelArgs, 'to'>, language: string): string | null {
+  const draft = args.to === 'today' ? undefined : draftOf(args.to);
+  return draft ? formatPinLabel({ start: draft.day, granularity: draft.granularity }, language) : null;
+}
+
+/** "Moving to May 2019…" / "Back to today…": the English status line for one call. */
+export function travelStatusLabel(args: Pick<TravelArgs, 'to'>, language: string): string {
+  const period = travelPeriodLabel(args, language);
+  return period === null ? 'Back to today…' : `Moving to ${period}…`;
+}
+
 export function createTravelTool(input: TravelToolInput): ToolDef<TravelArgs> {
   return defineTool({
     name: TRAVEL_TOOL_NAME,

@@ -74,6 +74,7 @@ import { personaText, resolveReportAudience } from "../lib/reportSelectors";
 import { rectificationDelta } from "../lib/rectification";
 import { birthYearOf } from "../lib/periodChart";
 import { lazyWithRetry } from "../lib/lazyWithRetry";
+import { chatStatusLabels } from "../lib/chatStatusLabels";
 import { asOfKey } from "../lib/pinnedPeriod";
 import { DashboardMoment } from "../components/features/dashboard/DashboardMomentCard";
 import { TimeTravelBanner } from "../components/features/chat/TimeTravelBanner";
@@ -344,7 +345,7 @@ export default function DashboardPage() {
         ...(record ? { rectification: { band: record.band, originalSign: record.originalSign, rectifiedSign: record.rectifiedSign, mode: record.mode } } : {}),
         ...(ask.asOf ? { asOf: ask.asOf } : {}),
         signal: ask.signal,
-        labels: { deciding: t('chat:agent.deciding'), answering: t('chat:agent.answering'), complete: t('chat:agent.complete') },
+        labels: chatStatusLabels(t),
         onStatus: ask.onStatus,
         ...(ask.onTravel ? { onTravel: ask.onTravel } : {}),
         ...(ask.onToolCall ? { onToolCall: ask.onToolCall } : {}),

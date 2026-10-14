@@ -69,6 +69,7 @@ import {
 import { predictiveReferenceInstant } from '../lib/predictive';
 import { birthYearOf } from '../lib/periodChart';
 import { lazyWithRetry } from '../lib/lazyWithRetry';
+import { chatStatusLabels } from '../lib/chatStatusLabels';
 import type { ViewMode } from '../lib/types';
 import { storedChartAnalysisInstant } from '../lib/analysisInstant';
 
@@ -313,7 +314,7 @@ function MeshEdgeContent({
         ...(entry.edge ? { meshEdge: sanitizeMeshEdgeForLlm(entry.edge) } : {}),
         ...(ask.asOf ? { asOf: ask.asOf } : {}),
         signal: ask.signal,
-        labels: { deciding: t('chat:agent.deciding'), answering: t('chat:agent.answering'), complete: t('chat:agent.complete') },
+        labels: chatStatusLabels(t),
         onStatus: ask.onStatus,
         ...(ask.onTravel ? { onTravel: ask.onTravel } : {}),
         ...(ask.onToolCall ? { onToolCall: ask.onToolCall } : {}),

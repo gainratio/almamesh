@@ -25,7 +25,10 @@
     "preparing": "Preparando herramientas locales…",
     "deciding": "Eligiendo el siguiente paso seguro…",
     "answering": "Redactando la respuesta fundamentada…",
-    "complete": "Listo"
+    "complete": "Listo",
+    "reading": "Leyendo {{period}}…",
+    "moving": "Viajando a {{period}}…",
+    "returning": "Volviendo a hoy…"
   },
   "tooltip": "Pregunta sobre tu carta",
   "controls": {

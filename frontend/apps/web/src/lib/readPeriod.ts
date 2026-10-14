@@ -219,9 +219,14 @@ function tenseOf(span: Span, today: string): ReadingPeriod['tense'] {
   return span.start > today ? 'future' : 'present';
 }
 
-/** "Reading Jun – Dec 2019…": the status line for one call. */
+/** "Jun – Dec 2019": the span one call reads, in the page's language. */
+export function readPeriodSpanLabel(args: Pick<ReadPeriodArgs, 'start' | 'end'>, language: string): string {
+  return labelOf(spanOf(args), language);
+}
+
+/** "Reading Jun – Dec 2019…": the English status line for one call. */
 export function readPeriodStatusLabel(args: Pick<ReadPeriodArgs, 'start' | 'end'>, language: string): string {
-  return `Reading ${labelOf(spanOf(args), language)}…`;
+  return `Reading ${readPeriodSpanLabel(args, language)}…`;
 }
 
 // ---------------------------------------------------------------------------

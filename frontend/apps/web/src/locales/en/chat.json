@@ -22,7 +22,10 @@
     "preparing": "Preparing local tools…",
     "deciding": "Choosing the next safe step…",
     "answering": "Writing the grounded answer…",
-    "complete": "Done"
+    "complete": "Done",
+    "reading": "Reading {{period}}…",
+    "moving": "Moving to {{period}}…",
+    "returning": "Back to today…"
   },
   "tooltip": "Ask about your chart",
   "controls": {

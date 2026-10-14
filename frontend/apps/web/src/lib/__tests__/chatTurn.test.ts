@@ -82,6 +82,30 @@ describe('runChatTurn: a trip turn reads first', () => {
     // The generic tool label never replaces the span: React renders only the last of two synchronous updates.
     expect(labels).not.toContain('Reading the period…');
   });
+
+  it('the travel status line names where the trip goes, and never the generic label', async () => {
+    const labels: (string | null)[] = [];
+    const { fetchImpl } = endpoint([{ name: 'travel', args: { to: '2019-09', place: null } }, (body) => stubCallFor(body, {})]);
+    await drain(runChatTurn(input(fetchImpl, { onStatus: (label) => labels.push(label) })));
+    expect(labels).toContain('Moving to September 2019…');
+    expect(labels).not.toContain('Preparing time travel');
+  });
+
+  it('the span status lines speak the language the page gives them', async () => {
+    const labels: (string | null)[] = [];
+    const spoken = {
+      deciding: 'Pensando', answering: 'Respondiendo', complete: 'Listo',
+      reading: (period: string) => `Leyendo ${period}…`, moving: (period: string) => `Viajando a ${period}…`, returning: 'Volviendo a hoy…',
+    };
+    const turn = (script: Parameters<typeof endpoint>[0], asOf?: typeof MAY_2019) =>
+      drain(runChatTurn(input(endpoint(script).fetchImpl, { ...(asOf ? { asOf } : {}), language: 'es', labels: spoken, onStatus: (label) => labels.push(label) })));
+    await turn([{ name: 'read_period', args: readPeriodArgs('2019-05') }, (body) => stubCallFor(body, {})], MAY_2019);
+    await turn([{ name: 'travel', args: { to: '2019-09', place: null } }, (body) => stubCallFor(body, {})]);
+    await turn([{ name: 'travel', args: { to: 'today', place: null } }, (body) => stubCallFor(body, {})], MAY_2019);
+    expect(labels).toContain('Leyendo mayo de 2019…');
+    expect(labels).toContain('Viajando a septiembre de 2019…');
+    expect(labels).toContain('Volviendo a hoy…');
+  });
 });
 
 describe('runChatTurn: a today turn', () => {
