@@ -124,14 +124,17 @@ Built against the free C-names sample (format and plumbing only; no result from 
 published). Code: `retrodiction/adb.py` (rules), `adb_source.py` (zip + XML), `adb_codes.py`
 (the table). It applies only to an ADB set; the mapping digest `2ae6e16d…` is unchanged.
 
-- **Input.** The licensed `adb_export_*.zip`, read in place: the one `.xml` member is decrypted
-  (ZipCrypto, password from Keychain item `ALMAMESH_ADB_ZIP_PASSWORD`) and parsed as a stream.
+- **Input.** The licensed export as the decrypted `adb_export_*.xml` (mode 600, outside git),
+  or the `adb_export_*.zip` read in place: the one `.xml` member is decrypted
+  (ZipCrypto; password from `$ALMAMESH_ADB_ZIP_PASSWORD`, else the Keychain item of that
+  name, never printed) and parsed as a stream.
   No plaintext reaches disk. AES zips, DTDs, a foreign root, malformed XML, an expat without
   amplification limits, and any export or report inside a git tree are refused. Licence §5 says
   the data stays confidential.
 - **Natives kept.** Rodden AA or A (`rrc` 1, 2), `dtc` 1, not an event chart (`csex` e), a
   known time, a Gregorian birth date. The birth instant is the civil time at the `stmerid`
-  offset (`h5w30` is zone hours, `m2e2015` is LMT meridian degrees), and it must match ADB's
+  offset (`h5w30` is zone hours, `m2e2015` is LMT meridian degrees, and an unpadded single
+  digit such as `m9e5` means 05'), and it must match ADB's
   `jd_ut` within a minute. Records in `<deleted_records>` are dropped (licence §7). Every drop
   is counted by reason.
 - **Events.** An event maps only if both its `evn_id` and `sevcode` label match the frozen
@@ -177,8 +180,8 @@ cp examples/retrodiction/events.example.yaml ~/.almamesh/retrodiction/events.yam
 cd backend && uv run almamesh-eval retrodiction --events ~/.almamesh/retrodiction/events.yaml --window 36 --k 3,6
 # -> ~/.almamesh/retrodiction/retrodiction-report/{report.json,report.md}
 
-# Astro-Databank: the licensed zip stays outside git; the password is read from the Keychain
-cd backend && uv run almamesh-eval adb-summary --adb ~/.almamesh/retrodiction/adb/adb_export_<date>.zip
-cd backend && uv run almamesh-eval retrodiction --adb ~/.almamesh/retrodiction/adb/adb_export_<date>.zip --window 36 --k 3,6
+# Astro-Databank: the export (.xml, or the .zip with $ALMAMESH_ADB_ZIP_PASSWORD) stays outside git
+cd backend && uv run almamesh-eval adb-summary --adb ~/.almamesh/retrodiction/adb/adb_export_<date>.xml
+cd backend && uv run almamesh-eval retrodiction --adb ~/.almamesh/retrodiction/adb/adb_export_<date>.xml --window 36 --k 3,6
 # -> ~/.almamesh/retrodiction/adb/retrodiction-report/{report.json,report.md}
 ```
