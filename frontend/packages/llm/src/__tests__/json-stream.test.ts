@@ -177,6 +177,60 @@ describe("streamChatCompletionJson", () => {
     expect(cancelled).toBe(true);
   });
 
+  // Live nightly 2026-10-13/14: openai/gpt-6-luna in JSON mode closed its
+  // object, then kept streaming whitespace (one live reply: 138,270 content
+  // chars for ~900 words). Deltas never stop, so the idle cap never fires and
+  // the section burned its whole 300 s total cap. A whitespace run of 2,000
+  // chars is a runaway: settle on the JSON already written, or fail fast as a
+  // retryable 502 while the retry still has time.
+  function runawayStream(prefix: string, whitespaceChars: number): { response: Response; cancelled: () => boolean } {
+    const encoder = new TextEncoder();
+    const chunks = [prefix, ...Array.from({ length: Math.ceil(whitespaceChars / 50) }, () => " \n".repeat(25))];
+    let cancelled = false;
+    const body = new ReadableStream<Uint8Array>({
+      pull(c) {
+        const next = chunks.shift();
+        // After the scripted chunks the stream stays open, like the live one.
+        if (next === undefined) return new Promise<void>(() => undefined);
+        c.enqueue(encoder.encode(sse(delta(next))));
+        return undefined;
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    return { response: new Response(body, { headers: { "Content-Type": "text/event-stream" } }), cancelled: () => cancelled };
+  }
+
+  it("settles on the finished JSON and stops reading when whitespace runs away after it", async () => {
+    const stream = runawayStream('{"guidance":"Steady work pays."}', 20_000);
+    const { fetchImpl } = fetchOnce(stream.response);
+    const raw = await streamChatCompletionJson({ config: CFG, messages: MESSAGES, fetchImpl });
+    expect(JSON.parse(raw)).toEqual({ guidance: "Steady work pays." });
+    expect(stream.cancelled()).toBe(true);
+  });
+
+  it("fails a whitespace runaway inside unfinished JSON as a retryable 502 without waiting for the stream", async () => {
+    const stream = runawayStream('{"guidance":', 20_000);
+    const { fetchImpl } = fetchOnce(stream.response);
+    const err = await failure(streamChatCompletionJson({ config: CFG, messages: MESSAGES, fetchImpl }));
+    expect(err.status).toBe(502);
+    expect(err.message).toMatch(/whitespace/i);
+    expect(stream.cancelled()).toBe(true);
+  });
+
+  it("trips at a 2,000-char whitespace run, not before", async () => {
+    const encoder = new TextEncoder();
+    const body = (run: number): Response =>
+      new Response(encoder.encode(sse(delta('{"a":')) + sse(delta(" ".repeat(run))) + sse(delta("1}")) + sse("[DONE]")), {
+        headers: { "Content-Type": "text/event-stream" },
+      });
+    const below = await streamChatCompletionJson({ config: CFG, messages: MESSAGES, fetchImpl: fetchOnce(body(1_999)).fetchImpl });
+    expect(JSON.parse(below)).toEqual({ a: 1 });
+    const at = await failure(streamChatCompletionJson({ config: CFG, messages: MESSAGES, fetchImpl: fetchOnce(body(2_000)).fetchImpl }));
+    expect(at.status).toBe(502);
+  });
+
   it("enforces the privacy gate before any network call", async () => {
     const { fetchImpl } = fetchOnce(streamResponse(sse("[DONE]")));
     await expect(
