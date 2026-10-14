@@ -7,6 +7,7 @@ import { gotoSettled } from './portableInvariants.helpers';
 import { captureReloadConsole, type ReloadConsoleCapture } from './reloadConsole';
 import { waitForLifeAtlasAsOf } from './lifeAtlas.helpers';
 import { withReloadJourneyDiagnostics } from './reloadJourneyDiagnostics';
+import { pageServiceWorkerReader, waitForServiceWorkerActive } from './serviceWorkerActivation';
 import { test } from './webkitProfile';
 
 /**
@@ -1163,10 +1164,14 @@ test.describe('as shipped: service worker on, AI off, nothing stubbed', () => {
       enterPhase('openDashboard');
       await openDashboard(page);
       enterPhase('SWready');
-      // Bounded: with the worker blocked `ready` never settles, and the check below must say so.
-      await page.evaluate(() =>
-        Promise.race([navigator.serviceWorker.ready, new Promise((resolve) => setTimeout(resolve, 60_000))]),
-      );
+      // Wait on the registration itself, not a bare race on `ready`: each install
+      // state lands in sw-engine-lifecycle.json, and a worker that never activates
+      // fails here with its state and its own fetch record (main faa795aa: an
+      // iPhone run's worker registered and never activated, and the bare race
+      // could only say "the service worker controls the page: false").
+      await waitForServiceWorkerActive(pageServiceWorkerReader(page), {
+        timeoutMs: 60_000, pollMs: 250, onState: (state) => { record('sw-state', { ...state }); },
+      });
       enterPhase('SWnavigation');
       // A fresh navigation now goes through the active worker.
       await gotoSettled(page, '/dashboard');
