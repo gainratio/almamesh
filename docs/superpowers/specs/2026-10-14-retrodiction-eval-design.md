@@ -118,7 +118,7 @@ engine gains a disputes area; that change is then measured as a before/after on 
 So **no public set is legally clean today**; the baseline is synthetic. Prior nulls for context:
 Carlson 1985 (*Nature* 318:419), Dean & Kelly 2003 (time twins).
 
-### Amendment 2026-10-14: Astro-Databank import (pre-registered before any ADB run)
+### Amendment 2026-10-14 (a): Astro-Databank import (pre-registered before any ADB run)
 
 Built against the free C-names sample (format and plumbing only; no result from it is
 published). Code: `retrodiction/adb.py` (rules), `adb_source.py` (zip + XML), `adb_codes.py`
@@ -149,6 +149,44 @@ published). Code: `retrodiction/adb.py` (rules), `adb_source.py` (zip + XML), `a
   event dates are dropped and counted.
 - **Reporting.** `almamesh-eval adb-summary` prints counts only. Published output is ADB ids
   and aggregates only, never rows (licence §5).
+
+### Amendment 2026-10-14 (b): the first real ADB run (pre-registered before it)
+
+Written and committed before any scoring of the licensed export. Mapping, window ±36, k 3,6
+and the seven v1 families are unchanged (digest `2ae6e16d…` on this branch).
+
+- **Pre-1900 natives are excluded.** The engine's Lahiri ayanamsa table starts 1900-01-01 and
+  fails closed before it, so a native born earlier cannot be charted at all (the first attempt
+  crashed on one). In this export that is **2,408 of the 12,529 kept natives (5,215 of their
+  events, any precision)**. They are listed in the report's exclusions with the reason "birth
+  before 1900, outside the engine's ayanamsa table" and counted in the results note. This is a
+  product limitation, not only an eval one: the app cannot chart a pre-1900 birth.
+- **p-value arithmetic, same null.** One-event-at-a-time convolution is hours per cell at ~12k
+  events. Large sets now group identical events and convolve by FFT. It is the same 1e-4-grid
+  null to ~1e-12, and p is floored at 1e-12 so float noise can never understate it. Small sets
+  keep the direct path. Tests compare both paths with a hand convolution.
+- **Runtime and sample.** v1 scoring measured 0.15 s per native, so the full set (~12k events)
+  takes ~25 min serial. The AFTER run below needs one full engine predictive run per disputes
+  month (~2.2 s each; 95.7k native-months over the full set; 3.15 months/s measured at 14
+  processes, so ~8.5 h). So the headline before/after pair runs on a **seeded random sample of
+  3,000 natives** drawn from the 12,529 kept natives in file order (`--sample-natives 3000
+  --seed 20261014`, `random.Random(seed).sample` over indices; pre-1900 natives drawn into it
+  are excluded as above). BASELINE and AFTER use the **same sample**: same natives, events and
+  config. A full-set BASELINE is reported as an extra row, labelled as a different sample.
+  `--workers` changes only speed (tests assert identical report bytes).
+- **AFTER = BASELINE + one new family, `engine_obstacles`.** On scratch branch
+  `eval/obstacles-ab` (feat/obstacles-domain merged in). Its score is the shipped period
+  reading's obstacles-theme strength for that month divided by 100: the exact predictive entry
+  the app calls (reference instant the 1st 00:00 UTC, one-month window, reading ending on the
+  month's last day). It scores only the disputes target (legal, accident); every other target
+  gets 0, so their rankings cannot move. The merge touches none of the v1 families' inputs, so
+  AFTER's `without:engine_obstacles` must equal BASELINE `all`. That check is reported. The
+  existing families are not edited. Adding the family changes the digest to `295dcb9a…`, pinned
+  on the scratch branch only.
+- **Multiple comparisons.** The primary outcome (overall lift, k=3, all families) stays
+  uncorrected. Every other cell of a run (per category × k, and each ablation variant × k
+  except `all`) is one family of tests. We report the count, the raw p < 0.05 cells, and which
+  survive Holm and Benjamini-Hochberg at α = 0.05.
 
 ## Results: baseline 2026-10-14 (SYNTHETIC, harness sanity only, not evidence)
 
