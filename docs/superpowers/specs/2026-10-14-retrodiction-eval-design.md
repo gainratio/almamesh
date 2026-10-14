@@ -118,6 +118,35 @@ engine gains a disputes area; that change is then measured as a before/after on 
 So **no public set is legally clean today**; the baseline is synthetic. Prior nulls for context:
 Carlson 1985 (*Nature* 318:419), Dean & Kelly 2003 (time twins).
 
+### Amendment 2026-10-14: Astro-Databank import (pre-registered before any ADB run)
+
+Built against the free C-names sample (format and plumbing only; no result from it is
+published). Code: `retrodiction/adb.py` (rules), `adb_source.py` (zip + XML), `adb_codes.py`
+(the table). It applies only to an ADB set; the mapping digest `2ae6e16d…` is unchanged.
+
+- **Input.** The licensed `adb_export_*.zip`, read in place: the one `.xml` member is decrypted
+  (ZipCrypto, password from Keychain item `ALMAMESH_ADB_ZIP_PASSWORD`) and parsed as a stream.
+  No plaintext reaches disk. AES zips, DTDs, a foreign root, malformed XML, an expat without
+  amplification limits, and any export or report inside a git tree are refused. Licence §5 says
+  the data stays confidential.
+- **Natives kept.** Rodden AA or A (`rrc` 1, 2), `dtc` 1, not an event chart (`csex` e), a
+  known time, a Gregorian birth date. The birth instant is the civil time at the `stmerid`
+  offset (`h5w30` is zone hours, `m2e2015` is LMT meridian degrees), and it must match ADB's
+  `jd_ut` within a minute. Records in `<deleted_records>` are dropped (licence §7). Every drop
+  is counted by reason.
+- **Events.** An event maps only if both its `evn_id` and `sevcode` label match the frozen
+  table (31 types onto the 15 categories). The table digest is
+  `617f06c555819a90ad24b58e37948daa7e6f4398dfda13fcda2c8623f41ef2af`, pinned in
+  `tests/test_retrodiction_adb_codes.py`; changing the table needs another dated amendment.
+  Unmapped codes are counted and reported by id and label. The native's own death is never
+  mapped.
+- **Precision.** `iday="00"` means month precision and `imonth="00"` means year precision.
+  Year-precision events go through the existing rule: they are listed as excluded and never
+  scored at month level. No year-granularity scoring is added. Julian-calendar and impossible
+  event dates are dropped and counted.
+- **Reporting.** `almamesh-eval adb-summary` prints counts only. Published output is ADB ids
+  and aggregates only, never rows (licence §5).
+
 ## Results: baseline 2026-10-14 (SYNTHETIC, harness sanity only, not evidence)
 
 30 random-month events, pre-registered settings. Expected: lift near 1, nothing significant.
@@ -147,4 +176,9 @@ cp examples/retrodiction/events.example.yaml ~/.almamesh/retrodiction/events.yam
 # edit: kind: personal, your birth datetime WITH offset, coordinates, your dated events
 cd backend && uv run almamesh-eval retrodiction --events ~/.almamesh/retrodiction/events.yaml --window 36 --k 3,6
 # -> ~/.almamesh/retrodiction/retrodiction-report/{report.json,report.md}
+
+# Astro-Databank: the licensed zip stays outside git; the password is read from the Keychain
+cd backend && uv run almamesh-eval adb-summary --adb ~/.almamesh/retrodiction/adb/adb_export_<date>.zip
+cd backend && uv run almamesh-eval retrodiction --adb ~/.almamesh/retrodiction/adb/adb_export_<date>.zip --window 36 --k 3,6
+# -> ~/.almamesh/retrodiction/adb/retrodiction-report/{report.json,report.md}
 ```
