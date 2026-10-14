@@ -480,6 +480,31 @@
           "severity": "neutral"
         }
       ]
+    },
+    {
+      "domain": "relationships",
+      "houses": [
+        7
+      ],
+      "direction": "mixed",
+      "strength": "moderate",
+      "strength_pct": 38,
+      "confidence": "low",
+      "agreement": {
+        "vimshottari": false,
+        "yogini": false,
+        "transit": false
+      },
+      "factors": [
+        "Venus strength is 38% (moderate)"
+      ],
+      "windows": [
+        {
+          "date": "2027-01-24",
+          "descriptor": "relationships.transit.jupiter.ingress.cancer",
+          "severity": "neutral"
+        }
+      ]
     }
   ],
   "panchang": {

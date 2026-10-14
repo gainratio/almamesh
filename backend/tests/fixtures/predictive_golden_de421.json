@@ -1123,6 +1123,25 @@
           "strength": "strong",
           "strength_pct": 59,
           "windows": []
+        },
+        {
+          "agreement": {
+            "transit": false,
+            "vimshottari": false,
+            "yogini": false
+          },
+          "confidence": "low",
+          "direction": "mixed",
+          "domain": "relationships",
+          "factors": [
+            "Venus strength is 38% (moderate)"
+          ],
+          "houses": [
+            7
+          ],
+          "strength": "moderate",
+          "strength_pct": 38,
+          "windows": []
         }
       ],
       "transit_lords": {
@@ -5066,6 +5085,25 @@
           "strength": "strong",
           "strength_pct": 59,
           "windows": []
+        },
+        {
+          "agreement": {
+            "transit": false,
+            "vimshottari": false,
+            "yogini": false
+          },
+          "confidence": "low",
+          "direction": "mixed",
+          "domain": "relationships",
+          "factors": [
+            "Venus strength is 38% (moderate)"
+          ],
+          "houses": [
+            7
+          ],
+          "strength": "moderate",
+          "strength_pct": 38,
+          "windows": []
         }
       ],
       "transit_lords": {
@@ -8966,6 +9004,26 @@
           ],
           "strength": "strong",
           "strength_pct": 52,
+          "windows": []
+        },
+        {
+          "agreement": {
+            "transit": false,
+            "vimshottari": true,
+            "yogini": false
+          },
+          "confidence": "low",
+          "direction": "mixed",
+          "domain": "relationships",
+          "factors": [
+            "Saturn (maha) rules the 7th",
+            "Venus strength is 34% (moderate)"
+          ],
+          "houses": [
+            7
+          ],
+          "strength": "moderate",
+          "strength_pct": 34,
           "windows": []
         }
       ],

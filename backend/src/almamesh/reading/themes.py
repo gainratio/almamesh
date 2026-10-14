@@ -26,7 +26,8 @@ if TYPE_CHECKING:
 Direction = Literal["supportive", "mixed", "challenging"]
 Confidence = Literal["high", "medium", "low"]
 
-_MAX_THEMES: Final[int] = 6
+# Bounded but above the domain count, so no domain theme is ever silently dropped.
+_MAX_THEMES: Final[int] = 8
 _MAX_FACTORS: Final[int] = 3
 _MAX_WINDOWS: Final[int] = 3
 _CONFIDENCE: Final[dict[int, Confidence]] = {3: "high", 2: "medium"}
@@ -202,7 +203,7 @@ def _agreeing(agreement: ThemeAgreement) -> int:
 
 
 def reading_themes(inputs: ThemeInputs) -> list[ReadingTheme]:
-    """Up to six domains, most agreeing techniques first, then strongest."""
+    """Every domain (at most eight), most agreeing techniques first, then strongest."""
     themes = [_theme(f, inputs) for f in inputs.domains.forecasts.values()]
     themes.sort(key=lambda t: (-_agreeing(t.agreement), -t.strength_pct))
     return themes[:_MAX_THEMES]

@@ -413,6 +413,27 @@
         "Saturn strength is 48% (moderate)"
       ],
       "windows": []
+    },
+    {
+      "domain": "relationships",
+      "houses": [
+        7
+      ],
+      "direction": "challenging",
+      "strength": "moderate",
+      "strength_pct": 38,
+      "confidence": "low",
+      "agreement": {
+        "vimshottari": false,
+        "yogini": false,
+        "transit": true
+      },
+      "factors": [
+        "Saturn transits the 7th from the lagna",
+        "Saturn's SAV in Sagittarius is 21",
+        "Venus strength is 38% (moderate)"
+      ],
+      "windows": []
     }
   ],
   "panchang": {

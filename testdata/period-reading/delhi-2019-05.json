@@ -415,6 +415,26 @@
         "Saturn strength is 48% (moderate)"
       ],
       "windows": []
+    },
+    {
+      "domain": "finances",
+      "houses": [
+        2,
+        11
+      ],
+      "direction": "supportive",
+      "strength": "strong",
+      "strength_pct": 51,
+      "confidence": "low",
+      "agreement": {
+        "vimshottari": false,
+        "yogini": false,
+        "transit": false
+      },
+      "factors": [
+        "Jupiter strength is 51% (strong)"
+      ],
+      "windows": []
     }
   ],
   "panchang": {

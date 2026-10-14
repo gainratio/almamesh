@@ -223,7 +223,7 @@ class PeriodReading(BaseModel):
     sky: list[SkySpan]
     transit_lords: dict[PlanetName, TransitLord]
     double_transit: list[House]
-    themes: Annotated[list[ReadingTheme], Field(max_length=6)]
+    themes: Annotated[list[ReadingTheme], Field(max_length=8)]
     panchang: Panchang
     rules: list[str]
 

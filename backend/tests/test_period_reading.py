@@ -279,7 +279,7 @@ def test_yogini_is_the_running_yogini_maha(may: PredictiveContexts) -> None:
 
 def test_themes_are_ranked_and_capped(year: PredictiveContexts) -> None:
     themes = year.period_reading.themes
-    assert 1 <= len(themes) <= 6
+    assert 1 <= len(themes) <= 8
     keys = [(-sum(t.agreement.model_dump().values()), -t.strength_pct) for t in themes]
     assert keys == sorted(keys)
     for theme in themes:

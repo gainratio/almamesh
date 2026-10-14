@@ -741,6 +741,43 @@
           "severity": "neutral"
         }
       ]
+    },
+    {
+      "domain": "finances",
+      "houses": [
+        2,
+        11
+      ],
+      "direction": "mixed",
+      "strength": "strong",
+      "strength_pct": 51,
+      "confidence": "low",
+      "agreement": {
+        "vimshottari": true,
+        "yogini": false,
+        "transit": false
+      },
+      "factors": [
+        "Moon (pratyantar) rules the 2nd",
+        "Jupiter strength is 51% (strong)"
+      ],
+      "windows": [
+        {
+          "date": "2019-03-29",
+          "descriptor": "finances.transit.jupiter.ingress.sagittarius",
+          "severity": "neutral"
+        },
+        {
+          "date": "2019-04-22",
+          "descriptor": "finances.transit.jupiter.ingress.scorpio",
+          "severity": "neutral"
+        },
+        {
+          "date": "2019-11-05",
+          "descriptor": "finances.transit.jupiter.ingress.sagittarius",
+          "severity": "neutral"
+        }
+      ]
     }
   ],
   "panchang": {
