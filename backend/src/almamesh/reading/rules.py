@@ -6,7 +6,7 @@ from typing import Final
 
 READING_RULES: Final[tuple[str, ...]] = (
     "functional nature (BPHS): yogakaraka; lord of 1/5/9 benefic; else of 3/6/8/11 malefic;"
-    " else of 2/7 maraka; else neutral",
+    " else of 2/7 maraka; else neutral. A 12th lord takes its other house's nature, alone neutral",
     "agreement: vimshottari = a running dasha lord, yogini = the Yogini lord, rules or occupies"
     " a domain house or is its karaka; transit = Jupiter/Saturn in a domain house from lagna/Moon",
     "confidence = agreeing techniques: 3 high, 2 medium, 0-1 low",

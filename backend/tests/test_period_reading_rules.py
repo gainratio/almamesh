@@ -16,6 +16,7 @@ from almamesh.constants.astrology import PlanetName
 from almamesh.reading.dashas import sookshma, yogini_span
 from almamesh.reading.functional import functional_nature
 from almamesh.reading.panchang import panchang_at
+from almamesh.reading.rules import READING_RULES
 from almamesh.reading.sky import sky_tags
 from almamesh.reading.themes import confidence_for, theme_direction
 from almamesh.schemas.reading import FunctionalNature
@@ -38,10 +39,25 @@ _GEMINI = 2  # sign index of Gemini (DELHI_BIRTH's lagna)
         ([4], False, FunctionalNature.NEUTRAL),  # a pure kendra lord
         ([], False, FunctionalNature.NEUTRAL),  # the nodes rule nothing
         ([4, 9], True, FunctionalNature.YOGAKARAKA),
+        # The 12th lordship takes the nature of the other house (Laghu Parashari):
+        ([1, 12], False, FunctionalNature.BENEFIC),  # Saturn for Aquarius: the lagna lord
+        ([11, 12], False, FunctionalNature.MALEFIC),  # Saturn for Pisces
+        ([7, 12], False, FunctionalNature.MARAKA),  # Venus for Scorpio
+        ([9, 12], False, FunctionalNature.BENEFIC),  # Jupiter for Aries
+        ([12], False, FunctionalNature.NEUTRAL),  # Moon for Leo: by association only
     ],
 )
 def test_functional_nature(rules: list[int], yogakaraka: bool, expected: FunctionalNature) -> None:
     assert functional_nature(rules, is_yogakaraka=yogakaraka) is expected
+
+
+def test_the_stated_functional_rule_classifies_the_twelfth_lord() -> None:
+    # Given the rules the reading states to the model
+    rule = next(r for r in READING_RULES if r.startswith("functional nature"))
+    # When the functional-nature rule is read
+    # Then it says how a 12th lord is classed, so "Saturn 1+12 = benefic" is explained
+    assert "12th lord" in rule
+    assert "other house" in rule
 
 
 @pytest.mark.parametrize(
