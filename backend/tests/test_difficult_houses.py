@@ -9,6 +9,11 @@ then Jupiter pratyantar; Saturn rules the 1st and 12th for Aquarius.
 SYNTHETIC_SCORPIO (1985-03-10 06:00 UTC, New York coordinates) is also
 synthetic: a Scorpio lagna whose Saturn neither rules nor occupies 6/8/12, so
 it shows that a karaka alone never activates ``obstacles``.
+
+SYNTHETIC_QUIET (1996-12-24 22:00 UTC, New York coordinates) is synthetic too,
+found by a scripted search for a month with no 6th/8th/12th activation at all:
+in May 2010 no running lord or Yogini lord rules or occupies a dusthana, neither
+Jupiter nor Saturn transits one from the lagna or Moon, and no window is dated.
 """
 
 from __future__ import annotations
@@ -33,6 +38,7 @@ _IST = timedelta(minutes=330)
 SYNTHETIC_SCORPIO = datetime(1985, 3, 10, 6, tzinfo=UTC)
 _NY_LAT, _NY_LON = 40.7128, -74.006
 _NY_EST = timedelta(minutes=-300)
+SYNTHETIC_QUIET = datetime(1996, 12, 24, 22, tzinfo=UTC)
 
 
 def synthetic_reading(reference: datetime, reading_end: date) -> PredictiveContexts:
@@ -256,9 +262,7 @@ def test_should_keep_mars_windows_out_of_the_other_domains(sep_2019: PredictiveC
 def _tags_at(contexts: PredictiveContexts, graha: PlanetName, day: date) -> list[str]:
     """The tags of the graha's sky span that contains ``day``."""
     span = next(
-        s
-        for s in contexts.period_reading.sky
-        if s.graha == graha and s.start <= day < s.end
+        s for s in contexts.period_reading.sky if s.graha == graha and s.start <= day < s.end
     )
     return span.tags
 
@@ -271,3 +275,27 @@ def test_should_tag_mars_and_the_nodes_in_the_dusthanas(sep_2019: PredictiveCont
     assert "mars_from_lagna_8" in _tags_at(sep_2019, PlanetName.MARS, date(2019, 9, 26))
     assert _tags_at(sep_2019, PlanetName.RAHU, date(2019, 9, 10)) == ["rahu_from_moon_6"]
     assert _tags_at(sep_2019, PlanetName.KETU, date(2019, 9, 10)) == ["ketu_from_moon_12"]
+
+
+# --- negative control: no 6/8/12 activation must never read as strong ---
+
+
+def test_should_read_weak_obstacles_when_nothing_activates_the_dusthanas() -> None:
+    # Given a synthetic chart and a month with no 6th/8th/12th activation
+    contexts = compute_predictive_contexts(
+        SYNTHETIC_QUIET,
+        _NY_LAT,
+        _NY_LON,
+        datetime(2010, 5, 1, tzinfo=UTC),
+        civil_offset=_NY_EST,
+        window_months=12,
+        reading_end=date(2010, 5, 31),
+    )
+    # When the obstacles theme is read
+    obstacles = theme_of(contexts, _OBSTACLES)
+    # Then nothing agrees, nothing is dated, and it is weak at 0% (not "high for everyone")
+    agreement = obstacles.agreement
+    assert (agreement.vimshottari, agreement.yogini, agreement.transit) == (False, False, False)
+    assert obstacles.windows == []
+    assert obstacles.strength is StrengthBand.WEAK
+    assert obstacles.strength_pct == 0
