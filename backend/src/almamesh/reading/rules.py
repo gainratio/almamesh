@@ -16,6 +16,8 @@ READING_RULES: Final[tuple[str, ...]] = (
     " supportive, all challenging, else mixed",
     "whole-sign houses; Saturn 12th/1st/2nd from Moon = sade_sati_phase_1/2/3, 1/4/7/10 ="
     " kantaka_shani, 8th = ashtama_shani",
+    "mars/rahu/ketu tags = their 6th/8th/12th from the lagna or Moon (<graha>_from_lagna_8);"
+    " mars_over_moon/mars_over_lagna = Mars in that natal sign",
     "double_transit = houses from lagna Jupiter and Saturn both occupy or aspect now",
     "sookshma and panchang are for the reference instant; vara is the UTC weekday",
 )

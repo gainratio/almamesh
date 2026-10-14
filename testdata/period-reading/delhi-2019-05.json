@@ -194,6 +194,14 @@
   "segments": [
     {
       "start": "2019-05-01",
+      "end": "2019-05-07",
+      "maha": "rahu",
+      "antar": "rahu",
+      "pratyantar": "venus",
+      "events": []
+    },
+    {
+      "start": "2019-05-07",
       "end": "2019-06-01",
       "maha": "rahu",
       "antar": "rahu",
@@ -229,6 +237,34 @@
       "sav": 21,
       "bav": 1,
       "tags": []
+    },
+    {
+      "graha": "mars",
+      "start": "2019-05-01",
+      "end": "2019-05-07",
+      "sign": "taurus",
+      "retro": false,
+      "from_moon": 10,
+      "from_lagna": 12,
+      "sav": 26,
+      "bav": 4,
+      "tags": [
+        "mars_from_lagna_12"
+      ]
+    },
+    {
+      "graha": "mars",
+      "start": "2019-05-07",
+      "end": "2019-06-01",
+      "sign": "gemini",
+      "retro": false,
+      "from_moon": 11,
+      "from_lagna": 1,
+      "sav": 29,
+      "bav": 6,
+      "tags": [
+        "mars_over_lagna"
+      ]
     },
     {
       "graha": "rahu",
@@ -374,6 +410,35 @@
       "windows": []
     },
     {
+      "domain": "obstacles",
+      "houses": [
+        6,
+        8,
+        12
+      ],
+      "direction": "supportive",
+      "strength": "strong",
+      "strength_pct": 75,
+      "confidence": "medium",
+      "agreement": {
+        "vimshottari": true,
+        "yogini": false,
+        "transit": true
+      },
+      "factors": [
+        "Rahu (maha) occupies the 8th: unexpected setbacks",
+        "Jupiter transits the 6th from the lagna",
+        "Venus (pratyantar) rules the 12th: losses and expenses"
+      ],
+      "windows": [
+        {
+          "date": "2019-05-07",
+          "descriptor": "obstacles.transit.mars.ingress.gemini",
+          "severity": "neutral"
+        }
+      ]
+    },
+    {
       "domain": "spiritual",
       "houses": [
         9,
@@ -393,29 +458,6 @@
         "Venus (pratyantar) rules the 12th",
         "Saturn transits the 5th from the Moon",
         "Saturn's SAV in Sagittarius is 21"
-      ],
-      "windows": []
-    },
-    {
-      "domain": "obstacles",
-      "houses": [
-        6,
-        8,
-        12
-      ],
-      "direction": "supportive",
-      "strength": "moderate",
-      "strength_pct": 50,
-      "confidence": "medium",
-      "agreement": {
-        "vimshottari": true,
-        "yogini": false,
-        "transit": true
-      },
-      "factors": [
-        "Rahu (maha) occupies the 8th: unexpected setbacks",
-        "Jupiter transits the 6th from the lagna",
-        "Venus (pratyantar) rules the 12th: losses and expenses"
       ],
       "windows": []
     },
@@ -477,6 +519,7 @@
     "obstacles (6th/8th/12th): karakas Saturn/Mars/Rahu are context only; strength = agreeing techniques + a dated window: 3-4 with the window strong, 2+ moderate, 0-1 weak",
     "direction = domain transit severity + its window severities, neutral ignored: all supportive, all challenging, else mixed",
     "whole-sign houses; Saturn 12th/1st/2nd from Moon = sade_sati_phase_1/2/3, 1/4/7/10 = kantaka_shani, 8th = ashtama_shani",
+    "mars/rahu/ketu tags = their 6th/8th/12th from the lagna or Moon (<graha>_from_lagna_8); mars_over_moon/mars_over_lagna = Mars in that natal sign",
     "double_transit = houses from lagna Jupiter and Saturn both occupy or aspect now",
     "sookshma and panchang are for the reference instant; vara is the UTC weekday"
   ]

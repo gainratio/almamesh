@@ -601,6 +601,38 @@
           },
           "upcoming_windows": [
             {
+              "date": "2026-06-20T18:23:59.722851Z",
+              "descriptor": "obstacles.transit.mars.ingress.taurus",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "mars"
+            },
+            {
+              "date": "2026-08-02T17:14:30.855989Z",
+              "descriptor": "obstacles.transit.mars.ingress.gemini",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "mars"
+            },
+            {
+              "date": "2026-11-12T14:39:26.243363Z",
+              "descriptor": "obstacles.transit.mars.ingress.leo",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "mars"
+            },
+            {
+              "date": "2027-04-26T05:56:16.426381Z",
+              "descriptor": "obstacles.transit.mars.ingress.leo",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "mars"
+            },
+            {
               "date": "2027-06-02T23:04:25.266583Z",
               "descriptor": "obstacles.transit.saturn.ingress.aries",
               "kind": "sign_ingress",
@@ -1021,6 +1053,7 @@
         "obstacles (6th/8th/12th): karakas Saturn/Mars/Rahu are context only; strength = agreeing techniques + a dated window: 3-4 with the window strong, 2+ moderate, 0-1 weak",
         "direction = domain transit severity + its window severities, neutral ignored: all supportive, all challenging, else mixed",
         "whole-sign houses; Saturn 12th/1st/2nd from Moon = sade_sati_phase_1/2/3, 1/4/7/10 = kantaka_shani, 8th = ashtama_shani",
+        "mars/rahu/ketu tags = their 6th/8th/12th from the lagna or Moon (<graha>_from_lagna_8); mars_over_moon/mars_over_lagna = Mars in that natal sign",
         "double_transit = houses from lagna Jupiter and Saturn both occupy or aspect now",
         "sookshma and panchang are for the reference instant; vara is the UTC weekday"
       ],
@@ -1063,6 +1096,18 @@
           "tags": [
             "ashtama_shani"
           ]
+        },
+        {
+          "bav": 3,
+          "end": "2026-06-10",
+          "from_lagna": 11,
+          "from_moon": 9,
+          "graha": "mars",
+          "retro": false,
+          "sav": 35,
+          "sign": "aries",
+          "start": "2026-06-09",
+          "tags": []
         },
         {
           "bav": null,
@@ -4605,12 +4650,52 @@
           },
           "upcoming_windows": [
             {
+              "date": "2026-06-20T18:23:59.722851Z",
+              "descriptor": "obstacles.transit.mars.ingress.taurus",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "mars"
+            },
+            {
+              "date": "2026-08-02T17:14:30.855989Z",
+              "descriptor": "obstacles.transit.mars.ingress.gemini",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "mars"
+            },
+            {
+              "date": "2026-11-12T14:39:26.243363Z",
+              "descriptor": "obstacles.transit.mars.ingress.leo",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "mars"
+            },
+            {
+              "date": "2027-04-26T05:56:16.426381Z",
+              "descriptor": "obstacles.transit.mars.ingress.leo",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "mars"
+            },
+            {
               "date": "2027-06-02T23:04:25.266583Z",
               "descriptor": "obstacles.transit.saturn.ingress.aries",
               "kind": "sign_ingress",
               "severity": "neutral",
               "source": "transit",
               "trigger": "saturn"
+            },
+            {
+              "date": "2027-10-07T19:50:14.279792Z",
+              "descriptor": "obstacles.transit.mars.ingress.scorpio",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "mars"
             },
             {
               "date": "2027-10-20T02:54:57.331732Z",
@@ -4621,12 +4706,28 @@
               "trigger": "saturn"
             },
             {
+              "date": "2027-12-27T07:26:28.019130Z",
+              "descriptor": "obstacles.transit.mars.ingress.capricorn",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "mars"
+            },
+            {
               "date": "2028-02-23T12:37:39.735091Z",
               "descriptor": "obstacles.transit.saturn.ingress.aries",
               "kind": "sign_ingress",
               "severity": "neutral",
               "source": "transit",
               "trigger": "saturn"
+            },
+            {
+              "date": "2028-05-30T18:44:32.924478Z",
+              "descriptor": "obstacles.transit.mars.ingress.taurus",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "mars"
             }
           ],
           "varga": {
@@ -5129,6 +5230,7 @@
         "obstacles (6th/8th/12th): karakas Saturn/Mars/Rahu are context only; strength = agreeing techniques + a dated window: 3-4 with the window strong, 2+ moderate, 0-1 weak",
         "direction = domain transit severity + its window severities, neutral ignored: all supportive, all challenging, else mixed",
         "whole-sign houses; Saturn 12th/1st/2nd from Moon = sade_sati_phase_1/2/3, 1/4/7/10 = kantaka_shani, 8th = ashtama_shani",
+        "mars/rahu/ketu tags = their 6th/8th/12th from the lagna or Moon (<graha>_from_lagna_8); mars_over_moon/mars_over_lagna = Mars in that natal sign",
         "double_transit = houses from lagna Jupiter and Saturn both occupy or aspect now",
         "sookshma and panchang are for the reference instant; vara is the UTC weekday"
       ],
@@ -5171,6 +5273,18 @@
           "tags": [
             "ashtama_shani"
           ]
+        },
+        {
+          "bav": 3,
+          "end": "2026-06-10",
+          "from_lagna": 11,
+          "from_moon": 9,
+          "graha": "mars",
+          "retro": false,
+          "sav": 35,
+          "sign": "aries",
+          "start": "2026-06-09",
+          "tags": []
         },
         {
           "bav": null,
@@ -8763,6 +8877,22 @@
           },
           "upcoming_windows": [
             {
+              "date": "2026-08-02T17:14:30.855989Z",
+              "descriptor": "obstacles.transit.mars.ingress.gemini",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "mars"
+            },
+            {
+              "date": "2026-09-18T10:58:12.766566Z",
+              "descriptor": "obstacles.transit.mars.ingress.cancer",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "mars"
+            },
+            {
               "date": "2026-10-31T05:58:13.713998Z",
               "descriptor": "obstacles.transit.jupiter.ingress.leo",
               "kind": "sign_ingress",
@@ -8777,6 +8907,14 @@
               "severity": "neutral",
               "source": "transit",
               "trigger": "jupiter"
+            },
+            {
+              "date": "2027-03-09T19:02:48.069351Z",
+              "descriptor": "obstacles.transit.mars.ingress.cancer",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "mars"
             },
             {
               "date": "2027-06-02T23:04:25.266583Z",
@@ -9200,6 +9338,7 @@
         "obstacles (6th/8th/12th): karakas Saturn/Mars/Rahu are context only; strength = agreeing techniques + a dated window: 3-4 with the window strong, 2+ moderate, 0-1 weak",
         "direction = domain transit severity + its window severities, neutral ignored: all supportive, all challenging, else mixed",
         "whole-sign houses; Saturn 12th/1st/2nd from Moon = sade_sati_phase_1/2/3, 1/4/7/10 = kantaka_shani, 8th = ashtama_shani",
+        "mars/rahu/ketu tags = their 6th/8th/12th from the lagna or Moon (<graha>_from_lagna_8); mars_over_moon/mars_over_lagna = Mars in that natal sign",
         "double_transit = houses from lagna Jupiter and Saturn both occupy or aspect now",
         "sookshma and panchang are for the reference instant; vara is the UTC weekday"
       ],
@@ -9244,6 +9383,18 @@
           ]
         },
         {
+          "bav": 6,
+          "end": "2026-06-10",
+          "from_lagna": 10,
+          "from_moon": 3,
+          "graha": "mars",
+          "retro": false,
+          "sav": 30,
+          "sign": "aries",
+          "start": "2026-06-09",
+          "tags": []
+        },
+        {
           "bav": null,
           "end": "2026-06-10",
           "from_lagna": 8,
@@ -9253,7 +9404,9 @@
           "sav": 25,
           "sign": "aquarius",
           "start": "2026-06-09",
-          "tags": []
+          "tags": [
+            "rahu_from_lagna_8"
+          ]
         },
         {
           "bav": null,

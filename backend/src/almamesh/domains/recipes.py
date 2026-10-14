@@ -75,6 +75,11 @@ class DomainRecipe(BaseModel):
     Saturn rules or occupies one of its houses. And its reading strength is the
     period's activation, never a karaka's natal Shadbala, which would read the
     same every month for the same person.
+
+    ``mars_windows`` dates a window whenever Mars enters one of the domain's
+    house signs or the natal Moon's or lagna's sign. Mars changes sign about
+    every six weeks, too often to be signal for most domains; for obstacles its
+    transit over the dusthanas and the natal Moon/lagna is the classical trigger.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -86,6 +91,7 @@ class DomainRecipe(BaseModel):
     key_graha: PlanetName
     sade_sati_sensitive: bool = False
     activation_only: bool = False
+    mars_windows: bool = False
 
 
 def _h(house: int, rule: str, meaning: str | None = None) -> HouseRule:
@@ -214,6 +220,7 @@ _OBSTACLES = DomainRecipe(
     # the reading's obstacles strength is period activation, see activation_only.
     key_graha=PlanetName.SATURN,
     activation_only=True,
+    mars_windows=True,
 )
 
 

@@ -672,6 +672,14 @@
         },
         "upcoming_windows": [
           {
+            "date": "2025-01-21T04:37:51.059101Z",
+            "descriptor": "obstacles.transit.mars.ingress.gemini",
+            "kind": "sign_ingress",
+            "severity": "neutral",
+            "source": "transit",
+            "trigger": "mars"
+          },
+          {
             "date": "2025-03-02T19:53:39.108936Z",
             "descriptor": "obstacles.dasha.dasha.antar.rahu_to_saturn",
             "kind": "dasha_change",
@@ -688,12 +696,28 @@
             "trigger": "saturn"
           },
           {
+            "date": "2025-04-02T19:55:56.218815Z",
+            "descriptor": "obstacles.transit.mars.ingress.cancer",
+            "kind": "sign_ingress",
+            "severity": "neutral",
+            "source": "transit",
+            "trigger": "mars"
+          },
+          {
             "date": "2025-05-14T17:01:40.401607Z",
             "descriptor": "obstacles.transit.jupiter.ingress.gemini",
             "kind": "sign_ingress",
             "severity": "neutral",
             "source": "transit",
             "trigger": "jupiter"
+          },
+          {
+            "date": "2025-06-06T20:39:41.467037Z",
+            "descriptor": "obstacles.transit.mars.ingress.leo",
+            "kind": "sign_ingress",
+            "severity": "neutral",
+            "source": "transit",
+            "trigger": "mars"
           },
           {
             "date": "2025-10-18T13:50:37.934350Z",
@@ -1638,12 +1662,36 @@
         },
         "upcoming_windows": [
           {
+            "date": "2025-01-21T04:37:51.059101Z",
+            "descriptor": "obstacles.transit.mars.ingress.gemini",
+            "kind": "sign_ingress",
+            "severity": "neutral",
+            "source": "transit",
+            "trigger": "mars"
+          },
+          {
             "date": "2025-03-29T16:05:54.659418Z",
             "descriptor": "obstacles.transit.saturn.ingress.pisces",
             "kind": "sign_ingress",
             "severity": "neutral",
             "source": "transit",
             "trigger": "saturn"
+          },
+          {
+            "date": "2025-06-06T20:39:41.467037Z",
+            "descriptor": "obstacles.transit.mars.ingress.leo",
+            "kind": "sign_ingress",
+            "severity": "neutral",
+            "source": "transit",
+            "trigger": "mars"
+          },
+          {
+            "date": "2025-10-27T10:09:59.431990Z",
+            "descriptor": "obstacles.transit.mars.ingress.scorpio",
+            "kind": "sign_ingress",
+            "severity": "neutral",
+            "source": "transit",
+            "trigger": "mars"
           }
         ],
         "varga": {
@@ -2510,6 +2558,14 @@
         },
         "upcoming_windows": [
           {
+            "date": "2025-01-21T04:37:51.059101Z",
+            "descriptor": "obstacles.transit.mars.ingress.gemini",
+            "kind": "sign_ingress",
+            "severity": "neutral",
+            "source": "transit",
+            "trigger": "mars"
+          },
+          {
             "date": "2025-03-29T16:05:54.659418Z",
             "descriptor": "obstacles.transit.sade_sati.setting.start",
             "kind": "sade_sati_phase",
@@ -2524,6 +2580,14 @@
             "severity": "neutral",
             "source": "transit",
             "trigger": "saturn"
+          },
+          {
+            "date": "2025-04-02T19:55:56.218815Z",
+            "descriptor": "obstacles.transit.mars.ingress.cancer",
+            "kind": "sign_ingress",
+            "severity": "neutral",
+            "source": "transit",
+            "trigger": "mars"
           },
           {
             "date": "2025-05-14T17:01:40.401607Z",
@@ -2548,6 +2612,14 @@
             "severity": "neutral",
             "source": "transit",
             "trigger": "jupiter"
+          },
+          {
+            "date": "2025-12-07T14:44:11.182269Z",
+            "descriptor": "obstacles.transit.mars.ingress.sagittarius",
+            "kind": "sign_ingress",
+            "severity": "neutral",
+            "source": "transit",
+            "trigger": "mars"
           }
         ],
         "varga": {

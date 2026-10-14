@@ -207,3 +207,67 @@ def test_should_never_cite_a_karakas_natal_strength_for_obstacles(
     # When its factors are read
     # Then none is a natal strength percentage (that would be the same every month)
     assert not any("strength is" in factor for factor in obstacles.factors)
+
+
+# --- Mars and the nodes: dated windows and sky tags ---
+
+
+def test_sep_2019_obstacles_is_strong_with_the_mars_window(sep_2019: PredictiveContexts) -> None:
+    """The regression the product goal names: lords + occupant + a dated Mars trigger."""
+    # Given the synthetic chart in Sep 2019
+    # When the obstacles theme is read
+    obstacles = theme_of(sep_2019, _OBSTACLES)
+    # Then it cites the 12th's lord and occupant and dates Mars entering Virgo (8th)
+    assert "Saturn (maha) rules the 12th: losses and expenses" in obstacles.factors
+    assert "Rahu (pratyantar) occupies the 12th: losses and expenses" in obstacles.factors
+    mars = [w for w in obstacles.windows if w.descriptor == "obstacles.transit.mars.ingress.virgo"]
+    assert [w.date for w in mars] == [date(2019, 9, 25)]
+    assert obstacles.strength is StrengthBand.STRONG
+
+
+def test_should_date_mars_only_over_the_dusthanas_and_natal_points(
+    sep_2019: PredictiveContexts,
+) -> None:
+    # Given the 12-month obstacles windows (Aquarius lagna, Capricorn Moon)
+    windows = sep_2019.domains_context.forecasts[_OBSTACLES].upcoming_windows
+    # When the Mars ingresses among them are listed
+    entered = {w.descriptor.rsplit(".", 1)[1] for w in windows if ".mars.ingress." in w.descriptor}
+    # Then Virgo (8th), Capricorn (12th, the Moon) and Aquarius (the lagna) are dated;
+    # Libra, Scorpio and Sagittarius (9th, 10th, 11th) are not
+    assert {"virgo", "capricorn", "aquarius"} <= entered
+    assert not entered & {"libra", "scorpio", "sagittarius"}
+
+
+def test_should_keep_mars_windows_out_of_the_other_domains(sep_2019: PredictiveContexts) -> None:
+    # Given every domain forecast for the 12-month window
+    forecasts = sep_2019.domains_context.forecasts
+    # When their windows are scanned for Mars ingresses
+    others = [
+        w.descriptor
+        for domain, forecast in forecasts.items()
+        if domain is not _OBSTACLES
+        for w in forecast.upcoming_windows
+        if ".mars.ingress." in w.descriptor
+    ]
+    # Then only obstacles takes Mars (it moves too fast to be signal elsewhere)
+    assert others == []
+
+
+def _tags_at(contexts: PredictiveContexts, graha: PlanetName, day: date) -> list[str]:
+    """The tags of the graha's sky span that contains ``day``."""
+    span = next(
+        s
+        for s in contexts.period_reading.sky
+        if s.graha == graha and s.start <= day < s.end
+    )
+    return span.tags
+
+
+def test_should_tag_mars_and_the_nodes_in_the_dusthanas(sep_2019: PredictiveContexts) -> None:
+    # Given Sep 2019: Mars in Leo then Virgo, Rahu in Gemini, Ketu in Sagittarius
+    # When the sky spans are read
+    # Then each carries its 6th/8th/12th house from the lagna and the Moon
+    assert "mars_from_moon_8" in _tags_at(sep_2019, PlanetName.MARS, date(2019, 9, 10))
+    assert "mars_from_lagna_8" in _tags_at(sep_2019, PlanetName.MARS, date(2019, 9, 26))
+    assert _tags_at(sep_2019, PlanetName.RAHU, date(2019, 9, 10)) == ["rahu_from_moon_6"]
+    assert _tags_at(sep_2019, PlanetName.KETU, date(2019, 9, 10)) == ["ketu_from_moon_12"]

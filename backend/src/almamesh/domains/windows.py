@@ -10,8 +10,10 @@ implementation, which calc-integrity forbids.
 
 Which events feed windows (``feeds_domain_windows``): Jupiter and Saturn sign
 ingresses in both directions (a retrograde move back across a cusp is a window
-of its own), dasha changes, Sade Sati phases and returns. Mars and Rahu/Ketu
-ingresses and all stations are not used, by decision.
+of its own), dasha changes, Sade Sati phases and returns. Rahu/Ketu ingresses
+and all stations are not used, by decision. Mars ingresses are used only by a
+recipe with ``mars_windows`` (obstacles): Mars entering one of its house signs
+or the natal Moon's or lagna's sign is a dated trigger (source ``transit``).
 
 Relevance per event kind:
 - DASHA_CHANGE: the incoming lord is a domain significator  -> source ``dasha``;
@@ -23,6 +25,7 @@ Relevance per event kind:
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final
 
 from almamesh.constants.astrology import PlanetName
@@ -95,6 +98,39 @@ def _classify(
     return _classify_transit_event(event, sigs, house_signs)
 
 
+@dataclass(frozen=True)
+class _Scope:
+    """What makes an event this domain's: significators, house signs, Sade Sati, Mars signs."""
+
+    sigs: frozenset[PlanetName]
+    house_signs: frozenset[ZodiacSign]
+    sade_sati: bool
+    mars_signs: frozenset[ZodiacSign]
+
+
+def _mars_signs(natal: SiderealContext, recipe: DomainRecipe) -> frozenset[ZodiacSign]:
+    """The signs a Mars ingress into is a window: domain houses + natal Moon + lagna."""
+    if not recipe.mars_windows:
+        return frozenset()
+    natal_points = {natal.planets[PlanetName.MOON].sign, natal.houses[1].sign}
+    return domain_house_signs(natal, recipe) | natal_points
+
+
+def _mars_trigger(event: TimelineEvent, scope: _Scope) -> _Verdict | None:
+    """A Mars ingress into one of the scope's Mars signs."""
+    is_mars_ingress = event.kind == TransitEventKind.SIGN_INGRESS and event.graha == PlanetName.MARS
+    if is_mars_ingress and event.to_sign in scope.mars_signs:
+        return WindowSource.TRANSIT, PlanetName.MARS
+    return None
+
+
+def _verdict(event: TimelineEvent, scope: _Scope) -> _Verdict | None:
+    """The shared Life Atlas event set first, then the opt-in Mars trigger."""
+    if feeds_domain_windows(event):
+        return _classify(event, scope.sigs, scope.house_signs, scope.sade_sati)
+    return _mars_trigger(event, scope)
+
+
 def _window(
     recipe: DomainRecipe, source: WindowSource, trigger: PlanetName | None, event: TimelineEvent
 ) -> DomainWindow:
@@ -116,11 +152,15 @@ def upcoming_windows(
     sigs: frozenset[PlanetName],
 ) -> list[DomainWindow]:
     """The domain-relevant subset of the forward timeline, chronologically sorted."""
-    house_signs = domain_house_signs(natal, recipe)
-    ss_relevant = sade_sati_relevant(natal, recipe, sigs)
+    scope = _Scope(
+        sigs=sigs,
+        house_signs=domain_house_signs(natal, recipe),
+        sade_sati=sade_sati_relevant(natal, recipe, sigs),
+        mars_signs=_mars_signs(natal, recipe),
+    )
     windows: list[DomainWindow] = []
-    for event in filter(feeds_domain_windows, transits.timeline.events):
-        verdict = _classify(event, sigs, house_signs, ss_relevant)
+    for event in transits.timeline.events:
+        verdict = _verdict(event, scope)
         if verdict is not None:
             windows.append(_window(recipe, verdict[0], verdict[1], event))
     return sorted(windows, key=lambda w: (w.date, w.descriptor))

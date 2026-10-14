@@ -22,6 +22,7 @@ from almamesh.schemas.reading import FunctionalNature
 from almamesh.schemas.transits import TransitSeverity
 
 _LEO = 4  # sign index of Leo (DELHI_BIRTH's natal Moon)
+_GEMINI = 2  # sign index of Gemini (DELHI_BIRTH's lagna)
 
 
 @pytest.mark.parametrize(
@@ -58,16 +59,34 @@ def test_functional_nature(rules: list[int], yogakaraka: bool, expected: Functio
 )
 def test_saturn_tags_count_from_the_moon(from_moon: int, expected: list[str]) -> None:
     saturn_idx = (_LEO + from_moon - 1) % 12
-    assert sky_tags(PlanetName.SATURN, saturn_idx, _LEO) == expected
+    assert sky_tags(PlanetName.SATURN, saturn_idx, _LEO, _GEMINI) == expected
 
 
 def test_jupiter_tag_names_its_house_from_the_moon() -> None:
     scorpio = 7
-    assert sky_tags(PlanetName.JUPITER, scorpio, _LEO) == ["jupiter_from_moon_4"]
+    assert sky_tags(PlanetName.JUPITER, scorpio, _LEO, _GEMINI) == ["jupiter_from_moon_4"]
 
 
-def test_nodes_carry_no_tags() -> None:
-    assert sky_tags(PlanetName.RAHU, 2, _LEO) == []
+def test_nodes_carry_no_tags_outside_the_dusthanas() -> None:
+    """Gemini is the 11th from the Leo Moon and the 1st from the Gemini lagna."""
+    assert sky_tags(PlanetName.RAHU, _GEMINI, _LEO, _GEMINI) == []
+
+
+@pytest.mark.parametrize(
+    ("graha", "sign_idx", "expected"),
+    [
+        (PlanetName.RAHU, 7, ["rahu_from_lagna_6"]),  # Scorpio: 6th from Gemini, 4th from Leo
+        (PlanetName.KETU, 9, ["ketu_from_lagna_8", "ketu_from_moon_6"]),  # Capricorn
+        (PlanetName.MARS, 3, ["mars_from_moon_12"]),  # Cancer: 2nd from Gemini, 12th from Leo
+        (PlanetName.MARS, _LEO, ["mars_over_moon"]),  # Leo: 3rd from Gemini, the Moon's sign
+        (PlanetName.MARS, _GEMINI, ["mars_over_lagna"]),  # Gemini: the lagna, 11th from Leo
+        (PlanetName.MARS, 0, []),  # Aries: 11th from Gemini, 9th from Leo
+    ],
+)
+def test_mars_and_nodes_tag_the_dusthanas_and_natal_points(
+    graha: PlanetName, sign_idx: int, expected: list[str]
+) -> None:
+    assert sky_tags(graha, sign_idx, _LEO, _GEMINI) == expected
 
 
 _S, _N, _C = TransitSeverity.SUPPORTIVE, TransitSeverity.NEUTRAL, TransitSeverity.CHALLENGING

@@ -313,7 +313,15 @@ def test_panchang_is_stated_at_the_reference_instant(may: PredictiveContexts) ->
 
 def test_rules_state_every_counting_rule(may: PredictiveContexts) -> None:
     text = " ".join(may.period_reading.rules)
-    for needle in ("functional nature", "confidence", "direction", "agreement", "sade_sati"):
+    for needle in (
+        "functional nature",
+        "confidence",
+        "direction",
+        "agreement",
+        "sade_sati",
+        "mars_over_moon",
+        "obstacles",
+    ):
         assert needle in text
     assert all(len(rule) <= 200 for rule in may.period_reading.rules)
 
