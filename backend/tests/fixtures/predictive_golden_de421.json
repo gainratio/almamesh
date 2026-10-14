@@ -912,7 +912,7 @@
       },
       "rules": [
         "functional nature (BPHS): yogakaraka; lord of 1/5/9 benefic; else of 3/6/8/11 malefic; else of 2/7 maraka; else neutral",
-        "agreement: vimshottari = a running dasha lord, yogini = the Yogini lord, rules a domain house or is its karaka; transit = Jupiter/Saturn in a domain house from lagna or Moon",
+        "agreement: vimshottari = a running dasha lord, yogini = the Yogini lord, rules or occupies a domain house or is its karaka; transit = Jupiter/Saturn in a domain house from lagna/Moon",
         "confidence = agreeing techniques: 3 high, 2 medium, 0-1 low",
         "direction = domain transit severity + its window severities, neutral ignored: all supportive, all challenging, else mixed",
         "whole-sign houses; Saturn 12th/1st/2nd from Moon = sade_sati_phase_1/2/3, 1/4/7/10 = kantaka_shani, 8th = ashtama_shani",
@@ -1002,7 +1002,7 @@
           "factors": [
             "Mercury (antar) rules the 4th",
             "Jupiter transits the 2nd from the lagna",
-            "Yogini Ulka (Saturn) rules the 9th"
+            "Moon (pratyantar) rules the 2nd"
           ],
           "houses": [
             2,
@@ -1045,9 +1045,9 @@
           "direction": "challenging",
           "domain": "health",
           "factors": [
-            "Mercury (antar) rules the 1st",
+            "Rahu (maha) occupies the 8th",
             "Saturn transits the 8th from the Moon (ashtama_shani)",
-            "Yogini Ulka (Saturn) rules the 8th"
+            "Mercury (antar) rules the 1st"
           ],
           "houses": [
             1,
@@ -1107,6 +1107,27 @@
           "agreement": {
             "transit": false,
             "vimshottari": true,
+            "yogini": true
+          },
+          "confidence": "medium",
+          "direction": "mixed",
+          "domain": "relationships",
+          "factors": [
+            "Mercury (antar) occupies the 7th",
+            "Yogini Ulka (Saturn) occupies the 7th",
+            "Venus strength is 38% (moderate)"
+          ],
+          "houses": [
+            7
+          ],
+          "strength": "moderate",
+          "strength_pct": 38,
+          "windows": []
+        },
+        {
+          "agreement": {
+            "transit": false,
+            "vimshottari": true,
             "yogini": false
           },
           "confidence": "low",
@@ -1122,25 +1143,6 @@
           ],
           "strength": "strong",
           "strength_pct": 59,
-          "windows": []
-        },
-        {
-          "agreement": {
-            "transit": false,
-            "vimshottari": false,
-            "yogini": false
-          },
-          "confidence": "low",
-          "direction": "mixed",
-          "domain": "relationships",
-          "factors": [
-            "Venus strength is 38% (moderate)"
-          ],
-          "houses": [
-            7
-          ],
-          "strength": "moderate",
-          "strength_pct": 38,
           "windows": []
         }
       ],
@@ -4874,7 +4876,7 @@
       },
       "rules": [
         "functional nature (BPHS): yogakaraka; lord of 1/5/9 benefic; else of 3/6/8/11 malefic; else of 2/7 maraka; else neutral",
-        "agreement: vimshottari = a running dasha lord, yogini = the Yogini lord, rules a domain house or is its karaka; transit = Jupiter/Saturn in a domain house from lagna or Moon",
+        "agreement: vimshottari = a running dasha lord, yogini = the Yogini lord, rules or occupies a domain house or is its karaka; transit = Jupiter/Saturn in a domain house from lagna/Moon",
         "confidence = agreeing techniques: 3 high, 2 medium, 0-1 low",
         "direction = domain transit severity + its window severities, neutral ignored: all supportive, all challenging, else mixed",
         "whole-sign houses; Saturn 12th/1st/2nd from Moon = sade_sati_phase_1/2/3, 1/4/7/10 = kantaka_shani, 8th = ashtama_shani",
@@ -4964,7 +4966,7 @@
           "factors": [
             "Mercury (antar) rules the 4th",
             "Jupiter transits the 2nd from the lagna",
-            "Yogini Ulka (Saturn) rules the 9th"
+            "Moon (pratyantar) rules the 2nd"
           ],
           "houses": [
             2,
@@ -5007,9 +5009,9 @@
           "direction": "challenging",
           "domain": "health",
           "factors": [
-            "Mercury (antar) rules the 1st",
+            "Rahu (maha) occupies the 8th",
             "Saturn transits the 8th from the Moon (ashtama_shani)",
-            "Yogini Ulka (Saturn) rules the 8th"
+            "Mercury (antar) rules the 1st"
           ],
           "houses": [
             1,
@@ -5069,6 +5071,27 @@
           "agreement": {
             "transit": false,
             "vimshottari": true,
+            "yogini": true
+          },
+          "confidence": "medium",
+          "direction": "mixed",
+          "domain": "relationships",
+          "factors": [
+            "Mercury (antar) occupies the 7th",
+            "Yogini Ulka (Saturn) occupies the 7th",
+            "Venus strength is 38% (moderate)"
+          ],
+          "houses": [
+            7
+          ],
+          "strength": "moderate",
+          "strength_pct": 38,
+          "windows": []
+        },
+        {
+          "agreement": {
+            "transit": false,
+            "vimshottari": true,
             "yogini": false
           },
           "confidence": "low",
@@ -5084,25 +5107,6 @@
           ],
           "strength": "strong",
           "strength_pct": 59,
-          "windows": []
-        },
-        {
-          "agreement": {
-            "transit": false,
-            "vimshottari": false,
-            "yogini": false
-          },
-          "confidence": "low",
-          "direction": "mixed",
-          "domain": "relationships",
-          "factors": [
-            "Venus strength is 38% (moderate)"
-          ],
-          "houses": [
-            7
-          ],
-          "strength": "moderate",
-          "strength_pct": 38,
           "windows": []
         }
       ],
@@ -8795,7 +8799,7 @@
       },
       "rules": [
         "functional nature (BPHS): yogakaraka; lord of 1/5/9 benefic; else of 3/6/8/11 malefic; else of 2/7 maraka; else neutral",
-        "agreement: vimshottari = a running dasha lord, yogini = the Yogini lord, rules a domain house or is its karaka; transit = Jupiter/Saturn in a domain house from lagna or Moon",
+        "agreement: vimshottari = a running dasha lord, yogini = the Yogini lord, rules or occupies a domain house or is its karaka; transit = Jupiter/Saturn in a domain house from lagna/Moon",
         "confidence = agreeing techniques: 3 high, 2 medium, 0-1 low",
         "direction = domain transit severity + its window severities, neutral ignored: all supportive, all challenging, else mixed",
         "whole-sign houses; Saturn 12th/1st/2nd from Moon = sade_sati_phase_1/2/3, 1/4/7/10 = kantaka_shani, 8th = ashtama_shani",
@@ -8877,6 +8881,29 @@
           "agreement": {
             "transit": true,
             "vimshottari": true,
+            "yogini": true
+          },
+          "confidence": "high",
+          "direction": "challenging",
+          "domain": "spiritual",
+          "factors": [
+            "Rahu (antar) occupies the 12th",
+            "Saturn transits the 9th from the lagna (sade_sati_phase_3)",
+            "Mercury (pratyantar) rules the 12th"
+          ],
+          "houses": [
+            9,
+            12,
+            5
+          ],
+          "strength": "moderate",
+          "strength_pct": 43,
+          "windows": []
+        },
+        {
+          "agreement": {
+            "transit": true,
+            "vimshottari": true,
             "yogini": false
           },
           "confidence": "medium",
@@ -8885,7 +8912,7 @@
           "factors": [
             "Saturn (maha) rules the 8th",
             "Jupiter transits the 6th from the Moon",
-            "Jupiter's SAV in Cancer is 32"
+            "Mercury (pratyantar) occupies the 6th"
           ],
           "houses": [
             1,
@@ -8904,19 +8931,18 @@
           },
           "confidence": "medium",
           "direction": "challenging",
-          "domain": "spiritual",
+          "domain": "finances",
           "factors": [
-            "Mercury (pratyantar) rules the 12th",
-            "Saturn transits the 9th from the lagna (sade_sati_phase_3)",
+            "Saturn (maha) occupies the 11th",
+            "Saturn transits the 2nd from the Moon (sade_sati_phase_3)",
             "Saturn's SAV in Pisces is 29"
           ],
           "houses": [
-            9,
-            12,
-            5
+            2,
+            11
           ],
-          "strength": "moderate",
-          "strength_pct": 43,
+          "strength": "strong",
+          "strength_pct": 52,
           "windows": []
         },
         {
@@ -8930,6 +8956,7 @@
           "domain": "career",
           "factors": [
             "Saturn (maha) is a karaka of career",
+            "Mercury (pratyantar) is a karaka of career",
             "Saturn strength is 54% (strong)"
           ],
           "houses": [
@@ -8937,28 +8964,6 @@
           ],
           "strength": "strong",
           "strength_pct": 54,
-          "windows": []
-        },
-        {
-          "agreement": {
-            "transit": true,
-            "vimshottari": false,
-            "yogini": false
-          },
-          "confidence": "low",
-          "direction": "challenging",
-          "domain": "finances",
-          "factors": [
-            "Saturn transits the 2nd from the Moon (sade_sati_phase_3)",
-            "Saturn's SAV in Pisces is 29",
-            "Jupiter strength is 52% (strong)"
-          ],
-          "houses": [
-            2,
-            11
-          ],
-          "strength": "strong",
-          "strength_pct": 52,
           "windows": []
         },
         {

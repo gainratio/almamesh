@@ -1,8 +1,10 @@
 """Per-domain themes: plain agreement booleans, a counted confidence, cited factors.
 
 Agreement is one boolean per technique, never a fused score (the heuristics in
-``dasha/scoring.py`` stay quarantined). Every factor string is generated from an
-engine fact: a lordship, a karaka, a transit house, a tag, a bindu count.
+``dasha/scoring.py`` stay quarantined). A graha signifies a domain when it rules
+one of its houses, occupies one, or is one of its karakas. Every factor string
+is generated from an engine fact: a lordship, an occupancy, a karaka, a transit
+house, a tag, a bindu count.
 """
 
 from __future__ import annotations
@@ -30,6 +32,7 @@ Confidence = Literal["high", "medium", "low"]
 _MAX_THEMES: Final[int] = 8
 _MAX_FACTORS: Final[int] = 3
 _MAX_WINDOWS: Final[int] = 3
+_MAX_DASHA_FACTORS: Final[int] = 2
 _CONFIDENCE: Final[dict[int, Confidence]] = {3: "high", 2: "medium"}
 _SLOW_TRANSITS: Final[frozenset[PlanetName]] = frozenset({PlanetName.JUPITER, PlanetName.SATURN})
 
@@ -49,16 +52,18 @@ class ThemeInputs:
 
 @dataclass(frozen=True)
 class _Domain:
-    """A domain's significators: its houses, their lords and its karakas."""
+    """A domain's significators: its houses, their lords, their occupants and its karakas."""
 
     forecast: LifeDomainForecast
     houses: tuple[int, ...]
     grahas: frozenset[PlanetName]
 
     @classmethod
-    def of(cls, forecast: LifeDomainForecast) -> _Domain:
+    def of(cls, forecast: LifeDomainForecast, natal: SiderealContext) -> _Domain:
+        houses = tuple(h.house for h in forecast.houses)
         lords = {h.lord for h in forecast.houses} | {k.graha for k in forecast.karakas}
-        return cls(forecast, tuple(h.house for h in forecast.houses), frozenset(lords))
+        occupants = {p.name for p in natal.planets.values() if p.house in houses}
+        return cls(forecast, houses, frozenset(lords | occupants))
 
 
 def theme_direction(severities: Iterable[TransitSeverity | str]) -> Direction:
@@ -104,19 +109,23 @@ def _agreement(domain: _Domain, inputs: ThemeInputs) -> ThemeAgreement:
 
 
 def _signifies(label: str, lord: PlanetName, domain: _Domain, natal: SiderealContext) -> str:
-    """``<label> rules the Nth`` for a house lord, else ``is a karaka of <domain>``."""
-    ruled = [h for h in domain.houses if h in natal.planets[lord].houses_ruled]
+    """``rules the Nth`` (house lord), else ``occupies the Nth``, else ``is a karaka of``."""
+    placement = natal.planets[lord]
+    ruled = [h for h in domain.houses if h in placement.houses_ruled]
     if ruled:
         return f"{label} rules the {ordinal(ruled[0])}"
+    if placement.house in domain.houses:
+        return f"{label} occupies the {ordinal(placement.house)}"
     return f"{label} is a karaka of {domain.forecast.domain.value}"
 
 
-def _dasha_factor(domain: _Domain, inputs: ThemeInputs) -> str | None:
-    """The first running lord that signifies the domain."""
-    hit = next(((lvl, lord) for lvl, lord in inputs.running if lord in domain.grahas), None)
-    if hit is None:
-        return None
-    return _signifies(f"{title(hit[1])} ({hit[0].value})", hit[1], domain, inputs.natal)
+def _dasha_factors(domain: _Domain, inputs: ThemeInputs) -> list[str]:
+    """The first two running lords that signify the domain, outermost level first."""
+    hits = [(lvl, lord) for lvl, lord in inputs.running if lord in domain.grahas]
+    return [
+        _signifies(f"{title(lord)} ({lvl.value})", lord, domain, inputs.natal)
+        for lvl, lord in hits[:_MAX_DASHA_FACTORS]
+    ]
 
 
 def _yogini_factor(domain: _Domain, inputs: ThemeInputs) -> str | None:
@@ -147,11 +156,13 @@ def _strength_factor(forecast: LifeDomainForecast) -> str:
 
 
 def _factors(domain: _Domain, inputs: ThemeInputs) -> list[str]:
-    """Up to three cited factors: dasha, transit, Yogini, SAV, then strength."""
+    """Up to three cited factors: dasha, transit, a second dasha lord, Yogini, SAV, strength."""
+    dasha = _dasha_factors(domain, inputs)
     transit = _transit_factors(domain, inputs.sky)
     ordered = [
-        _dasha_factor(domain, inputs),
+        *dasha[:1],
         *transit[:1],
+        *dasha[1:],
         _yogini_factor(domain, inputs),
         *transit[1:],
         _strength_factor(domain.forecast),
@@ -180,7 +191,7 @@ def _shown(windows: list[ThemeWindow]) -> list[ThemeWindow]:
 
 def _theme(forecast: LifeDomainForecast, inputs: ThemeInputs) -> ReadingTheme:
     """One domain's theme."""
-    domain = _Domain.of(forecast)
+    domain = _Domain.of(forecast, inputs.natal)
     agreement = _agreement(domain, inputs)
     windows = _windows(forecast, inputs)
     severities = (forecast.current_emphasis.transit_severity, *(w.severity for w in windows))

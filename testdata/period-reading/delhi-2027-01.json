@@ -385,9 +385,9 @@
         "transit": true
       },
       "factors": [
-        "Mercury (antar) rules the 1st",
+        "Rahu (maha) occupies the 8th",
         "Jupiter transits the 1st from the Moon",
-        "Yogini Ulka (Saturn) rules the 8th"
+        "Mercury (antar) rules the 1st"
       ],
       "windows": [
         {
@@ -422,6 +422,33 @@
         {
           "date": "2027-01-24",
           "descriptor": "spiritual.transit.jupiter.ingress.cancer",
+          "severity": "neutral"
+        }
+      ]
+    },
+    {
+      "domain": "relationships",
+      "houses": [
+        7
+      ],
+      "direction": "mixed",
+      "strength": "moderate",
+      "strength_pct": 38,
+      "confidence": "medium",
+      "agreement": {
+        "vimshottari": true,
+        "yogini": true,
+        "transit": false
+      },
+      "factors": [
+        "Mercury (antar) occupies the 7th",
+        "Yogini Ulka (Saturn) occupies the 7th",
+        "Venus strength is 38% (moderate)"
+      ],
+      "windows": [
+        {
+          "date": "2027-01-24",
+          "descriptor": "relationships.transit.jupiter.ingress.cancer",
           "severity": "neutral"
         }
       ]
@@ -480,31 +507,6 @@
           "severity": "neutral"
         }
       ]
-    },
-    {
-      "domain": "relationships",
-      "houses": [
-        7
-      ],
-      "direction": "mixed",
-      "strength": "moderate",
-      "strength_pct": 38,
-      "confidence": "low",
-      "agreement": {
-        "vimshottari": false,
-        "yogini": false,
-        "transit": false
-      },
-      "factors": [
-        "Venus strength is 38% (moderate)"
-      ],
-      "windows": [
-        {
-          "date": "2027-01-24",
-          "descriptor": "relationships.transit.jupiter.ingress.cancer",
-          "severity": "neutral"
-        }
-      ]
     }
   ],
   "panchang": {
@@ -519,7 +521,7 @@
   },
   "rules": [
     "functional nature (BPHS): yogakaraka; lord of 1/5/9 benefic; else of 3/6/8/11 malefic; else of 2/7 maraka; else neutral",
-    "agreement: vimshottari = a running dasha lord, yogini = the Yogini lord, rules a domain house or is its karaka; transit = Jupiter/Saturn in a domain house from lagna or Moon",
+    "agreement: vimshottari = a running dasha lord, yogini = the Yogini lord, rules or occupies a domain house or is its karaka; transit = Jupiter/Saturn in a domain house from lagna/Moon",
     "confidence = agreeing techniques: 3 high, 2 medium, 0-1 low",
     "direction = domain transit severity + its window severities, neutral ignored: all supportive, all challenging, else mixed",
     "whole-sign houses; Saturn 12th/1st/2nd from Moon = sade_sati_phase_1/2/3, 1/4/7/10 = kantaka_shani, 8th = ashtama_shani",

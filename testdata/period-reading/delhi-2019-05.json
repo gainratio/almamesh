@@ -330,6 +330,50 @@
       "windows": []
     },
     {
+      "domain": "health",
+      "houses": [
+        1,
+        6,
+        8
+      ],
+      "direction": "mixed",
+      "strength": "moderate",
+      "strength_pct": 45,
+      "confidence": "high",
+      "agreement": {
+        "vimshottari": true,
+        "yogini": true,
+        "transit": true
+      },
+      "factors": [
+        "Rahu (maha) occupies the 8th",
+        "Jupiter transits the 6th from the lagna",
+        "Venus (pratyantar) occupies the 8th"
+      ],
+      "windows": []
+    },
+    {
+      "domain": "relationships",
+      "houses": [
+        7
+      ],
+      "direction": "challenging",
+      "strength": "moderate",
+      "strength_pct": 38,
+      "confidence": "high",
+      "agreement": {
+        "vimshottari": true,
+        "yogini": true,
+        "transit": true
+      },
+      "factors": [
+        "Venus (pratyantar) is a karaka of relationships",
+        "Saturn transits the 7th from the lagna",
+        "Yogini Bhadrika (Mercury) occupies the 7th"
+      ],
+      "windows": []
+    },
+    {
       "domain": "spiritual",
       "houses": [
         9,
@@ -348,50 +392,6 @@
       "factors": [
         "Venus (pratyantar) rules the 12th",
         "Saturn transits the 5th from the Moon",
-        "Saturn's SAV in Sagittarius is 21"
-      ],
-      "windows": []
-    },
-    {
-      "domain": "health",
-      "houses": [
-        1,
-        6,
-        8
-      ],
-      "direction": "mixed",
-      "strength": "moderate",
-      "strength_pct": 45,
-      "confidence": "medium",
-      "agreement": {
-        "vimshottari": false,
-        "yogini": true,
-        "transit": true
-      },
-      "factors": [
-        "Jupiter transits the 6th from the lagna",
-        "Yogini Bhadrika (Mercury) rules the 1st",
-        "Jupiter's SAV in Scorpio is 33"
-      ],
-      "windows": []
-    },
-    {
-      "domain": "relationships",
-      "houses": [
-        7
-      ],
-      "direction": "challenging",
-      "strength": "moderate",
-      "strength_pct": 38,
-      "confidence": "medium",
-      "agreement": {
-        "vimshottari": true,
-        "yogini": false,
-        "transit": true
-      },
-      "factors": [
-        "Venus (pratyantar) is a karaka of relationships",
-        "Saturn transits the 7th from the lagna",
         "Saturn's SAV in Sagittarius is 21"
       ],
       "windows": []
@@ -449,7 +449,7 @@
   },
   "rules": [
     "functional nature (BPHS): yogakaraka; lord of 1/5/9 benefic; else of 3/6/8/11 malefic; else of 2/7 maraka; else neutral",
-    "agreement: vimshottari = a running dasha lord, yogini = the Yogini lord, rules a domain house or is its karaka; transit = Jupiter/Saturn in a domain house from lagna or Moon",
+    "agreement: vimshottari = a running dasha lord, yogini = the Yogini lord, rules or occupies a domain house or is its karaka; transit = Jupiter/Saturn in a domain house from lagna/Moon",
     "confidence = agreeing techniques: 3 high, 2 medium, 0-1 low",
     "direction = domain transit severity + its window severities, neutral ignored: all supportive, all challenging, else mixed",
     "whole-sign houses; Saturn 12th/1st/2nd from Moon = sade_sati_phase_1/2/3, 1/4/7/10 = kantaka_shani, 8th = ashtama_shani",
