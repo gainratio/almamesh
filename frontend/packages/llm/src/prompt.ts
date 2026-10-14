@@ -222,7 +222,7 @@ const READING_RULES = [
   "Cite the engine factor behind every claim.",
   "Use get_period_detail to look closer at a lord, a segment, the bindus or the panchang.",
   'Every period answer, one month or several, names the place, a Moon-based tag by name (e.g. "Jupiter 8th from your Moon") and a confidence level.',
-  "OBSTACLES (6th/8th/12th): name a strong or moderate obstacles theme as a theme to watch (friction with rules or authorities, legal or administrative matters, unexpected setbacks, losses and expenses) with its factor and its confidence; never say it happened, no fear words.",
+  "OBSTACLES (6th/8th/12th): name a strong or moderate obstacles theme as a theme to watch (friction with rules or authorities, legal or administrative matters, unexpected setbacks, losses and expenses) with its factor, its confidence and its dated window; never say it happened, no fear words.",
   "HONESTY: a chart cannot name the concrete event. Describe themes, timing and their factors.",
   "Never say what did or will happen, and never invent a fact.",
 ].join("\n");
@@ -264,7 +264,7 @@ const CHAT_SYSTEM_PROMPT = [
   "",
   PRIVACY_RULE,
   "",
-  "If the user uses Sanskrit or technical terms, mirror their vocabulary.",
+  "Mirror the user's vocabulary, Sanskrit terms included.",
   "",
   OUTPUT_DISCIPLINE_RULES,
   "",

@@ -109,7 +109,8 @@ describe("the obstacles theme", () => {
     const system = chatSystem();
     expect(system).toContain("OBSTACLES (6th/8th/12th): name a strong or moderate obstacles theme as a theme to watch");
     for (const meaning of ["friction with rules or authorities", "legal or administrative matters", "unexpected setbacks", "losses and expenses"]) expect(system).toContain(meaning);
-    expect(system).toMatch(/obstacles theme[^\n]*its factor and its confidence/);
+    // Matrix 2026-10-14: gpt-sol named the theme and its factor but never its 25 Sep Mars window.
+    expect(system).toMatch(/obstacles theme[^\n]*its factor, its confidence and its dated window/);
     expect(system).toMatch(/obstacles theme[^\n]*never say it happened[^\n]*no fear words/);
     expect(system).toContain("Never say what did or will happen, and never invent a fact.");
   });
