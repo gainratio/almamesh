@@ -4,7 +4,7 @@
 // matrix by how it phrases the facts, and the two can never drift apart.
 import { describe, expect, it } from 'vitest';
 
-import { answerSchema, renderAnswer, type AnswerGrounding, type PeriodAnswer, type RenderOptions } from '@almamesh/llm/answer';
+import { answerSchema, chatAnswerSpec, renderAnswer, type AnswerGrounding, type PeriodAnswer, type RenderOptions } from '@almamesh/llm/answer';
 
 import { textMisses } from '../../../e2e/answerChecks';
 
@@ -138,6 +138,15 @@ describe('rendered answers pass the trip matrix checks', () => {
       });
     }
   }
+
+  it('a null place (the model leaving it to the reading) still names the reading place on screen', () => {
+    const grounding = () => ({ readings: [SADE_SATI.reading] });
+    const answer = { ...SADE_SATI.answer, place: null };
+    expect(answerSchema(grounding).safeParse({ markdown: null, ...answer }).success).toBe(true);
+    const markdown = chatAnswerSpec(grounding, { voice: 'layman', language: 'en' }).render(answer, true);
+    for (const text of forms(markdown)) expect(misses(text, SADE_SATI), text).toEqual([]);
+    expect(misses(renderAnswer(answer, { voice: 'layman', language: 'en' }), SADE_SATI)).toContain('answer does not name the place /Vadodara/');
+  });
 
   it('the checks can fail: the same answer without its window, confidence or lordship misses all three', () => {
     const bare = renderAnswer(OBSTACLES.answer, { voice: 'layman', language: 'en' })

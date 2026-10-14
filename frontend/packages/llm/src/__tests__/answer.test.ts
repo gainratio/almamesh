@@ -213,6 +213,23 @@ describe("answerSchema: grounding refinements say the fix", () => {
     expect(messages(withAnswer({ place: "vadodara" }))).toEqual([]);
   });
 
+  it("a null or blank place means the reading's place and passes", () => {
+    expect(messages(withAnswer({ place: null }))).toEqual([]);
+    expect(messages(withAnswer({ place: "" }))).toEqual([]);
+    expect(messages(withAnswer({ place: "  " }))).toEqual([]);
+  });
+
+  it("a place that names no reading's place says every reading's label", () => {
+    const may: Reading = { ...SEPTEMBER, period: { start: "2019-05-01", end: "2019-05-31", label: "May 2019" }, place: { label: "Singapore" } };
+    expect(messages(withAnswer({ place: "Shanghai" }), grounded(SEPTEMBER, may))).toEqual(["name the place as the reading does: Vadodara, India or Singapore"]);
+    expect(messages(withAnswer({ place: "singapore" }), grounded(SEPTEMBER, may))).toEqual([]);
+  });
+
+  it("the wire schema tells the model that null means the reading's place", () => {
+    const schema = z.toJSONSchema(answerSchema(grounded()), { target: "draft-7", unrepresentable: "any" }) as { properties: { place: { description?: string } } };
+    expect(schema.properties.place.description).toBe("the place as the reading names it, or null for the reading's own place");
+  });
+
   it("a reading without a place label does not constrain the place", () => {
     expect(messages(withAnswer({ place: "home" }), grounded({ ...SEPTEMBER, place: { label: "" } }))).toEqual([]);
   });
@@ -414,6 +431,20 @@ Septiembre pide paciencia.
     expect(renderPartialAnswer({ kind: "period", period: "Mayo de 2019", place: "", opening: "x" }, { voice: "layman", language: "es" })).toBe("**Mayo de 2019**");
   });
 
+  it("the answer spec renders a null or blank place as the reading's place", () => {
+    const spec = chatAnswerSpec(grounded(SEPTEMBER), { voice: "layman", language: "en" });
+    expect(spec.render({ ...ANSWER, place: null }, true).startsWith("**September 2019 in Vadodara, India**\n\n")).toBe(true);
+    expect(spec.render({ ...ANSWER, place: " " }, true).startsWith("**September 2019 in Vadodara, India**\n\n")).toBe(true);
+    expect(spec.render({ ...ANSWER, place: "Vadodara" }, true).startsWith("**September 2019 in Vadodara**\n\n")).toBe(true);
+  });
+
+  it("with several readings, a null place is the place of the reading whose period the answer names, else the first", () => {
+    const may: Reading = { ...SEPTEMBER, period: { start: "2019-05-01", end: "2019-05-31", label: "May 2019" }, place: { label: "Singapore" } };
+    const spec = chatAnswerSpec(grounded(SEPTEMBER, may), { voice: "layman", language: "en" });
+    expect(spec.render({ ...ANSWER, period: "may 2019", place: null }, true).startsWith("**may 2019 in Singapore**")).toBe(true);
+    expect(spec.render({ ...ANSWER, period: "Spring 2019", place: null }, true).startsWith("**Spring 2019 in Vadodara, India**")).toBe(true);
+  });
+
   it("a general answer is its markdown", () => {
     expect(renderAnswer({ kind: "general", markdown: "  Venus rules your chart.\n" }, { voice: "layman", language: "en" })).toBe("Venus rules your chart.");
   });
@@ -467,6 +498,27 @@ describe("renderPartialAnswer: snapshots only grow", () => {
       runToolTurn({
         config,
         messages: [{ role: "user", content: "How is September 2019?" }],
+        tools: [],
+        answer: chatAnswerSpec(grounded(SEPTEMBER), EN),
+        readFirst: false,
+        now: new Date("2026-10-14T00:00:00Z"),
+        fetchImpl,
+      }),
+    );
+    expect(snapshots.length).toBeGreaterThan(8);
+    for (let i = 1; i < snapshots.length; i += 1) expect(snapshots[i]?.startsWith(snapshots[i - 1] ?? "\u0000")).toBe(true);
+    expect(snapshots.at(-1)).toBe(LAYMAN_EN);
+  });
+
+  it("a null place streams prefix-stable through the tool loop, ending at the reading's place", async () => {
+    const json = JSON.stringify(wire({ ...ANSWER, place: null }));
+    const pieces = json.match(/.{1,5}/gs) ?? [];
+    const { fetchImpl } = fakeEndpoint([{ calls: [{ id: "a1", name: "answer", args: pieces }] }]);
+    const config: ProviderConfig = { engine: "openai-http", model: "deepseek/deepseek-chat", privacyMode: "cloud_premium", baseUrl: "https://openrouter.ai/api/v1", apiKey: "k" };
+    const { snapshots } = await collect(
+      runToolTurn({
+        config,
+        messages: [{ role: "user", content: "How is this month?" }],
         tools: [],
         answer: chatAnswerSpec(grounded(SEPTEMBER), EN),
         readFirst: false,

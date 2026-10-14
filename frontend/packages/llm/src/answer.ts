@@ -60,7 +60,8 @@ export interface WindowLine {
 export interface PeriodAnswer {
   kind: "period";
   period: string;
-  place: string;
+  /** null or blank: the reading's own place (the renderer names it from the grounding). */
+  place: string | null;
   opening: string;
   dashas: { maha: DashaLine; antar: DashaLine; pratyantar: DashaLine | null };
   moon: MoonLine[];
@@ -125,7 +126,7 @@ const wireAnswer = z.object({
   kind: z.enum(["period", "general"]).describe('"period" after read_period; "general" otherwise'),
   markdown: z.string().nullable().describe('kind "general" only: the answer as plain prose'),
   period: z.string().nullable().describe('the period as a person says it, e.g. "September 2019"'),
-  place: z.string().nullable().describe("the place as the reading names it"),
+  place: z.string().nullable().describe("the place as the reading names it, or null for the reading's own place"),
   opening: z.string().nullable().describe("two or three plain sentences that answer the question"),
   dashas: dashasSchema.nullable(),
   moon: z.array(moonLineSchema).nullable(),
@@ -137,7 +138,8 @@ const wireAnswer = z.object({
 type Wire = z.infer<typeof wireAnswer>;
 type Issue = (message: string, path: (string | number)[]) => void;
 
-const PERIOD_KEYS = ["period", "place", "opening", "dashas", "moon", "themes", "windows"] as const;
+/** Keys a period answer must fill; a null place means the reading's own place. */
+const PERIOD_KEYS = ["period", "opening", "dashas", "moon", "themes", "windows"] as const;
 
 const unique = (values: readonly string[]): string[] => [...new Set(values)];
 const lower = (value: string): string => value.toLowerCase();
@@ -215,7 +217,9 @@ function checkWindows(windows: readonly WindowLine[], readings: readonly Groundi
   issue(`dates must fall inside ${ranges.join(", ")}`, ["windows"]);
 }
 
-function checkPlace(place: string, readings: readonly GroundingReading[], issue: Issue): void {
+/** Only a place that is given is checked: null or blank is the reading's own place. */
+function checkPlace(place: string | null, readings: readonly GroundingReading[], issue: Issue): void {
+  if (!place?.trim()) return;
   const labels = unique(readings.map((reading) => reading.place.label.trim()).filter(Boolean));
   if (labels.length === 0) return;
   const named = labels.some((label) => plain(place).includes(plain(label.split(",")[0]?.trim() ?? label)));
@@ -444,7 +448,8 @@ const text = (value: unknown): string | undefined => (typeof value === "string" 
 
 function headingSection(v: Value, done: Done, o: RenderOptions): Section {
   const period = text(v.period);
-  const place = text(v.place);
+  // A null place (no reading to name it from) leaves the heading as just the period.
+  const place = v.place === null ? "" : text(v.place);
   if (!done("period") || !done("place") || period === undefined || place === undefined) return { complete: false };
   const where = place.trim() ? ` ${LABELS[o.language].in} ${place.trim()}` : "";
   return { block: `**${period.trim()}${where}**`, complete: true };
@@ -529,10 +534,28 @@ export function renderPartialAnswer(partial: DeepPartial<ChatAnswer>, o: RenderO
   return renderPeriod(v, done, o);
 }
 
-/** The tool loop's answer spec: this schema, rendered in the reader's voice. */
+/** The reading a period answer speaks of: the one whose period label it names, else the first. */
+function namedReading(period: unknown, readings: readonly GroundingReading[]): GroundingReading | undefined {
+  const said = typeof period === "string" ? plain(period.trim()) : "";
+  return readings.find((reading) => said !== "" && plain(reading.period.label.trim()) === said) ?? readings[0];
+}
+
+/**
+ * A period answer whose place is null or blank, given the reading's place label. Only a place
+ * key that has arrived is filled (so a streaming snapshot keeps its key order and stays a prefix).
+ */
+function withReadingPlace<T>(value: T, readings: readonly GroundingReading[]): T {
+  const v = value as Value;
+  if (v.kind !== "period" || !("place" in v) || text(v.place)?.trim()) return value;
+  const label = namedReading(v.period, readings)?.place.label.trim();
+  return label ? ({ ...v, place: label } as T) : value;
+}
+
+/** The tool loop's answer spec: this schema, rendered in the reader's voice; a null place is the reading's. */
 export function chatAnswerSpec(grounding: () => AnswerGrounding, o: RenderOptions): AnswerSpec<ChatAnswer> {
+  const placed = <T>(value: T): T => withReadingPlace(value, grounding().readings);
   return {
     schema: answerSchema(grounding),
-    render: (value, final) => (final ? renderAnswer(value as ChatAnswer, o) : renderPartialAnswer(value as DeepPartial<ChatAnswer>, o)),
+    render: (value, final) => (final ? renderAnswer(placed(value as ChatAnswer), o) : renderPartialAnswer(placed(value as DeepPartial<ChatAnswer>), o)),
   };
 }
