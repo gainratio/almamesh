@@ -85,4 +85,11 @@ describe("present-day periods read the period reading, every time", () => {
   ])("states: %s", (line) => {
     expect(chatSystem()).toContain(line);
   });
+
+  it("a trip prompt leaves the today-only rule out (an 8k model keeps its budget for tool results)", () => {
+    const pinned = { start: "2019-05-01", end: "2019-05-31", relative: "past", granularity: "month", label: "May 2019", place: { label: "Singapore", timezone: "Asia/Singapore" } } as const;
+    const trip = buildChatMessages(CHART, "How was work?", "layman", [], [], undefined, "en", undefined, undefined, undefined, true, pinned)[0]?.content ?? "";
+    expect(trip).not.toContain("PRESENT-DAY PERIODS");
+    expect(trip).toContain("Every period answer names the place");
+  });
 });

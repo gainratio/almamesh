@@ -221,11 +221,15 @@ const READING_RULES = [
   "Give at least one dated window or change point inside the period.",
   "Cite the engine factor behind every claim.",
   "Use get_period_detail to look closer at a lord, a segment, the bindus or the panchang when the question needs it.",
-  'PRESENT-DAY PERIODS (a today thread): for "this month", "next month" or "the next few weeks", call get_period_reading in every turn, follow-ups included, with granularity "month" (add month "YYYY-MM" for a later month; for "the next few weeks" read this month and the next; "day" is today only).',
   "Every period answer names the place, at least one Moon-based tag from the reading's sky, and a confidence level.",
   "HONESTY: a chart cannot name the concrete event. Describe themes, timing and their factors.",
   "Never say what did or will happen, and never invent a fact.",
 ].join("\n");
+
+// 2026-10-14: a today thread's present-day periods. Only an unpinned (today) prompt carries it, so a
+// trip or dated prompt on an 8k-context model keeps its budget for tool results.
+const TODAY_PERIOD_RULE =
+'PRESENT-DAY PERIODS (a today thread): for "this month", "next month" or "the next few weeks", call get_period_reading in every turn, follow-ups included, with granularity "month" (add month "YYYY-MM" for a later month; for "the next few weeks" read this month and the next; "day" is today only).';
 
 // Time travel Inc C (coordinator Ruling 1): a day-precision reading needs a place,
 // and the app never assumes one. Shares P4 (resolve first when the user already
@@ -596,7 +600,7 @@ export function buildChatMessages(
   // the turn tool-less, so the rules ride only when `places` is true.
   const withPlaces = places ? CHAT_SYSTEM_PROMPT + "\n\n" + PLACE_RULES : CHAT_SYSTEM_PROMPT;
   // Inc D: a pinned thread says which period and which tense (period-pin.ts).
-  const base = pinned ? withPlaces + "\n\n" + pinnedPeriodRules(pinned) : withPlaces;
+  const base = pinned ? withPlaces + "\n\n" + pinnedPeriodRules(pinned) : withPlaces + "\n\n" + TODAY_PERIOD_RULE;
   const systemPrompt = meshBlock === "" ? base : base + MESH_CONTEXT_EXCEPTION;
   const systemContent = withLanguage(systemPrompt, language);
   // Under a capped profile, recalled memories (best first) keep only what fits
