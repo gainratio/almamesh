@@ -61,10 +61,38 @@ export interface PeriodReadingToolsInput {
 
 const NO_ARGS = { type: 'object', properties: {}, additionalProperties: false } as const;
 
-const READING_DESCRIPTION = [
+/** How far ahead a today thread may read a month at the current place. */
+const MONTHS_AHEAD = 12;
+const MONTH_PATTERN = '^\\d{4}-(0[1-9]|1[0-2])$';
+const MONTH_ARG = new RegExp(MONTH_PATTERN);
+
+/** A today thread's arguments (a trip is bound to its own period and takes none). */
+const TODAY_PROPERTIES = {
+  granularity: {
+    type: 'string', enum: ['day', 'month'],
+    description: 'month (the default): a calendar month. day: today only, for "today" or "right now".',
+  },
+  month: {
+    type: 'string', pattern: MONTH_PATTERN,
+    description: 'YYYY-MM, with granularity month. Omit for the current month; next month is the month after it.',
+  },
+} as const;
+const TODAY_ARGS = { type: 'object', properties: TODAY_PROPERTIES, additionalProperties: false } as const;
+
+const BOUND_READING = [
   "Read this thread's Vedic period reading, computed on this device. It never makes a network request. No arguments:",
-  "it is bound to this thread's period and place (a time-travel trip's, or today's).",
-  'Returns the running dashas (maha, antar, pratyantar; sookshma for a day) and the Yogini maha;',
+  "it is bound to this time-travel trip's period and place.",
+].join(' ');
+
+const TODAY_READING = [
+  "Read the user's Vedic period reading for now, at their current place, computed on this device. It never makes a network request.",
+  'Call it for any present-day or near-future period question ("this month", "next month", "the next few weeks", "lately"), including a follow-up, before you answer.',
+  'Send granularity "month" (the default; the current month) and, for a later month, month "YYYY-MM" (e.g. next month).',
+  'For "the next few weeks", read this month and the next one. granularity "day" is today only.',
+].join(' ');
+
+const READING_CONTENTS = [
+  'Returns the period and place (name both), the running dashas (maha, antar, pratyantar; sookshma for a day) and the Yogini maha;',
   'the running lords with the houses they rule, functional nature, natal and transit placement;',
   'the slow-planet sky with Moon-based tags (e.g. sade_sati_phase_1, kantaka_shani); double-transit houses;',
   'and per-life-area themes with direction, strength, confidence, agreement per technique, cited factors and dated windows.',
@@ -76,16 +104,48 @@ const DETAIL_DESCRIPTION = [
   'segment (key = a segment start date, YYYY-MM-DD), bindus (key = a graha or "sav": the ashtakavarga row per sign),',
   'panchang (a single-day period only), dashas (every dasha span in the period). Returns facts plus cited factor strings.',
 ].join(' ');
+const TODAY_DETAIL_NOTE = 'In a today thread, send the same granularity and month as the reading you are drilling into.';
 
-const DETAIL_PARAMETERS = {
-  type: 'object',
-  properties: {
-    section: { type: 'string', enum: DETAIL_SECTIONS },
-    key: { type: 'string', maxLength: 16, description: 'A graha, "sav", or a segment start date (YYYY-MM-DD); per section.' },
-  },
-  required: ['section'],
-  additionalProperties: false,
+const DETAIL_PROPERTIES = {
+  section: { type: 'string', enum: DETAIL_SECTIONS },
+  key: { type: 'string', maxLength: 16, description: 'A graha, "sav", or a segment start date (YYYY-MM-DD); per section.' },
 } as const;
+
+function detailParameters(today: boolean) {
+  const properties = today ? { ...DETAIL_PROPERTIES, ...TODAY_PROPERTIES } : DETAIL_PROPERTIES;
+  return { type: 'object', properties, required: ['section'], additionalProperties: false } as const;
+}
+
+/** What a today thread reads: today alone, or one calendar month at the current place. */
+type TodayRequest =
+  | { readonly granularity: 'day' }
+  | { readonly granularity: 'month'; readonly month: string };
+
+function shiftMonth(month: string, by: number): string {
+  const [year, index] = month.split('-').map(Number) as [number, number];
+  const shifted = new Date(Date.UTC(year, index - 1 + by, 1));
+  return shifted.toISOString().slice(0, 7);
+}
+
+function monthRange(month: string): { readonly start: string; readonly end: string } {
+  const [year, index] = month.split('-').map(Number) as [number, number];
+  const lastDay = new Date(Date.UTC(year, index, 0)).getUTCDate();
+  return { start: `${month}-01`, end: `${month}-${String(lastDay).padStart(2, '0')}` };
+}
+
+/** A today thread's arguments, read leniently: empty or partial means the current month. */
+function todayRequest(args: AgentJsonObject, today: string): TodayRequest | { readonly error: string } {
+  const { granularity, month } = args;
+  if (granularity !== undefined && granularity !== 'day' && granularity !== 'month') return { error: 'granularity must be day or month' };
+  if (granularity === 'day') return month === undefined ? { granularity } : { error: 'a day reading is today only: send granularity day with no month' };
+  const current = today.slice(0, 7);
+  if (month === undefined) return { granularity: 'month', month: current };
+  const last = shiftMonth(current, MONTHS_AHEAD);
+  if (typeof month !== 'string' || !MONTH_ARG.test(month) || month < current || month > last) {
+    return { error: `month must be YYYY-MM from ${current} (this month) to ${last}. For an earlier period, use get_timing.` };
+  }
+  return { granularity: 'month', month };
+}
 
 /** Today's place label: the profile's current location, label only (never its coordinates); absent when unset. */
 function currentPlaceLabel(birth: ProcessedBirthData | undefined): { readonly label?: string } {
@@ -93,19 +153,42 @@ function currentPlaceLabel(birth: ProcessedBirthData | undefined): { readonly la
   return label ? { label } : {};
 }
 
-/** The period and place the tools are bound to, for this call's `now`. */
-function frameOf(input: PeriodReadingToolsInput, now: Date): ReadingFrame {
-  const today = viewerTodayDay(now, input.viewerZone());
-  if (!input.pin) {
-    const label = formatPinLabel({ start: today, granularity: 'day' }, input.language);
-    const timezone = input.viewerZone();
-    const clock = currentDateTimeForZone(now, timezone);
-    const current = { zone: `your current zone (${timezone})`, local_date: clock.localDate, local_time: clock.localTime.slice(0, 5) };
-    return { period: { start: today, end: today, granularity: 'day', label, tense: 'present' }, place: { ...currentPlaceLabel(input.birth), timezone, current } };
+/** Today's place: the current place label (if set), the viewer zone and the user's own clock. */
+function todayPlace(input: PeriodReadingToolsInput, now: Date): ReadingFrame['place'] {
+  const timezone = input.viewerZone();
+  const clock = currentDateTimeForZone(now, timezone);
+  const current = { zone: `your current zone (${timezone})`, local_date: clock.localDate, local_time: clock.localTime.slice(0, 5) };
+  return { ...currentPlaceLabel(input.birth), timezone, current };
+}
+
+function todayPeriod(request: TodayRequest, today: string, language: string): ReadingFrame['period'] {
+  if (request.granularity === 'day') {
+    const label = formatPinLabel({ start: today, granularity: 'day' }, language);
+    return { start: today, end: today, granularity: 'day', label, tense: 'present' };
   }
+  const { start, end } = monthRange(request.month);
+  const tense = request.month === today.slice(0, 7) ? 'present' : 'future';
+  return { start, end, granularity: 'month', label: formatPinLabel({ start, granularity: 'month' }, language), tense };
+}
+
+/** The period and place the tools are bound to, for this call's `now` (a today thread: its request). */
+function frameOf(input: PeriodReadingToolsInput, now: Date, request: TodayRequest): ReadingFrame {
+  const today = viewerTodayDay(now, input.viewerZone());
+  if (!input.pin) return { period: todayPeriod(request, today, input.language), place: todayPlace(input, now) };
   const trip = tripContext({ chart: input.chart, asOf: input.pin, today, birth: input.birth, language: input.language });
   const { start, end, granularity, label, tense } = trip.period;
   return { period: { start, end, granularity, label, tense }, place: { label: trip.place.label, timezone: trip.place.timezone } };
+}
+
+/**
+ * The request a call reads: a trip ignores arguments (it is bound); a today thread reads its
+ * own. A device that cannot compute a period's sky reads today, never a month it cannot load.
+ */
+function requestOf(input: PeriodReadingToolsInput, args: AgentJsonObject, now: Date): TodayRequest | { readonly error: string } {
+  if (input.pin) return { granularity: 'day' };
+  const request = todayRequest(args, viewerTodayDay(now, input.viewerZone()));
+  if ('error' in request || input.periodSkyAllowed) return request;
+  return { granularity: 'day' };
 }
 
 function unavailable(frame: ReadingFrame, reason: PeriodReadingFailure, notes?: readonly string[]): PeriodReadingUnavailable {
@@ -146,9 +229,10 @@ async function load(input: PeriodReadingToolsInput, frame: ReadingFrame, context
   const refused = gate(input, frame);
   if (refused) return { failure: refused };
   try {
-    const chart = input.pin
-      ? await input.loadPeriodChart({ start: frame.period.start, end: frame.period.end }, context)
-      : await input.loadCurrentChart(context);
+    // Today's day joins the Life Atlas's calculation; a trip or a month reads through the period queue.
+    const chart = !input.pin && frame.period.granularity === 'day'
+      ? await input.loadCurrentChart(context)
+      : await input.loadPeriodChart({ start: frame.period.start, end: frame.period.end }, context);
     const reading = chart.period_reading;
     // An older engine (or a cache it wrote) has no reading: never synthesize one.
     if (!reading || !isCachedPeriodReading(reading) || !isCachedNatalLords(reading.natal_lords)) return { failure: unavailable(frame, 'reading_unavailable') };
@@ -160,8 +244,10 @@ async function load(input: PeriodReadingToolsInput, frame: ReadingFrame, context
   }
 }
 
-async function readPeriod(input: PeriodReadingToolsInput, context: AgentToolContext): Promise<PeriodReadingToolResult> {
-  const frame = frameOf(input, context.now);
+async function readPeriod(input: PeriodReadingToolsInput, args: AgentJsonObject, context: AgentToolContext): Promise<PeriodReadingToolResult> {
+  const request = requestOf(input, args, context.now);
+  if ('error' in request) return request;
+  const frame = frameOf(input, context.now, request);
   const loaded = await load(input, frame, context);
   if ('failure' in loaded) return loaded.failure;
   return buildPeriodReading(loaded.reading, frame);
@@ -171,29 +257,32 @@ async function readDetail(input: PeriodReadingToolsInput, args: AgentJsonObject,
   const section = DETAIL_SECTIONS.find((value) => value === args.section);
   if (!section) return { error: `section must be one of: ${DETAIL_SECTIONS.join(', ')}` };
   if (args.key !== undefined && typeof args.key !== 'string') return { error: 'key must be a string' };
-  const frame = frameOf(input, context.now);
+  const request = requestOf(input, args, context.now);
+  if ('error' in request) return request;
+  const frame = frameOf(input, context.now, request);
   const loaded = await load(input, frame, context);
   if ('failure' in loaded) return loaded.failure;
   return buildPeriodDetail({ reading: loaded.reading, strength: loaded.strength }, frame, section, args.key);
 }
 
 export function createPeriodReadingTools(input: PeriodReadingToolsInput): AgentTool[] {
+  const today = !input.pin;
   return [
     {
       name: PERIOD_READING_TOOL_NAME,
-      description: READING_DESCRIPTION,
+      description: `${today ? TODAY_READING : BOUND_READING} ${READING_CONTENTS}`,
       statusLabel: 'Reading the period… (about 30 s)',
       timeoutMs: TIMING_TOOL_TIMEOUT_MS,
-      parameters: NO_ARGS,
-      execute: (_args, context) => readPeriod(input, context),
+      parameters: today ? TODAY_ARGS : NO_ARGS,
+      execute: (args, context) => readPeriod(input, args, context),
       summarize: summarizePeriodReading,
     },
     {
       name: PERIOD_DETAIL_TOOL_NAME,
-      description: DETAIL_DESCRIPTION,
+      description: today ? `${DETAIL_DESCRIPTION} ${TODAY_DETAIL_NOTE}` : DETAIL_DESCRIPTION,
       statusLabel: 'Looking closer at the period',
       timeoutMs: TIMING_TOOL_TIMEOUT_MS,
-      parameters: DETAIL_PARAMETERS,
+      parameters: detailParameters(today),
       execute: (args, context) => readDetail(input, args, context),
       summarize: summarizePeriodDetail,
     },

@@ -159,8 +159,11 @@ export function predictiveRequestKey(input: EnsurePredictiveInput): string {
  * every older snapshot is a cache miss and is recomputed (derived data only).
  * v4 → v5: circular-contact selection excludes false oppositions; recompute
  * older slow-hit results without changing profiles, charts or life events.
+ * v5 → v6 (2026-10-14): the engine added `period_reading`. A v5 snapshot lacks
+ * it, and today's request key (no readingEnd) is unchanged, so without the bump
+ * it short-circuits the recompute and today's chat reading is unavailable.
  */
-export const PREDICTIVE_PERSIST_VERSION = 5;
+export const PREDICTIVE_PERSIST_VERSION = 6;
 
 /** The canonical SQLite key holding the persisted predictive slice. */
 export const PREDICTIVE_PERSIST_NAME = 'almamesh-predictive';

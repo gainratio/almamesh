@@ -53,9 +53,63 @@ describe('get_period_reading', () => {
     expect(result).toEqual(buildPeriodReading(periodReadingFixture('delhi-2019-05'), { period: result.period, place: result.place }));
   });
 
-  it('today: [today, today] at the viewer zone, through the today loader', async () => {
+  // Contract reversed (2026-10-14): `{}` on a today thread used to read [today, today]. Live on
+  // ba4430ce, "What does this month look like for me?" called it with `{}` and got one day (which
+  // then came back reading_unavailable). Empty or partial args now read the current MONTH.
+  it('today, no arguments: the current calendar month at the current place, through the period loader', async () => {
     const { reading, loadCurrentChart, loadPeriodChart } = tools({ pin: undefined });
     const result = await reading.execute({}, context()) as PeriodReading;
+    expect(loadPeriodChart).toHaveBeenCalledWith({ start: '2026-03-01', end: '2026-03-31' }, expect.anything());
+    expect(loadCurrentChart).not.toHaveBeenCalled();
+    expect(result.period).toEqual({ start: '2026-03-01', end: '2026-03-31', granularity: 'month', label: 'March 2026', tense: 'present' });
+    expect(result.place).toMatchObject({ timezone: 'America/Los_Angeles', current: { local_date: '2026-03-08' } });
+  });
+
+  it('today, granularity month: the same current month', async () => {
+    const { reading, loadPeriodChart } = tools({ pin: undefined });
+    const result = await reading.execute({ granularity: 'month' }, context()) as PeriodReading;
+    expect(loadPeriodChart).toHaveBeenCalledWith({ start: '2026-03-01', end: '2026-03-31' }, expect.anything());
+    expect(result.period.granularity).toBe('month');
+  });
+
+  it('today, month YYYY-MM: a later month reads in the future tense at the current place', async () => {
+    const { reading, loadPeriodChart } = tools({ pin: undefined });
+    const result = await reading.execute({ month: '2026-04' }, context()) as PeriodReading;
+    expect(loadPeriodChart).toHaveBeenCalledWith({ start: '2026-04-01', end: '2026-04-30' }, expect.anything());
+    expect(result.period).toEqual({ start: '2026-04-01', end: '2026-04-30', granularity: 'month', label: 'April 2026', tense: 'future' });
+  });
+
+  it.each([
+    [{ month: '2026-02' }, /month must be/],
+    [{ month: '2027-04' }, /month must be/],
+    [{ month: 'March' }, /month must be/],
+    [{ granularity: 'year' }, /granularity must be day or month/],
+    [{ granularity: 'day', month: '2026-04' }, /day reading is today only/],
+  ])('today: a bad argument %j is a refusal the model can act on, before any engine work', async (args, message) => {
+    const { reading, loadPeriodChart, loadCurrentChart } = tools({ pin: undefined });
+    const result = await reading.execute(args, context()) as { error: string };
+    expect(result.error).toMatch(message);
+    expect(loadPeriodChart).not.toHaveBeenCalled();
+    expect(loadCurrentChart).not.toHaveBeenCalled();
+  });
+
+  it('today on a dashas-only device: a month question reads today, never a device_limit refusal', async () => {
+    const { reading, loadPeriodChart, loadCurrentChart } = tools({ pin: undefined, periodSkyAllowed: false });
+    const result = await reading.execute({}, context()) as PeriodReading;
+    expect(loadPeriodChart).not.toHaveBeenCalled();
+    expect(loadCurrentChart).toHaveBeenCalledTimes(1);
+    expect(result.period).toMatchObject({ granularity: 'day', start: '2026-03-08', end: '2026-03-08' });
+  });
+
+  it('a today thread takes granularity and month; a trip stays bound with no arguments', () => {
+    const today = tools({ pin: undefined }).reading.parameters as { properties: Record<string, unknown> };
+    expect(Object.keys(today.properties)).toEqual(['granularity', 'month']);
+    expect(tools().reading.parameters).toEqual({ type: 'object', properties: {}, additionalProperties: false });
+  });
+
+  it('today, granularity day: [today, today] at the viewer zone, through the today loader', async () => {
+    const { reading, loadCurrentChart, loadPeriodChart } = tools({ pin: undefined });
+    const result = await reading.execute({ granularity: 'day' }, context()) as PeriodReading;
     expect(loadCurrentChart).toHaveBeenCalledTimes(1);
     expect(loadPeriodChart).not.toHaveBeenCalled();
     expect(result.period).toMatchObject({ granularity: 'day', tense: 'present' });
