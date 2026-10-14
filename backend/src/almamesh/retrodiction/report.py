@@ -23,6 +23,7 @@ from almamesh.retrodiction.harness import (
     Summary,
     ablation_variants,
     combined,
+    movers_for,
     saturation,
     score_event,
     summarize,
@@ -134,7 +135,7 @@ def _subject_results(
         return [
             Exclusion(subject.id, e.category, e.date, OUT_OF_RANGE_BIRTH) for e in subject.events
         ]
-    engine = SubjectEngine(subject.birth, astronomy)
+    engine = SubjectEngine(subject.birth, astronomy, movers_for(subject.events))
     return [score_event(engine, subject.id, event, window) for event in subject.events]
 
 

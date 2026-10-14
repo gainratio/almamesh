@@ -11,6 +11,8 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel
 
+from almamesh.constants.astrology import PlanetName
+from almamesh.domains.exact_signals import SLOW_MOVERS
 from almamesh.retrodiction.engine import add_months
 from almamesh.retrodiction.indicators import FAMILIES, SHIPPED_FAMILIES
 from almamesh.retrodiction.mapping import MAPPING
@@ -97,6 +99,12 @@ def combined(scores: EventScores, names: Collection[str]) -> list[float]:
     return [round(sum(month), _DIGITS) for month in zip(*columns, strict=True)]
 
 
+def movers_for(events: Sequence[LifeEvent]) -> frozenset[PlanetName]:
+    """The exact-transit movers a native's targets read: Mars only for a Mars-karaka target."""
+    karakas = frozenset(k for e in events for k in MAPPING[e.category].target.karakas)
+    return SLOW_MOVERS | (karakas & {PlanetName.MARS})
+
+
 def _window_months(month: YearMonth, window: int) -> list[YearMonth]:
     return [add_months(month, d) for d in range(-window, window + 1)]
 
@@ -168,6 +176,7 @@ __all__ = [
     "Summary",
     "ablation_variants",
     "combined",
+    "movers_for",
     "saturation",
     "score_event",
     "summarize",

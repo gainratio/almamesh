@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
-from datetime import datetime
+from datetime import UTC, datetime
 
 import pytest
 
 from almamesh.calculations import SkyfieldAstronomy
 from almamesh.constants.astrology import PlanetName as P
+from almamesh.domains.exact_signals import SLOW_MOVERS
 from almamesh.retrodiction.engine import SubjectEngine
-from almamesh.retrodiction.events import Birth
+from almamesh.retrodiction.events import Birth, LifeEvent
+from almamesh.retrodiction.harness import movers_for
+from almamesh.transits.exact import astro_movers, exact_hits
 
 SYNTHETIC = Birth(
     datetime=datetime.fromisoformat("1980-03-04T05:06:00+05:30"), latitude=13.08, longitude=80.27
@@ -53,3 +56,30 @@ def test_coverage_is_bounded_by_birth_and_the_ephemeris(engine: SubjectEngine) -
     assert not engine.covers((1980, 3))  # birth month is partial
     assert not engine.covers((1979, 12))
     assert not engine.covers((2053, 1))
+
+
+def test_a_month_sky_lists_the_exact_contacts_of_its_month(engine: SubjectEngine) -> None:
+    # Given the month in which transit Saturn is exactly on this native's natal Sun
+    sun = engine.points["sun"]
+    saturn = astro_movers(engine.astronomy)[P.SATURN]
+    start, end = datetime(2000, 1, 1, tzinfo=UTC), datetime(2030, 1, 1, tzinfo=UTC)
+    hit = exact_hits(saturn, sun, start, end, 5.0)[0]
+    # When / Then
+    assert (P.SATURN, "sun") in engine.month((hit.year, hit.month)).contacts
+    assert (P.SATURN, "sun") not in engine.month((hit.year - 6, hit.month)).contacts
+
+
+def test_should_scan_only_the_movers_a_native_needs() -> None:
+    with SkyfieldAstronomy() as astronomy:
+        slow = SubjectEngine(SYNTHETIC, astronomy, movers=SLOW_MOVERS)
+        contacts = {
+            g for ym in [(2019, m) for m in range(1, 13)] for g, _ in slow.month(ym).contacts
+        }
+    assert P.MARS not in contacts
+
+
+def test_should_add_mars_only_for_natives_with_a_disputes_event() -> None:
+    career = [LifeEvent(category="job_start", date="2019-05", precision="month")]
+    legal = [*career, LifeEvent(category="legal", date="2012-11", precision="month")]
+    assert movers_for(career) == SLOW_MOVERS
+    assert movers_for(legal) == SLOW_MOVERS | {P.MARS}

@@ -11,7 +11,9 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, ClassVar, Final, Protocol
 
 from almamesh.constants.astrology import PlanetName
+from almamesh.domains.exact_signals import SLOW_MOVERS, contact_score
 from almamesh.transits.aspects import drishti_offsets
+from almamesh.transits.exact import LAGNA_POINT
 from almamesh.transits.natal import whole_sign_house
 
 if TYPE_CHECKING:
@@ -39,6 +41,17 @@ class NatalFrame:
         """The graha rules a target house or is a target karaka."""
         return graha in target.karakas or bool(self.rulers[graha] & target.houses)
 
+    def relevant_points(self, target: Target) -> frozenset[str]:
+        """Natal points that signify the target: lords, occupants, karakas, lagna for the 1st.
+
+        The engine's ``significator_grahas`` rule (domains/significators.py) on a target.
+        """
+        grahas = {g.value for g in self.rulers if self._significator(g, target)}
+        return frozenset(grahas | ({LAGNA_POINT} if 1 in target.houses else set()))
+
+    def _significator(self, graha: PlanetName, target: Target) -> bool:
+        return self.signifies(graha, target) or self.occupied[graha] in target.houses
+
     def in_target(self, sign_idx: int, target: Target) -> bool:
         """A transit sign is a target house counted from the lagna or the Moon."""
         houses = {
@@ -50,11 +63,13 @@ class NatalFrame:
 
 @dataclass(frozen=True)
 class MonthSky:
-    """One month: lords running at each Vimshottari level, the Yogini lord, slow signs."""
+    """One month: running lords per level, the Yogini lord, slow signs, exact contacts."""
 
     running: tuple[frozenset[PlanetName], ...]  # maha, antar, pratyantar
     yogini_lord: PlanetName | None
     signs: Mapping[PlanetName, int]  # sign index at mid-month
+    # (mover, natal point) pairs within the exact-transit orb at some instant of the month
+    contacts: frozenset[tuple[PlanetName, str]] = frozenset()
 
 
 class IndicatorFamily(Protocol):
@@ -151,6 +166,22 @@ class DoubleTransit:
         return float(bool(both & target.houses))
 
 
+class ExactTransits:
+    """Technique #1 (amendment d): degree contacts on target significators.
+
+    Slow movers (Mars too when Mars is a target karaka, i.e. disputes) within the 1 degree
+    orb of a relevant natal point: 0.5, plus 0.5 if that point is a running maha or antar
+    lord. The engine's ``domains.exact_signals.contact_score`` is the single rule.
+    """
+
+    name: ClassVar[str] = "exact_transits"
+
+    def score(self, natal: NatalFrame, month: MonthSky, target: Target) -> float:
+        movers = SLOW_MOVERS | (target.karakas & {PlanetName.MARS})
+        lords = frozenset(g.value for level in month.running[:2] for g in level)
+        return contact_score(month.contacts, movers, natal.relevant_points(target), lords)
+
+
 FAMILIES: Final[tuple[IndicatorFamily, ...]] = (
     VimshottariLords(),
     VimshottariOccupants(),
@@ -159,6 +190,7 @@ FAMILIES: Final[tuple[IndicatorFamily, ...]] = (
     DoubleTransit(),
     TransitMars(),
     TransitNodes(),
+    ExactTransits(),
 )
 SHIPPED_FAMILIES: Final[frozenset[str]] = frozenset(
     {"vimshottari_lords", "yogini", "transit_jupiter_saturn", "double_transit"}

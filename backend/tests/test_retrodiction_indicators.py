@@ -121,3 +121,37 @@ def test_shipped_families_are_the_four_the_themes_use() -> None:
     assert SHIPPED_FAMILIES == frozenset(
         {"vimshottari_lords", "yogini", "transit_jupiter_saturn", "double_transit"}
     )
+
+
+DISPUTES = Target(houses=frozenset({6, 8, 12}), karakas=frozenset({P.SATURN, P.RAHU, P.MARS}))
+HEALTH = Target(houses=frozenset({1, 6, 8}), karakas=frozenset({P.SUN}))
+
+
+def _contacts(*pairs: tuple[P, str], maha: P = P.MOON) -> MonthSky:
+    sky = _sky({maha}, {P.MOON}, {P.MOON})
+    return MonthSky(sky.running, sky.yogini_lord, sky.signs, contacts=frozenset(pairs))
+
+
+def test_should_score_half_when_a_slow_mover_touches_a_target_significator() -> None:
+    # Sun occupies the 10th (career): Saturn on the natal Sun, Sun not a running lord
+    assert _score("exact_transits", _contacts((P.SATURN, "sun"))) == 0.5
+
+
+def test_should_score_one_when_the_touched_significator_is_the_running_maha_lord() -> None:
+    assert _score("exact_transits", _contacts((P.SATURN, "sun"), maha=P.SUN)) == 1.0
+
+
+def test_should_score_zero_when_the_touched_point_does_not_signify_the_target() -> None:
+    assert _score("exact_transits", _contacts((P.JUPITER, "venus"))) == 0.0
+
+
+def test_should_count_mars_only_for_a_target_with_mars_as_karaka() -> None:
+    sky = _contacts((P.MARS, "saturn"))  # Saturn rules the 10th; Saturn is a disputes karaka
+    assert _score("exact_transits", sky, CAREER) == 0.0
+    assert _score("exact_transits", sky, DISPUTES) == 0.5
+
+
+def test_should_count_the_lagna_when_the_first_house_is_a_target() -> None:
+    sky = _contacts((P.RAHU, "lagna"))
+    assert _score("exact_transits", sky, HEALTH) == 0.5
+    assert _score("exact_transits", sky, CAREER) == 0.0

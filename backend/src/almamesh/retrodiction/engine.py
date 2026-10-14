@@ -15,10 +15,13 @@ from almamesh.constants.astrology import PlanetName
 from almamesh.dasha.depth import level_spans
 from almamesh.dasha.yogini import compute_yogini_periods
 from almamesh.retrodiction.indicators import SKY_GRAHAS, MonthSky, NatalFrame
+from almamesh.transits.exact import MOVERS, ContactBook, astro_movers, natal_points
 from almamesh.transits.natal import natal_lagna_index, natal_moon_index, sign_index
 from almamesh.transits.positions import EPHEMERIS_LAST_INSTANT, transit_longitude
 
 if TYPE_CHECKING:
+    from collections.abc import Collection
+
     from almamesh.calculations import SkyfieldAstronomy
     from almamesh.dasha.models import YoginiPeriod
     from almamesh.retrodiction.events import Birth
@@ -61,7 +64,12 @@ def _natal_frame(natal: SiderealContext) -> NatalFrame:
 class SubjectEngine:
     """Natal frame plus cached month skies for one native."""
 
-    def __init__(self, birth: Birth, astronomy: SkyfieldAstronomy) -> None:
+    def __init__(
+        self,
+        birth: Birth,
+        astronomy: SkyfieldAstronomy,
+        movers: Collection[PlanetName] = MOVERS,
+    ) -> None:
         self._birth_utc = birth.datetime.astimezone(UTC)
         self._astronomy = astronomy
         self._natal = calculate_sidereal_context(
@@ -75,7 +83,15 @@ class SubjectEngine:
         self._dasha_end = mahas[-1].end_date
         self._yogini = compute_yogini_periods(self._natal, mahas[0].start_date, self._dasha_end)
         self.frame = _natal_frame(self._natal)
+        self.points = natal_points(self._natal)
+        scanned = {g: lon for g, lon in astro_movers(astronomy).items() if g in movers}
+        self._contacts = ContactBook(scanned, self.points)
         self._skies: dict[YearMonth, MonthSky] = {}
+
+    @property
+    def astronomy(self) -> SkyfieldAstronomy:
+        """The ephemeris handle this native is read with."""
+        return self._astronomy
 
     def covers(self, ym: YearMonth) -> bool:
         """The whole month lies after birth, inside the dashas and the ephemeris."""
@@ -96,7 +112,10 @@ class SubjectEngine:
         spans = level_spans(self._natal.dashas.maha_dasha_sequence, start, end)
         running = tuple(frozenset(p.lord for p in periods) for periods in spans.values())
         return MonthSky(
-            running=running, yogini_lord=_yogini_lord(self._yogini, mid), signs=self._signs(mid)
+            running=running,
+            yogini_lord=_yogini_lord(self._yogini, mid),
+            signs=self._signs(mid),
+            contacts=self._contacts.month(start, end),
         )
 
     def _signs(self, mid: datetime) -> dict[PlanetName, int]:

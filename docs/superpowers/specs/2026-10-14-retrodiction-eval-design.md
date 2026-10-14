@@ -259,8 +259,14 @@ aggregate before the split; that is held-out look zero.
 - *Engine.* The same contact search and score live in the engine (`transits/exact.py`,
   `domains/exact_signals.py`) behind `ExactTransitSettings.enabled`, which defaults off: the
   shipped reading does not use the family until it passes the promotion rule on HELD-OUT.
-- Adding the family changes the pre-registration digest; the new literal is pinned in
+- Adding the family changes the pre-registration digest from `2ae6e16d…` to
+  `e3462748841401f07df62029d2bc8ec110d7fe29b36c2579333894f2e12e08a2`, pinned in
   `tests/test_retrodiction_mapping.py` in the same commit as the family, before any run.
+  The mapping, window and k are unchanged.
+- *Speed, not method.* The harness scans Mars only for natives with a disputes event (no
+  other target reads it), and refines an in-orb edge only when a month boundary splits its
+  coarse bracket; elsewhere the bracket's midpoint lies in the same month as the root. A
+  test checks month-for-month equality with the fully refined spells on a real chart.
 
 **(d3) The DEV run (the only run of this amendment).**
 

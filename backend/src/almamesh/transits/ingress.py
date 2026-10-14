@@ -60,6 +60,22 @@ def _brackets(
     return list(_iter_brackets(f, start, end, step_days))
 
 
+def find_brackets(
+    f: ScalarFn, start: datetime, end: datetime, step_days: float
+) -> list[tuple[datetime, datetime]]:
+    """Every coarse [lo, hi] sample pair across which f changes sign, chronological.
+
+    For callers that need only which period a crossing falls in: refine just the
+    brackets that straddle a period boundary with ``refine_bracket``.
+    """
+    return _brackets(f, start, end, step_days)
+
+
+def refine_bracket(f: ScalarFn, lo: datetime, hi: datetime) -> datetime:
+    """One bracket refined exactly as ``find_crossings`` refines it."""
+    return _bisect(f, lo, hi)
+
+
 def find_crossings(f: ScalarFn, start: datetime, end: datetime, step_days: float) -> list[datetime]:
     """Every zero-crossing of f in [start, end], refined and chronological."""
     return [_bisect(f, lo, hi) for lo, hi in _brackets(f, start, end, step_days)]
