@@ -90,6 +90,25 @@ describe('agent call telemetry (dev diagnostics only, in memory)', () => {
     expect(agentCallRows()[0]?.retryReason).toHaveLength(300);
   });
 
+  it("a schema rejection keeps the issues, not the rejected value the AI SDK puts first", () => {
+    clearAgentRoundsForTest();
+    const issues = [
+      { code: 'invalid_type', expected: 'string', path: ['place'], message: 'place is required when kind is "period"' },
+      { code: 'custom', path: ['dashas', 'maha', 'lord'], message: 'maha lord must be one of: jupiter (from the reading)' },
+    ];
+    const error = 'AI_InvalidToolInputError: Invalid input for tool answer: AI_TypeValidationError: Type validation failed: '
+      + `Value: {"kind":"period","opening":"${'long text '.repeat(60)}"}.\nError message: ZodError: ${JSON.stringify(issues, null, 2)}`;
+    beginAgentTurn().onToolCall({ ...CALL, toolName: 'answer', status: 'retried', validFirstTry: false, result: error });
+    expect(agentCallRows()[0]?.retryReason).toBe('place: place is required when kind is "period"; dashas.maha.lord: maha lord must be one of: jupiter (from the reading)');
+  });
+
+  it('an error message that is not a list of issues keeps its text after "Error message:", whitespace collapsed', () => {
+    clearAgentRoundsForTest();
+    const error = 'Type validation failed: Value: {"to":"2019-13"}.\nError message: to must be   "today",\n YYYY, YYYY-MM or YYYY-MM-DD';
+    beginAgentTurn().onToolCall({ ...CALL, toolName: 'travel', status: 'retried', validFirstTry: false, result: error });
+    expect(agentCallRows()[0]?.retryReason).toBe('to must be "today", YYYY, YYYY-MM or YYYY-MM-DD');
+  });
+
   it('a retried call whose error is not text keeps it as JSON', () => {
     clearAgentRoundsForTest();
     beginAgentTurn().onToolCall({ ...CALL, status: 'retried', validFirstTry: false, result: { issues: ['place'] } });

@@ -81,10 +81,35 @@ export function recordAgentCall(row: AgentCallRow): void {
   pushCapped(calls, row);
 }
 
-/** A retried call's error as text: the loop hands it over as a string; anything else as JSON. */
+const ERROR_MESSAGE = 'Error message:';
+
+interface Issue {
+  readonly path?: readonly unknown[];
+  readonly message?: unknown;
+}
+
+/** "place: place is required; dashas.maha.lord: ..." from a zod issue list, or undefined when it is not one. */
+function issueText(text: string): string | undefined {
+  try {
+    const issues = JSON.parse(text.slice(text.indexOf('['))) as unknown;
+    if (!Array.isArray(issues) || issues.length === 0) return undefined;
+    return (issues as Issue[]).map((issue) => `${(issue.path ?? []).join('.')}: ${String(issue.message)}`).join('; ');
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Why a call was retried, from the error the loop hands over. The AI SDK puts the whole rejected
+ * value first ("Value: {...}. Error message: ZodError: [...]"), so keep the issues; else the text
+ * after "Error message:"; anything that is not text, as JSON.
+ */
 function retryReasonOf(result: unknown): string {
   const text = typeof result === 'string' ? result : JSON.stringify(result) ?? String(result);
-  return text.slice(0, MAX_REASON_CHARS);
+  const at = text.lastIndexOf(ERROR_MESSAGE);
+  const error = at < 0 ? text : text.slice(at + ERROR_MESSAGE.length);
+  const reason = (at < 0 ? undefined : issueText(error)) ?? error.replace(/\s+/g, ' ').trim();
+  return reason.slice(0, MAX_REASON_CHARS);
 }
 
 /** The rounds that answered: the one that called `answer`, or the loop's prose fallback. */
