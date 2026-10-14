@@ -253,18 +253,38 @@ function isNullText(value: unknown): boolean {
   return typeof value === "string" && value.trim().toLowerCase() === "null";
 }
 
-/**
- * Normalise top-level keys that accept null: an omitted key becomes null, and so does the string
- * "null" (deepseek sends it for every unused argument). Only genuinely wrong values are retries.
- */
-function fillMissingNullables(input: z.ZodType, value: unknown): unknown {
-  if (!(input instanceof z.ZodObject) || !isRecord(value)) return value;
+/** Strip nullable/optional/default wrappers to the schema that decides the shape. */
+function unwrapSchema(schema: z.ZodType): z.ZodType {
+  let current = schema;
+  for (;;) {
+    const inner = (current as { def?: { innerType?: z.ZodType } }).def?.innerType;
+    if (!inner) return current;
+    current = inner;
+  }
+}
+
+function normalizeObject(shape: Record<string, z.ZodType>, value: Record<string, unknown>): Record<string, unknown> {
   const filled: Record<string, unknown> = { ...value };
-  for (const [key, field] of Object.entries(input.shape as Record<string, z.ZodType>)) {
-    if (!field.safeParse(null).success) continue;
-    if (!(key in filled) || isNullText(filled[key])) filled[key] = null;
+  for (const [key, field] of Object.entries(shape)) {
+    const nullable = field.safeParse(null).success;
+    if (nullable && (!(key in filled) || isNullText(filled[key]))) filled[key] = null;
+    else if (key in filled) filled[key] = normalizeNullables(field, filled[key]);
   }
   return filled;
+}
+
+/**
+ * Normalise every level (objects, array elements, through nullable/optional/default wrappers):
+ * an omitted key that accepts null becomes null, and so does the string "null" (deepseek sends
+ * it for every unused argument). Only genuinely wrong values are retries.
+ */
+function normalizeNullables(schema: z.ZodType, value: unknown): unknown {
+  const inner = unwrapSchema(schema);
+  if (inner instanceof z.ZodObject && isRecord(value)) return normalizeObject(inner.shape as Record<string, z.ZodType>, value);
+  if (inner instanceof z.ZodArray && Array.isArray(value)) {
+    return value.map((item) => normalizeNullables(inner.element as z.ZodType, item));
+  }
+  return value;
 }
 
 const wireSchemas = new WeakMap<z.ZodType, JSONSchema7>();
@@ -282,7 +302,7 @@ function wireSchema(input: z.ZodType): JSONSchema7 {
 function lenientSchema<I>(input: z.ZodType<I>) {
   return jsonSchema<I>(wireSchema(input), {
     validate: (value) => {
-      const parsed = input.safeParse(fillMissingNullables(input, value));
+      const parsed = input.safeParse(normalizeNullables(input, value));
       return parsed.success
         ? { success: true, value: parsed.data }
         : { success: false, error: new Error(z.prettifyError(parsed.error)) };

@@ -212,6 +212,38 @@ describe("rule 3: tools are zod-typed, strict-compatible, and lenient about omit
     });
   });
 
+  describe("nested nullable keys (objects, arrays, wrapped schemas)", () => {
+    const Nested = z.object({
+      headline: z.string(),
+      dashas: z.object({ maha: z.string(), pratyantar: z.string().nullable() }),
+      themes: z.array(z.object({ name: z.string(), obstacle: z.string().nullable() })),
+      extra: z.object({ note: z.string().nullable(), year: z.number() }).nullable(),
+    });
+    const runNested = async (args: string) => {
+      const good = '{"headline":"H","dashas":{"maha":"V","pratyantar":null},"themes":[],"extra":null}';
+      const { fetchImpl } = fakeEndpoint([
+        { calls: [call("a1", "answer", args)] },
+        { calls: [call("a2", "answer", good)] },
+      ]);
+      const o = options(fetchImpl, { answer: { schema: Nested, render: (p) => String(p.headline) } });
+      const result = await collect(runToolTurn(o));
+      return { o, result };
+    };
+
+    it("fills an omitted nested key and a nested \"null\" string on the first try", async () => {
+      const args =
+        '{"headline":"H","dashas":{"maha":"Venus","pratyantar":"null"},"themes":[{"name":"work"},{"name":"love","obstacle":"Null"}],"extra":{"year":3}}';
+      const { o } = await runNested(args);
+      expect(o.toolCalls[0]).toMatchObject({ toolName: "answer", status: "complete", validFirstTry: true });
+    });
+
+    it("a nested wrong value still retries", async () => {
+      const args = '{"headline":"H","dashas":{"maha":"Venus","pratyantar":null},"themes":[{"name":7}],"extra":null}';
+      const { o } = await runNested(args);
+      expect(o.toolCalls[0]).toMatchObject({ status: "retried", validFirstTry: false });
+    });
+  });
+
   it("sends every key as required, the optional one as nullable", async () => {
     const { fetchImpl, requests } = fakeEndpoint([answer("a1")]);
     await collect(runToolTurn(options(fetchImpl)));
