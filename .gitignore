@@ -131,3 +131,8 @@ shots/
 
 # Local before/after PDF evidence for manual review (never committed)
 .pdf-evidence/
+
+# Retrodiction eval: generated reports and any personal event file (personal files must live
+# outside the repo; the loader refuses them inside a git tree).
+retrodiction-report/
+*.personal.yaml
