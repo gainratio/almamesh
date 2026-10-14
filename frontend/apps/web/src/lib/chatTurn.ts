@@ -189,21 +189,32 @@ function frameOf(input: ChatTurnInput, pin: ChatThreadAsOf | undefined, now: Dat
   };
 }
 
-/** The status line: the running tool stays up while the model reads its result. */
+/**
+ * The status line: the running tool stays up while the model reads its result. A read
+ * names its span ("Reading June 2019…") when it starts; the loop's generic label for it
+ * (which can land before or after that) is never shown.
+ */
 function statusSink(input: ChatTurnInput) {
   let toolLabel: string | null = null;
+  let readLabel: string | null = null;
   const show = (label: string) => {
     toolLabel = label;
     input.onStatus?.(label);
   };
+  const showRead = (label: string) => {
+    readLabel = label;
+    show(label);
+  };
   const onEvent = (event: AgentStatusEvent) => {
+    if (event.phase === 'using_tool' && event.toolName === READ_PERIOD_TOOL_NAME) return readLabel === null ? undefined : show(readLabel);
     if (event.phase === 'using_tool') return show(event.label);
+    if (event.phase === 'deciding') readLabel = null; // each round's read names its own span
     if (event.phase === 'deciding' && event.round > 1 && toolLabel !== null) return undefined;
     if (event.phase !== 'deciding') toolLabel = null;
     input.onStatus?.(input.labels[event.phase]);
     return undefined;
   };
-  return { show, onEvent };
+  return { showRead, onEvent };
 }
 
 /** Yields the answer as cumulative markdown snapshots: each one replaces the last. */
@@ -229,7 +240,7 @@ export async function* runChatTurn(input: ChatTurnInput): AsyncGenerator<string>
   yield* runToolTurn({
     config: input.config,
     messages,
-    tools: turnTools(input, pin, (args) => status.show(readPeriodStatusLabel(args, input.language))),
+    tools: turnTools(input, pin, (args) => status.showRead(readPeriodStatusLabel(args, input.language))),
     answer: chatAnswerSpec(() => ({ readings }), { voice: input.mode, language: input.language }),
     readFirst: pin !== undefined,
     now,

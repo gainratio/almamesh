@@ -78,6 +78,8 @@ describe('runChatTurn: a trip turn reads first', () => {
     const { fetchImpl } = endpoint([{ name: 'read_period', args: readPeriodArgs('2019-05') }, (body) => stubCallFor(body, {})]);
     await drain(runChatTurn(input(fetchImpl, { asOf: MAY_2019, onStatus: (label) => labels.push(label) })));
     expect(labels).toContain('Reading May 2019…');
+    // The generic tool label never replaces the span: React renders only the last of two synchronous updates.
+    expect(labels).not.toContain('Reading the period…');
   });
 });
 
