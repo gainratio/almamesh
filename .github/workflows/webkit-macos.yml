@@ -17,8 +17,9 @@ concurrency:
 # 45-minute bound. This lane REPORTS and never blocks: deploys wait on Dagger and
 # real Safari (safari-smoke.yml), so a lane failure only marks its step. Each
 # lane redacts its copied crash reports (crash reporter key, UUIDs) and prints
-# their signatures; on a main push webkit-crash-issues files each new signature
-# as a `webkit-crash` issue, or comments on the existing one. Upload only a
+# signatures: crashes, and failed tests no crash report explains. On a main
+# push webkit-crash-issues files each new one as a `webkit-crash` or
+# `webkit-failure` issue, or comments on the existing one. Upload only a
 # finalized evidence snapshot after its secret scan.
 
 jobs:
@@ -50,7 +51,7 @@ jobs:
         run: bash scripts/webkit-macos-lane.sh --collect-native-evidence memory
       - id: crash-signatures
         if: always()
-        run: node scripts/crashReportSummary.mjs --signatures memory webkit-lane-artifacts-memory/crash-reports >> "$GITHUB_OUTPUT"
+        run: node scripts/crashReportSummary.mjs --signatures memory webkit-lane-artifacts-memory >> "$GITHUB_OUTPUT"
       - id: finalize-evidence
         if: always()
         run: bash scripts/webkit-macos-lane.sh --finalize-evidence memory
@@ -93,7 +94,7 @@ jobs:
         run: bash scripts/webkit-macos-lane.sh --collect-native-evidence travel
       - id: crash-signatures
         if: always()
-        run: node scripts/crashReportSummary.mjs --signatures travel webkit-lane-artifacts-travel/crash-reports >> "$GITHUB_OUTPUT"
+        run: node scripts/crashReportSummary.mjs --signatures travel webkit-lane-artifacts-travel >> "$GITHUB_OUTPUT"
       - id: finalize-evidence
         if: always()
         run: bash scripts/webkit-macos-lane.sh --finalize-evidence travel
@@ -136,7 +137,7 @@ jobs:
         run: bash scripts/webkit-macos-lane.sh --collect-native-evidence portable
       - id: crash-signatures
         if: always()
-        run: node scripts/crashReportSummary.mjs --signatures portable webkit-lane-artifacts-portable/crash-reports >> "$GITHUB_OUTPUT"
+        run: node scripts/crashReportSummary.mjs --signatures portable webkit-lane-artifacts-portable >> "$GITHUB_OUTPUT"
       - id: finalize-evidence
         if: always()
         run: bash scripts/webkit-macos-lane.sh --finalize-evidence portable

@@ -1,12 +1,13 @@
 import { spawnSync } from 'node:child_process';
 import { randomBytes, randomUUID } from 'node:crypto';
-import { copyFileSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import {
   crashSignature,
+  failureSignatures,
   isLaneCrashReport,
   laneReportLabel,
   laneSignatures,
@@ -144,23 +145,25 @@ describe('redactIps', () => {
 
 describe('laneSignatures (--signatures)', () => {
   function laneDirectory() {
-    const directory = mkdtempSync(join(tmpdir(), 'lane-crashes-'));
+    const artifacts = mkdtempSync(join(tmpdir(), 'lane-artifacts-'));
+    const directory = join(artifacts, 'crash-reports');
+    mkdirSync(directory);
     for (const name of [SIGILL_NAME, SIGSEGV_NAME]) copyFileSync(join(FIXTURES, name), join(directory, name));
     const { text, reporterKey } = identifiedReport();
     writeFileSync(join(directory, 'com.apple.WebKit.WebContent-2026-10-14-101010.ips'), text);
     writeFileSync(join(directory, 'JetsamEvent-2026-10-14-101010.ips'), '{"bug_type":"298"}\n{"memoryPages":{}}');
-    return { directory, reporterKey };
+    return { artifacts, directory, reporterKey };
   }
 
   it('redacts every report in place and returns one signature per key, tagged with its lane', () => {
-    const { directory, reporterKey } = laneDirectory();
-    const signatures = laneSignatures(directory, 'travel');
+    const { artifacts, directory, reporterKey } = laneDirectory();
+    const signatures = laneSignatures(artifacts, 'travel');
     expect(signatures.map((signature: { key: string }) => signature.key).sort()).toEqual([
       'JSC Heap Collector Thread | SIGSEGV | JSC::Heap::collect',
       `WebCore: Worker | SIGILL | ${LLINT}`,
       'WebCore: Worker | SIGSEGV | JSC::JSWebAssemblyArray::visitChildren',
     ]);
-    expect(signatures.every((signature: { lane: string }) => signature.lane === 'travel')).toBe(true);
+    expect(signatures.every((signature: { lane: string; kind: string }) => signature.lane === 'travel' && signature.kind === 'crash')).toBe(true);
     for (const name of readdirSync(directory)) {
       const text = readFileSync(join(directory, name), 'utf8');
       expect(text).not.toContain(reporterKey);
@@ -170,14 +173,71 @@ describe('laneSignatures (--signatures)', () => {
 
   it('prints one GITHUB_OUTPUT line, and an empty list when the lane wrote no reports', () => {
     const script = join(import.meta.dirname, '../../scripts/crashReportSummary.mjs');
-    const { directory } = laneDirectory();
-    const found = spawnSync('node', [script, '--signatures', 'memory', directory], { encoding: 'utf8' });
+    const { artifacts } = laneDirectory();
+    const found = spawnSync('node', [script, '--signatures', 'memory', artifacts], { encoding: 'utf8' });
     expect(found.status).toBe(0);
     expect(found.stdout.trim().split('\n')).toHaveLength(1);
     expect(found.stdout).toMatch(/^crashes=\[/);
     expect(JSON.parse(found.stdout.trim().slice('crashes='.length))).toHaveLength(3);
-    const missing = spawnSync('node', [script, '--signatures', 'memory', join(directory, 'absent')], { encoding: 'utf8' });
+    const missing = spawnSync('node', [script, '--signatures', 'memory', join(artifacts, 'absent')], { encoding: 'utf8' });
     expect(missing.status).toBe(0);
     expect(missing.stdout).toBe('crashes=[]\n');
+  });
+});
+
+/** A Playwright JSON report (reporter=json) with the failures PR #355 hit: no .ips for any of them. */
+function playwrightReport(...failures: Array<{ project: string; line: number; title: string; message: string }>) {
+  return {
+    suites: [{
+      title: 'time-travel.spec.ts',
+      suites: [{
+        title: 'Dashboard time travel',
+        specs: [
+          { title: 'passes', file: 'time-travel.spec.ts', line: 10, tests: [{ projectName: 'webkit', status: 'expected', results: [{ status: 'passed', errors: [] }] }] },
+          ...failures.map((failure) => ({
+            title: failure.title,
+            file: 'time-travel.spec.ts',
+            line: failure.line,
+            tests: [{ projectName: failure.project, status: 'unexpected', results: [{ status: 'failed', errors: [{ message: failure.message }] }] }],
+          })),
+        ],
+      }],
+    }],
+  };
+}
+const JOURNEY = '\u001b[31mError: the journey must have no unexpected runtime or page errors\u001b[39m\n\nexpect(received).toEqual(expected) // deep equality\n\n- Expected  - 0\n+ Received  + 3\n\n  Array [\n';
+const BLOB = `${JOURNEY}+   "console: Cannot load blob:http://127.0.0.1:4199/7ca88c4b-c49c-4446-85cc-89a4c1371462 due to access control checks.",\n  ]`;
+const WASM = (hash: string) => `${JOURNEY}+   "console: Fetch API cannot load http://127.0.0.1:4199/assets/sqlite3-${hash}.wasm due to access control checks.",\n+   "console: wasm streaming compile failed: TypeError: Load failed",\n  ]`;
+
+describe('failureSignatures (failures without an .ips)', () => {
+  it('keys each failure on its first unexpected error line, with origins, hashes and UUIDs normalized', () => {
+    const report = playwrightReport(
+      { project: 'webkit', line: 1382, title: 'a reload returns the Dashboard to today', message: BLOB },
+      { project: 'iphone-webkit', line: 978, title: 'offers Day, Month and Year', message: WASM('C1o5_k_G') },
+      { project: 'webkit', line: 990, title: 'another journey', message: WASM('Dx9_a-Zq') },
+    );
+    const signatures = failureSignatures([report], 'travel', false);
+    expect(signatures.map((signature: { key: string }) => signature.key)).toEqual([
+      'console: Cannot load blob:<uuid> due to access control checks.',
+      'console: Fetch API cannot load /assets/sqlite3-*.wasm due to access control checks.',
+    ]);
+    expect(signatures[1]).toMatchObject({ kind: 'failure', lane: 'travel', frames: ['[iphone-webkit] time-travel.spec.ts:978 offers Day, Month and Year', '[webkit] time-travel.spec.ts:990 another journey'] });
+  });
+
+  it('falls back to the first line when the error has no diff', () => {
+    const report = playwrightReport({ project: 'webkit', line: 5, title: 't', message: 'page.goto: Timeout 30000ms exceeded.\nCall log:' });
+    expect(failureSignatures([report], 'portable', false)[0]?.key).toBe('page.goto: Timeout <n>ms exceeded.');
+  });
+
+  it('leaves a page crash to its .ips signature when the lane captured one, and files it when it did not', () => {
+    const report = playwrightReport({ project: 'webkit', line: 5, title: 't', message: 'page.goto: Target crashed' });
+    expect(failureSignatures([report], 'travel', true)).toEqual([]);
+    expect(failureSignatures([report], 'travel', false)[0]?.key).toBe('page.goto: Target crashed');
+  });
+
+  it('laneSignatures reads the lane\'s Playwright JSON reports beside its crash reports', () => {
+    const artifacts = mkdtempSync(join(tmpdir(), 'lane-failures-'));
+    writeFileSync(join(artifacts, 'time-travel-report.json'), JSON.stringify(playwrightReport({ project: 'webkit', line: 1382, title: 'reload', message: BLOB })));
+    expect(laneSignatures(artifacts, 'travel')).toEqual([expect.objectContaining({ kind: 'failure', key: 'console: Cannot load blob:<uuid> due to access control checks.' })]);
   });
 });

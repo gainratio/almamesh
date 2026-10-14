@@ -1,14 +1,18 @@
 import { requireAllowedRepository } from "./repositoryIdentity.js"
 
 /**
- * The macOS WebKit lane reports crashes; it never blocks a deploy. Each lane
- * job prints its crash signatures (frontend/apps/web/scripts/crashReportSummary.mjs
- * --signatures: thread + signal + top named frame), and on a main push this
- * files one GitHub issue per signature, labelled webkit-crash, or comments on
- * the existing one with the run URL and date. Nothing here retries anything.
+ * The macOS WebKit lane reports; it never blocks a deploy. Each lane job prints
+ * its signatures (frontend/apps/web/scripts/crashReportSummary.mjs --signatures):
+ * a crash keyed on thread + signal + top named frame, or a failed test with no
+ * .ips keyed on its first unexpected error line. On a main push this files one
+ * GitHub issue per signature (label webkit-crash or webkit-failure), or
+ * comments on the existing one with the run URL and date. Nothing retries.
  */
-export const CRASH_LABEL = "webkit-crash"
-const TITLE_PREFIX = "WebKit crash: "
+export type SignatureKind = "crash" | "failure"
+const KINDS: Readonly<Record<SignatureKind, { label: string; title: string }>> = {
+  crash: { label: "webkit-crash", title: "WebKit crash: " },
+  failure: { label: "webkit-failure", title: "WebKit failure: " },
+}
 const LANES = new Set(["memory", "travel", "portable"])
 const MAX_SIGNATURES = 20
 const MAX_FRAMES = 12
@@ -18,6 +22,7 @@ const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi
 const REPORTER_KEY = /\b[0-9a-f]{40}\b/gi
 
 export interface CrashSignature {
+  readonly kind: SignatureKind
   readonly key: string
   readonly lanes: readonly string[]
   readonly process: string
@@ -29,11 +34,12 @@ export interface CrashIssue {
   readonly number: number
   readonly title: string
   readonly state: string
+  readonly label: string
 }
 
 export interface IssuesPort {
-  list(): Promise<CrashIssue[]>
-  create(title: string, body: string): Promise<number>
+  list(label: string): Promise<CrashIssue[]>
+  create(title: string, body: string, label: string): Promise<number>
   comment(number: number, body: string): Promise<void>
   reopen(number: number): Promise<void>
 }
@@ -56,9 +62,10 @@ function text(value: unknown): string {
 function signatureOf(value: unknown): CrashSignature {
   const record = (value ?? {}) as Record<string, unknown>
   const frames = record.frames
-  if (typeof value !== "object" || !LANES.has(record.lane as string)
+  if (typeof value !== "object" || !LANES.has(record.lane as string) || !Object.hasOwn(KINDS, record.kind as string)
     || !Array.isArray(frames) || frames.length > MAX_FRAMES) throw new Error("crash signatures differ")
   return {
+    kind: record.kind as SignatureKind,
     key: text(record.key),
     lanes: [record.lane as string],
     process: text(record.process),
@@ -79,8 +86,9 @@ export function parseCrashOutputs(raw: string): CrashSignature[] {
     try { lane = JSON.parse(String(output)) } catch { throw new Error("crash signatures differ") }
     if (!Array.isArray(lane)) throw new Error("crash signatures differ")
     for (const signature of lane.map(signatureOf)) {
-      const seen = byKey.get(signature.key)
-      byKey.set(signature.key, seen ? { ...seen, lanes: [...seen.lanes, ...signature.lanes] } : signature)
+      const id = `${signature.kind}:${signature.key}`
+      const seen = byKey.get(id)
+      byKey.set(id, seen ? { ...seen, lanes: [...seen.lanes, ...signature.lanes] } : signature)
     }
   }
   if (byKey.size > MAX_SIGNATURES) throw new Error("crash signatures differ")
@@ -92,37 +100,42 @@ function evidence(signature: CrashSignature): string {
 }
 
 function issueBody(signature: CrashSignature, run: RunReference): string {
+  const crash = signature.kind === "crash"
   return [
-    "WebKit's WebContent process crashed on the macOS WebKit lane. That lane reports; it does not block deploys.",
+    crash
+      ? "WebKit's WebContent process crashed on the macOS WebKit lane. That lane reports; it does not block deploys."
+      : "A test failed on the macOS WebKit lane with no crash report. That lane reports; it does not block deploys.",
     "",
     `Signature: \`${signature.key}\``,
     `Process: ${signature.process}`,
     `Exception: ${signature.exception}`,
     "",
-    "Crashing thread, top named frames:",
+    crash ? "Crashing thread, top named frames:" : "Failed tests (project, spec:line, title):",
     "```",
     ...signature.frames,
     "```",
     "",
     `First seen: ${run.runUrl} (${run.date}).`,
-    `Redacted .ips: the run's ${evidence(signature)} artifact, under crash-reports/.`,
+    `Evidence: the run's ${evidence(signature)} artifact (redacted .ips under crash-reports/, Playwright reports and traces).`,
   ].join("\n")
 }
 
 function repeatBody(signature: CrashSignature, run: RunReference): string {
-  return `Seen again: ${run.runUrl} (${run.date}). Redacted .ips: ${evidence(signature)}, under crash-reports/.`
+  return `Seen again: ${run.runUrl} (${run.date}). Evidence: ${evidence(signature)}.`
 }
 
 /** Create an issue for each new signature; comment on (and reopen) the existing one otherwise. */
 export async function fileCrashIssues(port: IssuesPort, signatures: CrashSignature[], run: RunReference): Promise<string[]> {
   if (signatures.length === 0) return ["no WebKit crash in this run"]
-  const existing = await port.list()
+  const existing = new Map<string, CrashIssue[]>()
+  for (const kind of new Set(signatures.map((signature) => signature.kind))) existing.set(kind, await port.list(KINDS[kind].label))
   const lines: string[] = []
   for (const signature of signatures) {
-    const title = `${TITLE_PREFIX}${signature.key}`
-    const issue = existing.find((candidate) => candidate.title === title)
+    const { label, title: prefix } = KINDS[signature.kind]
+    const title = `${prefix}${signature.key}`
+    const issue = existing.get(signature.kind)?.find((candidate) => candidate.title === title)
     if (issue === undefined) {
-      lines.push(`created #${await port.create(title, issueBody(signature, run))}: ${signature.key}`)
+      lines.push(`created #${await port.create(title, issueBody(signature, run), label)}: ${signature.key}`)
       continue
     }
     if (issue.state === "closed") await port.reopen(issue.number)
@@ -156,18 +169,18 @@ export function githubIssuesPort(
     return response.json()
   }
   return {
-    async list() {
+    async list(label) {
       const issues: CrashIssue[] = []
       for (let page = 1; page <= 10; page += 1) {
-        const batch = await call(`${api}?labels=${CRASH_LABEL}&state=all&per_page=100&page=${page}`) as Array<CrashIssue & { pull_request?: unknown }>
+        const batch = await call(`${api}?labels=${label}&state=all&per_page=100&page=${page}`) as Array<CrashIssue & { pull_request?: unknown }>
         issues.push(...batch.filter((item) => item.pull_request === undefined)
-          .map(({ number, title, state }) => ({ number, title, state })))
+          .map(({ number, title, state }) => ({ number, title, state, label })))
         if (batch.length < 100) break
       }
       return issues
     },
-    async create(title, body) {
-      return (await call(api, "POST", { title, body, labels: [CRASH_LABEL] }) as { number: number }).number
+    async create(title, body, label) {
+      return (await call(api, "POST", { title, body, labels: [label] }) as { number: number }).number
     },
     async comment(number, body) { await call(`${api}/${number}/comments`, "POST", { body }) },
     async reopen(number) { await call(`${api}/${number}`, "PATCH", { state: "open" }) },

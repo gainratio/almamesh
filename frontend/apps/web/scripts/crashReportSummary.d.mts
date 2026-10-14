@@ -4,6 +4,7 @@ export function laneReportLabel(path: string): 'crash report' | 'resource report
 export function redactIps(text: string): string;
 
 export interface CrashSignature {
+  kind: 'crash' | 'failure';
   key: string;
   process: string;
   exception: string;
@@ -11,4 +12,5 @@ export interface CrashSignature {
 }
 
 export function crashSignature(text: string): CrashSignature | null;
-export function laneSignatures(directory: string, lane: string): Array<CrashSignature & { lane: string }>;
+export function failureSignatures(reports: unknown[], lane: string, hasCrashReport: boolean): Array<CrashSignature & { lane: string }>;
+export function laneSignatures(artifacts: string, lane: string): Array<CrashSignature & { lane: string }>;

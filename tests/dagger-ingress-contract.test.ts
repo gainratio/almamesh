@@ -144,12 +144,15 @@ const UPLOAD_IF = `always() && steps.${LEAK_SCAN_ID}.outcome == 'success'`
  * step (collection, redaction, scan, upload) must still succeed.
  */
 const LANE_REPORTS = "${{ true }}"
-/** Redact the copied .ips in place and print their signatures as the job's `crashes` output. */
+/**
+ * Redact the copied .ips in place and print the job's `crashes` output: crash
+ * signatures, plus failed tests (Playwright JSON reports) that no .ips explains.
+ */
 function crashSignatureStep(mode: MacosLaneMode): Record<string, unknown> {
   return {
     id: "crash-signatures",
     if: "always()",
-    run: `node scripts/crashReportSummary.mjs --signatures ${mode} webkit-lane-artifacts-${mode}/crash-reports >> "$GITHUB_OUTPUT"`,
+    run: `node scripts/crashReportSummary.mjs --signatures ${mode} webkit-lane-artifacts-${mode} >> "$GITHUB_OUTPUT"`,
   }
 }
 const LANE_OUTPUTS = { crashes: "${{ steps.crash-signatures.outputs.crashes }}" }
@@ -723,7 +726,7 @@ BASE_URL=http://127.0.0.1:4199
 ARTIFACTS=evidence
 status=0
 calls=0
-run_lane_command() { calls=$((calls + 1)); printf '%s\\n' "$*"; [[ " $FAILING " != *" $calls "* ]]; }
+run_lane_command() { calls=$((calls + 1)); printf '%s json=%s\\n' "$*" "\${PLAYWRIGHT_JSON_OUTPUT_FILE:-}"; [[ " $FAILING " != *" $calls "* ]]; }
 ${suites}
 run_${mode}_lane
 exit "$status"
@@ -732,10 +735,10 @@ exit "$status"
 
   const TRAVEL_RUN = "bun run test:e2e:time-travel e2e/time-travel.spec.ts --project=webkit --project=iphone-webkit --project=iphone-15-webkit"
   const SUITE_RUNS: Record<string, string[]> = {
-    travel: [`${TRAVEL_RUN} --retries=0 --reporter=list --output=evidence/time-travel`],
+    travel: [`${TRAVEL_RUN} --retries=0 --reporter=list,json --output=evidence/time-travel json=evidence/time-travel-report.json`],
     portable: [
-      "bun run test:e2e:portable-invariants --project=webkit --project=iphone-webkit --retries=0 --reporter=list --output=evidence/portable-invariants",
-      "bun run test:e2e:boot-retry --project=webkit --retries=0 --reporter=list --output=evidence/boot-retry",
+      "bun run test:e2e:portable-invariants --project=webkit --project=iphone-webkit --retries=0 --reporter=list,json --output=evidence/portable-invariants json=evidence/portable-invariants-report.json",
+      "bun run test:e2e:boot-retry --project=webkit --retries=0 --reporter=list,json --output=evidence/boot-retry json=evidence/boot-retry-report.json",
     ],
   }
 
@@ -1209,7 +1212,8 @@ run_lane_command true
     // the lane never blocks a deploy.
     expect(script).toContain('run_suite test:e2e:time-travel "${ARTIFACTS}/time-travel" e2e/time-travel.spec.ts --project=webkit --project=iphone-webkit --project=iphone-15-webkit || status=1')
     expect(script).toContain('run_suite test:e2e:portable-invariants "${ARTIFACTS}/portable-invariants" --project=webkit --project=iphone-webkit || status=1')
-    expect(script).toContain('run_lane_command bun run "${script}" "$@" --retries=0 --reporter="${reporter}" --output="${output}"')
+    // The JSON report is how a failure with no .ips becomes a webkit-failure issue.
+    expect(script).toContain('PLAYWRIGHT_JSON_OUTPUT_FILE="${output}-report.json" run_lane_command bun run "${script}" "$@" --retries=0 --reporter="${reporter},json" --output="${output}"')
     expect(script).not.toMatch(/--test-list|webkitFlakeRetry|flake-retry/)
     expect(script).not.toMatch(/--retries=[1-9]/)
     expect(script).not.toMatch(/--last-failed|--repeat-each=[0-9]+ [^\n]*time-travel\.spec/)

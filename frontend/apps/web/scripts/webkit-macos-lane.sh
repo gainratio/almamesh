@@ -299,14 +299,15 @@ register_producer "$!"
 wait_for_preview "${BASE_URL}"
 }
 
-# Run one functional suite with zero Playwright retries.
+# Run one functional suite with zero Playwright retries. Its JSON report lets
+# the workflow file a failure with no crash report (crashReportSummary.mjs).
 #   run_suite <package script> <output dir> <args...>
 run_suite() {
   local script="$1" output="$2"
   shift 2
   local reporter="list"
   if [[ -n "${CI:-}" ]]; then reporter="github,list"; fi
-  run_lane_command bun run "${script}" "$@" --retries=0 --reporter="${reporter}" --output="${output}"
+  PLAYWRIGHT_JSON_OUTPUT_FILE="${output}-report.json" run_lane_command bun run "${script}" "$@" --retries=0 --reporter="${reporter},json" --output="${output}"
 }
 
 run_travel_lane() {
