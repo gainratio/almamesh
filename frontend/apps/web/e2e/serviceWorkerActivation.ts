@@ -9,10 +9,22 @@ export interface ServiceWorkerSnapshot {
   readonly controlled: boolean;
 }
 
+/**
+ * What the hooked build's sw-egress-probe (vite.config.ts) wrote to Cache
+ * Storage: every URL a worker fetched, and its lifecycle events (script start,
+ * install, activate, a rejected waitUntil, a failed or non-OK fetch, an
+ * uncaught error), oldest first. Cache Storage is the origin's, so the page
+ * reads it even when no worker is left to ask.
+ */
+export interface ProbeRecord {
+  readonly fetched: readonly string[];
+  readonly events: readonly string[];
+}
+
 export interface ServiceWorkerReader {
   snapshot(): Promise<ServiceWorkerSnapshot>;
-  /** Every URL the newest worker fetched (the hooked build's sw-egress-probe), or null when none answers. */
-  probeFetches(): Promise<readonly string[] | null>;
+  /** The probe record, or null when no worker ever wrote one. */
+  probeRecord(): Promise<ProbeRecord | null>;
 }
 
 export interface ActivationWaitOptions {
@@ -23,36 +35,54 @@ export interface ActivationWaitOptions {
   readonly sleep?: (ms: number) => Promise<void>;
 }
 
-const PROBE_ANSWER_MS = 5_000;
+const MAX_EVENTS = 12;
 
 function describeRegistration(state: ServiceWorkerSnapshot | undefined, lastError: string | undefined): string {
   if (state === undefined) return `the registration was never read (last error: ${lastError ?? 'none'})`;
   if (!state.registered) return 'no registration (register() never ran, or a failed install cleared it)';
+  const controlled = `controlled: ${state.controlled ? 'yes' : 'no'}`;
+  if (state.installing === null && state.waiting === null && state.active === null) {
+    return `a registration with no worker in any slot (${controlled})`;
+  }
   const field = (value: ServiceWorkerState | null): string => value ?? 'none';
-  return `registration {installing: ${field(state.installing)}, waiting: ${field(state.waiting)}, `
-    + `active: ${field(state.active)}, controlled: ${state.controlled ? 'yes' : 'no'}}`;
+  return `registration {installing: ${field(state.installing)}, waiting: ${field(state.waiting)}, active: ${field(state.active)}, ${controlled}}`;
 }
 
-function describeProbe(fetched: readonly string[] | null): string {
-  if (fetched === null) return 'no worker answered the egress probe (hung, terminated, or none to ask)';
-  const last = fetched.at(-1);
+function describeRecord(record: ProbeRecord | null): string {
+  if (record === null) return 'no probe record (sw.js never ran its first statement)';
+  const last = record.fetched.at(-1);
   const where = last === undefined ? 'none' : new URL(last).pathname;
-  return `the worker answered the egress probe with ${fetched.length} fetched URLs, the last ${where}`;
+  const kept = record.events.slice(-MAX_EVENTS);
+  const label = kept.length < record.events.length ? `worker events (last ${kept.length} of ${record.events.length})` : 'worker events';
+  return `probe record: ${record.fetched.length} fetched URLs, the last ${where}; ${label}: ${kept.join(' | ') || 'none'}`;
 }
 
 async function stallMessage(reader: ServiceWorkerReader, state: ServiceWorkerSnapshot | undefined, lastError: string | undefined, timeoutMs: number): Promise<string> {
   const head = `the service worker did not activate within ${timeoutMs} ms: ${describeRegistration(state, lastError)}`;
-  if (state === undefined || !state.registered) return head;
-  const fetched = await reader.probeFetches().catch(() => null);
-  return `${head}; ${describeProbe(fetched)}`;
+  if (state === undefined) return head;
+  const record = await reader.probeRecord().then(describeRecord, (error: unknown) => `the probe record could not be read (${errorText(error)})`);
+  return `${head}; ${record}`;
+}
+
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/** A read that cannot outlive the wait: it rejects once `ms` passes. */
+function bounded<T>(read: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const expiry = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`the registration read did not settle in ${ms} ms`)), ms);
+  });
+  return Promise.race([read, expiry]).finally(() => clearTimeout(timer));
 }
 
 /**
  * Wait until the page's registration has an active worker (activating or
  * activated: what `navigator.serviceWorker.ready` waits for), polling from Node
  * so the wait survives the page's own navigations. Each state change is
- * reported once. A worker that never activates fails with its install state
- * and the worker's own fetch record, so a stall says where it stopped.
+ * reported once. A worker that never activates fails with the registration's
+ * state and the probe record the worker left, so a stall says where it stopped.
  */
 export async function waitForServiceWorkerActive(reader: ServiceWorkerReader, options: ActivationWaitOptions): Promise<ServiceWorkerSnapshot> {
   const now = options.now ?? Date.now;
@@ -63,21 +93,22 @@ export async function waitForServiceWorkerActive(reader: ServiceWorkerReader, op
   let lastError: string | undefined;
   for (;;) {
     try {
-      const state = await reader.snapshot();
+      const state = await bounded(reader.snapshot(), Math.max(deadline - now(), options.pollMs));
+      // Both snapshot builders list the five fields in the same order, so the key is stable.
       const key = JSON.stringify(state);
       if (key !== lastKey) options.onState?.(state);
       last = state;
       lastKey = key;
       if (state.active !== null) return state;
     } catch (error) {
-      lastError = error instanceof Error ? error.message : String(error);
+      lastError = errorText(error);
     }
     if (now() >= deadline) throw new Error(await stallMessage(reader, last, lastError, options.timeoutMs));
     await sleep(options.pollMs);
   }
 }
 
-/** The reader over a live page. probeFetches asks the newest worker (installing, then waiting, then active). */
+/** The reader over a live page. The probe record is read from Cache Storage, not asked of a worker. */
 export function pageServiceWorkerReader(page: Page): ServiceWorkerReader {
   return {
     snapshot: () => page.evaluate(async () => {
@@ -90,19 +121,19 @@ export function pageServiceWorkerReader(page: Page): ServiceWorkerReader {
         controlled: navigator.serviceWorker.controller !== null,
       };
     }),
-    probeFetches: () => page.evaluate(async (answerMs) => {
-      const registration = await navigator.serviceWorker.getRegistration();
-      const worker = registration?.installing ?? registration?.waiting ?? registration?.active ?? null;
-      if (worker === null) return null;
-      return new Promise<string[] | null>((resolve) => {
-        const channel = new MessageChannel();
-        const timer = setTimeout(() => resolve(null), answerMs);
-        channel.port1.onmessage = (event: MessageEvent<string[]>) => {
-          clearTimeout(timer);
-          resolve(event.data);
-        };
-        worker.postMessage({ type: 'almamesh:egress-probe' }, [channel.port2]);
-      });
-    }, PROBE_ANSWER_MS),
+    probeRecord: () => page.evaluate(async () => {
+      // The probe's names (vite.config.ts SW_EGRESS_PROBE_SOURCE).
+      const CACHE = 'almamesh-egress-probe';
+      const FETCHED = '/__egress-probe/';
+      const EVENTS = '/__sw-event/';
+      if (!(await caches.has(CACHE))) return null;
+      const paths = (await (await caches.open(CACHE)).keys()).map((request) => new URL(request.url).pathname);
+      const under = (prefix: string): string[] => paths.filter((path) => path.startsWith(prefix)).map((path) => path.slice(prefix.length));
+      return {
+        fetched: under(FETCHED).map((name) => decodeURIComponent(name)),
+        // Event keys are `<time>-<seq>-<instance>/<text>`; sorting the key orders them across worker instances.
+        events: under(EVENTS).sort().map((key) => decodeURIComponent(key.slice(key.indexOf('/') + 1))),
+      };
+    }),
   };
 }

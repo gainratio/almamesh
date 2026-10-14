@@ -614,7 +614,11 @@ function previewPublicRoutesMiddleware(): Plugin {
 // every Resource Timing entry. Each URL is written into a Cache Storage list as
 // it is seen, because an idle worker can be stopped and restarted empty. A
 // `{ type: 'almamesh:egress-probe' }` message answers on its port with every
-// URL fetched. It observes; it never changes a request.
+// URL fetched. It also writes the worker's lifecycle under /__sw-event/ (script
+// start, install, activate, a rejected install/activate waitUntil, a failed or
+// non-OK fetch, an uncaught error), so a page can read why an install stopped
+// even when no worker is left to ask (e2e/serviceWorkerActivation.ts). It
+// observes; it never changes a request.
 const EXIT_GATE_HOOKS_BUILD = process.env.VITE_EXIT_GATE_HOOKS === '1'
 const SW_EGRESS_PROBE = 'sw-egress-probe.js'
 const SW_EGRESS_PROBE_SOURCE = `(() => {
@@ -626,10 +630,35 @@ const SW_EGRESS_PROBE_SOURCE = `(() => {
     seen.add(name);
     caches.open(CACHE).then((cache) => cache.put(PREFIX + encodeURIComponent(name), new Response(''))).catch(() => {});
   };
+  const EVENTS = '/__sw-event/';
+  const instance = Math.random().toString(36).slice(2, 8);
+  let sequence = 0;
+  const describe = (reason) => String(reason && reason.name ? reason.name + ': ' + reason.message : reason).slice(0, 300);
+  const note = (text) => {
+    const key = EVENTS + Date.now() + '-' + String(sequence++).padStart(5, '0') + '-' + instance + '/' + encodeURIComponent(text);
+    caches.open(CACHE).then((cache) => cache.put(key, new Response(''))).catch(() => {});
+  };
+  note('script-start');
+  self.addEventListener('install', () => note('install'));
+  self.addEventListener('activate', () => note('activate'));
+  self.addEventListener('error', (event) => note('error: ' + describe(event.message)));
+  self.addEventListener('unhandledrejection', (event) => note('unhandledrejection: ' + describe(event.reason)));
+  const originalWaitUntil = ExtendableEvent.prototype.waitUntil;
+  ExtendableEvent.prototype.waitUntil = function (promise) {
+    const type = this.type;
+    if (type === 'install' || type === 'activate') {
+      Promise.resolve(promise).catch((error) => note(type + ' rejected: ' + describe(error)));
+    }
+    return originalWaitUntil.call(this, promise);
+  };
   const originalFetch = self.fetch;
   self.fetch = function (input, init) {
-    try { keep(new Request(input, init).url); } catch (error) { keep(String(input)); }
-    return originalFetch.apply(this, arguments);
+    let url = String(input);
+    try { url = new Request(input, init).url; } catch (error) { /* keep String(input) */ }
+    keep(url);
+    const response = originalFetch.apply(this, arguments);
+    response.then((r) => { if (!r.ok) note('fetch ' + r.status + ' ' + url); }, (error) => note('fetch failed ' + url + ': ' + describe(error)));
+    return response;
   };
   new PerformanceObserver((list) => { for (const entry of list.getEntries()) keep(entry.name); })
     .observe({ type: 'resource', buffered: true });
