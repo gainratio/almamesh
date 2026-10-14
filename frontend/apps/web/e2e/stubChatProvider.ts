@@ -9,7 +9,7 @@ import type { Route } from '@playwright/test';
 
 import { stubCallFor, toolCallSse, type StubToolCall } from '../src/test/stubAnswer';
 
-export { generalAnswer, readPeriodArgs } from '../src/test/stubAnswer';
+export { generalAnswer, periodAnswerFrom, readingOf, readPeriodArgs, stubCallFor, toolCallSse } from '../src/test/stubAnswer';
 export type { StubToolCall } from '../src/test/stubAnswer';
 
 export interface WireToolCall {
@@ -64,8 +64,8 @@ export function fulfillToolCall(route: Route, call: StubToolCall, id?: string): 
 }
 
 /** The default turn: read_period with `readArgs`, then an answer built from the reading it got. */
-export function fulfillReadThenAnswer(route: Route, body: ChatToolBody, readArgs: Readonly<Record<string, unknown>>): Promise<void> {
-  return fulfillToolCall(route, stubCallFor(body, readArgs), `call_${body.messages.length}`);
+export function fulfillReadThenAnswer(route: Route, body: ChatToolBody, readArgs: Readonly<Record<string, unknown>>, opening?: string): Promise<void> {
+  return fulfillToolCall(route, stubCallFor(body, readArgs, opening), `call_${body.messages.length}`);
 }
 
 /** A request that is not a chat turn's (a summary, a reading section): a harmless empty JSON answer. */

@@ -60,21 +60,21 @@ export function generalAnswer(markdown: string): Readonly<Record<string, unknown
 }
 
 /** A period answer that cites only what the reading says: its lords and their houses, a Moon tag, a window. */
-export function periodAnswerFrom(reading: ReadingLike): Readonly<Record<string, unknown>> {
+export function periodAnswerFrom(reading: ReadingLike, opening = 'A steady stretch for work.'): Readonly<Record<string, unknown>> {
   const rules = (lord: string) => [...(reading.lords?.find((row) => row.lord === lord)?.rules ?? [])];
   const line = (lord: string) => ({ lord, rules: rules(lord), note: `${lord} sets the tone.` });
   const tag = reading.sky?.flatMap((span) => span.tags)[0];
   const window = reading.windows?.[0]?.date;
-  const obstacles = reading.themes?.some((theme) => theme.domain === 'obstacles') ?? false;
   return {
     ...EMPTY,
     kind: 'period',
     period: reading.period.label ?? 'this period',
     place: reading.place?.label ?? '',
-    opening: 'A steady stretch for work.',
+    opening,
     dashas: { maha: line(reading.dashas.maha[0]!.lord), antar: line(reading.dashas.antar[0]!.lord), pratyantar: null },
     moon: tag ? [{ tag, meaning: 'The Moon colours the mood.' }] : [],
-    themes: [{ area: 'Career', direction: 'mixed', confidence: 'medium', text: 'Work asks for patience.', obstacle: obstacles ? 'Paperwork slows things down.' : null }],
+    // An obstacle is always named: a turn that read several spans may have one with an obstacles theme.
+    themes: [{ area: 'Career', direction: 'mixed', confidence: 'medium', text: 'Work asks for patience.', obstacle: 'Paperwork slows things down.' }],
     windows: window ? [{ date: window, what: 'A day to watch.' }] : [],
   };
 }
@@ -83,9 +83,9 @@ export function periodAnswerFrom(reading: ReadingLike): Readonly<Record<string, 
  * The scripted reply to one request: an answer from the reading once one came back; a general
  * answer once any other tool result came back (an ask, say); else a read_period call.
  */
-export function stubCallFor(body: { readonly messages?: readonly WireMessage[] }, readArgs: Readonly<Record<string, unknown>>): StubToolCall {
+export function stubCallFor(body: { readonly messages?: readonly WireMessage[] }, readArgs: Readonly<Record<string, unknown>>, opening?: string): StubToolCall {
   const reading = readingOf(body);
-  if (reading) return { name: 'answer', args: periodAnswerFrom(reading) };
+  if (reading) return { name: 'answer', args: periodAnswerFrom(reading, opening) };
   if (toolResults(body).length > 0) return { name: 'answer', args: generalAnswer('I could not read that period here.') };
   return { name: 'read_period', args: readArgs };
 }
