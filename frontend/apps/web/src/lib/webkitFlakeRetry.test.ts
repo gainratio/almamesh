@@ -15,13 +15,18 @@ import {
 
 /**
  * The two WebContent crashes from run 38442783185 (webkit-lane-travel-evidence):
- * the known macOS-VM flake, a JSC crash on a "WebCore: Worker" thread.
+ * the known macOS-VM flake, a JSC crash on a "WebCore: Worker" thread. The
+ * SIGSEGV one is from main run 38457856209 (webkit-lane-portable-evidence):
+ * the garbage collector visiting a Wasm GC array on a Worker thread.
  */
 const FIXTURES = join(import.meta.dirname, '../../scripts/fixtures/webkit-crash');
 const SIGILL_NAME = 'com.apple.WebKit.WebContent.Development-2026-10-13-180528.ips';
 const SIGBUS_NAME = 'com.apple.WebKit.WebContent.Development-2026-10-13-182553.ips';
 const SIGILL = readFileSync(join(FIXTURES, SIGILL_NAME), 'utf8');
 const SIGBUS = readFileSync(join(FIXTURES, SIGBUS_NAME), 'utf8');
+const SIGSEGV_NAME = 'com.apple.WebKit.WebContent.Development-2026-10-13-200731.ips';
+const SIGSEGV = readFileSync(join(FIXTURES, SIGSEGV_NAME), 'utf8');
+const FIXTURE_TEXT: Record<string, string> = { [SIGILL_NAME]: SIGILL, [SIGBUS_NAME]: SIGBUS, [SIGSEGV_NAME]: SIGSEGV };
 /** captureTime of the SIGILL report: 2026-10-13 18:05:12.8854 +0000. */
 const SIGILL_CAPTURED = Date.UTC(2026, 9, 13, 18, 5, 12, 885);
 
@@ -46,8 +51,9 @@ function matches(text: string): boolean {
 }
 
 describe('the known WebKit flake signature', () => {
-  it.each([SIGILL_NAME, SIGBUS_NAME])('keeps no machine identifiers in the minimized fixture %s', (name) => {
-    const text = name === SIGILL_NAME ? SIGILL : SIGBUS;
+  it.each([SIGILL_NAME, SIGBUS_NAME, SIGSEGV_NAME])('keeps no machine identifiers in the minimized fixture %s', (name) => {
+    const text = FIXTURE_TEXT[name] ?? '';
+    expect(text).not.toBe('');
     expect(text).not.toMatch(/crashReporterKey|sleepWakeUUID|bootSessionUUID|incident_id|incident|slice_uuid|"uuid"|\/Users\/|sharedCache|"path"/i);
     expect(text).not.toMatch(/[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}/i);
   });
@@ -68,6 +74,73 @@ describe('the known WebKit flake signature', () => {
     const signature = readIpsSignature(SIGBUS);
     expect(signature).toMatchObject({ thread: 'WebCore: Worker', exceptionType: 'EXC_BAD_ACCESS', signal: 'SIGBUS' });
     expect(matchesKnownWebKitFlake(signature)).toBe(true);
+  });
+
+  it('matches the real SIGSEGV report: the GC visiting a Wasm GC array on a WebCore: Worker thread', () => {
+    const signature = readIpsSignature(SIGSEGV);
+    expect(signature).toMatchObject({
+      process: 'com.apple.WebKit.WebContent.Development',
+      thread: 'WebCore: Worker',
+      exceptionType: 'EXC_BAD_ACCESS',
+      signal: 'SIGSEGV',
+      topFrame: 'JSC::JSWebAssemblyArray::visitChildren(JSC::JSCell*, JSC::AbstractSlotVisitor&)',
+    });
+    expect(matchesKnownWebKitFlake(signature)).toBe(true);
+  });
+
+  it('matches a SIGSEGV whose top frame is another Wasm-type visitChildren in JSC', () => {
+    const wasmStruct = edited(SIGSEGV, (body) => {
+      const [top] = body.threads[body.faultingThread].frames;
+      if (top) top.symbol = 'JSC::JSWebAssemblyStruct::visitChildren(JSC::JSCell*, JSC::SlotVisitor&)';
+    });
+    expect(matches(wasmStruct)).toBe(true);
+  });
+
+  it('does not match a SIGSEGV on the main thread, even with the same Wasm GC visit stack', () => {
+    const mainThread = edited(SIGSEGV, (body) => {
+      const main = body.threads[0];
+      const worker = body.threads[body.faultingThread];
+      if (main && worker) main.frames = worker.frames;
+      body.faultingThread = 0;
+    });
+    expect(readIpsSignature(mainThread)?.topFrame).toMatch(/^JSC::JSWebAssemblyArray::visitChildren/);
+    expect(matches(mainThread)).toBe(false);
+  });
+
+  it('does not match a Worker SIGSEGV whose top frame is outside JSC', () => {
+    const libsystem = (body: IpsBody): void => {
+      body.usedImages.push({ name: 'libsystem_malloc.dylib' });
+      body.threads[body.faultingThread].frames.unshift({ imageIndex: body.usedImages.length - 1, symbol: 'JSC::JSWebAssemblyArray::visitChildren' });
+    };
+    expect(matches(edited(SIGSEGV, libsystem))).toBe(false);
+  });
+
+  it('does not match a Worker SIGSEGV whose top JSC frame is not a Wasm type, though LLInt frames sit below it', () => {
+    const plainObject = edited(SIGSEGV, (body) => {
+      const [top] = body.threads[body.faultingThread].frames;
+      if (top) top.symbol = 'JSC::JSObject::visitChildren(JSC::JSCell*, JSC::AbstractSlotVisitor&)';
+    });
+    expect(readIpsSignature(plainObject)?.jscFrame).toMatch(/^jsc_llint_/);
+    expect(matches(plainObject)).toBe(false);
+  });
+
+  it('does not match a Worker SIGSEGV whose top frame is anonymous JIT code', () => {
+    const jitTop = edited(SIGSEGV, (body) => {
+      const frames = body.threads[body.faultingThread].frames;
+      const jit = frames[1];
+      if (jit) frames.unshift({ imageIndex: jit.imageIndex });
+    });
+    expect(matches(jitTop)).toBe(false);
+  });
+
+  it('does not take the Wasm GC visit frame as a reason to retry SIGILL or SIGBUS without a JSC tier frame', () => {
+    const noTier = edited(SIGSEGV, (body) => {
+      body.exception = { type: 'EXC_BAD_ACCESS', signal: 'SIGBUS' };
+      for (const frame of body.threads[body.faultingThread].frames) {
+        if (frame.symbol?.includes('llint')) frame.symbol = 'JSC::Heap::collect';
+      }
+    });
+    expect(matches(noTier)).toBe(false);
   });
 
   it('names the JSC frame that identified it', () => {
@@ -205,6 +278,17 @@ describe('planRetries', () => {
     expect(retryTestList(plan)).toBe('[webkit] › time-travel.spec.ts › places › June in Bogotá\n');
   });
 
+  it('retries a page crash whose captured report is the Wasm GC visit SIGSEGV, and logs its family', () => {
+    const crashed = spec('Portable backup', 'webkit', [result({ message: CRASH_MESSAGE, startTime: '2026-10-13T20:06:30.000Z', duration: 40_000 })]);
+    const plan = planRetries(report([crashed]), [{ name: SIGSEGV_NAME, text: SIGSEGV }]);
+    expect(plan.verdict).toBe('retry');
+    expect(plan.retries[0]?.signature).toMatchObject({ signal: 'SIGSEGV', family: 'wasm-gc-visit' });
+  });
+
+  it('labels the SIGILL report with the JSC execution-tier family', () => {
+    expect(planRetries(report([CRASHED]), MATCHING_IPS).retries[0]?.signature.family).toBe('jsc-execution-tier');
+  });
+
   it('also reads the [webkit-diagnostics] page crashed line as a crash failure', () => {
     const crashed = spec('June in Bogotá', 'webkit', [result({ message: 'Error: locator.click: Test ended.', stderr: PAGE_CRASHED_STDERR })]);
     expect(planRetries(report([crashed]), MATCHING_IPS).verdict).toBe('retry');
@@ -337,7 +421,7 @@ describe('the lane CLI', () => {
     expect(testList).toBe('[webkit] › time-travel.spec.ts › places › June in Bogotá\n');
     const line = run.stdout.split('\n').find((text) => text.startsWith('[webkit-flake-retry] {'));
     expect(JSON.parse(line?.slice('[webkit-flake-retry] '.length) ?? '{}')).toMatchObject({
-      event: 'retry', suite: 'travel', ips: SIGILL_NAME, thread: 'WebCore: Worker', exceptionType: 'EXC_BAD_INSTRUCTION', signal: 'SIGILL',
+      event: 'retry', suite: 'travel', ips: SIGILL_NAME, family: 'jsc-execution-tier', thread: 'WebCore: Worker', exceptionType: 'EXC_BAD_INSTRUCTION', signal: 'SIGILL',
     });
   });
 

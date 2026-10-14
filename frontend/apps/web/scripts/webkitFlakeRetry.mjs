@@ -3,8 +3,14 @@
  * One retry for the one known WebKit flake, and nothing else.
  *
  * On GitHub's macOS VMs (never locally: 0 in 330 runs) WebKit's WebContent
- * process sometimes dies on a "WebCore: Worker" thread inside JavaScriptCore's
- * interpreter/JIT (SIGILL or SIGBUS; run 38442783185 has two). The rule is to
+ * process sometimes dies on a "WebCore: Worker" thread inside JavaScriptCore.
+ * Two families are known (KNOWN_FLAKE.families):
+ *   - jsc-execution-tier: SIGILL or SIGBUS in the interpreter/JIT (run
+ *     38442783185 has two);
+ *   - wasm-gc-visit: SIGSEGV whose top frame is the garbage collector visiting
+ *     a Wasm GC object, JSC::JSWebAssemblyArray::visitChildren (main run
+ *     38457856209).
+ * The rule is to
  * rerun CI only on a known flake signature, so the macOS lane
  * (scripts/webkit-macos-lane.sh) reruns a failed test once only when BOTH:
  *
@@ -35,9 +41,18 @@ import { fileURLToPath } from 'node:url'
 export const KNOWN_FLAKE = Object.freeze({
   process: /^com\.apple\.WebKit\.WebContent(\.|$)/,
   thread: 'WebCore: Worker',
-  exceptions: ['EXC_BAD_INSTRUCTION/SIGILL', 'EXC_BAD_ACCESS/SIGBUS'],
   /** A JSC execution-tier frame: LLInt, BBQ or Wasm. */
   jscFrame: /^(jsc_llint_|llint_)|BBQ|Wasm/,
+  families: Object.freeze([
+    Object.freeze({ name: 'jsc-execution-tier', exceptions: ['EXC_BAD_INSTRUCTION/SIGILL', 'EXC_BAD_ACCESS/SIGBUS'], field: 'jscFrame' }),
+    Object.freeze({
+      name: 'wasm-gc-visit',
+      exceptions: ['EXC_BAD_ACCESS/SIGSEGV'],
+      field: 'topFrame',
+      /** The crashing frame itself: a JSWebAssembly* member, or a Wasm type's visitChildren. */
+      frame: /^JSC::(?:JSWebAssembly\w*::|(?:Wasm::)?\w*(?:Wasm|WebAssembly)\w*::visitChildren\b)/,
+    }),
+  ]),
 })
 const JSC_IMAGE = 'JavaScriptCore'
 const MAX_FRAMES = 128
@@ -81,6 +96,12 @@ function leadingJscFrame(frames, images) {
   return null
 }
 
+/** The crashing frame's symbol when JavaScriptCore itself (not JIT code) is the image. */
+function topJscFrame(frames, images) {
+  const [top] = frames
+  return top !== undefined && images[top.imageIndex]?.name === JSC_IMAGE ? top.symbol ?? null : null
+}
+
 /** The fields the flake signature reads from an .ips report, or null if it is not one. */
 export function readIpsSignature(text) {
   const body = parseBody(text)
@@ -94,16 +115,29 @@ export function readIpsSignature(text) {
     signal: body.exception?.signal ?? null,
     capturedAtMs: parseCaptureTime(body.captureTime),
     jscFrame: leadingJscFrame(thread.frames, body.usedImages ?? []),
+    topFrame: topJscFrame(thread.frames, body.usedImages ?? []),
   }
 }
 
-export function matchesKnownWebKitFlake(signature) {
-  if (!signature) return false
-  return KNOWN_FLAKE.process.test(signature.process ?? '')
+function familyMatches(family, signature) {
+  const frame = signature[family.field]
+  return family.exceptions.includes(`${signature.exceptionType}/${signature.signal}`)
+    && frame !== null
+    && (family.frame === undefined || family.frame.test(frame))
+}
+
+/** The known-flake family a signature belongs to, or null. */
+export function knownFlakeFamily(signature) {
+  if (!signature) return null
+  const common = KNOWN_FLAKE.process.test(signature.process ?? '')
     && signature.thread === KNOWN_FLAKE.thread
-    && KNOWN_FLAKE.exceptions.includes(`${signature.exceptionType}/${signature.signal}`)
     && signature.capturedAtMs !== null
-    && signature.jscFrame !== null
+  if (!common) return null
+  return KNOWN_FLAKE.families.find((family) => familyMatches(family, signature))?.name ?? null
+}
+
+export function matchesKnownWebKitFlake(signature) {
+  return knownFlakeFamily(signature) !== null
 }
 
 function* specsOf(suite, titles) {
@@ -158,8 +192,11 @@ function judge({ testId, test }, candidates, claimed) {
 export function planRetries(report, crashReports) {
   const failed = [...testsOf(report)].filter(({ test }) => test.status === 'unexpected')
   const candidates = crashReports
-    .map((file) => ({ name: file.name, signature: readIpsSignature(file.text) }))
-    .filter((file) => matchesKnownWebKitFlake(file.signature))
+    .map((file) => {
+      const signature = readIpsSignature(file.text)
+      return { name: file.name, signature: signature && { ...signature, family: knownFlakeFamily(signature) } }
+    })
+    .filter((file) => file.signature?.family != null)
   const claimed = new Set()
   const judged = failed.map((entry) => judge(entry, candidates, claimed))
   const refused = judged.flatMap((entry) => (entry.refused ? [entry.refused] : []))
@@ -222,8 +259,8 @@ function newCrashReports(dirs, sincePath) {
 }
 
 function logRetry(suite, retry) {
-  const { process, thread, exceptionType, signal, jscFrame } = retry.signature
-  console.log(`${LOG_PREFIX} ${JSON.stringify({ event: 'retry', suite, testId: retry.testId, ips: retry.ips, process, thread, exceptionType, signal, jscFrame })}`)
+  const { family, process, thread, exceptionType, signal, jscFrame, topFrame } = retry.signature
+  console.log(`${LOG_PREFIX} ${JSON.stringify({ event: 'retry', suite, testId: retry.testId, ips: retry.ips, family, process, thread, exceptionType, signal, jscFrame, topFrame })}`)
 }
 
 function runPlan(args) {
