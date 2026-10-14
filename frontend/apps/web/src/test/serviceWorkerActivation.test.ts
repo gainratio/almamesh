@@ -99,10 +99,12 @@ describe('waitForServiceWorkerActive', () => {
     );
   });
 
-  it('bounds a snapshot read that never settles by the remaining budget', async () => {
+  it('bounds a snapshot read that never settles by the remaining budget, with a message that does not depend on the clock', async () => {
     const hung: ServiceWorkerReader = { snapshot: () => new Promise<ServiceWorkerSnapshot>(() => undefined), probeRecord: async () => null };
-    await expect(waitForServiceWorkerActive(hung, { timeoutMs: 40, pollMs: 10 })).rejects.toThrow(
-      'the service worker did not activate within 40 ms: the registration was never read (last error: the registration read did not settle in 40 ms)',
+    // A clock that moves 1 ms per read: the remaining budget is never the full 40 ms (main b6a21303 failed on "settle in 39 ms").
+    let tick = 0;
+    await expect(waitForServiceWorkerActive(hung, { timeoutMs: 40, pollMs: 10, now: () => tick++ })).rejects.toThrow(
+      'the service worker did not activate within 40 ms: the registration was never read (last error: the registration read did not settle before the 40 ms deadline)',
     );
   });
 
