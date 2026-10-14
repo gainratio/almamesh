@@ -1,5 +1,6 @@
 import { starterPack } from '@gainratio/errors';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { LlmRequestError } from '@almamesh/llm';
 import i18n from '../i18n/config';
 import {
   aiErrorRegistry,
@@ -192,6 +193,19 @@ describe('isAuthError', () => {
 });
 
 describe('classifyConnectionError', () => {
+  // The exact errors the chat seam (packages/llm/src/toolLoop.ts toAppError) throws, per class:
+  // a status survives the SDK's retries, so a 429 or 5xx never reads as "Couldn't reach".
+  it.each([
+    [new LlmRequestError('LLM endpoint returned 429: rate limited', { status: 429, body: 'rate limited' }), 'rate_limited'],
+    [new LlmRequestError('LLM endpoint returned 503: upstream down', { status: 503, body: 'upstream down' }), 'server'],
+    [new LlmRequestError('LLM endpoint returned 502: Provider returned error', { status: 502, body: 'Provider returned error' }), 'server'],
+    [new LlmRequestError('LLM provider error: Provider returned error', { body: 'Provider returned error' }), 'unknown'],
+    [new LlmRequestError('LLM endpoint unreachable: Cannot connect to API: connect ECONNREFUSED'), 'network'],
+    [new TypeError('Failed to fetch'), 'network'],
+  ] as const)('the seam error %s classifies as %s', (error, kind) => {
+    expect(classifyConnectionError(error)).toBe(kind);
+  });
+
   it('classifies a 402 / insufficient-credits failure as credits (before auth)', () => {
     expect(
       classifyConnectionError(

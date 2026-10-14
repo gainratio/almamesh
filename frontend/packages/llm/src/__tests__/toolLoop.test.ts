@@ -503,10 +503,41 @@ describe("rule 10: errors", () => {
     expect(requests).toHaveLength(1);
   });
 
-  it("a 5xx is not retried by the SDK either", async () => {
-    const { fetchImpl, requests } = fakeEndpoint([{ status: 503, errorBody: "upstream down" }, answer("a1")]);
-    await expect(collect(runToolTurn(options(fetchImpl)))).rejects.toMatchObject({ status: 503 });
+  // CONTRACT REVERSAL (Task 10d): this test was "a 5xx is not retried by the SDK either"
+  // (maxRetries: 0). A provider 5xx or 429 is transient, so the SDK now retries it twice inside
+  // the seam (its default) before the turn fails; the status still reaches the app's classifier.
+  it("a 5xx is retried by the SDK, and the turn goes on when the retry succeeds", async () => {
+    const { fetchImpl, requests } = fakeEndpoint([{ status: 503, errorBody: "upstream down", retryAfterMs: 0 }, answer("a1")]);
+    const o = options(fetchImpl);
+    await collect(runToolTurn(o));
+    expect(requests).toHaveLength(2);
+    expect(o.statuses.at(-1)).toEqual({ phase: "complete" });
+  });
+
+  it.each([
+    [429, "rate limited"],
+    [503, "upstream down"],
+  ])("a %i that outlasts two retries is an LlmRequestError with its status and body (not a RetryError)", async (status, errorBody) => {
+    const failing = { status, errorBody, retryAfterMs: 0 };
+    const { fetchImpl, requests } = fakeEndpoint([failing, failing, failing]);
+    const failure = await collect(runToolTurn(options(fetchImpl))).catch((e: unknown) => e);
+    expect(failure).toBeInstanceOf(LlmRequestError);
+    expect(failure).toMatchObject({ status, body: errorBody });
+    expect(requests).toHaveLength(3);
+  });
+
+  it("a 4xx other than 408/409/429 is not retried", async () => {
+    const { fetchImpl, requests } = fakeEndpoint([{ status: 402, errorBody: "no credits", retryAfterMs: 0 }, answer("a1")]);
+    await expect(collect(runToolTurn(options(fetchImpl)))).rejects.toMatchObject({ status: 402 });
     expect(requests).toHaveLength(1);
+  });
+
+  it("a provider error sent mid-stream (a 200 SSE error chunk) keeps its code as the status", async () => {
+    const { fetchImpl } = fakeEndpoint([{ streamError: { message: "Provider returned error", code: 502 } }]);
+    const failure = await collect(runToolTurn(options(fetchImpl))).catch((e: unknown) => e);
+    expect(failure).toBeInstanceOf(LlmRequestError);
+    expect(failure).toMatchObject({ status: 502 });
+    expect((failure as Error).message).toContain("Provider returned error");
   });
 
   it("a user abort passes through as an AbortError", async () => {
@@ -695,13 +726,24 @@ describe("error branches", () => {
     expect((failure as Error).message).toBe("Failed to fetch");
   });
 
-  it("a status-less SDK network error is an LlmRequestError that says unreachable, without retry", async () => {
-    const { fetchImpl, requests } = fakeEndpoint([{ networkError: "node" }, answer("a1")]);
-    const failure = await collect(runToolTurn(options(fetchImpl))).catch((e: unknown) => e);
-    expect(failure).toBeInstanceOf(LlmRequestError);
-    expect(failure).toMatchObject({ status: undefined });
-    expect((failure as Error).message).toMatch(/^LLM endpoint unreachable: .*ECONNREFUSED/);
-    expect(requests).toHaveLength(1);
+  // Task 10d turned SDK retries on: a refused connection is retried twice (2 s, then 4 s backoff)
+  // before it reads as unreachable. Fake timers skip the backoff.
+  it("a status-less SDK network error is retried twice, then is an LlmRequestError that says unreachable", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const refused = { networkError: "node" } as const;
+      const { fetchImpl, requests } = fakeEndpoint([refused, refused, refused]);
+      const pending = collect(runToolTurn(options(fetchImpl))).catch((e: unknown) => e);
+      await vi.advanceTimersByTimeAsync(2_000);
+      await vi.advanceTimersByTimeAsync(4_000);
+      const failure = await pending;
+      expect(failure).toBeInstanceOf(LlmRequestError);
+      expect(failure).toMatchObject({ status: undefined });
+      expect((failure as Error).message).toMatch(/^LLM endpoint unreachable: .*ECONNREFUSED/);
+      expect(requests).toHaveLength(3);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("an HTTP failure with an empty body has no body and is not mistaken for a tools rejection", async () => {
@@ -713,9 +755,11 @@ describe("error branches", () => {
   });
 
   it("a 500 that mentions tools is an outage, not a tools rejection", async () => {
-    const { fetchImpl, requests } = fakeEndpoint([{ status: 500, errorBody: "tools are not supported right now" }]);
+    const outage = { status: 500, errorBody: "tools are not supported right now", retryAfterMs: 0 };
+    const { fetchImpl, requests } = fakeEndpoint([outage, outage, outage]);
     await expect(collect(runToolTurn(options(fetchImpl)))).rejects.toMatchObject({ status: 500 });
-    expect(requests).toHaveLength(1);
+    expect(requests).toHaveLength(3);
+    expect(requests.every((request) => Array.isArray(request.body.tools))).toBe(true);
   });
 
   it("non-object tool arguments are a retry", async () => {
@@ -750,7 +794,7 @@ describe("error branches", () => {
 
   it("an HTTP failure in the prose fallback is an LlmRequestError", async () => {
     const bad = '{"headline":1}';
-    const { fetchImpl } = fakeEndpoint([answer("a1", bad), answer("a2", bad), { status: 502, errorBody: "bad gateway" }]);
+    const { fetchImpl } = fakeEndpoint([answer("a1", bad), answer("a2", bad), { status: 502, errorBody: "bad gateway", retryAfterMs: 0 }, { status: 502, errorBody: "bad gateway", retryAfterMs: 0 }, { status: 502, errorBody: "bad gateway", retryAfterMs: 0 }]);
     await expect(collect(runToolTurn(options(fetchImpl, { limits: { maxRounds: 2 } })))).rejects.toMatchObject({ status: 502 });
   });
 

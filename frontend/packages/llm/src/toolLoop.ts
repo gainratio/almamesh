@@ -22,6 +22,8 @@ import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import {
   APICallError,
   jsonSchema,
+  RetryError,
+  StreamProviderError,
   parsePartialJson,
   stepCountIs,
   streamText,
@@ -170,6 +172,8 @@ export const BUDGET_INSTRUCTION =
 const SKIPPED_NOTE = "This turn already read enough; answer from the readings above.";
 const PROSE_INSTRUCTION = "Write the answer as plain prose.";
 const MAX_ERROR_BODY_CHARS = 500;
+/** The AI SDK's own default: two retries of a transient HTTP failure inside one request. */
+const SDK_MAX_RETRIES = 2;
 const PROVIDER_NAME = "almamesh";
 
 // ---------------------------------------------------------------------------
@@ -199,13 +203,23 @@ export function guardedFetch(baseUrl: string, inner?: typeof fetch): typeof fetc
 // Errors
 // ---------------------------------------------------------------------------
 
+/** A provider error sent inside a 200 stream (OpenRouter's mid-stream `{"error":{code,message}}`), with its code as the status. */
+function streamProviderError(error: StreamProviderError): LlmRequestError {
+  const message = error.message.slice(0, MAX_ERROR_BODY_CHARS);
+  if (error.statusCode === undefined) return new LlmRequestError(`LLM provider error: ${message}`, { body: message });
+  return new LlmRequestError(`LLM endpoint returned ${error.statusCode}: ${message}`, { status: error.statusCode, body: message });
+}
+
 /**
- * HTTP failures become the app's LlmRequestError. A browser's own fetch
- * TypeError ("Failed to fetch") is not wrapped by the SDK and passes through;
- * a status-less SDK network error says "unreachable", which the app's error
+ * HTTP failures become the app's LlmRequestError, so the app's classifier sees the status (429
+ * rate-limited, 5xx provider outage). The SDK's RetryError (the retries ran out) is unwrapped to
+ * its last error first. A browser's own fetch TypeError ("Failed to fetch") is not wrapped by the
+ * SDK and passes through; a status-less SDK network error says "unreachable", which the app's
  * classifier reads as an unreachable endpoint.
  */
-function toAppError(error: unknown): unknown {
+function toAppError(raw: unknown): unknown {
+  const error = RetryError.isInstance(raw) ? raw.lastError : raw;
+  if (StreamProviderError.isInstance(error)) return streamProviderError(error);
   if (!APICallError.isInstance(error)) return error;
   if (error.statusCode === undefined) return new LlmRequestError(`LLM endpoint unreachable: ${error.message}`);
   const body = error.responseBody?.slice(0, MAX_ERROR_BODY_CHARS) || undefined;
@@ -510,7 +524,9 @@ function abortError(ctx: TurnContext): unknown {
 function streamOptions(ctx: TurnContext) {
   return {
     model: ctx.model,
-    maxRetries: 0,
+    // A 408/409/429/5xx (or a dropped connection before the stream starts) is retried twice with
+    // backoff, honouring retry-after; the app sees the last error's status if all three fail.
+    maxRetries: SDK_MAX_RETRIES,
     abortSignal: ctx.signal,
     allowSystemInMessages: true, // the app's own system messages keep their place, as on the wire today
     providerOptions: ctx.providerOptions,

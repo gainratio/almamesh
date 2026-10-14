@@ -18,6 +18,10 @@ export interface FakeTurn {
   /** Answer with this HTTP status and body instead of a stream. */
   readonly status?: number;
   readonly errorBody?: string;
+  /** With `status`: a retry-after-ms header (0 lets the SDK retry at once in tests). */
+  readonly retryAfterMs?: number;
+  /** A 200 stream that sends this provider error chunk instead of a completion (OpenRouter mid-stream). */
+  readonly streamError?: Record<string, unknown>;
   /** Never answer; error the body when the request is aborted. */
   readonly hang?: boolean;
   /** Send this turn's chunks but never finish the stream; error it when the request is aborted. */
@@ -101,7 +105,11 @@ function respond(turn: FakeTurn, init: RequestInit | undefined): Response {
   if (turn.hang) return hangingResponse(init?.signal);
   if (turn.holdOpen) return heldOpenResponse(turn, init?.signal);
   if (turn.status) {
-    return new Response(turn.errorBody ?? "", { status: turn.status, headers: { "content-type": "application/json" } });
+    const retry = turn.retryAfterMs === undefined ? {} : { "retry-after-ms": String(turn.retryAfterMs) };
+    return new Response(turn.errorBody ?? "", { status: turn.status, headers: { "content-type": "application/json", ...retry } });
+  }
+  if (turn.streamError) {
+    return new Response(`data: ${JSON.stringify({ error: turn.streamError })}\n\n`, { headers: { "content-type": "text/event-stream" } });
   }
   return new Response(sseBody(turn), { headers: { "content-type": "text/event-stream" } });
 }
