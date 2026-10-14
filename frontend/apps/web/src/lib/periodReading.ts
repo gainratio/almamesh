@@ -321,7 +321,7 @@ function themeOf(theme: PeriodTheme): ReadingTheme {
 }
 
 /** Theme windows inside the period, grouped by (date, descriptor, severity) across domains, by date. */
-function windowsOf(themes: readonly PeriodTheme[], period: PeriodWindow): ReadingWindow[] {
+export function windowsOf(themes: readonly PeriodTheme[], period: PeriodWindow): ReadingWindow[] {
   const grouped = new Map<string, { date: string; descriptor: string; severity: TransitSeverity; domains: string[] }>();
   for (const theme of themes) {
     for (const window of theme.windows.filter((item) => within(item.date, period.start, period.end))) {
@@ -428,21 +428,36 @@ function minimal(reading: PeriodReading): PeriodReading {
   };
 }
 
-function fitBudget(reading: PeriodReading): PeriodReading {
+function fitBudget(reading: PeriodReading, budget: number): PeriodReading {
   let current = reading;
   const trimmed: string[] = [];
   for (const trim of TRIMS) {
-    if (jsonBytes(withTrimmed(current, trimmed)) < MAX_PERIOD_RESULT_BYTES) return withTrimmed(current, trimmed);
+    if (jsonBytes(withTrimmed(current, trimmed)) < budget) return withTrimmed(current, trimmed);
     const next = trim.apply(current);
     if (JSON.stringify(next) === JSON.stringify(current)) continue;
     current = next;
     trimmed.push(trim.note);
   }
   const fitted = withTrimmed(current, trimmed);
-  return jsonBytes(fitted) < MAX_PERIOD_RESULT_BYTES ? fitted : minimal(reading);
+  return jsonBytes(fitted) < budget ? fitted : minimal(reading);
 }
 
-export function buildPeriodReading(source: PeriodReadingContext, frame: ReadingFrame): PeriodReading {
+export interface ReadingFitOptions {
+  /** Bytes the caller adds beside the reading (a range's months, a close-up): the reading fits in the rest. */
+  readonly reserveBytes?: number;
+  /** 'severity' (a range): the most severe windows first, at most {@link MAX_RANGE_WINDOWS}. Default: every window, by date. */
+  readonly windowOrder?: 'date' | 'severity';
+}
+
+export const MAX_RANGE_WINDOWS = 6;
+const SEVERITY_RANK: Readonly<Record<TransitSeverity, number>> = { challenging: 0, supportive: 1, neutral: 2 };
+
+function bySeverity(windows: readonly ReadingWindow[]): ReadingWindow[] {
+  const ranked = [...windows].sort((a, b) => SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity] || (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  return ranked.slice(0, MAX_RANGE_WINDOWS);
+}
+
+export function buildPeriodReading(source: PeriodReadingContext, frame: ReadingFrame, options: ReadingFitOptions = {}): PeriodReading {
   const { period } = frame;
   const dashas = dashasOf(source, period);
   const { segments, next } = segmentsOf(source, period);
@@ -457,9 +472,9 @@ export function buildPeriodReading(source: PeriodReadingContext, frame: ReadingF
     sky: source.sky.filter((span) => overlaps(span, period)).map((span) => skyOf(span, period)),
     double_transit: [...source.double_transit],
     themes: source.themes.map(themeOf),
-    windows: windowsOf(source.themes, period),
+    windows: options.windowOrder === 'severity' ? bySeverity(windowsOf(source.themes, period)) : windowsOf(source.themes, period),
     ...(panchang ? { panchang } : {}),
-  });
+  }, MAX_PERIOD_RESULT_BYTES - (options.reserveBytes ?? 0));
 }
 
 // --- summaries (the collapsed row and the agent's compaction note) ---
