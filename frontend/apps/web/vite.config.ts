@@ -761,6 +761,8 @@ export default defineConfig({
     // build lane forgets it. The workbox `**/*.map` globIgnore above is kept as
     // harmless defence-in-depth. Pinned by src/lib/__tests__/securityHeaders.test.ts.
     sourcemap: false,
+    // dist/.vite/manifest.json lets scripts/verify-chat-lazy.mjs walk the chunk graph.
+    manifest: true,
     // The largest legitimate lazy chunks are intentional and code-split, so the
     // 500 kB default warning is pure noise: the offline geocoder city DB
     // (~2 MB, loaded only in onboarding's location search) and the React/vendor
