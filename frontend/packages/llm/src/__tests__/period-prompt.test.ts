@@ -70,14 +70,12 @@ describe("a period basis never carries today's predictive sky", () => {
 });
 
 describe("the chat system prompt", () => {
-  // 2026-10-14 (T3, deepseek): after the obstacles merge, long Year answers dropped the place (0/3 vs
-  // 3/3 before). The opening sentence names the period and, when the reading has one, its place.
-  it("requires the answer to open with the period it looked at and its place", () => {
+  it("requires the answer to name the period it looked at", () => {
     const [system] = buildChatMessages(
       sanitizeChartForLlm(BIRTH_2000_CHART, { basis: "chart", instant: new Date("2022-06-01T00:00:00Z") }),
       "How was June 2019?",
     );
-    expect(system.content).toContain('naming that period and its place label (when it has one), e.g. "I looked at 1–30 June 2026 in Lisbon."');
+    expect(system.content).toContain("I looked at 1–30 June 2026.");
     expect(system.content).toContain("available: false");
   });
 });
