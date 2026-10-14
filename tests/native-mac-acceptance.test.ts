@@ -4,15 +4,11 @@ import { nativeMacAcceptanceScript } from '../dagger/src/nativeMacAcceptance.ts'
 
 const repository = 'gainratio/almamesh';
 const commitSha = 'd'.repeat(40);
-const workflow = '.github/workflows/webkit-macos.yml';
+// Real Safari gates production; the macOS WebKit lane only files crash issues.
+const workflow = '.github/workflows/safari-smoke.yml';
 const api = `https://api.github.com/repos/${repository}`;
 const token = 'PRIVATE-GITHUB-TOKEN-never-print';
-const names = [
-  'webkit / macOS memory',
-  'webkit / macOS time travel',
-  'webkit / macOS export-import + boot recovery',
-  'webkit / macOS time travel + export-import',
-];
+const names = ['safari / macOS smoke'];
 
 function runFixture(overrides: Record<string, unknown> = {}) {
   const id = overrides.id ?? 100;
@@ -20,7 +16,7 @@ function runFixture(overrides: Record<string, unknown> = {}) {
   const workflowId = overrides.workflow_id ?? 20;
   return {
     id: 100, workflow_id: 20, check_suite_id: 30, run_attempt: 1,
-    name: 'WebKit (macOS)', path: workflow, head_branch: 'main', head_sha: commitSha,
+    name: 'Safari (macOS)', path: workflow, head_branch: 'main', head_sha: commitSha,
     event: 'push', status: 'completed', conclusion: 'success', pull_requests: [],
     repository: { full_name: repository }, head_repository: { full_name: repository },
     url: `${api}/actions/runs/${id}`, jobs_url: `${api}/actions/runs/${id}/jobs`,
@@ -32,7 +28,7 @@ function runFixture(overrides: Record<string, unknown> = {}) {
 
 function jobFixture(index: number, overrides: Record<string, unknown> = {}) {
   return {
-    id: 40 + index, run_id: 100, run_attempt: 1, workflow_name: 'WebKit (macOS)',
+    id: 40 + index, run_id: 100, run_attempt: 1, workflow_name: 'Safari (macOS)',
     head_branch: 'main', head_sha: commitSha, name: names[index],
     status: 'completed', conclusion: 'success',
     run_url: `${api}/actions/runs/100`, url: `${api}/actions/jobs/${40 + index}`,
@@ -69,11 +65,11 @@ interface ResponseFixture {
 }
 
 const workflowResponse = (): ResponseFixture => ({
-  path: '/actions/workflows/webkit-macos.yml',
-  body: { id: 20, name: 'WebKit (macOS)', path: workflow, state: 'active' },
+  path: '/actions/workflows/safari-smoke.yml',
+  body: { id: 20, name: 'Safari (macOS)', path: workflow, state: 'active' },
 });
 const listingResponse = (runs = [runFixture()]): ResponseFixture => ({
-  path: `/actions/workflows/webkit-macos.yml/runs?branch=main&event=push&head_sha=${commitSha}&per_page=100&page=1`,
+  path: `/actions/workflows/safari-smoke.yml/runs?branch=main&event=push&head_sha=${commitSha}&per_page=100&page=1`,
   body: { total_count: runs.length, workflow_runs: runs },
 });
 const detailResponse = (run = runFixture()): ResponseFixture => ({ path: '/actions/runs/100', body: run });
@@ -83,6 +79,8 @@ const jobsResponse = (jobs = names.map((_, i) => jobFixture(i))): ResponseFixtur
   body: { total_count: jobs.length, jobs },
 });
 const checkResponses = () => names.map((_, i): ResponseFixture => ({ path: `/check-runs/${40 + i}`, body: checkFixture(i) }));
+const FINAL_LISTING = 5 + names.length;
+const FINAL_DETAIL = FINAL_LISTING + 1;
 const successfulResponses = (): ResponseFixture[] => [
   workflowResponse(), listingResponse(), detailResponse(), suiteResponse(), jobsResponse(),
   ...checkResponses(), listingResponse(), detailResponse(),
@@ -137,7 +135,7 @@ describe('native macOS deployment acceptance', () => {
     const result = execute(successfulResponses());
     expect(result.status, result.stderr).toBe(0);
     expect(result.receipt).toEqual({ schemaVersion: 1, repository, commitSha, workflow, runId: 100, runAttempt: 1, checkSuiteId: 30, status: 'success' });
-    expect(result.observation.requests).toHaveLength(11);
+    expect(result.observation.requests).toHaveLength(7 + names.length);
     expect(result.observation.remaining).toBe(0);
     for (const request of result.observation.requests) expect(request).toMatchObject({ method: 'GET', cache: 'no-store', noCache: 'no-cache', authorized: true, hasSignal: true, redirect: 'error' });
   });
@@ -162,7 +160,7 @@ describe('native macOS deployment acceptance', () => {
     const responses = successfulResponses();
     const runs = [runFixture({ id: 99, conclusion: 'failure' }), runFixture()];
     responses[1] = listingResponse(runs);
-    responses[9] = listingResponse(runs);
+    responses[FINAL_LISTING] = listingResponse(runs);
     const result = execute(responses);
     expect(result.status, result.stderr).toBe(0);
     expect(result.receipt.runId).toBe(100);
@@ -204,7 +202,7 @@ describe('native macOS deployment acceptance', () => {
   });
 
   test('fails closed if a completed run is missing a required job or repeats its name', () => {
-    for (const jobs of [names.slice(0, 3).map((_, i) => jobFixture(i)), [jobFixture(0), jobFixture(1), jobFixture(2), jobFixture(2, { id: 45 })]]) {
+    for (const jobs of [[], [jobFixture(0), jobFixture(0, { id: 45 })]]) {
       expectDenied(execute([workflowResponse(), listingResponse(), detailResponse(), suiteResponse(), jobsResponse(jobs)]));
     }
   });
@@ -216,13 +214,13 @@ describe('native macOS deployment acceptance', () => {
     { status: 'completed', conclusion: 'failure' }, { status: 'completed', conclusion: 'skipped' },
   ]) {
     test(`denies a mismatched or unsuccessful job ${JSON.stringify(overrides)}`, () => {
-      const jobs = names.map((_, i) => jobFixture(i, i === 1 ? overrides : {}));
+      const jobs = names.map((_, i) => jobFixture(i, overrides));
       expectDenied(execute([workflowResponse(), listingResponse(), detailResponse(), suiteResponse(), jobsResponse(jobs)]));
     });
   }
 
   test('denies a successful check from the wrong app, suite, SHA, name or workflow details URL', () => {
-    for (const overrides of [{ app: { id: 1 } }, { check_suite: { id: 31 } }, { head_sha: 'a'.repeat(40) }, { name: names[1] }, { details_url: 'https://github.com/attacker/almamesh/actions/runs/100/job/40' }, { conclusion: 'neutral' }]) {
+    for (const overrides of [{ app: { id: 1 } }, { check_suite: { id: 31 } }, { head_sha: 'a'.repeat(40) }, { name: 'webkit / macOS memory' }, { details_url: 'https://github.com/attacker/almamesh/actions/runs/100/job/40' }, { conclusion: 'neutral' }]) {
       const checks = checkResponses(); checks[0].body = checkFixture(0, overrides);
       expectDenied(execute([workflowResponse(), listingResponse(), detailResponse(), suiteResponse(), jobsResponse(), ...checks]));
     }
@@ -260,17 +258,17 @@ describe('native macOS deployment acceptance', () => {
   });
 
   test('does not accept a stale attempt when a rerun appears in the final check', () => {
-    const responses = successfulResponses(); responses[9] = listingResponse([runFixture({ run_attempt: 2, status: 'completed', conclusion: 'failure' })]);
+    const responses = successfulResponses(); responses[FINAL_LISTING] = listingResponse([runFixture({ run_attempt: 2, status: 'completed', conclusion: 'failure' })]);
     expectDenied(execute(responses));
   });
 
   test('does not accept an old green run when a newer run appears in the final check', () => {
-    const responses = successfulResponses(); responses[9] = listingResponse([runFixture(), runFixture({ id: 101, conclusion: 'failure' })]);
+    const responses = successfulResponses(); responses[FINAL_LISTING] = listingResponse([runFixture(), runFixture({ id: 101, conclusion: 'failure' })]);
     expectDenied(execute(responses));
   });
 
   test('rechecks the run detail after the final listing, so an attempt change cannot pass', () => {
-    const responses = successfulResponses(); responses[10] = detailResponse(runFixture({ run_attempt: 2, conclusion: 'failure' }));
+    const responses = successfulResponses(); responses[FINAL_DETAIL] = detailResponse(runFixture({ run_attempt: 2, conclusion: 'failure' }));
     expectDenied(execute(responses));
   });
 
@@ -300,7 +298,7 @@ describe('native macOS deployment acceptance', () => {
   });
 
   test('counts request time toward the same deadline and never accepts evidence after it', () => {
-    const responses = successfulResponses(); responses[10].elapsedMs = 45 * 60 * 1000;
+    const responses = successfulResponses(); responses[FINAL_DETAIL].elapsedMs = 45 * 60 * 1000;
     expectDenied(execute(responses));
   });
 });
