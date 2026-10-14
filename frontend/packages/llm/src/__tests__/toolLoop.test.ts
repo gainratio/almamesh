@@ -1,7 +1,7 @@
 // The toolLoop seam: one AI SDK loop with zod-typed tools, invalid arguments
 // returned to the model as retries, a final `answer` tool, budgets and events.
 // One describe per implementation rule in the Task 2 brief.
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { LlmRequestError } from "../client";
 import type { ProviderConfig } from "../config";
@@ -510,11 +510,58 @@ describe("tool calls written as text (deepseek DSML)", () => {
     expect(requests[1].body.tool_choice).toEqual({ type: "function", function: { name: "answer" } });
   });
 
-  it("keeps the readFirst restriction to round 1 only", async () => {
-    const { fetchImpl, requests } = fakeEndpoint([{ text: DSML }, answer("a1")]);
+  // CONTRACT REVERSED (fix round 1): this test used to assert that the
+  // readFirst restriction applied to round 1 only. A DSML round 1 then let a
+  // trip turn answer without reading. Now `answer` stays hidden until a read
+  // tool call has completed this turn (or the forced last round).
+  it("readFirst: a DSML round 1 does not unlock answer; the corrective round still only offers reads", async () => {
+    const { fetchImpl, requests } = fakeEndpoint([{ text: DSML }, read("c1"), answer("a1")]);
     await collect(runToolTurn(options(fetchImpl, { readFirst: true })));
     expect(toolsOf(requests[0]).map((t) => t.function.name)).toEqual(["read_period"]);
-    expect(toolsOf(requests[1]).map((t) => t.function.name)).toEqual(["read_period", "answer"]);
+    expect(toolsOf(requests[1]).map((t) => t.function.name)).toEqual(["read_period"]);
+    expect(messagesOf(requests[1]).at(-1)).toEqual({
+      role: "system",
+      content: "Call a tool: use read_period to read. Do not write tool calls as text.",
+    });
+    expect(toolsOf(requests[2]).map((t) => t.function.name)).toEqual(["read_period", "answer"]);
+  });
+
+  it("readFirst: an invalid read does not unlock answer", async () => {
+    const { fetchImpl, requests } = fakeEndpoint([read("c1", '{"start":"Sept 2019","end":null}'), read("c2"), answer("a1")]);
+    await collect(runToolTurn(options(fetchImpl, { readFirst: true })));
+    expect(toolsOf(requests[1]).map((t) => t.function.name)).toEqual(["read_period"]);
+    expect(toolsOf(requests[2]).map((t) => t.function.name)).toEqual(["read_period", "answer"]);
+  });
+
+  it("readFirst: the forced last round offers answer even with no completed read", async () => {
+    const { fetchImpl, requests } = fakeEndpoint([{ text: DSML }, answer("a1")]);
+    await collect(runToolTurn(options(fetchImpl, { readFirst: true, limits: { maxRounds: 2 } })));
+    expect(requests[1].body.tool_choice).toEqual({ type: "function", function: { name: "answer" } });
+    expect(toolsOf(requests[1]).map((t) => t.function.name)).toContain("answer");
+  });
+
+  it("with no read tools, the corrective message asks only for the answer", async () => {
+    const { fetchImpl, requests } = fakeEndpoint([{ text: DSML }, answer("a1")]);
+    await collect(runToolTurn(options(fetchImpl, { tools: [] })));
+    expect(messagesOf(requests[1]).at(-1)).toEqual({
+      role: "system",
+      content: "Call the answer tool to finish. Do not write tool calls as text.",
+    });
+  });
+
+  it("the corrective message names the turn's own read tools", async () => {
+    const lookup = defineTool<{ readonly q: string }>({
+      name: "lookup",
+      description: "Look something up.",
+      input: z.object({ q: z.string() }),
+      execute: async () => ({}),
+    });
+    const { fetchImpl, requests } = fakeEndpoint([{ text: DSML }, answer("a1")]);
+    await collect(runToolTurn(options(fetchImpl, { tools: asTools(readPeriod(), lookup) })));
+    expect(messagesOf(requests[1]).at(-1)).toEqual({
+      role: "system",
+      content: "Call a tool: use read_period or lookup to read, or answer to finish. Do not write tool calls as text.",
+    });
   });
 
   it("the prose fallback strips tool-call markup from the text", async () => {
@@ -633,5 +680,73 @@ describe("prose fallback: a held-back partial tag", () => {
     const { fetchImpl } = fakeEndpoint([answer("a1", bad), answer("a2", bad), { text: "Mars is strong when 3 < 5" }]);
     const { snapshots } = await collect(runToolTurn(options(fetchImpl, { limits: { maxRounds: 2 } })));
     expect(snapshots.at(-1)).toBe("Mars is strong when 3 < 5");
+  });
+});
+
+describe("fix round 1", () => {
+  it("returning early from the generator aborts the in-flight request", async () => {
+    const held: FakeTurn = { holdOpen: true, calls: [call("a1", "answer", ['{"headline":"Venus', ' rises"'])] };
+    const { fetchImpl, signals } = fakeEndpoint([held]);
+    const stream = runToolTurn(options(fetchImpl));
+    expect((await stream.next()).done).toBe(false);
+    expect(signals[0]?.aborted).toBe(false);
+    await stream.return({ answer: undefined });
+    expect(signals[0]?.aborted).toBe(true);
+  });
+
+  it("returning early from the generator aborts a running tool", async () => {
+    let toolSignal: AbortSignal | undefined;
+    const slow = defineTool<Record<string, never>>({
+      name: "slow",
+      description: "Waits for its signal.",
+      input: z.object({}),
+      timeoutMs: 60_000,
+      execute: (_input, ctx) => {
+        toolSignal = ctx.signal;
+        return new Promise((_resolve, reject) => ctx.signal.addEventListener("abort", () => reject(ctx.signal.reason)));
+      },
+    });
+    const { fetchImpl } = fakeEndpoint([{ calls: [call("w1", "slow", "{}"), call("a1", "answer", ['{"headline":"Venus', ' rises"}'])] }]);
+    const stream = runToolTurn(options(fetchImpl, { tools: asTools(slow) }));
+    expect((await stream.next()).done).toBe(false);
+    await vi.waitFor(() => expect(toolSignal).toBeDefined());
+    expect(toolSignal?.aborted).toBe(false);
+    await stream.return({ answer: undefined });
+    expect(toolSignal?.aborted).toBe(true);
+  });
+
+  it("keeps the SDK-validated answer instead of parsing it a second time", async () => {
+    const Counted = z.object({ headline: z.string().transform((s) => s.length), body: z.string() });
+    const { fetchImpl } = fakeEndpoint([answer("a1")]);
+    const { result, snapshots } = await collect(
+      runToolTurn({
+        ...options(fetchImpl),
+        answer: { schema: Counted, render: (p, final) => `${final ? "final" : "partial"}:${String(p.headline)}` },
+      } as unknown as RunToolTurnOptions<z.infer<typeof Counted>>),
+    );
+    expect(result).toEqual({ answer: { headline: 11, body: "Steady work." } });
+    expect(snapshots.at(-1)).toBe("final:11");
+  });
+
+  // Holds today because the SDK drops the tool-error part once the turn is
+  // aborted (probed with four abort timings). Kept as a tripwire: if an SDK
+  // upgrade starts emitting it, this goes red.
+  it("a user abort during a tool's execute ends the turn without an error row", async () => {
+    const controller = new AbortController();
+    const waits = defineTool<Record<string, never>>({
+      name: "waits",
+      description: "Waits for its signal.",
+      input: z.object({}),
+      timeoutMs: 60_000,
+      execute: (_input, ctx) => {
+        setTimeout(() => controller.abort(), 5);
+        return new Promise((_resolve, reject) => ctx.signal.addEventListener("abort", () => reject(ctx.signal.reason)));
+      },
+    });
+    const { fetchImpl } = fakeEndpoint([{ calls: [call("w1", "waits", "{}")] }, answer("a1")]);
+    const o = options(fetchImpl, { tools: asTools(waits), signal: controller.signal });
+    const failure = await collect(runToolTurn(o)).catch((e: unknown) => e);
+    expect(failure).toMatchObject({ name: "AbortError" });
+    expect(o.toolCalls.filter((e) => e.status === "error")).toEqual([]);
   });
 });

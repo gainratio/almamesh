@@ -12,6 +12,14 @@ import { ensurePrivacy, type ProviderConfig } from "./config";
 import { calibratedEstimate, estimateRequestTokens, turnTokenBudget, type TokenCalibration } from "./contextBudget";
 import { CHAT_REASONING_MAX_TOKENS, REASONING_TIMEOUT_MS } from "./reasoning";
 import { sseChunks } from "./sse";
+import {
+  explicitlyRejectsTools,
+  TOOLS_UNAVAILABLE_INSTRUCTION,
+  TOOLS_UNAVAILABLE_NOTICE,
+  type AgentStatusEvent,
+} from "./toolsUnavailable";
+
+export type { AgentStatusEvent };
 
 export const AGENT_LIMITS = Object.freeze({
   maxDecisionRounds: 2,
@@ -68,19 +76,6 @@ export interface AgentTool {
     context: AgentToolContext,
   ) => unknown | Promise<unknown>;
 }
-
-/** Safe, presentation-ready lifecycle events. No arguments, results, or reasoning. */
-export type AgentStatusEvent =
-  | { readonly phase: "deciding"; readonly round: number }
-  | {
-      readonly phase: "using_tool";
-      readonly round: number;
-      readonly toolName: string;
-      readonly label: string;
-      readonly callNumber: number;
-    }
-  | { readonly phase: "answering" }
-  | { readonly phase: "complete" };
 
 /** A tool execution that threw or timed out, for local diagnostics. */
 export interface AgentToolFailure {
@@ -262,16 +257,6 @@ const MAX_TOOL_CALL_ID_CHARS = 128;
 const FINALIZATION_INSTRUCTION =
   "Tool use is closed for this turn. Answer only from the supplied conversation and tool results. " +
   "If a required fact is unavailable or a tool returned an error, say so plainly; do not infer it.";
-const TOOLS_UNAVAILABLE_INSTRUCTION =
-  "LOCAL TOOLS ARE UNAVAILABLE for this turn. Answer only from facts already present in the " +
-  "conversation. Verified local facts already supplied remain available; interpret those facts " +
-  "and do not claim they could not be verified. Additional local lookups or UI actions cannot run. " +
-  "Never guess a current date, current time, timezone, chart fact, or current " +
-  "planetary context that is not explicitly supplied; say that the required local fact is " +
-  "unavailable instead.";
-const TOOLS_UNAVAILABLE_NOTICE =
-  "Your AI provider does not support chat tools. I can interpret the verified local facts already supplied, " +
-  "but cannot run additional tools or change the selected date this turn.\n\n";
 
 function endpoint(config: ProviderConfig): string {
   if (!config.baseUrl) {
@@ -303,15 +288,6 @@ function throwIfAborted(signal: AbortSignal | undefined): void {
   if (!signal?.aborted) return;
   if (signal.reason instanceof Error) throw signal.reason;
   throw new DOMException("The operation was aborted", "AbortError");
-}
-
-function explicitlyRejectsTools(error: unknown): boolean {
-  if (!(error instanceof LlmRequestError)) return false;
-  if (![400, 404, 422].includes(error.status ?? 0)) return false;
-  const detail = error.body ?? error.message;
-  const namesCapability = /\b(?:tool|tools|function|functions|tool_choice|tool_calls)\b|enable-auto-tool-choice/i;
-  const namesRejection = /unsupported|not supported|unknown|invalid|requires?|enable/i;
-  return namesCapability.test(detail) && namesRejection.test(detail);
 }
 
 /** Tool schemas in name order, so every round and turn sends a byte-identical prefix. */

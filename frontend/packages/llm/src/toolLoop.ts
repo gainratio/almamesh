@@ -12,9 +12,8 @@
 //   rendered snapshots while its arguments arrive;
 // - per-tool budgets, tool timeouts, a runaway-reasoning cap, and telemetry.
 //
-// `explicitlyRejectsTools`, `TOOLS_UNAVAILABLE_*` and `AgentStatusEvent` are
-// copied from agent.ts, which Task 6 deletes; until then the two copies must
-// stay identical.
+// `explicitlyRejectsTools`, `TOOLS_UNAVAILABLE_*` and `AgentStatusEvent` live
+// in ./toolsUnavailable (no SDK import), shared with agent.ts.
 
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import {
@@ -39,8 +38,15 @@ import { z } from "zod";
 import { LlmRequestError, type ChatMessage } from "./client";
 import { ensurePrivacy, OPENROUTER_API_BASE, PrivacyViolationError, type ProviderConfig } from "./config";
 import { CHAT_REASONING_MAX_TOKENS, REASONING_TIMEOUT_MS, ReasoningTimeoutError } from "./reasoning";
+import {
+  explicitlyRejectsTools,
+  TOOLS_UNAVAILABLE_INSTRUCTION,
+  TOOLS_UNAVAILABLE_NOTICE,
+  type AgentStatusEvent,
+} from "./toolsUnavailable";
 
 export { z };
+export { TOOLS_UNAVAILABLE_INSTRUCTION, TOOLS_UNAVAILABLE_NOTICE, type AgentStatusEvent };
 
 // ---------------------------------------------------------------------------
 // Public contract
@@ -68,19 +74,6 @@ export interface ToolDef<I> {
 export function defineTool<I>(def: ToolDef<I>): ToolDef<I> {
   return def;
 }
-
-/** Safe, presentation-ready lifecycle events. No arguments, results, or reasoning. */
-export type AgentStatusEvent =
-  | { readonly phase: "deciding"; readonly round: number }
-  | {
-      readonly phase: "using_tool";
-      readonly round: number;
-      readonly toolName: string;
-      readonly label: string;
-      readonly callNumber: number;
-    }
-  | { readonly phase: "answering" }
-  | { readonly phase: "complete" };
 
 export type ToolCallStatus = "complete" | "error" | "skipped" | "retried";
 
@@ -146,17 +139,6 @@ export const TOOL_LOOP_LIMITS = Object.freeze({
 
 export const TOOL_TIMEOUT_MS = Object.freeze({ default: 2_000, max: 150_000 });
 
-export const TOOLS_UNAVAILABLE_INSTRUCTION =
-  "LOCAL TOOLS ARE UNAVAILABLE for this turn. Answer only from facts already present in the " +
-  "conversation. Verified local facts already supplied remain available; interpret those facts " +
-  "and do not claim they could not be verified. Additional local lookups or UI actions cannot run. " +
-  "Never guess a current date, current time, timezone, chart fact, or current " +
-  "planetary context that is not explicitly supplied; say that the required local fact is " +
-  "unavailable instead.";
-export const TOOLS_UNAVAILABLE_NOTICE =
-  "Your AI provider does not support chat tools. I can interpret the verified local facts already supplied, " +
-  "but cannot run additional tools or change the selected date this turn.\n\n";
-
 const SKIPPED_NOTE = "This turn already read enough; answer from the readings above.";
 const PROSE_INSTRUCTION = "Write the answer as plain prose.";
 const MAX_ERROR_BODY_CHARS = 500;
@@ -188,16 +170,6 @@ export function guardedFetch(baseUrl: string, inner?: typeof fetch): typeof fetc
 // ---------------------------------------------------------------------------
 // Errors
 // ---------------------------------------------------------------------------
-
-/** A 400/404/422 whose body says the endpoint does not do tools (copied from agent.ts). */
-function explicitlyRejectsTools(error: unknown): boolean {
-  if (!(error instanceof LlmRequestError)) return false;
-  if (![400, 404, 422].includes(error.status ?? 0)) return false;
-  const detail = error.body ?? error.message;
-  const namesCapability = /\b(?:tool|tools|function|functions|tool_choice|tool_calls)\b|enable-auto-tool-choice/i;
-  const namesRejection = /unsupported|not supported|unknown|invalid|requires?|enable/i;
-  return namesCapability.test(detail) && namesRejection.test(detail);
-}
 
 /**
  * HTTP failures become the app's LlmRequestError. A browser's own fetch
@@ -317,8 +289,25 @@ interface TurnContext {
   readonly readTools: string[];
   readonly maxRounds: number;
   readonly signal: AbortSignal;
+  /** Aborted when the turn ends for any reason, so an abandoned generator stops its request and tools. */
+  readonly cancel: AbortController;
   readonly watchdog: ReasoningWatchdog;
+  readonly reads: ReadProgress;
   readonly providerOptions: ProviderOptions;
+}
+
+/** Set by the tool wrapper (SDK side, so prepareStep sees it) when a read tool call completes. */
+interface ReadProgress {
+  completed: boolean;
+}
+
+/** What every wrapped tool shares within one turn. */
+interface ToolRuntime {
+  readonly strict: boolean;
+  readonly budget: CallBudget;
+  readonly now: Date;
+  readonly signal: AbortSignal;
+  readonly reads: ReadProgress;
 }
 
 /** The SDK's providerOptions shape (not exported by name from `ai`). */
@@ -349,43 +338,56 @@ function chatModel(o: RunToolTurnOptions<unknown>): LanguageModel {
   return provider.chatModel(o.config.model);
 }
 
-function sdkTool(def: ToolDef<unknown>, strict: boolean, budget: CallBudget, now: Date, turnSignal: AbortSignal): Tool {
+async function executeCounted(def: ToolDef<unknown>, input: unknown, runtime: ToolRuntime): Promise<unknown> {
+  if (!runtime.budget.take(def.name)) return { status: "skipped", note: SKIPPED_NOTE };
+  const result = await runWithTimeout(def, input, runtime.signal, runtime.now);
+  runtime.reads.completed = true;
+  return result;
+}
+
+function sdkTool(def: ToolDef<unknown>, runtime: ToolRuntime): Tool {
   return tool({
     description: def.description,
     inputSchema: lenientSchema(def.input),
-    ...(strict && def.strict !== false ? { strict: true } : {}),
+    ...(runtime.strict && def.strict !== false ? { strict: true } : {}),
     // The SDK's own abortSignal for execute IS the turn signal; use it directly.
-    execute: (input: unknown) =>
-      budget.take(def.name)
-        ? runWithTimeout(def, input, turnSignal, now)
-        : Promise.resolve({ status: "skipped", note: SKIPPED_NOTE }),
+    execute: (input: unknown) => executeCounted(def, input, runtime),
   });
 }
 
-function toolSet<A>(o: RunToolTurnOptions<A>, signal: AbortSignal): ToolSet {
-  const strict = endpointHonoursStrict(o.config);
-  const budget = new CallBudget(o.limits?.maxCallsPerTool ?? TOOL_LOOP_LIMITS.maxCallsPerTool);
+function toolSet<A>(o: RunToolTurnOptions<A>, signal: AbortSignal, reads: ReadProgress): ToolSet {
+  const runtime: ToolRuntime = {
+    strict: endpointHonoursStrict(o.config),
+    budget: new CallBudget(o.limits?.maxCallsPerTool ?? TOOL_LOOP_LIMITS.maxCallsPerTool),
+    now: o.now,
+    signal,
+    reads,
+  };
   const tools: ToolSet = {};
-  for (const def of o.tools) tools[def.name] = sdkTool(def, strict, budget, o.now, signal);
+  for (const def of o.tools) tools[def.name] = sdkTool(def, runtime);
   tools[ANSWER_TOOL_NAME] = tool({
     description: ANSWER_TOOL_DESCRIPTION,
     inputSchema: lenientSchema(o.answer.schema),
-    ...(strict ? { strict: true } : {}),
+    ...(runtime.strict ? { strict: true } : {}),
   });
   return tools;
 }
 
 function turnContext<A>(o: RunToolTurnOptions<A>): TurnContext {
   const watchdog = new ReasoningWatchdog(o.reasoningTimeoutMs ?? REASONING_TIMEOUT_MS);
-  const signal = o.signal ? AbortSignal.any([o.signal, watchdog.signal]) : watchdog.signal;
+  const cancel = new AbortController();
+  const signal = AbortSignal.any([cancel.signal, watchdog.signal, ...(o.signal ? [o.signal] : [])]);
+  const reads: ReadProgress = { completed: false };
   return {
     model: chatModel(o as RunToolTurnOptions<unknown>),
     messages: o.messages.map((m) => ({ role: m.role, content: m.content })),
-    tools: toolSet(o, signal),
+    tools: toolSet(o, signal, reads),
     readTools: o.tools.map((t) => t.name),
     maxRounds: o.limits?.maxRounds ?? TOOL_LOOP_LIMITS.maxRounds,
     signal,
+    cancel,
     watchdog,
+    reads,
     providerOptions: { [PROVIDER_NAME]: isOpenRouter(o.config) ? { reasoning: { max_tokens: CHAT_REASONING_MAX_TOKENS } } : {} },
   };
 }
@@ -412,22 +414,35 @@ function streamOptions(ctx: TurnContext) {
 // The tool rounds
 // ---------------------------------------------------------------------------
 
-/** Sent after a step with no tool call (e.g. deepseek writing its tool call as DSML text). */
-const CORRECTIVE_INSTRUCTION =
-  "Call a tool: use read_period to read, or answer to finish. Do not write tool calls as text.";
 const EMPTY_COMPLETION = "LLM endpoint returned an empty agent completion";
 
 /** `hasToolCall('answer')` also matches an invalid call; only a valid answer ends the turn. */
 const validAnswer: StopCondition<ToolSet> = ({ steps }) =>
   steps.at(-1)?.toolCalls.some((c) => c.toolName === ANSWER_TOOL_NAME && !("invalid" in c && c.invalid)) === true;
 
-/** Tool choice for a 1-based round of the whole turn. */
+/** readFirst turns keep `answer` hidden until a read tool call has completed. */
+function mustReadFirst(ctx: TurnContext, readFirst: boolean): boolean {
+  return readFirst && !ctx.reads.completed && ctx.readTools.length > 0;
+}
+
+/** Tool choice for a 1-based round of the whole turn; the last round always forces the answer. */
 function roundChoice(round: number, ctx: TurnContext, readFirst: boolean): PrepareStepResult<ToolSet> {
   if (round >= ctx.maxRounds) return { toolChoice: { type: "tool", toolName: ANSWER_TOOL_NAME } };
-  if (round === 1 && readFirst && ctx.readTools.length > 0) {
-    return { toolChoice: "required", activeTools: ctx.readTools };
-  }
+  if (mustReadFirst(ctx, readFirst)) return { toolChoice: "required", activeTools: ctx.readTools };
   return { toolChoice: "required" };
+}
+
+/** "a", "a or b", "a, b or c". */
+function orList(names: readonly string[]): string {
+  return names.length < 2 ? names.join("") : `${names.slice(0, -1).join(", ")} or ${names.at(-1)}`;
+}
+
+/** Sent after a step with no tool call (e.g. deepseek writing its tool call as DSML text). */
+function correctiveInstruction(ctx: TurnContext, readFirst: boolean): string {
+  const textRule = "Do not write tool calls as text.";
+  if (ctx.readTools.length === 0) return `Call the answer tool to finish. ${textRule}`;
+  const read = `Call a tool: use ${orList(ctx.readTools)} to read`;
+  return mustReadFirst(ctx, readFirst) ? `${read}. ${textRule}` : `${read}, or answer to finish. ${textRule}`;
 }
 
 interface TurnState {
@@ -642,7 +657,7 @@ async function* runRounds<A>(o: RunToolTurnOptions<A>, ctx: TurnContext, state: 
   const history = [...(yield* streamRounds(o, ctx, state, ctx.messages))];
   while (needsCorrection(ctx, state)) {
     const before = state.finishedRounds;
-    history.push({ role: "system", content: CORRECTIVE_INSTRUCTION });
+    history.push({ role: "system", content: correctiveInstruction(ctx, o.readFirst) });
     history.push(...(yield* streamRounds(o, ctx, state, [...ctx.messages, ...history])));
     if (state.finishedRounds === before) break; // no progress: never spin
   }
@@ -741,11 +756,14 @@ export async function* runToolTurn<A>(o: RunToolTurnOptions<A>): AsyncGenerator<
       return yield* toolsUnavailable(o, ctx);
     }
     if (state.answerInput === undefined) return yield* proseFallback(o, ctx, state, history);
-    const answer = o.answer.schema.parse(state.answerInput);
+    // Already validated (and transformed) by the SDK through the answer schema; parsing
+    // it again would break a transform whose output is not valid input.
+    const answer = state.answerInput as A;
     yield o.answer.render(answer, true);
     o.onStatus?.({ phase: "complete" });
     return { answer };
   } finally {
     ctx.watchdog.disarm();
+    ctx.cancel.abort(); // an early return() must not leave the request or a tool running
   }
 }
