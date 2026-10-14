@@ -8,7 +8,7 @@ of the same native cost one ephemeris read per month.
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from almamesh.calculations import calculate_sidereal_context
 from almamesh.constants.astrology import PlanetName
@@ -25,6 +25,16 @@ if TYPE_CHECKING:
     from almamesh.schemas.astrology import SiderealContext
 
 YearMonth = tuple[int, int]
+
+# The Lahiri table (resources/lahiri_ayanamsa.txt) starts here; the engine fails closed
+# before it, so a native born earlier cannot be charted at all.
+ENGINE_FIRST_INSTANT: Final[datetime] = datetime(1900, 1, 1, tzinfo=UTC)
+OUT_OF_RANGE_BIRTH: Final[str] = "birth before 1900, outside the engine's ayanamsa table"
+
+
+def birth_in_range(birth: Birth) -> bool:
+    """The engine can chart this birth (it is not before the ayanamsa table)."""
+    return birth.datetime.astimezone(UTC) >= ENGINE_FIRST_INSTANT
 
 
 def month_start(ym: YearMonth) -> datetime:
@@ -100,4 +110,12 @@ def _yogini_lord(periods: list[YoginiPeriod], instant: datetime) -> PlanetName |
     return next((p.lord for p in periods if p.start_date <= instant < p.end_date), None)
 
 
-__all__ = ["SubjectEngine", "YearMonth", "add_months", "month_start"]
+__all__ = [
+    "ENGINE_FIRST_INSTANT",
+    "OUT_OF_RANGE_BIRTH",
+    "SubjectEngine",
+    "YearMonth",
+    "add_months",
+    "birth_in_range",
+    "month_start",
+]

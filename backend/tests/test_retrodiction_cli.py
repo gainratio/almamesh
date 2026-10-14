@@ -56,6 +56,30 @@ def test_a_synthetic_run_writes_json_and_markdown(tmp_path: Path) -> None:
     assert "| job_start |" in markdown
 
 
+def test_workers_write_the_same_report_as_one_process(tmp_path: Path) -> None:
+    events = str(_file(tmp_path))
+    assert _run("--events", events, "--out", str(tmp_path / "one"))[0] == 0
+    assert _run("--events", events, "--out", str(tmp_path / "two"), "--workers", "2")[0] == 0
+    one = (tmp_path / "one" / "report.json").read_bytes()
+    assert (tmp_path / "two" / "report.json").read_bytes() == one
+
+
+def test_a_native_sample_is_recorded_in_the_report(tmp_path: Path) -> None:
+    out = tmp_path / "out"
+    args = ("--events", str(_file(tmp_path)), "--out", str(out))
+    assert _run(*args, "--sample-natives", "1", "--seed", "7")[0] == 0
+    report = json.loads((out / "report.json").read_text())
+    assert report["run"]["sample_natives"] == 1
+    assert report["run"]["sample_seed"] == 7
+    assert "random sample of 1 natives (seed 7)" in (out / "report.md").read_text()
+
+
+def test_a_sample_needs_its_seed(tmp_path: Path) -> None:
+    code, output = _run("--events", str(_file(tmp_path)), "--sample-natives", "1")
+    assert code == 2
+    assert "--seed" in output
+
+
 def test_a_changed_window_is_flagged_as_not_preregistered(tmp_path: Path) -> None:
     code, output = _run(
         "--events",

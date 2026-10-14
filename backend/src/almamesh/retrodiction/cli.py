@@ -10,6 +10,7 @@ Refusals print one line and exit 2 with nothing written.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, NoReturn
 
@@ -23,7 +24,7 @@ from almamesh.retrodiction.events import (
     load_events,
 )
 from almamesh.retrodiction.markdown import render_markdown
-from almamesh.retrodiction.report import Report, build_report
+from almamesh.retrodiction.report import Report, build_report, sample_subjects
 
 app = typer.Typer(name="almamesh-eval", help="Measure the engine against dated life events.")
 _REFUSED = 2
@@ -72,11 +73,38 @@ def _write(report: Report, target: Path) -> None:
     (target / "report.md").write_text(render_markdown(report), encoding="utf-8")
 
 
-def _run(events: Path | None, adb: Path | None, window: int, k: str, out: Path | None) -> str:
+@dataclass(frozen=True)
+class _Options:
+    """How to run: window, k, report directory, processes and an optional native sample."""
+
+    window: int
+    k: str
+    out: Path | None
+    workers: int
+    sample: int | None
+    seed: int | None
+
+
+def _sampled(loaded: EventsFile, options: _Options) -> EventsFile:
+    if options.sample is None:
+        return loaded
+    if options.seed is None:
+        raise RetrodictionInputError("--sample-natives needs --seed (record it in the spec)")
+    return sample_subjects(loaded, options.sample, options.seed)
+
+
+def _report(loaded: EventsFile, options: _Options, ks: tuple[int, ...]) -> Report:
+    report = build_report(_sampled(loaded, options), options.window, ks, options.workers)
+    if options.sample is not None:
+        report.run.sample_natives, report.run.sample_seed = options.sample, options.seed
+    return report
+
+
+def _run(events: Path | None, adb: Path | None, options: _Options) -> str:
     loaded, source, private = _load(events, adb)
-    ks = parse_ks(k, window)
-    target = _out_dir(source, out, private)
-    report = build_report(loaded, window, ks)
+    ks = parse_ks(options.k, options.window)
+    target = _out_dir(source, options.out, private)
+    report = _report(loaded, options, ks)
     _write(report, target)
     first = report.overall[str(ks[0])]
     label = "evidence" if report.run.evidence else "synthetic, not evidence"
@@ -97,10 +125,18 @@ def retrodiction(
     out: Annotated[
         Path | None, typer.Option(help="Report directory (default: next to the events file)")
     ] = None,
+    workers: Annotated[
+        int, typer.Option(min=1, max=64, help="Processes scoring natives (same result as 1)")
+    ] = 1,
+    sample_natives: Annotated[
+        int | None, typer.Option(min=1, help="Score a random sample of this many natives")
+    ] = None,
+    seed: Annotated[int | None, typer.Option(help="Seed for --sample-natives")] = None,
 ) -> None:
     """Rank each event month among its window and compare with chance."""
+    options = _Options(window, k, out, workers, sample_natives, seed)
     try:
-        typer.echo(_run(events, adb, window, k, out))
+        typer.echo(_run(events, adb, options))
     except RetrodictionInputError as exc:
         _refuse(exc)
 

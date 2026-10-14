@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
+import math
+import random
+import time
+
 import pytest
 
+from almamesh.retrodiction import stats
 from almamesh.retrodiction.stats import (
     base_rate,
     fractional_hit,
@@ -78,3 +83,56 @@ def test_wilson_interval_for_five_of_ten() -> None:
 def test_wilson_interval_refuses_zero_events() -> None:
     with pytest.raises(ValueError, match="n must be"):
         wilson_interval(0.0, 0)
+
+
+def _direct_pvalue(null_values: list[list[float]], observed: float) -> float:
+    """The pre-registered definition, convolved one event at a time (small inputs only)."""
+    grid = 10_000
+    dist = [1.0]
+    for values in null_values:
+        ticks = [math.ceil(v * grid - 1e-6) for v in values]
+        out = [0.0] * (len(dist) + max(ticks))
+        for t in ticks:
+            for i, p in enumerate(dist):
+                out[t + i] += p / len(values)
+        dist = out
+    return min(1.0, sum(dist[math.floor(observed * grid + 1e-6) :]))
+
+
+def _random_window(rng: random.Random, months: int, k: int) -> list[float]:
+    """Hits of a window whose scores have random ties (so values are fractional)."""
+    scores = [float(rng.randint(0, 4)) for _ in range(months)]
+    return null_hit_values(scores, k)
+
+
+@pytest.mark.parametrize(("seed", "fft"), [(1, False), (2, False), (1, True), (2, True), (3, True)])
+def test_the_pvalue_equals_the_one_event_at_a_time_convolution(
+    seed: int, fft: bool, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    if fft:  # force the grouped-FFT path on a set small enough to check by hand
+        monkeypatch.setattr(stats, "_DIRECT_WORK", 0)
+    rng = random.Random(seed)
+    windows = [_random_window(rng, 9, 2) for _ in range(6)] * 2  # repeats are grouped
+    for observed in (0.0, 1.5, 2.25, 4.0, 9.0):
+        expected = _direct_pvalue(windows, observed)
+        floor = stats.FFT_P_FLOOR if fft else 0.0
+        assert permutation_pvalue(windows, observed) == pytest.approx(
+            max(expected, floor), abs=1e-12
+        )
+
+
+def test_the_fft_path_floors_a_tiny_pvalue(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(stats, "_DIRECT_WORK", 0)
+    one_hot = [1.0] + [0.0] * 9
+    # Exact P(all 20 hit) = 1e-20; the FFT path reports the floor, never less.
+    assert permutation_pvalue([one_hot] * 20, 20.0) == stats.FFT_P_FLOOR
+
+
+def test_a_large_null_is_computed_in_seconds() -> None:
+    # 3000 events over 73-month windows: one event at a time this takes minutes.
+    rng = random.Random(20261014)
+    windows = [_random_window(rng, 73, 3) for _ in range(40)] * 75
+    start = time.perf_counter()
+    p_value = permutation_pvalue(windows, 3000 * 3 / 73)
+    assert time.perf_counter() - start < 15.0
+    assert 0.3 < p_value < 0.7  # the null mean is observed: p near one half

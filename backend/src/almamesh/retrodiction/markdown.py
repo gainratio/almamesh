@@ -16,8 +16,13 @@ def _row(*cells: str) -> str:
 def _run_line(run: RunInfo) -> str:
     status = "pre-registered run" if run.preregistered else "NOT the pre-registered run"
     ks = ", ".join(map(str, run.ks))
+    sample = (
+        f"A random sample of {run.sample_natives} natives (seed {run.sample_seed}). "
+        if run.sample_natives is not None
+        else ""
+    )
     return (
-        f"Kind `{run.kind}`. Source: {run.source or 'n/a'}. "
+        f"Kind `{run.kind}`. Source: {run.source or 'n/a'}. {sample}"
         f"Window ±{run.window} months ({run.months_per_window} months), k = {ks}. "
         f"{status} (digest `{run.preregistration_digest[:12]}`). "
         "Hit = event month in the top k of its window; ties split exactly, "

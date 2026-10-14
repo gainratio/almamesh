@@ -6,13 +6,15 @@ always produce the same bytes.
 
 from __future__ import annotations
 
+import random
 from collections import defaultdict
+from concurrent.futures import ProcessPoolExecutor
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel
 
 from almamesh.calculations import SkyfieldAstronomy
-from almamesh.retrodiction.engine import SubjectEngine
+from almamesh.retrodiction.engine import OUT_OF_RANGE_BIRTH, SubjectEngine, birth_in_range
 from almamesh.retrodiction.events import RetrodictionInputError
 from almamesh.retrodiction.harness import (
     EventScores,
@@ -38,6 +40,7 @@ if TYPE_CHECKING:
     from almamesh.retrodiction.events import EventsFile, Subject
 
 ALL_FAMILIES = frozenset(f.name for f in FAMILIES)
+_CHUNKS_PER_WORKER = 8
 
 
 class EventRow(BaseModel):
@@ -91,6 +94,8 @@ class RunInfo(BaseModel):
     preregistration_digest: str
     preregistered: bool
     families: list[str]
+    sample_natives: int | None = None
+    sample_seed: int | None = None
 
     @classmethod
     def of(cls, events_file: EventsFile, window: int, ks: Sequence[int]) -> RunInfo:
@@ -125,17 +130,44 @@ class Report(BaseModel):
 def _subject_results(
     subject: Subject, astronomy: SkyfieldAstronomy, window: int
 ) -> list[EventScores | Exclusion]:
+    if not birth_in_range(subject.birth):
+        return [
+            Exclusion(subject.id, e.category, e.date, OUT_OF_RANGE_BIRTH) for e in subject.events
+        ]
     engine = SubjectEngine(subject.birth, astronomy)
     return [score_event(engine, subject.id, event, window) for event in subject.events]
 
 
-def score_file(events_file: EventsFile, window: int) -> tuple[list[EventScores], list[Exclusion]]:
-    """Every event of every subject, scored or excluded."""
+def _score_chunk(subjects: Sequence[Subject], window: int) -> list[EventScores | Exclusion]:
+    """One worker's share: its own ephemeris handle, subjects in order."""
     results: list[EventScores | Exclusion] = []
     with SkyfieldAstronomy() as astronomy:
-        for subject in events_file.subjects:
+        for subject in subjects:
             results += _subject_results(subject, astronomy, window)
-    return _split(results)
+    return results
+
+
+def _chunks(subjects: Sequence[Subject], count: int) -> list[Sequence[Subject]]:
+    """Contiguous slices, several per worker so slow natives balance out."""
+    size = max(1, -(-len(subjects) // count))
+    return [subjects[i : i + size] for i in range(0, len(subjects), size)]
+
+
+def score_file(
+    events_file: EventsFile, window: int, workers: int = 1
+) -> tuple[list[EventScores], list[Exclusion]]:
+    """Every event of every subject, scored or excluded, in file order.
+
+    ``workers`` > 1 scores slices of natives in separate processes; scoring is pure
+    per native, so the result is identical to a serial run.
+    """
+    subjects = events_file.subjects
+    if workers <= 1:
+        return _split(_score_chunk(subjects, window))
+    chunks = _chunks(subjects, workers * _CHUNKS_PER_WORKER)
+    with ProcessPoolExecutor(max_workers=workers) as pool:
+        parts = pool.map(_score_chunk, chunks, [window] * len(chunks))
+        return _split([r for part in parts for r in part])
 
 
 def _split(results: list[EventScores | Exclusion]) -> tuple[list[EventScores], list[Exclusion]]:
@@ -189,9 +221,20 @@ def _ablation(scored: Sequence[EventScores], ks: Sequence[int]) -> list[Ablation
     return [AblationRow(variant=v, summaries=_by_k(scored, n, ks)) for v, n in variants]
 
 
-def build_report(events_file: EventsFile, window: int, ks: Sequence[int]) -> Report:
+def sample_subjects(events_file: EventsFile, size: int, seed: int) -> EventsFile:
+    """A seeded random sample of ``size`` natives, kept in file order (all if fewer)."""
+    subjects = events_file.subjects
+    if size >= len(subjects):
+        return events_file
+    chosen = sorted(random.Random(seed).sample(range(len(subjects)), size))
+    return events_file.model_copy(update={"subjects": [subjects[i] for i in chosen]})
+
+
+def build_report(
+    events_file: EventsFile, window: int, ks: Sequence[int], workers: int = 1
+) -> Report:
     """Score the file and assemble the report; refuses a file with nothing rankable."""
-    scored, excluded = score_file(events_file, window)
+    scored, excluded = score_file(events_file, window, workers)
     if not scored:
         raise RetrodictionInputError("no event could be ranked (see exclusions)")
     return Report(
@@ -204,4 +247,4 @@ def build_report(events_file: EventsFile, window: int, ks: Sequence[int]) -> Rep
     )
 
 
-__all__ = ["Report", "RunInfo", "build_report", "score_file"]
+__all__ = ["Report", "RunInfo", "build_report", "sample_subjects", "score_file"]
