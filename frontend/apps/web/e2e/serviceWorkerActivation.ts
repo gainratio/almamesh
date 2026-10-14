@@ -68,11 +68,11 @@ function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/** A read that cannot outlive the wait: it rejects once `ms` passes. */
-function bounded<T>(read: Promise<T>, ms: number): Promise<T> {
+/** A read that cannot outlive the wait: it rejects once `ms` passes, naming the wait's deadline (not the clock-dependent remainder). */
+function bounded<T>(read: Promise<T>, ms: number, timeoutMs: number): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const expiry = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error(`the registration read did not settle in ${ms} ms`)), ms);
+    timer = setTimeout(() => reject(new Error(`the registration read did not settle before the ${timeoutMs} ms deadline`)), ms);
   });
   return Promise.race([read, expiry]).finally(() => clearTimeout(timer));
 }
@@ -93,7 +93,7 @@ export async function waitForServiceWorkerActive(reader: ServiceWorkerReader, op
   let lastError: string | undefined;
   for (;;) {
     try {
-      const state = await bounded(reader.snapshot(), Math.max(deadline - now(), options.pollMs));
+      const state = await bounded(reader.snapshot(), Math.max(deadline - now(), options.pollMs), options.timeoutMs);
       // Both snapshot builders list the five fields in the same order, so the key is stable.
       const key = JSON.stringify(state);
       if (key !== lastKey) options.onState?.(state);
