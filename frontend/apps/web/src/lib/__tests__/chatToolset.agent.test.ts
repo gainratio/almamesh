@@ -33,6 +33,13 @@ describe('actual chat capabilities through the provider tool protocol', () => {
       viewerZone: () => 'America/Los_Angeles', periodSkyAllowed: true,
       ...(thread === TRIP ? { pinned } : {}), placeFromRef: async () => place, onTravel: record,
     });
+    // A place_ref resolves only when resolve_place handed it out this turn (placeRefGuard.ts):
+    // stand in for that earlier lookup, which the real offline list answers with its own ref.
+    if ('place_ref' in args) {
+      const resolve = toolset.tools.find((tool) => tool.name === 'resolve_place');
+      const found = await resolve?.execute({ query: 'Bogotá' }, { now, signal: new AbortController().signal }) as { place: { place_ref: string } };
+      args = { ...args, place_ref: found.place.place_ref };
+    }
     const statuses: AgentStatusEvent[] = [];
     const requests: Array<{ tools?: Array<{ function: { name: string } }>; messages: Array<{ role: string; name?: string; content: string }> }> = [];
     const fetchImpl = vi.fn(async (_url: unknown, init?: RequestInit) => {

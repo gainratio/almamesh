@@ -28,6 +28,7 @@ import { createMoonWindowLoader } from './moonWindow';
 import { birthUtcYearOf, birthYearOf, createPeriodChartLoader, readyEngine } from './periodChart';
 import { pinnedPlaceReader, pinnedTiming } from './pinnedPeriod';
 import { createPeriodReadingTools } from './periodReadingTool';
+import { guardPlaceRefs, issuedPlaceReader, type IssuedPlaceRefs } from './placeRefGuard';
 import { createResolvePlaceTool } from './placeTool';
 import type { PlaceReader } from './timingPlaces';
 import { TIMING_TOOL_NAME } from './timingTool';
@@ -219,7 +220,9 @@ export function buildChatToolset(input: BuildChatToolsetInput): ChatToolset {
   // An old trip with no place reads the birth place (tripContext.ts).
   const pinned = input.pinned ? tripPin(input.pinned, input.birth) : undefined;
   const language = input.language ?? 'en';
-  const baseReader = input.placeFromRef ?? lazyPlaceFromRef;
+  // The refs resolve_place hands out this turn: the only place_refs any tool reads.
+  const issuedPlaces: IssuedPlaceRefs = new Map();
+  const baseReader = issuedPlaceReader(input.placeFromRef ?? lazyPlaceFromRef, issuedPlaces);
 
   const skyAllowed = input.periodSkyAllowed ?? devicePolicy().periodSkyComputeAllowed;
   const tripTools = (activePin: ChatThreadAsOf): AgentTool[] => [
@@ -278,8 +281,11 @@ export function buildChatToolset(input: BuildChatToolsetInput): ChatToolset {
       })] : []),
     ];
   };
-  // Every build goes through the test seam; pages never pass toolOverrides.
-  const toolsFor = (...args: Parameters<typeof makeTools>) => withOverrides(makeTools(...args), input.toolOverrides);
+  // Every build goes through the test seam (pages never pass toolOverrides), then the place_ref gate.
+  const toolsFor = (...args: Parameters<typeof makeTools>) => {
+    const bound = args[0]?.place ? { label: args[0].place.label } : undefined;
+    return guardPlaceRefs(withOverrides(makeTools(...args), input.toolOverrides), issuedPlaces, bound);
+  };
   let tools = toolsFor(pinned);
   let hasPrepared = false;
 

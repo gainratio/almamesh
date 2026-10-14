@@ -64,6 +64,25 @@ const READING_GROUNDING = {
   requiredTools: ['get_period_reading'], groundingCalls: [{ name: 'get_period_reading', args: {} }],
 };
 
+/**
+ * A resolve_place stand-in. Since 2026-10-14 a tool reads only the place_refs resolve_place
+ * handed out in the turn (placeRefGuard.ts), so a placed call first issues its ref.
+ */
+function resolving(summary: { place_ref: string; label: string; timezone: string }): AgentTool {
+  return {
+    name: 'resolve_place', description: 'stub', statusLabel: 'stub',
+    parameters: { type: 'object', properties: {}, additionalProperties: false },
+    execute: async () => ({ status: 'found', place: summary }),
+  };
+}
+
+async function issue(set: ReturnType<typeof toolset>): Promise<ReturnType<typeof toolset>> {
+  const resolve = set.tools.find((tool) => tool.name === 'resolve_place');
+  if (!resolve) throw new Error('resolve_place is missing');
+  await resolve.execute({ query: 'fixture' }, options());
+  return set;
+}
+
 function toolset(overrides: Partial<BuildChatToolsetInput> = {}) {
   return buildChatToolset({
     toolOverrides: [READING_STUB],
@@ -372,9 +391,10 @@ describe('buildChatToolset: explicit-turn engine recovery', () => {
     const computeMoonWindow = vi.fn(async () => ({ at_place: { at_start: mark, at_end: mark }, event: null }));
     const fresh = engineContextWith({ computeMoonWindow }).engine!;
     const context = failedContext(vi.fn(async () => fresh));
-    const built = toolset({ engine: context, periodSkyAllowed: true, placeFromRef: async () => ({
-      summary: { place_ref: 'city:5', label: 'Lima, Peru', timezone: 'America/Lima' }, latitude: -12.04, longitude: -77.03,
-    }) });
+    const lima = { place_ref: 'city:5', label: 'Lima, Peru', timezone: 'America/Lima' };
+    const built = await issue(toolset({ engine: context, periodSkyAllowed: true, toolOverrides: [READING_STUB, resolving(lima)], placeFromRef: async () => ({
+      summary: lima, latitude: -12.04, longitude: -77.03,
+    }) }));
     const result = await timingOf(built).execute({ section: 'transits', start: '2026-06-15', place_ref: 'city:5' }, options());
     expect(context.reboot).toHaveBeenCalledTimes(1);
     expect(loadMock.mock.calls[0]?.[1]).toBe(fresh);
@@ -502,15 +522,15 @@ describe('buildChatToolset: places', () => {
 
   it('the place path reads only the ref it was given, never the birth place', async () => {
     const placeFromRef = vi.fn(async () => undefined);
-    const set = toolset({ placeFromRef, periodSkyAllowed: true });
+    const set = await issue(toolset({ placeFromRef, periodSkyAllowed: true, toolOverrides: [READING_STUB, resolving({ place_ref: 'city:1', label: 'Gone', timezone: 'UTC' })] }));
     const result = await timingOf(set).execute({ section: 'transits', start: '2026-06-15', place_ref: 'city:1' }, options());
     expect(placeFromRef.mock.calls).toEqual([['city:1']]);
-    expect(result).toEqual({ error: 'unknown place_ref: call resolve_place first' });
+    expect(result).toEqual({ error: expect.stringMatching(/^unknown place_ref: .*resolve_place/) });
   });
 
   it("a placed day reads the Moon on this device's engine at the place, and echoes no coordinates", async () => {
     const computeMoonWindow = vi.fn(async () => ({ at_place: { at_start: MARK, at_end: MARK }, event: null }));
-    const set = toolset({ engine: engineContextWith({ computeMoonWindow }), placeFromRef: vi.fn(async () => LIMA), periodSkyAllowed: true });
+    const set = await issue(toolset({ engine: engineContextWith({ computeMoonWindow }), placeFromRef: vi.fn(async () => LIMA), periodSkyAllowed: true, toolOverrides: [READING_STUB, resolving(LIMA.summary)] }));
     const result = await timingOf(set).execute({ section: 'transits', start: '2026-06-15', place_ref: 'city:5' }, options());
     expect(computeMoonWindow).toHaveBeenCalledWith({ placeStartUtc: '2026-06-15T05:00:00.000Z', placeEndUtc: '2026-06-16T05:00:00.000Z' });
     expect(result).toMatchObject({ places: [{ label: 'Lima, Peru', timezone: 'America/Lima', moon: { at_start: MARK } }] });
