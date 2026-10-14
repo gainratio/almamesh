@@ -64,6 +64,8 @@ export interface ChatStreamInput {
   readonly onTravel?: TravelRecorder;
   /** Each tool call the turn ran; persisted on the answer as tool-call parts. */
   readonly onToolCall?: (record: ChatToolCall) => void;
+  /** Aborts when the page is left or another thread is opened or started; the turn must stop its requests. */
+  readonly signal: AbortSignal;
 }
 
 /** A tool call as a persisted part: the same args and sanitized result the model got. */
@@ -334,13 +336,17 @@ export function useChatThread(
   currentProfileId.current = profileId;
   const selectionVersion = useRef(0);
   const mounted = useRef(true);
+  // The in-flight turn's controller: leaving the page or moving to another thread cancels it.
+  const turnAbort = useRef<AbortController | null>(null);
+  const cancelTurn = useCallback(() => { turnAbort.current?.abort(); }, []);
   useEffect(() => {
     mounted.current = true;
-    return () => { mounted.current = false; };
-  }, []);
+    return () => { mounted.current = false; cancelTurn(); };
+  }, [cancelTurn]);
   useEffect(() => {
     selectionVersion.current += 1;
-  }, [profileId, chartId]);
+    cancelTurn();
+  }, [profileId, chartId, cancelTurn]);
 
   const selectionIsCurrent = useCallback((profile: string, chart: string | null, selection: number) => (
     mounted.current && currentProfileId.current === profile && currentChartId.current === chart
@@ -406,6 +412,8 @@ export function useChatThread(
       sendInFlight.current = true;
       setIsStreaming(true);
       setStreamingDraft('');
+      const turn = new AbortController();
+      turnAbort.current = turn;
       try {
         const retrievedContext = [...(await retrieveContext(q, profileId))];
         if (
@@ -421,6 +429,7 @@ export function useChatThread(
         let draft = '';
         const toolCalls: ChatMessagePart[] = [];
         const answer = await stream({
+          signal: turn.signal,
           question: q,
           history,
           retrievedContext,
@@ -476,6 +485,8 @@ export function useChatThread(
           }
         }
       } catch (error) {
+        // A cancelled turn (page left, another thread opened) leaves no error bubble behind.
+        if (turn.signal.aborted) return;
         safeError('chat.stream_failed', error);
         // An app update stopped the send: the notice marks the turn, so the reload can restore the question.
         const stale = noteIfStaleChunk(error) || (!staleBefore && useAppStale.getState().stale);
@@ -527,21 +538,23 @@ export function useChatThread(
       const candidate = useChatStore.getState().threads[candidateThreadId];
       if (profileId !== null && candidate?.profile_id === profileId) {
         selectionVersion.current += 1;
+        cancelTurn();
         setSelectedThreadId(candidateThreadId);
       }
     },
-    [profileId],
+    [profileId, cancelTurn],
   );
 
   const go = useCallback(
     async (asOf: ChatThreadAsOf, source: TravelSource, thread: TravelThread) => {
       if (!profileId) return;
       const selection = ++selectionVersion.current;
+      cancelTurn();
       const canApply = () => selectionIsCurrent(profileId, chartId, selection);
       const { threadId: moved } = await applyTravel({ asOf, source }, { profileId, chartId, thread, canApply });
       if (moved && canApply()) setSelectedThreadId(moved);
     },
-    [profileId, chartId, selectionIsCurrent],
+    [profileId, chartId, selectionIsCurrent, cancelTurn],
   );
   const pin = useCallback((asOf: ChatThreadAsOf) => go(asOf, 'chat-sheet', 'new'), [go]);
   const repin = useCallback(
@@ -553,10 +566,11 @@ export function useChatThread(
   const backToToday = useCallback(async () => {
     if (!profileId) return;
     const selection = ++selectionVersion.current;
+    cancelTurn();
     const canApply = () => selectionIsCurrent(profileId, chartId, selection);
     const { threadId: today } = await applyBackToToday({ profileId, chartId, canApply });
     if (today && canApply()) setSelectedThreadId(today);
-  }, [profileId, chartId, selectionIsCurrent]);
+  }, [profileId, chartId, selectionIsCurrent, cancelTurn]);
 
   return {
     messages,

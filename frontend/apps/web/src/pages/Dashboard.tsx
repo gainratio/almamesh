@@ -343,7 +343,7 @@ export default function DashboardPage() {
         ...(interp ? { interpretationText: serializeInterpretationForChat(interp, mode) } : {}),
         ...(record ? { rectification: { band: record.band, originalSign: record.originalSign, rectifiedSign: record.rectifiedSign, mode: record.mode } } : {}),
         ...(ask.asOf ? { asOf: ask.asOf } : {}),
-        signal: new AbortController().signal,
+        signal: ask.signal,
         labels: { deciding: t('chat:agent.deciding'), answering: t('chat:agent.answering'), complete: t('chat:agent.complete') },
         onStatus: ask.onStatus,
         ...(ask.onTravel ? { onTravel: ask.onTravel } : {}),

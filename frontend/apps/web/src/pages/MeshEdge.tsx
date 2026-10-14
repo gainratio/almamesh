@@ -312,7 +312,7 @@ function MeshEdgeContent({
         retrievedContext: ask.retrievedContext,
         ...(entry.edge ? { meshEdge: sanitizeMeshEdgeForLlm(entry.edge) } : {}),
         ...(ask.asOf ? { asOf: ask.asOf } : {}),
-        signal: new AbortController().signal,
+        signal: ask.signal,
         labels: { deciding: t('chat:agent.deciding'), answering: t('chat:agent.answering'), complete: t('chat:agent.complete') },
         onStatus: ask.onStatus,
         ...(ask.onTravel ? { onTravel: ask.onTravel } : {}),

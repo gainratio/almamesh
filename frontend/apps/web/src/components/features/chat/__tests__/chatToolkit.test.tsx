@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
 import '../../../../i18n/config';
@@ -110,5 +110,42 @@ describe('tool-call row edges', () => {
   ])('a period as people say it: %j', (period, expected) => {
     render(<ToolCallRow toolName="read_period" toolCallId="p" args={{}} argsText="" result={{ period }} status={{ type: 'complete' }} />);
     expect(screen.getByTestId('chat-tool-call-summary').textContent).toBe(expected);
+  });
+});
+
+describe('rows persisted before the tool redesign still read in plain words', () => {
+  const row = (toolName: string, result: unknown, isError?: boolean) => {
+    render(<ToolCallRow toolName={toolName} toolCallId="old" args={{}} argsText="" result={result} isError={isError} status={{ type: 'complete' }} />);
+    return { summary: screen.getByTestId('chat-tool-call-summary').textContent, status: screen.getByTestId('chat-tool-call').getAttribute('data-status') };
+  };
+
+  it.each([
+    ['get_timing', 'the period reading'],
+    ['get_period_reading', 'the period reading'],
+    ['get_period_detail', 'the period reading'],
+    ['get_trip_context', 'the period reading'],
+    ['resolve_place', 'a place'],
+    ['time_travel', 'a move in time'],
+    ['get_natal_summary', 'chart facts'],
+    ['get_chart_facts', 'chart facts'],
+    ['get_current_datetime', 'chart facts'],
+  ])('%s shows %s, never its raw name', (name, subject) => {
+    const { summary } = row(name, { ok: true });
+    expect(summary).toBe(`Looked up ${subject}`);
+    expect(summary).not.toContain('get_');
+  });
+
+  it('an old {code} or {error} result is a failure, not a complete row', () => {
+    expect(row('resolve_place', { code: 'not_found' }).status).toBe('error');
+    cleanup();
+    expect(row('get_timing', { error: 'no chart' }).status).toBe('error');
+    cleanup();
+    expect(row('time_travel', { available: false }).status).toBe('error');
+    cleanup();
+    expect(row('get_period_reading', { ok: true }).status).toBe('complete');
+  });
+
+  it('a new read_period ask that carries a code stays complete', () => {
+    expect(row('read_period', { code: 'place_not_chosen', available: true }).status).toBe('complete');
   });
 });

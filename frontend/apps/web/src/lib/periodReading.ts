@@ -170,7 +170,7 @@ export interface PeriodReading extends ReadingFrame {
   /** Every theme window inside the period, by date. */
   readonly windows: readonly ReadingWindow[];
   readonly panchang?: ReadingPanchang;
-  /** What was cut to stay under 4 KB; get_period_detail returns the rest. */
+  /** What was cut to stay under 4 KB; read_period with a focus returns the rest. */
   readonly trimmed?: readonly string[];
 }
 
@@ -386,7 +386,7 @@ const withoutAgreement = ({ agreement: _agreement, ...theme }: ReadingTheme): Re
 
 /**
  * Applied in order until the reading fits, cheapest loss first; each cut that
- * changed something is named in `trimmed`, and get_period_detail returns it.
+ * changed something is named in `trimmed`, and read_period with a focus returns it.
  * Dated change points (segment events: stations, ingresses, each with its day)
  * outrank secondary detail: they are how the model says when a period shifts.
  * Every theme's verdict and first factor outrank sky detail: a Year once lost
@@ -557,7 +557,6 @@ export interface PeriodDetail extends ReadingFrame {
   readonly factors: readonly string[];
   readonly trimmed?: readonly string[];
 }
-
 
 type Digest = { readonly facts: Readonly<Record<string, unknown>>; readonly factors: readonly string[] } | PeriodToolError;
 

@@ -41,13 +41,13 @@ function modelData(body: Record<string, unknown>): string {
   return [...tools, ...lines].join('\n');
 }
 
-async function tripRequestBodies(asOf: ChatThreadAsOf): Promise<string[]> {
-  const { fetchImpl, bodies } = stubEndpoint([{ name: 'read_period', args: readPeriodArgs('2019-05') }, (body) => stubCallFor(body, {})]);
+async function tripRequestBodies(asOf: ChatThreadAsOf | undefined, start = '2019-05'): Promise<string[]> {
+  const { fetchImpl, bodies } = stubEndpoint([{ name: 'read_period', args: readPeriodArgs(start) }, (body) => stubCallFor(body, {})]);
   const turn = runChatTurn({
     config: CONFIG, chart: NATAL, chartAsOf: { basis: 'chart', instant: new Date('2025-01-01T00:00:00Z') }, profileKey: 'p1', birth: BIRTH,
-    engine: null, question: 'How was work then?', mode: 'layman', language: 'en', history: [], retrievedContext: [], asOf,
+    engine: null, question: 'How was work then?', mode: 'layman', language: 'en', history: [], retrievedContext: [], ...(asOf ? { asOf } : {}),
     signal: new AbortController().signal, now: NOW, labels: { deciding: 'd', answering: 'a', complete: 'c' }, onTravel: vi.fn(),
-    seams: { fetchImpl, viewerZone: () => 'America/Los_Angeles', periodSkyAllowed: true, loadPeriodChart: async () => READING_CHART },
+    seams: { fetchImpl, loadCurrentChart: async () => READING_CHART, viewerZone: () => 'America/Los_Angeles', periodSkyAllowed: true, loadPeriodChart: async () => READING_CHART },
   });
   for await (const _snapshot of turn) {
     // drain
@@ -77,5 +77,17 @@ describe('a trip turn sends only a place label and zone', () => {
     for (const body of bodies) {
       for (const leak of LEAKS) expect(body).not.toMatch(leak);
     }
+  });
+});
+
+describe('a today turn (no trip) sends no birth data either', () => {
+  it('every request body is free of birth date, time, place and coordinates, and the reading reaches the model', async () => {
+    const bodies = await tripRequestBodies(undefined, '2026-03-08');
+    for (const body of bodies) {
+      for (const leak of LEAKS) expect(body).not.toMatch(leak);
+    }
+    // The reading reached the model: round two carries read_period's result.
+    expect(bodies[1]).toContain('\\"dashas\\"');
+    expect(bodies[1]).toContain('2026-03-08');
   });
 });

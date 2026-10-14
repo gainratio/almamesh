@@ -156,7 +156,9 @@
     "travel": "Viajar a otro momento",
     "rows": {
       "read_period": "la lectura del periodo",
-      "travel": "un viaje en el tiempo"
+      "travel": "un viaje en el tiempo",
+      "place": "un lugar",
+      "context": "los datos de la carta"
     }
   },
   "threads": {

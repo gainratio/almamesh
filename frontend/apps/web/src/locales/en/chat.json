@@ -153,7 +153,9 @@
     "travel": "Travel to another time",
     "rows": {
       "read_period": "the period reading",
-      "travel": "a move in time"
+      "travel": "a move in time",
+      "place": "a place",
+      "context": "chart facts"
     }
   },
   "threads": {

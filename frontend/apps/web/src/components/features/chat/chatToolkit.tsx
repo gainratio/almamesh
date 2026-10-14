@@ -43,10 +43,37 @@ type ToolCallRowProps = Pick<ToolCallMessagePartProps, 'toolName' | 'toolCallId'
 
 type RowOutcome = 'complete' | 'error' | 'skipped';
 
+/**
+ * Threads saved before the tool redesign (2026-10-14) hold rows for the old tools. They are
+ * drawn under the subject the new tools use (tools.rows.<subject>); a bare tool name is never shown.
+ */
+const LEGACY_SUBJECTS: Readonly<Record<string, string>> = {
+  get_timing: 'read_period',
+  get_period_reading: 'read_period',
+  get_period_detail: 'read_period',
+  get_trip_context: 'read_period',
+  resolve_place: 'place',
+  time_travel: 'travel',
+  get_natal_summary: 'context',
+  get_chart_facts: 'context',
+  get_current_datetime: 'context',
+};
+
+function isLegacy(toolName: string): boolean {
+  return Object.hasOwn(LEGACY_SUBJECTS, toolName);
+}
+
+/** An old row recorded a failure as {code} or {error}; a new read_period ask may carry a code and still be complete. */
+function legacyFailed(result: unknown): boolean {
+  const old = result as { code?: unknown; error?: unknown } | null | undefined;
+  return old?.code !== undefined || old?.error !== undefined;
+}
+
 /** Skipped (answered without running) is its own neutral outcome; then a failure; else complete. */
-function outcomeOf(isError: boolean | undefined, result: unknown, artifact: unknown): RowOutcome {
+function outcomeOf(toolName: string, isError: boolean | undefined, result: unknown, artifact: unknown): RowOutcome {
   if (isError !== true && (artifact as { status?: unknown } | null | undefined)?.status === 'skipped') return 'skipped';
   // A returned "unavailable" (read_period's typed reasons) is a lookup that got nothing. An ask (needs_place, a place to pick) completed.
+  if (isLegacy(toolName) && legacyFailed(result)) return 'error';
   return isError === true || (result as { available?: unknown } | null)?.available === false ? 'error' : 'complete';
 }
 
@@ -81,6 +108,7 @@ function periodText(start: string, end: string, language: string): string {
 
 /** What the call was about: the tool, in plain words. */
 function subjectOf(toolName: string, translate: (key: string) => string): string {
+  if (isLegacy(toolName)) return translate(`tools.rows.${LEGACY_SUBJECTS[toolName]}`);
   return Object.hasOwn(CHAT_TOOL_CATALOG, toolName) ? translate(`tools.rows.${toolName}`) : toolName;
 }
 
@@ -109,7 +137,7 @@ function pretty(value: unknown): string {
 export function ToolCallRow({ toolName, toolCallId, args, result, isError, artifact }: ToolCallRowProps) {
   const { t, i18n } = useTranslation('chat');
   const [open, setOpen] = useState(false);
-  const outcome = outcomeOf(isError, result, artifact);
+  const outcome = outcomeOf(toolName, isError, result, artifact);
   const summary = summaryOf(toolName, result, i18n.language || 'en', (key) => t(key));
   return (
     <details className={`mb-2 rounded-lg border border-ui-border bg-background-tertiary/60 px-3 py-2 text-xs ${outcome === 'skipped' ? 'text-text-muted' : 'text-text-secondary'}`}
