@@ -17,7 +17,7 @@ from almamesh.transits.exact import LAGNA_POINT
 from almamesh.transits.natal import whole_sign_house
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Callable, Mapping
 
 
 @dataclass(frozen=True)
@@ -61,15 +61,24 @@ class NatalFrame:
         return bool(houses & target.houses)
 
 
+def _no_activation() -> float:
+    return 0.0
+
+
 @dataclass(frozen=True)
 class MonthSky:
-    """One month: running lords per level, the Yogini lord, slow signs, exact contacts."""
+    """One month: running lords per level, the Yogini lord, slow signs, exact contacts.
+
+    ``obstacles`` is the engine's own obstacles-theme activation for the month (0..1),
+    computed lazily: it costs a full predictive run, so only the disputes target asks.
+    """
 
     running: tuple[frozenset[PlanetName], ...]  # maha, antar, pratyantar
     yogini_lord: PlanetName | None
     signs: Mapping[PlanetName, int]  # sign index at mid-month
     # (mover, natal point) pairs within the exact-transit orb at some instant of the month
     contacts: frozenset[tuple[PlanetName, str]] = frozenset()
+    obstacles: Callable[[], float] = _no_activation
 
 
 class IndicatorFamily(Protocol):
@@ -182,6 +191,27 @@ class ExactTransits:
         return contact_score(month.contacts, movers, natal.relevant_points(target), lords)
 
 
+# The harness-computed disputes target (legal, accident); see mapping._DISPUTES.
+DISPUTES_TARGET: Final[Target] = Target(
+    houses=frozenset({6, 8, 12}),
+    karakas=frozenset({PlanetName.SATURN, PlanetName.RAHU, PlanetName.MARS}),
+)
+
+
+class EngineObstacles:
+    """The engine's obstacles-domain activation, for the disputes target only.
+
+    Amendment 2026-10-14 (b): the shipped period reading's obstacles theme
+    strength (agreeing techniques plus a dated window, 0-100%) divided by 100.
+    Every other target scores 0, so its ranking is unchanged.
+    """
+
+    name: ClassVar[str] = "engine_obstacles"
+
+    def score(self, natal: NatalFrame, month: MonthSky, target: Target) -> float:
+        return month.obstacles() if target == DISPUTES_TARGET else 0.0
+
+
 FAMILIES: Final[tuple[IndicatorFamily, ...]] = (
     VimshottariLords(),
     VimshottariOccupants(),
@@ -192,6 +222,9 @@ FAMILIES: Final[tuple[IndicatorFamily, ...]] = (
     TransitNodes(),
     ExactTransits(),
 )
+# Amendment (f5): scored only by the +OBSTACLES run, lazily (a full predictive run per month),
+# so it stays out of FAMILIES and out of the pre-registration digest of the v1 + exact set.
+ENGINE_OBSTACLES: Final[EngineObstacles] = EngineObstacles()
 SHIPPED_FAMILIES: Final[frozenset[str]] = frozenset(
     {"vimshottari_lords", "yogini", "transit_jupiter_saturn", "double_transit"}
 )
@@ -209,6 +242,8 @@ def family_scores(natal: NatalFrame, month: MonthSky, target: Target) -> dict[st
 
 
 __all__ = [
+    "DISPUTES_TARGET",
+    "ENGINE_OBSTACLES",
     "FAMILIES",
     "SHIPPED_FAMILIES",
     "SKY_GRAHAS",

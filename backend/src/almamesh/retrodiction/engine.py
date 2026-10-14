@@ -7,15 +7,18 @@ of the same native cost one ephemeris read per month.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+from functools import cache, partial
 from typing import TYPE_CHECKING, Final
 
 from almamesh.calculations import calculate_sidereal_context
 from almamesh.constants.astrology import PlanetName
 from almamesh.dasha.depth import level_spans
 from almamesh.dasha.yogini import compute_yogini_periods
+from almamesh.predictive import compute_predictive_contexts
 from almamesh.retrodiction.indicators import SKY_GRAHAS, MonthSky, NatalFrame
 from almamesh.transits.exact import MOVERS, ContactBook, astro_movers, natal_points
+from almamesh.schemas.domains import LifeDomain
 from almamesh.transits.natal import natal_lagna_index, natal_moon_index, sign_index
 from almamesh.transits.positions import EPHEMERIS_LAST_INSTANT, transit_longitude
 
@@ -70,6 +73,7 @@ class SubjectEngine:
         astronomy: SkyfieldAstronomy,
         movers: Collection[PlanetName] = MOVERS,
     ) -> None:
+        self._birth = birth
         self._birth_utc = birth.datetime.astimezone(UTC)
         self._astronomy = astronomy
         self._natal = calculate_sidereal_context(
@@ -116,12 +120,37 @@ class SubjectEngine:
             yogini_lord=_yogini_lord(self._yogini, mid),
             signs=self._signs(mid),
             contacts=self._contacts.month(start, end),
+            obstacles=cache(partial(obstacles_activation, self._birth, ym)),
         )
 
     def _signs(self, mid: datetime) -> dict[PlanetName, int]:
         signs = {g: sign_index(transit_longitude(self._astronomy, g, mid)) for g in SKY_GRAHAS}
         signs[PlanetName.KETU] = (signs[PlanetName.RAHU] + 6) % 12
         return signs
+
+
+def obstacles_activation(birth: Birth, ym: YearMonth) -> float:
+    """The app's own month reading: the obstacles theme's strength, 0..1.
+
+    Exactly the predictive entry the app calls for a month: reference instant at the
+    1st, a one-month window, the reading ending on the month's last day.
+    """
+    offset = birth.datetime.utcoffset()
+    if offset is None:
+        raise ValueError("birth datetime needs its UTC offset")
+    last_day = (month_start(add_months(ym, 1)) - timedelta(days=1)).date()
+    contexts = compute_predictive_contexts(
+        birth.datetime,
+        birth.latitude,
+        birth.longitude,
+        month_start(ym),
+        civil_offset=offset,
+        window_months=1,
+        reading_end=last_day,
+    )
+    themes = contexts.period_reading.themes
+    theme = next(t for t in themes if t.domain == LifeDomain.OBSTACLES)
+    return theme.strength_pct / 100
 
 
 def _yogini_lord(periods: list[YoginiPeriod], instant: datetime) -> PlanetName | None:
@@ -137,4 +166,5 @@ __all__ = [
     "add_months",
     "birth_in_range",
     "month_start",
+    "obstacles_activation",
 ]

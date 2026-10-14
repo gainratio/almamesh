@@ -83,3 +83,9 @@ def test_should_add_mars_only_for_natives_with_a_disputes_event() -> None:
     legal = [*career, LifeEvent(category="legal", date="2012-11", precision="month")]
     assert movers_for(career) == SLOW_MOVERS
     assert movers_for(legal) == SLOW_MOVERS | {P.MARS}
+
+
+def test_a_month_carries_the_engine_obstacles_activation(engine: SubjectEngine) -> None:
+    # The app's own month reading for this native: obstacles 75% in Jan 2019, 100% in Mar 2019.
+    assert engine.month((2019, 1)).obstacles() == 0.75
+    assert engine.month((2019, 3)).obstacles() == 1.0

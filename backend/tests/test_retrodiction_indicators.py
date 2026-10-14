@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from almamesh.constants.astrology import PlanetName as P
 from almamesh.retrodiction.indicators import (
+    ENGINE_OBSTACLES,
     FAMILIES,
     SHIPPED_FAMILIES,
     MonthSky,
@@ -51,6 +54,8 @@ def _sky(*running: set[P], yogini: P | None = None, **signs: int) -> MonthSky:
 
 
 def _score(name: str, sky: MonthSky, target: Target = CAREER) -> float:
+    if name == ENGINE_OBSTACLES.name:
+        return ENGINE_OBSTACLES.score(FRAME, sky, target)
     return family_scores(FRAME, sky, target)[name]
 
 
@@ -155,3 +160,16 @@ def test_should_count_the_lagna_when_the_first_house_is_a_target() -> None:
     sky = _contacts((P.RAHU, "lagna"))
     assert _score("exact_transits", sky, HEALTH) == 0.5
     assert _score("exact_transits", sky, CAREER) == 0.0
+
+
+def test_engine_obstacles_reads_the_engine_activation_for_the_disputes_target() -> None:
+    sky = replace(_sky({P.MOON}, {P.MOON}, {P.MOON}), obstacles=lambda: 0.75)
+    assert _score("engine_obstacles", sky, DISPUTES) == 0.75
+
+
+def test_engine_obstacles_is_silent_and_lazy_for_any_other_target() -> None:
+    def boom() -> float:
+        raise AssertionError("the engine must not run for a non-disputes target")
+
+    sky = replace(_sky({P.MOON}, {P.MOON}, {P.MOON}), obstacles=boom)
+    assert _score("engine_obstacles", sky, CAREER) == 0.0
