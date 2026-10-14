@@ -343,7 +343,8 @@ test.describe('full-tier desktop semantic memory report', () => {
 
 /**
  * City reference data is lazy: not requested at boot, imported in bounded
- * same-origin parts by the first resolve_place, then queried from SQLite.
+ * same-origin parts by the first place lookup (read_period or travel naming a
+ * city), then queried from SQLite.
  * Service-worker precaching does not count as the page importing the data.
  * Needs the VITE_EXIT_GATE_HOOKS=1 build (window.__almameshResolvePlace).
  * PLACE_CPU_THROTTLE=4 re-runs the cold first lookup on a 4x slower CPU.

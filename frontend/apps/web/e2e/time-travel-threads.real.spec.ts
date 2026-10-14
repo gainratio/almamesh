@@ -109,7 +109,9 @@ test('[real] a trip to May 2019 in Singapore grounds itself through its tools an
   expect(evidence.model, 'the configured e2e model answered, not the product default').toBe(MODEL);
   expect(evidence.firstToolChoice, 'the first trip round must call a tool').toBe('required');
   expect(toolRows.length, 'the transcript shows the tool calls').toBeGreaterThan(0);
-  expect(toolRows.every((name) => ['get_natal_summary', 'get_trip_context', 'get_timing', 'get_period_reading', 'get_period_detail'].includes(name ?? '')), JSON.stringify(toolRows)).toBe(true);
+  // Tool layer redesign (2026-10-14): the trip's one read tool is read_period (it replaced get_natal_summary,
+  // get_trip_context, get_timing, get_period_reading and get_period_detail). A question is not a move: no travel row.
+  expect(toolRows.every((name) => name === 'read_period'), JSON.stringify(toolRows)).toBe(true);
   expect(answerText, 'the answer names the trip place').toMatch(/Singapore/i);
   expect(answerText, 'the answer names the dasha').toMatch(/Rahu/i);
   expect(consoleErrors, 'the journey must keep a clean console').toEqual([]);

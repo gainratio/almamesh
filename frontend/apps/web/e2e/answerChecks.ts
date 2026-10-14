@@ -91,7 +91,35 @@ function textMisses(answer: string, facts: AnswerFacts): string[] {
   return misses;
 }
 
-export type { AnswerFacts };
+/** A transcript tool row as the matrix reads it (name, status, the result the model got). */
+interface RangeRow {
+  readonly name: string;
+  readonly status: string;
+  readonly result: unknown;
+}
+
+/** The range one call must cover: it starts on or before `startBy` and ends on `end`. */
+interface RangeCall {
+  readonly startBy: string;
+  readonly end: string;
+}
+
+const RANGE_CALL_MISS = 'T3 not read in one range call';
+
+/**
+ * T3 ("What about the rest of 2019?", chat tool layer redesign 2026-10-14): exactly one complete
+ * read_period call in the turn, over a range that starts by `startBy` and ends on `end`. Month by
+ * month reads, or a read that stops short, are a miss.
+ */
+function rangeCallMisses(rows: readonly RangeRow[], range: RangeCall): string[] {
+  const reads = rows.filter((row) => row.name === 'read_period' && row.status === 'complete');
+  const period = (reads[0]?.result as { readonly period?: { readonly start?: unknown; readonly end?: unknown } } | null | undefined)?.period;
+  const start = typeof period?.start === 'string' ? period.start : undefined;
+  const one = reads.length === 1 && start !== undefined && start <= range.startBy && period?.end === range.end;
+  return one ? [] : [RANGE_CALL_MISS];
+}
+
+export type { AnswerFacts, RangeCall, RangeRow };
 export {
   CONFIDENCE,
   DATED_WINDOW,
@@ -103,9 +131,11 @@ export {
   OBSTACLES_FACTOR,
   OBSTACLES_MEANING,
   ORDINAL_WORDS,
+  RANGE_CALL_MISS,
   RULES,
   SEP_25,
   obstaclesMisses,
+  rangeCallMisses,
   tableConfidence,
   tagPattern,
   textMisses,

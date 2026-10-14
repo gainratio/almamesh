@@ -289,11 +289,12 @@ test('[contract/stubbed] an 18-month period is one engine run with Mars, nodes a
 
 /**
  * Journey 3 (spec 2026-10-08, Inc C, coordinator rulings 2026-10-09, P4/P8/P9):
- * June (30 days, a week or longer) with two places is read once with get_timing
- * alone, and the model says the places don't change it (P9: no resolve_place);
- * "the 15th" reuses the place the user named for that half (P4: resolve first,
- * then get_timing, two rounds); "3 pm on 3 July" has no place, so get_timing
- * answers needs_place and the model asks; "Bogotá" reads the event there. No
+ * June (30 days, a week or longer) with two places is read once with read_period
+ * and no place, and the model says the places don't change it (P9: no place
+ * lookup); "the 15th" reads the day with the place the user named for that half
+ * (P4: read_period resolves it on the device, one call); "3 pm on 3 July" has no
+ * place, so read_period answers needs_place and the model asks; "Bogotá" reads
+ * the event there. No
  * request may leave the app origin, except provider calls that this test's own
  * route handler fulfilled (they never reach the network). Nothing the model is
  * sent may carry a coordinate, the device zone or the birth place.
@@ -317,7 +318,7 @@ interface CityRow {
   lon: number;
 }
 
-/** The bundled offline city list resolve_place reads (the rows whose coordinates must never leave). */
+/** The bundled offline city list read_period's place lookup reads (the rows whose coordinates must never leave). */
 const CITY_ROWS = JSON.parse(
   readFileSync(new URL('../src/data/cities.min.json', import.meta.url), 'utf8'),
 ) as CityRow[];
