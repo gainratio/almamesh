@@ -14,6 +14,10 @@
     "./layman-jargon": {
       "types": "./src/layman-jargon.ts",
       "import": "./src/layman-jargon.ts"
+    },
+    "./toolLoop": {
+      "types": "./src/toolLoop.ts",
+      "import": "./src/toolLoop.ts"
     }
   },
   "scripts": {
@@ -24,8 +28,11 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
+    "@ai-sdk/openai-compatible": "3.0.68",
     "@almamesh/browser": "workspace:*",
-    "@almamesh/shared-types": "workspace:*"
+    "@almamesh/shared-types": "workspace:*",
+    "ai": "7.0.140",
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "@typescript/native": "npm:typescript@^7.0.2",
