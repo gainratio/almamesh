@@ -8,6 +8,7 @@ import type { ProviderConfig } from "../config";
 import { ReasoningTimeoutError } from "../reasoning";
 import {
   ANSWER_TOOL_DESCRIPTION,
+  NETWORK_RETRY_DELAY_MS,
   TOOL_LOOP_LIMITS,
   TOOL_TIMEOUT_MS,
   TOOLS_UNAVAILABLE_INSTRUCTION,
@@ -719,15 +720,26 @@ describe("tool calls written as text (deepseek DSML)", () => {
 });
 
 describe("error branches", () => {
-  it("a network failure keeps its own TypeError, so the app classifies it as unreachable", async () => {
-    const { fetchImpl } = fakeEndpoint([{ networkError: "browser" }]);
-    const failure = await collect(runToolTurn(options(fetchImpl))).catch((e: unknown) => e);
-    expect(failure).toBeInstanceOf(TypeError);
-    expect((failure as Error).message).toBe("Failed to fetch");
+  // Task 10e: a browser network failure is retried once by the seam (see "network retry"), so
+  // this needs two failures in a row; what surfaces is still the browser's own TypeError.
+  it("a network failure that outlasts its one retry keeps its own TypeError, so the app classifies it as unreachable", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const { fetchImpl, requests } = fakeEndpoint([{ networkError: "browser" }, { networkError: "browser" }]);
+      const pending = collect(runToolTurn(options(fetchImpl))).catch((e: unknown) => e);
+      await vi.advanceTimersByTimeAsync(NETWORK_RETRY_DELAY_MS);
+      const failure = await pending;
+      expect(failure).toBeInstanceOf(TypeError);
+      expect((failure as Error).message).toBe("Failed to fetch");
+      expect(requests).toHaveLength(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
-  // Task 10d turned SDK retries on: a refused connection is retried twice (2 s, then 4 s backoff)
-  // before it reads as unreachable. Fake timers skip the backoff.
+  // CONTRACT REVERSAL (Task 10d, 43092b5a): a refused connection used to fail on its one request
+  // (maxRetries: 0). SDK retries are now on, so it is retried twice (2 s, then 4 s backoff) before
+  // it reads as unreachable. Fake timers skip the backoff.
   it("a status-less SDK network error is retried twice, then is an LlmRequestError that says unreachable", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     try {
@@ -754,6 +766,8 @@ describe("error branches", () => {
     expect(requests).toHaveLength(1);
   });
 
+  // CONTRACT REVERSAL (Task 10d, 43092b5a): this test sent ONE request (maxRetries: 0). A 500 is
+  // now retried twice by the SDK, so three requests go out before the outage surfaces.
   it("a 500 that mentions tools is an outage, not a tools rejection", async () => {
     const outage = { status: 500, errorBody: "tools are not supported right now", retryAfterMs: 0 };
     const { fetchImpl, requests } = fakeEndpoint([outage, outage, outage]);
@@ -893,5 +907,89 @@ describe("fix round 1", () => {
     const failure = await collect(runToolTurn(o)).catch((e: unknown) => e);
     expect(failure).toMatchObject({ name: "AbortError" });
     expect(o.toolCalls.filter((e) => e.status === "error")).toEqual([]);
+  });
+});
+
+// Task 10e: a model request that dies at the network layer (a browser fetch TypeError, no HTTP
+// status: "Failed to fetch" in Chromium, "Load failed" in Safari) is sent once more after a short
+// pause. The SDK does not retry these (it only retries a TypeError with a cause). Only the model
+// request is repeated: a tool that already ran is not run again.
+describe("network retry", () => {
+  async function withFakeTimers<T>(run: () => Promise<T>): Promise<T> {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      return await run();
+    } finally {
+      vi.useRealTimers();
+    }
+  }
+
+  it("pins the pause at 1 s", () => {
+    expect(NETWORK_RETRY_DELAY_MS).toBe(1_000);
+  });
+
+  it.each(["browser", "safari"] as const)("a %s fetch failure is sent once more after the pause, and the turn completes", async (kind) => {
+    await withFakeTimers(async () => {
+      const { fetchImpl, requests } = fakeEndpoint([{ networkError: kind }, answer("a1")]);
+      const o = options(fetchImpl);
+      const pending = collect(runToolTurn(o));
+      await vi.advanceTimersByTimeAsync(NETWORK_RETRY_DELAY_MS - 1);
+      expect(requests).toHaveLength(1);
+      await vi.advanceTimersByTimeAsync(1);
+      const { result } = await pending;
+      expect(result).toEqual({ answer: { headline: "Venus rises", body: "Steady work." } });
+      expect(requests).toHaveLength(2);
+      expect(requests[1]?.body).toEqual(requests[0]?.body);
+    });
+  });
+
+  it("does not re-run a tool that already ran: only the failed model request is sent again", async () => {
+    await withFakeTimers(async () => {
+      const seen: PeriodInput[] = [];
+      const { fetchImpl, requests } = fakeEndpoint([read("c1"), { networkError: "browser" }, answer("a1")]);
+      const o = options(fetchImpl, { tools: asTools(readPeriod(seen)) });
+      const pending = collect(runToolTurn(o));
+      await vi.advanceTimersByTimeAsync(NETWORK_RETRY_DELAY_MS);
+      await pending;
+      expect(seen).toHaveLength(1);
+      expect(requests).toHaveLength(3);
+      expect(o.toolCalls.map((e) => [e.toolName, e.status])).toEqual([["read_period", "complete"], ["answer", "complete"]]);
+    });
+  });
+
+  it("a turn cancelled during the pause sends nothing more", async () => {
+    await withFakeTimers(async () => {
+      const controller = new AbortController();
+      const { fetchImpl, requests } = fakeEndpoint([{ networkError: "browser" }, answer("a1")]);
+      const pending = collect(runToolTurn(options(fetchImpl, { signal: controller.signal }))).catch((e: unknown) => e);
+      await vi.advanceTimersByTimeAsync(NETWORK_RETRY_DELAY_MS / 2);
+      controller.abort();
+      await vi.advanceTimersByTimeAsync(NETWORK_RETRY_DELAY_MS);
+      // Quietly: the turn ends as a cancellation (the app shows no error bubble), not as the network failure.
+      expect(await pending).toMatchObject({ name: "AbortError" });
+      expect(requests).toHaveLength(1);
+    });
+  });
+
+  it("an aborted request is never retried", async () => {
+    const controller = new AbortController();
+    const { fetchImpl, requests } = fakeEndpoint([{ hangFetch: true }, answer("a1")]);
+    const pending = collect(runToolTurn(options(fetchImpl, { signal: controller.signal }))).catch((e: unknown) => e);
+    await vi.waitFor(() => expect(requests).toHaveLength(1));
+    controller.abort();
+    await pending;
+    await new Promise((resolve) => setTimeout(resolve, NETWORK_RETRY_DELAY_MS + 50));
+    expect(requests).toHaveLength(1);
+  });
+
+  it("any other fetch error is not retried by the seam", async () => {
+    const failing = (async () => {
+      calls += 1;
+      throw new TypeError("Invalid header value");
+    }) as typeof fetch;
+    let calls = 0;
+    const failure = await collect(runToolTurn(options(failing))).catch((e: unknown) => e);
+    expect(failure).toBeInstanceOf(TypeError);
+    expect(calls).toBe(1);
   });
 });

@@ -29,7 +29,7 @@ export interface FakeTurn {
   /** Never even send headers; reject the fetch when the request is aborted. */
   readonly hangFetch?: boolean;
   /** Fail like a network error (no HTTP status): a browser's or Node's fetch. */
-  readonly networkError?: "browser" | "node";
+  readonly networkError?: "browser" | "safari" | "node";
 }
 
 export interface RecordedRequest {
@@ -131,6 +131,7 @@ export function fakeEndpoint(turns: readonly FakeTurn[]): FakeEndpoint {
     const turn = turns[requests.length - 1];
     if (!turn) throw new Error(`unexpected request #${requests.length}`);
     if (turn.networkError === "browser") throw new TypeError("Failed to fetch");
+    if (turn.networkError === "safari") throw new TypeError("Load failed");
     if (turn.networkError === "node") {
       throw new TypeError("fetch failed", { cause: Object.assign(new Error("connect ECONNREFUSED 127.0.0.1:11434"), { code: "ECONNREFUSED" }) });
     }

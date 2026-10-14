@@ -172,6 +172,8 @@ export const BUDGET_INSTRUCTION =
 const SKIPPED_NOTE = "This turn already read enough; answer from the readings above.";
 const PROSE_INSTRUCTION = "Write the answer as plain prose.";
 const MAX_ERROR_BODY_CHARS = 500;
+/** The pause before a model request that failed at the network layer is sent once more. */
+export const NETWORK_RETRY_DELAY_MS = 1_000;
 /** The AI SDK's own default: two retries of a transient HTTP failure inside one request. */
 const SDK_MAX_RETRIES = 2;
 const PROVIDER_NAME = "almamesh";
@@ -433,12 +435,48 @@ function endpointHonoursStrict(config: ProviderConfig): boolean {
   return isOpenRouter(config) && /^~?openai\//.test(config.model);
 }
 
+/** A browser's own fetch failure: no HTTP status, no cause (Chromium, Safari, Firefox wording). */
+const BROWSER_NETWORK_FAILURE = /^(Failed to fetch|Load failed|NetworkError when attempting to fetch resource\.?)$/;
+
+function isBrowserNetworkFailure(error: unknown): boolean {
+  return error instanceof TypeError && BROWSER_NETWORK_FAILURE.test(error.message);
+}
+
+/** Resolves after `ms`, or rejects with the signal's reason the moment it aborts. */
+function pause(ms: number, signal: AbortSignal | null | undefined): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) return reject(signal.reason);
+    const timer = setTimeout(resolve, ms);
+    signal?.addEventListener("abort", () => {
+      clearTimeout(timer);
+      reject(signal.reason);
+    }, { once: true });
+  });
+}
+
+/**
+ * Sends a model request once more after {@link NETWORK_RETRY_DELAY_MS} when the browser's fetch
+ * fails with no status ("Failed to fetch"): the SDK does not retry those. An aborted request is
+ * never retried. This wraps the model's fetch only, so a tool never runs twice.
+ */
+function retryNetworkOnce(inner: typeof fetch): typeof fetch {
+  return (async (input: string | URL | Request, init?: RequestInit) => {
+    try {
+      return await inner(input, init);
+    } catch (error) {
+      if (!isBrowserNetworkFailure(error) || init?.signal?.aborted) throw error;
+      await pause(NETWORK_RETRY_DELAY_MS, init?.signal);
+      return inner(input, init);
+    }
+  }) as typeof fetch;
+}
+
 function chatModel(o: RunToolTurnOptions<unknown>): LanguageModel {
   const guarded = guardedFetch(o.config.baseUrl, o.fetchImpl);
-  const checked = ((input: string | URL | Request, init?: RequestInit) => {
+  const checked = retryNetworkOnce(((input: string | URL | Request, init?: RequestInit) => {
     ensurePrivacy(o.config); // re-checked before every request
     return guarded(input, init);
-  }) as typeof fetch;
+  }) as typeof fetch);
   const provider = createOpenAICompatible({
     name: PROVIDER_NAME,
     baseURL: o.config.baseUrl,
