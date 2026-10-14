@@ -46,7 +46,7 @@ function isReading(value: unknown): value is ReadingLike {
 /** A reading the context budget sent compact: its grounding facts (chatTurn.ts, readPeriodGrounding). */
 interface CompactReading {
   readonly compacted: true;
-  readonly period: { readonly label?: string };
+  readonly period: { readonly start: string; readonly end: string; readonly label?: string };
   readonly place?: { readonly label?: string };
   readonly maha: readonly string[];
   readonly antar: readonly string[];

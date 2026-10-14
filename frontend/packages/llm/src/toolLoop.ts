@@ -259,9 +259,14 @@ function fillMissingNullables(input: z.ZodType, value: unknown): unknown {
   return filled;
 }
 
-/** The strict (all-required) JSON schema the endpoint sees. */
+const wireSchemas = new WeakMap<z.ZodType, JSONSchema7>();
+
+/** The strict (all-required) JSON schema the endpoint sees; computed once per schema. */
 function wireSchema(input: z.ZodType): JSONSchema7 {
+  const cached = wireSchemas.get(input);
+  if (cached) return cached;
   const { $schema: _dialect, ...schema } = z.toJSONSchema(input, { target: "draft-7", unrepresentable: "any" });
+  wireSchemas.set(input, schema as JSONSchema7);
   return schema as JSONSchema7;
 }
 
@@ -340,8 +345,13 @@ interface TurnBudget {
   calibration: TokenCalibration | undefined;
   /** The budget closed the turn: every later request is a forced answer. */
   closed: boolean;
-  /** The request in flight, settled by its finish-step. */
-  pending: RequestPlan | undefined;
+  /**
+   * Each round's plan and the provider's count for it, by 1-based round. Keyed, not
+   * "the request in flight": the SDK plans round N+1 on its own schedule, which need
+   * not wait for this loop to read round N's finish-step.
+   */
+  readonly plans: Map<number, RequestPlan>;
+  readonly reported: Map<number, number>;
 }
 
 interface RequestPlan {
@@ -436,7 +446,7 @@ function turnBudget<A>(o: RunToolTurnOptions<A>): TurnBudget {
   const definitions = new Map<string, unknown>(o.tools.map((t) => [t.name, wireDefinition(t.name, t.description, t.input)]));
   definitions.set(ANSWER_TOOL_NAME, wireDefinition(ANSWER_TOOL_NAME, ANSWER_TOOL_DESCRIPTION, o.answer.schema));
   const compactors = new Map(o.tools.flatMap((t) => (t.compact ? [[t.name, t.compact.bind(t)] as const] : [])));
-  return { limit: turnTokenBudget(o.contextTokens), definitions, compactors, calibration: undefined, closed: false, pending: undefined };
+  return { limit: turnTokenBudget(o.contextTokens), definitions, compactors, calibration: undefined, closed: false, plans: new Map(), reported: new Map() };
 }
 
 function turnContext<A>(o: RunToolTurnOptions<A>): TurnContext {
@@ -545,20 +555,20 @@ function withBudgetNote(messages: readonly ModelMessage[]): ModelMessage[] {
   return noted ? [...messages] : [...messages, { role: "system", content: BUDGET_INSTRUCTION }];
 }
 
-function send(budget: TurnBudget, plan: RequestPlan, step: StepPlan): StepPlan {
-  budget.pending = plan;
+function send(budget: TurnBudget, round: number, plan: RequestPlan, step: StepPlan): StepPlan {
+  budget.plans.set(round, plan);
   return step;
 }
 
 /** The budget closed the turn: answer now, with only the answer tool; the newest results go compact only if they must. */
-function forcedAnswer(budget: TurnBudget, messages: readonly ModelMessage[]): StepPlan {
+function forcedAnswer(budget: TurnBudget, round: number, messages: readonly ModelMessage[]): StepPlan {
   const force = { toolChoice: { type: "tool", toolName: ANSWER_TOOL_NAME }, activeTools: [ANSWER_TOOL_NAME] } as const;
   const noted = withBudgetNote(messages);
   const lean = compactMessages(budget, noted, true);
   const plan = planOf(budget, lean, [ANSWER_TOOL_NAME]);
-  if (plan.estimate <= budget.limit) return send(budget, plan, { ...force, messages: lean });
+  if (plan.estimate <= budget.limit) return send(budget, round, plan, { ...force, messages: lean });
   const leanest = compactMessages(budget, noted, false);
-  return send(budget, planOf(budget, leanest, [ANSWER_TOOL_NAME]), { ...force, messages: leanest });
+  return send(budget, round, planOf(budget, leanest, [ANSWER_TOOL_NAME]), { ...force, messages: leanest });
 }
 
 /**
@@ -566,24 +576,35 @@ function forcedAnswer(budget: TurnBudget, messages: readonly ModelMessage[]): St
  * else close the turn with a forced answer. A read-first round still reads (its
  * prompt alone may be over); the system prompt and the question are never cut.
  */
-function fitStep(ctx: TurnContext, messages: readonly ModelMessage[], choice: StepPlan, readFirst: boolean): StepPlan {
+function fitStep(ctx: TurnContext, round: number, messages: readonly ModelMessage[], choice: StepPlan, readFirst: boolean): StepPlan {
   const { budget } = ctx;
-  if (budget.closed) return forcedAnswer(budget, messages);
+  if (budget.closed) return forcedAnswer(budget, round, messages);
   const tools = (choice.activeTools as readonly string[] | undefined) ?? [...budget.definitions.keys()];
   const full = planOf(budget, messages, tools);
-  if (full.estimate <= budget.limit) return send(budget, full, choice);
+  if (full.estimate <= budget.limit) return send(budget, round, full, choice);
   const older = compactMessages(budget, messages, true);
   const lean = planOf(budget, older, tools);
-  if (lean.estimate <= budget.limit || mustReadFirst(ctx, readFirst)) return send(budget, lean, { ...choice, messages: older });
+  if (lean.estimate <= budget.limit || mustReadFirst(ctx, readFirst)) return send(budget, round, lean, { ...choice, messages: older });
   budget.closed = true;
-  return forcedAnswer(budget, messages);
+  return forcedAnswer(budget, round, messages);
 }
 
-/** After a request: calibrate later estimates by the provider's own count. */
-function settleRound(budget: TurnBudget, inputTokens: number | undefined): Pick<RoundEvent, "estimate" | "estimated" | "budget" | "compacted"> {
-  const plan = budget.pending ?? { raw: 0, estimate: 0, compacted: 0 };
-  budget.pending = undefined;
-  if (inputTokens !== undefined && plan.raw > 0) budget.calibration = { estimate: plan.raw, reported: inputTokens };
+/** Calibrate later estimates by the provider's count for `round`, paired with that round's own plan. */
+function calibrate(budget: TurnBudget, round: number, inputTokens: number | undefined): void {
+  const plan = budget.plans.get(round);
+  if (inputTokens !== undefined && plan !== undefined && plan.raw > 0) budget.calibration = { estimate: plan.raw, reported: inputTokens };
+}
+
+/** Plan round `round`, calibrated first by the round before it (the SDK's step, else what this loop recorded). */
+function planRound(ctx: TurnContext, round: number, previousInput: number | undefined, messages: readonly ModelMessage[], choice: StepPlan, readFirst: boolean): StepPlan {
+  calibrate(ctx.budget, round - 1, previousInput ?? ctx.budget.reported.get(round - 1));
+  return fitStep(ctx, round, messages, choice, readFirst);
+}
+
+/** A finished round's budget fields, from its own plan. */
+function roundBudget(budget: TurnBudget, round: number, inputTokens: number | undefined): Pick<RoundEvent, "estimate" | "estimated" | "budget" | "compacted"> {
+  if (inputTokens !== undefined) budget.reported.set(round, inputTokens);
+  const plan = budget.plans.get(round) ?? { raw: 0, estimate: 0, compacted: 0 };
   return { estimate: plan.estimate, estimated: inputTokens === undefined, budget: budget.limit, compacted: plan.compacted };
 }
 
@@ -750,7 +771,7 @@ function onStartStep<A>(o: RunToolTurnOptions<A>, state: TurnState): void {
 function onFinishStep<A>(part: PartOf<"finish-step">, o: RunToolTurnOptions<A>, ctx: TurnContext, state: TurnState): void {
   state.finishedRounds += 1;
   const finishReason = state.stepWroteText ? "text_instead_of_tool" : part.finishReason;
-  const usage = settleRound(ctx.budget, part.usage.inputTokens);
+  const usage = roundBudget(ctx.budget, state.round, part.usage.inputTokens);
   o.onRound?.({ round: state.round, inputTokens: part.usage.inputTokens, outputTokens: part.usage.outputTokens, finishReason, ...usage });
   ctx.watchdog.arm(); // the next request starts now
 }
@@ -801,7 +822,10 @@ async function* streamRounds<A>(o: RunToolTurnOptions<A>, ctx: TurnContext, stat
     messages,
     tools: ctx.tools,
     stopWhen: [validAnswer, stepCountIs(ctx.maxRounds - offset)],
-    prepareStep: ({ stepNumber, messages: step }) => fitStep(ctx, step, roundChoice(offset + stepNumber + 1, ctx, o.readFirst), o.readFirst),
+    prepareStep: ({ stepNumber, steps, messages: step }) => {
+      const round = offset + stepNumber + 1;
+      return planRound(ctx, round, steps.at(-1)?.usage.inputTokens, step, roundChoice(round, ctx, o.readFirst), o.readFirst);
+    },
   });
   ctx.watchdog.arm();
   for await (const part of result.fullStream) {
@@ -898,10 +922,12 @@ async function* proseSnapshots(ctx: TurnContext, prefix: string, request: ProseR
 async function* proseFallback<A>(o: RunToolTurnOptions<A>, ctx: TurnContext, state: TurnState, history: ModelMessage[]): AsyncGenerator<string, ToolTurnResult<A>> {
   startAnswering(o, state);
   const messages: ModelMessage[] = [...ctx.messages, ...history, { role: "system", content: PROSE_INSTRUCTION }];
-  ctx.budget.pending = planOf(ctx.budget, messages, [...ctx.budget.definitions.keys()]);
+  const round = state.round + 1;
+  calibrate(ctx.budget, state.round, ctx.budget.reported.get(state.round));
+  ctx.budget.plans.set(round, planOf(ctx.budget, messages, [...ctx.budget.definitions.keys()]));
   const finished = yield* proseSnapshots(ctx, "", { messages, tools: ctx.tools });
-  const usage = settleRound(ctx.budget, finished?.usage.inputTokens);
-  o.onRound?.({ round: state.round + 1, inputTokens: finished?.usage.inputTokens, outputTokens: finished?.usage.outputTokens, finishReason: "answer_fallback", ...usage });
+  const usage = roundBudget(ctx.budget, round, finished?.usage.inputTokens);
+  o.onRound?.({ round, inputTokens: finished?.usage.inputTokens, outputTokens: finished?.usage.outputTokens, finishReason: "answer_fallback", ...usage });
   o.onStatus?.({ phase: "complete" });
   return { answer: undefined };
 }

@@ -236,4 +236,38 @@ describe("round telemetry", () => {
     expect(rounds[1]).toMatchObject({ compacted: 1 });
     expect(requests[1].body.tool_choice).toEqual(FORCED_ANSWER);
   });
+
+  it("a consumer that lags behind the SDK still gets each round's own estimate, and calibration pairs the right numbers", async () => {
+    // Round 1 streams a rejected answer in pieces, so the turn yields snapshots there; the caller
+    // dawdles on each one while the SDK finishes round 1 and plans round 2 on its own.
+    const rejected: FakeTurn = { calls: [{ id: "a0", name: "answer", args: ['{"head', 'line":', ' 7, "x', '": 1}'] }], usage: { prompt: 900, completion: 4 } };
+    const { fetchImpl, requests } = fakeEndpoint([rejected, { ...answer("a1"), usage: { prompt: 1_000, completion: 4 } }]);
+    const rounds: RoundEvent[] = [];
+    const turn = runToolTurn(options(fetchImpl, rounds, { contextTokens: 1_000_000 }));
+    for (;;) {
+      const next = await turn.next();
+      if (next.done) break;
+      await new Promise((resolve) => setTimeout(resolve, 40));
+    }
+    expect(rounds.map((r) => r.round)).toEqual([1, 2]);
+    const raw = requests.map(promptTokens);
+    // Round 1 is uncalibrated: its estimate is its own request's size.
+    expect(Math.abs(rounds[0].estimate - raw[0]) / raw[0]).toBeLessThan(0.05);
+    // Round 2 is calibrated by round 1's count against round 1's estimate (900 / ~raw[0]), never by round 2's own.
+    const ratio = 900 / rounds[0].estimate;
+    expect(Math.abs(rounds[1].estimate - raw[1] * ratio) / (raw[1] * ratio)).toBeLessThan(0.05);
+    expect(rounds[1].estimate).toBeGreaterThan(rounds[0].estimate);
+  });
+
+  it("a corrective restart (a tool call written as text) is still calibrated by the round before it", async () => {
+    // Round 1 writes text instead of a tool call; the provider counts ~25x our estimate. Round 2 runs
+    // in a fresh SDK loop, so its calibration must come from what this loop recorded for round 1.
+    const text: FakeTurn = { text: "<tool_call>read_period</tool_call>", usage: { prompt: 9_000, completion: 4 } };
+    const { requests, rounds } = await run([text, answer("a1")], {
+      messages: [{ role: "system", content: "s".repeat(1_000) }, { role: "user", content: QUESTION }],
+    });
+    expect(rounds[0]).toMatchObject({ round: 1, finishReason: "text_instead_of_tool" });
+    expect(rounds[1].estimate).toBeGreaterThan(SMALL_BUDGET);
+    expect(requests[1].body.tool_choice).toEqual(FORCED_ANSWER);
+  });
 });

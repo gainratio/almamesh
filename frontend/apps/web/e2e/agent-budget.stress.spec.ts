@@ -129,7 +129,8 @@ async function assertBudget(page: Page, provider: BudgetProvider, model: MockMod
   const contextLength = MOCK_MODELS.find((entry) => entry.id === model)?.context_length ?? 0;
   const budget = Math.floor(0.5 * contextLength);
   const rounds = roundRecords(model, journey, budget, provider.captured);
-  writeBudgetReport(model, journey, rounds, await appTelemetry(page));
+  const telemetry = await appTelemetry(page);
+  writeBudgetReport(model, journey, rounds, telemetry);
   console.log(JSON.stringify(turnRecords(rounds).map(({ turn, requests, peak, sum }) => ({ model, journey, turn, requests, peak, sum, budget }))));
   expect(new Set(provider.captured.map((request) => request.turn)).size, 'every turn reached the provider').toBe(turns);
   for (const request of provider.captured) {
@@ -138,6 +139,32 @@ async function assertBudget(page: Page, provider: BudgetProvider, model: MockMod
     expect.soft(pairingViolations(request.messages), `${where}: every tool_call keeps its tool message`).toEqual([]);
   }
   assertStressReached(provider, model);
+  if (model === 'mock/ctx-8k') assertAppCompacted(telemetry, budget);
+}
+
+interface AppRoundRow {
+  readonly turn: number;
+  readonly round: number;
+  readonly estimate: number;
+  readonly budget: number;
+  readonly compacted: number;
+}
+
+/**
+ * The app's own rows: each 8k turn's last (forced-answer) round carried its reading compact and its
+ * calibrated estimate fits. The wire-side chars/4 check above has only a few tokens of margin there,
+ * so it cannot tell whether compaction ran; the loop's provider-calibrated estimate can.
+ */
+function assertAppCompacted(telemetry: readonly unknown[], budget: number): void {
+  const rows = telemetry as readonly AppRoundRow[];
+  const turns = [...new Set(rows.map((row) => row.turn))];
+  expect.soft(turns.length, 'the app recorded round rows').toBeGreaterThan(0);
+  for (const turn of turns) {
+    const last = rows.filter((row) => row.turn === turn).at(-1);
+    expect.soft(last?.compacted, `app turn ${turn} round ${last?.round}: the forced answer carried its reading compact`).toBeGreaterThan(0);
+    expect.soft(last?.estimate, `app turn ${turn} round ${last?.round}: the loop's calibrated estimate fits`).toBeLessThanOrEqual(budget);
+    expect.soft(last?.budget, `app turn ${turn}: the app's budget is half the window`).toBe(budget);
+  }
 }
 
 for (const { id: model } of MOCK_MODELS) {
