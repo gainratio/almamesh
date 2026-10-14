@@ -1,6 +1,6 @@
 import type { ChartEngine, PredictiveContexts } from '@almamesh/browser';
 import type { PredictiveCallOptions, PredictiveInput, SiderealChart } from '@almamesh/browser/types';
-import { streamAgentChat, type AgentTool, type ProviderConfig } from '@almamesh/llm';
+import type { ProviderConfig } from '@almamesh/llm';
 import type { ProcessedBirthData } from '@almamesh/shared-types';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -8,9 +8,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 // package export: imported by path so this test exercises the real pool bound.
 import { EngineMemo, memoizeChartEngine } from '../../../../../packages/browser/src/pyodide/engineMemo';
 import type { ChartEngineContextValue } from '../../providers/chartEngineContext';
-import { birthUtcYearOf, birthYearOf, createPeriodChartLoader } from '../periodChart';
+import { birthUtcYearOf, birthYearOf, createPeriodChartLoader, PeriodSkyUnavailableError } from '../periodChart';
 import { createPeriodSkyCache } from '../periodSky';
-import { PeriodSkyUnavailableError, createTimingTool } from '../timingTool';
+import { runChatTurn } from '../chatTurn';
+import { readPeriodArgs, stubCallFor, stubEndpoint } from '../../test/stubAnswer';
 
 const CHART = { ayanamsa_value: 23.7, lagna: {}, planets: [], houses: [], yogas: [] } as unknown as SiderealChart;
 const SKY = { transit_context: { instant: 'x' } } as unknown as PredictiveContexts;
@@ -142,65 +143,40 @@ describe('a slow period compute reaches the model as a timeout value', () => {
     baseUrl: 'https://openrouter.ai/api/v1',
     apiKey: 'test-key',
   };
-  const decision = (message: Record<string, unknown>) => Response.json({ choices: [{ message }] });
 
-  /** One model turn that calls get_timing for June 2019; returns the tool message the model reads next. */
+  /** One chat turn that reads June 2019 with read_period; returns the tool result the model reads next. */
   async function toolResultSeenByModel(loadPeriodChart: ReturnType<typeof loader>) {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
-    const timing: AgentTool = createTimingTool({
-      chart: CHART,
-      birthYear: 1990,
-      todayDay: () => '2026-03-08',
-      loadPeriodChart,
-      periodSkyAllowed: true,
-    });
-    const bodies: Array<{ messages: Array<{ role: string; content: string | null }> }> = [];
-    const fetchImpl = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
-      bodies.push(JSON.parse(String(init?.body)) as (typeof bodies)[number]);
-      if (bodies.length > 1) return decision({ role: 'assistant', content: 'done' });
-      const args = JSON.stringify({ section: 'transits', start: '2019-06-01', end: '2019-06-30' });
-      return decision({
-        role: 'assistant',
-        content: null,
-        tool_calls: [{ id: 'c1', type: 'function', function: { name: 'get_timing', arguments: args } }],
-      });
-    });
-
+    const { fetchImpl, bodies } = stubEndpoint([{ name: 'read_period', args: readPeriodArgs('2019-06') }, (body) => stubCallFor(body, {})]);
     const answer = (async () => {
-      let text = '';
-      const stream = streamAgentChat({
-        config: CONFIG,
-        messages: [{ role: 'user', content: 'Transits in June 2019?' }],
-        tools: [timing],
-        now: new Date('2026-03-08T09:30:00.000Z'),
-        fetchImpl: fetchImpl as typeof fetch,
+      const turn = runChatTurn({
+        config: CONFIG, chart: CHART, chartAsOf: { basis: 'chart', instant: new Date('2025-01-01T00:00:00Z') }, profileKey: 'p1', birth: BIRTH,
+        engine: null, question: 'Transits in June 2019?', mode: 'layman', language: 'en', history: [], retrievedContext: [],
+        signal: new AbortController().signal, now: new Date('2026-03-08T09:30:00.000Z'), labels: { deciding: 'd', answering: 'a', complete: 'c' },
+        seams: { fetchImpl, viewerZone: () => 'America/Los_Angeles', periodSkyAllowed: true, loadPeriodChart },
       });
-      for await (const token of stream) text += token;
-      return text;
+      for await (const _snapshot of turn) {
+        // drain
+      }
     })();
     await vi.advanceTimersByTimeAsync(150_000);
     await answer;
-
-    const toolMessage = bodies[1]?.messages.find((message) => message.role === 'tool');
-    return JSON.parse(toolMessage?.content ?? '{}') as { ok?: boolean; value?: { period?: unknown; data?: unknown } };
+    const messages = bodies[1]?.messages as Array<{ role: string; content: string | null }> | undefined;
+    const toolMessage = messages?.find((message) => message.role === 'tool');
+    return JSON.parse(toolMessage?.content ?? '{}') as { period?: unknown; available?: unknown; reason?: unknown };
   }
 
-  const TIMEOUT_VALUE = {
-    period: { start: '2019-06-01', end: '2019-06-30', basis: 'period' },
-    data: { available: false, reason: 'timeout' },
-  };
+  const TIMEOUT_VALUE = { period: { start: '2019-06-01', end: '2019-06-30' }, available: false, reason: 'timeout' };
 
   it('answers {available: false, reason: "timeout"} before the 150 s tool cap', async () => {
     const never = rawEngine(() => new Promise<PredictiveContexts>(() => undefined));
     const content = await toolResultSeenByModel(loader(engineContext(never.engine)));
-    expect(content.ok).toBe(true);
-    expect(content.value).toMatchObject(TIMEOUT_VALUE);
+    expect(content).toMatchObject(TIMEOUT_VALUE);
   });
 
   it('counts a cold engine boot inside the same deadline (whenReady never settles)', async () => {
     const booting = engineContext(null, vi.fn(() => new Promise<ChartEngine>(() => undefined)));
     const content = await toolResultSeenByModel(loader(booting));
-    expect(content.ok).toBe(true);
-    expect(content.value).toMatchObject(TIMEOUT_VALUE);
+    expect(content).toMatchObject(TIMEOUT_VALUE);
   });
 });

@@ -12,24 +12,22 @@ describe('chatContextFor (the chat turn\'s context budget seam)', () => {
   it('an OpenRouter model reads its window from the catalog and keeps the cloud prompt sizing', async () => {
     const fetchImpl = vi.fn(async () => Response.json({ data: [{ id: 'mock/ctx-1m', context_length: 1_000_000 }] }));
     const context = await chatContextFor(OPENROUTER, undefined, fetchImpl as typeof fetch);
-    expect(context.contextTokens).toBe(1_000_000);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
     expect(context.promptBudget).toBe(CLOUD_CHAT_BUDGET);
-    expect(typeof context.onRoundUsage).toBe('function');
-    expect(typeof context.onToolCall).toBe('function');
+    expect(typeof context.telemetry.onRound).toBe('function');
+    expect(typeof context.telemetry.onToolCall).toBe('function');
   });
 
   it('a local endpoint uses the configured window from settings, with no network read', async () => {
     hydrateLlmSettings(JSON.stringify({ chatContextTokens: 8_192 }));
     const fetchImpl = vi.fn();
     const context = await chatContextFor(LOCAL, undefined, fetchImpl as unknown as typeof fetch);
-    expect(context.contextTokens).toBe(8_192);
     expect(context.promptBudget.promptTokens).toBe(1_638);
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
-  it('an unknown window leaves contextTokens unset and caps the prompt as for 8k', async () => {
+  it('an unknown window caps the prompt as for 8k', async () => {
     const context = await chatContextFor(LOCAL, undefined, vi.fn() as unknown as typeof fetch);
-    expect(context.contextTokens).toBeUndefined();
     expect(context.promptBudget.promptTokens).toBe(1_638);
   });
 });

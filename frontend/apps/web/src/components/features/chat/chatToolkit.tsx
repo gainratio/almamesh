@@ -1,17 +1,14 @@
 /**
  * The chat tool registry (plan 2026-10-13, "The assistant-ui toolkit is the
- * registry"). One seam file: `@assistant-ui/react`'s toolkit API is imported
- * here and in the other chat seam files only.
+ * registry"; chat tool layer redesign 2026-10-14). One seam file: `@assistant-ui/react`'s
+ * toolkit API is imported here and in the other chat seam files only.
  *
- * `buildChatToolkit` turns the turn's bound AgentTools (chatToolset.ts: trip
- * binding and handlers) into an assistant-ui toolkit: description, JSON schema,
- * execute and a renderer per tool. The agent loop reads its tool list back out
- * of that same toolkit (`agentToolsOf`), and the visible Tools list reads it too
- * (`toolListOf`), so what the model is offered and what the person sees cannot
- * disagree. Only tools the catalog names are registered.
+ * The model's tools are read_period and travel (lib/chatTurn.ts runs them through the
+ * tool loop, loaded on send). This registry gives each a plain-words label for the
+ * visible Tools list and a renderer for its rows in the transcript; it carries no
+ * schema and no handler, so the page's first chunk never loads the tool loop.
  */
 import { defineToolkit, type Toolkit, type ToolCallMessagePartProps } from '@assistant-ui/react';
-import type { AgentJsonObject, AgentTool, AgentToolContext } from '@almamesh/llm';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -20,51 +17,17 @@ export interface ChatToolCatalogEntry {
   readonly labelKey: string;
 }
 
-/** Every tool the chat may register, with its plain-words label. */
+/** Every tool the chat registers, with its plain-words label. */
 export const CHAT_TOOL_CATALOG: Readonly<Record<string, ChatToolCatalogEntry>> = {
-  get_natal_summary: { labelKey: 'tools.get_natal_summary' },
-  get_trip_context: { labelKey: 'tools.get_trip_context' },
-  get_timing: { labelKey: 'tools.get_timing' },
-  get_period_reading: { labelKey: 'tools.get_period_reading' },
-  get_period_detail: { labelKey: 'tools.get_period_detail' },
-  resolve_place: { labelKey: 'tools.resolve_place' },
-  time_travel: { labelKey: 'tools.time_travel' },
-  get_chart_facts: { labelKey: 'tools.get_chart_facts' },
-  get_current_datetime: { labelKey: 'tools.get_current_datetime' },
+  read_period: { labelKey: 'tools.read_period' },
+  travel: { labelKey: 'tools.travel' },
 };
 
-/** The bound AgentTool behind each registered toolkit entry (the handler the agent loop runs). */
-const boundTools = new WeakMap<Toolkit, ReadonlyMap<string, AgentTool>>();
-
-export function buildChatToolkit(tools: readonly AgentTool[]): Toolkit {
-  const registered = tools.filter((tool) => Object.hasOwn(CHAT_TOOL_CATALOG, tool.name));
-  const toolkit = defineToolkit(Object.fromEntries(registered.map((tool) => [tool.name, {
-    type: 'frontend' as const,
-    description: tool.description,
-    parameters: tool.parameters,
-    // The agent loop (packages/llm) executes; assistant-ui's own tool
-    // invocation stays off (unstable_enableToolInvocations is not set).
-    execute: (args: Record<string, unknown>, context: unknown) => tool.execute(args as AgentJsonObject, context as AgentToolContext),
-    render: ToolCallRow,
-  }])));
-  boundTools.set(toolkit, new Map(registered.map((tool) => [tool.name, tool])));
-  return toolkit;
-}
-
-/** The model's tool list, read from the toolkit: its names and schemas, the bound handlers. */
-export function agentToolsOf(toolkit: Toolkit): AgentTool[] {
-  const bound = boundTools.get(toolkit);
-  return Object.entries(toolkit).flatMap(([name, entry]) => {
-    const tool = bound?.get(name);
-    if (!tool) return [];
-    return [{
-      ...tool,
-      name,
-      description: entry.description ?? tool.description,
-      parameters: (entry.parameters ?? tool.parameters) as AgentJsonObject,
-    }];
-  });
-}
+/** Render-only entries: the tool loop (lib/chatTurn.ts) runs the tools; assistant-ui only draws their rows. */
+export const CHAT_TOOLKIT: Toolkit = defineToolkit(Object.fromEntries(Object.keys(CHAT_TOOL_CATALOG).map((name) => [name, {
+  type: 'backend' as const,
+  render: ToolCallRow,
+}])));
 
 export interface ChatToolListRow {
   readonly name: string;
@@ -83,9 +46,8 @@ type RowOutcome = 'complete' | 'error' | 'skipped';
 /** Skipped (answered without running) is its own neutral outcome; then a failure; else complete. */
 function outcomeOf(isError: boolean | undefined, result: unknown, artifact: unknown): RowOutcome {
   if (isError !== true && (artifact as { status?: unknown } | null | undefined)?.status === 'skipped') return 'skipped';
-  const outcome = result as { code?: unknown; available?: unknown } | null;
-  // A returned "unavailable" (get_period_reading's typed reasons) is a lookup that got nothing.
-  return isError === true || outcome?.code !== undefined || outcome?.available === false ? 'error' : 'complete';
+  // A returned "unavailable" (read_period's typed reasons) is a lookup that got nothing. An ask (needs_place, a place to pick) completed.
+  return isError === true || (result as { available?: unknown } | null)?.available === false ? 'error' : 'complete';
 }
 
 const ROW_KEYS: Readonly<Record<RowOutcome, string>> = { complete: 'tools.row', error: 'tools.row_failed', skipped: 'tools.row_skipped' };
@@ -93,11 +55,10 @@ const ROW_KEYS: Readonly<Record<RowOutcome, string>> = { complete: 'tools.row', 
 interface ResultHints {
   readonly period?: { readonly label?: unknown; readonly start?: unknown; readonly end?: unknown };
   readonly place?: { readonly label?: unknown };
-  readonly places?: ReadonlyArray<{ readonly label?: unknown }>;
+  /** travel's result. */
+  readonly period_label?: unknown;
+  readonly place_label?: unknown;
 }
-
-const SECTIONS = new Set(['dashas', 'transits', 'strength', 'domains']);
-const DETAIL_SECTIONS = new Set(['lord', 'segment', 'bindus', 'panchang', 'dashas']);
 
 function text(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined;
@@ -118,22 +79,19 @@ function periodText(start: string, end: string, language: string): string {
   return `${start} – ${end}`;
 }
 
-/** What the call was about: the section asked for, else the tool, in plain words. */
-function subjectOf(toolName: string, args: unknown, translate: (key: string) => string): string {
-  const section = text((args as { section?: unknown } | null)?.section);
-  if (toolName === 'get_timing' && section && SECTIONS.has(section)) return translate(`tools.sections.${section}`);
-  if (toolName === 'get_period_detail' && section && DETAIL_SECTIONS.has(section)) return translate(`tools.detail_sections.${section}`);
+/** What the call was about: the tool, in plain words. */
+function subjectOf(toolName: string, translate: (key: string) => string): string {
   return Object.hasOwn(CHAT_TOOL_CATALOG, toolName) ? translate(`tools.rows.${toolName}`) : toolName;
 }
 
-/** "Looked up transits · Singapore · May 2019": what, where and when, from the result the model got. */
-function summaryOf(toolName: string, args: unknown, result: unknown, language: string, translate: (key: string) => string): string {
+/** "Looked up the period reading · Singapore · May 2019": what, where and when, from the result the model got. */
+function summaryOf(toolName: string, result: unknown, language: string, translate: (key: string) => string): string {
   const hints = (result ?? {}) as ResultHints;
-  const place = text(hints.place?.label) ?? text(hints.places?.[0]?.label);
+  const place = text(hints.place?.label) ?? text(hints.place_label);
   const start = text(hints.period?.start);
   const end = text(hints.period?.end);
-  const period = text(hints.period?.label) ?? (start && end ? periodText(start, end, language) : undefined);
-  return [subjectOf(toolName, args, translate), place, period].filter((part): part is string => part !== undefined).join(' · ');
+  const period = text(hints.period?.label) ?? text(hints.period_label) ?? (start && end ? periodText(start, end, language) : undefined);
+  return [subjectOf(toolName, translate), place, period].filter((part): part is string => part !== undefined).join(' · ');
 }
 
 function pretty(value: unknown): string {
@@ -152,7 +110,7 @@ export function ToolCallRow({ toolName, toolCallId, args, result, isError, artif
   const { t, i18n } = useTranslation('chat');
   const [open, setOpen] = useState(false);
   const outcome = outcomeOf(isError, result, artifact);
-  const summary = summaryOf(toolName, args, result, i18n.language || 'en', (key) => t(key));
+  const summary = summaryOf(toolName, result, i18n.language || 'en', (key) => t(key));
   return (
     <details className={`mb-2 rounded-lg border border-ui-border bg-background-tertiary/60 px-3 py-2 text-xs ${outcome === 'skipped' ? 'text-text-muted' : 'text-text-secondary'}`}
       data-testid="chat-tool-call" data-tool-name={toolName} data-tool-call-id={toolCallId} data-status={outcome}

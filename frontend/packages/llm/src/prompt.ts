@@ -242,18 +242,19 @@ export interface ThreadTrip {
 const TOOLS_LINE =
   "TOOLS: read_period reads any span (one call per span; never split a range into months). travel moves this conversation only when asked. Finish every turn by calling answer.";
 
-/** The trip a pin names (label + place), for callers that pass no ThreadFacts yet. */
-function tripOfPin(pinned?: PinnedPrompt): ThreadTrip | undefined {
-  if (!pinned?.label || !pinned.place) return undefined;
-  return { label: pinned.label, place: pinned.place.label, timezone: pinned.place.timezone };
+/** ThreadFacts.now: "Wednesday 14 October 2026, America/Los_Angeles". English, like the rest of the system prompt. */
+export function formatNow(now: Date, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone }).formatToParts(now);
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === type)?.value ?? "";
+  return `${part("weekday")} ${part("day")} ${part("month")} ${part("year")}, ${timeZone}`;
 }
 
 /**
  * NOW, THIS THREAD, the pinned period and TOOLS. Only a tool-using turn (thread
- * given) says today and names the tools; a single-pass caller keeps the trip and pin.
+ * given) says today, the trip and the tools; a single-pass caller keeps the pin.
  */
 function threadRules(thread?: ThreadFacts, pinned?: PinnedPrompt): string {
-  const trip = thread?.trip ?? tripOfPin(pinned);
+  const trip = thread?.trip;
   return [
     ...(thread ? [`NOW: today is ${thread.now}.`] : []),
     ...(trip ? [`THIS THREAD: a trip to ${trip.label}, when the user lived in ${trip.place} (${trip.timezone}).`] : []),
@@ -570,7 +571,6 @@ export function buildChatMessages(
   meshEdge?: SanitizedMeshEdge,
   rectification?: ChatRectificationContext,
   budget: ChatPromptBudget = CLOUD_CHAT_BUDGET,
-  _places = false,
   pinned?: PinnedPrompt,
   thread?: ThreadFacts,
 ): ChatMessage[] {
@@ -614,8 +614,7 @@ export function buildChatMessages(
     .join("\n");
 
   // A tool-using turn (thread given) says today, the trip, the pin and the two
-  // tools; a single-pass caller names no tool. `_places` is unused since the
-  // place rules went (2026-10-14); it stays for positional callers until they move.
+  // tools; a single-pass caller names no tool.
   const rules = threadRules(thread, pinned);
   const base = rules === "" ? CHAT_SYSTEM_PROMPT : CHAT_SYSTEM_PROMPT + "\n\n" + rules;
   const systemPrompt = meshBlock === "" ? base : base + MESH_CONTEXT_EXCEPTION;

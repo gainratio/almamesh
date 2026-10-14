@@ -8,7 +8,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { PlaceLookup, ResolvedPlace } from '../geo/placeLookup';
 import { MAX_PERIOD_RESULT_BYTES } from '../periodReading';
 import { PeriodSkyTimeoutError } from '../periodSky';
-import { PeriodSkyUnavailableError } from '../timingTool';
+import { PeriodSkyUnavailableError } from '../periodChart';
 import { NO_PLACE_PICKER } from '../placePick';
 import {
   createReadPeriodTool,

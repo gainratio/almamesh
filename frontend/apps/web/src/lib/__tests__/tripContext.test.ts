@@ -2,7 +2,7 @@ import type { SiderealChart } from '@almamesh/browser/types';
 import type { ProcessedBirthData } from '@almamesh/shared-types';
 import { describe, expect, it } from 'vitest';
 
-import { UNKNOWN_PLACE_LABEL, natalSummary, tripContext, tripDashaLine, tripPin, tripToolResult } from '../tripContext';
+import { UNKNOWN_PLACE_LABEL, natalSummary, tripContext, tripDashaLine, tripPin } from '../tripContext';
 import { DASHAS } from './timingFixtures';
 
 const SINGAPORE = { label: 'Singapore', timezone: 'Asia/Singapore', latitude: 1.2897, longitude: 103.8501 };
@@ -58,35 +58,12 @@ describe('tripContext: one source for the tools, the brief and the context card'
     const old = { start: '2019-06-01', end: '2019-06-30', granularity: 'month' } as const;
     const trip = tripContext({ chart: CHART, asOf: old, today: TODAY, birth: BIRTH, language: 'en' });
     expect(trip.place).toEqual({ label: 'Delhi', timezone: 'Asia/Kolkata', source: 'birth_place', display: 'Delhi' });
-    expect(JSON.stringify(tripToolResult(trip))).not.toMatch(/birth/i);
     expect(tripPin(old, BIRTH).place).toEqual({ label: 'Delhi', timezone: 'Asia/Kolkata', latitude: 28.6139, longitude: 77.209 });
     expect(tripPin(JUNE_2019_SG, BIRTH)).toBe(JUNE_2019_SG);
   });
 });
 
-// Contract reversed 2026-10-13 (Harish: the AI must know the trip's location): a trip at the
-// birth place sends its label and zone like any other trip. Never coordinates, birth date/time,
-// or a marker saying it is the birth place.
-describe('a trip at the birth place reads like any other trip, unmarked', () => {
-  const PREFILLED = { label: 'Delhi, India', timezone: 'Asia/Kolkata', latitude: 28.6139, longitude: 77.209 };
-
-  it('the sheet prefilled the birth place: the model gets its label and zone, and no marker', () => {
-    const asOf = { start: '2019-06-01', end: '2019-06-30', granularity: 'month', place: PREFILLED } as const;
-    const result = tripToolResult(tripContext({ chart: CHART, asOf, today: TODAY, birth: BIRTH, language: 'en' }));
-    expect(result.place).toEqual({ label: 'Delhi, India', timezone: 'Asia/Kolkata' });
-    expect(JSON.stringify(result)).not.toMatch(/birth|28\.61|77\.20/i);
-  });
-
-  it('an old trip with no place reads the birth place by its label and zone; only the local card says why', () => {
-    const old = { start: '2019-06-01', end: '2019-06-30', granularity: 'month' } as const;
-    const trip = tripContext({ chart: CHART, asOf: old, today: TODAY, birth: BIRTH, language: 'en' });
-    expect(tripToolResult(trip).place).toEqual({ label: 'Delhi', timezone: 'Asia/Kolkata' });
-    expect(trip.place.source).toBe('birth_place');
-    expect(JSON.stringify(tripToolResult(trip))).not.toMatch(/birth/i);
-  });
-});
-
-describe('the model-facing natal summary and trip context hold no raw birth data', () => {
+describe('the natal summary holds no raw birth data', () => {
   const RAW = [/1990-01-15/, /06:30/, /12:00:00/, /28\.61/, /77\.20/, /latitude/i, /longitude/i, /123\.45/, /3\.4567/, /5\.25/, /degree/i, /1\.2897|103\.85/, /snapshot/];
 
   it('natal summary: lagna, Moon, planets by sign and house, yogas; no dates, times, coordinates or degrees', () => {
@@ -99,14 +76,6 @@ describe('the model-facing natal summary and trip context hold no raw birth data
     expect(summary.planets).toContainEqual(expect.objectContaining({ name: 'moon', houses_ruled: [9], combust: false, yogakaraka: false }));
     expect(summary.yogas).toEqual([{ name: 'Gaja Kesari', category: 'auspicious', planets_involved: ['jupiter', 'moon'] }]);
     const text = JSON.stringify(summary);
-    for (const pattern of RAW) expect(text).not.toMatch(pattern);
-  });
-
-  it('trip tool result: period, place label and zone, today, dashas; no coordinates', () => {
-    const result = tripToolResult(tripContext({ chart: CHART, asOf: JUNE_2019_SG, today: TODAY, birth: BIRTH, language: 'en' }));
-    expect(Object.keys(result.place).sort()).toEqual(['label', 'timezone']);
-    expect(result).toMatchObject({ period: { label: 'June 2019', tense: 'past' }, place: { label: 'Singapore', timezone: 'Asia/Singapore' }, today: TODAY });
-    const text = JSON.stringify(result);
     for (const pattern of RAW) expect(text).not.toMatch(pattern);
   });
 });

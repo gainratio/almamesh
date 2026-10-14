@@ -5,8 +5,9 @@ import {
   buildPeriodDetail,
   buildPeriodReading,
   MAX_PERIOD_RESULT_BYTES,
-  periodDetailSummary,
+  PERIOD_TOOL_SUMMARIZERS,
   periodReadingSummary,
+  READ_PERIOD_TOOL_NAME,
   type ReadingFrame,
 } from '../periodReading';
 import { DELHI_BIRTH_LEAKS, periodReadingFixture, type PeriodReadingFixture } from './periodReadingFixtures';
@@ -254,9 +255,17 @@ describe('the period reading (get_period_reading)', () => {
     expect(periodReadingSummary({ available: false, reason: 'timeout' })).toEqual({ line: 'Period reading unavailable (timeout)', factors: [] });
     expect(periodReadingSummary({ error: 'nope' })).toEqual({ line: 'Period reading failed: nope', factors: [] });
   });
+
+  it('read_period\'s facts-note summary leads with the period and place; an ask says what it asked', () => {
+    const summarize = PERIOD_TOOL_SUMMARIZERS[READ_PERIOD_TOOL_NAME]!;
+    expect(Object.keys(PERIOD_TOOL_SUMMARIZERS)).toEqual(['read_period']);
+    expect(summarize(reading('delhi-2019-05')).line).toBe('May 2019 · Singapore · Rahu–Rahu–Venus · 8 themes');
+    expect(summarize({ status: 'place_not_chosen', ask: 'Ask the user which one they meant.' })).toEqual({ line: 'Asked the user (place_not_chosen)', factors: [] });
+    expect(summarize({ available: false, reason: 'timeout' }).line).toBe('Period reading unavailable (timeout)');
+  });
 });
 
-describe('the period detail digests (get_period_detail)', () => {
+describe('the period detail digests (read_period close-ups)', () => {
   const detail = (section: string, key?: string, source = YEAR, frame = YEAR_FRAME) =>
     buildPeriodDetail({ reading: source, strength: STRENGTH }, frame, section, key);
   const DAY = periodReadingFixture('delhi-2019-09-15-day');
@@ -330,7 +339,6 @@ describe('the period detail digests (get_period_detail)', () => {
     expect(detail('segment')).toMatchObject({ section: 'segment', facts: { segments } });
     expect(detail('segments', '2019-04-10')).toMatchObject({ section: 'segment', facts: { segment: { start: '2019-03-29' } } });
     expect(detail('lords', 'venus')).toMatchObject({ section: 'lord', facts: { lord: 'venus' } });
-    expect(periodDetailSummary(all).line).toBe(`Segments · ${segments.length} in 2019`);
     expect(bytes(all)).toBeLessThan(4096);
   });
 
@@ -358,14 +366,4 @@ describe('the period detail digests (get_period_detail)', () => {
     expect(result).toMatchObject({ trimmed: ['sky'] });
   });
 
-  it('summarizes a detail in one line', () => {
-    expect(periodDetailSummary(detail('lord', 'venus'))).toEqual({ line: 'Venus in detail · 1 dasha spans', factors: ['Venus (pratyantar) rules the 5th', 'Venus (pratyantar) occupies the 8th', 'Venus (pratyantar) is a karaka of relationships', 'Venus (pratyantar) rules the 12th: losses and expenses'] });
-    expect(periodDetailSummary(detail('bindus', 'sav')).line).toBe('Ashtakavarga SAV · total 337');
-    expect(periodDetailSummary(detail('bindus', 'saturn')).line).toBe('Ashtakavarga Saturn · total 39');
-    expect(periodDetailSummary(detail('segment', '2019-03-29')).line).toBe('Segment 2019-03-29 – 2019-04-22 · Rahu–Rahu–Venus');
-    expect(periodDetailSummary(detail('panchang', undefined, DAY, DAY_FRAME)).line).toBe('Panchang Pratipada (krishna) · Uttara Bhadrapada · Sunday (UTC)');
-    expect(periodDetailSummary(detail('dashas')).line).toBe('Dashas · 7 spans');
-    expect(periodDetailSummary(detail('houses'))).toEqual({ line: 'Period detail failed: section must be one of: lord, segment, bindus, panchang, dashas', factors: [] });
-    expect(periodDetailSummary({ available: false, reason: 'timeout' }).line).toBe('Period detail unavailable (timeout)');
-  });
 });

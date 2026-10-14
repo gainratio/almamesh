@@ -2,7 +2,7 @@
  * The first item in a trip thread (plan 2026-10-13, "Context card"): the facts
  * the trip reads, not its period or place again (the header row names those).
  * The dashas come from the same tripContext the trip-bound tools return; the key
- * transits are the slow planets from the AI's own get_timing transits call, so
+ * transits are the slow planets from the AI's own read_period call, so
  * the card shows exactly what the AI pulled.
  */
 import { useTranslation } from 'react-i18next';

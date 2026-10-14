@@ -100,7 +100,7 @@ describe("the dasha table's pratyantar note points at the reading", () => {
 describe("present-day periods need no routing rule", () => {
   it("neither a today nor a trip prompt carries the routing rule or the old checklist line", () => {
     const pinned = { start: "2019-05-01", end: "2019-05-31", relative: "past", granularity: "month", label: "May 2019", place: { label: "Singapore", timezone: "Asia/Singapore" } } as const;
-    const trip = buildChatMessages(CHART, "How was work?", "layman", [], [], undefined, "en", undefined, undefined, undefined, true, pinned)[0]?.content ?? "";
+    const trip = buildChatMessages(CHART, "How was work?", "layman", [], [], undefined, "en", undefined, undefined, undefined, pinned)[0]?.content ?? "";
     for (const system of [chatSystem(), trip]) {
       expect(system).not.toContain("PRESENT-DAY PERIODS");
       expect(system).not.toContain("Every period answer, one month or several, names the place");

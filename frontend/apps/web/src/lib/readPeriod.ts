@@ -17,7 +17,6 @@ import {
   endsBeforeBirthYear,
   EPHEMERIS_LAST_YEAR,
   startsInOrBeforeBirthYear,
-  type AgentToolContext,
 } from '@almamesh/llm';
 import type { AnswerGrounding } from '@almamesh/llm/answer';
 import { defineTool, z, type ToolContext, type ToolDef } from '@almamesh/llm/toolLoop';
@@ -26,11 +25,12 @@ import { LocalTimeError } from '@almamesh/store';
 
 import type { PlaceLookup, ResolvedPlace } from './geo/placeLookup';
 import type { MoonWindowLoader } from './moonWindow';
-import { birthUtcYearOf, birthYearOf, type PeriodChartLoader } from './periodChart';
+import { birthUtcYearOf, birthYearOf, PeriodSkyUnavailableError, type PeriodChartLoader } from './periodChart';
 import {
   buildPeriodDetail,
   buildPeriodReading,
   MAX_PERIOD_RESULT_BYTES,
+  READ_PERIOD_TOOL_NAME,
   windowsOf,
   type PeriodReading,
   type PeriodReadingFailure,
@@ -44,9 +44,7 @@ import { isCachedNatalLords, isCachedPeriodReading } from './periodSkyValidation
 import { askToPickPlace, NO_PLACE_PICKER } from './placePick';
 import { predictiveReferenceInstant } from './predictive';
 import { formatPinLabel } from './timeTravelSheet';
-import { PeriodSkyUnavailableError } from './timingTool';
 
-export const READ_PERIOD_TOOL_NAME = 'read_period';
 /** The picker's wait plus a cold engine: the longest any tool may run. */
 export const READ_PERIOD_TIMEOUT_MS = 150_000;
 export const READ_PERIOD_STATUS_LABEL = 'Reading the period…';
@@ -423,7 +421,7 @@ export interface ReadPeriodInput extends PlaceResolverInput {
   /** One engine load for the span (periodChart.ts). */
   readonly loadPeriodChart: PeriodChartLoader;
   /** Today's chart, for a single day that is today. */
-  readonly loadCurrentChart: (context: AgentToolContext) => Promise<SiderealChart>;
+  readonly loadCurrentChart: (context: ToolContext) => Promise<SiderealChart>;
   /** A single day's Moon at a place (moonWindow.ts); absent: no Moon rows. */
   readonly loadMoonWindow?: MoonWindowLoader;
   /** devicePolicy().periodSkyComputeAllowed (default true): false reads only today's single day. */

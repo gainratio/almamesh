@@ -19,33 +19,38 @@ import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate } from 'react-router-dom';
 import { ComposerPrimitive, MessagePrimitive, ThreadPrimitive, useAui, type MessageState } from '@assistant-ui/react';
-import { type AgentToolCallRecord, type ChatTurn, pinRelative } from '@almamesh/llm';
-import { useChartLibraryStore, useChatStore } from '@almamesh/store';
-import type { ChatMessage, ChatThreadAsOf } from '@almamesh/shared-types';
+import { pinRelative } from '@almamesh/llm';
+import { useChartLibraryStore, useChatStore, useLanguageStore } from '@almamesh/store';
+import type { ChatMessage } from '@almamesh/shared-types';
 import { MessageBubble } from './MessageBubble';
 import { ReferenceEntry } from './ReferenceEntry';
 import { SuggestedQuestions } from './SuggestedQuestions';
 import { ChatSearch } from './ChatSearch';
 import { useEmbedderStatus } from '../../../hooks/useEmbedderStatus';
-import type { SSEMetaData } from '../../../lib/streaming';
 import type { ViewMode } from '../../../lib/types';
 import { useChatThread, type ChatStreamInput } from '../../../hooks/useChatThread';
 import { useLlmStatus } from '../../../hooks/useLlmStatus';
 import { useChartReanchorPending } from '../../../lib/chartReanchorStatus';
 import { AlmaMeshAssistantRuntime } from './AlmaMeshAssistantRuntime';
 import { generateProviderChatSummary } from '../../../lib/chatSummaryProvider';
-import { viewerTodayDay } from '../../../lib/chatAgentTools';
+import { viewerTodayDay } from '../../../lib/viewerToday';
 import { TimeTravelSheet } from './TimeTravelSheet';
 import { PlacePickDialog } from './PlacePickDialog';
-import type { TravelRecorder } from '../../../lib/travelSlot';
 import { staleDraftOf } from '../../../lib/chatDraft';
-import type { ChatTripKit } from '../../../lib/chatTripKit';
 import { tripPeriodLabel } from '../../../lib/timeTravelThreads';
 import { ChatThreadList } from './ChatThreadList';
-import { ToolCallRow, buildChatToolkit, toolListOf } from './chatToolkit';
+import { CHAT_TOOLKIT, ToolCallRow, toolListOf } from './chatToolkit';
+import { tripContext } from '../../../lib/tripContext';
 import { TripContextCard } from './TripContextCard';
 
-export type { ChatTripKit } from '../../../lib/chatTripKit';
+/** What a page's ask handler gets: the hook's stream input, the reader's voice and the status line. */
+export interface ChatAskInput extends ChatStreamInput {
+  readonly viewMode: ViewMode;
+  readonly onStatus: (label: string | null) => void;
+}
+
+/** Runs one chat turn (lib/chatTurn.ts) and resolves with the final answer. */
+export type ChatAsk = (input: ChatAskInput) => Promise<string>;
 
 interface ChatPanelProps {
   personName: string;
@@ -57,27 +62,10 @@ interface ChatPanelProps {
   viewMode: ViewMode;
   /** Earliest plausible pin year (the birth year). */
   birthYear?: number;
-  /** Streaming question handler — wires bounded tool orchestration with RAG context. */
-  onAskQuestionStream: (
-    question: string,
-    onToken: (token: string) => void,
-    onMeta: (meta: SSEMetaData) => void,
-    viewMode?: ViewMode,
-    history?: readonly ChatTurn[],
-    retrievedContext?: readonly string[],
-    onAgentStatus?: (label: string | null) => void,
-    asOf?: ChatThreadAsOf,
-    onTravel?: TravelRecorder,
-    onToolCall?: (record: AgentToolCallRecord) => void,
-  ) => Promise<{
-    answer: string;
-    timing_guidance?: string | null;
-    remedies?: string[] | null;
-  }>;
+  /** Runs one turn with bounded tools and RAG context (Dashboard, MeshEdge). */
+  onAskQuestionStream: ChatAsk;
   /** Hide header when used inside FloatingChatPanel which has its own header */
   hideHeader?: boolean;
-  /** The thread's tools and trip context (Dashboard, MeshEdge). */
-  chatKit?: ChatTripKit;
 }
 
 export function ChatPanel({
@@ -88,7 +76,6 @@ export function ChatPanel({
   birthYear,
   onAskQuestionStream,
   hideHeader = false,
-  chatKit,
 }: ChatPanelProps) {
   const { t } = useTranslation('chat');
   const navigate = useNavigate();
@@ -117,7 +104,9 @@ export function ChatPanel({
   const relative = asOf ? pinRelative(asOf, today) : undefined;
   const [sheet, setSheet] = useState<'closed' | 'new' | 'change'>('closed');
   // Every trip has a place: prefill from the profile's pins, else the birth place.
-  const birthLocation = useChartLibraryStore((s) => (chartId ? s.getChart(chartId)?.birth_data?.birth_location_details : undefined));
+  const storedChart = useChartLibraryStore((s) => (chartId ? s.getChart(chartId) : undefined));
+  const birthLocation = storedChart?.birth_data?.birth_location_details;
+  const language = useLanguageStore((s) => s.language);
   const tripPins = useChatStore((s) => s.threads);
   // Today's threads first, then the trips; newest first within each (one store, no copy).
   const profileThreads = useMemo(() => {
@@ -125,8 +114,13 @@ export function ChatPanel({
     const newest = [...own].sort((a, b) => b.updated_at.localeCompare(a.updated_at));
     return [...newest.filter((thread) => !thread.as_of), ...newest.filter((thread) => thread.as_of)];
   }, [tripPins, profileId]);
-  const toolkit = useMemo(() => (chatKit ? buildChatToolkit(chatKit.toolsFor(asOf)) : undefined), [chatKit, asOf]);
-  const trip = useMemo(() => (chatKit && asOf ? chatKit.tripFor(asOf) : undefined), [chatKit, asOf]);
+  const chart = storedChart?.sidereal_chart;
+  const toolkit = chart ? CHAT_TOOLKIT : undefined;
+  // The trip card: built from the chart and the pin alone, like the trip line the model gets.
+  const trip = useMemo(
+    () => (chart && asOf ? tripContext({ chart, asOf, today, birth: storedChart?.birth_data, language }) : undefined),
+    [chart, asOf, today, storedChart?.birth_data, language],
+  );
   const keyTransits = useMemo(() => keyTransitsOf(messages), [messages]);
   // After the reload an app update needed: back to that thread, with the unsent message.
   const [staleDraft] = useState(() => {
@@ -447,18 +441,19 @@ function RestoreComposerText({ text }: { readonly text: string }) {
 const SLOW = ['saturn', 'jupiter', 'rahu', 'ketu', 'mars'];
 const titleCase = (word: string) => word.charAt(0).toUpperCase() + word.slice(1);
 
-/** The slow planets from the thread's first transits lookup: what the AI pulled, for the card. */
+/** The slow planets from the thread's first period reading: what the AI pulled, for the card. */
 function keyTransitsOf(messages: readonly ChatMessage[]): string[] {
   for (const message of messages) {
     for (const part of message.parts ?? []) {
-      if (part.type !== 'tool-call' || part.toolName !== 'get_timing' || part.status !== 'complete') continue;
-      if ((part.args as { section?: unknown }).section !== 'transits') continue;
-      const rows = (part.result as { data?: { gochara?: unknown } } | undefined)?.data?.gochara;
+      if (part.type !== 'tool-call' || part.toolName !== 'read_period' || part.status !== 'complete') continue;
+      const rows = (part.result as { sky?: unknown } | undefined)?.sky;
       if (!Array.isArray(rows)) continue;
-      return rows
+      const slow = rows
         .filter((row): row is { graha: string; sign: string } => typeof row?.graha === 'string' && typeof row?.sign === 'string')
-        .filter((row) => SLOW.includes(row.graha.toLowerCase()))
-        .map((row) => `${titleCase(row.graha)} in ${titleCase(row.sign)}`);
+        .filter((row) => SLOW.includes(row.graha.toLowerCase()));
+      // A span reads each graha in each sign it moved through; the card names where each began.
+      const first = slow.filter((row, index) => slow.findIndex((other) => other.graha === row.graha) === index);
+      return first.map((row) => `${titleCase(row.graha)} in ${titleCase(row.sign)}`);
     }
   }
   return [];
@@ -552,30 +547,16 @@ function AssistantMessageRow({
  */
 async function streamAnswer(
   input: ChatStreamInput,
-  onAskQuestionStream: ChatPanelProps['onAskQuestionStream'],
+  ask: ChatAsk,
   viewMode: ViewMode,
-  onAgentStatus: (label: string | null) => void,
+  onStatus: (label: string | null) => void,
   preparingLabel: string,
 ): Promise<string> {
-  onAgentStatus(preparingLabel);
+  onStatus(preparingLabel);
   try {
-    const response = await onAskQuestionStream(
-      input.question,
-      input.onToken,
-      () => {
-        // Meta (thread_id, etc.) intentionally unused — the store owns the thread.
-      },
-      viewMode,
-      input.history,
-      input.retrievedContext,
-      onAgentStatus,
-      input.asOf,
-      input.onTravel,
-      input.onToolCall,
-    );
-    return response.answer;
+    return await ask({ ...input, viewMode, onStatus });
   } finally {
-    onAgentStatus(null);
+    onStatus(null);
   }
 }
 

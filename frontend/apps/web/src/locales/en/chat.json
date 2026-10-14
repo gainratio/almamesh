@@ -149,38 +149,11 @@
     "row_skipped": "Skipped {{what}}",
     "args": "Asked with",
     "result": "Got back",
-    "get_natal_summary": "Natal summary",
-    "get_trip_context": "Trip period & place",
-    "get_timing": "Timing: dashas, transits, strength, domains",
-    "get_period_reading": "Period reading: dashas, lords, sky, themes",
-    "get_period_detail": "Period detail: a lord, segment, bindus, panchang or dashas",
-    "resolve_place": "Find a place",
-    "time_travel": "Travel to another time",
-    "get_chart_facts": "Chart facts",
-    "get_current_datetime": "Current date and time",
+    "read_period": "Read a period: dashas, lords, sky, themes, dated windows",
+    "travel": "Travel to another time",
     "rows": {
-      "get_natal_summary": "natal chart",
-      "get_trip_context": "trip period & place",
-      "get_timing": "timing",
-      "get_period_reading": "the period reading",
-      "get_period_detail": "period detail",
-      "resolve_place": "a place",
-      "time_travel": "a move in time",
-      "get_chart_facts": "chart facts",
-      "get_current_datetime": "the current date and time"
-    },
-    "sections": {
-      "dashas": "dashas",
-      "transits": "transits",
-      "strength": "strength",
-      "domains": "life areas"
-    },
-    "detail_sections": {
-      "lord": "a running lord",
-      "segment": "one segment",
-      "bindus": "ashtakavarga bindus",
-      "panchang": "the panchang",
-      "dashas": "every dasha span"
+      "read_period": "the period reading",
+      "travel": "a move in time"
     }
   },
   "threads": {

@@ -3,7 +3,7 @@
 // lines replace the tool-routing blocks. The old tool names must not survive anywhere in a prompt.
 import { describe, expect, it } from "vitest";
 
-import { buildChatMessages, type ThreadFacts } from "../prompt";
+import { buildChatMessages, formatNow, type ThreadFacts } from "../prompt";
 import type { PinnedPrompt } from "../period-pin";
 import type { SanitizedChart } from "../sanitize";
 
@@ -12,10 +12,7 @@ const CHART = {
   ayanamsa_value: 24.1, lagna: { sign: "Scorpio-LAGNA-MARK" }, planets: {}, houses: {}, yogas: [],
 } as unknown as SanitizedChart;
 
-const MAY_2019_VADODARA: PinnedPrompt = {
-  start: "2019-05-01", end: "2019-05-31", relative: "past", granularity: "month", label: "May 2019",
-  place: { label: "Vadodara, India", timezone: "Asia/Kolkata" },
-};
+const MAY_2019_VADODARA: PinnedPrompt = { start: "2019-05-01", end: "2019-05-31", relative: "past", granularity: "month" };
 const NOW = "Wednesday 14 October 2026, America/Los_Angeles";
 const TRIP_THREAD: ThreadFacts = { now: NOW, trip: { label: "May 2019", place: "Vadodara, India", timezone: "Asia/Kolkata" } };
 const TODAY_THREAD: ThreadFacts = { now: NOW };
@@ -28,9 +25,9 @@ const OLD_TOOL_NAMES = [
 ];
 
 const trip = () =>
-  buildChatMessages(CHART, "How was work?", "layman", [], [], undefined, "en", undefined, undefined, undefined, true, MAY_2019_VADODARA, TRIP_THREAD);
+  buildChatMessages(CHART, "How was work?", "layman", [], [], undefined, "en", undefined, undefined, undefined, MAY_2019_VADODARA, TRIP_THREAD);
 const today = () =>
-  buildChatMessages(CHART, "How is work?", "layman", [], [], undefined, "en", undefined, undefined, undefined, true, undefined, TODAY_THREAD);
+  buildChatMessages(CHART, "How is work?", "layman", [], [], undefined, "en", undefined, undefined, undefined, undefined, TODAY_THREAD);
 
 describe("a trip prompt carries today, the trip and the natal facts", () => {
   it("states today's date and zone", () => {
@@ -86,10 +83,22 @@ describe("a prompt without thread facts (single-pass callers with no tools)", ()
     expect(system).not.toContain("read_period");
   });
 
-  // Until every caller passes ThreadFacts, a pin with a label and a place still names the trip.
-  it("a pinned trip still gets its THIS THREAD line from the pin", () => {
-    const system = buildChatMessages(CHART, "How was work?", "layman", [], [], undefined, "en", undefined, undefined, undefined, true, MAY_2019_VADODARA)[0]?.content ?? "";
-    expect(system).toContain("THIS THREAD: a trip to May 2019, when the user lived in Vadodara, India (Asia/Kolkata).");
+  // Contract reversed (Task 6, 2026-10-14): the THIS THREAD line came from the pin while callers
+  // passed no ThreadFacts. Every chat turn passes them now, so a bare pin names no trip.
+  it("a pin alone keeps its period rule but names no trip", () => {
+    const system = buildChatMessages(CHART, "How was work?", "layman", [], [], undefined, "en", undefined, undefined, undefined, MAY_2019_VADODARA)[0]?.content ?? "";
+    expect(system).toContain("PINNED PERIOD: this conversation is about 2019-05-01 to 2019-05-31");
+    expect(system).not.toContain("THIS THREAD:");
     expect(system).not.toContain("NOW:");
+  });
+});
+
+describe("formatNow", () => {
+  it("names the viewer's weekday, day, month and year, then the zone", () => {
+    expect(formatNow(new Date("2026-10-14T18:00:00Z"), "America/Los_Angeles")).toBe(NOW);
+  });
+
+  it("reads the day in the given zone, not UTC", () => {
+    expect(formatNow(new Date("2026-10-15T02:00:00Z"), "America/Los_Angeles")).toBe(NOW);
   });
 });

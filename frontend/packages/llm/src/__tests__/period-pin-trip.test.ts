@@ -3,10 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { buildChatMessages, pinnedPeriodRules, type PinnedPrompt, type ThreadFacts } from '../index';
 import type { SanitizedChart } from '../sanitize';
 
-const MAY_2019_SG: PinnedPrompt = {
-  start: '2019-05-01', end: '2019-05-31', relative: 'past', granularity: 'month', label: 'May 2019',
-  place: { label: 'Singapore', timezone: 'Asia/Singapore' },
-};
+const MAY_2019_SG: PinnedPrompt = { start: '2019-05-01', end: '2019-05-31', relative: 'past', granularity: 'month' };
 const NOW = 'Wednesday 14 October 2026, America/Los_Angeles';
 
 describe('pinnedPeriodRules is the period and its tense', () => {
@@ -34,7 +31,7 @@ describe('pinnedPeriodRules is the period and its tense', () => {
 describe('the THIS THREAD line', () => {
   const threadAt = (place: string, timezone: string): ThreadFacts => ({ now: NOW, trip: { label: 'May 2019', place, timezone } });
   const systemFor = (thread: ThreadFacts) =>
-    buildChatMessages(CHART, 'How was work?', 'layman', [], [], undefined, 'en', undefined, undefined, undefined, true, MAY_2019_SG, thread)[0]?.content ?? '';
+    buildChatMessages(CHART, 'How was work?', 'layman', [], [], undefined, 'en', undefined, undefined, undefined, MAY_2019_SG, thread)[0]?.content ?? '';
 
   // Contract kept from 2026-10-13: every trip names its place and zone; none is marked as the birth place.
   it('a trip at the birth place reads like any other: label and zone, no marker', () => {
@@ -54,7 +51,7 @@ describe('a trip prompt carries the natal facts', () => {
   // a call forced in every trip turn. The compact facts block now rides in every mode.
   it('keeps the chart facts block in the user turn and names no grounding tool', () => {
     const thread: ThreadFacts = { now: NOW, trip: { label: 'May 2019', place: 'Singapore', timezone: 'Asia/Singapore' } };
-    const [system, user] = buildChatMessages(CHART, 'How was work?', 'layman', [], [], undefined, 'en', undefined, undefined, undefined, true, MAY_2019_SG, thread);
+    const [system, user] = buildChatMessages(CHART, 'How was work?', 'layman', [], [], undefined, 'en', undefined, undefined, undefined, MAY_2019_SG, thread);
     expect(system?.content).toContain('THIS THREAD: a trip to May 2019');
     expect(user?.content).toContain('Scorpio-LAGNA-MARK');
     expect(user?.content).not.toContain('get_natal_summary');

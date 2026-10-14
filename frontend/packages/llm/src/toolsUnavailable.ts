@@ -1,7 +1,7 @@
-// Shared by agent.ts and the toolLoop seam: the one copy of the
+// Used by the toolLoop seam: the one copy of the
 // tools-unavailable degrade (detect an endpoint that rejects tools, tell the
 // user, answer from supplied facts) and the status-event shape the UI labels.
-// No AI SDK import here: agent.ts must never pull in `ai`.
+// No AI SDK import here, so the eager chat UI can name the status shape.
 
 import { LlmRequestError } from "./client";
 

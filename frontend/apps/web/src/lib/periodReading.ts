@@ -26,7 +26,7 @@ import type {
   ThemeDirection,
   TransitSeverity,
 } from '@almamesh/browser/types';
-import { PERIOD_DETAIL_TOOL_NAME, PERIOD_READING_TOOL_NAME, type ToolSummarizer, type ToolSummary as AgentToolSummary } from '@almamesh/llm';
+import type { ToolSummarizer, ToolSummary as AgentToolSummary } from '@almamesh/llm';
 import type { ChatThreadAsOf } from '@almamesh/shared-types';
 
 /** Each tool result's JSON stays under this many UTF-8 bytes (spec: "under 4 KB"). */
@@ -174,7 +174,7 @@ export interface PeriodReading extends ReadingFrame {
   readonly trimmed?: readonly string[];
 }
 
-/** A typed reason the reading could not be computed (get_timing's PeriodSkyUnavailableError reasons, plus the reading's own). */
+/** A typed reason the reading could not be computed (periodChart.ts's PeriodSkyUnavailableError reasons, plus the reading's own). */
 export type PeriodReadingFailure =
   | 'engine_unavailable'
   | 'timeout'
@@ -477,7 +477,7 @@ export function buildPeriodReading(source: PeriodReadingContext, frame: ReadingF
   }, options.budgetBytes ?? MAX_PERIOD_RESULT_BYTES);
 }
 
-// --- summaries (the collapsed row and the agent's compaction note) ---
+// --- summaries (the next turn's facts note) ---
 
 const title = (word: string) => word.charAt(0).toUpperCase() + word.slice(1);
 
@@ -527,7 +527,7 @@ export function periodReadingSummary(result: PeriodReadingToolResult): ToolSumma
   return { line, factors };
 }
 
-// --- get_period_detail: deterministic digests ---
+// --- read_period's close-ups (focus): deterministic digests ---
 
 export const DETAIL_SECTIONS = ['lord', 'segment', 'bindus', 'panchang', 'dashas'] as const;
 export type DetailSection = (typeof DETAIL_SECTIONS)[number];
@@ -558,7 +558,6 @@ export interface PeriodDetail extends ReadingFrame {
   readonly trimmed?: readonly string[];
 }
 
-export type PeriodDetailToolResult = PeriodDetail | PeriodReadingUnavailable | PeriodToolError;
 
 type Digest = { readonly facts: Readonly<Record<string, unknown>>; readonly factors: readonly string[] } | PeriodToolError;
 
@@ -689,32 +688,27 @@ export function buildPeriodDetail(source: DetailSource, frame: ReadingFrame, sec
   });
 }
 
-function detailLine(detail: PeriodDetail): string {
-  const facts = detail.facts as Record<string, unknown>;
-  if (detail.section === 'lord') return `${title(String(facts.lord))} in detail · ${(facts.runs as unknown[]).length} dasha spans`;
-  if (detail.section === 'bindus') return `Ashtakavarga ${facts.key === 'sav' ? 'SAV' : title(String(facts.key))} · total ${String(facts.total)}`;
-  if (detail.section === 'segment' && Array.isArray(facts.segments)) return `Segments · ${facts.segments.length} in ${detail.period.label}`;
-  if (detail.section === 'segment') {
-    const segment = facts.segment as ReadingSegment;
-    return `Segment ${segment.start} – ${segment.end} · ${[segment.maha, segment.antar, segment.pratyantar].map(title).join('–')}`;
-  }
-  if (detail.section === 'panchang') return `Panchang ${String(facts.tithi_name)} (${String(facts.paksha)}) · ${String(facts.nakshatra)} · ${String(facts.vara_utc)} (UTC)`;
-  return `Dashas · ${(facts.spans as unknown[]).length} spans`;
+/** read_period's name; readPeriod.ts registers the tool under it (named here so the eager chat hook can key its summary). */
+export const READ_PERIOD_TOOL_NAME = 'read_period';
+
+/** A question read_period put back to the user (a place to pick, a day with no place). */
+interface ReadPeriodAskLike {
+  readonly status: string;
+  readonly ask: string;
 }
 
-export function periodDetailSummary(result: PeriodDetailToolResult): ToolSummary {
-  if ('error' in result || 'available' in result) return failureLine(result, 'Period detail');
-  return { line: detailLine(result), factors: result.factors.slice(0, 5) };
+/** One read_period result as a line: the period and place, then the reading; an ask says what it asked. */
+function readPeriodSummary(result: PeriodReadingToolResult | ReadPeriodAskLike): ToolSummary {
+  if ('ask' in result) return { line: `Asked the user (${result.status})`, factors: [] };
+  const summary = periodReadingSummary(result);
+  if ('error' in result || 'available' in result) return summary;
+  const frame = [result.period.label, result.place.label].filter((part): part is string => part !== undefined && part.length > 0);
+  return { ...summary, line: [...frame, summary.line].join(' · ') };
 }
 
-// The agent loop hands a summarizer the tool's own result (in-turn compaction)
-// or the persisted one (the next turn's facts note). A malformed persisted
-// result throws here and the loop falls back to its default summary.
-export const summarizePeriodReading: ToolSummarizer = (result) => periodReadingSummary(result as PeriodReadingToolResult);
-export const summarizePeriodDetail: ToolSummarizer = (result) => periodDetailSummary(result as PeriodDetailToolResult);
-
-/** The period tools' own one-line summaries, by tool name (useChatThread's history facts note). */
+// The chat hook hands a summarizer the persisted result (the next turn's facts note).
+// A malformed one throws here and toolFactsNote falls back to its default summary.
+/** The chat tools' own one-line summaries, by tool name (useChatThread's history facts note). */
 export const PERIOD_TOOL_SUMMARIZERS: Readonly<Record<string, ToolSummarizer>> = {
-  [PERIOD_READING_TOOL_NAME]: summarizePeriodReading,
-  [PERIOD_DETAIL_TOOL_NAME]: summarizePeriodDetail,
+  [READ_PERIOD_TOOL_NAME]: (result) => readPeriodSummary(result as PeriodReadingToolResult | ReadPeriodAskLike),
 };

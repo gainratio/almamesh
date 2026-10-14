@@ -1,7 +1,12 @@
 /**
- * Dashboard chat — a stored chart without a birthplace timezone is refused
- * visibly, never answered "in the chart's zone" with a silent UTC. Mirrors the
- * MeshEdge guard; both go through requireBirthTimeZone.
+ * Dashboard chat: the send handler loads the chat turn (lib/chatTurn.ts) on send
+ * and hands it the stored chart, the reader's voice and the thread's callbacks.
+ *
+ * Contract reversed (chat tool layer redesign, Task 6, 2026-10-14): a stored chart
+ * without a birthplace timezone used to be refused, because get_current_datetime
+ * could answer "in the chart's zone". That tool is gone; today is the viewer's day
+ * (lib/chatTurn.ts), so no part of a chat turn reads the birth zone and the chart
+ * answers like any other.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
@@ -19,24 +24,8 @@ import type { BirthChartGenerationResponse } from '@almamesh/shared-types';
 import '../../i18n/config';
 import { __resetMemoryForTest, __setMemoryForTest } from '../../lib/chatMemory';
 
-const llmMocks = vi.hoisted(() => ({ streamAgentChat: vi.fn(), streamChartChat: vi.fn() }));
-
-vi.mock('@almamesh/llm', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@almamesh/llm')>();
-  return {
-    ...actual,
-    streamAgentChat: llmMocks.streamAgentChat,
-    streamChartChat: llmMocks.streamChartChat,
-  };
-});
-
-
-// The chat turn's context budget: a fixed small window, and no catalog read from a unit test.
-const budgetMocks = vi.hoisted(() => ({ onRoundUsage: vi.fn(), onToolCall: vi.fn() }));
-vi.mock('../../lib/chatContextBudget', async () => {
-  const { chatPromptBudgetFor } = await vi.importActual<typeof import('@almamesh/llm')>('@almamesh/llm');
-  return { chatContextFor: vi.fn(async () => ({ contextTokens: 8_192, promptBudget: chatPromptBudgetFor(8_192), onRoundUsage: budgetMocks.onRoundUsage, onToolCall: budgetMocks.onToolCall })) };
-});
+const turnMocks = vi.hoisted(() => ({ runChatTurn: vi.fn() }));
+vi.mock('../../lib/chatTurn', () => ({ runChatTurn: turnMocks.runChatTurn }));
 
 vi.mock('../../lib/localChartRead', () => ({ readLocalPrimaryChart: vi.fn() }));
 
@@ -54,20 +43,7 @@ vi.mock('../../components/features/dashboard', () => ({
   ReadingGrounding: () => null,
 }));
 
-// Pin the viewer's zone so the viewer-today check holds on a runner in any TZ.
-vi.mock('../../lib/analysisInstant', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../../lib/analysisInstant')>()),
-  viewerTimeZone: () => 'America/Los_Angeles',
-}));
-
-vi.mock('../../lib/chatToolset', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../lib/chatToolset')>();
-  return { ...actual, buildChatToolset: vi.fn(actual.buildChatToolset) };
-});
-
 import { hydrateLlmSettings, openRouterPreset, writeLlmSettings } from '@almamesh/llm';
-import { buildChatToolset, type ChatToolset } from '../../lib/chatToolset';
-import { expectToolsetReadsViewerToday } from '../../test/viewerToday';
 import { readLocalPrimaryChart } from '../../lib/localChartRead';
 import DashboardPage from '../Dashboard';
 
@@ -129,7 +105,7 @@ async function ask(question: string): Promise<void> {
   fireEvent.click(screen.getByTestId('chat-send-button'));
 }
 
-describe('Dashboard chat — no silent UTC for the chart zone', () => {
+describe('Dashboard chat runs one lazy chat turn', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -145,7 +121,8 @@ describe('Dashboard chat — no silent UTC for the chart zone', () => {
     useProfilesStore.setState({ activeProfileId: 'profile-1' });
     useInterpretationStore.setState({ byChart: {} });
     usePredictiveStore.getState().reset();
-    llmMocks.streamAgentChat.mockImplementation(async function* () {
+    turnMocks.runChatTurn.mockImplementation(async function* () {
+      yield 'An answer';
       yield 'An answer grounded in the chart.';
     });
   });
@@ -155,7 +132,7 @@ describe('Dashboard chat — no silent UTC for the chart zone', () => {
     vi.restoreAllMocks();
   });
 
-  it('refuses the question when the stored chart has no birthplace timezone', async () => {
+  it('a stored chart without a birthplace timezone still answers (contract reversed: no tool reads the birth zone)', async () => {
     const chart = chartWithZone('');
     useChartLibraryStore.setState({ charts: { 'chart-1': chart }, hydrated: true });
     vi.mocked(readLocalPrimaryChart).mockResolvedValue(response(chart));
@@ -163,13 +140,11 @@ describe('Dashboard chat — no silent UTC for the chart zone', () => {
 
     await ask('What does my chart say about career?');
 
-    await waitFor(() =>
-      expect(screen.getByTestId('chat-panel').textContent).toMatch(/couldn't process your request/),
-    );
-    expect(llmMocks.streamAgentChat).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.getByTestId('chat-panel').textContent).toContain('An answer grounded in the chart.'));
+    expect(turnMocks.runChatTurn).toHaveBeenCalledTimes(1);
   });
 
-  it('answers normally when the zone is present (control)', async () => {
+  it('hands the turn the stored chart, the question, the voice and the thread callbacks; pages pass no test seams', async () => {
     const chart = chartWithZone('Asia/Kolkata');
     useChartLibraryStore.setState({ charts: { 'chart-1': chart }, hydrated: true });
     vi.mocked(readLocalPrimaryChart).mockResolvedValue(response(chart));
@@ -177,22 +152,17 @@ describe('Dashboard chat — no silent UTC for the chart zone', () => {
 
     await ask('What does my chart say about career?');
 
-    await waitFor(() => expect(llmMocks.streamAgentChat).toHaveBeenCalledTimes(1));
-    // The context budget reaches the agent loop: the window and the telemetry sink.
-    expect(llmMocks.streamAgentChat.mock.calls[0][0]).toMatchObject({ contextTokens: 8_192, onRoundUsage: budgetMocks.onRoundUsage });
-    // Every tool call also reaches the turn's dev telemetry (window.__almameshAgentCalls).
-    const record = { toolCallId: 'c1', toolName: 'get_timing', args: {}, result: {}, status: 'complete' as const };
-    llmMocks.streamAgentChat.mock.calls[0][0].onToolCall?.(record);
-    expect(budgetMocks.onToolCall).toHaveBeenCalledWith(record);
-  });
-  it('reads chat "today" in the viewer zone, like MeshEdge', async () => {
-    const chart = chartWithZone('Asia/Kolkata');
-    useChartLibraryStore.setState({ charts: { 'chart-1': chart }, hydrated: true });
-    vi.mocked(readLocalPrimaryChart).mockResolvedValue(response(chart));
-    renderDashboardWithChatOpen();
-    await ask('What does my chart say about career?');
-    await waitFor(() => expect(vi.mocked(buildChatToolset)).toHaveBeenCalled());
-    const toolset = vi.mocked(buildChatToolset).mock.results[0].value as ChatToolset;
-    await expectToolsetReadsViewerToday(toolset, 'Asia/Kolkata');
+    await waitFor(() => expect(turnMocks.runChatTurn).toHaveBeenCalledTimes(1));
+    const input = turnMocks.runChatTurn.mock.calls[0][0];
+    expect(input).toMatchObject({
+      chart: chart.sidereal_chart, profileKey: 'profile-1', question: 'What does my chart say about career?', mode: 'layman', language: 'en',
+      labels: { deciding: expect.any(String), answering: expect.any(String), complete: expect.any(String) },
+    });
+    expect(typeof input.onTravel).toBe('function');
+    expect(typeof input.onToolCall).toBe('function');
+    expect(input.seams).toBeUndefined();
+    // Snapshots replace each other: the bubble shows the last one, not a concatenation.
+    await waitFor(() => expect(screen.getByTestId('chat-panel').textContent).toContain('An answer grounded in the chart.'));
+    expect(screen.getByTestId('chat-panel').textContent).not.toContain('An answerAn answer');
   });
 });

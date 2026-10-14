@@ -1,5 +1,5 @@
 /**
- * resolve_place's offline engine (spec 2026-10-08 Part 2). Bundled list only:
+ * The chat's offline place lookup for read_period and travel (spec 2026-10-08 Part 2). Bundled list only:
  * never searchCities or the online geocoder. A place_ref is the row's index in
  * the bundled list ("city:<n>"): stateless, nothing stored (plan Ruling 4).
  * Coordinates stay in ResolvedPlace; the tool layer sends only `summary`.

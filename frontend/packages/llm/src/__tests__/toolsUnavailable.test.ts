@@ -38,17 +38,15 @@ describe("explicitlyRejectsTools", () => {
 });
 
 describe("one copy", () => {
-  it.each(["agent.ts", "toolLoop.ts"])("%s imports the helpers instead of defining them", (file) => {
-    const text = source(file);
+  it("toolLoop.ts imports the helpers instead of defining them", () => {
+    const text = source("toolLoop.ts");
     expect(text).not.toMatch(/function explicitlyRejectsTools/);
     expect(text).not.toMatch(/TOOLS_UNAVAILABLE_(?:NOTICE|INSTRUCTION)\s*=/);
     expect(text).not.toMatch(/type AgentStatusEvent\s*=/);
     expect(text).toMatch(/from "\.\/toolsUnavailable"/);
   });
 
-  it("the shared module and agent.ts never import the AI SDK", () => {
-    for (const file of ["toolsUnavailable.ts", "agent.ts"]) {
-      expect(source(file)).not.toMatch(/from "(?:ai|zod|@ai-sdk\/[^"]+)"/);
-    }
+  it("the shared module never imports the AI SDK", () => {
+    expect(source("toolsUnavailable.ts")).not.toMatch(/from "(?:ai|zod|@ai-sdk\/[^"]+)"/);
   });
 });

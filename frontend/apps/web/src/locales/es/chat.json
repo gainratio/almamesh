@@ -152,38 +152,11 @@
     "row_skipped": "Omitió {{what}}",
     "args": "Preguntó con",
     "result": "Obtuvo",
-    "get_natal_summary": "Resumen natal",
-    "get_trip_context": "Periodo y lugar del viaje",
-    "get_timing": "Tiempos: dashas, tránsitos, fuerza, áreas",
-    "get_period_reading": "Lectura del periodo: dashas, regentes, cielo, temas",
-    "get_period_detail": "Detalle del periodo: un regente, segmento, bindus, panchang o dashas",
-    "resolve_place": "Buscar un lugar",
-    "time_travel": "Viajar a otro momento",
-    "get_chart_facts": "Datos de la carta",
-    "get_current_datetime": "Fecha y hora actuales",
+    "read_period": "Lectura del periodo: dashas, regentes, cielo, temas, fechas",
+    "travel": "Viajar a otro momento",
     "rows": {
-      "get_natal_summary": "la carta natal",
-      "get_trip_context": "el periodo y lugar del viaje",
-      "get_timing": "los tiempos",
-      "get_period_reading": "la lectura del periodo",
-      "get_period_detail": "el detalle del periodo",
-      "resolve_place": "un lugar",
-      "time_travel": "un viaje en el tiempo",
-      "get_chart_facts": "datos de la carta",
-      "get_current_datetime": "la fecha y hora actuales"
-    },
-    "sections": {
-      "dashas": "dashas",
-      "transits": "tránsitos",
-      "strength": "fuerza",
-      "domains": "áreas de vida"
-    },
-    "detail_sections": {
-      "lord": "un regente activo",
-      "segment": "un segmento",
-      "bindus": "los bindus de ashtakavarga",
-      "panchang": "el panchang",
-      "dashas": "todos los dashas"
+      "read_period": "la lectura del periodo",
+      "travel": "un viaje en el tiempo"
     }
   },
   "threads": {

@@ -10,7 +10,6 @@ import {
   REASONING_TIMEOUT_MS,
   ReasoningTimeoutError,
   SECTION_REASONING_MAX_TOKENS,
-  streamAgentChat,
   streamCurrentTimeline,
   type CurrentTimelineEvent,
 } from "../index";
@@ -208,43 +207,5 @@ describe("reasoning cap: timeline sections", () => {
   });
 });
 
-describe("reasoning cap: agent chat", () => {
-  const chatOptions = (fetchImpl: typeof fetch, extra: Record<string, unknown> = {}) => ({
-    config: OPENROUTER,
-    messages: [{ role: "user" as const, content: "What about my career?" }],
-    tools: [
-      {
-        name: "get_current_datetime",
-        description: "Read the pinned current time.",
-        parameters: { type: "object", properties: {}, additionalProperties: false },
-        statusLabel: "Checking the current time",
-        execute: () => ({}),
-      },
-    ],
-    now: new Date("2030-04-05T06:07:08.000Z"),
-    fetchImpl,
-    ...extra,
-  });
-
-  async function drain(gen: AsyncGenerator<string>): Promise<string> {
-    let text = "";
-    for await (const token of gen) text += token;
-    return text;
-  }
-
-  it("sends the chat reasoning budget to OpenRouter", async () => {
-    const fetchImpl = vi.fn(async () => new Response(said("Your tenth house.") + sse("[DONE]")));
-    await drain(streamAgentChat(chatOptions(fetchImpl as unknown as typeof fetch)));
-    const [, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
-    const body = JSON.parse(String(init.body));
-    expect(body.reasoning).toEqual({ max_tokens: 6_000 });
-  });
-
-  it("aborts a chat turn that only thinks with ai.reasoning_timeout", async () => {
-    let cancelled = 0;
-    const fetchImpl = vi.fn(async () => endlessThinking(() => (cancelled += 1)));
-    const run = drain(streamAgentChat(chatOptions(fetchImpl as unknown as typeof fetch, { reasoningTimeoutMs: 40 })));
-    await expect(run).rejects.toBeInstanceOf(ReasoningTimeoutError);
-    expect(cancelled).toBe(1);
-  });
-});
+// The chat turn's reasoning budget and thinking-time cap live with the seam (toolLoop.test.ts:
+// "caps OpenRouter reasoning at the chat budget" and "a stream with no output past the reasoning cap").

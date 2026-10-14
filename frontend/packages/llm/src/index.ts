@@ -13,7 +13,7 @@ export {
   periodAnalysisInstant,
 } from "./sanitize";
 export type { AnalysisInstant, PeriodRange, SanitizedAsOf } from "./sanitize";
-export { PERIOD_DETAIL_TOOL_NAME, PERIOD_READING_TOOL_NAME, TRIP_GROUNDING_TOOLS, pinRelative, pinnedPeriodRules, type PinRelative, type PinnedPlace, type PinnedPrompt } from "./period-pin";
+export { pinRelative, pinnedPeriodRules, type PinRelative, type PinnedPrompt } from "./period-pin";
 export type {
   SanitizedChart,
   SanitizedDashas,
@@ -123,28 +123,9 @@ export type {
 } from "./client";
 export type { ChatMessage, StreamChatOptions } from "./client";
 
-// --- Bounded browser-native tool orchestration ---
-export { AGENT_LIMITS, streamAgentChat } from "./agent";
-export type {
-  AgentJsonObject,
-  AgentStatusEvent,
-  AgentTool,
-  AgentToolCallRecord,
-  AgentToolContext,
-  AgentToolFailure,
-  AgentRoundUsage,
-  StreamAgentChatOptions,
-} from "./agent";
-// The agent loop's context budget and tool-result compaction.
-export {
-  DEFAULT_CONTEXT_TOKENS,
-  calibratedEstimate,
-  chatPromptBudgetFor,
-  estimateRequestTokens,
-  turnTokenBudget,
-} from "./contextBudget";
-export type { TokenCalibration } from "./contextBudget";
-export { compactToolContent, defaultToolSummary, summarizeToolResult, toolFactsNote } from "./compaction";
+// --- The chat turn's context budget and the earlier turns' tool facts ---
+export { DEFAULT_CONTEXT_TOKENS, chatPromptBudgetFor, turnTokenBudget } from "./contextBudget";
+export { defaultToolSummary, summarizeToolResult, toolFactsNote } from "./compaction";
 export { resolveModelContextTokens } from "./model-context";
 export type { ResolveModelContextOptions } from "./model-context";
 export type { PriorToolCall, ToolSummarizer, ToolSummary } from "./compaction";
@@ -158,6 +139,7 @@ export type { ReadingProvenance } from "./provenance";
 export {
   buildInterpretationMessages,
   buildChatMessages,
+  formatNow,
   serializeInterpretationForChat,
   INTERP_TOKEN_BUDGET,
   CLOUD_CHAT_BUDGET,
@@ -476,28 +458,6 @@ export {
   windowEndsBeforePeriodEnd,
 } from "./period";
 export type { PeriodArgs, PeriodEcho, PeriodLimits } from "./period";
-export {
-  MAX_SEGMENTS,
-  NEEDS_PLACE_ERROR,
-  PLACE_CONFLICT_ERROR,
-  PLACE_NEEDED_BELOW_DAYS,
-  PLACE_REF_ARG_PATTERN,
-  PLACE_REF_ERROR,
-  SEGMENT_GAP_NOTE,
-  SEGMENTS_ORDER_ERROR,
-  SEGMENTS_SHAPE_ERROR,
-  SEGMENTS_WITH_DATES_ERROR,
-  SEGMENTS_WITH_PLACE_ERROR,
-  TIME_FORMAT_ERROR,
-  TIME_NEEDS_DAY_ERROR,
-  TIME_NEEDS_PLACE_ERROR,
-  TIME_OF_DAY_PATTERN,
-  needsPlace,
-  normalizeTimingArgs,
-  parseTimingArgs,
-  TIME_IGNORED_NOTE,
-} from "./period-places";
-export type { TimingArgs, TimingSegment } from "./period-places";
 export { BIRTH_YEAR_ROWS_NOTE, NO_TREE_NOTE, PRATYANTAR_NOTE, selectDashasForPeriod } from "./period-dashas";
 export type { PeriodAntarRow, PeriodDashaRow, PeriodDashas } from "./period-dashas";
 export {

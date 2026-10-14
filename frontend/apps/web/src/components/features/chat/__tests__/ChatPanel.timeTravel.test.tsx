@@ -29,7 +29,7 @@ const CHART = { chart_id: 'c1', profile_id: 'p1', birth_data: { birth_location_d
 
 type AskFn = NonNullable<ComponentProps<typeof ChatPanel>['onAskQuestionStream']>;
 
-function renderPanel(onAsk = vi.fn<AskFn>(async () => ({ answer: 'ok' })), configured = true) {
+function renderPanel(onAsk = vi.fn<AskFn>(async () => 'ok'), configured = true) {
   if (configured) writeLlmSettings(openRouterPreset('sk-or-v1-0000-synthetic-test-key', 'test-org/test-model'));
   render(
     <MemoryRouter>
@@ -126,7 +126,7 @@ describe('ChatPanel time travel', () => {
     fireEvent.change(screen.getByTestId('chat-input'), { target: { value: 'Will work get easier?' } });
     fireEvent.click(screen.getByTestId('chat-send-button'));
     await waitFor(() => expect(onAsk).toHaveBeenCalled());
-    expect((onAsk.mock.calls[0] as unknown[])[7]).toEqual({ ...YEAR_2050, place: expect.objectContaining({ timezone: 'Asia/Kolkata' }) });
+    expect(onAsk.mock.calls[0]?.[0].asOf).toEqual({ ...YEAR_2050, place: expect.objectContaining({ timezone: 'Asia/Kolkata' }) });
   });
 
   it('a pinned thread can send while the chart re-anchors to a new day', async () => {

@@ -6,22 +6,9 @@ import type { PeriodRange } from "./sanitize";
 
 export type PinRelative = "past" | "future" | "contains_today";
 
-/**
- * Where the trip's tools read the sky: a label and a zone, for every trip (the
- * AI must know where the trip is). Never coordinates, and never a marker saying
- * the place is the birth place.
- */
-export interface PinnedPlace {
-  readonly label: string;
-  readonly timezone: string;
-}
-
 export interface PinnedPrompt extends PeriodRange {
   readonly relative: PinRelative;
   readonly granularity?: "day" | "month" | "year";
-  /** The period in the UI language, e.g. "May 2019". */
-  readonly label?: string;
-  readonly place?: PinnedPlace;
 }
 
 /** Where today falls against the pin. Today on either edge is inside it. */
@@ -36,15 +23,6 @@ const TENSE: Readonly<Record<PinRelative, string>> = {
   future: "Use the future tense: this period has not started yet.",
   contains_today: "Use the present tense: today is inside this period.",
 };
-
-// The old toolset's names (chatToolset.ts, periodReadingTool.ts, periodReading.ts) until Task 6 of the
-// chat tool layer redesign deletes those files. No prompt names them any more.
-/** The period reading (spec 2026-10-13): dashas to pratyantar, lords, sky, themes, for a bound period and place. */
-export const PERIOD_READING_TOOL_NAME = "get_period_reading";
-/** The reading's drill-down: one lord, segment, bindu row, the panchang or every dasha span. */
-export const PERIOD_DETAIL_TOOL_NAME = "get_period_detail";
-/** The tools the old trip turn forced before it answered (chatToolset.ts). */
-export const TRIP_GROUNDING_TOOLS = [PERIOD_READING_TOOL_NAME, "get_natal_summary"] as const;
 
 /** The pinned period and its tense. The trip's label and place ride in the THIS THREAD line (prompt.ts). */
 export function pinnedPeriodRules(pin: PinnedPrompt): string {

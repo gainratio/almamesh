@@ -1,25 +1,50 @@
-import type { AgentRoundUsage, AgentToolCallRecord } from '@almamesh/llm';
+import type { RoundEvent, ToolCallEvent } from '@almamesh/llm/toolLoop';
 import { describe, expect, it } from 'vitest';
 
 import { agentCallRows, agentRoundRows, beginAgentTurn, clearAgentRoundsForTest, recordAgentCall } from '../agentRoundTelemetry';
 
-const ROW: AgentRoundUsage = { round: 1, phase: 'decision', prompt_tokens: 10, completion_tokens: 2, estimated: false, estimate: 9, budget: 4096, compacted: 0 };
-const CALL: AgentToolCallRecord = { toolCallId: 'c1', toolName: 'get_period_reading', args: {}, result: {}, status: 'complete' };
+const ROUND: RoundEvent = { round: 1, inputTokens: 10, outputTokens: 2, finishReason: 'tool-calls' };
+const CALL: ToolCallEvent = { round: 1, toolCallId: 'c1', toolName: 'read_period', args: {}, result: {}, status: 'complete', validFirstTry: true };
 
 describe('agent round telemetry (dev diagnostics only, in memory)', () => {
   it('numbers each turn and keeps its rounds in order', () => {
     clearAgentRoundsForTest();
     const first = beginAgentTurn();
-    first.onRoundUsage({ ...ROW, round: 1 });
-    first.onRoundUsage({ ...ROW, round: 2, phase: 'final' });
-    beginAgentTurn().onRoundUsage({ ...ROW, round: 1 });
+    first.onRound({ ...ROUND, round: 1 });
+    first.onRound({ ...ROUND, round: 2 });
+    beginAgentTurn().onRound({ ...ROUND, round: 1 });
     expect(agentRoundRows().map((row) => [row.turn, row.round])).toEqual([[1, 1], [1, 2], [2, 1]]);
+  });
+
+  it('keeps the provider token counts and why the round finished; unknown counts are null', () => {
+    clearAgentRoundsForTest();
+    beginAgentTurn().onRound({ round: 1, finishReason: 'stop' });
+    expect(agentRoundRows()).toEqual([{ turn: 1, round: 1, phase: 'decision', input_tokens: null, output_tokens: null, finish_reason: 'stop' }]);
+  });
+
+  it('the round that called answer is final, and so is the prose fallback', () => {
+    clearAgentRoundsForTest();
+    const turn = beginAgentTurn();
+    turn.onToolCall({ ...CALL, round: 1 });
+    turn.onRound({ ...ROUND, round: 1 });
+    turn.onToolCall({ ...CALL, round: 2, toolName: 'answer' });
+    turn.onRound({ ...ROUND, round: 2 });
+    beginAgentTurn().onRound({ ...ROUND, finishReason: 'answer_fallback' });
+    expect(agentRoundRows().map((row) => row.phase)).toEqual(['decision', 'final', 'final']);
+  });
+
+  it('a rejected answer does not make its round final', () => {
+    clearAgentRoundsForTest();
+    const turn = beginAgentTurn();
+    turn.onToolCall({ ...CALL, toolName: 'answer', status: 'retried', validFirstTry: false });
+    turn.onRound(ROUND);
+    expect(agentRoundRows()[0]?.phase).toBe('decision');
   });
 
   it('keeps only the newest 64 rows', () => {
     clearAgentRoundsForTest();
     const record = beginAgentTurn();
-    for (let round = 1; round <= 70; round += 1) record.onRoundUsage({ ...ROW, round });
+    for (let round = 1; round <= 70; round += 1) record.onRound({ ...ROUND, round });
     const rows = agentRoundRows();
     expect(rows).toHaveLength(64);
     expect(rows[0]?.round).toBe(7);
@@ -27,39 +52,23 @@ describe('agent round telemetry (dev diagnostics only, in memory)', () => {
 
   it('hands out a copy, so a reader cannot rewrite the log', () => {
     clearAgentRoundsForTest();
-    beginAgentTurn().onRoundUsage(ROW);
+    beginAgentTurn().onRound(ROUND);
     (agentRoundRows() as unknown as unknown[]).length = 0;
     expect(agentRoundRows()).toHaveLength(1);
   });
 });
 
 describe('agent call telemetry (dev diagnostics only, in memory)', () => {
-  it('an error call was not valid on its first try; a complete call was', () => {
+  it('records each call with its own round, status and first-try validity', () => {
     clearAgentRoundsForTest();
     const turn = beginAgentTurn();
-    turn.onRoundUsage({ ...ROW, round: 1 });
-    turn.onToolCall({ ...CALL, toolName: 'resolve_place', status: 'error' });
-    turn.onToolCall({ ...CALL, status: 'complete' });
+    turn.onToolCall({ ...CALL, status: 'retried', validFirstTry: false });
+    turn.onToolCall({ ...CALL, round: 2, validFirstTry: false });
+    turn.onToolCall({ ...CALL, round: 2, toolName: 'travel', status: 'skipped' });
     expect(agentCallRows()).toEqual([
-      { turn: 1, round: 1, name: 'resolve_place', status: 'error', validFirstTry: false },
-      { turn: 1, round: 1, name: 'get_period_reading', status: 'complete', validFirstTry: true },
-    ]);
-  });
-
-  it('a call belongs to the latest round of its own turn', () => {
-    clearAgentRoundsForTest();
-    const first = beginAgentTurn();
-    first.onRoundUsage({ ...ROW, round: 1 });
-    first.onRoundUsage({ ...ROW, round: 2 });
-    first.onToolCall(CALL);
-    const second = beginAgentTurn();
-    second.onToolCall({ ...CALL, toolName: 'grounding_before_any_request' });
-    second.onRoundUsage({ ...ROW, round: 1 });
-    second.onToolCall({ ...CALL, status: 'skipped' });
-    expect(agentCallRows().map((row) => [row.turn, row.round, row.status, row.validFirstTry])).toEqual([
-      [1, 2, 'complete', true],
-      [2, 0, 'complete', true],
-      [2, 1, 'skipped', true],
+      { turn: 1, round: 1, name: 'read_period', status: 'retried', validFirstTry: false },
+      { turn: 1, round: 2, name: 'read_period', status: 'complete', validFirstTry: false },
+      { turn: 1, round: 2, name: 'travel', status: 'skipped', validFirstTry: true },
     ]);
   });
 

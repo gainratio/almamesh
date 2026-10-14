@@ -1,5 +1,5 @@
 /**
- * The chat asks the person which place they meant. When resolve_place finds
+ * The chat asks the person which place they meant. When read_period or travel finds
  * several places ("Springfield"), it hands the candidates here and waits; the
  * chat panel's picker shows them and answers with the pick, or with nothing
  * when the person cancels. The model never guesses between them.

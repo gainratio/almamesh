@@ -13,7 +13,7 @@
 // - per-tool budgets, tool timeouts, a runaway-reasoning cap, and telemetry.
 //
 // `explicitlyRejectsTools`, `TOOLS_UNAVAILABLE_*` and `AgentStatusEvent` live
-// in ./toolsUnavailable (no SDK import), shared with agent.ts.
+// in ./toolsUnavailable (no SDK import).
 
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import {

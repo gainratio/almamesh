@@ -12,11 +12,8 @@ const CHART = {
 import {
   CLOUD_CHAT_BUDGET,
   DEFAULT_CONTEXT_TOKENS,
-  calibratedEstimate,
   chatPromptBudgetFor,
-  compactToolContent,
   defaultToolSummary,
-  estimateRequestTokens,
   summarizeToolResult,
   toolFactsNote,
   turnTokenBudget,
@@ -34,32 +31,6 @@ describe("turnTokenBudget", () => {
     for (const unknown of [undefined, 0, -5, Number.NaN, Number.POSITIVE_INFINITY, 12.5]) {
       expect(turnTokenBudget(unknown)).toBe(4_096);
     }
-  });
-});
-
-describe("estimateRequestTokens", () => {
-  it("is ceil(chars / 4) over the serialized messages and tool schemas", () => {
-    const messages = [{ role: "user", content: "abc" }];
-    const tools = [{ type: "function", function: { name: "t" } }];
-    const chars = JSON.stringify({ messages, tools }).length;
-    expect(estimateRequestTokens(messages, tools)).toBe(Math.ceil(chars / 4));
-  });
-
-  it("counts tool schemas, not only messages", () => {
-    const messages = [{ role: "user", content: "abc" }];
-    const big = [{ type: "function", function: { name: "t", description: "x".repeat(4_000) } }];
-    expect(estimateRequestTokens(messages, big) - estimateRequestTokens(messages, [])).toBeGreaterThanOrEqual(1_000);
-  });
-});
-
-describe("calibratedEstimate", () => {
-  it("scales an estimate up when the provider counted more tokens than estimated", () => {
-    expect(calibratedEstimate(1_000, { estimate: 500, reported: 1_000 })).toBe(2_000);
-  });
-
-  it("never scales an estimate down (the char estimate stays the floor)", () => {
-    expect(calibratedEstimate(1_000, { estimate: 1_000, reported: 400 })).toBe(1_000);
-    expect(calibratedEstimate(1_000, undefined)).toBe(1_000);
   });
 });
 
@@ -139,11 +110,6 @@ describe("tool result summaries", () => {
       expect(factor.length).toBeLessThanOrEqual(80);
       expect(factor).not.toContain("\n");
     }
-  });
-
-  it("a compacted tool message is short JSON that says it is compacted and carries the facts", () => {
-    const content = compactToolContent({ line: "Saturn antar", factors: ["12th lord"] });
-    expect(JSON.parse(content)).toEqual({ ok: true, compacted: true, facts: "Saturn antar", factors: ["12th lord"] });
   });
 });
 

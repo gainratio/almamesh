@@ -11,10 +11,7 @@
 
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { ChatTurn } from '@almamesh/llm';
-import type { ChatThreadAsOf } from '@almamesh/shared-types';
-import { ChatPanel, type ChatTripKit } from './ChatPanel';
-import type { SSEMetaData } from '../../../lib/streaming';
+import { ChatPanel, type ChatAsk } from './ChatPanel';
 import type { ViewMode } from '../../../lib/types';
 
 type PanelState = 'closed' | 'minimized' | 'normal' | 'maximized';
@@ -28,26 +25,9 @@ interface FloatingChatPanelProps {
   viewMode: ViewMode;
   /** Earliest plausible pin year (the birth year). */
   birthYear?: number;
-  onAskQuestionStream: (
-    question: string,
-    onToken: (token: string) => void,
-    onMeta: (meta: SSEMetaData) => void,
-    viewMode?: ViewMode,
-    history?: readonly ChatTurn[],
-    retrievedContext?: readonly string[],
-    onAgentStatus?: (label: string | null) => void,
-    asOf?: ChatThreadAsOf,
-    onTravel?: import('../../../lib/travelSlot').TravelRecorder,
-    onToolCall?: (record: import('@almamesh/llm').AgentToolCallRecord) => void,
-  ) => Promise<{
-    answer: string;
-    timing_guidance?: string | null;
-    remedies?: string[] | null;
-  }>;
+  onAskQuestionStream: ChatAsk;
   /** Start with the panel open (e.g. arriving via a "discuss in chat" link). */
   initialOpen?: boolean;
-  /** Each thread's tools and trip context (chatTripKit.ts). */
-  chatKit?: ChatTripKit;
 }
 
 // Icons as separate components for cleaner code
@@ -114,7 +94,6 @@ export function FloatingChatPanel({
   birthYear,
   onAskQuestionStream,
   initialOpen = false,
-  chatKit,
 }: FloatingChatPanelProps) {
   const { t } = useTranslation('chat');
   const [panelState, setPanelState] = useState<PanelState>(initialOpen ? 'normal' : 'closed');
@@ -260,7 +239,6 @@ export function FloatingChatPanel({
                   viewMode={viewMode}
                   birthYear={birthYear}
                   onAskQuestionStream={onAskQuestionStream}
-                  {...(chatKit ? { chatKit } : {})}
                   hideHeader
                 />
               </div>

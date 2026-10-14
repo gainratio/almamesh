@@ -34,7 +34,6 @@ import {
   toolFactsNote,
   type ChatSummaryPlan,
   type PriorToolCall,
-  type AgentToolCallRecord,
   type ChatTurn,
   type LlmRequestError,
 } from '@almamesh/llm';
@@ -43,6 +42,7 @@ import i18n from '../i18n/config';
 import { noteIfStaleChunk, StaleAppError, useAppStale } from '../lib/appStale';
 import { indexChatMessage, retrieveContext } from '../lib/chatMemory';
 import { isChunkLoadError } from '../lib/chunkError';
+import type { ChatToolCall } from '../lib/chatTurn';
 import { chatErrorMessage, getChatErrorMessage } from '../lib/errors';
 import { LLM_SETTINGS_CHANGED_EVENT } from '../lib/llmSettingsEvents';
 import { PERIOD_TOOL_SUMMARIZERS } from '../lib/periodReading';
@@ -51,22 +51,23 @@ import { waitForStoreSaved } from '../lib/storeSaved';
 import { applyBackToToday, applyTravel, travelIntentVersion, type TravelSource, type TravelThread } from '../lib/timeTravel';
 import { createTravelSlot, type TravelRecorder } from '../lib/travelSlot';
 
-/** Input the caller's stream fn receives; it wires `streamChartChat` with these. */
+/** Input the caller's stream fn receives; it runs the chat turn (lib/chatTurn.ts) with these. */
 export interface ChatStreamInput {
   readonly question: string;
   readonly history: readonly ChatTurn[];
   readonly retrievedContext: readonly string[];
-  readonly onToken: (token: string) => void;
+  /** The answer so far, in full: each snapshot replaces the last. */
+  readonly onSnapshot: (text: string) => void;
   /** The thread's time-travel pin; absent in a normal thread. */
   readonly asOf?: ChatThreadAsOf;
   /** Record only; the hook applies this turn's last action after its durable answer. */
   readonly onTravel?: TravelRecorder;
-  /** Each tool call the agent ran this turn; persisted on the answer as tool-call parts. */
-  readonly onToolCall?: (record: AgentToolCallRecord) => void;
+  /** Each tool call the turn ran; persisted on the answer as tool-call parts. */
+  readonly onToolCall?: (record: ChatToolCall) => void;
 }
 
 /** A tool call as a persisted part: the same args and sanitized result the model got. */
-function toolCallPart(record: AgentToolCallRecord): ChatMessagePart {
+function toolCallPart(record: ChatToolCall): ChatMessagePart {
   const { toolCallId, toolName, args, status, result } = record;
   return { type: 'tool-call', toolCallId, toolName, args, status, ...(result === undefined ? {} : { result }) };
 }
@@ -426,8 +427,8 @@ export function useChatThread(
           ...(askedAsOf ? { asOf: askedAsOf } : {}),
           onTravel: travelSlot.record,
           onToolCall: (record) => { toolCalls.push(toolCallPart(record)); },
-          onToken: (token) => {
-            draft += token;
+          onSnapshot: (text) => {
+            draft = text;
             setStreamingDraft(draft);
           },
         });
