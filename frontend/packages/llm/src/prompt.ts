@@ -221,6 +221,8 @@ const READING_RULES = [
   "Give at least one dated window or change point inside the period.",
   "Cite the engine factor behind every claim.",
   "Use get_period_detail to look closer at a lord, a segment, the bindus or the panchang when the question needs it.",
+  'PRESENT-DAY PERIODS (a today thread): for "this month", "next month" or "the next few weeks", call get_period_reading in every turn, follow-ups included, with granularity "month" (add month "YYYY-MM" for a later month; for "the next few weeks" read this month and the next; "day" is today only).',
+  "Every period answer names the place, at least one Moon-based tag from the reading's sky, and a confidence level.",
   "HONESTY: a chart cannot name the concrete event. Describe themes, timing and their factors.",
   "Never say what did or will happen, and never invent a fact.",
 ].join("\n");

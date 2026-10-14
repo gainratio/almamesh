@@ -267,6 +267,20 @@ describe('buildChatToolset: router', () => {
       expect(await toolset().prepare(question, options())).toMatchObject(READING_GROUNDING);
     });
 
+  // 2026-10-14: get_period_reading on a today thread reads a month by default. The fallback call the
+  // agent loop runs itself (when a provider refuses 'required') carries the period the question names.
+  it.each([
+    ['What does this month look like for me?', { granularity: 'month' }],
+    ['And next month?', { granularity: 'month', month: '2026-04' }],
+    ['¿Y el próximo mes?', { granularity: 'month', month: '2026-04' }],
+    ['E o próximo mês?', { granularity: 'month', month: '2026-04' }],
+    ['What matters today?', { granularity: 'day' }],
+  ])('grounds %s on get_period_reading with %j', async (question, args) => {
+    const prepared = await toolset().prepare(question, options());
+    expect(prepared.toolChoice).toBe('required');
+    expect(prepared.groundingCalls).toEqual([{ name: 'get_period_reading', args }]);
+  });
+
   it('a natal question stays auto, with no required tool', async () => {
     const prepared = await toolset().prepare('Where is my natal Mars?', options());
     expect(prepared.toolChoice).toBe('auto');

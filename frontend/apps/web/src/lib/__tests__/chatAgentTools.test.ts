@@ -326,6 +326,22 @@ describe('shouldPreRunToday', () => {
     expect(shouldPreRunToday(question)).toBe(true);
   });
 
+  // Live on ba4430ce, the follow-up "And next month?" in a today thread matched no router word,
+  // ran with tool_choice auto, and the model answered with no tool at all.
+  it.each([
+    'What does this month look like for me?',
+    'And next month?',
+    'How do the next few weeks look?',
+    'What about the coming months?',
+    'Anything to watch in the upcoming weeks?',
+    '¿Y el próximo mes?',
+    '¿Cómo se ven las próximas semanas?',
+    'E o próximo mês?',
+    'Como serão as próximas semanas?',
+  ])('pre-runs a present-day or near-future period question: %s', (question) => {
+    expect(shouldPreRunToday(question)).toBe(true);
+  });
+
   it('pre-runs today only for "today" questions with no explicit period', () => {
     expect(shouldPreRunToday('What are my current transits?')).toBe(true);
     expect(shouldPreRunToday('What may happen today?')).toBe(true);

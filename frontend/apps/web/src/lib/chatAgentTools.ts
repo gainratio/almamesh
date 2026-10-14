@@ -105,6 +105,14 @@ export function viewerTodayDay(now: Date, timeZone: string = viewerTimeZone()): 
 
 const CURRENT_CONTEXT_PATTERN =
   /\b(?:today|now|currently|current|this\s+(?:week|month|year)|transits?|timing|hoy|ahora|actual(?:mente)?|esta\s+semana|este\s+(?:mes|ano)|transitos?|hoje|agora|atual(?:mente)?|esta\s+semana|este\s+(?:mes|ano)|transitos?)\b/i;
+/**
+ * The near future, read from today (2026-10-14): "next month", "the next few weeks", "coming
+ * months", "upcoming"; es/pt "próximo mes", "próximas semanas", "mês que vem". Live on ba4430ce
+ * the follow-up "And next month?" matched nothing and the model answered with no tool.
+ */
+const NEAR_FUTURE_PATTERN =
+  /\b(?:next\s+(?:(?:few|couple(?:\s+of)?)\s+)?(?:days?|weeks?|months?|year)|coming\s+(?:days|weeks|months)|upcoming|proxim[oa]s?\s+(?:dias?|semanas?|mes(?:es)?|ano)|(?:mes|semana|ano)\s+que\s+vem)\b/;
+const NEXT_MONTH_PATTERN = /\b(?:next\s+month|proximo\s+mes|mes\s+que\s+vem)\b/;
 
 /** Lowercase with accents folded, the way the router has always matched. */
 function foldQuestion(question: string): string {
@@ -113,7 +121,13 @@ function foldQuestion(question: string): string {
 
 /** Conservative, multilingual routing for questions that require exact-day facts. */
 export function requiresCurrentPlanetaryContext(question: string): boolean {
-  return CURRENT_CONTEXT_PATTERN.test(foldQuestion(question));
+  const folded = foldQuestion(question);
+  return CURRENT_CONTEXT_PATTERN.test(folded) || NEAR_FUTURE_PATTERN.test(folded);
+}
+
+/** "next month" in en/es/pt: the today reading reads the month after the current one. */
+export function mentionsNextMonth(question: string): boolean {
+  return NEXT_MONTH_PATTERN.test(foldQuestion(question));
 }
 
 /** Explicit calendar language must not silently fall back to today's sky. */

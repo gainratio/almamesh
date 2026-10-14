@@ -22,7 +22,7 @@ import type { ChatThreadAsOf, ProcessedBirthData } from '@almamesh/shared-types'
 
 import type { ChartEngineContextValue } from '../providers/chartEngineContext';
 import { viewerTimeZone } from './analysisInstant';
-import { createChatAgentTools, hasExplicitCurrentDay, mentionsPeriodComparison, shouldPreRunToday, viewerTodayDay } from './chatAgentTools';
+import { createChatAgentTools, hasExplicitCurrentDay, mentionsNextMonth, mentionsPeriodComparison, shouldPreRunToday, viewerTodayDay } from './chatAgentTools';
 import { ensureCurrentPlanetaryContext } from './currentPlanetaryContext';
 import { createMoonWindowLoader } from './moonWindow';
 import { birthUtcYearOf, birthYearOf, createPeriodChartLoader, readyEngine } from './periodChart';
@@ -48,8 +48,17 @@ interface GroundingCall {
 /** A trip grounded by the app itself: the period reading (period, place, dashas, sky, themes) and the natal chart. */
 const [TRIP_READING, TRIP_NATAL] = TRIP_GROUNDING_TOOLS;
 const TRIP_GROUNDING_CALLS: readonly [GroundingCall, ...GroundingCall[]] = [{ name: TRIP_READING, args: {} }, { name: TRIP_NATAL, args: {} }];
-/** A today question grounds the same way, through the reading bound to today at the viewer's place. */
-const TODAY_GROUNDING_CALLS: readonly [GroundingCall, ...GroundingCall[]] = [{ name: PERIOD_READING_TOOL_NAME, args: {} }];
+/**
+ * A today question grounds through the reading at the user's current place: today for an explicit
+ * "today", the next month for "next month", else the current month (the tool's own default).
+ */
+function todayGroundingCalls(question: string, today: string): readonly [GroundingCall] {
+  const [year, month] = today.split('-').map(Number) as [number, number];
+  const args = hasExplicitCurrentDay(question) ? { granularity: 'day' }
+    : mentionsNextMonth(question) ? { granularity: 'month', month: new Date(Date.UTC(year, month, 1)).toISOString().slice(0, 7) }
+      : { granularity: 'month' };
+  return [{ name: PERIOD_READING_TOOL_NAME, args }];
+}
 
 export interface BuildChatToolsetInput {
   /** The natal chart engine loads (today, a period) merge their sky onto. */
@@ -340,7 +349,7 @@ export function buildChatToolset(input: BuildChatToolsetInput): ChatToolset {
       return {
         chart: natalOnly(natalPrompt),
         asOf: todayAnalysisInstant(options.now),
-        ...requiredGrounding(tools, TODAY_GROUNDING_CALLS),
+        ...requiredGrounding(tools, todayGroundingCalls(question, viewerTodayDay(options.now, zone()))),
       };
     },
   };
