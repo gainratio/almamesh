@@ -10,6 +10,7 @@ from typer.testing import CliRunner
 
 from almamesh.retrodiction.cli import app
 from almamesh.retrodiction.mapping import preregistration_digest
+from tests.adb_xml import FakeEntry, export_xml, plain_zip
 
 RUNNER = CliRunner()
 _EVENTS = """
@@ -117,3 +118,50 @@ def test_a_file_with_no_rankable_event_is_refused(tmp_path: Path) -> None:
     code, output = _run("--events", str(_file(tmp_path, body=body)))
     assert code == 2
     assert "no event could be ranked" in output
+
+
+def _adb_zip(directory: Path) -> Path:
+    entries = (FakeEntry(adb_id=900101), FakeEntry(adb_id=900102, rrc="3", rating="B"))
+    return plain_zip(directory / "adb_export_fake.zip", {"x.xml": export_xml(entries)})
+
+
+def test_adb_summary_prints_counts_and_no_native(tmp_path: Path) -> None:
+    result = RUNNER.invoke(app, ["adb-summary", "--adb", str(_adb_zip(tmp_path))])
+    assert result.exit_code == 0, result.output
+    summary = json.loads(result.output)
+    assert summary["ratings"] == {"AA": 1, "B": 1}
+    assert summary["events_mapped"] == {"job_start": 1}
+    assert "900101" not in result.output
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["adb_export_fake.zip"]
+
+
+def test_adb_summary_refuses_an_export_inside_a_git_tree(tmp_path: Path) -> None:
+    (tmp_path / ".git").mkdir()
+    result = RUNNER.invoke(app, ["adb-summary", "--adb", str(_adb_zip(tmp_path))])
+    assert result.exit_code == 2
+    assert "git working tree" in result.output
+
+
+def test_an_adb_run_writes_its_report_next_to_the_export(tmp_path: Path) -> None:
+    code, output = _run("--adb", str(_adb_zip(tmp_path)))
+    assert code == 0, output
+    report = json.loads((tmp_path / "retrodiction-report" / "report.json").read_text())
+    assert report["run"]["kind"] == "public"
+    assert "astro-databank" in report["run"]["label"]
+
+
+def test_an_adb_report_may_not_be_written_into_a_git_tree(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    (repo / ".git").mkdir(parents=True)
+    code, output = _run("--adb", str(_adb_zip(tmp_path)), "--out", str(repo / "out"))
+    assert code == 2
+    assert "git working tree" in output
+    assert not (repo / "out").exists()
+
+
+@pytest.mark.parametrize("both", [True, False])
+def test_exactly_one_input_is_required(tmp_path: Path, both: bool) -> None:
+    args = ["--events", str(_file(tmp_path)), "--adb", str(_adb_zip(tmp_path))] if both else []
+    code, output = _run(*args)
+    assert code == 2
+    assert "exactly one of --events or --adb" in output
