@@ -65,6 +65,33 @@ function obstaclesMisses(answer: string): string[] {
   return misses;
 }
 
+/** The facts one question's answer must name (from its reading and its expectation). */
+interface AnswerFacts {
+  readonly maha: readonly string[];
+  readonly antar: readonly string[];
+  readonly tags: readonly string[];
+  readonly sadeSati: boolean;
+  readonly placeLabel?: RegExp | undefined;
+  readonly obstacles?: boolean | undefined;
+}
+
+/** Every miss in the answer text: the matrix's answer checks, without the tool rows. */
+function textMisses(answer: string, facts: AnswerFacts): string[] {
+  const misses: string[] = [];
+  const names = (list: readonly string[]) => list.some((name) => new RegExp(`\\b${name}\\b`, 'i').test(answer));
+  if (!names(facts.maha)) misses.push(`answer names no maha lord (${facts.maha.join('/')})`);
+  if (!names(facts.antar)) misses.push(`answer names no antar lord (${facts.antar.join('/')})`);
+  if (!LORDSHIP.test(answer)) misses.push('answer names no lordship ("Nth lord", "rules the Nth")');
+  if (facts.sadeSati && !/sade[\s-]*sati/i.test(answer)) misses.push('answer does not name Sade Sati');
+  if (facts.tags.length > 0 && !facts.tags.some((tag) => tagPattern(tag).test(answer))) misses.push(`answer names no Moon tag (${[...new Set(facts.tags)].join(', ')})`);
+  if (!DATED_WINDOW.test(answer)) misses.push('answer gives no dated window');
+  if (!CONFIDENCE.test(answer) && !tableConfidence(answer)) misses.push('answer gives no confidence level');
+  if (facts.placeLabel && !facts.placeLabel.test(answer)) misses.push(`answer does not name the place ${facts.placeLabel}`);
+  if (facts.obstacles) misses.push(...obstaclesMisses(answer));
+  return misses;
+}
+
+export type { AnswerFacts };
 export {
   CONFIDENCE,
   DATED_WINDOW,
@@ -81,4 +108,5 @@ export {
   obstaclesMisses,
   tableConfidence,
   tagPattern,
+  textMisses,
 };

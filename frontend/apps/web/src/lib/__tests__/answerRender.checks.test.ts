@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 
 import { answerSchema, renderAnswer, type AnswerGrounding, type PeriodAnswer, type RenderOptions } from '@almamesh/llm/answer';
 
-import { CONFIDENCE, DATED_WINDOW, LORDSHIP, obstaclesMisses, tableConfidence, tagPattern } from '../../../e2e/answerChecks';
+import { textMisses } from '../../../e2e/answerChecks';
 
 interface Fixture {
   readonly name: string;
@@ -17,20 +17,12 @@ interface Fixture {
   readonly obstacles: boolean;
 }
 
-/** The matrix's checkAnswer, minus the tool-row checks: what the answer text must say. */
+/** The matrix's own answer check (the spec's checkAnswer calls the same function). */
 function misses(text: string, f: Fixture): string[] {
-  const out: string[] = [];
-  const names = (lords: readonly string[]) => lords.some((name) => new RegExp(`\\b${name}\\b`, 'i').test(text));
-  if (!names(f.reading.maha)) out.push('no maha lord');
-  if (!names(f.reading.antar)) out.push('no antar lord');
-  if (!LORDSHIP.test(text)) out.push('no lordship');
-  if (f.sadeSati && !/sade[\s-]*sati/i.test(text)) out.push('no Sade Sati');
-  if (f.reading.tags.length > 0 && !f.reading.tags.some((tag) => tagPattern(tag).test(text))) out.push('no Moon tag');
-  if (!DATED_WINDOW.test(text)) out.push('no dated window');
-  if (!CONFIDENCE.test(text) && !tableConfidence(text)) out.push('no confidence');
-  if (!f.place.test(text)) out.push('no place');
-  if (f.obstacles) out.push(...obstaclesMisses(text));
-  return out;
+  return textMisses(text, {
+    maha: f.reading.maha, antar: f.reading.antar, tags: f.reading.tags,
+    sadeSati: f.sadeSati, placeLabel: f.place, obstacles: f.obstacles,
+  });
 }
 
 /** The forms the matrix reads: the markdown, the page's text (no markup), and the log's collapsed text. */
@@ -154,9 +146,9 @@ describe('rendered answers pass the trip matrix checks', () => {
       .replace(/Saturn rules your 1st and 12th houses\. |Mercury rules your 5th and 8th houses\. /g, '')
       .replace(/looks after your 12th house/, 'touches');
     expect(misses(bare, OBSTACLES)).toEqual([
-      'no lordship',
-      'no dated window',
-      'no confidence',
+      'answer names no lordship ("Nth lord", "rules the Nth")',
+      'answer gives no dated window',
+      'answer gives no confidence level',
       'answer names no obstacles factor (Saturn rules the 12th / Rahu in the 12th)',
       'answer does not give the 25 Sep Mars window',
     ]);

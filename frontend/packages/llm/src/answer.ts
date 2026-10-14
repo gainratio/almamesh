@@ -141,10 +141,13 @@ const PERIOD_KEYS = ["period", "place", "opening", "dashas", "moon", "themes", "
 
 const unique = (values: readonly string[]): string[] => [...new Set(values)];
 const lower = (value: string): string => value.toLowerCase();
+/** Lowercase without accents, so "Sao Paulo" names "São Paulo". */
+const plain = (value: string): string => lower(value.normalize("NFD").replace(/\p{M}/gu, ""));
 
 function checkLord(level: "maha" | "antar", lord: Graha, readings: readonly GroundingReading[], issue: Issue): void {
   const allowed = unique(readings.flatMap((reading) => reading[level].map(lower)));
-  if (!allowed.includes(lord)) issue(`${level} lord must be one of: ${allowed.join(", ")} (from the reading)`, ["dashas", level, "lord"]);
+  // A reading without lords of this level cannot ground (or refuse) one.
+  if (allowed.length > 0 && !allowed.includes(lord)) issue(`${level} lord must be one of: ${allowed.join(", ")} (from the reading)`, ["dashas", level, "lord"]);
 }
 
 function chartRules(lord: Graha, readings: readonly GroundingReading[]): readonly number[] | undefined {
@@ -177,18 +180,18 @@ function checkMoon(moon: readonly MoonLine[], readings: readonly GroundingReadin
   const tags = unique(readings.flatMap((reading) => reading.tags));
   if (tags.length === 0 && moon.length > 0) issue("the reading has no Moon tags: leave moon empty", ["moon"]);
   else if (tags.length > 0 && moon.length === 0) issue(`name at least one Moon tag: ${tags.join(", ")}`, ["moon"]);
-  else if (moon.some((line) => !tags.includes(line.tag))) issue(`moon tags must come from the reading: ${tags.join(", ")}`, ["moon"]);
+  else if (moon.some((line) => !tags.map(lower).includes(lower(line.tag)))) issue(`moon tags must come from the reading: ${tags.join(", ")}`, ["moon"]);
 }
 
 const dayOf = (instant: string): string => instant.slice(0, 10);
 
 function checkWindows(windows: readonly WindowLine[], readings: readonly GroundingReading[], issue: Issue): void {
-  const dates = unique(readings.flatMap((reading) => reading.windows));
+  const inside = (date: string) => readings.some(({ period }) => date >= dayOf(period.start) && date <= dayOf(period.end));
+  const dates = unique(readings.flatMap((reading) => reading.windows)).filter(inside);
   if (windows.length === 0 && dates.length > 0) {
     issue(`give at least one dated window from the reading: ${dates.slice(0, 6).join(", ")}`, ["windows"]);
     return;
   }
-  const inside = (date: string) => readings.some(({ period }) => date >= dayOf(period.start) && date <= dayOf(period.end));
   // A malformed date is already reported by its own pattern.
   if (windows.every((line) => !ISO_DAY.test(line.date) || inside(line.date))) return;
   const ranges = readings.map(({ period }) => `${dayOf(period.start)}..${dayOf(period.end)}`);
@@ -198,7 +201,7 @@ function checkWindows(windows: readonly WindowLine[], readings: readonly Groundi
 function checkPlace(place: string, readings: readonly GroundingReading[], issue: Issue): void {
   const labels = unique(readings.map((reading) => reading.place.label.trim()).filter(Boolean));
   if (labels.length === 0) return;
-  const named = labels.some((label) => lower(place).includes(lower(label.split(",")[0]?.trim() ?? label)));
+  const named = labels.some((label) => plain(place).includes(plain(label.split(",")[0]?.trim() ?? label)));
   if (!named) issue(`name the place as the reading does: ${labels.join(" or ")}`, ["place"]);
 }
 
@@ -270,7 +273,10 @@ interface LanguageLabels {
   rules(graha: string, houses: readonly number[], list: (items: string[]) => string): string;
   readonly direction: Readonly<Record<ThemeLine["direction"], string>>;
   confidence(level: ThemeLine["confidence"]): string;
+  /** Sade Sati's phases, first to third. */
   readonly phases: readonly string[];
+  /** The word "phase". */
+  readonly phase: string;
   fromMoon(graha: string, house: number): string;
 }
 
@@ -305,10 +311,11 @@ const LABELS: Readonly<Record<Language, LanguageLabels>> = {
     direction: { supportive: "supportive", mixed: "mixed", challenging: "challenging" },
     confidence: (level) => `${EN_CONFIDENCE[level]} confidence`,
     phases: ["first", "second", "third"],
+    phase: "phase",
     fromMoon: (graha, house) => `${graha} ${ordinal(house)} from your Moon`,
   },
   es: {
-    layman: { chapters: "Tus capítulos", moon: "El cielo de la Luna", themes: "Qué significa", windows: "Fechas a vigilar" },
+    layman: { chapters: "Tus capítulos", moon: "El cielo de la Luna", themes: "Qué significa", windows: "Fechas clave" },
     expert: { chapters: "Dashas", moon: "Gochara desde la Luna", themes: "Temas", windows: "Ventanas" },
     in: "en",
     grahas: { sun: "Sol", moon: "Luna", mars: "Marte", mercury: "Mercurio", jupiter: "Júpiter", venus: "Venus", saturn: "Saturno", rahu: "Rahu", ketu: "Ketu" },
@@ -324,6 +331,7 @@ const LABELS: Readonly<Record<Language, LanguageLabels>> = {
     direction: { supportive: "favorable", mixed: "mixto", challenging: "difícil" },
     confidence: (level) => `confianza ${ES_CONFIDENCE[level]}`,
     phases: ["primera", "segunda", "tercera"],
+    phase: "fase",
     fromMoon: (graha, house) => `${graha} en la casa ${house} desde tu Luna`,
   },
   pt: {
@@ -343,6 +351,7 @@ const LABELS: Readonly<Record<Language, LanguageLabels>> = {
     direction: { supportive: "favorável", mixed: "misto", challenging: "desafiador" },
     confidence: (level) => `confiança ${PT_CONFIDENCE[level]}`,
     phases: ["primeira", "segunda", "terceira"],
+    phase: "fase",
     fromMoon: (graha, house) => `${graha} na casa ${house} a partir da sua Lua`,
   },
 };
@@ -363,14 +372,20 @@ function joinList(items: string[], and: string): string {
   return `${items.slice(0, -1).join(", ")} ${and} ${items.at(-1)}`;
 }
 
+/** A word of an unknown tag, in the reader's language where a label exists. */
+function tagWord(word: string, L: LanguageLabels): string {
+  if (isGraha(word)) return L.grahas[word];
+  return word === "phase" ? L.phase : word;
+}
+
 /** sade_sati_phase_1 -> "Sade Sati, first phase"; jupiter_from_moon_11 -> "Jupiter 11th from your Moon". */
 export function moonTagLabel(tag: string, language: Language): string {
   const L = LABELS[language];
   const phase = /^sade_sati_phase_([123])$/.exec(tag);
-  if (phase) return language === "en" ? `Sade Sati, ${L.phases[Number(phase[1]) - 1]} phase` : `Sade Sati, ${L.phases[Number(phase[1]) - 1]} fase`;
+  if (phase) return `Sade Sati, ${L.phases[Number(phase[1]) - 1]} ${L.phase}`;
   const fromMoon = /^([a-z]+)_from_moon_(\d+)$/.exec(tag);
   if (fromMoon?.[1] && isGraha(fromMoon[1])) return L.fromMoon(L.grahas[fromMoon[1]], Number(fromMoon[2]));
-  return tag.split("_").map(capitalize).join(" ");
+  return tag.split("_").map((word) => capitalize(tagWord(word, L))).join(" ");
 }
 
 function renderDate(date: string, language: Language): string {
@@ -413,7 +428,8 @@ function headingSection(v: Value, done: Done, o: RenderOptions): Section {
   const period = text(v.period);
   const place = text(v.place);
   if (!done("period") || !done("place") || period === undefined || place === undefined) return { complete: false };
-  return { block: `**${period.trim()} ${LABELS[o.language].in} ${place.trim()}**`, complete: true };
+  const where = place.trim() ? ` ${LABELS[o.language].in} ${place.trim()}` : "";
+  return { block: `**${period.trim()}${where}**`, complete: true };
 }
 
 function proseSection(key: "opening" | "advice", v: Value, done: Done): Section {

@@ -136,6 +136,10 @@ describe("answerSchema: grounding refinements say the fix", () => {
     expect(messages(wire(ANSWER), grounded({ ...SEPTEMBER, maha: ["Jupiter"], antar: ["Saturn"], rules: { Jupiter: [2, 11], Saturn: [1, 12] } }))).toEqual([]);
   });
 
+  it("a reading with no maha or antar lords does not block every answer", () => {
+    expect(messages(wire(ANSWER), grounded({ ...SEPTEMBER, maha: [], antar: [] }))).toEqual([]);
+  });
+
   it("a lordship must match the chart", () => {
     const dashas = { ...ANSWER.dashas, antar: { ...ANSWER.dashas.antar, rules: [3, 4] } };
     expect(messages(withAnswer({ dashas }))).toEqual(["saturn rules houses 1, 12 in this chart"]);
@@ -166,6 +170,11 @@ describe("answerSchema: grounding refinements say the fix", () => {
     expect(messages(withAnswer({ moon: [] }))).toEqual(["name at least one Moon tag: sade_sati_phase_1, jupiter_from_moon_11"]);
   });
 
+  it("Moon tags match whatever case either side uses", () => {
+    expect(messages(wire(ANSWER), grounded({ ...SEPTEMBER, tags: ["Sade_Sati_Phase_1", "JUPITER_FROM_MOON_11"] }))).toEqual([]);
+    expect(messages(withAnswer({ moon: [{ tag: "SADE_SATI_PHASE_1", meaning: "x" }] }))).toEqual([]);
+  });
+
   it("a reading without tags leaves the Moon section empty", () => {
     expect(messages(wire(ANSWER), grounded({ ...SEPTEMBER, tags: [] }))).toEqual(["the reading has no Moon tags: leave moon empty"]);
   });
@@ -179,6 +188,24 @@ describe("answerSchema: grounding refinements say the fix", () => {
 
   it("windows may not be empty while the reading has some", () => {
     expect(messages(withAnswer({ windows: [] }))).toEqual(["give at least one dated window from the reading: 2019-09-25"]);
+  });
+
+  it("the window suggestion lists only dates inside the period read", () => {
+    const reading = { ...SEPTEMBER, windows: ["2019-08-30", "2019-09-25", "2019-10-02"] };
+    expect(messages(withAnswer({ windows: [] }), grounded(reading))).toEqual(["give at least one dated window from the reading: 2019-09-25"]);
+  });
+
+  it("a reading whose windows all fall outside its period does not demand one", () => {
+    expect(messages(withAnswer({ windows: [] }), grounded({ ...SEPTEMBER, windows: ["2019-10-02"] }))).toEqual([]);
+  });
+
+  it("the place matches without accents on either side", () => {
+    const at = (label: string) => grounded({ ...SEPTEMBER, place: { label } });
+    expect(messages(withAnswer({ place: "Sao Paulo" }), at("São Paulo, Brazil"))).toEqual([]);
+    expect(messages(withAnswer({ place: "Zurich, Switzerland" }), at("Zürich, Switzerland"))).toEqual([]);
+    expect(messages(withAnswer({ place: "bogota" }), at("Bogotá, Colombia"))).toEqual([]);
+    expect(messages(withAnswer({ place: "Bogotá" }), at("Bogota, Colombia"))).toEqual([]);
+    expect(messages(withAnswer({ place: "Medellín" }), at("Bogotá, Colombia"))).toEqual(["name the place as the reading does: Bogotá, Colombia"]);
   });
 
   it("the place is named as the reading names it (the city is enough, any case)", () => {
@@ -231,6 +258,12 @@ describe("moonTagLabel", () => {
 
   it("an unknown tag reads as words", () => {
     expect(moonTagLabel("double_transit", "en")).toBe("Double Transit");
+  });
+
+  it("an unknown tag in Spanish or Portuguese uses the labels it has, not English words", () => {
+    expect(moonTagLabel("saturn_return_phase_2", "en")).toBe("Saturn Return Phase 2");
+    expect(moonTagLabel("saturn_return_phase_2", "es")).toBe("Saturno Return Fase 2");
+    expect(moonTagLabel("venus_from_moon_x", "pt")).toBe("Vênus From Lua X");
   });
 });
 
@@ -310,7 +343,7 @@ Septiembre pide paciencia.
 **Qué significa**
 - **Carrera** (favorable, confianza alta): Reconocimiento.
 
-**Fechas a vigilar**
+**Fechas clave**
 - **25 sept 2019**: Evita discutir.`);
   });
 
@@ -336,6 +369,11 @@ Septiembre pide paciencia.
     expect(expert).toContain("- **Antardasha Saturno** (senhor de 1, 12): Calma.");
     expect(expert).toContain("**Gochara a partir da Lua**");
     expect(expert).toContain("**Janelas**");
+  });
+
+  it("a blank place leaves the heading as just the period", () => {
+    expect(renderAnswer({ ...ANSWER, place: " " }, { voice: "layman", language: "en" }).startsWith("**September 2019**\n\n")).toBe(true);
+    expect(renderPartialAnswer({ kind: "period", period: "Mayo de 2019", place: "", opening: "x" }, { voice: "layman", language: "es" })).toBe("**Mayo de 2019**");
   });
 
   it("a general answer is its markdown", () => {

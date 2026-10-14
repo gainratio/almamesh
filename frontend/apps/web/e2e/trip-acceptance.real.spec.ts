@@ -3,7 +3,7 @@ import { dirname } from 'node:path';
 
 import { expect, type Page } from '@playwright/test';
 
-import { CONFIDENCE, DATED_WINDOW, LORDSHIP, obstaclesMisses, tableConfidence, tagPattern } from './answerChecks';
+import { textMisses } from './answerChecks';
 import { LLM_SETTINGS_KEY, bootEngine, seedChart, type SeedBirthSpec } from './interpretation.helpers';
 import { waitForLifeAtlasAsOf } from './lifeAtlas.helpers';
 import { gotoSettled } from './portableInvariants.helpers';
@@ -255,23 +255,16 @@ function matches(period: Period | undefined, expectation: Expectation): boolean 
 }
 
 function checkAnswer(expectation: Expectation, answer: string, reading: ReadingLike | undefined): string[] {
-  const misses: string[] = [];
   if (!reading) return ['no completed get_period_reading for the period asked'];
   const lord = (spans: ReadonlyArray<{ lord?: string }> | undefined) => (spans ?? []).map((span) => span.lord).filter((name): name is string => Boolean(name));
-  const mahas = lord(reading.dashas?.maha);
-  const antars = lord(reading.dashas?.antar);
-  const names = (list: string[]) => list.some((name) => new RegExp(`\\b${name}\\b`, 'i').test(answer));
-  if (!names(mahas)) misses.push(`answer names no maha lord (${mahas.join('/')})`);
-  if (!names(antars)) misses.push(`answer names no antar lord (${antars.join('/')})`);
-  if (!LORDSHIP.test(answer)) misses.push('answer names no lordship ("Nth lord", "rules the Nth")');
-  const tags = (reading.sky ?? []).flatMap((row) => row.tags ?? []);
-  if (expectation.sadeSati && !/sade[\s-]*sati/i.test(answer)) misses.push('answer does not name Sade Sati');
-  if (tags.length > 0 && !tags.some((tag) => tagPattern(tag).test(answer))) misses.push(`answer names no Moon tag (${[...new Set(tags)].join(', ')})`);
-  if (!DATED_WINDOW.test(answer)) misses.push('answer gives no dated window');
-  if (!CONFIDENCE.test(answer) && !tableConfidence(answer)) misses.push('answer gives no confidence level');
-  if (expectation.place.label && !expectation.place.label.test(answer)) misses.push(`answer does not name the place ${expectation.place.label}`);
-  if (expectation.obstacles) misses.push(...obstaclesMisses(answer));
-  return misses;
+  return textMisses(answer, {
+    maha: lord(reading.dashas?.maha),
+    antar: lord(reading.dashas?.antar),
+    tags: (reading.sky ?? []).flatMap((row) => row.tags ?? []),
+    sadeSati: expectation.sadeSati,
+    placeLabel: expectation.place.label,
+    obstacles: expectation.obstacles,
+  });
 }
 
 function errorSummary(row: ToolRow): string | undefined {
