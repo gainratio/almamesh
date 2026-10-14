@@ -40,6 +40,7 @@ class LifeDomain(StrEnum):
     SPIRITUAL = "spiritual"
     EDUCATION = "education"
     FAMILY = "family"
+    OBSTACLES = "obstacles"  # 6th/8th/12th: disputes, setbacks, losses (see domains/recipes.py)
 
 
 class StrengthBand(StrEnum):
@@ -215,7 +216,7 @@ class LifeDomainForecast(BaseModel):
 
 
 class LifeDomainsContext(BaseModel):
-    """All seven life-domain forecasts for one chart + instant.
+    """Every life-domain forecast for one chart + instant.
 
     Computed deterministically and READ-ONLY from the four injected predictive
     contexts (the contexts already pin their reference instant). ``instant`` is

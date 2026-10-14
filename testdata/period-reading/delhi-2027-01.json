@@ -266,7 +266,10 @@
       "from_lagna": 8,
       "sav": 22,
       "bav": null,
-      "tags": []
+      "tags": [
+        "rahu_from_lagna_8",
+        "rahu_from_moon_6"
+      ]
     },
     {
       "graha": "ketu",
@@ -278,7 +281,9 @@
       "from_lagna": 2,
       "sav": 22,
       "bav": null,
-      "tags": []
+      "tags": [
+        "ketu_from_moon_12"
+      ]
     }
   ],
   "transit_lords": {
@@ -311,6 +316,29 @@
     7
   ],
   "themes": [
+    {
+      "domain": "obstacles",
+      "houses": [
+        6,
+        8,
+        12
+      ],
+      "direction": "challenging",
+      "strength": "moderate",
+      "strength_pct": 75,
+      "confidence": "high",
+      "agreement": {
+        "vimshottari": true,
+        "yogini": true,
+        "transit": true
+      },
+      "factors": [
+        "Rahu (maha) occupies the 8th: unexpected setbacks",
+        "Jupiter transits the 12th from the Moon",
+        "Yogini Ulka (Saturn) rules the 8th: unexpected setbacks"
+      ],
+      "windows": []
+    },
     {
       "domain": "family",
       "houses": [
@@ -385,9 +413,9 @@
         "transit": true
       },
       "factors": [
-        "Mercury (antar) rules the 1st",
+        "Rahu (maha) occupies the 8th",
         "Jupiter transits the 1st from the Moon",
-        "Yogini Ulka (Saturn) rules the 8th"
+        "Mercury (antar) rules the 1st"
       ],
       "windows": [
         {
@@ -422,6 +450,33 @@
         {
           "date": "2027-01-24",
           "descriptor": "spiritual.transit.jupiter.ingress.cancer",
+          "severity": "neutral"
+        }
+      ]
+    },
+    {
+      "domain": "relationships",
+      "houses": [
+        7
+      ],
+      "direction": "mixed",
+      "strength": "moderate",
+      "strength_pct": 38,
+      "confidence": "medium",
+      "agreement": {
+        "vimshottari": true,
+        "yogini": true,
+        "transit": false
+      },
+      "factors": [
+        "Mercury (antar) occupies the 7th",
+        "Yogini Ulka (Saturn) occupies the 7th",
+        "Venus strength is 38% (moderate)"
+      ],
+      "windows": [
+        {
+          "date": "2027-01-24",
+          "descriptor": "relationships.transit.jupiter.ingress.cancer",
           "severity": "neutral"
         }
       ]
@@ -493,11 +548,13 @@
     "vara": "Friday"
   },
   "rules": [
-    "functional nature (BPHS): yogakaraka; lord of 1/5/9 benefic; else of 3/6/8/11 malefic; else of 2/7 maraka; else neutral",
-    "agreement: vimshottari = a running dasha lord, yogini = the Yogini lord, rules a domain house or is its karaka; transit = Jupiter/Saturn in a domain house from lagna or Moon",
+    "functional nature (BPHS): yogakaraka; lord of 1/5/9 benefic; else of 3/6/8/11 malefic; else of 2/7 maraka; else neutral. A 12th lord takes its other house's nature, alone neutral",
+    "agreement: vimshottari = a running dasha lord, yogini = the Yogini lord, rules or occupies a domain house or is its karaka; transit = Jupiter/Saturn in a domain house from lagna/Moon",
     "confidence = agreeing techniques: 3 high, 2 medium, 0-1 low",
+    "obstacles (6th/8th/12th): karakas Saturn/Mars/Rahu are context only; strength = agreeing techniques + a dated window: 3-4 with the window strong, 2+ moderate, 0-1 weak",
     "direction = domain transit severity + its window severities, neutral ignored: all supportive, all challenging, else mixed",
     "whole-sign houses; Saturn 12th/1st/2nd from Moon = sade_sati_phase_1/2/3, 1/4/7/10 = kantaka_shani, 8th = ashtama_shani",
+    "rahu/ketu tags = their 6th/8th/12th from the lagna or Moon (rahu_from_moon_6); obstacles windows date Mars entering a 6th/8th/12th or the natal Moon/lagna sign",
     "double_transit = houses from lagna Jupiter and Saturn both occupy or aspect now",
     "sookshma and panchang are for the reference instant; vara is the UTC weekday"
   ]

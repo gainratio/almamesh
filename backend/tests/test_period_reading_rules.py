@@ -16,12 +16,14 @@ from almamesh.constants.astrology import PlanetName
 from almamesh.reading.dashas import sookshma, yogini_span
 from almamesh.reading.functional import functional_nature
 from almamesh.reading.panchang import panchang_at
+from almamesh.reading.rules import READING_RULES
 from almamesh.reading.sky import sky_tags
 from almamesh.reading.themes import confidence_for, theme_direction
 from almamesh.schemas.reading import FunctionalNature
 from almamesh.schemas.transits import TransitSeverity
 
 _LEO = 4  # sign index of Leo (DELHI_BIRTH's natal Moon)
+_GEMINI = 2  # sign index of Gemini (DELHI_BIRTH's lagna)
 
 
 @pytest.mark.parametrize(
@@ -37,10 +39,25 @@ _LEO = 4  # sign index of Leo (DELHI_BIRTH's natal Moon)
         ([4], False, FunctionalNature.NEUTRAL),  # a pure kendra lord
         ([], False, FunctionalNature.NEUTRAL),  # the nodes rule nothing
         ([4, 9], True, FunctionalNature.YOGAKARAKA),
+        # The 12th lordship takes the nature of the other house (Laghu Parashari):
+        ([1, 12], False, FunctionalNature.BENEFIC),  # Saturn for Aquarius: the lagna lord
+        ([11, 12], False, FunctionalNature.MALEFIC),  # Saturn for Pisces
+        ([7, 12], False, FunctionalNature.MARAKA),  # Venus for Scorpio
+        ([9, 12], False, FunctionalNature.BENEFIC),  # Jupiter for Aries
+        ([12], False, FunctionalNature.NEUTRAL),  # Moon for Leo: by association only
     ],
 )
 def test_functional_nature(rules: list[int], yogakaraka: bool, expected: FunctionalNature) -> None:
     assert functional_nature(rules, is_yogakaraka=yogakaraka) is expected
+
+
+def test_the_stated_functional_rule_classifies_the_twelfth_lord() -> None:
+    # Given the rules the reading states to the model
+    rule = next(r for r in READING_RULES if r.startswith("functional nature"))
+    # When the functional-nature rule is read
+    # Then it says how a 12th lord is classed, so "Saturn 1+12 = benefic" is explained
+    assert "12th lord" in rule
+    assert "other house" in rule
 
 
 @pytest.mark.parametrize(
@@ -58,16 +75,32 @@ def test_functional_nature(rules: list[int], yogakaraka: bool, expected: Functio
 )
 def test_saturn_tags_count_from_the_moon(from_moon: int, expected: list[str]) -> None:
     saturn_idx = (_LEO + from_moon - 1) % 12
-    assert sky_tags(PlanetName.SATURN, saturn_idx, _LEO) == expected
+    assert sky_tags(PlanetName.SATURN, saturn_idx, _LEO, _GEMINI) == expected
 
 
 def test_jupiter_tag_names_its_house_from_the_moon() -> None:
     scorpio = 7
-    assert sky_tags(PlanetName.JUPITER, scorpio, _LEO) == ["jupiter_from_moon_4"]
+    assert sky_tags(PlanetName.JUPITER, scorpio, _LEO, _GEMINI) == ["jupiter_from_moon_4"]
 
 
-def test_nodes_carry_no_tags() -> None:
-    assert sky_tags(PlanetName.RAHU, 2, _LEO) == []
+def test_nodes_carry_no_tags_outside_the_dusthanas() -> None:
+    """Gemini is the 11th from the Leo Moon and the 1st from the Gemini lagna."""
+    assert sky_tags(PlanetName.RAHU, _GEMINI, _LEO, _GEMINI) == []
+
+
+@pytest.mark.parametrize(
+    ("graha", "sign_idx", "expected"),
+    [
+        (PlanetName.RAHU, 7, ["rahu_from_lagna_6"]),  # Scorpio: 6th from Gemini, 4th from Leo
+        (PlanetName.KETU, 9, ["ketu_from_lagna_8", "ketu_from_moon_6"]),  # Capricorn
+        (PlanetName.KETU, 3, ["ketu_from_moon_12"]),  # Cancer: 2nd from Gemini, 12th from Leo
+        (PlanetName.RAHU, 0, []),  # Aries: 11th from Gemini, 9th from Leo
+    ],
+)
+def test_nodes_tag_the_dusthanas_from_the_lagna_and_moon(
+    graha: PlanetName, sign_idx: int, expected: list[str]
+) -> None:
+    assert sky_tags(graha, sign_idx, _LEO, _GEMINI) == expected
 
 
 _S, _N, _C = TransitSeverity.SUPPORTIVE, TransitSeverity.NEUTRAL, TransitSeverity.CHALLENGING

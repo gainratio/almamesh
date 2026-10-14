@@ -515,6 +515,142 @@
             "vargottama": false
           }
         },
+        "obstacles": {
+          "current_emphasis": {
+            "active_dasha_significator": true,
+            "approximated": true,
+            "dasha_levels": [
+              "maha"
+            ],
+            "matched_dasha_lords": [
+              "rahu"
+            ],
+            "note": "transit_severity = sign of a coarse vote-sum over domain-relevant transit signals; the signals are exact, the netting is an AlmaMesh heuristic (not a BPHS quantity).",
+            "rule": "dasha-lord karakatva (maha/antar/pratyantar) + slow-graha gochara over the domain bhavas (whole-sign from lagna) + Sade Sati relevance",
+            "transit_severity": "neutral",
+            "under_sade_sati": false
+          },
+          "domain": "obstacles",
+          "houses": [
+            {
+              "house": 6,
+              "lord": "mars",
+              "lord_dignity": "own",
+              "lord_house": 6,
+              "lord_sign": "Scorpio",
+              "rule": "obstacles: 6th house of disputes, litigation, friction with rules or authorities",
+              "sign": "Scorpio"
+            },
+            {
+              "house": 8,
+              "lord": "saturn",
+              "lord_dignity": "neutral",
+              "lord_house": 7,
+              "lord_sign": "Sagittarius",
+              "rule": "obstacles: 8th house of sudden setbacks and reversals",
+              "sign": "Capricorn"
+            },
+            {
+              "house": 12,
+              "lord": "venus",
+              "lord_dignity": "neutral",
+              "lord_house": 8,
+              "lord_sign": "Capricorn",
+              "rule": "obstacles: 12th house of losses, expenses and confinement",
+              "sign": "Taurus"
+            }
+          ],
+          "karakas": [
+            {
+              "dignity": "neutral",
+              "graha": "saturn",
+              "house": 7,
+              "is_retrograde": false,
+              "rule": "Saturn = karaka of delay, hardship & restriction (context only)",
+              "sign": "Sagittarius"
+            },
+            {
+              "dignity": "own",
+              "graha": "mars",
+              "house": 6,
+              "is_retrograde": false,
+              "rule": "Mars = karaka of conflict, accidents & disputes (context only)",
+              "sign": "Scorpio"
+            },
+            {
+              "dignity": "neutral",
+              "graha": "rahu",
+              "house": 8,
+              "is_retrograde": true,
+              "rule": "Rahu = karaka of upheaval & the unexpected (context only)",
+              "sign": "Capricorn"
+            }
+          ],
+          "strength_summary": {
+            "approximated": true,
+            "band": "moderate",
+            "key_graha": "saturn",
+            "key_graha_meets_minimum": true,
+            "key_graha_rupas": 6.903508,
+            "note": "band = AlmaMesh heuristic over exact Shadbala Rupas + SAV bindus; inputs are BPHS-rigorous, the threshold mapping is a coarse synthesis.",
+            "sav_bindus": 81,
+            "sav_pct": 48.214286,
+            "shadbala_pct": 75.228064,
+            "strength_pct": 48.214286,
+            "strength_tier": "model"
+          },
+          "upcoming_windows": [
+            {
+              "date": "2026-06-20T18:23:59.722851Z",
+              "descriptor": "obstacles.transit.mars.ingress.taurus",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "mars"
+            },
+            {
+              "date": "2026-08-02T17:14:30.855989Z",
+              "descriptor": "obstacles.transit.mars.ingress.gemini",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "mars"
+            },
+            {
+              "date": "2026-11-12T14:39:26.243363Z",
+              "descriptor": "obstacles.transit.mars.ingress.leo",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "mars"
+            },
+            {
+              "date": "2027-04-26T05:56:16.426381Z",
+              "descriptor": "obstacles.transit.mars.ingress.leo",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "mars"
+            },
+            {
+              "date": "2027-06-02T23:04:25.266583Z",
+              "descriptor": "obstacles.transit.saturn.ingress.aries",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "saturn"
+            }
+          ],
+          "varga": {
+            "chart": "D30",
+            "graha": "saturn",
+            "rule": "D30 Trimsamsa governs misfortunes & evils",
+            "same_sign_as_d1": false,
+            "sign": "Gemini",
+            "sign_lord": "mercury",
+            "vargottama": false
+          }
+        },
         "relationships": {
           "current_emphasis": {
             "active_dasha_significator": true,
@@ -911,11 +1047,13 @@
         "yoga": "Ayushman"
       },
       "rules": [
-        "functional nature (BPHS): yogakaraka; lord of 1/5/9 benefic; else of 3/6/8/11 malefic; else of 2/7 maraka; else neutral",
-        "agreement: vimshottari = a running dasha lord, yogini = the Yogini lord, rules a domain house or is its karaka; transit = Jupiter/Saturn in a domain house from lagna or Moon",
+        "functional nature (BPHS): yogakaraka; lord of 1/5/9 benefic; else of 3/6/8/11 malefic; else of 2/7 maraka; else neutral. A 12th lord takes its other house's nature, alone neutral",
+        "agreement: vimshottari = a running dasha lord, yogini = the Yogini lord, rules or occupies a domain house or is its karaka; transit = Jupiter/Saturn in a domain house from lagna/Moon",
         "confidence = agreeing techniques: 3 high, 2 medium, 0-1 low",
+        "obstacles (6th/8th/12th): karakas Saturn/Mars/Rahu are context only; strength = agreeing techniques + a dated window: 3-4 with the window strong, 2+ moderate, 0-1 weak",
         "direction = domain transit severity + its window severities, neutral ignored: all supportive, all challenging, else mixed",
         "whole-sign houses; Saturn 12th/1st/2nd from Moon = sade_sati_phase_1/2/3, 1/4/7/10 = kantaka_shani, 8th = ashtama_shani",
+        "rahu/ketu tags = their 6th/8th/12th from the lagna or Moon (rahu_from_moon_6); obstacles windows date Mars entering a 6th/8th/12th or the natal Moon/lagna sign",
         "double_transit = houses from lagna Jupiter and Saturn both occupy or aspect now",
         "sookshma and panchang are for the reference instant; vara is the UTC weekday"
       ],
@@ -997,12 +1135,35 @@
             "yogini": true
           },
           "confidence": "high",
+          "direction": "mixed",
+          "domain": "obstacles",
+          "factors": [
+            "Rahu (maha) occupies the 8th: unexpected setbacks",
+            "Jupiter transits the 12th from the Moon",
+            "Yogini Ulka (Saturn) rules the 8th: unexpected setbacks"
+          ],
+          "houses": [
+            6,
+            8,
+            12
+          ],
+          "strength": "moderate",
+          "strength_pct": 75,
+          "windows": []
+        },
+        {
+          "agreement": {
+            "transit": true,
+            "vimshottari": true,
+            "yogini": true
+          },
+          "confidence": "high",
           "direction": "supportive",
           "domain": "family",
           "factors": [
             "Mercury (antar) rules the 4th",
             "Jupiter transits the 2nd from the lagna",
-            "Yogini Ulka (Saturn) rules the 9th"
+            "Moon (pratyantar) rules the 2nd"
           ],
           "houses": [
             2,
@@ -1045,9 +1206,9 @@
           "direction": "challenging",
           "domain": "health",
           "factors": [
-            "Mercury (antar) rules the 1st",
+            "Rahu (maha) occupies the 8th",
             "Saturn transits the 8th from the Moon (ashtama_shani)",
-            "Yogini Ulka (Saturn) rules the 8th"
+            "Mercury (antar) rules the 1st"
           ],
           "houses": [
             1,
@@ -1101,6 +1262,27 @@
           ],
           "strength": "strong",
           "strength_pct": 50,
+          "windows": []
+        },
+        {
+          "agreement": {
+            "transit": false,
+            "vimshottari": true,
+            "yogini": true
+          },
+          "confidence": "medium",
+          "direction": "mixed",
+          "domain": "relationships",
+          "factors": [
+            "Mercury (antar) occupies the 7th",
+            "Yogini Ulka (Saturn) occupies the 7th",
+            "Venus strength is 38% (moderate)"
+          ],
+          "houses": [
+            7
+          ],
+          "strength": "moderate",
+          "strength_pct": 38,
           "windows": []
         },
         {
@@ -4370,6 +4552,182 @@
             "vargottama": false
           }
         },
+        "obstacles": {
+          "current_emphasis": {
+            "active_dasha_significator": true,
+            "approximated": true,
+            "dasha_levels": [
+              "maha"
+            ],
+            "matched_dasha_lords": [
+              "rahu"
+            ],
+            "note": "transit_severity = sign of a coarse vote-sum over domain-relevant transit signals; the signals are exact, the netting is an AlmaMesh heuristic (not a BPHS quantity).",
+            "rule": "dasha-lord karakatva (maha/antar/pratyantar) + slow-graha gochara over the domain bhavas (whole-sign from lagna) + Sade Sati relevance",
+            "transit_severity": "neutral",
+            "under_sade_sati": false
+          },
+          "domain": "obstacles",
+          "houses": [
+            {
+              "house": 6,
+              "lord": "mars",
+              "lord_dignity": "own",
+              "lord_house": 6,
+              "lord_sign": "Scorpio",
+              "rule": "obstacles: 6th house of disputes, litigation, friction with rules or authorities",
+              "sign": "Scorpio"
+            },
+            {
+              "house": 8,
+              "lord": "saturn",
+              "lord_dignity": "neutral",
+              "lord_house": 7,
+              "lord_sign": "Sagittarius",
+              "rule": "obstacles: 8th house of sudden setbacks and reversals",
+              "sign": "Capricorn"
+            },
+            {
+              "house": 12,
+              "lord": "venus",
+              "lord_dignity": "neutral",
+              "lord_house": 8,
+              "lord_sign": "Capricorn",
+              "rule": "obstacles: 12th house of losses, expenses and confinement",
+              "sign": "Taurus"
+            }
+          ],
+          "karakas": [
+            {
+              "dignity": "neutral",
+              "graha": "saturn",
+              "house": 7,
+              "is_retrograde": false,
+              "rule": "Saturn = karaka of delay, hardship & restriction (context only)",
+              "sign": "Sagittarius"
+            },
+            {
+              "dignity": "own",
+              "graha": "mars",
+              "house": 6,
+              "is_retrograde": false,
+              "rule": "Mars = karaka of conflict, accidents & disputes (context only)",
+              "sign": "Scorpio"
+            },
+            {
+              "dignity": "neutral",
+              "graha": "rahu",
+              "house": 8,
+              "is_retrograde": true,
+              "rule": "Rahu = karaka of upheaval & the unexpected (context only)",
+              "sign": "Capricorn"
+            }
+          ],
+          "strength_summary": {
+            "approximated": true,
+            "band": "moderate",
+            "key_graha": "saturn",
+            "key_graha_meets_minimum": true,
+            "key_graha_rupas": 6.903508,
+            "note": "band = AlmaMesh heuristic over exact Shadbala Rupas + SAV bindus; inputs are BPHS-rigorous, the threshold mapping is a coarse synthesis.",
+            "sav_bindus": 81,
+            "sav_pct": 48.214286,
+            "shadbala_pct": 75.228064,
+            "strength_pct": 48.214286,
+            "strength_tier": "model"
+          },
+          "upcoming_windows": [
+            {
+              "date": "2026-06-20T18:23:59.722851Z",
+              "descriptor": "obstacles.transit.mars.ingress.taurus",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "mars"
+            },
+            {
+              "date": "2026-08-02T17:14:30.855989Z",
+              "descriptor": "obstacles.transit.mars.ingress.gemini",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "mars"
+            },
+            {
+              "date": "2026-11-12T14:39:26.243363Z",
+              "descriptor": "obstacles.transit.mars.ingress.leo",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "mars"
+            },
+            {
+              "date": "2027-04-26T05:56:16.426381Z",
+              "descriptor": "obstacles.transit.mars.ingress.leo",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "mars"
+            },
+            {
+              "date": "2027-06-02T23:04:25.266583Z",
+              "descriptor": "obstacles.transit.saturn.ingress.aries",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "saturn"
+            },
+            {
+              "date": "2027-10-07T19:50:14.279792Z",
+              "descriptor": "obstacles.transit.mars.ingress.scorpio",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "mars"
+            },
+            {
+              "date": "2027-10-20T02:54:57.331732Z",
+              "descriptor": "obstacles.transit.saturn.ingress.pisces",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "saturn"
+            },
+            {
+              "date": "2027-12-27T07:26:28.019130Z",
+              "descriptor": "obstacles.transit.mars.ingress.capricorn",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "mars"
+            },
+            {
+              "date": "2028-02-23T12:37:39.735091Z",
+              "descriptor": "obstacles.transit.saturn.ingress.aries",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "saturn"
+            },
+            {
+              "date": "2028-05-30T18:44:32.924478Z",
+              "descriptor": "obstacles.transit.mars.ingress.taurus",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "mars"
+            }
+          ],
+          "varga": {
+            "chart": "D30",
+            "graha": "saturn",
+            "rule": "D30 Trimsamsa governs misfortunes & evils",
+            "same_sign_as_d1": false,
+            "sign": "Gemini",
+            "sign_lord": "mercury",
+            "vargottama": false
+          }
+        },
         "relationships": {
           "current_emphasis": {
             "active_dasha_significator": true,
@@ -4854,11 +5212,13 @@
         "yoga": "Ayushman"
       },
       "rules": [
-        "functional nature (BPHS): yogakaraka; lord of 1/5/9 benefic; else of 3/6/8/11 malefic; else of 2/7 maraka; else neutral",
-        "agreement: vimshottari = a running dasha lord, yogini = the Yogini lord, rules a domain house or is its karaka; transit = Jupiter/Saturn in a domain house from lagna or Moon",
+        "functional nature (BPHS): yogakaraka; lord of 1/5/9 benefic; else of 3/6/8/11 malefic; else of 2/7 maraka; else neutral. A 12th lord takes its other house's nature, alone neutral",
+        "agreement: vimshottari = a running dasha lord, yogini = the Yogini lord, rules or occupies a domain house or is its karaka; transit = Jupiter/Saturn in a domain house from lagna/Moon",
         "confidence = agreeing techniques: 3 high, 2 medium, 0-1 low",
+        "obstacles (6th/8th/12th): karakas Saturn/Mars/Rahu are context only; strength = agreeing techniques + a dated window: 3-4 with the window strong, 2+ moderate, 0-1 weak",
         "direction = domain transit severity + its window severities, neutral ignored: all supportive, all challenging, else mixed",
         "whole-sign houses; Saturn 12th/1st/2nd from Moon = sade_sati_phase_1/2/3, 1/4/7/10 = kantaka_shani, 8th = ashtama_shani",
+        "rahu/ketu tags = their 6th/8th/12th from the lagna or Moon (rahu_from_moon_6); obstacles windows date Mars entering a 6th/8th/12th or the natal Moon/lagna sign",
         "double_transit = houses from lagna Jupiter and Saturn both occupy or aspect now",
         "sookshma and panchang are for the reference instant; vara is the UTC weekday"
       ],
@@ -4940,12 +5300,35 @@
             "yogini": true
           },
           "confidence": "high",
+          "direction": "mixed",
+          "domain": "obstacles",
+          "factors": [
+            "Rahu (maha) occupies the 8th: unexpected setbacks",
+            "Jupiter transits the 12th from the Moon",
+            "Yogini Ulka (Saturn) rules the 8th: unexpected setbacks"
+          ],
+          "houses": [
+            6,
+            8,
+            12
+          ],
+          "strength": "moderate",
+          "strength_pct": 75,
+          "windows": []
+        },
+        {
+          "agreement": {
+            "transit": true,
+            "vimshottari": true,
+            "yogini": true
+          },
+          "confidence": "high",
           "direction": "supportive",
           "domain": "family",
           "factors": [
             "Mercury (antar) rules the 4th",
             "Jupiter transits the 2nd from the lagna",
-            "Yogini Ulka (Saturn) rules the 9th"
+            "Moon (pratyantar) rules the 2nd"
           ],
           "houses": [
             2,
@@ -4988,9 +5371,9 @@
           "direction": "challenging",
           "domain": "health",
           "factors": [
-            "Mercury (antar) rules the 1st",
+            "Rahu (maha) occupies the 8th",
             "Saturn transits the 8th from the Moon (ashtama_shani)",
-            "Yogini Ulka (Saturn) rules the 8th"
+            "Mercury (antar) rules the 1st"
           ],
           "houses": [
             1,
@@ -5044,6 +5427,27 @@
           ],
           "strength": "strong",
           "strength_pct": 50,
+          "windows": []
+        },
+        {
+          "agreement": {
+            "transit": false,
+            "vimshottari": true,
+            "yogini": true
+          },
+          "confidence": "medium",
+          "direction": "mixed",
+          "domain": "relationships",
+          "factors": [
+            "Mercury (antar) occupies the 7th",
+            "Yogini Ulka (Saturn) occupies the 7th",
+            "Venus strength is 38% (moderate)"
+          ],
+          "houses": [
+            7
+          ],
+          "strength": "moderate",
+          "strength_pct": 38,
           "windows": []
         },
         {
@@ -8359,6 +8763,154 @@
             "vargottama": false
           }
         },
+        "obstacles": {
+          "current_emphasis": {
+            "active_dasha_significator": true,
+            "approximated": true,
+            "dasha_levels": [
+              "maha",
+              "antar",
+              "pratyantar"
+            ],
+            "matched_dasha_lords": [
+              "saturn",
+              "rahu",
+              "mercury"
+            ],
+            "note": "transit_severity = sign of a coarse vote-sum over domain-relevant transit signals; the signals are exact, the netting is an AlmaMesh heuristic (not a BPHS quantity).",
+            "rule": "dasha-lord karakatva (maha/antar/pratyantar) + slow-graha gochara over the domain bhavas (whole-sign from lagna) + Sade Sati relevance",
+            "transit_severity": "challenging",
+            "under_sade_sati": true
+          },
+          "domain": "obstacles",
+          "houses": [
+            {
+              "house": 6,
+              "lord": "jupiter",
+              "lord_dignity": "neutral",
+              "lord_house": 11,
+              "lord_sign": "Taurus",
+              "rule": "obstacles: 6th house of disputes, litigation, friction with rules or authorities",
+              "sign": "Sagittarius"
+            },
+            {
+              "house": 8,
+              "lord": "saturn",
+              "lord_dignity": "neutral",
+              "lord_house": 11,
+              "lord_sign": "Taurus",
+              "rule": "obstacles: 8th house of sudden setbacks and reversals",
+              "sign": "Aquarius"
+            },
+            {
+              "house": 12,
+              "lord": "mercury",
+              "lord_dignity": "neutral",
+              "lord_house": 6,
+              "lord_sign": "Sagittarius",
+              "rule": "obstacles: 12th house of losses, expenses and confinement",
+              "sign": "Gemini"
+            }
+          ],
+          "karakas": [
+            {
+              "dignity": "neutral",
+              "graha": "saturn",
+              "house": 11,
+              "is_retrograde": true,
+              "rule": "Saturn = karaka of delay, hardship & restriction (context only)",
+              "sign": "Taurus"
+            },
+            {
+              "dignity": "neutral",
+              "graha": "mars",
+              "house": 4,
+              "is_retrograde": false,
+              "rule": "Mars = karaka of conflict, accidents & disputes (context only)",
+              "sign": "Libra"
+            },
+            {
+              "dignity": "neutral",
+              "graha": "rahu",
+              "house": 12,
+              "is_retrograde": true,
+              "rule": "Rahu = karaka of upheaval & the unexpected (context only)",
+              "sign": "Gemini"
+            }
+          ],
+          "strength_summary": {
+            "approximated": true,
+            "band": "moderate",
+            "key_graha": "saturn",
+            "key_graha_meets_minimum": true,
+            "key_graha_rupas": 6.282915,
+            "note": "band = AlmaMesh heuristic over exact Shadbala Rupas + SAV bindus; inputs are BPHS-rigorous, the threshold mapping is a coarse synthesis.",
+            "sav_bindus": 81,
+            "sav_pct": 48.214286,
+            "shadbala_pct": 70.263318,
+            "strength_pct": 48.214286,
+            "strength_tier": "model"
+          },
+          "upcoming_windows": [
+            {
+              "date": "2026-08-02T17:14:30.855989Z",
+              "descriptor": "obstacles.transit.mars.ingress.gemini",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "mars"
+            },
+            {
+              "date": "2026-09-18T10:58:12.766566Z",
+              "descriptor": "obstacles.transit.mars.ingress.cancer",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "mars"
+            },
+            {
+              "date": "2026-10-31T05:58:13.713998Z",
+              "descriptor": "obstacles.transit.jupiter.ingress.leo",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "jupiter"
+            },
+            {
+              "date": "2027-01-24T20:50:25.344201Z",
+              "descriptor": "obstacles.transit.jupiter.ingress.cancer",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "jupiter"
+            },
+            {
+              "date": "2027-03-09T19:02:48.069351Z",
+              "descriptor": "obstacles.transit.mars.ingress.cancer",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "mars"
+            },
+            {
+              "date": "2027-06-02T23:04:25.266583Z",
+              "descriptor": "obstacles.transit.saturn.ingress.aries",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "saturn"
+            }
+          ],
+          "varga": {
+            "chart": "D30",
+            "graha": "saturn",
+            "rule": "D30 Trimsamsa governs misfortunes & evils",
+            "same_sign_as_d1": true,
+            "sign": "Taurus",
+            "sign_lord": "venus",
+            "vargottama": false
+          }
+        },
         "relationships": {
           "current_emphasis": {
             "active_dasha_significator": true,
@@ -8756,11 +9308,13 @@
         "yoga": "Ayushman"
       },
       "rules": [
-        "functional nature (BPHS): yogakaraka; lord of 1/5/9 benefic; else of 3/6/8/11 malefic; else of 2/7 maraka; else neutral",
-        "agreement: vimshottari = a running dasha lord, yogini = the Yogini lord, rules a domain house or is its karaka; transit = Jupiter/Saturn in a domain house from lagna or Moon",
+        "functional nature (BPHS): yogakaraka; lord of 1/5/9 benefic; else of 3/6/8/11 malefic; else of 2/7 maraka; else neutral. A 12th lord takes its other house's nature, alone neutral",
+        "agreement: vimshottari = a running dasha lord, yogini = the Yogini lord, rules or occupies a domain house or is its karaka; transit = Jupiter/Saturn in a domain house from lagna/Moon",
         "confidence = agreeing techniques: 3 high, 2 medium, 0-1 low",
+        "obstacles (6th/8th/12th): karakas Saturn/Mars/Rahu are context only; strength = agreeing techniques + a dated window: 3-4 with the window strong, 2+ moderate, 0-1 weak",
         "direction = domain transit severity + its window severities, neutral ignored: all supportive, all challenging, else mixed",
         "whole-sign houses; Saturn 12th/1st/2nd from Moon = sade_sati_phase_1/2/3, 1/4/7/10 = kantaka_shani, 8th = ashtama_shani",
+        "rahu/ketu tags = their 6th/8th/12th from the lagna or Moon (rahu_from_moon_6); obstacles windows date Mars entering a 6th/8th/12th or the natal Moon/lagna sign",
         "double_transit = houses from lagna Jupiter and Saturn both occupy or aspect now",
         "sookshma and panchang are for the reference instant; vara is the UTC weekday"
       ],
@@ -8814,7 +9368,9 @@
           "sav": 25,
           "sign": "aquarius",
           "start": "2026-06-09",
-          "tags": []
+          "tags": [
+            "rahu_from_lagna_8"
+          ]
         },
         {
           "bav": null,
@@ -8839,6 +9395,52 @@
           "agreement": {
             "transit": true,
             "vimshottari": true,
+            "yogini": true
+          },
+          "confidence": "high",
+          "direction": "challenging",
+          "domain": "obstacles",
+          "factors": [
+            "Saturn (maha) rules the 8th: unexpected setbacks",
+            "Jupiter transits the 6th from the Moon",
+            "Rahu (antar) occupies the 12th: losses and expenses"
+          ],
+          "houses": [
+            6,
+            8,
+            12
+          ],
+          "strength": "moderate",
+          "strength_pct": 75,
+          "windows": []
+        },
+        {
+          "agreement": {
+            "transit": true,
+            "vimshottari": true,
+            "yogini": true
+          },
+          "confidence": "high",
+          "direction": "challenging",
+          "domain": "spiritual",
+          "factors": [
+            "Rahu (antar) occupies the 12th",
+            "Saturn transits the 9th from the lagna (sade_sati_phase_3)",
+            "Mercury (pratyantar) rules the 12th"
+          ],
+          "houses": [
+            9,
+            12,
+            5
+          ],
+          "strength": "moderate",
+          "strength_pct": 43,
+          "windows": []
+        },
+        {
+          "agreement": {
+            "transit": true,
+            "vimshottari": true,
             "yogini": false
           },
           "confidence": "medium",
@@ -8847,7 +9449,7 @@
           "factors": [
             "Saturn (maha) rules the 8th",
             "Jupiter transits the 6th from the Moon",
-            "Jupiter's SAV in Cancer is 32"
+            "Mercury (pratyantar) occupies the 6th"
           ],
           "houses": [
             1,
@@ -8866,19 +9468,18 @@
           },
           "confidence": "medium",
           "direction": "challenging",
-          "domain": "spiritual",
+          "domain": "finances",
           "factors": [
-            "Mercury (pratyantar) rules the 12th",
-            "Saturn transits the 9th from the lagna (sade_sati_phase_3)",
+            "Saturn (maha) occupies the 11th",
+            "Saturn transits the 2nd from the Moon (sade_sati_phase_3)",
             "Saturn's SAV in Pisces is 29"
           ],
           "houses": [
-            9,
-            12,
-            5
+            2,
+            11
           ],
-          "strength": "moderate",
-          "strength_pct": 43,
+          "strength": "strong",
+          "strength_pct": 52,
           "windows": []
         },
         {
@@ -8892,6 +9493,7 @@
           "domain": "career",
           "factors": [
             "Saturn (maha) is a karaka of career",
+            "Mercury (pratyantar) is a karaka of career",
             "Saturn strength is 54% (strong)"
           ],
           "houses": [
@@ -8899,28 +9501,6 @@
           ],
           "strength": "strong",
           "strength_pct": 54,
-          "windows": []
-        },
-        {
-          "agreement": {
-            "transit": true,
-            "vimshottari": false,
-            "yogini": false
-          },
-          "confidence": "low",
-          "direction": "challenging",
-          "domain": "finances",
-          "factors": [
-            "Saturn transits the 2nd from the Moon (sade_sati_phase_3)",
-            "Saturn's SAV in Pisces is 29",
-            "Jupiter strength is 52% (strong)"
-          ],
-          "houses": [
-            2,
-            11
-          ],
-          "strength": "strong",
-          "strength_pct": 52,
           "windows": []
         },
         {
@@ -8966,6 +9546,26 @@
           ],
           "strength": "strong",
           "strength_pct": 52,
+          "windows": []
+        },
+        {
+          "agreement": {
+            "transit": false,
+            "vimshottari": true,
+            "yogini": false
+          },
+          "confidence": "low",
+          "direction": "mixed",
+          "domain": "relationships",
+          "factors": [
+            "Saturn (maha) rules the 7th",
+            "Venus strength is 34% (moderate)"
+          ],
+          "houses": [
+            7
+          ],
+          "strength": "moderate",
+          "strength_pct": 34,
           "windows": []
         }
       ],

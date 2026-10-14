@@ -279,7 +279,7 @@ def test_yogini_is_the_running_yogini_maha(may: PredictiveContexts) -> None:
 
 def test_themes_are_ranked_and_capped(year: PredictiveContexts) -> None:
     themes = year.period_reading.themes
-    assert 1 <= len(themes) <= 6
+    assert 1 <= len(themes) <= 8
     keys = [(-sum(t.agreement.model_dump().values()), -t.strength_pct) for t in themes]
     assert keys == sorted(keys)
     for theme in themes:
@@ -313,7 +313,15 @@ def test_panchang_is_stated_at_the_reference_instant(may: PredictiveContexts) ->
 
 def test_rules_state_every_counting_rule(may: PredictiveContexts) -> None:
     text = " ".join(may.period_reading.rules)
-    for needle in ("functional nature", "confidence", "direction", "agreement", "sade_sati"):
+    for needle in (
+        "functional nature",
+        "confidence",
+        "direction",
+        "agreement",
+        "sade_sati",
+        "rahu_from_moon_6",
+        "obstacles",
+    ):
         assert needle in text
     assert all(len(rule) <= 200 for rule in may.period_reading.rules)
 

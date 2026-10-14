@@ -330,6 +330,79 @@
       "windows": []
     },
     {
+      "domain": "health",
+      "houses": [
+        1,
+        6,
+        8
+      ],
+      "direction": "mixed",
+      "strength": "moderate",
+      "strength_pct": 45,
+      "confidence": "high",
+      "agreement": {
+        "vimshottari": true,
+        "yogini": true,
+        "transit": true
+      },
+      "factors": [
+        "Rahu (maha) occupies the 8th",
+        "Jupiter transits the 6th from the lagna",
+        "Venus (pratyantar) occupies the 8th"
+      ],
+      "windows": []
+    },
+    {
+      "domain": "relationships",
+      "houses": [
+        7
+      ],
+      "direction": "challenging",
+      "strength": "moderate",
+      "strength_pct": 38,
+      "confidence": "high",
+      "agreement": {
+        "vimshottari": true,
+        "yogini": true,
+        "transit": true
+      },
+      "factors": [
+        "Venus (pratyantar) is a karaka of relationships",
+        "Saturn transits the 7th from the lagna",
+        "Yogini Bhadrika (Mercury) occupies the 7th"
+      ],
+      "windows": []
+    },
+    {
+      "domain": "obstacles",
+      "houses": [
+        6,
+        8,
+        12
+      ],
+      "direction": "supportive",
+      "strength": "strong",
+      "strength_pct": 75,
+      "confidence": "medium",
+      "agreement": {
+        "vimshottari": true,
+        "yogini": false,
+        "transit": true
+      },
+      "factors": [
+        "Rahu (maha) occupies the 8th: unexpected setbacks",
+        "Jupiter transits the 6th from the lagna",
+        "Venus (pratyantar) rules the 12th: losses and expenses"
+      ],
+      "windows": [
+        {
+          "date": "2019-05-07",
+          "descriptor": "obstacles.transit.mars.ingress.gemini",
+          "severity": "neutral"
+        }
+      ]
+    },
+    {
       "domain": "spiritual",
       "houses": [
         9,
@@ -353,50 +426,6 @@
       "windows": []
     },
     {
-      "domain": "health",
-      "houses": [
-        1,
-        6,
-        8
-      ],
-      "direction": "mixed",
-      "strength": "moderate",
-      "strength_pct": 45,
-      "confidence": "medium",
-      "agreement": {
-        "vimshottari": false,
-        "yogini": true,
-        "transit": true
-      },
-      "factors": [
-        "Jupiter transits the 6th from the lagna",
-        "Yogini Bhadrika (Mercury) rules the 1st",
-        "Jupiter's SAV in Scorpio is 33"
-      ],
-      "windows": []
-    },
-    {
-      "domain": "relationships",
-      "houses": [
-        7
-      ],
-      "direction": "challenging",
-      "strength": "moderate",
-      "strength_pct": 38,
-      "confidence": "medium",
-      "agreement": {
-        "vimshottari": true,
-        "yogini": false,
-        "transit": true
-      },
-      "factors": [
-        "Venus (pratyantar) is a karaka of relationships",
-        "Saturn transits the 7th from the lagna",
-        "Saturn's SAV in Sagittarius is 21"
-      ],
-      "windows": []
-    },
-    {
       "domain": "career",
       "houses": [
         10
@@ -415,6 +444,26 @@
         "Saturn strength is 48% (moderate)"
       ],
       "windows": []
+    },
+    {
+      "domain": "finances",
+      "houses": [
+        2,
+        11
+      ],
+      "direction": "supportive",
+      "strength": "strong",
+      "strength_pct": 51,
+      "confidence": "low",
+      "agreement": {
+        "vimshottari": false,
+        "yogini": false,
+        "transit": false
+      },
+      "factors": [
+        "Jupiter strength is 51% (strong)"
+      ],
+      "windows": []
     }
   ],
   "panchang": {
@@ -428,11 +477,13 @@
     "vara": "Wednesday"
   },
   "rules": [
-    "functional nature (BPHS): yogakaraka; lord of 1/5/9 benefic; else of 3/6/8/11 malefic; else of 2/7 maraka; else neutral",
-    "agreement: vimshottari = a running dasha lord, yogini = the Yogini lord, rules a domain house or is its karaka; transit = Jupiter/Saturn in a domain house from lagna or Moon",
+    "functional nature (BPHS): yogakaraka; lord of 1/5/9 benefic; else of 3/6/8/11 malefic; else of 2/7 maraka; else neutral. A 12th lord takes its other house's nature, alone neutral",
+    "agreement: vimshottari = a running dasha lord, yogini = the Yogini lord, rules or occupies a domain house or is its karaka; transit = Jupiter/Saturn in a domain house from lagna/Moon",
     "confidence = agreeing techniques: 3 high, 2 medium, 0-1 low",
+    "obstacles (6th/8th/12th): karakas Saturn/Mars/Rahu are context only; strength = agreeing techniques + a dated window: 3-4 with the window strong, 2+ moderate, 0-1 weak",
     "direction = domain transit severity + its window severities, neutral ignored: all supportive, all challenging, else mixed",
     "whole-sign houses; Saturn 12th/1st/2nd from Moon = sade_sati_phase_1/2/3, 1/4/7/10 = kantaka_shani, 8th = ashtama_shani",
+    "rahu/ketu tags = their 6th/8th/12th from the lagna or Moon (rahu_from_moon_6); obstacles windows date Mars entering a 6th/8th/12th or the natal Moon/lagna sign",
     "double_transit = houses from lagna Jupiter and Saturn both occupy or aspect now",
     "sookshma and panchang are for the reference instant; vara is the UTC weekday"
   ]

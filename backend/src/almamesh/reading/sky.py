@@ -1,8 +1,12 @@
-"""The slow sky: Jupiter/Saturn/Rahu/Ketu sign spans, Moon-based tags, transit lords.
+"""The slow sky: Jupiter/Saturn/Rahu/Ketu sign spans, their tags, transit lords.
 
 Spans start from the gochara at the reference instant and change only at the
 timeline's own ingress and station events: no position is recomputed here.
-Houses are whole-sign from the natal Moon and lagna.
+Houses are whole-sign from the natal Moon and lagna. Jupiter and Saturn carry
+Moon-based tags; Rahu and Ketu carry their 6th/8th/12th house from the lagna and
+the Moon (the dusthanas). Mars is not tiled here: it moves sign about every six
+weeks, so it is dated instead (segment events and the obstacles windows), which
+keeps a Year reading inside the chat digest's 4 KB budget.
 """
 
 from __future__ import annotations
@@ -42,6 +46,7 @@ _SATURN_HOUSE_TAGS: Final[tuple[tuple[frozenset[int], str], ...]] = (
     (frozenset({1, 4, 7, 10}), "kantaka_shani"),
     (frozenset({8}), "ashtama_shani"),
 )
+_DUSTHANAS: Final[frozenset[int]] = frozenset({6, 8, 12})
 
 
 class _Cut(NamedTuple):
@@ -60,13 +65,22 @@ def _saturn_tags(sign_idx: int, moon_idx: int) -> list[str]:
     return tags + [tag for houses, tag in _SATURN_HOUSE_TAGS if from_moon in houses]
 
 
-def sky_tags(graha: PlanetName, sign_idx: int, moon_idx: int) -> list[str]:
-    """The Moon-based tags of a slow graha in a sign (nodes carry none)."""
+def _dusthana_tags(graha: PlanetName, sign_idx: int, moon_idx: int, lagna_idx: int) -> list[str]:
+    """``<graha>_from_<lagna|moon>_<6|8|12>`` for each reference the sign is a dusthana from."""
+    houses = (
+        ("lagna", whole_sign_house(sign_idx, lagna_idx)),
+        ("moon", whole_sign_house(sign_idx, moon_idx)),
+    )
+    return [f"{graha.value}_from_{ref}_{house}" for ref, house in houses if house in _DUSTHANAS]
+
+
+def sky_tags(graha: PlanetName, sign_idx: int, moon_idx: int, lagna_idx: int) -> list[str]:
+    """Jupiter/Saturn: Moon-based tags; the nodes: their dusthanas from the lagna and Moon."""
     if graha is PlanetName.JUPITER:
         return [f"jupiter_from_moon_{whole_sign_house(sign_idx, moon_idx)}"]
     if graha is PlanetName.SATURN:
         return _saturn_tags(sign_idx, moon_idx)
-    return []
+    return _dusthana_tags(graha, sign_idx, moon_idx, lagna_idx)
 
 
 def _advance(cut: _Cut, event: TimelineEvent) -> _Cut:
@@ -100,7 +114,7 @@ def _span(graha: PlanetName, bounds: tuple[date, date], cut: _Cut, frame: Readin
         from_lagna=frame.from_lagna(cut.sign_idx),
         sav=frame.sav(cut.sign_idx),
         bav=frame.bav(graha, cut.sign_idx),
-        tags=sky_tags(graha, cut.sign_idx, frame.moon_idx),
+        tags=sky_tags(graha, cut.sign_idx, frame.moon_idx, frame.lagna_idx),
     )
 
 

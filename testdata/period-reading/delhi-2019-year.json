@@ -445,7 +445,9 @@
       "from_lagna": 2,
       "sav": 22,
       "bav": null,
-      "tags": []
+      "tags": [
+        "rahu_from_moon_12"
+      ]
     },
     {
       "graha": "rahu",
@@ -469,7 +471,10 @@
       "from_lagna": 8,
       "sav": 22,
       "bav": null,
-      "tags": []
+      "tags": [
+        "ketu_from_lagna_8",
+        "ketu_from_moon_6"
+      ]
     },
     {
       "graha": "ketu",
@@ -568,9 +573,9 @@
         "transit": true
       },
       "factors": [
-        "Venus (pratyantar) rules the 5th",
+        "Ketu (pratyantar) occupies the 2nd",
         "Jupiter transits the 4th from the Moon",
-        "Yogini Bhadrika (Mercury) rules the 4th"
+        "Venus (pratyantar) rules the 5th"
       ],
       "windows": [
         {
@@ -607,9 +612,9 @@
         "transit": true
       },
       "factors": [
-        "Sun (pratyantar) is a karaka of health",
+        "Rahu (maha) occupies the 8th",
         "Jupiter transits the 6th from the lagna",
-        "Yogini Bhadrika (Mercury) rules the 1st"
+        "Venus (pratyantar) occupies the 8th"
       ],
       "windows": [
         {
@@ -625,6 +630,82 @@
         {
           "date": "2019-11-05",
           "descriptor": "health.transit.jupiter.ingress.sagittarius",
+          "severity": "neutral"
+        }
+      ]
+    },
+    {
+      "domain": "relationships",
+      "houses": [
+        7
+      ],
+      "direction": "challenging",
+      "strength": "moderate",
+      "strength_pct": 38,
+      "confidence": "high",
+      "agreement": {
+        "vimshottari": true,
+        "yogini": true,
+        "transit": true
+      },
+      "factors": [
+        "Venus (pratyantar) is a karaka of relationships",
+        "Jupiter transits the 7th from the lagna",
+        "Yogini Bhadrika (Mercury) occupies the 7th"
+      ],
+      "windows": [
+        {
+          "date": "2019-03-29",
+          "descriptor": "relationships.transit.jupiter.ingress.sagittarius",
+          "severity": "neutral"
+        },
+        {
+          "date": "2019-04-22",
+          "descriptor": "relationships.transit.jupiter.ingress.scorpio",
+          "severity": "neutral"
+        },
+        {
+          "date": "2019-11-05",
+          "descriptor": "relationships.transit.jupiter.ingress.sagittarius",
+          "severity": "neutral"
+        }
+      ]
+    },
+    {
+      "domain": "obstacles",
+      "houses": [
+        6,
+        8,
+        12
+      ],
+      "direction": "mixed",
+      "strength": "strong",
+      "strength_pct": 75,
+      "confidence": "medium",
+      "agreement": {
+        "vimshottari": true,
+        "yogini": false,
+        "transit": true
+      },
+      "factors": [
+        "Rahu (maha) occupies the 8th: unexpected setbacks",
+        "Jupiter transits the 6th from the lagna",
+        "Venus (pratyantar) rules the 12th: losses and expenses"
+      ],
+      "windows": [
+        {
+          "date": "2019-03-22",
+          "descriptor": "obstacles.transit.mars.ingress.taurus",
+          "severity": "neutral"
+        },
+        {
+          "date": "2019-04-22",
+          "descriptor": "obstacles.transit.jupiter.ingress.scorpio",
+          "severity": "neutral"
+        },
+        {
+          "date": "2019-05-07",
+          "descriptor": "obstacles.transit.mars.ingress.gemini",
           "severity": "neutral"
         }
       ]
@@ -648,7 +729,7 @@
       "factors": [
         "Ketu (pratyantar) is a karaka of spiritual",
         "Jupiter transits the 5th from the Moon",
-        "Jupiter's SAV in Sagittarius is 21"
+        "Venus (pratyantar) rules the 12th"
       ],
       "windows": [
         {
@@ -706,38 +787,39 @@
       ]
     },
     {
-      "domain": "relationships",
+      "domain": "finances",
       "houses": [
-        7
+        2,
+        11
       ],
-      "direction": "challenging",
-      "strength": "moderate",
-      "strength_pct": 38,
-      "confidence": "medium",
+      "direction": "mixed",
+      "strength": "strong",
+      "strength_pct": 51,
+      "confidence": "low",
       "agreement": {
         "vimshottari": true,
         "yogini": false,
-        "transit": true
+        "transit": false
       },
       "factors": [
-        "Venus (pratyantar) is a karaka of relationships",
-        "Jupiter transits the 7th from the lagna",
-        "Jupiter's SAV in Sagittarius is 21"
+        "Ketu (pratyantar) occupies the 2nd",
+        "Moon (pratyantar) rules the 2nd",
+        "Jupiter strength is 51% (strong)"
       ],
       "windows": [
         {
           "date": "2019-03-29",
-          "descriptor": "relationships.transit.jupiter.ingress.sagittarius",
+          "descriptor": "finances.transit.jupiter.ingress.sagittarius",
           "severity": "neutral"
         },
         {
           "date": "2019-04-22",
-          "descriptor": "relationships.transit.jupiter.ingress.scorpio",
+          "descriptor": "finances.transit.jupiter.ingress.scorpio",
           "severity": "neutral"
         },
         {
           "date": "2019-11-05",
-          "descriptor": "relationships.transit.jupiter.ingress.sagittarius",
+          "descriptor": "finances.transit.jupiter.ingress.sagittarius",
           "severity": "neutral"
         }
       ]
@@ -754,11 +836,13 @@
     "vara": "Tuesday"
   },
   "rules": [
-    "functional nature (BPHS): yogakaraka; lord of 1/5/9 benefic; else of 3/6/8/11 malefic; else of 2/7 maraka; else neutral",
-    "agreement: vimshottari = a running dasha lord, yogini = the Yogini lord, rules a domain house or is its karaka; transit = Jupiter/Saturn in a domain house from lagna or Moon",
+    "functional nature (BPHS): yogakaraka; lord of 1/5/9 benefic; else of 3/6/8/11 malefic; else of 2/7 maraka; else neutral. A 12th lord takes its other house's nature, alone neutral",
+    "agreement: vimshottari = a running dasha lord, yogini = the Yogini lord, rules or occupies a domain house or is its karaka; transit = Jupiter/Saturn in a domain house from lagna/Moon",
     "confidence = agreeing techniques: 3 high, 2 medium, 0-1 low",
+    "obstacles (6th/8th/12th): karakas Saturn/Mars/Rahu are context only; strength = agreeing techniques + a dated window: 3-4 with the window strong, 2+ moderate, 0-1 weak",
     "direction = domain transit severity + its window severities, neutral ignored: all supportive, all challenging, else mixed",
     "whole-sign houses; Saturn 12th/1st/2nd from Moon = sade_sati_phase_1/2/3, 1/4/7/10 = kantaka_shani, 8th = ashtama_shani",
+    "rahu/ketu tags = their 6th/8th/12th from the lagna or Moon (rahu_from_moon_6); obstacles windows date Mars entering a 6th/8th/12th or the natal Moon/lagna sign",
     "double_transit = houses from lagna Jupiter and Saturn both occupy or aspect now",
     "sookshma and panchang are for the reference instant; vara is the UTC weekday"
   ]
