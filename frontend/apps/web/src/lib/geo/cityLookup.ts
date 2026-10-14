@@ -24,12 +24,12 @@ import { safeWarn } from '@almamesh/shared-types';
 import { geocodeCitiesOnline } from './onlineGeocoder';
 import { withDerivedDb, type SqlDatabase } from '../derivedDb';
 import { cityCandidates, cityRowAt, ensureCitiesImported, CITY_SQL_CANDIDATES } from './citySql';
-import { cityMatchRank, placeTokens, type CityRow } from './cityMatch';
-export { cityMatchRank, citySearchText, foldPlaceText, type CityRow } from './cityMatch';
+import { cityDisplayName, cityMatchRank, placeQualifiersMatch, placeTokens, splitPlaceQuery, type CityRow } from './cityMatch';
+export { cityMatchRank, citySearchText, foldPlaceText, placeRegion, type CityRow } from './cityMatch';
 
 /** A city match ready to feed the onboarding store / engine. */
 export interface CityMatch {
-  /** Human display string, e.g. "Chennai, India". */
+  /** Human display string, e.g. "Chennai, Tamil Nadu, India". */
   displayName: string;
   /** City name, e.g. "Chennai". */
   city: string;
@@ -57,8 +57,9 @@ export function timezoneForCoordinates(latitude: number, longitude: number): str
 
 function toMatch(row: CityRow): CityMatch {
   return {
-    displayName: `${row.n}, ${row.c}`,
+    displayName: cityDisplayName(row),
     city: row.n,
+    ...(row.s ? { state: row.s } : {}),
     country: row.c,
     countryCode: row.cc,
     latitude: row.lat,
@@ -71,8 +72,9 @@ function toMatch(row: CityRow): CityMatch {
 /**
  * Search the bundled city DB, diacritic-insensitively. A row matches when the
  * query is a substring of the (folded) city name, OR the query reads as
- * "<city> <state/country qualifiers>", OR every token is a country qualifier
- * (country-only search). Ranks exact > prefix > substring name matches, then by
+ * "<city> <state/country qualifiers>" where every qualifier names the row's
+ * state or country ("Novato, CA" never returns Novator, Russia), OR every token
+ * is a state/country qualifier. Ranks exact > prefix > substring name matches, then by
  * population, so the most likely birth city surfaces first.
  *
  * @param query - free text (city, optionally with state/country qualifiers);
@@ -130,7 +132,6 @@ export async function searchCityRowsOffline(query: string, limit = 8): Promise<I
   if (query.trim().length < 2 || limit <= 0) return [];
   const tokens = placeTokens(query);
   if (tokens.length === 0) return [];
-  const normQuery = tokens.join(' ');
   return withCityDb(async (db) => {
     const results: IndexedCityMatch[] = [];
     for (let offset = 0; ; offset += CITY_SQL_CANDIDATES) {
@@ -138,7 +139,7 @@ export async function searchCityRowsOffline(query: string, limit = 8): Promise<I
       // SQL uses the original rank/population/index order. Qualifier tolerance is
       // checked here; paging preserves answers even with >200 rejected candidates.
       for (const { index, row } of candidates) {
-        if (cityMatchRank(row, normQuery, tokens) < 0) continue;
+        if (cityMatchRank(row, tokens) < 0) continue;
         results.push({ index, match: toMatch(row) });
         if (results.length >= limit) return results;
       }
@@ -154,6 +155,11 @@ export async function cityAtIndexOffline(index: number): Promise<CityMatch | und
     const row = await atStep('geo.city_query', () => cityRowAt(db, index));
     return row ? toMatch(row) : undefined;
   });
+}
+
+/** "novato california": several words and no comma, so a state may hide in it. */
+function spacedQualifiers(query: string): boolean {
+  return !query.includes(',') && placeTokens(query).length > 1;
 }
 
 /**
@@ -182,11 +188,17 @@ export async function searchCities(
   const online = typeof navigator === 'undefined' || navigator.onLine !== false;
   if (online) {
     try {
-      return await geocodeCitiesOnline(query, {
+      const found = await geocodeCitiesOnline(query, {
         language: opts.language,
         limit,
         signal: opts.signal,
       });
+      // Open-Meteo reads "Novato, CA" but not "novato california": a spaced
+      // multi-word query it finds nothing for is read on the device instead.
+      // A one-word miss stays authoritative (no stale offline resurfacing).
+      if (found.length === 0 && spacedQualifiers(query)) return searchCitiesOffline(query, limit);
+      const { qualifiers } = splitPlaceQuery(query);
+      return found.filter((match) => placeQualifiersMatch(match, qualifiers));
     } catch (err) {
       // A CALLER abort (a newer keystroke superseded this query) must NOT waste
       // an offline search or resurface stale results — propagate so the caller

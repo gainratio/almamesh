@@ -37,7 +37,7 @@ describe('period sky durable rows', () => {
     const { db, ledger, rows } = await fixture();
     await rows.write('old', 'old-key', 'p1', PAYLOAD);
     await rows.write('new', 'key', 'p2', PAYLOAD);
-    await db.exec("INSERT INTO cities VALUES (1, 'Delhi', 'India', 'IN', 28.6, 77.2, 1, 'delhi', 'delhi india in')");
+    await db.exec("INSERT INTO cities (idx, n, c, cc, lat, lon, p, name_fold, search_fold) VALUES (1, 'Delhi', 'India', 'IN', 28.6, 77.2, 1, 'delhi', 'delhi india in')");
     const entered = vi.fn();
     const combined = createPeriodSkyRows({ withDb: async (work) => {
       entered(); return work(db);

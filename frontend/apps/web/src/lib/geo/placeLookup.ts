@@ -8,14 +8,17 @@ import {
   cityAtIndexOffline,
   foldPlaceText,
   isCancellation,
+  placeRegion,
   searchCityRowsOffline,
   type CityMatch,
   type IndexedCityMatch,
 } from './cityLookup';
+import { PLACE_SUGGESTION_LIMIT } from './cityMatch';
 
 export const PLACE_REF_PATTERN = '^city:\\d{1,6}$';
 const PLACE_REF = new RegExp(PLACE_REF_PATTERN);
 export const PLACE_CANDIDATE_LIMIT = 5;
+export { PLACE_SUGGESTION_LIMIT };
 export const DOMINANT_POPULATION_RATIO = 10;
 
 export interface PlaceSummary {
@@ -28,6 +31,8 @@ export interface ResolvedPlace {
   readonly summary: PlaceSummary;
   readonly latitude: number;
   readonly longitude: number;
+  /** "California, United States": the muted half of a suggestion. Never sent to the model. */
+  readonly region?: string;
 }
 
 export type PlaceLookup =
@@ -38,15 +43,20 @@ export type PlaceLookup =
 function resolved(index: number, match: CityMatch): ResolvedPlace | undefined {
   if (!match.timezone) return undefined;
   const summary = { place_ref: `city:${index}`, label: match.displayName, timezone: match.timezone };
-  return { summary, latitude: match.latitude, longitude: match.longitude };
+  const region = placeRegion(match.city, match.state, match.country);
+  return { summary, latitude: match.latitude, longitude: match.longitude, ...(region ? { region } : {}) };
 }
 
 function cityPart(query: string): string {
   return foldPlaceText(query.split(',')[0] ?? '').trim().replace(/\s+/g, ' ');
 }
 
-/** The single exact-name row, or the most populous one when it dominates the next (Ruling 5). */
+/**
+ * The only row (its qualifiers already settled it: "springfield illinois"), the
+ * single exact-name row, or the most populous one when it dominates the next (Ruling 5).
+ */
 function uniqueExact(rows: readonly IndexedCityMatch[], query: string): IndexedCityMatch | undefined {
+  if (rows.length === 1) return rows[0];
   const city = cityPart(query);
   const exact = rows.filter(({ match }) => foldPlaceText(match.city) === city);
   const [first, second] = [...exact].sort((a, b) => b.match.population - a.match.population);
@@ -116,16 +126,26 @@ async function withRetry<T>(work: () => Promise<T>): Promise<T> {
   }
 }
 
+function candidatesOf(rows: readonly IndexedCityMatch[]): ResolvedPlace[] {
+  return uniqueLabels(rows.flatMap(({ index, match }) => {
+    const found = resolved(index, match);
+    return found ? [{ place: found, state: match.state }] : [];
+  }));
+}
+
+/** For the chat tool: one place when the name settles it (exact, or dominant), else the candidates. */
 export async function lookupPlaceOffline(query: string): Promise<PlaceLookup> {
   const rows = await withRetry(() => searchCityRowsOffline(query, PLACE_CANDIDATE_LIMIT));
   const exact = uniqueExact(rows, query);
   const place = exact && resolved(exact.index, exact.match);
   if (place) return { status: 'found', place };
-  const candidates = rows.flatMap(({ index, match }) => {
-    const found = resolved(index, match);
-    return found ? [{ place: found, state: match.state }] : [];
-  });
-  return candidates.length > 0 ? { status: 'ambiguous', candidates: uniqueLabels(candidates) } : { status: 'not_found' };
+  const candidates = candidatesOf(rows);
+  return candidates.length > 0 ? { status: 'ambiguous', candidates } : { status: 'not_found' };
+}
+
+/** For the place boxes: every match, most populous first, so a person can always pick their own. */
+export async function listPlacesOffline(query: string): Promise<ResolvedPlace[]> {
+  return candidatesOf(await withRetry(() => searchCityRowsOffline(query, PLACE_SUGGESTION_LIMIT)));
 }
 
 export async function placeFromRef(ref: string): Promise<ResolvedPlace | undefined> {

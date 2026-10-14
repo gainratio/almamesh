@@ -14,10 +14,16 @@
  *
  * Run: `bun run --filter @almamesh/web data:cities`  (regenerates the JSON)
  *
+ * State / province names come from GeoNames' own admin1 table
+ * (`scripts/data/geonames-admin1CodesASCII.txt`, CC BY 4.0, downloaded from
+ * https://download.geonames.org/export/dump/admin1CodesASCII.txt), joined on
+ * the row's `country.adminCode`, so "Novato" reads "Novato, California, United
+ * States" and "Novato, CA" can be told from "Novator, Russia" on the device.
+ *
  * Output shape (compact keys to shrink the payload):
- *   { n: name, c: countryName, cc: ISO2, lat, lon, p: population }
+ *   { n: name, s?: admin1 name, c: countryName, cc: ISO2, lat, lon, p: population }
  */
-import { writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { gzipSync } from 'node:zlib';
@@ -35,12 +41,25 @@ const { countries } = require('countries-list');
 
 const MIN_POPULATION = 15000;
 
+/** "US.CA" -> "California", from GeoNames admin1CodesASCII (code, name, ascii name, geonameid). */
+function readAdmin1Names() {
+  const text = readFileSync(resolve(here, 'data/geonames-admin1CodesASCII.txt'), 'utf8');
+  const names = new Map();
+  for (const line of text.split('\n')) {
+    const [code, name] = line.split('\t');
+    if (code && name) names.set(code, name);
+  }
+  return names;
+}
+const admin1Names = readAdmin1Names();
+
 const outPath = resolve(webRoot, 'src/data/cities.min.json');
 
 const rows = cities
   .filter((city) => city.population > MIN_POPULATION)
   .map((city) => ({
     n: city.name,
+    ...(admin1Names.has(`${city.country}.${city.adminCode}`) ? { s: admin1Names.get(`${city.country}.${city.adminCode}`) } : {}),
     c: countries[city.country]?.name ?? city.country,
     cc: city.country,
     lat: city.loc.coordinates[1],
