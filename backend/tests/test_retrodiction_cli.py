@@ -8,8 +8,11 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
+from almamesh.retrodiction import cli
+from almamesh.retrodiction.adb import import_adb
 from almamesh.retrodiction.cli import app
 from almamesh.retrodiction.mapping import preregistration_digest
+from almamesh.retrodiction.split import split_natives
 from tests.adb_xml import FakeEntry, export_xml, plain_zip
 
 RUNNER = CliRunner()
@@ -189,3 +192,88 @@ def test_exactly_one_input_is_required(tmp_path: Path, both: bool) -> None:
     code, output = _run(*args)
     assert code == 2
     assert "exactly one of --events or --adb" in output
+
+
+def _four_native_zip(directory: Path) -> Path:
+    entries = tuple(FakeEntry(adb_id=900200 + i) for i in range(4))
+    return plain_zip(directory / "adb_export_four.zip", {"x.xml": export_xml(entries)})
+
+
+def _pin_the_fake_split(monkeypatch: pytest.MonkeyPatch, export: Path) -> str:
+    digest = split_natives(import_adb(export).events).digest
+    monkeypatch.setattr(cli, "ADB_SPLIT_DIGEST", digest)
+    return digest
+
+
+def test_should_score_only_dev_natives_when_split_is_dev(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Given a four-native export whose split digest is the pinned one
+    export = _four_native_zip(tmp_path)
+    digest = _pin_the_fake_split(monkeypatch, export)
+    # When
+    code, output = _run("--adb", str(export), "--split", "dev")
+    # Then two natives are scored and the label names the half and the split
+    assert code == 0, output
+    report = json.loads((tmp_path / "retrodiction-report" / "report.json").read_text())
+    assert len({row["subject"] for row in report["events"]}) == 2
+    assert f"[dev, split {digest[:12]}]" in report["run"]["label"]
+
+
+def test_should_refuse_a_split_whose_digest_is_not_pinned(tmp_path: Path) -> None:
+    code, output = _run("--adb", str(_four_native_zip(tmp_path)), "--split", "dev")
+    assert code == 2
+    assert "split digest" in output
+
+
+def test_should_refuse_held_out_without_a_release_look(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    export = _four_native_zip(tmp_path)
+    _pin_the_fake_split(monkeypatch, export)
+    code, output = _run("--adb", str(export), "--split", "held-out")
+    assert code == 2
+    assert "release candidate" in output
+
+
+def test_should_score_held_out_when_a_release_look_is_declared(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    export = _four_native_zip(tmp_path)
+    _pin_the_fake_split(monkeypatch, export)
+    code, output = _run("--adb", str(export), "--split", "held-out", "--release-look")
+    assert code == 0, output
+
+
+def test_should_refuse_a_split_of_an_event_file(tmp_path: Path) -> None:
+    code, output = _run("--events", str(_file(tmp_path)), "--split", "dev")
+    assert code == 2
+    assert "--split applies to an ADB export" in output
+
+
+def test_should_write_the_id_lists_beside_the_export_when_adb_split_runs(tmp_path: Path) -> None:
+    # Given
+    export = _four_native_zip(tmp_path)
+    # When
+    result = RUNNER.invoke(app, ["adb-split", "--adb", str(export)])
+    # Then the digest is printed, ids stay in the file only
+    assert result.exit_code == 0, result.output
+    digest = split_natives(import_adb(export).events).digest
+    assert digest in result.output
+    assert "900200" not in result.output
+    written = json.loads((tmp_path / f"split-{digest[:12]}.json").read_text())
+    assert len(written["dev"]) == len(written["held_out"]) == 2
+    assert written["digest"] == digest
+
+
+def test_should_refuse_an_unknown_split_half(tmp_path: Path) -> None:
+    code, output = _run("--adb", str(_four_native_zip(tmp_path)), "--split", "all")
+    assert code == 2
+    assert "--split must be dev or held-out" in output
+
+
+def test_should_refuse_split_ids_inside_a_git_tree(tmp_path: Path) -> None:
+    (tmp_path / ".git").mkdir()
+    result = RUNNER.invoke(app, ["adb-split", "--adb", str(_four_native_zip(tmp_path))])
+    assert result.exit_code == 2
+    assert "git working tree" in result.output

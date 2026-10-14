@@ -4,15 +4,18 @@
         --window 36 --k 3,6
     uv run almamesh-eval adb-summary --adb ~/.almamesh/retrodiction/adb/adb_export_X.xml
     uv run almamesh-eval retrodiction --adb ~/.almamesh/retrodiction/adb/adb_export_X.xml
+    uv run almamesh-eval adb-split --adb ~/.almamesh/retrodiction/adb/adb_export_X.xml
+    uv run almamesh-eval retrodiction --adb ... --split dev
 
 Refusals print one line and exit 2 with nothing written.
 """
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Annotated, NoReturn
+from typing import Annotated, NoReturn, cast
 
 import typer
 
@@ -25,6 +28,14 @@ from almamesh.retrodiction.events import (
 )
 from almamesh.retrodiction.markdown import render_markdown
 from almamesh.retrodiction.report import Report, build_report, sample_subjects
+from almamesh.retrodiction.split import (
+    ADB_SPLIT_DIGEST,
+    NativeSplit,
+    Part,
+    checked_split,
+    select_part,
+    split_natives,
+)
 
 app = typer.Typer(name="almamesh-eval", help="Measure the engine against dated life events.")
 _REFUSED = 2
@@ -46,6 +57,18 @@ def parse_ks(text: str, window: int) -> tuple[int, ...]:
     if not all(0 < k < months for k in ks):
         raise RetrodictionInputError(f"--k values must be in 1..{months - 1}, got {text!r}")
     return ks
+
+
+def _half(loaded: EventsFile, part: Part | None, release_look: bool) -> EventsFile:
+    """One half of the pinned split; HELD-OUT only for a declared release look."""
+    if part is None:
+        return loaded
+    if part == "held-out" and not release_look:
+        raise RetrodictionInputError(
+            "HELD-OUT is scored only for a release candidate: pass --release-look and log "
+            "the look in docs/eval/holdout-ledger.md"
+        )
+    return select_part(loaded, checked_split(loaded, ADB_SPLIT_DIGEST), part)
 
 
 def _load(events: Path | None, adb: Path | None) -> tuple[EventsFile, Path, bool]:
@@ -83,6 +106,8 @@ class _Options:
     workers: int
     sample: int | None
     seed: int | None
+    split: Part | None = None
+    release_look: bool = False
 
 
 def _sampled(loaded: EventsFile, options: _Options) -> EventsFile:
@@ -101,7 +126,10 @@ def _report(loaded: EventsFile, options: _Options, ks: tuple[int, ...]) -> Repor
 
 
 def _run(events: Path | None, adb: Path | None, options: _Options) -> str:
+    if options.split is not None and adb is None:
+        raise RetrodictionInputError("--split applies to an ADB export (--adb)")
     loaded, source, private = _load(events, adb)
+    loaded = _half(loaded, options.split, options.release_look)
     ks = parse_ks(options.k, options.window)
     target = _out_dir(source, options.out, private)
     report = _report(loaded, options, ks)
@@ -132,13 +160,27 @@ def retrodiction(
         int | None, typer.Option(min=1, help="Score a random sample of this many natives")
     ] = None,
     seed: Annotated[int | None, typer.Option(help="Seed for --sample-natives")] = None,
+    split: Annotated[
+        str | None, typer.Option(help="Score one half of the pinned ADB split: dev or held-out")
+    ] = None,
+    release_look: Annotated[
+        bool, typer.Option(help="Declare a logged HELD-OUT look for a release candidate")
+    ] = False,
 ) -> None:
     """Rank each event month among its window and compare with chance."""
-    options = _Options(window, k, out, workers, sample_natives, seed)
     try:
+        options = _Options(
+            window, k, out, workers, sample_natives, seed, _part(split), release_look
+        )
         typer.echo(_run(events, adb, options))
     except RetrodictionInputError as exc:
         _refuse(exc)
+
+
+def _part(text: str | None) -> Part | None:
+    if text is None or text in {"dev", "held-out"}:
+        return cast("Part | None", text)
+    raise RetrodictionInputError(f"--split must be dev or held-out, got {text!r}")
 
 
 def _refuse(exc: RetrodictionInputError) -> NoReturn:
@@ -155,6 +197,33 @@ def adb_summary(
         typer.echo(import_adb(adb).summary.model_dump_json(indent=2))
     except RetrodictionInputError as exc:
         _refuse(exc)
+
+
+def _split_file(export: Path, split: NativeSplit) -> Path:
+    target = export.parent / f"split-{split.digest[:12]}.json"
+    body = {"digest": split.digest, "dev": split.dev, "held_out": split.held_out}
+    target.write_text(json.dumps(body, indent=1) + "\n", encoding="utf-8")
+    return target
+
+
+@app.command("adb-split")
+def adb_split(
+    adb: Annotated[Path, typer.Option(help=_ADB_HELP)],
+) -> None:
+    """Split the export's natives into DEV and HELD-OUT; ids go beside the export only.
+
+    The import already refuses an export inside a git tree, so the id file never lands in one.
+    """
+    try:
+        split = split_natives(import_adb(adb).events)
+        target = _split_file(adb, split)
+    except RetrodictionInputError as exc:
+        _refuse(exc)
+    pinned = "pinned" if split.digest == ADB_SPLIT_DIGEST else "NOT the pinned split"
+    typer.echo(
+        f"split {split.digest} ({pinned}): dev {len(split.dev)}, "
+        f"held-out {len(split.held_out)} natives -> {target}"
+    )
 
 
 __all__ = ["app", "parse_ks"]
