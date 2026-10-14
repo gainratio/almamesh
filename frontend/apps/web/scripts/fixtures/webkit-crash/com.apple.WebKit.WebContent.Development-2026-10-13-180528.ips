@@ -1,4 +1,4 @@
-{"app_name":"com.apple.WebKit.WebContent.Development","timestamp":"2026-10-13 18:05:28.00 +0000","bug_type":"309","name":"com.apple.WebKit.WebContent.Development","note":"minimized: matcher fields only (scripts/webkitFlakeRetry.mjs)"}
+{"app_name":"com.apple.WebKit.WebContent.Development","timestamp":"2026-10-13 18:05:28.00 +0000","bug_type":"309","name":"com.apple.WebKit.WebContent.Development","note":"minimized: signature fields only (scripts/crashReportSummary.mjs)"}
 {
   "procName": "com.apple.WebKit.WebContent.Development",
   "captureTime": "2026-10-13 18:05:12.8854 +0000",

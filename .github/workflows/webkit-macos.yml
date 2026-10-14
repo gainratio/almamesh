@@ -12,16 +12,23 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.run_id || github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
-# Linux WebKit cannot boot the nested-Worker OPFS engine. Keep native memory,
-# travel and portable/boot acceptance independent, each with a 45-minute bound.
-# The stable acceptance check below succeeds only if all three passed.
-# Upload only a finalized evidence snapshot after its secret scan.
+# Linux WebKit cannot boot the nested-Worker OPFS engine, so desktop-Safari and
+# iPhone WebKit journeys run here: memory, travel and portable/boot, each with a
+# 45-minute bound. This lane REPORTS and never blocks: deploys wait on Dagger and
+# real Safari (safari-smoke.yml), so a lane failure only marks its step. Each
+# lane redacts its copied crash reports (crash reporter key, UUIDs) and prints
+# signatures: crashes, and failed tests no crash report explains. On a main
+# push webkit-crash-issues files each new one as a `webkit-crash` or
+# `webkit-failure` issue, or comments on the existing one. Upload only a
+# finalized evidence snapshot after its secret scan.
 
 jobs:
   webkit-memory:
     name: webkit / macOS memory
     runs-on: macos-15
     timeout-minutes: 45
+    outputs:
+      crashes: ${{ steps.crash-signatures.outputs.crashes }}
     defaults:
       run:
         working-directory: frontend/apps/web
@@ -37,10 +44,14 @@ jobs:
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
       - run: bun install --frozen-lockfile
       - run: bash scripts/webkit-macos-lane.sh memory
+        continue-on-error: ${{ true }}
       - id: collect-native-evidence
         if: always()
         timeout-minutes: 2
         run: bash scripts/webkit-macos-lane.sh --collect-native-evidence memory
+      - id: crash-signatures
+        if: always()
+        run: node scripts/crashReportSummary.mjs --signatures memory webkit-lane-artifacts-memory >> "$GITHUB_OUTPUT"
       - id: finalize-evidence
         if: always()
         run: bash scripts/webkit-macos-lane.sh --finalize-evidence memory
@@ -59,6 +70,8 @@ jobs:
     name: webkit / macOS time travel
     runs-on: macos-15
     timeout-minutes: 45
+    outputs:
+      crashes: ${{ steps.crash-signatures.outputs.crashes }}
     defaults:
       run:
         working-directory: frontend/apps/web
@@ -74,10 +87,14 @@ jobs:
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
       - run: bun install --frozen-lockfile
       - run: bash scripts/webkit-macos-lane.sh travel
+        continue-on-error: ${{ true }}
       - id: collect-native-evidence
         if: always()
         timeout-minutes: 2
         run: bash scripts/webkit-macos-lane.sh --collect-native-evidence travel
+      - id: crash-signatures
+        if: always()
+        run: node scripts/crashReportSummary.mjs --signatures travel webkit-lane-artifacts-travel >> "$GITHUB_OUTPUT"
       - id: finalize-evidence
         if: always()
         run: bash scripts/webkit-macos-lane.sh --finalize-evidence travel
@@ -96,6 +113,8 @@ jobs:
     name: webkit / macOS export-import + boot recovery
     runs-on: macos-15
     timeout-minutes: 45
+    outputs:
+      crashes: ${{ steps.crash-signatures.outputs.crashes }}
     defaults:
       run:
         working-directory: frontend/apps/web
@@ -111,10 +130,14 @@ jobs:
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
       - run: bun install --frozen-lockfile
       - run: bash scripts/webkit-macos-lane.sh portable
+        continue-on-error: ${{ true }}
       - id: collect-native-evidence
         if: always()
         timeout-minutes: 2
         run: bash scripts/webkit-macos-lane.sh --collect-native-evidence portable
+      - id: crash-signatures
+        if: always()
+        run: node scripts/crashReportSummary.mjs --signatures portable webkit-lane-artifacts-portable >> "$GITHUB_OUTPUT"
       - id: finalize-evidence
         if: always()
         run: bash scripts/webkit-macos-lane.sh --finalize-evidence portable
@@ -129,15 +152,34 @@ jobs:
           retention-days: 14
           if-no-files-found: error
 
-  webkit-macos:
-    name: webkit / macOS time travel + export-import
+  webkit-crash-issues:
+    name: webkit / macOS crash issues
     needs: [webkit-memory, webkit-travel, webkit-portable]
-    if: ${{ !cancelled() }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    # Main pushes only: a pull request (Dependabot, a fork) never gets issues: write.
+    if: ${{ !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      issues: write
     steps:
-      - env:
-          MEMORY_RESULT: ${{ needs.webkit-memory.result }}
-          TRAVEL_RESULT: ${{ needs.webkit-travel.result }}
-          PORTABLE_RESULT: ${{ needs.webkit-portable.result }}
-        run: test "$MEMORY_RESULT" = success && test "$TRAVEL_RESULT" = success && test "$PORTABLE_RESULT" = success
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      - uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77 # v8.4.1
+        env:
+          # Engine config: pull Docker Hub images via the GHCR mirror (.github/xdg/dagger/engine.json).
+          XDG_CONFIG_HOME: ${{ github.workspace }}/.github/xdg
+          GITHUB_TOKEN: ${{ github.token }}
+          # Values reach dagger-for-github only through env (fleet rule dagger-args-expression).
+          CRASHES: ${{ toJSON(needs.*.outputs.crashes) }}
+        with:
+          version: "0.21.8"
+          verb: call
+          args: >-
+            file-webkit-crashes
+            --github-token=env:GITHUB_TOKEN
+            --repository="$GITHUB_REPOSITORY"
+            --run-id="$GITHUB_RUN_ID"
+            --crashes="$CRASHES"

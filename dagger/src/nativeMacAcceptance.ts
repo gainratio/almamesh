@@ -1,6 +1,11 @@
 import { requireAllowedRepository } from "./repositoryIdentity.js"
 
-/** Run in a fresh, uncached Node container before any deployment side effect. */
+/**
+ * Real Safari (.github/workflows/safari-smoke.yml) must be green for the SHA
+ * before production changes. The macOS WebKit lane is not read here: it
+ * reports crashes as issues and gates nothing.
+ * Run in a fresh, uncached Node container before any deployment side effect.
+ */
 export function nativeMacAcceptanceScript(repository: string, commitSha: string): string {
   const allowedRepository = requireAllowedRepository(repository)
   if (typeof commitSha !== "string" || !/^[0-9a-f]{40}$/.test(commitSha)) {
@@ -11,15 +16,12 @@ let nativeMacFailure = "unavailable";
 (async () => {
   const repository = ${JSON.stringify(allowedRepository)};
   const commitSha = ${JSON.stringify(commitSha)};
-  const workflow = ".github/workflows/webkit-macos.yml";
-  const workflowName = "WebKit (macOS)";
+  const workflow = ".github/workflows/safari-smoke.yml";
+  const workflowFile = "safari-smoke.yml";
+  const workflowName = "Safari (macOS)";
   const api = "https://api.github.com/repos/" + repository;
   const html = "https://github.com/" + repository;
-  const jobNames = [
-    "webkit / macOS memory", "webkit / macOS time travel",
-    "webkit / macOS export-import + boot recovery",
-    "webkit / macOS time travel + export-import"
-  ];
+  const jobNames = ["safari / macOS smoke"];
   const pending = new Set(["queued", "in_progress", "waiting", "pending", "requested"]);
   const started = performance.now();
   const deadlineMs = 45 * 60 * 1000;
@@ -61,7 +63,7 @@ let nativeMacFailure = "unavailable";
     if (!pending.has(value.status) || value.conclusion !== null) deny("identity");
     return false;
   };
-  const workflowValue = await get("/actions/workflows/webkit-macos.yml");
+  const workflowValue = await get("/actions/workflows/" + workflowFile);
   if (!object(workflowValue) || !integer(workflowValue.id) || workflowValue.name !== workflowName
     || workflowValue.path !== workflow || workflowValue.state !== "active") deny("identity");
   const validateRun = value => {
@@ -78,7 +80,7 @@ let nativeMacFailure = "unavailable";
     return value;
   };
   const latest = async () => {
-    const value = await get("/actions/workflows/webkit-macos.yml/runs?branch=main&event=push&head_sha="
+    const value = await get("/actions/workflows/" + workflowFile + "/runs?branch=main&event=push&head_sha="
       + commitSha + "&per_page=100&page=1");
     if (!object(value) || !Number.isSafeInteger(value.total_count) || value.total_count < 0
       || !Array.isArray(value.workflow_runs) || value.total_count !== value.workflow_runs.length

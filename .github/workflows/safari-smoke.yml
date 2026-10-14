@@ -12,11 +12,12 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.run_id || github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
-# Advisory, not a gate: real Safari through Apple's safaridriver, where every
-# other WebKit check runs Playwright's bundled WebKit build. It is its own
-# workflow so a red smoke never fails the WebKit (macOS) run that deploy
-# acceptance reads (dagger/src/nativeMacAcceptance.ts). Evidence is uploaded
-# only after its secret scan.
+# A deploy gate with Dagger: real Safari through Apple's safaridriver, where
+# every other WebKit check runs Playwright's bundled WebKit build. Deploy
+# acceptance (dagger/src/nativeMacAcceptance.ts) waits for this workflow to be
+# green for the SHA, and its completion re-triggers a deploy (deploy.yml). The
+# macOS WebKit lane (webkit-macos.yml) only reports. Evidence is uploaded only
+# after its secret scan.
 
 jobs:
   safari-smoke:
