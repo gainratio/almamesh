@@ -26,6 +26,7 @@
     "test:e2e:interp:heal:real": "playwright test --config=playwright.interpretation.heal.real.config.ts",
     "test:e2e:dashboard:agentic:real": "playwright test --config=playwright.dashboard.agentic.real.config.ts",
     "test:e2e:chat:rag:real": "playwright test --config=playwright.chat.rag.real.config.ts",
+    "test:e2e:trip:acceptance": "playwright test --config=playwright.trip-acceptance.real.config.ts; node scripts/trip-acceptance-report.mjs",
     "test:e2e:chat:grounding": "playwright test --config=playwright.chat.grounding.config.ts",
     "test:e2e:rectification": "playwright test --config=playwright.rectification.config.ts",
     "test:e2e:wizard": "playwright test --config=playwright.wizard-phase2.config.ts",

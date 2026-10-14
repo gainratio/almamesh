@@ -26,3 +26,10 @@ export const PRODUCT_CHAT_DEFAULT_MODEL = 'deepseek/deepseek-v4.1-flash';
  * run that wants the product's report default sets REPORT_REAL_MODEL to this.
  */
 export const REPORT_ENGINE_DEFAULT_MODEL = 'openai/gpt-6-luna';
+
+/**
+ * The trip/today acceptance matrix (e2e/trip-acceptance.real.spec.ts) runs every question on
+ * these models: the cheapest e2e model and OpenAI's newest (the stated acceptance pair,
+ * 2026-10-14). OpenRouter lists the OpenAI alias with a leading "~".
+ */
+export const TRIP_ACCEPTANCE_MODELS: readonly string[] = [E2E_REAL_MODEL, '~openai/gpt-sol-latest'];

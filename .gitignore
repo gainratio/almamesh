@@ -13,6 +13,7 @@ dist-real/
 dist-sw-update/
 dist-webkit/
 dist-safari/
+dist-trip-acceptance/
 build/
 *.egg-info/
 .next/
