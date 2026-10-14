@@ -13,6 +13,8 @@ import { NO_PLACE_PICKER } from '../placePick';
 import {
   createReadPeriodTool,
   isReadPeriodReading,
+  MAX_RANGE_RESULT_BYTES,
+  PICK_TIMEOUT_MS,
   readPeriodGrounding,
   readPeriodStatusLabel,
   resolveChatPlace,
@@ -174,9 +176,22 @@ describe('read_period: spans', () => {
   it('a range longer than a month carries one row per month', async () => {
     const result = (await read({ start: '2019-06', end: '2019-12' })).result as ReadPeriodReading;
     expect(result.months?.map((row) => row.month)).toEqual(['2019-06', '2019-07', '2019-08', '2019-09', '2019-10', '2019-11', '2019-12']);
-    const november = result.months?.find((row) => row.month === '2019-11');
-    expect(november).toEqual({ month: '2019-11', maha: 'rahu', antar: 'rahu', top_theme: { domain: 'education', direction: 'mixed', confidence: 'high' }, window_count: 1 });
-    expect(result.months?.find((row) => row.month === '2019-06')).toMatchObject({ top_theme: null, window_count: 0 });
+    const row = (month: string) => result.months?.find((item) => item.month === month);
+    // Compact: the dashas only where they change (the first row always), a theme and a count only when a window falls that month.
+    expect(row('2019-06')).toEqual({ month: '2019-06', maha: 'rahu', antar: 'rahu' });
+    expect(row('2019-07')).toEqual({ month: '2019-07' });
+    expect(row('2019-11')).toEqual({ month: '2019-11', top_theme: { domain: 'education', direction: 'mixed', confidence: 'high' }, window_count: 1 });
+  });
+
+  it('a month row names the dashas again when they change', async () => {
+    const source = periodReadingFixture('delhi-2019-year');
+    const split = source.dasha_spans.flatMap((span) => (span.level === 'antar'
+      ? [{ ...span, end: '2019-09-01T00:00:00Z' }, { ...span, lord: 'jupiter', start: '2019-09-01T00:00:00Z' }]
+      : [span]));
+    const loadPeriodChart = vi.fn(async () => chartWith({ ...source, dasha_spans: split }));
+    const result = (await read({ start: '2019-06', end: '2019-12' }, { loadPeriodChart })).result as ReadPeriodReading;
+    expect(result.months?.find((item) => item.month === '2019-08')).toEqual({ month: '2019-08' });
+    expect(result.months?.find((item) => item.month === '2019-09')).toEqual({ month: '2019-09', antar: 'jupiter' });
   });
 
   it('a single month has no month rows', async () => {
@@ -201,6 +216,7 @@ describe('read_period: spans', () => {
   it.each([
     [{ start: '2019' }],
     [{ start: '2019-06', end: '2019-12', focus: 'saturn' as const }],
+    [{ start: '2019-01', end: '2020-12' }],
   ])('month rows never cost the reading its sky tags and windows: %j', async (partial) => {
     const result = (await read(partial)).result as ReadPeriodReading;
     expect(result.sky.flatMap((span) => span.tags).length).toBeGreaterThan(0);
@@ -208,11 +224,20 @@ describe('read_period: spans', () => {
     expect(result.months?.length).toBeGreaterThan(0);
   });
 
-  it('24 month rows that would leave no room for the sky are dropped, and the result says so', async () => {
+  // Contract reversed (fix round 1): 24 months used to drop its month rows to keep the sky. Every
+  // range now carries a compact per-month summary, in a range budget of 6 KB.
+  it('24 months carry all 24 month rows', async () => {
     const result = (await read({ start: '2019-01', end: '2020-12' })).result as ReadPeriodReading;
-    expect(result.sky.flatMap((span) => span.tags).length).toBeGreaterThan(0);
-    expect(result).not.toHaveProperty('months');
-    expect(result.trimmed).toContain('month rows');
+    expect(result.months).toHaveLength(24);
+    expect(result.months?.[12]).toMatchObject({ month: '2020-01' });
+    expect(result.trimmed ?? []).not.toContain('month rows');
+  });
+
+  it('a year with a graha focus carries its month rows and the close-up', async () => {
+    const result = (await read({ start: '2019', focus: 'saturn' })).result as ReadPeriodReading;
+    expect(result.months).toHaveLength(12);
+    expect(result.close_up).toMatchObject({ focus: 'saturn', lord: { lord: 'saturn' } });
+    expect(bytes(result)).toBeLessThan(MAX_RANGE_RESULT_BYTES);
   });
 
   it.each([
@@ -220,10 +245,24 @@ describe('read_period: spans', () => {
     [{ start: '2019-01', end: '2020-12', focus: 'saturn' as const }],
     [{ start: '2019-06', end: '2019-12', focus: 'dashas' as const }],
     [{ start: '2019' }],
-  ])('stays under the result budget: %j', async (partial) => {
+  ])('a range stays under the 6 KB range budget: %j', async (partial) => {
     const { result } = await read(partial);
+    expect(result).toHaveProperty('months');
+    expect(bytes(result)).toBeLessThan(MAX_RANGE_RESULT_BYTES);
+  });
+
+  it.each([
+    [{ start: '2019-05' }, 'delhi-2019-05' as const],
+    [{ start: '2019-09-15', place: 'Pune', time: '15:00', focus: 'saturn' as const }, 'delhi-2019-09-15-day' as const],
+    [{ start: '2019-09-15', focus: 'panchang' as const }, 'delhi-2019-09-15-day' as const],
+  ])('a single month or day stays under 4 KB: %j', async (partial, fixture) => {
+    const { result } = await read(partial, { loadPeriodChart: vi.fn(async () => withReading(fixture)) });
     expect(result).toHaveProperty('period');
     expect(bytes(result)).toBeLessThan(MAX_PERIOD_RESULT_BYTES);
+  });
+
+  it('pins the two budgets: 4096 bytes for a day or month, 6144 for a range', () => {
+    expect([MAX_PERIOD_RESULT_BYTES, MAX_RANGE_RESULT_BYTES]).toEqual([4096, 6144]);
   });
 });
 
@@ -259,6 +298,36 @@ describe('read_period: places', () => {
       ask: 'Ask the user which one they meant.',
     });
     expect(loadPeriodChart).not.toHaveBeenCalled();
+  });
+
+  it('several cities, never picked: after 60 s a neutral ask, not a tool timeout', async () => {
+    vi.useFakeTimers();
+    try {
+      const pick = vi.fn((_query: string, _candidates: readonly ResolvedPlace[], signal: AbortSignal) =>
+        new Promise<ResolvedPlace | undefined>((resolve) => signal.addEventListener('abort', () => resolve(undefined), { once: true })));
+      const { tool, loadPeriodChart } = setup({ pick });
+      const pending = tool.execute(args({ start: '2019-06', place: 'Springfield' }), context());
+      await vi.advanceTimersByTimeAsync(PICK_TIMEOUT_MS - 1);
+      expect(pick.mock.calls[0]?.[2].aborted).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(await pending).toEqual({ status: 'place_not_chosen', candidates: ['Springfield, Illinois', 'Springfield, Massachusetts'], ask: 'Ask the user which one they meant.' });
+      expect(loadPeriodChart).not.toHaveBeenCalled();
+      expect(PICK_TIMEOUT_MS).toBe(60_000);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('a picker that ignores the deadline is still answered at 60 s', async () => {
+    vi.useFakeTimers();
+    try {
+      const { tool } = setup({ pick: vi.fn(() => new Promise<undefined>(() => undefined)) });
+      const pending = tool.execute(args({ start: '2019-06', place: 'Springfield' }), context());
+      await vi.advanceTimersByTimeAsync(PICK_TIMEOUT_MS);
+      expect(await pending).toMatchObject({ status: 'place_not_chosen' });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('no city found: ask for the nearest larger city', async () => {

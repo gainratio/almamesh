@@ -50,6 +50,10 @@ export const READ_PERIOD_TOOL_NAME = 'read_period';
 /** The picker's wait plus a cold engine: the longest any tool may run. */
 export const READ_PERIOD_TIMEOUT_MS = 150_000;
 export const READ_PERIOD_STATUS_LABEL = 'Reading the period…';
+/** A range (more than one calendar month) carries month rows, so it gets more room than a day or a month (4096). */
+export const MAX_RANGE_RESULT_BYTES = 6144;
+/** How long the place picker waits for the person; then the model asks in words. */
+export const PICK_TIMEOUT_MS = 60_000;
 const MAX_SPAN_MONTHS = 24;
 /** Under a week, a reading needs to know where the user was. */
 const NEEDS_PLACE_DAYS = 7;
@@ -271,8 +275,24 @@ function placed(place: ResolvedPlace): PlaceOutcome {
   return { kind: 'place', place: { label, timezone, latitude: place.latitude, longitude: place.longitude } };
 }
 
+/**
+ * The pick, or undefined once {@link PICK_TIMEOUT_MS} passes: a person who never picks gets the
+ * neutral ask, not the tool's own timeout. A timer (not AbortSignal.timeout) so the deadline is
+ * one clock with the rest of the turn, and the race also answers a picker that ignores its signal.
+ */
+async function pickWithin(pick: PickPlace, text: string, candidates: readonly ResolvedPlace[], signal: AbortSignal): ReturnType<PickPlace> {
+  const deadline = new AbortController();
+  const timer = setTimeout(() => deadline.abort(), PICK_TIMEOUT_MS);
+  const expired = new Promise<undefined>((resolve) => deadline.signal.addEventListener('abort', () => resolve(undefined), { once: true }));
+  try {
+    return await Promise.race([pick(text, candidates, AbortSignal.any([signal, deadline.signal])), expired]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function settlePick(text: string, candidates: readonly ResolvedPlace[], pick: PickPlace, signal: AbortSignal): Promise<PlaceOutcome> {
-  const picked = await pick(text, candidates, signal);
+  const picked = await pickWithin(pick, text, candidates, signal);
   signal.throwIfAborted();
   if (picked && picked !== NO_PLACE_PICKER) return placed(picked);
   const labels = candidates.map((candidate) => candidate.summary.label);
@@ -312,13 +332,15 @@ export interface MonthTheme {
   readonly confidence: PeriodReadingContext['themes'][number]['confidence'];
 }
 
+/** One compact row per calendar month of a range. */
 export interface MonthRow {
   readonly month: string;
-  readonly maha: string | null;
-  readonly antar: string | null;
-  /** The theme with the most dated windows that month (its direction and confidence are the span's), or null. */
-  readonly top_theme?: MonthTheme | null;
-  readonly window_count: number;
+  /** On the first row, and wherever it differs from the row before (null: no maha that month). */
+  readonly maha?: string | null;
+  readonly antar?: string | null;
+  /** Only when a dated window falls that month: the theme with the most of them (its direction and confidence are the span's). */
+  readonly top_theme?: MonthTheme;
+  readonly window_count?: number;
 }
 
 type Facts = Readonly<Record<string, unknown>>;
@@ -459,23 +481,39 @@ function lordAt(source: PeriodReadingContext, level: 'maha' | 'antar', day: stri
   return span?.lord ?? null;
 }
 
-function topTheme(source: PeriodReadingContext, month: Span): MonthTheme | null {
+function topTheme(source: PeriodReadingContext, month: Span): MonthTheme | undefined {
   let best: { readonly theme: PeriodReadingContext['themes'][number]; readonly count: number } | undefined;
   for (const theme of source.themes) {
     const count = windowsOf([theme], month).length;
     if (count > (best?.count ?? 0)) best = { theme, count };
   }
-  return best ? { domain: best.theme.domain, direction: best.theme.direction, confidence: best.theme.confidence } : null;
+  return best ? { domain: best.theme.domain, direction: best.theme.direction, confidence: best.theme.confidence } : undefined;
+}
+
+interface MonthLords {
+  readonly maha: string | null;
+  readonly antar: string | null;
+}
+
+function changedLords(previous: MonthLords | undefined, lords: MonthLords): Partial<MonthLords> {
+  if (!previous) return lords;
+  return { ...(lords.maha !== previous.maha ? { maha: lords.maha } : {}), ...(lords.antar !== previous.antar ? { antar: lords.antar } : {}) };
+}
+
+function monthActivity(source: PeriodReadingContext, month: Span): Pick<MonthRow, 'top_theme' | 'window_count'> {
+  const count = windowsOf(source.themes, month).length;
+  const top = count > 0 ? topTheme(source, month) : undefined;
+  return top ? { top_theme: top, window_count: count } : {};
 }
 
 function monthRows(source: PeriodReadingContext, period: Span): MonthRow[] {
-  return monthsOf(period).map((month) => ({
-    month: month.start.slice(0, 7),
-    maha: lordAt(source, 'maha', month.start),
-    antar: lordAt(source, 'antar', month.start),
-    top_theme: topTheme(source, month),
-    window_count: windowsOf(source.themes, month).length,
-  }));
+  let previous: MonthLords | undefined;
+  return monthsOf(period).map((month) => {
+    const lords = { maha: lordAt(source, 'maha', month.start), antar: lordAt(source, 'antar', month.start) };
+    const row = { month: month.start.slice(0, 7), ...changedLords(previous, lords), ...monthActivity(source, month) };
+    previous = lords;
+    return row;
+  });
 }
 
 function detailFacts(loaded: Loaded, frame: ReadingFrame, section: string, key?: string): { facts: Facts; factors: readonly string[] } | null {
@@ -550,20 +588,16 @@ interface ExtrasLevel {
 }
 
 /**
- * The extras, fullest first: month rows lose their top theme, then the close-up its factors,
- * then the month rows go, then the close-up. The last level is the bare reading, which always fits.
+ * The extras, fullest first: the close-up loses its factors, then goes. Month rows are already
+ * compact and always stay: they outrank the reading's extra sky spans, which its own trims cut first.
  */
-function extrasLevels(extras: Extras): readonly ExtrasLevel[] {
-  const { months: full, close_up: closeUp, ...moon } = extras;
-  const months = full?.map(({ top_theme: _top, ...row }) => row);
-  const bareCloseUp = closeUp ? { ...closeUp, factors: [] } : undefined;
-  const cut = (...notes: (string | false)[]) => notes.filter((note): note is string => note !== false);
+function extrasLevels(extras: Extras): readonly [ExtrasLevel, ...ExtrasLevel[]] {
+  const { close_up: closeUp, ...rest } = extras;
+  if (!closeUp) return [{ extras, trimmed: [] }];
   return [
     { extras, trimmed: [] },
-    { extras: { ...moon, ...(months ? { months } : {}), ...(closeUp ? { close_up: closeUp } : {}) }, trimmed: cut(!!months && 'monthly top themes') },
-    { extras: { ...moon, ...(months ? { months } : {}), ...(bareCloseUp ? { close_up: bareCloseUp } : {}) }, trimmed: cut(!!months && 'monthly top themes', !!closeUp && 'close-up factors') },
-    { extras: { ...moon, ...(bareCloseUp ? { close_up: bareCloseUp } : {}) }, trimmed: cut(!!months && 'month rows', !!closeUp && 'close-up factors') },
-    { extras: moon, trimmed: cut(!!months && 'month rows', !!closeUp && 'close-up') },
+    { extras: { ...rest, close_up: { ...closeUp, factors: [] } }, trimmed: ['close-up factors'] },
+    { extras: rest, trimmed: ['close-up'] },
   ];
 }
 
@@ -575,23 +609,34 @@ function withExtras(reading: PeriodReading, level: ExtrasLevel): ReadPeriodReadi
 /** periodReading.ts's last resort: the sky (and its Moon tags) and the windows are gone. */
 const isBare = (reading: PeriodReading): boolean => reading.sky.length === 0 && reading.windows.length === 0;
 
+interface Fitted {
+  readonly reading: PeriodReading;
+  readonly result: ReadPeriodReading;
+}
+
+function fitLevel(loaded: Loaded, frame: ReadingFrame, level: ExtrasLevel, limit: number, range: boolean): Fitted {
+  // The reading gets what the extras (month rows, close-up, Moon) and their trimmed notes leave.
+  const budgetBytes = limit - jsonBytes(level.extras) - jsonBytes(level.trimmed) - 16;
+  const reading = buildPeriodReading(loaded.source, frame, { budgetBytes, windowOrder: range ? 'severity' : 'date' });
+  return { reading, result: withExtras(reading, level) };
+}
+
 /**
- * The fullest extras that fit beside a reading that still has its sky or windows; when even the
- * bare extras leave none, the first level that fits. The last level (no extras) always fits.
+ * The fullest extras that fit beside a reading that still has its sky or windows. When no level
+ * keeps them, the fullest level that fits; when none fits, the leanest (no close-up).
  */
 function compose(loaded: Loaded, frame: ReadingFrame, extras: Extras): ReadPeriodReading {
-  const windowOrder = extras.months ? 'severity' : 'date';
-  const fitting: ReadPeriodReading[] = [];
-  for (const level of extrasLevels(extras)) {
-    // The month rows' and close-up's bytes, plus the trimmed notes the extras add.
-    const reserveBytes = jsonBytes(level.extras) + jsonBytes(level.trimmed) + 16;
-    const reading = buildPeriodReading(loaded.source, frame, { reserveBytes, windowOrder });
-    const result = withExtras(reading, level);
-    if (jsonBytes(result) >= MAX_PERIOD_RESULT_BYTES) continue;
+  const range = extras.months !== undefined;
+  const limit = range ? MAX_RANGE_RESULT_BYTES : MAX_PERIOD_RESULT_BYTES;
+  const levels = extrasLevels(extras);
+  let fallback: ReadPeriodReading | undefined;
+  for (const level of levels) {
+    const { reading, result } = fitLevel(loaded, frame, level, limit, range);
+    if (jsonBytes(result) >= limit) continue;
     if (!isBare(reading)) return result;
-    fitting.push(result);
+    fallback ??= result;
   }
-  return fitting[0] as ReadPeriodReading;
+  return fallback ?? fitLevel(loaded, frame, levels.at(-1) ?? levels[0], limit, range).result;
 }
 
 // ---------------------------------------------------------------------------
@@ -629,7 +674,9 @@ const cacheKey = (args: ReadPeriodArgs): string => JSON.stringify([args.start, a
 
 /**
  * One tool per turn: an identical call returns the same result object (no pointer to an
- * earlier call). A failed or unavailable read is not kept, so a later call reads again.
+ * earlier call). That includes the asks: a cached place_not_chosen, needs_place or
+ * outside_range is answered again from the cache, never re-asked (the picker does not reopen)
+ * within the same turn. A failed or unavailable read is not kept, so a later call reads again.
  */
 export function createReadPeriodTool(input: ReadPeriodInput): ToolDef<ReadPeriodArgs> {
   const cache = new Map<string, Promise<ReadPeriodResult>>();

@@ -443,8 +443,8 @@ function fitBudget(reading: PeriodReading, budget: number): PeriodReading {
 }
 
 export interface ReadingFitOptions {
-  /** Bytes the caller adds beside the reading (a range's months, a close-up): the reading fits in the rest. */
-  readonly reserveBytes?: number;
+  /** The bytes the reading may use (default {@link MAX_PERIOD_RESULT_BYTES}); a caller adding month rows or a close-up passes what is left. */
+  readonly budgetBytes?: number;
   /** 'severity' (a range): the most severe windows first, at most {@link MAX_RANGE_WINDOWS}. Default: every window, by date. */
   readonly windowOrder?: 'date' | 'severity';
 }
@@ -474,7 +474,7 @@ export function buildPeriodReading(source: PeriodReadingContext, frame: ReadingF
     themes: source.themes.map(themeOf),
     windows: options.windowOrder === 'severity' ? bySeverity(windowsOf(source.themes, period)) : windowsOf(source.themes, period),
     ...(panchang ? { panchang } : {}),
-  }, MAX_PERIOD_RESULT_BYTES - (options.reserveBytes ?? 0));
+  }, options.budgetBytes ?? MAX_PERIOD_RESULT_BYTES);
 }
 
 // --- summaries (the collapsed row and the agent's compaction note) ---
