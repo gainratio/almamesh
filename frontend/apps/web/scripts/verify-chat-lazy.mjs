@@ -1,7 +1,8 @@
 // Proves the Vercel AI SDK (`ai`) and zod ship ONLY in the lazy chat chunk.
-// The initial dashboard load = the index.html entry's static closure plus the
-// Dashboard route chunk's static closure (the route itself is lazy). Any chunk
-// in that closure containing an SDK/zod marker fails the gate. The markers are
+// Checked: the static closure of index.html plus EVERY page route entry
+// (src/pages/*), since each route is lazy and loads its own closure. Only the
+// chat entries (chatTurn, FloatingChatPanel) are excluded, by design. Any chunk
+// in those closures containing an SDK/zod marker fails the gate. The markers are
 // string literals that survive minification; each was verified to appear in the
 // lazy chunk and nowhere else. If NO chunk has them, the check is vacuous and
 // also fails (a bundler change must not turn this into a silent pass).
@@ -18,6 +19,11 @@ export const MARKERS = [
 ]
 const DASHBOARD_ENTRY = 'src/pages/Dashboard.tsx'
 const INDEX_ENTRY = 'index.html'
+const PAGE_PREFIX = 'src/pages/'
+
+export function pageEntries(manifest) {
+  return [INDEX_ENTRY, ...Object.keys(manifest).filter((k) => k.startsWith(PAGE_PREFIX))]
+}
 
 export function staticClosure(manifest, entryKeys) {
   const seen = new Set()
@@ -41,14 +47,15 @@ export function filesOf(manifest, keys) {
 }
 
 export function analyze(distDir) {
-  const manifestPath = path.join(distDir, '.vite', 'manifest.json')
+  // The build moves the manifest out of dist (it must not be deployed).
+  const manifestPath = path.join(distDir, '..', '.build-manifest', 'manifest.json')
   if (!existsSync(manifestPath)) throw new Error(`no ${manifestPath} (build.manifest must be true)`)
   const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
   for (const entry of [INDEX_ENTRY, DASHBOARD_ENTRY]) {
     if (!manifest[entry]) throw new Error(`manifest has no ${entry}`)
   }
   const read = (file) => readFileSync(path.join(distDir, file))
-  const initialKeys = staticClosure(manifest, [INDEX_ENTRY, DASHBOARD_ENTRY])
+  const initialKeys = staticClosure(manifest, pageEntries(manifest))
   const initialFiles = filesOf(manifest, initialKeys)
   const leaks = []
   for (const file of initialFiles.filter((f) => f.endsWith('.js'))) {
@@ -72,11 +79,11 @@ if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(new URL(im
   const distDir = path.resolve(process.argv[2] ?? 'dist')
   const result = analyze(distDir)
   const kb = (n) => `${(n / 1024).toFixed(1)} kB`
-  console.log(`initial (index + Dashboard) closure: ${result.initialFiles.length} files, ${kb(result.initialGzip)} gzip`)
+  console.log(`index + all page routes closure: ${result.initialFiles.length} files, ${kb(result.initialGzip)} gzip`)
   for (const { file, gzip } of result.lazy) console.log(`lazy chunk with AI SDK/zod: ${file} ${kb(gzip)} gzip`)
   if (result.leaks.length > 0) {
     for (const { file, marker } of result.leaks) console.error(`LEAK: ${file} contains ${marker}`)
-    console.error('verify-chat-lazy: the AI SDK/zod reached the initial dashboard load')
+    console.error('verify-chat-lazy: the AI SDK/zod reached the static closure of a page route')
     process.exit(1)
   }
   if (result.lazy.length === 0) {

@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react'
 import { VitePWA, type VitePluginPWAAPI } from 'vite-plugin-pwa'
 import { vitePrerenderPlugin } from 'vite-prerender-plugin'
 import path from 'path'
-import { existsSync, writeFileSync, readFileSync, readdirSync } from 'fs'
+import { existsSync, writeFileSync, readFileSync, readdirSync, renameSync, rmSync } from 'fs'
 import { createHash } from 'crypto'
 import { PUBLIC_ROUTE_PATHS, prerenderOutputFile } from './src/seo/routeHead'
 import { createBuildIdentity } from './src/lib/buildIdentity'
@@ -156,6 +156,30 @@ function yogaWasmAssetPlugin(): Plugin {
         quotedDataUri,
         `String(import.meta.ROLLUP_FILE_URL_${referenceId}).split('/').pop()`,
       )
+    },
+  }
+}
+
+// Vite writes its chunk manifest into outDir, and Cloudflare Pages would serve
+// it publicly. Vite 8 refuses a manifest path outside outDir, so move it out
+// after the bundle is written. scripts/verify-chat-lazy.mjs reads the moved copy.
+function moveManifestOutOfDistPlugin(): Plugin {
+  let outDir = 'dist'
+  return {
+    name: 'almamesh-move-manifest-out-of-dist',
+    apply: 'build',
+    enforce: 'post',
+    configResolved(config) {
+      outDir = config.build.outDir
+    },
+    closeBundle: {
+      order: 'post',
+      handler() {
+        const from = path.resolve(__dirname, outDir, '.vite')
+        const to = path.resolve(__dirname, '.build-manifest')
+        rmSync(to, { recursive: true, force: true })
+        if (existsSync(from)) renameSync(from, to)
+      },
     },
   }
 }
@@ -682,6 +706,7 @@ export default defineConfig({
     // (keeps the 26.86 MB asyncify wasm out of the Pages upload).
     ortWasmOnlyPlugin(),
     noSourcemapsPlugin(),
+    moveManifestOutOfDistPlugin(),
     previewProdBrowserHeadersPlugin(),
     ...prerenderPublicRoutesPlugin(),
     flattenPrerenderedRoutesPlugin(),
