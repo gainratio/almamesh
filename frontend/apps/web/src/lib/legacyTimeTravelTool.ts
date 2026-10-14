@@ -1,4 +1,7 @@
-/** Records a per-turn move. The chat hook applies it after the answer is saved. */
+/**
+ * The legacy `time_travel` tool of the old toolset (chatToolset.ts). Task 6 of the chat tool layer
+ * redesign deletes it with chatToolset.ts; the chat's new move is `travel` (travelTool.ts).
+ */
 import {
   BEFORE_BIRTH_MESSAGE, endsBeforeBirthYear, NEEDS_PLACE_ERROR, PLACE_REF_ARG_PATTERN, PLACE_REF_ERROR,
   type AgentJsonObject, type AgentTool,
@@ -7,36 +10,13 @@ import type { ChatThreadAsOf } from '@almamesh/shared-types';
 import { chatAsOfProblem } from '@almamesh/store';
 import type { PlaceReader } from './timingPlaces';
 import { PLACE_LOOKUP_TIMEOUT_MS } from './placeTool';
-import { formatPinLabel, periodAsOfFromDraft, SHEET_LAST_YEAR, type SheetDraft } from './timeTravelSheet';
+import { formatPinLabel, periodAsOfFromDraft } from './timeTravelSheet';
+import { draftFromToolArgs, TIME_TRAVEL_STATUS_LABEL, TRAVEL_DATE_ERROR as DATE_ERROR, type TravelRecorder } from './travelSlot';
 
 export const TIME_TRAVEL_TOOL_NAME = 'time_travel';
-export const TIME_TRAVEL_STATUS_LABEL = 'Preparing time travel';
 export const TIME_TRAVEL_DATE_PATTERN = '^\\d{4}(-\\d{2}(-\\d{2})?)?$';
-export type TravelAction = { readonly kind: 'travel'; readonly asOf: ChatThreadAsOf } | { readonly kind: 'back_to_today' };
-export type TravelRecorder = (action: TravelAction) => void;
-export interface TravelSlot { readonly record: TravelRecorder; take(): TravelAction | undefined; }
-const DATE_FOR = { day: /^\d{4}-\d{2}-\d{2}$/, month: /^\d{4}-\d{2}$/, year: /^\d{4}$/ } as const;
 const PERIODS = ['day', 'month', 'year'] as const;
 const PLACE_PATTERN = new RegExp(PLACE_REF_ARG_PATTERN);
-const DATE_ERROR = `Use a real date from 1900 through ${SHEET_LAST_YEAR}: YYYY-MM-DD for a day, YYYY-MM for a month, YYYY for a year.`;
-
-export function createTravelSlot(): TravelSlot {
-  let pending: TravelAction | undefined;
-  return {
-    record: (action) => { pending = action.kind === 'travel' ? { kind: 'travel', asOf: structuredClone(action.asOf) } : { kind: 'back_to_today' }; },
-    take: () => { const value = pending; pending = undefined; return value; },
-  };
-}
-
-export function draftFromToolArgs(period: 'day' | 'month' | 'year', date: string, place?: ChatThreadAsOf['place']): SheetDraft | undefined {
-  if (!DATE_FOR[period].test(date)) return undefined;
-  const year = Number(date.slice(0, 4));
-  if (year < 1900 || year > SHEET_LAST_YEAR) return undefined;
-  if (period !== 'year' && (Number(date.slice(5, 7)) < 1 || Number(date.slice(5, 7)) > 12)) return undefined;
-  if (period === 'year') return { granularity: 'year', day: `${date}-01-01`, month: `${date}-01`, year };
-  if (period === 'month') return { granularity: 'month', day: `${date}-01`, month: date, year };
-  return { granularity: 'day', day: date, month: date.slice(0, 7), year, ...(place ? { place } : {}) };
-}
 
 export interface TimeTravelToolInput {
   readonly birthYear: number | undefined;

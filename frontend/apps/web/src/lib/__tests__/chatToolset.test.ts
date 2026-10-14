@@ -29,7 +29,7 @@ vi.mock('../periodReadingTool', async (importOriginal) => {
 
 import { createChatAgentTools } from '../chatAgentTools';
 import { buildChatToolset, type BuildChatToolsetInput } from '../chatToolset';
-import { TIME_TRAVEL_TOOL_NAME } from '../timeTravelTool';
+import { TIME_TRAVEL_TOOL_NAME } from '../legacyTimeTravelTool';
 import { CHART as TIMING_CHART, SKY_CHART } from './timingFixtures';
 
 const CHART = { ayanamsa_value: 23.7, lagna: {}, planets: [], houses: [], yogas: [] } as unknown as SiderealChart;

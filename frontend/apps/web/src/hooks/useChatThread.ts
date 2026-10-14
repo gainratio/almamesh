@@ -49,7 +49,7 @@ import { PERIOD_TOOL_SUMMARIZERS } from '../lib/periodReading';
 import { asOfKey } from '../lib/pinnedPeriod';
 import { waitForStoreSaved } from '../lib/storeSaved';
 import { applyBackToToday, applyTravel, travelIntentVersion, type TravelSource, type TravelThread } from '../lib/timeTravel';
-import { createTravelSlot, type TravelRecorder } from '../lib/timeTravelTool';
+import { createTravelSlot, type TravelRecorder } from '../lib/travelSlot';
 
 /** Input the caller's stream fn receives; it wires `streamChartChat` with these. */
 export interface ChatStreamInput {

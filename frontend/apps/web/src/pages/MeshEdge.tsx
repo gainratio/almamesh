@@ -322,7 +322,7 @@ function MeshEdgeContent({
     retrievedContext: readonly string[] = [],
     onAgentStatus?: (label: string | null) => void,
     asOf?: ChatThreadAsOf,
-    onTravel?: import('../lib/timeTravelTool').TravelRecorder,
+    onTravel?: import('../lib/travelSlot').TravelRecorder,
     onToolCall?: (record: import('@almamesh/llm').AgentToolCallRecord) => void,
   ): AsyncGenerator<string> {
     if (!siderealChart) {
@@ -439,7 +439,7 @@ function MeshEdgeContent({
     retrievedContext: readonly string[] = [],
     onAgentStatus?: (label: string | null) => void,
     asOf?: ChatThreadAsOf,
-    onTravel?: import('../lib/timeTravelTool').TravelRecorder,
+    onTravel?: import('../lib/travelSlot').TravelRecorder,
     onToolCall?: (record: import('@almamesh/llm').AgentToolCallRecord) => void,
   ): Promise<{ answer: string; timing_guidance?: string | null; remedies?: string[] | null }> => {
     const controller = new AbortController();

@@ -37,7 +37,7 @@ import { generateProviderChatSummary } from '../../../lib/chatSummaryProvider';
 import { viewerTodayDay } from '../../../lib/chatAgentTools';
 import { TimeTravelSheet } from './TimeTravelSheet';
 import { PlacePickDialog } from './PlacePickDialog';
-import type { TravelRecorder } from '../../../lib/timeTravelTool';
+import type { TravelRecorder } from '../../../lib/travelSlot';
 import { staleDraftOf } from '../../../lib/chatDraft';
 import type { ChatTripKit } from '../../../lib/chatTripKit';
 import { tripPeriodLabel } from '../../../lib/timeTravelThreads';

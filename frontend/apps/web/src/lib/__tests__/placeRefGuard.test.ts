@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { buildChatToolset, type BuildChatToolsetInput } from '../chatToolset';
 import type { ResolvedPlace } from '../geo/placeLookup';
 import { RESOLVE_PLACE_TOOL_NAME } from '../placeTool';
-import { TIME_TRAVEL_TOOL_NAME } from '../timeTravelTool';
+import { TIME_TRAVEL_TOOL_NAME } from '../legacyTimeTravelTool';
 import { TIMING_TOOL_NAME } from '../timingTool';
 import { CHART } from './timingFixtures';
 

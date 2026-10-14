@@ -337,7 +337,7 @@ export default function DashboardPage() {
     retrievedContext: readonly string[] = [],
     onAgentStatus?: (label: string | null) => void,
     asOf?: ChatThreadAsOf,
-    onTravel?: import('../lib/timeTravelTool').TravelRecorder,
+    onTravel?: import('../lib/travelSlot').TravelRecorder,
     onToolCall?: (record: import('@almamesh/llm').AgentToolCallRecord) => void,
   ) {
     const storedChart = chartId ? useChartLibraryStore.getState().getChart(chartId) : undefined;
@@ -474,7 +474,7 @@ export default function DashboardPage() {
     retrievedContext: readonly string[] = [],
     onAgentStatus?: (label: string | null) => void,
     asOf?: ChatThreadAsOf,
-    onTravel?: import('../lib/timeTravelTool').TravelRecorder,
+    onTravel?: import('../lib/travelSlot').TravelRecorder,
     onToolCall?: (record: import('@almamesh/llm').AgentToolCallRecord) => void,
   ) => {
     const controller = new AbortController();

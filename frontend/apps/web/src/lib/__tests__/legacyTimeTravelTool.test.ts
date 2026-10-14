@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import { BEFORE_BIRTH_MESSAGE, NEEDS_PLACE_ERROR, PLACE_REF_ERROR } from '@almamesh/llm';
+import { createTimeTravelTool } from '../legacyTimeTravelTool';
 import { periodAsOfFromDraft } from '../timeTravelSheet';
-import { createTimeTravelTool, createTravelSlot, draftFromToolArgs } from '../timeTravelTool';
 
+// The old toolset's time_travel; deleted with chatToolset.ts in Task 6 of the chat tool layer redesign.
 const BOGOTA = { summary: { place_ref: 'city:42', label: 'Bogotá, Colombia', timezone: 'America/Bogota' }, latitude: 4.60971, longitude: -74.08175 };
 const context = () => ({ now: new Date('2026-10-11T12:00:00Z'), signal: new AbortController().signal });
 function setup() {
@@ -11,7 +12,7 @@ function setup() {
   return { record, placeFromRef, tool: createTimeTravelTool({ birthYear: 1990, language: 'en', record, placeFromRef }) };
 }
 
-describe('time_travel records an action without moving the UI during the turn', () => {
+describe('legacy time_travel (the old toolset until Task 6) records an action without moving the UI during the turn', () => {
   it('queues a month through the same draft as the sheet', async () => {
     const { tool, record } = setup();
     expect(await tool.execute({ action: 'travel', period: 'month', date: '2019-03' }, context()))
@@ -63,25 +64,6 @@ describe('time_travel records an action without moving the UI during the turn', 
     const { tool, record } = setup();
     expect(await tool.execute(args, context())).toHaveProperty('error');
     expect(record).not.toHaveBeenCalled();
-  });
-});
-
-describe('travel slot', () => {
-  it('last action wins, take empties it, and action values are copied', () => {
-    const slot = createTravelSlot();
-    const asOf = { start: '2019-03-01', end: '2019-03-31', granularity: 'month' as const };
-    slot.record({ kind: 'travel', asOf });
-    asOf.start = '2020-03-01';
-    expect(slot.take()).toMatchObject({ asOf: { start: '2019-03-01' } });
-    slot.record({ kind: 'travel', asOf });
-    slot.record({ kind: 'back_to_today' });
-    expect(slot.take()).toEqual({ kind: 'back_to_today' });
-    expect(slot.take()).toBeUndefined();
-  });
-
-  it('builds byte-equal day/month/year drafts', () => {
-    expect(draftFromToolArgs('year', '2027')).toEqual({ granularity: 'year', day: '2027-01-01', month: '2027-01', year: 2027 });
-    expect(draftFromToolArgs('month', '2019-03')).toEqual({ granularity: 'month', day: '2019-03-01', month: '2019-03', year: 2019 });
   });
 });
 
