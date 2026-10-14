@@ -100,15 +100,15 @@ const READING_CONTENTS = [
 ].join(' ');
 
 const DETAIL_DESCRIPTION = [
-  'Drill into the same bound period reading. section: lord (key = a graha, e.g. "saturn"),',
-  'segment (key = a segment start date, YYYY-MM-DD), bindus (key = a graha or "sav": the ashtakavarga row per sign),',
-  'panchang (a single-day period only), dashas (every dasha span in the period). Returns facts plus cited factor strings.',
+  'Drill into the same bound period reading. section: lord (key REQUIRED: a graha from the reading\'s lords, e.g. "saturn"),',
+  'segment (key REQUIRED: a start date from the reading\'s segments, YYYY-MM-DD), bindus (key REQUIRED: a graha or "sav": the ashtakavarga row per sign),',
+  'panchang (a single-day period only, no key), dashas (every dasha span in the period, no key). Returns facts plus cited factor strings.',
 ].join(' ');
 const TODAY_DETAIL_NOTE = 'In a today thread, send the same granularity and month as the reading you are drilling into.';
 
 const DETAIL_PROPERTIES = {
   section: { type: 'string', enum: DETAIL_SECTIONS },
-  key: { type: 'string', maxLength: 16, description: 'A graha, "sav", or a segment start date (YYYY-MM-DD); per section.' },
+  key: { type: 'string', maxLength: 16, description: 'Required for lord, segment and bindus: a graha, "sav", or a segment start date (YYYY-MM-DD), per section.' },
 } as const;
 
 function detailParameters(today: boolean) {

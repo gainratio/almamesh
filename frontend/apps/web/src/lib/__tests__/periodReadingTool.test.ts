@@ -192,6 +192,17 @@ describe('get_period_reading', () => {
 });
 
 describe('get_period_detail', () => {
+  // Live drive 2026-10-14 (deepseek-v4.1-flash, "And next month?"): the model sent section lord and
+  // section segment with no key, and both rows came back as errors. The tool still refuses rather than
+  // guess; its schema now says which sections need a key and where to find one.
+  it.each([undefined, MAY_2019])('says lord, segment and bindus need a key, and where the keys are (pin %#)', (pin) => {
+    const { detail } = tools({ pin });
+    const key = (detail.parameters as { properties: { key: { description: string } } }).properties.key.description;
+    expect(key).toContain('Required for lord, segment and bindus');
+    expect(detail.description).toContain("lord (key REQUIRED: a graha from the reading's lords, e.g. \"saturn\")");
+    expect(detail.description).toContain("segment (key REQUIRED: a start date from the reading's segments, YYYY-MM-DD)");
+  });
+
   it('digests one section of the same bound period', async () => {
     const { detail, loadPeriodChart } = tools();
     await expect(detail.execute({ section: 'lord', key: 'venus' }, context())).resolves.toMatchObject({
