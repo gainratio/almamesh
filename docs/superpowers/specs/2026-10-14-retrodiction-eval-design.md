@@ -301,6 +301,71 @@ below the null's floor (1e-12)", with a regression test. No event was rescored: 
 recomputed from the run's stored planted and shifted summaries, and both files are kept
 (`scorecard-as-run.*` and `scorecard.*`, outside git).
 
+### Amendment 2026-10-14 (f): a placebo-calibrated primary statistic (before any rescoring)
+
+Written and committed before any rescoring. Mapping, window ±36, k 3 and 6, the families and the
+split are unchanged.
+
+**The defect.** The base rate k/N assumes the event month is equally likely to sit anywhere in
+its window. It always sits at the centre. When a family's score is a step function (dasha,
+yogini periods), the centre month's tied block lies wholly inside the window while a block near
+an edge is cut off, so the centre shares its top-k slots with more tied months. With no event at
+all, the centre earns less than k/N: yogini per-position hit rates at −36/−18/0/+18/+36 were
+1.51/0.92/0.86/0.93/1.55 × base; shifted months with no event score 0.857 (yogini) and 0.893
+(vimshottari lords), the same as the real event months (0.86/0.91); a synthetic step series with
+no events gives 0.87-0.90 at the centre. The run-level shifted control passed only because it
+checked the combined set. So every lift reported so far is biased low, family by family.
+
+**(f1) Primary statistic: placebo-calibrated lift.** For every scored event, R = 4 placebo
+windows of the same native, same category and target, centred at the event month plus an offset
+of 73-146 months (sign and size from `random.Random(f"20261015:{native}:{event ordinal}")`, R
+draws in order). If a placebo window leaves the engine's range its sign flips once; if it is
+still out, that placebo is dropped. An event with no placebo left is excluded and counted. The
+hit is unchanged (the fractional top-k hit of the window's centre month).
+- lift = Σ event hits ÷ Σ (mean of that event's placebo hits), per family set, area and k.
+- 95% CI: bootstrap over natives (2,000 resamples, seed 20261015), paired sums.
+- p: one-sided exact randomization test. Under the null an event's centre is exchangeable with
+  its placebos' centres, so each event's null is uniform over its R+1 centre hits; the sum's
+  distribution is the same convolution as before (`permutation_pvalue`, same grid and floor).
+
+*Why this one (≤10 lines).* Under a stationary null every window centre has the same expected
+hit whatever the family's tie structure, so the ratio is 1 by construction and the bias cancels
+at its source (same position), not by a model of it. Same-native placebos keep the chart, the
+target and the age range; 73-146 months keeps the event month out of every placebo window. It
+keeps the unit everyone already reads (a hit-rate lift). "Event score minus window mean" was
+rejected: its unit is score points, not a lift, and its permutation null is still over
+positions (only conservative, by an unknown amount). Cost: 1+R windows per event instead of 1.
+
+**(f2) The old metric stays as a secondary number**: lift = hit rate ÷ k/N with its Wilson CI,
+reported beside the primary for every row. Its position-permutation p is not reported any more.
+
+**(f3) Per-family shifted-month controls.** For every single family, and for each
+configuration's combined set, placebo 1 plays the event and placebos 2..R are its calibrators.
+Placebo-calibrated: a family **fails** if its CI excludes 1 (k=3 or k=6, all areas). Old metric:
+placebo 1's hit rate ÷ k/N with its Wilson CI, same rule; reported to document the bias. The run
+is void if a configuration's combined set fails the placebo-calibrated control, or if the planted
+family (1 at the event month, 0 elsewhere) does not reach lift N/k with p at the null's floor.
+
+**(f4) Chart-swap comparison.** The same events on a same-birth-year partner's chart (amendment
+d's rule). Its windows have the same centre position and calendar months, so the positional bias
+cancels in real ÷ swap: the ratio of real to swapped centre hits over events scored both ways,
+with a bootstrap CI over natives. The swap's old-metric lift is reported too.
+
+**(f5) The rescore (DEV only, never HELD-OUT).** Three configurations: BASELINE (the v1 seven),
++OBSTACLES (v1 + `engine_obstacles`, brought over from `eval/obstacles-ab` 428432fc unchanged in
+formula) and +EXACT (v1 + `exact_transits`). BASELINE and +EXACT come from one run over the DEV
+half. `engine_obstacles` scores only the disputes target (legal, accident), so +OBSTACLES can
+differ from BASELINE only there; its run scores DEV disputes events only. Its score costs a full
+predictive run per month (2.5 s measured), so its centre hits are resolved lazily and exactly:
+the family is in [0, 1], so a month whose v1 sum alone beats the centre, or loses to it even
+with +1, needs no evaluation; the rest are evaluated (highest v1 sum first) until k months beat
+the centre or none is left. A test checks equality with full evaluation. Its only-family control
+is not computed (it needs every month). If a timing probe (wall-clock only, nothing read) puts the
++OBSTACLES run above 6 h at 8 workers, its R drops to 2 and the results say so. Holm and BH at
+α = 0.05 per configuration over the per-area p-values at k = 3 and 6. Window, k and families are
+not re-tuned. DEV wins are still not evidence; nothing goes to HELD-OUT from this rescore.
+Pinned in code: `PLACEBOS = 4`, offsets 73-146, `SPLIT_SEED`.
+
 ## Results: DEV, exact transits (technique #1), 2026-10-14
 
 The only scoring run of amendment (d). Engine and harness at `8faa4ed7` (branch
