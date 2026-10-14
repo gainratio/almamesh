@@ -8,6 +8,7 @@ import { gotoSettled } from './portableInvariants.helpers';
 import { captureReloadConsole, type ReloadConsoleCapture } from './reloadConsole';
 import { waitForLifeAtlasAsOf } from './lifeAtlas.helpers';
 import { withReloadJourneyDiagnostics } from './reloadJourneyDiagnostics';
+import { chatToolBody, fulfillEmpty, fulfillReadThenAnswer, readPeriodArgs, toolNames, toolResults, type ChatToolBody } from './stubChatProvider';
 import { BIRTH_FIELD_NAMES, birthPlaceMarkers } from './tripPrivacy.helpers';
 import { test } from './webkitProfile';
 
@@ -26,7 +27,6 @@ const LLM_CONFIG = {
 /** The only off-origin URLs a journey may request: the stubbed provider's, fulfilled by page.route. */
 const PROVIDER_ORIGIN = new URL(LLM_CONFIG.apiBase).origin;
 const QUESTION = 'What was going on for me in June 2019? Any big transits?';
-const ANSWER = 'I looked at 1–30 June 2019. A Saturn antar was ending and Jupiter was moving.';
 const BIRTH_MONTH = '1990-01'; // DELHI_BIRTH.datetimeUtc
 const SCREENSHOT = 'test-results/time-travel-june-2019.png';
 /**
@@ -116,44 +116,13 @@ async function prepare(page: Page): Promise<string[]> {
 test('[contract/stubbed] a typed June 2019 question reads June 2019, not today', async ({ page }) => {
   const consoleErrors = await prepare(page);
 
-  const agentRequests: AgentRequest[] = [];
+  const agentRequests: ChatToolBody[] = [];
   await page.route('**/chat/completions', async (route) => {
-    const parsed = JSON.parse(route.request().postData() ?? '{}') as {
-      messages?: WireMessage[];
-      tools?: Array<{ function: { name: string } }>;
-    };
-    if (!Array.isArray(parsed.tools) || !JSON.stringify(parsed.messages).includes('June 2019')) {
-      // Anything else (summaries, other features): a harmless empty answer.
-      return route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ choices: [{ message: { content: '' } }] }),
-      });
-    }
-    agentRequests.push({ messages: parsed.messages ?? [], tools: parsed.tools });
-    const hasToolResults = (parsed.messages ?? []).some((message) => message.role === 'tool');
-    if (!hasToolResults) {
-      const call = (id: string, section: string) => ({
-        id,
-        type: 'function',
-        function: {
-          name: 'get_timing',
-          arguments: JSON.stringify({ section, start: '2019-06-01', end: '2019-06-30' }),
-        },
-      });
-      return route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          choices: [{ message: { content: null, tool_calls: [call('dashas-june', 'dashas'), call('sky-june', 'transits')] } }],
-        }),
-      });
-    }
-    return route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({ choices: [{ message: { content: ANSWER } }] }),
-    });
+    const chat = chatToolBody(route.request().postData());
+    // Anything else (summaries, other features): a harmless empty answer.
+    if (!chat || !JSON.stringify(chat.messages).includes('June 2019')) return fulfillEmpty(route);
+    agentRequests.push(chat);
+    return fulfillReadThenAnswer(route, chat, readPeriodArgs('2019-06'));
   });
 
   await bootEngine(page);
@@ -192,54 +161,31 @@ test('[contract/stubbed] a typed June 2019 question reads June 2019, not today',
   await page.getByTestId('chat-input').fill(QUESTION);
   await page.getByTestId('chat-send-button').click();
 
-  // Router: "transits" alone used to pre-run TODAY and label the prompt
-  // "(as of <day>, today):". Checked as soon as the first model call lands.
+  // A dated question in a today thread: no router pre-runs today; the model reads the period.
   await expect.poll(() => agentRequests.length, { timeout: 120_000 }).toBeGreaterThan(0);
-  const [decision] = agentRequests;
+  const [decision] = agentRequests as [ChatToolBody];
   const prompt = decision.messages.map((message) => message.content ?? '').join('\n');
   expect(prompt, 'a dated question must not pre-run and label today').not.toContain(', today):');
-  // Contract reversed 2026-10-13: a dated question is read as a trip to that period, so it
-  // registers the trip's context tools (get_natal_summary, get_trip_context) instead of
-  // get_current_datetime and get_chart_facts (plan 2026-10-13, "Context bootstrap").
-  // Contract changed again 2026-10-13 (period reading): the trip also registers
-  // get_period_reading and get_period_detail, and the schemas go out sorted by name.
-  expect(decision.tools.map((tool) => tool.function.name)).toEqual([
-    'get_natal_summary',
-    'get_period_detail',
-    'get_period_reading',
-    'get_timing',
-    'get_trip_context',
-    'resolve_place',
-    'time_travel',
-  ]);
+  // Contract changed (chat tool layer redesign, Task 6, 2026-10-14): one tool reads any period,
+  // one moves the conversation, and the turn finishes with `answer`.
+  expect(toolNames(decision)).toEqual(['read_period', 'travel', 'answer']);
+  expect(decision.tool_choice).toBe('required');
 
   const chatPanel = page.getByTestId('chat-panel');
-  await expect(chatPanel.getByText('I looked at 1–30 June 2019.', { exact: false })).toBeVisible({ timeout: 240_000 });
-  // The period compute runs the real engine and said so while it ran.
+  await expect(chatPanel.getByText('A steady stretch for work.', { exact: false })).toBeVisible({ timeout: 240_000 });
+  // The period compute runs the real engine and said which span while it ran.
   const statuses = await page.evaluate(
     () => (window as unknown as { __agentStatusHistory: string[] }).__agentStatusHistory,
   );
-  expect(statuses.some((text) => text.includes('Working out the sky')), statuses.join(' | ')).toBe(true);
+  expect(statuses.some((text) => text.includes('Reading June 2019')), statuses.join(' | ')).toBe(true);
 
-  // Contract changed 2026-10-13: the model's second (required) round answered without the trip's
-  // grounding tools, so the app ran them itself and asked once more. Contract reversed 2026-10-13
-  // (period reading): the grounding is get_period_reading and get_natal_summary (was
-  // get_trip_context and get_natal_summary).
-  expect(agentRequests).toHaveLength(3);
-  expect(agentRequests[2].messages.filter((message) => message.role === 'tool').map((message) => message.name))
-    .toEqual(['get_timing', 'get_timing', 'get_period_reading', 'get_natal_summary']);
-  const reading = agentRequests[2].messages.find((message) => message.role === 'tool' && message.name === 'get_period_reading');
-  expect(reading?.content, 'the locally run reading is June 2019').toContain('"period":{"start":"2019-06-01","end":"2019-06-30"');
+  expect(agentRequests).toHaveLength(2);
+  const [reading] = toolResults(agentRequests[1]!);
+  expect(reading?.name).toBe('read_period');
+  expect(reading?.content, 'the reading is June 2019').toContain('"start":"2019-06-01","end":"2019-06-30"');
+  expect(reading?.content).toContain('"antar"');
+  expect(reading?.content).not.toContain('"available":false');
   expect(reading?.content).not.toContain(BIRTH_MONTH);
-  const toolResults = agentRequests[1].messages.filter((message) => message.role === 'tool');
-  expect(toolResults.map((message) => message.name)).toEqual(['get_timing', 'get_timing']);
-  for (const result of toolResults) {
-    expect(result.content).toContain('"period":{"start":"2019-06-01","end":"2019-06-30","days":30,"basis":"period"}');
-    expect(result.content).not.toContain(BIRTH_MONTH);
-  }
-  expect(toolResults[0].content).toContain('"antar"');
-  expect(toolResults[1].content).toContain('"covered_events"');
-  expect(toolResults[1].content).not.toContain('"available":false');
 
   // The Life Atlas still describes today: the period compute did not take its slot.
   await expect(atlasAsOf).toHaveText(atlasBefore);
@@ -255,22 +201,7 @@ test('[contract/stubbed] a typed June 2019 question reads June 2019, not today',
  * in one compute, and the model must see the 2028 events too.
  */
 const LONG_QUESTION = 'How do 2027 and the first half of 2028 look for me?';
-const LONG_ANSWER = 'I looked at 1 January 2027 to 30 June 2028. Mars turns retrograde in January 2027.';
 const LONG_SCREENSHOT = 'test-results/time-travel-18-months.png';
-/**
- * Engine events for the Delhi fixture inside 2027-01..2028-06 (CPython, DE421),
- * in timeline order. Mars stations retrograde, backs out of Leo into Cancer,
- * stations direct and re-enters Leo; Rahu/Ketu change sign in June 2028, past
- * a 12-month window's end.
- */
-const LONG_PERIOD_DESCRIPTORS = [
-  'mars.station.retrograde',
-  'mars.ingress.cancer',
-  'mars.station.direct',
-  'mars.ingress.leo',
-  'rahu.ingress.sagittarius',
-  'ketu.ingress.gemini',
-] as const;
 
 interface PredictiveCompute {
   referenceInstant: string;
@@ -303,39 +234,12 @@ test('[contract/stubbed] an 18-month period is one engine run with Mars, nodes a
   test.setTimeout(600_000);
   const consoleErrors = await prepare(page);
   await recordPredictiveComputes(page);
-  const toolResults: WireMessage[] = [];
+  const readings: string[] = [];
   await page.route('**/chat/completions', async (route) => {
-    const parsed = JSON.parse(route.request().postData() ?? '{}') as { messages?: WireMessage[]; tools?: unknown[] };
-    const messages = parsed.messages ?? [];
-    if (!Array.isArray(parsed.tools) || !JSON.stringify(messages).includes('first half of 2028')) {
-      return route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ choices: [{ message: { content: '' } }] }),
-      });
-    }
-    const results = messages.filter((message) => message.role === 'tool');
-    if (results.length === 0) {
-      const call = {
-        id: 'sky-long',
-        type: 'function',
-        function: {
-          name: 'get_timing',
-          arguments: JSON.stringify({ section: 'transits', start: '2027-01-01', end: '2028-06-30' }),
-        },
-      };
-      return route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ choices: [{ message: { content: null, tool_calls: [call] } }] }),
-      });
-    }
-    toolResults.push(...results);
-    return route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({ choices: [{ message: { content: LONG_ANSWER } }] }),
-    });
+    const chat = chatToolBody(route.request().postData());
+    if (!chat || !JSON.stringify(chat.messages).includes('first half of 2028')) return fulfillEmpty(route);
+    readings.push(...toolResults(chat).filter((result) => result.name === 'read_period').map((result) => result.content));
+    return fulfillReadThenAnswer(route, chat, readPeriodArgs('2027-01', { end: '2028-06' }));
   });
 
   await bootEngine(page);
@@ -355,7 +259,7 @@ test('[contract/stubbed] an 18-month period is one engine run with Mars, nodes a
   await page.getByTestId('chat-send-button').click();
 
   const started = Date.now();
-  await expect(page.getByTestId('chat-panel').getByText('I looked at 1 January 2027', { exact: false })).toBeVisible({
+  await expect(page.getByTestId('chat-panel').getByText('A steady stretch for work.', { exact: false })).toBeVisible({
     timeout: 480_000,
   });
   test.info().annotations.push({ type: '18-month answer wall time (ms)', description: String(Date.now() - started) });
@@ -369,17 +273,16 @@ test('[contract/stubbed] an 18-month period is one engine run with Mars, nodes a
   // The Life Atlas still describes today after the 24-month compute.
   await expect(atlasAsOf).toHaveText(atlasBefore);
 
-  expect(toolResults).toHaveLength(1);
-  const content = toolResults[0].content ?? '';
-  expect(content).toContain('"period":{"start":"2027-01-01","end":"2028-06-30","days":547,"basis":"period"}');
-  expect(content).not.toContain('"available":false');
-  expect(content).not.toContain('Transit events are listed only until');
-  // Real engine events reach the model, in timeline order (not the covered_events constants).
-  const positions = LONG_PERIOD_DESCRIPTORS.map((descriptor) => content.indexOf(`"descriptor":"${descriptor}"`));
-  expect(positions.every((position) => position >= 0), LONG_PERIOD_DESCRIPTORS.join(', ')).toBe(true);
-  expect([...positions].sort((a, b) => a - b)).toEqual(positions);
-  expect(content).toContain('"station_direction":"retrograde"');
-  expect(content).not.toContain(BIRTH_MONTH);
+  // One read_period call covers the whole span (never split into months), with one row per month.
+  expect(readings).toHaveLength(1);
+  const reading = JSON.parse(readings[0]!) as { period: { start: string; end: string }; months?: unknown[]; sky?: Array<{ graha: string; sign: string }>; available?: boolean };
+  expect(reading.period).toMatchObject({ start: '2027-01-01', end: '2028-06-30' });
+  expect(reading.available).toBeUndefined();
+  expect(reading.months).toHaveLength(18);
+  // Real engine sky reaches the model, past a 12-month window's end: the nodes change sign in June 2028.
+  const rahuSigns = new Set(reading.sky?.filter((span) => span.graha === 'rahu').map((span) => span.sign));
+  expect(rahuSigns.size, JSON.stringify(reading.sky?.map((span) => [span.graha, span.sign]))).toBeGreaterThan(1);
+  expect(readings[0]).not.toContain(BIRTH_MONTH);
   await page.screenshot({ path: LONG_SCREENSHOT, fullPage: true });
   expect(consoleErrors, 'the journey must keep a clean console').toEqual([]);
 });
