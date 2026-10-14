@@ -21,6 +21,7 @@ from typing import Annotated, NoReturn, cast
 import typer
 
 from almamesh.retrodiction.adb import import_adb
+from almamesh.retrodiction.controls import PLACEBOS
 from almamesh.retrodiction.events import (
     EventsFile,
     RetrodictionInputError,
@@ -29,6 +30,9 @@ from almamesh.retrodiction.events import (
 )
 from almamesh.retrodiction.mapping import PREREGISTERED_KS, PREREGISTERED_WINDOW
 from almamesh.retrodiction.markdown import render_markdown
+from almamesh.retrodiction.placebo_card import PlaceboCard, build_placebo_card
+from almamesh.retrodiction.placebo_markdown import render_placebo_card
+from almamesh.retrodiction.placebo_run import ADDED_FAMILIES, AddedFamily, RunPlan
 from almamesh.retrodiction.report import Report, build_report, sample_subjects
 from almamesh.retrodiction.scorecard import Scorecard, build_scorecard
 from almamesh.retrodiction.scorecard_markdown import render_scorecard
@@ -251,6 +255,57 @@ def scorecard(
             PREREGISTERED_WINDOW, "", out, workers, sample_natives, seed, _part(split), release_look
         )
         typer.echo(_scorecard(events, adb, options))
+    except RetrodictionInputError as exc:
+        _refuse(exc)
+
+
+def _plan(added: str, placebos: int) -> RunPlan:
+    if added not in ADDED_FAMILIES:
+        raise RetrodictionInputError(
+            f"--added must be exact_transits or engine_obstacles, got {added!r}"
+        )
+    return RunPlan(added=cast("AddedFamily", added), placebos=placebos)
+
+
+def _write_placebo(card: PlaceboCard, target: Path, *, evidence: bool) -> None:
+    target.mkdir(parents=True, exist_ok=True)
+    (target / "placebo-scorecard.json").write_text(card.model_dump_json(indent=2) + "\n", "utf-8")
+    markdown = render_placebo_card(card, evidence=evidence)
+    (target / "placebo-scorecard.md").write_text(markdown, "utf-8")
+
+
+def _placebo(events: Path | None, adb: Path | None, options: _Options, plan: RunPlan) -> str:
+    loaded, source, private = _prepare(events, adb, options)
+    target = _out_dir(source, options.out, private, f"placebo-scorecard-{plan.added}")
+    card = build_placebo_card(loaded, plan, options.workers)
+    _write_placebo(card, target, evidence=loaded.kind != "synthetic")
+    v = card.verdicts
+    verdict = "controls ok" if v.planted_ok and v.controls_ok else "VOID"
+    return f"{card.events_scored} events scored, {verdict} -> {target}"
+
+
+@app.command("placebo-scorecard")
+def placebo_scorecard(
+    events: Annotated[Path | None, typer.Option(help="Event YAML")] = None,
+    adb: Annotated[Path | None, typer.Option(help=_ADB_HELP)] = None,
+    split: Annotated[str | None, typer.Option(help="dev or held-out (ADB only)")] = None,
+    release_look: Annotated[bool, typer.Option(help="Declare a logged HELD-OUT look")] = False,
+    added: Annotated[str, typer.Option(help="exact_transits or engine_obstacles")] = (
+        "exact_transits"
+    ),
+    placebos: Annotated[int, typer.Option(min=1, max=PLACEBOS, help="Placebo windows")] = PLACEBOS,
+    out: Annotated[Path | None, typer.Option(help="Scorecard directory")] = None,
+    workers: Annotated[int, typer.Option(min=1, max=64, help="Processes")] = 1,
+    sample_natives: Annotated[int | None, typer.Option(min=1, help="Native sample")] = None,
+    seed: Annotated[int | None, typer.Option(help="Seed for --sample-natives")] = None,
+) -> None:
+    """Amendment (f): placebo-calibrated BASELINE vs +family, swap ratio and controls."""
+    try:
+        plan = _plan(added, placebos)
+        options = _Options(
+            PREREGISTERED_WINDOW, "", out, workers, sample_natives, seed, _part(split), release_look
+        )
+        typer.echo(_placebo(events, adb, options, plan))
     except RetrodictionInputError as exc:
         _refuse(exc)
 

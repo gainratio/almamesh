@@ -5,6 +5,8 @@
 - ``shift_months``: each month event moves 73-146 months, outside its own window, so the
   true month cannot sit in the ranked window: lift must be chance.
 - ``planted``: a family that peeks at the event month, so lift must hit its ceiling N/k.
+- ``placebo_centres``: amendment (f1)'s R placebo windows per event, same native and target,
+  centred 73-146 months away (sign flipped once if out of range, else dropped).
 """
 
 from __future__ import annotations
@@ -16,11 +18,16 @@ from typing import TYPE_CHECKING, Final
 
 from almamesh.retrodiction.engine import add_months
 from almamesh.retrodiction.harness import EventScores
+from almamesh.retrodiction.split import SPLIT_SEED
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from almamesh.retrodiction.engine import YearMonth
     from almamesh.retrodiction.events import EventsFile, LifeEvent, Subject
 
 PLANTED: Final[str] = "planted"
+PLACEBOS: Final[int] = 4
 _SHIFT_MIN, _SHIFT_MAX = 73, 146
 
 
@@ -71,6 +78,29 @@ def shift_months(events: EventsFile, seed: int) -> EventsFile:
     return events.model_copy(update={"subjects": subjects, "label": label})
 
 
+def _fitting(month: YearMonth, offset: int, fits: Callable[[YearMonth], bool]) -> YearMonth | None:
+    """The centre ``offset`` months away, or the mirrored one, if its window fits."""
+    for signed in (offset, -offset):
+        centre = add_months(month, signed)
+        if fits(centre):
+            return centre
+    return None
+
+
+def placebo_centres(
+    month: YearMonth,
+    native: str,
+    ordinal: int,
+    fits: Callable[[YearMonth], bool],
+    count: int = PLACEBOS,
+) -> list[YearMonth]:
+    """Amendment (f1): seeded per event, so every run and worker draws the same centres."""
+    rng = random.Random(f"{SPLIT_SEED}:{native}:{ordinal}")
+    offsets = [rng.choice((-1, 1)) * rng.randint(_SHIFT_MIN, _SHIFT_MAX) for _ in range(count)]
+    centres = [_fitting(month, offset, fits) for offset in offsets]
+    return [c for c in centres if c is not None]
+
+
 def planted(scored: list[EventScores]) -> list[EventScores]:
     """Each event with a family scoring 1 in its own month and 0 elsewhere."""
     return [_with_planted(e) for e in scored]
@@ -82,4 +112,4 @@ def _with_planted(e: EventScores) -> EventScores:
     return EventScores(e.subject, e.category, e.month, e.area, {PLANTED: peek}, e.index)
 
 
-__all__ = ["PLANTED", "chart_swap", "planted", "shift_months"]
+__all__ = ["PLACEBOS", "PLANTED", "chart_swap", "placebo_centres", "planted", "shift_months"]

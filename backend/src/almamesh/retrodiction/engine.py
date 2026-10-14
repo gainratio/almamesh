@@ -17,8 +17,8 @@ from almamesh.dasha.depth import level_spans
 from almamesh.dasha.yogini import compute_yogini_periods
 from almamesh.predictive import compute_predictive_contexts
 from almamesh.retrodiction.indicators import SKY_GRAHAS, MonthSky, NatalFrame
-from almamesh.transits.exact import MOVERS, ContactBook, astro_movers, natal_points
 from almamesh.schemas.domains import LifeDomain
+from almamesh.transits.exact import MOVERS, ContactBook, astro_movers, natal_points
 from almamesh.transits.natal import natal_lagna_index, natal_moon_index, sign_index
 from almamesh.transits.positions import EPHEMERIS_LAST_INSTANT, transit_longitude
 
