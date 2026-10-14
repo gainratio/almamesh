@@ -40,7 +40,7 @@ import {
 
 import type { MoonWindowLoader } from './moonWindow';
 import { PeriodSkyTimeoutError } from './periodSky';
-import { hoistSharedStrengthNote, type DomainsPayload } from './timingDomains';
+import { domainsPayload, type DomainsPayload } from './timingDomains';
 import {
   impossibleTime,
   labelPlaces,
@@ -175,7 +175,7 @@ function sectionData(chart: SanitizedChart, section: TimingSection): unknown {
 /** A section's data plus any note lifted out of it (the life areas' shared strength note). */
 function sectionPayload(chart: SanitizedChart, section: TimingSection): DomainsPayload {
   const data = sectionData(chart, section);
-  return section === 'domains' ? hoistSharedStrengthNote(data) : { data, notes: [] };
+  return section === 'domains' ? domainsPayload(data) : { data, notes: [] };
 }
 
 async function todayTiming(

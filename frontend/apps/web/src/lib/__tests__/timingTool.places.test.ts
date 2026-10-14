@@ -510,7 +510,7 @@ describe('get_timing keeps placed life-area and strength reads small', () => {
 
   it('the heaviest committed real domains read (golden, 1 Jan 2025 transits) still fits the cap', async () => {
     const result = await domainsAt(skyWith(domainsGolden['1988-08-08T06:44:00+05:30']));
-    expect((result as { data: unknown[] }).data).toHaveLength(7);
+    expect((result as { data: unknown[] }).data).toHaveLength(8);
     expect(wrapped(result)).toBeLessThanOrEqual(AGENT_LIMITS.maxResultChars);
   });
 

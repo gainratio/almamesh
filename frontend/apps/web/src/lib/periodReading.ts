@@ -129,7 +129,8 @@ export interface ReadingTheme {
   readonly strength: PeriodTheme['strength'];
   readonly strength_pct: number;
   readonly confidence: ThemeConfidence;
-  readonly agreement: PeriodTheme['agreement'];
+  /** Cut first when the reading is over budget: `confidence` already counts the agreeing techniques. */
+  readonly agreement?: PeriodTheme['agreement'];
   readonly factors: readonly string[];
 }
 
@@ -371,25 +372,42 @@ function firstPerGraha(sky: readonly ReadingSky[], limit: number): ReadingSky[] 
 const lordBrief = ({ lord, level, rules, functional }: ReadingLord): ReadingLord =>
   ({ lord, level, ...(rules ? { rules } : {}), ...(functional ? { functional } : {}) });
 
+const pratyantarOnly = (lord: ReadingLord): boolean => !lord.level.some((v) => v === 'maha' || v === 'antar');
+
+/** A pratyantar-only lord without its D9/D10 signs and yogas: its houses, dignity and transit stay. */
+const withoutVargas = (lord: ReadingLord): ReadingLord => {
+  if (!pratyantarOnly(lord)) return lord;
+  const { d9_sign: _d9, d10_sign: _d10, yogas: _yogas, ...rest } = lord;
+  return rest;
+};
+
+/** A theme without its per-technique agreement booleans: its confidence already counts them. */
+const withoutAgreement = ({ agreement: _agreement, ...theme }: ReadingTheme): ReadingTheme => theme;
+
 /**
  * Applied in order until the reading fits, cheapest loss first; each cut that
  * changed something is named in `trimmed`, and get_period_detail returns it.
  * Dated change points (segment events: stations, ingresses, each with its day)
  * outrank secondary detail: they are how the model says when a period shifts.
+ * Every theme's verdict and first factor outrank sky detail: a Year once lost
+ * its obstacles theme while three Jupiter spans survived (2026-10-14).
  */
 const TRIMS: readonly Trim[] = [
   { note: 'windows beyond 6', apply: (r) => ({ ...r, windows: r.windows.slice(0, 6) }) },
-  { note: 'pratyantar-only lord natal detail', apply: (r) => ({ ...r, lords: r.lords.map((l) => (l.level.some((v) => v === 'maha' || v === 'antar') ? l : lordBrief(l))) }) },
+  { note: 'theme agreement per technique', apply: (r) => capThemes(r, withoutAgreement) },
+  { note: 'pratyantar-only lord vargas and yogas', apply: (r) => ({ ...r, lords: r.lords.map(withoutVargas) }) },
   { note: 'theme factors beyond 2', apply: (r) => capThemes(r, (t) => ({ ...t, factors: t.factors.slice(0, 2) })) },
   { note: 'sky spans beyond 3 per graha', apply: (r) => ({ ...r, sky: firstPerGraha(r.sky, 3) }) },
-  { note: 'themes beyond the first 4', apply: (r) => ({ ...r, themes: r.themes.slice(0, 4) }) },
+  { note: 'pratyantar-only lord natal detail', apply: (r) => ({ ...r, lords: r.lords.map((l) => (pratyantarOnly(l) ? lordBrief(l) : l)) }) },
+  { note: 'theme factors beyond 1', apply: (r) => capThemes(r, (t) => ({ ...t, factors: t.factors.slice(0, 1) })) },
+  { note: 'sky spans beyond 2 per graha', apply: (r) => ({ ...r, sky: firstPerGraha(r.sky, 2) }) },
   { note: 'segment events', apply: (r) => ({ ...r, segments: r.segments.map((s) => ({ ...s, events: [] })) }) },
   { note: 'segments', apply: (r) => (r.period.granularity === 'day' ? r : { ...r, segments: [] }) },
   { note: 'lord natal detail', apply: (r) => ({ ...r, lords: r.lords.map(lordBrief) }) },
   { note: 'windows beyond 3', apply: (r) => ({ ...r, windows: r.windows.slice(0, 3) }) },
-  { note: 'sky spans beyond 2 per graha', apply: (r) => ({ ...r, sky: firstPerGraha(r.sky, 2) }) },
+  { note: 'sky spans beyond 1 per graha', apply: (r) => ({ ...r, sky: firstPerGraha(r.sky, 1) }) },
+  { note: 'themes beyond the first 4', apply: (r) => ({ ...r, themes: r.themes.slice(0, 4) }) },
   { note: 'themes beyond the first 3', apply: (r) => ({ ...r, themes: r.themes.slice(0, 3) }) },
-  { note: 'theme factors beyond 1', apply: (r) => capThemes(r, (t) => ({ ...t, factors: t.factors.slice(0, 1) })) },
 ];
 
 function withTrimmed(reading: PeriodReading, trimmed: readonly string[]): PeriodReading {
@@ -445,6 +463,21 @@ export function buildPeriodReading(source: PeriodReadingContext, frame: ReadingF
 
 const title = (word: string) => word.charAt(0).toUpperCase() + word.slice(1);
 
+/**
+ * Distinct factors, in order. The engine cites one fact twice when a house carries a
+ * plain-language meaning ("… rules the 12th" and "… rules the 12th: losses and expenses");
+ * those are one factor, shown once, as the one that says more.
+ */
+export function distinctFactors(factors: readonly string[]): string[] {
+  const kept = new Map<string, string>();
+  for (const factor of factors) {
+    const fact = factor.split(': ')[0]!;
+    const seen = kept.get(fact);
+    if (seen === undefined || (seen === fact && factor !== fact)) kept.set(fact, factor);
+  }
+  return [...kept.values()];
+}
+
 /** Human words for the engine's Saturn tags; other tags stay in the payload only. */
 const SATURN_TAGS: Readonly<Record<string, string>> = {
   sade_sati_phase_1: 'Sade Sati phase 1',
@@ -472,7 +505,7 @@ export function periodReadingSummary(result: PeriodReadingToolResult): ToolSumma
   const tags = [...new Set(result.sky.flatMap((span) => span.tags.flatMap((tag) => SATURN_TAGS[tag] ?? [])))];
   const themes = `${result.themes.length} theme${result.themes.length === 1 ? '' : 's'}`;
   const line = [dashaLine(result.dashas), ...tags, themes].filter((part) => part.length > 0).join(' · ');
-  const factors = [...new Set(result.themes.map((theme) => theme.factors[0]).filter((factor) => factor !== undefined))].slice(0, 5);
+  const factors = distinctFactors(result.themes.flatMap((theme) => theme.factors.slice(0, 1))).slice(0, 5);
   return { line, factors };
 }
 
@@ -512,7 +545,7 @@ function isGraha(key: string | undefined): key is (typeof GRAHAS)[number] {
 
 function citing(source: PeriodReadingContext, graha: string): string[] {
   const name = title(graha);
-  return [...new Set(source.themes.flatMap((theme) => theme.factors).filter((factor) => factor.includes(name)))].slice(0, MAX_FACTORS);
+  return distinctFactors(source.themes.flatMap((theme) => theme.factors).filter((factor) => factor.includes(name))).slice(0, MAX_FACTORS);
 }
 
 function lordDigest(source: PeriodReadingContext, period: ReadingPeriod, key: string | undefined): Digest {

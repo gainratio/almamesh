@@ -89,7 +89,7 @@ describe('get_timing in a pinned thread', () => {
   it('a pinned Day domains read of the heaviest committed sky still fits the tool-result cap', async () => {
     const heavy = { ...SKY_CHART, domains_context: domainsGolden['1988-08-08T06:44:00+05:30'] } as unknown as SiderealChart;
     const result = await tool(DAY_PIN, { loadPeriodChart: vi.fn(async () => heavy) }).execute({ section: 'domains' }, context());
-    expect((result as { data: unknown[] }).data).toHaveLength(7);
+    expect((result as { data: unknown[] }).data).toHaveLength(8);
     expect(JSON.stringify({ ok: true, value: result }).length).toBeLessThanOrEqual(AGENT_LIMITS.maxResultChars);
   });
 
