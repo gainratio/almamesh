@@ -141,9 +141,11 @@ describe('travel: what a call records', () => {
     expect(record).not.toHaveBeenCalled();
   });
 
-  it('before birth is a neutral ask with the birth year, and records nothing', async () => {
+  it('before birth is a neutral ask that names no birth year, and records nothing', async () => {
     const { tool, record } = travelSetup();
-    expect(await go(tool, { to: '1989', place: null })).toEqual({ status: 'outside_range', ask: 'The chart starts at birth (1990); ask about a later period.' });
+    const result = await go(tool, { to: '1989', place: null });
+    expect(result).toEqual({ status: 'outside_range', ask: 'This is before the chart begins; ask about a later period.' });
+    expect(JSON.stringify(result)).not.toContain('1990');
     expect(record).not.toHaveBeenCalled();
   });
 

@@ -159,9 +159,12 @@ describe('read_period: spans', () => {
     expect(loadPeriodChart).toHaveBeenCalledWith({ start: '2019-01-01', end: '2020-12-31' }, expect.anything());
   });
 
-  it('a period before birth is a normal result asking for a later one, naming the birth year only', async () => {
+  // Contract reversed 2026-10-14 (Task 5 fix round): the ask used to name the birth year. No tool result
+  // carries any part of the birth date, so it says only that the period is before the chart begins.
+  it('a period before birth is a normal result asking for a later one, naming no birth year', async () => {
     const { result, loadPeriodChart } = await read({ start: '1985', end: '1986' });
-    expect(result).toEqual({ status: 'outside_range', ask: 'The chart starts at birth (1990); ask about a later period.' });
+    expect(result).toEqual({ status: 'outside_range', ask: 'This is before the chart begins; ask about a later period.' });
+    expect(JSON.stringify(result)).not.toContain('1990');
     expect(loadPeriodChart).not.toHaveBeenCalled();
   });
 

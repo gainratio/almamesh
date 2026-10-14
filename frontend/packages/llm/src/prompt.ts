@@ -209,10 +209,11 @@ const PERIOD_RULES = [
 // Period reading (spec 2026-10-13): the reading gives the model the facts to be
 // specific. Chat tool layer redesign (2026-10-14): the answer schema now enforces the
 // checklist (period, place, maha/antar with lordships, Moon tag, themes with
-// confidence, dated windows), so only the voice and honesty rules stay here.
+// confidence, dated windows), so only the voice, honesty and no-invented-place rules stay here.
 const READING_RULES = [
   "PERIOD READING: the reading is your source for any period, today included. Be specific.",
   "Name the life areas and the houses behind them.",
+  "With no place label, name no city, and never say a tool left one out.",
   "Cite the engine factor behind every claim.",
   "OBSTACLES (6th/8th/12th): name a strong or moderate obstacles theme as a theme to watch (friction with rules or authorities, legal or administrative matters, unexpected setbacks, losses and expenses) with its factor and its dated window; never say it happened, no fear words.",
   "HONESTY: a chart cannot name the concrete event. Describe themes, timing and their factors.",

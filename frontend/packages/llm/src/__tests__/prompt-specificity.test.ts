@@ -39,6 +39,11 @@ describe("the chat prompt asks for specificity and keeps honesty", () => {
     expect(chatSystem()).toContain("Name the life areas and the houses behind them.");
   });
 
+  // The answer schema checks the place a reading names, not a city invented where the reading had none.
+  it("asks: with no place label, name no city and never say a tool left one out", () => {
+    expect(chatSystem()).toContain("With no place label, name no city, and never say a tool left one out.");
+  });
+
   // Contract reversed 2026-10-14 (chat tool layer redesign): these checklist lines asked the model to
   // name the period, place, maha/antar with lordships, every Moon tag, each theme's confidence and a
   // dated window. The answer schema (answer.ts) now enforces each of them on every period answer, and

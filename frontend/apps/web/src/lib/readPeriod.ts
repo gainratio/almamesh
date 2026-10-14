@@ -377,7 +377,10 @@ export interface ReadPeriodAsk {
 
 export type ReadPeriodResult = ReadPeriodReading | ReadPeriodAsk | PeriodReadingUnavailable;
 
-const NEEDS_PLACE: ReadPeriodAsk = { status: 'needs_place', ask: 'Ask where the user was that day.' };
+/** Shared with travel (travelTool.ts): a day with no place at all. */
+export const NEEDS_PLACE: ReadPeriodAsk = { status: 'needs_place', ask: 'Ask where the user was that day.' };
+/** Shared with travel: a period before birth. Names no part of the birth date, not even the year. */
+export const OUTSIDE_RANGE: ReadPeriodAsk = { status: 'outside_range', ask: 'This is before the chart begins; ask about a later period.' };
 const DEVICE_LIMIT_NOTE = 'This device answers dated questions with dashas only, to stay within memory.';
 const MOON_UNAVAILABLE_NOTE = "Couldn't read the Moon at that place on this device; the rest of the answer stands.";
 
@@ -396,11 +399,9 @@ function skyGateYear(birth: ProcessedBirthData | undefined): number | undefined 
   return local === undefined ? utc : Math.max(local, utc ?? local);
 }
 
-/** Before birth: the birth YEAR only, never the day (a day-precision refusal is a birth-date oracle). */
+/** Before birth, judged by the birth YEAR (a day-precision refusal is a birth-date oracle); the ask names neither. */
 function outsideRange(birth: ProcessedBirthData | undefined, span: Span): ReadPeriodAsk | undefined {
-  const year = birthYearOf(birth);
-  if (!endsBeforeBirthYear(span, year)) return undefined;
-  return { status: 'outside_range', ask: `The chart starts at birth (${String(year)}); ask about a later period.` };
+  return endsBeforeBirthYear(span, birthYearOf(birth)) ? OUTSIDE_RANGE : undefined;
 }
 
 function unavailable(frame: ReadingFrame, reason: PeriodReadingFailure, notes?: readonly string[]): PeriodReadingUnavailable {

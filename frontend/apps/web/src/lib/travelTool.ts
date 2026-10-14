@@ -7,7 +7,7 @@
 import { defineTool, z, type ToolContext, type ToolDef } from '@almamesh/llm/toolLoop';
 import type { ChatThreadAsOf } from '@almamesh/shared-types';
 import { chatAsOfProblem } from '@almamesh/store';
-import { READ_PERIOD_TIMEOUT_MS, resolveChatPlace, type PlaceAsk, type PlaceOutcome, type PlaceResolverInput, type ReadPeriodAsk } from './readPeriod';
+import { NEEDS_PLACE, OUTSIDE_RANGE, READ_PERIOD_TIMEOUT_MS, resolveChatPlace, type PlaceAsk, type PlaceOutcome, type PlaceResolverInput, type ReadPeriodAsk } from './readPeriod';
 import { formatPinLabel, periodAsOfFromDraft, type SheetDraft } from './timeTravelSheet';
 import { draftFromToolArgs, TIME_TRAVEL_STATUS_LABEL, TRAVEL_DATE_ERROR as DATE_ERROR, type TravelRecorder } from './travelSlot';
 
@@ -36,7 +36,6 @@ export interface TravelQueued {
 export type TravelResult = TravelQueued | PlaceAsk | ReadPeriodAsk;
 
 const TO = /^(today|\d{4}(-(0[1-9]|1[0-2])(-(0[1-9]|[12]\d|3[01]))?)?)$/;
-const NEEDS_PLACE: ReadPeriodAsk = { status: 'needs_place', ask: 'Ask where the user was that day.' };
 
 const DESCRIPTION = [
   'Move this conversation and the Dashboard to a day, month or year (a time-travel trip), or back to today.',
@@ -102,9 +101,7 @@ async function travelTo(input: TravelToolInput, args: TravelArgs, context: ToolC
     return { status: 'queued', action: 'back_to_today' };
   }
   const draft = draftOf(args.to);
-  if (input.birthYear !== undefined && Number(args.to.slice(0, 4)) < input.birthYear) {
-    return { status: 'outside_range', ask: `The chart starts at birth (${String(input.birthYear)}); ask about a later period.` };
-  }
+  if (input.birthYear !== undefined && Number(args.to.slice(0, 4)) < input.birthYear) return OUTSIDE_RANGE;
   const where = await resolveChatPlace(args.place, input, context.signal);
   if (where.kind === 'ask') return where.result;
   const place = pinnable(where);
