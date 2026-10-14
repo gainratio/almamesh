@@ -35,17 +35,25 @@ describe("the derived-fact fence stays, and now lets the model cite what the too
 });
 
 describe("the chat prompt asks for specificity and keeps honesty", () => {
+  it("asks: Name the life areas and the houses behind them.", () => {
+    expect(chatSystem()).toContain("Name the life areas and the houses behind them.");
+  });
+
+  // Contract reversed 2026-10-14 (chat tool layer redesign): these checklist lines asked the model to
+  // name the period, place, maha/antar with lordships, every Moon tag, each theme's confidence and a
+  // dated window. The answer schema (answer.ts) now enforces each of them on every period answer, and
+  // the tool-name lines (get_period_detail, get_current_datetime) went with those tools.
   it.each([
-    "Name the life areas and the houses behind them.",
-    'Name the running maha, antar and pratyantar and what each lord rules, e.g. "Saturn, your 12th lord".',
-    'For every theme you cover, give its life area and houses, its direction, its strength and its confidence in words (e.g. "strong, medium confidence"), the engine factor behind it, and its dated window when it has one.',
-    "Name every tag in the reading's sky once, with what it traditionally signifies: a Sade Sati phase, Kantaka or Ashtama Shani, Jupiter Nth from the Moon.",
-    "For the user's own date, time and zone today, use the reading's period and place.current. get_current_datetime scope chart is the birth place's zone, not where the user is now.",
-    "Name the place when the reading's place has a label. With no label, name no city and never say a tool left one out.",
-    'Give at least one dated window or change point inside the period, with its day.',
-    "Use get_period_detail to look closer at a lord, a segment, the bindus or the panchang.",
-  ])("asks: %s", (line) => {
-    expect(chatSystem()).toContain(line);
+    'Name the running maha, antar and pratyantar and what each lord rules',
+    "For every theme you cover, give its life area and houses",
+    "Name every tag in the reading's sky once",
+    "get_current_datetime",
+    "Name the place when the reading's place has a label.",
+    "Give at least one dated window or change point inside the period",
+    "get_period_detail",
+    "Every period answer, one month or several",
+  ])("no longer asks (the answer schema enforces it): %s", (line) => {
+    expect(chatSystem()).not.toContain(line);
   });
 
   it("keeps the honesty lines: a chart cannot name the event, cite factors, never invent", () => {
@@ -74,26 +82,24 @@ describe("the chat prompt asks for specificity and keeps honesty", () => {
 describe("the dasha table's pratyantar note points at the reading", () => {
   it("no longer says pratyantars exist only for the current antar", () => {
     expect(PRATYANTAR_NOTE).not.toMatch(/only available/i);
-    expect(PRATYANTAR_NOTE).toContain("get_period_reading");
+    expect(PRATYANTAR_NOTE).toContain("read_period gives the pratyantar for any date");
+    expect(PRATYANTAR_NOTE).not.toContain("get_period_reading");
   });
 });
 
 // 2026-10-14, live on ba4430ce: a today thread asked "What does this month look like for me?" and the
-// follow-up "And next month?" answered with no tool, naming no place, Moon tag or confidence.
-describe("present-day periods read the period reading, every time", () => {
-  it.each([
-    'PRESENT-DAY PERIODS (a today thread): for "this month", "next month" or "the next few weeks", call get_period_reading in every turn, follow-ups included, with granularity "month" (add month "YYYY-MM" for a later month; for "the next few weeks" read this month and the next; "day" is today only).',
-    // 2026-10-14 acceptance matrix: multi-month answers ("the next 3 months") dropped the tag or the confidence.
-    'Every period answer, one month or several, names the place, a Moon-based tag by name (e.g. "Jupiter 8th from your Moon") and a confidence level.',
-  ])("states: %s", (line) => {
-    expect(chatSystem()).toContain(line);
-  });
-
-  it("a trip prompt leaves the today-only rule out (an 8k model keeps its budget for tool results)", () => {
+// follow-up "And next month?" answered with no tool. Contract reversed the same day (chat tool layer
+// redesign): the PRESENT-DAY PERIODS routing rule and the "every period answer names..." line go. The
+// NOW line gives today, read_period takes any span, and the answer schema demands the place, a Moon
+// tag and a confidence on every period answer.
+describe("present-day periods need no routing rule", () => {
+  it("neither a today nor a trip prompt carries the routing rule or the old checklist line", () => {
     const pinned = { start: "2019-05-01", end: "2019-05-31", relative: "past", granularity: "month", label: "May 2019", place: { label: "Singapore", timezone: "Asia/Singapore" } } as const;
     const trip = buildChatMessages(CHART, "How was work?", "layman", [], [], undefined, "en", undefined, undefined, undefined, true, pinned)[0]?.content ?? "";
-    expect(trip).not.toContain("PRESENT-DAY PERIODS");
-    expect(trip).toContain("Every period answer, one month or several, names the place");
+    for (const system of [chatSystem(), trip]) {
+      expect(system).not.toContain("PRESENT-DAY PERIODS");
+      expect(system).not.toContain("Every period answer, one month or several, names the place");
+    }
   });
 });
 
@@ -110,7 +116,7 @@ describe("the obstacles theme", () => {
     expect(system).toContain("OBSTACLES (6th/8th/12th): name a strong or moderate obstacles theme as a theme to watch");
     for (const meaning of ["friction with rules or authorities", "legal or administrative matters", "unexpected setbacks", "losses and expenses"]) expect(system).toContain(meaning);
     // Matrix 2026-10-14: gpt-sol named the theme and its factor but never its 25 Sep Mars window.
-    expect(system).toMatch(/obstacles theme[^\n]*its factor, its confidence and its dated window/);
+    expect(system).toMatch(/obstacles theme[^\n]*its factor and its dated window/);
     expect(system).toMatch(/obstacles theme[^\n]*never say it happened[^\n]*no fear words/);
     expect(system).toContain("Never say what did or will happen, and never invent a fact.");
   });

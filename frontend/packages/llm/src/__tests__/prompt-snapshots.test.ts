@@ -167,6 +167,18 @@ describe("prompt golden-snapshots (Spec 062 delta 5)", () => {
     expect(system).not.toMatch(/do NOT exist/i);
   });
 
+  // Chat tool layer redesign (2026-10-14): a tool-using trip turn carries NOW, THIS THREAD, the pinned
+  // period and the TOOLS line, plus the natal facts block a trip used to leave out.
+  it("buildChatMessages — trip thread (Vadodara, May 2019)", () => {
+    expect(
+      buildChatMessages(
+        CHART, "What did May 2019 look like for work?", "layman", [], [], undefined, "en", undefined, undefined, undefined, true,
+        { start: "2019-05-01", end: "2019-05-31", relative: "past", granularity: "month", label: "May 2019", place: { label: "Vadodara, India", timezone: "Asia/Kolkata" } },
+        { now: "Wednesday 14 October 2026, America/Los_Angeles", trip: { label: "May 2019", place: "Vadodara, India", timezone: "Asia/Kolkata" } },
+      ),
+    ).toMatchSnapshot();
+  });
+
   it("buildChatMessages — fully loaded (history + RAG + reading + rectification)", () => {
     expect(
       buildChatMessages(
