@@ -62,6 +62,17 @@ describe('read_period through the tool loop: the string "null" for unused nullab
     expect(events.some((e) => e.status === 'retried')).toBe(false);
   });
 
+  it('an empty or blank string for an unused nullable key is null too, on the first try', async () => {
+    const events = await run({ start: '2019-09', end: '', place: 'Vadodara', time: ' ', focus: '' });
+    expect(events.find((e) => e.toolName === 'read_period')).toMatchObject({ validFirstTry: true });
+    expect(events.some((e) => e.status === 'retried')).toBe(false);
+  });
+
+  it('an empty string for a required key is still a retry', async () => {
+    const events = await run({ start: '', end: null, place: 'Vadodara', time: null, focus: null });
+    expect(events.find((e) => e.toolName === 'read_period')).toMatchObject({ status: 'retried', validFirstTry: false });
+  });
+
   it('a genuinely wrong end still retries', async () => {
     const events = await run({ start: '2019-09', end: 'Sept', place: 'null', time: 'null', focus: 'null' });
     expect(events.find((e) => e.toolName === 'read_period')).toMatchObject({ status: 'retried', validFirstTry: false });

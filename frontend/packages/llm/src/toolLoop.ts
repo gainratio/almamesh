@@ -249,8 +249,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+/** The string "null", or an empty or blank string: what a model sends for an unused nullable key. */
 function isNullText(value: unknown): boolean {
-  return typeof value === "string" && value.trim().toLowerCase() === "null";
+  if (typeof value !== "string") return false;
+  const text = value.trim().toLowerCase();
+  return text === "" || text === "null";
 }
 
 /** Strip nullable/optional/default wrappers to the schema that decides the shape. */
@@ -275,8 +278,9 @@ function normalizeObject(shape: Record<string, z.ZodType>, value: Record<string,
 
 /**
  * Normalise every level (objects, array elements, through nullable/optional/default wrappers):
- * an omitted key that accepts null becomes null, and so does the string "null" (deepseek sends
- * it for every unused argument). Only genuinely wrong values are retries.
+ * an omitted key that accepts null becomes null, and so do the string "null" and an empty or
+ * blank string (deepseek sends either for an unused argument). A key that does not accept null
+ * keeps its value. Only genuinely wrong values are retries.
  */
 function normalizeNullables(schema: z.ZodType, value: unknown): unknown {
   const inner = unwrapSchema(schema);

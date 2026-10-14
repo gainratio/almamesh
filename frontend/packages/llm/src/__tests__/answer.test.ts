@@ -684,6 +684,13 @@ describe("answerSchema: a model that sends \"null\" or omits nullable keys (prod
     expect(events.map((e) => [e.toolName, e.status, e.validFirstTry])).toEqual([["answer", "complete", true]]);
   });
 
+  it('accepts "" for nullable keys at any depth (pratyantar, obstacle, advice, place) on the first try', async () => {
+    const sent = wire(ANSWER) as { dashas: Record<string, unknown>; themes: Record<string, unknown>[] } & Record<string, unknown>;
+    const themes = sent.themes.map((theme, i) => (i === 0 ? { ...theme, obstacle: "" } : theme));
+    const events = await answerEvents({ ...sent, dashas: { ...sent.dashas, pratyantar: "" }, themes, advice: "  ", place: "" });
+    expect(events.map((e) => [e.toolName, e.status, e.validFirstTry])).toEqual([["answer", "complete", true]]);
+  });
+
   it("accepts a fully omitted advice key", async () => {
     const { advice: _advice, ...sent } = wire(ANSWER);
     const events = await answerEvents(sent);
