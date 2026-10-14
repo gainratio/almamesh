@@ -18,6 +18,10 @@
     "./toolLoop": {
       "types": "./src/toolLoop.ts",
       "import": "./src/toolLoop.ts"
+    },
+    "./answer": {
+      "types": "./src/answer.ts",
+      "import": "./src/answer.ts"
     }
   },
   "scripts": {
