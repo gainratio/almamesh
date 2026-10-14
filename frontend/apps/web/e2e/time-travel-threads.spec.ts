@@ -177,7 +177,7 @@ async function closeRow(row: Locator): Promise<void> {
  * One row per persisted tool call, in call order, each a one-line summary.
  * Contract reversed 2026-10-13 (4869958b): rows used to name the tool ("Trip
  * period & place") with args and result in the DOM; now they are collapsed by
- * default to "Looked up <what> · <where> · <when>", and args/result render only
+ * default to "Looked up <what> · <when> · <where>", and args/result render only
  * once a row is opened.
  */
 async function expectToolRows(page: Page): Promise<void> {
@@ -188,7 +188,7 @@ async function expectToolRows(page: Page): Promise<void> {
   await expect(page.getByTestId('chat-tool-call-result'), 'no result is rendered before a row is opened').toHaveCount(0);
   await expect(page.getByTestId('chat-tool-call-args')).toHaveCount(0);
   const reading = rows.nth(0);
-  await expect(reading.getByTestId('chat-tool-call-summary')).toHaveText(/^Looked up the period reading · Singapore[^·]* · May 2019$/);
+  await expect(reading.getByTestId('chat-tool-call-summary')).toHaveText(/^Looked up the period reading · May 2019 · Singapore[^·]*$/);
   await expect(reading).toHaveAttribute('data-status', 'complete');
   await openRow(reading);
   await expect(reading.getByTestId('chat-tool-call-args')).toContainText('"start": "2019-05"');

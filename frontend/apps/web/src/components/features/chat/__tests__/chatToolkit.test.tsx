@@ -25,12 +25,14 @@ describe('the chat toolkit registers the two tools the model has', () => {
 });
 
 describe('a tool-call row shows what the AI pulled', () => {
-  it('a reading row: "Looked up the period reading · Singapore · May 2019", collapsed until opened', () => {
+  it('a reading row: "Looked up the period reading · May 2019 · Singapore", collapsed until opened', () => {
     render(<ToolCallRow toolName="read_period" toolCallId="r1" args={{ start: '2019-05' }} argsText="" result={READING} status={{ type: 'complete' }} />);
     const row = screen.getByTestId('chat-tool-call');
     expect(row.getAttribute('data-tool-name')).toBe('read_period');
     expect(row.getAttribute('data-status')).toBe('complete');
-    expect(screen.getByTestId('chat-tool-call-summary').textContent).toBe('Looked up the period reading · Singapore · May 2019');
+    // When before where: a narrow row truncates the place (the thread header names it), never the period.
+    expect(screen.getByTestId('chat-tool-call-summary').textContent).toBe('Looked up the period reading · May 2019 · Singapore');
+    expect(screen.getByTestId('chat-tool-call-summary').getAttribute('title')).toBe('Looked up the period reading · May 2019 · Singapore');
     expect(screen.queryByTestId('chat-tool-call-result')).toBeNull();
     fireEvent.click(screen.getByTestId('chat-tool-call-summary'));
     expect(screen.getByTestId('chat-tool-call-args').textContent).toContain('"start": "2019-05"');
@@ -45,13 +47,13 @@ describe('a tool-call row shows what the AI pulled', () => {
   it('a travel row names the move, its place and its period', () => {
     render(<ToolCallRow toolName="travel" toolCallId="t1" args={{ to: '2019-05', place: 'Pune' }} argsText=""
       result={{ status: 'queued', action: 'travel', period_label: 'May 2019', place_label: 'Pune, India', time_zone: 'Asia/Kolkata' }} status={{ type: 'complete' }} />);
-    expect(screen.getByTestId('chat-tool-call-summary').textContent).toBe('Looked up a move in time · Pune, India · May 2019');
+    expect(screen.getByTestId('chat-tool-call-summary').textContent).toBe('Looked up a move in time · May 2019 · Pune, India');
   });
 
   it('an unavailable reading is a failed lookup, not a success', () => {
     render(<ToolCallRow toolName="read_period" toolCallId="r3" args={{}} argsText="" result={{ ...READING, available: false, reason: 'timeout' }} status={{ type: 'complete' }} />);
     expect(screen.getByTestId('chat-tool-call').getAttribute('data-status')).toBe('error');
-    expect(screen.getByTestId('chat-tool-call-summary').textContent).toBe('Could not look up the period reading · Singapore · May 2019');
+    expect(screen.getByTestId('chat-tool-call-summary').textContent).toBe('Could not look up the period reading · May 2019 · Singapore');
   });
 
   it('a thrown call is an error row', () => {
@@ -95,7 +97,7 @@ describe('tool-call row edges', () => {
     render(<ToolCallRow toolName="mystery_tool" toolCallId="c3" args={{}} argsText="{}" result={{ period: { start: '2019-05-01', end: '2019-05-31' }, place: { label: 'Singapore' } }} status={{ type: 'complete' }} />);
     const row = screen.getByTestId('chat-tool-call');
     expect(row.textContent).toContain('mystery_tool');
-    expect(row.textContent).toContain('Singapore · May 2019');
+    expect(row.textContent).toContain('May 2019 · Singapore');
   });
 
   it('a row with no result still renders', () => {

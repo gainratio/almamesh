@@ -112,14 +112,17 @@ function subjectOf(toolName: string, translate: (key: string) => string): string
   return Object.hasOwn(CHAT_TOOL_CATALOG, toolName) ? translate(`tools.rows.${toolName}`) : toolName;
 }
 
-/** "Looked up the period reading · Singapore · May 2019": what, where and when, from the result the model got. */
+/**
+ * "Looked up the period reading · May 2019 · Singapore": what, when and where, from the result the model got.
+ * When before where: a narrow row truncates the place (the thread header names it), never the period.
+ */
 function summaryOf(toolName: string, result: unknown, language: string, translate: (key: string) => string): string {
   const hints = (result ?? {}) as ResultHints;
   const place = text(hints.place?.label) ?? text(hints.place_label);
   const start = text(hints.period?.start);
   const end = text(hints.period?.end);
   const period = text(hints.period?.label) ?? text(hints.period_label) ?? (start && end ? periodText(start, end, language) : undefined);
-  return [subjectOf(toolName, translate), place, period].filter((part): part is string => part !== undefined).join(' · ');
+  return [subjectOf(toolName, translate), period, place].filter((part): part is string => part !== undefined).join(' · ');
 }
 
 function pretty(value: unknown): string {
@@ -139,12 +142,13 @@ export function ToolCallRow({ toolName, toolCallId, args, result, isError, artif
   const [open, setOpen] = useState(false);
   const outcome = outcomeOf(toolName, isError, result, artifact);
   const summary = summaryOf(toolName, result, i18n.language || 'en', (key) => t(key));
+  const sentence = t(ROW_KEYS[outcome], { what: summary });
   return (
     <details className={`mb-2 rounded-lg border border-ui-border bg-background-tertiary/60 px-3 py-2 text-xs ${outcome === 'skipped' ? 'text-text-muted' : 'text-text-secondary'}`}
       data-testid="chat-tool-call" data-tool-name={toolName} data-tool-call-id={toolCallId} data-status={outcome}
       onToggle={(event) => setOpen(event.currentTarget.open)}>
-      <summary className="cursor-pointer select-none truncate" data-testid="chat-tool-call-summary">
-        {t(ROW_KEYS[outcome], { what: summary })}
+      <summary className="cursor-pointer select-none truncate" data-testid="chat-tool-call-summary" title={sentence}>
+        {sentence}
       </summary>
       {open && (
         <div className="mt-2 space-y-2">
