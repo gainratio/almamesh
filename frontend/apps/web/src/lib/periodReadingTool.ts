@@ -95,7 +95,8 @@ const TRIP_DETAIL_PROPERTIES = { month: { type: 'string', pattern: MONTH_PATTERN
 
 const BOUND_READING = [
   "Read this thread's Vedic period reading, computed on this device (no network request).",
-  "No arguments: this trip's period and place. For another month the user asks about, send month \"YYYY-MM\" (read at the trip's place).",
+  "No arguments: this trip's period and place, in one call (a year included).",
+  "For another month the user asks about, send month \"YYYY-MM\" (read at the trip's place); never one call per month to cover the trip's own period.",
 ].join(' ');
 
 const TODAY_READING = [

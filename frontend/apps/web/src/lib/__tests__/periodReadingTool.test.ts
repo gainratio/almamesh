@@ -110,6 +110,9 @@ describe('get_period_reading', () => {
     expect(Object.keys(trip.properties)).toEqual(['month']);
     expect(trip.required).toBeUndefined();
     expect(tools().reading.description).toMatch(/another month the user asks about, send month "YYYY-MM"/);
+    // 2026-10-14 acceptance matrix: "the rest of 2019" in a 2019-bound turn read seven months one by one and
+    // ran out of tool calls (two error rows). The bound period is one call.
+    expect(tools().reading.description).toContain("never one call per month to cover the trip's own period");
   });
 
   it("a trip: the month the model names wins, read at the trip's place in the trip's tense", async () => {
