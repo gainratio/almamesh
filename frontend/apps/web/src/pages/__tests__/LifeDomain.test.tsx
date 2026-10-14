@@ -245,6 +245,8 @@ describe('LifeDomainPage', () => {
     );
     expect(screen.getByTestId('domain-emphasis-obstacles')).toBeTruthy();
     expect(screen.getByTestId('life-domain-ai').textContent).toContain('engine alone');
+    // Natal Saturn's band is not this area's signal (engine: context only): no header badge.
+    expect(screen.getByTestId('life-domain-page').querySelector('header [data-testid^="band-"]')).toBeNull();
   });
 
   it('carries no note for a domain whose name says enough', () => {

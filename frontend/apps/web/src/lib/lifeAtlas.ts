@@ -84,6 +84,20 @@ export const DOMAIN_NOTE_KEY: Partial<Record<LifeDomain, string>> = {
   obstacles: 'atlas.obstacles_note',
 };
 
+/** The Life Atlas card's one short subtitle for a domain whose name alone could mislead; its note is the tooltip. */
+export const DOMAIN_SUBTITLE_KEY: Partial<Record<LifeDomain, string>> = {
+  obstacles: 'atlas.obstacles_subtitle',
+};
+
+/**
+ * Whether a domain's natal strength band is its signal. Not for obstacles: the engine reads
+ * that area by period activation and keeps its key graha's (Saturn's) Shadbala as context only
+ * (recipe activation_only), so a "Strong" badge there would read as strong obstacles.
+ */
+export function showsStrengthBand(domain: LifeDomain): boolean {
+  return domain !== 'obstacles';
+}
+
 /**
  * The AI-narrated guidance for a domain, or null when the interpretation (or
  * the matching section, or any usable text in it) is absent.

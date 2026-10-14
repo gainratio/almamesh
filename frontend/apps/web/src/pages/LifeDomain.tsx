@@ -35,7 +35,7 @@ import { StrengthEvidencePanels } from '../components/features/predictive/Streng
 import { useElapsedSeconds, formatElapsed } from '../hooks/useElapsedSeconds';
 import { usePredictiveLayer, type PredictiveLayer } from '../hooks/usePredictiveLayer';
 import { displayInterpretationForChart } from '../hooks/useStreamingInterpretation';
-import { domainGuidance, DOMAIN_GUIDANCE_KEY, DOMAIN_NOTE_KEY, isLifeDomain } from '../lib/lifeAtlas';
+import { domainGuidance, DOMAIN_GUIDANCE_KEY, DOMAIN_NOTE_KEY, isLifeDomain, showsStrengthBand } from '../lib/lifeAtlas';
 import { formatRupas, selectPrimaryStoredChart } from '../lib/predictive';
 import { grahaName } from '../lib/predictiveEventCopy';
 
@@ -219,7 +219,7 @@ function LifeDomainContent({ domain }: { domain: LifeDomain }): ReactElement {
           )}
           {forecast && (
             <div className="mt-3 flex flex-wrap items-center gap-3">
-              <BandBadge band={forecast.strength_summary.band} />
+              {showsStrengthBand(domain) && <BandBadge band={forecast.strength_summary.band} />}
               <StrengthLine forecast={forecast} />
             </div>
           )}
