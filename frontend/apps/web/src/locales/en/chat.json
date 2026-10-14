@@ -194,5 +194,9 @@
     "dasha": "Dasha: {{dasha}}",
     "birth_place_fallback": "No place was chosen for this trip: it reads {{place}}, the birth place.",
     "transits": "Transits: {{transits}}"
+  },
+  "place_pick": {
+    "title": "Which {{place}}?",
+    "label": "Place"
   }
 }

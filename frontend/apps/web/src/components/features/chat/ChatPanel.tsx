@@ -36,6 +36,7 @@ import { AlmaMeshAssistantRuntime } from './AlmaMeshAssistantRuntime';
 import { generateProviderChatSummary } from '../../../lib/chatSummaryProvider';
 import { viewerTodayDay } from '../../../lib/chatAgentTools';
 import { TimeTravelSheet } from './TimeTravelSheet';
+import { PlacePickDialog } from './PlacePickDialog';
 import type { TravelRecorder } from '../../../lib/timeTravelTool';
 import { staleDraftOf } from '../../../lib/chatDraft';
 import type { ChatTripKit } from '../../../lib/chatTripKit';
@@ -428,6 +429,7 @@ export function ChatPanel({
         onGo={sheet === 'change' ? repin : pin}
         onClose={() => setSheet('closed')}
       />
+      <PlacePickDialog />
     </ThreadPrimitive.Root>
     </AlmaMeshAssistantRuntime>
   );

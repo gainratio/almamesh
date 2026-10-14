@@ -23,7 +23,8 @@ export const CHAT_FTS_BUILT_KEY = 'chat-fts-built';
 
 const SCHEMA = [
   'CREATE TABLE IF NOT EXISTS dataset_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL) STRICT',
-  'CREATE TABLE IF NOT EXISTS cities (idx INTEGER PRIMARY KEY, n TEXT NOT NULL, c TEXT NOT NULL, cc TEXT NOT NULL, lat REAL NOT NULL, lon REAL NOT NULL, p INTEGER NOT NULL, name_fold TEXT NOT NULL, search_fold TEXT NOT NULL) STRICT',
+  // `s` (state) is last, where ALTER TABLE puts it on an older file.
+  'CREATE TABLE IF NOT EXISTS cities (idx INTEGER PRIMARY KEY, n TEXT NOT NULL, c TEXT NOT NULL, cc TEXT NOT NULL, lat REAL NOT NULL, lon REAL NOT NULL, p INTEGER NOT NULL, name_fold TEXT NOT NULL, search_fold TEXT NOT NULL, s TEXT) STRICT',
   "CREATE VIRTUAL TABLE IF NOT EXISTS cities_fts USING fts5(search_fold, content='cities', content_rowid='idx', tokenize='trigram')",
   // v3: the schema refuses empty ids, non-JSON payloads and negative epochs.
   // No foreign keys: profiles live in the canonical store, a separate file.
@@ -75,6 +76,16 @@ async function requireDurability(db: SqlDatabase): Promise<void> {
  * effect before the first table exists, so only a new database gets it; on an
  * older file incremental_vacuum is a no-op and secure_delete does the zeroing.
  */
+/**
+ * Additive within v3 (like period_natal): a file made before the state column
+ * gains a nullable `s`. Older builds name their INSERT columns, so they still
+ * write; the cities_version marker makes each build re-import its own list.
+ */
+async function addCityStateColumn(tx: Pick<SqlDatabase, 'query' | 'exec'>): Promise<void> {
+  const columns = await tx.query<{ name: string }>('PRAGMA table_info(cities)');
+  if (!columns.some((column) => column.name === 's')) await tx.exec('ALTER TABLE cities ADD COLUMN s TEXT');
+}
+
 export async function migrateDerivedDb(db: SqlDatabase): Promise<void> {
   await requireDurability(db);
   await db.exec('PRAGMA secure_delete=ON');
@@ -96,6 +107,7 @@ export async function migrateDerivedDb(db: SqlDatabase): Promise<void> {
     // A recomputable cache: recreate it with the v3 constraints.
     if (version > 0 && version < 3) await tx.exec('DROP TABLE IF EXISTS period_sky');
     for (const sql of SCHEMA) await tx.exec(sql);
+    await addCityStateColumn(tx);
     if (version === 2) await tx.exec('DELETE FROM dataset_meta WHERE key = ?', [CHAT_FTS_BUILT_KEY]);
   });
 }

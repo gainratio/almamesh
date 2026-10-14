@@ -90,4 +90,36 @@ describe('searchCities (online-primary + offline fallback)', () => {
     // run an offline search and surface stale results.
     await expect(searchCities('Chennai', 8, { signal: controller.signal })).rejects.toThrow();
   });
+
+  it('reads a spaced state Open-Meteo cannot ("novato california") from the bundled list', async () => {
+    stubOnline(true);
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: () => Promise.resolve({ results: [] }) });
+    vi.stubGlobal('fetch', fetchMock);
+    const [top] = await searchCities('novato california');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(top.displayName).toBe('Novato, California, United States');
+    expect(top.timezone).toBe('America/Los_Angeles');
+  });
+
+  it('keeps only online places whose state or country the qualifier names', async () => {
+    stubOnline(true);
+    const springfield = (admin1: string, timezone: string, population: number) => ({
+      name: 'Springfield', latitude: 39.8, longitude: -89.6, country: 'United States', country_code: 'US',
+      admin1, timezone, population, feature_code: 'PPLA',
+    });
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200, json: () => Promise.resolve({ results: [
+      springfield('Missouri', 'America/Chicago', 166_810), springfield('Illinois', 'America/Chicago', 116_565),
+    ] }) }));
+    const results = await searchCities('Springfield, IL');
+    expect(results.map((r) => r.displayName)).toEqual(['Springfield, Illinois, United States']);
+  });
+
+  it('labels online places like the bundled list: a state that restates the city is dropped', async () => {
+    stubOnline(true);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200, json: () => Promise.resolve({ results: [{
+      name: 'Bogotá', latitude: 4.6, longitude: -74.08, country: 'Colombia', country_code: 'CO',
+      admin1: 'Bogota D.C.', timezone: 'America/Bogota', population: 7_674_366, feature_code: 'PPLC',
+    }] }) }));
+    expect((await searchCities('Bogotá'))[0].displayName).toBe('Bogotá, Colombia');
+  });
 });

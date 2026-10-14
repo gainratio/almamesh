@@ -147,7 +147,7 @@ the authoritative terms. In particular:
 
 - **What:** The bundled, offline city database that powers birth-location search.
   `frontend/scripts/generate-cities.mjs` pre-bakes a pruned, browser-ready
-  `cities.min.json` (city names, coordinates, country, population) that is
+  `cities.min.json` (city names, state/province, coordinates, country, population) that is
   **committed to the repository as a static data asset**, so location entry
   resolves to latitude/longitude with zero network calls (no geocoding API).
 - **Data origin & required attribution:** The city data is derived from
@@ -160,6 +160,7 @@ the authoritative terms. In particular:
 | Source | Role | License | Link |
 |--------|------|---------|------|
 | GeoNames | Geographical data (city names, coordinates, population) baked into `cities.min.json` | **CC BY 4.0 — attribution required** | https://www.geonames.org/ · https://creativecommons.org/licenses/by/4.0/ |
+| GeoNames `admin1CodesASCII.txt` | State/province names (admin1) joined onto each city, committed as `frontend/scripts/data/geonames-admin1CodesASCII.txt` (downloaded 2026-10-14, sha256 `1da92a63…aa60a`) | **CC BY 4.0 — attribution required** | https://download.geonames.org/export/dump/ |
 | `all-the-cities` 3.1.0 | Build-time npm package supplying the GeoNames-derived dataset | MIT | https://github.com/zeke/all-the-cities |
 | `countries-list` 3.3.0 | Build-time npm package resolving ISO-3166 alpha-2 codes to country display names baked into the data | MIT | https://github.com/annexare/Countries |
 | `tz-lookup` 6.1.25 | Runtime library mapping latitude/longitude → IANA timezone offline | CC0-1.0 (public domain; no attribution required) | https://github.com/darkskyapp/tz-lookup |

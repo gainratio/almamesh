@@ -20,9 +20,7 @@
   {
     "query": "Sao Paulo",
     "results": [
-      14,
-      14230,
-      22352
+      14
     ]
   },
   {
@@ -34,21 +32,18 @@
   {
     "query": "Paris FR",
     "results": [
-      140,
-      16522
+      140
     ]
   },
   {
     "query": "paris, france",
     "results": [
-      140,
-      16522
+      140
     ]
   },
   {
     "query": "paris tx",
     "results": [
-      140,
       16522
     ]
   },
@@ -62,14 +57,7 @@
   {
     "query": "New Delhi",
     "results": [
-      1326,
-      1025,
-      1376,
-      1384,
-      1518,
-      5024,
-      6063,
-      7112
+      1326
     ]
   },
   {
@@ -87,20 +75,20 @@
   },
   {
     "query": "new york usa",
-    "results": []
+    "results": [
+      19
+    ]
   },
   {
     "query": "london gb",
     "results": [
-      26,
-      1203
+      26
     ]
   },
   {
     "query": "london uk",
     "results": [
-      26,
-      1203
+      26
     ]
   },
   {
@@ -182,9 +170,7 @@
   },
   {
     "query": "méxico df",
-    "results": [
-      10181
-    ]
+    "results": []
   },
   {
     "query": "zürich",
@@ -220,16 +206,7 @@
   },
   {
     "query": "st petersburg",
-    "results": [
-      200,
-      674,
-      1117,
-      1143,
-      1392,
-      1557,
-      1592,
-      2883
-    ]
+    "results": []
   },
   {
     "query": "saint petersburg russia",
@@ -258,23 +235,13 @@
   {
     "query": "San Francisco CA",
     "results": [
-      417,
-      7727,
-      8159,
-      19951,
-      20826,
-      23034
+      417
     ]
   },
   {
     "query": "San Francisco California",
     "results": [
-      417,
-      7727,
-      8159,
-      19951,
-      20826,
-      23034
+      417
     ]
   },
   {

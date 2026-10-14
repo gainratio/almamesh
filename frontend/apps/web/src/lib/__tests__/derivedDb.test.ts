@@ -19,9 +19,21 @@ describe('derived SQLite schema', () => {
     const tables = await db.query<{ name: string }>("SELECT name FROM sqlite_schema WHERE type='table'");
     expect(tables.map(({ name }) => name)).toEqual(expect.arrayContaining(['cities', 'cities_fts', 'dataset_meta', 'period_sky']));
     expect((await db.query<{ user_version: number }>('PRAGMA user_version'))[0]?.user_version).toBe(DERIVED_SCHEMA_VERSION);
-    await db.exec("INSERT INTO cities VALUES(7, 'Bogotá', 'Colombia', 'CO', 4.61, -74.08, 100, 'bogota', 'bogota colombia co')");
+    await db.exec("INSERT INTO cities (idx, n, c, cc, lat, lon, p, name_fold, search_fold) VALUES(7, 'Bogotá', 'Colombia', 'CO', 4.61, -74.08, 100, 'bogota', 'bogota colombia co')");
     await db.exec("INSERT INTO cities_fts(cities_fts) VALUES('rebuild')");
     expect(await db.query("SELECT rowid FROM cities_fts WHERE cities_fts MATCH '" + '"ogot"' + "'")).toEqual([{ rowid: 7 }]);
+  });
+
+  it('gives a v3 file made before the state column a nullable state, keeping its rows', async () => {
+    const db = await open();
+    await db.exec('CREATE TABLE cities (idx INTEGER PRIMARY KEY, n TEXT NOT NULL, c TEXT NOT NULL, cc TEXT NOT NULL, lat REAL NOT NULL, lon REAL NOT NULL, p INTEGER NOT NULL, name_fold TEXT NOT NULL, search_fold TEXT NOT NULL) STRICT');
+    await db.exec("INSERT INTO cities VALUES(0, 'Novato', 'United States', 'US', 38.1, -122.57, 55530, 'novato', 'novato')");
+    await db.exec('PRAGMA user_version=3');
+    await migrateDerivedDb(db);
+    await migrateDerivedDb(db);
+    expect(await db.query('SELECT n, s FROM cities')).toEqual([{ n: 'Novato', s: null }]);
+    await db.exec("UPDATE cities SET s = 'California'");
+    expect((await cityRowAt(db, 0))?.s).toBe('California');
   });
 
   it('adds the chat keyword index to a v1 database without losing rows', async () => {

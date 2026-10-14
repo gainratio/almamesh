@@ -12,6 +12,7 @@ import { ChatPanel } from '../ChatPanel';
 import { waitForStoreSaved } from '../../../../lib/storeSaved';
 import { __resetMemoryForTest, __setMemoryForTest } from '../../../../lib/chatMemory';
 import { useChartReanchorStatus } from '../../../../lib/chartReanchorStatus';
+import { askToPickPlace } from '../../../../lib/placePick';
 
 /** 2026-10-13: the birth place is a suggestion the person confirms; a test that relies on it taps it. */
 function confirmSuggestedPlace(): void {
@@ -66,6 +67,21 @@ afterEach(() => {
   useChartReanchorStatus.setState({ pendingAttempts: new Map() });
   __resetMemoryForTest();
   vi.restoreAllMocks();
+});
+
+describe('ChatPanel place picker', () => {
+  it('asks "Which Springfield?" inside the chat when resolve_place finds several, and answers with the pick', async () => {
+    renderPanel();
+    const illinois = {
+      summary: { place_ref: 'city:3823', label: 'Springfield, Illinois, United States', timezone: 'America/Chicago' },
+      latitude: 39.8, longitude: -89.64, region: 'Illinois, United States',
+    };
+    let answer!: Promise<unknown>;
+    act(() => { answer = askToPickPlace('Springfield', [illinois], new AbortController().signal); });
+    expect(screen.getByTestId('place-pick').textContent).toContain('Which Springfield?');
+    fireEvent.click(screen.getByTestId('place-pick-option-0'));
+    expect(await answer).toBe(illinois);
+  });
 });
 
 describe('ChatPanel time travel', () => {
