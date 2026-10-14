@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   waitForServiceWorkerActive,
+  type ProbeRecord,
   type ServiceWorkerReader,
   type ServiceWorkerSnapshot,
 } from '../../e2e/serviceWorkerActivation';
@@ -10,10 +11,10 @@ const NONE: ServiceWorkerSnapshot = { registered: false, installing: null, waiti
 const INSTALLING: ServiceWorkerSnapshot = { ...NONE, registered: true, installing: 'installing' };
 const ACTIVATED: ServiceWorkerSnapshot = { ...NONE, registered: true, active: 'activated', controlled: true };
 
-/** A scripted worker: one snapshot per poll (the last repeats), and a fixed probe answer. */
-function scriptedReader(snapshots: Array<ServiceWorkerSnapshot | Error>, probe: readonly string[] | null = null) {
+/** A scripted worker: one snapshot per poll (the last repeats), and a fixed probe record. */
+function scriptedReader(snapshots: Array<ServiceWorkerSnapshot | Error>, record: ProbeRecord | null = null) {
   let polls = 0;
-  let probes = 0;
+  let reads = 0;
   const reader: ServiceWorkerReader = {
     snapshot: async () => {
       const next = snapshots[Math.min(polls, snapshots.length - 1)];
@@ -21,12 +22,12 @@ function scriptedReader(snapshots: Array<ServiceWorkerSnapshot | Error>, probe: 
       if (next instanceof Error) throw next;
       return next;
     },
-    probeFetches: async () => {
-      probes += 1;
-      return probe;
+    probeRecord: async () => {
+      reads += 1;
+      return record;
     },
   };
-  return { reader, polls: () => polls, probes: () => probes };
+  return { reader, polls: () => polls, reads: () => reads };
 }
 
 /** A fake clock the waiter advances through its own sleep, so no test waits in real time. */
@@ -52,35 +53,56 @@ describe('waitForServiceWorkerActive', () => {
     await expect(waitForServiceWorkerActive(reader, { timeoutMs: 60_000, pollMs: 250, ...fakeClock() })).resolves.toEqual(activating);
   });
 
-  it('fails a worker stuck in installing with its own fetch record, not a bare timeout', async () => {
-    const fetched = ['http://127.0.0.1:4199/sw-egress-probe.js', 'http://127.0.0.1:4199/assets/a.js', 'http://127.0.0.1:4199/assets/b.wasm'];
-    const { reader, probes } = scriptedReader([NONE, INSTALLING], fetched);
+  it('fails a worker stuck in installing with the probe record it left in Cache Storage, not a bare timeout', async () => {
+    const record: ProbeRecord = {
+      fetched: ['http://127.0.0.1:4199/sw-egress-probe.js', 'http://127.0.0.1:4199/assets/a.js', 'http://127.0.0.1:4199/assets/b.wasm'],
+      events: ['script-start', 'install'],
+    };
+    const { reader, reads } = scriptedReader([NONE, INSTALLING], record);
     const clock = fakeClock();
     const failure = waitForServiceWorkerActive(reader, { timeoutMs: 60_000, pollMs: 250, ...clock });
     await expect(failure).rejects.toThrow(
       'the service worker did not activate within 60000 ms: registration {installing: installing, waiting: none, active: none, controlled: no}; '
-      + 'the worker answered the egress probe with 3 fetched URLs, the last /assets/b.wasm',
+      + 'probe record: 3 fetched URLs, the last /assets/b.wasm; worker events: script-start | install',
     );
     expect(clock.now()).toBeGreaterThanOrEqual(60_000);
-    expect(probes()).toBe(1);
+    expect(reads()).toBe(1);
   });
 
-  it('says so when the stuck worker does not answer the probe at all', async () => {
+  it('names a registration that has no worker in any slot, and the reason the worker left behind', async () => {
+    const empty: ServiceWorkerSnapshot = { ...NONE, registered: true };
+    const record: ProbeRecord = { fetched: [], events: ['script-start', 'install', 'install rejected: QuotaExceededError: The quota has been exceeded.'] };
+    const { reader } = scriptedReader([empty], record);
+    await expect(waitForServiceWorkerActive(reader, { timeoutMs: 1_000, pollMs: 250, ...fakeClock() })).rejects.toThrow(
+      'the service worker did not activate within 1000 ms: a registration with no worker in any slot (controlled: no); '
+      + 'probe record: 0 fetched URLs, the last none; worker events: script-start | install | install rejected: QuotaExceededError: The quota has been exceeded.',
+    );
+  });
+
+  it('says when the worker left no probe record: its script never ran', async () => {
     const { reader } = scriptedReader([INSTALLING], null);
     await expect(waitForServiceWorkerActive(reader, { timeoutMs: 1_000, pollMs: 250, ...fakeClock() })).rejects.toThrow(
       'the service worker did not activate within 1000 ms: registration {installing: installing, waiting: none, active: none, controlled: no}; '
-      + 'no worker answered the egress probe (hung, terminated, or none to ask)',
+      + 'no probe record (sw.js never ran its first statement)',
     );
   });
 
-  it('treats a probe that throws like one that never answers, and an empty record as zero fetches', async () => {
-    const throwing: ServiceWorkerReader = { snapshot: async () => INSTALLING, probeFetches: () => Promise.reject(new Error('Target closed')) };
-    await expect(waitForServiceWorkerActive(throwing, { timeoutMs: 500, pollMs: 250, ...fakeClock() })).rejects.toThrow(
-      'no worker answered the egress probe (hung, terminated, or none to ask)',
-    );
-    const { reader } = scriptedReader([INSTALLING], []);
+  it('keeps only the last 12 worker events, and survives a record read that throws', async () => {
+    const events = Array.from({ length: 15 }, (_, index) => `event ${index}`);
+    const { reader } = scriptedReader([INSTALLING], { fetched: [], events });
     await expect(waitForServiceWorkerActive(reader, { timeoutMs: 500, pollMs: 250, ...fakeClock() })).rejects.toThrow(
-      'the worker answered the egress probe with 0 fetched URLs, the last none',
+      `worker events (last 12 of 15): ${events.slice(3).join(' | ')}`,
+    );
+    const throwing: ServiceWorkerReader = { snapshot: async () => INSTALLING, probeRecord: () => Promise.reject(new Error('Target closed')) };
+    await expect(waitForServiceWorkerActive(throwing, { timeoutMs: 500, pollMs: 250, ...fakeClock() })).rejects.toThrow(
+      'the probe record could not be read (Target closed)',
+    );
+  });
+
+  it('bounds a snapshot read that never settles by the remaining budget', async () => {
+    const hung: ServiceWorkerReader = { snapshot: () => new Promise<ServiceWorkerSnapshot>(() => undefined), probeRecord: async () => null };
+    await expect(waitForServiceWorkerActive(hung, { timeoutMs: 40, pollMs: 10 })).rejects.toThrow(
+      'the service worker did not activate within 40 ms: the registration was never read (last error: the registration read did not settle in 40 ms)',
     );
   });
 
