@@ -115,7 +115,7 @@ const MACOS_LANE_SCRIPT = "frontend/apps/web/scripts/webkit-macos-lane.sh"
  * and upload the lane's evidence directory (traces, videos, WebKit logs, crash
  * reports; scripts/webkit-macos-lane.sh) even when the lane fails.
  */
-const UPLOAD_ARTIFACT = "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"
+const UPLOAD_ARTIFACT = "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9"
 const MACOS_LANE_ACTIONS = [
   checkout,
   "oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6",
