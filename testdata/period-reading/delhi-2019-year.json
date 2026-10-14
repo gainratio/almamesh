@@ -236,22 +236,13 @@
     },
     {
       "start": "2019-03-07",
-      "end": "2019-03-22",
-      "maha": "rahu",
-      "antar": "rahu",
-      "pratyantar": "venus",
-      "events": [
-        "2019-03-07 rahu.ingress.gemini",
-        "2019-03-07 ketu.ingress.sagittarius"
-      ]
-    },
-    {
-      "start": "2019-03-22",
       "end": "2019-03-29",
       "maha": "rahu",
       "antar": "rahu",
       "pratyantar": "venus",
       "events": [
+        "2019-03-07 rahu.ingress.gemini",
+        "2019-03-07 ketu.ingress.sagittarius",
         "2019-03-22 mars.ingress.taurus"
       ]
     },
@@ -268,45 +259,19 @@
     },
     {
       "start": "2019-04-22",
-      "end": "2019-05-07",
-      "maha": "rahu",
-      "antar": "rahu",
-      "pratyantar": "venus",
-      "events": [
-        "2019-04-22 jupiter.ingress.scorpio",
-        "2019-04-29 saturn.station.retrograde"
-      ]
-    },
-    {
-      "start": "2019-05-07",
-      "end": "2019-06-22",
-      "maha": "rahu",
-      "antar": "rahu",
-      "pratyantar": "venus",
-      "events": [
-        "2019-05-07 mars.ingress.gemini"
-      ]
-    },
-    {
-      "start": "2019-06-22",
       "end": "2019-07-19",
       "maha": "rahu",
       "antar": "rahu",
       "pratyantar": "venus",
       "events": [
+        "2019-04-22 jupiter.ingress.scorpio",
+        "2019-04-29 saturn.station.retrograde",
+        "2019-05-07 mars.ingress.gemini",
         "2019-06-22 mars.ingress.cancer"
       ]
     },
     {
       "start": "2019-07-19",
-      "end": "2019-08-08",
-      "maha": "rahu",
-      "antar": "rahu",
-      "pratyantar": "sun",
-      "events": []
-    },
-    {
-      "start": "2019-08-08",
       "end": "2019-09-07",
       "maha": "rahu",
       "antar": "rahu",
@@ -318,54 +283,28 @@
     },
     {
       "start": "2019-09-07",
-      "end": "2019-09-25",
-      "maha": "rahu",
-      "antar": "rahu",
-      "pratyantar": "moon",
-      "events": [
-        "2019-09-17 saturn.station.direct"
-      ]
-    },
-    {
-      "start": "2019-09-25",
       "end": "2019-11-05",
       "maha": "rahu",
       "antar": "rahu",
       "pratyantar": "moon",
       "events": [
+        "2019-09-17 saturn.station.direct",
         "2019-09-25 mars.ingress.virgo"
       ]
     },
     {
       "start": "2019-11-05",
-      "end": "2019-11-10",
-      "maha": "rahu",
-      "antar": "rahu",
-      "pratyantar": "moon",
-      "events": [
-        "2019-11-05 jupiter.ingress.sagittarius"
-      ]
-    },
-    {
-      "start": "2019-11-10",
       "end": "2019-11-28",
       "maha": "rahu",
       "antar": "rahu",
       "pratyantar": "moon",
       "events": [
+        "2019-11-05 jupiter.ingress.sagittarius",
         "2019-11-10 mars.ingress.libra"
       ]
     },
     {
       "start": "2019-11-28",
-      "end": "2019-12-25",
-      "maha": "rahu",
-      "antar": "rahu",
-      "pratyantar": "mars",
-      "events": []
-    },
-    {
-      "start": "2019-12-25",
       "end": "2020-01-01",
       "maha": "rahu",
       "antar": "rahu",
@@ -495,126 +434,6 @@
       "sav": 21,
       "bav": 1,
       "tags": []
-    },
-    {
-      "graha": "mars",
-      "start": "2019-01-01",
-      "end": "2019-02-05",
-      "sign": "pisces",
-      "retro": false,
-      "from_moon": 8,
-      "from_lagna": 10,
-      "sav": 27,
-      "bav": 4,
-      "tags": [
-        "mars_from_moon_8"
-      ]
-    },
-    {
-      "graha": "mars",
-      "start": "2019-02-05",
-      "end": "2019-03-22",
-      "sign": "aries",
-      "retro": false,
-      "from_moon": 9,
-      "from_lagna": 11,
-      "sav": 35,
-      "bav": 3,
-      "tags": []
-    },
-    {
-      "graha": "mars",
-      "start": "2019-03-22",
-      "end": "2019-05-07",
-      "sign": "taurus",
-      "retro": false,
-      "from_moon": 10,
-      "from_lagna": 12,
-      "sav": 26,
-      "bav": 4,
-      "tags": [
-        "mars_from_lagna_12"
-      ]
-    },
-    {
-      "graha": "mars",
-      "start": "2019-05-07",
-      "end": "2019-06-22",
-      "sign": "gemini",
-      "retro": false,
-      "from_moon": 11,
-      "from_lagna": 1,
-      "sav": 29,
-      "bav": 6,
-      "tags": [
-        "mars_over_lagna"
-      ]
-    },
-    {
-      "graha": "mars",
-      "start": "2019-06-22",
-      "end": "2019-08-08",
-      "sign": "cancer",
-      "retro": false,
-      "from_moon": 12,
-      "from_lagna": 2,
-      "sav": 22,
-      "bav": 1,
-      "tags": [
-        "mars_from_moon_12"
-      ]
-    },
-    {
-      "graha": "mars",
-      "start": "2019-08-08",
-      "end": "2019-09-25",
-      "sign": "leo",
-      "retro": false,
-      "from_moon": 1,
-      "from_lagna": 3,
-      "sav": 31,
-      "bav": 4,
-      "tags": [
-        "mars_over_moon"
-      ]
-    },
-    {
-      "graha": "mars",
-      "start": "2019-09-25",
-      "end": "2019-11-10",
-      "sign": "virgo",
-      "retro": false,
-      "from_moon": 2,
-      "from_lagna": 4,
-      "sav": 33,
-      "bav": 2,
-      "tags": []
-    },
-    {
-      "graha": "mars",
-      "start": "2019-11-10",
-      "end": "2019-12-25",
-      "sign": "libra",
-      "retro": false,
-      "from_moon": 3,
-      "from_lagna": 5,
-      "sav": 33,
-      "bav": 4,
-      "tags": []
-    },
-    {
-      "graha": "mars",
-      "start": "2019-12-25",
-      "end": "2020-01-01",
-      "sign": "scorpio",
-      "retro": false,
-      "from_moon": 4,
-      "from_lagna": 6,
-      "sav": 33,
-      "bav": 5,
-      "tags": [
-        "mars_from_lagna_6"
-      ]
     },
     {
       "graha": "rahu",
@@ -1023,7 +842,7 @@
     "obstacles (6th/8th/12th): karakas Saturn/Mars/Rahu are context only; strength = agreeing techniques + a dated window: 3-4 with the window strong, 2+ moderate, 0-1 weak",
     "direction = domain transit severity + its window severities, neutral ignored: all supportive, all challenging, else mixed",
     "whole-sign houses; Saturn 12th/1st/2nd from Moon = sade_sati_phase_1/2/3, 1/4/7/10 = kantaka_shani, 8th = ashtama_shani",
-    "mars/rahu/ketu tags = their 6th/8th/12th from the lagna or Moon (<graha>_from_lagna_8); mars_over_moon/mars_over_lagna = Mars in that natal sign",
+    "rahu/ketu tags = their 6th/8th/12th from the lagna or Moon (rahu_from_moon_6); obstacles windows date Mars entering a 6th/8th/12th or the natal Moon/lagna sign",
     "double_transit = houses from lagna Jupiter and Saturn both occupy or aspect now",
     "sookshma and panchang are for the reference instant; vara is the UTC weekday"
   ]

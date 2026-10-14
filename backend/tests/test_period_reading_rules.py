@@ -93,13 +93,11 @@ def test_nodes_carry_no_tags_outside_the_dusthanas() -> None:
     [
         (PlanetName.RAHU, 7, ["rahu_from_lagna_6"]),  # Scorpio: 6th from Gemini, 4th from Leo
         (PlanetName.KETU, 9, ["ketu_from_lagna_8", "ketu_from_moon_6"]),  # Capricorn
-        (PlanetName.MARS, 3, ["mars_from_moon_12"]),  # Cancer: 2nd from Gemini, 12th from Leo
-        (PlanetName.MARS, _LEO, ["mars_over_moon"]),  # Leo: 3rd from Gemini, the Moon's sign
-        (PlanetName.MARS, _GEMINI, ["mars_over_lagna"]),  # Gemini: the lagna, 11th from Leo
-        (PlanetName.MARS, 0, []),  # Aries: 11th from Gemini, 9th from Leo
+        (PlanetName.KETU, 3, ["ketu_from_moon_12"]),  # Cancer: 2nd from Gemini, 12th from Leo
+        (PlanetName.RAHU, 0, []),  # Aries: 11th from Gemini, 9th from Leo
     ],
 )
-def test_mars_and_nodes_tag_the_dusthanas_and_natal_points(
+def test_nodes_tag_the_dusthanas_from_the_lagna_and_moon(
     graha: PlanetName, sign_idx: int, expected: list[str]
 ) -> None:
     assert sky_tags(graha, sign_idx, _LEO, _GEMINI) == expected

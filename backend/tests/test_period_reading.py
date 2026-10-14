@@ -319,7 +319,7 @@ def test_rules_state_every_counting_rule(may: PredictiveContexts) -> None:
         "direction",
         "agreement",
         "sade_sati",
-        "mars_over_moon",
+        "rahu_from_moon_6",
         "obstacles",
     ):
         assert needle in text

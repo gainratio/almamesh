@@ -267,12 +267,23 @@ def _tags_at(contexts: PredictiveContexts, graha: PlanetName, day: date) -> list
     return span.tags
 
 
-def test_should_tag_mars_and_the_nodes_in_the_dusthanas(sep_2019: PredictiveContexts) -> None:
-    # Given Sep 2019: Mars in Leo then Virgo, Rahu in Gemini, Ketu in Sagittarius
+def test_should_keep_mars_out_of_the_sky_spans(sep_2019: PredictiveContexts) -> None:
+    """Mars is dated (windows, segment events), not tiled: its spans broke the chat budget.
+
+    Eight or nine Mars spans a year pushed the 2019 Year chat digest past its
+    4 KB budget into the bare fallback (no windows, no sky).
+    """
+    # Given the Sep 2019 reading
+    # When the sky's grahas are listed
+    grahas = {span.graha for span in sep_2019.period_reading.sky}
+    # Then they are the slow grahas and the nodes only
+    assert grahas == {PlanetName.JUPITER, PlanetName.SATURN, PlanetName.RAHU, PlanetName.KETU}
+
+
+def test_should_tag_the_nodes_in_the_dusthanas(sep_2019: PredictiveContexts) -> None:
+    # Given Sep 2019: Rahu in Gemini, Ketu in Sagittarius
     # When the sky spans are read
     # Then each carries its 6th/8th/12th house from the lagna and the Moon
-    assert "mars_from_moon_8" in _tags_at(sep_2019, PlanetName.MARS, date(2019, 9, 10))
-    assert "mars_from_lagna_8" in _tags_at(sep_2019, PlanetName.MARS, date(2019, 9, 26))
     assert _tags_at(sep_2019, PlanetName.RAHU, date(2019, 9, 10)) == ["rahu_from_moon_6"]
     assert _tags_at(sep_2019, PlanetName.KETU, date(2019, 9, 10)) == ["ketu_from_moon_12"]
 

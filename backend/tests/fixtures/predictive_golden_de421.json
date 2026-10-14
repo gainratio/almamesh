@@ -1053,7 +1053,7 @@
         "obstacles (6th/8th/12th): karakas Saturn/Mars/Rahu are context only; strength = agreeing techniques + a dated window: 3-4 with the window strong, 2+ moderate, 0-1 weak",
         "direction = domain transit severity + its window severities, neutral ignored: all supportive, all challenging, else mixed",
         "whole-sign houses; Saturn 12th/1st/2nd from Moon = sade_sati_phase_1/2/3, 1/4/7/10 = kantaka_shani, 8th = ashtama_shani",
-        "mars/rahu/ketu tags = their 6th/8th/12th from the lagna or Moon (<graha>_from_lagna_8); mars_over_moon/mars_over_lagna = Mars in that natal sign",
+        "rahu/ketu tags = their 6th/8th/12th from the lagna or Moon (rahu_from_moon_6); obstacles windows date Mars entering a 6th/8th/12th or the natal Moon/lagna sign",
         "double_transit = houses from lagna Jupiter and Saturn both occupy or aspect now",
         "sookshma and panchang are for the reference instant; vara is the UTC weekday"
       ],
@@ -1096,18 +1096,6 @@
           "tags": [
             "ashtama_shani"
           ]
-        },
-        {
-          "bav": 3,
-          "end": "2026-06-10",
-          "from_lagna": 11,
-          "from_moon": 9,
-          "graha": "mars",
-          "retro": false,
-          "sav": 35,
-          "sign": "aries",
-          "start": "2026-06-09",
-          "tags": []
         },
         {
           "bav": null,
@@ -5230,7 +5218,7 @@
         "obstacles (6th/8th/12th): karakas Saturn/Mars/Rahu are context only; strength = agreeing techniques + a dated window: 3-4 with the window strong, 2+ moderate, 0-1 weak",
         "direction = domain transit severity + its window severities, neutral ignored: all supportive, all challenging, else mixed",
         "whole-sign houses; Saturn 12th/1st/2nd from Moon = sade_sati_phase_1/2/3, 1/4/7/10 = kantaka_shani, 8th = ashtama_shani",
-        "mars/rahu/ketu tags = their 6th/8th/12th from the lagna or Moon (<graha>_from_lagna_8); mars_over_moon/mars_over_lagna = Mars in that natal sign",
+        "rahu/ketu tags = their 6th/8th/12th from the lagna or Moon (rahu_from_moon_6); obstacles windows date Mars entering a 6th/8th/12th or the natal Moon/lagna sign",
         "double_transit = houses from lagna Jupiter and Saturn both occupy or aspect now",
         "sookshma and panchang are for the reference instant; vara is the UTC weekday"
       ],
@@ -5273,18 +5261,6 @@
           "tags": [
             "ashtama_shani"
           ]
-        },
-        {
-          "bav": 3,
-          "end": "2026-06-10",
-          "from_lagna": 11,
-          "from_moon": 9,
-          "graha": "mars",
-          "retro": false,
-          "sav": 35,
-          "sign": "aries",
-          "start": "2026-06-09",
-          "tags": []
         },
         {
           "bav": null,
@@ -9338,7 +9314,7 @@
         "obstacles (6th/8th/12th): karakas Saturn/Mars/Rahu are context only; strength = agreeing techniques + a dated window: 3-4 with the window strong, 2+ moderate, 0-1 weak",
         "direction = domain transit severity + its window severities, neutral ignored: all supportive, all challenging, else mixed",
         "whole-sign houses; Saturn 12th/1st/2nd from Moon = sade_sati_phase_1/2/3, 1/4/7/10 = kantaka_shani, 8th = ashtama_shani",
-        "mars/rahu/ketu tags = their 6th/8th/12th from the lagna or Moon (<graha>_from_lagna_8); mars_over_moon/mars_over_lagna = Mars in that natal sign",
+        "rahu/ketu tags = their 6th/8th/12th from the lagna or Moon (rahu_from_moon_6); obstacles windows date Mars entering a 6th/8th/12th or the natal Moon/lagna sign",
         "double_transit = houses from lagna Jupiter and Saturn both occupy or aspect now",
         "sookshma and panchang are for the reference instant; vara is the UTC weekday"
       ],
@@ -9381,18 +9357,6 @@
           "tags": [
             "sade_sati_phase_3"
           ]
-        },
-        {
-          "bav": 6,
-          "end": "2026-06-10",
-          "from_lagna": 10,
-          "from_moon": 3,
-          "graha": "mars",
-          "retro": false,
-          "sav": 30,
-          "sign": "aries",
-          "start": "2026-06-09",
-          "tags": []
         },
         {
           "bav": null,
