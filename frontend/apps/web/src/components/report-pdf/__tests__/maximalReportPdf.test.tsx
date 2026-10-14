@@ -99,7 +99,7 @@ describe('maximal report PDF acceptance', () => {
     expect(data.strength?.savCells).toHaveLength(12);
     expect(data.strength?.bav.rows.length).toBeGreaterThan(0);
     expect(data.strength?.shadbala.rows.length).toBeGreaterThan(0);
-    expect(data.domains?.blocks).toHaveLength(7);
+    expect(data.domains?.blocks).toHaveLength(8);
     expect(data.domains?.blocks.every((block) => block.windows.length > 0)).toBe(true);
     expect(data.domains?.blocks.every((block) => block.assay.components.length === 3)).toBe(true);
     expect(data.domains?.blocks.every((block) => block.avow.status === 'Unavailable')).toBe(true);

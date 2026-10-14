@@ -515,7 +515,7 @@ function buildAvowPanel(
 }
 
 /**
- * Reshape the engine DomainsCtx into the seven pre-formatted domain blocks.
+ * Reshape the engine DomainsCtx into the eight pre-formatted domain blocks.
  *
  * `stabilityFlagFor` optionally supplies each domain's pre-localized birth-time
  * stability mark (the screen's `StabilityChip` wording). Omit it and every

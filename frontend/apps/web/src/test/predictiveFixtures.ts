@@ -263,6 +263,7 @@ export const ALL_DOMAINS: readonly LifeDomain[] = [
   'spiritual',
   'education',
   'family',
+  'obstacles',
 ];
 
 function strengthAssay(shadbalaPct: number, savPct: number): StrengthAssayData {

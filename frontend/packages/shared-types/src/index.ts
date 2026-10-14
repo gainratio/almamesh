@@ -272,7 +272,9 @@ export type LifeDomain =
   | 'relationships'
   | 'spiritual'
   | 'education'
-  | 'family';
+  | 'family'
+  /** 6th/8th/12th: friction with rules or authorities, legal or administrative matters, setbacks, losses. */
+  | 'obstacles';
 
 export type StrengthBand = 'strong' | 'moderate' | 'weak';
 

@@ -75,9 +75,10 @@ describe('DomainsPanel', () => {
     await i18n.changeLanguage('en');
   });
 
-  it('renders one card per life domain (all seven)', () => {
+  it('renders one card per life domain (all eight, obstacles included)', () => {
     render(<DomainsPanel domainsCtx={DOMAINS_CTX} />);
-    expect(DOMAIN_ORDER).toHaveLength(7);
+    expect(DOMAIN_ORDER).toHaveLength(8);
+    expect(DOMAIN_ORDER).toContain('obstacles');
     for (const domain of DOMAIN_ORDER) {
       expect(screen.getByTestId(`domain-card-${domain}`)).toBeTruthy();
     }
@@ -157,8 +158,8 @@ describe('DomainsPanel', () => {
 
     render(<DomainsPanel domainsCtx={DOMAINS_WITH_ASSAY} />);
 
-    expect(screen.getAllByRole('heading', { name: assay })).toHaveLength(7);
-    expect(screen.getAllByRole('heading', { name: avow })).toHaveLength(7);
+    expect(screen.getAllByRole('heading', { name: assay })).toHaveLength(8);
+    expect(screen.getAllByRole('heading', { name: avow })).toHaveLength(8);
   });
 
   it('surfaces a per-domain VERIFIED receipt badge only for domains that have a receipt', async () => {

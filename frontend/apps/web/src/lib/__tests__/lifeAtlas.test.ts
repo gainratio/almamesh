@@ -11,7 +11,7 @@ import {
 import { DOMAINS_CTX } from '../../test/predictiveFixtures';
 
 describe('LIFE_DOMAINS', () => {
-  it('lists the seven canonical domains in stable order', () => {
+  it('lists the eight canonical domains in stable order, obstacles last', () => {
     expect(LIFE_DOMAINS).toEqual([
       'career',
       'finances',
@@ -20,7 +20,9 @@ describe('LIFE_DOMAINS', () => {
       'spiritual',
       'education',
       'family',
+      'obstacles',
     ]);
+    expect(LIFE_DOMAINS).toHaveLength(8);
   });
 });
 
@@ -76,6 +78,12 @@ describe('domainGuidance', () => {
   it('declares family as engine-only (no AI section exists for it)', () => {
     expect(DOMAIN_GUIDANCE_KEY.family).toBeNull();
     expect(domainGuidance(interpretation, 'family')).toBeNull();
+  });
+
+  it('declares obstacles as engine-only: no AI section is ever borrowed for it', () => {
+    expect(isLifeDomain('obstacles')).toBe(true);
+    expect(DOMAIN_GUIDANCE_KEY.obstacles).toBeNull();
+    expect(domainGuidance(interpretation, 'obstacles')).toBeNull();
   });
 
   it('returns null when a section carries no usable text', () => {

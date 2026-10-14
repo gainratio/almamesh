@@ -57,7 +57,8 @@ export type LifeDomainName =
   | "relationships"
   | "spiritual"
   | "education"
-  | "family";
+  | "family"
+  | "obstacles"; // 6th/8th/12th houses (engine LifeDomain.OBSTACLES)
 
 export type StrengthBand = "strong" | "moderate" | "weak";
 

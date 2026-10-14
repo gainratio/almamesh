@@ -1,5 +1,5 @@
 /**
- * DomainsPanel — the seven per-life-domain forecasts (engine DomainsCtx,
+ * DomainsPanel — the eight per-life-domain forecasts (engine DomainsCtx,
  * verbatim). Each card: strength band + key-graha line, the current emphasis
  * (daśā activation, Sade Sati, transit tone — with the engine's `approximated`
  * heuristic flag surfaced), the next timed windows with locale dates, and a
@@ -24,7 +24,7 @@ import { domainWindowLabel, grahaName, signName } from '../../../lib/predictiveE
 import { BandBadge, SeverityBadge } from './PredictiveBadges';
 import { StrengthEvidencePanels } from './StrengthEvidencePanels';
 
-/** Stable render order for the seven domains (single source: lib/lifeAtlas). */
+/** Stable render order for the eight domains (single source: lib/lifeAtlas). */
 export const DOMAIN_ORDER: readonly LifeDomain[] = LIFE_DOMAINS;
 
 /** Current-emphasis block — shared with the `/life/:domain` detail page. */
@@ -244,7 +244,7 @@ export interface DomainsPanelProps {
   readonly signerPublicKey?: string;
 }
 
-/** All seven life-domain forecast cards. */
+/** All eight life-domain forecast cards. */
 export function DomainsPanel({
   domainsCtx,
   maxWindows = 3,

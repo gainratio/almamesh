@@ -17,7 +17,7 @@
   },
   "atlas": {
     "heading": "Atlas de Vida",
-    "subtitle": "Siete dominios de tu vida — fuerza, énfasis actual y ventanas con fecha, calculados de forma determinista en este dispositivo.",
+    "subtitle": "Ocho dominios de tu vida — fuerza, énfasis actual y ventanas con fecha, calculados de forma determinista en este dispositivo.",
     "as_of": "Al {{date}}",
     "pending_hint": "Cargando pronóstico…",
     "next_window": "Próxima ventana",
@@ -33,7 +33,8 @@
     "engine_warming": "El motor de cartas aún se está iniciando. El cálculo comenzará en cuanto esté listo.",
     "about_title": "Sobre estos pronósticos",
     "about_body": "Una síntesis determinista de tu línea de daśā, tránsitos, cartas divisionales y fuerza planetaria. No interviene ninguna IA.",
-    "about_link": "Abrir Cielo y Tiempos"
+    "about_link": "Abrir Cielo y Tiempos",
+    "obstacles_note": "Un tema a observar, no una predicción: roces con normas o autoridades, asuntos legales o administrativos, contratiempos inesperados, pérdidas y gastos (casas 6, 8 y 12)."
   },
   "domain": {
     "kicker": "Atlas de Vida",

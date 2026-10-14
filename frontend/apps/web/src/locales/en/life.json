@@ -16,7 +16,7 @@
   },
   "atlas": {
     "heading": "Life Atlas",
-    "subtitle": "Seven domains of your life — strength, current emphasis and dated windows, computed deterministically on this device.",
+    "subtitle": "Eight domains of your life — strength, current emphasis and dated windows, computed deterministically on this device.",
     "as_of": "As of {{date}}",
     "pending_hint": "Loading forecast…",
     "next_window": "Next window",
@@ -32,7 +32,8 @@
     "engine_warming": "The chart engine is still starting up. Computation begins once it is ready.",
     "about_title": "About these forecasts",
     "about_body": "A deterministic synthesis of your daśā timeline, transits, divisional charts and planetary strength. No AI is involved.",
-    "about_link": "Open Sky & Timing"
+    "about_link": "Open Sky & Timing",
+    "obstacles_note": "A theme to watch, not a prediction: friction with rules or authorities, legal or administrative matters, unexpected setbacks, losses and expenses (the 6th, 8th and 12th houses)."
   },
   "domain": {
     "kicker": "Life Atlas",

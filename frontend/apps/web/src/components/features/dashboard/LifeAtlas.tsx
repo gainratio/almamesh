@@ -1,5 +1,5 @@
 /**
- * LifeAtlas — the dashboard centerpiece: seven life-domain cards, each linking
+ * LifeAtlas — the dashboard centerpiece: eight life-domain cards, each linking
  * to its `/life/:domain` detail page.
  *
  * Data is the engine's lazy predictive synthesis (`DomainsCtx`, ~30s on-device
@@ -10,7 +10,8 @@
  * (warming / computing / error+retry) — never a manual button, never a
  * dead-end for a returning visitor.
  *
- * Card face (ready): domain name, engine strength band, the current-emphasis
+ * Card face (ready): domain name, engine strength band, a plain-language note
+ * where the name alone could mislead (obstacles), the current-emphasis
  * one-liner, and the next timed window. Everything verbatim from the engine.
  */
 
@@ -22,7 +23,7 @@ import type { LifeDomain, LifeDomainForecastData } from '@almamesh/shared-types'
 import { Button, Card, Spinner } from '../../ui';
 import { useElapsedSeconds, formatElapsed } from '../../../hooks/useElapsedSeconds';
 import { usePredictiveLayer, type PredictiveLayer } from '../../../hooks/usePredictiveLayer';
-import { LIFE_DOMAINS, nextWindow } from '../../../lib/lifeAtlas';
+import { DOMAIN_NOTE_KEY, LIFE_DOMAINS, nextWindow } from '../../../lib/lifeAtlas';
 import { formatPredictiveDate, formatReferenceDay } from '../../../lib/predictive';
 import { domainWindowLabel } from '../../../lib/predictiveEventCopy';
 import { BandBadge } from '../predictive/PredictiveBadges';
@@ -52,6 +53,18 @@ function PendingCardFace({
         {t('life:atlas.pending_hint')}
       </p>
     </div>
+  );
+}
+
+/** One plain-language line for a domain whose name alone could mislead. */
+function DomainNote({ domain }: { domain: LifeDomain }): ReactElement | null {
+  const { t } = useTranslation('life');
+  const key = DOMAIN_NOTE_KEY[domain];
+  if (!key) return null;
+  return (
+    <p className="mt-1 text-xs leading-relaxed text-text-tertiary" data-testid={`life-atlas-note-${domain}`}>
+      {t(key)}
+    </p>
   );
 }
 
@@ -95,6 +108,7 @@ function DomainCardFace({ forecast }: { forecast: LifeDomainForecastData }): Rea
         </h3>
         <BandBadge band={forecast.strength_summary.band} />
       </div>
+      <DomainNote domain={forecast.domain} />
       <EmphasisLine forecast={forecast} />
       <div className="mt-auto pt-4">
         <p className="text-[11px] uppercase tracking-wider text-text-tertiary">
@@ -115,7 +129,7 @@ function DomainCardFace({ forecast }: { forecast: LifeDomainForecastData }): Rea
   );
 }
 
-/** Eighth grid cell: what these forecasts are — and the door to the full panel. */
+/** Last grid cell: what these forecasts are — and the door to the full panel. */
 function AboutCell(): ReactElement {
   const { t } = useTranslation('life');
   return (

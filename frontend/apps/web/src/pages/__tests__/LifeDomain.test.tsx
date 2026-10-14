@@ -236,6 +236,23 @@ describe('LifeDomainPage', () => {
     expect(screen.getByTestId('life-domain-ai').textContent).toContain('engine alone');
   });
 
+  it('opens /life/obstacles: a named, engine-only area framed as a theme to watch', () => {
+    seedReady();
+    renderAt('/life/obstacles');
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Obstacles & setbacks');
+    expect(screen.getByTestId('life-domain-note').textContent).toBe(
+      'A theme to watch, not a prediction: friction with rules or authorities, legal or administrative matters, unexpected setbacks, losses and expenses (the 6th, 8th and 12th houses).',
+    );
+    expect(screen.getByTestId('domain-emphasis-obstacles')).toBeTruthy();
+    expect(screen.getByTestId('life-domain-ai').textContent).toContain('engine alone');
+  });
+
+  it('carries no note for a domain whose name says enough', () => {
+    seedReady();
+    renderAt('/life/career');
+    expect(screen.queryByTestId('life-domain-note')).toBeNull();
+  });
+
   it('links back to the dashboard and into chat', () => {
     seedReady();
     renderAt('/life/career');
