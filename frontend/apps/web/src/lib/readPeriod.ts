@@ -712,10 +712,9 @@ const titled = (word: string): string => word.charAt(0).toUpperCase() + word.sli
  * stations direct". Any other descriptor stays as the engine wrote it.
  */
 export function eventLabel(descriptor: string): string {
-  const ingress = /(?:^|\.)([a-z]+)\.ingress\.([a-z]+)$/.exec(descriptor);
-  if (ingress) return `${titled(ingress[1]!)} enters ${titled(ingress[2]!)}`;
-  const station = /(?:^|\.)([a-z]+)\.station\.([a-z]+)$/.exec(descriptor);
-  if (station) return `${titled(station[1]!)} stations ${station[2]}`;
+  const [, graha = '', kind = '', what = ''] = /(?:^|\.)([a-z]+)\.(ingress|station)\.([a-z]+)$/.exec(descriptor) ?? [];
+  if (kind === 'ingress') return `${titled(graha)} enters ${titled(what)}`;
+  if (kind === 'station') return `${titled(graha)} stations ${what}`;
   return descriptor;
 }
 
