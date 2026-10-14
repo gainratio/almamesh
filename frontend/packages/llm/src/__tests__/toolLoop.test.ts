@@ -145,6 +145,73 @@ describe("rule 3: tools are zod-typed, strict-compatible, and lenient about omit
     expect(o.toolCalls[0]).toMatchObject({ toolName: "read_period", status: "complete", validFirstTry: true, round: 1 });
   });
 
+  describe('the string "null" a model sends for an unused nullable key', () => {
+    interface WideInput {
+      readonly start: string;
+      readonly end: string | null;
+      readonly place: string | null;
+      readonly time: string | null;
+      readonly focus: string | null;
+    }
+    const nullableText = z.string().regex(/^\d{4}(-\d{2})?$/, "end must be YYYY-MM").nullable();
+    const wide = (seen: WideInput[]) =>
+      defineTool<WideInput>({
+        name: "read_period",
+        description: "Read the sky for a period.",
+        statusLabel: "Reading the period",
+        input: z.object({
+          start: z.string().regex(/^\d{4}(-\d{2})?$/, "start must be YYYY-MM"),
+          end: nullableText,
+          place: z.string().nullable(),
+          time: z.string().nullable(),
+          focus: z.string().nullable(),
+        }),
+        async execute(input) {
+          seen.push(input);
+          return { ok: true };
+        },
+      });
+
+    it("becomes null on the first try (the exact deepseek-v4-pro args)", async () => {
+      const seen: WideInput[] = [];
+      const args = '{"start":"2019-09","end":"null","place":"Vadodara","time":"null","focus":"null"}';
+      const { fetchImpl } = fakeEndpoint([read("c1", args), answer("a1")]);
+      const o = options(fetchImpl, { tools: asTools(wide(seen)) });
+      await collect(runToolTurn(o));
+      expect(seen).toEqual([{ start: "2019-09", end: null, place: "Vadodara", time: null, focus: null }]);
+      expect(o.toolCalls[0]).toMatchObject({ status: "complete", validFirstTry: true });
+      expect(o.toolCalls.some((e) => e.status === "retried")).toBe(false);
+    });
+
+    it("is matched case-insensitively and trimmed", async () => {
+      const seen: WideInput[] = [];
+      const args = '{"start":"2019-09","end":" NULL ","place":"Null","time":null,"focus":null}';
+      const { fetchImpl } = fakeEndpoint([read("c1", args), answer("a1")]);
+      await collect(runToolTurn(options(fetchImpl, { tools: asTools(wide(seen)) })));
+      expect(seen[0]).toMatchObject({ end: null, place: null });
+    });
+
+    it("leaves a genuinely wrong value alone: end:'Sept' still retries", async () => {
+      const seen: WideInput[] = [];
+      const args = '{"start":"2019-09","end":"Sept","place":null,"time":null,"focus":null}';
+      const { fetchImpl } = fakeEndpoint([read("c1", args), answer("a1")]);
+      const o = options(fetchImpl, { tools: asTools(wide(seen)) });
+      await collect(runToolTurn(o));
+      expect(seen).toEqual([]);
+      expect(o.toolCalls[0]).toMatchObject({ status: "retried", validFirstTry: false });
+    });
+
+    it("leaves a non-nullable key alone: start:'null' still fails", async () => {
+      const seen: WideInput[] = [];
+      const args = '{"start":"null","end":null,"place":null,"time":null,"focus":null}';
+      const { fetchImpl } = fakeEndpoint([read("c1", args), answer("a1")]);
+      const o = options(fetchImpl, { tools: asTools(wide(seen)) });
+      await collect(runToolTurn(o));
+      expect(seen).toEqual([]);
+      expect(o.toolCalls[0]).toMatchObject({ status: "retried", validFirstTry: false });
+    });
+  });
+
   it("sends every key as required, the optional one as nullable", async () => {
     const { fetchImpl, requests } = fakeEndpoint([answer("a1")]);
     await collect(runToolTurn(options(fetchImpl)));

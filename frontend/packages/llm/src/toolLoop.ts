@@ -249,12 +249,20 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-/** Fill each omitted key that accepts null with null, so only genuinely wrong values are retries. */
+function isNullText(value: unknown): boolean {
+  return typeof value === "string" && value.trim().toLowerCase() === "null";
+}
+
+/**
+ * Normalise top-level keys that accept null: an omitted key becomes null, and so does the string
+ * "null" (deepseek sends it for every unused argument). Only genuinely wrong values are retries.
+ */
 function fillMissingNullables(input: z.ZodType, value: unknown): unknown {
   if (!(input instanceof z.ZodObject) || !isRecord(value)) return value;
   const filled: Record<string, unknown> = { ...value };
   for (const [key, field] of Object.entries(input.shape as Record<string, z.ZodType>)) {
-    if (!(key in filled) && field.safeParse(null).success) filled[key] = null;
+    if (!field.safeParse(null).success) continue;
+    if (!(key in filled) || isNullText(filled[key])) filled[key] = null;
   }
   return filled;
 }
