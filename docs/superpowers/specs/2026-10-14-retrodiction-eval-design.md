@@ -188,6 +188,23 @@ and the seven v1 families are unchanged (digest `2ae6e16d…` on this branch).
   except `all`) is one family of tests. We report the count, the raw p < 0.05 cells, and which
   survive Holm and Benjamini-Hochberg at α = 0.05.
 
+### Amendment 2026-10-14 (c): months the engine cannot read (before the AFTER rerun)
+
+The first AFTER run crashed after ~1.5 h and wrote no report, so no result was seen. The app's
+own month reading, called for a native born in 1900, searches a Sade Sati cycle that starts
+before DE421's first date (1899-07-29) and raises. The skyfield error also cannot be pickled,
+so one worker's failure killed the whole pool. The app has the same limitation: its predictive
+run fails for such a birth.
+
+- **Rule.** If the engine's month reading raises an ephemeris-range error for any month of an
+  event's window, AFTER excludes the event and lists it with the reason "the engine's month
+  reading reaches outside the ephemeris". Only disputes events (legal, accident) can hit this,
+  because only they call the reading.
+- **Same events in both runs.** The headline BASELINE is rerun on the same 3,000-native sample
+  with exactly those events dropped, using the same harness code from a private driver. Both
+  runs then score identical events. The BASELINE already run on the full sample is reported
+  too, labelled with its n.
+
 ## Results: baseline 2026-10-14 (SYNTHETIC, harness sanity only, not evidence)
 
 30 random-month events, pre-registered settings. Expected: lift near 1, nothing significant.
