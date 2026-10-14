@@ -63,7 +63,7 @@
     "@almamesh/memory": "workspace:*",
     "@almamesh/shared-types": "workspace:*",
     "@almamesh/store": "workspace:*",
-    "@assistant-ui/react": "0.15.26",
+    "@assistant-ui/react": "0.15.27",
     "@gainratio/errors": "^0.2.1",
     "@gainratio/receipt-ui": "0.3.0",
     "@emotion/react": "^11.14.0",
@@ -101,7 +101,7 @@
     "zustand": "^5.0.14"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^5.20261010.1",
+    "@cloudflare/workers-types": "^5.20261011.1",
     "@gainratio/avow": "^0.5.3",
     "@playwright/test": "1.65.0-alpha-2026-10-13",
     "@resvg/resvg-js": "^2.6.2",
