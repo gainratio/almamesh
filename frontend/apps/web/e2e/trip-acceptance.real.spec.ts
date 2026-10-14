@@ -183,8 +183,10 @@ interface ReadingLike {
   readonly sky?: ReadonlyArray<{ readonly tags?: readonly string[] }>;
 }
 
+/** Completed readings. A repeated identical call gets a pointer to the first result (no period): not a reading. */
 function readings(rows: readonly ToolRow[]): ReadingLike[] {
-  return rows.filter((row) => row.name === 'get_period_reading' && row.status === 'complete').map((row) => row.result as ReadingLike);
+  return rows.filter((row) => row.name === 'get_period_reading' && row.status === 'complete')
+    .map((row) => row.result as ReadingLike).filter((reading) => reading?.period !== undefined);
 }
 
 function matches(period: Period | undefined, expectation: Expectation): boolean {
