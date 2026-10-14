@@ -22,7 +22,12 @@ from almamesh.retrodiction.harness import EventScores, Exclusion, Summary, combi
 from almamesh.retrodiction.indicators import FAMILIES
 from almamesh.retrodiction.mapping import preregistration_digest
 from almamesh.retrodiction.report import score_file
-from almamesh.retrodiction.stats import benjamini_hochberg, fractional_hit, holm
+from almamesh.retrodiction.stats import (
+    FFT_P_FLOOR,
+    benjamini_hochberg,
+    fractional_hit,
+    holm,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Collection, Mapping, Sequence
@@ -34,7 +39,9 @@ ALL_AREAS: Final[str] = "all areas"
 ADDED_FAMILY: Final[str] = "exact_transits"
 _RESAMPLES: Final[int] = 2000
 _PLANTED_TOLERANCE: Final[float] = 1e-6
-_PLANTED_MAX_P: Final[float] = 1e-20
+# The planted p must sit at the null's resolution: below 1e-20 on the direct path, at the
+# FFT path's floor (1e-12, amendment b) for large sets. Amendment (e).
+_PLANTED_MAX_P: Final[float] = FFT_P_FLOOR
 
 
 class Ratio(BaseModel):
@@ -169,11 +176,11 @@ def corrected(pvalues: Mapping[tuple[str, int], float], alpha: float = 0.05) -> 
 def control_verdicts(
     planted_lift: float, planted_p: float, shuffled_ci: tuple[float, float], n: int, k: int
 ) -> ControlVerdicts:
-    """Planted must reach N/k with p < 1e-20; the shifted-months CI must include 1."""
+    """Planted must reach N/k with p at the null's floor; the shifted CI must include 1."""
     ceiling = n / k
     return ControlVerdicts(
         planted_ok=abs(planted_lift - ceiling) <= _PLANTED_TOLERANCE * ceiling
-        and planted_p < _PLANTED_MAX_P,
+        and planted_p <= _PLANTED_MAX_P,
         shuffled_ok=shuffled_ci[0] <= 1.0 <= shuffled_ci[1],
     )
 

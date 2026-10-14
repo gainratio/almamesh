@@ -64,7 +64,7 @@ def _controls(card: Scorecard) -> list[str]:
     return [
         f"## Controls ({verdict})",
         "",
-        *_control_lines("planted (must be N/k, p < 1e-20)", card.planted),
+        *_control_lines("planted (must be N/k, p at the 1e-12 floor)", card.planted),
         *_control_lines("shifted months (CI must include 1)", card.shuffled),
         f"- chart swap: {card.swap_natives_dropped} natives alone in their birth year dropped; "
         f"exclusions {card.swap_exclusions or 'none'}",

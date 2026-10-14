@@ -186,3 +186,14 @@ def test_should_report_added_over_baseline_hits_when_the_family_doubles_them() -
     assert ratio.value == pytest.approx(2.0)
     assert ratio.low is not None and ratio.high is not None
     assert 1.0 < ratio.low <= 2.0 <= ratio.high
+
+
+def test_should_accept_a_planted_p_at_the_fft_floor_when_the_set_is_large() -> None:
+    # Regression (DEV run 2026-10-14): thousands of events take the FFT path, whose p is
+    # floored at 1e-12, so "p < 1e-20" voided a planted control that was exactly N/k.
+    floor = control_verdicts(
+        planted_lift=73 / 3, planted_p=1e-12, shuffled_ci=(0.9, 1.1), n=73, k=3
+    )
+    weak = control_verdicts(planted_lift=73 / 3, planted_p=1e-11, shuffled_ci=(0.9, 1.1), n=73, k=3)
+    assert floor.planted_ok is True
+    assert weak.planted_ok is False

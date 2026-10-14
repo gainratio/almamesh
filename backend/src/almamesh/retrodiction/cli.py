@@ -6,6 +6,7 @@
     uv run almamesh-eval retrodiction --adb ~/.almamesh/retrodiction/adb/adb_export_X.xml
     uv run almamesh-eval adb-split --adb ~/.almamesh/retrodiction/adb/adb_export_X.xml
     uv run almamesh-eval retrodiction --adb ... --split dev
+    uv run almamesh-eval scorecard --adb ... --split dev --workers 6
 
 Refusals print one line and exit 2 with nothing written.
 """
