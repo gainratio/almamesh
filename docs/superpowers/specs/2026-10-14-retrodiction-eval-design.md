@@ -205,6 +205,86 @@ run fails for such a birth.
   runs then score identical events. The BASELINE already run on the full sample is reported
   too, labelled with its n.
 
+### Amendment 2026-10-14 (d): DEV/HELD-OUT split and technique #1, exact transits
+
+Written and committed before any scoring of either the split or the new family. Branch
+`feat/exact-transits` (local). The licence still gates tuning: nothing below is fitted.
+
+**(d1) The split is done, and from now on every exploratory run is DEV only.**
+`retrodiction/split.py` implements the learning-loop spec §2: by native, 50/50 with
+`random.Random(20261015)` over the charted (post-1900) natives in file order. The export
+digest is SHA-256 over each kept native's id, birth instant, coordinates and events in file
+order (content, not container, so the `.xml` and the `.zip` agree). The split digest is
+SHA-256 over that, the seed and both sorted id lists:
+`299ec3937460a109c44a125943bc8f8f77da57259c545094f43c5d7c008664ca`
+(adb_export_261012_2235: 10,124 charted natives, 5,062 DEV, 5,062 HELD-OUT). It is pinned in
+`ADB_SPLIT_DIGEST` and `tests/test_retrodiction_split.py`; a CI test pins the algorithm on a
+synthetic file, a local test reproduces the real digest when `ALMAMESH_ADB_EXPORT` is set.
+`almamesh-eval retrodiction --adb … --split dev` refuses a split that does not reproduce the
+pin; `--split held-out` also needs `--release-look`. The id lists sit beside the export
+(`split-299ec3937460.json`), never in git. The two earlier full-set runs saw every native in
+aggregate before the split; that is held-out look zero.
+
+**(d2) Technique #1, `exact_transits`: hypothesis, formula and constants (fixed now).**
+
+- *Hypothesis.* Degree-level contacts of the slow grahas with the natal significators of a
+  life area, strongest when the contacted graha is a running dasha lord, put the month of a
+  recorded event higher in its ±36 window than the sign-level families alone do. Directional
+  prediction: for **career** (career_change, job_start, job_loss) and **relationships**
+  (relationship_start, marriage, separation) the k=3 hit rate with the family is above the
+  rate without it. Disputes (legal, accident, where Mars joins) is secondary. The other areas
+  are exploratory.
+- *Movers.* Transiting Saturn, Jupiter, Rahu and Ketu (Lahiri, mean nodes: the engine's
+  defaults). Mars joins only for a target that lists Mars as a karaka, which is exactly the
+  disputes target (in the engine: a recipe with `mars_windows`, which is obstacles).
+- *Natal points.* The nine natal grahas' sidereal longitudes and the lagna's.
+- *Contact.* A mover's longitude within **1.0°** of a natal point (conjunction only, no
+  aspects) at any instant of the calendar month (UTC, [1st 00:00, next 1st 00:00)). In-orb
+  spells come from root-finding |gap| − orb with the shared `transits/ingress.py` finder,
+  stepping 2 days for Mars and 5 days for the others, so every retrograde re-entry counts.
+  A spell shorter than one step (a mover grazing the orb edge at a station) can be missed;
+  that is accepted and stated, not tuned. Exact-hit dates (gap = 0) come from the same finder.
+- *Relevant points for a target.* Natal grahas that rule a target house, occupy a target
+  house, or are target karakas (the engine's `significator_grahas` rule; an
+  `activation_only` recipe's karakas do not count), plus the lagna when house 1 is a target.
+- *Score.* 0.5 if some mover contacts a relevant point in the month, plus 0.5 if a contacted
+  relevant point is the running Vimshottari maha or antar lord at some time in the month.
+  So 0, 0.5 or 1.
+- *Why 1°.* Parashari transits are read by sign; degree contact is later practice with no
+  canonical orb. 1° is the narrow end of the usual 1-3° range, chosen because the hypothesis
+  is "exact contact". It is one fixed constant. If any other orb is ever run, every run is
+  logged in the results with its count; none is planned.
+- *Pre-1900 births* stay excluded (Lahiri table from 1900-01-01, DE421 from 1899-07-29); the
+  contact scan only reads months after birth, so it never leaves the ephemeris.
+- *Engine.* The same contact search and score live in the engine (`transits/exact.py`,
+  `domains/exact_signals.py`) behind `ExactTransitSettings.enabled`, which defaults off: the
+  shipped reading does not use the family until it passes the promotion rule on HELD-OUT.
+- Adding the family changes the pre-registration digest; the new literal is pinned in
+  `tests/test_retrodiction_mapping.py` in the same commit as the family, before any run.
+
+**(d3) The DEV run (the only run of this amendment).**
+
+- DEV half, window ±36, k 3 and 6, all v1 families plus `exact_transits`. `--workers` ≤ 6.
+  If the measured rate puts the run above 4 h, a seeded sample of 2,000 DEV natives
+  (`--sample-natives 2000 --seed 20261015`) is used instead, and the results say so.
+- *Comparison, per life area* (the mapping's `area` column; relocation is `none`):
+  `without:exact_transits` (BASELINE = the v1 `all`) vs `all` (+EXACT) at k=3 and 6, each
+  with n, lift [95% CI] and p, and the ratio of hit rates +EXACT / BASELINE with a 95%
+  bootstrap CI over natives (2,000 resamples, seed 20261015).
+- *Multiple comparisons.* One family: the +EXACT per-area p-values at k=3 and k=6. Holm and
+  Benjamini-Hochberg at α = 0.05; the count and the survivors are reported.
+- *Chart-swap control (learning-loop §8).* Every DEV native's events are re-scored on the
+  chart of another DEV native born in the same UTC calendar year: within each birth year, in
+  file order, native i takes the chart of native i+1 (the last takes the first's). Natives
+  alone in their birth year, and windows that start before the partner's birth, drop out and
+  are counted. Reported per area for BASELINE and +EXACT beside the real rows.
+- *Shuffled-months null.* Every event month is moved by a seeded offset of 73 to 146 months,
+  either direction (`random.Random(20261015)`), so the true month is outside the new window;
+  out-of-range windows drop out. The run is void if its overall +EXACT lift CI excludes 1.
+- *Planted control.* A family scoring 1 in the event month and 0 elsewhere, over the real
+  DEV windows. The run is void unless its lift is N/k within rounding and p < 1e-20.
+- DEV wins are not evidence (learning-loop §2). Nothing is promoted from this run.
+
 ## Results: baseline 2026-10-14 (SYNTHETIC, harness sanity only, not evidence)
 
 30 random-month events, pre-registered settings. Expected: lift near 1, nothing significant.

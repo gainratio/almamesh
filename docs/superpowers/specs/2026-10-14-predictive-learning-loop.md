@@ -73,6 +73,44 @@ Each PR adds one `IndicatorFamily`, a dated amendment holding its hypothesis, sc
 fixed constants (orbs included), then the dev scorecard. Orbs and weights are classical values
 from the cited text, never fitted, while the licence question is open.
 
+Technique #1's hypothesis, formula and constants are fixed in the eval spec's amendment (d).
+
+## 3b. A small interpretable model per life area (after the first techniques land)
+
+Added 2026-10-14 (amendment d). Licence-gated: see the last bullet.
+
+- **When.** After the first roadmap families have their own DEV scorecards, so the model has
+  real engine features to weigh. Not before: a model over sign-level features alone would
+  only re-weigh what already shows no lift.
+- **What.** One logistic regression per life area, nothing deeper. Rows are the months of
+  each DEV event window (the event month is 1, the other 72 are 0); features are the engine's
+  per-family month scores (exactly the `IndicatorFamily` columns the harness already
+  computes), standardised on DEV. L2 penalty with a fixed strength chosen before the fit, no
+  search over it, no interaction terms. Because each window has exactly one positive, the fit
+  is stratified by event (conditional logistic regression is the exact form; plain logistic
+  with per-window centring is the accepted approximation, chosen in the model PR's
+  amendment).
+- **Library.** Neither scikit-learn nor statsmodels is in `uv.lock` today. The model PR adds
+  **scikit-learn** (`LogisticRegression`) as an eval-only optional extra, never a runtime
+  dependency of the engine wheel; statsmodels only if coefficient standard errors are needed
+  and sklearn cannot give them. The shipped engine never imports either.
+- **Evaluation, once.** Fit on DEV, then score HELD-OUT a single time as a logged look, with
+  the same rules as a family: per area, the month score is the model's linear predictor, the
+  lift and its CI, Holm across areas, the ratio against the engine without the model, and the
+  chart-swap control (the model must beat its own chart-swapped score). It ships for an area
+  only if it passes §2's promotion rule; otherwise that area keeps the unweighted sum.
+- **What ships.** Coefficients only: a small typed data file
+  (`resources/area_weights.json`: area → intercept, feature name → weight, feature scaling,
+  DEV n, digests of split, mapping and engine tree) inside the signed engine bundle, read
+  through a Pydantic model that rejects unknown features and areas. No ADB id, row, date or
+  per-native value, ever. Tests: the file parses, every feature name is a live family, an
+  unknown feature is refused, and a missing file means the unweighted sum (fail closed to
+  today's behaviour). The bundle's content address changes with it, so it is reviewable.
+- **Licence gate.** Fitting on ADB is tuning. It waits for astro.com's written confirmation
+  that tuning on the export is allowed (thread with adbdata@astro.com pending). Until then
+  the model step may be built and tested on **synthetic data only** (planted-signal windows
+  and the synthetic null file); no fit on DEV, no coefficients from ADB.
+
 ## 4. Confidence calibration
 
 - **What is measured.** For each area and each engine label (agreement 0-3 and strength band),
