@@ -29,7 +29,7 @@ interface PlaceComboboxProps {
 }
 
 /** "Springfield" from "Springfield, Illinois, United States" and its region. */
-export function placeCity(place: ResolvedPlace): string {
+function placeCity(place: ResolvedPlace): string {
   const { label } = place.summary;
   const suffix = place.region ? `, ${place.region}` : '';
   return suffix && label.endsWith(suffix) ? label.slice(0, -suffix.length) : label;

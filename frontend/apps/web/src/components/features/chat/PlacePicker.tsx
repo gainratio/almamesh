@@ -25,7 +25,7 @@ function candidatesOf(result: PlaceLookup): readonly ResolvedPlace[] {
   return result.status === 'ambiguous' ? result.candidates : [];
 }
 
-export function toPinPlace(place: ResolvedPlace): PinPlace {
+function toPinPlace(place: ResolvedPlace): PinPlace {
   return { label: place.summary.label, timezone: place.summary.timezone, latitude: place.latitude, longitude: place.longitude };
 }
 
