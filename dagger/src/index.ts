@@ -54,6 +54,7 @@ import {
   validateBrowserJourneyExitCode,
 } from "./browserJourneyEvidence.js"
 import { nativeMacAcceptanceScript } from "./nativeMacAcceptance.js"
+import { fileCrashIssues, githubIssuesPort, parseCrashOutputs } from "./webkitCrashIssues.js"
 import {
   bindDeployTrigger,
   daggerAttemptScript,
@@ -141,6 +142,7 @@ const CONTRACT_TESTS = [
   "tests/dagger-toolchain-contract.test.ts",
   "tests/dagger-workflow-contract.test.ts",
   "tests/webkit-memory-baseline.test.ts",
+  "tests/webkit-crash-issues.test.ts",
 ]
 const SMOKE_OUTPUT_LINES = 60
 const NIGHTLY_REPORTS_DIR = "nightly-reports"
@@ -903,7 +905,7 @@ exec ${inline.join(" ")}`,
   ): Promise<string> {
     this.registryToken ??= githubToken
     const runRepository = requireAllowedRepository(repository)
-    // Dagger and WebKit (macOS) both trigger this; see deployTrigger.ts.
+    // Dagger and Safari (macOS) both trigger this; see deployTrigger.ts.
     const bound = await bindDeployTrigger({
       liveCommit: async () => parseLiveCommit(await dag.container().from(NODE_IMAGE)
         .withEnvVariable("DEPLOY_TRIGGER_NONCE", randomUUID())
@@ -999,6 +1001,19 @@ exec ${inline.join(" ")}`,
     const run = await this.liveSmokePass("fresh")
     if (!run.passed) throw new Error(`Live probe failed (fresh) against ${LIVE_ORIGIN}\n${run.output}`)
     return `Live probe passed (fresh) against ${LIVE_ORIGIN}\n${run.output}`
+  }
+  /**
+   * File each macOS WebKit crash signature as an issue (webkitCrashIssues.ts).
+   * `crashes` is `toJSON(needs.*.outputs.crashes)` from webkit-macos.yml. Never
+   * cached: a remembered run would skip this run's comments.
+   */
+  @func({ cache: "never" })
+  async fileWebkitCrashes(githubToken: Secret, repository: string, runId: string, crashes: string): Promise<string> {
+    if (!/^[1-9][0-9]{0,19}$/.test(runId)) throw new Error("Run id is invalid.")
+    const allowed = requireAllowedRepository(repository)
+    const port = githubIssuesPort(allowed, () => githubToken.plaintext())
+    const run = { runUrl: `https://github.com/${allowed}/actions/runs/${runId}`, date: new Date().toISOString().slice(0, 10) }
+    return (await fileCrashIssues(port, parseCrashOutputs(crashes), run)).join("\n")
   }
   @func()
   web(): Directory {

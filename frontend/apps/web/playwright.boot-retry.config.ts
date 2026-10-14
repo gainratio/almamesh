@@ -27,9 +27,8 @@ export default defineConfig({
   fullyParallel: false,
   forbidOnly: Boolean(process.env.CI),
   // No Playwright retries: the property under test IS a retry, and a blanket
-  // second run would hide a miss. The macOS WebKit lane allows at most one
-  // rerun of a test, only when its failure matches the known WebKit crash
-  // signature (scripts/webkitFlakeRetry.mjs); any other failure stays red.
+  // second run would hide a miss. On the macOS WebKit lane a WebKit crash is
+  // filed as an issue by its signature (scripts/crashReportSummary.mjs).
   retries: 0,
   workers: 1,
   reporter: process.env.CI ? [["github"], ["list"]] : "list",
