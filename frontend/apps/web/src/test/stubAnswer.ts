@@ -110,7 +110,12 @@ function themeOf(reading: ReadingLike) {
 export function periodAnswerFrom(readings: readonly ReadingLike[], opening = 'A steady stretch for work.'): Readonly<Record<string, unknown>> {
   const reading = readings[readings.length - 1]!;
   const rules = (lord: string) => [...(reading.lords?.find((row) => row.lord === lord)?.rules ?? [])];
-  const line = (lord: string) => ({ lord, rules: rules(lord), note: `${lord} sets the tone.` });
+  // A span across a dasha change names its later lords too (answer.ts checkCrossings).
+  const line = (lords: readonly { readonly lord: string }[]) => {
+    const [first, ...later] = lords.map((each) => each.lord);
+    const then = later.length > 0 ? `, then ${later.join(' and ')} takes over` : '';
+    return { lord: first!, rules: rules(first!), note: `${first} sets the tone${then}.` };
+  };
   const tag = readings.flatMap((each) => each.sky ?? []).flatMap((span) => span.tags)[0];
   const window = readings.flatMap((each) => each.windows ?? [])[0]?.date;
   return {
@@ -119,7 +124,7 @@ export function periodAnswerFrom(readings: readonly ReadingLike[], opening = 'A 
     period: reading.period.label ?? 'this period',
     place: reading.place?.label ?? '',
     opening,
-    dashas: { maha: line(reading.dashas.maha[0]!.lord), antar: line(reading.dashas.antar[0]!.lord), pratyantar: null },
+    dashas: { maha: line(reading.dashas.maha), antar: line(reading.dashas.antar), pratyantar: null },
     moon: tag ? [{ tag, meaning: 'The Moon colours the mood.' }] : [],
     // An obstacle is always named: a turn that read several spans may have one with an obstacles theme.
     themes: [{ ...themeOf(reading), text: 'Work asks for patience.', obstacle: 'Paperwork slows things down.' }],
