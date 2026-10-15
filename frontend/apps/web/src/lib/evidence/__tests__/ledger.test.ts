@@ -124,6 +124,19 @@ describe('the citation validator fails closed', () => {
     expect(result.accepted).toHaveLength(1);
   });
 
+  // Northstar, PR #366: annotation prose is user-facing reading text, so it passes the same
+  // reflection check as chat and the readings. A statement that foretells or guesses what the
+  // person lived through is rejected (counted), in any app language.
+  it('rejects an interpretation or guidance that foretells or guesses lived experience', () => {
+    const ledger = buildEvidenceLedger(nearCuspChart(), {
+      readings: [{ observation_id: 'lagna', interpretation: 'You will get married in 2027.' }],
+      general_guidance: ['Vas a conseguir un ascenso.', 'Patience with paperwork is a theme here.'],
+    });
+    expect(ledger.rows.find((row) => row.observation.id === 'lagna')?.interpretation).toBeNull();
+    expect(ledger.generalGuidance).toEqual(['Patience with paperwork is a theme here.']);
+    expect(ledger.rejectedCount).toBe(2);
+  });
+
   it('rejects a second interpretation of the same observation', () => {
     const ledger = buildEvidenceLedger(nearCuspChart(), {
       readings: [

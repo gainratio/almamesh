@@ -6,9 +6,11 @@ import { describe, expect, it, vi } from "vitest";
 import { LlmRequestError } from "../client";
 import type { ProviderConfig } from "../config";
 import { REASONING_TIMEOUT_MS, ReasoningTimeoutError } from "../reasoning";
+import { REFLECTION_WITHHELD, reflectionIssues } from "../reflection";
 import {
   ANSWER_TOOL_DESCRIPTION,
   NETWORK_RETRY_DELAY_MS,
+  REFLECTION_PROSE_ATTEMPTS,
   TOOL_LOOP_LIMITS,
   TOOL_TIMEOUT_MS,
   TOOLS_UNAVAILABLE_INSTRUCTION,
@@ -561,8 +563,10 @@ describe("rule 8: answer streaming and the prose fallback", () => {
     const pieces = ['{"headline":"Venus', ' rises","body":"Steady', ' work."}'];
     const { fetchImpl } = fakeEndpoint([{ calls: [call("a1", "answer", pieces)] }]);
     const { snapshots } = await collect(runToolTurn(options(fetchImpl)));
-    expect(snapshots[0]).toBe(render({ headline: "Venus" }, false));
-    expect(snapshots).toContain(render({ headline: "Venus rises", body: "Steady" }, false));
+    // Northstar, PR #366: a partial answer is shown a whole sentence (or line) at a time, each
+    // only after the reflection check passes it; a word still arriving is never shown.
+    expect(snapshots[0]).toBe("… Venus\n");
+    expect(snapshots).toContain("… Venus rises\n");
     expect(snapshots.at(-1)).toBe(FINAL);
     expect(new Set(snapshots).size).toBe(snapshots.length);
   });
@@ -578,6 +582,81 @@ describe("rule 8: answer streaming and the prose fallback", () => {
     expect(snapshots.at(-1)).toBe("Venus rises; steady work.");
     expect(result).toEqual({ answer: undefined });
     expect(o.rounds.at(-1)).toMatchObject({ round: 3, finishReason: "answer_fallback" });
+  });
+});
+
+// Northstar, PR #366: an answer that foretells, narrates the tools or guesses lived experience
+// never reaches the user unchecked, on any exit path. CONTRACT REVERSED: the prose fallback and
+// the tools-unavailable degrade used to stream the model's text with no check at all.
+describe("rule 8b: every exit path runs the reflection check", () => {
+  const BAD = '{"headline":1}';
+  const FORETELLS = "Venus highlights the 7th house. You will get married in 2027. Saturn rules the 10th.";
+  const REWORDED = "Venus highlights the 7th house and the Saturn chapter asks for patience.";
+  const never = (snapshots: readonly string[], words: string) => expect(snapshots.filter((s) => s.includes(words))).toEqual([]);
+
+  it("the prose fallback rewords a failing text once, and shows the rewording", async () => {
+    const { fetchImpl, requests } = fakeEndpoint([answer("a1", BAD), answer("a2", BAD), { text: FORETELLS }, { text: REWORDED }]);
+    const o = options(fetchImpl, { limits: { maxRounds: 2 } });
+    const { snapshots, result } = await collect(runToolTurn(o));
+    never(snapshots, "married");
+    expect(requests).toHaveLength(4);
+    const retry = messagesOf(requests[3]);
+    expect(retry.some((m) => m.role === "system" && m.content.includes('"You will get"'))).toBe(true);
+    expect(snapshots.at(-1)).toBe(REWORDED);
+    expect(result).toEqual({ answer: undefined });
+    expect(o.rounds.map((r) => r.finishReason).slice(-2)).toEqual(["answer_fallback", "answer_fallback"]);
+  });
+
+  it("the prose fallback withholds a text that still fails after its retry", async () => {
+    const { fetchImpl, requests } = fakeEndpoint([answer("a1", BAD), answer("a2", BAD), { text: FORETELLS }, { text: FORETELLS }]);
+    const o = options(fetchImpl, { limits: { maxRounds: 2 } });
+    const { snapshots, result } = await collect(runToolTurn(o));
+    never(snapshots, "married");
+    expect(requests).toHaveLength(2 + REFLECTION_PROSE_ATTEMPTS);
+    expect(snapshots.at(-1)).toBe(REFLECTION_WITHHELD.en);
+    expect(result).toEqual({ answer: undefined });
+    expect(o.statuses.at(-1)).toEqual({ phase: "complete" });
+  });
+
+  it("withholds in the answer's language", async () => {
+    const { fetchImpl } = fakeEndpoint([answer("a1", BAD), answer("a2", BAD), { text: FORETELLS }, { text: FORETELLS }]);
+    const o = options(fetchImpl, { limits: { maxRounds: 2 } });
+    const { snapshots } = await collect(runToolTurn({ ...o, answer: { ...o.answer, withheld: REFLECTION_WITHHELD.pt } }));
+    expect(snapshots.at(-1)).toBe(REFLECTION_WITHHELD.pt);
+  });
+
+  it("the tools-unavailable degrade rewords, then withholds behind the notice", async () => {
+    const reject: FakeTurn = { status: 400, errorBody: '{"error":{"message":"tools are not supported by this model"}}' };
+    const { fetchImpl, requests } = fakeEndpoint([reject, { text: FORETELLS }, { text: FORETELLS }]);
+    const { snapshots, result } = await collect(runToolTurn(options(fetchImpl)));
+    never(snapshots, "married");
+    expect(requests).toHaveLength(1 + REFLECTION_PROSE_ATTEMPTS);
+    expect(snapshots[0]).toBe(TOOLS_UNAVAILABLE_NOTICE);
+    expect(snapshots.at(-1)).toBe(`${TOOLS_UNAVAILABLE_NOTICE}${REFLECTION_WITHHELD.en}`);
+    expect(result).toEqual({ answer: undefined });
+  });
+
+  it("a streamed answer never shows a rejected sentence, and the corrected answer replaces it", async () => {
+    const Checked = Answer.superRefine((value, ctx) => {
+      if (reflectionIssues(value.body).length > 0) ctx.addIssue({ code: "custom", message: "reword", path: ["body"] });
+    });
+    const pieces = ['{"headline":"Venus rises","body":"Steady work. You will', " get married in 2027.", ' Saturn rules the 10th."}'];
+    const { fetchImpl } = fakeEndpoint([{ calls: [call("a1", "answer", pieces)] }, answer("a2")]);
+    const o = options(fetchImpl);
+    const { snapshots, result } = await collect(runToolTurn({ ...o, answer: { schema: Checked, render } }));
+    never(snapshots, "married");
+    never(snapshots, "You will");
+    expect(snapshots).toContain("… Venus rises\n\nSteady work. ");
+    expect(snapshots.at(-1)).toBe(FINAL);
+    expect(result).toEqual({ answer: { headline: "Venus rises", body: "Steady work." } });
+  });
+
+  it("a validated answer whose rendered text still fails is withheld, not shown", async () => {
+    const { fetchImpl } = fakeEndpoint([answer("a1", '{"headline":"Venus rises","body":"You will get married in 2027."}')]);
+    const { snapshots, result } = await collect(runToolTurn(options(fetchImpl)));
+    never(snapshots, "married");
+    expect(snapshots.at(-1)).toBe(REFLECTION_WITHHELD.en);
+    expect(result).toEqual({ answer: undefined });
   });
 });
 
@@ -1075,7 +1154,8 @@ describe("error branches", () => {
   it("whitespace before the answer JSON yields nothing until there is an object", async () => {
     const { fetchImpl } = fakeEndpoint([{ calls: [call("a1", "answer", ["  ", '{"headline":"Venus rises","body":"Steady work."}'])] }]);
     const { snapshots } = await collect(runToolTurn(options(fetchImpl)));
-    expect(snapshots).toEqual([render({ headline: "Venus rises", body: "Steady work." }, false), FINAL]);
+    // The partial render's last sentence is held until the answer is whole (reflection gate).
+    expect(snapshots).toEqual(["… Venus rises\n", FINAL]);
   });
 });
 

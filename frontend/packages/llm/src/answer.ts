@@ -8,7 +8,7 @@
 // `oneOf`, so `kind` picks which nullable keys must be filled and the
 // refinement enforces it; the parsed value is then exactly a `ChatAnswer`
 // (plus null keys of the other kind).
-import { lifeGuesses, predictionClaims, toolNarration } from "./reflection";
+import { REFLECTION_WITHHELD, reflectionIssues, type ReflectionIssueKind } from "./reflection";
 import { z, type AnswerSpec } from "./toolLoop";
 
 export const GRAHAS = ["sun", "moon", "mars", "mercury", "jupiter", "venus", "saturn", "rahu", "ketu"] as const;
@@ -115,7 +115,7 @@ type Language = RenderOptions["language"];
 const dashaLineSchema = z.object({
   lord: z.enum(GRAHAS),
   rules: z.array(z.number().int().min(1).max(12)).describe("the houses this graha rules in this chart, from the reading"),
-  note: z.string().describe("one plain sentence on what this chapter brings now"),
+  note: z.string().describe("one plain sentence on what this chapter highlights"),
 });
 
 const dashasSchema = z.object({ maha: dashaLineSchema, antar: dashaLineSchema, pratyantar: dashaLineSchema.nullable() });
@@ -403,20 +403,26 @@ function answerTexts(value: Wire): (readonly [string, (string | number)[]])[] {
   return texts;
 }
 
-/** Reflection, not prediction (2026-10-15): no answer text claims to foretell or says what a period brought. */
-function checkReflection(value: Wire, language: Language, issue: Issue): void {
+/** The fix each kind of reflection issue sends back, with the words to remove. */
+const REFLECTION_FIX: Readonly<Record<ReflectionIssueKind, string>> = {
+  prediction: "Reflection, not prediction: say what the chart highlights, not what the period brought or will bring",
+  foretelling: "Reflection, not foretelling: say what the indicators highlight, never what will happen to the person or what is in store",
+  narration: "Leave out what the reading does not cover: name the indicator and what it highlights, or drop the line",
+  life_guess: "Do not describe what the person went through or felt: say what the indicators highlight",
+  unreadable_script: "Write the answer in the language you were asked to use",
+};
+
+/**
+ * Reflection, not prediction (2026-10-15): no answer text foretells, says what a period brought,
+ * narrates the tools or guesses lived experience. Every app language is read whatever the answer's
+ * language is (northstar, PR #366: a Spanish claim on an English page went through).
+ */
+function checkReflection(value: Wire, issue: Issue): void {
   for (const [text, path] of answerTexts(value)) {
-    const claims = predictionClaims(text, language);
-    if (claims.length > 0) {
-      issue(`Reflection, not prediction: say what the chart highlights, not what the period brought or will bring (remove "${claims.join('", "')}").`, path);
-    }
-    const narration = toolNarration(text, language);
-    if (narration.length > 0) {
-      issue(`Leave out what the reading does not cover: name the indicator and what it highlights, or drop the line (remove "${narration.join('", "')}").`, path);
-    }
-    const guesses = lifeGuesses(text, language);
-    if (guesses.length > 0) {
-      issue(`Do not describe what the person went through or felt: say what the indicators highlight (remove "${guesses.join('", "')}").`, path);
+    const found = reflectionIssues(text);
+    for (const kind of Object.keys(REFLECTION_FIX) as ReflectionIssueKind[]) {
+      const phrases = found.filter((entry) => entry.kind === kind).map((entry) => entry.phrase);
+      if (phrases.length > 0) issue(`${REFLECTION_FIX[kind]} (remove "${phrases.join('", "')}").`, path);
     }
   }
 }
@@ -455,7 +461,7 @@ export function answerSchema(grounding: () => AnswerGrounding, language: Languag
     const { readings } = grounding();
     if (value.kind === "general") checkGeneral(value, readings, issue);
     else checkPeriod(value, readings, language, issue);
-    checkReflection(value, language, issue);
+    checkReflection(value, issue);
   });
   // The refinement guarantees the kind's keys are filled, so the parsed wire value is a ChatAnswer.
   return schema as unknown as z.ZodType<ChatAnswer>;
@@ -867,5 +873,6 @@ export function chatAnswerSpec(grounding: () => AnswerGrounding, o: RenderOption
     description: CHAT_ANSWER_DESCRIPTION,
     prepare: (input) => fillFromReadings(input, grounding().readings, o.language),
     render: (value, final) => (final ? renderAnswer(placed(value as ChatAnswer), o) : renderPartialAnswer(placed(value as DeepPartial<ChatAnswer>), o)),
+    withheld: REFLECTION_WITHHELD[o.language],
   };
 }
