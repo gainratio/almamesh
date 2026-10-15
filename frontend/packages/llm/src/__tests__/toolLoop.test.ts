@@ -252,6 +252,12 @@ describe("rule 3: tools are zod-typed, strict-compatible, and lenient about omit
     expect(period?.function.parameters.required).toEqual(["start", "end"]);
   });
 
+  it("an answer spec's own description replaces the default one on the wire", async () => {
+    const { fetchImpl, requests } = fakeEndpoint([answer("a1")]);
+    await collect(runToolTurn(options(fetchImpl, { answer: { schema: Answer, render, description: "Copy the cite." } })));
+    expect(toolsOf(requests[0]).find((t) => t.function.name === "answer")?.function.description).toBe("Copy the cite.");
+  });
+
   it("offers the answer tool with its description", async () => {
     const { fetchImpl, requests } = fakeEndpoint([answer("a1")]);
     await collect(runToolTurn(options(fetchImpl)));

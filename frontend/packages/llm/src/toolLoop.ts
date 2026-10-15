@@ -125,6 +125,8 @@ export interface ToolLoopLimits {
 
 export interface AnswerSpec<A> {
   readonly schema: z.ZodType<A>;
+  /** The answer tool's description on the wire (default {@link ANSWER_TOOL_DESCRIPTION}). */
+  readonly description?: string;
   render(partial: Partial<A>, final: boolean): string;
 }
 
@@ -515,7 +517,7 @@ function toolSet<A>(o: RunToolTurnOptions<A>, signal: AbortSignal, reads: ReadPr
   const tools: ToolSet = {};
   for (const def of o.tools) tools[def.name] = sdkTool(def, runtime);
   tools[ANSWER_TOOL_NAME] = tool({
-    description: ANSWER_TOOL_DESCRIPTION,
+    description: o.answer.description ?? ANSWER_TOOL_DESCRIPTION,
     inputSchema: lenientSchema(o.answer.schema),
     ...(runtime.strict ? { strict: true } : {}),
   });
@@ -528,7 +530,7 @@ function wireDefinition(name: string, description: string, input: z.ZodType): un
 
 function turnBudget<A>(o: RunToolTurnOptions<A>): TurnBudget {
   const definitions = new Map<string, unknown>(o.tools.map((t) => [t.name, wireDefinition(t.name, t.description, t.input)]));
-  definitions.set(ANSWER_TOOL_NAME, wireDefinition(ANSWER_TOOL_NAME, ANSWER_TOOL_DESCRIPTION, o.answer.schema));
+  definitions.set(ANSWER_TOOL_NAME, wireDefinition(ANSWER_TOOL_NAME, o.answer.description ?? ANSWER_TOOL_DESCRIPTION, o.answer.schema));
   const compactors = new Map(o.tools.flatMap((t) => (t.compact ? [[t.name, t.compact.bind(t)] as const] : [])));
   return { limit: turnTokenBudget(o.contextTokens), definitions, compactors, calibration: undefined, closed: false, plans: new Map(), reported: new Map() };
 }

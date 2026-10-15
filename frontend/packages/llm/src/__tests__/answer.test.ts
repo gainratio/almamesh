@@ -155,8 +155,24 @@ describe("answerSchema: grounding refinements say the fix", () => {
     for (const key of ["period", "opening", "dashas", "moon", "themes", "windows"]) {
       expect(schema.properties[key]?.description, key).toMatch(/^kind "period": required\b/);
     }
-    expect(schema.properties.windows?.description).toMatch(/dated days from the reading/);
-    expect(schema.properties.moon?.description).toMatch(/Moon tags from the reading/);
+    // Task 10e: the three keys a model most often left empty point at the reading's cite.
+    expect(schema.properties.dashas?.description).toBe('kind "period": required, copy lords and houses from the reading\'s cite');
+    expect(schema.properties.moon?.description).toBe('kind "period": required, copy from the reading\'s cite.moon; [] if none');
+    expect(schema.properties.windows?.description).toBe('kind "period": required, copy from the reading\'s cite.windows; [] if none');
+  });
+
+  it("the answer tool's description tells the model to copy the facts from each reading's cite", async () => {
+    const EN = { voice: "layman", language: "en" } as const;
+    const spec = chatAnswerSpec(grounded(), EN);
+    expect(spec.description).toBe(
+      "Submit the final answer to the user. Call it once, last, after the readings you need. " +
+        "Copy the facts from each reading's cite. If the arguments are rejected, fix the named fields and call it again.",
+    );
+    const { fetchImpl, requests } = fakeEndpoint([{ calls: [{ id: "a1", name: "answer", args: JSON.stringify(wire(ANSWER)) }] }]);
+    const config: ProviderConfig = { engine: "openai-http", model: "deepseek/deepseek-chat", privacyMode: "cloud_premium", baseUrl: "https://openrouter.ai/api/v1", apiKey: "k" };
+    await collect(runToolTurn({ config, messages: [{ role: "user", content: "How is September 2019?" }], tools: [], answer: chatAnswerSpec(grounded(SEPTEMBER), EN), readFirst: false, now: new Date("2026-10-14T00:00:00Z"), fetchImpl }));
+    const tools = (requests[0]?.body.tools ?? []) as { function: { name: string; description: string } }[];
+    expect(tools.find((tool) => tool.function.name === "answer")?.function.description).toBe(spec.description);
   });
 
   it("the maha lord must come from the reading", () => {

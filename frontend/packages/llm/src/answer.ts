@@ -135,10 +135,10 @@ const windowLineSchema = z.object({
 const PERIOD_KEY_TEXT = {
   period: 'e.g. "September 2019"',
   opening: "2-3 sentences answering the question",
-  dashas: "lords and the houses they rule",
-  moon: "Moon tags from the reading; [] if none",
+  dashas: "copy lords and houses from the reading's cite",
+  moon: "copy from the reading's cite.moon; [] if none",
   themes: "at least one",
-  windows: "dated days from the reading; [] if none",
+  windows: "copy from the reading's cite.windows; [] if none",
 } as const;
 
 const required = (key: keyof typeof PERIOD_KEY_TEXT): string => `kind "period": required, ${PERIOD_KEY_TEXT[key]}`;
@@ -659,11 +659,17 @@ function withReadingPlace<T>(value: T, readings: readonly GroundingReading[]): T
   return label ? ({ ...v, place: label } as T) : value;
 }
 
+/** The answer tool's description: the loop's default, plus where the facts come from (each read_period result's cite). */
+export const CHAT_ANSWER_DESCRIPTION =
+  "Submit the final answer to the user. Call it once, last, after the readings you need. " +
+  "Copy the facts from each reading's cite. If the arguments are rejected, fix the named fields and call it again.";
+
 /** The tool loop's answer spec: this schema, rendered in the reader's voice; a null place is the reading's. */
 export function chatAnswerSpec(grounding: () => AnswerGrounding, o: RenderOptions): AnswerSpec<ChatAnswer> {
   const placed = <T>(value: T): T => withReadingPlace(value, grounding().readings);
   return {
     schema: answerSchema(grounding, o.language),
+    description: CHAT_ANSWER_DESCRIPTION,
     render: (value, final) => (final ? renderAnswer(placed(value as ChatAnswer), o) : renderPartialAnswer(placed(value as DeepPartial<ChatAnswer>), o)),
   };
 }
