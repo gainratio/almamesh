@@ -301,6 +301,29 @@ describe("report section time caps", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
+  it("defaults: the 300 s cap spans the retry (a 503 at 200 s, then a stall, still fails at 300 s)", async () => {
+    vi.useFakeTimers();
+    let attempts = 0;
+    const { fetchImpl } = fetchWith({
+      core: () => {
+        attempts += 1;
+        if (attempts > 1) return never();
+        return new Promise<Response>((resolve) => {
+          setTimeout(() => resolve(new Response("upstream down", { status: 503 })), 200_000);
+        });
+      },
+    });
+    const events: NatalInterpretationEvent[] = [];
+    const run = drainInto(streamNatalInterpretation({ chart: REPORT_RAW_CHART, asOf: REPORT_AS_OF, config: OPENROUTER, fetchImpl }), events);
+    await vi.advanceTimersByTimeAsync(299_999);
+    expect(attempts).toBe(2);
+    expect(errorsOf(events)).toEqual([]);
+    await vi.advanceTimersByTimeAsync(1);
+    await settle(run);
+    expect(errorsOf(events)[0]).toMatchObject({ section: "core", timeout: { kind: "total", limitMs: 300_000 } });
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it("local: legacy natal sections keep no cap (a weak device may be slow but still working)", async () => {
     const controller = new AbortController();
     const { fetchImpl, signals } = fetchWith({ core: never });

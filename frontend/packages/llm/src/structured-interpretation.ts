@@ -182,9 +182,9 @@ export interface StructuredInterpretationParams {
    */
   readonly promptSet?: ReportPromptSet;
   /**
-   * Report sections only, remote endpoints only: total wall-clock cap per
-   * section in ms (default REPORT_SECTION_TIMEOUT_MS). Local endpoints have no
-   * total cap. Legacy (non-report) sections are never capped.
+   * Remote endpoints only: total wall-clock cap per section in ms (default
+   * REPORT_SECTION_TIMEOUT_MS), for report and legacy sections alike. Local
+   * endpoints have no total cap.
    */
   readonly sectionTimeoutMs?: number;
   /**
