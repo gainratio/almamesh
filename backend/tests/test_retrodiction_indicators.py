@@ -7,10 +7,13 @@ from dataclasses import replace
 import pytest
 
 from almamesh.constants.astrology import PlanetName as P
+from almamesh.domains.ashtakavarga_signals import BAV_DASHA_MOVERS, BinduTable
+from almamesh.retrodiction import indicators as indicators_module
 from almamesh.retrodiction.indicators import (
     ENGINE_OBSTACLES,
     FAMILIES,
     SHIPPED_FAMILIES,
+    SKY_GRAHAS,
     MonthSky,
     NatalFrame,
     Target,
@@ -45,7 +48,16 @@ FRAME = NatalFrame(
     },
 )
 CAREER = Target(houses=frozenset({10}), karakas=frozenset())
-QUIET_SIGNS = {P.JUPITER: 1, P.SATURN: 1, P.MARS: 1, P.RAHU: 1, P.KETU: 7}
+QUIET_SIGNS = {
+    P.JUPITER: 1,
+    P.SATURN: 1,
+    P.MARS: 1,
+    P.RAHU: 1,
+    P.KETU: 7,
+    P.SUN: 1,
+    P.MERCURY: 1,
+    P.VENUS: 1,
+}
 
 
 def _sky(*running: set[P], yogini: P | None = None, **signs: int) -> MonthSky:
@@ -173,3 +185,86 @@ def test_engine_obstacles_is_silent_and_lazy_for_any_other_target() -> None:
 
     sky = replace(_sky({P.MOON}, {P.MOON}, {P.MOON}), obstacles=boom)
     assert _score("engine_obstacles", sky, CAREER) == 0.0
+
+
+# --- Technique #3, ashtakavarga_transits (amendment g2) --------------------------------
+# CAREER's 10th is Capricorn (9) from the Aries lagna and Aries (0) from the Cancer Moon.
+CAPRICORN, ARIES, TAURUS = 9, 0, 1
+_SEVEN = (P.SUN, P.MOON, P.MARS, P.MERCURY, P.JUPITER, P.VENUS, P.SATURN)
+
+
+def _row(**by_sign: int) -> tuple[int, ...]:
+    """A 12-sign row: zero except the named sign indices (``s9=30``)."""
+    return tuple(by_sign.get(f"s{i}", 0) for i in range(12))
+
+
+BINDUS = BinduTable(
+    sav=_row(s9=30, s0=27, s1=40),
+    bav={g: _row() for g in _SEVEN}
+    | {P.JUPITER: _row(s9=5, s1=8), P.SATURN: _row(s9=2), P.SUN: _row(s0=4)},
+)
+AV_FRAME = replace(FRAME, bindus=BINDUS)
+
+
+def _av(sky: MonthSky, target: Target = CAREER) -> float:
+    return family_scores(AV_FRAME, sky, target)["ashtakavarga_transits"]
+
+
+def test_should_score_one_when_jupiter_is_on_target_with_sav_and_own_bav_strong() -> None:
+    assert _av(_sky({P.MOON}, {P.MOON}, {P.MOON}, jupiter=CAPRICORN)) == 1.0
+
+
+def test_should_score_half_when_only_the_sav_clears_28() -> None:
+    assert _av(_sky({P.MOON}, {P.MOON}, {P.MOON}, saturn=CAPRICORN)) == 0.5
+
+
+def test_should_score_zero_when_on_target_but_sav_27_and_bav_below_4() -> None:
+    assert _av(_sky({P.MOON}, {P.MOON}, {P.MOON}, saturn=ARIES)) == 0.0
+
+
+def test_should_score_zero_when_strong_bindus_sit_off_target() -> None:
+    # Taurus holds SAV 40 and Jupiter BAV 8, but it is the 2nd/11th, not the 10th
+    assert _av(_sky({P.MOON}, {P.MOON}, {P.MOON}, jupiter=TAURUS)) == 0.0
+
+
+def test_should_take_the_strongest_on_target_mover() -> None:
+    sky = _sky({P.MOON}, {P.MOON}, {P.MOON}, jupiter=CAPRICORN, saturn=ARIES)
+    assert _av(sky) == 1.0
+
+
+def test_should_count_a_running_maha_or_antar_lord_as_a_mover() -> None:
+    # The Sun on Aries (BAV 4) counts only while it runs as maha or antar lord
+    assert _av(_sky({P.SUN}, {P.MOON}, {P.MOON}, sun=ARIES)) == 0.5
+    assert _av(_sky({P.MOON}, {P.SUN}, {P.MOON}, sun=ARIES)) == 0.5
+    assert _av(_sky({P.MOON}, {P.MOON}, {P.SUN}, sun=ARIES)) == 0.0
+
+
+def test_should_score_zero_for_a_frame_without_bindus() -> None:
+    assert (
+        family_scores(FRAME, _sky({P.MOON}, {P.MOON}, {P.MOON}, jupiter=CAPRICORN), CAREER)[
+            "ashtakavarga_transits"
+        ]
+        == 0.0
+    )
+
+
+def test_should_delegate_the_ashtakavarga_rule_to_the_engine_seam(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Given the seam replaced by a recorder
+    seen: list[tuple[frozenset[P], bool, bool]] = []
+
+    def recorder(table, signs, movers, on_target) -> float:  # noqa: ANN001
+        seen.append((movers, on_target(CAPRICORN), on_target(TAURUS)))
+        return 0.25
+
+    monkeypatch.setattr(indicators_module, "ashtakavarga_score", recorder)
+    # When
+    score = _av(_sky({P.VENUS}, {P.MARS}, {P.SUN}))
+    # Then the family returns the seam's value, with the seam's movers and target test
+    assert score == 0.25
+    assert seen == [(frozenset({P.JUPITER, P.SATURN, P.VENUS, P.MARS}), True, False)]
+
+
+def test_should_read_every_bav_mover_in_the_month_sky() -> None:
+    assert BAV_DASHA_MOVERS <= set(SKY_GRAHAS)

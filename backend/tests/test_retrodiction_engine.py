@@ -9,8 +9,9 @@ from datetime import UTC, datetime
 import pytest
 from skyfield.errors import EphemerisRangeError
 
-from almamesh.calculations import SkyfieldAstronomy
+from almamesh.calculations import SkyfieldAstronomy, calculate_sidereal_context
 from almamesh.constants.astrology import PlanetName as P
+from almamesh.domains.ashtakavarga_signals import BinduTable
 from almamesh.domains.exact_signals import SLOW_MOVERS
 from almamesh.retrodiction import engine as engine_module
 from almamesh.retrodiction.engine import (
@@ -20,6 +21,7 @@ from almamesh.retrodiction.engine import (
 )
 from almamesh.retrodiction.events import Birth, LifeEvent
 from almamesh.retrodiction.harness import movers_for
+from almamesh.strength.ashtakavarga import compute_ashtakavarga
 from almamesh.transits.exact import astro_movers, exact_hits
 
 SYNTHETIC = Birth(
@@ -132,3 +134,23 @@ def test_should_refuse_a_birth_without_a_utc_offset() -> None:
     naive = Birth.model_construct(datetime=datetime(1980, 1, 1), latitude=0.0, longitude=0.0)
     with pytest.raises(ValueError, match="UTC offset"):
         obstacles_activation(naive, (2000, 1))
+
+
+def test_should_carry_the_natives_ashtakavarga_in_the_natal_frame(engine: SubjectEngine) -> None:
+    # Given the same native charted independently
+    born = SYNTHETIC.datetime.astimezone(UTC)
+    with SkyfieldAstronomy() as astronomy:
+        natal = calculate_sidereal_context(
+            born, SYNTHETIC.latitude, SYNTHETIC.longitude, reference_date=born, astronomy=astronomy
+        )
+    # Then the frame's bindus are the engine's Ashtakavarga for that chart
+    assert engine.frame.bindus == BinduTable.from_context(compute_ashtakavarga(natal))
+    assert engine.frame.bindus is not None
+    assert sum(engine.frame.bindus.sav) == 337
+
+
+def test_should_read_the_sun_and_venus_in_the_month_sky(engine: SubjectEngine) -> None:
+    # 15 Jan 2019, sidereal (Lahiri): Sun just into Capricorn, Venus in Scorpio
+    sky = engine.month((2019, 1))
+    assert (sky.signs[P.SUN], sky.signs[P.VENUS]) == (9, 7)
+    assert 0 <= sky.signs[P.MERCURY] < 12

@@ -8,9 +8,11 @@ calculation plugs in as one more class here with no harness change.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import partial
 from typing import TYPE_CHECKING, ClassVar, Final, Protocol
 
 from almamesh.constants.astrology import PlanetName
+from almamesh.domains.ashtakavarga_signals import BinduTable, ashtakavarga_score, transit_movers
 from almamesh.domains.exact_signals import SLOW_MOVERS, contact_score
 from almamesh.transits.aspects import drishti_offsets
 from almamesh.transits.exact import LAGNA_POINT
@@ -30,12 +32,17 @@ class Target:
 
 @dataclass(frozen=True)
 class NatalFrame:
-    """The natal facts the families read: lagna and Moon signs, lordships, occupancy."""
+    """The natal facts the families read: lagna and Moon signs, lordships, occupancy.
+
+    ``bindus`` is the natal Ashtakavarga; the engine always sets it. A hand-built frame
+    without it has no Ashtakavarga to read, so ``ashtakavarga_transits`` scores 0 there.
+    """
 
     lagna_idx: int
     moon_idx: int
     rulers: Mapping[PlanetName, frozenset[int]]
     occupied: Mapping[PlanetName, int]
+    bindus: BinduTable | None = None
 
     def signifies(self, graha: PlanetName, target: Target) -> bool:
         """The graha rules a target house or is a target karaka."""
@@ -191,6 +198,24 @@ class ExactTransits:
         return contact_score(month.contacts, movers, natal.relevant_points(target), lords)
 
 
+class AshtakavargaTransits:
+    """Technique #3 (amendment g2): strong-bindu transits over a target house.
+
+    Movers are Jupiter, Saturn and any running maha or antar lord with a BAV; an on-target
+    mover scores 0.5 for SAV >= 28 plus 0.5 for its own BAV >= 4; the month takes the
+    strongest. The engine's ``domains.ashtakavarga_signals.ashtakavarga_score`` is the rule.
+    """
+
+    name: ClassVar[str] = "ashtakavarga_transits"
+
+    def score(self, natal: NatalFrame, month: MonthSky, target: Target) -> float:
+        if natal.bindus is None:
+            return 0.0
+        movers = transit_movers(frozenset().union(*month.running[:2]))
+        on_target = partial(natal.in_target, target=target)
+        return ashtakavarga_score(natal.bindus, month.signs, movers, on_target)
+
+
 # The harness-computed disputes target (legal, accident); see mapping._DISPUTES.
 DISPUTES_TARGET: Final[Target] = Target(
     houses=frozenset({6, 8, 12}),
@@ -221,6 +246,7 @@ FAMILIES: Final[tuple[IndicatorFamily, ...]] = (
     TransitMars(),
     TransitNodes(),
     ExactTransits(),
+    AshtakavargaTransits(),
 )
 # Amendment (f5): scored only by the +OBSTACLES run, lazily (a full predictive run per month),
 # so it stays out of FAMILIES and out of the pre-registration digest of the v1 + exact set.
@@ -228,11 +254,16 @@ ENGINE_OBSTACLES: Final[EngineObstacles] = EngineObstacles()
 SHIPPED_FAMILIES: Final[frozenset[str]] = frozenset(
     {"vimshottari_lords", "yogini", "transit_jupiter_saturn", "double_transit"}
 )
+# Every graha a family reads by sign at mid-month (Ketu is Rahu + 6); the Sun, Mercury and
+# Venus are Ashtakavarga movers when they run as maha or antar lord (amendment g2).
 SKY_GRAHAS: Final[tuple[PlanetName, ...]] = (
     PlanetName.JUPITER,
     PlanetName.SATURN,
     PlanetName.MARS,
     PlanetName.RAHU,
+    PlanetName.SUN,
+    PlanetName.MERCURY,
+    PlanetName.VENUS,
 )
 
 

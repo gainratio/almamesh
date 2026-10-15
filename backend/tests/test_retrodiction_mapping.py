@@ -8,7 +8,9 @@ from almamesh.retrodiction.mapping import MAPPING, preregistration_digest
 
 # Pinned in docs/superpowers/specs/2026-10-14-retrodiction-eval-design.md. Changing the
 # mapping, the families, the window or k turns this red: amend the spec, then the literal.
-PREREGISTERED_DIGEST = "e3462748841401f07df62029d2bc8ec110d7fe29b36c2579333894f2e12e08a2"
+# Amendment (g): e3462748... (v1 seven + exact_transits) became this when
+# ashtakavarga_transits (technique #3) joined FAMILIES.
+PREREGISTERED_DIGEST = "f0c266cc91da6769b819c06bb9a873567773177b57f6951e9c5ef02f1d273a36"
 
 
 def test_every_category_has_a_target() -> None:

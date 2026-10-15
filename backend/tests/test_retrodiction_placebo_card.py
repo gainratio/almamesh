@@ -9,11 +9,14 @@ import pytest
 from typer.testing import CliRunner
 
 from almamesh.retrodiction import engine as engine_module
+from almamesh.retrodiction import placebo_run
 from almamesh.retrodiction.cli import app
 from almamesh.retrodiction.engine import OUT_OF_RANGE_BIRTH
 from almamesh.retrodiction.events import RetrodictionInputError, load_events
+from almamesh.retrodiction.harness import movers_for
+from almamesh.retrodiction.indicators import FAMILIES
 from almamesh.retrodiction.placebo_card import BASELINE, PlaceboCard, RunPlan, build_placebo_card
-from almamesh.retrodiction.placebo_run import UNREADABLE, score_hits
+from almamesh.retrodiction.placebo_run import ADDED_FAMILIES, UNREADABLE, V1, score_hits
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -81,7 +84,7 @@ def test_should_refuse_an_unknown_added_family(events_path: Path, tmp_path: Path
         ],
     )
     assert result.exit_code == 2
-    assert "exact_transits or engine_obstacles" in result.output
+    assert "exact_transits, engine_obstacles, ashtakavarga_transits" in result.output
 
 
 def _fake_activation(asked: list[YearMonth]) -> Callable[[Birth, YearMonth], float]:
@@ -184,3 +187,73 @@ def test_should_score_the_same_hits_in_parallel_and_list_why_events_drop(tmp_pat
     assert sorted(x.reason for x in serial[1]) == sorted(
         [OUT_OF_RANGE_BIRTH, "precision coarser than a month"]
     )
+
+
+V1_NAMES = frozenset(
+    {
+        "vimshottari_lords",
+        "vimshottari_occupants",
+        "yogini",
+        "transit_jupiter_saturn",
+        "double_transit",
+        "transit_mars",
+        "transit_nodes",
+    }
+)
+
+
+def test_should_pin_v1_to_the_seven_named_families() -> None:
+    assert V1 == V1_NAMES
+
+
+def test_should_offer_ashtakavarga_transits_as_an_eager_added_family() -> None:
+    plan = RunPlan(added="ashtakavarga_transits")
+    assert "ashtakavarga_transits" in ADDED_FAMILIES
+    assert "ashtakavarga_transits" in {f.name for f in FAMILIES}
+    assert not plan.lazy
+    sets = plan.eager_sets()
+    assert sets[BASELINE] == V1_NAMES
+    assert sets["+ashtakavarga_transits"] == V1_NAMES | {"ashtakavarga_transits"}
+    assert all("exact_transits" not in names for names in sets.values())
+
+
+def test_should_run_the_placebo_scorecard_with_ashtakavarga_transits_added(
+    events_path: Path, tmp_path: Path
+) -> None:
+    out = tmp_path / "card"
+    args = ["placebo-scorecard", "--events", str(events_path), "--out", str(out)]
+    result = CliRunner().invoke(app, [*args, "--added", "ashtakavarga_transits"])
+    assert result.exit_code == 0, result.output
+    card = json.loads((out / "placebo-scorecard.json").read_text())
+    assert card["setup"]["added_family"] == "ashtakavarga_transits"
+    assert {r["family_set"] for r in card["rows"]} == {BASELINE, "+ashtakavarga_transits"}
+
+
+def test_should_scan_exact_contacts_only_when_exact_transits_is_added(events_path: Path) -> None:
+    events = load_events(events_path).subjects[2].events  # the legal event reads Mars
+    assert placebo_run.contact_movers(RunPlan(added="exact_transits"), events) == movers_for(events)
+    for added in ("engine_obstacles", "ashtakavarga_transits"):
+        assert placebo_run.contact_movers(RunPlan(added=added), events) == frozenset()
+
+
+def test_should_score_the_same_hits_without_the_contact_scan_when_exact_is_not_added(
+    events_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Given the run's own hits for +ashtakavarga_transits (no contact scan)
+    plan = RunPlan(added="ashtakavarga_transits", placebos=1)
+    fast = score_hits(load_events(events_path), plan)
+    # When every native is scanned for exact contacts as the +exact run does
+    scanned: list[frozenset[object]] = []
+
+    def full_scan(_plan: RunPlan, events: object) -> frozenset[object]:
+        movers = movers_for(events)  # type: ignore[arg-type]
+        scanned.append(movers)
+        return movers
+
+    monkeypatch.setattr(placebo_run, "contact_movers", full_scan)
+    slow = score_hits(load_events(events_path), plan)
+    # Then the scan really ran, and BASELINE and +family centre hits are identical
+    assert len(scanned) == 3
+    assert all(scanned)
+    assert len(fast[0]) == 3
+    assert slow == fast

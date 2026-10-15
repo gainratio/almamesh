@@ -22,21 +22,37 @@ from almamesh.retrodiction.engine import (
     birth_in_range,
 )
 from almamesh.retrodiction.harness import EventScores, Exclusion, combined, movers_for, score_event
-from almamesh.retrodiction.indicators import DISPUTES_TARGET, ENGINE_OBSTACLES, FAMILIES
+from almamesh.retrodiction.indicators import DISPUTES_TARGET, ENGINE_OBSTACLES
 from almamesh.retrodiction.mapping import MAPPING, PREREGISTERED_KS, PREREGISTERED_WINDOW
 from almamesh.retrodiction.placebo import EventHits, HitKey
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
+    from almamesh.constants.astrology import PlanetName
     from almamesh.retrodiction.engine import YearMonth
     from almamesh.retrodiction.events import EventsFile, LifeEvent, Subject
     from almamesh.retrodiction.indicators import Target
 
-AddedFamily = Literal["exact_transits", "engine_obstacles"]
-ADDED_FAMILIES: Final[tuple[str, ...]] = ("exact_transits", "engine_obstacles")
+AddedFamily = Literal["exact_transits", "engine_obstacles", "ashtakavarga_transits"]
+ADDED_FAMILIES: Final[tuple[str, ...]] = (
+    "exact_transits",
+    "engine_obstacles",
+    "ashtakavarga_transits",
+)
 BASELINE: Final[str] = "BASELINE"
-V1: Final[frozenset[str]] = frozenset(f.name for f in FAMILIES) - {"exact_transits"}
+# The v1 seven, named: FAMILIES grows with each technique, BASELINE never does.
+V1: Final[frozenset[str]] = frozenset(
+    {
+        "vimshottari_lords",
+        "vimshottari_occupants",
+        "yogini",
+        "transit_jupiter_saturn",
+        "double_transit",
+        "transit_mars",
+        "transit_nodes",
+    }
+)
 _CHUNKS_PER_WORKER: Final[int] = 8
 UNREADABLE: Final[str] = "the engine's month reading reaches outside the ephemeris (amendment c)"
 
@@ -162,13 +178,21 @@ def _out_of_range(subject: Subject, events: Sequence[LifeEvent]) -> list[EventHi
     return [Exclusion(subject.id, e.category, e.date, OUT_OF_RANGE_BIRTH) for e in events]
 
 
+def contact_movers(plan: RunPlan, events: Sequence[LifeEvent]) -> frozenset[PlanetName]:
+    """Movers to scan for exact contacts: none unless the plan adds ``exact_transits``.
+
+    Only that family reads contacts, so any other run skips the scan (same hits, faster).
+    """
+    return movers_for(events) if plan.added == "exact_transits" else frozenset()
+
+
 def _subject_hits(
     subject: Subject, astronomy: SkyfieldAstronomy, plan: RunPlan
 ) -> list[EventHits | Exclusion]:
     wanted = _wanted(subject, plan)
     if not birth_in_range(subject.birth):
         return _out_of_range(subject, [e for _, e in wanted])
-    engine = SubjectEngine(subject.birth, astronomy, movers_for(subject.events))
+    engine = SubjectEngine(subject.birth, astronomy, contact_movers(plan, subject.events))
     return [_event_hits(engine, subject.id, i, e, plan) for i, e in wanted]
 
 
@@ -211,5 +235,6 @@ __all__ = [
     "V1",
     "AddedFamily",
     "RunPlan",
+    "contact_movers",
     "score_hits",
 ]

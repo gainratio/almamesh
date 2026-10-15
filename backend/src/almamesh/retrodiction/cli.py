@@ -262,7 +262,7 @@ def scorecard(
 def _plan(added: str, placebos: int) -> RunPlan:
     if added not in ADDED_FAMILIES:
         raise RetrodictionInputError(
-            f"--added must be exact_transits or engine_obstacles, got {added!r}"
+            f"--added must be one of {', '.join(ADDED_FAMILIES)}, got {added!r}"
         )
     return RunPlan(added=cast("AddedFamily", added), placebos=placebos)
 
@@ -290,9 +290,7 @@ def placebo_scorecard(
     adb: Annotated[Path | None, typer.Option(help=_ADB_HELP)] = None,
     split: Annotated[str | None, typer.Option(help="dev or held-out (ADB only)")] = None,
     release_look: Annotated[bool, typer.Option(help="Declare a logged HELD-OUT look")] = False,
-    added: Annotated[str, typer.Option(help="exact_transits or engine_obstacles")] = (
-        "exact_transits"
-    ),
+    added: Annotated[str, typer.Option(help=", ".join(ADDED_FAMILIES))] = ("exact_transits"),
     placebos: Annotated[int, typer.Option(min=1, max=PLACEBOS, help="Placebo windows")] = PLACEBOS,
     out: Annotated[Path | None, typer.Option(help="Scorecard directory")] = None,
     workers: Annotated[int, typer.Option(min=1, max=64, help="Processes")] = 1,

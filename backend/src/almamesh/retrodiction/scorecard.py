@@ -19,8 +19,8 @@ from pydantic import BaseModel
 from almamesh.retrodiction.controls import PLANTED, chart_swap, planted, shift_months
 from almamesh.retrodiction.events import RetrodictionInputError
 from almamesh.retrodiction.harness import EventScores, Exclusion, Summary, combined, summarize
-from almamesh.retrodiction.indicators import FAMILIES
 from almamesh.retrodiction.mapping import preregistration_digest
+from almamesh.retrodiction.placebo_run import V1
 from almamesh.retrodiction.report import score_file
 from almamesh.retrodiction.stats import (
     FFT_P_FLOOR,
@@ -248,8 +248,8 @@ def _by_k(
 
 
 def _assemble(runs: _Runs, label: str, window: int, ks: Sequence[int], seed: int) -> Scorecard:
-    added = frozenset(f.name for f in FAMILIES)
-    base = added - {ADDED_FAMILY}
+    base = V1
+    added = V1 | {ADDED_FAMILY}
     rows = area_rows(runs.real, base, added, ks, seed, runs.swap)
     planted_rows = _by_k(planted(runs.real), {PLANTED}, ks)
     shuffled = _by_k(runs.shifted, added, ks)

@@ -17,9 +17,11 @@ from almamesh.calculations import calculate_sidereal_context
 from almamesh.constants.astrology import PlanetName
 from almamesh.dasha.depth import level_spans
 from almamesh.dasha.yogini import compute_yogini_periods
+from almamesh.domains.ashtakavarga_signals import BinduTable
 from almamesh.predictive import PredictiveContexts, compute_predictive_contexts
 from almamesh.retrodiction.indicators import SKY_GRAHAS, MonthSky, NatalFrame
 from almamesh.schemas.domains import LifeDomain
+from almamesh.strength.ashtakavarga import compute_ashtakavarga
 from almamesh.transits.exact import MOVERS, ContactBook, astro_movers, natal_points
 from almamesh.transits.natal import natal_lagna_index, natal_moon_index, sign_index
 from almamesh.transits.positions import EPHEMERIS_LAST_INSTANT, transit_longitude
@@ -57,12 +59,13 @@ def add_months(ym: YearMonth, delta: int) -> YearMonth:
 
 
 def _natal_frame(natal: SiderealContext) -> NatalFrame:
-    """Lagna and Moon signs, lordships and occupancy from the natal context."""
+    """Lagna and Moon signs, lordships, occupancy and Ashtakavarga from the natal context."""
     return NatalFrame(
         lagna_idx=natal_lagna_index(natal),
         moon_idx=natal_moon_index(natal),
         rulers={g: frozenset(p.houses_ruled) for g, p in natal.planets.items()},
         occupied={g: p.house for g, p in natal.planets.items()},
+        bindus=BinduTable.from_context(compute_ashtakavarga(natal)),
     )
 
 

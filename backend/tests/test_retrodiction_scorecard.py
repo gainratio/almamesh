@@ -11,6 +11,7 @@ from typer.testing import CliRunner
 from almamesh.retrodiction.cli import app
 from almamesh.retrodiction.events import EventCategory
 from almamesh.retrodiction.harness import EventScores
+from almamesh.retrodiction.placebo_run import V1
 from almamesh.retrodiction.scorecard import (
     ControlVerdicts,
     Scorecard,
@@ -104,6 +105,7 @@ def test_should_write_an_aggregate_only_scorecard_when_run_from_the_cli(tmp_path
     card = json.loads((tmp_path / "card" / "scorecard.json").read_text())
     markdown = (tmp_path / "card" / "scorecard.md").read_text()
     assert card["added_family"] == "exact_transits"
+    assert card["families"] == sorted(V1 | {"exact_transits"})
     assert card["events_scored"] == 3
     assert card["swap_natives_dropped"] == 0
     assert {row["area"] for row in card["rows"]} >= {"all areas", "career", "relationships"}
