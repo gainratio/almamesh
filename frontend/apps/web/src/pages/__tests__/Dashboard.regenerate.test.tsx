@@ -933,6 +933,9 @@ describe('Dashboard — regenerate reading', () => {
     expect(screen.getByTestId<HTMLButtonElement>('regenerate-reading').disabled).toBe(true);
     const note = screen.getByTestId('regenerate-unavailable');
     expect(note.textContent ?? '').toContain('Connect an AI model');
-    expect(note.querySelector('a')?.getAttribute('href')).toBe('/settings/ai');
+    const connect = note.querySelector('button');
+    expect(connect).not.toBeNull();
+    fireEvent.click(connect as HTMLButtonElement);
+    expect(screen.getByRole('dialog', { name: 'Connect AI' })).toBeTruthy();
   });
 });

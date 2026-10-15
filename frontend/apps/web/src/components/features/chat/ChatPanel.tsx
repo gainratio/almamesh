@@ -17,7 +17,6 @@
 
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link, useNavigate } from 'react-router-dom';
 import { ComposerPrimitive, MessagePrimitive, ThreadPrimitive, useAui, type MessageState } from '@assistant-ui/react';
 import { pinRelative } from '@almamesh/llm';
 import { useChartLibraryStore, useChatStore, useLanguageStore } from '@almamesh/store';
@@ -42,6 +41,7 @@ import { ChatThreadList } from './ChatThreadList';
 import { CHAT_TOOLKIT, ToolCallRow, toolListOf } from './chatToolkit';
 import { tripContext } from '../../../lib/tripContext';
 import { TripContextCard } from './TripContextCard';
+import { AiSetupDialog } from '../ai/AiSetupDialog';
 
 /** What a page's ask handler gets: the hook's stream input, the reader's voice and the status line. */
 export interface ChatAskInput extends ChatStreamInput {
@@ -78,7 +78,6 @@ export function ChatPanel({
   hideHeader = false,
 }: ChatPanelProps) {
   const { t } = useTranslation('chat');
-  const navigate = useNavigate();
   const { messages, threadId, isStreaming, streamingDraft, submit, openThread, asOf, pin, repin, backToToday } = useChatThread(
     profileId,
     chartId,
@@ -151,6 +150,8 @@ export function ChatPanel({
   }, [backToToday]);
   const [agentActivity, setAgentActivity] = useState<string | null>(null);
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
+  // The shared AI setup panel, opened in place from the no-AI CTA or a chip tap.
+  const [aiSetupOpen, setAiSetupOpen] = useState(false);
   const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
   const handleSubmit = useCallback(
@@ -175,9 +176,9 @@ export function ChatPanel({
 
   const handleSuggestedQuestion = (question: string) => {
     if (!aiConfigured) {
-      // A chip tap with no AI is a doomed question: route to the Connect-AI
-      // CTA's destination instead of persisting a turn that can only fail.
-      navigate('/settings/ai');
+      // A chip tap with no AI is a doomed question: open the AI setup panel
+      // (the Connect-AI CTA's dialog) instead of persisting a turn that can only fail.
+      setAiSetupOpen(true);
       return;
     }
     void handleSubmit(question);
@@ -369,13 +370,15 @@ export function ChatPanel({
         {!aiConfigured ? (
           <div className="flex flex-col items-start gap-2" data-testid="chat-connect-ai" role="note">
             <p className="text-sm text-text-secondary">{t('not_configured.notice')}</p>
-            <Link
-              to="/settings/ai"
-              className="inline-flex items-center gap-2 rounded-lg border border-accent-gold px-4 py-2 text-sm font-semibold text-accent-gold transition-colors hover:bg-accent-gold/10"
+            <button
+              type="button"
+              onClick={() => setAiSetupOpen(true)}
+              aria-haspopup="dialog"
+              className="inline-flex items-center gap-2 rounded-lg border border-accent-gold px-4 py-2 text-sm font-semibold text-accent-gold transition-colors hover:bg-accent-gold/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-gold/60"
               data-testid="chat-connect-ai-link"
             >
               {t('not_configured.cta')}
-            </Link>
+            </button>
           </div>
         ) : (
         <ComposerPrimitive.Root className="flex items-end gap-2">
@@ -425,6 +428,7 @@ export function ChatPanel({
         onClose={() => setSheet('closed')}
       />
       <PlacePickDialog />
+      <AiSetupDialog open={aiSetupOpen} onClose={() => setAiSetupOpen(false)} />
     </ThreadPrimitive.Root>
     </AlmaMeshAssistantRuntime>
   );

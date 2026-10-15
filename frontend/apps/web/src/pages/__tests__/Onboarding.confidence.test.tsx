@@ -163,7 +163,7 @@ describe('Onboarding — birth-time confidence selector', () => {
 
     fireEvent.click(screen.getByTestId('skip-life-events-button'));
 
-    await waitFor(() => expect(navigateSpy).toHaveBeenCalledWith('/dashboard'));
+    await waitFor(() => expect(navigateSpy).toHaveBeenCalledWith('/onboarding/ai'));
     expect(regenerationRunner).toHaveBeenCalledOnce();
     expect(regenerationRunner.mock.calls[0]?.[0].birth.timeConfidence).toBe('approximate');
   });
@@ -205,7 +205,7 @@ describe('Onboarding — life events persist per profile', () => {
     });
     fireEvent.click(screen.getByTestId('extract-events-button'));
 
-    await waitFor(() => expect(navigateSpy).toHaveBeenCalledWith('/dashboard'), { timeout: 6000 });
+    await waitFor(() => expect(navigateSpy).toHaveBeenCalledWith('/onboarding/ai'), { timeout: 6000 });
 
     const profileId = useProfilesStore.getState().activeProfileId;
     expect(profileId).toBeTruthy();
@@ -227,7 +227,7 @@ describe('Onboarding — life events persist per profile', () => {
     });
     fireEvent.click(screen.getByTestId('extract-events-button'));
 
-    await waitFor(() => expect(navigateSpy).toHaveBeenCalledWith('/dashboard'), { timeout: 6000 });
+    await waitFor(() => expect(navigateSpy).toHaveBeenCalledWith('/onboarding/ai'), { timeout: 6000 });
 
     expect(structureLifeEventsSpy).not.toHaveBeenCalled();
     const profileId = useProfilesStore.getState().activeProfileId;

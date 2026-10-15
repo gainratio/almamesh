@@ -69,6 +69,7 @@ import {
 } from "../hooks/useStreamingInterpretation";
 import { useElapsedSeconds, formatElapsed } from "../hooks/useElapsedSeconds";
 import { useLlmStatus } from "../hooks/useLlmStatus";
+import { ConnectAiButton } from "../components/features/ai/AiSetupDialog";
 import { useReportPdfExport } from "../hooks/useReportPdfExport";
 import { isPlaceholderContent } from "./exportGate";
 import { personaText, resolveReportAudience } from "../lib/reportSelectors";
@@ -791,13 +792,11 @@ export default function DashboardPage() {
             context="fresh"
             testId="interpretation-cta"
             actions={
-              <Link
-                to="/settings/ai"
-                className="inline-flex items-center gap-2 rounded-md border border-ui-border px-3 py-1.5 text-text-secondary transition-colors hover:border-accent-gold/40 hover:text-text-primary"
-                data-testid="connect-ai-link"
-              >
-                {t('dashboard:actions.connect_ai')}
-              </Link>
+              <ConnectAiButton
+                label={t('dashboard:actions.connect_ai')}
+                className="inline-flex items-center gap-2 rounded-md border border-ui-border px-3 py-1.5 text-text-secondary transition-colors hover:border-accent-gold/40 hover:text-text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-gold/60"
+                testId="connect-ai-link"
+              />
             }
           />
         )}
@@ -1007,9 +1006,11 @@ export default function DashboardPage() {
                 data-testid="regenerate-unavailable"
               >
                 {t('dashboard:reading.regen_no_ai')}{' '}
-                <Link to="/settings/ai" className="underline hover:no-underline">
-                  {t('dashboard:actions.ai_settings')}
-                </Link>
+                <ConnectAiButton
+                  label={t('common:ai_badge.setup')}
+                  className="underline hover:no-underline focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-gold/60"
+                  testId="regenerate-connect-ai"
+                />
               </p>
             )}
             {/* A FAILED regeneration must be VISIBLE: keep-old-until-success

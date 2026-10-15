@@ -709,6 +709,29 @@ describe('AiSetupPanel — surface props (showOffChoice, intro)', () => {
     expect(disclosure.textContent).toContain('without your name or birth date');
   });
 
+  it('leads with one short line on what is sent; the full disclosure sits behind "What gets sent"', () => {
+    renderPanel();
+    const summary = screen.getByTestId('tier-cloud-summary');
+    expect(summary.textContent).toBe(
+      'Chart requests leave out your name and birth date, but the planet positions and dates they carry can reveal it.',
+    );
+    const details = screen.getByTestId('tier-cloud-details') as HTMLDetailsElement;
+    expect(details.tagName).toBe('DETAILS');
+    expect(details.open).toBe(false);
+    expect(details.querySelector('summary')?.textContent).toBe('What gets sent');
+    // The full existing text is still there, one click away.
+    expect(details.contains(screen.getByTestId('tier-cloud-honesty'))).toBe(true);
+    expect(screen.getByTestId('tier-cloud-honesty').textContent).toContain('the narrative you enter is sent as written');
+  });
+
+  it('shows the "Connect AI" card title by default and drops it when the host already titles it', () => {
+    const { unmount } = renderPanel();
+    expect(screen.getByTestId('tier-cloud').textContent).toContain('Connect AI');
+    unmount();
+    renderPanel({ showOffChoice: false, showTitle: false });
+    expect(screen.getByTestId('tier-cloud').textContent).not.toContain('Connect AI');
+  });
+
   it('keeps the local-only refusal warning in the onboarding variant', () => {
     renderPanel({ showOffChoice: false });
     fireEvent.change(screen.getByTestId('llm-api-base'), { target: { value: 'https://example.com/v1' } });

@@ -19,6 +19,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { chromium, expect, test as base, webkit, type Page } from "@playwright/test";
+import { passOnboardingAiStep } from '../scripts/onboardingAiStep.mjs';
 
 /**
  * Each test gets its own on-disk profile so the reload sees what was persisted.
@@ -150,7 +151,7 @@ for (const delay of DELAYS) {
   test(`onboarding: a reload ${delay} ms after /dashboard keeps the chart`, async ({ page }) => {
     const consoleErrors = watchConsole(page);
     await onboard(page, "exact");
-    await page.waitForURL("**/dashboard", { timeout: 300_000 });
+    await passOnboardingAiStep(page, { timeout: 300_000 });
     await reloadAfter(page, delay);
     await expectChart(page, "the chart must survive a reload at the moment /dashboard appears");
     await reload(page);
@@ -162,7 +163,7 @@ for (const delay of DELAYS) {
     const consoleErrors = watchConsole(page);
     await onboard(page, "unknown");
     await rectifyAndConfirm(page);
-    await page.waitForURL("**/dashboard", { timeout: 300_000 });
+    await passOnboardingAiStep(page, { timeout: 300_000 });
     await reloadAfter(page, delay);
     await expectChart(page, "the rectified chart must survive a reload at the moment /dashboard appears");
     await reload(page);

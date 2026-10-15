@@ -5,6 +5,7 @@ import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { LAYMAN_JARGON } from '@almamesh/llm/layman-jargon';
+import { passOnboardingAiStep } from '../scripts/onboardingAiStep.mjs';
 
 const execFileAsync = promisify(execFile);
 
@@ -116,7 +117,7 @@ async function driveRealOnboarding(page: Page): Promise<void> {
   const skip = page.getByTestId('skip-life-events-button');
   await skip.waitFor({ state: 'visible', timeout: 15_000 });
   await skip.click();
-  await page.waitForURL('**/dashboard', { timeout: 180_000 });
+  await passOnboardingAiStep(page, { timeout: 180_000 });
 }
 
 async function waitForDashboardChart(page: Page): Promise<void> {

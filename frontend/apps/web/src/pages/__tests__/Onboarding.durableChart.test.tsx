@@ -23,6 +23,7 @@ import {
 } from '@almamesh/store';
 import golden from '../../../../../../backend/tests/fixtures/chart_golden_de421.json';
 import '../../i18n/config';
+import { hydrateLlmSettings, openRouterPreset, writeLlmSettings } from '@almamesh/llm';
 
 const navigateSpy = vi.fn();
 vi.mock('react-router-dom', async (orig) => {
@@ -195,7 +196,7 @@ describe('Onboarding — the chart is durable before the user leaves', () => {
     expect(useOnboardingStore.getState().data.name).toBe('Asha');
 
     persisted.release();
-    await waitFor(() => expect(navigateSpy).toHaveBeenCalledWith('/dashboard'));
+    await waitFor(() => expect(navigateSpy).toHaveBeenCalledWith('/onboarding/ai'));
     expect(useOnboardingStore.getState().data.name).toBe('');
   });
 
@@ -312,12 +313,57 @@ describe('Onboarding — the chart is durable before the user leaves', () => {
     compute.resolve(fakeSiderealChart);
     await waitFor(() => expect(persisted.calls).toBeGreaterThan(0));
     persisted.release();
-    await waitFor(() => expect(navigateSpy).toHaveBeenCalledWith('/dashboard'));
+    await waitFor(() => expect(navigateSpy).toHaveBeenCalledWith('/onboarding/ai'));
 
     const charts = Object.values(useChartLibraryStore.getState().charts);
     expect(charts).toHaveLength(1);
     expect(charts[0]?.profile_id).toBe(amma);
     expect(charts[0]?.person_name).toBe('Amma');
     expect(Object.keys(useProfilesStore.getState().profiles).sort()).toEqual([amma, other].sort());
+  });
+});
+
+describe('Onboarding — after the chart is saved, the AI step', () => {
+  afterEach(() => {
+    hydrateLlmSettings(null);
+  });
+
+  async function generateAndSave(): Promise<void> {
+    fireEvent.click(screen.getByTestId('skip-life-events-button'));
+    await waitFor(() => expect(generateChart).toHaveBeenCalledOnce());
+    compute.resolve(fakeSiderealChart);
+    await waitFor(() => expect(persisted.calls).toBeGreaterThan(0));
+    persisted.release();
+  }
+
+  it('goes to the AI step when no AI is set up', async () => {
+    hydrateLlmSettings(null);
+    seedReadyToGenerate();
+    renderPage();
+    await generateAndSave();
+    await waitFor(() => expect(navigateSpy).toHaveBeenCalledWith('/onboarding/ai'));
+  });
+
+  it('skips the AI step when AI is already set up', async () => {
+    writeLlmSettings(openRouterPreset('sk-or-v1-0000-synthetic-test-key', 'test-org/test-model'));
+    seedReadyToGenerate();
+    renderPage();
+    await generateAndSave();
+    await waitFor(() => expect(navigateSpy).toHaveBeenCalledWith('/dashboard'));
+    expect(navigateSpy).not.toHaveBeenCalledWith('/onboarding/ai');
+  });
+
+  it('with an unknown birth time, goes to Rectify and tells it the AI step comes next', async () => {
+    hydrateLlmSettings(null);
+    seedReadyToGenerate();
+    act(() => {
+      useOnboardingStore.setState((state) => ({ data: { ...state.data, timeConfidence: 'unknown' } }));
+    });
+    renderPage();
+    await generateAndSave();
+    await waitFor(() => expect(navigateSpy).toHaveBeenCalledWith(
+      expect.stringMatching(/^\/rectify\//),
+      { state: { next: '/onboarding/ai' } },
+    ));
   });
 });

@@ -30,6 +30,7 @@
 
 import { mkdirSync } from 'node:fs'
 import { chromium } from '@playwright/test'
+import { passOnboardingAiStep } from './onboardingAiStep.mjs'
 
 const BASE_URL = process.argv[2] ?? 'http://localhost:4173'
 const PROOF_DIR = '/tmp/almamesh-proof-real-onboarding'
@@ -149,7 +150,11 @@ async function main() {
   await shot(page, '05-generating.png')
 
   const outcome = await Promise.race([
-    page.waitForURL('**/dashboard', { timeout: 180_000 }).then(() => 'dashboard'),
+    passOnboardingAiStep(page, { timeout: 180_000 }).then((via) => {
+      // No AI is set up in this fresh profile, so the AI step must show first.
+      record('5a — no AI set up: the onboarding AI step shows, and "Not now" reaches /dashboard', via === 'ai-step', `via=${via}`)
+      return 'dashboard'
+    }),
     page
       .waitForSelector('[data-testid="retry-generation-button"]', { timeout: 180_000 })
       .then(() => 'error-card'),

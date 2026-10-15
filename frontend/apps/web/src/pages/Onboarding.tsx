@@ -39,6 +39,8 @@ import {
   resolveConfig,
   toPromptLanguage,
 } from "../components/features/rectify/rectifyLlmConfig";
+import { describeLlmStatus } from "@almamesh/llm";
+import { routeAfterChart, type AfterRectifyState } from "../lib/onboardingAiStep";
 
 /**
  * Sentinel marking a transient "engine still warming up" condition (the
@@ -469,8 +471,14 @@ export default function OnboardingPage() {
         clearInterval(progressInterval);
 
         reset();
-        const destination = data.timeConfidence === 'unknown' ? `/rectify/${profileId}` : '/dashboard';
-        navigate(destination);
+        // No AI yet: the AI step comes next (directly, or after Rectify when the
+        // birth time is unknown). With AI already set up it is skipped.
+        const next = routeAfterChart(describeLlmStatus().configured);
+        if (data.timeConfidence === 'unknown') {
+          navigate(`/rectify/${profileId}`, { state: { next } satisfies AfterRectifyState });
+        } else {
+          navigate(next);
+        }
       } catch (err) {
         clearInterval(progressInterval);
         throw err;

@@ -41,6 +41,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { chromium, webkit } from '@playwright/test'
+import { passOnboardingAiStep } from './onboardingAiStep.mjs'
 
 const BASE_URL = process.argv.find((argument) => /^https?:\/\//.test(argument))
   ?? 'http://127.0.0.1:4199'
@@ -209,7 +210,7 @@ try {
     }
     if (RUN_JOURNEY) {
       await onboard(visited.page)
-      await visited.page.waitForURL('**/dashboard', { timeout: 60_000 })
+      await passOnboardingAiStep(visited.page, { timeout: 60_000 })
       await visited.page.getByTestId('chart-visualization').first().waitFor({ state: 'visible', timeout: 60_000 })
       invariant(await notice.isVisible(), 'OPFS refused: the notice disappeared on the dashboard')
     }
@@ -243,7 +244,7 @@ try {
       )
       if (RUN_JOURNEY) {
         await onboard(control.page)
-        await control.page.waitForURL('**/dashboard', { timeout: 60_000 })
+        await passOnboardingAiStep(control.page, { timeout: 60_000 })
         await control.page.getByTestId('identity-strip').waitFor({ state: 'visible', timeout: 60_000 })
         await control.page.getByTestId('chart-visualization').first().waitFor({ state: 'visible', timeout: 30_000 })
       }

@@ -1,4 +1,4 @@
-import { useEffect, useId, type ReactNode } from 'react';
+import { useEffect, useId, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
@@ -52,6 +52,23 @@ export function Dialog({ open, onClose, title, children, className }: DialogProp
     };
   }, [open, onClose]);
 
+  // Keyboard-first: opening moves focus into the dialog (unless a child already
+  // took it, e.g. an autofocused field), and closing gives it back to whatever
+  // opened it. Keyed on `open` only, so a new `onClose` identity never re-runs it.
+  const panelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const panel = panelRef.current;
+    const active = document.activeElement;
+    if (!open || !panel || panel.contains(active)) {
+      return;
+    }
+    const opener = active instanceof HTMLElement ? active : null;
+    panel.focus();
+    return () => {
+      if (opener?.isConnected) opener.focus();
+    };
+  }, [open]);
+
   // No document (SSR / non-DOM render target) means there is nothing to portal
   // into; render nothing rather than throwing. Placed AFTER every hook so the
   // hook order never varies between renders.
@@ -76,11 +93,13 @@ export function Dialog({ open, onClose, title, children, className }: DialogProp
             onClick={onClose}
           />
           <motion.div
+            ref={panelRef}
+            tabIndex={-1}
             role="dialog"
             aria-modal="true"
             aria-labelledby={title != null ? titleId : undefined}
             className={cn(
-              'relative z-10 max-h-[85dvh] w-full max-w-lg overflow-y-auto rounded-lg border border-ui-border',
+              'relative z-10 max-h-[85dvh] w-full max-w-lg overflow-y-auto rounded-lg border border-ui-border focus:outline-none',
               'bg-background-secondary shadow-[0_24px_64px_-16px_rgba(0,0,0,0.8)]',
               className,
             )}

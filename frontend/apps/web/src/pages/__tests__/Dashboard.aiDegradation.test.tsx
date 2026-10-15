@@ -269,7 +269,10 @@ describe('Dashboard — AI narration degrades gracefully', () => {
     expect(setupText).not.toMatch(/out of credits/i);
     expect(setupText).not.toMatch(/isn't responding/i);
     // Its next step is the connect door, not Retry.
-    expect(within(setup).getByTestId('connect-ai-link').getAttribute('href')).toBe('/settings/ai');
+    const connect = within(setup).getByTestId('connect-ai-link');
+    expect(connect.tagName).toBe('BUTTON');
+    fireEvent.click(connect);
+    expect(screen.getByRole('dialog', { name: 'Connect AI' })).toBeTruthy();
     expect(within(setup).queryByTestId('interpretation-unavailable-retry')).toBeNull();
   });
 

@@ -209,7 +209,9 @@
     "none_button": "Desactivar la IA",
     "active_badge": "Activo",
     "cloud_title": "Conectar IA",
-    "cloud_body": "Añade interpretaciones escritas y chat con una clave de OpenRouter (recomendado) o cualquier endpoint compatible con OpenAI. Las solicitudes basadas en la carta no incluyen tu nombre ni tu fecha de nacimiento, pero las posiciones planetarias y las fechas de los periodos que incluyen pueden revelar tu fecha de nacimiento. Si usas IA para organizar eventos vitales, el relato que escribas se envía tal cual después del aviso; no se adjuntan tus datos de nacimiento ni la carta."
+    "cloud_body": "Añade interpretaciones escritas y chat con una clave de OpenRouter (recomendado) o cualquier endpoint compatible con OpenAI. Las solicitudes basadas en la carta no incluyen tu nombre ni tu fecha de nacimiento, pero las posiciones planetarias y las fechas de los periodos que incluyen pueden revelar tu fecha de nacimiento. Si usas IA para organizar eventos vitales, el relato que escribas se envía tal cual después del aviso; no se adjuntan tus datos de nacimiento ni la carta.",
+    "cloud_summary": "Las solicitudes de la carta no incluyen tu nombre ni tu fecha de nacimiento, pero las posiciones planetarias y las fechas que llevan pueden revelarla.",
+    "cloud_details_summary": "Qué se envía"
   },
   "preferences": {
     "title": "Preferencias",

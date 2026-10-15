@@ -96,3 +96,41 @@ describe('Dialog — escapes its ancestors via a portal', () => {
     });
   });
 });
+
+describe('Dialog — keyboard focus', () => {
+  beforeEach(() => {
+    useLanguageStore.setState({ language: 'en' });
+  });
+
+  it('moves focus into the dialog on open and gives it back to the opener on close', async () => {
+    function Harness({ open }: { open: boolean }) {
+      return (
+        <>
+          <button type="button" data-testid="opener">open</button>
+          <Dialog open={open} onClose={() => undefined} title="Connect AI">
+            <p>body copy</p>
+          </Dialog>
+        </>
+      );
+    }
+    const { rerender } = render(<Harness open={false} />);
+    const opener = screen.getByTestId('opener');
+    opener.focus();
+
+    rerender(<Harness open />);
+    const dialog = screen.getByRole('dialog');
+    expect(dialog.contains(document.activeElement)).toBe(true);
+
+    rerender(<Harness open={false} />);
+    await waitFor(() => expect(document.activeElement).toBe(opener));
+  });
+
+  it('leaves focus alone when a child already took it (an autofocused field)', () => {
+    render(
+      <Dialog open onClose={() => undefined} title="Search">
+        <input data-testid="field" autoFocus />
+      </Dialog>,
+    );
+    expect(document.activeElement).toBe(screen.getByTestId('field'));
+  });
+});

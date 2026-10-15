@@ -25,6 +25,7 @@
 
 import { mkdirSync } from 'node:fs'
 import { chromium } from '@playwright/test'
+import { passOnboardingAiStep } from './onboardingAiStep.mjs'
 
 const BASE_URL = process.argv[2] ?? 'http://localhost:4173'
 const PROOF_DIR = '/tmp/almamesh-proof-onboarding-recovery'
@@ -124,7 +125,7 @@ async function main() {
   await page.getByTestId('retry-generation-button').click()
 
   const outcome = await Promise.race([
-    page.waitForURL('**/dashboard', { timeout: 180_000 }).then(() => 'dashboard'),
+    passOnboardingAiStep(page, { timeout: 180_000 }).then(() => 'dashboard'),
     page.waitForSelector('[data-testid="reset-app-data-button"]', { timeout: 180_000 }).then(() => 'still-error'),
   ]).catch(() => 'timeout')
   const chartRendered =
