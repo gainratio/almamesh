@@ -110,6 +110,17 @@ describe('travel: the schema the model fills', () => {
     expect(issues(tool, { to: 'today', place: 'Pune' })).toEqual(['to "today" takes no place: send place null']);
     expect(issues(tool, { to: 'today', place: null })).toEqual([]);
   });
+
+  // travel-guard-live 2026-10-15 (DeepSeek v4.1 flash, "Leave this trip and tell me my outlook
+  // today"): the call {"to":"today","place":"home"} was sent back, the model read today instead,
+  // and the trip stayed. Today is where the user lives now, so "home" says nothing more: accepted.
+  it('back to today accepts place "home": today is where the user lives now', async () => {
+    const { tool, record } = travelSetup();
+    expect(issues(tool, { to: 'today', place: 'home' })).toEqual([]);
+    expect(issues(tool, { to: 'today', place: 'Home' })).toEqual([]);
+    expect(await go(tool, { to: 'today', place: 'home' })).toEqual({ status: 'queued', action: 'back_to_today' });
+    expect(record).toHaveBeenCalledWith({ kind: 'back_to_today' });
+  });
 });
 
 describe('travel: what a call records', () => {

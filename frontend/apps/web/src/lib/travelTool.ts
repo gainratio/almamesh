@@ -91,7 +91,8 @@ const ARGS_SCHEMA: z.ZodType<TravelArgs> = z
   .strict()
   .superRefine((args, ctx) => {
     if (args.to === 'today') {
-      if (args.place !== null) ctx.addIssue({ code: 'custom', message: 'to "today" takes no place: send place null', path: ['place'] });
+      // Today is where the user lives now: "home" says nothing more, any other place is refused.
+      if (args.place !== null && args.place.trim().toLowerCase() !== 'home') ctx.addIssue({ code: 'custom', message: 'to "today" takes no place: send place null', path: ['place'] });
       return;
     }
     if (TO.test(args.to) && !draftOf(args.to)) ctx.addIssue({ code: 'custom', message: DATE_ERROR, path: ['to'] });
