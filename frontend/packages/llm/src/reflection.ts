@@ -318,7 +318,7 @@ export function normalizeForReflection(text: string): string {
 
 const SENTENCES = /[^.!?…。！？।\n]+/gu;
 const LETTER = /\p{L}/gu;
-const LATIN = /\p{Script=Latin}/u;
+const FOREIGN_LETTER = /[^\P{L}\p{Script=Latin}]/gu; // a letter outside the Latin script
 
 const MANTRA_MAX_CHARS = 60;
 const NON_DEVANAGARI_LETTER = /[^\p{Script=Devanagari}\P{L}]/u;
@@ -336,10 +336,9 @@ function isShortMantra(sentence: string): boolean {
  */
 function unreadableSentences(text: string): readonly string[] {
   return (text.match(SENTENCES) ?? []).filter((sentence) => {
-    if (isShortMantra(sentence)) return false;
-    const letters = sentence.match(LETTER) ?? [];
-    const foreign = letters.filter((letter) => !LATIN.test(letter)).length;
-    return foreign >= 2 && foreign * 2 > letters.length;
+    const foreign = sentence.match(FOREIGN_LETTER)?.length ?? 0;
+    if (foreign < 2 || isShortMantra(sentence)) return false;
+    return foreign * 2 > (sentence.match(LETTER)?.length ?? 0);
   });
 }
 
@@ -398,28 +397,82 @@ const SENTENCE_END = /[.!?…。！？।]+["'”’)\]*_]*\s+|\n(?=[ \t]*(?:[-*
 export interface ReflectionGate {
   /**
    * The longest prefix of `text` that ends a sentence and passes the check. A sentence still
-   * arriving is held; one that fails is held with everything after it. `final`: the text is
+   * arriving is held; one that fails is held with everything after it. A run with no sentence end
+   * is released in checked pieces once it outgrows {@link RELEASE_CAP}. `final`: the text is
    * whole, so its last sentence ends at its end.
    */
   release(text: string, final: boolean): string;
 }
 
-function sentenceEnds(text: string, from: number, final: boolean): number[] {
-  const ends = [...text.matchAll(SENTENCE_END)].map((match) => match.index + match[0].length).filter((end) => end > from);
-  if (final && text.length > from && ends.at(-1) !== text.length) ends.push(text.length);
-  return ends;
+/** A run with no sentence end is released in pieces of at most this many characters. */
+export const RELEASE_CAP = 400;
+/** Characters held back behind a cap release and read with it: a phrase is read whole before its start is shown. */
+const CAP_LOOKAHEAD = 100;
+/** Characters before a cap cut read with the next piece, so a lookbehind ("house of career") still sees its words. */
+const CAP_CONTEXT = 40;
+const WHITESPACE_RUN = /\s+/gu;
+
+/** The sentence ends in `text` after `from`, found as they are asked for; with `final`, the text's end is one too. */
+function* sentenceEnds(text: string, from: number, final: boolean): Generator<number> {
+  const pattern = new RegExp(SENTENCE_END);
+  pattern.lastIndex = from;
+  let last = from;
+  for (let match = pattern.exec(text); match; match = pattern.exec(text)) {
+    last = match.index + match[0].length;
+    yield last;
+  }
+  if (final && last < text.length) yield text.length;
 }
 
-/** A gate for one stream: it remembers the last prefix it passed, so each sentence is checked once. */
+/** The end of the last whitespace run in text[from, to], or -1: a cut there splits no word. */
+function lastBreak(text: string, from: number, to: number): number {
+  const pattern = new RegExp(WHITESPACE_RUN);
+  pattern.lastIndex = from;
+  let at = -1;
+  for (let match = pattern.exec(text); match && match.index < to; match = pattern.exec(text)) at = match.index + match[0].length;
+  return Math.min(at, to);
+}
+
+/** Where a piece is read from: its own start, or a few words before it when it continues a cut sentence. */
+function readFrom(text: string, released: number, sentenceStart: number): number {
+  if (sentenceStart >= released) return released;
+  const back = Math.max(sentenceStart, released - CAP_CONTEXT);
+  const space = text.indexOf(" ", back);
+  return space === -1 || space >= released ? back : space + 1;
+}
+
+/**
+ * A gate for one stream. It reads each piece once: a completed sentence alone, or a cap piece with
+ * the words around its cut, so a long section costs time in proportion to its length.
+ */
 export function reflectionGate(): ReflectionGate {
   let passed = "";
+  let sentenceStart = 0; // where the sentence being released began (before it, when a cap cut it)
+  const releaseAtCap = (text: string, released: number): number => {
+    let at = released;
+    while (text.length - at >= RELEASE_CAP + CAP_LOOKAHEAD) {
+      const cut = lastBreak(text, at + 1, at + RELEASE_CAP);
+      if (cut <= at) return at;
+      const readTo = lastBreak(text, cut, cut + CAP_LOOKAHEAD);
+      if (reflectionIssues(text.slice(readFrom(text, at, sentenceStart), Math.max(readTo, cut))).length > 0) return at;
+      at = cut;
+    }
+    return at;
+  };
   return {
     release(text, final) {
-      let released = text.startsWith(passed) ? passed.length : 0;
-      for (const end of sentenceEnds(text, released, final)) {
-        if (reflectionIssues(text.slice(0, end)).length > 0) break;
-        released = end;
+      if (!text.startsWith(passed)) {
+        passed = "";
+        sentenceStart = 0;
       }
+      let released = passed.length;
+      for (const end of sentenceEnds(text, released, final)) {
+        // A sentence that fails is not released; a cap piece read from its start fails too.
+        if (reflectionIssues(text.slice(readFrom(text, released, sentenceStart), end)).length > 0) break;
+        released = end;
+        sentenceStart = end;
+      }
+      if (!final) released = releaseAtCap(text, released);
       passed = text.slice(0, released);
       return passed;
     },

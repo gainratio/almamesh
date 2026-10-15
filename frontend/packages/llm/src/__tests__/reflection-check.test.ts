@@ -187,6 +187,103 @@ describe("releasing streamed text sentence by sentence", () => {
   });
 });
 
+// Round two of the re-grade: the gate re-read the whole prefix at every sentence end, and the
+// reading preview calls it on every delta, so a long section cost quadratic time. It now reads only
+// the newly completed text (with a little passed context), and a long run with no sentence end is
+// released at a length cap, still checked, so it does not look frozen.
+describe("the gate's cost and its length cap", () => {
+  const answers = (REAL_ANSWERS as readonly { readonly source: string; readonly text: string }[])
+    .filter((answer) => !(answer.source in REAL_VIOLATIONS))
+    .map((answer) => answer.text);
+
+  function longSection(length: number): string {
+    let text = "";
+    for (let i = 0; text.length < length; i += 1) text += `${answers[i % answers.length]}\n\n`;
+    return text.slice(0, length);
+  }
+
+  // The patterns compile on their first use, once per page load; time the checking, not that.
+  const warm = () => reflectionIssues(longSection(2_000));
+
+  it("streams a 35k-character section through the gate and the JSON check in under 200 ms", () => {
+    const text = longSection(35_000);
+    warm();
+    const started = performance.now();
+    const gate = reflectionGate();
+    for (let end = 20; end < text.length; end += 20) gate.release(text.slice(0, end), false);
+    const shown = gate.release(text, true);
+    const issues = jsonReflectionIssues(JSON.stringify({ layman: text }));
+    const elapsed = performance.now() - started;
+    expect(shown).toBe(text);
+    expect(issues).toEqual([]);
+    expect(elapsed).toBeLessThan(200);
+  });
+
+  it("stays cheap on a long section after a failed sentence", () => {
+    const text = `Saturn rules the 10th. You will get married in 2027. ${longSection(35_000)}`;
+    warm();
+    const started = performance.now();
+    const gate = reflectionGate();
+    for (let end = 20; end < text.length; end += 20) gate.release(text.slice(0, end), false);
+    expect(gate.release(text, true)).toBe("Saturn rules the 10th. ");
+    expect(performance.now() - started).toBeLessThan(200);
+  });
+
+  const words = (count: number): string => Array.from({ length: count }, (_, i) => `Saturn${i % 10} rules`).join(" ");
+
+  it("releases a long run with no sentence end before the stream ends, at a word boundary", () => {
+    const text = words(150); // ~1,600 characters, no full stop
+    const gate = reflectionGate();
+    const shown: string[] = [];
+    for (let end = 9; end <= text.length; end += 9) shown.push(gate.release(text.slice(0, end), false));
+    const last = shown.at(-1) ?? "";
+    expect(last.length).toBeGreaterThanOrEqual(400);
+    expect(last.endsWith(" ")).toBe(true);
+    expect(gate.release(text, true)).toBe(text);
+  });
+
+  it("checks what it releases at the cap: a foretelling phrase in a long run is never shown", () => {
+    const text = `${words(60)} and you will get married in 2027 ${words(120)}`;
+    const gate = reflectionGate();
+    for (let end = 7; end <= text.length; end += 7) {
+      const shown = gate.release(text.slice(0, end), false);
+      expect(reflectionIssues(shown)).toEqual([]);
+      expect(shown).not.toContain("married");
+    }
+    const final = gate.release(text, true);
+    expect(final).not.toContain("married");
+    expect(reflectionIssues(final)).toEqual([]);
+  });
+
+  // The first cap cut falls just before character 400: slide the phrase across it, one character at a time.
+  const PADS = Array.from({ length: 48 }, (_, pad) => pad);
+  const padded = (pad: number, phrase: string): string => `${"a".repeat(pad + 1)} ${words(25)} ${phrase} ${words(60)}`;
+  const stream = (text: string, onShown: (shown: string) => void): string => {
+    const gate = reflectionGate();
+    for (let end = 1; end <= text.length; end += 1) onShown(gate.release(text.slice(0, end), false));
+    return gate.release(text, true);
+  };
+
+  it("never shows the start of a foretelling phrase that the cap would cut", () => {
+    for (const pad of PADS) {
+      const final = stream(padded(pad, "and you will get married in 2027"), (shown) => expect(shown).not.toContain("you will"));
+      expect(final).not.toContain("you will");
+    }
+  });
+
+  it("reads a piece after a cap cut with the words before it, so a clause is not misread", () => {
+    let cutBeforeCareer = false;
+    for (const pad of PADS) {
+      const text = padded(pad, "where the 10th house of career will host Jupiter");
+      const final = stream(text, (shown) => {
+        cutBeforeCareer ||= shown.endsWith("house of ");
+      });
+      expect(final).toBe(text);
+    }
+    expect(cutBeforeCareer).toBe(true); // the slide did put a cut between "of" and "career"
+  });
+});
+
 // Structured readings (northstar, PR #366: the rule was only in their prompts). Every string value
 // of a section's JSON is read; one that still fails after the retry is withheld, not shown.
 describe("a reading's JSON", () => {
