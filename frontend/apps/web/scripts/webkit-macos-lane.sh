@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# Native macOS WebKit acceptance. Hosted CI runs independent memory, travel
-# and portable/boot jobs, each bounded to 45 minutes. Local callers may run all.
+# Native macOS WebKit lane. It reports and never blocks a deploy (.github/workflows/
+# webkit-macos.yml files crash signatures as issues). Hosted CI runs independent
+# memory, travel and portable/boot jobs, each bounded to 45 minutes. Local callers may run all.
 # memory: five original-release boots then five candidate Day/place journeys,
 # on this same runner with the same sampler and production builds without hooks.
 # travel: all desktop/iPhone time-travel cases; portable: all portable restore
-# and boot recovery cases. Each uses its own hooks-enabled preview, no retries.
+# and boot recovery cases. Each uses its own hooks-enabled preview and no retries.
 # Local functional runs both suites; local all also runs the memory comparison.
 # Evidence is uploaded only from a finalized snapshot after its content scan.
 set -euo pipefail
@@ -298,14 +299,25 @@ register_producer "$!"
 wait_for_preview "${BASE_URL}"
 }
 
+# Run one functional suite with zero Playwright retries. Its JSON report lets
+# the workflow file a failure with no crash report (crashReportSummary.mjs).
+#   run_suite <package script> <output dir> <args...>
+run_suite() {
+  local script="$1" output="$2"
+  shift 2
+  local reporter="list"
+  if [[ -n "${CI:-}" ]]; then reporter="github,list"; fi
+  PLAYWRIGHT_JSON_OUTPUT_FILE="${output}-report.json" run_lane_command bun run "${script}" "$@" --retries=0 --reporter="${reporter},json" --output="${output}"
+}
+
 run_travel_lane() {
-# Zero retries, and run each independent suite even if a preceding one fails.
-TIME_TRAVEL_E2E_BASE_URL="${BASE_URL}" run_lane_command bun run test:e2e:time-travel e2e/time-travel.spec.ts --project=webkit --project=iphone-webkit --project=iphone-15-webkit --retries=0 --output="${ARTIFACTS}/time-travel" || status=1
+# Run each independent suite even if a preceding one fails.
+TIME_TRAVEL_E2E_BASE_URL="${BASE_URL}" run_suite test:e2e:time-travel "${ARTIFACTS}/time-travel" e2e/time-travel.spec.ts --project=webkit --project=iphone-webkit --project=iphone-15-webkit || status=1
 }
 
 run_portable_lane() {
-PORTABLE_INVARIANTS_E2E_BASE_URL="${BASE_URL}" run_lane_command bun run test:e2e:portable-invariants --project=webkit --project=iphone-webkit --retries=0 --output="${ARTIFACTS}/portable-invariants" || status=1
-BOOT_RETRY_E2E_BASE_URL="${BASE_URL}" run_lane_command bun run test:e2e:boot-retry --project=webkit --retries=0 --output="${ARTIFACTS}/boot-retry" || status=1
+PORTABLE_INVARIANTS_E2E_BASE_URL="${BASE_URL}" run_suite test:e2e:portable-invariants "${ARTIFACTS}/portable-invariants" --project=webkit --project=iphone-webkit || status=1
+BOOT_RETRY_E2E_BASE_URL="${BASE_URL}" run_suite test:e2e:boot-retry "${ARTIFACTS}/boot-retry" --project=webkit || status=1
 }
 
 if [[ "${MODE}" == memory || "${MODE}" == all ]]; then run_memory_lane; fi

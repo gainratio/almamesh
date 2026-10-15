@@ -25,58 +25,34 @@
         {
           "antar_sequence": [
             {
-              "duration_years": 1.686856,
-              "end_date": "1973-11-16T11:14:02.573458Z",
-              "lord": "venus",
+              "duration_years": 0.287806,
+              "end_date": "1972-06-23T11:09:15.440746Z",
+              "lord": "rahu",
               "start_date": "1972-03-10T08:15:00Z"
             },
             {
-              "duration_years": 0.506057,
-              "end_date": "1974-05-20T07:19:45.345495Z",
-              "lord": "sun",
-              "start_date": "1973-11-16T11:14:02.573458Z"
-            },
-            {
-              "duration_years": 0.843428,
-              "end_date": "1975-03-24T08:49:16.632224Z",
-              "lord": "moon",
-              "start_date": "1974-05-20T07:19:45.345495Z"
-            },
-            {
-              "duration_years": 0.5904,
-              "end_date": "1975-10-26T00:15:56.532934Z",
-              "lord": "mars",
-              "start_date": "1975-03-24T08:49:16.632224Z"
-            },
-            {
-              "duration_years": 1.518171,
-              "end_date": "1977-05-02T12:33:04.849046Z",
-              "lord": "rahu",
-              "start_date": "1975-10-26T00:15:56.532934Z"
-            },
-            {
-              "duration_years": 1.349485,
-              "end_date": "1978-09-07T10:08:18.907812Z",
+              "duration_years": 2.666667,
+              "end_date": "1975-02-22T11:09:15.440746Z",
               "lord": "jupiter",
-              "start_date": "1977-05-02T12:33:04.849046Z"
+              "start_date": "1972-06-23T11:09:15.440746Z"
             },
             {
-              "duration_years": 1.602514,
-              "end_date": "1980-04-14T17:46:24.352597Z",
+              "duration_years": 3.166667,
+              "end_date": "1978-04-24T02:09:15.440746Z",
               "lord": "saturn",
-              "start_date": "1978-09-07T10:08:18.907812Z"
+              "start_date": "1975-02-22T11:09:15.440746Z"
             },
             {
-              "duration_years": 1.433828,
-              "end_date": "1981-09-20T10:42:35.540036Z",
+              "duration_years": 2.833333,
+              "end_date": "1981-02-21T23:09:15.440746Z",
               "lord": "mercury",
-              "start_date": "1980-04-14T17:46:24.352597Z"
+              "start_date": "1978-04-24T02:09:15.440746Z"
             },
             {
-              "duration_years": 0.5904,
+              "duration_years": 1.166667,
               "end_date": "1982-04-24T02:09:15.440746Z",
               "lord": "ketu",
-              "start_date": "1981-09-20T10:42:35.540036Z"
+              "start_date": "1981-02-21T23:09:15.440746Z"
             }
           ],
           "duration_years": 10.121139,
@@ -1641,58 +1617,46 @@
         {
           "antar_sequence": [
             {
-              "duration_years": 0.646986,
-              "end_date": "1986-03-16T11:58:45.801068Z",
-              "lord": "moon",
+              "duration_years": 0.680499,
+              "end_date": "1986-03-28T17:45:09.612818Z",
+              "lord": "rahu",
               "start_date": "1985-07-23T04:30:00Z"
             },
             {
-              "duration_years": 0.45289,
-              "end_date": "1986-08-28T22:00:53.861816Z",
-              "lord": "mars",
-              "start_date": "1986-03-16T11:58:45.801068Z"
-            },
-            {
-              "duration_years": 1.164575,
-              "end_date": "1987-10-28T06:40:40.303739Z",
-              "lord": "rahu",
-              "start_date": "1986-08-28T22:00:53.861816Z"
-            },
-            {
-              "duration_years": 1.035178,
-              "end_date": "1988-11-09T09:02:41.585448Z",
+              "duration_years": 1.333333,
+              "end_date": "1987-07-28T17:45:09.612818Z",
               "lord": "jupiter",
-              "start_date": "1987-10-28T06:40:40.303739Z"
+              "start_date": "1986-03-28T17:45:09.612818Z"
             },
             {
-              "duration_years": 1.229273,
-              "end_date": "1990-02-01T08:51:20.607478Z",
+              "duration_years": 1.583333,
+              "end_date": "1989-02-26T01:15:09.612818Z",
               "lord": "saturn",
-              "start_date": "1988-11-09T09:02:41.585448Z"
+              "start_date": "1987-07-28T17:45:09.612818Z"
             },
             {
-              "duration_years": 1.099876,
-              "end_date": "1991-03-10T02:22:14.469294Z",
+              "duration_years": 1.416667,
+              "end_date": "1990-07-28T11:45:09.612818Z",
               "lord": "mercury",
-              "start_date": "1990-02-01T08:51:20.607478Z"
+              "start_date": "1989-02-26T01:15:09.612818Z"
             },
             {
-              "duration_years": 0.45289,
-              "end_date": "1991-08-22T12:24:22.530042Z",
+              "duration_years": 0.583333,
+              "end_date": "1991-02-26T13:15:09.612818Z",
               "lord": "ketu",
-              "start_date": "1991-03-10T02:22:14.469294Z"
+              "start_date": "1990-07-28T11:45:09.612818Z"
             },
             {
-              "duration_years": 1.293972,
-              "end_date": "1992-12-07T03:21:54.132178Z",
+              "duration_years": 1.666667,
+              "end_date": "1992-10-27T07:15:09.612818Z",
               "lord": "venus",
-              "start_date": "1991-08-22T12:24:22.530042Z"
+              "start_date": "1991-02-26T13:15:09.612818Z"
             },
             {
-              "duration_years": 0.388192,
-              "end_date": "1993-04-27T22:15:09.612819Z",
+              "duration_years": 0.5,
+              "end_date": "1993-04-27T22:15:09.612818Z",
               "lord": "sun",
-              "start_date": "1992-12-07T03:21:54.132178Z"
+              "start_date": "1992-10-27T07:15:09.612818Z"
             }
           ],
           "duration_years": 7.763832,
@@ -3421,58 +3385,34 @@
         {
           "antar_sequence": [
             {
-              "duration_years": 0.149691,
-              "end_date": "1988-10-01T17:25:18.781355Z",
-              "lord": "mars",
+              "duration_years": 0.057793,
+              "end_date": "1988-08-29T03:50:39.108936Z",
+              "lord": "mercury",
               "start_date": "1988-08-08T01:14:00Z"
             },
             {
-              "duration_years": 0.384919,
-              "end_date": "1989-02-19T07:37:15.647695Z",
-              "lord": "rahu",
-              "start_date": "1988-10-01T17:25:18.781355Z"
-            },
-            {
-              "duration_years": 0.34215,
-              "end_date": "1989-06-24T06:54:32.862220Z",
-              "lord": "jupiter",
-              "start_date": "1989-02-19T07:37:15.647695Z"
-            },
-            {
-              "duration_years": 0.406303,
-              "end_date": "1989-11-19T16:33:49.554468Z",
-              "lord": "saturn",
-              "start_date": "1989-06-24T06:54:32.862220Z"
-            },
-            {
-              "duration_years": 0.363535,
-              "end_date": "1990-04-01T11:18:26.594901Z",
-              "lord": "mercury",
-              "start_date": "1989-11-19T16:33:49.554468Z"
-            },
-            {
-              "duration_years": 0.149691,
-              "end_date": "1990-05-26T03:29:45.376256Z",
+              "duration_years": 0.408333,
+              "end_date": "1989-01-25T07:17:39.108936Z",
               "lord": "ketu",
-              "start_date": "1990-04-01T11:18:26.594901Z"
+              "start_date": "1988-08-29T03:50:39.108936Z"
             },
             {
-              "duration_years": 0.427688,
-              "end_date": "1990-10-29T08:36:21.894412Z",
+              "duration_years": 1.166667,
+              "end_date": "1990-03-27T10:17:39.108936Z",
               "lord": "venus",
-              "start_date": "1990-05-26T03:29:45.376256Z"
+              "start_date": "1989-01-25T07:17:39.108936Z"
             },
             {
-              "duration_years": 0.128306,
-              "end_date": "1990-12-15T05:20:20.849859Z",
+              "duration_years": 0.35,
+              "end_date": "1990-08-02T06:23:39.108936Z",
               "lord": "sun",
-              "start_date": "1990-10-29T08:36:21.894412Z"
+              "start_date": "1990-03-27T10:17:39.108936Z"
             },
             {
-              "duration_years": 0.213844,
-              "end_date": "1991-03-03T07:53:39.108937Z",
+              "duration_years": 0.583333,
+              "end_date": "1991-03-03T07:53:39.108936Z",
               "lord": "moon",
-              "start_date": "1990-12-15T05:20:20.849859Z"
+              "start_date": "1990-08-02T06:23:39.108936Z"
             }
           ],
           "duration_years": 2.566126,
@@ -4829,58 +4769,22 @@
         {
           "antar_sequence": [
             {
-              "duration_years": 0.720741,
-              "end_date": "1990-10-05T18:00:50.014929Z",
-              "lord": "venus",
+              "duration_years": 0.324445,
+              "end_date": "1990-05-14T00:05:00.089572Z",
+              "lord": "saturn",
               "start_date": "1990-01-15T12:00:00Z"
             },
             {
-              "duration_years": 0.216222,
-              "end_date": "1990-12-23T17:25:05.019408Z",
-              "lord": "sun",
-              "start_date": "1990-10-05T18:00:50.014929Z"
-            },
-            {
-              "duration_years": 0.36037,
-              "end_date": "1991-05-04T08:25:30.026872Z",
-              "lord": "moon",
-              "start_date": "1990-12-23T17:25:05.019408Z"
-            },
-            {
-              "duration_years": 0.252259,
-              "end_date": "1991-08-04T11:43:47.532097Z",
-              "lord": "mars",
-              "start_date": "1991-05-04T08:25:30.026872Z"
-            },
-            {
-              "duration_years": 0.648667,
-              "end_date": "1992-03-28T09:56:32.545533Z",
-              "lord": "rahu",
-              "start_date": "1991-08-04T11:43:47.532097Z"
-            },
-            {
-              "duration_years": 0.576593,
-              "end_date": "1992-10-25T00:21:12.557476Z",
-              "lord": "jupiter",
-              "start_date": "1992-03-28T09:56:32.545533Z"
-            },
-            {
-              "duration_years": 0.684704,
-              "end_date": "1993-07-02T02:28:00.071658Z",
-              "lord": "saturn",
-              "start_date": "1992-10-25T00:21:12.557476Z"
-            },
-            {
-              "duration_years": 0.61263,
-              "end_date": "1994-02-10T20:46:42.584347Z",
+              "duration_years": 2.833333,
+              "end_date": "1993-03-13T21:05:00.089572Z",
               "lord": "mercury",
-              "start_date": "1993-07-02T02:28:00.071658Z"
+              "start_date": "1990-05-14T00:05:00.089572Z"
             },
             {
-              "duration_years": 0.252259,
+              "duration_years": 1.166667,
               "end_date": "1994-05-14T00:05:00.089572Z",
               "lord": "ketu",
-              "start_date": "1994-02-10T20:46:42.584347Z"
+              "start_date": "1993-03-13T21:05:00.089572Z"
             }
           ],
           "duration_years": 4.324445,
@@ -6428,58 +6332,46 @@
         {
           "antar_sequence": [
             {
-              "duration_years": 1.361038,
-              "end_date": "2002-05-13T02:50:38.653152Z",
-              "lord": "jupiter",
+              "duration_years": 1.14112,
+              "end_date": "2002-02-21T19:02:19.898637Z",
+              "lord": "mercury",
               "start_date": "2000-12-31T23:59:00Z"
             },
             {
-              "duration_years": 1.616233,
-              "end_date": "2003-12-24T10:44:28.303770Z",
-              "lord": "saturn",
-              "start_date": "2002-05-13T02:50:38.653152Z"
-            },
-            {
-              "duration_years": 1.446103,
-              "end_date": "2005-06-04T15:16:50.622744Z",
-              "lord": "mercury",
-              "start_date": "2003-12-24T10:44:28.303770Z"
-            },
-            {
-              "duration_years": 0.595454,
-              "end_date": "2006-01-08T03:01:56.283498Z",
+              "duration_years": 0.933333,
+              "end_date": "2003-01-28T16:38:19.898637Z",
               "lord": "ketu",
-              "start_date": "2005-06-04T15:16:50.622744Z"
+              "start_date": "2002-02-21T19:02:19.898637Z"
             },
             {
-              "duration_years": 1.701298,
-              "end_date": "2007-09-21T12:36:29.599937Z",
+              "duration_years": 2.666667,
+              "end_date": "2005-09-28T16:38:19.898637Z",
               "lord": "venus",
-              "start_date": "2006-01-08T03:01:56.283498Z"
+              "start_date": "2003-01-28T16:38:19.898637Z"
             },
             {
-              "duration_years": 0.510389,
-              "end_date": "2008-03-25T22:40:51.594869Z",
+              "duration_years": 0.8,
+              "end_date": "2006-07-17T21:26:19.898637Z",
               "lord": "sun",
-              "start_date": "2007-09-21T12:36:29.599937Z"
+              "start_date": "2005-09-28T16:38:19.898637Z"
             },
             {
-              "duration_years": 0.850649,
-              "end_date": "2009-01-30T15:28:08.253089Z",
+              "duration_years": 1.333333,
+              "end_date": "2007-11-16T21:26:19.898637Z",
               "lord": "moon",
-              "start_date": "2008-03-25T22:40:51.594869Z"
+              "start_date": "2006-07-17T21:26:19.898637Z"
             },
             {
-              "duration_years": 0.595454,
-              "end_date": "2009-09-05T03:13:13.913843Z",
+              "duration_years": 0.933333,
+              "end_date": "2008-10-22T19:02:19.898637Z",
               "lord": "mars",
-              "start_date": "2009-01-30T15:28:08.253089Z"
+              "start_date": "2007-11-16T21:26:19.898637Z"
             },
             {
-              "duration_years": 1.531168,
-              "end_date": "2011-03-18T09:26:19.898639Z",
+              "duration_years": 2.4,
+              "end_date": "2011-03-18T09:26:19.898637Z",
               "lord": "rahu",
-              "start_date": "2009-09-05T03:13:13.913843Z"
+              "start_date": "2008-10-22T19:02:19.898637Z"
             }
           ],
           "duration_years": 10.207786,
@@ -8019,58 +7911,52 @@
         {
           "antar_sequence": [
             {
-              "duration_years": 2.173922,
-              "end_date": "2012-08-23T18:35:47.445692Z",
-              "lord": "rahu",
+              "duration_years": 1.59281,
+              "end_date": "2012-01-24T12:34:36.304616Z",
+              "lord": "jupiter",
               "start_date": "2010-06-21T18:00:00Z"
             },
             {
-              "duration_years": 1.932375,
-              "end_date": "2014-07-30T13:47:36.286307Z",
-              "lord": "jupiter",
-              "start_date": "2012-08-23T18:35:47.445692Z"
-            },
-            {
-              "duration_years": 2.294695,
-              "end_date": "2016-11-14T17:05:23.034538Z",
+              "duration_years": 2.85,
+              "end_date": "2014-11-30T11:40:36.304616Z",
               "lord": "saturn",
-              "start_date": "2014-07-30T13:47:36.286307Z"
+              "start_date": "2012-01-24T12:34:36.304616Z"
             },
             {
-              "duration_years": 2.053148,
-              "end_date": "2018-12-04T14:59:11.177692Z",
+              "duration_years": 2.55,
+              "end_date": "2017-06-18T20:58:36.304616Z",
               "lord": "mercury",
-              "start_date": "2016-11-14T17:05:23.034538Z"
+              "start_date": "2014-11-30T11:40:36.304616Z"
             },
             {
-              "duration_years": 0.845414,
-              "end_date": "2019-10-09T09:53:06.295461Z",
+              "duration_years": 1.05,
+              "end_date": "2018-07-07T09:16:36.304616Z",
               "lord": "ketu",
-              "start_date": "2018-12-04T14:59:11.177692Z"
+              "start_date": "2017-06-18T20:58:36.304616Z"
             },
             {
-              "duration_years": 2.415468,
-              "end_date": "2022-03-09T15:52:52.346230Z",
+              "duration_years": 3.0,
+              "end_date": "2021-07-07T03:16:36.304616Z",
               "lord": "venus",
-              "start_date": "2019-10-09T09:53:06.295461Z"
+              "start_date": "2018-07-07T09:16:36.304616Z"
             },
             {
-              "duration_years": 0.724641,
-              "end_date": "2022-11-29T08:04:48.161461Z",
+              "duration_years": 0.9,
+              "end_date": "2022-05-31T20:40:36.304616Z",
               "lord": "sun",
-              "start_date": "2022-03-09T15:52:52.346230Z"
+              "start_date": "2021-07-07T03:16:36.304616Z"
             },
             {
-              "duration_years": 1.207734,
-              "end_date": "2024-02-13T11:04:41.186846Z",
+              "duration_years": 1.5,
+              "end_date": "2023-11-30T17:40:36.304616Z",
               "lord": "moon",
-              "start_date": "2022-11-29T08:04:48.161461Z"
+              "start_date": "2022-05-31T20:40:36.304616Z"
             },
             {
-              "duration_years": 0.845414,
-              "end_date": "2024-12-18T05:58:36.304615Z",
+              "duration_years": 1.05,
+              "end_date": "2024-12-18T05:58:36.304616Z",
               "lord": "mars",
-              "start_date": "2024-02-13T11:04:41.186846Z"
+              "start_date": "2023-11-30T17:40:36.304616Z"
             }
           ],
           "duration_years": 14.49281,
@@ -9470,10 +9356,10 @@
     "dashas": {
       "convention": "julian_365_25",
       "current_antar": {
-        "duration_years": 0.972332,
-        "end_date": "2025-09-09T14:30:34.302306Z",
-        "lord": "moon",
-        "start_date": "2024-09-19T11:02:58.585255Z"
+        "duration_years": 2.55,
+        "end_date": "2026-07-26T10:31:08.604610Z",
+        "lord": "rahu",
+        "start_date": "2024-01-07T01:13:08.604610Z"
       },
       "current_maha": {
         "duration_years": 11.667981,
@@ -9482,67 +9368,55 @@
         "start_date": "2019-11-09T17:45:00Z"
       },
       "current_pratyantar": {
-        "duration_years": 0.14585,
-        "end_date": "2025-01-01T01:03:31.502729Z",
-        "lord": "rahu",
-        "start_date": "2024-11-08T18:32:23.145171Z"
+        "duration_years": 0.40375,
+        "end_date": "2025-02-21T09:55:35.604610Z",
+        "lord": "saturn",
+        "start_date": "2024-09-26T22:39:14.604610Z"
       },
       "maha_dasha_sequence": [
         {
           "antar_sequence": [
             {
-              "duration_years": 1.652964,
-              "end_date": "2021-07-05T11:37:54.718986Z",
-              "lord": "mercury",
+              "duration_years": 0.901314,
+              "end_date": "2020-10-03T22:40:08.604610Z",
+              "lord": "venus",
               "start_date": "2019-11-09T17:45:00Z"
             },
             {
-              "duration_years": 0.680632,
-              "end_date": "2022-03-11T02:03:13.720922Z",
-              "lord": "ketu",
-              "start_date": "2021-07-05T11:37:54.718986Z"
-            },
-            {
-              "duration_years": 1.944663,
-              "end_date": "2024-02-19T08:58:25.155024Z",
-              "lord": "venus",
-              "start_date": "2022-03-11T02:03:13.720922Z"
-            },
-            {
-              "duration_years": 0.583399,
-              "end_date": "2024-09-19T11:02:58.585255Z",
+              "duration_years": 0.85,
+              "end_date": "2021-08-10T09:46:08.604610Z",
               "lord": "sun",
-              "start_date": "2024-02-19T08:58:25.155024Z"
+              "start_date": "2020-10-03T22:40:08.604610Z"
             },
             {
-              "duration_years": 0.972332,
-              "end_date": "2025-09-09T14:30:34.302306Z",
+              "duration_years": 1.416667,
+              "end_date": "2023-01-09T20:16:08.604610Z",
               "lord": "moon",
-              "start_date": "2024-09-19T11:02:58.585255Z"
+              "start_date": "2021-08-10T09:46:08.604610Z"
             },
             {
-              "duration_years": 0.680632,
-              "end_date": "2026-05-16T04:55:53.304242Z",
+              "duration_years": 0.991667,
+              "end_date": "2024-01-07T01:13:08.604610Z",
               "lord": "mars",
-              "start_date": "2025-09-09T14:30:34.302306Z"
+              "start_date": "2023-01-09T20:16:08.604610Z"
             },
             {
-              "duration_years": 1.750197,
-              "end_date": "2028-02-14T11:09:33.594933Z",
+              "duration_years": 2.55,
+              "end_date": "2026-07-26T10:31:08.604610Z",
               "lord": "rahu",
-              "start_date": "2026-05-16T04:55:53.304242Z"
+              "start_date": "2024-01-07T01:13:08.604610Z"
             },
             {
-              "duration_years": 1.555731,
-              "end_date": "2029-09-04T16:41:42.742214Z",
+              "duration_years": 2.266667,
+              "end_date": "2028-10-31T08:07:08.604610Z",
               "lord": "jupiter",
-              "start_date": "2028-02-14T11:09:33.594933Z"
+              "start_date": "2026-07-26T10:31:08.604610Z"
             },
             {
-              "duration_years": 1.84743,
-              "end_date": "2031-07-11T11:16:08.604611Z",
+              "duration_years": 2.691667,
+              "end_date": "2031-07-11T11:16:08.604610Z",
               "lord": "saturn",
-              "start_date": "2029-09-04T16:41:42.742214Z"
+              "start_date": "2028-10-31T08:07:08.604610Z"
             }
           ],
           "duration_years": 11.667981,
@@ -10049,58 +9923,58 @@
       ],
       "pratyantar_sequence": [
         {
-          "duration_years": 0.081028,
-          "end_date": "2024-10-19T01:20:16.561676Z",
-          "lord": "moon",
-          "start_date": "2024-09-19T11:02:58.585255Z"
-        },
-        {
-          "duration_years": 0.056719,
-          "end_date": "2024-11-08T18:32:23.145171Z",
-          "lord": "mars",
-          "start_date": "2024-10-19T01:20:16.561676Z"
-        },
-        {
-          "duration_years": 0.14585,
-          "end_date": "2025-01-01T01:03:31.502729Z",
+          "duration_years": 0.3825,
+          "end_date": "2024-05-25T18:12:50.604610Z",
           "lord": "rahu",
-          "start_date": "2024-11-08T18:32:23.145171Z"
+          "start_date": "2024-01-07T01:13:08.604610Z"
         },
         {
-          "duration_years": 0.129644,
-          "end_date": "2025-02-17T09:31:12.265002Z",
+          "duration_years": 0.34,
+          "end_date": "2024-09-26T22:39:14.604610Z",
           "lord": "jupiter",
-          "start_date": "2025-01-01T01:03:31.502729Z"
+          "start_date": "2024-05-25T18:12:50.604610Z"
         },
         {
-          "duration_years": 0.153953,
-          "end_date": "2025-04-14T15:04:04.420202Z",
+          "duration_years": 0.40375,
+          "end_date": "2025-02-21T09:55:35.604610Z",
           "lord": "saturn",
-          "start_date": "2025-02-17T09:31:12.265002Z"
+          "start_date": "2024-09-26T22:39:14.604610Z"
         },
         {
-          "duration_years": 0.137747,
-          "end_date": "2025-06-03T22:33:28.980118Z",
+          "duration_years": 0.36125,
+          "end_date": "2025-07-03T08:38:38.604610Z",
           "lord": "mercury",
-          "start_date": "2025-04-14T15:04:04.420202Z"
+          "start_date": "2025-02-21T09:55:35.604610Z"
         },
         {
-          "duration_years": 0.056719,
-          "end_date": "2025-06-24T15:45:35.563613Z",
+          "duration_years": 0.14875,
+          "end_date": "2025-08-26T16:35:11.604610Z",
           "lord": "ketu",
-          "start_date": "2025-06-03T22:33:28.980118Z"
+          "start_date": "2025-07-03T08:38:38.604610Z"
         },
         {
-          "duration_years": 0.162055,
-          "end_date": "2025-08-22T20:20:11.516455Z",
+          "duration_years": 0.425,
+          "end_date": "2026-01-28T22:08:11.604610Z",
           "lord": "venus",
-          "start_date": "2025-06-24T15:45:35.563613Z"
+          "start_date": "2025-08-26T16:35:11.604610Z"
         },
         {
-          "duration_years": 0.048617,
-          "end_date": "2025-09-09T14:30:34.302308Z",
+          "duration_years": 0.1275,
+          "end_date": "2026-03-16T11:48:05.604610Z",
           "lord": "sun",
-          "start_date": "2025-08-22T20:20:11.516455Z"
+          "start_date": "2026-01-28T22:08:11.604610Z"
+        },
+        {
+          "duration_years": 0.2125,
+          "end_date": "2026-06-02T02:34:35.604610Z",
+          "lord": "moon",
+          "start_date": "2026-03-16T11:48:05.604610Z"
+        },
+        {
+          "duration_years": 0.14875,
+          "end_date": "2026-07-26T10:31:08.604610Z",
+          "lord": "mars",
+          "start_date": "2026-06-02T02:34:35.604610Z"
         }
       ]
     },

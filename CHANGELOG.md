@@ -98,6 +98,13 @@ All notable changes to AlmaMesh are documented here. Format follows
   worker until the engine is ready, so every run tests this worst case.
 
 ### Changed
+- **Deploys wait on the lanes that represent real users.** almamesh.com now
+  deploys once Dagger (Chromium and the other product gates) and real Safari
+  (`safari-smoke.yml`) are green. The macOS WebKit lane still runs on every
+  push and pull request, but it reports instead of blocking: each new WebKit
+  crash signature (thread, signal, top frame) becomes a `webkit-crash` issue,
+  and a repeat adds a comment with the run. The hand-written crash-retry
+  matcher (`webkitFlakeRetry.mjs`) is gone.
 - **Constrained-device chat uses bounded keyword recall.** Minimal and lite
   devices no longer start the optional MiniLM embedding model or duplicate
   their chat into a vector index. Full devices retain semantic recall. Restore

@@ -30,10 +30,11 @@ function port(live: string | null, attempt: DaggerAttempt) {
 }
 
 describe("deploy trigger binding", () => {
-  test("only the Dagger and WebKit (macOS) workflow paths may trigger production", () => {
+  test("only the Dagger and Safari (macOS) workflow paths may trigger production", () => {
     expect(parseDeployTrigger(".github/workflows/dagger.yml")).toBe("dagger")
-    expect(parseDeployTrigger(".github/workflows/webkit-macos.yml")).toBe("webkit-macos")
-    for (const path of ["Dagger", ".github/workflows/nightly-e2e.yml", "", "toString", "__proto__"]) {
+    expect(parseDeployTrigger(".github/workflows/safari-smoke.yml")).toBe("safari")
+    // The macOS WebKit lane reports crashes as issues; it never gates a deploy.
+    for (const path of [".github/workflows/webkit-macos.yml", "Dagger", ".github/workflows/nightly-e2e.yml", "", "toString", "__proto__"]) {
       expect(() => parseDeployTrigger(path)).toThrow("not allowed")
     }
   })
@@ -44,26 +45,26 @@ describe("deploy trigger binding", () => {
     expect(calls).toEqual(["live"])
   })
 
-  test("a WebKit rerun binds the newest green Dagger attempt, never its own run id", async () => {
+  test("a Safari rerun binds the newest green Dagger attempt, never its own run id", async () => {
     const { port: p } = port(otherSha, { state: "green", workflowRunId: "781", runAttempt: 3 })
-    expect(await bindDeployTrigger(p, "webkit-macos", sha, triggerAttempt)).toEqual({ workflowRunId: "781", runAttempt: 3 })
+    expect(await bindDeployTrigger(p, "safari", sha, triggerAttempt)).toEqual({ workflowRunId: "781", runAttempt: 3 })
   })
 
-  test("a WebKit completion skips while Dagger is still running: the Dagger completion deploys", async () => {
+  test("a Safari completion skips while Dagger is still running: the Dagger completion deploys", async () => {
     const { port: p } = port(otherSha, { state: "pending" })
-    expect(await bindDeployTrigger(p, "webkit-macos", sha, triggerAttempt)).toEqual({
+    expect(await bindDeployTrigger(p, "safari", sha, triggerAttempt)).toEqual({
       skip: `SKIP ${sha}: Dagger is still running; its completion deploys this commit`,
     })
   })
 
-  test("a WebKit completion skips when the newest Dagger attempt is red", async () => {
+  test("a Safari completion skips when the newest Dagger attempt is red", async () => {
     const { port: p } = port(null, { state: "red" })
-    expect(await bindDeployTrigger(p, "webkit-macos", sha, triggerAttempt)).toEqual({
+    expect(await bindDeployTrigger(p, "safari", sha, triggerAttempt)).toEqual({
       skip: `SKIP ${sha}: the newest Dagger attempt is not green; nothing to deploy`,
     })
   })
 
-  test.each(["dagger", "webkit-macos"] as const)("a %s completion never redeploys a SHA production already serves", async (trigger) => {
+  test.each(["dagger", "safari"] as const)("a %s completion never redeploys a SHA production already serves", async (trigger) => {
     const { port: p, calls } = port(sha, { state: "green", workflowRunId: "781", runAttempt: 3 })
     expect(await bindDeployTrigger(p, trigger, sha, triggerAttempt)).toEqual({
       skip: `SKIP ${sha}: production already serves this commit`,
@@ -73,7 +74,7 @@ describe("deploy trigger binding", () => {
 
   test("an unreadable live identity does not block a deploy", async () => {
     const { port: p } = port(null, { state: "green", workflowRunId: "781", runAttempt: 3 })
-    expect(await bindDeployTrigger(p, "webkit-macos", sha, triggerAttempt)).toEqual({ workflowRunId: "781", runAttempt: 3 })
+    expect(await bindDeployTrigger(p, "safari", sha, triggerAttempt)).toEqual({ workflowRunId: "781", runAttempt: 3 })
   })
 
   test("the Dagger deploy function routes every delivery through the bound attempt", () => {

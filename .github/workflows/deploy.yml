@@ -4,15 +4,16 @@
 name: Deploy almamesh.com
 
 # The exact workflow contract below makes this exemption conditional: only the
-# Dagger and WebKit (macOS) completions plus the same-repository push/main/success
-# gate are allowed. Production needs both green for the SHA, and a Mac lane rerun
-# must be able to restart a deploy its first red attempt stopped. The module
-# (dagger/src/deployTrigger.ts) binds a WebKit completion to the newest green
-# Dagger attempt, skips while Dagger still runs, and skips a SHA production already
-# serves; the mutex below serializes the two, so neither double-deploys.
+# Dagger and Safari (macOS) completions plus the same-repository push/main/success
+# gate are allowed. Production needs both green for the SHA (Chromium and the other
+# product gates, and real Safari), and a Safari rerun must be able to restart a
+# deploy its first red attempt stopped. The macOS WebKit lane gates nothing; it
+# files crash issues. The module (dagger/src/deployTrigger.ts) binds a Safari
+# completion to the newest green Dagger attempt, skips while Dagger still runs, and
+# skips a SHA production already serves; the mutex below serializes the two.
 on: # zizmor: ignore[dangerous-triggers] deploy-after-CI by design; exact same-repo push/main/success attempt is revalidated before secrets or provider access
   workflow_run:
-    workflows: ["Dagger", "WebKit (macOS)"]
+    workflows: ["Dagger", "Safari (macOS)"]
     types: [completed]
     branches: [main]
 

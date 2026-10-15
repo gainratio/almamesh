@@ -44,6 +44,37 @@ export interface StreamChatCompletionJsonOptions extends ChatCompletionJsonOptio
   readonly reasoningTimeoutMs?: number;
 }
 
+/**
+ * Longest whitespace run a JSON answer may stream. JSON mode can close its
+ * object and then stream whitespace without end (openai/gpt-6-luna, nightly
+ * 2026-10-13/14: 138,270 content chars for ~900 words). Deltas keep coming, so
+ * the idle cap never fires; this cap ends the stream instead. Indentation in
+ * pretty-printed JSON is far shorter.
+ */
+const JSON_WHITESPACE_RUNAWAY_CHARS = 2_000;
+
+/** Length of the whitespace run at the end of the content after `delta`. */
+function trailingWhitespaceRun(run: number, delta: string): number {
+  const tail = delta.length - delta.trimEnd().length;
+  return tail === delta.length ? run + tail : tail;
+}
+
+/**
+ * A whitespace runaway: the JSON already written when it is complete (the
+ * caller then stops reading), else a retryable 502 while the section's retry
+ * still has time.
+ */
+function settleWhitespaceRunaway(parts: readonly string[]): string {
+  try {
+    return validatedJson(parts);
+  } catch {
+    throw new LlmRequestError(
+      `LLM endpoint streamed a whitespace runaway (${JSON_WHITESPACE_RUNAWAY_CHARS}+ chars) before finishing its JSON`,
+      { status: DROPPED_GENERATION_STATUS },
+    );
+  }
+}
+
 function abortError(): DOMException {
   return new DOMException("The streamed completion was aborted", "AbortError");
 }
@@ -98,6 +129,7 @@ export async function streamChatCompletionJson(
   // Deltas are kept as a list and joined once at the end: no per-token copy of
   // the growing document.
   const parts: string[] = [];
+  let whitespaceRun = 0;
   const sse = {
     inBandFallbackStatus: DROPPED_GENERATION_STATUS,
     answerDeadlineMs: options.reasoningTimeoutMs ?? REASONING_TIMEOUT_MS,
@@ -108,6 +140,9 @@ export async function streamChatCompletionJson(
     if (typeof content === "string" && content) {
       parts.push(content);
       options.onDelta?.(content);
+      whitespaceRun = trailingWhitespaceRun(whitespaceRun, content);
+      // Returning leaves the loop, which cancels the body reader.
+      if (whitespaceRun >= JSON_WHITESPACE_RUNAWAY_CHARS) return settleWhitespaceRunaway(parts);
     }
     const reasoning = delta?.reasoning;
     if (typeof reasoning === "string" && reasoning) options.onReasoning?.(reasoning);

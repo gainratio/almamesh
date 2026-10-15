@@ -51,10 +51,11 @@ import {
   FETCHED_EVIDENCE,
   FETCH_RUN_ARTIFACT_SCRIPT,
   browserJourneyEvidenceScript,
-  browserJourneyFetchArgs,
+  browserJourneyFetchRequest,
   validateBrowserJourneyExitCode,
 } from "./browserJourneyEvidence.js"
 import { nativeMacAcceptanceScript } from "./nativeMacAcceptance.js"
+import { fileCrashIssues, githubIssuesPort, parseCrashOutputs } from "./webkitCrashIssues.js"
 import {
   bindDeployTrigger,
   daggerAttemptScript,
@@ -89,7 +90,7 @@ const CONTRACT_SHA = "1111111111111111111111111111111111111111"
 // Owner of the Git source a Git-linked Pages project stays bound to. Pinned to
 // today's owner so the binding survives the hseshadr -> gainratio transfer.
 const PAGES_GIT_SOURCE_OWNER = "hseshadr"
-const CENTRAL_MODULE_SHA = "fbc02232928fbca80da1013e9e1676a3e41424a6"
+const CENTRAL_MODULE_SHA = "8420264d5560b0817579d9c5323ae3a69ce4558d"
 const NODE_IMAGE =
   "ghcr.io/gainratio/mirror/docker.io/library/node:22-trixie-slim@sha256:7b8a0c89c54499bee567618f96578e1a12a800f062fbdbfd1fb6a443fa6f6284"
 const PAGES_NODE_IMAGE =
@@ -142,6 +143,7 @@ const CONTRACT_TESTS = [
   "tests/dagger-toolchain-contract.test.ts",
   "tests/dagger-workflow-contract.test.ts",
   "tests/webkit-memory-baseline.test.ts",
+  "tests/webkit-crash-issues.test.ts",
 ]
 const SMOKE_OUTPUT_LINES = 60
 const NIGHTLY_REPORTS_DIR = "nightly-reports"
@@ -600,13 +602,13 @@ exec ${inline.join(" ")}`,
    */
   @func()
   async browserJourneysStatus(commitSha: string, repository: string, runId: string, githubToken: Secret): Promise<string> {
-    const fetch = browserJourneyFetchArgs(repository, runId, commitSha)
+    const fetch = browserJourneyFetchRequest(repository, runId, commitSha)
     const evidence = dag
       .container()
       .from(UV_IMAGE)
       .withFile("/opt/fetch_run_artifact.py", this.source.file(FETCH_RUN_ARTIFACT_SCRIPT))
       .withSecretVariable("GITHUB_TOKEN", githubToken)
-      .withExec(fetch)
+      .withExec(["python3", "/opt/fetch_run_artifact.py", "--repository", fetch.repository, "--run-id", fetch.runId, "--name", fetch.artifact, "--output", FETCHED_EVIDENCE])
       .directory(FETCHED_EVIDENCE)
     await dag
       .container()
@@ -916,7 +918,7 @@ exec ${inline.join(" ")}`,
   ): Promise<string> {
     this.registryToken ??= githubToken
     const runRepository = requireAllowedRepository(repository)
-    // Dagger and WebKit (macOS) both trigger this; see deployTrigger.ts.
+    // Dagger and Safari (macOS) both trigger this; see deployTrigger.ts.
     const bound = await bindDeployTrigger({
       liveCommit: async () => parseLiveCommit(await dag.container().from(NODE_IMAGE)
         .withEnvVariable("DEPLOY_TRIGGER_NONCE", randomUUID())
@@ -1017,6 +1019,19 @@ exec ${inline.join(" ")}`,
     const run = await this.liveSmokePass("fresh")
     if (!run.passed) throw new Error(`Live probe failed (fresh) against ${LIVE_ORIGIN}\n${run.output}`)
     return `Live probe passed (fresh) against ${LIVE_ORIGIN}\n${run.output}`
+  }
+  /**
+   * File each macOS WebKit crash signature as an issue (webkitCrashIssues.ts).
+   * `crashes` is `toJSON(needs.*.outputs.crashes)` from webkit-macos.yml. Never
+   * cached: a remembered run would skip this run's comments.
+   */
+  @func({ cache: "never" })
+  async fileWebkitCrashes(githubToken: Secret, repository: string, runId: string, crashes: string): Promise<string> {
+    if (!/^[1-9][0-9]{0,19}$/.test(runId)) throw new Error("Run id is invalid.")
+    const allowed = requireAllowedRepository(repository)
+    const port = githubIssuesPort(allowed, () => githubToken.plaintext())
+    const run = { runUrl: `https://github.com/${allowed}/actions/runs/${runId}`, date: new Date().toISOString().slice(0, 10) }
+    return (await fileCrashIssues(port, parseCrashOutputs(crashes), run)).join("\n")
   }
   @func()
   web(): Directory {

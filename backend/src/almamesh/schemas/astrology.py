@@ -105,10 +105,19 @@ class HouseCuspData(BaseModel):
 
 
 class DashaPeriod(BaseModel):
+    """One dasha row. ``cycle_start`` is set only on a row clipped at birth.
+
+    The native is born part-way through a maha (and an antar, a pratyantar): such a
+    row starts at birth, and ``cycle_start`` is where the full period began before
+    birth, so its sub-periods keep their full lengths. In-process only (excluded
+    from the payload); every row's dates are already final.
+    """
+
     lord: PlanetName
     start_date: datetime
     end_date: datetime
     duration_years: float
+    cycle_start: datetime | None = Field(default=None, exclude=True)
 
 
 class MahaDashaPeriod(DashaPeriod):

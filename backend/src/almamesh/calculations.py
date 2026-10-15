@@ -848,19 +848,34 @@ def _build_maha_sequence(
     birth_dt: datetime,
     days_per_year: float,
 ) -> list[DashaPeriod]:
-    """Build the 9 maha-dasha periods: the partial balance, then the full cycle."""
-    lord_idx = DASHA_SEQUENCE.index(start_lord)
-    periods: list[DashaPeriod] = []
-    curr_start = birth_dt
-    for offset in range(9):
-        lord = start_lord if offset == 0 else DASHA_SEQUENCE[(lord_idx + offset) % 9]
-        years = remaining_years if offset == 0 else DASHA_YEARS[lord]
-        curr_end = curr_start + timedelta(days=years * days_per_year)
-        periods.append(
-            DashaPeriod(lord=lord, start_date=curr_start, end_date=curr_end, duration_years=years)
-        )
-        curr_start = curr_end
+    """Build the 9 maha-dasha periods: the partial balance, then the full cycle.
+
+    The balance row starts at birth; its ``cycle_start`` is where that maha truly
+    began, ``DASHA_YEARS - remaining_years`` before birth.
+    """
+    elapsed = timedelta(days=(DASHA_YEARS[start_lord] - remaining_years) * days_per_year)
+    first = _maha_row(start_lord, birth_dt, remaining_years, days_per_year, birth_dt - elapsed)
+    periods: list[DashaPeriod] = [first]
+    for lord, _ in _sub_lords(start_lord)[1:]:
+        periods.append(_maha_row(lord, periods[-1].end_date, DASHA_YEARS[lord], days_per_year))
     return periods
+
+
+def _maha_row(
+    lord: PlanetName,
+    start: datetime,
+    years: float,
+    days_per_year: float,
+    cycle_start: datetime | None = None,
+) -> DashaPeriod:
+    """One maha row of ``years`` dasha-years from ``start``."""
+    return DashaPeriod(
+        lord=lord,
+        start_date=start,
+        end_date=start + timedelta(days=years * days_per_year),
+        duration_years=years,
+        cycle_start=cycle_start,
+    )
 
 
 def _resolve_reference_instant(reference_date: datetime | None) -> datetime:
@@ -869,23 +884,36 @@ def _resolve_reference_instant(reference_date: datetime | None) -> datetime:
     return ref if ref.tzinfo is not None else ref.replace(tzinfo=UTC)
 
 
-def subdivide_period(parent: DashaPeriod) -> list[DashaPeriod]:
-    """The 9 sub-periods of ``parent``, each a fraction of the parent's ACTUAL
-    span (so they tile it exactly under whatever year convention built it). The
-    sub-sequence starts from the parent lord; the proportions are DASHA_YEARS/120.
+def _sub_lords(lord: PlanetName) -> list[tuple[PlanetName, float]]:
+    """The nine sub-lords from ``lord`` onward, each with its DASHA_YEARS/120 share."""
+    lord_idx = DASHA_SEQUENCE.index(lord)
+    subs = [DASHA_SEQUENCE[(lord_idx + offset) % 9] for offset in range(9)]
+    return [(sub, DASHA_YEARS[sub] / 120.0) for sub in subs]
 
-    ``duration_years`` on each sub-row is the row's OWN length in dasha-years
-    (``parent.duration_years * fraction``) — the same actual-span semantics the
-    maha rows carry (cf. the partial birth-balance maha) — never the sub-lord's
-    nominal cycle years, which are only the proportion numerator.
+
+def subdivide_period(parent: DashaPeriod) -> list[DashaPeriod]:
+    """The sub-periods of ``parent``, each a fraction of the parent's span (so they
+    tile it exactly under whatever year convention built it). The sub-sequence
+    starts from the parent lord; the proportions are DASHA_YEARS/120.
+
+    A row clipped at birth (``cycle_start`` before its start) is the tail of a full
+    period: its subs are dated from ``cycle_start`` and only those still running at
+    birth are kept, the first clipped at birth, as every standard Vimshottari table
+    does. ``duration_years`` on each sub-row is the row's OWN length in dasha-years
+    — the same actual-span semantics the maha rows carry (cf. the partial
+    birth-balance maha) — never the sub-lord's nominal cycle years.
     """
+    if parent.cycle_start is not None and parent.cycle_start < parent.start_date:
+        return _tail_of_full_period(parent, parent.cycle_start)
+    return _tile_period(parent)
+
+
+def _tile_period(parent: DashaPeriod) -> list[DashaPeriod]:
+    """The nine subs of an unclipped row, tiling its span from its start."""
     parent_span = parent.end_date - parent.start_date
-    lord_idx = DASHA_SEQUENCE.index(parent.lord)
     subs: list[DashaPeriod] = []
     curr_start = parent.start_date
-    for offset in range(9):
-        lord = DASHA_SEQUENCE[(lord_idx + offset) % 9]
-        fraction = DASHA_YEARS[lord] / 120.0
+    for lord, fraction in _sub_lords(parent.lord):
         curr_end = curr_start + parent_span * fraction
         subs.append(
             DashaPeriod(
@@ -897,6 +925,35 @@ def subdivide_period(parent: DashaPeriod) -> list[DashaPeriod]:
         )
         curr_start = curr_end
     return subs
+
+
+def _tail_of_full_period(parent: DashaPeriod, cycle_start: datetime) -> list[DashaPeriod]:
+    """Subs of a row clipped at birth: tile the FULL period, keep those ending after birth."""
+    full_span = parent.end_date - cycle_start
+    subs: list[DashaPeriod] = []
+    curr_start = cycle_start
+    for lord, fraction in _sub_lords(parent.lord):
+        curr_end = curr_start + full_span * fraction
+        if curr_end > parent.start_date:
+            subs.append(_clipped_sub(parent, lord, curr_start, curr_end))
+        curr_start = curr_end
+    return subs
+
+
+def _clipped_sub(
+    parent: DashaPeriod, lord: PlanetName, start: datetime, end: datetime
+) -> DashaPeriod:
+    """One sub of a birth-clipped row; a sub already running at birth keeps its true start."""
+    clipped = start < parent.start_date
+    begin = parent.start_date if clipped else start
+    share = (end - begin) / (parent.end_date - parent.start_date)
+    return DashaPeriod(
+        lord=lord,
+        start_date=begin,
+        end_date=end,
+        duration_years=parent.duration_years * share,
+        cycle_start=start if clipped else None,
+    )
 
 
 _BOUNDARY_EPSILON = timedelta(microseconds=1)
@@ -956,6 +1013,7 @@ def _with_antar_sequence(maha: DashaPeriod) -> MahaDashaPeriod:
         start_date=maha.start_date,
         end_date=maha.end_date,
         duration_years=maha.duration_years,
+        cycle_start=maha.cycle_start,
         antar_sequence=subdivide_period(maha),
     )
 

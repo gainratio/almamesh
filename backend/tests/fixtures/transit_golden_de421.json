@@ -1011,6 +1011,20 @@
           "to_sign": null
         },
         {
+          "date": "2026-07-26T10:31:08.604610Z",
+          "descriptor": "dasha.antar.rahu_to_jupiter",
+          "from_lord": "rahu",
+          "from_sign": null,
+          "graha": null,
+          "kind": "dasha_change",
+          "sade_sati_phase": null,
+          "severity": "neutral",
+          "station_direction": null,
+          "station_sign": null,
+          "to_lord": "jupiter",
+          "to_sign": null
+        },
+        {
           "date": "2026-08-02T17:14:30.855989Z",
           "descriptor": "mars.ingress.gemini",
           "from_lord": null,

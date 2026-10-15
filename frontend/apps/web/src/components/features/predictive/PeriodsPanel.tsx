@@ -1,8 +1,10 @@
 /**
  * PeriodsPanel — the Vimśottarī explorer: the chart's full 120-year daśā tree
  * as a quiet typographic drill-down. Nine mahā rows (lord · dated span ·
- * duration) → a mahā opens onto its nine antar-daśās → the RUNNING antar opens
- * onto its nine pratyantar-daśās. The running leg at every level is marked and
+ * duration) → a mahā opens onto its antar-daśās → the RUNNING antar opens onto
+ * its pratyantar-daśās. Nine per level, except the birth mahā (and its first
+ * antar): the native is born part-way through, so it lists only the periods
+ * still running at birth, the first starting at birth. The running leg at every level is marked and
  * open by default, so "you are here" reads at a glance.
  *
  * Data is the NATAL chart's engine-emitted dasha payload (no predictive

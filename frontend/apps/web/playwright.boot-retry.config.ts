@@ -26,7 +26,9 @@ export default defineConfig({
   testMatch: /(?:boot-retry|storage-hydration|navigation-during-boot)\.spec\.ts/,
   fullyParallel: false,
   forbidOnly: Boolean(process.env.CI),
-  // No retries: the property under test IS a retry; a second run would hide a miss.
+  // No Playwright retries: the property under test IS a retry, and a blanket
+  // second run would hide a miss. On the macOS WebKit lane a WebKit crash is
+  // filed as an issue by its signature (scripts/crashReportSummary.mjs).
   retries: 0,
   workers: 1,
   reporter: process.env.CI ? [["github"], ["list"]] : "list",
