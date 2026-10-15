@@ -27,6 +27,14 @@ import { parseCompletedToolResult } from './agenticToolResult.helpers';
  *       (set OPENROUTER_API_KEY=... or the test self-skips.)
  */
 
+/**
+ * The chat model the run expects on the wire: the product default, or DASHBOARD_AGENTIC_CHAT_MODEL
+ * (e.g. "~openai/gpt-sol-latest"), which is then saved as the chat model in AI settings.
+ */
+const CHAT_MODEL_OVERRIDE = process.env.DASHBOARD_AGENTIC_CHAT_MODEL || undefined;
+const EXPECTED_CHAT_MODEL = CHAT_MODEL_OVERRIDE ?? PRODUCT_CHAT_DEFAULT_MODEL;
+const CHAT_MODEL_SETTING = CHAT_MODEL_OVERRIDE ? { chatModel: CHAT_MODEL_OVERRIDE } : {};
+
 /** Strings that signal a non-real / placeholder chat answer. */
 const PLACEHOLDERS = ['pending', 'please retry', 'loading', 'no answer available'];
 
@@ -233,6 +241,7 @@ test('[real] dashboard: timer + life phase + exact-day agentic chat', async ({
     model: E2E_REAL_MODEL,
     privacyMode: 'cloud_premium',
     engine: 'openai-http',
+    ...CHAT_MODEL_SETTING,
   });
   await page.addInitScript(
     ([key, cfg]) => {
@@ -355,7 +364,7 @@ test('[real] dashboard: timer + life phase + exact-day agentic chat', async ({
     messages?: unknown[];
   };
   // Chat runs on the default chat tier, not the seeded reading model.
-  expect(firstAgentRequest.model).toBe(PRODUCT_CHAT_DEFAULT_MODEL);
+  expect(firstAgentRequest.model).toBe(EXPECTED_CHAT_MODEL);
   // Inverted 2026-10: this asserted `stream: false`. Since 5c99027 the
   // tool-decision round streams so a no-tool answer shows token by token
   // (agent.test.ts and chat.grounding.spec.ts already pin `stream: true`).
@@ -392,7 +401,7 @@ test('[real] dashboard: September 2017 tool movement, grounded outlook today, an
     window.localStorage.setItem(settingsKey, config);
   }, [LLM_SETTINGS_KEY, JSON.stringify({
     apiBase: 'https://openrouter.ai/api/v1', apiKey: key, model: E2E_REAL_MODEL,
-    privacyMode: 'cloud_premium', engine: 'openai-http',
+    privacyMode: 'cloud_premium', engine: 'openai-http', ...CHAT_MODEL_SETTING,
   })] as const);
   await page.addInitScript(() => {
     for (const [name, value] of Object.entries({ deviceMemory: 8, hardwareConcurrency: 8 })) {
@@ -413,7 +422,7 @@ test('[real] dashboard: September 2017 tool movement, grounded outlook today, an
     // Disabled for the whole stream AND the final answer/pin persistence barrier.
     await expect(page.getByTestId('time-travel-button')).toBeEnabled({ timeout: 240_000 });
     const turn = observed.slice(before);
-    for (const request of turn) expect(request.body.model).toBe(PRODUCT_CHAT_DEFAULT_MODEL);
+    for (const request of turn) expect(request.body.model).toBe(EXPECTED_CHAT_MODEL);
     return turn;
   };
 
