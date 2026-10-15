@@ -40,6 +40,10 @@ import { test } from './webkitProfile';
  * from "any single month 0..3" (stricter, now that read_period reads ranges). P1 must show a
  * complete read_period whose place argument names Springfield and no travel row. A trip whose Where?
  * box has no matching option is logged as a miss per question, not a crash.
+ *
+ * Task 11 (2026-10-14): today-home asks D1-D3's questions (ids H1-H3, so the report keeps its own
+ * cells) after setting "Where do you live now?" to "novato, ca" in the real Profile settings: every
+ * reading is at Novato (America/Los_Angeles) and every answer names it. `today` (unset) is unchanged.
  */
 const PERSONA: SeedBirthSpec = {
   name: 'Acceptance Native',
@@ -113,6 +117,8 @@ interface Journey {
   readonly trip?: { readonly where: string; readonly title: RegExp; readonly option?: string };
   /** The chart under test; PERSONA unless the journey names another. */
   readonly persona?: SeedBirthSpec;
+  /** "Where do you live now?" typed in Profile settings before the chat opens; `option` is the first option's text. */
+  readonly home?: { readonly where: string; readonly option: string };
   readonly questions: readonly Expectation[];
 }
 
@@ -173,6 +179,14 @@ function journeys(): Journey[] {
         { id: 'D3', question: 'What are the next 3 months like?', periods: [], oneSpanCall: nextThreeMonths(now), place: today, sadeSati: false },
       ],
     },
+    {
+      // Task 11: the same questions once the person says where they live now.
+      id: 'today-home', home: { where: 'novato, ca', option: 'Novato, California, United States' }, questions: [
+        { id: 'H1', question: 'What does this month look like for me?', periods: [monthPeriod(now)], place: novato, sadeSati: false },
+        { id: 'H2', question: 'And next month?', periods: [monthPeriod(shiftMonth(now, 1))], place: novato, sadeSati: false },
+        { id: 'H3', question: 'What are the next 3 months like?', periods: [], oneSpanCall: nextThreeMonths(now), place: novato, sadeSati: false },
+      ],
+    },
     { id: 'trip-singapore', trip: { where: 'Singapore', title: /^⏳ May 2019 · Singapore/ }, questions: tripQuestions(singapore).slice(0, 1).map((q) => ({ ...q, id: 'S1' })) },
     {
       id: 'trip-obstacles', persona: OBSTACLES_PERSONA, trip: { where: 'Vadodara', title: /^⏳ May 2019 · Vadodara/ },
@@ -196,6 +210,22 @@ async function configureModel(page: Page, model: string, key: string): Promise<v
     apiBase: 'https://openrouter.ai/api/v1', apiKey: key, model, chatModel: model, privacyMode: 'cloud_premium', engine: 'openai-http',
   });
   await page.addInitScript(([storageKey, cfg]) => window.localStorage.setItem(storageKey as string, cfg as string), [LLM_SETTINGS_KEY, config] as const);
+}
+
+/** Set "Where do you live now?" in Profile settings (current-place.spec.ts's path); a miss (returned) when it never saves. */
+async function setHomePlace(page: Page, home: NonNullable<Journey['home']>): Promise<string | undefined> {
+  await gotoSettled(page, '/settings/profile');
+  const input = page.getByTestId('current-place-input');
+  await input.pressSequentially(home.where);
+  try {
+    await expect(page.getByTestId('current-place-option-0')).toHaveText(home.option, { timeout: 60_000 });
+    await input.press('Enter');
+    await expect(page.getByTestId('current-place-status')).toHaveText('Saved', { timeout: 30_000 });
+  } catch {
+    const offered = await page.locator('[data-testid^="current-place-option-"]').allTextContents();
+    return `settings "Where do you live now?" did not save "${home.option}": ${offered.join(' | ').slice(0, 200) || 'no options'}`;
+  }
+  return undefined;
 }
 
 /** Open the trip; a Where? box that never offers the option is a miss (returned), not a crash, so the log keeps its rows. */
@@ -421,10 +451,11 @@ for (const model of MODELS) {
         await configureModel(page, model, key ?? '');
         await bootEngine(page);
         await seedChart(page, { birth: journey.persona ?? PERSONA });
+        const homeMiss = journey.home ? await setHomePlace(page, journey.home) : undefined;
         await gotoSettled(page, '/dashboard');
         await waitForLifeAtlasAsOf(page);
         await page.getByTestId('floating-chat-button').click({ timeout: 120_000 });
-        const tripMiss = journey.trip ? await travelToMay2019(page, journey.trip) : undefined;
+        const tripMiss = homeMiss ?? (journey.trip ? await travelToMay2019(page, journey.trip) : undefined);
         const failures: string[] = [];
         if (tripMiss) {
           for (const expectation of journey.questions) {
