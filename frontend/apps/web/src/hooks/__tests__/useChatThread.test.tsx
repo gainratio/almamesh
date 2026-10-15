@@ -682,7 +682,7 @@ describe('isMappedChatStreamError — the page-catch rethrow contract', () => {
 
 describe('the chat error mapping derives from ONE map (rethrow contract and copy cannot drift)', () => {
   it('covers exactly the typed causes the mapper is contracted to handle', () => {
-    // Contract extended 2026-10-15: ReasoningTimeoutError (the 180 s reasoning cap) has its own copy.
+    // Contract extended 2026-10-15: ReasoningTimeoutError (the stall watchdog) has its own copy.
     expect(Object.keys(CHAT_STREAM_ERROR_COPY).sort()).toEqual([
       'LlmRequestError',
       'PrivacyViolationError',
