@@ -31,6 +31,7 @@ import {
 } from './chartLibrary';
 import { assignOrphanChatThreads, whenChatHydrated } from './chat';
 import { deletionAwareIdbStorage, whenPersistenceCommitted } from './deletionTombstones';
+import { normalizeCurrentPlace, type CurrentPlace } from './currentPlace';
 import { clearDroppedWrites, reportDroppedWrite } from './droppedWrites';
 import { reportHydrationFailure, whenHydrated, type HydrationOutcome } from './hydrationBarrier';
 
@@ -50,6 +51,12 @@ export interface Profile {
   readonly relationship?: Relationship;
   /** The anchor profile id a member relates to (kept truthful by the store). */
   readonly relatedTo?: string;
+  /**
+   * "Where do you live now?" Optional and additive (no persist-version bump: a
+   * v1 row without it is unchanged). Never copied from the birthplace. Read it
+   * through `getCurrentPlace`, which ignores a malformed stored value.
+   */
+  readonly currentPlace?: CurrentPlace;
 }
 
 /** One canonical SQLite row holding all profiles, persisted by Zustand. */
@@ -138,6 +145,11 @@ export type SetAnchorResult =
   | { readonly ok: false; readonly reason: 'not-found' }
   | { readonly ok: false; readonly reason: 'anchor-exists'; readonly anchorId: string };
 
+/** Typed outcome of `setCurrentPlace`. */
+export type SetCurrentPlaceResult =
+  | { readonly ok: true }
+  | { readonly ok: false; readonly reason: 'not-found' | 'invalid-place' };
+
 /** Typed outcome of `setRelationship`. */
 export type SetRelationshipResult =
   | { readonly ok: true }
@@ -189,6 +201,12 @@ export interface ProfilesStore {
   setRelationship: (id: string, relationship: MemberRelationship) => SetRelationshipResult;
   /** Remove a profile's relationship (and its anchor status when it is self). */
   clearRelationship: (id: string) => void;
+  /**
+   * Set where the person lives now, or clear it with `undefined`. A place the
+   * store would refuse (bad zone, out-of-range coordinates, empty label) is
+   * rejected and the old value kept.
+   */
+  setCurrentPlace: (id: string, place: CurrentPlace | undefined) => SetCurrentPlaceResult;
 
   getActiveProfile: () => Profile | undefined;
   /** All profiles ordered by `createdAt` (stable creation order). */
@@ -248,6 +266,13 @@ function normalizeRelatedTo(profiles: Record<string, Profile>): Record<string, P
     next[id] = p.relatedTo === relatedTo ? p : { ...p, relatedTo };
   }
   return next;
+}
+
+/** The profile with `place` as its current place; `undefined` drops the field. */
+function withCurrentPlace(profile: Profile, place: CurrentPlace | undefined): Profile {
+  if (place !== undefined) return { ...profile, currentPlace: place };
+  const { currentPlace: _dropped, ...rest } = profile;
+  return rest;
 }
 
 /** The earliest-created remaining profile id (stable reassignment target). */
@@ -458,6 +483,15 @@ export const profilesStoreCreator: StateCreator<ProfilesStore> = (set, get) => (
       const cleared: Profile = { ...target, relationship: undefined, relatedTo: undefined };
       return { profiles: normalizeRelatedTo({ ...state.profiles, [id]: cleared }) };
     });
+  },
+
+  setCurrentPlace: (id, place) => {
+    const target = get().profiles[id];
+    if (!target) return { ok: false, reason: 'not-found' };
+    const kept = place === undefined ? undefined : normalizeCurrentPlace(place);
+    if (place !== undefined && kept === undefined) return { ok: false, reason: 'invalid-place' };
+    set((state) => ({ profiles: { ...state.profiles, [id]: withCurrentPlace(state.profiles[id] ?? target, kept) } }));
+    return { ok: true };
   },
 
   getActiveProfile: () => {
