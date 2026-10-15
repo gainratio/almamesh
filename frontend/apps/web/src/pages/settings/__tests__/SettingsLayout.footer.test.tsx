@@ -6,11 +6,13 @@
  * without adding anything to the dashboard.
  */
 import { describe, it, expect, beforeEach } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { render, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useLanguageStore } from '@almamesh/store';
 
 import '../../../i18n/config';
+import { AppLayout } from '../../../components/features/layout/AppLayout';
 import SettingsLayout from '../SettingsLayout';
 
 describe('SettingsLayout footer', () => {
@@ -18,18 +20,25 @@ describe('SettingsLayout footer', () => {
     useLanguageStore.setState({ language: 'en' });
   });
 
-  it('links to How we test (and the legal pages) from a footer landmark', () => {
+  it('links to How we test (and the legal pages) from its footer, inside the app shell', () => {
+    // Rendered as the router does: inside AppLayout, whose own footer is off.
     render(
+      <QueryClientProvider client={new QueryClient()}>
       <MemoryRouter initialEntries={['/settings/profile']}>
-        <Routes>
-          <Route path="/settings" element={<SettingsLayout />}>
-            <Route path="profile" element={<div />} />
-          </Route>
-        </Routes>
-      </MemoryRouter>,
+        <AppLayout>
+          <Routes>
+            <Route path="/settings" element={<SettingsLayout />}>
+              <Route path="profile" element={<div />} />
+            </Route>
+          </Routes>
+        </AppLayout>
+      </MemoryRouter>
+      </QueryClientProvider>,
     );
 
-    const footer = screen.getByRole('contentinfo');
+    const footers = document.querySelectorAll('footer');
+    expect(footers).toHaveLength(1);
+    const footer = footers[0] as HTMLElement;
     const hrefs = within(footer).getAllByRole('link').map((a) => a.getAttribute('href'));
     expect(hrefs).toEqual(expect.arrayContaining(['/how-we-test', '/privacy', '/terms', '/data-deletion']));
     expect(within(footer).getByRole('link', { name: 'How we test' }).getAttribute('href')).toBe('/how-we-test');
