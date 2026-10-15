@@ -9,6 +9,7 @@ import { useTranslation } from 'react-i18next';
 import { Logo } from '../../components/ui/Logo';
 import { SettingsSidebar } from '../../components/features/settings/SettingsSidebar';
 import { AvatarDropdown } from '../../components/AvatarDropdown';
+import { Footer } from '../../components/Footer';
 
 export default function SettingsLayout() {
   const location = useLocation();
@@ -80,6 +81,10 @@ export default function SettingsLayout() {
           </div>
         </div>
       </main>
+
+      {/* The legal + "How we test" links. The dashboard stays uncluttered;
+          Settings is one tap from every app page, so these stay reachable. */}
+      <Footer className="mt-8" />
     </div>
   );
 }
