@@ -29,6 +29,7 @@ import { birthUtcYearOf, birthYearOf, PeriodSkyUnavailableError, type PeriodChar
 import {
   buildPeriodDetail,
   buildPeriodReading,
+  LAST_RESORT_NOTE,
   MAX_PERIOD_RESULT_BYTES,
   READ_PERIOD_TOOL_NAME,
   windowsOf,
@@ -640,8 +641,8 @@ function withExtras(reading: PeriodReading, level: ExtrasLevel): ReadPeriodReadi
   return { ...reading, ...level.extras, ...(trimmed.length > 0 ? { trimmed } : {}) };
 }
 
-/** periodReading.ts's last resort: the sky (and its Moon tags) and the windows are gone. */
-const isBare = (reading: PeriodReading): boolean => reading.sky.length === 0 && reading.windows.length === 0;
+/** periodReading.ts's last resort: the windows, segments and most theme detail are gone, the sky is coarse. */
+const isBare = (reading: PeriodReading): boolean => reading.trimmed?.includes(LAST_RESORT_NOTE) ?? false;
 
 interface Fitted {
   readonly reading: PeriodReading;
@@ -670,8 +671,8 @@ function fitLevel(loaded: Loaded, frame: ReadingFrame, level: ExtrasLevel, limit
 }
 
 /**
- * The fullest extras that fit beside a reading that still has its sky or windows. When no level
- * keeps them, the fullest level that fits; when none fits, the leanest (no close-up).
+ * The fullest extras that fit beside a reading the budget did not cut to its last resort. When
+ * every level cuts it that far, the fullest level that fits; when none fits, the leanest (no close-up).
  */
 function compose(loaded: Loaded, frame: ReadingFrame, extras: Extras, language: string): ReadPeriodReading {
   const range = extras.months !== undefined;

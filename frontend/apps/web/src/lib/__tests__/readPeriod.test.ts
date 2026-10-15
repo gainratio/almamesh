@@ -309,6 +309,19 @@ describe('read_period: spans', () => {
     expect(bytes(result)).toBeLessThan(MAX_PERIOD_RESULT_BYTES);
   });
 
+  // Journey 2 (time-travel.spec.ts, 2026-10-15): the real 18-month read lost its whole sky to the
+  // 6 KB range budget, so the model had no ingress to name. A long read coarsens its sky; it never
+  // drops the section.
+  it('an 18-month read keeps a non-empty sky, the nodes sign change included, within the range budget', async () => {
+    const { result } = await read({ start: '2027-01', end: '2028-06' }, { loadPeriodChart: vi.fn(async () => withReading('delhi-2027-01-18m')) });
+    const reading = result as ReadPeriodReading;
+    expect(reading.months).toHaveLength(18);
+    expect(reading.sky.length).toBeGreaterThan(0);
+    expect(new Set(reading.sky.filter((span) => span.graha === 'rahu').map((span) => span.sign)).size).toBeGreaterThan(1);
+    expect(reading.themes.length).toBeGreaterThan(0);
+    expect(bytes(result)).toBeLessThan(MAX_RANGE_RESULT_BYTES);
+  });
+
   it('pins the two budgets: 4096 bytes for a day or month, 6144 for a range', () => {
     expect([MAX_PERIOD_RESULT_BYTES, MAX_RANGE_RESULT_BYTES]).toEqual([4096, 6144]);
   });
