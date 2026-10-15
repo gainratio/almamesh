@@ -372,7 +372,7 @@ test('[contract/stubbed] chat reuses the reading + sends the fast chat model on 
     `the natal reading must not carry the stubbed timeline window ` +
       `("${STUB_PERIOD_TITLE}") without an explicit timeline action.`,
   ).not.toContain(STUB_PERIOD_TITLE);
-  expect(promptText).toContain('ENGINE PREDICTIVE CONTEXT');
+  expect(promptText).toContain('ENGINE TIMING CONTEXT');
   expect(promptText).toContain('Current transits (Gochara)');
 
   // Isolate the second turn's complete tool protocol below.

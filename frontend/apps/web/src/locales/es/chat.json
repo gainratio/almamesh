@@ -105,7 +105,7 @@
     "status_working": "Calculando el cielo de {{period}}… (unos 30 s)",
     "sheet": {
       "title": "Viaje en el tiempo",
-      "intro": "Elige un momento. Las respuestas del nuevo chat serán sobre él.",
+      "intro": "Elige un momento. Las respuestas del nuevo chat muestran lo que destaca tu carta para él: temas para reflexionar.",
       "intro_change": "Elige un nuevo periodo. Las próximas respuestas de este chat serán sobre él.",
       "when": "¿Cuándo?",
       "tabs": {
@@ -135,7 +135,7 @@
       "where_home": "Usar {{place}} (donde vives ahora)"
     },
     "banner": {
-      "about": "las respuestas son sobre este periodo",
+      "about": "lo que destaca tu carta para este periodo",
       "change": "Cambiar",
       "back": "Volver a hoy"
     },
@@ -145,7 +145,7 @@
         "teaching": "¿Qué me estaba enseñando este periodo?"
       },
       "future": {
-        "prepare": "¿Para qué debo prepararme?",
+        "prepare": "¿Qué destaca mi carta para esta época?",
         "strongest": "¿Qué meses se ven más fuertes?"
       }
     }

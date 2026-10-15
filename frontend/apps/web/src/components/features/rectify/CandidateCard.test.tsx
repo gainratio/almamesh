@@ -113,7 +113,7 @@ describe('CandidateCard — Spec 062 storytelling', () => {
   it('lists misses qualitatively — localized category, no raw keys', () => {
     renderCard(BASE);
     const misses = screen.getByTestId('miss-list');
-    expect(misses.textContent).toMatch(/predicted a strong marriage window with nothing reported/i);
+    expect(misses.textContent).toMatch(/showed a strong marriage window with nothing reported/i);
     expect(misses.textContent).not.toContain('miss_silent');
     expect(misses.textContent).not.toContain('_h7');
   });

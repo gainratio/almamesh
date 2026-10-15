@@ -1,6 +1,6 @@
 /**
  * A today chat waits for the predictive layer (2026-10-14). A question sent before today's
- * predictive facts are computed went out with no ENGINE PREDICTIVE CONTEXT, so the model answered
+ * predictive facts are computed went out with no ENGINE TIMING CONTEXT, so the model answered
  * blind. The send now waits (the status line says "Preparing your chart…") and goes out the moment
  * the facts are ready. If they fail, or take longer than PREDICTIVE_WAIT_MS, it answers from the
  * natal chart alone and says so in one short line.

@@ -471,9 +471,11 @@ function ordinal(n: number): string {
   return `${n}${suffix}`;
 }
 
-const EN_CONFIDENCE = { high: "high", medium: "medium", low: "low" } as const;
-const ES_CONFIDENCE = { high: "alta", medium: "media", low: "baja" } as const;
-const PT_CONFIDENCE = { high: "alta", medium: "média", low: "baixa" } as const;
+// The engine's theme confidence counts agreeing indicators (reading/themes.py), so the
+// reader sees that count, never a confidence that could pass for a hit rate.
+const EN_CONFIDENCE = { high: "most indicators agree", medium: "some indicators agree", low: "few indicators agree" } as const;
+const ES_CONFIDENCE = { high: "coinciden casi todos los indicadores", medium: "coinciden algunos indicadores", low: "coinciden pocos indicadores" } as const;
+const PT_CONFIDENCE = { high: "quase todos os indicadores concordam", medium: "alguns indicadores concordam", low: "poucos indicadores concordam" } as const;
 
 const LABELS: Readonly<Record<Language, LanguageLabels>> = {
   en: {
@@ -491,7 +493,7 @@ const LABELS: Readonly<Record<Language, LanguageLabels>> = {
     lordOf: "lord of",
     rules: (graha, houses, list) => `${graha} rules your ${list(houses.map(ordinal))} ${houses.length > 1 ? "houses" : "house"}.`,
     direction: { supportive: "supportive", mixed: "mixed", challenging: "challenging" },
-    confidence: (level) => `${EN_CONFIDENCE[level]} confidence`,
+    confidence: (level) => EN_CONFIDENCE[level],
     phases: ["first", "second", "third"],
     phase: "phase",
     fromMoon: (graha, house) => `${graha} ${ordinal(house)} from your Moon`,
@@ -520,7 +522,7 @@ const LABELS: Readonly<Record<Language, LanguageLabels>> = {
     lordOf: "señor de",
     rules: (graha, houses, list) => `${graha} rige ${houses.length > 1 ? "tus casas" : "tu casa"} ${list(houses.map(String))}.`,
     direction: { supportive: "favorable", mixed: "mixto", challenging: "difícil" },
-    confidence: (level) => `confianza ${ES_CONFIDENCE[level]}`,
+    confidence: (level) => ES_CONFIDENCE[level],
     phases: ["primera", "segunda", "tercera"],
     phase: "fase",
     fromMoon: (graha, house) => `${graha} en la casa ${house} desde tu Luna`,
@@ -549,7 +551,7 @@ const LABELS: Readonly<Record<Language, LanguageLabels>> = {
     lordOf: "senhor de",
     rules: (graha, houses, list) => `${graha} rege ${houses.length > 1 ? "suas casas" : "sua casa"} ${list(houses.map(String))}.`,
     direction: { supportive: "favorável", mixed: "misto", challenging: "desafiador" },
-    confidence: (level) => `confiança ${PT_CONFIDENCE[level]}`,
+    confidence: (level) => PT_CONFIDENCE[level],
     phases: ["primeira", "segunda", "terceira"],
     phase: "fase",
     fromMoon: (graha, house) => `${graha} na casa ${house} a partir da sua Lua`,

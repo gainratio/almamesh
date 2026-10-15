@@ -105,8 +105,8 @@ describe('ChatPanel time travel', () => {
     expect(screen.getByTestId('time-travel-badge').textContent).toBe('⏳');
     // Contract changed 2026-10-13: one period header row; the title is the period itself.
     expect(screen.getByTestId('time-travel-title').textContent?.replace(/\u00a0/g, ' ')).toBe('2050');
-    expect(screen.getByTestId('time-travel-banner').textContent).toContain('answers are about this period');
-    expect(screen.getByRole('button', { name: 'What should I prepare for?' })).toBeTruthy();
+    expect(screen.getByTestId('time-travel-banner').textContent).toContain('what your chart highlights for this period');
+    expect(screen.getByRole('button', { name: 'What does my chart highlight for this time?' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Which months look strongest?' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'What are my career strengths?' })).toBeNull();
     const threads = Object.values(useChatStore.getState().threads);
@@ -176,7 +176,7 @@ describe('ChatPanel time travel', () => {
     renderPanel();
     expect(screen.getByRole('button', { name: 'What are my career strengths?' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Why did this time feel hard?' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'What should I prepare for?' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'What does my chart highlight for this time?' })).toBeNull();
   });
 
   it('a failed Back to today save keeps the banner, shows an alert and re-enables Back', async () => {

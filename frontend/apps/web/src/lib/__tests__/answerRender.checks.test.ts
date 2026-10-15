@@ -81,7 +81,7 @@ const JUPITER_FROM_MOON: Fixture = {
       pratyantar: null,
     },
     moon: [{ tag: 'jupiter_from_moon_11', meaning: 'Friends and contacts are generous now.' }],
-    themes: [{ area: 'Money', direction: 'supportive', confidence: 'high', text: 'A raise or a useful lead is likely.', obstacle: null }],
+    themes: [{ area: 'Money', direction: 'supportive', confidence: 'high', text: 'Gains through your network are the theme to reflect on.', obstacle: null }],
     windows: [{ date: '2019-05-20', what: 'Ask for what you want.' }],
     advice: null,
   },
@@ -165,18 +165,27 @@ describe('rendered answers pass the trip matrix checks', () => {
     }
   });
 
-  it('the checks can fail: the same answer without its window, confidence or lordship misses all three', () => {
+  it('the checks can fail: the same answer without its window, indicator agreement or lordship misses all three', () => {
     const bare = renderAnswer(OBSTACLES.answer, { voice: 'layman', language: 'en' })
       .replace(/\*\*Dates to watch\*\*\n.*\n/, '')
-      .replace(/medium confidence|low confidence/g, 'steady')
+      .replace(/(?:most|some|few) indicators agree/g, 'steady')
       .replace(/Saturn rules your 1st and 12th houses\. |Mercury rules your 5th and 8th houses\. /g, '')
       .replace(/looks after your 12th house/, 'touches');
     expect(misses(bare, OBSTACLES)).toEqual([
       'answer names no lordship ("Nth lord", "rules the Nth")',
       'answer gives no dated window',
-      'answer gives no confidence level',
+      'answer gives no indicator agreement',
       'answer names no obstacles factor (Saturn rules the 12th / Rahu in the 12th)',
       'answer does not give the 25 Sep Mars window',
+    ]);
+  });
+
+  // Reflection, not prediction (2026-10-15): an answer that claims to foretell, or says
+  // what happened, is a miss even when every fact is there.
+  it('the checks can fail: a prediction claim is a miss', () => {
+    const rendered = renderAnswer(OBSTACLES.answer, { voice: 'layman', language: 'en' });
+    expect(misses(`${rendered}\nThe chart predicts a lawsuit, and it will happen in September.`, OBSTACLES)).toEqual([
+      'answer claims prediction (predict, will happen)',
     ]);
   });
 });

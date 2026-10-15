@@ -59,7 +59,7 @@
     "d9_lord_in_d9_h7": "El señor del período activo está en la casa de la pareja (la 7.ª) del gráfico navamsa (D9)",
     "d9_lord_is_d9_lagna_lord": "El señor del período activo rige el propio signo ascendente del navamsa (D9)",
     "miss_unexplained": "Ningún período activo explica este evento — cuenta en contra de este candidato",
-    "miss_silent": "Predijo una ventana fuerte de {{category}} sin nada reportado",
+    "miss_silent": "Mostró una ventana fuerte de {{category}} sin nada reportado",
     "prior_anchor": "El más cercano a la hora registrada — un empujón suave, nunca un sustituto de los eventos",
     "qualifier_afflicted": "el estado debilitado (afligido) del señor coincide con este evento difícil",
     "qualifier_dignified": "la fuerza dignificada del señor coincide con este evento afortunado",
@@ -173,7 +173,7 @@
     "reading": "Leyendo tu mensaje…"
   },
   "summary": {
-    "label": "Qué pasó",
+    "label": "Tu nota",
     "placeholder": "p. ej. Me mudé a otra ciudad por trabajo"
   },
   "tray": {

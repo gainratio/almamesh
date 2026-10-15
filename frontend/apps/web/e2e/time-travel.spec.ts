@@ -682,8 +682,8 @@ test.describe('pinned threads on a device in another zone', () => {
     await expect(page.getByTestId('time-travel-badge')).toHaveText('⏳');
     // Contract reversed 2026-10-13 (4869958b): the chat's period row shows the short period, with no "Time travel ·" prefix.
     await expect(page.getByTestId('time-travel-title')).toHaveText(PIN_YEAR);
-    await expect(page.getByTestId('time-travel-banner')).toContainText('answers are about this period');
-    await expect(page.getByRole('button', { name: 'What should I prepare for?' })).toBeVisible();
+    await expect(page.getByTestId('time-travel-banner')).toContainText('what your chart highlights for this period');
+    await expect(page.getByRole('button', { name: 'What does my chart highlight for this time?' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Which months look strongest?' })).toBeVisible();
 
     // The pin was on disk before the sheet closed: a full reload keeps it.
@@ -939,7 +939,7 @@ test.describe('time travel on an iPhone', () => {
     await expect(page.getByTestId('time-travel-sheet')).toBeHidden();
     // Contract reversed 2026-10-13 (4869958b): the chat's period row shows the short period, with no "Time travel ·" prefix.
     await expect(page.getByTestId('time-travel-title')).toHaveText(PIN_YEAR);
-    await expect(page.getByTestId('time-travel-banner')).toContainText('answers are about this period');
+    await expect(page.getByTestId('time-travel-banner')).toContainText('what your chart highlights for this period');
 
     // The pin was on disk before the sheet closed: a full reload keeps it.
     await explicitReload(page, () => page.reload({ waitUntil: 'domcontentloaded' }));

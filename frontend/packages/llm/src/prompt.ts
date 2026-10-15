@@ -14,6 +14,7 @@ import { buildMeshFactsBlock } from "./mesh-facts";
 import type { SanitizedMeshEdge } from "./mesh-sanitize";
 import { buildPredictiveFactsBlock } from "./predictive-facts";
 import { pinnedPeriodRules, type PinnedPrompt } from "./period-pin";
+import { REFLECTION_RULE } from "./reflection";
 import type { SanitizedChart } from "./sanitize";
 import type {
   VedicInterpretation,
@@ -158,10 +159,12 @@ export const RECTIFICATION_FENCE = [
 // Verbatim persona from backend TEXT_INTERPRETATION_PROMPT.
 const SYSTEM_PROMPT = [
   "You are an expert Vedic Astrologer with 30 years of experience.",
-  "Your goal is to provide accurate, empathetic, and insightful readings based on the",
+  "Your goal is to provide specific, empathetic, and insightful readings based on the",
   "Sidereal Zodiac (Lahiri Ayanamsa).",
   "Use the provided astronomical data (Planets, Houses, Dashas, Yogas) to construct your analysis.",
   "Do not make up planetary positions; strictly adhere to the JSON context provided.",
+  "",
+  REFLECTION_RULE,
   "",
   OUTPUT_DISCIPLINE_RULES,
   "",
@@ -175,7 +178,7 @@ const LAYMAN_INSTRUCTION = [
   "1. The Ascendant (Lagna) and its sign - personality core.",
   "2. The Moon sign - emotional nature.",
   "3. Key planetary strengths (Exalted/Own sign planets).",
-  "4. Current Dasha period (if provided) - what to expect now.",
+  "4. Current Dasha period (if provided) - what it highlights now.",
 ].join("\n");
 
 const EXPERT_INSTRUCTION = [
@@ -217,7 +220,7 @@ const READING_RULES = [
   "Cite the engine factor behind every claim.",
   "OBSTACLES (6th/8th/12th): name a strong or moderate obstacles theme as a theme to watch (friction with rules or authorities, legal or administrative matters, unexpected setbacks, losses and expenses) with its factor and its dated window; never say it happened, no fear words.",
   "HONESTY: a chart cannot name the concrete event. Describe themes, timing and their factors.",
-  "Never say what did or will happen, and never invent a fact.",
+  "Never say an event did occur or is going to occur, and never invent a fact.",
 ].join("\n");
 
 /**
@@ -291,6 +294,8 @@ const CHAT_SYSTEM_PROMPT = [
   "",
   READING_RULES,
   "",
+  REFLECTION_RULE,
+  "",
   PRIVACY_RULE,
   "",
   "Mirror the user's vocabulary, Sanskrit terms included.",
@@ -312,7 +317,7 @@ const LAYMAN_CHAT_REGISTER = [
   "- a Rahu period → an ambitious, unconventional, sometimes restless chapter",
   "- a Ketu period → a reflective, letting-go phase",
   "- a Venus period → a season of relationships, comfort, and creativity",
-  "- an obstacles theme → a stretch to watch rules, paperwork and spending, not a prediction",
+  "- an obstacles theme → a stretch to watch rules, paperwork and spending: a theme to reflect on",
 ].join("\n");
 
 const EXPERT_CHAT_REGISTER =

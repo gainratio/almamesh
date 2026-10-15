@@ -5,7 +5,7 @@
  *  1. "Take me to September 2017 in Mumbai": the travel tool opens a new trip thread and the
  *     answer follows the user there; the thread it was asked in keeps one clickable line.
  *  2. A today question sent before the predictive layer is ready waits ("Preparing your chart…")
- *     and goes out WITH the ENGINE PREDICTIVE CONTEXT block once it is.
+ *     and goes out WITH the ENGINE TIMING CONTEXT block once it is.
  *
  * Run: bunx playwright test --config=playwright.time-travel.config.ts e2e/chat-travel-follow.spec.ts
  */
@@ -155,7 +155,7 @@ test('[contract/stubbed] a today question sent before the predictive layer is re
   await waitForLifeAtlasAsOf(page);
   await expect(page.getByTestId('chat-panel').getByText('Saturn steadies your day.')).toBeVisible({ timeout: 120_000 });
   const prompt = JSON.stringify(agentRequests[0]?.messages ?? []);
-  expect(prompt).toContain('ENGINE PREDICTIVE CONTEXT');
+  expect(prompt).toContain('ENGINE TIMING CONTEXT');
   expect(prompt).toContain('Current transits (Gochara)');
   await expect(page.getByTestId('chat-panel')).not.toContainText('birth chart only');
   expect(errors, 'clean console').toEqual([]);

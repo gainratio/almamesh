@@ -390,7 +390,7 @@ test('[real] dashboard: timer + life phase + exact-day agentic chat', async ({
   const firstMessages = Array.isArray(firstAgentRequest.messages)
     ? firstAgentRequest.messages
     : [];
-  expect(JSON.stringify(firstMessages)).toContain('ENGINE PREDICTIVE CONTEXT');
+  expect(JSON.stringify(firstMessages)).toContain('ENGINE TIMING CONTEXT');
   expect(JSON.stringify(firstMessages)).toContain('Current transits (Gochara)');
 
   // No hard request failures during the flow.

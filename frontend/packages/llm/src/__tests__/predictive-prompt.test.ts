@@ -42,7 +42,7 @@ describe("predictive salience in the interpretation prompt", () => {
   it("when predictive is PRESENT, the system prompt REQUIRES using current timing and never denies transit data", () => {
     const msgs = buildSectionMessages("current_sky", WITH_PREDICTIVE, "layman");
     const sys = systemText(msgs);
-    expect(sys).toMatch(/ENGINE PREDICTIVE CONTEXT/i);
+    expect(sys).toMatch(/ENGINE TIMING CONTEXT/i);
     expect(sys).toMatch(/MUST|REQUIRED/); // directive, not "you MAY"
     expect(sys).not.toMatch(/no .* transit data/i); // contradiction removed
   });
@@ -51,7 +51,7 @@ describe("predictive salience in the interpretation prompt", () => {
     const msgs = buildSectionMessages("core", NATAL_ONLY, "layman");
     const sys = systemText(msgs);
     expect(sys).toMatch(/natal/i);
-    expect(sys).not.toMatch(/ENGINE PREDICTIVE CONTEXT/i);
+    expect(sys).not.toMatch(/ENGINE TIMING CONTEXT/i);
   });
 
   it("keeps timing data out of a stable natal section even when a compatibility caller supplies it", () => {
@@ -59,7 +59,7 @@ describe("predictive salience in the interpretation prompt", () => {
     const wireText = msgs.map((message) => message.content).join("\n");
 
     expect(wireText).toMatch(/STABLE NATAL ONLY/);
-    expect(wireText).not.toMatch(/ENGINE PREDICTIVE CONTEXT/);
+    expect(wireText).not.toMatch(/ENGINE TIMING CONTEXT/);
     expect(wireText).not.toContain('"dashas"');
     expect(wireText).not.toContain("months_remaining");
     expect(wireText).not.toContain("start_month");

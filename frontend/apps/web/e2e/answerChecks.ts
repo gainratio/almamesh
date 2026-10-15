@@ -4,20 +4,27 @@
  * from the spec (2026-10-14); change a pattern here and both move together.
  */
 
+import { predictionClaims } from '@almamesh/llm/reflection';
+
 const MONTH = '(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\\.?';
 const DATED_WINDOW = new RegExp(`\\b\\d{1,2}(?:st|nd|rd|th)?\\s+${MONTH}|\\b${MONTH}\\s+\\d{1,2}(?:st|nd|rd|th)?\\b|\\b\\d{4}-\\d{2}-\\d{2}\\b`, 'i');
-const CONFIDENCE = /\b(?:high|medium|moderate|low)(?:[- ]to[- ](?:high|medium|moderate|low))?[\s-]+confidence\b|\bconfidence\b[^.\n]{0,40}\b(?:high|medium|moderate|low)\b/i;
+/**
+ * How strongly the indicators agree (reflection, not prediction, 2026-10-15): "most indicators
+ * agree", "several indicators converge". A CONTRACT CHANGE from a "high confidence" level: a
+ * confidence could pass for a hit rate, and the retrodiction eval found none.
+ */
+const AGREEMENT = /\b(?:most|many|several|some|few|all|both|two|three)\b[^.\n]{0,30}\bindicators?\b[^.\n]{0,20}\b(?:agree|converge|line up|point)/i;
 const LEVEL = /^(?:high|medium|moderate|low)(?:[- ]to[- ](?:high|medium|moderate|low))?$/i;
 
 /**
- * A Markdown table with a Confidence column states a confidence level (matrix 2026-10-14: an
- * answer's "| Obstacles | Mixed | Strong | High |" row read as no confidence). The answer's text
+ * A Markdown table with an Agreement column states how strongly the indicators agree (matrix
+ * 2026-10-14: a "| Obstacles | Mixed | Strong | High |" row read as no level). The answer's text
  * comes with its whitespace collapsed, so rows are joined as "| a | b | | c | d |".
  */
 function tableConfidence(answer: string): boolean {
   const chunks = answer.split(/\|\s+\|/);
   return chunks.some((chunk, index) => {
-    const column = chunk.slice(chunk.indexOf('|') + 1).split('|').map((cell) => cell.trim()).findIndex((cell) => /^confidence$/i.test(cell));
+    const column = chunk.slice(chunk.indexOf('|') + 1).split('|').map((cell) => cell.trim()).findIndex((cell) => /^(?:agreement|indicators agree)$/i.test(cell));
     return column >= 0 && chunks.slice(index + 1).some((row) => LEVEL.test(row.split('|').map((cell) => cell.trim())[column] ?? ''));
   });
 }
@@ -85,7 +92,9 @@ function textMisses(answer: string, facts: AnswerFacts): string[] {
   if (facts.sadeSati && !/sade[\s-]*sati/i.test(answer)) misses.push('answer does not name Sade Sati');
   if (facts.tags.length > 0 && !facts.tags.some((tag) => tagPattern(tag).test(answer))) misses.push(`answer names no Moon tag (${[...new Set(facts.tags)].join(', ')})`);
   if (!DATED_WINDOW.test(answer)) misses.push('answer gives no dated window');
-  if (!CONFIDENCE.test(answer) && !tableConfidence(answer)) misses.push('answer gives no confidence level');
+  if (!AGREEMENT.test(answer) && !tableConfidence(answer)) misses.push('answer gives no indicator agreement');
+  const claims = predictionClaims(answer, 'en');
+  if (claims.length > 0) misses.push(`answer claims prediction (${claims.join(', ')})`);
   if (facts.placeLabel && !facts.placeLabel.test(answer)) misses.push(`answer does not name the place ${facts.placeLabel}`);
   if (facts.obstacles) misses.push(...obstaclesMisses(answer));
   return misses;
@@ -192,7 +201,7 @@ function placeCallMisses(rows: readonly CallRow[], place: RegExp): string[] {
 
 export type { AnswerFacts, CallRow, RangeCall, RangeRow, SpanCall };
 export {
-  CONFIDENCE,
+  AGREEMENT,
   DATED_WINDOW,
   GRAHA,
   HOUSE,

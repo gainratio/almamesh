@@ -498,8 +498,8 @@ September asks for patience at work and care with money, but friends are on your
 - **Jupiter 11th from your Moon**: Friends and networks are generous this month.
 
 **What it means**
-- **Career** (supportive, high confidence): A senior person speaks up for your work.
-- **Obstacles** (challenging, medium confidence): Expect friction with rules or paperwork, and watch for losses and expenses you did not plan. Saturn, which rules your 12th house of losses, runs your current sub-chapter.
+- **Career** (supportive, most indicators agree): A senior person speaks up for your work.
+- **Obstacles** (challenging, some indicators agree): Expect friction with rules or paperwork, and watch for losses and expenses you did not plan. Saturn, which rules your 12th house of losses, runs your current sub-chapter.
 
 **Dates to watch**
 - **25 Sep 2019**: Mars stirs things up; avoid signing or arguing that day.
@@ -525,8 +525,8 @@ September asks for patience at work and care with money, but friends are on your
 - **Jupiter 11th from your Moon**: Friends and networks are generous this month.
 
 **Themes**
-- **Career** (supportive, high confidence): A senior person speaks up for your work.
-- **Obstacles** (challenging, medium confidence): Expect friction with rules or paperwork, and watch for losses and expenses you did not plan. Saturn, which rules your 12th house of losses, runs your current sub-chapter.
+- **Career** (supportive, most indicators agree): A senior person speaks up for your work.
+- **Obstacles** (challenging, some indicators agree): Expect friction with rules or paperwork, and watch for losses and expenses you did not plan. Saturn, which rules your 12th house of losses, runs your current sub-chapter.
 
 **Windows**
 - **25 Sep 2019**: Mars stirs things up; avoid signing or arguing that day.
@@ -559,7 +559,7 @@ Septiembre pide paciencia.
 - **Sade Sati, primera fase**: Ánimo pesado.
 
 **Qué significa**
-- **Carrera** (favorable, confianza alta): Reconocimiento.
+- **Carrera** (favorable, coinciden casi todos los indicadores): Reconocimiento.
 
 **Fechas clave**
 - **25 sept 2019**: Evita discutir.`);
@@ -581,7 +581,7 @@ Septiembre pide paciencia.
     expect(layman).toContain("- **Saturno** é o subcapítulo dentro dele (antar dasha). Saturno rege suas casas 1 e 12. Calma.");
     expect(layman).toContain("Mercúrio rege sua casa 5.");
     expect(layman).toContain("**O céu da Lua**\n- **Sade Sati, primeira fase**");
-    expect(layman).toContain("**O que significa**\n- **Carrera** (favorável, confiança alta)");
+    expect(layman).toContain("**O que significa**\n- **Carrera** (favorável, quase todos os indicadores concordam)");
     expect(layman).toContain("**Datas para observar**\n- **25 set 2019**");
     const expert = renderAnswer(SPANISH, { voice: "expert", language: "pt" });
     expect(expert).toContain("- **Antardasha Saturno** (senhor de 1, 12): Calma.");
@@ -649,7 +649,7 @@ describe("renderPartialAnswer: snapshots only grow", () => {
     const { windows: _w, advice: _a, ...head } = ANSWER;
     const themes = [ANSWER.themes[0], { area: "obst" }];
     const text = renderPartialAnswer({ ...head, themes } as never, EN);
-    expect(text.endsWith("**What it means**\n- **Career** (supportive, high confidence): A senior person speaks up for your work.")).toBe(true);
+    expect(text.endsWith("**What it means**\n- **Career** (supportive, most indicators agree): A senior person speaks up for your work.")).toBe(true);
   });
 
   it("every snapshot the tool loop yields while the answer streams is a prefix of the next, ending at the full render", async () => {

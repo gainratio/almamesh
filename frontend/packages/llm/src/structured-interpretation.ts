@@ -52,6 +52,7 @@ import { ensurePrivacy, isLocalEndpoint, type ProviderConfig } from "./config";
 import { withLanguage, type PromptLanguage } from "./language";
 import { buildPredictiveFactsBlock, buildReportFactsBlock } from "./predictive-facts";
 import { OUTPUT_DISCIPLINE_RULES, PRIVACY_RULE, type ViewMode } from "./prompt";
+import { REFLECTION_RULE } from "./reflection";
 import { monthsIn, validateTimelineDates } from "./date-guard";
 import { computeQuarters } from "./quarters";
 import {
@@ -345,6 +346,8 @@ function systemPrompt(timelineNames: string): string {
     "ANTI-REPETITION: do not reuse the same yoga, placement, phrase, or metaphor across",
     "  sections — each section foregrounds different planets/houses and fresh vocabulary.",
     "",
+    REFLECTION_RULE,
+    "",
     PRIVACY_RULE,
     "",
     OUTPUT_DISCIPLINE_RULES,
@@ -403,6 +406,8 @@ function systemPromptLite(timelineNames: string): string {
     "    and they must use only values explicitly present in their input.",
     "  - YOGAS (ZERO TOLERANCE): discuss ONLY yogas that appear in the chart's yoga list.",
     "    If a yoga is not listed it DOES NOT EXIST here — never invent or name one.",
+    "",
+    REFLECTION_RULE,
     "",
     PRIVACY_RULE,
     "",
@@ -575,7 +580,7 @@ const UPCOMING_PERIODS_TASK = [
   "DEBILITY HONESTY: a debilitated, combust, or retrograde lord's window is a",
   "  growth-through-effort chapter — name the condition; never call it plainly easy.",
   "ZERO TOLERANCE: never invent a period, a date, a dignity, or a yoga not in the data.",
-  "When the ENGINE PREDICTIVE CONTEXT block is present, ground this in the domain's",
+  "When the ENGINE TIMING CONTEXT block is present, ground this in the domain's",
   "  current emphasis (active daśā significator, Sade Sati, transit severity) and its",
   "  next month-precision windows; otherwise speak to the natal placements only.",
 ].join("\n");
@@ -585,7 +590,7 @@ const CURRENT_SKY_TASK = [
   '{ "current_sky": [ { "title": string, "layman": string, "technical": string } ] }.',
   "",
   'Write "What\'s active now & next" — the native\'s CURRENT sky + near timing,',
-  "grounded ENTIRELY in the ENGINE PREDICTIVE CONTEXT block. Return 2–4",
+  "grounded ENTIRELY in the ENGINE TIMING CONTEXT block. Return 2–4",
   "TitledPersona entries, most salient first: (1) the running period — the",
   "mahā/antar/pratyantar lords and what they activate; (2) current transits that",
   "matter — planets by house from Lagna and/or Moon, flag Sade Sati phase if",
@@ -593,7 +598,7 @@ const CURRENT_SKY_TASK = [
   "per life area (career/relationships/health/…): what opens or intensifies and",
   'roughly when. Each entry: title = a plain, specific label; content.layman =',
   'jargon-free "what this means for you and when"; content.technical = the',
-  "placement/period named precisely. If the ENGINE PREDICTIVE CONTEXT block is",
+  "placement/period named precisely. If the ENGINE TIMING CONTEXT block is",
   "ABSENT, return an EMPTY array (never invent timing).",
 ].join("\n");
 
@@ -926,11 +931,11 @@ const TIMELINE_INPUT_HONESTY = [
 // the engine's own current sky + timing rather than merely permitting it.
 const PREDICTIVE_CONTEXT_EXCEPTION = [
   "",
-  "ENGINE PREDICTIVE CONTEXT — USE IT (REQUIRED):",
+  "ENGINE TIMING CONTEXT — USE IT (REQUIRED):",
   "The block below carries THIS chart's CURRENT sky + timing, computed by the",
   "deterministic engine: the running daśā stack (mahā/antar/pratyantar) with dated",
   "windows, current Gochara (transits) by house from Lagna AND the Moon, Sade Sati",
-  "phase + rough end, the daśā-lord × transit fusion, and per-life-area forecast",
+  "phase + rough end, the daśā-lord × transit fusion, and per-life-area theme",
   "windows. Ground EVERY forward-looking or life-area statement in these specifics:",
   "name the running daśā lords and phase; cite transits by house; state Sade Sati",
   "status when active; cite upcoming windows using the engine's MONTH precision",

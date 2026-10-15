@@ -204,7 +204,7 @@ describe('ReportRectification — phase 2 result snapshot', () => {
   it('lists the quiet-period misses qualitatively and prints the prior note', () => {
     render(<ReportRectification record={SNAPSHOT_RECORD} events={EVENTS} />);
     expect(screen.getByTestId('report-rectification-misses').textContent).toMatch(
-      /predicted a strong marriage window with nothing reported/i,
+      /showed a strong marriage window with nothing reported/i,
     );
     expect(screen.getByTestId('report-rectification-prior').textContent).toMatch(
       /closest to the recorded time/i,

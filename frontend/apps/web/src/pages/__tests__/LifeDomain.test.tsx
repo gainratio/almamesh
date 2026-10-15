@@ -241,7 +241,7 @@ describe('LifeDomainPage', () => {
     renderAt('/life/obstacles');
     expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Obstacles & setbacks');
     expect(screen.getByTestId('life-domain-note').textContent).toBe(
-      'A theme to watch, not a prediction: friction with rules or authorities, legal or administrative matters, unexpected setbacks, losses and expenses (the 6th, 8th and 12th houses).',
+      'A theme to reflect on: friction with rules or authorities, legal or administrative matters, unexpected setbacks, losses and expenses (the 6th, 8th and 12th houses).',
     );
     expect(screen.getByTestId('domain-emphasis-obstacles')).toBeTruthy();
     expect(screen.getByTestId('life-domain-ai').textContent).toContain('engine alone');

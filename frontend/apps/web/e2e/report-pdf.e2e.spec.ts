@@ -1560,7 +1560,7 @@ test('synthetic maximal state -> real browser download preserves report families
   expect(finalPlanetRow, 'the final planet sentinel must remain attached to Ketu').toContain('ketu');
   const missLine = pdfLines.find(
     (line) =>
-      line.includes('predicted a strong family rupture') &&
+      line.includes('showed a strong family rupture') &&
       line.includes('window with nothing reported'),
   );
   expect(missLine, 'the final quiet-period miss must survive the real download').toBeTruthy();

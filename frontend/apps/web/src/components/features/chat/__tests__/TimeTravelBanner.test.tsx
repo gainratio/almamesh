@@ -68,6 +68,6 @@ describe('TimeTravelBanner', () => {
     const banner = renderBanner('en');
     expect(screen.getByTestId('time-travel-title').textContent?.replace(/\u00a0/g, ' ')).toBe('Time travel · June 15, 2026');
     expect(banner.textContent).toContain('Bogotá, Colombia');
-    expect(banner.textContent).toContain('answers are about this period');
+    expect(banner.textContent).toContain('what your chart highlights for this period');
   });
 });

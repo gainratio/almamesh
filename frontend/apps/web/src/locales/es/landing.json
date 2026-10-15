@@ -28,11 +28,11 @@
   },
   "features": {
     "title": "Lo que puedes hacer",
-    "intro": "Calcula, rectifica, narra y predice — cada paso se ejecuta en tu dispositivo, fundamentado en las matemáticas del motor.",
+    "intro": "Calcula, rectifica, narra y reflexiona — cada paso se ejecuta en tu dispositivo, fundamentado en las matemáticas del motor.",
     "rectify": {
       "badge": "El punto de honestidad",
       "title": "Rectifica tu hora de nacimiento — el dato que lo define todo.",
-      "body": "Unos pocos minutos pueden mover tu Ascendente al siguiente signo y cambiar con él cada predicción. La mayoría de las personas no conocen su hora al minuto. Así que, en lugar de fingir certeza sobre una hora aproximada como hacen los sitios de pago, AlmaMesh te ayuda a rectificarla a partir de eventos reales de tu vida — una carta honesta necesita una hora honesta."
+      "body": "Unos pocos minutos pueden mover tu Ascendente al siguiente signo y cambiar con él cada casa y cada lectura de periodo. La mayoría de las personas no conocen su hora al minuto. Así que, en lugar de fingir certeza sobre una hora aproximada como hacen los sitios de pago, AlmaMesh te ayuda a rectificarla a partir de eventos reales de tu vida — una carta honesta necesita una hora honesta."
     },
     "items": [
       {
@@ -49,7 +49,7 @@
       },
       {
         "title": "Observa tu timing",
-        "body": "Tránsitos, dashas, todas las cartas divisionales (D1–D60), Ashtakavarga y Shadbala, y pronósticos por ámbito de vida. Profundamente predictivo — fundamentado en las matemáticas, no en intuiciones."
+        "body": "Tránsitos, dashas, todas las cartas divisionales (D1–D60), Ashtakavarga y Shadbala, y temas por ámbito de vida con ventanas fechadas. Concreto, fundamentado en las matemáticas y ofrecido para la reflexión."
       }
     ]
   },
@@ -77,7 +77,7 @@
       },
       {
         "a": "Motor abierto, idéntico byte a byte a CPython — verificable",
-        "b": "\"Predicciones\" de caja negra"
+        "b": "Lecturas de caja negra vendidas como destino"
       },
       {
         "a": "Indicadores honestos (una banda es una convención, nunca un veredicto)",

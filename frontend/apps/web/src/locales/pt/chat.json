@@ -105,7 +105,7 @@
     "status_working": "Calculando o céu de {{period}}… (cerca de 30 s)",
     "sheet": {
       "title": "Viagem no tempo",
-      "intro": "Escolha um momento. As respostas no novo chat serão sobre ele.",
+      "intro": "Escolha um momento. As respostas no novo chat mostram o que o seu mapa destaca para ele: temas para refletir.",
       "intro_change": "Escolha um novo período. As próximas respostas deste chat serão sobre ele.",
       "when": "Quando?",
       "tabs": {
@@ -135,7 +135,7 @@
       "where_home": "Usar {{place}} (onde você mora agora)"
     },
     "banner": {
-      "about": "as respostas são sobre este período",
+      "about": "o que o seu mapa destaca para este período",
       "change": "Mudar",
       "back": "Voltar para hoje"
     },
@@ -145,7 +145,7 @@
         "teaching": "O que esse período estava me ensinando?"
       },
       "future": {
-        "prepare": "Para o que devo me preparar?",
+        "prepare": "O que o meu mapa destaca para esta época?",
         "strongest": "Quais meses parecem mais fortes?"
       }
     }

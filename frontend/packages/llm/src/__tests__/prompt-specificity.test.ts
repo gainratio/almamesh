@@ -123,11 +123,11 @@ describe("the obstacles theme", () => {
     // Matrix 2026-10-14: gpt-sol named the theme and its factor but never its 25 Sep Mars window.
     expect(system).toMatch(/obstacles theme[^\n]*its factor and its dated window/);
     expect(system).toMatch(/obstacles theme[^\n]*never say it happened[^\n]*no fear words/);
-    expect(system).toContain("Never say what did or will happen, and never invent a fact.");
+    expect(system).toContain("Never say an event did occur or is going to occur, and never invent a fact.");
   });
 
   it("the plain-language register gives obstacles a lived-experience reading", () => {
-    expect(trip("layman")[1]?.content).toContain("- an obstacles theme → a stretch to watch rules, paperwork and spending, not a prediction");
+    expect(trip("layman")[1]?.content).toContain("- an obstacles theme → a stretch to watch rules, paperwork and spending: a theme to reflect on");
     expect(trip("expert")[1]?.content).not.toContain("- an obstacles theme →");
   });
 
