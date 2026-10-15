@@ -21,10 +21,12 @@ from almamesh.dasha.yogini import compute_yogini_periods
 from almamesh.domains.ashtakavarga_signals import BinduTable
 from almamesh.domains.varga_signals import VARGA_KEYS, VargaKey, varga_key
 from almamesh.predictive import PredictiveContexts, compute_predictive_contexts
+from almamesh.reading.classical import ChartLords
 from almamesh.retrodiction.indicators import SKY_GRAHAS, MonthSky, NatalFrame
 from almamesh.retrodiction.mapping import MAPPING
 from almamesh.schemas.domains import LifeDomain
 from almamesh.strength.ashtakavarga import compute_ashtakavarga
+from almamesh.strength.context import compute_strength_context
 from almamesh.transits.exact import MOVERS, ContactBook, astro_movers, natal_points
 from almamesh.transits.natal import natal_lagna_index, natal_moon_index, sign_index
 from almamesh.transits.positions import EPHEMERIS_LAST_INSTANT, transit_longitude
@@ -80,8 +82,8 @@ def _varga_keys(natal: SiderealContext) -> MappingProxyType[Target, VargaKey]:
     return MappingProxyType(keys)
 
 
-def _natal_frame(natal: SiderealContext) -> NatalFrame:
-    """Lagna and Moon signs, lordships, occupancy, Ashtakavarga and varga keys."""
+def _natal_frame(natal: SiderealContext, lords: ChartLords | None) -> NatalFrame:
+    """Lagna and Moon signs, lordships, occupancy, Ashtakavarga, varga keys, chart lords."""
     return NatalFrame(
         lagna_idx=natal_lagna_index(natal),
         moon_idx=natal_moon_index(natal),
@@ -89,7 +91,29 @@ def _natal_frame(natal: SiderealContext) -> NatalFrame:
         occupied={g: p.house for g, p in natal.planets.items()},
         bindus=BinduTable.from_context(compute_ashtakavarga(natal)),
         varga_keys=_varga_keys(natal),
+        lords=lords,
     )
+
+
+def _chart_lords(
+    natal: SiderealContext, birth: Birth, astronomy: SkyfieldAstronomy
+) -> tuple[ChartLords | None, str | None]:
+    """The chart with its Shadbala (amendment h2), or why the engine cannot compute it.
+
+    The Shadbala sunrise search looks back a year from birth, so a birth before about
+    1900-07-29 leaves DE421; a polar day or night has no sunrise in the lookback at all.
+    """
+    offset = birth.datetime.utcoffset()
+    if offset is None:
+        raise ValueError("birth datetime needs its UTC offset")
+    born = birth.datetime.astimezone(UTC)
+    try:
+        strength = compute_strength_context(
+            natal, born, birth.latitude, birth.longitude, civil_offset=offset, astronomy=astronomy
+        )
+    except (EphemerisRangeError, IndexError) as exc:
+        return None, f"{type(exc).__name__}: {exc}"
+    return ChartLords(natal, strength.shadbala), None
 
 
 class SubjectEngine:
@@ -114,7 +138,8 @@ class SubjectEngine:
         mahas = self._natal.dashas.maha_dasha_sequence
         self._dasha_end = mahas[-1].end_date
         self._yogini = compute_yogini_periods(self._natal, mahas[0].start_date, self._dasha_end)
-        self.frame = _natal_frame(self._natal)
+        lords, self.strength_error = _chart_lords(self._natal, birth, astronomy)
+        self.frame = _natal_frame(self._natal, lords)
         self.points = natal_points(self._natal)
         scanned = {g: lon for g, lon in astro_movers(astronomy).items() if g in movers}
         self._contacts = ContactBook(scanned, self.points)
@@ -149,6 +174,7 @@ class SubjectEngine:
             signs=self._signs(mid),
             contacts=self._contacts.month(start, end),
             obstacles=cache(partial(obstacles_activation, self._birth, ym)),
+            window=(start, end),
         )
 
     def _signs(self, mid: datetime) -> dict[PlanetName, int]:

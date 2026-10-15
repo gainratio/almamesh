@@ -15,12 +15,14 @@ from almamesh.constants.astrology import PlanetName
 from almamesh.domains.ashtakavarga_signals import BinduTable, ashtakavarga_score, transit_movers
 from almamesh.domains.exact_signals import SLOW_MOVERS, contact_score
 from almamesh.domains.varga_signals import VargaKey, varga_score
+from almamesh.reading.classical import Area, ChartLords, vimshottari_score
 from almamesh.transits.aspects import drishti_offsets
 from almamesh.transits.exact import LAGNA_POINT
 from almamesh.transits.natal import whole_sign_house
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
+    from datetime import datetime
 
 
 @dataclass(frozen=True)
@@ -38,6 +40,8 @@ class NatalFrame:
     ``bindus`` is the natal Ashtakavarga and ``varga_keys`` each varga target's key houses
     and significators; the engine always sets both. A hand-built frame without them has
     nothing to read, so ``ashtakavarga_transits`` and ``varga_lords`` score 0 there.
+    ``lords`` is the chart and its Shadbala for the classical dasha rules; the engine sets it
+    unless the native's Shadbala cannot be computed, and ``classical_dasha`` scores 0 without.
     """
 
     lagna_idx: int
@@ -46,6 +50,7 @@ class NatalFrame:
     occupied: Mapping[PlanetName, int]
     bindus: BinduTable | None = None
     varga_keys: Mapping[Target, VargaKey] = field(default_factory=dict)
+    lords: ChartLords | None = None
 
     def signifies(self, graha: PlanetName, target: Target) -> bool:
         """The graha rules a target house or is a target karaka."""
@@ -81,6 +86,7 @@ class MonthSky:
 
     ``obstacles`` is the engine's own obstacles-theme activation for the month (0..1),
     computed lazily: it costs a full predictive run, so only the disputes target asks.
+    ``window`` is the calendar month, [1st 00:00 UTC, next 1st 00:00 UTC).
     """
 
     running: tuple[frozenset[PlanetName], ...]  # maha, antar, pratyantar
@@ -89,6 +95,7 @@ class MonthSky:
     # (mover, natal point) pairs within the exact-transit orb at some instant of the month
     contacts: frozenset[tuple[PlanetName, str]] = frozenset()
     obstacles: Callable[[], float] = _no_activation
+    window: tuple[datetime, datetime] | None = None
 
 
 class IndicatorFamily(Protocol):
@@ -242,6 +249,23 @@ class VargaLords:
         return varga_score(key, _maha_antar(month), month.signs)
 
 
+class ClassicalDasha:
+    """Family #5 (amendment h2): the classical graded Vimshottari score of the month.
+
+    The engine's R7 score (``reading.classical.vimshottari_score``, the one the period
+    reading shows) over the calendar month for the target's houses and karakas, / 100.
+    Continuous, never thresholded; tone and Yogini are not read.
+    """
+
+    name: ClassVar[str] = "classical_dasha"
+
+    def score(self, natal: NatalFrame, month: MonthSky, target: Target) -> float:
+        if natal.lords is None or month.window is None:
+            return 0.0
+        area = Area(houses=target.houses, karakas=target.karakas)
+        return vimshottari_score(natal.lords, area, *month.window) / 100
+
+
 # The harness-computed disputes target (legal, accident); see mapping._DISPUTES.
 DISPUTES_TARGET: Final[Target] = Target(
     houses=frozenset({6, 8, 12}),
@@ -274,6 +298,7 @@ FAMILIES: Final[tuple[IndicatorFamily, ...]] = (
     ExactTransits(),
     AshtakavargaTransits(),
     VargaLords(),
+    ClassicalDasha(),
 )
 # Amendment (f5): scored only by the +OBSTACLES run, lazily (a full predictive run per month),
 # so it stays out of FAMILIES and out of the pre-registration digest of the v1 + exact set.

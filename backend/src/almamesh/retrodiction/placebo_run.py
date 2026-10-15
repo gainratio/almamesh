@@ -34,12 +34,15 @@ if TYPE_CHECKING:
     from almamesh.retrodiction.events import EventsFile, LifeEvent, Subject
     from almamesh.retrodiction.indicators import Target
 
-AddedFamily = Literal["exact_transits", "engine_obstacles", "ashtakavarga_transits", "varga_lords"]
+AddedFamily = Literal[
+    "exact_transits", "engine_obstacles", "ashtakavarga_transits", "varga_lords", "classical_dasha"
+]
 ADDED_FAMILIES: Final[tuple[str, ...]] = (
     "exact_transits",
     "engine_obstacles",
     "ashtakavarga_transits",
     "varga_lords",
+    "classical_dasha",
 )
 BASELINE: Final[str] = "BASELINE"
 # The v1 seven, named: FAMILIES grows with each technique, BASELINE never does.
@@ -56,16 +59,25 @@ V1: Final[frozenset[str]] = frozenset(
 )
 _CHUNKS_PER_WORKER: Final[int] = 8
 UNREADABLE: Final[str] = "the engine's month reading reaches outside the ephemeris (amendment c)"
+STRENGTH_UNAVAILABLE: Final[str] = (
+    "the engine cannot compute this native's Shadbala, so classical_dasha cannot be scored "
+    "(amendment h, implementation note)"
+)
 
 
 @dataclass(frozen=True)
 class RunPlan:
-    """Which family is added to the v1 seven, how many placebos, window and k."""
+    """Which family is added to the v1 seven, how many placebos, window and k.
+
+    ``day_precision_only`` keeps only events dated to the day (amendment h5's sensitivity
+    check); each keeps its ordinal in the native's own list, so its placebos do not move.
+    """
 
     added: AddedFamily = "exact_transits"
     placebos: int = PLACEBOS
     ks: tuple[int, ...] = PREREGISTERED_KS
     window: int = PREREGISTERED_WINDOW
+    day_precision_only: bool = False
 
     @property
     def added_set(self) -> str:
@@ -87,7 +99,14 @@ class RunPlan:
 
     def wants(self, event: LifeEvent) -> bool:
         """+OBSTACLES can move only the disputes target, so its run scores only that."""
+        if self.day_precision_only and event.precision != "day":
+            return False
         return not self.lazy or MAPPING[event.category].target == DISPUTES_TARGET
+
+    @property
+    def needs_shadbala(self) -> bool:
+        """Only the classical family reads the native's Shadbala (amendment h2)."""
+        return self.added == "classical_dasha"
 
 
 def _lazy_hits(
@@ -175,8 +194,10 @@ def _placebo_hits(
     return tuple(h for h in hits if h is not None)
 
 
-def _out_of_range(subject: Subject, events: Sequence[LifeEvent]) -> list[EventHits | Exclusion]:
-    return [Exclusion(subject.id, e.category, e.date, OUT_OF_RANGE_BIRTH) for e in events]
+def _excluded(
+    subject: Subject, wanted: Sequence[tuple[int, LifeEvent]], reason: str
+) -> list[EventHits | Exclusion]:
+    return [Exclusion(subject.id, e.category, e.date, reason) for _, e in wanted]
 
 
 def contact_movers(plan: RunPlan, events: Sequence[LifeEvent]) -> frozenset[PlanetName]:
@@ -192,8 +213,10 @@ def _subject_hits(
 ) -> list[EventHits | Exclusion]:
     wanted = _wanted(subject, plan)
     if not birth_in_range(subject.birth):
-        return _out_of_range(subject, [e for _, e in wanted])
+        return _excluded(subject, wanted, OUT_OF_RANGE_BIRTH)
     engine = SubjectEngine(subject.birth, astronomy, contact_movers(plan, subject.events))
+    if plan.needs_shadbala and engine.strength_error is not None:
+        return _excluded(subject, wanted, STRENGTH_UNAVAILABLE)
     return [_event_hits(engine, subject.id, i, e, plan) for i, e in wanted]
 
 
@@ -235,6 +258,7 @@ __all__ = [
     "UNREADABLE",
     "V1",
     "AddedFamily",
+    "STRENGTH_UNAVAILABLE",
     "RunPlan",
     "contact_movers",
     "score_hits",

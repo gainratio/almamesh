@@ -13,15 +13,19 @@ from almamesh.calculations import SkyfieldAstronomy, calculate_sidereal_context
 from almamesh.constants.astrology import PlanetName as P
 from almamesh.domains.ashtakavarga_signals import BinduTable
 from almamesh.domains.exact_signals import SLOW_MOVERS
+from almamesh.domains.recipes import DOMAIN_RECIPES
 from almamesh.domains.varga_signals import varga_key
+from almamesh.reading.classical import area_of
 from almamesh.retrodiction import engine as engine_module
 from almamesh.retrodiction.engine import (
     EngineReadingRangeError,
     SubjectEngine,
+    YearMonth,
     obstacles_activation,
 )
 from almamesh.retrodiction.events import Birth, LifeEvent
 from almamesh.retrodiction.harness import movers_for
+from almamesh.retrodiction.indicators import FAMILIES, Target
 from almamesh.retrodiction.mapping import MAPPING
 from almamesh.schemas.vargas import DivisionalChart
 from almamesh.strength.ashtakavarga import compute_ashtakavarga
@@ -184,3 +188,58 @@ def test_should_key_every_career_relationship_and_disputes_target_to_its_varga(
     # Then the frame holds exactly those seven targets' keys (3 career, 3 relationships, disputes)
     assert len(expected) == 7
     assert dict(engine.frame.varga_keys) == expected
+
+
+# Amendment (h2): the classical_dasha family is the engine's own R7 Vimshottari score.
+CLASSICAL = next(f for f in FAMILIES if f.name == "classical_dasha")
+
+
+@pytest.mark.parametrize("ym", [(2019, 5), (2027, 1)])
+def test_classical_dasha_equals_the_engines_reading_score(
+    engine: SubjectEngine, ym: YearMonth
+) -> None:
+    # Given the app's own one-month reading for this native
+    offset = SYNTHETIC.datetime.utcoffset()
+    assert offset is not None
+    reading = engine_module._month_reading(SYNTHETIC, ym, offset).period_reading
+    sky = engine.month(ym)
+    # When each reading theme's area is scored as an eval target
+    pairs = []
+    for theme in reading.themes:
+        area = area_of(DOMAIN_RECIPES[theme.domain])
+        target = Target(houses=area.houses, karakas=area.karakas)
+        pairs.append((CLASSICAL.score(engine.frame, sky, target), theme.dasha.vimshottari / 100))
+    # Then the family is exactly the engine's graded score, theme by theme (not all zero)
+    assert [family for family, _ in pairs] == [engine_score for _, engine_score in pairs]
+    assert any(engine_score > 0 for _, engine_score in pairs)
+
+
+POLAR = Birth(
+    datetime=datetime.fromisoformat("1950-12-20T12:00:00+01:00"), latitude=75.0, longitude=20.0
+)
+
+
+def test_should_leave_the_classical_family_unread_when_shadbala_cannot_be_computed() -> None:
+    # Given a polar-night birth: no sunrise in the engine's lookback, so no Shadbala
+    with SkyfieldAstronomy() as astronomy:
+        polar = SubjectEngine(POLAR, astronomy)
+        sky = polar.month((1980, 1))
+    # Then the native still charts, says why, and the classical family reads nothing
+    assert polar.strength_error is not None
+    assert polar.frame.lords is None
+    target = next(iter(MAPPING.values())).target
+    assert CLASSICAL.score(polar.frame, sky, target) == 0.0
+
+
+def test_should_carry_the_natives_chart_lords_when_shadbala_is_computable(
+    engine: SubjectEngine,
+) -> None:
+    assert engine.strength_error is None
+    assert engine.frame.lords is not None
+    assert engine.frame.lords.natal.planets == _synthetic_natal().planets
+
+
+def test_should_refuse_to_build_chart_lords_for_a_birth_without_a_utc_offset() -> None:
+    naive = Birth.model_construct(datetime=datetime(1980, 1, 1), latitude=0.0, longitude=0.0)
+    with SkyfieldAstronomy() as astronomy, pytest.raises(ValueError, match="UTC offset"):
+        SubjectEngine(naive, astronomy)

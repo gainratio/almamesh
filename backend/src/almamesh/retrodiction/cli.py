@@ -259,12 +259,22 @@ def scorecard(
         _refuse(exc)
 
 
-def _plan(added: str, placebos: int) -> RunPlan:
+def _plan(added: str, placebos: int, day_precision_only: bool) -> RunPlan:
     if added not in ADDED_FAMILIES:
         raise RetrodictionInputError(
             f"--added must be one of {', '.join(ADDED_FAMILIES)}, got {added!r}"
         )
-    return RunPlan(added=cast("AddedFamily", added), placebos=placebos)
+    family = cast("AddedFamily", added)
+    return RunPlan(added=family, placebos=placebos, day_precision_only=day_precision_only)
+
+
+def _dev_only(adb: Path | None, options: _Options, plan: RunPlan) -> None:
+    """Amendment (h3): an ADB run of classical_dasha reads the DEV half, never HELD-OUT."""
+    if plan.added == "classical_dasha" and adb is not None and options.split != "dev":
+        raise RetrodictionInputError(
+            "classical_dasha is scored on the DEV half only (amendment h3): pass --split dev; "
+            "HELD-OUT is not read for this family"
+        )
 
 
 def _write_placebo(card: PlaceboCard, target: Path, *, evidence: bool) -> None:
@@ -275,6 +285,7 @@ def _write_placebo(card: PlaceboCard, target: Path, *, evidence: bool) -> None:
 
 
 def _placebo(events: Path | None, adb: Path | None, options: _Options, plan: RunPlan) -> str:
+    _dev_only(adb, options, plan)
     loaded, source, private = _prepare(events, adb, options)
     target = _out_dir(source, options.out, private, f"placebo-scorecard-{plan.added}")
     card = build_placebo_card(loaded, plan, options.workers)
@@ -292,6 +303,9 @@ def placebo_scorecard(
     release_look: Annotated[bool, typer.Option(help="Declare a logged HELD-OUT look")] = False,
     added: Annotated[str, typer.Option(help=", ".join(ADDED_FAMILIES))] = ("exact_transits"),
     placebos: Annotated[int, typer.Option(min=1, max=PLACEBOS, help="Placebo windows")] = PLACEBOS,
+    day_precision_only: Annotated[
+        bool, typer.Option(help="Score only day-precision events (amendment h5)")
+    ] = False,
     out: Annotated[Path | None, typer.Option(help="Scorecard directory")] = None,
     workers: Annotated[int, typer.Option(min=1, max=64, help="Processes")] = 1,
     sample_natives: Annotated[int | None, typer.Option(min=1, help="Native sample")] = None,
@@ -299,7 +313,7 @@ def placebo_scorecard(
 ) -> None:
     """Amendment (f): placebo-calibrated BASELINE vs +family, swap ratio and controls."""
     try:
-        plan = _plan(added, placebos)
+        plan = _plan(added, placebos, day_precision_only)
         options = _Options(
             PREREGISTERED_WINDOW, "", out, workers, sample_natives, seed, _part(split), release_look
         )

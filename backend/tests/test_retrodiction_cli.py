@@ -277,3 +277,36 @@ def test_should_refuse_split_ids_inside_a_git_tree(tmp_path: Path) -> None:
     result = RUNNER.invoke(app, ["adb-split", "--adb", str(_four_native_zip(tmp_path))])
     assert result.exit_code == 2
     assert "git working tree" in result.output
+
+
+def _placebo(*args: str) -> tuple[int, str]:
+    result = RUNNER.invoke(app, ["placebo-scorecard", "--added", "classical_dasha", *args])
+    return result.exit_code, result.output
+
+
+@pytest.mark.parametrize(
+    "split", [["--split", "held-out", "--release-look"], ["--split", "held-out"], []]
+)
+def test_should_refuse_to_score_classical_dasha_outside_dev(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, split: list[str]
+) -> None:
+    # Given the pinned split of an ADB export (amendment h3: HELD-OUT is not read)
+    export = _four_native_zip(tmp_path)
+    _pin_the_fake_split(monkeypatch, export)
+    # When classical_dasha is asked for anything but the DEV half, even with a release look
+    code, output = _placebo("--adb", str(export), *split, "--out", str(tmp_path / "card"))
+    # Then the run is refused before any native is scored
+    assert code == 2
+    assert "DEV half only" in output
+    assert not (tmp_path / "card").exists()
+
+
+def test_should_score_classical_dasha_on_the_dev_half(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    export = _four_native_zip(tmp_path)
+    _pin_the_fake_split(monkeypatch, export)
+    code, output = _placebo("--adb", str(export), "--split", "dev", "--out", str(tmp_path / "c"))
+    assert code == 0, output
+    card = json.loads((tmp_path / "c" / "placebo-scorecard.json").read_text())
+    assert "[dev, split" in card["setup"]["label"]

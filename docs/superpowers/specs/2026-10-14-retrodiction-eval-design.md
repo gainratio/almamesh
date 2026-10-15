@@ -479,6 +479,86 @@ promotes nothing. #1 and #2 are null on DEV (results below). So the rule trigger
 unless #3 or #4 sends an area to HELD-OUT under (g4)'s gate and that area then passes §2's
 promotion rule there. The relocation test (g1) cannot change this verdict: it is measure-only.
 
+### Amendment 2026-10-15 (h): family #5, `classical_dasha` (before any scoring)
+
+Copied verbatim from `docs/superpowers/specs/2026-10-15-classical-dasha-rules.md` (branch
+`feat/classical-dasha`, `32d5e33d`) and committed, with the family's code and digest, before any
+run of it. Harish approved this round on 2026-10-15 as an explicit exception to the (g6) stop
+rule. ADB records never enter the repo.
+
+**(h0) Why a fifth family after the stop rule.** Amendment (g6) paused the roadmap after #1-#4.
+Harish approved this engine change on 2026-10-15 because the v1 Vimshottari rule is not the
+classical one (it fires in 97-100% of months). This is that one exception, numbered #5. If it is
+null on DEV, (g6) stands and nothing else is added.
+
+**(h1) Hypothesis.** The classical graded Vimshottari score ranks the month of a recorded event
+higher in its ±36 window than the v1 families alone. Directional: the k=3 and k=6
+placebo-calibrated lift of +CLASSICAL is above 1 for **career**, **relationships**, **family** and
+**health**; **disputes** is secondary; the rest exploratory.
+
+**(h2) Family score, exactly.** For event target T (the mapping's houses and karakas, the v1
+convention) and calendar month m = [1st 00:00 UT, next 1st 00:00 UT):
+
+```
+classical_dasha(natal, m, T) = engine score R7 over m / 100, in [0, 1]
+```
+
+computed by the engine function shared with the reading (`reading/classical.py`,
+`vimshottari_score(natal, shadbala, houses, karakas, start, end)`), with relevance R1, strength
+R3 (Shadbala from the engine's `compute_strength_context` for the native) and level/time weights
+R7. Continuous, not thresholded. Tone is not used (events are both good and bad). Yogini antars
+are not in this family (the v1 `yogini` family stays as it is), so one family tests one idea.
+
+**(h3) Run.** DEV half only (split `299ec393…`), window ±36, k 3 and 6, R = 4 placebos,
+amendment (f)'s placebo-calibrated statistic, chart-swap control, shifted-month and planted
+controls exactly as (f3). BASELINE = the v1 seven (`placebo_run.V1`), compared with BASELINE +
+`classical_dasha`. HELD-OUT is not read. Adding the family changes the pre-registration digest
+from `1abf88a5…`; the new digest is pinned in `tests/test_retrodiction_mapping.py` in the commit
+that adds the family, before any run, and recorded here.
+
+**(h4) Tests and correction.** Pre-registered: the four primary areas × k ∈ {3, 6} = 8 tests,
++CLASSICAL placebo-calibrated p. **Holm** at α = 0.05 across the 8 (BH reported beside it). Gate
+to HELD-OUT, as (g4): a test that survives Holm, with its lift CI above 1 and its chart-swap ratio
+CI above 1. Anything less is null for that area.
+
+**(h5) Day-precision sensitivity check (reported, not a test).** The same DEV run restricted to
+events whose ADB date has day precision (month-precision events can sit in the wrong month at a
+month boundary). Reported per primary area beside the main rows. It cannot rescue a null main row;
+a main-row pass that vanishes on day-precision events is flagged as fragile.
+
+**(h6) Exploratory, not tested.** A replacement configuration (v1 seven minus `vimshottari_lords`,
+plus `classical_dasha`), and the share of months scoring ≥ 0.5 per target (the saturation check).
+
+**(h7) Digest and split, recorded before any run.** Adding `classical_dasha` to `FAMILIES`
+changes the pre-registration digest from `1abf88a5…` to
+`b770e6c42761fef40269e319ae71225fca8bc5f2ae43f1ddb1b23f754922593d`, pinned in
+`tests/test_retrodiction_mapping.py` in this commit. The split is unchanged: recomputed from the
+export on 2026-10-15 it is `299ec3937460a109c44a125943bc8f8f77da57259c545094f43c5d7c008664ca`
+(5,062 DEV and 5,062 HELD-OUT natives), equal to the pinned `ADB_SPLIT_DIGEST`.
+
+**(h8) Implementation notes (added before any run; they fix how (h2)-(h5) are computed, not what).**
+
+- *The engine function.* On the engine branch the function is
+  `vimshottari_score(ChartLords(natal, shadbala), Area(houses, karakas), start, end)`: the same
+  six inputs as (h2), grouped. The family passes the mapping target's houses and karakas as the
+  `Area` and the calendar month as `[start, end)`, and divides the engine's integer by 100. A test
+  checks that, for a synthetic native, the family equals the period reading's own
+  `theme.dasha.vimshottari / 100` for every reading theme, in two months.
+- *A native whose Shadbala the engine cannot compute.* Shadbala's sunrise search looks back a
+  year from birth, so a birth before about 1900-07-29 leaves DE421, and a polar day or night has
+  no sunrise in the lookback at all; the engine raises for both, as the app does. The +CLASSICAL
+  run excludes every event of such a native from both configurations (so the comparison stays
+  paired), with the reason counted, as amendments (c) and (f6) do for unreadable months. Its
+  BASELINE rows can therefore differ slightly from the (f) and (g) runs'. The count is reported.
+- *HELD-OUT guard in code.* `placebo-scorecard --added classical_dasha` on an ADB export is
+  refused unless `--split dev`, even with `--release-look` (`cli._dev_only`, tested).
+- *(h5) day-precision run.* `--day-precision-only` keeps only events whose ADB date has day
+  precision; each keeps its ordinal in the native's own event list, so its placebo draws are the
+  same as in the main run.
+- *(h4) Holm.* Holm-adjusted p is reported beside each of the 8 raw p (step-down, monotone);
+  "survives" means adjusted p ≤ 0.05. BH is reported as survives / does not.
+- *(h6)* is exploratory and is not run in this round.
+
 ## Results: DEV, exact transits (technique #1), 2026-10-14
 
 The only scoring run of amendment (d). Engine and harness at `8faa4ed7` (branch

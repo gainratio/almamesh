@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
@@ -16,11 +17,16 @@ from almamesh.retrodiction.events import RetrodictionInputError, load_events
 from almamesh.retrodiction.harness import movers_for
 from almamesh.retrodiction.indicators import FAMILIES
 from almamesh.retrodiction.placebo_card import BASELINE, PlaceboCard, RunPlan, build_placebo_card
-from almamesh.retrodiction.placebo_run import ADDED_FAMILIES, UNREADABLE, V1, score_hits
+from almamesh.retrodiction.placebo_run import (
+    ADDED_FAMILIES,
+    STRENGTH_UNAVAILABLE,
+    UNREADABLE,
+    V1,
+    score_hits,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from pathlib import Path
 
     from almamesh.retrodiction.engine import YearMonth
     from almamesh.retrodiction.events import Birth
@@ -84,7 +90,10 @@ def test_should_refuse_an_unknown_added_family(events_path: Path, tmp_path: Path
         ],
     )
     assert result.exit_code == 2
-    assert "exact_transits, engine_obstacles, ashtakavarga_transits, varga_lords" in result.output
+    assert (
+        "exact_transits, engine_obstacles, ashtakavarga_transits, varga_lords, classical_dasha"
+        in result.output
+    )
 
 
 def _fake_activation(asked: list[YearMonth]) -> Callable[[Birth, YearMonth], float]:
@@ -206,7 +215,7 @@ def test_should_pin_v1_to_the_seven_named_families() -> None:
     assert V1 == V1_NAMES
 
 
-@pytest.mark.parametrize("added", ["ashtakavarga_transits", "varga_lords"])
+@pytest.mark.parametrize("added", ["ashtakavarga_transits", "varga_lords", "classical_dasha"])
 def test_should_offer_the_new_techniques_as_eager_added_families(added: str) -> None:
     plan = RunPlan(added=added)  # type: ignore[arg-type]
     assert added in ADDED_FAMILIES
@@ -218,7 +227,7 @@ def test_should_offer_the_new_techniques_as_eager_added_families(added: str) -> 
     assert all("exact_transits" not in names for names in sets.values())
 
 
-@pytest.mark.parametrize("added", ["ashtakavarga_transits", "varga_lords"])
+@pytest.mark.parametrize("added", ["ashtakavarga_transits", "varga_lords", "classical_dasha"])
 def test_should_run_the_placebo_scorecard_with_a_new_technique_added(
     events_path: Path, tmp_path: Path, added: str
 ) -> None:
@@ -234,7 +243,7 @@ def test_should_run_the_placebo_scorecard_with_a_new_technique_added(
 def test_should_scan_exact_contacts_only_when_exact_transits_is_added(events_path: Path) -> None:
     events = load_events(events_path).subjects[2].events  # the legal event reads Mars
     assert placebo_run.contact_movers(RunPlan(added="exact_transits"), events) == movers_for(events)
-    for added in ("engine_obstacles", "ashtakavarga_transits", "varga_lords"):
+    for added in ("engine_obstacles", "ashtakavarga_transits", "varga_lords", "classical_dasha"):
         assert placebo_run.contact_movers(RunPlan(added=added), events) == frozenset()
 
 
@@ -259,3 +268,57 @@ def test_should_score_the_same_hits_without_the_contact_scan_when_exact_is_not_a
     assert all(scanned)
     assert len(fast[0]) == 3
     assert slow == fast
+
+
+_PRECISION_NATIVES = """
+kind: synthetic
+label: day precision
+subjects:
+  - id: d1
+    birth: {datetime: "1980-03-04T05:06:00+05:30", latitude: 13.08, longitude: 80.27}
+    events:
+      - {category: job_start, date: "2000-05", precision: month}
+      - {category: marriage, date: "2004-02-11", precision: day}
+  - id: d2
+    birth: {datetime: "1950-12-20T12:00:00+01:00", latitude: 75.0, longitude: 20.0}
+    events: [{category: legal, date: "1990-06-02", precision: day}]
+"""
+
+
+@pytest.fixture
+def precision_path(tmp_path: Path) -> Path:
+    path = tmp_path / "precision.yaml"
+    path.write_text(_PRECISION_NATIVES, encoding="utf-8")
+    return path
+
+
+def test_should_score_only_day_precision_events_keeping_their_ordinals(
+    precision_path: Path,
+) -> None:
+    # Given a native with a month-precision and a day-precision event (amendment h5)
+    plan = RunPlan(added="classical_dasha", placebos=1, day_precision_only=True)
+    # When
+    hits, _ = score_hits(load_events(precision_path), plan)
+    # Then only the day event is scored, under its ordinal in the native's own list
+    assert [(h.subject, h.ordinal, h.area) for h in hits] == [("d1", 1, "relationships")]
+
+
+def test_should_record_a_day_precision_run_in_the_card_setup(precision_path: Path) -> None:
+    plan = RunPlan(added="classical_dasha", day_precision_only=True)
+    card = build_placebo_card(load_events(precision_path), plan, workers=1)
+    assert card.setup.day_precision_only is True
+    assert card.counts.events_scored == 1
+
+
+def test_should_exclude_a_native_without_shadbala_from_the_classical_run_only(
+    precision_path: Path,
+) -> None:
+    # Given a polar-night native (no sunrise in the lookback: the engine has no Shadbala)
+    events = load_events(precision_path)
+    # When the classical run and an exact-transits run score the same file
+    _, classical = score_hits(events, RunPlan(added="classical_dasha", placebos=1))
+    exact_hits, exact = score_hits(events, RunPlan(added="exact_transits", placebos=1))
+    # Then only the classical run drops that native's event, and says why
+    assert [(x.subject, x.reason) for x in classical] == [("d2", STRENGTH_UNAVAILABLE)]
+    assert exact == []
+    assert "d2" in {h.subject for h in exact_hits}

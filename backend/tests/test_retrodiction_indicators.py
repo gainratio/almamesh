@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from datetime import UTC, datetime
 
 import pytest
 
 from almamesh.constants.astrology import PlanetName as P
 from almamesh.domains.ashtakavarga_signals import BAV_DASHA_MOVERS, BinduTable
 from almamesh.domains.varga_signals import VargaKey
+from almamesh.reading.classical import Area
 from almamesh.retrodiction import indicators as indicators_module
 from almamesh.retrodiction.indicators import (
     ENGINE_OBSTACLES,
@@ -330,6 +332,47 @@ def test_should_delegate_the_varga_rule_to_the_engine_seam(
     assert seen == [(VARGA_FRAME.varga_keys[CAREER], frozenset({P.VENUS, P.MARS}), LEO)]
 
 
-def test_should_append_the_two_new_families_after_exact_transits() -> None:
+def test_should_append_the_new_families_after_exact_transits() -> None:
     names = [f.name for f in FAMILIES]
-    assert names[-3:] == ["exact_transits", "ashtakavarga_transits", "varga_lords"]
+    assert names[-4:] == [
+        "exact_transits",
+        "ashtakavarga_transits",
+        "varga_lords",
+        "classical_dasha",
+    ]
+
+
+# --- Family #5, classical_dasha (amendment h2) ----------------------------------------
+
+_MAY_2019 = (datetime(2019, 5, 1, tzinfo=UTC), datetime(2019, 6, 1, tzinfo=UTC))
+
+
+def test_classical_dasha_scores_zero_on_a_frame_without_chart_lords() -> None:
+    sky = replace(_sky({P.SATURN}, {P.VENUS}, {P.MOON}), window=_MAY_2019)
+    assert _score("classical_dasha", sky) == 0.0
+
+
+def test_classical_dasha_scores_zero_on_a_month_without_its_window() -> None:
+    frame = replace(FRAME, lords=object())  # type: ignore[arg-type]
+    sky = _sky({P.SATURN}, {P.VENUS}, {P.MOON})
+    assert family_scores(frame, sky, CAREER)["classical_dasha"] == 0.0
+
+
+def test_classical_dasha_is_the_engine_score_over_the_calendar_month_divided_by_100(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Given a stand-in for the engine's R7 function that records what it is asked
+    seen: list[tuple[object, Area, datetime, datetime]] = []
+
+    def recorder(lords: object, area: Area, start: datetime, end: datetime) -> int:
+        seen.append((lords, area, start, end))
+        return 37
+
+    monkeypatch.setattr(indicators_module, "vimshottari_score", recorder)
+    lords = object()
+    frame = replace(FRAME, lords=lords)  # type: ignore[arg-type]
+    target = Target(houses=frozenset({10, 6}), karakas=frozenset({P.SUN}))
+    sky = replace(_sky({P.SATURN}, {P.VENUS}, {P.MOON}), window=_MAY_2019)
+    # When / Then the family is the engine's integer score / 100, for the target as an area
+    assert family_scores(frame, sky, target)["classical_dasha"] == 0.37
+    assert seen == [(lords, Area(target.houses, target.karakas), *_MAY_2019)]

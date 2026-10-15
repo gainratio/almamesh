@@ -80,6 +80,7 @@ class RunSetup(BaseModel):
     window: int
     ks: list[int]
     placebos: int
+    day_precision_only: bool = False
 
 
 class RunCounts(BaseModel):
@@ -231,6 +232,7 @@ def _setup(label: str, plan: RunPlan) -> RunSetup:
         window=plan.window,
         ks=list(plan.ks),
         placebos=plan.placebos,
+        day_precision_only=plan.day_precision_only,
     )
 
 
