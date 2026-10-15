@@ -6,7 +6,9 @@ import { describe, expect, it } from "vitest";
 import type { ProviderConfig } from "../config";
 import {
   answerSchema,
+  answerLanguage,
   chatAnswerSpec,
+  datedEventLabel,
   moonTagLabel,
   renderAnswer,
   renderPartialAnswer,
@@ -881,5 +883,41 @@ describe("chatAnswerSpec.prepare: moon and windows come from the reading when th
     const general = wire({ kind: "general", markdown: "Venus rules your 4th house." });
     expect(chatAnswerSpec(grounded(OCTOBER), EN).prepare?.(general)).toBe(general);
     expect(chatAnswerSpec(grounded(), EN).prepare?.({ ...general, kind: "period" })).toEqual({ ...general, kind: "period" });
+  });
+});
+
+describe("datedEventLabel: what happens on a dated day, in the answer's language", () => {
+  it.each([
+    ["en", "Mars enters Leo", "Saturn stations direct", "Jupiter stations retrograde", "maha Jupiter begins", "pratyantar Mars begins", "antar dasha junction (sandhi)"],
+    ["es", "Marte entra en Leo", "Saturno pasa a directo", "Júpiter pasa a retrógrado", "comienza el maha dasha de Júpiter", "comienza el pratyantar dasha de Marte", "transición del antar dasha (sandhi)"],
+    ["pt", "Marte entra em Leão", "Saturno fica direto", "Júpiter fica retrógrado", "começa o maha dasha de Júpiter", "começa o pratyantar dasha de Marte", "transição do antar dasha (sandhi)"],
+  ] as const)("%s", (language, ingress, direct, retrograde, maha, pratyantar, sandhi) => {
+    expect(datedEventLabel({ kind: "ingress", graha: "mars", sign: "leo" }, language)).toBe(ingress);
+    expect(datedEventLabel({ kind: "station", graha: "saturn", motion: "direct" }, language)).toBe(direct);
+    expect(datedEventLabel({ kind: "station", graha: "jupiter", motion: "retrograde" }, language)).toBe(retrograde);
+    expect(datedEventLabel({ kind: "dasha", level: "maha", lord: "jupiter" }, language)).toBe(maha);
+    expect(datedEventLabel({ kind: "dasha", level: "pratyantar", lord: "mars" }, language)).toBe(pratyantar);
+    expect(datedEventLabel({ kind: "sandhi", level: "antar" }, language)).toBe(sandhi);
+  });
+
+  it("every sign has a name in each language", () => {
+    const signs = ["aries", "taurus", "gemini", "cancer", "leo", "virgo", "libra", "scorpio", "sagittarius", "capricorn", "aquarius", "pisces"];
+    for (const language of ["en", "es", "pt"] as const) {
+      const names = signs.map((sign) => datedEventLabel({ kind: "ingress", graha: "sun", sign }, language).split(" ").at(-1) ?? "");
+      expect(names.every((name) => /^\p{Lu}/u.test(name))).toBe(true);
+      expect(new Set(names).size).toBe(12);
+    }
+    expect(datedEventLabel({ kind: "ingress", graha: "sun", sign: "cancer" }, "es")).toBe("Sol entra en Cáncer");
+    expect(datedEventLabel({ kind: "ingress", graha: "venus", sign: "pisces" }, "pt")).toBe("Vênus entra em Peixes");
+  });
+
+  it("an engine descriptor it cannot phrase stays as written", () => {
+    expect(datedEventLabel({ kind: "other", text: "career.dasha.boundary" }, "es")).toBe("career.dasha.boundary");
+  });
+});
+
+describe("answerLanguage: the chat language as the answer speaks it", () => {
+  it.each([["en", "en"], ["es", "es"], ["es-MX", "es"], ["pt-BR", "pt"], ["fr", "en"]] as const)("%s -> %s", (tag, expected) => {
+    expect(answerLanguage(tag)).toBe(expected);
   });
 });

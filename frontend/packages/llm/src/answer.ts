@@ -451,7 +451,16 @@ interface LanguageLabels {
   /** The word "phase". */
   readonly phase: string;
   fromMoon(graha: string, house: number): string;
+  readonly signs: Readonly<Record<Sign, string>>;
+  readonly motions: Readonly<Record<string, string>>;
+  enters(graha: string, sign: string): string;
+  stations(graha: string, motion: string): string;
+  begins(level: DashaLevel, lord: string): string;
+  sandhi(level: string): string;
 }
+
+const SIGNS = ["aries", "taurus", "gemini", "cancer", "leo", "virgo", "libra", "scorpio", "sagittarius", "capricorn", "aquarius", "pisces"] as const;
+type Sign = (typeof SIGNS)[number];
 
 type DashaLevel = "maha" | "antar" | "pratyantar";
 
@@ -486,6 +495,15 @@ const LABELS: Readonly<Record<Language, LanguageLabels>> = {
     phases: ["first", "second", "third"],
     phase: "phase",
     fromMoon: (graha, house) => `${graha} ${ordinal(house)} from your Moon`,
+    signs: {
+      aries: "Aries", taurus: "Taurus", gemini: "Gemini", cancer: "Cancer", leo: "Leo", virgo: "Virgo",
+      libra: "Libra", scorpio: "Scorpio", sagittarius: "Sagittarius", capricorn: "Capricorn", aquarius: "Aquarius", pisces: "Pisces",
+    },
+    motions: { direct: "direct", retrograde: "retrograde" },
+    enters: (graha, sign) => `${graha} enters ${sign}`,
+    stations: (graha, motion) => `${graha} stations ${motion}`,
+    begins: (level, lord) => `${level} ${lord} begins`,
+    sandhi: (level) => `${level} dasha junction (sandhi)`,
   },
   es: {
     layman: { chapters: "Tus capítulos", moon: "El cielo de la Luna", themes: "Qué significa", windows: "Fechas clave" },
@@ -506,6 +524,15 @@ const LABELS: Readonly<Record<Language, LanguageLabels>> = {
     phases: ["primera", "segunda", "tercera"],
     phase: "fase",
     fromMoon: (graha, house) => `${graha} en la casa ${house} desde tu Luna`,
+    signs: {
+      aries: "Aries", taurus: "Tauro", gemini: "Géminis", cancer: "Cáncer", leo: "Leo", virgo: "Virgo",
+      libra: "Libra", scorpio: "Escorpio", sagittarius: "Sagitario", capricorn: "Capricornio", aquarius: "Acuario", pisces: "Piscis",
+    },
+    motions: { direct: "directo", retrograde: "retrógrado" },
+    enters: (graha, sign) => `${graha} entra en ${sign}`,
+    stations: (graha, motion) => `${graha} pasa a ${motion}`,
+    begins: (level, lord) => `comienza el ${level} dasha de ${lord}`,
+    sandhi: (level) => `transición del ${level} dasha (sandhi)`,
   },
   pt: {
     layman: { chapters: "Seus capítulos", moon: "O céu da Lua", themes: "O que significa", windows: "Datas para observar" },
@@ -526,6 +553,15 @@ const LABELS: Readonly<Record<Language, LanguageLabels>> = {
     phases: ["primeira", "segunda", "terceira"],
     phase: "fase",
     fromMoon: (graha, house) => `${graha} na casa ${house} a partir da sua Lua`,
+    signs: {
+      aries: "Áries", taurus: "Touro", gemini: "Gêmeos", cancer: "Câncer", leo: "Leão", virgo: "Virgem",
+      libra: "Libra", scorpio: "Escorpião", sagittarius: "Sagitário", capricorn: "Capricórnio", aquarius: "Aquário", pisces: "Peixes",
+    },
+    motions: { direct: "direto", retrograde: "retrógrado" },
+    enters: (graha, sign) => `${graha} entra em ${sign}`,
+    stations: (graha, motion) => `${graha} fica ${motion}`,
+    begins: (level, lord) => `começa o ${level} dasha de ${lord}`,
+    sandhi: (level) => `transição do ${level} dasha (sandhi)`,
   },
 };
 
@@ -559,6 +595,43 @@ export function moonTagLabel(tag: string, language: Language): string {
   const fromMoon = /^([a-z]+)_from_moon_(\d+)$/.exec(tag);
   if (fromMoon?.[1] && isGraha(fromMoon[1])) return L.fromMoon(L.grahas[fromMoon[1]], Number(fromMoon[2]));
   return tag.split("_").map((word) => capitalize(tagWord(word, L))).join(" ");
+}
+
+/** A dated fact before it is phrased: what the engine says happens that day. */
+export type DatedEvent =
+  | { readonly kind: "ingress"; readonly graha: string; readonly sign: string }
+  | { readonly kind: "station"; readonly graha: string; readonly motion: string }
+  | { readonly kind: "dasha"; readonly level: DashaLevel; readonly lord: string }
+  | { readonly kind: "sandhi"; readonly level: string }
+  | { readonly kind: "other"; readonly text: string };
+
+const isSign = (name: string): name is Sign => (SIGNS as readonly string[]).includes(name);
+
+/** A graha or sign as the language names it; an unknown name capitalized, as the engine wrote it. */
+const grahaName = (name: string, L: LanguageLabels): string => (isGraha(name) ? L.grahas[name] : capitalize(name));
+const signName = (name: string, L: LanguageLabels): string => (isSign(name) ? L.signs[name] : capitalize(name));
+
+/** "Mars enters Leo" / "Marte entra en Leo" / "Marte entra em Leão": a dated fact in the answer's language. */
+export function datedEventLabel(event: DatedEvent, language: Language): string {
+  const L = LABELS[language];
+  switch (event.kind) {
+    case "ingress":
+      return L.enters(grahaName(event.graha, L), signName(event.sign, L));
+    case "station":
+      return L.stations(grahaName(event.graha, L), L.motions[event.motion] ?? event.motion);
+    case "dasha":
+      return L.begins(event.level, grahaName(event.lord, L));
+    case "sandhi":
+      return L.sandhi(event.level);
+    case "other":
+      return event.text;
+  }
+}
+
+/** A chat language tag ("es", "pt-BR") as the answer speaks it: es, pt, else en. */
+export function answerLanguage(tag: string): Language {
+  const base = tag.toLowerCase().split("-")[0];
+  return base === "es" || base === "pt" ? base : "en";
 }
 
 function renderDate(date: string, language: Language): string {

@@ -18,7 +18,7 @@ import {
   EPHEMERIS_LAST_YEAR,
   startsInOrBeforeBirthYear,
 } from '@almamesh/llm';
-import { moonTagLabel, type AnswerGrounding, type ThemeFact } from '@almamesh/llm/answer';
+import { answerLanguage, datedEventLabel, moonTagLabel, type AnswerGrounding, type DatedEvent, type ThemeFact } from '@almamesh/llm/answer';
 import { defineTool, z, type ToolContext, type ToolDef } from '@almamesh/llm/toolLoop';
 import type { ProcessedBirthData } from '@almamesh/shared-types';
 import { LocalTimeError } from '@almamesh/store';
@@ -655,31 +655,31 @@ const CITE_KEY_BYTES = 32;
  * leave. The cite is sized on a first fit and the reading refitted without its bytes: trimming
  * only drops facts, so the refitted reading's cite is no larger.
  */
-function fitLevel(loaded: Loaded, frame: ReadingFrame, level: ExtrasLevel, limit: number, range: boolean): Fitted {
+function fitLevel(loaded: Loaded, frame: ReadingFrame, level: ExtrasLevel, limit: number, range: boolean, language: string): Fitted {
   const room = limit - jsonBytes(level.extras) - jsonBytes(level.trimmed) - 16;
   const fit = (budgetBytes: number) => buildPeriodReading(loaded.source, frame, { budgetBytes, windowOrder: range ? 'severity' : 'date' });
-  const reserve = jsonBytes(readingCite(withExtras(fit(room), level))) + CITE_KEY_BYTES;
+  const reserve = jsonBytes(readingCite(withExtras(fit(room), level), language)) + CITE_KEY_BYTES;
   const reading = fit(room - reserve);
   const result = withExtras(reading, level);
-  return { reading, result: { cite: readingCite(result), ...result } };
+  return { reading, result: { cite: readingCite(result, language), ...result } };
 }
 
 /**
  * The fullest extras that fit beside a reading that still has its sky or windows. When no level
  * keeps them, the fullest level that fits; when none fits, the leanest (no close-up).
  */
-function compose(loaded: Loaded, frame: ReadingFrame, extras: Extras): ReadPeriodReading {
+function compose(loaded: Loaded, frame: ReadingFrame, extras: Extras, language: string): ReadPeriodReading {
   const range = extras.months !== undefined;
   const limit = range ? MAX_RANGE_RESULT_BYTES : MAX_PERIOD_RESULT_BYTES;
   const levels = extrasLevels(extras);
   let fallback: ReadPeriodReading | undefined;
   for (const level of levels) {
-    const { reading, result } = fitLevel(loaded, frame, level, limit, range);
+    const { reading, result } = fitLevel(loaded, frame, level, limit, range, language);
     if (jsonBytes(result) >= limit) continue;
     if (!isBare(reading)) return result;
     fallback ??= result;
   }
-  return fallback ?? fitLevel(loaded, frame, levels.at(-1) ?? levels[0], limit, range).result;
+  return fallback ?? fitLevel(loaded, frame, levels.at(-1) ?? levels[0], limit, range, language).result;
 }
 
 // ---------------------------------------------------------------------------
@@ -710,7 +710,7 @@ async function readPeriod(input: ReadPeriodInput, args: ReadPeriodArgs, context:
   const moon = await readMoon(input, where, span, args.time, context);
   const closeUp = args.focus ? closeUpOf(loaded, frame, args.focus) : undefined;
   const months = monthCount(span) > 1 ? monthRows(loaded.source, span) : undefined;
-  return compose(loaded, frame, { ...moon, ...(months ? { months } : {}), ...(closeUp ? { close_up: closeUp } : {}) });
+  return compose(loaded, frame, { ...moon, ...(months ? { months } : {}), ...(closeUp ? { close_up: closeUp } : {}) }, input.language);
 }
 
 const cacheKey = (args: ReadPeriodArgs): string => JSON.stringify([args.start, args.end, args.place, args.time, args.focus]);
@@ -747,39 +747,42 @@ type DatedFact = AnswerGrounding['readings'][number]['windows'][number];
 const titled = (word: string): string => word.charAt(0).toUpperCase() + word.slice(1);
 
 /**
- * A short English label for an engine descriptor (the answer check's fix text, read by the model):
- * "transit.jupiter.ingress.cancer" -> "Jupiter enters Cancer", "saturn.station.direct" -> "Saturn
- * stations direct". Any other descriptor stays as the engine wrote it.
+ * An engine descriptor as a dated event: "transit.jupiter.ingress.cancer" is Jupiter entering
+ * Cancer, "saturn.station.direct" Saturn stationing direct. Any other descriptor stays as written.
  */
-export function eventLabel(descriptor: string): string {
+function descriptorEvent(descriptor: string): DatedEvent {
   const [, graha = '', kind = '', what = ''] = /(?:^|\.)([a-z]+)\.(ingress|station)\.([a-z]+)$/.exec(descriptor) ?? [];
-  if (kind === 'ingress') return `${titled(graha)} enters ${titled(what)}`;
-  if (kind === 'station') return `${titled(graha)} stations ${what}`;
-  return descriptor;
+  if (kind === 'ingress') return { kind: 'ingress', graha, sign: what };
+  if (kind === 'station') return { kind: 'station', graha, motion: what };
+  return { kind: 'other', text: descriptor };
 }
 
 /** Dasha spans that begin inside the period (a clipped span starts on the period's first day). */
-function dashaChanges(dashas: ReadPeriodReading['dashas'], start: string): DatedFact[] {
+function dashaChanges(dashas: ReadPeriodReading['dashas'], start: string): { date: string; event: DatedEvent }[] {
   return (['maha', 'antar', 'pratyantar'] as const).flatMap((level) =>
-    dashas[level].filter((span) => span.start > start).map((span) => ({ date: span.start, what: `${level} ${titled(span.lord)} begins` })),
+    dashas[level].filter((span) => span.start > start).map((span) => ({ date: span.start, event: { kind: 'dasha' as const, level, lord: span.lord } })),
   );
 }
 
 /**
  * Every dated fact inside the period, by date, one label per day (the first by kind): theme
- * windows, segment events (sign changes, stations), dasha changes and the sandhi.
+ * windows, segment events (sign changes, stations), dasha changes and the sandhi. Each label is
+ * in the chat language (the answer fills windows from these; the cite lists them).
  */
-function datedFacts(result: ReadPeriodReading): DatedFact[] {
+function datedFacts(result: ReadPeriodReading, language: string): DatedFact[] {
   const { start, end } = result.period;
   const { sandhi } = result.dashas;
-  const facts: DatedFact[] = [
-    ...result.windows.map((window) => ({ date: window.date, what: eventLabel(window.descriptor) })),
-    ...result.segments.flatMap((segment) => segment.events.map((event) => ({ date: event.slice(0, 10), what: eventLabel(event.slice(11).trim()) }))),
+  const events: { date: string; event: DatedEvent }[] = [
+    ...result.windows.map((window) => ({ date: window.date, event: descriptorEvent(window.descriptor) })),
+    ...result.segments.flatMap((segment) => segment.events.map((event) => ({ date: event.slice(0, 10), event: descriptorEvent(event.slice(11).trim()) }))),
     ...dashaChanges(result.dashas, start),
-    ...(sandhi ? [{ date: sandhi.date, what: `${sandhi.level} dasha junction (sandhi)` }] : []),
+    ...(sandhi ? [{ date: sandhi.date, event: { kind: 'sandhi' as const, level: sandhi.level } }] : []),
   ];
+  const spoken = answerLanguage(language);
   const byDay = new Map<string, DatedFact>();
-  for (const fact of facts) if (fact.date >= start && fact.date <= end && !byDay.has(fact.date)) byDay.set(fact.date, fact);
+  for (const { date, event } of events) {
+    if (date >= start && date <= end && !byDay.has(date)) byDay.set(date, { date, what: datedEventLabel(event, spoken) });
+  }
   return [...byDay.values()].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
 }
 
@@ -808,9 +811,9 @@ function citeLords(result: ReadPeriodReading, level: 'maha' | 'antar' | 'pratyan
 }
 
 /** The theme windows first (a range has already ranked them by severity), then other dated facts; listed by date. */
-function citeWindows(result: ReadPeriodReading): DatedFact[] {
+function citeWindows(result: ReadPeriodReading, language: string): DatedFact[] {
   const themed = new Set(result.windows.map((window) => window.date));
-  const facts = datedFacts(result);
+  const facts = datedFacts(result, language);
   const chosen = [...facts.filter((fact) => themed.has(fact.date)), ...facts.filter((fact) => !themed.has(fact.date))].slice(0, MAX_CITE_WINDOWS);
   return chosen.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
 }
@@ -824,8 +827,11 @@ function themeFacts(result: ReadPeriodReading): Record<string, ThemeFact> {
   return facts;
 }
 
-/** The facts the answer must state, phrased from this reading only (the same facts the answer check accepts). */
-export function readingCite(result: ReadPeriodReading): ReadingCite {
+/**
+ * The facts the answer must state, phrased from this reading only (the same facts the answer check
+ * accepts). The Moon lines and dated windows are in the chat language; lords stay as the check names them.
+ */
+export function readingCite(result: ReadPeriodReading, language: string): ReadingCite {
   const tags = [...new Set(result.sky.flatMap((span) => span.tags))];
   return {
     period: result.period.label,
@@ -833,14 +839,14 @@ export function readingCite(result: ReadPeriodReading): ReadingCite {
     maha: citeLords(result, 'maha'),
     antar: citeLords(result, 'antar'),
     pratyantar: citeLords(result, 'pratyantar'),
-    moon: tags.map((tag) => ({ tag, says: moonTagLabel(tag, 'en') })),
-    windows: citeWindows(result),
+    moon: tags.map((tag) => ({ tag, says: moonTagLabel(tag, answerLanguage(language)) })),
+    windows: citeWindows(result, language),
     themes: themeFacts(result),
   };
 }
 
-/** A reading projected flat for the answer check (answer.ts): what the answer may cite. */
-export function readPeriodGrounding(result: ReadPeriodReading): AnswerGrounding['readings'][number] {
+/** A reading projected flat for the answer check (answer.ts): what the answer may cite, dated facts in the chat language. */
+export function readPeriodGrounding(result: ReadPeriodReading, language: string): AnswerGrounding['readings'][number] {
   const unique = (items: readonly string[]) => [...new Set(items)];
   const { start, end, label } = result.period;
   return {
@@ -851,7 +857,7 @@ export function readPeriodGrounding(result: ReadPeriodReading): AnswerGrounding[
     pratyantar: uniqueLords(result.dashas.pratyantar),
     rules: Object.fromEntries(result.lords.flatMap((lord) => (lord.rules ? [[lord.lord, [...lord.rules]]] : []))),
     tags: unique(result.sky.flatMap((span) => span.tags)),
-    windows: datedFacts(result),
+    windows: datedFacts(result, language),
     themes: themeFacts(result),
   };
 }

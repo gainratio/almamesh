@@ -1,6 +1,6 @@
 import type { MoonWindow } from '@almamesh/browser';
 import type { PeriodReadingContext, SiderealChart } from '@almamesh/browser/types';
-import { answerSchema, GRAHAS, type AnswerGrounding } from '@almamesh/llm/answer';
+import { answerSchema, fillFromReadings, GRAHAS, renderAnswer, type AnswerGrounding, type ChatAnswer } from '@almamesh/llm/answer';
 import { z } from '@almamesh/llm/toolLoop';
 import type { ProcessedBirthData } from '@almamesh/shared-types';
 import { LocalTimeError } from '@almamesh/store';
@@ -506,7 +506,7 @@ describe('read_period: today, focus, repeats, failures', () => {
 describe('readPeriodGrounding', () => {
   it('projects a reading flat for the answer check', async () => {
     const result = (await read({ start: '2019-06', end: '2019-12' })).result as ReadPeriodReading;
-    const grounding = readPeriodGrounding(result);
+    const grounding = readPeriodGrounding(result, 'en');
     expect(grounding.period).toEqual({ start: '2019-06-01', end: '2019-12-31', label: 'Jun – Dec 2019' });
     expect(grounding.place).toEqual({ label: 'Vadodara, India' });
     expect(grounding.maha).toEqual(['rahu']);
@@ -538,7 +538,7 @@ describe('readPeriodGrounding', () => {
 
   it('every dated fact inside the period is a window: segment events, dasha changes and the sandhi, each labelled', async () => {
     const base = (await read({ start: '2019-06' })).result as ReadPeriodReading;
-    expect(readPeriodGrounding(november(base)).windows).toEqual([
+    expect(readPeriodGrounding(november(base), 'en').windows).toEqual([
       { date: '2026-11-12', what: 'Mars enters Leo' },
       { date: '2026-11-20', what: 'pratyantar Mars begins' },
       { date: '2026-11-25', what: 'antar dasha junction (sandhi)' },
@@ -549,7 +549,7 @@ describe('readPeriodGrounding', () => {
   it('theme windows keep their place, labelled from their descriptor', async () => {
     const base = november((await read({ start: '2019-06' })).result as ReadPeriodReading);
     const reading = { ...base, segments: [], windows: [{ date: '2026-11-05', descriptor: 'transit.jupiter.ingress.cancer', severity: 'supportive' as const, domains: ['career'] }] };
-    expect(readPeriodGrounding(reading).windows).toEqual([
+    expect(readPeriodGrounding(reading, 'en').windows).toEqual([
       { date: '2026-11-05', what: 'Jupiter enters Cancer' },
       { date: '2026-11-20', what: 'pratyantar Mars begins' },
       { date: '2026-11-25', what: 'antar dasha junction (sandhi)' },
@@ -560,12 +560,35 @@ describe('readPeriodGrounding', () => {
     const base = november((await read({ start: '2019-06' })).result as ReadPeriodReading);
     const { sandhi: _sandhi, ...dashas } = base.dashas;
     const flat = { ...base, dashas: { ...dashas, pratyantar: [{ lord: 'moon', start: '2026-11-01', end: '2026-11-30' }] }, segments: [{ ...base.segments[0]!, events: [] }] };
-    expect(readPeriodGrounding(flat).windows).toEqual([]);
+    expect(readPeriodGrounding(flat, 'en').windows).toEqual([]);
+  });
+
+  it.each([
+    ['es', ['Marte entra en Leo', 'comienza el pratyantar dasha de Marte', 'transición del antar dasha (sandhi)', 'Saturno pasa a directo']],
+    ['pt', ['Marte entra em Leão', 'começa o pratyantar dasha de Marte', 'transição do antar dasha (sandhi)', 'Saturno fica direto']],
+    ['en', ['Mars enters Leo', 'pratyantar Mars begins', 'antar dasha junction (sandhi)', 'Saturn stations direct']],
+  ])('the dated facts speak the chat language: %s', async (language, labels) => {
+    const base = (await read({ start: '2019-06' })).result as ReadPeriodReading;
+    expect(readPeriodGrounding(november(base), language).windows.map((fact) => fact.what)).toEqual(labels);
+  });
+
+  it.each([
+    ['es', 'Júpiter en la casa 4 desde tu Luna', 'Marte entra en Cáncer', '- **22 jun 2019**: Marte entra en Cáncer'],
+    ['pt', 'Júpiter na casa 4 a partir da sua Lua', 'Marte entra em Câncer', '- **22 jun 2019**: Marte entra em Câncer'],
+  ] as const)('the cite and a filled window speak the chat language: %s', async (language, says, what, rendered) => {
+    const result = (await read({ start: '2019-06' }, { language })).result as ReadPeriodReading;
+    expect(result.cite?.moon).toEqual([{ tag: 'jupiter_from_moon_4', says }]);
+    expect(result.cite?.windows).toEqual([{ date: '2019-06-22', what }]);
+    const grounding = readPeriodGrounding(result, language);
+    const cited = answerFromCite(result.cite!, grounding);
+    const filled = fillFromReadings({ ...cited, windows: [] }, [grounding], language) as ChatAnswer;
+    expect(checkIssues(filled, grounding)).toEqual([]);
+    expect(renderAnswer(filled, { voice: 'layman', language })).toContain(rendered);
   });
 
   it('an unlabelled place grounds as an empty label', async () => {
     const result = (await read({ start: '2019-06' }, { threadPlace: undefined, homePlace: undefined })).result as ReadPeriodReading;
-    expect(readPeriodGrounding(result).place).toEqual({ label: '' });
+    expect(readPeriodGrounding(result, 'en').place).toEqual({ label: '' });
   });
 });
 
@@ -603,14 +626,14 @@ describe('read_period: cite', () => {
   });
 
   it('phrases each lord with the houses it rules, in house order, one entry per running lord', async () => {
-    const cite = readingCite(crossing((await read({ start: '2019-06' })).result as ReadPeriodReading));
+    const cite = readingCite(crossing((await read({ start: '2019-06' })).result as ReadPeriodReading), 'en');
     expect(cite.maha).toEqual(['Saturn, rules your 1st and 12th houses', 'Jupiter, rules your 2nd and 11th houses']);
     expect(cite.antar).toEqual(['Mars, rules your 6th house']);
   });
 
   it('a lord the reading gives no lordship for is named alone', async () => {
     const base = crossing((await read({ start: '2019-06' })).result as ReadPeriodReading);
-    expect(readingCite({ ...base, lords: [] }).maha).toEqual(['Saturn', 'Jupiter']);
+    expect(readingCite({ ...base, lords: [] }, 'en').maha).toEqual(['Saturn', 'Jupiter']);
   });
 
   it('an unlabelled place cites null (the answer sends place null)', async () => {
@@ -626,7 +649,7 @@ describe('read_period: cite', () => {
   ])('every cited fact passes the answer check: %j', async (partial) => {
     const result = (await read(partial)).result as ReadPeriodReading;
     const cite = result.cite;
-    const grounding = readPeriodGrounding(result);
+    const grounding = readPeriodGrounding(result, 'en');
     expect(cite).toBeDefined();
     expect(cite?.moon.map((line) => line.tag)).toEqual(grounding.tags);
     expect(grounding.windows).toEqual(expect.arrayContaining([...(cite?.windows ?? [])]));
@@ -642,13 +665,13 @@ describe('read_period: cite', () => {
     [{ start: '2019-01', end: '2020-12', focus: 'saturn' as const }],
   ])('an answer that copies the cite passes the answer check as is: %j', async (partial) => {
     const result = (await read(partial)).result as ReadPeriodReading;
-    const grounding = readPeriodGrounding(result);
+    const grounding = readPeriodGrounding(result, 'en');
     expect(checkIssues(answerFromCite(result.cite!, grounding), grounding)).toEqual([]);
   });
 
   it('a wrong confidence, an invented date or a wrong pratyantar lord retries, each with its fix', async () => {
     const result = (await read({ start: '2019-06', end: '2019-12' })).result as ReadPeriodReading;
-    const grounding = readPeriodGrounding(result);
+    const grounding = readPeriodGrounding(result, 'en');
     const cited = answerFromCite(result.cite!, grounding);
     expect(grounding.pratyantar.length).toBeGreaterThan(0);
     expect(Object.keys(grounding.themes).length).toBeGreaterThan(0);

@@ -197,7 +197,7 @@ function turnTools(input: ChatTurnInput, pin: ChatThreadAsOf | undefined, starts
     ? [createTravelTool({ ...places, threadPlace: input.asOf?.place, birthYear: birthYearOf(input.birth), language: input.language, record: input.onTravel })]
     : [];
   // Under budget pressure a reading goes out as its grounding facts: what the answer is checked against.
-  const compactRead = { ...reported(read, starts.read), compact: (result: unknown) => (isReadPeriodReading(result) ? readPeriodGrounding(result) : result) };
+  const compactRead = { ...reported(read, starts.read), compact: (result: unknown) => (isReadPeriodReading(result) ? readPeriodGrounding(result, input.language) : result) };
   return [compactRead, ...travel.map((tool) => reported(tool, starts.travel))] as ToolDef<unknown>[];
 }
 
@@ -280,7 +280,7 @@ export async function* runChatTurn(input: ChatTurnInput): AsyncGenerator<string>
   const status = statusSink(input);
   const onToolCall = (event: ToolCallEvent) => {
     telemetry.onToolCall(event);
-    if (event.toolName === READ_PERIOD_TOOL_NAME && event.status === 'complete' && isReadPeriodReading(event.result)) readings.push(readPeriodGrounding(event.result));
+    if (event.toolName === READ_PERIOD_TOOL_NAME && event.status === 'complete' && isReadPeriodReading(event.result)) readings.push(readPeriodGrounding(event.result, input.language));
     if (event.status === 'retried' || event.toolName === ANSWER_TOOL_NAME) return;
     const args = (event.args ?? {}) as Readonly<Record<string, unknown>>;
     input.onToolCall?.({ toolCallId: event.toolCallId, toolName: event.toolName, args, result: event.result, status: event.status });
