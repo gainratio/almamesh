@@ -45,11 +45,13 @@ describe('travel: the neutral ask for a trip with no place', () => {
 // dashboard.agentic.real 2026-10-15 (GPT Luna): "outlook today?" in a September 2017 trip called
 // travel back to today and ended the trip. A turn whose message asks for no move refuses travel.
 describe('travel: only an explicit request moves the conversation', () => {
+  // travel-guard-live 2026-10-15: after this refusal DeepSeek v4.1 flash told the user it had moved
+  // (3 of 20 runs). The note says the conversation stays, forbids the claim, and names how to move.
   it('pins the refusal to its literal: a typed status the model is told to answer with read_period', () => {
     expect(TRAVEL_NOT_ASKED).toEqual({
       status: 'refused',
       reason: 'not_asked',
-      note: 'The user did not ask to move this conversation. Answer their question here: read the time they asked about with read_period.',
+      note: 'The user did not ask to move this conversation, so it stays where it is. Answer their question here: read the time they asked about with read_period. Do not say the conversation moved or the trip ended. If they want to move, they can use the Time travel control, or say "back to today" or "take me to May 2019".',
     });
   });
 
@@ -71,7 +73,7 @@ describe('travel: only an explicit request moves the conversation', () => {
 
   it('says so in its description: an explicit request only, else read_period', () => {
     const { tool } = travelSetup();
-    expect(tool.description).toContain('Only when the newest message explicitly asks to move ("take me to ...", "back to today"); a question about another time, today included, is answered here with read_period. A call the user did not ask for is refused.');
+    expect(tool.description).toContain('Only when the user asks to move ("take me to ...", "back to today") in the newest message, or in the one before when you asked where; a question about another time, today included, is answered here with read_period.');
   });
 });
 

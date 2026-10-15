@@ -49,6 +49,7 @@ import { PERIOD_TOOL_SUMMARIZERS } from '../lib/periodReading';
 import { asOfKey } from '../lib/pinnedPeriod';
 import { waitForStoreSaved } from '../lib/storeSaved';
 import { applyBackToToday, applyTravel, travelIntentVersion, type TravelSource, type TravelThread } from '../lib/timeTravel';
+import { pendingTravelIn, type PendingTravel } from '../lib/travelIntent';
 import { createTravelSlot, type TravelRecorder } from '../lib/travelSlot';
 import { moveTurnToThread } from '../lib/turnFollowsTravel';
 
@@ -63,6 +64,8 @@ export interface ChatStreamInput {
   readonly asOf?: ChatThreadAsOf;
   /** Record only; the hook applies this turn's last action after its durable answer. */
   readonly onTravel?: TravelRecorder;
+  /** The last turn asked to move and was asked where (or when) instead: this turn may finish it. */
+  readonly pendingTravel?: PendingTravel;
   /** Each tool call the turn ran; persisted on the answer as tool-call parts. */
   readonly onToolCall?: (record: ChatToolCall) => void;
   /** Aborts when the page is left or another thread is opened or started; the turn must stop its requests. */
@@ -396,6 +399,7 @@ export function useChatThread(
       const tid = activeThread?.id ?? store.ensureThread(profileId, chartId ?? undefined);
       const priorMessages = store.getMessages(tid);
       const history = toHistory(priorMessages);
+      const pendingTravel = pendingTravelIn(priorMessages);
       const existingSummary = store.getSummary(tid);
 
       // The snapshot this question is about. An answer that arrives after the
@@ -439,6 +443,7 @@ export function useChatThread(
           retrievedContext,
           ...(askedAsOf ? { asOf: askedAsOf } : {}),
           onTravel: travelSlot.record,
+          ...(pendingTravel ? { pendingTravel } : {}),
           onToolCall: (record) => { toolCalls.push(toolCallPart(record)); },
           onSnapshot: (text) => {
             draft = text;

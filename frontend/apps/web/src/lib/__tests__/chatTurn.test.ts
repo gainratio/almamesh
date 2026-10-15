@@ -6,12 +6,14 @@
 import type { SiderealChart } from '@almamesh/browser/types';
 import { estimateRequestTokens, type ProviderConfig } from '@almamesh/llm';
 import { BUDGET_INSTRUCTION } from '@almamesh/llm/toolLoop';
-import type { ProcessedBirthData } from '@almamesh/shared-types';
+import type { ChatMessage, ChatMessagePart, ProcessedBirthData } from '@almamesh/shared-types';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { agentCallRows, agentRoundRows, clearAgentRoundsForTest } from '../agentRoundTelemetry';
 import { useAppStale } from '../appStale';
 import { runChatTurn, type ChatToolCall, type ChatTurnInput } from '../chatTurn';
+import type { PlaceLookup } from '../geo/placeLookup';
+import { pendingTravelIn } from '../travelIntent';
 import { generalAnswer, periodAnswerFrom, readingsOf, readPeriodArgs, stubCallFor, stubEndpoint } from '../../test/stubAnswer';
 import { periodReadingFixture } from './periodReadingFixtures';
 import { CHART } from './timingFixtures';
@@ -148,6 +150,96 @@ describe('runChatTurn: a trip turn reads first', () => {
     expect(labels).toContain('Leyendo mayo de 2019…');
     expect(labels).toContain('Viajando a septiembre de 2019…');
     expect(labels).toContain('Volviendo a hoy…');
+  });
+});
+
+// Northstar on PR #366 (2026-10-15): "take me to May 2019" -> travel needed a place -> the model
+// asked where -> "Delhi" named no move, so the travel gate refused it and the trip never happened.
+// The saved thread carries the pending request for one user turn; the place answer finishes it.
+describe('runChatTurn: a trip asked for over two turns', () => {
+  const DELHI = { summary: { place_ref: 'city:delhi', label: 'New Delhi, Delhi, India', timezone: 'Asia/Kolkata' }, latitude: 28.6139, longitude: 77.209 };
+  const lookup = async (text: string): Promise<PlaceLookup> => (/delhi/i.test(text) ? { status: 'found', place: DELHI } : { status: 'not_found' });
+  const ASK = 'take me to May 2019';
+  const WHERE = 'Where did you live in May 2019?';
+  const withLookup = (base: ChatTurnInput): ChatTurnInput => ({ ...base, seams: { ...base.seams, lookup } });
+  const part = (row: ChatToolCall): ChatMessagePart => ({ type: 'tool-call', toolCallId: row.toolCallId, toolName: row.toolName, args: row.args, status: row.status, result: row.result });
+  const saved = (role: ChatMessage['role'], content: string, parts?: readonly ChatMessagePart[]): ChatMessage =>
+    ({ id: `${role}-${content}`, thread_id: 't1', role, content, created_at: '2026-10-15T00:00:00Z', ...(parts ? { parts } : {}) });
+
+  /** Turn 1 as the chat hook saves it: the request, then the answer with its tool-call parts. */
+  async function firstTurn(): Promise<{ readonly thread: readonly ChatMessage[]; readonly onTravel: ReturnType<typeof vi.fn> }> {
+    const rows: ChatToolCall[] = [];
+    const onTravel = vi.fn();
+    const { fetchImpl } = endpoint([
+      { name: 'travel', args: { to: '2019-05', place: null } },
+      { name: 'answer', args: generalAnswer(WHERE) },
+    ]);
+    const snapshots = await drain(runChatTurn(withLookup(input(fetchImpl, { question: ASK, onTravel, onToolCall: (row) => rows.push(row) }))));
+    expect(rows.map((row) => [row.toolName, (row.result as { status?: string }).status])).toEqual([['travel', 'needs_place']]);
+    const answer = snapshots.at(-1) ?? '';
+    return { thread: [saved('user', ASK), saved('assistant', answer, [...rows.map(part), { type: 'text', text: answer }])], onTravel };
+  }
+
+  it('turn 1 asks where and moves nothing; turn 2 ("Delhi") finishes the move to May 2019 in Delhi', async () => {
+    const first = await firstTurn();
+    expect(first.onTravel).not.toHaveBeenCalled();
+    const pendingTravel = pendingTravelIn(first.thread);
+    expect(pendingTravel).toEqual({ kind: 'pending_travel', request: ASK });
+
+    const onTravel = vi.fn();
+    const { fetchImpl } = endpoint([
+      { name: 'travel', args: { to: '2019-05', place: 'Delhi' } },
+      { name: 'answer', args: generalAnswer('Moving to May 2019 in New Delhi.') },
+    ]);
+    const history = first.thread.map(({ role, content }) => ({ role: role as 'user' | 'assistant', content }));
+    await drain(runChatTurn(withLookup(input(fetchImpl, { question: 'Delhi', history, onTravel, ...(pendingTravel ? { pendingTravel } : {}) }))));
+    expect(onTravel).toHaveBeenCalledTimes(1);
+    expect(onTravel.mock.calls[0]?.[0]).toMatchObject({ kind: 'travel', asOf: { start: '2019-05-01', granularity: 'month', place: { label: 'New Delhi, Delhi, India' } } });
+  });
+
+  it('without the pending request, "Delhi" asks no move: the call is refused and nothing moves', async () => {
+    const onTravel = vi.fn();
+    const rows: ChatToolCall[] = [];
+    const { fetchImpl } = endpoint([
+      { name: 'travel', args: { to: '2019-05', place: 'Delhi' } },
+      { name: 'answer', args: generalAnswer('Delhi it is.') },
+    ]);
+    await drain(runChatTurn(withLookup(input(fetchImpl, { question: 'Delhi', onTravel, onToolCall: (row) => rows.push(row) }))));
+    expect(onTravel).not.toHaveBeenCalled();
+    expect(rows[0]?.result).toMatchObject({ status: 'refused', reason: 'not_asked' });
+  });
+});
+
+// travel-guard-live 2026-10-15 (DeepSeek v4.1 flash, 3 of 20 runs): with the trip still in place,
+// the answer said "We've stepped out of September 2017 — here's today". A turn that queued no move
+// sends such an answer back once; a turn that moved may say so.
+describe('runChatTurn: an answer may not claim a move that did not happen', () => {
+  const CLAIM = "We've stepped out of May 2019 — here's today.";
+  const claimAfterRead = (body: Record<string, unknown>) => ({ name: 'answer', args: periodAnswerFrom(readingsOf(body), CLAIM) });
+
+  it('a claim on a turn that moved nothing is sent back once, and the next answer is kept', async () => {
+    const { fetchImpl, bodies } = endpoint([{ name: 'read_period', args: readPeriodArgs('2019-05') }, claimAfterRead, (body) => stubCallFor(body, {})]);
+    const snapshots = await drain(runChatTurn(input(fetchImpl, { asOf: MAY_2019, question: 'outlook today?' })));
+    expect(agentCallRows().map((row) => [row.name, row.status])).toEqual([['read_period', 'complete'], ['answer', 'retried'], ['answer', 'complete']]);
+    expect(JSON.stringify(bodies[2]?.messages)).toContain('This conversation did not move this turn');
+    expect(snapshots.at(-1)).not.toContain('stepped out');
+  });
+
+  it('only once: a second claim is kept rather than failing the turn', async () => {
+    const { fetchImpl } = endpoint([{ name: 'read_period', args: readPeriodArgs('2019-05') }, claimAfterRead, claimAfterRead]);
+    const snapshots = await drain(runChatTurn(input(fetchImpl, { asOf: MAY_2019, question: 'outlook today?' })));
+    expect(agentCallRows().map((row) => [row.name, row.status])).toEqual([['read_period', 'complete'], ['answer', 'retried'], ['answer', 'complete']]);
+    expect(snapshots.at(-1)).toContain('stepped out');
+  });
+
+  it('a turn that moved may say so', async () => {
+    const { fetchImpl } = endpoint([
+      { name: 'travel', args: { to: 'today', place: null } },
+      { name: 'answer', args: generalAnswer("We've left May 2019; back to today.") },
+    ]);
+    const snapshots = await drain(runChatTurn(input(fetchImpl, { asOf: MAY_2019, question: 'Leave this trip' })));
+    expect(agentCallRows().map((row) => [row.name, row.status])).toEqual([['travel', 'complete'], ['answer', 'complete']]);
+    expect(snapshots.at(-1)).toBe("We've left May 2019; back to today.");
   });
 });
 
