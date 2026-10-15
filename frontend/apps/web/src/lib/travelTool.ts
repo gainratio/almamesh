@@ -40,7 +40,7 @@ const TO = /^(today|\d{4}(-(0[1-9]|1[0-2])(-(0[1-9]|[12]\d|3[01]))?)?)$/;
 const DESCRIPTION = [
   'Move this conversation and the Dashboard to a day, month or year (a time-travel trip), or back to today.',
   'Only when the user asks to go there; to answer a question about a time, use read_period.',
-  'The move happens after your answer.',
+  'The move happens after your answer. Call it at most once per turn.',
   'Examples: "take me to May 2019 in Vadodara" -> {"to":"2019-05","place":"Vadodara"}.',
   '"back to today" -> {"to":"today","place":null}.',
 ].join(' ');
@@ -136,7 +136,17 @@ export function travelStatusLabel(args: Pick<TravelArgs, 'to'>, language: string
   return period === null ? 'Back to today…' : `Moving to ${period}…`;
 }
 
+/** A second move in one turn: neutral, never an error row (the loop also stops offering travel). */
+export const ALREADY_TRAVELLED_NOTE = 'Already travelled this turn; the move happens after your answer.';
+const ALREADY_TRAVELLED = { status: 'skipped', note: ALREADY_TRAVELLED_NOTE } as const;
+
+/** One tool per turn (chatTurn.ts builds it per turn): after one queued move, later calls move nothing. */
 export function createTravelTool(input: TravelToolInput): ToolDef<TravelArgs> {
+  let moved = false;
+  const record: TravelRecorder = (action) => {
+    moved = true;
+    input.record(action);
+  };
   return defineTool({
     name: TRAVEL_TOOL_NAME,
     description: DESCRIPTION,
@@ -144,6 +154,7 @@ export function createTravelTool(input: TravelToolInput): ToolDef<TravelArgs> {
     // A named city may open the picker; its wait is read_period's.
     timeoutMs: READ_PERIOD_TIMEOUT_MS,
     statusLabel: TIME_TRAVEL_STATUS_LABEL,
-    execute: (args, context) => travelTo(input, args, context),
+    overLimitNote: ALREADY_TRAVELLED_NOTE,
+    execute: async (args, context) => (moved ? ALREADY_TRAVELLED : travelTo({ ...input, record }, args, context)),
   });
 }

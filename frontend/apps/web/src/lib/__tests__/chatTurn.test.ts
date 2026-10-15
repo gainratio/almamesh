@@ -73,8 +73,10 @@ describe('runChatTurn: a trip turn reads first', () => {
       (body) => stubCallFor(body, {}),
     ]);
     await drain(runChatTurn(input(fetchImpl, { asOf: MAY_2019 })));
-    expect(toolNames(bodies[1])).toEqual(['read_period', 'travel']);
+    // Contract reversed 2026-10-14: travel is offered once per turn, so after it only read_period remains.
+    expect(toolNames(bodies[1])).toEqual(['read_period']);
     expect(toolNames(bodies[2])).toContain('answer');
+    expect(toolNames(bodies[2])).not.toContain('travel');
   });
 
   it('states today and the trip in the system prompt', async () => {

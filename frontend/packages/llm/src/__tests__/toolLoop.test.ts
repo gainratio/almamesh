@@ -69,6 +69,27 @@ function readPeriod(seen: PeriodInput[] = []): ToolDef<PeriodInput> {
   });
 }
 
+interface TravelInput {
+  readonly to: string;
+}
+
+const ALREADY_TRAVELLED = "Already travelled this turn; the move happens after your answer.";
+
+function travelTool(moved: TravelInput[] = []): ToolDef<TravelInput> {
+  return defineTool<TravelInput>({
+    name: "travel",
+    description: "Move the conversation to a period.",
+    overLimitNote: ALREADY_TRAVELLED,
+    input: z.object({ to: z.string() }),
+    async execute(input) {
+      moved.push(input);
+      return { status: "queued" };
+    },
+  });
+}
+
+const travelTurn = (id: string): FakeTurn => ({ calls: [call(id, "travel", '{"to":"2017-09"}')] });
+
 function asTools(...defs: ToolDef<never>[]): readonly ToolDef<unknown>[] {
   return defs as unknown as readonly ToolDef<unknown>[];
 }
@@ -330,8 +351,10 @@ describe("rule 5: tool choice per round", () => {
     const { fetchImpl, requests } = fakeEndpoint([travelCall, read("r1"), answer("a1")]);
     await collect(runToolTurn(options(fetchImpl, { readFirst: true, tools: asTools(readPeriod(), travel) })));
     expect(toolsOf(requests[0]).map((t) => t.function.name)).toEqual(["read_period", "travel"]);
-    expect(toolsOf(requests[1]).map((t) => t.function.name)).toEqual(["read_period", "travel"]);
-    expect(toolsOf(requests[2]).map((t) => t.function.name)).toEqual(["read_period", "travel", "answer"]);
+    // Contract reversed 2026-10-14 (travel at most once per turn): a travel that used its one call
+    // this turn is no longer offered; the model called it twice in a real run (4 calls > 3).
+    expect(toolsOf(requests[1]).map((t) => t.function.name)).toEqual(["read_period"]);
+    expect(toolsOf(requests[2]).map((t) => t.function.name)).toEqual(["read_period", "answer"]);
   });
 
   it("without readFirst, round 1 offers every tool including answer", async () => {
@@ -368,6 +391,29 @@ describe("rule 6: per-tool call budget", () => {
 
   it("pins the default budgets: read_period 3, travel 1", () => {
     expect(TOOL_LOOP_LIMITS.maxCallsPerTool).toEqual({ read_period: 3, travel: 1 });
+  });
+
+  it("a tool at its per-turn limit leaves the tools offered in later rounds", async () => {
+    const moved: TravelInput[] = [];
+    const { fetchImpl, requests } = fakeEndpoint([travelTurn("t1"), read("c1"), answer("a1")]);
+    await collect(runToolTurn(options(fetchImpl, { tools: asTools(readPeriod(), travelTool(moved)) })));
+    expect(toolsOf(requests[0]).map((t) => t.function.name)).toEqual(["read_period", "travel", "answer"]);
+    expect(toolsOf(requests[1]).map((t) => t.function.name)).toEqual(["read_period", "answer"]);
+    expect(toolsOf(requests[2]).map((t) => t.function.name)).toEqual(["read_period", "answer"]);
+    expect(moved).toHaveLength(1);
+  });
+
+  it("a second travel in one round gets the tool's own neutral note: skipped, never an error", async () => {
+    const moved: TravelInput[] = [];
+    const twice: FakeTurn = { calls: [call("t1", "travel", '{"to":"2017-09"}'), call("t2", "travel", '{"to":"2017-10"}')] };
+    const { fetchImpl, requests } = fakeEndpoint([twice, answer("a1")]);
+    const o = options(fetchImpl, { tools: asTools(readPeriod(), travelTool(moved)) });
+    await collect(runToolTurn(o));
+    expect(moved).toHaveLength(1);
+    const statusById = Object.fromEntries(o.toolCalls.map((e) => [e.toolCallId, e.status]));
+    expect(statusById).toEqual({ t1: "complete", t2: "skipped", a1: "complete" });
+    expect(toolMessage(requests[1], "t2")).toContain("Already travelled this turn");
+    expect(toolMessage(requests[1], "t2")).not.toContain("read enough");
   });
 
   it("honours a caller budget", async () => {

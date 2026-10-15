@@ -80,6 +80,8 @@ export interface ToolDef<I> {
   readonly statusLabel?: string;
   /** A read tool: on a readFirst turn, only its completed call unlocks `answer` (travel does not). */
   readonly reads?: boolean;
+  /** What a call past this tool's per-turn limit returns as its skipped note (default: the read note). */
+  readonly overLimitNote?: string;
   execute(input: I, ctx: ToolContext): Promise<unknown>;
   /**
    * The compact form sent in place of a result the turn's context budget cannot
@@ -403,6 +405,11 @@ class CallBudget {
     this.used.set(name, used);
     return used <= (this.limits[name] ?? Number.POSITIVE_INFINITY);
   }
+
+  /** True once the tool has used its whole per-turn limit: later rounds no longer offer it. */
+  exhausted(name: string): boolean {
+    return (this.used.get(name) ?? 0) >= (this.limits[name] ?? Number.POSITIVE_INFINITY);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -414,6 +421,7 @@ interface TurnContext {
   readonly messages: ModelMessage[];
   readonly tools: ToolSet;
   readonly readTools: string[];
+  readonly calls: CallBudget;
   readonly maxRounds: number;
   readonly signal: AbortSignal;
   /** Aborted when the turn ends for any reason, so an abandoned generator stops its request and tools. */
@@ -548,7 +556,7 @@ function chatModel(o: RunToolTurnOptions<unknown>): LanguageModel {
 }
 
 async function executeCounted(def: ToolDef<unknown>, input: unknown, runtime: ToolRuntime): Promise<unknown> {
-  if (!runtime.budget.take(def.name)) return { status: "skipped", note: SKIPPED_NOTE };
+  if (!runtime.budget.take(def.name)) return { status: "skipped", note: def.overLimitNote ?? SKIPPED_NOTE };
   const result = await runWithTimeout(def, input, runtime.signal, runtime.now);
   if (def.reads === true) runtime.reads.completed = true;
   return result;
@@ -564,10 +572,10 @@ function sdkTool(def: ToolDef<unknown>, runtime: ToolRuntime): Tool {
   });
 }
 
-function toolSet<A>(o: RunToolTurnOptions<A>, signal: AbortSignal, reads: ReadProgress, fill: AnswerFill): ToolSet {
+function toolSet<A>(o: RunToolTurnOptions<A>, signal: AbortSignal, reads: ReadProgress, fill: AnswerFill, budget: CallBudget): ToolSet {
   const runtime: ToolRuntime = {
     strict: endpointHonoursStrict(o.config),
-    budget: new CallBudget(o.limits?.maxCallsPerTool ?? TOOL_LOOP_LIMITS.maxCallsPerTool),
+    budget,
     now: o.now,
     signal,
     reads,
@@ -599,11 +607,13 @@ function turnContext<A>(o: RunToolTurnOptions<A>): TurnContext {
   const signal = AbortSignal.any([cancel.signal, watchdog.signal, ...(o.signal ? [o.signal] : [])]);
   const reads: ReadProgress = { completed: false };
   const fill: AnswerFill = { filled: [] };
+  const calls = new CallBudget(o.limits?.maxCallsPerTool ?? TOOL_LOOP_LIMITS.maxCallsPerTool);
   return {
     model: chatModel(o as RunToolTurnOptions<unknown>),
     messages: o.messages.map((m) => ({ role: m.role, content: m.content })),
-    tools: toolSet(o, signal, reads, fill),
+    tools: toolSet(o, signal, reads, fill, calls),
     readTools: o.tools.map((t) => t.name),
+    calls,
     maxRounds: o.limits?.maxRounds ?? TOOL_LOOP_LIMITS.maxRounds,
     signal,
     cancel,
@@ -783,7 +793,10 @@ function mustReadFirst(ctx: TurnContext, readFirst: boolean): boolean {
 function roundChoice(round: number, ctx: TurnContext, readFirst: boolean): StepPlan {
   if (round >= ctx.maxRounds) return ctx.choice.mode === "auto" ? answerOnly(ctx) : { toolChoice: { type: "tool", toolName: ANSWER_TOOL_NAME } };
   const toolChoice = ctx.choice.mode;
-  if (mustReadFirst(ctx, readFirst)) return { toolChoice, activeTools: ctx.readTools };
+  const open = ctx.readTools.filter((name) => !ctx.calls.exhausted(name));
+  if (mustReadFirst(ctx, readFirst)) return { toolChoice, activeTools: open.length > 0 ? open : ctx.readTools };
+  // A tool that used its whole per-turn limit (travel: once) is no longer offered.
+  if (open.length < ctx.readTools.length) return { toolChoice, activeTools: [...open, ANSWER_TOOL_NAME] };
   return { toolChoice };
 }
 

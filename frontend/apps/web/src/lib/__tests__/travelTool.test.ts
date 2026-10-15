@@ -216,3 +216,32 @@ describe('travel: what a call records', () => {
     expect(record).not.toHaveBeenCalled();
   });
 });
+
+describe('travel: at most once per turn (dashboard.agentic.real run A called it twice, 2026-10-14)', () => {
+  it('says so in its description', () => {
+    const { tool } = travelSetup();
+    expect(tool.description).toContain('Call it at most once per turn.');
+  });
+
+  it('a call past the loop budget gets the neutral "already travelled" note', () => {
+    const { tool } = travelSetup();
+    expect(tool.overLimitNote).toBe('Already travelled this turn; the move happens after your answer.');
+  });
+
+  it('a second queued move in the same turn records nothing and returns the neutral skipped note', async () => {
+    const { tool, record } = travelSetup();
+    await expect(go(tool, { to: '2017-09', place: 'Pune' })).resolves.toMatchObject({ status: 'queued' });
+    await expect(go(tool, { to: '2017-10', place: 'Pune' })).resolves.toEqual({
+      status: 'skipped', note: 'Already travelled this turn; the move happens after your answer.',
+    });
+    await expect(go(tool, { to: 'today', place: null })).resolves.toMatchObject({ status: 'skipped' });
+    expect(record).toHaveBeenCalledTimes(1);
+  });
+
+  it('a neutral place ask is not a move: the call after it can still travel', async () => {
+    const { tool, record } = travelSetup();
+    await expect(go(tool, { to: '2017-09', place: null })).resolves.toEqual(TRAVEL_NEEDS_PLACE);
+    await expect(go(tool, { to: '2017-09', place: 'Pune' })).resolves.toMatchObject({ status: 'queued' });
+    expect(record).toHaveBeenCalledTimes(1);
+  });
+});
