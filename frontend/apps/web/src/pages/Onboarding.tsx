@@ -238,6 +238,16 @@ export default function OnboardingPage() {
     }
   }, [currentStep]);
 
+  // Each step starts at its top. On a phone the Next button sits below the
+  // fold, so without this the next step opened wherever the last one was
+  // scrolled. An instant jump, like any page change (no motion to reduce).
+  const shownStepKey = React.useRef(currentStepKey);
+  useEffect(() => {
+    if (shownStepKey.current === currentStepKey) return;
+    shownStepKey.current = currentStepKey;
+    window.scrollTo({ top: 0, behavior: "instant" });
+  }, [currentStepKey]);
+
   // IDEMPOTENCY CHECK: Now handled by OnboardingRoute guard in App.tsx
   // The route guard checks onboarding progress and redirects to /dashboard if has_chart=true.
   //
