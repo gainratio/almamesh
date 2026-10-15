@@ -14,8 +14,19 @@
  */
 
 import { type Catalog, defineErrors, httpStatusOf, starterPack } from '@gainratio/errors';
+import esCanonicalErrors from '@gainratio/errors/locales/es.json';
+import ptCanonicalErrors from '@gainratio/errors/locales/pt.json';
 import { safeCauseWarn, safeError } from '@almamesh/shared-types';
 import i18n from '../i18n/config';
+
+/**
+ * The i18next namespace holding the es/pt sentences @gainratio/errors ships
+ * for its built-in codes (`errors.<code>`). English has no bundle on purpose:
+ * `describe` falls back to the catalog's own `en`.
+ */
+const CANONICAL_ERRORS_NS = 'canonicalErrors';
+i18n.addResourceBundle('es', CANONICAL_ERRORS_NS, esCanonicalErrors);
+i18n.addResourceBundle('pt', CANONICAL_ERRORS_NS, ptCanonicalErrors);
 
 /**
  * Error codes for internal reference / support correlation. The codes
@@ -183,18 +194,27 @@ const REASONING_TIMEOUT_PATTERN = /\(ai\.reasoning_timeout\)/;
 const AI_ERROR_CATALOG = {
   'ai.privacy.violation': {
     ...starterPack['ai.privacy.violation'],
+    // App copy names the refused endpoint and the setting that unblocks it.
+    params: ['endpoint'],
+    i18nKey: 'chat:errors.privacy_blocked',
     match: (raw: unknown) => nameOf(raw) === 'PrivacyViolationError',
   },
   'ai.provider.out_of_credits': {
     ...starterPack['ai.provider.out_of_credits'],
+    // App copy says where to add credits on OpenRouter.
+    i18nKey: 'chat:errors.insufficient_credits',
     match: (raw: unknown) => httpStatusOf(raw) === 402 || isInsufficientCreditsMessage(messageOf(raw)),
   },
   'ai.provider.unauthorized': {
     ...starterPack['ai.provider.unauthorized'],
+    // App copy: the shipped es/pt drop "Settings → AI"; ours keep it.
+    i18nKey: 'chat:errors.auth_failed',
     match: (raw: unknown) => isAuthError(httpStatusOf(raw)),
   },
   'ai.model.unavailable': {
     ...starterPack['ai.model.unavailable'],
+    // App copy: the shipped es/pt drop "Settings → AI"; ours keep it.
+    i18nKey: 'chat:errors.model_unavailable',
     match: (raw: unknown) => httpStatusOf(raw) === 404 || isModelUnavailableMessage(messageOf(raw)),
   },
   'ai.provider.rate_limited': {
@@ -205,6 +225,7 @@ const AI_ERROR_CATALOG = {
   'ai.reasoning_timeout': {
     category: 'timeout',
     params: [],
+    i18nKey: 'chat:errors.reasoning_timeout',
     en: 'The model thought for too long without answering. Try again, or pick a faster model.',
     match: (raw: unknown) =>
       nameOf(raw) === 'ReasoningTimeoutError' || REASONING_TIMEOUT_PATTERN.test(messageOf(raw)),
@@ -218,9 +239,12 @@ const AI_ERROR_CATALOG = {
   },
   'net.unreachable': {
     ...starterPack['net.unreachable'],
+    // App copy: the user's own AI endpoint, not "the server".
+    i18nKey: 'chat:errors.endpoint_unreachable',
     match: (raw: unknown) => httpStatusOf(raw) === undefined && NETWORK_MESSAGE_PATTERN.test(messageOf(raw)),
   },
-  'internal.unknown': starterPack['internal.unknown'],
+  // App copy points at the model and endpoint in Settings → AI.
+  'internal.unknown': { ...starterPack['internal.unknown'], i18nKey: 'chat:errors.request_failed' },
 } satisfies Catalog;
 
 /**
@@ -231,6 +255,29 @@ const AI_ERROR_CATALOG = {
  * codes for RFC 9457 Problem Details without re-deriving them).
  */
 export const aiErrorRegistry = defineErrors(AI_ERROR_CATALOG);
+
+/**
+ * The user-facing sentence for a canonical AI error code, in the active
+ * language. The ONE translation path: `registry.describe` with i18next's own
+ * `t`. Codes with an `i18nKey` render the app's copy; the rest render the es/pt
+ * sentence shipped by @gainratio/errors, or the catalog `en` in English.
+ */
+export function aiErrorText<C extends AiErrorCode>(code: C, ...params: AiErrorParams<C>): string {
+  return aiErrorRegistry.describe(code, { ...params[0] }, i18n.getFixedT(null, CANONICAL_ERRORS_NS));
+}
+
+/** A code this app's catalog registers. */
+export type AiErrorCode = keyof typeof AI_ERROR_CATALOG;
+
+/** The privacy copy names the refused endpoint, so that code requires it; no other code takes params. */
+type AiErrorParams<C extends AiErrorCode> = C extends 'ai.privacy.violation'
+  ? [params: { readonly endpoint: string }]
+  : [];
+
+/** `classify` returns a plain string; narrow it to a code the catalog owns. */
+function asAiErrorCode(code: string): AiErrorCode {
+  return Object.hasOwn(AI_ERROR_CATALOG, code) ? (code as AiErrorCode) : 'internal.unknown';
+}
 
 /**
  * Map a canonical `@gainratio/errors` code to the local `ConnectionErrorKind` the
@@ -271,38 +318,14 @@ export function classifyConnectionError(err: unknown): ConnectionErrorKind {
  * both AI surfaces share, so they say exactly what the Settings "Save & test
  * connection" path already says: a 402 is a billing problem (add credits), a
  * 401/403 is a bad key, a 404/bad-slug is a dead model, a 429 is rate limiting,
- * a 5xx is a provider outage, and no-status is an unreachable endpoint. The old
- * behavior collapsed 402/401/429/5xx into the generic "request failed — check
- * your model and endpoint" dead-end, which sent users in circles on problems
- * retrying could never fix. Duck-typed via `classifyConnectionError`, so it
- * works across the @almamesh/llm boundary without `instanceof` coupling.
- *
- * Built on the shared @gainratio/errors library: `classifyConnectionError` now
- * classifies through the `aiErrorRegistry` (canonical codes), and this mapper
- * renders each resulting kind to the app's existing `chat:errors.*` i18n string
- * — the coded behavior is unchanged, only its vocabulary is now the shared one.
+ * a 5xx is a provider outage, and no-status is an unreachable endpoint — never
+ * the generic "request failed" dead-end for a problem retrying can't fix.
+ * Classified by `aiErrorRegistry` (duck-typed, so it works across the
+ * @almamesh/llm boundary) and rendered by `aiErrorText`.
  */
 export function chatErrorMessage(error: unknown): string {
-  switch (classifyConnectionError(error)) {
-    case 'credits':
-      return i18n.t('chat:errors.insufficient_credits');
-    case 'auth':
-      return i18n.t('chat:errors.auth_failed');
-    case 'model':
-      return i18n.t('chat:errors.model_unavailable');
-    case 'rate_limited':
-      return i18n.t('chat:errors.rate_limited');
-    case 'reasoning_timeout':
-      return i18n.t('chat:errors.reasoning_timeout');
-    case 'server':
-      return i18n.t('chat:errors.server_error');
-    case 'network':
-      return i18n.t('chat:errors.endpoint_unreachable');
-    case 'privacy':
-      return privacyBlockedMessage(error);
-    default:
-      return i18n.t('chat:errors.request_failed');
-  }
+  const code = asAiErrorCode(aiErrorRegistry.classify(error));
+  return code === 'ai.privacy.violation' ? privacyBlockedMessage(error) : aiErrorText(code);
 }
 
 /**
@@ -314,7 +337,7 @@ export function chatErrorMessage(error: unknown): string {
 export function privacyBlockedMessage(error: unknown): string {
   const endpoint = (error as { endpoint?: unknown } | null)?.endpoint;
   return typeof endpoint === 'string' && endpoint.trim()
-    ? i18n.t('chat:errors.privacy_blocked', { endpoint })
+    ? aiErrorText('ai.privacy.violation', { endpoint })
     : i18n.t('chat:errors.privacy_blocked_no_endpoint');
 }
 

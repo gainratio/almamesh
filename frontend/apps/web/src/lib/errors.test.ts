@@ -2,7 +2,9 @@ import { starterPack } from '@gainratio/errors';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import i18n from '../i18n/config';
 import {
+  type AiErrorCode,
   aiErrorRegistry,
+  aiErrorText,
   chatErrorMessage,
   classifyConnectionError,
   connectionErrorDetail,
@@ -285,16 +287,16 @@ describe('chatErrorMessage', () => {
 
   it('maps a 429 to the rate-limited copy', () => {
     expect(chatErrorMessage(new FakeLlmRequestError('returned 429 Too Many Requests', 429))).toBe(
-      i18n.t('chat:errors.rate_limited'),
+      "The AI provider is rate-limiting requests. Wait a moment and try again.",
     );
   });
 
   it('maps any 5xx to the server-error copy', () => {
     expect(chatErrorMessage(new FakeLlmRequestError('returned 500 Internal Server Error', 500))).toBe(
-      i18n.t('chat:errors.server_error'),
+      "The AI provider had a server error. Try again shortly.",
     );
     expect(chatErrorMessage(new FakeLlmRequestError('returned 503 Service Unavailable', 503))).toBe(
-      i18n.t('chat:errors.server_error'),
+      "The AI provider had a server error. Try again shortly.",
     );
   });
 
@@ -481,7 +483,7 @@ describe('@gainratio/errors adoption (canonical-errors standard)', () => {
     for (const status of [500, 501, 505, 520, 522, 599]) {
       expect(classifyConnectionError(new FakeLlmRequestError(`returned ${status}`, status))).toBe('server');
       expect(chatErrorMessage(new FakeLlmRequestError(`returned ${status}`, status))).toBe(
-        i18n.t('chat:errors.server_error'),
+        "The AI provider had a server error. Try again shortly.",
       );
     }
   });
@@ -543,5 +545,85 @@ describe('runaway reasoning (ai.reasoning_timeout)', () => {
       expect(text).not.toContain('errors.');
       expect(text).toMatch(/3/);
     }
+  });
+});
+
+describe('one translation path: registry.describe with the shipped es/pt resources', () => {
+  // Every code the app registers renders through `aiErrorText`, which is
+  // `aiErrorRegistry.describe(code, params, t)`. Codes whose meaning matches
+  // the library sentence use the shipped @gainratio/errors locales; codes with
+  // product-specific copy keep it through `i18nKey`. Either way, a Spanish or
+  // Portuguese user never gets an English sentence or a raw key.
+  const PARAMS = { endpoint: 'https://example.invalid/v1' };
+  const SHIPPED = ['ai.provider.rate_limited', 'ai.provider.server_error'] as const;
+  const CODES = aiErrorRegistry.codes as readonly AiErrorCode[];
+  const render = (code: AiErrorCode): string =>
+    code === 'ai.privacy.violation' ? aiErrorText(code, PARAMS) : aiErrorText(code);
+
+  it.each(['es', 'pt'])('renders every registered code non-English in %s', async (lang) => {
+    await i18n.changeLanguage('en');
+    const english = new Map(CODES.map((code) => [code, render(code)]));
+    await i18n.changeLanguage(lang);
+    const leaks = CODES.filter((code) => {
+      const text = render(code);
+      const catalogEn = aiErrorRegistry.get(code)?.en;
+      return (
+        text === english.get(code) ||
+        text === catalogEn ||
+        /^(errors|chat)[.:]|\{\{/.test(text) ||
+        text.trim() === ''
+      );
+    });
+    expect(leaks).toEqual([]);
+  });
+
+  it('uses the shipped sentence for codes whose meaning matches (es and pt pinned)', async () => {
+    await i18n.changeLanguage('es');
+    expect(aiErrorText('ai.provider.server_error')).toBe(
+      'Hubo un error en el servidor del proveedor de IA. Vuelve a intentarlo en un momento.',
+    );
+    expect(aiErrorText('ai.provider.rate_limited')).toBe(
+      'El proveedor de IA está limitando las solicitudes. Espera un momento e inténtalo de nuevo.',
+    );
+    await i18n.changeLanguage('pt');
+    expect(aiErrorText('ai.provider.server_error')).toBe(
+      'Ocorreu um erro no servidor do provedor de IA. Tente de novo daqui a pouco.',
+    );
+  });
+
+  it('English for a shipped code comes from the catalog en', async () => {
+    await i18n.changeLanguage('en');
+    for (const code of SHIPPED) {
+      expect(aiErrorText(code)).toBe(starterPack[code].en);
+    }
+  });
+
+  it('keeps product-specific app copy through i18nKey (pinned en literals)', async () => {
+    await i18n.changeLanguage('en');
+    expect(aiErrorText('net.unreachable')).toBe(
+      "Couldn't reach your AI endpoint. Check that it's running and that the address in Settings → AI is correct.",
+    );
+    expect(aiErrorText('ai.provider.out_of_credits')).toContain('openrouter.ai → Credits');
+    await i18n.changeLanguage('es');
+    // The shipped es drops the "Ajustes → IA" pointer for these two; ours keeps it.
+    expect(aiErrorText('ai.model.unavailable')).toContain('Ajustes → IA');
+    expect(aiErrorText('ai.provider.unauthorized')).toContain('Ajustes → IA');
+    await i18n.changeLanguage('en');
+    expect(aiErrorText('ai.privacy.violation', PARAMS)).toContain('nothing was sent to https://example.invalid/v1');
+  });
+
+  it('every i18nKey the catalog points at exists in en, es and pt', () => {
+    // getResource reads ONE language's bundle; i18n.exists would fall back to
+    // en and pass for a key missing from es/pt.
+    const missing: string[] = [];
+    for (const code of aiErrorRegistry.codes) {
+      const key = aiErrorRegistry.get(code)?.i18nKey;
+      if (key === undefined) continue;
+      const [ns = '', path = ''] = key.split(':');
+      for (const lng of ['en', 'es', 'pt']) {
+        if (typeof i18n.getResource(lng, ns, path) !== 'string') missing.push(`${lng}:${key}`);
+      }
+    }
+    expect(missing).toEqual([]);
   });
 });

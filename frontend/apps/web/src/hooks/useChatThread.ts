@@ -37,7 +37,7 @@ import {
 
 import i18n from '../i18n/config';
 import { indexChatMessage, retrieveContext } from '../lib/chatMemory';
-import { chatErrorMessage, getChatErrorMessage, privacyBlockedMessage } from '../lib/errors';
+import { aiErrorText, chatErrorMessage, getChatErrorMessage, privacyBlockedMessage } from '../lib/errors';
 import { LLM_SETTINGS_CHANGED_EVENT } from '../lib/llmSettingsEvents';
 import { asOfKey } from '../lib/pinnedPeriod';
 import { waitForStoreSaved } from '../lib/storeSaved';
@@ -195,7 +195,7 @@ export const CHAT_STREAM_ERROR_COPY: Readonly<
   LlmRequestError: (error) => chatErrorMessage(error),
   // `fetch` throws a TypeError when the endpoint is unreachable — a mapped,
   // actionable cause even though it carries no custom class.
-  TypeError: () => i18n.t('chat:errors.endpoint_unreachable'),
+  TypeError: () => aiErrorText('net.unreachable'),
 };
 
 /** The map entry for a thrown cause, or undefined for unmapped/untyped ones. */
