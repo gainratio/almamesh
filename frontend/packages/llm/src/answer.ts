@@ -8,6 +8,7 @@
 // `oneOf`, so `kind` picks which nullable keys must be filled and the
 // refinement enforces it; the parsed value is then exactly a `ChatAnswer`
 // (plus null keys of the other kind).
+import { predictionClaims } from "./reflection";
 import { z, type AnswerSpec } from "./toolLoop";
 
 export const GRAHAS = ["sun", "moon", "mars", "mercury", "jupiter", "venus", "saturn", "rahu", "ketu"] as const;
@@ -383,6 +384,35 @@ function missingFix(key: (typeof PERIOD_KEYS)[number], readings: readonly Ground
   }
 }
 
+/** Every reader-facing text of the answer with its path, in reading order. */
+function answerTexts(value: Wire): (readonly [string, (string | number)[]])[] {
+  const texts: (readonly [string, (string | number)[]])[] = [];
+  const add = (text: string | null | undefined, path: (string | number)[]) => {
+    if (text) texts.push([text, path]);
+  };
+  add(value.markdown, ["markdown"]);
+  add(value.opening, ["opening"]);
+  for (const level of ["maha", "antar", "pratyantar"] as const) add(value.dashas?.[level]?.note, ["dashas", level, "note"]);
+  value.moon?.forEach((line, index) => add(line.meaning, ["moon", index, "meaning"]));
+  value.themes?.forEach((theme, index) => {
+    add(theme.text, ["themes", index, "text"]);
+    add(theme.obstacle, ["themes", index, "obstacle"]);
+  });
+  value.windows?.forEach((window, index) => add(window.what, ["windows", index, "what"]));
+  add(value.advice, ["advice"]);
+  return texts;
+}
+
+/** Reflection, not prediction (2026-10-15): no answer text claims to foretell or says what a period brought. */
+function checkReflection(value: Wire, language: Language, issue: Issue): void {
+  for (const [text, path] of answerTexts(value)) {
+    const claims = predictionClaims(text, language);
+    if (claims.length > 0) {
+      issue(`Reflection, not prediction: say what the chart highlights, not what the period brought or will bring (remove "${claims.join('", "')}").`, path);
+    }
+  }
+}
+
 function checkGeneral(value: Wire, readings: readonly GroundingReading[], issue: Issue): void {
   if (readings.length > 0) issue('You read a period this turn: answer with kind "period" and its facts.', ["kind"]);
   else if (!value.markdown?.trim()) issue('kind "general" needs markdown: the answer as plain prose.', ["markdown"]);
@@ -417,6 +447,7 @@ export function answerSchema(grounding: () => AnswerGrounding, language: Languag
     const { readings } = grounding();
     if (value.kind === "general") checkGeneral(value, readings, issue);
     else checkPeriod(value, readings, language, issue);
+    checkReflection(value, language, issue);
   });
   // The refinement guarantees the kind's keys are filled, so the parsed wire value is a ChatAnswer.
   return schema as unknown as z.ZodType<ChatAnswer>;

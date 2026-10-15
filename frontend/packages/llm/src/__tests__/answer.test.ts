@@ -457,6 +457,41 @@ describe("answerSchema: a period that crosses a dasha change names every running
   });
 });
 
+// Reflection, not prediction (2026-10-15). Live drive: deepseek-v4-pro wrote "the last week of
+// the month likely brought a spike in drive" with the rule in its prompt. The check sends it back.
+describe("answerSchema: a period answer says what the chart highlights, never what a period brought", () => {
+  const fix = (words: string) =>
+    `Reflection, not prediction: say what the chart highlights, not what the period brought or will bring (remove "${words}").`;
+
+  it("sends back a window that guesses what the period brought", () => {
+    const windows = [{ date: "2019-09-25", what: "The last week likely brought a spike in drive." }];
+    expect(messages(withAnswer({ windows }))).toEqual([fix("likely")]);
+  });
+
+  it("sends back a theme, opening or advice that claims to foretell", () => {
+    const themes = [{ ...ANSWER.themes[0]!, text: "The chart predicts a promotion." }, ANSWER.themes[1]!];
+    expect(messages(withAnswer({ themes, opening: "This is what happened in September.", advice: "A raise will happen." }))).toEqual([
+      fix("what happened"),
+      fix("predict"),
+      fix("will happen"),
+    ]);
+  });
+
+  it("sends back a general answer that claims to foretell", () => {
+    const general = wire({ kind: "general", markdown: "Your chart forecasts a move." } as ChatAnswer);
+    expect(messages(general, grounded())).toEqual([fix("forecast")]);
+  });
+
+  it("reads Spanish words in a Spanish answer", () => {
+    const parsed = answerSchema(grounded(SEPTEMBER), "es").safeParse(withAnswer({ advice: "Probablemente cambies de trabajo." }));
+    expect(parsed.success ? [] : parsed.error.issues.map((issue) => issue.message)).toEqual([fix("Probablemente")]);
+  });
+
+  it("passes the reference answer", () => {
+    expect(messages(withAnswer({}))).toEqual([]);
+  });
+});
+
 describe("moonTagLabel", () => {
   it("names the tags as a person says them", () => {
     expect(moonTagLabel("sade_sati_phase_1", "en")).toBe("Sade Sati, first phase");
