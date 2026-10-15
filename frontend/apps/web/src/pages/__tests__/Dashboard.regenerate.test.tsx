@@ -304,7 +304,10 @@ describe('Dashboard — regenerate reading', () => {
     const button = await screen.findByRole<HTMLButtonElement>('button', {
       name: 'Regenerate natal reading',
     });
-    expect(button.disabled).toBe(true);
+    // CONTRACT REVERSED (PR #366 review): with no AI this used to be a disabled
+    // button with only a title tooltip, a dead end on phones. It is now the
+    // door to AI setup.
+    expect(button.disabled).toBe(false);
     expect(button.className).toContain('min-h-11');
     expect(button.className).toContain('min-w-11');
     expect(button.className).toContain('whitespace-nowrap');
@@ -344,16 +347,47 @@ describe('Dashboard — regenerate reading', () => {
     expect(mockedStream).not.toHaveBeenCalled();
   });
 
-  it('disables the Regenerate button when no AI is configured (reading still shown)', async () => {
+  it('with no AI, Regenerate opens Connect AI instead of a dead-end disabled button (reading still shown)', async () => {
+    // CONTRACT REVERSED (PR #366 review): this used to assert disabled=true.
     // No settings written: tier is none. The stale reading must keep rendering.
     seedCompleteReading(STALE_PROVENANCE);
     renderDashboard();
 
     const reading = await screen.findByTestId('reading-section');
     expect(reading.textContent ?? '').toContain(LAYMAN_SUMMARY);
-    expect(screen.getByTestId<HTMLButtonElement>('regenerate-reading').disabled).toBe(true);
+    const button = screen.getByTestId<HTMLButtonElement>('regenerate-reading');
+    expect(button.disabled).toBe(false);
+    expect(button.getAttribute('aria-haspopup')).toBe('dialog');
+    fireEvent.click(button);
+    expect(screen.getByRole('dialog', { name: 'Connect AI' })).toBeTruthy();
     await settle();
     expect(mockedStream).not.toHaveBeenCalled();
+  });
+
+  it('with no AI, the natal reading button opens the shared Connect AI dialog and spends nothing', async () => {
+    renderDashboard();
+
+    const button = await screen.findByRole<HTMLButtonElement>('button', { name: /natal reading/ });
+    expect(button.disabled).toBe(false);
+    fireEvent.click(button);
+    expect(screen.getByRole('dialog', { name: 'Connect AI' })).toBeTruthy();
+    expect(screen.getByTestId('ai-setup-dialog')).toBeTruthy();
+    await settle();
+    expect(mockedStream).not.toHaveBeenCalled();
+  });
+
+  it('with no AI, Generate current timeline opens the shared Connect AI dialog and spends nothing', async () => {
+    renderDashboard();
+
+    const button = await screen.findByTestId<HTMLButtonElement>('generate-timeline');
+    expect(button.disabled).toBe(false);
+    expect(button.getAttribute('aria-haspopup')).toBe('dialog');
+    fireEvent.click(button);
+    expect(screen.getByRole('dialog', { name: 'Connect AI' })).toBeTruthy();
+    // Closing it is a real way out, and still spends nothing.
+    fireEvent.click(screen.getByRole('button', { name: 'Close dialog' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(mockedTimelineStream).not.toHaveBeenCalled();
   });
 
   it('captions the reading with the model that generated it and the date', async () => {
@@ -924,13 +958,13 @@ describe('Dashboard — regenerate reading', () => {
     await waitFor(() => expect(screen.queryByTestId('reading-regen-error')).toBeNull());
   });
 
-  it('with NO AI configured the disabled Regenerate also carries the connect-AI caption', async () => {
+  it('with NO AI configured the Regenerate door also carries the connect-AI caption', async () => {
     // No settings written: tier is none — same rule, different guidance copy.
     seedCompleteReading(STALE_PROVENANCE);
     renderDashboard();
 
     await screen.findByTestId('reading-section');
-    expect(screen.getByTestId<HTMLButtonElement>('regenerate-reading').disabled).toBe(true);
+    expect(screen.getByTestId<HTMLButtonElement>('regenerate-reading').disabled).toBe(false);
     const note = screen.getByTestId('regenerate-unavailable');
     expect(note.textContent ?? '').toContain('Connect an AI model');
     const connect = note.querySelector('button');

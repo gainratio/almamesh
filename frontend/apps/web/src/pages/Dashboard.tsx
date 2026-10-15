@@ -69,7 +69,7 @@ import {
 } from "../hooks/useStreamingInterpretation";
 import { useElapsedSeconds, formatElapsed } from "../hooks/useElapsedSeconds";
 import { useLlmStatus } from "../hooks/useLlmStatus";
-import { ConnectAiButton } from "../components/features/ai/AiSetupDialog";
+import { AiSetupDialog, ConnectAiButton } from "../components/features/ai/AiSetupDialog";
 import { useReportPdfExport } from "../hooks/useReportPdfExport";
 import { isPlaceholderContent } from "./exportGate";
 import { personaText, resolveReportAudience } from "../lib/reportSelectors";
@@ -268,6 +268,10 @@ export default function DashboardPage() {
   // structured reading. Gates the Regenerate button (with an explanatory
   // caption) so a click is never a silent no-op when no AI is configured.
   const canRegenerateReading = aiConfigured;
+  // With no AI, Generate/Refresh are the door to AI setup (never a disabled
+  // button with only a tooltip, which is a dead end on a phone).
+  const [aiSetupOpen, setAiSetupOpen] = useState(false);
+  const aiDoor = canRegenerateReading ? {} : { 'aria-haspopup': 'dialog' as const };
 
   // A failed regeneration with a kept reading surfaces an inline error strip
   // in the reading section (keep-old-until-success keeps the reading itself).
@@ -676,10 +680,9 @@ export default function DashboardPage() {
                   It never waits for or includes time-sensitive predictive facts. */}
               <button
                 type="button"
-                onClick={handleRegenerateReading}
-                disabled={
-                  isStreamingInterpretation || isTimelineStreaming || !canRegenerateReading
-                }
+                onClick={canRegenerateReading ? handleRegenerateReading : () => setAiSetupOpen(true)}
+                {...aiDoor}
+                disabled={isStreamingInterpretation || isTimelineStreaming}
                 data-testid={interpretation ? 'regenerate-reading' : 'generate-reading'}
                 title={
                   !canRegenerateReading
@@ -714,15 +717,15 @@ export default function DashboardPage() {
               </button>
               <button
                 type="button"
-                onClick={handleRegenerateTimeline}
+                onClick={canRegenerateReading ? handleRegenerateTimeline : () => setAiSetupOpen(true)}
+                {...aiDoor}
                 disabled={
                   isStreamingInterpretation ||
                   isTimelineStreaming ||
-                  timelineRegenerationQueued ||
-                  !canRegenerateReading
+                  timelineRegenerationQueued
                 }
                 data-testid={currentTimeline ? 'regenerate-timeline' : 'generate-timeline'}
-                title={t('dashboard:actions.refresh_timeline')}
+                title={canRegenerateReading ? t('dashboard:actions.refresh_timeline') : t('dashboard:actions.connect_ai')}
                 className="inline-flex min-h-11 min-w-11 items-center gap-1.5 whitespace-nowrap rounded-md border border-ui-border px-3 py-1.5 text-sm text-text-secondary transition-colors hover:border-accent-gold/40 hover:text-text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-gold disabled:cursor-not-allowed disabled:border-ui-border/60 disabled:text-text-tertiary disabled:hover:border-ui-border/60"
               >
                 {isTimelineStreaming || timelineRegenerationQueued ? (
@@ -763,6 +766,7 @@ export default function DashboardPage() {
           <DashboardMoment key={momentKey} asOf={timeTravel.moment} chart={siderealChart} chartId={chartId}
             engine={chartEngineContext} birthYear={travelBirthYear} language={i18n.language} />
         )}
+        <AiSetupDialog open={aiSetupOpen} onClose={() => setAiSetupOpen(false)} />
         <DashboardTimeTravelSheet open={travelSheet !== 'closed'}
           current={travelSheet === 'change' ? timeTravel.moment : undefined}
           birthYear={travelBirthYear}
