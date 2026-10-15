@@ -71,9 +71,16 @@ describe('travel: only an explicit request moves the conversation', () => {
     expect(record).toHaveBeenCalledWith({ kind: 'back_to_today' });
   });
 
+  // travel-guard-live 2026-10-15 (GPT Luna, round 2): "I'm done with September 2017. Leave this trip
+  // and tell me my outlook today." was answered in place in 4 of 10 runs; leaving is a move to today.
+  it('names leaving a trip as a move back to today', () => {
+    const { tool } = travelSetup();
+    expect(tool.description).toContain('"back to today" or "leave this trip" -> {"to":"today","place":null}.');
+  });
+
   it('says so in its description: an explicit request only, else read_period', () => {
     const { tool } = travelSetup();
-    expect(tool.description).toContain('Only when the user asks to move ("take me to ...", "back to today") in the newest message, or in the one before when you asked where; a question about another time, today included, is answered here with read_period.');
+    expect(tool.description).toContain('Only when the user asks to move ("take me to ...", "back to today") in this message, or the last one if you asked where; a question about another time, today included, is answered here with read_period.');
   });
 });
 

@@ -61,10 +61,10 @@ const TO = /^(today|\d{4}(-(0[1-9]|1[0-2])(-(0[1-9]|[12]\d|3[01]))?)?)$/;
 
 const DESCRIPTION = [
   'Move this conversation and the Dashboard to a day, month or year (a time-travel trip), or back to today.',
-  'Only when the user asks to move ("take me to ...", "back to today") in the newest message, or in the one before when you asked where; a question about another time, today included, is answered here with read_period.',
+  'Only when the user asks to move ("take me to ...", "back to today") in this message, or the last one if you asked where; a question about another time, today included, is answered here with read_period.',
   'The move happens after your answer. Call it at most once per turn.',
   'Examples: "take me to May 2019 in Vadodara" -> {"to":"2019-05","place":"Vadodara"}.',
-  '"back to today" -> {"to":"today","place":null}.',
+  '"back to today" or "leave this trip" -> {"to":"today","place":null}.',
 ].join(' ');
 
 const PERIOD_OF_LENGTH: Readonly<Record<number, 'day' | 'month' | 'year'>> = { 4: 'year', 7: 'month', 10: 'day' };
