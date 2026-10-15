@@ -247,7 +247,7 @@ describe('runChatTurn: a cancelled turn', () => {
 
 describe('runChatTurn: the context budget follows the model window', () => {
   const CATALOG = { data: [
-    { id: 'mock/ctx-8k', context_length: 8_192 }, { id: 'mock/ctx-9k', context_length: 9_984 }, { id: 'mock/ctx-1m', context_length: 1_000_000 },
+    { id: 'mock/ctx-8k', context_length: 8_192 }, { id: 'mock/ctx-9k', context_length: 10_240 }, { id: 'mock/ctx-1m', context_length: 1_000_000 },
   ] };
   const routerConfig = (model: string): ProviderConfig =>
     ({ engine: 'openai-http', model, privacyMode: 'cloud_premium', baseUrl: 'https://openrouter.ai/api/v1', apiKey: 'k' });
@@ -279,7 +279,8 @@ describe('runChatTurn: the context budget follows the model window', () => {
     expect(snapshots.at(-1)).toContain('May 2019');
   });
 
-  // 9_984 (was 9_472, before that 9_216): Task 10d's answer-key descriptions add ~55 tokens to
+  // 10_240 (was 9_984, 9_472, 9_216): 2026-10-15 the reflection rule (no tool narration, no guessed
+  // experience) and the newest-message TOOLS line add ~150 tokens to every request. Before that, Task 10d's answer-key descriptions add ~55 tokens to
   // every request and compact readings carry labelled windows; the final review's stricter check
   // adds each theme's direction and the pratyantar lords to the grounding and the cite (~120
   // tokens a reading). Each tipped the old window into a forced answer on the 4th request. The
@@ -291,9 +292,9 @@ describe('runChatTurn: the context budget follows the model window', () => {
     expect(compacted.length).toBeGreaterThan(0);
     expect(JSON.parse(compacted[0]!)).toMatchObject({ compacted: true, period: { start: expect.any(String) }, maha: expect.any(Array), antar: expect.any(Array), tags: expect.any(Array) });
     expect(bodies.every((body) => body.tool_choice === 'required')).toBe(true);
-    for (const body of bodies) expect(tokens(body)).toBeLessThanOrEqual(4_992);
+    for (const body of bodies) expect(tokens(body)).toBeLessThanOrEqual(5_120);
     expect(snapshots.at(-1)).toContain('May 2019');
-    expect(agentRoundRows().some((row) => row.compacted > 0 && row.budget === 4_992)).toBe(true);
+    expect(agentRoundRows().some((row) => row.compacted > 0 && row.budget === 5_120)).toBe(true);
   });
 
   it('a 1M model keeps every reading whole and reads all three', async () => {
