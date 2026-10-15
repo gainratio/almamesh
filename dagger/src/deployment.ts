@@ -381,6 +381,7 @@ const payload = {
     "https://almamesh.com/privacy",
     "https://almamesh.com/terms",
     "https://almamesh.com/data-deletion",
+    "https://almamesh.com/how-we-test",
   ],
 }
 let accepted = false

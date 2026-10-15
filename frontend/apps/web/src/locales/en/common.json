@@ -146,7 +146,8 @@
   "footer": {
     "privacy": "Privacy Policy",
     "terms": "Terms of Service",
-    "data_deletion": "Data Deletion"
+    "data_deletion": "Data Deletion",
+    "how_we_test": "How we test"
   },
   "provenance": {
     "aria": "Calculation provenance"

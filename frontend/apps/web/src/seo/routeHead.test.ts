@@ -31,11 +31,11 @@ function metaByName(els: ReadonlyArray<{ type: string; props: Record<string, str
 }
 
 describe('routeHead — the single per-route SEO source', () => {
-  it('covers exactly the five public routes', () => {
+  it('covers exactly the six public routes', () => {
     expect([...PUBLIC_ROUTE_PATHS].sort()).toEqual(
-      ['/', '/welcome', '/privacy', '/terms', '/data-deletion'].sort(),
+      ['/', '/welcome', '/privacy', '/terms', '/data-deletion', '/how-we-test'].sort(),
     );
-    expect(PUBLIC_ROUTE_HEADS).toHaveLength(5);
+    expect(PUBLIC_ROUTE_HEADS).toHaveLength(6);
   });
 
   it('gives every route a unique title, description, and canonical', () => {

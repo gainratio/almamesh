@@ -69,6 +69,12 @@ const CARDS = [
     headline: 'Data Deletion',
     subtitle: 'Your data lives only in your browser. Delete it any time.',
   },
+  {
+    slug: 'how-we-test',
+    kind: 'page',
+    headline: 'How we test',
+    subtitle: 'Readings checked against real dated events. No lift over chance yet.',
+  },
 ];
 
 // The repo's self-hosted Hanken Grotesk TTF is a VARIABLE font (wght 100–900,

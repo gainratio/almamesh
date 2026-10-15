@@ -35,7 +35,7 @@ const FIRST_SESSION_ONLY = process.argv.includes('--first-session')
 const TRANSIENT_CACHE_VISIBILITY = process.argv.includes('--transient-cache-visibility')
 const TRANSIENT_CACHE_VISIBILITY_HASH = '#transient-cache-visibility'
 const TRANSIENT_CACHE_INJECTED_KEY = 'almamesh:exit-gate:transient-cache-visibility:injected'
-const PRERENDERED_SHELLS = new Set(['/welcome', '/privacy', '/terms', '/data-deletion'])
+const PRERENDERED_SHELLS = new Set(['/welcome', '/privacy', '/terms', '/data-deletion', '/how-we-test'])
 const BIRTH = {
   datetimeUtc: '1990-01-15T12:00:00.000Z',
   latitude: 28.6139,

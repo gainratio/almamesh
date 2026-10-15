@@ -8,6 +8,7 @@
 - Works offline after the engine and signed data bundle have been loaded.
 - Offers optional AI narration configured by the user. Core chart calculation does not require AI.
 - Presents astrology as reflective interpretation, with visible assumptions and uncertainty.
+- Tests its readings against dated life events from a licensed research database. They do not pick the month of an event better than chance, so readings are offered for reflection: https://almamesh.com/how-we-test
 
 ## Privacy
 
@@ -21,6 +22,7 @@ Birth details and computed charts remain in the browser. The city search can use
 
 - Home: https://almamesh.com/
 - Product overview: https://almamesh.com/welcome
+- How we test readings: https://almamesh.com/how-we-test
 
 ## Source
 

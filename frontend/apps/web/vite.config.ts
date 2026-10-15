@@ -536,7 +536,7 @@ const NON_ROOT_PUBLIC_ROUTES: readonly string[] = PUBLIC_ROUTE_PATHS.filter((p) 
 // Spec 064 — build-time prerender of the PUBLIC routes only (landing + legal).
 // `src/prerender-entry.tsx` runs IN NODE during `vite build` and renders the
 // engine-free public shells to real per-route HTML (dist/index.html + the FLAT
-// dist/{welcome,privacy,terms,data-deletion}.html — see flattening below) with
+// dist/{welcome,privacy,terms,data-deletion,how-we-test}.html — see flattening below) with
 // per-route head tags from src/seo/routeHead.ts — so crawlers get content, not
 // an empty JS shell. Private app routes stay 100% client-rendered. Runs BEFORE
 // VitePWA in the plugin list: the prerendered pages are emitted during

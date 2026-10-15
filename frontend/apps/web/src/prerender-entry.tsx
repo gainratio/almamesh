@@ -6,6 +6,7 @@
  *   /              the landing (no-chart state — exactly what a crawler sees)
  *   /welcome       the full explanatory landing, stable/shareable
  *   /privacy /terms /data-deletion   the legal pages
+ *   /how-we-test     how readings are tested (aggregates only)
  *
  * It deliberately does NOT render `App.tsx` / `AppLayout` / the runtime
  * provider: the engine, workers, and OPFS are browser-only and the private
@@ -41,6 +42,7 @@ import Landing from './pages/Landing';
 import PrivacyPolicy from './pages/legal/PrivacyPolicy';
 import TermsOfService from './pages/legal/TermsOfService';
 import DataDeletion from './pages/legal/DataDeletion';
+import HowWeTest from './pages/legal/HowWeTest';
 import {
   PUBLIC_ROUTE_PATHS,
   getRouteHead,
@@ -73,6 +75,7 @@ const PAGES: Readonly<Record<string, ComponentType>> = {
   '/privacy': PrivacyPolicy,
   '/terms': TermsOfService,
   '/data-deletion': DataDeletion,
+  '/how-we-test': HowWeTest,
 };
 
 export interface PrerenderResult {
