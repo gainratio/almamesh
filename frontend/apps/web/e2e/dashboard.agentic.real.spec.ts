@@ -246,6 +246,8 @@ test('[real] dashboard: timer + life phase + exact-day agentic chat', async ({
 
   const errors: string[] = [];
   page.on('console', (m) => {
+    // Logged as it happens: a failed turn shows only the generic QA_001 bubble (deepseek, 2026-10-15).
+    if (m.type() === 'error') console.log(`[page error] ${m.text().slice(0, 400)}`);
     if (m.type() === 'error') errors.push(m.text());
   });
   page.on('pageerror', (e) => errors.push(String(e)));
