@@ -91,24 +91,26 @@ def _verdict(card: PlaceboCard) -> list[str]:
     ]
 
 
+def _run_line(card: PlaceboCard) -> str:
+    setup, counts = card.setup, card.counts
+    return (
+        f"{setup.label}. Window ±{setup.window}, R={setup.placebos} placebos, digest "
+        f"`{setup.preregistration_digest[:12]}`. {counts.events_scored} events scored "
+        f"({counts.without_placebo} without a placebo window); swap: {counts.swap_events} "
+        f"events, {counts.swap_natives_dropped} natives alone in their birth year."
+    )
+
+
 def _header(card: PlaceboCard, evidence: bool) -> list[str]:
     banner = [] if evidence else ["> SYNTHETIC: harness check only, not evidence.", ""]
-    return [
-        f"# Placebo-calibrated scorecard (amendment f): BASELINE vs +{card.added_family}",
-        "",
-        *banner,
-        f"{card.label}. Window ±{card.window}, R={card.placebos} placebos, digest "
-        f"`{card.preregistration_digest[:12]}`. {card.events_scored} events scored "
-        f"({card.without_placebo} without a placebo window); swap: {card.swap_events} events, "
-        f"{card.swap_natives_dropped} natives alone in their birth year.",
-        "",
-    ]
+    title = f"# Placebo-calibrated scorecard (amendment f): BASELINE vs +{card.setup.added_family}"
+    return [title, "", *banner, _run_line(card), ""]
 
 
 def render_placebo_card(card: PlaceboCard, *, evidence: bool) -> str:
     """The scorecard as markdown."""
     lines = _header(card, evidence)
-    for k in card.ks:
+    for k in card.setup.ks:
         lines += _table(card, k)
     lines += ["## Multiple comparisons (alpha 0.05, per configuration)", ""]
     lines += [_corrections(n, c) for n, c in card.corrections.items()] + [""]

@@ -281,7 +281,7 @@ def _placebo(events: Path | None, adb: Path | None, options: _Options, plan: Run
     _write_placebo(card, target, evidence=loaded.kind != "synthetic")
     v = card.verdicts
     verdict = "controls ok" if v.planted_ok and v.controls_ok else "VOID"
-    return f"{card.events_scored} events scored, {verdict} -> {target}"
+    return f"{card.counts.events_scored} events scored, {verdict} -> {target}"
 
 
 @app.command("placebo-scorecard")

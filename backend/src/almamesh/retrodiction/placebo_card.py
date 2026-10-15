@@ -39,7 +39,16 @@ if TYPE_CHECKING:
 
 _PLANTED_TOLERANCE: Final[float] = 1e-6
 
-__all__ = ["BASELINE", "PlaceboCard", "PlaceboRow", "RunPlan", "Verdicts", "build_placebo_card"]
+__all__ = [
+    "BASELINE",
+    "PlaceboCard",
+    "PlaceboRow",
+    "RunCounts",
+    "RunPlan",
+    "RunSetup",
+    "Verdicts",
+    "build_placebo_card",
+]
 
 
 class PlaceboRow(BaseModel):
@@ -61,8 +70,8 @@ class Verdicts(BaseModel):
     old_failing_sets: list[str]
 
 
-class PlaceboCard(BaseModel):
-    """The whole amendment (f) scorecard for one added family."""
+class RunSetup(BaseModel):
+    """What was scored: the added family, the sets, the pre-registered window, k and R."""
 
     label: str
     added_family: str
@@ -71,11 +80,23 @@ class PlaceboCard(BaseModel):
     window: int
     ks: list[int]
     placebos: int
+
+
+class RunCounts(BaseModel):
+    """How many events were scored, and why the rest dropped out."""
+
     events_scored: int
     without_placebo: int
     exclusions: dict[str, int]
     swap_natives_dropped: int
     swap_events: int
+
+
+class PlaceboCard(BaseModel):
+    """The whole amendment (f) scorecard for one added family."""
+
+    setup: RunSetup
+    counts: RunCounts
     rows: list[PlaceboRow]
     corrections: dict[str, Corrections]
     controls: dict[str, dict[str, ShiftedControl]]
@@ -201,11 +222,8 @@ def _score(events_file: EventsFile, plan: RunPlan, workers: int) -> _Runs:
     return _Runs(real, excluded, swap, dropped)
 
 
-def _assemble(runs: _Runs, label: str, plan: RunPlan) -> PlaceboCard:
-    months = 2 * plan.window + 1
-    rows = _rows(runs, plan, months)
-    controls, planted = _controls(runs.real, plan, months), _planted(runs.real, plan, months)
-    return PlaceboCard(
+def _setup(label: str, plan: RunPlan) -> RunSetup:
+    return RunSetup(
         label=label,
         added_family=plan.added,
         family_sets=_control_sets(plan),
@@ -213,11 +231,26 @@ def _assemble(runs: _Runs, label: str, plan: RunPlan) -> PlaceboCard:
         window=plan.window,
         ks=list(plan.ks),
         placebos=plan.placebos,
+    )
+
+
+def _counts(runs: _Runs) -> RunCounts:
+    return RunCounts(
         events_scored=len(runs.real),
         without_placebo=sum(1 for e in runs.real if not e.placebos),
         exclusions=dict(sorted(Counter(x.reason for x in runs.excluded).items())),
         swap_natives_dropped=runs.swap_dropped,
         swap_events=len(runs.swap),
+    )
+
+
+def _assemble(runs: _Runs, label: str, plan: RunPlan) -> PlaceboCard:
+    months = 2 * plan.window + 1
+    rows = _rows(runs, plan, months)
+    controls, planted = _controls(runs.real, plan, months), _planted(runs.real, plan, months)
+    return PlaceboCard(
+        setup=_setup(label, plan),
+        counts=_counts(runs),
         rows=rows,
         corrections=_corrections(rows, plan),
         controls=controls,

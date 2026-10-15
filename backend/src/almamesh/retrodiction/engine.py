@@ -147,14 +147,19 @@ def obstacles_activation(birth: Birth, ym: YearMonth) -> float:
     offset = birth.datetime.utcoffset()
     if offset is None:
         raise ValueError("birth datetime needs its UTC offset")
+    contexts = _readable_month(birth, ym, offset)
+    theme = next(t for t in contexts.period_reading.themes if t.domain == LifeDomain.OBSTACLES)
+    return theme.strength_pct / 100
+
+
+def _readable_month(birth: Birth, ym: YearMonth, offset: timedelta) -> PredictiveContexts:
+    """The month reading, or a picklable range error when it leaves the engine's tables."""
     try:
-        contexts = _month_reading(birth, ym, offset)
+        return _month_reading(birth, ym, offset)
     except ValueError as exc:
         if not _outside_tables(exc):
             raise
         raise EngineReadingRangeError(f"{ym[0]:04d}-{ym[1]:02d}: {exc}") from None
-    theme = next(t for t in contexts.period_reading.themes if t.domain == LifeDomain.OBSTACLES)
-    return theme.strength_pct / 100
 
 
 def _outside_tables(exc: ValueError) -> bool:

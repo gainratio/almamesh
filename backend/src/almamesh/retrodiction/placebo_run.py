@@ -140,9 +140,22 @@ def _event_hits(
     own = _readable_hits(engine, real, target, plan)
     if own is None:
         return Exclusion(subject, event.category, event.date, UNREADABLE)
-    windows = _placebo_windows(engine, subject, ordinal, event, real, plan.placebos)
-    placebos = [_readable_hits(engine, w, target, plan) for w in windows]
-    return EventHits(subject, ordinal, real.area, own, tuple(p for p in placebos if p is not None))
+    placebos = _placebo_hits(engine, (subject, ordinal), event, real, plan)
+    return EventHits(subject, ordinal, real.area, own, placebos)
+
+
+def _placebo_hits(
+    engine: SubjectEngine,
+    native: tuple[str, int],
+    event: LifeEvent,
+    real: EventScores,
+    plan: RunPlan,
+) -> tuple[dict[HitKey, float], ...]:
+    """Centre hits of the readable placebo windows (unreadable ones drop, amendment f6)."""
+    target = MAPPING[event.category].target
+    windows = _placebo_windows(engine, native[0], native[1], event, real, plan.placebos)
+    hits = [_readable_hits(engine, w, target, plan) for w in windows]
+    return tuple(h for h in hits if h is not None)
 
 
 def _out_of_range(subject: Subject, events: Sequence[LifeEvent]) -> list[EventHits | Exclusion]:

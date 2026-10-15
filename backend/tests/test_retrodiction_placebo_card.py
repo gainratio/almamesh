@@ -55,8 +55,8 @@ def test_should_write_an_aggregate_only_placebo_scorecard_from_the_cli(
     assert result.exit_code == 0, result.output
     card = json.loads((out / "placebo-scorecard.json").read_text())
     markdown = (out / "placebo-scorecard.md").read_text()
-    assert card["added_family"] == "exact_transits"
-    assert card["events_scored"] == 3
+    assert card["setup"]["added_family"] == "exact_transits"
+    assert card["counts"]["events_scored"] == 3
     assert {r["family_set"] for r in card["rows"]} == {BASELINE, "+exact_transits"}
     assert "only:yogini" in card["controls"]
     assert card["planted"]["3"]["lift"] == pytest.approx(73 / 3)
@@ -103,7 +103,7 @@ def test_should_score_only_disputes_events_and_resolve_obstacles_lazily(
     card = build_placebo_card(loaded, RunPlan(added="engine_obstacles"), workers=1)
     exact = build_placebo_card(loaded, RunPlan(added="exact_transits"), workers=1)
     # Then only the legal event is scored, and far fewer months than every window holds
-    assert card.events_scored == 1
+    assert card.counts.events_scored == 1
     assert 0 < len(set(asked)) < 5 * 73
 
     # and BASELINE on the disputes area is the same number in both runs
