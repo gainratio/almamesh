@@ -289,6 +289,10 @@ describe('MeshEdgePage', () => {
     // AI is unconfigured in tests → the honest CTA, never a spinner.
     expect(screen.getByTestId('mesh-reading-cta')).toBeTruthy();
     expect(screen.queryByTestId('mesh-discuss-chat')).toBeNull();
+    // Its button opens the shared AI setup panel in place.
+    fireEvent.click(screen.getByTestId('mesh-reading-connect'));
+    expect(screen.getByRole('dialog', { name: 'Connect AI' })).toBeTruthy();
+    fireEvent.keyDown(document, { key: 'Escape' });
 
     // The engine's read-only promise, verbatim, at the foot.
     expect(screen.getByTestId('mesh-integrity-note').textContent).toContain(

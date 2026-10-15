@@ -150,7 +150,7 @@
     "badge": "optional · narrates only",
     "cta_title": "Connect a model to narrate this edge",
     "cta_body": "Everything above is computed on your device and stands on its own. An optional AI model can narrate it in plain language — it never computes or changes a single number.",
-    "cta_link": "Open AI settings",
+    "cta_link": "Connect AI",
     "generate": "Generate reading",
     "regenerate": "Regenerate",
     "generating": "Narrating this edge — {{elapsed}} so far.",

@@ -481,10 +481,11 @@ test('shows the Connect-an-AI CTA when no model is configured', async ({ page })
 
   await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
 
-  // The "Connect an AI model" CTA / link to /settings/ai is shown.
+  // The "Connect an AI model" CTA is shown, and opens the AI setup panel in place.
   const cta = page.getByTestId('connect-ai-link');
   await expect(cta).toBeVisible({ timeout: 60_000 });
-  await expect(cta).toHaveAttribute('href', /\/settings\/ai/);
+  await cta.click();
+  await expect(page.getByRole('dialog', { name: 'Connect AI' }).getByTestId('llm-openrouter-key')).toBeVisible();
 
   // And no bare "Interpretation data not available" empty-state.
   await expect(page.getByText('Interpretation data not available')).toHaveCount(0);
