@@ -1,6 +1,8 @@
 /**
- * The published retrodiction aggregates (docs/superpowers/specs/2026-10-14-retrodiction-*.md,
- * DEV half, k = 3 months of a 73-month window, placebo-calibrated lift with 95% CI).
+ * The published retrodiction aggregates: the DEV half of the pre-registered
+ * retrodiction eval, k = 3 months of a 73-month window, placebo-calibrated lift
+ * with 95% CI. The eval runs offline against licensed data, so its runs and
+ * pre-registration are not in this repository.
  *
  * The Astro-Databank licence allows aggregates only: totals and lifts, never a name,
  * a birth datum, an event row or an example. Nothing here identifies anyone.
