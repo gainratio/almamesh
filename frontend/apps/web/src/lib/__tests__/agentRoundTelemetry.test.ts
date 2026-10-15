@@ -123,6 +123,15 @@ describe('agent call telemetry (dev diagnostics only, in memory)', () => {
     expect(agentCallRows().map((row) => 'retryReason' in row)).toEqual([false, false]);
   });
 
+  it('an answer call keeps which sections were filled from the reading; other calls carry none', () => {
+    clearAgentRoundsForTest();
+    const turn = beginAgentTurn();
+    turn.onToolCall(CALL);
+    turn.onToolCall({ ...CALL, toolName: 'answer', filled: ['moon', 'windows'] });
+    turn.onToolCall({ ...CALL, toolName: 'answer', filled: [] });
+    expect(agentCallRows().map((row) => row.filled)).toEqual([undefined, ['moon', 'windows'], []]);
+  });
+
   it('records a retried row as given and keeps only the newest 64 calls', () => {
     clearAgentRoundsForTest();
     for (let round = 1; round <= 70; round += 1) recordAgentCall({ turn: 1, round, name: 'x', status: 'retried', validFirstTry: false });

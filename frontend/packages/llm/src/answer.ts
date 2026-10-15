@@ -534,6 +534,13 @@ function dashaLine(level: DashaLevel, line: DashaLine, o: RenderOptions): string
   return `- ${sentence(`**${graha}** ${L.roles[level]}.`, rules, line.note)}`;
 }
 
+/** A Moon line; a meaning that only repeats the tag's name (a line filled from the reading) is not said twice. */
+function moonLineText(line: MoonLine, language: Language): string {
+  const label = moonTagLabel(line.tag, language);
+  const meaning = line.meaning.trim();
+  return meaning && plain(meaning) !== plain(label) ? `- **${label}**: ${meaning}` : `- **${label}**`;
+}
+
 function themeLineText(theme: ThemeLine, language: Language): string {
   const L = LABELS[language];
   return `- **${capitalize(theme.area.trim())}** (${L.direction[theme.direction]}, ${L.confidence(theme.confidence)}): ${sentence(theme.text, theme.obstacle ?? undefined)}`;
@@ -601,7 +608,7 @@ function periodSections(v: Value, done: Done, o: RenderOptions): Array<() => Sec
     () => headingSection(v, done, o),
     () => proseSection("opening", v, done),
     () => dashasSection(v, done, o),
-    () => listSection("moon", moonLineSchema, (m) => `- **${moonTagLabel(m.tag, o.language)}**: ${m.meaning.trim()}`, v, done, o),
+    () => listSection("moon", moonLineSchema, (m) => moonLineText(m, o.language), v, done, o),
     () => listSection("themes", themeLineSchema, (t) => themeLineText(t, o.language), v, done, o),
     () => listSection("windows", windowLineSchema, (w) => `- **${renderDate(w.date, o.language)}**: ${w.what.trim()}`, v, done, o),
     () => proseSection("advice", v, done),
@@ -659,17 +666,49 @@ function withReadingPlace<T>(value: T, readings: readonly GroundingReading[]): T
   return label ? ({ ...v, place: label } as T) : value;
 }
 
+// ---------------------------------------------------------------------------
+// Filling facts the reading already gave
+// ---------------------------------------------------------------------------
+
+/** At most this many dated windows are filled from the reading. */
+export const FILLED_WINDOWS = 3;
+
+const isObject = (value: unknown): value is Readonly<Record<string, unknown>> => typeof value === "object" && value !== null && !Array.isArray(value);
+
+/** A list the model left out: null (or omitted), or empty. */
+const leftOut = (value: unknown): boolean => value === null || value === undefined || (Array.isArray(value) && value.length === 0);
+
+/**
+ * A period answer with its left-out Moon and windows sections filled from this turn's readings:
+ * each Moon tag, named in the answer's language, and the first {@link FILLED_WINDOWS} dated facts
+ * inside the period, earliest first. These are facts the reading already states; the model's job
+ * is to interpret them, not to copy them. A section the model gave is kept as it is (a wrong tag
+ * or date is still rejected), and nothing else is filled: the dashas, themes and opening are the
+ * model's interpretation. The input itself is returned when there is nothing to fill.
+ */
+export function fillFromReadings(input: unknown, readings: readonly GroundingReading[], language: Language): unknown {
+  if (!isObject(input) || input.kind !== "period" || readings.length === 0) return input;
+  const moon = leftOut(input.moon) ? allTags(readings).map((tag): MoonLine => ({ tag, meaning: moonTagLabel(tag, language) })) : input.moon;
+  const windows = leftOut(input.windows) ? datedFacts(readings).slice(0, FILLED_WINDOWS).map(({ date, what }): WindowLine => ({ date, what })) : input.windows;
+  if (JSON.stringify([moon, windows]) === JSON.stringify([input.moon, input.windows])) return input;
+  return { ...input, moon, windows };
+}
+
 /** The answer tool's description: the loop's default, plus where the facts come from (each read_period result's cite). */
 export const CHAT_ANSWER_DESCRIPTION =
   "Submit the final answer to the user. Call it once, last, after the readings you need. " +
   "Copy the facts from each reading's cite. If the arguments are rejected, fix the named fields and call it again.";
 
-/** The tool loop's answer spec: this schema, rendered in the reader's voice; a null place is the reading's. */
+/**
+ * The tool loop's answer spec: this schema, rendered in the reader's voice; a null place is the
+ * reading's, and left-out Moon and windows sections are filled from the reading before validation.
+ */
 export function chatAnswerSpec(grounding: () => AnswerGrounding, o: RenderOptions): AnswerSpec<ChatAnswer> {
   const placed = <T>(value: T): T => withReadingPlace(value, grounding().readings);
   return {
     schema: answerSchema(grounding, o.language),
     description: CHAT_ANSWER_DESCRIPTION,
+    prepare: (input) => fillFromReadings(input, grounding().readings, o.language),
     render: (value, final) => (final ? renderAnswer(placed(value as ChatAnswer), o) : renderPartialAnswer(placed(value as DeepPartial<ChatAnswer>), o)),
   };
 }

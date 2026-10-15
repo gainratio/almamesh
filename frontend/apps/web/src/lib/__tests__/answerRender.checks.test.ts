@@ -148,6 +148,20 @@ describe('rendered answers pass the trip matrix checks', () => {
     expect(misses(renderAnswer(answer, { voice: 'layman', language: 'en' }), SADE_SATI)).toContain('answer does not name the place /Vadodara/');
   });
 
+  it('an answer whose Moon and windows sections were filled from the reading (the model left them out) passes too', () => {
+    for (const fixture of [SADE_SATI, JUPITER_FROM_MOON, OBSTACLES]) {
+      const grounding = () => ({ readings: [fixture.reading] });
+      const spec = chatAnswerSpec(grounding, { voice: 'layman', language: 'en' });
+      const parsed = answerSchema(grounding).safeParse(spec.prepare?.({ markdown: null, ...fixture.answer, moon: null, windows: [] }));
+      expect(parsed.success ? [] : parsed.error.issues.map((issue) => issue.message), fixture.name).toEqual([]);
+      if (!parsed.success) continue;
+      for (const options of VOICES) {
+        const markdown = chatAnswerSpec(grounding, options).render(parsed.data, true);
+        for (const text of forms(markdown)) expect(misses(text, fixture), `${fixture.name} ${options.voice}: ${text}`).toEqual([]);
+      }
+    }
+  });
+
   it('the checks can fail: the same answer without its window, confidence or lordship misses all three', () => {
     const bare = renderAnswer(OBSTACLES.answer, { voice: 'layman', language: 'en' })
       .replace(/\*\*Dates to watch\*\*\n.*\n/, '')

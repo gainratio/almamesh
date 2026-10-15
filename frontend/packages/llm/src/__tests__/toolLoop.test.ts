@@ -999,3 +999,45 @@ describe("network retry", () => {
     expect(calls).toBe(1);
   });
 });
+
+describe("answer prepare: the spec fills facts the tools already returned, before validation", () => {
+  const Filled = z
+    .object({ headline: z.string(), body: z.string().nullable() })
+    .refine((value) => value.body !== null, { message: "body is required", path: ["body"] });
+  type FilledShape = z.infer<typeof Filled>;
+  const seen: unknown[] = [];
+  const prepare = (input: unknown): unknown => {
+    seen.push(input);
+    const value = input as Record<string, unknown>;
+    return value.body === null ? { ...value, body: "From the reading." } : input;
+  };
+  const filledSpec = { schema: Filled, render: (p: Partial<FilledShape>, final: boolean) => `${final ? "final" : "partial"}:${String(p.headline)}:${String(p.body)}`, prepare };
+  const run = (...turns: FakeTurn[]) => {
+    seen.length = 0;
+    const { fetchImpl } = fakeEndpoint(turns);
+    const toolCalls: ToolCallEvent[] = [];
+    const o = { ...options(fetchImpl), answer: filledSpec, onToolCall: (e: ToolCallEvent) => toolCalls.push(e) } as unknown as RunToolTurnOptions<FilledShape>;
+    return { toolCalls, pending: collect(runToolTurn(o)) };
+  };
+
+  it("sees the normalized input (the string \"null\" is already null) and its fill passes on the first try", async () => {
+    const { toolCalls, pending } = run(answer("a1", '{"headline":"H","body":"null"}'));
+    const { result, snapshots } = await pending;
+    expect(seen[0]).toEqual({ headline: "H", body: null });
+    expect(result).toEqual({ answer: { headline: "H", body: "From the reading." } });
+    expect(snapshots.at(-1)).toBe("final:H:From the reading.");
+    expect(toolCalls).toMatchObject([{ toolName: "answer", status: "complete", validFirstTry: true, filled: ["body"] }]);
+  });
+
+  it("an answer it leaves alone reports no fill", async () => {
+    const { toolCalls, pending } = run(answer("a1", '{"headline":"H","body":"Mine."}'));
+    expect((await pending).result).toEqual({ answer: { headline: "H", body: "Mine." } });
+    expect(toolCalls).toMatchObject([{ status: "complete", validFirstTry: true, filled: [] }]);
+  });
+
+  it("a value prepare cannot fix is still a retry", async () => {
+    const { toolCalls, pending } = run(answer("a1", '{"headline":7,"body":null}'), answer("a2", '{"headline":"H","body":"Mine."}'));
+    await pending;
+    expect(toolCalls.map((e) => e.status)).toEqual(["retried", "complete"]);
+  });
+});

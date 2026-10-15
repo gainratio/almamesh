@@ -100,6 +100,8 @@ export interface ToolCallEvent {
   readonly status: ToolCallStatus;
   /** Valid, and no earlier call to the same tool this turn was invalid. */
   readonly validFirstTry: boolean;
+  /** A valid `answer` call only: the top-level keys the answer spec's `prepare` filled ([] when none). */
+  readonly filled?: readonly string[];
 }
 
 export interface RoundEvent {
@@ -128,6 +130,12 @@ export interface AnswerSpec<A> {
   /** The answer tool's description on the wire (default {@link ANSWER_TOOL_DESCRIPTION}). */
   readonly description?: string;
   render(partial: Partial<A>, final: boolean): string;
+  /**
+   * Fills facts the tools already returned into the model's answer before it is validated
+   * (after omitted, "null" and blank nullable keys became null). Return the input unchanged when
+   * there is nothing to fill; a wrong value must be left for validation to reject.
+   */
+  prepare?(input: unknown): unknown;
 }
 
 export interface RunToolTurnOptions<A> {
@@ -320,11 +328,25 @@ function wireSchema(input: z.ZodType): JSONSchema7 {
   return schema as JSONSchema7;
 }
 
-/** Send the strict (all-required) JSON schema; validate leniently with zod. */
-function lenientSchema<I>(input: z.ZodType<I>) {
+/** The top-level keys whose value `prepare` changed. */
+function changedKeys(before: unknown, after: unknown): string[] {
+  if (!isRecord(before) || !isRecord(after) || before === after) return [];
+  return Object.keys(after).filter((key) => JSON.stringify(before[key]) !== JSON.stringify(after[key]));
+}
+
+/** What the answer spec's `prepare` filled in the answer call validated last (read by the tool-call part that follows). */
+interface AnswerFill {
+  filled: readonly string[];
+}
+
+/** Send the strict (all-required) JSON schema; validate leniently with zod, after `prepare` fills what it can. */
+function lenientSchema<I>(input: z.ZodType<I>, prepare?: (value: unknown) => unknown, fill?: AnswerFill) {
   return jsonSchema<I>(wireSchema(input), {
     validate: (value) => {
-      const parsed = input.safeParse(normalizeNullables(input, value));
+      const normalized = normalizeNullables(input, value);
+      const prepared = prepare ? prepare(normalized) : normalized;
+      if (fill) fill.filled = changedKeys(normalized, prepared);
+      const parsed = input.safeParse(prepared);
       return parsed.success
         ? { success: true, value: parsed.data }
         : { success: false, error: new Error(z.prettifyError(parsed.error)) };
@@ -381,6 +403,7 @@ interface TurnContext {
   readonly cancel: AbortController;
   readonly watchdog: ReasoningWatchdog;
   readonly reads: ReadProgress;
+  readonly fill: AnswerFill;
   readonly providerOptions: ProviderOptions;
   readonly budget: TurnBudget;
 }
@@ -506,7 +529,7 @@ function sdkTool(def: ToolDef<unknown>, runtime: ToolRuntime): Tool {
   });
 }
 
-function toolSet<A>(o: RunToolTurnOptions<A>, signal: AbortSignal, reads: ReadProgress): ToolSet {
+function toolSet<A>(o: RunToolTurnOptions<A>, signal: AbortSignal, reads: ReadProgress, fill: AnswerFill): ToolSet {
   const runtime: ToolRuntime = {
     strict: endpointHonoursStrict(o.config),
     budget: new CallBudget(o.limits?.maxCallsPerTool ?? TOOL_LOOP_LIMITS.maxCallsPerTool),
@@ -518,7 +541,7 @@ function toolSet<A>(o: RunToolTurnOptions<A>, signal: AbortSignal, reads: ReadPr
   for (const def of o.tools) tools[def.name] = sdkTool(def, runtime);
   tools[ANSWER_TOOL_NAME] = tool({
     description: o.answer.description ?? ANSWER_TOOL_DESCRIPTION,
-    inputSchema: lenientSchema(o.answer.schema),
+    inputSchema: lenientSchema(o.answer.schema, o.answer.prepare?.bind(o.answer), fill),
     ...(runtime.strict ? { strict: true } : {}),
   });
   return tools;
@@ -540,16 +563,18 @@ function turnContext<A>(o: RunToolTurnOptions<A>): TurnContext {
   const cancel = new AbortController();
   const signal = AbortSignal.any([cancel.signal, watchdog.signal, ...(o.signal ? [o.signal] : [])]);
   const reads: ReadProgress = { completed: false };
+  const fill: AnswerFill = { filled: [] };
   return {
     model: chatModel(o as RunToolTurnOptions<unknown>),
     messages: o.messages.map((m) => ({ role: m.role, content: m.content })),
-    tools: toolSet(o, signal, reads),
+    tools: toolSet(o, signal, reads, fill),
     readTools: o.tools.map((t) => t.name),
     maxRounds: o.limits?.maxRounds ?? TOOL_LOOP_LIMITS.maxRounds,
     signal,
     cancel,
     watchdog,
     reads,
+    fill,
     providerOptions: { [PROVIDER_NAME]: isOpenRouter(o.config) ? { reasoning: { max_tokens: CHAT_REASONING_MAX_TOKENS } } : {} },
     budget: turnBudget(o),
   };
@@ -798,7 +823,7 @@ function startAnswering<A>(o: RunToolTurnOptions<A>, state: TurnState): void {
   o.onStatus?.({ phase: "answering" });
 }
 
-function emitCall<A>(o: RunToolTurnOptions<A>, state: TurnState, part: CallPart, result: unknown, status: ToolCallStatus): void {
+function emitCall<A>(o: RunToolTurnOptions<A>, state: TurnState, part: CallPart, result: unknown, status: ToolCallStatus, filled?: readonly string[]): void {
   o.onToolCall?.({
     round: state.round,
     toolCallId: part.toolCallId,
@@ -807,6 +832,7 @@ function emitCall<A>(o: RunToolTurnOptions<A>, state: TurnState, part: CallPart,
     result,
     status,
     validFirstTry: state.firstTry.has(part.toolCallId),
+    ...(filled ? { filled } : {}),
   });
 }
 
@@ -814,7 +840,7 @@ function labelFor<A>(o: RunToolTurnOptions<A>, name: string): string {
   return o.tools.find((t) => t.name === name)?.statusLabel ?? `Using ${name}`;
 }
 
-function onToolCall<A>(part: PartOf<"tool-call">, o: RunToolTurnOptions<A>, state: TurnState): void {
+function onToolCall<A>(part: PartOf<"tool-call">, o: RunToolTurnOptions<A>, ctx: TurnContext, state: TurnState): void {
   const invalid = "invalid" in part && part.invalid === true;
   state.stepCalls += 1;
   if (!invalid && !state.invalidNames.has(part.toolName)) state.firstTry.add(part.toolCallId);
@@ -823,7 +849,8 @@ function onToolCall<A>(part: PartOf<"tool-call">, o: RunToolTurnOptions<A>, stat
     state.invalidNames.add(part.toolName);
   } else if (part.toolName === ANSWER_TOOL_NAME) {
     state.answerInput ??= part.input;
-    emitCall(o, state, part, undefined, "complete");
+    // The SDK validates a call, then emits its tool-call part: the last fill is this call's.
+    emitCall(o, state, part, undefined, "complete", ctx.fill.filled);
   } else {
     state.callNumber += 1;
     o.onStatus?.({ phase: "using_tool", round: state.round, toolName: part.toolName, label: labelFor(o, part.toolName), callNumber: state.callNumber });
@@ -886,7 +913,7 @@ async function onPart<A>(part: Part, o: RunToolTurnOptions<A>, ctx: TurnContext,
       return answerSnapshot(part, o, state);
     case "tool-call":
       ctx.watchdog.disarm();
-      onToolCall(part, o, state);
+      onToolCall(part, o, ctx, state);
       return undefined;
     case "tool-error":
       emitCall(o, state, part, errorText(part.error), state.invalidIds.has(part.toolCallId) ? "retried" : "error");

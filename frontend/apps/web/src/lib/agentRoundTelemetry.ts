@@ -4,7 +4,8 @@
  * turn records its input and output tokens and why it finished; each tool call
  * records its name, status, the round that asked for it and whether it was valid
  * on its first try (the trip matrix counts these per question); a retried call
- * also keeps why it was rejected (the start of the error the model was sent).
+ * also keeps why it was rejected (the start of the error the model was sent), and a valid answer
+ * call which sections the loop filled from the reading (the model left them out).
  *
  * Dev diagnostics only: rows live in this tab's memory (newest 64 of each), and
  * in dev or hook builds they are readable as `window.__almameshAgentRounds()`
@@ -41,6 +42,8 @@ export interface AgentCallRow {
   readonly validFirstTry: boolean;
   /** A retried call only: why, the first 300 characters of the error the model was sent. */
   readonly retryReason?: string;
+  /** A valid answer call only: the sections filled from the reading instead of by the model (e.g. moon, windows). */
+  readonly filled?: readonly string[];
 }
 
 /** One turn's sinks: pass `onRound` and `onToolCall` to the tool loop. */
@@ -134,6 +137,7 @@ export function beginAgentTurn(): AgentTurnTelemetry {
       recordAgentCall({
         turn, round: event.round, name: event.toolName, status: event.status, validFirstTry: event.validFirstTry,
         ...(event.status === 'retried' ? { retryReason: retryReasonOf(event.result) } : {}),
+        ...(event.filled ? { filled: [...event.filled] } : {}),
       });
     },
   };

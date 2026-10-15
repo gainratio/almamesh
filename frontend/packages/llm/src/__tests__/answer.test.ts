@@ -713,12 +713,12 @@ describe("answerSchema: a model that sends \"null\" or omits nullable keys (prod
     expect(events.map((e) => [e.status, e.validFirstTry])).toEqual([["complete", true]]);
   });
 
-  it("a first answer that leaves moon and windows null is fixed in ONE retry: the rejection lists the tags and the dated windows", async () => {
-    const events = await answerEvents({ ...wire(ANSWER), moon: null, windows: null }, wire(ANSWER));
-    expect(events.map((e) => e.status)).toEqual(["retried", "complete"]);
-    const reason = String(events[0]?.result);
-    expect(reason).toContain("name at least one Moon tag: sade_sati_phase_1, jupiter_from_moon_11");
-    expect(reason).toContain("give at least one dated window from the reading, e.g. 2019-09-25: Mars enters Virgo");
+  // CONTRACT REVERSED (Task 10f): this was "fixed in ONE retry". The spec now fills moon and
+  // windows from the reading before validation, so the same answer passes on the first try.
+  // The rejection text it asserted is still asserted on the schema itself (answerSchema tests).
+  it("a first answer that leaves moon and windows null passes on the first try: both are filled from the reading", async () => {
+    const events = await answerEvents({ ...wire(ANSWER), moon: null, windows: null });
+    expect(events.map((e) => [e.status, e.validFirstTry, e.filled])).toEqual([["complete", true, ["moon", "windows"]]]);
   });
 
   it("a nested wrong value still retries", async () => {
@@ -727,5 +727,119 @@ describe("answerSchema: a model that sends \"null\" or omits nullable keys (prod
     const events = await answerEvents(wrong, wire(ANSWER));
     expect(events.map((e) => e.status)).toEqual(["retried", "complete"]);
     expect(events[0]?.validFirstTry).toBe(false);
+  });
+});
+
+describe("chatAnswerSpec.prepare: moon and windows come from the reading when the model leaves them out", () => {
+  const CONFIG: ProviderConfig = { engine: "openai-http", model: "deepseek/deepseek-v4-pro", privacyMode: "cloud_premium", baseUrl: "https://openrouter.ai/api/v1", apiKey: "k" };
+  const EN = { voice: "layman", language: "en" } as const;
+  const OCTOBER: Reading = {
+    period: { start: "2026-10-01", end: "2026-10-31", label: "October 2026" },
+    place: { label: "" },
+    maha: ["jupiter"],
+    antar: ["saturn"],
+    rules: { jupiter: [2, 11], saturn: [1, 12] },
+    tags: ["jupiter_from_moon_7"],
+    windows: [
+      { date: "2026-09-28", what: "Venus enters Virgo" },
+      { date: "2026-10-04", what: "pratyantar Mars begins" },
+      { date: "2026-10-12", what: "Mars enters Leo" },
+      { date: "2026-10-19", what: "Saturn stations direct" },
+      { date: "2026-10-27", what: "Sun enters Libra" },
+    ],
+    domains: ["career"],
+  };
+  /** What deepseek sends: moon null, windows [], the interpretation filled in. */
+  const DEEPSEEK = {
+    ...wire({ ...ANSWER, period: "October 2026", place: null, themes: [ANSWER.themes[0] as PeriodAnswer["themes"][number]] }),
+    moon: null,
+    windows: [],
+  };
+
+  async function turn(reading: Reading, language: "en" | "es", ...sent: Record<string, unknown>[]) {
+    const ep = fakeEndpoint(sent.map((body, i) => ({ calls: [{ id: `a${i}`, name: "answer", args: JSON.stringify(body) }] })));
+    const events: ToolCallEvent[] = [];
+    const { snapshots, result } = await collect(
+      runToolTurn({
+        config: CONFIG,
+        messages: [{ role: "user", content: "How is this month?" }],
+        tools: [],
+        answer: chatAnswerSpec(grounded(reading), { voice: "layman", language }),
+        readFirst: false,
+        now: new Date("2026-10-14T00:00:00Z"),
+        fetchImpl: ep.fetchImpl,
+        onToolCall: (e) => events.push(e),
+      }),
+    );
+    return { events, snapshots, answer: (result as { answer: PeriodAnswer }).answer };
+  }
+
+  it("deepseek's moon null and windows [] pass on the first try, rendered with the reading's tag and dated windows", async () => {
+    const { events, snapshots, answer } = await turn(OCTOBER, "en", DEEPSEEK);
+    expect(events.map((e) => [e.status, e.validFirstTry, e.filled])).toEqual([["complete", true, ["moon", "windows"]]]);
+    expect(answer.moon).toEqual([{ tag: "jupiter_from_moon_7", meaning: "Jupiter 7th from your Moon" }]);
+    // Up to 3, inside the period only, in the reading's order (earliest first).
+    expect(answer.windows).toEqual([
+      { date: "2026-10-04", what: "pratyantar Mars begins" },
+      { date: "2026-10-12", what: "Mars enters Leo" },
+      { date: "2026-10-19", what: "Saturn stations direct" },
+    ]);
+    const final = snapshots.at(-1) ?? "";
+    expect(final).toContain("**The Moon's sky**\n- **Jupiter 7th from your Moon**\n");
+    expect(final).toContain("**Dates to watch**\n- **4 Oct 2026**: pratyantar Mars begins\n- **12 Oct 2026**: Mars enters Leo\n- **19 Oct 2026**: Saturn stations direct");
+  });
+
+  it("the streamed text before the final snapshot lacks the filled sections; the final one has them", async () => {
+    const { snapshots } = await turn(OCTOBER, "en", DEEPSEEK);
+    expect(snapshots.slice(0, -1).some((s) => s.includes("Dates to watch"))).toBe(false);
+    expect(snapshots.at(-1)).toContain("Dates to watch");
+  });
+
+  it("a filled Moon line reads as the tag in the answer's language", async () => {
+    const { answer, snapshots } = await turn(OCTOBER, "es", DEEPSEEK);
+    expect(answer.moon).toEqual([{ tag: "jupiter_from_moon_7", meaning: "Júpiter en la casa 7 desde tu Luna" }]);
+    expect(snapshots.at(-1)).toContain("- **Júpiter en la casa 7 desde tu Luna**\n");
+  });
+
+  it("what the model gave is never overwritten", async () => {
+    const moon = [{ tag: "jupiter_from_moon_7", meaning: "A partner or ally steps forward." }];
+    const { events, answer } = await turn(OCTOBER, "en", { ...DEEPSEEK, moon });
+    expect(events.map((e) => [e.status, e.filled])).toEqual([["complete", ["windows"]]]);
+    expect(answer.moon).toEqual(moon);
+  });
+
+  it("a wrong Moon tag the model gave still retries", async () => {
+    const wrong = { ...DEEPSEEK, moon: [{ tag: "saturn_from_moon_4", meaning: "Home feels heavy." }] };
+    const { events } = await turn(OCTOBER, "en", wrong, DEEPSEEK);
+    expect(events.map((e) => e.status)).toEqual(["retried", "complete"]);
+    expect(String(events[0]?.result)).toContain("moon tags must come from the reading: jupiter_from_moon_7");
+  });
+
+  it("an out-of-period window the model gave still retries", async () => {
+    const wrong = { ...DEEPSEEK, windows: [{ date: "2026-11-12", what: "Mars enters Leo" }] };
+    const { events } = await turn(OCTOBER, "en", wrong, DEEPSEEK);
+    expect(events.map((e) => e.status)).toEqual(["retried", "complete"]);
+    expect(String(events[0]?.result)).toContain("dates must fall inside 2026-10-01..2026-10-31");
+  });
+
+  it("the interpretation is not filled: a missing dashas or themes still retries", async () => {
+    const { events } = await turn(OCTOBER, "en", { ...DEEPSEEK, dashas: null, themes: [] }, DEEPSEEK);
+    expect(events.map((e) => e.status)).toEqual(["retried", "complete"]);
+    const reason = String(events[0]?.result);
+    expect(reason).toContain("dashas is required");
+    expect(reason).toContain("give at least one theme");
+  });
+
+  it("a reading with no tags and no dated days: a null moon or windows becomes [] (nothing to cite)", async () => {
+    const bare: Reading = { ...OCTOBER, tags: [], windows: [] };
+    const { events, answer } = await turn(bare, "en", { ...DEEPSEEK, windows: null });
+    expect(events.map((e) => [e.status, e.validFirstTry, e.filled])).toEqual([["complete", true, ["moon", "windows"]]]);
+    expect([answer.moon, answer.windows]).toEqual([[], []]);
+  });
+
+  it("kind general is untouched", () => {
+    const general = wire({ kind: "general", markdown: "Venus rules your 4th house." });
+    expect(chatAnswerSpec(grounded(OCTOBER), EN).prepare?.(general)).toBe(general);
+    expect(chatAnswerSpec(grounded(), EN).prepare?.({ ...general, kind: "period" })).toEqual({ ...general, kind: "period" });
   });
 });
