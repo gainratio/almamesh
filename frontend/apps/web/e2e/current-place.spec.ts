@@ -108,3 +108,60 @@ test('[contract] "novato, ca" set in Profile settings persists across a reload a
 
   expect(consoleErrors, 'the journey must keep a clean console').toEqual([]);
 });
+
+/**
+ * "Saved" means on disk (2026-10-14). It used to show the moment the place changed in memory, before
+ * the SQLite write, and a reload right after it lost the place. Every worker message (the SQLite
+ * write among them) is held while the place is picked: "Saved" must not show until they are
+ * released and the write commits; then a reload at once keeps the place.
+ */
+test('[contract] "Saved" shows only after the place is on disk, and a reload right after it keeps the place', async ({ page }, testInfo) => {
+  const consoleErrors = await prepare(page, testInfo);
+  await page.addInitScript(() => {
+    const post = Worker.prototype.postMessage;
+    const held: Array<[Worker, Parameters<Worker['postMessage']>]> = [];
+    const w = window as unknown as { __holdWrites: boolean; __releaseWrites: () => void };
+    w.__holdWrites = false;
+    w.__releaseWrites = () => {
+      w.__holdWrites = false;
+      for (const [worker, args] of held.splice(0)) post.apply(worker, args);
+    };
+    Worker.prototype.postMessage = function (this: Worker, ...args: Parameters<Worker['postMessage']>) {
+      if (w.__holdWrites) {
+        held.push([this, args]);
+        return;
+      }
+      return post.apply(this, args);
+    } as Worker['postMessage'];
+  });
+  await bootEngine(page);
+  await seedChart(page);
+  await gotoSettled(page, '/settings/profile');
+  const shots = process.env.TRAVELFIX_SHOTS ?? 'test-results';
+  mkdirSync(shots, { recursive: true });
+
+  const input = page.getByTestId('current-place-input');
+  const status = page.getByTestId('current-place-status');
+  await input.pressSequentially('novato, ca');
+  await expect(page.getByTestId('current-place-option-0')).toHaveText(NOVATO, { timeout: 60_000 });
+  await page.evaluate(() => { (window as unknown as { __holdWrites: boolean }).__holdWrites = true; });
+  await input.press('Enter');
+  await expect(input).toHaveValue(NOVATO);
+  await page.waitForTimeout(1_500);
+  await expect(status, '"Saved" waits for the SQLite write').not.toHaveText('Saved');
+
+  await page.evaluate(() => (window as unknown as { __releaseWrites: () => void }).__releaseWrites());
+  await expect(status).toHaveText('Saved', { timeout: 30_000 });
+  const row = page.getByTestId('current-place');
+  await row.screenshot({ path: `${shots}/settings-saved-desktop.png` });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await row.screenshot({ path: `${shots}/settings-saved-390.png` });
+  await page.setViewportSize({ width: 1280, height: 900 });
+
+  await page.reload();
+  await expect(page.getByTestId('current-place-input'), 'a reload right after "Saved" keeps the place').toHaveValue(NOVATO, { timeout: 60_000 });
+  await row.screenshot({ path: `${shots}/settings-after-reload-desktop.png` });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await row.screenshot({ path: `${shots}/settings-after-reload-390.png` });
+  expect(consoleErrors, 'the journey must keep a clean console').toEqual([]);
+});

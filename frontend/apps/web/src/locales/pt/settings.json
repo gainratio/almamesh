@@ -91,7 +91,8 @@
     "current_place_placeholder": "Busque uma cidade",
     "current_place_hint": "Opcional. Fica neste dispositivo.",
     "current_place_clear": "Limpar",
-    "current_place_saved": "Salvo"
+    "current_place_saved": "Salvo",
+    "current_place_failed": "Não foi possível salvar. Tente de novo."
   },
   "rectification_record": {
     "title": "Sua retificação",

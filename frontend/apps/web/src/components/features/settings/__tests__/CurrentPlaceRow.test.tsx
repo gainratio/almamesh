@@ -3,7 +3,13 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 
 import { getCurrentPlace, useProfilesStore, whenProfilesHydrated } from '@almamesh/store';
 
+vi.mock('../../../../lib/storeSaved', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../../lib/storeSaved')>()),
+  waitForStoreSaved: vi.fn(async () => undefined),
+}));
+
 import '../../../../i18n/config';
+import { StoreSaveError, waitForStoreSaved } from '../../../../lib/storeSaved';
 import { installCityTestDatabase } from '../../../../lib/geo/__tests__/cityTestDb';
 import { CurrentPlaceRow } from '../CurrentPlaceRow';
 
@@ -55,7 +61,9 @@ describe('CurrentPlaceRow ("Where do you live now?")', () => {
     fireEvent.click(await screen.findByTestId('current-place-option-0'));
     expect(stored()).toEqual(NOVATO_PIN);
     expect(input().value).toBe(NOVATO_PIN.label);
-    expect(screen.getByTestId('current-place-status').textContent).toBe('Saved');
+    // Contract reversed 2026-10-14: "Saved" waits for the SQLite commit (it used to show at once).
+    await waitFor(() => expect(screen.getByTestId('current-place-status').textContent).toBe('Saved'));
+    expect(waitForStoreSaved).toHaveBeenCalledWith('people');
     expect(screen.queryByTestId('current-place-option-0')).toBeNull();
   });
 
@@ -115,5 +123,30 @@ describe('CurrentPlaceRow ("Where do you live now?")', () => {
     await waitFor(() => expect(stored()?.label).toBe('Novato, California, United States'));
     expect(stored()?.timezone).toBe('America/Los_Angeles');
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe('CurrentPlaceRow: "Saved" means on disk (2026-10-14)', () => {
+  it('says nothing until the people store has committed, then "Saved"', async () => {
+    let commit!: () => void;
+    vi.mocked(waitForStoreSaved).mockImplementationOnce(() => new Promise<void>((resolve) => { commit = resolve; }));
+    render(<CurrentPlaceRow lookup={stubLookup()} />);
+    fireEvent.change(input(), { target: { value: 'novato, ca' } });
+    fireEvent.click(await screen.findByTestId('current-place-option-0'));
+    expect(input().value).toBe(NOVATO_PIN.label);
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.getByTestId('current-place-status').textContent).toBe('');
+    await act(async () => { commit(); });
+    expect(screen.getByTestId('current-place-status').textContent).toBe('Saved');
+  });
+
+  it('a failed write says so, never "Saved", and puts the previous place back', async () => {
+    vi.mocked(waitForStoreSaved).mockRejectedValueOnce(new StoreSaveError('people', 'failed'));
+    render(<CurrentPlaceRow lookup={stubLookup()} />);
+    fireEvent.change(input(), { target: { value: 'novato, ca' } });
+    fireEvent.click(await screen.findByTestId('current-place-option-0'));
+    await waitFor(() => expect(screen.getByTestId('current-place-status').textContent).toBe('Couldn’t save. Try again.'));
+    expect(stored()).toBeUndefined();
+    expect(input().value).toBe('');
   });
 });

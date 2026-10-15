@@ -88,7 +88,8 @@
     "current_place_placeholder": "Search for a city",
     "current_place_hint": "Optional. Stays on this device.",
     "current_place_clear": "Clear",
-    "current_place_saved": "Saved"
+    "current_place_saved": "Saved",
+    "current_place_failed": "Couldn’t save. Try again."
   },
   "rectification_record": {
     "title": "Your rectification",

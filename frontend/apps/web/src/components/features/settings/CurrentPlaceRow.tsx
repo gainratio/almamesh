@@ -11,8 +11,11 @@ import { useProfilesStore } from '@almamesh/store';
 
 import type { PlaceLookup } from '../../../lib/geo/placeLookup';
 import { useCurrentPlace } from '../../../hooks/useCurrentPlace';
+import { waitForStoreSaved } from '../../../lib/storeSaved';
 import { PlaceCombobox } from '../chat/PlaceCombobox';
 import { lookupPlaceLazily, toPinPlace, usePlaceOptions } from '../chat/PlacePicker';
+
+type SaveStatus = 'idle' | 'saved' | 'failed';
 
 interface CurrentPlaceRowProps {
   /** The offline city lookup; tests inject one. */
@@ -25,7 +28,7 @@ export function CurrentPlaceRow({ lookup = lookupPlaceLazily }: CurrentPlaceRowP
   const setCurrentPlace = useProfilesStore((s) => s.setCurrentPlace);
   const place = useCurrentPlace();
   const [query, setQuery] = useState(place?.label ?? '');
-  const [saved, setSaved] = useState(false);
+  const [status, setStatus] = useState<SaveStatus>('idle');
   const { options, close } = usePlaceOptions(query, lookup, place?.label);
 
   // Another tab or an import can change the place under the row: show it.
@@ -33,10 +36,22 @@ export function CurrentPlaceRow({ lookup = lookupPlaceLazily }: CurrentPlaceRowP
 
   if (!activeId) return null;
 
-  const save = (next: Parameters<typeof setCurrentPlace>[1]) => {
-    setSaved(setCurrentPlace(activeId, next).ok && next !== undefined);
+  // "Saved" only once the SQLite write has committed; a failed write puts the previous place back.
+  const save = async (next: Parameters<typeof setCurrentPlace>[1]) => {
+    const previous = place;
+    setStatus('idle');
     setQuery(next?.label ?? '');
     close();
+    if (!setCurrentPlace(activeId, next).ok) return;
+    try {
+      await waitForStoreSaved('people');
+      setStatus(next === undefined ? 'idle' : 'saved');
+    } catch {
+      // waitForStoreSaved already logged a fixed code.
+      setCurrentPlace(activeId, previous);
+      setQuery(previous?.label ?? '');
+      setStatus('failed');
+    }
   };
 
   return (
@@ -56,15 +71,15 @@ export function CurrentPlaceRow({ lookup = lookupPlaceLazily }: CurrentPlaceRowP
             query={query}
             onQueryChange={(text) => {
               setQuery(text);
-              setSaved(false);
+              setStatus('idle');
             }}
             options={options}
-            onChoose={(option) => save(toPinPlace(option))}
+            onChoose={(option) => void save(toPinPlace(option))}
             onDismiss={close}
           />
         </div>
         {place && (
-          <button type="button" data-testid="current-place-clear" onClick={() => save(undefined)}
+          <button type="button" data-testid="current-place-clear" onClick={() => void save(undefined)}
             className="mt-1 shrink-0 rounded-lg px-3 py-2 text-sm text-text-muted hover:text-accent-gold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-gold/60">
             {t('profile.current_place_clear')}
           </button>
@@ -73,8 +88,8 @@ export function CurrentPlaceRow({ lookup = lookupPlaceLazily }: CurrentPlaceRowP
       <p id="current-place-hint" data-testid="current-place-hint" className="mt-2 text-xs text-text-muted">
         {t('profile.current_place_hint')}
       </p>
-      <p role="status" data-testid="current-place-status" className="sr-only">
-        {saved ? t('profile.current_place_saved') : ''}
+      <p role="status" data-testid="current-place-status" className={`mt-1 text-xs ${status === 'failed' ? 'text-status-error' : 'text-text-muted'}`}>
+        {status === 'idle' ? '' : t(status === 'saved' ? 'profile.current_place_saved' : 'profile.current_place_failed')}
       </p>
     </div>
   );

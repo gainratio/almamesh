@@ -277,8 +277,7 @@ test('[real] dashboard: timer + life phase + exact-day agentic chat', async ({
   await expect(page.getByTestId('current-place-option-0')).toHaveText('Novato, California, United States', { timeout: 60_000 });
   await currentPlace.press('Enter');
   await expect(page.getByTestId('current-place-status')).toHaveText('Saved', { timeout: 30_000 });
-  // "Saved" shows before the durable write lands; a reload right away can lose it. Prove it stuck.
-  await page.waitForTimeout(2_000);
+  // "Saved" means the SQLite write committed (2026-10-14), so a reload at once keeps the place.
   await page.reload();
   await expect(page.getByTestId('current-place-input')).toHaveValue('Novato, California, United States', { timeout: 30_000 });
 
