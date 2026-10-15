@@ -25,7 +25,7 @@ function candidatesOf(result: PlaceLookup): readonly ResolvedPlace[] {
   return result.status === 'ambiguous' ? result.candidates : [];
 }
 
-function toPinPlace(place: ResolvedPlace): PinPlace {
+export function toPinPlace(place: ResolvedPlace): PinPlace {
   return { label: place.summary.label, timezone: place.summary.timezone, latitude: place.latitude, longitude: place.longitude };
 }
 
@@ -81,15 +81,35 @@ interface PlacePickerProps {
   readonly forDay?: boolean;
   /** The birth place, offered (never assumed) when there is no earlier trip to prefill from. */
   readonly suggestion?: PinPlace;
+  /** Where the person lives now (Settings), offered the same way, beside the birth place. */
+  readonly home?: PinPlace;
 }
 
-export function PlacePicker({ place, lookup, onPick, prefilled = false, forDay = true, suggestion }: PlacePickerProps) {
+interface SuggestionProps {
+  readonly testId: string;
+  readonly text: string;
+  readonly onUse: () => void;
+}
+
+function Suggestion({ testId, text, onUse }: SuggestionProps) {
+  return (
+    <button type="button" data-testid={testId} onClick={onUse}
+      className="mt-1 rounded-full border border-accent-gold/60 px-3 py-1 text-xs text-accent-gold hover:bg-accent-gold/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-gold/60">
+      {text}
+    </button>
+  );
+}
+
+export function PlacePicker({ place, lookup, onPick, prefilled = false, forDay = true, suggestion, home }: PlacePickerProps) {
   const { t } = useTranslation('chat');
   const [query, setQuery] = useState(place?.label ?? '');
   const placeLabel = place?.label;
   const { options, failed, retry, close } = usePlaceOptions(query, lookup, placeLabel);
   // While suggestions are showing, they are the only thing under the box.
   const asking = !place && !(options && options.length > 0);
+  // Home and birth place are the same city: offer it once.
+  const birth = suggestion && suggestion.label !== home?.label ? suggestion : undefined;
+  const use = (picked: PinPlace) => () => { onPick(picked); setQuery(picked.label); close(); };
 
   // A prefilled place can change under the picker (the user moved the date): show it.
   useEffect(() => {
@@ -121,12 +141,11 @@ export function PlacePicker({ place, lookup, onPick, prefilled = false, forDay =
         onDismiss={close}
       />
       {asking && <p data-testid="time-travel-where-question" className="mt-1 text-sm text-text-primary">{t(forDay ? 'time_travel.sheet.where_question_day' : 'time_travel.sheet.where_question')}</p>}
-      {asking && suggestion && (
-        <button type="button" data-testid="time-travel-where-suggestion"
-          onClick={() => { onPick(suggestion); setQuery(suggestion.label); close(); }}
-          className="mt-1 rounded-full border border-accent-gold/60 px-3 py-1 text-xs text-accent-gold hover:bg-accent-gold/10">
-          {t('time_travel.sheet.where_suggestion', { place: suggestion.label })}
-        </button>
+      {asking && (home || birth) && (
+        <div className="flex flex-wrap gap-2">
+          {home && <Suggestion testId="time-travel-where-home" text={t('time_travel.sheet.where_home', { place: home.label })} onUse={use(home)} />}
+          {birth && <Suggestion testId="time-travel-where-suggestion" text={t('time_travel.sheet.where_suggestion', { place: birth.label })} onUse={use(birth)} />}
+        </div>
       )}
       {asking && <p data-testid="time-travel-where-required" className="mt-1 text-xs text-text-muted">{t(forDay ? 'time_travel.sheet.where_required' : 'time_travel.sheet.where_required_period')}</p>}
       {place && prefilled && <p data-testid="time-travel-where-prefilled" className="mt-1 text-xs text-text-muted">{t('time_travel.sheet.where_prefilled')}</p>}

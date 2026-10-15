@@ -14,6 +14,7 @@ import type { ChatThreadAsOf, LocationDetails } from '@almamesh/shared-types';
 import type { PlaceLookup } from '../../../lib/geo/placeLookup';
 import { asOfFromDraft, rangeOfDraft, sheetDefaults, sheetYears, type PinGranularity, type SheetDraft } from '../../../lib/timeTravelSheet';
 import { birthPlaceOf, prefillTripPlace, type TripPin } from '../../../lib/tripPlacePrefill';
+import { useCurrentPlace } from '../../../hooks/useCurrentPlace';
 import { PlacePicker, lookupPlaceLazily } from './PlacePicker';
 
 interface TimeTravelSheetProps {
@@ -89,6 +90,8 @@ export function TimeTravelSheet(props: TimeTravelSheetProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const { birthYear } = props;
   const wasOpen = useRef(false);
+  // Where they live now (Settings): the picker offers it beside the birth place, never assumes it.
+  const homePlace = useCurrentPlace();
   // Resets only when the sheet opens, so a failed save (which flips the pin and rolls it back) keeps what the user picked.
   useEffect(() => {
     const opening = open && !wasOpen.current;
@@ -183,6 +186,7 @@ export function TimeTravelSheet(props: TimeTravelSheetProps) {
       )}
       <PlacePicker place={trip.place} lookup={props.lookupPlace ?? lookupPlaceLazily} prefilled={!placeEdited} forDay={draft.granularity === 'day'}
         {...(suggestion ? { suggestion } : {})}
+        {...(homePlace ? { home: homePlace } : {})}
         onPick={(place) => {
           setPlaceEdited(true);
           setDraft({ ...draft, place });

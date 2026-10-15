@@ -27,6 +27,7 @@ export * from './chat';
 export { chatAsOfProblem, isChatThreadAsOf } from './chatAsOf';
 export { chatMessagePartsProblem } from './chatParts';
 export * from './profiles';
+export { getCurrentPlace, type CurrentPlace } from './currentPlace';
 export * from './adapters/chart';
 export * from './adapters/localBirthTime';
 export * from './adapters/chartGeometry';
