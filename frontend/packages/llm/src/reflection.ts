@@ -29,6 +29,7 @@ export const REFLECTION_RULE = [
   "say what that planet and house highlight, or leave the line out. And never describe what the person",
   "went through or how things went for them (what was stuck, what moved forward, what they may have",
   "sensed): say what the indicators highlight and how the period compares.",
+  "Write in the Latin script: give a mantra in IAST transliteration (Om Namah Shivaya); its Devanagari is optional, beside it.",
 ].join("\n");
 
 
@@ -41,6 +42,39 @@ function word(source: string, open = false): RegExp {
   const end = open ? "" : "(?![\\p{L}\\p{N}])";
   return new RegExp(`(?<![\\p{L}\\p{N}])(?:${source})${end}`, "iu");
 }
+
+// Life events a reading may name as a theme ("a job or career change") but never foretell.
+const EVENTS_EN =
+  "promotion|raise|(?:new|next|dream)\\s+job|job\\s+(?:offer|loss|change)|career\\s+change|offer|layoff|marriage|wedding|engagement|" +
+  "divorce|break-?up|separation|baby|pregnancy|windfall|inheritance|lawsuit|legal\\s+trouble|court\\s+case|accident|illness|" +
+  "surgery|relocation|move\\s+abroad|success|fame|fortune|romance|(?:new\\s+)?partner";
+const EVENTS_ES =
+  "ascenso|aumento|(?:nuevo\\s+)?(?:trabajo|empleo)|cambio\\s+de\\s+(?:trabajo|empleo|casa|carrera)|boda|matrimonio|compromiso|divorcio|" +
+  "ruptura|separaci[oó]n|beb[eé]|embarazo|herencia|demanda|juicio|accidente|enfermedad|mudanza|pareja|oferta|promoci[oó]n|[eé]xito|fortuna";
+const EVENTS_PT =
+  "promo[cç][aã]o|aumento|(?:novo\\s+)?emprego|mudan[cç]a\\s+de\\s+(?:emprego|casa|carreira)|casamento|noivado|div[oó]rcio|" +
+  "separa[cç][aã]o|beb[eê]|gravidez|heran[cç]a|processo|acidente|doen[cç]a|mudan[cç]a|parceir[oa]|namor\\p{L}*|sucesso|fortuna|oferta|demiss[aã]o";
+const GRAHAS_ES = "sol|luna|marte|mercurio|j[uú]piter|venus|saturno|rahu|ketu";
+const GRAHAS_PT = "sol|lua|marte|merc[uú]rio|j[uú]piter|v[eê]nus|saturno|rahu|ketu";
+
+// Life areas: the subject of a future clause that foretells ("your career will take off"), unlike a
+// graha, dasha, transit, sign, house or date, which may carry the future tense.
+const LIFE_EN =
+  "career|job|work|business|finances|money|income|health|love\\s+life|relationships?|family|home|life|children|child|kids|son|daughter|luck|fortunes?";
+const LIFE_ES = "carrera|vida|salud|dinero|finanzas|familia|hogar|hijos?|hijas?|cosas|suerte|amor|relaci[oó]n|negocios?";
+const LIFE_PT = "carreira|vida|sa[uú]de|dinheiro|finan[cç]as|fam[ií]lia|lar|filhos?|filhas?|coisas|sorte|amor|relacionamento|neg[oó]cios?";
+// A clause about the page ("you'll find the dates below", "podrás revisar la tabla"), not the person's life.
+const PAGE_EN = "below|above|table|list|section|tab|page";
+const PAGE_ES = "abajo|arriba|tabla|lista|secci[oó]n|detalles|p[aá]gina";
+const PAGE_PT = "abaixo|acima|tabela|lista|se[cç][aã]o|detalhes|p[aá]gina";
+/** A perception verb whose object is the page, within the clause. */
+const aboutThePage = (verbs: string, nouns: string): string => `(?:${verbs})\\s+[^.!?\\n]{0,60}?(?:${nouns})(?![\\p{L}])`;
+// A future set on a life area: not when it follows "of"/"house" ("the 10th house of career will host Jupiter").
+const NOT_A_HOUSE_EN = "(?<!(?:of|in|for|through|on|about|house|houses|bhava)\\s)";
+const NOT_A_HOUSE_ES = "(?<!(?:de|del|en|para)\\s)";
+const NOT_A_HOUSE_PT = "(?<!(?:de|do|da|dos|das|no|na|para)\\s)";
+// Hindi futures (मिलेगा, होगी, आएंगे): a future suffix after a vowel sign, where a mantra's "गंगे" or "दुर्गा" has none.
+const HINDI_FUTURE = /(?:[\u0947\u094B\u0948\u094C]|[\u0947\u094B\u0942]\u0902|\u0942\u0901|[\u090F\u0913\u090A]\u0902?|\u090A\u0901)\u0917[\u093E\u0940\u0947](?![\p{L}\p{M}])|\u0939\u094B\u0928\u0947\s+\u0935\u093E\u0932[\u093E\u0940\u0947]/u;
 
 /**
  * Words that claim or imply prediction or predictive accuracy, per language.
@@ -56,7 +90,8 @@ export const PREDICTION_CLAIM_PATTERNS: Readonly<Record<ReflectionLanguage, read
     word("predict", true),
     word("forecast", true),
     word("accura(?:te|tely|cy)(?![\\s-]+(?:birth|time|date))"),
-    word("likely(?!-)"),
+    // "the likely birth-time range" describes; "likely to happen", "will likely" and "a likely promotion" put odds on an outcome
+    word(`(?<!(?:the|a|an|this|that|its|their|these|those)\\s)likely(?!-)|likely\\s+(?:${EVENTS_EN})`),
     word("will happen"),
     word("what happened"),
   ],
@@ -86,20 +121,6 @@ export function predictionClaims(text: string, language: ReflectionLanguage): re
   return scan(PREDICTION_CLAIM_PATTERNS[language], text);
 }
 
-// Life events a reading may name as a theme ("a job or career change") but never foretell.
-const EVENTS_EN =
-  "promotion|raise|(?:new|next|dream)\\s+job|job\\s+(?:offer|loss|change)|career\\s+change|offer|layoff|marriage|wedding|engagement|" +
-  "divorce|break-?up|separation|baby|pregnancy|windfall|inheritance|lawsuit|legal\\s+trouble|court\\s+case|accident|illness|" +
-  "surgery|relocation|move\\s+abroad|success|fame|fortune|romance|(?:new\\s+)?partner";
-const EVENTS_ES =
-  "ascenso|aumento|(?:nuevo\\s+)?(?:trabajo|empleo)|cambio\\s+de\\s+(?:trabajo|empleo|casa|carrera)|boda|matrimonio|compromiso|divorcio|" +
-  "ruptura|separaci[oó]n|beb[eé]|embarazo|herencia|demanda|juicio|accidente|enfermedad|mudanza|pareja|oferta|promoci[oó]n|[eé]xito|fortuna";
-const EVENTS_PT =
-  "promo[cç][aã]o|aumento|(?:novo\\s+)?emprego|mudan[cç]a\\s+de\\s+(?:emprego|casa|carreira)|casamento|noivado|div[oó]rcio|" +
-  "separa[cç][aã]o|beb[eê]|gravidez|heran[cç]a|processo|acidente|doen[cç]a|mudan[cç]a|parceir[oa]|namor\\p{L}*|sucesso|fortuna|oferta|demiss[aã]o";
-const GRAHAS_ES = "sol|luna|marte|mercurio|j[uú]piter|venus|saturno|rahu|ketu";
-const GRAHAS_PT = "sol|lua|marte|merc[uú]rio|j[uú]piter|v[eê]nus|saturno|rahu|ketu";
-
 /**
  * Text that foretells: a person-directed future ("you will get married", "expect a promotion",
  * "vas a conseguir", "você vai conseguir"), a life event set to come ("a breakup may well occur"),
@@ -107,9 +128,13 @@ const GRAHAS_PT = "sol|lua|marte|merc[uú]rio|j[uú]piter|v[eê]nus|saturno|rahu
  * station direct on 17 September", "the Jupiter antardasha will begin in March 2027") is not one:
  * its subject is a graha or a dasha, never the person or a life event.
  */
-export const FORETELLING_PATTERNS: Readonly<Record<ReflectionLanguage | "fr", readonly RegExp[]>> = {
+export const FORETELLING_PATTERNS: Readonly<Record<ReflectionLanguage | "fr" | "hi", readonly RegExp[]>> = {
   en: [
-    word("you(?:'ll|\\s+will|\\s+shall|\\s+are\\s+going\\s+to|'re\\s+going\\s+to|\\s+are\\s+gonna)\\s+(?!(?:see|notice|find)\\s+(?:below|above|in\\s+the|that|how)(?![\\p{L}]))\\p{L}+", true),
+    word(
+      "you(?:'ll|\\s+will|\\s+shall|\\s+are\\s+going\\s+to|'re\\s+going\\s+to|\\s+are\\s+gonna)\\s+" +
+        `(?!(?:see|notice|find)\\s+(?:below|above|in\\s+the|that|how)(?![\\p{L}])|${aboutThePage("see|notice|find|want", PAGE_EN)})\\p{L}+`,
+      true,
+    ),
     word("you(?:\\s+are|'re)\\s+(?:likely|bound|set|destined|due|about|expected|sure|certain)\\s+to"),
     word(
       "you\\s+(?:may|might|could|should|can|would)\\s+(?:well\\s+|also\\s+|soon\\s+)?(?:get|receive|land|meet|marry|wed|win|lose|face|experience|" +
@@ -122,9 +147,11 @@ export const FORETELLING_PATTERNS: Readonly<Record<ReflectionLanguage | "fr", re
     ),
     word("(?<!at\\s)odds|chances\\s+are|(?:strong|good|high|real|fair|slim|low)\\s+chance|almost\\s+certain(?:ly)?|(?:it\\s+is|it's)\\s+certain|(?:is|are|it's)\\s+guaranteed|probab(?:le|ly|ility)"),
     word(
-      `(?:${EVENTS_EN})\\s+(?:will|(?:is|are)\\s+(?:set|bound|going|due|likely|about|expected)\\s+to|` +
-        "(?:could|may|might|should|can)\\s+(?:well\\s+)?(?:happen|occur|come|arrive|follow|take\\s+place|be\\s+(?:filed|offered|announced)))",
+      `${NOT_A_HOUSE_EN}(?:${EVENTS_EN}|${LIFE_EN})(?:'ll|\\s+(?:will|(?:is|are)\\s+(?:set|bound|going|due|likely|about|expected)\\s+to|` +
+        "(?:is|are)\\s+(?:coming|on\\s+(?:the|its)\\s+way|around\\s+the\\s+corner|in\\s+the\\s+cards)|" +
+        "(?:could|may|might|should|can)\\s+(?:well\\s+)?(?:happen|occur|come|arrive|follow|take\\s+place|be\\s+(?:filed|offered|announced))))",
     ),
+    word("things\\s+will\\s+(?:get|be|improve|change|turn|look|work|go|start|fall|settle|pick|move|ease)"),
     word("your\\s+(?:next|new|future)\\s+\\p{L}+\\s+will"),
     word(`there\\s+(?:will|may|might|could|should)\\s+be\\s+(?:a|an|some)\\s+(?:\\p{L}+\\s+){0,2}?(?:${EVENTS_EN})`),
     word(`(?:brings?|will\\s+bring)\\s+(?:you\\s+)?(?:a|an)\\s+(?:\\p{L}+\\s+){0,2}?(?:${EVENTS_EN})`),
@@ -132,7 +159,12 @@ export const FORETELLING_PATTERNS: Readonly<Record<ReflectionLanguage | "fr", re
   es: [
     word("vas\\s+a\\s+\\p{L}+", true),
     word("te\\s+espera(?:n|r[aá]n?)?"),
-    word("(?!(?:a|de)?tr[aá]s)\\p{L}+rás"),
+    word(`(?!(?:a|de)?tr[aá]s|${aboutThePage("podr[aá]s|ver[aá]s|notar[aá]s|encontrar[aá]s|querr[aá]s", PAGE_ES)})\\p{L}+rás`),
+    word(`${NOT_A_HOUSE_ES}(?:${EVENTS_ES}|${LIFE_ES})\\s+(?:se\\s+)?\\p{L}+rán?(?![\\p{L}])`),
+    word(
+      `(?:llegar|vendr|habr|ocurrir|suceder|surgir|aparecer)[aá]n?\\s+(?:un|una|unos|unas|el|la|los|las|tu|tus|su|sus)\\s+(?:\\p{L}+\\s+)?(?:${EVENTS_ES}|${LIFE_ES})`,
+    ),
+    word("va\\s+a\\s+haber"),
     word(`habr[aá]\\s+(?:un|una|unos|unas)\\s+(?:\\p{L}+\\s+)?(?:${EVENTS_ES})`),
     word(`(?:trae|traer[aá]|traen)\\s+(?:un|una)\\s+(?:\\p{L}+\\s+)?(?:${EVENTS_ES})`),
     word("seguramente|es\\s+(?:muy\\s+)?(?:posible|seguro)\\s+que|con\\s+(?:toda\\s+)?seguridad|sin\\s+duda"),
@@ -140,7 +172,12 @@ export const FORETELLING_PATTERNS: Readonly<Record<ReflectionLanguage | "fr", re
   ],
   pt: [
     word("voc[eê]\\s+(?:vai|ir[aá])\\s+\\p{L}+", true),
-    word("vai\\s+(?:conseguir|ter|encontrar|casar|mudar|receber|ganhar|perder|acontecer|chegar|vir|passar|enfrentar)"),
+    word(`(?<!(?:${GRAHAS_PT}|dasha|antardasha)\\s)vai\\s+(?:conseguir|ter|encontrar|casar|mudar|receber|ganhar|perder|acontecer|chegar|vir|passar|enfrentar)`),
+    word(`voc[eê]\\s+(?:n[aã]o\\s+)?(?!${aboutThePage("poder[aá]|ver[aá]|notar[aá]|encontrar[aá]", PAGE_PT)})\\p{L}+r[aá](?![\\p{L}])`),
+    word(`${NOT_A_HOUSE_PT}(?:${EVENTS_PT}|${LIFE_PT})\\s+(?:se\\s+)?\\p{L}+r(?:á|ão)(?![\\p{L}])`),
+    word(
+      `(?:vir|chegar|haver|acontecer|surgir|aparecer)(?:[aá]|[aã]o)\\s+(?:um|uma|uns|umas|o|a|os|as|seu|sua)\\s+(?:\\p{L}+\\s+)?(?:${EVENTS_PT}|${LIFE_PT})`,
+    ),
     word(`(?:ter|haver)[aá]\\s+(?:um|uma|uns|umas)\\s+(?:\\p{L}+\\s+)?(?:${EVENTS_PT})`),
     word(`(?<!(?:${GRAHAS_PT})\\s)(?:conseguir|encontrar|receber|ganhar|perder|enfrentar|sofrer|obter)á`),
     word("te\\s+espera|espera\\s+por\\s+voc[eê]|aguarda\\s+voc[eê]|reservad[oa]\\s+para\\s+voc[eê]"),
@@ -148,6 +185,8 @@ export const FORETELLING_PATTERNS: Readonly<Record<ReflectionLanguage | "fr", re
   ],
   // Not an app language: a model that drifts into French still meets the check.
   fr: [word("(?:tu\\s+vas|vous\\s+allez|tu\\s+auras|vous\\s+aurez)\\s+\\p{L}+", true)],
+  // Not an app language either: a Hindi future verb, alone or inside an English line.
+  hi: [HINDI_FUTURE],
 };
 
 /**
@@ -281,9 +320,23 @@ const SENTENCES = /[^.!?…。！？।\n]+/gu;
 const LETTER = /\p{L}/gu;
 const LATIN = /\p{Script=Latin}/u;
 
-/** A sentence written mostly outside the Latin script: no app language's patterns can read it. */
+const MANTRA_MAX_CHARS = 60;
+const NON_DEVANAGARI_LETTER = /[^\p{Script=Devanagari}\P{L}]/u;
+const DIGIT = /\p{N}/u;
+
+/** A short line in Devanagari alone, with no number in it: a mantra ("ॐ नमः शिवाय") or a graha's name. */
+function isShortMantra(sentence: string): boolean {
+  const line = sentence.trim();
+  return line.length <= MANTRA_MAX_CHARS && !DIGIT.test(line) && !NON_DEVANAGARI_LETTER.test(line);
+}
+
+/**
+ * A sentence written mostly outside the Latin script: no app language's patterns can read it. A
+ * short mantra line is exempt; a Hindi future in it is still caught by its verb ending.
+ */
 function unreadableSentences(text: string): readonly string[] {
   return (text.match(SENTENCES) ?? []).filter((sentence) => {
+    if (isShortMantra(sentence)) return false;
     const letters = sentence.match(LETTER) ?? [];
     const foreign = letters.filter((letter) => !LATIN.test(letter)).length;
     return foreign >= 2 && foreign * 2 > letters.length;
@@ -292,7 +345,7 @@ function unreadableSentences(text: string): readonly string[] {
 
 const PATTERN_SETS: readonly (readonly [ReflectionIssueKind, readonly RegExp[]])[] = [
   ...LANGUAGES.map((language) => ["prediction", PREDICTION_CLAIM_PATTERNS[language]] as const),
-  ...[...LANGUAGES, "fr" as const].map((language) => ["foretelling", FORETELLING_PATTERNS[language]] as const),
+  ...[...LANGUAGES, "fr" as const, "hi" as const].map((language) => ["foretelling", FORETELLING_PATTERNS[language]] as const),
   ...LANGUAGES.map((language) => ["narration", TOOL_NARRATION_PATTERNS[language]] as const),
   ...LANGUAGES.map((language) => ["life_guess", LIFE_GUESS_PATTERNS[language]] as const),
 ];

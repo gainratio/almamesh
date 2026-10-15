@@ -7,14 +7,24 @@ import { describe, expect, it } from "vitest";
 import {
   jsonReflectionIssues,
   READING_WITHHELD,
+  REFLECTION_RULE,
   REFLECTION_WITHHELD,
   reflectionIssues,
   reflectionGate,
   releasableReflection,
   withholdFailingValues,
 } from "../reflection";
+import { buildReportMessages } from "../index";
 import { TOOLS_UNAVAILABLE_NOTICE } from "../toolsUnavailable";
-import { MUST_PASS, REFLECTION_PROBES } from "./fixtures/reflection-probes";
+import { REPORT_AS_OF, REPORT_RAW_CHART } from "./report-fixture";
+import {
+  FALSE_POSITIVES,
+  IMPERSONAL_FUTURES,
+  LIKELY_CLAIMS,
+  LONG_DEVANAGARI,
+  MUST_PASS,
+  REFLECTION_PROBES,
+} from "./fixtures/reflection-probes";
 import REAL_ANSWERS from "./fixtures/reflection-real-answers.json";
 
 const flagged = (text: string): boolean => reflectionIssues(text).length > 0;
@@ -42,6 +52,37 @@ describe("the crafted probe corpus", () => {
 describe("sky facts in the future tense", () => {
   it.each(MUST_PASS)("passes %j", (text) => {
     expect(reflectionIssues(text)).toEqual([]);
+  });
+});
+
+describe("round two of the re-grade", () => {
+  it.each(IMPERSONAL_FUTURES)("blocks the impersonal future %j", (text) => {
+    expect(reflectionIssues(text)).not.toEqual([]);
+  });
+
+  it.each(FALSE_POSITIVES)("passes %j", (text) => {
+    expect(reflectionIssues(text)).toEqual([]);
+  });
+
+  it.each(LIKELY_CLAIMS)("still blocks the odds in %j", (text) => {
+    expect(reflectionIssues(text)).not.toEqual([]);
+  });
+
+  it("still holds a Devanagari line longer than a short mantra", () => {
+    expect(reflectionIssues(LONG_DEVANAGARI).map((issue) => issue.kind)).toEqual(["unreadable_script"]);
+  });
+
+  it("asks for mantras in IAST, so a remedies section is not held for its script", () => {
+    expect(REFLECTION_RULE).toContain("IAST");
+    for (const lite of [false, true]) {
+      const messages = buildReportMessages({ chart: REPORT_RAW_CHART, asOf: REPORT_AS_OF }, { mode: "layman", language: "en", lite });
+      const task = messages.remedial.map((message) => message.content).join("\n").replace(REFLECTION_RULE, "");
+      expect(task).toContain("Give each mantra in IAST transliteration");
+    }
+  });
+
+  it("still holds a short Devanagari line that carries a date", () => {
+    expect(reflectionIssues("मार्च 2027 में").map((issue) => issue.kind)).toEqual(["unreadable_script"]);
   });
 });
 
@@ -103,7 +144,10 @@ describe("each issue names what it found", () => {
     expect(kinds("You will get married in 2027.")).toContain("foretelling");
     expect(kinds("The reading is silent on career.")).toContain("narration");
     expect(kinds("You may have felt stuck.")).toContain("life_guess");
-    expect(kinds("आपको मार्च में नई नौकरी मिलेगी।")).toContain("unreadable_script");
+    // A short Hindi line is read by its future verb ending now (round two exempts short mantra lines
+    // from the script rule); a long one is still held for its script.
+    expect(kinds("आपको मार्च में नई नौकरी मिलेगी।")).toContain("foretelling");
+    expect(kinds(LONG_DEVANAGARI)).toContain("unreadable_script");
   });
 });
 
