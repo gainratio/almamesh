@@ -72,7 +72,7 @@ describe('runChatTurn: a trip turn reads first', () => {
       { name: 'read_period', args: readPeriodArgs('2019-09') },
       (body) => stubCallFor(body, {}),
     ]);
-    await drain(runChatTurn(input(fetchImpl, { asOf: MAY_2019 })));
+    await drain(runChatTurn(input(fetchImpl, { asOf: MAY_2019, question: 'Take me to September 2019' })));
     // Contract reversed 2026-10-14: travel is offered once per turn, so after it only read_period remains.
     expect(toolNames(bodies[1])).toEqual(['read_period']);
     expect(toolNames(bodies[2])).toContain('answer');
@@ -84,10 +84,28 @@ describe('runChatTurn: a trip turn reads first', () => {
       { name: 'travel', args: { to: 'today', place: null } },
       { name: 'answer', args: generalAnswer('Back to today.') },
     ]);
-    const snapshots = await drain(runChatTurn(input(fetchImpl, { asOf: MAY_2019 })));
+    const snapshots = await drain(runChatTurn(input(fetchImpl, { asOf: MAY_2019, question: 'Back to today, please.' })));
     expect(toolNames(bodies[1])).toEqual(['read_period', 'answer']);
     expect(snapshots.at(-1)).toBe('Back to today.');
     expect(bodies).toHaveLength(2);
+  });
+
+  // dashboard.agentic.real 2026-10-15 (GPT Luna): "outlook today?" in a September 2017 trip read
+  // today, then called travel back to today and ended the trip. The turn's own message asks for no
+  // move, so the call is refused with a typed note and nothing moves.
+  it('a question about today in a trip: a travel call is refused, nothing moves, and the turn reads instead', async () => {
+    const onTravel = vi.fn();
+    const { fetchImpl, bodies } = endpoint([
+      { name: 'travel', args: { to: 'today', place: null } },
+      { name: 'read_period', args: readPeriodArgs('2019-05') },
+      (body) => stubCallFor(body, {}),
+    ]);
+    await drain(runChatTurn(input(fetchImpl, { asOf: MAY_2019, question: 'outlook today?', onTravel })));
+    expect(onTravel).not.toHaveBeenCalled();
+    const travelResult = (bodies[1]?.messages as { role: string; content: unknown }[]).find((m) => m.role === 'tool');
+    expect(JSON.stringify(travelResult?.content)).toContain('not_asked');
+    // A refused travel is no read: the turn still reads before it may answer.
+    expect(toolNames(bodies[1])).toEqual(['read_period']);
   });
 
   it('states today and the trip in the system prompt', async () => {
@@ -110,7 +128,7 @@ describe('runChatTurn: a trip turn reads first', () => {
   it('the travel status line names where the trip goes, and never the generic label', async () => {
     const labels: (string | null)[] = [];
     const { fetchImpl } = endpoint([{ name: 'travel', args: { to: '2019-09', place: null } }, (body) => stubCallFor(body, {})]);
-    await drain(runChatTurn(input(fetchImpl, { onStatus: (label) => labels.push(label) })));
+    await drain(runChatTurn(input(fetchImpl, { question: 'Take me to September 2019', onStatus: (label) => labels.push(label) })));
     expect(labels).toContain('Moving to September 2019…');
     expect(labels).not.toContain('Preparing time travel');
   });
@@ -122,7 +140,7 @@ describe('runChatTurn: a trip turn reads first', () => {
       reading: (period: string) => `Leyendo ${period}…`, moving: (period: string) => `Viajando a ${period}…`, returning: 'Volviendo a hoy…',
     };
     const turn = (script: Parameters<typeof endpoint>[0], asOf?: typeof MAY_2019) =>
-      drain(runChatTurn(input(endpoint(script).fetchImpl, { ...(asOf ? { asOf } : {}), language: 'es', labels: spoken, onStatus: (label) => labels.push(label) })));
+      drain(runChatTurn(input(endpoint(script).fetchImpl, { ...(asOf ? { asOf } : {}), language: 'es', question: 'Llévame a septiembre de 2019', labels: spoken, onStatus: (label) => labels.push(label) })));
     await turn([{ name: 'read_period', args: readPeriodArgs('2019-05') }, (body) => stubCallFor(body, {})], MAY_2019);
     await turn([{ name: 'travel', args: { to: '2019-09', place: null } }, (body) => stubCallFor(body, {})]);
     // A trip turn reads before it may answer, even after travel (travel is not a read).

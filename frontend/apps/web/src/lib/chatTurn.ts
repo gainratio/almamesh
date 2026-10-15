@@ -40,6 +40,7 @@ import { birthYearOf, createPeriodChartLoader, readyEngine } from './periodChart
 import { createReadPeriodTool, isReadPeriodReading, readPeriodGrounding, readPeriodSpanLabel, readPeriodStatusLabel, type ReadPeriodArgs, type ReadPeriodInput } from './readPeriod';
 import { READ_PERIOD_TOOL_NAME } from './periodReading';
 import { formatPinLabel } from './timeTravelSheet';
+import { asksToTravel } from './travelIntent';
 import { createTravelTool, TRAVEL_TOOL_NAME, travelPeriodLabel, travelStatusLabel, type TravelArgs } from './travelTool';
 import type { TravelRecorder } from './travelSlot';
 import { tripPin } from './tripContext';
@@ -194,7 +195,10 @@ function turnTools(input: ChatTurnInput, pin: ChatThreadAsOf | undefined, starts
   });
   // travel's null place keeps the trip's own place, never an old trip's birth-place fallback.
   const travel = input.onTravel
-    ? [createTravelTool({ ...places, threadPlace: input.asOf?.place, birthYear: birthYearOf(input.birth), language: input.language, record: input.onTravel })]
+    ? [createTravelTool({
+      ...places, threadPlace: input.asOf?.place, birthYear: birthYearOf(input.birth), language: input.language, record: input.onTravel,
+      travelAsked: asksToTravel(input.question),
+    })]
     : [];
   // Under budget pressure a reading goes out as its grounding facts: what the answer is checked against.
   const compactRead = { ...reported(read, starts.read), compact: (result: unknown) => (isReadPeriodReading(result) ? readPeriodGrounding(result, input.language) : result) };

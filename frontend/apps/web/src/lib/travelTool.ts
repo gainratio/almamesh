@@ -23,6 +23,8 @@ export interface TravelToolInput extends PlaceResolverInput {
   readonly birthYear: number | undefined;
   readonly language: string;
   readonly record: TravelRecorder;
+  /** The turn's own message asks to move (travelIntent.ts); otherwise a call is refused. */
+  readonly travelAsked: boolean;
 }
 
 export interface TravelQueued {
@@ -33,13 +35,31 @@ export interface TravelQueued {
   readonly time_zone?: string;
 }
 
-export type TravelResult = TravelQueued | PlaceAsk | ReadPeriodAsk;
+/** A call on a turn whose message asked for no move: nothing moves, the model reads instead. */
+export interface TravelRefused {
+  readonly status: 'refused';
+  readonly reason: 'not_asked';
+  readonly note: string;
+}
+
+export type TravelResult = TravelQueued | PlaceAsk | ReadPeriodAsk | TravelRefused;
+
+/**
+ * dashboard.agentic.real 2026-10-15 (GPT Luna): "outlook today?" in a September 2017 trip read
+ * today, then travelled back to today and ended the trip. A question about another time is
+ * answered in place; only an explicit request moves the conversation.
+ */
+export const TRAVEL_NOT_ASKED: TravelRefused = {
+  status: 'refused',
+  reason: 'not_asked',
+  note: 'The user did not ask to move this conversation. Answer their question here: read the time they asked about with read_period.',
+};
 
 const TO = /^(today|\d{4}(-(0[1-9]|1[0-2])(-(0[1-9]|[12]\d|3[01]))?)?)$/;
 
 const DESCRIPTION = [
   'Move this conversation and the Dashboard to a day, month or year (a time-travel trip), or back to today.',
-  'Only when the user asks to go there; to answer a question about a time, use read_period.',
+  'Only when the newest message explicitly asks to move ("take me to ...", "back to today"); a question about another time, today included, is answered here with read_period. A call the user did not ask for is refused.',
   'The move happens after your answer. Call it at most once per turn.',
   'Examples: "take me to May 2019 in Vadodara" -> {"to":"2019-05","place":"Vadodara"}.',
   '"back to today" -> {"to":"today","place":null}.',
@@ -162,6 +182,9 @@ export function createTravelTool(input: TravelToolInput): ToolDef<TravelArgs> {
     overLimitNote: ALREADY_TRAVELLED_NOTE,
     // A trip turn reads before it answers; going back to today leaves nothing to read, only a confirmation.
     unlocksAnswer: isQueuedReturn,
-    execute: async (args, context) => (moved ? ALREADY_TRAVELLED : travelTo({ ...input, record }, args, context)),
+    execute: async (args, context) => {
+      if (!input.travelAsked) return TRAVEL_NOT_ASKED;
+      return moved ? ALREADY_TRAVELLED : travelTo({ ...input, record }, args, context);
+    },
   });
 }

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { PlaceLookup, ResolvedPlace } from '../geo/placeLookup';
 import { NO_PLACE_PICKER } from '../placePick';
 import { periodAsOfFromDraft } from '../timeTravelSheet';
-import { createTravelTool, TRAVEL_NEEDS_PLACE, TRAVEL_TOOL_NAME, type TravelArgs, type TravelToolInput } from '../travelTool';
+import { createTravelTool, TRAVEL_NEEDS_PLACE, TRAVEL_NOT_ASKED, TRAVEL_TOOL_NAME, type TravelArgs, type TravelToolInput } from '../travelTool';
 
 // ---------------------------------------------------------------------------
 // travel(to, place?) — chat tool layer redesign, 2026-10-14
@@ -26,7 +26,7 @@ function travelSetup(overrides: Partial<TravelToolInput> = {}) {
   const record = vi.fn();
   const lookup = vi.fn(lookupOf);
   const pick = vi.fn(async (): Promise<ResolvedPlace | undefined | typeof NO_PLACE_PICKER> => SPRINGFIELD_IL);
-  const tool = createTravelTool({ birthYear: 1990, language: 'en', record, threadPlace: undefined, homePlace: HOME, lookup, pick, ...overrides });
+  const tool = createTravelTool({ birthYear: 1990, language: 'en', record, threadPlace: undefined, homePlace: HOME, lookup, pick, travelAsked: true, ...overrides });
   return { tool, record, lookup, pick };
 }
 const go = (tool: ReturnType<typeof createTravelTool>, args: TravelArgs, signal = new AbortController().signal) =>
@@ -42,13 +42,45 @@ describe('travel: the neutral ask for a trip with no place', () => {
   });
 });
 
+// dashboard.agentic.real 2026-10-15 (GPT Luna): "outlook today?" in a September 2017 trip called
+// travel back to today and ended the trip. A turn whose message asks for no move refuses travel.
+describe('travel: only an explicit request moves the conversation', () => {
+  it('pins the refusal to its literal: a typed status the model is told to answer with read_period', () => {
+    expect(TRAVEL_NOT_ASKED).toEqual({
+      status: 'refused',
+      reason: 'not_asked',
+      note: 'The user did not ask to move this conversation. Answer their question here: read the time they asked about with read_period.',
+    });
+  });
+
+  it.each([
+    [{ to: 'today', place: null }],
+    [{ to: '2019-05', place: 'Pune' }],
+  ])('a turn that did not ask to move refuses %j and records nothing', async (args) => {
+    const { tool, record, lookup } = travelSetup({ travelAsked: false });
+    expect(await go(tool, args)).toEqual(TRAVEL_NOT_ASKED);
+    expect(record).not.toHaveBeenCalled();
+    expect(lookup).not.toHaveBeenCalled();
+  });
+
+  it('a turn that asked to move still moves', async () => {
+    const { tool, record } = travelSetup({ travelAsked: true });
+    expect(await go(tool, { to: 'today', place: null })).toEqual({ status: 'queued', action: 'back_to_today' });
+    expect(record).toHaveBeenCalledWith({ kind: 'back_to_today' });
+  });
+
+  it('says so in its description: an explicit request only, else read_period', () => {
+    const { tool } = travelSetup();
+    expect(tool.description).toContain('Only when the newest message explicitly asks to move ("take me to ...", "back to today"); a question about another time, today included, is answered here with read_period. A call the user did not ask for is refused.');
+  });
+});
+
 describe('travel: the schema the model fills', () => {
   it('is named travel and describes when to move (audit 4.3)', () => {
     const { tool } = travelSetup();
     expect(tool.name).toBe(TRAVEL_TOOL_NAME);
     expect(TRAVEL_TOOL_NAME).toBe('travel');
     expect(tool.description).toContain('Move this conversation and the Dashboard to a day, month or year (a time-travel trip), or back to today.');
-    expect(tool.description).toContain('Only when the user asks to go there; to answer a question about a time, use read_period.');
     expect(tool.description).toContain('"take me to May 2019 in Vadodara" -> {"to":"2019-05","place":"Vadodara"}');
   });
 
