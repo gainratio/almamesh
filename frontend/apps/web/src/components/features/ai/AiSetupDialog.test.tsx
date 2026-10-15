@@ -52,6 +52,13 @@ describe('ConnectAiButton — opens the shared AI setup panel in place', () => {
     expect(dialog.querySelector('[data-testid="tier-none"]')).toBeNull();
   });
 
+  it('says "Connect AI" once: the dialog title, not a second card title under it', () => {
+    render(<ConnectAiButton label="Open" testId="cta" panel={seams()} />);
+    fireEvent.click(screen.getByTestId('cta'));
+    const dialog = screen.getByRole('dialog', { name: 'Connect AI' });
+    expect(dialog.textContent?.match(/Connect AI/g)).toHaveLength(1);
+  });
+
   it('moves keyboard focus into the dialog when it opens, and back to the button on Escape', async () => {
     render(<ConnectAiButton label="Connect AI" testId="cta" panel={seams()} />);
     const button = screen.getByTestId('cta');

@@ -121,6 +121,8 @@ export interface AiSetupPanelProps {
   showOffChoice?: boolean;
   /** Surface-specific copy above the choices. Settings passes none. */
   intro?: ReactNode;
+  /** Show the "Connect AI" card title. Settings: true (default). A host that already titles it (the dialog): false. */
+  showTitle?: boolean;
   /**
    * Called once per save, only after the settings are durable AND the probe
    * passed for the config still on screen. Onboarding advances on it.
@@ -139,6 +141,7 @@ export function AiSetupPanel({
   flushSettings = flushPortablePersistence,
   showOffChoice = true,
   intro,
+  showTitle = true,
   onConnected,
 }: AiSetupPanelProps = {}) {
   const { t } = useTranslation('settings');
@@ -528,17 +531,28 @@ export function AiSetupPanel({
           aiOn ? 'border-accent-gold/40 bg-accent-gold/5' : 'border-ui-border bg-background-secondary'
         }`}
       >
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-text-primary text-sm font-medium">{t('tiers.cloud_title')}</p>
-          {aiOn && (
-            <Badge variant="brass" data-testid="tier-cloud-active">
-              {t('tiers.active_badge')}
-            </Badge>
-          )}
-        </div>
-        <p className="text-text-secondary text-xs mt-1" data-testid="tier-cloud-honesty">
-          {t('tiers.cloud_body')}
+        {(showTitle || aiOn) && (
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            {showTitle && <p className="text-text-primary text-sm font-medium">{t('tiers.cloud_title')}</p>}
+            {aiOn && (
+              <Badge variant="brass" data-testid="tier-cloud-active">
+                {t('tiers.active_badge')}
+              </Badge>
+            )}
+          </div>
+        )}
+        {/* One short line up front; the full disclosure stays one click away. */}
+        <p className={`text-text-secondary text-xs ${showTitle || aiOn ? 'mt-1' : ''}`} data-testid="tier-cloud-summary">
+          {t('tiers.cloud_summary')}
         </p>
+        <details className="mt-1 text-xs" data-testid="tier-cloud-details">
+          <summary className="cursor-pointer rounded text-accent-gold hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-gold/60">
+            {t('tiers.cloud_details_summary')}
+          </summary>
+          <p className="text-text-secondary mt-1" data-testid="tier-cloud-honesty">
+            {t('tiers.cloud_body')}
+          </p>
+        </details>
 
         {suggestOpen && savedSwitch && (
           <div

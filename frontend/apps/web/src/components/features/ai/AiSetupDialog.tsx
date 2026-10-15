@@ -16,7 +16,7 @@ import { Dialog } from '../../ui/Dialog';
 import { AiSetupPanel, type AiSetupPanelProps } from './AiSetupPanel';
 
 /** The panel's injectable seams (tests stub the network with these). */
-type AiSetupSeams = Omit<AiSetupPanelProps, 'showOffChoice' | 'intro' | 'onConnected'>;
+type AiSetupSeams = Omit<AiSetupPanelProps, 'showOffChoice' | 'intro' | 'showTitle' | 'onConnected'>;
 
 export interface AiSetupDialogProps {
   open: boolean;
@@ -35,7 +35,7 @@ export function AiSetupDialog({ open, onClose, onConnected, panel }: AiSetupDial
   return (
     <Dialog open={open} onClose={onClose} title={t('ai_setup.dialog_title')}>
       <div data-testid="ai-setup-dialog">
-        <AiSetupPanel {...panel} showOffChoice={false} onConnected={handleConnected} />
+        <AiSetupPanel {...panel} showOffChoice={false} showTitle={false} onConnected={handleConnected} />
       </div>
     </Dialog>
   );
