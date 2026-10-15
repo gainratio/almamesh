@@ -115,7 +115,7 @@ type Language = RenderOptions["language"];
 const dashaLineSchema = z.object({
   lord: z.enum(GRAHAS),
   rules: z.array(z.number().int().min(1).max(12)).describe("the houses this graha rules in this chart, from the reading"),
-  note: z.string().describe("one plain sentence on what this chapter highlights in the chart now"),
+  note: z.string().describe("one plain sentence on what this chapter highlights"),
 });
 
 const dashasSchema = z.object({ maha: dashaLineSchema, antar: dashaLineSchema, pratyantar: dashaLineSchema.nullable() });
