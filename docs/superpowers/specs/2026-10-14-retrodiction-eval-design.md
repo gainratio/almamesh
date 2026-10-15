@@ -373,6 +373,102 @@ on one).** Amendment (c) applies to the +OBSTACLES run, widened to the Lahiri ta
 evaluated. An event whose own window hits it is excluded (reason listed); a placebo window that
 hits it is dropped. Any other error still stops the run.
 
+### Amendment 2026-10-14 (g): the relocation lead, techniques #3 and #4, the stop rule (before any scoring)
+
+Written and committed before any code for #3 or #4 and before any run of them. Mapping, window
+±36, k 3 and 6, R = 4 placebos, the split (`299ec393…`) and amendment (f)'s statistic are
+unchanged. The licence still gates tuning: every constant below is classical and fixed now.
+
+Numbering, in the order families are tested: #1 `exact_transits` (roadmap row 1, amendment d),
+#2 `engine_obstacles` (the shipped obstacles theme, amendments b and f), #3
+`ashtakavarga_transits` (roadmap row 2), #4 `varga_lords` (roadmap row 3).
+
+**(g1) The relocation lead becomes one confirmatory hypothesis, not tested now.**
+
+- *Hypothesis.* "+EXACT raises the relocation (category `relocation`, area `none`) k=3
+  placebo-calibrated lift, with a chart-swap ratio above 1."
+- *Test, once.* At the next HELD-OUT release look, never on DEV again and never before that
+  look. Configuration +EXACT (v1 seven + `exact_transits`, orb 1°), k=3, window ±36, R = 4.
+- *Decision rule, at one-sided α = 0.05.* Confirmed only if all three hold: (i) the exact
+  randomization p of the +EXACT relocation k=3 placebo-calibrated lift is ≤ 0.05 after Holm
+  across every test run at that look (alone, the cut is 0.05); (ii) that lift's 95% bootstrap
+  CI lies above 1; (iii) the real ÷ chart-swap ratio's 95% bootstrap CI lies above 1.
+- *What it can and cannot do.* Relocation has no engine area, and its HELD-OUT n is expected
+  near DEV's 73, below the 300 events learning-loop §2 needs to promote anything. So even a
+  confirmation promotes nothing: it would justify designing a relocation area, measured afresh.
+  A failure closes the lead. Either way the look is logged in `docs/eval/holdout-ledger.md`.
+
+**(g2) Technique #3, `ashtakavarga_transits`: hypothesis, formula and constants.**
+
+- *Hypothesis.* A month in which a slow graha or a running dasha lord transits a sign that is a
+  target house and is strong in Ashtakavarga ranks a recorded event higher in its window than
+  the v1 families alone. Directional prediction: the k=3 and k=6 placebo-calibrated lift of
+  +ASHTAKAVARGA is above 1 for **career** and **finances** (the roadmap's areas). Relationships
+  is secondary; the other areas are exploratory. Loss categories (job_loss, financial_loss) sit
+  in those areas and the formula rewards strong transits only, so they are predicted not to
+  lift and dilute the area row; the roadmap's "low bindus lift losses" is not tested here.
+- *Bindus.* The engine's natal Parashari Ashtakavarga (`strength/ashtakavarga.py`): each of the
+  seven grahas' BAV and the SAV, per sign.
+- *Movers.* Transiting Jupiter and Saturn, plus every running Vimshottari maha or antar lord at
+  some time in the month that has a BAV (Sun, Mars, Mercury, Jupiter, Venus, Saturn). The Moon
+  is excluded (it crosses every sign in a month, so one mid-month sign says nothing about the
+  month); Rahu and Ketu are excluded (no BAV in Parashari Ashtakavarga).
+- *Sign.* Each mover's sidereal sign on the 15th, 12:00 UTC (the v1 convention).
+- *On target.* The sign is a target house counted from the lagna or the Moon (the v1 rule).
+- *Strength* of an on-target mover m in sign s: 0.5 if SAV(s) ≥ 28, plus 0.5 if m's own
+  BAV(s) ≥ 4 (classical: 28 is the SAV average, 337 / 12 ≈ 28; 4 of 8 is the BAV midpoint).
+- *Score.* The largest strength among on-target movers, 0 if none. So 0, 0.5 or 1.
+- *Engine.* `domains/ashtakavarga_signals.py`, one rule shared with the eval family, behind
+  `AshtakavargaTransitSettings.enabled`, default off.
+
+**(g3) Technique #4, `varga_lords`: hypothesis, formula and constants.**
+
+- *Hypothesis.* Running dasha lords and slow transits tied to the area's divisional chart rank a
+  recorded event higher in its window than the v1 families alone. Directional prediction: the
+  k=3 and k=6 placebo-calibrated lift of +VARGAS is above 1 for **career** (D10),
+  **relationships** (D9) and **disputes** (D30: legal, accident). The family scores 0 for every
+  other target, so those areas equal BASELINE by construction.
+- *Area → varga and key houses* (counted from that varga's lagna, whole-sign): career targets
+  (career_change, job_start, job_loss) → D10, house 10; relationships targets
+  (relationship_start, marriage, separation) → D9, house 7; the disputes target → D30, houses 6,
+  8 and 12. The engine's existing `vargas/` divisions are used unchanged (D9, D10 and D30 exist).
+- *Varga significators.* The lord of each key house's sign, and every one of the nine grahas
+  placed in a key house in that varga.
+- *Score.* 0.5 if a running Vimshottari maha or antar lord (at some time in the month) is a varga
+  significator, plus 0.5 if transiting Jupiter or Saturn (sign on the 15th, 12:00 UTC) is in a
+  key-house sign of that varga, read on the zodiac. So 0, 0.5 or 1.
+- *Engine.* `domains/varga_signals.py` (career → D10, relationships → D9, obstacles → D30),
+  one rule shared with the eval family, behind `VargaSignalSettings.enabled`, default off.
+
+**(g4) The DEV run (the only run of #3 and #4).**
+
+- Two placebo-scorecard runs over the DEV half, `--added ashtakavarga_transits` and `--added
+  varga_lords`, each BASELINE (the v1 seven) vs BASELINE + that one family. Their BASELINE rows
+  must be identical; if not, the run is void. `--workers` ≤ 6 in total.
+- Per area and k: n, the placebo-calibrated lift [95% CI] and exact p for BASELINE and +FAMILY,
+  the old k/N lift, and the real ÷ chart-swap ratio [95% CI]. Per-family shifted controls and
+  the planted control exactly as amendment (f3); a void configuration voids its run.
+- *Pre-registered tests: ten.* +ASHTAKAVARGA career and finances, +VARGAS career,
+  relationships and disputes, each at k=3 and k=6: the +FAMILY placebo-calibrated p. Holm and
+  Benjamini-Hochberg at α = 0.05 across these ten. The 16 per-configuration area tests are
+  reported as before, exploratory.
+- *What would send a family to HELD-OUT.* A pre-registered test that survives Holm across the
+  ten, with its lift CI above 1 and its chart-swap ratio CI above 1. Anything less is null for
+  that area on DEV. DEV wins are still not evidence.
+- Adding the two families to `FAMILIES` changes the pre-registration digest from `e3462748…`.
+  The new digest is pinned in `tests/test_retrodiction_mapping.py` in the commit that adds the
+  families, and recorded under (g5) below, before any run.
+
+**(g5) Digest.** (Filled in by the commit that adds the families, before any run.)
+
+**(g6) The stop rule, restated (learning-loop §8).** If families #1-#4 promote nothing, the
+roadmap pauses: no family #5. We publish the null as aggregates on the methods page, keep every
+area reflective, frame time travel as "what the tradition says about this month", and keep the
+scorecard as a regression guard. A family that is null on DEV never reaches HELD-OUT, so it
+promotes nothing. #1 and #2 are null on DEV (results below). So the rule triggers after (g4)
+unless #3 or #4 sends an area to HELD-OUT under (g4)'s gate and that area then passes §2's
+promotion rule there. The relocation test (g1) cannot change this verdict: it is measure-only.
+
 ## Results: DEV, exact transits (technique #1), 2026-10-14
 
 The only scoring run of amendment (d). Engine and harness at `8faa4ed7` (branch
