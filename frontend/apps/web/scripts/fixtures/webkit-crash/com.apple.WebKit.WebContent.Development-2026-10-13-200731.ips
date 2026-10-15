@@ -1,0 +1,649 @@
+{"app_name": "com.apple.WebKit.WebContent.Development", "timestamp": "2026-10-13 20:07:31.00 +0000", "bug_type": "309", "name": "com.apple.WebKit.WebContent.Development", "note": "minimized: signature fields only (scripts/crashReportSummary.mjs)"}
+{
+  "procName": "com.apple.WebKit.WebContent.Development",
+  "captureTime": "2026-10-13 20:07:02.8583 +0000",
+  "exception": {
+    "type": "EXC_BAD_ACCESS",
+    "signal": "SIGSEGV"
+  },
+  "termination": {
+    "namespace": "SIGNAL",
+    "indicator": "Segmentation fault: 11"
+  },
+  "faultingThread": 17,
+  "threads": [
+    {
+      "queue": "com.apple.main-thread",
+      "frames": [
+        {
+          "imageIndex": 10,
+          "symbol": "mach_msg2_trap"
+        },
+        {
+          "imageIndex": 10,
+          "symbol": "mach_msg2_internal"
+        },
+        {
+          "imageIndex": 10,
+          "symbol": "mach_msg_overwrite"
+        },
+        {
+          "imageIndex": 10,
+          "symbol": "mach_msg"
+        },
+        {
+          "imageIndex": 11,
+          "symbol": "__CFRunLoopServiceMachPort"
+        },
+        {
+          "imageIndex": 11,
+          "symbol": "__CFRunLoopRun"
+        }
+      ]
+    },
+    {
+      "frames": [
+        {
+          "imageIndex": 16,
+          "symbol": "start_wqthread"
+        }
+      ]
+    },
+    {
+      "frames": [
+        {
+          "imageIndex": 16,
+          "symbol": "start_wqthread"
+        }
+      ]
+    },
+    {
+      "name": "JavaScriptCore libpas scavenger",
+      "frames": [
+        {
+          "imageIndex": 10,
+          "symbol": "__psynch_cvwait"
+        },
+        {
+          "imageIndex": 16,
+          "symbol": "_pthread_cond_wait"
+        },
+        {
+          "imageIndex": 5,
+          "symbol": "scavenger_thread_main"
+        },
+        {
+          "imageIndex": 16,
+          "symbol": "_pthread_start"
+        },
+        {
+          "imageIndex": 16,
+          "symbol": "thread_start"
+        }
+      ]
+    },
+    {
+      "frames": [
+        {
+          "imageIndex": 16,
+          "symbol": "start_wqthread"
+        }
+      ]
+    },
+    {
+      "name": "JavaScriptCore libpas prefault",
+      "frames": [
+        {
+          "imageIndex": 10,
+          "symbol": "__psynch_cvwait"
+        },
+        {
+          "imageIndex": 16,
+          "symbol": "_pthread_cond_wait"
+        },
+        {
+          "imageIndex": 5,
+          "symbol": "supply_thread_main"
+        },
+        {
+          "imageIndex": 16,
+          "symbol": "_pthread_start"
+        },
+        {
+          "imageIndex": 16,
+          "symbol": "thread_start"
+        }
+      ]
+    },
+    {
+      "name": "JIT Worklist Helper Thread",
+      "frames": [
+        {
+          "imageIndex": 5,
+          "symbol": "JSC::DFG::performPredictionPropagation(JSC::DFG::Graph&)"
+        },
+        {
+          "imageIndex": 5,
+          "symbol": "JSC::DFG::Plan::compileInThreadImpl()"
+        },
+        {
+          "imageIndex": 5,
+          "symbol": "JSC::JITPlan::compileInThread(JSC::JITWorklistThread*)"
+        },
+        {
+          "imageIndex": 5,
+          "symbol": "JSC::JITWorklistThread::work()"
+        },
+        {
+          "imageIndex": 5,
+          "symbol": "WTF::Detail::CallableWrapper<WTF::AutomaticThread::start(WTF::AbstractLocker const&)::$_0, void>::call()"
+        },
+        {
+          "imageIndex": 5,
+          "symbol": "WTF::Thread::entryPoint(WTF::Thread::NewThreadContext*)"
+        }
+      ]
+    },
+    {
+      "frames": [
+        {
+          "imageIndex": 16,
+          "symbol": "start_wqthread"
+        }
+      ]
+    },
+    {
+      "name": "Heap Helper Thread",
+      "frames": [
+        {
+          "imageIndex": 10,
+          "symbol": "__psynch_cvwait"
+        },
+        {
+          "imageIndex": 16,
+          "symbol": "_pthread_cond_wait"
+        },
+        {
+          "imageIndex": 5,
+          "symbol": "WTF::ThreadCondition::timedWait(WTF::Mutex&, WTF::WallTime)"
+        },
+        {
+          "imageIndex": 5,
+          "symbol": "WTF::ParkingLot::parkConditionallyImpl(void const*, WTF::ScopedLambda<bool ()> const&, WTF::ScopedLambda<void ()> const&, WTF::TimeWithDynamicClockType const&)"
+        },
+        {
+          "imageIndex": 5,
+          "symbol": "WTF::Detail::CallableWrapper<WTF::AutomaticThread::start(WTF::AbstractLocker const&)::$_0, void>::call()"
+        },
+        {
+          "imageIndex": 5,
+          "symbol": "WTF::Thread::entryPoint(WTF::Thread::NewThreadContext*)"
+        }
+      ]
+    },
+    {
+      "name": "Heap Helper Thread",
+      "frames": [
+        {
+          "imageIndex": 10,
+          "symbol": "__psynch_cvwait"
+        },
+        {
+          "imageIndex": 16,
+          "symbol": "_pthread_cond_wait"
+        },
+        {
+          "imageIndex": 5,
+          "symbol": "WTF::ThreadCondition::timedWait(WTF::Mutex&, WTF::WallTime)"
+        },
+        {
+          "imageIndex": 5,
+          "symbol": "WTF::ParkingLot::parkConditionallyImpl(void const*, WTF::ScopedLambda<bool ()> const&, WTF::ScopedLambda<void ()> const&, WTF::TimeWithDynamicClockType const&)"
+        },
+        {
+          "imageIndex": 5,
+          "symbol": "WTF::Detail::CallableWrapper<WTF::AutomaticThread::start(WTF::AbstractLocker const&)::$_0, void>::call()"
+        },
+        {
+          "imageIndex": 5,
+          "symbol": "WTF::Thread::entryPoint(WTF::Thread::NewThreadContext*)"
+        }
+      ]
+    },
+    {
+      "name": "WebCore: Worker",
+      "frames": [
+        {
+          "imageIndex": 10,
+          "symbol": "__psynch_cvwait"
+        },
+        {
+          "imageIndex": 16,
+          "symbol": "_pthread_cond_wait"
+        },
+        {
+          "imageIndex": 5,
+          "symbol": "WTF::ThreadCondition::timedWait(WTF::Mutex&, WTF::WallTime)"
+        },
+        {
+          "imageIndex": 5,
+          "symbol": "WTF::ParkingLot::parkConditionallyImpl(void const*, WTF::ScopedLambda<bool ()> const&, WTF::ScopedLambda<void ()> const&, WTF::TimeWithDynamicClockType const&)"
+        },
+        {
+          "imageIndex": 6,
+          "symbol": "bool WTF::Condition::waitUntilUnchecked<WTF::Lock>(WTF::Lock&, WTF::TimeWithDynamicClockType const&)"
+        },
+        {
+          "imageIndex": 6,
+          "symbol": "std::__1::unique_ptr<WebCore::WorkerDedicatedRunLoop::Task, std::__1::default_delete<WebCore::WorkerDedicatedRunLoop::Task>> WTF::MessageQueue<WebCore::WorkerDedicatedRunLoop::Task>::waitForMessageFilteredWithTimeout<WebCore::ModePredicate>(WTF::MessageQueueWaitResult&, WebCore::ModePredicate const&, WTF::Seconds)"
+        }
+      ]
+    },
+    {
+      "name": "Wasm Worklist Helper Thread",
+      "frames": [
+        {
+          "imageIndex": 10,
+          "symbol": "__psynch_cvwait"
+        },
+        {
+          "imageIndex": 16,
+          "symbol": "_pthread_cond_wait"
+        },
+        {
+          "imageIndex": 5,
+          "symbol": "WTF::ThreadCondition::timedWait(WTF::Mutex&, WTF::WallTime)"
+        },
+        {
+          "imageIndex": 5,
+          "symbol": "WTF::ParkingLot::parkConditionallyImpl(void const*, WTF::ScopedLambda<bool ()> const&, WTF::ScopedLambda<void ()> const&, WTF::TimeWithDynamicClockType const&)"
+        },
+        {
+          "imageIndex": 5,
+          "symbol": "WTF::Detail::CallableWrapper<WTF::AutomaticThread::start(WTF::AbstractLocker const&)::$_0, void>::call()"
+        },
+        {
+          "imageIndex": 5,
+          "symbol": "WTF::Thread::entryPoint(WTF::Thread::NewThreadContext*)"
+        }
+      ]
+    },
+    {
+      "name": "Wasm Worklist Helper Thread",
+      "frames": [
+        {
+          "imageIndex": 10,
+          "symbol": "__psynch_cvwait"
+        },
+        {
+          "imageIndex": 16,
+          "symbol": "_pthread_cond_wait"
+        },
+        {
+          "imageIndex": 5,
+          "symbol": "WTF::ThreadCondition::timedWait(WTF::Mutex&, WTF::WallTime)"
+        },
+        {
+          "imageIndex": 5,
+          "symbol": "WTF::ParkingLot::parkConditionallyImpl(void const*, WTF::ScopedLambda<bool ()> const&, WTF::ScopedLambda<void ()> const&, WTF::TimeWithDynamicClockType const&)"
+        },
+        {
+          "imageIndex": 5,
+          "symbol": "WTF::Detail::CallableWrapper<WTF::AutomaticThread::start(WTF::AbstractLocker const&)::$_0, void>::call()"
+        },
+        {
+          "imageIndex": 5,
+          "symbol": "WTF::Thread::entryPoint(WTF::Thread::NewThreadContext*)"
+        }
+      ]
+    },
+    {
+      "name": "JIT Worklist Helper Thread",
+      "frames": [
+        {
+          "imageIndex": 10,
+          "symbol": "__psynch_cvwait"
+        },
+        {
+          "imageIndex": 16,
+          "symbol": "_pthread_cond_wait"
+        },
+        {
+          "imageIndex": 5,
+          "symbol": "WTF::ThreadCondition::timedWait(WTF::Mutex&, WTF::WallTime)"
+        },
+        {
+          "imageIndex": 5,
+          "symbol": "WTF::ParkingLot::parkConditionallyImpl(void const*, WTF::ScopedLambda<bool ()> const&, WTF::ScopedLambda<void ()> const&, WTF::TimeWithDynamicClockType const&)"
+        },
+        {
+          "imageIndex": 5,
+          "symbol": "WTF::Detail::CallableWrapper<WTF::AutomaticThread::start(WTF::AbstractLocker const&)::$_0, void>::call()"
+        },
+        {
+          "imageIndex": 5,
+          "symbol": "WTF::Thread::entryPoint(WTF::Thread::NewThreadContext*)"
+        }
+      ]
+    },
+    {
+      "name": "JIT Worklist Helper Thread",
+      "frames": [
+        {
+          "imageIndex": 10,
+          "symbol": "__psynch_cvwait"
+        },
+        {
+          "imageIndex": 16,
+          "symbol": "_pthread_cond_wait"
+        },
+        {
+          "imageIndex": 5,
+          "symbol": "WTF::ThreadCondition::timedWait(WTF::Mutex&, WTF::WallTime)"
+        },
+        {
+          "imageIndex": 5,
+          "symbol": "WTF::ParkingLot::parkConditionallyImpl(void const*, WTF::ScopedLambda<bool ()> const&, WTF::ScopedLambda<void ()> const&, WTF::TimeWithDynamicClockType const&)"
+        },
+        {
+          "imageIndex": 5,
+          "symbol": "WTF::Detail::CallableWrapper<WTF::AutomaticThread::start(WTF::AbstractLocker const&)::$_0, void>::call()"
+        },
+        {
+          "imageIndex": 5,
+          "symbol": "WTF::Thread::entryPoint(WTF::Thread::NewThreadContext*)"
+        }
+      ]
+    },
+    {
+      "name": "WebCore: Worker",
+      "frames": [
+        {
+          "imageIndex": 10,
+          "symbol": "__psynch_cvwait"
+        },
+        {
+          "imageIndex": 16,
+          "symbol": "_pthread_cond_wait"
+        },
+        {
+          "imageIndex": 5,
+          "symbol": "WTF::ThreadCondition::timedWait(WTF::Mutex&, WTF::WallTime)"
+        },
+        {
+          "imageIndex": 5,
+          "symbol": "WTF::ParkingLot::parkConditionallyImpl(void const*, WTF::ScopedLambda<bool ()> const&, WTF::ScopedLambda<void ()> const&, WTF::TimeWithDynamicClockType const&)"
+        },
+        {
+          "imageIndex": 6,
+          "symbol": "bool WTF::Condition::waitUntilUnchecked<WTF::Lock>(WTF::Lock&, WTF::TimeWithDynamicClockType const&)"
+        },
+        {
+          "imageIndex": 6,
+          "symbol": "std::__1::unique_ptr<WebCore::WorkerDedicatedRunLoop::Task, std::__1::default_delete<WebCore::WorkerDedicatedRunLoop::Task>> WTF::MessageQueue<WebCore::WorkerDedicatedRunLoop::Task>::waitForMessageFilteredWithTimeout<WebCore::ModePredicate>(WTF::MessageQueueWaitResult&, WebCore::ModePredicate const&, WTF::Seconds)"
+        }
+      ]
+    },
+    {
+      "name": "WebCore: Worker",
+      "frames": [
+        {
+          "imageIndex": 10,
+          "symbol": "__psynch_cvwait"
+        },
+        {
+          "imageIndex": 16,
+          "symbol": "_pthread_cond_wait"
+        },
+        {
+          "imageIndex": 5,
+          "symbol": "WTF::ThreadCondition::timedWait(WTF::Mutex&, WTF::WallTime)"
+        },
+        {
+          "imageIndex": 5,
+          "symbol": "WTF::ParkingLot::parkConditionallyImpl(void const*, WTF::ScopedLambda<bool ()> const&, WTF::ScopedLambda<void ()> const&, WTF::TimeWithDynamicClockType const&)"
+        },
+        {
+          "imageIndex": 6,
+          "symbol": "bool WTF::Condition::waitUntilUnchecked<WTF::Lock>(WTF::Lock&, WTF::TimeWithDynamicClockType const&)"
+        },
+        {
+          "imageIndex": 6,
+          "symbol": "std::__1::unique_ptr<WebCore::WorkerDedicatedRunLoop::Task, std::__1::default_delete<WebCore::WorkerDedicatedRunLoop::Task>> WTF::MessageQueue<WebCore::WorkerDedicatedRunLoop::Task>::waitForMessageFilteredWithTimeout<WebCore::ModePredicate>(WTF::MessageQueueWaitResult&, WebCore::ModePredicate const&, WTF::Seconds)"
+        }
+      ]
+    },
+    {
+      "name": "WebCore: Worker",
+      "frames": [
+        {
+          "imageIndex": 5,
+          "symbol": "JSC::JSWebAssemblyArray::visitChildren(JSC::JSCell*, JSC::AbstractSlotVisitor&)"
+        },
+        {
+          "imageIndex": 15
+        },
+        {
+          "imageIndex": 15
+        },
+        {
+          "imageIndex": 15
+        },
+        {
+          "imageIndex": 15
+        },
+        {
+          "imageIndex": 15
+        },
+        {
+          "imageIndex": 15
+        },
+        {
+          "imageIndex": 15
+        },
+        {
+          "imageIndex": 15
+        },
+        {
+          "imageIndex": 15
+        },
+        {
+          "imageIndex": 15
+        },
+        {
+          "imageIndex": 15
+        },
+        {
+          "imageIndex": 15
+        },
+        {
+          "imageIndex": 15
+        },
+        {
+          "imageIndex": 15
+        },
+        {
+          "imageIndex": 15
+        },
+        {
+          "imageIndex": 15
+        },
+        {
+          "imageIndex": 15
+        },
+        {
+          "imageIndex": 15
+        },
+        {
+          "imageIndex": 15
+        },
+        {
+          "imageIndex": 15
+        },
+        {
+          "imageIndex": 15
+        },
+        {
+          "imageIndex": 5,
+          "symbol": "jsc_llint_commonCallOp__llintOpWithMetadata__llintOpWithReturn__llintOp__commonOp__fn__fn__makeReturn__fn__fn__fn__683_callHelper__dispatch_LowLevelInterpreter64_asm_2579"
+        },
+        {
+          "imageIndex": 5,
+          "symbol": "jsc_llint_commonCallOp__llintOpWithMetadata__llintOpWithReturn__llintOp__commonOp__fn__fn__makeReturn__fn__fn__fn__683_callHelper__dispatch_LowLevelInterpreter64_asm_2579"
+        },
+        {
+          "imageIndex": 5,
+          "symbol": "jsc_llint_commonCallOp__llintOpWithMetadata__llintOpWithReturn__llintOp__commonOp__fn__fn__makeReturn__fn__fn__fn__683_callHelper__dispatch_LowLevelInterpreter64_asm_2579"
+        },
+        {
+          "imageIndex": 5,
+          "symbol": "jsc_llint_commonCallOp__llintOpWithMetadata__llintOpWithReturn__llintOp__commonOp__fn__fn__makeReturn__fn__fn__fn__683_callHelper__dispatch_LowLevelInterpreter64_asm_2579"
+        },
+        {
+          "imageIndex": 5,
+          "symbol": "jsc_llint_commonCallOp__llintOpWithMetadata__llintOpWithReturn__llintOp__commonOp__fn__fn__makeReturn__fn__fn__fn__683_callHelper__dispatch_LowLevelInterpreter64_asm_2579"
+        },
+        {
+          "imageIndex": 5,
+          "symbol": "jsc_llint_commonCallOp__llintOpWithMetadata__llintOpWithReturn__llintOp__commonOp__fn__fn__makeReturn__fn__fn__fn__683_callHelper__dispatch_LowLevelInterpreter64_asm_2579"
+        },
+        {
+          "imageIndex": 5,
+          "symbol": "llint_call_javascript"
+        },
+        {
+          "imageIndex": 5,
+          "symbol": "JSC::asyncFunctionGeneratorBodyCall(JSC::JSGlobalObject*, JSC::VM&, JSC::JSAsyncFunctionGenerator*, JSC::JSValue, JSC::JSGenerator::ResumeMode, JSC::MicrotaskCallCache*)"
+        },
+        {
+          "imageIndex": 5,
+          "symbol": "JSC::MicrotaskQueue::drainWithoutUseCallOnEachMicrotask(JSC::JSGlobalObject*, JSC::VM&, JSC::TopExceptionScope&)"
+        },
+        {
+          "imageIndex": 6,
+          "symbol": "WebCore::MicrotaskQueue::performMicrotaskCheckpoint(JSC::VM&)"
+        },
+        {
+          "imageIndex": 6,
+          "symbol": "WebCore::EventLoop::run(JSC::VM&, std::__1::optional<WTF::ApproximateTime>)"
+        },
+        {
+          "imageIndex": 6,
+          "symbol": "WebCore::WorkerDedicatedRunLoop::Task::performTask(WebCore::WorkerOrWorkletGlobalScope*)"
+        },
+        {
+          "imageIndex": 6,
+          "symbol": "WebCore::WorkerDedicatedRunLoop::runInMode(WebCore::WorkerOrWorkletGlobalScope*, WebCore::ModePredicate const&)"
+        },
+        {
+          "imageIndex": 6,
+          "symbol": "WebCore::WorkerDedicatedRunLoop::run(WebCore::WorkerOrWorkletGlobalScope*)"
+        },
+        {
+          "imageIndex": 6,
+          "symbol": "WebCore::WorkerOrWorkletThread::runEventLoop()"
+        },
+        {
+          "imageIndex": 6,
+          "symbol": "WebCore::WorkerOrWorkletThread::workerOrWorkletThread()"
+        },
+        {
+          "imageIndex": 5,
+          "symbol": "WTF::Thread::entryPoint(WTF::Thread::NewThreadContext*)"
+        },
+        {
+          "imageIndex": 5,
+          "symbol": "WTF::wtfThreadEntryPoint(void*)"
+        },
+        {
+          "imageIndex": 16,
+          "symbol": "_pthread_start"
+        },
+        {
+          "imageIndex": 16,
+          "symbol": "thread_start"
+        }
+      ]
+    },
+    {
+      "name": "JSC Heap Collector Thread",
+      "frames": [
+        {
+          "imageIndex": 10,
+          "symbol": "__psynch_cvwait"
+        },
+        {
+          "imageIndex": 16,
+          "symbol": "_pthread_cond_wait"
+        },
+        {
+          "imageIndex": 5,
+          "symbol": "WTF::ThreadCondition::timedWait(WTF::Mutex&, WTF::WallTime)"
+        },
+        {
+          "imageIndex": 5,
+          "symbol": "WTF::ParkingLot::parkConditionallyImpl(void const*, WTF::ScopedLambda<bool ()> const&, WTF::ScopedLambda<void ()> const&, WTF::TimeWithDynamicClockType const&)"
+        },
+        {
+          "imageIndex": 5,
+          "symbol": "WTF::Detail::CallableWrapper<WTF::AutomaticThread::start(WTF::AbstractLocker const&)::$_0, void>::call()"
+        },
+        {
+          "imageIndex": 5,
+          "symbol": "WTF::Thread::entryPoint(WTF::Thread::NewThreadContext*)"
+        }
+      ]
+    }
+  ],
+  "usedImages": [
+    {
+      "name": "com.apple.WebKit.WebContent.Development"
+    },
+    {
+      "name": "WebKit"
+    },
+    {
+      "name": "WebKitLegacy"
+    },
+    {
+      "name": "libwebrtc.dylib"
+    },
+    {
+      "name": "WebInspectorUI"
+    },
+    {
+      "name": "JavaScriptCore"
+    },
+    {
+      "name": "WebCore"
+    },
+    {
+      "name": "libANGLE-shared.dylib"
+    },
+    {
+      "name": "WebGPU"
+    },
+    {
+      "name": "libswiftCompatibilitySpan.dylib"
+    },
+    {
+      "name": "libsystem_kernel.dylib"
+    },
+    {
+      "name": "CoreFoundation"
+    },
+    {
+      "name": "Foundation"
+    },
+    {
+      "name": "libxpc.dylib"
+    },
+    {
+      "name": "dyld"
+    },
+    {},
+    {
+      "name": "libsystem_pthread.dylib"
+    }
+  ]
+}

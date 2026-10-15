@@ -86,7 +86,13 @@
     "success_description": "Os seus dados de nascimento foram atualizados e o seu mapa foi regenerado no dispositivo.",
     "view_new_chart": "Ver novo mapa",
     "processing_title": "Regenerando o seu mapa",
-    "processing_description": "Calculando no dispositivo — leva apenas um instante."
+    "processing_description": "Calculando no dispositivo — leva apenas um instante.",
+    "current_place_label": "Onde você mora agora?",
+    "current_place_placeholder": "Busque uma cidade",
+    "current_place_hint": "Opcional. Fica neste dispositivo.",
+    "current_place_clear": "Limpar",
+    "current_place_saved": "Salvo",
+    "current_place_failed": "Não foi possível salvar. Tente de novo."
   },
   "rectification_record": {
     "title": "Sua retificação",

@@ -5,7 +5,7 @@
  * Coordinates go to the on-device worker only; nothing here is model-facing.
  */
 import type { MoonWindow, MoonWindowInput } from '@almamesh/browser';
-import type { AgentToolContext } from '@almamesh/llm';
+import type { ToolContext } from '@almamesh/llm/toolLoop';
 import { localTimeToInstant, resolveLocalTime } from '@almamesh/store';
 
 import type { ChartEngineContextValue } from '../providers/chartEngineContext';
@@ -19,7 +19,7 @@ export interface MoonWindowRequest {
   readonly time?: string;
 }
 
-export type MoonWindowLoader = (request: MoonWindowRequest, context: AgentToolContext) => Promise<MoonWindow>;
+export type MoonWindowLoader = (request: MoonWindowRequest, context: ToolContext) => Promise<MoonWindow>;
 
 function nextDay(day: string): string {
   return new Date(Date.parse(`${day}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);

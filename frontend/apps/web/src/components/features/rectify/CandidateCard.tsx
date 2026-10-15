@@ -7,7 +7,7 @@
  *    COUNTS ONLY ("4 supporting fits · 1 unexplained event · 1 quiet-period miss").
  *  - The recorded-time prior surfaces as a labeled qualitative row (only when
  *    it actually applied), never as a number.
- *  - Quiet-period misses are listed qualitatively ("predicted a strong
+ *  - Quiet-period misses are listed qualitatively ("showed a strong
  *    {category} window with nothing reported") — negative evidence is shown,
  *    not hidden.
  *  - The representative time is clearly labelled as a window estimate, not an

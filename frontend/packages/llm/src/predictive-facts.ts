@@ -20,8 +20,8 @@ import type {
 } from "./sanitize";
 
 export const PREDICTIVE_BLOCK_START =
-  "=== ENGINE PREDICTIVE CONTEXT (deterministic engine output) ===";
-export const PREDICTIVE_BLOCK_END = "=== END ENGINE PREDICTIVE CONTEXT ===";
+  "=== ENGINE TIMING CONTEXT (deterministic engine output) ===";
+export const PREDICTIVE_BLOCK_END = "=== END ENGINE TIMING CONTEXT ===";
 
 // The guard the model reads FIRST: this block is engine truth, and its
 // month-precision windows are the ONLY dates that exist.
@@ -145,7 +145,7 @@ function domainLines(forecast: SanitizedDomainForecast): string[] {
 }
 
 function domainsSection(domains: readonly SanitizedDomainForecast[]): string {
-  return ["Life-domain forecasts:", ...domains.flatMap(domainLines)].join("\n");
+  return ["Life-area themes:", ...domains.flatMap(domainLines)].join("\n");
 }
 
 /**

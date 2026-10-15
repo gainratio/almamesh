@@ -7,7 +7,7 @@ import { yearDay } from "./period";
 import { dashaBoundaryMonth, type PeriodRange } from "./sanitize";
 
 export const PRATYANTAR_NOTE =
-  "This table lists pratyantars inside the chart's current antar only; get_period_reading gives the pratyantar for any date.";
+  "This table lists pratyantars inside the chart's current antar only; read_period gives the pratyantar for any date.";
 export const BIRTH_YEAR_ROWS_NOTE =
   "The first period row begins during the year of birth; months before birth don't apply.";
 export const NO_TREE_NOTE =

@@ -1,9 +1,9 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { chatAsOfProblem } from '@almamesh/store';
+import { chatAsOfProblem, useProfilesStore } from '@almamesh/store';
 
 import '../../../../i18n/config';
 import { TimeTravelSheet } from '../TimeTravelSheet';
@@ -380,5 +380,59 @@ describe('TimeTravelSheet', () => {
     expect(source).not.toMatch(/^import (?!type )[^\n]*from '\.\.\/\.\.\/\.\.\/lib\/geo\/(placeLookup|cityLookup)'/m);
     expect(source).not.toContain('searchCities(');
     expect(source).not.toContain('onlineGeocoder');
+  });
+});
+
+describe('TimeTravelSheet: where you live now', () => {
+  const NOVATO_PIN = { label: 'Novato, California, United States', timezone: 'America/Los_Angeles', latitude: 38.10742, longitude: -122.5697 };
+
+  function livingIn(place: typeof NOVATO_PIN | undefined): void {
+    act(() => {
+      useProfilesStore.setState({ profiles: {}, activeProfileId: null });
+      const id = useProfilesStore.getState().createProfile('Ada');
+      if (place) useProfilesStore.getState().setCurrentPlace(id, place);
+    });
+  }
+
+  afterEach(() => livingIn(undefined));
+
+  it('unset: only the birth place is offered, exactly as before', () => {
+    livingIn(undefined);
+    renderSheet();
+    expect(screen.queryByTestId('time-travel-where-home')).toBeNull();
+    expect(screen.getByTestId('time-travel-where-suggestion')).toBeTruthy();
+  });
+
+  it('set: offers it as a one-click suggestion next to the birth place, never pre-filled', () => {
+    livingIn(NOVATO_PIN);
+    renderSheet();
+    expect(whereValue()).toBe('');
+    expect(screen.getByTestId('time-travel-where-home').textContent).toBe('Use Novato, California, United States (where you live now)');
+    expect(screen.getByTestId('time-travel-where-suggestion')).toBeTruthy();
+    expect(go().disabled).toBe(true);
+  });
+
+  it('one click on it fills "Where?" with that place and enables Go', async () => {
+    livingIn(NOVATO_PIN);
+    const { onGo } = renderSheet();
+    fireEvent.click(screen.getByTestId('time-travel-where-home'));
+    expect(whereValue()).toBe(NOVATO_PIN.label);
+    expect(screen.queryByTestId('time-travel-where-home')).toBeNull();
+    fireEvent.click(go());
+    await waitFor(() => expect(onGo).toHaveBeenCalledWith(expect.objectContaining({ place: NOVATO_PIN })));
+  });
+
+  it('when home is the birth place, it is offered once', () => {
+    livingIn(BIRTH_PLACE);
+    renderSheet();
+    expect(screen.getByTestId('time-travel-where-home')).toBeTruthy();
+    expect(screen.queryByTestId('time-travel-where-suggestion')).toBeNull();
+  });
+
+  it('an earlier trip still prefills; the home suggestion steps aside', () => {
+    livingIn(NOVATO_PIN);
+    renderSheet({ pins: PINS });
+    expect(whereValue()).toBe('San Francisco, United States');
+    expect(screen.queryByTestId('time-travel-where-home')).toBeNull();
   });
 });

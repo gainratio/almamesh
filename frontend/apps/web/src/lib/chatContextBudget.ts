@@ -5,25 +5,16 @@
  * prompt's sizing for that window, and the per-round and per-call telemetry sinks. Dashboard
  * and MeshEdge chat both take their budget from here.
  */
-import {
-  chatPromptBudgetFor,
-  readLlmSettings,
-  resolveModelContextTokens,
-  type AgentRoundUsage,
-  type AgentToolCallRecord,
-  type ChatPromptBudget,
-  type ProviderConfig,
-} from '@almamesh/llm';
+import { chatPromptBudgetFor, readLlmSettings, resolveModelContextTokens, type ChatPromptBudget, type ProviderConfig } from '@almamesh/llm';
 
-import { beginAgentTurn } from './agentRoundTelemetry';
+import { beginAgentTurn, type AgentTurnTelemetry } from './agentRoundTelemetry';
 
 export interface ChatTurnContext {
-  /** The model's context window; undefined when unknown (the agent loop assumes 8k). */
+  /** The chat model's context window; undefined when unknown (the tool loop then assumes 8k). */
   readonly contextTokens: number | undefined;
   readonly promptBudget: ChatPromptBudget;
-  readonly onRoundUsage: (usage: AgentRoundUsage) => void;
-  /** Dev telemetry of the turn's tool calls (lib/agentRoundTelemetry.ts). */
-  readonly onToolCall: (record: AgentToolCallRecord) => void;
+  /** Dev telemetry of the turn's rounds and tool calls (lib/agentRoundTelemetry.ts). */
+  readonly telemetry: AgentTurnTelemetry;
 }
 
 export async function chatContextFor(config: ProviderConfig, signal?: AbortSignal, fetchImpl?: typeof fetch): Promise<ChatTurnContext> {
@@ -33,6 +24,5 @@ export async function chatContextFor(config: ProviderConfig, signal?: AbortSigna
     ...(signal ? { signal } : {}),
     ...(fetchImpl ? { fetchImpl } : {}),
   });
-  const telemetry = beginAgentTurn();
-  return { contextTokens, promptBudget: chatPromptBudgetFor(contextTokens), onRoundUsage: telemetry.onRoundUsage, onToolCall: telemetry.onToolCall };
+  return { contextTokens, promptBudget: chatPromptBudgetFor(contextTokens), telemetry: beginAgentTurn() };
 }

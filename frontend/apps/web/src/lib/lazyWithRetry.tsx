@@ -49,7 +49,7 @@ function holdWhileLeaving(error: unknown): Promise<never> {
   });
 }
 
-export async function loadWithRetry<T extends ComponentType<unknown>>(
+export async function loadWithRetry<T>(
   factory: () => Promise<{ default: T }>,
   name: string,
 ): Promise<{ default: T }> {
@@ -74,8 +74,9 @@ export async function loadWithRetry<T extends ComponentType<unknown>>(
   }
 }
 
-export function lazyWithRetry<T extends ComponentType<unknown>>(
-  factory: () => Promise<{ default: T }>,
+/** `P` is the component's props, so a lazy panel keeps its prop types. */
+export function lazyWithRetry<P extends object>(
+  factory: () => Promise<{ default: ComponentType<P> }>,
   name: string,
 ) {
   return lazy(() => loadWithRetry(factory, name));

@@ -34,7 +34,6 @@ import {
   toolFactsNote,
   type ChatSummaryPlan,
   type PriorToolCall,
-  type AgentToolCallRecord,
   type ChatTurn,
   type LlmRequestError,
 } from '@almamesh/llm';
@@ -43,30 +42,35 @@ import i18n from '../i18n/config';
 import { noteIfStaleChunk, StaleAppError, useAppStale } from '../lib/appStale';
 import { indexChatMessage, retrieveContext } from '../lib/chatMemory';
 import { isChunkLoadError } from '../lib/chunkError';
+import type { ChatToolCall } from '../lib/chatTurn';
 import { chatErrorMessage, getChatErrorMessage } from '../lib/errors';
 import { LLM_SETTINGS_CHANGED_EVENT } from '../lib/llmSettingsEvents';
 import { PERIOD_TOOL_SUMMARIZERS } from '../lib/periodReading';
 import { asOfKey } from '../lib/pinnedPeriod';
 import { waitForStoreSaved } from '../lib/storeSaved';
 import { applyBackToToday, applyTravel, travelIntentVersion, type TravelSource, type TravelThread } from '../lib/timeTravel';
-import { createTravelSlot, type TravelRecorder } from '../lib/timeTravelTool';
+import { createTravelSlot, type TravelRecorder } from '../lib/travelSlot';
+import { moveTurnToThread } from '../lib/turnFollowsTravel';
 
-/** Input the caller's stream fn receives; it wires `streamChartChat` with these. */
+/** Input the caller's stream fn receives; it runs the chat turn (lib/chatTurn.ts) with these. */
 export interface ChatStreamInput {
   readonly question: string;
   readonly history: readonly ChatTurn[];
   readonly retrievedContext: readonly string[];
-  readonly onToken: (token: string) => void;
+  /** The answer so far, in full: each snapshot replaces the last. */
+  readonly onSnapshot: (text: string) => void;
   /** The thread's time-travel pin; absent in a normal thread. */
   readonly asOf?: ChatThreadAsOf;
   /** Record only; the hook applies this turn's last action after its durable answer. */
   readonly onTravel?: TravelRecorder;
-  /** Each tool call the agent ran this turn; persisted on the answer as tool-call parts. */
-  readonly onToolCall?: (record: AgentToolCallRecord) => void;
+  /** Each tool call the turn ran; persisted on the answer as tool-call parts. */
+  readonly onToolCall?: (record: ChatToolCall) => void;
+  /** Aborts when the page is left or another thread is opened or started; the turn must stop its requests. */
+  readonly signal: AbortSignal;
 }
 
 /** A tool call as a persisted part: the same args and sanitized result the model got. */
-function toolCallPart(record: AgentToolCallRecord): ChatMessagePart {
+function toolCallPart(record: ChatToolCall): ChatMessagePart {
   const { toolCallId, toolName, args, status, result } = record;
   return { type: 'tool-call', toolCallId, toolName, args, status, ...(result === undefined ? {} : { result }) };
 }
@@ -333,13 +337,17 @@ export function useChatThread(
   currentProfileId.current = profileId;
   const selectionVersion = useRef(0);
   const mounted = useRef(true);
+  // The in-flight turn's controller: leaving the page or moving to another thread cancels it.
+  const turnAbort = useRef<AbortController | null>(null);
+  const cancelTurn = useCallback(() => { turnAbort.current?.abort(); }, []);
   useEffect(() => {
     mounted.current = true;
-    return () => { mounted.current = false; };
-  }, []);
+    return () => { mounted.current = false; cancelTurn(); };
+  }, [cancelTurn]);
   useEffect(() => {
     selectionVersion.current += 1;
-  }, [profileId, chartId]);
+    cancelTurn();
+  }, [profileId, chartId, cancelTurn]);
 
   const selectionIsCurrent = useCallback((profile: string, chart: string | null, selection: number) => (
     mounted.current && currentProfileId.current === profile && currentChartId.current === chart
@@ -396,7 +404,7 @@ export function useChatThread(
       const travelSlot = createTravelSlot();
       // A tool can hit a stale chunk without failing the turn; the turn is then the app's, not the model's.
       const staleBefore = useAppStale.getState().stale;
-      let completed = false;
+      let answeredId: string | undefined;
       const userMessage = store.appendMessage(tid, 'user', q);
       void indexChatMessage({ id: userMessage.id, thread_id: tid, profile_id: profileId, content: q });
 
@@ -405,6 +413,8 @@ export function useChatThread(
       sendInFlight.current = true;
       setIsStreaming(true);
       setStreamingDraft('');
+      const turn = new AbortController();
+      turnAbort.current = turn;
       try {
         const retrievedContext = [...(await retrieveContext(q, profileId))];
         if (
@@ -420,14 +430,15 @@ export function useChatThread(
         let draft = '';
         const toolCalls: ChatMessagePart[] = [];
         const answer = await stream({
+          signal: turn.signal,
           question: q,
           history,
           retrievedContext,
           ...(askedAsOf ? { asOf: askedAsOf } : {}),
           onTravel: travelSlot.record,
           onToolCall: (record) => { toolCalls.push(toolCallPart(record)); },
-          onToken: (token) => {
-            draft += token;
+          onSnapshot: (text) => {
+            draft = text;
             setStreamingDraft(draft);
           },
         });
@@ -448,7 +459,7 @@ export function useChatThread(
         }
         const assistantMessage = store.appendMessage(tid, 'assistant', finalAnswer,
           toolCalls.length > 0 ? { parts: [...toolCalls, { type: 'text', text: finalAnswer }] } : undefined);
-        completed = true;
+        answeredId = assistantMessage.id;
         void indexChatMessage({
           id: assistantMessage.id,
           thread_id: tid,
@@ -475,6 +486,8 @@ export function useChatThread(
           }
         }
       } catch (error) {
+        // A cancelled turn (page left, another thread opened) leaves no error bubble behind.
+        if (turn.signal.aborted) return;
         safeError('chat.stream_failed', error);
         // An app update stopped the send: the notice marks the turn, so the reload can restore the question.
         const stale = noteIfStaleChunk(error) || (!staleBefore && useAppStale.getState().stale);
@@ -492,7 +505,7 @@ export function useChatThread(
         const action = travelSlot.take();
         try {
           const live = useChatStore.getState().threads[tid];
-          if (action && completed && saved && mounted.current
+          if (action && answeredId && saved && mounted.current
             && currentProfileId.current === profileId && live?.profile_id === profileId
             && selectionVersion.current === askedSelection && travelIntentVersion(profileId) === askedIntent
             && answerIdentity(currentChartId.current, live.as_of) === askedAbout) {
@@ -504,7 +517,12 @@ export function useChatThread(
             const outcome = action.kind === 'back_to_today'
               ? await applyBackToToday({ profileId, chartId, canApply })
               : await applyTravel({ asOf: action.asOf, source: 'chat-tool' }, { profileId, chartId, thread: { id: tid }, canApply });
-            if (outcome.threadId && canApply()) setSelectedThreadId(outcome.threadId);
+            if (outcome.threadId && canApply()) {
+              // The answer follows the user: the turn moves into the thread the panel now shows.
+              const moved = outcome.threadId !== tid && moveTurnToThread(tid, outcome.threadId, [userMessage.id, answeredId]);
+              setSelectedThreadId(outcome.threadId);
+              if (moved) await settleChatTurn(outcome.threadId);
+            }
           }
         } catch (error) {
           safeError('chat.stream_failed', error);
@@ -526,21 +544,23 @@ export function useChatThread(
       const candidate = useChatStore.getState().threads[candidateThreadId];
       if (profileId !== null && candidate?.profile_id === profileId) {
         selectionVersion.current += 1;
+        cancelTurn();
         setSelectedThreadId(candidateThreadId);
       }
     },
-    [profileId],
+    [profileId, cancelTurn],
   );
 
   const go = useCallback(
     async (asOf: ChatThreadAsOf, source: TravelSource, thread: TravelThread) => {
       if (!profileId) return;
       const selection = ++selectionVersion.current;
+      cancelTurn();
       const canApply = () => selectionIsCurrent(profileId, chartId, selection);
       const { threadId: moved } = await applyTravel({ asOf, source }, { profileId, chartId, thread, canApply });
       if (moved && canApply()) setSelectedThreadId(moved);
     },
-    [profileId, chartId, selectionIsCurrent],
+    [profileId, chartId, selectionIsCurrent, cancelTurn],
   );
   const pin = useCallback((asOf: ChatThreadAsOf) => go(asOf, 'chat-sheet', 'new'), [go]);
   const repin = useCallback(
@@ -552,10 +572,11 @@ export function useChatThread(
   const backToToday = useCallback(async () => {
     if (!profileId) return;
     const selection = ++selectionVersion.current;
+    cancelTurn();
     const canApply = () => selectionIsCurrent(profileId, chartId, selection);
     const { threadId: today } = await applyBackToToday({ profileId, chartId, canApply });
     if (today && canApply()) setSelectedThreadId(today);
-  }, [profileId, chartId, selectionIsCurrent]);
+  }, [profileId, chartId, selectionIsCurrent, cancelTurn]);
 
   return {
     messages,

@@ -377,11 +377,20 @@ export type ThemeDirection = "supportive" | "mixed" | "challenging";
 export type ThemeConfidence = "high" | "medium" | "low";
 
 /** Natal-only facts for one graha: stored once per profile, never per period. */
+/** A dasha lord's strength band (spec 2026-10-15, R3). */
+export type LordStrength = "strong" | "ordinary" | "weak";
+
+/** A sub-lord's whole-sign placement from its parent lord (spec 2026-10-15, R2). */
+export type PeriodRelation = "support" | "friction" | "neutral";
+
 export interface PeriodNatalLord {
   readonly rules: readonly number[];
   readonly house: number;
   readonly sign: string;
+  /** The chart's own four-value dignity (exalted, own, neutral, debilitated). */
   readonly dignity: string;
+  /** Absent from an engine older than the classical dasha rules. */
+  readonly strength?: LordStrength;
   readonly combust: boolean;
   readonly retro: boolean;
   readonly functional: FunctionalNature;
@@ -397,7 +406,13 @@ export interface PeriodWindow {
   readonly end: string;
 }
 
-export interface PeriodDashaSpan extends PeriodWindow {
+/** A sub-lord's house counted from its parent lord; null for a maha, absent from an older engine. */
+export interface PeriodPlacement {
+  readonly from_parent?: number | null;
+  readonly relation?: PeriodRelation | null;
+}
+
+export interface PeriodDashaSpan extends PeriodWindow, PeriodPlacement {
   readonly level: PeriodDashaLevel;
   readonly lord: string;
 }
@@ -460,6 +475,14 @@ export interface PeriodThemeAgreement {
   readonly transit: boolean;
 }
 
+/** The graded dasha scores (0-100) and tone of one domain (spec 2026-10-15, R7). */
+export interface PeriodThemeDasha {
+  readonly vimshottari: number;
+  readonly yogini: number;
+  /** Null when no running Vimshottari lord is tied to the domain. */
+  readonly tone: ThemeDirection | null;
+}
+
 export interface PeriodTheme {
   readonly domain: string;
   readonly houses: readonly number[];
@@ -468,6 +491,8 @@ export interface PeriodTheme {
   readonly strength_pct: number;
   readonly confidence: ThemeConfidence;
   readonly agreement: PeriodThemeAgreement;
+  /** Absent from an engine older than the classical dasha rules. */
+  readonly dasha?: PeriodThemeDasha;
   /** Each generated from an engine fact; never free text. */
   readonly factors: readonly string[];
   readonly windows: readonly PeriodThemeWindow[];
@@ -489,10 +514,12 @@ export interface PeriodReadingSlice {
   readonly window: PeriodWindow;
   readonly dasha_spans: readonly PeriodDashaSpan[];
   /** Reference day only. */
-  readonly sookshma?: PeriodLordSpan | null;
+  readonly sookshma?: (PeriodLordSpan & PeriodPlacement) | null;
   /** A maha/antar change inside the window. */
   readonly sandhi?: PeriodSandhi | null;
   readonly yogini?: PeriodYogini | null;
+  /** The Yogini antar at the reference instant; absent from an older engine. */
+  readonly yogini_antar?: PeriodYogini | null;
   readonly segments: readonly PeriodSegment[];
   readonly sky: readonly PeriodSkySpan[];
   readonly transit_lords: Readonly<Record<string, PeriodTransitLord>>;

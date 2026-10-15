@@ -28,11 +28,11 @@
   },
   "features": {
     "title": "O que você pode fazer",
-    "intro": "Calcule, retifique, narre e preveja — cada etapa roda no seu dispositivo, fundamentada na matemática do motor.",
+    "intro": "Calcule, retifique, narre e reflita — cada etapa roda no seu dispositivo, fundamentada na matemática do motor.",
     "rectify": {
       "badge": "O ponto de honestidade",
       "title": "Retifique sua hora de nascimento — o dado que define tudo.",
-      "body": "Alguns minutos podem mover seu Ascendente para o próximo signo e mudar com ele cada previsão. A maioria das pessoas não sabe sua hora ao minuto. Então, em vez de fingir confiança sobre uma hora aproximada como fazem os sites pagos, o AlmaMesh ajuda você a retificá-la a partir de eventos reais da sua vida — um mapa honesto precisa de uma hora honesta."
+      "body": "Alguns minutos podem mover seu Ascendente para o próximo signo e mudar com ele cada casa e cada leitura de período. A maioria das pessoas não sabe sua hora ao minuto. Então, em vez de fingir confiança sobre uma hora aproximada como fazem os sites pagos, o AlmaMesh ajuda você a retificá-la a partir de eventos reais da sua vida — um mapa honesto precisa de uma hora honesta."
     },
     "items": [
       {
@@ -49,7 +49,7 @@
       },
       {
         "title": "Veja seu timing",
-        "body": "Trânsitos, dashas, todos os mapas divisionais (D1–D60), Ashtakavarga e Shadbala, e previsões por área da vida. Profundamente preditivo — fundamentado na matemática, não em achismos."
+        "body": "Trânsitos, dashas, todos os mapas divisionais (D1–D60), Ashtakavarga e Shadbala, e temas por área da vida com janelas datadas. Concreto, fundamentado na matemática e oferecido para reflexão."
       }
     ]
   },
@@ -77,7 +77,7 @@
       },
       {
         "a": "Motor aberto, idêntico byte a byte ao CPython — verificável",
-        "b": "\"Previsões\" de caixa-preta"
+        "b": "Leituras de caixa-preta vendidas como destino"
       },
       {
         "a": "Marcadores honestos (uma faixa é uma convenção, nunca um veredito)",
@@ -150,6 +150,7 @@
     "privacy": "Política de privacidade",
     "terms": "Termos de serviço",
     "dataDeletion": "Exclusão de dados",
+    "howWeTest": "Como testamos",
     "github": "GitHub"
   }
 }

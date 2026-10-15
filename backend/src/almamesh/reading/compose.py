@@ -12,8 +12,9 @@ from typing import TYPE_CHECKING
 
 from almamesh.dasha.depth import active_chain, level_spans
 from almamesh.reading.bounds import bounded_transits
+from almamesh.reading.classical import ChartLords
 from almamesh.reading.common import ReadingFrame, utc_date
-from almamesh.reading.dashas import dasha_spans, sandhi, sookshma, yogini_span
+from almamesh.reading.dashas import dasha_spans, sandhi, sookshma, yogini_spans
 from almamesh.reading.lords import natal_lords
 from almamesh.reading.panchang import panchang_from
 from almamesh.reading.rules import READING_RULES
@@ -56,7 +57,8 @@ class _Run:
     spans: dict[DashaLevel, list[DashaPeriod]]
     chain: list[DashaPeriod]
     frame: ReadingFrame
-    yogini: YoginiSpan | None
+    lords: ChartLords
+    yogini: tuple[YoginiSpan | None, YoginiSpan | None]
     sky: list[SkySpan]
     themes: ThemeInputs
 
@@ -76,15 +78,16 @@ def _prepare(
     strength: StrengthContext,
     domains: LifeDomainsContext,
 ) -> _Run:
-    """Dasha depth, the natal frame, the Yogini maha and the sky for the window."""
+    """Dasha depth, the natal frame, the Yogini maha and antar and the sky for the window."""
     start, end = transits.timeline.window_start, transits.timeline.window_end
     spans = level_spans(natal.dashas.maha_dasha_sequence, start, end)
     frame = ReadingFrame(natal_moon_index(natal), natal_lagna_index(natal), strength.ashtakavarga)
     chain = active_chain(natal.dashas.maha_dasha_sequence, transits.instant)
-    yogini = yogini_span(natal, transits.instant)
+    lords = ChartLords(natal, strength.shadbala)
+    yogini = yogini_spans(natal, transits.instant)
     sky = sky_spans(transits, frame)
-    themes = ThemeInputs(natal, domains, _running(spans), yogini, sky, start, end)
-    return _Run(natal, transits, vargas, spans, chain, frame, yogini, sky, themes)
+    themes = ThemeInputs(natal, domains, _running(spans), yogini[0], sky, start, end, lords)
+    return _Run(natal, transits, vargas, spans, chain, frame, lords, yogini, sky, themes)
 
 
 def _assemble(run: _Run) -> PeriodReading:
@@ -92,11 +95,12 @@ def _assemble(run: _Run) -> PeriodReading:
     mahas, gochara = run.natal.dashas.maha_dasha_sequence, run.transits.gochara
     return PeriodReading(
         window=ReadingWindow(start=utc_date(run.start), end=utc_date(run.end)),
-        natal_lords=natal_lords(run.natal, run.vargas),
-        dasha_spans=dasha_spans(run.spans, run.start, run.end),
-        sookshma=sookshma(run.chain),
+        natal_lords=natal_lords(run.lords, run.vargas),
+        dasha_spans=dasha_spans(run.spans, (run.start, run.end), run.lords),
+        sookshma=sookshma(run.chain, run.lords),
         sandhi=sandhi(run.spans, run.start, run.end),
-        yogini=run.yogini,
+        yogini=run.yogini[0],
+        yogini_antar=run.yogini[1],
         segments=reading_segments(mahas, run.spans, run.transits.timeline),
         sky=run.sky,
         transit_lords=transit_lords(gochara, run.chain, run.frame),

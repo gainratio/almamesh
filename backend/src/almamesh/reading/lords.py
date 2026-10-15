@@ -11,6 +11,7 @@ from almamesh.schemas.reading import NatalLord
 from almamesh.schemas.vargas import DivisionalChart
 
 if TYPE_CHECKING:
+    from almamesh.reading.classical import ChartLords
     from almamesh.schemas.astrology import SiderealContext
     from almamesh.schemas.reading import SignKey
     from almamesh.schemas.vargas import VargaContext
@@ -27,15 +28,17 @@ def _yogas_of(natal: SiderealContext, graha: PlanetName) -> list[str]:
 
 
 def _natal_lord(
-    natal: SiderealContext, vargas: VargaContext, graha: PlanetName, vargottama: set[str]
+    lords: ChartLords, vargas: VargaContext, graha: PlanetName, vargottama: set[str]
 ) -> NatalLord:
     """One graha's natal row."""
+    natal = lords.natal
     p = natal.planets[graha]
     return NatalLord(
         rules=sorted(p.houses_ruled),
         house=p.house,
         sign=sign_key(sign_index_of(p.sign)),
         dignity=str(p.dignity),
+        strength=lords.strength(graha),
         combust=p.is_combust,
         retro=p.is_retrograde,
         functional=functional_nature(p.houses_ruled, is_yogakaraka=p.is_yogakaraka),
@@ -46,10 +49,10 @@ def _natal_lord(
     )
 
 
-def natal_lords(natal: SiderealContext, vargas: VargaContext) -> dict[PlanetName, NatalLord]:
+def natal_lords(lords: ChartLords, vargas: VargaContext) -> dict[PlanetName, NatalLord]:
     """All nine grahas' natal rows, in PlanetName order."""
     vargottama = {flag.point for flag in vargas.vargottama}
-    return {graha: _natal_lord(natal, vargas, graha, vargottama) for graha in PlanetName}
+    return {graha: _natal_lord(lords, vargas, graha, vargottama) for graha in PlanetName}
 
 
 __all__ = ["natal_lords"]

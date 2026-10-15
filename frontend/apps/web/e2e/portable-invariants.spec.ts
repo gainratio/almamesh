@@ -556,6 +556,9 @@ test.describe('full journey: seed, mutate, export, import into a new browser', (
       await page.getByTestId('time-travel-tab-month').click();
       await page.getByTestId('time-travel-month').selectOption('03');
       await page.getByTestId('time-travel-month-year').selectOption('2019');
+      // Contract (071faf4f, 2026-10-13): every trip needs a place and none is assumed, so Go waits.
+      // This device has no earlier pin, so confirm the offered birth place with one tap.
+      await page.getByTestId('time-travel-where-suggestion').click();
       await page.getByTestId('time-travel-go').click();
       await expect(page.getByTestId('time-travel-moment-transits')).toBeVisible({ timeout: 180_000 });
       await page.getByTestId('dashboard-time-travel-back').click();

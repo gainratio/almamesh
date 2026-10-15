@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, useEffect } from "react";
+import { Suspense, useCallback, useMemo, useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
@@ -12,30 +12,25 @@ import type {
 import { readLocalPrimaryChart } from "../lib/localChartRead";
 import {
   applyChatSettings,
-  buildChatMessages,
   describeLlmStatus,
   resolveProviderConfig,
-  sanitizeChartForLlm,
-  streamAgentChat,
   serializeInterpretationForChat,
   readLlmSettings,
   writeLlmSettings,
   openRouterPreset,
   RECOMMENDED_CLOUD_MODEL,
-  type ChatTurn,
-  type AgentStatusEvent,
   type CurrentTimelineSectionKey,
   type LlmEnv,
 } from "@almamesh/llm";
 import {
   flushPortablePersistence,
+  getCurrentPlace,
   useChartLibraryStore,
   useInterpretationStore,
   useLanguageStore,
   usePredictiveStore,
   useProfilesStore,
   useRectificationRecordsStore,
-  requireBirthTimeZone,
   useChatStore,
 } from "@almamesh/store";
 import { safeError } from "@almamesh/shared-types";
@@ -43,7 +38,7 @@ import { safeError } from "@almamesh/shared-types";
 import { Card, Spinner } from "../components/ui";
 import { ContentModeToggle } from "../components/ui/ContentModeToggle";
 import { MarkdownContent } from "../components/ui/MarkdownContent";
-import { FloatingChatPanel } from "../components/features/chat/FloatingChatPanel";
+import type { ChatAskInput } from "../components/features/chat/ChatPanel";
 import { FeedbackWidget } from "../components/features/feedback/FeedbackWidget";
 import { storedChartAnalysisInstant } from "../lib/analysisInstant";
 import { ProvenanceFooter } from "../components/ProvenanceFooter";
@@ -63,7 +58,6 @@ import {
 import { getUserFriendlyError, isModelUnavailableMessage } from "../lib/errors";
 import { narrationOutage } from "../lib/narrationOutage";
 import { isMappedChatStreamError } from "../hooks/useChatThread";
-import { type SSEMetaData } from "../lib/streaming";
 import { useContentModeStore } from "../stores/contentMode";
 import type { ViewMode } from "../lib/types";
 import {
@@ -79,10 +73,10 @@ import { useReportPdfExport } from "../hooks/useReportPdfExport";
 import { isPlaceholderContent } from "./exportGate";
 import { personaText, resolveReportAudience } from "../lib/reportSelectors";
 import { rectificationDelta } from "../lib/rectification";
-import { buildChatToolset } from "../lib/chatToolset";
-import { chatTripKit } from "../lib/chatTripKit";
-import { agentToolsOf, buildChatToolkit } from "../components/features/chat/chatToolkit";
 import { birthYearOf } from "../lib/periodChart";
+import { lazyWithRetry } from "../lib/lazyWithRetry";
+import { chatStatusLabels } from "../lib/chatStatusLabels";
+import { natalOnlyNoted, waitForPredictiveFacts } from "../lib/predictiveWait";
 import { asOfKey } from "../lib/pinnedPeriod";
 import { DashboardMoment } from "../components/features/dashboard/DashboardMomentCard";
 import { TimeTravelBanner } from "../components/features/chat/TimeTravelBanner";
@@ -92,13 +86,13 @@ import {
   useDashboardSheetReturnFocus,
 } from "../components/features/dashboard/useDashboardSheetReturnFocus";
 import { useTimeTravel } from "../lib/timeTravel";
-import { RESOLVE_PLACE_TOOL_NAME } from "../lib/placeTool";
 import { useOptionalChartEngine } from "../providers/chartEngineContext";
-import { reportAgentToolFailure } from "../lib/agentToolDiagnostics";
-import { chatContextFor } from "../lib/chatContextBudget";
 
 /** 44×44 CSS px, the touch-target floor (spec Part 1). Pinned by Dashboard.timeTravel.test.tsx and the @iphone15 box check. */
 const TIME_TRAVEL_BUTTON_SIZE = "min-h-11 min-w-11";
+
+/** The chat panel is its own chunk; the chat turn behind it loads on the first send (lib/chatTurn.ts). */
+const FloatingChatPanel = lazyWithRetry(() => import("../components/features/chat/FloatingChatPanel"), "FloatingChatPanel");
 
 // Resolve the LLM env: build-time Vite env with any browser-local Settings
 // overrides taking precedence — mirrors useStreamingInterpretation so the
@@ -231,25 +225,6 @@ export default function DashboardPage() {
   const siderealChart = useChartLibraryStore((s) =>
     chartId ? (s.charts[chartId]?.sidereal_chart ?? null) : null,
   );
-  // The chat panel's per-thread tools and trip card: the same builders a live turn uses.
-  const chatStoredChart = useChartLibraryStore((s) => (chartId ? s.charts[chartId] : undefined));
-  const chatLanguage = useLanguageStore((s) => s.language);
-  const chatKit = useMemo(() => {
-    const chart = chatStoredChart?.sidereal_chart;
-    const zone = chatStoredChart?.birth_data?.birth_location_details?.timezone;
-    if (!chatStoredChart || !chart || !zone) return undefined;
-    return chatTripKit({
-      chart,
-      promptChart: withRawPredictive(chart, chartId),
-      chartAsOf: storedChartAnalysisInstant(chatStoredChart),
-      chartTimeZone: zone,
-      profileKey: chatStoredChart.profile_id ?? chartId ?? 'primary',
-      birth: chatStoredChart.birth_data as ProcessedBirthData | undefined,
-      engine: chartEngineContext,
-      language: chatLanguage,
-    });
-  }, [chatStoredChart, chartId, chartEngineContext, chatLanguage]);
-
   // Structured in-browser interpretation: drives @almamesh/llm's 5-section
   // generator and writes its progress + result into useInterpretationStore,
   // keyed by chartId. The reading below consumes the finished interpretation.
@@ -329,171 +304,69 @@ export default function DashboardPage() {
   // is sanitized (identifier-free, dates relativized) before the prompt is built
   // and streamed to the configured (default local) OpenAI-compatible endpoint.
   // There is no backend; egress is the optional, PII-redacted LLM call only.
-  const askLocalLlm = async function* (
-    question: string,
-    questionViewMode: ViewMode | undefined,
-    signal: AbortSignal,
-    history: readonly ChatTurn[] = [],
-    retrievedContext: readonly string[] = [],
-    onAgentStatus?: (label: string | null) => void,
-    asOf?: ChatThreadAsOf,
-    onTravel?: import('../lib/timeTravelTool').TravelRecorder,
-    onToolCall?: (record: import('@almamesh/llm').AgentToolCallRecord) => void,
-  ) {
-    const storedChart = chartId ? useChartLibraryStore.getState().getChart(chartId) : undefined;
-    const chart = storedChart?.sidereal_chart;
-    if (!chart) {
-      throw new Error(t('errors:needs_regeneration'));
-    }
-    // SECURITY backstop: never send when AI is off. `resolveProviderConfig` is
-    // fail-open (it falls back to the localhost Ollama default), and the chat UI
-    // gate is the primary guard — but read the LIVE status here too so a send can
-    // never reach an endpoint the user has disconnected. (Read at send time, not
-    // a render snapshot.)
-    if (!describeLlmStatus().configured) {
-      throw new Error(t('dashboard:chat.not_configured_notice'));
-    }
-    const effectiveViewMode = questionViewMode || viewMode;
-    const chatMode = effectiveViewMode === 'astrologer' ? 'expert' : 'layman';
-    const config = resolveProviderConfig(readChatLlmEnv());
-    // The model's context window sizes the prompt and bounds every round (lib/chatContextBudget.ts).
-    const turnContext = await chatContextFor(config, signal);
-    // Reuse the already-generated natal reading (when complete) so a fast/small
-    // chat model can lean on the frontier reading instead of re-deriving from raw
-    // facts. Absent/incomplete → chat behaves exactly as before (facts only).
-    const interp = currentInterpretationForChart(chartId);
-    const interpretationText = interp
-      ? serializeInterpretationForChat(interp, chatMode)
-      : undefined;
-    // Chat grounded in the CONFIRMED rectification record (Spec 062 delta 3):
-    // only the PII-safe slice crosses — band + entered/working signs + fit
-    // mode. Times, dates, and margins stay on-device by construction.
-    const rectificationRecord = activeProfileId
-      ? useRectificationRecordsStore.getState().getRecord(activeProfileId)
-      : null;
-    const language = useLanguageStore.getState().language;
-    // `now` is ONLY for questions genuinely about today. Everything else
-    // describes the chart as of its own analysis instant.
-    const now = new Date();
-    const rectification = rectificationRecord
-      ? {
-          band: rectificationRecord.band,
-          originalSign: rectificationRecord.originalSign,
-          rectifiedSign: rectificationRecord.rectifiedSign,
-          mode: rectificationRecord.mode,
-        }
-      : undefined;
-
-    // No `?? 'UTC'`: the chat's "current time in the chart's zone" tool would
-    // silently answer in UTC. A chart without a zone is refused, visibly.
-    const chartTimeZone = requireBirthTimeZone(
-      storedChart?.birth_data?.birth_location_details.timezone,
-      'chat',
-    );
-    const toolset = buildChatToolset({
-      chart,
-      promptChart: withRawPredictive(chart, chartId),
-      chartAsOf: storedChartAnalysisInstant(storedChart!),
-      chartTimeZone,
-      profileKey: storedChart?.profile_id ?? chartId ?? 'primary',
-      birth: storedChart?.birth_data as ProcessedBirthData | undefined,
-      engine: chartEngineContext,
-      onTravel,
-      language,
-      ...(asOf ? { pinned: asOf } : {}),
-    });
-    const prepared = await toolset.prepare(question, {
-      now,
-      signal,
-      onStatus: (label) => onAgentStatus?.(label),
-    });
-
-    // The model's tools come out of the same toolkit the chat UI registers (chatToolkit.tsx).
-    const modelTools = agentToolsOf(buildChatToolkit(toolset.tools));
-    let messages = buildChatMessages(
-      sanitizeChartForLlm(prepared.chart, prepared.asOf),
-      question,
-      chatMode,
-      history,
-      retrievedContext,
-      interpretationText,
-      language,
-      undefined,
-      rectification,
-      turnContext.promptBudget,
-      modelTools.some((tool) => tool.name === RESOLVE_PLACE_TOOL_NAME),
-      prepared.pinned,
-    );
-    // A question with no single supported period: ask for one, never pick it (chatToolset.ts prepare).
-    if (prepared.clarification) {
-      const [system, ...rest] = messages;
-      messages = [{ ...system, content: `${system.content ?? ''}\n\n${prepared.clarification.note}` }, ...rest];
-    }
-
-    let activeToolLabel: string | null = null;
-    yield* streamAgentChat({
-      config,
-      messages,
-      tools: modelTools,
-      now,
-      signal,
-      ...(turnContext.contextTokens ? { contextTokens: turnContext.contextTokens } : {}),
-      onRoundUsage: turnContext.onRoundUsage,
-      onToolError: reportAgentToolFailure,
-      // A trip grounds itself through its tools first (chatToolset.ts prepare).
-      firstRoundToolChoice: prepared.toolChoice,
-      ...(prepared.groundingTool ? { groundingToolName: prepared.groundingTool } : {}),
-      ...(prepared.requiredTools ? { requiredToolNames: prepared.requiredTools } : {}),
-      ...(prepared.groundingCalls ? { groundingCalls: prepared.groundingCalls } : {}),
-      onToolCall: (record) => {
-        turnContext.onToolCall(record);
-        onToolCall?.(record);
-      },
-      onStatus: (event) => {
-        if (event.phase === 'using_tool') {
-          activeToolLabel = event.label;
-        } else if (event.phase === 'deciding' && event.round > 1 && activeToolLabel !== null) {
-          // Keep the concrete local activity visible while the provider reads
-          // its result; replacing it immediately with a generic second-round
-          // label makes a synchronous tool call imperceptible to people.
-          return;
-        } else if (event.phase === 'answering' || event.phase === 'complete') {
-          activeToolLabel = null;
-        }
-        onAgentStatus?.(agentStatusLabel(event));
-      },
-    });
-  };
-
-  const handleAskQuestionStream = async (
-    question: string,
-    onToken: (token: string) => void,
-    _onMeta: (meta: SSEMetaData) => void,
-    questionViewMode?: ViewMode,
-    history: readonly ChatTurn[] = [],
-    retrievedContext: readonly string[] = [],
-    onAgentStatus?: (label: string | null) => void,
-    asOf?: ChatThreadAsOf,
-    onTravel?: import('../lib/timeTravelTool').TravelRecorder,
-    onToolCall?: (record: import('@almamesh/llm').AgentToolCallRecord) => void,
-  ) => {
-    const controller = new AbortController();
-    let answer = '';
+  const handleAsk = async (ask: ChatAskInput): Promise<string> => {
     try {
-      for await (const delta of askLocalLlm(
-        question,
-        questionViewMode,
-        controller.signal,
-        history,
-        retrievedContext,
-        onAgentStatus,
-        asOf,
-        onTravel,
-        onToolCall,
-      )) {
-        answer += delta;
-        onToken(delta);
+      const storedChart = chartId ? useChartLibraryStore.getState().getChart(chartId) : undefined;
+      const chart = storedChart?.sidereal_chart;
+      if (!storedChart || !chart) {
+        throw new Error(t('errors:needs_regeneration'));
       }
+      // SECURITY backstop: never send when AI is off. `resolveProviderConfig` is
+      // fail-open (it falls back to the localhost Ollama default), and the chat UI
+      // gate is the primary guard — but read the LIVE status here too so a send can
+      // never reach an endpoint the user has disconnected. (Read at send time, not
+      // a render snapshot.)
+      if (!describeLlmStatus().configured) {
+        throw new Error(t('dashboard:chat.not_configured_notice'));
+      }
+      const mode = (ask.viewMode || viewMode) === 'astrologer' ? 'expert' : 'layman';
+      // Reuse the already-generated natal reading (when complete) so a fast/small
+      // chat model can lean on the frontier reading instead of re-deriving from raw
+      // facts. Absent/incomplete → chat behaves exactly as before (facts only).
+      const interp = currentInterpretationForChart(chartId);
+      // Chat grounded in the CONFIRMED rectification record (Spec 062 delta 3):
+      // only the PII-safe slice crosses — band + entered/working signs + fit
+      // mode. Times, dates, and margins stay on-device by construction.
+      const record = activeProfileId ? useRectificationRecordsStore.getState().getRecord(activeProfileId) : null;
+      // Where they live now (Settings): a today thread's place, by label and zone. Unset: zone only.
+      const currentPlace = activeProfileId ? getCurrentPlace(useProfilesStore.getState().profiles[activeProfileId]) : undefined;
+      // A today question waits for today's predictive facts (a trip reads its own period instead).
+      const facts = ask.asOf ? 'ready' : await waitForPredictiveFacts({
+        state: () => currentTimelineInputState(chartId),
+        subscribe: (listener) => usePredictiveStore.subscribe(listener),
+        signal: ask.signal,
+        onWaiting: () => ask.onStatus(t('chat:agent.preparing_chart')),
+      });
+      const noted = (text: string) => (facts === 'ready' ? text : natalOnlyNoted(t('chat:agent.natal_only'), text));
+      const { runChatTurn } = await import('../lib/chatTurn');
+      let answer = '';
+      for await (const snapshot of runChatTurn({
+        config: resolveProviderConfig(readChatLlmEnv()),
+        chart,
+        promptChart: facts === 'ready' ? withRawPredictive(chart, chartId) : chart,
+        chartAsOf: storedChartAnalysisInstant(storedChart),
+        profileKey: storedChart.profile_id ?? chartId ?? 'primary',
+        birth: storedChart.birth_data as ProcessedBirthData | undefined,
+        engine: chartEngineContext,
+        question: ask.question,
+        mode,
+        language: useLanguageStore.getState().language,
+        history: ask.history,
+        retrievedContext: ask.retrievedContext,
+        ...(interp ? { interpretationText: serializeInterpretationForChat(interp, mode) } : {}),
+        ...(record ? { rectification: { band: record.band, originalSign: record.originalSign, rectifiedSign: record.rectifiedSign, mode: record.mode } } : {}),
+        ...(ask.asOf ? { asOf: ask.asOf } : {}),
+        ...(currentPlace ? { currentPlace } : {}),
+        signal: ask.signal,
+        labels: chatStatusLabels(t),
+        onStatus: ask.onStatus,
+        ...(ask.onTravel ? { onTravel: ask.onTravel } : {}),
+        ...(ask.onToolCall ? { onToolCall: ask.onToolCall } : {}),
+      })) {
+        answer = noted(snapshot);
+        ask.onSnapshot(answer);
+      }
+      return answer;
     } catch (err) {
       // Typed @almamesh/llm causes (on-device, privacy fence, request/endpoint
       // failures) must reach useChatThread intact so `describeChatStreamError`
@@ -501,25 +374,7 @@ export default function DashboardPage() {
       if (isMappedChatStreamError(err)) throw err;
       throw new Error(getUserFriendlyError('QA_001', err instanceof Error ? err.message : undefined, t('dashboard:chat.not_configured_notice')), { cause: err });
     }
-    return {
-      answer,
-      timing_guidance: null as string | null,
-      remedies: null as string[] | null,
-    };
   };
-
-  function agentStatusLabel(event: AgentStatusEvent): string {
-    switch (event.phase) {
-      case 'deciding':
-        return t('chat:agent.deciding');
-      case 'using_tool':
-        return event.label;
-      case 'answering':
-        return t('chat:agent.answering');
-      case 'complete':
-        return t('chat:agent.complete');
-    }
-  }
 
   const handleGenerateSeparatedInterpretation = useCallback(async () => {
     if (!chartId) return;
@@ -1308,16 +1163,17 @@ export default function DashboardPage() {
       </div>
 
       {/* Grounded chart Q&A — available in both modes (one surface). */}
-      <FloatingChatPanel
-        personName={personName}
-        profileId={activeProfileId}
-        chartId={chartId}
-        viewMode={viewMode}
-        onAskQuestionStream={handleAskQuestionStream}
-        chatKit={chatKit}
-        birthYear={birthYearOf(chartId ? (useChartLibraryStore.getState().getChart(chartId)?.birth_data as ProcessedBirthData | undefined) : undefined)}
-        initialOpen={chatInitiallyOpen}
-      />
+      <Suspense fallback={null}>
+        <FloatingChatPanel
+          personName={personName}
+          profileId={activeProfileId}
+          chartId={chartId}
+          viewMode={viewMode}
+          onAskQuestionStream={handleAsk}
+          birthYear={birthYearOf(chartId ? (useChartLibraryStore.getState().getChart(chartId)?.birth_data as ProcessedBirthData | undefined) : undefined)}
+          initialOpen={chatInitiallyOpen}
+        />
+      </Suspense>
     </>
   );
 }

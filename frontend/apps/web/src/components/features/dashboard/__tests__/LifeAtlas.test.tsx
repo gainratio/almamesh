@@ -115,7 +115,7 @@ describe('LifeAtlas', () => {
     renderAtlas();
     for (const domain of LIFE_DOMAINS) {
       const card = screen.getByTestId(`life-atlas-card-${domain}`);
-      expect(card.textContent).toContain('Loading forecast');
+      expect(card.textContent).toContain('Loading themes');
     }
     // Pending cards are NOT links — nothing pretends data exists.
     expect(screen.getByTestId('life-atlas-card-career').getAttribute('href')).toBeNull();
@@ -248,9 +248,9 @@ describe('LifeAtlas', () => {
   // card carries one short subtitle like the others' density; the full sentence is its
   // tooltip (and the /life/obstacles page header).
   const OBSTACLES_COPY = {
-    en: { name: 'Obstacles & setbacks', subtitle: 'Rules, legal matters, setbacks, losses', note: 'A theme to watch, not a prediction: friction with rules or authorities, legal or administrative matters, unexpected setbacks, losses and expenses (the 6th, 8th and 12th houses).' },
-    es: { name: 'Obstáculos y contratiempos', subtitle: 'Normas, asuntos legales, contratiempos, pérdidas', note: 'Un tema a observar, no una predicción: roces con normas o autoridades, asuntos legales o administrativos, contratiempos inesperados, pérdidas y gastos (casas 6, 8 y 12).' },
-    pt: { name: 'Obstáculos e contratempos', subtitle: 'Regras, questões legais, contratempos, perdas', note: 'Um tema a observar, não uma previsão: atritos com regras ou autoridades, questões legais ou administrativas, contratempos inesperados, perdas e despesas (casas 6, 8 e 12).' },
+    en: { name: 'Obstacles & setbacks', subtitle: 'Rules, legal matters, setbacks, losses', note: 'A theme to reflect on: friction with rules or authorities, legal or administrative matters, unexpected setbacks, losses and expenses (the 6th, 8th and 12th houses).' },
+    es: { name: 'Obstáculos y contratiempos', subtitle: 'Normas, asuntos legales, contratiempos, pérdidas', note: 'Un tema para reflexionar: roces con normas o autoridades, asuntos legales o administrativos, contratiempos inesperados, pérdidas y gastos (casas 6, 8 y 12).' },
+    pt: { name: 'Obstáculos e contratempos', subtitle: 'Regras, questões legais, contratempos, perdas', note: 'Um tema para refletir: atritos com regras ou autoridades, questões legais ou administrativas, contratempos inesperados, perdas e despesas (casas 6, 8 e 12).' },
   } as const;
 
   it.each(['en', 'es', 'pt'] as const)('shows the obstacles area as one short subtitle, the full note as its tooltip (%s)', async (language) => {

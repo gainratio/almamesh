@@ -1,11 +1,9 @@
 // Tool-result compaction (spec 2026-10-13, "Context budget for the agentic loop",
-// rules 2 and 3).
-//
-// Once a tool result has been read by a model call, later requests carry it as
-// a deterministic one-line summary plus its key cited factors instead of the
-// full payload. Results are deterministic and cached, so the model can call the
-// tool again if it needs the detail back. A past turn's results reach the next
-// turn only as these summaries (`toolFactsNote`).
+// rules 2 and 3). Within a turn, a result the budget cannot carry in full goes
+// out in its compact form (`compactToolResult`). A past turn's tool results reach
+// the next turn only as deterministic one-line summaries plus their key cited
+// factors (`toolFactsNote`), never as full payloads. Results are deterministic,
+// so the model can read again.
 
 /** A tool result reduced to one line plus the factors it cites. */
 export interface ToolSummary {
@@ -87,9 +85,21 @@ export function summarizeToolResult(summarize: ToolSummarizer | undefined, resul
   return bounded(defaultToolSummary(result));
 }
 
-/** The short tool-message content that replaces a consumed result (keeps the tool_call pairing). */
-export function compactToolContent(summary: ToolSummary): string {
-  return JSON.stringify({ ok: true, compacted: true, facts: summary.line, ...(summary.factors ? { factors: summary.factors } : {}) });
+/**
+ * A result's compact form inside a turn: the tool's own compact object when it
+ * gives one, else the default one-line summary. Always marked `compacted`.
+ */
+export function compactToolResult(result: unknown, compact?: (result: unknown) => unknown): Readonly<Record<string, unknown>> {
+  if (compact) {
+    try {
+      const own = record(compact(result));
+      if (own) return { compacted: true, ...own };
+    } catch {
+      // A compactor bug must never cost the turn; the default summary still describes the result.
+    }
+  }
+  const summary = summarizeToolResult(undefined, result);
+  return { ok: true, compacted: true, facts: summary.line, ...(summary.factors ? { factors: summary.factors } : {}) };
 }
 
 /** One tool call of an earlier turn, as the thread persisted it. */

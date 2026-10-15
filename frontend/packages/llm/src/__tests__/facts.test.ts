@@ -335,8 +335,8 @@ describe("buildChartFactsBlock — engine predictive context", () => {
 
   it("emits a clearly delimited block with narrate-only guard language", () => {
     const block = buildChartFactsBlock(withPredictive);
-    expect(block).toContain("ENGINE PREDICTIVE CONTEXT");
-    expect(block).toContain("END ENGINE PREDICTIVE CONTEXT");
+    expect(block).toContain("ENGINE TIMING CONTEXT");
+    expect(block).toContain("END ENGINE TIMING CONTEXT");
     expect(block).toMatch(/narrate only what this block states/i);
   });
 
@@ -368,7 +368,7 @@ describe("buildChartFactsBlock — engine predictive context", () => {
 
   it("emits NO predictive block when the chart carries none (graceful absence)", () => {
     const block = buildChartFactsBlock(CHART);
-    expect(block).not.toContain("ENGINE PREDICTIVE CONTEXT");
+    expect(block).not.toContain("ENGINE TIMING CONTEXT");
   });
 });
 

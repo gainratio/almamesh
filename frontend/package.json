@@ -13,7 +13,7 @@
     "typecheck": "bun run --filter '*' typecheck",
     "lint": "eslint .",
     "knip": "bunx knip@6.26.0 --no-progress",
-    "gate": "node scripts/check-tsc-native.mjs && bunx tsc -b packages/shared-types packages/constants packages/store packages/llm --force && bun run --filter '*' typecheck && bun run lint && bun test ../tests/frontend-lint-coverage-contract.test.ts && bun run knip && bun run --filter @almamesh/shared-types test && bun run --filter @almamesh/browser test && bun run --filter @almamesh/store test && bun run --filter @almamesh/llm test && bun run --filter @almamesh/web test:unit && bun run --filter @almamesh/web build && node apps/web/scripts/verify-prerender-dist.mjs apps/web/dist && node apps/web/scripts/verify-boot-fault-hook.mjs apps/web/dist --absent",
+    "gate": "node scripts/check-tsc-native.mjs && bunx tsc -b packages/shared-types packages/constants packages/store packages/llm --force && bun run --filter '*' typecheck && bun run lint && bun test ../tests/frontend-lint-coverage-contract.test.ts && bun run knip && bun run --filter @almamesh/shared-types test && bun run --filter @almamesh/browser test && bun run --filter @almamesh/store test && bun run --filter @almamesh/llm test && bun run --filter @almamesh/web test:unit && bun run --filter @almamesh/web build && node apps/web/scripts/verify-prerender-dist.mjs apps/web/dist && node apps/web/scripts/verify-chat-lazy.mjs apps/web/dist && node apps/web/scripts/verify-boot-fault-hook.mjs apps/web/dist --absent",
     "clean": "bun run --filter '*' clean && rm -rf node_modules",
     "prepare": "cd .. && husky frontend/.husky"
   },
@@ -40,10 +40,10 @@
     "bun": ">=1.3.5"
   },
   "dependencies": {
-    "@cloudflare/workers-types": "^5.20261010.1",
+    "@cloudflare/workers-types": "^5.20261011.1",
     "@react-three/drei": "^10.7.9",
     "@react-three/fiber": "^9.8.1",
-    "@react-three/postprocessing": "^3.1.3",
+    "@react-three/postprocessing": "^3.2.0",
     "@tanstack/react-query": "^5.104.1",
     "@types/node": "^26.6.5",
     "@vitest/coverage-v8": "^5.0.3",

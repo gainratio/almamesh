@@ -94,7 +94,7 @@ describe("buildChatMessages with a pin", () => {
   it("adds the pinned rule to the system prompt only when a pin is given", () => {
     const plain = buildChatMessages(CHART, "Will work get easier?");
     const pinned = buildChatMessages(
-      CHART, "Will work get easier?", "layman", [], [], undefined, "en", undefined, undefined, undefined, false,
+      CHART, "Will work get easier?", "layman", [], [], undefined, "en", undefined, undefined, undefined,
       { ...YEAR_2027, relative: "future" },
     );
     expect(plain[0]?.content).not.toContain("PINNED PERIOD");
@@ -103,8 +103,8 @@ describe("buildChatMessages with a pin", () => {
   });
 
   it("is byte-identical without a pin (snapshot-locked prompts stay put)", () => {
-    const before = buildChatMessages(CHART, "q", "layman", [], [], undefined, "en", undefined, undefined, undefined, false);
-    const after = buildChatMessages(CHART, "q", "layman", [], [], undefined, "en", undefined, undefined, undefined, false, undefined);
+    const before = buildChatMessages(CHART, "q", "layman", [], [], undefined, "en", undefined, undefined, undefined);
+    const after = buildChatMessages(CHART, "q", "layman", [], [], undefined, "en", undefined, undefined, undefined, undefined);
     expect(after).toEqual(before);
   });
 });

@@ -1,90 +1,87 @@
-import { render, screen, fireEvent } from '@testing-library/react';
-import type { AgentTool } from '@almamesh/llm';
-import { describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { describe, expect, it } from 'vitest';
 
 import '../../../../i18n/config';
-import { CHAT_TOOL_CATALOG, ToolCallRow, agentToolsOf, buildChatToolkit, toolListOf } from '../chatToolkit';
+import { CHAT_TOOL_CATALOG, CHAT_TOOLKIT, ToolCallRow, toolListOf } from '../chatToolkit';
 
-function tool(name: string, execute: AgentTool['execute'] = () => ({ ok: name })): AgentTool {
-  return { name, description: `${name} description`, parameters: { type: 'object', properties: {}, additionalProperties: false }, execute };
-}
-const TRIP_TOOLS = ['get_natal_summary', 'get_trip_context', 'get_timing', 'resolve_place', 'time_travel'].map((name) => tool(name));
+const READING = { period: { label: 'May 2019', start: '2019-05-01', end: '2019-05-31' }, place: { label: 'Singapore', timezone: 'Asia/Singapore' }, dashas: { maha: [{ lord: 'jupiter' }] } };
 
-describe('the chat toolkit is the one registry for the model and the UI', () => {
-  it('registers every bound tool with its description, JSON schema and a renderer', () => {
-    const toolkit = buildChatToolkit(TRIP_TOOLS);
-    expect(Object.keys(toolkit)).toEqual(TRIP_TOOLS.map((t) => t.name));
-    for (const t of TRIP_TOOLS) {
-      expect(toolkit[t.name]).toMatchObject({ type: 'frontend', description: t.description, parameters: t.parameters });
-      expect(toolkit[t.name]?.render).toBeTypeOf('function');
+describe('the chat toolkit registers the two tools the model has', () => {
+  it('read_period and travel, each render-only with a row renderer (the tool loop runs them)', () => {
+    expect(Object.keys(CHAT_TOOLKIT)).toEqual(['read_period', 'travel']);
+    for (const name of ['read_period', 'travel']) {
+      expect(CHAT_TOOLKIT[name]).toMatchObject({ type: 'backend' });
+      expect(CHAT_TOOLKIT[name]?.render).toBeTypeOf('function');
+      expect(CHAT_TOOLKIT[name]).not.toHaveProperty('execute');
     }
   });
 
-  it('the agent loop reads its tools from the toolkit: same names and schemas, the bound handler runs', async () => {
-    const execute = vi.fn(() => ({ place: 'Singapore' }));
-    const toolkit = buildChatToolkit([tool('get_trip_context', execute), tool('get_timing')]);
-    const agentTools = agentToolsOf(toolkit);
-    expect(agentTools.map((t) => [t.name, t.description, t.parameters])).toEqual(
-      Object.entries(toolkit).map(([name, entry]) => [name, entry.description, entry.parameters]));
-    const context = { now: new Date(0), signal: new AbortController().signal };
-    expect(await agentTools[0]!.execute({}, context)).toEqual({ place: 'Singapore' });
-    expect(execute).toHaveBeenCalledWith({}, context);
-  });
-
-  it('a tool the catalog does not list is in neither the toolkit nor the model list', () => {
-    const toolkit = buildChatToolkit([...TRIP_TOOLS, tool('rogue_tool')]);
-    expect(Object.keys(toolkit)).not.toContain('rogue_tool');
-    expect(agentToolsOf(toolkit).map((t) => t.name)).not.toContain('rogue_tool');
-  });
-
-  it('the visible Tools list names each registered tool in plain words', () => {
-    const list = toolListOf(buildChatToolkit(TRIP_TOOLS), (key) => key);
-    expect(list.map((row) => row.name)).toEqual(TRIP_TOOLS.map((t) => t.name));
-    expect(list.map((row) => row.label)).toEqual(TRIP_TOOLS.map((t) => CHAT_TOOL_CATALOG[t.name]!.labelKey));
+  it('the visible Tools list names each tool in plain words, in every language', () => {
+    expect(toolListOf(CHAT_TOOLKIT, (key) => key)).toEqual([
+      { name: 'read_period', label: CHAT_TOOL_CATALOG.read_period!.labelKey },
+      { name: 'travel', label: CHAT_TOOL_CATALOG.travel!.labelKey },
+    ]);
   });
 });
 
 describe('a tool-call row shows what the AI pulled', () => {
-  it('names the lookup with its section, place and period, and expands to the args and result', () => {
-    const result = { period: { label: 'May 2019' }, places: [{ label: 'Singapore' }], data: { maha: [{ lord: 'jupiter' }] } };
-    render(<ToolCallRow toolName="get_timing" toolCallId="c1" args={{ section: 'transits' }} argsText='{"section":"transits"}' result={result} status={{ type: 'complete' }} />);
+  it('a reading row: "Looked up the period reading · May 2019 · Singapore", collapsed until opened', () => {
+    render(<ToolCallRow toolName="read_period" toolCallId="r1" args={{ start: '2019-05' }} argsText="" result={READING} status={{ type: 'complete' }} />);
     const row = screen.getByTestId('chat-tool-call');
-    expect(row.getAttribute('data-tool-name')).toBe('get_timing');
-    expect(row.textContent).toContain('transits');
-    expect(row.textContent).toContain('Singapore');
-    fireEvent.click(screen.getByText(/Looked up/));
-    expect(screen.getByTestId('chat-tool-call-args').textContent).toContain('"section": "transits"');
+    expect(row.getAttribute('data-tool-name')).toBe('read_period');
+    expect(row.getAttribute('data-status')).toBe('complete');
+    // When before where: a narrow row truncates the place (the thread header names it), never the period.
+    expect(screen.getByTestId('chat-tool-call-summary').textContent).toBe('Looked up the period reading · May 2019 · Singapore');
+    expect(screen.getByTestId('chat-tool-call-summary').getAttribute('title')).toBe('Looked up the period reading · May 2019 · Singapore');
+    expect(screen.queryByTestId('chat-tool-call-result')).toBeNull();
+    fireEvent.click(screen.getByTestId('chat-tool-call-summary'));
+    expect(screen.getByTestId('chat-tool-call-args').textContent).toContain('"start": "2019-05"');
     expect(screen.getByTestId('chat-tool-call-result').textContent).toContain('jupiter');
   });
 
-  it('a failed call says so', () => {
-    render(<ToolCallRow toolName="get_timing" toolCallId="c2" args={{}} argsText="{}" result={{ code: 'tool_failed' }} isError status={{ type: 'complete' }} />);
+  it('a today reading has no place label and still reads as a sentence', () => {
+    render(<ToolCallRow toolName="read_period" toolCallId="r2" args={{}} argsText="" result={{ period: { label: 'October 14, 2026' }, place: { timezone: 'America/Los_Angeles' } }} status={{ type: 'complete' }} />);
+    expect(screen.getByTestId('chat-tool-call-summary').textContent).toBe('Looked up the period reading · October 14, 2026');
+  });
+
+  it('a travel row names the move, its place and its period', () => {
+    render(<ToolCallRow toolName="travel" toolCallId="t1" args={{ to: '2019-05', place: 'Pune' }} argsText=""
+      result={{ status: 'queued', action: 'travel', period_label: 'May 2019', place_label: 'Pune, India', time_zone: 'Asia/Kolkata' }} status={{ type: 'complete' }} />);
+    expect(screen.getByTestId('chat-tool-call-summary').textContent).toBe('Looked up a move in time · May 2019 · Pune, India');
+  });
+
+  it('an unavailable reading is a failed lookup, not a success', () => {
+    render(<ToolCallRow toolName="read_period" toolCallId="r3" args={{}} argsText="" result={{ ...READING, available: false, reason: 'timeout' }} status={{ type: 'complete' }} />);
     expect(screen.getByTestId('chat-tool-call').getAttribute('data-status')).toBe('error');
+    expect(screen.getByTestId('chat-tool-call-summary').textContent).toBe('Could not look up the period reading · May 2019 · Singapore');
+  });
+
+  it('a thrown call is an error row', () => {
+    render(<ToolCallRow toolName="read_period" toolCallId="r4" args={{}} argsText="" result="read_period timed out after 150000 ms" isError status={{ type: 'complete' }} />);
+    expect(screen.getByTestId('chat-tool-call').getAttribute('data-status')).toBe('error');
+  });
+
+  it('a question put back to the user (needs_place, a place to pick) completed: it is not an error', () => {
+    render(<ToolCallRow toolName="read_period" toolCallId="r5" args={{}} argsText="" result={{ status: 'needs_place', ask: 'Ask where the user was that day.' }} status={{ type: 'complete' }} />);
+    expect(screen.getByTestId('chat-tool-call').getAttribute('data-status')).toBe('complete');
   });
 });
 
 describe('a skipped call is a neutral row, never an error (P1 fix 4)', () => {
-  const skippedResult = { code: 'skipped', message: 'skipped: too many calls this round' };
+  const skipped = 'This turn already read enough; answer from the readings above.';
 
   it('says Skipped, is marked skipped, and does not say it failed', () => {
-    render(<ToolCallRow toolName="get_timing" toolCallId="s1" args={{ section: 'transits' }} argsText="" result={skippedResult}
-      artifact={{ status: 'skipped' }} status={{ type: 'complete' }} />);
-    const row = screen.getByTestId('chat-tool-call');
-    expect(row.getAttribute('data-status')).toBe('skipped');
-    expect(screen.getByTestId('chat-tool-call-summary').textContent).toBe('Skipped transits');
-  });
-
-  it('a real error whose result happens to carry a code stays an error', () => {
-    render(<ToolCallRow toolName="get_timing" toolCallId="s2" args={{}} argsText="" result={{ code: 'tool_failed' }} isError status={{ type: 'complete' }} />);
-    expect(screen.getByTestId('chat-tool-call').getAttribute('data-status')).toBe('error');
+    render(<ToolCallRow toolName="read_period" toolCallId="s1" args={{}} argsText="" result={skipped} artifact={{ status: 'skipped' }} status={{ type: 'complete' }} />);
+    expect(screen.getByTestId('chat-tool-call').getAttribute('data-status')).toBe('skipped');
+    expect(screen.getByTestId('chat-tool-call-summary').textContent).toBe('Skipped the period reading');
   });
 
   it('speaks Spanish and Portuguese too', async () => {
     const { default: i18n } = await import('../../../../i18n/config');
     try {
-      for (const [language, expected] of [['es', 'Omitió'], ['pt', 'Ignorou']] as const) {
+      for (const [language, expected] of [['es', 'Omitió la lectura del periodo'], ['pt', 'Ignorou a leitura do período']] as const) {
         await i18n.changeLanguage(language);
-        const { unmount } = render(<ToolCallRow toolName="get_timing" toolCallId="s3" args={{}} argsText="" result={skippedResult}
+        const { unmount } = render(<ToolCallRow toolName="read_period" toolCallId="s3" args={{}} argsText="" result={skipped}
           artifact={{ status: 'skipped' }} status={{ type: 'complete' }} />);
         expect(screen.getByTestId('chat-tool-call-summary').textContent).toContain(expected);
         unmount();
@@ -100,80 +97,57 @@ describe('tool-call row edges', () => {
     render(<ToolCallRow toolName="mystery_tool" toolCallId="c3" args={{}} argsText="{}" result={{ period: { start: '2019-05-01', end: '2019-05-31' }, place: { label: 'Singapore' } }} status={{ type: 'complete' }} />);
     const row = screen.getByTestId('chat-tool-call');
     expect(row.textContent).toContain('mystery_tool');
-    expect(row.textContent).toContain('Singapore · May 2019');
+    expect(row.textContent).toContain('May 2019 · Singapore');
   });
 
   it('a row with no result still renders', () => {
-    render(<ToolCallRow toolName="get_timing" toolCallId="c4" args={{ section: 'dashas' }} argsText="" result={undefined} status={{ type: 'running' }} />);
+    render(<ToolCallRow toolName="read_period" toolCallId="c4" args={{}} argsText="" result={undefined} status={{ type: 'running' }} />);
     expect(screen.getByTestId('chat-tool-call').getAttribute('data-status')).toBe('complete');
   });
-});
 
-describe('tool-call rows read like a sentence and stay collapsed (2026-10-13)', () => {
-  it('a trip-context row: "Looked up trip period & place · Singapore · May 2019", collapsed, no raw JSON until opened', () => {
-    render(<ToolCallRow toolName="get_trip_context" toolCallId="t1" args={{}} argsText="{}"
-      result={{ period: { label: 'May 2019' }, place: { label: 'Singapore', timezone: 'Asia/Singapore' } }} status={{ type: 'complete' }} />);
-    const row = screen.getByTestId('chat-tool-call');
-    expect(row.hasAttribute('open')).toBe(false);
-    expect(screen.getByTestId('chat-tool-call-summary').textContent).toBe('Looked up trip period & place · Singapore · May 2019');
-    expect(screen.queryByTestId('chat-tool-call-result')).toBeNull();
-    fireEvent.click(screen.getByTestId('chat-tool-call-summary'));
-    expect(screen.getByTestId('chat-tool-call-result').textContent).toContain('Asia/Singapore');
-  });
-
-  it('a timing row names its section and the month it read', () => {
-    render(<ToolCallRow toolName="get_timing" toolCallId="t2" args={{ section: 'transits' }} argsText=""
-      result={{ period: { start: '2019-05-01', end: '2019-05-31', days: 31, basis: 'period' }, places: [{ label: 'Singapore' }] }} status={{ type: 'complete' }} />);
-    expect(screen.getByTestId('chat-tool-call-summary').textContent).toBe('Looked up transits · Singapore · May 2019');
-  });
-
-  it('a natal row has no place or period', () => {
-    render(<ToolCallRow toolName="get_natal_summary" toolCallId="t3" args={{}} argsText="" result={{ lagna: { sign: 'Leo' } }} status={{ type: 'complete' }} />);
-    expect(screen.getByTestId('chat-tool-call-summary').textContent).toBe('Looked up natal chart');
-  });
-});
-
-describe('tool-call row periods as people say them', () => {
   it.each([
-    [{ start: '2019-01-01', end: '2019-12-31' }, 'Looked up dashas · 2019'],
-    [{ start: '2019-05-04', end: '2019-05-04' }, 'Looked up dashas · May 4, 2019'],
-    [{ start: '2019-05-04', end: '2019-06-10' }, 'Looked up dashas · 2019-05-04 – 2019-06-10'],
-  ])('%j', (period, expected) => {
-    render(<ToolCallRow toolName="get_timing" toolCallId="p" args={{ section: 'dashas' }} argsText="" result={{ period }} status={{ type: 'complete' }} />);
+    [{ start: '2019-01-01', end: '2019-12-31' }, 'Looked up the period reading · 2019'],
+    [{ start: '2019-05-04', end: '2019-05-04' }, 'Looked up the period reading · May 4, 2019'],
+    [{ start: '2019-05-04', end: '2019-06-10' }, 'Looked up the period reading · 2019-05-04 – 2019-06-10'],
+  ])('a period as people say it: %j', (period, expected) => {
+    render(<ToolCallRow toolName="read_period" toolCallId="p" args={{}} argsText="" result={{ period }} status={{ type: 'complete' }} />);
     expect(screen.getByTestId('chat-tool-call-summary').textContent).toBe(expected);
   });
 });
 
-describe('the period reading tools (spec 2026-10-13)', () => {
-  it('both are in the catalog, so the model and the Tools list get them', () => {
-    const toolkit = buildChatToolkit([tool('get_period_reading'), tool('get_period_detail')]);
-    expect(Object.keys(toolkit)).toEqual(['get_period_reading', 'get_period_detail']);
-    expect(toolListOf(toolkit, (key) => key).map((row) => row.label)).toEqual(['tools.get_period_reading', 'tools.get_period_detail']);
+describe('rows persisted before the tool redesign still read in plain words', () => {
+  const row = (toolName: string, result: unknown, isError?: boolean) => {
+    render(<ToolCallRow toolName={toolName} toolCallId="old" args={{}} argsText="" result={result} isError={isError} status={{ type: 'complete' }} />);
+    return { summary: screen.getByTestId('chat-tool-call-summary').textContent, status: screen.getByTestId('chat-tool-call').getAttribute('data-status') };
+  };
+
+  it.each([
+    ['get_timing', 'the period reading'],
+    ['get_period_reading', 'the period reading'],
+    ['get_period_detail', 'the period reading'],
+    ['get_trip_context', 'the period reading'],
+    ['resolve_place', 'a place'],
+    ['time_travel', 'a move in time'],
+    ['get_natal_summary', 'chart facts'],
+    ['get_chart_facts', 'chart facts'],
+    ['get_current_datetime', 'chart facts'],
+  ])('%s shows %s, never its raw name', (name, subject) => {
+    const { summary } = row(name, { ok: true });
+    expect(summary).toBe(`Looked up ${subject}`);
+    expect(summary).not.toContain('get_');
   });
 
-  it('a reading row: "Looked up the period reading · Singapore · May 2019"', () => {
-    render(<ToolCallRow toolName="get_period_reading" toolCallId="r1" args={{}} argsText="{}"
-      result={{ period: { label: 'May 2019' }, place: { label: 'Singapore', timezone: 'Asia/Singapore' }, dashas: {} }} status={{ type: 'complete' }} />);
-    expect(screen.getByTestId('chat-tool-call-summary').textContent).toBe('Looked up the period reading · Singapore · May 2019');
-    expect(screen.getByTestId('chat-tool-call').getAttribute('data-status')).toBe('complete');
+  it('an old {code} or {error} result is a failure, not a complete row', () => {
+    expect(row('resolve_place', { code: 'not_found' }).status).toBe('error');
+    cleanup();
+    expect(row('get_timing', { error: 'no chart' }).status).toBe('error');
+    cleanup();
+    expect(row('time_travel', { available: false }).status).toBe('error');
+    cleanup();
+    expect(row('get_period_reading', { ok: true }).status).toBe('complete');
   });
 
-  it('a today reading has no place label and still reads as a sentence', () => {
-    render(<ToolCallRow toolName="get_period_reading" toolCallId="r2" args={{}} argsText="{}"
-      result={{ period: { label: 'October 13, 2026' }, place: { timezone: 'America/Los_Angeles' } }} status={{ type: 'complete' }} />);
-    expect(screen.getByTestId('chat-tool-call-summary').textContent).toBe('Looked up the period reading · October 13, 2026');
-  });
-
-  it('a detail row names its section', () => {
-    render(<ToolCallRow toolName="get_period_detail" toolCallId="d1" args={{ section: 'lord', key: 'saturn' }} argsText=""
-      result={{ period: { label: 'May 2019' }, place: { label: 'Singapore' }, section: 'lord', facts: {} }} status={{ type: 'complete' }} />);
-    expect(screen.getByTestId('chat-tool-call-summary').textContent).toBe('Looked up a running lord · Singapore · May 2019');
-  });
-
-  it('an unavailable reading is shown as a failed lookup, not a success', () => {
-    render(<ToolCallRow toolName="get_period_reading" toolCallId="r3" args={{}} argsText="{}"
-      result={{ period: { label: 'May 2019' }, place: { label: 'Singapore' }, available: false, reason: 'timeout' }} status={{ type: 'complete' }} />);
-    expect(screen.getByTestId('chat-tool-call').getAttribute('data-status')).toBe('error');
-    expect(screen.getByTestId('chat-tool-call-summary').textContent).toBe('Could not look up the period reading · Singapore · May 2019');
+  it('a new read_period ask that carries a code stays complete', () => {
+    expect(row('read_period', { code: 'place_not_chosen', available: true }).status).toBe('complete');
   });
 });

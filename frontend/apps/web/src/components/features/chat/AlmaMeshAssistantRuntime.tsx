@@ -37,6 +37,7 @@ export function convertChatMessage(
       custom: {
         error: message.error === true,
         streaming,
+        ...(message.moved_to ? { movedTo: message.moved_to } : {}),
       },
     },
   };

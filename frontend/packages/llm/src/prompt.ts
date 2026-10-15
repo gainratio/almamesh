@@ -13,7 +13,8 @@ import { withLanguage, type PromptLanguage } from "./language";
 import { buildMeshFactsBlock } from "./mesh-facts";
 import type { SanitizedMeshEdge } from "./mesh-sanitize";
 import { buildPredictiveFactsBlock } from "./predictive-facts";
-import { TRIP_GROUNDING_TOOLS, pinnedPeriodRules, type PinnedPrompt } from "./period-pin";
+import { pinnedPeriodRules, type PinnedPrompt } from "./period-pin";
+import { REFLECTION_RULE } from "./reflection";
 import type { SanitizedChart } from "./sanitize";
 import type {
   VedicInterpretation,
@@ -158,10 +159,12 @@ export const RECTIFICATION_FENCE = [
 // Verbatim persona from backend TEXT_INTERPRETATION_PROMPT.
 const SYSTEM_PROMPT = [
   "You are an expert Vedic Astrologer with 30 years of experience.",
-  "Your goal is to provide accurate, empathetic, and insightful readings based on the",
+  "Your goal is to provide specific, empathetic, and insightful readings based on the",
   "Sidereal Zodiac (Lahiri Ayanamsa).",
   "Use the provided astronomical data (Planets, Houses, Dashas, Yogas) to construct your analysis.",
   "Do not make up planetary positions; strictly adhere to the JSON context provided.",
+  "",
+  REFLECTION_RULE,
   "",
   OUTPUT_DISCIPLINE_RULES,
   "",
@@ -175,7 +178,7 @@ const LAYMAN_INSTRUCTION = [
   "1. The Ascendant (Lagna) and its sign - personality core.",
   "2. The Moon sign - emotional nature.",
   "3. Key planetary strengths (Exalted/Own sign planets).",
-  "4. Current Dasha period (if provided) - what to expect now.",
+  "4. Current Dasha period (if provided) - what it highlights now.",
 ].join("\n");
 
 const EXPERT_INSTRUCTION = [
@@ -197,52 +200,81 @@ function modeInstruction(mode: ViewMode): string {
 // referencing dashas and yogas when they are relevant. There is exactly ONE
 // persona (the tool-using split is gone): the deterministic engine facts are the
 // single source of truth, so the model NEVER invents or recomputes a position.
-// Time travel (spec 2026-10-08): the timing tool can read any period. The model
-// must say which period it read, and must not pass today's sky off as another date's.
+// Time travel (spec 2026-10-08): a reading can be for any period, and today's sky
+// must never pass for another date's. The answer schema (answer.ts) makes the model
+// name the period and place it read, so no rule here asks for that.
 const PERIOD_RULES = [
-  "TIME PERIODS: a timing result carries a `period` (start, end). Open your answer by",
-  "naming that period in plain words, for example \"I looked at 1–30 June 2026.\"",
-  "Never present today's sky as the sky of another date. If a result has notes, follow them.",
-  "If a result says available: false, say plainly what this device could not work out,",
+  "TIME PERIODS: never present today's sky as the sky of another date. If a reading has notes, follow them.",
+  "If a reading says available: false, say plainly what this device could not work out,",
   "and answer from what did come back.",
 ].join("\n");
 
 // Period reading (spec 2026-10-13): the reading gives the model the facts to be
-// specific, so the prompt asks for them by name. Honesty stays: a chart shows
-// themes and timing, never the concrete event, and every claim cites a factor.
+// specific. Chat tool layer redesign (2026-10-14): the answer schema now enforces the
+// checklist (period, place, maha/antar with lordships, Moon tag, themes with
+// confidence, dated windows), so only the voice, honesty and no-invented-place rules stay here.
 const READING_RULES = [
-  "PERIOD READING: get_period_reading is your main source for a period, today included. Be specific.",
+  "PERIOD READING: the reading is your source for any period, today included. Be specific.",
   "Name the life areas and the houses behind them.",
-  'Name the running maha, antar and pratyantar and what each lord rules, e.g. "Saturn, your 12th lord".',
-  'For every theme you cover, give its life area and houses, its direction, its strength and its confidence in words (e.g. "strong, medium confidence"), the engine factor behind it, and its dated window when it has one.',
-  "Name every tag in the reading's sky once, with what it traditionally signifies: a Sade Sati phase, Kantaka or Ashtama Shani, Jupiter Nth from the Moon.",
-  "Name the place when the reading's place has a label. With no label, name no city and never say a tool left one out.",
-  "For the user's own date, time and zone today, use the reading's period and place.current. get_current_datetime scope chart is the birth place's zone, not where the user is now.",
-  'Give at least one dated window or change point inside the period, with its day.',
+  "With no place label, name no city, and never say a tool left one out.",
   "Cite the engine factor behind every claim.",
-  "Use get_period_detail to look closer at a lord, a segment, the bindus or the panchang.",
-  'Every period answer, one month or several, names the place, a Moon-based tag by name (e.g. "Jupiter 8th from your Moon") and a confidence level.',
-  "OBSTACLES (6th/8th/12th): name a strong or moderate obstacles theme as a theme to watch (friction with rules or authorities, legal or administrative matters, unexpected setbacks, losses and expenses) with its factor, its confidence and its dated window; never say it happened, no fear words.",
+  "OBSTACLES (6th/8th/12th): name a strong or moderate obstacles theme as a theme to watch (friction with rules or authorities, legal or administrative matters, unexpected setbacks, losses and expenses) with its factor and its dated window; never say it happened, no fear words.",
   "HONESTY: a chart cannot name the concrete event. Describe themes, timing and their factors.",
-  "Never say what did or will happen, and never invent a fact.",
+  "Never say an event did occur or is going to occur, and never invent a fact.",
 ].join("\n");
 
-// 2026-10-14: a today thread's present-day periods. Only an unpinned (today) prompt carries it, so a
-// trip or dated prompt on an 8k-context model keeps its budget for tool results.
-const TODAY_PERIOD_RULE =
-'PRESENT-DAY PERIODS (a today thread): for "this month", "next month" or "the next few weeks", call get_period_reading in every turn, follow-ups included, with granularity "month" (add month "YYYY-MM" for a later month; for "the next few weeks" read this month and the next; "day" is today only).';
+/**
+ * What the app already knows about this chat thread (chat tool layer redesign,
+ * 2026-10-14): it rides in the prompt instead of behind a tool.
+ */
+export interface ThreadFacts {
+  /** Today in the viewer's zone, e.g. "Wednesday 14 October 2026, America/Los_Angeles". */
+  readonly now: string;
+  /** The thread's time-travel trip, when it is one. */
+  readonly trip?: ThreadTrip;
+  /** Where the user lives now (Settings), when set; only a today thread states it. */
+  readonly home?: ThreadHome;
+}
 
-// Time travel Inc C (coordinator Ruling 1): a day-precision reading needs a place,
-// and the app never assumes one. Shares P4 (resolve first when the user already
-// named a place) and P9 (a week or longer: say place doesn't change it).
-const PLACE_RULES = [
-  "PLACES: a sky reading for a day, a few days or a time of day needs a place. If a timing",
-  'result is { "error": "needs_place" }, ask once: "Where were you (or will you be) that day?"',
-  "If the user already named a place for that day in this conversation, call resolve_place first,",
-  "then get_timing with its place_ref. Never assume a place, and never use the birth place.",
-  "A week or longer never needs a place: don't resolve places for it; if the user names several",
-  "places for it, say plainly that being there doesn't change the reading.",
-].join("\n");
+export interface ThreadHome {
+  /** A label, e.g. "Novato, California, United States". Never coordinates. */
+  readonly place: string;
+  readonly timezone: string;
+}
+
+export interface ThreadTrip {
+  /** The period in the UI language, e.g. "May 2019". */
+  readonly label: string;
+  /** Where the user lived then, as a label, e.g. "Vadodara, India". Never coordinates. */
+  readonly place: string;
+  readonly timezone: string;
+}
+
+const TOOLS_LINE =
+  "TOOLS: read_period reads any span (one call per span; never split a range into months). travel moves this conversation only when asked. Finish every turn by calling answer.";
+
+/** ThreadFacts.now: "Wednesday 14 October 2026, America/Los_Angeles". English, like the rest of the system prompt. */
+export function formatNow(now: Date, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone }).formatToParts(now);
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === type)?.value ?? "";
+  return `${part("weekday")} ${part("day")} ${part("month")} ${part("year")}, ${timeZone}`;
+}
+
+/**
+ * NOW, THIS THREAD, the pinned period and TOOLS. Only a tool-using turn (thread
+ * given) says today, the trip and the tools; a single-pass caller keeps the pin.
+ */
+function threadRules(thread?: ThreadFacts, pinned?: PinnedPrompt): string {
+  const trip = thread?.trip;
+  const home = trip ? undefined : thread?.home;
+  return [
+    ...(thread ? [`NOW: today is ${thread.now}.`] : []),
+    ...(trip ? [`THIS THREAD: a trip to ${trip.label}, when the user lived in ${trip.place} (${trip.timezone}).`] : []),
+    ...(home ? [`THIS THREAD: today, where the user lives now: ${home.place} (${home.timezone}).`] : []),
+    ...(pinned ? [pinnedPeriodRules(pinned)] : []),
+    ...(thread ? [TOOLS_LINE] : []),
+  ].join("\n");
+}
 
 const CHAT_SYSTEM_PROMPT = [
   "You are a warm, wise Vedic astrology companion — an expert in the Sidereal",
@@ -261,6 +293,8 @@ const CHAT_SYSTEM_PROMPT = [
   PERIOD_RULES,
   "",
   READING_RULES,
+  "",
+  REFLECTION_RULE,
   "",
   PRIVACY_RULE,
   "",
@@ -283,7 +317,7 @@ const LAYMAN_CHAT_REGISTER = [
   "- a Rahu period → an ambitious, unconventional, sometimes restless chapter",
   "- a Ketu period → a reflective, letting-go phase",
   "- a Venus period → a season of relationships, comfort, and creativity",
-  "- an obstacles theme → a stretch to watch rules, paperwork and spending, not a prediction",
+  "- an obstacles theme → a stretch to watch rules, paperwork and spending: a theme to reflect on",
 ].join("\n");
 
 const EXPERT_CHAT_REGISTER =
@@ -530,7 +564,9 @@ function interpretationBlock(text?: string): string {
  * is {@link CLOUD_CHAT_BUDGET} (today's bytes, snapshot-locked).
  *
  * The optional `pinned` is a time-travel thread's period and tense; when absent,
- * the prompt is byte-identical to the unpinned path.
+ * the prompt is byte-identical to the unpinned path. The optional `thread`
+ * ({@link ThreadFacts}) marks a tool-using turn: today's date and zone, the
+ * trip line and the two tool lines ride in the system prompt.
  */
 /** The longest best-first prefix of `recalled` whose composed user turn fits `tokens`. */
 function recalledWithin(recalled: readonly string[], tokens: number, compose: (kept: readonly string[]) => string): readonly string[] {
@@ -550,8 +586,8 @@ export function buildChatMessages(
   meshEdge?: SanitizedMeshEdge,
   rectification?: ChatRectificationContext,
   budget: ChatPromptBudget = CLOUD_CHAT_BUDGET,
-  places = false,
   pinned?: PinnedPrompt,
+  thread?: ThreadFacts,
 ): ChatMessage[] {
   // The raw-predictive engine block is dropped under a profile that excludes
   // it; `predictive` is optional on SanitizedChart, so the natal-only facts
@@ -574,10 +610,9 @@ export function buildChatMessages(
   // facts; the rectification record line (when present) follows so the birth-time
   // story is pinned; the already-generated reading sits after those and before
   // any RAG context. Absent blocks are "" and filtered, keeping today's bytes.
-  // A trip grounds itself through its tools (period-pin.ts): no facts block.
-  const facts = pinned?.place
-    ? [`Chart facts: read them with ${TRIP_GROUNDING_TOOLS.join(" and ")} (this trip's tools).`]
-    : ["Chart facts (sanitized; no identifying information):", factsBlock];
+  // Every mode carries the facts block, trips included (2026-10-14): a natal
+  // summary behind a tool was a forced call in every trip turn.
+  const facts = ["Chart facts (sanitized; no identifying information):", factsBlock];
   const userWith = (recalled: readonly string[]): string => [
     chatRegister(mode),
     "",
@@ -593,12 +628,10 @@ export function buildChatMessages(
     .filter((part) => part !== "")
     .join("\n");
 
-  // PLACE_RULES name resolve_place and needs_place, which exist only where the
-  // toolset registers them (full tier). Elsewhere an unknown tool call would end
-  // the turn tool-less, so the rules ride only when `places` is true.
-  const withPlaces = places ? CHAT_SYSTEM_PROMPT + "\n\n" + PLACE_RULES : CHAT_SYSTEM_PROMPT;
-  // Inc D: a pinned thread says which period and which tense (period-pin.ts).
-  const base = pinned ? withPlaces + "\n\n" + pinnedPeriodRules(pinned) : withPlaces + "\n\n" + TODAY_PERIOD_RULE;
+  // A tool-using turn (thread given) says today, the trip, the pin and the two
+  // tools; a single-pass caller names no tool.
+  const rules = threadRules(thread, pinned);
+  const base = rules === "" ? CHAT_SYSTEM_PROMPT : CHAT_SYSTEM_PROMPT + "\n\n" + rules;
   const systemPrompt = meshBlock === "" ? base : base + MESH_CONTEXT_EXCEPTION;
   const systemContent = withLanguage(systemPrompt, language);
   // Under a capped profile, recalled memories (best first) keep only what fits

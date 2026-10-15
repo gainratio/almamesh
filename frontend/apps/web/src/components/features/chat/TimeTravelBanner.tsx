@@ -1,5 +1,5 @@
 /**
- * "⏳ Time travel · 2027 · answers are about this period · Change · Back to today" (plan Ruling 1).
+ * "⏳ Time travel · 2027 · what your chart highlights for this period · Change · Back to today" (plan Ruling 1).
  * The Dashboard reuses it with its own testid prefix and "about" line (plan Ruling 3).
  */
 import type { Ref } from 'react';
@@ -19,7 +19,7 @@ interface TimeTravelBannerProps {
   readonly backFailed?: boolean;
   /** Testid prefix. Default 'time-travel' (chat). The Dashboard passes 'dashboard-time-travel'. */
   readonly testIdPrefix?: string;
-  /** The "about" line. Default: chat's "answers are about this period". */
+  /** The "about" line. Default: chat's "what your chart highlights for this period". */
   readonly about?: string;
   /** A ref on the Change button, so a host can return focus to it. Default: none (chat). */
   readonly changeRef?: Ref<HTMLButtonElement>;

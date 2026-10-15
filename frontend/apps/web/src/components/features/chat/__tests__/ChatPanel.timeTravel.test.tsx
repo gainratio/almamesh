@@ -29,7 +29,7 @@ const CHART = { chart_id: 'c1', profile_id: 'p1', birth_data: { birth_location_d
 
 type AskFn = NonNullable<ComponentProps<typeof ChatPanel>['onAskQuestionStream']>;
 
-function renderPanel(onAsk = vi.fn<AskFn>(async () => ({ answer: 'ok' })), configured = true) {
+function renderPanel(onAsk = vi.fn<AskFn>(async () => 'ok'), configured = true) {
   if (configured) writeLlmSettings(openRouterPreset('sk-or-v1-0000-synthetic-test-key', 'test-org/test-model'));
   render(
     <MemoryRouter>
@@ -105,8 +105,8 @@ describe('ChatPanel time travel', () => {
     expect(screen.getByTestId('time-travel-badge').textContent).toBe('⏳');
     // Contract changed 2026-10-13: one period header row; the title is the period itself.
     expect(screen.getByTestId('time-travel-title').textContent?.replace(/\u00a0/g, ' ')).toBe('2050');
-    expect(screen.getByTestId('time-travel-banner').textContent).toContain('answers are about this period');
-    expect(screen.getByRole('button', { name: 'What should I prepare for?' })).toBeTruthy();
+    expect(screen.getByTestId('time-travel-banner').textContent).toContain('what your chart highlights for this period');
+    expect(screen.getByRole('button', { name: 'What does my chart highlight for this time?' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Which months look strongest?' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'What are my career strengths?' })).toBeNull();
     const threads = Object.values(useChatStore.getState().threads);
@@ -126,7 +126,7 @@ describe('ChatPanel time travel', () => {
     fireEvent.change(screen.getByTestId('chat-input'), { target: { value: 'Will work get easier?' } });
     fireEvent.click(screen.getByTestId('chat-send-button'));
     await waitFor(() => expect(onAsk).toHaveBeenCalled());
-    expect((onAsk.mock.calls[0] as unknown[])[7]).toEqual({ ...YEAR_2050, place: expect.objectContaining({ timezone: 'Asia/Kolkata' }) });
+    expect(onAsk.mock.calls[0]?.[0].asOf).toEqual({ ...YEAR_2050, place: expect.objectContaining({ timezone: 'Asia/Kolkata' }) });
   });
 
   it('a pinned thread can send while the chart re-anchors to a new day', async () => {
@@ -176,7 +176,7 @@ describe('ChatPanel time travel', () => {
     renderPanel();
     expect(screen.getByRole('button', { name: 'What are my career strengths?' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Why did this time feel hard?' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'What should I prepare for?' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'What does my chart highlight for this time?' })).toBeNull();
   });
 
   it('a failed Back to today save keeps the banner, shows an alert and re-enables Back', async () => {
@@ -204,5 +204,58 @@ describe('ChatPanel time travel', () => {
     fireEvent.change(screen.getByTestId('chat-input'), { target: { value: 'Hello?' } });
     fireEvent.click(screen.getByTestId('chat-send-button'));
     await waitFor(() => expect(button.disabled).toBe(true));
+  });
+});
+
+describe('ChatPanel: the answer follows a chat-initiated trip (2026-10-14)', () => {
+  const JUNE_DELHI = { ...PAST, place: { label: 'Delhi, India', timezone: 'Asia/Kolkata', latitude: 28.6139, longitude: 77.209 } };
+
+  it('shows the question and answer in the new trip, and the old thread a one-line pointer that opens it', async () => {
+    const onAsk = renderPanel(vi.fn<AskFn>(async ({ onTravel }) => {
+      onTravel?.({ kind: 'travel', asOf: JUNE_DELHI });
+      return 'June 2019 was busy.';
+    }));
+    act(() => {
+      const today = useChatStore.getState().startThread('p1', 'c1');
+      useChatStore.getState().appendMessage(today, 'user', 'How is today?');
+      useChatStore.getState().appendMessage(today, 'assistant', 'Calm.');
+    });
+    fireEvent.change(screen.getByTestId('chat-input'), { target: { value: 'Take me to June 2019 in Delhi' } });
+    fireEvent.click(screen.getByTestId('chat-send-button'));
+    await screen.findByTestId('time-travel-banner');
+    await waitFor(() => expect(screen.getAllByTestId('chat-message-assistant').at(-1)?.textContent).toContain('June 2019 was busy.'));
+    const asked = screen.getAllByTestId('chat-message-user');
+    expect(asked).toHaveLength(1);
+    expect(asked[0]?.textContent).toContain('Take me to June 2019 in Delhi');
+    expect(onAsk).toHaveBeenCalledTimes(1);
+
+    const today = Object.values(useChatStore.getState().threads).find((thread) => !thread.as_of)!;
+    act(() => { useChatStore.getState().renameThread(today.id, 'How is today?'); });
+    fireEvent.click(screen.getByTestId('chat-threads-button'));
+    fireEvent.click(await screen.findByText('How is today?'));
+    const pointer = await screen.findByTestId('chat-moved-pointer');
+    expect(pointer.textContent).toBe('Moved to ⏳ Jun 2019 · Delhi, India');
+    expect(pointer.tagName).toBe('BUTTON');
+    expect(screen.getAllByTestId('chat-message-assistant').map((node) => node.textContent)).toEqual([expect.stringContaining('Calm.')]);
+    fireEvent.click(pointer);
+    await screen.findByTestId('time-travel-banner');
+    await waitFor(() => expect(screen.getAllByTestId('chat-message-assistant').at(-1)?.textContent).toContain('June 2019 was busy.'));
+  });
+
+  it('a pointer whose trip was deleted is plain text, not a dead link', async () => {
+    // A today thread whose pointer names a trip that was deleted since.
+    act(() => {
+      const today = useChatStore.getState().startThread('p1', 'c1');
+      useChatStore.getState().appendMessage(today, 'user', 'Earlier');
+      const trip = useChatStore.getState().startThread('p1', 'c1');
+      const asked = useChatStore.getState().appendMessage(today, 'user', 'Go');
+      useChatStore.getState().moveMessages(today, trip, [asked.id], 'Moved to ⏳ Jun 2019 · Delhi, India');
+      useChatStore.getState().deleteThread(trip);
+      useChatStore.getState().appendMessage(today, 'assistant', 'Still here.');
+    });
+    renderPanel();
+    const pointer = await screen.findByTestId('chat-moved-pointer');
+    expect(pointer.tagName).not.toBe('BUTTON');
+    expect(pointer.textContent).toBe('Moved to ⏳ Jun 2019 · Delhi, India');
   });
 });

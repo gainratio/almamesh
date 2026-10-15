@@ -105,9 +105,9 @@ const GATING_EVENTS = new Set(["push", "pull_request", "pull_request_target"])
  */
 const NATIVE_MACOS_LANES: Readonly<Record<string, string>> = {
   "webkit-macos.yml":
-    "Time travel and export/import on desktop Safari and an iPhone profile: macOS WebKit has the OPFS the engine needs",
+    "Reports, never blocks: time travel and export/import on desktop Safari and an iPhone profile (macOS WebKit has the OPFS the engine needs); crashes become issues",
   "safari-smoke.yml":
-    "Advisory smoke in real Safari via safaridriver: Playwright's bundled WebKit is not shipped Safari (version, OPFS)",
+    "Deploy gate: real Safari via safaridriver. Playwright's bundled WebKit is not shipped Safari (version, OPFS)",
 }
 const MACOS_LANE_SCRIPT = "frontend/apps/web/scripts/webkit-macos-lane.sh"
 /**
@@ -115,7 +115,7 @@ const MACOS_LANE_SCRIPT = "frontend/apps/web/scripts/webkit-macos-lane.sh"
  * and upload the lane's evidence directory (traces, videos, WebKit logs, crash
  * reports; scripts/webkit-macos-lane.sh) even when the lane fails.
  */
-const UPLOAD_ARTIFACT = "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"
+const UPLOAD_ARTIFACT = "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9"
 const MACOS_LANE_ACTIONS = [
   checkout,
   "oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6",
@@ -138,6 +138,53 @@ const LANE_RUN = "bash scripts/webkit-macos-lane.sh"
 const LEAK_SCAN_RUN = "node scripts/artifactLeakScan.mjs webkit-lane-evidence-"
 const LEAK_SCAN_ID = "leak-scan"
 const UPLOAD_IF = `always() && steps.${LEAK_SCAN_ID}.outcome == 'success'`
+/**
+ * The lane reports and never blocks: its test step may fail without failing the
+ * job, so the workflow conclusion stays green and gates nothing. Every other
+ * step (collection, redaction, scan, upload) must still succeed.
+ */
+const LANE_REPORTS = "${{ true }}"
+/**
+ * Redact the copied .ips in place and print the job's `crashes` output: crash
+ * signatures, plus failed tests (Playwright JSON reports) that no .ips explains.
+ */
+function crashSignatureStep(mode: MacosLaneMode): Record<string, unknown> {
+  return {
+    id: "crash-signatures",
+    if: "always()",
+    run: `node scripts/crashReportSummary.mjs --signatures ${mode} webkit-lane-artifacts-${mode} >> "$GITHUB_OUTPUT"`,
+  }
+}
+const LANE_OUTPUTS = { crashes: "${{ steps.crash-signatures.outputs.crashes }}" }
+/**
+ * The one job with a write scope: issues, on main pushes only, never on a pull
+ * request (Dependabot, a fork). Thin Dagger ingress; the token reaches Dagger
+ * as a typed secret and the lane outputs only through env.
+ */
+const CRASH_ISSUES_JOB = {
+  name: "webkit / macOS crash issues",
+  needs: ["webkit-memory", "webkit-travel", "webkit-portable"],
+  if: "${{ !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/main' }}",
+  "runs-on": "ubuntu-latest",
+  "timeout-minutes": 15,
+  permissions: { contents: "read", issues: "write" },
+  steps: [
+    { uses: checkout, with: { "persist-credentials": false, ref: "${{ github.sha }}" } },
+    {
+      uses: "dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77",
+      env: {
+        XDG_CONFIG_HOME: "${{ github.workspace }}/.github/xdg",
+        GITHUB_TOKEN: "${{ github.token }}",
+        CRASHES: "${{ toJSON(needs.*.outputs.crashes) }}",
+      },
+      with: {
+        version: "0.21.8",
+        verb: "call",
+        args: 'file-webkit-crashes --github-token=env:GITHUB_TOKEN --repository="$GITHUB_REPOSITORY" --run-id="$GITHUB_RUN_ID" --crashes="$CRASHES"',
+      },
+    },
+  ],
+}
 
 function leakScanViolations(jobSteps: Array<Record<string, unknown>>, mode: MacosLaneMode): string[] {
   const scans = jobSteps.filter((step) => String(step.run ?? "").trim() === `${LEAK_SCAN_RUN}${mode}`)
@@ -150,9 +197,10 @@ function leakScanViolations(jobSteps: Array<Record<string, unknown>>, mode: Maco
   if ("continue-on-error" in scan) violations.push("leak-scan-continue-on-error")
   const finalize = jobSteps[at - 1] ?? {}
   if (finalize.id !== "finalize-evidence" || finalize.if !== FINALIZE_IF || finalize.run !== `${LANE_RUN} --finalize-evidence ${mode}` || "continue-on-error" in finalize) violations.push("evidence-not-finalized")
-  const collect = jobSteps[at - 2] ?? {}
+  if (JSON.stringify(jobSteps[at - 2] ?? {}) !== JSON.stringify(crashSignatureStep(mode))) violations.push("crash-signatures-not-collected")
+  const collect = jobSteps[at - 3] ?? {}
   if (JSON.stringify(collect) !== JSON.stringify({ id: "collect-native-evidence", if: "always()", "timeout-minutes": 2, run: `${LANE_RUN} --collect-native-evidence ${mode}` })) violations.push("native-evidence-not-collected")
-  if (jobSteps[at - 3]?.run !== `${LANE_RUN} ${mode}`) violations.push("leak-scan-before-lane")
+  if (jobSteps[at - 4]?.run !== `${LANE_RUN} ${mode}`) violations.push("leak-scan-before-lane")
   if (jobSteps[at + 1]?.uses !== UPLOAD_ARTIFACT) violations.push("leak-scan-not-just-before-upload")
   return violations
 }
@@ -178,7 +226,7 @@ function withJob(
   mutate: (job: Record<string, unknown>) => Record<string, unknown>,
 ): Record<string, unknown> {
   const jobs = parsed.jobs as Record<string, Record<string, unknown>>
-  return { ...parsed, jobs: Object.fromEntries(Object.entries(jobs).map(([id, job]) => [id, id === "webkit-macos" ? job : mutate(job)])) }
+  return { ...parsed, jobs: Object.fromEntries(Object.entries(jobs).map(([id, job]) => [id, id === "webkit-crash-issues" ? job : mutate(job)])) }
 }
 
 function withSafariJob(
@@ -226,9 +274,9 @@ const LANE_ARTIFACT_LINES: readonly string[] = [
   `TT_MEMORY_BASELINE_REF="\${REFERENCE_REF}" TT_MEMORY_MEASUREMENT_REF="\${MEASUREMENT_REF}" TIME_TRAVEL_E2E_BASE_URL="\${REFERENCE_URL}" run_lane_command bun x playwright test --config=playwright.time-travel.config.ts e2e/time-travel-memory.webkit.spec.ts --project=iphone-15-webkit --grep 'boot baseline' --repeat-each=5 --retries=0 --reporter=json --output="\${ARTIFACTS}/time-travel-memory-baseline" > "\${ARTIFACTS}/time-travel-memory-baseline-report.json"`,
   'node scripts/webkit-memory-baseline.mjs --report "${ARTIFACTS}/time-travel-memory-baseline-report.json" --measurement-commit "${MEASUREMENT_REF}" --provenance "${ARTIFACTS}/time-travel-memory-baseline-provenance.json"',
   `TT_MEMORY_PHASE=final TT_MEMORY_GRANULARITY=day TT_MEMORY_REPORT_ONLY=0 TT_WEBKIT_BASELINE_MIB="\${BASELINE_MIB}" TIME_TRAVEL_E2E_BASE_URL="\${MEMORY_URL}" run_lane_command bun run test:e2e:time-travel e2e/time-travel-memory.webkit.spec.ts --project=iphone-15-webkit --grep 'WebContent RSS budget' --repeat-each=5 --retries=0 --output="\${ARTIFACTS}/time-travel-memory" || status=1`,
-  'TIME_TRAVEL_E2E_BASE_URL="${BASE_URL}" run_lane_command bun run test:e2e:time-travel e2e/time-travel.spec.ts --project=webkit --project=iphone-webkit --project=iphone-15-webkit --retries=0 --output="${ARTIFACTS}/time-travel" || status=1',
-  'PORTABLE_INVARIANTS_E2E_BASE_URL="${BASE_URL}" run_lane_command bun run test:e2e:portable-invariants --project=webkit --project=iphone-webkit --retries=0 --output="${ARTIFACTS}/portable-invariants" || status=1',
-  'BOOT_RETRY_E2E_BASE_URL="${BASE_URL}" run_lane_command bun run test:e2e:boot-retry --project=webkit --retries=0 --output="${ARTIFACTS}/boot-retry" || status=1',
+  'TIME_TRAVEL_E2E_BASE_URL="${BASE_URL}" run_suite test:e2e:time-travel "${ARTIFACTS}/time-travel" e2e/time-travel.spec.ts --project=webkit --project=iphone-webkit --project=iphone-15-webkit || status=1',
+  'PORTABLE_INVARIANTS_E2E_BASE_URL="${BASE_URL}" run_suite test:e2e:portable-invariants "${ARTIFACTS}/portable-invariants" --project=webkit --project=iphone-webkit || status=1',
+  'BOOT_RETRY_E2E_BASE_URL="${BASE_URL}" run_suite test:e2e:boot-retry "${ARTIFACTS}/boot-retry" --project=webkit || status=1',
   `grep -rh "page crashed" "\${ARTIFACTS}" --include='*-browser.log' || true`,
 ]
 
@@ -281,7 +329,7 @@ function memoryLaneViolations(script: string): string[] {
   const violations: string[] = MEMORY_LANE_REQUIREMENTS.filter((line) => !script.includes(line))
   const baseline = script.indexOf('TT_MEMORY_BASELINE_REF="${REFERENCE_REF}"')
   const journey = script.indexOf('TT_MEMORY_PHASE=final TT_MEMORY_GRANULARITY=day TT_MEMORY_REPORT_ONLY=0')
-  const functional = script.indexOf('TIME_TRAVEL_E2E_BASE_URL="${BASE_URL}" run_lane_command bun run test:e2e:time-travel')
+  const functional = script.indexOf('TIME_TRAVEL_E2E_BASE_URL="${BASE_URL}" run_suite test:e2e:time-travel')
   if (baseline === -1 || journey <= baseline || functional <= journey) violations.push("memory-comparison-order")
   const archive = script.indexOf('git -C "${REPO_ROOT}" archive "${REFERENCE_REF}"')
   const publicDirectory = script.indexOf('mkdir -p "${REFERENCE_WEB}/public"')
@@ -323,23 +371,8 @@ function macosLaneViolations(parsed: Record<string, unknown>): string[] {
   const jobs = parsed.jobs as Record<string, Record<string, unknown>>
   if (JSON.stringify(parsed.permissions) !== JSON.stringify({ contents: "read" })) violations.push("workflow-permissions")
   if ("env" in parsed) violations.push("workflow-env")
-  if (JSON.stringify(Object.keys(jobs).sort()) !== JSON.stringify(["webkit-macos", "webkit-memory", "webkit-portable", "webkit-travel"])) violations.push("job-count")
-  const aggregate = jobs["webkit-macos"]
-  if (JSON.stringify(aggregate) !== JSON.stringify({
-    name: "webkit / macOS time travel + export-import",
-    needs: ["webkit-memory", "webkit-travel", "webkit-portable"],
-    if: "${{ !cancelled() }}",
-    "runs-on": "ubuntu-24.04",
-    "timeout-minutes": 5,
-    steps: [{
-      env: {
-        MEMORY_RESULT: "${{ needs.webkit-memory.result }}",
-        TRAVEL_RESULT: "${{ needs.webkit-travel.result }}",
-        PORTABLE_RESULT: "${{ needs.webkit-portable.result }}",
-      },
-      run: 'test "$MEMORY_RESULT" = success && test "$TRAVEL_RESULT" = success && test "$PORTABLE_RESULT" = success',
-    }],
-  })) violations.push("aggregate")
+  if (JSON.stringify(Object.keys(jobs).sort()) !== JSON.stringify(["webkit-crash-issues", "webkit-memory", "webkit-portable", "webkit-travel"])) violations.push("job-count")
+  if (JSON.stringify(jobs["webkit-crash-issues"]) !== JSON.stringify(CRASH_ISSUES_JOB)) violations.push("crash-issues")
   for (const mode of MACOS_LANE_MODES) {
     const job = jobs[`webkit-${mode}`]
     if (!job) { violations.push("missing-lane"); continue }
@@ -348,6 +381,7 @@ function macosLaneViolations(parsed: Record<string, unknown>): string[] {
     if ("permissions" in job) violations.push("job-permissions")
     if ("if" in job || "continue-on-error" in job || "needs" in job) violations.push("lane-bypass")
     if ("env" in job) violations.push("lane-env")
+    if (JSON.stringify(job.outputs) !== JSON.stringify(LANE_OUTPUTS)) violations.push("lane-outputs")
     if (JSON.stringify(job.defaults) !== JSON.stringify({ run: { "working-directory": "frontend/apps/web" } })) violations.push("lane-workdir")
     const jobSteps = job.steps as Array<Record<string, unknown>>
     if (jobSteps.some((step) => "uses" in step && !PINNED_ACTION.test(String(step.uses)))) violations.push("unpinned-action")
@@ -355,8 +389,10 @@ function macosLaneViolations(parsed: Record<string, unknown>): string[] {
     if (JSON.stringify(actions) !== JSON.stringify(MACOS_LANE_ACTIONS)) violations.push("actions")
     violations.push(...evidenceUploadViolations(jobSteps, mode))
     const runs = jobSteps.filter((step) => "run" in step).map((step) => String(step.run).trim())
-    if (JSON.stringify(runs) !== JSON.stringify(["bun install --frozen-lockfile", `${LANE_RUN} ${mode}`, `${LANE_RUN} --collect-native-evidence ${mode}`, `${LANE_RUN} --finalize-evidence ${mode}`, `${LEAK_SCAN_RUN}${mode}`])) violations.push("run-steps")
-    if (jobSteps.some((step) => "continue-on-error" in step || "env" in step || "working-directory" in step || "shell" in step)) violations.push("step-bypass")
+    if (JSON.stringify(runs) !== JSON.stringify(["bun install --frozen-lockfile", `${LANE_RUN} ${mode}`, `${LANE_RUN} --collect-native-evidence ${mode}`, String(crashSignatureStep(mode).run), `${LANE_RUN} --finalize-evidence ${mode}`, `${LEAK_SCAN_RUN}${mode}`])) violations.push("run-steps")
+    const lane = jobSteps.find((step) => step.run === `${LANE_RUN} ${mode}`)
+    if (JSON.stringify(lane) !== JSON.stringify({ run: `${LANE_RUN} ${mode}`, "continue-on-error": LANE_REPORTS })) violations.push("lane-blocks")
+    if (jobSteps.some((step) => (step !== lane && "continue-on-error" in step) || "env" in step || "working-directory" in step || "shell" in step)) violations.push("step-bypass")
     if (jobSteps.filter((step) => "run" in step).slice(0, 2).some((step) => "if" in step || "env" in step || "working-directory" in step)) violations.push("run-bypass")
     const checkouts = jobSteps.filter((step) => step.uses === checkout)
     if (checkouts.length !== 1 || ((checkouts[0]?.with ?? {}) as Record<string, unknown>)["persist-credentials"] !== false) violations.push("persist-credentials")
@@ -369,10 +405,10 @@ function macosLaneViolations(parsed: Record<string, unknown>): string[] {
 }
 
 /**
- * The real-Safari smoke (frontend/apps/web/scripts/safari-smoke.mjs) is
- * advisory: its own workflow, so a red smoke never fails the WebKit (macOS)
- * run deploy acceptance reads. Held to this exact shape: read-only, no
- * secrets, SHA-pinned, bounded, evidence uploaded only after its leak scan.
+ * The real-Safari smoke (frontend/apps/web/scripts/safari-smoke.mjs) gates
+ * production with Dagger (deploy.yml, dagger/src/nativeMacAcceptance.ts).
+ * Held to this exact shape: read-only, no secrets, SHA-pinned, bounded, never
+ * allowed to fail, evidence uploaded only after its leak scan.
  */
 const SAFARI_SMOKE_JOB = {
   name: "safari / macOS smoke",
@@ -592,14 +628,20 @@ describe("canonical GitHub ingress contract", () => {
     for (const [name, check] of Object.entries(NATIVE_MACOS_LANE_CHECKS)) expect(check(workflow(name))).toEqual([])
   })
 
-  test("the real-Safari smoke is advisory: outside the workflow and job list deploy acceptance reads", () => {
-    const webkit = workflow("webkit-macos.yml").jobs as Record<string, unknown>
-    expect(Object.keys(webkit)).not.toContain("safari-smoke")
+  // CONTRACT REVERSED 2026-10-14 (was: "the real-Safari smoke is advisory" and
+  // the macOS WebKit lane gated deploys). Harish's decision: deploys wait on
+  // the lanes that represent real users (Chromium and the product gates in
+  // Dagger, real Safari); the macOS WebKit lane reports crashes as issues.
+  test("real Safari gates production and the macOS WebKit lane gates nothing", () => {
     const acceptance = readFileSync(resolve(root, "dagger/src/nativeMacAcceptance.ts"), "utf8")
-    expect(acceptance).not.toContain("safari")
-    expect(() => parseDeployTrigger(".github/workflows/safari-smoke.yml")).toThrow("not allowed")
+    expect(acceptance).toContain('const workflow = ".github/workflows/safari-smoke.yml"')
+    expect(acceptance).toContain(`const jobNames = [${JSON.stringify(SAFARI_SMOKE_JOB.name)}]`)
+    expect(acceptance).not.toMatch(/webkit-macos|WebKit \(macOS\)/)
+    expect(parseDeployTrigger(".github/workflows/safari-smoke.yml")).toBe("safari")
+    expect(() => parseDeployTrigger(".github/workflows/webkit-macos.yml")).toThrow("not allowed")
     const deploy = workflow("deploy.yml").on as { workflow_run: { workflows: string[] } }
-    expect(deploy.workflow_run.workflows).not.toContain(workflow("safari-smoke.yml").name)
+    expect(deploy.workflow_run.workflows).toEqual(["Dagger", workflow("safari-smoke.yml").name])
+    expect(deploy.workflow_run.workflows).not.toContain(workflow("webkit-macos.yml").name)
   })
 
   test.each([
@@ -618,28 +660,22 @@ describe("canonical GitHub ingress contract", () => {
     expect(safariSmokeViolations(mutate(workflow("safari-smoke.yml")))).not.toEqual([])
   })
 
-  test("the Mac gate keeps its acceptance identity while three independent 45-minute lanes must all pass", () => {
-    const jobs = workflow("webkit-macos.yml").jobs as Record<string, Record<string, unknown>>
-    expect(Object.keys(jobs).sort()).toEqual(["webkit-macos", "webkit-memory", "webkit-portable", "webkit-travel"])
+  test("the macOS WebKit lane reports and never blocks: three independent 45-minute lanes, no acceptance gate", () => {
+    const parsed = workflow("webkit-macos.yml")
+    const jobs = parsed.jobs as Record<string, Record<string, unknown>>
+    expect(Object.keys(jobs).sort()).toEqual(["webkit-crash-issues", "webkit-memory", "webkit-portable", "webkit-travel"])
     for (const mode of MACOS_LANE_MODES) {
       const job = jobs[`webkit-${mode}`]
       expect(job["runs-on"]).toBe("macos-15")
       expect(job["timeout-minutes"]).toBe(45)
       expect(job).not.toHaveProperty("env")
-      expect((job.steps as Array<Record<string, unknown>>).map((step) => step.run)).toContain(`bash scripts/webkit-macos-lane.sh ${mode}`)
-      expect((job.steps as Array<Record<string, unknown>>).map((step) => step.run)).toContain(`bash scripts/webkit-macos-lane.sh --finalize-evidence ${mode}`)
+      expect(job).not.toHaveProperty("permissions")
+      expect(job.steps as Array<Record<string, unknown>>).toContainEqual({ run: `${LANE_RUN} ${mode}`, "continue-on-error": LANE_REPORTS })
+      expect(job.steps as Array<Record<string, unknown>>).toContainEqual(crashSignatureStep(mode))
+      expect(job.outputs).toEqual(LANE_OUTPUTS)
     }
-    expect(jobs["webkit-macos"].name).toBe("webkit / macOS time travel + export-import")
-    expect(jobs["webkit-macos"].needs).toEqual(["webkit-memory", "webkit-travel", "webkit-portable"])
-    expect(jobs["webkit-macos"].if).toBe("${{ !cancelled() }}")
-    expect(jobs["webkit-macos"].steps).toEqual([{
-      env: {
-        MEMORY_RESULT: "${{ needs.webkit-memory.result }}",
-        TRAVEL_RESULT: "${{ needs.webkit-travel.result }}",
-        PORTABLE_RESULT: "${{ needs.webkit-portable.result }}",
-      },
-      run: 'test "$MEMORY_RESULT" = success && test "$TRAVEL_RESULT" = success && test "$PORTABLE_RESULT" = success',
-    }])
+    expect(parsed.permissions).toEqual({ contents: "read" })
+    expect(jobs["webkit-crash-issues"]).toEqual(CRASH_ISSUES_JOB)
   })
 
   test("memory, travel and portable commands are isolated behind closed modes, with fail-closed evidence snapshots", () => {
@@ -680,42 +716,40 @@ describe("canonical GitHub ingress contract", () => {
     expect(result.stdout.trim().split("\n")).toEqual(expected)
   })
 
-  test.each(["travel", "portable"])("%s executes every assigned suite with no retries and retains failure status", (mode) => {
+  /** Runs a lane mode's suites with stubbed commands; `failing` lists the run_lane_command calls (1-based) that fail. */
+  function stubbedLane(mode: string, failing: number[]) {
     const script = readFileSync(resolve(root, MACOS_LANE_SCRIPT), "utf8")
-    const suites = script.slice(script.indexOf("run_travel_lane() {"), script.indexOf('if [[ "${MODE}" == memory ||'))
-    const result = spawnSync("bash", ["-c", `set -eu
+    const suites = script.slice(script.indexOf("run_suite() {"), script.indexOf('if [[ "${MODE}" == memory ||'))
+    return spawnSync("bash", ["-c", `set -eu
+unset CI
 BASE_URL=http://127.0.0.1:4199
 ARTIFACTS=evidence
 status=0
 calls=0
-run_lane_command() { calls=$((calls + 1)); printf '%s\\n' "$*"; [[ "$calls" != 1 ]]; }
+run_lane_command() { calls=$((calls + 1)); printf '%s json=%s\\n' "$*" "\${PLAYWRIGHT_JSON_OUTPUT_FILE:-}"; [[ " $FAILING " != *" $calls "* ]]; }
 ${suites}
 run_${mode}_lane
 exit "$status"
-`], { encoding: "utf8" })
-    expect(result.status).toBe(1)
-    expect(result.stderr).toBe("")
-    expect(result.stdout.trim().split("\n")).toEqual(mode === "travel" ? [
-      "bun run test:e2e:time-travel e2e/time-travel.spec.ts --project=webkit --project=iphone-webkit --project=iphone-15-webkit --retries=0 --output=evidence/time-travel",
-    ] : [
-      "bun run test:e2e:portable-invariants --project=webkit --project=iphone-webkit --retries=0 --output=evidence/portable-invariants",
-      "bun run test:e2e:boot-retry --project=webkit --retries=0 --output=evidence/boot-retry",
-    ])
-  })
+`], { encoding: "utf8", env: { PATH: process.env.PATH, FAILING: failing.join(" ") } })
+  }
 
-  test.each([
-    ["success", "success", "success"],
-    ...["failure", "cancelled", "skipped"].flatMap((result) => [
-      [result, "success", "success"], ["success", result, "success"], ["success", "success", result],
-    ]),
-  ])("aggregate requires successful memory/travel/portable results: %j / %j / %j", (memory, travel, portable) => {
-    const jobs = workflow("webkit-macos.yml").jobs as Record<string, Record<string, unknown>>
-    const step = (jobs["webkit-macos"].steps as Array<Record<string, unknown>>)[0]
-    const result = spawnSync("bash", ["-c", String(step.run)], {
-      env: { PATH: process.env.PATH, MEMORY_RESULT: memory, TRAVEL_RESULT: travel, PORTABLE_RESULT: portable },
-      encoding: "utf8",
-    })
-    expect(result.status === 0).toBe([memory, travel, portable].every((value) => value === "success"))
+  const TRAVEL_RUN = "bun run test:e2e:time-travel e2e/time-travel.spec.ts --project=webkit --project=iphone-webkit --project=iphone-15-webkit"
+  const SUITE_RUNS: Record<string, string[]> = {
+    travel: [`${TRAVEL_RUN} --retries=0 --reporter=list,json --output=evidence/time-travel json=evidence/time-travel-report.json`],
+    portable: [
+      "bun run test:e2e:portable-invariants --project=webkit --project=iphone-webkit --retries=0 --reporter=list,json --output=evidence/portable-invariants json=evidence/portable-invariants-report.json",
+      "bun run test:e2e:boot-retry --project=webkit --retries=0 --reporter=list,json --output=evidence/boot-retry json=evidence/boot-retry-report.json",
+    ],
+  }
+
+  test.each(["travel", "portable"])("%s runs every assigned suite once, with no Playwright retries, and keeps a failure's status", (mode) => {
+    const red = stubbedLane(mode, [1])
+    expect(red.status).toBe(1)
+    expect(red.stderr).toBe("")
+    expect(red.stdout.trim().split("\n")).toEqual(SUITE_RUNS[mode])
+    const green = stubbedLane(mode, [])
+    expect(green.status).toBe(0)
+    expect(green.stdout.trim().split("\n")).toEqual(SUITE_RUNS[mode])
   })
 
   test.each([["typo"], ["memory", "unexpected"], ["--finalize-evidence", "typo"], ["--collect-native-evidence", "typo"]])("unknown/extra lane arguments fail before any producer starts: %j", (...args) => {
@@ -784,7 +818,8 @@ run_lane_command bash -c 'while true; do printf "sample\\n" >> "$1"; sleep 0.01;
       run: `${LANE_RUN} --collect-native-evidence ${mode}`,
     })
     expect(jobSteps[at - 1]?.run).toBe(`${LANE_RUN} ${mode}`)
-    expect(jobSteps[at + 1]?.id).toBe("finalize-evidence")
+    expect(jobSteps[at + 1]).toEqual(crashSignatureStep(mode))
+    expect(jobSteps[at + 2]?.id).toBe("finalize-evidence")
   })
 
   function nativeCollectorSandbox(logProgram = 'printf "synthetic unified log\\n"') {
@@ -1062,8 +1097,14 @@ run_lane_command true
   test.each([
     ["missing memory lane", (w: Record<string, unknown>) => { const jobs = { ...(w.jobs as Record<string, unknown>) }; delete jobs["webkit-memory"]; return { ...w, jobs } }],
     ...["travel", "portable"].map((mode) => [`missing ${mode} lane`, (w: Record<string, unknown>) => { const jobs = { ...(w.jobs as Record<string, unknown>) }; delete jobs[`webkit-${mode}`]; return { ...w, jobs } }] as const),
-    ...["travel", "portable"].map((mode) => [`aggregate ignores ${mode} result`, (w: Record<string, unknown>) => { const jobs = structuredClone(w.jobs) as Record<string, Record<string, unknown>>; jobs["webkit-macos"].needs = ["webkit-memory", `webkit-${mode === "travel" ? "portable" : "travel"}`]; return { ...w, jobs } }] as const),
-    ["aggregate allows failure", (w: Record<string, unknown>) => { const jobs = structuredClone(w.jobs) as Record<string, Record<string, unknown>>; jobs["webkit-macos"].steps = [{ run: "true" }]; return { ...w, jobs } }],
+    ...["travel", "portable"].map((mode) => [`crash issues ignore the ${mode} lane`, (w: Record<string, unknown>) => { const jobs = structuredClone(w.jobs) as Record<string, Record<string, unknown>>; jobs["webkit-crash-issues"].needs = ["webkit-memory", `webkit-${mode === "travel" ? "portable" : "travel"}`]; return { ...w, jobs } }] as const),
+    ["crash issues filed from pull requests", (w: Record<string, unknown>) => { const jobs = structuredClone(w.jobs) as Record<string, Record<string, unknown>>; jobs["webkit-crash-issues"].if = "${{ !cancelled() }}"; return { ...w, jobs } }],
+    ["issues: write for the whole workflow", (w: Record<string, unknown>) => ({ ...w, permissions: { contents: "read", issues: "write" } })],
+    ["issues: write on a lane", (w: Record<string, unknown>) => withJob(w, (job) => ({ ...job, permissions: { contents: "read", issues: "write" } }))],
+    ["a macOS WebKit acceptance gate re-added", (w: Record<string, unknown>) => ({ ...w, jobs: { ...(w.jobs as Record<string, unknown>), "webkit-macos": { needs: ["webkit-memory"], "runs-on": "ubuntu-24.04", steps: [{ run: "true" }] } } })],
+    ["a lane that blocks again", (w: Record<string, unknown>) => withSteps(w, (steps) => steps.map(({ "continue-on-error": _reports, ...step }) => step))],
+    ["crash signatures omitted", (w: Record<string, unknown>) => withSteps(w, (steps) => steps.filter((step) => step.id !== "crash-signatures"))],
+    ["crash signatures not exported", (w: Record<string, unknown>) => withJob(w, ({ outputs: _outputs, ...job }) => job)],
     ["workflow exports artifact path", (w: Record<string, unknown>) => ({ ...w, env: { WEBKIT_LANE_ARTIFACTS: "webkit-lane-artifacts-memory" } })],
     ["lane exports artifact path", (w: Record<string, unknown>) => withJob(w, (job) => ({ ...job, env: { WEBKIT_LANE_ARTIFACTS: "webkit-lane-artifacts-memory" } }))],
     ["finalizer changes source path", (w: Record<string, unknown>) => withSteps(w, (steps) => steps.map((step) => step.id === "finalize-evidence" ? { ...step, env: { WEBKIT_LANE_ARTIFACTS: "/tmp/elsewhere" } } : step))],
@@ -1165,10 +1206,17 @@ run_lane_command true
   test("the macOS lane runs time travel and export/import on desktop Safari and an iPhone", () => {
     const script = readFileSync(resolve(root, MACOS_LANE_SCRIPT), "utf8")
     expect(script).toContain("VITE_EXIT_GATE_HOOKS=1")
-    // No retries: a WebKit page that crashes once must turn the lane red, not pass on retry.
-    expect(script).toContain("bun run test:e2e:time-travel e2e/time-travel.spec.ts --project=webkit --project=iphone-webkit --project=iphone-15-webkit --retries=0")
-    expect(script).toContain("bun run test:e2e:portable-invariants --project=webkit --project=iphone-webkit --retries=0")
+    // CONTRACT CHANGED 2026-10-14 (was: one rerun of a test whose crash matched
+    // a hand-written JSC signature, scripts/webkitFlakeRetry.mjs). No reruns at
+    // all: a crash fails the lane's step, the lane reports it as an issue, and
+    // the lane never blocks a deploy.
+    expect(script).toContain('run_suite test:e2e:time-travel "${ARTIFACTS}/time-travel" e2e/time-travel.spec.ts --project=webkit --project=iphone-webkit --project=iphone-15-webkit || status=1')
+    expect(script).toContain('run_suite test:e2e:portable-invariants "${ARTIFACTS}/portable-invariants" --project=webkit --project=iphone-webkit || status=1')
+    // The JSON report is how a failure with no .ips becomes a webkit-failure issue.
+    expect(script).toContain('PLAYWRIGHT_JSON_OUTPUT_FILE="${output}-report.json" run_lane_command bun run "${script}" "$@" --retries=0 --reporter="${reporter},json" --output="${output}"')
+    expect(script).not.toMatch(/--test-list|webkitFlakeRetry|flake-retry/)
     expect(script).not.toMatch(/--retries=[1-9]/)
+    expect(script).not.toMatch(/--last-failed|--repeat-each=[0-9]+ [^\n]*time-travel\.spec/)
     for (const config of ["playwright.time-travel.config.ts", "playwright.portable-invariants.config.ts"]) {
       const source = readFileSync(resolve(root, "frontend/apps/web", config), "utf8")
       expect(source).toContain('name: "webkit", use: { ...devices["Desktop Safari"]')
@@ -1214,7 +1262,7 @@ run_lane_command true
   test("the macOS lane drives the one automatic boot retry on WebKit against the hooked preview", () => {
     const script = readFileSync(resolve(root, MACOS_LANE_SCRIPT), "utf8")
     // The fault switch exists only in the hooks build the lane already serves.
-    expect(script).toContain('BOOT_RETRY_E2E_BASE_URL="${BASE_URL}" run_lane_command bun run test:e2e:boot-retry --project=webkit --retries=0')
+    expect(script).toContain('BOOT_RETRY_E2E_BASE_URL="${BASE_URL}" run_suite test:e2e:boot-retry "${ARTIFACTS}/boot-retry" --project=webkit || status=1')
     const config = readFileSync(resolve(root, "frontend/apps/web/playwright.boot-retry.config.ts"), "utf8")
     expect(config).toContain('name: "webkit", use: { ...devices["Desktop Safari"]')
     expect(config).toContain("process.env.BOOT_RETRY_E2E_BASE_URL")

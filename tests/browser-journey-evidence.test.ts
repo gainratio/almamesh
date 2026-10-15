@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { BROWSER_JOURNEY_STATUS_CHECK, browserJourneyArtifactName, browserJourneyEvidenceScript, browserJourneyFetchArgs, validateBrowserJourneyExitCode } from '../dagger/src/browserJourneyEvidence.ts';
+import { BROWSER_JOURNEY_STATUS_CHECK, browserJourneyArtifactName, browserJourneyEvidenceScript, browserJourneyFetchRequest, validateBrowserJourneyExitCode } from '../dagger/src/browserJourneyEvidence.ts';
 
 const root = resolve(import.meta.dir, '..');
 const sha = 'd'.repeat(40);
@@ -48,22 +48,39 @@ describe('browser journey evidence remains available on failure', () => {
     expect(workflow).not.toContain('journey-status.json');
     const source = readFileSync(join(root, 'dagger/src/index.ts'), 'utf8');
     const status = source.slice(source.indexOf('async browserJourneysStatus('), source.indexOf('private browserJourneysRun('));
-    expect(status).toContain('browserJourneyFetchArgs(');
+    expect(status).toContain('browserJourneyFetchRequest(');
     expect(status).toContain('"node", BROWSER_JOURNEY_STATUS_CHECK');
     expect(status).toContain('withEnvVariable("EXPECTED_SHA", commitSha)');
   });
 
   test('the status gate fetches only this run\'s artifact for this exact SHA', () => {
     expect(browserJourneyArtifactName(sha)).toBe(`browser-journeys-evidence-${sha}`);
-    expect(browserJourneyFetchArgs('gainratio/almamesh', '987654321', sha)).toEqual([
-      'python3', '/opt/fetch_run_artifact.py', '--repository', 'gainratio/almamesh', '--run-id', '987654321',
-      '--name', `browser-journeys-evidence-${sha}`, '--output', '/evidence',
-    ]);
+    expect(browserJourneyFetchRequest('gainratio/almamesh', '987654321', sha)).toEqual({
+      repository: 'gainratio/almamesh', runId: '987654321', artifact: `browser-journeys-evidence-${sha}`,
+    });
     for (const runId of ['', '0', '12a', '1 --name x', '${{ github.run_id }}']) {
-      expect(() => browserJourneyFetchArgs('gainratio/almamesh', runId, sha)).toThrow('run id');
+      expect(() => browserJourneyFetchRequest('gainratio/almamesh', runId, sha)).toThrow('run id');
     }
-    expect(() => browserJourneyFetchArgs('gainratio/almamesh', '1', 'D'.repeat(40))).toThrow('commit');
-    expect(() => browserJourneyFetchArgs('evil/almamesh', '1', sha)).toThrow();
+    expect(() => browserJourneyFetchRequest('gainratio/almamesh', '1', 'D'.repeat(40))).toThrow('commit');
+    expect(() => browserJourneyFetchRequest('evil/almamesh', '1', sha)).toThrow();
+  });
+
+  // gainratio/ci fleet rule arbitrary-command: a Dagger function's caller input may
+  // reach withExec only in data positions of an array literal whose executable is a
+  // fixed string. A whole argv held in a variable (even one built by a validating
+  // helper) reads as caller-controlled command structure and fails the fleet run.
+  test('the status gate fetch names its executable and flags literally (fleet rule arbitrary-command)', () => {
+    const source = readFileSync(join(root, 'dagger/src/index.ts'), 'utf8');
+    const status = source.slice(source.indexOf('async browserJourneysStatus('), source.indexOf('private browserJourneysRun('));
+    const execs = [...status.matchAll(/\.withExec\(([^)]*)\)/g)].map((m) => m[1].trim());
+    expect(execs.length).toBe(2);
+    for (const argv of execs) {
+      expect(argv).toMatch(/^\["[^"]+"/);
+      expect(argv).not.toContain('...');
+    }
+    expect(execs[0]).toBe(
+      '["python3", "/opt/fetch_run_artifact.py", "--repository", fetch.repository, "--run-id", fetch.runId, "--name", fetch.artifact, "--output", FETCHED_EVIDENCE]',
+    );
   });
 
   test('collects only the named browser results, requires a successful scanner, and records original status', () => {

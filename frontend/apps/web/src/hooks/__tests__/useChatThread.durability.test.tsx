@@ -122,8 +122,8 @@ describe('useChatThread — the turn ends only once the answer is saved', () => 
 
   it('shows the answer exactly once while its save is pending (draft cleared, spinner kept)', async () => {
     // A real stream emits tokens into the draft before returning the answer.
-    const streamed = vi.fn(async (input: { onToken: (t: string) => void }): Promise<string> => {
-      input.onToken(ANSWER);
+    const streamed = vi.fn(async (input: { onSnapshot: (text: string) => void }): Promise<string> => {
+      input.onSnapshot(ANSWER);
       return ANSWER;
     });
     const { result } = renderHook(() => useChatThread(PROFILE, CHART));

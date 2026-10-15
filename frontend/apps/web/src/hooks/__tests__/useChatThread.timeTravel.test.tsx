@@ -339,14 +339,73 @@ describe('chat tool actions apply after a successful durable turn', () => {
     expect(result.current.asOf).toEqual(YEAR);
     expect(useTimeTravelStore.getState().moments[PROFILE]).toEqual(YEAR);
     await act(async () => { release(); await pending; });
-    // Contract reversed 2026-10-13: the tool opens a NEW trip; the answered one keeps its period.
+    // Contract reversed 2026-10-13: the tool opens a NEW trip.
+    // Contract reversed 2026-10-14 (the answer follows the user): the turn moves into the new trip,
+    // so the 2027 trip it was asked in, which held nothing else, is removed instead of left empty.
     expect(result.current.threadId).not.toBe(originalThread);
-    expect(useChatStore.getState().threads[originalThread!]?.as_of).toEqual(YEAR);
+    expect(useChatStore.getState().threads[originalThread!]).toBeUndefined();
+    expect(result.current.messages.map((m) => [m.role, m.content])).toEqual([['user', 'Take me to June'], ['assistant', 'Moving to June.']]);
     expect(result.current.asOf).toEqual(JUNE);
     expect(useTimeTravelStore.getState().moments[PROFILE]).toEqual(JUNE);
     const next = vi.fn(async (_input: ChatStreamInput) => 'June facts.');
     await act(() => result.current.submit('What about work?', next));
     expect(next.mock.calls[0]?.[0].asOf).toEqual(JUNE);
+  });
+
+  it('the question and its answer follow the user into the new trip; the old thread keeps a pointer to it', async () => {
+    const { result } = renderHook(() => useChatThread(PROFILE, CHART));
+    await act(() => result.current.pin(YEAR));
+    const originalThread = result.current.threadId!;
+    await act(() => result.current.submit('How is 2027?', async () => 'Steady.'));
+    await act(() => result.current.submit('Take me to June', async ({ onTravel, onToolCall }) => {
+      onToolCall?.({ toolCallId: 't1', toolName: 'travel', args: { to: '2026-06' }, result: { status: 'queued' }, status: 'complete' });
+      onTravel?.({ kind: 'travel', asOf: JUNE });
+      return 'June is busy.';
+    }));
+    const trip = result.current.threadId!;
+    expect(trip).not.toBe(originalThread);
+    expect(result.current.asOf).toEqual(JUNE);
+    expect(result.current.messages.map((m) => [m.role, m.content])).toEqual([['user', 'Take me to June'], ['assistant', 'June is busy.']]);
+    expect(result.current.messages[1]?.parts?.[0]).toMatchObject({ type: 'tool-call', toolName: 'travel' });
+    const left = useChatStore.getState().getMessages(originalThread);
+    expect(left.map((m) => [m.role, m.content])).toEqual([
+      ['user', 'How is 2027?'], ['assistant', 'Steady.'], ['system', 'Moved to ⏳ Jun 2026'],
+    ]);
+    expect(left[2]?.moved_to).toBe(trip);
+    expect(useChatStore.getState().threads[originalThread]?.as_of).toEqual(YEAR);
+  });
+
+  it('the moved turn is searchable in its new thread (memory re-indexed under it)', async () => {
+    const indexMessage = vi.fn().mockResolvedValue(undefined);
+    __setMemoryForTest({
+      indexMessage, retrieve: vi.fn().mockResolvedValue([]), deleteForProfile: vi.fn().mockResolvedValue(undefined),
+      deleteForThread: vi.fn().mockResolvedValue(undefined), clear: vi.fn().mockResolvedValue(undefined),
+    });
+    const { result } = renderHook(() => useChatThread(PROFILE, CHART));
+    await act(() => result.current.submit('Take me to June', async ({ onTravel }) => {
+      onTravel?.({ kind: 'travel', asOf: JUNE });
+      return 'June is busy.';
+    }));
+    const trip = result.current.threadId!;
+    await act(async () => { await Promise.resolve(); });
+    const reindexed = indexMessage.mock.calls.map(([message]) => message as { thread_id: string; content: string })
+      .filter((message) => message.thread_id === trip).map((message) => message.content);
+    expect(reindexed).toEqual(expect.arrayContaining(['Take me to June', 'June is busy.']));
+  });
+
+  it('a tool Back to today takes the turn to the today thread and leaves the trip a pointer', async () => {
+    const { result } = renderHook(() => useChatThread(PROFILE, CHART));
+    await act(() => result.current.pin(YEAR));
+    const trip = result.current.threadId!;
+    await act(() => result.current.submit('How is 2027?', async () => 'Steady.'));
+    await act(() => result.current.submit('Back to today', async ({ onTravel }) => {
+      onTravel?.({ kind: 'back_to_today' });
+      return 'Back in today.';
+    }));
+    expect(result.current.threadId).not.toBe(trip);
+    expect(result.current.messages.map((m) => m.content)).toEqual(['Back to today', 'Back in today.']);
+    const pointer = useChatStore.getState().getMessages(trip).at(-1);
+    expect(pointer).toMatchObject({ role: 'system', moved_to: result.current.threadId });
   });
 
   it('a tool Back to today leaves the pin and clears the Dashboard moment', async () => {

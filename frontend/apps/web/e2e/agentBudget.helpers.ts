@@ -3,11 +3,14 @@ import { dirname } from 'node:path';
 
 import type { Page, Route } from '@playwright/test';
 
+import { periodAnswerFrom, readingsOf, readPeriodArgs } from './stubChatProvider';
+
 /**
- * The stubbed OpenRouter for the agent-loop context-budget stress
+ * The stubbed OpenRouter for the chat turn's context-budget stress
  * (e2e/agent-budget.stress.spec.ts). Every chat/completions body is captured;
- * a chat turn is driven to its maximum tool rounds with parallel, repeated and
- * identical calls, and answered once the app forces the final round.
+ * a chat turn is driven through three read_period rounds with parallel,
+ * identical and over-the-cap calls, then answers with an `answer` call built
+ * from its readings (chat tool layer redesign, 2026-10-14).
  */
 export const MOCK_MODELS = [
   { id: 'mock/ctx-1m', name: '1M', context_length: 1_000_000 },
@@ -18,8 +21,8 @@ export type MockModelId = (typeof MOCK_MODELS)[number]['id'];
 export const BUDGET_REPORT =
   '/private/tmp/claude-501/-Users-harish-dev-oss/38c35802-3a7a-4542-ba44-684db134e40e/scratchpad/tt-screens/budget-p1.json';
 
-/** Decision rounds the stub keeps answering with tool calls (round 5+ is answered in text). */
-export const STUB_TOOL_ROUNDS = 4;
+/** Rounds the stub answers with read_period calls; the next one answers. */
+export const STUB_TOOL_ROUNDS = 3;
 
 export interface WireToolCall {
   readonly id: string;
@@ -38,7 +41,8 @@ export interface WireMessage {
 interface WireBody {
   readonly messages?: readonly WireMessage[];
   readonly tools?: ReadonlyArray<{ readonly function?: { readonly name?: string } }>;
-  readonly tool_choice?: string;
+  /** "required", or an object naming the one tool the request must call. */
+  readonly tool_choice?: unknown;
 }
 
 export interface CapturedRequest {
@@ -49,6 +53,7 @@ export interface CapturedRequest {
   readonly messages: readonly WireMessage[];
   readonly tools: readonly unknown[];
   readonly toolNames: readonly string[];
+  /** "required", or the forced tool choice as JSON (e.g. the budget's forced answer). */
   readonly toolChoice: string | undefined;
   /** What the stub answered: tool-call names, or 'answer'. */
   readonly reply: readonly string[] | 'answer';
@@ -56,29 +61,20 @@ export interface CapturedRequest {
 
 interface PlannedCall {
   readonly name: string;
-  readonly args: Record<string, string>;
+  readonly args: Readonly<Record<string, unknown>>;
 }
 
-const natal: PlannedCall = { name: 'get_natal_summary', args: {} };
-const trip: PlannedCall = { name: 'get_trip_context', args: {} };
-const periodReading: PlannedCall = { name: 'get_period_reading', args: {} };
-const timing = (section: string): PlannedCall => ({ name: 'get_timing', args: { section } });
+const read = (start: string): PlannedCall => ({ name: 'read_period', args: readPeriodArgs(start) });
 
 /**
- * The app gives a trip extra decision rounds only while a grounding tool is
- * still missing, so the stub holds get_period_reading (with get_natal_summary,
- * the trip's grounding since the period-reading merge; it used to hold back
- * get_trip_context) back until round 4: round 1 grounds the natal chart, the
- * dashas and the trip; round 2 adds detail plus an IDENTICAL repeat of round 1's
- * natal call; round 3 asks for six calls at once (four repeats, one new section,
- * the reading sixth, past the per-round limit); round 4 finally reads the period
- * and repeats a section. Only tools the request actually offers are called.
+ * Round 1 reads the trip's month; round 2 repeats it IDENTICALLY (the tool answers
+ * from its turn cache) and reads the next month; round 3 asks for six reads at once,
+ * past the per-turn read_period cap (3), so they come back skipped.
  */
 const ROUND_PLANS: ReadonlyArray<readonly PlannedCall[]> = [
-  [natal, timing('dashas'), trip],
-  [timing('transits'), timing('strength'), natal],
-  [timing('domains'), timing('dashas'), timing('transits'), natal, timing('strength'), periodReading],
-  [periodReading, timing('domains')],
+  [read('2019-05')],
+  [read('2019-05'), read('2019-06')],
+  ['2019-01', '2019-02', '2019-03', '2019-04', '2019-07', '2019-08'].map(read),
 ];
 
 export const answerText = (turn: number): string => `Budget answer ${turn + 1}.`;
@@ -88,13 +84,6 @@ const sseLine = (payload: unknown): string => `data: ${JSON.stringify(payload)}\
 function finalChunk(finish: string, bodyChars: number, completion: number): string {
   const usage = { prompt_tokens: Math.ceil(bodyChars / 4), completion_tokens: completion, total_tokens: Math.ceil(bodyChars / 4) + completion };
   return sseLine({ choices: [{ index: 0, delta: {}, finish_reason: finish }], usage }) + 'data: [DONE]\n\n';
-}
-
-function answerStream(text: string, bodyChars: number): string {
-  const words = text.split(' ');
-  const pieces = [words[0] ?? '', ` ${words.slice(1, 2).join(' ')}`, ` ${words.slice(2).join(' ')}`];
-  const deltas = pieces.map((content) => sseLine({ choices: [{ index: 0, delta: { content } }] })).join('');
-  return deltas + finalChunk('stop', bodyChars, 12);
 }
 
 function toolCallStream(calls: ReadonlyArray<PlannedCall & { id: string }>, bodyChars: number): string {
@@ -166,18 +155,18 @@ export class BudgetProvider {
     this.roundsByTurn.set(turn, round);
     const toolNames = (body.tools ?? []).map((tool) => tool.function?.name ?? '');
     const offered = new Set(toolNames);
-    const plan = body.tool_choice !== 'none' && round <= STUB_TOOL_ROUNDS
-      ? (ROUND_PLANS[round - 1] ?? []).filter((call) => offered.has(call.name))
-      : [];
-    const calls = plan.map((call) => {
+    const plan = round <= STUB_TOOL_ROUNDS ? (ROUND_PLANS[round - 1] ?? []).filter((call) => offered.has(call.name)) : [];
+    const readings = readingsOf(body);
+    const planned = plan.length > 0 || readings.length === 0 ? plan : [{ name: 'answer', args: periodAnswerFrom(readings, answerText(turn)) }];
+    const calls = planned.map((call) => {
       this.callNumber += 1;
       return { ...call, id: `budget-call-${this.callNumber}` };
     });
     this.captured.push({
       turn, round, messages: body.messages ?? [], tools: body.tools ?? [], toolNames,
-      toolChoice: body.tool_choice, reply: calls.length > 0 ? calls.map((call) => call.name) : 'answer',
+      toolChoice: typeof body.tool_choice === 'string' || body.tool_choice === undefined ? body.tool_choice : JSON.stringify(body.tool_choice), reply: plan.length > 0 ? calls.map((call) => call.name) : 'answer',
     });
-    const stream = calls.length > 0 ? toolCallStream(calls, raw.length) : answerStream(answerText(turn), raw.length);
+    const stream = toolCallStream(calls, raw.length);
     return route.fulfill({ status: 200, contentType: 'text/event-stream', body: stream });
   }
 }

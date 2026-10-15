@@ -45,17 +45,17 @@ function fakeMemory(): { memory: ChatMemoryFacade; index: ReturnType<typeof vi.f
   };
 }
 
-/** A stream function that yields a fixed answer token-by-token via onToken. */
+/** A stream function that streams a fixed answer as growing snapshots via onSnapshot. */
 function makeStreamFn(answer: string) {
   return vi.fn(
     async (input: {
       question: string;
       history: readonly { role: string; content: string }[];
       retrievedContext: readonly string[];
-      onToken: (t: string) => void;
+      onSnapshot: (text: string) => void;
     }): Promise<string> => {
-      for (const ch of answer) {
-        input.onToken(ch);
+      for (let end = 1; end <= answer.length; end += 1) {
+        input.onSnapshot(answer.slice(0, end));
       }
       return answer;
     },

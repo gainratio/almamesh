@@ -86,7 +86,13 @@
     "success_description": "Tus datos de nacimiento se han actualizado y tu carta se ha regenerado en el dispositivo.",
     "view_new_chart": "Ver nueva carta",
     "processing_title": "Regenerando tu carta",
-    "processing_description": "Calculando en el dispositivo — solo toma un momento."
+    "processing_description": "Calculando en el dispositivo — solo toma un momento.",
+    "current_place_label": "¿Dónde vives ahora?",
+    "current_place_placeholder": "Busca una ciudad",
+    "current_place_hint": "Opcional. Se queda en este dispositivo.",
+    "current_place_clear": "Borrar",
+    "current_place_saved": "Guardado",
+    "current_place_failed": "No se pudo guardar. Inténtalo de nuevo."
   },
   "rectification_record": {
     "title": "Tu rectificación",

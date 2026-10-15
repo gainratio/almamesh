@@ -1,13 +1,13 @@
-// Per-turn context budget for the agent loop (spec 2026-10-13, "Context budget for
+// Per-turn context budget for the chat (spec 2026-10-13, "Context budget for
 // the agentic loop", rules 1 and 6).
 //
-// One chat turn may run several model requests (decision rounds plus a final
-// answer). Each request resends the whole conversation so far, so the turn's
-// context footprint is its largest request. That footprint may use at most half
-// the model's context window; the other half is left for the model's own
-// reasoning and answer. Token counts are a deterministic character estimate
-// (ceil(chars / 4)) that is scaled up, never down, once the provider reports
-// what it actually counted.
+// One chat turn may run several model requests (reading rounds plus the answer).
+// Each request resends the whole conversation so far, so the turn's context
+// footprint is its largest request. That footprint may use at most half the
+// model's context window; the other half is left for the model's own reasoning
+// and answer. The composed prompt is sized here so the tool rounds still fit.
+// Token counts are a deterministic character estimate (ceil(chars / 4)) that is
+// scaled up, never down, once the provider reports what it actually counted.
 
 import type { ChatPromptBudget } from "./prompt";
 import { CLOUD_CHAT_BUDGET } from "./prompt";
@@ -41,12 +41,12 @@ export function turnTokenBudget(contextTokens: number | undefined): number {
   return Math.floor(TURN_SHARE * validContext(contextTokens));
 }
 
-/** Deterministic prompt estimate for one request: ceil(chars / 4) of its messages and tool schemas. */
+/** Deterministic prompt estimate for one request: ceil(chars / 4) of its messages and tool definitions. */
 export function estimateRequestTokens(messages: readonly unknown[], tools: readonly unknown[]): number {
   return Math.ceil(JSON.stringify({ messages, tools }).length / CHARS_PER_TOKEN);
 }
 
-/** One earlier request's estimate and the provider's own `usage.prompt_tokens` for it. */
+/** One earlier request's estimate and the provider's own input token count for it. */
 export interface TokenCalibration {
   readonly estimate: number;
   readonly reported: number;

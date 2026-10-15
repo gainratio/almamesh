@@ -83,7 +83,13 @@
     "success_description": "Your birth details have been updated and your chart has been regenerated on-device.",
     "view_new_chart": "View New Chart",
     "processing_title": "Regenerating Your Chart",
-    "processing_description": "Computing on-device — this only takes a moment."
+    "processing_description": "Computing on-device — this only takes a moment.",
+    "current_place_label": "Where do you live now?",
+    "current_place_placeholder": "Search for a city",
+    "current_place_hint": "Optional. Stays on this device.",
+    "current_place_clear": "Clear",
+    "current_place_saved": "Saved",
+    "current_place_failed": "Couldn’t save. Try again."
   },
   "rectification_record": {
     "title": "Your rectification",

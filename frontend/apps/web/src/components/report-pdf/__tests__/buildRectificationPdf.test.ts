@@ -291,7 +291,7 @@ describe('buildRectificationPdf — phase 2 snapshot', () => {
 
   it('lists misses qualitatively and adds the prior note when priorBonus > 0', () => {
     const slice = buildRectificationPdf({ record: V2_RECORD, events: EVENTS, t });
-    expect(slice.missNotes?.[0]).toMatch(/predicted a strong career change window/i);
+    expect(slice.missNotes?.[0]).toMatch(/showed a strong career change window/i);
     expect(slice.priorNote).toMatch(/closest to the recorded time/i);
   });
 

@@ -44,7 +44,7 @@
       "rough": "Estimada",
       "unknown": "No la sé"
     },
-    "confidence_margin": "La trataremos como precisa con un margen de ±{{minutes}} min.",
+    "confidence_margin": "La trataremos como correcta con un margen de ±{{minutes}} min.",
     "confidence_exact_note": "La trataremos como una hora exacta.",
     "confidence_unknown_note": "Usaremos el mediodía como valor provisional; podrás ajustarla a mano más tarde en Ajustes.",
     "dst_gap": "Las {{time}} no existieron en {{zone}} en esta fecha: los relojes se adelantaron una hora por el horario de verano. Revisa la hora en el registro de nacimiento.",

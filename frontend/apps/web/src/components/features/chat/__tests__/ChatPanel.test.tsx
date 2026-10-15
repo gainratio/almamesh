@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 
-import { ChatPanel } from '../ChatPanel';
+import { ChatPanel, type ChatAskInput } from '../ChatPanel';
 import { useChatStore } from '@almamesh/store';
 import { hydrateLlmSettings, openRouterPreset, writeLlmSettings } from '@almamesh/llm';
 import { __setMemoryForTest, __resetMemoryForTest } from '../../../../lib/chatMemory';
@@ -47,10 +47,10 @@ describe('ChatPanel — typing indicator vs streamed text', () => {
   });
 
   it('shows the typing indicator until the first token, then yields to the streamed answer', async () => {
-    let onToken: ((t: string) => void) | null = null;
-    const done = deferred<{ answer: string }>();
-    const onAskQuestionStream = vi.fn((_q: string, cb: (t: string) => void) => {
-      onToken = cb;
+    let onSnapshot: ((text: string) => void) | null = null;
+    const done = deferred<string>();
+    const onAskQuestionStream = vi.fn((input: ChatAskInput) => {
+      onSnapshot = input.onSnapshot;
       return done.promise;
     });
 
@@ -77,7 +77,7 @@ describe('ChatPanel — typing indicator vs streamed text', () => {
     expect(screen.getByTestId('chat-panel').textContent).not.toContain('exalted in Capricorn');
 
     // First streamed token arrives.
-    act(() => onToken?.('Your Mars is exalted in Capricorn.'));
+    act(() => onSnapshot?.('Your Mars is exalted in Capricorn.'));
     await waitFor(() =>
       expect(screen.getByTestId('chat-panel').textContent).toContain('exalted in Capricorn'),
     );
@@ -85,7 +85,7 @@ describe('ChatPanel — typing indicator vs streamed text', () => {
     // The typing indicator yields to the streaming text.
     expect(screen.queryByTestId('chat-loading')).toBeNull();
 
-    act(() => done.resolve({ answer: 'Your Mars is exalted in Capricorn.' }));
+    act(() => done.resolve('Your Mars is exalted in Capricorn.'));
     await waitFor(() => expect(onAskQuestionStream).toHaveBeenCalledTimes(1));
 
     // Persisted: the conversation survives because it lives in the chat store.
@@ -187,7 +187,7 @@ describe('ChatPanel — typing indicator vs streamed text', () => {
   });
 
   it('always uses the agent boundary without exposing a redundant mode toggle', async () => {
-    const done = deferred<{ answer: string }>();
+    const done = deferred<string>();
     const onAskQuestionStream = vi.fn().mockReturnValue(done.promise);
     render(
       <MemoryRouter>
@@ -207,18 +207,19 @@ describe('ChatPanel — typing indicator vs streamed text', () => {
     fireEvent.click(screen.getByTestId('chat-send-button'));
 
     await waitFor(() => expect(onAskQuestionStream).toHaveBeenCalledTimes(1));
-    expect(typeof onAskQuestionStream.mock.calls[0][6]).toBe('function');
-    // Eighth slot is the thread's pin (Time travel); a normal thread passes undefined.
-    // Contract reversed 2026-10-13: a tenth slot now carries the per-turn tool-call recorder (after onTravel).
-    expect(onAskQuestionStream.mock.calls[0]).toHaveLength(10);
-    expect(typeof onAskQuestionStream.mock.calls[0][8]).toBe('function');
-    expect(typeof onAskQuestionStream.mock.calls[0][9]).toBe('function');
-    expect(onAskQuestionStream.mock.calls[0][7]).toBeUndefined();
+    // One input object (Task 6, 2026-10-14): the status line, the travel and tool-call recorders,
+    // and the thread's pin (a normal thread has none).
+    const input = onAskQuestionStream.mock.calls[0][0] as ChatAskInput;
+    expect(input).toMatchObject({ question: 'What time is it?', viewMode: 'layman' });
+    expect(typeof input.onStatus).toBe('function');
+    expect(typeof input.onTravel).toBe('function');
+    expect(typeof input.onToolCall).toBe('function');
+    expect(input.asOf).toBeUndefined();
     expect((await screen.findByTestId('chat-agent-status')).textContent).toContain(
       'Preparing local tools',
     );
 
-    act(() => done.resolve({ answer: 'It is 1:30 AM.' }));
+    act(() => done.resolve('It is 1:30 AM.'));
     await waitFor(() => expect(screen.queryByTestId('chat-agent-status')).toBeNull());
   });
 

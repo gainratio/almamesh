@@ -1,5 +1,5 @@
 /**
- * Spec 064 — the single typed source of per-route SEO head data for the five
+ * Spec 064 — the single typed source of per-route SEO head data for the six
  * PUBLIC routes (the only ones prerendered at build time and listed in
  * sitemap.xml). Consumed by:
  *   - `src/prerender-entry.tsx` (build-time head injection via
@@ -85,6 +85,10 @@ export const PUBLIC_ROUTE_HEADS: readonly RouteHead[] = [
     '/data-deletion',
     'Data Deletion — AlmaMesh',
     'Your data lives only in your browser. Deleting it is a local action you control — clear it in-app or via browser storage. No server copies exist.',
+  ),  route(
+    '/how-we-test',
+    'How We Test Readings — AlmaMesh',
+    'We test whether readings pick the month of a real life event better than chance. So far they do not, so AlmaMesh readings are for reflection.',
   ),
 ];
 

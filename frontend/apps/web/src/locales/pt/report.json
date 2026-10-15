@@ -174,7 +174,7 @@
     "components_note": "As colunas de componentes estão em virūpas (60 virūpas = 1 rūpa); o total e o requisito estão em rūpas."
   },
   "domains": {
-    "heading": "Previsões por áreas da vida",
+    "heading": "Temas por áreas da vida",
     "windows_heading": "Janelas próximas",
     "windows_empty": "Nenhuma janela datada nos próximos doze meses.",
     "strength_withheld_note": "Não foi possível confirmar que o valor salvo permaneceu inalterado — omitido deste relatório."
@@ -219,7 +219,7 @@
   },
   "predictive_pending": {
     "title": "Seções de tempos e força",
-    "body": "Os trânsitos, os mapas divisionais, a força planetária e as previsões das oito áreas da vida podem ser adicionados a este relatório. Calcule-os primeiro — cerca de meio minuto, tudo neste dispositivo.",
+    "body": "Os trânsitos, os mapas divisionais, a força planetária e os temas das oito áreas da vida podem ser adicionados a este relatório. Calcule-os primeiro — cerca de meio minuto, tudo neste dispositivo.",
     "compute": "Calcular seções de tempos",
     "computing": "Calculando neste dispositivo — {{elapsed}} decorrido.",
     "engine_warming": "O motor de mapas ainda está iniciando; o cálculo ficará disponível quando ele estiver pronto.",

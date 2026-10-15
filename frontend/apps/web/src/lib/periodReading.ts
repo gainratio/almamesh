@@ -15,7 +15,9 @@ import type {
   PeriodDashaSpan,
   PeriodLordSpan,
   PeriodNatalLord,
+  PeriodPlacement,
   PeriodReadingContext,
+  PeriodRelation,
   PeriodSegment,
   PeriodSkySpan,
   PeriodTheme,
@@ -26,7 +28,7 @@ import type {
   ThemeDirection,
   TransitSeverity,
 } from '@almamesh/browser/types';
-import { PERIOD_DETAIL_TOOL_NAME, PERIOD_READING_TOOL_NAME, type ToolSummarizer, type ToolSummary as AgentToolSummary } from '@almamesh/llm';
+import type { ToolSummarizer, ToolSummary as AgentToolSummary } from '@almamesh/llm';
 import type { ChatThreadAsOf } from '@almamesh/shared-types';
 
 /** Each tool result's JSON stays under this many UTF-8 bytes (spec: "under 4 KB"). */
@@ -71,6 +73,9 @@ export interface ReadingSpan {
   readonly lord: string;
   readonly start: string;
   readonly end: string;
+  /** A sub-lord's whole-sign house from its parent lord (antar from maha, and so on). */
+  readonly from_parent?: number;
+  readonly relation?: PeriodRelation;
 }
 
 export interface ReadingDashas {
@@ -80,6 +85,7 @@ export interface ReadingDashas {
   readonly sookshma?: ReadingSpan;
   readonly sandhi?: { readonly level: 'maha' | 'antar'; readonly date: string };
   readonly yogini_maha: (ReadingSpan & { readonly name: string }) | null;
+  readonly yogini_antar?: ReadingSpan & { readonly name: string };
 }
 
 export type ReadingLordLevel = PeriodDashaLevel | 'sookshma';
@@ -88,7 +94,13 @@ export interface ReadingLord {
   readonly lord: string;
   readonly level: readonly ReadingLordLevel[];
   readonly rules?: readonly number[];
-  readonly natal?: { readonly house: number; readonly sign: string; readonly dignity: string; readonly combust: boolean };
+  readonly natal?: {
+    readonly house: number;
+    readonly sign: string;
+    readonly dignity: string;
+    readonly strength?: PeriodNatalLord['strength'];
+    readonly combust: boolean;
+  };
   readonly functional?: PeriodNatalLord['functional'];
   readonly d9_sign?: string;
   readonly d10_sign?: string;
@@ -170,11 +182,11 @@ export interface PeriodReading extends ReadingFrame {
   /** Every theme window inside the period, by date. */
   readonly windows: readonly ReadingWindow[];
   readonly panchang?: ReadingPanchang;
-  /** What was cut to stay under 4 KB; get_period_detail returns the rest. */
+  /** What was cut to stay under 4 KB; read_period with a focus returns the rest. */
   readonly trimmed?: readonly string[];
 }
 
-/** A typed reason the reading could not be computed (get_timing's PeriodSkyUnavailableError reasons, plus the reading's own). */
+/** A typed reason the reading could not be computed (periodChart.ts's PeriodSkyUnavailableError reasons, plus the reading's own). */
 export type PeriodReadingFailure =
   | 'engine_unavailable'
   | 'timeout'
@@ -232,21 +244,27 @@ function startClipped(span: PeriodWindow, period: PeriodWindow): { readonly star
   return { start: clipped(span, period).start, end: day(span.end) };
 }
 
+function placement(span: PeriodPlacement): Pick<ReadingSpan, 'from_parent' | 'relation'> {
+  return typeof span.from_parent === 'number' && span.relation ? { from_parent: span.from_parent, relation: span.relation } : {};
+}
+
 function spansAt(spans: readonly PeriodDashaSpan[], level: PeriodDashaLevel, period: PeriodWindow): ReadingSpan[] {
-  return spans.filter((span) => span.level === level && overlaps(span, period)).map((span) => lordSpan(span, period));
+  return spans.filter((span) => span.level === level && overlaps(span, period)).map((span) => ({ ...lordSpan(span, period), ...placement(span) }));
 }
 
 function dashasOf(source: PeriodReadingContext, period: ReadingPeriod): ReadingDashas {
   const sookshma = period.granularity === 'day' && source.sookshma && overlaps(source.sookshma, period) ? source.sookshma : undefined;
   const sandhi = source.sandhi && within(source.sandhi.date, period.start, period.end) ? source.sandhi : undefined;
   const yogini = source.yogini && overlaps(source.yogini, period) ? source.yogini : undefined;
+  const yoginiAntar = source.yogini_antar && overlaps(source.yogini_antar, period) ? source.yogini_antar : undefined;
   return {
     maha: spansAt(source.dasha_spans, 'maha', period),
     antar: spansAt(source.dasha_spans, 'antar', period),
     pratyantar: spansAt(source.dasha_spans, 'pratyantar', period),
-    ...(sookshma ? { sookshma: { lord: sookshma.lord, ...startClipped(sookshma, period) } } : {}),
+    ...(sookshma ? { sookshma: { lord: sookshma.lord, ...startClipped(sookshma, period), ...placement(sookshma) } } : {}),
     ...(sandhi ? { sandhi: { level: sandhi.level, date: day(sandhi.date) } } : {}),
     yogini_maha: yogini ? { name: yogini.name, ...lordSpan(yogini, period) } : null,
+    ...(yoginiAntar ? { yogini_antar: { name: yoginiAntar.name, ...lordSpan(yoginiAntar, period) } } : {}),
   };
 }
 
@@ -268,7 +286,10 @@ function natalPart(natal: PeriodNatalLord | undefined): Omit<ReadingLord, 'lord'
   if (!natal) return {};
   return {
     rules: natal.rules,
-    natal: { house: natal.house, sign: natal.sign, dignity: natal.dignity, combust: natal.combust },
+    natal: {
+      house: natal.house, sign: natal.sign, dignity: natal.dignity,
+      ...(natal.strength ? { strength: natal.strength } : {}), combust: natal.combust,
+    },
     functional: natal.functional,
     d9_sign: natal.d9_sign,
     d10_sign: natal.d10_sign,
@@ -321,7 +342,7 @@ function themeOf(theme: PeriodTheme): ReadingTheme {
 }
 
 /** Theme windows inside the period, grouped by (date, descriptor, severity) across domains, by date. */
-function windowsOf(themes: readonly PeriodTheme[], period: PeriodWindow): ReadingWindow[] {
+export function windowsOf(themes: readonly PeriodTheme[], period: PeriodWindow): ReadingWindow[] {
   const grouped = new Map<string, { date: string; descriptor: string; severity: TransitSeverity; domains: string[] }>();
   for (const theme of themes) {
     for (const window of theme.windows.filter((item) => within(item.date, period.start, period.end))) {
@@ -381,12 +402,17 @@ const withoutVargas = (lord: ReadingLord): ReadingLord => {
   return rest;
 };
 
+/** A pratyantar span without its placement from the antar lord (spec 2026-10-15): the antar's stays. */
+const unplaced = ({ from_parent: _house, relation: _relation, ...span }: ReadingSpan): ReadingSpan => span;
+
+const withoutYoginiAntar = ({ yogini_antar: _antar, ...dashas }: ReadingDashas): ReadingDashas => dashas;
+
 /** A theme without its per-technique agreement booleans: its confidence already counts them. */
 const withoutAgreement = ({ agreement: _agreement, ...theme }: ReadingTheme): ReadingTheme => theme;
 
 /**
  * Applied in order until the reading fits, cheapest loss first; each cut that
- * changed something is named in `trimmed`, and get_period_detail returns it.
+ * changed something is named in `trimmed`, and read_period with a focus returns it.
  * Dated change points (segment events: stations, ingresses, each with its day)
  * outrank secondary detail: they are how the model says when a period shifts.
  * Every theme's verdict and first factor outrank sky detail: a Year once lost
@@ -401,10 +427,12 @@ const TRIMS: readonly Trim[] = [
   { note: 'theme factors beyond 2', apply: (r) => capThemes(r, (t) => ({ ...t, factors: t.factors.slice(0, 2) })) },
   { note: 'sky spans beyond 3 per graha', apply: (r) => ({ ...r, sky: firstPerGraha(r.sky, 3) }) },
   { note: 'pratyantar-only lord natal detail', apply: (r) => ({ ...r, lords: r.lords.map((l) => (pratyantarOnly(l) ? lordBrief(l) : l)) }) },
+  { note: 'pratyantar placements', apply: (r) => ({ ...r, dashas: { ...r.dashas, pratyantar: r.dashas.pratyantar.map(unplaced) } }) },
   { note: 'theme factors beyond 1', apply: (r) => capThemes(r, (t) => ({ ...t, factors: t.factors.slice(0, 1) })) },
   { note: 'low-confidence themes', apply: (r) => ({ ...r, themes: r.themes.filter((t) => t.confidence !== 'low') }) },
   { note: 'sky spans beyond 2 per graha', apply: (r) => ({ ...r, sky: firstPerGraha(r.sky, 2) }) },
   { note: 'segment events', apply: (r) => ({ ...r, segments: r.segments.map((s) => ({ ...s, events: [] })) }) },
+  { note: 'Yogini antar', apply: (r) => ({ ...r, dashas: withoutYoginiAntar(r.dashas) }) },
   { note: 'segments', apply: (r) => (r.period.granularity === 'day' ? r : { ...r, segments: [] }) },
   { note: 'lord natal detail', apply: (r) => ({ ...r, lords: r.lords.map(lordBrief) }) },
   { note: 'windows beyond 3', apply: (r) => ({ ...r, windows: r.windows.slice(0, 3) }) },
@@ -421,28 +449,46 @@ function withTrimmed(reading: PeriodReading, trimmed: readonly string[]): Period
 function minimal(reading: PeriodReading): PeriodReading {
   return {
     period: reading.period, place: reading.place,
-    dashas: { maha: reading.dashas.maha, antar: reading.dashas.antar, pratyantar: reading.dashas.pratyantar.slice(0, 6), yogini_maha: reading.dashas.yogini_maha },
+    dashas: {
+      maha: reading.dashas.maha, antar: reading.dashas.antar, pratyantar: reading.dashas.pratyantar.slice(0, 6),
+      yogini_maha: reading.dashas.yogini_maha, ...(reading.dashas.yogini_antar ? { yogini_antar: reading.dashas.yogini_antar } : {}),
+    },
     lords: reading.lords.map(lordBrief), segments: [], sky: [], double_transit: reading.double_transit,
     themes: reading.themes.slice(0, 3).map((theme) => ({ ...theme, factors: [] })), windows: [],
     trimmed: ['everything but the dashas, lords and theme verdicts'],
   };
 }
 
-function fitBudget(reading: PeriodReading): PeriodReading {
+function fitBudget(reading: PeriodReading, budget: number): PeriodReading {
   let current = reading;
   const trimmed: string[] = [];
   for (const trim of TRIMS) {
-    if (jsonBytes(withTrimmed(current, trimmed)) < MAX_PERIOD_RESULT_BYTES) return withTrimmed(current, trimmed);
+    if (jsonBytes(withTrimmed(current, trimmed)) < budget) return withTrimmed(current, trimmed);
     const next = trim.apply(current);
     if (JSON.stringify(next) === JSON.stringify(current)) continue;
     current = next;
     trimmed.push(trim.note);
   }
   const fitted = withTrimmed(current, trimmed);
-  return jsonBytes(fitted) < MAX_PERIOD_RESULT_BYTES ? fitted : minimal(reading);
+  return jsonBytes(fitted) < budget ? fitted : minimal(reading);
 }
 
-export function buildPeriodReading(source: PeriodReadingContext, frame: ReadingFrame): PeriodReading {
+export interface ReadingFitOptions {
+  /** The bytes the reading may use (default {@link MAX_PERIOD_RESULT_BYTES}); a caller adding month rows or a close-up passes what is left. */
+  readonly budgetBytes?: number;
+  /** 'severity' (a range): the most severe windows first, at most {@link MAX_RANGE_WINDOWS}. Default: every window, by date. */
+  readonly windowOrder?: 'date' | 'severity';
+}
+
+export const MAX_RANGE_WINDOWS = 6;
+const SEVERITY_RANK: Readonly<Record<TransitSeverity, number>> = { challenging: 0, supportive: 1, neutral: 2 };
+
+function bySeverity(windows: readonly ReadingWindow[]): ReadingWindow[] {
+  const ranked = [...windows].sort((a, b) => SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity] || (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  return ranked.slice(0, MAX_RANGE_WINDOWS);
+}
+
+export function buildPeriodReading(source: PeriodReadingContext, frame: ReadingFrame, options: ReadingFitOptions = {}): PeriodReading {
   const { period } = frame;
   const dashas = dashasOf(source, period);
   const { segments, next } = segmentsOf(source, period);
@@ -457,12 +503,12 @@ export function buildPeriodReading(source: PeriodReadingContext, frame: ReadingF
     sky: source.sky.filter((span) => overlaps(span, period)).map((span) => skyOf(span, period)),
     double_transit: [...source.double_transit],
     themes: source.themes.map(themeOf),
-    windows: windowsOf(source.themes, period),
+    windows: options.windowOrder === 'severity' ? bySeverity(windowsOf(source.themes, period)) : windowsOf(source.themes, period),
     ...(panchang ? { panchang } : {}),
-  });
+  }, options.budgetBytes ?? MAX_PERIOD_RESULT_BYTES);
 }
 
-// --- summaries (the collapsed row and the agent's compaction note) ---
+// --- summaries (the next turn's facts note) ---
 
 const title = (word: string) => word.charAt(0).toUpperCase() + word.slice(1);
 
@@ -512,7 +558,7 @@ export function periodReadingSummary(result: PeriodReadingToolResult): ToolSumma
   return { line, factors };
 }
 
-// --- get_period_detail: deterministic digests ---
+// --- read_period's close-ups (focus): deterministic digests ---
 
 export const DETAIL_SECTIONS = ['lord', 'segment', 'bindus', 'panchang', 'dashas'] as const;
 export type DetailSection = (typeof DETAIL_SECTIONS)[number];
@@ -542,8 +588,6 @@ export interface PeriodDetail extends ReadingFrame {
   readonly factors: readonly string[];
   readonly trimmed?: readonly string[];
 }
-
-export type PeriodDetailToolResult = PeriodDetail | PeriodReadingUnavailable | PeriodToolError;
 
 type Digest = { readonly facts: Readonly<Record<string, unknown>>; readonly factors: readonly string[] } | PeriodToolError;
 
@@ -674,32 +718,27 @@ export function buildPeriodDetail(source: DetailSource, frame: ReadingFrame, sec
   });
 }
 
-function detailLine(detail: PeriodDetail): string {
-  const facts = detail.facts as Record<string, unknown>;
-  if (detail.section === 'lord') return `${title(String(facts.lord))} in detail · ${(facts.runs as unknown[]).length} dasha spans`;
-  if (detail.section === 'bindus') return `Ashtakavarga ${facts.key === 'sav' ? 'SAV' : title(String(facts.key))} · total ${String(facts.total)}`;
-  if (detail.section === 'segment' && Array.isArray(facts.segments)) return `Segments · ${facts.segments.length} in ${detail.period.label}`;
-  if (detail.section === 'segment') {
-    const segment = facts.segment as ReadingSegment;
-    return `Segment ${segment.start} – ${segment.end} · ${[segment.maha, segment.antar, segment.pratyantar].map(title).join('–')}`;
-  }
-  if (detail.section === 'panchang') return `Panchang ${String(facts.tithi_name)} (${String(facts.paksha)}) · ${String(facts.nakshatra)} · ${String(facts.vara_utc)} (UTC)`;
-  return `Dashas · ${(facts.spans as unknown[]).length} spans`;
+/** read_period's name; readPeriod.ts registers the tool under it (named here so the eager chat hook can key its summary). */
+export const READ_PERIOD_TOOL_NAME = 'read_period';
+
+/** A question read_period put back to the user (a place to pick, a day with no place). */
+interface ReadPeriodAskLike {
+  readonly status: string;
+  readonly ask: string;
 }
 
-export function periodDetailSummary(result: PeriodDetailToolResult): ToolSummary {
-  if ('error' in result || 'available' in result) return failureLine(result, 'Period detail');
-  return { line: detailLine(result), factors: result.factors.slice(0, 5) };
+/** One read_period result as a line: the period and place, then the reading; an ask says what it asked. */
+function readPeriodSummary(result: PeriodReadingToolResult | ReadPeriodAskLike): ToolSummary {
+  if ('ask' in result) return { line: `Asked the user (${result.status})`, factors: [] };
+  const summary = periodReadingSummary(result);
+  if ('error' in result || 'available' in result) return summary;
+  const frame = [result.period.label, result.place.label].filter((part): part is string => part !== undefined && part.length > 0);
+  return { ...summary, line: [...frame, summary.line].join(' · ') };
 }
 
-// The agent loop hands a summarizer the tool's own result (in-turn compaction)
-// or the persisted one (the next turn's facts note). A malformed persisted
-// result throws here and the loop falls back to its default summary.
-export const summarizePeriodReading: ToolSummarizer = (result) => periodReadingSummary(result as PeriodReadingToolResult);
-export const summarizePeriodDetail: ToolSummarizer = (result) => periodDetailSummary(result as PeriodDetailToolResult);
-
-/** The period tools' own one-line summaries, by tool name (useChatThread's history facts note). */
+// The chat hook hands a summarizer the persisted result (the next turn's facts note).
+// A malformed one throws here and toolFactsNote falls back to its default summary.
+/** The chat tools' own one-line summaries, by tool name (useChatThread's history facts note). */
 export const PERIOD_TOOL_SUMMARIZERS: Readonly<Record<string, ToolSummarizer>> = {
-  [PERIOD_READING_TOOL_NAME]: summarizePeriodReading,
-  [PERIOD_DETAIL_TOOL_NAME]: summarizePeriodDetail,
+  [READ_PERIOD_TOOL_NAME]: (result) => readPeriodSummary(result as PeriodReadingToolResult | ReadPeriodAskLike),
 };

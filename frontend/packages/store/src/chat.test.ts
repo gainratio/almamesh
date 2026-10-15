@@ -706,3 +706,88 @@ describe('the app-updated notice is stored on the message (2026-10-13)', () => {
     expect(store.getState().getMessages(id)[0]?.notice).toBe('app_updated');
   });
 });
+
+describe('moveMessages: a chat-initiated trip takes its turn along (2026-10-14)', () => {
+  function turnIn(store: ReturnType<typeof newStore>, threadId: string) {
+    const question = store.getState().appendMessage(threadId, 'user', 'Take me to September 2017');
+    const answer = store.getState().appendMessage(threadId, 'assistant', 'Here is September 2017.');
+    return [question.id, answer.id] as const;
+  }
+  const POINTER = 'Moved to ⏳ Sep 2017 · Mumbai, India';
+
+  it('moves the turn, in order, to the trip and leaves a one-line pointer (role system, moved_to) behind', () => {
+    const store = newStore();
+    const from = store.getState().startThread('p1');
+    store.getState().appendMessage(from, 'user', 'How is today?');
+    store.getState().appendMessage(from, 'assistant', 'Calm.');
+    const ids = turnIn(store, from);
+    const to = store.getState().startThread('p1');
+    expect(store.getState().moveMessages(from, to, ids, POINTER)).toBe(true);
+    const moved = store.getState().getMessages(to);
+    expect(moved.map((m) => [m.id, m.role, m.content, m.thread_id])).toEqual([
+      [ids[0], 'user', 'Take me to September 2017', to],
+      [ids[1], 'assistant', 'Here is September 2017.', to],
+    ]);
+    const left = store.getState().getMessages(from);
+    expect(left.map((m) => m.content)).toEqual(['How is today?', 'Calm.', POINTER]);
+    expect(left[2]).toMatchObject({ role: 'system', moved_to: to, thread_id: from });
+    expect(store.getState().threads[from]?.message_count).toBe(3);
+    expect(store.getState().threads[to]?.message_count).toBe(2);
+  });
+
+  it('removes a source thread the move leaves empty, instead of a pointer alone in it', () => {
+    const store = newStore();
+    const from = store.getState().startThread('p1');
+    const ids = turnIn(store, from);
+    const to = store.getState().startThread('p1');
+    expect(store.getState().moveMessages(from, to, ids, POINTER)).toBe(true);
+    expect(store.getState().threads[from]).toBeUndefined();
+    expect(store.getState().messages[from]).toBeUndefined();
+    expect(store.getState().getMessages(to)).toHaveLength(2);
+  });
+
+  it('an untitled target takes its title from the moved question', () => {
+    const store = newStore();
+    const from = store.getState().startThread('p1');
+    store.getState().appendMessage(from, 'user', 'earlier');
+    const ids = turnIn(store, from);
+    const to = store.getState().startThread('p1');
+    store.getState().moveMessages(from, to, ids, POINTER);
+    expect(store.getState().threads[to]?.title).toBe('Take me to September 2017');
+  });
+
+  it.each([
+    ['an unknown target', (s: ReturnType<typeof newStore>, from: string) => [from, 'nope'] as const],
+    ['another profile\'s thread', (s: ReturnType<typeof newStore>, from: string) => [from, s.getState().startThread('p2')] as const],
+    ['the same thread', (_s: ReturnType<typeof newStore>, from: string) => [from, from] as const],
+  ])('moves nothing to %s', (_label, pick) => {
+    const store = newStore();
+    const from = store.getState().startThread('p1');
+    const ids = turnIn(store, from);
+    const [source, target] = pick(store, from);
+    const before = store.getState().getMessages(from);
+    expect(store.getState().moveMessages(source, target, ids, POINTER)).toBe(false);
+    expect(store.getState().getMessages(from)).toEqual(before);
+  });
+
+  it('moves nothing when a message id is not in the source thread', () => {
+    const store = newStore();
+    const from = store.getState().startThread('p1');
+    const [question] = turnIn(store, from);
+    const to = store.getState().startThread('p1');
+    expect(store.getState().moveMessages(from, to, [question, 'missing'], POINTER)).toBe(false);
+    expect(store.getState().getMessages(from)).toHaveLength(2);
+    expect(store.getState().getMessages(to)).toHaveLength(0);
+  });
+
+  it('hydration drops a malformed moved_to and keeps the message', () => {
+    const blob = { threads: {}, messages: { t1: [
+      { id: 'm1', thread_id: 't1', role: 'system', content: POINTER, created_at: 'x', moved_to: 42 },
+      { id: 'm2', thread_id: 't1', role: 'system', content: POINTER, created_at: 'x', moved_to: 't2' },
+    ] } };
+    const out = migrateChatPersistedState(blob, 4);
+    expect(out.messages.t1?.[0]).not.toHaveProperty('moved_to');
+    expect(out.messages.t1?.[0]?.content).toBe(POINTER);
+    expect(out.messages.t1?.[1]?.moved_to).toBe('t2');
+  });
+});

@@ -3,6 +3,7 @@ import { dirname } from 'node:path';
 
 import { expect, type Page } from '@playwright/test';
 
+import { placeCallMisses, rangeCallMisses, spanCallMisses, spanFits, textMisses, turnErrorBubble, type RangeCall, type SpanCall } from './answerChecks';
 import { LLM_SETTINGS_KEY, bootEngine, seedChart, type SeedBirthSpec } from './interpretation.helpers';
 import { waitForLifeAtlasAsOf } from './lifeAtlas.helpers';
 import { gotoSettled } from './portableInvariants.helpers';
@@ -26,6 +27,23 @@ import { test } from './webkitProfile';
  * SYNTHETIC_AQUARIUS (backend/tests/test_difficult_houses.py): Aquarius lagna ~28°53', Moon in
  * Capricorn Shravana pada 3, Mars and Rahu in the 12th. Its September 2019 reading has a strong
  * obstacles theme ("Saturn (maha) rules the 12th: losses and expenses") and a 25 Sep Mars window.
+ *
+ * Tool layer redesign (2026-10-14, Task 9): readings come from read_period rows. T3 must be read in
+ * ONE read_period range call to 31 Dec 2019. trip-novato types "novato, ca" in the trip's Where?
+ * box and picks "Novato, California" by its text; chat-springfield asks about Springfield in a
+ * today thread and picks "Springfield, Illinois" in the chat's "Which Springfield?" picker.
+ * TRIP_ACCEPTANCE_JOURNEYS (comma list of journey ids) runs a subset.
+ *
+ * Task 10d (controller ruling): D3 "What are the next 3 months like?" passes only with exactly ONE
+ * complete read_period over at least 3 consecutive months inside this month..3 months on, starting
+ * this month or next; the answer is checked against that range reading. This is a CONTRACT CHANGE
+ * from "any single month 0..3" (stricter, now that read_period reads ranges). P1 must show a
+ * complete read_period whose place argument names Springfield and no travel row. A trip whose Where?
+ * box has no matching option is logged as a miss per question, not a crash.
+ *
+ * Task 11 (2026-10-14): today-home asks D1-D3's questions (ids H1-H3, so the report keeps its own
+ * cells) after setting "Where do you live now?" to "novato, ca" in the real Profile settings: every
+ * reading is at Novato (America/Los_Angeles) and every answer names it. `today` (unset) is unchanged.
  */
 const PERSONA: SeedBirthSpec = {
   name: 'Acceptance Native',
@@ -61,6 +79,7 @@ const OBSTACLES_PERSONA: SeedBirthSpec = {
 const RUNS = Number(process.env.TRIP_ACCEPTANCE_RUNS ?? 3);
 const MODELS = process.env.TRIP_ACCEPTANCE_MODEL_LIST?.split(',').filter(Boolean) ?? TRIP_ACCEPTANCE_MODELS;
 const LOG = process.env.TRIP_ACCEPTANCE_LOG ?? 'test-results/trip-acceptance.jsonl';
+const JOURNEYS = process.env.TRIP_ACCEPTANCE_JOURNEYS?.split(',').map((id) => id.trim()).filter(Boolean);
 const VIEWER_ZONE = 'America/Los_Angeles';
 const TURN_TIMEOUT_MS = 420_000;
 
@@ -76,7 +95,16 @@ interface Expectation {
   /** A reading counts when its period is one of these, or falls inside `within`. */
   readonly periods: readonly Period[];
   readonly within?: Period;
-  readonly place: { readonly label?: RegExp; readonly timezone: string };
+  /** The reading's place; `answerLabel` (default `label`) is what the answer must name. */
+  readonly place: { readonly label?: RegExp; readonly timezone: string; readonly answerLabel?: RegExp };
+  /** The turn must read the period in exactly one read_period call over this range (T3). */
+  readonly oneRangeCall?: RangeCall;
+  /** The turn must read exactly one read_period over a span that fits (D3); that reading is the one checked. */
+  readonly oneSpanCall?: SpanCall;
+  /** A complete read_period must name this place in its `place` argument, with no travel row (P1). */
+  readonly placeArg?: RegExp;
+  /** The chat's "Which ...?" picker opens mid-turn; choose the option containing this text. */
+  readonly pick?: string;
   /** The answer must name Sade Sati (2019 for a Capricorn Moon). */
   readonly sadeSati: boolean;
   /** The answer must name the obstacles theme, its factor and its 25 Sep Mars window. */
@@ -85,10 +113,12 @@ interface Expectation {
 
 interface Journey {
   readonly id: string;
-  /** A trip's place query and title, or undefined for a today thread. */
-  readonly trip?: { readonly where: string; readonly title: RegExp };
+  /** A trip's place query and title, or undefined for a today thread. `option` picks the Where? option by its text (else the first). */
+  readonly trip?: { readonly where: string; readonly title: RegExp; readonly option?: string };
   /** The chart under test; PERSONA unless the journey names another. */
   readonly persona?: SeedBirthSpec;
+  /** "Where do you live now?" typed in Profile settings before the chat opens; `option` is the first option's text. */
+  readonly home?: { readonly where: string; readonly option: string };
   readonly questions: readonly Expectation[];
 }
 
@@ -110,6 +140,11 @@ function shiftMonth(month: string, by: number): string {
   return new Date(Date.UTC(year, index - 1 + by, 1)).toISOString().slice(0, 7);
 }
 
+/** "The next 3 months" from `now` (YYYY-MM): a start this month or next, 3+ months, ending by the 3rd month on. */
+function nextThreeMonths(now: string): SpanCall {
+  return { from: `${now}-01`, latestStart: monthPeriod(shiftMonth(now, 1)).end, to: monthPeriod(shiftMonth(now, 3)).end, minMonths: 3, minDays: 59 };
+}
+
 /** This month in the viewer's zone (the app's one "today"). */
 function viewerMonth(): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: VIEWER_ZONE, year: 'numeric', month: '2-digit' }).format(new Date());
@@ -122,6 +157,7 @@ function tripQuestions(place: Expectation['place']): Expectation[] {
     {
       id: 'T3', question: 'What about the rest of 2019?', periods: [{ start: '2019-01-01', end: '2019-12-31' }],
       within: { start: '2019-06-01', end: '2019-12-31' }, place, sadeSati: true,
+      oneRangeCall: { startBy: '2019-06-01', end: '2019-12-31' },
     },
   ];
 }
@@ -131,16 +167,24 @@ function journeys(): Journey[] {
   const today = { timezone: VIEWER_ZONE };
   const vadodara = { label: /Vadodara/, timezone: 'Asia/Kolkata' };
   const singapore = { label: /Singapore/, timezone: 'Asia/Singapore' };
+  const novato = { label: /Novato/, timezone: 'America/Los_Angeles' };
+  const springfield = { label: /Springfield, Illinois/, timezone: 'America/Chicago', answerLabel: /Springfield/ };
   return [
     { id: 'trip-vadodara', trip: { where: 'Vadodara', title: /^⏳ May 2019 · Vadodara/ }, questions: tripQuestions(vadodara) },
     {
       id: 'today', questions: [
         { id: 'D1', question: 'What does this month look like for me?', periods: [monthPeriod(now)], place: today, sadeSati: false },
         { id: 'D2', question: 'And next month?', periods: [monthPeriod(shiftMonth(now, 1))], place: today, sadeSati: false },
-        {
-          id: 'D3', question: 'What are the next 3 months like?', periods: [0, 1, 2, 3].map((by) => monthPeriod(shiftMonth(now, by))),
-          place: today, sadeSati: false,
-        },
+        // CONTRACT CHANGE (Task 10d): was any single month 0..3; now one range read of 3+ months.
+        { id: 'D3', question: 'What are the next 3 months like?', periods: [], oneSpanCall: nextThreeMonths(now), place: today, sadeSati: false },
+      ],
+    },
+    {
+      // Task 11: the same questions once the person says where they live now.
+      id: 'today-home', home: { where: 'novato, ca', option: 'Novato, California, United States' }, questions: [
+        { id: 'H1', question: 'What does this month look like for me?', periods: [monthPeriod(now)], place: novato, sadeSati: false },
+        { id: 'H2', question: 'And next month?', periods: [monthPeriod(shiftMonth(now, 1))], place: novato, sadeSati: false },
+        { id: 'H3', question: 'What are the next 3 months like?', periods: [], oneSpanCall: nextThreeMonths(now), place: novato, sadeSati: false },
       ],
     },
     { id: 'trip-singapore', trip: { where: 'Singapore', title: /^⏳ May 2019 · Singapore/ }, questions: tripQuestions(singapore).slice(0, 1).map((q) => ({ ...q, id: 'S1' })) },
@@ -148,7 +192,17 @@ function journeys(): Journey[] {
       id: 'trip-obstacles', persona: OBSTACLES_PERSONA, trip: { where: 'Vadodara', title: /^⏳ May 2019 · Vadodara/ },
       questions: tripQuestions(vadodara).slice(0, 1).map((q) => ({ ...q, id: 'O1', obstacles: true })),
     },
-  ];
+    {
+      id: 'trip-novato', trip: { where: 'novato, ca', option: 'Novato, California', title: /^⏳ May 2019 · Novato/ },
+      questions: [{ id: 'N1', question: 'What did May 2019 look like for me?', periods: [monthPeriod('2019-05')], place: novato, sadeSati: true }],
+    },
+    {
+      id: 'chat-springfield', questions: [{
+        id: 'P1', question: 'What did May 2019 look like for me in Springfield?', periods: [monthPeriod('2019-05')],
+        place: springfield, sadeSati: true, pick: 'Springfield, Illinois', placeArg: /Springfield/,
+      }],
+    },
+  ].filter((journey) => !JOURNEYS || JOURNEYS.includes(journey.id));
 }
 
 async function configureModel(page: Page, model: string, key: string): Promise<void> {
@@ -158,15 +212,40 @@ async function configureModel(page: Page, model: string, key: string): Promise<v
   await page.addInitScript(([storageKey, cfg]) => window.localStorage.setItem(storageKey as string, cfg as string), [LLM_SETTINGS_KEY, config] as const);
 }
 
-async function travelToMay2019(page: Page, trip: NonNullable<Journey['trip']>): Promise<void> {
+/** Set "Where do you live now?" in Profile settings (current-place.spec.ts's path); a miss (returned) when it never saves. */
+async function setHomePlace(page: Page, home: NonNullable<Journey['home']>): Promise<string | undefined> {
+  await gotoSettled(page, '/settings/profile');
+  const input = page.getByTestId('current-place-input');
+  await input.pressSequentially(home.where);
+  try {
+    await expect(page.getByTestId('current-place-option-0')).toHaveText(home.option, { timeout: 60_000 });
+    await input.press('Enter');
+    await expect(page.getByTestId('current-place-status')).toHaveText('Saved', { timeout: 30_000 });
+  } catch {
+    const offered = await page.locator('[data-testid^="current-place-option-"]').allTextContents();
+    return `settings "Where do you live now?" did not save "${home.option}": ${offered.join(' | ').slice(0, 200) || 'no options'}`;
+  }
+  return undefined;
+}
+
+/** Open the trip; a Where? box that never offers the option is a miss (returned), not a crash, so the log keeps its rows. */
+async function travelToMay2019(page: Page, trip: NonNullable<Journey['trip']>): Promise<string | undefined> {
   await page.getByTestId('time-travel-button').click();
   await page.getByTestId('time-travel-tab-month').click();
   await page.getByTestId('time-travel-month').selectOption('05');
   await page.getByTestId('time-travel-month-year').selectOption('2019');
   await page.getByTestId('time-travel-where-input').fill(trip.where);
-  await page.getByTestId('time-travel-where-option-0').click({ timeout: 60_000 });
+  const options = page.locator('[data-testid^="time-travel-where-option-"]');
+  const option = trip.option ? options.filter({ hasText: trip.option }).first() : page.getByTestId('time-travel-where-option-0');
+  try {
+    await option.click({ timeout: 60_000 });
+  } catch {
+    const offered = await options.allTextContents();
+    return `trip Where? offered no "${trip.option ?? trip.where}": ${offered.join(' | ').slice(0, 200) || 'no options'}`;
+  }
   await page.getByTestId('time-travel-go').click();
   await expect(page.getByTestId('chat-thread-title')).toHaveText(trip.title);
+  return undefined;
 }
 
 /** Open every row from `from` on and read the exact args and result the model got. */
@@ -189,7 +268,7 @@ async function readRows(page: Page, from: number): Promise<ToolRow[]> {
 }
 
 interface TurnRow { readonly turn: number }
-interface CallRow extends TurnRow { readonly status: string; readonly validFirstTry: boolean }
+interface CallRow extends TurnRow { readonly name: string; readonly status: string; readonly validFirstTry: boolean; readonly retryReason?: string; readonly filled?: readonly string[] }
 
 /** The app's own telemetry (agentRoundTelemetry.ts, hook builds): every round and call row recorded so far. */
 async function telemetry(page: Page): Promise<{ readonly rounds: TurnRow[]; readonly calls: CallRow[] }> {
@@ -199,36 +278,99 @@ async function telemetry(page: Page): Promise<{ readonly rounds: TurnRow[]; read
   });
 }
 
-/** Per question: model requests, tool calls, calls valid on the first try, retries, error rows (tool layer redesign 2026-10-14). */
-interface TurnMetrics { readonly rounds: number; readonly calls: number; readonly validFirstTry: number; readonly retries: number; readonly errorRows: number }
+/**
+ * Per question (tool layer redesign 2026-10-14): model requests; every call and those valid on the first try
+ * (the answer included); the same for tool calls only (read_period, travel); 1 when the first answer submission
+ * was accepted; retries and error rows over every call; rejected answers; why each retried call was rejected; and
+ * which sections of the accepted answer the app filled from the reading (the model left them out). Logging only.
+ */
+interface TurnMetrics {
+  readonly rounds: number;
+  readonly calls: number;
+  readonly validFirstTry: number;
+  readonly toolCalls: number;
+  readonly toolValidFirstTry: number;
+  readonly answerValidFirstTry: number;
+  readonly retries: number;
+  readonly answerRetries: number;
+  readonly errorRows: number;
+  readonly retryReasons: string[];
+  readonly answerFilled: string[];
+}
 
 function turnMetrics(after: { readonly rounds: TurnRow[]; readonly calls: CallRow[] }, lastTurnBefore: number): TurnMetrics {
   const calls = after.calls.filter((row) => row.turn > lastTurnBefore);
+  const tools = calls.filter((row) => row.name !== 'answer');
+  const answers = calls.filter((row) => row.name === 'answer');
+  const retried = calls.filter((row) => row.status === 'retried');
   return {
     rounds: after.rounds.filter((row) => row.turn > lastTurnBefore).length,
     calls: calls.length,
     validFirstTry: calls.filter((row) => row.validFirstTry).length,
-    retries: calls.filter((row) => row.status === 'retried').length,
+    toolCalls: tools.length,
+    toolValidFirstTry: tools.filter((row) => row.validFirstTry).length,
+    answerValidFirstTry: answers[0]?.status !== 'retried' && answers[0]?.validFirstTry === true ? 1 : 0,
+    retries: retried.length,
+    answerRetries: answers.filter((row) => row.status === 'retried').length,
     errorRows: calls.filter((row) => row.status === 'error').length,
+    retryReasons: retried.map((row) => `${row.name}: ${row.retryReason ?? '(no reason recorded)'}`),
+    answerFilled: [...(answers.find((row) => row.status === 'complete')?.filled ?? [])],
   };
 }
 
-async function ask(page: Page, question: string): Promise<{ readonly rows: ToolRow[]; readonly answer: string; readonly errorBubble: string | undefined; readonly metrics: TurnMetrics }> {
+/**
+ * One poll for both outcomes: the picker shows, or the turn ends (⏳ enabled again). A single loop,
+ * so the losing side never keeps polling after the other wins (two racing waits would).
+ */
+async function pickerOrEnd(page: Page): Promise<'shown' | 'ended'> {
+  const picker = page.getByTestId('place-pick');
+  const button = page.getByTestId('time-travel-button');
+  const deadline = Date.now() + TURN_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    if (await picker.isVisible()) return 'shown';
+    if (await button.isEnabled()) return 'ended';
+    await page.waitForTimeout(250);
+  }
+  return 'ended';
+}
+
+/**
+ * Wait for the chat's place picker while the turn runs and choose the option containing `text`.
+ * A miss when the turn ends without a picker, or the picker offers no such option.
+ */
+async function pickPlace(page: Page, text: string): Promise<string | undefined> {
+  const picker = page.getByTestId('place-pick');
+  if ((await pickerOrEnd(page)) !== 'shown') return `no place picker for "${text}"`;
+  const option = page.locator('[data-testid^="place-pick-option-"]').filter({ hasText: text }).first();
+  try {
+    await option.click({ timeout: 30_000 });
+  } catch {
+    const offered = await page.locator('[data-testid^="place-pick-option-"]').allTextContents();
+    return `place picker offered no "${text}": ${offered.join(' | ').slice(0, 200)}`;
+  }
+  await expect(picker).toBeHidden({ timeout: 30_000 });
+  return undefined;
+}
+
+async function ask(page: Page, question: string, pick?: string): Promise<{ readonly rows: ToolRow[]; readonly answer: string; readonly errorBubble: string | undefined; readonly pickMiss: string | undefined; readonly metrics: TurnMetrics }> {
   const before = await page.getByTestId('chat-tool-call').count();
   const seen = await telemetry(page);
   const lastTurnBefore = Math.max(0, ...seen.rounds.map((row) => row.turn), ...seen.calls.map((row) => row.turn));
   const answersBefore = await page.getByTestId('chat-message-assistant').count();
+  const bubblesBefore = await page.getByTestId('chat-error-bubble').count();
   await page.getByTestId('chat-input').fill(question);
   await page.getByTestId('chat-send-button').click();
   // The ⏳ button is disabled only while an answer streams.
   await expect(page.getByTestId('time-travel-button')).toBeDisabled({ timeout: 30_000 });
+  const pickMiss = pick ? await pickPlace(page, pick) : undefined;
   await expect(page.getByTestId('time-travel-button')).toBeEnabled({ timeout: TURN_TIMEOUT_MS });
   const answers = await page.getByTestId('chat-message-assistant').allTextContents();
   const bubbles = await page.getByTestId('chat-error-bubble').allTextContents();
   return {
     rows: await readRows(page, before),
     answer: answers.length > answersBefore ? (answers[answers.length - 1] ?? '') : '',
-    errorBubble: bubbles[bubbles.length - 1],
+    errorBubble: turnErrorBubble(bubblesBefore, bubbles),
+    pickMiss,
     metrics: turnMetrics(await telemetry(page), lastTurnBefore),
   };
 }
@@ -242,96 +384,29 @@ interface ReadingLike {
 
 /** Completed readings. A repeated identical call gets a pointer to the first result (no period): not a reading. */
 function readings(rows: readonly ToolRow[]): ReadingLike[] {
-  return rows.filter((row) => row.name === 'get_period_reading' && row.status === 'complete')
+  return rows.filter((row) => row.name === 'read_period' && row.status === 'complete')
     .map((row) => row.result as ReadingLike).filter((reading) => reading?.period !== undefined);
 }
 
 function matches(period: Period | undefined, expectation: Expectation): boolean {
   if (!period) return false;
+  if (expectation.oneSpanCall && spanFits(period, expectation.oneSpanCall)) return true;
   if (expectation.periods.some((p) => p.start === period.start && p.end === period.end)) return true;
   const within = expectation.within;
   return within !== undefined && period.start >= within.start && period.end <= within.end;
 }
 
-const MONTH = '(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\\.?';
-const DATED_WINDOW = new RegExp(`\\b\\d{1,2}(?:st|nd|rd|th)?\\s+${MONTH}|\\b${MONTH}\\s+\\d{1,2}(?:st|nd|rd|th)?\\b|\\b\\d{4}-\\d{2}-\\d{2}\\b`, 'i');
-const CONFIDENCE = /\b(?:high|medium|moderate|low)(?:[- ]to[- ](?:high|medium|moderate|low))?[\s-]+confidence\b|\bconfidence\b[^.\n]{0,40}\b(?:high|medium|moderate|low)\b/i;
-const LEVEL = /^(?:high|medium|moderate|low)(?:[- ]to[- ](?:high|medium|moderate|low))?$/i;
-
-/**
- * A Markdown table with a Confidence column states a confidence level (matrix 2026-10-14: an
- * answer's "| Obstacles | Mixed | Strong | High |" row read as no confidence). The answer's text
- * comes with its whitespace collapsed, so rows are joined as "| a | b | | c | d |".
- */
-function tableConfidence(answer: string): boolean {
-  const chunks = answer.split(/\|\s+\|/);
-  return chunks.some((chunk, index) => {
-    const column = chunk.slice(chunk.indexOf('|') + 1).split('|').map((cell) => cell.trim()).findIndex((cell) => /^confidence$/i.test(cell));
-    return column >= 0 && chunks.slice(index + 1).some((row) => LEVEL.test(row.split('|').map((cell) => cell.trim())[column] ?? ''));
-  });
-}
-
-const GRAHA = '(?:sun|moon|mars|mercury|jupiter|venus|saturn|rahu|ketu)';
-const HOUSE = '(?:\\d{1,2}(?:st|nd|rd|th)?|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth)';
-/** "rules", and the plain-voice forms a layman answer uses for a lordship ("handles", "looks after"). */
-const RULES = '(?:rul(?:es|ed|ing|er of|ership of|e over|e of)|governs?|handles?|looks after|oversees|is in charge of)';
-/** A lordship: "Saturn, your 12th lord", "rules your 2nd and 11th houses", "Jupiter looks after your 2nd house", "Jupiter rules your money". */
-const LORDSHIP = new RegExp([
-  `\\b${HOUSE}(?:[- ]house)?[- ]lord\\b`,
-  `\\blord of (?:your |the )?${HOUSE}\\b`,
-  `\\b${RULES}\\b[^.\\n]{0,50}\\b(?:house|houses)?\\s*${HOUSE}\\b`,
-  `\\b${GRAHA}(?:'s|’s)?\\b[^.\\n]{0,20}\\brul(?:es|ed|ing|er of|ership of|e over)\\b`,
-].join('|'), 'i');
-
-const ORDINAL_WORDS: Readonly<Record<string, string>> = {
-  1: 'first|one', 2: 'second|two', 3: 'third|three', 4: 'fourth|four', 5: 'fifth|five', 6: 'sixth|six',
-  7: 'seventh|seven', 8: 'eighth|eight', 9: 'ninth|nine', 10: 'tenth|ten', 11: 'eleventh|eleven', 12: 'twelfth|twelve',
-};
-
-/** A Moon-based tag as people write it: "Sade Sati", "Kantaka Shani", "7th from your Moon", "eighth-from-Moon" (jupiter_from_moon_8). */
-function tagPattern(tag: string): RegExp {
-  const words = tag.split('_');
-  const house = words.find((word) => /^\d+(?:st|nd|rd|th)?$/.test(word))?.replace(/\D/g, '');
-  if (words.includes('moon') && house) {
-    const nth = `\\b(?:${house}(?:st|nd|rd|th)?|${ORDINAL_WORDS[house] ?? house})\\b`;
-    return new RegExp(`${nth}[^.\\n]{0,40}\\bmoon\\b|\\bmoon\\b[^.\\n]{0,40}${nth}`, 'i');
-  }
-  return new RegExp(`\\b${words.slice(0, 2).filter((word) => !/^(?:phase|\d+)$/.test(word)).join('[\\s-]*')}`, 'i');
-}
-
-/** The obstacles theme in its classical words (friction with rules or authorities, legal or administrative matters, losses and expenses). */
-const OBSTACLES_MEANING = /friction with (?:rules|authorit)|\blegal\b|\badministrative\b|\bloss(?:es)?\b|\bexpenses\b/i;
-/** Its factor: "Saturn rules the 12th", "Saturn, your 12th lord", "Rahu in the 12th". */
-const OBSTACLES_FACTOR = /\b(?:saturn|rahu)\b[^.\n]{0,60}\b(?:12th|twelfth)\b|\b(?:12th|twelfth)\b[^.\n]{0,40}\b(?:saturn|rahu)\b/i;
-/** The 25 Sep 2019 Mars window. */
-const SEP_25 = /\b25(?:th)?\s+sep|\bsep[a-z]*\.?\s+25(?:th)?\b|\b2019-09-25\b/i;
-
-function obstaclesMisses(answer: string): string[] {
-  const misses: string[] = [];
-  if (!OBSTACLES_MEANING.test(answer)) misses.push('answer does not name the obstacles theme (rules/authorities, legal/administrative, losses)');
-  if (!OBSTACLES_FACTOR.test(answer)) misses.push('answer names no obstacles factor (Saturn rules the 12th / Rahu in the 12th)');
-  if (!SEP_25.test(answer)) misses.push('answer does not give the 25 Sep Mars window');
-  return misses;
-}
-
 function checkAnswer(expectation: Expectation, answer: string, reading: ReadingLike | undefined): string[] {
-  const misses: string[] = [];
-  if (!reading) return ['no completed get_period_reading for the period asked'];
+  if (!reading) return ['no completed read_period for the period asked'];
   const lord = (spans: ReadonlyArray<{ lord?: string }> | undefined) => (spans ?? []).map((span) => span.lord).filter((name): name is string => Boolean(name));
-  const mahas = lord(reading.dashas?.maha);
-  const antars = lord(reading.dashas?.antar);
-  const names = (list: string[]) => list.some((name) => new RegExp(`\\b${name}\\b`, 'i').test(answer));
-  if (!names(mahas)) misses.push(`answer names no maha lord (${mahas.join('/')})`);
-  if (!names(antars)) misses.push(`answer names no antar lord (${antars.join('/')})`);
-  if (!LORDSHIP.test(answer)) misses.push('answer names no lordship ("Nth lord", "rules the Nth")');
-  const tags = (reading.sky ?? []).flatMap((row) => row.tags ?? []);
-  if (expectation.sadeSati && !/sade[\s-]*sati/i.test(answer)) misses.push('answer does not name Sade Sati');
-  if (tags.length > 0 && !tags.some((tag) => tagPattern(tag).test(answer))) misses.push(`answer names no Moon tag (${[...new Set(tags)].join(', ')})`);
-  if (!DATED_WINDOW.test(answer)) misses.push('answer gives no dated window');
-  if (!CONFIDENCE.test(answer) && !tableConfidence(answer)) misses.push('answer gives no confidence level');
-  if (expectation.place.label && !expectation.place.label.test(answer)) misses.push(`answer does not name the place ${expectation.place.label}`);
-  if (expectation.obstacles) misses.push(...obstaclesMisses(answer));
-  return misses;
+  return textMisses(answer, {
+    maha: lord(reading.dashas?.maha),
+    antar: lord(reading.dashas?.antar),
+    tags: (reading.sky ?? []).flatMap((row) => row.tags ?? []),
+    sadeSati: expectation.sadeSati,
+    placeLabel: expectation.place.answerLabel ?? expectation.place.label,
+    obstacles: expectation.obstacles,
+  });
 }
 
 function errorSummary(row: ToolRow): string | undefined {
@@ -341,8 +416,9 @@ function errorSummary(row: ToolRow): string | undefined {
 }
 
 /** Every miss for one question: rows, the period read, the place, the answer. */
-function verdict(expectation: Expectation, rows: readonly ToolRow[], answer: string, errorBubble: string | undefined): string[] {
+function verdict(expectation: Expectation, rows: readonly ToolRow[], answer: string, errorBubble: string | undefined, pickMiss?: string): string[] {
   const misses: string[] = [];
+  if (pickMiss) misses.push(pickMiss);
   if (errorBubble) misses.push(`error bubble: ${errorBubble.slice(0, 200)}`);
   if (!answer.trim()) misses.push('no answer');
   for (const row of rows) if (row.status === 'error') misses.push(`error row ${row.name}: ${errorSummary(row)}`);
@@ -354,6 +430,9 @@ function verdict(expectation: Expectation, rows: readonly ToolRow[], answer: str
     if (expectation.place.label && !expectation.place.label.test(reading.place?.label ?? '')) misses.push(`reading place ${reading.place?.label}`);
   }
   if (/shanghai/i.test(JSON.stringify(rows)) || /shanghai/i.test(answer)) misses.push('Shanghai appears');
+  if (expectation.oneRangeCall) misses.push(...rangeCallMisses(rows, expectation.oneRangeCall));
+  if (expectation.oneSpanCall) misses.push(...spanCallMisses(rows, expectation.oneSpanCall));
+  if (expectation.placeArg) misses.push(...placeCallMisses(rows, expectation.placeArg));
   return [...misses, ...checkAnswer(expectation, answer, asked)];
 }
 
@@ -372,15 +451,22 @@ for (const model of MODELS) {
         await configureModel(page, model, key ?? '');
         await bootEngine(page);
         await seedChart(page, { birth: journey.persona ?? PERSONA });
+        const homeMiss = journey.home ? await setHomePlace(page, journey.home) : undefined;
         await gotoSettled(page, '/dashboard');
         await waitForLifeAtlasAsOf(page);
         await page.getByTestId('floating-chat-button').click({ timeout: 120_000 });
-        if (journey.trip) await travelToMay2019(page, journey.trip);
+        const tripMiss = homeMiss ?? (journey.trip ? await travelToMay2019(page, journey.trip) : undefined);
         const failures: string[] = [];
-        for (const expectation of journey.questions) {
+        if (tripMiss) {
+          for (const expectation of journey.questions) {
+            log({ at: new Date().toISOString(), model, run, journey: journey.id, question: expectation.id, text: expectation.question, pass: false, misses: [tripMiss] });
+            failures.push(`${expectation.id}: ${tripMiss}`);
+          }
+        }
+        for (const expectation of tripMiss ? [] : journey.questions) {
           const started = Date.now();
-          const { rows, answer, errorBubble, metrics } = await ask(page, expectation.question);
-          const misses = verdict(expectation, rows, answer, errorBubble);
+          const { rows, answer, errorBubble, pickMiss, metrics } = await ask(page, expectation.question, expectation.pick);
+          const misses = verdict(expectation, rows, answer, errorBubble, pickMiss);
           const asked = readings(rows).find((reading) => matches(reading.period, expectation));
           log({
             at: new Date().toISOString(), model, run, journey: journey.id, question: expectation.id, text: expectation.question,

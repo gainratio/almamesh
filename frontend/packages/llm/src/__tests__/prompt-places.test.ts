@@ -22,7 +22,6 @@ const systemFor = (places: boolean): string =>
     undefined,
     places,
   )[0]?.content ?? "";
-const system = (): string => systemFor(true);
 
 describe("the narrowed privacy rule", () => {
   it("forbids the birth place and coordinates, and allows places the user typed", () => {
@@ -33,28 +32,14 @@ describe("the narrowed privacy rule", () => {
   });
 });
 
-describe("chat prompt place rules", () => {
-  it("turns needs_place into one question and never assumes a place", () => {
-    expect(system()).toContain('{ "error": "needs_place" }');
-    expect(system()).toContain("Where were you (or will you be) that day?");
-    expect(system()).toContain("Never assume a place");
-  });
-
-  it("resolves a place the user already named FIRST, then calls get_timing (P4)", () => {
-    expect(system()).toContain("call resolve_place first,\nthen get_timing with its place_ref");
-  });
-
-  it("never asks for a week or longer, and tells the model not to resolve places for it (P9)", () => {
-    expect(system()).toContain("A week or longer never needs a place");
-    expect(system()).toContain("don't resolve places for it");
-  });
-});
-
-describe("place rules ride only where resolve_place exists", () => {
-  it("full tier carries them; lite/minimal (no places) does not", () => {
-    for (const phrase of ["needs_place", "resolve_place", "Where were you"]) {
-      expect(systemFor(true)).toContain(phrase);
-      expect(systemFor(false)).not.toContain(phrase);
+// Contract reversed 2026-10-14 (chat tool layer redesign): PLACE_RULES told the model to turn
+// needs_place into a question and to call resolve_place before get_timing with its place_ref. Places
+// are now a plain city name on read_period/travel, resolved on the device (a picker on ambiguity),
+// and a needs_place result carries its own "ask". No tier carries place-routing rules any more.
+describe("no place-routing rules in any tier", () => {
+  it.each([false, true])("places=%s carries no resolve_place, place_ref or needs_place text", (places) => {
+    for (const phrase of ["needs_place", "resolve_place", "place_ref", "Where were you", "PLACES:"]) {
+      expect(systemFor(places)).not.toContain(phrase);
     }
   });
 

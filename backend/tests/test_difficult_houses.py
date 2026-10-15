@@ -18,6 +18,7 @@ Jupiter nor Saturn transits one from the lagna or Moon, and no window is dated.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 
 import pytest
@@ -27,6 +28,7 @@ from almamesh.constants.astrology import PlanetName
 from almamesh.domains.recipes import DOMAIN_RECIPES
 from almamesh.domains.significators import significator_grahas
 from almamesh.predictive import PredictiveContexts, compute_predictive_contexts
+from almamesh.reading.classical import ChartLords, area_of, graded_score
 from almamesh.reading.themes import ThemeInputs, reading_themes
 from almamesh.schemas.domains import LifeDomain, StrengthBand
 from almamesh.schemas.reading import DashaLevel, ReadingTheme
@@ -86,10 +88,49 @@ def themes_with_running(
     """The themes recomputed for a chosen set of running lords (no yogini, no sky)."""
     natal = calculate_sidereal_context(SYNTHETIC_AQUARIUS, _LAT, _LON, reference_date=_SEP_2019)
     window = contexts.transit_context.timeline
+    lords = ChartLords(natal, contexts.strength_context.shadbala)
     inputs = ThemeInputs(
-        natal, contexts.domains_context, running, None, [], window.window_start, window.window_end
+        natal,
+        contexts.domains_context,
+        running,
+        None,
+        [],
+        window.window_start,
+        window.window_end,
+        lords,
     )
     return {t.domain: t for t in reading_themes(inputs)}
+
+
+@dataclass(frozen=True)
+class _Running:
+    """One lord running over the whole window, for the graded score."""
+
+    lord: PlanetName
+    start_date: datetime
+    end_date: datetime
+
+
+def graded_alone(
+    contexts: PredictiveContexts,
+    birth: datetime,
+    domain: LifeDomain,
+    level: DashaLevel,
+    lord: PlanetName,
+) -> tuple[float, int]:
+    """(relevance, graded score) of ONE lord running the whole window at one level, alone."""
+    lat, lon = (_LAT, _LON) if birth == SYNTHETIC_AQUARIUS else (_NY_LAT, _NY_LON)
+    lords = ChartLords(
+        calculate_sidereal_context(birth, lat, lon, reference_date=_SEP_2019),
+        contexts.strength_context.shadbala,
+    )
+    window = contexts.transit_context.timeline
+    span = _Running(lord, window.window_start, window.window_end)
+    weights = {DashaLevel.MAHA: 3, DashaLevel.ANTAR: 2, DashaLevel.PRATYANTAR: 1}
+    levels = [(weight, [span] if at is level else []) for at, weight in weights.items()]
+    area = area_of(DOMAIN_RECIPES[domain])
+    bounds = (window.window_start, window.window_end)
+    return lords.relevance(lord, area), graded_score(lords, area, levels, bounds)
 
 
 def test_should_keep_every_domain_theme_when_at_most_eight_domains_exist(
@@ -103,17 +144,28 @@ def test_should_keep_every_domain_theme_when_at_most_eight_domains_exist(
     assert {t.domain for t in themes} == set(LifeDomain)
 
 
-def test_should_agree_when_a_running_lord_only_occupies_a_domain_house(
+def test_should_count_an_occupant_fully_but_not_agree_on_a_pratyantar_alone(
     sep_2019: PredictiveContexts,
 ) -> None:
-    # Given Rahu running alone: it rules nothing and is not a karaka of spiritual,
-    # but it sits in the 12th (a spiritual house) of the synthetic chart
-    running = [(DashaLevel.PRATYANTAR, PlanetName.RAHU)]
-    # When the themes are read
-    spiritual = themes_with_running(sep_2019, running)[LifeDomain.SPIRITUAL]
-    # Then the occupant counts as Vimshottari agreement and is cited as such
-    assert spiritual.agreement.vimshottari is True
-    assert "Rahu (pratyantar) occupies the 12th" in spiritual.factors
+    """CONTRACT REVERSED (spec 2026-10-15, classical dasha rules).
+
+    This test used to assert that Rahu running ALONE as a pratyantar makes the
+    spiritual theme agree, because it occupies the 12th. That "any running lord
+    touches it" rule fired in 97-100% of months. Occupancy still counts in full;
+    a pratyantar alone (weight 1 of 6) is now below the threshold of 50.
+    """
+    # Given Rahu running alone as a pratyantar: it rules nothing, is not a karaka of
+    # spiritual, but sits in the 12th (a spiritual house) of the synthetic chart
+    relevance, score = graded_alone(
+        sep_2019, SYNTHETIC_AQUARIUS, LifeDomain.SPIRITUAL, DashaLevel.PRATYANTAR, PlanetName.RAHU
+    )
+    # Then the occupancy counts in full, but one ordinary pratyantar scores 100 x 1 x 0.75 / 6
+    # = 12.5, rounded half-to-even to 12
+    assert relevance == 1.0
+    assert score == 12
+    # And the factor still cites the occupancy
+    spiritual = themes_with_running(sep_2019, [(DashaLevel.PRATYANTAR, PlanetName.RAHU)])
+    assert "Rahu (pratyantar) occupies the 12th" in spiritual[LifeDomain.SPIRITUAL].factors
 
 
 def test_should_cite_the_lord_and_the_occupant_when_both_run(
@@ -167,20 +219,14 @@ def test_should_not_let_a_karaka_alone_signify_obstacles() -> None:
 
 
 def test_should_not_agree_on_obstacles_when_only_a_karaka_runs() -> None:
-    # Given the Scorpio chart with only Saturn (a karaka, not a lord or occupant) running
+    # Given the Scorpio chart with only Saturn (a karaka, not a lord or occupant) running as maha
     contexts = scorpio_reading(_SEP_2019, date(2019, 9, 30))
-    natal = calculate_sidereal_context(
-        SYNTHETIC_SCORPIO, _NY_LAT, _NY_LON, reference_date=_SEP_2019
+    # When its graded obstacles score is read
+    relevance, score = graded_alone(
+        contexts, SYNTHETIC_SCORPIO, _OBSTACLES, DashaLevel.MAHA, PlanetName.SATURN
     )
-    window = contexts.transit_context.timeline
-    running = [(DashaLevel.MAHA, PlanetName.SATURN)]
-    inputs = ThemeInputs(
-        natal, contexts.domains_context, running, None, [], window.window_start, window.window_end
-    )
-    # When the themes are read
-    obstacles = next(t for t in reading_themes(inputs) if t.domain == _OBSTACLES)
-    # Then Vimshottari does not agree
-    assert obstacles.agreement.vimshottari is False
+    # Then an activation-only karaka counts nothing, so Vimshottari cannot agree
+    assert (relevance, score) == (0.0, 0)
 
 
 def test_should_cite_the_sixth_when_its_lord_runs(sep_2019: PredictiveContexts) -> None:

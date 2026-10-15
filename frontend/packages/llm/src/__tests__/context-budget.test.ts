@@ -14,7 +14,7 @@ import {
   DEFAULT_CONTEXT_TOKENS,
   calibratedEstimate,
   chatPromptBudgetFor,
-  compactToolContent,
+  compactToolResult,
   defaultToolSummary,
   estimateRequestTokens,
   summarizeToolResult,
@@ -34,32 +34,6 @@ describe("turnTokenBudget", () => {
     for (const unknown of [undefined, 0, -5, Number.NaN, Number.POSITIVE_INFINITY, 12.5]) {
       expect(turnTokenBudget(unknown)).toBe(4_096);
     }
-  });
-});
-
-describe("estimateRequestTokens", () => {
-  it("is ceil(chars / 4) over the serialized messages and tool schemas", () => {
-    const messages = [{ role: "user", content: "abc" }];
-    const tools = [{ type: "function", function: { name: "t" } }];
-    const chars = JSON.stringify({ messages, tools }).length;
-    expect(estimateRequestTokens(messages, tools)).toBe(Math.ceil(chars / 4));
-  });
-
-  it("counts tool schemas, not only messages", () => {
-    const messages = [{ role: "user", content: "abc" }];
-    const big = [{ type: "function", function: { name: "t", description: "x".repeat(4_000) } }];
-    expect(estimateRequestTokens(messages, big) - estimateRequestTokens(messages, [])).toBeGreaterThanOrEqual(1_000);
-  });
-});
-
-describe("calibratedEstimate", () => {
-  it("scales an estimate up when the provider counted more tokens than estimated", () => {
-    expect(calibratedEstimate(1_000, { estimate: 500, reported: 1_000 })).toBe(2_000);
-  });
-
-  it("never scales an estimate down (the char estimate stays the floor)", () => {
-    expect(calibratedEstimate(1_000, { estimate: 1_000, reported: 400 })).toBe(1_000);
-    expect(calibratedEstimate(1_000, undefined)).toBe(1_000);
   });
 });
 
@@ -140,11 +114,6 @@ describe("tool result summaries", () => {
       expect(factor).not.toContain("\n");
     }
   });
-
-  it("a compacted tool message is short JSON that says it is compacted and carries the facts", () => {
-    const content = compactToolContent({ line: "Saturn antar", factors: ["12th lord"] });
-    expect(JSON.parse(content)).toEqual({ ok: true, compacted: true, facts: "Saturn antar", factors: ["12th lord"] });
-  });
 });
 
 describe("toolFactsNote (history compaction)", () => {
@@ -177,5 +146,35 @@ describe("toolFactsNote (history compaction)", () => {
     expect(note).toContain("n: 39");
     expect(note).not.toMatch(/n: 0 ·/u);
     expect(note.length).toBeLessThanOrEqual(1_600);
+  });
+});
+
+describe("in-turn request estimate (tool loop budget, Task 6b)", () => {
+  it("estimates a request as ceil(chars / 4) of its messages and tool definitions", () => {
+    const messages = [{ role: "user", content: "x".repeat(37) }];
+    const tools = [{ name: "t" }];
+    expect(estimateRequestTokens(messages, tools)).toBe(Math.ceil(JSON.stringify({ messages, tools }).length / 4));
+  });
+
+  it("scales an estimate up by the provider's own count, never down", () => {
+    expect(calibratedEstimate(1_000, { estimate: 500, reported: 1_500 })).toBe(3_000);
+    expect(calibratedEstimate(1_000, { estimate: 500, reported: 100 })).toBe(1_000);
+    expect(calibratedEstimate(1_000, { estimate: 0, reported: 100 })).toBe(1_000);
+    expect(calibratedEstimate(1_000, undefined)).toBe(1_000);
+  });
+});
+
+describe("compactToolResult (in-turn compaction)", () => {
+  it("uses the tool's own compact object, marked compacted", () => {
+    expect(compactToolResult({ big: "x".repeat(99) }, () => ({ period: "May 2019" }))).toEqual({ compacted: true, period: "May 2019" });
+  });
+
+  it("falls back to the default one-line summary when the tool gives none, throws, or returns a non-object", () => {
+    const result = { period: { label: "May 2019" }, text: "x".repeat(500) };
+    const fallback = { ok: true, compacted: true, facts: defaultToolSummary(result).line };
+    expect(compactToolResult(result)).toEqual(fallback);
+    expect(compactToolResult(result, () => { throw new Error("boom"); })).toEqual(fallback);
+    expect(compactToolResult(result, () => "a line")).toEqual(fallback);
+    expect(fallback.facts).toContain("May 2019");
   });
 });

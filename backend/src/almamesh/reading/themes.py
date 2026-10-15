@@ -2,9 +2,12 @@
 
 Agreement is one boolean per technique, never a fused score (the heuristics in
 ``dasha/scoring.py`` stay quarantined). A graha signifies a domain when it rules
-one of its houses, occupies one, or is one of its karakas. Every factor string
-is generated from an engine fact: a lordship, an occupancy, a karaka, a transit
-house, a tag, a bindu count.
+one of its houses, occupies one, or is one of its karakas. The Vimshottari and
+Yogini booleans are the classical graded scores (``reading/classical.py``, spec
+2026-10-15) at or over their fixed threshold, so a domain is no longer "on" just
+because some running lord touches it. Every factor string is generated from an
+engine fact: a lordship, an occupancy, a karaka, a transit house, a tag, a bindu
+count.
 
 An ``activation_only`` domain (obstacles: the 6th/8th/12th) is guarded against
 base rates: its karakas never signify, and its strength is the period's
@@ -20,9 +23,22 @@ from typing import TYPE_CHECKING, Final, Literal
 from almamesh.constants.astrology import PlanetName
 from almamesh.domains.recipes import DOMAIN_RECIPES
 from almamesh.domains.significators import significator_grahas
+from almamesh.reading.classical import (
+    AGREEMENT_THRESHOLD,
+    area_of,
+    dasha_tone,
+    vimshottari_score,
+    yogini_score,
+)
 from almamesh.reading.common import ordinal, title, utc_date
 from almamesh.schemas.domains import StrengthBand
-from almamesh.schemas.reading import ReadingTheme, SkySpan, ThemeAgreement, ThemeWindow
+from almamesh.schemas.reading import (
+    ReadingTheme,
+    SkySpan,
+    ThemeAgreement,
+    ThemeDasha,
+    ThemeWindow,
+)
 from almamesh.schemas.transits import TransitSeverity
 
 if TYPE_CHECKING:
@@ -30,6 +46,7 @@ if TYPE_CHECKING:
     from datetime import datetime
 
     from almamesh.domains.recipes import DomainRecipe
+    from almamesh.reading.classical import ChartLords
     from almamesh.schemas.astrology import SiderealContext
     from almamesh.schemas.domains import LifeDomainForecast, LifeDomainsContext
     from almamesh.schemas.reading import DashaLevel, YoginiSpan
@@ -63,6 +80,7 @@ class ThemeInputs:
     sky: list[SkySpan]
     start: datetime
     end: datetime
+    lords: ChartLords
 
 
 @dataclass(frozen=True)
@@ -118,12 +136,21 @@ def _transit_hit(domain: _Domain, sky: list[SkySpan]) -> tuple[SkySpan, str, int
     return None
 
 
-def _agreement(domain: _Domain, inputs: ThemeInputs) -> ThemeAgreement:
-    """The three plain booleans."""
-    yogini = inputs.yogini
+def _dasha(domain: _Domain, inputs: ThemeInputs) -> ThemeDasha:
+    """The graded Vimshottari and Yogini scores and the dasha tone (spec 2026-10-15, R7)."""
+    area, lords, start, end = area_of(domain.recipe), inputs.lords, inputs.start, inputs.end
+    return ThemeDasha(
+        vimshottari=vimshottari_score(lords, area, start, end),
+        yogini=yogini_score(lords, area, start, end),
+        tone=dasha_tone(lords, area, start, end),
+    )
+
+
+def _agreement(domain: _Domain, inputs: ThemeInputs, dasha: ThemeDasha) -> ThemeAgreement:
+    """The three plain booleans: each graded dasha score at the threshold, the transit hit."""
     return ThemeAgreement(
-        vimshottari=any(lord in domain.grahas for _, lord in inputs.running),
-        yogini=yogini is not None and yogini.lord in domain.grahas,
+        vimshottari=dasha.vimshottari >= AGREEMENT_THRESHOLD,
+        yogini=dasha.yogini >= AGREEMENT_THRESHOLD,
         transit=_transit_hit(domain, inputs.sky) is not None,
     )
 
@@ -234,7 +261,8 @@ def _activation_band(hits: int, *, dated: bool) -> StrengthBand:
 def _theme(forecast: LifeDomainForecast, inputs: ThemeInputs) -> ReadingTheme:
     """One domain's theme."""
     domain = _Domain.of(forecast, inputs.natal)
-    agreement = _agreement(domain, inputs)
+    dasha = _dasha(domain, inputs)
+    agreement = _agreement(domain, inputs, dasha)
     windows = _windows(forecast, inputs)
     severities = (forecast.current_emphasis.transit_severity, *(w.severity for w in windows))
     band, pct = _strength(domain, agreement, windows)
@@ -246,6 +274,7 @@ def _theme(forecast: LifeDomainForecast, inputs: ThemeInputs) -> ReadingTheme:
         strength_pct=pct,
         confidence=confidence_for(_agreeing(agreement)),
         agreement=agreement,
+        dasha=dasha,
         factors=_factors(domain, inputs),
         windows=_shown(windows),
     )

@@ -6,7 +6,7 @@
  */
 import type { ChatThreadAsOf, LocationDetails } from '@almamesh/shared-types';
 
-import { viewerTodayDay } from '../../../lib/chatAgentTools';
+import { viewerTodayDay } from '../../../lib/viewerToday';
 import type { TripPin } from '../../../lib/tripPlacePrefill';
 import { TimeTravelSheet } from '../chat/TimeTravelSheet';
 

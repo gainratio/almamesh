@@ -52,6 +52,13 @@ describe('Landing', () => {
     ).toBeTruthy();
   });
 
+  it('links How we test from the footer, not the hero', () => {
+    renderLanding('home');
+    const links = screen.getAllByRole('link', { name: 'How we test' });
+    expect(links.map((link) => link.getAttribute('href'))).toEqual(['/how-we-test']);
+    expect(links[0]?.closest('footer')).not.toBeNull();
+  });
+
   it('links the primary hero CTA to /onboarding', () => {
     renderLanding();
     const cta = screen.getByTestId('hero-cta');

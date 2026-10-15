@@ -6,7 +6,8 @@
     "terms_link": "Terms of Service",
     "data_deletion_link": "Data Deletion",
     "copyright": "© {{year}} AlmaMesh",
-    "mt_disclaimer": "The English version of this document is legally authoritative."
+    "mt_disclaimer": "The English version of this document is legally authoritative.",
+    "how_we_test_link": "How we test"
   },
   "terms": {
     "title": "Terms of Service",
@@ -68,7 +69,7 @@
     "s1_sub1_li1_label": "Profile Names",
     "s1_sub1_li1_text": "Names you save for charts — stored only in this browser, never sent to us",
     "s1_sub1_li2_label": "Birth Details",
-    "s1_sub1_li2_text": "Date, time, and place of birth, used on-device to compute your chart and stored only in this browser",
+    "s1_sub1_li2_text": "Date, time, and place of birth, used on-device to compute your chart, and where you live now if you add it in Profile settings; all stored only in this browser",
     "s1_sub1_li3_label": "Chat Content",
     "s1_sub1_li3_text": "Questions and interpretations are stored in this browser; when you use optional AI, the prompt is also sent to your chosen provider as described below",
     "s1_sub2_heading": "Where It Lives",
@@ -152,5 +153,37 @@
     "questions_heading": "Questions?",
     "questions_p1_prefix": "Contact us at",
     "questions_p1_suffix": "for any privacy-related questions."
+  },
+  "how_we_test": {
+    "title": "How we test",
+    "last_updated": "October 15, 2026",
+    "lede": "We check whether a reading picks out the month of a real life event better than random months do. So far it does not. That is why AlmaMesh readings are for reflection: they show what your chart highlights, not what is coming.",
+    "chart_title": "Lift over chance, by technique",
+    "chart_caption": "1.0 is chance. Each bar is a 95% range, and every range includes 1.0.",
+    "axis_chance": "chance",
+    "techniques": {
+      "baseline": "Baseline: dasha periods and slow-planet transits",
+      "exact_transits": "+ exact transits (a slow planet within 1° of a birth planet)",
+      "obstacles": "+ the obstacles theme (legal matters and accidents only)",
+      "ashtakavarga": "+ Ashtakavarga strength of transits",
+      "vargas": "+ divisional-chart lords (D9, D10, D30)"
+    },
+    "events": "{{n}} events",
+    "what_heading": "What we test",
+    "what_p1": "Take a dated life event, like a marriage, a job change or a loss in the family. Score every month in the six years around it with the same calculations the app uses: {{window}} months in all. Then ask: is the real month among the top {{top}}?",
+    "what_p2": "Picking {{top}} of {{window}} months at random lands on the right one about 4% of the time. We also score each chart on placebo months with no event, so a chart that rates every month highly cannot look good. Lift compares the real months with the placebos: 1.0 means no better than chance.",
+    "data_heading": "What we test it on",
+    "data_p1": "{{events}} dated events from {{people}} people with reliably recorded birth times, from Astro-Databank, a research database we use under licence. Most of these people are public figures.",
+    "data_p2": "The licence allows totals only. We never publish names, birth details, single events or examples, and none of that data is in the app.",
+    "result_heading": "What we found",
+    "result_p1": "No lift over chance. The baseline scores {{baseline}}, and none of the four techniques we added moves it: every range above includes 1.0.",
+    "meaning_heading": "What this means for you",
+    "meaning_p1": "Readings stay specific. They name the dasha lords, transits and dated windows behind each theme, compare periods, and say plainly when hard themes such as legal friction or losses stand out.",
+    "meaning_p2": "But they are for reflection. Use them to think about a period, not as a reason to expect a particular event.",
+    "bar_heading": "How a technique earns stronger wording",
+    "bar_p1": "Each test is written down before it runs. A new technique is scored on half of the people first. Only if it beats chance there, after correcting for every test we ran, does it go to the other half, held out and unseen. Only a technique that passes that held-out test can make the app's wording stronger. None has so far.",
+    "bar_p2": "One area is being re-tested on held-out data.",
+    "rerun_heading": "We keep testing",
+    "rerun_p1": "We re-run this test with every release, so a change to the engine cannot quietly make readings look better than they are."
   }
 }

@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react'
 import { VitePWA, type VitePluginPWAAPI } from 'vite-plugin-pwa'
 import { vitePrerenderPlugin } from 'vite-prerender-plugin'
 import path from 'path'
-import { existsSync, writeFileSync, readFileSync, readdirSync } from 'fs'
+import { existsSync, writeFileSync, readFileSync, readdirSync, renameSync, rmSync } from 'fs'
 import { createHash } from 'crypto'
 import { PUBLIC_ROUTE_PATHS, prerenderOutputFile } from './src/seo/routeHead'
 import { createBuildIdentity } from './src/lib/buildIdentity'
@@ -156,6 +156,30 @@ function yogaWasmAssetPlugin(): Plugin {
         quotedDataUri,
         `String(import.meta.ROLLUP_FILE_URL_${referenceId}).split('/').pop()`,
       )
+    },
+  }
+}
+
+// Vite writes its chunk manifest into outDir, and Cloudflare Pages would serve
+// it publicly. Vite 8 refuses a manifest path outside outDir, so move it out
+// after the bundle is written. scripts/verify-chat-lazy.mjs reads the moved copy.
+function moveManifestOutOfDistPlugin(): Plugin {
+  let outDir = 'dist'
+  return {
+    name: 'almamesh-move-manifest-out-of-dist',
+    apply: 'build',
+    enforce: 'post',
+    configResolved(config) {
+      outDir = config.build.outDir
+    },
+    closeBundle: {
+      order: 'post',
+      handler() {
+        const from = path.resolve(__dirname, outDir, '.vite')
+        const to = path.resolve(__dirname, '.build-manifest')
+        rmSync(to, { recursive: true, force: true })
+        if (existsSync(from)) renameSync(from, to)
+      },
     },
   }
 }
@@ -512,7 +536,7 @@ const NON_ROOT_PUBLIC_ROUTES: readonly string[] = PUBLIC_ROUTE_PATHS.filter((p) 
 // Spec 064 — build-time prerender of the PUBLIC routes only (landing + legal).
 // `src/prerender-entry.tsx` runs IN NODE during `vite build` and renders the
 // engine-free public shells to real per-route HTML (dist/index.html + the FLAT
-// dist/{welcome,privacy,terms,data-deletion}.html — see flattening below) with
+// dist/{welcome,privacy,terms,data-deletion,how-we-test}.html — see flattening below) with
 // per-route head tags from src/seo/routeHead.ts — so crawlers get content, not
 // an empty JS shell. Private app routes stay 100% client-rendered. Runs BEFORE
 // VitePWA in the plugin list: the prerendered pages are emitted during
@@ -614,7 +638,11 @@ function previewPublicRoutesMiddleware(): Plugin {
 // every Resource Timing entry. Each URL is written into a Cache Storage list as
 // it is seen, because an idle worker can be stopped and restarted empty. A
 // `{ type: 'almamesh:egress-probe' }` message answers on its port with every
-// URL fetched. It observes; it never changes a request.
+// URL fetched. It also writes the worker's lifecycle under /__sw-event/ (script
+// start, install, activate, a rejected install/activate waitUntil, a failed or
+// non-OK fetch, an uncaught error), so a page can read why an install stopped
+// even when no worker is left to ask (e2e/serviceWorkerActivation.ts). It
+// observes; it never changes a request.
 const EXIT_GATE_HOOKS_BUILD = process.env.VITE_EXIT_GATE_HOOKS === '1'
 const SW_EGRESS_PROBE = 'sw-egress-probe.js'
 const SW_EGRESS_PROBE_SOURCE = `(() => {
@@ -626,10 +654,35 @@ const SW_EGRESS_PROBE_SOURCE = `(() => {
     seen.add(name);
     caches.open(CACHE).then((cache) => cache.put(PREFIX + encodeURIComponent(name), new Response(''))).catch(() => {});
   };
+  const EVENTS = '/__sw-event/';
+  const instance = Math.random().toString(36).slice(2, 8);
+  let sequence = 0;
+  const describe = (reason) => String(reason && reason.name ? reason.name + ': ' + reason.message : reason).slice(0, 300);
+  const note = (text) => {
+    const key = EVENTS + Date.now() + '-' + String(sequence++).padStart(5, '0') + '-' + instance + '/' + encodeURIComponent(text);
+    caches.open(CACHE).then((cache) => cache.put(key, new Response(''))).catch(() => {});
+  };
+  note('script-start');
+  self.addEventListener('install', () => note('install'));
+  self.addEventListener('activate', () => note('activate'));
+  self.addEventListener('error', (event) => note('error: ' + describe(event.message)));
+  self.addEventListener('unhandledrejection', (event) => note('unhandledrejection: ' + describe(event.reason)));
+  const originalWaitUntil = ExtendableEvent.prototype.waitUntil;
+  ExtendableEvent.prototype.waitUntil = function (promise) {
+    const type = this.type;
+    if (type === 'install' || type === 'activate') {
+      Promise.resolve(promise).catch((error) => note(type + ' rejected: ' + describe(error)));
+    }
+    return originalWaitUntil.call(this, promise);
+  };
   const originalFetch = self.fetch;
   self.fetch = function (input, init) {
-    try { keep(new Request(input, init).url); } catch (error) { keep(String(input)); }
-    return originalFetch.apply(this, arguments);
+    let url = String(input);
+    try { url = new Request(input, init).url; } catch (error) { /* keep String(input) */ }
+    keep(url);
+    const response = originalFetch.apply(this, arguments);
+    response.then((r) => { if (!r.ok) note('fetch ' + r.status + ' ' + url); }, (error) => note('fetch failed ' + url + ': ' + describe(error)));
+    return response;
   };
   new PerformanceObserver((list) => { for (const entry of list.getEntries()) keep(entry.name); })
     .observe({ type: 'resource', buffered: true });
@@ -682,6 +735,7 @@ export default defineConfig({
     // (keeps the 26.86 MB asyncify wasm out of the Pages upload).
     ortWasmOnlyPlugin(),
     noSourcemapsPlugin(),
+    moveManifestOutOfDistPlugin(),
     previewProdBrowserHeadersPlugin(),
     ...prerenderPublicRoutesPlugin(),
     flattenPrerenderedRoutesPlugin(),
@@ -761,6 +815,8 @@ export default defineConfig({
     // build lane forgets it. The workbox `**/*.map` globIgnore above is kept as
     // harmless defence-in-depth. Pinned by src/lib/__tests__/securityHeaders.test.ts.
     sourcemap: false,
+    // dist/.vite/manifest.json lets scripts/verify-chat-lazy.mjs walk the chunk graph.
+    manifest: true,
     // The largest legitimate lazy chunks are intentional and code-split, so the
     // 500 kB default warning is pure noise: the offline geocoder city DB
     // (~2 MB, loaded only in onboarding's location search) and the React/vendor

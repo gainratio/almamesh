@@ -149,7 +149,8 @@
   "footer": {
     "privacy": "Política de privacidad",
     "terms": "Términos del servicio",
-    "data_deletion": "Eliminación de datos"
+    "data_deletion": "Eliminación de datos",
+    "how_we_test": "Cómo lo comprobamos"
   },
   "provenance": {
     "aria": "Procedencia del cálculo"

@@ -313,10 +313,13 @@ Privacy copy is scoped accordingly (landing/legal/mesh say "birth date, time,
 and chart stay on the device unless you turn on the optional AI"; with AI on, the
 sanitized chart's planet positions and period dates can reveal the birth date, and
 the AI disclosures say so; the privacy policy discloses the geocoder as touchpoint
-#2). Places named in chat are NOT a third egress: `resolve_place` is offline-only
-and full-tier only; it searches the bundled city list and sends the model only a
-label and an IANA zone, never coordinates (`lib/placeTool.ts`). NOTE: the engine emits the
-full D1–D60 varga set; the adapter populates `varga_ctx` (D9 Navamsa rendered in
+#2). Places named in chat are NOT a third egress: chat has two tools, `read_period`
+(`lib/readPeriod.ts`, any span up to 24 months in one call) and `travel`
+(`lib/travelTool.ts`). A place named in either resolves offline against the bundled
+city list (`lib/geo/placeLookup.ts`, lazy-loaded); the model gets only a label and an
+IANA zone, never coordinates (those stay on the device for the Moon at that place).
+An ambiguous name opens a "Which Springfield?" picker for the user instead of a guess.
+NOTE: the engine emits the full D1–D60 varga set; the adapter populates `varga_ctx` (D9 Navamsa rendered in
 both kundli styles + the print report, D1–D60 in the predictive "Divisional Charts"
 tab) and the predictive contexts above.
 

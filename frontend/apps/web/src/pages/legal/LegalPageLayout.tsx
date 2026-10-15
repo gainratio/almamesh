@@ -6,12 +6,16 @@ interface LegalPageLayoutProps {
   title: string;
   lastUpdated: string;
   children: React.ReactNode;
+  /** Shown above the prose body, outside its typography styles (a lede, a figure). */
+  lead?: React.ReactNode;
+  /** The "English is legally authoritative" note; off for pages that are not legal documents. */
+  translationNote?: boolean;
 }
 
-export function LegalPageLayout({ title, lastUpdated, children }: LegalPageLayoutProps) {
+export function LegalPageLayout({ title, lastUpdated, children, lead, translationNote = true }: LegalPageLayoutProps) {
   const navigate = useNavigate();
   const { t, i18n } = useTranslation('legal');
-  const isTranslated = i18n.language !== 'en';
+  const isTranslated = translationNote && i18n.language !== 'en';
 
   return (
     <div className="min-h-screen bg-background-primary flex flex-col">
@@ -58,6 +62,8 @@ export function LegalPageLayout({ title, lastUpdated, children }: LegalPageLayou
           {t('layout.last_updated', { date: lastUpdated })}
         </p>
 
+        {lead}
+
         <div className="prose prose-invert max-w-none text-text-secondary [&_h2]:text-text-primary [&_h2]:text-xl [&_h2]:font-semibold [&_h2]:mt-8 [&_h2]:mb-4 [&_h3]:text-text-primary [&_h3]:text-lg [&_h3]:font-medium [&_h3]:mt-6 [&_h3]:mb-3 [&_p]:mb-4 [&_ul]:mb-4 [&_ul]:list-disc [&_ul]:pl-6 [&_li]:mb-2 [&_a]:text-accent-blue [&_a]:underline [&_a]:hover:text-accent-gold [&_strong]:text-text-primary">
           {children}
         </div>
@@ -75,6 +81,9 @@ export function LegalPageLayout({ title, lastUpdated, children }: LegalPageLayou
             </Link>
             <Link to="/data-deletion" className="hover:text-text-secondary transition-colors">
               {t('layout.data_deletion_link')}
+            </Link>
+            <Link to="/how-we-test" className="hover:text-text-secondary transition-colors">
+              {t('layout.how_we_test_link')}
             </Link>
           </div>
           <span>{t('layout.copyright', { year: new Date().getFullYear() })}</span>

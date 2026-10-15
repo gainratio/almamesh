@@ -11,6 +11,7 @@
       "house": 8,
       "sign": "capricorn",
       "dignity": "neutral",
+      "strength": "weak",
       "combust": false,
       "retro": false,
       "functional": "malefic",
@@ -28,6 +29,7 @@
       "house": 3,
       "sign": "leo",
       "dignity": "neutral",
+      "strength": "strong",
       "combust": false,
       "retro": false,
       "functional": "maraka",
@@ -46,6 +48,7 @@
       "house": 6,
       "sign": "scorpio",
       "dignity": "own",
+      "strength": "strong",
       "combust": false,
       "retro": false,
       "functional": "malefic",
@@ -64,6 +67,7 @@
       "house": 7,
       "sign": "sagittarius",
       "dignity": "neutral",
+      "strength": "strong",
       "combust": false,
       "retro": true,
       "functional": "benefic",
@@ -84,6 +88,7 @@
       "house": 1,
       "sign": "gemini",
       "dignity": "neutral",
+      "strength": "strong",
       "combust": false,
       "retro": true,
       "functional": "maraka",
@@ -103,6 +108,7 @@
       "house": 8,
       "sign": "capricorn",
       "dignity": "neutral",
+      "strength": "weak",
       "combust": true,
       "retro": true,
       "functional": "benefic",
@@ -121,6 +127,7 @@
       "house": 7,
       "sign": "sagittarius",
       "dignity": "neutral",
+      "strength": "weak",
       "combust": true,
       "retro": false,
       "functional": "benefic",
@@ -137,6 +144,7 @@
       "house": 8,
       "sign": "capricorn",
       "dignity": "neutral",
+      "strength": "ordinary",
       "combust": false,
       "retro": true,
       "functional": "neutral",
@@ -150,6 +158,7 @@
       "house": 2,
       "sign": "cancer",
       "dignity": "neutral",
+      "strength": "ordinary",
       "combust": false,
       "retro": true,
       "functional": "neutral",
@@ -164,25 +173,33 @@
       "level": "maha",
       "lord": "rahu",
       "start": "2019-05-01",
-      "end": "2019-06-01"
+      "end": "2019-06-01",
+      "from_parent": null,
+      "relation": null
     },
     {
       "level": "antar",
       "lord": "rahu",
       "start": "2019-05-01",
-      "end": "2019-06-01"
+      "end": "2019-06-01",
+      "from_parent": 1,
+      "relation": "support"
     },
     {
       "level": "pratyantar",
       "lord": "venus",
       "start": "2019-05-01",
-      "end": "2019-06-01"
+      "end": "2019-06-01",
+      "from_parent": 1,
+      "relation": "support"
     }
   ],
   "sookshma": {
     "lord": "jupiter",
     "start": "2019-04-30",
-    "end": "2019-05-22"
+    "end": "2019-05-22",
+    "from_parent": 6,
+    "relation": "friction"
   },
   "sandhi": null,
   "yogini": {
@@ -190,6 +207,12 @@
     "lord": "mercury",
     "start": "2016-05-03",
     "end": "2021-05-03"
+  },
+  "yogini_antar": {
+    "name": "sankata",
+    "lord": "rahu",
+    "start": "2018-11-02",
+    "end": "2019-12-13"
   },
   "segments": [
     {
@@ -284,52 +307,6 @@
   "double_transit": [],
   "themes": [
     {
-      "domain": "education",
-      "houses": [
-        4,
-        5
-      ],
-      "direction": "mixed",
-      "strength": "strong",
-      "strength_pct": 59,
-      "confidence": "high",
-      "agreement": {
-        "vimshottari": true,
-        "yogini": true,
-        "transit": true
-      },
-      "factors": [
-        "Venus (pratyantar) rules the 5th",
-        "Jupiter transits the 4th from the Moon",
-        "Yogini Bhadrika (Mercury) rules the 4th"
-      ],
-      "windows": []
-    },
-    {
-      "domain": "family",
-      "houses": [
-        2,
-        4,
-        5,
-        9
-      ],
-      "direction": "supportive",
-      "strength": "strong",
-      "strength_pct": 50,
-      "confidence": "high",
-      "agreement": {
-        "vimshottari": true,
-        "yogini": true,
-        "transit": true
-      },
-      "factors": [
-        "Venus (pratyantar) rules the 5th",
-        "Jupiter transits the 4th from the Moon",
-        "Yogini Bhadrika (Mercury) rules the 4th"
-      ],
-      "windows": []
-    },
-    {
       "domain": "health",
       "houses": [
         1,
@@ -345,31 +322,15 @@
         "yogini": true,
         "transit": true
       },
+      "dasha": {
+        "vimshottari": 71,
+        "yogini": 92,
+        "tone": "supportive"
+      },
       "factors": [
         "Rahu (maha) occupies the 8th",
         "Jupiter transits the 6th from the lagna",
         "Venus (pratyantar) occupies the 8th"
-      ],
-      "windows": []
-    },
-    {
-      "domain": "relationships",
-      "houses": [
-        7
-      ],
-      "direction": "challenging",
-      "strength": "moderate",
-      "strength_pct": 38,
-      "confidence": "high",
-      "agreement": {
-        "vimshottari": true,
-        "yogini": true,
-        "transit": true
-      },
-      "factors": [
-        "Venus (pratyantar) is a karaka of relationships",
-        "Saturn transits the 7th from the lagna",
-        "Yogini Bhadrika (Mercury) occupies the 7th"
       ],
       "windows": []
     },
@@ -389,6 +350,11 @@
         "yogini": false,
         "transit": true
       },
+      "dasha": {
+        "vimshottari": 71,
+        "yogini": 25,
+        "tone": "supportive"
+      },
       "factors": [
         "Rahu (maha) occupies the 8th: unexpected setbacks",
         "Jupiter transits the 6th from the lagna",
@@ -403,6 +369,88 @@
       ]
     },
     {
+      "domain": "education",
+      "houses": [
+        4,
+        5
+      ],
+      "direction": "mixed",
+      "strength": "strong",
+      "strength_pct": 59,
+      "confidence": "medium",
+      "agreement": {
+        "vimshottari": false,
+        "yogini": true,
+        "transit": true
+      },
+      "dasha": {
+        "vimshottari": 8,
+        "yogini": 67,
+        "tone": "supportive"
+      },
+      "factors": [
+        "Venus (pratyantar) rules the 5th",
+        "Jupiter transits the 4th from the Moon",
+        "Yogini Bhadrika (Mercury) rules the 4th"
+      ],
+      "windows": []
+    },
+    {
+      "domain": "family",
+      "houses": [
+        2,
+        4,
+        5,
+        9
+      ],
+      "direction": "supportive",
+      "strength": "strong",
+      "strength_pct": 50,
+      "confidence": "medium",
+      "agreement": {
+        "vimshottari": false,
+        "yogini": true,
+        "transit": true
+      },
+      "dasha": {
+        "vimshottari": 8,
+        "yogini": 67,
+        "tone": "supportive"
+      },
+      "factors": [
+        "Venus (pratyantar) rules the 5th",
+        "Jupiter transits the 4th from the Moon",
+        "Yogini Bhadrika (Mercury) rules the 4th"
+      ],
+      "windows": []
+    },
+    {
+      "domain": "relationships",
+      "houses": [
+        7
+      ],
+      "direction": "challenging",
+      "strength": "moderate",
+      "strength_pct": 38,
+      "confidence": "medium",
+      "agreement": {
+        "vimshottari": false,
+        "yogini": true,
+        "transit": true
+      },
+      "dasha": {
+        "vimshottari": 4,
+        "yogini": 67,
+        "tone": "supportive"
+      },
+      "factors": [
+        "Venus (pratyantar) is a karaka of relationships",
+        "Saturn transits the 7th from the lagna",
+        "Yogini Bhadrika (Mercury) occupies the 7th"
+      ],
+      "windows": []
+    },
+    {
       "domain": "spiritual",
       "houses": [
         9,
@@ -412,36 +460,21 @@
       "direction": "mixed",
       "strength": "strong",
       "strength_pct": 51,
-      "confidence": "medium",
+      "confidence": "low",
       "agreement": {
-        "vimshottari": true,
+        "vimshottari": false,
         "yogini": false,
         "transit": true
+      },
+      "dasha": {
+        "vimshottari": 8,
+        "yogini": 0,
+        "tone": "supportive"
       },
       "factors": [
         "Venus (pratyantar) rules the 12th",
         "Saturn transits the 5th from the Moon",
         "Saturn's SAV in Sagittarius is 21"
-      ],
-      "windows": []
-    },
-    {
-      "domain": "career",
-      "houses": [
-        10
-      ],
-      "direction": "mixed",
-      "strength": "moderate",
-      "strength_pct": 48,
-      "confidence": "low",
-      "agreement": {
-        "vimshottari": false,
-        "yogini": true,
-        "transit": false
-      },
-      "factors": [
-        "Yogini Bhadrika (Mercury) is a karaka of career",
-        "Saturn strength is 48% (moderate)"
       ],
       "windows": []
     },
@@ -460,8 +493,38 @@
         "yogini": false,
         "transit": false
       },
+      "dasha": {
+        "vimshottari": 0,
+        "yogini": 0,
+        "tone": null
+      },
       "factors": [
         "Jupiter strength is 50% (strong)"
+      ],
+      "windows": []
+    },
+    {
+      "domain": "career",
+      "houses": [
+        10
+      ],
+      "direction": "mixed",
+      "strength": "moderate",
+      "strength_pct": 48,
+      "confidence": "low",
+      "agreement": {
+        "vimshottari": false,
+        "yogini": false,
+        "transit": false
+      },
+      "dasha": {
+        "vimshottari": 0,
+        "yogini": 33,
+        "tone": null
+      },
+      "factors": [
+        "Yogini Bhadrika (Mercury) is a karaka of career",
+        "Saturn strength is 48% (moderate)"
       ],
       "windows": []
     }
@@ -478,7 +541,11 @@
   },
   "rules": [
     "functional nature (BPHS): yogakaraka; lord of 1/5/9 benefic; else of 3/6/8/11 malefic; else of 2/7 maraka; else neutral. A 12th lord takes its other house's nature, alone neutral",
-    "agreement: vimshottari = a running dasha lord, yogini = the Yogini lord, rules or occupies a domain house or is its karaka; transit = Jupiter/Saturn in a domain house from lagna/Moon",
+    "dasha score 0-100: a lord sitting in or ruling a domain house counts 1, a karaka only 0.5; times strength (strong 1, ordinary 0.75, weak 0.5), maha 3 antar 2 pratyantar 1, by time",
+    "agreement: vimshottari / yogini = that dasha score is 50 or more (Yogini maha 2, antar 1); transit = Jupiter/Saturn in a domain house from the lagna or the Moon",
+    "strength: combust weak; retrograde strong; exalted or own strong; debilitated weak; friend's sign strong and enemy's weak by the Shadbala minimum; else ordinary. Nodes ordinary",
+    "relation: a sub-lord counted from its parent lord; 1/4/5/7/9/10/11 support, 6/8/12 from it friction, 2/3 neutral (BPHS antardasha chapters)",
+    "dasha tone: per tied lord, functional nature + strength + relation; all positive supportive, all negative challenging, else mixed",
     "confidence = agreeing techniques: 3 high, 2 medium, 0-1 low",
     "obstacles (6th/8th/12th): karakas Saturn/Mars/Rahu are context only; strength = agreeing techniques + a dated window: 3-4 with the window strong, 2+ moderate, 0-1 weak",
     "direction = domain transit severity + its window severities, neutral ignored: all supportive, all challenging, else mixed",

@@ -75,7 +75,7 @@ describe("report-v2 prompts", () => {
       const user = buildSectionMessages(section, REPORT_CHART, "layman", false, "en", REPORT_PROMPT_SET)[1].content;
       expect(user).toContain("=== ENGINE REPORT FACTS");
       expect(user).not.toContain('"ayanamsa_value"');
-      expect(user).not.toContain("=== ENGINE PREDICTIVE CONTEXT");
+      expect(user).not.toContain("=== ENGINE TIMING CONTEXT");
     }
   });
 

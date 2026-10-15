@@ -1,23 +1,26 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
-import { useChatStore } from '@almamesh/store';
-import { hydrateLlmSettings, openRouterPreset, writeLlmSettings, type AgentTool } from '@almamesh/llm';
-import type { ComponentProps } from 'react';
+import { useChartLibraryStore, useChatStore, type StoredChart } from '@almamesh/store';
+import { hydrateLlmSettings, openRouterPreset, writeLlmSettings } from '@almamesh/llm';
 
 vi.mock('../../../../lib/storeSaved', () => ({ waitForStoreSaved: vi.fn(async () => undefined) }));
 
+// The card's trip context is built in the panel from the chart and the pin (tripContext.ts has its own tests).
+const tripMock = vi.hoisted(() => ({ tripContext: vi.fn() }));
+vi.mock('../../../../lib/tripContext', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../../lib/tripContext')>()),
+  tripContext: tripMock.tripContext,
+}));
+
 import '../../../../i18n/config';
-import { ChatPanel, type ChatTripKit } from '../ChatPanel';
+import { ChatPanel, type ChatAsk } from '../ChatPanel';
 import { __resetMemoryForTest, __setMemoryForTest } from '../../../../lib/chatMemory';
 import type { TripContext } from '../../../../lib/tripContext';
 
-type AskFn = NonNullable<ComponentProps<typeof ChatPanel>['onAskQuestionStream']>;
 const SINGAPORE = { label: 'Singapore', timezone: 'Asia/Singapore', latitude: 1.29, longitude: 103.85 };
 const MAY_2019_SG = { start: '2019-05-01', end: '2019-05-31', granularity: 'month', place: SINGAPORE } as const;
-const tool = (name: string): AgentTool => ({ name, description: name, parameters: { type: 'object', properties: {} }, execute: () => ({}) });
-const TRIP_TOOLS = ['get_natal_summary', 'get_trip_context', 'get_timing', 'resolve_place', 'time_travel'].map(tool);
-const TODAY_TOOLS = ['get_current_datetime', 'get_chart_facts', 'get_timing'].map(tool);
+const STORED = { chart_id: 'c1', profile_id: 'p1', sidereal_chart: { lagna: {}, planets: {}, houses: {}, yogas: [] }, birth_data: {} } as unknown as StoredChart;
 const TRIP: TripContext = {
   period: { start: '2019-05-01', end: '2019-05-31', granularity: 'month', tense: 'past', label: 'May 2019', short: 'May 2019' },
   place: { label: 'Singapore', timezone: 'Asia/Singapore', source: 'trip', display: 'Singapore' },
@@ -26,13 +29,11 @@ const TRIP: TripContext = {
   dashas: { maha: [{ lord: 'saturn', start_month: '2017-01', end_month: '2036-01' }],
     antar: [{ maha_lord: 'saturn', lord: 'saturn', start_month: '2017-01', end_month: '2019-05' }, { maha_lord: 'saturn', lord: 'mercury', start_month: '2019-05', end_month: '2021-09' }], notes: [] },
 };
-const KIT: ChatTripKit = { toolsFor: (asOf) => (asOf ? TRIP_TOOLS : TODAY_TOOLS), tripFor: (asOf) => (asOf ? TRIP : undefined) };
-
-function renderPanel(onAsk = vi.fn<AskFn>(async () => ({ answer: 'ok' }))) {
+function renderPanel(onAsk = vi.fn<ChatAsk>(async () => 'ok')) {
   writeLlmSettings(openRouterPreset('sk-or-v1-0000-synthetic-test-key', 'test-org/test-model'));
   render(
     <MemoryRouter>
-      <ChatPanel personName="Marco" profileId="p1" chartId="c1" viewMode="layman" birthYear={1990} onAskQuestionStream={onAsk} chatKit={KIT} />
+      <ChatPanel personName="Marco" profileId="p1" chartId="c1" viewMode="layman" birthYear={1990} onAskQuestionStream={onAsk} />
     </MemoryRouter>,
   );
   return onAsk;
@@ -40,6 +41,8 @@ function renderPanel(onAsk = vi.fn<AskFn>(async () => ({ answer: 'ok' }))) {
 
 beforeEach(() => {
   hydrateLlmSettings(null);
+  tripMock.tripContext.mockReset().mockReturnValue(TRIP);
+  useChartLibraryStore.setState({ charts: { c1: STORED }, hydrated: true });
   useChatStore.setState({ threads: {}, messages: {}, summaries: {} });
   __setMemoryForTest({
     indexMessage: vi.fn().mockResolvedValue(undefined), retrieve: vi.fn().mockResolvedValue([]),
@@ -77,8 +80,8 @@ describe('a trip thread shows what grounds it', () => {
     const id = useChatStore.getState().startThread('p1', 'c1', MAY_2019_SG);
     useChatStore.getState().appendMessage(id, 'user', 'How was work?');
     useChatStore.getState().appendMessage(id, 'assistant', 'Steady.', { parts: [
-      { type: 'tool-call', toolCallId: 'a', toolName: 'get_timing', args: { section: 'transits' }, status: 'complete',
-        result: { data: { gochara: [{ graha: 'saturn', sign: 'sagittarius' }, { graha: 'jupiter', sign: 'scorpio' }, { graha: 'moon', sign: 'aries' }] } } },
+      { type: 'tool-call', toolCallId: 'a', toolName: 'read_period', args: { start: '2019-05' }, status: 'complete',
+        result: { sky: [{ graha: 'saturn', sign: 'sagittarius' }, { graha: 'jupiter', sign: 'scorpio' }, { graha: 'jupiter', sign: 'sagittarius' }, { graha: 'moon', sign: 'aries' }] } },
       { type: 'text', text: 'Steady.' },
     ] });
     renderPanel();
@@ -91,26 +94,32 @@ describe('a trip thread shows what grounds it', () => {
     expect(screen.queryByTestId('trip-context-card')).toBeNull();
   });
 
-  it('the Tools chip lists exactly the tools registered for this thread', () => {
+  it('the Tools chip lists the two tools the model has, in plain words', () => {
     useChatStore.getState().startThread('p1', 'c1', MAY_2019_SG);
     renderPanel();
     fireEvent.click(screen.getByTestId('chat-tools-button'));
     const rows = within(screen.getByTestId('chat-tools-list')).getAllByRole('listitem');
-    expect(rows.map((row) => row.getAttribute('data-tool-name'))).toEqual(TRIP_TOOLS.map((t) => t.name));
-    expect(rows[0]?.textContent).toBe('Natal summary');
+    expect(rows.map((row) => row.getAttribute('data-tool-name'))).toEqual(['read_period', 'travel']);
+    expect(rows.map((row) => row.textContent)).toEqual(['Read a period: dashas, lords, sky, themes, dated windows', 'Travel to another time']);
+  });
+
+  it('the card is built from the stored chart and the trip pin', () => {
+    useChatStore.getState().startThread('p1', 'c1', MAY_2019_SG);
+    renderPanel();
+    expect(tripMock.tripContext).toHaveBeenCalledWith(expect.objectContaining({ chart: STORED.sidereal_chart, asOf: expect.objectContaining({ start: '2019-05-01' }), language: 'en' }));
   });
 
   it('renders a row for each persisted tool call, then the answer', () => {
     const id = useChatStore.getState().startThread('p1', 'c1', MAY_2019_SG);
     useChatStore.getState().appendMessage(id, 'user', 'How was work?');
     useChatStore.getState().appendMessage(id, 'assistant', 'Steady.', { parts: [
-      { type: 'tool-call', toolCallId: 'a', toolName: 'get_trip_context', args: {}, status: 'complete', result: { period: { label: 'May 2019' }, place: { label: 'Singapore' } } },
-      { type: 'tool-call', toolCallId: 'b', toolName: 'get_timing', args: { section: 'dashas' }, status: 'complete', result: { data: {} } },
+      { type: 'tool-call', toolCallId: 'a', toolName: 'read_period', args: { start: '2019-05' }, status: 'complete', result: { period: { label: 'May 2019' }, place: { label: 'Singapore' } } },
+      { type: 'tool-call', toolCallId: 'b', toolName: 'travel', args: { to: 'today', place: null }, status: 'complete', result: { status: 'queued', action: 'back_to_today' } },
       { type: 'text', text: 'Steady.' },
     ] });
     renderPanel();
     const rows = screen.getAllByTestId('chat-tool-call');
-    expect(rows.map((row) => row.getAttribute('data-tool-name'))).toEqual(['get_trip_context', 'get_timing']);
+    expect(rows.map((row) => row.getAttribute('data-tool-name'))).toEqual(['read_period', 'travel']);
     expect(rows[0]?.textContent).toContain('Singapore');
     expect(screen.getByText('Steady.')).toBeTruthy();
   });

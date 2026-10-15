@@ -1,7 +1,8 @@
 import { test, expect, type Page, type Request } from '@playwright/test';
 import { bootEngine, seedChart, DELHI_SEED, LLM_SETTINGS_KEY } from './interpretation.helpers';
 import { E2E_REAL_MODEL, PRODUCT_CHAT_DEFAULT_MODEL } from './realModel';
-import { parseSuccessfulToolResult } from './agenticToolResult.helpers';
+import { parseCompletedToolResult } from './agenticToolResult.helpers';
+import { gotoSettled } from './portableInvariants.helpers';
 
 /**
  * Dashboard LIVE validation against REAL OpenRouter — three headline changes:
@@ -26,6 +27,14 @@ import { parseSuccessfulToolResult } from './agenticToolResult.helpers';
  * Run:  bun run test:e2e:dashboard:agentic:real   (from apps/web)
  *       (set OPENROUTER_API_KEY=... or the test self-skips.)
  */
+
+/**
+ * The chat model the run expects on the wire: the product default, or DASHBOARD_AGENTIC_CHAT_MODEL
+ * (e.g. the gpt-sol entry of TRIP_ACCEPTANCE_MODELS), which is then saved as the chat model in AI settings.
+ */
+const CHAT_MODEL_OVERRIDE = process.env.DASHBOARD_AGENTIC_CHAT_MODEL || undefined;
+const EXPECTED_CHAT_MODEL = CHAT_MODEL_OVERRIDE ?? PRODUCT_CHAT_DEFAULT_MODEL;
+const CHAT_MODEL_SETTING = CHAT_MODEL_OVERRIDE ? { chatModel: CHAT_MODEL_OVERRIDE } : {};
 
 /** Strings that signal a non-real / placeholder chat answer. */
 const PLACEHOLDERS = ['pending', 'please retry', 'loading', 'no answer available'];
@@ -64,7 +73,7 @@ function observeAgentRequests(page: Page): ObservedAgentRequest[] {
     if (request.method() !== 'POST' || !request.url().endsWith('/chat/completions')) return;
     try {
       const body = request.postDataJSON() as AgentRequestBody;
-      if (!body.tools?.some((tool) => tool.function?.name === 'get_current_datetime')) return;
+      if (!body.tools?.some((tool) => tool.function?.name === 'read_period')) return;
       const observed = { body };
       requests.push(observed);
       byRequest.set(request, observed);
@@ -77,13 +86,6 @@ function observeAgentRequests(page: Page): ObservedAgentRequest[] {
     if (observed) observed.responseText = response.text().catch(() => null);
   });
   return requests;
-}
-
-interface DashaTimingResult {
-  period: { start: string; end: string; basis: string };
-  section: string;
-  shown: string;
-  data: { maha: Array<{ lord: string }>; antar: Array<{ lord: string }> };
 }
 
 /** A later real request carries the provider's calls AND the matching local results. */
@@ -99,6 +101,7 @@ async function successfulToolPairs(requests: ObservedAgentRequest[]) {
         for (const call of message.tool_calls ?? []) calls.set(call.id, call);
       }
       // The first sighting is the full result: later rounds carry it compacted (context budget, 2026-10-13).
+      // A tool message carries no name since the tool layer redesign (2026-10-14): the call names it.
       if (message.role === 'tool' && message.tool_call_id && !results.has(message.tool_call_id)) results.set(message.tool_call_id, message);
     }
   }
@@ -107,8 +110,7 @@ async function successfulToolPairs(requests: ObservedAgentRequest[]) {
   return [...calls.values()].map((call) => {
     expect(providerCallIds.has(call.id), 'the call ID was emitted by the real provider').toBe(true);
     const message = results.get(call.id);
-    expect(message?.name).toBe(call.function.name);
-    const result = parseSuccessfulToolResult(message?.content);
+    const result = parseCompletedToolResult(message?.content);
     return { name: call.function.name, args: JSON.parse(call.function.arguments) as Record<string, unknown>, result };
   });
 }
@@ -130,44 +132,87 @@ async function providerMessages(request: ObservedAgentRequest): Promise<Array<Pi
   });
 }
 
-/** Only the last response is the final answer; earlier decision rounds may contain prose too. */
-async function finalResponseText(requests: ObservedAgentRequest[]): Promise<string> {
-  return (await providerMessages(requests.at(-1)!)).map((message) => message.content ?? '').join('');
+/** One streamed tool-call delta (OpenAI-compatible): the name arrives once, the arguments in pieces. */
+interface ProviderToolCallDelta {
+  readonly index?: number;
+  readonly function?: { readonly name?: string; readonly arguments?: string };
 }
 
-const FACT_SUMMARY_REQUEST = 'Start your answer with one compact JSON object containing period_start, period_end, maha_lords and antar_lords (arrays of the calculated lords covering that period). Use the supplied local timing data, then explain the active calculated timing in two short sentences.';
+/** The typed answer the turn ends with (the `answer` tool call, packages/llm/src/answer.ts). */
+interface TypedAnswer {
+  readonly kind: string;
+  readonly markdown: string | null;
+  readonly period: string | null;
+  readonly opening: string | null;
+  readonly dashas: { readonly maha: { readonly lord: string }; readonly antar: { readonly lord: string } } | null;
+}
 
-/** The calculated dashas an answer must restate: from get_timing's dashas section or get_period_reading. */
+/**
+ * The turn's final answer: since the tool layer redesign (2026-10-14) it is the last round's
+ * `answer` tool call, not prose. Assembled from the streamed deltas of the last response.
+ */
+async function finalAnswer(requests: ObservedAgentRequest[]): Promise<TypedAnswer> {
+  const calls = new Map<number, { name: string; args: string }>();
+  for (const message of await providerMessages(requests[requests.length - 1]!)) {
+    ((message.tool_calls ?? []) as ProviderToolCallDelta[]).forEach((delta, position) => {
+      const index = delta.index ?? position;
+      const call = calls.get(index) ?? { name: '', args: '' };
+      calls.set(index, { name: call.name + (delta.function?.name ?? ''), args: call.args + (delta.function?.arguments ?? '') });
+    });
+  }
+  const answer = [...calls.values()].find((call) => call.name === 'answer');
+  expect(answer, 'the turn ends in the typed answer call').toBeDefined();
+  return JSON.parse(answer!.args) as TypedAnswer;
+}
+
+const FACT_SUMMARY_REQUEST = 'Answer with kind "period": restate the calculated maha and antar dasha lords covering that period exactly as read_period gave them, then explain the active calculated timing in two short sentences.';
+
+/** The calculated dashas an answer must restate: from the turn's read_period reading. */
 interface CalculatedDashas {
   readonly period: { readonly start: string; readonly end: string };
   readonly maha: ReadonlyArray<{ readonly lord: string }>;
   readonly antar: ReadonlyArray<{ readonly lord: string }>;
 }
 
-function timingDashas(timing: DashaTimingResult): CalculatedDashas {
-  expect(timing.section).toBe('dashas');
-  expect(timing.shown).toBe('dashas');
-  return { period: timing.period, maha: timing.data.maha, antar: timing.data.antar };
+/** The turn's first completed read_period reading (a result with a period and dashas). */
+function readPeriodDashas(pairs: ReadonlyArray<{ readonly name: string; readonly result: Record<string, unknown> }>): CalculatedDashas {
+  const reading = pairs.find((pair) => pair.name === 'read_period' && 'period' in pair.result && 'dashas' in pair.result)?.result;
+  expect(reading, 'the turn read its period with read_period').toBeDefined();
+  const { period, dashas } = reading as unknown as { period: CalculatedDashas['period']; dashas: Omit<CalculatedDashas, 'period'> };
+  return { period, maha: dashas.maha, antar: dashas.antar };
 }
 
-function expectCalculatedSummary(answer: string, timing: CalculatedDashas): void {
+/**
+ * The typed answer restates the calculated dashas: a "period" answer whose one maha and one antar
+ * lord are among the reading's lords for that span, names the period it read, explains them, and
+ * the rendered bubble names EVERY distinct maha and antar lord the reading covers (set coverage:
+ * the typed answer holds one lord per level, the rest must be named in its text).
+ */
+async function expectCalculatedSummary(page: Page, answer: TypedAnswer, timing: CalculatedDashas, period: RegExp): Promise<void> {
   expect(timing.maha.length).toBeGreaterThan(0);
   expect(timing.antar.length).toBeGreaterThan(0);
-  const object = answer.match(/\{[^{}]*\}/)?.[0];
-  expect(object, 'a factual summary accompanies any legitimate life-event caveat').toBeDefined();
-  const summary = JSON.parse(object!) as {
-    period_start?: unknown; period_end?: unknown; maha_lords?: unknown; antar_lords?: unknown;
-  };
-  expect(summary.period_start).toBe(timing.period.start);
-  expect(summary.period_end).toBe(timing.period.end);
-  const normalized = (lords: unknown) => {
-    expect(Array.isArray(lords)).toBe(true);
-    return [...new Set((lords as string[]).map((lord) => lord.trim().toLowerCase()))].sort();
-  };
-  expect(normalized(summary.maha_lords)).toEqual(normalized(timing.maha.map((row) => row.lord)));
-  expect(normalized(summary.antar_lords)).toEqual(normalized(timing.antar.map((row) => row.lord)));
-  expect(answer.slice(answer.indexOf(object!) + object!.length).replace(/[`\s]/g, '').length,
-    'the answer includes an explanation after its factual summary').toBeGreaterThan(40);
+  expect(answer.kind, 'a read period is answered with its facts').toBe('period');
+  expect(answer.dashas, 'a factual summary accompanies any legitimate life-event caveat').not.toBeNull();
+  const lords = (rows: ReadonlyArray<{ readonly lord: string }>) => rows.map((row) => row.lord.trim().toLowerCase());
+  const maha = answer.dashas!.maha.lord.trim().toLowerCase();
+  const antar = answer.dashas!.antar.lord.trim().toLowerCase();
+  expect(lords(timing.maha), 'the answer restates a calculated maha lord').toContain(maha);
+  expect(lords(timing.antar), 'the answer restates a calculated antar lord').toContain(antar);
+  expect(answer.period ?? '', 'the answer names the period it read').toMatch(period);
+  expect((answer.opening ?? '').replace(/\s/g, '').length, 'the answer includes an explanation beside its factual summary').toBeGreaterThan(40);
+  const shown = (await page.getByTestId('chat-message-assistant').last().textContent()) ?? '';
+  for (const lord of new Set([...lords(timing.maha), ...lords(timing.antar)])) {
+    expect(shown, `the rendered answer names the reading's lord ${lord}`).toMatch(new RegExp(`\\b${lord}\\b`, 'i'));
+  }
+}
+
+/** "14 October 2026", "October 14, 2026", "Oct 14" or "2026-10-14": the viewer's day as a person writes it. */
+function dayPattern(isoDay: string): RegExp {
+  const date = new Date(`${isoDay}T12:00:00Z`);
+  const day = date.getUTCDate();
+  const month = new Intl.DateTimeFormat('en', { month: 'long', timeZone: 'UTC' }).format(date);
+  const short = month.slice(0, 3);
+  return new RegExp(`\\b${day}(?:st|nd|rd|th)?\\s+(?:${month}|${short})|(?:${month}|${short})\\.?\\s+${day}\\b|${isoDay}`, 'i');
 }
 
 test('[real] dashboard: timer + life phase + exact-day agentic chat', async ({
@@ -197,6 +242,7 @@ test('[real] dashboard: timer + life phase + exact-day agentic chat', async ({
     model: E2E_REAL_MODEL,
     privacyMode: 'cloud_premium',
     engine: 'openai-http',
+    ...CHAT_MODEL_SETTING,
   });
   await page.addInitScript(
     ([key, cfg]) => {
@@ -221,6 +267,19 @@ test('[real] dashboard: timer + life phase + exact-day agentic chat', async ({
   console.log(
     `[engine] lagna=${seeded.lagna} maha=${seeded.mahaLord}`,
   );
+
+  // CONTRACT CHANGE (2026-10-14): a single-day reading needs a place and none is assumed (071faf4f,
+  // Task 11), so "today" with no place is answered with "Which city are you in today?". The person
+  // says where they live now first (Settings), as trip-acceptance's today-home journey does.
+  await gotoSettled(page, '/settings/profile');
+  const currentPlace = page.getByTestId('current-place-input');
+  await currentPlace.pressSequentially('novato, ca');
+  await expect(page.getByTestId('current-place-option-0')).toHaveText('Novato, California, United States', { timeout: 60_000 });
+  await currentPlace.press('Enter');
+  await expect(page.getByTestId('current-place-status')).toHaveText('Saved', { timeout: 30_000 });
+  // "Saved" means the SQLite write committed (2026-10-14), so a reload at once keeps the place.
+  await page.reload();
+  await expect(page.getByTestId('current-place-input')).toHaveValue('Novato, California, United States', { timeout: 30_000 });
 
   await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
 
@@ -319,24 +378,19 @@ test('[real] dashboard: timer + life phase + exact-day agentic chat', async ({
     messages?: unknown[];
   };
   // Chat runs on the default chat tier, not the seeded reading model.
-  expect(firstAgentRequest.model).toBe(PRODUCT_CHAT_DEFAULT_MODEL);
+  expect(firstAgentRequest.model).toBe(EXPECTED_CHAT_MODEL);
   // Inverted 2026-10: this asserted `stream: false`. Since 5c99027 the
   // tool-decision round streams so a no-tool answer shows token by token
   // (agent.test.ts and chat.grounding.spec.ts already pin `stream: true`).
   expect(firstAgentRequest.stream).toBe(true);
-  expect(firstAgentRequest.tool_choice).toBe('auto');
-  // Every live turn offers the local read tools and deferred movement tool.
-  expect(firstAgentRequest.tools?.map((tool) => tool.function?.name)).toEqual([
-    'get_current_datetime',
-    'get_chart_facts',
-    'get_timing',
-    'resolve_place',
-    'time_travel',
-  ]);
+  // Contract changed (chat tool layer redesign, Task 6): every round calls a tool; a today turn
+  // offers the one read tool, the deferred move and the final answer.
+  expect(firstAgentRequest.tool_choice).toBe('required');
+  expect(firstAgentRequest.tools?.map((tool) => tool.function?.name)).toEqual(['read_period', 'travel', 'answer']);
   const firstMessages = Array.isArray(firstAgentRequest.messages)
     ? firstAgentRequest.messages
     : [];
-  expect(JSON.stringify(firstMessages)).toContain('ENGINE PREDICTIVE CONTEXT');
+  expect(JSON.stringify(firstMessages)).toContain('ENGINE TIMING CONTEXT');
   expect(JSON.stringify(firstMessages)).toContain('Current transits (Gochara)');
 
   // No hard request failures during the flow.
@@ -361,7 +415,7 @@ test('[real] dashboard: September 2017 tool movement, grounded outlook today, an
     window.localStorage.setItem(settingsKey, config);
   }, [LLM_SETTINGS_KEY, JSON.stringify({
     apiBase: 'https://openrouter.ai/api/v1', apiKey: key, model: E2E_REAL_MODEL,
-    privacyMode: 'cloud_premium', engine: 'openai-http',
+    privacyMode: 'cloud_premium', engine: 'openai-http', ...CHAT_MODEL_SETTING,
   })] as const);
   await page.addInitScript(() => {
     for (const [name, value] of Object.entries({ deviceMemory: 8, hardwareConcurrency: 8 })) {
@@ -382,19 +436,25 @@ test('[real] dashboard: September 2017 tool movement, grounded outlook today, an
     // Disabled for the whole stream AND the final answer/pin persistence barrier.
     await expect(page.getByTestId('time-travel-button')).toBeEnabled({ timeout: 240_000 });
     const turn = observed.slice(before);
-    for (const request of turn) expect(request.body.model).toBe(PRODUCT_CHAT_DEFAULT_MODEL);
+    for (const request of turn) expect(request.body.model).toBe(EXPECTED_CHAT_MODEL);
     return turn;
   };
 
-  const september = await send('Take me to September 2017. Call time_travel with action travel and period month for this requested month, and call get_timing with section dashas for the same whole calendar month. These two tools are sufficient. ' + FACT_SUMMARY_REQUEST);
+  // Tool layer redesign (2026-10-14): the move is travel(to, place), the read is read_period(start, end, ...).
+  // CONTRACT CHANGE (Task 11 ruling, 2026-10-14): a travel with no place now gets the neutral ask
+  // ("Ask where the user lived (or will be) then."), since every trip needs a place and none is
+  // assumed. The prompt names a city (Mumbai, in the bundled city list) so the move still lands.
+  const september = await send('Take me to September 2017 in Mumbai. Call travel with to "2017-09" and place "Mumbai" for this requested month, and call read_period for the same whole calendar month. These two tools are sufficient. ' + FACT_SUMMARY_REQUEST);
   const septemberPairs = await successfulToolPairs(september);
-  const movement = septemberPairs.find((pair) => pair.name === 'time_travel');
-  expect(movement?.args).toMatchObject({ action: 'travel', period: 'month', date: '2017-09' });
-  expect(movement?.result).toMatchObject({ status: 'queued', action: 'travel' });
-  const septemberTiming = septemberPairs.find((pair) => pair.name === 'get_timing' && pair.args.section === 'dashas');
-  expect(septemberTiming?.result).toMatchObject({ period: { start: '2017-09-01', end: '2017-09-30', basis: 'period' } });
-  expectCalculatedSummary(await finalResponseText(september), timingDashas(septemberTiming!.result as unknown as DashaTimingResult));
-  await expect(page.getByTestId('time-travel-title')).toHaveText('Time travel · September 2017');
+  const movement = septemberPairs.find((pair) => pair.name === 'travel');
+  expect(movement?.args).toMatchObject({ to: '2017-09' });
+  expect(movement?.result).toMatchObject({ status: 'queued', action: 'travel', period_label: 'September 2017' });
+  const septemberTiming = readPeriodDashas(septemberPairs);
+  expect(septemberTiming.period).toMatchObject({ start: '2017-09-01', end: '2017-09-30', granularity: 'month' });
+  await expectCalculatedSummary(page, await finalAnswer(september), septemberTiming, /September 2017|Sept?\.? 2017|2017-09/i);
+  // Stale copy fixed 2026-10-14: the chat period header shows the short period since 4869958b (2026-10-13);
+  // this spec never got this far while the answer stayed in the old thread.
+  await expect(page.getByTestId('time-travel-title')).toHaveText('Sep 2017');
   await expect(page.getByTestId('dashboard-time-travel-title')).toHaveText(/September 2017/);
   await expect(page.getByTestId('time-travel-moment-dasha')).toBeVisible();
 
@@ -403,23 +463,26 @@ test('[real] dashboard: September 2017 tool movement, grounded outlook today, an
   const todaySystem = today[0].body.messages?.find((message) => message.role === 'system')?.content ?? '';
   // Contract reversed 2026-10-13 (period reading, spec 2026-10-13): today's dashas and transits were
   // pre-run into a VERIFIED LOCAL TIMING block of the prompt. Now nothing is pre-computed: the first
-  // round is tool_choice "required" and grounds itself through get_period_reading, bound to today.
+  // round is tool_choice "required" and grounds itself through read_period, bound to today.
   expect(todaySystem).not.toContain('VERIFIED LOCAL TIMING');
-  expect(todaySystem).not.toContain('PINNED PERIOD:');
+  // Contract reversed 2026-10-14 (the answer follows the user): the chat now sits in the September 2017
+  // trip after the move, so this question is asked in that trip and its prompt carries the pin.
+  expect(todaySystem).toContain('PINNED PERIOD:');
   expect(today[0].body.tool_choice, 'a today question grounds itself before it answers').toBe('required');
-  // The model's own call, or the app's local grounding call when the model skipped it.
-  const readingMessage = today.flatMap(({ body }) => body.messages ?? []).find((message) => message.role === 'tool' && message.name === 'get_period_reading');
-  const reading = parseSuccessfulToolResult(readingMessage?.content) as unknown as { period: CalculatedDashas['period']; dashas: Omit<CalculatedDashas, 'period'> };
+  const reading = readPeriodDashas(await successfulToolPairs(today));
   expect(reading.period).toMatchObject({ start: viewerDay, end: viewerDay });
-  expectCalculatedSummary(await finalResponseText(today), { period: reading.period, maha: reading.dashas.maha, antar: reading.dashas.antar });
-  await expect(page.getByTestId('time-travel-title')).toHaveText('Time travel · September 2017');
+  await expectCalculatedSummary(page, await finalAnswer(today), reading, dayPattern(viewerDay));
+  // Stale copy fixed 2026-10-14: the chat period header shows the short period since 4869958b (2026-10-13);
+  // this spec never got this far while the answer stayed in the old thread.
+  await expect(page.getByTestId('time-travel-title')).toHaveText('Sep 2017');
   await expect(page.getByTestId('dashboard-time-travel-title')).toHaveText(/September 2017/);
 
-  const back = await send('Back to today. Use time_travel with action back_to_today and no date or place, then briefly confirm the return after the tool succeeds.');
-  const returnPair = (await successfulToolPairs(back)).find((pair) => pair.name === 'time_travel');
-  expect(returnPair?.args).toEqual({ action: 'back_to_today' });
+  const back = await send('Back to today. Call travel with to "today" and place null, then briefly confirm the return after the tool succeeds.');
+  const returnPair = (await successfulToolPairs(back)).find((pair) => pair.name === 'travel');
+  expect(returnPair?.args).toEqual({ to: 'today', place: null });
   expect(returnPair?.result).toMatchObject({ status: 'queued', action: 'back_to_today' });
-  expect((await finalResponseText(back)).trim().length).toBeGreaterThan(12);
+  const confirmation = await finalAnswer(back);
+  expect((confirmation.markdown ?? confirmation.opening ?? '').trim().length).toBeGreaterThan(12);
   await expect(page.getByTestId('time-travel-banner')).toHaveCount(0);
   await expect(page.getByTestId('dashboard-time-travel-banner')).toHaveCount(0);
   await expect(page.getByTestId('time-travel-moment-card')).toHaveCount(0);

@@ -7,6 +7,17 @@ import { waitForLifeAtlasAsOf } from './lifeAtlas.helpers';
 import { stubModelCatalog } from './modelCatalog.helpers';
 import { gotoSettled } from './portableInvariants.helpers';
 import { captureReloadConsole } from './reloadConsole';
+import {
+  chatToolBody,
+  fulfillEmpty,
+  fulfillToolCall,
+  generalAnswer,
+  readPeriodArgs,
+  stubCallFor,
+  toolResults,
+  type ChatToolBody,
+  type StubToolCall,
+} from './stubChatProvider';
 import { BIRTH_FIELD_NAMES, birthPlaceMarkers } from './tripPrivacy.helpers';
 import { test } from './webkitProfile';
 
@@ -40,19 +51,6 @@ const PICK_QUESTION = 'I may move to Springfield. What should I know?';
 const PICK_ANSWER = 'Springfield in mid-May 2019 had a steady sky.';
 const CANCEL_QUESTION = 'Thinking of visiting Springfield. Any advice?';
 const CANCEL_ANSWER = 'Tell me which Springfield you mean and I will look.';
-
-interface WireMessage {
-  role: string;
-  name?: string;
-  content?: string | null;
-  tool_call_id?: string;
-}
-
-interface ProviderRequest {
-  readonly messages: WireMessage[];
-  readonly tools: string[];
-  readonly toolChoice: string | undefined;
-}
 
 interface CityRow {
   readonly n: string;
@@ -95,71 +93,37 @@ function leaksFor(rows: readonly CityRow[]): (body: string) => string[] {
   ];
 }
 
-/** The tool messages of the turn in flight: everything after the last user message. */
-const turnTools = (messages: readonly WireMessage[]) => {
-  const lastUser = messages.map((m) => m.role).lastIndexOf('user');
-  return messages.slice(lastUser + 1).filter((m) => m.role === 'tool');
-};
-const call = (id: string, name: string, args: object) => ({ id, type: 'function', function: { name, arguments: JSON.stringify(args) } });
-const sse = (content: string) => `data: ${JSON.stringify({ choices: [{ delta: { content } }] })}\n\ndata: [DONE]\n\n`;
+/** One scripted reply per request of a turn, read from the request itself. */
+type Script = (body: ChatToolBody) => StubToolCall;
 
-/** A tool message's result, unwrapped from the agent's `{ ok, value }` envelope when present. */
-function resultOf(message: WireMessage | undefined): Record<string, unknown> {
-  const parsed = JSON.parse(message?.content ?? '{}') as Record<string, unknown>;
-  return (parsed.value as Record<string, unknown> | undefined) ?? parsed;
-}
+/** The read_period results a request carries. */
+const reads = (body: ChatToolBody | undefined) => (body ? toolResults(body).filter((result) => result.name === 'read_period') : []);
 
-type Script = (tools: readonly WireMessage[]) => { content: string | null; tool_calls?: object[] };
-
-/** A trip turn: round 1 grounds (reading + natal), round 2 reads the trip and its transits, then it answers. */
-const tripScript = (answer: string): Script => (tools) => {
-  if (tools.length === 0) return { content: null, tool_calls: [call('reading-1', 'get_period_reading', {}), call('natal-1', 'get_natal_summary', {})] };
-  if (tools.length === 2) return { content: null, tool_calls: [call('trip-1', 'get_trip_context', {}), call('sky-1', 'get_timing', { section: 'transits' })] };
-  return { content: answer };
-};
-
-/** Plain chat: resolve "Springfield" (the person picks), read one day there, then answer. */
-const pickScript: Script = (tools) => {
-  const place = tools.find((m) => m.name === 'resolve_place');
-  if (!place) return { content: null, tool_calls: [call('place-1', 'resolve_place', { query: 'Springfield' })] };
-  const found = resultOf(place) as { status?: string; place?: { place_ref?: string } };
-  if (found.status === 'found' && !tools.some((m) => m.name === 'get_timing')) {
-    const args = { section: 'transits', start: '2019-05-15', end: '2019-05-15', place_ref: found.place?.place_ref };
-    return { content: null, tool_calls: [call('day-1', 'get_timing', args)] };
-  }
-  return { content: PICK_ANSWER };
-};
-
-/** Plain chat: resolve "Springfield"; the person cancels, so the model asks instead of guessing. */
-const cancelScript: Script = (tools) =>
-  tools.some((m) => m.name === 'resolve_place')
-    ? { content: CANCEL_ANSWER }
-    : { content: null, tool_calls: [call('place-1', 'resolve_place', { query: 'Springfield' })] };
+/** Mid-May 2019 at a place the person names: "Springfield" opens the picker. */
+const SPRINGFIELD_DAY = readPeriodArgs('2019-05-15', { place: 'Springfield' });
 
 const SCRIPTS: Readonly<Record<string, Script>> = {
-  [MAY_QUESTION]: tripScript(MAY_ANSWER),
-  [YEAR_QUESTION]: tripScript(YEAR_ANSWER),
-  [PICK_QUESTION]: pickScript,
-  [CANCEL_QUESTION]: cancelScript,
+  // A trip turn reads its own period at the trip's place (read_period with no place), then answers.
+  [MAY_QUESTION]: (body) => stubCallFor(body, readPeriodArgs('2019-05'), MAY_ANSWER),
+  [YEAR_QUESTION]: (body) => stubCallFor(body, readPeriodArgs('2019'), YEAR_ANSWER),
+  // Plain chat: read a day in "Springfield" (the person picks one), then answer from the reading.
+  [PICK_QUESTION]: (body) => stubCallFor(body, SPRINGFIELD_DAY, PICK_ANSWER),
+  // The person cancels the picker, so the model asks instead of guessing.
+  [CANCEL_QUESTION]: (body) => (toolResults(body).length === 0 ? { name: 'read_period', args: SPRINGFIELD_DAY } : { name: 'answer', args: generalAnswer(CANCEL_ANSWER) }),
 };
 
 /** The stubbed provider: one script per question; everything else (summaries) gets a harmless empty answer. */
-async function stubProvider(page: Page, seen: ProviderRequest[], bodies: string[]): Promise<void> {
+async function stubProvider(page: Page, seen: ChatToolBody[], bodies: string[]): Promise<void> {
   await stubModelCatalog(page);
   await page.route('**/chat/completions', async (route) => {
     const body = route.request().postData() ?? '{}';
     bodies.push(body);
-    const parsed = JSON.parse(body) as { messages?: WireMessage[]; tools?: Array<{ function: { name: string } }>; tool_choice?: string };
-    const messages = parsed.messages ?? [];
-    const lastUser = [...messages].reverse().find((m) => m.role === 'user')?.content ?? '';
+    const chat = chatToolBody(body);
+    const lastUser = [...(chat?.messages ?? [])].reverse().find((m) => m.role === 'user')?.content ?? '';
     const key = Object.keys(SCRIPTS).find((question) => lastUser.includes(question));
-    if (!Array.isArray(parsed.tools) || !key) {
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ choices: [{ message: { content: '' } }] }) });
-    }
-    seen.push({ messages, tools: parsed.tools.map((tool) => tool.function.name), toolChoice: parsed.tool_choice });
-    const message = SCRIPTS[key]!(turnTools(messages));
-    if (parsed.tool_choice === 'none') return route.fulfill({ status: 200, contentType: 'text/event-stream', body: sse(message.content ?? '') });
-    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ choices: [{ message }] }) });
+    if (!chat || !key) return fulfillEmpty(route);
+    seen.push(chat);
+    return fulfillToolCall(route, SCRIPTS[key]!(chat), `call_${seen.length}`);
   });
 }
 
@@ -222,7 +186,7 @@ test.describe.configure({ timeout: 600_000 });
 
 test('[contract/stubbed] typing "novato, ca" in Where? lists Novato, California and the trip reads it by label and zone, never coordinates', async ({ page }, testInfo) => {
   const consoleErrors = await prepare(page, testInfo);
-  const seen: ProviderRequest[] = [];
+  const seen: ChatToolBody[] = [];
   const bodies: string[] = [];
   await stubProvider(page, seen, bodies);
   await openChat(page);
@@ -256,12 +220,11 @@ test('[contract/stubbed] typing "novato, ca" in Where? lists Novato, California 
 
   await ask(page, MAY_QUESTION, MAY_ANSWER);
   const system = seen[0]?.messages.find((m) => m.role === 'system')?.content ?? '';
-  expect(system).toContain(`TIME-TRAVEL TRIP: this thread is a time-travel trip to May 2019 (month, past), when the user lived in ${NOVATO} (America/Los_Angeles).`);
-  const results = turnTools(seen.at(-1)?.messages ?? []);
-  expect(results.map((m) => m.name)).toEqual(['get_period_reading', 'get_natal_summary', 'get_trip_context', 'get_timing']);
-  expect(results[2]?.content).toContain(`"place":{"label":"${NOVATO}","timezone":"America/Los_Angeles"}`);
-  expect(results[3]?.content).toContain(`"label":"${NOVATO}"`);
-  expect(results[3]?.content).not.toMatch(/"error"|"ok":false/);
+  expect(system).toContain(`THIS THREAD: a trip to May 2019, when the user lived in ${NOVATO} (America/Los_Angeles).`);
+  // read_period with no place read the trip's place: its label and zone, never its coordinates.
+  const [reading] = reads(seen[seen.length - 1]);
+  expect(reading?.content).toContain(`"place":{"label":"${NOVATO}","timezone":"America/Los_Angeles"}`);
+  expect(reading?.content).not.toContain('"available":false');
   expect(bodies.length).toBeGreaterThan(0);
   expect(bodies.flatMap(leaksFor([cityRow('Novato', 'California')])), 'no coordinate, field name or birth-place marker reaches the model').toEqual([]);
   expect(consoleErrors, 'the journey must keep a clean console').toEqual([]);
@@ -269,7 +232,7 @@ test('[contract/stubbed] typing "novato, ca" in Where? lists Novato, California 
 
 test('[contract/stubbed] a Year trip asks "Where were you living then?" and typing "vadodara" reads Vadodara, Gujarat in Asia/Kolkata', async ({ page }, testInfo) => {
   const consoleErrors = await prepare(page, testInfo);
-  const seen: ProviderRequest[] = [];
+  const seen: ChatToolBody[] = [];
   const bodies: string[] = [];
   await stubProvider(page, seen, bodies);
   await openChat(page);
@@ -292,8 +255,7 @@ test('[contract/stubbed] a Year trip asks "Where were you living then?" and typi
   await ask(page, YEAR_QUESTION, YEAR_ANSWER);
   const system = seen[0]?.messages.find((m) => m.role === 'system')?.content ?? '';
   expect(system).toContain(`when the user lived in ${VADODARA} (Asia/Kolkata).`);
-  const trip = turnTools(seen.at(-1)?.messages ?? []).find((m) => m.name === 'get_trip_context');
-  expect(trip?.content).toContain(`"place":{"label":"${VADODARA}","timezone":"Asia/Kolkata"}`);
+  expect(reads(seen[seen.length - 1])[0]?.content).toContain(`"place":{"label":"${VADODARA}","timezone":"Asia/Kolkata"}`);
   expect(bodies.flatMap(leaksFor([cityRow('Vadodara', 'Gujarat')]))).toEqual([]);
   expect(consoleErrors, 'the journey must keep a clean console').toEqual([]);
 });
@@ -340,9 +302,9 @@ async function askAndAwaitPopup(page: Page, question: string): Promise<Locator> 
   return popup;
 }
 
-test('[contract/stubbed] chat asks "Which Springfield?"; the pick goes to the model as a label and zone, and get_timing reads it', async ({ page }, testInfo) => {
+test('[contract/stubbed] chat asks "Which Springfield?"; the pick goes to the model as a label and zone, and read_period reads it', async ({ page }, testInfo) => {
   const consoleErrors = await prepare(page, testInfo);
-  const seen: ProviderRequest[] = [];
+  const seen: ChatToolBody[] = [];
   const bodies: string[] = [];
   await stubProvider(page, seen, bodies);
   await openChat(page);
@@ -358,31 +320,23 @@ test('[contract/stubbed] chat asks "Which Springfield?"; the pick goes to the mo
   await expect(popup).toHaveCount(0);
   await expect(page.getByTestId('chat-message-assistant').filter({ hasText: PICK_ANSWER })).toBeVisible({ timeout: 240_000 });
 
-  const afterPick = seen.find((request) => turnTools(request.messages).some((m) => m.name === 'resolve_place'));
-  const placeMessage = turnTools(afterPick?.messages ?? []).find((m) => m.name === 'resolve_place');
-  const resolved = resultOf(placeMessage) as { status?: string; place?: { place_ref?: string; label?: string; timezone?: string } };
-  expect(resolved.status).toBe('found');
-  expect(resolved.place).toMatchObject({ label: SPRINGFIELD_IL, timezone: 'America/Chicago' });
-  expect(resolved.place?.place_ref).toMatch(/^city:\d+$/);
-  expect(placeMessage?.content).not.toMatch(/latitude|longitude/i);
+  // The read ran at the picked place: its label and zone reach the model, never its coordinates.
+  const [picked] = reads(seen[seen.length - 1]);
+  expect(picked?.content).not.toMatch(/"available":false|needs_place|place_not/);
+  expect(picked?.content).toContain(`"label":"${SPRINGFIELD_IL}"`);
+  expect(picked?.content).toContain('"timezone":"America/Chicago"');
+  expect(picked?.content).not.toMatch(/latitude|longitude/i);
 
-  const timing = turnTools(seen.at(-1)?.messages ?? []).find((m) => m.name === 'get_timing');
-  expect(timing, 'get_timing ran with the picked place_ref').toBeDefined();
-  expect(timing?.content).not.toMatch(/"error"|"ok":false|needs_place/);
-  expect(timing?.content).toContain(`"label":"${SPRINGFIELD_IL}"`);
-  expect(timing?.content).toContain('"timezone":"America/Chicago"');
-
-  const placeRow = page.locator('[data-testid="chat-tool-call"][data-tool-name="resolve_place"]');
-  await expect(placeRow).toHaveCount(1);
-  await expect(placeRow).toHaveAttribute('data-status', 'complete');
-  await expect(page.locator('[data-testid="chat-tool-call"][data-tool-name="get_timing"]')).toHaveAttribute('data-status', 'complete');
+  const readRow = page.locator('[data-testid="chat-tool-call"][data-tool-name="read_period"]');
+  await expect(readRow).toHaveCount(1);
+  await expect(readRow).toHaveAttribute('data-status', 'complete');
   expect(bodies.flatMap(leaksFor([cityRow('Springfield', 'Illinois')])), 'no coordinate reaches the model').toEqual([]);
   expect(consoleErrors, 'the journey must keep a clean console').toEqual([]);
 });
 
-test('[contract/stubbed] Escape in "Which Springfield?" answers not_picked, a neutral row, and the chat stays open', async ({ page }, testInfo) => {
+test('[contract/stubbed] Escape in "Which Springfield?" answers place_not_chosen, a neutral row, and the chat stays open', async ({ page }, testInfo) => {
   const consoleErrors = await prepare(page, testInfo);
-  const seen: ProviderRequest[] = [];
+  const seen: ChatToolBody[] = [];
   await stubProvider(page, seen, []);
   await openChat(page);
 
@@ -392,15 +346,13 @@ test('[contract/stubbed] Escape in "Which Springfield?" answers not_picked, a ne
   await expect(page.getByTestId('floating-chat-drawer'), 'Escape closes only the popup').toBeVisible();
   await expect(page.getByTestId('chat-message-assistant').filter({ hasText: CANCEL_ANSWER })).toBeVisible({ timeout: 240_000 });
 
-  const afterCancel = seen.find((request) => turnTools(request.messages).some((m) => m.name === 'resolve_place'));
-  const placeMessage = turnTools(afterCancel?.messages ?? []).find((m) => m.name === 'resolve_place');
-  expect(placeMessage?.content).not.toMatch(/"error"|"ok":false/);
-  const resolved = resultOf(placeMessage) as { status?: string; note?: string; place?: unknown };
-  expect(resolved.status).toBe('not_picked');
-  expect(resolved.note).toMatch(/Do not guess a place/);
-  expect(resolved.place).toBeUndefined();
-  const placeRow = page.locator('[data-testid="chat-tool-call"][data-tool-name="resolve_place"]');
-  await expect(placeRow).toHaveCount(1);
-  await expect(placeRow, 'a cancel is not a failed lookup').not.toHaveAttribute('data-status', 'error');
+  // The cancel comes back as a neutral question for the person, never a guessed place.
+  const [asked] = reads(seen[seen.length - 1]);
+  expect(asked?.content).toContain('"status":"place_not_chosen"');
+  expect(asked?.content).toContain(SPRINGFIELD_IL);
+  expect(asked?.content).not.toMatch(/latitude|longitude/i);
+  const readRow = page.locator('[data-testid="chat-tool-call"][data-tool-name="read_period"]');
+  await expect(readRow).toHaveCount(1);
+  await expect(readRow, 'a cancel is not a failed lookup').not.toHaveAttribute('data-status', 'error');
   expect(consoleErrors, 'the journey must keep a clean console').toEqual([]);
 });

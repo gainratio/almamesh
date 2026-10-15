@@ -3,11 +3,12 @@ import { requireAllowedRepository } from "./repositoryIdentity.js"
 /**
  * Production deploy has two triggers, because it needs two green workflows for
  * the same main SHA: Dagger (the protected attempt the Foundation binds) and
- * WebKit (macOS) (native acceptance, rerun on its own when a Mac lane flakes).
+ * Safari (macOS) (real Safari through safaridriver, rerun on its own when it flakes).
+ * The macOS WebKit lane gates nothing: it files crash signatures as issues.
  *
- * - A Dagger completion deploys exactly that Dagger attempt (and waits for the
- *   Mac lane, as before).
- * - A WebKit completion deploys only when the newest Dagger attempt for the
+ * - A Dagger completion deploys exactly that Dagger attempt (and waits for
+ *   Safari, as before).
+ * - A Safari completion deploys only when the newest Dagger attempt for the
  *   SHA is already green; while Dagger is still running it skips, because the
  *   Dagger completion will deploy.
  * - Either trigger skips when production already serves the SHA. Deploys are
@@ -17,11 +18,11 @@ import { requireAllowedRepository } from "./repositoryIdentity.js"
  * Stale or non-main SHAs are still refused by the Foundation's green-main
  * decision and the workflow's push/main/same-repository gate.
  */
-export type DeployTrigger = "dagger" | "webkit-macos"
+export type DeployTrigger = "dagger" | "safari"
 
 const TRIGGER_WORKFLOWS: Readonly<Record<string, DeployTrigger>> = Object.freeze({
   ".github/workflows/dagger.yml": "dagger",
-  ".github/workflows/webkit-macos.yml": "webkit-macos",
+  ".github/workflows/safari-smoke.yml": "safari",
 })
 
 export function parseDeployTrigger(workflowPath: string): DeployTrigger {

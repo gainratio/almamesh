@@ -1,15 +1,14 @@
 /**
  * A time-travel trip's context (plan 2026-10-13, "Context bootstrap"): the natal
  * summary, the place the user lived then, the period and its dashas, built from
- * (chart, as_of) alone. The trip-bound tools, the trip brief and the context
- * card all read this one module, so what the AI pulls and what the card shows
- * cannot drift. Pure and deterministic: the period's sky (transits, strength,
- * domains) comes from get_timing, which caches it per period.
+ * (chart, as_of) alone, for the chat's context card. The chat turn reads the
+ * trip's place through `tripPin` (an old trip with no place reads the birth
+ * place). Pure and deterministic: the period's sky (transits, strength,
+ * domains) comes from read_period.
  *
- * Privacy: the model-facing shapes (natalSummary, tripToolResult) carry signs,
- * houses, nakshatras, lords, a place label and a zone. Never a birth date, time,
- * coordinate or degree. A birth-place fallback is labelled generically; only
- * the local card shows the city.
+ * Privacy: the natal summary carries signs, houses, nakshatras and lords. Never
+ * a birth date, time, coordinate or degree. Only the local card shows that a
+ * place is the birth place.
  */
 import type { SiderealChart } from '@almamesh/browser/types';
 import { pinRelative, selectDashasForPeriod, type PeriodDashas } from '@almamesh/llm';
@@ -171,23 +170,6 @@ export function tripContext(input: TripContextInput): TripContext {
     dashas: input.chart.dashas
       ? selectDashasForPeriod(input.chart.dashas, range, birthYearOf(input.birth))
       : { maha: [], antar: [], notes: [] },
-  };
-}
-
-/** get_trip_context's value: the trip as the model sees it. The place is a label and a zone, nothing else. */
-export interface TripToolResult {
-  readonly period: TripPeriod;
-  readonly place: { readonly label: string; readonly timezone: string };
-  readonly today: string;
-  readonly dashas: Pick<PeriodDashas, 'maha' | 'antar' | 'notes'>;
-}
-
-export function tripToolResult(trip: TripContext): TripToolResult {
-  return {
-    period: trip.period,
-    place: { label: trip.place.label, timezone: trip.place.timezone },
-    today: trip.today,
-    dashas: { maha: trip.dashas.maha, antar: trip.dashas.antar, notes: trip.dashas.notes },
   };
 }
 

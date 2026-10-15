@@ -13,15 +13,23 @@ export interface FakeTurn {
   readonly text?: string;
   readonly calls?: readonly FakeCall[];
   readonly usage?: { readonly prompt: number; readonly completion: number };
+  /** Send no usage chunk at all (a provider that reports no token counts). */
+  readonly noUsage?: boolean;
   /** Answer with this HTTP status and body instead of a stream. */
   readonly status?: number;
   readonly errorBody?: string;
+  /** With `status`: a retry-after-ms header (0 lets the SDK retry at once in tests). */
+  readonly retryAfterMs?: number;
+  /** A 200 stream that sends this provider error chunk instead of a completion (OpenRouter mid-stream). */
+  readonly streamError?: Record<string, unknown>;
   /** Never answer; error the body when the request is aborted. */
   readonly hang?: boolean;
+  /** Send this turn's chunks but never finish the stream; error it when the request is aborted. */
+  readonly holdOpen?: boolean;
   /** Never even send headers; reject the fetch when the request is aborted. */
   readonly hangFetch?: boolean;
   /** Fail like a network error (no HTTP status): a browser's or Node's fetch. */
-  readonly networkError?: "browser" | "node";
+  readonly networkError?: "browser" | "safari" | "node";
 }
 
 export interface RecordedRequest {
@@ -49,15 +57,22 @@ function toolChunks(call: FakeCall, index: number): Chunk[] {
   ];
 }
 
-export function sseBody(turn: FakeTurn): string {
+function contentChunks(turn: FakeTurn): Chunk[] {
   const chunks: Chunk[] = [chunk({ role: "assistant", content: "" })];
   for (const piece of turn.text?.match(/.{1,8}/gs) ?? []) chunks.push(chunk({ content: piece }));
   (turn.calls ?? []).forEach((call, index) => chunks.push(...toolChunks(call, index)));
+  return chunks;
+}
+
+const frame = (chunks: Chunk[]): string => chunks.map((c) => `data: ${JSON.stringify(c)}\n\n`).join("");
+
+export function sseBody(turn: FakeTurn): string {
+  const chunks = contentChunks(turn);
   chunks.push(chunk({}, turn.calls?.length ? "tool_calls" : "stop"));
   const prompt = turn.usage?.prompt ?? 10;
   const completion = turn.usage?.completion ?? 5;
-  chunks.push({ id: "chatcmpl-1", object: "chat.completion.chunk", created: 0, model: "fake", choices: [], usage: { prompt_tokens: prompt, completion_tokens: completion, total_tokens: prompt + completion } });
-  return chunks.map((c) => `data: ${JSON.stringify(c)}\n\n`).join("") + "data: [DONE]\n\n";
+  if (!turn.noUsage) chunks.push({ id: "chatcmpl-1", object: "chat.completion.chunk", created: 0, model: "fake", choices: [], usage: { prompt_tokens: prompt, completion_tokens: completion, total_tokens: prompt + completion } });
+  return frame(chunks) + "data: [DONE]\n\n";
 }
 
 function hangingResponse(signal: AbortSignal | null | undefined): Response {
@@ -75,10 +90,26 @@ function rejectOnAbort(signal: AbortSignal | null | undefined): Promise<Response
   });
 }
 
+function heldOpenResponse(turn: FakeTurn, signal: AbortSignal | null | undefined): Response {
+  const unfinished = frame(contentChunks(turn));
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode(unfinished));
+      signal?.addEventListener("abort", () => controller.error(signal.reason));
+    },
+  });
+  return new Response(body, { headers: { "content-type": "text/event-stream" } });
+}
+
 function respond(turn: FakeTurn, init: RequestInit | undefined): Response {
   if (turn.hang) return hangingResponse(init?.signal);
+  if (turn.holdOpen) return heldOpenResponse(turn, init?.signal);
   if (turn.status) {
-    return new Response(turn.errorBody ?? "", { status: turn.status, headers: { "content-type": "application/json" } });
+    const retry = turn.retryAfterMs === undefined ? {} : { "retry-after-ms": String(turn.retryAfterMs) };
+    return new Response(turn.errorBody ?? "", { status: turn.status, headers: { "content-type": "application/json", ...retry } });
+  }
+  if (turn.streamError) {
+    return new Response(`data: ${JSON.stringify({ error: turn.streamError })}\n\n`, { headers: { "content-type": "text/event-stream" } });
   }
   return new Response(sseBody(turn), { headers: { "content-type": "text/event-stream" } });
 }
@@ -86,23 +117,28 @@ function respond(turn: FakeTurn, init: RequestInit | undefined): Response {
 export interface FakeEndpoint {
   readonly fetchImpl: typeof fetch;
   readonly requests: RecordedRequest[];
+  /** Each request's abort signal, in order. */
+  readonly signals: Array<AbortSignal | null | undefined>;
 }
 
 export function fakeEndpoint(turns: readonly FakeTurn[]): FakeEndpoint {
   const requests: RecordedRequest[] = [];
+  const signals: Array<AbortSignal | null | undefined> = [];
   const fetchImpl = (async (input: string | URL | Request, init?: RequestInit) => {
     const url = input instanceof Request ? input.url : String(input);
     requests.push({ url, body: JSON.parse(String(init?.body)) as Record<string, unknown> });
+    signals.push(init?.signal);
     const turn = turns[requests.length - 1];
     if (!turn) throw new Error(`unexpected request #${requests.length}`);
     if (turn.networkError === "browser") throw new TypeError("Failed to fetch");
+    if (turn.networkError === "safari") throw new TypeError("Load failed");
     if (turn.networkError === "node") {
       throw new TypeError("fetch failed", { cause: Object.assign(new Error("connect ECONNREFUSED 127.0.0.1:11434"), { code: "ECONNREFUSED" }) });
     }
     if (turn.hangFetch) return rejectOnAbort(init?.signal);
     return respond(turn, init);
   }) as typeof fetch;
-  return { fetchImpl, requests };
+  return { fetchImpl, requests, signals };
 }
 
 export function messagesOf(request: RecordedRequest | undefined): WireMessage[] {

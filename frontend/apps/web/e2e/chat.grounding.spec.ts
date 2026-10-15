@@ -1,5 +1,17 @@
 import { test, expect } from '@playwright/test';
 import { bootEngine, seedChart, LLM_SETTINGS_KEY } from './interpretation.helpers';
+import { waitForLifeAtlasAsOf } from './lifeAtlas.helpers';
+import { stubModelCatalog } from './modelCatalog.helpers';
+import {
+  chatToolBody,
+  fulfillReadThenAnswer,
+  fulfillToolCall,
+  generalAnswer,
+  readPeriodArgs,
+  toolNames,
+  toolResults,
+  type ChatToolBody,
+} from './stubChatProvider';
 
 /**
  * Chat-grounding CONTRACT test — REAL chart, STUBBED LLM.
@@ -27,7 +39,7 @@ import { bootEngine, seedChart, LLM_SETTINGS_KEY } from './interpretation.helper
  * page.route on the chat/completions endpoint. The route distinguishes the two
  * request shapes by the `SECTION:<key>` marker the structured generator embeds:
  *   - a request WITH a marker  → an interpretation section (answer with canned JSON)
- *   - a request WITH tools → the always-on bounded agent turn
+ *   - a request WITH tools → a chat turn's tool loop (e2e/stubChatProvider.ts)
  *
  * Run:  bun run test:e2e:chat:grounding   (from apps/web)
  */
@@ -56,6 +68,9 @@ const EXPECTED_CHAT_MODEL = 'deepseek/deepseek-v4.1-flash';
 // The exact label `interpretationBlock` (prompt.ts) prefixes the reused reading
 // with. Asserting on this proves change (c) end-to-end.
 const READING_BLOCK_LABEL = 'Your chart reading (already generated';
+
+// The second chat question: a dated one, read with read_period.
+const NEXT_MONTH_QUESTION = 'How does next month look for me?';
 
 // Canned interpretation sections (field names match VedicInterpretation). The
 // structured generator embeds a `SECTION:<key>` marker per request, so the route
@@ -190,8 +205,17 @@ test('[contract/stubbed] chat reuses the reading + sends the fast chat model on 
 
   // Capture every outbound chat-completions request body so we can split the
   // interpretation requests (SECTION marker) from the chat turn (no marker).
-  const initialAgentRequestBodies: Array<Record<string, unknown>> = [];
-  const agentRequestBodies: Array<Record<string, unknown>> = [];
+  // The chat model's context window comes from the catalog: a 128k window keeps the
+  // cloud prompt sizing (raw predictive facts included), and nothing reaches the network.
+  await stubModelCatalog(page);
+  const initialAgentRequestBodies: ChatToolBody[] = [];
+  const agentRequestBodies: ChatToolBody[] = [];
+  // The second question reads next month with read_period, on the real engine.
+  const nextMonth = await page.evaluate(() => {
+    const now = new Date();
+    const next = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    return `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}`;
+  });
   const interpSections: SectionKey[] = [];
 
   await page.route('**/chat/completions', async (route) => {
@@ -219,72 +243,17 @@ test('[contract/stubbed] chat reuses the reading + sends the fast chat model on 
         body: JSON.stringify({ choices: [{ message: { content } }] }),
       });
     }
-    const parsed = JSON.parse(body ?? '{}') as {
-      messages?: Array<Record<string, unknown>>;
-      tools?: unknown[];
-      tool_choice?: string;
-    };
-    if (Array.isArray(parsed.tools)) {
-      agentRequestBodies.push(parsed as Record<string, unknown>);
-      const toolResult = parsed.messages?.find((message) => message.role === 'tool');
-      const isClockQuestion = JSON.stringify(parsed.messages).includes(
-        'What time is it in my chart timezone?',
-      );
-      if (!toolResult) {
-        if (!isClockQuestion) {
-          initialAgentRequestBodies.push(parsed as Record<string, unknown>);
-          // The decision round streams (SSE), like the real provider: a no-tool
-          // answer must reach the screen delta by delta, not as one late chunk.
-          const deltas = ['Your strengths ', 'shine through ', 'this chart.'];
-          return route.fulfill({
-            status: 200,
-            contentType: 'text/event-stream',
-            body:
-              deltas
-                .map((content) => `data: ${JSON.stringify({ choices: [{ delta: { content } }] })}\n\n`)
-                .join('') + 'data: [DONE]\n\n',
-          });
-        }
-        return route.fulfill({
-          status: 200,
-          contentType: 'application/json',
-          body: JSON.stringify({
-            choices: [
-              {
-                message: {
-                  content: null,
-                  tool_calls: [
-                    {
-                      id: 'time-in-chart-zone',
-                      type: 'function',
-                      function: {
-                        name: 'get_current_datetime',
-                        arguments: JSON.stringify({ scope: 'chart' }),
-                      },
-                    },
-                  ],
-                },
-              },
-            ],
-          }),
-        });
+    const chat = chatToolBody(body);
+    if (chat) {
+      agentRequestBodies.push(chat);
+      if (!JSON.stringify(chat.messages).includes(NEXT_MONTH_QUESTION)) {
+        initialAgentRequestBodies.push(chat);
+        // A today question may answer at once: the answer's markdown streams in pieces.
+        return fulfillToolCall(route, { name: 'answer', args: generalAnswer('Your strengths shine through this chart.') });
       }
-      // Keep the local-tool activity visible long enough to assert the actual
-      // user-facing progress path, then answer from the returned tool result.
-      await new Promise((resolve) => setTimeout(resolve, 350));
-      return route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          choices: [
-            {
-              message: {
-                content: 'Your chart timezone is Asia/Kolkata (UTC+05:30).',
-              },
-            },
-          ],
-        }),
-      });
+      // Keep the local read visible long enough to assert the user-facing progress path.
+      if (toolResults(chat).length > 0) await new Promise((resolve) => setTimeout(resolve, 350));
+      return fulfillReadThenAnswer(route, chat, readPeriodArgs(nextMonth));
     }
     throw new Error('Dashboard chat must use the bounded agent contract.');
   });
@@ -338,6 +307,10 @@ test('[contract/stubbed] chat reuses the reading + sends the fast chat model on 
     timeout: 60_000,
   });
 
+  // Today's predictive facts ride in a today prompt once computed (withRawPredictive):
+  // wait for the Life Atlas, which reads the same slot, so the assertion below is not a race.
+  await waitForLifeAtlasAsOf(page);
+
   // 2) Open the chat panel and send a question (selectors from chat.rag.real.spec.ts).
   await page.getByTestId('floating-chat-button').click({ timeout: 60_000 });
   const chatInput = page.getByTestId('chat-input');
@@ -357,12 +330,7 @@ test('[contract/stubbed] chat reuses the reading + sends the fast chat model on 
     .poll(() => initialAgentRequestBodies.length, { timeout: 30_000, intervals: [250] })
     .toBeGreaterThanOrEqual(1);
 
-  const chatBody = initialAgentRequestBodies[0] as {
-    model: string;
-    stream?: boolean;
-    tool_choice?: string;
-    messages: { role: string; content: string }[];
-  };
+  const chatBody = initialAgentRequestBodies[0]!;
 
   // ---- ASSERTION (b): the fast chat model went out on the wire ----------------
   expect(
@@ -380,7 +348,8 @@ test('[contract/stubbed] chat reuses the reading + sends the fast chat model on 
   // was the regression since 2df38b8 that delivered no-tool answers as one chunk
   // after the whole completion. The decision round must stream.
   expect(chatBody.stream, 'agent decision request is bounded and streaming').toBe(true);
-  expect(chatBody.tool_choice).toBe('auto');
+  // Contract changed (chat tool layer redesign, Task 6): every round must call a tool; the answer is the `answer` tool.
+  expect(chatBody.tool_choice).toBe('required');
 
   // ---- ASSERTION (c): the chat prompt reused the already-generated reading ----
   const promptText = chatBody.messages.map((m) => m.content).join('\n');
@@ -403,53 +372,32 @@ test('[contract/stubbed] chat reuses the reading + sends the fast chat model on 
     `the natal reading must not carry the stubbed timeline window ` +
       `("${STUB_PERIOD_TITLE}") without an explicit timeline action.`,
   ).not.toContain(STUB_PERIOD_TITLE);
-  expect(promptText).toContain('ENGINE PREDICTIVE CONTEXT');
+  expect(promptText).toContain('ENGINE TIMING CONTEXT');
   expect(promptText).toContain('Current transits (Gochara)');
 
   // Isolate the second turn's complete tool protocol below.
   agentRequestBodies.length = 0;
 
-  // 5) Every turn uses the bounded agent loop. Prove the complete browser tool
-  //    protocol: advertised allowlist -> local execution -> role:tool
-  //    result -> grounded answer. No live provider or wall-clock assertion is
-  //    involved, so this remains deterministic in CI.
-  await chatInput.fill('What time is it in my chart timezone?');
+  // 5) A dated question runs the complete browser tool protocol: advertised
+  //    allowlist -> local read_period on the real engine -> role:tool result ->
+  //    an answer checked against that reading. No live provider or wall-clock
+  //    assertion is involved, so this remains deterministic in CI.
+  await chatInput.fill(NEXT_MONTH_QUESTION);
   await page.getByTestId('chat-send-button').click();
-  await expect(page.getByTestId('chat-agent-status')).toContainText(
-    'Checking the current time',
-  );
-  await expect(
-    chatPanel.getByText('Your chart timezone is Asia/Kolkata (UTC+05:30).', {
-      exact: false,
-    }),
-  ).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByTestId('chat-agent-status')).toContainText('Reading ', { timeout: 60_000 });
+  await expect(chatPanel.getByText('A steady stretch for work.', { exact: false })).toBeVisible({ timeout: 240_000 });
 
   expect(agentRequestBodies).toHaveLength(2);
-  const firstAgentRequest = agentRequestBodies[0] as {
-    stream: boolean;
-    tool_choice: string;
-    tools: Array<{ function: { name: string } }>;
-  };
+  const [firstAgentRequest, secondAgentRequest] = agentRequestBodies as [ChatToolBody, ChatToolBody];
   expect(firstAgentRequest.stream).toBe(true);
-  expect(firstAgentRequest.tool_choice).toBe('auto');
-  // The live turn offers the local read tools and deferred date movement.
-  expect(firstAgentRequest.tools.map((tool) => tool.function.name)).toEqual([
-    'get_current_datetime',
-    'get_chart_facts',
-    'get_timing',
-    'resolve_place',
-    'time_travel',
-  ]);
-
-  const secondAgentRequest = agentRequestBodies[1] as {
-    messages: Array<{ role: string; name?: string; content?: string }>;
-  };
-  const returnedToolResult = secondAgentRequest.messages.find(
-    (message) => message.role === 'tool',
-  );
-  expect(returnedToolResult?.name).toBe('get_current_datetime');
-  expect(returnedToolResult?.content).toContain('"timeZone":"Asia/Kolkata"');
-  expect(returnedToolResult?.content).toContain('"utcOffset":"+05:30"');
+  expect(firstAgentRequest.tool_choice).toBe('required');
+  // The live turn offers the two tools and the answer (chat tool layer redesign, 2026-10-14).
+  expect(toolNames(firstAgentRequest)).toEqual(['read_period', 'travel', 'answer']);
+  const [reading] = toolResults(secondAgentRequest);
+  expect(reading?.name).toBe('read_period');
+  expect(reading?.content).toContain(`"start":"${nextMonth}-01"`);
+  expect(reading?.content).toContain('"dashas"');
+  await expect(page.locator('[data-testid="chat-tool-call"][data-tool-name="read_period"]')).toHaveAttribute('data-status', 'complete');
 
   await page.screenshot({
     path: 'test-results/chat-grounding.png',
@@ -510,8 +458,7 @@ test('[contract/stubbed] a message sent while today’s re-anchor is pending wai
   let agentRequestsBeforeLanding = 0;
   let reanchorDone = false;
   await page.route('**/chat/completions', async (route) => {
-    const parsed = JSON.parse(route.request().postData() ?? '{}') as { tools?: unknown[] };
-    if (!Array.isArray(parsed.tools)) {
+    if (!chatToolBody(route.request().postData())) {
       return route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -520,11 +467,7 @@ test('[contract/stubbed] a message sent while today’s re-anchor is pending wai
     }
     if (!reanchorDone) agentRequestsBeforeLanding += 1;
     await landed;
-    return route.fulfill({
-      status: 200,
-      contentType: 'text/event-stream',
-      body: `data: ${JSON.stringify({ choices: [{ delta: { content: WAITED_ANSWER } }] })}\n\ndata: [DONE]\n\n`,
-    });
+    return fulfillToolCall(route, { name: 'answer', args: generalAnswer(WAITED_ANSWER) });
   });
 
   await bootEngine(page);

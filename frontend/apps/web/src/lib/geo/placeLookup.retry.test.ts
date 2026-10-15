@@ -12,7 +12,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { openNodeSqlDatabase } from '@gainratio/browser/sql/node';
 import { __setDerivedDbForTest, migrateDerivedDb, type SqlDatabase } from '../derivedDb';
 import { CityLookupError } from './cityLookup';
-import { lookupPlaceOffline, placeFromRef } from './placeLookup';
+import { lookupPlaceOffline } from './placeLookup';
 
 const PARTS = 25;
 let db: SqlDatabase | undefined;
@@ -54,13 +54,6 @@ describe('resolve_place survives one failed cold import', () => {
     if (result.status === 'found') expect(result.place.summary.timezone).toBe('America/Bogota');
     // 7 good batches + the failed 8th read, then a clean restart of all 25.
     expect(fetches.reads()).toBe(8 + PARTS);
-  });
-
-  it('a place_ref read is retried the same way', async () => {
-    await emptyDerivedDb();
-    stubFetch((read) => read === 1);
-    const found = await placeFromRef('city:0');
-    expect(found?.summary.place_ref).toBe('city:0');
   });
 
   it('a failure that persists is reported once more, naming the step and carrying the cause', async () => {

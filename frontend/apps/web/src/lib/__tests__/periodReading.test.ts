@@ -5,8 +5,9 @@ import {
   buildPeriodDetail,
   buildPeriodReading,
   MAX_PERIOD_RESULT_BYTES,
-  periodDetailSummary,
+  PERIOD_TOOL_SUMMARIZERS,
   periodReadingSummary,
+  READ_PERIOD_TOOL_NAME,
   type ReadingFrame,
 } from '../periodReading';
 import { DELHI_BIRTH_LEAKS, periodReadingFixture, type PeriodReadingFixture } from './periodReadingFixtures';
@@ -44,8 +45,9 @@ describe('the period reading (get_period_reading)', () => {
   it('May 2019: one maha, antar and pratyantar, and the Yogini maha clipped to the month', () => {
     const { dashas } = reading('delhi-2019-05');
     expect(dashas.maha).toEqual([{ lord: 'rahu', start: '2019-05-01', end: '2019-05-31' }]);
-    expect(dashas.antar).toEqual([{ lord: 'rahu', start: '2019-05-01', end: '2019-05-31' }]);
-    expect(dashas.pratyantar).toEqual([{ lord: 'venus', start: '2019-05-01', end: '2019-05-31' }]);
+    // Spec 2026-10-15: each sub-lord carries its house from its parent (Rahu and Venus share Capricorn).
+    expect(dashas.antar).toEqual([{ lord: 'rahu', start: '2019-05-01', end: '2019-05-31', from_parent: 1, relation: 'support' }]);
+    expect(dashas.pratyantar).toEqual([{ lord: 'venus', start: '2019-05-01', end: '2019-05-31', from_parent: 1, relation: 'support' }]);
     // The engine's Yogini span runs 2016-05-03 – 2021-05-03: never sent unclipped.
     expect(dashas.yogini_maha).toEqual({ name: 'bhadrika', lord: 'mercury', start: '2019-05-01', end: '2019-05-31' });
     expect(dashas.sandhi).toBeUndefined();
@@ -71,7 +73,7 @@ describe('the period reading (get_period_reading)', () => {
     expect(lords.map((lord) => [lord.lord, lord.level])).toEqual([['rahu', ['maha', 'antar']], ['venus', ['pratyantar']]]);
     expect(lords[1]).toEqual({
       lord: 'venus', level: ['pratyantar'], rules: [5, 12],
-      natal: { house: 8, sign: 'capricorn', dignity: 'neutral', combust: true },
+      natal: { house: 8, sign: 'capricorn', dignity: 'neutral', strength: 'weak', combust: true },
       functional: 'benefic', d9_sign: 'pisces', d10_sign: 'scorpio', yogas: ['Vipareeta Raja Yoga'],
       transit: { sign: 'pisces', from_moon: 8, from_lagna: 10, sav: 27, bav: 5, retro: false },
     });
@@ -104,12 +106,13 @@ describe('the period reading (get_period_reading)', () => {
   it('groups each dated window once across the themes it belongs to, only inside the period', () => {
     // 2026-10-14 (obstacles domain): Mars windows date only the obstacles theme; the Jupiter
     // ingresses belong to every other domain, and the 2019-04-22 one to obstacles too.
-    const jupiter = ['education', 'family', 'health', 'relationships', 'spiritual', 'career', 'finances'];
+    // Domains list in theme order; spec 2026-10-15 re-ranked the themes (health first).
+    const jupiter = ['health', 'education', 'family', 'relationships', 'spiritual', 'finances', 'career'];
     // No sky keeps the Year under budget, so this reads the grouping alone, not a trim.
     expect(buildPeriodReading({ ...YEAR, sky: [] }, YEAR_FRAME).windows).toEqual([
       { date: '2019-03-22', descriptor: 'transit.mars.ingress.taurus', severity: 'neutral', domains: ['obstacles'] },
       { date: '2019-03-29', descriptor: 'transit.jupiter.ingress.sagittarius', severity: 'neutral', domains: jupiter },
-      { date: '2019-04-22', descriptor: 'transit.jupiter.ingress.scorpio', severity: 'neutral', domains: ['education', 'family', 'health', 'relationships', 'obstacles', 'spiritual', 'career', 'finances'] },
+      { date: '2019-04-22', descriptor: 'transit.jupiter.ingress.scorpio', severity: 'neutral', domains: ['health', 'obstacles', 'education', 'family', 'relationships', 'spiritual', 'finances', 'career'] },
       { date: '2019-05-07', descriptor: 'transit.mars.ingress.gemini', severity: 'neutral', domains: ['obstacles'] },
       { date: '2019-11-05', descriptor: 'transit.jupiter.ingress.sagittarius', severity: 'neutral', domains: jupiter },
     ]);
@@ -138,7 +141,7 @@ describe('the period reading (get_period_reading)', () => {
     expect(result.segments).toEqual([{ start: '2019-09-15', end: '2019-09-16', maha: 'rahu', antar: 'rahu', pratyantar: 'moon', events: [] }]);
     expect(result.next_change).toBeUndefined();
     // The sookshma started 2019-09-14 and ends 2019-09-18: the day's next dasha change.
-    expect(result.dashas.sookshma).toEqual({ lord: 'mars', start: '2019-09-15', end: '2019-09-18' });
+    expect(result.dashas.sookshma).toEqual({ lord: 'mars', start: '2019-09-15', end: '2019-09-18', from_parent: 4, relation: 'support' });
     expect(result.lords.find((lord) => lord.lord === 'mars')?.level).toEqual(['sookshma']);
     expect(result.panchang).toEqual({ tithi: 16, tithi_name: 'Pratipada', paksha: 'krishna', nakshatra: 'Uttara Bhadrapada', karana: 'Kaulava', yoga: 'Ganda', vara_utc: 'Sunday' });
     expect(reading('delhi-2019-05').panchang).toBeUndefined();
@@ -190,7 +193,9 @@ describe('the period reading (get_period_reading)', () => {
   // before the sky thins further. Obstacles and every medium/high theme stay.
   it('a Year keeps every medium- or high-confidence life area, obstacles with its factor', () => {
     const year = reading('delhi-2019-year');
-    expect(year.themes.map((theme) => theme.domain)).toEqual(['education', 'family', 'health', 'relationships', 'obstacles', 'spiritual', 'career']);
+    // Spec 2026-10-15: the graded dasha rule no longer flags spiritual and career for 2019 (their
+    // running lords score 4 and 1 of 100), so both are low confidence and go with the other lows.
+    expect(year.themes.map((theme) => theme.domain)).toEqual(['health', 'obstacles', 'education', 'family', 'relationships']);
     expect(year.themes.every((theme) => theme.confidence !== 'low')).toBe(true);
     expect(year.trimmed).toContain('low-confidence themes');
     expect(year.trimmed!.indexOf('low-confidence themes')).toBe(year.trimmed!.indexOf('theme factors beyond 1') + 1);
@@ -246,17 +251,26 @@ describe('the period reading (get_period_reading)', () => {
     expect(periodReadingSummary(reading('delhi-2019-05'))).toEqual({
       line: 'Rahu–Rahu–Venus · 8 themes',
       // One factor and its obstacles reading ("…: unexpected setbacks") are one factor: the one that says more.
-      factors: ['Venus (pratyantar) rules the 5th', 'Rahu (maha) occupies the 8th: unexpected setbacks', 'Venus (pratyantar) is a karaka of relationships',
-        'Venus (pratyantar) rules the 12th', 'Yogini Bhadrika (Mercury) is a karaka of career'],
+      // Spec 2026-10-15 re-ranked the themes: obstacles (Rahu) now leads; career's Yogini factor drops out of the top 5.
+      factors: ['Rahu (maha) occupies the 8th: unexpected setbacks', 'Venus (pratyantar) rules the 5th', 'Venus (pratyantar) is a karaka of relationships',
+        'Venus (pratyantar) rules the 12th', 'Jupiter strength is 50% (strong)'],
     });
-    expect(periodReadingSummary(reading('delhi-2019-year')).line).toBe('Rahu–Rahu–Ketu, 4 dasha changes · 7 themes');
+    expect(periodReadingSummary(reading('delhi-2019-year')).line).toBe('Rahu–Rahu–Ketu, 4 dasha changes · 5 themes');
     expect(periodReadingSummary(reading('delhi-2027-01')).line).toBe('Rahu–Mercury–Rahu · Ashtama Shani · 8 themes');
     expect(periodReadingSummary({ available: false, reason: 'timeout' })).toEqual({ line: 'Period reading unavailable (timeout)', factors: [] });
     expect(periodReadingSummary({ error: 'nope' })).toEqual({ line: 'Period reading failed: nope', factors: [] });
   });
+
+  it('read_period\'s facts-note summary leads with the period and place; an ask says what it asked', () => {
+    const summarize = PERIOD_TOOL_SUMMARIZERS[READ_PERIOD_TOOL_NAME]!;
+    expect(Object.keys(PERIOD_TOOL_SUMMARIZERS)).toEqual(['read_period']);
+    expect(summarize(reading('delhi-2019-05')).line).toBe('May 2019 · Singapore · Rahu–Rahu–Venus · 8 themes');
+    expect(summarize({ status: 'place_not_chosen', ask: 'Ask the user which one they meant.' })).toEqual({ line: 'Asked the user (place_not_chosen)', factors: [] });
+    expect(summarize({ available: false, reason: 'timeout' }).line).toBe('Period reading unavailable (timeout)');
+  });
 });
 
-describe('the period detail digests (get_period_detail)', () => {
+describe('the period detail digests (read_period close-ups)', () => {
   const detail = (section: string, key?: string, source = YEAR, frame = YEAR_FRAME) =>
     buildPeriodDetail({ reading: source, strength: STRENGTH }, frame, section, key);
   const DAY = periodReadingFixture('delhi-2019-09-15-day');
@@ -267,7 +281,8 @@ describe('the period detail digests (get_period_detail)', () => {
       section: 'lord', key: 'venus',
       facts: { lord: 'venus', rules: [5, 12], functional: 'benefic', natal: { house: 8, sign: 'capricorn', retro: true, vargottama: false },
         runs: [{ level: 'pratyantar', start: '2019-02-05', end: '2019-07-19' }], sky: [] },
-      factors: ['Venus (pratyantar) rules the 5th', 'Venus (pratyantar) occupies the 8th', 'Venus (pratyantar) is a karaka of relationships', 'Venus (pratyantar) rules the 12th: losses and expenses'],
+      // Theme order (spec 2026-10-15): obstacles, then education, family, relationships.
+      factors: ['Venus (pratyantar) occupies the 8th', 'Venus (pratyantar) rules the 12th: losses and expenses', 'Venus (pratyantar) rules the 5th', 'Venus (pratyantar) is a karaka of relationships'],
     });
     const jupiter = detail('lord', 'jupiter');
     if (!('facts' in jupiter)) throw new Error('expected facts');
@@ -330,7 +345,6 @@ describe('the period detail digests (get_period_detail)', () => {
     expect(detail('segment')).toMatchObject({ section: 'segment', facts: { segments } });
     expect(detail('segments', '2019-04-10')).toMatchObject({ section: 'segment', facts: { segment: { start: '2019-03-29' } } });
     expect(detail('lords', 'venus')).toMatchObject({ section: 'lord', facts: { lord: 'venus' } });
-    expect(periodDetailSummary(all).line).toBe(`Segments · ${segments.length} in 2019`);
     expect(bytes(all)).toBeLessThan(4096);
   });
 
@@ -358,14 +372,56 @@ describe('the period detail digests (get_period_detail)', () => {
     expect(result).toMatchObject({ trimmed: ['sky'] });
   });
 
-  it('summarizes a detail in one line', () => {
-    expect(periodDetailSummary(detail('lord', 'venus'))).toEqual({ line: 'Venus in detail · 1 dasha spans', factors: ['Venus (pratyantar) rules the 5th', 'Venus (pratyantar) occupies the 8th', 'Venus (pratyantar) is a karaka of relationships', 'Venus (pratyantar) rules the 12th: losses and expenses'] });
-    expect(periodDetailSummary(detail('bindus', 'sav')).line).toBe('Ashtakavarga SAV · total 337');
-    expect(periodDetailSummary(detail('bindus', 'saturn')).line).toBe('Ashtakavarga Saturn · total 39');
-    expect(periodDetailSummary(detail('segment', '2019-03-29')).line).toBe('Segment 2019-03-29 – 2019-04-22 · Rahu–Rahu–Venus');
-    expect(periodDetailSummary(detail('panchang', undefined, DAY, DAY_FRAME)).line).toBe('Panchang Pratipada (krishna) · Uttara Bhadrapada · Sunday (UTC)');
-    expect(periodDetailSummary(detail('dashas')).line).toBe('Dashas · 7 spans');
-    expect(periodDetailSummary(detail('houses'))).toEqual({ line: 'Period detail failed: section must be one of: lord, segment, bindus, panchang, dashas', factors: [] });
-    expect(periodDetailSummary({ available: false, reason: 'timeout' }).line).toBe('Period detail unavailable (timeout)');
+});
+
+// Spec 2026-10-15 (classical dasha rules): the engine places each sub-lord from its parent lord,
+// grades each lord's strength, runs Yogini antars and gives each theme a dasha tone. The tool
+// copies the span relations, lord strengths and the Yogini antar by name. The theme's graded
+// scores stay out (a bare number beside a verdict was read as a confidence percentage on
+// 2026-10-14); the agreement booleans and confidence carry the threshold.
+describe('the classical dasha facts in the period reading', () => {
+  it('an antar and a pratyantar carry their house from the parent lord; a maha does not', () => {
+    const full = buildPeriodReading(periodReadingFixture('delhi-2027-01'), FRAMES['delhi-2027-01'], { budgetBytes: 1_000_000 }).dashas;
+    expect(full.maha[0]).toEqual({ lord: 'rahu', start: '2027-01-01', end: '2027-01-31' });
+    expect(full.antar[0]).toMatchObject({ lord: 'mercury', from_parent: 12, relation: 'friction' });
+    expect(full.pratyantar[0]).toMatchObject({ lord: 'rahu', from_parent: 2, relation: 'neutral' });
+    // At 4 KB the antar's placement (BPHS) stays; the pratyantar's (an AlmaMesh extension) is cut
+    // after the pratyantar lord's natal detail and before a theme's second factor.
+    const fitted = reading('delhi-2027-01');
+    expect(fitted.dashas.antar[0]).toMatchObject({ from_parent: 12, relation: 'friction' });
+    expect(fitted.trimmed).toContain('pratyantar placements');
+  });
+
+  it('a running lord carries its strength band beside its natal dignity', () => {
+    const venus = reading('delhi-2019-05').lords.find((lord) => lord.lord === 'venus');
+    expect(venus?.natal).toEqual({ house: 8, sign: 'capricorn', dignity: 'neutral', strength: 'weak', combust: true });
+  });
+
+  it('the Yogini antar is clipped to the period beside the Yogini maha', () => {
+    const { dashas } = reading('delhi-2019-05');
+    expect(dashas.yogini_antar).toEqual({ name: 'sankata', lord: 'rahu', start: '2019-05-01', end: '2019-05-31' });
+  });
+
+  it('a theme carries neither the graded scores nor the tone: its confidence and factors already speak', () => {
+    // Measured 2026-10-15: a per-theme tone cost ~220 B and was cut first in every golden at 4 KB,
+    // so it never reached the model; the scores and tone stay in the engine output for the UI and eval.
+    const themes = buildPeriodReading(periodReadingFixture('delhi-2019-05'), FRAMES['delhi-2019-05'], { budgetBytes: 1_000_000 }).themes;
+    expect(themes.length).toBe(8);
+    expect(JSON.stringify(themes)).not.toMatch(/dasha|"vimshottari":\d|tone/);
+  });
+
+  it('an older cached reading without the classical fields still builds, with none invented', () => {
+    const source = periodReadingFixture('delhi-2019-05');
+    const old = {
+      ...source,
+      yogini_antar: undefined,
+      dasha_spans: source.dasha_spans.map(({ level, lord, start, end }) => ({ level, lord, start, end })),
+      themes: source.themes.map(({ dasha: _dasha, ...theme }) => theme),
+      natal_lords: Object.fromEntries(Object.entries(source.natal_lords).map(([graha, { strength: _s, ...lord }]) => [graha, lord])),
+    };
+    const result = buildPeriodReading(old, FRAMES['delhi-2019-05'], { budgetBytes: 1_000_000 });
+    expect(result.dashas.antar[0]).toEqual({ lord: 'rahu', start: '2019-05-01', end: '2019-05-31' });
+    expect(result.dashas).not.toHaveProperty('yogini_antar');
+    expect(result.lords.every((lord) => lord.natal?.strength === undefined)).toBe(true);
   });
 });

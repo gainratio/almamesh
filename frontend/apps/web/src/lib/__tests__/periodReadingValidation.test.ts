@@ -78,3 +78,25 @@ describe('period reading cache validation', () => {
     expect(isCachedNatalLords({ saturn: { ...seed.natal_lords.saturn, rules: [13] } })).toBe(false);
   });
 });
+
+// Spec 2026-10-15: the classical dasha fields are optional (a row cached by an older engine has
+// none) but, when present, typed: a corrupted row must not reach the chat tools.
+describe('period reading cache validation: classical dasha fields', () => {
+  it('accepts a row with none of them (cached by an older engine)', () => {
+    for (const key of ['yogini_antar', 'dasha_spans.1.from_parent', 'dasha_spans.1.relation', 'themes.0.dasha', 'natal_lords.sun.strength']) {
+      expect(isCachedPeriodReading(changed(key, undefined, true)), key).toBe(true);
+    }
+  });
+
+  it.each([
+    ['dasha_spans.1.relation', 'great'],
+    ['dasha_spans.1.from_parent', 13],
+    ['sookshma.relation', 'friendly'],
+    ['yogini_antar', { lord: 'rahu' }],
+    ['themes.0.dasha', { vimshottari: 101, yogini: 0, tone: null }],
+    ['themes.0.dasha', { vimshottari: 50, yogini: 0, tone: 'great' }],
+    ['natal_lords.sun.strength', 'mighty'],
+  ])('rejects %s = %j', (path, value) => {
+    expect(isCachedPeriodReading(changed(path, value))).toBe(false);
+  });
+});

@@ -72,7 +72,7 @@ function daggerStep(call: string): Mapping {
 // (`env:`), which Dagger never prints. The workflow keeps contents:read only.
 const GATE_REGISTRY_TOKEN = "--registry-token=env:GITHUB_TOKEN"
 
-const uploadAction = "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"
+const uploadAction = "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9"
 const gateEnv = { XDG_CONFIG_HOME: "${{ github.workspace }}/.github/xdg", GITHUB_TOKEN: "${{ github.token }}" }
 
 function expectedGateJob(gate: string): Mapping {
@@ -204,7 +204,7 @@ function exactDeployWorkflowViolations(source: string): string[] {
   }
   if (!sameValue(mapping(workflow.on), {
     workflow_run: {
-      workflows: ["Dagger", "WebKit (macOS)"],
+      workflows: ["Dagger", "Safari (macOS)"],
       types: ["completed"],
       branches: ["main"],
     },
@@ -292,7 +292,7 @@ const journeyFixture = [
   "    steps:",
   ...checkoutFixture,
   ...daggerFixture(`${GATE_REGISTRY_TOKEN} browser-journeys-evidence --commit-sha=\${{ github.sha }} --repository=\${{ github.repository }} export --path=candidate`),
-  `      - uses: ${uploadAction} # v7.0.1`,
+  `      - uses: ${uploadAction} # v7.0.2`,
   "        with:",
   "          name: browser-journeys-evidence-${{ github.sha }}",
   "          path: candidate",
@@ -378,7 +378,7 @@ const canonicalDeployFixture = [
   "",
   "on: # zizmor: ignore[dangerous-triggers] deploy-after-CI by design; exact same-repo push/main/success attempt is revalidated before secrets or provider access",
   "  workflow_run:",
-  "    workflows: [\"Dagger\", \"WebKit (macOS)\"]",
+  "    workflows: [\"Dagger\", \"Safari (macOS)\"]",
   "    types: [completed]",
   "    branches: [main]",
   "",
@@ -615,6 +615,19 @@ describe("privileged production delivery workflow", () => {
     expect(exactDeployWorkflowViolations(source)).toEqual([])
   })
 
+  test("deploys wait on the lanes that represent real users, never on the macOS WebKit lane", () => {
+    // Chromium and the rest of the product gates (Dagger) plus real Safari
+    // (safaridriver) gate production. The macOS WebKit lane files crash issues.
+    const deploy = readFileSync(deployWorkflowPath, "utf8")
+    const acceptance = readFileSync(resolve(root, "dagger/src/nativeMacAcceptance.ts"), "utf8")
+    const trigger = readFileSync(resolve(root, "dagger/src/deployTrigger.ts"), "utf8")
+    for (const source of [deploy, acceptance, trigger]) {
+      expect(source).not.toMatch(/WebKit \(macOS\)|webkit-macos/)
+    }
+    expect(acceptance).toContain('".github/workflows/safari-smoke.yml"')
+    expect(acceptance).toContain('"safari / macOS smoke"')
+  })
+
   test("the deploy workflow uses exactly the Dagger 0.21.8 typed flags", () => {
     const source = readFileSync(deployWorkflowPath, "utf8")
     expect(deployArgumentFlags(source)).toEqual(expectedDeployFlags)
@@ -708,13 +721,19 @@ describe("privileged production delivery workflow", () => {
       violation: "deploy-job",
     },
     {
-      name: "the WebKit (macOS) re-trigger removed",
-      source: canonicalDeployFixture.replace('["Dagger", "WebKit (macOS)"]', '["Dagger"]'),
+      name: "the Safari (macOS) re-trigger removed",
+      source: canonicalDeployFixture.replace('["Dagger", "Safari (macOS)"]', '["Dagger"]'),
+      violation: "triggers",
+    },
+    {
+      // The macOS WebKit lane reports crashes as issues; it never gates a deploy.
+      name: "the macOS WebKit lane re-added as a deploy gate",
+      source: canonicalDeployFixture.replace('["Dagger", "Safari (macOS)"]', '["Dagger", "Safari (macOS)", "WebKit (macOS)"]'),
       violation: "triggers",
     },
     {
       name: "an unrelated workflow added as a trigger",
-      source: canonicalDeployFixture.replace('["Dagger", "WebKit (macOS)"]', '["Dagger", "WebKit (macOS)", "Nightly E2E"]'),
+      source: canonicalDeployFixture.replace('["Dagger", "Safari (macOS)"]', '["Dagger", "Safari (macOS)", "Nightly E2E"]'),
       violation: "triggers",
     },
     {

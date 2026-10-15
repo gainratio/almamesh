@@ -1,6 +1,6 @@
 /**
  * "Which Springfield?": the chat's place picker. It appears only when
- * resolve_place found several places and is waiting (placePick.ts), shows the
+ * read_period or travel found several places and is waiting (placePick.ts), shows the
  * same place box as the time-travel "Where?" (the candidates first, a new
  * search as the person types), and answers with the pick or, on Cancel or
  * Escape, with nothing. Offline only, like every chat place.

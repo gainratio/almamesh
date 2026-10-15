@@ -136,3 +136,4 @@ shots/
 # outside the repo; the loader refuses them inside a git tree).
 retrodiction-report/
 *.personal.yaml
+.build-manifest/

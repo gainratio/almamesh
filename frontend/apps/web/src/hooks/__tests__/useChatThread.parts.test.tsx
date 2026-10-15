@@ -9,8 +9,8 @@ import { buildPeriodReading, periodReadingSummary } from '../../lib/periodReadin
 import { periodReadingFixture } from '../../lib/__tests__/periodReadingFixtures';
 import { useChatThread, type ChatStreamInput } from '../useChatThread';
 
-const TRIP = { toolCallId: 'a', toolName: 'get_trip_context', args: {}, status: 'complete', result: { place: { label: 'Singapore', timezone: 'Asia/Singapore' } } } as const;
-const TIMING = { toolCallId: 'b', toolName: 'get_timing', args: { section: 'dashas' }, status: 'complete', result: { data: { maha: [{ lord: 'jupiter' }] } } } as const;
+const TRIP = { toolCallId: 'a', toolName: 'travel', args: { to: '2019-05', place: 'Singapore' }, status: 'complete', result: { status: 'queued', action: 'travel', place_label: 'Singapore' } } as const;
+const TIMING = { toolCallId: 'b', toolName: 'read_period', args: { start: '2019-05', end: null, place: null, time: null, focus: 'dashas' }, status: 'complete', result: { dashas: { maha: [{ lord: 'jupiter' }] } } } as const;
 
 beforeEach(() => {
   useChatStore.setState({ threads: {}, messages: {}, summaries: {} });
@@ -50,16 +50,16 @@ describe('an answer keeps the tool calls that grounded it', () => {
   it('a call whose result could not be read is kept without a result', async () => {
     const { result } = renderHook(() => useChatThread('p1', null));
     await act(() => result.current.submit('Q', async (input) => {
-      input.onToolCall?.({ toolCallId: 'x', toolName: 'get_timing', args: {}, status: 'error', result: undefined });
+      input.onToolCall?.({ toolCallId: 'x', toolName: 'read_period', args: {}, status: 'error', result: undefined });
       return 'A.';
     }));
-    expect(result.current.messages.at(-1)?.parts?.[0]).toEqual({ type: 'tool-call', toolCallId: 'x', toolName: 'get_timing', args: {}, status: 'error' });
+    expect(result.current.messages.at(-1)?.parts?.[0]).toEqual({ type: 'tool-call', toolCallId: 'x', toolName: 'read_period', args: {}, status: 'error' });
   });
 });
 
 describe('history compaction: a past turn\'s tool results reach the next turn only as summaries', () => {
   it('the next turn gets one facts note with each earlier result on one line, never the full payload', async () => {
-    const BIG = { toolCallId: 'c', toolName: 'get_timing', args: {}, status: 'complete', result: { period: { label: 'May 2019' }, blob: 'q'.repeat(5_000) } } as const;
+    const BIG = { toolCallId: 'c', toolName: 'read_period', args: {}, status: 'complete', result: { period: { label: 'May 2019' }, blob: 'q'.repeat(5_000) } } as const;
     const { result } = renderHook(() => useChatThread('p1', null));
     await act(() => result.current.submit('How was May 2019?', async (input) => {
       input.onToolCall?.(TRIP);
@@ -72,8 +72,9 @@ describe('history compaction: a past turn\'s tool results reach the next turn on
       return 'Quieter.';
     }));
     const note = next?.retrievedContext.find((entry) => entry.startsWith('Facts gathered by tools in earlier turns'));
-    expect(note).toContain('- get_trip_context: Singapore');
-    expect(note).toContain('- get_timing: May 2019');
+    expect(note).toContain('- travel: action: travel · place_label: Singapore · status: queued');
+    // A result read_period's own summary cannot read falls back to the default line.
+    expect(note).toContain('- read_period: May 2019');
     expect(note).not.toContain('q'.repeat(50));
     // The prior answer's prose still rides as an ordinary history turn.
     expect(next?.history.map((turn) => turn.content)).toContain('Steady work in Singapore.');
@@ -84,7 +85,7 @@ describe('history compaction: a past turn\'s tool results reach the next turn on
       period: { start: '2019-05-01', end: '2019-05-31', granularity: 'month', label: 'May 2019', tense: 'past' },
       place: { label: 'Singapore', timezone: 'Asia/Singapore' },
     });
-    const READING = { toolCallId: 'r', toolName: 'get_period_reading', args: {}, status: 'complete', result: reading } as const;
+    const READING = { toolCallId: 'r', toolName: 'read_period', args: {}, status: 'complete', result: reading } as const;
     const { result } = renderHook(() => useChatThread('p1', null));
     await act(() => result.current.submit('How was May 2019?', async (input) => {
       input.onToolCall?.(READING);
@@ -94,8 +95,8 @@ describe('history compaction: a past turn\'s tool results reach the next turn on
     await act(() => result.current.submit('And June?', async (input) => { next = input; return 'Quieter.'; }));
     const note = next?.retrievedContext.find((entry) => entry.startsWith('Facts gathered by tools in earlier turns'));
     const own = periodReadingSummary(reading);
-    expect(note).toContain(`- get_period_reading: ${own.line} (${own.factors.join('; ')})`);
-    expect(note).not.toContain('- get_period_reading: May 2019 · Singapore');
+    // read_period's own line: the period and place, then the reading's own summary, then its cited factors.
+    expect(note).toContain(`- read_period: May 2019 · Singapore · ${own.line} (${own.factors.join('; ')})`);
   });
 
   it('a thread with no earlier tool calls gets no facts note', async () => {

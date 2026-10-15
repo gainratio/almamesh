@@ -6,6 +6,26 @@ All notable changes to AlmaMesh are documented here. Format follows
 
 ## [Unreleased]
 
+### Changed
+- **Chat answers about a time are steadier and always grounded.** The AI now
+  has two tools instead of many: `read_period` reads any span in one call ("the
+  rest of 2019", "the next 3 months", up to 24 months), and `travel` moves the
+  conversation. Every dated answer names the period and place, the running
+  dashas and the houses each lord rules, the Moon's sky, the dates to watch and
+  how confident each theme is, and the app checks those facts against what it
+  computed before you see them. A wrong lord, an invented date or a mismatched
+  confidence is sent back to the model to fix, so fewer answers wander.
+- **"Which Springfield?"** A city named in chat that matches several places
+  opens a picker for you, instead of the AI guessing. Places resolve on this
+  device; the AI gets the city name and time zone, never coordinates.
+- **Dates to watch speak your language.** Windows the app fills in (a planet
+  entering a sign, a new dasha) read in Spanish or Portuguese when the chat is.
+- **Providers that refuse `tool_choice: "required"` keep their tools.** The
+  turn retries with `"auto"` instead of answering without tools; only a provider
+  that refuses tools altogether gets the plain-prose answer.
+- Each tool row under a chat answer says when, then where, and fits a phone
+  screen. The chat code loads only when you first send a message.
+
 ### Added
 - **Day and place time travel on every device tier.** Phones can compute the
   selected day's dashas and transits without AI. Offline city searches and
@@ -78,6 +98,13 @@ All notable changes to AlmaMesh are documented here. Format follows
   worker until the engine is ready, so every run tests this worst case.
 
 ### Changed
+- **Deploys wait on the lanes that represent real users.** almamesh.com now
+  deploys once Dagger (Chromium and the other product gates) and real Safari
+  (`safari-smoke.yml`) are green. The macOS WebKit lane still runs on every
+  push and pull request, but it reports instead of blocking: each new WebKit
+  crash signature (thread, signal, top frame) becomes a `webkit-crash` issue,
+  and a repeat adds a comment with the run. The hand-written crash-retry
+  matcher (`webkitFlakeRetry.mjs`) is gone.
 - **Constrained-device chat uses bounded keyword recall.** Minimal and lite
   devices no longer start the optional MiniLM embedding model or duplicate
   their chat into a vector index. Full devices retain semantic recall. Restore

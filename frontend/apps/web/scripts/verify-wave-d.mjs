@@ -457,7 +457,7 @@ async function main() {
     /Transits & Timing/i.test(reportText) &&
     /Divisional Charts \(Shoda[sś]avarga\)/i.test(reportText) &&
     /Planetary Strength/i.test(reportText) &&
-    /Life-Domain Forecasts/i.test(reportText)
+    /Life-Domain Themes/i.test(reportText)
   const convention = await page
     .locator('[data-testid="report-dasha-convention"]')
     .innerText()
