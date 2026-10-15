@@ -466,6 +466,49 @@ test('a failing endpoint degrades calmly with Retry, never a blank dashboard', a
   });
 });
 
+// Nightly 38749206288 (2026-10-15): one stalled provider call left the reading
+// spinning for 8 minutes with nothing on screen. A remote section now fails at
+// its 300 s cap; the rest of the reading lands with an honest partial notice.
+test('a stalled section times out into a partial-failure notice, never an endless spinner', async ({ page }) => {
+  await page.addInitScript(
+    ([key, cfg]) => {
+      window.localStorage.setItem(key as string, cfg as string);
+    },
+    [LLM_SETTINGS_KEY, JSON.stringify(LLM_CONFIG)] as const,
+  );
+  const answered: SectionKey[] = [];
+  await page.route('**/chat/completions', async (route) => {
+    const section = sectionFor(route.request().postData());
+    if (!section) return route.fulfill({ status: 400, body: 'no SECTION marker' });
+    // guidance1's provider never answers (headers never arrive).
+    if (section === 'guidance1') return new Promise<void>(() => undefined);
+    const content = JSON.stringify(SECTION_JSON[section]);
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ choices: [{ message: { content } }] }),
+    });
+    answered.push(section);
+  });
+
+  await bootEngine(page);
+  await seedChart(page);
+  await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+  await page.clock.install();
+  await page.getByTestId('generate-reading').click();
+  await expect.poll(() => answered.length, { timeout: 30_000 }).toBe(4);
+  await expect(page.getByTestId('reading-section')).toHaveCount(0);
+
+  await page.clock.fastForward('05:01');
+  await expect(page.getByTestId('reading-section')).toBeVisible({ timeout: 30_000 });
+  const notice = page.getByTestId('interpretation-partial-failure');
+  await expect(notice).toBeVisible();
+  await expect(notice).toContainText('Some sections could not be generated');
+  await expect(page.getByTestId('interpretation-partial-retry')).toBeVisible();
+  await expect(page.getByTestId('interpretation-progress')).toHaveCount(0);
+  await page.screenshot({ path: 'test-results/interpretation-stalled-section.png', fullPage: true });
+});
+
 // ===========================================================================
 // Test 3 — no LLM configured: the dashboard shows the "Connect an AI model" CTA.
 // ===========================================================================

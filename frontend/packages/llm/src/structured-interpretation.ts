@@ -183,9 +183,9 @@ export interface StructuredInterpretationParams {
    */
   readonly promptSet?: ReportPromptSet;
   /**
-   * Report sections only, remote endpoints only: total wall-clock cap per
-   * section in ms (default REPORT_SECTION_TIMEOUT_MS). Local endpoints have no
-   * total cap. Legacy (non-report) sections are never capped.
+   * Remote endpoints only: total wall-clock cap per section in ms (default
+   * REPORT_SECTION_TIMEOUT_MS), for report and legacy sections alike. Local
+   * endpoints have no total cap.
    */
   readonly sectionTimeoutMs?: number;
   /**
@@ -1568,20 +1568,27 @@ function reasoningBudget(section: AnySectionKey, promptSet: ReportPromptSet | un
 }
 
 /**
- * The time caps for one section. Legacy sections: none (unchanged). Report
- * sections always stream (requestSection), so tokens are observable on every
- * path. Remote: a total cap plus an idle cap from launch. Local: no total cap
- * (a weak device may be slow but still writing); the idle cap starts at the
- * first token, and a generous first-token cap bounds the wait before it
- * (queueing on a single-slot server, cold model load, slow prefill).
+ * The time caps for one section. Report sections always stream
+ * (requestSection), so tokens are observable on every path. Remote: a total
+ * cap plus an idle cap from launch. Local: no total cap (a weak device may be
+ * slow but still writing); the idle cap starts at the first token, and a
+ * generous first-token cap bounds the wait before it (queueing on a
+ * single-slot server, cold model load, slow prefill).
+ *
+ * Legacy (dashboard reading) sections: remote gets the total cap only, since
+ * the non-streaming call has no token to watch. Without it a stalled provider
+ * hung the whole reading (nightly 2026-10-15). Local legacy stays uncapped.
  */
 function sectionLimits<Section extends AnySectionKey>(
   section: Section,
   params: SectionRunParams<Section>,
 ): SectionTimeLimits | null {
-  if (!isReportRequest(section, params.promptSet)) return null;
+  const local = usesLitePrompt(params.config);
+  if (!isReportRequest(section, params.promptSet)) {
+    return local ? null : { totalMs: params.sectionTimeoutMs ?? REPORT_SECTION_TIMEOUT_MS };
+  }
   const idleMs = params.sectionIdleTimeoutMs ?? REPORT_SECTION_IDLE_TIMEOUT_MS;
-  if (usesLitePrompt(params.config)) {
+  if (local) {
     return { idleMs, firstTokenMs: params.sectionFirstTokenTimeoutMs ?? REPORT_LOCAL_FIRST_TOKEN_TIMEOUT_MS };
   }
   return { totalMs: params.sectionTimeoutMs ?? REPORT_SECTION_TIMEOUT_MS, idleMs };
