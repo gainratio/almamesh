@@ -236,7 +236,7 @@
       "retro": true,
       "from_moon": 12,
       "from_lagna": 2,
-      "sav": 22,
+      "sav": 21,
       "bav": 3,
       "tags": [
         "jupiter_from_moon_12"
@@ -279,7 +279,7 @@
       "retro": true,
       "from_moon": 12,
       "from_lagna": 2,
-      "sav": 22,
+      "sav": 21,
       "bav": null,
       "tags": [
         "ketu_from_moon_12"
@@ -434,7 +434,7 @@
       ],
       "direction": "mixed",
       "strength": "strong",
-      "strength_pct": 50,
+      "strength_pct": 51,
       "confidence": "medium",
       "agreement": {
         "vimshottari": false,
@@ -444,7 +444,7 @@
       "factors": [
         "Jupiter transits the 12th from the Moon",
         "Yogini Ulka (Saturn) rules the 9th",
-        "Jupiter's SAV in Cancer is 22"
+        "Jupiter's SAV in Cancer is 21"
       ],
       "windows": [
         {
@@ -516,7 +516,7 @@
       ],
       "direction": "mixed",
       "strength": "strong",
-      "strength_pct": 51,
+      "strength_pct": 50,
       "confidence": "low",
       "agreement": {
         "vimshottari": false,
@@ -525,8 +525,8 @@
       },
       "factors": [
         "Jupiter transits the 2nd from the lagna",
-        "Jupiter's SAV in Cancer is 22",
-        "Jupiter strength is 51% (strong)"
+        "Jupiter's SAV in Cancer is 21",
+        "Jupiter strength is 50% (strong)"
       ],
       "windows": [
         {

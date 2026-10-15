@@ -395,27 +395,6 @@
       "windows": []
     },
     {
-      "domain": "finances",
-      "houses": [
-        2,
-        11
-      ],
-      "direction": "supportive",
-      "strength": "strong",
-      "strength_pct": 51,
-      "confidence": "low",
-      "agreement": {
-        "vimshottari": true,
-        "yogini": false,
-        "transit": false
-      },
-      "factors": [
-        "Moon (pratyantar) rules the 2nd",
-        "Jupiter strength is 51% (strong)"
-      ],
-      "windows": []
-    },
-    {
       "domain": "spiritual",
       "houses": [
         9,
@@ -424,7 +403,7 @@
       ],
       "direction": "mixed",
       "strength": "strong",
-      "strength_pct": 50,
+      "strength_pct": 51,
       "confidence": "low",
       "agreement": {
         "vimshottari": false,
@@ -434,6 +413,27 @@
       "factors": [
         "Saturn transits the 5th from the Moon",
         "Saturn's SAV in Sagittarius is 21",
+        "Jupiter strength is 51% (strong)"
+      ],
+      "windows": []
+    },
+    {
+      "domain": "finances",
+      "houses": [
+        2,
+        11
+      ],
+      "direction": "supportive",
+      "strength": "strong",
+      "strength_pct": 50,
+      "confidence": "low",
+      "agreement": {
+        "vimshottari": true,
+        "yogini": false,
+        "transit": false
+      },
+      "factors": [
+        "Moon (pratyantar) rules the 2nd",
         "Jupiter strength is 50% (strong)"
       ],
       "windows": []
