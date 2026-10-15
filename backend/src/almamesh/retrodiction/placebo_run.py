@@ -34,11 +34,12 @@ if TYPE_CHECKING:
     from almamesh.retrodiction.events import EventsFile, LifeEvent, Subject
     from almamesh.retrodiction.indicators import Target
 
-AddedFamily = Literal["exact_transits", "engine_obstacles", "ashtakavarga_transits"]
+AddedFamily = Literal["exact_transits", "engine_obstacles", "ashtakavarga_transits", "varga_lords"]
 ADDED_FAMILIES: Final[tuple[str, ...]] = (
     "exact_transits",
     "engine_obstacles",
     "ashtakavarga_transits",
+    "varga_lords",
 )
 BASELINE: Final[str] = "BASELINE"
 # The v1 seven, named: FAMILIES grows with each technique, BASELINE never does.

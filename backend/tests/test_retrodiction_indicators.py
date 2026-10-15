@@ -8,6 +8,7 @@ import pytest
 
 from almamesh.constants.astrology import PlanetName as P
 from almamesh.domains.ashtakavarga_signals import BAV_DASHA_MOVERS, BinduTable
+from almamesh.domains.varga_signals import VargaKey
 from almamesh.retrodiction import indicators as indicators_module
 from almamesh.retrodiction.indicators import (
     ENGINE_OBSTACLES,
@@ -268,3 +269,67 @@ def test_should_delegate_the_ashtakavarga_rule_to_the_engine_seam(
 
 def test_should_read_every_bav_mover_in_the_month_sky() -> None:
     assert BAV_DASHA_MOVERS <= set(SKY_GRAHAS)
+
+
+# --- Technique #4, varga_lords (amendment g3) -----------------------------------------
+LEO = 4
+# CAREER's varga key: its D10 10th is Leo, ruled by the Sun, with Venus placed there.
+VARGA_FRAME = replace(
+    FRAME,
+    varga_keys={
+        CAREER: VargaKey(signs=frozenset({LEO}), significators=frozenset({P.SUN, P.VENUS}))
+    },
+)
+
+
+def _vl(sky: MonthSky, target: Target = CAREER) -> float:
+    return family_scores(VARGA_FRAME, sky, target)["varga_lords"]
+
+
+def test_should_score_half_when_the_running_maha_lord_is_a_varga_significator() -> None:
+    assert _vl(_sky({P.VENUS}, {P.MOON}, {P.MOON})) == 0.5
+
+
+def test_should_score_half_when_the_running_antar_lord_is_a_varga_significator() -> None:
+    assert _vl(_sky({P.MOON}, {P.SUN}, {P.MOON})) == 0.5
+
+
+def test_should_not_count_a_pratyantar_lord_as_running() -> None:
+    assert _vl(_sky({P.MOON}, {P.MOON}, {P.SUN})) == 0.0
+
+
+def test_should_score_half_when_jupiter_or_saturn_transits_a_varga_key_sign() -> None:
+    assert _vl(_sky({P.MOON}, {P.MOON}, {P.MOON}, jupiter=LEO)) == 0.5
+    assert _vl(_sky({P.MOON}, {P.MOON}, {P.MOON}, saturn=LEO)) == 0.5
+    assert _vl(_sky({P.MOON}, {P.MOON}, {P.MOON}, mars=LEO)) == 0.0
+
+
+def test_should_score_one_when_the_dasha_and_the_transit_both_hold() -> None:
+    assert _vl(_sky({P.VENUS}, {P.MOON}, {P.MOON}, saturn=LEO)) == 1.0
+
+
+def test_should_score_zero_for_a_target_with_no_varga() -> None:
+    assert _vl(_sky({P.VENUS}, {P.SUN}, {P.MOON}, jupiter=LEO), HEALTH) == 0.0
+
+
+def test_should_delegate_the_varga_rule_to_the_engine_seam(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Given the seam replaced by a recorder
+    seen: list[tuple[VargaKey, frozenset[P], int]] = []
+
+    def recorder(key, running, signs) -> float:  # noqa: ANN001
+        seen.append((key, running, signs[P.JUPITER]))
+        return 0.25
+
+    monkeypatch.setattr(indicators_module, "varga_score", recorder)
+    # When
+    score = _vl(_sky({P.VENUS}, {P.MARS}, {P.SUN}, jupiter=LEO))
+    # Then the family returns the seam's value for the target's key and the maha/antar lords
+    assert score == 0.25
+    assert seen == [(VARGA_FRAME.varga_keys[CAREER], frozenset({P.VENUS, P.MARS}), LEO)]
+
+
+def test_should_append_the_two_new_families_after_exact_transits() -> None:
+    names = [f.name for f in FAMILIES]
+    assert names[-3:] == ["exact_transits", "ashtakavarga_transits", "varga_lords"]

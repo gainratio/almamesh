@@ -7,13 +7,14 @@ calculation plugs in as one more class here with no harness change.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import partial
 from typing import TYPE_CHECKING, ClassVar, Final, Protocol
 
 from almamesh.constants.astrology import PlanetName
 from almamesh.domains.ashtakavarga_signals import BinduTable, ashtakavarga_score, transit_movers
 from almamesh.domains.exact_signals import SLOW_MOVERS, contact_score
+from almamesh.domains.varga_signals import VargaKey, varga_score
 from almamesh.transits.aspects import drishti_offsets
 from almamesh.transits.exact import LAGNA_POINT
 from almamesh.transits.natal import whole_sign_house
@@ -34,8 +35,9 @@ class Target:
 class NatalFrame:
     """The natal facts the families read: lagna and Moon signs, lordships, occupancy.
 
-    ``bindus`` is the natal Ashtakavarga; the engine always sets it. A hand-built frame
-    without it has no Ashtakavarga to read, so ``ashtakavarga_transits`` scores 0 there.
+    ``bindus`` is the natal Ashtakavarga and ``varga_keys`` each varga target's key houses
+    and significators; the engine always sets both. A hand-built frame without them has
+    nothing to read, so ``ashtakavarga_transits`` and ``varga_lords`` score 0 there.
     """
 
     lagna_idx: int
@@ -43,6 +45,7 @@ class NatalFrame:
     rulers: Mapping[PlanetName, frozenset[int]]
     occupied: Mapping[PlanetName, int]
     bindus: BinduTable | None = None
+    varga_keys: Mapping[Target, VargaKey] = field(default_factory=dict)
 
     def signifies(self, graha: PlanetName, target: Target) -> bool:
         """The graha rules a target house or is a target karaka."""
@@ -198,6 +201,11 @@ class ExactTransits:
         return contact_score(month.contacts, movers, natal.relevant_points(target), lords)
 
 
+def _maha_antar(month: MonthSky) -> frozenset[PlanetName]:
+    """Every maha or antar lord running at some time in the month."""
+    return frozenset().union(*month.running[:2])
+
+
 class AshtakavargaTransits:
     """Technique #3 (amendment g2): strong-bindu transits over a target house.
 
@@ -211,9 +219,27 @@ class AshtakavargaTransits:
     def score(self, natal: NatalFrame, month: MonthSky, target: Target) -> float:
         if natal.bindus is None:
             return 0.0
-        movers = transit_movers(frozenset().union(*month.running[:2]))
+        movers = transit_movers(_maha_antar(month))
         on_target = partial(natal.in_target, target=target)
         return ashtakavarga_score(natal.bindus, month.signs, movers, on_target)
+
+
+class VargaLords:
+    """Technique #4 (amendment g3): dasha lords and slow transits tied to the area's varga.
+
+    Career reads D10 (10th), relationships D9 (7th), disputes D30 (6th, 8th, 12th): 0.5 when
+    a running maha or antar lord is a varga significator, plus 0.5 when Jupiter or Saturn
+    transits a key-house sign. Every other target scores 0. The engine's
+    ``domains.varga_signals.varga_score`` is the rule.
+    """
+
+    name: ClassVar[str] = "varga_lords"
+
+    def score(self, natal: NatalFrame, month: MonthSky, target: Target) -> float:
+        key = natal.varga_keys.get(target)
+        if key is None:
+            return 0.0
+        return varga_score(key, _maha_antar(month), month.signs)
 
 
 # The harness-computed disputes target (legal, accident); see mapping._DISPUTES.
@@ -247,6 +273,7 @@ FAMILIES: Final[tuple[IndicatorFamily, ...]] = (
     TransitNodes(),
     ExactTransits(),
     AshtakavargaTransits(),
+    VargaLords(),
 )
 # Amendment (f5): scored only by the +OBSTACLES run, lazily (a full predictive run per month),
 # so it stays out of FAMILIES and out of the pre-registration digest of the v1 + exact set.

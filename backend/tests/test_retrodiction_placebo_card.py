@@ -84,7 +84,7 @@ def test_should_refuse_an_unknown_added_family(events_path: Path, tmp_path: Path
         ],
     )
     assert result.exit_code == 2
-    assert "exact_transits, engine_obstacles, ashtakavarga_transits" in result.output
+    assert "exact_transits, engine_obstacles, ashtakavarga_transits, varga_lords" in result.output
 
 
 def _fake_activation(asked: list[YearMonth]) -> Callable[[Birth, YearMonth], float]:
@@ -206,33 +206,35 @@ def test_should_pin_v1_to_the_seven_named_families() -> None:
     assert V1 == V1_NAMES
 
 
-def test_should_offer_ashtakavarga_transits_as_an_eager_added_family() -> None:
-    plan = RunPlan(added="ashtakavarga_transits")
-    assert "ashtakavarga_transits" in ADDED_FAMILIES
-    assert "ashtakavarga_transits" in {f.name for f in FAMILIES}
+@pytest.mark.parametrize("added", ["ashtakavarga_transits", "varga_lords"])
+def test_should_offer_the_new_techniques_as_eager_added_families(added: str) -> None:
+    plan = RunPlan(added=added)  # type: ignore[arg-type]
+    assert added in ADDED_FAMILIES
+    assert added in {f.name for f in FAMILIES}
     assert not plan.lazy
     sets = plan.eager_sets()
     assert sets[BASELINE] == V1_NAMES
-    assert sets["+ashtakavarga_transits"] == V1_NAMES | {"ashtakavarga_transits"}
+    assert sets[f"+{added}"] == V1_NAMES | {added}
     assert all("exact_transits" not in names for names in sets.values())
 
 
-def test_should_run_the_placebo_scorecard_with_ashtakavarga_transits_added(
-    events_path: Path, tmp_path: Path
+@pytest.mark.parametrize("added", ["ashtakavarga_transits", "varga_lords"])
+def test_should_run_the_placebo_scorecard_with_a_new_technique_added(
+    events_path: Path, tmp_path: Path, added: str
 ) -> None:
     out = tmp_path / "card"
     args = ["placebo-scorecard", "--events", str(events_path), "--out", str(out)]
-    result = CliRunner().invoke(app, [*args, "--added", "ashtakavarga_transits"])
+    result = CliRunner().invoke(app, [*args, "--added", added])
     assert result.exit_code == 0, result.output
     card = json.loads((out / "placebo-scorecard.json").read_text())
-    assert card["setup"]["added_family"] == "ashtakavarga_transits"
-    assert {r["family_set"] for r in card["rows"]} == {BASELINE, "+ashtakavarga_transits"}
+    assert card["setup"]["added_family"] == added
+    assert {r["family_set"] for r in card["rows"]} == {BASELINE, f"+{added}"}
 
 
 def test_should_scan_exact_contacts_only_when_exact_transits_is_added(events_path: Path) -> None:
     events = load_events(events_path).subjects[2].events  # the legal event reads Mars
     assert placebo_run.contact_movers(RunPlan(added="exact_transits"), events) == movers_for(events)
-    for added in ("engine_obstacles", "ashtakavarga_transits"):
+    for added in ("engine_obstacles", "ashtakavarga_transits", "varga_lords"):
         assert placebo_run.contact_movers(RunPlan(added=added), events) == frozenset()
 
 

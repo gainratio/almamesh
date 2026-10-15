@@ -13,6 +13,7 @@ from almamesh.calculations import SkyfieldAstronomy, calculate_sidereal_context
 from almamesh.constants.astrology import PlanetName as P
 from almamesh.domains.ashtakavarga_signals import BinduTable
 from almamesh.domains.exact_signals import SLOW_MOVERS
+from almamesh.domains.varga_signals import varga_key
 from almamesh.retrodiction import engine as engine_module
 from almamesh.retrodiction.engine import (
     EngineReadingRangeError,
@@ -21,8 +22,11 @@ from almamesh.retrodiction.engine import (
 )
 from almamesh.retrodiction.events import Birth, LifeEvent
 from almamesh.retrodiction.harness import movers_for
+from almamesh.retrodiction.mapping import MAPPING
+from almamesh.schemas.vargas import DivisionalChart
 from almamesh.strength.ashtakavarga import compute_ashtakavarga
 from almamesh.transits.exact import astro_movers, exact_hits
+from almamesh.vargas import compute_varga_context
 
 SYNTHETIC = Birth(
     datetime=datetime.fromisoformat("1980-03-04T05:06:00+05:30"), latitude=13.08, longitude=80.27
@@ -136,13 +140,17 @@ def test_should_refuse_a_birth_without_a_utc_offset() -> None:
         obstacles_activation(naive, (2000, 1))
 
 
-def test_should_carry_the_natives_ashtakavarga_in_the_natal_frame(engine: SubjectEngine) -> None:
-    # Given the same native charted independently
+def _synthetic_natal():  # noqa: ANN202 - the engine's SiderealContext
     born = SYNTHETIC.datetime.astimezone(UTC)
     with SkyfieldAstronomy() as astronomy:
-        natal = calculate_sidereal_context(
+        return calculate_sidereal_context(
             born, SYNTHETIC.latitude, SYNTHETIC.longitude, reference_date=born, astronomy=astronomy
         )
+
+
+def test_should_carry_the_natives_ashtakavarga_in_the_natal_frame(engine: SubjectEngine) -> None:
+    # Given the same native charted independently
+    natal = _synthetic_natal()
     # Then the frame's bindus are the engine's Ashtakavarga for that chart
     assert engine.frame.bindus == BinduTable.from_context(compute_ashtakavarga(natal))
     assert engine.frame.bindus is not None
@@ -154,3 +162,25 @@ def test_should_read_the_sun_and_venus_in_the_month_sky(engine: SubjectEngine) -
     sky = engine.month((2019, 1))
     assert (sky.signs[P.SUN], sky.signs[P.VENUS]) == (9, 7)
     assert 0 <= sky.signs[P.MERCURY] < 12
+
+
+_VARGA_OF_AREA = {
+    "career": (DivisionalChart.D10, frozenset({10})),
+    "relationships": (DivisionalChart.D9, frozenset({7})),
+    "disputes (pending)": (DivisionalChart.D30, frozenset({6, 8, 12})),
+}
+
+
+def test_should_key_every_career_relationship_and_disputes_target_to_its_varga(
+    engine: SubjectEngine,
+) -> None:
+    # Given the same native's vargas computed independently
+    charts = compute_varga_context(_synthetic_natal()).charts
+    expected = {
+        m.target: varga_key(charts[_VARGA_OF_AREA[m.area][0]], _VARGA_OF_AREA[m.area][1])
+        for m in MAPPING.values()
+        if m.area in _VARGA_OF_AREA
+    }
+    # Then the frame holds exactly those seven targets' keys (3 career, 3 relationships, disputes)
+    assert len(expected) == 7
+    assert dict(engine.frame.varga_keys) == expected

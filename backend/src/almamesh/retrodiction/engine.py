@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from functools import cache, partial
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Final
 
 from skyfield.errors import EphemerisRangeError
@@ -18,13 +19,16 @@ from almamesh.constants.astrology import PlanetName
 from almamesh.dasha.depth import level_spans
 from almamesh.dasha.yogini import compute_yogini_periods
 from almamesh.domains.ashtakavarga_signals import BinduTable
+from almamesh.domains.varga_signals import VARGA_KEYS, VargaKey, varga_key
 from almamesh.predictive import PredictiveContexts, compute_predictive_contexts
 from almamesh.retrodiction.indicators import SKY_GRAHAS, MonthSky, NatalFrame
+from almamesh.retrodiction.mapping import MAPPING
 from almamesh.schemas.domains import LifeDomain
 from almamesh.strength.ashtakavarga import compute_ashtakavarga
 from almamesh.transits.exact import MOVERS, ContactBook, astro_movers, natal_points
 from almamesh.transits.natal import natal_lagna_index, natal_moon_index, sign_index
 from almamesh.transits.positions import EPHEMERIS_LAST_INSTANT, transit_longitude
+from almamesh.vargas import compute_varga_context
 
 if TYPE_CHECKING:
     from collections.abc import Collection
@@ -32,6 +36,7 @@ if TYPE_CHECKING:
     from almamesh.calculations import SkyfieldAstronomy
     from almamesh.dasha.models import YoginiPeriod
     from almamesh.retrodiction.events import Birth
+    from almamesh.retrodiction.indicators import Target
     from almamesh.schemas.astrology import SiderealContext
 
 YearMonth = tuple[int, int]
@@ -58,14 +63,32 @@ def add_months(ym: YearMonth, delta: int) -> YearMonth:
     return index // 12, index % 12 + 1
 
 
+# Amendment (g3): the mapping areas that read a divisional chart, and the engine area whose
+# varga and key houses (domains.varga_signals.VARGA_KEYS) they read.
+VARGA_AREAS: Final[dict[str, LifeDomain]] = {
+    "career": LifeDomain.CAREER,
+    "relationships": LifeDomain.RELATIONSHIPS,
+    "disputes (pending)": LifeDomain.OBSTACLES,
+}
+
+
+def _varga_keys(natal: SiderealContext) -> MappingProxyType[Target, VargaKey]:
+    """Each varga-reading target's key-house signs and significators, from its varga."""
+    charts = compute_varga_context(natal).charts
+    areas = {m.target: VARGA_AREAS[m.area] for m in MAPPING.values() if m.area in VARGA_AREAS}
+    keys = {t: varga_key(charts[VARGA_KEYS[d][0]], VARGA_KEYS[d][1]) for t, d in areas.items()}
+    return MappingProxyType(keys)
+
+
 def _natal_frame(natal: SiderealContext) -> NatalFrame:
-    """Lagna and Moon signs, lordships, occupancy and Ashtakavarga from the natal context."""
+    """Lagna and Moon signs, lordships, occupancy, Ashtakavarga and varga keys."""
     return NatalFrame(
         lagna_idx=natal_lagna_index(natal),
         moon_idx=natal_moon_index(natal),
         rulers={g: frozenset(p.houses_ruled) for g, p in natal.planets.items()},
         occupied={g: p.house for g, p in natal.planets.items()},
         bindus=BinduTable.from_context(compute_ashtakavarga(natal)),
+        varga_keys=_varga_keys(natal),
     )
 
 
@@ -192,6 +215,7 @@ __all__ = [
     "ENGINE_FIRST_INSTANT",
     "EngineReadingRangeError",
     "OUT_OF_RANGE_BIRTH",
+    "VARGA_AREAS",
     "SubjectEngine",
     "YearMonth",
     "add_months",

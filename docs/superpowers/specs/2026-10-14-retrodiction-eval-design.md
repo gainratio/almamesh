@@ -459,7 +459,17 @@ Numbering, in the order families are tested: #1 `exact_transits` (roadmap row 1,
   The new digest is pinned in `tests/test_retrodiction_mapping.py` in the commit that adds the
   families, and recorded under (g5) below, before any run.
 
-**(g5) Digest.** (Filled in by the commit that adds the families, before any run.)
+**(g5) Digest.** `1abf88a5469c032bf3a0540392021468648dab308dfbd4db565fd89b7d581a83`
+(v1 seven + `exact_transits` + `ashtakavarga_transits` + `varga_lords`), pinned in
+`tests/test_retrodiction_mapping.py` by the commit "feat(eval): technique #4, varga_lords
+family (amendment g3)", before any run. The intermediate digest with #3 only was
+`f0c266cc91da6769b819c06bb9a873567773177b57f6951e9c5ef02f1d273a36` (commit `18c25123`); no run
+used it. BASELINE in every run stays the v1 seven, named explicitly (`placebo_run.V1`).
+
+*Table fix before any run.* Commit `bed15c00` corrected the engine's Moon BAV from Jupiter to
+the BPHS places (1, 4, 7, 8, 10, 11, 12; it listed 2 for 12). This is a correctness fix, not
+tuning: the row is fixed by BPHS (Raman, VedAstro and M.S. Mehta agree), it was found by a
+hand-derived chart before any #3 run, and no scoring result was looked at to choose it.
 
 **(g6) The stop rule, restated (learning-loop §8).** If families #1-#4 promote nothing, the
 roadmap pauses: no family #5. We publish the null as aggregates on the methods page, keep every
