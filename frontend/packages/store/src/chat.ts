@@ -81,6 +81,23 @@ function withoutMalformedParts(messages: PersistedChatState['messages']): Persis
   ) as PersistedChatState['messages'];
 }
 
+/** A pointer's `moved_to` is a thread id; anything else is dropped (the message is kept). */
+function withoutMalformedPointers(messages: PersistedChatState['messages']): PersistedChatState['messages'] {
+  return Object.fromEntries(
+    Object.entries(messages).map(([threadId, list]) => [
+      threadId,
+      Array.isArray(list)
+        ? list.map((message: unknown) => {
+            if (!isPlainRecord(message) || !('moved_to' in message)) return message;
+            if (typeof message.moved_to === 'string' && message.moved_to.length > 0) return message;
+            const { moved_to: _malformed, ...kept } = message;
+            return kept;
+          })
+        : list,
+    ]),
+  ) as PersistedChatState['messages'];
+}
+
 /**
  * Defensive hydration: tolerate ANY old/unknown/corrupt persisted blob and
  * always return valid `{ threads, messages, summaries }` maps. A returning visitor whose
@@ -95,9 +112,9 @@ export function migrateChatPersistedState(
   const threads = withoutMalformedPins(
     isPlainRecord(source.threads) ? (source.threads as PersistedChatState['threads']) : {},
   );
-  const messages = withoutMalformedParts(
+  const messages = withoutMalformedPointers(withoutMalformedParts(
     isPlainRecord(source.messages) ? (source.messages as PersistedChatState['messages']) : {},
-  );
+  ));
   const summaries: PersistedChatState['summaries'] = isPlainRecord(source.summaries)
     ? Object.fromEntries(
         Object.entries(source.summaries).filter(
@@ -197,6 +214,12 @@ export interface ChatStore {
   ) => ChatMessage;
   getMessages: (threadId: string) => ChatMessage[];
   /**
+   * Move whole messages (one turn), in order, to the end of another thread of the same profile.
+   * The source keeps a one-line `pointer` (role 'system', `moved_to`), or is removed when the
+   * move leaves it empty. False, and nothing changes, for an unknown or foreign thread or id.
+   */
+  moveMessages: (fromThreadId: string, toThreadId: string, messageIds: readonly string[], pointer: string) => boolean;
+  /**
    * Record a result on one tool-call part of a stored message (assistant-ui's
    * onAddToolResult). False, and nothing changes, for an unknown message or
    * call, or a result the part validator refuses.
@@ -248,6 +271,30 @@ function makeThread(profileId: string, chartId?: string, asOf?: ChatThreadAsOf):
     message_count: 0,
     ...(asOf ? { as_of: asOf } : {}),
   };
+}
+
+type MessagesState = Pick<ChatStore, 'threads' | 'messages' | 'summaries'>;
+
+/** The state after `moving` leaves `from` for the end of `to` (see `moveMessages`). */
+function movedState(state: MessagesState, from: ChatThread, to: ChatThread, moving: readonly ChatMessage[], pointer: string): MessagesState {
+  const now = new Date().toISOString();
+  const moved = moving.map((message) => ({ ...message, thread_id: to.id }));
+  const target = [...(state.messages[to.id] ?? []), ...moved];
+  const title = moved.reduce<string | null>((current, message) => deriveTitle({ ...to, title: current }, message.role, message.content), to.title);
+  const threads = { ...state.threads, [to.id]: { ...to, title, message_count: target.length, updated_at: now } };
+  const messages = { ...state.messages, [to.id]: target };
+  const left = (state.messages[from.id] ?? []).filter((message) => !moving.includes(message));
+  if (left.length === 0) {
+    delete threads[from.id];
+    delete messages[from.id];
+    const summaries = { ...state.summaries };
+    delete summaries[from.id];
+    return { threads, messages, summaries };
+  }
+  const note: ChatMessage = { id: nextId('msg'), thread_id: from.id, role: 'system', content: pointer, created_at: now, moved_to: to.id };
+  messages[from.id] = [...left, note];
+  threads[from.id] = { ...from, message_count: left.length + 1 };
+  return { threads, messages, summaries: state.summaries };
 }
 
 /** The first user message becomes the title only when the thread is untitled. */
@@ -324,6 +371,19 @@ export const chatStoreCreator: StateCreator<ChatStore> = (set, get) => ({
   },
 
   getMessages: (threadId) => [...(get().messages[threadId] ?? [])],
+
+  moveMessages: (fromThreadId, toThreadId, messageIds, pointer) => {
+    const state = get();
+    const from = state.threads[fromThreadId];
+    const to = state.threads[toThreadId];
+    if (!from || !to || from.id === to.id || from.profile_id !== to.profile_id) return false;
+    const source = state.messages[fromThreadId] ?? [];
+    const wanted = new Set(messageIds);
+    const moving = source.filter((message) => wanted.has(message.id));
+    if (moving.length !== wanted.size || moving.length === 0) return false;
+    set((current) => movedState(current, from, to, moving, pointer));
+    return true;
+  },
 
   setToolCallResult: (threadId, messageId, toolCallId, result, isError) => {
     const list = get().messages[threadId] ?? [];

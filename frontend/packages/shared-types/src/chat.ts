@@ -104,6 +104,11 @@ export interface ChatMessage {
    * back into the composer (2026-10-13).
    */
   readonly notice?: 'app_updated';
+  /**
+   * Set on a one-line pointer (role 'system') left where a turn was moved from: the thread it
+   * moved to. A chat-initiated trip takes its question and answer along (2026-10-14).
+   */
+  readonly moved_to?: string;
 }
 
 /** One grounded fact retained by a rolling chat summary. */

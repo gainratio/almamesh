@@ -224,13 +224,13 @@ function cleanOldVectors(clean: (store: VectorStore) => Promise<void>): Promise<
   return next;
 }
 
-/** Every nonblank, non-error message of the canonical chat store, for rebuilds. */
+/** Every nonblank, non-error message the user or the AI wrote (no moved-turn pointers), for rebuilds. */
 export function canonicalChatMessages(): readonly IndexableMessage[] {
   const chat = useChatStore.getState();
   const messages: IndexableMessage[] = [];
   for (const thread of Object.values(chat.threads)) {
     for (const message of chat.messages[thread.id] ?? []) {
-      if (message.error === true || message.content.trim().length === 0) continue;
+      if (message.error === true || message.role === 'system' || message.content.trim().length === 0) continue;
       messages.push({ id: message.id, thread_id: thread.id, profile_id: thread.profile_id, content: message.content });
     }
   }

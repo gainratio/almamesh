@@ -50,6 +50,7 @@ import { asOfKey } from '../lib/pinnedPeriod';
 import { waitForStoreSaved } from '../lib/storeSaved';
 import { applyBackToToday, applyTravel, travelIntentVersion, type TravelSource, type TravelThread } from '../lib/timeTravel';
 import { createTravelSlot, type TravelRecorder } from '../lib/travelSlot';
+import { moveTurnToThread } from '../lib/turnFollowsTravel';
 
 /** Input the caller's stream fn receives; it runs the chat turn (lib/chatTurn.ts) with these. */
 export interface ChatStreamInput {
@@ -403,7 +404,7 @@ export function useChatThread(
       const travelSlot = createTravelSlot();
       // A tool can hit a stale chunk without failing the turn; the turn is then the app's, not the model's.
       const staleBefore = useAppStale.getState().stale;
-      let completed = false;
+      let answeredId: string | undefined;
       const userMessage = store.appendMessage(tid, 'user', q);
       void indexChatMessage({ id: userMessage.id, thread_id: tid, profile_id: profileId, content: q });
 
@@ -458,7 +459,7 @@ export function useChatThread(
         }
         const assistantMessage = store.appendMessage(tid, 'assistant', finalAnswer,
           toolCalls.length > 0 ? { parts: [...toolCalls, { type: 'text', text: finalAnswer }] } : undefined);
-        completed = true;
+        answeredId = assistantMessage.id;
         void indexChatMessage({
           id: assistantMessage.id,
           thread_id: tid,
@@ -504,7 +505,7 @@ export function useChatThread(
         const action = travelSlot.take();
         try {
           const live = useChatStore.getState().threads[tid];
-          if (action && completed && saved && mounted.current
+          if (action && answeredId && saved && mounted.current
             && currentProfileId.current === profileId && live?.profile_id === profileId
             && selectionVersion.current === askedSelection && travelIntentVersion(profileId) === askedIntent
             && answerIdentity(currentChartId.current, live.as_of) === askedAbout) {
@@ -516,7 +517,12 @@ export function useChatThread(
             const outcome = action.kind === 'back_to_today'
               ? await applyBackToToday({ profileId, chartId, canApply })
               : await applyTravel({ asOf: action.asOf, source: 'chat-tool' }, { profileId, chartId, thread: { id: tid }, canApply });
-            if (outcome.threadId && canApply()) setSelectedThreadId(outcome.threadId);
+            if (outcome.threadId && canApply()) {
+              // The answer follows the user: the turn moves into the thread the panel now shows.
+              const moved = outcome.threadId !== tid && moveTurnToThread(tid, outcome.threadId, [userMessage.id, answeredId]);
+              setSelectedThreadId(outcome.threadId);
+              if (moved) await settleChatTurn(outcome.threadId);
+            }
           }
         } catch (error) {
           safeError('chat.stream_failed', error);

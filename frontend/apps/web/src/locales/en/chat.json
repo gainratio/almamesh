@@ -177,5 +177,9 @@
   "place_pick": {
     "title": "Which {{place}}?",
     "label": "Place"
+  },
+  "moved": {
+    "to": "Moved to {{title}}",
+    "today": "Moved to today"
   }
 }

@@ -357,6 +357,7 @@ export function ChatPanel({
               highlightedMessageId={highlightedMessageId}
               messageRefs={messageRefs}
               analyzingLabel={t('status.analyzing')}
+              onOpenThread={openThread}
             />
           )}
         </ThreadPrimitive.Messages>
@@ -465,6 +466,24 @@ interface AssistantMessageRowProps {
   readonly highlightedMessageId: string | null;
   readonly messageRefs: React.MutableRefObject<Map<string, HTMLDivElement>>;
   readonly analyzingLabel: string;
+  readonly onOpenThread: (threadId: string) => void;
+}
+
+/** "Moved to ⏳ Sep 2017 · Mumbai": where a turn went after a chat-initiated trip. A link while that thread exists. */
+function MovedPointer({ text, threadId, onOpenThread }: { readonly text: string; readonly threadId: string; readonly onOpenThread: (threadId: string) => void }) {
+  const live = useChatStore((s) => s.threads[threadId] !== undefined);
+  return (
+    <div className="mb-4 flex justify-center">
+      {live ? (
+        <button type="button" data-testid="chat-moved-pointer" onClick={() => onOpenThread(threadId)}
+          className="min-h-11 rounded-lg px-3 text-xs text-text-muted underline-offset-2 hover:text-accent-gold hover:underline">
+          {text}
+        </button>
+      ) : (
+        <span data-testid="chat-moved-pointer" className="px-3 text-xs text-text-muted">{text}</span>
+      )}
+    </div>
+  );
 }
 
 function AssistantMessageRow({
@@ -473,13 +492,16 @@ function AssistantMessageRow({
   highlightedMessageId,
   messageRefs,
   analyzingLabel,
+  onOpenThread,
 }: AssistantMessageRowProps) {
-  if (message.role === 'system') return null;
   const content = message.content
     .filter((part): part is Extract<(typeof message.content)[number], { type: 'text' }> => part.type === 'text')
     .map((part) => part.text)
     .join('');
-  const custom = message.metadata.custom as { error?: boolean; streaming?: boolean };
+  const custom = message.metadata.custom as { error?: boolean; streaming?: boolean; movedTo?: string };
+  if (message.role === 'system') {
+    return custom.movedTo ? <MovedPointer text={content} threadId={custom.movedTo} onOpenThread={onOpenThread} /> : null;
+  }
   const showTyping = message.role === 'assistant' && message.status?.type === 'running' && content.length === 0;
   const isHighlighted = message.id === highlightedMessageId;
   const timestamp = message.createdAt?.toISOString();

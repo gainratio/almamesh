@@ -219,4 +219,14 @@ describe('keyword index failures never block chat', () => {
     }));
     expect(canonicalChatMessages().map((message) => message.id)).toEqual([kept]);
   });
+
+  it('rebuild input skips a moved-turn pointer (a UI line, not something the user said)', () => {
+    const from = useChatStore.getState().startThread('p1');
+    const kept = useChatStore.getState().appendMessage(from, 'user', 'kept').id;
+    const asked = useChatStore.getState().appendMessage(from, 'user', 'Take me to June').id;
+    const to = useChatStore.getState().startThread('p1');
+    useChatStore.getState().moveMessages(from, to, [asked], 'Moved to ⏳ Jun 2019');
+    expect(canonicalChatMessages().map((message) => message.content).sort()).toEqual(['Take me to June', 'kept']);
+    expect(canonicalChatMessages().find((message) => message.id === kept)?.thread_id).toBe(from);
+  });
 });
