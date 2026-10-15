@@ -214,7 +214,8 @@ describe('read_period: spans', () => {
     // Compact: the dashas only where they change (the first row always), a theme and a count only when a window falls that month.
     expect(row('2019-06')).toEqual({ month: '2019-06', maha: 'rahu', antar: 'rahu' });
     expect(row('2019-07')).toEqual({ month: '2019-07' });
-    expect(row('2019-11')).toEqual({ month: '2019-11', top_theme: { domain: 'education', direction: 'mixed', confidence: 'high' }, window_count: 1 });
+    // Spec 2026-10-15 re-ranked the themes: health (graded Vimshottari 69) now leads, education drops to medium.
+    expect(row('2019-11')).toEqual({ month: '2019-11', top_theme: { domain: 'health', direction: 'mixed', confidence: 'high' }, window_count: 1 });
   });
 
   it('a month row names the dashas again when they change', async () => {
@@ -634,7 +635,8 @@ describe('read_period: cite', () => {
       windows: [{ date: '2019-06-22', what: 'Mars enters Cancer' }],
       themes: Object.fromEntries(result.themes.map((theme) => [theme.domain, { direction: theme.direction, confidence: theme.confidence }])),
     });
-    expect(result.cite?.themes).toMatchObject({ education: { confidence: 'high' }, obstacles: { confidence: 'medium' }, finances: { confidence: 'low' } });
+    // Spec 2026-10-15: education is medium now (the graded Vimshottari rule no longer fires for it).
+    expect(result.cite?.themes).toMatchObject({ health: { confidence: 'high' }, education: { confidence: 'medium' }, obstacles: { confidence: 'medium' } });
   });
 
   /** A synthetic reading: two maha lords (a change inside it), lords with and without houses. */

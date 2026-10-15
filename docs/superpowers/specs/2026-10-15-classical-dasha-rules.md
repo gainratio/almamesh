@@ -135,12 +135,20 @@ every non-zero valence is positive, **challenging** if every one is negative, el
   those four words, so a second, richer `dignity` beside it would contradict the chart. The
   friend/enemy step of R3 shows only through `strength` and the stated rule.
 - `YoginiSpan` for the running Yogini antar: `PeriodReading.yogini_antar`.
-- `ReadingTheme.dasha: {vimshottari: 0-100, yogini: 0-100, tone: supportive|mixed|challenging|null}`.
+- `ReadingTheme.dasha: {vimshottari: 0-100, yogini: 0-100, tone: supportive|mixed|challenging|null}`
+  (engine output; not copied into the chat tool result, see below).
 - `READING_RULES` states R1-R7 in one line each, so a model can cite them.
 
 The chat tools (`read_period`, `travel`) copy these by name in `apps/web/src/lib/periodReading.ts`:
-spans carry `relation`, lords carry `strength`, themes carry `dasha`, `dashas.yogini_antar` joins
-`yogini_maha`. The 4 KB budget drops theme `dasha` together with the agreement booleans. No UI.
+antar, pratyantar and sookshma spans carry `from_parent` and `relation`, lords carry `strength` in
+their natal block, and `dashas.yogini_antar` joins `yogini_maha`. The theme's graded scores and tone
+stay in the engine output only (for the UI and the eval), not in the tool result: on 2026-10-14 a
+bare `strength_pct` beside a verdict was read by models as "75% confidence", and measured on the
+four goldens a per-theme tone cost about 220 bytes and was the first cut in every one at 4 KB, so
+it never reached the model. The tool keeps the threshold's effect through the agreement booleans
+and `confidence`. Under the 4 KB budget the pratyantar placements are cut after the pratyantar
+lord's natal detail (the antar's, which BPHS states, stays longer), and the Yogini antar after the
+segment events. No UI.
 
 ## Reference checks
 

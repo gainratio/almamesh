@@ -134,6 +134,8 @@ const DASHA_LEVELS = new Set(['maha', 'antar', 'pratyantar']);
 const SANDHI_LEVELS = new Set(['maha', 'antar']);
 const FUNCTIONAL = new Set(['yogakaraka', 'benefic', 'malefic', 'maraka', 'neutral']);
 const DIRECTIONS = new Set(['supportive', 'mixed', 'challenging']);
+const RELATIONS = new Set(['support', 'friction', 'neutral']);
+const LORD_STRENGTHS = new Set(['strong', 'ordinary', 'weak']);
 const CONFIDENCES = new Set(['high', 'medium', 'low']);
 const BANDS = new Set(['strong', 'moderate', 'weak']);
 
@@ -158,8 +160,22 @@ function lordSpan(value: unknown): boolean {
   return span(value) && string(value.lord);
 }
 
+/** A sub-lord's placement from its parent lord (spec 2026-10-15): optional, typed when present. */
+function placed(value: Record<string, unknown>): boolean {
+  return optional(value.from_parent, house) && optional(value.relation, (item) => member(item, RELATIONS));
+}
+
 function dashaSpan(value: unknown): boolean {
-  return lordSpan(value) && member((value as Record<string, unknown>).level, DASHA_LEVELS);
+  return lordSpan(value) && member((value as Record<string, unknown>).level, DASHA_LEVELS) && placed(value as Record<string, unknown>);
+}
+
+function yoginiSpan(value: unknown): boolean {
+  return lordSpan(value) && string((value as Record<string, unknown>).name);
+}
+
+function themeDasha(value: unknown): boolean {
+  return record(value) && integerInRange(value.vimshottari, 0, 100) && integerInRange(value.yogini, 0, 100)
+    && optional(value.tone, (item) => member(item, DIRECTIONS));
 }
 
 function segment(value: unknown): boolean {
@@ -191,7 +207,8 @@ function theme(value: unknown): boolean {
   return record(value) && string(value.domain) && arrayOf(value.houses, house)
     && member(value.direction, DIRECTIONS) && member(value.strength, BANDS)
     && inRange(value.strength_pct, 0, 100) && member(value.confidence, CONFIDENCES)
-    && agreement(value.agreement) && arrayOf(value.factors, string) && arrayOf(value.windows, themeWindow);
+    && agreement(value.agreement) && optional(value.dasha, themeDasha)
+    && arrayOf(value.factors, string) && arrayOf(value.windows, themeWindow);
 }
 
 function sandhi(value: unknown): boolean {
@@ -206,7 +223,8 @@ function panchang(value: unknown): boolean {
 
 function natalLord(value: unknown): boolean {
   return record(value) && arrayOf(value.rules, house) && house(value.house) && string(value.sign)
-    && string(value.dignity) && typeof value.combust === 'boolean' && typeof value.retro === 'boolean'
+    && string(value.dignity) && optional(value.strength, (item) => member(item, LORD_STRENGTHS))
+    && typeof value.combust === 'boolean' && typeof value.retro === 'boolean'
     && member(value.functional, FUNCTIONAL) && string(value.d9_sign) && string(value.d10_sign)
     && typeof value.vargottama === 'boolean' && arrayOf(value.yogas, string);
 }
@@ -219,8 +237,8 @@ export function isCachedNatalLords(value: unknown): boolean {
 /** A period reading read from the cache; `natal_lords` is absent on a stored period row. */
 export function isCachedPeriodReading(value: unknown): boolean {
   return record(value) && span(value.window)
-    && arrayOf(value.dasha_spans, dashaSpan) && optional(value.sookshma, lordSpan)
-    && optional(value.sandhi, sandhi) && optional(value.yogini, (item) => lordSpan(item) && string((item as Record<string, unknown>).name))
+    && arrayOf(value.dasha_spans, dashaSpan) && optional(value.sookshma, (item) => lordSpan(item) && placed(item as Record<string, unknown>))
+    && optional(value.sandhi, sandhi) && optional(value.yogini, yoginiSpan) && optional(value.yogini_antar, yoginiSpan)
     && arrayOf(value.segments, segment) && arrayOf(value.sky, skySpan)
     && record(value.transit_lords) && Object.values(value.transit_lords).every(transitLord)
     && arrayOf(value.double_transit, house) && arrayOf(value.themes, theme)
