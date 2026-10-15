@@ -211,15 +211,20 @@ def vimshottari_score(lords: ChartLords, area: Area, start: datetime, end: datet
     return graded_score(lords, area, levels, (start, end))
 
 
+def _overlapping(periods: list[YoginiPeriod], start: datetime, end: datetime) -> list[YoginiPeriod]:
+    """The periods that share time with [start, end)."""
+    return [p for p in periods if p.start_date < end and p.end_date > start]
+
+
 def running_yogini(
     natal: SiderealContext, start: datetime, end: datetime
 ) -> tuple[list[YoginiPeriod], list[YoginiPeriod]]:
     """The Yogini mahas and antars that share time with [start, end)."""
     mahas = natal.dashas.maha_dasha_sequence
     yoginis = compute_yogini_periods(natal, mahas[0].start_date, mahas[-1].end_date)
-    running = [p for p in yoginis if p.start_date < end and p.end_date > start]
-    antars = [a for maha in running for a in yogini_antars(maha) if a.end_date > start]
-    return running, [a for a in antars if a.start_date < end]
+    running = _overlapping(yoginis, start, end)
+    antars = [antar for maha in running for antar in yogini_antars(maha)]
+    return running, _overlapping(antars, start, end)
 
 
 def yogini_score(lords: ChartLords, area: Area, start: datetime, end: datetime) -> int:

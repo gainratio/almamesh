@@ -34,7 +34,7 @@ period will bring or brought anything, and the retrodiction eval (below) is what
 | 1. occupancy | `domains/significators.significator_grahas` already counts natal occupants for the themes; only the eval's `vimshottari_lords` family ignores them. New: occupancy is part of the graded weight. |
 | 4. functional nature | `reading/functional.py` (BPHS ch. 34, Laghu Parashari) already classes every lord and `NatalLord.functional` carries it. New: it feeds the tone. |
 | 6. sookshma | `dasha/depth.active_chain` already goes to level 4 and `PeriodReading.sookshma` carries it. New: a PyJHora parity test, and its placement from the pratyantar. |
-| 3. dignity | `NatalLord.dignity` carried only exalted / debilitated / own / neutral. New: friend / enemy (naisargika, BPHS ch. 3) and a strength band. |
+| 3. dignity | `NatalLord.dignity` carries only exalted / debilitated / own / neutral, plus combust and retro flags. New: a strength band that also reads friend / enemy (naisargika) and Shadbala. |
 
 ## The rules
 
@@ -130,7 +130,10 @@ every non-zero valence is positive, **challenging** if every one is negative, el
 
 - `DashaSpan.from_parent: House | None`, `DashaSpan.relation: support|friction|neutral | None`
   (None for a maha). The same two on `Sookshma`.
-- `NatalLord.dignity` gains `friend` / `enemy`; new `NatalLord.strength: strong|ordinary|weak`.
+- New `NatalLord.strength: strong|ordinary|weak`. `NatalLord.dignity` stays the chart's own
+  four-value dignity (exalted/own/neutral/debilitated): the natal reading's prompt fences dignity to
+  those four words, so a second, richer `dignity` beside it would contradict the chart. The
+  friend/enemy step of R3 shows only through `strength` and the stated rule.
 - `YoginiSpan` for the running Yogini antar: `PeriodReading.yogini_antar`.
 - `ReadingTheme.dasha: {vimshottari: 0-100, yogini: 0-100, tone: supportive|mixed|challenging|null}`.
 - `READING_RULES` states R1-R7 in one line each, so a model can cite them.
