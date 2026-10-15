@@ -97,12 +97,14 @@ async function successfulToolPairs(requests: ObservedAgentRequest[]) {
     .map((call) => call.id).filter(Boolean));
   for (const { body } of requests) {
     for (const message of body.messages ?? []) {
+      // A rejected answer call comes back to the model with the fix (answer.ts checks, incl. the
+      // reflection check of 2026-10-15) and is resent: it is a retry, not a tool pair.
       if (message.role === 'assistant') {
-        for (const call of message.tool_calls ?? []) calls.set(call.id, call);
+        for (const call of message.tool_calls ?? []) if (call.function.name !== 'answer') calls.set(call.id, call);
       }
       // The first sighting is the full result: later rounds carry it compacted (context budget, 2026-10-13).
       // A tool message carries no name since the tool layer redesign (2026-10-14): the call names it.
-      if (message.role === 'tool' && message.tool_call_id && !results.has(message.tool_call_id)) results.set(message.tool_call_id, message);
+      if (message.role === 'tool' && message.tool_call_id && calls.has(message.tool_call_id) && !results.has(message.tool_call_id)) results.set(message.tool_call_id, message);
     }
   }
   expect(calls.size, 'each turn stays inside the three-call agent budget').toBeLessThanOrEqual(3);
@@ -356,8 +358,9 @@ test('[real] dashboard: timer + life phase + exact-day agentic chat', async ({
   console.log(`[chat answer] ${answerText.replace(/\s+/g, ' ').trim().slice(0, 600)}`);
 
   // Not a placeholder / error bubble.
+  // Whole words: "spending" is not the placeholder "pending" (run 2026-10-15 failed on it).
   for (const placeholder of PLACEHOLDERS) {
-    expect(lower).not.toContain(placeholder);
+    expect(lower).not.toMatch(new RegExp(`\\b${placeholder}\\b`));
   }
 
   // THE CONTEXT + TOOL-PROTOCOL ASSERTIONS: the first live request carries the
