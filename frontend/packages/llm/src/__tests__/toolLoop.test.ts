@@ -320,6 +320,24 @@ describe("rule 4: the loop stops on a VALID answer only", () => {
     ]);
   });
 
+  // dashboard.agentic.real 2026-10-15: an answer the reflection check sent back for rewording was
+  // followed by another read, past the turn's three calls. Once a read has completed, the facts are
+  // in hand: the retry round offers only the answer, so a rewording never spends a read.
+  it("after a read, a rejected answer is retried with only the answer tool", async () => {
+    const { fetchImpl, requests } = fakeEndpoint([read("c1"), answer("a1", '{"headline":"Venus rises"}'), answer("a2")]);
+    const { result } = await collect(runToolTurn(options(fetchImpl)));
+    expect(toolsOf(requests[1]).map((t) => t.function.name)).toEqual(["read_period", "answer"]);
+    expect(toolsOf(requests[2]).map((t) => t.function.name)).toEqual(["answer"]);
+    expect(requests[2].body.tool_choice).toEqual({ type: "function", function: { name: "answer" } });
+    expect(result).toEqual({ answer: { headline: "Venus rises", body: "Steady work." } });
+  });
+
+  it("before any read, a rejected answer may still read: the fix can be to read the period first", async () => {
+    const { fetchImpl, requests } = fakeEndpoint([answer("a1", '{"headline":"Venus rises"}'), read("c1"), answer("a2")]);
+    await collect(runToolTurn(options(fetchImpl)));
+    expect(toolsOf(requests[1]).map((t) => t.function.name)).toEqual(["read_period", "answer"]);
+  });
+
   it("makes no request after a valid answer", async () => {
     const { fetchImpl, requests } = fakeEndpoint([read("c1"), answer("a1")]);
     const { result } = await collect(runToolTurn(options(fetchImpl)));

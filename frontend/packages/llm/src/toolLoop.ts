@@ -794,9 +794,22 @@ function mustReadFirst(ctx: TurnContext, readFirst: boolean): boolean {
   return readFirst && !ctx.reads.completed && ctx.readTools.length > 0;
 }
 
-/** Tool choice for a 1-based round of the whole turn; the last round always forces the answer. */
-function roundChoice(round: number, ctx: TurnContext, readFirst: boolean): StepPlan {
-  if (round >= ctx.maxRounds) return ctx.choice.mode === "auto" ? answerOnly(ctx) : { toolChoice: { type: "tool", toolName: ANSWER_TOOL_NAME } };
+/** The step sent the answer back (its arguments failed the answer check). */
+function rejectedAnswer(step: { readonly toolCalls: readonly { readonly toolName: string }[] } | undefined): boolean {
+  return step?.toolCalls.some((c) => c.toolName === ANSWER_TOOL_NAME && "invalid" in c && c.invalid === true) === true;
+}
+
+const forceAnswer = (ctx: TurnContext): StepPlan =>
+  ctx.choice.mode === "auto" ? answerOnly(ctx) : { toolChoice: { type: "tool", toolName: ANSWER_TOOL_NAME } };
+
+/**
+ * Tool choice for a 1-based round of the whole turn; the last round always forces the answer. A
+ * retry of a rejected answer once a read has completed offers only the answer: the facts are in
+ * hand, so a rewording never spends another read (a real run went past three calls, 2026-10-15).
+ */
+function roundChoice(round: number, ctx: TurnContext, readFirst: boolean, rejected = false): StepPlan {
+  if (round >= ctx.maxRounds) return forceAnswer(ctx);
+  if (rejected && ctx.reads.completed) return answerOnly(ctx);
   const toolChoice = ctx.choice.mode;
   const open = ctx.readTools.filter((name) => !ctx.calls.exhausted(name));
   if (mustReadFirst(ctx, readFirst)) return { toolChoice, activeTools: open.length > 0 ? open : ctx.readTools };
@@ -1001,7 +1014,8 @@ async function* streamRounds<A>(o: RunToolTurnOptions<A>, ctx: TurnContext, stat
     stopWhen: [validAnswer, stepCountIs(ctx.maxRounds - offset)],
     prepareStep: ({ stepNumber, steps, messages: step }) => {
       const round = offset + stepNumber + 1;
-      return planRound(ctx, round, steps.at(-1)?.usage.inputTokens, step, roundChoice(round, ctx, o.readFirst), o.readFirst);
+      const choice = roundChoice(round, ctx, o.readFirst, rejectedAnswer(steps.at(-1)));
+      return planRound(ctx, round, steps.at(-1)?.usage.inputTokens, step, choice, o.readFirst);
     },
   });
   ctx.watchdog.arm();
