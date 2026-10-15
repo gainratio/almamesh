@@ -689,9 +689,16 @@ describe('useStreamingInterpretation (structured, store-backed)', () => {
     expect(result.current.error).toBe(i18n.t('chat:errors.rate_limited'));
   });
 
-  it('surfaces the privacy violation message verbatim (fail-closed)', async () => {
+  // CONTRACT REVERSED (was: "verbatim"): the fence's English log message leaked
+  // to es/pt readers. The reading card now shows the localized copy.
+  it('surfaces the privacy violation as localized copy naming the endpoint (fail-closed)', async () => {
     mockedStream.mockImplementation(
-      failingStream(new PrivacyViolationError('refusing to send chart data to non-local endpoint')),
+      failingStream(
+        new PrivacyViolationError(
+          'refusing to send chart data to non-local endpoint https://example.invalid/v1.',
+          'https://example.invalid/v1',
+        ),
+      ),
     );
 
     const { result } = renderHook(() => useStreamingInterpretation('chart-123'));
@@ -700,7 +707,10 @@ describe('useStreamingInterpretation (structured, store-backed)', () => {
     });
 
     await waitFor(() => expect(result.current.status).toBe('error'));
-    expect(result.current.error).toMatch(/refusing to send/);
+    expect(result.current.error).toBe(
+      i18n.t('chat:errors.privacy_blocked', { endpoint: 'https://example.invalid/v1' }),
+    );
+    expect(result.current.error).not.toMatch(/refusing to send/);
   });
 
   it('errors gracefully when the chart has no raw engine output', async () => {

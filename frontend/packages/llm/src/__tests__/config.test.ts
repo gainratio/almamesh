@@ -58,6 +58,25 @@ describe("ensurePrivacy — fail-closed local_only contract", () => {
     expect(() => ensurePrivacy(cfg)).toThrow(PrivacyViolationError);
   });
 
+  it("carries the refused endpoint as data so the UI can localize the message", () => {
+    const cfg: ProviderConfig = {
+      engine: "openai-http",
+      model: "gpt-4o-mini",
+      privacyMode: "local_only",
+      baseUrl: "https://openrouter.ai/api/v1",
+    };
+    let caught: unknown;
+    try {
+      ensurePrivacy(cfg);
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(PrivacyViolationError);
+    expect((caught as PrivacyViolationError).endpoint).toBe("https://openrouter.ai/api/v1");
+    // The English sentence stays on the error for logs.
+    expect((caught as PrivacyViolationError).message).toContain("refusing to send chart data");
+  });
+
   it("allows local_only when the endpoint is loopback", () => {
     const cfg: ProviderConfig = {
       engine: "openai-http",

@@ -80,6 +80,8 @@
     "reasoning_timeout": "The model thought for over 3 minutes without starting its answer. Try again, or pick a faster model in Settings → AI.",
     "server_error": "The AI provider is having trouble right now. Try again shortly.",
     "request_failed": "The AI request failed — try again in a moment, or check your model and endpoint in Settings → AI.",
+    "privacy_blocked": "Your AI is set to stay on this device, so nothing was sent to {{endpoint}}. To use a cloud endpoint, tick \"Allow a cloud endpoint\" under Settings → AI → Advanced.",
+    "privacy_blocked_no_endpoint": "Your AI is set to stay on this device, so nothing was sent to the cloud endpoint. To use it, tick \"Allow a cloud endpoint\" under Settings → AI → Advanced.",
     "save_failed": "This answer couldn't be saved on this device, so it may be gone after a reload."
   },
   "not_configured": {

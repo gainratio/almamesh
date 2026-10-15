@@ -31,6 +31,7 @@ vi.mock('@almamesh/store', () => {
     saveCompleted: mocks.saveCompleted,
   });
   return {
+    getInitialLanguage: () => 'en',
     useContentModeStore: contentStore,
     useLanguageStore: languageStore,
     useMeshReadingsStore: readingsStore,
@@ -53,6 +54,7 @@ vi.mock('@almamesh/llm', () => ({
   streamMeshReading: (...args: unknown[]) => mocks.stream(...args),
 }));
 
+import i18n from '../../i18n/config';
 import { useMeshReading, type MeshReadingContext } from '../useMeshReading';
 
 const READING: MeshReading = {
@@ -171,6 +173,30 @@ describe('useMeshReading durability', () => {
     await waitFor(() => expect(result.current.status).toBe('error'));
     expect(result.current.error).toContain('canonical SQLite write failed');
     expect(result.current.reading).toBeUndefined();
+  });
+
+  it('shows a privacy refusal as localized copy, not the English fence message', async () => {
+    await i18n.changeLanguage('es');
+    const refusal = Object.assign(
+      new Error('refusing to send chart data to non-local endpoint https://example.test/v1.'),
+      { name: 'PrivacyViolationError', endpoint: 'https://example.test/v1' },
+    );
+    mocks.stream.mockImplementation(async function* () {
+      yield* [];
+      throw refusal;
+    });
+    try {
+      const { result } = renderHook(() => useMeshReading(EDGE, CONTEXT));
+      act(() => result.current.generate());
+
+      await waitFor(() => expect(result.current.status).toBe('error'));
+      expect(result.current.error).toBe(
+        i18n.t('chat:errors.privacy_blocked', { endpoint: 'https://example.test/v1' }),
+      );
+      expect(result.current.error).not.toMatch(/refusing/);
+    } finally {
+      await i18n.changeLanguage('en');
+    }
   });
 
   it('does not start a paid stream until restore/deletion reconciliation is ready', async () => {
