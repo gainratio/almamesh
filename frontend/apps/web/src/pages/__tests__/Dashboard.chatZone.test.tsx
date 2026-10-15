@@ -9,11 +9,12 @@
  * answers like any other.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   useChartLibraryStore,
+  useChatStore,
   useInterpretationStore,
   usePredictiveStore,
   useProfilesStore,
@@ -28,6 +29,13 @@ const turnMocks = vi.hoisted(() => ({ runChatTurn: vi.fn() }));
 vi.mock('../../lib/chatTurn', () => ({ runChatTurn: turnMocks.runChatTurn }));
 
 vi.mock('../../lib/localChartRead', () => ({ readLocalPrimaryChart: vi.fn() }));
+
+// Whether today's predictive facts are computed: 'ready' unless a test says otherwise.
+const predictive = vi.hoisted(() => ({ state: 'ready' as 'pending' | 'ready' | 'error' }));
+vi.mock('../../hooks/useStreamingInterpretation', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../hooks/useStreamingInterpretation')>()),
+  currentTimelineInputState: () => predictive.state,
+}));
 
 vi.mock('../../providers/chartEngineContext', () => ({
   useChartEngine: () => ({ meta: null }),
@@ -121,6 +129,7 @@ describe('Dashboard chat runs one lazy chat turn', () => {
     useProfilesStore.setState({ activeProfileId: 'profile-1' });
     useInterpretationStore.setState({ byChart: {} });
     usePredictiveStore.getState().reset();
+    predictive.state = 'ready';
     turnMocks.runChatTurn.mockImplementation(async function* () {
       yield 'An answer';
       yield 'An answer grounded in the chart.';
@@ -185,5 +194,75 @@ describe('Dashboard chat runs one lazy chat turn', () => {
     await ask('How is next month?');
     await waitFor(() => expect(turnMocks.runChatTurn).toHaveBeenCalledTimes(2));
     expect(turnMocks.runChatTurn.mock.calls[1][0].currentPlace).toBeUndefined();
+  });
+});
+
+describe('Dashboard chat waits for today\'s predictive facts (2026-10-14)', () => {
+  const NOTE = 'Today’s sky wasn’t ready, so this answer reads your birth chart only.';
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    hydrateLlmSettings(null);
+    writeLlmSettings(openRouterPreset('sk-or-v1-0000-synthetic-test-key', 'test-org/test-model'));
+    __setMemoryForTest({
+      indexMessage: vi.fn().mockResolvedValue(undefined),
+      retrieve: vi.fn().mockResolvedValue([]),
+      deleteForProfile: vi.fn().mockResolvedValue(undefined),
+      deleteForThread: vi.fn().mockResolvedValue(undefined),
+      clear: vi.fn().mockResolvedValue(undefined),
+    });
+    useProfilesStore.setState({ activeProfileId: 'profile-1' });
+    useInterpretationStore.setState({ byChart: {} });
+    usePredictiveStore.getState().reset();
+    useChatStore.setState({ threads: {}, messages: {}, summaries: {} });
+    const chart = chartWithZone('Asia/Kolkata');
+    useChartLibraryStore.setState({ charts: { 'chart-1': chart }, hydrated: true });
+    vi.mocked(readLocalPrimaryChart).mockResolvedValue(response(chart));
+    turnMocks.runChatTurn.mockImplementation(async function* () { yield 'Saturn steadies today.'; });
+  });
+  afterEach(() => {
+    __resetMemoryForTest();
+    vi.restoreAllMocks();
+  });
+
+  /** A predictive store change: what the wait listens to. */
+  function predictiveSettles(state: 'ready' | 'error'): void {
+    predictive.state = state;
+    act(() => { usePredictiveStore.setState({ status: state }); });
+  }
+
+  it('a today question sent before the facts are ready shows "Preparing your chart…" and goes out once they are', async () => {
+    predictive.state = 'pending';
+    renderDashboardWithChatOpen();
+    await ask('How is today?');
+    expect((await screen.findByTestId('chat-agent-status')).textContent).toBe('Preparing your chart…');
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(turnMocks.runChatTurn).not.toHaveBeenCalled();
+    predictiveSettles('ready');
+    await waitFor(() => expect(turnMocks.runChatTurn).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByTestId('chat-panel').textContent).toContain('Saturn steadies today.'));
+    expect(screen.getByTestId('chat-panel').textContent).not.toContain(NOTE);
+  });
+
+  it('when the facts fail, answers from the natal chart and says so in one short line', async () => {
+    predictive.state = 'pending';
+    renderDashboardWithChatOpen();
+    await ask('How is today?');
+    await screen.findByTestId('chat-agent-status');
+    predictiveSettles('error');
+    await waitFor(() => expect(screen.getByTestId('chat-panel').textContent).toContain('Saturn steadies today.'));
+    expect(turnMocks.runChatTurn).toHaveBeenCalledTimes(1);
+    const answer = screen.getAllByTestId('chat-message-assistant').at(-1)!;
+    expect(answer.textContent).toContain(NOTE);
+    expect(answer.textContent!.indexOf(NOTE)).toBeLessThan(answer.textContent!.indexOf('Saturn steadies today.'));
+  });
+
+  it('a trip thread never waits: its facts are the period\'s own, not today\'s', async () => {
+    predictive.state = 'pending';
+    const place = { label: 'Delhi, India', timezone: 'Asia/Kolkata', latitude: 28.61, longitude: 77.21 };
+    act(() => { useChatStore.getState().startThread('profile-1', 'chart-1', { start: '2017-09-01', end: '2017-09-30', granularity: 'month', place }); });
+    renderDashboardWithChatOpen();
+    await ask('How was this month?');
+    await waitFor(() => expect(turnMocks.runChatTurn).toHaveBeenCalledTimes(1));
   });
 });

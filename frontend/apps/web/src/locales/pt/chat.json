@@ -23,12 +23,14 @@
   },
   "agent": {
     "preparing": "Preparando ferramentas locais…",
+    "preparing_chart": "Preparando seu mapa…",
     "deciding": "Escolhendo o próximo passo seguro…",
     "answering": "Escrevendo a resposta fundamentada…",
     "complete": "Concluído",
     "reading": "Lendo {{period}}…",
     "moving": "Indo para {{period}}…",
-    "returning": "Voltando para hoje…"
+    "returning": "Voltando para hoje…",
+    "natal_only": "O céu de hoje não ficou pronto, então esta resposta lê só o seu mapa natal."
   },
   "tooltip": "Pergunte sobre seu mapa",
   "controls": {

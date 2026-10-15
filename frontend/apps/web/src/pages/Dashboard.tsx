@@ -76,6 +76,7 @@ import { rectificationDelta } from "../lib/rectification";
 import { birthYearOf } from "../lib/periodChart";
 import { lazyWithRetry } from "../lib/lazyWithRetry";
 import { chatStatusLabels } from "../lib/chatStatusLabels";
+import { natalOnlyNoted, waitForPredictiveFacts } from "../lib/predictiveWait";
 import { asOfKey } from "../lib/pinnedPeriod";
 import { DashboardMoment } from "../components/features/dashboard/DashboardMomentCard";
 import { TimeTravelBanner } from "../components/features/chat/TimeTravelBanner";
@@ -329,12 +330,20 @@ export default function DashboardPage() {
       const record = activeProfileId ? useRectificationRecordsStore.getState().getRecord(activeProfileId) : null;
       // Where they live now (Settings): a today thread's place, by label and zone. Unset: zone only.
       const currentPlace = activeProfileId ? getCurrentPlace(useProfilesStore.getState().profiles[activeProfileId]) : undefined;
+      // A today question waits for today's predictive facts (a trip reads its own period instead).
+      const facts = ask.asOf ? 'ready' : await waitForPredictiveFacts({
+        state: () => currentTimelineInputState(chartId),
+        subscribe: (listener) => usePredictiveStore.subscribe(listener),
+        signal: ask.signal,
+        onWaiting: () => ask.onStatus(t('chat:agent.preparing_chart')),
+      });
+      const noted = (text: string) => (facts === 'ready' ? text : natalOnlyNoted(t('chat:agent.natal_only'), text));
       const { runChatTurn } = await import('../lib/chatTurn');
       let answer = '';
       for await (const snapshot of runChatTurn({
         config: resolveProviderConfig(readChatLlmEnv()),
         chart,
-        promptChart: withRawPredictive(chart, chartId),
+        promptChart: facts === 'ready' ? withRawPredictive(chart, chartId) : chart,
         chartAsOf: storedChartAnalysisInstant(storedChart),
         profileKey: storedChart.profile_id ?? chartId ?? 'primary',
         birth: storedChart.birth_data as ProcessedBirthData | undefined,
@@ -354,8 +363,8 @@ export default function DashboardPage() {
         ...(ask.onTravel ? { onTravel: ask.onTravel } : {}),
         ...(ask.onToolCall ? { onToolCall: ask.onToolCall } : {}),
       })) {
-        answer = snapshot;
-        ask.onSnapshot(snapshot);
+        answer = noted(snapshot);
+        ask.onSnapshot(answer);
       }
       return answer;
     } catch (err) {

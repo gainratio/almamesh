@@ -20,12 +20,14 @@
   },
   "agent": {
     "preparing": "Preparing local tools…",
+    "preparing_chart": "Preparing your chart…",
     "deciding": "Choosing the next safe step…",
     "answering": "Writing the grounded answer…",
     "complete": "Done",
     "reading": "Reading {{period}}…",
     "moving": "Moving to {{period}}…",
-    "returning": "Back to today…"
+    "returning": "Back to today…",
+    "natal_only": "Today’s sky wasn’t ready, so this answer reads your birth chart only."
   },
   "tooltip": "Ask about your chart",
   "controls": {

@@ -23,12 +23,14 @@
   },
   "agent": {
     "preparing": "Preparando herramientas locales…",
+    "preparing_chart": "Preparando tu carta…",
     "deciding": "Eligiendo el siguiente paso seguro…",
     "answering": "Redactando la respuesta fundamentada…",
     "complete": "Listo",
     "reading": "Leyendo {{period}}…",
     "moving": "Viajando a {{period}}…",
-    "returning": "Volviendo a hoy…"
+    "returning": "Volviendo a hoy…",
+    "natal_only": "El cielo de hoy no estaba listo, así que esta respuesta lee solo tu carta natal."
   },
   "tooltip": "Pregunta sobre tu carta",
   "controls": {
