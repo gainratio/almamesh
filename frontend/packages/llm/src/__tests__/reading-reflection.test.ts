@@ -96,6 +96,16 @@ describe("structured interpretation sections", () => {
     expect(roadBodies).toHaveLength(1);
   });
 
+  it("withhold only the failing values when the reword request fails on the network", async () => {
+    const { fetchImpl: answers, roadBodies } = timelineFetch([road(FORETELLS)]);
+    const fetchImpl = vi.fn(async (url: string, init: RequestInit) => {
+      if (String(init.body).includes("SECTION:upcoming_periods") && roadBodies.length >= 1) throw new TypeError("Failed to fetch");
+      return answers(url, init);
+    }) as unknown as typeof fetch;
+    const result = await timeline(streamCurrentTimeline({ chart, config, fetchImpl }));
+    expect(result.upcoming_periods[0]).toMatchObject({ title: "Jupiter period", layman: READING_WITHHELD.en, technical: "Jupiter MD." });
+  });
+
   it("never preview a sentence the check fails", async () => {
     const { fetchImpl } = timelineFetch([road(`${CLEAN} ${FORETELLS} Work asks for patience.`), road(CLEAN)], true);
     const previews: string[] = [];
@@ -142,6 +152,17 @@ describe("the mesh reading", () => {
     const reading = await meshReading(streamMeshReading({ edge: SPOUSE, config, fetchImpl, language: "es" }));
     expect(timingCalls()).toBe(2);
     expect(reading.timing_together).toEqual({ ...MESH_CLEAN, layman: READING_WITHHELD.es });
+    expect(reading.connection).toEqual(MESH_CLEAN);
+  });
+
+  it("withholds only the failing values when the reword request fails on the network", async () => {
+    const { fetchImpl: answers, timingCalls } = meshFetch([{ ...MESH_CLEAN, layman: "Expect a wedding in 2027." }]);
+    const fetchImpl = vi.fn(async (url: string, init: RequestInit) => {
+      if (String(init.body).includes("SECTION:timing_together") && timingCalls() >= 1) throw new TypeError("Failed to fetch");
+      return answers(url, init);
+    }) as unknown as typeof fetch;
+    const reading = await meshReading(streamMeshReading({ edge: SPOUSE, config, fetchImpl, language: "pt" }));
+    expect(reading.timing_together).toEqual({ ...MESH_CLEAN, layman: READING_WITHHELD.pt });
     expect(reading.connection).toEqual(MESH_CLEAN);
   });
 

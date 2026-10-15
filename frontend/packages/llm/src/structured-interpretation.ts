@@ -58,6 +58,7 @@ import {
   REFLECTION_RULE,
   reflectionGate,
   reflectionRetry,
+  rewordedOr,
   withholdFailingValues,
 } from "./reflection";
 import { monthsIn, validateTimelineDates } from "./date-guard";
@@ -1643,7 +1644,8 @@ function requestCapped<Section extends AnySectionKey>(
 /**
  * The section's completion through the reflection check (PR #366): a text that foretells,
  * narrates the tools or guesses lived experience goes back once with the issues named; a value
- * that still fails is withheld in the reading's language, the rest of the section kept.
+ * that still fails is withheld in the reading's language, the rest of the section kept. A reword
+ * request that fails withholds the first text's failing values instead of failing the section.
  */
 async function reflectedSection<Section extends AnySectionKey>(
   section: Section,
@@ -1653,7 +1655,7 @@ async function reflectedSection<Section extends AnySectionKey>(
   const raw = await requestCapped(section, messages, params);
   const issues = jsonReflectionIssues(raw);
   if (issues.length === 0) return raw;
-  const retry = await requestCapped(section, [...messages, ...reflectionRetry(raw, issues)], params);
+  const retry = await rewordedOr(raw, params.signal, () => requestCapped(section, [...messages, ...reflectionRetry(raw, issues)], params));
   return withholdFailingValues(retry, READING_WITHHELD[params.language ?? "en"]);
 }
 

@@ -25,7 +25,7 @@ import { buildMeshFactsBlock } from "./mesh-facts";
 import { sanitizeMeshEdgeForLlm } from "./mesh-sanitize";
 import type { MeshEdgeContext, MeshRelationship } from "./mesh-types";
 import { ANTI_SCAM_RELATIONSHIP_FENCE, OUTPUT_DISCIPLINE_RULES, type ViewMode } from "./prompt";
-import { jsonReflectionIssues, READING_WITHHELD, REFLECTION_RULE, reflectionRetry, withholdFailingValues } from "./reflection";
+import { jsonReflectionIssues, READING_WITHHELD, REFLECTION_RULE, reflectionRetry, rewordedOr, withholdFailingValues } from "./reflection";
 
 // =============================================================================
 // Public API
@@ -226,7 +226,8 @@ type SectionOutcome =
 /**
  * One section's JSON through the reflection check (PR #366): a text that foretells, narrates the
  * tools or guesses lived experience goes back once with the issues named; a value that still
- * fails is withheld in the reading's language.
+ * fails is withheld in the reading's language, as are the first text's failing values when the
+ * reword request itself fails.
  */
 async function reflectedSection(messages: ChatMessage[], params: MeshReadingParams): Promise<string> {
   const request = (sent: ChatMessage[]) =>
@@ -239,7 +240,7 @@ async function reflectedSection(messages: ChatMessage[], params: MeshReadingPara
   const raw = await request(messages);
   const issues = jsonReflectionIssues(raw);
   if (issues.length === 0) return raw;
-  const retry = await request([...messages, ...reflectionRetry(raw, issues)]);
+  const retry = await rewordedOr(raw, params.signal, () => request([...messages, ...reflectionRetry(raw, issues)]));
   return withholdFailingValues(retry, READING_WITHHELD[params.language ?? "en"]);
 }
 

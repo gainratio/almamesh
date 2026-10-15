@@ -12,6 +12,7 @@ import {
   reflectionIssues,
   reflectionGate,
   releasableReflection,
+  rewordedOr,
   withholdFailingValues,
 } from "../reflection";
 import { buildReportMessages } from "../index";
@@ -319,6 +320,15 @@ describe("a reading's JSON", () => {
       technical: "Jupiter antardasha will begin in March 2027.",
       items: [{ text: "Saturn rules the 10th.", note: READING_WITHHELD.en }],
     });
+  });
+
+  it("falls back to the first text when the reword request fails, unless the reading was cancelled", async () => {
+    const offline = () => Promise.reject(new TypeError("Failed to fetch"));
+    await expect(rewordedOr(section, undefined, offline)).resolves.toBe(section);
+    const cancelled = new AbortController();
+    cancelled.abort();
+    await expect(rewordedOr(section, cancelled.signal, offline)).rejects.toThrow("Failed to fetch");
+    await expect(rewordedOr(section, undefined, () => Promise.resolve("{}"))).resolves.toBe("{}");
   });
 
   it("withholds in each app language, in words that pass the check", () => {

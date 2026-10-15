@@ -530,6 +530,20 @@ export function withholdFailingValues(raw: string, withheld: string): string {
   return JSON.stringify(mapStrings(parsed, (text) => (reflectionIssues(text).length > 0 ? withheld : text)));
 }
 
+/**
+ * The reworded JSON, or the first one when the reword request fails: its failing values are then
+ * withheld by the caller, so a network error on the retry costs one value, not the section. A
+ * cancelled request still ends the reading.
+ */
+export async function rewordedOr(raw: string, signal: AbortSignal | undefined, reword: () => Promise<string>): Promise<string> {
+  try {
+    return await reword();
+  } catch (error) {
+    if (signal?.aborted) throw error;
+    return raw;
+  }
+}
+
 /** The messages that send a failing JSON reading back once: the model's text, then the fix. */
 export function reflectionRetry(raw: string, issues: readonly ReflectionIssue[]): readonly { readonly role: "assistant" | "user"; readonly content: string }[] {
   return [
