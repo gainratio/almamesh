@@ -62,10 +62,10 @@
             "moon": {
               "bindus": {
                 "Aquarius": 5,
-                "Aries": 6,
+                "Aries": 7,
                 "Cancer": 2,
                 "Capricorn": 4,
-                "Gemini": 3,
+                "Gemini": 2,
                 "Leo": 4,
                 "Libra": 4,
                 "Pisces": 3,
@@ -135,10 +135,10 @@
           "sarva": {
             "bindus": {
               "Aquarius": 24,
-              "Aries": 37,
+              "Aries": 38,
               "Cancer": 21,
               "Capricorn": 27,
-              "Gemini": 25,
+              "Gemini": 24,
               "Leo": 26,
               "Libra": 30,
               "Pisces": 31,
@@ -1068,7 +1068,7 @@
             },
             "moon": {
               "bindus": {
-                "Aquarius": 6,
+                "Aquarius": 5,
                 "Aries": 4,
                 "Cancer": 5,
                 "Capricorn": 5,
@@ -1076,7 +1076,7 @@
                 "Leo": 5,
                 "Libra": 5,
                 "Pisces": 5,
-                "Sagittarius": 2,
+                "Sagittarius": 3,
                 "Scorpio": 6,
                 "Taurus": 3,
                 "Virgo": 2
@@ -1141,7 +1141,7 @@
           },
           "sarva": {
             "bindus": {
-              "Aquarius": 22,
+              "Aquarius": 21,
               "Aries": 30,
               "Cancer": 26,
               "Capricorn": 28,
@@ -1149,7 +1149,7 @@
               "Leo": 27,
               "Libra": 28,
               "Pisces": 35,
-              "Sagittarius": 28,
+              "Sagittarius": 29,
               "Scorpio": 30,
               "Taurus": 28,
               "Virgo": 24
@@ -2077,7 +2077,7 @@
               "bindus": {
                 "Aquarius": 4,
                 "Aries": 5,
-                "Cancer": 5,
+                "Cancer": 4,
                 "Capricorn": 4,
                 "Gemini": 5,
                 "Leo": 3,
@@ -2085,7 +2085,7 @@
                 "Pisces": 5,
                 "Sagittarius": 3,
                 "Scorpio": 2,
-                "Taurus": 3,
+                "Taurus": 4,
                 "Virgo": 5
               },
               "planet": "moon",
@@ -2150,7 +2150,7 @@
             "bindus": {
               "Aquarius": 30,
               "Aries": 33,
-              "Cancer": 24,
+              "Cancer": 23,
               "Capricorn": 26,
               "Gemini": 29,
               "Leo": 28,
@@ -2158,7 +2158,7 @@
               "Pisces": 22,
               "Sagittarius": 22,
               "Scorpio": 29,
-              "Taurus": 28,
+              "Taurus": 29,
               "Virgo": 34
             },
             "total": 337
