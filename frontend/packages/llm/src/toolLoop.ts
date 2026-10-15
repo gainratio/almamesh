@@ -305,19 +305,33 @@ function normalizeObject(shape: Record<string, z.ZodType>, value: Record<string,
   return filled;
 }
 
+/** JSON text of an object or array, parsed; anything else (not JSON, a scalar) as it was. */
+function parsedJsonText(value: string): unknown {
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return typeof parsed === "object" && parsed !== null ? parsed : value;
+  } catch {
+    return value;
+  }
+}
+
 /**
  * Normalise every level (objects, array elements, through nullable/optional/default wrappers):
  * an omitted key that accepts null becomes null, and so do the string "null" and an empty or
  * blank string (deepseek sends either for an unused argument). A key that does not accept null
- * keeps its value. Only genuinely wrong values are retries.
+ * keeps its value. Where an object or array is expected, a string of JSON text is parsed first
+ * (deepseek sends `themes` as a JSON string); text that is not JSON of that type still fails.
+ * Only genuinely wrong values are retries.
  */
-function normalizeNullables(schema: z.ZodType, value: unknown): unknown {
+function normalizeNullables(schema: z.ZodType, raw: unknown): unknown {
   const inner = unwrapSchema(schema);
+  const structured = inner instanceof z.ZodObject || inner instanceof z.ZodArray;
+  const value = structured && typeof raw === "string" ? parsedJsonText(raw) : raw;
   if (inner instanceof z.ZodObject && isRecord(value)) return normalizeObject(inner.shape as Record<string, z.ZodType>, value);
   if (inner instanceof z.ZodArray && Array.isArray(value)) {
     return value.map((item) => normalizeNullables(inner.element as z.ZodType, item));
   }
-  return value;
+  return raw;
 }
 
 const wireSchemas = new WeakMap<z.ZodType, JSONSchema7>();

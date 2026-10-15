@@ -857,6 +857,23 @@ describe("chatAnswerSpec.prepare: moon and windows come from the reading when th
     expect(String(events[0]?.result)).toContain("moon tags must come from the reading: jupiter_from_moon_7");
   });
 
+  it("themes and dashas sent as JSON strings (deepseek) parse before validation: valid on the first try", async () => {
+    const sent = { ...DEEPSEEK, themes: JSON.stringify(DEEPSEEK.themes), dashas: JSON.stringify(DEEPSEEK.dashas) };
+    const { events, answer } = await turn(OCTOBER, "en", sent);
+    expect(events.map((e) => [e.status, e.validFirstTry])).toEqual([["complete", true]]);
+    expect(answer.themes).toEqual(DEEPSEEK.themes);
+    expect(answer.dashas).toEqual(DEEPSEEK.dashas);
+  });
+
+  it("a string that is not JSON of the expected type still retries", async () => {
+    for (const themes of ["career is good", JSON.stringify({ area: "career" }), "[1, 2"]) {
+      const { events } = await turn(OCTOBER, "en", { ...DEEPSEEK, themes }, DEEPSEEK);
+      expect(events.map((e) => e.status)).toEqual(["retried", "complete"]);
+    }
+    const { events } = await turn(OCTOBER, "en", { ...DEEPSEEK, dashas: JSON.stringify([DEEPSEEK.dashas]) }, DEEPSEEK);
+    expect(events.map((e) => e.status)).toEqual(["retried", "complete"]);
+  });
+
   it("an out-of-period window the model gave still retries", async () => {
     const wrong = { ...DEEPSEEK, windows: [{ date: "2026-11-12", what: "Mars enters Leo" }] };
     const { events } = await turn(OCTOBER, "en", wrong, DEEPSEEK);
