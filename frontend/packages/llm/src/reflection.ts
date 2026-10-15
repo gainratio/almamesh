@@ -377,3 +377,57 @@ export function reflectionGate(): ReflectionGate {
 export function releasableReflection(text: string, final: boolean): string {
   return reflectionGate().release(text, final);
 }
+
+// ---------------------------------------------------------------------------
+// Structured readings: every string value of a section's JSON
+// ---------------------------------------------------------------------------
+
+/** What a reading shows in place of a value that still fails the check after its retry. */
+export const READING_WITHHELD: Readonly<Record<ReflectionLanguage, string>> = {
+  en: "I couldn't word this part as a reflection. Generate the reading again to retry.",
+  es: "No pude expresar esta parte como una reflexión. Vuelve a generar la lectura.",
+  pt: "Não consegui formular esta parte como uma reflexão. Gere a leitura de novo.",
+};
+
+/** The JSON value with every string value mapped; keys are structure and stay as they are. */
+function mapStrings(value: unknown, map: (text: string) => string): unknown {
+  if (typeof value === "string") return map(value);
+  if (Array.isArray(value)) return value.map((item) => mapStrings(item, map));
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([key, inner]) => [key, mapStrings(inner, map)]));
+  }
+  return value;
+}
+
+function parsedOrUndefined(raw: string): unknown {
+  try {
+    return JSON.parse(raw) as unknown;
+  } catch {
+    return undefined; // the section's own parser reports a document that is not JSON
+  }
+}
+
+/** Every reflection issue in the string values of a JSON document; [] when clean or not JSON. */
+export function jsonReflectionIssues(raw: string): readonly ReflectionIssue[] {
+  const issues: ReflectionIssue[] = [];
+  mapStrings(parsedOrUndefined(raw), (text) => {
+    issues.push(...reflectionIssues(text));
+    return text;
+  });
+  return issues;
+}
+
+/** The JSON document with each string value that fails the check replaced by `withheld`. */
+export function withholdFailingValues(raw: string, withheld: string): string {
+  const parsed = parsedOrUndefined(raw);
+  if (parsed === undefined) return raw;
+  return JSON.stringify(mapStrings(parsed, (text) => (reflectionIssues(text).length > 0 ? withheld : text)));
+}
+
+/** The messages that send a failing JSON reading back once: the model's text, then the fix. */
+export function reflectionRetry(raw: string, issues: readonly ReflectionIssue[]): readonly { readonly role: "assistant" | "user"; readonly content: string }[] {
+  return [
+    { role: "assistant", content: raw },
+    { role: "user", content: `${reflectionCorrection(issues)} Return the same JSON shape with every value reworded.` },
+  ];
+}

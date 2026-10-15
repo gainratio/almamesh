@@ -25,6 +25,7 @@ import { buildMeshFactsBlock } from "./mesh-facts";
 import { sanitizeMeshEdgeForLlm } from "./mesh-sanitize";
 import type { MeshEdgeContext, MeshRelationship } from "./mesh-types";
 import { ANTI_SCAM_RELATIONSHIP_FENCE, OUTPUT_DISCIPLINE_RULES, type ViewMode } from "./prompt";
+import { jsonReflectionIssues, READING_WITHHELD, REFLECTION_RULE, reflectionRetry, withholdFailingValues } from "./reflection";
 
 // =============================================================================
 // Public API
@@ -101,6 +102,8 @@ const SYSTEM_PROMPT = [
   OUTPUT_DISCIPLINE_RULES,
   "",
   ANTI_SCAM_RELATIONSHIP_FENCE,
+  "",
+  REFLECTION_RULE,
   "",
   "OUTPUT: respond with a SINGLE strict JSON object matching the requested",
   "schema. No prose outside the JSON. No markdown fences. Escape quotes in",
@@ -220,6 +223,26 @@ type SectionOutcome =
   | { section: MeshReadingSectionKey; ok: true; raw: string }
   | { section: MeshReadingSectionKey; ok: false; message: string };
 
+/**
+ * One section's JSON through the reflection check (PR #366): a text that foretells, narrates the
+ * tools or guesses lived experience goes back once with the issues named; a value that still
+ * fails is withheld in the reading's language.
+ */
+async function reflectedSection(messages: ChatMessage[], params: MeshReadingParams): Promise<string> {
+  const request = (sent: ChatMessage[]) =>
+    chatCompletionJson({
+      config: params.config,
+      messages: sent,
+      ...(params.signal ? { signal: params.signal } : {}),
+      ...(params.fetchImpl ? { fetchImpl: params.fetchImpl } : {}),
+    });
+  const raw = await request(messages);
+  const issues = jsonReflectionIssues(raw);
+  if (issues.length === 0) return raw;
+  const retry = await request([...messages, ...reflectionRetry(raw, issues)]);
+  return withholdFailingValues(retry, READING_WITHHELD[params.language ?? "en"]);
+}
+
 function runOneSection(
   section: MeshReadingSectionKey,
   factsBlock: string,
@@ -231,12 +254,7 @@ function runOneSection(
     params.mode ?? "layman",
     params.language ?? "en",
   );
-  return chatCompletionJson({
-    config: params.config,
-    messages,
-    ...(params.signal ? { signal: params.signal } : {}),
-    ...(params.fetchImpl ? { fetchImpl: params.fetchImpl } : {}),
-  })
+  return reflectedSection(messages, params)
     .then((raw): SectionOutcome => ({ section, ok: true, raw }))
     .catch((err: unknown): SectionOutcome => ({
       section,

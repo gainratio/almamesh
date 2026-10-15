@@ -5,10 +5,13 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  jsonReflectionIssues,
+  READING_WITHHELD,
   REFLECTION_WITHHELD,
   reflectionIssues,
   reflectionGate,
   releasableReflection,
+  withholdFailingValues,
 } from "../reflection";
 import { TOOLS_UNAVAILABLE_NOTICE } from "../toolsUnavailable";
 import { MUST_PASS, REFLECTION_PROBES } from "./fixtures/reflection-probes";
@@ -137,5 +140,43 @@ describe("releasing streamed text sentence by sentence", () => {
 
   it("releases at line breaks: a bullet without a full stop is a sentence", () => {
     expect(releasableReflection("- **Saturn** rules 10 and 11\n- **Mars", false)).toBe("- **Saturn** rules 10 and 11\n");
+  });
+});
+
+// Structured readings (northstar, PR #366: the rule was only in their prompts). Every string value
+// of a section's JSON is read; one that still fails after the retry is withheld, not shown.
+describe("a reading's JSON", () => {
+  const section = JSON.stringify({
+    title: "Jupiter period",
+    layman: "You will get married in 2027.",
+    technical: "Jupiter antardasha will begin in March 2027.",
+    items: [{ text: "Saturn rules the 10th.", note: "Vas a conseguir un ascenso." }],
+  });
+
+  it("finds an issue in any string value, nested or not", () => {
+    expect(jsonReflectionIssues(section).map((issue) => issue.phrase)).toEqual(["You will get", "Vas a conseguir"]);
+  });
+
+  it("reads keys as structure, not prose", () => {
+    expect(jsonReflectionIssues(JSON.stringify({ predicted_events: "Saturn rules the 10th." }))).toEqual([]);
+  });
+
+  it("leaves text it cannot parse to the section's own parser", () => {
+    expect(jsonReflectionIssues("{not json")).toEqual([]);
+  });
+
+  it("withholds only the failing values, keeping the shape", () => {
+    const withheld = JSON.parse(withholdFailingValues(section, READING_WITHHELD.en)) as Record<string, unknown>;
+    expect(withheld).toEqual({
+      title: "Jupiter period",
+      layman: READING_WITHHELD.en,
+      technical: "Jupiter antardasha will begin in March 2027.",
+      items: [{ text: "Saturn rules the 10th.", note: READING_WITHHELD.en }],
+    });
+  });
+
+  it("withholds in each app language, in words that pass the check", () => {
+    expect(Object.keys(READING_WITHHELD).sort()).toEqual(["en", "es", "pt"]);
+    for (const text of Object.values(READING_WITHHELD)) expect(reflectionIssues(text)).toEqual([]);
   });
 });

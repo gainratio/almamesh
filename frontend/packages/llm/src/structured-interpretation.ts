@@ -52,7 +52,14 @@ import { ensurePrivacy, isLocalEndpoint, type ProviderConfig } from "./config";
 import { withLanguage, type PromptLanguage } from "./language";
 import { buildPredictiveFactsBlock, buildReportFactsBlock } from "./predictive-facts";
 import { OUTPUT_DISCIPLINE_RULES, PRIVACY_RULE, type ViewMode } from "./prompt";
-import { REFLECTION_RULE } from "./reflection";
+import {
+  jsonReflectionIssues,
+  READING_WITHHELD,
+  REFLECTION_RULE,
+  reflectionGate,
+  reflectionRetry,
+  withholdFailingValues,
+} from "./reflection";
 import { monthsIn, validateTimelineDates } from "./date-guard";
 import { computeQuarters } from "./quarters";
 import {
@@ -1536,12 +1543,14 @@ function requestSection<Section extends AnySectionKey>(
   if (!report && !isReportRequest(section, params.promptSet)) return chatCompletionJson(base);
   const prose = createJsonProseExtractor();
   const thinking = createWordCounter();
-  const snapshot = (): SectionProgressSnapshot => ({
+  // The preview shows only prose the reflection check has passed, a sentence at a time (PR #366).
+  const gate = reflectionGate();
+  const snapshot = (final = false): SectionProgressSnapshot => ({
     words: prose.words(),
-    preview: prose.preview(),
+    preview: gate.release(prose.text(), final).slice(-PROSE_PREVIEW_CHARS),
     thinkingWords: thinking.words(),
   });
-  return streamChatCompletionJson({
+  const streamed = streamChatCompletionJson({
     ...base,
     ...(params.reasoningTimeoutMs === undefined ? {} : { reasoningTimeoutMs: params.reasoningTimeoutMs }),
     onDelta: (delta) => {
@@ -1554,6 +1563,10 @@ function requestSection<Section extends AnySectionKey>(
       thinking.push(delta);
       report?.(section, snapshot());
     },
+  });
+  return streamed.then((raw) => {
+    report?.(section, snapshot(true)); // the last sentence ends with the stream
+    return raw;
   });
 }
 
@@ -1625,6 +1638,23 @@ function requestCapped<Section extends AnySectionKey>(
   );
 }
 
+/**
+ * The section's completion through the reflection check (PR #366): a text that foretells,
+ * narrates the tools or guesses lived experience goes back once with the issues named; a value
+ * that still fails is withheld in the reading's language, the rest of the section kept.
+ */
+async function reflectedSection<Section extends AnySectionKey>(
+  section: Section,
+  messages: ChatMessage[],
+  params: SectionRunParams<Section>,
+): Promise<string> {
+  const raw = await requestCapped(section, messages, params);
+  const issues = jsonReflectionIssues(raw);
+  if (issues.length === 0) return raw;
+  const retry = await requestCapped(section, [...messages, ...reflectionRetry(raw, issues)], params);
+  return withholdFailingValues(retry, READING_WITHHELD[params.language ?? "en"]);
+}
+
 function runOneSection<Section extends AnySectionKey>(
   section: Section,
   chart: SanitizedChart,
@@ -1639,7 +1669,7 @@ function runOneSection<Section extends AnySectionKey>(
     params.language ?? "en",
     params.promptSet,
   );
-  return requestCapped(section, messages, withGuardedPreview(section, chart, params))
+  return reflectedSection(section, messages, withGuardedPreview(section, chart, params))
     .then((raw): SectionOutcome<Section> => ({ section, ok: true, raw }))
     // Keep the ORIGINAL error (not just its message) so the aggregation can
     // preserve the HTTP status/body of a representative failure — the caller

@@ -17,6 +17,8 @@ export interface JsonProseExtractor {
   words(): number;
   /** The last ≤ PROSE_PREVIEW_CHARS characters of decoded prose. */
   preview(): string;
+  /** All decoded prose so far: the reflection gate reads whole sentences, which a tail can cut. */
+  text(): string;
 }
 
 const SIMPLE_ESCAPES: Readonly<Record<string, string>> = {
@@ -126,10 +128,12 @@ export function createJsonProseExtractor(): JsonProseExtractor {
     values: 0,
   };
   let tail = "";
+  let full = "";
   const counter = createWordCounter();
 
   const append = (text: string): void => {
     counter.push(text);
+    full += text;
     tail += text;
     // Amortized trim: copy only when the tail doubles past its bound.
     if (tail.length > PROSE_PREVIEW_CHARS * 2) tail = tail.slice(-PROSE_PREVIEW_CHARS);
@@ -146,5 +150,6 @@ export function createJsonProseExtractor(): JsonProseExtractor {
     },
     words: () => counter.words(),
     preview: () => (tail.length > PROSE_PREVIEW_CHARS ? tail.slice(-PROSE_PREVIEW_CHARS) : tail),
+    text: () => full,
   };
 }
