@@ -490,6 +490,26 @@ describe("answerSchema: a period answer says what the chart highlights, never wh
   it("passes the reference answer", () => {
     expect(messages(withAnswer({}))).toEqual([]);
   });
+
+  // Live drive 2026-10-15: a final-round gpt-sol window narrated the reading's limits; deepseek
+  // guessed how the month went. Both go back with the fix; a comparative indicator answer passes.
+  it("sends back a window that narrates what the reading lacks", () => {
+    const windows = [{ date: "2019-09-25", what: "Mars enters Virgo, but the reading supplies no specific life-area interpretation for it." }];
+    expect(messages(withAnswer({ windows }))).toEqual([
+      'Leave out what the reading does not cover: name the indicator and what it highlights, or drop the line (remove "supplies no specific", "no specific life-area interpretation").',
+    ]);
+  });
+
+  it("sends back an opening that guesses how the period went for the person", () => {
+    expect(messages(withAnswer({ opening: "Something stalled began to find forward motion after mid-month." }))).toEqual([
+      'Do not describe what the person went through or felt: say what the indicators highlight (remove "began to find").',
+    ]);
+  });
+
+  it("passes a comparative answer that names its indicators", () => {
+    const opening = "Saturn stations direct on 17 September; the weeks after it carry the Sade Sati theme more strongly than the weeks before, inside a Rahu-Mercury chapter that rules your 1st and 4th houses.";
+    expect(messages(withAnswer({ opening }))).toEqual([]);
+  });
 });
 
 describe("moonTagLabel", () => {

@@ -8,7 +8,7 @@
 // `oneOf`, so `kind` picks which nullable keys must be filled and the
 // refinement enforces it; the parsed value is then exactly a `ChatAnswer`
 // (plus null keys of the other kind).
-import { predictionClaims } from "./reflection";
+import { lifeGuesses, predictionClaims, toolNarration } from "./reflection";
 import { z, type AnswerSpec } from "./toolLoop";
 
 export const GRAHAS = ["sun", "moon", "mars", "mercury", "jupiter", "venus", "saturn", "rahu", "ketu"] as const;
@@ -409,6 +409,14 @@ function checkReflection(value: Wire, language: Language, issue: Issue): void {
     const claims = predictionClaims(text, language);
     if (claims.length > 0) {
       issue(`Reflection, not prediction: say what the chart highlights, not what the period brought or will bring (remove "${claims.join('", "')}").`, path);
+    }
+    const narration = toolNarration(text, language);
+    if (narration.length > 0) {
+      issue(`Leave out what the reading does not cover: name the indicator and what it highlights, or drop the line (remove "${narration.join('", "')}").`, path);
+    }
+    const guesses = lifeGuesses(text, language);
+    if (guesses.length > 0) {
+      issue(`Do not describe what the person went through or felt: say what the indicators highlight (remove "${guesses.join('", "')}").`, path);
     }
   }
 }

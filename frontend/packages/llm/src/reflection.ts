@@ -25,6 +25,10 @@ export const REFLECTION_RULE = [
   "dasha chapter it sits in; never invent another period's facts), and when several indicators",
   "converge, name hard themes plainly: legal or official friction, losses and expenses, a job or",
   "career change. No fear language: no doom, curses or danger; say what the theme asks of the person.",
+  "Never narrate the tools or what a reading leaves out: when a dated change has no theme beside it,",
+  "say what that planet and house highlight, or leave the line out. And never describe what the person",
+  "went through or how things went for them (what was stuck, what moved forward, what they may have",
+  "sensed): say what the indicators highlight and how the period compares.",
 ].join("\n");
 
 export type ReflectionLanguage = "en" | "es" | "pt";
@@ -79,4 +83,58 @@ export function predictionClaims(text: string, language: ReflectionLanguage): re
     const match = pattern.exec(text);
     return match ? [match[0]] : [];
   });
+}
+
+/**
+ * Answer text that narrates the tools or what a reading lacks ("the reading supplies no specific
+ * life-area interpretation", gpt-sol, 2026-10-15). For the answer check only: prompts name tools.
+ */
+export const TOOL_NARRATION_PATTERNS: Readonly<Record<ReflectionLanguage, readonly RegExp[]>> = {
+  en: [
+    word("(?:reading|readings|data|tool|tools)\\s+(?:does not|doesn't|did not|didn't|do not|don't|cannot|can't)\\s+(?:give|provide|supply|include|say|show|specify|offer|list|name|contain|tell|indicate|assign|attach)"),
+    word("(?:supplies|supplied|provides|provided|gives|offers|includes|contains)\\s+no\\s+(?:specific|particular|detailed|further|explicit|separate|life-area)"),
+    word("no\\s+(?:specific\\s+)?(?:life-area\\s+)?interpretation"),
+    word("not\\s+(?:included|available|provided|given|specified|listed|covered|shown)\\s+(?:in|by)\\s+(?:the|this)\\s+(?:reading|data|tool)"),
+    word("read_period|tool\\s+(?:call|result|output)s?"),
+  ],
+  es: [
+    word("(?:la lectura|los datos|la herramienta)\\s+no\\s+(?:da|ofrece|incluye|indica|especifica|asigna|muestra|dice)"),
+    word("read_period"),
+  ],
+  pt: [
+    word("(?:a leitura|os dados|a ferramenta)\\s+n[aã]o\\s+(?:d[aá]|oferece|inclui|indica|especifica|atribui|mostra|diz)"),
+    word("read_period"),
+  ],
+};
+
+/**
+ * Answer text that guesses what the person lived through ("something stalled began to find forward
+ * motion", "you may have felt", deepseek, 2026-10-15). Subjects are people and life matters, never a
+ * planet: "Jupiter began its transit" is an indicator.
+ */
+export const LIFE_GUESS_PATTERNS: Readonly<Record<ReflectionLanguage, readonly RegExp[]>> = {
+  en: [
+    word("you\\s+(?:may|might|must|probably|could)\\s+(?:well\\s+)?have\\s+(?:felt|noticed|experienced|found|seen|faced|had|sensed)"),
+    word("(?<!(?:sun|moon|mars|mercury|jupiter|venus|saturn|rahu|ketu)\\s)(?:began|started)\\s+to\\s+(?:find|gain|move|pick up|ease|lift|loosen|improve|inch|settle|unstick)"),
+    word("felt\\s+(?:like|as if|as though|stuck|stalled|delayed|blocked|busier|heavier|lighter|slower|faster|easier|harder)"),
+  ],
+  es: [word("(?:hayas|habr[aá]s|pudiste|puedes haber)\\s+sentido|te sentiste|sentiste")],
+  pt: [word("(?:pode ter|deve ter|possa ter)\\s+sentido|voc[eê] sentiu|sentiu-se")],
+};
+
+function scan(patterns: readonly RegExp[], text: string): readonly string[] {
+  return patterns.flatMap((pattern) => {
+    const match = pattern.exec(text);
+    return match ? [match[0]] : [];
+  });
+}
+
+/** Every phrase in `text` that narrates the tools or what a reading lacks; [] when clean. */
+export function toolNarration(text: string, language: ReflectionLanguage): readonly string[] {
+  return scan(TOOL_NARRATION_PATTERNS[language], text);
+}
+
+/** Every phrase in `text` that guesses what the person lived through; [] when clean. */
+export function lifeGuesses(text: string, language: ReflectionLanguage): readonly string[] {
+  return scan(LIFE_GUESS_PATTERNS[language], text);
 }
