@@ -198,7 +198,21 @@ export default function DashboardPage() {
     () => (activeProfileId ? Object.values(chatThreads).filter((thread) => thread.profile_id === activeProfileId) : []),
     [chatThreads, activeProfileId],
   );
-  const goToMoment = (asOf: ChatThreadAsOf) => timeTravel.travel({ asOf, source: 'dashboard-sheet' });
+  // A successful Go lands on the new trip card (scrolled into view + focused)
+  // once the sheet has closed, so the sheet's own focus return can't undo it;
+  // the Dashboard's return-focus stands aside for that close.
+  const [tripArriving, setTripArriving] = useState(false);
+  const goToMoment = async (asOf: ChatThreadAsOf) => {
+    travelFocus.arriving.current = true;
+    try {
+      await timeTravel.travel({ asOf, source: 'dashboard-sheet' });
+      setTripArriving(true);
+    } catch (cause) {
+      travelFocus.arriving.current = false;
+      throw cause;
+    }
+  };
+  const tripArrived = useCallback(() => setTripArriving(false), []);
   const backFromMoment = async () => {
     const key = momentKey;
     setTravelBackFor({ status: 'busy', key });
@@ -764,7 +778,8 @@ export default function DashboardPage() {
         )}
         {timeTravel.moment && (
           <DashboardMoment key={momentKey} asOf={timeTravel.moment} chart={siderealChart} chartId={chartId}
-            engine={chartEngineContext} birthYear={travelBirthYear} language={i18n.language} />
+            engine={chartEngineContext} birthYear={travelBirthYear} language={i18n.language}
+            arrive={tripArriving && travelSheet === 'closed'} onArrived={tripArrived} />
         )}
         <AiSetupDialog open={aiSetupOpen} onClose={() => setAiSetupOpen(false)} />
         <DashboardTimeTravelSheet open={travelSheet !== 'closed'}
