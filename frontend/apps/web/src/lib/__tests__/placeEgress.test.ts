@@ -67,3 +67,42 @@ describe('a chat-typed city never leaves the device, and the birth place never d
     expect(computeMoonWindow.mock.calls[0]?.[0]?.event).toMatchObject({ latitude: expect.any(Number) });
   });
 });
+
+// Task 11 (2026-10-14): Settings' "Where do you live now?" is a today thread's place.
+describe('where the user lives now never leaves the device by its coordinates', () => {
+  const NOVATO = { label: 'Novato, California, United States', timezone: 'America/Los_Angeles', latitude: 38.1074, longitude: -122.5697 };
+  const NOVATO_COORDINATES = [/38\.10/, /122\.56/, /"latitude"/, /"longitude"/];
+  beforeEach(() => hydrateLlmSettings(JSON.stringify({ chatContextTokens: 1_000_000 })));
+  afterEach(() => hydrateLlmSettings(null));
+
+  it('a today thread reads a day at home (null place and "home"): label and zone to the model, coordinates to the engine only', async () => {
+    const computeMoonWindow = vi.fn(async (_input: { placeStartUtc: string; event?: { latitude: number; longitude: number } }) => ({ at_place: { at_start: MARK, at_end: MARK }, event: { lagna_sign: 'leo', moon: MARK } }));
+    const rows: ChatToolCall[] = [];
+    const { fetchImpl, bodies } = stubEndpoint([
+      { name: 'read_period', args: readPeriodArgs('2019-09-15') },
+      { name: 'read_period', args: readPeriodArgs('2019-09-15', { place: 'home', time: '09:00' }) },
+      (body) => stubCallFor(body, {}),
+    ]);
+    const turn = runChatTurn({
+      config: LOCAL, chart: CHART, chartAsOf: { basis: 'chart', instant: new Date('2025-01-01T00:00:00Z') }, profileKey: 'p1', birth: BIRTH,
+      engine: engineWith(computeMoonWindow), question: 'How was 15 September 2019 for me?', mode: 'layman', language: 'en', currentPlace: NOVATO,
+      history: [], retrievedContext: [], signal: new AbortController().signal, now: new Date('2026-03-08T20:00:00.000Z'),
+      labels: { deciding: 'd', answering: 'a', complete: 'c' }, onTravel: vi.fn(), onToolCall: (row) => rows.push(row),
+      seams: { fetchImpl, viewerZone: () => 'America/Los_Angeles', periodSkyAllowed: true, loadPeriodChart: async () => DAY_CHART },
+    });
+    let answer = '';
+    for await (const snapshot of turn) answer = snapshot;
+    expect(rows.map((row) => [row.toolName, row.status])).toEqual([['read_period', 'complete'], ['read_period', 'complete']]);
+    for (const row of rows) expect(row.result).toMatchObject({ place: { label: NOVATO.label, timezone: 'America/Los_Angeles' }, place_moon: expect.any(Object) });
+    expect(bodies[0]).toBeDefined();
+    expect(String((bodies[0]?.messages as { content: string }[])[0]?.content)).toContain(`where the user lives now: ${NOVATO.label} (America/Los_Angeles)`);
+    for (const body of bodies) {
+      for (const pattern of [...NOVATO_COORDINATES, ...COORDINATE_LIKE]) expect(JSON.stringify(body)).not.toMatch(pattern);
+    }
+    expect(answer).toContain('Novato');
+    // The Moon is read at home's local midnights (Pacific), and the coordinates went to the engine, on the device.
+    expect(computeMoonWindow).toHaveBeenCalledTimes(2);
+    expect(computeMoonWindow.mock.calls[0]?.[0]?.placeStartUtc).toBe('2019-09-15T07:00:00.000Z');
+    expect(computeMoonWindow.mock.calls[1]?.[0]?.event).toMatchObject({ latitude: 38.1074, longitude: -122.5697 });
+  });
+});

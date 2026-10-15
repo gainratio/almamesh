@@ -12,7 +12,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { agentCallRows, agentRoundRows, clearAgentRoundsForTest } from '../agentRoundTelemetry';
 import { useAppStale } from '../appStale';
 import { runChatTurn, type ChatToolCall, type ChatTurnInput } from '../chatTurn';
-import { generalAnswer, readPeriodArgs, stubCallFor, stubEndpoint } from '../../test/stubAnswer';
+import { generalAnswer, periodAnswerFrom, readingsOf, readPeriodArgs, stubCallFor, stubEndpoint } from '../../test/stubAnswer';
 import { periodReadingFixture } from './periodReadingFixtures';
 import { CHART } from './timingFixtures';
 
@@ -115,6 +115,62 @@ describe('runChatTurn: a today turn', () => {
     expect(bodies[0]).toMatchObject({ tool_choice: 'required' });
     expect(toolNames(bodies[0])).toEqual(['read_period', 'travel', 'answer']);
     expect(snapshots.at(-1)).toBe('Your Mars is strong.');
+  });
+});
+
+// Task 11 (2026-10-14): Settings' "Where do you live now?" is a today thread's place.
+describe('runChatTurn: a today turn where the user lives now', () => {
+  const NOVATO = { label: 'Novato, California, United States', timezone: 'America/Los_Angeles', latitude: 38.1074, longitude: -122.5697 };
+  // A today thread reading January 2027 (the fixture month) at its default place.
+  const THIS_MONTH = readPeriodArgs('2027-01');
+  const JAN_2027 = { ...CHART, period_reading: periodReadingFixture('delhi-2027-01') } as unknown as SiderealChart;
+  const todayInput = (fetchImpl: typeof fetch, overrides: Partial<ChatTurnInput> = {}): ChatTurnInput => {
+    const base = input(fetchImpl, overrides);
+    return { ...base, seams: { ...base.seams, loadPeriodChart: async () => JAN_2027, loadCurrentChart: async () => JAN_2027 } };
+  };
+  const systemOf = (body: Record<string, unknown> | undefined) => String((body?.messages as { content: string }[])[0]?.content);
+  /** An answer citing the reading, but naming `place`. */
+  const answerNaming = (place: string) => (body: Record<string, unknown>) => ({ name: 'answer', args: { ...periodAnswerFrom(readingsOf(body)), place } });
+
+  it('the reading is at the current place (label and zone), the prompt says so, and the answer names the city', async () => {
+    const rows: ChatToolCall[] = [];
+    const { fetchImpl, bodies } = endpoint([{ name: 'read_period', args: THIS_MONTH }, (body) => stubCallFor(body, {})]);
+    const snapshots = await drain(runChatTurn(todayInput(fetchImpl, { currentPlace: NOVATO, onToolCall: (row) => rows.push(row) })));
+    expect(rows[0]?.result).toMatchObject({ place: { label: 'Novato, California, United States', timezone: 'America/Los_Angeles' }, cite: { place: 'Novato, California, United States' } });
+    expect(systemOf(bodies[0])).toContain('THIS THREAD: today, where the user lives now: Novato, California, United States (America/Los_Angeles).');
+    expect(snapshots.at(-1)).toContain('in Novato, California, United States');
+  });
+
+  it('the answer check requires the current place: an answer naming another city is sent back', async () => {
+    const { fetchImpl } = endpoint([{ name: 'read_period', args: THIS_MONTH }, answerNaming('Delhi'), (body) => stubCallFor(body, {})]);
+    const snapshots = await drain(runChatTurn(todayInput(fetchImpl, { currentPlace: NOVATO })));
+    expect(agentCallRows().map((row) => [row.name, row.status])).toEqual([['read_period', 'complete'], ['answer', 'retried'], ['answer', 'complete']]);
+    expect(snapshots.at(-1)).toContain('Novato');
+  });
+
+  it('unset: the reading has the zone only, the prompt names no place, and the answer names no city', async () => {
+    const rows: ChatToolCall[] = [];
+    const { fetchImpl, bodies } = endpoint([{ name: 'read_period', args: THIS_MONTH }, (body) => stubCallFor(body, {})]);
+    const snapshots = await drain(runChatTurn(todayInput(fetchImpl, { onToolCall: (row) => rows.push(row) })));
+    expect((rows[0]?.result as { place: unknown }).place).toEqual({ timezone: 'America/Los_Angeles' });
+    expect(rows[0]?.result).toMatchObject({ cite: { place: null } });
+    expect(systemOf(bodies[0])).not.toContain('THIS THREAD');
+    expect(snapshots.at(-1)).not.toMatch(/ in [A-Z][a-z]+,/);
+  });
+
+  it('unset: an answer that names a city is sent back (the reading has no place)', async () => {
+    const { fetchImpl } = endpoint([{ name: 'read_period', args: THIS_MONTH }, answerNaming('Novato'), (body) => stubCallFor(body, {})]);
+    const snapshots = await drain(runChatTurn(todayInput(fetchImpl)));
+    expect(agentCallRows().map((row) => [row.name, row.status])).toEqual([['read_period', 'complete'], ['answer', 'retried'], ['answer', 'complete']]);
+    expect(snapshots.at(-1)).not.toContain('Novato');
+  });
+
+  it('never the birth record transit location: a chart with one still reads at the zone only', async () => {
+    const rows: ChatToolCall[] = [];
+    const birth = { ...BIRTH, transit_location_details: { city: 'Delhi', latitude: 28.6139, longitude: 77.209, timezone: 'Asia/Kolkata', location_name: 'New Delhi, Delhi, India' } } as unknown as ProcessedBirthData;
+    const { fetchImpl } = endpoint([{ name: 'read_period', args: THIS_MONTH }, (body) => stubCallFor(body, {})]);
+    await drain(runChatTurn(todayInput(fetchImpl, { birth, onToolCall: (row) => rows.push(row) })));
+    expect((rows[0]?.result as { place: unknown }).place).toEqual({ timezone: 'America/Los_Angeles' });
   });
 });
 

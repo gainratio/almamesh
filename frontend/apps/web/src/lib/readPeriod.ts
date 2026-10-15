@@ -251,8 +251,8 @@ export type PickPlace = typeof askToPickPlace;
 export interface PlaceResolverInput {
   /** The trip's place; undefined in a today thread. */
   readonly threadPlace: DevicePlace | undefined;
-  /** The profile's current place; undefined when none is set. */
-  readonly homePlace: ChatPlace | undefined;
+  /** Where the person lives now (Settings); undefined when none is set. Coordinates go to the Moon loader only. */
+  readonly homePlace: DevicePlace | undefined;
   readonly lookup?: (text: string) => Promise<PlaceLookup>;
   readonly pick?: PickPlace;
 }

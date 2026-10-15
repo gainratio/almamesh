@@ -417,4 +417,35 @@ describe('MeshEdgePage', () => {
     await waitFor(() => expect(screen.getByTestId('chat-panel').textContent).toContain('Both charts lean on Venus now.'));
     expect(llmMocks.runToolTurn).toHaveBeenCalledTimes(1);
   });
+  // Task 11 (2026-10-14): the anchor's "Where do you live now?" is this today thread's place, by label and zone.
+  it('relationship chat says where the anchor lives now (label and zone, never coordinates)', async () => {
+    writeLlmSettings(openRouterPreset('sk-or-v1-0000-synthetic-test-key', 'test-org/test-model'));
+    __setMemoryForTest({
+      indexMessage: vi.fn().mockResolvedValue(undefined),
+      retrieve: vi.fn().mockResolvedValue([]),
+      deleteForProfile: vi.fn().mockResolvedValue(undefined),
+      deleteForThread: vi.fn().mockResolvedValue(undefined),
+      clear: vi.fn().mockResolvedValue(undefined),
+    });
+    llmMocks.runToolTurn.mockImplementation(async function* () {
+      yield 'Both charts lean on Venus now.';
+      return { answer: undefined };
+    });
+    seedPeople(SPOUSE);
+    useProfilesStore.setState((state) => ({
+      profiles: { ...state.profiles, [ANCHOR.id]: { ...ANCHOR, currentPlace: { label: 'Novato, California, United States', timezone: 'America/Los_Angeles', latitude: 38.1074, longitude: -122.5697 } } },
+    }));
+    seedCharts(SPOUSE);
+    seedEdge(SPOUSE, MESH_EDGE_SPOUSE);
+    renderAt('/mesh/p-spouse');
+
+    fireEvent.click(screen.getByTestId('mesh-discuss-chat'));
+    fireEvent.change(await screen.findByTestId('chat-input'), { target: { value: 'How are we this month?' } });
+    fireEvent.click(screen.getByTestId('chat-send-button'));
+
+    await waitFor(() => expect(llmMocks.runToolTurn).toHaveBeenCalledTimes(1));
+    const sent = JSON.stringify(llmMocks.runToolTurn.mock.calls[0][0].messages);
+    expect(sent).toContain('THIS THREAD: today, where the user lives now: Novato, California, United States (America/Los_Angeles).');
+    expect(sent).not.toMatch(/38\.10|122\.56/);
+  });
 });

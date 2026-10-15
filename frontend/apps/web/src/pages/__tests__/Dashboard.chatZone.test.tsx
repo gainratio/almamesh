@@ -165,4 +165,25 @@ describe('Dashboard chat runs one lazy chat turn', () => {
     await waitFor(() => expect(screen.getByTestId('chat-panel').textContent).toContain('An answer grounded in the chart.'));
     expect(screen.getByTestId('chat-panel').textContent).not.toContain('An answerAn answer');
   });
+  // Task 11 (2026-10-14): Settings' "Where do you live now?" is the today thread's place.
+  it('hands the turn where the active person lives now; nothing when they never said (never the birthplace)', async () => {
+    const NOVATO = { label: 'Novato, California, United States', timezone: 'America/Los_Angeles', latitude: 38.1074, longitude: -122.5697 };
+    const person = { id: 'profile-1', name: 'Asha Rao', createdAt: '2026-01-01T00:00:00Z', avatarTint: 'teal' };
+    const chart = chartWithZone('Asia/Kolkata');
+    useChartLibraryStore.setState({ charts: { 'chart-1': chart }, hydrated: true });
+    vi.mocked(readLocalPrimaryChart).mockResolvedValue(response(chart));
+
+    useProfilesStore.setState({ profiles: { 'profile-1': { ...person, currentPlace: NOVATO } }, activeProfileId: 'profile-1' });
+    const first = renderDashboardWithChatOpen();
+    await ask('How is this month?');
+    await waitFor(() => expect(turnMocks.runChatTurn).toHaveBeenCalledTimes(1));
+    expect(turnMocks.runChatTurn.mock.calls[0][0].currentPlace).toEqual(NOVATO);
+    first.unmount();
+
+    useProfilesStore.setState({ profiles: { 'profile-1': person }, activeProfileId: 'profile-1' });
+    renderDashboardWithChatOpen();
+    await ask('How is next month?');
+    await waitFor(() => expect(turnMocks.runChatTurn).toHaveBeenCalledTimes(2));
+    expect(turnMocks.runChatTurn.mock.calls[1][0].currentPlace).toBeUndefined();
+  });
 });

@@ -145,7 +145,7 @@ export {
   INTERP_TOKEN_BUDGET,
   CLOUD_CHAT_BUDGET,
 } from "./prompt";
-export type { ViewMode, ChatRectificationContext, ChatPromptBudget, ThreadFacts, ThreadTrip } from "./prompt";
+export type { ViewMode, ChatRectificationContext, ChatPromptBudget, ThreadFacts, ThreadHome, ThreadTrip } from "./prompt";
 
 export { languageInstruction, withLanguage } from "./language";
 export type { PromptLanguage } from "./language";

@@ -75,6 +75,30 @@ describe("a today prompt", () => {
   });
 });
 
+// Task 11 (2026-10-14): Settings' "Where do you live now?" rides in a today thread by label and zone.
+describe("a today prompt where the user lives now", () => {
+  const HOME_THREAD: ThreadFacts = { now: NOW, home: { place: "Novato, California, United States", timezone: "America/Los_Angeles" } };
+  const system = () =>
+    buildChatMessages(CHART, "How is work?", "layman", [], [], undefined, "en", undefined, undefined, undefined, undefined, HOME_THREAD)[0]?.content ?? "";
+
+  it("says where the user lives now, by label and zone, in one THIS THREAD line", () => {
+    const lines = system().split("\n").filter((line) => line.startsWith("THIS THREAD:"));
+    expect(lines).toEqual(["THIS THREAD: today, where the user lives now: Novato, California, United States (America/Los_Angeles)."]);
+  });
+
+  it("names no trip and no pinned period", () => {
+    expect(system()).not.toContain("a trip to");
+    expect(system()).not.toContain("PINNED PERIOD");
+  });
+
+  it("a trip thread never says where the user lives now, even when it is known", () => {
+    const both: ThreadFacts = { ...TRIP_THREAD, home: { place: "Novato, California, United States", timezone: "America/Los_Angeles" } };
+    const tripSystem = buildChatMessages(CHART, "How was work?", "layman", [], [], undefined, "en", undefined, undefined, undefined, MAY_2019_VADODARA, both)[0]?.content ?? "";
+    expect(tripSystem).not.toContain("Novato");
+    expect(tripSystem).toContain("THIS THREAD: a trip to May 2019, when the user lived in Vadodara, India (Asia/Kolkata).");
+  });
+});
+
 describe("a prompt without thread facts (single-pass callers with no tools)", () => {
   it("names no tool and no date line", () => {
     const system = buildChatMessages(CHART, "Where is my Mars?")[0]?.content ?? "";

@@ -229,6 +229,14 @@ export interface ThreadFacts {
   readonly now: string;
   /** The thread's time-travel trip, when it is one. */
   readonly trip?: ThreadTrip;
+  /** Where the user lives now (Settings), when set; only a today thread states it. */
+  readonly home?: ThreadHome;
+}
+
+export interface ThreadHome {
+  /** A label, e.g. "Novato, California, United States". Never coordinates. */
+  readonly place: string;
+  readonly timezone: string;
 }
 
 export interface ThreadTrip {
@@ -255,9 +263,11 @@ export function formatNow(now: Date, timeZone: string): string {
  */
 function threadRules(thread?: ThreadFacts, pinned?: PinnedPrompt): string {
   const trip = thread?.trip;
+  const home = trip ? undefined : thread?.home;
   return [
     ...(thread ? [`NOW: today is ${thread.now}.`] : []),
     ...(trip ? [`THIS THREAD: a trip to ${trip.label}, when the user lived in ${trip.place} (${trip.timezone}).`] : []),
+    ...(home ? [`THIS THREAD: today, where the user lives now: ${home.place} (${home.timezone}).`] : []),
     ...(pinned ? [pinnedPeriodRules(pinned)] : []),
     ...(thread ? [TOOLS_LINE] : []),
   ].join("\n");

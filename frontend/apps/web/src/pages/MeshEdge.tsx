@@ -18,6 +18,7 @@ import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   IDLE_MESH_EDGE,
+  getCurrentPlace,
   pairKeyOf,
   useAnchorProfile,
   useChartLibraryStore,
@@ -298,6 +299,7 @@ function MeshEdgeContent({
         throw new Error(t('dashboard:chat.not_configured_notice'));
       }
       const { runChatTurn } = await import('../lib/chatTurn');
+      const currentPlace = getCurrentPlace(useProfilesStore.getState().profiles[anchor.id] ?? anchor);
       let answer = '';
       for await (const snapshot of runChatTurn({
         config: resolveProviderConfig(readMeshChatEnv()),
@@ -313,6 +315,8 @@ function MeshEdgeContent({
         retrievedContext: ask.retrievedContext,
         ...(entry.edge ? { meshEdge: sanitizeMeshEdgeForLlm(entry.edge) } : {}),
         ...(ask.asOf ? { asOf: ask.asOf } : {}),
+        // Where the anchor lives now (Settings): this today thread's place, by label and zone.
+        ...(currentPlace ? { currentPlace } : {}),
         signal: ask.signal,
         labels: chatStatusLabels(t),
         onStatus: ask.onStatus,

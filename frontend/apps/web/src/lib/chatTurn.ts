@@ -28,6 +28,7 @@ import {
 import { chatAnswerSpec, type GroundingReading } from '@almamesh/llm/answer';
 import { runToolTurn, type AgentStatusEvent, type ToolCallEvent, type ToolContext, type ToolDef } from '@almamesh/llm/toolLoop';
 import type { ChatThreadAsOf, ProcessedBirthData } from '@almamesh/shared-types';
+import type { CurrentPlace } from '@almamesh/store';
 
 import type { ChartEngineContextValue } from '../providers/chartEngineContext';
 import { reportAgentToolFailure } from './agentToolDiagnostics';
@@ -42,7 +43,6 @@ import { formatPinLabel } from './timeTravelSheet';
 import { createTravelTool, TRAVEL_TOOL_NAME, travelPeriodLabel, travelStatusLabel, type TravelArgs } from './travelTool';
 import type { TravelRecorder } from './travelSlot';
 import { tripPin } from './tripContext';
-import { birthPlaceOf } from './tripPlacePrefill';
 import { viewerTodayDay } from './viewerToday';
 
 export interface ChatStatusLabels {
@@ -109,6 +109,12 @@ export interface ChatTurnInput {
   readonly meshEdge?: SanitizedMeshEdge;
   /** The thread's time-travel trip; absent in a today thread. */
   readonly asOf?: ChatThreadAsOf;
+  /**
+   * Where the person lives now (Settings, `getCurrentPlace`): a today thread's place and
+   * read_period's "home". Its label and zone reach the model; its coordinates only the
+   * on-device Moon loader. Absent: a today thread reads at the viewer's zone, with no place.
+   */
+  readonly currentPlace?: CurrentPlace;
   readonly signal: AbortSignal;
   readonly labels: ChatStatusLabels;
   readonly onStatus?: (label: string | null) => void;
@@ -170,7 +176,7 @@ function turnTools(input: ChatTurnInput, pin: ChatThreadAsOf | undefined, starts
   const engine = recoveringEngine(input.engine);
   const skyAllowed = seams.periodSkyAllowed ?? devicePolicy().periodSkyComputeAllowed;
   const places = {
-    homePlace: birthPlaceOf(input.birth?.transit_location_details ?? undefined),
+    homePlace: input.currentPlace,
     ...(seams.lookup ? { lookup: seams.lookup } : {}),
     ...(seams.pick ? { pick: seams.pick } : {}),
   };
@@ -203,7 +209,10 @@ function frameOf(input: ChatTurnInput, pin: ChatThreadAsOf | undefined, now: Dat
   const zone = (input.seams?.viewerZone ?? viewerTimeZone)();
   const facts = input.promptChart ?? input.chart;
   const today = formatNow(now, zone);
-  if (!pin) return { chart: facts, asOf: input.chartAsOf, thread: { now: today } };
+  if (!pin) {
+    const home = input.currentPlace ? { home: { place: input.currentPlace.label, timezone: input.currentPlace.timezone } } : {};
+    return { chart: facts, asOf: input.chartAsOf, thread: { now: today, ...home } };
+  }
   const period = { start: pin.start, end: pin.end };
   const trip = pin.place ? { trip: { label: formatPinLabel(pin, input.language), place: pin.place.label, timezone: pin.place.timezone } } : {};
   return {

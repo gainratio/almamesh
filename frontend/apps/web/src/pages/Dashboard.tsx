@@ -24,6 +24,7 @@ import {
 } from "@almamesh/llm";
 import {
   flushPortablePersistence,
+  getCurrentPlace,
   useChartLibraryStore,
   useInterpretationStore,
   useLanguageStore,
@@ -326,6 +327,8 @@ export default function DashboardPage() {
       // only the PII-safe slice crosses — band + entered/working signs + fit
       // mode. Times, dates, and margins stay on-device by construction.
       const record = activeProfileId ? useRectificationRecordsStore.getState().getRecord(activeProfileId) : null;
+      // Where they live now (Settings): a today thread's place, by label and zone. Unset: zone only.
+      const currentPlace = activeProfileId ? getCurrentPlace(useProfilesStore.getState().profiles[activeProfileId]) : undefined;
       const { runChatTurn } = await import('../lib/chatTurn');
       let answer = '';
       for await (const snapshot of runChatTurn({
@@ -344,6 +347,7 @@ export default function DashboardPage() {
         ...(interp ? { interpretationText: serializeInterpretationForChat(interp, mode) } : {}),
         ...(record ? { rectification: { band: record.band, originalSign: record.originalSign, rectifiedSign: record.rectifiedSign, mode: record.mode } } : {}),
         ...(ask.asOf ? { asOf: ask.asOf } : {}),
+        ...(currentPlace ? { currentPlace } : {}),
         signal: ask.signal,
         labels: chatStatusLabels(t),
         onStatus: ask.onStatus,
