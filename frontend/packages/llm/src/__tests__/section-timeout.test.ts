@@ -268,12 +268,45 @@ describe("report section time caps", () => {
     expect(signals.get("year_ahead")?.aborted).toBe(true);
   });
 
-  it("legacy (non-report) natal sections keep their old behaviour: no cap", async () => {
+  // CONTRACT REVERSED (nightly 38749206288, 2026-10-15): this test used to
+  // assert that a remote legacy natal section had NO cap, i.e. that the
+  // dashboard reading could hang forever on a stalled provider. It did: the
+  // reading never rendered in 8 minutes. A remote legacy section now gets the
+  // same total cap as a report section; only that section fails.
+  it("remote: a stalled legacy natal section fails with a total timeout; the rest complete", async () => {
+    const { fetchImpl, signals } = fetchWith({ guidance1: never });
+    const started = Date.now();
+    const events = await collect(streamNatalInterpretation({
+      chart: REPORT_RAW_CHART, asOf: REPORT_AS_OF, config: OPENROUTER, fetchImpl, sectionTimeoutMs: 50,
+    }));
+    expect(Date.now() - started).toBeLessThan(2_000);
+    const [error] = errorsOf(events);
+    expect(error).toMatchObject({ section: "guidance1" });
+    expect(error.type === "error" ? error.timeout : undefined).toMatchObject({ kind: "total", limitMs: 50 });
+    expect(signals.get("guidance1")?.aborted).toBe(true);
+    expect(completed(events)).toHaveLength(4);
+    expect(events.at(-1)?.type).toBe("complete");
+  });
+
+  it("defaults: a remote legacy natal section is cut at exactly 300 s", async () => {
+    vi.useFakeTimers();
+    const { fetchImpl } = fetchWith({ core: never });
+    const events: NatalInterpretationEvent[] = [];
+    const run = drainInto(streamNatalInterpretation({ chart: REPORT_RAW_CHART, asOf: REPORT_AS_OF, config: OPENROUTER, fetchImpl }), events);
+    await vi.advanceTimersByTimeAsync(299_999);
+    expect(errorsOf(events)).toEqual([]);
+    await vi.advanceTimersByTimeAsync(1);
+    await settle(run);
+    expect(errorsOf(events)[0]).toMatchObject({ section: "core", timeout: { kind: "total", limitMs: 300_000 } });
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("local: legacy natal sections keep no cap (a weak device may be slow but still working)", async () => {
     const controller = new AbortController();
     const { fetchImpl, signals } = fetchWith({ core: never });
     const run = collect(streamNatalInterpretation({
-      chart: REPORT_RAW_CHART, asOf: REPORT_AS_OF, config: OPENROUTER, fetchImpl,
-      signal: controller.signal, sectionTimeoutMs: 20,
+      chart: REPORT_RAW_CHART, asOf: REPORT_AS_OF, config: LOCAL, fetchImpl,
+      signal: controller.signal, sectionTimeoutMs: 20, sectionIdleTimeoutMs: 20,
     }));
     const settled = await Promise.race([run.then(() => "settled", () => "settled"), new Promise((r) => setTimeout(() => r("open"), 150))]);
     expect(settled).toBe("open");
