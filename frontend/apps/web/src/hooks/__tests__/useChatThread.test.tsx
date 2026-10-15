@@ -554,7 +554,9 @@ describe('useChatThread', () => {
     expect(callInput.history).toEqual([{ role: 'user', content: 'Q1' }]);
   });
 
-  it('a privacy violation surfaces its own fail-closed message, never QA_001', async () => {
+  // CONTRACT REVERSED (was: the English fence message verbatim, asserted via
+  // 'local_only'): the bubble now shows localized copy naming the endpoint.
+  it('a privacy violation surfaces localized fail-closed copy, never QA_001', async () => {
     const { memory } = fakeMemory();
     __setMemoryForTest(memory);
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -562,6 +564,7 @@ describe('useChatThread', () => {
     const failing = vi.fn().mockRejectedValue(
       new PrivacyViolationError(
         'local_only privacy mode refuses to send chart data to https://example.invalid',
+        'https://example.invalid',
       ),
     );
 
@@ -573,7 +576,10 @@ describe('useChatThread', () => {
     await waitFor(() => expect(result.current.messages.length).toBe(2));
     const bubble = result.current.messages[1];
     expect(bubble.error).toBe(true);
-    expect(bubble.content).toContain('local_only');
+    expect(bubble.content).toBe(
+      i18n.t('chat:errors.privacy_blocked', { endpoint: 'https://example.invalid' }),
+    );
+    expect(bubble.content).not.toContain('local_only');
     expect(bubble.content).not.toContain('QA_001');
   });
 

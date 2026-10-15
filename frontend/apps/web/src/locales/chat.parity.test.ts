@@ -10,6 +10,19 @@ const keys = (o: unknown, p = ''): string[] =>
       )
     : [p];
 
+const leaves = (o: unknown, p = ''): (readonly [string, unknown])[] =>
+  o && typeof o === 'object'
+    ? Object.entries(o as Record<string, unknown>).flatMap(([k, v]) =>
+        k === '_meta' ? [] : leaves(v, p ? `${p}.${k}` : k),
+      )
+    : [[p, o] as const];
+
+const placeholders = (value: unknown): string =>
+  (typeof value === 'string' ? (value.match(/\{\{\s*\w+\s*\}\}/g) ?? []) : [])
+    .map((m) => m.replace(/\s/g, ''))
+    .sort()
+    .join(',');
+
 describe('chat i18n parity', () => {
   it('es matches en keys', () => expect(keys(es).sort()).toEqual(keys(en).sort()));
   it('pt matches en keys', () => expect(keys(pt).sort()).toEqual(keys(en).sort()));
@@ -26,9 +39,24 @@ describe('chat i18n parity', () => {
         'server_error',
         'endpoint_unreachable',
         'request_failed',
+        'privacy_blocked',
+        'privacy_blocked_no_endpoint',
       ]) {
         expect(catalog.errors, `missing chat:errors.${key}`).toHaveProperty(key);
       }
     }
+  });
+
+  // A translation that drops a {{placeholder}} loses the detail it names (the
+  // refused endpoint, for one); a renamed one renders as a literal "{{x}}".
+  it.each([
+    ['es', es],
+    ['pt', pt],
+  ] as const)('%s keeps every en {{placeholder}}', (_lang, catalog) => {
+    const enValues = new Map(leaves(en));
+    const drift = leaves(catalog)
+      .filter(([key, value]) => placeholders(value) !== placeholders(enValues.get(key)))
+      .map(([key]) => key);
+    expect(drift).toEqual([]);
   });
 });

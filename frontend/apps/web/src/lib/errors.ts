@@ -299,14 +299,23 @@ export function chatErrorMessage(error: unknown): string {
     case 'network':
       return i18n.t('chat:errors.endpoint_unreachable');
     case 'privacy':
-      // The fail-closed privacy fence writes its own specific, user-facing
-      // message (which endpoint was refused and why); surface it verbatim. Both
-      // call sites short-circuit privacy before reaching here — this is the
-      // defensive fallback so the mapper is correct even if called directly.
-      return error instanceof Error ? error.message : i18n.t('chat:errors.request_failed');
+      return privacyBlockedMessage(error);
     default:
       return i18n.t('chat:errors.request_failed');
   }
+}
+
+/**
+ * The localized copy for a fail-closed privacy refusal (`PrivacyViolationError`).
+ * The error's own `.message` is an English log line, so it is never shown; the
+ * refused endpoint is read from the error's `endpoint` field (duck-typed, so it
+ * survives the @almamesh/llm module boundary) and interpolated.
+ */
+export function privacyBlockedMessage(error: unknown): string {
+  const endpoint = (error as { endpoint?: unknown } | null)?.endpoint;
+  return typeof endpoint === 'string' && endpoint.trim()
+    ? i18n.t('chat:errors.privacy_blocked', { endpoint })
+    : i18n.t('chat:errors.privacy_blocked_no_endpoint');
 }
 
 /** Cap the surfaced connection-error detail so a huge body can't flood the UI. */

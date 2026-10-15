@@ -32,6 +32,7 @@ import {
   type MeshReading,
   type MeshReadingSectionKey,
 } from '@almamesh/llm';
+import { classifyConnectionError, privacyBlockedMessage } from '../lib/errors';
 import { whenDataLifecycleReady } from '../lib/profileDataLifecycle';
 
 export type MeshReadingStatus = 'idle' | 'streaming' | 'complete' | 'error';
@@ -71,6 +72,16 @@ export interface MeshReadingContext {
   readonly pairKey: string;
   readonly profileIds: readonly [string, string];
   readonly edgeRequestKey: string;
+}
+
+/**
+ * The text shown after "The reading failed:". A privacy refusal gets localized
+ * copy (its own message is an English log line); other failures keep their
+ * message as diagnostic detail.
+ */
+function meshReadingErrorText(err: unknown): string {
+  if (classifyConnectionError(err) === 'privacy') return privacyBlockedMessage(err);
+  return err instanceof Error ? err.message : String(err);
 }
 
 export function useMeshReading(
@@ -178,7 +189,7 @@ export function useMeshReading(
       setState((prev) => ({
         ...prev,
         status: 'error',
-        error: err instanceof Error ? err.message : String(err),
+        error: meshReadingErrorText(err),
       }));
     });
   }, [edge, identity, contentMode]);
