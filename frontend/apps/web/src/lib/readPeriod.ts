@@ -18,7 +18,7 @@ import {
   EPHEMERIS_LAST_YEAR,
   startsInOrBeforeBirthYear,
 } from '@almamesh/llm';
-import type { AnswerGrounding } from '@almamesh/llm/answer';
+import { moonTagLabel, type AnswerGrounding } from '@almamesh/llm/answer';
 import { defineTool, z, type ToolContext, type ToolDef } from '@almamesh/llm/toolLoop';
 import type { ProcessedBirthData } from '@almamesh/shared-types';
 import { LocalTimeError } from '@almamesh/store';
@@ -38,6 +38,7 @@ import {
   type ReadingFrame,
   type ReadingPeriod,
   type ReadingPlace,
+  type ReadingTheme,
 } from './periodReading';
 import { PeriodSkyTimeoutError } from './periodSky';
 import { isCachedNatalLords, isCachedPeriodReading } from './periodSkyValidation';
@@ -179,6 +180,7 @@ const DESCRIPTION = [
   'Returns the period and place (name both in your answer), the running dashas (maha, antar, pratyantar) and what each lord rules,',
   'the slow-planet sky with Moon-based tags (e.g. sade_sati_phase_1), life-area themes with direction, strength, confidence and dated windows,',
   'and for a range one row per month.',
+  'The result\'s "cite" lists the facts your answer must state; copy them.',
   'Examples:',
   '"September 2019" -> {"start":"2019-09","end":null,"place":null,"time":null,"focus":null}.',
   '"the rest of 2019", asked in a May 2019 trip -> {"start":"2019-06","end":"2019-12","place":null,"time":null,"focus":null}.',
@@ -363,7 +365,32 @@ export interface PlaceEvent {
   readonly moon: MoonMark;
 }
 
+/** A Moon tag as the answer copies it (`tag`) and as a person reads it (`says`). */
+export interface CiteMoon {
+  readonly tag: string;
+  readonly says: string;
+}
+
+/**
+ * What the answer must state, already phrased, from the reading's own facts (never the birth
+ * data, never coordinates): the model copies these lines into the answer's keys.
+ */
+export interface ReadingCite {
+  readonly period: string;
+  /** The place label, or null when the reading has none (the answer's place is then null). */
+  readonly place: string | null;
+  /** One line per running lord: "Jupiter, rules your 2nd and 11th houses". */
+  readonly maha: readonly string[];
+  readonly antar: readonly string[];
+  readonly moon: readonly CiteMoon[];
+  /** At most {@link MAX_CITE_WINDOWS} dated facts inside the period, by date. */
+  readonly windows: readonly DatedFact[];
+  readonly confidence: Readonly<Record<string, ReadingTheme['confidence']>>;
+}
+
 export interface ReadPeriodReading extends PeriodReading {
+  /** On every successful read; cut by no trim. */
+  readonly cite?: ReadingCite;
   readonly months?: readonly MonthRow[];
   readonly close_up?: CloseUp;
   /** A single day at a place: the Moon at that place's local midnights. */
@@ -618,11 +645,21 @@ interface Fitted {
   readonly result: ReadPeriodReading;
 }
 
+/** `"cite":` and its comma, with slack for a second-pass cite a few bytes longer than the first. */
+const CITE_KEY_BYTES = 32;
+
+/**
+ * The reading gets what the extras (month rows, close-up, Moon), their trimmed notes and the cite
+ * leave. The cite is sized on a first fit and the reading refitted without its bytes: trimming
+ * only drops facts, so the refitted reading's cite is no larger.
+ */
 function fitLevel(loaded: Loaded, frame: ReadingFrame, level: ExtrasLevel, limit: number, range: boolean): Fitted {
-  // The reading gets what the extras (month rows, close-up, Moon) and their trimmed notes leave.
-  const budgetBytes = limit - jsonBytes(level.extras) - jsonBytes(level.trimmed) - 16;
-  const reading = buildPeriodReading(loaded.source, frame, { budgetBytes, windowOrder: range ? 'severity' : 'date' });
-  return { reading, result: withExtras(reading, level) };
+  const room = limit - jsonBytes(level.extras) - jsonBytes(level.trimmed) - 16;
+  const fit = (budgetBytes: number) => buildPeriodReading(loaded.source, frame, { budgetBytes, windowOrder: range ? 'severity' : 'date' });
+  const reserve = jsonBytes(readingCite(withExtras(fit(room), level))) + CITE_KEY_BYTES;
+  const reading = fit(room - reserve);
+  const result = withExtras(reading, level);
+  return { reading, result: { cite: readingCite(result), ...result } };
 }
 
 /**
@@ -741,6 +778,52 @@ function datedFacts(result: ReadPeriodReading): DatedFact[] {
   const byDay = new Map<string, DatedFact>();
   for (const fact of facts) if (fact.date >= start && fact.date <= end && !byDay.has(fact.date)) byDay.set(fact.date, fact);
   return [...byDay.values()].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+}
+
+/** At most this many dated facts in a cite: enough to choose from, small enough to ride in every result. */
+export const MAX_CITE_WINDOWS = 6;
+
+function ordinal(n: number): string {
+  const teen = n % 100 >= 11 && n % 100 <= 13;
+  const suffix = teen ? 'th' : ({ 1: 'st', 2: 'nd', 3: 'rd' } as Readonly<Record<number, string>>)[n % 10] ?? 'th';
+  return `${n}${suffix}`;
+}
+
+const listed = (items: readonly string[]): string => (items.length < 2 ? items.join('') : `${items.slice(0, -1).join(', ')} and ${items.at(-1) ?? ''}`);
+
+/** "Jupiter, rules your 2nd and 11th houses"; "Rahu, rules no house"; just "Ketu" when the reading gives no lordship. */
+function lordLine(lord: string, rules: readonly number[] | undefined): string {
+  if (rules === undefined) return titled(lord);
+  if (rules.length === 0) return `${titled(lord)}, rules no house`;
+  const houses = [...rules].sort((a, b) => a - b).map(ordinal);
+  return `${titled(lord)}, rules your ${listed(houses)} ${houses.length > 1 ? 'houses' : 'house'}`;
+}
+
+function citeLords(result: ReadPeriodReading, level: 'maha' | 'antar'): string[] {
+  const lords = [...new Set(result.dashas[level].map((span) => span.lord))];
+  return lords.map((lord) => lordLine(lord, result.lords.find((item) => item.lord === lord)?.rules));
+}
+
+/** The theme windows first (a range has already ranked them by severity), then other dated facts; listed by date. */
+function citeWindows(result: ReadPeriodReading): DatedFact[] {
+  const themed = new Set(result.windows.map((window) => window.date));
+  const facts = datedFacts(result);
+  const chosen = [...facts.filter((fact) => themed.has(fact.date)), ...facts.filter((fact) => !themed.has(fact.date))].slice(0, MAX_CITE_WINDOWS);
+  return chosen.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+}
+
+/** The facts the answer must state, phrased from this reading only (the same facts the answer check accepts). */
+export function readingCite(result: ReadPeriodReading): ReadingCite {
+  const tags = [...new Set(result.sky.flatMap((span) => span.tags))];
+  return {
+    period: result.period.label,
+    place: result.place.label ?? null,
+    maha: citeLords(result, 'maha'),
+    antar: citeLords(result, 'antar'),
+    moon: tags.map((tag) => ({ tag, says: moonTagLabel(tag, 'en') })),
+    windows: citeWindows(result),
+    confidence: Object.fromEntries(result.themes.map((theme) => [theme.domain, theme.confidence])),
+  };
 }
 
 /** A reading projected flat for the answer check (answer.ts): what the answer may cite. */

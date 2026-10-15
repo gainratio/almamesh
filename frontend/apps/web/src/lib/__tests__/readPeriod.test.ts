@@ -15,6 +15,7 @@ import {
   isReadPeriodReading,
   MAX_RANGE_RESULT_BYTES,
   PICK_TIMEOUT_MS,
+  readingCite,
   readPeriodGrounding,
   readPeriodStatusLabel,
   resolveChatPlace,
@@ -112,6 +113,12 @@ describe('read_period: the tool', () => {
     }
     expect(tool.description).toContain('"the rest of 2019", asked in a May 2019 trip -> {"start":"2019-06","end":"2019-12"');
     expect(tool.description).toContain('"How was Saturn for me in 2019?" -> {"start":"2019",');
+  });
+});
+
+describe('read_period: the description points at the cite', () => {
+  it('says in one short line that the cite lists the facts the answer must state', () => {
+    expect(setup().tool.description).toContain('The result\'s "cite" lists the facts your answer must state; copy them.');
   });
 });
 
@@ -248,9 +255,10 @@ describe('read_period: spans', () => {
     [{ start: '2019-01', end: '2020-12', focus: 'saturn' as const }],
     [{ start: '2019-06', end: '2019-12', focus: 'dashas' as const }],
     [{ start: '2019' }],
-  ])('a range stays under the 6 KB range budget: %j', async (partial) => {
+  ])('a range stays under the 6 KB range budget, cite included: %j', async (partial) => {
     const { result } = await read(partial);
     expect(result).toHaveProperty('months');
+    expect(result).toHaveProperty('cite');
     expect(bytes(result)).toBeLessThan(MAX_RANGE_RESULT_BYTES);
   });
 
@@ -258,9 +266,10 @@ describe('read_period: spans', () => {
     [{ start: '2019-05' }, 'delhi-2019-05' as const],
     [{ start: '2019-09-15', place: 'Pune', time: '15:00', focus: 'saturn' as const }, 'delhi-2019-09-15-day' as const],
     [{ start: '2019-09-15', focus: 'panchang' as const }, 'delhi-2019-09-15-day' as const],
-  ])('a single month or day stays under 4 KB: %j', async (partial, fixture) => {
+  ])('a single month or day stays under 4 KB, cite included: %j', async (partial, fixture) => {
     const { result } = await read(partial, { loadPeriodChart: vi.fn(async () => withReading(fixture)) });
     expect(result).toHaveProperty('period');
+    expect(result).toHaveProperty('cite');
     expect(bytes(result)).toBeLessThan(MAX_PERIOD_RESULT_BYTES);
   });
 
@@ -374,6 +383,8 @@ describe('read_period: places', () => {
       read({ start: '2026-10-14', focus: 'panchang' }),
     ]);
     const wire = results.map(({ result }) => JSON.stringify(result)).join('\n');
+    // The cite rides in these results too (all but the unanswered pick), so it is checked here.
+    expect(results.filter(({ result }) => 'cite' in (result as object))).toHaveLength(4);
     for (const pattern of COORDINATE_LIKE) expect(wire).not.toMatch(pattern);
     for (const leak of DELHI_BIRTH_LEAKS) expect(wire).not.toContain(leak);
   });
@@ -529,5 +540,88 @@ describe('readPeriodGrounding', () => {
   it('an unlabelled place grounds as an empty label', async () => {
     const result = (await read({ start: '2019-06' }, { threadPlace: undefined, homePlace: undefined })).result as ReadPeriodReading;
     expect(readPeriodGrounding(result).place).toEqual({ label: '' });
+  });
+});
+
+// Task 10e: the facts an answer must state, already phrased, so the model copies them instead of
+// leaving moon or windows empty (deepseek's first answer was accepted 2/5 times without it).
+describe('read_period: cite', () => {
+  it('a month reading cites its period, place, lords, Moon tags, dated windows and confidence per theme', async () => {
+    const result = (await read({ start: '2019-06' })).result as ReadPeriodReading;
+    expect(result.cite).toEqual({
+      period: result.period.label,
+      place: 'Vadodara, India',
+      maha: ['Rahu, rules no house'],
+      antar: ['Rahu, rules no house'],
+      moon: [{ tag: 'jupiter_from_moon_4', says: 'Jupiter 4th from your Moon' }],
+      windows: [{ date: '2019-06-22', what: 'Mars enters Cancer' }],
+      confidence: Object.fromEntries(result.themes.map((theme) => [theme.domain, theme.confidence])),
+    });
+    expect(result.cite?.confidence).toMatchObject({ education: 'high', obstacles: 'medium', finances: 'low' });
+  });
+
+  /** A synthetic reading: two maha lords (a change inside it), lords with and without houses. */
+  const crossing = (base: ReadPeriodReading): ReadPeriodReading => ({
+    ...base,
+    dashas: {
+      ...base.dashas,
+      maha: [{ lord: 'saturn', start: '2019-06-01', end: '2019-06-14' }, { lord: 'jupiter', start: '2019-06-15', end: '2019-06-30' }],
+      antar: [{ lord: 'mars', start: '2019-06-01', end: '2019-06-30' }],
+    },
+    lords: [
+      { lord: 'saturn', level: ['maha'], rules: [1, 12] },
+      { lord: 'jupiter', level: ['maha'], rules: [11, 2] },
+      { lord: 'mars', level: ['antar'], rules: [6] },
+    ],
+  });
+
+  it('phrases each lord with the houses it rules, in house order, one entry per running lord', async () => {
+    const cite = readingCite(crossing((await read({ start: '2019-06' })).result as ReadPeriodReading));
+    expect(cite.maha).toEqual(['Saturn, rules your 1st and 12th houses', 'Jupiter, rules your 2nd and 11th houses']);
+    expect(cite.antar).toEqual(['Mars, rules your 6th house']);
+  });
+
+  it('a lord the reading gives no lordship for is named alone', async () => {
+    const base = crossing((await read({ start: '2019-06' })).result as ReadPeriodReading);
+    expect(readingCite({ ...base, lords: [] }).maha).toEqual(['Saturn', 'Jupiter']);
+  });
+
+  it('an unlabelled place cites null (the answer sends place null)', async () => {
+    const result = (await read({ start: '2019-06' }, { threadPlace: undefined, homePlace: undefined })).result as ReadPeriodReading;
+    expect(result.cite?.place).toBeNull();
+  });
+
+  it.each([
+    [{ start: '2019-06' }],
+    [{ start: '2019-06', end: '2019-12' }],
+    [{ start: '2019' }],
+    [{ start: '2019-01', end: '2020-12', focus: 'saturn' as const }],
+  ])('every cited fact passes the answer check: %j', async (partial) => {
+    const result = (await read(partial)).result as ReadPeriodReading;
+    const cite = result.cite;
+    const grounding = readPeriodGrounding(result);
+    expect(cite).toBeDefined();
+    expect(cite?.moon.map((line) => line.tag)).toEqual(grounding.tags);
+    expect(grounding.windows).toEqual(expect.arrayContaining([...(cite?.windows ?? [])]));
+    expect(cite?.windows.length).toBe(Math.min(6, grounding.windows.length));
+    expect(cite?.maha.map((line) => line.split(',')[0]?.toLowerCase())).toEqual(grounding.maha);
+    expect(cite?.antar.map((line) => line.split(',')[0]?.toLowerCase())).toEqual(grounding.antar);
+  });
+
+  it('a range cites at most 6 windows: its theme windows first, then other dated facts, listed by date', async () => {
+    const result = (await read({ start: '2019-06', end: '2019-12' })).result as ReadPeriodReading;
+    const dates = result.cite?.windows.map((fact) => fact.date) ?? [];
+    expect(dates).toHaveLength(6);
+    expect([...dates].sort()).toEqual(dates);
+    expect(dates).toEqual(expect.arrayContaining(result.windows.slice(0, 6).map((window) => window.date)));
+  });
+
+  it('an ask or an unavailable reading carries no cite', async () => {
+    const ask = (await read({ start: '2019-06', place: 'Atlantis' })).result;
+    const unavailable = (await read({ start: '2019-06' }, { loadPeriodChart: vi.fn(async () => { throw new PeriodSkyTimeoutError(); }) })).result;
+    expect(ask).toMatchObject({ status: 'place_not_found' });
+    expect(unavailable).toMatchObject({ available: false });
+    expect(ask).not.toHaveProperty('cite');
+    expect(unavailable).not.toHaveProperty('cite');
   });
 });
