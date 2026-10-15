@@ -30,7 +30,7 @@ import { gotoSettled } from './portableInvariants.helpers';
 
 /**
  * The chat model the run expects on the wire: the product default, or DASHBOARD_AGENTIC_CHAT_MODEL
- * (e.g. "~openai/gpt-sol-latest"), which is then saved as the chat model in AI settings.
+ * (e.g. the gpt-sol entry of TRIP_ACCEPTANCE_MODELS), which is then saved as the chat model in AI settings.
  */
 const CHAT_MODEL_OVERRIDE = process.env.DASHBOARD_AGENTIC_CHAT_MODEL || undefined;
 const EXPECTED_CHAT_MODEL = CHAT_MODEL_OVERRIDE ?? PRODUCT_CHAT_DEFAULT_MODEL;
