@@ -10,6 +10,7 @@ from typer.testing import CliRunner
 
 from almamesh.retrodiction import engine as engine_module
 from almamesh.retrodiction.cli import app
+from almamesh.retrodiction.engine import OUT_OF_RANGE_BIRTH
 from almamesh.retrodiction.events import RetrodictionInputError, load_events
 from almamesh.retrodiction.placebo_card import BASELINE, PlaceboCard, RunPlan, build_placebo_card
 from almamesh.retrodiction.placebo_run import UNREADABLE, score_hits
@@ -152,3 +153,34 @@ def test_should_drop_only_the_placebo_windows_the_engine_cannot_read(
     # Then the event stays, with only its later placebo windows
     assert len(hits) == 1
     assert 0 < len(hits[0].placebos) < 4
+
+
+_EDGE_NATIVES = """
+kind: synthetic
+label: placebo edge cases
+subjects:
+  - id: e1
+    birth: {datetime: "1980-03-04T05:06:00+05:30", latitude: 13.08, longitude: 80.27}
+    events:
+      - {category: job_start, date: "2000-05", precision: month}
+      - {category: marriage, date: "2004", precision: year}
+  - id: e2
+    birth: {datetime: "1895-07-14T11:00:00+00:00", latitude: 51.5, longitude: -0.12}
+    events: [{category: marriage, date: "1920-06", precision: month}]
+"""
+
+
+def test_should_score_the_same_hits_in_parallel_and_list_why_events_drop(tmp_path: Path) -> None:
+    # Given a ranked event, a year-only event and a pre-1900 native
+    path = tmp_path / "edge.yaml"
+    path.write_text(_EDGE_NATIVES, encoding="utf-8")
+    plan = RunPlan(placebos=1)
+    # When scored serially and in two processes
+    serial = score_hits(load_events(path), plan, workers=1)
+    parallel = score_hits(load_events(path), plan, workers=2)
+    # Then the results are identical and each drop names its reason
+    assert parallel == serial
+    assert len(serial[0]) == 1
+    assert sorted(x.reason for x in serial[1]) == sorted(
+        [OUT_OF_RANGE_BIRTH, "precision coarser than a month"]
+    )
