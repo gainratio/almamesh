@@ -26,7 +26,7 @@ import {
   type ThreadFacts,
 } from '@almamesh/llm';
 import { chatAnswerSpec, type GroundingReading } from '@almamesh/llm/answer';
-import { runToolTurn, type AgentStatusEvent, type ToolCallEvent, type ToolContext, type ToolDef } from '@almamesh/llm/toolLoop';
+import { ANSWER_TOOL_NAME, runToolTurn, type AgentStatusEvent, type ToolCallEvent, type ToolContext, type ToolDef } from '@almamesh/llm/toolLoop';
 import type { ChatThreadAsOf, ProcessedBirthData } from '@almamesh/shared-types';
 import type { CurrentPlace } from '@almamesh/store';
 
@@ -154,7 +154,10 @@ function currentChartLoader(input: ChatTurnInput, engine: ChartEngineContextValu
   };
 }
 
-/** A thrown tool error is reported on this device (a stale chunk raises the update notice), then rethrown to the loop. */
+/**
+ * A thrown tool error is reported on this device (a stale chunk raises the update notice), then
+ * rethrown to the loop. An error after the turn was cancelled is rethrown only.
+ */
 function reported<I>(tool: ToolDef<I>, before?: (args: I) => void): ToolDef<I> {
   return {
     ...tool,
@@ -163,7 +166,8 @@ function reported<I>(tool: ToolDef<I>, before?: (args: I) => void): ToolDef<I> {
       try {
         return await tool.execute(args, context);
       } catch (error) {
-        reportAgentToolFailure(error);
+        // A turn the user cancelled is not a failing tool.
+        if (!context.signal.aborted) reportAgentToolFailure(error);
         throw error;
       }
     },
@@ -277,7 +281,7 @@ export async function* runChatTurn(input: ChatTurnInput): AsyncGenerator<string>
   const onToolCall = (event: ToolCallEvent) => {
     telemetry.onToolCall(event);
     if (event.toolName === READ_PERIOD_TOOL_NAME && event.status === 'complete' && isReadPeriodReading(event.result)) readings.push(readPeriodGrounding(event.result));
-    if (event.status === 'retried' || event.toolName === 'answer') return;
+    if (event.status === 'retried' || event.toolName === ANSWER_TOOL_NAME) return;
     const args = (event.args ?? {}) as Readonly<Record<string, unknown>>;
     input.onToolCall?.({ toolCallId: event.toolCallId, toolName: event.toolName, args, result: event.result, status: event.status });
   };

@@ -11,7 +11,7 @@
  * in dev or hook builds they are readable as `window.__almameshAgentRounds()`
  * and `window.__almameshAgentCalls()`. Nothing here is persisted or sent anywhere.
  */
-import type { RoundEvent, ToolCallEvent, ToolCallStatus } from '@almamesh/llm/toolLoop';
+import { ANSWER_TOOL_NAME, type RoundEvent, type ToolCallEvent, type ToolCallStatus } from '@almamesh/llm/toolLoop';
 
 export interface AgentRoundRow {
   /** Which chat turn of this tab the round belongs to (1-based). */
@@ -133,7 +133,7 @@ export function beginAgentTurn(): AgentTurnTelemetry {
       });
     },
     onToolCall: (event) => {
-      if (event.toolName === 'answer' && event.status === 'complete') answerRound = event.round;
+      if (event.toolName === ANSWER_TOOL_NAME && event.status === 'complete') answerRound = event.round;
       recordAgentCall({
         turn, round: event.round, name: event.toolName, status: event.status, validFirstTry: event.validFirstTry,
         ...(event.status === 'retried' ? { retryReason: retryReasonOf(event.result) } : {}),

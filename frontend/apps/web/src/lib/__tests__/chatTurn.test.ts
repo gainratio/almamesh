@@ -216,6 +216,22 @@ describe('runChatTurn: a tool that throws', () => {
   });
 });
 
+describe('runChatTurn: a cancelled turn', () => {
+  it('a tool cut off by the user\'s cancel is not logged as a tool failure', async () => {
+    const controller = new AbortController();
+    const { fetchImpl } = endpoint([{ name: 'read_period', args: readPeriodArgs('2019-05', { place: 'Pune' }) }, { name: 'answer', args: generalAnswer('Sorry.') }]);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const turn = input(fetchImpl, { signal: controller.signal });
+    const lookup = async () => {
+      controller.abort();
+      throw new DOMException('The operation was aborted', 'AbortError');
+    };
+    await drain(runChatTurn({ ...turn, seams: { ...turn.seams, lookup } })).catch(() => undefined);
+    expect(controller.signal.aborted).toBe(true);
+    expect(warn.mock.calls.flat().map(String).some((text) => text.includes('chat.tool_failed'))).toBe(false);
+  });
+});
+
 describe('runChatTurn: the context budget follows the model window', () => {
   const CATALOG = { data: [
     { id: 'mock/ctx-8k', context_length: 8_192 }, { id: 'mock/ctx-9k', context_length: 9_472 }, { id: 'mock/ctx-1m', context_length: 1_000_000 },
