@@ -1267,14 +1267,14 @@
       },
       {
         "ascendant_sign": "Taurus",
-        "fit_score": 3.25,
+        "fit_score": 3.75,
         "is_near_cusp": false,
         "lagna_cusp_distance_deg": 13.087707,
         "lagna_longitude_deg": 46.912293,
         "misses": [],
         "navamsa_lagna_sign": "Gemini",
         "penalty_total": 0.25,
-        "positive_total": 3.5,
+        "positive_total": 4.0,
         "prior_bonus": 0.0,
         "representative_time_local": "07:15",
         "supporting_events": [
@@ -1294,7 +1294,7 @@
             "date": "2000-06-20",
             "event_index": 1,
             "signals": [
-              "pd_lord_in_h10"
+              "ad_lord_in_h10"
             ]
           },
           {
@@ -1308,11 +1308,12 @@
           },
           {
             "category": "promotion",
-            "contribution": 0.7,
+            "contribution": 1.2,
             "date": "2005-04-01",
             "event_index": 3,
             "signals": [
-              "ad_lord_in_h10"
+              "ad_lord_in_h10",
+              "pd_lord_in_h10"
             ]
           },
           {

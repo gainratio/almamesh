@@ -2318,9 +2318,9 @@
         {
           "a_antar": "jupiter",
           "a_maha": "jupiter",
-          "b_antar": "moon",
+          "b_antar": "rahu",
           "b_maha": "mercury",
-          "end": "2025-09-09T14:30:34.302306Z",
+          "end": "2026-07-26T10:31:08.604610Z",
           "shared_lords": [],
           "simultaneous_boundary": false,
           "start": "2025-01-01T00:00:00Z"
@@ -2328,22 +2328,14 @@
         {
           "a_antar": "jupiter",
           "a_maha": "jupiter",
-          "b_antar": "mars",
-          "b_maha": "mercury",
-          "end": "2026-05-16T04:55:53.304242Z",
-          "shared_lords": [],
-          "simultaneous_boundary": false,
-          "start": "2025-09-09T14:30:34.302306Z"
-        },
-        {
-          "a_antar": "jupiter",
-          "a_maha": "jupiter",
-          "b_antar": "rahu",
+          "b_antar": "jupiter",
           "b_maha": "mercury",
           "end": "2027-01-01T00:00:00Z",
-          "shared_lords": [],
+          "shared_lords": [
+            "jupiter"
+          ],
           "simultaneous_boundary": false,
-          "start": "2026-05-16T04:55:53.304242Z"
+          "start": "2026-07-26T10:31:08.604610Z"
         }
       ],
       "window_end": "2027-01-01T00:00:00Z",

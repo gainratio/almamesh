@@ -464,12 +464,16 @@ function monthOf(iso: string): string {
 const BIRTH_BOUNDARY = "birth";
 
 /**
- * A dasha boundary at month precision, or "birth" when it IS the birth
- * instant (the first maha's start, which the engine also uses for that maha's
- * first antar). The birth month must never cross, whatever the as-of.
+ * A dasha boundary at month precision, or "birth" when it falls in the birth
+ * month: the birth instant itself (the first maha's start, which the engine
+ * also uses for that maha's first antar and pratyantar) or a boundary days
+ * after it (the birth maha's first antar or pratyantar is the tail of a full
+ * period, so it can end in the birth month). The birth month must never
+ * cross, whatever the as-of.
  */
 export function dashaBoundaryMonth(iso: string, birthStart: string | undefined): string {
-  return iso === birthStart ? BIRTH_BOUNDARY : monthOf(iso);
+  if (birthStart === undefined) return monthOf(iso);
+  return monthOf(iso) === monthOf(birthStart) ? BIRTH_BOUNDARY : monthOf(iso);
 }
 
 function monthOrNull(iso: string | null): string | null {
