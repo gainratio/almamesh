@@ -636,6 +636,9 @@ exec ${inline.join(" ")}`,
       // "unknown" computing at noon, and the Vedic weekday lord for Apia
       // (date-line) and Sydney (east of UTC) births. Chromium only.
       "TIME_HANDLING_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:time-handling --project=chromium",
+      // The onboarding AI step (Connect AI / Not now) and the chat's no-AI prompt
+      // through real onboarding. Chromium here; WebKit and an iPhone run on macOS.
+      "ONBOARDING_AI_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:onboarding-ai --project=chromium",
       // Time travel (spec 2026-10-08), Inc A, B, C and D journeys: June 2019
       // typed in plain chat, an 18-month period, places, and the Time travel
       // button (2027 pinned; a Day pin found on the device). A stubbed
