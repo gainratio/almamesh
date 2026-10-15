@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { PlaceLookup, ResolvedPlace } from '../geo/placeLookup';
 import { NO_PLACE_PICKER } from '../placePick';
 import { periodAsOfFromDraft } from '../timeTravelSheet';
-import { createTravelTool, TRAVEL_TOOL_NAME, type TravelArgs, type TravelToolInput } from '../travelTool';
+import { createTravelTool, TRAVEL_NEEDS_PLACE, TRAVEL_TOOL_NAME, type TravelArgs, type TravelToolInput } from '../travelTool';
 
 // ---------------------------------------------------------------------------
 // travel(to, place?) — chat tool layer redesign, 2026-10-14
@@ -35,6 +35,12 @@ const issues = (tool: ReturnType<typeof createTravelTool>, args: unknown): strin
   const parsed = tool.input.safeParse(args);
   return parsed.success ? [] : parsed.error.issues.map((issue) => issue.message);
 };
+
+describe('travel: the neutral ask for a trip with no place', () => {
+  it('is pinned to its literal (a constant asserted only against itself guards nothing)', () => {
+    expect(TRAVEL_NEEDS_PLACE).toEqual({ status: 'needs_place', ask: 'Ask where the user lived (or will be) then.' });
+  });
+});
 
 describe('travel: the schema the model fills', () => {
   it('is named travel and describes when to move (audit 4.3)', () => {
@@ -90,9 +96,10 @@ describe('travel: what a call records', () => {
     expect(record).toHaveBeenCalledWith({ kind: 'travel', asOf: periodAsOfFromDraft({ granularity: 'month', day: '2019-05-01', month: '2019-05', year: 2019, place }) });
   });
 
+  // Names Pune since the Task 11 ruling: a trip with no place now asks where (see below).
   it('a year is read from the date precision', async () => {
     const { tool, record } = travelSetup();
-    expect(await go(tool, { to: '2020', place: null })).toMatchObject({ status: 'queued', period_label: '2020' });
+    expect(await go(tool, { to: '2020', place: 'Pune' })).toMatchObject({ status: 'queued', period_label: '2020' });
     expect(record.mock.calls[0]?.[0]?.asOf).toMatchObject({ start: '2020-01-01', end: '2020-12-31', granularity: 'year' });
   });
 
@@ -102,10 +109,48 @@ describe('travel: what a call records', () => {
     expect(record.mock.calls[0]?.[0]?.asOf.place).toEqual(TRIP);
   });
 
-  it('from a today thread a month with no place has no place of its own (home has no coordinates to pin)', async () => {
+  // CONTRACT REVERSED (Task 11 ruling, 2026-10-14): a month with no place from a today thread used to
+  // record a placeless trip. Every trip needs a place and none is assumed (071faf4f), so it now asks.
+  it('from a today thread a month with no place asks where, and records nothing', async () => {
     const { tool, record } = travelSetup();
-    expect(await go(tool, { to: '2019-09', place: null })).toEqual({ status: 'queued', action: 'travel', period_label: 'September 2019' });
-    expect(record.mock.calls[0]?.[0]?.asOf.place).toBeUndefined();
+    expect(await go(tool, { to: '2019-09', place: null })).toEqual(TRAVEL_NEEDS_PLACE);
+    expect(record).not.toHaveBeenCalled();
+  });
+
+  // Task 11: Settings' "Where do you live now?" is never assumed for another time.
+  describe('where the user lives now is never assumed for a trip', () => {
+    const NOVATO = { label: 'Novato, California, United States', timezone: 'America/Los_Angeles', latitude: 38.1074, longitude: -122.5697 };
+
+    it.each([
+      { to: '2019-09', place: null },
+      { to: '2019', place: null },
+      { to: '2027-03', place: null },
+      { to: '2019-09', place: 'trip' },
+    ])('%j from a today thread asks where the user lived then; nothing recorded', async (args) => {
+      const { tool, record } = travelSetup({ homePlace: NOVATO });
+      expect(await go(tool, args)).toEqual(TRAVEL_NEEDS_PLACE);
+      expect(record).not.toHaveBeenCalled();
+    });
+
+    it('a day with no place still asks where the user was that day (never home)', async () => {
+      const { tool, record } = travelSetup({ homePlace: NOVATO });
+      expect(await go(tool, { to: '2019-03-14', place: null })).toEqual({ status: 'needs_place', ask: 'Ask where the user was that day.' });
+      expect(record).not.toHaveBeenCalled();
+    });
+
+    it('"home" said outright pins the current place, coordinates kept on the device', async () => {
+      const { tool, record } = travelSetup({ homePlace: NOVATO });
+      expect(await go(tool, { to: '2019-09', place: 'home' })).toEqual({
+        status: 'queued', action: 'travel', period_label: 'September 2019', place_label: NOVATO.label, time_zone: 'America/Los_Angeles',
+      });
+      expect(record.mock.calls[0]?.[0]?.asOf.place).toEqual(NOVATO);
+    });
+
+    it('on a trip, no place still keeps the trip place, not home', async () => {
+      const { tool, record } = travelSetup({ homePlace: NOVATO, threadPlace: TRIP });
+      expect(await go(tool, { to: '2019-09', place: null })).toMatchObject({ place_label: 'Vadodara, India' });
+      expect(record.mock.calls[0]?.[0]?.asOf.place).toEqual(TRIP);
+    });
   });
 
   it('a day with no place in a today thread asks where, and records nothing', async () => {

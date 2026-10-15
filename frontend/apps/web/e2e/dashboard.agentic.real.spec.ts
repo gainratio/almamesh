@@ -418,7 +418,10 @@ test('[real] dashboard: September 2017 tool movement, grounded outlook today, an
   };
 
   // Tool layer redesign (2026-10-14): the move is travel(to, place), the read is read_period(start, end, ...).
-  const september = await send('Take me to September 2017. Call travel with to "2017-09" for this requested month, and call read_period for the same whole calendar month. These two tools are sufficient. ' + FACT_SUMMARY_REQUEST);
+  // CONTRACT CHANGE (Task 11 ruling, 2026-10-14): a travel with no place now gets the neutral ask
+  // ("Ask where the user lived (or will be) then."), since every trip needs a place and none is
+  // assumed. The prompt names a city (Mumbai, in the bundled city list) so the move still lands.
+  const september = await send('Take me to September 2017 in Mumbai. Call travel with to "2017-09" and place "Mumbai" for this requested month, and call read_period for the same whole calendar month. These two tools are sufficient. ' + FACT_SUMMARY_REQUEST);
   const septemberPairs = await successfulToolPairs(september);
   const movement = septemberPairs.find((pair) => pair.name === 'travel');
   expect(movement?.args).toMatchObject({ to: '2017-09' });

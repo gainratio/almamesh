@@ -75,6 +75,18 @@ const ARGS_SCHEMA: z.ZodType<TravelArgs> = z
     if (TO.test(args.to) && !draftOf(args.to)) ctx.addIssue({ code: 'custom', message: DATE_ERROR, path: ['to'] });
   });
 
+/**
+ * A trip with no place of its own (no city named, no trip to stay on): every trip needs a place and
+ * none is assumed (071faf4f), not even where the user lives now, which may not be where they lived then.
+ */
+export const TRAVEL_NEEDS_PLACE: ReadPeriodAsk = { status: 'needs_place', ask: 'Ask where the user lived (or will be) then.' };
+
+/** "home" said outright is the current place; no place (or "trip") is only this thread's own trip place. */
+function travelPlaces(input: TravelToolInput, place: string | null): PlaceResolverInput {
+  const keyword = place?.trim().toLowerCase();
+  return keyword === 'home' ? input : { ...input, homePlace: undefined };
+}
+
 /** A place a trip can pin: it needs coordinates (a looked-up city or the trip's own pin). */
 function pinnable(where: PlaceOutcome): ChatThreadAsOf['place'] {
   if (where.kind !== 'place') return undefined;
@@ -102,10 +114,10 @@ async function travelTo(input: TravelToolInput, args: TravelArgs, context: ToolC
   }
   const draft = draftOf(args.to);
   if (input.birthYear !== undefined && Number(args.to.slice(0, 4)) < input.birthYear) return OUTSIDE_RANGE;
-  const where = await resolveChatPlace(args.place, input, context.signal);
+  const where = await resolveChatPlace(args.place, travelPlaces(input, args.place), context.signal);
   if (where.kind === 'ask') return where.result;
   const place = pinnable(where);
-  if (draft?.granularity === 'day' && !place) return NEEDS_PLACE;
+  if (!place) return draft?.granularity === 'day' ? NEEDS_PLACE : TRAVEL_NEEDS_PLACE;
   const asOf = tripAsOf(draft, place);
   context.signal.throwIfAborted();
   input.record({ kind: 'travel', asOf });
