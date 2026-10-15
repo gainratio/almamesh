@@ -134,7 +134,12 @@ describe("the app's own words", () => {
 
   it("withholds in each app language", () => {
     expect(Object.keys(REFLECTION_WITHHELD).sort()).toEqual(["en", "es", "pt"]);
-    expect(REFLECTION_WITHHELD.en).toBe("I couldn't word this as a reflection. Try asking again.");
+    // Round two: the notice says how to ask instead, in plain words.
+    expect(REFLECTION_WITHHELD).toEqual({
+      en: "I couldn't word this as a reflection. Try asking what the chart shows for that period instead of what is coming.",
+      es: "No pude expresar esto como una reflexión. Prueba a preguntar qué muestra la carta para ese periodo, en lugar de qué viene.",
+      pt: "Não consegui formular isto como uma reflexão. Tente perguntar o que o mapa mostra para esse período, em vez do que vem pela frente.",
+    });
   });
 });
 

@@ -277,11 +277,11 @@ export interface ReflectionIssue {
   readonly phrase: string;
 }
 
-/** What the user sees instead of a text that still fails the check after its retries. */
+/** What the user sees instead of a text that still fails the check after its retries, with a way to ask instead. */
 export const REFLECTION_WITHHELD: Readonly<Record<ReflectionLanguage, string>> = {
-  en: "I couldn't word this as a reflection. Try asking again.",
-  es: "No pude expresar esto como una reflexión. Vuelve a preguntar.",
-  pt: "Não consegui formular isto como uma reflexão. Tente perguntar de novo.",
+  en: "I couldn't word this as a reflection. Try asking what the chart shows for that period instead of what is coming.",
+  es: "No pude expresar esto como una reflexión. Prueba a preguntar qué muestra la carta para ese periodo, en lugar de qué viene.",
+  pt: "Não consegui formular isto como uma reflexão. Tente perguntar o que o mapa mostra para esse período, em vez do que vem pela frente.",
 };
 
 /** Characters that render as nothing (zero-width spaces and joiners, soft hyphen, bidi controls, variation selectors). */
