@@ -2,6 +2,7 @@ import { test, expect, type Page, type Request } from '@playwright/test';
 import { bootEngine, seedChart, DELHI_SEED, LLM_SETTINGS_KEY } from './interpretation.helpers';
 import { E2E_REAL_MODEL, PRODUCT_CHAT_DEFAULT_MODEL } from './realModel';
 import { parseCompletedToolResult } from './agenticToolResult.helpers';
+import { gotoSettled } from './portableInvariants.helpers';
 
 /**
  * Dashboard LIVE validation against REAL OpenRouter — three headline changes:
@@ -267,6 +268,20 @@ test('[real] dashboard: timer + life phase + exact-day agentic chat', async ({
     `[engine] lagna=${seeded.lagna} maha=${seeded.mahaLord}`,
   );
 
+  // CONTRACT CHANGE (2026-10-14): a single-day reading needs a place and none is assumed (071faf4f,
+  // Task 11), so "today" with no place is answered with "Which city are you in today?". The person
+  // says where they live now first (Settings), as trip-acceptance's today-home journey does.
+  await gotoSettled(page, '/settings/profile');
+  const currentPlace = page.getByTestId('current-place-input');
+  await currentPlace.pressSequentially('novato, ca');
+  await expect(page.getByTestId('current-place-option-0')).toHaveText('Novato, California, United States', { timeout: 60_000 });
+  await currentPlace.press('Enter');
+  await expect(page.getByTestId('current-place-status')).toHaveText('Saved', { timeout: 30_000 });
+  // "Saved" shows before the durable write lands; a reload right away can lose it. Prove it stuck.
+  await page.waitForTimeout(2_000);
+  await page.reload();
+  await expect(page.getByTestId('current-place-input')).toHaveValue('Novato, California, United States', { timeout: 30_000 });
+
   await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
 
   // ---------------------------------------------------------------------------
@@ -438,7 +453,9 @@ test('[real] dashboard: September 2017 tool movement, grounded outlook today, an
   const septemberTiming = readPeriodDashas(septemberPairs);
   expect(septemberTiming.period).toMatchObject({ start: '2017-09-01', end: '2017-09-30', granularity: 'month' });
   await expectCalculatedSummary(page, await finalAnswer(september), septemberTiming, /September 2017|Sept?\.? 2017|2017-09/i);
-  await expect(page.getByTestId('time-travel-title')).toHaveText('Time travel · September 2017');
+  // Stale copy fixed 2026-10-14: the chat period header shows the short period since 4869958b (2026-10-13);
+  // this spec never got this far while the answer stayed in the old thread.
+  await expect(page.getByTestId('time-travel-title')).toHaveText('Sep 2017');
   await expect(page.getByTestId('dashboard-time-travel-title')).toHaveText(/September 2017/);
   await expect(page.getByTestId('time-travel-moment-dasha')).toBeVisible();
 
@@ -449,12 +466,16 @@ test('[real] dashboard: September 2017 tool movement, grounded outlook today, an
   // pre-run into a VERIFIED LOCAL TIMING block of the prompt. Now nothing is pre-computed: the first
   // round is tool_choice "required" and grounds itself through read_period, bound to today.
   expect(todaySystem).not.toContain('VERIFIED LOCAL TIMING');
-  expect(todaySystem).not.toContain('PINNED PERIOD:');
+  // Contract reversed 2026-10-14 (the answer follows the user): the chat now sits in the September 2017
+  // trip after the move, so this question is asked in that trip and its prompt carries the pin.
+  expect(todaySystem).toContain('PINNED PERIOD:');
   expect(today[0].body.tool_choice, 'a today question grounds itself before it answers').toBe('required');
   const reading = readPeriodDashas(await successfulToolPairs(today));
   expect(reading.period).toMatchObject({ start: viewerDay, end: viewerDay });
   await expectCalculatedSummary(page, await finalAnswer(today), reading, dayPattern(viewerDay));
-  await expect(page.getByTestId('time-travel-title')).toHaveText('Time travel · September 2017');
+  // Stale copy fixed 2026-10-14: the chat period header shows the short period since 4869958b (2026-10-13);
+  // this spec never got this far while the answer stayed in the old thread.
+  await expect(page.getByTestId('time-travel-title')).toHaveText('Sep 2017');
   await expect(page.getByTestId('dashboard-time-travel-title')).toHaveText(/September 2017/);
 
   const back = await send('Back to today. Call travel with to "today" and place null, then briefly confirm the return after the tool succeeds.');
