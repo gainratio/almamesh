@@ -959,6 +959,7 @@ describe("nonfatal IndexNow tail", () => {
         "https://almamesh.com/privacy",
         "https://almamesh.com/terms",
         "https://almamesh.com/data-deletion",
+        "https://almamesh.com/how-we-test",
       ])) throw new Error("URLs")
       return { ok: true }
     }`
