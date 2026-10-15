@@ -167,6 +167,25 @@ async function finalAnswer(requests: ObservedAgentRequest[]): Promise<TypedAnswe
   return JSON.parse(answer!.args) as TypedAnswer;
 }
 
+/**
+ * The turn as the provider saw it, one line per round: what was offered, then each tool call with its
+ * raw arguments and the head of its result. Attached to the test so a red run names its reason.
+ */
+function turnTranscript(turn: ObservedAgentRequest[]): string {
+  const last = turn.at(-1)?.body.messages ?? [];
+  const lines = turn.map((request, index) => {
+    const offered = (request.body.tools ?? []).map((tool) => tool.function?.name).join(',');
+    return `request ${index + 1}: tool_choice=${JSON.stringify(request.body.tool_choice)} tools=[${offered}]`;
+  });
+  const start = last.map((message) => message.role).lastIndexOf('user');
+  for (const message of last.slice(start + 1)) {
+    for (const call of message.tool_calls ?? []) lines.push(`  call ${call.function.name} ${call.function.arguments}`);
+    if (message.role === 'tool') lines.push(`  result ${String(message.content).slice(0, 240)}`);
+    if (message.role === 'system') lines.push(`  system ${String(message.content).slice(0, 240)}`);
+  }
+  return lines.join('\n');
+}
+
 const FACT_SUMMARY_REQUEST = 'Answer with kind "period": restate the calculated maha and antar dasha lords covering that period exactly as read_period gave them, then explain the active calculated timing in two short sentences.';
 
 /** The calculated dashas an answer must restate: from the turn's read_period reading. */
@@ -439,6 +458,8 @@ test('[real] dashboard: September 2017 tool movement, grounded outlook today, an
     // Disabled for the whole stream AND the final answer/pin persistence barrier.
     await expect(page.getByTestId('time-travel-button')).toBeEnabled({ timeout: 240_000 });
     const turn = observed.slice(before);
+    await test.info().attach(`turn ${question.slice(0, 40)}`, { body: turnTranscript(turn), contentType: 'text/plain' });
+    console.log(`[turn] ${question.slice(0, 40)}\n${turnTranscript(turn)}`);
     for (const request of turn) expect(request.body.model).toBe(EXPECTED_CHAT_MODEL);
     return turn;
   };
