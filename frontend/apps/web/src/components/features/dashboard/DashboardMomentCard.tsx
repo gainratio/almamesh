@@ -29,15 +29,18 @@ export interface DashboardMomentCardProps {
 
 /**
  * On a phone the card renders below the fold, so after Go nothing visibly
- * happened. Scroll it to the top (instantly under reduced motion) and move
- * focus to it, so sighted and screen-reader users both land on the trip.
+ * happened. Scroll the trip (the enclosing `[data-time-travel-trip]`, which
+ * holds the banner with Back to today, else the card) to the top, instantly
+ * under reduced motion, and move focus to the card, so sighted and
+ * screen-reader users both land on the trip.
  */
 function useArrival(ref: RefObject<HTMLElement | null>, arrive: boolean, onArrived: (() => void) | undefined): void {
   useEffect(() => {
     const card = ref.current;
     if (!arrive || !card) return;
     const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
-    card.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'start' });
+    const trip = card.closest<HTMLElement>('[data-time-travel-trip]') ?? card;
+    trip.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'start' });
     card.focus({ preventScroll: true });
     onArrived?.();
   }, [ref, arrive, onArrived]);
@@ -105,7 +108,7 @@ export function DashboardMomentCard({ asOf, dashas, birthYear, sky, onRetry, lan
     rows?.length ? rows.map((row) => t(`predictive:graha.${row.lord.toLowerCase()}`)).join(' → ') : '—';
   return (
     <div ref={cardRef} tabIndex={-1} aria-labelledby={titleId} data-testid="time-travel-moment-card"
-      className="mx-4 mt-3 scroll-mt-20 space-y-3 rounded-lg border border-accent-gold/30 p-4 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-gold/60">
+      className="mx-4 mt-3 space-y-3 rounded-lg border border-accent-gold/30 p-4 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-gold/60">
       <h2 id={titleId} className="text-base font-semibold text-text-primary">{t('dashboard:time_travel.moment_title')}</h2>
       <dl data-testid="time-travel-moment-dasha" className="grid grid-cols-2 gap-2 text-sm">
         <dt>{t('dashboard:time_travel.maha')}</dt>

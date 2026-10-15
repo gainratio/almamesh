@@ -206,7 +206,11 @@ describe('Dashboard Time travel', () => {
     const card = screen.getByTestId('time-travel-moment-card');
     expect(document.activeElement).toBe(card);
     expect(scrolls).toHaveBeenCalledTimes(1);
-    expect(scrolls.mock.contexts[0]).toBe(card);
+    // The trip lands as a unit: the banner (what moment, Change, Back to today)
+    // and the card come into view together, so Back is never scrolled away.
+    const scrolled = scrolls.mock.contexts[0] as HTMLElement;
+    expect(scrolled.contains(card)).toBe(true);
+    expect(scrolled.contains(screen.getByTestId('dashboard-time-travel-banner'))).toBe(true);
     expect(scrolls.mock.calls[0][0]).toMatchObject({ behavior: 'smooth', block: 'start' });
   });
 

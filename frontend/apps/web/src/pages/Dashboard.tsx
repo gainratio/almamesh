@@ -769,17 +769,19 @@ export default function DashboardPage() {
             </>
           }
         />
+        {/* The trip, as one unit: after Go it is scrolled into view together,
+            so the banner's Change / Back to today stays on screen. */}
         {timeTravel.moment && (
-          <TimeTravelBanner asOf={timeTravel.moment} language={i18n.language}
-            testIdPrefix="dashboard-time-travel" about={t("dashboard:time_travel.banner_about")}
-            changeRef={travelFocus.changeRef}
-            onChange={() => setTravelSheet('change')} onBack={() => void backFromMoment()}
-            backBusy={travelBack === 'busy'} backFailed={travelBack === 'failed'} />
-        )}
-        {timeTravel.moment && (
-          <DashboardMoment key={momentKey} asOf={timeTravel.moment} chart={siderealChart} chartId={chartId}
-            engine={chartEngineContext} birthYear={travelBirthYear} language={i18n.language}
-            arrive={tripArriving && travelSheet === 'closed'} onArrived={tripArrived} />
+          <div data-time-travel-trip className="scroll-mt-20 space-y-10">
+            <TimeTravelBanner asOf={timeTravel.moment} language={i18n.language}
+              testIdPrefix="dashboard-time-travel" about={t("dashboard:time_travel.banner_about")}
+              changeRef={travelFocus.changeRef}
+              onChange={() => setTravelSheet('change')} onBack={() => void backFromMoment()}
+              backBusy={travelBack === 'busy'} backFailed={travelBack === 'failed'} />
+            <DashboardMoment key={momentKey} asOf={timeTravel.moment} chart={siderealChart} chartId={chartId}
+              engine={chartEngineContext} birthYear={travelBirthYear} language={i18n.language}
+              arrive={tripArriving && travelSheet === 'closed'} onArrived={tripArrived} />
+          </div>
         )}
         <AiSetupDialog open={aiSetupOpen} onClose={() => setAiSetupOpen(false)} />
         <DashboardTimeTravelSheet open={travelSheet !== 'closed'}
