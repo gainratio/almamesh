@@ -15,6 +15,22 @@ export interface DialogProps {
   className?: string;
 }
 
+/** The visible way out: a 44px target, labelled, in the panel's top corner. */
+function CloseButton({ label, onClose }: { label: string; onClose: () => void }) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      onClick={onClose}
+      className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-background-tertiary hover:text-text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-gold"
+    >
+      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+      </svg>
+    </button>
+  );
+}
+
 /**
  * Dialog — accessible modal wrapping framer-motion. Closes on Escape and
  * overlay click; locks body scroll while open; labelled by its title.
@@ -86,9 +102,12 @@ export function Dialog({ open, onClose, title, children, className }: DialogProp
           exit={{ opacity: 0 }}
           transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
         >
+          {/* A pointer convenience only: the labelled close button in the panel
+              (and Escape) is the keyboard and screen-reader way out. */}
           <button
             type="button"
-            aria-label={t('dialog.close_aria')}
+            aria-hidden="true"
+            tabIndex={-1}
             className="absolute inset-0 cursor-default bg-ui-overlay backdrop-blur-sm"
             onClick={onClose}
           />
@@ -108,11 +127,16 @@ export function Dialog({ open, onClose, title, children, className }: DialogProp
             exit={{ opacity: 0, scale: 0.97, y: 8 }}
             transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
           >
-            {title != null && (
-              <div className="border-b border-ui-border px-5 py-4">
+            {title != null ? (
+              <div className="flex items-center justify-between gap-3 border-b border-ui-border py-2 pl-5 pr-2">
                 <h2 id={titleId} className="font-display text-lg text-text-primary">
                   {title}
                 </h2>
+                <CloseButton label={t('dialog.close_aria')} onClose={onClose} />
+              </div>
+            ) : (
+              <div className="flex justify-end px-2 pt-2">
+                <CloseButton label={t('dialog.close_aria')} onClose={onClose} />
               </div>
             )}
             <div className="px-5 py-4">{children}</div>

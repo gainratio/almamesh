@@ -134,3 +134,42 @@ describe('Dialog — keyboard focus', () => {
     expect(document.activeElement).toBe(screen.getByTestId('field'));
   });
 });
+
+describe('Dialog — visible close button', () => {
+  beforeEach(() => {
+    useLanguageStore.setState({ language: 'en' });
+  });
+
+  it('shows one labelled, touch-sized close button inside the panel that closes it', () => {
+    const onClose = vi.fn();
+    render(
+      <Dialog open onClose={onClose} title="Connect AI">
+        <p>body copy</p>
+      </Dialog>,
+    );
+
+    const dialog = screen.getByRole('dialog', { name: 'Connect AI' });
+    // Exactly one accessible "Close dialog" control: the overlay is a pointer
+    // convenience, not a second button for screen readers.
+    const closes = screen.getAllByRole('button', { name: 'Close dialog' });
+    expect(closes).toHaveLength(1);
+    const close = closes[0];
+    expect(dialog.contains(close)).toBe(true);
+    // 44px target (Tailwind h-11 / w-11).
+    expect(close.className).toContain('h-11');
+    expect(close.className).toContain('w-11');
+
+    fireEvent.click(close);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the close button when the dialog has no title', () => {
+    render(
+      <Dialog open onClose={() => undefined}>
+        <p>body copy</p>
+      </Dialog>,
+    );
+    const dialog = screen.getByRole('dialog');
+    expect(dialog.contains(screen.getByRole('button', { name: 'Close dialog' }))).toBe(true);
+  });
+});
