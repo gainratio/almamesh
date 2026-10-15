@@ -79,23 +79,24 @@ describe("applyInterpretationSettings / applyChatSettings — explicit env resol
     expect(out.VITE_LLM_MODEL).toBe(CHAT_CLOUD_MODEL);
   });
 
-  it("chat on the OpenRouter preset defaults to deepseek-v4.1-flash, the literal id sent on the wire", () => {
+  it("chat on the OpenRouter preset defaults to gpt-luna-latest, the literal id sent on the wire", () => {
     // Pinned as a literal on purpose: asserting CHAT_CLOUD_MODEL against itself
     // passes for any value. The previous default (minimax/minimax-m2.7) measured
-    // 26.7 s to first token on the live site (2026-10-02).
-    expect(applyChatSettings(ENV, {}).VITE_LLM_MODEL).toBe("deepseek/deepseek-v4.1-flash");
+    // 26.7 s to first token on the live site (2026-10-02); deepseek-v4.1-flash, the default until
+    // 2026-10-15, overloaded easily.
+    expect(applyChatSettings(ENV, {}).VITE_LLM_MODEL).toBe("~openai/gpt-luna-latest");
   });
 
-  it("the one-click OpenRouter preset seeds chat with deepseek-v4.1-flash", () => {
-    expect(openRouterPreset("sk-or-x", "any/interp").chatModel).toBe("deepseek/deepseek-v4.1-flash");
+  it("the one-click OpenRouter preset seeds chat with gpt-luna-latest", () => {
+    expect(openRouterPreset("sk-or-x", "any/interp").chatModel).toBe("~openai/gpt-luna-latest");
   });
 
-  it("interpretation defaults to deepseek/deepseek-v4.1-flash (literal)", () => {
-    expect(RECOMMENDED_CLOUD_MODEL).toBe("deepseek/deepseek-v4.1-flash");
+  it("interpretation defaults to ~openai/gpt-luna-latest (literal)", () => {
+    expect(RECOMMENDED_CLOUD_MODEL).toBe("~openai/gpt-luna-latest");
   });
 
   it("chat and interpretation share the one measured default, and neither is the report engine's Luna", () => {
-    expect(CHAT_CLOUD_MODEL).toBe("deepseek/deepseek-v4.1-flash");
+    expect(CHAT_CLOUD_MODEL).toBe("~openai/gpt-luna-latest");
     expect(CHAT_CLOUD_MODEL).toBe(RECOMMENDED_CLOUD_MODEL);
     expect(CHAT_CLOUD_MODEL).not.toBe(REPORT_ENGINE_MODEL);
     expect(RECOMMENDED_CLOUD_MODEL).not.toBe(REPORT_ENGINE_MODEL);

@@ -138,8 +138,15 @@ function reportSectionDiagnostic(event: unknown, elapsedMs: number): unknown {
 }
 
 describe('real-model e2e specs', () => {
-  it('configure deepseek/deepseek-v4-pro, the cheapest model on 2026-10-09', () => {
-    expect(E2E_REAL_MODEL).toBe('deepseek/deepseek-v4-pro');
+  // Changed 2026-10-15 (Harish): deepseek-v4-pro overloaded easily; Luna is $0.10 in / $0.50 out
+  // per M (vs $0.39 / $0.78), with tools and reasoning. The pinned version, so it is not the
+  // ~openai/gpt-luna-latest product default (see "neither product default" below).
+  it('configure openai/gpt-6-luna, the cheaper and steadier model on 2026-10-15', () => {
+    expect(E2E_REAL_MODEL).toBe('openai/gpt-6-luna');
+  });
+
+  it('assert the new product defaults by literal, not only against the constants', () => {
+    expect([PRODUCT_DEFAULT_MODEL, PRODUCT_CHAT_DEFAULT_MODEL]).toEqual(['~openai/gpt-luna-latest', '~openai/gpt-luna-latest']);
   });
 
   it("assert the app's real default models, one per tier", () => {
