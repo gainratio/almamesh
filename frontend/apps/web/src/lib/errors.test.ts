@@ -627,3 +627,68 @@ describe('one translation path: registry.describe with the shipped es/pt resourc
     expect(missing).toEqual([]);
   });
 });
+
+describe('a namespaced i18nKey with no translation falls back to the English sentence', () => {
+  // Regression for @gainratio/errors 0.3.0: on a miss, i18next answers a
+  // namespaced key ("chat:errors.model_unavailable") with the key WITHOUT its
+  // namespace ("errors.model_unavailable"). 0.3.0 only treated the full key as
+  // a miss, so that bare key reached the screen. 0.3.1 treats both as a miss
+  // and renders the catalog's English instead.
+  const PARAMS = { endpoint: 'https://example.invalid/v1' };
+  const LANGS = ['en', 'es', 'pt'] as const;
+  const originals = new Map<string, Record<string, unknown>>();
+  const keyed = aiErrorRegistry.codes.filter((code) =>
+    aiErrorRegistry.get(code)?.i18nKey?.startsWith('chat:'),
+  ) as AiErrorCode[];
+
+  /** Drop every catalog i18nKey from the chat bundle in all three languages. */
+  function dropCatalogKeysFromChat(): void {
+    for (const lng of LANGS) {
+      const original = structuredClone(i18n.getResourceBundle(lng, 'chat') as Record<string, unknown>);
+      originals.set(lng, original);
+      const stripped = structuredClone(original);
+      const errors = stripped.errors as Record<string, unknown>;
+      for (const code of keyed) {
+        const path = aiErrorRegistry.get(code)?.i18nKey?.split(':')[1] ?? '';
+        delete errors[path.replace(/^errors\./, '')];
+      }
+      i18n.removeResourceBundle(lng, 'chat');
+      i18n.addResourceBundle(lng, 'chat', stripped);
+    }
+  }
+
+  afterEach(() => {
+    for (const [lng, original] of originals) {
+      i18n.removeResourceBundle(lng, 'chat');
+      i18n.addResourceBundle(lng, 'chat', original);
+    }
+    originals.clear();
+  });
+
+  it('covers the namespaced app keys (the guard is not vacuous)', () => {
+    expect(keyed).toContain('ai.model.unavailable');
+    expect(keyed.length).toBeGreaterThanOrEqual(6);
+  });
+
+  it.each(['en', 'es'])('renders English, never the raw key, in %s', async (lang) => {
+    dropCatalogKeysFromChat();
+    await i18n.changeLanguage(lang);
+    for (const code of keyed) {
+      const text = code === 'ai.privacy.violation' ? aiErrorText(code, PARAMS) : aiErrorText(code);
+      // describe() without a translator is the catalog's own English.
+      const english =
+        code === 'ai.privacy.violation'
+          ? aiErrorRegistry.describe(code, PARAMS)
+          : aiErrorRegistry.describe(code);
+      expect(text, code).not.toMatch(/^(chat:)?errors\./);
+      expect(text, code).toBe(english);
+    }
+  });
+
+  it('pins the user-visible text for a missing model_unavailable key', async () => {
+    dropCatalogKeysFromChat();
+    await i18n.changeLanguage('es');
+    expect(aiErrorText('ai.model.unavailable')).toBe(starterPack['ai.model.unavailable'].en);
+    expect(aiErrorText('ai.model.unavailable')).not.toBe('errors.model_unavailable');
+  });
+});
