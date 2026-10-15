@@ -37,7 +37,7 @@ import {
 
 import i18n from '../i18n/config';
 import { indexChatMessage, retrieveContext } from '../lib/chatMemory';
-import { chatErrorMessage, getChatErrorMessage } from '../lib/errors';
+import { chatErrorMessage, getChatErrorMessage, privacyBlockedMessage } from '../lib/errors';
 import { LLM_SETTINGS_CHANGED_EVENT } from '../lib/llmSettingsEvents';
 import { asOfKey } from '../lib/pinnedPeriod';
 import { waitForStoreSaved } from '../lib/storeSaved';
@@ -186,9 +186,9 @@ async function updateRollingSummary(
 export const CHAT_STREAM_ERROR_COPY: Readonly<
   Record<string, (error: Error & Partial<LlmRequestError>) => string>
 > = {
-  // The fail-closed privacy fence writes a specific, user-facing message
-  // (which endpoint was refused and why): show it verbatim, never a code.
-  PrivacyViolationError: (error) => error.message,
+  // The fail-closed privacy fence: localized copy naming the refused endpoint,
+  // never a code and never the fence's English log message.
+  PrivacyViolationError: (error) => privacyBlockedMessage(error),
   // Any non-2xx maps to its specific, actionable copy via the shared coded-
   // message mapper: 402 → billing, 401/403 → bad key, 404/bad-slug → dead model,
   // 429 → rate limited, 5xx → provider outage, else → retry/settings guidance.

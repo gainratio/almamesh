@@ -52,7 +52,12 @@ import { safeError } from '@almamesh/shared-types';
 import type { SiderealChart } from '@almamesh/browser/types';
 import type { ProcessedBirthData, VedicInterpretation } from '@almamesh/shared-types';
 
-import { aiErrorRegistry, chatErrorMessage, classifyConnectionError } from '../lib/errors';
+import {
+  aiErrorRegistry,
+  chatErrorMessage,
+  classifyConnectionError,
+  privacyBlockedMessage,
+} from '../lib/errors';
 import { createFrameBatcher, type FrameBatcher } from '../lib/frameBatcher';
 import { whenDataLifecycleReady } from '../lib/profileDataLifecycle';
 import { buildEnsurePredictiveInput, predictiveReferenceInstant } from '../lib/predictive';
@@ -372,9 +377,9 @@ function sectionErrorCode(message: string, status: number | undefined): string {
 
 function describeError(err: unknown): InterpretationFailure {
   if (err instanceof PrivacyViolationError) {
-    // The fail-closed privacy fence writes a specific, user-facing message
-    // (which endpoint was refused and why): show it verbatim.
-    return { message: err.message, kind: 'privacy' };
+    // The fail-closed privacy fence: localized copy naming the refused
+    // endpoint (the error's own message is an English log line).
+    return { message: privacyBlockedMessage(err), kind: 'privacy' };
   }
   // Record only an allowlisted diagnostic code. Provider errors can contain
   // endpoints or prompt-adjacent data and must never be serialized to console.
