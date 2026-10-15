@@ -29,5 +29,6 @@ export function pinnedPeriodRules(pin: PinnedPrompt): string {
   return [
     `PINNED PERIOD: this conversation is about ${pin.start} to ${pin.end} (relative: ${pin.relative}).`,
     TENSE[pin.relative],
+    "This period is the default when a message names no time. When a message names another time (today, a date, a month, a year), read and answer that time instead, in its own tense.",
   ].join("\n");
 }

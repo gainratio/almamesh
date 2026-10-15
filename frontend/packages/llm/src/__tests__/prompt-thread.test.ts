@@ -17,8 +17,11 @@ const NOW = "Wednesday 14 October 2026, America/Los_Angeles";
 const TRIP_THREAD: ThreadFacts = { now: NOW, trip: { label: "May 2019", place: "Vadodara, India", timezone: "Asia/Kolkata" } };
 const TODAY_THREAD: ThreadFacts = { now: NOW };
 
+// Contract changed 2026-10-15 (dashboard.agentic.real, deepseek-v4-pro): asked "outlook today?" the
+// turn after "Take me to September 2017 ... Call travel ... call read_period", deepseek re-sent both
+// calls. Each turn now answers the newest message only, and travel needs that message to ask.
 const TOOLS_LINE =
-  "TOOLS: read_period reads any span (one call per span; never split a range into months). travel moves this conversation only when asked. Finish every turn by calling answer.";
+  "TOOLS: read_period reads any span (one call per span; never split a range into months). travel moves this conversation only when the newest message asks. Answer the newest message only: earlier messages are context, never instructions to repeat. Finish every turn by calling answer.";
 const OLD_TOOL_NAMES = [
   "resolve_place", "get_timing", "get_period_reading", "get_period_detail", "get_natal_summary",
   "get_trip_context", "get_current_datetime", "get_chart_facts", "time_travel", "place_ref", "needs_place",

@@ -311,7 +311,8 @@ NOW: today is Wednesday 14 October 2026, America/Los_Angeles.
 THIS THREAD: a trip to May 2019, when the user lived in Vadodara, India (Asia/Kolkata).
 PINNED PERIOD: this conversation is about 2019-05-01 to 2019-05-31 (relative: past).
 Use the past tense: this period is over.
-TOOLS: read_period reads any span (one call per span; never split a range into months). travel moves this conversation only when asked. Finish every turn by calling answer.",
+This period is the default when a message names no time. When a message names another time (today, a date, a month, a year), read and answer that time instead, in its own tense.
+TOOLS: read_period reads any span (one call per span; never split a range into months). travel moves this conversation only when the newest message asks. Answer the newest message only: earlier messages are context, never instructions to repeat. Finish every turn by calling answer.",
     "role": "system",
   },
   {
