@@ -111,6 +111,9 @@ function assertStressReached(provider: BudgetProvider, model: MockModelId): void
   expect.soft(toolRounds.some((request) => request.reply.length === 6), 'the six-parallel round was requested').toBe(true);
   expect.soft(toolMessagesContaining(provider.captured, 'already read enough'), 'calls past the read_period cap came back skipped').toBeGreaterThan(0);
   expect.soft(provider.captured.filter((request) => request.toolChoice === FORCED_ANSWER), 'a 1M window never forces the answer').toEqual([]);
+  // Restored (final review): dropped with the old loop in 8e852548; the seam's budget compacts
+  // only under pressure, so a 1M window still carries every result whole.
+  expect.soft(toolMessagesContaining(provider.captured, '"compacted":true'), 'a 1M window never compacts a tool result').toBe(0);
 }
 
 function assertBudgetClosed(provider: BudgetProvider): void {
