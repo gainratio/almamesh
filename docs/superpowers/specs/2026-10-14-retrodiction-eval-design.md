@@ -415,6 +415,52 @@ At k=6 the picture is the same: all areas 0.96 → 0.98 (ratio 1.02 [0.97, 1.08]
   (`ExactTransitSettings.enabled = False`), nothing goes to HELD-OUT, and per learning-loop §8 it
   counts as one of the first four families toward the stop rule.
 
+## Results: DEV rescore under amendment (f), placebo-calibrated, 2026-10-14
+
+Code at `57161280` (includes the birth-maha dasha fix `7955a0b8`); split `299ec393…`, DEV half;
+digest `e3462748…`; window ±36, k 3 and 6, R = 4 placebos. Aggregates only. DEV results are not
+evidence. BASELINE and +EXACT come from one run: 6,120 events, all with 4 placebo windows (5,287
+year-only and 44 out-of-range events excluded as before), swap 6,116 events (7 natives alone in
+their birth year), 56 min at 8 workers.
+
+*Synthetic check of the statistic* (`tests/test_retrodiction_placebo.py`, 12,000 step-series
+natives, no events): the old k/N lift is 0.87 [0.79, 0.95] at k=3 and the placebo-calibrated lift
+is 0.995 [0.97, 1.02]. With a planted bump on a third of events the placebo lift is 9.9 [9.2, 10.6].
+
+Lift = placebo-calibrated [95% CI], p = exact randomization; old = k/N lift; swap = real ÷
+chart-swapped centre hits [95% CI] (above 1 means the real chart beats a same-year partner's).
+
+| area (k=3) | n | BASELINE lift, p | +EXACT lift, p | old B / +E | swap B / +E |
+|---|---|---|---|---|---|
+| all areas | 6,120 | 1.03 [0.90, 1.16], 0.33 | 1.03 [0.90, 1.18], 0.33 | 0.96 / 1.00 | 1.07 [0.91, 1.25] / 1.06 [0.90, 1.25] |
+| career (hyp.) | 1,045 | 1.03 [0.74, 1.36], 0.41 | 1.07 [0.76, 1.43], 0.33 | 0.95 / 1.04 | 0.93 / 1.12 [0.77, 1.66] |
+| relationships (hyp.) | 2,567 | 1.01 [0.83, 1.21], 0.47 | 0.99 [0.81, 1.19], 0.54 | 0.96 / 0.99 | 1.17 / 1.09 [0.86, 1.42] |
+| disputes | 779 | 0.89 [0.60, 1.26], 0.73 | 0.89 [0.58, 1.27], 0.73 | 0.89 / 0.88 | 0.89 / 0.74 [0.47, 1.18] |
+| family | 1,082 | 1.16 [0.85, 1.55], 0.16 | 1.16 [0.83, 1.54], 0.16 | 1.02 / 1.08 | 1.10 / 1.10 |
+| health | 439 | 0.82 [0.42, 1.35], 0.77 | 0.64 [0.31, 1.06], 0.94 | 0.74 / 0.66 | 1.29 / 1.02 |
+| finances | 94 | 1.80 [0.56, 4.18], 0.098 | 2.22 [0.86, 5.03], 0.035 | 1.48 / 1.84 | 1.07 / 1.29 [0.44, 4.58] |
+| none (relocation) | 73 | 1.91 [0.56, 6.35], 0.12 | 4.56 [1.49, 12.30], 0.003 | 1.18 / 2.12 | 1.18 / 4.70 [1.25, 20.84] |
+| education | 41 | 1.36 [0.19, 4.25], 0.31 | 1.21 [0.00, 4.33], 0.38 | 1.34 / 1.26 | 0.75 / 0.66 |
+
+k=6: all areas BASELINE 0.99 [0.90, 1.09], +EXACT 1.01 [0.92, 1.11]; career 0.96 → 0.99;
+relationships 1.02 → 1.03; finances +EXACT 1.72 [0.82, 3.02] p=0.044 (swap 0.90); relocation
++EXACT 2.45 [0.89, 4.91] p=0.014 (swap 1.73 [0.53, 6.00]).
+
+- **Corrections** (16 tests per configuration). BASELINE: no raw p < 0.05. +EXACT: raw finances
+  k=3 and k=6, relocation k=3 and k=6; **relocation k=3 survives Holm and BH** (p = 0.003 against
+  the Holm cut of 0.05/16 = 0.0031); nothing else survives.
+- **Per-family shifted controls** (placebo 1 as the event, k 3 and 6). Placebo-calibrated: every
+  family and both configurations pass except `only:vimshottari_lords`, 1.06 [1.01, 1.11] at k=3
+  and 1.05 [1.01, 1.10] at k=6 (marginal, the only exclusion among 10 sets; its old k/N control
+  passes at 0.94). Old k/N: `only:yogini` fails, 0.86 [0.76, 0.98] and 0.87 [0.80, 0.95]: the
+  centre bias the amendment removes. Planted: 73/3 and 73/6, p at the 1e-12 floor. Verdict:
+  controls ok (both configurations' sets pass).
+- **Reading.** With the bias removed, BASELINE is still null in every area (all CIs include 1)
+  and +EXACT adds nothing in the hypothesis areas (career, relationships). The one survivor is
+  relocation k=3: an exploratory area with n=73, about 3 placebo hits expected, a lift CI of
+  1.5-12, not significant after correction at k=6, and its chart-swap CI barely clears 1. It is
+  a lead to pre-register, not a finding. Nothing goes to HELD-OUT from this rescore.
+
 ## Results: baseline 2026-10-14 (SYNTHETIC, harness sanity only, not evidence)
 
 30 random-month events, pre-registered settings. Expected: lift near 1, nothing significant.
