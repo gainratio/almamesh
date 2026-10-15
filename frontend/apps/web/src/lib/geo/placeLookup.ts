@@ -1,11 +1,10 @@
 /**
  * The chat's offline place lookup for read_period and travel (spec 2026-10-08 Part 2). Bundled list only:
- * never searchCities or the online geocoder. A place_ref is the row's index in
+ * never searchCities or the online geocoder. A place_ref names the row's index in
  * the bundled list ("city:<n>"): stateless, nothing stored (plan Ruling 4).
  * Coordinates stay in ResolvedPlace; the tool layer sends only `summary`.
  */
 import {
-  cityAtIndexOffline,
   foldPlaceText,
   isCancellation,
   placeRegion,
@@ -15,8 +14,6 @@ import {
 } from './cityLookup';
 import { PLACE_SUGGESTION_LIMIT } from './cityMatch';
 
-export const PLACE_REF_PATTERN = '^city:\\d{1,6}$';
-const PLACE_REF = new RegExp(PLACE_REF_PATTERN);
 export const PLACE_CANDIDATE_LIMIT = 5;
 export { PLACE_SUGGESTION_LIMIT };
 export const DOMINANT_POPULATION_RATIO = 10;
@@ -146,11 +143,4 @@ export async function lookupPlaceOffline(query: string): Promise<PlaceLookup> {
 /** For the place boxes: every match, most populous first, so a person can always pick their own. */
 export async function listPlacesOffline(query: string): Promise<ResolvedPlace[]> {
   return candidatesOf(await withRetry(() => searchCityRowsOffline(query, PLACE_SUGGESTION_LIMIT)));
-}
-
-export async function placeFromRef(ref: string): Promise<ResolvedPlace | undefined> {
-  if (!PLACE_REF.test(ref)) return undefined;
-  const index = Number(ref.slice('city:'.length));
-  const match = await withRetry(() => cityAtIndexOffline(index));
-  return match && resolved(index, match);
 }

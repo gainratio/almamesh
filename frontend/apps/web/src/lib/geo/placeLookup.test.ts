@@ -1,16 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { listPlacesOffline, lookupPlaceOffline, placeFromRef, PLACE_CANDIDATE_LIMIT, PLACE_SUGGESTION_LIMIT } from './placeLookup';
+import { listPlacesOffline, lookupPlaceOffline, PLACE_CANDIDATE_LIMIT, PLACE_SUGGESTION_LIMIT } from './placeLookup';
 import { installCityTestDatabase } from './__tests__/cityTestDb';
 
 installCityTestDatabase();
 
 afterEach(() => vi.unstubAllGlobals());
-
-function refOf(result: Awaited<ReturnType<typeof lookupPlaceOffline>>): string {
-  if (result.status !== 'found') throw new Error(`expected found, got ${result.status}`);
-  return result.place.summary.place_ref;
-}
 
 describe('lookupPlaceOffline', () => {
   it('finds Bogotá with or without the accent, in any case, with its zone', async () => {
@@ -93,7 +88,6 @@ describe('lookupPlaceOffline', () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
     await lookupPlaceOffline('Bogotá');
-    await placeFromRef('city:0');
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -127,14 +121,3 @@ describe('listPlacesOffline (the place boxes)', () => {
   });
 });
 
-describe('placeFromRef', () => {
-  it('round-trips a ref to the same label, zone and coordinates', async () => {
-    const found = await lookupPlaceOffline('Bogotá');
-    const back = await placeFromRef(refOf(found));
-    expect(back).toEqual(found.status === 'found' ? found.place : undefined);
-  });
-
-  it.each(['city:99999999', 'city:-1', 'bogota', 'city:', 'city:1.5', ''])('refuses %s', async (ref) => {
-    expect(await placeFromRef(ref)).toBeUndefined();
-  });
-});

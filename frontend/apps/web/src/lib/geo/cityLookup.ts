@@ -23,7 +23,7 @@ import { safeWarn } from '@almamesh/shared-types';
 
 import { geocodeCitiesOnline } from './onlineGeocoder';
 import { withDerivedDb, type SqlDatabase } from '../derivedDb';
-import { cityCandidates, cityRowAt, ensureCitiesImported, CITY_SQL_CANDIDATES } from './citySql';
+import { cityCandidates, ensureCitiesImported, CITY_SQL_CANDIDATES } from './citySql';
 import { cityDisplayName, cityMatchRank, placeQualifiersMatch, placeTokens, splitPlaceQuery, type CityRow } from './cityMatch';
 export { cityMatchRank, citySearchText, foldPlaceText, placeRegion, type CityRow } from './cityMatch';
 
@@ -145,15 +145,6 @@ export async function searchCityRowsOffline(query: string, limit = 8): Promise<I
       }
       if (candidates.length < CITY_SQL_CANDIDATES) return results;
     }
-  });
-}
-
-/** One bundled reference row by its original list index. */
-export async function cityAtIndexOffline(index: number): Promise<CityMatch | undefined> {
-  if (!Number.isSafeInteger(index) || index < 0) return undefined;
-  return withCityDb(async (db) => {
-    const row = await atStep('geo.city_query', () => cityRowAt(db, index));
-    return row ? toMatch(row) : undefined;
   });
 }
 

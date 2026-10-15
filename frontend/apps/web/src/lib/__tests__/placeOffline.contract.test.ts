@@ -28,11 +28,11 @@ describe('a chat-typed city never leaves the device', () => {
   });
 
   it('the static-import check catches a value import and ignores a type-only one', () => {
-    expect("import { placeFromRef } from './geo/placeLookup';").toMatch(STATIC_GEO_IMPORT);
+    expect("import { lookupPlaceOffline } from './geo/placeLookup';").toMatch(STATIC_GEO_IMPORT);
     expect("import {\n  searchCitiesOffline,\n} from './geo/cityLookup';").toMatch(STATIC_GEO_IMPORT);
-    expect("export { placeFromRef } from './geo/placeLookup';").toMatch(STATIC_GEO_IMPORT);
+    expect("export { lookupPlaceOffline } from './geo/placeLookup';").toMatch(STATIC_GEO_IMPORT);
     expect("import type { ResolvedPlace } from './geo/placeLookup';").not.toMatch(STATIC_GEO_IMPORT);
-    expect("(ref) => import('./geo/placeLookup').then((m) => m.placeFromRef(ref))").not.toMatch(STATIC_GEO_IMPORT);
+    expect("(ref) => import('./geo/placeLookup').then((m) => m.lookupPlaceOffline(ref))").not.toMatch(STATIC_GEO_IMPORT);
   });
 
   it('city rows are fetched in batches, never imported into the JS module cache', () => {

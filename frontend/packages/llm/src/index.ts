@@ -441,31 +441,16 @@ export {
 
 // Time travel: argument rules for the timing tool's optional start/end.
 export {
-  BEFORE_BIRTH_MESSAGE,
   BIRTH_YEAR_SKY_NOTE,
   endsBeforeBirthYear,
   startsInOrBeforeBirthYear,
-  ISO_DAY_PATTERN,
-  OVER_TWO_YEARS_NOTE,
-  PAST_EPHEMERIS_NOTE,
   isCalendarDay,
-  parsePeriodArgs,
-  periodEcho,
-  periodLimits,
   ENGINE_DAYS_PER_MONTH,
   EPHEMERIS_LAST_YEAR,
   LONG_PERIOD_WINDOW_MONTHS,
   periodWindowMonths,
-  windowEndsBeforePeriodEnd,
 } from "./period";
-export type { PeriodArgs, PeriodEcho, PeriodLimits } from "./period";
 export { BIRTH_YEAR_ROWS_NOTE, NO_TREE_NOTE, PRATYANTAR_NOTE, selectDashasForPeriod } from "./period-dashas";
 export type { PeriodAntarRow, PeriodDashaRow, PeriodDashas } from "./period-dashas";
-export {
-  COVERED_EVENTS,
-  SLOW_GRAHAS,
-  placementsAsOfNote,
-  restrictTransitsToPeriod,
-  timelineCutoffNote,
-} from "./period-transits";
+export { SLOW_GRAHAS, restrictTransitsToPeriod } from "./period-transits";
 export type { RestrictedTransits } from "./period-transits";
