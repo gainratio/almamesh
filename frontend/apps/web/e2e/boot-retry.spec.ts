@@ -278,6 +278,9 @@ test('a post-ready correlated fatal requires Retry, then a fresh real Worker ren
   await page.getByTestId('time-travel-tab-month').click();
   await page.getByTestId('time-travel-month').selectOption('03');
   await page.getByTestId('time-travel-month-year').selectOption('2019');
+  // Every trip needs a place (3f338a94): Go waits until the offered birth place is confirmed.
+  await expect(page.getByTestId('time-travel-go')).toBeDisabled();
+  await page.getByTestId('time-travel-where-suggestion').click();
   await page.getByTestId('time-travel-go').click();
   await expect(page.getByTestId('time-travel-sheet')).toBeHidden();
   await expect(page.getByTestId('dashboard-time-travel-banner')).toContainText('March');
