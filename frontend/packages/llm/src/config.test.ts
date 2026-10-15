@@ -79,15 +79,13 @@ describe("the product default model", () => {
   // Pinned as a literal: asserting the constant against itself passes for any value.
   // The legacy live reading (streamNatalInterpretation / streamCurrentTimeline) runs on it:
   // measured 2026-10-15 on e2e/timeline.real.spec.ts, 3 runs, 39-49 s, about half a cent each.
-  it("is ~openai/gpt-luna-latest", () => {
-    expect(RECOMMENDED_CLOUD_MODEL).toBe("~openai/gpt-luna-latest");
+  it("is openai/gpt-6-luna", () => {
+    expect(RECOMMENDED_CLOUD_MODEL).toBe("openai/gpt-6-luna");
   });
 
-  // CONTRACT REVERSED 2026-10-15 (Harish chose the alias): this asserted the default is a pinned id,
-  // never a ~ alias, so quality, latency and cost could not move without a code change. The
-  // default is now OpenRouter's moving Luna alias on purpose; the report engine stays pinned.
-  it("is OpenRouter's moving Luna alias on purpose, with no variant suffix", () => {
-    expect(RECOMMENDED_CLOUD_MODEL.startsWith("~")).toBe(true);
+  // Restored 2026-10-15: the default is the model Harish chose, pinned, never the moving alias.
+  it("is a pinned model id, not a ~ moving alias, so quality/latency/cost cannot shift without a code change", () => {
+    expect(RECOMMENDED_CLOUD_MODEL.startsWith("~")).toBe(false);
     expect(RECOMMENDED_CLOUD_MODEL).not.toMatch(/:/);
   });
 });
@@ -104,10 +102,12 @@ describe("the report engine's own model", () => {
     expect(REPORT_ENGINE_MODEL).not.toMatch(/:/);
   });
 
-  // Contract changed 2026-10-15: Luna now IS the legacy reading default (measured, see above), but
-  // through the alias; the report engine keeps its own pinned version, so the two stay distinct ids.
-  it("is NOT the legacy reading default's id: the report engine keeps its pinned version", () => {
-    expect(REPORT_ENGINE_MODEL).not.toBe(RECOMMENDED_CLOUD_MODEL);
-    expect(openRouterPreset("sk-or-x", RECOMMENDED_CLOUD_MODEL).chatModel).not.toBe(REPORT_ENGINE_MODEL);
+  // CONTRACT REVERSED 2026-10-15: this asserted the report engine's Luna must not reach the live
+  // legacy path by default (it had only been measured on the report engine). Harish chose that
+  // same pinned Luna as the reading and chat default after the legacy timeline was measured on
+  // it (39-49 s, 3/3), so the report engine and the default are now one pinned model.
+  it("is the same pinned model as the reading and chat default", () => {
+    expect(REPORT_ENGINE_MODEL).toBe(RECOMMENDED_CLOUD_MODEL);
+    expect(openRouterPreset("sk-or-x", RECOMMENDED_CLOUD_MODEL).chatModel).toBe(REPORT_ENGINE_MODEL);
   });
 });

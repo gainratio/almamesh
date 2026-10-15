@@ -194,22 +194,22 @@ export function resolveProviderConfig(env: LlmEnv = {}): ProviderConfig {
  * one-click preset, the settings UI default, and the "switch to recommended"
  * self-heal. A real OpenRouter slug (verified against the live models catalog).
  *
- * `~openai/gpt-luna-latest` since 2026-10-15 (was deepseek-v4.1-flash from 2026-10-01; the deepseek
+ * `openai/gpt-6-luna` since 2026-10-15 (was deepseek-v4.1-flash from 2026-10-01; the deepseek
  * models overloaded easily). OpenRouter price that day: $0.10 in / $0.50 out per million tokens,
- * with tools and reasoning. On the legacy live timeline (e2e/timeline.real.spec.ts, 3 runs) it wrote
- * both sections in 39-49 s for about half a cent each; chat is driven on it by
- * dashboard.agentic.real and the real-model drive. The alias, not a pinned version, on purpose
- * (Harish). Changing this never rewrites a model a user saved.
+ * with tools and reasoning. On the legacy live timeline (e2e/timeline.real.spec.ts, 3 runs, through
+ * the `~openai/gpt-luna-latest` alias at the same price) it wrote both sections in 39-49 s for about
+ * half a cent each; chat is driven on it by dashboard.agentic.real and the real-model drive. Pinned,
+ * never the moving alias, so quality, latency and cost cannot move without a code change (Harish).
+ * Changing this never rewrites a model a user saved.
  */
-export const RECOMMENDED_CLOUD_MODEL = "~openai/gpt-luna-latest";
+export const RECOMMENDED_CLOUD_MODEL = "openai/gpt-6-luna";
 
 /**
  * The model the nine-section REPORT engine (`streamReportTimeline` with
- * `REPORT_PROMPT_SET`) is pinned to. Its own literal, deliberately NOT
- * {@link RECOMMENDED_CLOUD_MODEL}: openai/gpt-6-luna was measured on the report
- * engine only (e2e/report.real.spec.ts, 3 runs on 2026-10-10: 39-43 s, $0.013
- * billed each, every voice inside its word band). The legacy live reading was
- * never driven or measured on it, so it must not inherit it.
+ * `REPORT_PROMPT_SET`) is pinned to (e2e/report.real.spec.ts, 3 runs on 2026-10-10:
+ * 39-43 s, $0.013 billed each, every voice inside its word band). Since 2026-10-15 it
+ * is the same model as {@link RECOMMENDED_CLOUD_MODEL}, but its own literal, so the
+ * report engine and the reading default can only part by a deliberate code change.
  *
  * Pinned, never the `~openai/gpt-luna-latest` alias, so quality, latency and cost
  * cannot move without a code change. The report engine takes its model from the

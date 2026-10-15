@@ -1,4 +1,4 @@
-// The default model changed 2026-10-15 (deepseek-v4.1-flash -> ~openai/gpt-luna-latest). The copy that
+// The default model changed 2026-10-15 (deepseek-v4.1-flash -> openai/gpt-6-luna). The copy that
 // names the default, and the measured times and cost it quotes, must name the new model in every
 // language, never the old one.
 import { describe, expect, it } from 'vitest';
