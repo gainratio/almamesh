@@ -42,6 +42,7 @@ function readTool(o: ReadOptions = {}): ToolDef<unknown> {
   return defineTool<ReadInput>({
     name: "read_period",
     description: o.description ?? "Read a period.",
+    reads: true,
     input: z.object({ start: z.string() }),
     ...(o.compact ? { compact: o.compact } : {}),
     async execute(input) {

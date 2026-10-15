@@ -66,6 +66,17 @@ describe('runChatTurn: a trip turn reads first', () => {
     expect(snapshots.at(-1)).toContain('May 2019');
   });
 
+  it('a travel call does not unlock answer: it stays hidden until read_period completes', async () => {
+    const { fetchImpl, bodies } = endpoint([
+      { name: 'travel', args: { to: '2019-09', place: null } },
+      { name: 'read_period', args: readPeriodArgs('2019-09') },
+      (body) => stubCallFor(body, {}),
+    ]);
+    await drain(runChatTurn(input(fetchImpl, { asOf: MAY_2019 })));
+    expect(toolNames(bodies[1])).toEqual(['read_period', 'travel']);
+    expect(toolNames(bodies[2])).toContain('answer');
+  });
+
   it('states today and the trip in the system prompt', async () => {
     const { fetchImpl, bodies } = endpoint([{ name: 'read_period', args: readPeriodArgs('2019-05') }, (body) => stubCallFor(body, {})]);
     await drain(runChatTurn(input(fetchImpl, { asOf: MAY_2019 })));
@@ -101,7 +112,8 @@ describe('runChatTurn: a trip turn reads first', () => {
       drain(runChatTurn(input(endpoint(script).fetchImpl, { ...(asOf ? { asOf } : {}), language: 'es', labels: spoken, onStatus: (label) => labels.push(label) })));
     await turn([{ name: 'read_period', args: readPeriodArgs('2019-05') }, (body) => stubCallFor(body, {})], MAY_2019);
     await turn([{ name: 'travel', args: { to: '2019-09', place: null } }, (body) => stubCallFor(body, {})]);
-    await turn([{ name: 'travel', args: { to: 'today', place: null } }, (body) => stubCallFor(body, {})], MAY_2019);
+    // A trip turn reads before it may answer, even after travel (travel is not a read).
+    await turn([{ name: 'travel', args: { to: 'today', place: null } }, { name: 'read_period', args: readPeriodArgs('2019-05') }, (body) => stubCallFor(body, {})], MAY_2019);
     expect(labels).toContain('Leyendo mayo de 2019…');
     expect(labels).toContain('Viajando a septiembre de 2019…');
     expect(labels).toContain('Volviendo a hoy…');

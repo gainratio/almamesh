@@ -57,6 +57,7 @@ function readPeriod(seen: PeriodInput[] = []): ToolDef<PeriodInput> {
     name: "read_period",
     description: "Read the sky for a period.",
     statusLabel: "Reading the period",
+    reads: true,
     input: z.object({
       start: z.string().regex(/^\d{4}(-\d{2}(-\d{2})?)?$/, START_MESSAGE),
       end: z.string().nullable(),
@@ -314,6 +315,23 @@ describe("rule 5: tool choice per round", () => {
     expect(toolsOf(requests[0]).map((t) => t.function.name)).toEqual(["read_period"]);
     expect(requests[1].body.tool_choice).toBe("required");
     expect(toolsOf(requests[1]).map((t) => t.function.name)).toEqual(["read_period", "answer"]);
+  });
+
+  it("readFirst: only a read tool unlocks answer; a completed travel call does not", async () => {
+    const travel = defineTool<{ readonly start: string }>({
+      name: "travel",
+      description: "Move this conversation to a period.",
+      input: z.object({ start: z.string() }),
+      async execute() {
+        return { moved: true };
+      },
+    });
+    const travelCall: FakeTurn = { calls: [call("t1", "travel", '{"start":"2019-05"}')] };
+    const { fetchImpl, requests } = fakeEndpoint([travelCall, read("r1"), answer("a1")]);
+    await collect(runToolTurn(options(fetchImpl, { readFirst: true, tools: asTools(readPeriod(), travel) })));
+    expect(toolsOf(requests[0]).map((t) => t.function.name)).toEqual(["read_period", "travel"]);
+    expect(toolsOf(requests[1]).map((t) => t.function.name)).toEqual(["read_period", "travel"]);
+    expect(toolsOf(requests[2]).map((t) => t.function.name)).toEqual(["read_period", "travel", "answer"]);
   });
 
   it("without readFirst, round 1 offers every tool including answer", async () => {

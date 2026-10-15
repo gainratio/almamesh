@@ -78,6 +78,8 @@ export interface ToolDef<I> {
   readonly timeoutMs?: number;
   /** The status line shown while the tool runs (default `Using <name>`). */
   readonly statusLabel?: string;
+  /** A read tool: on a readFirst turn, only its completed call unlocks `answer` (travel does not). */
+  readonly reads?: boolean;
   execute(input: I, ctx: ToolContext): Promise<unknown>;
   /**
    * The compact form sent in place of a result the turn's context budget cannot
@@ -444,7 +446,7 @@ interface RequestPlan {
   readonly compacted: number;
 }
 
-/** Set by the tool wrapper (SDK side, so prepareStep sees it) when a read tool call completes. */
+/** Set by the tool wrapper (SDK side, so prepareStep sees it) when a call to a `reads` tool completes. */
 interface ReadProgress {
   completed: boolean;
 }
@@ -534,7 +536,7 @@ function chatModel(o: RunToolTurnOptions<unknown>): LanguageModel {
 async function executeCounted(def: ToolDef<unknown>, input: unknown, runtime: ToolRuntime): Promise<unknown> {
   if (!runtime.budget.take(def.name)) return { status: "skipped", note: SKIPPED_NOTE };
   const result = await runWithTimeout(def, input, runtime.signal, runtime.now);
-  runtime.reads.completed = true;
+  if (def.reads === true) runtime.reads.completed = true;
   return result;
 }
 

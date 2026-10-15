@@ -727,6 +727,7 @@ export function createReadPeriodTool(input: ReadPeriodInput): ToolDef<ReadPeriod
     input: ARGS_SCHEMA,
     timeoutMs: READ_PERIOD_TIMEOUT_MS,
     statusLabel: READ_PERIOD_STATUS_LABEL,
+    reads: true,
     execute: (args, context) => {
       const key = cacheKey(args);
       const hit = cache.get(key);

@@ -22,6 +22,7 @@ const CONFIG: ProviderConfig = {
 const read: ToolDef<{ readonly start: string }> = defineTool<{ readonly start: string }>({
   name: "read_period",
   description: "Read the sky for a period.",
+  reads: true,
   input: z.object({ start: z.string() }),
   execute: async ({ start }) => ({ start }),
 });
