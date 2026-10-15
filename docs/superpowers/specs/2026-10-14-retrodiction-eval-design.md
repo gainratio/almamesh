@@ -461,6 +461,24 @@ relationships 1.02 → 1.03; finances +EXACT 1.72 [0.82, 3.02] p=0.044 (swap 0.9
   1.5-12, not significant after correction at k=6, and its chart-swap CI barely clears 1. It is
   a lead to pre-register, not a finding. Nothing goes to HELD-OUT from this rescore.
 
+### +OBSTACLES under amendment (f) (DEV disputes events only)
+
+Same placebos and controls, code at `b7e290e5` (identical source to `57161280`), 70 min at 8
+workers, lazy exact resolution of `engine_obstacles`. 772 disputes events scored (the 779 above
+minus 7 whose month reading leaves the engine's tables, amendment f6); swap 774 events. Every
+other area is BASELINE by construction (the family scores 0 there).
+
+| disputes | n | BASELINE lift, p | +OBSTACLES lift, p | old B / +O | swap B / +O |
+|---|---|---|---|---|---|
+| k=3 | 772 | 0.88 [0.58, 1.26], 0.76 | 0.88 [0.56, 1.30], 0.73 | 0.88 / 0.87 | 0.87 [0.54, 1.35] / 0.84 [0.52, 1.34] |
+| k=6 | 772 | 0.87 [0.64, 1.13], 0.86 | 0.90 [0.67, 1.18], 0.77 | 0.90 / 0.92 | 0.82 [0.60, 1.10] / 0.85 [0.61, 1.16] |
+
+No raw p < 0.05, so no Holm or BH survivors. Controls: BASELINE 1.01 [0.68, 1.42] and
++OBSTACLES 0.98 [0.65, 1.40] at k=3 (both pass); planted at its ceiling. `only:engine_obstacles`
+was not computed (f5). **Verdict: +OBSTACLES is null on DEV with the corrected statistic.** The
+shipped obstacles theme does not put the month of a legal event or an accident higher in its
+window, and the real chart does not beat a same-year partner's.
+
 ## Results: baseline 2026-10-14 (SYNTHETIC, harness sanity only, not evidence)
 
 30 random-month events, pre-registered settings. Expected: lift near 1, nothing significant.
