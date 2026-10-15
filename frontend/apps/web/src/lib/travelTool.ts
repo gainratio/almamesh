@@ -23,7 +23,7 @@ export interface TravelToolInput extends PlaceResolverInput {
   readonly birthYear: number | undefined;
   readonly language: string;
   readonly record: TravelRecorder;
-  /** The turn's own message asks to move (travelIntent.ts); otherwise a call is refused. */
+  /** The turn's own message asks to move, or finishes a move the last turn asked for (travelIntent.ts); otherwise a call is refused. */
   readonly travelAsked: boolean;
 }
 
@@ -47,22 +47,24 @@ export type TravelResult = TravelQueued | PlaceAsk | ReadPeriodAsk | TravelRefus
 /**
  * dashboard.agentic.real 2026-10-15 (GPT Luna): "outlook today?" in a September 2017 trip read
  * today, then travelled back to today and ended the trip. A question about another time is
- * answered in place; only an explicit request moves the conversation.
+ * answered in place; only an explicit request moves the conversation. travel-guard-live 2026-10-15:
+ * after the refusal DeepSeek still told the user it had moved, so the note forbids the claim and
+ * names how the user can move (chatTurn.ts also sends such an answer back).
  */
 export const TRAVEL_NOT_ASKED: TravelRefused = {
   status: 'refused',
   reason: 'not_asked',
-  note: 'The user did not ask to move this conversation. Answer their question here: read the time they asked about with read_period.',
+  note: 'The user did not ask to move this conversation, so it stays where it is. Answer their question here: read the time they asked about with read_period. Do not say the conversation moved or the trip ended. If they want to move, they can use the Time travel control, or say "back to today" or "take me to May 2019".',
 };
 
 const TO = /^(today|\d{4}(-(0[1-9]|1[0-2])(-(0[1-9]|[12]\d|3[01]))?)?)$/;
 
 const DESCRIPTION = [
   'Move this conversation and the Dashboard to a day, month or year (a time-travel trip), or back to today.',
-  'Only when the newest message explicitly asks to move ("take me to ...", "back to today"); a question about another time, today included, is answered here with read_period. A call the user did not ask for is refused.',
+  'Only when the user asks to move ("take me to ...", "back to today") in this message, or the last one if you asked where; a question about another time, today included, is answered here with read_period.',
   'The move happens after your answer. Call it at most once per turn.',
   'Examples: "take me to May 2019 in Vadodara" -> {"to":"2019-05","place":"Vadodara"}.',
-  '"back to today" -> {"to":"today","place":null}.',
+  '"back to today" or "leave this trip" -> {"to":"today","place":null}.',
 ].join(' ');
 
 const PERIOD_OF_LENGTH: Readonly<Record<number, 'day' | 'month' | 'year'>> = { 4: 'year', 7: 'month', 10: 'day' };
@@ -89,7 +91,8 @@ const ARGS_SCHEMA: z.ZodType<TravelArgs> = z
   .strict()
   .superRefine((args, ctx) => {
     if (args.to === 'today') {
-      if (args.place !== null) ctx.addIssue({ code: 'custom', message: 'to "today" takes no place: send place null', path: ['place'] });
+      // Today is where the user lives now: "home" says nothing more, any other place is refused.
+      if (args.place !== null && args.place.trim().toLowerCase() !== 'home') ctx.addIssue({ code: 'custom', message: 'to "today" takes no place: send place null', path: ['place'] });
       return;
     }
     if (TO.test(args.to) && !draftOf(args.to)) ctx.addIssue({ code: 'custom', message: DATE_ERROR, path: ['to'] });

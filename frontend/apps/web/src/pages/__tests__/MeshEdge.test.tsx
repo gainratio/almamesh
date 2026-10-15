@@ -385,6 +385,40 @@ describe('MeshEdgePage', () => {
     );
   });
 
+  // Northstar on PR #366: "take me to May 2019" -> asked where -> "Delhi" names no move, yet the
+  // pending request from the turn before lets this turn's travel call through.
+  it('relationship chat: the answer to "where?" after a move request may travel', async () => {
+    writeLlmSettings(openRouterPreset('sk-or-v1-0000-synthetic-test-key', 'test-org/test-model'));
+    __setMemoryForTest({
+      indexMessage: vi.fn().mockResolvedValue(undefined),
+      retrieve: vi.fn().mockResolvedValue([]),
+      deleteForProfile: vi.fn().mockResolvedValue(undefined),
+      deleteForThread: vi.fn().mockResolvedValue(undefined),
+      clear: vi.fn().mockResolvedValue(undefined),
+    });
+    llmMocks.runToolTurn.mockImplementation(async function* () {
+      yield 'Where did you live then?';
+      return { answer: undefined };
+    });
+    seedPeople(SPOUSE);
+    seedCharts(SPOUSE);
+    seedEdge(SPOUSE, MESH_EDGE_SPOUSE);
+    renderAt('/mesh/p-spouse');
+    fireEvent.click(screen.getByTestId('mesh-discuss-chat'));
+    const send = async (question: string) => {
+      fireEvent.change(await screen.findByTestId('chat-input'), { target: { value: question } });
+      fireEvent.click(screen.getByTestId('chat-send-button'));
+    };
+    await send('take me to May 2019');
+    await waitFor(() => expect(llmMocks.runToolTurn).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByTestId('chat-panel').textContent).toContain('Where did you live then?'));
+    await send('Delhi');
+    await waitFor(() => expect(llmMocks.runToolTurn).toHaveBeenCalledTimes(2));
+    const travel = llmMocks.runToolTurn.mock.calls[1][0].tools.find((tool: { name: string }) => tool.name === 'travel');
+    const result = await travel.execute({ to: 'today', place: null }, { now: new Date(), signal: new AbortController().signal });
+    expect(result).toEqual({ status: 'queued', action: 'back_to_today' });
+  });
+
   // Contract reversed (chat tool layer redesign, Task 6, 2026-10-14): this chat used to be refused,
   // because get_current_datetime could answer "in the chart's zone". That tool is gone and today is
   // the viewer's day, so no part of a chat turn reads the birth zone.

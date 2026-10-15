@@ -26,7 +26,7 @@ import {
   type ThreadFacts,
 } from '@almamesh/llm';
 import { chatAnswerSpec, type GroundingReading } from '@almamesh/llm/answer';
-import { ANSWER_TOOL_NAME, runToolTurn, type AgentStatusEvent, type ToolCallEvent, type ToolContext, type ToolDef } from '@almamesh/llm/toolLoop';
+import { ANSWER_TOOL_NAME, runToolTurn, type AgentStatusEvent, type AnswerSpec, type ToolCallEvent, type ToolContext, type ToolDef } from '@almamesh/llm/toolLoop';
 import type { ChatThreadAsOf, ProcessedBirthData } from '@almamesh/shared-types';
 import type { CurrentPlace } from '@almamesh/store';
 
@@ -40,7 +40,7 @@ import { birthYearOf, createPeriodChartLoader, readyEngine } from './periodChart
 import { createReadPeriodTool, isReadPeriodReading, readPeriodGrounding, readPeriodSpanLabel, readPeriodStatusLabel, type ReadPeriodArgs, type ReadPeriodInput } from './readPeriod';
 import { READ_PERIOD_TOOL_NAME } from './periodReading';
 import { formatPinLabel } from './timeTravelSheet';
-import { asksToTravel } from './travelIntent';
+import { asksToTravel, claimsMove, type PendingTravel } from './travelIntent';
 import { createTravelTool, TRAVEL_TOOL_NAME, travelPeriodLabel, travelStatusLabel, type TravelArgs } from './travelTool';
 import type { TravelRecorder } from './travelSlot';
 import { tripPin } from './tripContext';
@@ -121,6 +121,11 @@ export interface ChatTurnInput {
   readonly onStatus?: (label: string | null) => void;
   /** Records a move; the chat hook applies it after the answer is saved. Absent: no travel tool. */
   readonly onTravel?: TravelRecorder;
+  /**
+   * The thread's last turn asked to move and the model asked where (or when) instead
+   * (travelIntent.ts pendingTravelIn): this turn's answer ("Delhi") may finish the move.
+   */
+  readonly pendingTravel?: PendingTravel;
   readonly onToolCall?: (call: ChatToolCall) => void;
   /** Default: the wall clock. */
   readonly now?: Date;
@@ -197,7 +202,7 @@ function turnTools(input: ChatTurnInput, pin: ChatThreadAsOf | undefined, starts
   const travel = input.onTravel
     ? [createTravelTool({
       ...places, threadPlace: input.asOf?.place, birthYear: birthYearOf(input.birth), language: input.language, record: input.onTravel,
-      travelAsked: asksToTravel(input.question),
+      travelAsked: asksToTravel(input.question) || input.pendingTravel !== undefined,
     })]
     : [];
   // Under budget pressure a reading goes out as its grounding facts: what the answer is checked against.
@@ -269,6 +274,33 @@ function statusSink(input: ChatTurnInput) {
   return { starts, onEvent };
 }
 
+/** What the model told the user to correct: the conversation is where it was. */
+export const MOVE_NOT_MADE =
+  'This conversation did not move this turn (no travel was queued). Do not say it moved, left the trip or went back to today; answer where it is. ' +
+  'If the user wants to move, they can use the Time travel control, or say "back to today" or "take me to May 2019".';
+
+/** Every string in the answer, joined: the claim can sit in any field. */
+function answerText(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value)) return value.map(answerText).join(' ');
+  return typeof value === 'object' && value !== null ? Object.values(value).map(answerText).join(' ') : '';
+}
+
+/**
+ * travel-guard-live 2026-10-15 (DeepSeek v4.1 flash, 3 of 20 runs): the trip stayed put and the
+ * answer said "We've stepped out of September 2017". On a turn that queued no move, an answer
+ * claiming one is sent back once; a second claim is kept rather than failing the turn.
+ */
+function withoutFalseMoveClaim<A>(spec: AnswerSpec<A>, moved: () => boolean): AnswerSpec<A> {
+  let sentBack = false;
+  const schema = spec.schema.superRefine((value, ctx) => {
+    if (sentBack || moved() || !claimsMove(answerText(value))) return;
+    sentBack = true;
+    ctx.addIssue({ code: 'custom', message: MOVE_NOT_MADE, path: [] });
+  });
+  return { ...spec, schema };
+}
+
 /** Yields the answer as cumulative markdown snapshots: each one replaces the last. */
 export async function* runChatTurn(input: ChatTurnInput): AsyncGenerator<string> {
   const now = input.now ?? new Date();
@@ -282,6 +314,11 @@ export async function* runChatTurn(input: ChatTurnInput): AsyncGenerator<string>
   );
   const readings: GroundingReading[] = [];
   const status = statusSink(input);
+  let moved = false;
+  const onTravel: TravelRecorder | undefined = input.onTravel && ((action) => {
+    moved = true;
+    input.onTravel?.(action);
+  });
   const onToolCall = (event: ToolCallEvent) => {
     telemetry.onToolCall(event);
     if (event.toolName === READ_PERIOD_TOOL_NAME && event.status === 'complete' && isReadPeriodReading(event.result)) readings.push(readPeriodGrounding(event.result, input.language));
@@ -293,8 +330,8 @@ export async function* runChatTurn(input: ChatTurnInput): AsyncGenerator<string>
     config: input.config,
     ...(contextTokens !== undefined ? { contextTokens } : {}),
     messages,
-    tools: turnTools(input, pin, status.starts),
-    answer: chatAnswerSpec(() => ({ readings }), { voice: input.mode, language: input.language }),
+    tools: turnTools({ ...input, ...(onTravel ? { onTravel } : {}) }, pin, status.starts),
+    answer: withoutFalseMoveClaim(chatAnswerSpec(() => ({ readings }), { voice: input.mode, language: input.language }), () => moved),
     readFirst: pin !== undefined,
     now,
     signal: input.signal,

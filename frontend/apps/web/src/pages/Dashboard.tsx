@@ -380,6 +380,7 @@ export default function DashboardPage() {
         labels: chatStatusLabels(t),
         onStatus: ask.onStatus,
         ...(ask.onTravel ? { onTravel: ask.onTravel } : {}),
+        ...(ask.pendingTravel ? { pendingTravel: ask.pendingTravel } : {}),
         ...(ask.onToolCall ? { onToolCall: ask.onToolCall } : {}),
       })) {
         answer = noted(snapshot);
