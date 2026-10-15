@@ -28,6 +28,7 @@ import { birthMetaFromDetails, planProfileSave, type ProfileSavePlan } from './p
 import { suggestBirthplaceZone } from './utcZoneRepair';
 import { saveTimeConfidence, type TimeConfidenceSaveResult } from './saveTimeConfidence';
 import { RegenerationConfirmModal } from '../../components/features/settings/RegenerationConfirmModal';
+import { CurrentPlaceRow } from '../../components/features/settings/CurrentPlaceRow';
 import {
   BirthTimeComparison,
   type CandidateReading,
@@ -931,6 +932,9 @@ export default function ProfileSettings() {
 
         {error && <p role="alert" className="text-status-error text-sm mt-2">{error}</p>}
       </form>
+
+      {/* Where they live now: saved on pick, outside the birth-details form (no chart regeneration). */}
+      <CurrentPlaceRow />
 
       {/* Modal */}
       <RegenerationConfirmModal

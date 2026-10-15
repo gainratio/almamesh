@@ -126,7 +126,8 @@
       "cancel": "Cancel",
       "where_question": "Where were you living then?",
       "where_question_day": "Where were you that day?",
-      "where_suggestion": "Use {{place}} (your birth place)"
+      "where_suggestion": "Use {{place}} (your birth place)",
+      "where_home": "Use {{place}} (where you live now)"
     },
     "banner": {
       "about": "answers are about this period",

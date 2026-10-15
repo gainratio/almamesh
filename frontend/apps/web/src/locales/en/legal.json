@@ -68,7 +68,7 @@
     "s1_sub1_li1_label": "Profile Names",
     "s1_sub1_li1_text": "Names you save for charts — stored only in this browser, never sent to us",
     "s1_sub1_li2_label": "Birth Details",
-    "s1_sub1_li2_text": "Date, time, and place of birth, used on-device to compute your chart and stored only in this browser",
+    "s1_sub1_li2_text": "Date, time, and place of birth, used on-device to compute your chart, and where you live now if you add it in Profile settings; all stored only in this browser",
     "s1_sub1_li3_label": "Chat Content",
     "s1_sub1_li3_text": "Questions and interpretations are stored in this browser; when you use optional AI, the prompt is also sent to your chosen provider as described below",
     "s1_sub2_heading": "Where It Lives",

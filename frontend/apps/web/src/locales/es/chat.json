@@ -129,7 +129,8 @@
       "cancel": "Cancelar",
       "where_question": "¿Dónde vivías entonces?",
       "where_question_day": "¿Dónde estabas ese día?",
-      "where_suggestion": "Usar {{place}} (tu lugar de nacimiento)"
+      "where_suggestion": "Usar {{place}} (tu lugar de nacimiento)",
+      "where_home": "Usar {{place}} (donde vives ahora)"
     },
     "banner": {
       "about": "las respuestas son sobre este periodo",
