@@ -27,16 +27,16 @@ describe('chat i18n parity', () => {
   it('es matches en keys', () => expect(keys(es).sort()).toEqual(keys(en).sort()));
   it('pt matches en keys', () => expect(keys(pt).sort()).toEqual(keys(en).sort()));
 
-  // The coded-error keys the chat + reading surfaces render must exist in EVERY
-  // language, or an offline non-English user hits a raw i18n key on a 401/429/5xx.
+  // The app-copy error keys (the catalog's i18nKey targets) must exist in EVERY
+  // language, or an offline non-English user hits a raw i18n key. 429 and 5xx
+  // use the es/pt sentences shipped by @gainratio/errors (see lib/errors.test.ts).
   it('carries every coded AI-error key in all three languages', () => {
     for (const catalog of [en, es, pt]) {
       for (const key of [
         'insufficient_credits',
         'auth_failed',
         'model_unavailable',
-        'rate_limited',
-        'server_error',
+        'reasoning_timeout',
         'endpoint_unreachable',
         'request_failed',
         'privacy_blocked',

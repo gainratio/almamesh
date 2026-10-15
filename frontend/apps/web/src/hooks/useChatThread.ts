@@ -43,7 +43,7 @@ import { noteIfStaleChunk, StaleAppError, useAppStale } from '../lib/appStale';
 import { indexChatMessage, retrieveContext } from '../lib/chatMemory';
 import { isChunkLoadError } from '../lib/chunkError';
 import type { ChatToolCall } from '../lib/chatTurn';
-import { chatErrorMessage, getChatErrorMessage, privacyBlockedMessage } from '../lib/errors';
+import { aiErrorText, chatErrorMessage, getChatErrorMessage, privacyBlockedMessage } from '../lib/errors';
 import { LLM_SETTINGS_CHANGED_EVENT } from '../lib/llmSettingsEvents';
 import { PERIOD_TOOL_SUMMARIZERS } from '../lib/periodReading';
 import { asOfKey } from '../lib/pinnedPeriod';
@@ -230,7 +230,7 @@ export const CHAT_STREAM_ERROR_COPY: Readonly<
   ReasoningTimeoutError: (error) => chatErrorMessage(error),
   // `fetch` throws a TypeError when the endpoint is unreachable — a mapped,
   // actionable cause even though it carries no custom class.
-  TypeError: () => i18n.t('chat:errors.endpoint_unreachable'),
+  TypeError: () => aiErrorText('net.unreachable'),
 };
 
 /** A failed lazy chunk is an app update, never an AI failure (it is often a TypeError too). */

@@ -644,7 +644,7 @@ describe('useChatThread', () => {
     expect(bubble.error).toBe(true);
     // A provider 5xx is out of the user's control — say so and say "try again",
     // never send them to re-check a model/endpoint that is configured correctly.
-    expect(bubble.content).toBe(i18n.t('chat:errors.server_error'));
+    expect(bubble.content).toBe("The AI provider had a server error. Try again shortly.");
     expect(bubble.content).not.toContain('QA_001');
   });
 
@@ -736,7 +736,7 @@ describe('describeChatStreamError — coded messages per HTTP status (live-bug f
   it('a 429 shows the rate-limited copy', () => {
     expect(
       describeChatStreamError(new LlmRequestError('LLM endpoint returned 429 Too Many Requests', { status: 429 })),
-    ).toBe(i18n.t('chat:errors.rate_limited'));
+    ).toBe("The AI provider is rate-limiting requests. Wait a moment and try again.");
   });
 
   it('a 404 dead model still shows the model-unavailable copy (regression guard)', () => {
@@ -759,6 +759,6 @@ describe('describeChatStreamError — coded messages per HTTP status (live-bug f
   it('a 500 shows the server-error copy', () => {
     expect(
       describeChatStreamError(new LlmRequestError('LLM endpoint returned 500', { status: 500 })),
-    ).toBe(i18n.t('chat:errors.server_error'));
+    ).toBe("The AI provider had a server error. Try again shortly.");
   });
 });

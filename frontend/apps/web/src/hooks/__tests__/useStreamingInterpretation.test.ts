@@ -686,7 +686,7 @@ describe('useStreamingInterpretation (structured, store-backed)', () => {
     });
 
     await waitFor(() => expect(result.current.status).toBe('error'));
-    expect(result.current.error).toBe(i18n.t('chat:errors.rate_limited'));
+    expect(result.current.error).toBe("The AI provider is rate-limiting requests. Wait a moment and try again.");
   });
 
   // CONTRACT REVERSED (was: "verbatim"): the fence's English log message leaked
