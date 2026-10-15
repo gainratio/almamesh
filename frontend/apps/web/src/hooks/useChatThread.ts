@@ -222,6 +222,9 @@ export const CHAT_STREAM_ERROR_COPY: Readonly<
   // message mapper: 402 → billing, 401/403 → bad key, 404/bad-slug → dead model,
   // 429 → rate limited, 5xx → provider outage, else → retry/settings guidance.
   LlmRequestError: (error) => chatErrorMessage(error),
+  // The 180 s reasoning cap: a subclass of LlmRequestError, but the map is keyed by name, so
+  // without this entry it fell to the generic QA_001 (real drive, 2026-10-15).
+  ReasoningTimeoutError: (error) => chatErrorMessage(error),
   // `fetch` throws a TypeError when the endpoint is unreachable — a mapped,
   // actionable cause even though it carries no custom class.
   TypeError: () => i18n.t('chat:errors.endpoint_unreachable'),
