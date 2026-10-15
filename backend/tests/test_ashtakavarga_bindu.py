@@ -84,3 +84,34 @@ def test_should_be_deterministic_when_recomputed(reference_ashtakavarga) -> None
     again = compute_ashtakavarga(natal)
     # Then the SAV is byte-identical (deterministic engine)
     assert again.model_dump() == reference_ashtakavarga.model_dump()
+
+
+# --- Moon BAV from Jupiter (BPHS) ------------------------------------------------------
+# BPHS gives the Moon's benefic places from Jupiter as {1,4,7,8,10,11,12} (confirmed in
+# B.V. Raman, VedAstro and M.S. Mehta). A table listing (1,2,4,7,8,10,11) has the same count
+# of seven, so the per-planet totals and the 337 above cannot see the swap of 12 for 2.
+_BPHS_MOON_FROM_JUPITER = (1, 4, 7, 8, 10, 11, 12)
+# Indira Gandhi, 19 Nov 1917, 23:11 IST, Allahabad 25.45N 81.85E (Rodden AA): Cancer lagna,
+# Moon in Capricorn, Jupiter in Taurus. Aries is 12th from Jupiter, Gemini 2nd.
+_INDIRA = datetime(1917, 11, 19, 23, 11, tzinfo=_IST)
+_ARIES, _GEMINI = ZodiacSign.ARIES, ZodiacSign.GEMINI
+
+
+def test_should_list_bphs_moon_places_from_jupiter() -> None:
+    # Given the canonical tables
+    # Then the Moon's places from Jupiter are the BPHS row
+    assert BINDU_TABLES[PlanetName.MOON][PlanetName.JUPITER] == _BPHS_MOON_FROM_JUPITER
+
+
+def test_should_match_hand_derived_moon_bav_and_sav_when_chart_is_indira_gandhi() -> None:
+    # Given Indira Gandhi's natal chart
+    natal = calculate_sidereal_context(_INDIRA, 25.45, 81.85, reference_date=_INDIRA)
+    # When Ashtakavarga is computed
+    av = compute_ashtakavarga(natal)
+    # Then Moon BAV Aries is 5 (Jupiter's 12th counts), SAV Aries 33 and SAV Gemini 24
+    observed = (
+        av.bhinna[PlanetName.MOON].bindus[_ARIES],
+        av.sarva.bindus[_ARIES],
+        av.sarva.bindus[_GEMINI],
+    )
+    assert observed == (5, 33, 24)

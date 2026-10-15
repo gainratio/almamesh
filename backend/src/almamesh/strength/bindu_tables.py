@@ -46,7 +46,7 @@ _RAW: Final[dict[PlanetName, dict[PlanetName | str, tuple[int, ...]]]] = {
         PlanetName.MOON: (1, 3, 6, 7, 10, 11),
         PlanetName.MARS: (2, 3, 5, 6, 9, 10, 11),
         PlanetName.MERCURY: (1, 3, 4, 5, 7, 8, 10, 11),
-        PlanetName.JUPITER: (1, 2, 4, 7, 8, 10, 11),
+        PlanetName.JUPITER: (1, 4, 7, 8, 10, 11, 12),
         PlanetName.VENUS: (3, 4, 5, 7, 9, 10, 11),
         PlanetName.SATURN: (3, 5, 6, 11),
         LAGNA_CONTRIBUTOR: (3, 6, 10, 11),

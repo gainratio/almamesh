@@ -443,7 +443,7 @@
       "retro": true,
       "from_moon": 12,
       "from_lagna": 2,
-      "sav": 22,
+      "sav": 21,
       "bav": null,
       "tags": [
         "rahu_from_moon_12"
@@ -494,7 +494,7 @@
       "sign": "cancer",
       "from_moon": 12,
       "from_lagna": 2,
-      "sav": 22,
+      "sav": 21,
       "bav": null,
       "retro": true
     },
@@ -719,7 +719,7 @@
       ],
       "direction": "mixed",
       "strength": "strong",
-      "strength_pct": 50,
+      "strength_pct": 51,
       "confidence": "medium",
       "agreement": {
         "vimshottari": true,
@@ -794,7 +794,7 @@
       ],
       "direction": "mixed",
       "strength": "strong",
-      "strength_pct": 51,
+      "strength_pct": 50,
       "confidence": "low",
       "agreement": {
         "vimshottari": true,
@@ -804,7 +804,7 @@
       "factors": [
         "Ketu (pratyantar) occupies the 2nd",
         "Moon (pratyantar) rules the 2nd",
-        "Jupiter strength is 51% (strong)"
+        "Jupiter strength is 50% (strong)"
       ],
       "windows": [
         {

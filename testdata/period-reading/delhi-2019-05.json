@@ -411,7 +411,7 @@
       ],
       "direction": "mixed",
       "strength": "strong",
-      "strength_pct": 50,
+      "strength_pct": 51,
       "confidence": "medium",
       "agreement": {
         "vimshottari": true,
@@ -453,7 +453,7 @@
       ],
       "direction": "supportive",
       "strength": "strong",
-      "strength_pct": 51,
+      "strength_pct": 50,
       "confidence": "low",
       "agreement": {
         "vimshottari": false,
@@ -461,7 +461,7 @@
         "transit": false
       },
       "factors": [
-        "Jupiter strength is 51% (strong)"
+        "Jupiter strength is 50% (strong)"
       ],
       "windows": []
     }
