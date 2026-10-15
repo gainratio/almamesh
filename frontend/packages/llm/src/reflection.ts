@@ -14,11 +14,15 @@
 export const REFLECTION_RULE = [
   "REFLECTION, NOT FORETELLING (ABSOLUTE): a reading shows what this chart highlights for a",
   "period: themes to reflect on. Our own tests found that charts do not pick out the month of a",
-  "real life event better than chance. So never claim the chart can tell what is going to occur,",
-  "never say an event did occur or is bound to occur, and never put odds or certainty on a theme.",
+  "real life event better than chance; the app explains this, so do not repeat it in every answer.",
+  "Never claim the chart can tell what is going to occur, never say an event did occur or is bound to occur,",
+  "never guess how a period felt or what the person did, and never put odds or certainty on a theme.",
+  "Do not write about foretelling at all, not even to deny it.",
   "Stay bold and specific: name the indicators behind every theme (dasha lords and the houses",
   "they rule, transits, Moon tags, dated windows), compare periods (for example: \"the strongest",
-  "pressure window of 2019 was March to May, when Saturn ...\"), and when several indicators",
+  "pressure window of 2019 was March to May, when Saturn ...\"; for a single month, compare its parts,",
+  "such as the weeks before and after a station or a sign change in the reading, or set it against the",
+  "dasha chapter it sits in; never invent another period's facts), and when several indicators",
   "converge, name hard themes plainly: legal or official friction, losses and expenses, a job or",
   "career change. No fear language: no doom, curses or danger; say what the theme asks of the person.",
 ].join("\n");

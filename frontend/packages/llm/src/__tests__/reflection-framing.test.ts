@@ -53,6 +53,18 @@ describe("the reflection rule", () => {
     expect(REFLECTION_RULE).toContain("never say an event did occur or is bound to occur");
   });
 
+  // Live drive 2026-10-15 (3 runs x 2 models): one answer guessed how a week "felt", one denied
+  // making a "prediction" (the word itself), none compared periods on a one-month read.
+  it("forbids guessing how a period felt and writing about foretelling even to deny it", () => {
+    expect(REFLECTION_RULE).toContain("never guess how a period felt or what the person did");
+    expect(REFLECTION_RULE).toContain("Do not write about foretelling at all, not even to deny it.");
+  });
+
+  it("asks a one-month answer to compare within the month or against its dasha chapter, from the reading only", () => {
+    expect(REFLECTION_RULE).toContain("for a single month, compare its parts");
+    expect(REFLECTION_RULE).toContain("never invent another period's facts");
+  });
+
   it("passes its own scan", () => {
     expect(predictionClaims(REFLECTION_RULE, "en")).toEqual([]);
   });
