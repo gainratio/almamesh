@@ -59,7 +59,7 @@ function options(fetchImpl: typeof fetch, rounds: RoundEvent[], overrides: Parti
     config: CONFIG,
     messages: [{ role: "system", content: "System." }, { role: "user", content: QUESTION }],
     tools: [readTool()],
-    answer: { schema: Answer, render: (partial) => partial.headline ?? "" },
+    answer: { schema: Answer, render: (partial) => String(partial.headline ?? "") },
     readFirst: false,
     now: NOW,
     fetchImpl,
