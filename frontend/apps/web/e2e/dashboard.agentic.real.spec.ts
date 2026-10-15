@@ -426,6 +426,8 @@ test('[real] dashboard: timer + life phase + exact-day agentic chat', async ({
   }
 });
 
+const TURN_WAIT_MS = 330_000;
+
 test('[real] dashboard: September 2017 tool movement, grounded outlook today, and tool return', async ({ page }) => {
   const key = process.env.OPENROUTER_API_KEY;
   test.skip(!key, 'OPENROUTER_API_KEY not set');
@@ -457,8 +459,10 @@ test('[real] dashboard: September 2017 tool movement, grounded outlook today, an
     await page.getByTestId('chat-input').fill(question);
     await page.getByTestId('chat-send-button').click();
     await expect.poll(() => observed.length, { timeout: 180_000 }).toBeGreaterThan(before);
-    // Disabled for the whole stream AND the final answer/pin persistence barrier.
-    await expect(page.getByTestId('time-travel-button')).toBeEnabled({ timeout: 240_000 });
+    // Disabled for the whole stream AND the final answer/pin persistence barrier. The wait outlasts the
+    // app's own per-turn model ceiling (TURN_MODEL_TIME_CEILING_MS = 300 s in packages/llm/src/toolLoop.ts),
+    // so a stalled provider surfaces as the app's error bubble instead of a bare "still disabled".
+    await expect(page.getByTestId('time-travel-button')).toBeEnabled({ timeout: TURN_WAIT_MS });
     const turn = observed.slice(before);
     await test.info().attach(`turn ${question.slice(0, 40)}`, { body: turnTranscript(turn), contentType: 'text/plain' });
     console.log(`[turn] ${question.slice(0, 40)}\n${turnTranscript(turn)}`);
