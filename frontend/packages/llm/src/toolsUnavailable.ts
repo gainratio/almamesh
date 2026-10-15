@@ -30,12 +30,31 @@ export const TOOLS_UNAVAILABLE_NOTICE =
   "Your AI provider does not support chat tools. I can interpret the verified local facts already supplied, " +
   "but cannot run additional tools or change the selected date this turn.\n\n";
 
-/** A 400/404/422 whose body (or message) says the endpoint does not do tools. */
+/** The refusal's text: a 400/404/422 body (or message), else undefined. */
+function refusalDetail(error: unknown): string | undefined {
+  if (!(error instanceof LlmRequestError)) return undefined;
+  if (![400, 404, 422].includes(error.status ?? 0)) return undefined;
+  return error.body ?? error.message;
+}
+
+/**
+ * A 400/404/422 whose body (or message) says the endpoint does not do tools. OpenRouter's
+ * "No endpoints found that support tool use" counts.
+ */
 export function explicitlyRejectsTools(error: unknown): boolean {
-  if (!(error instanceof LlmRequestError)) return false;
-  if (![400, 404, 422].includes(error.status ?? 0)) return false;
-  const detail = error.body ?? error.message;
+  const detail = refusalDetail(error);
+  if (detail === undefined) return false;
   const namesCapability = /\b(?:tool|tools|function|functions|tool_choice|tool_calls)\b|enable-auto-tool-choice/i;
-  const namesRejection = /unsupported|not supported|unknown|invalid|requires?|enable/i;
+  const namesRejection = /unsupported|not supported|unknown|invalid|requires?|enable|no endpoints found that support/i;
   return namesCapability.test(detail) && namesRejection.test(detail);
+}
+
+/**
+ * A 400/404/422 that refuses the `tool_choice` value (e.g. "required"), not tools themselves:
+ * OpenRouter's "No endpoints found that support the provided 'tool_choice' value", "tool_choice
+ * is not supported", "Unknown parameter: tool_choice". The turn reruns under "auto".
+ */
+export function refusesToolChoice(error: unknown): boolean {
+  const detail = refusalDetail(error);
+  return detail !== undefined && /\btool_choice\b/i.test(detail) && /support|unknown|invalid|requires?/i.test(detail);
 }

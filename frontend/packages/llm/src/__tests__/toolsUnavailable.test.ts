@@ -5,7 +5,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { LlmRequestError } from "../client";
-import { explicitlyRejectsTools, TOOLS_UNAVAILABLE_INSTRUCTION, TOOLS_UNAVAILABLE_NOTICE } from "../toolsUnavailable";
+import { explicitlyRejectsTools, refusesToolChoice, TOOLS_UNAVAILABLE_INSTRUCTION, TOOLS_UNAVAILABLE_NOTICE } from "../toolsUnavailable";
 
 const source = (file: string): string => readFileSync(resolve(import.meta.dirname, "..", file), "utf8");
 
@@ -14,6 +14,7 @@ describe("explicitlyRejectsTools", () => {
     [400, "tools are not supported by this model", true],
     [404, "Unknown parameter: tool_choice", true],
     [422, "--enable-auto-tool-choice is required", true],
+    [404, "No endpoints found that support tool use.", true],
     [400, "context length exceeded", false],
     [500, "tools are not supported", false],
   ])("status %i with %j -> %s", (status, body, expected) => {
@@ -34,6 +35,23 @@ describe("explicitlyRejectsTools", () => {
         "but cannot run additional tools or change the selected date this turn.\n\n",
     );
     expect(TOOLS_UNAVAILABLE_INSTRUCTION.startsWith("LOCAL TOOLS ARE UNAVAILABLE for this turn.")).toBe(true);
+  });
+});
+
+describe("refusesToolChoice: the tool_choice value is refused, not tools", () => {
+  it.each([
+    [404, "No endpoints found that support the provided 'tool_choice' value.", true],
+    [400, "tool_choice is not supported", true],
+    [404, "Unknown parameter: tool_choice", true],
+    [422, "--enable-auto-tool-choice is required", false],
+    [400, "tools are not supported by this model", false],
+    [500, "tool_choice is not supported", false],
+  ])("status %i with %j -> %s", (status, body, expected) => {
+    expect(refusesToolChoice(new LlmRequestError("x", { status, body }))).toBe(expected);
+  });
+
+  it("is false for anything but an LlmRequestError", () => {
+    expect(refusesToolChoice(new Error("tool_choice is not supported"))).toBe(false);
   });
 });
 

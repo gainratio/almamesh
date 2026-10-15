@@ -479,6 +479,44 @@ describe("rule 8: answer streaming and the prose fallback", () => {
   });
 });
 
+describe("rule 9a: an endpoint that refuses tool_choice \"required\" (but does tools)", () => {
+  const OPENROUTER_404: FakeTurn = {
+    status: 404,
+    errorBody: '{"error":{"message":"No endpoints found that support the provided \'tool_choice\' value.","code":404}}',
+  };
+  const NOT_SUPPORTED_400: FakeTurn = { status: 400, errorBody: "tool_choice is not supported" };
+
+  it.each([
+    ["OpenRouter's 404", OPENROUTER_404],
+    ["a 400 'tool_choice is not supported'", NOT_SUPPORTED_400],
+  ])("%s: reruns the turn under \"auto\" with every tool, answer included", async (_name, refusal) => {
+    const { fetchImpl, requests } = fakeEndpoint([refusal, read("r1"), answer("a1")]);
+    const { snapshots, result } = await collect(runToolTurn(options(fetchImpl)));
+    expect(requests[0].body.tool_choice).toBe("required");
+    expect(requests[1].body.tool_choice).toBe("auto");
+    expect(toolsOf(requests[1]).map((t) => t.function.name).sort()).toEqual(["answer", "read_period"]);
+    expect(requests[2].body.tool_choice).toBe("auto");
+    expect(snapshots.some((s) => s.includes(TOOLS_UNAVAILABLE_NOTICE.trim()))).toBe(false);
+    expect(snapshots.at(-1)).toBe(FINAL);
+    expect(result).toEqual({ answer: { headline: "Venus rises", body: "Steady work." } });
+  });
+
+  it("a trip turn under \"auto\" still reads first: answer is hidden until a read completes", async () => {
+    const { fetchImpl, requests } = fakeEndpoint([OPENROUTER_404, read("r1"), answer("a1")]);
+    await collect(runToolTurn(options(fetchImpl, { readFirst: true })));
+    expect(requests[1].body.tool_choice).toBe("auto");
+    expect(toolsOf(requests[1]).map((t) => t.function.name)).toEqual(["read_period"]);
+    expect(toolsOf(requests[2]).map((t) => t.function.name)).toContain("answer");
+  });
+
+  it("the last round under \"auto\" offers only the answer tool (no named tool_choice)", async () => {
+    const { fetchImpl, requests } = fakeEndpoint([NOT_SUPPORTED_400, read("r1"), answer("a1")]);
+    await collect(runToolTurn(options(fetchImpl, { limits: { maxRounds: 2 } })));
+    expect(requests[2].body.tool_choice).toBe("auto");
+    expect(toolsOf(requests[2]).map((t) => t.function.name)).toEqual(["answer"]);
+  });
+});
+
 describe("rule 9: an endpoint that rejects tools", () => {
   it("yields the notice, then answers without tools from the supplied facts", async () => {
     const reject: FakeTurn = { status: 400, errorBody: '{"error":{"message":"tools are not supported by this model"}}' };
@@ -491,6 +529,32 @@ describe("rule 9: an endpoint that rejects tools", () => {
     expect(messagesOf(requests[1])[0]).toEqual({ role: "system", content: TOOLS_UNAVAILABLE_INSTRUCTION });
     expect(result).toEqual({ answer: undefined });
     expect(o.statuses.at(-1)).toEqual({ phase: "complete" });
+  });
+
+  it("tools refused after a tool_choice rerun also degrade to the notice", async () => {
+    const refusedChoice: FakeTurn = { status: 404, errorBody: "Unknown parameter: tool_choice" };
+    const { fetchImpl, requests } = fakeEndpoint([refusedChoice, refusedChoice, { text: "From the facts: Venus." }]);
+    const { snapshots } = await collect(runToolTurn(options(fetchImpl)));
+    expect(requests[1].body.tool_choice).toBe("auto");
+    expect(snapshots.at(-1)).toBe(`${TOOLS_UNAVAILABLE_NOTICE}From the facts: Venus.`);
+  });
+
+  it("OpenRouter's 'No endpoints found that support tool use' is a tools refusal", async () => {
+    const reject: FakeTurn = { status: 404, errorBody: '{"error":{"message":"No endpoints found that support tool use.","code":404}}' };
+    const { fetchImpl } = fakeEndpoint([reject, { text: "From the facts: Venus." }]);
+    const { snapshots } = await collect(runToolTurn(options(fetchImpl)));
+    expect(snapshots[0]).toBe(TOOLS_UNAVAILABLE_NOTICE);
+  });
+
+  it("the tools-unavailable request drops the prompt's TOOLS line (it says to call answer)", async () => {
+    const reject: FakeTurn = { status: 400, errorBody: "tools are not supported by this model" };
+    const { fetchImpl, requests } = fakeEndpoint([reject, { text: "From the facts: Venus." }]);
+    const system = "You are kind.\nNOW: today is Monday.\nTOOLS: read_period reads any span. Finish every turn by calling answer.";
+    await collect(runToolTurn(options(fetchImpl, { messages: [{ role: "system", content: system }, { role: "user", content: "Hi" }] })));
+    const sent = messagesOf(requests[1]).map((m) => String(m.content)).join("\n");
+    expect(sent).toContain("NOW: today is Monday.");
+    expect(sent).not.toContain("TOOLS:");
+    expect(sent).not.toMatch(/calling answer/);
   });
 
   it("does not degrade on an unrelated 400", async () => {
@@ -819,7 +883,7 @@ describe("error branches", () => {
   });
 
   it("a stalled prose stream after a tools rejection hits the reasoning cap", async () => {
-    const reject: FakeTurn = { status: 400, errorBody: "tool_choice is not supported" };
+    const reject: FakeTurn = { status: 400, errorBody: "tools are not supported" };
     const { fetchImpl } = fakeEndpoint([reject, { hang: true }]);
     const failure = await collect(runToolTurn(options(fetchImpl, { reasoningTimeoutMs: 50 }))).catch((e: unknown) => e);
     expect(failure).toBeInstanceOf(ReasoningTimeoutError);

@@ -49,6 +49,7 @@ import { calibratedEstimate, estimateRequestTokens, turnTokenBudget, type TokenC
 import { CHAT_REASONING_MAX_TOKENS, REASONING_TIMEOUT_MS, ReasoningTimeoutError } from "./reasoning";
 import {
   explicitlyRejectsTools,
+  refusesToolChoice,
   TOOLS_UNAVAILABLE_INSTRUCTION,
   TOOLS_UNAVAILABLE_NOTICE,
   type AgentStatusEvent,
@@ -406,6 +407,15 @@ interface TurnContext {
   readonly fill: AnswerFill;
   readonly providerOptions: ProviderOptions;
   readonly budget: TurnBudget;
+  readonly choice: ChoiceMode;
+}
+
+/**
+ * How the turn asks for a tool call: "required" (and a named `answer` to close), until the
+ * endpoint refuses that value in round 1; then "auto", with the round's tools narrowed instead.
+ */
+interface ChoiceMode {
+  mode: "required" | "auto";
 }
 
 /** The turn's context budget and what it needs to size each request. */
@@ -586,6 +596,7 @@ function turnContext<A>(o: RunToolTurnOptions<A>): TurnContext {
     fill,
     providerOptions: { [PROVIDER_NAME]: isOpenRouter(o.config) ? { reasoning: { max_tokens: CHAT_REASONING_MAX_TOKENS } } : {} },
     budget: turnBudget(o),
+    choice: { mode: "required" },
   };
 }
 
@@ -682,9 +693,16 @@ function send(budget: TurnBudget, round: number, plan: RequestPlan, step: StepPl
   return step;
 }
 
+/** Only the answer tool, named where the endpoint takes a named tool_choice, else under "auto". */
+function answerOnly(ctx: TurnContext): StepPlan {
+  if (ctx.choice.mode === "auto") return { toolChoice: "auto", activeTools: [ANSWER_TOOL_NAME] };
+  return { toolChoice: { type: "tool", toolName: ANSWER_TOOL_NAME }, activeTools: [ANSWER_TOOL_NAME] };
+}
+
 /** The budget closed the turn: answer now, with only the answer tool; the newest results go compact only if they must. */
-function forcedAnswer(budget: TurnBudget, round: number, messages: readonly ModelMessage[]): StepPlan {
-  const force = { toolChoice: { type: "tool", toolName: ANSWER_TOOL_NAME }, activeTools: [ANSWER_TOOL_NAME] } as const;
+function forcedAnswer(ctx: TurnContext, round: number, messages: readonly ModelMessage[]): StepPlan {
+  const { budget } = ctx;
+  const force = answerOnly(ctx);
   const noted = withBudgetNote(messages);
   const lean = compactMessages(budget, noted, true);
   const plan = planOf(budget, lean, [ANSWER_TOOL_NAME]);
@@ -700,7 +718,7 @@ function forcedAnswer(budget: TurnBudget, round: number, messages: readonly Mode
  */
 function fitStep(ctx: TurnContext, round: number, messages: readonly ModelMessage[], choice: StepPlan, readFirst: boolean): StepPlan {
   const { budget } = ctx;
-  if (budget.closed) return forcedAnswer(budget, round, messages);
+  if (budget.closed) return forcedAnswer(ctx, round, messages);
   const tools = (choice.activeTools as readonly string[] | undefined) ?? [...budget.definitions.keys()];
   const full = planOf(budget, messages, tools);
   if (full.estimate <= budget.limit) return send(budget, round, full, choice);
@@ -708,7 +726,7 @@ function fitStep(ctx: TurnContext, round: number, messages: readonly ModelMessag
   const lean = planOf(budget, older, tools);
   if (lean.estimate <= budget.limit || mustReadFirst(ctx, readFirst)) return send(budget, round, lean, { ...choice, messages: older });
   budget.closed = true;
-  return forcedAnswer(budget, round, messages);
+  return forcedAnswer(ctx, round, messages);
 }
 
 /** Calibrate later estimates by the provider's count for `round`, paired with that round's own plan. */
@@ -747,9 +765,10 @@ function mustReadFirst(ctx: TurnContext, readFirst: boolean): boolean {
 
 /** Tool choice for a 1-based round of the whole turn; the last round always forces the answer. */
 function roundChoice(round: number, ctx: TurnContext, readFirst: boolean): StepPlan {
-  if (round >= ctx.maxRounds) return { toolChoice: { type: "tool", toolName: ANSWER_TOOL_NAME } };
-  if (mustReadFirst(ctx, readFirst)) return { toolChoice: "required", activeTools: ctx.readTools };
-  return { toolChoice: "required" };
+  if (round >= ctx.maxRounds) return ctx.choice.mode === "auto" ? answerOnly(ctx) : { toolChoice: { type: "tool", toolName: ANSWER_TOOL_NAME } };
+  const toolChoice = ctx.choice.mode;
+  if (mustReadFirst(ctx, readFirst)) return { toolChoice, activeTools: ctx.readTools };
+  return { toolChoice };
 }
 
 /** "a", "a or b", "a, b or c". */
@@ -1056,11 +1075,19 @@ async function* proseFallback<A>(o: RunToolTurnOptions<A>, ctx: TurnContext, sta
   return { answer: undefined };
 }
 
+/** A system prompt's "TOOLS: …" line: it names the tools and says to call answer, untrue with no tools. */
+const TOOLS_PROMPT_LINE = /^TOOLS:.*(?:\n|$)/gm;
+
+function withoutToolsLine(message: ModelMessage): ModelMessage {
+  if (message.role !== "system") return message;
+  return { ...message, content: message.content.replace(TOOLS_PROMPT_LINE, "").trimEnd() };
+}
+
 async function* toolsUnavailable<A>(o: RunToolTurnOptions<A>, ctx: TurnContext): AsyncGenerator<string, ToolTurnResult<A>> {
   o.onStatus?.({ phase: "answering" });
   yield TOOLS_UNAVAILABLE_NOTICE;
   yield* proseSnapshots(ctx, TOOLS_UNAVAILABLE_NOTICE, {
-    messages: [{ role: "system", content: TOOLS_UNAVAILABLE_INSTRUCTION }, ...ctx.messages],
+    messages: [{ role: "system", content: TOOLS_UNAVAILABLE_INSTRUCTION }, ...ctx.messages.map(withoutToolsLine)],
   });
   o.onStatus?.({ phase: "complete" });
   return { answer: undefined };
@@ -1070,6 +1097,28 @@ async function* toolsUnavailable<A>(o: RunToolTurnOptions<A>, ctx: TurnContext):
 // Entry point
 // ---------------------------------------------------------------------------
 
+/** Nothing reached the user yet and no round finished: the turn can still change course. */
+function untouched(state: TurnState): boolean {
+  return state.finishedRounds === 0 && !state.yielded;
+}
+
+/** The endpoint does not do tools: under "auto" a refused tool_choice means that too. */
+function toolsRefused(ctx: TurnContext, error: unknown): boolean {
+  return explicitlyRejectsTools(error) || (ctx.choice.mode === "auto" && refusesToolChoice(error));
+}
+
+/** The tool rounds; a round-1 refusal of tool_choice "required" reruns them once under "auto". */
+async function* toolRounds<A>(o: RunToolTurnOptions<A>, ctx: TurnContext, state: TurnState): AsyncGenerator<string, ModelMessage[]> {
+  try {
+    return yield* runRounds(o, ctx, state);
+  } catch (error) {
+    if (!untouched(state) || ctx.choice.mode === "auto" || !refusesToolChoice(error)) throw error;
+  }
+  ctx.choice.mode = "auto";
+  Object.assign(state, newState());
+  return yield* runRounds(o, ctx, state);
+}
+
 /** Yields full markdown snapshots of the answer as it streams; the last one is the validated answer. */
 export async function* runToolTurn<A>(o: RunToolTurnOptions<A>): AsyncGenerator<string, ToolTurnResult<A>> {
   ensurePrivacy(o.config);
@@ -1078,9 +1127,9 @@ export async function* runToolTurn<A>(o: RunToolTurnOptions<A>): AsyncGenerator<
   try {
     let history: ModelMessage[];
     try {
-      history = yield* runRounds(o, ctx, state);
+      history = yield* toolRounds(o, ctx, state);
     } catch (error) {
-      if (state.finishedRounds > 0 || state.yielded || !explicitlyRejectsTools(error)) throw error;
+      if (!untouched(state) || !toolsRefused(ctx, error)) throw error;
       return yield* toolsUnavailable(o, ctx);
     }
     if (state.answerInput === undefined) return yield* proseFallback(o, ctx, state, history);
