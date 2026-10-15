@@ -15,8 +15,13 @@ export interface DialogProps {
   className?: string;
 }
 
+interface CloseButtonProps {
+  readonly label: string;
+  readonly onClose: () => void;
+}
+
 /** The visible way out: a 44px target, labelled, in the panel's top corner. */
-function CloseButton({ label, onClose }: { label: string; onClose: () => void }) {
+function CloseButton({ label, onClose }: CloseButtonProps) {
   return (
     <button
       type="button"
