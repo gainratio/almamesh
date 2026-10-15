@@ -5,13 +5,14 @@ import { describe, expect, it, vi } from "vitest";
 
 import { LlmRequestError } from "../client";
 import type { ProviderConfig } from "../config";
-import { ReasoningTimeoutError } from "../reasoning";
+import { REASONING_TIMEOUT_MS, ReasoningTimeoutError } from "../reasoning";
 import {
   ANSWER_TOOL_DESCRIPTION,
   NETWORK_RETRY_DELAY_MS,
   TOOL_LOOP_LIMITS,
   TOOL_TIMEOUT_MS,
   TOOLS_UNAVAILABLE_INSTRUCTION,
+  TURN_MODEL_TIME_CEILING_MS,
   TOOLS_UNAVAILABLE_NOTICE,
   defineTool,
   runToolTurn,
@@ -984,6 +985,65 @@ describe("error branches", () => {
     const failure = await collect(runToolTurn(options(fetchImpl, { tools: asTools(stop), signal: controller.signal }))).catch((e: unknown) => e);
     expect(failure).toBeInstanceOf(DOMException);
     expect(failure).toMatchObject({ name: "AbortError" });
+  });
+
+  // Real drive 2026-10-15: deepseek-v4-pro streamed reasoning for about 95 s, then sent its whole
+  // answer call in one burst at 121 s; on a slower provider that crossed the 180 s cap. The
+  // watchdog catches a stalled stream, not a slow thinker: every streamed part, reasoning
+  // included, is progress; 180 s of silence is a stall; 300 s of model time ends a runaway.
+  describe("the stall watchdog", () => {
+    const timed = async <T,>(run: () => Promise<T>, ms: number): Promise<T> => {
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+      try {
+        const pending = run();
+        await vi.advanceTimersByTimeAsync(ms);
+        return await pending;
+      } finally {
+        vi.useRealTimers();
+      }
+    };
+
+    it("pins the windows: 180 s of silence, 300 s of model time a turn", () => {
+      expect([REASONING_TIMEOUT_MS, TURN_MODEL_TIME_CEILING_MS]).toEqual([180_000, 300_000]);
+    });
+
+    it("200 s of streamed reasoning, then the answer, succeeds", async () => {
+      const slow: FakeTurn = { ...answer("a1"), reasoning: { forMs: 200_000, everyMs: 10_000 } };
+      const { fetchImpl } = fakeEndpoint([slow]);
+      const result = await timed(() => collect(runToolTurn(options(fetchImpl))).then((r) => r.result), 201_000);
+      expect(result).toEqual({ answer: { headline: "Venus rises", body: "Steady work." } });
+    });
+
+    it("a stream that goes silent past the idle window fails with the timeout", async () => {
+      const silent: FakeTurn = { ...answer("a1"), reasoning: { forMs: 10_000, everyMs: 10_000, thenSilent: true } };
+      const { fetchImpl } = fakeEndpoint([silent]);
+      const failure = await timed(() => collect(runToolTurn(options(fetchImpl))).catch((e: unknown) => e), 10_000 + REASONING_TIMEOUT_MS + 1_000);
+      expect(failure).toBeInstanceOf(ReasoningTimeoutError);
+      expect((failure as Error).message).toContain("180s");
+    });
+
+    it("a runaway that keeps reasoning still ends at the 300 s ceiling", async () => {
+      const runaway: FakeTurn = { ...answer("a1"), reasoning: { forMs: 3_600_000, everyMs: 10_000 } };
+      const { fetchImpl } = fakeEndpoint([runaway]);
+      const failure = await timed(() => collect(runToolTurn(options(fetchImpl))).catch((e: unknown) => e), TURN_MODEL_TIME_CEILING_MS + 1_000);
+      expect(failure).toBeInstanceOf(ReasoningTimeoutError);
+      expect((failure as Error).message).toContain("300s");
+    });
+
+    it("the ceiling counts model time only: a slow tool between two long rounds does not end the turn", async () => {
+      const slowRead = defineTool<{ readonly start: string }>({
+        name: "read_period",
+        description: "Read a period.",
+        input: z.object({ start: z.string() }),
+        timeoutMs: 150_000,
+        execute: () => new Promise((resolve) => setTimeout(() => resolve({ period: "2019" }), 140_000)),
+      });
+      const first: FakeTurn = { calls: [call("r1", "read_period", '{"start":"2019"}')], reasoning: { forMs: 120_000, everyMs: 10_000 } };
+      const second: FakeTurn = { ...answer("a1"), reasoning: { forMs: 120_000, everyMs: 10_000 } };
+      const { fetchImpl } = fakeEndpoint([first, second]);
+      const result = await timed(() => collect(runToolTurn(options(fetchImpl, { tools: asTools(slowRead) }))).then((r) => r.result), 400_000);
+      expect(result).toEqual({ answer: { headline: "Venus rises", body: "Steady work." } });
+    });
   });
 
   it("a request that never answers at all also hits the reasoning cap", async () => {

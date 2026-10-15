@@ -30,6 +30,11 @@ export interface FakeTurn {
   readonly hangFetch?: boolean;
   /** Fail like a network error (no HTTP status): a browser's or Node's fetch. */
   readonly networkError?: "browser" | "safari" | "node";
+  /**
+   * Stream OpenRouter `reasoning` deltas every `everyMs` for `forMs` (timers, so fake timers drive
+   * it), then the turn's content; or, with `thenSilent`, nothing more until the request is aborted.
+   */
+  readonly reasoning?: { readonly forMs: number; readonly everyMs: number; readonly thenSilent?: boolean };
 }
 
 export interface RecordedRequest {
@@ -101,7 +106,34 @@ function heldOpenResponse(turn: FakeTurn, signal: AbortSignal | null | undefined
   return new Response(body, { headers: { "content-type": "text/event-stream" } });
 }
 
+function reasoningResponse(turn: FakeTurn, signal: AbortSignal | null | undefined): Response {
+  const { forMs, everyMs, thenSilent } = turn.reasoning!;
+  const encoder = new TextEncoder();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      signal?.addEventListener("abort", () => {
+        clearTimeout(timer);
+        controller.error(signal.reason);
+      });
+      const tick = (elapsed: number): void => {
+        if (elapsed < forMs) {
+          controller.enqueue(encoder.encode(frame([chunk({ reasoning: "Weighing the dashas. " })])));
+          timer = setTimeout(() => tick(elapsed + everyMs), everyMs);
+          return;
+        }
+        if (thenSilent) return;
+        controller.enqueue(encoder.encode(sseBody(turn)));
+        controller.close();
+      };
+      tick(0);
+    },
+  });
+  return new Response(body, { headers: { "content-type": "text/event-stream" } });
+}
+
 function respond(turn: FakeTurn, init: RequestInit | undefined): Response {
+  if (turn.reasoning) return reasoningResponse(turn, init?.signal);
   if (turn.hang) return hangingResponse(init?.signal);
   if (turn.holdOpen) return heldOpenResponse(turn, init?.signal);
   if (turn.status) {

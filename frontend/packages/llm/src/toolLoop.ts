@@ -161,7 +161,7 @@ export interface RunToolTurnOptions<A> {
   readonly signal?: AbortSignal;
   readonly fetchImpl?: typeof fetch;
   readonly limits?: ToolLoopLimits;
-  /** Runaway-reasoning cap per request (default REASONING_TIMEOUT_MS). */
+  /** Stall window: this long with no streamed part (reasoning included) aborts (default REASONING_TIMEOUT_MS). */
   readonly reasoningTimeoutMs?: number;
   onStatus?(e: AgentStatusEvent): void;
   onToolCall?(e: ToolCallEvent): void;
@@ -183,6 +183,9 @@ export const TOOL_LOOP_LIMITS = Object.freeze({
 });
 
 export const TOOL_TIMEOUT_MS = Object.freeze({ default: 2_000, max: 150_000 });
+
+/** A turn's model time (requests open, tools excluded) ends here, however steadily it streams. */
+export const TURN_MODEL_TIME_CEILING_MS = 300_000;
 
 /** The system line of a turn the context budget closed. */
 export const BUDGET_INSTRUCTION =
@@ -255,25 +258,53 @@ function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/** Cancels a request that has produced no answer text or tool call for `ms`. */
-class ReasoningWatchdog {
+/**
+ * Catches a stalled stream, not a slow thinker (real drive 2026-10-15: deepseek-v4-pro reasoned
+ * for about 95 s, then sent its whole answer call at 121 s; a slower provider crossed the old
+ * "no answer text in 180 s" cap). While a request is open, every streamed part, reasoning
+ * included, restarts the idle window; `idleMs` of silence aborts. Model time (requests open, not
+ * tools running: they have their own timeouts) is capped at `ceilingMs` a turn, so a runaway
+ * that keeps reasoning still ends. Both abort with a ReasoningTimeoutError.
+ */
+class StallWatchdog {
   private readonly controller = new AbortController();
-  private timer: ReturnType<typeof setTimeout> | undefined;
+  private idle: ReturnType<typeof setTimeout> | undefined;
+  private ceiling: ReturnType<typeof setTimeout> | undefined;
+  private openedAt: number | undefined;
+  private usedMs = 0;
 
-  constructor(private readonly ms: number) {}
+  constructor(private readonly idleMs: number, private readonly ceilingMs: number) {}
 
   get signal(): AbortSignal {
     return this.controller.signal;
   }
 
-  arm(): void {
-    this.disarm();
-    this.timer = setTimeout(() => this.controller.abort(new ReasoningTimeoutError(this.ms)), this.ms);
+  /** A request opened: model time runs and the idle window starts. */
+  start(): void {
+    if (this.openedAt === undefined) {
+      this.openedAt = Date.now();
+      this.ceiling = setTimeout(() => this.abort(this.ceilingMs), Math.max(0, this.ceilingMs - this.usedMs));
+    }
+    this.touch();
   }
 
-  disarm(): void {
-    clearTimeout(this.timer);
-    this.timer = undefined;
+  /** A streamed part arrived: the stream is alive. */
+  touch(): void {
+    if (this.openedAt === undefined) return;
+    clearTimeout(this.idle);
+    this.idle = setTimeout(() => this.abort(this.idleMs), this.idleMs);
+  }
+
+  /** Tools run, or the turn ends: model time stops. */
+  pause(): void {
+    if (this.openedAt !== undefined) this.usedMs += Date.now() - this.openedAt;
+    this.openedAt = undefined;
+    clearTimeout(this.idle);
+    clearTimeout(this.ceiling);
+  }
+
+  private abort(ms: number): void {
+    this.controller.abort(new ReasoningTimeoutError(ms));
   }
 }
 
@@ -431,7 +462,7 @@ interface TurnContext {
   readonly signal: AbortSignal;
   /** Aborted when the turn ends for any reason, so an abandoned generator stops its request and tools. */
   readonly cancel: AbortController;
-  readonly watchdog: ReasoningWatchdog;
+  readonly watchdog: StallWatchdog;
   readonly reads: ReadProgress;
   readonly fill: AnswerFill;
   readonly providerOptions: ProviderOptions;
@@ -607,7 +638,7 @@ function turnBudget<A>(o: RunToolTurnOptions<A>): TurnBudget {
 }
 
 function turnContext<A>(o: RunToolTurnOptions<A>): TurnContext {
-  const watchdog = new ReasoningWatchdog(o.reasoningTimeoutMs ?? REASONING_TIMEOUT_MS);
+  const watchdog = new StallWatchdog(o.reasoningTimeoutMs ?? REASONING_TIMEOUT_MS, TURN_MODEL_TIME_CEILING_MS);
   const cancel = new AbortController();
   const signal = AbortSignal.any([cancel.signal, watchdog.signal, ...(o.signal ? [o.signal] : [])]);
   const reads: ReadProgress = { completed: false };
@@ -963,7 +994,7 @@ function onFinishStep<A>(part: PartOf<"finish-step">, o: RunToolTurnOptions<A>, 
   const finishReason = state.stepWroteText ? "text_instead_of_tool" : part.finishReason;
   const usage = roundBudget(ctx.budget, state.round, part.usage.inputTokens);
   o.onRound?.({ round: state.round, inputTokens: part.usage.inputTokens, outputTokens: part.usage.outputTokens, finishReason, ...usage });
-  ctx.watchdog.arm(); // the next request starts now
+  ctx.watchdog.start(); // the next request starts now
 }
 
 /**
@@ -976,18 +1007,13 @@ async function onPart<A>(part: Part, o: RunToolTurnOptions<A>, ctx: TurnContext,
     case "start-step":
       onStartStep(o, state);
       return undefined;
-    case "text-delta":
-      ctx.watchdog.disarm();
-      return undefined;
     case "tool-input-start":
-      ctx.watchdog.disarm();
       onToolInputStart(part, o, state);
       return undefined;
     case "tool-input-delta":
-      ctx.watchdog.disarm();
       return answerSnapshot(part, o, state);
     case "tool-call":
-      ctx.watchdog.disarm();
+      ctx.watchdog.pause(); // the tool runs now, under its own timeout
       onToolCall(part, o, ctx, state);
       return undefined;
     case "tool-error":
@@ -1018,8 +1044,9 @@ async function* streamRounds<A>(o: RunToolTurnOptions<A>, ctx: TurnContext, stat
       return planRound(ctx, round, steps.at(-1)?.usage.inputTokens, step, choice, o.readFirst);
     },
   });
-  ctx.watchdog.arm();
+  ctx.watchdog.start();
   for await (const part of result.fullStream) {
+    ctx.watchdog.touch();
     if (isTextInsteadOfTool(part)) {
       state.stepWroteText = true;
       continue;
@@ -1031,6 +1058,7 @@ async function* streamRounds<A>(o: RunToolTurnOptions<A>, ctx: TurnContext, stat
     state.yielded = true;
     yield snapshot;
   }
+  ctx.watchdog.pause();
   // Every step's messages: `response.messages` is the last step's only (AI SDK 7).
   return state.answerInput === undefined ? await result.responseMessages : [];
 }
@@ -1089,22 +1117,23 @@ async function* proseSnapshots(ctx: TurnContext, prefix: string, request: ProseR
     messages: request.messages,
     ...(request.tools ? { tools: request.tools, toolChoice: "none" as const } : {}),
   });
-  ctx.watchdog.arm();
+  ctx.watchdog.start();
   let text = "";
   let shown = "";
   let finished: PartOf<"finish-step"> | undefined;
   for await (const part of result.fullStream) {
+    ctx.watchdog.touch();
     const failed = failure(part, ctx);
     if (failed !== undefined) throw failed;
     if (part.type === "finish-step") finished = part;
     if (part.type !== "text-delta") continue;
-    ctx.watchdog.disarm();
     text += part.text;
     const clean = visibleProse(text, false);
     if (clean === shown) continue;
     shown = clean;
     yield prefix + clean;
   }
+  ctx.watchdog.pause();
   const final = visibleProse(text, true);
   if (!final.trim()) throw new LlmRequestError(EMPTY_COMPLETION);
   if (final !== shown) yield prefix + final;
@@ -1201,7 +1230,7 @@ export async function* runToolTurn<A>(o: RunToolTurnOptions<A>): AsyncGenerator<
     o.onStatus?.({ phase: "complete" });
     return { answer };
   } finally {
-    ctx.watchdog.disarm();
+    ctx.watchdog.pause();
     ctx.cancel.abort(); // an early return() must not leave the request or a tool running
   }
 }
