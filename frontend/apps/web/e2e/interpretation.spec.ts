@@ -238,7 +238,7 @@ test('[contract/stubbed] interpretation populates from the stubbed LLM on the da
   await expect(summary).toBeVisible({ timeout: 60_000 });
   await expect(page.getByTestId('reading-section')).toBeVisible();
 
-  // The Life Atlas renders all seven domain cards immediately — in the honest
+  // The Life Atlas renders every domain card immediately — in the honest
   // pending state here (no predictive compute was requested in this test).
   await expect(page.getByTestId('life-atlas')).toBeVisible();
   await expect(page.getByTestId('life-atlas-card-career')).toBeVisible();

@@ -610,7 +610,7 @@ export interface LifeDomainForecastData {
   upcoming_windows: DomainWindowData[];
 }
 
-/** All seven life-domain forecasts for one chart + instant. */
+/** Every life-domain forecast (one per `LifeDomain`) for one chart + instant. */
 export interface DomainsCtx {
   instant: string;
   forecasts: Record<LifeDomain, LifeDomainForecastData>;

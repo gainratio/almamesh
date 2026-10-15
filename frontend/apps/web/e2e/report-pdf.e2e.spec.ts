@@ -9,6 +9,7 @@ import { PREDICTIVE_PERSIST_VERSION } from '../../../packages/store/src/predicti
 import type { SiderealChart } from '@almamesh/browser/types';
 import type { DivisionalChartId, VargaCtxFull } from '@almamesh/shared-types';
 import { FOUNDER_DASHAS } from '../src/test/dashaFixtures';
+import { LIFE_DOMAINS } from '../src/lib/lifeAtlas';
 import {
   DOMAINS_CTX,
   STRENGTH_CTX,
@@ -1441,8 +1442,8 @@ test('REAL onboarding -> rectify -> offline reload -> predictive PDF is correct'
     });
   expect(
     avowStatuses.filter((status) => status === 'verified'),
-    'all seven fresh-boot domain receipts must verify before export',
-  ).toHaveLength(7);
+    `all ${LIFE_DOMAINS.length} fresh-boot domain receipts must verify before export`,
+  ).toHaveLength(LIFE_DOMAINS.length);
   expect(
     avowStatuses.filter((status) => status === 'failed'),
     'a fresh-boot report must contain no failed domain proof',
@@ -1453,8 +1454,8 @@ test('REAL onboarding -> rectify -> offline reload -> predictive PDF is correct'
   ).toHaveLength(0);
   expect(
     avowStatuses,
-    'the report must contain exactly one proof outcome for each of seven life domains',
-  ).toHaveLength(7);
+    `the report must contain exactly one proof outcome for each of the ${LIFE_DOMAINS.length} life domains`,
+  ).toHaveLength(LIFE_DOMAINS.length);
   expect(flatPdfText, 'the Avow claim must explicitly exclude correctness and identity').toContain(
     'not correctness or identity',
   );

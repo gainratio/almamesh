@@ -9,7 +9,7 @@
  *   b. "Sky & Timing" header link -> /predictive -> honest elapsed-time loading
  *      -> real ~35s+ compute -> Transits tab (Gochara + Sade Sati + timeline)
  *   c. Divisional Charts tab (D10 kundli), Strength tab (SAV 337),
- *      Life Domains tab (7 domain cards with windows)
+ *      Life Domains tab (one card with windows per life domain)
  *   d. dasha display: current maha + antar + pratyantar (dashboard) and the
  *      julian_365_25 convention (report)
  *   e. /report full-reload -> report-predictive-pending affordance -> compute
@@ -32,6 +32,7 @@ import { Buffer } from 'node:buffer'
 import { chromium } from '@playwright/test'
 import { chartDayReferenceInstant } from './predictiveReference.mjs'
 import { confirmLegacyBackupImport } from './confirmLegacyBackupImport.mjs'
+import { LIFE_DOMAINS } from './lifeDomains.mjs'
 
 const BASE_URL = process.argv[2] ?? 'http://localhost:4173'
 const PROOF_DIR = '/tmp/almamesh-proof-wave-d'
@@ -419,15 +420,15 @@ async function main() {
     `savTotal="${savTotal.replace(/\n/g, ' ')}" shadbalaTable=${shadbalaOk} -> ${p4}`,
   )
 
-  // ---- (c3) Life Domains tab -> 7 domain cards with windows ----
+  // ---- (c3) Life Domains tab -> one domain card with windows per life domain ----
   await clickTab(page, 'Life Domains')
   await page.waitForSelector('[data-testid="domains-panel"]', { timeout: 15_000 })
   const domainCards = await page.locator('[data-testid^="domain-card-"]').count()
   const windowBlocks = await page.locator('[data-testid^="domain-windows-"]').count()
   const p5 = await shot(page, '05-domains.png', true)
   record(
-    'C3 — Life Domains tab: 7 domain cards with timed windows',
-    domainCards === 7 && windowBlocks === 7,
+    `C3 — Life Domains tab: ${LIFE_DOMAINS.length} domain cards with timed windows`,
+    domainCards === LIFE_DOMAINS.length && windowBlocks === LIFE_DOMAINS.length,
     `domainCards=${domainCards} windowBlocks=${windowBlocks} -> ${p5}`,
   )
 
