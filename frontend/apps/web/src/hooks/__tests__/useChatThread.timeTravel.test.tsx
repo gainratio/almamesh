@@ -1,6 +1,7 @@
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { useChartLibraryStore, useChatStore, type StoredChart } from '@almamesh/store';
+import { CHAT_PERSIST_VERSION, migrateChatPersistedState, useChartLibraryStore, useChatStore, type StoredChart } from '@almamesh/store';
+import type { ChatMessagePart } from '@almamesh/shared-types';
 
 const llm = vi.hoisted(() => ({ configured: true }));
 vi.mock('@almamesh/llm', async (importOriginal) => ({
@@ -562,5 +563,59 @@ describe('chat tool actions apply after a successful durable turn', () => {
     expect(result.current.threadId).toBe(fallback);
     expect(useTimeTravelStore.getState().moments[PROFILE]).toEqual(YEAR);
     expect(result.current.isStreaming).toBe(false);
+  });
+});
+
+// Re-grade of PR #366 (2026-10-15): the pending move was read from the user's text, so "Take me to
+// the part about marriage" opened the travel gate for the next turn, and it survived a reload. It is
+// now read from the saved travel result only: a reload keeps a real needs_place call pending (that is
+// the saved thread), and nothing else.
+describe('the pending move is read from the saved thread, across a reload', () => {
+  const NEEDS_PLACE: ChatMessagePart = {
+    type: 'tool-call', toolCallId: 'c1', toolName: 'travel', args: { to: '2019-05', place: null }, status: 'complete',
+    result: { status: 'needs_place', ask: 'Ask where the user lived (or will be) then.' },
+  };
+
+  /** Saves a two-message thread, then reloads the store from its persisted JSON. */
+  function savedThenReloaded(request: string, answer: string, parts?: readonly ChatMessagePart[]) {
+    const store = useChatStore.getState();
+    const tid = store.ensureThread(PROFILE, CHART);
+    store.appendMessage(tid, 'user', request);
+    store.appendMessage(tid, 'assistant', answer, parts ? { parts } : undefined);
+    const { threads, messages, summaries } = useChatStore.getState();
+    useChatStore.setState({ threads: {}, messages: {}, summaries: {} });
+    useChatStore.setState(migrateChatPersistedState(JSON.parse(JSON.stringify({ threads, messages, summaries })), CHAT_PERSIST_VERSION));
+  }
+
+  async function pendingOnNextTurn(): Promise<ChatStreamInput['pendingTravel']> {
+    const { result } = renderHook(() => useChatThread(PROFILE, CHART));
+    const stream = vi.fn(async (_input: ChatStreamInput) => 'Noted.');
+    await act(() => result.current.submit('Delhi', stream));
+    return stream.mock.calls[0]?.[0].pendingTravel;
+  }
+
+  it.each([
+    'Take me to the part about marriage',
+    'Llévame a la sección de carrera',
+    'Me leva para a parte do casamento',
+    'Two options: move to Lisbon in 2027, or stay. Which is better?',
+    'take me to May 2019',
+  ])('"%s" answered with no travel call: nothing pending after a reload', async (request) => {
+    savedThenReloaded(request, 'Where were you then?');
+    expect(await pendingOnNextTurn()).toBeUndefined();
+  });
+
+  it('a saved needs_place travel call is pending after a reload, bound to its `to`', async () => {
+    savedThenReloaded('take me to May 2019', 'Where did you live in May 2019?', [NEEDS_PLACE, { type: 'text', text: 'Where did you live in May 2019?' }]);
+    expect(await pendingOnNextTurn()).toEqual({ kind: 'pending_travel', to: '2019-05' });
+  });
+
+  it('it expires after exactly the next user turn', async () => {
+    savedThenReloaded('take me to May 2019', 'Where did you live in May 2019?', [NEEDS_PLACE]);
+    const { result } = renderHook(() => useChatThread(PROFILE, CHART));
+    const stream = vi.fn(async (_input: ChatStreamInput) => 'Noted.');
+    await act(() => result.current.submit('Delhi', stream));
+    await act(() => result.current.submit('How was work?', stream));
+    expect(stream.mock.calls.map(([input]) => input.pendingTravel)).toEqual([{ kind: 'pending_travel', to: '2019-05' }, undefined]);
   });
 });

@@ -155,58 +155,102 @@ describe('runChatTurn: a trip turn reads first', () => {
 
 // Northstar on PR #366 (2026-10-15): "take me to May 2019" -> travel needed a place -> the model
 // asked where -> "Delhi" named no move, so the travel gate refused it and the trip never happened.
-// The saved thread carries the pending request for one user turn; the place answer finishes it.
+// Re-grade (2026-10-15): the pending move was an unbound grant read from the user's text. It is now
+// the saved needs_place result of turn 1's travel call, and it finishes only that call's `to`.
 describe('runChatTurn: a trip asked for over two turns', () => {
   const DELHI = { summary: { place_ref: 'city:delhi', label: 'New Delhi, Delhi, India', timezone: 'Asia/Kolkata' }, latitude: 28.6139, longitude: 77.209 };
-  const lookup = async (text: string): Promise<PlaceLookup> => (/delhi/i.test(text) ? { status: 'found', place: DELHI } : { status: 'not_found' });
-  const ASK = 'take me to May 2019';
+  const LISBON = { summary: { place_ref: 'city:lisbon', label: 'Lisbon, Portugal', timezone: 'Europe/Lisbon' }, latitude: 38.7223, longitude: -9.1393 };
+  const lookup = async (text: string): Promise<PlaceLookup> => {
+    if (/delhi/i.test(text)) return { status: 'found', place: DELHI };
+    return /lisbon/i.test(text) ? { status: 'found', place: LISBON } : { status: 'not_found' };
+  };
   const WHERE = 'Where did you live in May 2019?';
   const withLookup = (base: ChatTurnInput): ChatTurnInput => ({ ...base, seams: { ...base.seams, lookup } });
   const part = (row: ChatToolCall): ChatMessagePart => ({ type: 'tool-call', toolCallId: row.toolCallId, toolName: row.toolName, args: row.args, status: row.status, result: row.result });
   const saved = (role: ChatMessage['role'], content: string, parts?: readonly ChatMessagePart[]): ChatMessage =>
     ({ id: `${role}-${content}`, thread_id: 't1', role, content, created_at: '2026-10-15T00:00:00Z', ...(parts ? { parts } : {}) });
+  type Language = ChatTurnInput['language'];
 
   /** Turn 1 as the chat hook saves it: the request, then the answer with its tool-call parts. */
-  async function firstTurn(): Promise<{ readonly thread: readonly ChatMessage[]; readonly onTravel: ReturnType<typeof vi.fn> }> {
+  async function firstTurn(ask: string, language: Language, calls: Parameters<typeof endpoint>[0]): Promise<{ readonly thread: readonly ChatMessage[]; readonly onTravel: ReturnType<typeof vi.fn> }> {
     const rows: ChatToolCall[] = [];
     const onTravel = vi.fn();
-    const { fetchImpl } = endpoint([
-      { name: 'travel', args: { to: '2019-05', place: null } },
-      { name: 'answer', args: generalAnswer(WHERE) },
-    ]);
-    const snapshots = await drain(runChatTurn(withLookup(input(fetchImpl, { question: ASK, onTravel, onToolCall: (row) => rows.push(row) }))));
-    expect(rows.map((row) => [row.toolName, (row.result as { status?: string }).status])).toEqual([['travel', 'needs_place']]);
+    const { fetchImpl } = endpoint(calls);
+    const snapshots = await drain(runChatTurn(withLookup(input(fetchImpl, { question: ask, language, onTravel, onToolCall: (row) => rows.push(row) }))));
     const answer = snapshots.at(-1) ?? '';
-    return { thread: [saved('user', ASK), saved('assistant', answer, [...rows.map(part), { type: 'text', text: answer }])], onTravel };
+    return { thread: [saved('user', ask), saved('assistant', answer, [...rows.map(part), { type: 'text', text: answer }])], onTravel };
+  }
+  const askedWhere = (ask: string, language: Language) => firstTurn(ask, language, [
+    { name: 'travel', args: { to: '2019-05', place: null } },
+    { name: 'answer', args: generalAnswer(WHERE) },
+  ]);
+
+  /** Turn 2 on the saved thread: the pending move is read from it the way the chat hook reads it. */
+  async function secondTurn(thread: readonly ChatMessage[], reply: string, language: Language, travel: Record<string, unknown>) {
+    const onTravel = vi.fn();
+    const rows: ChatToolCall[] = [];
+    const { fetchImpl } = endpoint([{ name: 'travel', args: travel }, { name: 'answer', args: generalAnswer('Here you are.') }]);
+    const pendingTravel = pendingTravelIn(thread);
+    const history = thread.map(({ role, content }) => ({ role: role as 'user' | 'assistant', content }));
+    await drain(runChatTurn(withLookup(input(fetchImpl, { question: reply, language, history, onTravel, onToolCall: (row) => rows.push(row), ...(pendingTravel ? { pendingTravel } : {}) }))));
+    return { onTravel, travelResult: rows.find((row) => row.toolName === 'travel')?.result };
   }
 
-  it('turn 1 asks where and moves nothing; turn 2 ("Delhi") finishes the move to May 2019 in Delhi', async () => {
-    const first = await firstTurn();
+  it.each([
+    ['en', 'take me to May 2019'],
+    ['es', 'Llévame a mayo de 2019'],
+    ['pt', 'Me leve para maio de 2019'],
+  ] as const)('%s: turn 1 (%s) asks where and moves nothing; turn 2 ("Delhi") finishes the move to May 2019 in Delhi', async (language, ask) => {
+    const first = await askedWhere(ask, language);
     expect(first.onTravel).not.toHaveBeenCalled();
-    const pendingTravel = pendingTravelIn(first.thread);
-    expect(pendingTravel).toEqual({ kind: 'pending_travel', request: ASK });
+    expect(pendingTravelIn(first.thread)).toEqual({ kind: 'pending_travel', to: '2019-05' });
 
-    const onTravel = vi.fn();
-    const { fetchImpl } = endpoint([
-      { name: 'travel', args: { to: '2019-05', place: 'Delhi' } },
-      { name: 'answer', args: generalAnswer('Moving to May 2019 in New Delhi.') },
-    ]);
-    const history = first.thread.map(({ role, content }) => ({ role: role as 'user' | 'assistant', content }));
-    await drain(runChatTurn(withLookup(input(fetchImpl, { question: 'Delhi', history, onTravel, ...(pendingTravel ? { pendingTravel } : {}) }))));
+    const { onTravel } = await secondTurn(first.thread, 'Delhi', language, { to: '2019-05', place: 'Delhi' });
     expect(onTravel).toHaveBeenCalledTimes(1);
     expect(onTravel.mock.calls[0]?.[0]).toMatchObject({ kind: 'travel', asOf: { start: '2019-05-01', granularity: 'month', place: { label: 'New Delhi, Delhi, India' } } });
   });
 
-  it('without the pending request, "Delhi" asks no move: the call is refused and nothing moves', async () => {
-    const onTravel = vi.fn();
-    const rows: ChatToolCall[] = [];
-    const { fetchImpl } = endpoint([
-      { name: 'travel', args: { to: '2019-05', place: 'Delhi' } },
-      { name: 'answer', args: generalAnswer('Delhi it is.') },
-    ]);
-    await drain(runChatTurn(withLookup(input(fetchImpl, { question: 'Delhi', onTravel, onToolCall: (row) => rows.push(row) }))));
+  it.each([
+    ['a reply asking something else, with another year and place', "actually, what's my moon sign?", { to: '1990', place: 'Lisbon' }],
+    ['a reply asking something else, with the pending month', "what's my moon sign?", { to: '2019-05', place: 'Lisbon' }],
+    ['a place reply, with another month', 'Lisbon', { to: '1990-01', place: 'Lisbon' }],
+    ['a place reply, with back to today', 'Lisbon', { to: 'today', place: null }],
+    ['a place reply, with no place', 'Delhi', { to: '2019-05', place: null }],
+  ])('pending May 2019: %s is refused and nothing moves', async (_case, reply, travel) => {
+    const first = await askedWhere('take me to May 2019', 'en');
+    const { onTravel, travelResult } = await secondTurn(first.thread, reply, 'en', travel);
     expect(onTravel).not.toHaveBeenCalled();
-    expect(rows[0]?.result).toMatchObject({ status: 'refused', reason: 'not_asked' });
+    expect(travelResult).toMatchObject({ status: 'refused', reason: 'not_pending_move' });
+  });
+
+  it.each([
+    ['en', 'Take me to the part about marriage'],
+    ['en', 'Can you take me to my career reading?'],
+    ['es', 'Llévame a la sección de carrera'],
+    ['pt', 'Me leva para a parte do casamento'],
+    ['en', 'Two options: move to Lisbon in 2027, or stay. Which is better?'],
+    ['en', 'My boss said, go to Singapore in 2019. Was that a good call?'],
+  ] as const)('%s: "%s" answered without a travel call leaves nothing pending: "Delhi" next is refused', async (language, ask) => {
+    const first = await firstTurn(ask, language, [{ name: 'answer', args: generalAnswer('Where were you then?') }]);
+    expect(pendingTravelIn(first.thread)).toBeUndefined();
+    const { onTravel, travelResult } = await secondTurn(first.thread, 'Delhi', language, { to: '2019-05', place: 'Delhi' });
+    expect(onTravel).not.toHaveBeenCalled();
+    expect(travelResult).toMatchObject({ status: 'refused', reason: 'not_asked' });
+  });
+
+  it('a relocation question that calls travel anyway is refused on turn 1, so turn 2 has nothing pending', async () => {
+    const first = await firstTurn('I am torn: move to Lisbon in 2027 or stay?', 'en', [
+      { name: 'travel', args: { to: '2027', place: 'Lisbon' } },
+      { name: 'answer', args: generalAnswer('Lisbon in 2027 looks steady.') },
+    ]);
+    expect(first.onTravel).not.toHaveBeenCalled();
+    expect(pendingTravelIn(first.thread)).toBeUndefined();
+  });
+
+  it('without the pending request, "Delhi" asks no move: the call is refused and nothing moves', async () => {
+    const { onTravel, travelResult } = await secondTurn([], 'Delhi', 'en', { to: '2019-05', place: 'Delhi' });
+    expect(onTravel).not.toHaveBeenCalled();
+    expect(travelResult).toMatchObject({ status: 'refused', reason: 'not_asked' });
   });
 });
 

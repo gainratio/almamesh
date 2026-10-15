@@ -1,18 +1,27 @@
 /**
- * Does the user's message ask to MOVE this conversation (a time-travel trip, or back to today)?
- * The travel tool refuses a call on a turn that did not (travelTool.ts): a question about another
- * time, today included, is answered in place with read_period. dashboard.agentic.real 2026-10-15:
- * GPT Luna read today on "outlook today?" in a September 2017 trip, then travelled back to today.
+ * May this turn move the conversation (a time-travel trip, or back to today)? The travel tool
+ * refuses a call the turn was not granted (travelTool.ts): a question about another time, today
+ * included, is answered in place with read_period. dashboard.agentic.real 2026-10-15: GPT Luna
+ * read today on "outlook today?" in a September 2017 trip, then travelled back to today.
  *
- * Explicit requests only, in the three app languages, matched with accents dropped:
- *  - a move verb in command position ("take me to", "go back to", "let's go to", "can we go to",
- *    "llévame a", "vamos a", "volvamos a", "me leve para", "voltemos para") with a time;
- *  - leaving a trip ("leave this trip", "back to today", "get me out of here", "salir de este
- *    viaje", "sair desta viagem").
+ * Two grants, and only two:
+ *  1. the turn's own message asks to move (asksToTravel): any move;
+ *  2. the last answer's travel call returned needs_place (pendingTravelIn, read from the saved
+ *     tool result, never from text): only that same `to`, with a place, on exactly the next turn,
+ *     and only when the reply is a place answer (isPlaceReply).
+ *
+ * asksToTravel takes explicit requests only, in the three app languages, matched with accents
+ * dropped:
+ *  - "take me to" / "bring me to" with a time, a place may come first ("take me to Delhi in 2019");
+ *  - a bare move verb in command position ("go back to", "let's go to", "can we go to", "llévame
+ *    a", "vamos a", "volvamos a", "me leve para", "voltemos para") with the time right after it:
+ *    "move to Lisbon in 2027, or stay?" is a relocation, not a trip;
+ *  - leaving a trip ("leave this trip", "back to today", "take me home", "get me out of here",
+ *    "salir de este viaje", "sair desta viagem").
  * A verb after a subject or an auxiliary ("Did I go to", "Should I travel to", "Vou viajar para")
  * is the user's own life, not a request. A miss costs a refused call the model is told about.
  */
-import type { ChatMessage } from '@almamesh/shared-types';
+import type { ChatMessage, ChatToolCallPart } from '@almamesh/shared-types';
 
 /** Lower case, accents dropped, curly apostrophes straightened: "Lléveme" and "Lleveme" read alike. */
 function plain(text: string): string {
@@ -32,7 +41,10 @@ const TIME = `(?:\\d{4}|${MONTHS}|today|now|the present|hoy|ahora|(?:el )?presen
 const LEAD = String.raw`(?:^|[.!?;:,¿¡]\s*|\b(?:and|then|now|so|ok|okay|please|y|e|entonces|entao|por favor)\s+)` +
   String.raw`(?:(?:please|can you|could you|would you|will you|can we|could we|shall we|let's|lets|let us|puedes|podemos|pode|podemos)\s+)?`;
 
-const EN_VERB = String.raw`(?:(?:take|bring|send|get) (?:me|us)|go|jump|travel|time[- ]?travel|return|head|come|move)(?: back)?`;
+/** "Take me": a place may come before the time ("take me to Delhi in 2019"). */
+const EN_TAKE = String.raw`(?:(?:take|bring|send|get) (?:me|us)|time[- ]?travel)(?: back)?`;
+/** A bare move verb: the time comes right after "to", since "go to Singapore in 2019" is a trip in the user's life. */
+const EN_GO = String.raw`(?:go|jump|travel|return|head|come|move)(?: back)?`;
 /** "Let's go" forms and "take me": a place may come before the time ("vamos a Madrid en 2019"). */
 const ES_PT_LETS = String.raw`(?:(?:me|nos) (?:lleva|llevas|lleve|leva|levas|leve)|vamos|vayamos|volvamos|regresemos|viajemos|voltemos|regressemos)`;
 /** Single-person commands: the time comes first, since "viaje a Madrid en 2019" is also "viajé" with its accent dropped. */
@@ -49,7 +61,8 @@ const ATTACHED = String.raw`\b(?:llevame|llevanos|lleveme|llevenos|llevadme|leve
 
 /** A move with a time: "take me to May 2019", "llévame al 2019", "voltemos para 2019". */
 const MOVE_WITH_TIME: readonly RegExp[] = [
-  new RegExp(`${LEAD}${EN_VERB} to\\b.*\\b${TIME}\\b`),
+  new RegExp(`${LEAD}${EN_TAKE} to\\b.*\\b${TIME}\\b`),
+  new RegExp(`${LEAD}${EN_GO} to (?:the )?(?:year )?${TIME}\\b`),
   new RegExp(`${LEAD}${ES_PT_LETS}(?:${NEXT_TIME}|${PLACE_TIME})`),
   new RegExp(`${LEAD}${ES_PT_ONE}${NEXT_TIME}`),
   new RegExp(`${WANT}${NEXT_TIME}`),
@@ -63,6 +76,7 @@ const LEAVE_TRIP: readonly RegExp[] = [
   /\bback to (?:today|now|the present)\b/,
   /\b(?:leave|exit|end|quit|close|stop)(?: this| the| my)? (?:trip|time[- ]?travel)\b/,
   /\bget (?:me|us) out of (?:here|this trip|the trip)\b/,
+  new RegExp(`${LEAD}(?:take|bring|get|send) (?:me|us) (?:back )?home\\b`),
   new RegExp(`\\b(?:i'm|i am|im|we're|we are) done with (?:this trip|the trip|${TIME}\\b)`),
   /\b(?:salir|sal|salgamos|terminar|termina|terminemos|termine|acabar|acaba|cerrar|cierra|dejar|deja|dejemos)(?: de| del)?(?: este| el| mi| esta)? viaje\b/,
   /\b(?:sacame|sacanos) de aqui\b/,
@@ -72,44 +86,77 @@ const LEAVE_TRIP: readonly RegExp[] = [
   new RegExp(`\\bterminei com ${TIME}\\b`),
 ];
 
-/** A move with no time yet ("take me to Delhi"): the model asks when, and the answer finishes it. */
-const MOVE_WITHOUT_TIME: readonly RegExp[] = [
-  new RegExp(`${LEAD}(?:(?:take|bring|send) (?:me|us)|time[- ]?travel)(?: back)? to\\b`),
-  new RegExp(`${ATTACHED} ${PREP}\\b`),
-  new RegExp(`${LEAD}(?:me|nos) (?:lleva|llevas|lleve|leva|levas|leve) ${PREP}\\b`),
-];
-
 const matches = (patterns: readonly RegExp[], text: string) => patterns.some((pattern) => pattern.test(text));
 
+/**
+ * Only the first 500 characters are read: some patterns scan the rest of the text from every clause
+ * start, so an 80,000-character message took 4.7 s (re-grade of PR #366, 2026-10-15). A request
+ * past the cap is missed, and a miss costs a refused call.
+ */
+export const MAX_INTENT_CHARS = 500;
+
 export function asksToTravel(question: string): boolean {
-  const text = plain(question);
+  const text = plain(question.slice(0, MAX_INTENT_CHARS));
   return matches(MOVE_WITH_TIME, text) || matches(LEAVE_TRIP, text);
 }
 
 /**
- * A move the user asked for on the last turn that has not happened: the model asked where (or
- * when) instead. The answer to that question ("Delhi") names no move, so this turn may finish it.
- * Read from the thread's own saved messages; it expires after one user turn.
+ * The move the last answer left waiting on a place: its travel call returned needs_place and no
+ * move was queued. Read from the thread's saved tool result, never from text, so it survives a
+ * reload only when the call really happened. It expires after exactly one user turn (the next
+ * answer is the thread's last message then).
  */
 export interface PendingTravel {
   readonly kind: 'pending_travel';
-  /** The user's message that asked to move. */
-  readonly request: string;
+  /** The `to` of that call: the only move the next turn may finish. */
+  readonly to: string;
 }
 
-/** The travel tool's typed result status for a queued move (travelTool.ts TravelQueued). */
-function moveQueued(message: ChatMessage): boolean {
-  return (message.parts ?? []).some((part) =>
-    part.type === 'tool-call' && part.toolName === 'travel' && (part.result as { status?: unknown } | undefined)?.status === 'queued');
+/** travelTool.ts TRAVEL_TOOL_NAME (travelIntent.test.ts saves its rows under that name). Kept here so the chat hook does not load the tool. */
+const TRAVEL_TOOL = 'travel';
+
+function travelCalls(message: ChatMessage): readonly ChatToolCallPart[] {
+  return (message.parts ?? []).filter((part): part is ChatToolCallPart => part.type === 'tool-call' && part.toolName === TRAVEL_TOOL);
 }
 
-/** The pending move, when the thread ends on an answer to a move request that queued no move. */
+/** The typed status of a saved travel result (travelTool.ts TravelResult). */
+function resultStatus(call: ChatToolCallPart): unknown {
+  const { result } = call;
+  return typeof result === 'object' && result !== null ? (result as { readonly status?: unknown }).status : undefined;
+}
+
 export function pendingTravelIn(messages: readonly ChatMessage[]): PendingTravel | undefined {
   const answer = messages.at(-1);
-  const asked = messages.at(-2);
-  if (answer?.role !== 'assistant' || answer.error || asked?.role !== 'user' || moveQueued(answer)) return undefined;
-  const request = asked.content;
-  return asksToTravel(request) || matches(MOVE_WITHOUT_TIME, plain(request)) ? { kind: 'pending_travel', request } : undefined;
+  if (answer?.role !== 'assistant' || answer.error) return undefined;
+  const calls = travelCalls(answer);
+  const last = calls.at(-1);
+  if (last?.status !== 'complete' || resultStatus(last) !== 'needs_place' || calls.some((call) => resultStatus(call) === 'queued')) return undefined;
+  const { to } = last.args;
+  return typeof to === 'string' ? { kind: 'pending_travel', to } : undefined;
+}
+
+/**
+ * Does the reply to "where were you then?" answer it? Kept simple on purpose: a reply that ends in a
+ * question and does not name the place the model passes asks something else ("actually, what's my
+ * moon sign?"). Any other reply is taken as the place answer; the model still has to pass that
+ * place, with the pending `to` (travelTool.ts).
+ */
+export function isPlaceReply(reply: string, place: string): boolean {
+  const text = plain(reply).trim();
+  return !text.endsWith('?') || text.includes(plain(place).trim());
+}
+
+/** What this turn may do with travel. */
+export type TravelGrant =
+  /** The message asks to move: any move. */
+  | { readonly kind: 'asked' }
+  /** The message replies to a pending move: only `to`, with a place the reply answers. */
+  | { readonly kind: 'finish'; readonly to: string; readonly reply: string }
+  | { readonly kind: 'none' };
+
+export function travelGrant(question: string, pending: PendingTravel | undefined): TravelGrant {
+  if (asksToTravel(question)) return { kind: 'asked' };
+  return pending ? { kind: 'finish', to: pending.to, reply: question } : { kind: 'none' };
 }
 
 /**

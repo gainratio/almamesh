@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { PlaceLookup, ResolvedPlace } from '../geo/placeLookup';
 import { NO_PLACE_PICKER } from '../placePick';
 import { periodAsOfFromDraft } from '../timeTravelSheet';
-import { createTravelTool, TRAVEL_NEEDS_PLACE, TRAVEL_NOT_ASKED, TRAVEL_TOOL_NAME, type TravelArgs, type TravelToolInput } from '../travelTool';
+import { createTravelTool, TRAVEL_NEEDS_PLACE, TRAVEL_NOT_ASKED, TRAVEL_NOT_PENDING, TRAVEL_TOOL_NAME, type TravelArgs, type TravelToolInput } from '../travelTool';
 
 // ---------------------------------------------------------------------------
 // travel(to, place?) — chat tool layer redesign, 2026-10-14
@@ -26,7 +26,7 @@ function travelSetup(overrides: Partial<TravelToolInput> = {}) {
   const record = vi.fn();
   const lookup = vi.fn(lookupOf);
   const pick = vi.fn(async (): Promise<ResolvedPlace | undefined | typeof NO_PLACE_PICKER> => SPRINGFIELD_IL);
-  const tool = createTravelTool({ birthYear: 1990, language: 'en', record, threadPlace: undefined, homePlace: HOME, lookup, pick, travelAsked: true, ...overrides });
+  const tool = createTravelTool({ birthYear: 1990, language: 'en', record, threadPlace: undefined, homePlace: HOME, lookup, pick, grant: { kind: 'asked' }, ...overrides });
   return { tool, record, lookup, pick };
 }
 const go = (tool: ReturnType<typeof createTravelTool>, args: TravelArgs, signal = new AbortController().signal) =>
@@ -59,14 +59,14 @@ describe('travel: only an explicit request moves the conversation', () => {
     [{ to: 'today', place: null }],
     [{ to: '2019-05', place: 'Pune' }],
   ])('a turn that did not ask to move refuses %j and records nothing', async (args) => {
-    const { tool, record, lookup } = travelSetup({ travelAsked: false });
+    const { tool, record, lookup } = travelSetup({ grant: { kind: 'none' } });
     expect(await go(tool, args)).toEqual(TRAVEL_NOT_ASKED);
     expect(record).not.toHaveBeenCalled();
     expect(lookup).not.toHaveBeenCalled();
   });
 
   it('a turn that asked to move still moves', async () => {
-    const { tool, record } = travelSetup({ travelAsked: true });
+    const { tool, record } = travelSetup({ grant: { kind: 'asked' } });
     expect(await go(tool, { to: 'today', place: null })).toEqual({ status: 'queued', action: 'back_to_today' });
     expect(record).toHaveBeenCalledWith({ kind: 'back_to_today' });
   });
@@ -80,7 +80,45 @@ describe('travel: only an explicit request moves the conversation', () => {
 
   it('says so in its description: an explicit request only, else read_period', () => {
     const { tool } = travelSetup();
-    expect(tool.description).toContain('Only when the user asks to move ("take me to ...", "back to today") in this message, or the last one if you asked where; a question about another time, today included, is answered here with read_period.');
+    expect(tool.description).toContain('Only when the user asks to move ("take me to ...", "back to today") in this message, or names the place you asked for; a question about another time, today included, is answered here with read_period.');
+  });
+});
+
+// Re-grade of PR #366 (2026-10-15): a pending move granted ANY call on the next turn. With "take me
+// to June 2019" pending, the reply "what's my moon sign?" queued {to:"1990", place:"Lisbon"}, and
+// {to:"today"} queued a return. The grant is now bound: the same `to`, a place, a place answer.
+describe('travel: a reply to a pending move finishes only that move', () => {
+  const finish = (reply = 'Pune') => travelSetup({ grant: { kind: 'finish', to: '2019-05', reply } });
+
+  it('pins the refusal to its literal', () => {
+    expect(TRAVEL_NOT_PENDING).toEqual({
+      status: 'refused',
+      reason: 'not_pending_move',
+      note: 'This reply can only finish the move you asked a place for: the same "to" as that call, with the place the user just named. Nothing moved. Answer their message here; do not say the conversation moved or the trip ended.',
+    });
+  });
+
+  it.each(['Pune', 'Pune.', 'Pune?', 'I lived in Pune then'])('the same `to` with the place from %j queues the move', async (reply) => {
+    const { tool, record } = finish(reply);
+    expect(await go(tool, { to: '2019-05', place: 'Pune' })).toMatchObject({ status: 'queued', action: 'travel', place_label: 'Pune, India' });
+    expect(record).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['another year', 'Pune', { to: '1990', place: 'Pune' }],
+    ['the same year at another precision', 'Pune', { to: '2019', place: 'Pune' }],
+    ['another month', 'Pune', { to: '2019-06', place: 'Pune' }],
+    ['back to today', 'Pune', { to: 'today', place: null }],
+    ['back to today at home', 'Pune', { to: 'today', place: 'home' }],
+    ['no place', 'Pune', { to: '2019-05', place: null }],
+    ['a reply that asks something else', "actually, what's my moon sign?", { to: '2019-05', place: 'Pune' }],
+    ['a reply that asks something else (es)', '¿y mi carrera?', { to: '2019-05', place: 'Pune' }],
+    ['a reply that asks something else (pt)', 'e a minha carreira?', { to: '2019-05', place: 'Pune' }],
+  ])('%s is refused and records nothing', async (_case, reply, args) => {
+    const { tool, record, lookup } = finish(reply);
+    expect(await go(tool, args as TravelArgs)).toEqual(TRAVEL_NOT_PENDING);
+    expect(record).not.toHaveBeenCalled();
+    expect(lookup).not.toHaveBeenCalled();
   });
 });
 

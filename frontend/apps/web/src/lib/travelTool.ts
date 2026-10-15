@@ -9,6 +9,7 @@ import type { ChatThreadAsOf } from '@almamesh/shared-types';
 import { chatAsOfProblem } from '@almamesh/store';
 import { NEEDS_PLACE, OUTSIDE_RANGE, READ_PERIOD_TIMEOUT_MS, resolveChatPlace, type PlaceAsk, type PlaceOutcome, type PlaceResolverInput, type ReadPeriodAsk } from './readPeriod';
 import { formatPinLabel, periodAsOfFromDraft, type SheetDraft } from './timeTravelSheet';
+import { isPlaceReply, type TravelGrant } from './travelIntent';
 import { draftFromToolArgs, TIME_TRAVEL_STATUS_LABEL, TRAVEL_DATE_ERROR as DATE_ERROR, type TravelRecorder } from './travelSlot';
 
 export const TRAVEL_TOOL_NAME = 'travel';
@@ -23,8 +24,8 @@ export interface TravelToolInput extends PlaceResolverInput {
   readonly birthYear: number | undefined;
   readonly language: string;
   readonly record: TravelRecorder;
-  /** The turn's own message asks to move, or finishes a move the last turn asked for (travelIntent.ts); otherwise a call is refused. */
-  readonly travelAsked: boolean;
+  /** What this turn may move (travelIntent.ts travelGrant); a call outside it is refused. */
+  readonly grant: TravelGrant;
 }
 
 export interface TravelQueued {
@@ -35,10 +36,11 @@ export interface TravelQueued {
   readonly time_zone?: string;
 }
 
-/** A call on a turn whose message asked for no move: nothing moves, the model reads instead. */
+/** A call the turn was not granted: nothing moves, the model reads instead. */
 export interface TravelRefused {
   readonly status: 'refused';
-  readonly reason: 'not_asked';
+  /** not_asked: no move asked. not_pending_move: a reply to a pending move, but not that move. */
+  readonly reason: 'not_asked' | 'not_pending_move';
   readonly note: string;
 }
 
@@ -57,11 +59,29 @@ export const TRAVEL_NOT_ASKED: TravelRefused = {
   note: 'The user did not ask to move this conversation, so it stays where it is. Answer their question here: read the time they asked about with read_period. Do not say the conversation moved or the trip ended. If they want to move, they can use the Time travel control, or say "back to today" or "take me to May 2019".',
 };
 
+/**
+ * Re-grade of PR #366 (2026-10-15): with "take me to June 2019" pending, the reply "what's my moon
+ * sign?" queued {to:"1990", place:"Lisbon"}. A reply to a pending move finishes only that move.
+ */
+export const TRAVEL_NOT_PENDING: TravelRefused = {
+  status: 'refused',
+  reason: 'not_pending_move',
+  note: 'This reply can only finish the move you asked a place for: the same "to" as that call, with the place the user just named. Nothing moved. Answer their message here; do not say the conversation moved or the trip ended.',
+};
+
+/** The refusal for a call outside this turn's grant, or undefined when the grant covers it. */
+function refusalFor(grant: TravelGrant, args: TravelArgs): TravelRefused | undefined {
+  if (grant.kind === 'asked') return undefined;
+  if (grant.kind === 'none') return TRAVEL_NOT_ASKED;
+  const finishes = args.to === grant.to && args.place !== null && isPlaceReply(grant.reply, args.place);
+  return finishes ? undefined : TRAVEL_NOT_PENDING;
+}
+
 const TO = /^(today|\d{4}(-(0[1-9]|1[0-2])(-(0[1-9]|[12]\d|3[01]))?)?)$/;
 
 const DESCRIPTION = [
   'Move this conversation and the Dashboard to a day, month or year (a time-travel trip), or back to today.',
-  'Only when the user asks to move ("take me to ...", "back to today") in this message, or the last one if you asked where; a question about another time, today included, is answered here with read_period.',
+  'Only when the user asks to move ("take me to ...", "back to today") in this message, or names the place you asked for; a question about another time, today included, is answered here with read_period.',
   'The move happens after your answer. Call it at most once per turn.',
   'Examples: "take me to May 2019 in Vadodara" -> {"to":"2019-05","place":"Vadodara"}.',
   '"back to today" or "leave this trip" -> {"to":"today","place":null}.',
@@ -186,7 +206,8 @@ export function createTravelTool(input: TravelToolInput): ToolDef<TravelArgs> {
     // A trip turn reads before it answers; going back to today leaves nothing to read, only a confirmation.
     unlocksAnswer: isQueuedReturn,
     execute: async (args, context) => {
-      if (!input.travelAsked) return TRAVEL_NOT_ASKED;
+      const refused = refusalFor(input.grant, args);
+      if (refused) return refused;
       return moved ? ALREADY_TRAVELLED : travelTo({ ...input, record }, args, context);
     },
   });

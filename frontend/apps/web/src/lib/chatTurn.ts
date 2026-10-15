@@ -40,7 +40,7 @@ import { birthYearOf, createPeriodChartLoader, readyEngine } from './periodChart
 import { createReadPeriodTool, isReadPeriodReading, readPeriodGrounding, readPeriodSpanLabel, readPeriodStatusLabel, type ReadPeriodArgs, type ReadPeriodInput } from './readPeriod';
 import { READ_PERIOD_TOOL_NAME } from './periodReading';
 import { formatPinLabel } from './timeTravelSheet';
-import { asksToTravel, claimsMove, type PendingTravel } from './travelIntent';
+import { claimsMove, travelGrant, type PendingTravel } from './travelIntent';
 import { createTravelTool, TRAVEL_TOOL_NAME, travelPeriodLabel, travelStatusLabel, type TravelArgs } from './travelTool';
 import type { TravelRecorder } from './travelSlot';
 import { tripPin } from './tripContext';
@@ -122,8 +122,8 @@ export interface ChatTurnInput {
   /** Records a move; the chat hook applies it after the answer is saved. Absent: no travel tool. */
   readonly onTravel?: TravelRecorder;
   /**
-   * The thread's last turn asked to move and the model asked where (or when) instead
-   * (travelIntent.ts pendingTravelIn): this turn's answer ("Delhi") may finish the move.
+   * The last answer's travel call returned needs_place (travelIntent.ts pendingTravelIn, read from
+   * the saved tool result): this turn's place answer ("Delhi") may finish that call's `to`, only.
    */
   readonly pendingTravel?: PendingTravel;
   readonly onToolCall?: (call: ChatToolCall) => void;
@@ -202,7 +202,7 @@ function turnTools(input: ChatTurnInput, pin: ChatThreadAsOf | undefined, starts
   const travel = input.onTravel
     ? [createTravelTool({
       ...places, threadPlace: input.asOf?.place, birthYear: birthYearOf(input.birth), language: input.language, record: input.onTravel,
-      travelAsked: asksToTravel(input.question) || input.pendingTravel !== undefined,
+      grant: travelGrant(input.question, input.pendingTravel),
     })]
     : [];
   // Under budget pressure a reading goes out as its grounding facts: what the answer is checked against.

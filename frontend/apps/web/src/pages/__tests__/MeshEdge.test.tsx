@@ -385,9 +385,11 @@ describe('MeshEdgePage', () => {
     );
   });
 
-  // Northstar on PR #366: "take me to May 2019" -> asked where -> "Delhi" names no move, yet the
-  // pending request from the turn before lets this turn's travel call through.
-  it('relationship chat: the answer to "where?" after a move request may travel', async () => {
+  // Northstar on PR #366: "take me to May 2019" -> asked where -> "Delhi" names no move. Re-grade
+  // (2026-10-15): this test asserted the defect, a pending request read from the user's text that let
+  // the next turn travel anywhere ({to:"today"} queued). Contract reversed: pending is the saved
+  // needs_place travel call, and it finishes only that call's `to`, with a place.
+  const discussTwoTurns = async (firstTurn: (options: { tools: { name: string; execute: (args: unknown, context: unknown) => Promise<unknown> }[]; onToolCall?: (row: unknown) => void }) => Promise<void>) => {
     writeLlmSettings(openRouterPreset('sk-or-v1-0000-synthetic-test-key', 'test-org/test-model'));
     __setMemoryForTest({
       indexMessage: vi.fn().mockResolvedValue(undefined),
@@ -396,8 +398,13 @@ describe('MeshEdgePage', () => {
       deleteForThread: vi.fn().mockResolvedValue(undefined),
       clear: vi.fn().mockResolvedValue(undefined),
     });
-    llmMocks.runToolTurn.mockImplementation(async function* () {
+    llmMocks.runToolTurn.mockImplementationOnce(async function* (options) {
+      await firstTurn(options);
       yield 'Where did you live then?';
+      return { answer: undefined };
+    });
+    llmMocks.runToolTurn.mockImplementationOnce(async function* () {
+      yield 'Noted.';
       return { answer: undefined };
     });
     seedPeople(SPOUSE);
@@ -415,8 +422,25 @@ describe('MeshEdgePage', () => {
     await send('Delhi');
     await waitFor(() => expect(llmMocks.runToolTurn).toHaveBeenCalledTimes(2));
     const travel = llmMocks.runToolTurn.mock.calls[1][0].tools.find((tool: { name: string }) => tool.name === 'travel');
-    const result = await travel.execute({ to: 'today', place: null }, { now: new Date(), signal: new AbortController().signal });
-    expect(result).toEqual({ status: 'queued', action: 'back_to_today' });
+    return (args: unknown) => travel.execute(args, { now: new Date(), signal: new AbortController().signal });
+  };
+
+  it('relationship chat: "where?" asked with no travel call grants the reply nothing', async () => {
+    const travel = await discussTwoTurns(async () => undefined);
+    expect(await travel({ to: 'today', place: null })).toMatchObject({ status: 'refused', reason: 'not_asked' });
+  });
+
+  it('relationship chat: after a travel call that needed a place, the reply may finish only that move', async () => {
+    const travel = await discussTwoTurns(async (options) => {
+      const tool = options.tools.find((candidate) => candidate.name === 'travel');
+      const args = { to: '2019-05', place: null };
+      const result = await tool?.execute(args, { now: new Date(), signal: new AbortController().signal });
+      expect(result).toEqual({ status: 'needs_place', ask: 'Ask where the user lived (or will be) then.' });
+      options.onToolCall?.({ round: 1, toolCallId: 't1', toolName: 'travel', args, result, status: 'complete', validFirstTry: true });
+    });
+    expect(await travel({ to: 'today', place: null })).toMatchObject({ status: 'refused', reason: 'not_pending_move' });
+    expect(await travel({ to: '1990', place: 'Lisbon' })).toMatchObject({ status: 'refused', reason: 'not_pending_move' });
+    expect(await travel({ to: '2019-05', place: null })).toMatchObject({ status: 'refused', reason: 'not_pending_move' });
   });
 
   // Contract reversed (chat tool layer redesign, Task 6, 2026-10-14): this chat used to be refused,

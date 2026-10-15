@@ -7,10 +7,11 @@
 // gate ("Did I go to…", "Should I travel to…", "Vou viajar para…"), and a two-turn trip ("take me to
 // May 2019" -> "where?" -> "Delhi") was refused on its second turn. Product call (2026-10-15):
 // "leave this trip", "back to now", "get me out of here" are explicit requests too.
-import type { ChatMessage, ChatMessagePart } from '@almamesh/shared-types';
+import type { ChatMessage, ChatMessagePart, ChatToolCallStatus } from '@almamesh/shared-types';
 import { describe, expect, it } from 'vitest';
 
-import { asksToTravel, claimsMove, pendingTravelIn } from '../travelIntent';
+import { asksToTravel, claimsMove, isPlaceReply, MAX_INTENT_CHARS, pendingTravelIn, travelGrant } from '../travelIntent';
+import { TRAVEL_NEEDS_PLACE, TRAVEL_TOOL_NAME } from '../travelTool';
 
 /** Every request is checked as typed and with its accents dropped (phone keyboards often do). */
 const stripped = (text: string) => text.normalize('NFD').replace(/\p{M}/gu, '');
@@ -109,6 +110,10 @@ describe('asksToTravel: an explicit request to move', () => {
     'Me tira daqui',
     'Tire-me daqui',
     'Já terminei com setembro de 2017',
+    // Re-grade of PR #366 (2026-10-15): "take me home" leaves a trip like "back to today".
+    'take me home',
+    'Take me home, please.',
+    'Ok, bring me back home',
   ])('%s', (question) => {
     expect(asksToTravel(question)).toBe(true);
     expect(asksToTravel(stripped(question))).toBe(true);
@@ -167,6 +172,22 @@ describe('asksToTravel: a question about a time or about travel is answered in p
     'Quando vou para Lisboa em 2027?',
     'Vamos ver minha carreira em 2019',
     'Vamos falar de 2019',
+    // Re-grade of PR #366 (2026-10-15): a relocation, a quoted instruction, or a trip in the user's
+    // life opened the gate. A bare "go / move / travel to" needs the time right after it.
+    'Two options: move to Lisbon in 2027, or stay. Which is better?',
+    'I am torn: move to Lisbon in 2027 or stay?',
+    'move to Lisbon in 2027, or stay?',
+    'My boss said, go to Singapore in 2019. Was that a good call?',
+    'and then travel to work got hard in 2019 — why?',
+    // "take me to" a part of the reading, not a time
+    'Take me to the part about marriage',
+    'Can you take me to my career reading?',
+    'Bring me to the 10th house details',
+    'Llévame a la sección de carrera',
+    'Me leva para a parte do casamento',
+    // "home" as a word, not a request
+    'home',
+    'I went home in 2019',
   ])('%s', (question) => {
     expect(asksToTravel(question)).toBe(false);
     expect(asksToTravel(stripped(question))).toBe(false);
@@ -179,61 +200,161 @@ function message(role: ChatMessage['role'], content: string, extra: Partial<Chat
   return { id: `m${seq}`, thread_id: 't1', role, content, created_at: '2026-10-15T00:00:00Z', ...extra };
 }
 
-function travelPart(result: unknown): ChatMessagePart {
-  return { type: 'tool-call', toolCallId: `c${seq}`, toolName: 'travel', args: { to: '2019-05', place: null }, status: 'complete', result };
+function travelPart(result: unknown, args: Record<string, unknown> = { to: '2019-05', place: null }, status: ChatToolCallStatus = 'complete'): ChatMessagePart {
+  return { type: 'tool-call', toolCallId: `c${seq}`, toolName: TRAVEL_TOOL_NAME, args, status, result };
 }
 
 const ASKED_WHERE = 'Where did you live in May 2019?';
+/** The thread as saved after "take me to May 2019": travel needed a place and the model asked where. */
+const askedWhere = (request = 'take me to May 2019', args: Record<string, unknown> = { to: '2019-05', place: null }) => [
+  message('user', request),
+  message('assistant', ASKED_WHERE, { parts: [travelPart(TRAVEL_NEEDS_PLACE, args), { type: 'text', text: ASKED_WHERE }] }),
+];
 
-describe('pendingTravelIn: a move the user asked for last turn that is still waiting on them', () => {
-  it('the model asked where after a travel call that needed a place: the next turn may finish the move', () => {
-    const messages = [
-      message('user', 'take me to May 2019'),
-      message('assistant', ASKED_WHERE, { parts: [travelPart({ status: 'needs_place', ask: 'Ask where the user lived (or will be) then.' }), { type: 'text', text: ASKED_WHERE }] }),
-    ];
-    expect(pendingTravelIn(messages)).toEqual({ kind: 'pending_travel', request: 'take me to May 2019' });
+// Re-grade of PR #366 (2026-10-15): pending was read from the user's text by regex, so "Take me to
+// the part about marriage" or a relocation question opened the gate for the next turn, and the
+// grant carried no `to`. Contract reversed: pending exists only when the last answer's travel call
+// returned needs_place, and it carries that call's `to`, the only move the next turn may finish.
+describe('pendingTravelIn: the travel call the last answer left waiting on a place', () => {
+  it.each([
+    ['take me to May 2019', { to: '2019-05', place: null }, '2019-05'],
+    ['Llévame a mayo de 2019', { to: '2019-05', place: null }, '2019-05'],
+    ['Me leve para março de 2019', { to: '2019-03', place: null }, '2019-03'],
+    ['take me to 14 March 2019', { to: '2019-03-14', place: null }, '2019-03-14'],
+  ])('%s -> needs_place: pending on exactly to %j', (request, args, to) => {
+    expect(pendingTravelIn(askedWhere(request, args))).toEqual({ kind: 'pending_travel', to });
   });
 
-  it('the model asked where without calling travel: still pending', () => {
+  // Contract reversed 2026-10-15: these two were pending from the user's text alone.
+  it('the model asked where without calling travel: nothing pending (no tool result, no grant)', () => {
     const messages = [message('user', 'Llévame a mayo de 2019'), message('assistant', '¿Dónde vivías entonces?')];
-    expect(pendingTravelIn(messages)).toEqual({ kind: 'pending_travel', request: 'Llévame a mayo de 2019' });
-  });
-
-  it('a move with a place and no time yet ("take me to Delhi") is pending: the model asks when', () => {
-    const messages = [message('user', 'Take me to Delhi'), message('assistant', 'Which year?')];
-    expect(pendingTravelIn(messages)).toEqual({ kind: 'pending_travel', request: 'Take me to Delhi' });
-  });
-
-  it('a move that was queued is done: nothing pending', () => {
-    const messages = [
-      message('user', 'take me to May 2019 in Delhi'),
-      message('assistant', 'Here is May 2019.', { parts: [travelPart({ status: 'queued', action: 'travel', period_label: 'May 2019' })] }),
-    ];
     expect(pendingTravelIn(messages)).toBeUndefined();
   });
 
-  it('expires after one user turn: the request two turns back opens nothing', () => {
-    const messages = [
-      message('user', 'take me to May 2019'),
-      message('assistant', ASKED_WHERE),
-      message('user', 'How was work?'),
-      message('assistant', 'Work was fine.'),
-    ];
+  it('a move with a place and no time ("take me to Delhi") is no longer pending: no travel call returned needs_place', () => {
+    expect(pendingTravelIn([message('user', 'Take me to Delhi'), message('assistant', 'Which year?')])).toBeUndefined();
+  });
+
+  it.each([
+    'Take me to the part about marriage',
+    'Can you take me to my career reading?',
+    'Bring me to the 10th house details',
+    'Llévame a la sección de carrera',
+    'Me leva para a parte do casamento',
+    'Two options: move to Lisbon in 2027, or stay. Which is better?',
+    'My boss said, go to Singapore in 2019. Was that a good call?',
+    'take me to May 2019',
+  ])('user text alone never makes a move pending: %s', (request) => {
+    expect(pendingTravelIn([message('user', request), message('assistant', 'Where would you like to go?')])).toBeUndefined();
+  });
+
+  it.each([
+    ['queued', { status: 'queued', action: 'travel', period_label: 'May 2019' }],
+    ['refused', { status: 'refused', reason: 'not_asked', note: 'n' }],
+    ['place_not_found', { status: 'place_not_found', ask: 'a' }],
+    ['outside_range', { status: 'outside_range', ask: 'a' }],
+  ])('a travel call that ended %s leaves nothing pending', (_status, result) => {
+    expect(pendingTravelIn([message('user', 'take me to May 2019'), message('assistant', 'ok', { parts: [travelPart(result)] })])).toBeUndefined();
+  });
+
+  it('needs_place followed by a queued move in the same answer is done: nothing pending', () => {
+    const messages = [message('user', 'take me to May 2019'), message('assistant', 'Here is May 2019.', {
+      parts: [travelPart(TRAVEL_NEEDS_PLACE), travelPart({ status: 'queued', action: 'travel' }, { to: '2019-05', place: 'Delhi' })],
+    })];
     expect(pendingTravelIn(messages)).toBeUndefined();
   });
 
-  it('a question (no move asked) leaves nothing pending', () => {
-    expect(pendingTravelIn([message('user', 'outlook today?'), message('assistant', 'Calm.')])).toBeUndefined();
+  it('a needs_place row whose call failed, or another tool\'s needs_place, grants nothing', () => {
+    const failed = [message('user', 'take me to May 2019'), message('assistant', 'x', { parts: [travelPart(TRAVEL_NEEDS_PLACE, { to: '2019-05', place: null }, 'error')] })];
+    const readPeriod: ChatMessagePart = { type: 'tool-call', toolCallId: 'r1', toolName: 'read_period', args: { to: '2019-05' }, status: 'complete', result: TRAVEL_NEEDS_PLACE };
+    expect(pendingTravelIn(failed)).toBeUndefined();
+    expect(pendingTravelIn([message('user', 'how was May 2019?'), message('assistant', 'x', { parts: [readPeriod] })])).toBeUndefined();
   });
 
-  it('a failed answer is no question asked back: nothing pending', () => {
-    const messages = [message('user', 'take me to May 2019'), message('assistant', 'The model could not answer.', { error: true })];
+  it('a needs_place row without a string `to` grants nothing', () => {
+    expect(pendingTravelIn(askedWhere('take me to May 2019', { place: null }))).toBeUndefined();
+  });
+
+  it('expires after exactly one user turn', () => {
+    const messages = [...askedWhere(), message('user', 'How was work?'), message('assistant', 'Work was fine.')];
     expect(pendingTravelIn(messages)).toBeUndefined();
   });
 
-  it('an empty thread, or one whose last message is the user\'s, has nothing pending', () => {
+  it('a failed answer, an empty thread, or a thread ending on the user grants nothing', () => {
+    const [request] = askedWhere();
+    const failed = message('assistant', 'The model could not answer.', { error: true, parts: [travelPart(TRAVEL_NEEDS_PLACE)] });
+    expect(pendingTravelIn([request!, failed])).toBeUndefined();
     expect(pendingTravelIn([])).toBeUndefined();
-    expect(pendingTravelIn([message('user', 'take me to May 2019')])).toBeUndefined();
+    expect(pendingTravelIn([...askedWhere(), message('user', 'Delhi')])).toBeUndefined();
+  });
+});
+
+describe('isPlaceReply: the reply that finishes a pending move answers where, it does not ask something else', () => {
+  it.each([
+    ['Delhi', 'Delhi'],
+    ['Delhi.', 'Delhi'],
+    ['In Delhi, I think', 'Delhi'],
+    ['Delhi?', 'Delhi'],
+    ['Bogotá', 'Bogota'],
+    ['vivía en Bogota', 'Bogotá'],
+    ['Lisboa', 'Lisboa'],
+    ['Mumbai, then. What did that month hold?', 'Mumbai'],
+    ['Bombay', 'Mumbai'],
+  ])('%j with place %j is a place answer', (reply, place) => {
+    expect(isPlaceReply(reply, place)).toBe(true);
+  });
+
+  it.each([
+    ["actually, what's my moon sign?", 'Lisbon'],
+    ['what about my career?', 'Delhi'],
+    ['¿y mi carrera?', 'Madrid'],
+    ['e a minha carreira?', 'Lisboa'],
+    ['¿Cuál es mi signo lunar?  ', 'Madrid'],
+  ])('%j ends in a question that does not name %j: not a place answer', (reply, place) => {
+    expect(isPlaceReply(reply, place)).toBe(false);
+  });
+});
+
+describe('travelGrant: what this turn may do with travel', () => {
+  const pending = { kind: 'pending_travel', to: '2019-05' } as const;
+
+  it('a message that asks to move grants any move, pending or not', () => {
+    expect(travelGrant('take me to 1990 in Lisbon', undefined)).toEqual({ kind: 'asked' });
+    expect(travelGrant('back to today', pending)).toEqual({ kind: 'asked' });
+  });
+
+  it('a reply to a pending move grants only that move, with the reply to check the place against', () => {
+    expect(travelGrant('Delhi', pending)).toEqual({ kind: 'finish', to: '2019-05', reply: 'Delhi' });
+  });
+
+  it('no request and nothing pending grants nothing', () => {
+    expect(travelGrant('Delhi', undefined)).toEqual({ kind: 'none' });
+    expect(travelGrant('Take me to the part about marriage', undefined)).toEqual({ kind: 'none' });
+  });
+});
+
+describe('asksToTravel: a long message is read only up to its cap', () => {
+  it('pins the cap to its literal', () => {
+    expect(MAX_INTENT_CHARS).toBe(500);
+  });
+
+  // Re-grade of PR #366 (2026-10-15): "go to " repeated to 80k characters took 4.7 s (quadratic regex).
+  it.each([
+    ['go to ', 80_000],
+    ['take me to x ', 80_000],
+    ['vamos a w ', 80_000],
+  ])('%j repeated to %i characters is read in well under a second', (unit, length) => {
+    const text = unit.repeat(Math.ceil(length / unit.length));
+    const started = performance.now();
+    asksToTravel(text);
+    expect(performance.now() - started).toBeLessThan(250);
+  });
+
+  it('a request inside the cap is read; one cut by it is not (a miss costs a refused call)', () => {
+    const request = '. take me to 2019';
+    const filler = 'x'.repeat(MAX_INTENT_CHARS - request.length);
+    expect(asksToTravel(`${filler}${request}`)).toBe(true);
+    expect(asksToTravel(`x${filler}${request}`)).toBe(false);
   });
 });
 
