@@ -154,10 +154,15 @@ function spanProblem(args: ReadPeriodArgs): Problem | undefined {
   return rangeProblem(args, span) ?? dayOnlyProblem(args, span);
 }
 
+/** A bare year sent as a JSON number (`"end": 2017`, real runs 2026-10-15) is that year; any other number stays a number and is refused. */
+const yearNumberAsText = (value: unknown): unknown =>
+  typeof value === 'number' && Number.isInteger(value) && value >= 1000 && value <= 9999 ? String(value) : value;
+
 const ARGS_SCHEMA: z.ZodType<ReadPeriodArgs> = z
   .object({
-    start: z.string().regex(DATE, `start ${DATE_MESSAGE}`).describe('First year, month or day: YYYY, YYYY-MM or YYYY-MM-DD.'),
-    end: z.string().regex(DATE, `end ${DATE_MESSAGE}`).nullable()
+    start: z.preprocess(yearNumberAsText, z.string().regex(DATE, `start ${DATE_MESSAGE}`))
+      .describe('First year, month or day: YYYY, YYYY-MM or YYYY-MM-DD.'),
+    end: z.preprocess(yearNumberAsText, z.string().regex(DATE, `end ${DATE_MESSAGE}`).nullable())
       .describe('Last year, month or day, inclusive. null for a single year, month or day.'),
     place: z.string().min(2).max(80).nullable()
       .describe('A city as the user said it ("Pune", "Springfield"), or "trip" / "home". null = this thread\'s place.'),

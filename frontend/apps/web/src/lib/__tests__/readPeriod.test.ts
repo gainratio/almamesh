@@ -164,6 +164,23 @@ describe('read_period: the argument rules come back as the fix', () => {
     expect(setup().tool.input.safeParse({ ...args({ start: '2019' }), month: '2019-05' }).success).toBe(false);
   });
 
+  // dashboard.agentic.real 2026-10-15 (Sept 2017): a model sent `"end": 2017`, a bare year as a
+  // JSON number. A whole year number is that year; any other number is still refused.
+  it('reads a bare four-digit year number as that year', () => {
+    const parsed = setup().tool.input.parse({ ...args({ start: '2017' }), start: 2017, end: 2018 });
+    expect(parsed).toMatchObject({ start: '2017', end: '2018' });
+  });
+
+  it.each([17, 2017.5, -2017, 20170, Number.NaN])('refuses the number %s as a date', (value) => {
+    expect(setup().tool.input.safeParse({ ...args({ start: '2017' }), end: value }).success).toBe(false);
+  });
+
+  it('still tells the model the dates are strings', () => {
+    const { properties } = z.toJSONSchema(setup().tool.input, { target: 'draft-7', unrepresentable: 'any' }) as { properties: Record<string, unknown> };
+    expect(properties.start).toMatchObject({ type: 'string' });
+    expect(properties.end).toMatchObject({ anyOf: [{ type: 'string' }, { type: 'null' }] });
+  });
+
   it('24 months is one valid call', () => {
     expect(setup().tool.input.safeParse(args({ start: '2019-01', end: '2020-12' })).success).toBe(true);
   });
