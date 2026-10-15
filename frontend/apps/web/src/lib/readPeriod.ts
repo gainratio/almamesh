@@ -141,7 +141,6 @@ function rangeProblem(args: ReadPeriodArgs, span: Span): Problem | undefined {
 
 function dayOnlyProblem(args: ReadPeriodArgs, span: Span): Problem | undefined {
   if (isSingleDay(span)) return undefined;
-  if (args.time !== null) return { path: 'time', message: 'time needs a single day: send start as YYYY-MM-DD with end null, or send time null.' };
   if (args.focus === 'panchang') return { path: 'focus', message: 'focus panchang needs a single day: send start as YYYY-MM-DD with end null, or another focus.' };
   return undefined;
 }
@@ -415,6 +414,8 @@ export const NEEDS_PLACE: ReadPeriodAsk = { status: 'needs_place', ask: 'Ask whe
 export const OUTSIDE_RANGE: ReadPeriodAsk = { status: 'outside_range', ask: 'This is before the chart begins; ask about a later period.' };
 const DEVICE_LIMIT_NOTE = 'This device answers dated questions with dashas only, to stay within memory.';
 const MOON_UNAVAILABLE_NOTE = "Couldn't read the Moon at that place on this device; the rest of the answer stands.";
+/** A time on a span longer than a day means nothing there: the read goes ahead without it. */
+const TIME_IGNORED_NOTE = 'time ignored: the span is longer than a day';
 
 export function isReadPeriodReading(value: unknown): value is ReadPeriodReading {
   return typeof value === 'object' && value !== null && 'period' in value && 'dashas' in value;
@@ -708,9 +709,12 @@ async function readPeriod(input: ReadPeriodInput, args: ReadPeriodArgs, context:
   const loaded = await load(input, frame, isSingleDay(span) && span.start === todayDay, context);
   if ('available' in loaded) return loaded;
   const moon = await readMoon(input, where, span, args.time, context);
+  const ignoredTime = args.time !== null && !isSingleDay(span) ? [TIME_IGNORED_NOTE] : [];
+  const notes = [...(moon.notes ?? []), ...ignoredTime];
   const closeUp = args.focus ? closeUpOf(loaded, frame, args.focus) : undefined;
   const months = monthCount(span) > 1 ? monthRows(loaded.source, span) : undefined;
-  return compose(loaded, frame, { ...moon, ...(months ? { months } : {}), ...(closeUp ? { close_up: closeUp } : {}) }, input.language);
+  const extras = { ...moon, ...(notes.length > 0 ? { notes } : {}), ...(months ? { months } : {}), ...(closeUp ? { close_up: closeUp } : {}) };
+  return compose(loaded, frame, extras, input.language);
 }
 
 const cacheKey = (args: ReadPeriodArgs): string => JSON.stringify([args.start, args.end, args.place, args.time, args.focus]);

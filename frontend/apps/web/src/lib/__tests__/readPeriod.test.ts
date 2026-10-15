@@ -153,7 +153,6 @@ describe('read_period: the argument rules come back as the fix', () => {
     [{ start: '2019', time: '3pm' }, 'time must be HH:MM (24-hour)'],
     [{ start: '2019-06', end: '2021-11' }, 'start to end is 30 months; read at most 24 months, or ask which part matters most.'],
     [{ start: '2019-12', end: '2019-06' }, 'end (2019-06) is before start (2019-12); send the earlier date as start.'],
-    [{ start: '2019-06', time: '15:00' }, 'time needs a single day: send start as YYYY-MM-DD with end null, or send time null.'],
     [{ start: '2019-06', focus: 'panchang' }, 'focus panchang needs a single day: send start as YYYY-MM-DD with end null, or another focus.'],
     [{ start: '2019-02-30' }, '2019-02-30 is not a calendar day.'],
     [{ start: '2053-01' }, 'The sky is computed through 2052; ask about a period that ends by 2052-12-31.'],
@@ -381,6 +380,22 @@ describe('read_period: places', () => {
   it('a week or longer with no place at all reads in the viewer zone, unlabelled', async () => {
     const result = (await read({ start: '2019-06' }, { threadPlace: undefined, homePlace: undefined })).result as ReadPeriodReading;
     expect(result.place).toEqual({ timezone: 'America/Los_Angeles' });
+  });
+
+  // CONTRACT REVERSED (matrix 2, fix wave): a time on a span longer than a day was a retry
+  // ("time needs a single day…"), deepseek's only read_period retry. It is meaningless there, not
+  // wrong: the read goes ahead, the time is ignored, and the result says so.
+  it('a time on a span longer than a day is ignored with a note, not a retry', async () => {
+    expect(setup().tool.input.safeParse(args({ start: '2019-06', time: '15:00' })).success).toBe(true);
+    const { result, loadMoonWindow } = await read({ start: '2019-06', time: '15:00' });
+    expect(result).toHaveProperty('cite');
+    expect((result as ReadPeriodReading).notes).toContain('time ignored: the span is longer than a day');
+    expect(loadMoonWindow).not.toHaveBeenCalled();
+  });
+
+  it('a single-day read with a time carries no such note', async () => {
+    const { result } = await read({ start: '2019-03-12', time: '15:00', place: 'Pune' });
+    expect((result as ReadPeriodReading).notes ?? []).not.toContain('time ignored: the span is longer than a day');
   });
 
   it('a single day at a named city adds the Moon there and the event at the time', async () => {
