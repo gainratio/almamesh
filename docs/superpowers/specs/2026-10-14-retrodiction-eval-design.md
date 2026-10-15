@@ -585,6 +585,71 @@ was not computed (f5). **Verdict: +OBSTACLES is null on DEV with the corrected s
 shipped obstacles theme does not put the month of a legal event or an accident higher in its
 window, and the real chart does not beat a same-year partner's.
 
+## Results: DEV, techniques #3 and #4 under amendment (g), 2026-10-14
+
+The only scoring of amendment (g). Code at `1ae8f33e` (includes the Moon-BAV table fix
+`bed15c00`); split `299ec393…`, DEV half; digest `1abf88a5…`; window ±36, k 3 and 6, R = 4.
+Two runs started together at 20:14 PT, 3 workers each (6 in all), both done by 20:49 PT. Each
+scored 6,120 events, all with 4 placebo windows (5,287 year-only and 44 out-of-range excluded,
+as before); swap 6,116 events (7 natives alone in their birth year). Aggregates only. DEV
+results are not evidence.
+
+**BASELINE is reproduced.** The two runs' BASELINE rows are identical to each other (the g4
+void check passes) and to the amendment (f) rescore's (all areas k=3 1.03 [0.90, 1.16],
+p = 0.33). The v1 families do not read bindus, so the table fix cannot move them.
+
+Lift = placebo-calibrated [95% CI], p = exact randomization; swap = real ÷ chart-swapped centre
+hits [95% CI]. Pre-registered areas in bold.
+
+| area (k=3) | n | BASELINE lift, p | +ASHTAKAVARGA lift, p | swap +A | +VARGAS lift, p | swap +V |
+|---|---|---|---|---|---|---|
+| all areas | 6,120 | 1.03 [0.90, 1.16], 0.33 | 0.98 [0.85, 1.11], 0.62 | 1.01 [0.87, 1.19] | 0.99 [0.86, 1.12], 0.57 | 1.04 [0.89, 1.22] |
+| **career** (A, V) | 1,045 | 1.03 [0.74, 1.36], 0.41 | 0.91 [0.64, 1.23], 0.70 | 0.90 [0.60, 1.34] | 1.05 [0.79, 1.37], 0.36 | 0.99 [0.69, 1.47] |
+| **relationships** (V; A secondary) | 2,567 | 1.01 [0.83, 1.21], 0.47 | 0.94 [0.76, 1.15], 0.73 | 1.03 [0.79, 1.33] | 0.92 [0.76, 1.10], 0.79 | 1.08 [0.83, 1.40] |
+| **disputes** (V) | 779 | 0.89 [0.60, 1.26], 0.73 | 0.82 [0.53, 1.17], 0.85 | 0.80 [0.50, 1.23] | 0.85 [0.57, 1.21], 0.81 | 0.85 [0.52, 1.37] |
+| **finances** (A) | 94 | 1.80 [0.56, 4.18], 0.098 | 1.92 [0.58, 5.02], 0.067 | 0.93 [0.28, 2.73] | = BASELINE | = BASELINE |
+| family | 1,082 | 1.16 [0.85, 1.55], 0.16 | 1.11 [0.80, 1.46], 0.24 | 1.13 [0.76, 1.65] | = BASELINE | = BASELINE |
+| health | 439 | 0.82 [0.42, 1.35], 0.77 | 1.06 [0.57, 1.71], 0.40 | 1.61 [0.75, 3.71] | = BASELINE | = BASELINE |
+| none (relocation) | 73 | 1.91 [0.56, 6.35], 0.12 | 2.32 [0.67, 6.54], 0.062 | 1.94 [0.43, 13.05] | = BASELINE | = BASELINE |
+| education | 41 | 1.36 [0.19, 4.25], 0.31 | 0.84 [0.00, 2.96], 0.59 | 0.44 [0.00, 2.00] | = BASELINE | = BASELINE |
+
+k=6, pre-registered rows: +ASHTAKAVARGA career 0.87 [0.69, 1.09] p=0.88, finances 1.55
+[0.82, 2.66] p=0.073 (swap 1.17 [0.53, 2.68]); +VARGAS career 0.99 [0.80, 1.20] p=0.54,
+relationships 0.97 [0.84, 1.10] p=0.65, disputes 0.83 [0.61, 1.09] p=0.92. All areas k=6:
+BASELINE 0.99, +A 0.97, +V 0.97. +VARGAS scores 0 outside career, relationships and disputes,
+so those rows equal BASELINE exactly, as designed.
+
+- **The ten pre-registered tests.** Smallest p: +ASHTAKAVARGA finances, 0.067 (k=3) and 0.073
+  (k=6). No raw p < 0.05, so no Holm and no BH survivors across the ten. The 16-test
+  per-configuration families: no raw p < 0.05 in BASELINE, +ASHTAKAVARGA or +VARGAS.
+- **Controls.** Planted: 73/3 and 73/6, p at the 1e-12 floor, both runs. Placebo-calibrated
+  shifted controls pass for both configurations and both new families alone
+  (`only:ashtakavarga_transits` 1.00 [0.95, 1.04] at k=3, `only:varga_lords` 1.01 [0.96, 1.06]);
+  the only failing set is again `only:vimshottari_lords` (marginal, as under f). Both runs:
+  controls ok.
+- **Chart swap.** No pre-registered row has a swap CI above 1; career +ASHTAKAVARGA (0.90) and
+  disputes under both families (0.80, 0.85) sit below 1.
+- **Hypotheses.** #3 (career and finances): not supported. Career falls (1.03 → 0.91); finances
+  rises 1.80 → 1.92 on 94 events with a CI from 0.58 to 5.0 and a swap ratio of 0.93, which
+  is noise, not a lead. #4 (career D10, relationships D9, disputes D30): not supported; career
+  1.03 → 1.05, relationships 1.01 → 0.92, disputes 0.89 → 0.85, every CI wide across 1.
+- **Verdict.** On DEV, neither Ashtakavarga transit strength nor the D10/D9/D30 lords add
+  measurable lift in any pre-registered area. No area meets the (g4) gate, so nothing goes to
+  HELD-OUT. Both flags stay off (`AshtakavargaTransitSettings.enabled`,
+  `VargaSignalSettings.enabled`).
+- **Stop rule (g6): triggered.** Families #1-#4 (exact transits, the obstacles theme,
+  Ashtakavarga, vargas) have all been scored and none sends an area to HELD-OUT, so none can be
+  promoted. The roadmap pauses: no family #5. Next is what §8 says: publish the null as
+  aggregates on the methods page, keep every area reflective, frame time travel as "what the
+  tradition says about this month", and keep the scorecard as a regression guard. The one
+  pre-registered HELD-OUT test (g1, relocation under +EXACT) still runs once at the next look
+  for the record. It is measure-only and cannot reverse this.
+- **Side effect worth knowing.** Writing the bindus out by hand found a real engine bug: the
+  Moon's BAV from Jupiter used (1,2,4,7,8,10,11) instead of BPHS (1,4,7,8,10,11,12). Totals
+  were unchanged, so the old invariants could not see it. Fixed in `bed15c00` before any run.
+  The strength, domains and predictive goldens and the period-reading fixtures were regenerated,
+  so shipped SAV-based strengths change slightly.
+
 ## Results: baseline 2026-10-14 (SYNTHETIC, harness sanity only, not evidence)
 
 30 random-month events, pre-registered settings. Expected: lift near 1, nothing significant.
