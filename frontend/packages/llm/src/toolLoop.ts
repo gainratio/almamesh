@@ -985,7 +985,8 @@ async function* streamRounds<A>(o: RunToolTurnOptions<A>, ctx: TurnContext, stat
     state.yielded = true;
     yield snapshot;
   }
-  return state.answerInput === undefined ? (await result.response).messages : [];
+  // Every step's messages: `response.messages` is the last step's only (AI SDK 7).
+  return state.answerInput === undefined ? await result.responseMessages : [];
 }
 
 /** A step ended with no tool call, no answer yet, and rounds remain: ask again. */
@@ -1064,12 +1065,24 @@ async function* proseSnapshots(ctx: TurnContext, prefix: string, request: ProseR
   return finished;
 }
 
+/** The prose request as it is when it fits the turn's budget; else with every tool result compact. */
+function fitProse(budget: TurnBudget, round: number, messages: readonly ModelMessage[]): ModelMessage[] {
+  const tools = [...budget.definitions.keys()];
+  const full = planOf(budget, messages, tools);
+  if (full.estimate <= budget.limit) {
+    budget.plans.set(round, full);
+    return [...messages];
+  }
+  const compact = compactMessages(budget, messages, false);
+  budget.plans.set(round, planOf(budget, compact, tools));
+  return compact;
+}
+
 async function* proseFallback<A>(o: RunToolTurnOptions<A>, ctx: TurnContext, state: TurnState, history: ModelMessage[]): AsyncGenerator<string, ToolTurnResult<A>> {
   startAnswering(o, state);
-  const messages: ModelMessage[] = [...ctx.messages, ...history, { role: "system", content: PROSE_INSTRUCTION }];
   const round = state.round + 1;
   calibrate(ctx.budget, state.round, ctx.budget.reported.get(state.round));
-  ctx.budget.plans.set(round, planOf(ctx.budget, messages, [...ctx.budget.definitions.keys()]));
+  const messages = fitProse(ctx.budget, round, [...ctx.messages, ...history, { role: "system", content: PROSE_INSTRUCTION }]);
   const finished = yield* proseSnapshots(ctx, "", { messages, tools: ctx.tools });
   const usage = roundBudget(ctx.budget, round, finished?.usage.inputTokens);
   o.onRound?.({ round, inputTokens: finished?.usage.inputTokens, outputTokens: finished?.usage.outputTokens, finishReason: "answer_fallback", ...usage });

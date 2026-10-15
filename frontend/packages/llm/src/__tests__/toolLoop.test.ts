@@ -725,6 +725,21 @@ describe("tool calls written as text (deepseek DSML)", () => {
     expect(o.rounds.map((r) => r.round)).toEqual([1, 2]);
   });
 
+  it("the corrective request still carries the rounds before the text (the earlier read)", async () => {
+    const { fetchImpl, requests } = fakeEndpoint([read("r1"), { text: DSML }, answer("a1")]);
+    await collect(runToolTurn(options(fetchImpl)));
+    expect(requests).toHaveLength(3);
+    expect(toolMessage(requests[2], "r1")).toContain("Venus");
+  });
+
+  it("the prose fallback carries every round's messages, not only the last", async () => {
+    const bad = '{"headline":1}';
+    const { fetchImpl, requests } = fakeEndpoint([read("r1"), answer("a1", bad), { text: "Venus rises." }]);
+    await collect(runToolTurn(options(fetchImpl, { limits: { maxRounds: 2 } })));
+    expect(requests[2].body.tool_choice).toBe("none");
+    expect(toolMessage(requests[2], "r1")).toContain("Venus");
+  });
+
   it("the corrective round counts toward maxRounds: the last round still forces the answer", async () => {
     const { fetchImpl, requests } = fakeEndpoint([{ text: DSML }, answer("a1")]);
     await collect(runToolTurn(options(fetchImpl, { limits: { maxRounds: 2 } })));

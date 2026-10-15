@@ -184,6 +184,22 @@ describe("past the budget the turn answers now", () => {
     expectQuestionKept(requests, system);
   });
 
+  it("a budget-closed turn whose forced answers all fail asks for prose within the budget too", async () => {
+    const system = "s".repeat(10_000);
+    const bad: FakeTurn = { calls: [{ id: "bad", name: "answer", args: '{"headline":1}' }] };
+    const { requests, rounds } = await run([read("r1", "2019-01"), { ...bad }, { calls: [{ id: "bad2", name: "answer", args: '{"headline":1}' }] }, { text: "Plain prose." }], {
+      messages: [{ role: "system", content: system }, { role: "user", content: QUESTION }],
+      tools: [readTool({ chars: 6_000, description: "Read a period. ".repeat(140) })],
+      limits: { maxRounds: 3 },
+    });
+    expect(requests).toHaveLength(4);
+    expect(requests[3].body.tool_choice).toBe("none");
+    expect(parsed(toolMessage(requests[3], "r1"))).toMatchObject({ compacted: true });
+    expect(rounds.at(-1)).toMatchObject({ finishReason: "answer_fallback" });
+    expectWithin(requests, SMALL_BUDGET);
+    expectQuestionKept(requests, system);
+  });
+
   it("when even the forced answer is over, the newest read goes compact too", async () => {
     const system = "s".repeat(14_000);
     const { requests, rounds } = await run([read("r1", "2019-01"), answer("a1")], {
