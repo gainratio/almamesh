@@ -262,8 +262,21 @@ export const aiErrorRegistry = defineErrors(AI_ERROR_CATALOG);
  * `t`. Codes with an `i18nKey` render the app's copy; the rest render the es/pt
  * sentence shipped by @gainratio/errors, or the catalog `en` in English.
  */
-export function aiErrorText(code: string, params: Readonly<Record<string, string>> = {}): string {
-  return aiErrorRegistry.describe(code, { ...params }, i18n.getFixedT(null, CANONICAL_ERRORS_NS));
+export function aiErrorText<C extends AiErrorCode>(code: C, ...params: AiErrorParams<C>): string {
+  return aiErrorRegistry.describe(code, { ...params[0] }, i18n.getFixedT(null, CANONICAL_ERRORS_NS));
+}
+
+/** A code this app's catalog registers. */
+export type AiErrorCode = keyof typeof AI_ERROR_CATALOG;
+
+/** The privacy copy names the refused endpoint, so that code requires it; no other code takes params. */
+type AiErrorParams<C extends AiErrorCode> = C extends 'ai.privacy.violation'
+  ? [params: { readonly endpoint: string }]
+  : [];
+
+/** `classify` returns a plain string; narrow it to a code the catalog owns. */
+function asAiErrorCode(code: string): AiErrorCode {
+  return Object.hasOwn(AI_ERROR_CATALOG, code) ? (code as AiErrorCode) : 'internal.unknown';
 }
 
 /**
@@ -311,7 +324,7 @@ export function classifyConnectionError(err: unknown): ConnectionErrorKind {
  * @almamesh/llm boundary) and rendered by `aiErrorText`.
  */
 export function chatErrorMessage(error: unknown): string {
-  const code = aiErrorRegistry.classify(error);
+  const code = asAiErrorCode(aiErrorRegistry.classify(error));
   return code === 'ai.privacy.violation' ? privacyBlockedMessage(error) : aiErrorText(code);
 }
 

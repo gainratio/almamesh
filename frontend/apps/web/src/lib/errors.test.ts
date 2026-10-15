@@ -2,6 +2,7 @@ import { starterPack } from '@gainratio/errors';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import i18n from '../i18n/config';
 import {
+  type AiErrorCode,
   aiErrorRegistry,
   aiErrorText,
   chatErrorMessage,
@@ -555,13 +556,16 @@ describe('one translation path: registry.describe with the shipped es/pt resourc
   // Portuguese user never gets an English sentence or a raw key.
   const PARAMS = { endpoint: 'https://example.invalid/v1' };
   const SHIPPED = ['ai.provider.rate_limited', 'ai.provider.server_error'] as const;
+  const CODES = aiErrorRegistry.codes as readonly AiErrorCode[];
+  const render = (code: AiErrorCode): string =>
+    code === 'ai.privacy.violation' ? aiErrorText(code, PARAMS) : aiErrorText(code);
 
   it.each(['es', 'pt'])('renders every registered code non-English in %s', async (lang) => {
     await i18n.changeLanguage('en');
-    const english = new Map(aiErrorRegistry.codes.map((code) => [code, aiErrorText(code, PARAMS)]));
+    const english = new Map(CODES.map((code) => [code, render(code)]));
     await i18n.changeLanguage(lang);
-    const leaks = aiErrorRegistry.codes.filter((code) => {
-      const text = aiErrorText(code, PARAMS);
+    const leaks = CODES.filter((code) => {
+      const text = render(code);
       const catalogEn = aiErrorRegistry.get(code)?.en;
       return (
         text === english.get(code) ||
@@ -608,13 +612,16 @@ describe('one translation path: registry.describe with the shipped es/pt resourc
     expect(aiErrorText('ai.privacy.violation', PARAMS)).toContain('nothing was sent to https://example.invalid/v1');
   });
 
-  it('every i18nKey the catalog points at exists in en, es and pt', async () => {
+  it('every i18nKey the catalog points at exists in en, es and pt', () => {
+    // getResource reads ONE language's bundle; i18n.exists would fall back to
+    // en and pass for a key missing from es/pt.
     const missing: string[] = [];
     for (const code of aiErrorRegistry.codes) {
       const key = aiErrorRegistry.get(code)?.i18nKey;
       if (key === undefined) continue;
+      const [ns = '', path = ''] = key.split(':');
       for (const lng of ['en', 'es', 'pt']) {
-        if (!i18n.exists(key, { lng })) missing.push(`${lng}:${key}`);
+        if (typeof i18n.getResource(lng, ns, path) !== 'string') missing.push(`${lng}:${key}`);
       }
     }
     expect(missing).toEqual([]);
