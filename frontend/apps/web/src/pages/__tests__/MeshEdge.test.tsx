@@ -29,6 +29,11 @@ import { MESH_EDGE_FRIEND, MESH_EDGE_SPOUSE } from '../../test/meshFixtures';
 import { __resetMemoryForTest, __setMemoryForTest } from '../../lib/chatMemory';
 import { ChartEngineContext, type ChartEngineContextValue } from '../../providers/chartEngineContext';
 
+// The chat panel is a lazy chunk (AI SDK + zod). Its first import in a test file can
+// take over findBy's 1 s default under full-suite load (seen in 1 of 4 full gate
+// runs here); the wait is for the import, not for app behavior.
+const LAZY_CHAT = { timeout: 10_000 } as const;
+
 const llmMocks = vi.hoisted(() => ({ streamChartChat: vi.fn(), runToolTurn: vi.fn() }));
 
 vi.mock('@almamesh/llm', async (importOriginal) => ({
@@ -352,7 +357,7 @@ describe('MeshEdgePage', () => {
     renderAt('/mesh/p-spouse');
 
     fireEvent.click(screen.getByTestId('mesh-discuss-chat'));
-    fireEvent.change(await screen.findByTestId('chat-input'), {
+    fireEvent.change(await screen.findByTestId('chat-input', {}, LAZY_CHAT), {
       target: { value: 'How are our charts working together?' },
     });
     fireEvent.click(screen.getByTestId('chat-send-button'));
@@ -413,7 +418,7 @@ describe('MeshEdgePage', () => {
     renderAt('/mesh/p-spouse');
 
     fireEvent.click(screen.getByTestId('mesh-discuss-chat'));
-    fireEvent.change(await screen.findByTestId('chat-input'), {
+    fireEvent.change(await screen.findByTestId('chat-input', {}, LAZY_CHAT), {
       target: { value: 'How are our charts working together?' },
     });
     fireEvent.click(screen.getByTestId('chat-send-button'));
@@ -444,7 +449,7 @@ describe('MeshEdgePage', () => {
     renderAt('/mesh/p-spouse');
 
     fireEvent.click(screen.getByTestId('mesh-discuss-chat'));
-    fireEvent.change(await screen.findByTestId('chat-input'), { target: { value: 'How are we this month?' } });
+    fireEvent.change(await screen.findByTestId('chat-input', {}, LAZY_CHAT), { target: { value: 'How are we this month?' } });
     fireEvent.click(screen.getByTestId('chat-send-button'));
 
     await waitFor(() => expect(llmMocks.runToolTurn).toHaveBeenCalledTimes(1));
