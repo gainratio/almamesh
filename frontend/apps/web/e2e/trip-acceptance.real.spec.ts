@@ -238,7 +238,7 @@ async function readRows(page: Page, from: number): Promise<ToolRow[]> {
 }
 
 interface TurnRow { readonly turn: number }
-interface CallRow extends TurnRow { readonly name: string; readonly status: string; readonly validFirstTry: boolean; readonly retryReason?: string }
+interface CallRow extends TurnRow { readonly name: string; readonly status: string; readonly validFirstTry: boolean; readonly retryReason?: string; readonly filled?: readonly string[] }
 
 /** The app's own telemetry (agentRoundTelemetry.ts, hook builds): every round and call row recorded so far. */
 async function telemetry(page: Page): Promise<{ readonly rounds: TurnRow[]; readonly calls: CallRow[] }> {
@@ -251,7 +251,8 @@ async function telemetry(page: Page): Promise<{ readonly rounds: TurnRow[]; read
 /**
  * Per question (tool layer redesign 2026-10-14): model requests; every call and those valid on the first try
  * (the answer included); the same for tool calls only (read_period, travel); 1 when the first answer submission
- * was accepted; retries and error rows over every call; rejected answers; and why each retried call was rejected.
+ * was accepted; retries and error rows over every call; rejected answers; why each retried call was rejected; and
+ * which sections of the accepted answer the app filled from the reading (the model left them out). Logging only.
  */
 interface TurnMetrics {
   readonly rounds: number;
@@ -264,6 +265,7 @@ interface TurnMetrics {
   readonly answerRetries: number;
   readonly errorRows: number;
   readonly retryReasons: string[];
+  readonly answerFilled: string[];
 }
 
 function turnMetrics(after: { readonly rounds: TurnRow[]; readonly calls: CallRow[] }, lastTurnBefore: number): TurnMetrics {
@@ -282,6 +284,7 @@ function turnMetrics(after: { readonly rounds: TurnRow[]; readonly calls: CallRo
     answerRetries: answers.filter((row) => row.status === 'retried').length,
     errorRows: calls.filter((row) => row.status === 'error').length,
     retryReasons: retried.map((row) => `${row.name}: ${row.retryReason ?? '(no reason recorded)'}`),
+    answerFilled: [...(answers.find((row) => row.status === 'complete')?.filled ?? [])],
   };
 }
 
