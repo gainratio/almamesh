@@ -133,6 +133,13 @@ export interface AiSetupPanelProps {
   onConnected?: (status: LlmStatus) => void | Promise<void>;
 }
 
+/**
+ * A tier's box. Below `sm` the boxes flatten into full-width rows split by a top
+ * rule (nested padded cards left a ~110 px column at 390 px); from `sm` up they
+ * are the bordered cards Settings has always shown.
+ */
+const TIER_BOX = 'border-t pt-4 max-sm:first:border-t-0 max-sm:first:pt-0 sm:rounded-lg sm:border sm:p-4';
+
 export function AiSetupPanel({
   resolveConfig = resolveInterpretationConfig,
   testConnection = testProviderConnection,
@@ -494,8 +501,8 @@ export function AiSetupPanel({
       {showOffChoice && (
         <div
           data-testid="tier-none"
-          className={`rounded-lg border p-4 ${
-            noneActive ? 'border-accent-gold/40 bg-accent-gold/5' : 'border-ui-border bg-background-secondary'
+          className={`${TIER_BOX} ${
+            noneActive ? 'border-accent-gold/40 sm:bg-accent-gold/5' : 'border-ui-border sm:bg-background-secondary'
           }`}
         >
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -527,8 +534,8 @@ export function AiSetupPanel({
       {/* ── Connect AI ── */}
       <div
         data-testid="tier-cloud"
-        className={`rounded-lg border p-4 ${
-          aiOn ? 'border-accent-gold/40 bg-accent-gold/5' : 'border-ui-border bg-background-secondary'
+        className={`${TIER_BOX} ${
+          aiOn ? 'border-accent-gold/40 sm:bg-accent-gold/5' : 'border-ui-border sm:bg-background-secondary'
         }`}
       >
         {(showTitle || aiOn) && (
@@ -579,7 +586,7 @@ export function AiSetupPanel({
         )}
 
         {/* Guided OpenRouter — the recommended path: get a key, paste, test. */}
-        <div className="mt-4 space-y-3 rounded-lg border border-accent-gold/30 bg-accent-gold/5 p-4">
+        <div className="mt-4 space-y-3 sm:rounded-lg sm:border sm:border-accent-gold/30 sm:bg-accent-gold/5 sm:p-4">
           <div>
             <p className="text-text-primary text-sm font-medium">{t('ai.step1_title')}</p>
             <p className="text-text-secondary text-xs mt-0.5">{t('ai.step1_body')}</p>
@@ -622,7 +629,7 @@ export function AiSetupPanel({
         </div>
 
         {/* Advanced — any OpenAI-compatible endpoint (local Ollama, other cloud). */}
-        <details className="mt-4 rounded-lg border border-ui-border bg-background-secondary p-4">
+        <details className="mt-4 border-t border-ui-border pt-4 sm:rounded-lg sm:border sm:bg-background-secondary sm:p-4">
           <summary className="cursor-pointer text-text-primary text-sm font-medium" data-testid="llm-advanced-summary">
             {t('ai.advanced_summary')}
           </summary>

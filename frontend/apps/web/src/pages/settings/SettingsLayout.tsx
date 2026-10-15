@@ -59,7 +59,7 @@ export default function SettingsLayout() {
       </header>
 
       {/* Main Content Area */}
-      <main className="max-w-7xl mx-auto px-6 py-8">
+      <main className="max-w-7xl mx-auto py-4 sm:px-6 sm:py-8">
         {/* Two-column layout: Sidebar + Content */}
         <div className="flex flex-col lg:flex-row gap-8">
           {/* Sidebar Navigation - Hidden on mobile, shown on desktop */}
@@ -74,7 +74,7 @@ export default function SettingsLayout() {
 
           {/* Main Content Area */}
           <div className="flex-1 min-w-0">
-            <div className="bg-background-secondary border border-ui-border rounded-xl p-6">
+            <div className="sm:bg-background-secondary sm:border sm:border-ui-border sm:rounded-xl sm:p-6">
               <Outlet />
             </div>
           </div>

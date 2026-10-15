@@ -9,7 +9,6 @@
  */
 
 import { useTranslation } from 'react-i18next';
-import { Card } from '../../components/ui';
 import { AiSetupPanel } from '../../components/features/ai/AiSetupPanel';
 
 export default function AiSettings() {
@@ -23,9 +22,13 @@ export default function AiSettings() {
       </div>
 
       <section data-testid="ai-model-settings">
-        <Card className="p-5">
-          <AiSetupPanel />
-        </Card>
+        {/* The Card look from `sm` up; below it the panel uses the full width
+            (three nested padded cards squeezed it into a ~110 px column). */}
+        <div className="sm:rounded-lg sm:border sm:border-ui-border sm:bg-background-secondary sm:p-5 sm:shadow-[0_8px_32px_-12px_rgba(0,0,0,0.6)]">
+          <div className="sm:px-5 sm:py-4">
+            <AiSetupPanel />
+          </div>
+        </div>
       </section>
 
       {/* Info Box */}
