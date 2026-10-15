@@ -297,6 +297,18 @@ describe('read_period: spans', () => {
     expect(bytes(result)).toBeLessThan(MAX_PERIOD_RESULT_BYTES);
   });
 
+  // Matrix 2026-10-14 (D2/H2 "And next month?", November 2026): the 4 KB cut dropped the month's
+  // segment events, so the cite had no dated window and every answer for that month failed.
+  it('a budget cut that drops the segment events keeps their dates in the cite and the grounding', async () => {
+    const { result } = await read({ start: '2027-01' }, { loadPeriodChart: vi.fn(async () => withReading('delhi-2027-01')) });
+    const reading = result as ReadPeriodReading;
+    expect(reading.trimmed).toContain('segment events');
+    const station = { date: '2027-01-10', what: 'Mars stations retrograde' };
+    expect(reading.cite?.windows).toContainEqual(station);
+    expect(readPeriodGrounding(reading, 'en').windows).toContainEqual(station);
+    expect(bytes(result)).toBeLessThan(MAX_PERIOD_RESULT_BYTES);
+  });
+
   it('pins the two budgets: 4096 bytes for a day or month, 6144 for a range', () => {
     expect([MAX_PERIOD_RESULT_BYTES, MAX_RANGE_RESULT_BYTES]).toEqual([4096, 6144]);
   });

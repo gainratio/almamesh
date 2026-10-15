@@ -654,15 +654,19 @@ const CITE_KEY_BYTES = 32;
 /**
  * The reading gets what the extras (month rows, close-up, Moon), their trimmed notes and the cite
  * leave. The cite is sized on a first fit and the reading refitted without its bytes: trimming
- * only drops facts, so the refitted reading's cite is no larger.
+ * only drops facts, so the refitted reading's cite is no larger. The cite's dated windows come from
+ * the untrimmed reading: a budget cut may drop the segment events, never the dates the answer
+ * must give (November 2026 once lost its only dates that way, matrix 2026-10-14).
  */
 function fitLevel(loaded: Loaded, frame: ReadingFrame, level: ExtrasLevel, limit: number, range: boolean, language: string): Fitted {
   const room = limit - jsonBytes(level.extras) - jsonBytes(level.trimmed) - 16;
   const fit = (budgetBytes: number) => buildPeriodReading(loaded.source, frame, { budgetBytes, windowOrder: range ? 'severity' : 'date' });
-  const reserve = jsonBytes(readingCite(withExtras(fit(room), level), language)) + CITE_KEY_BYTES;
+  const windows = citeWindows(withExtras(fit(Number.POSITIVE_INFINITY), level), language);
+  const cite = (fitted: ReadPeriodReading) => ({ ...readingCite(fitted, language), windows });
+  const reserve = jsonBytes(cite(withExtras(fit(room), level))) + CITE_KEY_BYTES;
   const reading = fit(room - reserve);
   const result = withExtras(reading, level);
-  return { reading, result: { cite: readingCite(result, language), ...result } };
+  return { reading, result: { cite: cite(result), ...result } };
 }
 
 /**
@@ -849,6 +853,18 @@ export function readingCite(result: ReadPeriodReading, language: string): Readin
   };
 }
 
+/**
+ * The cite's dated facts (from the untrimmed reading, so a budget cut cannot take them away) plus
+ * the reading's other dated facts, by date. On a day both name, the cite's label wins.
+ */
+function groundedWindows(result: ReadPeriodReading, language: string): DatedFact[] {
+  const { start, end } = result.period;
+  const cited = (result.cite?.windows ?? []).filter((fact) => fact.date >= start && fact.date <= end);
+  const seen = new Set(cited.map((fact) => fact.date));
+  const facts = datedFacts(result, language).filter((fact) => !seen.has(fact.date));
+  return [...cited, ...facts].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+}
+
 /** A reading projected flat for the answer check (answer.ts): what the answer may cite, dated facts in the chat language. */
 export function readPeriodGrounding(result: ReadPeriodReading, language: string): AnswerGrounding['readings'][number] {
   const unique = (items: readonly string[]) => [...new Set(items)];
@@ -861,7 +877,7 @@ export function readPeriodGrounding(result: ReadPeriodReading, language: string)
     pratyantar: uniqueLords(result.dashas.pratyantar),
     rules: Object.fromEntries(result.lords.flatMap((lord) => (lord.rules ? [[lord.lord, [...lord.rules]]] : []))),
     tags: unique(result.sky.flatMap((span) => span.tags)),
-    windows: datedFacts(result, language),
+    windows: groundedWindows(result, language),
     themes: themeFacts(result),
   };
 }
