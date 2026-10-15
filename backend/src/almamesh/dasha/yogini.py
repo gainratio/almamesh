@@ -143,6 +143,57 @@ def compute_yogini_periods(
     return periods
 
 
+_CYCLE_YEARS = 36
+_YOGINI_INDEX = {name: idx for idx, (name, _lord, _years) in enumerate(YOGINI_SEQUENCE)}
+
+
+def _virtual_start(maha: YoginiPeriod, convention: DashaYearConvention) -> datetime:
+    """The start of the FULL maha: before birth for the birth maha's balance."""
+    full = YOGINI_SEQUENCE[_YOGINI_INDEX[maha.yogini_name]][2]
+    return maha.start_date - timedelta(days=(full - maha.duration_years) * convention.days_per_year)
+
+
+def _antar_rows(
+    maha: YoginiPeriod, convention: DashaYearConvention
+) -> list[tuple[str, PlanetName, float, datetime, datetime]]:
+    """The eight full antars (name, lord, years, start, end) from the virtual start."""
+    first = _YOGINI_INDEX[maha.yogini_name]
+    full = YOGINI_SEQUENCE[first][2]
+    cursor, rows = _virtual_start(maha, convention), []
+    for step in range(len(YOGINI_SEQUENCE)):
+        name, lord, years = YOGINI_SEQUENCE[(first + step) % len(YOGINI_SEQUENCE)]
+        length = full * years / _CYCLE_YEARS
+        end = cursor + timedelta(days=length * convention.days_per_year)
+        rows.append((name, lord, length, cursor, end))
+        cursor = end
+    return rows
+
+
+def yogini_antars(
+    maha: YoginiPeriod, convention: DashaYearConvention = DEFAULT_DASHA_YEAR_CONVENTION
+) -> list[YoginiPeriod]:
+    """The Yogini antardashas of one (unclipped-start) maha, clipped to it.
+
+    Proportional (standard): an antar lasts maha years x its Yogini's years / 36,
+    in Yogini order from the maha's own Yogini. The birth maha is the tail of a full
+    maha, so its antars are dated from the virtual start before birth (like the
+    Vimshottari birth balance); antars wholly before birth are dropped. The last
+    antar closes exactly at the maha's end.
+    """
+    rows = _antar_rows(maha, convention)
+    return [
+        YoginiPeriod(
+            yogini_name=name,
+            lord=lord,
+            start_date=max(start, maha.start_date),
+            end_date=maha.end_date if name == rows[-1][0] else min(end, maha.end_date),
+            duration_years=years,
+        )
+        for name, lord, years, start, end in rows
+        if end > maha.start_date
+    ]
+
+
 def find_active_yogini(periods: list[YoginiPeriod], dt: datetime) -> YoginiState:
     """
     Find the active Yogini state at a given datetime.

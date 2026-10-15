@@ -60,6 +60,36 @@ class FunctionalNature(StrEnum):
     NEUTRAL = "neutral"
 
 
+class SignDignity(StrEnum):
+    """A graha's sign dignity: exaltation tables, own sign, else natural friendship (BPHS)."""
+
+    EXALTED = "exalted"
+    OWN = "own"
+    FRIEND = "friend"
+    NEUTRAL = "neutral"
+    ENEMY = "enemy"
+    DEBILITATED = "debilitated"
+
+
+class LordStrength(StrEnum):
+    """A dasha lord's strength band (spec 2026-10-15, R3)."""
+
+    STRONG = "strong"
+    ORDINARY = "ordinary"
+    WEAK = "weak"
+
+
+class Relation(StrEnum):
+    """A sub-lord's placement counted from its parent lord (spec 2026-10-15, R2)."""
+
+    SUPPORT = "support"
+    FRICTION = "friction"
+    NEUTRAL = "neutral"
+
+
+Tone = Literal["supportive", "mixed", "challenging"]
+
+
 class ReadingWindow(BaseModel):
     """The covered half-open window [start, end)."""
 
