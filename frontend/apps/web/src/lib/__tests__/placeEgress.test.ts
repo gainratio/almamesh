@@ -48,7 +48,7 @@ describe('a chat-typed city never leaves the device, and the birth place never d
     ]);
     const turn = runChatTurn({
       config: LOCAL, chart: CHART, chartAsOf: { basis: 'chart', instant: new Date('2025-01-01T00:00:00Z') }, profileKey: 'p1', birth: BIRTH,
-      engine: engineWith(computeMoonWindow), question: 'How was 15 September 2019 at 3 pm in Delhi?', mode: 'layman', language: 'en',
+      engine: engineWith(computeMoonWindow), question: 'Take me to 15 September 2019 in Delhi: how was 3 pm there?', mode: 'layman', language: 'en',
       history: [], retrievedContext: [], signal: new AbortController().signal, now: new Date('2026-03-08T20:00:00.000Z'),
       labels: { deciding: 'd', answering: 'a', complete: 'c' }, onTravel: vi.fn(), onToolCall: (row) => rows.push(row),
       seams: { fetchImpl, viewerZone: () => 'America/Los_Angeles', periodSkyAllowed: true, loadPeriodChart: async () => DAY_CHART },
