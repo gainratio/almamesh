@@ -469,8 +469,14 @@ interface AssistantMessageRowProps {
   readonly onOpenThread: (threadId: string) => void;
 }
 
+interface MovedPointerProps {
+  readonly text: string;
+  readonly threadId: string;
+  readonly onOpenThread: (threadId: string) => void;
+}
+
 /** "Moved to ⏳ Sep 2017 · Mumbai": where a turn went after a chat-initiated trip. A link while that thread exists. */
-function MovedPointer({ text, threadId, onOpenThread }: { readonly text: string; readonly threadId: string; readonly onOpenThread: (threadId: string) => void }) {
+function MovedPointer({ text, threadId, onOpenThread }: MovedPointerProps) {
   const live = useChatStore((s) => s.threads[threadId] !== undefined);
   return (
     <div className="mb-4 flex justify-center">
