@@ -245,3 +245,13 @@ describe('travel: at most once per turn (dashboard.agentic.real run A called it 
     expect(record).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('travel: back to today needs no read before the answer', () => {
+  it('a queued return unlocks answer; a queued trip or an ask does not', () => {
+    const { tool } = travelSetup();
+    expect(tool.unlocksAnswer?.({ status: 'queued', action: 'back_to_today' })).toBe(true);
+    expect(tool.unlocksAnswer?.({ status: 'queued', action: 'travel', period_label: 'May 2019' })).toBe(false);
+    expect(tool.unlocksAnswer?.(TRAVEL_NEEDS_PLACE)).toBe(false);
+    expect(tool.unlocksAnswer?.(null)).toBe(false);
+  });
+});

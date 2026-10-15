@@ -80,6 +80,11 @@ export interface ToolDef<I> {
   readonly statusLabel?: string;
   /** A read tool: on a readFirst turn, only its completed call unlocks `answer` (travel does not). */
   readonly reads?: boolean;
+  /**
+   * On a readFirst turn, a completed result for which this returns true also unlocks `answer`:
+   * there is nothing left to read (travel back to today: the reply only confirms the move).
+   */
+  unlocksAnswer?(result: unknown): boolean;
   /** What a call past this tool's per-turn limit returns as its skipped note (default: the read note). */
   readonly overLimitNote?: string;
   execute(input: I, ctx: ToolContext): Promise<unknown>;
@@ -558,7 +563,7 @@ function chatModel(o: RunToolTurnOptions<unknown>): LanguageModel {
 async function executeCounted(def: ToolDef<unknown>, input: unknown, runtime: ToolRuntime): Promise<unknown> {
   if (!runtime.budget.take(def.name)) return { status: "skipped", note: def.overLimitNote ?? SKIPPED_NOTE };
   const result = await runWithTimeout(def, input, runtime.signal, runtime.now);
-  if (def.reads === true) runtime.reads.completed = true;
+  if (def.reads === true || def.unlocksAnswer?.(result) === true) runtime.reads.completed = true;
   return result;
 }
 

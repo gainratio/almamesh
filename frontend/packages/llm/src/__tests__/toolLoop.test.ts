@@ -357,6 +357,25 @@ describe("rule 5: tool choice per round", () => {
     expect(toolsOf(requests[2]).map((t) => t.function.name)).toEqual(["read_period", "answer"]);
   });
 
+  it("readFirst: a tool whose result says there is nothing to read (back to today) unlocks answer", async () => {
+    const back = defineTool<{ readonly to: string }>({
+      name: "travel",
+      description: "Move this conversation to a period, or back to today.",
+      input: z.object({ to: z.string() }),
+      unlocksAnswer: (result) => (result as { action?: string }).action === "back_to_today",
+      async execute(input) {
+        return { status: "queued", action: input.to === "today" ? "back_to_today" : "travel" };
+      },
+    });
+    const home = fakeEndpoint([{ calls: [call("t1", "travel", '{"to":"today"}')] }, answer("a1")]);
+    await collect(runToolTurn(options(home.fetchImpl, { readFirst: true, tools: asTools(readPeriod(), back) })));
+    expect(toolsOf(home.requests[1]).map((t) => t.function.name)).toEqual(["read_period", "answer"]);
+
+    const away = fakeEndpoint([{ calls: [call("t1", "travel", '{"to":"2019-05"}')] }, read("r1"), answer("a1")]);
+    await collect(runToolTurn(options(away.fetchImpl, { readFirst: true, tools: asTools(readPeriod(), back) })));
+    expect(toolsOf(away.requests[1]).map((t) => t.function.name)).toEqual(["read_period"]);
+  });
+
   it("without readFirst, round 1 offers every tool including answer", async () => {
     const { fetchImpl, requests } = fakeEndpoint([answer("a1")]);
     await collect(runToolTurn(options(fetchImpl)));

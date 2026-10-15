@@ -136,6 +136,11 @@ export function travelStatusLabel(args: Pick<TravelArgs, 'to'>, language: string
   return period === null ? 'Back to today…' : `Moving to ${period}…`;
 }
 
+function isQueuedReturn(result: unknown): boolean {
+  const queued = result as Partial<TravelQueued> | null | undefined;
+  return queued?.status === 'queued' && queued.action === 'back_to_today';
+}
+
 /** A second move in one turn: neutral, never an error row (the loop also stops offering travel). */
 export const ALREADY_TRAVELLED_NOTE = 'Already travelled this turn; the move happens after your answer.';
 const ALREADY_TRAVELLED = { status: 'skipped', note: ALREADY_TRAVELLED_NOTE } as const;
@@ -155,6 +160,8 @@ export function createTravelTool(input: TravelToolInput): ToolDef<TravelArgs> {
     timeoutMs: READ_PERIOD_TIMEOUT_MS,
     statusLabel: TIME_TRAVEL_STATUS_LABEL,
     overLimitNote: ALREADY_TRAVELLED_NOTE,
+    // A trip turn reads before it answers; going back to today leaves nothing to read, only a confirmation.
+    unlocksAnswer: isQueuedReturn,
     execute: async (args, context) => (moved ? ALREADY_TRAVELLED : travelTo({ ...input, record }, args, context)),
   });
 }

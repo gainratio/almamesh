@@ -79,6 +79,17 @@ describe('runChatTurn: a trip turn reads first', () => {
     expect(toolNames(bodies[2])).not.toContain('travel');
   });
 
+  it('a travel back to today unlocks answer: the reply only confirms the move, there is no period to read (dashboard.agentic, 2026-10-14)', async () => {
+    const { fetchImpl, bodies } = endpoint([
+      { name: 'travel', args: { to: 'today', place: null } },
+      { name: 'answer', args: generalAnswer('Back to today.') },
+    ]);
+    const snapshots = await drain(runChatTurn(input(fetchImpl, { asOf: MAY_2019 })));
+    expect(toolNames(bodies[1])).toEqual(['read_period', 'answer']);
+    expect(snapshots.at(-1)).toBe('Back to today.');
+    expect(bodies).toHaveLength(2);
+  });
+
   it('states today and the trip in the system prompt', async () => {
     const { fetchImpl, bodies } = endpoint([{ name: 'read_period', args: readPeriodArgs('2019-05') }, (body) => stubCallFor(body, {})]);
     await drain(runChatTurn(input(fetchImpl, { asOf: MAY_2019 })));
