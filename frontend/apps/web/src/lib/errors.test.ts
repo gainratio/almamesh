@@ -318,10 +318,46 @@ describe('chatErrorMessage', () => {
     );
   });
 
-  it('surfaces a PrivacyViolationError message verbatim (fail-closed fence)', () => {
-    const err = new Error('refusing to send chart data to non-local endpoint');
+  // CONTRACT REVERSED (was: "surfaces the message verbatim"). The fence's
+  // message is an English log line; showing it verbatim leaked English to es/pt
+  // users. The UI now renders a localized sentence with the endpoint
+  // interpolated, and the English message stays on the error for logs.
+  function privacyError(endpoint?: string): Error {
+    const err = Object.assign(
+      new Error(
+        "PrivacyMode 'local_only' requires a local OpenAI-compatible endpoint " +
+          '(set VITE_LLM_API_BASE to a loopback/private host); refusing to send ' +
+          `chart data to non-local endpoint ${endpoint ?? ''}.`,
+      ),
+      endpoint === undefined ? {} : { endpoint },
+    );
     err.name = 'PrivacyViolationError';
-    expect(chatErrorMessage(err)).toBe('refusing to send chart data to non-local endpoint');
+    return err;
+  }
+
+  it('renders a PrivacyViolationError as localized copy naming the endpoint (en)', () => {
+    const msg = chatErrorMessage(privacyError('https://example.invalid/v1'));
+    expect(msg).toBe(i18n.t('chat:errors.privacy_blocked', { endpoint: 'https://example.invalid/v1' }));
+    expect(msg).toContain('https://example.invalid/v1');
+    expect(msg).not.toContain('refusing to send');
+  });
+
+  it.each([
+    ['es', /no se envió nada/],
+    ['pt', /nada foi enviado/],
+  ])('renders a PrivacyViolationError in %s with no English leak', async (lang, native) => {
+    await i18n.changeLanguage(lang);
+    const msg = chatErrorMessage(privacyError('https://example.invalid/v1'));
+    expect(msg).toMatch(native);
+    expect(msg).toContain('https://example.invalid/v1');
+    expect(msg).not.toMatch(/refusing|requires a local|PrivacyMode|local_only/);
+  });
+
+  it('localizes a PrivacyViolationError that carries no endpoint', async () => {
+    await i18n.changeLanguage('es');
+    const msg = chatErrorMessage(privacyError());
+    expect(msg).toBe(i18n.t('chat:errors.privacy_blocked_no_endpoint'));
+    expect(msg).not.toMatch(/refusing|\{\{/);
   });
 
   it('falls back to the generic request_failed copy for an unknown failure', () => {

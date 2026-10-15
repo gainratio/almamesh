@@ -43,7 +43,7 @@ import { noteIfStaleChunk, StaleAppError, useAppStale } from '../lib/appStale';
 import { indexChatMessage, retrieveContext } from '../lib/chatMemory';
 import { isChunkLoadError } from '../lib/chunkError';
 import type { ChatToolCall } from '../lib/chatTurn';
-import { chatErrorMessage, getChatErrorMessage } from '../lib/errors';
+import { chatErrorMessage, getChatErrorMessage, privacyBlockedMessage } from '../lib/errors';
 import { LLM_SETTINGS_CHANGED_EVENT } from '../lib/llmSettingsEvents';
 import { PERIOD_TOOL_SUMMARIZERS } from '../lib/periodReading';
 import { asOfKey } from '../lib/pinnedPeriod';
@@ -215,9 +215,9 @@ async function updateRollingSummary(
 export const CHAT_STREAM_ERROR_COPY: Readonly<
   Record<string, (error: Error & Partial<LlmRequestError>) => string>
 > = {
-  // The fail-closed privacy fence writes a specific, user-facing message
-  // (which endpoint was refused and why): show it verbatim, never a code.
-  PrivacyViolationError: (error) => error.message,
+  // The fail-closed privacy fence: localized copy naming the refused endpoint,
+  // never a code and never the fence's English log message.
+  PrivacyViolationError: (error) => privacyBlockedMessage(error),
   // Any non-2xx maps to its specific, actionable copy via the shared coded-
   // message mapper: 402 → billing, 401/403 → bad key, 404/bad-slug → dead model,
   // 429 → rate limited, 5xx → provider outage, else → retry/settings guidance.

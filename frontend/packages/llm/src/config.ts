@@ -38,11 +38,18 @@ export interface HttpProviderConfig {
   readonly apiKey?: string;
 }
 
-/** Fail-closed: a local_only request that would leave the device is refused. */
+/**
+ * Fail-closed: a local_only request that would leave the device is refused.
+ * `message` is an English log line; the UI localizes from `endpoint` instead.
+ */
 export class PrivacyViolationError extends Error {
-  constructor(message: string) {
+  /** The refused endpoint, kept as data so the UI can interpolate it. */
+  readonly endpoint: string | undefined;
+
+  constructor(message: string, endpoint?: string) {
     super(message);
     this.name = "PrivacyViolationError";
+    this.endpoint = endpoint;
   }
 }
 
@@ -141,6 +148,7 @@ export function ensurePrivacy(config: ProviderConfig): void {
       `PrivacyMode 'local_only' requires a local OpenAI-compatible endpoint ` +
         `(set VITE_LLM_API_BASE to a loopback/private host); refusing to send ` +
         `chart data to non-local endpoint ${config.baseUrl}.`,
+      config.baseUrl,
     );
   }
 }
