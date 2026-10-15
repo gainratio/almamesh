@@ -27,7 +27,8 @@ const SEPTEMBER: Reading = {
   rules: { jupiter: [2, 11], saturn: [1, 12], mercury: [5, 8], rahu: [] },
   tags: ["sade_sati_phase_1", "jupiter_from_moon_11"],
   windows: [{ date: "2019-09-25", what: "Mars enters Virgo" }],
-  domains: ["career", "obstacles"],
+  themes: { career: { direction: "supportive", confidence: "high" }, obstacles: { direction: "challenging", confidence: "medium" } },
+  pratyantar: [],
 };
 
 const grounded = (...readings: Reading[]) => (): AnswerGrounding => ({ readings });
@@ -116,7 +117,7 @@ describe("answerSchema: grounding refinements say the fix", () => {
   it("a period answer must fill its fields, and each missing key says what goes in it", () => {
     expect(messages({ ...wire(ANSWER), opening: null, themes: null })).toEqual([
       'opening is required when kind is "period": two or three plain sentences that answer the question',
-      'themes is required when kind is "period": give at least one theme with its confidence; the reading has an obstacles theme: give one theme an obstacle that says what blocks and why',
+      'themes is required when kind is "period": give at least one theme with its confidence, e.g. career: supportive, high confidence; obstacles: challenging, medium confidence; the reading has an obstacles theme: give one theme an obstacle that says what blocks and why',
     ]);
   });
 
@@ -234,11 +235,46 @@ describe("answerSchema: grounding refinements say the fix", () => {
     expect(messages(wire(ANSWER), grounded({ ...SEPTEMBER, tags: [] }))).toEqual(["the reading has no Moon tags: leave moon empty"]);
   });
 
-  it("window dates must fall inside a period read this turn", () => {
+  // CONTRACT TIGHTENED (final review, Important 2): a window date used to pass when it merely fell
+  // inside the period read; an invented "2026-11-05: Venus enters Libra" was accepted. Now it must
+  // be a day the reading gives (the cite's windows are a subset, so copying the cite passes).
+  it("window dates must be days the reading gives, not merely inside the period", () => {
     const outside = { ...SEPTEMBER, period: { start: "2019-06-01", end: "2019-12-31", label: "late 2019" } };
-    expect(messages(withAnswer({ windows: [{ date: "2020-01-02", what: "x" }] }), grounded(outside))).toEqual([
-      "dates must fall inside 2019-06-01..2019-12-31",
+    const fix = "each window date must be a day the reading gives, e.g. 2019-09-25: Mars enters Virgo";
+    expect(messages(withAnswer({ windows: [{ date: "2020-01-02", what: "x" }] }), grounded(outside))).toEqual([fix]);
+    expect(messages(withAnswer({ windows: [{ date: "2019-09-10", what: "Venus enters Libra" }] }))).toEqual([fix]);
+    expect(messages(withAnswer({ windows: [{ date: "2019-09-25", what: "A day to watch." }] }))).toEqual([]);
+  });
+
+  it("a reading with no dated days takes no window at all", () => {
+    expect(messages(withAnswer({ windows: [{ date: "2019-09-10", what: "x" }] }), grounded({ ...SEPTEMBER, windows: [] }))).toEqual([
+      "the reading has no dated days, so send []",
     ]);
+  });
+
+  it("a theme of a domain the reading has carries the reading's direction and confidence", () => {
+    const [career, obstacles] = ANSWER.themes as [PeriodAnswer["themes"][number], PeriodAnswer["themes"][number]];
+    const fix = "the reading gives career as supportive, high confidence: copy both";
+    expect(messages(withAnswer({ themes: [{ ...career, confidence: "medium" }, obstacles] }))).toEqual([fix]);
+    expect(messages(withAnswer({ themes: [{ ...career, direction: "mixed" }, obstacles] }))).toEqual([fix]);
+    expect(messages(withAnswer({ themes: [{ ...career, area: "Career and money", confidence: "low" }, obstacles] }))).toEqual([fix]);
+    // An area that names no domain of the reading is the model's own: not checked.
+    expect(messages(withAnswer({ themes: [{ ...career, area: "Love", confidence: "low" }, obstacles] }))).toEqual([]);
+  });
+
+  it("two readings (a comparison) accept a domain's facts from either", () => {
+    const may: Reading = { ...SEPTEMBER, period: { start: "2019-05-01", end: "2019-05-31", label: "May 2019" }, themes: { career: { direction: "mixed", confidence: "low" } } };
+    const [career, obstacles] = ANSWER.themes as [PeriodAnswer["themes"][number], PeriodAnswer["themes"][number]];
+    expect(messages(withAnswer({ themes: [{ ...career, direction: "mixed", confidence: "low" }, obstacles] }), grounded(SEPTEMBER, may))).toEqual([]);
+  });
+
+  it("a given pratyantar lord must be one of the reading's pratyantar lords", () => {
+    const reading = { ...SEPTEMBER, pratyantar: ["mercury"] };
+    const venus = { ...ANSWER.dashas, pratyantar: { lord: "venus" as const, rules: [4, 9], note: "" } };
+    expect(messages(withAnswer({ dashas: venus }), grounded(reading))).toEqual(["pratyantar lord must be one of: mercury (from the reading)"]);
+    const mercury = { ...ANSWER.dashas, pratyantar: { lord: "mercury" as const, rules: [5, 8], note: "" } };
+    expect(messages(withAnswer({ dashas: mercury }), grounded(reading))).toEqual([]);
+    expect(messages(withAnswer({ dashas: { ...ANSWER.dashas, pratyantar: null } }), grounded(reading))).toEqual([]);
   });
 
   it("windows may not be empty while the reading has some", () => {
@@ -314,7 +350,10 @@ describe("answerSchema: grounding refinements say the fix", () => {
   });
 
   it("at least one theme", () => {
-    expect(messages(withAnswer({ themes: [] }))).toEqual(["give at least one theme with its confidence"]);
+    expect(messages(withAnswer({ themes: [] }))).toEqual([
+      "give at least one theme with its confidence, e.g. career: supportive, high confidence; obstacles: challenging, medium confidence",
+    ]);
+    expect(messages(withAnswer({ themes: [] }), grounded({ ...SEPTEMBER, themes: {} }))).toEqual(["give at least one theme with its confidence"]);
   });
 
   it("an obstacles theme in the reading needs a theme that names its obstacle", () => {
@@ -322,7 +361,7 @@ describe("answerSchema: grounding refinements say the fix", () => {
     expect(messages(withAnswer({ themes }))).toEqual([
       "the reading has an obstacles theme: give one theme an obstacle that says what blocks and why",
     ]);
-    expect(messages(withAnswer({ themes }), grounded({ ...SEPTEMBER, domains: ["career"] }))).toEqual([]);
+    expect(messages(withAnswer({ themes }), grounded({ ...SEPTEMBER, themes: { career: SEPTEMBER.themes.career! } }))).toEqual([]);
   });
 
   it("two readings (a comparison) allow the facts of either", () => {
@@ -330,7 +369,7 @@ describe("answerSchema: grounding refinements say the fix", () => {
     const dashas = { ...ANSWER.dashas, antar: { ...ANSWER.dashas.antar, lord: "mercury" as const, rules: [5, 8] } };
     expect(messages(withAnswer({ dashas, windows: [{ date: "2019-05-10", what: "x" }] }), grounded(SEPTEMBER, may))).toEqual([]);
     expect(messages(withAnswer({ windows: [{ date: "2019-07-04", what: "x" }] }), grounded(SEPTEMBER, may))).toEqual([
-      "dates must fall inside 2019-09-01..2019-09-30, 2019-05-01..2019-05-31",
+      "each window date must be a day the reading gives, e.g. 2019-05-10: x; 2019-09-25: Mars enters Virgo",
     ]);
   });
 });
@@ -747,7 +786,8 @@ describe("chatAnswerSpec.prepare: moon and windows come from the reading when th
       { date: "2026-10-19", what: "Saturn stations direct" },
       { date: "2026-10-27", what: "Sun enters Libra" },
     ],
-    domains: ["career"],
+    themes: { career: { direction: "supportive", confidence: "high" } },
+    pratyantar: [],
   };
   /** What deepseek sends: moon null, windows [], the interpretation filled in. */
   const DEEPSEEK = {
@@ -819,7 +859,7 @@ describe("chatAnswerSpec.prepare: moon and windows come from the reading when th
     const wrong = { ...DEEPSEEK, windows: [{ date: "2026-11-12", what: "Mars enters Leo" }] };
     const { events } = await turn(OCTOBER, "en", wrong, DEEPSEEK);
     expect(events.map((e) => e.status)).toEqual(["retried", "complete"]);
-    expect(String(events[0]?.result)).toContain("dates must fall inside 2026-10-01..2026-10-31");
+    expect(String(events[0]?.result)).toContain("each window date must be a day the reading gives, e.g. 2026-10-04: pratyantar Mars begins");
   });
 
   it("the interpretation is not filled: a missing dashas or themes still retries", async () => {

@@ -18,6 +18,8 @@ export interface GroundingReading {
   readonly place: { readonly label: string };
   readonly maha: readonly string[];
   readonly antar: readonly string[];
+  /** The pratyantar lords running in the period ([] when the reading gives none). */
+  readonly pratyantar: readonly string[];
   /** House lordships by graha, e.g. { saturn: [1, 12] }. */
   readonly rules: Readonly<Record<string, readonly number[]>>;
   /** Moon-based sky tags, e.g. sade_sati_phase_1, jupiter_from_moon_11. */
@@ -27,8 +29,14 @@ export interface GroundingReading {
    * with a short label of what happens that day, e.g. { date: "2026-11-12", what: "Mars enters Leo" }.
    */
   readonly windows: readonly DatedFact[];
-  /** The reading's theme domains, e.g. career, obstacles. */
-  readonly domains: readonly string[];
+  /** The reading's themes by domain (e.g. career, obstacles): the direction and confidence it gives. */
+  readonly themes: Readonly<Record<string, ThemeFact>>;
+}
+
+/** What a reading says of one life area. */
+export interface ThemeFact {
+  readonly direction: ThemeLine["direction"];
+  readonly confidence: ThemeLine["confidence"];
 }
 
 /** A dated fact from a reading: its day (YYYY-MM-DD) and a short label of what happens. */
@@ -167,7 +175,7 @@ const lower = (value: string): string => value.toLowerCase();
 /** Lowercase without accents, so "Sao Paulo" names "São Paulo". */
 const plain = (value: string): string => lower(value.normalize("NFD").replace(/\p{M}/gu, ""));
 
-function checkLord(level: "maha" | "antar", lord: Graha, readings: readonly GroundingReading[], issue: Issue): void {
+function checkLord(level: "maha" | "antar" | "pratyantar", lord: Graha, readings: readonly GroundingReading[], issue: Issue): void {
   const allowed = unique(readings.flatMap((reading) => reading[level].map(lower)));
   // A reading without lords of this level cannot ground (or refuse) one.
   if (allowed.length > 0 && !allowed.includes(lord)) issue(`${level} lord must be one of: ${allowed.join(", ")} (from the reading)`, ["dashas", level, "lord"]);
@@ -196,7 +204,9 @@ function checkDashas(value: PeriodAnswer["dashas"], readings: readonly Grounding
   checkLord("antar", value.antar.lord, readings, issue);
   checkRules("maha", value.maha, readings, issue);
   checkRules("antar", value.antar, readings, issue);
-  if (value.pratyantar) checkRules("pratyantar", value.pratyantar, readings, issue);
+  if (!value.pratyantar) return;
+  checkLord("pratyantar", value.pratyantar.lord, readings, issue);
+  checkRules("pratyantar", value.pratyantar, readings, issue);
 }
 
 const wordIn = (text: string, word: string): boolean => new RegExp(`(?<![\\p{L}\\p{N}_])${word}(?![\\p{L}\\p{N}_])`, "iu").test(text);
@@ -259,23 +269,27 @@ function datedFacts(readings: readonly GroundingReading[]): DatedFact[] {
   return [...byDay.values()].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
 }
 
+const NO_DATED_DAYS = "the reading has no dated days, so send []";
+const factList = (facts: readonly DatedFact[]): string => facts.slice(0, 6).map((fact) => `${fact.date}: ${fact.what}`).join("; ");
+
 /** The fix for an empty or missing windows list: dated facts to cite, or [] when there are none. */
 function windowsFix(readings: readonly GroundingReading[]): string {
   const facts = datedFacts(readings);
-  if (facts.length === 0) return "the reading has no dated days, so send []";
-  return `give at least one dated window from the reading, e.g. ${facts.slice(0, 6).map((fact) => `${fact.date}: ${fact.what}`).join("; ")}`;
+  if (facts.length === 0) return NO_DATED_DAYS;
+  return `give at least one dated window from the reading, e.g. ${factList(facts)}`;
 }
 
+/** Every window's date is a day the reading gives (inside a period read); none at all when it gives none. */
 function checkWindows(windows: readonly WindowLine[], readings: readonly GroundingReading[], issue: Issue): void {
-  if (windows.length === 0 && datedFacts(readings).length > 0) {
-    issue(windowsFix(readings), ["windows"]);
+  const facts = datedFacts(readings);
+  if (windows.length === 0) {
+    if (facts.length > 0) issue(windowsFix(readings), ["windows"]);
     return;
   }
   // A malformed date is already reported by its own pattern.
-  const inside = insideAny(readings);
-  if (windows.every((line) => !ISO_DAY.test(line.date) || inside(line.date))) return;
-  const ranges = readings.map(({ period }) => `${dayOf(period.start)}..${dayOf(period.end)}`);
-  issue(`dates must fall inside ${ranges.join(", ")}`, ["windows"]);
+  const days = new Set(facts.map((fact) => fact.date));
+  if (windows.every((line) => !ISO_DAY.test(line.date) || days.has(line.date))) return;
+  issue(facts.length === 0 ? NO_DATED_DAYS : `each window date must be a day the reading gives, e.g. ${factList(facts)}`, ["windows"]);
 }
 
 /**
@@ -294,15 +308,44 @@ function checkPlace(place: string | null, readings: readonly GroundingReading[],
   if (!named) issue(`name the place as the reading does: ${labels.join(" or ")}`, ["place"]);
 }
 
-const NO_THEME = "give at least one theme with its confidence";
 const OBSTACLE_FIX = "the reading has an obstacles theme: give one theme an obstacle that says what blocks and why";
-const hasObstacles = (readings: readonly GroundingReading[]): boolean => readings.some((reading) => reading.domains.includes("obstacles"));
+const hasObstacles = (readings: readonly GroundingReading[]): boolean => readings.some((reading) => "obstacles" in reading.themes);
+
+/** "supportive, high confidence": a domain's facts as the fix text names them. */
+const themeFactText = (fact: ThemeFact): string => `${fact.direction}, ${fact.confidence} confidence`;
+
+/** The reading's themes, "career: supportive, high confidence; …" (the first reading's, for a domain in several). */
+function themesList(readings: readonly GroundingReading[]): string {
+  const byDomain = new Map<string, ThemeFact>();
+  for (const [domain, fact] of readings.flatMap((reading) => Object.entries(reading.themes))) if (!byDomain.has(domain)) byDomain.set(domain, fact);
+  return [...byDomain].map(([domain, fact]) => `${domain}: ${themeFactText(fact)}`).join("; ");
+}
+
+function noThemeFix(readings: readonly GroundingReading[]): string {
+  const listed = themesList(readings);
+  return listed ? `give at least one theme with its confidence, e.g. ${listed}` : "give at least one theme with its confidence";
+}
+
+/** The reading's domains the theme's area names ("Career and money" names career). */
+const namedDomains = (area: string, readings: readonly GroundingReading[]): string[] =>
+  unique(readings.flatMap((reading) => Object.keys(reading.themes))).filter((domain) => wordIn(plain(area), plain(domain).replace(/_/g, " ")));
+
+/** A theme whose area names a domain of the reading states that domain's direction and confidence (any reading's). */
+function checkThemeFacts(theme: ThemeLine, index: number, readings: readonly GroundingReading[], issue: Issue): void {
+  const domains = namedDomains(theme.area, readings);
+  if (domains.length === 0) return;
+  const facts = domains.flatMap((domain) => readings.flatMap((reading) => reading.themes[domain] ?? []));
+  if (facts.some((fact) => fact.direction === theme.direction && fact.confidence === theme.confidence)) return;
+  const [domain = "", fact] = [domains[0], facts[0]];
+  if (fact) issue(`the reading gives ${domain} as ${themeFactText(fact)}: copy both`, ["themes", index]);
+}
 
 function checkThemes(themes: readonly ThemeLine[], readings: readonly GroundingReading[], issue: Issue): void {
   if (themes.length === 0) {
-    issue(NO_THEME, ["themes"]);
+    issue(noThemeFix(readings), ["themes"]);
     return;
   }
+  themes.forEach((theme, index) => checkThemeFacts(theme, index, readings, issue));
   if (hasObstacles(readings) && !themes.some((theme) => theme.obstacle?.trim())) issue(OBSTACLE_FIX, ["themes"]);
 }
 
@@ -334,7 +377,7 @@ function missingFix(key: (typeof PERIOD_KEYS)[number], readings: readonly Ground
     case "windows":
       return windowsFix(readings);
     case "themes":
-      return hasObstacles(readings) ? `${NO_THEME}; ${OBSTACLE_FIX}` : NO_THEME;
+      return hasObstacles(readings) ? `${noThemeFix(readings)}; ${OBSTACLE_FIX}` : noThemeFix(readings);
     case "opening":
       return "two or three plain sentences that answer the question";
   }

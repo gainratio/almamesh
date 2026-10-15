@@ -1,5 +1,6 @@
 import type { MoonWindow } from '@almamesh/browser';
 import type { PeriodReadingContext, SiderealChart } from '@almamesh/browser/types';
+import { answerSchema, GRAHAS, type AnswerGrounding } from '@almamesh/llm/answer';
 import { z } from '@almamesh/llm/toolLoop';
 import type { ProcessedBirthData } from '@almamesh/shared-types';
 import { LocalTimeError } from '@almamesh/store';
@@ -21,6 +22,7 @@ import {
   resolveChatPlace,
   type ReadPeriodArgs,
   type ReadPeriodInput,
+  type ReadingCite,
   type ReadPeriodReading,
 } from '../readPeriod';
 import { DELHI_BIRTH_LEAKS, periodReadingFixture, type PeriodReadingFixture } from './periodReadingFixtures';
@@ -74,6 +76,29 @@ const context = (signal = new AbortController().signal) => ({ now: NOW, signal }
 const args = (partial: Partial<ReadPeriodArgs> & { start: string }): ReadPeriodArgs =>
   ({ end: null, place: null, time: null, focus: null, ...partial });
 const bytes = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)).length;
+
+type Grounding = AnswerGrounding['readings'][number];
+
+/** The answer a model writes by copying a reading's cite and nothing else (the lords from each line's name). */
+function answerFromCite(cite: ReadingCite, grounding: Grounding) {
+  const lordOf = (line: string | undefined) => (line?.split(',')[0] ?? '').toLowerCase() as (typeof GRAHAS)[number];
+  const line = (text: string | undefined) => ({ lord: lordOf(text), rules: [...(grounding.rules[lordOf(text)] ?? [])], note: 'This chapter sets the tone.' });
+  const lords = [...cite.maha, ...cite.antar].map(lordOf);
+  const themes = Object.entries(cite.themes).map(([area, fact]) => ({ area, ...fact, text: 'As the reading says.', obstacle: 'What the reading names.' }));
+  return {
+    kind: 'period' as const, markdown: null, period: cite.period, place: cite.place, advice: null,
+    opening: `This span runs under ${lords.join(', ')}.`,
+    dashas: { maha: line(cite.maha[0]), antar: line(cite.antar[0]), pratyantar: cite.pratyantar[0] ? line(cite.pratyantar[0]) : null },
+    moon: cite.moon.map(({ tag, says }) => ({ tag, meaning: says })),
+    themes: themes.length > 0 ? themes : [{ area: 'Overall', direction: 'mixed' as const, confidence: 'low' as const, text: 'x', obstacle: null }],
+    windows: cite.windows.map(({ date, what }) => ({ date, what })),
+  };
+}
+
+function checkIssues(answer: unknown, grounding: Grounding): string[] {
+  const parsed = answerSchema(() => ({ readings: [grounding] })).safeParse(answer);
+  return parsed.success ? [] : parsed.error.issues.map((issue) => issue.message);
+}
 
 async function read(partial: Partial<ReadPeriodArgs> & { start: string }, overrides: Partial<ReadPeriodInput> = {}) {
   const harness = setup(overrides);
@@ -489,7 +514,8 @@ describe('readPeriodGrounding', () => {
     expect(grounding.rules.rahu).toEqual(result.lords.find((lord) => lord.lord === 'rahu')?.rules ?? []);
     expect(grounding.tags).toEqual([...new Set(result.sky.flatMap((span) => span.tags))]);
     expect(grounding.windows.map((fact) => fact.date)).toEqual(expect.arrayContaining(result.windows.map((window) => window.date)));
-    expect(grounding.domains).toEqual(result.themes.map((theme) => theme.domain));
+    expect(grounding.themes).toEqual(Object.fromEntries(result.themes.map((theme) => [theme.domain, { direction: theme.direction, confidence: theme.confidence }])));
+    expect(grounding.pratyantar).toEqual([...new Set(result.dashas.pratyantar.map((span) => span.lord))]);
   });
 
   /** A November-like month: no theme window inside it, but a sign change and a pratyantar change. */
@@ -546,18 +572,19 @@ describe('readPeriodGrounding', () => {
 // Task 10e: the facts an answer must state, already phrased, so the model copies them instead of
 // leaving moon or windows empty (deepseek's first answer was accepted 2/5 times without it).
 describe('read_period: cite', () => {
-  it('a month reading cites its period, place, lords, Moon tags, dated windows and confidence per theme', async () => {
+  it('a month reading cites its period, place, lords, Moon tags, dated windows and each theme\'s direction and confidence', async () => {
     const result = (await read({ start: '2019-06' })).result as ReadPeriodReading;
     expect(result.cite).toEqual({
       period: result.period.label,
       place: 'Vadodara, India',
       maha: ['Rahu, rules no house'],
       antar: ['Rahu, rules no house'],
+      pratyantar: [...new Set(result.dashas.pratyantar.map((span) => span.lord))].map((lord) => expect.stringMatching(new RegExp(`^${lord}`, 'i'))),
       moon: [{ tag: 'jupiter_from_moon_4', says: 'Jupiter 4th from your Moon' }],
       windows: [{ date: '2019-06-22', what: 'Mars enters Cancer' }],
-      confidence: Object.fromEntries(result.themes.map((theme) => [theme.domain, theme.confidence])),
+      themes: Object.fromEntries(result.themes.map((theme) => [theme.domain, { direction: theme.direction, confidence: theme.confidence }])),
     });
-    expect(result.cite?.confidence).toMatchObject({ education: 'high', obstacles: 'medium', finances: 'low' });
+    expect(result.cite?.themes).toMatchObject({ education: { confidence: 'high' }, obstacles: { confidence: 'medium' }, finances: { confidence: 'low' } });
   });
 
   /** A synthetic reading: two maha lords (a change inside it), lords with and without houses. */
@@ -606,6 +633,36 @@ describe('read_period: cite', () => {
     expect(cite?.windows.length).toBe(Math.min(6, grounding.windows.length));
     expect(cite?.maha.map((line) => line.split(',')[0]?.toLowerCase())).toEqual(grounding.maha);
     expect(cite?.antar.map((line) => line.split(',')[0]?.toLowerCase())).toEqual(grounding.antar);
+  });
+
+  it.each([
+    [{ start: '2019-06' }],
+    [{ start: '2019-06', end: '2019-12' }],
+    [{ start: '2019' }],
+    [{ start: '2019-01', end: '2020-12', focus: 'saturn' as const }],
+  ])('an answer that copies the cite passes the answer check as is: %j', async (partial) => {
+    const result = (await read(partial)).result as ReadPeriodReading;
+    const grounding = readPeriodGrounding(result);
+    expect(checkIssues(answerFromCite(result.cite!, grounding), grounding)).toEqual([]);
+  });
+
+  it('a wrong confidence, an invented date or a wrong pratyantar lord retries, each with its fix', async () => {
+    const result = (await read({ start: '2019-06', end: '2019-12' })).result as ReadPeriodReading;
+    const grounding = readPeriodGrounding(result);
+    const cited = answerFromCite(result.cite!, grounding);
+    expect(grounding.pratyantar.length).toBeGreaterThan(0);
+    expect(Object.keys(grounding.themes).length).toBeGreaterThan(0);
+    const [theme] = cited.themes;
+    const wrongLevel = theme!.confidence === 'low' ? 'high' : 'low';
+    expect(checkIssues({ ...cited, themes: [{ ...theme!, confidence: wrongLevel }] }, grounding)).toEqual([
+      `the reading gives ${theme!.area} as ${theme!.direction}, ${theme!.confidence} confidence: copy both`,
+    ]);
+    const invented = ['2019-06-02', '2019-06-03', '2019-06-04'].find((date) => !grounding.windows.some((fact) => fact.date === date))!;
+    expect(checkIssues({ ...cited, windows: [{ date: invented, what: 'Venus enters Libra' }] }, grounding)[0]).toMatch(/^each window date must be a day the reading gives, e\.g\. /);
+    const stranger = GRAHAS.find((graha) => !grounding.pratyantar.includes(graha))!;
+    expect(checkIssues({ ...cited, dashas: { ...cited.dashas, pratyantar: { lord: stranger, rules: grounding.rules[stranger] ?? [], note: '' } } }, grounding)).toEqual([
+      `pratyantar lord must be one of: ${grounding.pratyantar.join(', ')} (from the reading)`,
+    ]);
   });
 
   it('a range cites at most 6 windows: its theme windows first, then other dated facts, listed by date', async () => {

@@ -18,7 +18,7 @@ import {
   EPHEMERIS_LAST_YEAR,
   startsInOrBeforeBirthYear,
 } from '@almamesh/llm';
-import { moonTagLabel, type AnswerGrounding } from '@almamesh/llm/answer';
+import { moonTagLabel, type AnswerGrounding, type ThemeFact } from '@almamesh/llm/answer';
 import { defineTool, z, type ToolContext, type ToolDef } from '@almamesh/llm/toolLoop';
 import type { ProcessedBirthData } from '@almamesh/shared-types';
 import { LocalTimeError } from '@almamesh/store';
@@ -38,7 +38,6 @@ import {
   type ReadingFrame,
   type ReadingPeriod,
   type ReadingPlace,
-  type ReadingTheme,
 } from './periodReading';
 import { PeriodSkyTimeoutError } from './periodSky';
 import { isCachedNatalLords, isCachedPeriodReading } from './periodSkyValidation';
@@ -382,10 +381,13 @@ export interface ReadingCite {
   /** One line per running lord: "Jupiter, rules your 2nd and 11th houses". */
   readonly maha: readonly string[];
   readonly antar: readonly string[];
+  /** The pratyantar lords running in the period, phrased like maha and antar ([] when none). */
+  readonly pratyantar: readonly string[];
   readonly moon: readonly CiteMoon[];
   /** At most {@link MAX_CITE_WINDOWS} dated facts inside the period, by date. */
   readonly windows: readonly DatedFact[];
-  readonly confidence: Readonly<Record<string, ReadingTheme['confidence']>>;
+  /** Each theme's direction and confidence by domain: the answer's theme for that area states both. */
+  readonly themes: Readonly<Record<string, ThemeFact>>;
 }
 
 export interface ReadPeriodReading extends PeriodReading {
@@ -800,7 +802,7 @@ function lordLine(lord: string, rules: readonly number[] | undefined): string {
   return `${titled(lord)}, rules your ${listed(houses)} ${houses.length > 1 ? 'houses' : 'house'}`;
 }
 
-function citeLords(result: ReadPeriodReading, level: 'maha' | 'antar'): string[] {
+function citeLords(result: ReadPeriodReading, level: 'maha' | 'antar' | 'pratyantar'): string[] {
   const lords = [...new Set(result.dashas[level].map((span) => span.lord))];
   return lords.map((lord) => lordLine(lord, result.lords.find((item) => item.lord === lord)?.rules));
 }
@@ -813,6 +815,15 @@ function citeWindows(result: ReadPeriodReading): DatedFact[] {
   return chosen.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
 }
 
+const uniqueLords = (spans: readonly { readonly lord: string }[]): string[] => [...new Set(spans.map((span) => span.lord))];
+
+/** Each theme's direction and confidence by domain (the first theme of a domain). */
+function themeFacts(result: ReadPeriodReading): Record<string, ThemeFact> {
+  const facts: Record<string, ThemeFact> = {};
+  for (const theme of result.themes) facts[theme.domain] ??= { direction: theme.direction, confidence: theme.confidence };
+  return facts;
+}
+
 /** The facts the answer must state, phrased from this reading only (the same facts the answer check accepts). */
 export function readingCite(result: ReadPeriodReading): ReadingCite {
   const tags = [...new Set(result.sky.flatMap((span) => span.tags))];
@@ -821,9 +832,10 @@ export function readingCite(result: ReadPeriodReading): ReadingCite {
     place: result.place.label ?? null,
     maha: citeLords(result, 'maha'),
     antar: citeLords(result, 'antar'),
+    pratyantar: citeLords(result, 'pratyantar'),
     moon: tags.map((tag) => ({ tag, says: moonTagLabel(tag, 'en') })),
     windows: citeWindows(result),
-    confidence: Object.fromEntries(result.themes.map((theme) => [theme.domain, theme.confidence])),
+    themes: themeFacts(result),
   };
 }
 
@@ -834,11 +846,12 @@ export function readPeriodGrounding(result: ReadPeriodReading): AnswerGrounding[
   return {
     period: { start, end, label },
     place: { label: result.place.label ?? '' },
-    maha: unique(result.dashas.maha.map((span) => span.lord)),
-    antar: unique(result.dashas.antar.map((span) => span.lord)),
+    maha: uniqueLords(result.dashas.maha),
+    antar: uniqueLords(result.dashas.antar),
+    pratyantar: uniqueLords(result.dashas.pratyantar),
     rules: Object.fromEntries(result.lords.flatMap((lord) => (lord.rules ? [[lord.lord, [...lord.rules]]] : []))),
     tags: unique(result.sky.flatMap((span) => span.tags)),
     windows: datedFacts(result),
-    domains: unique(result.themes.map((theme) => theme.domain)),
+    themes: themeFacts(result),
   };
 }

@@ -21,7 +21,7 @@ interface ReadingLike {
   readonly dashas: { readonly maha: readonly { readonly lord: string }[]; readonly antar: readonly { readonly lord: string }[] };
   readonly lords?: readonly { readonly lord: string; readonly rules?: readonly number[] }[];
   readonly sky?: readonly { readonly tags: readonly string[] }[];
-  readonly themes?: readonly { readonly domain: string }[];
+  readonly themes?: readonly { readonly domain: string; readonly direction?: string; readonly confidence?: string }[];
   readonly windows?: readonly { readonly date: string }[];
 }
 
@@ -54,7 +54,7 @@ interface CompactReading {
   readonly tags: readonly string[];
   /** Dated facts, labelled (readPeriodGrounding). */
   readonly windows: readonly { readonly date: string; readonly what: string }[];
-  readonly domains: readonly string[];
+  readonly themes: Readonly<Record<string, { readonly direction: string; readonly confidence: string }>>;
 }
 
 function isCompactReading(value: unknown): value is CompactReading {
@@ -69,7 +69,7 @@ function fromCompact(compact: CompactReading): ReadingLike {
     dashas: { maha: compact.maha.map((lord) => ({ lord })), antar: compact.antar.map((lord) => ({ lord })) },
     lords: Object.entries(compact.rules).map(([lord, rules]) => ({ lord, rules })),
     sky: [{ tags: compact.tags }],
-    themes: compact.domains.map((domain) => ({ domain })),
+    themes: Object.entries(compact.themes).map(([domain, fact]) => ({ domain, ...fact })),
     windows: compact.windows.map(({ date }) => ({ date })),
   };
 }
@@ -95,10 +95,17 @@ export function generalAnswer(markdown: string): Readonly<Record<string, unknown
   return { ...EMPTY, kind: 'general', markdown };
 }
 
+/** The newest reading's first theme as the answer states it (its direction and confidence); a generic one when it has none. */
+function themeOf(reading: ReadingLike) {
+  const theme = reading.themes?.find((each) => each.direction && each.confidence);
+  if (!theme) return { area: 'Overall', direction: 'mixed', confidence: 'medium' };
+  return { area: theme.domain, direction: theme.direction, confidence: theme.confidence };
+}
+
 /**
  * A period answer that cites only what the turn's readings say: the newest reading's period,
- * place, lords and their houses, and a Moon tag and a window from any reading (the answer
- * check takes them from every reading of the turn).
+ * place, lords and their houses, its first theme's direction and confidence, and a Moon tag
+ * and a window from any reading (the answer check takes them from every reading of the turn).
  */
 export function periodAnswerFrom(readings: readonly ReadingLike[], opening = 'A steady stretch for work.'): Readonly<Record<string, unknown>> {
   const reading = readings[readings.length - 1]!;
@@ -115,7 +122,7 @@ export function periodAnswerFrom(readings: readonly ReadingLike[], opening = 'A 
     dashas: { maha: line(reading.dashas.maha[0]!.lord), antar: line(reading.dashas.antar[0]!.lord), pratyantar: null },
     moon: tag ? [{ tag, meaning: 'The Moon colours the mood.' }] : [],
     // An obstacle is always named: a turn that read several spans may have one with an obstacles theme.
-    themes: [{ area: 'Career', direction: 'mixed', confidence: 'medium', text: 'Work asks for patience.', obstacle: 'Paperwork slows things down.' }],
+    themes: [{ ...themeOf(reading), text: 'Work asks for patience.', obstacle: 'Paperwork slows things down.' }],
     windows: window ? [{ date: window, what: 'A day to watch.' }] : [],
   };
 }
