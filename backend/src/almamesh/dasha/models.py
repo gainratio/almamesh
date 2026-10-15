@@ -191,12 +191,19 @@ class CompositeTimeline(BaseModel):
 
 
 class VimPeriod(BaseModel):
-    """A Vimshottari dasha period (MD or MD/AD)."""
+    """A Vimshottari dasha period (MD or MD/AD).
+
+    ``start_date``/``end_date`` may be clipped to an analysis window;
+    ``antar_start``/``antar_end`` are always the antar's TRUE bounds, which the
+    pratyantar arithmetic must start from.
+    """
 
     md_lord: PlanetName
     ad_lord: PlanetName | None = None
     start_date: datetime
     end_date: datetime
+    antar_start: datetime
+    antar_end: datetime
 
 
 class CharaPeriod(BaseModel):
