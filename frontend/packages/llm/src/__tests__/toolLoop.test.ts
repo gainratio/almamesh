@@ -977,15 +977,52 @@ describe("network retry", () => {
     });
   });
 
-  it("an aborted request is never retried", async () => {
+  it("an aborted request is never retried, even when the browser reports the abort as \"Failed to fetch\"", async () => {
     const controller = new AbortController();
-    const { fetchImpl, requests } = fakeEndpoint([{ hangFetch: true }, answer("a1")]);
+    let requests = 0;
+    // A fetch that fails with the network-failure text once its request is aborted: only the
+    // aborted signal (not the error) can stop the retry.
+    const fetchImpl = (async (_input: string | URL | Request, init?: RequestInit) => {
+      requests += 1;
+      return new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => reject(new TypeError("Failed to fetch")), { once: true });
+      });
+    }) as typeof fetch;
     const pending = collect(runToolTurn(options(fetchImpl, { signal: controller.signal }))).catch((e: unknown) => e);
-    await vi.waitFor(() => expect(requests).toHaveLength(1));
+    await vi.waitFor(() => expect(requests).toBe(1));
     controller.abort();
     await pending;
     await new Promise((resolve) => setTimeout(resolve, NETWORK_RETRY_DELAY_MS + 50));
-    expect(requests).toHaveLength(1);
+    expect(requests).toBe(1);
+  });
+
+  it("the pause before a retry leaves no abort listener behind once it has waited", async () => {
+    const added: EventListenerOrEventListenerObject[] = [];
+    const removed: EventListenerOrEventListenerObject[] = [];
+    let requests = 0;
+    const { fetchImpl: answering } = fakeEndpoint([answer("a1")]);
+    const fetchImpl = (async (input: string | URL | Request, init?: RequestInit) => {
+      requests += 1;
+      if (requests > 1) return answering(input, init);
+      const signal = init?.signal;
+      if (signal) {
+        const add = signal.addEventListener.bind(signal);
+        const remove = signal.removeEventListener.bind(signal);
+        signal.addEventListener = ((type: string, listener: EventListenerOrEventListenerObject, opts?: AddEventListenerOptions) => {
+          if (type === "abort") added.push(listener);
+          add(type, listener, opts);
+        }) as typeof signal.addEventListener;
+        signal.removeEventListener = ((type: string, listener: EventListenerOrEventListenerObject, opts?: EventListenerOptions) => {
+          if (type === "abort") removed.push(listener);
+          remove(type, listener, opts);
+        }) as typeof signal.removeEventListener;
+      }
+      throw new TypeError("Failed to fetch");
+    }) as typeof fetch;
+    const { result } = await collect(runToolTurn(options(fetchImpl)));
+    expect(result).toEqual({ answer: { headline: "Venus rises", body: "Steady work." } });
+    expect(added.length).toBeGreaterThan(0);
+    expect(added.filter((listener) => !removed.includes(listener))).toEqual([]);
   });
 
   it("any other fetch error is not retried by the seam", async () => {

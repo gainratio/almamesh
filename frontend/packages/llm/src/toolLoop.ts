@@ -467,29 +467,38 @@ function isBrowserNetworkFailure(error: unknown): boolean {
   return error instanceof TypeError && BROWSER_NETWORK_FAILURE.test(error.message);
 }
 
-/** Resolves after `ms`, or rejects with the signal's reason the moment it aborts. */
+/**
+ * Resolves after `ms`, or rejects with the signal's reason the moment it aborts (at once when it
+ * already has). Its abort listener goes when the wait ends, so a long turn's signal does not
+ * collect one per retry.
+ */
 function pause(ms: number, signal: AbortSignal | null | undefined): Promise<void> {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) return reject(signal.reason);
-    const timer = setTimeout(resolve, ms);
-    signal?.addEventListener("abort", () => {
+    const onAbort = (): void => {
       clearTimeout(timer);
-      reject(signal.reason);
-    }, { once: true });
+      reject(signal?.reason);
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener("abort", onAbort, { once: true });
   });
 }
 
 /**
  * Sends a model request once more after {@link NETWORK_RETRY_DELAY_MS} when the browser's fetch
  * fails with no status ("Failed to fetch"): the SDK does not retry those. An aborted request is
- * never retried. This wraps the model's fetch only, so a tool never runs twice.
+ * never retried: `pause` rejects at once on an aborted signal (a browser may report the abort
+ * itself as "Failed to fetch"). This wraps the model's fetch only, so a tool never runs twice.
  */
 function retryNetworkOnce(inner: typeof fetch): typeof fetch {
   return (async (input: string | URL | Request, init?: RequestInit) => {
     try {
       return await inner(input, init);
     } catch (error) {
-      if (!isBrowserNetworkFailure(error) || init?.signal?.aborted) throw error;
+      if (!isBrowserNetworkFailure(error)) throw error;
       await pause(NETWORK_RETRY_DELAY_MS, init?.signal);
       return inner(input, init);
     }
