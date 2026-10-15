@@ -74,7 +74,8 @@ describe("round two of the re-grade", () => {
   });
 
   it("asks for mantras in IAST, so a remedies section is not held for its script", () => {
-    expect(REFLECTION_RULE).toContain("IAST");
+    // In the remedies task only: a line in the shared rule grows every chat prompt and squeezes small-window models.
+    expect(REFLECTION_RULE).not.toContain("IAST");
     for (const lite of [false, true]) {
       const messages = buildReportMessages({ chart: REPORT_RAW_CHART, asOf: REPORT_AS_OF }, { mode: "layman", language: "en", lite });
       const task = messages.remedial.map((message) => message.content).join("\n").replace(REFLECTION_RULE, "");

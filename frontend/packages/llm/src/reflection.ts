@@ -29,7 +29,6 @@ export const REFLECTION_RULE = [
   "say what that planet and house highlight, or leave the line out. And never describe what the person",
   "went through or how things went for them (what was stuck, what moved forward, what they may have",
   "sensed): say what the indicators highlight and how the period compares.",
-  "Write in the Latin script: give a mantra in IAST transliteration (Om Namah Shivaya); its Devanagari is optional, beside it.",
 ].join("\n");
 
 
