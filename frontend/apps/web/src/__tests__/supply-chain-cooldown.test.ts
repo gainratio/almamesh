@@ -78,7 +78,7 @@ describe('own-library dependency policy', () => {
   it('tracks the newest avow, receipt-ui, and errors releases', () => {
     const web = readManifest('../../package.json');
     const browser = readManifest('../../../../packages/browser/package.json');
-    expect(web.dependencies?.['@gainratio/errors']).toBe('^0.3.0');
+    expect(web.dependencies?.['@gainratio/errors']).toBe('^0.3.1');
     expect(web.dependencies?.['@gainratio/receipt-ui']).toBe('0.3.0');
     expect(web.devDependencies?.['@gainratio/avow']).toBe('^0.5.3');
     expect(browser.dependencies?.['@gainratio/avow']).toBe('^0.5.3');
