@@ -46,6 +46,7 @@ const LifeDomainPage = lazyWithRetry(() => import('./pages/LifeDomain'), 'LifeDo
 const MeshPage = lazyWithRetry(() => import('./pages/Mesh'), 'Mesh')
 const MeshEdgePage = lazyWithRetry(() => import('./pages/MeshEdge'), 'MeshEdge')
 const RectifyPage = lazyWithRetry(() => import('./pages/Rectify'), 'Rectify')
+const OnboardingAiPage = lazyWithRetry(() => import('./pages/OnboardingAi'), 'OnboardingAi')
 const ReportViewPage = lazyWithRetry(() => import('./pages/ReportView'), 'ReportView')
 const PrivacyPolicy = lazyWithRetry(() => import('./pages/legal/PrivacyPolicy'), 'PrivacyPolicy')
 const TermsOfService = lazyWithRetry(() => import('./pages/legal/TermsOfService'), 'TermsOfService')
@@ -145,6 +146,7 @@ function AppRoutes() {
     <AppLayout>
       <AnimatedRoutes>
         <Route path="/onboarding" element={storagePage(<OnboardingPage />)} />
+        <Route path="/onboarding/ai" element={storagePage(<OnboardingAiPage />)} />
         <Route path="/dashboard" element={storagePage(<DashboardPage />)} />
         <Route path="/predictive" element={storagePage(<PredictivePage />)} />
         <Route path="/life/:domain" element={storagePage(<LifeDomainPage />)} />

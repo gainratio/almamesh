@@ -22,6 +22,7 @@
  * the console stays clean. Every journey asserts a clean console.
  */
 import { expect, test, type Page } from '@playwright/test';
+import { passOnboardingAiStep } from '../scripts/onboardingAiStep.mjs';
 
 function watchConsole(page: Page): string[] {
   const errors: string[] = [];
@@ -72,7 +73,7 @@ async function generateExact(page: Page): Promise<void> {
   await page.getByTestId('confidence-option-exact').click();
   await page.getByTestId('next-button').click();
   await page.getByTestId('skip-life-events-button').click();
-  await page.waitForURL('**/dashboard', { timeout: 300_000 });
+  await passOnboardingAiStep(page, { timeout: 300_000 });
 }
 
 async function strengthLines(page: Page): Promise<{ lord: string; sunrise: string }> {

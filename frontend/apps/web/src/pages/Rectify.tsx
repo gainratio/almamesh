@@ -8,10 +8,12 @@
  *
  * On confirm: builds BirthMeta from stored chart + candidate's representative
  * time, opens RegenerationConfirmModal (with sign-flip gate when the ascendant
- * sign changes), then emits birth-info-changed and navigates to /dashboard.
+ * sign changes), then emits birth-info-changed and navigates to /dashboard (or,
+ * when entered from onboarding, on to the onboarding AI step).
  */
 import { useState, useEffect, useMemo, type ReactElement } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useLocation, useParams, useNavigate } from 'react-router-dom';
+import { nextAfterRectify } from '../lib/onboardingAiStep';
 import { useTranslation } from 'react-i18next';
 import {
   requestRegeneration,
@@ -49,6 +51,8 @@ type WizardStep = 'intro' | 'events' | 'fit' | 'results';
 export function RectifyPage(): ReactElement {
   const { profileId = '' } = useParams<{ profileId: string }>();
   const navigate = useNavigate();
+  // From onboarding, the AI step comes next; from anywhere else, the dashboard.
+  const exitTo = nextAfterRectify(useLocation().state);
   const { t } = useTranslation('rectify');
 
   const {
@@ -279,7 +283,7 @@ export function RectifyPage(): ReactElement {
     }
     if (record != null) useRectificationRecordsStore.getState().setRecord(record);
     setSaveState('idle');
-    navigate('/dashboard');
+    navigate(exitTo);
   }
 
   // ---------------------------------------------------------------------------
@@ -394,7 +398,7 @@ export function RectifyPage(): ReactElement {
           result={state.result}
           recordedReading={recordedReading}
           onConfirm={handleConfirm}
-          onKeepRecorded={() => navigate('/dashboard')}
+          onKeepRecorded={() => navigate(exitTo)}
         />
       )}
 

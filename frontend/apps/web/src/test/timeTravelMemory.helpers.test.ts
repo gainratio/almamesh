@@ -12,8 +12,13 @@ function fixture() {
   const visible = vi.fn(async () => false);
   const first = vi.fn(() => ({ isVisible: visible }));
   const getByText = vi.fn(() => ({ first }));
-  const waitForURL = vi.fn(() => navigation.promise);
-  return { navigation, visible, getByText, waitForURL, page: { waitForURL, getByText } as unknown as Page };
+  const waitForURL = vi.fn((_target: unknown, _options?: unknown) => navigation.promise);
+  let path = '/dashboard';
+  const url = vi.fn(() => `http://localhost${path}`);
+  const click = vi.fn(async () => { path = '/dashboard'; });
+  const getByTestId = vi.fn(() => ({ click }));
+  const page = { waitForURL, getByText, getByTestId, url } as unknown as Page;
+  return { navigation, visible, getByText, waitForURL, click, getByTestId, page, landOn: (next: string) => { path = next; } };
 }
 afterEach(() => { vi.useRealTimers(); });
 
@@ -23,7 +28,22 @@ describe('memory onboarding outcome', () => {
     const ready = waitForMemoryDashboard(f.page);
     f.navigation.resolve();
     await expect(ready).resolves.toBeUndefined();
-    expect(f.waitForURL).toHaveBeenCalledExactlyOnceWith('**/dashboard', { timeout: 300_000 });
+    expect(f.waitForURL).toHaveBeenCalledExactlyOnceWith(expect.any(Function), { timeout: 300_000 });
+    const accepts = f.waitForURL.mock.calls[0]?.[0] as (url: URL) => boolean;
+    expect(accepts(new URL('http://localhost/dashboard'))).toBe(true);
+    expect(accepts(new URL('http://localhost/onboarding/ai'))).toBe(true);
+    expect(accepts(new URL('http://localhost/onboarding'))).toBe(false);
+  });
+
+  it('takes "Not now" on the onboarding AI step, then waits for the dashboard', async () => {
+    const f = fixture();
+    f.landOn('/onboarding/ai');
+    const ready = waitForMemoryDashboard(f.page);
+    f.navigation.resolve();
+    await expect(ready).resolves.toBeUndefined();
+    expect(f.getByTestId).toHaveBeenCalledWith('onboarding-ai-not-now');
+    expect(f.click).toHaveBeenCalledOnce();
+    expect(f.waitForURL).toHaveBeenLastCalledWith('**/dashboard', { timeout: 30_000 });
   });
 
   it('fails promptly when CHART_GEN_001 is visible without awaiting or retrying navigation', async () => {

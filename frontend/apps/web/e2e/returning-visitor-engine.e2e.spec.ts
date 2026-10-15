@@ -36,6 +36,7 @@ import { readFileSync } from 'node:fs';
 
 import { responseHeadersKey } from '../src/lib/precacheHeadersKey';
 import { startTwoBuildServer, type TwoBuildServer } from './swUpdateServer';
+import { passOnboardingAiStep } from '../scripts/onboardingAiStep.mjs';
 
 const PORT = Number(process.env.RETURNING_VISITOR_E2E_PORT ?? 4197);
 const BUILD_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', process.env.RETURNING_VISITOR_BUILD_DIR ?? 'dist-real');
@@ -257,7 +258,7 @@ test.describe('returning visitor engine boot across the isolation deploy', () =>
       expect(probe.bootMs).toBeLessThanOrEqual(ENGINE_READY_BUDGET_MS);
 
       await generateChart(page);
-      await page.waitForURL('**/dashboard', { timeout: 60_000 });
+      await passOnboardingAiStep(page, { timeout: 60_000 });
       await expect(page.getByTestId('identity-strip')).toBeVisible();
       await expect(page.getByTestId('chart-visualization').first()).toBeVisible();
       expect(consoleErrors).toEqual([]);

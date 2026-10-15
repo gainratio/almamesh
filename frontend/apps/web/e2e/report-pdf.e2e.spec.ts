@@ -22,6 +22,7 @@ import {
   inspectPdfWithPoppler,
   normalizePdfText,
 } from '../src/components/report-pdf/__tests__/pdfPoppler';
+import { passOnboardingAiStep } from '../scripts/onboardingAiStep.mjs';
 
 const execFileAsync = promisify(execFile);
 
@@ -746,9 +747,14 @@ async function driveRealOnboarding(page: Page, consoleErrors: readonly string[])
   await page.waitForFunction(
     () =>
       window.location.pathname === '/dashboard' ||
+      window.location.pathname === '/onboarding/ai' ||
       document.body.innerText.includes('CHART_GEN_001'),
     { timeout: 180_000 },
   );
+  // A fresh chart with no AI stops at the onboarding AI step; take "Not now".
+  if (new URL(page.url()).pathname === '/onboarding/ai') {
+    await passOnboardingAiStep(page, { timeout: 30_000 });
+  }
   if (new URL(page.url()).pathname !== '/dashboard') {
     throw new Error(
       [

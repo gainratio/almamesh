@@ -110,5 +110,11 @@
     "reset_hint": "Still stuck? Clear the cached engine data and reload for a clean start.",
     "still_warming": "The on-device engine is still preparing — hang tight, your chart will generate as soon as it's ready.",
     "help": "If your chart was already generated, you'll see it on the dashboard. Otherwise, try generating again."
+  },
+  "ai_step": {
+    "title": "Your chart is ready",
+    "body": "Connect an AI model to ask questions about your chart. Your key stays on this device and is sent only to the provider you choose.",
+    "connect": "Connect AI",
+    "not_now": "Not now"
   }
 }
