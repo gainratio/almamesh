@@ -159,3 +159,47 @@ export const MUST_PASS: readonly string[] = [
   "Júpiter entrará em Gêmeos em 2 de junho de 2027, a janela de apoio mais forte do período.",
   "Um horário de nascimento exato deixa as datas dos dashas mais nítidas.",
 ];
+
+/**
+ * Round two of the PR #366 re-grade (2026-10-15): futures whose subject is a life area, an event or
+ * "things", not the person. A future clause is fine when its subject is a graha, dasha, transit,
+ * sign, house or date; it foretells when its subject is a life area, an event or "you".
+ */
+export const IMPERSONAL_FUTURES: readonly string[] = [
+  "Things will get better next year.",
+  "Your career will take off in 2027.",
+  "Marriage is coming soon.",
+  "El año que viene llegará un ascenso.",
+  "Va a haber una boda en mayo.",
+  "Uma promoção virá em março.",
+  "Você terá um filho.",
+  "Promotion in March: मिलेगी",
+  "Saturn in the 10th house brings career themes, and नई नौकरी मिलेगी",
+];
+
+/** Round two: text the first check blocked though it foretells nothing. Each one cost a user an answer. */
+export const FALSE_POSITIVES: readonly string[] = [
+  "Podrás revisar la tabla abajo.",
+  "Más adelante verás los detalles.",
+  "You'll find the dates in the list below.",
+  "You will notice the table lists each window.",
+  "An unlikely combination: Mars and Saturn share the 10th.",
+  "The likely birth-time range keeps Leo rising.",
+  "Júpiter vai mudar de signo em março.",
+  "A lua vai passar por Escorpião.",
+  "Você poderá ver a tabela abaixo.",
+  "The 10th house of career will host Jupiter from June.",
+  "ॐ नमः शिवाय",
+  "शनि",
+  "Chant Om Namah Shivaya (ॐ नमः शिवाय) 108 times on Saturdays.",
+];
+
+/** Round two: "likely" stays a claim when it puts odds on an outcome. */
+export const LIKELY_CLAIMS: readonly string[] = [
+  "This is likely to happen in May.",
+  "You will likely change jobs.",
+  "A likely promotion falls in March.",
+];
+
+/** A Devanagari line longer than a short mantra: the script rule still holds it. */
+export const LONG_DEVANAGARI = "ॐ त्र्यम्बकं यजामहे सुगन्धिं पुष्टिवर्धनम् उर्वारुकमिव बन्धनान्मृत्योर्मुक्षीय माऽमृतात्";

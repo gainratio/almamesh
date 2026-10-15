@@ -58,6 +58,7 @@ import {
   REFLECTION_RULE,
   reflectionGate,
   reflectionRetry,
+  rewordedOr,
   withholdFailingValues,
 } from "./reflection";
 import { monthsIn, validateTimelineDates } from "./date-guard";
@@ -555,6 +556,7 @@ const REMEDIAL_TASK = [
   "    MANAGE a challenge gradually over weeks/months; they do not erase it overnight.",
   "  - technical: gemstones and mantras MAY appear here, but ONLY as optional",
   "    alternatives alongside the universal practices, never as the primary solution.",
+  "    Give each mantra in IAST transliteration (Om Śanaiścarāya Namaḥ); Devanagari is optional.",
   "TARGETING (MANDATORY): every technical remedy must address a SPECIFIC named weak",
   "  placement actually present in the data — a planet whose `dignity` is debilitated,",
   "  or that is `is_combust`, or a yoga whose `grade` is weak. Name that placement as",
@@ -702,6 +704,7 @@ const REMEDIAL_TASK_LITE = [
   "  - technical: name ONE specific weak placement actually in the data (a debilitated or",
   "    combust planet, or a low-strength listed yoga) and a supportive practice for it.",
   "    Gemstones/mantras MAY appear here as optional extras only. Invent no affliction.",
+  "    Give each mantra in IAST transliteration; Devanagari is optional.",
 ].join("\n");
 
 const UPCOMING_PERIODS_TASK_LITE = [
@@ -1641,7 +1644,8 @@ function requestCapped<Section extends AnySectionKey>(
 /**
  * The section's completion through the reflection check (PR #366): a text that foretells,
  * narrates the tools or guesses lived experience goes back once with the issues named; a value
- * that still fails is withheld in the reading's language, the rest of the section kept.
+ * that still fails is withheld in the reading's language, the rest of the section kept. A reword
+ * request that fails withholds the first text's failing values instead of failing the section.
  */
 async function reflectedSection<Section extends AnySectionKey>(
   section: Section,
@@ -1651,7 +1655,7 @@ async function reflectedSection<Section extends AnySectionKey>(
   const raw = await requestCapped(section, messages, params);
   const issues = jsonReflectionIssues(raw);
   if (issues.length === 0) return raw;
-  const retry = await requestCapped(section, [...messages, ...reflectionRetry(raw, issues)], params);
+  const retry = await rewordedOr(raw, params.signal, () => requestCapped(section, [...messages, ...reflectionRetry(raw, issues)], params));
   return withholdFailingValues(retry, READING_WITHHELD[params.language ?? "en"]);
 }
 

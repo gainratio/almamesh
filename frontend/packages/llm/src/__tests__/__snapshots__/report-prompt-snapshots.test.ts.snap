@@ -5131,6 +5131,7 @@ Return JSON: { "remedial_measures": { "layman": string, "technical": string } }.
     MANAGE a challenge gradually over weeks/months; they do not erase it overnight.
   - technical: gemstones and mantras MAY appear here, but ONLY as optional
     alternatives alongside the universal practices, never as the primary solution.
+    Give each mantra in IAST transliteration (Om Śanaiścarāya Namaḥ); Devanagari is optional.
 TARGETING (MANDATORY): every technical remedy must address a SPECIFIC named weak
   placement actually present in the data — a planet whose \`dignity\` is debilitated,
   or that is \`is_combust\`, or a yoga whose \`grade\` is weak. Name that placement as
@@ -5285,6 +5286,7 @@ Return JSON: { "remedial_measures": { "layman": string, "technical": string } }.
     MANAGE a challenge gradually over weeks/months; they do not erase it overnight.
   - technical: gemstones and mantras MAY appear here, but ONLY as optional
     alternatives alongside the universal practices, never as the primary solution.
+    Give each mantra in IAST transliteration (Om Śanaiścarāya Namaḥ); Devanagari is optional.
 TARGETING (MANDATORY): every technical remedy must address a SPECIFIC named weak
   placement actually present in the data — a planet whose \`dignity\` is debilitated,
   or that is \`is_combust\`, or a yoga whose \`grade\` is weak. Name that placement as
@@ -5439,6 +5441,7 @@ Return JSON: { "remedial_measures": { "layman": string, "technical": string } }.
     MANAGE a challenge gradually over weeks/months; they do not erase it overnight.
   - technical: gemstones and mantras MAY appear here, but ONLY as optional
     alternatives alongside the universal practices, never as the primary solution.
+    Give each mantra in IAST transliteration (Om Śanaiścarāya Namaḥ); Devanagari is optional.
 TARGETING (MANDATORY): every technical remedy must address a SPECIFIC named weak
   placement actually present in the data — a planet whose \`dignity\` is debilitated,
   or that is \`is_combust\`, or a yoga whose \`grade\` is weak. Name that placement as
@@ -5562,6 +5565,7 @@ Fill in this EXACT JSON shape (replace the ... with real content; keep these key
   - technical: name ONE specific weak placement actually in the data (a debilitated or
     combust planet, or a low-strength listed yoga) and a supportive practice for it.
     Gemstones/mantras MAY appear here as optional extras only. Invent no affliction.
+    Give each mantra in IAST transliteration; Devanagari is optional.
 
 The reader is a layperson; make the layman fields especially warm and clear. Keep every field SHORT and concrete: ~2 sentences for the summary, 1-2 short sentences per persona field, 2-3 items per array. Never pad, never leave a field blank.
 
@@ -5684,6 +5688,7 @@ Fill in this EXACT JSON shape (replace the ... with real content; keep these key
   - technical: name ONE specific weak placement actually in the data (a debilitated or
     combust planet, or a low-strength listed yoga) and a supportive practice for it.
     Gemstones/mantras MAY appear here as optional extras only. Invent no affliction.
+    Give each mantra in IAST transliteration; Devanagari is optional.
 
 The reader is a layperson; make the layman fields especially warm and clear. Keep every field SHORT and concrete: ~2 sentences for the summary, 1-2 short sentences per persona field, 2-3 items per array. Never pad, never leave a field blank.
 
@@ -5806,6 +5811,7 @@ Fill in this EXACT JSON shape (replace the ... with real content; keep these key
   - technical: name ONE specific weak placement actually in the data (a debilitated or
     combust planet, or a low-strength listed yoga) and a supportive practice for it.
     Gemstones/mantras MAY appear here as optional extras only. Invent no affliction.
+    Give each mantra in IAST transliteration; Devanagari is optional.
 
 The reader is a layperson; make the layman fields especially warm and clear. Keep every field SHORT and concrete: ~2 sentences for the summary, 1-2 short sentences per persona field, 2-3 items per array. Never pad, never leave a field blank.
 
