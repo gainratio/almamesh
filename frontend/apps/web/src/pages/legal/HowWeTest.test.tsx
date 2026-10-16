@@ -84,7 +84,28 @@ describe('How we test', () => {
     expect(text).toContain('held-out');
     expect(text).toContain('whenever we change how readings are computed');
     expect(text).not.toMatch(/every release/i);
-    expect(text).toContain('One area is being re-tested on held-out data.');
+  });
+
+  it.each([
+    ['en', ['71', '0.69', '0.08 to 1.95', 'p = 0.72', '4.56', 'did not replicate', 'reflective only']],
+    ['es', ['71', '0,69', '0,08 a 1,95', 'p = 0,72', '4,56', 'no se replicó', 'solo para reflexión']],
+    ['pt', ['71', '0,69', '0,08 a 1,95', 'p = 0,72', '4,56', 'não se replicou', 'apenas para reflexão']],
+  ] as const)('publishes the relocation held-out null with its numbers, aggregates only (%s)', (language, parts) => {
+    renderPage(language);
+    const text = document.body.textContent ?? '';
+    for (const part of parts) expect(text).toContain(part);
+  });
+
+  // CONTRACT REVERSED (travel-confirm PR, 2026-10-16): this test used to REQUIRE the line "One area is
+  // being re-tested on held-out data." Nothing is running, so the page must not say it is. If a real
+  // re-test result is published later, it goes in as a dated result, not as an in-progress claim.
+  it.each([
+    ['en', /being re-tested|held-out data\./],
+    ['es', /volviendo a probar/],
+    ['pt', /testada de novo/],
+  ] as const)('claims no re-test in progress (%s)', (language, stale) => {
+    renderPage(language);
+    expect(document.body.textContent ?? '').not.toMatch(stale);
   });
 
   it.each([
@@ -101,7 +122,10 @@ describe('How we test', () => {
     expect(text).not.toMatch(/\b\d{4}-\d{2}-\d{2}\b/);
     // Coordinates or a birth instant would show as a long decimal or a time of day.
     expect(text).not.toMatch(/\d[.,]\d{4,}|\b\d{1,2}:\d{2}\b/);
-    expect(text).not.toMatch(/relocat|reubica|realoca|mudanza|mudança|Rodden/i);
+    // CONTRACT NARROWED (2026-10-16): this used to forbid any mention of relocation. The pre-registered
+    // relocation held-out NULL is now published (see the next test), in aggregates only. Names of the
+    // source's rating system and any single-event detail stay out.
+    expect(text).not.toMatch(/Rodden/i);
   });
 
   it('localizes the numbers (es uses a decimal comma)', () => {

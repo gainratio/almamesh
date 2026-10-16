@@ -22,8 +22,6 @@
     "data_description": "Faça backup ou restaure seus dados"
   },
   "layout": {
-    "breadcrumb_aria": "Trilha de navegação",
-    "breadcrumb_settings": "Configurações",
     "back_to_dashboard": "Voltar ao painel",
     "sidebar_aria": "Navegação das configurações",
     "mobile_nav_aria": "Navegação das configurações"

@@ -22,8 +22,6 @@
     "data_description": "Haz una copia de seguridad o restaura tus datos"
   },
   "layout": {
-    "breadcrumb_aria": "Ruta de navegación",
-    "breadcrumb_settings": "Ajustes",
     "back_to_dashboard": "Volver al panel",
     "sidebar_aria": "Navegación de ajustes",
     "mobile_nav_aria": "Navegación de ajustes"

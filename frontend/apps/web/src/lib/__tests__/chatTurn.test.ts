@@ -254,6 +254,59 @@ describe('runChatTurn: a trip asked for over two turns', () => {
   });
 });
 
+// Harish 2026-10-16: an unasked travel call is offered as a button, not just refused.
+describe('runChatTurn: a travel call the phrase gate closed is offered to the user', () => {
+  const VADODARA = { summary: { place_ref: 'city:vad', label: 'Vadodara, India', timezone: 'Asia/Kolkata' }, latitude: 22.3072, longitude: 73.1812 };
+  const lookup = async (): Promise<PlaceLookup> => ({ status: 'found', place: VADODARA });
+
+  async function unasked(question: string, answer: string) {
+    const onTravel = vi.fn();
+    const onTravelOffer = vi.fn();
+    const rows: ChatToolCall[] = [];
+    const { fetchImpl } = endpoint([
+      { name: 'travel', args: { to: '2019-05', place: 'Vadodara' } },
+      { name: 'answer', args: generalAnswer(answer) },
+    ]);
+    const base = input(fetchImpl, { question, onTravel, onTravelOffer, onToolCall: (row) => rows.push(row) });
+    const snapshots = await drain(runChatTurn({ ...base, seams: { ...base.seams, lookup } }));
+    return { onTravel, onTravelOffer, snapshots, result: rows.find((row) => row.toolName === 'travel')?.result };
+  }
+
+  it('returns needs_confirmation, queues no move and records the offer bound to that to and place', async () => {
+    const { onTravel, onTravelOffer, result } = await unasked('what was May 2019 like for me?', 'May 2019 was a heavy month.');
+    expect(onTravel).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ status: 'needs_confirmation', to: '2019-05', place: 'Vadodara, India' });
+    expect(onTravelOffer).toHaveBeenCalledTimes(1);
+    expect(onTravelOffer.mock.calls[0]?.[0]).toMatchObject({ kind: 'travel', asOf: { start: '2019-05-01', granularity: 'month', place: { label: 'Vadodara, India' } } });
+  });
+
+  it('an answer that claims the move is still sent back once (an offer is not a move)', async () => {
+    const onTravelOffer = vi.fn();
+    const { fetchImpl, bodies } = endpoint([
+      { name: 'travel', args: { to: '2019-05', place: 'Vadodara' } },
+      { name: 'answer', args: generalAnswer("We've moved to May 2019 for you.") },
+      { name: 'answer', args: generalAnswer('May 2019 was a heavy month. Tap the button if you want to move there.') },
+    ]);
+    const base = input(fetchImpl, { question: 'what was May 2019 like for me?', onTravelOffer });
+    const snapshots = await drain(runChatTurn({ ...base, seams: { ...base.seams, lookup } }));
+    expect(snapshots.at(-1)).toContain('Tap the button');
+    expect(bodies).toHaveLength(3);
+  });
+
+  it('a turn that asks to move moves and offers nothing', async () => {
+    const onTravel = vi.fn();
+    const onTravelOffer = vi.fn();
+    const { fetchImpl } = endpoint([
+      { name: 'travel', args: { to: '2019-05', place: 'Vadodara' } },
+      { name: 'answer', args: generalAnswer('Taking you there.') },
+    ]);
+    const base = input(fetchImpl, { question: 'take me to May 2019 in Vadodara', onTravel, onTravelOffer });
+    await drain(runChatTurn({ ...base, seams: { ...base.seams, lookup } }));
+    expect(onTravel).toHaveBeenCalledTimes(1);
+    expect(onTravelOffer).not.toHaveBeenCalled();
+  });
+});
+
 // travel-guard-live 2026-10-15 (DeepSeek v4.1 flash, 3 of 20 runs): with the trip still in place,
 // the answer said "We've stepped out of September 2017 — here's today". A turn that queued no move
 // sends such an answer back once; a turn that moved may say so.
