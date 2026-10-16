@@ -31,7 +31,7 @@ describe('How we test', () => {
     expect(document.body.textContent).toContain('readings are for reflection');
   });
 
-  it('shows the published aggregates: baseline and the four added techniques, each at chance', () => {
+  it('shows the published aggregates: baseline, the four added techniques, and the classical dasha rules by area, each at chance', () => {
     renderPage();
     const rows = within(screen.getByRole('list', { name: 'Lift over chance, by technique' })).getAllByRole('listitem');
     expect(rows.map((row) => row.textContent)).toEqual([
@@ -40,11 +40,29 @@ describe('How we test', () => {
       expect.stringContaining('0.88 (0.56–1.30)'),
       expect.stringContaining('0.98 (0.85–1.11)'),
       expect.stringContaining('0.99 (0.86–1.12)'),
+      expect.stringContaining('classical dasha rules'),
     ]);
+    const sixth = rows[5]?.textContent ?? '';
+    for (const line of ['career 1.04 (0.74–1.41)', 'relationships 1.06 (0.85–1.29)', 'family 1.22 (0.87–1.66)', 'health 0.94 (0.49–1.57)']) {
+      expect(sixth).toContain(line);
+    }
+    expect(sixth).toContain('5,098 events across the four areas');
     for (const result of RETRODICTION_RESULTS.techniques) {
       expect(result.low).toBeLessThanOrEqual(1);
       expect(result.high).toBeGreaterThanOrEqual(1);
     }
+    for (const area of RETRODICTION_RESULTS.classicalDasha.areas) {
+      expect(area.low).toBeLessThanOrEqual(1);
+      expect(area.high).toBeGreaterThanOrEqual(1);
+    }
+  });
+
+  it.each(['en', 'es', 'pt'] as const)('says the classical dasha rules show no lift, with the best corrected p, and publishes aggregates only (%s)', (language) => {
+    renderPage(language);
+    const text = document.body.textContent ?? '';
+    expect(text).toMatch(language === 'es' ? /0,80/ : language === 'pt' ? /0,80/ : /0\.80/);
+    expect(text).toMatch(language === 'en' ? /finds no lift from them/ : language === 'es' ? /no encuentra mejora alguna con ellas/ : /não encontra ganho algum com elas/);
+    expect(text).not.toMatch(/\bp\s*=\s*0[.,]10\b/);
   });
 
   it('names the source and its licence, with totals only', () => {

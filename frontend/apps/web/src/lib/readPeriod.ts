@@ -811,6 +811,8 @@ function ordinal(n: number): string {
 
 const listed = (items: readonly string[]): string => (items.length < 2 ? items.join('') : `${items.slice(0, -1).join(', ')} and ${items.at(-1) ?? ''}`);
 
+const PLACEMENT_WORD = { support: 'supportive', friction: 'friction', neutral: 'neutral' } as const;
+
 /** "Jupiter, rules your 2nd and 11th houses"; "Rahu, rules no house"; just "Ketu" when the reading gives no lordship. */
 function lordLine(lord: string, rules: readonly number[] | undefined): string {
   if (rules === undefined) return titled(lord);
@@ -819,9 +821,27 @@ function lordLine(lord: string, rules: readonly number[] | undefined): string {
   return `${titled(lord)}, rules your ${listed(houses)} ${houses.length > 1 ? 'houses' : 'house'}`;
 }
 
+/** ", 7th from Saturn: supportive": where a sub-lord sits from its parent. Empty for a lord that is its own parent. */
+function placementClause(result: ReadPeriodReading, level: 'antar' | 'pratyantar', lord: string): string {
+  const span = result.dashas[level].find((item) => item.lord === lord);
+  const parentLevel = level === 'antar' ? 'maha' : 'antar';
+  const parent = span ? result.dashas[parentLevel].find((item) => item.start <= span.end && item.end >= span.start)?.lord : undefined;
+  if (!span || span.from_parent === undefined || !span.relation || !parent || parent === lord) return '';
+  return `, ${ordinal(span.from_parent)} from ${titled(parent)}: ${PLACEMENT_WORD[span.relation]}`;
+}
+
+/** A level with more lords than this (a long range, or a month where the sub-lord changes) cites no placements: the rows carry them, and the cite must stay small. */
+const MAX_PLACEMENT_LORDS = 1;
+
 function citeLords(result: ReadPeriodReading, level: 'maha' | 'antar' | 'pratyantar'): string[] {
   const lords = [...new Set(result.dashas[level].map((span) => span.lord))];
-  return lords.map((lord) => lordLine(lord, result.lords.find((item) => item.lord === lord)?.rules));
+  return lords.map((lord) => {
+    const item = result.lords.find((entry) => entry.lord === lord);
+    // "ordinary" says nothing, so it is left out (it also keeps the cite inside the tool-result budget).
+    const strength = item?.natal?.strength && item.natal.strength !== 'ordinary' ? `, ${item.natal.strength} natal strength` : '';
+    const placement = level === 'maha' || lords.length > MAX_PLACEMENT_LORDS ? '' : placementClause(result, level, lord);
+    return `${lordLine(lord, item?.rules)}${strength}${placement}`;
+  });
 }
 
 /** The theme windows first (a range has already ranked them by severity), then other dated facts; listed by date. */

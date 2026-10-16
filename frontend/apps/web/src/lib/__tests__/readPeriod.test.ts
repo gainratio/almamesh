@@ -231,7 +231,8 @@ describe('read_period: spans', () => {
     // Compact: the dashas only where they change (the first row always), a theme and a count only when a window falls that month.
     expect(row('2019-06')).toEqual({ month: '2019-06', maha: 'rahu', antar: 'rahu' });
     expect(row('2019-07')).toEqual({ month: '2019-07' });
-    expect(row('2019-11')).toEqual({ month: '2019-11', top_theme: { domain: 'education', direction: 'mixed', confidence: 'high' }, window_count: 1 });
+    // Spec 2026-10-15 re-ranked the themes: health (graded Vimshottari 69) now leads, education drops to medium.
+    expect(row('2019-11')).toEqual({ month: '2019-11', top_theme: { domain: 'health', direction: 'mixed', confidence: 'high' }, window_count: 1 });
   });
 
   it('a month row names the dashas again when they change', async () => {
@@ -664,7 +665,8 @@ describe('read_period: cite', () => {
       windows: [{ date: '2019-06-22', what: 'Mars enters Cancer' }],
       themes: Object.fromEntries(result.themes.map((theme) => [theme.domain, { direction: theme.direction, confidence: theme.confidence }])),
     });
-    expect(result.cite?.themes).toMatchObject({ education: { confidence: 'high' }, obstacles: { confidence: 'medium' }, finances: { confidence: 'low' } });
+    // Spec 2026-10-15: education is medium now (the graded Vimshottari rule no longer fires for it).
+    expect(result.cite?.themes).toMatchObject({ health: { confidence: 'high' }, education: { confidence: 'medium' }, obstacles: { confidence: 'medium' } });
   });
 
   /** A synthetic reading: two maha lords (a change inside it), lords with and without houses. */
@@ -686,6 +688,48 @@ describe('read_period: cite', () => {
     const cite = readingCite(crossing((await read({ start: '2019-06' })).result as ReadPeriodReading), 'en');
     expect(cite.maha).toEqual(['Saturn, rules your 1st and 12th houses', 'Jupiter, rules your 2nd and 11th houses']);
     expect(cite.antar).toEqual(['Mars, rules your 6th house']);
+  });
+
+  // Spec 2026-10-15 (live drive, gpt-6-luna x3): the placement and strength facts rode in the
+  // result but not in the cite, and the answers copy the cite, so none of them said it.
+  it('a sub-lord states where it sits from its parent lord and how that reads, and every lord its natal strength', async () => {
+    const base = crossing((await read({ start: '2019-06' })).result as ReadPeriodReading);
+    const cite = readingCite(
+      {
+        ...base,
+        dashas: { ...base.dashas, antar: [{ lord: 'mars', start: '2019-06-01', end: '2019-06-30', from_parent: 7, relation: 'support' }] },
+        lords: [
+          { lord: 'saturn', level: ['maha'], rules: [1, 12], natal: { house: 2, sign: 'aquarius', dignity: 'own', strength: 'strong', combust: false } },
+          { lord: 'jupiter', level: ['maha'], rules: [11, 2] },
+          { lord: 'mars', level: ['antar'], rules: [6] },
+        ],
+      },
+      'en',
+    );
+    expect(cite.maha[0]).toBe('Saturn, rules your 1st and 12th houses, strong natal strength');
+    expect(cite.antar).toEqual(['Mars, rules your 6th house, 7th from Saturn: supportive']);
+  });
+
+  it.each([
+    ['support', 'supportive'],
+    ['friction', 'friction'],
+    ['neutral', 'neutral'],
+  ] as const)('a %s placement is cited as "%s", never as another relation', async (relation, word) => {
+    const base = crossing((await read({ start: '2019-06' })).result as ReadPeriodReading);
+    const cite = readingCite({ ...base, dashas: { ...base.dashas, antar: [{ lord: 'mars', start: '2019-06-01', end: '2019-06-30', from_parent: 6, relation }] } }, 'en');
+    expect(cite.antar).toEqual([`Mars, rules your 6th house, 6th from Saturn: ${word}`]);
+  });
+
+  it('a long range (more than one sub-lord) cites no placements, so the 18-month budget holds', async () => {
+    const { result } = await read({ start: '2027-01', end: '2028-06' }, { loadPeriodChart: vi.fn(async () => withReading('delhi-2027-01-18m')) });
+    const cite = (result as ReadPeriodReading).cite!;
+    expect(cite.antar.length).toBeGreaterThan(1);
+    expect(cite.antar.every((line) => !line.includes(' from '))).toBe(true);
+  });
+
+  it('a sub-lord that is its parent lord states no placement (it is trivially the 1st), and an ordinary strength is left out', async () => {
+    const base = (await read({ start: '2019-06' })).result as ReadPeriodReading;
+    expect(readingCite(base, 'en').antar).toEqual(['Rahu, rules no house']);
   });
 
   it('a lord the reading gives no lordship for is named alone', async () => {

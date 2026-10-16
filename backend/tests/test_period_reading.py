@@ -19,7 +19,13 @@ from almamesh.constants.astrology import PlanetName
 from almamesh.dasha.yogini import compute_yogini_periods
 from almamesh.predictive import PredictiveContexts, compute_predictive_contexts
 from almamesh.reading import compute_period_reading
-from almamesh.schemas.reading import DashaLevel, FunctionalNature, PeriodReading
+from almamesh.schemas.reading import (
+    DashaLevel,
+    FunctionalNature,
+    LordStrength,
+    PeriodReading,
+    Relation,
+)
 
 _BIRTH = datetime(1990, 1, 15, 12, tzinfo=UTC)
 _FIXTURE_DIR = Path(__file__).resolve().parents[2] / "testdata" / "period-reading"
@@ -401,3 +407,54 @@ def test_theme_windows_are_capped_non_neutral_first(two_years: PredictiveContext
         assert kept == min(len(loud), 3)
     spiritual = next(t for t in two_years.period_reading.themes if t.domain == "spiritual")
     assert len(spiritual.windows) == 3
+
+
+# --- classical dasha rules (spec 2026-10-15) ------------------------------------------------
+
+
+def test_sub_lords_carry_their_placement_from_the_parent(may: PredictiveContexts) -> None:
+    """Rahu and Venus both sit in Capricorn: each sub-lord is the 1st from its parent."""
+    spans = {s.level: s for s in may.period_reading.dasha_spans}
+    assert (spans[DashaLevel.MAHA].from_parent, spans[DashaLevel.MAHA].relation) == (None, None)
+    assert (spans[DashaLevel.ANTAR].from_parent, spans[DashaLevel.ANTAR].relation) == (
+        1,
+        Relation.SUPPORT,
+    )
+    assert spans[DashaLevel.PRATYANTAR].relation is Relation.SUPPORT
+    sookshma = may.period_reading.sookshma
+    assert sookshma is not None
+    assert sookshma.from_parent is not None and sookshma.relation is not None
+
+
+def test_natal_lords_carry_dignity_and_strength(may: PredictiveContexts) -> None:
+    lords = may.period_reading.natal_lords
+    # Venus in Capricorn (a friend's sign) but combust -> weak
+    assert lords[PlanetName.VENUS].strength is LordStrength.WEAK
+    # Jupiter in Gemini (an enemy's sign) but retrograde -> strong
+    assert lords[PlanetName.JUPITER].strength is LordStrength.STRONG
+    assert lords[PlanetName.MARS].strength is LordStrength.STRONG  # own sign
+    # The Sun in Capricorn (Saturn, its enemy) with Shadbala below its minimum -> weak
+    assert lords[PlanetName.SUN].strength is LordStrength.WEAK
+    assert not may.strength_context.shadbala.planets[PlanetName.SUN].meets_minimum
+    # And `dignity` stays the chart's own four-value field, so no second dignity disagrees
+    assert lords[PlanetName.VENUS].dignity == "neutral"
+
+
+def test_yogini_antar_runs_inside_the_yogini_maha(may: PredictiveContexts) -> None:
+    yogini, antar = may.period_reading.yogini, may.period_reading.yogini_antar
+    assert yogini is not None and antar is not None
+    assert yogini.start <= antar.start <= date(2019, 5, 1) < antar.end <= yogini.end
+
+
+def test_theme_agreement_is_the_graded_score_over_the_threshold(year: PredictiveContexts) -> None:
+    for theme in year.period_reading.themes:
+        assert 0 <= theme.dasha.vimshottari <= 100 and 0 <= theme.dasha.yogini <= 100
+        assert theme.agreement.vimshottari is (theme.dasha.vimshottari >= 50)
+        assert theme.agreement.yogini is (theme.dasha.yogini >= 50)
+        assert (theme.dasha.tone is None) is (theme.dasha.vimshottari == 0)
+
+
+def test_rules_state_the_classical_dasha_rules(may: PredictiveContexts) -> None:
+    text = " ".join(may.period_reading.rules)
+    for needle in ("6/8/12 from", "combust", "retrograde", "50", "maha 3"):
+        assert needle in text

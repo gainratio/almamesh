@@ -860,20 +860,26 @@
       "dasha_spans": [
         {
           "end": "2026-06-10",
+          "from_parent": null,
           "level": "maha",
           "lord": "rahu",
+          "relation": null,
           "start": "2026-06-09"
         },
         {
           "end": "2026-06-10",
+          "from_parent": 12,
           "level": "antar",
           "lord": "mercury",
+          "relation": "friction",
           "start": "2026-06-09"
         },
         {
           "end": "2026-06-10",
+          "from_parent": 9,
           "level": "pratyantar",
           "lord": "moon",
+          "relation": "support",
           "start": "2026-06-09"
         }
       ],
@@ -894,6 +900,7 @@
             10
           ],
           "sign": "gemini",
+          "strength": "strong",
           "vargottama": false,
           "yogas": [
             "Parivartana Yoga",
@@ -910,6 +917,7 @@
           "retro": true,
           "rules": [],
           "sign": "cancer",
+          "strength": "ordinary",
           "vargottama": false,
           "yogas": []
         },
@@ -926,6 +934,7 @@
             11
           ],
           "sign": "scorpio",
+          "strength": "strong",
           "vargottama": false,
           "yogas": [
             "Vipareeta Raja Yoga"
@@ -944,6 +953,7 @@
             4
           ],
           "sign": "sagittarius",
+          "strength": "strong",
           "vargottama": false,
           "yogas": [
             "Parivartana Yoga",
@@ -963,6 +973,7 @@
             2
           ],
           "sign": "leo",
+          "strength": "strong",
           "vargottama": false,
           "yogas": [
             "Kemadruma Yoga"
@@ -978,6 +989,7 @@
           "retro": true,
           "rules": [],
           "sign": "capricorn",
+          "strength": "ordinary",
           "vargottama": false,
           "yogas": []
         },
@@ -994,6 +1006,7 @@
             9
           ],
           "sign": "sagittarius",
+          "strength": "weak",
           "vargottama": false,
           "yogas": [
             "Raja Yoga",
@@ -1012,6 +1025,7 @@
             3
           ],
           "sign": "capricorn",
+          "strength": "weak",
           "vargottama": true,
           "yogas": [
             "Vasi Yoga"
@@ -1030,6 +1044,7 @@
             12
           ],
           "sign": "capricorn",
+          "strength": "weak",
           "vargottama": false,
           "yogas": [
             "Vipareeta Raja Yoga"
@@ -1048,7 +1063,11 @@
       },
       "rules": [
         "functional nature (BPHS): yogakaraka; lord of 1/5/9 benefic; else of 3/6/8/11 malefic; else of 2/7 maraka; else neutral. A 12th lord takes its other house's nature, alone neutral",
-        "agreement: vimshottari = a running dasha lord, yogini = the Yogini lord, rules or occupies a domain house or is its karaka; transit = Jupiter/Saturn in a domain house from lagna/Moon",
+        "dasha score 0-100: a lord sitting in or ruling a domain house counts 1, a karaka only 0.5; times strength (strong 1, ordinary 0.75, weak 0.5), maha 3 antar 2 pratyantar 1, by time",
+        "agreement: vimshottari / yogini = that dasha score is 50 or more (Yogini maha 2, antar 1); transit = Jupiter/Saturn in a domain house from the lagna or the Moon",
+        "strength: combust weak; retrograde strong; exalted or own strong; debilitated weak; friend's sign strong and enemy's weak by the Shadbala minimum; else ordinary. Nodes ordinary",
+        "relation: a sub-lord counted from its parent lord; 1/4/5/7/9/10/11 support, 6/8/12 from it friction, 2/3 neutral (BPHS antardasha chapters)",
+        "dasha tone: per tied lord, functional nature + strength + relation; all positive supportive, all negative challenging, else mixed",
         "confidence = agreeing techniques: 3 high, 2 medium, 0-1 low",
         "obstacles (6th/8th/12th): karakas Saturn/Mars/Rahu are context only; strength = agreeing techniques + a dated window: 3-4 with the window strong, 2+ moderate, 0-1 weak",
         "direction = domain transit severity + its window severities, neutral ignored: all supportive, all challenging, else mixed",
@@ -1124,7 +1143,9 @@
       ],
       "sookshma": {
         "end": "2026-06-10",
+        "from_parent": 6,
         "lord": "rahu",
+        "relation": "friction",
         "start": "2026-05-29"
       },
       "themes": [
@@ -1135,29 +1156,39 @@
             "yogini": true
           },
           "confidence": "high",
-          "direction": "mixed",
-          "domain": "obstacles",
+          "dasha": {
+            "tone": "supportive",
+            "vimshottari": 71,
+            "yogini": 67
+          },
+          "direction": "challenging",
+          "domain": "health",
           "factors": [
-            "Rahu (maha) occupies the 8th: unexpected setbacks",
-            "Jupiter transits the 12th from the Moon",
-            "Yogini Ulka (Saturn) rules the 8th: unexpected setbacks"
+            "Rahu (maha) occupies the 8th",
+            "Saturn transits the 8th from the Moon (ashtama_shani)",
+            "Mercury (antar) rules the 1st"
           ],
           "houses": [
+            1,
             6,
-            8,
-            12
+            8
           ],
           "strength": "moderate",
-          "strength_pct": 75,
+          "strength_pct": 45,
           "windows": []
         },
         {
           "agreement": {
             "transit": true,
             "vimshottari": true,
-            "yogini": true
+            "yogini": false
           },
-          "confidence": "high",
+          "confidence": "medium",
+          "dasha": {
+            "tone": "supportive",
+            "vimshottari": 50,
+            "yogini": 33
+          },
           "direction": "supportive",
           "domain": "family",
           "factors": [
@@ -1178,54 +1209,43 @@
         {
           "agreement": {
             "transit": true,
-            "vimshottari": true,
+            "vimshottari": false,
             "yogini": true
           },
-          "confidence": "high",
-          "direction": "challenging",
-          "domain": "career",
-          "factors": [
-            "Mercury (antar) is a karaka of career",
-            "Saturn transits the 10th from the lagna (ashtama_shani)",
-            "Yogini Ulka (Saturn) is a karaka of career"
-          ],
-          "houses": [
-            10
-          ],
-          "strength": "moderate",
-          "strength_pct": 48,
-          "windows": []
-        },
-        {
-          "agreement": {
-            "transit": true,
-            "vimshottari": true,
-            "yogini": true
+          "confidence": "medium",
+          "dasha": {
+            "tone": "mixed",
+            "vimshottari": 38,
+            "yogini": 67
           },
-          "confidence": "high",
-          "direction": "challenging",
-          "domain": "health",
+          "direction": "mixed",
+          "domain": "obstacles",
           "factors": [
-            "Rahu (maha) occupies the 8th",
-            "Saturn transits the 8th from the Moon (ashtama_shani)",
-            "Mercury (antar) rules the 1st"
+            "Rahu (maha) occupies the 8th: unexpected setbacks",
+            "Jupiter transits the 12th from the Moon",
+            "Yogini Ulka (Saturn) rules the 8th: unexpected setbacks"
           ],
           "houses": [
-            1,
             6,
-            8
+            8,
+            12
           ],
           "strength": "moderate",
-          "strength_pct": 45,
+          "strength_pct": 50,
           "windows": []
         },
         {
           "agreement": {
             "transit": true,
             "vimshottari": false,
-            "yogini": true
+            "yogini": false
           },
-          "confidence": "medium",
+          "confidence": "low",
+          "dasha": {
+            "tone": null,
+            "vimshottari": 0,
+            "yogini": 33
+          },
           "direction": "challenging",
           "domain": "spiritual",
           "factors": [
@@ -1245,10 +1265,15 @@
         {
           "agreement": {
             "transit": true,
-            "vimshottari": true,
+            "vimshottari": false,
             "yogini": false
           },
-          "confidence": "medium",
+          "confidence": "low",
+          "dasha": {
+            "tone": "supportive",
+            "vimshottari": 17,
+            "yogini": 33
+          },
           "direction": "supportive",
           "domain": "finances",
           "factors": [
@@ -1266,32 +1291,42 @@
         },
         {
           "agreement": {
-            "transit": false,
-            "vimshottari": true,
-            "yogini": true
+            "transit": true,
+            "vimshottari": false,
+            "yogini": false
           },
-          "confidence": "medium",
-          "direction": "mixed",
-          "domain": "relationships",
+          "confidence": "low",
+          "dasha": {
+            "tone": "supportive",
+            "vimshottari": 17,
+            "yogini": 17
+          },
+          "direction": "challenging",
+          "domain": "career",
           "factors": [
-            "Mercury (antar) occupies the 7th",
-            "Yogini Ulka (Saturn) occupies the 7th",
-            "Venus strength is 38% (moderate)"
+            "Mercury (antar) is a karaka of career",
+            "Saturn transits the 10th from the lagna (ashtama_shani)",
+            "Yogini Ulka (Saturn) is a karaka of career"
           ],
           "houses": [
-            7
+            10
           ],
           "strength": "moderate",
-          "strength_pct": 38,
+          "strength_pct": 48,
           "windows": []
         },
         {
           "agreement": {
             "transit": false,
-            "vimshottari": true,
+            "vimshottari": false,
             "yogini": false
           },
           "confidence": "low",
+          "dasha": {
+            "tone": "supportive",
+            "vimshottari": 33,
+            "yogini": 0
+          },
           "direction": "mixed",
           "domain": "education",
           "factors": [
@@ -1304,6 +1339,32 @@
           ],
           "strength": "strong",
           "strength_pct": 59,
+          "windows": []
+        },
+        {
+          "agreement": {
+            "transit": false,
+            "vimshottari": false,
+            "yogini": false
+          },
+          "confidence": "low",
+          "dasha": {
+            "tone": "supportive",
+            "vimshottari": 33,
+            "yogini": 33
+          },
+          "direction": "mixed",
+          "domain": "relationships",
+          "factors": [
+            "Mercury (antar) occupies the 7th",
+            "Yogini Ulka (Saturn) occupies the 7th",
+            "Venus strength is 38% (moderate)"
+          ],
+          "houses": [
+            7
+          ],
+          "strength": "moderate",
+          "strength_pct": 38,
           "windows": []
         }
       ],
@@ -1342,6 +1403,12 @@
         "lord": "saturn",
         "name": "ulka",
         "start": "2021-05-03"
+      },
+      "yogini_antar": {
+        "end": "2026-07-03",
+        "lord": "mars",
+        "name": "bhramari",
+        "start": "2025-11-02"
       }
     },
     "strength_context": {
@@ -5025,20 +5092,26 @@
       "dasha_spans": [
         {
           "end": "2026-06-10",
+          "from_parent": null,
           "level": "maha",
           "lord": "rahu",
+          "relation": null,
           "start": "2026-06-09"
         },
         {
           "end": "2026-06-10",
+          "from_parent": 12,
           "level": "antar",
           "lord": "mercury",
+          "relation": "friction",
           "start": "2026-06-09"
         },
         {
           "end": "2026-06-10",
+          "from_parent": 9,
           "level": "pratyantar",
           "lord": "moon",
+          "relation": "support",
           "start": "2026-06-09"
         }
       ],
@@ -5059,6 +5132,7 @@
             10
           ],
           "sign": "gemini",
+          "strength": "strong",
           "vargottama": false,
           "yogas": [
             "Parivartana Yoga",
@@ -5075,6 +5149,7 @@
           "retro": true,
           "rules": [],
           "sign": "cancer",
+          "strength": "ordinary",
           "vargottama": false,
           "yogas": []
         },
@@ -5091,6 +5166,7 @@
             11
           ],
           "sign": "scorpio",
+          "strength": "strong",
           "vargottama": false,
           "yogas": [
             "Vipareeta Raja Yoga"
@@ -5109,6 +5185,7 @@
             4
           ],
           "sign": "sagittarius",
+          "strength": "strong",
           "vargottama": false,
           "yogas": [
             "Parivartana Yoga",
@@ -5128,6 +5205,7 @@
             2
           ],
           "sign": "leo",
+          "strength": "strong",
           "vargottama": false,
           "yogas": [
             "Kemadruma Yoga"
@@ -5143,6 +5221,7 @@
           "retro": true,
           "rules": [],
           "sign": "capricorn",
+          "strength": "ordinary",
           "vargottama": false,
           "yogas": []
         },
@@ -5159,6 +5238,7 @@
             9
           ],
           "sign": "sagittarius",
+          "strength": "weak",
           "vargottama": false,
           "yogas": [
             "Raja Yoga",
@@ -5177,6 +5257,7 @@
             3
           ],
           "sign": "capricorn",
+          "strength": "weak",
           "vargottama": true,
           "yogas": [
             "Vasi Yoga"
@@ -5195,6 +5276,7 @@
             12
           ],
           "sign": "capricorn",
+          "strength": "weak",
           "vargottama": false,
           "yogas": [
             "Vipareeta Raja Yoga"
@@ -5213,7 +5295,11 @@
       },
       "rules": [
         "functional nature (BPHS): yogakaraka; lord of 1/5/9 benefic; else of 3/6/8/11 malefic; else of 2/7 maraka; else neutral. A 12th lord takes its other house's nature, alone neutral",
-        "agreement: vimshottari = a running dasha lord, yogini = the Yogini lord, rules or occupies a domain house or is its karaka; transit = Jupiter/Saturn in a domain house from lagna/Moon",
+        "dasha score 0-100: a lord sitting in or ruling a domain house counts 1, a karaka only 0.5; times strength (strong 1, ordinary 0.75, weak 0.5), maha 3 antar 2 pratyantar 1, by time",
+        "agreement: vimshottari / yogini = that dasha score is 50 or more (Yogini maha 2, antar 1); transit = Jupiter/Saturn in a domain house from the lagna or the Moon",
+        "strength: combust weak; retrograde strong; exalted or own strong; debilitated weak; friend's sign strong and enemy's weak by the Shadbala minimum; else ordinary. Nodes ordinary",
+        "relation: a sub-lord counted from its parent lord; 1/4/5/7/9/10/11 support, 6/8/12 from it friction, 2/3 neutral (BPHS antardasha chapters)",
+        "dasha tone: per tied lord, functional nature + strength + relation; all positive supportive, all negative challenging, else mixed",
         "confidence = agreeing techniques: 3 high, 2 medium, 0-1 low",
         "obstacles (6th/8th/12th): karakas Saturn/Mars/Rahu are context only; strength = agreeing techniques + a dated window: 3-4 with the window strong, 2+ moderate, 0-1 weak",
         "direction = domain transit severity + its window severities, neutral ignored: all supportive, all challenging, else mixed",
@@ -5289,7 +5375,9 @@
       ],
       "sookshma": {
         "end": "2026-06-10",
+        "from_parent": 6,
         "lord": "rahu",
+        "relation": "friction",
         "start": "2026-05-29"
       },
       "themes": [
@@ -5300,29 +5388,39 @@
             "yogini": true
           },
           "confidence": "high",
-          "direction": "mixed",
-          "domain": "obstacles",
+          "dasha": {
+            "tone": "supportive",
+            "vimshottari": 71,
+            "yogini": 67
+          },
+          "direction": "challenging",
+          "domain": "health",
           "factors": [
-            "Rahu (maha) occupies the 8th: unexpected setbacks",
-            "Jupiter transits the 12th from the Moon",
-            "Yogini Ulka (Saturn) rules the 8th: unexpected setbacks"
+            "Rahu (maha) occupies the 8th",
+            "Saturn transits the 8th from the Moon (ashtama_shani)",
+            "Mercury (antar) rules the 1st"
           ],
           "houses": [
+            1,
             6,
-            8,
-            12
+            8
           ],
           "strength": "moderate",
-          "strength_pct": 75,
+          "strength_pct": 45,
           "windows": []
         },
         {
           "agreement": {
             "transit": true,
             "vimshottari": true,
-            "yogini": true
+            "yogini": false
           },
-          "confidence": "high",
+          "confidence": "medium",
+          "dasha": {
+            "tone": "supportive",
+            "vimshottari": 50,
+            "yogini": 33
+          },
           "direction": "supportive",
           "domain": "family",
           "factors": [
@@ -5343,54 +5441,43 @@
         {
           "agreement": {
             "transit": true,
-            "vimshottari": true,
+            "vimshottari": false,
             "yogini": true
           },
-          "confidence": "high",
-          "direction": "challenging",
-          "domain": "career",
-          "factors": [
-            "Mercury (antar) is a karaka of career",
-            "Saturn transits the 10th from the lagna (ashtama_shani)",
-            "Yogini Ulka (Saturn) is a karaka of career"
-          ],
-          "houses": [
-            10
-          ],
-          "strength": "moderate",
-          "strength_pct": 48,
-          "windows": []
-        },
-        {
-          "agreement": {
-            "transit": true,
-            "vimshottari": true,
-            "yogini": true
+          "confidence": "medium",
+          "dasha": {
+            "tone": "mixed",
+            "vimshottari": 38,
+            "yogini": 67
           },
-          "confidence": "high",
-          "direction": "challenging",
-          "domain": "health",
+          "direction": "mixed",
+          "domain": "obstacles",
           "factors": [
-            "Rahu (maha) occupies the 8th",
-            "Saturn transits the 8th from the Moon (ashtama_shani)",
-            "Mercury (antar) rules the 1st"
+            "Rahu (maha) occupies the 8th: unexpected setbacks",
+            "Jupiter transits the 12th from the Moon",
+            "Yogini Ulka (Saturn) rules the 8th: unexpected setbacks"
           ],
           "houses": [
-            1,
             6,
-            8
+            8,
+            12
           ],
           "strength": "moderate",
-          "strength_pct": 45,
+          "strength_pct": 50,
           "windows": []
         },
         {
           "agreement": {
             "transit": true,
             "vimshottari": false,
-            "yogini": true
+            "yogini": false
           },
-          "confidence": "medium",
+          "confidence": "low",
+          "dasha": {
+            "tone": null,
+            "vimshottari": 0,
+            "yogini": 33
+          },
           "direction": "challenging",
           "domain": "spiritual",
           "factors": [
@@ -5410,10 +5497,15 @@
         {
           "agreement": {
             "transit": true,
-            "vimshottari": true,
+            "vimshottari": false,
             "yogini": false
           },
-          "confidence": "medium",
+          "confidence": "low",
+          "dasha": {
+            "tone": "supportive",
+            "vimshottari": 17,
+            "yogini": 33
+          },
           "direction": "supportive",
           "domain": "finances",
           "factors": [
@@ -5431,32 +5523,42 @@
         },
         {
           "agreement": {
-            "transit": false,
-            "vimshottari": true,
-            "yogini": true
+            "transit": true,
+            "vimshottari": false,
+            "yogini": false
           },
-          "confidence": "medium",
-          "direction": "mixed",
-          "domain": "relationships",
+          "confidence": "low",
+          "dasha": {
+            "tone": "supportive",
+            "vimshottari": 17,
+            "yogini": 17
+          },
+          "direction": "challenging",
+          "domain": "career",
           "factors": [
-            "Mercury (antar) occupies the 7th",
-            "Yogini Ulka (Saturn) occupies the 7th",
-            "Venus strength is 38% (moderate)"
+            "Mercury (antar) is a karaka of career",
+            "Saturn transits the 10th from the lagna (ashtama_shani)",
+            "Yogini Ulka (Saturn) is a karaka of career"
           ],
           "houses": [
-            7
+            10
           ],
           "strength": "moderate",
-          "strength_pct": 38,
+          "strength_pct": 48,
           "windows": []
         },
         {
           "agreement": {
             "transit": false,
-            "vimshottari": true,
+            "vimshottari": false,
             "yogini": false
           },
           "confidence": "low",
+          "dasha": {
+            "tone": "supportive",
+            "vimshottari": 33,
+            "yogini": 0
+          },
           "direction": "mixed",
           "domain": "education",
           "factors": [
@@ -5469,6 +5571,32 @@
           ],
           "strength": "strong",
           "strength_pct": 59,
+          "windows": []
+        },
+        {
+          "agreement": {
+            "transit": false,
+            "vimshottari": false,
+            "yogini": false
+          },
+          "confidence": "low",
+          "dasha": {
+            "tone": "supportive",
+            "vimshottari": 33,
+            "yogini": 33
+          },
+          "direction": "mixed",
+          "domain": "relationships",
+          "factors": [
+            "Mercury (antar) occupies the 7th",
+            "Yogini Ulka (Saturn) occupies the 7th",
+            "Venus strength is 38% (moderate)"
+          ],
+          "houses": [
+            7
+          ],
+          "strength": "moderate",
+          "strength_pct": 38,
           "windows": []
         }
       ],
@@ -5507,6 +5635,12 @@
         "lord": "saturn",
         "name": "ulka",
         "start": "2021-05-03"
+      },
+      "yogini_antar": {
+        "end": "2026-07-03",
+        "lord": "mars",
+        "name": "bhramari",
+        "start": "2025-11-02"
       }
     },
     "strength_context": {
@@ -9118,20 +9252,26 @@
       "dasha_spans": [
         {
           "end": "2026-06-10",
+          "from_parent": null,
           "level": "maha",
           "lord": "saturn",
+          "relation": null,
           "start": "2026-06-09"
         },
         {
           "end": "2026-06-10",
+          "from_parent": 2,
           "level": "antar",
           "lord": "rahu",
+          "relation": "neutral",
           "start": "2026-06-09"
         },
         {
           "end": "2026-06-10",
+          "from_parent": 7,
           "level": "pratyantar",
           "lord": "mercury",
+          "relation": "support",
           "start": "2026-06-09"
         }
       ],
@@ -9152,6 +9292,7 @@
             9
           ],
           "sign": "taurus",
+          "strength": "strong",
           "vargottama": false,
           "yogas": [
             "Dhana Yoga",
@@ -9169,6 +9310,7 @@
           "retro": true,
           "rules": [],
           "sign": "sagittarius",
+          "strength": "ordinary",
           "vargottama": false,
           "yogas": []
         },
@@ -9185,6 +9327,7 @@
             10
           ],
           "sign": "libra",
+          "strength": "ordinary",
           "vargottama": false,
           "yogas": [
             "Yogakaraka"
@@ -9203,6 +9346,7 @@
             12
           ],
           "sign": "sagittarius",
+          "strength": "weak",
           "vargottama": false,
           "yogas": [
             "Budha-Aditya Yoga",
@@ -9221,6 +9365,7 @@
             1
           ],
           "sign": "aquarius",
+          "strength": "ordinary",
           "vargottama": false,
           "yogas": [
             "Gajakesari Yoga",
@@ -9238,6 +9383,7 @@
           "retro": true,
           "rules": [],
           "sign": "gemini",
+          "strength": "ordinary",
           "vargottama": false,
           "yogas": []
         },
@@ -9254,6 +9400,7 @@
             8
           ],
           "sign": "taurus",
+          "strength": "strong",
           "vargottama": false,
           "yogas": [
             "Parivartana Yoga",
@@ -9272,6 +9419,7 @@
             2
           ],
           "sign": "sagittarius",
+          "strength": "ordinary",
           "vargottama": false,
           "yogas": [
             "Budha-Aditya Yoga"
@@ -9290,6 +9438,7 @@
             11
           ],
           "sign": "aquarius",
+          "strength": "strong",
           "vargottama": false,
           "yogas": [
             "Parivartana Yoga",
@@ -9309,7 +9458,11 @@
       },
       "rules": [
         "functional nature (BPHS): yogakaraka; lord of 1/5/9 benefic; else of 3/6/8/11 malefic; else of 2/7 maraka; else neutral. A 12th lord takes its other house's nature, alone neutral",
-        "agreement: vimshottari = a running dasha lord, yogini = the Yogini lord, rules or occupies a domain house or is its karaka; transit = Jupiter/Saturn in a domain house from lagna/Moon",
+        "dasha score 0-100: a lord sitting in or ruling a domain house counts 1, a karaka only 0.5; times strength (strong 1, ordinary 0.75, weak 0.5), maha 3 antar 2 pratyantar 1, by time",
+        "agreement: vimshottari / yogini = that dasha score is 50 or more (Yogini maha 2, antar 1); transit = Jupiter/Saturn in a domain house from the lagna or the Moon",
+        "strength: combust weak; retrograde strong; exalted or own strong; debilitated weak; friend's sign strong and enemy's weak by the Shadbala minimum; else ordinary. Nodes ordinary",
+        "relation: a sub-lord counted from its parent lord; 1/4/5/7/9/10/11 support, 6/8/12 from it friction, 2/3 neutral (BPHS antardasha chapters)",
+        "dasha tone: per tied lord, functional nature + strength + relation; all positive supportive, all negative challenging, else mixed",
         "confidence = agreeing techniques: 3 high, 2 medium, 0-1 low",
         "obstacles (6th/8th/12th): karakas Saturn/Mars/Rahu are context only; strength = agreeing techniques + a dated window: 3-4 with the window strong, 2+ moderate, 0-1 weak",
         "direction = domain transit severity + its window severities, neutral ignored: all supportive, all challenging, else mixed",
@@ -9387,7 +9540,9 @@
       ],
       "sookshma": {
         "end": "2026-06-28",
+        "from_parent": 6,
         "lord": "saturn",
+        "relation": "friction",
         "start": "2026-06-04"
       },
       "themes": [
@@ -9398,6 +9553,11 @@
             "yogini": true
           },
           "confidence": "high",
+          "dasha": {
+            "tone": "challenging",
+            "vimshottari": 83,
+            "yogini": 67
+          },
           "direction": "challenging",
           "domain": "obstacles",
           "factors": [
@@ -9418,32 +9578,14 @@
           "agreement": {
             "transit": true,
             "vimshottari": true,
-            "yogini": true
-          },
-          "confidence": "high",
-          "direction": "challenging",
-          "domain": "spiritual",
-          "factors": [
-            "Rahu (antar) occupies the 12th",
-            "Saturn transits the 9th from the lagna (sade_sati_phase_3)",
-            "Mercury (pratyantar) rules the 12th"
-          ],
-          "houses": [
-            9,
-            12,
-            5
-          ],
-          "strength": "moderate",
-          "strength_pct": 42,
-          "windows": []
-        },
-        {
-          "agreement": {
-            "transit": true,
-            "vimshottari": true,
             "yogini": false
           },
           "confidence": "medium",
+          "dasha": {
+            "tone": "challenging",
+            "vimshottari": 58,
+            "yogini": 17
+          },
           "direction": "challenging",
           "domain": "health",
           "factors": [
@@ -9467,6 +9609,11 @@
             "yogini": false
           },
           "confidence": "medium",
+          "dasha": {
+            "tone": "mixed",
+            "vimshottari": 50,
+            "yogini": 0
+          },
           "direction": "challenging",
           "domain": "finances",
           "factors": [
@@ -9484,44 +9631,30 @@
         },
         {
           "agreement": {
-            "transit": false,
-            "vimshottari": true,
-            "yogini": false
+            "transit": true,
+            "vimshottari": false,
+            "yogini": true
           },
-          "confidence": "low",
-          "direction": "mixed",
-          "domain": "career",
+          "confidence": "medium",
+          "dasha": {
+            "tone": "challenging",
+            "vimshottari": 33,
+            "yogini": 67
+          },
+          "direction": "challenging",
+          "domain": "spiritual",
           "factors": [
-            "Saturn (maha) is a karaka of career",
-            "Mercury (pratyantar) is a karaka of career",
-            "Saturn strength is 55% (strong)"
+            "Rahu (antar) occupies the 12th",
+            "Saturn transits the 9th from the lagna (sade_sati_phase_3)",
+            "Mercury (pratyantar) rules the 12th"
           ],
           "houses": [
-            10
-          ],
-          "strength": "strong",
-          "strength_pct": 55,
-          "windows": []
-        },
-        {
-          "agreement": {
-            "transit": false,
-            "vimshottari": true,
-            "yogini": false
-          },
-          "confidence": "low",
-          "direction": "mixed",
-          "domain": "education",
-          "factors": [
-            "Mercury (pratyantar) is a karaka of education",
-            "Mercury strength is 52% (moderate)"
-          ],
-          "houses": [
-            4,
+            9,
+            12,
             5
           ],
           "strength": "moderate",
-          "strength_pct": 52,
+          "strength_pct": 42,
           "windows": []
         },
         {
@@ -9531,6 +9664,11 @@
             "yogini": false
           },
           "confidence": "low",
+          "dasha": {
+            "tone": null,
+            "vimshottari": 0,
+            "yogini": 0
+          },
           "direction": "challenging",
           "domain": "family",
           "factors": [
@@ -9555,6 +9693,11 @@
             "yogini": false
           },
           "confidence": "low",
+          "dasha": {
+            "tone": "mixed",
+            "vimshottari": 50,
+            "yogini": 0
+          },
           "direction": "mixed",
           "domain": "relationships",
           "factors": [
@@ -9566,6 +9709,58 @@
           ],
           "strength": "moderate",
           "strength_pct": 34,
+          "windows": []
+        },
+        {
+          "agreement": {
+            "transit": false,
+            "vimshottari": false,
+            "yogini": false
+          },
+          "confidence": "low",
+          "dasha": {
+            "tone": "challenging",
+            "vimshottari": 29,
+            "yogini": 8
+          },
+          "direction": "mixed",
+          "domain": "career",
+          "factors": [
+            "Saturn (maha) is a karaka of career",
+            "Mercury (pratyantar) is a karaka of career",
+            "Saturn strength is 55% (strong)"
+          ],
+          "houses": [
+            10
+          ],
+          "strength": "strong",
+          "strength_pct": 55,
+          "windows": []
+        },
+        {
+          "agreement": {
+            "transit": false,
+            "vimshottari": false,
+            "yogini": false
+          },
+          "confidence": "low",
+          "dasha": {
+            "tone": "challenging",
+            "vimshottari": 4,
+            "yogini": 8
+          },
+          "direction": "mixed",
+          "domain": "education",
+          "factors": [
+            "Mercury (pratyantar) is a karaka of education",
+            "Mercury strength is 52% (moderate)"
+          ],
+          "houses": [
+            4,
+            5
+          ],
+          "strength": "moderate",
+          "strength_pct": 52,
           "windows": []
         }
       ],
@@ -9604,6 +9799,12 @@
         "lord": "rahu",
         "name": "sankata",
         "start": "2021-07-21"
+      },
+      "yogini_antar": {
+        "end": "2026-08-31",
+        "lord": "mercury",
+        "name": "bhadrika",
+        "start": "2025-07-21"
       }
     },
     "strength_context": {

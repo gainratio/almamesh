@@ -8,6 +8,8 @@
  * a birth datum, an event row or an example. Nothing here identifies anyone.
  */
 
+export type AreaKey = 'career' | 'relationships' | 'family' | 'health';
+
 export type TechniqueKey = 'baseline' | 'exact_transits' | 'obstacles' | 'ashtakavarga' | 'vargas';
 
 export interface TechniqueResult {
@@ -21,6 +23,24 @@ export interface TechniqueResult {
   readonly events: number;
 }
 
+/**
+ * Classical dasha rules were scored by life area (amendment h of the pre-registration, DEV half,
+ * k = 3): the run published no all-areas lift, so the page shows each area's lift with its 95% CI.
+ */
+export interface AreaResult {
+  readonly area: AreaKey;
+  readonly lift: number;
+  readonly low: number;
+  readonly high: number;
+}
+
+export interface AreaTechniqueResult {
+  readonly key: 'classical_dasha';
+  /** Events scored across the four areas. */
+  readonly events: number;
+  readonly areas: readonly AreaResult[];
+}
+
 export interface RetrodictionResults {
   /** The day the published run finished (YYYY-MM-DD). */
   readonly runDate: string;
@@ -29,6 +49,7 @@ export interface RetrodictionResults {
   readonly windowMonths: number;
   readonly topMonths: number;
   readonly techniques: readonly TechniqueResult[];
+  readonly classicalDasha: AreaTechniqueResult;
 }
 
 export const RETRODICTION_RESULTS: RetrodictionResults = {
@@ -44,4 +65,14 @@ export const RETRODICTION_RESULTS: RetrodictionResults = {
     { key: 'ashtakavarga', lift: 0.98, low: 0.85, high: 1.11, events: 6120 },
     { key: 'vargas', lift: 0.99, low: 0.86, high: 1.12, events: 6120 },
   ],
+  classicalDasha: {
+    key: 'classical_dasha',
+    events: 5098,
+    areas: [
+      { area: 'career', lift: 1.04, low: 0.74, high: 1.41 },
+      { area: 'relationships', lift: 1.06, low: 0.85, high: 1.29 },
+      { area: 'family', lift: 1.22, low: 0.87, high: 1.66 },
+      { area: 'health', lift: 0.94, low: 0.49, high: 1.57 },
+    ],
+  },
 };

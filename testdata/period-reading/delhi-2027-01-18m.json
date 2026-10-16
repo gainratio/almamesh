@@ -11,6 +11,7 @@
       "house": 8,
       "sign": "capricorn",
       "dignity": "neutral",
+      "strength": "weak",
       "combust": false,
       "retro": false,
       "functional": "malefic",
@@ -28,6 +29,7 @@
       "house": 3,
       "sign": "leo",
       "dignity": "neutral",
+      "strength": "strong",
       "combust": false,
       "retro": false,
       "functional": "maraka",
@@ -46,6 +48,7 @@
       "house": 6,
       "sign": "scorpio",
       "dignity": "own",
+      "strength": "strong",
       "combust": false,
       "retro": false,
       "functional": "malefic",
@@ -64,6 +67,7 @@
       "house": 7,
       "sign": "sagittarius",
       "dignity": "neutral",
+      "strength": "strong",
       "combust": false,
       "retro": true,
       "functional": "benefic",
@@ -84,6 +88,7 @@
       "house": 1,
       "sign": "gemini",
       "dignity": "neutral",
+      "strength": "strong",
       "combust": false,
       "retro": true,
       "functional": "maraka",
@@ -103,6 +108,7 @@
       "house": 8,
       "sign": "capricorn",
       "dignity": "neutral",
+      "strength": "weak",
       "combust": true,
       "retro": true,
       "functional": "benefic",
@@ -121,6 +127,7 @@
       "house": 7,
       "sign": "sagittarius",
       "dignity": "neutral",
+      "strength": "weak",
       "combust": true,
       "retro": false,
       "functional": "benefic",
@@ -137,6 +144,7 @@
       "house": 8,
       "sign": "capricorn",
       "dignity": "neutral",
+      "strength": "ordinary",
       "combust": false,
       "retro": true,
       "functional": "neutral",
@@ -150,6 +158,7 @@
       "house": 2,
       "sign": "cancer",
       "dignity": "neutral",
+      "strength": "ordinary",
       "combust": false,
       "retro": true,
       "functional": "neutral",
@@ -164,85 +173,113 @@
       "level": "maha",
       "lord": "rahu",
       "start": "2027-01-01",
-      "end": "2028-07-01"
+      "end": "2028-07-01",
+      "from_parent": null,
+      "relation": null
     },
     {
       "level": "antar",
       "lord": "mercury",
       "start": "2027-01-01",
-      "end": "2027-11-12"
+      "end": "2027-11-12",
+      "from_parent": 12,
+      "relation": "friction"
     },
     {
       "level": "antar",
       "lord": "ketu",
       "start": "2027-11-12",
-      "end": "2028-07-01"
+      "end": "2028-07-01",
+      "from_parent": 7,
+      "relation": "support"
     },
     {
       "level": "pratyantar",
       "lord": "rahu",
       "start": "2027-01-01",
-      "end": "2027-02-14"
+      "end": "2027-02-14",
+      "from_parent": 2,
+      "relation": "neutral"
     },
     {
       "level": "pratyantar",
       "lord": "jupiter",
       "start": "2027-02-14",
-      "end": "2027-06-18"
+      "end": "2027-06-18",
+      "from_parent": 7,
+      "relation": "support"
     },
     {
       "level": "pratyantar",
       "lord": "saturn",
       "start": "2027-06-18",
-      "end": "2027-11-12"
+      "end": "2027-11-12",
+      "from_parent": 1,
+      "relation": "support"
     },
     {
       "level": "pratyantar",
       "lord": "ketu",
       "start": "2027-11-12",
-      "end": "2027-12-05"
+      "end": "2027-12-05",
+      "from_parent": 1,
+      "relation": "support"
     },
     {
       "level": "pratyantar",
       "lord": "venus",
       "start": "2027-12-05",
-      "end": "2028-02-07"
+      "end": "2028-02-07",
+      "from_parent": 7,
+      "relation": "support"
     },
     {
       "level": "pratyantar",
       "lord": "sun",
       "start": "2028-02-07",
-      "end": "2028-02-26"
+      "end": "2028-02-26",
+      "from_parent": 7,
+      "relation": "support"
     },
     {
       "level": "pratyantar",
       "lord": "moon",
       "start": "2028-02-26",
-      "end": "2028-03-29"
+      "end": "2028-03-29",
+      "from_parent": 2,
+      "relation": "neutral"
     },
     {
       "level": "pratyantar",
       "lord": "mars",
       "start": "2028-03-29",
-      "end": "2028-04-20"
+      "end": "2028-04-20",
+      "from_parent": 5,
+      "relation": "support"
     },
     {
       "level": "pratyantar",
       "lord": "rahu",
       "start": "2028-04-20",
-      "end": "2028-06-17"
+      "end": "2028-06-17",
+      "from_parent": 7,
+      "relation": "support"
     },
     {
       "level": "pratyantar",
       "lord": "jupiter",
       "start": "2028-06-17",
-      "end": "2028-07-01"
+      "end": "2028-07-01",
+      "from_parent": 12,
+      "relation": "friction"
     }
   ],
   "sookshma": {
     "lord": "venus",
     "start": "2026-12-26",
-    "end": "2027-01-18"
+    "end": "2027-01-18",
+    "from_parent": 1,
+    "relation": "support"
   },
   "sandhi": {
     "level": "antar",
@@ -252,6 +289,12 @@
     "name": "ulka",
     "lord": "saturn",
     "start": "2021-05-03",
+    "end": "2027-05-04"
+  },
+  "yogini_antar": {
+    "name": "bhadrika",
+    "lord": "mercury",
+    "start": "2026-07-03",
     "end": "2027-05-04"
   },
   "segments": [
@@ -717,161 +760,6 @@
   ],
   "themes": [
     {
-      "domain": "obstacles",
-      "houses": [
-        6,
-        8,
-        12
-      ],
-      "direction": "challenging",
-      "strength": "strong",
-      "strength_pct": 100,
-      "confidence": "high",
-      "agreement": {
-        "vimshottari": true,
-        "yogini": true,
-        "transit": true
-      },
-      "factors": [
-        "Rahu (maha) occupies the 8th: unexpected setbacks",
-        "Jupiter transits the 12th from the Moon",
-        "Saturn (pratyantar) rules the 8th: unexpected setbacks"
-      ],
-      "windows": [
-        {
-          "date": "2027-04-26",
-          "descriptor": "obstacles.transit.mars.ingress.leo",
-          "severity": "neutral"
-        },
-        {
-          "date": "2027-06-02",
-          "descriptor": "obstacles.transit.saturn.ingress.aries",
-          "severity": "neutral"
-        },
-        {
-          "date": "2027-10-07",
-          "descriptor": "obstacles.transit.mars.ingress.scorpio",
-          "severity": "neutral"
-        }
-      ]
-    },
-    {
-      "domain": "spiritual",
-      "houses": [
-        9,
-        12,
-        5
-      ],
-      "direction": "mixed",
-      "strength": "strong",
-      "strength_pct": 51,
-      "confidence": "high",
-      "agreement": {
-        "vimshottari": true,
-        "yogini": true,
-        "transit": true
-      },
-      "factors": [
-        "Ketu (antar) is a karaka of spiritual",
-        "Jupiter transits the 12th from the Moon",
-        "Jupiter (pratyantar) is a karaka of spiritual"
-      ],
-      "windows": [
-        {
-          "date": "2027-01-24",
-          "descriptor": "spiritual.transit.jupiter.ingress.cancer",
-          "severity": "neutral"
-        },
-        {
-          "date": "2027-06-02",
-          "descriptor": "spiritual.transit.saturn.ingress.aries",
-          "severity": "neutral"
-        },
-        {
-          "date": "2027-06-25",
-          "descriptor": "spiritual.transit.jupiter.ingress.leo",
-          "severity": "neutral"
-        }
-      ]
-    },
-    {
-      "domain": "family",
-      "houses": [
-        2,
-        4,
-        5,
-        9
-      ],
-      "direction": "mixed",
-      "strength": "strong",
-      "strength_pct": 50,
-      "confidence": "high",
-      "agreement": {
-        "vimshottari": true,
-        "yogini": true,
-        "transit": true
-      },
-      "factors": [
-        "Mercury (antar) rules the 4th",
-        "Jupiter transits the 2nd from the lagna",
-        "Ketu (antar) occupies the 2nd"
-      ],
-      "windows": [
-        {
-          "date": "2027-01-24",
-          "descriptor": "family.transit.jupiter.ingress.cancer",
-          "severity": "neutral"
-        },
-        {
-          "date": "2027-06-02",
-          "descriptor": "family.transit.saturn.ingress.aries",
-          "severity": "neutral"
-        },
-        {
-          "date": "2027-06-25",
-          "descriptor": "family.transit.jupiter.ingress.leo",
-          "severity": "neutral"
-        }
-      ]
-    },
-    {
-      "domain": "career",
-      "houses": [
-        10
-      ],
-      "direction": "challenging",
-      "strength": "moderate",
-      "strength_pct": 48,
-      "confidence": "high",
-      "agreement": {
-        "vimshottari": true,
-        "yogini": true,
-        "transit": true
-      },
-      "factors": [
-        "Mercury (antar) is a karaka of career",
-        "Saturn transits the 10th from the lagna (ashtama_shani)",
-        "Jupiter (pratyantar) rules the 10th"
-      ],
-      "windows": [
-        {
-          "date": "2027-01-24",
-          "descriptor": "career.transit.jupiter.ingress.cancer",
-          "severity": "neutral"
-        },
-        {
-          "date": "2027-06-02",
-          "descriptor": "career.transit.saturn.ingress.aries",
-          "severity": "neutral"
-        },
-        {
-          "date": "2027-06-25",
-          "descriptor": "career.transit.jupiter.ingress.leo",
-          "severity": "neutral"
-        }
-      ]
-    },
-    {
       "domain": "health",
       "houses": [
         1,
@@ -886,6 +774,11 @@
         "vimshottari": true,
         "yogini": true,
         "transit": true
+      },
+      "dasha": {
+        "vimshottari": 67,
+        "yogini": 54,
+        "tone": "mixed"
       },
       "factors": [
         "Rahu (maha) occupies the 8th",
@@ -911,6 +804,51 @@
       ]
     },
     {
+      "domain": "family",
+      "houses": [
+        2,
+        4,
+        5,
+        9
+      ],
+      "direction": "mixed",
+      "strength": "strong",
+      "strength_pct": 50,
+      "confidence": "medium",
+      "agreement": {
+        "vimshottari": false,
+        "yogini": true,
+        "transit": true
+      },
+      "dasha": {
+        "vimshottari": 37,
+        "yogini": 54,
+        "tone": "mixed"
+      },
+      "factors": [
+        "Mercury (antar) rules the 4th",
+        "Jupiter transits the 2nd from the lagna",
+        "Ketu (antar) occupies the 2nd"
+      ],
+      "windows": [
+        {
+          "date": "2027-01-24",
+          "descriptor": "family.transit.jupiter.ingress.cancer",
+          "severity": "neutral"
+        },
+        {
+          "date": "2027-06-02",
+          "descriptor": "family.transit.saturn.ingress.aries",
+          "severity": "neutral"
+        },
+        {
+          "date": "2027-06-25",
+          "descriptor": "family.transit.jupiter.ingress.leo",
+          "severity": "neutral"
+        }
+      ]
+    },
+    {
       "domain": "education",
       "houses": [
         4,
@@ -919,11 +857,16 @@
       "direction": "mixed",
       "strength": "strong",
       "strength_pct": 59,
-      "confidence": "medium",
+      "confidence": "low",
       "agreement": {
-        "vimshottari": true,
+        "vimshottari": false,
         "yogini": false,
         "transit": true
+      },
+      "dasha": {
+        "vimshottari": 22,
+        "yogini": 46,
+        "tone": "mixed"
       },
       "factors": [
         "Mercury (antar) rules the 4th",
@@ -949,6 +892,50 @@
       ]
     },
     {
+      "domain": "spiritual",
+      "houses": [
+        9,
+        12,
+        5
+      ],
+      "direction": "mixed",
+      "strength": "strong",
+      "strength_pct": 51,
+      "confidence": "low",
+      "agreement": {
+        "vimshottari": false,
+        "yogini": false,
+        "transit": true
+      },
+      "dasha": {
+        "vimshottari": 11,
+        "yogini": 46,
+        "tone": "mixed"
+      },
+      "factors": [
+        "Ketu (antar) is a karaka of spiritual",
+        "Jupiter transits the 12th from the Moon",
+        "Jupiter (pratyantar) is a karaka of spiritual"
+      ],
+      "windows": [
+        {
+          "date": "2027-01-24",
+          "descriptor": "spiritual.transit.jupiter.ingress.cancer",
+          "severity": "neutral"
+        },
+        {
+          "date": "2027-06-02",
+          "descriptor": "spiritual.transit.saturn.ingress.aries",
+          "severity": "neutral"
+        },
+        {
+          "date": "2027-06-25",
+          "descriptor": "spiritual.transit.jupiter.ingress.leo",
+          "severity": "neutral"
+        }
+      ]
+    },
+    {
       "domain": "finances",
       "houses": [
         2,
@@ -957,11 +944,16 @@
       "direction": "mixed",
       "strength": "strong",
       "strength_pct": 50,
-      "confidence": "medium",
+      "confidence": "low",
       "agreement": {
-        "vimshottari": true,
+        "vimshottari": false,
         "yogini": false,
         "transit": true
+      },
+      "dasha": {
+        "vimshottari": 15,
+        "yogini": 0,
+        "tone": "mixed"
       },
       "factors": [
         "Ketu (antar) occupies the 2nd",
@@ -987,6 +979,92 @@
       ]
     },
     {
+      "domain": "obstacles",
+      "houses": [
+        6,
+        8,
+        12
+      ],
+      "direction": "challenging",
+      "strength": "moderate",
+      "strength_pct": 50,
+      "confidence": "low",
+      "agreement": {
+        "vimshottari": false,
+        "yogini": false,
+        "transit": true
+      },
+      "dasha": {
+        "vimshottari": 44,
+        "yogini": 46,
+        "tone": "mixed"
+      },
+      "factors": [
+        "Rahu (maha) occupies the 8th: unexpected setbacks",
+        "Jupiter transits the 12th from the Moon",
+        "Saturn (pratyantar) rules the 8th: unexpected setbacks"
+      ],
+      "windows": [
+        {
+          "date": "2027-04-26",
+          "descriptor": "obstacles.transit.mars.ingress.leo",
+          "severity": "neutral"
+        },
+        {
+          "date": "2027-06-02",
+          "descriptor": "obstacles.transit.saturn.ingress.aries",
+          "severity": "neutral"
+        },
+        {
+          "date": "2027-10-07",
+          "descriptor": "obstacles.transit.mars.ingress.scorpio",
+          "severity": "neutral"
+        }
+      ]
+    },
+    {
+      "domain": "career",
+      "houses": [
+        10
+      ],
+      "direction": "challenging",
+      "strength": "moderate",
+      "strength_pct": 48,
+      "confidence": "low",
+      "agreement": {
+        "vimshottari": false,
+        "yogini": false,
+        "transit": true
+      },
+      "dasha": {
+        "vimshottari": 15,
+        "yogini": 8,
+        "tone": "mixed"
+      },
+      "factors": [
+        "Mercury (antar) is a karaka of career",
+        "Saturn transits the 10th from the lagna (ashtama_shani)",
+        "Jupiter (pratyantar) rules the 10th"
+      ],
+      "windows": [
+        {
+          "date": "2027-01-24",
+          "descriptor": "career.transit.jupiter.ingress.cancer",
+          "severity": "neutral"
+        },
+        {
+          "date": "2027-06-02",
+          "descriptor": "career.transit.saturn.ingress.aries",
+          "severity": "neutral"
+        },
+        {
+          "date": "2027-06-25",
+          "descriptor": "career.transit.jupiter.ingress.leo",
+          "severity": "neutral"
+        }
+      ]
+    },
+    {
       "domain": "relationships",
       "houses": [
         7
@@ -994,11 +1072,16 @@
       "direction": "mixed",
       "strength": "moderate",
       "strength_pct": 38,
-      "confidence": "medium",
+      "confidence": "low",
       "agreement": {
-        "vimshottari": true,
-        "yogini": true,
+        "vimshottari": false,
+        "yogini": false,
         "transit": false
+      },
+      "dasha": {
+        "vimshottari": 26,
+        "yogini": 34,
+        "tone": "mixed"
       },
       "factors": [
         "Mercury (antar) occupies the 7th",
@@ -1036,7 +1119,11 @@
   },
   "rules": [
     "functional nature (BPHS): yogakaraka; lord of 1/5/9 benefic; else of 3/6/8/11 malefic; else of 2/7 maraka; else neutral. A 12th lord takes its other house's nature, alone neutral",
-    "agreement: vimshottari = a running dasha lord, yogini = the Yogini lord, rules or occupies a domain house or is its karaka; transit = Jupiter/Saturn in a domain house from lagna/Moon",
+    "dasha score 0-100: a lord sitting in or ruling a domain house counts 1, a karaka only 0.5; times strength (strong 1, ordinary 0.75, weak 0.5), maha 3 antar 2 pratyantar 1, by time",
+    "agreement: vimshottari / yogini = that dasha score is 50 or more (Yogini maha 2, antar 1); transit = Jupiter/Saturn in a domain house from the lagna or the Moon",
+    "strength: combust weak; retrograde strong; exalted or own strong; debilitated weak; friend's sign strong and enemy's weak by the Shadbala minimum; else ordinary. Nodes ordinary",
+    "relation: a sub-lord counted from its parent lord; 1/4/5/7/9/10/11 support, 6/8/12 from it friction, 2/3 neutral (BPHS antardasha chapters)",
+    "dasha tone: per tied lord, functional nature + strength + relation; all positive supportive, all negative challenging, else mixed",
     "confidence = agreeing techniques: 3 high, 2 medium, 0-1 low",
     "obstacles (6th/8th/12th): karakas Saturn/Mars/Rahu are context only; strength = agreeing techniques + a dated window: 3-4 with the window strong, 2+ moderate, 0-1 weak",
     "direction = domain transit severity + its window severities, neutral ignored: all supportive, all challenging, else mixed",

@@ -7,12 +7,13 @@ longitudes. These are the rules ``PeriodReading.rules`` states to the model.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
 from almamesh.calculations import calculate_sidereal_context
 from almamesh.constants.astrology import PlanetName
+from almamesh.reading.classical import ChartLords
 from almamesh.reading.dashas import sookshma, yogini_span
 from almamesh.reading.functional import functional_nature
 from almamesh.reading.panchang import panchang_at
@@ -21,6 +22,7 @@ from almamesh.reading.sky import sky_tags
 from almamesh.reading.themes import confidence_for, theme_direction
 from almamesh.schemas.reading import FunctionalNature
 from almamesh.schemas.transits import TransitSeverity
+from almamesh.strength import compute_strength_context
 
 _LEO = 4  # sign index of Leo (DELHI_BIRTH's natal Moon)
 _GEMINI = 2  # sign index of Gemini (DELHI_BIRTH's lagna)
@@ -167,7 +169,12 @@ def test_panchang_full_moon_and_krishna_pratipada() -> None:
 
 def test_no_sookshma_outside_the_maha_sequence() -> None:
     """An active chain shorter than four levels (instant outside the cycle) has none."""
-    assert sookshma([]) is None
+    birth = datetime(1990, 1, 15, 12, tzinfo=UTC)
+    natal = calculate_sidereal_context(birth, 28.6139, 77.209, reference_date=birth)
+    strength = compute_strength_context(
+        natal, birth, 28.6139, 77.209, civil_offset=timedelta(minutes=330)
+    )
+    assert sookshma([], ChartLords(natal, strength.shadbala)) is None
 
 
 def test_no_yogini_before_birth() -> None:

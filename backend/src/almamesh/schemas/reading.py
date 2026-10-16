@@ -60,6 +60,36 @@ class FunctionalNature(StrEnum):
     NEUTRAL = "neutral"
 
 
+class SignDignity(StrEnum):
+    """A graha's sign dignity: exaltation tables, own sign, else natural friendship (BPHS)."""
+
+    EXALTED = "exalted"
+    OWN = "own"
+    FRIEND = "friend"
+    NEUTRAL = "neutral"
+    ENEMY = "enemy"
+    DEBILITATED = "debilitated"
+
+
+class LordStrength(StrEnum):
+    """A dasha lord's strength band (spec 2026-10-15, R3)."""
+
+    STRONG = "strong"
+    ORDINARY = "ordinary"
+    WEAK = "weak"
+
+
+class Relation(StrEnum):
+    """A sub-lord's placement counted from its parent lord (spec 2026-10-15, R2)."""
+
+    SUPPORT = "support"
+    FRICTION = "friction"
+    NEUTRAL = "neutral"
+
+
+Tone = Literal["supportive", "mixed", "challenging"]
+
+
 class ReadingWindow(BaseModel):
     """The covered half-open window [start, end)."""
 
@@ -75,7 +105,8 @@ class NatalLord(BaseModel):
     rules: list[House]
     house: House
     sign: SignKey
-    dignity: str
+    dignity: str  # the chart's own four-value dignity (exalted/own/neutral/debilitated)
+    strength: LordStrength
     combust: bool
     retro: bool
     functional: FunctionalNature
@@ -86,13 +117,19 @@ class NatalLord(BaseModel):
 
 
 class DashaSpan(BaseModel):
-    """One maha/antar/pratyantar span, clipped to the window."""
+    """One maha/antar/pratyantar span, clipped to the window.
+
+    ``from_parent`` is the lord's whole-sign house counted from its parent lord
+    (antar from maha, pratyantar from antar); None for a maha.
+    """
 
     model_config = _FROZEN
     level: DashaLevel
     lord: PlanetName
     start: date
     end: date
+    from_parent: House | None = None
+    relation: Relation | None = None
 
 
 class Sookshma(BaseModel):
@@ -102,6 +139,8 @@ class Sookshma(BaseModel):
     lord: PlanetName
     start: date
     end: date
+    from_parent: House | None = None  # counted from the pratyantar lord
+    relation: Relation | None = None
 
 
 class Sandhi(BaseModel):
@@ -113,7 +152,7 @@ class Sandhi(BaseModel):
 
 
 class YoginiSpan(BaseModel):
-    """The Yogini maha running at the reference instant, unclipped."""
+    """A Yogini maha or antar running at the reference instant, unclipped."""
 
     model_config = _FROZEN
     name: str
@@ -171,6 +210,15 @@ class ThemeAgreement(BaseModel):
     transit: bool
 
 
+class ThemeDasha(BaseModel):
+    """The graded dasha scores for one domain (spec 2026-10-15, R7)."""
+
+    model_config = _FROZEN
+    vimshottari: Annotated[int, Field(ge=0, le=100)]
+    yogini: Annotated[int, Field(ge=0, le=100)]
+    tone: Tone | None  # None when no running Vimshottari lord is tied to the domain
+
+
 class ThemeWindow(BaseModel):
     """A dated domain window inside the reading window."""
 
@@ -191,6 +239,7 @@ class ReadingTheme(BaseModel):
     strength_pct: int
     confidence: Literal["high", "medium", "low"]
     agreement: ThemeAgreement
+    dasha: ThemeDasha
     factors: Annotated[list[Factor], Field(max_length=3)]
     windows: Annotated[list[ThemeWindow], Field(max_length=3)]
 
@@ -219,6 +268,7 @@ class PeriodReading(BaseModel):
     sookshma: Sookshma | None
     sandhi: Sandhi | None
     yogini: YoginiSpan | None
+    yogini_antar: YoginiSpan | None
     segments: list[ReadingSegment]
     sky: list[SkySpan]
     transit_lords: dict[PlanetName, TransitLord]
@@ -232,18 +282,23 @@ __all__ = [
     "DashaLevel",
     "DashaSpan",
     "FunctionalNature",
+    "LordStrength",
     "NatalLord",
     "Panchang",
     "PeriodReading",
     "ReadingSegment",
     "ReadingTheme",
     "ReadingWindow",
+    "Relation",
     "Sandhi",
+    "SignDignity",
     "SignKey",
     "SkySpan",
     "Sookshma",
     "ThemeAgreement",
+    "ThemeDasha",
     "ThemeWindow",
+    "Tone",
     "TransitLord",
     "YoginiSpan",
 ]

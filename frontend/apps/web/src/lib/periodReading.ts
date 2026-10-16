@@ -15,7 +15,9 @@ import type {
   PeriodDashaSpan,
   PeriodLordSpan,
   PeriodNatalLord,
+  PeriodPlacement,
   PeriodReadingContext,
+  PeriodRelation,
   PeriodSegment,
   PeriodSkySpan,
   PeriodTheme,
@@ -71,6 +73,9 @@ export interface ReadingSpan {
   readonly lord: string;
   readonly start: string;
   readonly end: string;
+  /** A sub-lord's whole-sign house from its parent lord (antar from maha, and so on). */
+  readonly from_parent?: number;
+  readonly relation?: PeriodRelation;
 }
 
 export interface ReadingDashas {
@@ -80,6 +85,7 @@ export interface ReadingDashas {
   readonly sookshma?: ReadingSpan;
   readonly sandhi?: { readonly level: 'maha' | 'antar'; readonly date: string };
   readonly yogini_maha: (ReadingSpan & { readonly name: string }) | null;
+  readonly yogini_antar?: ReadingSpan & { readonly name: string };
 }
 
 export type ReadingLordLevel = PeriodDashaLevel | 'sookshma';
@@ -88,7 +94,13 @@ export interface ReadingLord {
   readonly lord: string;
   readonly level: readonly ReadingLordLevel[];
   readonly rules?: readonly number[];
-  readonly natal?: { readonly house: number; readonly sign: string; readonly dignity: string; readonly combust: boolean };
+  readonly natal?: {
+    readonly house: number;
+    readonly sign: string;
+    readonly dignity: string;
+    readonly strength?: PeriodNatalLord['strength'];
+    readonly combust: boolean;
+  };
   readonly functional?: PeriodNatalLord['functional'];
   readonly d9_sign?: string;
   readonly d10_sign?: string;
@@ -232,21 +244,27 @@ function startClipped(span: PeriodWindow, period: PeriodWindow): { readonly star
   return { start: clipped(span, period).start, end: day(span.end) };
 }
 
+function placement(span: PeriodPlacement): Pick<ReadingSpan, 'from_parent' | 'relation'> {
+  return typeof span.from_parent === 'number' && span.relation ? { from_parent: span.from_parent, relation: span.relation } : {};
+}
+
 function spansAt(spans: readonly PeriodDashaSpan[], level: PeriodDashaLevel, period: PeriodWindow): ReadingSpan[] {
-  return spans.filter((span) => span.level === level && overlaps(span, period)).map((span) => lordSpan(span, period));
+  return spans.filter((span) => span.level === level && overlaps(span, period)).map((span) => ({ ...lordSpan(span, period), ...placement(span) }));
 }
 
 function dashasOf(source: PeriodReadingContext, period: ReadingPeriod): ReadingDashas {
   const sookshma = period.granularity === 'day' && source.sookshma && overlaps(source.sookshma, period) ? source.sookshma : undefined;
   const sandhi = source.sandhi && within(source.sandhi.date, period.start, period.end) ? source.sandhi : undefined;
   const yogini = source.yogini && overlaps(source.yogini, period) ? source.yogini : undefined;
+  const yoginiAntar = source.yogini_antar && overlaps(source.yogini_antar, period) ? source.yogini_antar : undefined;
   return {
     maha: spansAt(source.dasha_spans, 'maha', period),
     antar: spansAt(source.dasha_spans, 'antar', period),
     pratyantar: spansAt(source.dasha_spans, 'pratyantar', period),
-    ...(sookshma ? { sookshma: { lord: sookshma.lord, ...startClipped(sookshma, period) } } : {}),
+    ...(sookshma ? { sookshma: { lord: sookshma.lord, ...startClipped(sookshma, period), ...placement(sookshma) } } : {}),
     ...(sandhi ? { sandhi: { level: sandhi.level, date: day(sandhi.date) } } : {}),
     yogini_maha: yogini ? { name: yogini.name, ...lordSpan(yogini, period) } : null,
+    ...(yoginiAntar ? { yogini_antar: { name: yoginiAntar.name, ...lordSpan(yoginiAntar, period) } } : {}),
   };
 }
 
@@ -268,7 +286,10 @@ function natalPart(natal: PeriodNatalLord | undefined): Omit<ReadingLord, 'lord'
   if (!natal) return {};
   return {
     rules: natal.rules,
-    natal: { house: natal.house, sign: natal.sign, dignity: natal.dignity, combust: natal.combust },
+    natal: {
+      house: natal.house, sign: natal.sign, dignity: natal.dignity,
+      ...(natal.strength ? { strength: natal.strength } : {}), combust: natal.combust,
+    },
     functional: natal.functional,
     d9_sign: natal.d9_sign,
     d10_sign: natal.d10_sign,
@@ -405,6 +426,11 @@ const withoutVargas = (lord: ReadingLord): ReadingLord => {
   return rest;
 };
 
+/** A pratyantar span without its placement from the antar lord (spec 2026-10-15): the antar's stays. */
+const unplaced = ({ from_parent: _house, relation: _relation, ...span }: ReadingSpan): ReadingSpan => span;
+
+const withoutYoginiAntar = ({ yogini_antar: _antar, ...dashas }: ReadingDashas): ReadingDashas => dashas;
+
 /** A theme without its per-technique agreement booleans: its confidence already counts them. */
 const withoutAgreement = ({ agreement: _agreement, ...theme }: ReadingTheme): ReadingTheme => theme;
 
@@ -426,10 +452,12 @@ const TRIMS: readonly Trim[] = [
   { note: 'sky station splits (one span per sign)', apply: (r) => ({ ...r, sky: bySign(r.sky) }) },
   { note: 'sky spans beyond 3 per graha', apply: (r) => ({ ...r, sky: firstPerGraha(r.sky, 3) }) },
   { note: 'pratyantar-only lord natal detail', apply: (r) => ({ ...r, lords: r.lords.map((l) => (pratyantarOnly(l) ? lordBrief(l) : l)) }) },
+  { note: 'pratyantar placements', apply: (r) => ({ ...r, dashas: { ...r.dashas, pratyantar: r.dashas.pratyantar.map(unplaced) } }) },
   { note: 'theme factors beyond 1', apply: (r) => capThemes(r, (t) => ({ ...t, factors: t.factors.slice(0, 1) })) },
   { note: 'low-confidence themes', apply: (r) => ({ ...r, themes: r.themes.filter((t) => t.confidence !== 'low') }) },
   { note: 'sky spans beyond 2 per graha', apply: (r) => ({ ...r, sky: firstPerGraha(r.sky, 2) }) },
   { note: 'segment events', apply: (r) => ({ ...r, segments: r.segments.map((s) => ({ ...s, events: [] })) }) },
+  { note: 'Yogini antar', apply: (r) => ({ ...r, dashas: withoutYoginiAntar(r.dashas) }) },
   { note: 'segments', apply: (r) => (r.period.granularity === 'day' ? r : { ...r, segments: [] }) },
   { note: 'lord natal detail', apply: (r) => ({ ...r, lords: r.lords.map(lordBrief) }) },
   { note: 'windows beyond 3', apply: (r) => ({ ...r, windows: r.windows.slice(0, 3) }) },
@@ -461,7 +489,10 @@ function coarseSky(sky: readonly ReadingSky[], fits: (sky: readonly ReadingSky[]
 function minimal(reading: PeriodReading, budget: number): PeriodReading {
   const base: PeriodReading = {
     period: reading.period, place: reading.place,
-    dashas: { maha: reading.dashas.maha, antar: reading.dashas.antar, pratyantar: reading.dashas.pratyantar.slice(0, 6), yogini_maha: reading.dashas.yogini_maha },
+    dashas: {
+      maha: reading.dashas.maha, antar: reading.dashas.antar, pratyantar: reading.dashas.pratyantar.slice(0, 6),
+      yogini_maha: reading.dashas.yogini_maha, ...(reading.dashas.yogini_antar ? { yogini_antar: reading.dashas.yogini_antar } : {}),
+    },
     lords: reading.lords.map(lordBrief), segments: [], sky: [], double_transit: reading.double_transit,
     themes: reading.themes.slice(0, 3).map((theme) => ({ ...theme, factors: [] })), windows: [],
     trimmed: [LAST_RESORT_NOTE],
