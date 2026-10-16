@@ -5,6 +5,7 @@ import {
   assertAllPassed,
   CI_GATES,
   GATE_TIMEOUT_MS,
+  JOURNEYS_GATE_TIMEOUT_MS,
   gateVerdict,
   PRODUCT_GATES,
   runConcurrently,
@@ -122,6 +123,16 @@ describe("concurrent gate runner", () => {
 describe("every gate is time-bounded", () => {
   test("pins the gate budget: 45 minutes", () => {
     expect(GATE_TIMEOUT_MS).toBe(45 * 60_000)
+  })
+
+  // Main run 38832312848 (fd7b0f23): every journey passed, but the lane took 46
+  // minutes on a slow runner (36 on a normal one) and the 45-minute budget cut
+  // boot-retry off at test 5 of 8. The job allows 60 minutes including setup.
+  test("browserJourneys gets 55 minutes, inside the 60-minute job limit, and uses it", () => {
+    expect(JOURNEYS_GATE_TIMEOUT_MS).toBe(55 * 60_000)
+    const source = readFileSync(resolve(root, "dagger/src/index.ts"), "utf8")
+    expect(source).toContain("JOURNEYS_GATE_TIMEOUT_MS")
+    expect(source).toMatch(/startGate\("browserJourneys",[\s\S]*?JOURNEYS_GATE_TIMEOUT_MS\)\]\)/)
   })
 
   test("a gate that never settles fails with its name once the budget runs out", async () => {
