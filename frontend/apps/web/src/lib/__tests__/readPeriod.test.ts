@@ -710,6 +710,16 @@ describe('read_period: cite', () => {
     expect(cite.antar).toEqual(['Mars, rules your 6th house, 7th from Saturn: supportive']);
   });
 
+  it.each([
+    ['support', 'supportive'],
+    ['friction', 'friction'],
+    ['neutral', 'neutral'],
+  ] as const)('a %s placement is cited as "%s", never as another relation', async (relation, word) => {
+    const base = crossing((await read({ start: '2019-06' })).result as ReadPeriodReading);
+    const cite = readingCite({ ...base, dashas: { ...base.dashas, antar: [{ lord: 'mars', start: '2019-06-01', end: '2019-06-30', from_parent: 6, relation }] } }, 'en');
+    expect(cite.antar).toEqual([`Mars, rules your 6th house, 6th from Saturn: ${word}`]);
+  });
+
   it('a long range (more than one sub-lord) cites no placements, so the 18-month budget holds', async () => {
     const { result } = await read({ start: '2027-01', end: '2028-06' }, { loadPeriodChart: vi.fn(async () => withReading('delhi-2027-01-18m')) });
     const cite = (result as ReadPeriodReading).cite!;
