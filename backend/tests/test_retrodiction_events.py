@@ -137,8 +137,9 @@ def test_a_synthetic_file_may_live_in_the_repo(tmp_path: Path) -> None:
     assert load_events(_write(tmp_path, body, kind="synthetic")).kind == "synthetic"
 
 
-def test_this_repository_counts_as_a_git_tree() -> None:
-    assert inside_git_tree(Path(__file__))
+def test_a_directory_below_a_git_checkout_counts_as_a_git_tree(tmp_path: Path) -> None:
+    (tmp_path / ".git").write_text("gitdir: elsewhere", encoding="utf-8")  # a worktree's file
+    assert inside_git_tree(tmp_path / "deep" / "events.yaml")
 
 
 def test_a_scratch_directory_is_not_a_git_tree(tmp_path: Path) -> None:
