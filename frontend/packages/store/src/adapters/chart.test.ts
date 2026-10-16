@@ -535,7 +535,7 @@ describe("toDashaCtx — dasha tree (antar + pratyantar sequences)", () => {
   const referenceChart = (golden as Record<string, SiderealChart>)[REFERENCE_KEY];
   const ctx = toDashaCtx(referenceChart, new Date("2026-06-11T00:00:00Z"));
 
-  // CONTRACT REVERSED (fix/birth-maha-antars): this used to require 9 antars in EVERY maha,
+  // CONTRACT REVERSED (fix/dasha-check): this used to require 9 antars in EVERY maha,
   // which locked in an engine bug: the birth maha squeezed all nine antars into the
   // birth balance. The birth maha is the tail of a full maha, so it carries only the
   // antars still running at birth (the first clipped at birth); every later maha has 9.

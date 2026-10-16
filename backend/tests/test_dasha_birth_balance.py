@@ -15,19 +15,14 @@ Julian 365.25-day year and Moon agree with it to within a day after the first ma
 
 from __future__ import annotations
 
-from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from almamesh.calculations import (
-    calculate_sidereal_context,
-    calculate_vimshottari_dashas,
-    subdivide_period,
-)
+from almamesh.calculations import calculate_sidereal_context, calculate_vimshottari_dashas
 from almamesh.constants.astrology import PlanetName
+from almamesh.dasha.depth import active_chain
 from almamesh.dasha.vimshottari import compute_vimshottari_periods, find_active_vimshottari
-from almamesh.schemas.astrology import DashaPeriod
 
 _BIRTH = datetime(1961, 7, 1, 18, 45, tzinfo=UTC)
 _DAY = timedelta(days=1)
@@ -41,19 +36,6 @@ def diana():
 
 def _utc(text: str) -> datetime:
     return datetime.fromisoformat(text).replace(tzinfo=UTC)
-
-
-def active_chain(mahas: Sequence[DashaPeriod], instant: datetime) -> list[DashaPeriod]:
-    """The maha, antar and pratyantar running at ``instant``, via ``subdivide_period``."""
-    chain: list[DashaPeriod] = []
-    candidates: Sequence[DashaPeriod] = mahas
-    while len(chain) < 3:
-        hit = next((p for p in candidates if p.start_date <= instant < p.end_date), None)
-        if hit is None:
-            break
-        chain.append(hit)
-        candidates = subdivide_period(hit)
-    return chain
 
 
 def test_birth_maha_antars_resume_mid_sequence_hand_computed() -> None:

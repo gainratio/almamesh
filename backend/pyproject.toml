@@ -67,6 +67,7 @@ dev = [
 [project.scripts]
 almamesh-chart = "almamesh.edge.cli:main"
 almamesh-bundle = "almamesh.edge.publish_cli:app"
+almamesh-eval = "almamesh.retrodiction.cli:app"
 
 [build-system]
 requires = ["hatchling"]

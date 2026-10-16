@@ -9,7 +9,12 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from almamesh.transits.ingress import find_crossings, find_last_crossing
+from almamesh.transits.ingress import (
+    find_brackets,
+    find_crossings,
+    find_last_crossing,
+    refine_bracket,
+)
 
 
 def _line(slope: float, intercept: float, t0: datetime):
@@ -77,3 +82,15 @@ def test_should_be_deterministic_when_called_twice() -> None:
     b = find_last_crossing(f, t0, end, step_days=5.0)
     # Then the result is byte-identical (fixed step/tol/iterations)
     assert a == b
+
+
+def test_should_expose_the_coarse_brackets_find_crossings_refines() -> None:
+    # Given a line crossing zero at day 10, sampled every 4 days
+    t0 = datetime(2026, 1, 1, tzinfo=UTC)
+    f = _line(slope=1.0, intercept=-10.0, t0=t0)
+    end = datetime(2026, 3, 1, tzinfo=UTC)
+    # When
+    brackets = find_brackets(f, t0, end, step_days=4.0)
+    # Then one bracket, days 8-12, and refining it gives find_crossings' root
+    assert brackets == [(datetime(2026, 1, 9, tzinfo=UTC), datetime(2026, 1, 13, tzinfo=UTC))]
+    assert refine_bracket(f, *brackets[0]) == find_crossings(f, t0, end, step_days=4.0)[0]

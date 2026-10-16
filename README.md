@@ -565,6 +565,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 - [docs/architecture/](docs/architecture/index.html) — the interactive architecture map and its data file.
 - [docs/tech-stack.md](docs/tech-stack.md) — the libraries and tools, and why each one.
 - [docs/edgeproc-browser.md](docs/edgeproc-browser.md) — where the browser engine library comes from and how it is upgraded.
+- [docs/eval/](docs/eval/README.md) — the retrodiction eval: does the engine rank real life-event months above chance (no), and how to reproduce it.
 - [docs/code-guidelines.md](docs/code-guidelines.md) — coding standards for this repo.
 - [docs/dependency-policy.md](docs/dependency-policy.md) — which dependencies are held back on purpose, and why.
 - [docs/CLEVERNESS-DEBT.md](docs/CLEVERNESS-DEBT.md) — unusual design choices we kept, removed, or plan to revisit.

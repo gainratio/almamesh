@@ -1,0 +1,26 @@
+# Retrodiction eval: a template with FAKE data. Copy it OUTSIDE the repo, then edit:
+#
+#   mkdir -p ~/.almamesh/retrodiction
+#   cp examples/retrodiction/events.example.yaml ~/.almamesh/retrodiction/events.yaml
+#   cd backend && uv run almamesh-eval retrodiction --events ~/.almamesh/retrodiction/events.yaml
+#
+# Change `kind` to personal for your own data. The loader refuses a personal file that
+# sits inside any git working tree, and writes its report next to the file.
+kind: synthetic                  # personal | public | synthetic (this template is fake)
+label: example (fake native)
+source: made up for the template
+
+subjects:
+  - id: me
+    # Birth date and time WITH the birthplace's UTC offset at birth, plus coordinates
+    # (copy them from the app's profile settings).
+    birth: {datetime: "1990-01-15T09:30:00+00:00", latitude: 51.5, longitude: -0.12}
+    events:
+      # category: career_change, job_start, job_loss, legal, relationship_start, marriage,
+      #   separation, relocation, health, accident, birth_of_child, death_in_family,
+      #   financial_gain, financial_loss, education
+      # date: YYYY-MM-DD (precision: day), YYYY-MM (month) or YYYY (year; listed as excluded)
+      - {category: job_start, date: "2012-03", precision: month, place: Exampleville}
+      - {category: legal, date: "2014-06-10", precision: day, place: Exampleville}
+      - {category: relocation, date: "2016-01", precision: month, place: Sampletown}
+      - {category: education, date: "2008", precision: year}

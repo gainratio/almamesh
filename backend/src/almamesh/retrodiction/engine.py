@@ -1,0 +1,251 @@
+"""The one seam to the chart engine: a natal frame and per-month skies for one native.
+
+Reads only public engine calculations (natal context, Vimshottari depth, Yogini
+periods, transit longitudes). Month skies are cached, so overlapping event windows
+of the same native cost one ephemeris read per month.
+"""
+
+from __future__ import annotations
+
+from datetime import UTC, datetime, timedelta
+from functools import cache, partial
+from types import MappingProxyType
+from typing import TYPE_CHECKING, Final
+
+from skyfield.errors import EphemerisRangeError
+
+from almamesh.calculations import calculate_sidereal_context
+from almamesh.constants.astrology import PlanetName
+from almamesh.dasha.depth import level_spans
+from almamesh.dasha.yogini import compute_yogini_periods
+from almamesh.domains.ashtakavarga_signals import BinduTable
+from almamesh.domains.varga_signals import VARGA_KEYS, VargaKey, varga_key
+from almamesh.predictive import PredictiveContexts, compute_predictive_contexts
+from almamesh.reading.classical import ChartLords
+from almamesh.retrodiction.indicators import SKY_GRAHAS, MonthSky, NatalFrame
+from almamesh.retrodiction.mapping import MAPPING
+from almamesh.schemas.domains import LifeDomain
+from almamesh.strength.ashtakavarga import compute_ashtakavarga
+from almamesh.strength.context import compute_strength_context
+from almamesh.transits.exact import MOVERS, ContactBook, astro_movers, natal_points
+from almamesh.transits.natal import natal_lagna_index, natal_moon_index, sign_index
+from almamesh.transits.positions import EPHEMERIS_LAST_INSTANT, transit_longitude
+from almamesh.vargas import compute_varga_context
+
+if TYPE_CHECKING:
+    from collections.abc import Collection
+
+    from almamesh.calculations import SkyfieldAstronomy
+    from almamesh.dasha.models import YoginiPeriod
+    from almamesh.retrodiction.events import Birth
+    from almamesh.retrodiction.indicators import Target
+    from almamesh.schemas.astrology import SiderealContext
+
+YearMonth = tuple[int, int]
+
+# The Lahiri table (resources/lahiri_ayanamsa.txt) starts here; the engine fails closed
+# before it, so a native born earlier cannot be charted at all.
+ENGINE_FIRST_INSTANT: Final[datetime] = datetime(1900, 1, 1, tzinfo=UTC)
+OUT_OF_RANGE_BIRTH: Final[str] = "birth before 1900, outside the engine's ayanamsa table"
+
+
+def birth_in_range(birth: Birth) -> bool:
+    """The engine can chart this birth (it is not before the ayanamsa table)."""
+    return birth.datetime.astimezone(UTC) >= ENGINE_FIRST_INSTANT
+
+
+def month_start(ym: YearMonth) -> datetime:
+    """00:00 UTC on the 1st."""
+    return datetime(ym[0], ym[1], 1, tzinfo=UTC)
+
+
+def add_months(ym: YearMonth, delta: int) -> YearMonth:
+    """``ym`` shifted by ``delta`` months."""
+    index = ym[0] * 12 + ym[1] - 1 + delta
+    return index // 12, index % 12 + 1
+
+
+# Amendment (g3): the mapping areas that read a divisional chart, and the engine area whose
+# varga and key houses (domains.varga_signals.VARGA_KEYS) they read.
+VARGA_AREAS: Final[dict[str, LifeDomain]] = {
+    "career": LifeDomain.CAREER,
+    "relationships": LifeDomain.RELATIONSHIPS,
+    "disputes (pending)": LifeDomain.OBSTACLES,
+}
+
+
+def _varga_keys(natal: SiderealContext) -> MappingProxyType[Target, VargaKey]:
+    """Each varga-reading target's key-house signs and significators, from its varga."""
+    charts = compute_varga_context(natal).charts
+    areas = {m.target: VARGA_AREAS[m.area] for m in MAPPING.values() if m.area in VARGA_AREAS}
+    keys = {t: varga_key(charts[VARGA_KEYS[d][0]], VARGA_KEYS[d][1]) for t, d in areas.items()}
+    return MappingProxyType(keys)
+
+
+def _natal_frame(natal: SiderealContext, lords: ChartLords | None) -> NatalFrame:
+    """Lagna and Moon signs, lordships, occupancy, Ashtakavarga, varga keys, chart lords."""
+    return NatalFrame(
+        lagna_idx=natal_lagna_index(natal),
+        moon_idx=natal_moon_index(natal),
+        rulers={g: frozenset(p.houses_ruled) for g, p in natal.planets.items()},
+        occupied={g: p.house for g, p in natal.planets.items()},
+        bindus=BinduTable.from_context(compute_ashtakavarga(natal)),
+        varga_keys=_varga_keys(natal),
+        lords=lords,
+    )
+
+
+def _chart_lords(
+    natal: SiderealContext, birth: Birth, astronomy: SkyfieldAstronomy
+) -> tuple[ChartLords | None, str | None]:
+    """The chart with its Shadbala (amendment h2), or why the engine cannot compute it.
+
+    The Shadbala sunrise search looks back a year from birth, so a birth before about
+    1900-07-29 leaves DE421; a polar day or night has no sunrise in the lookback at all.
+    """
+    offset = birth.datetime.utcoffset()
+    if offset is None:
+        raise ValueError("birth datetime needs its UTC offset")
+    born = birth.datetime.astimezone(UTC)
+    try:
+        strength = compute_strength_context(
+            natal, born, birth.latitude, birth.longitude, civil_offset=offset, astronomy=astronomy
+        )
+    except (EphemerisRangeError, IndexError) as exc:
+        return None, f"{type(exc).__name__}: {exc}"
+    return ChartLords(natal, strength.shadbala), None
+
+
+class SubjectEngine:
+    """Natal frame plus cached month skies for one native."""
+
+    def __init__(
+        self,
+        birth: Birth,
+        astronomy: SkyfieldAstronomy,
+        movers: Collection[PlanetName] = MOVERS,
+    ) -> None:
+        self._birth = birth
+        self._birth_utc = birth.datetime.astimezone(UTC)
+        self._astronomy = astronomy
+        self._natal = calculate_sidereal_context(
+            self._birth_utc,
+            birth.latitude,
+            birth.longitude,
+            reference_date=self._birth_utc,
+            astronomy=astronomy,
+        )
+        mahas = self._natal.dashas.maha_dasha_sequence
+        self._dasha_end = mahas[-1].end_date
+        self._yogini = compute_yogini_periods(self._natal, mahas[0].start_date, self._dasha_end)
+        lords, self.strength_error = _chart_lords(self._natal, birth, astronomy)
+        self.frame = _natal_frame(self._natal, lords)
+        self.points = natal_points(self._natal)
+        scanned = {g: lon for g, lon in astro_movers(astronomy).items() if g in movers}
+        self._contacts = ContactBook(scanned, self.points)
+        self._skies: dict[YearMonth, MonthSky] = {}
+
+    @property
+    def astronomy(self) -> SkyfieldAstronomy:
+        """The ephemeris handle this native is read with."""
+        return self._astronomy
+
+    def covers(self, ym: YearMonth) -> bool:
+        """The whole month lies after birth, inside the dashas and the ephemeris."""
+        end = month_start(add_months(ym, 1))
+        return month_start(ym) >= self._birth_utc and end <= min(
+            EPHEMERIS_LAST_INSTANT, self._dasha_end
+        )
+
+    def month(self, ym: YearMonth) -> MonthSky:
+        """The month's sky (cached)."""
+        if ym not in self._skies:
+            self._skies[ym] = self._compute(ym)
+        return self._skies[ym]
+
+    def _compute(self, ym: YearMonth) -> MonthSky:
+        start, end = month_start(ym), month_start(add_months(ym, 1))
+        mid = datetime(ym[0], ym[1], 15, 12, tzinfo=UTC)
+        spans = level_spans(self._natal.dashas.maha_dasha_sequence, start, end)
+        running = tuple(frozenset(p.lord for p in periods) for periods in spans.values())
+        return MonthSky(
+            running=running,
+            yogini_lord=_yogini_lord(self._yogini, mid),
+            signs=self._signs(mid),
+            contacts=self._contacts.month(start, end),
+            obstacles=cache(partial(obstacles_activation, self._birth, ym)),
+            window=(start, end),
+        )
+
+    def _signs(self, mid: datetime) -> dict[PlanetName, int]:
+        signs = {g: sign_index(transit_longitude(self._astronomy, g, mid)) for g in SKY_GRAHAS}
+        signs[PlanetName.KETU] = (signs[PlanetName.RAHU] + 6) % 12
+        return signs
+
+
+_AYANAMSA_RANGE: Final[str] = "Lahiri ayanamsa table range exceeded"
+
+
+class EngineReadingRangeError(ValueError):
+    """The app's month reading needs dates DE421 does not cover (amendment c; picklable)."""
+
+
+def obstacles_activation(birth: Birth, ym: YearMonth) -> float:
+    """The app's own month reading: the obstacles theme's strength, 0..1.
+
+    Exactly the predictive entry the app calls for a month: reference instant at the
+    1st, a one-month window, the reading ending on the month's last day.
+    """
+    offset = birth.datetime.utcoffset()
+    if offset is None:
+        raise ValueError("birth datetime needs its UTC offset")
+    contexts = _readable_month(birth, ym, offset)
+    theme = next(t for t in contexts.period_reading.themes if t.domain == LifeDomain.OBSTACLES)
+    return theme.strength_pct / 100
+
+
+def _readable_month(birth: Birth, ym: YearMonth, offset: timedelta) -> PredictiveContexts:
+    """The month reading, or a picklable range error when it leaves the engine's tables."""
+    try:
+        return _month_reading(birth, ym, offset)
+    except ValueError as exc:
+        if not _outside_tables(exc):
+            raise
+        raise EngineReadingRangeError(f"{ym[0]:04d}-{ym[1]:02d}: {exc}") from None
+
+
+def _outside_tables(exc: ValueError) -> bool:
+    """DE421's range, or the Lahiri table's (1900-2100): the reading cannot be computed."""
+    return isinstance(exc, EphemerisRangeError) or str(exc).startswith(_AYANAMSA_RANGE)
+
+
+def _month_reading(birth: Birth, ym: YearMonth, offset: timedelta) -> PredictiveContexts:
+    last_day = (month_start(add_months(ym, 1)) - timedelta(days=1)).date()
+    return compute_predictive_contexts(
+        birth.datetime,
+        birth.latitude,
+        birth.longitude,
+        month_start(ym),
+        civil_offset=offset,
+        window_months=1,
+        reading_end=last_day,
+    )
+
+
+def _yogini_lord(periods: list[YoginiPeriod], instant: datetime) -> PlanetName | None:
+    """The Yogini maha lord running at ``instant``."""
+    return next((p.lord for p in periods if p.start_date <= instant < p.end_date), None)
+
+
+__all__ = [
+    "ENGINE_FIRST_INSTANT",
+    "EngineReadingRangeError",
+    "OUT_OF_RANGE_BIRTH",
+    "VARGA_AREAS",
+    "SubjectEngine",
+    "YearMonth",
+    "add_months",
+    "birth_in_range",
+    "month_start",
+    "obstacles_activation",
+]

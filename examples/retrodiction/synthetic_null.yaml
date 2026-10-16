@@ -1,0 +1,66 @@
+# SYNTHETIC: fake natives, events at uniformly random months (random.Random(20261014)).
+# Harness sanity only: lift must sit near 1. Never evidence.
+kind: synthetic
+label: synthetic null set (random months)
+source: generated, no real person
+subjects:
+  - id: synthetic-01
+    birth: {datetime: "1984-03-22T04:51:00+05:30", latitude: 8.16, longitude: 17.14}
+    events:
+      - {category: career_change, date: "2015-03", precision: month}
+      - {category: job_start, date: "2003-06", precision: month}
+      - {category: job_loss, date: "2001-10", precision: month}
+  - id: synthetic-02
+    birth: {datetime: "1983-06-26T04:59:00+00:00", latitude: 14.53, longitude: 98.77}
+    events:
+      - {category: legal, date: "2006-04", precision: month}
+      - {category: relationship_start, date: "2005-11", precision: month}
+      - {category: marriage, date: "1998-12", precision: month}
+  - id: synthetic-03
+    birth: {datetime: "1965-01-23T14:45:00-05:00", latitude: -8.58, longitude: 58.43}
+    events:
+      - {category: separation, date: "2022-05", precision: month}
+      - {category: relocation, date: "2018-10", precision: month}
+      - {category: health, date: "2022-06", precision: month}
+  - id: synthetic-04
+    birth: {datetime: "1975-06-26T08:48:00+09:00", latitude: 2.2, longitude: -65.79}
+    events:
+      - {category: accident, date: "1985-10", precision: month}
+      - {category: birth_of_child, date: "2008-01", precision: month}
+      - {category: death_in_family, date: "1997-10", precision: month}
+  - id: synthetic-05
+    birth: {datetime: "1957-07-04T00:54:00+01:00", latitude: 32.88, longitude: -20.11}
+    events:
+      - {category: financial_gain, date: "1994-12", precision: month}
+      - {category: financial_loss, date: "1971-10", precision: month}
+      - {category: education, date: "1998-07", precision: month}
+  - id: synthetic-06
+    birth: {datetime: "1974-02-05T04:53:00-08:00", latitude: 40.73, longitude: 146.05}
+    events:
+      - {category: career_change, date: "2001-04", precision: month}
+      - {category: job_start, date: "2009-01", precision: month}
+      - {category: job_loss, date: "1982-12", precision: month}
+  - id: synthetic-07
+    birth: {datetime: "1973-12-05T01:13:00+08:00", latitude: -39.12, longitude: -39.95}
+    events:
+      - {category: legal, date: "1978-05", precision: month}
+      - {category: relationship_start, date: "1978-01", precision: month}
+      - {category: marriage, date: "2000-11", precision: month}
+  - id: synthetic-08
+    birth: {datetime: "1955-06-18T22:49:00-03:00", latitude: 34.85, longitude: 79.5}
+    events:
+      - {category: separation, date: "1990-01", precision: month}
+      - {category: relocation, date: "1959-12", precision: month}
+      - {category: health, date: "1981-10", precision: month}
+  - id: synthetic-09
+    birth: {datetime: "1950-02-25T18:30:00+03:00", latitude: 55.28, longitude: -115.3}
+    events:
+      - {category: accident, date: "1954-12", precision: month}
+      - {category: birth_of_child, date: "2017-08", precision: month}
+      - {category: death_in_family, date: "1968-04", precision: month}
+  - id: synthetic-10
+    birth: {datetime: "1963-09-11T22:14:00+10:00", latitude: 41.54, longitude: -19.14}
+    events:
+      - {category: financial_gain, date: "1967-09", precision: month}
+      - {category: financial_loss, date: "1985-11", precision: month}
+      - {category: education, date: "1980-04", precision: month}
