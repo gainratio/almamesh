@@ -72,6 +72,7 @@ import {
   parseLifeOutlook,
   parseYearAhead,
   REPORT_TIMELINE_SECTIONS,
+  ReportParseError,
   reportAsOfMonth,
   reportSlice,
   yearAheadSlice,
@@ -1659,6 +1660,34 @@ async function reflectedSection<Section extends AnySectionKey>(
   return withholdFailingValues(retry, READING_WITHHELD[params.language ?? "en"]);
 }
 
+/** A reply the parser refuses: not JSON, or naming a quarter or area the app did not send. */
+function isRefusedReply(err: unknown): boolean {
+  return err instanceof SyntaxError || err instanceof ReportParseError;
+}
+
+/**
+ * Models sometimes answer a section with an extra quarter or broken JSON. The
+ * parser stays strict; the section is asked once more, and a second refused
+ * reply is returned as is, so applySection reports it as the section's error.
+ */
+async function rerequestIfRefused(
+  raw: string,
+  section: AnySectionKey,
+  chart: SanitizedChart,
+  signal: AbortSignal | undefined,
+  request: () => Promise<string>,
+): Promise<string> {
+  const scratch = emptyResults();
+  scratch.asOfMonth = reportAsOfMonth(chart);
+  try {
+    applySection(scratch, section, raw, chart);
+    return raw;
+  } catch (err) {
+    if (!isRefusedReply(err) || signal?.aborted) return raw;
+    return request();
+  }
+}
+
 function runOneSection<Section extends AnySectionKey>(
   section: Section,
   chart: SanitizedChart,
@@ -1673,7 +1702,9 @@ function runOneSection<Section extends AnySectionKey>(
     params.language ?? "en",
     params.promptSet,
   );
-  return reflectedSection(section, messages, withGuardedPreview(section, chart, params))
+  const request = () => reflectedSection(section, messages, withGuardedPreview(section, chart, params));
+  return request()
+    .then((raw) => rerequestIfRefused(raw, section, chart, params.signal, request))
     .then((raw): SectionOutcome<Section> => ({ section, ok: true, raw }))
     // Keep the ORIGINAL error (not just its message) so the aggregation can
     // preserve the HTTP status/body of a representative failure — the caller

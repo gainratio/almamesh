@@ -290,4 +290,38 @@ describe("streamReportTimeline: live preview (F3)", () => {
     }
     expect(previews.some((preview) => preview.includes("2031-01"))).toBe(true);
   });
+
+  describe("a reply the parser refuses", () => {
+    const eightQuarters = {
+      ...(REPLIES.year_ahead as Record<string, unknown>),
+      quarters: ["Q1", "Q2", "Q3", "Q4", "Q5", "Q6", "Q7", "Q8"].map((key) => ({ key, ...p(key) })),
+    };
+
+    function yearAheadReplies(first: unknown, second: unknown) {
+      let yearCalls = 0;
+      const log: { section: string; body: Record<string, unknown> }[] = [];
+      const fetchImpl = vi.fn(async (_url: string, init: RequestInit) => {
+        const section = sectionOf(String(init.body));
+        log.push({ section, body: {} });
+        const reply = section === "year_ahead" ? [first, second][yearCalls++] ?? second : REPLIES[section];
+        const content = JSON.stringify(reply);
+        return new Response(JSON.stringify({ choices: [{ message: { content } }] }), { headers: { "Content-Type": "application/json" } });
+      }) as unknown as typeof fetch;
+      return { fetchImpl, yearCalls: () => log.filter((r) => r.section === "year_ahead").length };
+    }
+
+    it("asks the section once more, and lands it when the second reply parses", async () => {
+      const { fetchImpl, yearCalls } = yearAheadReplies(eightQuarters, REPLIES.year_ahead);
+      const events = await collect(streamReportTimeline({ chart: REPORT_RAW_CHART, asOf: REPORT_AS_OF, config: OPENROUTER, fetchImpl }));
+      expect(yearCalls()).toBe(2);
+      expect(events.some((e) => e.type === "error")).toBe(false);
+    });
+
+    it("asks only once more: a second refused reply is the section's error", async () => {
+      const { fetchImpl, yearCalls } = yearAheadReplies(eightQuarters, eightQuarters);
+      const events = await collect(streamReportTimeline({ chart: REPORT_RAW_CHART, asOf: REPORT_AS_OF, config: OPENROUTER, fetchImpl }));
+      expect(yearCalls()).toBe(2);
+      expect(events).toContainEqual(expect.objectContaining({ type: "error", section: "year_ahead", message: expect.stringContaining("8 quarters returned") }));
+    });
+  });
 });
