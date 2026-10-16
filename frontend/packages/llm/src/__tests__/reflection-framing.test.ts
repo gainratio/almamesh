@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import { CHAT_ANSWER_DESCRIPTION, renderAnswer, type ChatAnswer } from "../answer";
 import { buildPredictiveFactsBlock } from "../predictive-facts";
 import { buildChatMessages, buildInterpretationMessages, type ThreadFacts } from "../prompt";
-import { PREDICTION_CLAIM_PATTERNS, predictionClaims, REFLECTION_RULE } from "../reflection";
+import { lifeGuesses, PREDICTION_CLAIM_PATTERNS, predictionClaims, REFLECTION_RULE, toolNarration } from "../reflection";
 import { REPORT_PROMPT_SET, REPORT_SECTIONS } from "../report-targets";
 import type { SanitizedChart, SanitizedPredictive } from "../sanitize";
 import { ALL_SECTIONS, buildSectionMessages } from "../structured-interpretation";
@@ -65,8 +65,17 @@ describe("the reflection rule", () => {
     expect(REFLECTION_RULE).toContain("never invent another period's facts");
   });
 
-  it("passes its own scan", () => {
+  // Live drive 2026-10-15: gpt-sol wrote "the reading supplies no specific life-area interpretation
+  // for it"; deepseek wrote "something stalled began to find forward motion after mid-month".
+  it("forbids narrating what a reading lacks and describing how the period went for the person", () => {
+    expect(REFLECTION_RULE).toContain("Never narrate the tools or what a reading leaves out");
+    expect(REFLECTION_RULE).toContain("never describe what the person\nwent through or how things went for them");
+  });
+
+  it("passes its own scans", () => {
     expect(predictionClaims(REFLECTION_RULE, "en")).toEqual([]);
+    expect(toolNarration(REFLECTION_RULE, "en")).toEqual([]);
+    expect(lifeGuesses(REFLECTION_RULE, "en")).toEqual([]);
   });
 
   it.each(SYSTEM_PROMPTS)("rides in the %s system prompt", (_name, system) => {
@@ -159,5 +168,50 @@ describe("the scan can fail", () => {
 
   it("covers the three app languages", () => {
     expect(Object.keys(PREDICTION_CLAIM_PATTERNS).sort()).toEqual(["en", "es", "pt"]);
+  });
+});
+
+// The answer check's second scan (2026-10-15): answers that narrate the tools, or guess what the
+// person lived through. Every caught sentence is from a real drive answer; every passed sentence is
+// the comparative, indicator-naming style the rule asks for, so the check costs no good answer.
+describe("the narration scans", () => {
+  it.each([
+    ["en", "Mars enters Virgo: a late-month shift, but the reading supplies no specific life-area interpretation for it."],
+    ["en", "Mars entered Virgo; the reading did not specify an additional life-area theme for this change."],
+    ["en", "The read_period result lists no theme here."],
+    ["es", "Marte entra en Virgo; la lectura no especifica un tema para este cambio."],
+    ["pt", "Marte entra em Virgem; a leitura não especifica um tema para essa mudança."],
+  ] as const)("tool narration, %s: %s", (language, text) => {
+    expect(toolNarration(text, language)).not.toEqual([]);
+  });
+
+  it.each([
+    ["en", "Something stalled began to find forward motion after mid-month."],
+    ["en", "Something that felt stuck or delayed began to move forward."],
+    ["en", "You may have felt drawn to retreat and reflection."],
+    ["en", "The last week of September felt busier and more direct."],
+    ["es", "Puede que hayas sentido el impulso de retirarte."],
+    ["pt", "Você pode ter sentido vontade de se recolher."],
+  ] as const)("a guess at lived experience, %s: %s", (language, text) => {
+    expect(lifeGuesses(text, language)).not.toEqual([]);
+  });
+
+  it.each([
+    "Saturn stations direct on 17 September 2019; the weeks after it carry the Sade Sati theme more strongly than the weeks before.",
+    "Mercury, your antar lord, rules your 1st and 4th houses, so home and self-direction are the month's main themes.",
+    "Compared with the Rahu maha dasha as a whole, this month's career theme is mixed rather than supportive.",
+    "Jupiter began its transit of your 2nd house on 26 November 2027, the strongest supportive window of the span.",
+    "The reading's strongest theme is obstacles: high confidence, with three techniques agreeing.",
+    "This window asks for patience with paperwork and official matters.",
+    "Mars moves into your 3rd house on 25 September, highlighting communication and short trips in the last week.",
+    "The dasha chapter runs from 2017 to 2020; this month sits in its first half.",
+    "Saturn began to move direct on 17 September, after five months retrograde.",
+  ])("leaves an indicator sentence alone: %s", (text) => {
+    expect([...toolNarration(text, "en"), ...lifeGuesses(text, "en")]).toEqual([]);
+  });
+
+  it("leaves Spanish and Portuguese indicator sentences alone", () => {
+    expect([...toolNarration("Saturno se estaciona directo el 17; la lectura destaca la casa 9.", "es"), ...lifeGuesses("Saturno se estaciona directo el 17.", "es")]).toEqual([]);
+    expect([...toolNarration("Saturno fica direto no dia 17; a leitura destaca a casa 9.", "pt"), ...lifeGuesses("Saturno fica direto no dia 17.", "pt")]).toEqual([]);
   });
 });

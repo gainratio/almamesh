@@ -1,6 +1,7 @@
 # Only registered client routes receive the SPA shell. The top-level 404.html
 # makes every other unknown URL a real 404 instead of a crawlable soft 404.
 /onboarding / 200
+/onboarding/ai / 200
 /dashboard / 200
 /predictive / 200
 /life/career / 200
@@ -10,6 +11,7 @@
 /life/spiritual / 200
 /life/education / 200
 /life/family / 200
+/life/obstacles / 200
 /mesh / 200
 /report / 200
 /edit-birth-details / 200

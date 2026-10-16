@@ -502,7 +502,7 @@ function toForecast(
 }
 
 /**
- * Reshape the engine's `domains_context` (7 LifeDomainForecast entries) into
+ * Reshape the engine's `domains_context` (one LifeDomainForecast per LifeDomain) into
  * the UI `DomainsCtx`. Returns undefined when the engine payload omits it.
  */
 export function toDomainsCtx(

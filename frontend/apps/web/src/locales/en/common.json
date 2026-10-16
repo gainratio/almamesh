@@ -214,5 +214,8 @@
     "reload": "Reload",
     "discard_failed_body": "A person you cancelled couldn't be removed from this device, so they may come back after a reload.",
     "try_again": "Try again"
+  },
+  "ai_setup": {
+    "dialog_title": "Connect AI"
   }
 }

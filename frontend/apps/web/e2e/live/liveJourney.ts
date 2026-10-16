@@ -7,6 +7,7 @@
  * exit-gate hooks).
  */
 import { expect, type APIRequestContext, type BrowserContext, type Page, type Request, type Worker } from '@playwright/test';
+import { passOnboardingAiStep } from '../../scripts/onboardingAiStep.mjs';
 
 /**
  * A service worker's script and what it pulls in with importScripts (the
@@ -91,7 +92,7 @@ export async function generateChart(page: Page): Promise<void> {
 /** Onboard, then require the dashboard to render the chart. */
 export async function expectChartRenders(page: Page): Promise<void> {
   await generateChart(page);
-  await page.waitForURL('**/dashboard', { timeout: 60_000 });
+  await passOnboardingAiStep(page, { timeout: 60_000 });
   await expect(page.getByTestId('identity-strip')).toBeVisible();
   await expect(page.getByTestId('chart-visualization').first()).toBeVisible();
 }

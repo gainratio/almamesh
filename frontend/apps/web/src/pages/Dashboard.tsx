@@ -69,6 +69,7 @@ import {
 } from "../hooks/useStreamingInterpretation";
 import { useElapsedSeconds, formatElapsed } from "../hooks/useElapsedSeconds";
 import { useLlmStatus } from "../hooks/useLlmStatus";
+import { AiSetupDialog, ConnectAiButton } from "../components/features/ai/AiSetupDialog";
 import { useReportPdfExport } from "../hooks/useReportPdfExport";
 import { isPlaceholderContent } from "./exportGate";
 import { personaText, resolveReportAudience } from "../lib/reportSelectors";
@@ -197,7 +198,21 @@ export default function DashboardPage() {
     () => (activeProfileId ? Object.values(chatThreads).filter((thread) => thread.profile_id === activeProfileId) : []),
     [chatThreads, activeProfileId],
   );
-  const goToMoment = (asOf: ChatThreadAsOf) => timeTravel.travel({ asOf, source: 'dashboard-sheet' });
+  // A successful Go lands on the new trip card (scrolled into view + focused)
+  // once the sheet has closed, so the sheet's own focus return can't undo it;
+  // the Dashboard's return-focus stands aside for that close.
+  const [tripArriving, setTripArriving] = useState(false);
+  const goToMoment = async (asOf: ChatThreadAsOf) => {
+    travelFocus.arriving.current = true;
+    try {
+      await timeTravel.travel({ asOf, source: 'dashboard-sheet' });
+      setTripArriving(true);
+    } catch (cause) {
+      travelFocus.arriving.current = false;
+      throw cause;
+    }
+  };
+  const tripArrived = useCallback(() => setTripArriving(false), []);
   const backFromMoment = async () => {
     const key = momentKey;
     setTravelBackFor({ status: 'busy', key });
@@ -267,6 +282,10 @@ export default function DashboardPage() {
   // structured reading. Gates the Regenerate button (with an explanatory
   // caption) so a click is never a silent no-op when no AI is configured.
   const canRegenerateReading = aiConfigured;
+  // With no AI, Generate/Refresh are the door to AI setup (never a disabled
+  // button with only a tooltip, which is a dead end on a phone).
+  const [aiSetupOpen, setAiSetupOpen] = useState(false);
+  const aiDoor = canRegenerateReading ? {} : { 'aria-haspopup': 'dialog' as const };
 
   // A failed regeneration with a kept reading surfaces an inline error strip
   // in the reading section (keep-old-until-success keeps the reading itself).
@@ -361,6 +380,7 @@ export default function DashboardPage() {
         labels: chatStatusLabels(t),
         onStatus: ask.onStatus,
         ...(ask.onTravel ? { onTravel: ask.onTravel } : {}),
+        ...(ask.pendingTravel ? { pendingTravel: ask.pendingTravel } : {}),
         ...(ask.onToolCall ? { onToolCall: ask.onToolCall } : {}),
       })) {
         answer = noted(snapshot);
@@ -675,10 +695,9 @@ export default function DashboardPage() {
                   It never waits for or includes time-sensitive predictive facts. */}
               <button
                 type="button"
-                onClick={handleRegenerateReading}
-                disabled={
-                  isStreamingInterpretation || isTimelineStreaming || !canRegenerateReading
-                }
+                onClick={canRegenerateReading ? handleRegenerateReading : () => setAiSetupOpen(true)}
+                {...aiDoor}
+                disabled={isStreamingInterpretation || isTimelineStreaming}
                 data-testid={interpretation ? 'regenerate-reading' : 'generate-reading'}
                 title={
                   !canRegenerateReading
@@ -713,15 +732,15 @@ export default function DashboardPage() {
               </button>
               <button
                 type="button"
-                onClick={handleRegenerateTimeline}
+                onClick={canRegenerateReading ? handleRegenerateTimeline : () => setAiSetupOpen(true)}
+                {...aiDoor}
                 disabled={
                   isStreamingInterpretation ||
                   isTimelineStreaming ||
-                  timelineRegenerationQueued ||
-                  !canRegenerateReading
+                  timelineRegenerationQueued
                 }
                 data-testid={currentTimeline ? 'regenerate-timeline' : 'generate-timeline'}
-                title={t('dashboard:actions.refresh_timeline')}
+                title={canRegenerateReading ? t('dashboard:actions.refresh_timeline') : t('dashboard:actions.connect_ai')}
                 className="inline-flex min-h-11 min-w-11 items-center gap-1.5 whitespace-nowrap rounded-md border border-ui-border px-3 py-1.5 text-sm text-text-secondary transition-colors hover:border-accent-gold/40 hover:text-text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-gold disabled:cursor-not-allowed disabled:border-ui-border/60 disabled:text-text-tertiary disabled:hover:border-ui-border/60"
               >
                 {isTimelineStreaming || timelineRegenerationQueued ? (
@@ -751,17 +770,21 @@ export default function DashboardPage() {
             </>
           }
         />
+        {/* The trip, as one unit: after Go it is scrolled into view together,
+            so the banner's Change / Back to today stays on screen. */}
         {timeTravel.moment && (
-          <TimeTravelBanner asOf={timeTravel.moment} language={i18n.language}
-            testIdPrefix="dashboard-time-travel" about={t("dashboard:time_travel.banner_about")}
-            changeRef={travelFocus.changeRef}
-            onChange={() => setTravelSheet('change')} onBack={() => void backFromMoment()}
-            backBusy={travelBack === 'busy'} backFailed={travelBack === 'failed'} />
+          <div data-time-travel-trip className="scroll-mt-20 space-y-10">
+            <TimeTravelBanner asOf={timeTravel.moment} language={i18n.language}
+              testIdPrefix="dashboard-time-travel" about={t("dashboard:time_travel.banner_about")}
+              changeRef={travelFocus.changeRef}
+              onChange={() => setTravelSheet('change')} onBack={() => void backFromMoment()}
+              backBusy={travelBack === 'busy'} backFailed={travelBack === 'failed'} />
+            <DashboardMoment key={momentKey} asOf={timeTravel.moment} chart={siderealChart} chartId={chartId}
+              engine={chartEngineContext} birthYear={travelBirthYear} language={i18n.language}
+              arrive={tripArriving && travelSheet === 'closed'} onArrived={tripArrived} />
+          </div>
         )}
-        {timeTravel.moment && (
-          <DashboardMoment key={momentKey} asOf={timeTravel.moment} chart={siderealChart} chartId={chartId}
-            engine={chartEngineContext} birthYear={travelBirthYear} language={i18n.language} />
-        )}
+        <AiSetupDialog open={aiSetupOpen} onClose={() => setAiSetupOpen(false)} />
         <DashboardTimeTravelSheet open={travelSheet !== 'closed'}
           current={travelSheet === 'change' ? timeTravel.moment : undefined}
           birthYear={travelBirthYear}
@@ -791,13 +814,11 @@ export default function DashboardPage() {
             context="fresh"
             testId="interpretation-cta"
             actions={
-              <Link
-                to="/settings/ai"
-                className="inline-flex items-center gap-2 rounded-md border border-ui-border px-3 py-1.5 text-text-secondary transition-colors hover:border-accent-gold/40 hover:text-text-primary"
-                data-testid="connect-ai-link"
-              >
-                {t('dashboard:actions.connect_ai')}
-              </Link>
+              <ConnectAiButton
+                label={t('dashboard:actions.connect_ai')}
+                className="inline-flex items-center gap-2 rounded-md border border-ui-border px-3 py-1.5 text-text-secondary transition-colors hover:border-accent-gold/40 hover:text-text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-gold/60"
+                testId="connect-ai-link"
+              />
             }
           />
         )}
@@ -1007,9 +1028,11 @@ export default function DashboardPage() {
                 data-testid="regenerate-unavailable"
               >
                 {t('dashboard:reading.regen_no_ai')}{' '}
-                <Link to="/settings/ai" className="underline hover:no-underline">
-                  {t('dashboard:actions.ai_settings')}
-                </Link>
+                <ConnectAiButton
+                  label={t('common:ai_badge.setup')}
+                  className="underline hover:no-underline focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-gold/60"
+                  testId="regenerate-connect-ai"
+                />
               </p>
             )}
             {/* A FAILED regeneration must be VISIBLE: keep-old-until-success

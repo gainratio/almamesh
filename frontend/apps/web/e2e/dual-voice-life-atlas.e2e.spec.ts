@@ -5,6 +5,8 @@ import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { LAYMAN_JARGON } from '@almamesh/llm/layman-jargon';
+import { passOnboardingAiStep } from '../scripts/onboardingAiStep.mjs';
+import { LIFE_DOMAINS } from '../src/lib/lifeAtlas';
 
 const execFileAsync = promisify(execFile);
 
@@ -16,7 +18,7 @@ const execFileAsync = promisify(execFile);
  * dashboard — with NO window.__almameshGenerate seed hook. It proves the three
  * branch changes against the real built app:
  *
- *   A) Life Atlas is FOUNDATIONAL: the 7 domain cards auto-populate from the
+ *   A) Life Atlas is FOUNDATIONAL: every life-domain card auto-populates from the
  *      engine's predictive synthesis with NO click on any compute button, and
  *      the removed `life-atlas-compute` button does NOT exist in the DOM.
  *      (Deterministic — no LLM needed.)
@@ -116,7 +118,7 @@ async function driveRealOnboarding(page: Page): Promise<void> {
   const skip = page.getByTestId('skip-life-events-button');
   await skip.waitFor({ state: 'visible', timeout: 15_000 });
   await skip.click();
-  await page.waitForURL('**/dashboard', { timeout: 180_000 });
+  await passOnboardingAiStep(page, { timeout: 180_000 });
 }
 
 async function waitForDashboardChart(page: Page): Promise<void> {
@@ -159,12 +161,12 @@ async function seedOpenRouterPreset(page: Page, key: string): Promise<void> {
   );
 }
 
-const DOMAINS = ['career', 'finances', 'health', 'relationships', 'spiritual', 'education', 'family'];
+const DOMAINS = LIFE_DOMAINS;
 
 // ===========================================================================
 // CHECK A — Life Atlas auto-compute (DETERMINISTIC, no LLM).
 // ===========================================================================
-test('A: Life Atlas auto-populates the 7 domain cards with no compute button', async ({ page }) => {
+test('A: Life Atlas auto-populates every domain card with no compute button', async ({ page }) => {
   test.setTimeout(360_000);
   await mkdir(OUT_DIR, { recursive: true });
 
@@ -186,7 +188,7 @@ test('A: Life Atlas auto-populates the 7 domain cards with no compute button', a
   // The removed manual compute button must NOT exist anywhere.
   expect(await page.getByTestId('life-atlas-compute').count(), 'life-atlas-compute must NOT exist').toBe(0);
 
-  // The 7 domain cards must populate AUTOMATICALLY (no click). A "ready" card is
+  // Every domain card (LIFE_DOMAINS) must populate AUTOMATICALLY (no click). A "ready" card is
   // a <Link> to /life/:domain (pending cards are plain <div>s without href).
   // Poll until every domain card is a populated link — the predictive compute is
   // ~30s under Pyodide.
@@ -201,9 +203,9 @@ test('A: Life Atlas auto-populates the 7 domain cards with no compute button', a
         }
         return ready;
       },
-      { timeout: 180_000, intervals: [2_000], message: 'all 7 Life Atlas cards must auto-populate (ready links)' },
+      { timeout: 180_000, intervals: [2_000], message: `all ${LIFE_DOMAINS.length} Life Atlas cards must auto-populate (ready links)` },
     )
-    .toBe(7);
+    .toBe(LIFE_DOMAINS.length);
 
   // The informational gate must be gone once domains are ready.
   expect(await page.getByTestId('life-atlas-gate').count(), 'gate must clear once ready').toBe(0);
@@ -212,7 +214,7 @@ test('A: Life Atlas auto-populates the 7 domain cards with no compute button', a
   await page.screenshot({ path: resolve(OUT_DIR, 'A-life-atlas-ready.png'), fullPage: true });
 
   expect(consoleErrors, `console errors during A:\n${consoleErrors.join('\n')}`).toEqual([]);
-  console.log('[A] Life Atlas: all 7 domain cards auto-populated; no life-atlas-compute; gate cleared.');
+  console.log(`[A] Life Atlas: all ${LIFE_DOMAINS.length} domain cards auto-populated; no life-atlas-compute; gate cleared.`);
 });
 
 // ===========================================================================
@@ -251,7 +253,7 @@ test('D: the per-domain strength receipt renders a VERIFIED badge in the Domains
       },
       { timeout: 180_000, intervals: [2_000], message: 'Life Atlas must compute before the receipts exist' },
     )
-    .toBe(7);
+    .toBe(LIFE_DOMAINS.length);
 
   // SPA-navigate to Sky & Timing -> Domains (preserve the booted engine + the
   // computed store; a hard reload bounces to onboarding before rehydrate).
@@ -273,14 +275,14 @@ test('D: the per-domain strength receipt renders a VERIFIED badge in the Domains
   await expect(verifiedBadge.first()).toBeVisible({ timeout: 60_000 });
   await expect(verifiedBadge.first()).toContainText('Verified');
 
-  // Every one of the seven domains is sealed, so all seven badges must verify.
+  // Every domain is sealed, so every badge must verify.
   await expect
     .poll(async () => verifiedBadge.count(), { timeout: 60_000, intervals: [1_000] })
-    .toBe(7);
+    .toBe(LIFE_DOMAINS.length);
 
   await page.getByTestId('domains-panel').scrollIntoViewIfNeeded();
   await page.screenshot({ path: resolve(OUT_DIR, 'D-strength-receipts-verified.png'), fullPage: true });
-  console.log('[D] strength receipts: 7 per-domain VERIFIED badges reachable on the Domains view.');
+  console.log(`[D] strength receipts: ${LIFE_DOMAINS.length} per-domain VERIFIED badges reachable on the Domains view.`);
 });
 
 // ===========================================================================

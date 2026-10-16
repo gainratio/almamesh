@@ -363,15 +363,18 @@ describe('ChatPanel — no-AI-configured gate (never invite a doomed question)',
     // No live input/send: a typed question could only fail.
     expect(screen.queryByTestId('chat-input')).toBeNull();
     expect(screen.queryByTestId('chat-send-button')).toBeNull();
-    // The existing Connect-AI CTA pattern, pointing at AI settings.
-    const link = screen.getByTestId('chat-connect-ai-link');
-    expect(link.getAttribute('href')).toBe('/settings/ai');
+    // One line + a button that opens the shared AI setup panel right here.
     expect(screen.getByTestId('chat-connect-ai').textContent ?? '').toContain(
       'Connect an AI model',
     );
+    const button = screen.getByTestId('chat-connect-ai-link');
+    expect(button.tagName).toBe('BUTTON');
+    fireEvent.click(button);
+    const dialog = screen.getByRole('dialog', { name: 'Connect AI' });
+    expect(dialog.querySelector('[data-testid="llm-openrouter-key"]')).not.toBeNull();
   });
 
-  it('a suggested-question chip routes to AI settings instead of submitting a doomed question', async () => {
+  it('a suggested-question chip opens the AI setup panel instead of submitting a doomed question', async () => {
     const onAskQuestionStream = vi.fn();
     render(
       <MemoryRouter initialEntries={['/dashboard']}>
@@ -395,7 +398,8 @@ describe('ChatPanel — no-AI-configured gate (never invite a doomed question)',
 
     fireEvent.click(screen.getByText('What are my career strengths?'));
 
-    expect(await screen.findByTestId('ai-settings-page')).toBeTruthy();
+    expect(await screen.findByRole('dialog', { name: 'Connect AI' })).toBeTruthy();
+    expect(screen.queryByTestId('ai-settings-page')).toBeNull();
     expect(onAskQuestionStream).not.toHaveBeenCalled();
     // No user turn was persisted for the doomed question.
     expect(Object.keys(useChatStore.getState().messages)).toHaveLength(0);

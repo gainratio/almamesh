@@ -41,6 +41,7 @@ import { join } from 'node:path'
 import { chromium, firefox, webkit } from '@playwright/test'
 
 import { formatMemoryReport, processTreeReport, sampleProcessTreePeak } from './processMemory.mjs'
+import { passOnboardingAiStep } from './onboardingAiStep.mjs'
 
 const BROWSERS = { chromium, firefox, webkit }
 
@@ -153,6 +154,10 @@ try {
 
   await onboard(page)
   const generated = Date.now()
+  // A fresh chart with no AI stops at the onboarding AI step; take "Not now".
+  await passOnboardingAiStep(page, { timeout: CHART_BUDGET_MS })
+    .catch(async () => invariant(false, `no dashboard within ${seconds(CHART_BUDGET_MS)} of Generate: ${await bodyText(page)}`
+      + ` | console (${errors.length}): ${errors.slice(0, 5).join(' | ')}`))
   await page.getByTestId('chart-visualization').first()
     .waitFor({ state: 'visible', timeout: CHART_BUDGET_MS })
     // The console carries the engine's typed boot failure; the page text alone

@@ -11,7 +11,9 @@
 // 2. A wall-clock cap: a stream that has produced no answer text (content or a
 //    tool call) REASONING_TIMEOUT_MS after it opened is cancelled with a
 //    ReasoningTimeoutError. Its 504 status makes it transient, so a timeline
-//    section gets #192's one retry before it is reported.
+//    section gets #192's one retry before it is reported. The chat tool loop
+//    (toolLoop.ts) reads it as a stall window instead: streamed reasoning is
+//    progress there, and TURN_MODEL_TIME_CEILING_MS ends a runaway (2026-10-15).
 
 import { LlmRequestError } from "./client";
 

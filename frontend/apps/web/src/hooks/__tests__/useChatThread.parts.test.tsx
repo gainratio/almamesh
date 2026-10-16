@@ -107,3 +107,31 @@ describe('history compaction: a past turn\'s tool results reach the next turn on
     expect(next?.retrievedContext.some((entry) => entry.startsWith('Facts gathered'))).toBe(false);
   });
 });
+
+// Northstar on PR #366 (2026-10-15): "take me to May 2019" -> the model asked where -> "Delhi" was
+// refused because it names no move. The saved thread carries the pending move to the next turn only.
+// Re-grade (2026-10-15): the pending move is the saved needs_place call's `to`, not the user's text.
+describe('a move the model asked a question about rides to the next turn', () => {
+  const NEEDS_PLACE = { toolCallId: 'n', toolName: 'travel', args: { to: '2019-05', place: null }, status: 'complete', result: { status: 'needs_place', ask: 'Ask where the user lived (or will be) then.' } } as const;
+
+  it('the next turn gets the pending move; the turn after it does not', async () => {
+    const { result } = renderHook(() => useChatThread('p1', null));
+    await act(() => result.current.submit('take me to May 2019', async (input) => {
+      expect(input.pendingTravel).toBeUndefined();
+      input.onToolCall?.(NEEDS_PLACE);
+      return 'Where did you live in May 2019?';
+    }));
+    let placeTurn: ChatStreamInput | undefined;
+    await act(() => result.current.submit('Delhi', async (input) => {
+      placeTurn = input;
+      return 'Which Delhi?';
+    }));
+    expect(placeTurn?.pendingTravel).toEqual({ kind: 'pending_travel', to: '2019-05' });
+    let later: ChatStreamInput | undefined;
+    await act(() => result.current.submit('New Delhi', async (input) => {
+      later = input;
+      return 'OK.';
+    }));
+    expect(later?.pendingTravel).toBeUndefined();
+  });
+});

@@ -1,3 +1,6 @@
+import { readdirSync, readFileSync, existsSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -53,12 +56,25 @@ describe('How we test', () => {
     expect(text).toContain('5,062');
   });
 
-  it('says how a technique earns stronger wording, and that the test re-runs each release', () => {
+  // CONTRACT REVERSED (PR #366 review): this used to require "every release".
+  // No workflow re-runs the test per release (the licensed data cannot go to
+  // CI), so the page must promise only what is done: a re-run whenever the way
+  // readings are computed changes.
+  it('says how a technique earns stronger wording, and when the test is re-run (truthfully)', () => {
     renderPage();
     const text = document.body.textContent ?? '';
     expect(text).toContain('held-out');
-    expect(text).toContain('every release');
+    expect(text).toContain('whenever we change how readings are computed');
+    expect(text).not.toMatch(/every release/i);
     expect(text).toContain('One area is being re-tested on held-out data.');
+  });
+
+  it.each([
+    ['es', /cada versión/i],
+    ['pt', /cada versão/i],
+  ] as const)('makes no per-release promise in %s either', (language, perRelease) => {
+    renderPage(language);
+    expect(document.body.textContent ?? '').not.toMatch(perRelease);
   });
 
   it.each(['en', 'es', 'pt'] as const)('leaks no record-level data and publishes no lead as a finding (%s)', (language) => {
@@ -90,5 +106,18 @@ describe('the footer links How we test', () => {
     renderPage();
     const footer = screen.getByRole('contentinfo');
     expect(within(footer).getByRole('link', { name: 'How we test' }).getAttribute('href')).toBe('/how-we-test');
+  });
+});
+
+describe('the How we test sources', () => {
+  it('cite only documents that exist in this repository', () => {
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const repoRoot = path.resolve(here, '../../../../../..');
+    const cited = readdirSync(here)
+      .filter((name) => /^(?:HowWeTest|howWeTest)/.test(name) && !name.includes('.test.'))
+      .flatMap((name) => [...readFileSync(path.join(here, name), 'utf-8').matchAll(/\bdocs\/[\w./*-]+/g)].map((m) => m[0]));
+    for (const ref of cited) {
+      expect(ref.includes('*') ? `${ref} (a glob, not a document)` : existsSync(path.join(repoRoot, ref)) ? ref : `${ref} (missing)`).toBe(ref);
+    }
   });
 });

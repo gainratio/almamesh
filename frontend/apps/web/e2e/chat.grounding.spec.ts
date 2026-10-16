@@ -20,7 +20,7 @@ import {
  * previously had only unit coverage:
  *
  *   (b) the chat request that goes out on the wire uses the chat-tier default
- *       `deepseek/deepseek-v4.1-flash` (CHAT_CLOUD_MODEL, applied by
+ *       `openai/gpt-6-luna` (CHAT_CLOUD_MODEL, applied by
  *       `applyChatSettings` when no explicit chatModel is saved). So this test
  *       seeds an OpenRouter config with only an interpretation model — a
  *       DIFFERENT one, so the two tiers are distinguishable — and asserts the
@@ -63,7 +63,7 @@ const LLM_CONFIG = {
 // produce on the wire. NOT the seeded interpretation model. Pinned as a literal.
 // REVERSED CONTRACT (fix/live-check-followups): this asserted
 // 'minimax/minimax-m2.7', which measured 26.7 s to first token on the live site.
-const EXPECTED_CHAT_MODEL = 'deepseek/deepseek-v4.1-flash';
+const EXPECTED_CHAT_MODEL = 'openai/gpt-6-luna';
 
 // The exact label `interpretationBlock` (prompt.ts) prefixes the reused reading
 // with. Asserting on this proves change (c) end-to-end.

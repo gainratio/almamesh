@@ -217,5 +217,8 @@
     "reload": "Recargar",
     "discard_failed_body": "No se pudo quitar de este dispositivo a una persona que cancelaste, así que puede volver a aparecer al recargar.",
     "try_again": "Reintentar"
+  },
+  "ai_setup": {
+    "dialog_title": "Conectar IA"
   }
 }

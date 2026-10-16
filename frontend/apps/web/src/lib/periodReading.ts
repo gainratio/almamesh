@@ -390,6 +390,30 @@ function firstPerGraha(sky: readonly ReadingSky[], limit: number): ReadingSky[] 
   });
 }
 
+/**
+ * One span per sign: a graha's consecutive spans in the same sign (split by a station) become one,
+ * retrograde when any part was. Every ingress survives; only the station dates go.
+ */
+function bySign(sky: readonly ReadingSky[]): ReadingSky[] {
+  const merged: ReadingSky[] = [];
+  for (const span of sky) {
+    const last = merged.at(-1);
+    if (last?.graha !== span.graha || last.sign !== span.sign) {
+      merged.push(span);
+      continue;
+    }
+    merged[merged.length - 1] = { ...last, end: span.end, retro: last.retro || span.retro, tags: [...new Set([...last.tags, ...span.tags])] };
+  }
+  return merged;
+}
+
+/** Whole months from the period's first month to its last, both counted. */
+const monthsSpanned = ({ start, end }: PeriodWindow): number =>
+  (Number(end.slice(0, 4)) - Number(start.slice(0, 4))) * 12 + Number(end.slice(5, 7)) - Number(start.slice(5, 7)) + 1;
+
+/** A read longer than a year keeps two signs per graha: its sign changes are what it is about. */
+const skyFloor = (period: PeriodWindow): number => (monthsSpanned(period) > 12 ? 2 : 1);
+
 const lordBrief = ({ lord, level, rules, functional }: ReadingLord): ReadingLord =>
   ({ lord, level, ...(rules ? { rules } : {}), ...(functional ? { functional } : {}) });
 
@@ -425,6 +449,7 @@ const TRIMS: readonly Trim[] = [
   { note: 'theme agreement per technique', apply: (r) => capThemes(r, withoutAgreement) },
   { note: 'pratyantar-only lord vargas and yogas', apply: (r) => ({ ...r, lords: r.lords.map(withoutVargas) }) },
   { note: 'theme factors beyond 2', apply: (r) => capThemes(r, (t) => ({ ...t, factors: t.factors.slice(0, 2) })) },
+  { note: 'sky station splits (one span per sign)', apply: (r) => ({ ...r, sky: bySign(r.sky) }) },
   { note: 'sky spans beyond 3 per graha', apply: (r) => ({ ...r, sky: firstPerGraha(r.sky, 3) }) },
   { note: 'pratyantar-only lord natal detail', apply: (r) => ({ ...r, lords: r.lords.map((l) => (pratyantarOnly(l) ? lordBrief(l) : l)) }) },
   { note: 'pratyantar placements', apply: (r) => ({ ...r, dashas: { ...r.dashas, pratyantar: r.dashas.pratyantar.map(unplaced) } }) },
@@ -436,7 +461,7 @@ const TRIMS: readonly Trim[] = [
   { note: 'segments', apply: (r) => (r.period.granularity === 'day' ? r : { ...r, segments: [] }) },
   { note: 'lord natal detail', apply: (r) => ({ ...r, lords: r.lords.map(lordBrief) }) },
   { note: 'windows beyond 3', apply: (r) => ({ ...r, windows: r.windows.slice(0, 3) }) },
-  { note: 'sky spans beyond 1 per graha', apply: (r) => ({ ...r, sky: firstPerGraha(r.sky, 1) }) },
+  { note: 'sky spans beyond 1 per graha', apply: (r) => ({ ...r, sky: firstPerGraha(r.sky, skyFloor(r.period)) }) },
   { note: 'themes beyond the first 4', apply: (r) => ({ ...r, themes: r.themes.slice(0, 4) }) },
   { note: 'themes beyond the first 3', apply: (r) => ({ ...r, themes: r.themes.slice(0, 3) }) },
 ];
@@ -445,9 +470,24 @@ function withTrimmed(reading: PeriodReading, trimmed: readonly string[]): Period
   return trimmed.length > 0 ? { ...reading, trimmed } : reading;
 }
 
-/** The last resort: the frame, the dashas, brief lords and the themes' verdicts. Always fits. */
-function minimal(reading: PeriodReading): PeriodReading {
-  return {
+export const LAST_RESORT_NOTE = 'everything but the dashas, lords, theme verdicts and the sky by sign';
+
+/** The sky a last resort keeps: two signs per graha, else one, else the first spans that fit. Never none. */
+function coarseSky(sky: readonly ReadingSky[], fits: (sky: readonly ReadingSky[]) => boolean): ReadingSky[] {
+  const signs = bySign(sky);
+  const two = firstPerGraha(signs, 2);
+  if (fits(two)) return two;
+  let one = firstPerGraha(signs, 1);
+  while (one.length > 1 && !fits(one)) one = one.slice(0, -1);
+  return one;
+}
+
+/**
+ * The last resort: the frame, the dashas, brief lords, the themes' verdicts and the sky read by
+ * sign (coarser, never dropped: an 18-month read once lost its whole sky here, 2026-10-15).
+ */
+function minimal(reading: PeriodReading, budget: number): PeriodReading {
+  const base: PeriodReading = {
     period: reading.period, place: reading.place,
     dashas: {
       maha: reading.dashas.maha, antar: reading.dashas.antar, pratyantar: reading.dashas.pratyantar.slice(0, 6),
@@ -455,8 +495,9 @@ function minimal(reading: PeriodReading): PeriodReading {
     },
     lords: reading.lords.map(lordBrief), segments: [], sky: [], double_transit: reading.double_transit,
     themes: reading.themes.slice(0, 3).map((theme) => ({ ...theme, factors: [] })), windows: [],
-    trimmed: ['everything but the dashas, lords and theme verdicts'],
+    trimmed: [LAST_RESORT_NOTE],
   };
+  return { ...base, sky: coarseSky(reading.sky, (sky) => jsonBytes({ ...base, sky }) < budget) };
 }
 
 function fitBudget(reading: PeriodReading, budget: number): PeriodReading {
@@ -470,7 +511,7 @@ function fitBudget(reading: PeriodReading, budget: number): PeriodReading {
     trimmed.push(trim.note);
   }
   const fitted = withTrimmed(current, trimmed);
-  return jsonBytes(fitted) < budget ? fitted : minimal(reading);
+  return jsonBytes(fitted) < budget ? fitted : minimal(reading, budget);
 }
 
 export interface ReadingFitOptions {

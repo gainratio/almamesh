@@ -29,6 +29,7 @@ import { birthUtcYearOf, birthYearOf, PeriodSkyUnavailableError, type PeriodChar
 import {
   buildPeriodDetail,
   buildPeriodReading,
+  LAST_RESORT_NOTE,
   MAX_PERIOD_RESULT_BYTES,
   READ_PERIOD_TOOL_NAME,
   windowsOf,
@@ -153,10 +154,15 @@ function spanProblem(args: ReadPeriodArgs): Problem | undefined {
   return rangeProblem(args, span) ?? dayOnlyProblem(args, span);
 }
 
+/** A bare year sent as a JSON number (`"end": 2017`, real runs 2026-10-15) is that year; any other number stays a number and is refused. */
+const yearNumberAsText = (value: unknown): unknown =>
+  typeof value === 'number' && Number.isInteger(value) && value >= 1000 && value <= 9999 ? String(value) : value;
+
 const ARGS_SCHEMA: z.ZodType<ReadPeriodArgs> = z
   .object({
-    start: z.string().regex(DATE, `start ${DATE_MESSAGE}`).describe('First year, month or day: YYYY, YYYY-MM or YYYY-MM-DD.'),
-    end: z.string().regex(DATE, `end ${DATE_MESSAGE}`).nullable()
+    start: z.preprocess(yearNumberAsText, z.string().regex(DATE, `start ${DATE_MESSAGE}`))
+      .describe('First year, month or day: YYYY, YYYY-MM or YYYY-MM-DD.'),
+    end: z.preprocess(yearNumberAsText, z.string().regex(DATE, `end ${DATE_MESSAGE}`).nullable())
       .describe('Last year, month or day, inclusive. null for a single year, month or day.'),
     place: z.string().min(2).max(80).nullable()
       .describe('A city as the user said it ("Pune", "Springfield"), or "trip" / "home". null = this thread\'s place.'),
@@ -640,8 +646,8 @@ function withExtras(reading: PeriodReading, level: ExtrasLevel): ReadPeriodReadi
   return { ...reading, ...level.extras, ...(trimmed.length > 0 ? { trimmed } : {}) };
 }
 
-/** periodReading.ts's last resort: the sky (and its Moon tags) and the windows are gone. */
-const isBare = (reading: PeriodReading): boolean => reading.sky.length === 0 && reading.windows.length === 0;
+/** periodReading.ts's last resort: the windows, segments and most theme detail are gone, the sky is coarse. */
+const isBare = (reading: PeriodReading): boolean => reading.trimmed?.includes(LAST_RESORT_NOTE) ?? false;
 
 interface Fitted {
   readonly reading: PeriodReading;
@@ -670,8 +676,8 @@ function fitLevel(loaded: Loaded, frame: ReadingFrame, level: ExtrasLevel, limit
 }
 
 /**
- * The fullest extras that fit beside a reading that still has its sky or windows. When no level
- * keeps them, the fullest level that fits; when none fits, the leanest (no close-up).
+ * The fullest extras that fit beside a reading the budget did not cut to its last resort. When
+ * every level cuts it that far, the fullest level that fits; when none fits, the leanest (no close-up).
  */
 function compose(loaded: Loaded, frame: ReadingFrame, extras: Extras, language: string): ReadPeriodReading {
   const range = extras.months !== undefined;

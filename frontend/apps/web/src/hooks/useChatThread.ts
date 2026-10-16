@@ -43,12 +43,13 @@ import { noteIfStaleChunk, StaleAppError, useAppStale } from '../lib/appStale';
 import { indexChatMessage, retrieveContext } from '../lib/chatMemory';
 import { isChunkLoadError } from '../lib/chunkError';
 import type { ChatToolCall } from '../lib/chatTurn';
-import { chatErrorMessage, getChatErrorMessage } from '../lib/errors';
+import { aiErrorText, chatErrorMessage, getChatErrorMessage, privacyBlockedMessage } from '../lib/errors';
 import { LLM_SETTINGS_CHANGED_EVENT } from '../lib/llmSettingsEvents';
 import { PERIOD_TOOL_SUMMARIZERS } from '../lib/periodReading';
 import { asOfKey } from '../lib/pinnedPeriod';
 import { waitForStoreSaved } from '../lib/storeSaved';
 import { applyBackToToday, applyTravel, travelIntentVersion, type TravelSource, type TravelThread } from '../lib/timeTravel';
+import { pendingTravelIn, type PendingTravel } from '../lib/travelIntent';
 import { createTravelSlot, type TravelRecorder } from '../lib/travelSlot';
 import { moveTurnToThread } from '../lib/turnFollowsTravel';
 
@@ -63,6 +64,8 @@ export interface ChatStreamInput {
   readonly asOf?: ChatThreadAsOf;
   /** Record only; the hook applies this turn's last action after its durable answer. */
   readonly onTravel?: TravelRecorder;
+  /** The last turn asked to move and was asked where (or when) instead: this turn may finish it. */
+  readonly pendingTravel?: PendingTravel;
   /** Each tool call the turn ran; persisted on the answer as tool-call parts. */
   readonly onToolCall?: (record: ChatToolCall) => void;
   /** Aborts when the page is left or another thread is opened or started; the turn must stop its requests. */
@@ -215,16 +218,19 @@ async function updateRollingSummary(
 export const CHAT_STREAM_ERROR_COPY: Readonly<
   Record<string, (error: Error & Partial<LlmRequestError>) => string>
 > = {
-  // The fail-closed privacy fence writes a specific, user-facing message
-  // (which endpoint was refused and why): show it verbatim, never a code.
-  PrivacyViolationError: (error) => error.message,
+  // The fail-closed privacy fence: localized copy naming the refused endpoint,
+  // never a code and never the fence's English log message.
+  PrivacyViolationError: (error) => privacyBlockedMessage(error),
   // Any non-2xx maps to its specific, actionable copy via the shared coded-
   // message mapper: 402 → billing, 401/403 → bad key, 404/bad-slug → dead model,
   // 429 → rate limited, 5xx → provider outage, else → retry/settings guidance.
   LlmRequestError: (error) => chatErrorMessage(error),
+  // The stall watchdog (toolLoop.ts): a subclass of LlmRequestError, but the map is keyed by name, so
+  // without this entry it fell to the generic QA_001 (real drive, 2026-10-15).
+  ReasoningTimeoutError: (error) => chatErrorMessage(error),
   // `fetch` throws a TypeError when the endpoint is unreachable — a mapped,
   // actionable cause even though it carries no custom class.
-  TypeError: () => i18n.t('chat:errors.endpoint_unreachable'),
+  TypeError: () => aiErrorText('net.unreachable'),
 };
 
 /** A failed lazy chunk is an app update, never an AI failure (it is often a TypeError too). */
@@ -393,6 +399,7 @@ export function useChatThread(
       const tid = activeThread?.id ?? store.ensureThread(profileId, chartId ?? undefined);
       const priorMessages = store.getMessages(tid);
       const history = toHistory(priorMessages);
+      const pendingTravel = pendingTravelIn(priorMessages);
       const existingSummary = store.getSummary(tid);
 
       // The snapshot this question is about. An answer that arrives after the
@@ -436,6 +443,7 @@ export function useChatThread(
           retrievedContext,
           ...(askedAsOf ? { asOf: askedAsOf } : {}),
           onTravel: travelSlot.record,
+          ...(pendingTravel ? { pendingTravel } : {}),
           onToolCall: (record) => { toolCalls.push(toolCallPart(record)); },
           onSnapshot: (text) => {
             draft = text;

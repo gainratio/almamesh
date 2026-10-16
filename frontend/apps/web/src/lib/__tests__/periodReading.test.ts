@@ -17,6 +17,7 @@ const FRAMES: Record<PeriodReadingFixture, ReadingFrame> = {
   'delhi-2019-year': { period: { start: '2019-01-01', end: '2019-12-31', granularity: 'year', label: '2019', tense: 'past' }, place: SINGAPORE },
   'delhi-2019-05': { period: { start: '2019-05-01', end: '2019-05-31', granularity: 'month', label: 'May 2019', tense: 'past' }, place: SINGAPORE },
   'delhi-2027-01': { period: { start: '2027-01-01', end: '2027-01-31', granularity: 'month', label: 'January 2027', tense: 'future' }, place: { label: 'San Francisco', timezone: 'America/Los_Angeles' } },
+  'delhi-2027-01-18m': { period: { start: '2027-01-01', end: '2028-06-30', granularity: 'month', label: 'Jan 2027 – Jun 2028', tense: 'future' }, place: { label: 'San Francisco', timezone: 'America/Los_Angeles' } },
   'delhi-2019-09-15-day': { period: { start: '2019-09-15', end: '2019-09-15', granularity: 'day', label: '15 September 2019', tense: 'past' }, place: SINGAPORE },
 };
 const NAMES = Object.keys(FRAMES) as PeriodReadingFixture[];
@@ -226,12 +227,36 @@ describe('the period reading (get_period_reading)', () => {
     expect(buildPeriodReading(wide, YEAR_FRAME)).toEqual(result);
   });
 
-  it('when even every cut is not enough, falls back to the dashas, lords and theme verdicts', () => {
+  // CONTRACT REVERSED (2026-10-15): the last resort used to drop the whole sky (`sky: []`), and
+  // the 18-month journey answered with no ingress to name. It now keeps as much of the sky, read
+  // by sign, as fits: coarser, never gone.
+  it('when even every cut is not enough, falls back to the dashas, lords, theme verdicts and a sky by sign', () => {
     const huge = { ...YEAR, sky: Array.from({ length: 40 }, (_, index) => ({ ...YEAR.sky[0]!, graha: `g${index}` })) };
     const result = buildPeriodReading(huge, YEAR_FRAME);
     expect(bytes(result)).toBeLessThan(4096);
-    expect(result).toMatchObject({ sky: [], segments: [], windows: [], trimmed: ['everything but the dashas, lords and theme verdicts'] });
+    expect(result).toMatchObject({ segments: [], windows: [], trimmed: ['everything but the dashas, lords, theme verdicts and the sky by sign'] });
+    expect(result.sky.length).toBeGreaterThan(0);
+    expect(result.sky[0]).toMatchObject({ graha: 'g0' });
     expect(result.dashas.pratyantar).toHaveLength(5);
+  });
+
+  it('an 18-month reading cut to a small budget keeps every slow graha and the nodes sign change', () => {
+    const source = periodReadingFixture('delhi-2027-01-18m');
+    const result = buildPeriodReading(source, FRAMES['delhi-2027-01-18m'], { budgetBytes: 4000, windowOrder: 'severity' });
+    expect(bytes(result)).toBeLessThan(4000);
+    expect(new Set(result.sky.map((span) => span.graha))).toEqual(new Set(['jupiter', 'saturn', 'rahu', 'ketu']));
+    expect(result.sky.filter((span) => span.graha === 'rahu').map((span) => span.sign)).toEqual(['capricorn', 'sagittarius']);
+  });
+
+  it('a sky cut by sign merges a station split into one span per sign, so no ingress is lost', () => {
+    const source = periodReadingFixture('delhi-2027-01-18m');
+    const result = buildPeriodReading(source, FRAMES['delhi-2027-01-18m'], { budgetBytes: 5000, windowOrder: 'severity' });
+    expect(result.trimmed).toContain('sky station splits (one span per sign)');
+    const jupiter = result.sky.filter((span) => span.graha === 'jupiter');
+    // The engine reads Cancer as two spans either side of the April 2027 station: one span now.
+    expect(jupiter.map((span) => span.sign).slice(0, 2)).toEqual(['leo', 'cancer']);
+    expect(jupiter[1]).toMatchObject({ start: '2027-01-24', end: '2027-06-25', retro: true });
+    expect(result.sky.every((span, index) => index === 0 || result.sky[index - 1]!.graha !== span.graha || result.sky[index - 1]!.sign !== span.sign)).toBe(true);
   });
 
   it.each(NAMES)('%s carries no birth date, time, coordinates or datetime_utc', (name) => {

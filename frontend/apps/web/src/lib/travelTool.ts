@@ -9,6 +9,7 @@ import type { ChatThreadAsOf } from '@almamesh/shared-types';
 import { chatAsOfProblem } from '@almamesh/store';
 import { NEEDS_PLACE, OUTSIDE_RANGE, READ_PERIOD_TIMEOUT_MS, resolveChatPlace, type PlaceAsk, type PlaceOutcome, type PlaceResolverInput, type ReadPeriodAsk } from './readPeriod';
 import { formatPinLabel, periodAsOfFromDraft, type SheetDraft } from './timeTravelSheet';
+import { isPlaceReply, type TravelGrant } from './travelIntent';
 import { draftFromToolArgs, TIME_TRAVEL_STATUS_LABEL, TRAVEL_DATE_ERROR as DATE_ERROR, type TravelRecorder } from './travelSlot';
 
 export const TRAVEL_TOOL_NAME = 'travel';
@@ -23,6 +24,8 @@ export interface TravelToolInput extends PlaceResolverInput {
   readonly birthYear: number | undefined;
   readonly language: string;
   readonly record: TravelRecorder;
+  /** What this turn may move (travelIntent.ts travelGrant); a call outside it is refused. */
+  readonly grant: TravelGrant;
 }
 
 export interface TravelQueued {
@@ -33,16 +36,55 @@ export interface TravelQueued {
   readonly time_zone?: string;
 }
 
-export type TravelResult = TravelQueued | PlaceAsk | ReadPeriodAsk;
+/** A call the turn was not granted: nothing moves, the model reads instead. */
+export interface TravelRefused {
+  readonly status: 'refused';
+  /** not_asked: no move asked. not_pending_move: a reply to a pending move, but not that move. */
+  readonly reason: 'not_asked' | 'not_pending_move';
+  readonly note: string;
+}
+
+export type TravelResult = TravelQueued | PlaceAsk | ReadPeriodAsk | TravelRefused;
+
+/**
+ * dashboard.agentic.real 2026-10-15 (GPT Luna): "outlook today?" in a September 2017 trip read
+ * today, then travelled back to today and ended the trip. A question about another time is
+ * answered in place; only an explicit request moves the conversation. travel-guard-live 2026-10-15:
+ * after the refusal DeepSeek still told the user it had moved, so the note forbids the claim and
+ * names how the user can move (chatTurn.ts also sends such an answer back).
+ */
+export const TRAVEL_NOT_ASKED: TravelRefused = {
+  status: 'refused',
+  reason: 'not_asked',
+  note: 'The user did not ask to move this conversation, so it stays where it is. Answer their question here: read the time they asked about with read_period. Do not say the conversation moved or the trip ended. If they want to move, they can use the Time travel control, or say "back to today" or "take me to May 2019".',
+};
+
+/**
+ * Re-grade of PR #366 (2026-10-15): with "take me to June 2019" pending, the reply "what's my moon
+ * sign?" queued {to:"1990", place:"Lisbon"}. A reply to a pending move finishes only that move.
+ */
+export const TRAVEL_NOT_PENDING: TravelRefused = {
+  status: 'refused',
+  reason: 'not_pending_move',
+  note: 'This reply can only finish the move you asked a place for: the same "to" as that call, with the place the user just named. Nothing moved. Answer their message here; do not say the conversation moved or the trip ended.',
+};
+
+/** The refusal for a call outside this turn's grant, or undefined when the grant covers it. */
+function refusalFor(grant: TravelGrant, args: TravelArgs): TravelRefused | undefined {
+  if (grant.kind === 'asked') return undefined;
+  if (grant.kind === 'none') return TRAVEL_NOT_ASKED;
+  const finishes = args.to === grant.to && args.place !== null && isPlaceReply(grant.reply, args.place);
+  return finishes ? undefined : TRAVEL_NOT_PENDING;
+}
 
 const TO = /^(today|\d{4}(-(0[1-9]|1[0-2])(-(0[1-9]|[12]\d|3[01]))?)?)$/;
 
 const DESCRIPTION = [
   'Move this conversation and the Dashboard to a day, month or year (a time-travel trip), or back to today.',
-  'Only when the user asks to go there; to answer a question about a time, use read_period.',
+  'Only when the user asks to move ("take me to ...", "back to today") in this message, or names the place you asked for; a question about another time, today included, is answered here with read_period.',
   'The move happens after your answer. Call it at most once per turn.',
   'Examples: "take me to May 2019 in Vadodara" -> {"to":"2019-05","place":"Vadodara"}.',
-  '"back to today" -> {"to":"today","place":null}.',
+  '"back to today" or "leave this trip" -> {"to":"today","place":null}.',
 ].join(' ');
 
 const PERIOD_OF_LENGTH: Readonly<Record<number, 'day' | 'month' | 'year'>> = { 4: 'year', 7: 'month', 10: 'day' };
@@ -69,7 +111,8 @@ const ARGS_SCHEMA: z.ZodType<TravelArgs> = z
   .strict()
   .superRefine((args, ctx) => {
     if (args.to === 'today') {
-      if (args.place !== null) ctx.addIssue({ code: 'custom', message: 'to "today" takes no place: send place null', path: ['place'] });
+      // Today is where the user lives now: "home" says nothing more, any other place is refused.
+      if (args.place !== null && args.place.trim().toLowerCase() !== 'home') ctx.addIssue({ code: 'custom', message: 'to "today" takes no place: send place null', path: ['place'] });
       return;
     }
     if (TO.test(args.to) && !draftOf(args.to)) ctx.addIssue({ code: 'custom', message: DATE_ERROR, path: ['to'] });
@@ -162,6 +205,10 @@ export function createTravelTool(input: TravelToolInput): ToolDef<TravelArgs> {
     overLimitNote: ALREADY_TRAVELLED_NOTE,
     // A trip turn reads before it answers; going back to today leaves nothing to read, only a confirmation.
     unlocksAnswer: isQueuedReturn,
-    execute: async (args, context) => (moved ? ALREADY_TRAVELLED : travelTo({ ...input, record }, args, context)),
+    execute: async (args, context) => {
+      const refused = refusalFor(input.grant, args);
+      if (refused) return refused;
+      return moved ? ALREADY_TRAVELLED : travelTo({ ...input, record }, args, context);
+    },
   });
 }

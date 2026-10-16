@@ -136,7 +136,7 @@ describe('AiSetupPanel — OpenRouter-first, test-on-save', () => {
     expect(saved.interpretationModel).toBe(RECOMMENDED_CLOUD_MODEL);
     expect(saved.chatModel).toBe(CHAT_CLOUD_MODEL);
     // Literal on purpose — the constant asserted against itself guards nothing.
-    expect(saved.chatModel).toBe('deepseek/deepseek-v4.1-flash');
+    expect(saved.chatModel).toBe('openai/gpt-6-luna');
     expect(saved.privacyMode).toBe('cloud_premium');
   });
 
@@ -591,8 +591,10 @@ describe('AiSetupPanel — one-time switch suggestion for glm-5.3-flash users', 
     hydrateSlowModelSuggestion(null);
   });
 
-  it('pins the new default: deepseek/deepseek-v4.1-flash', () => {
-    expect(RECOMMENDED_CLOUD_MODEL).toBe('deepseek/deepseek-v4.1-flash');
+  // Default changed 2026-10-15 (Harish): deepseek-v4.1-flash overloaded easily; gpt-6-luna (pinned) is
+  // $0.10 in / $0.50 out per M with tools and reasoning, and wrote the timeline in 39-49 s (3/3).
+  it('pins the new default: openai/gpt-6-luna', () => {
+    expect(RECOMMENDED_CLOUD_MODEL).toBe('openai/gpt-6-luna');
   });
 
   it('suggests the switch with the measured reason, and switching keeps the key and chat model', async () => {
@@ -602,7 +604,8 @@ describe('AiSetupPanel — one-time switch suggestion for glm-5.3-flash users', 
 
     const card = screen.getByTestId('model-switch-suggestion');
     // Chat keeps its own default: the card names the model each tier lands on.
-    expect(card.textContent).toContain('DeepSeek V4.1 Flash');
+    expect(card.textContent).toContain('GPT Luna');
+    expect(card.textContent).not.toContain('DeepSeek');
     expect(card.textContent).toMatch(/GLM 5\.3 Flash/);
     expect(card.textContent).toMatch(/\d+ s/);
     expect(readSaved().interpretationModel).toBe(GLM);
@@ -610,8 +613,8 @@ describe('AiSetupPanel — one-time switch suggestion for glm-5.3-flash users', 
     fireEvent.click(screen.getByTestId('model-switch-accept'));
     await waitFor(() => expect(testConnection).toHaveBeenCalled());
     const saved = readSaved();
-    expect(saved.interpretationModel).toBe('deepseek/deepseek-v4.1-flash');
-    expect(saved.model).toBe('deepseek/deepseek-v4.1-flash');
+    expect(saved.interpretationModel).toBe('openai/gpt-6-luna');
+    expect(saved.model).toBe('openai/gpt-6-luna');
     expect(saved.chatModel).toBe('minimax/minimax-m2.7');
     expect(saved.apiKey).toBe('sk-or-kept');
     expect(screen.queryByTestId('model-switch-suggestion')).toBeNull();
@@ -621,7 +624,7 @@ describe('AiSetupPanel — one-time switch suggestion for glm-5.3-flash users', 
     seed({ model: 'openai/gpt-5.6-sol', interpretationModel: 'openai/gpt-5.6-sol', chatModel: GLM });
     renderSettings();
     fireEvent.click(screen.getByTestId('model-switch-accept'));
-    await waitFor(() => expect(readSaved().chatModel).toBe('deepseek/deepseek-v4.1-flash'));
+    await waitFor(() => expect(readSaved().chatModel).toBe('openai/gpt-6-luna'));
     expect(readSaved().interpretationModel).toBe('openai/gpt-5.6-sol');
   });
 
@@ -707,6 +710,29 @@ describe('AiSetupPanel — surface props (showOffChoice, intro)', () => {
     const disclosure = screen.getByTestId('tier-cloud-honesty');
     expect(disclosure.textContent).toContain('can reveal your birth date');
     expect(disclosure.textContent).toContain('without your name or birth date');
+  });
+
+  it('leads with one short line on what is sent; the full disclosure sits behind "What gets sent"', () => {
+    renderPanel();
+    const summary = screen.getByTestId('tier-cloud-summary');
+    expect(summary.textContent).toBe(
+      'Chart requests leave out your name and birth date, but the planet positions and dates they carry can reveal it.',
+    );
+    const details = screen.getByTestId('tier-cloud-details') as HTMLDetailsElement;
+    expect(details.tagName).toBe('DETAILS');
+    expect(details.open).toBe(false);
+    expect(details.querySelector('summary')?.textContent).toBe('What gets sent');
+    // The full existing text is still there, one click away.
+    expect(details.contains(screen.getByTestId('tier-cloud-honesty'))).toBe(true);
+    expect(screen.getByTestId('tier-cloud-honesty').textContent).toContain('the narrative you enter is sent as written');
+  });
+
+  it('shows the "Connect AI" card title by default and drops it when the host already titles it', () => {
+    const { unmount } = renderPanel();
+    expect(screen.getByTestId('tier-cloud').textContent).toContain('Connect AI');
+    unmount();
+    renderPanel({ showOffChoice: false, showTitle: false });
+    expect(screen.getByTestId('tier-cloud').textContent).not.toContain('Connect AI');
   });
 
   it('keeps the local-only refusal warning in the onboarding variant', () => {

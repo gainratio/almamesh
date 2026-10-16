@@ -96,3 +96,80 @@ describe('Dialog — escapes its ancestors via a portal', () => {
     });
   });
 });
+
+describe('Dialog — keyboard focus', () => {
+  beforeEach(() => {
+    useLanguageStore.setState({ language: 'en' });
+  });
+
+  it('moves focus into the dialog on open and gives it back to the opener on close', async () => {
+    function Harness({ open }: { open: boolean }) {
+      return (
+        <>
+          <button type="button" data-testid="opener">open</button>
+          <Dialog open={open} onClose={() => undefined} title="Connect AI">
+            <p>body copy</p>
+          </Dialog>
+        </>
+      );
+    }
+    const { rerender } = render(<Harness open={false} />);
+    const opener = screen.getByTestId('opener');
+    opener.focus();
+
+    rerender(<Harness open />);
+    const dialog = screen.getByRole('dialog');
+    expect(dialog.contains(document.activeElement)).toBe(true);
+
+    rerender(<Harness open={false} />);
+    await waitFor(() => expect(document.activeElement).toBe(opener));
+  });
+
+  it('leaves focus alone when a child already took it (an autofocused field)', () => {
+    render(
+      <Dialog open onClose={() => undefined} title="Search">
+        <input data-testid="field" autoFocus />
+      </Dialog>,
+    );
+    expect(document.activeElement).toBe(screen.getByTestId('field'));
+  });
+});
+
+describe('Dialog — visible close button', () => {
+  beforeEach(() => {
+    useLanguageStore.setState({ language: 'en' });
+  });
+
+  it('shows one labelled, touch-sized close button inside the panel that closes it', () => {
+    const onClose = vi.fn();
+    render(
+      <Dialog open onClose={onClose} title="Connect AI">
+        <p>body copy</p>
+      </Dialog>,
+    );
+
+    const dialog = screen.getByRole('dialog', { name: 'Connect AI' });
+    // Exactly one accessible "Close dialog" control: the overlay is a pointer
+    // convenience, not a second button for screen readers.
+    const closes = screen.getAllByRole('button', { name: 'Close dialog' });
+    expect(closes).toHaveLength(1);
+    const close = closes[0];
+    expect(dialog.contains(close)).toBe(true);
+    // 44px target (Tailwind h-11 / w-11).
+    expect(close.className).toContain('h-11');
+    expect(close.className).toContain('w-11');
+
+    fireEvent.click(close);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the close button when the dialog has no title', () => {
+    render(
+      <Dialog open onClose={() => undefined}>
+        <p>body copy</p>
+      </Dialog>,
+    );
+    const dialog = screen.getByRole('dialog');
+    expect(dialog.contains(screen.getByRole('button', { name: 'Close dialog' }))).toBe(true);
+  });
+});

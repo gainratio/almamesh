@@ -41,6 +41,10 @@ such as the weeks before and after a station or a sign change in the reading, or
 dasha chapter it sits in; never invent another period's facts), and when several indicators
 converge, name hard themes plainly: legal or official friction, losses and expenses, a job or
 career change. No fear language: no doom, curses or danger; say what the theme asks of the person.
+Never narrate the tools or what a reading leaves out: when a dated change has no theme beside it,
+say what that planet and house highlight, or leave the line out. And never describe what the person
+went through or how things went for them (what was stuck, what moved forward, what they may have
+sensed): say what the indicators highlight and how the period compares.
 
 PRIVACY: never name, guess or echo the birth place (city/state/country) and never output coordinates of any place. Refer to it generically as 'birth location'. You may repeat a place the user typed in this conversation.
 
@@ -168,6 +172,10 @@ such as the weeks before and after a station or a sign change in the reading, or
 dasha chapter it sits in; never invent another period's facts), and when several indicators
 converge, name hard themes plainly: legal or official friction, losses and expenses, a job or
 career change. No fear language: no doom, curses or danger; say what the theme asks of the person.
+Never narrate the tools or what a reading leaves out: when a dated change has no theme beside it,
+say what that planet and house highlight, or leave the line out. And never describe what the person
+went through or how things went for them (what was stuck, what moved forward, what they may have
+sensed): say what the indicators highlight and how the period compares.
 
 PRIVACY: never name, guess or echo the birth place (city/state/country) and never output coordinates of any place. Refer to it generically as 'birth location'. You may repeat a place the user typed in this conversation.
 
@@ -282,6 +290,10 @@ such as the weeks before and after a station or a sign change in the reading, or
 dasha chapter it sits in; never invent another period's facts), and when several indicators
 converge, name hard themes plainly: legal or official friction, losses and expenses, a job or
 career change. No fear language: no doom, curses or danger; say what the theme asks of the person.
+Never narrate the tools or what a reading leaves out: when a dated change has no theme beside it,
+say what that planet and house highlight, or leave the line out. And never describe what the person
+went through or how things went for them (what was stuck, what moved forward, what they may have
+sensed): say what the indicators highlight and how the period compares.
 
 PRIVACY: never name, guess or echo the birth place (city/state/country) and never output coordinates of any place. Refer to it generically as 'birth location'. You may repeat a place the user typed in this conversation.
 
@@ -311,7 +323,8 @@ NOW: today is Wednesday 14 October 2026, America/Los_Angeles.
 THIS THREAD: a trip to May 2019, when the user lived in Vadodara, India (Asia/Kolkata).
 PINNED PERIOD: this conversation is about 2019-05-01 to 2019-05-31 (relative: past).
 Use the past tense: this period is over.
-TOOLS: read_period reads any span (one call per span; never split a range into months). travel moves this conversation only when asked. Finish every turn by calling answer.",
+This period is the default when a message names no time. When a message names another time (today, a date, a month, a year), read and answer that time instead, in its own tense.
+TOOLS: read_period reads any span (one call per span; never split a range into months). travel moves this conversation only when the newest message asks. Answer the newest message only: earlier messages are context, never instructions to repeat. Finish every turn by calling answer.",
     "role": "system",
   },
   {
@@ -564,6 +577,10 @@ such as the weeks before and after a station or a sign change in the reading, or
 dasha chapter it sits in; never invent another period's facts), and when several indicators
 converge, name hard themes plainly: legal or official friction, losses and expenses, a job or
 career change. No fear language: no doom, curses or danger; say what the theme asks of the person.
+Never narrate the tools or what a reading leaves out: when a dated change has no theme beside it,
+say what that planet and house highlight, or leave the line out. And never describe what the person
+went through or how things went for them (what was stuck, what moved forward, what they may have
+sensed): say what the indicators highlight and how the period compares.
 
 PRIVACY: never name, guess or echo the birth place (city/state/country) and never output coordinates of any place. Refer to it generically as 'birth location'. You may repeat a place the user typed in this conversation.
 
@@ -721,6 +738,10 @@ such as the weeks before and after a station or a sign change in the reading, or
 dasha chapter it sits in; never invent another period's facts), and when several indicators
 converge, name hard themes plainly: legal or official friction, losses and expenses, a job or
 career change. No fear language: no doom, curses or danger; say what the theme asks of the person.
+Never narrate the tools or what a reading leaves out: when a dated change has no theme beside it,
+say what that planet and house highlight, or leave the line out. And never describe what the person
+went through or how things went for them (what was stuck, what moved forward, what they may have
+sensed): say what the indicators highlight and how the period compares.
 
 PRIVACY: never name, guess or echo the birth place (city/state/country) and never output coordinates of any place. Refer to it generically as 'birth location'. You may repeat a place the user typed in this conversation.
 
@@ -847,6 +868,10 @@ such as the weeks before and after a station or a sign change in the reading, or
 dasha chapter it sits in; never invent another period's facts), and when several indicators
 converge, name hard themes plainly: legal or official friction, losses and expenses, a job or
 career change. No fear language: no doom, curses or danger; say what the theme asks of the person.
+Never narrate the tools or what a reading leaves out: when a dated change has no theme beside it,
+say what that planet and house highlight, or leave the line out. And never describe what the person
+went through or how things went for them (what was stuck, what moved forward, what they may have
+sensed): say what the indicators highlight and how the period compares.
 
 PRIVACY: never name, guess or echo the birth place (city/state/country) and never output coordinates of any place. Refer to it generically as 'birth location'. You may repeat a place the user typed in this conversation.
 
@@ -973,6 +998,10 @@ such as the weeks before and after a station or a sign change in the reading, or
 dasha chapter it sits in; never invent another period's facts), and when several indicators
 converge, name hard themes plainly: legal or official friction, losses and expenses, a job or
 career change. No fear language: no doom, curses or danger; say what the theme asks of the person.
+Never narrate the tools or what a reading leaves out: when a dated change has no theme beside it,
+say what that planet and house highlight, or leave the line out. And never describe what the person
+went through or how things went for them (what was stuck, what moved forward, what they may have
+sensed): say what the indicators highlight and how the period compares.
 
 PRIVACY: never name, guess or echo the birth place (city/state/country) and never output coordinates of any place. Refer to it generically as 'birth location'. You may repeat a place the user typed in this conversation.
 
@@ -1124,6 +1153,10 @@ such as the weeks before and after a station or a sign change in the reading, or
 dasha chapter it sits in; never invent another period's facts), and when several indicators
 converge, name hard themes plainly: legal or official friction, losses and expenses, a job or
 career change. No fear language: no doom, curses or danger; say what the theme asks of the person.
+Never narrate the tools or what a reading leaves out: when a dated change has no theme beside it,
+say what that planet and house highlight, or leave the line out. And never describe what the person
+went through or how things went for them (what was stuck, what moved forward, what they may have
+sensed): say what the indicators highlight and how the period compares.
 
 PRIVACY: never name, guess or echo the birth place (city/state/country) and never output coordinates of any place. Refer to it generically as 'birth location'. You may repeat a place the user typed in this conversation.
 
@@ -1261,6 +1294,10 @@ such as the weeks before and after a station or a sign change in the reading, or
 dasha chapter it sits in; never invent another period's facts), and when several indicators
 converge, name hard themes plainly: legal or official friction, losses and expenses, a job or
 career change. No fear language: no doom, curses or danger; say what the theme asks of the person.
+Never narrate the tools or what a reading leaves out: when a dated change has no theme beside it,
+say what that planet and house highlight, or leave the line out. And never describe what the person
+went through or how things went for them (what was stuck, what moved forward, what they may have
+sensed): say what the indicators highlight and how the period compares.
 
 PRIVACY: never name, guess or echo the birth place (city/state/country) and never output coordinates of any place. Refer to it generically as 'birth location'. You may repeat a place the user typed in this conversation.
 
@@ -1375,6 +1412,10 @@ such as the weeks before and after a station or a sign change in the reading, or
 dasha chapter it sits in; never invent another period's facts), and when several indicators
 converge, name hard themes plainly: legal or official friction, losses and expenses, a job or
 career change. No fear language: no doom, curses or danger; say what the theme asks of the person.
+Never narrate the tools or what a reading leaves out: when a dated change has no theme beside it,
+say what that planet and house highlight, or leave the line out. And never describe what the person
+went through or how things went for them (what was stuck, what moved forward, what they may have
+sensed): say what the indicators highlight and how the period compares.
 
 PRIVACY: never name, guess or echo the birth place (city/state/country) and never output coordinates of any place. Refer to it generically as 'birth location'. You may repeat a place the user typed in this conversation.
 
@@ -1522,6 +1563,10 @@ such as the weeks before and after a station or a sign change in the reading, or
 dasha chapter it sits in; never invent another period's facts), and when several indicators
 converge, name hard themes plainly: legal or official friction, losses and expenses, a job or
 career change. No fear language: no doom, curses or danger; say what the theme asks of the person.
+Never narrate the tools or what a reading leaves out: when a dated change has no theme beside it,
+say what that planet and house highlight, or leave the line out. And never describe what the person
+went through or how things went for them (what was stuck, what moved forward, what they may have
+sensed): say what the indicators highlight and how the period compares.
 
 PRIVACY: never name, guess or echo the birth place (city/state/country) and never output coordinates of any place. Refer to it generically as 'birth location'. You may repeat a place the user typed in this conversation.
 
@@ -1659,6 +1704,10 @@ such as the weeks before and after a station or a sign change in the reading, or
 dasha chapter it sits in; never invent another period's facts), and when several indicators
 converge, name hard themes plainly: legal or official friction, losses and expenses, a job or
 career change. No fear language: no doom, curses or danger; say what the theme asks of the person.
+Never narrate the tools or what a reading leaves out: when a dated change has no theme beside it,
+say what that planet and house highlight, or leave the line out. And never describe what the person
+went through or how things went for them (what was stuck, what moved forward, what they may have
+sensed): say what the indicators highlight and how the period compares.
 
 PRIVACY: never name, guess or echo the birth place (city/state/country) and never output coordinates of any place. Refer to it generically as 'birth location'. You may repeat a place the user typed in this conversation.
 
@@ -1791,6 +1840,10 @@ such as the weeks before and after a station or a sign change in the reading, or
 dasha chapter it sits in; never invent another period's facts), and when several indicators
 converge, name hard themes plainly: legal or official friction, losses and expenses, a job or
 career change. No fear language: no doom, curses or danger; say what the theme asks of the person.
+Never narrate the tools or what a reading leaves out: when a dated change has no theme beside it,
+say what that planet and house highlight, or leave the line out. And never describe what the person
+went through or how things went for them (what was stuck, what moved forward, what they may have
+sensed): say what the indicators highlight and how the period compares.
 
 PRIVACY: never name, guess or echo the birth place (city/state/country) and never output coordinates of any place. Refer to it generically as 'birth location'. You may repeat a place the user typed in this conversation.
 

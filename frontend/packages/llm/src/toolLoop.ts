@@ -10,6 +10,9 @@
 // - zod-typed tools whose invalid arguments go back to the model as a retry;
 // - a final `answer` tool that carries the structured answer, streamed as
 //   rendered snapshots while its arguments arrive;
+// - the reflection check on every exit path (./reflection): a snapshot is shown
+//   a sentence at a time, each only once the check passes it; prose that still
+//   fails after a reworded retry is withheld behind an honest notice;
 // - per-tool budgets, tool timeouts, a runaway-reasoning cap, and telemetry;
 // - a per-turn context budget: no request carries more than half the model's
 //   context window. Older tool results go compact first (the newest result of
@@ -47,6 +50,7 @@ import { compactToolResult } from "./compaction";
 import { ensurePrivacy, OPENROUTER_API_BASE, PrivacyViolationError, type ProviderConfig } from "./config";
 import { calibratedEstimate, estimateRequestTokens, turnTokenBudget, type TokenCalibration } from "./contextBudget";
 import { CHAT_REASONING_MAX_TOKENS, REASONING_TIMEOUT_MS, ReasoningTimeoutError } from "./reasoning";
+import { REFLECTION_WITHHELD, reflectionCorrection, reflectionGate, reflectionIssues, type ReflectionGate } from "./reflection";
 import {
   explicitlyRejectsTools,
   refusesToolChoice,
@@ -141,6 +145,11 @@ export interface AnswerSpec<A> {
   readonly description?: string;
   render(partial: Partial<A>, final: boolean): string;
   /**
+   * What the user sees in place of a text that still fails the reflection check after its retry,
+   * in the answer's language (default {@link REFLECTION_WITHHELD}.en).
+   */
+  readonly withheld?: string;
+  /**
    * Fills facts the tools already returned into the model's answer before it is validated
    * (after omitted, "null" and blank nullable keys became null). Return the input unchanged when
    * there is nothing to fill; a wrong value must be left for validation to reject.
@@ -161,7 +170,7 @@ export interface RunToolTurnOptions<A> {
   readonly signal?: AbortSignal;
   readonly fetchImpl?: typeof fetch;
   readonly limits?: ToolLoopLimits;
-  /** Runaway-reasoning cap per request (default REASONING_TIMEOUT_MS). */
+  /** Stall window: this long with no streamed part (reasoning included) aborts (default REASONING_TIMEOUT_MS). */
   readonly reasoningTimeoutMs?: number;
   onStatus?(e: AgentStatusEvent): void;
   onToolCall?(e: ToolCallEvent): void;
@@ -184,6 +193,9 @@ export const TOOL_LOOP_LIMITS = Object.freeze({
 
 export const TOOL_TIMEOUT_MS = Object.freeze({ default: 2_000, max: 150_000 });
 
+/** A turn's model time (requests open, tools excluded) ends here, however steadily it streams. */
+export const TURN_MODEL_TIME_CEILING_MS = 300_000;
+
 /** The system line of a turn the context budget closed. */
 export const BUDGET_INSTRUCTION =
   "The context budget for this turn is used up, so no more tools can run. Answer from the facts " +
@@ -192,6 +204,8 @@ export const BUDGET_INSTRUCTION =
 const SKIPPED_NOTE = "This turn already read enough; answer from the readings above.";
 const PROSE_INSTRUCTION = "Write the answer as plain prose.";
 const MAX_ERROR_BODY_CHARS = 500;
+/** Prose requests per exit path: the first, plus one reworded retry when the reflection check fails it. */
+export const REFLECTION_PROSE_ATTEMPTS = 2;
 /** The pause before a model request that failed at the network layer is sent once more. */
 export const NETWORK_RETRY_DELAY_MS = 1_000;
 /** The AI SDK's own default: two retries of a transient HTTP failure inside one request. */
@@ -255,25 +269,53 @@ function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/** Cancels a request that has produced no answer text or tool call for `ms`. */
-class ReasoningWatchdog {
+/**
+ * Catches a stalled stream, not a slow thinker (real drive 2026-10-15: deepseek-v4-pro reasoned
+ * for about 95 s, then sent its whole answer call at 121 s; a slower provider crossed the old
+ * "no answer text in 180 s" cap). While a request is open, every streamed part, reasoning
+ * included, restarts the idle window; `idleMs` of silence aborts. Model time (requests open, not
+ * tools running: they have their own timeouts) is capped at `ceilingMs` a turn, so a runaway
+ * that keeps reasoning still ends. Both abort with a ReasoningTimeoutError.
+ */
+class StallWatchdog {
   private readonly controller = new AbortController();
-  private timer: ReturnType<typeof setTimeout> | undefined;
+  private idle: ReturnType<typeof setTimeout> | undefined;
+  private ceiling: ReturnType<typeof setTimeout> | undefined;
+  private openedAt: number | undefined;
+  private usedMs = 0;
 
-  constructor(private readonly ms: number) {}
+  constructor(private readonly idleMs: number, private readonly ceilingMs: number) {}
 
   get signal(): AbortSignal {
     return this.controller.signal;
   }
 
-  arm(): void {
-    this.disarm();
-    this.timer = setTimeout(() => this.controller.abort(new ReasoningTimeoutError(this.ms)), this.ms);
+  /** A request opened: model time runs and the idle window starts. */
+  start(): void {
+    if (this.openedAt === undefined) {
+      this.openedAt = Date.now();
+      this.ceiling = setTimeout(() => this.abort(this.ceilingMs), Math.max(0, this.ceilingMs - this.usedMs));
+    }
+    this.touch();
   }
 
-  disarm(): void {
-    clearTimeout(this.timer);
-    this.timer = undefined;
+  /** A streamed part arrived: the stream is alive. */
+  touch(): void {
+    if (this.openedAt === undefined) return;
+    clearTimeout(this.idle);
+    this.idle = setTimeout(() => this.abort(this.idleMs), this.idleMs);
+  }
+
+  /** Tools run, or the turn ends: model time stops. */
+  pause(): void {
+    if (this.openedAt !== undefined) this.usedMs += Date.now() - this.openedAt;
+    this.openedAt = undefined;
+    clearTimeout(this.idle);
+    clearTimeout(this.ceiling);
+  }
+
+  private abort(ms: number): void {
+    this.controller.abort(new ReasoningTimeoutError(ms));
   }
 }
 
@@ -431,7 +473,7 @@ interface TurnContext {
   readonly signal: AbortSignal;
   /** Aborted when the turn ends for any reason, so an abandoned generator stops its request and tools. */
   readonly cancel: AbortController;
-  readonly watchdog: ReasoningWatchdog;
+  readonly watchdog: StallWatchdog;
   readonly reads: ReadProgress;
   readonly fill: AnswerFill;
   readonly providerOptions: ProviderOptions;
@@ -607,7 +649,7 @@ function turnBudget<A>(o: RunToolTurnOptions<A>): TurnBudget {
 }
 
 function turnContext<A>(o: RunToolTurnOptions<A>): TurnContext {
-  const watchdog = new ReasoningWatchdog(o.reasoningTimeoutMs ?? REASONING_TIMEOUT_MS);
+  const watchdog = new StallWatchdog(o.reasoningTimeoutMs ?? REASONING_TIMEOUT_MS, TURN_MODEL_TIME_CEILING_MS);
   const cancel = new AbortController();
   const signal = AbortSignal.any([cancel.signal, watchdog.signal, ...(o.signal ? [o.signal] : [])]);
   const reads: ReadProgress = { completed: false };
@@ -794,9 +836,22 @@ function mustReadFirst(ctx: TurnContext, readFirst: boolean): boolean {
   return readFirst && !ctx.reads.completed && ctx.readTools.length > 0;
 }
 
-/** Tool choice for a 1-based round of the whole turn; the last round always forces the answer. */
-function roundChoice(round: number, ctx: TurnContext, readFirst: boolean): StepPlan {
-  if (round >= ctx.maxRounds) return ctx.choice.mode === "auto" ? answerOnly(ctx) : { toolChoice: { type: "tool", toolName: ANSWER_TOOL_NAME } };
+/** The step sent the answer back (its arguments failed the answer check). */
+function rejectedAnswer(step: { readonly toolCalls: readonly { readonly toolName: string }[] } | undefined): boolean {
+  return step?.toolCalls.some((c) => c.toolName === ANSWER_TOOL_NAME && "invalid" in c && c.invalid === true) === true;
+}
+
+const forceAnswer = (ctx: TurnContext): StepPlan =>
+  ctx.choice.mode === "auto" ? answerOnly(ctx) : { toolChoice: { type: "tool", toolName: ANSWER_TOOL_NAME } };
+
+/**
+ * Tool choice for a 1-based round of the whole turn; the last round always forces the answer. A
+ * retry of a rejected answer once a read has completed offers only the answer: the facts are in
+ * hand, so a rewording never spends another read (a real run went past three calls, 2026-10-15).
+ */
+function roundChoice(round: number, ctx: TurnContext, readFirst: boolean, rejected = false): StepPlan {
+  if (round >= ctx.maxRounds) return forceAnswer(ctx);
+  if (rejected && ctx.reads.completed) return answerOnly(ctx);
   const toolChoice = ctx.choice.mode;
   const open = ctx.readTools.filter((name) => !ctx.calls.exhausted(name));
   if (mustReadFirst(ctx, readFirst)) return { toolChoice, activeTools: open.length > 0 ? open : ctx.readTools };
@@ -830,6 +885,8 @@ interface TurnState {
   answering: boolean;
   answerInput: unknown;
   lastSnapshot: string | undefined;
+  /** Releases the answer draft streaming now, sentence by sentence, through the reflection check. */
+  gate: ReflectionGate;
   readonly firstTry: Set<string>;
   readonly invalidIds: Set<string>;
   readonly invalidNames: Set<string>;
@@ -847,6 +904,7 @@ function newState(): TurnState {
     answering: false,
     answerInput: undefined,
     lastSnapshot: undefined,
+    gate: reflectionGate(),
     firstTry: new Set(),
     invalidIds: new Set(),
     invalidNames: new Set(),
@@ -926,8 +984,8 @@ async function answerSnapshot<A>(part: PartOf<"tool-input-delta">, o: RunToolTur
   state.answerDrafts.set(part.id, text);
   const { value } = await parsePartialJson(text);
   if (!isRecord(value)) return undefined;
-  const snapshot = o.answer.render(value as Partial<A>, false);
-  if (snapshot === state.lastSnapshot) return undefined;
+  const snapshot = state.gate.release(o.answer.render(value as Partial<A>, false), false);
+  if (!snapshot || snapshot === state.lastSnapshot) return undefined;
   state.lastSnapshot = snapshot;
   return snapshot;
 }
@@ -935,6 +993,7 @@ async function answerSnapshot<A>(part: PartOf<"tool-input-delta">, o: RunToolTur
 function onToolInputStart<A>(part: PartOf<"tool-input-start">, o: RunToolTurnOptions<A>, state: TurnState): void {
   if (part.toolName !== ANSWER_TOOL_NAME) return;
   state.answerDrafts.set(part.id, "");
+  state.gate = reflectionGate(); // a new draft: nothing of the last one is passed for it
   startAnswering(o, state);
 }
 
@@ -950,7 +1009,7 @@ function onFinishStep<A>(part: PartOf<"finish-step">, o: RunToolTurnOptions<A>, 
   const finishReason = state.stepWroteText ? "text_instead_of_tool" : part.finishReason;
   const usage = roundBudget(ctx.budget, state.round, part.usage.inputTokens);
   o.onRound?.({ round: state.round, inputTokens: part.usage.inputTokens, outputTokens: part.usage.outputTokens, finishReason, ...usage });
-  ctx.watchdog.arm(); // the next request starts now
+  ctx.watchdog.start(); // the next request starts now
 }
 
 /**
@@ -963,18 +1022,13 @@ async function onPart<A>(part: Part, o: RunToolTurnOptions<A>, ctx: TurnContext,
     case "start-step":
       onStartStep(o, state);
       return undefined;
-    case "text-delta":
-      ctx.watchdog.disarm();
-      return undefined;
     case "tool-input-start":
-      ctx.watchdog.disarm();
       onToolInputStart(part, o, state);
       return undefined;
     case "tool-input-delta":
-      ctx.watchdog.disarm();
       return answerSnapshot(part, o, state);
     case "tool-call":
-      ctx.watchdog.disarm();
+      ctx.watchdog.pause(); // the tool runs now, under its own timeout
       onToolCall(part, o, ctx, state);
       return undefined;
     case "tool-error":
@@ -1001,11 +1055,13 @@ async function* streamRounds<A>(o: RunToolTurnOptions<A>, ctx: TurnContext, stat
     stopWhen: [validAnswer, stepCountIs(ctx.maxRounds - offset)],
     prepareStep: ({ stepNumber, steps, messages: step }) => {
       const round = offset + stepNumber + 1;
-      return planRound(ctx, round, steps.at(-1)?.usage.inputTokens, step, roundChoice(round, ctx, o.readFirst), o.readFirst);
+      const choice = roundChoice(round, ctx, o.readFirst, rejectedAnswer(steps.at(-1)));
+      return planRound(ctx, round, steps.at(-1)?.usage.inputTokens, step, choice, o.readFirst);
     },
   });
-  ctx.watchdog.arm();
+  ctx.watchdog.start();
   for await (const part of result.fullStream) {
+    ctx.watchdog.touch();
     if (isTextInsteadOfTool(part)) {
       state.stepWroteText = true;
       continue;
@@ -1017,6 +1073,7 @@ async function* streamRounds<A>(o: RunToolTurnOptions<A>, ctx: TurnContext, stat
     state.yielded = true;
     yield snapshot;
   }
+  ctx.watchdog.pause();
   // Every step's messages: `response.messages` is the last step's only (AI SDK 7).
   return state.answerInput === undefined ? await result.responseMessages : [];
 }
@@ -1068,33 +1125,67 @@ interface ProseRequest {
   readonly tools?: ToolSet;
 }
 
-/** Stream plain text as snapshots, tool markup stripped; nothing meaningful left is an error. */
-async function* proseSnapshots(ctx: TurnContext, prefix: string, request: ProseRequest): AsyncGenerator<string, PartOf<"finish-step"> | undefined> {
+interface ProseOutcome {
+  readonly finished: PartOf<"finish-step"> | undefined;
+  /** The whole text, tool markup stripped. */
+  readonly text: string;
+}
+
+/**
+ * Stream plain text as snapshots, tool markup stripped, a sentence at a time through the
+ * reflection check; nothing meaningful left is an error. The caller checks the whole text.
+ */
+async function* proseSnapshots(ctx: TurnContext, prefix: string, request: ProseRequest): AsyncGenerator<string, ProseOutcome> {
   const result = streamText({
     ...streamOptions(ctx),
     messages: request.messages,
     ...(request.tools ? { tools: request.tools, toolChoice: "none" as const } : {}),
   });
-  ctx.watchdog.arm();
+  ctx.watchdog.start();
+  const gate = reflectionGate();
   let text = "";
   let shown = "";
   let finished: PartOf<"finish-step"> | undefined;
   for await (const part of result.fullStream) {
+    ctx.watchdog.touch();
     const failed = failure(part, ctx);
     if (failed !== undefined) throw failed;
     if (part.type === "finish-step") finished = part;
     if (part.type !== "text-delta") continue;
-    ctx.watchdog.disarm();
     text += part.text;
-    const clean = visibleProse(text, false);
+    const clean = gate.release(visibleProse(text, false), false);
     if (clean === shown) continue;
     shown = clean;
     yield prefix + clean;
   }
+  ctx.watchdog.pause();
   const final = visibleProse(text, true);
   if (!final.trim()) throw new LlmRequestError(EMPTY_COMPLETION);
-  if (final !== shown) yield prefix + final;
-  return finished;
+  const released = gate.release(final, true);
+  if (released !== shown) yield prefix + released;
+  return { finished, text: final };
+}
+
+/**
+ * The prose exit paths: up to {@link REFLECTION_PROSE_ATTEMPTS} requests. A text the reflection
+ * check fails goes back once with the issues named; one that still fails is withheld. Returns
+ * whether a text passed.
+ */
+async function* checkedProse(
+  ctx: TurnContext,
+  prefix: string,
+  request: (attempt: number, retry: ModelMessage[]) => ProseRequest,
+  onAttempt: (attempt: number, finished: PartOf<"finish-step"> | undefined) => void,
+): AsyncGenerator<string, boolean> {
+  const retry: ModelMessage[] = [];
+  for (let attempt = 0; attempt < REFLECTION_PROSE_ATTEMPTS; attempt += 1) {
+    const { finished, text } = yield* proseSnapshots(ctx, prefix, request(attempt, retry));
+    onAttempt(attempt, finished);
+    const issues = reflectionIssues(text);
+    if (issues.length === 0) return true;
+    retry.push({ role: "assistant", content: text }, { role: "system", content: reflectionCorrection(issues) });
+  }
+  return false;
 }
 
 /** The prose request as it is when it fits the turn's budget; else with every tool result compact. */
@@ -1112,14 +1203,28 @@ function fitProse(budget: TurnBudget, round: number, messages: readonly ModelMes
 
 async function* proseFallback<A>(o: RunToolTurnOptions<A>, ctx: TurnContext, state: TurnState, history: ModelMessage[]): AsyncGenerator<string, ToolTurnResult<A>> {
   startAnswering(o, state);
-  const round = state.round + 1;
-  calibrate(ctx.budget, state.round, ctx.budget.reported.get(state.round));
-  const messages = fitProse(ctx.budget, round, [...ctx.messages, ...history, { role: "system", content: PROSE_INSTRUCTION }]);
-  const finished = yield* proseSnapshots(ctx, "", { messages, tools: ctx.tools });
-  const usage = roundBudget(ctx.budget, round, finished?.usage.inputTokens);
-  o.onRound?.({ round, inputTokens: finished?.usage.inputTokens, outputTokens: finished?.usage.outputTokens, finishReason: "answer_fallback", ...usage });
+  const first = state.round + 1;
+  const base: ModelMessage[] = [...ctx.messages, ...history, { role: "system", content: PROSE_INSTRUCTION }];
+  const passed = yield* checkedProse(
+    ctx,
+    "",
+    (attempt, retry) => {
+      calibrate(ctx.budget, first + attempt - 1, ctx.budget.reported.get(first + attempt - 1));
+      return { messages: fitProse(ctx.budget, first + attempt, [...base, ...retry]), tools: ctx.tools };
+    },
+    (attempt, finished) => {
+      const round = first + attempt;
+      const usage = roundBudget(ctx.budget, round, finished?.usage.inputTokens);
+      o.onRound?.({ round, inputTokens: finished?.usage.inputTokens, outputTokens: finished?.usage.outputTokens, finishReason: "answer_fallback", ...usage });
+    },
+  );
+  if (!passed) yield withheldText(o);
   o.onStatus?.({ phase: "complete" });
   return { answer: undefined };
+}
+
+function withheldText<A>(o: RunToolTurnOptions<A>): string {
+  return o.answer.withheld ?? REFLECTION_WITHHELD.en;
 }
 
 /** A system prompt's "TOOLS: …" line: it names the tools and says to call answer, untrue with no tools. */
@@ -1133,9 +1238,14 @@ function withoutToolsLine(message: ModelMessage): ModelMessage {
 async function* toolsUnavailable<A>(o: RunToolTurnOptions<A>, ctx: TurnContext): AsyncGenerator<string, ToolTurnResult<A>> {
   o.onStatus?.({ phase: "answering" });
   yield TOOLS_UNAVAILABLE_NOTICE;
-  yield* proseSnapshots(ctx, TOOLS_UNAVAILABLE_NOTICE, {
-    messages: [{ role: "system", content: TOOLS_UNAVAILABLE_INSTRUCTION }, ...ctx.messages.map(withoutToolsLine)],
-  });
+  const base: ModelMessage[] = [{ role: "system", content: TOOLS_UNAVAILABLE_INSTRUCTION }, ...ctx.messages.map(withoutToolsLine)];
+  const passed = yield* checkedProse(
+    ctx,
+    TOOLS_UNAVAILABLE_NOTICE,
+    (_attempt, retry) => ({ messages: [...base, ...retry] }),
+    () => undefined,
+  );
+  if (!passed) yield `${TOOLS_UNAVAILABLE_NOTICE}${withheldText(o)}`;
   o.onStatus?.({ phase: "complete" });
   return { answer: undefined };
 }
@@ -1183,11 +1293,18 @@ export async function* runToolTurn<A>(o: RunToolTurnOptions<A>): AsyncGenerator<
     // Already validated (and transformed) by the SDK through the answer schema; parsing
     // it again would break a transform whose output is not valid input.
     const answer = state.answerInput as A;
-    yield o.answer.render(answer, true);
+    const rendered = o.answer.render(answer, true);
+    // The schema checked each field; the rendered whole (labels and joins included) is checked too.
+    if (reflectionIssues(rendered).length > 0) {
+      yield withheldText(o);
+      o.onStatus?.({ phase: "complete" });
+      return { answer: undefined };
+    }
+    yield rendered;
     o.onStatus?.({ phase: "complete" });
     return { answer };
   } finally {
-    ctx.watchdog.disarm();
+    ctx.watchdog.pause();
     ctx.cancel.abort(); // an early return() must not leave the request or a tool running
   }
 }
