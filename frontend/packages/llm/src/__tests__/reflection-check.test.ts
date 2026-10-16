@@ -279,6 +279,9 @@ describe("the gate's cost and its length cap", () => {
   });
 
   // The first cap cut falls just before character 400: slide the phrase across it, one character at a time.
+  // Each slide re-streams ~1,000 characters one at a time, 48 times: ~1.3 s alone, over vitest's 5 s
+  // default on a loaded CI runner (main 2a98c86d). This is a hang ceiling, not a speed budget.
+  const SLIDE_TIMEOUT_MS = 120_000;
   const PADS = Array.from({ length: 48 }, (_, pad) => pad);
   const padded = (pad: number, phrase: string): string => `${"a".repeat(pad + 1)} ${words(25)} ${phrase} ${words(60)}`;
   const stream = (text: string, onShown: (shown: string) => void): string => {
@@ -292,7 +295,7 @@ describe("the gate's cost and its length cap", () => {
       const final = stream(padded(pad, "and you will get married in 2027"), (shown) => expect(shown).not.toContain("you will"));
       expect(final).not.toContain("you will");
     }
-  });
+  }, SLIDE_TIMEOUT_MS);
 
   it("reads a piece after a cap cut with the words before it, so a clause is not misread", () => {
     let cutBeforeCareer = false;
@@ -304,7 +307,7 @@ describe("the gate's cost and its length cap", () => {
       expect(final).toBe(text);
     }
     expect(cutBeforeCareer).toBe(true); // the slide did put a cut between "of" and "career"
-  });
+  }, SLIDE_TIMEOUT_MS);
 });
 
 // Structured readings (northstar, PR #366: the rule was only in their prompts). Every string value
