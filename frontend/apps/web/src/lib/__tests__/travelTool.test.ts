@@ -345,3 +345,78 @@ describe('travel: back to today needs no read before the answer', () => {
     expect(tool.unlocksAnswer?.(null)).toBe(false);
   });
 });
+
+// Harish 2026-10-16: the phrase gate is the fast path, not the only one. A call the gate refused,
+// when the page can offer a button, returns a typed needs_confirmation and offers the move to the
+// user: nothing moves until they tap.
+describe('travel: a call the phrase gate closed becomes an offer', () => {
+  const offered = (overrides: Partial<TravelToolInput> = {}) => {
+    const offer = vi.fn();
+    return { offer, ...travelSetup({ grant: { kind: 'none' }, offer, ...overrides }) };
+  };
+
+  it('tells the model in its description that an unasked move is only offered, never claimed', () => {
+    const { tool } = offered();
+    expect(tool.description).toContain('Without that request nothing moves: the app offers the user a "Move to" button under your answer, so never say you moved.');
+  });
+
+  it('returns needs_confirmation with the exact to and place, records only the offer', async () => {
+    const { tool, record, offer } = offered();
+    const result = await go(tool, { to: '2019-05', place: 'Pune' });
+    expect(result).toMatchObject({ status: 'needs_confirmation', action: 'travel', to: '2019-05', place: 'Pune, India', period_label: 'May 2019' });
+    expect(record).not.toHaveBeenCalled();
+    expect(offer).toHaveBeenCalledTimes(1);
+    expect(offer).toHaveBeenCalledWith({
+      kind: 'travel',
+      asOf: periodAsOfFromDraft({ granularity: 'month', day: '2019-05-01', month: '2019-05', year: 2019, place: { label: 'Pune, India', timezone: 'Asia/Kolkata', latitude: 18.5204, longitude: 73.8567 } }),
+    });
+  });
+
+  it('pins the note to its literal: nothing moved, the user decides with a tap', async () => {
+    const { tool } = offered();
+    const result = await go(tool, { to: '2019-05', place: 'Pune' });
+    expect((result as { note: string }).note).toBe(
+      'Nothing moved. The app shows the user a "Move to" button under your answer; the conversation moves only if they tap it. Answer their question here: read the time they asked about with read_period. Do not say the conversation moved or the trip ended.',
+    );
+  });
+
+  it('offers back to today without a place', async () => {
+    const { tool, record, offer } = offered();
+    expect(await go(tool, { to: 'today', place: null })).toMatchObject({ status: 'needs_confirmation', action: 'back_to_today', to: 'today' });
+    expect(offer).toHaveBeenCalledWith({ kind: 'back_to_today' });
+    expect(record).not.toHaveBeenCalled();
+  });
+
+  it('never puts coordinates in the result the model reads', async () => {
+    const { tool } = offered();
+    const text = JSON.stringify(await go(tool, { to: '2019-05', place: 'Pune' }));
+    for (const pattern of COORDINATE_LIKE) expect(text).not.toMatch(pattern);
+  });
+
+  it('a place that cannot be found still says so, with no offer', async () => {
+    const { tool, offer } = offered();
+    expect(await go(tool, { to: '2019-05', place: 'Nowhereville' })).toMatchObject({ status: 'place_not_found' });
+    expect(offer).not.toHaveBeenCalled();
+  });
+
+  it('a second call in the turn offers nothing more', async () => {
+    const { tool, offer } = offered();
+    await go(tool, { to: '2019-05', place: 'Pune' });
+    expect(await go(tool, { to: '2018-05', place: 'Pune' })).toMatchObject({ status: 'skipped' });
+    expect(offer).toHaveBeenCalledTimes(1);
+  });
+
+  it('a wrong reply to a pending move is still refused, with no offer', async () => {
+    const { tool, offer } = offered({ grant: { kind: 'finish', to: '2019-05', reply: "what's my moon sign?" } });
+    expect(await go(tool, { to: '1990', place: 'Pune' })).toEqual(TRAVEL_NOT_PENDING);
+    expect(offer).not.toHaveBeenCalled();
+  });
+
+  it('a turn that asked to move moves, and offers nothing', async () => {
+    const offer = vi.fn();
+    const { tool, record } = travelSetup({ grant: { kind: 'asked' }, offer });
+    expect(await go(tool, { to: '2019-05', place: 'Pune' })).toMatchObject({ status: 'queued' });
+    expect(record).toHaveBeenCalledTimes(1);
+    expect(offer).not.toHaveBeenCalled();
+  });
+});

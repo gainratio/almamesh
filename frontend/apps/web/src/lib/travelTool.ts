@@ -26,6 +26,11 @@ export interface TravelToolInput extends PlaceResolverInput {
   readonly record: TravelRecorder;
   /** What this turn may move (travelIntent.ts travelGrant); a call outside it is refused. */
   readonly grant: TravelGrant;
+  /**
+   * Where a call the grant closed is offered to the user instead of refused (a "Move to…?" button
+   * under the answer). Absent: the call is refused. Offering moves nothing.
+   */
+  readonly offer?: TravelRecorder;
 }
 
 export interface TravelQueued {
@@ -44,7 +49,24 @@ export interface TravelRefused {
   readonly note: string;
 }
 
-export type TravelResult = TravelQueued | PlaceAsk | ReadPeriodAsk | TravelRefused;
+/**
+ * A call the phrase gate closed, with its move resolved: nothing moved, and the page offers the user
+ * a "Move to …?" button bound to exactly this `to` and place. No coordinates: the model reads this.
+ */
+export interface TravelNeedsConfirmation {
+  readonly status: 'needs_confirmation';
+  readonly action: 'travel' | 'back_to_today';
+  readonly to: string;
+  readonly place?: string;
+  readonly period_label?: string;
+  readonly note: string;
+}
+
+export type TravelResult = TravelQueued | TravelNeedsConfirmation | PlaceAsk | ReadPeriodAsk | TravelRefused;
+
+/** Said with every offer: the model must not claim the move (chatTurn.ts also sends such an answer back). */
+export const TRAVEL_OFFER_NOTE =
+  'Nothing moved. The app shows the user a "Move to" button under your answer; the conversation moves only if they tap it. Answer their question here: read the time they asked about with read_period. Do not say the conversation moved or the trip ended.';
 
 /**
  * dashboard.agentic.real 2026-10-15 (GPT Luna): "outlook today?" in a September 2017 trip read
@@ -70,9 +92,9 @@ export const TRAVEL_NOT_PENDING: TravelRefused = {
 };
 
 /** The refusal for a call outside this turn's grant, or undefined when the grant covers it. */
-function refusalFor(grant: TravelGrant, args: TravelArgs): TravelRefused | undefined {
+function refusalFor(grant: TravelGrant, args: TravelArgs, offering: boolean): TravelRefused | undefined {
   if (grant.kind === 'asked') return undefined;
-  if (grant.kind === 'none') return TRAVEL_NOT_ASKED;
+  if (grant.kind === 'none') return offering ? undefined : TRAVEL_NOT_ASKED;
   const finishes = args.to === grant.to && args.place !== null && isPlaceReply(grant.reply, args.place);
   return finishes ? undefined : TRAVEL_NOT_PENDING;
 }
@@ -82,6 +104,7 @@ const TO = /^(today|\d{4}(-(0[1-9]|1[0-2])(-(0[1-9]|[12]\d|3[01]))?)?)$/;
 const DESCRIPTION = [
   'Move this conversation and the Dashboard to a day, month or year (a time-travel trip), or back to today.',
   'Only when the user asks to move ("take me to ...", "back to today") in this message, or names the place you asked for; a question about another time, today included, is answered here with read_period.',
+  'Without that request nothing moves: the app offers the user a "Move to" button under your answer, so never say you moved.',
   'The move happens after your answer. Call it at most once per turn.',
   'Examples: "take me to May 2019 in Vadodara" -> {"to":"2019-05","place":"Vadodara"}.',
   '"back to today" or "leave this trip" -> {"to":"today","place":null}.',
@@ -149,6 +172,17 @@ function queued(asOf: ChatThreadAsOf, language: string): TravelQueued {
   return { status: 'queued', action: 'travel', period_label: formatPinLabel(asOf, language), ...place };
 }
 
+/** The move as an offer: the same resolution as a move, recorded to the offer sink, reported as needs_confirmation. */
+async function offerTo(input: TravelToolInput, offer: TravelRecorder, args: TravelArgs, context: ToolContext): Promise<TravelResult> {
+  const result = await travelTo({ ...input, record: offer }, args, context);
+  if (result.status !== 'queued') return result;
+  const { place_label: place, period_label: label } = result;
+  return {
+    status: 'needs_confirmation', action: result.action, to: args.to, note: TRAVEL_OFFER_NOTE,
+    ...(place ? { place } : {}), ...(label ? { period_label: label } : {}),
+  };
+}
+
 async function travelTo(input: TravelToolInput, args: TravelArgs, context: ToolContext): Promise<TravelResult> {
   context.signal.throwIfAborted();
   if (args.to === 'today') {
@@ -206,9 +240,12 @@ export function createTravelTool(input: TravelToolInput): ToolDef<TravelArgs> {
     // A trip turn reads before it answers; going back to today leaves nothing to read, only a confirmation.
     unlocksAnswer: isQueuedReturn,
     execute: async (args, context) => {
-      const refused = refusalFor(input.grant, args);
+      const refused = refusalFor(input.grant, args, input.offer !== undefined);
       if (refused) return refused;
-      return moved ? ALREADY_TRAVELLED : travelTo({ ...input, record }, args, context);
+      if (moved) return ALREADY_TRAVELLED;
+      const closed = input.grant.kind === 'none' ? input.offer : undefined;
+      if (!closed) return travelTo({ ...input, record }, args, context);
+      return offerTo(input, (action) => { moved = true; closed(action); }, args, context);
     },
   });
 }

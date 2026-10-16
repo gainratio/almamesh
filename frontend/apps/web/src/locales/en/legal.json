@@ -183,7 +183,6 @@
     "meaning_p2": "But they are for reflection. Use them to think about a period, not as a reason to expect a particular event.",
     "bar_heading": "How a technique earns stronger wording",
     "bar_p1": "Each test is written down before it runs. A new technique is scored on half of the people first. Only if it beats chance there, after correcting for every test we ran, does it go to the other half, held out and unseen. Only a technique that passes that held-out test can make the app's wording stronger. None has so far.",
-    "bar_p2": "One area is being re-tested on held-out data.",
     "rerun_heading": "We keep testing",
     "rerun_p1": "We re-run this test whenever we change how readings are computed, so a change cannot quietly make readings look better than they are.",
     "areas": {

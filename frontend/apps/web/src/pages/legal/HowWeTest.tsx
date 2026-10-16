@@ -158,7 +158,6 @@ export default function HowWeTest(): ReactElement {
 
       <h2>{t('how_we_test.bar_heading')}</h2>
       <p>{t('how_we_test.bar_p1')}</p>
-      <p>{t('how_we_test.bar_p2')}</p>
 
       <h2>{t('how_we_test.rerun_heading')}</h2>
       <p>{t('how_we_test.rerun_p1')}</p>

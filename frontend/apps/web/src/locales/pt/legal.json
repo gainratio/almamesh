@@ -183,7 +183,6 @@
     "meaning_p2": "Mas são para reflexão. Use-as para pensar sobre um período, não como motivo para esperar um acontecimento específico.",
     "bar_heading": "Como uma técnica ganha uma linguagem mais firme",
     "bar_p1": "Cada teste é escrito antes de rodar. Uma técnica nova é pontuada primeiro em metade das pessoas. Só se superar o acaso ali, depois de corrigir por todos os testes feitos, ela vai para a outra metade, reservada e nunca vista. Só uma técnica que passe nesse teste reservado pode deixar a linguagem do app mais firme. Nenhuma passou até agora.",
-    "bar_p2": "Uma área está sendo testada de novo com dados reservados.",
     "rerun_heading": "Seguimos testando",
     "rerun_p1": "Repetimos este teste sempre que alteramos como as leituras são calculadas, para que uma alteração não as faça parecer melhores do que são.",
     "areas": {

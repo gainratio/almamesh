@@ -321,6 +321,7 @@ function MeshEdgeContent({
         labels: chatStatusLabels(t),
         onStatus: ask.onStatus,
         ...(ask.onTravel ? { onTravel: ask.onTravel } : {}),
+        ...(ask.onTravelOffer ? { onTravelOffer: ask.onTravelOffer } : {}),
         ...(ask.pendingTravel ? { pendingTravel: ask.pendingTravel } : {}),
         ...(ask.onToolCall ? { onToolCall: ask.onToolCall } : {}),
       })) {

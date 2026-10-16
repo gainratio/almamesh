@@ -84,7 +84,18 @@ describe('How we test', () => {
     expect(text).toContain('held-out');
     expect(text).toContain('whenever we change how readings are computed');
     expect(text).not.toMatch(/every release/i);
-    expect(text).toContain('One area is being re-tested on held-out data.');
+  });
+
+  // CONTRACT REVERSED (travel-confirm PR, 2026-10-16): this test used to REQUIRE the line "One area is
+  // being re-tested on held-out data." Nothing is running, so the page must not say it is. If a real
+  // re-test result is published later, it goes in as a dated result, not as an in-progress claim.
+  it.each([
+    ['en', /being re-tested|held-out data\./],
+    ['es', /volviendo a probar/],
+    ['pt', /testada de novo/],
+  ] as const)('claims no re-test in progress (%s)', (language, stale) => {
+    renderPage(language);
+    expect(document.body.textContent ?? '').not.toMatch(stale);
   });
 
   it.each([

@@ -14,6 +14,16 @@ describe('travel slot', () => {
     expect(slot.take()).toBeUndefined();
   });
 
+  it('keeps an offer apart from a move: offering queues no move, take empties it', () => {
+    const slot = createTravelSlot();
+    const asOf = { start: '2019-03-01', end: '2019-03-31', granularity: 'month' as const };
+    slot.offer({ kind: 'travel', asOf });
+    expect(slot.take()).toBeUndefined();
+    asOf.start = '2020-03-01';
+    expect(slot.takeOffer()).toMatchObject({ kind: 'travel', asOf: { start: '2019-03-01' } });
+    expect(slot.takeOffer()).toBeUndefined();
+  });
+
   it('builds byte-equal day/month/year drafts', () => {
     expect(draftFromToolArgs('year', '2027')).toEqual({ granularity: 'year', day: '2027-01-01', month: '2027-01', year: 2027 });
     expect(draftFromToolArgs('month', '2019-03')).toEqual({ granularity: 'month', day: '2019-03-01', month: '2019-03', year: 2019 });

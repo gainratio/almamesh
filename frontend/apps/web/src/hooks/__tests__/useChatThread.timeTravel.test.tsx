@@ -619,3 +619,115 @@ describe('the pending move is read from the saved thread, across a reload', () =
     expect(stream.mock.calls.map(([input]) => input.pendingTravel)).toEqual([{ kind: 'pending_travel', to: '2019-05' }, undefined]);
   });
 });
+
+// Harish 2026-10-16: a move the phrase gate closed is offered as a "Move to…?" button. The offer is
+// the one the turn recorded (bound to its asOf), moves only on the user's tap, and lasts until the
+// next user turn.
+describe('useChatThread: an offered move', () => {
+  const MAY = { start: '2019-05-01', end: '2019-05-31', granularity: 'month' } as const;
+  const offering = (asOf: typeof JUNE | typeof MAY, answer = 'It was a heavy month.') =>
+    async ({ onTravelOffer }: ChatStreamInput) => {
+      onTravelOffer?.({ kind: 'travel', asOf });
+      return answer;
+    };
+
+  beforeEach(() => {
+    useTimeTravelStore.setState({ moments: {} });
+    llm.configured = true;
+  });
+
+  it('holds the offer under the answer and moves nothing by itself', async () => {
+    const { result } = renderHook(() => useChatThread(PROFILE, CHART));
+    await act(() => result.current.pin(YEAR));
+    await act(() => result.current.submit('What was June like?', offering(JUNE)));
+    expect(result.current.travelOffer).toEqual({ kind: 'travel', asOf: JUNE });
+    expect(result.current.asOf).toEqual(YEAR);
+    expect(useTimeTravelStore.getState().moments[PROFILE]).toEqual(YEAR);
+  });
+
+  it('a tap moves to exactly the offered asOf, in a new trip, and the offer is spent', async () => {
+    const { result } = renderHook(() => useChatThread(PROFILE, CHART));
+    await act(() => result.current.pin(YEAR));
+    const old = result.current.threadId;
+    await act(() => result.current.submit('What was June like?', offering(JUNE)));
+    await act(() => result.current.confirmTravelOffer());
+    expect(result.current.asOf).toEqual(JUNE);
+    expect(result.current.threadId).not.toBe(old);
+    expect(useTimeTravelStore.getState().moments[PROFILE]).toEqual(JUNE);
+    expect(result.current.travelOffer).toBeUndefined();
+  });
+
+  it('a new offer replaces the old one: the tap goes to the newest offer only', async () => {
+    const { result } = renderHook(() => useChatThread(PROFILE, CHART));
+    await act(() => result.current.submit('What was June like?', offering(JUNE)));
+    await act(() => result.current.submit('And May 2019?', offering(MAY)));
+    expect(result.current.travelOffer).toEqual({ kind: 'travel', asOf: MAY });
+    await act(() => result.current.confirmTravelOffer());
+    expect(useTimeTravelStore.getState().moments[PROFILE]).toEqual(MAY);
+  });
+
+  it('expires on the next user turn: no button, and a late tap moves nothing', async () => {
+    const { result } = renderHook(() => useChatThread(PROFILE, CHART));
+    await act(() => result.current.pin(YEAR));
+    await act(() => result.current.submit('What was June like?', offering(JUNE)));
+    await act(() => result.current.submit('Thanks, and my career?', async () => 'Steady.'));
+    expect(result.current.travelOffer).toBeUndefined();
+    await act(() => result.current.confirmTravelOffer());
+    expect(result.current.asOf).toEqual(YEAR);
+    expect(useTimeTravelStore.getState().moments[PROFILE]).toEqual(YEAR);
+  });
+
+  it('is gone when another thread is opened', async () => {
+    const { result } = renderHook(() => useChatThread(PROFILE, CHART));
+    await act(() => result.current.pin(YEAR));
+    const trip = result.current.threadId!;
+    await act(() => result.current.backToToday());
+    await act(() => result.current.submit('What was June like?', offering(JUNE)));
+    expect(result.current.travelOffer).toBeDefined();
+    act(() => result.current.openThread(trip));
+    expect(result.current.travelOffer).toBeUndefined();
+  });
+
+  it('an offered back to today clears the Dashboard moment on tap', async () => {
+    const { result } = renderHook(() => useChatThread(PROFILE, CHART));
+    await act(() => result.current.pin(YEAR));
+    await act(() => result.current.submit('How is today?', async ({ onTravelOffer }) => {
+      onTravelOffer?.({ kind: 'back_to_today' });
+      return 'Today is calm.';
+    }));
+    expect(result.current.travelOffer).toEqual({ kind: 'back_to_today' });
+    await act(() => result.current.confirmTravelOffer());
+    expect(result.current.asOf).toBeUndefined();
+    expect(useTimeTravelStore.getState().moments[PROFILE]).toBeUndefined();
+  });
+
+  it('a turn that failed offers nothing', async () => {
+    const { result } = renderHook(() => useChatThread(PROFILE, CHART));
+    await act(() => result.current.submit('What was June like?', async ({ onTravelOffer }) => {
+      onTravelOffer?.({ kind: 'travel', asOf: JUNE });
+      throw new Error('provider failed');
+    }));
+    expect(result.current.travelOffer).toBeUndefined();
+  });
+
+  it('a turn that moved without changing thread offers nothing (the move wins)', async () => {
+    const { result } = renderHook(() => useChatThread(PROFILE, CHART));
+    await act(() => result.current.submit('Back to today', async ({ onTravel, onTravelOffer }) => {
+      onTravelOffer?.({ kind: 'travel', asOf: JUNE });
+      onTravel?.({ kind: 'back_to_today' });
+      return 'Already here.';
+    }));
+    expect(result.current.travelOffer).toBeUndefined();
+  });
+
+  it('a turn that moved offers nothing (the move wins)', async () => {
+    const { result } = renderHook(() => useChatThread(PROFILE, CHART));
+    await act(() => result.current.submit('Take me to June', async ({ onTravel, onTravelOffer }) => {
+      onTravelOffer?.({ kind: 'travel', asOf: MAY });
+      onTravel?.({ kind: 'travel', asOf: JUNE });
+      return 'June is busy.';
+    }));
+    expect(result.current.travelOffer).toBeUndefined();
+    expect(result.current.asOf).toEqual(JUNE);
+  });
+});
