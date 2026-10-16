@@ -399,6 +399,21 @@ describe('travel: a call the phrase gate closed becomes an offer', () => {
     expect(offer).not.toHaveBeenCalled();
   });
 
+  // Northstar on PR #377: an offered call that returned needs_place was read as a pending move, so the
+  // user's answer ("Mumbai") finished it with no tap. An unasked call never asks for a place.
+  it('an offered call with no place is refused as not asked: nothing pending, no offer', async () => {
+    const { tool, offer } = offered();
+    expect(await go(tool, { to: '2019-05', place: null })).toEqual(TRAVEL_NOT_ASKED);
+    expect(offer).not.toHaveBeenCalled();
+  });
+
+  it('an offered call with an ambiguous place never opens the picker', async () => {
+    const { tool, offer, pick } = offered();
+    expect(await go(tool, { to: '2019-05', place: 'Springfield' })).toMatchObject({ status: 'place_not_chosen' });
+    expect(pick).not.toHaveBeenCalled();
+    expect(offer).not.toHaveBeenCalled();
+  });
+
   it('a second call in the turn offers nothing more', async () => {
     const { tool, offer } = offered();
     await go(tool, { to: '2019-05', place: 'Pune' });

@@ -9,6 +9,7 @@ import type { ChatThreadAsOf } from '@almamesh/shared-types';
 import { chatAsOfProblem } from '@almamesh/store';
 import { NEEDS_PLACE, OUTSIDE_RANGE, READ_PERIOD_TIMEOUT_MS, resolveChatPlace, type PlaceAsk, type PlaceOutcome, type PlaceResolverInput, type ReadPeriodAsk } from './readPeriod';
 import { formatPinLabel, periodAsOfFromDraft, type SheetDraft } from './timeTravelSheet';
+import { NO_PLACE_PICKER } from './placePick';
 import { isPlaceReply, type TravelGrant } from './travelIntent';
 import { draftFromToolArgs, TIME_TRAVEL_STATUS_LABEL, TRAVEL_DATE_ERROR as DATE_ERROR, type TravelRecorder } from './travelSlot';
 
@@ -174,7 +175,11 @@ function queued(asOf: ChatThreadAsOf, language: string): TravelQueued {
 
 /** The move as an offer: the same resolution as a move, recorded to the offer sink, reported as needs_confirmation. */
 async function offerTo(input: TravelToolInput, offer: TravelRecorder, args: TravelArgs, context: ToolContext): Promise<TravelResult> {
-  const result = await travelTo({ ...input, record: offer }, args, context);
+  // An unasked call asks nothing of the user: no picker, and no needs_place (the chat would read the
+  // next reply as the answer to a pending move and finish it with no tap; northstar, PR #377).
+  const quiet = { ...input, record: offer, pick: async () => NO_PLACE_PICKER };
+  const result = await travelTo(quiet, args, context);
+  if (result.status === 'needs_place') return TRAVEL_NOT_ASKED;
   if (result.status !== 'queued') return result;
   const { place_label: place, period_label: label } = result;
   return {

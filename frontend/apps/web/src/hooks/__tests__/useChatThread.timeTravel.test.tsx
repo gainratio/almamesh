@@ -688,6 +688,26 @@ describe('useChatThread: an offered move', () => {
     expect(result.current.travelOffer).toBeUndefined();
   });
 
+  it('does not come back when the user leaves the thread and returns (no duplicate trip)', async () => {
+    const { result } = renderHook(() => useChatThread(PROFILE, CHART));
+    await act(() => result.current.submit('What was June like?', offering(JUNE)));
+    const home = result.current.threadId!;
+    await act(() => result.current.pin(YEAR));
+    act(() => result.current.openThread(home));
+    expect(result.current.travelOffer).toBeUndefined();
+  });
+
+  it('stays offered while the tap saves, and again if the save fails', async () => {
+    const { result } = renderHook(() => useChatThread(PROFILE, CHART));
+    await act(() => result.current.submit('What was June like?', offering(JUNE)));
+    vi.mocked(waitForStoreSaved).mockRejectedValueOnce(new Error('disk full'));
+    let tap!: Promise<void>;
+    act(() => { tap = result.current.confirmTravelOffer(); });
+    expect(result.current.travelOffer).toEqual({ kind: 'travel', asOf: JUNE });
+    await act(async () => { await tap.catch(() => undefined); });
+    expect(result.current.travelOffer).toEqual({ kind: 'travel', asOf: JUNE });
+  });
+
   it('an offered back to today clears the Dashboard moment on tap', async () => {
     const { result } = renderHook(() => useChatThread(PROFILE, CHART));
     await act(() => result.current.pin(YEAR));

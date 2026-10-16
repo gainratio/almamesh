@@ -159,6 +159,35 @@ test('[contract/stubbed] a travel call nobody asked for becomes a "Move to…?" 
   expect(errors, 'clean console').toEqual([]);
 });
 
+test('[contract/stubbed] an unasked travel call with no place moves nothing, even when the next reply names a place', async ({ page }) => {
+  const errors = await prepare(page);
+  await page.setViewportSize(DESKTOP);
+  let turn = 0;
+  await page.route('**/chat/completions', async (route) => {
+    const chat = chatToolBody(route.request().postData());
+    if (!chat) return fulfillEmpty(route);
+    const travelled = chat.messages.some((message) => message.role === 'tool');
+    // Turn 1 and turn 2 both call travel unasked; neither may move anything.
+    if (!travelled) return fulfillToolCall(route, { name: 'travel', args: { to: '2017-09', place: turn === 1 ? 'Mumbai' : null } }, 'call_travel');
+    return fulfillToolCall(route, { name: 'answer', args: generalAnswer('Nothing moved.') }, 'call_answer');
+  });
+  await bootEngine(page);
+  await seedChart(page);
+  await gotoSettled(page, '/dashboard');
+  await todayOnDashboard(page);
+  await page.getByTestId('floating-chat-button').click({ timeout: 60_000 });
+  const panel = page.getByTestId('chat-panel');
+  await send(page, 'How was September 2017 for me?');
+  await expect(panel.getByText('Nothing moved.')).toBeVisible({ timeout: 120_000 });
+  await expect(panel.getByTestId('travel-offer')).toHaveCount(0);
+  turn = 1;
+  await send(page, 'Mumbai');
+  await expect(panel.getByTestId('chat-message-assistant')).toHaveCount(2, { timeout: 120_000 });
+  await page.waitForTimeout(1_000);
+  await expect(page.getByTestId('time-travel-banner')).toHaveCount(0);
+  expect(errors, 'clean console').toEqual([]);
+});
+
 test('[contract/stubbed] a today question sent before the predictive layer is ready waits, then carries its facts', async ({ page }) => {
   const errors = await prepare(page);
   await page.setViewportSize(DESKTOP);

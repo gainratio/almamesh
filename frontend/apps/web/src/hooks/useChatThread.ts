@@ -124,6 +124,7 @@ export interface UseChatThreadResult {
 
 /** The offer a turn left, tied to the answer it sits under: it lives only while that answer is the newest message shown (another thread or a new turn changes that). */
 interface HeldOffer {
+  readonly threadId: string;
   readonly messageId: string;
   readonly action: TravelAction;
 }
@@ -528,7 +529,7 @@ export function useChatThread(
         const offered = travelSlot.takeOffer();
         // A move that ran wins; a failed or dropped answer has nothing to offer under.
         if (offered && !action && answeredId && saved && mounted.current) {
-          setHeldOffer({ messageId: answeredId, action: offered });
+          setHeldOffer({ threadId: tid, messageId: answeredId, action: offered });
         }
         try {
           const live = useChatStore.getState().threads[tid];
@@ -609,16 +610,19 @@ export function useChatThread(
   const travelOffer = heldOffer && heldOffer.messageId === lastMessageId ? heldOffer.action : undefined;
   const confirmTravelOffer = useCallback(async () => {
     if (!travelOffer) return;
-    const held = heldOffer;
+    // Stays on screen while it saves (the button shows its own wait and failure); spent only on success.
+    // The tapped move opens its trip; the question that prompted it stays in the thread it was asked in.
+    // Pin the shown thread first: the move creates its trip thread before it saves, and the list's
+    // newest thread would otherwise replace this one (and the offer) mid-save.
+    if (threadId) setSelectedThreadId(threadId);
+    if (travelOffer.kind === 'back_to_today') await backToToday();
+    else await go(travelOffer.asOf, 'chat-sheet', threadId ? { id: threadId } : 'new');
     setHeldOffer(undefined);
-    try {
-      if (travelOffer.kind === 'back_to_today') await backToToday();
-      else await go(travelOffer.asOf, 'chat-sheet', threadId ? { id: threadId } : 'new');
-    } catch (error) {
-      setHeldOffer(held);
-      throw error;
-    }
-  }, [travelOffer, heldOffer, threadId, go, backToToday]);
+  }, [travelOffer, threadId, go, backToToday]);
+  // Leaving the thread spends the offer: coming back must not revive it (each tap opens a trip).
+  useEffect(() => {
+    if (heldOffer && heldOffer.threadId !== threadId) setHeldOffer(undefined);
+  }, [heldOffer, threadId]);
 
   return {
     messages,
