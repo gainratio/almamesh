@@ -13,7 +13,9 @@ from typer.testing import CliRunner
 
 from almamesh.retrodiction.cli import app
 from almamesh.retrodiction.placebo_card import PlaceboCard
-from almamesh.retrodiction.scorecard import Scorecard
+from almamesh.retrodiction.scorecard import ControlVerdicts, Corrections, Scorecard
+from almamesh.retrodiction.scorecard_markdown import render_scorecard
+from tests.retrodiction_leaks import leaks
 
 RECORD_FIELDS = frozenset(
     {"id", "ids", "name", "birth", "datetime", "latitude", "longitude", "place", "events",
@@ -68,3 +70,48 @@ def test_a_missing_private_export_is_refused_with_a_clear_message(
     assert "refused" in result.output
     assert "no such file" in result.output
     assert not (tmp_path / "retrodiction-report").exists()
+
+
+def _card(**overrides: object) -> Scorecard:
+    fields: dict[str, object] = {
+        "label": "a run", "added_family": "exact_transits", "families": ["dasha"],
+        "preregistration_digest": "ab12" * 16, "window": 36, "ks": [3, 6],
+        "events_scored": 3, "exclusions": {"precision coarser than a month": 1},
+        "swap_natives_dropped": 0, "swap_exclusions": {}, "rows": [],
+        "corrections": Corrections(tests=0, raw=[], holm=[], bh=[]),
+        "shuffled": {}, "planted": {},
+        "verdicts": ControlVerdicts(planted_ok=True, shuffled_ok=True),
+    }  # fmt: skip
+    return Scorecard(**(fields | overrides))  # type: ignore[arg-type]
+
+
+def _published(card: Scorecard) -> list[str]:
+    return leaks(card.model_dump(mode="json")) + leaks(render_scorecard(card, evidence=True))
+
+
+def test_a_clean_aggregate_has_no_leak() -> None:
+    assert _published(_card()) == []
+
+
+def test_the_value_guard_fails_on_a_dict_keyed_by_native_id() -> None:
+    assert _published(_card(exclusions={"adb-70001": 1})) != []
+    assert _published(_card(swap_exclusions={"123456": 2})) != []
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "adb-70001",
+        "1980-03-04T05:06:00+05:30",
+        "1980-03-04 05:06",
+        "13.08, 80.27",
+        "Marilyn Monroe",
+    ],
+)
+def test_the_value_guard_fails_on_each_forbidden_value(value: str) -> None:
+    assert leaks({"label": value}) != []
+    assert leaks(f"| {value} |") != []
+
+
+def test_the_value_guard_sees_a_coordinate_pair_of_floats() -> None:
+    assert leaks({"rows": [{"where": [13.08, 80.27]}]}) != []

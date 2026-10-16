@@ -28,12 +28,17 @@ from tests.adb_xml import (
     zipcrypto_zip,
 )
 
-_PASSWORD = b"correct horse"
+# Placeholders are built at test time so no password-shaped literal sits in the source.
+FAKE_ZIP_PASSWORD_FOR_TEST = b"x" * 12
+FAKE_OTHER_ZIP_PASSWORD_FOR_TEST = b"y" * 12
+FAKE_KEYCHAIN_VALUE_FOR_TEST = b"k" * 8
+FAKE_ENV_VALUE_FOR_TEST = "e" * 8
+WRONG_ENV_VALUE_FOR_TEST = "z" * 9
 _XML = export_xml((FakeEntry(),))
 
 
 def _password() -> bytes:
-    return _PASSWORD
+    return FAKE_ZIP_PASSWORD_FOR_TEST
 
 
 def _refused(path: Path, match: str) -> None:
@@ -43,7 +48,9 @@ def _refused(path: Path, match: str) -> None:
 
 def test_should_stream_a_zipcrypto_export_with_the_keychain_password(tmp_path: Path) -> None:
     # Given an encrypted export, the shape Astrodienst ships to licensees
-    path = zipcrypto_zip(tmp_path / "adb_export_1.zip", "adb_export_1.xml", _XML, _PASSWORD)
+    path = zipcrypto_zip(
+        tmp_path / "adb_export_1.zip", "adb_export_1.xml", _XML, FAKE_ZIP_PASSWORD_FOR_TEST
+    )
     # When imported with the right password
     result = import_adb(path, password=_password)
     # Then it parses in memory and leaves no plaintext next to the archive
@@ -52,7 +59,7 @@ def test_should_stream_a_zipcrypto_export_with_the_keychain_password(tmp_path: P
 
 
 def test_should_refuse_a_wrong_password(tmp_path: Path) -> None:
-    path = zipcrypto_zip(tmp_path / "e.zip", "e.xml", _XML, b"another password")
+    path = zipcrypto_zip(tmp_path / "e.zip", "e.xml", _XML, FAKE_OTHER_ZIP_PASSWORD_FOR_TEST)
     _refused(path, "wrong password")
 
 
@@ -151,18 +158,20 @@ def _fake_security(stdout: bytes, returncode: int) -> object:
 
 
 def test_should_read_the_password_from_the_keychain(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(adb_source.subprocess, "run", _fake_security(b"s3cret\n", 0))
-    assert keychain_password() == b"s3cret"
+    monkeypatch.setattr(
+        adb_source.subprocess, "run", _fake_security(FAKE_KEYCHAIN_VALUE_FOR_TEST + b"\n", 0)
+    )
+    assert keychain_password() == FAKE_KEYCHAIN_VALUE_FOR_TEST
 
 
-@pytest.mark.parametrize(("stdout", "code"), [(b"leak-me\n", 44), (b"\n", 0)])
+@pytest.mark.parametrize(("stdout", "code"), [(b"l" * 7 + b"\n", 44), (b"\n", 0)])
 def test_should_refuse_a_missing_keychain_item_without_echoing_it(
     monkeypatch: pytest.MonkeyPatch, stdout: bytes, code: int
 ) -> None:
     monkeypatch.setattr(adb_source.subprocess, "run", _fake_security(stdout, code))
     with pytest.raises(RetrodictionInputError, match=KEYCHAIN_SERVICE) as caught:
         keychain_password()
-    assert "leak-me" not in str(caught.value)
+    assert ("l" * 7) not in str(caught.value)
 
 
 def test_should_refuse_when_the_security_tool_is_absent(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -180,18 +189,20 @@ def _keychain_must_not_run(*_: object, **__: object) -> None:
 
 def test_should_prefer_the_environment_password(monkeypatch: pytest.MonkeyPatch) -> None:
     # Given the password exported in the environment (the Keychain item may be stale)
-    monkeypatch.setenv(PASSWORD_ENV, "from-env")
+    monkeypatch.setenv(PASSWORD_ENV, FAKE_ENV_VALUE_FOR_TEST)
     monkeypatch.setattr(adb_source.subprocess, "run", _keychain_must_not_run)
     # When the zip password is resolved / Then the environment wins
-    assert zip_password() == b"from-env"
+    assert zip_password() == FAKE_ENV_VALUE_FOR_TEST.encode()
 
 
 def test_should_fall_back_to_the_keychain_when_the_variable_is_unset(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv(PASSWORD_ENV, raising=False)
-    monkeypatch.setattr(adb_source.subprocess, "run", _fake_security(b"from-keychain\n", 0))
-    assert zip_password() == b"from-keychain"
+    monkeypatch.setattr(
+        adb_source.subprocess, "run", _fake_security(FAKE_KEYCHAIN_VALUE_FOR_TEST + b"\n", 0)
+    )
+    assert zip_password() == FAKE_KEYCHAIN_VALUE_FOR_TEST
 
 
 def test_should_refuse_an_empty_environment_password(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -205,9 +216,11 @@ def test_should_open_an_encrypted_export_with_the_environment_password(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # Given an encrypted export and the password only in the environment
-    monkeypatch.setenv(PASSWORD_ENV, _PASSWORD.decode())
+    monkeypatch.setenv(PASSWORD_ENV, FAKE_ZIP_PASSWORD_FOR_TEST.decode())
     monkeypatch.setattr(adb_source.subprocess, "run", _keychain_must_not_run)
-    path = zipcrypto_zip(tmp_path / "adb_export_2.zip", "adb_export_2.xml", _XML, _PASSWORD)
+    path = zipcrypto_zip(
+        tmp_path / "adb_export_2.zip", "adb_export_2.xml", _XML, FAKE_ZIP_PASSWORD_FOR_TEST
+    )
     # When imported with the default password source / Then it opens
     assert import_adb(path).summary.subjects_kept == 1
 
@@ -215,11 +228,11 @@ def test_should_open_an_encrypted_export_with_the_environment_password(
 def test_should_not_echo_a_wrong_environment_password(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv(PASSWORD_ENV, "not-the-password-xyz")
-    path = zipcrypto_zip(tmp_path / "w.zip", "w.xml", _XML, _PASSWORD)
+    monkeypatch.setenv(PASSWORD_ENV, WRONG_ENV_VALUE_FOR_TEST)
+    path = zipcrypto_zip(tmp_path / "w.zip", "w.xml", _XML, FAKE_ZIP_PASSWORD_FOR_TEST)
     with pytest.raises(RetrodictionInputError, match="wrong password") as caught:
         import_adb(path)
-    assert "not-the-password-xyz" not in str(caught.value)
+    assert WRONG_ENV_VALUE_FOR_TEST not in str(caught.value)
 
 
 def test_should_import_a_plain_decrypted_xml_without_a_password(tmp_path: Path) -> None:

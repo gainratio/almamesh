@@ -24,6 +24,7 @@ from almamesh.retrodiction.placebo_run import (
     V1,
     score_hits,
 )
+from tests.retrodiction_leaks import leaks
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -74,6 +75,8 @@ def test_should_write_an_aggregate_only_placebo_scorecard_from_the_cli(
     for native in ("n1", "n2", "n3"):
         assert f'"{native}' not in (out / "placebo-scorecard.json").read_text()
         assert native not in markdown
+    assert leaks(card) == []
+    assert leaks(markdown) == []
 
 
 def test_should_refuse_an_unknown_added_family(events_path: Path, tmp_path: Path) -> None:
